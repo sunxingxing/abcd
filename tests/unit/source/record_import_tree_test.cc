@@ -21,20 +21,26 @@ using namespace abcd;
 void Check(bool value, std::source_location at = std::source_location::current()) {
   if (!value) { std::cerr << "check failed at " << at.line() << '\n'; std::abort(); }
 }
-enum class FixtureCase { kValid, kBindingCollision, kExportCollision, kBranch, kArmStore, kFunction, kCapture, kLocalFunction, kClassFunction, kClassCapture, kGlobal, kGlobalShadow, kGlobalLocalShadow };
-std::string Recover(FixtureCase mode) {
+enum class FixtureCase { kValid, kBindingCollision, kExportCollision, kBranch, kArmStore, kFunction, kCapture, kLocalFunction, kClassFunction, kClassCapture, kGlobal, kGlobalShadow, kGlobalLocalShadow, kAnonymous, kAnonymousFunction, kUnknownName };
+std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::kDynamic1206) {
   constexpr std::uint32_t kTypes = 256, kPool = 272, kRecord = 512,
       kMethod = 600, kChild = 640, kConstructor = 680, kLiteral = 3000, kModule = 1024, kCode = 4096, kChildCode = 5000, kConstructorCode = 6000, kFileBytes = 8192;
   const bool global = mode == FixtureCase::kGlobal || mode == FixtureCase::kGlobalShadow || mode == FixtureCase::kGlobalLocalShadow;
-  const bool family = mode == FixtureCase::kFunction || mode == FixtureCase::kCapture || mode == FixtureCase::kLocalFunction || mode == FixtureCase::kClassFunction || mode == FixtureCase::kClassCapture;
+  const bool anonymous = mode == FixtureCase::kAnonymous || mode == FixtureCase::kAnonymousFunction;
+  const bool family = mode == FixtureCase::kFunction || mode == FixtureCase::kCapture || mode == FixtureCase::kLocalFunction || mode == FixtureCase::kClassFunction || mode == FixtureCase::kClassCapture || mode == FixtureCase::kAnonymousFunction;
   const bool mixed = mode == FixtureCase::kClassFunction || mode == FixtureCase::kClassCapture;
   const bool captured = mode == FixtureCase::kCapture || mode == FixtureCase::kClassCapture;
   constexpr unsigned kByteBits = 8;
-  const std::array<std::string_view, 12> texts{"input", "value", "mutate", "ns", "answer",
+  std::array<std::string_view, 12> texts{"input", "value", "mutate", "ns", "answer",
       "answerAlias", "snapshot", "live", "*", "depNamespace", "default", "unused"};
   constexpr std::uint32_t kTextBase = 2048, kTextStride = 64;
   enum class Name : std::uint32_t { kInput, kValue, kMutate, kNamespace, kAnswer,
       kAnswerAlias, kSnapshot, kLive, kStar, kNamespaceExport, kDefault, kUnused };
+  if (anonymous) {
+    texts[static_cast<std::size_t>(Name::kAnswer)] = "*default*";
+    texts[static_cast<std::size_t>(Name::kSnapshot)] = "$default$$$0";
+  }
+  if (mode == FixtureCase::kUnknownName) texts[static_cast<std::size_t>(Name::kAnswer)] = "*unknown*";
   const auto name = [&](Name id) { return kTextBase + static_cast<std::uint32_t>(id) * kTextStride; };
   std::vector<std::uint8_t> bytes(kFileBytes);
   const auto word = [&](std::size_t at, std::uint32_t value) {
@@ -48,6 +54,8 @@ std::string Recover(FixtureCase mode) {
   constexpr std::array<std::uint32_t, 3> kRequests{120, 160, 200};
   text(kRequests[0], "./side.mjs"); text(kRequests[1], "./dep.mjs"); text(kRequests[2], "./star.mjs");
   for (std::size_t i = 0; i < texts.size(); ++i) text(kTextBase + i * kTextStride, texts[i]);
+  const auto snapshot_export = kTextBase + static_cast<std::uint32_t>(texts.size()) * kTextStride;
+  if (anonymous) text(snapshot_export, "snapshot");
   bytes[kTypes] = 5; // Pinned dynamic i32 record field type.
   const std::array<Name, 4> guards{Name::kInput, Name::kNamespace, Name::kAnswer, Name::kMutate};
   for (std::size_t i = 0; i < guards.size(); ++i) word(kPool + i * sizeof(std::uint32_t), name(guards[i]));
@@ -75,9 +83,9 @@ std::string Recover(FixtureCase mode) {
   emit(name(Name::kUnused)); emit(name(Name::kDefault)); request(1);
   emit(1); emit(name(Name::kNamespace)); request(1);
   emit(3); // Adjacent local export aliases share local slot 0.
-  emit(name(Name::kAnswer)); emit(name(Name::kAnswer));
+  emit(name(Name::kAnswer)); emit(name(anonymous ? Name::kDefault : Name::kAnswer));
   emit(name(Name::kAnswer)); emit(name(Name::kAnswerAlias));
-  emit(name(Name::kSnapshot)); emit(name(Name::kSnapshot));
+  emit(name(Name::kSnapshot)); emit(anonymous ? snapshot_export : name(Name::kSnapshot));
   emit(2);
   emit(name(mode == FixtureCase::kExportCollision ? Name::kAnswer : Name::kLive)); emit(name(Name::kValue)); request(1);
   emit(name(Name::kNamespaceExport)); emit(name(Name::kStar)); request(1);
@@ -139,7 +147,7 @@ std::string Recover(FixtureCase mode) {
   if (family) {
     body.swap(child_body);
     if (captured) { op(abc::Opcode::kLDLEXVAR_IMM4_IMM4); body.push_back(0); }
-    else if (mode == FixtureCase::kLocalFunction) load(true, 0, 2);
+    else if (mode == FixtureCase::kLocalFunction || mode == FixtureCase::kAnonymousFunction) load(true, 0, 2);
     else load(false, 0, 0);
     op(abc::Opcode::kRETURN);
     body.swap(child_body);
@@ -154,8 +162,10 @@ std::string Recover(FixtureCase mode) {
   const int fd = mkstemp(path); Check(fd >= 0);
   Check(write(fd, bytes.data(), bytes.size()) == static_cast<ssize_t>(bytes.size())); Check(close(fd) == 0);
   auto file = std::get<std::unique_ptr<corpus::AbcFile>>(corpus::AbcFile::Open(path));
-  abc::Header header; header.kind = abc::AbcKind::kDynamic; header.profile = abc::ProfileId::kDynamic1206;
-  header.version = {12, 0, 6, 0}; header.layout = abc::DynamicLayout{}; header.file_size = bytes.size();
+  abc::Header header; header.kind = abc::AbcKind::kDynamic; header.profile = profile;
+  header.version = profile == abc::ProfileId::kDynamic1202 ? abc::AbcVersion{12, 0, 2, 0} :
+      profile == abc::ProfileId::kDynamic1301 ? abc::AbcVersion{13, 0, 1, 0} : abc::AbcVersion{12, 0, 6, 0};
+  header.layout = abc::DynamicLayout{}; header.file_size = bytes.size();
   abc::MetadataIndex index;
   index.regions.push_back({400, 1000, {1, kTypes}, {static_cast<std::uint32_t>(mixed ? 7 : guards.size() + family + global), kPool}, {}, {}});
   abc::RecordInfo record; record.offset = {kRecord}; record.field_count = 1; record.method_count = mixed ? 3 : family ? 2 : 1;
@@ -199,7 +209,7 @@ std::string Recover(FixtureCase mode) {
     Check(std::get<source::RecordProgramFailure>(result).kind == source::RecordProgramError::kInitializer);
     Check(unlink(path) == 0); return {};
   }
-  if (mode == FixtureCase::kBindingCollision || mode == FixtureCase::kExportCollision) {
+  if (mode == FixtureCase::kBindingCollision || mode == FixtureCase::kExportCollision || mode == FixtureCase::kUnknownName) {
     Check(std::get<source::RecordProgramFailure>(result).kind == source::RecordProgramError::kExport);
     Check(unlink(path) == 0); return {};
   }
@@ -218,8 +228,13 @@ std::string Recover(FixtureCase mode) {
 }
 int main(int argc, char** argv) {
   const std::string_view mode = argc > 1 ? argv[1] : "";
-  const auto source = Recover(mode == "--global" ? FixtureCase::kGlobal : mode == "--class-capture" ? FixtureCase::kClassCapture : mode == "--class-function" ? FixtureCase::kClassFunction : mode == "--local-function" ? FixtureCase::kLocalFunction : mode == "--function" ? FixtureCase::kFunction : mode == "--capture" ?
-      FixtureCase::kCapture : argc > 2 ? FixtureCase::kBranch : FixtureCase::kValid);
+  const bool anonymous = mode == "--anonymous" || mode == "--anonymous-function";
+  const auto profile = anonymous && argc > 2 && std::string_view(argv[2]) == "1202" ? abc::ProfileId::kDynamic1202 :
+      anonymous && argc > 2 && std::string_view(argv[2]) == "1301" ? abc::ProfileId::kDynamic1301 : abc::ProfileId::kDynamic1206;
+  const auto source = Recover(mode == "--anonymous" ? FixtureCase::kAnonymous : mode == "--anonymous-function" ? FixtureCase::kAnonymousFunction : mode == "--global" ? FixtureCase::kGlobal : mode == "--class-capture" ? FixtureCase::kClassCapture : mode == "--class-function" ? FixtureCase::kClassFunction : mode == "--local-function" ? FixtureCase::kLocalFunction : mode == "--function" ? FixtureCase::kFunction : mode == "--capture" ?
+      FixtureCase::kCapture : argc > 2 ? FixtureCase::kBranch : FixtureCase::kValid, profile);
+  if (anonymous) { std::cout << source; return 0; }
+  Recover(FixtureCase::kUnknownName);
   Recover(FixtureCase::kClassCapture); Recover(FixtureCase::kClassFunction); Recover(FixtureCase::kFunction); Recover(FixtureCase::kCapture); Recover(FixtureCase::kLocalFunction);
   Recover(FixtureCase::kGlobal); Recover(FixtureCase::kGlobalShadow); Recover(FixtureCase::kGlobalLocalShadow);
   Recover(FixtureCase::kBranch); Recover(FixtureCase::kArmStore);

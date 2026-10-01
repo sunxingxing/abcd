@@ -11,6 +11,7 @@
 namespace abcd::source {
 class ModuleExports;
 class ModuleEnclosure;
+enum class NameEvidence : std::uint8_t;
 // Embedding-host trust boundary, not evidence inferred from a name or ABC.
 // Host supplies an initialized immutable lexical binding to this ABC realm's
 // original global object, visible for the generated code's entire lifetime.
@@ -71,6 +72,9 @@ struct GlobalScope {
   // module stores. Indexed after the enclosure imports; reads remain live/TDZ.
   // No declaration premise is supplied for detached class/function output.
   std::span<const std::u16string> module_local_names{};
+  // Empty retains the historical metadata premise; otherwise exactly one
+  // evidence entry per declaration, including checked anonymous wire bindings.
+  std::span<const NameEvidence> module_local_evidence{};
   // Native record lexical layer, separate from intervening wrappers. Local
   // module aliases refer into this layer; free globals must still avoid it.
   std::span<const std::string_view> record_bindings{};

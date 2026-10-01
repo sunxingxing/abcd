@@ -10,6 +10,7 @@
 #include "family_print.h"
 #include "function_tree.h"
 #include "module_aliases.h"
+#include "module_binding_name.h"
 #include "abcd/source/module_enclosure.h"
 #include "tree_constants.h"
 #include "tree_globals.h"
@@ -47,11 +48,27 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     retain(enclosure->AllocatedBytes());
     const auto external = enclosure->Names().size();
     // Reuse the wire slot grouping and duplicate-export validation. Source names
-    // below are metadata, never names obtained from a paired source file.
+    // below are metadata-derived (including anonymous binding synthesis),
+    // never names obtained from a paired source file.
     retain(budget.export_bytes);
     auto exports = BuildModuleExports(file, header, *module, {budget.export_bytes, budget.strings});
     const auto* slots = std::get_if<ModuleExports>(&exports);
     if (!slots) return fail(Error::kExport);
+    auto named = ResolveModuleBindingNames(file, header, *module, {budget.bytes});
+    const auto* local_names = std::get_if<ModuleBindingNames>(&named);
+    if (!local_names) return std::visit([&](auto error) -> RecordSourceResult {
+      using T = decltype(error);
+      if (error == T::kResourceLimit) return fail(Error::kResourceLimit);
+      if constexpr (std::is_same_v<T, abc::MetadataError>) {
+        if (error == T::kFileChanged) return fail(Error::kFileChanged);
+        if (error == T::kRead) return fail(Error::kRead);
+      } else if (error == T::kWorkLimit) {
+        return RouteRefusal{{RouteFailureClass::kWorkLimit, ValueRouteError::kContextStage, {}}};
+      }
+      return fail(Error::kExport);
+    }, std::get<ModuleBindingNameFailure>(named));
+    retain(local_names->allocated_bytes);
+    if (local_names->locals.size() != slots->slot_count()) return fail(Error::kExport);
     std::optional<FileFunction> standalone;
     std::optional<FileFamily> family;
     FileFunction* function = nullptr;
@@ -154,27 +171,23 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
           NameEvidence::kMetadata, false});
       constants->names.push_back(names.back());
     }
-    std::u16string previous;
-    for (const auto& item : module->local_exports) {
-      auto local = abc::ReadStringEntity(file, header, item.local, budget.strings);
+    for (std::size_t slot = 0; slot < local_names->locals.size(); ++slot) {
+      const auto& name = local_names->locals[slot];
+      retain(4 * (name.size() + 1) * sizeof(char16_t));
+      names.push_back(name);
+      const auto symbol = static_cast<std::uint32_t>(names.size() - 1);
+      syntax.modules.push_back({{owner, {symbol}},
+          {static_cast<std::uint32_t>(constants->names.size())}, ModuleAccess::kMutable,
+          local_names->evidence[slot], true});
+      constants->names.push_back(name);
+    }
+    for (std::size_t row = 0; row < module->local_exports.size(); ++row) {
+      const auto& item = module->local_exports[row];
       auto exported = abc::ReadStringEntity(file, header, item.exported, budget.strings);
-      auto* name = std::get_if<std::u16string>(&local);
       auto* alias = std::get_if<std::u16string>(&exported);
-      if (!name || !alias) return fail(Error::kRead);
-      if (names.size() == external || *name != previous) {
-        retain(4 * name->capacity() * sizeof(char16_t));
-        if (!IsSourceIdentifier(std::u16string_view(*name)))
-          return fail(Error::kExport);
-        names.push_back(*name);
-        const auto symbol = static_cast<std::uint32_t>(names.size() - 1);
-        syntax.modules.push_back({{{record.offset.value}, {symbol}},
-            {static_cast<std::uint32_t>(constants->names.size())}, ModuleAccess::kMutable,
-            NameEvidence::kMetadata, true});
-        constants->names.push_back(*name);
-      }
-      previous = std::move(*name);
+      if (!alias) return fail(Error::kRead);
       retain(alias->capacity() * sizeof(char16_t) + sizeof(std::u16string) + sizeof(std::size_t));
-      aliases.push_back(std::move(*alias)); alias_slots.push_back(names.size() - 1);
+      aliases.push_back(std::move(*alias)); alias_slots.push_back(external + local_names->rows[row]);
     }
     if (names.size() != external + slots->slot_count()) return fail(Error::kExport);
     std::vector<std::size_t> order(names.size());
@@ -271,6 +284,7 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     // First-store declarations and slot/name correspondence above establish
     // the enclosing native record bindings before preparing class descendants.
     class_scope.module_local_names = std::span<const std::u16string>(names).subspan(external);
+    class_scope.module_local_evidence = local_names->evidence;
     // File-level occurrence indexes are borrowed across records. Never rescan
     // the whole ABC for every class or use a detached class as a body fallback.
     retain(function->values.definitions.sites.size() * sizeof(ClassDefinitionSite));
@@ -343,7 +357,8 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
       const auto& symbol = result->tree.symbols[alias.symbol.value];
       if (alias.local != local || alias.access != (local ? ModuleAccess::kMutable : ModuleAccess::kReadOnly) ||
           symbol.kind != (local ? BindingKind::kLocal : BindingKind::kModule) ||
-          symbol.evidence != NameEvidence::kMetadata || symbol.name.value >= result->tree.names.size() ||
+          symbol.evidence != (local ? local_names->evidence[slot - external] : NameEvidence::kMetadata) ||
+          symbol.name.value >= result->tree.names.size() ||
           result->tree.names[symbol.name.value] != names[slot]) return fail(Error::kModule);
     }
     std::vector<std::string> lexical_names;

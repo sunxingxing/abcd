@@ -201,7 +201,7 @@ target_sources(abcd_source PRIVATE src/source/async_completion.cc src/source/asy
 target_sources(abcd_source PRIVATE src/source/generator_completion.cc src/source/generator_delegate.cc src/source/generator_async_yield.cc)
 target_sources(abcd_source PRIVATE src/source/exception_source.cc)
 target_sources(abcd_source PRIVATE src/source/exception_body.cc)
-target_sources(abcd_source PRIVATE src/source/module_read_snapshot.cc)
+target_sources(abcd_source PRIVATE src/source/module_read_snapshot.cc src/source/module_binding_name.cc)
 target_sources(abcd_source PRIVATE src/source/branch_value_proof.cc)
 target_sources(abcd_source PRIVATE src/source/branch_source_facts.cc)
 target_sources(abcd_source PRIVATE src/source/staged_branch_call.cc)
@@ -735,6 +735,9 @@ if(BUILD_TESTING)
   target_link_libraries(module_scope_test PRIVATE abcd_source)
   add_test(NAME module_scope_test COMMAND module_scope_test)
   add_executable(record_tree_test tests/unit/source/record_tree_test.cc)
+  add_executable(module_binding_name_test tests/unit/source/module_binding_name_test.cc)
+  target_link_libraries(module_binding_name_test PRIVATE abcd_source)
+  add_test(NAME module_binding_name_test COMMAND module_binding_name_test)
   add_executable(record_import_tree_test tests/unit/source/record_import_tree_test.cc)
   target_link_libraries(record_import_tree_test PRIVATE abcd_source)
   add_test(NAME record_import_tree_test COMMAND record_import_tree_test)
@@ -1092,6 +1095,8 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME record_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_tree.mjs $<TARGET_FILE:record_tree_test>)
+    add_test(NAME anonymous_module_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/anonymous_module.mjs $<TARGET_FILE:record_import_tree_test>)
     add_test(NAME module_family_print_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/module_family_print.mjs $<TARGET_FILE:module_family_print_test>)
     add_test(NAME record_import_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
@@ -1233,6 +1238,19 @@ if(BUILD_TESTING)
   endif()
   if(ABCD_NODE_EXECUTABLE AND ABCD_BUILD_TOOLS)
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc")
+      if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/base/src/main/ets/utils/Logger.ts")
+        add_test(NAME value_community_logger_record_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_logger_record.mjs
+          $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc"
+          "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/base/src/main/ets/utils/Logger.ts"
+          20495 45ffdc7d5075b4de3f1c6860dcbc929bae048097af4478d09136afbec1b6c5a8 CommunityApplication)
+      endif()
+      if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/detail/src/main/ets/viewmodel/CardArrayViewModel.ts")
+        add_test(NAME value_card_array_record_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_card_array_record.mjs
+          $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc"
+          "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/detail/src/main/ets/viewmodel/CardArrayViewModel.ts")
+      endif()
       add_test(NAME comment_item_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/comment_item_source.mjs
         $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc"
@@ -1245,6 +1263,12 @@ if(BUILD_TESTING)
         9516 8de95a4c6579b38133367422d43ffac146cba5e8222a874df4c3d7942380dc6a)
     endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
+      if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/pasteboard_src/src/main/ets/common/Logger.ts")
+        add_test(NAME value_logger_record_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_logger_record.mjs
+          $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc"
+          "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/pasteboard_src/src/main/ets/common/Logger.ts")
+      endif()
       add_test(NAME value_backup_pasteboard_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_backup_methods.mjs
         $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc"

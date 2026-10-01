@@ -18,7 +18,8 @@ struct ModuleAliases {
   std::vector<ModuleEvaluation> evaluations;
   std::vector<ModuleSyntax> aliases;
   // Append at first_name in the caller's FunctionSyntax name arena. Names are
-  // exact metadata spellings, not generated aliases or executable source.
+  // metadata spellings or checked anonymous-slot spellings with Synthesized
+  // evidence; never executable source. Guard names retain raw metadata.
   NameId first_name;
   std::vector<std::u16string> names;
   std::size_t allocated_bytes = 0;

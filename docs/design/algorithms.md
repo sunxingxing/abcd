@@ -465,3 +465,31 @@ using the existing common AST and printer, with no new dependency or license.
 Tests cover 2/200/201/400 predicates and complete draft work growth, both
 polarities and protected/unprotected calls and coercing comparisons. No RSS or
 benchmark run is implied by these bounded regression measurements.
+
+### Anonymous module binding spelling (2026-10-02)
+
+For one metadata inventory, let E be import/local-export rows, U distinct name
+entities, B decoded character volume, and O retained source-name volume.
+Sort/deduplicate entity IDs, decode each entity once, intern decoded text by
+sorting name indices, and resolve rows by binary search. Adjacent rows compare
+content-class IDs, including equal text at distinct entities, without scanning
+the long name again. Let K be characters compared/charged by content sorting
+and interning; its comparison-model bound is O(U log(U+1) * Lmax), with Lmax
+the longest name. Keep that cost explicit rather than claiming strict linear
+text sorting. The prefix scan visits decoded characters once. Work is
+O(E log(E+1) + B + K + O), storage O(E + U + B + O), including admitted transient
+arenas. Prefix and final names reserve once before appending. This is the
+adapter's per-invocation cost, not a claim that all per-function metadata
+resolution across a file has been cached. Existing module-reader and guard
+validation costs remain separate.
+
+The 200/201/400 repeated-long-name fixture first observed work
+81182/81989/322182, then 2212/2222/4212 after entity deduplication. Each case has
+one growing long string, repeated aliases, distinct equal entities and
+nonadjacent repeated slots; input/output dimensions are linear in the case
+size. These bounded work measurements are not latency, benchmark or RSS proof.
+See source-recovery/module-binding-names.md for pinned sentinel provenance,
+source identity, independent behavioral checks and remaining scope. A further
+self-review regression alternating two entities with the same growing long
+text found 42526/43545/164838 work before content interning. The final fixture
+keeps this case so entity-only deduplication cannot pass the scaling assertion.

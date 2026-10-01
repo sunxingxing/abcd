@@ -36,7 +36,7 @@ bool WorkLimit(const ModuleAliasFailure& failure) {
 
 class Fixture {
  public:
-  Fixture() {
+  explicit Fixture(bool anonymous = false) : anonymous(anonymous) {
     std::vector<std::uint8_t> bytes(kFileBytes);
     const auto word = [&](std::size_t at, std::uint32_t value) {
       for (unsigned i = 0; i < sizeof(value); ++i)
@@ -49,8 +49,8 @@ class Fixture {
     };
     text(abc::kDynamicHeaderSize, "moduleRecordIdx");
     text(kFirst.value, "first"); text(kEqual.value, "first");
-    text(kOther.value, "other"); text(kLocal.value, "localValue");
-    text(kLocalEqual.value, "localValue"); text(kRequest.value, "./dependency.mjs");
+    text(kOther.value, "other"); text(kLocal.value, anonymous ? "*default*" : "localValue");
+    text(kLocalEqual.value, anonymous ? "*default*" : "localValue"); text(kRequest.value, "./dependency.mjs");
     constexpr std::uint8_t kI32Type = 5;
     bytes[kTypes] = kI32Type;
     word(kPool, kEqual.value); word(kPool + sizeof(std::uint32_t), kOther.value);
@@ -87,6 +87,7 @@ class Fixture {
   abc::Header header;
   abc::MetadataIndex index;
   std::optional<RecordModuleContext> context;
+  bool anonymous;
  private:
   char path_[sizeof("/tmp/abcd-module-aliases-XXXXXX")] = "/tmp/abcd-module-aliases-XXXXXX";
 };
@@ -133,8 +134,9 @@ void Run(const Fixture& fixture, std::uint32_t count, bool local) {
   for (const auto& evaluation : bound.evaluations)
     test::Check(evaluation.target == ModuleSymbol{kOwner, {local ? 2U : 0U}});
   if (count) {
-    test::Check(bound.names[0] == (local ? u"localValue" : u"first"));
-    test::Check(bound.aliases[0].name == kFirstName && bound.aliases[0].evidence == NameEvidence::kMetadata);
+    test::Check(bound.names[0] == (local ? fixture.anonymous ? u"$default$0" : u"localValue" : u"first"));
+    test::Check(bound.aliases[0].name == kFirstName && bound.aliases[0].evidence ==
+        (local && fixture.anonymous ? NameEvidence::kSynthesized : NameEvidence::kMetadata));
     test::Check(bound.aliases[0].access == ModuleAccess::kReadOnly);
   }
   // Real metadata + original pair proofs feed the SAME evaluation/AST route;
@@ -159,6 +161,9 @@ void Run(const Fixture& fixture, std::uint32_t count, bool local) {
     test::Check(std::get<ModuleAliasTreeError>(VerifyModuleAliasTree(bound, evaluation, changed)) == ModuleAliasTreeError::kName);
     changed = tree; ++changed.modules[0].target.symbol.value;
     test::Check(std::get<ModuleAliasTreeError>(VerifyModuleAliasTree(bound, evaluation, changed)) == ModuleAliasTreeError::kTarget);
+    changed = tree;
+    changed.symbols[changed.modules[0].symbol.value].evidence = fixture.anonymous && local ? NameEvidence::kMetadata : NameEvidence::kSynthesized;
+    test::Check(std::get<ModuleAliasTreeError>(VerifyModuleAliasTree(bound, evaluation, changed)) == ModuleAliasTreeError::kName);
     changed = tree;
     changed.modules[0].access = ModuleAccess::kMutable;
     test::Check(std::get<ModuleAliasTreeError>(VerifyModuleAliasTree(bound, evaluation, changed)) == ModuleAliasTreeError::kAccess);
@@ -210,7 +215,7 @@ void Phased(const Fixture& fixture, std::uint32_t count, bool local, bool bad_na
   }
   const auto& aliases = std::get<ModuleAliases>(built);
   test::Check(aliases.evaluations.size() == count && aliases.aliases.size() == 1);
-  test::Check(aliases.names.front() == (local ? u"localValue" : u"first"));
+  test::Check(aliases.names.front() == (local ? fixture.anonymous ? u"$default$0" : u"localValue" : u"first"));
   const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(
       graph, {}, IncomingCells::kReject, {}, aliases.evaluations));
   const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, phases));
@@ -237,6 +242,12 @@ void Phased(const Fixture& fixture, std::uint32_t count, bool local, bool bad_na
 }
 }  // namespace
 int main() {
+  const Fixture anonymous(true);
+  for (auto count : {1U, 200U, 201U, 400U}) {
+    Run(anonymous, count, true);
+    Phased(anonymous, count, true);
+  }
+  Phased(anonymous, 1, true, true);
   const Fixture fixture;
   for (auto count : {1U, 2U, 200U, 201U})
     for (bool local : {false, true}) Phased(fixture, count, local);

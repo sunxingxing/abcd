@@ -1,4 +1,5 @@
 #include "module_aliases.h"
+#include "module_binding_name.h"
 
 #include <algorithm>
 #include <bit>
@@ -91,6 +92,24 @@ class AliasBinder {
         throw ModuleAliasFailure{Error::kGuardName,
             graph.origins[graph.ops[result_.evaluations[i].pair.guard->value].origin.value].pc};
     }
+    std::optional<ModuleBindingNames> local_bindings;
+    if (std::any_of(reads.bindings.begin(), reads.bindings.end(), [](const auto& read) {
+        return read.read.space == analysis::ModuleSpace::kLocal;
+      })) {
+      auto named = ResolveModuleBindingNames(file_, header_, *module, {bytes_, work_});
+      if (const auto* failure = std::get_if<ModuleBindingNameFailure>(&named)) {
+        std::visit([&](auto error) {
+          if constexpr (std::is_same_v<decltype(error), abc::MetadataError>) throw error;
+          else switch (error) {
+            case ModuleBindingNameError::kResourceLimit: throw Error::kResourceLimit;
+            case ModuleBindingNameError::kWorkLimit: throw Error::kWorkLimit;
+            case ModuleBindingNameError::kName: throw Error::kCoverage;
+          }
+        }, *failure);
+      }
+      local_bindings.emplace(std::get<ModuleBindingNames>(std::move(named)));
+      Admit(local_bindings->allocated_bytes, 1); Step(local_bindings->work);
+    }
     std::sort(order_.begin(), order_.end(), [&](auto a, auto b) {
       Step(); return result_.evaluations[a].target < result_.evaluations[b].target;
     });
@@ -110,14 +129,18 @@ class AliasBinder {
       if (previous == evaluation.target) continue;
       previous = evaluation.target;
       const NameId name{result_.first_name.value + static_cast<std::uint32_t>(result_.names.size())};
-      const auto& text = decoded_[NameIndex(local_names_[i])];
+      const bool local = evaluation.read.space == analysis::ModuleSpace::kLocal;
+      const auto slot = evaluation.read.slot.value;
+      Require(!local || (local_bindings && slot < local_bindings->locals.size()), Error::kCoverage);
+      const auto& text = local ? local_bindings->locals[slot] : decoded_[NameIndex(local_names_[i])];
       Step(text.size()); Admit(text.size(), sizeof(char16_t)); Admit(1, sizeof(char16_t));
       auto& copy = result_.names.emplace_back(text);
       Admit(copy.capacity() - text.size(), sizeof(char16_t));
       // This adapter proves reads only. A local-export row does NOT prove a
       // let/const declaration or permission to write. ReadOnly restricts this
       // alias, not the live binding's value; record/store proof may widen it.
-      result_.aliases.push_back({evaluation.target, name, ModuleAccess::kReadOnly, NameEvidence::kMetadata});
+      result_.aliases.push_back({evaluation.target, name, ModuleAccess::kReadOnly,
+          local ? local_bindings->evidence[slot] : NameEvidence::kMetadata});
     }
     if (file_.CheckUnchanged()) throw abc::MetadataError::kFileChanged;
     result_.allocated_bytes = budget_.bytes - bytes_;

@@ -149,6 +149,17 @@ std::uint64_t Run(std::size_t count, abc::ProfileId profile, bool duplicate = fa
   Check(std::get<Error>(verify(initializer, &declared)) == Error::kBinding);
   Check(std::holds_alternative<ModuleDestination>(VerifyModuleDestination(initializer,
       enclosure.Context().record(), &declared, {}, ModuleRole::kInitializer)));
+  auto generated = local;
+  generated.symbols[0].evidence = NameEvidence::kSynthesized;
+  Check(std::get<Error>(verify(generated, &declared)) == Error::kBinding);
+  const NameEvidence generated_evidence[] = {NameEvidence::kSynthesized};
+  auto generated_scope = declared;
+  generated_scope.module_local_evidence = generated_evidence;
+  Check(std::holds_alternative<ModuleDestination>(verify(generated, &generated_scope)));
+  Check(std::get<Error>(verify(local, &generated_scope)) == Error::kBinding);
+  const NameEvidence oversized_evidence[] = {NameEvidence::kSynthesized, NameEvidence::kMetadata};
+  generated_scope.module_local_evidence = oversized_evidence;
+  Check(std::get<Error>(verify(generated, &generated_scope)) == Error::kBinding);
   auto mismatch = local; mismatch.names[0] = u"OtherClass";
   Check(std::get<Error>(verify(mismatch, &declared)) == Error::kName);
   mismatch = local; ++mismatch.modules[0].target.owner.value;

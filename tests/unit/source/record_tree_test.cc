@@ -29,7 +29,7 @@ void String(std::vector<std::uint8_t>& bytes, std::size_t offset,
 }
 }  // namespace
 
-int main(int argc, char**) {
+int main(int argc, char** argv) {
   using namespace abcd;
   constexpr std::uint32_t kTypeTable = 200;
   constexpr std::uint32_t kRecord = 500;
@@ -38,11 +38,13 @@ int main(int argc, char**) {
   std::vector<std::uint8_t> bytes(640);
   String(bytes, abc::kDynamicHeaderSize, "moduleRecordIdx");
   String(bytes, 90, "isCommonjs");
-  String(bytes, kRequest, "answer");
+  const bool anonymous = argc > 1 && std::string_view(argv[1]) == "anonymous";
+  String(bytes, kRequest, anonymous ? "default" : "answer");
+  if (anonymous) String(bytes, 130, "*default*");
   bytes[kTypeTable] = 5;
   // Empty requests/imports/namespaces, then one local/export name pair.
   Word(bytes, kModule + 16, 1);
-  Word(bytes, kModule + 20, kRequest);
+  Word(bytes, kModule + 20, anonymous ? 130 : kRequest);
   Word(bytes, kModule + 24, kRequest);
   const bool array = argc > 2;
   const bool late = argc > 3;
@@ -115,8 +117,13 @@ int main(int argc, char**) {
     std::cerr << "variant " << result.index() << '\n'; return 1;
   }
   const auto& source = std::get<source::PrintedSource>(result).text;
-  Check(source.find(array ? "[" : "let answer = 42;") != std::string::npos);
-  Check(source.find("export { answer as ") != std::string::npos);
+  if (anonymous) {
+    Check(source.find("*default*") == std::string::npos);
+    Check(source.find(" as \"default\" }") != std::string::npos);
+  } else {
+    Check(source.find(array ? "[" : "let answer = 42;") != std::string::npos);
+    Check(source.find("export { answer as ") != std::string::npos);
+  }
   if (argc > 1) std::cout << source;
   auto invalid_identity = identity; ++invalid_identity.file_size;
   Check(!std::holds_alternative<source::PrintedSource>(source::BuildRecordSource(
