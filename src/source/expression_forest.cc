@@ -270,6 +270,7 @@ class ForestBuilder {
           const auto base = std::get<analysis::ValueId>(graph_.uses[op.first_use.value].operand);
           const auto allocation = std::get<analysis::OpResult>(graph_.values[base.value].origin).op;
           Require(objects_[allocation.value].has_value(), Error::kOwnership);
+          if (evaluation_.logical_objects[allocation.value] != analysis::OpId{static_cast<std::uint32_t>(i)}) continue;
           forest_.operations[allocation.value] = Object(evaluation_.literals->objects[*objects_[allocation.value]],
               TreeOriginId{graph_.ops[allocation.value].origin.value});
           continue;

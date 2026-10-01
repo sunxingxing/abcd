@@ -5,7 +5,7 @@ import vm from 'node:vm';
 // tree and semantic checks. No source text supplies the engine's expression.
 const source = execFileSync(process.argv[2], ['--sources'], {encoding: 'utf8'});
 const generated = vm.runInNewContext(source, {Array() { throw new Error('mutable Array binding'); }});
-assert.equal(generated.length, 25);
+assert.equal(generated.length, 27);
 const reference = [value => value || [], value => value && []];
 const object = {[Symbol.toPrimitive]() { throw new Error('unexpected coercion'); }};
 const values = [undefined, null, false, true, 0, -0, NaN, '', 'text', 0n, 1n, Symbol('value'), object];
@@ -362,5 +362,54 @@ for (const value of values) {
 for (const payload of values) for (const throwing of [false, true]) {
   assert.deepEqual(read(generated[23], undefined, payload, throwing, true),
                    read(nestedReference, undefined, payload, throwing, true)); ++scenarios;
+}
+function bufferedFields(fn, payloads, fail, replace, duplicate) {
+  const events = [], failure = {}, result = {};
+  let reads = 0;
+  const receiver = {};
+  const read = name => {
+    assert.equal(++reads <= 2, true);
+    events.push(name);
+    if (replace) Object.defineProperty(receiver, 'items', {value() { throw new Error('re-read method'); }, configurable: true});
+    if (fail === `field${reads}`) throw failure;
+    return payloads[reads - 1];
+  };
+  for (const name of ['probe', 'other']) Object.defineProperty(receiver, name, {
+    get() { assert.equal(this, receiver); return read(name); }
+  });
+  Object.defineProperty(receiver, 'items', {configurable: true, get() {
+    assert.equal(this, receiver); events.push('method');
+    if (fail === 'method') throw failure;
+    const method = function(argument) {
+      assert.equal(this, receiver); events.push('call');
+      assert.deepEqual(Object.keys(argument), duplicate ? ['probe'] : ['probe', 'other']);
+      assert.equal(reads, 2);
+      const keys = duplicate ? ['probe'] : ['probe', 'other'];
+      for (const [index, name] of keys.entries()) {
+        const descriptor = Object.getOwnPropertyDescriptor(argument, name);
+        assert.ok(Object.is(descriptor.value, payloads[duplicate ? 1 : index]));
+        assert.equal(descriptor.writable && descriptor.enumerable && descriptor.configurable, true);
+      }
+      if (fail === 'call') throw failure;
+      return result;
+    };
+    for (const name of ['call', 'apply', 'bind']) Object.defineProperty(method, name, {
+      get() { throw new Error('mutable invocation helper'); }
+    });
+    return method;
+  }});
+  try { assert.equal(fn(receiver), result); return {events}; }
+  catch (error) { assert.equal(error, failure); return {events, threw: true}; }
+}
+for (const duplicate of [false, true]) {
+  const reference = duplicate
+    ? value => value.items({probe: value?.probe, probe: value?.probe})
+    : value => value.items({probe: value?.probe, other: value?.other});
+  for (const first of values) for (const second of values)
+    for (const fail of ['', 'method', 'field1', 'field2', 'call']) for (const replace of [false, true]) {
+      assert.deepEqual(bufferedFields(generated[duplicate ? 26 : 25], [first, second], fail, replace, duplicate),
+                       bufferedFields(reference, [first, second], fail, replace, duplicate));
+      ++scenarios;
+    }
 }
 console.log(`Decoded logical branch values, getters and calls: ${scenarios} behavior scenarios passed`);

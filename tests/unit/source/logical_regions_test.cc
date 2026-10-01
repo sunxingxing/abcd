@@ -152,6 +152,24 @@ analysis::ValueProgram BufferedOptionalAccess(bool call = false, bool method_fir
   bytes.push_back(0x64);
   return Import(bytes, 3);
 }
+analysis::ValueProgram BufferedSelections(unsigned count = 2, bool barrier = false, bool distinct = true) {
+  // Both distinct keys and repeated own definitions must retain every RHS.
+  std::vector<std::uint8_t> bytes{0x60, 3, 0x42, 0, 1, 0, 0x61, 1,
+      0x07, 0, 0, 0, 0x61, 0};
+  const auto wire = static_cast<std::uint16_t>(abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8);
+  for (unsigned i = 0; i < count; ++i) {
+    if (barrier && i) bytes.push_back(static_cast<std::uint8_t>(abc::Opcode::kDEBUGGER));
+    bytes.insert(bytes.end(), {0x01, 0x27, 0, 3, 0x4f, 10, 0x00, 0x27, 0, 3, 0x4f, 4, 0x4d, 5,
+        0x00, 0x4d, 8, 0x60, 3, 0x42, 0, 0, 0});
+    const std::uint8_t name = distinct && i % 2 ? 2 : 0;
+    bytes[bytes.size() - 2] = name;
+    bytes.push_back(static_cast<std::uint8_t>(wire));
+    if (wire > UINT8_MAX) bytes.push_back(static_cast<std::uint8_t>(wire >> 8));
+    bytes.insert(bytes.end(), {0, name, 0, 0});
+  }
+  bytes.insert(bytes.end(), {0x60, 1, static_cast<std::uint8_t>(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 3, 0, 0x64});
+  return Import(bytes, 3);
+}
 analysis::ValueProgram Diamond(bool negate, unsigned count = 1, bool direct = false, bool getter = false, bool barrier = false, bool invoke = false, bool left_getter = false) {
   // return arg || [] (or arg && []), retaining the compiler's empty keep arm.
   std::vector<std::uint8_t> bytes;
@@ -211,18 +229,22 @@ std::string Source(const analysis::ValueProgram& graph, bool compose = true) {
   }
   FunctionSyntax syntax{};
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
-  syntax.names = {u"value", u"probe", u"items"}; syntax.parameters.push_back({NameId{0}, NameEvidence::kDebugRange});
+  syntax.names = {u"value", u"probe", u"items", u"other"}; syntax.parameters.push_back({NameId{0}, NameEvidence::kDebugRange});
+  std::vector<ConstantProperty> properties{{NameId{1}, NullLiteral{}}};
+  for (const auto& op : graph.ops) {
+    const auto* field = std::get_if<analysis::ValueOwnWrite>(&op.operation);
+    if (field && field->name.value == 2) { properties.push_back({NameId{3}, NullLiteral{}}); break; }
+  }
   std::vector<ExpressionConstant> constants(graph.ops.size());
   for (std::size_t i = 0; i < graph.ops.size(); ++i)
     if (const auto* read = std::get_if<analysis::ValueNamedRead>(&graph.ops[i].operation))
       constants[i] = NameId{read->name.value + 1};
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     if (const auto* allocation = std::get_if<analysis::ValueObjectAllocation>(&graph.ops[i].operation))
-      if (allocation->literal) constants[i] = AggregateConstant{0, 1};
+      if (allocation->literal) constants[i] = AggregateConstant{0, static_cast<std::uint32_t>(properties.size())};
     if (const auto* write = std::get_if<analysis::ValueOwnWrite>(&graph.ops[i].operation)) constants[i] = NameId{write->name.value + 1};
   }
-  const std::vector<ConstantProperty> properties{{NameId{1}, NullLiteral{}}};
-  const ExpressionConstants view{constants, 3, 0, {}, properties};
+  const ExpressionConstants view{constants, 4, 0, {}, properties};
   const auto built = BuildFunctionTree(graph, control, evaluation, std::move(syntax), view);
   Check(std::holds_alternative<ConstructedFunction>(built));
   const auto& tree = std::get<ConstructedFunction>(built).tree;
@@ -452,9 +474,36 @@ void Negatives() {
   Check(FindLogicalRegions(wrong, control).empty());
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--buffered-selections-source") {
+    std::cout << Source(BufferedSelections()) << "\n";
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--buffered-call-source") {
     std::cout << Source(BufferedOptionalAccess(true, true)) << "\n";
     return 0;
+  }
+  for (unsigned count : {2U, 3U, 16U, 64U, 128U, 200U, 201U, 256U}) {
+    const auto text = Source(BufferedSelections(count));
+    Check(text.find("$value") == std::string::npos && text.find("$phi") == std::string::npos);
+    std::size_t found = 0, offset = 0;
+    while ((offset = text.find(" ? ", offset)) != std::string::npos) { ++found; offset += 3; }
+    Check(found == 2 * count);
+  }
+  Check(Source(BufferedSelections(2, false, false)).find("$value") == std::string::npos);
+  const auto interrupted = BufferedSelections(2, true);
+  const auto interrupted_plan = std::get<EvaluationPlan>(BuildEvaluationPlan(interrupted));
+  Check(interrupted_plan.logical_objects.empty());
+  Check(std::get<CallPlanError>(BuildCallPlan(interrupted, interrupted_plan)) == CallPlanError::kReference);
+  const auto multiple_fields = BufferedSelections();
+  const auto multiple_plan = std::get<EvaluationPlan>(BuildEvaluationPlan(multiple_fields));
+  for (const auto& object : multiple_plan.literals->objects) {
+    if (object.count != 2) continue;
+    auto wrong = multiple_plan;
+    const auto first = wrong.literals->definitions[object.first];
+    wrong.operations[first.value] = {EvaluationKind::kRoot, {}, {}};
+    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(multiple_fields, wrong)));
+    wrong = multiple_plan; wrong.logical_objects[object.allocation.value] = first;
+    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(multiple_fields, wrong)));
   }
   // Native object arguments must retain the original early member Reference.
   const auto buffered_call = BufferedOptionalAccess(true, true);
@@ -561,7 +610,7 @@ int main(int argc, char** argv) {
               << "," << Source(CallDiamond(false, false)) << "," << Source(CallDiamond(true, false))
               << "," << Source(CallDiamond(false, false, false, true))
               << "," << Source(CallDiamond(true, false, false, true))
-              << "," << Source(CallDiamond(false, true)) << "," << Source(CallDiamond(true, true)) << "," << Source(optional) << "," << Source(OptionalAccess(false, 2)) << "," << Source(BufferedOptionalAccess()) << "," << Source(BufferedOptionalAccess(true, false)) << "," << Source(ConditionalDiamond()) << "," << Source(ConditionalDiamond(true)) << "," << Source(ConditionalCall(true)) << "," << Source(ConditionalCall(false)) << "," << Source(OptionalAccess(false, 1, true)) << "," << Source(OptionalCall(true)) << "," << Source(OptionalCall(false)) << "," << Source(NestedSelections(3)) << "," << Source(buffered_call) << "]\n";
+              << "," << Source(CallDiamond(false, true)) << "," << Source(CallDiamond(true, true)) << "," << Source(optional) << "," << Source(OptionalAccess(false, 2)) << "," << Source(BufferedOptionalAccess()) << "," << Source(BufferedOptionalAccess(true, false)) << "," << Source(ConditionalDiamond()) << "," << Source(ConditionalDiamond(true)) << "," << Source(ConditionalCall(true)) << "," << Source(ConditionalCall(false)) << "," << Source(OptionalAccess(false, 1, true)) << "," << Source(OptionalCall(true)) << "," << Source(OptionalCall(false)) << "," << Source(NestedSelections(3)) << "," << Source(buffered_call) << "," << Source(BufferedSelections()) << "," << Source(BufferedSelections(2, false, false)) << "]\n";
     return 0;
   }
   for (const bool negate : {false, true}) for (const bool direct : {false, true}) {

@@ -12,6 +12,34 @@
 
 ## 当前阶段
 
+### 2026-10-01：多字段条件初始化链与对象参数贯通
+
+- 将单字段对象区间扩展为多个相邻完整选择区域的初始化链。按原字段定义顺序
+  通过header索引连接前一join与下一header，共用基本块只处理一次；对象区间
+  在每次own-definition后扩展，最后由唯一外部用途消费。根选择按原操作顺序
+  处理，避免后面的选择先占用共用join而阻断整个对象。
+- 独立前向验证重新核对链、每个phi消费者、全部字段和最终对象消费；原局部
+  快照/写入验证仍保留。索引与route存储复用并计入预算，不逐字段重扫整图或
+  use-chain。森林到最后一个字段才构建共享ObjectExpr，保留每个DataProperty
+  的写入PC和独立条件子树来源。支持重复属性名，不能消除被覆写字段的RHS副作用。
+- 新增真实解码多字段红例 /tmp/abcd-object-chain-red.log，现可输出
+  value.items({probe: 条件值, other: 条件值})；不同字段和同名重复写入均验证。
+  2/3/16/64/128/200/201/256字段规格通过；插入debugger、漏掉首字段、伪造
+  提前完成位置继续拒绝。11734组JS对照通过，新增两次getter顺序、两次属性值
+  身份、方法替换、不同抛出位置、最终属性描述符和receiver检查。
+- 构建 /tmp/abcd-object-chain-final-build.log；14项定向回归通过，14.10秒，
+  /tmp/abcd-object-chain-tests.log。源码 /tmp/abcd-object-chain-sources.js。
+  全量测试/RSS/基准仍暂停，规模规格属于正确性证据，不是性能实测。
+- 五输入正式导出 build/stage-one/value-object-chain-pass-1 均退出0，保持
+  43 complete / 63 failure / 46 no-module，无完整项退化、无legacy writer；
+  /tmp/abcd-object-chain-batch-summary.json。未新增完整record，未完成配对源码
+  或平台最终验收。
+- 真实ShoppingAvoid回调的下一证据见 /tmp/abcd-object-chain-next-values.log：
+  成员调用op121仍在CallPlan的kReference处拒绝，property来自block0/op34；
+  当前logical_values/logical_objects均为空。block9/op76是ValueBinary，op77
+  才是ValueOwnWrite。需要继续定位较长可选链的选择发现及字段前二元运算组合，
+  不能把本次直接条件字段的成功视作该真实回调已完成。阶段一Goal继续开放。
+
 ### 2026-10-01：条件字段与原生成员调用对象参数贯通
 
 - 在既有选择树和事件区间证明中，接入单个staged own-definition的缓冲对象：

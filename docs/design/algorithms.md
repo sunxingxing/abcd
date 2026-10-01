@@ -257,8 +257,8 @@ No peak-RSS or benchmark claim is made.
 
 ### Selected buffered object arguments (2026-10-01)
 
-A normal staged buffer with one own definition and one external use can enclose
-an already proved conditional selection. The backwards event-interval builder
+A normal staged buffer with ordered own definitions and one external use can enclose
+already proved conditional selections. The backwards event-interval builder
 combines allocation, conditional RHS and definition, then consumes the whole
 interval in the join. The independent forwards checker proves contiguous child
 intervals and unique consumption, including an earlier member callee. Original
@@ -266,17 +266,30 @@ local placements are still checked with the allocation's multiple-use snapshot
 and the definition at its original site. Constants and TreeFlow retain the
 existing writable-own-key, property-order and source-origin obligations.
 
-One allocation-indexed definition table is built from LiteralPlan. Only a sole
-eligible definition traverses each object's use chain, so this adds O(I+D+U)
-work and O(I) auxiliary space to the existing selection-domain passes. Literal
+Allocation/field and header/consumer indexes are built once from LiteralPlan
+and complete selections. Only an object's first definition starts its route;
+adjacent header/join selections follow the original definition order, and each
+object use chain is traversed once. Contracted blocks are visited once per route,
+including shared joins. This adds O(B+I+D+U+V) work and auxiliary space to the
+existing selection-domain passes. Literal
 property construction keeps its separately documented sorting/text costs.
 Budgets include both the persistent projection and temporary indexes. This is
 an internal extension of the existing event-interval proof, without a new
-library or dependency. It does not yet compose multiple staged definitions or
-multiple adjacent selection domains into one object argument.
+library or dependency. It composes multiple adjacent selections whose results directly initialize
+ordered fields. A field RHS with additional operations or a gap between selection
+domains still needs a separate proof; no arbitrary CFG traversal is implied.
 
 Evidence: decoded early/late member call and direct-return fixtures, getter and
 method replacement/throw behavior comparisons, intervening debugger and shared
 object rejections, and corrupted projection/property-origin negatives. Existing
 200/201/deep selection specifications remain exercised; no RSS or performance
 measurement is claimed.
+
+The 2026-10-01 multi-field extension uses a reusable, budgeted domain index and
+route vector, not per-object graph-sized allocations. Source-order root iteration
+prevents a later selection from consuming a shared block before its containing
+object route. Independent forward verification rebuilds the route, verifies all
+selected phi consumers, each property definition and final object consumption.
+Distinct/repeated keys and 2/3/16/64/128/200/201/256 definitions are decoded
+correctness fixtures. Repeated keys retain every RHS and its original origin;
+intervening debugger and missing/early definition claims remain rejected.
