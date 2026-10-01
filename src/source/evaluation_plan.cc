@@ -369,7 +369,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
       step(graph.ops.size());
       for (const auto& bundle : plan.phis->bundles) {
         step();
-        const auto producer = PhiExpressionProducer(graph, *plan.phis, bundle);
+        const auto producer = PhiExpressionProducer(graph, *plan.phis, bundle, module_index.peers);
         if (!producer || pinned[producer->value]) continue;
         auto& placement = plan.operations[producer->value];
         if (placement.kind != EvaluationKind::kRoot) continue;

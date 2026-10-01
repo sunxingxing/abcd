@@ -39,10 +39,13 @@ enum class PhiCopyError : std::uint8_t {
     analysis::SemanticBudget budget = {});
 // A sole-use expression at the end of a single-successor normal block may be
 // evaluated directly by its single phi assignment. Requires verified PhiCopies;
-// scans only that producer's trailing block suffix. Each eligible edge has a
+// module_guards, when supplied, is the checked symmetric module-pair index.
+// Its read owns the original guard use/event, not an additional source use.
+// Scans only that producer's trailing block suffix. Each eligible edge has a
 // distinct source block, so visiting all bundles is linear in graph size.
 [[nodiscard]] std::optional<analysis::OpId> PhiExpressionProducer(
-    const analysis::ValueProgram& graph, const PhiCopies& copies, const PhiBundle& bundle);
+    const analysis::ValueProgram& graph, const PhiCopies& copies, const PhiBundle& bundle,
+    std::span<const std::optional<analysis::OpId>> module_guards = {});
 // Same parallel-copy algorithm, but availability is Before/Commit/Catch aware.
 // Abstract edge schedules are NOT permission to execute writes before a throw.
 // Exceptional edges require separate staging and catch-entry commit placement.

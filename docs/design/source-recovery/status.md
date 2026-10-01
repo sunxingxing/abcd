@@ -12,6 +12,43 @@
 
 ## 当前阶段
 
+### 2026-10-01：条件模块读取与相邻选择调用贯通
+
+- 共同选择规划使用一次受检module peer索引，在条件及&&/||臂中接纳已归属
+  inline或phi输入的read/guard配对。PhiExpressionProducer只吸收该guard的原始
+  用途和相邻事件，仍要求一个真实phi用途和惰性尾部；其他guard、debugger、
+  环境及额外效果继续作为屏障。guard保留kModuleGuard，两条原始PC共享同一
+  module表达式，未删除检查、增加writer或使用样本分支。
+- 选择Domain区分header归属和已消费join前缀。前一次调用结束后的同块后缀可
+  作为下一次选择的header，独立正序区间及一次消费检查仍覆盖全部原始效果。
+  每块至多参与前一次join与后一次header，新增O(blocks)索引空间；没有逐分支
+  全图搜索。模块索引新增O(operations+modules)时间/O(operations)临时空间。
+- 新实际解码回归覆盖条件、&&、||的直接模块值及模块属性，宽度
+  1/2/200/201/400/800，经共同树、semantics、TreeFlow及instruction sources；
+  丢失配对guard、removed guard和臂内debugger均被拒绝。旧实现红例见
+  /tmp/abcd-selection-module-red.log；相邻第二次调用的原kReference失败见
+  /tmp/abcd-selection-module-call-failure.log。
+- 完整生成函数独立行为对照4626场景通过，覆盖严格比较/短路、TDZ、原生
+  receiver、getter/Proxy、异常身份/顺序、动态module binding及连续两次调用，
+  /tmp/abcd-selection-module-behavior.log。生产与测试构建退出0，
+  /tmp/abcd-selection-module-final-build.log；12/12定向回归通过23.45秒，
+  /tmp/abcd-selection-module-final-tests.log。没有恢复全量/RSS/基准。
+- 真实PageA子函数7366现为完整tree、零recovery issue，已通过family循环内
+  TreeFlow、ABI及instruction source检查，/tmp/abcd-selection-module-pagea-family.log。
+  整份PageA仍为tree_stage；下一成员7421在phased CellEvaluation返回
+  kInitialization，底层CellInitializations为kClosure，见
+  /tmp/abcd-selection-module-pagea-cell-kind.log及
+  /tmp/abcd-selection-module-pagea-initialization-detail.log；需接入实际family
+  closure-write前提与独立写入检查，不能跳过
+  其cell生命周期/异常语义来放行。
+- 五输入build/stage-one/value-selection-module-pass-1均退出0，新增
+  pasteboard ShareDitect record10857的完整共同源码；现为
+  **48 complete / 2 incomplete / 56 failure / 46 no-module**，无完整项退化、
+  无legacy writer，/tmp/abcd-selection-module-batch-summary.json。ShareDitect.mjs
+  通过Node语法检查，恢复两处Button.width的原生条件模块读取；配对TS仅在引擎
+  退出后用于独立阅读对照。整record的平台行为及表示质量仍待验收，manifest的
+  source_complete不等于阶段一完成，Goal继续active。
+
 ### 2026-10-01：嵌套聚合参数与混合表达式依赖贯通
 
 - LiteralPlan现在接纳正常同块表达式中的fresh object/array参数，包括primitive

@@ -279,6 +279,25 @@ headers and ordered member getter tests cover the extension. This supersedes the
 previous nested-selection exclusion; object initializer fusion remains separate.
 No peak-RSS or benchmark claim is made.
 
+### Selected module reads and consecutive consumers (2026-10-01)
+
+Normal selection arms also accept an exact module read/guard pair owned by their
+single inline/phi subtree. One common checked peer index adds O(I+M) time/O(I)
+temporary space, rather than rescanning module obligations for every arm. The
+phi producer excludes only the original guard use and event; arbitrary throwing
+suffixes and multiple source uses still refuse. Both original events retain
+their effects and origins in the independent evaluation and tree-flow checks.
+
+Selection occupancy distinguishes a header from a consumed join prefix. A join
+consumer must precede a later header's predicate before that same block can be
+reused. The existing domain equations check all events and exclusive dependency
+consumption again; a join cannot acquire multiple owners. Each block participates
+at most once as a header and once as a join, retaining linear scans and O(B)
+occupancy storage. This is an in-house extension of the existing interval
+algorithm with no dependency or license change. Decoded conditional/and/or
+module arms at 1/2/200/201/400/800 widths and independent consecutive-call traces
+exercise the extension; no RSS or benchmark measurement is claimed.
+
 ### Selected buffered object arguments (2026-10-01)
 
 A normal staged buffer with ordered own definitions and one external use can enclose

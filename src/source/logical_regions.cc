@@ -1,6 +1,7 @@
 #include "logical_regions.h"
 #include "evaluation_plan.h"
 #include "tree_checks.h"
+#include "module_evaluation.h"
 
 #include <array>
 
@@ -29,6 +30,18 @@ bool SameValue(const ValueOperand& operand, ValueId expected) {
 bool Pure(const ValueOp& op) {
   return op.normal == LanguageEffect::kNone && op.before_throw == LanguageEffect::kNone &&
       op.exceptional == ExceptionalCompletion::kImpossible;
+}
+bool OwnedModuleGuard(const ValueProgram& graph, const EvaluationPlan& evaluation,
+    const ModuleEvaluationIndex& modules, std::size_t id) {
+  // The checked pair retains its throwing guard inside the same selected
+  // subtree. Never ignore arbitrary guards or a separately rooted module read.
+  if (modules.peers.empty() || !modules.peers[id] ||
+      evaluation.operations[id].kind != EvaluationKind::kModuleGuard ||
+      !std::holds_alternative<ValueGuard>(graph.ops[id].operation)) return false;
+  const auto read = modules.peers[id]->value;
+  const auto kind = evaluation.operations[read].kind;
+  return graph.ops[read].block == graph.ops[id].block &&
+      (kind == EvaluationKind::kInline || kind == EvaluationKind::kPhiInput);
 }
 // The ControlPlan owns single-entry region membership. A straight arm may
 // end at the common join, but may not contain a nested branch/loop/transfer.
@@ -151,7 +164,7 @@ std::vector<SelectionRegion> FindLogicalRegions(const ValueProgram& graph, const
 // evaluation subtrees. No arm effects are made unconditional by this projection.
 namespace {
 std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& graph, const ControlPlan& control,
-    const EvaluationPlan& evaluation, TreeCheckBudget& budget) {
+    const EvaluationPlan& evaluation, const ModuleEvaluationIndex& modules, TreeCheckBudget& budget) {
   std::vector<SelectionRegion> result;
   std::vector<std::optional<ValueId>> phis;
   std::vector<std::uint8_t> multiple;
@@ -186,7 +199,8 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
     for (std::uint32_t i = 0; i < range.op_count; ++i) {
       budget.Step(); const auto id = range.first_op.value + i; const auto& op = graph.ops[id];
       if (op.life != ValueLife::kLive || std::holds_alternative<ValueJump>(op.operation)) continue;
-      if (id != producer->op.value && evaluation.operations[id].kind != EvaluationKind::kInline) return false;
+      if (id != producer->op.value && evaluation.operations[id].kind != EvaluationKind::kInline &&
+          !OwnedModuleGuard(graph, evaluation, modules, id)) return false;
     }
     return true;
   };
@@ -231,7 +245,8 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
           budget.Step(); const auto id = block.first_op.value + i; const auto& op = graph.ops[id];
           if (op.life != ValueLife::kLive || id == region.branch.value) continue;
           if (evaluation.operations[id].kind != EvaluationKind::kInline &&
-              evaluation.operations[id].kind != EvaluationKind::kPredicateSnapshot) return {};
+              evaluation.operations[id].kind != EvaluationKind::kPredicateSnapshot &&
+              !OwnedModuleGuard(graph, evaluation, modules, id)) return {};
         }
         return Path{node.block, region.join, {}, child};
       }
@@ -318,6 +333,17 @@ std::vector<SelectionRegion> FindSelectionExpressions(const ValueProgram& graph,
       control.revision != graph.revision || control.cfg_revision != graph.cfg_revision ||
       evaluation.flow != EvaluationFlow::kNormal || evaluation.operations.size() != graph.ops.size() ||
       evaluation.revision != graph.revision || evaluation.cfg_revision != graph.cfg_revision) return {};
+  // One peer index for all selected arms, reusing the common exact census,
+  // adjacency, operand and effect checker. No per-branch module search.
+  const auto indexed = IndexModuleEvaluations(graph, evaluation.modules, budget.Remaining());
+  const auto* modules = std::get_if<ModuleEvaluationIndex>(&indexed);
+  if (!modules) {
+    const auto error = std::get<EvaluationError>(indexed);
+    if (error == EvaluationError::kResourceLimit) throw TreeStructureError::kResourceLimit;
+    if (error == EvaluationError::kWorkLimit) throw TreeStructureError::kWorkLimit;
+    return {};
+  }
+  budget.Admit(modules->allocated_bytes, 1); budget.Step(modules->work);
   auto regions = FindLogicalRegions(graph, control, &budget);
   std::size_t count = 0;
   for (const auto& region : regions) {
@@ -334,7 +360,8 @@ std::vector<SelectionRegion> FindSelectionExpressions(const ValueProgram& graph,
     for (std::uint32_t j = 0; j < block.op_count; ++j) {
       budget.Step(); const auto id = block.first_op.value + j; const auto& op = graph.ops[id];
       if (op.life != ValueLife::kLive || std::holds_alternative<ValueJump>(op.operation)) continue;
-      if (evaluation.operations[id].kind != EvaluationKind::kInline && id != producer->op.value) closed = false;
+      if (evaluation.operations[id].kind != EvaluationKind::kInline && id != producer->op.value &&
+          !OwnedModuleGuard(graph, evaluation, *modules, id)) closed = false;
     }
     if (region.keep) {
       const auto& keep = graph.blocks[region.keep->value];
@@ -346,7 +373,7 @@ std::vector<SelectionRegion> FindSelectionExpressions(const ValueProgram& graph,
     if (closed) regions[count++] = region;
   }
   regions.resize(count);
-  const auto conditional = FindConditionalExpressions(graph, control, evaluation, budget);
+  const auto conditional = FindConditionalExpressions(graph, control, evaluation, *modules, budget);
   budget.Admit(conditional.size(), sizeof(SelectionRegion));
   regions.insert(regions.end(), conditional.begin(), conditional.end());
   return regions;

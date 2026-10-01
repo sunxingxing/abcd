@@ -217,7 +217,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
       step(graph.ops.size());
       for (const auto& bundle : plan.phis->bundles) {
         step();
-        if (const auto producer = PhiExpressionProducer(graph, *plan.phis, bundle))
+        if (const auto producer = PhiExpressionProducer(graph, *plan.phis, bundle, module_index.peers))
           phi_inputs[producer->value] = plan.phis->inputs[bundle.first];
       }
     }

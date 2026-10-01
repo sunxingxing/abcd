@@ -40,6 +40,30 @@ Both IR/CFG revision changes invalidate the table. The standalone ValueMethod
 receipt wrapper validates the correspondence but does not retain these private
 plans or gain module-print permission.
 
+## Guarded reads in selected expressions
+
+Normal conditional and short-circuit arms can now own a verified read/guard pair
+as part of their single evaluation subtree. Selection discovery builds one peer
+index with the common exact census, adjacency, operand and effect checks. A guard
+is admitted only with `kModuleGuard` placement and an inline or phi-input read in
+that arm; arbitrary or separately rooted guards remain barriers.
+
+Phi-expression admission excludes precisely the indexed guard use from the
+read's original use chain, still requiring one real phi input and a single exit.
+Only that adjacent guard and inert control may follow the producer. Both planning
+and independent evaluation verification use the checked index; the original
+read/guard effects and dual origins remain consumed by the ordinary subtree
+verifier and TreeFlow. This extends the earlier pinned-read domain described
+below, without changing phased admission or original alias/provenance checks.
+
+The index adds O(I+M) work and O(I) temporary space for I operations and M module
+evaluations. Peer lookup in each arm is O(1); eligible phi chains have at most the
+guard and one source input. No per-selection module scan or runtime helper exists.
+Decoded conditional/and/or fixtures cover direct values, member reads, adjacent
+calls, 200/201 boundaries, TDZ, receiver and exception ordering; forged missing
+guards and intervening debugger events remain rejected. Complete record exports
+and platform behavior are separate acceptance layers.
+
 ## Initialization before a normal child creation
 
 `FunctionInput` indexes the earliest Language-valued module store for each slot

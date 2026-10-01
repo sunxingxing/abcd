@@ -78,7 +78,8 @@ std::variant<PhiCopies, PhiCopyError> BuildPhasedPhiCopies(
   return BuildCopies(graph, allowance, PhiFlow::kPhased, domain);
 }
 std::optional<analysis::OpId> PhiExpressionProducer(
-    const analysis::ValueProgram& graph, const PhiCopies& copies, const PhiBundle& bundle) {
+    const analysis::ValueProgram& graph, const PhiCopies& copies, const PhiBundle& bundle,
+    std::span<const std::optional<analysis::OpId>> module_guards) {
   using namespace analysis;
   if (copies.flow != PhiFlow::kNormal || bundle.count != 1 ||
       bundle.schedule.steps.size() != 1 || bundle.schedule.temporaries != 0) return {};
@@ -87,16 +88,27 @@ std::optional<analysis::OpId> PhiExpressionProducer(
   const auto input = copies.inputs[bundle.first];
   const auto& use = graph.uses[input.value];
   const auto* value = std::get_if<ValueId>(&use.operand);
-  if (!value || graph.values[value->value].first_use != input || use.next) return {};
+  if (!value) return {};
   const auto* producer = std::get_if<OpResult>(&graph.values[value->value].origin);
   if (!producer) return {};
   const auto& op = graph.ops[producer->op.value];
+  const auto guard = std::holds_alternative<ValueModuleRead>(op.operation) &&
+      !module_guards.empty() ? module_guards[producer->op.value] : std::nullopt;
+  bool found = false;
+  for (auto id = graph.values[value->value].first_use; id; id = graph.uses[id->value].next) {
+    if (*id == input) { if (found) return {}; found = true; }
+    else if (!guard || *id != graph.ops[guard->value].first_use) return {};
+  }
+  if (!found) return {};
   const auto& block = graph.blocks[op.block.value];
   if (op.life != ValueLife::kLive || block.edge_count != 1 || block.first_edge != *edge ||
       graph.edges[edge->value].source != op.block) return {};
   // Only inert control may follow. In particular environment changes, getters,
   // stores and additional roots remain barriers even if the result is unused.
   for (std::uint32_t order = op.order + 1; order < block.op_count; ++order) {
+    // IndexModuleEvaluations proved adjacent read/guard operands and effects.
+    // Retain both at this phi expression; no other throwing suffix may move.
+    if (guard && block.first_op.value + order == guard->value) continue;
     const auto& later = graph.ops[block.first_op.value + order];
     if (later.life != ValueLife::kLive) continue;
     if ((!std::holds_alternative<ValueJump>(later.operation) &&
