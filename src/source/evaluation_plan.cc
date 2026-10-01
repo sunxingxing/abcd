@@ -9,6 +9,7 @@
 #include "tree_checks.h"
 
 #include <limits>
+#include <bit>
 #include <new>
 #include <stdexcept>
 
@@ -21,7 +22,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
     std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules,
     EvaluationFlow flow, std::span<const CellDemand> demands, std::span<const ClassInitializerCall> initializers,
-    analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> constructor_guards) {
+    analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards) {
   try {
     Require(incoming == IncomingCells::kReject || incoming == IncomingCells::kConditional, Error::kUnsupportedOperation);
     auto work = budget.work;
@@ -53,13 +54,13 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     plan.flow = flow;
     plan.closure_writes = closure_writes;
     plan.arguments = graph.arguments;
-    Require(constructor_guards.empty() || flow == EvaluationFlow::kNormal, Error::kOwnership);
-    admit(constructor_guards.size(), sizeof(analysis::OpId));
-    plan.constructor_guards.assign(constructor_guards.begin(), constructor_guards.end());
-    admit(plan.constructor_guards.capacity() - plan.constructor_guards.size(), sizeof(analysis::OpId));
-    for (std::size_t i = 0; i < plan.constructor_guards.size(); ++i) {
-      step(); const auto id = plan.constructor_guards[i];
-      Require((i == 0 || plan.constructor_guards[i - 1] < id) && id.value < graph.ops.size(), Error::kOwnership);
+    Require(receiver_guards.empty() || flow == EvaluationFlow::kNormal, Error::kOwnership);
+    admit(receiver_guards.size(), sizeof(analysis::OpId));
+    plan.receiver_guards.assign(receiver_guards.begin(), receiver_guards.end());
+    admit(plan.receiver_guards.capacity() - plan.receiver_guards.size(), sizeof(analysis::OpId));
+    for (std::size_t i = 0; i < plan.receiver_guards.size(); ++i) {
+      step(); const auto id = plan.receiver_guards[i];
+      Require((i == 0 || plan.receiver_guards[i - 1] < id) && id.value < graph.ops.size(), Error::kOwnership);
       const auto& op = graph.ops[id.value];
       Require(op.life == analysis::ValueLife::kLive && !op.result && op.use_count == 1 &&
           std::holds_alternative<analysis::ValueSuperCheck>(op.operation), Error::kOwnership);
@@ -245,12 +246,17 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     // Producer use chains are disjoint. Charge their total once, and cache the
     // projection so even a shared aggregate with many consumers stays linear.
     step(graph.uses.size());
+    if (!plan.receiver_guards.empty()) {
+      const auto depth = std::bit_width(plan.receiver_guards.size());
+      Require(graph.uses.size() <= work / depth, Error::kWorkLimit);
+      step(graph.uses.size() * depth);
+    }
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       step();
       if (graph.ops[i].life == analysis::ValueLife::kLive)
         visible[i] = ProjectEvaluationUses(graph, {static_cast<std::uint32_t>(i)}, module_index,
             literal_allocations[i] != 0, plan.class_projection.owners,
-            flow == EvaluationFlow::kNormal && plan.cells ? &*plan.cells : nullptr);
+            flow == EvaluationFlow::kNormal && plan.cells ? &*plan.cells : nullptr, plan.receiver_guards);
     }
     std::size_t next_op = 0;
     for (std::size_t b = 0; b < graph.blocks.size(); ++b) {
@@ -268,8 +274,8 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
             plan.operations[index].kind == EvaluationKind::kElidedPure ||
             plan.operations[index].kind == EvaluationKind::kAlias ||
             plan.operations[index].kind == EvaluationKind::kNestedLiteral) continue;
-        if (std::binary_search(plan.constructor_guards.begin(), plan.constructor_guards.end(), analysis::OpId{static_cast<std::uint32_t>(index)})) {
-          plan.operations[index].kind = EvaluationKind::kConstructorGuard;
+        if (std::binary_search(plan.receiver_guards.begin(), plan.receiver_guards.end(), analysis::OpId{static_cast<std::uint32_t>(index)})) {
+          plan.operations[index].kind = EvaluationKind::kReceiverGuard;
           continue;
         }
         if (flow == EvaluationFlow::kNormal && plan.cells &&
@@ -405,7 +411,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
         plan.modules.capacity() * sizeof(ModuleEvaluation) +
         plan.class_initializers.capacity() * sizeof(ClassInitializerCall) + plan.class_projection.allocated_bytes +
         plan.class_definitions.capacity() * sizeof(ClassDefinitionSite) +
-        plan.constructor_guards.capacity() * sizeof(analysis::OpId) +
+        plan.receiver_guards.capacity() * sizeof(analysis::OpId) +
         (plan.phis ? plan.phis->allocated_bytes : 0) +
         (plan.literals ? plan.literals->allocated_bytes : 0);
     if (plan.cells) plan.allocated_bytes += plan.cells->allocated_bytes;
@@ -425,8 +431,8 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
 std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
     std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules, std::span<const CellDemand> demands,
-    std::span<const ClassInitializerCall> initializers, analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> constructor_guards) {
-  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kNormal, demands, initializers, closure_writes, definitions, constructor_guards);
+    std::span<const ClassInitializerCall> initializers, analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards) {
+  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kNormal, demands, initializers, closure_writes, definitions, receiver_guards);
 }
 std::variant<EvaluationPlan, EvaluationError> BuildPhasedEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,

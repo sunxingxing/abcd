@@ -140,7 +140,7 @@ class FlowCheck {
               evaluation_.operations[id.value].kind == EvaluationKind::kClassProjection ||
               evaluation_.operations[id.value].kind == EvaluationKind::kModuleGuard) continue;
           const auto& placement = tree_.operations[*placements_[id.value]].node;
-          if (IsConstructorGuard(tree_, id) || evaluation_.operations[id.value].kind == EvaluationKind::kCellGuard || IsAbsentHeritageTransport(graph_, evaluation_, op) ||
+          if (IsReceiverGuard(tree_, id) || evaluation_.operations[id.value].kind == EvaluationKind::kCellGuard || IsAbsentHeritageTransport(graph_, evaluation_, op) ||
               std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation) ||
               evaluation_.operations[id.value].kind == EvaluationKind::kElidedPure ||
               evaluation_.operations[id.value].kind == EvaluationKind::kAlias) {
@@ -640,8 +640,10 @@ class FlowCheck {
             analysis::OpId{static_cast<std::uint32_t>(i)}) && std::holds_alternative<AnchorId>(placement), Error::kPlacement);
         continue;
       }
-      if (IsConstructorGuard(tree_, analysis::OpId{static_cast<std::uint32_t>(i)})) {
-        Require(tree_.callable == CallableKind::kDerivedConstructor &&
+      if (IsReceiverGuard(tree_, analysis::OpId{static_cast<std::uint32_t>(i)})) {
+        Require((tree_.callable == CallableKind::kDerivedConstructor ||
+            (std::holds_alternative<analysis::ValueSuperCheck>(op.operation) &&
+             std::get<analysis::ValueSuperCheck>(op.operation).kind == analysis::SuperCheckKind::kRequireInitialized)) &&
             std::holds_alternative<analysis::ValueSuperCheck>(op.operation) &&
             std::holds_alternative<AnchorId>(placement), Error::kPlacement);
         continue;

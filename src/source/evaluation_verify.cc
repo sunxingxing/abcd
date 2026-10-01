@@ -10,6 +10,7 @@
 #include "../analysis/value_edits.h"
 
 #include <new>
+#include <bit>
 #include <stdexcept>
 
 namespace abcd::source {
@@ -66,10 +67,10 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     }
     if (plan.phis) Require(plan.phis->domain == (has_holes && flow == EvaluationFlow::kPhased
         ? PhiDomain::kHoleTransport : PhiDomain::kLanguage), Error::kOwnership);
-    Require(plan.constructor_guards.empty() || flow == EvaluationFlow::kNormal, Error::kOwnership);
-    for (std::size_t i = 0; i < plan.constructor_guards.size(); ++i) {
-      step(); const auto id = plan.constructor_guards[i];
-      Require((i == 0 || plan.constructor_guards[i - 1] < id) && id.value < graph.ops.size(), Error::kOwnership);
+    Require(plan.receiver_guards.empty() || flow == EvaluationFlow::kNormal, Error::kOwnership);
+    for (std::size_t i = 0; i < plan.receiver_guards.size(); ++i) {
+      step(); const auto id = plan.receiver_guards[i];
+      Require((i == 0 || plan.receiver_guards[i - 1] < id) && id.value < graph.ops.size(), Error::kOwnership);
       const auto& op = graph.ops[id.value];
       Require(op.life == analysis::ValueLife::kLive && !op.result && op.use_count == 1 &&
           std::holds_alternative<analysis::ValueSuperCheck>(op.operation), Error::kOwnership);
@@ -176,12 +177,17 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     // Producer use chains are disjoint. Charge their total once, and cache the
     // projection so even a shared aggregate with many consumers stays linear.
     step(graph.uses.size());
+    if (!plan.receiver_guards.empty()) {
+      const auto depth = std::bit_width(plan.receiver_guards.size());
+      Require(graph.uses.size() <= work / depth, Error::kWorkLimit);
+      step(graph.uses.size() * depth);
+    }
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       step();
       if (graph.ops[i].life == analysis::ValueLife::kLive)
         visible[i] = ProjectEvaluationUses(graph, {static_cast<std::uint32_t>(i)}, module_index,
             literal_allocations[i] != 0, plan.class_projection.owners,
-            flow == EvaluationFlow::kNormal && plan.cells ? &*plan.cells : nullptr);
+            flow == EvaluationFlow::kNormal && plan.cells ? &*plan.cells : nullptr, plan.receiver_guards);
     }
     bool has_phi = false;
     for (const auto& value : graph.values) {
@@ -258,11 +264,11 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
                 Error::kOwnership);
         continue;
       }
-      if (std::binary_search(plan.constructor_guards.begin(), plan.constructor_guards.end(), analysis::OpId{static_cast<std::uint32_t>(i)})) {
-        Require(placement.kind == EvaluationKind::kConstructorGuard && !placement.consumer && !placement.temporary, Error::kOwnership);
+      if (std::binary_search(plan.receiver_guards.begin(), plan.receiver_guards.end(), analysis::OpId{static_cast<std::uint32_t>(i)})) {
+        Require(placement.kind == EvaluationKind::kReceiverGuard && !placement.consumer && !placement.temporary, Error::kOwnership);
         visits[i] = EvaluationVisit::kDone; continue;
       }
-      Require(placement.kind != EvaluationKind::kConstructorGuard, Error::kOwnership);
+      Require(placement.kind != EvaluationKind::kReceiverGuard, Error::kOwnership);
       const bool cell_guard = flow == EvaluationFlow::kNormal && plan.cells &&
           IsInitializedCellGuard(graph, *plan.cells, analysis::OpId{static_cast<std::uint32_t>(i)});
       Require(cell_guard == (placement.kind == EvaluationKind::kCellGuard), Error::kOwnership);
@@ -388,7 +394,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
         }
         while (expected < end && (graph.ops[expected].life != analysis::ValueLife::kLive ||
                                   BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kClassProjection ||
-                                  BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kConstructorGuard ||
+                                  BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kReceiverGuard ||
                                   BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kCellGuard ||
                                   BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kElidedPure ||
                                   BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kAlias ||

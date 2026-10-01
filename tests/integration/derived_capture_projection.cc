@@ -55,6 +55,10 @@ int main(int argc, char** argv) {
   if (const auto* error = std::get_if<DerivedProjectionError>(&projected))
     std::cerr << "derived captured receiver error " << static_cast<unsigned>(*error) << '\n';
   Check(std::holds_alternative<DerivedProjection>(projected));
+  const auto& receiver = std::get<DerivedProjection>(projected);
+  // Real Home initializes its cell with the VM undefined entry before super.
+  // Only the later actual receiver store can qualify a capture occurrence.
+  Check(receiver.receiver_cells.empty() && receiver.receiver_initializations.size() == 1);
   Check(!VerifyDerivedProjection(function, context, std::get<DerivedProjection>(projected), {}, &captures));
   Check(std::get<DerivedProjectionError>(ProjectDerivedConstructor(function, context)) == DerivedProjectionError::kProtocol);
   Check(!file.CheckUnchanged());

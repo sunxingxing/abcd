@@ -1,8 +1,10 @@
 #include "family_tree.h"
 #include "family_cells.h"
 #include "derived_projection.h"
+#include "abcd/analysis/dominators.h"
 
 #include <limits>
+#include <bit>
 #include <new>
 #include <stdexcept>
 #include "phased_capture_evaluation.h"
@@ -30,6 +32,8 @@ class FamilyTrees {
     }
     ProjectDefaults(family, root);
     Rebind(family);
+    Reserve(receiver_cells_, family.members.size()); receiver_cells_.resize(family.members.size());
+    Reserve(receiver_scopes_, family.members.size()); receiver_scopes_.resize(family.members.size());
     std::vector<FamilyMember> trees;
     bool incomplete = false;
     Reserve(trees, family.members.size());
@@ -106,8 +110,13 @@ class FamilyTrees {
         if (const auto* error = std::get_if<DerivedProjectionError>(&projection))
           throw FamilyTreeFailure{member_, *error};
         derived.emplace(std::get<DerivedProjection>(std::move(projection)));
-        Admit(sizeof(DerivedProjection) + derived->guards.capacity() * sizeof(analysis::OpId), 1);
+        Admit(sizeof(DerivedProjection) + derived->guards.capacity() * sizeof(analysis::OpId) +
+            derived->receiver_cells.capacity() * sizeof(CellId) +
+            derived->receiver_initializations.capacity() * sizeof(ReceiverInitialization), 1);
       }
+      auto receiver_guards = ReceiverGuards(family, i, derived ? &*derived : nullptr);
+      const auto guards = derived ? std::span<const analysis::OpId>(derived->guards) :
+          std::span<const analysis::OpId>(receiver_guards);
       std::optional<ControlPlan> normal_control;
       if (!phase) { normal_control.emplace(Take<ControlPlan, ControlError>(BuildControlPlan(graph, left_))); Account(*normal_control); }
       const auto& control = phase ? phase->Phases().Control() : *normal_control;
@@ -120,7 +129,7 @@ class FamilyTrees {
               member.children, module_evaluations, demands, {}, phase->Locals().writes) :
           BuildEvaluationPlan(graph, left_, i == 0 ? IncomingCells::kReject : IncomingCells::kConditional,
               member.children, module_evaluations, demands, {}, analysis::ClosureWrites::kLanguage, {},
-              derived ? std::span<const analysis::OpId>(derived->guards) : std::span<const analysis::OpId>{}));
+              guards));
       Account(evaluation);
       std::optional<IncomingCaptureTree> incoming;
       if (member.incoming) {
@@ -129,7 +138,7 @@ class FamilyTrees {
         incoming.emplace(IncomingCaptureTree{member.incoming->cells, {trees[parent].tree, trees[parent].flow}});
       }
       auto constants = syntax.View();
-      if (derived) constants.constructor_guards = derived->guards;
+      constants.receiver_guards = guards;
       auto constructed = [&]() -> ConstructedFunction {
         if (phase) {
           auto draft = Take<ExceptionFunctionDraft, FunctionTreeError>(BuildExceptionFunctionDraft(graph,
@@ -212,6 +221,115 @@ class FamilyTrees {
     return result;
   }
  private:
+  struct ReceiverScope {
+    ReceiverInitialization initialized;
+    std::uint32_t begin, end;
+  };
+  struct ReceiverScopes {
+    std::vector<std::uint32_t> entries;
+    std::vector<ReceiverScope> cells;
+  };
+  std::vector<analysis::OpId> ReceiverGuards(const FileFamily& family, std::size_t owner,
+      const DerivedProjection* derived) {
+    const auto& member = family.members[owner];
+    const auto* cells = member.function.Cells();
+    if (!cells || member.function.Phase()) return {};
+    auto& receivers = receiver_cells_[owner];
+    Reserve(receivers, cells->cells.size()); receivers.resize(cells->cells.size());
+    if (derived) for (const auto cell : derived->receiver_cells) {
+      Step(1); Require(cell.value < receivers.size(), FamilyTreeError::kContext); receivers[cell.value] = true;
+    }
+    if (derived && !derived->receiver_initializations.empty()) {
+      const auto& input = member.function.Normal().input.Input();
+      auto built = analysis::BuildNormalDominators(input.flow, {}, {left_.bytes, left_.work});
+      if (const auto* error = std::get_if<analysis::DominatorError>(&built))
+        Fail(*error == analysis::DominatorError::kResourceLimit ? FamilyTreeError::kResourceLimit :
+            *error == analysis::DominatorError::kWorkLimit ? FamilyTreeError::kWorkLimit : FamilyTreeError::kContext);
+      auto dom = std::get<analysis::DominatorTree>(std::move(built));
+      // Dominator scratch is local to this parent, not retained per creation.
+      Admit(dom.work.allocated_bytes, 1); Step(dom.work.steps);
+      auto& scopes = receiver_scopes_[owner];
+      Reserve(scopes.entries, dom.nodes.size());
+      for (const auto& node : dom.nodes) { Step(1); scopes.entries.push_back(node.begin); }
+      Reserve(scopes.cells, derived->receiver_initializations.size());
+      for (const auto initialized : derived->receiver_initializations) {
+        Step(1 + std::bit_width(input.flow.blocks.size()));
+        auto block = std::upper_bound(input.flow.blocks.begin(), input.flow.blocks.end(), initialized.store.value,
+            [](auto site, const auto& block) { return site < block.first_instruction; });
+        Require(block != input.flow.blocks.begin(), FamilyTreeError::kContext); --block;
+        const auto& node = dom.nodes[block - input.flow.blocks.begin()];
+        Require(node.begin != 0, FamilyTreeError::kContext);
+        scopes.cells.push_back({initialized, node.begin, node.end});
+      }
+    }
+    // Rebind freshly checks original creation initialization and current cell
+    // identity. The derived protocol proves stores are super, either throughout
+    // the cell's initialized lifetime or after a store dominating this creation,
+    // and all descendants preserve incoming cells. Thus
+    // these edges convey a receiver value, not generic Language/constness.
+    if (member.incoming) {
+      const auto& edge = *member.incoming;
+      Require(edge.parent.value < owner, FamilyTreeError::kParent);
+      const auto& parent = receiver_cells_[edge.parent.value];
+      const auto& scopes = receiver_scopes_[edge.parent.value];
+      std::optional<std::uint32_t> entry;
+      if (!scopes.cells.empty()) {
+        const auto& blocks = family.members[edge.parent.value].function.Normal().input.Input().flow.blocks;
+        Step(1 + std::bit_width(blocks.size()));
+        auto block = std::upper_bound(blocks.begin(), blocks.end(), edge.site.value,
+            [](auto site, const auto& block) { return site < block.first_instruction; });
+        Require(block != blocks.begin(), FamilyTreeError::kContext); --block;
+        Require(static_cast<std::size_t>(block - blocks.begin()) < scopes.entries.size(), FamilyTreeError::kContext);
+        entry = scopes.entries[block - blocks.begin()];
+      }
+      for (const auto& target : edge.cells.targets) {
+        Step(1); Require(target.child.value < receivers.size(), FamilyTreeError::kContext);
+        const auto* source = std::get_if<ParentCell>(&target.target);
+        if (source && source->cell.value < parent.size()) receivers[target.child.value] = parent[source->cell.value];
+        if (source && entry && !receivers[target.child.value]) {
+          Step(1 + std::bit_width(scopes.cells.size()));
+          const auto scope = std::lower_bound(scopes.cells.begin(), scopes.cells.end(), source->cell,
+              [](const auto& scope, auto cell) { return scope.initialized.cell < cell; });
+          if (scope != scopes.cells.end() && scope->initialized.cell == source->cell &&
+              scope->initialized.store < edge.site && scope->begin <= *entry && *entry < scope->end)
+            receivers[target.child.value] = true;
+        }
+      }
+    }
+    if (derived) return {};
+    const auto& graph = member.function.Graph();
+    std::size_t count = 0;
+    for (const auto& op : graph.ops) { Step(1); count += std::holds_alternative<analysis::ValueSuperCheck>(op.operation); }
+    std::vector<analysis::OpId> guards; Reserve(guards, count);
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      Step(1); const auto& op = graph.ops[i];
+      const auto* check = std::get_if<analysis::ValueSuperCheck>(&op.operation);
+      if (!check || check->kind != analysis::SuperCheckKind::kRequireInitialized ||
+          op.life != analysis::ValueLife::kLive || op.use_count != 1 || op.first_use.value >= graph.uses.size()) continue;
+      const auto* value = std::get_if<analysis::ValueId>(&graph.uses[op.first_use.value].operand);
+      if (!value || value->value >= graph.values.size()) continue;
+      const auto& definition = graph.values[value->value];
+      const auto* result = std::get_if<analysis::OpResult>(&definition.origin);
+      if (!result || !definition.domain.IsLanguage() || result->op.value >= cells->operations.size()) continue;
+      const auto cell = cells->operations[result->op.value];
+      if (!cell || cell->value >= receivers.size() || !receivers[cell->value]) continue;
+      const auto& load = graph.ops[result->op.value];
+      Require(load.life == analysis::ValueLife::kLive && load.result == *value &&
+          std::holds_alternative<analysis::ValueLexicalLoad>(load.operation), FamilyTreeError::kContext);
+      Require(op.origin.value < graph.origins.size(), FamilyTreeError::kContext);
+      const auto& origin = graph.origins[op.origin.value];
+      const auto& input = member.function.Normal().input.Input();
+      Require(origin.site.value < input.instructions.size(), FamilyTreeError::kContext);
+      const auto& original = input.instructions[origin.site.value];
+      const auto* original_check = std::get_if<analysis::SuperCheck>(&original.operation);
+      Require(original_check && original_check->kind == check->kind && origin.pc == original.pc &&
+          origin.original == original.origin && origin.disposition == analysis::OriginDisposition::kRetained &&
+          op.normal == original.effects.normal && op.before_throw == original.effects.before_throw &&
+          op.exceptional == original.effects.exceptional, FamilyTreeError::kContext);
+      guards.push_back({static_cast<std::uint32_t>(i)});
+    }
+    return guards;
+  }
   void ProjectDefaults(FileFamily& family, const FunctionContext* root) {
     Reserve(defaults_, family.members.size()); defaults_.resize(family.members.size());
     for (std::size_t i = 0; i < family.members.size(); ++i) {
@@ -334,6 +452,8 @@ class FamilyTrees {
   std::optional<std::size_t> default_candidates_;
   bool defaults_proved_ = false;
   std::vector<std::optional<DefaultBody>> defaults_;
+  std::vector<std::vector<std::uint8_t>> receiver_cells_;
+  std::vector<ReceiverScopes> receiver_scopes_;
 };
 }  // namespace
 std::variant<ConstructedFamily, FamilyTreeFailure> BuildFileFamilyTrees(

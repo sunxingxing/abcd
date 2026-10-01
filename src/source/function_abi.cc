@@ -77,7 +77,7 @@ class AbiBuilder {
             owner && (evaluation_->operations[owner->value].kind == EvaluationKind::kElidedPure ||
                       evaluation_->operations[owner->value].kind == EvaluationKind::kAlias)) continue;
       if (const auto* owner = std::get_if<analysis::OpId>(&use.owner);
-          owner && IsConstructorGuard(tree_, *owner)) continue;
+          owner && IsReceiverGuard(tree_, *owner)) continue;
       const auto* id = std::get_if<analysis::ValueId>(&use.operand);
       if (!id) continue;
       Require(id->value < graph_.values.size(), Error::kEntry);
@@ -133,7 +133,10 @@ class AbiBuilder {
             parameter.writes == 0, Error::kParameter);
       }
     }
-    Require((result_.receiver.operands != 0 || result_.frame_receiver_reads != 0) ==
+    // Derived VM entry operands are represented by undefined, not `this`.
+    // Their exact leaves are independently checked by TreeOperands; explicit
+    // initialized frame-this reads still owe native receiver references.
+    Require(((tree_.callable != CallableKind::kDerivedConstructor && result_.receiver.operands != 0) || result_.frame_receiver_reads != 0) ==
         (result_.receiver.references != 0), Error::kReceiver);
     Require((result_.frame_function_reads != 0) == (result_.self_references != 0) &&
         tree_.self.has_value() == (result_.frame_function_reads != 0), Error::kEntry);

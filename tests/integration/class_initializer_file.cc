@@ -217,7 +217,7 @@ int main(int argc, char** argv) {
     Check(std::holds_alternative<EvaluationPlan>(BuildEvaluationPlan(derived.values.graph)));
     auto syntax = std::get<ResolvedSyntax>(ResolveFunctionSyntax(file, header, index, context,
         derived.body, derived.values.graph, {0}));
-    auto constants = syntax.View(); constants.constructor_guards = current_protocol.guards;
+    auto constants = syntax.View(); constants.receiver_guards = current_protocol.guards;
     const auto control = std::get<ControlPlan>(BuildControlPlan(derived.values.graph));
     const auto constructor_evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(derived.values.graph, {}, IncomingCells::kReject, {}, {}, {}, {}, analysis::ClosureWrites::kUnknown, {}, current_protocol.guards));
     const auto built_tree = BuildFunctionTree(derived.values.graph, control, constructor_evaluation,

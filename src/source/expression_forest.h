@@ -63,6 +63,8 @@ enum class ExpressionError : std::uint8_t {
 // once, in operation order, without recursion or sharing effectful expressions.
 // Output is NOT a frozen/publication-ready tree; scope/control/source proofs
 // still have to be checked after statement assembly.
+// The actual callable distinguishes the derived VM entry's undefined value
+// from ordinary native this. It does not initialize later frame-this reads.
 // Module symbols are the caller's conditional alias order. Their local SymbolIds
 // append after bindings.symbols; FunctionTree must retain that exact order.
 // Optional names enable buffered overwrite folding by actual key spelling;
@@ -81,7 +83,7 @@ BuildExpressionForest(const analysis::ValueProgram& graph,
     analysis::SemanticBudget budget = {}, std::span<const ModuleSymbol> modules = {},
     RecoveryMode recovery = RecoveryMode::kCompleteOnly,
     std::span<const std::u16string> names = {}, std::span<const SelectionRegion> logicals = {},
-    std::span<const BranchPolarity> polarity = {});
+    std::span<const BranchPolarity> polarity = {}, CallableKind callable = CallableKind::kFunction);
 [[nodiscard]] std::variant<ExpressionForest, ExpressionError>
 BuildPhasedExpressionForest(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, std::uint32_t parameter_count,
@@ -89,6 +91,6 @@ BuildPhasedExpressionForest(const analysis::ValueProgram& graph,
     analysis::SemanticBudget budget = {}, std::span<const ModuleSymbol> modules = {},
     RecoveryMode recovery = RecoveryMode::kCompleteOnly,
     std::span<const std::u16string> names = {}, std::span<const SelectionRegion> logicals = {},
-    std::span<const BranchPolarity> polarity = {});
+    std::span<const BranchPolarity> polarity = {}, CallableKind callable = CallableKind::kFunction);
 }  // namespace abcd::source
 #endif

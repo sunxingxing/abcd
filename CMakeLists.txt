@@ -1079,6 +1079,10 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/derived_cells.mjs $<TARGET_FILE:derived_cells_test>)
     add_test(NAME literal_closure_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/derived_cells.mjs $<TARGET_FILE:derived_cells_test> --literal)
+    add_test(NAME captured_receiver_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/captured_receiver.mjs $<TARGET_FILE:derived_cells_test>)
+    add_test(NAME forwarded_receiver_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/captured_receiver.mjs $<TARGET_FILE:derived_cells_test> --forwarded)
     add_test(NAME phased_cells_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_cells.mjs $<TARGET_FILE:class_tree_context_test>)
     add_test(NAME phased_literal_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

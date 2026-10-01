@@ -90,8 +90,9 @@ for (const {source} of reports) {
         assert.deepEqual(exercise(source, kind, setter, value, proxy),
           exercise(reference, kind, setter, value, proxy)); ++scenarios;
       }
-  const changed = source.replace('($local3 = $value1);', '($local3 = null);');
+  const changed = source.replace(/(\(\$local\d+ = )\$value\d+(\);)/, '$1null$2');
   assert.notEqual(changed, source);
+  assert.doesNotThrow(() => new vm.Script(`(class Type extends Parent { ${changed} })`));
   assert.throws(() => exercise(changed, 'ordinary', 'none', {}, false));
   if (literal) {
     // Removing the explicit empty NamedEvaluation wrapper makes JS infer the

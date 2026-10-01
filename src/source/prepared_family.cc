@@ -177,7 +177,7 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
           IsArrowCallable(member.tree.callable) ||
           (&member == &family.members[family.root.value] && root.ClassContext() &&
            (IsMethodCallable(member.tree.callable) || member.tree.callable == CallableKind::kBaseConstructor ||
-            (member.tree.callable == CallableKind::kDerivedConstructor && !member.tree.constructor_guards.empty()))), Error::kCallable);
+            (member.tree.callable == CallableKind::kDerivedConstructor && !member.tree.receiver_guards.empty()))), Error::kCallable);
       if (member.tree.recovery_issues.empty()) {
         Require(member.abi.has_value(), Error::kAbi);
         Require(member.sources.has_value(), Error::kSources);

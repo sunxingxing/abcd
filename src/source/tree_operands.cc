@@ -84,9 +84,9 @@ class OperandCheck {
         module_aliases[symbol.value] = i;
       }
     }
-    RequireMeaning(tree_.constructor_guards == evaluation_.constructor_guards, Error::kOperand);
-    RequireMeaning(tree_.constructor_guards.size() == constants_.constructor_guards.size() &&
-        std::equal(tree_.constructor_guards.begin(), tree_.constructor_guards.end(), constants_.constructor_guards.begin()), Error::kOperand);
+    RequireMeaning(tree_.receiver_guards == evaluation_.receiver_guards, Error::kOperand);
+    RequireMeaning(tree_.receiver_guards.size() == constants_.receiver_guards.size() &&
+        std::equal(tree_.receiver_guards.begin(), tree_.receiver_guards.end(), constants_.receiver_guards.begin()), Error::kOperand);
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       budget_.Step();
       const auto& op = graph_.ops[i];
@@ -105,9 +105,11 @@ class OperandCheck {
             !flow_.expressions[i], Error::kOperand);
         continue;
       }
-      if (IsConstructorGuard(tree_, current_)) {
-        RequireMeaning(tree_.callable == CallableKind::kDerivedConstructor &&
-            std::holds_alternative<analysis::ValueSuperCheck>(op.operation) && !op.result &&
+      if (IsReceiverGuard(tree_, current_)) {
+        RequireMeaning(std::holds_alternative<analysis::ValueSuperCheck>(op.operation) &&
+            (tree_.callable == CallableKind::kDerivedConstructor ||
+            std::get<analysis::ValueSuperCheck>(op.operation).kind == analysis::SuperCheckKind::kRequireInitialized) &&
+            !op.result &&
             !flow_.expressions[i], Error::kOperand);
         continue;
       }
@@ -547,7 +549,8 @@ class OperandCheck {
             RequireMeaning(parameter->index < tree_.parameters.size() &&
                 Node<SymbolExpr>(expression).symbol == tree_.parameters[parameter->index].symbol, Error::kOperand);
           } else if (std::holds_alternative<analysis::ReceiverEntry>(*entry)) {
-            RequireMeaning(Node<ThisExpr>(expression).owner == tree_.owner, Error::kOperand);
+            if (tree_.callable == CallableKind::kDerivedConstructor) static_cast<void>(Literal<UndefinedLiteral>(expression));
+            else RequireMeaning(Node<ThisExpr>(expression).owner == tree_.owner, Error::kOperand);
           } else throw Error::kOperand;
           return;
         }

@@ -21,7 +21,7 @@ constexpr std::array kReceiverCall{Role::kCallee, Role::kReceiver};
 constexpr std::array kConstruct{Role::kConstructor};
 constexpr std::array kCellStore{Role::kStoredValue};
 constexpr std::array kHeritage{Role::kHeritage};
-constexpr std::array kConstructorGuard{Role::kGuardValue};
+constexpr std::array kReceiverGuard{Role::kGuardValue};
 constexpr std::array kSpreadSuper{Role::kConstructor, Role::kInput};
 }  // namespace
 
@@ -105,8 +105,8 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       // it does not authorize native spread syntax or an argument-list rewrite.
       return EvaluationShape{kSpreadSuper, true};
     } else if constexpr (std::is_same_v<T, analysis::ValueSuperCheck>) {
-      EvaluationShape shape{kConstructorGuard, false};
-      shape.inputs = InputEvaluation::kConstructorGuard;
+      EvaluationShape shape{kReceiverGuard, false};
+      shape.inputs = InputEvaluation::kReceiverGuard;
       return shape;
     } else if constexpr (std::is_same_v<T, analysis::ValueConstruct>)
       return EvaluationShape{kConstruct, true, op.arguments};
@@ -143,8 +143,8 @@ std::optional<EvaluationError> CheckEvaluationUse(
     const EvaluationShape& shape, std::uint32_t ordinal) {
   const bool conditional = shape.inputs == InputEvaluation::kConditionalArgument;
   const bool heritage = shape.inputs == InputEvaluation::kClassHeritage;
-  const bool constructor_guard = shape.inputs == InputEvaluation::kConstructorGuard;
-  const auto purpose = conditional || heritage || constructor_guard ? analysis::ReadPurpose::kProtocol : analysis::ReadPurpose::kOperand;
+  const bool receiver_guard = shape.inputs == InputEvaluation::kReceiverGuard;
+  const auto purpose = conditional || heritage || receiver_guard ? analysis::ReadPurpose::kProtocol : analysis::ReadPurpose::kOperand;
   if (use.purpose != purpose) return EvaluationError::kProtocolOperand;
   if (use.role != shape.Role(ordinal)) return EvaluationError::kInvalidGraph;
   // Hole is absence of extends, never a source value or undefined. Mixed

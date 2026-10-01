@@ -300,8 +300,9 @@ struct YieldReturnComposition {
 };
 struct FunctionTree {
   // Original guard operations retained as non-executing source anchors.
-  // The source adapter must prove the same derived constructor protocol.
-  std::vector<analysis::OpId> constructor_guards;
+  // The adapter proves the same derived protocol or an initialized captured
+  // receiver preserved through its complete original creation family.
+  std::vector<analysis::OpId> receiver_guards;
   RouteInputIdentity identity;
   abc::EntityOffset method;
   analysis::IrRevision value_revision;
@@ -362,8 +363,8 @@ enum class TreeStorageError : std::uint8_t { kResourceLimit, kWorkLimit };
 // are conservatively counted twice; this is not whole-process RSS evidence.
 [[nodiscard]] std::variant<TreeStorage, TreeStorageError> MeasureTreeStorage(
     const FunctionTree& tree, analysis::SemanticBudget budget = {});
-inline bool IsConstructorGuard(const FunctionTree& tree, analysis::OpId operation) {
-  return std::binary_search(tree.constructor_guards.begin(), tree.constructor_guards.end(), operation);
+inline bool IsReceiverGuard(const FunctionTree& tree, analysis::OpId operation) {
+  return std::binary_search(tree.receiver_guards.begin(), tree.receiver_guards.end(), operation);
 }
 }  // namespace abcd::source
 #endif

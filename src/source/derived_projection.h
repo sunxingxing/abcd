@@ -10,11 +10,23 @@ struct DerivedCaptureInput {
   const abc::MetadataIndex& index;
   const abc::MethodLookup& lookup;
 };
+struct ReceiverInitialization {
+  CellId cell;
+  analysis::InstructionId store;
+  bool operator==(const ReceiverInitialization&) const = default;
+};
 struct DerivedProjection {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
   analysis::OpId call;
   std::vector<analysis::OpId> guards;
+  // Allocated cells whose every direct store is this invocation's super
+  // result, with all descendant captures independently proved read-only.
+  // Capture binding still owes initialization before any child can observe it.
+  std::vector<CellId> receiver_cells;
+  // Earlier non-receiver stores are permitted only before this actual super
+  // store. A creation must independently prove this store dominates its site.
+  std::vector<ReceiverInitialization> receiver_initializations;
 };
 enum class DerivedProjectionError : std::uint8_t {
   kOwner, kProtocol, kOrigin, kOperand, kResourceLimit, kWorkLimit, kRevision, kCoverage

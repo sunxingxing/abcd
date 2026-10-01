@@ -87,6 +87,65 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
     Require(guard_count <= budget.bytes / sizeof(OpId), Error::kResourceLimit);
     result.guards.reserve(guard_count);
     Require(result.guards.capacity() <= budget.bytes / sizeof(OpId), Error::kResourceLimit);
+    budget.bytes -= result.guards.capacity() * sizeof(OpId);
+    if (captures && states.captures_preserved && function.values.cells) {
+      const auto& cells = *function.values.cells;
+      Require(function.values.environments.has_value(), Error::kOrigin);
+      const auto verified = VerifyCellPlan(graph, *function.values.environments, cells, budget);
+      if (const auto* error = std::get_if<CellError>(&verified))
+        throw *error == CellError::kResourceLimit ? Error::kResourceLimit :
+            *error == CellError::kWorkLimit ? Error::kWorkLimit : Error::kOrigin;
+      const auto work = std::get<std::uint64_t>(verified);
+      Require(work <= budget.work, Error::kWorkLimit); budget.work -= work;
+      Require(cells.cells.size() <= budget.bytes / sizeof(CellId), Error::kResourceLimit);
+      result.receiver_cells.reserve(cells.cells.size());
+      Require(result.receiver_cells.capacity() <= budget.bytes / sizeof(CellId), Error::kResourceLimit);
+      budget.bytes -= result.receiver_cells.capacity() * sizeof(CellId);
+      Require(cells.cells.size() <= budget.bytes / sizeof(ReceiverInitialization), Error::kResourceLimit);
+      result.receiver_initializations.reserve(cells.cells.size());
+      Require(result.receiver_initializations.capacity() <= budget.bytes / sizeof(ReceiverInitialization), Error::kResourceLimit);
+      budget.bytes -= result.receiver_initializations.capacity() * sizeof(ReceiverInitialization);
+      // One pass over indexed accesses, not one graph walk per captured cell.
+      // Language initialization alone includes undefined. Only actual super
+      // operands plus transitive preservation can strengthen that domain.
+      for (std::size_t c = 0; c < cells.cells.size(); ++c) {
+        step(); const auto& cell = cells.cells[c];
+        if (!std::holds_alternative<AllocatedCell>(cell.storage)) continue;
+        bool stored = false, receiver = true;
+        std::optional<InstructionId> last_other;
+        for (const auto& access : std::span(cells.accesses).subspan(cell.first, cell.count)) {
+          step(); if (access.kind != CellAccessKind::kStore) continue;
+          const auto& op = graph.ops[access.operation.value];
+          Require(op.use_count == 1 && op.first_use.value < graph.uses.size(), Error::kOperand);
+          const auto& use = graph.uses[op.first_use.value];
+          Require(use.life == ValueLife::kLive && use.owner == decltype(use.owner){access.operation} &&
+              use.role == OperandRole::kStoredValue && use.purpose == ReadPurpose::kOperand, Error::kOperand);
+          const bool actual_receiver = classify(use.operand) == State::kSuper;
+          stored = true; receiver &= actual_receiver;
+          if (!actual_receiver) {
+            Require(op.origin.value < graph.origins.size(), Error::kOrigin);
+            const InstructionId site{graph.origins[op.origin.value].site.value};
+            if (!last_other || *last_other < site) last_other = site;
+          }
+        }
+        if (stored && receiver) result.receiver_cells.push_back({static_cast<std::uint32_t>(c)});
+        else if (last_other) {
+          // Original local SSA already rejects backward control/escaping envs.
+          // After the final non-receiver write, every later write is super.
+          // Keep the first candidate: dominance at each real creation is a
+          // separate obligation; a prior Language/undefined store cannot pass it.
+          std::optional<InstructionId> initialized;
+          for (const auto& access : std::span(cells.accesses).subspan(cell.first, cell.count)) {
+            step(); if (access.kind != CellAccessKind::kStore) continue;
+            const auto& op = graph.ops[access.operation.value];
+            Require(op.origin.value < graph.origins.size(), Error::kOrigin);
+            const InstructionId site{graph.origins[op.origin.value].site.value};
+            if (site > *last_other && (!initialized || site < *initialized)) initialized = site;
+          }
+          if (initialized) result.receiver_initializations.push_back({{static_cast<std::uint32_t>(c)}, *initialized});
+        }
+      }
+    }
     for (std::size_t i = 0; i < input.instructions.size(); ++i) {
       step(); const auto& original = input.instructions[i];
       const auto* check = std::get_if<SuperCheck>(&original.operation);
@@ -148,7 +207,9 @@ std::optional<DerivedProjectionError> VerifyDerivedProjection(
   const auto checked = ProjectDerivedConstructor(function, owner, budget, captures);
   if (const auto* error = std::get_if<Error>(&checked)) return *error;
   const auto& expected = std::get<DerivedProjection>(checked);
-  if (expected.call != projection.call || expected.guards != projection.guards) return Error::kCoverage;
+  if (expected.call != projection.call || expected.guards != projection.guards ||
+      expected.receiver_cells != projection.receiver_cells ||
+      expected.receiver_initializations != projection.receiver_initializations) return Error::kCoverage;
   return {};
 }
 

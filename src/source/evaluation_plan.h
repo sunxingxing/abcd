@@ -20,7 +20,7 @@ enum class BranchPolarity : std::uint8_t { kTaken, kFallthrough };
 // kLogicalValue owns a logical/conditional result at one join consumer; logical_values
 // identifies the eliminated phi location. Its cross-region inputs need interval proof.
 enum class EvaluationKind : std::uint8_t {
-  kRemoved, kRoot, kInline, kInitializer, kEnvironment, kModuleGuard, kElidedPure, kAlias, kNestedLiteral, kClassProjection, kConstructorGuard, kCellGuard, kPhiInput, kLogicalLeft, kLogicalValue, kPredicateSnapshot
+  kRemoved, kRoot, kInline, kInitializer, kEnvironment, kModuleGuard, kElidedPure, kAlias, kNestedLiteral, kClassProjection, kReceiverGuard, kCellGuard, kPhiInput, kLogicalLeft, kLogicalValue, kPredicateSnapshot
 };
 enum class EvaluationFlow : std::uint8_t { kNormal, kPhased };
 struct OpEvaluation {
@@ -72,9 +72,10 @@ struct EvaluationPlan {
   ClassProjection class_projection;
   std::vector<ClassDefinitionSite> class_definitions;
   analysis::ClosureWrites closure_writes = analysis::ClosureWrites::kUnknown;
-  // Conditional same-owner protocol obligation. The source factory must
-  // reprove these guards against the unchanged input after default recovery.
-  std::vector<analysis::OpId> constructor_guards;
+  // Conditional protocol obligation: the same derived owner, or actual capture
+  // edges to its preserved receiver cells. The family factory discharges this
+  // against unchanged input/work pairs after default recovery, never Language alone.
+  std::vector<analysis::OpId> receiver_guards;
   // Phi values exclusively owned by native logical or conditional expressions, indexed by
   // ValueId. Each entry points to its original conditional branch operation.
   std::vector<std::optional<analysis::OpId>> logical_values;
@@ -118,7 +119,7 @@ enum class ReferenceBoundary : std::uint8_t { kNone, kBeforeStoredValue };
 // does not establish constructor/member bodies, captures or inheritance syntax.
 // ConstructorGuard retains the VM check as an ordered event and snapshots its
 // input. It does not authorize guard elision or reading uninitialized JS this.
-enum class InputEvaluation : std::uint8_t { kEager, kConditionalArgument, kClassHeritage, kConstructorGuard };
+enum class InputEvaluation : std::uint8_t { kEager, kConditionalArgument, kClassHeritage, kReceiverGuard };
 struct EvaluationShape {
   // Fixed prefix followed by argument occurrences. No array proportional to
   // range-call arity is allocated merely to describe their roles.
@@ -130,7 +131,7 @@ struct EvaluationShape {
   ReferenceBoundary reference = ReferenceBoundary::kNone;
   InputEvaluation inputs = InputEvaluation::kEager;
   [[nodiscard]] bool NeedsSnapshot(analysis::OperandRole role) const {
-    return inputs == InputEvaluation::kConditionalArgument || inputs == InputEvaluation::kConstructorGuard ||
+    return inputs == InputEvaluation::kConditionalArgument || inputs == InputEvaluation::kReceiverGuard ||
         (reference == ReferenceBoundary::kBeforeStoredValue &&
          role == analysis::OperandRole::kStoredValue);
   }
@@ -175,7 +176,7 @@ struct EvaluationShape {
     std::span<const ClassInitializerCall> initializers = {},
     analysis::ClosureWrites closure_writes = analysis::ClosureWrites::kUnknown,
     std::span<const ClassDefinitionSite> definitions = {},
-    std::span<const analysis::OpId> constructor_guards = {});
+    std::span<const analysis::OpId> receiver_guards = {});
 // Iteratively expands the proposed forest in the declared input order, checking
 // exact ordered occurrences and availability. Cross-phase expressions require
 // contiguous effect intervals and equal catch snapshots at their final roots.

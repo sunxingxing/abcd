@@ -411,21 +411,44 @@ void ConstructorGuardAnchors() {
   const auto control = std::get<ControlPlan>(BuildControlPlan(fixture.graph));
   const std::array<OpId, 2> guards{{{1}, {2}}};
   const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(fixture.graph, {}, IncomingCells::kReject, {}, {}, {}, {}, ClosureWrites::kUnknown, {}, guards));
-  auto missing = evaluation; missing.constructor_guards.pop_back();
+  auto missing = evaluation; missing.receiver_guards.pop_back();
   Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph, missing)));
   auto unprojected = evaluation; unprojected.operations[guards.front().value].kind = EvaluationKind::kRoot;
   Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph, unprojected)));
   auto syntax = fixture.Syntax(); syntax.callable = CallableKind::kDerivedConstructor;
-  ExpressionConstants constants{fixture.constants, 2, 0, {}}; constants.constructor_guards = guards;
+  ExpressionConstants constants{fixture.constants, 2, 0, {}}; constants.receiver_guards = guards;
   const auto built = BuildFunctionTree(fixture.graph, control, evaluation, syntax, constants);
   Check(std::holds_alternative<ConstructedFunction>(built));
   const auto& tree = std::get<ConstructedFunction>(built).tree;
-  Check(tree.constructor_guards.size() == guards.size());
+  Check(tree.receiver_guards.size() == guards.size());
   Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(fixture.graph, control, evaluation, tree, constants)));
   for (const auto& expression : tree.expressions) Check(!std::holds_alternative<ThisExpr>(expression.expression));
-  constants.constructor_guards = {};
+  constants.receiver_guards = {};
   Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(fixture.graph, control, evaluation, tree, constants)));
   Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(fixture.graph, control, evaluation, syntax, constants)));
+}
+void DerivedEntryValue() {
+  using namespace analysis;
+  Fixture fixture;
+  fixture.Add(0, 0, 0, ValueInvoke{InvokeReceiver::kUndefined, 1}, true,
+      {{OperandRole::kCallee, ValueId{0}}, {OperandRole::kArgument, ValueId{1}}}, LanguageEffect::kUserCode);
+  fixture.Add(0, 1, 4, ValueSuperCall{0, {}}, true, {}, LanguageEffect::kUserCode);
+  fixture.Add(0, 2, 8, ValueReturn{}, false, {{OperandRole::kReturnValue, ValueId{3}}});
+  fixture.graph.blocks = {{{0}, 3, {0}, 0}};
+  const auto control = std::get<ControlPlan>(BuildControlPlan(fixture.graph));
+  const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(fixture.graph));
+  auto syntax = fixture.Syntax(); syntax.callable = CallableKind::kDerivedConstructor;
+  auto tree = std::get<ConstructedFunction>(BuildFunctionTree(fixture.graph, control, evaluation,
+      syntax, {fixture.constants, 2, 0, {}})).tree;
+  Check(std::holds_alternative<TreeSemantics>(fixture.Verify(tree)));
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 4, abc::DecodeCallFlags({})));
+  Check(std::holds_alternative<ConstructedAbi>(BuildFunctionAbi(fixture.graph, tree, frame, 1)));
+  bool changed = false;
+  for (auto& node : tree.expressions) if (const auto* literal = std::get_if<TreeLiteral>(&node.expression))
+    if (std::holds_alternative<UndefinedLiteral>(*literal)) { node.expression = ThisExpr{tree.owner}; changed = true; break; }
+  Check(changed && std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(tree)));
+  Check(std::get<FunctionAbiError>(BuildFunctionAbi(fixture.graph, tree, frame, 1)) == FunctionAbiError::kReceiver);
 }
 void SuperTree() {
   using namespace analysis;
@@ -774,6 +797,7 @@ void FrameReceiverTree() {
 int main() {
   SuperTree();
   ConstructorGuardAnchors();
+  DerivedEntryValue();
   UnprovedTryRefusal();
   for (const analysis::ValueOperation operation : {
       analysis::ValueOperation{analysis::ValueGlobalObject{}},

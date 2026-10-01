@@ -12,6 +12,45 @@
 
 ## 当前阶段
 
+### 2026-10-01：派生 receiver 贯通实际闭包创建作用域
+
+- DerivedProjection 从真实 super stored operand、原始 local SSA 及同文件
+  后代捕获保留结果恢复 receiver cell。所有直接 store 均为 super 时仍须
+  创建初始化证明；先 undefined 后 super 的 cell 另外要求实际 super store
+  支配原始创建点。每个父方法只构建一次原始 normal dominator 索引，通过
+  重新绑定的 ParentCell 传递，也覆盖无直接读取的中间闭包。一般 Language
+  初始化、早于 super store 的创建、分支局部 store、未知写入及环境 escape
+  不获得 receiver 证明，不授权一般 capture constness。
+- 既有 guard 来源锚点统一为 receiver_guards，普通子函数仅消费已证明
+  receiver 的 RequireInitialized，反向检查仍限派生构造器。EvaluationUses
+  同步排除已消费 guard operand，恢复真正 native member call 的 callee、
+  参数及 receiver，保留原始 PC/效果。新增索引按 cell accesses/图大小
+  建立，use census 为 O(U log(G+1))，不逐 cell/创建遍历全图，无新 writer。
+- 派生 VM 的 ReceiverEntry 是 super 前已知 undefined，共同 AST 正确输出
+  (void 0)，不再误打印提前访问的 native this；真正初始化后的 frame-this
+  仍要求 receiver 引用。TreeOperands 与 ABI 分别核对，错误 ThisExpr 和
+  输出 receiver/pre-super-this mutation 均被独立检查拒绝。
+- 三 profile 实际序列化构造器/子闭包经完整 file/class/family/printer，新增
+  直接及转发 receiver oracle 共 **4536 场景**，核对父替代对象/Proxy、
+  即时 setter 调用、callee/参数 getter、任意 throw、non-callable 参数顺序
+  和 callee 被 getter 替换；callee 自身及 ambient call/apply/bind 均毒化。
+  1/200/201/400/800 个转发调用核对 guard 数和几何 work；undefined、
+  混合来源、后代 writer、escape、早创建、分支 store 和错误 guard 保留反例。
+  真正 Home/5851 投影核对其前置 undefined 后的 receiver initialization。
+- 本次重新相关构建退出0，/tmp/abcd-captured-receiver-commit-build.log；
+  **25/25 定向回归通过32.02秒**，
+  /tmp/abcd-captured-receiver-commit-tests.log，含既有构造器、capture、
+  普通/phased literal、member reference、tree、完整 PageA/Index 回归。
+- 五输入 build/stage-one/value-captured-receiver-pass-1 均退出0，维持
+  **50 complete / 3 incomplete / 53 failure / 46 no-module**，无 complete
+  回退、无新增 complete 或 legacy writer，
+  /tmp/abcd-captured-receiver-batch-summary.json。尚未新增完整 record 或
+  整体表示 Accepted；全库测试/RSS/基准/DFX/代理仍暂停。
+- Home 构造器5851 的 child6322 已越过此前 kExpression。现整份 record
+  阻塞于 method6733 的 child5739，normal BuildControlPlan 报 kCrossEntry，
+  /tmp/abcd-captured-receiver-home-next.log。下一步从真实控制图定位共享
+  合流/区域归属缺口，不删除边、复制效果或回退旧 writer。阶段一 Goal active。
+
 ### 2026-10-01：字面量 initializer 贯通有序闭包创建
 
 - LiteralExpression 接纳共同 AST 已支持的 kFunction/current-function、无显式

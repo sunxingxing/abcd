@@ -37,12 +37,15 @@ struct EvaluationUses {
 // Class projections consume the checked method/call/prototype uses as well.
 // Fresh normal CellEvaluation witnesses also consume proved initialization
 // checks; no parent/capture premise is invented by this use projection.
-// O(1) without projections; otherwise O(number of producer uses).
+// Receiver protocol uses also disappear only under the factory's independently
+// proved guard obligation. O(1) without projections; otherwise O(producer uses
+// * log(receiver guards + 1)), with disjoint chains across producers.
 // Cache once per producer, never rescan a shared producer for every consumer.
 [[nodiscard]] EvaluationUses ProjectEvaluationUses(const analysis::ValueProgram& graph,
     analysis::OpId operation, const ModuleEvaluationIndex& modules,
     bool project_initializers = false,
     std::span<const std::optional<analysis::OpId>> class_projection = {},
-    const CellEvaluation* initialized_cells = nullptr);
+    const CellEvaluation* initialized_cells = nullptr,
+    std::span<const analysis::OpId> receiver_guards = {});
 }  // namespace abcd::source
 #endif

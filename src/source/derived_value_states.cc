@@ -57,7 +57,8 @@ std::variant<DerivedValueStates, Error> BuildDerivedValueStates(
 
     bool lexical = false;
     for (const auto& op : graph.ops) { step(); lexical |= op.life == ValueLife::kLive &&
-        std::holds_alternative<ValueLexicalLoad>(op.operation); }
+        (std::holds_alternative<ValueLexicalLoad>(op.operation) ||
+         std::holds_alternative<ValueLexicalStore>(op.operation)); }
     std::optional<LocalSsa> locals;
     if (lexical) {
       auto built = BuildLocalSsa(function.body, input.flow, input.ssa, function.frame.registers,
@@ -193,7 +194,8 @@ std::variant<DerivedValueStates, Error> BuildDerivedValueStates(
       }
     }
     states.resize(values);
-    return DerivedValueStates{std::move(states), initial.bytes - budget.bytes, initial.work - budget.work};
+    return DerivedValueStates{std::move(states), initial.bytes - budget.bytes, initial.work - budget.work,
+        locals && !locals->first_capture};
   } catch (Error error) { return error; }
     catch (const std::bad_alloc&) { return Error::kResourceLimit; }
     catch (const std::length_error&) { return Error::kResourceLimit; }

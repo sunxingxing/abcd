@@ -8,6 +8,7 @@ struct DerivedValueStates {
   std::vector<DerivedValueState> values;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
+  bool captures_preserved = false;
 };
 // Same original input and current work graph. Caller independently inspected
 // every supplied same-body preservation site. Sparse local SSA selects stores;
