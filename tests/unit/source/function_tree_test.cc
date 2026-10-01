@@ -159,6 +159,19 @@ Fixture BranchFixture() {
                    {{1}, {2}, FlowEdgeKind::kTaken, 0}};
   return f;
 }
+void EmptyTakenBranch() {
+  auto fixture = BranchFixture();
+  const auto built = std::get<ConstructedFunction>(fixture.Build());
+  const auto& tree = built.tree;
+  const auto& body = std::get<BlockStmt>(tree.statements[tree.body.value].statement);
+  const auto& branch = std::get<IfStmt>(tree.statements[tree.children[body.first_child].value].statement);
+  Check(!branch.alternate);
+  Check(std::get<BlockStmt>(tree.statements[branch.consequent.value].statement).child_count == 1);
+  Check(std::holds_alternative<TreeSemantics>(fixture.Verify(tree)));
+  auto wrong = tree;
+  std::get<UnaryExpr>(wrong.expressions[branch.condition.value].expression).operation = TreeUnary::kPlus;
+  Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(wrong)));
+}
 void BranchTree() {
   auto f = BranchFixture();
   auto built = f.Build();
@@ -174,17 +187,15 @@ void BranchTree() {
   const auto& root = std::get<BlockStmt>(tree.statements[tree.body.value].statement);
   Check(root.child_count == 2);
   const auto& branch = std::get<IfStmt>(tree.statements[tree.children[root.first_child].value].statement);
-  Check(branch.alternate.has_value());
-  const auto& taken = std::get<BlockStmt>(tree.statements[branch.consequent.value].statement);
-  Check(taken.child_count == 0);
-  const auto& body = std::get<BlockStmt>(tree.statements[branch.alternate->value].statement);
+  Check(!branch.alternate);
+  const auto& body = std::get<BlockStmt>(tree.statements[branch.consequent.value].statement);
   Check(body.child_count == 1);
   const auto& write = std::get<ExpressionStmt>(tree.statements[tree.children[body.first_child].value].statement);
   Check(std::holds_alternative<AssignmentExpr>(tree.expressions[write.expression.value].expression));
   Check(std::get<OriginalSite>(tree.origins[tree.expressions[write.expression.value].origin.value]).pc.value == 40);
   Check(tree.anchors.size() == 1);
   const auto& anchor = std::get<BlockBoundary>(tree.anchors[0].position);
-  Check(anchor.block == *branch.alternate && anchor.index == body.child_count);
+  Check(anchor.block == branch.consequent && anchor.index == body.child_count);
   Check(tree.operations.size() == f.graph.ops.size());
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 4, abc::DecodeCallFlags({})));
   const auto census = BuildFunctionAbi(f.graph, tree, frame, 1);
@@ -313,7 +324,7 @@ void SemanticMutations() {
   const auto& root = std::get<BlockStmt>(original.statements[original.body.value].statement);
   const auto branch_id = original.children[root.first_child];
   const auto& branch = std::get<IfStmt>(original.statements[branch_id.value].statement);
-  const auto& alternative = std::get<BlockStmt>(original.statements[branch.alternate->value].statement);
+  const auto& alternative = std::get<BlockStmt>(original.statements[branch.consequent.value].statement);
   const auto write_id = original.children[alternative.first_child];
   const auto assignment_id = std::get<ExpressionStmt>(original.statements[write_id.value].statement).expression;
   const auto return_id = original.children[root.first_child + 1];
@@ -321,13 +332,11 @@ void SemanticMutations() {
 
   auto tree = original;
   auto& reversed = std::get<IfStmt>(tree.statements[branch_id.value].statement);
-  const auto former = reversed.consequent;
-  reversed.consequent = *reversed.alternate;
-  reversed.alternate = former;
-  Check(std::get<TreeSemanticError>(fixture.Verify(tree)) == TreeSemanticError::kFlow);
+  reversed.alternate = reversed.consequent;
+  Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(tree)));
 
   tree = original;
-  std::get<BinaryExpr>(tree.expressions[branch.condition.value].expression).operation = analysis::BinaryOperator::kStrictNotEqual;
+  std::get<BinaryExpr>(tree.expressions[std::get<UnaryExpr>(tree.expressions[branch.condition.value].expression).operand.value].expression).operation = analysis::BinaryOperator::kStrictNotEqual;
   Check(std::get<TreeSemanticError>(fixture.Verify(tree)) == TreeSemanticError::kOperator);
 
   tree = original;
@@ -348,7 +357,7 @@ void SemanticMutations() {
   Check(std::get<TreeSemanticError>(fixture.Verify(tree)) == TreeSemanticError::kOrigin);
 
   tree = original;
-  tree.origin_parts.back() = {4};
+  tree.expressions[branch.condition.value].origin = {4};
   Check(std::get<TreeSemanticError>(fixture.Verify(tree)) == TreeSemanticError::kOrigin);
 
   tree = original;
@@ -793,6 +802,7 @@ int main() {
   DebuggerTree();
   ThrowTree();
   ComputedStoreTree();
+  EmptyTakenBranch();
   BranchTree();
   SnapshotTree();
   NameAndConstantRefusals();

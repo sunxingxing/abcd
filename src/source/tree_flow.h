@@ -33,6 +33,9 @@ struct TreeFlow {
   // Original ToBoolean/branch operations composed into one native logical node.
   std::vector<std::optional<TreeLogical>> logical_operations;
   std::vector<std::uint8_t> conditional_operations;
+  // Derived from actual statement arms; expression verification checks the
+  // corresponding original or complemented predicate without repeating reads.
+  std::vector<BranchPolarity> branch_polarity;
   std::vector<std::optional<StmtId>> statements;
   std::vector<std::optional<PropertyId>> initializers;
   // Actual original buffer prefix length per allocation. Constants verify the

@@ -43,6 +43,7 @@ class FlowCheck {
       budget.Array(flow_.catch_parameters, graph.values.size());
       budget.Array(flow_.tries, exceptions->regions.regions.size());
     }
+    budget.Array(flow_.branch_polarity, graph.ops.size());
     budget.Array(flow_.controls, control.nodes.size() -
         (exceptions ? exceptions->control.units.size() : graph.blocks.size()));
     flow_.first_control = {static_cast<std::uint32_t>(control.nodes.size() - flow_.controls.size())};
@@ -170,6 +171,16 @@ class FlowCheck {
             Require(branch && node.arms, Error::kControl);
             flow_.expressions[id.value] = branch->condition;
             const TreeOriginId origin{op.origin.value};
+            if (!exceptions_ && !node.arms->taken && node.arms->fallthrough && !branch->alternate) {
+              // Derive polarity from actual arm ownership, not a builder flag.
+              // The omitted original taken edge must have no phi assignments.
+              std::uint32_t empty = 0;
+              edges_->Consume(source.first_edge, BlockStmt{}, empty);
+              flow_.branch_polarity[id.value] = BranchPolarity::kFallthrough;
+              Arm(node.arms->fallthrough, branch->consequent, origin,
+                  analysis::EdgeId{source.first_edge.value + 1}, pending);
+              continue;
+            }
             Arm(node.arms->taken, branch->consequent, origin, source.first_edge, pending);
             const analysis::EdgeId fallthrough{source.first_edge.value + 1};
             if (node.arms->fallthrough || branch->alternate) {

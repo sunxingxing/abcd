@@ -174,7 +174,13 @@ class OperandCheck {
               (yielded.form == YieldForm::kDelegate && operation.origin.form == analysis::YieldForm::kDelegate), Error::kOperator);
           Input(input(0), yielded.operand);
         } else if constexpr (std::is_same_v<T, analysis::ValueBranch>) {
-          Unary(operation.predicate, input(0), expression);
+          if (flow_.branch_polarity[current_.value] == BranchPolarity::kFallthrough) {
+            using U = analysis::UnaryOperator;
+            if (BooleanEvaluation(graph_, input(0))) {
+              RequireMeaning(operation.predicate == U::kFalseOrZero || operation.predicate == U::kTrueOrNonzeroNumber, Error::kOperator);
+              Unary(operation.predicate == U::kFalseOrZero ? U::kTrueOrNonzeroNumber : U::kFalseOrZero, input(0), expression);
+            } else Unary(operation.predicate, input(0), UnaryInput(expression, TreeUnary::kNot));
+          } else Unary(operation.predicate, input(0), expression);
         } else if constexpr (std::is_same_v<T, analysis::ValueBinary>) {
           const auto& binary = Node<BinaryExpr>(expression);
           RequireMeaning(binary.operation == HoleSourceOperator(evaluation_.holes ? &*evaluation_.holes : nullptr,

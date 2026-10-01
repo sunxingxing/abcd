@@ -12,6 +12,7 @@
 #include "class_initializers.h"
 
 namespace abcd::source {
+enum class BranchPolarity : std::uint8_t { kTaken, kFallthrough };
 // kPhiInput owns a sole incoming-copy RHS at the same block exit. It is
 // neither a value snapshot nor permission to cross a branch/exception edge.
 // kLogicalLeft owns one native logical LHS: its original boolean use and

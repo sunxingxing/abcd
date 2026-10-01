@@ -97,6 +97,7 @@ class TreeBuilder {
       }
       Admit(logical_budget.Bytes(), 1); Step(logical_budget.Work());
     }
+    OrientBranches();
     std::vector<ModuleSymbol> modules;
     Grow(modules, syntax_.modules.size());
     for (const auto& alias : syntax_.modules) { Step(); modules.push_back(alias.target); }
@@ -105,7 +106,7 @@ class TreeBuilder {
         static_cast<std::uint32_t>(syntax_.parameters.size()), syntax_.owner,
         constants_, {bytes_, work_}, modules,
         (incoming_ && !incoming_->cells.targets.empty()) || exceptions_ || !syntax_.captures.empty()
-            ? RecoveryMode::kCompleteOnly : recovery_, syntax_.names, logicals_);
+            ? RecoveryMode::kCompleteOnly : recovery_, syntax_.names, logicals_, branch_polarity_);
     if (const auto* error = std::get_if<ExpressionError>(&expressions)) {
       if (*error == ExpressionError::kResourceLimit) throw Error::kResourceLimit;
       if (*error == ExpressionError::kWorkLimit) throw Error::kWorkLimit;
@@ -771,6 +772,27 @@ class TreeBuilder {
       Append(draft, Statement(ExpressionStmt{expression}, tree_.expressions[expression.value].origin));
     }
   }
+  void OrientBranches() {
+    if (exceptions_) return;
+    Grow(branch_polarity_, graph_.ops.size()); branch_polarity_.resize(graph_.ops.size()); Step(graph_.ops.size());
+    std::vector<std::uint8_t> copied;
+    Grow(copied, graph_.edges.size()); copied.resize(graph_.edges.size()); Step(graph_.edges.size());
+    if (evaluation_.phis) for (const auto& bundle : evaluation_.phis->bundles) {
+      Step();
+      if (const auto* edge = std::get_if<analysis::EdgeId>(&bundle.incoming)) {
+        Require(edge->value < copied.size(), Error::kControl);
+        if (bundle.count) copied[edge->value] = 1;
+      }
+    }
+    for (const auto& node : control_.nodes) {
+      Step();
+      if (!node.arms || node.arms->taken || !node.arms->fallthrough) continue;
+      const auto& block = graph_.blocks[node.block.value];
+      const auto branch = block.first_op.value + block.op_count - 1;
+      if (copied[block.first_edge.value] || (!logical_branches_.empty() && logical_branches_[branch])) continue;
+      branch_polarity_[branch] = BranchPolarity::kFallthrough;
+    }
+  }
   void EmitBranch(analysis::OpId op, const ControlNode& node,
                   analysis::EdgeId first_edge, std::size_t draft) {
     Require(node.arms.has_value(), Error::kControl);
@@ -805,6 +827,12 @@ class TreeBuilder {
         Append(draft, statement); tree_.operations.push_back({op, statement});
       }
       return;
+    }
+    if (!branch_polarity_.empty() && branch_polarity_[op.value] == BranchPolarity::kFallthrough) {
+      Require(!node.arms->taken && node.arms->fallthrough && !HasCopies(first_edge), Error::kControl);
+      const auto body = Arm(draft, origin, node.arms->fallthrough, analysis::EdgeId{first_edge.value + 1});
+      const auto statement = Statement(IfStmt{*expression, drafts_[body].statement, {}}, origin);
+      Append(draft, statement); tree_.operations.push_back({op, statement}); return;
     }
     const auto taken = Arm(draft, origin, node.arms->taken, first_edge);
     const analysis::EdgeId fallthrough{first_edge.value + 1};
@@ -1010,6 +1038,7 @@ class TreeBuilder {
   struct SelectionPath { std::optional<ControlId> control; analysis::WorkBlockId terminal; };
   std::vector<SelectionPath> selection_paths_;
   std::vector<SelectionRegion> logicals_;
+  std::vector<BranchPolarity> branch_polarity_;
   std::vector<std::optional<std::size_t>> logical_branches_;
   const EvaluationPlan& evaluation_;
   FunctionSyntax syntax_;

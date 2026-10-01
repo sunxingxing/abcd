@@ -224,6 +224,29 @@ analysis::ValueProgram GetterSelections(unsigned count = 2, bool barrier = false
   bytes.push_back(0x64);
   return Import(bytes, 3, input);
 }
+analysis::ValueProgram GuardedCopy() {
+  // The empty taken control arm still writes the joined SSA value. An effect
+  // in the other arm prevents expression fusion; neither edge copy may vanish.
+  return Import({0x60, 1, 0x42, 0, 0, 0, 0x61, 0,
+      static_cast<std::uint8_t>(abc::Opcode::kJEQZ_IMM8), 11,
+      static_cast<std::uint8_t>(abc::Opcode::kDEBUGGER),
+      0x60, 1, 0x42, 0, 1, 0, 0x61, 0,
+      0x60, 0, 0x64}, 1);
+}
+analysis::ValueProgram GuardedRead(bool boolean, bool positive, unsigned count = 1) {
+  std::vector<std::uint8_t> bytes;
+  for (unsigned i = 0; i < count; ++i) {
+    bytes.insert(bytes.end(), {0x60, 1, 0x42, 0, 0, 0});
+    if (boolean) bytes.insert(bytes.end(), {0x61, 0, 0x00, 0x27, 0, 0});
+    const auto branch = bytes.size();
+    bytes.push_back(static_cast<std::uint8_t>(positive ? abc::Opcode::kJNEZ_IMM8 : abc::Opcode::kJEQZ_IMM8));
+    bytes.push_back(0);
+    bytes.insert(bytes.end(), {0x60, 1, 0x42, 0, 1, 0});
+    bytes[branch + 1] = static_cast<std::uint8_t>(bytes.size() - branch);
+  }
+  bytes.insert(bytes.end(), {0x00, 0x64});
+  return Import(bytes, 1);
+}
 analysis::ValueProgram Diamond(bool negate, unsigned count = 1, bool direct = false, bool getter = false, bool barrier = false, bool invoke = false, bool left_getter = false) {
   // return arg || [] (or arg && []), retaining the compiler's empty keep arm.
   std::vector<std::uint8_t> bytes;
@@ -285,7 +308,7 @@ std::string Source(const analysis::ValueProgram& graph, bool compose = true, con
   if (input) syntax.identity = input->Identity();
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   syntax.names = {u"value", u"probe", u"items", u"other"}; syntax.parameters.push_back({NameId{0}, NameEvidence::kDebugRange});
-  syntax.texts = {u"px"};
+  syntax.texts = {u"px", u"number"};
   std::vector<ConstantProperty> properties{{NameId{1}, NullLiteral{}}};
   for (const auto& op : graph.ops) {
     const auto* field = std::get_if<analysis::ValueOwnWrite>(&op.operation);
@@ -302,7 +325,7 @@ std::string Source(const analysis::ValueProgram& graph, bool compose = true, con
   }
   for (std::size_t i = 0; i < graph.ops.size(); ++i)
     if (std::holds_alternative<analysis::ValueString>(graph.ops[i].operation)) constants[i] = TextId{0};
-  const ExpressionConstants view{constants, 4, 1, {}, properties};
+  const ExpressionConstants view{constants, 4, 2, TextId{1}, properties};
   const auto built = BuildFunctionTree(graph, control, evaluation, std::move(syntax), view);
   Check(std::holds_alternative<ConstructedFunction>(built));
   const auto& tree = std::get<ConstructedFunction>(built).tree;
@@ -582,6 +605,16 @@ void Negatives() {
   Check(FindLogicalRegions(wrong, control).empty());
 }
 int main(int argc, char** argv) {
+  Check(Source(GuardedCopy()).find("else") != std::string::npos);
+  if (argc == 2 && std::string_view(argv[1]) == "--polarity-sources") {
+    std::cout << "[" << Source(GuardedRead(false, false)) << "," << Source(GuardedRead(false, true))
+              << "," << Source(GuardedRead(true, false)) << "," << Source(GuardedRead(true, true)) << "]\n";
+    return 0;
+  }
+  for (const unsigned count : {1U, 2U, 16U, 200U, 201U}) {
+    const auto text = Source(GuardedRead(true, false, count));
+    Check(text.find("else") == std::string::npos);
+  }
   for (const unsigned count : {1U, 2U, 16U, 200U, 201U}) {
     std::optional<FunctionInput> input;
     const auto graph = GetterSelections(count, false, true, false, &input);

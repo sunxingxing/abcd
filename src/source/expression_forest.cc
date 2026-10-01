@@ -32,9 +32,10 @@ class ForestBuilder {
                 const EvaluationPlan& evaluation, FunctionOwnerId owner,
                 ExpressionConstants constants, analysis::SemanticBudget budget,
                 BindingPlan bindings, std::span<const ModuleSymbol> modules, RecoveryMode recovery,
-                std::span<const std::u16string> names, std::span<const SelectionRegion> logicals)
+                std::span<const std::u16string> names, std::span<const SelectionRegion> logicals, std::span<const BranchPolarity> polarity)
       : graph_(graph), evaluation_(evaluation), owner_(owner), constants_(constants),
-        budget_(budget), bytes_(budget.bytes), work_(budget.work), modules_(modules), recovery_(recovery), names_(names), logicals_(logicals) {
+        budget_(budget), bytes_(budget.bytes), work_(budget.work), modules_(modules), recovery_(recovery), names_(names), logicals_(logicals), polarity_(polarity) {
+    Require(polarity.empty() || polarity.size() == graph.ops.size(), Error::kOwnership);
     Require(bindings.allocated_bytes <= bytes_, Error::kResourceLimit);
     bytes_ -= bindings.allocated_bytes;
     Step(bindings.work);
@@ -756,8 +757,19 @@ class ForestBuilder {
         return Add(AwaitExpr{operands[0]}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueYield>)
         return Add(YieldExpr{operands[0], TreeYieldForm(operation.origin.form)}, origin);
-      else if constexpr (std::is_same_v<T, analysis::ValueBranch>)
-        return Unary(operation.predicate, operands[0], graph_.uses[op.first_use.value].operand, origin);
+      else if constexpr (std::is_same_v<T, analysis::ValueBranch>) {
+        const auto& input = graph_.uses[op.first_use.value].operand;
+        const bool reverse = !polarity_.empty() && polarity_[id.value] == BranchPolarity::kFallthrough;
+        using U = analysis::UnaryOperator;
+        if (reverse && BooleanEvaluation(graph_, input)) {
+          Require(operation.predicate == U::kFalseOrZero || operation.predicate == U::kTrueOrNonzeroNumber, Error::kOwnership);
+          return Unary(operation.predicate == U::kFalseOrZero ? U::kTrueOrNonzeroNumber : U::kFalseOrZero, operands[0], input, origin);
+        }
+        const auto predicate = Unary(operation.predicate, operands[0], input, origin);
+        // VM zero/true predicates are not complements over arbitrary JS values.
+        // Negate the proven original test when the input is not boolean.
+        return reverse ? Add(UnaryExpr{TreeUnary::kNot, predicate}, origin) : predicate;
+      }
       else if constexpr (std::is_same_v<T, analysis::ValueBinary>)
         return Add(BinaryExpr{HoleSourceOperator(evaluation_.holes ? &*evaluation_.holes : nullptr, id, operation.op), operands[0], operands[1]}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueHole>) {
@@ -866,12 +878,13 @@ class ForestBuilder {
   std::vector<std::optional<std::size_t>> selection_indices_;
   std::vector<std::size_t> selection_tasks_;
   std::span<const SelectionRegion> logicals_;
+  std::span<const BranchPolarity> polarity_;
 };
 std::variant<ExpressionForest, ExpressionError> BuildForest(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, FunctionOwnerId owner,
     ExpressionConstants constants, analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules,
-    EvaluationFlow flow, RecoveryMode recovery, std::span<const std::u16string> names, std::span<const SelectionRegion> logicals) {
+    EvaluationFlow flow, RecoveryMode recovery, std::span<const std::u16string> names, std::span<const SelectionRegion> logicals, std::span<const BranchPolarity> polarity) {
   auto bindings = flow == EvaluationFlow::kNormal ? BuildBindingPlan(graph, evaluation, parameter_count, budget)
       : BuildPhasedBindingPlan(graph, evaluation, parameter_count, budget);
   if (const auto* error = std::get_if<BindingError>(&bindings)) {
@@ -881,7 +894,7 @@ std::variant<ExpressionForest, ExpressionError> BuildForest(
   }
   try {
     return ForestBuilder(graph, evaluation, owner, constants, budget,
-                         std::get<BindingPlan>(std::move(bindings)), modules, recovery, names, logicals).Build();
+                         std::get<BindingPlan>(std::move(bindings)), modules, recovery, names, logicals, polarity).Build();
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
@@ -891,14 +904,14 @@ std::variant<ExpressionForest, ExpressionError> BuildExpressionForest(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, FunctionOwnerId owner, ExpressionConstants constants,
     analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules, RecoveryMode recovery,
-    std::span<const std::u16string> names, std::span<const SelectionRegion> logicals) {
-  return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kNormal, recovery, names, logicals);
+    std::span<const std::u16string> names, std::span<const SelectionRegion> logicals, std::span<const BranchPolarity> polarity) {
+  return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kNormal, recovery, names, logicals, polarity);
 }
 std::variant<ExpressionForest, ExpressionError> BuildPhasedExpressionForest(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, FunctionOwnerId owner, ExpressionConstants constants,
     analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules, RecoveryMode recovery,
-    std::span<const std::u16string> names, std::span<const SelectionRegion> logicals) {
-  return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kPhased, recovery, names, logicals);
+    std::span<const std::u16string> names, std::span<const SelectionRegion> logicals, std::span<const BranchPolarity> polarity) {
+  return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kPhased, recovery, names, logicals, polarity);
 }
 }  // namespace abcd::source

@@ -12,6 +12,33 @@
 
 ## 当前阶段
 
+### 2026-10-01：普通条件语句的空 taken 臂消除
+
+- 共同 FunctionTree 构建现在可以将非空 fallthrough 臂作为 then：原 taken 臂必须
+  直接到合流点、没有控制节点且没有 phi 边赋值。按边建立复制索引，不逐分支扫描
+  所有 bundle；新增工作/存储为 O(O+E+C+P)，计入原预算。选择表达式及异常相位
+  分支不改变原方向，原始 CFG/边/指令保持不变。
+- 类型化 BranchPolarity 传给表达式森林；对已证明 boolean 的输入选用相反谓词，
+  对一般语言值在原 VM 谓词之外取反。false-or-zero 和 true-or-nonzero-number
+  在一般 JS 值上不是互补关系，不能直接交换这两个谓词。不会重复 getter/强制转换。
+- 独立 TreeFlow 从实际 AST 臂与原 control 推导极性，重新检查被省略边确无赋值；
+  TreeOperands 验证相应谓词，来源验证仍覆盖条件与分支。printer 没有新增推断或
+  文本替换。原先空 then/else 的位置回归已更新到实际非空 then 的 anchor。
+- function_tree 的新空臂规格在原实现退出134，/tmp/abcd-branch-polarity-red.log；
+  当前保留原边来源/作用域并通过语义检查。篡改条件运算符/来源/臂归属反例通过；
+  真实解码 GuardedCopy 验证“空控制臂但有合流赋值”仍保留，未删除必要 phi copy。
+  1/2/16/200/201 连续条件规格、384组谓词/getter行为及既有15739组逻辑行为通过。
+- 最终构建 /tmp/abcd-branch-polarity-final-build.log；18项定向回归全部通过，
+  16.29秒，/tmp/abcd-branch-polarity-final-tests.log。CommentItem完整模块的
+  2422组独立配对构造行为继续通过。全量测试/RSS/基准仍暂停。
+- 五输入导出 build/stage-one/value-branch-polarity-pass-1 均退出0，维持
+  45 complete / 61 failure / 46 no-module，无完整项退化、无legacy writer，
+  /tmp/abcd-branch-polarity-batch-summary.json。本轮改善表示，未新增完整record。
+- CommentItem两处可选字段检查已去除空then/else，但条件仍有ToBoolean形成的
+  双重否定及展开的可选访问；类命名包装和其他临时变量也未全部恢复为源码惯用形式。
+  后续继续条件上下文的布尔表达简化、原生可选访问及其余失败record的通用恢复，
+  源码风格/阶段一最终验收均未完成，Goal继续开放。
+
 ### 2026-10-01：尾部复制来源贯通及两个新增完整 record
 
 - InstructionSources 改为按工作操作保留全部 occurrence，每项显式携带原始
