@@ -186,12 +186,15 @@ struct EvaluationShape {
 // writes. Cross-phase fusion requires its independent corridor certificate.
 // Normal entry points still refuse these plans; phased consumers verify catch
 // scope and exceptional placement separately.
+// Explicit closure_writes retains the same complete-family write obligation as
+// normal evaluation, including buffered allocations with no child functions.
 [[nodiscard]] std::variant<EvaluationPlan, EvaluationError> BuildPhasedEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {},
     IncomingCells incoming = IncomingCells::kReject,
     std::span<const FunctionBinding> functions = {},
     std::span<const ModuleEvaluation> modules = {}, std::span<const CellDemand> demands = {},
-    std::span<const ClassInitializerCall> initializers = {});
+    std::span<const ClassInitializerCall> initializers = {},
+    analysis::ClosureWrites closure_writes = analysis::ClosureWrites::kUnknown);
 [[nodiscard]] std::variant<std::uint64_t, EvaluationError> VerifyPhasedEvaluationPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan,
     analysis::SemanticBudget budget = {});

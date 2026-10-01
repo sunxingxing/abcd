@@ -431,7 +431,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
 std::variant<EvaluationPlan, EvaluationError> BuildPhasedEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
     std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules, std::span<const CellDemand> demands,
-    std::span<const ClassInitializerCall> initializers) {
-  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kPhased, demands, initializers, analysis::ClosureWrites::kUnknown, {}, {});
+    std::span<const ClassInitializerCall> initializers, analysis::ClosureWrites closure_writes) {
+  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kPhased, demands, initializers, closure_writes, {}, {});
 }
 }  // namespace abcd::source

@@ -4,6 +4,7 @@
 #include "../../../src/source/phased_method.h"
 #include "../../../src/source/phased_creations.h"
 #include "../../../src/source/lexical_stores.h"
+#include "../../../src/source/family_writes.h"
 #include "../../../src/source/module_aliases.h"
 #include "../../../src/source/syntax_resolution.h"
 #include "abcd/source/verified_function.h"
@@ -46,7 +47,7 @@ enum class GeneratorEncoding { kTagged, kExplicitTagged, kExplicitOrdinary };
 enum class ExceptionShape {
   kNone, kBranch, kModule, kForwarder, kDeadCopies, kLiveCopies, kReceiver, kReceiverCatch,
   kReceiverArgument, kReceiverPair, kReceiverNumericPair, kReceiverTypeof, kLiteral, kLexical,
-  kReceiverResult, kAsyncAwait, kGeneratorYield, kGeneratorCatch
+  kReceiverResult, kAsyncAwait, kGeneratorYield, kGeneratorCatch, kBufferedLexical
 };
 void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof = false,
          bool object_initializer = false, bool snapshot = false, std::ostream* evidence = nullptr,
@@ -83,6 +84,15 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   word(kLiteral + 18, static_member ? 0 : 1);
   bytes[kName] = 7;
   std::copy_n("run", 3, bytes.begin() + kName + 1);
+  if (exception == ExceptionShape::kBufferedLexical) {
+    constexpr std::uint32_t kObjectBuffer = 600, kBufferPool = 3, kTaggedEntries = 4;
+    word(kPool + kBufferPool * sizeof(std::uint32_t), kObjectBuffer);
+    word(kObjectBuffer, kTaggedEntries);
+    bytes[kObjectBuffer + 4] = static_cast<std::uint8_t>(abc::LiteralTag::kString);
+    word(kObjectBuffer + 5, kName);
+    bytes[kObjectBuffer + 9] = static_cast<std::uint8_t>(abc::LiteralTag::kInteger);
+    word(kObjectBuffer + 10, 42);
+  }
   constexpr std::uint32_t kModuleType = 520, kModuleField = 530, kRequest = 548, kModule = 560;
   if (exception == ExceptionShape::kModule) {
     constexpr std::uint8_t kI32 = 5, kAscii = 1;
@@ -208,6 +218,20 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
           op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), kFirstCell, op(abc::Opcode::kPOPLEXENV), kReturn,
           op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), kFirstCell,
           op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), kFirstCell, kReturn,
+          kCallPc, kCallBytes, kSingleTry, kCatchAll, kHandlerPc, kHandlerBytes};
+    }
+    if (exception == ExceptionShape::kBufferedLexical) {
+      constexpr std::uint8_t kLocals = 1, kInput = 4, kObject = 0, kCell = 0,
+          kBytes = 26, kCallPc = 14, kCallBytes = 3, kHandlerPc = 21, kHandlerBytes = 5,
+          kBufferPool = 3;
+      member = {kLocals, 4, kBytes, kSingleTry,
+          op(abc::Opcode::kNEWLEXENV_IMM8), 1, kLoad, kInput,
+          op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), kCell,
+          op(abc::Opcode::kCREATEOBJECTWITHBUFFER_IMM8_ID16), 0, kBufferPool, 0,
+          kStore, kObject, kLoad, kInput, op(abc::Opcode::kCALLARG1_IMM8_V8), 0, kObject,
+          op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), kCell, op(abc::Opcode::kPOPLEXENV), kReturn,
+          op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), kCell,
+          op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), kCell, kReturn,
           kCallPc, kCallBytes, kSingleTry, kCatchAll, kHandlerPc, kHandlerBytes};
     }
     if (exception == ExceptionShape::kReceiver) {
@@ -396,7 +420,8 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   header.layout = abc::DynamicLayout{};
   header.file_size = bytes.size();
   abc::MetadataIndex index;
-  index.regions.push_back({kCaller, kCallerCode, {}, {3, kPool}, {}, {}});
+  index.regions.push_back({kCaller, kCallerCode, {},
+      {exception == ExceptionShape::kBufferedLexical ? 4U : 3U, kPool}, {}, {}});
   index.methods.resize(3);
   for (auto& method : index.methods) method.owner_offset = {kOwner};
   index.methods[0].offset = {kCaller};
@@ -511,6 +536,33 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     const FunctionContext owner{std::get<ClassTreeContext>(ClassTreeContext::Resolve(
         file, header, index, lookup, roles, sites, range.first, identity))};
     const auto decoded = std::get<abc::MethodBody>(abc::DecodeMethodBody(file, header.profile, *index.methods[2].code));
+    if (exception == ExceptionShape::kBufferedLexical) {
+      // The file-family path alone discharges the primitive-buffer write
+      // barrier. A standalone Unknown premise is deliberately insufficient.
+      Check(std::holds_alternative<PhasedMethodError>(PhasedMethod::Build(owner, decoded)));
+      const FamilyDestination destination{Strictness::kStrict, nullptr, FunctionFragment::kClassMember};
+      auto prepared = PreparedFamily::PrepareClass(file, header, index, lookup, roles,
+          functions, sites, range.first, identity, destination);
+      Check(std::holds_alternative<PreparedFamily>(prepared));
+      auto family = std::get<PreparedFamily>(std::move(prepared));
+      const auto& built = family.Family();
+      Check(built.members.size() == 1 && built.members[0].tree.recovery_issues.empty());
+      Check(built.members[0].abi && built.members[0].sources && built.writes && built.writes->primitive_objects == 1);
+      auto inputs = std::get<FileFamily>(ReadFunctionFamily(file, header, index, lookup, roles,
+          functions, owner.Position(), identity, {}, nullptr, &owner));
+      Check(std::holds_alternative<FamilyWrites>(VerifyFamilyWrites(index, inputs, built, {}, &lookup)));
+      auto locals = inputs.members[0].function.Phase()->Locals(); locals.writes = analysis::ClosureWrites::kUnknown;
+      const auto& phase = *inputs.members[0].function.Phase();
+      const FamilyWriteInput forged{PhasedFamilyInput{phase.Phases(), phase.Body(), locals, lookup, &phase},
+          {}, inputs.members[0].objects};
+      Check(std::get<FamilyWriteFailure>(VerifyFamilyWrites(index, std::span{&forged, 1}, built)).kind == FamilyWriteError::kDomain);
+      inputs.members[0].objects.clear();
+      Check(std::get<FamilyWriteFailure>(VerifyFamilyWrites(index, inputs, built, {}, &lookup)).kind == FamilyWriteError::kCoverage);
+      std::ostringstream output;
+      Check(std::holds_alternative<PrintedFamilyDraft>(family.PrintDraft(destination, output)));
+      if (evidence) *evidence << nlohmann::json{{"source", output.str()}}.dump() << '\n';
+      Check(unlink(path) == 0); return;
+    }
     auto analyzed = PhasedMethod::Build(owner, decoded);
     if (exception == ExceptionShape::kReceiverNumericPair) {
       Check(std::get<PhasedMethodError>(analyzed) == PhasedMethodError::kValues);
@@ -1018,6 +1070,11 @@ int main(int argc, char** argv) {
     Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kLexical);
     return 0;
   }
+  if (argc == 2 && std::string_view(argv[1]) == "--buffered-lexical-json") {
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kBufferedLexical, profile);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--literal-json") {
     Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kLiteral);
     return 0;
@@ -1070,6 +1127,7 @@ int main(int argc, char** argv) {
   Check(argc == 1);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverResult);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kLexical);
+  Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kBufferedLexical);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kLiteral);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverTypeof);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverNumericPair);

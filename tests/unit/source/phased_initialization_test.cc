@@ -119,6 +119,26 @@ void Run(abc::ProfileId profile, StoreOrder order, std::size_t count = 1,
   auto built = BuildPhasedCellInitializations(graph, environments, cells);
   if (buffered_capture) {
     test::Check(std::get<CellInitializationError>(built) == CellInitializationError::kClosure);
+    test::Check(std::get<EvaluationError>(BuildPhasedEvaluationPlan(graph)) == EvaluationError::kUnsupportedOperation);
+    const auto conditional = BuildPhasedEvaluationPlan(graph, {}, IncomingCells::kReject,
+        {}, {}, {}, {}, ClosureWrites::kLanguage);
+    if (order == StoreOrder::kAfterCall) {
+      // Language descendant writes never initialize a cell on a missing
+      // store-Commit path into catch. Keep that independent dominance check.
+      test::Check(std::get<EvaluationError>(conditional) == EvaluationError::kUnsupportedOperation);
+      return;
+    }
+    test::Check(std::holds_alternative<EvaluationPlan>(conditional));
+    const auto& evaluation = std::get<EvaluationPlan>(conditional);
+    test::Check(evaluation.functions.empty() && evaluation.closure_writes == ClosureWrites::kLanguage);
+    test::Check(evaluation.cells && evaluation.cells->initialization.closure_writes == ClosureWrites::kLanguage);
+    test::Check(std::holds_alternative<std::uint64_t>(VerifyPhasedEvaluationPlan(graph, evaluation)));
+    auto forged = evaluation; forged.closure_writes = ClosureWrites::kUnknown;
+    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    forged.cells->initialization.closure_writes = ClosureWrites::kUnknown;
+    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationError>(BuildPhasedEvaluationPlan(graph, {},
+        IncomingCells::kReject, {}, {}, {}, {}, static_cast<ClosureWrites>(255))));
     return;
   }
   if (order == StoreOrder::kAfterCall) {
@@ -245,7 +265,10 @@ int main() {
     Run(profile, StoreOrder::kAfterCall);
     Run(profile, StoreOrder::kBeforeCall, 1, Exit::kThrow);
     Run(profile, StoreOrder::kBeforeCall, 1, Exit::kReturn, true);
+    Run(profile, StoreOrder::kAfterCall, 1, Exit::kReturn, true);
   }
   for (const std::size_t count : {200, 201, 402})
     Run(abcd::abc::ProfileId::kDynamic1301, StoreOrder::kBeforeCall, count);
+  for (const std::size_t count : {2, 200, 201, 400, 800})
+    Run(abcd::abc::ProfileId::kDynamic1206, StoreOrder::kBeforeCall, count, Exit::kReturn, true);
 }

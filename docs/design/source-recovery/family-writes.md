@@ -56,6 +56,27 @@ test checks returned values and separate cell instances across calls.
 
 ## Cost and Publication Boundary
 
+Phased file-family evaluation now forwards the retained `ExceptionLocals.writes`
+premise into `BuildPhasedEvaluationPlan`, including primitive buffered objects
+with no child `FunctionBinding`. The standalone API defaults to Unknown. The
+plan and its cell-initialization witness retain the same typed premise, and the
+independent evaluation checker rejects disagreement or erased premises. This
+does not turn conditional Language writes into initialization, constness or a
+snapshot: missing store-Commit dominance into catch remains rejected.
+
+The actual file-family path continues through `VerifyFamilyWrites` before its
+complete result is returned. Original buffer instructions require primitive
+object coverage even with zero descendants; removing that coverage or replacing
+the phased local premise with Unknown refuses the family. Serialized ABC fixtures
+for profiles 12.0.2/12.0.6/13.0.1 exercise file reading, the shared tree, flow,
+ABI, instruction sources, write checking and printing. Independent JS reference
+tests retain callback/exception identity, undefined receiver, fresh own-property
+objects, mutations and native non-callable TypeError behavior. These are scoped
+functional checks, not full-corpus or platform acceptance.
+
+This forwards an existing input contract and reuses the existing algorithms;
+additional production cost is O(1), with no new dependency, index or proof wrapper.
+
 Site-indexed masks make original-store/signature/barrier coverage linear in input
 and work operations. Capture verification retains its existing indexed rebasing
 cost, proportional to actual occurrence/access records rather than repeated

@@ -12,6 +12,37 @@
 
 ## 当前阶段
 
+### 2026-10-01：相位函数族的实际闭包写入前提贯通
+
+- BuildPhasedEvaluationPlan新增显式ClosureWrites参数，默认仍为Unknown。
+  FamilyTrees传入实际FilePhasedFunction::Locals().writes，完整family仍在返回前
+  执行VerifyFamilyWrites。之前上游已经持有Language前提，但求值入口固定丢弃
+  它，导致零child binding的buffered object加cell访问被kClosure拒绝。
+  现有plan与cell witness的一致性、原始store域、buffer覆盖及catch路径的
+  store-Commit支配检查全部保留；没有把Language前提改成已初始化或稳定快照。
+- 实际解码回归在接参但仍传Unknown时确实失败，
+  /tmp/abcd-phase-write-premise-red-tests.log。三profile的buffered cell用例及
+  2/200/201/400/800规模通过相位求值与独立检查；默认Unknown、擦除前提、
+  非法枚举及catch路径缺少store的情况仍拒绝。
+- 新序列化ABC含primitive buffer、词法cell、普通call和catch store，没有
+  child binding。三profile贯通实际PreparedFamily、共同AST/printer、TreeFlow、
+  ABI、instruction sources与完整FamilyWrites；删除buffer coverage和伪造
+  Unknown局部前提仍拒绝。恢复旧family参数后，该夹具确实在
+  PreparedFamily失败，/tmp/abcd-phase-write-premise-family-red-debug.log。
+- 完整生成函数经独立参考通过237个callback/Proxy、receiver、返回/异常身份、
+  fresh object、own descriptor、继承setter及保留修改场景，
+  /tmp/abcd-phase-write-premise-behavior.log。生产与相关测试构建退出0，
+  /tmp/abcd-phase-write-premise-final-build.log；最终12/12定向回归通过14.85秒，
+  /tmp/abcd-phase-write-premise-final-tests.log。全量/RSS/基准未恢复。
+- 真实PageA child7421现越过CellInitializations kClosure；下一拒绝为
+  相位LiteralPlan kLateValue，/tmp/abcd-phase-write-premise-pagea-literal-kind.log。
+  它仍未生成完整tree，整record仍tree_stage；不能据此宣布该子函数恢复完成。
+  下一步接入相位初始化RHS的实际求值/异常归属，不能只放宽late value条件。
+- 五输入build/stage-one/value-phase-write-premise-pass-1均退出0，维持
+  **48 complete / 2 incomplete / 56 failure / 46 no-module**，无完整项退化、
+  无legacy writer，/tmp/abcd-phase-write-premise-batch-summary.json。
+  本次fixture行为对照不是配对源码/平台最终验收，阶段一Goal继续active。
+
 ### 2026-10-01：条件模块读取与相邻选择调用贯通
 
 - 共同选择规划使用一次受检module peer索引，在条件及&&/||臂中接纳已归属

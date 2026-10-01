@@ -109,9 +109,11 @@ class FamilyTrees {
       const auto& control = phase ? phase->Phases().Control() : *normal_control;
       const auto module_evaluations = aliases ? std::span<const ModuleEvaluation>(aliases->evaluations) : std::span<const ModuleEvaluation>{};
       const auto demands = member.function.Cells() ? std::span<const CellDemand>(member.function.Cells()->demands) : std::span<const CellDemand>{};
+      // Preserve the phased file input's conditional write domain. The complete
+      // family below still discharges every original store and capture barrier.
       auto evaluation = Take<EvaluationPlan, EvaluationError>(phase ?
           BuildPhasedEvaluationPlan(graph, left_, i == 0 ? IncomingCells::kReject : IncomingCells::kConditional,
-              member.children, module_evaluations, demands) :
+              member.children, module_evaluations, demands, {}, phase->Locals().writes) :
           BuildEvaluationPlan(graph, left_, i == 0 ? IncomingCells::kReject : IncomingCells::kConditional,
               member.children, module_evaluations, demands, {}, analysis::ClosureWrites::kLanguage, {},
               derived ? std::span<const analysis::OpId>(derived->guards) : std::span<const analysis::OpId>{}));
