@@ -91,18 +91,40 @@ class Planner {
           result.blocks[std::get<PhaseControlUnit>(unit).block.value] = task.scope;
         } else {
           result.blocks[node.block.value] = task.scope;
-          // A condition expression has no new lexical block. Its actual CFG
-          // cells still belong to this scope; source emission separately refuses
-          // declarations/environment changes in the conditional RHS.
-          auto decision = node.decision;
-          while (decision) {
-            Step(); const auto at = decision->evaluate;
-            Require(at.value < seen.size() && !seen[at.value], Error::kControl);
+        }
+        // A conditional expression adds no lexical container. Walk every
+        // original evaluation node in its checked path, for either graph view;
+        // no declarations or environment changes are authorized by this map.
+        auto decision = node.decision;
+        ControlId predicate = task.control;
+        bool selected_taken = node.arms && node.arms->taken.has_value();
+        while (decision) {
+          Step(); auto at = decision->evaluate;
+          const auto last = decision->predicate.value_or(at);
+          while (true) {
+            Step(); Require(at.value < seen.size() && !seen[at.value], Error::kControl);
             seen[at.value] = 1;
             const auto& condition = control_.nodes[at.value];
-            result.blocks[condition.block.value] = task.scope;
-            decision = condition.decision;
+            Require(std::holds_alternative<std::monostate>(condition.synthetic), Error::kControl);
+            auto block = condition.block;
+            if (exceptions_) {
+              Require(at.value < exceptions_->control.units.size(), Error::kControl);
+              const auto* phase = std::get_if<PhaseControlUnit>(&exceptions_->control.units[at.value]);
+              Require(phase, Error::kControl); block = phase->block;
+            }
+            result.blocks[block.value] = task.scope;
+            if (at == last) break;
+            Require(condition.next && !condition.arms && !condition.decision, Error::kControl);
+            at = *condition.next;
           }
+          predicate = last; selected_taken = decision->shared_on_taken;
+          decision = control_.nodes[last.value].decision;
+        }
+        if (node.decision) {
+          const auto& last = control_.nodes[predicate.value];
+          const auto fallback = selected_taken ? last.arms->fallthrough : last.arms->taken;
+          if (fallback) child(task.scope, CellArmScope{predicate, selected_taken ?
+              analysis::FlowEdgeKind::kFallthrough : analysis::FlowEdgeKind::kTaken}, *fallback);
         }
         if (node.arms) {
           if (node.arms->taken) child(task.scope, CellArmScope{task.control, analysis::FlowEdgeKind::kTaken}, *node.arms->taken);

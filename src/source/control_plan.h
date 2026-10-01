@@ -20,14 +20,18 @@ struct LoopTransfer {
   ControlTransferSource source;
 };
 using ControlSynthetic = std::variant<std::monostate, LoopControl, LoopTransfer>;
-// An original single-entry condition evaluated only when the current test
-// does not enter the shared arm. Its original arcs remain in PlacedEdge.
+// An original single-entry evaluation path and its ending condition, entered
+// only when the current test misses the shared arm. Original arcs remain in
+// PlacedEdge; a final private fallback stays in the last condition's other arm.
 // This is control ownership, not permission to inline its effects/phi copies.
 struct ControlDecision {
   ControlId evaluate;
   bool evaluate_on_taken;
   bool shared_on_taken;
   ControlId join;
+  // Absent for an adjacent predicate; otherwise the end of a single-entry
+  // linear evaluation path. Original nodes/arcs remain individually owned.
+  std::optional<ControlId> predicate;
 };
 struct ControlNode {
   analysis::WorkBlockId block;

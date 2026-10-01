@@ -1137,6 +1137,13 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/loop_exits.mjs $<TARGET_FILE:loop_exit_test>)
     add_test(NAME shared_loop_exit_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_loop_exit.mjs $<TARGET_FILE:loop_exit_test>)
+    add_test(NAME observable_optional_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/observable_optional.mjs $<TARGET_FILE:logical_regions_test>)
+    add_test(NAME shared_decision_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_decision.mjs $<TARGET_FILE:loop_exit_test> --normal)
+    add_test(NAME phased_shared_decision_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_decision.mjs $<TARGET_FILE:control_composition_test>)
+    add_test(NAME phased_shared_decision_refusal_test COMMAND control_composition_test --effectful-decision)
     add_test(NAME phased_shared_loop_exit_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_loop_exit.mjs $<TARGET_FILE:control_composition_test> --phased)
     add_test(NAME loop_closure_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

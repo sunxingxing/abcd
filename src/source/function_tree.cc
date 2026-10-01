@@ -778,8 +778,31 @@ class TreeBuilder {
       Append(draft, Statement(ExpressionStmt{expression}, tree_.expressions[expression.value].origin));
     }
   }
+  const analysis::WorkBlock& DecisionBlock(const ControlNode& node) const {
+    Require(std::holds_alternative<std::monostate>(node.synthetic), Error::kControl);
+    if (exceptions_) {
+      const auto index = static_cast<std::size_t>(&node - control_.nodes.data());
+      Require(index < exceptions_->control.units.size(), Error::kControl);
+      const auto* phase = std::get_if<PhaseControlUnit>(&exceptions_->control.units[index]);
+      Require(phase && phase->block == node.block, Error::kControl);
+    }
+    Require(node.block.value < graph_.blocks.size(), Error::kControl);
+    return graph_.blocks[node.block.value];
+  }
+  analysis::OpId DecisionPredicate(const ControlNode& node) const {
+    const auto& block = DecisionBlock(node);
+    if (exceptions_) {
+      const auto& phase = graph_.phases[node.block.value];
+      Require(phase.phase == analysis::ExceptionPhase::kCommit && phase.operation &&
+          std::holds_alternative<analysis::ValueBranch>(graph_.ops[phase.operation->value].operation), Error::kControl);
+      return *phase.operation;
+    }
+    Require(block.op_count != 0, Error::kControl);
+    const analysis::OpId op{block.first_op.value + block.op_count - 1};
+    Require(std::holds_alternative<analysis::ValueBranch>(graph_.ops[op.value].operation), Error::kControl);
+    return op;
+  }
   void OrientBranches() {
-    if (exceptions_) return;
     Grow(branch_polarity_, graph_.ops.size()); branch_polarity_.resize(graph_.ops.size()); Step(graph_.ops.size());
     std::vector<std::uint8_t> copied;
     Grow(copied, graph_.edges.size()); copied.resize(graph_.edges.size()); Step(graph_.edges.size());
@@ -792,30 +815,41 @@ class TreeBuilder {
     }
     for (const auto& node : control_.nodes) {
       Step();
-      if (!node.arms || node.arms->taken || !node.arms->fallthrough) continue;
-      const auto& block = graph_.blocks[node.block.value];
-      const auto branch = block.first_op.value + block.op_count - 1;
-      if (copied[block.first_edge.value] || (!logical_branches_.empty() && logical_branches_[branch])) continue;
-      branch_polarity_[branch] = BranchPolarity::kFallthrough;
+      if (node.decision) {
+        const auto orient = [&](const ControlNode& condition, bool taken) {
+          const auto branch = DecisionPredicate(condition);
+          const auto& block = DecisionBlock(condition);
+          Require(!copied[block.first_edge.value] && !copied[block.first_edge.value + 1], Error::kControl);
+          branch_polarity_[branch.value] = taken ? BranchPolarity::kTaken : BranchPolarity::kFallthrough;
+        };
+        orient(node, !node.decision->evaluate_on_taken);
+        const auto predicate = node.decision->predicate.value_or(node.decision->evaluate);
+        orient(control_.nodes[predicate.value], node.decision->shared_on_taken);
+      } else if (!exceptions_ && node.arms && !node.arms->taken && node.arms->fallthrough) {
+        const auto branch = DecisionPredicate(node);
+        const auto& block = DecisionBlock(node);
+        if (copied[block.first_edge.value] || (!logical_branches_.empty() && logical_branches_[branch.value])) continue;
+        branch_polarity_[branch.value] = BranchPolarity::kFallthrough;
+      }
     }
   }
   void EmitDecision(analysis::OpId op, const ControlNode& node, std::size_t draft) {
-    Require(!exceptions_ && node.decision && node.arms, Error::kControl);
+    Require(node.decision && node.arms, Error::kControl);
     decision_path_.clear();
     const auto* part = &node;
+    bool selected_taken = node.arms->taken.has_value();
     while (true) {
-      Step(); const auto& block = graph_.blocks[part->block.value];
-      Require(block.op_count && !HasCopies(block.first_edge) &&
+      Step(); const auto& block = DecisionBlock(*part);
+      Require(!HasCopies(block.first_edge) &&
           !HasCopies(analysis::EdgeId{block.first_edge.value + 1}), Error::kControl);
-      const analysis::OpId branch{block.first_op.value + block.op_count - 1};
-      Require(std::holds_alternative<analysis::ValueBranch>(graph_.ops[branch.value].operation) &&
-          forest_.operations[branch.value], Error::kControl);
+      const auto branch = DecisionPredicate(*part);
+      Require(forest_.operations[branch.value].has_value(), Error::kControl);
       decision_path_.push_back(branch);
       if (part != &node) {
         // Only an already-owned expression subtree may become the conditional
         // RHS. Snapshots, independent roots, cell/env changes and edge copies
         // require a richer region; never run them outside this condition.
-        for (std::uint32_t i = 0; i + 1 < block.op_count; ++i) {
+        for (std::uint32_t i = 0; !exceptions_ && i + 1 < block.op_count; ++i) {
           Step(); const analysis::OpId at{block.first_op.value + i};
           const auto& original = graph_.ops[at.value];
           if (original.life != analysis::ValueLife::kLive) continue;
@@ -833,7 +867,28 @@ class TreeBuilder {
         tree_.operations.push_back({branch, *forest_.operations[branch.value]});
       }
       if (!part->decision) break;
-      part = &control_.nodes[part->decision->evaluate.value];
+      const auto& decision = *part->decision;
+      auto next = decision.evaluate;
+      const auto predicate = decision.predicate.value_or(next);
+      while (next != predicate) {
+        Step(); const auto& linear = control_.nodes[next.value];
+        const auto& path = DecisionBlock(linear);
+        Require(!linear.arms && !linear.decision && linear.next, Error::kControl);
+        for (std::uint8_t e = 0; e < path.edge_count; ++e) {
+          Step(); const analysis::EdgeId edge{path.first_edge.value + e};
+          if (graph_.edges[edge.value].kind != analysis::FlowEdgeKind::kException)
+            Require(!HasCopies(edge), Error::kControl);
+        }
+        // Existing expression ownership and phase fusion authorize inline
+        // operations. An emitted snapshot/effect/staging statement cannot be
+        // hoisted out of the conditional RHS, so refuse that candidate.
+        const auto count = drafts_[draft].count;
+        EmitBlock(linear, draft);
+        Require(drafts_[draft].count == count, Error::kOwnership);
+        next = *linear.next;
+      }
+      selected_taken = decision.shared_on_taken;
+      part = &control_.nodes[predicate.value];
     }
     auto condition = *forest_.operations[decision_path_.back().value];
     Grow(tree_.expressions, tree_.expressions.size() + decision_path_.size() - 1);
@@ -849,7 +904,16 @@ class TreeBuilder {
     const auto& block = graph_.blocks[node.block.value];
     const analysis::EdgeId edge{block.first_edge.value + (node.arms->taken ? 0U : 1U)};
     const auto body = Arm(draft, origin, shared, edge);
-    const auto statement = Statement(IfStmt{condition, drafts_[body].statement, {}}, origin);
+    std::optional<StmtId> alternate;
+    const auto fallback = selected_taken ? part->arms->fallthrough : part->arms->taken;
+    if (fallback) {
+      const auto& last = DecisionBlock(*part);
+      const auto branch = DecisionPredicate(*part);
+      const analysis::EdgeId fallback_edge{last.first_edge.value + (selected_taken ? 1U : 0U)};
+      alternate = drafts_[Arm(draft, TreeOriginId{graph_.ops[branch.value].origin.value},
+          fallback, fallback_edge)].statement;
+    }
+    const auto statement = Statement(IfStmt{condition, drafts_[body].statement, alternate}, origin);
     Append(draft, statement); tree_.operations.push_back({op, statement});
   }
   void EmitBranch(analysis::OpId op, const ControlNode& node,

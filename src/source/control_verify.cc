@@ -61,34 +61,55 @@ class ControlCheck {
           Require(node.arms.has_value(), Error::kInvalidGraph);
           const auto join = node.next ? node.next : task.stop;
           if (node.decision) {
-            Require(graph_.Kind() == ControlViewKind::kNormal && join &&
+            Require(join &&
                 node.decision->join == *join &&
                 node.arms->taken.has_value() != node.arms->fallthrough.has_value(), Error::kInvalidGraph);
             const auto shared = node.arms->taken ? *node.arms->taken : *node.arms->fallthrough;
             Require(shared != join, Error::kCrossEntry);
             auto part = id;
+            bool selected_taken = node.arms->taken.has_value();
             while (true) {
               quota_.Work(); const auto& condition = plan_.nodes[part.value];
               Require(part.value < graph_.NodeCount() && Degree(part) == analysis::kMaxNormalSuccessors &&
                   std::holds_alternative<std::monostate>(condition.synthetic) && condition.arms &&
-                  condition.arms->taken.has_value() != condition.arms->fallthrough.has_value() &&
-                  (condition.arms->taken ? *condition.arms->taken : *condition.arms->fallthrough) == shared &&
+                  (selected_taken ? condition.arms->taken : condition.arms->fallthrough) == shared &&
                   (part == id || !condition.next), Error::kInvalidGraph);
-              const auto selected = condition.arms->taken ? 0U : 1U;
-              const auto evaluate = condition.decision ? condition.decision->evaluate : *join;
-              Require(!condition.decision || condition.decision->join == *join, Error::kInvalidGraph);
+              const auto selected = selected_taken ? 0U : 1U;
+              const auto fallback = selected_taken ? condition.arms->fallthrough : condition.arms->taken;
+              const auto evaluate = condition.decision ? condition.decision->evaluate : fallback.value_or(*join);
+              Require(!condition.decision || (!fallback && condition.decision->join == *join), Error::kInvalidGraph);
               Arc(part, static_cast<std::uint8_t>(selected), shared, task.scope,
                   selected == 0 ? EdgePlacement::kTaken : EdgePlacement::kFallthrough);
               Arc(part, static_cast<std::uint8_t>(1 - selected), evaluate, task.scope,
                   selected == 0 ? EdgePlacement::kFallthrough : EdgePlacement::kTaken);
-              if (!condition.decision) break;
+              if (!condition.decision) {
+                if (fallback) {
+                  Require(fallback != join, Error::kCrossEntry);
+                  Push({*fallback, join, task.scope});
+                }
+                break;
+              }
               Require(condition.decision->evaluate_on_taken == (selected != 0) &&
                   evaluate.value < graph_.NodeCount() && !visited_[evaluate.value] &&
                   indegree_[evaluate.value] == 1, Error::kCrossEntry);
-              const auto& child = plan_.nodes[evaluate.value];
-              Require(child.arms && condition.decision->shared_on_taken == child.arms->taken.has_value(), Error::kInvalidGraph);
-              visited_[evaluate.value] = 1; scopes_[evaluate.value] = task.scope; ++covered;
-              part = evaluate;
+              auto next = evaluate;
+              const auto predicate = condition.decision->predicate.value_or(evaluate);
+              Require(predicate.value < graph_.NodeCount(), Error::kInvalidGraph);
+              while (next != predicate) {
+                quota_.Work();
+                Require(next.value < graph_.NodeCount() && !visited_[next.value] &&
+                    indegree_[next.value] == 1, Error::kCrossEntry);
+                const auto& linear = plan_.nodes[next.value];
+                Require(Degree(next) == 1 && !linear.arms && !linear.decision && linear.next &&
+                    std::holds_alternative<std::monostate>(linear.synthetic), Error::kInvalidGraph);
+                Arc(next, 0, *linear.next, task.scope, EdgePlacement::kNext);
+                visited_[next.value] = 1; scopes_[next.value] = task.scope; ++covered;
+                next = *linear.next;
+              }
+              Require(!visited_[next.value] && indegree_[next.value] == 1, Error::kCrossEntry);
+              visited_[next.value] = 1; scopes_[next.value] = task.scope; ++covered;
+              selected_taken = condition.decision->shared_on_taken;
+              part = next;
             }
             Push({shared, join, task.scope}); cursor = node.next; continue;
           }
@@ -149,8 +170,7 @@ class ControlCheck {
     for (std::size_t b = 0; b < blocks; ++b) {
       quota_.Work();
       const auto& block = graph_.Node({static_cast<std::uint32_t>(b)});
-      Require(!plan_.nodes[b].decision || (graph_.Kind() == ControlViewKind::kNormal &&
-          block.arc_count == analysis::kMaxNormalSuccessors), Error::kInvalidGraph);
+      Require(!plan_.nodes[b].decision || block.arc_count == analysis::kMaxNormalSuccessors, Error::kInvalidGraph);
       Require(plan_.nodes[b].block.value == b && std::holds_alternative<std::monostate>(plan_.nodes[b].synthetic) &&
           block.first_arc.value == next_edge && block.arc_count <= analysis::kMaxNormalSuccessors &&
           block.arc_count <= graph_.ArcCount() - next_edge, Error::kInvalidGraph);

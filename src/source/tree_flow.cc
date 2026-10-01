@@ -47,9 +47,8 @@ class FlowCheck {
     budget.Array(decision_branches_, graph.ops.size());
     for (const auto& node : control.nodes) {
       budget.Step(); if (!node.decision) continue;
-      const auto& block = graph.blocks[control.nodes[node.decision->evaluate.value].block.value];
-      Require(block.op_count != 0, Error::kControl);
-      decision_branches_[block.first_op.value + block.op_count - 1] = 1;
+      const auto predicate = node.decision->predicate.value_or(node.decision->evaluate);
+      decision_branches_[DecisionPredicate(control.nodes[predicate.value]).value] = 1;
     }
     budget.Array(flow_.controls, control.nodes.size() -
         (exceptions ? exceptions->control.units.size() : graph.blocks.size()));
@@ -276,51 +275,120 @@ class FlowCheck {
   }
 
  private:
+  const analysis::WorkBlock& DecisionBlock(const ControlNode& node) const {
+    Require(std::holds_alternative<std::monostate>(node.synthetic), Error::kControl);
+    if (exceptions_) {
+      const auto index = static_cast<std::size_t>(&node - control_.nodes.data());
+      Require(index < exceptions_->control.units.size(), Error::kControl);
+      const auto* phase = std::get_if<PhaseControlUnit>(&exceptions_->control.units[index]);
+      Require(phase && phase->block == node.block, Error::kControl);
+    }
+    Require(node.block.value < graph_.blocks.size(), Error::kControl);
+    return graph_.blocks[node.block.value];
+  }
+  analysis::OpId DecisionPredicate(const ControlNode& node) const {
+    const auto& block = DecisionBlock(node);
+    if (exceptions_) {
+      const auto& phase = graph_.phases[node.block.value];
+      Require(phase.phase == analysis::ExceptionPhase::kCommit && phase.operation &&
+          std::holds_alternative<analysis::ValueBranch>(graph_.ops[phase.operation->value].operation), Error::kControl);
+      return *phase.operation;
+    }
+    Require(block.op_count != 0, Error::kControl);
+    const analysis::OpId op{block.first_op.value + block.op_count - 1};
+    Require(std::holds_alternative<analysis::ValueBranch>(graph_.ops[op.value].operation), Error::kControl);
+    return op;
+  }
+  void DecisionOperation(analysis::OpId op, StmtId parent, std::uint32_t child) {
+    budget_.Step(); const auto& original = graph_.ops[op.value];
+    if (original.life != analysis::ValueLife::kLive) return;
+    if (exceptions_) {
+      std::uint32_t empty = 0;
+      edges_->Stage(op, BlockStmt{}, empty);
+    }
+    const auto kind = evaluation_.operations[op.value].kind;
+    if (kind == EvaluationKind::kInline) return;
+    Require(kind == EvaluationKind::kAlias || kind == EvaluationKind::kElidedPure ||
+        std::holds_alternative<analysis::ValueJump>(original.operation), Error::kPlacement);
+    const auto* anchor = std::get_if<AnchorId>(&tree_.operations[*placements_[op.value]].node);
+    Require(anchor, Error::kPlacement);
+    const auto* boundary = std::get_if<BlockBoundary>(&sequences_.Anchor(*anchor));
+    Require(boundary && boundary->block == parent && boundary->index == child, Error::kSequence);
+  }
   void Decision(const ControlNode& node, const IfStmt& syntax, StmtId parent,
       std::uint32_t child, std::size_t& pending) {
-    Require(!exceptions_ && !syntax.alternate, Error::kControl);
-    const auto& root = graph_.blocks[node.block.value];
+    const auto& root = DecisionBlock(node);
+    const auto root_predicate = DecisionPredicate(node);
     const auto* part = &node;
+    bool selected_taken = node.arms->taken.has_value();
     auto expression = syntax.condition;
     while (true) {
-      budget_.Step(); const auto& block = graph_.blocks[part->block.value];
-      Require(block.op_count && !edges_->HasCopies(block.first_edge) &&
+      budget_.Step(); const auto& block = DecisionBlock(*part);
+      Require(!edges_->HasCopies(block.first_edge) &&
           !edges_->HasCopies(analysis::EdgeId{block.first_edge.value + 1}), Error::kControl);
-      const auto at = block.first_op.value + block.op_count - 1;
-      Require(std::holds_alternative<analysis::ValueBranch>(graph_.ops[at].operation), Error::kControl);
+      const auto at = DecisionPredicate(*part).value;
       if (part->decision) {
         const auto* logical = std::get_if<LogicalExpr>(&tree_.expressions[expression.value].expression);
         Require(logical && logical->operation == TreeLogical::kOr, Error::kControl);
         flow_.expressions[at] = logical->left; expression = logical->right;
       } else flow_.expressions[at] = expression;
-      flow_.branch_polarity[at] = part->arms->taken ? BranchPolarity::kTaken : BranchPolarity::kFallthrough;
+      flow_.branch_polarity[at] = selected_taken ? BranchPolarity::kTaken : BranchPolarity::kFallthrough;
       if (part != &node) {
         Require(std::get_if<ExprId>(&tree_.operations[*placements_[at]].node) &&
             std::get<ExprId>(tree_.operations[*placements_[at]].node) == flow_.expressions[at], Error::kPlacement);
-        for (std::uint32_t i = 0; i + 1 < block.op_count; ++i) {
-          budget_.Step(); const auto id = block.first_op.value + i;
-          if (graph_.ops[id].life != analysis::ValueLife::kLive) continue;
-          const auto kind = evaluation_.operations[id].kind;
-          if (kind == EvaluationKind::kInline) continue;
-          Require(kind == EvaluationKind::kAlias || kind == EvaluationKind::kElidedPure, Error::kPlacement);
-          const auto* anchor = std::get_if<AnchorId>(&tree_.operations[*placements_[id]].node);
-          Require(anchor, Error::kPlacement);
-          const auto* boundary = std::get_if<BlockBoundary>(&sequences_.Anchor(*anchor));
-          Require(boundary && boundary->block == parent && boundary->index == child, Error::kSequence);
-        }
+        if (exceptions_) {
+          std::uint32_t empty = 0;
+          edges_->Stage(analysis::OpId{at}, BlockStmt{}, empty);
+        } else for (std::uint32_t i = 0; i + 1 < block.op_count; ++i)
+          DecisionOperation(analysis::OpId{block.first_op.value + i}, parent, child);
       }
       for (std::uint8_t e = 0; e < block.edge_count; ++e) {
         budget_.Step();
         if (part == &node && e == (node.arms->taken ? 0U : 1U)) continue;
+        // A retained final fallback owns its original transfer in the alternate.
+        if (!part->decision && syntax.alternate && e == (selected_taken ? 1U : 0U)) continue;
         std::uint32_t empty = 0;
         edges_->Consume(analysis::EdgeId{block.first_edge.value + e}, BlockStmt{}, empty);
       }
       if (!part->decision) break;
-      part = &control_.nodes[part->decision->evaluate.value];
+      const auto& decision = *part->decision;
+      auto next = decision.evaluate;
+      const auto predicate = decision.predicate.value_or(next);
+      while (next != predicate) {
+        budget_.Step(); const auto& linear = control_.nodes[next.value];
+        const auto& path = DecisionBlock(linear);
+        Require(!linear.arms && !linear.decision && linear.next, Error::kControl);
+        for (std::uint32_t i = 0; i < path.op_count; ++i) {
+          const analysis::OpId op{path.first_op.value + i};
+          if (exceptions_ && std::holds_alternative<analysis::ValueBranch>(graph_.ops[op.value].operation)) {
+            Require(evaluation_.operations[op.value].kind == EvaluationKind::kRoot &&
+                path.edge_count == 1 && !edges_->HasCopies(path.first_edge), Error::kControl);
+            continue;
+          }
+          DecisionOperation(op, parent, child);
+        }
+        for (std::uint8_t e = 0; e < path.edge_count; ++e) {
+          budget_.Step(); const analysis::EdgeId edge{path.first_edge.value + e};
+          if (graph_.edges[edge.value].kind == analysis::FlowEdgeKind::kException) continue;
+          std::uint32_t empty = 0;
+          edges_->Consume(edge, BlockStmt{}, empty);
+        }
+        next = *linear.next;
+      }
+      selected_taken = decision.shared_on_taken;
+      part = &control_.nodes[predicate.value];
     }
-    const TreeOriginId origin{graph_.ops[root.first_op.value + root.op_count - 1].origin.value};
+    const TreeOriginId origin{graph_.ops[root_predicate.value].origin.value};
     Arm(node.arms->taken ? node.arms->taken : node.arms->fallthrough, syntax.consequent, origin,
         analysis::EdgeId{root.first_edge.value + (node.arms->taken ? 0U : 1U)}, pending);
+    const auto fallback = selected_taken ? part->arms->fallthrough : part->arms->taken;
+    Require(fallback.has_value() == syntax.alternate.has_value(), Error::kControl);
+    if (fallback) {
+      const auto& last = DecisionBlock(*part);
+      const auto predicate = DecisionPredicate(*part);
+      Arm(fallback, *syntax.alternate, TreeOriginId{graph_.ops[predicate.value].origin.value},
+          analysis::EdgeId{last.first_edge.value + (selected_taken ? 1U : 0U)}, pending);
+    }
   }
   void LogicalBranch(const SelectionRegion& region, StmtId statement, StmtId parent, std::uint32_t child) {
     const auto root = std::get<ExpressionStmt>(tree_.statements[statement.value].statement).expression;

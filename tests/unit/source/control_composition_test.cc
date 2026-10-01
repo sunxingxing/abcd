@@ -1,5 +1,6 @@
 #include "../../../src/source/exception_tree.h"
 #include "../../../src/source/completion_plan.h"
+#include "../../../src/source/cell_lifetime.h"
 #include "../../../src/source/hole_protocol.h"
 #include "../../../src/source/family_print.h"
 #include "../../../src/source/tree_flow.h"
@@ -40,7 +41,7 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
     std::optional<ScopeKind> cell_scope = {}, std::size_t expected_loops = 1,
     bool expect_finalizer = false, std::optional<ExpectedCompletion> expected_completions = {},
     CompositionStage stage = CompositionStage::kSource, std::size_t finalizer_count = 1,
-    std::span<const AwaitSite> awaits = {});
+    std::span<const AwaitSite> awaits = {}, bool reject_decision = false);
 
 void LoopCarried(abc::ProfileId profile, std::ostream* output) {
   // x = initial; try { while (next()) { x = step(x); next(); } } catch (_) {}
@@ -71,7 +72,7 @@ void LoopCarried(abc::ProfileId profile, std::ostream* output) {
 void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t locals,
     std::uint32_t parameters, bool staging, std::ostream* output, std::optional<ScopeKind> cell_scope,
     std::size_t expected_loops, bool expect_finalizer, std::optional<ExpectedCompletion> expected_completions,
-    CompositionStage stage, std::size_t finalizer_count, std::span<const AwaitSite> awaits) {
+    CompositionStage stage, std::size_t finalizer_count, std::span<const AwaitSite> awaits, bool reject_decision) {
   const auto frame = Take<abc::FrameLayout>(abc::BuildFrameLayout(locals, parameters, {}));
   const auto flow = Take<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers, {}, awaits, &frame));
   IdfQuota quota{kDefaultSemanticWork};
@@ -211,6 +212,11 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
   const ExpressionConstants resolved{constants, static_cast<std::uint32_t>(syntax.names.size()), 1, TextId{0}};
   const ExceptionTreeInput context{body, input, regions, control};
   const auto built = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, resolved);
+  if (reject_decision) {
+    test::Check(std::get_if<FunctionTreeError>(&built) &&
+        std::get<FunctionTreeError>(built) == FunctionTreeError::kOwnership);
+    return; // An arbitrary call result needs a conditional snapshot, not hoisting.
+  }
   if (const auto* error = std::get_if<FunctionTreeError>(&built))
     std::cerr << "loop-carried tree error " << static_cast<unsigned>(*error) << '\n';
   test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
@@ -345,6 +351,53 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
           VerifyExceptionTreeFlow(graph, context, evaluation, hoisted)));
     }
     test::Check(locals == 1);
+  }
+  if (std::any_of(control.skeleton.nodes.begin(), control.skeleton.nodes.end(),
+      [](const ControlNode& node) { return node.decision.has_value(); })) {
+    const auto environments = Take<ValueEnvironments>(BuildPhasedValueEnvironments(graph));
+    const auto cells = Take<CellPlan>(BuildPhasedCellPlan(graph, environments));
+    const auto lifetimes = Take<CellLifetimes>(BuildPhasedCellLifetimes(graph, environments, cells, context));
+    for (const auto& root : control.skeleton.nodes) {
+      auto decision = root.decision;
+      while (decision) {
+        auto at = decision->evaluate;
+        const auto last = decision->predicate.value_or(at);
+        const auto scope = lifetimes.blocks[root.block.value];
+        while (true) {
+          const auto& condition = control.skeleton.nodes[at.value];
+          test::Check(lifetimes.blocks[condition.block.value].value == scope.value);
+          if (at == last) break;
+          at = *condition.next;
+        }
+        decision = control.skeleton.nodes[last.value].decision;
+      }
+    }
+
+    // The emitted syntax may be legal while its short-circuit ownership is
+    // wrong. Check those mutations through independent flow/operand consumers.
+    bool logical = false;
+    for (std::size_t i = 0; i < tree.expressions.size(); ++i) {
+      const auto* condition = std::get_if<LogicalExpr>(&tree.expressions[i].expression);
+      if (!condition || condition->operation != TreeLogical::kOr) continue;
+      auto changed = tree;
+      std::get<LogicalExpr>(changed.expressions[i].expression).operation = TreeLogical::kAnd;
+      test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(changed)));
+      test::Check(std::holds_alternative<TreeFlowError>(VerifyExceptionTreeFlow(graph, context, evaluation, changed)));
+      logical = true; break;
+    }
+    test::Check(logical);
+    for (std::size_t i = 0; i < tree.expressions.size(); ++i) {
+      const auto* binary = std::get_if<BinaryExpr>(&tree.expressions[i].expression);
+      if (!binary || (binary->operation != BinaryOperator::kStrictEqual &&
+          binary->operation != BinaryOperator::kStrictNotEqual)) continue;
+      auto changed = tree;
+      std::get<BinaryExpr>(changed.expressions[i].expression).operation =
+          binary->operation == BinaryOperator::kStrictEqual ? BinaryOperator::kStrictNotEqual : BinaryOperator::kStrictEqual;
+      test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(changed)));
+      test::Check(std::holds_alternative<TreeSemanticError>(
+          VerifyExceptionTreeSemantics(graph, context, evaluation, changed, resolved)));
+      break;
+    }
   }
   test::Check(tree.recovery_issues.empty());
   test::Check(std::holds_alternative<TreeFlow>(VerifyExceptionTreeFlow(graph, context, evaluation, tree)));
@@ -1070,6 +1123,22 @@ void FinallyBranch(abc::ProfileId profile, std::ostream* output,
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--effectful-decision") {
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const bool select_false : {false, true})
+        Emit(test::SharedDecisionBody(2, select_false, true), profile, 0, 4, false, nullptr,
+            {}, 0, false, ExpectedCompletion{0, 0}, CompositionStage::kSource, 1, {}, true);
+    return 0;
+  }
+  if (argc == 2 && std::string_view(argv[1]) == "--shared-decision") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const std::uint32_t count : {2U, 200U, 201U, 400U}) for (const bool select_false : {false, true})
+        Emit(test::SharedDecisionBody(count, select_false), profile, 0, 4, false, &std::cout,
+            {}, 0, false, ExpectedCompletion{0, 0});
+    std::cout << "];\n";
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--shared-exit") {
     std::cout << "export const shared = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})

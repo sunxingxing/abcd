@@ -174,16 +174,16 @@ std::string EarlyTerminal(abc::ProfileId profile, bool raised) {
   test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, source)));
   return source.str();
 }
-std::string SharedExitSource(abc::ProfileId profile) {
-  const auto body = test::SharedExitBody();
-  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 7, {}));
+std::string StructuredSource(abc::ProfileId profile, const abc::MethodBody& body,
+    std::uint32_t parameters, std::size_t loops) {
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, parameters, {}));
   RouteInputIdentity identity; identity.profile = profile;
   const auto input = std::get<FunctionInput>(FunctionInput::Build(
       identity, {300}, {100}, body, frame, InputCaptureMode::kClosed));
   const auto values = std::get<FunctionValues>(BuildFunctionValues(input, body, frame));
   const auto& graph = values.graph;
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
-  test::Check(control.loops.size() == 1);
+  test::Check(control.loops.size() == loops);
   const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
   FunctionSyntax syntax{}; syntax.identity = identity; syntax.method = {300};
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
@@ -276,6 +276,13 @@ std::string OuterTransfer(abc::ProfileId profile, bool stop, bool carried) {
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--shared-decision") {
+    std::cout << "export const functions = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const std::uint32_t count : {2U, 200U, 201U, 400U}) for (const bool select_false : {false, true})
+        std::cout << StructuredSource(profile, test::SharedDecisionBody(count, select_false), 4, 0) << ",\n";
+    std::cout << "];\n"; return 0;
+  }
   PreservingContinuation();
   TerminalBoundaries();
   SharedExitCorridor();
@@ -298,7 +305,7 @@ int main(int argc, char** argv) {
   if (emit) std::cout << "];\n";
   if (emit) std::cout << "export const shared = [\n";
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
-    const auto source = SharedExitSource(profile);
+    const auto source = StructuredSource(profile, test::SharedExitBody(), 7, 1);
     if (emit) std::cout << source << ",\n";
   }
   if (emit) std::cout << "];\n";

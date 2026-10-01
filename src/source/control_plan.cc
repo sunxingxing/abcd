@@ -155,30 +155,48 @@ class ControlBuilder {
     }
   }
   void Decisions() {
-    // Reverse topological summaries recognize arbitrarily long shared-arm
-    // condition chains in O(B+E), never a suffix walk at every branch.
-    // Projected loop/exception ports keep their existing lexical consumer.
-    if (graph_.Kind() != ControlViewKind::kNormal) return;
+    // Reverse-topological path summaries cross Before/Commit and ordinary
+    // linear evaluation without a suffix walk per branch. Independent roots
+    // and shared predecessors stop ownership, even in a projected view.
+    std::vector<std::optional<ControlId>> predicates;
+    std::vector<std::uint8_t> roots;
+    quota_.Size(predicates, exit_); quota_.Size(roots, exit_);
+    for (const auto entry : entries_) {
+      quota_.Work(); Require(entry.value < exit_, Error::kInvalidGraph);
+      roots[entry.value] = 1;
+    }
     for (std::size_t i = exit_; i != 0; --i) {
       quota_.Work(); const auto id = order_[i - 1];
       const auto& node = graph_.Node({id});
+      if (node.arc_count == 1) {
+        const auto target = graph_.Arc(node.first_arc).target.value;
+        if (indegree_[target] == 1 && !roots[target]) predicates[id] = predicates[target];
+      }
       if (node.arc_count != analysis::kMaxNormalSuccessors) continue;
+      predicates[id] = ControlId{id};
       for (std::uint8_t e = 0; e < node.arc_count; ++e) {
         quota_.Work();
         const auto evaluate = graph_.Arc({node.first_arc.value + e}).target.value;
         const auto shared = graph_.Arc({node.first_arc.value + (1 - e)}).target.value;
-        const auto& child = graph_.Node({evaluate});
-        if (indegree_[evaluate] != 1 || child.arc_count != analysis::kMaxNormalSuccessors) continue;
+        if (indegree_[evaluate] != 1 || roots[evaluate] || !predicates[evaluate]) continue;
+        const auto predicate = *predicates[evaluate];
+        const auto& child = graph_.Node({predicate.value});
         for (std::uint8_t c = 0; c < child.arc_count; ++c) {
           quota_.Work();
           if (graph_.Arc({child.first_arc.value + c}).target.value != shared) continue;
           const auto other = graph_.Arc({child.first_arc.value + (1 - c)}).target.value;
           if (other == shared) continue;
-          if (decisions_[evaluate] &&
-              decisions_[evaluate]->evaluate.value == other &&
-              decisions_[evaluate]->evaluate_on_taken == (c != 0))
-            decisions_[id] = ControlDecision{{evaluate}, e == 0, c == 0, decisions_[evaluate]->join};
-          else decisions_[id] = ControlDecision{{evaluate}, e == 0, c == 0, {other}};
+          const auto& tail = decisions_[predicate.value];
+          // Both arms participate here: the lexical early-exit choice may be
+          // the shared arm itself when the other arm terminates privately.
+          // Retain the actual arm LCA, or the private other entry at virtual exit.
+          const auto common = Common(shared, other);
+          const auto join = tail && tail->evaluate.value == other &&
+              tail->evaluate_on_taken == (c != 0) ? tail->join :
+              ControlId{common == exit_ ? other : common};
+          if (join.value == shared) continue; // This arm is an unconditional follow, not a decision body.
+          decisions_[id] = ControlDecision{{evaluate}, e == 0, c == 0, join,
+              predicate.value == evaluate ? std::nullopt : std::optional<ControlId>{predicate}};
         }
       }
     }
@@ -221,9 +239,31 @@ class ControlBuilder {
                 quota_.Work(); const auto edge = original.first_arc.value + e;
                 plan_.edges[edge] = {{edge}, {part}, e == 0 ? EdgePlacement::kTaken : EdgePlacement::kFallthrough};
               }
-              if (!planned.decision) break;
-              const auto next = planned.decision->evaluate.value;
-              Require(!owned_[next], Error::kCrossEntry); owned_[next] = 1; ++covered;
+              if (!planned.decision) {
+                const auto other = graph_.Arc({original.first_arc.value + (taken ? 1U : 0U)}).target.value;
+                if (other != join) {
+                  if (taken) planned.arms->fallthrough = ControlId{other};
+                  else planned.arms->taken = ControlId{other};
+                  Require(pending < tasks_.size(), Error::kResourceLimit);
+                  tasks_[pending++] = {other, join};
+                }
+                break;
+              }
+              auto next = planned.decision->evaluate.value;
+              const auto predicate = planned.decision->predicate.value_or(planned.decision->evaluate).value;
+              while (next != predicate) {
+                quota_.Work();
+                Require(!owned_[next] && indegree_[next] == 1, Error::kCrossEntry);
+                const auto& linear = graph_.Node({next});
+                Require(linear.arc_count == 1, Error::kInvalidGraph);
+                owned_[next] = 1; ++covered;
+                const auto target = graph_.Arc(linear.first_arc).target;
+                plan_.nodes[next].next = ControlId{target.value};
+                plan_.edges[linear.first_arc.value] = {{linear.first_arc.value}, {next}, EdgePlacement::kNext};
+                next = target.value;
+              }
+              Require(!owned_[next] && indegree_[next] == 1, Error::kCrossEntry);
+              owned_[next] = 1; ++covered;
               const bool next_taken = planned.decision->shared_on_taken;
               plan_.nodes[next].arms = ControlArms{next_taken ? std::optional<ControlId>{{shared}} : std::nullopt,
                   next_taken ? std::nullopt : std::optional<ControlId>{{shared}}};

@@ -1,6 +1,6 @@
 # 项目进展与设计审查
 
-更新时间：2026-10-01。设计基线见 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md)。
+更新时间：2026-10-02。设计基线见 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md)。
 本页是当前状态入口；[progress.md](progress.md) 保留历史证据，不覆盖本页结论。
 
 ## 更新规则
@@ -11,6 +11,58 @@
 - 不按文件数、提交数或接口数量宣布完成；必须以原计划的端到端验收为准。
 
 ## 当前阶段
+
+
+### 2026-10-02：跨线性相位路径的共享条件与末端分支贯通
+
+- 投影图新增回归在成功编译后 RED：旧 skeleton 重复接纳共享 arm，
+  ControlError::kCrossEntry；真实解码的调用条件夹具也在控制阶段 RED。
+  /tmp/abcd-phase-decision-red-build.log、red-test.log、red-source.log。
+  后者仍有条件快照缺口，不能把控制推进称为调用条件源码支持。
+- ControlDecision 增加可选末端 predicate，逆拓扑摘要跨唯一入口的线性
+  Before/Commit 或普通 jump 路径。每个原节点与弧仍独立拥有；条件求值路径的共享前驱、
+  独立 root、synthetic 及跨 scope 不可吸收。末端非共享尾段作为真实 fallback
+  保留，用两侧实际 LCA 选择汇合，不能使用忽略私有 abrupt arm 的 follow
+  选择替代。摘要/归属 O(B+E)，候选 LCA 至多 O(B log B)，新增 O(B) 空间。
+- acyclic verifier 复用已有独立 ControlRegions 原弧/ownership 检查，不重跑
+  发现。FunctionTree、TreeFlow 和 cell lifetime 共用该候选路径，显式核对
+  PhaseControlUnit/Commit 谓词、实际边复制、空 staging、条件操作归属和 PC。
+  输出已有 LogicalExpr/IfStmt/shared printer，共享正文一次发射，fallback
+  不丢弃；没有改原 CFG、扩 try 范围、恢复旧 writer 或新增最终 IR。
+- 无独立 throw dispatch 的分支只接纳零效果子树；builder 与 phase verifier
+  均检查该边界。需要 snapshot 的任意调用保持 kOwnership 拒绝，三 profile、
+  两种极性的六个反例防止提前执行。该缺口仍待条件性效果/快照表示，不能
+  放松 SameCatch、复制调用或用外部源码补齐。
+- 投影图覆盖1/200/201/400路径、两侧四种极性、201→400 work增长、额外root
+  和合法ID的跳过路径/错predicate反例。真实解码普通/相位夹具各24份完整
+  函数，含2/200/201/400比较和真实jump锚点；独立 oracle各768场景+72个
+  mutation，核对严格比较不强制转换、shared/after顺序与次数、receiver、
+  任意调用点异常和payload身份。树中OR→AND及比较取反的合法语法变体
+  被独立流/语义检查拒绝。相位夹具不含 native await/platform 验收。
+- 扩展曾暴露原 abrupt shared-arm 回归，修正两侧 LCA 后保留原 getter
+  短路行为。旧 OptionalAccess(true) 控制拒绝更新为实际接受，共同树保留
+  一个 debugger；完整源码独立12场景+1个改属性mutation，检查nullish、
+  getter receiver/次数、对象与异常身份。此 debugger 保留检查是结构证据，
+  没有伪称执行调试器暂停的宿主验收。
+- 最终相关构建退出0，64/64定向测试通过172.52秒；
+  /tmp/abcd-phase-decision-verified-build.log、verified-tests.log。包含既有
+  shared getter/selection、普通/phased控制、cell/capture、class/derived、
+  async/generator RETURN循环及Home/PageA完整record回归。未恢复全库、
+  扩大语料、RSS/基准、DFX、调度器或代理；内存实测仍未验证。
+- 最终五输入 build/stage-one/value-phase-decisions-pass-2 顺序导出均退出0，
+  保持51 complete / 3 incomplete / 52 failure / 46 no-module，没有新增完整
+  record，也没有完整项回退或legacy writer。证据
+  /tmp/abcd-phase-decision-final-batch.log、final-batch-summary.json。
+  阶段一语义/表示验收仍未闭合；no-module和部分输出不是完成。
+- 直接 __cxa_throw 核对，旧控制归属失败已越过；现在首次失败在函数族
+  member11的async arrow9165，creator9082、creation PC145，BuildLiterals
+  kLateValue：allocation op92之后，NamedRead op110原始PC306（工作PC280）
+  使用ModuleRead op106原始PC296（工作PC270）的结果。证据
+  /tmp/abcd-phase-decision-real-next.log、real-owner.log、real-final.log、
+  next-literal.log。不是9193完整源码或真实应用 Accepted。
+- 下一步在相位字面量与共同模块求值合同中恢复该有序模块依赖，保留TDZ
+  guard、catch快照和读取次数；之后继续完整函数族及独立语义/表示验收。
+  阶段一 Goal active且未完成。
 
 ### 2026-10-01：循环共享退出段及嵌套提前转移的共同恢复
 

@@ -89,5 +89,53 @@ void ProjectedSkeleton() {
   catch (ControlError error) { rejected = error == ControlError::kRevision; }
   Check(rejected);
 }
+void ProjectedDecisions() {
+  std::array<std::uint64_t, 4> work_201{};
+  for (const std::uint32_t length : {1U, 200U, 201U, 400U})
+    for (const bool outer_taken : {false, true}) for (const bool inner_taken : {false, true}) {
+    const auto predicate = length + 1, shared = predicate + 1, join = shared + 1;
+    std::vector<ControlVertex> nodes(join + 1);
+    std::vector<ControlLink> arcs;
+    for (std::uint32_t b = 0; b < nodes.size(); ++b) {
+      auto& node = nodes[b]; node.first_arc = {static_cast<std::uint32_t>(arcs.size())};
+      const auto add = [&](std::uint32_t target) {
+        const auto ordinal = node.arc_count++;
+        arcs.push_back({{b}, {target}, ordinal ? analysis::FlowEdgeKind::kFallthrough : analysis::FlowEdgeKind::kTaken, ordinal});
+      };
+      if (b == 0) { add(outer_taken ? shared : 1); add(outer_taken ? 1 : shared); }
+      else if (b == predicate) { add(inner_taken ? shared : join); add(inner_taken ? join : shared); }
+      else if (b == join) node.termination = ControlTermination::kAbrupt;
+      else add(b == shared ? join : b + 1);
+    }
+    const ControlGraphView view{ControlProjection{{7}, {9}, nodes, arcs}};
+    const ControlId root{0}; ControlQuota quota{{}};
+    const auto plan = BuildControlSkeleton(view, {&root, 1}, quota);
+    Check(plan.nodes[0].decision && plan.nodes[0].decision->evaluate == ControlId{1} &&
+        plan.nodes[0].decision->predicate == ControlId{predicate});
+    VerifyControlSkeleton(view, {&root, 1}, plan, quota);
+    const auto work = analysis::kDefaultSemanticWork - quota.RemainingWork();
+    const auto polarity = static_cast<unsigned>(outer_taken) * 2 + static_cast<unsigned>(inner_taken);
+    if (length == 201) work_201[polarity] = work;
+    if (length == 400) Check(work_201[polarity] && work < work_201[polarity] * 3);
+    auto changed = plan;
+    changed.nodes[1].next = ControlId{shared};
+    bool rejected = false;
+    try { VerifyControlSkeleton(view, {&root, 1}, changed, quota); }
+    catch (ControlError) { rejected = true; }
+    Check(rejected);
+    changed = plan; changed.nodes[0].decision->predicate = ControlId{shared};
+    rejected = false;
+    try { VerifyControlSkeleton(view, {&root, 1}, changed, quota); }
+    catch (ControlError) { rejected = true; }
+    Check(rejected);
+    // An extra semantic root cannot be absorbed as conditional evaluation,
+    // even with a single original predecessor.
+    const std::array roots{root, ControlId{length}};
+    rejected = false;
+    try { const auto invalid = BuildControlSkeleton(view, roots, quota); }
+    catch (ControlError) { rejected = true; }
+    Check(rejected);
+  }
 }
-int main() { DisjointLoopEntries(); NormalAdapter(); ProjectedSkeleton(); }
+}
+int main() { DisjointLoopEntries(); NormalAdapter(); ProjectedSkeleton(); ProjectedDecisions(); }

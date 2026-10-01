@@ -63,6 +63,10 @@ void Schedule(const ValueProgram& graph, EvaluationPlan& plan, PhaseCorridors& c
           occurrence.role == OperandRole::kReceiver || PredicateSnapshot(graph, op, occurrence.operand)) continue;
       if (retry && retry->roots[producer->value] != retry->roots[i]) continue;
       const auto child = intervals[producer->value];
+      // A branch has no throw dispatch of its own. Only a pure subtree may
+      // end there under this contract; effectful conditions retain snapshots
+      // until their conditional execution/handler ownership is represented.
+      if (std::holds_alternative<ValueBranch>(op.operation) && child.count) continue;
       if (plan.operations[producer->value].kind != EvaluationKind::kRoot ||
           (child.count && child.end != expected) ||
           !corridors.CanFuse(*producer, id, use)) continue;
@@ -152,6 +156,7 @@ std::variant<PhaseEvaluationCost, EvaluationError> VerifyPhaseExpressions(
         const auto& occurrence = graph.uses[use.value];
         if (IsMemberReceiver(graph, plan, occurrence)) continue;
         const auto child = intervals[producer->value];
+        Require(!std::holds_alternative<ValueBranch>(op.operation) || child.count == 0, Error::kOrder);
         Require(plan.operations[producer->value].consumer == use && !consumed[producer->value] &&
             !shape->NeedsSnapshot(occurrence.role) && occurrence.role != OperandRole::kReceiver &&
             !PredicateSnapshot(graph, op, occurrence.operand) &&

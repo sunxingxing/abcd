@@ -854,7 +854,13 @@ int main(int argc, char** argv) {
   }
   const auto observable = OptionalAccess(true);
   Check(observable.cfg_revision.value == 0);
-  Check(std::get<ControlError>(BuildControlPlan(observable)) == ControlError::kCrossEntry);
+  const auto observable_control = std::get<ControlPlan>(BuildControlPlan(observable));
+  Check(std::holds_alternative<std::uint64_t>(VerifyControlPlan(observable, observable_control)));
+  const auto observable_source = Source(observable);
+  Check(observable_source.find("debugger;") != std::string::npos);
+  if (argc == 2 && std::string_view(argv[1]) == "--observable-optional-source") {
+    std::cout << observable_source << '\n'; return 0;
+  }
 
   if (argc == 2 && std::string_view(argv[1]) == "--sources") {
     std::cout << "[" << Source(Diamond(false)) << "," << Source(Diamond(true)) << "," << Source(Diamond(false, 1, false, true))

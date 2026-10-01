@@ -22,7 +22,8 @@ void PhaseBudget::Step(std::size_t count) {
 bool PhaseCorridors::Expression(const ValueOperation& operation) {
   // Guarded modules are paired by the caller's independently checked module
   // index; their two original effects form one subtree, never a pure name read.
-  return Aggregate(operation) || std::holds_alternative<ValueCopy>(operation) ||
+  return Aggregate(operation) || std::holds_alternative<ValueBranch>(operation) ||
+      std::holds_alternative<ValueCopy>(operation) ||
       std::holds_alternative<ValueString>(operation) ||
       std::holds_alternative<ValueUnary>(operation) ||
       std::holds_alternative<ValueBinary>(operation) ||
@@ -218,7 +219,8 @@ bool PhaseCorridors::CanFuse(OpId producer, OpId consumer, UseId use) const {
   const auto& child = graph_.ops[producer.value];
   const auto& parent = graph_.ops[consumer.value];
   if (producer.value >= consumer.value || child.life != ValueLife::kLive ||
-      !child.result || !parent.result || !Expression(child.operation) || !Expression(parent.operation)) return false;
+      !child.result || (!parent.result && !std::holds_alternative<ValueBranch>(parent.operation)) ||
+      !Expression(child.operation) || !Expression(parent.operation)) return false;
   const auto& uses = uses_[child.result->value];
   if (uses.multiple || uses.first != use) return false;
   // First phi/catch snapshots must remain stored. Their raw bindings are not
