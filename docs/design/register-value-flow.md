@@ -62,6 +62,24 @@ threshold as 0xfffe000000000000 for this layout. With assertions disabled,
 0x7fff000000000005 becomes that impure pattern under NEG. These are source-level
 counterexamples, not a claim that a built Ark runtime was executed in tests.
 
+Addition has a separate signaling-NaN counterexample: accepted input bits
+`0xfff7000000000005` can quiet during addition by zero to
+`0xffff000000000005`, whose tagged encoding is Hole. The native macOS arithmetic
+probe reproduced these bits on 2026-10-01; this is not execution of an Ark VM.
+`register_value_flow_test` fixes the decoded FLDAI → register copy → ADD2 → return
+case: the load is Language, the sum remains Unknown, and source verification
+rejects its observable return. A future numeric refinement must distinguish
+safe numeric provenance; Language alone cannot discharge this obligation.
+
+The exact locked commit was fetched independently of the different local runtime
+checkout. Primary evidence:
+[ADD2 handler, lines 1816–1848](https://github.com/openharmony/arkcompiler_ets_runtime/blob/f04900cf951c66c2ea18b2bab5b591d5336c34b9/ecmascript/interpreter/interpreter-inl.cpp#L1816)
+and [double construction, lines 119–124](https://github.com/openharmony/arkcompiler_ets_runtime/blob/f04900cf951c66c2ea18b2bab5b591d5336c34b9/ecmascript/js_tagged_value.h#L119).
+Downloaded file SHA-256 values are respectively
+`a62ef5d2297505835fd672dba2fe586fd7e38fb07271c248062aa2e58978d0d0` and
+`5192911948b06839f219668969222c41516f062383173fe1716ecf58876697fe`.
+No upstream implementation was copied into production.
+
 Hole checks do NOT globally narrow their input SSA value: a use before the
 check, another path or the exceptional outcome could still observe Hole.
 Use-site/path refinement and exception execution need separate analyses.

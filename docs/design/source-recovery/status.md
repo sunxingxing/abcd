@@ -12,6 +12,22 @@
 
 ## 当前阶段
 
+### 2026-10-01：Categories 数值加法边界的锁定源码与回归证据
+
+- 已取得锁定ets_runtime commit f04900cf951c66c2ea18b2bab5b591d5336c34b9的
+  interpreter-inl.cpp和js_tagged_value.h；ADD2数值路径直接构造tagged double，
+  未见NaN规范化。链接与文件SHA-256见register-value-flow.md，未使用版本不同的
+  本地checkout替代固定参考。
+- 本机算术探针复现0xfff7000000000005加0成为0xffff000000000005，按固定offset
+  编码为Hole。此为本机算术/源码合同证据，不是Ark VM运行结果。新增真实解码
+  回归确认原FLDAI为Language、ADD2仍为Unknown，并在PC19返回处拒绝。
+- register_value_flow_test构建与定向测试通过，4.34秒；
+  /tmp/abcd-add-nan-build.log、/tmp/abcd-add-nan-tests.log。
+  因此不能直接把任意ADD2提升为Language来放行Categories；需要可证明的数值
+  来源细化或完整的对应语义支持。该真实record仍未完成。
+- 本轮没有修改生产准入，没有重跑五输入，最近47/59/46基线不变；全量测试/RSS/
+  基准仍暂停。阶段一仍需继续实现及独立配对/风格验收，Goal保持开放。
+
 ### 2026-10-01：类型化boolean结果的重复转换消除
 
 - ExpressionForest对输入已被BooleanEvaluation证明为boolean的ToBoolean复用原

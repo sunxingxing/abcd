@@ -1,4 +1,5 @@
 #include "abcd/analysis/register_value_flow.h"
+#include "abcd/analysis/semantic_validation.h"
 
 #include "analysis/ssa_fixture.h"
 
@@ -10,6 +11,23 @@ void VerifyValueFlow();
 void VerifyValueScaling();
 }  // namespace abcd::test
 int main() {
+  {
+    // Pinned v7 ADD2 feeds its double result directly to JSTaggedValue. The
+    // accepted negative signaling NaN 0xfff7000000000005 can quiet to
+    // 0xffff000000000005; adding the tag offset then produces internal Hole.
+    // Neither a legal input category nor addition by zero proves safe output.
+    const auto input = Body({0x63, 5, 0, 0, 0, 0, 0, 0xf7, 0xff,
+        0x61, 0, 0x62, 0, 0, 0, 0,
+        static_cast<std::uint8_t>(abc::Opcode::kADD2_IMM8_V8), 0, 0, 0x64});
+    const auto method = std::get<SemanticMethod>(BuildSemanticMethod(input, abc::ProfileId::kDynamic1206, 1));
+    IdfQuota work{UINT64_MAX};
+    const auto facts = std::get<RegisterValueFlow>(RegisterValueFlow::Build(input, method.ssa, 1, {}, work));
+    Check(facts.At(*method.ssa.Write({0})) == ValueKinds::Language());
+    Check(facts.At(*method.ssa.Write({3})) == ValueKinds::Unknown());
+    const auto proof = VerifySemanticSource(input, method, 1, 0);
+    const auto* failure = std::get_if<SemanticProofFailure>(&proof);
+    Check(failure && failure->kind == SemanticProofError::kInternalValue && failure->pc == abc::CodeOffset{19});
+  }
   const auto body = Body({0x70, 0x61, 0, 0x60, 0, 0x64});
   const auto graph = std::get<NormalFlow>(BuildNormalFlow(body));
   IdfQuota quota{100000};
