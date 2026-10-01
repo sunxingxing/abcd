@@ -18,7 +18,8 @@ enum class ValueRuleKind {
   kEquality,
   kStringAdd,
   kNonNaNUnary,
-  kNonNaNMultiply
+  kNonNaNMultiply,
+  kNonNaNDivide
 };
 struct ValueRule {
   ValueRuleKind kind = ValueRuleKind::kFixed;
@@ -27,6 +28,15 @@ struct ValueRule {
 // IEEE Number multiplication cannot create NaN without a NaN input or a
 // zero/infinity pair. Overflow and underflow may lose finite/nonzero facts.
 constexpr ValueKinds MultiplyNumbers(ValueKinds left, ValueKinds right) {
+  return left.IsNonNaNNumber() && right.IsNonNaNNumber() &&
+                 (left.IsFiniteNonzeroNumber() || right.IsFiniteNonzeroNumber())
+             ? ValueKinds::NonNaNNumber() : ValueKinds::Unknown();
+}
+// Pinned FastDiv handles a zero divisor before IEEE division. With no NaN
+// input and at least one finite/nonzero input, neither infinity/infinity nor
+// zero/zero reaches raw division. Overflow, underflow and signed zero remain
+// non-NaN Numbers. This proves the normal result only, never erases effects.
+constexpr ValueKinds DivideNumbers(ValueKinds left, ValueKinds right) {
   return left.IsNonNaNNumber() && right.IsNonNaNNumber() &&
                  (left.IsFiniteNonzeroNumber() || right.IsFiniteNonzeroNumber())
              ? ValueKinds::NonNaNNumber() : ValueKinds::Unknown();

@@ -85,6 +85,16 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment) {
           UINT64_C(0xfffe000000000000);
       if (number->value >= kImpureNaNBitsMin)
         return ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};
+      // IEEE binary64 exponent/significand fields distinguish finite values,
+      // signed zero, infinities and NaNs without evaluating/quieting a payload.
+      // NaNs below the VM's impure threshold remain Language, not non-NaN.
+      constexpr std::uint64_t kMagnitudeMask = UINT64_C(0x7fffffffffffffff);
+      constexpr std::uint64_t kInfinityBits = UINT64_C(0x7ff0000000000000);
+      const auto magnitude = number->value & kMagnitudeMask;
+      if (magnitude <= kInfinityBits)
+        return ValueRule{ValueRuleKind::kFixed,
+            magnitude != 0 && magnitude < kInfinityBits
+                ? ValueKinds::FiniteNonzeroNumber() : ValueKinds::NonNaNNumber()};
     }
     if (const auto* integer = std::get_if<IntegerLiteral>(value))
       return ValueRule{ValueRuleKind::kFixed,
@@ -139,6 +149,8 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment) {
       return ValueRule{ValueRuleKind::kStringAdd, {}};
     if (binary->op == BinaryOperator::kMultiply)
       return ValueRule{ValueRuleKind::kNonNaNMultiply, {}};
+    if (binary->op == BinaryOperator::kDivide)
+      return ValueRule{ValueRuleKind::kNonNaNDivide, {}};
     language = HasLanguageResult(binary->op);
   }
   return language ? ValueRule{ValueRuleKind::kLanguageOperation, {}}

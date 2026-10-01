@@ -12,6 +12,32 @@
 
 ## 当前阶段
 
+### 2026-10-01：可证明除法值域贯通共同正常/相位源码路径
+
+- 真实EntryAbility成员5165确认为updateBreakpoint；LLDB定位kValues的具体
+  拒绝为PC44的寄存器保存读取PC41 DIV2的Unknown结果，
+  /tmp/abcd-entryability-5165-input-debug.log。属性和参数在ABC中仅有Language
+  事实，不能借配对源码的数值类型补齐；当前仍拒绝该完整成员。
+- FLDAI以原始binary64 magnitude区分有限非零、signed zero、infinity和NaN，
+  保留既有impure阈值。DIV2仅在两个NonNaNNumber且至少一个有限非零时给出
+  NonNaNNumber；copies/phis复用共同稀疏传播，未引入样本分支或writer。
+  结果不保留有限非零前提，不抹掉user-code效果、异常边或正常Commit所有权。
+- 固定commit的FastDiv源码确认非零除数路径直接封装double结果。本机探针
+  复现0xfff7000000000005除以1得到0xffff000000000005，tagged编码为Hole；
+  /tmp/abcd-quotient-nan-probe.log。这是native arithmetic/锁定源码证据，
+  不是Ark VM运行结果；任意Language数值的准入没有放宽。
+- 新回归在旧实现确实失败，/tmp/abcd-quotient-baseline-test.log；修复后4项
+  定向测试通过，4.60秒，/tmp/abcd-quotient-final-tests.log。覆盖int/float、
+  signed zero、infinity、subnormal underflow、正常和相位import/独立核对、
+  mixed Phi及1/2/200/201/400/800链；7个完整生成函数经独立JS数值对照通过。
+  构建退出0，/tmp/abcd-quotient-final-build.log。
+- 五输入 build/stage-one/value-quotient-pass-1 均退出0，维持
+  **47 complete / 2 incomplete / 57 failure / 46 no-module**，没有完整项退化、
+  没有legacy writer；/tmp/abcd-quotient-batch-summary.json。当前5165仍kValues，
+  /tmp/abcd-quotient-entryability-member.json。全量/RSS/基准保持暂停。
+- 下一步仍需通用、可核对的数值来源事实或显式语义支持，以及spread展开/父类
+  品牌合同和其余类成员/控制结构阻塞；配对语义和表示验收未闭合，Goal保持active。
+
 ### 2026-10-01：类成员缺口贯通部分record源码输出
 
 - ValueSuperSpread现可经共同EvaluationShape保留构造器/数组两个用途和全部

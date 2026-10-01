@@ -52,6 +52,42 @@ int32 path produces an int32 or finite double (including `-INT32_MIN`), so
 `NEG` preserves this refinement; unconstrained floating NaNs remain top.
 Unknown inputs never become language values merely because an ISA writes acc.
 
+Finite nonzero FLDAI literals now provide FiniteNonzeroNumber, signed zero and
+infinities provide NonNaNNumber, and accepted NaN payloads remain Language.
+Classification uses raw IEEE binary64 magnitude bits, so it never quiets a
+signaling payload during analysis. The impure-NaN threshold check still runs
+first. Both normal and phased propagation use these same rules and joins.
+
+`DIV2` has a bounded numeric rule: both operands must be NonNaNNumber and at
+least one must be FiniteNonzeroNumber. The pinned FastDiv zero-divisor path
+produces infinity for a nonzero numerator; otherwise raw division cannot meet
+zero/zero or infinity/infinity under these premises. Overflow, underflow and
+signed zero retain NonNaNNumber. The result loses the finite/nonzero fact;
+Phi joins cannot preserve it if any incoming value is zero, infinity or only
+Language. This normal-result proof preserves original user-code conversion
+effects, exception arcs and Commit ownership; it does not infer numeric facts
+from source annotations, parameter names or property reads.
+
+Unconstrained division remains Unknown. Actual pasteboard EntryAbility method
+5165 (`updateBreakpoint`) reads a property and parameter, divides at PC41,
+then fails phased input validation on the PC44 copy. Neither operand has the
+required numeric fact in ABC. Accepted signaling payload
+`0xfff7000000000005` divided by 1 can quiet to `0xffff000000000005`, whose
+tagged encoding is Hole. A native macOS probe reproduced this on 2026-10-01;
+it was not execution of an Ark VM. The decoded regression preserves rejection
+in normal and phased paths and independently covers safe integer/float pairs,
+signed zero, infinity, subnormal underflow, mixed Phi inputs and 200/201 chains.
+
+Primary evidence is locked
+[FastDiv, lines 43–59](https://github.com/openharmony/arkcompiler_ets_runtime/blob/f04900cf951c66c2ea18b2bab5b591d5336c34b9/ecmascript/interpreter/fast_runtime_stub-inl.h#L43)
+and the same commit's
+[DIV2 handler, lines 1897–1914](https://github.com/openharmony/arkcompiler_ets_runtime/blob/f04900cf951c66c2ea18b2bab5b591d5336c34b9/ecmascript/interpreter/interpreter-inl.cpp#L1897).
+Downloaded fast-runtime header SHA-256:
+`00ba9ea1732b1e962e8b1a8b5953b185fe483985bd6036875bc0d952da7213f7`.
+The implementation is an independent finite-domain rule, not copied runtime
+code. Seven complete common-tree generated quotients pass independent JS
+behavior checks; this does not close paired-record semantic/style acceptance.
+
 NaN evidence is pinned with the repository reference lock: `interpreter-inl.cpp`
 FLDAI (near 1253) bit-casts the raw immediate, and NEG (near 4892) negates the
 decoded double; `js_tagged_value.h` constructor (near 119) adds
