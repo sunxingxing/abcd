@@ -19,7 +19,8 @@ struct PhaseEvaluationCost {
 // Source occurrence projection on an already validated graph and alias map.
 [[nodiscard]] bool IsMemberReceiver(const analysis::ValueProgram& graph,
     const EvaluationPlan& plan, const analysis::OperandUse& use);
-// Only after fresh evaluation verification; lookup, not a certificate.
+// Only after fresh evaluation verification; lookup, not a certificate. Includes
+// the same owned cross-phase references in freshly checked literal nesting.
 [[nodiscard]] bool CrossPhaseInline(const analysis::ValueProgram& graph,
     const EvaluationPlan& plan, analysis::OpId producer);
 }  // namespace abcd::source

@@ -81,7 +81,8 @@ void Schedule(const ValueProgram& graph, EvaluationPlan& plan, PhaseCorridors& c
 }  // namespace
 bool CrossPhaseInline(const ValueProgram& graph, const EvaluationPlan& plan, OpId producer) {
   const auto& placement = plan.operations[producer.value];
-  if (plan.flow != EvaluationFlow::kPhased || placement.kind != EvaluationKind::kInline ||
+  if (plan.flow != EvaluationFlow::kPhased ||
+      (placement.kind != EvaluationKind::kInline && placement.kind != EvaluationKind::kNestedLiteral) ||
       !placement.consumer) return false;
   const auto* owner = std::get_if<OpId>(&graph.uses[placement.consumer->value].owner);
   return owner && graph.ops[owner->value].block != graph.ops[producer.value].block;

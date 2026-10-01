@@ -479,7 +479,8 @@ class ForestBuilder {
       if (evaluation_.operations[target.value].kind == EvaluationKind::kInitializer) {
         const auto& definition = graph_.ops[target.value];
         Require(definition.use_count == 2, Error::kOwnership);
-        const auto* base = std::get_if<analysis::ValueId>(&graph_.uses[definition.first_use.value].operand);
+        const auto operand = ResolveEvaluationOperand(evaluation_, graph_.uses[definition.first_use.value].operand);
+        const auto* base = std::get_if<analysis::ValueId>(&operand);
         const auto* allocation = base ? std::get_if<analysis::OpResult>(&graph_.values[base->value].origin) : nullptr;
         Require(allocation && objects_[allocation->op.value], Error::kOwnership);
         target = allocation->op;

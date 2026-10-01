@@ -33,7 +33,8 @@ struct LiteralPlan {
   std::vector<std::uint8_t> staged;
   // Per nested allocation/value expression, the unique immediate consumer use.
   // Operand trees preserve initialization/operand/property order; module guards are paired. Empty
-  // for roots. Only normal, block-local, unobserved nesting is admitted.
+  // for roots. Normal blocks or unique phase corridors retain unobserved
+  // nesting; phased effects also retain dispatch and staged catch values.
   std::vector<std::optional<analysis::UseId>> nested;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
@@ -74,7 +75,8 @@ enum class LiteralError : std::uint8_t {
 // Same initializer model across unique normal phase corridors. The original
 // phase graph stays intact; copy aliases must have their independent proof.
 // No observations (including exceptional snapshots) before the last define,
-// and every RHS must already be available at allocation. Source publication
+// RHS snapshots precede allocation; checked single-consumer nesting retains
+// operand/property order and the outer allocation's catch-copy sources. Publication
 // additionally requires the versioned resource-exhaustion exclusion.
 [[nodiscard]] std::variant<LiteralPlan, LiteralError> BuildPhasedLiteralPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,

@@ -12,6 +12,43 @@
 
 ## 当前阶段
 
+### 2026-10-01：相位嵌套初始化贯通共同字面量与原生调用
+
+- LiteralPlan将已有单次用途/层叠区间规划接入unique normal phase corridor，
+  使用受检alias解析实际RHS、callee和receiver；一次canonical use census检查
+  所有间接消费者、catch/phi观察。没有删除原始SSA/phase/PC或新建writer。
+  共同ExpressionForest依赖工作表和origin检查也解析实际初始化base/RHS，
+  保留allocation/read表达式与各own definition的独立来源。
+- 每个折叠效果及definition保留最外allocation的exception target和实际
+  staged catch-copy source，复用PhaseCorridors::SameCatch。原生member reference
+  可经受检nested placement跨phase，CallPlan/TreeOperands继续核对receiver；
+  没有使用可篡改的.call/.apply适配。共享对象、未完成观察、跨handler范围、
+  改变catch可见局部值、缺失/错误consumer及重排definition仍拒绝。
+- 解码嵌套夹具在旧实现实际失败，/tmp/abcd-phased-nesting-red-tests.log；
+  序列化nested call曾在实际准备入口拒绝，
+  /tmp/abcd-phased-nested-call-red.log。三profile的1/2/200/201/400/800属性
+  贯通evaluation、异常AST、TreeFlow和独立semantics。临时移除SameCatch检查后，
+  kNestedSnapshot错误接受立即被测试捕获；见
+  /tmp/abcd-phased-nesting-catch-mutation-tests.log及对应-debug.log。检查已恢复。
+- 三profile序列化nested read/call通过共同文件、class/family、ABI、instruction
+  sources与printer；完整生成函数通过306个独立getter/Proxy、receiver、任意
+  throw身份、保留效果、fresh outer/inner、own descriptor和继承setter场景，
+  /tmp/abcd-phased-nesting-behavior.log。各原始PC及property printer位置也核对。
+  最终生产/测试构建退出0，/tmp/abcd-phased-nesting-final-build.log；18/18
+  定向回归通过20.49秒，/tmp/abcd-phased-nesting-final-tests.log。
+  全量/RSS/基准保持暂停，本次是作者自审，没有代理或平台最终验收。
+- 五输入build/stage-one/value-phased-nesting-pass-1均退出0，维持
+  **48 complete / 2 incomplete / 56 failure / 46 no-module**，无完整项退化、
+  无legacy writer，/tmp/abcd-phased-nesting-batch-summary.json。
+  这不是阶段一配对语义/表示质量最终验收，Goal仍active。
+- 真实7421不再首先拒绝allocation60之后的nested allocation62候选；当前
+  先停在后续allocation69的RHS ValueUnary kNegate（op74/value84），仍为
+  kLateValue，/tmp/abcd-phased-nesting-pagea-next-rhs.log。整个LiteralPlan尚未
+  通过，不能将前一个候选接纳算完整验证；PageA整record仍tree_stage。
+  下一项接入后生成算术RHS及其真实coercion/异常顺序，再复验7421整family。
+- 决策：沿用功能优先的现有status记录与定向验证；用户暂停全量/RSS及禁代理
+  的约定优先于Skill的默认全套验证/委派流程，不增加独立审查或发布设施。
+
 ### 2026-10-01：相位函数族的实际闭包写入前提贯通
 
 - BuildPhasedEvaluationPlan新增显式ClosureWrites参数，默认仍为Unknown。

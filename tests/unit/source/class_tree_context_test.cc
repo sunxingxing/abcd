@@ -47,7 +47,7 @@ enum class GeneratorEncoding { kTagged, kExplicitTagged, kExplicitOrdinary };
 enum class ExceptionShape {
   kNone, kBranch, kModule, kForwarder, kDeadCopies, kLiveCopies, kReceiver, kReceiverCatch,
   kReceiverArgument, kReceiverPair, kReceiverNumericPair, kReceiverTypeof, kLiteral, kLexical,
-  kReceiverResult, kAsyncAwait, kGeneratorYield, kGeneratorCatch, kBufferedLexical
+  kReceiverResult, kAsyncAwait, kGeneratorYield, kGeneratorCatch, kBufferedLexical, kNestedLiteral, kNestedCall
 };
 void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof = false,
          bool object_initializer = false, bool snapshot = false, std::ostream* evidence = nullptr,
@@ -206,6 +206,28 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
           kLoad, kValue, op(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8), 0, kNamePool, 0, kObject,
           kLoad, kObject, kReturn, kReturn,
           0, kLiteralProtected, kSingleTry, kCatchAll, kLiteralProtected, 1};
+    }
+    if (exception == ExceptionShape::kNestedLiteral || exception == ExceptionShape::kNestedCall) {
+      // Both allocations precede the getter and their own definitions. The
+      // catch returns the exact thrown value, never the unfinished objects.
+      constexpr std::uint8_t kLocals = 2, kOuter = 0, kInner = 1, kInput = 5,
+          kBytes = 28, kProtected = 27;
+      member = {kLocals, 4, kBytes, kSingleTry,
+          op(abc::Opcode::kCREATEEMPTYOBJECT), kStore, kOuter,
+          op(abc::Opcode::kCREATEEMPTYOBJECT), kStore, kInner,
+          kLoad, kInput, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, kNamePool, 0,
+          op(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8), 0, kNamePool, 0, kInner,
+          kLoad, kInner, op(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8), 0, kNamePool, 0, kOuter,
+          kLoad, kOuter, kReturn, kReturn,
+          0, kProtected, kSingleTry, kCatchAll, kProtected, 1};
+      if (exception == ExceptionShape::kNestedCall) {
+        constexpr std::uint8_t kCallPc = 12, kCallBytes = 3;
+        member.insert(member.begin() + kHeaderBytes + kCallPc,
+            {op(abc::Opcode::kCALLTHIS0_IMM8_V8), 0, kInput});
+        member[kCodeSizeOffset] += kCallBytes;
+        const auto table = kHeaderBytes + member[kCodeSizeOffset];
+        member[table + 1] += kCallBytes; member[table + 4] += kCallBytes;
+      }
     }
     if (exception == ExceptionShape::kLexical) {
       constexpr std::uint8_t kLocals = 0, kArguments = 4, kCellCount = 1, kFirstCell = 0;
@@ -1075,6 +1097,16 @@ int main(int argc, char** argv) {
       Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kBufferedLexical, profile);
     return 0;
   }
+  if (argc == 2 && std::string_view(argv[1]) == "--nested-literal-json") {
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kNestedLiteral, profile);
+    return 0;
+  }
+  if (argc == 2 && std::string_view(argv[1]) == "--nested-call-json") {
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kNestedCall, profile);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--literal-json") {
     Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kLiteral);
     return 0;
@@ -1129,6 +1161,8 @@ int main(int argc, char** argv) {
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kLexical);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kBufferedLexical);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kLiteral);
+  Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kNestedLiteral);
+  Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kNestedCall);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverTypeof);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverNumericPair);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverPair);

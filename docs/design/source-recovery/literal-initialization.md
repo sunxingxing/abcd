@@ -1,5 +1,49 @@
 # Literal Initialization
 
+## Phased native initializer nesting
+
+The same literal ownership model now admits fresh aggregate, read and call
+subtrees on unique normal phase corridors. Canonical operands use the independently
+checked evaluation alias map; one census over all uses rejects shared results,
+unfinished aggregate observations and catch/phi snapshots through those aliases.
+A supplied nesting witness is checked rather than reconstructed by the verifier.
+
+The laminar stack retains original allocation, operand and property order. Each
+folded effect and definition must have the outer allocation's exception target
+and identical staged catch-copy sources. Reusing `PhaseCorridors::SameCatch`
+checks actual throw bundles, not just lexical try membership. Different handler
+ranges and a changed catch-visible local remain refusals. Environment/state
+barriers and arbitrary late snapshots are not erased. No original SSA/phase
+operation, edge, scope or PC is edited.
+
+ExpressionForest's existing bounded dependency worklist resolves initializer
+bases through those aliases. The shared origin checker likewise recognizes the
+actual nested RHS, keeping separate allocation/read expressions and definition
+properties. Native member references across phases use this freshly checked
+nesting placement; independent CallPlan and operand checks retain the exact
+receiver. No `.call`/`.apply` adapter, new writer or dependency is introduced.
+
+Beyond existing flow verification and definition sorting, the added census and
+corridor indexes cost O(operations + uses + blocks + edges + original copies)
+time and space. Each compared catch bundle is charged to its own original site;
+there is no per-property graph walk or nested ancestor scan. Retained plan-byte
+accounting is not peak-process RSS evidence.
+
+Actual decoded fixtures for profiles 12.0.2/12.0.6/13.0.1 exercise nested own
+initializers through shared evaluation, exception AST, TreeFlow and semantic
+checks at 1/2/200/201/400/800 properties. Missing/wrong consumers, reordered
+properties, shared aggregates, unfinished catch observations and unequal
+exception/catch snapshots refuse. Serialized file fixtures also traverse class
+and family emission, callable ABI, instruction sources and the common printer.
+Independent JS references cover getter/Proxy order, native receiver, arbitrary
+throw identity, retained effects, fresh outer/inner objects, own descriptors,
+inherited setters and exact original printer positions. These are focused
+functional checks; full-record paired semantic/style acceptance remains open.
+
+The historical normal-path extensions below describe their original delivery
+scope. This section extends their shared ownership checks to phased nesting;
+late arithmetic and guarded module RHSs are not added by this change.
+
 ## Late construction expressions
 
 Normal block-local initializer nesting also admits `ValueConstruct`, using the

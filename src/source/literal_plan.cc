@@ -8,6 +8,7 @@
 #include "../analysis/value_flow.h"
 #include "../analysis/value_edits.h"
 #include "evaluation_aliases.h"
+#include "phase_corridor.h"
 #include "abcd/analysis/dominators.h"
 
 namespace abcd::source {
@@ -201,7 +202,7 @@ bool LiteralExpression(const analysis::ValueOp& op, std::size_t index, Guards gu
 // A native member call consumes its base through the callee Reference. The
 // duplicate wire receiver is not a second evaluation. Recognize only the exact
 // SSA base/property pair; CallPlan independently checks the source binding.
-bool ReferenceReceiver(const analysis::ValueProgram& graph, analysis::UseId use) {
+bool ReferenceReceiver(const analysis::ValueProgram& graph, analysis::UseId use, const LiteralPath& path) {
   const auto& occurrence = graph.uses[use.value];
   const auto* owner = std::get_if<analysis::OpId>(&occurrence.owner);
   if (!owner || owner->value >= graph.ops.size()) return false;
@@ -209,16 +210,19 @@ bool ReferenceReceiver(const analysis::ValueProgram& graph, analysis::UseId use)
   const auto* invoke = std::get_if<analysis::ValueInvoke>(&call.operation);
   if (!invoke || invoke->receiver != analysis::InvokeReceiver::kExplicit ||
       call.use_count < 2 || use.value != call.first_use.value + 1) return false;
-  const auto* callee = std::get_if<analysis::ValueId>(&graph.uses[call.first_use.value].operand);
+  const auto callee_operand = path.Resolve(graph.uses[call.first_use.value].operand);
+  const auto* callee = std::get_if<analysis::ValueId>(&callee_operand);
   if (!callee) return false;
   const auto* result = std::get_if<analysis::OpResult>(&graph.values[callee->value].origin);
   if (!result) return false;
   const auto& property = graph.ops[result->op.value];
   if (!(std::holds_alternative<analysis::ValueNamedRead>(property.operation) ||
         std::holds_alternative<analysis::ValuePropertyRead>(property.operation)) || !property.use_count) return false;
-  const auto* base = std::get_if<analysis::ValueId>(&graph.uses[property.first_use.value].operand);
-  const auto* receiver = std::get_if<analysis::ValueId>(&occurrence.operand);
-  return base && receiver && *base == *receiver && property.block == call.block && property.order < call.order;
+  const auto base_operand = path.Resolve(graph.uses[property.first_use.value].operand);
+  const auto receiver_operand = path.Resolve(occurrence.operand);
+  const auto* base = std::get_if<analysis::ValueId>(&base_operand);
+  const auto* receiver = std::get_if<analysis::ValueId>(&receiver_operand);
+  return base && receiver && *base == *receiver && path.Before(property, call);
 }
 // Check laminar allocation/initialization intervals with one stack. Nested
 // creation may execute in native literal syntax only when every intervening
@@ -226,9 +230,10 @@ bool ReferenceReceiver(const analysis::ValueProgram& graph, analysis::UseId use)
 // expression. Subtrees stay within their property interval and preserve
 // operand order. No global reads, catch snapshots or escaping allocations.
 void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
-    const std::vector<std::optional<analysis::OpId>>& owners, LiteralBudget& budget, Guards guards) {
+    const std::vector<std::optional<analysis::OpId>>& owners, LiteralBudget& budget, Guards guards,
+    const LiteralPath& path, const EvaluationPlan* evaluation) {
   if (plan.nested.empty()) return;
-  Require(plan.nested.size() == graph.ops.size() && graph.phases.empty(), Error::kFlow);
+  Require(plan.nested.size() == graph.ops.size(), Error::kFlow);
   std::vector<std::optional<analysis::OpId>> ends;
   std::vector<analysis::OpId> stack;
   std::vector<std::size_t> first_read, last_write;
@@ -237,6 +242,9 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
   std::vector<std::optional<analysis::OpId>> value_owners;
   budget.Size(value_owners, graph.ops.size());
   budget.Size(ends, graph.ops.size()); budget.Size(stack, graph.ops.size());
+  PhaseBudget phase_budget(budget.Remaining());
+  std::optional<PhaseCorridors> phases;
+  if (evaluation) phases.emplace(graph, *evaluation, phase_budget);
   for (const auto& object : plan.objects) {
     budget.Step(); if (object.form == LiteralForm::kStatements) continue;
     ends[object.allocation.value] = plan.definitions[object.first + object.count - 1];
@@ -246,7 +254,7 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
     Require(plan.nested[i]->value < graph.uses.size(), Error::kDefinition);
     const auto* parent = std::get_if<analysis::OpId>(&graph.uses[plan.nested[i]->value].owner);
     Require(parent && parent->value > i && parent->value < graph.ops.size() &&
-        graph.ops[parent->value].block == graph.ops[i].block, Error::kDefinition);
+        path.Before(graph.ops[i], graph.ops[parent->value]), Error::kDefinition);
     value_owners[i] = owners[parent->value] ? owners[parent->value] : value_owners[parent->value];
     Require(value_owners[i] && value_owners[i]->value < i, Error::kDefinition);
   }
@@ -258,17 +266,27 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
     const auto& occurrence = graph.uses[use.value];
     const auto* parent = std::get_if<analysis::OpId>(&occurrence.owner);
     Require(parent && value_owners[i] && (owners[parent->value] || plan.nested[parent->value]) &&
-        occurrence.operand.index() == analysis::ValueOperand{*op.result}.index() &&
-        std::get<analysis::ValueId>(occurrence.operand) == *op.result &&
+        path.Resolve(occurrence.operand).index() == analysis::ValueOperand{*op.result}.index() &&
+        std::get<analysis::ValueId>(path.Resolve(occurrence.operand)) == *op.result &&
         value_owners[i]->value < i && parent->value > i, Error::kDefinition);
-    for (auto at = graph.values[op.result->value].first_use; at; at = graph.uses[at->value].next) {
-      budget.Step(); const auto& read = graph.uses[at->value];
-      if (read.life != analysis::ValueLife::kLive) continue;
-      const auto* user = std::get_if<analysis::OpId>(&read.owner);
-      if (user && graph.ops[user->value].life != analysis::ValueLife::kLive) continue;
-      Require(*at == use || (user && plan.nested[user->value] && ReferenceReceiver(graph, *at)) || (user && i < guards.size() && guards[i] == *user) || (user && owners[user->value] == analysis::OpId{static_cast<std::uint32_t>(i)} &&
-          *at == graph.ops[user->value].first_use), Error::kObserved);
-    }
+  }
+  // Aliases keep original use chains. One canonical census also sees every
+  // indirect consumer and catch/phi observation, without walking aliases per
+  // nested node or silently treating transport reads as unique ownership.
+  for (std::size_t u = 0; u < graph.uses.size(); ++u) {
+    budget.Step(); const auto& read = graph.uses[u];
+    if (read.life != analysis::ValueLife::kLive) continue;
+    const auto* user = std::get_if<analysis::OpId>(&read.owner);
+    if (user && (graph.ops[user->value].life != analysis::ValueLife::kLive || path.Alias(*user))) continue;
+    const auto operand = path.Resolve(read.operand);
+    const auto* value = std::get_if<analysis::ValueId>(&operand);
+    const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
+    if (!result || !plan.nested[result->op.value]) continue;
+    const auto i = result->op.value; const analysis::UseId at{static_cast<std::uint32_t>(u)};
+    Require(at == *plan.nested[i] ||
+        (user && plan.nested[user->value] && ReferenceReceiver(graph, at, path)) ||
+        (user && i < guards.size() && guards[i] == *user) ||
+        (user && owners[user->value] == result->op && at == graph.ops[user->value].first_use), Error::kObserved);
   }
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     budget.Step(); if (!plan.nested[i] || Aggregate(graph.ops[i].operation)) continue;
@@ -276,8 +294,9 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
     std::optional<std::size_t> previous;
     for (std::uint32_t u = 0; u < op.use_count; ++u) {
       budget.Step(); const analysis::UseId use{op.first_use.value + u};
-      if (ReferenceReceiver(graph, use)) continue;
-      const auto* value = std::get_if<analysis::ValueId>(&graph.uses[use.value].operand);
+      if (ReferenceReceiver(graph, use, path)) continue;
+      const auto operand = path.Resolve(graph.uses[use.value].operand);
+      const auto* value = std::get_if<analysis::ValueId>(&operand);
       const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
       if (!result) continue;
       if (plan.nested[result->op.value] == use) {
@@ -296,8 +315,13 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
   std::size_t depth = 0;
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     budget.Step(); const auto& op = graph.ops[i];
-    if (op.order == 0) Require(depth == 0, Error::kFlow);
-    if (op.life != analysis::ValueLife::kLive) continue;
+    if (depth) Require(path.Same(graph.ops[stack[0].value].block, op.block), Error::kFlow);
+    if (op.life != analysis::ValueLife::kLive || path.Alias({static_cast<std::uint32_t>(i)})) continue;
+    // Every effect folded into native aggregate syntax retains the outer
+    // allocation's dispatch and staged catch values, not merely a normal path.
+    // Comparing each site's copy bundle once is bounded by original copy volume.
+    if (depth && phases && (owners[i] || plan.nested[i]) && OrderedEvaluation(op))
+      Require(phases->SameCatch({static_cast<std::uint32_t>(i)}, stack[0]), Error::kObserved);
     if (Aggregate(op.operation) && (ends[i] || plan.nested[i])) {
       if (depth) {
         Require(plan.nested[i].has_value(), Error::kObserved);
@@ -308,7 +332,8 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
       if (owners[i]) {
         Require(owners[i] == stack[depth - 1], Error::kDefinition);
         const analysis::UseId rhs{op.first_use.value + 1};
-        const auto* value = std::get_if<analysis::ValueId>(&graph.uses[rhs.value].operand);
+        const auto operand = path.Resolve(graph.uses[rhs.value].operand);
+        const auto* value = std::get_if<analysis::ValueId>(&operand);
         const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
         if (result && plan.nested[result->op.value] != rhs)
           Require(result->op.value < stack[0].value, Error::kLateValue);
@@ -320,8 +345,9 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
         Require(value_owners[i] == stack[depth - 1], Error::kObserved);
         for (std::uint32_t p = 0; p < op.use_count; ++p) {
           budget.Step(); const analysis::UseId use{op.first_use.value + p};
-          if (ReferenceReceiver(graph, use)) continue;
-          const auto* value = std::get_if<analysis::ValueId>(&graph.uses[use.value].operand);
+          if (ReferenceReceiver(graph, use, path)) continue;
+          const auto operand = path.Resolve(graph.uses[use.value].operand);
+          const auto* value = std::get_if<analysis::ValueId>(&operand);
           const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
           if (result && plan.nested[result->op.value] != use)
             Require(result->op.value < stack[0].value, Error::kLateValue);
@@ -334,6 +360,7 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
     if (depth && ends[stack[depth - 1].value] == analysis::OpId{static_cast<std::uint32_t>(i)}) --depth;
   }
   Require(depth == 0, Error::kDefinition);
+  budget.Step(phase_budget.Cost().work);
 }
 // Staged buffer writes remain at their original CFG sites. Until the last
 // write, only these own-field base uses may observe the fresh object. Acyclic
@@ -461,7 +488,7 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
         const auto* value = std::get_if<analysis::ValueId>(&operand);
         const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
         const bool nested = result && !plan.nested.empty() && plan.nested[result->op.value] == rhs;
-        if (nested) Require(!evaluation && path.Before(allocation, graph.ops[result->op.value]), Error::kLateValue);
+        if (nested) Require(path.Before(allocation, graph.ops[result->op.value]), Error::kLateValue);
         else EarlyValue(graph, allocation, operand, path);
         owners[id.value] = object.allocation;
       }
@@ -474,7 +501,7 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
       Require(owners[i].has_value() == own && (!IsStagedLiteral(&plan, {static_cast<std::uint32_t>(i)}) || own), Error::kCoverage);
     }
     VerifyStaged(graph, plan, owners, budget);
-    VerifyNesting(graph, plan, owners, budget, guards);
+    VerifyNesting(graph, plan, owners, budget, guards, path, evaluation);
     if (evaluation) {
       std::vector<std::optional<std::size_t>> objects;
       budget.Size(objects, graph.values.size());
@@ -520,6 +547,9 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
     }
     return budget.Work();
   } catch (Error error) { return error;
+  } catch (EvaluationError error) {
+    return error == EvaluationError::kResourceLimit ? Error::kResourceLimit :
+        error == EvaluationError::kWorkLimit ? Error::kWorkLimit : Error::kFlow;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
 }
@@ -581,12 +611,13 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
         for (std::uint32_t p = 0; p < object.count; ++p) { budget.Step(); plan.staged[plan.definitions[object.first + p].value] = 1; }
       }
     }
-    if (!evaluation) {
+    {
       for (const auto& object : plan.objects) for (std::uint32_t p = 0; p < object.count; ++p) {
         budget.Step(); if (object.form == LiteralForm::kStatements) continue;
         const auto& definition = graph.ops[plan.definitions[object.first + p].value];
         const analysis::UseId rhs{definition.first_use.value + 1};
-        const auto* value = std::get_if<analysis::ValueId>(&graph.uses[rhs.value].operand);
+        const auto operand = path.Resolve(graph.uses[rhs.value].operand);
+        const auto* value = std::get_if<analysis::ValueId>(&operand);
         const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
         if (!result || !(Aggregate(graph.ops[result->op.value].operation) || LiteralExpression(graph.ops[result->op.value], result->op.value, guards)) ||
             !path.Before(graph.ops[object.allocation.value], graph.ops[result->op.value])) continue;
@@ -595,7 +626,7 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
         plan.nested[result->op.value] = rhs;
       }
     }
-    if (!evaluation && !plan.nested.empty()) {
+    if (!plan.nested.empty()) {
       // Consumers follow their inputs in SSA order; a reverse scan visits each
       // late read tree once. Shared values and aggregate receiver observations
       // are rejected by the independent use census below.
@@ -613,8 +644,9 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
         const auto& op = graph.ops[i];
         for (std::uint32_t p = 0; p < op.use_count; ++p) {
           budget.Step(); const analysis::UseId use{op.first_use.value + p};
-          if (ReferenceReceiver(graph, use)) continue;
-          const auto* value = std::get_if<analysis::ValueId>(&graph.uses[use.value].operand);
+          if (ReferenceReceiver(graph, use, path)) continue;
+          const auto operand = path.Resolve(graph.uses[use.value].operand);
+          const auto* value = std::get_if<analysis::ValueId>(&operand);
           const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
           if (!result || result->op.value < allocation[i]->value) continue;
           Require(Aggregate(graph.ops[result->op.value].operation) ||
@@ -633,6 +665,9 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
     plan.work = budget.Work();
     return plan;
   } catch (Error error) { return error;
+  } catch (EvaluationError error) {
+    return error == EvaluationError::kResourceLimit ? Error::kResourceLimit :
+        error == EvaluationError::kWorkLimit ? Error::kWorkLimit : Error::kFlow;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
 }
