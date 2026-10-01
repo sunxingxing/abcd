@@ -159,6 +159,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
       step(std::get<std::uint64_t>(checked));
       for (const auto& object : plan.literals->objects) {
         step();
+        if (object.form == LiteralForm::kStatements) continue;
         if (flow == EvaluationFlow::kNormal) literal_allocations[object.allocation.value] = 1;
         else pinned[object.allocation.value] = 1;
       }
@@ -313,7 +314,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
       if (const auto error = CheckArgumentSnapshot(graph, op)) return *error;
       Require(shape.has_value(), Error::kUnsupportedOperation);
       Require(shape->Count() == op.use_count && shape->expression == op.result.has_value(), Error::kInvalidGraph);
-      if (!IsReceiverField(graph, op) && (std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) {
+      if (!IsReceiverField(graph, op) && !IsStagedLiteral(plan.literals ? &*plan.literals : nullptr, {static_cast<std::uint32_t>(i)}) && (std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) {
         // Fresh LiteralPlan proved these definitions unobservable until complete.
         // They execute in object syntax, not as ordinary ordered heap writes;
         // producer snapshots remain pinned before allocation, never duplicated.

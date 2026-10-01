@@ -5,7 +5,7 @@ import vm from 'node:vm';
 // tree and semantic checks. No source text supplies the engine's expression.
 const source = execFileSync(process.argv[2], ['--sources'], {encoding: 'utf8'});
 const generated = vm.runInNewContext(source, {Array() { throw new Error('mutable Array binding'); }});
-assert.equal(generated.length, 14);
+assert.equal(generated.length, 15);
 const reference = [value => value || [], value => value && []];
 const object = {[Symbol.toPrimitive]() { throw new Error('unexpected coercion'); }};
 const values = [undefined, null, false, true, 0, -0, NaN, '', 'text', 0n, 1n, Symbol('value'), object];
@@ -181,4 +181,28 @@ for (const first of [undefined, null, false, 0, true]) for (const second of valu
     assert.deepEqual(chain(generated[13], first, second, fail), chain(value => value?.probe?.probe, first, second, fail));
     ++scenarios;
   }
+const bufferedReference = value => ({probe: value?.probe});
+function buffered(fn, value, throwing = false) {
+  const events = [], failure = {};
+  const receiver = value === 'getter' ? {get probe() {
+    assert.equal(this, receiver); events.push('probe');
+    if (throwing) throw failure;
+    return object;
+  }} : value;
+  try {
+    const result = fn(receiver), descriptor = Object.getOwnPropertyDescriptor(result, 'probe');
+    assert.equal(descriptor.writable, true); assert.equal(descriptor.enumerable, true); assert.equal(descriptor.configurable, true);
+    assert.notEqual(result, fn(receiver));
+    return {events, value: descriptor.value};
+  } catch (error) { assert.equal(error, failure); return {events, threw: true}; }
+}
+for (const value of [...values, 'getter']) for (const throwing of [false, true]) {
+  assert.deepEqual(buffered(generated[14], value, throwing), buffered(bufferedReference, value, throwing));
+  ++scenarios;
+}
+const inherited = vm.runInNewContext(`Object.defineProperty(Object.prototype, 'probe', {
+  configurable: true, set() { throw new Error('inherited setter'); }
+}); ${source}`);
+assert.equal(inherited[14](null).probe, undefined);
+assert.equal(inherited[14]({probe: object}).probe, object);
 console.log(`Decoded logical branch values, getters and calls: ${scenarios} behavior scenarios passed`);

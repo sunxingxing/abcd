@@ -1,3 +1,4 @@
+#include "staged_literal_names.h"
 #include "expression_forest.h"
 #include "expression_copies.h"
 #include "class_tree.h"
@@ -171,9 +172,12 @@ class ForestBuilder {
     Reserve(forest_.properties, defined_properties + buffered_properties);
     if (evaluation_.literals) {
       for (std::size_t i = 0; i < evaluation_.literals->objects.size(); ++i) {
-        Step(); objects_[evaluation_.literals->objects[i].allocation.value] = i;
+        Step(); if (evaluation_.literals->objects[i].form == LiteralForm::kExpression)
+          objects_[evaluation_.literals->objects[i].allocation.value] = i;
       }
     }
+    if (evaluation_.literals) Require(CheckStagedLiteralNames(*evaluation_.literals, constants_, names_,
+        [&](std::uint64_t count) { Step(count); }, [&](std::size_t count, std::size_t width) { Admit(count, width); }), Error::kConstant);
     for (const auto& origin : graph_.origins) {
       Step();
       Require(origin.disposition != analysis::OriginDisposition::kCombined, Error::kOrigin);
@@ -749,9 +753,11 @@ class ForestBuilder {
         return Add(FunctionExpr{function.child, captures}, origin);
       }
       else if constexpr (std::is_same_v<T, analysis::ValueOwnWrite>) {
-        Require(IsReceiverField(graph_, op), Error::kUnsupportedOperation);
         const auto* name = std::get_if<NameId>(&constant);
         Require(name && name->value < constants_.name_count, Error::kConstant);
+        if (IsStagedLiteral(evaluation_.literals ? &*evaluation_.literals : nullptr, id))
+          return Add(AssignmentExpr{MemberTarget{operands[0], *name}, operands[1]}, origin);
+        Require(IsReceiverField(graph_, op), Error::kUnsupportedOperation);
         return Add(FieldDefinitionExpr{operands[0], *name, operands[1]}, origin);
       }
       else {

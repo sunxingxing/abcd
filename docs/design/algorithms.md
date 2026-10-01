@@ -170,3 +170,22 @@ O(B+E+O+V+U+D+P)，另有原有用途/SSA流验证成本。P可为出度所需�
 失败不修改原图。原来的别名/效果对应验证先执行，新增变换由局部类型前提及精确
 副本构造约束，再核验最终用途和流；不声称只凭CFG可用性证明了任意图改写正确。
 2/3/200/201串接可选访问及942组共同逻辑行为通过定向测试；没有恢复RSS/基准。
+
+### Staged buffered object initialization (2026-10-01)
+
+For normal acyclic ValueProgram graphs, preserve allocation and each own write at
+its original site. One Kahn topological pass selects the last write; the existing
+Lengauer–Tarjan normal dominator implementation proves that every non-initializer
+use occurs after that write. Scan each allocation use chain once, not the whole
+CFG per object. Reject cyclic graphs and pre-initialization observations.
+
+Let B/E be blocks/edges, U relevant uses, D definitions and P buffer properties.
+The additional flow work is O(B + E), plus existing dominator construction and
+O(U + D) use checks. Per-object spelling indexes cost O(P log P + D log P)
+comparisons, with string comparison length charged to the work budget; memory is
+O(B + E + P) beyond existing plans. No pairwise field scan is used. Both expression
+construction and operand verification require each target key to exist as a
+writable own data property in the original buffer. This permits native assignment
+without inherited-setter behavior. No external dependency or license is added.
+Evidence: literal_plan_test and decoded logical_regions source behavior tests;
+this is not a peak-RSS or benchmark claim.

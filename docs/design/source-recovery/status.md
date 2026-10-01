@@ -12,6 +12,33 @@
 
 ## 当前阶段
 
+### 2026-10-01：跨控制流缓冲对象初始化保留原始求值位置
+
+- 修正上一条定位：ShoppingAvoid op77 的接收者已正确解析为 op36 的对象分配，
+  实际拒绝来自 LiteralPath::Before 要求同一块，而不是接收者 phi。
+  证据 /tmp/abcd-literal-receiver.log。分配位于块0，字段定义位于块9。
+- LiteralPlan 增加类型化 statements 形式：保留 buffered object 分配及每次写入的
+  原始位置，正常 DAG 中用拓扑序与支配树证明最终写入前对象没有其他观察/逃逸。
+  树构建与独立操作数验证均使用排序的缓冲键索引，证明目标已经是自有可写数据属性，
+  才将 own definition 表达为赋值，避免原型 setter。没有移动 getter、分配或异常。
+  循环、非缓冲对象、新增键以及提前观察继续拒绝。
+- 嵌套字面量验证允许多块函数中的块内组合；直接消费者必须同块，跨块边界时
+  嵌套栈必须为空。此项不允许嵌套表达式跨控制流边移动。
+- 新增真实解码 buffered object + optional access 回归，及提前观察、篡改映射、
+  缓冲缺键的拒绝检查。独立 JS 对照达到970场景，新增属性描述符、getter异常、
+  对象身份和继承 setter 检查。红例 /tmp/abcd-staged-red-test.log；构建
+  /tmp/abcd-staged-final-build.log；12项定向测试全部通过（8.37秒），日志
+  /tmp/abcd-staged-final-tests.log。未执行全量测试、RSS或基准。
+- 五输入正式导出 build/stage-one/value-staged-buffer-pass-1 合计
+  43 complete / 63 failure / 46 no-module；新增 Immersive record25083 与
+  MultiCommunity record41552，无已完整项退化，legacy writer 为0。汇总
+  /tmp/abcd-staged-buffer-batch-summary.json。完整状态不等于独立语义/风格验收。
+- ShoppingAvoid 已越过 LiteralPlan，下一处实际阻塞为 CallPlan::VerifyCalls
+  kReference：参数经过条件控制流时，需保留此前成员读取的 callee 和 receiver。
+  证据 /tmp/abcd-staged-next-block2.log；该 record 仍 unproved/tree_stage。
+  分步初始化是当前正确性推进，不代表原生对象字面量/可选链表示质量已完成。
+  阶段一 Goal 持续开放；既有暂停事项保持不变。
+
 ### 2026-10-01：共享常量出口拆分，贯通可选访问的控制图
 
 - ShoppingAvoid的真实12139包含连续严格null/undefined判断，共享undefined出口。

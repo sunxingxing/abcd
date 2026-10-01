@@ -18,23 +18,29 @@ inline bool IsReceiverField(const analysis::ValueProgram& graph, const analysis:
   const auto* entry = std::get_if<analysis::EntryDefinition>(&graph.values[value->value].origin);
   return entry && std::holds_alternative<analysis::ReceiverEntry>(*entry);
 }
+enum class LiteralForm : std::uint8_t { kExpression, kStatements };
 struct ObjectInit {
   analysis::OpId allocation;
   std::uint32_t first;
   std::uint32_t count;
+  LiteralForm form = LiteralForm::kExpression;
 };
 struct LiteralPlan {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
   std::vector<ObjectInit> objects;
   std::vector<analysis::OpId> definitions;
+  std::vector<std::uint8_t> staged;
   // Per nested allocation/read expression, the unique immediate consumer use.
   // Read chains preserve operand and property order; module guards are paired. Empty
-  // for roots. Only normal single-block, unobserved nesting is admitted.
+  // for roots. Only normal, block-local, unobserved nesting is admitted.
   std::vector<std::optional<analysis::UseId>> nested;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };
+inline bool IsStagedLiteral(const LiteralPlan* plan, analysis::OpId id) {
+  return plan && id.value < plan->staged.size() && plan->staged[id.value];
+}
 enum class LiteralError : std::uint8_t {
   kRevision, kFlow, kDefinition, kReceiver, kObserved, kLateValue, kDomain,
   kCoverage, kResourceLimit, kWorkLimit
@@ -46,6 +52,9 @@ enum class LiteralError : std::uint8_t {
 // owned late reads/calls preserve operand and property effect order. A member
 // call's duplicate receiver wire use is consumed by its exact callee Reference;
 // CallPlan and tree operand verification independently check that pairing.
+// Staged buffered objects instead preserve allocation and write sites in a normal
+// DAG. No escape precedes the final write; tree construction independently proves
+// every assigned key already denotes a writable own buffer data property.
 // module_guards must be the unchanged IndexModuleEvaluations peer index;
 // standalone calls without it cannot fold late guarded module reads.
 // class_projection must be independently proved by ProjectClassMembers; it

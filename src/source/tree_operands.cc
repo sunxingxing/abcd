@@ -1,3 +1,4 @@
+#include "staged_literal_names.h"
 #include "tree_correspondence.h"
 #include "class_tree.h"
 #include "phase_evaluation.h"
@@ -22,6 +23,9 @@ class OperandCheck {
     RequireMeaning(constants_.operations.size() == graph_.ops.size() &&
                    constants_.name_count <= tree_.names.size() &&
                    constants_.text_count <= tree_.texts.size(), Error::kConstant);
+    if (evaluation_.literals) RequireMeaning(CheckStagedLiteralNames(*evaluation_.literals, constants_, tree_.names,
+        [&](std::uint64_t count) { budget_.Step(count); },
+        [&](std::size_t count, std::size_t width) { budget_.Admit(count, width); }), Error::kConstant);
     if (constants_.number_type_text)
       RequireMeaning(constants_.number_type_text->value < constants_.text_count &&
                      tree_.texts[constants_.number_type_text->value] == u"number", Error::kConstant);
@@ -245,6 +249,14 @@ class OperandCheck {
           const auto previous = edge_input_; edge_input_ = true;
           Input(input(1), property.value); edge_input_ = previous;
         } else if constexpr (std::is_same_v<T, analysis::ValueOwnWrite>) {
+          if (IsStagedLiteral(evaluation_.literals ? &*evaluation_.literals : nullptr, current_)) {
+            const auto& assignment = Node<AssignmentExpr>(expression);
+            const auto* member = std::get_if<MemberTarget>(&assignment.target);
+            RequireMeaning(member != nullptr, Error::kOperand);
+            Named(member->key, constants_.operations[i]);
+            Input(input(0), member->base); Input(input(1), assignment.value);
+            return;
+          }
           if (IsReceiverField(graph_, op)) {
             const auto& field = Node<FieldDefinitionExpr>(expression);
             const auto* name = std::get_if<NameId>(&constants_.operations[i]);

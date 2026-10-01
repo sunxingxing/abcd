@@ -48,6 +48,18 @@ analysis::ValueProgram OptionalAccess(bool observable_fallback = false, unsigned
   chain.insert(chain.end(), {0x60, 1, 0x64});
   return Import(chain, 1);
 }
+analysis::ValueProgram BufferedOptionalAccess() {
+  // Buffered {probe: null} is allocated before the optional RHS, then the
+  // existing own field is initialized after its branch/phi join.
+  std::vector<std::uint8_t> bytes{0x07, 0, 0, 0, 0x61, 0,
+      0x01, 0x27, 0, 2, 0x4f, 10, 0x00, 0x27, 0, 2, 0x4f, 4, 0x4d, 5,
+      0x00, 0x4d, 8, 0x60, 2, 0x42, 0, 0, 0};
+  const auto wire = static_cast<std::uint16_t>(abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8);
+  bytes.push_back(static_cast<std::uint8_t>(wire));
+  if (wire > UINT8_MAX) bytes.push_back(static_cast<std::uint8_t>(wire >> 8));
+  bytes.insert(bytes.end(), {0, 0, 0, 0, 0x60, 0, 0x64});
+  return Import(bytes, 2);
+}
 analysis::ValueProgram Diamond(bool negate, unsigned count = 1, bool direct = false, bool getter = false, bool barrier = false, bool invoke = false, bool left_getter = false) {
   // return arg || [] (or arg && []), retaining the compiler's empty keep arm.
   std::vector<std::uint8_t> bytes;
@@ -112,7 +124,13 @@ std::string Source(const analysis::ValueProgram& graph, bool compose = true) {
   for (std::size_t i = 0; i < graph.ops.size(); ++i)
     if (const auto* read = std::get_if<analysis::ValueNamedRead>(&graph.ops[i].operation))
       constants[i] = NameId{read->name.value + 1};
-  const ExpressionConstants view{constants, 3, 0, {}};
+  for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+    if (const auto* allocation = std::get_if<analysis::ValueObjectAllocation>(&graph.ops[i].operation))
+      if (allocation->literal) constants[i] = AggregateConstant{0, 1};
+    if (const auto* write = std::get_if<analysis::ValueOwnWrite>(&graph.ops[i].operation)) constants[i] = NameId{write->name.value + 1};
+  }
+  const std::vector<ConstantProperty> properties{{NameId{1}, NullLiteral{}}};
+  const ExpressionConstants view{constants, 3, 0, {}, properties};
   const auto built = BuildFunctionTree(graph, control, evaluation, std::move(syntax), view);
   Check(std::holds_alternative<ConstructedFunction>(built));
   const auto& tree = std::get<ConstructedFunction>(built).tree;
@@ -321,6 +339,7 @@ void Negatives() {
   Check(FindLogicalRegions(wrong, control).empty());
 }
 int main(int argc, char** argv) {
+  Check(!Source(BufferedOptionalAccess()).empty());
   const auto optional = OptionalAccess();
   Check(optional.cfg_revision.value == 1);
   Check(!Source(optional).empty());
@@ -341,7 +360,7 @@ int main(int argc, char** argv) {
               << "," << Source(CallDiamond(false, false)) << "," << Source(CallDiamond(true, false))
               << "," << Source(CallDiamond(false, false, false, true))
               << "," << Source(CallDiamond(true, false, false, true))
-              << "," << Source(CallDiamond(false, true)) << "," << Source(CallDiamond(true, true)) << "," << Source(optional) << "," << Source(OptionalAccess(false, 2)) << "]\n";
+              << "," << Source(CallDiamond(false, true)) << "," << Source(CallDiamond(true, true)) << "," << Source(optional) << "," << Source(OptionalAccess(false, 2)) << "," << Source(BufferedOptionalAccess()) << "]\n";
     return 0;
   }
   for (const bool negate : {false, true}) for (const bool direct : {false, true}) {

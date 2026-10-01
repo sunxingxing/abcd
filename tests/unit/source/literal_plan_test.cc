@@ -62,6 +62,80 @@ ValueProgram Graph(std::uint32_t fields, Prefix prefix = Prefix::kNone) {
   fixture.graph.blocks = {{{0}, static_cast<std::uint32_t>(fixture.graph.ops.size()), {0}, 0}};
   return std::move(fixture.graph);
 }
+ValueProgram StagedGraph(bool observed = false) {
+  Fixture fixture;
+  fixture.graph.values.push_back({EntryDefinition{ParameterEntry{0}}, ValueKinds::Language(), {}});
+  fixture.Add(ValueObjectAllocation{abcd::abc::PoolIndex{0}}, true, {});
+  fixture.graph.ops.back().normal = fixture.graph.ops.back().before_throw = LanguageEffect::kAllocation;
+  fixture.graph.ops.back().exceptional = ExceptionalCompletion::kMayThrow;
+  const auto read = [&](ValueId base) {
+    fixture.Add(ValueNamedRead{{2}}, true, {{OperandRole::kBase, base}});
+    auto& op = fixture.graph.ops.back();
+    op.normal = op.before_throw = LanguageEffect::kHeapRead | LanguageEffect::kUserCode;
+    op.exceptional = ExceptionalCompletion::kMayThrow;
+  };
+  if (observed) read({1});
+  fixture.Add(ValueJump{}, false, {});
+  const auto split = static_cast<std::uint32_t>(fixture.graph.ops.size());
+  read({0});
+  const auto rhs = *fixture.graph.ops.back().result;
+  fixture.Add(ValueOwnWrite{OwnWriteKind::kDefineField, {0}, 0}, false,
+      {{OperandRole::kBase, ValueId{1}}, {OperandRole::kStoredValue, rhs}});
+  fixture.graph.ops.back().normal = fixture.graph.ops.back().before_throw = LanguageEffect::kHeapWrite | LanguageEffect::kUserCode;
+  fixture.graph.ops.back().exceptional = ExceptionalCompletion::kMayThrow;
+  // An independent nested literal in the later block must keep its local
+  // interval proof; the existence of other CFG blocks is not a refusal reason.
+  fixture.Add(ValueObjectAllocation{}, true, {});
+  const auto nested = *fixture.graph.ops.back().result;
+  fixture.graph.ops.back().normal = fixture.graph.ops.back().before_throw = LanguageEffect::kAllocation;
+  fixture.graph.ops.back().exceptional = ExceptionalCompletion::kMayThrow;
+  fixture.Add(ValueArrayAllocation{}, true, {});
+  const auto array = *fixture.graph.ops.back().result;
+  fixture.graph.ops.back().normal = fixture.graph.ops.back().before_throw = LanguageEffect::kAllocation;
+  fixture.graph.ops.back().exceptional = ExceptionalCompletion::kMayThrow;
+  fixture.Add(ValueOwnWrite{OwnWriteKind::kDefineField, {0}, 0}, false,
+      {{OperandRole::kBase, nested}, {OperandRole::kStoredValue, array}});
+  fixture.graph.ops.back().normal = fixture.graph.ops.back().before_throw = LanguageEffect::kHeapWrite | LanguageEffect::kUserCode;
+  fixture.graph.ops.back().exceptional = ExceptionalCompletion::kMayThrow;
+  fixture.Add(ValueReturn{}, false, {{OperandRole::kReturnValue, ValueId{1}}});
+  auto& graph = fixture.graph;
+  graph.blocks = {{{0}, split, {0}, 1}, {{split}, static_cast<std::uint32_t>(graph.ops.size()) - split, {1}, 0}};
+  graph.edges = {{{0}, {1}, FlowEdgeKind::kTaken, 0}};
+  for (std::size_t i = split; i < graph.ops.size(); ++i) { graph.ops[i].block = {1}; graph.ops[i].order -= split; }
+  return std::move(graph);
+}
+void StagedBuffer(bool print = false) {
+  auto graph = StagedGraph();
+  const auto planned = BuildLiteralPlan(graph);
+  Check(std::holds_alternative<LiteralPlan>(planned));
+  auto invalid = std::get<LiteralPlan>(planned); invalid.staged.clear();
+  Check(std::holds_alternative<LiteralError>(VerifyLiteralPlan(graph, invalid)));
+  Check(std::get<LiteralError>(BuildLiteralPlan(StagedGraph(true))) == LiteralError::kObserved);
+  const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
+  const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+  FunctionSyntax syntax{}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+  syntax.names = {u"value", u"field", u"probe"}; syntax.parameters.push_back({NameId{0}, NameEvidence::kDebugRange});
+  std::vector<ExpressionConstant> constants(graph.ops.size());
+  constants[0] = AggregateConstant{0, 1}; constants[2] = NameId{2};
+  for (std::size_t i = 0; i < graph.ops.size(); ++i)
+    if (std::holds_alternative<ValueOwnWrite>(graph.ops[i].operation)) constants[i] = NameId{1};
+  std::vector<ConstantProperty> properties{{NameId{1}, NullLiteral{}}};
+  const ExpressionConstants resolved{constants, 3, 0, {}, properties};
+  const auto built = BuildFunctionTree(graph, control, evaluation, syntax, resolved);
+  Check(std::holds_alternative<ConstructedFunction>(built));
+  const auto& tree = std::get<ConstructedFunction>(built).tree;
+  Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(graph, control, evaluation, tree, resolved)));
+  auto wrong = tree;
+  for (auto& node : wrong.expressions) if (auto* assign = std::get_if<AssignmentExpr>(&node.expression))
+    if (auto* member = std::get_if<MemberTarget>(&assign->target)) member->key = NameId{2};
+  Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation, wrong, resolved)));
+  auto missing = constants; missing[3] = NameId{2};
+  Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(graph, control, evaluation, syntax,
+      {missing, 3, 0, {}, properties})));
+  std::ostringstream output;
+  Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, output)));
+  if (print) std::cout << output.str();
+}
 void Mutations() {
   auto graph = Graph(2);
   const auto built = BuildLiteralPlan(graph);
@@ -653,6 +727,8 @@ void RhsSnapshot() {
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--staged-source") { StagedBuffer(true); return 0; }
+  StagedBuffer();
   if (argc == 2 && std::string_view(argv[1]) == "--late-call-source") { LateMemberCalls(true); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--consumer-source") { LiteralConsumers(true); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--buffer-source") { BufferedOverwrites(true); return 0; }
