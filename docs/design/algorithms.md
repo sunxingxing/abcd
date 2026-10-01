@@ -5,6 +5,24 @@
 
 ## 输入规模与成本
 
+### 普通流的原生成员调用链（2026-10-02）
+
+复用异常流已有的 `IsMemberReceiver`：仅当原 ValueInvoke 的显式 receiver
+与原属性引用的 base 相同，才将该 VM receiver 从源码使用计数中投影掉。
+属性读取仍消费 base，getter、callee、独立观察者和原始效果均保留。
+正常求值计划与独立 forest 遍历消费同一规则；原 CallPlan 和 TreeOperands
+继续证明引用取得位置、稳定 receiver、操作数及效果顺序。DEBUGGER 隔断
+引用融合，错误 receiver 被拒绝；真实额外使用仍需要快照，不能因本规则
+重复求值或删除临时变量。
+
+每条生产者 use chain 互不重叠，新增检查为每 use 常数个 typed/arena
+索引及已压平 alias 查询，总新增 O(U) 时间、O(1) scratch；U 为操作数
+使用数。现有求值和控制索引的成本另计，不为每次调用回溯全部链或图。
+共同 AST 按原来的唯一求值所有权构建嵌套调用，没有新 writer 或依赖。
+本项目自有实现；三 profile、1/200/201/400 层实际解码链、额外观察者、
+副作用隔断和错 receiver 回归，以及独立 JS 和真实配对 ViewModel 为
+定向正确性证据，不是全应用验收或 RSS/性能实测。
+
 ### 共享分支谓词与原生条件调用参数（2026-10-02）
 
 正常 selection 使用已验证 ControlDecision 的单入口、共享 arm 与原边归属，

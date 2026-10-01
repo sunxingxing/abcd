@@ -34,6 +34,8 @@ struct EvaluationUses {
 };
 // Project a verified use chain: absorb the indexed guard dependency and, for
 // a freshly verified normal LiteralPlan allocation, its initializer receivers.
+// A member reference consumes its matching explicit VM receiver without a
+// second source evaluation; mismatches and independent observers stay visible.
 // Class projections consume the checked method/call/prototype uses as well.
 // Fresh normal CellEvaluation witnesses also consume proved initialization
 // checks; no parent/capture premise is invented by this use projection.
@@ -42,7 +44,7 @@ struct EvaluationUses {
 // * log(receiver guards + 1)), with disjoint chains across producers.
 // Cache once per producer, never rescan a shared producer for every consumer.
 [[nodiscard]] EvaluationUses ProjectEvaluationUses(const analysis::ValueProgram& graph,
-    analysis::OpId operation, const ModuleEvaluationIndex& modules,
+    const EvaluationPlan& plan, analysis::OpId operation, const ModuleEvaluationIndex& modules,
     bool project_initializers = false,
     std::span<const std::optional<analysis::OpId>> class_projection = {},
     const CellEvaluation* initialized_cells = nullptr,

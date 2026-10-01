@@ -279,11 +279,14 @@ for (const failure of ['wrap', 'register', 'super', 'storage.create', 'path.crea
 // altered resource values independently of source text resemblance.
 const noAwait = report.source.replace('(await $value1)', '$value1');
 assert.notEqual(noAwait, report.source);
+new vm.SourceTextModule(noAwait); // Behavior mutations must remain valid syntax.
 await assert.rejects(() => exercise(noAwait, defaults));
-const wrongReceiver = report.source.replace('($value3 = $local2);', '($value3 = globalThis);');
+const wrongReceiver = report.source.replace('.getUIContext()', '.getUIContext.call(globalThis)');
 assert.notEqual(wrongReceiver, report.source);
+new vm.SourceTextModule(wrongReceiver);
 await assert.rejects(() => exercise(wrongReceiver, defaults));
 const wrongOffset = report.source.replace('dx: 0, dy: (-140)', 'dx: 0, dy: (-139)');
 assert.notEqual(wrongOffset, report.source);
+new vm.SourceTextModule(wrongOffset);
 assert.notDeepEqual(await exercise(wrongOffset, defaults), await exercise(reference, defaults));
 console.log(`PageA complete record: ${scenarios} independent paired lifecycle/render/async scenarios passed; representation/platform acceptance remains separate.`);

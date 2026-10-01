@@ -51,6 +51,10 @@ async function models(source, name, dependencyName, field, methods) {
   assert.equal(instance[field].constructor, Model);
   for (const method of methods) {
     const sliced = ['getWelfareList', 'getSectionProductList', 'getFlashSaleProductList'].includes(method);
+    const body = C.prototype[method].toString();
+    assert.ok(!body.includes('$value') && !body.includes('.call('), `${name}.${method} must use native member syntax`);
+    assert.ok(body.includes(`.${field}`) && body.includes(`.${method}(`));
+    if (sliced) assert.ok(body.includes('.slice('));
     for (const count of [undefined, -1, 0, 1, 9, NaN, { valueOf() { trace.push('count'); return 2; } }]) {
       const result = instance[method](count);
       if (sliced) {
@@ -65,6 +69,37 @@ async function models(source, name, dependencyName, field, methods) {
     original[method] = function () { assert.equal(this, original); trace.push('throw'); throw new Error('method sentinel'); };
     assert.throws(() => instance[method](1), { message: 'method sentinel' });
     Object.defineProperty(instance, field, { configurable: true, writable: true, value: original });
+    // Paired code and recovered code each run the same independent host objects.
+    // Changing the field/getter after reference acquisition must not re-read it.
+    for (const throwAt of [null, 'field', 'getter', 'call', ...(sliced ? ['slice-getter', 'slice-call', 'count'] : [])]) {
+      const sentinel = {}, result = {}, list = {};
+      let reads = 0;
+      const event = name => { trace.push(name); if (throwAt === name) throw sentinel; };
+      const count = {valueOf() { event('count'); return 2; }};
+      Object.defineProperty(instance, field, {configurable: true, get() {
+        event('field'); return ++reads === 1 ? original : {};
+      }});
+      Object.defineProperty(original, method, {configurable: true, get() {
+        event('getter');
+        const fn = function() { assert.equal(this, original); event('call'); return sliced ? list : result; };
+        Object.defineProperty(fn, 'call', {get() { throw new Error('unexpected function.call'); }});
+        Object.defineProperty(original, method, {configurable: true, value() { throw new Error('repeated getter'); }});
+        return fn;
+      }});
+      Object.defineProperty(list, 'slice', {get() {
+        event('slice-getter');
+        const fn = function(start, end) {
+          assert.equal(this, list); assert.equal(start, 0); assert.equal(end, count);
+          event('slice-call'); values.slice(start, end); return result;
+        };
+        Object.defineProperty(fn, 'call', {get() { throw new Error('unexpected slice.call'); }});
+        return fn;
+      }});
+      if (throwAt) assert.throws(() => instance[method](count), error => error === sentinel);
+      else assert.equal(instance[method](count), result);
+      Object.defineProperty(instance, field, {configurable: true, writable: true, value: original});
+      delete original[method];
+    }
   }
   loaded.dependency.setExport(dependencyName, class { constructor() { throw new Error('live constructor'); } });
   assert.throws(() => new C(), { message: 'live constructor' });

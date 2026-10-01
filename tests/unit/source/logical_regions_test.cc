@@ -16,13 +16,15 @@ using namespace abcd::source;
 using abcd::test::Check;
 namespace {
 analysis::ValueProgram Import(const std::vector<std::uint8_t>& bytes, std::uint32_t locals, std::optional<FunctionInput>* input = nullptr,
-    abcd::abc::ProfileId profile = abcd::abc::ProfileId::kDynamic1206) {
+    abcd::abc::ProfileId profile = abcd::abc::ProfileId::kDynamic1206,
+    analysis::CallResultValues calls = analysis::CallResultValues::kUnknown) {
   const auto body = test::Body(bytes);
   using namespace analysis;
   const auto method_result = BuildSemanticMethod(body, profile, locals + 1);
   Check(std::holds_alternative<SemanticMethod>(method_result));
   const auto& method = std::get<SemanticMethod>(method_result);
-  const auto proof_result = VerifySemanticSource(body, method, locals, 1);
+  const auto proof_result = VerifySemanticSource(body, method, locals, 1, {}, CapturedValues::kReject,
+      {}, ClosureWrites::kUnknown, {}, calls);
   Check(std::holds_alternative<SemanticProof>(proof_result));
   const auto& proof = std::get<SemanticProof>(proof_result);
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(locals, 1, {false, false, false, false}));
@@ -143,6 +145,29 @@ analysis::ValueProgram DecisionCall(unsigned count = 1, bool barrier = false,
   }
   code.push_back(0x64);
   return Import(code, 3, input, profile);
+}
+analysis::ValueProgram MemberChain(unsigned count, abc::ProfileId profile,
+    std::optional<FunctionInput>* input = nullptr, bool shared = false, bool barrier = false,
+    bool wrong_receiver = false) {
+  // The returned object supplies both property base and VM receiver; native
+  // member syntax must evaluate that object once, including nested calls.
+  const auto op = [](abc::Opcode value) { return static_cast<std::uint8_t>(value); };
+  std::vector<std::uint8_t> bytes{op(abc::Opcode::kLDA_V8), 3,
+      op(abc::Opcode::kCALLARG0_IMM8), 0};
+  for (unsigned i = 0; i < count; ++i) {
+    bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), 0, op(abc::Opcode::kLDA_V8), 0,
+        op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0, op(abc::Opcode::kSTA_V8), 1});
+    if (barrier) bytes.push_back(op(abc::Opcode::kDEBUGGER));
+    bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 1, op(abc::Opcode::kCALLTHIS0_IMM8_V8), 0,
+        static_cast<std::uint8_t>(wrong_receiver ? 3 : 0)});
+    if (shared) {
+      bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), 2, op(abc::Opcode::kLDA_V8), 0,
+          op(abc::Opcode::kRETURN)});
+      break;
+    }
+  }
+  if (!shared) bytes.push_back(op(abc::Opcode::kRETURN));
+  return Import(bytes, 3, input, profile, analysis::CallResultValues::kLanguage);
 }
 analysis::ValueProgram OptionalCall(bool method_first) {
   const std::vector<std::uint8_t> method{0x60, 3, 0x42, 0, 1, 0, 0x61, 0};
@@ -670,6 +695,34 @@ std::string BooleanConversions(unsigned count, bool comparison) {
   return Source(graph, true, &*input, false);
 }
 int main(int argc, char** argv) {
+  if (argc == 1 || (argc == 2 && std::string_view(argv[1]) == "--member-chain-sources")) {
+    const bool emit = argc == 2;
+    if (emit) std::cout << '[';
+    bool first = true;
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
+      for (const auto count : {1U, 200U, 201U, 400U}) {
+        std::optional<FunctionInput> input;
+        const auto graph = MemberChain(count, profile, &input);
+        const auto source = Source(graph, false, &*input, false);
+        Check(source.find("$value") == std::string::npos);
+        Check(source.find(".call(") == std::string::npos);
+        if (emit) { if (!first) std::cout << ','; first = false; std::cout << source; }
+      }
+      std::optional<FunctionInput> input;
+      const auto shared = MemberChain(1, profile, &input, true);
+      const auto shared_source = Source(shared, false, &*input, false);
+      Check(shared_source.find("$value") != std::string::npos);
+      Check(shared_source.find(".call(") == std::string::npos);
+      if (emit) std::cout << ',' << shared_source;
+      const auto interrupted = MemberChain(1, profile, nullptr, false, true);
+      const auto interrupted_plan = std::get<EvaluationPlan>(BuildEvaluationPlan(interrupted));
+      Check(std::get<CallPlanError>(BuildCallPlan(interrupted, interrupted_plan)) == CallPlanError::kReference);
+      const auto mismatched = MemberChain(1, profile, nullptr, false, false, true);
+      const auto mismatched_plan = std::get<EvaluationPlan>(BuildEvaluationPlan(mismatched));
+      Check(std::get<CallPlanError>(BuildCallPlan(mismatched, mismatched_plan)) == CallPlanError::kReceiver);
+    }
+    if (emit) { std::cout << "]\n"; return 0; }
+  }
   const auto decision_call = DecisionCall();
   const auto decision_evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(decision_call));
   Check(std::holds_alternative<CallPlan>(BuildCallPlan(decision_call, decision_evaluation)));

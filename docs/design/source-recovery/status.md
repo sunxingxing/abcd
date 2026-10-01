@@ -12,6 +12,46 @@
 
 ## 当前阶段
 
+### 2026-10-02：普通流的成员调用链与真实源码表示
+
+- 普通 ProjectEvaluationUses 将原成员引用的 base 和显式 VM receiver
+  当作两个源码观察者，使 SectionViewModel 等输出多级临时变量。最小
+  decoded 链在无 `$value` 表示断言 RED，member-chain-red-tests.log；
+  修复复用已存在的 IsMemberReceiver，只有原属性 base 与 receiver 相同
+  才投影该重复协议使用。原始使用图不变，独立 evaluation forest 同步
+  消费规则，原 CallPlan/TreeOperands/效果顺序检查不放宽。
+- 三 profile、1/200/201/400 层链经完整 FunctionTree、TreeSemantics、
+  原始 InstructionSources 和打印范围检查。额外真实使用保留快照；
+  DEBUGGER 引用隔断和不同 receiver 分别保持 kReference/kReceiver
+  拒绝。共同 printer 输出原生成员调用，不读取可变 function.call。
+- 新 member_chain_source_test 执行15份完整 decoded 输出，111个独立
+  getter/receiver/对象身份/状态/异常场景；getter 取得后替换属性仍使用
+  已取得引用，3种合法语法的重复求值/错 receiver/错属性变异被检测。
+  这不是完整应用或 Ark 宿主验收。
+- viewmodel_batch_source_test 顺序导出真实 ABC 后对照配对 TS：六份
+  record 行为通过，Immersive 四个 ViewModel 的六个方法另外要求原生
+  成员/调用链且无方法内 `$value`。新增字段/方法/slice getter、接收者、
+  参数强制转换、实时替换和精确异常身份场景。SectionViewModel29619
+  已恢复为 this.model.getSectionProductList().slice(0, count) 的调用树，
+  包括 printer 既有括号；不再拆成两级方法内临时变量。
+- 关联75 targets 构建退出0，首轮127项为126通过/1失败：PageA 的
+  wrong-receiver 文本变异仍定位旧临时绑定，替换无变化。原配对行为
+  已通过，改为直接改变 getUIContext 成员调用 receiver，并先独立解析
+  三个变异。PageA 单独通过0.58秒，pagea-tests.log；没有弱化观察义务。
+  符号 opcode 整理后的定向3/3通过11.99秒，final-focused-tests.log。
+  最终关联127/127通过203.01秒，final-tests.log，选择清单见selected.json。
+- 五输入 fresh `build/stage-one/value-member-chain-pass-1` 顺序导出均
+  退出0，仍为56 complete / 3 incomplete / 47 failure / 46 no-module，
+  没有新增 complete、完整项回退或 legacy writer，native default 三项
+  保留。29个原完整 record 的源码变化，相关临时声明967降至204；
+  此计数是表示变化，不是这些 record 的全量语义验收。证据
+  final-batch.log、final-batch-summary.json、source-changes.json。
+  本节日志均位于 /tmp/abcd-member-chain-*。
+- Goal仍active，阶段一完整配对语义与源码表示验收未完成。外部类词法
+  捕获、数值域和 super spread 等已记录缺口仍在；不以减少临时量或
+  组件验证替代整应用接受。全库、扩大语料、RSS/基准、DFX、调度器、
+  代理及定期审视仍暂停，既有运行环境前提不变。
+
 ### 2026-10-02：共享条件分支与成员调用参数贯通
 
 - 真实 WindowUtil 箭头7754 的 getter op14 在 block0，调用 op50 在

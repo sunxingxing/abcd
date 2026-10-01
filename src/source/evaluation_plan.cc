@@ -254,7 +254,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       step();
       if (graph.ops[i].life == analysis::ValueLife::kLive)
-        visible[i] = ProjectEvaluationUses(graph, {static_cast<std::uint32_t>(i)}, module_index,
+        visible[i] = ProjectEvaluationUses(graph, plan, {static_cast<std::uint32_t>(i)}, module_index,
             literal_allocations[i] != 0, plan.class_projection.owners,
             flow == EvaluationFlow::kNormal && plan.cells ? &*plan.cells : nullptr, plan.receiver_guards);
     }

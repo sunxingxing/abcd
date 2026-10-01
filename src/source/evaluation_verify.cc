@@ -185,7 +185,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       step();
       if (graph.ops[i].life == analysis::ValueLife::kLive)
-        visible[i] = ProjectEvaluationUses(graph, {static_cast<std::uint32_t>(i)}, module_index,
+        visible[i] = ProjectEvaluationUses(graph, plan, {static_cast<std::uint32_t>(i)}, module_index,
             literal_allocations[i] != 0, plan.class_projection.owners,
             flow == EvaluationFlow::kNormal && plan.cells ? &*plan.cells : nullptr, plan.receiver_guards);
     }
@@ -425,7 +425,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
           const auto& op = graph.ops[frame.op.value];
           if (frame.next_operand < op.use_count) {
             const analysis::UseId use_id{op.first_use.value + frame.next_operand++};
-            if (flow == EvaluationFlow::kPhased && IsMemberReceiver(graph, plan, graph.uses[use_id.value]))
+            if (IsMemberReceiver(graph, plan, graph.uses[use_id.value]))
               continue;
             const auto* value = std::get_if<analysis::ValueId>(&graph.uses[use_id.value].operand);
             if (!value) continue;

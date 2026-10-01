@@ -1,11 +1,12 @@
 #include "module_evaluation.h"
+#include "phase_evaluation.h"
 
 #include <new>
 #include <stdexcept>
 
 namespace abcd::source {
 EvaluationUses ProjectEvaluationUses(const analysis::ValueProgram& graph,
-    analysis::OpId operation, const ModuleEvaluationIndex& modules, bool project_initializers,
+    const EvaluationPlan& plan, analysis::OpId operation, const ModuleEvaluationIndex& modules, bool project_initializers,
     std::span<const std::optional<analysis::OpId>> class_projection, const CellEvaluation* initialized_cells,
     std::span<const analysis::OpId> receiver_guards) {
   const auto& op = graph.ops[operation.value];
@@ -17,6 +18,10 @@ EvaluationUses ProjectEvaluationUses(const analysis::ValueProgram& graph,
   for (auto id = graph.values[op.result->value].first_use; id; id = graph.uses[id->value].next) {
     if (id == consumed) continue;
     const auto& use = graph.uses[id->value];
+    // Both flows consume the explicit VM receiver through the original member
+    // reference. Keep other observations; effect order and CallPlan must still
+    // prove the getter, base and receiver agree before native syntax is built.
+    if (IsMemberReceiver(graph, plan, use)) continue;
     if (const auto* owner = std::get_if<analysis::OpId>(&use.owner)) {
       if (!class_projection.empty() && class_projection[owner->value]) continue;
       if (initialized_cells && IsInitializedCellGuard(graph, *initialized_cells, *owner)) continue;
