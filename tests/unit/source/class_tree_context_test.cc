@@ -706,14 +706,13 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
         emission.Receipt().stage == SourceStage::kPrinted && !ValidateRouteReceipt(emission.Receipt()));
     const auto phase = std::get<PhasedBody>(PhasedBody::Build(owner, decoded));
     const auto source_census = std::get<InstructionSources>(BuildInstructionSources(phase, decoded, emission.Function().Tree()));
-    Check(source_census.sites.size() == phase.TreeInput(decoded).input.flow.instructions.size());
+    Check(source_census.input_sites == phase.TreeInput(decoded).input.flow.instructions.size());
     test::CheckInstructionPositions(emission.Function().Tree(), source_census, emission.Positions(),
         {0, output.str().size()});
     for (std::size_t i = 0; i < moved.Evaluation().operations.size(); ++i) {
       const auto kind = moved.Evaluation().operations[i].kind;
       if (kind == EvaluationKind::kAlias || kind == EvaluationKind::kElidedPure || kind == EvaluationKind::kEnvironment) {
-        const auto& origin = phase.Graph().origins[phase.Graph().ops[i].origin.value];
-        Check(std::holds_alternative<AnchorId>(source_census.sites[origin.site.value].target));
+        Check(std::holds_alternative<AnchorId>(source_census.occurrences[i].target));
       }
     }
     auto wrong_sources = emission.Function().Tree();
@@ -721,7 +720,7 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     Check(std::get<InstructionSourceError>(BuildInstructionSources(phase, decoded, wrong_sources)) ==
         InstructionSourceError::kRevision);
     --wrong_sources.value_revision.value;
-    auto& wrong_origin = std::get<OriginalSite>(wrong_sources.origins[source_census.sites.front().origin.value]);
+    auto& wrong_origin = std::get<OriginalSite>(wrong_sources.origins[source_census.occurrences.front().origin.value]);
     ++wrong_origin.pc.value;
     Check(std::get<InstructionSourceError>(BuildInstructionSources(phase, decoded, wrong_sources)) ==
         InstructionSourceError::kOrigin);

@@ -172,7 +172,7 @@ for (const item of cases) {
   assert.equal(binding.abi, 'v7_current_slots');
   assert.equal(item.snapshots.length, item.nested_snapshot || item.loop_snapshots ? 2 : 1);
   for (const site of item.snapshots) {
-    const source = item.positions.instruction_sources[site.instruction];
+    const source = item.positions.instruction_sources.find(source => source.site === site.instruction);
     assert.equal(item.positions.origins[source.origin].pc, site.pc);
     const range = source.range;
     assert.ok(range.begin < range.end && range.end <= Buffer.byteLength(item.source));

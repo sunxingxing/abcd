@@ -148,8 +148,8 @@ void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const Pr
   });
   if (sources) {
     output << ",\"instruction_sources\":";
-    Array(output, sources->sites, [&](const InstructionSource& source) {
-      nlohmann::json entry{{"origin", source.origin.value}};
+    Array(output, sources->occurrences, [&](const InstructionSource& source) {
+      nlohmann::json entry{{"site", source.site.value}, {"origin", source.origin.value}};
       std::visit([&](auto node) {
         using T = decltype(node);
         if constexpr (std::is_same_v<T, ElidedInstruction>) {

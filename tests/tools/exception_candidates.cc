@@ -133,7 +133,7 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
           const auto& member = family->members[i];
           if (!member.sources || !member.abi) return 1;
           test::CheckInstructionPositions(member.tree, *member.sources, positions->members[i], positions->functions[i]);
-          mapped += member.sources->sites.size();
+          mapped += member.sources->input_sites;
         }
         report["shared_file_family_mapped"] = mapped;
         report["shared_file_family_source"] = source.str();

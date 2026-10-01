@@ -40,7 +40,7 @@ void CheckPositions(const PreparedFamily& family, const PrintedFamilyDraft& prin
     Require(tree.modules.empty() ? !positions.module_binding :
         positions.module_binding && member.record && positions.module_binding->record == *member.record,
         Error::kPositions);
-    for (const auto& source : member.sources->sites) {
+    for (const auto& source : member.sources->occurrences) {
       budget.Step();
       // IDs come from the sealed instruction-source pass, not caller tables.
       std::visit([&](auto target) {

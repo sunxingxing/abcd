@@ -1,4 +1,5 @@
 #include "../../../src/source/logical_regions.h"
+#include "../../../src/source/instruction_sources.h"
 #include "../../../src/source/function_tree.h"
 #include "../../../src/source/call_plan.h"
 #include "../../../src/source/tree_semantics.h"
@@ -6,6 +7,7 @@
 #include "../../../src/source/tree_checks.h"
 #include <sstream>
 #include "../../support/analysis/ssa_fixture.h"
+#include "../../support/instruction_positions.h"
 #include "abcd/analysis/value_import.h"
 #include "abcd/analysis/value_simplify.h"
 
@@ -13,7 +15,7 @@ using namespace abcd;
 using namespace abcd::source;
 using abcd::test::Check;
 namespace {
-analysis::ValueProgram Import(const std::vector<std::uint8_t>& bytes, std::uint32_t locals) {
+analysis::ValueProgram Import(const std::vector<std::uint8_t>& bytes, std::uint32_t locals, std::optional<FunctionInput>* input = nullptr) {
   const auto body = test::Body(bytes);
   using namespace analysis;
   const auto method_result = BuildSemanticMethod(body, abc::ProfileId::kDynamic1206, locals + 1);
@@ -23,6 +25,10 @@ analysis::ValueProgram Import(const std::vector<std::uint8_t>& bytes, std::uint3
   Check(std::holds_alternative<SemanticProof>(proof_result));
   const auto& proof = std::get<SemanticProof>(proof_result);
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(locals, 1, {false, false, false, false}));
+  if (input) {
+    RouteInputIdentity identity{}; identity.profile = abc::ProfileId::kDynamic1206;
+    *input = std::get<FunctionInput>(FunctionInput::Build(identity, {}, {}, body, frame, InputCaptureMode::kClosed));
+  }
   auto imported = ImportNormalValues(body, method, proof, frame);
   Check(std::holds_alternative<ValueProgram>(imported));
   auto graph = std::get<ValueProgram>(std::move(imported));
@@ -175,7 +181,7 @@ analysis::ValueProgram BufferedSelections(unsigned count = 2, bool barrier = fal
   bytes.insert(bytes.end(), {0x60, 1, static_cast<std::uint8_t>(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 3, 0, 0x64});
   return Import(bytes, 3);
 }
-analysis::ValueProgram GetterSelections(unsigned count = 2, bool barrier = false, bool call = true, bool trailing_literal = false) {
+analysis::ValueProgram GetterSelections(unsigned count = 2, bool barrier = false, bool call = true, bool trailing_literal = false, std::optional<FunctionInput>* input = nullptr) {
   std::vector<std::uint8_t> bytes{0x60, 3, 0x42, 0, 1, 0, 0x61, 1,
       0x07, 0, 0, 0, 0x61, 0, 0x60, 3, 0x42, 0, 0, 0, 0x61, 2};
   if (!call) bytes.erase(bytes.begin(), bytes.begin() + 14);
@@ -206,7 +212,7 @@ analysis::ValueProgram GetterSelections(unsigned count = 2, bool barrier = false
   const auto fallback_end = jump(abc::Opcode::kJMP_IMM32);
   for (const auto branch : branches) patch(branch, fallback);
   patch(end, bytes.size()); patch(fallback_end, bytes.size());
-  if (!call) { bytes.push_back(0x64); return Import(bytes, 3); }
+  if (!call) { bytes.push_back(0x64); return Import(bytes, 3, input); }
   emit(abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8); bytes.insert(bytes.end(), {0, 0, 0, 0});
   bytes.insert(bytes.end(), {0x60, 1, static_cast<std::uint8_t>(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 3, 0});
   if (trailing_literal) {
@@ -216,7 +222,7 @@ analysis::ValueProgram GetterSelections(unsigned count = 2, bool barrier = false
     bytes.insert(bytes.end(), {0x60, 1, static_cast<std::uint8_t>(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 3, 0, 0x60, 2});
   }
   bytes.push_back(0x64);
-  return Import(bytes, 3);
+  return Import(bytes, 3, input);
 }
 analysis::ValueProgram Diamond(bool negate, unsigned count = 1, bool direct = false, bool getter = false, bool barrier = false, bool invoke = false, bool left_getter = false) {
   // return arg || [] (or arg && []), retaining the compiler's empty keep arm.
@@ -265,7 +271,7 @@ analysis::ValueProgram CallDiamond(bool negate, bool method_first, bool barrier 
 }
 
 }
-std::string Source(const analysis::ValueProgram& graph, bool compose = true) {
+std::string Source(const analysis::ValueProgram& graph, bool compose = true, const FunctionInput* input = nullptr) {
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
   const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
   const auto regions = FindLogicalRegions(graph, control);
@@ -276,6 +282,7 @@ std::string Source(const analysis::ValueProgram& graph, bool compose = true) {
     Check(!evaluation.operations[producer.value].temporary);
   }
   FunctionSyntax syntax{};
+  if (input) syntax.identity = input->Identity();
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   syntax.names = {u"value", u"probe", u"items", u"other"}; syntax.parameters.push_back({NameId{0}, NameEvidence::kDebugRange});
   syntax.texts = {u"px"};
@@ -352,9 +359,46 @@ std::string Source(const analysis::ValueProgram& graph, bool compose = true) {
     }
     Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation, wrong, view)));
   }
+  std::optional<InstructionSources> sources;
+  if (input) {
+    const auto result = BuildInstructionSources(*input, graph, tree);
+    Check(std::holds_alternative<InstructionSources>(result));
+    sources = std::get<InstructionSources>(result);
+    Check(sources->input_sites == input->Input().instructions.size() && sources->occurrences.size() == graph.ops.size());
+    std::vector<std::size_t> counts(sources->input_sites);
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      const auto& source = sources->occurrences[i];
+      Check(source.origin.value == graph.ops[i].origin.value && source.site == graph.origins[source.origin.value].site);
+      ++counts[source.site.value];
+    }
+    Check(std::all_of(counts.begin(), counts.end(), [](auto n) { return n != 0; }));
+    Check(std::any_of(counts.begin(), counts.end(), [](auto n) { return n > 1; }));
+    auto missing = tree;
+    const auto clone = analysis::OpId{static_cast<std::uint32_t>(graph.ops.size() - 1)};
+    Check(std::erase_if(missing.operations, [&](const auto& placement) { return placement.operation == clone; }) == 1);
+    Check(std::get<InstructionSourceError>(BuildInstructionSources(*input, graph, missing)) == InstructionSourceError::kCoverage);
+    auto wrong = graph;
+    ++wrong.origins[wrong.ops.back().origin.value].pc.value;
+    Check(std::get<InstructionSourceError>(BuildInstructionSources(*input, wrong, tree)) == InstructionSourceError::kOrigin);
+    wrong = graph; wrong.ops.back().origin = wrong.ops.front().origin;
+    Check(std::get<InstructionSourceError>(BuildInstructionSources(*input, wrong, tree)) == InstructionSourceError::kOrigin);
+    auto duplicate = tree; duplicate.operations.push_back(duplicate.operations.back());
+    Check(std::get<InstructionSourceError>(BuildInstructionSources(*input, graph, duplicate)) == InstructionSourceError::kPlacement);
+    analysis::SemanticBudget exact{sources->allocated_bytes, sources->work};
+    Check(std::holds_alternative<InstructionSources>(BuildInstructionSources(*input, graph, tree, exact)));
+    --exact.bytes;
+    Check(std::get<InstructionSourceError>(BuildInstructionSources(*input, graph, tree, exact)) == InstructionSourceError::kResourceLimit);
+    ++exact.bytes; --exact.work;
+    Check(std::get<InstructionSourceError>(BuildInstructionSources(*input, graph, tree, exact)) == InstructionSourceError::kWorkLimit);
+  }
   auto family = std::get<ConstructedFamily>(BuildFunctionFamily({{tree, {}, {}}}, tree.owner));
   std::ostringstream output;
-  Check(std::holds_alternative<PrintedFamilyDraft>(PrintFamilyDraft(family, output)));
+  const auto printed = PrintFamilyDraft(family, output);
+  Check(std::holds_alternative<PrintedFamilyDraft>(printed));
+  if (sources) {
+    const auto& positions = std::get<PrintedFamilyDraft>(printed);
+    test::CheckInstructionPositions(tree, *sources, positions.members.front(), positions.functions.front());
+  }
   return output.str();
 }
 void CallArguments() {
@@ -538,6 +582,12 @@ void Negatives() {
   Check(FindLogicalRegions(wrong, control).empty());
 }
 int main(int argc, char** argv) {
+  for (const unsigned count : {1U, 2U, 16U, 200U, 201U}) {
+    std::optional<FunctionInput> input;
+    const auto graph = GetterSelections(count, false, true, false, &input);
+    Check(input && graph.ops.size() > input->Input().instructions.size());
+    Check(!Source(graph, true, &*input).empty());
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--getter-selections-source") {
     std::cout << Source(GetterSelections()) << "\n";
     return 0;

@@ -12,6 +12,37 @@
 
 ## 当前阶段
 
+### 2026-10-01：尾部复制来源贯通及两个新增完整 record
+
+- InstructionSources 改为按工作操作保留全部 occurrence，每项显式携带原始
+  InputSiteId、独立 origin 和源码目标。原始 site 必须全部覆盖，操作与 origin
+  一一对应，所有 retained/elided/signature 目标继续检查；不再以原始指令数量
+  限制已证明的 primitive-tail duplication。变换合法性仍由已有变换及新鲜语义/
+  流检查负责，映射不授予额外复制或消除权限。复杂度 O(I+O+P)，新增索引计入预算。
+- FamilyEmission、JSON 位置输出和测试消费者已迁移；JSON instruction_sources
+  项新增 site 字段，数组顺序是操作 occurrence 顺序，不能用数组下标代替原指令号。
+  原始输入计数与 occurrence 数量分别保存；复制出的表达式/anchor 不被覆盖或丢弃。
+- 真实解码 getter 选择 fixture 在修改前于来源检查失败（退出134），
+  /tmp/abcd-source-occurrences-red-build.log、/tmp/abcd-source-occurrences-red.log。
+  当前 1/2/16/200/201 层复制规格通过，并逐 occurrence 检查打印位置；缺失克隆目标、
+  错误 PC、重复 origin、重复 placement 和精确资源/work 边界反例通过。
+- 更新两个旧测试对纯常量消除的过时预期：默认参数 PC20/26 显式核对 elided_pure，
+  常量 fixture 区分真实 intrinsic/ABI 节点与消除的 primitive copy，继续运行行为对照。
+  24 项定向测试全部通过，10.62秒，/tmp/abcd-source-occurrences-final-tests.log；
+  构建 /tmp/abcd-source-occurrences-final-build.log。全量测试/RSS/基准仍暂停。
+- 五输入正式导出 build/stage-one/value-source-occurrences-pass-1 均退出0，达到
+  **45 complete / 61 failure / 46 no-module**，无完整项退化、无 legacy writer，
+  /tmp/abcd-source-occurrences-batch-summary.json。新增 Immersive ShoppingAvoid
+  record11877 和 MultiCommunityApplication CommentViewModel record20523。
+  两份完整 mjs 均通过 node --check；ShoppingAvoid 尚未完成平台行为验收。
+- 新增 comment_item_source_test：引擎只读 ABC，独立测试从配对 TS 读取原构造器
+  正文，排除无运行时写入的类型声明。完整生成模块的 CommentItem 导出通过2422组
+  构造行为对照，覆盖真假值、属性身份/描述符、两次不同 getter 返回、异常对象身份、
+  继承 setter 和 receiver。该结果不是完整应用或所有宿主上下文的等价证明。
+- 输出仍有嵌套条件、空 then/else、合成临时变量与类命名包装；源码表示风格尚未
+  通过。下一步继续共同 AST 的高层条件/可选访问恢复及其余61个失败 record，
+  不能把 complete 导出计数或本次定向配对验证当作阶段一完成。Goal 继续开放。
+
 ### 2026-10-01：getter 快照进入严格谓词及消费者边界
 
 - 新增类型化 kPredicateSnapshot：将多用途 named/computed getter 的私有快照赋值

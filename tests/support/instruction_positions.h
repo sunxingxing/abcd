@@ -18,17 +18,17 @@ inline void CheckInstructionPositions(const source::FunctionTree& tree,
   check(positions.identity == tree.identity && positions.method == tree.method &&
       positions.value_revision == tree.value_revision && positions.cfg_revision == tree.cfg_revision &&
       owner.begin < owner.end && positions.bytes == owner.end - owner.begin);
-  for (std::size_t i = 0; i < sources.sites.size(); ++i) {
-    const auto& site = sources.sites[i];
+  for (const auto& site : sources.occurrences) {
+    check(site.site.value < sources.input_sites);
     check(site.origin.value < tree.origins.size());
     std::visit([&](auto target) {
       using T = decltype(target);
       if constexpr (std::is_same_v<T, ElidedInstruction>) {
         const auto* origin = std::get_if<ElidedOrigin>(&tree.origins[site.origin.value]);
-        check(origin && origin->site.value == i);
+        check(origin && origin->site == site.site);
       } else {
         const auto* origin = std::get_if<OriginalSite>(&tree.origins[site.origin.value]);
-        check(origin && origin->site.value == i);
+        check(origin && origin->site == site.site);
         if constexpr (std::is_same_v<T, AnchorId>) {
           check(target.value < positions.anchors.size());
           check(owner.begin <= positions.anchors[target.value] && positions.anchors[target.value] <= owner.end);

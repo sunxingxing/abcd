@@ -482,7 +482,7 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
       for (const auto& member : built.members)
         test::Check(member.abi && member.sources && member.abi->parameters.size() == member.tree.parameters.size());
       const auto& root_sources = *built.members[0].sources;
-      test::Check(root_sources.sites.size() == opened_child.input.Input().instructions.size());
+      test::Check(root_sources.input_sites == opened_child.input.Input().instructions.size());
       auto missing_source = built.members[0].tree;
       test::Check(!missing_source.operations.empty()); missing_source.operations.pop_back();
       test::Check(std::get<InstructionSourceError>(BuildInstructionSources(opened_child.input,

@@ -160,8 +160,8 @@ void Emit(bool wide, bool captured = false, CapturedBase base = CapturedBase::kA
   const std::size_t kInstructionCount = (captured ? 9 : 4) + (child_global ? 1 : 0);
   const std::size_t kStoreSite = (captured ? 7 : 2) + (child_global ? 1 : 0);
   const abc::CodeOffset kStorePc{(captured ? 14U : 4U) + (child_global ? 4U : 0U)};
-  test::Check(member.sources && member.sources->sites.size() == kInstructionCount);
-  const auto& mapping = member.sources->sites[kStoreSite];
+  test::Check(member.sources && member.sources->occurrences.size() == kInstructionCount);
+  const auto& mapping = member.sources->occurrences[kStoreSite];
   const auto expression = std::get<ExprId>(mapping.target);
   const auto& origin = std::get<OriginalSite>(member.tree.origins[mapping.origin.value]);
   test::Check(origin.pc == kStorePc);

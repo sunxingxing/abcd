@@ -34,8 +34,8 @@ assert.equal(segment.family_members.length, 1);
 assert.deepEqual(segment.family_members[0].route_receipt, segment.route_receipt);
 assert.deepEqual(segment.family_members[0].local_positions, segment.local_positions);
 assert.ok(instruction_sources.length > 0);
-for (const [site, source] of instruction_sources.entries()) {
-  assert.equal(segment.local_positions.origins[source.origin].site, site);
+for (const source of instruction_sources) {
+  assert.equal(segment.local_positions.origins[source.origin].site, source.site);
   if (source.kind === 'elided_pure') assert.equal(source.range, null);
   else assert.ok(source.range.begin <= source.range.end);
 }

@@ -16,12 +16,13 @@ class SourceIndex {
       const FunctionTree& tree) {
     Require(identity == tree.identity && method == tree.method, Error::kIdentity);
     Require(graph.revision == tree.value_revision && graph.cfg_revision == tree.cfg_revision, Error::kRevision);
-    Require(graph.origins.size() == instructions.size() && tree.origins.size() >= graph.origins.size(), Error::kOrigin);
+    Require(graph.origins.size() == graph.ops.size() && tree.origins.size() >= graph.origins.size(), Error::kOrigin);
     InstructionSources result;
-    Array(result.sites, instructions.size());
-    std::vector<std::uint8_t> seen;
+    result.input_sites = instructions.size();
+    Array(result.occurrences, graph.ops.size());
+    std::vector<std::uint8_t> seen, origins;
     std::vector<std::optional<InstructionTarget>> targets;
-    Array(seen, instructions.size()); Array(targets, graph.ops.size());
+    Array(seen, instructions.size()); Array(origins, graph.origins.size()); Array(targets, graph.ops.size());
     for (const auto& placement : tree.operations) {
       Step();
       Require(placement.operation.value < graph.ops.size(), Error::kPlacement);
@@ -41,9 +42,10 @@ class SourceIndex {
     }
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       Step(); const auto& op = graph.ops[i];
-      Require(op.origin.value < graph.origins.size(), Error::kOrigin);
+      Require(op.origin.value < graph.origins.size() && !origins[op.origin.value], Error::kOrigin);
+      origins[op.origin.value] = 1;
       const auto& origin = graph.origins[op.origin.value];
-      Require(origin.site.value < instructions.size() && !seen[origin.site.value], Error::kCoverage);
+      Require(origin.site.value < instructions.size(), Error::kCoverage);
       seen[origin.site.value] = 1;
       const auto& instruction = instructions[origin.site.value];
       Require(origin.pc == instruction.pc && origin.original == instruction.origin, Error::kOrigin);
@@ -62,7 +64,7 @@ class SourceIndex {
         Require((op.life == analysis::ValueLife::kRemoved) ==
             std::holds_alternative<ParameterId>(*target), Error::kPlacement);
       }
-      result.sites[origin.site.value] = {{op.origin.value}, *target};
+      result.occurrences[i] = {origin.site, {op.origin.value}, *target};
     }
     for (const auto present : seen) { Step(); Require(present != 0, Error::kCoverage); }
     result.allocated_bytes = initial_.bytes - left_.bytes;

@@ -31,8 +31,8 @@ for (const method of [7117, 7477]) {
   assert.ok(member.begin >= 0 && member.begin < member.end);
   assert.ok(member.end <= Buffer.byteLength(result.source));
   assert.equal(result.positions.instruction_sources.length, 5);
-  for (const [site, source] of result.positions.instruction_sources.entries()) {
-    assert.equal(result.positions.origins[source.origin].site, site);
+  for (const source of result.positions.instruction_sources) {
+    assert.equal(result.positions.origins[source.origin].site, source.site);
     if (source.kind === 'elided_pure') assert.equal(source.range, null);
     else {
       assert.ok(source.range.begin >= member.begin);

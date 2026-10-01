@@ -203,54 +203,63 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
   const auto& receipt = emission.Receipts().front();
   test::Check(receipt.stage == SourceStage::kPrinted && receipt.coverage == Coverage::kComplete);
   const auto& member = emission.Family().Family().members.front();
-  test::Check(member.sources && !member.sources->sites.empty());
-  const auto& mapping = member.sources->sites[(overwrite_abi ? 2 : 0) + (global_lookup ? 1 : 0)];
-  const auto& origin = std::get<OriginalSite>(member.tree.origins[mapping.origin.value]);
-  test::Check(origin.pc == abc::CodeOffset{(overwrite_abi ? 3U : 0U) + (global_lookup ? 4U : 0U)});
-  const auto expression = std::get<ExprId>(mapping.target);
-  const auto span = emission.Positions().members.front().expressions[expression.value];
-  test::Check(span.begin < span.end && span.end <= output.view().size());
-  if (constant == abc::Opcode::kLDSYMBOL) {
-    test::Check(std::holds_alternative<SymbolConstructorExpr>(member.tree.expressions[expression.value].expression));
-    const auto& binding = emission.Positions().members.front().symbol_binding;
-    test::Check(symbol_binding && binding && binding->name == symbol_binding->name);
-    test::Check(output.view().substr(span.begin, span.end - span.begin) == "hostSymbol");
-    std::ostringstream serialized;
-    tools::WriteTreePositions(serialized, member.tree, emission.Positions().members.front(), &*member.sources);
-    const auto json = nlohmann::json::parse(serialized.str());
-    test::Check(json.at("symbol_binding").at("name") == "hostSymbol");
-    test::Check(json.at("symbol_binding").at("policy") == "explicit_host");
-    test::Check(json.at("symbol_binding").at("contract") == SourceContractName(member.tree.identity.contract));
-  }
-  if (constant == abc::Opcode::kLDGLOBAL) {
-    test::Check(std::holds_alternative<RealmObjectExpr>(member.tree.expressions[expression.value].expression));
-    const auto& binding = emission.Positions().members.front().realm_binding;
-    test::Check(binding && binding->policy == (realm_binding ?
-        RealmBindingPolicy::kExplicitHost : RealmBindingPolicy::kStableGlobalThis));
-    test::Check(binding->name == (realm_binding ? realm_binding->name : u"globalThis"));
-    test::Check(output.view().substr(span.begin, span.end - span.begin) ==
-        std::string(binding->name.begin(), binding->name.end()));
-    std::ostringstream serialized;
-    tools::WriteTreePositions(serialized, member.tree, emission.Positions().members.front(), &*member.sources);
-    const auto json = nlohmann::json::parse(serialized.str());
-    test::Check(json.at("realm_binding").at("name") == (realm_binding ? "hostRealm" : "globalThis"));
-    test::Check(json.at("realm_binding").at("policy") == (realm_binding ? "explicit_host" : "stable_global_this"));
-    test::Check(json.at("realm_binding").at("contract") == SourceContractName(member.tree.identity.contract));
-  }
-  if (constant == abc::Opcode::kLDFUNCTION) {
-    test::Check(member.tree.self.has_value());
-    test::Check(std::get<SymbolExpr>(member.tree.expressions[expression.value].expression).symbol == member.tree.self);
-    const auto& self_name = member.tree.names[member.tree.symbols[member.tree.self->value].name.value];
-    test::Check(output.view().substr(span.begin, span.end - span.begin) ==
-        std::string(self_name.begin(), self_name.end()));
-    test::Check(member.abi && member.abi->callable == AbiObservation::kFrameIdentity &&
-        member.abi->frame_function_reads == 1);
+  test::Check(member.sources && !member.sources->occurrences.empty());
+  const auto& mapping = member.sources->occurrences[(overwrite_abi ? 2 : 0) + (global_lookup ? 1 : 0)];
+  if (std::holds_alternative<ElidedInstruction>(mapping.target)) {
+    // Primitive copy propagation leaves a source elision; execution below still
+    // checks the consumer's value. Intrinsic/ABI reads must retain real nodes.
+    test::Check(constant != abc::Opcode::kLDGLOBAL && constant != abc::Opcode::kLDSYMBOL &&
+        constant != abc::Opcode::kLDFUNCTION);
+    const auto& origin = std::get<ElidedOrigin>(member.tree.origins[mapping.origin.value]);
+    test::Check(origin.pc == abc::CodeOffset{(overwrite_abi ? 3U : 0U) + (global_lookup ? 4U : 0U)});
+  } else {
+    const auto& origin = std::get<OriginalSite>(member.tree.origins[mapping.origin.value]);
+    test::Check(origin.pc == abc::CodeOffset{(overwrite_abi ? 3U : 0U) + (global_lookup ? 4U : 0U)});
+    const auto expression = std::get<ExprId>(mapping.target);
+    const auto span = emission.Positions().members.front().expressions[expression.value];
+    test::Check(span.begin < span.end && span.end <= output.view().size());
+    if (constant == abc::Opcode::kLDSYMBOL) {
+      test::Check(std::holds_alternative<SymbolConstructorExpr>(member.tree.expressions[expression.value].expression));
+      const auto& binding = emission.Positions().members.front().symbol_binding;
+      test::Check(symbol_binding && binding && binding->name == symbol_binding->name);
+      test::Check(output.view().substr(span.begin, span.end - span.begin) == "hostSymbol");
+      std::ostringstream serialized;
+      tools::WriteTreePositions(serialized, member.tree, emission.Positions().members.front(), &*member.sources);
+      const auto json = nlohmann::json::parse(serialized.str());
+      test::Check(json.at("symbol_binding").at("name") == "hostSymbol");
+      test::Check(json.at("symbol_binding").at("policy") == "explicit_host");
+      test::Check(json.at("symbol_binding").at("contract") == SourceContractName(member.tree.identity.contract));
+    }
+    if (constant == abc::Opcode::kLDGLOBAL) {
+      test::Check(std::holds_alternative<RealmObjectExpr>(member.tree.expressions[expression.value].expression));
+      const auto& binding = emission.Positions().members.front().realm_binding;
+      test::Check(binding && binding->policy == (realm_binding ?
+          RealmBindingPolicy::kExplicitHost : RealmBindingPolicy::kStableGlobalThis));
+      test::Check(binding->name == (realm_binding ? realm_binding->name : u"globalThis"));
+      test::Check(output.view().substr(span.begin, span.end - span.begin) ==
+          std::string(binding->name.begin(), binding->name.end()));
+      std::ostringstream serialized;
+      tools::WriteTreePositions(serialized, member.tree, emission.Positions().members.front(), &*member.sources);
+      const auto json = nlohmann::json::parse(serialized.str());
+      test::Check(json.at("realm_binding").at("name") == (realm_binding ? "hostRealm" : "globalThis"));
+      test::Check(json.at("realm_binding").at("policy") == (realm_binding ? "explicit_host" : "stable_global_this"));
+      test::Check(json.at("realm_binding").at("contract") == SourceContractName(member.tree.identity.contract));
+    }
+    if (constant == abc::Opcode::kLDFUNCTION) {
+      test::Check(member.tree.self.has_value());
+      test::Check(std::get<SymbolExpr>(member.tree.expressions[expression.value].expression).symbol == member.tree.self);
+      const auto& self_name = member.tree.names[member.tree.symbols[member.tree.self->value].name.value];
+      test::Check(output.view().substr(span.begin, span.end - span.begin) ==
+          std::string(self_name.begin(), self_name.end()));
+      test::Check(member.abi && member.abi->callable == AbiObservation::kFrameIdentity &&
+          member.abi->frame_function_reads == 1);
+    }
   }
   if (debug) {
     const std::array expected_pc{abc::CodeOffset{1},
         abc::CodeOffset{static_cast<std::uint32_t>(code.size() - 2)}};
     std::size_t count = 0;
-    for (const auto& site : member.sources->sites) {
+    for (const auto& site : member.sources->occurrences) {
       const auto* statement = std::get_if<StmtId>(&site.target);
       if (!statement || !std::holds_alternative<DebuggerStmt>(
           member.tree.statements[statement->value].statement)) continue;
@@ -266,7 +275,7 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
   if (throws_value) {
     const abc::CodeOffset throw_pc{static_cast<std::uint32_t>(code.size() - 2)};
     std::size_t throws = 0;
-    for (const auto& site : member.sources->sites) {
+    for (const auto& site : member.sources->occurrences) {
       const auto* statement = std::get_if<StmtId>(&site.target);
       if (!statement || !std::holds_alternative<ThrowStmt>(member.tree.statements[statement->value].statement))
         continue;

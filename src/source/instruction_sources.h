@@ -9,12 +9,15 @@ class PhasedBody;
 struct ElidedInstruction {};
 using InstructionTarget = std::variant<ExprId, StmtId, AnchorId, PropertyId, ParameterId, ElidedInstruction>;
 struct InstructionSource {
+  analysis::InputSiteId site;
   TreeOriginId origin;
   InstructionTarget target;
 };
 struct InstructionSources {
-  // Original input-site order, not a PC-sized array or generated-text index.
-  std::vector<InstructionSource> sites;
+  // One entry per work operation, in operation order. Tail duplication keeps
+  // every occurrence of the original site, including elisions and anchors.
+  std::vector<InstructionSource> occurrences;
+  std::size_t input_sites = 0;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };
@@ -22,8 +25,9 @@ enum class InstructionSourceError : std::uint8_t {
   kIdentity, kRevision, kOrigin, kPlacement, kCoverage, kResourceLimit, kWorkLimit
 };
 // Requires fresh semantic/default/flow proofs for the unchanged residual tree.
-// Accounts every original instruction once; it does not prove optimizations or
-// authorize erasure itself. Stable one-origin-per-site work IR is required.
+// Covers every input site and every work operation with its own origin/target.
+// Multiple occurrences do not prove duplication or authorize erasure: callers
+// must retain the existing transformation and fresh semantic/flow proofs.
 // O(input sites + work ops + placements), with bounded dense ordinal indexes.
 [[nodiscard]] std::variant<InstructionSources, InstructionSourceError> BuildInstructionSources(
     const FunctionInput& input, const analysis::ValueProgram& graph,

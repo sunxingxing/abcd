@@ -232,7 +232,7 @@ ExceptionFamilyProbe ProbeExceptionFamily(const corpus::AbcFile& file,
     const auto& member = layout->members[i];
     if (!member.sources || !member.abi) return result;
     CheckInstructionPositions(member.tree, *member.sources, positions->members[i], positions->functions[i]);
-    result.mapped_instructions += member.sources->sites.size();
+    result.mapped_instructions += member.sources->input_sites;
   }
   result.draft = output.str();
   result.stage = FamilyProbeStage::kDone;

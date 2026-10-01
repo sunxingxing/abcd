@@ -31,9 +31,9 @@ for (const [method, methods, mapped, execute] of [
   for (const owner of report.draft_positions) {
     assert(0 <= owner.begin && owner.begin < owner.end && owner.end <= bytes);
     const positions = owner.positions;
-    for (const [site, source] of positions.instruction_sources.entries()) {
+    for (const source of positions.instruction_sources) {
       const origin = positions.origins[source.origin];
-      assert.equal(origin.site, site);
+      assert.equal(origin.site, source.site);
       if (source.range !== null) {
         assert(owner.begin <= source.range.begin && source.range.begin <= source.range.end);
         assert(source.range.end <= owner.end);
