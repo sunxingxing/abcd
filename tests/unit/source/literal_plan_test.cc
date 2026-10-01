@@ -194,6 +194,62 @@ void Budgets() {
     Check(std::get<LiteralError>(BuildLiteralPlan(graph, budget)) == LiteralError::kResourceLimit);
   }
 }
+enum class ClosureHazard { kNone, kShared, kEnvironment, kHomeObject };
+ValueProgram ClosureLiteral(std::uint32_t fields, ClosureHazard hazard = ClosureHazard::kNone) {
+  Fixture fixture;
+  fixture.Add(ValueObjectAllocation{}, true, {});
+  fixture.graph.ops.back().normal = fixture.graph.ops.back().before_throw = LanguageEffect::kAllocation;
+  fixture.graph.ops.back().exceptional = ExceptionalCompletion::kMayThrow;
+  std::optional<ValueId> first;
+  for (std::uint32_t i = 0; i < fields; ++i) {
+    fixture.Add(ValueFunctionCreation{CreationKind::kFunction, {1}, 0,
+        hazard == ClosureHazard::kHomeObject ? HomeObjectInput::kAccumulator : HomeObjectInput::kCurrentFunction, 0}, true, {});
+    auto& creation = fixture.graph.ops.back();
+    creation.normal = creation.before_throw = LanguageEffect::kAllocation | LanguageEffect::kEnvironmentRead |
+        LanguageEffect::kHeapRead | LanguageEffect::kModuleRead;
+    creation.exceptional = ExceptionalCompletion::kMayThrow;
+    const auto callback = *creation.result;
+    if (!first) first = callback;
+    if (hazard == ClosureHazard::kEnvironment) {
+      fixture.Add(ValueEnvironmentPop{}, false, {});
+      fixture.graph.ops.back().normal = fixture.graph.ops.back().before_throw = LanguageEffect::kEnvironmentWrite;
+    }
+    fixture.Add(ValueOwnWrite{OwnWriteKind::kDefineField, {i}, 0}, false,
+        {{OperandRole::kBase, ValueId{0}}, {OperandRole::kStoredValue,
+          hazard == ClosureHazard::kShared ? *first : callback}});
+    fixture.graph.ops.back().normal = fixture.graph.ops.back().before_throw = LanguageEffect::kHeapWrite | LanguageEffect::kUserCode;
+    fixture.graph.ops.back().exceptional = ExceptionalCompletion::kMayThrow;
+  }
+  fixture.Add(ValueReturn{}, false, {{OperandRole::kReturnValue, ValueId{0}}});
+  fixture.graph.blocks = {{{0}, static_cast<std::uint32_t>(fixture.graph.ops.size()), {0}, 0}};
+  return std::move(fixture.graph);
+}
+void ClosureBoundaries() {
+  std::uint64_t previous = 0;
+  for (const auto count : {1U, 200U, 201U, 400U, 800U}) {
+    auto graph = ClosureLiteral(count);
+    const auto planned = BuildLiteralPlan(graph);
+    Check(std::holds_alternative<LiteralPlan>(planned));
+    const auto& plan = std::get<LiteralPlan>(planned);
+    Check(plan.objects.size() == 1 && plan.definitions.size() == count);
+    Check(std::holds_alternative<std::uint64_t>(VerifyLiteralPlan(graph, plan)));
+    std::size_t creations = 0;
+    for (std::size_t i = 0; i < graph.ops.size(); ++i)
+      if (std::holds_alternative<ValueFunctionCreation>(graph.ops[i].operation)) {
+        Check(plan.nested[i].has_value()); ++creations;
+      }
+    Check(creations == count);
+    if (count > 201) Check(plan.work < previous * 3);
+    previous = plan.work;
+    auto missing = plan; missing.nested[1].reset();
+    Check(std::holds_alternative<LiteralError>(VerifyLiteralPlan(graph, missing)));
+    Check(std::holds_alternative<LiteralPlan>(BuildLiteralPlan(graph, {64 * 1024 * 1024, plan.work})));
+    Check(std::get<LiteralError>(BuildLiteralPlan(graph, {64 * 1024 * 1024, plan.work - 1})) == LiteralError::kWorkLimit);
+  }
+  Check(std::get<LiteralError>(BuildLiteralPlan(ClosureLiteral(2, ClosureHazard::kShared))) == LiteralError::kObserved);
+  Check(std::get<LiteralError>(BuildLiteralPlan(ClosureLiteral(1, ClosureHazard::kEnvironment))) == LiteralError::kObserved);
+  Check(std::get<LiteralError>(BuildLiteralPlan(ClosureLiteral(1, ClosureHazard::kHomeObject))) == LiteralError::kLateValue);
+}
 void BufferedArraySuffix(bool print = false) {
   for (const std::uint32_t count : {1U, 200U, 201U, 402U}) {
     auto graph = Graph(count);
@@ -780,7 +836,7 @@ void RhsSnapshot() {
 }  // namespace
 int main(int argc, char** argv) {
   if (argc == 2 && std::string_view(argv[1]) == "--staged-source") { StagedBuffer(true); return 0; }
-  StagedBuffer();
+  StagedBuffer(); ClosureBoundaries();
   if (argc == 2 && std::string_view(argv[1]) == "--late-call-source") { LateMemberCalls(true); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--consumer-source") { LiteralConsumers(true); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--buffer-source") { BufferedOverwrites(true); return 0; }

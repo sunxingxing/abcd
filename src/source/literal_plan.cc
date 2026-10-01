@@ -220,7 +220,14 @@ bool LiteralUnary(const analysis::ValueOperation& operation) {
   return false;
 }
 bool LiteralExpression(const analysis::ValueProgram& graph, const analysis::ValueOp& op, std::size_t index, Guards guards) {
+  const auto* creation = std::get_if<analysis::ValueFunctionCreation>(&op.operation);
+  // Creating a closure does not execute its body. The same literal interval
+  // proof retains creation order and forbids intervening environment changes;
+  // EvaluationPlan/FamilyTree still own the child and all capture obligations.
+  const bool closure = creation && creation->kind == analysis::CreationKind::kFunction &&
+      creation->home_object == analysis::HomeObjectInput::kCurrentFunction && op.use_count == 0;
   return PrimitiveLeaf(graph, op) || LiteralUnary(op.operation) ||
+      closure ||
       std::holds_alternative<analysis::ValueInvoke>(op.operation) ||
       // Construction is a single-use ordered expression, like a call. The
       // nesting census forbids exposing the unfinished literal to it; shared

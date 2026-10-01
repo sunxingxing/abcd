@@ -12,6 +12,40 @@
 
 ## 当前阶段
 
+### 2026-10-01：字面量 initializer 贯通有序闭包创建
+
+- LiteralExpression 接纳共同 AST 已支持的 kFunction/current-function、无显式
+  operand 的 ValueFunctionCreation。沿用原有唯一 consumer、层叠 initializer
+  区间、canonical use census、环境边界及 phased catch-copy 核对；不把
+  closure creation 当作 body execution，也不授予捕获恒定或省略 child owner。
+  EvaluationPlan/FamilyTree 仍核对完整 child/capture。生产只增加 typed
+  predicate，无新遍历、存储、writer、样本选择或准入设施。
+- 三 profile 的真实序列化构造器先 allocation，再 DEFINEFUNC，最后 own
+  definition；经共同 file/class/family/printer 输出完整 object literal/arrow。
+  旧实现实际 RED，/tmp/abcd-literal-closures-red-tests.log；新增独立对照
+  **630 场景**检查 base/Proxy/替代 receiver、闭包 this、setter 任意 throw、
+  own descriptor、VM realm prototype 和继承 setter 不被 own define 调用，
+  /tmp/abcd-literal-closures-behavior.log。既有直接 callback 630 场景也通过。
+  捕获 receiver mutation 及移除 empty NamedEvaluation 的名称 mutation 均
+  被 oracle 拒绝；名称反例先通过语法检查，避免把语法破坏算作语义负例。
+- LiteralPlan 单测覆盖1/200/201/400/800个创建，所有创建都归属唯一字段，
+  几何 work、已有精确额度及缺失 witness 检查通过。共享 callback、跨环境
+  pop 和错误 home-object 继续拒绝。相关构建退出0，
+  /tmp/abcd-literal-closures-final-build.log；最终 **21/21 定向回归通过22.45秒**，
+  /tmp/abcd-literal-closures-verified-tests.log，含普通/phased literals、
+  member reference、capture、tree、PageA/Index及派生构造器。
+- 五输入 build/stage-one/value-literal-closures-pass-1 全部退出0，维持
+  **50 complete / 3 incomplete / 53 failure / 46 no-module**，无 complete
+  回退或 legacy writer，/tmp/abcd-literal-closures-batch-summary.json。
+  未新增完整 record 或配对表示验收；全库/RSS/基准/DFX/代理仍暂停。
+- 真实 Home/5851 越过此前 PC392 allocation/PC398 closure 的 LateValue
+  拒绝，FamilyTrees 现到 member1 的 FunctionTreeError::kExpression；
+  /tmp/abcd-literal-closures-home-next.log。实际为 normal CallPlan::kReference，
+  call op75 的 callee property 仍为 kRoot/kEffectSnapshot，
+  /tmp/abcd-literal-closures-home-call-reference.log。下一步处理原生成员引用
+  的此种参数/receiver 求值组合，保留 getter 次数、callee、receiver 和异常
+  顺序，不用可篡改 call/apply 替代。阶段一 Goal 继续 active。
+
 ### 2026-10-01：派生构造器接收者贯通保留的词法 cell
 
 - FamilyTrees 将同一不可变 ABC/index/lookup 交给派生构造器投影，独立调用

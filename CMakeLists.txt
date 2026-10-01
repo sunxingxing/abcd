@@ -1077,6 +1077,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/module_store_tree.mjs $<TARGET_FILE:module_store_tree_test>)
     add_test(NAME derived_cells_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/derived_cells.mjs $<TARGET_FILE:derived_cells_test>)
+    add_test(NAME literal_closure_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/derived_cells.mjs $<TARGET_FILE:derived_cells_test> --literal)
     add_test(NAME phased_cells_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_cells.mjs $<TARGET_FILE:class_tree_context_test>)
     add_test(NAME phased_literal_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

@@ -50,9 +50,11 @@ enum class LiteralError : std::uint8_t {
 // with dense indexed definitions 0..N-1, or increasing buffered-array writes,
 // in the same block/corridor. Buffered extent/gaps are checked with constants;
 // no observation until initialization completes. RHS snapshots precede allocation;
-// owned late reads/calls/constructions preserve operand and property effect order. A member
+// owned late reads/calls/constructions/closures preserve operand and property effect order. A member
 // call's duplicate receiver wire use is consumed by its exact callee Reference;
 // CallPlan and tree operand verification independently check that pairing.
+// A closure retains its creation environment and child/capture obligations;
+// literal ownership neither executes its body nor proves its cells immutable.
 // Staged buffered objects instead preserve allocation and write sites in a normal
 // DAG. No escape precedes the final write; tree construction independently proves
 // every assigned key already denotes a writable own buffer data property.

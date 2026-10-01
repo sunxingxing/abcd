@@ -20,7 +20,7 @@ void Check(bool value, const std::source_location& at = std::source_location::cu
 enum class Child { kReadOnly, kWrite, kEscape };
 enum class CellBranch { kNone, kReceiver, kMixed };
 std::uint64_t Run(abc::ProfileId profile, std::size_t copies, Child child, bool print,
-    CellBranch branch = CellBranch::kNone) {
+    CellBranch branch = CellBranch::kNone, bool literal = false) {
   // Pinned dynamic ISA fixture: actual derived class occurrence and closure,
   // receiver saved into local cell after super, read again after DEFINEFUNC.
   constexpr std::uint32_t kPool = 64, kOwner = 80, kLiteral = 128,
@@ -48,7 +48,14 @@ std::uint64_t Run(abc::ProfileId profile, std::size_t copies, Child child, bool 
         static_cast<std::uint8_t>(abc::Opcode::kJMP_IMM8), to_join});
     constructor.insert(constructor.end(), alternate.begin(), alternate.end());
   }
-  constructor.insert(constructor.end(), {kDefine, 0, 2, 0, 0,
+  if (literal) constructor.insert(constructor.end(), {
+      static_cast<std::uint8_t>(abc::Opcode::kCREATEOBJECTWITHBUFFER_IMM8_ID16), 0, 4, 0,
+      kStore, 2});
+  constructor.insert(constructor.end(), {kDefine, 0, 2, 0, 0});
+  if (literal) constructor.insert(constructor.end(), {
+      static_cast<std::uint8_t>(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8), 0, 3, 0, 2,
+      kLoad, 2});
+  constructor.insert(constructor.end(), {
       static_cast<std::uint8_t>(abc::Opcode::kSTOBJBYNAME_IMM8_ID16_V8), 0, 3, 0, kReceiver});
   for (std::size_t i = 0; i < copies; ++i) constructor.insert(constructor.end(), {kLexLoad, 0, kStore, 3});
   constructor.insert(constructor.end(), {kLexLoad, 0, kCheckPrefix, kSuperCheck, 0, kReturn});
@@ -66,6 +73,14 @@ std::uint64_t Run(abc::ProfileId profile, std::size_t copies, Child child, bool 
   constexpr std::string_view kMemberName = "callback";
   bytes[kName] = (kMemberName.size() << 1) | 1;
   std::copy(kMemberName.begin(), kMemberName.end(), bytes.begin() + kName + 1);
+  constexpr std::uint32_t kObjectBuffer = 160;
+  if (literal) {
+    word(kPool + 16, kObjectBuffer); word(kObjectBuffer, 4);
+    bytes[kObjectBuffer + 4] = static_cast<std::uint8_t>(abc::LiteralTag::kString);
+    word(kObjectBuffer + 5, kName);
+    bytes[kObjectBuffer + 9] = static_cast<std::uint8_t>(abc::LiteralTag::kInteger);
+    word(kObjectBuffer + 10, 0);
+  }
   const auto write_body = [&](std::uint32_t at, std::uint32_t locals, std::uint32_t arguments,
       const std::vector<std::uint8_t>& code) {
     auto cursor = at;
@@ -87,7 +102,7 @@ std::uint64_t Run(abc::ProfileId profile, std::size_t copies, Child child, bool 
   header.version = profile == abc::ProfileId::kDynamic1202 ? abc::AbcVersion{12, 0, 2, 0} :
       profile == abc::ProfileId::kDynamic1301 ? abc::AbcVersion{13, 0, 1, 0} : abc::AbcVersion{12, 0, 6, 0};
   header.layout = abc::DynamicLayout{}; header.file_size = bytes.size();
-  abc::MetadataIndex index; index.regions.push_back({kCaller, kCallerCode, {}, {4, kPool}, {}, {}});
+  abc::MetadataIndex index; index.regions.push_back({kCaller, kCallerCode, {}, {literal ? 5U : 4U, kPool}, {}, {}});
   index.methods.resize(3);
   for (auto& method : index.methods) method.owner_offset = {kOwner};
   index.methods[0].offset = {kCaller}; index.methods[0].code = caller_info;
@@ -188,9 +203,10 @@ std::uint64_t Run(abc::ProfileId profile, std::size_t copies, Child child, bool 
 }
 }
 int main(int argc, char** argv) {
-  Check(argc == 1 || (argc == 2 && std::string_view(argv[1]) == "--source"));
+  Check(argc == 1 || (argc == 2 && (std::string_view(argv[1]) == "--source" || std::string_view(argv[1]) == "--literal-source")));
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
-    if (argc == 2) { Run(profile, 1, Child::kReadOnly, true); continue; }
+    if (argc == 2) { Run(profile, 1, Child::kReadOnly, true, CellBranch::kNone,
+        std::string_view(argv[1]) == "--literal-source"); continue; }
     std::uint64_t previous = 0;
     for (const auto count : {1U, 200U, 201U, 400U, 800U}) {
       const auto work = Run(profile, count, Child::kReadOnly, false);
@@ -199,5 +215,6 @@ int main(int argc, char** argv) {
     Run(profile, 1, Child::kWrite, false); Run(profile, 1, Child::kEscape, false);
     Run(profile, 1, Child::kReadOnly, false, CellBranch::kReceiver);
     Run(profile, 1, Child::kReadOnly, false, CellBranch::kMixed);
+    Run(profile, 1, Child::kReadOnly, false, CellBranch::kNone, true);
   }
 }
