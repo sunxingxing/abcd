@@ -188,6 +188,10 @@ bool Aggregate(const analysis::ValueOperation& op) {
 }
 bool LiteralExpression(const analysis::ValueOp& op, std::size_t index, Guards guards) {
   return PrimitiveLeaf(op) || std::holds_alternative<analysis::ValueInvoke>(op.operation) ||
+      // Construction is a single-use ordered expression, like a call. The
+      // nesting census forbids exposing the unfinished literal to it; shared
+      // evaluation/operand checks retain callee, arguments and throw order.
+      std::holds_alternative<analysis::ValueConstruct>(op.operation) ||
       std::holds_alternative<analysis::ValueLexicalLoad>(op.operation) ||
       std::holds_alternative<analysis::ValueNamedRead>(op.operation) ||
       std::holds_alternative<analysis::ValuePropertyRead>(op.operation) ||

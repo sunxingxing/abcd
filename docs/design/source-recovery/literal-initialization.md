@@ -1,5 +1,30 @@
 # Literal Initialization
 
+## Late construction expressions
+
+Normal block-local initializer nesting also admits `ValueConstruct`, using the
+same typed operation and common call/expression checks as a standalone `new`.
+The constructor result must have one initializer consumer; its callee and
+arguments retain their exact operand order and effects. The independent use
+census rejects an unfinished enclosing object passed into construction and a
+construction result shared outside the initializer. Exceptions, replacement
+objects, getter receivers and allocation identity are not erased. Phased
+initializer admission is unchanged.
+
+`literal_construct_test` decodes actual create/new/read/own-store bytecode and
+checks evaluation, tree flow and printing at 1/2/200/201/400/800 properties.
+Its malformed nesting proof is independently refused; structurally valid
+escape/shared-result graphs are refused. `literal_construct_source_test`
+compares complete generated functions with an independent object initializer
+through 28 constructor/getter/Proxy effect and throw scenarios, object identity
+and property descriptors, plus six non-constructible values. This is focused
+source behavior evidence, not full-record or paired-corpus acceptance.
+
+The real PageA 7255 construction at PC327 now passes this expression admission.
+Its buffered-object argument produced later than the enclosing allocation still
+refuses. Moving such arguments into nested syntax requires an additional checked
+aggregate-operand proof, rather than admitting arbitrary late values.
+
 This implements the first proof component of T07, not permission to replace an
 arbitrary own-definition with assignment. The working IR must already have
 input/effect correspondence; fresh normal-flow verification additionally checks

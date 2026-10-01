@@ -31,7 +31,7 @@ struct LiteralPlan {
   std::vector<ObjectInit> objects;
   std::vector<analysis::OpId> definitions;
   std::vector<std::uint8_t> staged;
-  // Per nested allocation/read expression, the unique immediate consumer use.
+  // Per nested allocation/value expression, the unique immediate consumer use.
   // Read chains preserve operand and property order; module guards are paired. Empty
   // for roots. Only normal, block-local, unobserved nesting is admitted.
   std::vector<std::optional<analysis::UseId>> nested;
@@ -49,7 +49,7 @@ enum class LiteralError : std::uint8_t {
 // with dense indexed definitions 0..N-1, or increasing buffered-array writes,
 // in the same block/corridor. Buffered extent/gaps are checked with constants;
 // no observation until initialization completes. RHS snapshots precede allocation;
-// owned late reads/calls preserve operand and property effect order. A member
+// owned late reads/calls/constructions preserve operand and property effect order. A member
 // call's duplicate receiver wire use is consumed by its exact callee Reference;
 // CallPlan and tree operand verification independently check that pairing.
 // Staged buffered objects instead preserve allocation and write sites in a normal

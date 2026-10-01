@@ -12,6 +12,34 @@
 
 ## 当前阶段
 
+### 2026-10-01：对象初始化中的单次构造表达式贯通共同源码路径
+
+- 正常同块LiteralPlan接纳ValueConstruct作为受检的late value expression；
+  复用现有求值形状、调用、ExpressionForest及TreeFlow，不增加writer或样本
+  分支。唯一消费、未完成对象不逃逸、操作数及属性效果顺序继续独立核对；
+  phased初始化准入不变。顺带修复原字面量测试对optional module guard的
+  聚合初始化编译错误。
+- 新解码夹具在旧规则确实于EvaluationPlan失败，
+  /tmp/abcd-literal-construct-red-tests.log；修复后1/2/200/201/400/800个
+  new/read/own-store初始化贯通共同树及printer。伪造nested proof被拒绝；
+  独立ValueFlow有效的对象逃逸和共享构造结果图仍被拒绝。生成的完整函数
+  经独立JS对照通过28个constructor/getter/Proxy顺序、异常和对象身份用例，
+  并验证own descriptors和6种不可构造值，
+  /tmp/abcd-literal-construct-behavior.log。
+- 生产和相关测试目标构建退出0，/tmp/abcd-literal-construct-final-build.log；
+  最终11/11定向测试通过，8.68秒，
+  /tmp/abcd-literal-construct-final-tests.log。全量、RSS和基准保持暂停。
+- 五输入build/stage-one/value-literal-construct-pass-1均退出0，维持
+  **47 complete / 2 incomplete / 57 failure / 46 no-module**，无完整项退化、
+  无legacy writer，/tmp/abcd-literal-construct-batch-summary.json。
+- 真实PageA 7255的PC327构造现越过原拒绝点；继续在构造参数拒绝kLateValue。
+  首个参数是PC270的buffered object allocation（op97，literal340），晚于
+  外围allocation55，/tmp/abcd-literal-construct-pagea-next-operand.log及
+  /tmp/abcd-literal-construct-pagea-aggregate-origin.log。
+  整个record6897仍tree_stage失败，未宣称通过配对语义或表示验收。
+- 下一步为共同嵌套聚合参数建立可独立核对的顺序/所有权证明，继续真实record
+  发布和阶段一验收。Goal仍active且未完成；输入ABC和配对源码未改动。
+
 ### 2026-10-01：创建前模块初始化贯通正常子函数读取
 
 - 真实 pasteboard PageA 入口7283在PC11写入local slot1（PageABuilder），

@@ -546,7 +546,7 @@ void LateModuleProperties(bool print = false) {
           {OperandRole::kKey, abcd::analysis::IntegerLiteral{static_cast<std::int32_t>(i)}}});
       fixture.Add(ValueOwnWrite{OwnWriteKind::kDefineField, {i}, 0}, false,
           {{OperandRole::kBase, ValueId{0}}, {OperandRole::kStoredValue, ValueId{value + 2}}});
-      modules.push_back({{{read}, {read + 1}}, {ModuleSpace::kExternal, ModuleSlot{0}}, {{7}, {0}}});
+      modules.push_back({{OpId{read}, OpId{read + 1}}, {ModuleSpace::kExternal, ModuleSlot{0}}, {{7}, {0}}});
       for (std::uint32_t j = 0; j < 5; ++j) {
         auto& op = fixture.graph.ops[read + j];
         op.normal = op.before_throw = j == 0 ? LanguageEffect::kModuleRead : j == 1 ?
