@@ -62,6 +62,10 @@ std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::ResolveDef
     }
     const auto& context = std::get<CreationTreeContext>(resolved);
     admit(context.AllocatedBytes(), 1); step(context.Work());
+    // Native get/set syntax cannot represent an async descriptor function.
+    // Ordinary definitions retain the factory's actual callable kind instead.
+    if (kind != abc::ClassMethodKind::kOrdinary && context.Callable() != CallableKind::kMethod)
+      return fail(Error::kKind);
     const auto length = kind == abc::ClassMethodKind::kGetter ? 0U : 1U;
     if (kind != abc::ClassMethodKind::kOrdinary && (context.Frame().parameters != length || context.Site().creation.length.value != length)) return fail(Error::kSignature);
     const auto read = [&](abc::PoolIndex key) -> std::u16string {
@@ -88,7 +92,7 @@ std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::ResolveDef
     admit(1, sizeof(ClassTreeContext));
     ClassTreeContext result;
     result.identity_ = identity; result.position_ = context.Position(); result.frame_ = context.Frame();
-    result.name_ = std::move(name); result.callable_ = CallableKind::kMethod;
+    result.name_ = std::move(name); result.callable_ = context.Callable();
     result.site_ = ClassDefinedMember{context.Site(), definition,
         found->prototype ? abc::ClassPlacement::kPrototype : abc::ClassPlacement::kStatic, kind};
     result.work_ = initial.work - budget.work;

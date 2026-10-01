@@ -39,14 +39,19 @@ std::variant<CreationTreeContext, CreationContextFailure> CreationTreeContext::R
     Require(!occurrence->resolved.attributes.sendable, Error::kKind);
     CallableKind callable;
     if (mode == CreationContextMode::kMethodBody) {
-      // OH7 ObjectFactory::NewJSFunctionForDefineMethod selects the no-prototype
-      // function class for NONE and installs the actual accumulator home.
+      // OH7 ObjectFactory::NewJSFunctionForDefineMethod selects AsyncFunction
+      // for ASYNC_FUNCTION, the no-prototype class for NONE, and installs the
+      // actual accumulator home. Keep that callable kind through common body
+      // normalization; async methods must not become synchronous methods.
       // This enables common body analysis only; it does not authorize emitting
       // an ordinary function or replacing a home-object/super relationship.
       Require(creation.kind == analysis::CreationKind::kMethod &&
-          creation.home_object == analysis::HomeObjectInput::kAccumulator &&
-          occurrence->resolved.attributes.kind == abc::FunctionKind::kNone, Error::kKind);
-      callable = CallableKind::kMethod;
+          creation.home_object == analysis::HomeObjectInput::kAccumulator, Error::kKind);
+      switch (occurrence->resolved.attributes.kind) {
+        case abc::FunctionKind::kNone: callable = CallableKind::kMethod; break;
+        case abc::FunctionKind::kAsync: callable = CallableKind::kAsyncMethod; break;
+        default: throw CreationContextFailure{Error::kKind};
+      }
     } else {
       Require(mode == CreationContextMode::kFunction && creation.kind == analysis::CreationKind::kFunction &&
           creation.home_object == analysis::HomeObjectInput::kCurrentFunction, Error::kKind);

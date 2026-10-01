@@ -2,18 +2,21 @@
 #include "../../../src/source/tree_constants.h"
 #include "../../../src/source/family_print.h"
 #include "abcd/source/global_reference.h"
+#include "abcd/analysis/coroutine.h"
 #include <unistd.h>
 #include <algorithm>
 #include <iostream>
 #include <sstream>
 #include <source_location>
+#include <nlohmann/json.hpp>
 namespace {
 using namespace abcd;
 using namespace abcd::source;
 void Check(bool ok, const std::source_location& at = std::source_location::current()) {
   if (!ok) { std::cerr << "accessor tree check " << at.line() << '\n'; std::abort(); }
 }
-std::string Recover(bool is_static, bool return_prototype = false, int ordinary_parity = -1) {
+std::string Recover(bool is_static, bool return_prototype = false, int ordinary_parity = -1,
+    bool async_method = false, abc::ProfileId profile = abc::ProfileId::kDynamic1206) {
   constexpr std::uint32_t kPool = 64, kOwner = 128, kLiteral = 160,
       kCreator = 256, kConstructor = 300, kGetter = 340, kSetter = 380,
       kCreatorCode = 512, kConstructorCode = 768, kGetterCode = 800, kSetterCode = 832,
@@ -63,10 +66,11 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   load(return_prototype ? 2 : 1); op(abc::Opcode::kRETURN);
   // Compact Panda headers: all fixture bodies stay within one ULEB payload.
   Check(code.size() < 128);
-  const auto body = [&](std::uint32_t at, std::uint8_t locals, std::uint8_t args, std::vector<std::uint8_t> data) {
-    bytes[at] = locals; bytes[at + 1] = args; bytes[at + 2] = static_cast<std::uint8_t>(data.size());
+  const auto body = [&](std::uint32_t at, std::uint8_t locals, std::uint8_t args, std::vector<std::uint8_t> data,
+      std::uint8_t tries = 0, std::uint8_t try_bytes = 0) {
+    bytes[at] = locals; bytes[at + 1] = args; bytes[at + 2] = static_cast<std::uint8_t>(data.size() - try_bytes); bytes[at + 3] = tries;
     std::copy(data.begin(), data.end(), bytes.begin() + at + 4);
-    return abc::CodeInfo{{at}, {at + 4}, locals, args, static_cast<std::uint32_t>(data.size()), 0};
+    return abc::CodeInfo{{at}, {at + 4}, locals, args, static_cast<std::uint32_t>(data.size() - try_bytes), tries};
   };
   const auto opcode = [](abc::Opcode value) { return static_cast<std::uint8_t>(value); };
   abc::MetadataIndex index; index.regions.push_back({kCreator, kCreatorCode, {}, {std::size(pool), kPool}, {}, {}});
@@ -84,12 +88,37 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   index.methods[3].code = body(kSetterCode, 1, 4, {opcode(abc::Opcode::kLDTHIS),
       opcode(abc::Opcode::kSTA_V8), 0, opcode(abc::Opcode::kLDA_V8), 4,
       opcode(abc::Opcode::kSTOBJBYNAME_IMM8_ID16_V8), 0, 6, 0, 0, opcode(abc::Opcode::kRETURNUNDEFINED)});
+  if (async_method) {
+    // Same private async await/resume wrapper as the class-buffer fixture,
+    // now created by actual DEFINE METHOD and installed by STOWNBYNAME.
+    constexpr unsigned kFunctionKindShift = 8, kByteBits = 8; // Pinned Panda attrs/encoding.
+    constexpr auto kThrow = static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
+    constexpr auto kStore = static_cast<std::uint8_t>(abc::Opcode::kSTA_V8);
+    constexpr auto kLoad = static_cast<std::uint8_t>(abc::Opcode::kLDA_V8);
+    constexpr auto kReturn = static_cast<std::uint8_t>(abc::Opcode::kRETURN);
+    constexpr auto kInteger = static_cast<std::uint8_t>(abc::Opcode::kLDAI_IMM32);
+    index.methods[3].access_flags = static_cast<std::uint32_t>(abc::FunctionKind::kAsync) << kFunctionKindShift;
+    index.methods[3].code = body(kSetterCode, 3, 4, {
+        opcode(abc::Opcode::kASYNCFUNCTIONENTER), kStore, 0,
+        kLoad, 6, opcode(abc::Opcode::kASYNCFUNCTIONAWAITUNCAUGHT_V8), 0,
+        opcode(abc::Opcode::kSUSPENDGENERATOR_V8), 0, kLoad, 0,
+        opcode(abc::Opcode::kRESUMEGENERATOR), kStore, 1, kLoad, 0,
+        opcode(abc::Opcode::kGETRESUMEMODE), kStore, 2,
+        kInteger, static_cast<std::uint8_t>(analysis::CoroutineResumeMode::kThrow), 0, 0, 0,
+        opcode(abc::Opcode::kEQ_IMM8_V8), 0, 2, opcode(abc::Opcode::kJEQZ_IMM8), 6,
+        kLoad, 1, static_cast<std::uint8_t>(kThrow), static_cast<std::uint8_t>(kThrow >> kByteBits),
+        kLoad, 1, opcode(abc::Opcode::kLDTHIS), opcode(abc::Opcode::kNOP),
+        opcode(abc::Opcode::kASYNCFUNCTIONRESOLVE_V8), 0, kReturn,
+        kStore, 1, opcode(abc::Opcode::kASYNCFUNCTIONREJECT_V8), 0, kReturn,
+        3, 37, 1, 0, 40, 5}, 1, 6);
+  }
   char path[] = "/tmp/abcd-accessor-tree-XXXXXX";
   const int fd = mkstemp(path); Check(fd >= 0);
   Check(write(fd, bytes.data(), bytes.size()) == static_cast<ssize_t>(bytes.size())); Check(close(fd) == 0);
   auto opened = corpus::AbcFile::Open(path); const auto& file = *std::get<std::unique_ptr<corpus::AbcFile>>(opened);
-  abc::Header header; header.kind = abc::AbcKind::kDynamic; header.profile = abc::ProfileId::kDynamic1206;
-  header.version = {12, 0, 6, 0}; header.layout = abc::DynamicLayout{}; header.file_size = bytes.size();
+  abc::Header header; header.kind = abc::AbcKind::kDynamic; header.profile = profile;
+  header.version = profile == abc::ProfileId::kDynamic1202 ? abc::AbcVersion{12, 0, 2, 0} :
+      profile == abc::ProfileId::kDynamic1301 ? abc::AbcVersion{13, 0, 1, 0} : abc::AbcVersion{12, 0, 6, 0}; header.layout = abc::DynamicLayout{}; header.file_size = bytes.size();
   const auto fingerprint = std::get<corpus::FileFingerprint>(file.Fingerprint());
   const auto identity = MakeRouteInputIdentity(fingerprint, header);
   const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
@@ -106,6 +135,13 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   GlobalScope globals{};
   auto built = BuildClassTree(file, header, index, lookup, roles, functions, classes, creator,
       definitions.front().creation, identity, &globals, {}, nullptr, definitions);
+  if (async_method && ordinary_parity != 1) {
+    const auto& failure = std::get<ClassTreeFailure>(built);
+    const auto& family = std::get<FamilyPrepareFailure>(failure);
+    const auto& context = std::get<ClassContextFailure>(family.cause);
+    Check(std::get<ClassContextError>(context.error) == ClassContextError::kKind);
+    Check(unlink(path) == 0); return {};
+  }
   if (const auto* error = std::get_if<ClassTreeFailure>(&built)) std::cerr << "class failure " << error->index() << '\n';
   Check(std::holds_alternative<ClassTree>(built));
   auto definition = std::make_shared<ClassTree>(std::get<ClassTree>(std::move(built)));
@@ -149,7 +185,18 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--async-json") {
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const bool is_static : {false, true})
+        std::cout << nlohmann::json{{"source", Recover(is_static, false, 1, true, profile)}, {"static", is_static}}.dump() << '\n';
+    return 0;
+  }
   if (argc == 2) { std::cout << Recover(std::string_view(argv[1]) == "--static", std::string_view(argv[1]) == "--retained",
       std::string_view(argv[1]) == "--method-last" ? 1 : std::string_view(argv[1]) == "--accessor-last" ? 0 : -1); return 0; }
+  for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+    for (const bool is_static : {false, true}) {
+      Recover(is_static, false, 1, true, profile);
+      Recover(is_static, false, -1, true, profile); // Async setter cannot become native set syntax.
+    }
   Recover(false); Recover(true); Recover(false, true); Recover(false, false, 0); Recover(false, false, 1);
 }

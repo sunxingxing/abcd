@@ -624,7 +624,7 @@ if(BUILD_TESTING)
   target_link_libraries(default_candidates_test PRIVATE abcd_source)
   add_test(NAME default_candidates_test COMMAND default_candidates_test)
   add_executable(class_accessor_tree_test tests/unit/source/class_accessor_tree_test.cc)
-  target_link_libraries(class_accessor_tree_test PRIVATE abcd_source abcd_corpus)
+  target_link_libraries(class_accessor_tree_test PRIVATE abcd_source abcd_corpus abcd_json)
   add_test(NAME class_accessor_tree_test COMMAND class_accessor_tree_test)
   add_executable(class_initializers_test tests/unit/source/class_initializers_test.cc)
   target_include_directories(class_initializers_test PRIVATE tests/support)
@@ -1009,6 +1009,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/logical_regions.mjs $<TARGET_FILE:logical_regions_test>)
     add_test(NAME logical_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/logical_tree.mjs $<TARGET_FILE:logical_tree_test>)
+    add_test(NAME defined_async_method_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/defined_async_method.mjs $<TARGET_FILE:class_accessor_tree_test>)
     add_test(NAME class_accessor_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/class_accessor_tree.mjs $<TARGET_FILE:class_accessor_tree_test>)
     add_test(NAME array_constants_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

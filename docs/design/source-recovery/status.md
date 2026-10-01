@@ -12,6 +12,45 @@
 
 ## 当前阶段
 
+### 2026-10-01：DEFINE METHOD 异步成员贯通共同函数族
+
+- CreationTreeContext 的 actual MethodBody 路线保留 kAsync → kAsyncMethod，
+  ClassDefinedMember 同样保留该 callable；仍要求 DEFINE METHOD 的 accumulator
+  home、同文件 occurrence/role/名称与 ABI。普通及 async body 复用已有函数族、
+  await normalization、树和 printer，不新增 writer。非普通 get/set 定义不能
+  直接采用 async 方法语法，维持明确 kKind 拒绝。
+- 依据 pinned OH7 ObjectFactory::NewJSFunctionForDefineMethod：ASYNC_FUNCTION
+  选择 AsyncFunction class 后设置实际 HomeObject。已核对本地上游 HEAD 为
+  f04900cf951c66c2ea18b2bab5b591d5336c34b9，与 reference lock 一致。
+- 三 profile 的实际序列化完整 class fixture 覆盖 prototype/static、四次
+  getter/async method descriptor 替换、await/resume/rethrow/reject 原始包装、
+  普通 object literal 与 class projection 隔离，以及不合法 async accessor
+  拒绝。新 fixture 在构建退出0后实际 RED：MethodBody NONE-only kKind，
+  /tmp/abcd-defined-async-red-fixed-build.log、red-test.log、red-cause.log。
+  最初测试配线缺 abcd_json 导致编译失败，修正后才执行上述语义 RED。
+- 独立整份 factory/class oracle 通过 **390 场景**：native AsyncFunction/Promise
+  realm prototype、name/length/不可构造、own descriptor/fresh identity、
+  严格 receiver、primitive/thenable、then getter/调用抛出与拒绝、deferred
+  resume、resolve 后抛出、microtask 次序、两个 invocation 乱序恢复及 ambient
+  call/apply/bind 毒化。移除 await、替换 receiver 的语法合法 mutation 被拒绝；
+  defined_async_method_source_test。表示保留原生 async method/await，但仍有
+  必要性待改善的临时量，不据此授予真实应用的整体风格 Accepted。
+- 相关构建退出0，**40/40 定向回归通过54.80秒**，
+  /tmp/abcd-defined-async-final-build.log 与 final-tests.log，包含原普通
+  accessor/class、class-buffer async、creation/capture/derived、正常/phased
+  literal、完整 Home/PageA/Index 及上一任务 receiver oracle。全库/RSS/基准/
+  DFX/代理仍暂停；现有旧 writer 基线失败没有计作本任务通过。
+- 五输入 build/stage-one/value-defined-async-pass-1 均退出0，保持
+  **51 complete / 3 incomplete / 52 failure / 46 no-module**，没有 complete
+  回退或 legacy writer，/tmp/abcd-defined-async-batch-summary.json。
+- 真实 PasteBoard 已越过 entry8831/PC182 的 async method9468 拒绝；下一个
+  是 parent9110/creation PC217 的 child9193，FamilyFileFailure 的
+  PhasedMethodError::kControl，/tmp/abcd-defined-async-pasteboard-next.log。
+  BuildExceptionControl 捕获原始 ControlError::kInvalidGraph，
+  /tmp/abcd-defined-async-next-control-cause.log。下一步从真实 phase projection
+  输入定位共同 control graph 的不变量/支持边界，不删除异常边或伪造 successor。
+  PasteBoard 整 record 与阶段一语义/表示验收均未完成，Goal 继续 active。
+
 ### 2026-10-01：已证明 receiver 检查贯通原生字面量初始化
 
 - normal LiteralPlan 接收既有 derived/captured receiver 的原始有序检查清单。
