@@ -95,6 +95,9 @@ void Failure(nlohmann::json& report, const FamilyFileFailure& failure) {
       report["family_error"] = Code(error);
     } else if constexpr (std::is_same_v<T, ClassInitializerError>) {
       report["class_projection_error"] = Code(error);
+    } else if constexpr (std::is_same_v<T, BufferedArrayError> || std::is_same_v<T, abc::MetadataError> ||
+        std::is_same_v<T, abc::LiteralFailure>) {
+      report["array_error"] = Code(error);
     } else if constexpr (std::is_same_v<T, CreationContextFailure>) {
       report["context_failure"] = error.error.index();
       std::visit([&](const auto& reason) { report["context_error"] = Code(reason); }, error.error);
@@ -208,6 +211,7 @@ nlohmann::json InspectFamilyValues(const abcd::corpus::AbcFile& file,
         {"child_obligations", member.function.Children().size()}};
     if (!member.function.Phase()) entry["capture_occurrences"] = member.function.Normal().input.Captures().size();
     entry["primitive_objects"] = member.objects.size();
+    entry["primitive_arrays"] = member.arrays.size();
     if (member.context) entry["callable"] = static_cast<unsigned>(member.context->Callable());
     if (member.incoming) {
       entry["parent"] = member.incoming->parent.value;
@@ -235,7 +239,7 @@ nlohmann::json InspectFamilyValues(const abcd::corpus::AbcFile& file,
     if (tree->writes) report["family_writes"] = {
         {"stores", tree->writes->stores}, {"captured_stores", tree->writes->captured_stores},
         {"signature_stores", tree->writes->signature_stores}, {"creations", tree->writes->creations},
-        {"primitive_objects", tree->writes->primitive_objects}};
+        {"primitive_objects", tree->writes->primitive_objects}, {"primitive_arrays", tree->writes->primitive_arrays}};
     report["family_tree_expressions"] = nlohmann::json::array();
     report["family_tree_signatures"] = nlohmann::json::array();
     for (const auto& member : tree->members) {

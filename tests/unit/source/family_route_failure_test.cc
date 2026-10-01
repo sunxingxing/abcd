@@ -21,6 +21,12 @@ void Failures() {
   object.object_error = ObjectBufferError::kResourceLimit;
   projected = FamilyRouteFailure(FamilyPrepareFailure{FamilyFileFailure{object}});
   Check(projected.failure_class == RouteFailureClass::kMemoryLimit && projected.pc == abc::CodeOffset{17});
+  projected = FamilyRouteFailure(FamilyPrepareFailure{FamilyFileFailure{
+      BufferedArrayError::kResourceLimit, {}, {}, abc::CodeOffset{85}}});
+  Check(projected.failure_class == RouteFailureClass::kMemoryLimit && projected.pc == abc::CodeOffset{85});
+  projected = FamilyRouteFailure(FamilyPrepareFailure{FamilyFileFailure{
+      abc::LiteralFailure{abc::LiteralError::kTruncated, {160}}, {}, {}, abc::CodeOffset{85}}});
+  Check(projected.pc == abc::CodeOffset{85});  // Entity offsets must not become bytecode PCs.
   analysis::FunctionSiteFailure sites{abc::BodyFailure{abc::BodyError::kBranchBoundary, {19}}, {}, abc::CodeOffset{7}};
   projected = FamilyRouteFailure(sites);
   Check(projected.failure_class == RouteFailureClass::kInvalidInput && projected.pc == abc::CodeOffset{19});

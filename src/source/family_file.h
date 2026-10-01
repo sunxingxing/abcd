@@ -8,6 +8,7 @@
 #include "family_function.h"
 #include "phased_creations.h"
 #include "object_buffer.h"
+#include "record_array.h"
 
 namespace abcd::source {
 struct FamilyCreation {
@@ -23,6 +24,12 @@ struct FamilyObject {
   // Primitive-only literal evidence, not permission to erase allocation or
   // its input barrier. AST construction must still account for this operation.
   ObjectBuffer buffer;
+};
+struct FamilyArray {
+  analysis::InstructionId site;
+  analysis::BufferedArrayCreation creation;
+  // Retain primitive-only evidence without removing the allocation/barrier.
+  BufferedArray buffer;
 };
 // An original class barrier delegated to the class tree, not a discharged
 // closure edge. Normal family publication still rejects these obligations.
@@ -43,6 +50,7 @@ struct FileFamilyMember {
   std::optional<PhasedCreations> phase_creations;
   std::optional<ClassProjection> class_projection;
   std::vector<FamilyClassObligation> classes;
+  std::vector<FamilyArray> arrays;
 };
 struct FileFamily {
   // Preorder, root at kRoot. Occurrence owners equal these stable member IDs;
@@ -60,7 +68,7 @@ enum class FamilyFileError : std::uint8_t {
 struct FamilyFileFailure {
   std::variant<FamilyFileError, FunctionFileFailure, CreationContextFailure,
       CaptureCellError, CaptureEvaluationFailure, BodyEmitFailure, PhasedFileFailure, PhasedCreationFailure,
-      ClassInitializerError> cause;
+      ClassInitializerError, BufferedArrayError, abc::MetadataError, abc::LiteralFailure> cause;
   std::optional<abc::EntityOffset> method;
   std::optional<abc::EntityOffset> parent;
   std::optional<abc::CodeOffset> creation_pc;

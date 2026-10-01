@@ -660,11 +660,18 @@ if(BUILD_TESTING)
   target_include_directories(literal_construct_test PRIVATE tests/support)
   target_link_libraries(literal_construct_test PRIVATE abcd_source)
   add_test(NAME literal_construct_test COMMAND literal_construct_test)
+  add_executable(family_array_test tests/integration/family_array.cc)
+  target_include_directories(family_array_test PRIVATE tests/support)
+  target_link_libraries(family_array_test PRIVATE abcd_source abcd_json)
+  add_test(NAME family_array_test COMMAND family_array_test)
   add_executable(shared_condition_test tests/integration/shared_condition.cc)
   target_include_directories(shared_condition_test PRIVATE tests/support)
   target_link_libraries(shared_condition_test PRIVATE abcd_source abcd_json)
   add_test(NAME shared_condition_test COMMAND shared_condition_test)
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME family_array_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/family_array.mjs
+      $<TARGET_FILE:family_array_test> $<TARGET_FILE:class_tree_context_test>)
     add_test(NAME shared_condition_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_condition.mjs $<TARGET_FILE:shared_condition_test>)
     add_test(NAME literal_construct_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
@@ -1213,6 +1220,9 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_backup_methods.mjs
         $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc"
         5465 854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e)
+      add_test(NAME home_record_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/home_record.mjs
+        $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
       add_test(NAME pagea_record_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/pagea_record.mjs
         $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")

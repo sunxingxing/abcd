@@ -47,6 +47,7 @@ struct FamilyWriteInput {
   std::optional<FamilyWriteEdge> incoming;
   std::span<const FamilyObject> objects;
   std::span<const FamilyClassObligation> classes;
+  std::span<const FamilyArray> arrays;
 };
 // Requires unchanged, complete file-family inputs and freshly verified semantic
 // trees/default signatures/flows/capture layout. Rechecks every original store's

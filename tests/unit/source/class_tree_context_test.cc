@@ -47,7 +47,7 @@ enum class GeneratorEncoding { kTagged, kExplicitTagged, kExplicitOrdinary };
 enum class ExceptionShape {
   kNone, kBranch, kModule, kForwarder, kDeadCopies, kLiveCopies, kReceiver, kReceiverCatch,
   kReceiverArgument, kReceiverPair, kReceiverNumericPair, kReceiverTypeof, kLiteral, kLexical,
-  kReceiverResult, kAsyncAwait, kGeneratorYield, kGeneratorCatch, kBufferedLexical, kNestedLiteral, kNestedCall,
+  kReceiverResult, kAsyncAwait, kGeneratorYield, kGeneratorCatch, kBufferedLexical, kBufferedArrayLexical, kNestedLiteral, kNestedCall,
   kNestedNegate, kNestedBitNot, kNestedDeadRead, kNestedDeadArray,
   kLiteralArgument, kLiteralArrayArgument, kLiteralArguments
 };
@@ -57,6 +57,8 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
          abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool static_member = false,
          GeneratorEncoding generator_encoding = GeneratorEncoding::kTagged,
          RestEncoding rest = RestEncoding::kNone) {
+  const bool array_buffer = exception == ExceptionShape::kBufferedArrayLexical;
+  const bool buffered = exception == ExceptionShape::kBufferedLexical || array_buffer;
   const bool defaults = encoding != DefaultEncoding::kNone;
   const bool generator = exception == ExceptionShape::kGeneratorYield || exception == ExceptionShape::kGeneratorCatch;
   const bool generator_catch = exception == ExceptionShape::kGeneratorCatch;
@@ -86,7 +88,7 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   word(kLiteral + 18, static_member ? 0 : 1);
   bytes[kName] = 7;
   std::copy_n("run", 3, bytes.begin() + kName + 1);
-  if (exception == ExceptionShape::kBufferedLexical) {
+  if (buffered) {
     constexpr std::uint32_t kObjectBuffer = 600, kBufferPool = 3, kTaggedEntries = 4;
     word(kPool + kBufferPool * sizeof(std::uint32_t), kObjectBuffer);
     word(kObjectBuffer, kTaggedEntries);
@@ -326,14 +328,15 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
           op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), kFirstCell, kReturn,
           kCallPc, kCallBytes, kSingleTry, kCatchAll, kHandlerPc, kHandlerBytes};
     }
-    if (exception == ExceptionShape::kBufferedLexical) {
+    if (buffered) {
       constexpr std::uint8_t kLocals = 1, kInput = 4, kObject = 0, kCell = 0,
           kBytes = 26, kCallPc = 14, kCallBytes = 3, kHandlerPc = 21, kHandlerBytes = 5,
           kBufferPool = 3;
       member = {kLocals, 4, kBytes, kSingleTry,
           op(abc::Opcode::kNEWLEXENV_IMM8), 1, kLoad, kInput,
           op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), kCell,
-          op(abc::Opcode::kCREATEOBJECTWITHBUFFER_IMM8_ID16), 0, kBufferPool, 0,
+          op(array_buffer ? abc::Opcode::kCREATEARRAYWITHBUFFER_IMM8_ID16 :
+              abc::Opcode::kCREATEOBJECTWITHBUFFER_IMM8_ID16), 0, kBufferPool, 0,
           kStore, kObject, kLoad, kInput, op(abc::Opcode::kCALLARG1_IMM8_V8), 0, kObject,
           op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), kCell, op(abc::Opcode::kPOPLEXENV), kReturn,
           op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), kCell,
@@ -527,7 +530,7 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   header.file_size = bytes.size();
   abc::MetadataIndex index;
   index.regions.push_back({kCaller, kCallerCode, {},
-      {exception == ExceptionShape::kBufferedLexical ? 4U : 3U, kPool}, {}, {}});
+      {buffered ? 4U : 3U, kPool}, {}, {}});
   index.methods.resize(3);
   for (auto& method : index.methods) method.owner_offset = {kOwner};
   index.methods[0].offset = {kCaller};
@@ -642,7 +645,7 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     const FunctionContext owner{std::get<ClassTreeContext>(ClassTreeContext::Resolve(
         file, header, index, lookup, roles, sites, range.first, identity))};
     const auto decoded = std::get<abc::MethodBody>(abc::DecodeMethodBody(file, header.profile, *index.methods[2].code));
-    if (exception == ExceptionShape::kBufferedLexical) {
+    if (buffered) {
       // The file-family path alone discharges the primitive-buffer write
       // barrier. A standalone Unknown premise is deliberately insufficient.
       Check(std::holds_alternative<PhasedMethodError>(PhasedMethod::Build(owner, decoded)));
@@ -653,7 +656,8 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
       auto family = std::get<PreparedFamily>(std::move(prepared));
       const auto& built = family.Family();
       Check(built.members.size() == 1 && built.members[0].tree.recovery_issues.empty());
-      Check(built.members[0].abi && built.members[0].sources && built.writes && built.writes->primitive_objects == 1);
+      Check(built.members[0].abi && built.members[0].sources && built.writes && built.writes->primitive_objects == (array_buffer ? 0U : 1U) &&
+          built.writes->primitive_arrays == (array_buffer ? 1U : 0U));
       auto inputs = std::get<FileFamily>(ReadFunctionFamily(file, header, index, lookup, roles,
           functions, owner.Position(), identity, {}, nullptr, &owner));
       Check(std::holds_alternative<FamilyWrites>(VerifyFamilyWrites(index, inputs, built, {}, &lookup)));
@@ -662,8 +666,8 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
       const FamilyWriteInput forged{PhasedFamilyInput{phase.Phases(), phase.Body(), locals, lookup, &phase},
           {}, inputs.members[0].objects};
       Check(std::get<FamilyWriteFailure>(VerifyFamilyWrites(index, std::span{&forged, 1}, built)).kind == FamilyWriteError::kDomain);
-      inputs.members[0].objects.clear();
-      Check(std::get<FamilyWriteFailure>(VerifyFamilyWrites(index, inputs, built, {}, &lookup)).kind == FamilyWriteError::kCoverage);
+      const FamilyWriteInput missing{PhasedFamilyInput{phase.Phases(), phase.Body(), phase.Locals(), lookup, &phase}, {}, {}};
+      Check(std::get<FamilyWriteFailure>(VerifyFamilyWrites(index, std::span{&missing, 1}, built)).kind == FamilyWriteError::kCoverage);
       std::ostringstream output;
       Check(std::holds_alternative<PrintedFamilyDraft>(family.PrintDraft(destination, output)));
       if (evidence) *evidence << nlohmann::json{{"source", output.str()}}.dump() << '\n';
@@ -1176,6 +1180,11 @@ int main(int argc, char** argv) {
     Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kLexical);
     return 0;
   }
+  if (argc == 2 && std::string_view(argv[1]) == "--buffered-array-json") {
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kBufferedArrayLexical, profile);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--buffered-lexical-json") {
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
       Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kBufferedLexical, profile);
@@ -1270,6 +1279,7 @@ int main(int argc, char** argv) {
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverResult);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kLexical);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kBufferedLexical);
+  Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kBufferedArrayLexical);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kLiteral);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kNestedLiteral);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kNestedCall);

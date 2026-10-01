@@ -12,6 +12,53 @@
 
 ## 当前阶段
 
+### 2026-10-01：primitive 数组屏障贯通完整 Home record
+
+- FamilyReader 复用 ReadBufferedArray，保留每个原始 BufferedArrayCreation
+  的 primitive-only 内容与 site；普通及 phased family 都经相同读取分支，
+  不将数组送入 BindCreation，不清除分配/捕获屏障。FamilyWrites 独立核对
+  原始 opcode、literal pool、唯一 site 与屏障消费，新增 primitive_arrays
+  census；实际元素仍由共同 constants/AST/TreeSemantics/printer 校验。
+  callable/未知 literal、重复/缺失/错误 pool 证据保留 typed refusal。
+- 每个 buffer 的解码/retained storage 服从现有共享内存预算，新增读取成本
+  按各原始 buffer 展开的总元素及字符串字节计算，不按唯一 pool 数量宣称
+  线性。三 profile 原始序列化 file/family 用例覆盖1/200/201/400/800创建，
+  几何 work、完整 ABI/tree/source、buffer callable 拒绝；原 class family
+  新数组用例实际 RED，/tmp/abcd-array-barrier-red-build.log 与 red-tests.log。
+  FamilyRouteFailure 也补齐 fallback creation_pc，保持更深 bytecode PC 优先，
+  不将 literal EntityOffset 当作 PC；新定位回归先 RED 再 GREEN。
+- 普通/异常数组完整源码独立对照 **474 场景**，核对 native Array/realm
+  prototype、元素及 length、own descriptor、负零、每次调用分配身份、
+  回调 mutation、receiver、任意 throw 与 catch lexical value；原型 setter、
+  iterator、Array constructor 及 call/apply/bind 毒化。元素值及 array→object
+  的语法合法 mutation 被拒绝，family_array_source_test。
+- 真实 Home record5521 完整恢复，原 method6760/PC85 的屏障拒绝已消失，
+  /tmp/abcd-array-barrier-home.json。新增 home_record_source_test：引擎读取
+  ABC 并退出后，oracle才读取整份配对 Home.ts，按转换后 ArkTS 的legacy
+  TS语义擦除恰好7条未初始化private类型声明；不拼接方法、不输入sidecar。
+  两份完整模块在独立realm对照 **362 场景**，覆盖imports/注册、constructor
+  length/prototype/own字段、accessor/lifecycle、共享条件链、权限array参数、
+  同步thenable及native立即/延迟/拒绝Promise、dialog与paramsGenerator闭包、
+  resource/Breakpoint、同步/延迟UI创建、click receiver及各处getter/call异常。
+  权限值的语法合法mutation被拒绝；native回调实际执行有独立断言。
+  首版mock遗漏Promise对返回对象then的探测，补齐普通缺失then后重新通过。
+- 相关构建退出0，/tmp/abcd-array-barrier-final-build.log 与
+  /tmp/abcd-array-barrier-route-fixed-build.log；最终 **34/34 定向回归通过
+  36.14秒**，/tmp/abcd-array-barrier-commit-tests.log，含上述完整两套oracle、
+  原始object屏障、class/capture/derived、普通/phased literal、PageA及Index。
+  既有旧writer named_call_test/base_constructor_js_test失败未纳入本任务通过
+  数；前者上一任务已实际恢复HEAD复现。全库/RSS/基准/DFX/代理仍暂停。
+- 五输入 build/stage-one/value-array-families-pass-1 均退出0，新增Home5521，
+  **51 complete / 3 incomplete / 52 failure / 46 no-module**，无complete回退
+  或legacy writer，/tmp/abcd-array-barrier-batch-summary.json。Home保留native
+  class/accessor、默认参数、if/||、箭头闭包、数组和try/catch，已有独立配对
+  行为证据；NamedEvaluation包装、临时变量及括号仍有表示差距，尚不授予
+  整体style Accepted或平台执行收据。阶段一Goal active。
+- 下一个实际拒绝是 PasteBoard record8383（入口8831、构造器9277），
+  FamilyTreeFailure root member0 / EvaluationError::kUnsupportedOperation，
+  /tmp/abcd-array-barrier-pasteboard-next.log。下一步从原始 live operation 和
+  evaluation支持边界定位，不删效果/guard、回退writer或跳过失败record。
+
 ### 2026-10-01：共享代码分支贯通原生短路条件链
 
 - normal ControlPlan 从原始 CFG 恢复单入口、共享同一代码分支的条件链，

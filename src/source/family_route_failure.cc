@@ -62,6 +62,7 @@ template<class T> RouteFailure Project(const T& error, ValueRouteError stage) {
     if (!result.pc) {
       if constexpr (requires { std::optional<abc::CodeOffset>{error.pc}; }) result.pc = error.pc;
       else if constexpr (requires { std::optional<abc::CodeOffset>{error.offset}; }) result.pc = error.offset;
+      else if constexpr (requires { std::optional<abc::CodeOffset>{error.creation_pc}; }) result.pc = error.creation_pc;
     }
     return result;
   }

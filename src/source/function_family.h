@@ -29,6 +29,7 @@ struct FamilyWriteFacts {
   std::size_t signature_stores = 0;
   std::size_t creations = 0;
   std::size_t primitive_objects = 0;
+  std::size_t primitive_arrays = 0;
 };
 struct ConstructedFamily {
   std::vector<FamilyMember> members;

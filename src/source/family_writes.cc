@@ -10,7 +10,7 @@
 namespace abcd::source {
 namespace {
 using Error = FamilyWriteError;
-enum class Barrier : std::uint8_t { kMissing, kFunction, kPrimitiveObject, kClass, kConsumed };
+enum class Barrier : std::uint8_t { kMissing, kFunction, kPrimitiveObject, kPrimitiveArray, kClass, kConsumed };
 using Inputs = std::variant<const FileFamily*, std::span<const FamilyWriteInput>>;
 class WriteCheck {
  public:
@@ -91,6 +91,14 @@ class WriteCheck {
         // The retained ReadObjectBuffer result already rejects callable values;
         // it is consumed unchanged, not permission to erase this allocation.
         ++facts_.primitive_objects;
+      }
+      for (const auto& array : source.arrays) {
+        Step(); Mark(i, array.site, Barrier::kPrimitiveArray);
+        const auto* actual = std::get_if<analysis::BufferedArrayCreation>(&instructions[array.site.value].operation);
+        Require(actual && actual->literal == array.creation.literal, Error::kCoverage);
+        // The unchanged file reader excludes callable/unsupported elements;
+        // independent tree semantics still checks every array constant.
+        ++facts_.primitive_arrays;
       }
       Classes(i, source);
       for (const auto& placement : target.tree.signature) {
@@ -178,9 +186,9 @@ class WriteCheck {
       }
       if (const auto* phase = member.function.Phase()) {
         Require(lookup_ != nullptr, Error::kOwner);
-        return {PhasedFamilyInput{phase->Phases(), phase->Body(), phase->Locals(), *lookup_, phase, member.function.Storage()}, edge, member.objects};
+        return {PhasedFamilyInput{phase->Phases(), phase->Body(), phase->Locals(), *lookup_, phase, member.function.Storage()}, edge, member.objects, {}, member.arrays};
       }
-      return {member.function.NormalCapture(), edge, member.objects, member.classes};
+      return {member.function.NormalCapture(), edge, member.objects, member.classes, member.arrays};
     }
     return std::get<std::span<const FamilyWriteInput>>(inputs_)[i];
   }
@@ -243,7 +251,8 @@ class WriteCheck {
     Step(); const auto instructions = Instructions(Member(owner));
     Require(site.value < instructions.size(), Error::kCoverage); pc_ = instructions[site.value].pc;
     auto& barrier = barriers_[offsets_[owner] + site.value];
-    Require(barrier == Barrier::kFunction || barrier == Barrier::kPrimitiveObject || barrier == Barrier::kClass, Error::kCoverage);
+    Require(barrier == Barrier::kFunction || barrier == Barrier::kPrimitiveObject ||
+        barrier == Barrier::kPrimitiveArray || barrier == Barrier::kClass, Error::kCoverage);
     barrier = Barrier::kConsumed;
   }
   void Barriers(CaptureFunction source, std::size_t owner) {

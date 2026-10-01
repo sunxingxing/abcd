@@ -6,6 +6,7 @@
 #include <limits>
 #include <new>
 #include <stdexcept>
+#include <type_traits>
 
 #include "abcd/corpus/abc_file.h"
 #include "phased_capture_evaluation.h"
@@ -81,6 +82,18 @@ class FamilyReader {
         auto& objects = result_.members[cursor.member.value].objects;
         AppendRoom(objects);
         objects.push_back({site, *object, std::move(buffer)});
+        continue;
+      }
+      if (const auto* array = std::get_if<analysis::BufferedArrayCreation>(&operation)) {
+        auto parsed = ReadBufferedArray(file_, header_, index_, *parent_, *array, bytes_, {bytes_});
+        if (!std::holds_alternative<BufferedArray>(parsed))
+          std::visit([&](const auto& error) {
+            if constexpr (!std::is_same_v<std::decay_t<decltype(error)>, BufferedArray>) Fail(error);
+          }, parsed);
+        auto buffer = std::get<BufferedArray>(std::move(parsed));
+        Admit(buffer.retained_bytes, 1); Step(buffer.elements.size());
+        auto& arrays = result_.members[cursor.member.value].arrays;
+        AppendRoom(arrays); arrays.push_back({site, *array, std::move(buffer)});
         continue;
       }
       constexpr std::size_t kMethodLookups = 2;
