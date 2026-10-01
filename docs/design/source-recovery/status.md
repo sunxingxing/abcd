@@ -12,6 +12,33 @@
 
 ## 当前阶段
 
+### 2026-10-01：共享多入口 phi 的局部条件选择
+
+- 根据最小真实解码CFG（/tmp/abcd-optional-join-graph.log）确认：可选访问内层
+  两条出口与外层短路出口共同进入三输入phi，且读取臂前有纯jump块。未改写原图
+  或制造中间SSA值；SelectionRegion现在可以在原内层分支位置，对同一phi的两条
+  输入生成条件赋值，同时保留其他入口的原始赋值。
+- 以边索引读取唯一phi的输入，不再假定整个join只有两条输入。complete_phi仅在
+  所有输入均被覆盖且拥有本地join时成立；Build/VerifyLogicalValues共同禁止把
+  局部选择当成整个phi的表达式替换。控制路径只允许纯jump前缀，不跳过读取、
+  debugger、环境状态或另一个phi；树构建与独立流验证保留并检查所有jump锚点。
+- 最小可选访问现在输出外层if加内层原生?:，经共同树语义及JS对照通过。源码
+  /tmp/abcd-nested-selection-sources.js。尚未形成整个嵌套条件表达式或原生?.，
+  不宣称最终源码风格完成。新增外层null、内层undefined的不同返回规格，避免
+  相同undefined掩盖入口遗漏；伪造完整phi融合、effectful corridor继续拒绝。
+- 红例 /tmp/abcd-nested-selection-red.log；构建
+  /tmp/abcd-nested-selection-final-build.log。14项定向测试通过（9.63秒），
+  /tmp/abcd-nested-selection-final-tests.log；解码JS行为对照5507场景通过。
+  2/3/200/201段可选访问均确认每段包含条件表达式，并继续检查交换两臂的拒绝。
+- 五输入正式导出 build/stage-one/value-nested-selection-pass-1 保持43 complete /
+  63 failure / 46 no-module，无完整项退化，无legacy writer；汇总
+  /tmp/abcd-nested-selection-batch-summary.json。未把源码完整状态计为独立语义或
+  风格验收，也未因内层恢复而宣称ShoppingAvoid完整。
+- 下一步需要将父选择与子选择组合为同一条件值，再与对象初始化一起作为原生
+  调用参数。当前提前读取成员的buffered optional call仍由kReference拒绝，
+  不能用本次内层表达式恢复代替该目标验收。阶段一保持开放；未恢复暂停的
+  全量测试、RSS、基准或更大语料工作。
+
 ### 2026-10-01：共同条件表达式与成员调用参数贯通
 
 - FunctionTree 新增原生 ConditionalExpr，结构检查按 condition/consequent/alternate

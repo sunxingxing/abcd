@@ -5,7 +5,7 @@ import vm from 'node:vm';
 // tree and semantic checks. No source text supplies the engine's expression.
 const source = execFileSync(process.argv[2], ['--sources'], {encoding: 'utf8'});
 const generated = vm.runInNewContext(source, {Array() { throw new Error('mutable Array binding'); }});
-assert.equal(generated.length, 20);
+assert.equal(generated.length, 21);
 const reference = [value => value || [], value => value && []];
 const object = {[Symbol.toPrimitive]() { throw new Error('unexpected coercion'); }};
 const values = [undefined, null, false, true, 0, -0, NaN, '', 'text', 0n, 1n, Symbol('value'), object];
@@ -309,4 +309,13 @@ for (let i = 0; i < conditionalCalls.length; ++i)
                        selectCall(conditionalCalls[i], predicate, payload, fail, mutate));
       ++scenarios;
     }
+const distinctReference = value => value === null ? null : value?.probe;
+for (const value of values) {
+  assert.ok(Object.is(generated[20](value), distinctReference(value))); ++scenarios;
+}
+for (const payload of values) for (const throwing of [false, true]) {
+  assert.deepEqual(read(generated[20], undefined, payload, throwing, true),
+                   read(distinctReference, undefined, payload, throwing, true));
+  ++scenarios;
+}
 console.log(`Decoded logical branch values, getters and calls: ${scenarios} behavior scenarios passed`);

@@ -778,8 +778,15 @@ class TreeBuilder {
     Require(expression.has_value(), Error::kOwnership);
     if (!logical_branches_.empty() && logical_branches_[op.value]) {
       const auto& logical = logicals_[*logical_branches_[op.value]];
-      if (logical.keep) EmitBlock(ControlNode{*logical.keep, {}, {}, {}}, draft);
-      EmitBlock(ControlNode{logical.evaluate, {}, {}, {}}, draft);
+      const auto emit_path = [&](std::optional<ControlId> path, analysis::WorkBlockId terminal) {
+        if (!path) { EmitBlock(ControlNode{terminal, {}, {}, {}}, draft); return; }
+        while (path) {
+          Step(); const auto& part = control_.nodes[path->value];
+          EmitBlock(ControlNode{part.block, {}, {}, {}}, draft); path = part.next;
+        }
+      };
+      if (logical.keep) emit_path(logical.keep_path, *logical.keep);
+      emit_path(logical.evaluate_path, logical.evaluate);
       if (evaluation_.operations[op.value].kind == EvaluationKind::kLogicalValue) {
         tree_.operations.push_back({op, *expression});
       } else {

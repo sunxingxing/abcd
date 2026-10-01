@@ -25,6 +25,12 @@ struct SelectionRegion {
   analysis::EdgeId evaluate_input;
   // Present for a true/false value selection; left is its actual predicate.
   std::optional<analysis::ValueOperand> consequent;
+  // Conditional arms may start with empty jump corridors. Their final blocks
+  // remain keep/evaluate. A subset of a shared phi must stay an assignment at
+  // this branch, never replace the phi's other incoming values.
+  std::optional<ControlId> keep_path;
+  std::optional<ControlId> evaluate_path;
+  bool complete_phi = true;
 };
 // Requires verified simplified normal IR and its verified ControlPlan. Finds
 // ToBoolean diamonds with a single result phi, including an empty keep arm.

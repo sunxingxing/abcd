@@ -210,3 +210,22 @@ allocations are duplicated. Nested/multi-input joins are not yet contracted.
 The implementation is project-local, adds no dependency, and is covered by decoded
 2/3/200/201-region cases, malformed branch/predicate cases, and independent JS
 behavior comparisons. These runs are not a benchmark or peak-memory measurement.
+
+### Partial selection at a shared phi (2026-10-01)
+
+For a verified normal control tree, index the sole join phi's incoming value by
+EdgeId. A nested two-arm selection may consume a subset of that phi's edges,
+writing the original phi destination at its original branch position. Retain all
+other incoming assignments. Only a selection covering the complete phi with a
+local join can participate in cross-region expression fusion; the independent
+forward interval verifier derives this restriction again from the original CFG.
+
+Arm discovery traverses disjoint control-tree paths and admits only pure jump
+prefixes before the final owned expression. Construction and verification both
+retain the original jump anchors. Indexing costs O(values + uses + edges);
+path/leaf scans cost O(operations + control nodes) under unique control ownership.
+The additional edge index is O(edges), with no per-phi graph walk or new dependency.
+Decoded 2/3/200/201-region fixtures, distinct outer/inner return values, a forged
+whole-phi fusion and an effectful corridor exercise coverage and ordering. This
+extends the earlier two-input domain without yet composing nested selections
+into one high-level expression; it is not a runtime resource measurement.

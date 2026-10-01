@@ -29,7 +29,7 @@ analysis::ValueProgram Import(const std::vector<std::uint8_t>& bytes, std::uint3
   Check(!std::holds_alternative<ValueSimplifyError>(SimplifyValues(graph, graph.revision)));
   return graph;
 }
-analysis::ValueProgram OptionalAccess(bool observable_fallback = false, unsigned count = 1) {
+analysis::ValueProgram OptionalAccess(bool observable_fallback = false, unsigned count = 1, bool distinct_fallback = false, bool corridor_effect = false) {
   // Two strict nullish checks share one undefined-producing arm. This is the
   // real optional-access CFG shape, independent of UI classes/captures.
   std::vector<std::uint8_t> bytes{0x01, 0x27, 0, 1, 0x4f, 0,
@@ -38,12 +38,19 @@ analysis::ValueProgram OptionalAccess(bool observable_fallback = false, unsigned
   bytes.push_back(0x00);
   if (observable_fallback) bytes.push_back(static_cast<std::uint8_t>(abc::Opcode::kDEBUGGER));
   const auto skip = bytes.size(); bytes.insert(bytes.end(), {0x4d, 0});
+  const auto null_fallback = bytes.size();
+  if (distinct_fallback) bytes.insert(bytes.end(), {0x01, 0x4d, 0});
   const auto read = bytes.size(); bytes.insert(bytes.end(), {0x60, 1, 0x42, 0, 0, 0});
   const auto join = bytes.size(); bytes.insert(bytes.end(), {0x61, 1});
-  bytes[5] = static_cast<std::uint8_t>(fallback - 4);
+  bytes[5] = static_cast<std::uint8_t>((distinct_fallback ? null_fallback : fallback) - 4);
   bytes[11] = static_cast<std::uint8_t>(fallback - 10);
   bytes[13] = static_cast<std::uint8_t>(read - 12);
   bytes[skip + 1] = static_cast<std::uint8_t>(join - skip);
+  if (distinct_fallback) bytes[null_fallback + 2] = static_cast<std::uint8_t>(join - null_fallback - 1);
+  if (corridor_effect) {
+    bytes.insert(bytes.begin() + 12, static_cast<std::uint8_t>(abc::Opcode::kDEBUGGER));
+    ++bytes[5]; ++bytes[11];
+  }
   std::vector<std::uint8_t> chain;
   for (unsigned i = 0; i < count; ++i) chain.insert(chain.end(), bytes.begin(), bytes.end());
   chain.insert(chain.end(), {0x60, 1, 0x64});
@@ -420,12 +427,31 @@ int main(int argc, char** argv) {
   Check(!Source(BufferedOptionalAccess()).empty());
   const auto optional = OptionalAccess();
   Check(optional.cfg_revision.value == 1);
-  Check(!Source(optional).empty());
+  Check(Source(optional).find(" ? ") != std::string::npos);
+  const auto optional_control = std::get<ControlPlan>(BuildControlPlan(optional));
+  auto optional_evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(optional));
+  TreeCheckBudget optional_budget({});
+  const auto selected = FindSelectionExpressions(optional, optional_control, optional_evaluation, optional_budget);
+  Check(selected.size() == 1 && !selected.front().complete_phi);
+  const auto& partial = selected.front();
+  optional_evaluation.logical_values.resize(optional.values.size());
+  optional_evaluation.logical_values[partial.merged.value] = partial.branch;
+  optional_evaluation.operations[partial.branch.value] = {EvaluationKind::kLogicalValue,
+      optional.values[partial.merged.value].first_use, {}};
+  Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(optional, optional_evaluation)));
+  Check(Source(OptionalAccess(false, 1, true)).find(" ? ") != std::string::npos);
+  const auto corridor = Source(OptionalAccess(false, 1, false, true));
+  Check(corridor.find("debugger;") != std::string::npos && corridor.find(" ? ") == std::string::npos);
   auto repeated = optional;
   const auto revision = repeated.revision;
   const auto again = std::get<analysis::ValueSimplifyStats>(analysis::SimplifyValues(repeated, revision));
   Check(again.specialized_edges == 0 && repeated.revision == revision);
-  for (unsigned count : {2U, 3U, 200U, 201U}) Check(!Source(OptionalAccess(false, count)).empty());
+  for (unsigned count : {2U, 3U, 200U, 201U}) {
+    const auto text = Source(OptionalAccess(false, count));
+    std::size_t found = 0, offset = 0;
+    while ((offset = text.find(" ? ", offset)) != std::string::npos) { ++found; offset += 3; }
+    Check(found == count);
+  }
   const auto observable = OptionalAccess(true);
   Check(observable.cfg_revision.value == 0);
   Check(std::get<ControlError>(BuildControlPlan(observable)) == ControlError::kCrossEntry);
@@ -438,7 +464,7 @@ int main(int argc, char** argv) {
               << "," << Source(CallDiamond(false, false)) << "," << Source(CallDiamond(true, false))
               << "," << Source(CallDiamond(false, false, false, true))
               << "," << Source(CallDiamond(true, false, false, true))
-              << "," << Source(CallDiamond(false, true)) << "," << Source(CallDiamond(true, true)) << "," << Source(optional) << "," << Source(OptionalAccess(false, 2)) << "," << Source(BufferedOptionalAccess()) << "," << Source(BufferedOptionalAccess(true, false)) << "," << Source(ConditionalDiamond()) << "," << Source(ConditionalDiamond(true)) << "," << Source(ConditionalCall(true)) << "," << Source(ConditionalCall(false)) << "]\n";
+              << "," << Source(CallDiamond(false, true)) << "," << Source(CallDiamond(true, true)) << "," << Source(optional) << "," << Source(OptionalAccess(false, 2)) << "," << Source(BufferedOptionalAccess()) << "," << Source(BufferedOptionalAccess(true, false)) << "," << Source(ConditionalDiamond()) << "," << Source(ConditionalDiamond(true)) << "," << Source(ConditionalCall(true)) << "," << Source(ConditionalCall(false)) << "," << Source(OptionalAccess(false, 1, true)) << "]\n";
     return 0;
   }
   for (const bool negate : {false, true}) for (const bool direct : {false, true}) {

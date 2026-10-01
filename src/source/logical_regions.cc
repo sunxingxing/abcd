@@ -155,9 +155,10 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
   std::vector<SelectionRegion> result;
   std::vector<std::optional<ValueId>> phis;
   std::vector<std::uint8_t> multiple;
-  std::vector<PhiInputs> inputs;
+  std::vector<unsigned> inputs;
+  std::vector<std::optional<UseId>> edge_inputs;
   budget.Array(phis, graph.blocks.size()); budget.Array(multiple, graph.blocks.size());
-  budget.Array(inputs, graph.values.size());
+  budget.Array(inputs, graph.values.size()); budget.Array(edge_inputs, graph.edges.size());
   for (std::size_t i = 0; i < graph.values.size(); ++i) {
     budget.Step(); const auto& value = graph.values[i];
     if (value.life != ValueLife::kLive) continue;
@@ -170,9 +171,10 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
     budget.Step(); const auto& use = graph.uses[i];
     if (use.life != ValueLife::kLive) continue;
     if (const auto* value = std::get_if<ValueId>(&use.owner)) {
-      auto& entry = inputs[value->value];
-      if (entry.count < 2) entry.uses[entry.count] = UseId{static_cast<std::uint32_t>(i)};
-      if (entry.count <= 2) ++entry.count;
+      auto& count = inputs[value->value]; if (count <= 2) ++count;
+      const auto* phi = std::get_if<PhiDefinition>(&graph.values[value->value].origin);
+      const auto* edge = use.incoming ? std::get_if<EdgeId>(&*use.incoming) : nullptr;
+      if (phi && edge && !multiple[phi->block.value]) edge_inputs[edge->value] = UseId{static_cast<std::uint32_t>(i)};
     }
   }
   const auto closed = [&](WorkBlockId block, const ValueOperand& input) {
@@ -188,10 +190,27 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
     }
     return true;
   };
+  const auto path = [&](std::optional<ControlId> at, EdgeId entry) -> std::optional<Arm> {
+    while (at) {
+      budget.Step(); const auto& node = control.nodes[at->value];
+      if (node.arms || !std::holds_alternative<std::monostate>(node.synthetic)) return {};
+      const auto& block = graph.blocks[node.block.value];
+      if (graph.edges[entry.value].target != node.block || block.edge_count != 1 || phis[node.block.value]) return {};
+      if (!node.next) return Arm{node.block, block.first_edge};
+      // Only control-only prefixes are skipped; an effect or live value belongs
+      // to its own evaluation subtree and cannot disappear into the last arm.
+      for (std::uint32_t i = 0; i < block.op_count; ++i) {
+        budget.Step(); const auto& op = graph.ops[block.first_op.value + i];
+        if (op.life == ValueLife::kLive && (!std::holds_alternative<ValueJump>(op.operation) || !Pure(op))) return {};
+      }
+      entry = block.first_edge; at = node.next;
+    }
+    return {};
+  };
   budget.Admit(control.nodes.size(), sizeof(SelectionRegion)); result.reserve(control.nodes.size());
   budget.Admit(result.capacity() - control.nodes.size(), sizeof(SelectionRegion));
   for (const auto& node : control.nodes) {
-    budget.Step(); if (!node.arms || !node.next || !std::holds_alternative<std::monostate>(node.synthetic)) continue;
+    budget.Step(); if (!node.arms || !std::holds_alternative<std::monostate>(node.synthetic)) continue;
     const auto& block = graph.blocks[node.block.value];
     if (block.edge_count != 2 || !block.op_count) continue;
     const OpId branch_id{block.first_op.value + block.op_count - 1};
@@ -209,24 +228,25 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
     const auto* binary = std::get_if<ValueBinary>(&condition);
     if (!(unary && (unary->op == UnaryOperator::kToBoolean || unary->op == UnaryOperator::kLogicalNot)) &&
         !(binary && (binary->op == BinaryOperator::kStrictEqual || binary->op == BinaryOperator::kStrictNotEqual))) continue;
-    const auto& join_node = control.nodes[node.next->value]; const auto join = join_node.block;
-    if (!std::holds_alternative<std::monostate>(join_node.synthetic) || !phis[join.value] || multiple[join.value]) continue;
+    const auto taken = path(node.arms->taken, block.first_edge);
+    const auto other = path(node.arms->fallthrough, {block.first_edge.value + 1});
+    if (!taken || !other) continue;
+    const auto join = graph.edges[taken->incoming.value].target;
+    if (graph.edges[other->incoming.value].target != join || !phis[join.value] || multiple[join.value]) continue;
+    if (node.next && (control.nodes[node.next->value].block != join ||
+        !std::holds_alternative<std::monostate>(control.nodes[node.next->value].synthetic))) continue;
     const auto merged = *phis[join.value];
-    if (inputs[merged.value].count != 2 || !graph.values[merged.value].domain.IsLanguage()) continue;
-    const auto taken = ReadArm(graph, control, node.arms->taken, join, block.first_edge);
-    const auto other = ReadArm(graph, control, node.arms->fallthrough, join, {block.first_edge.value + 1});
-    if (!taken || !other || !taken->block || !other->block) continue;
+    if (inputs[merged.value] < 2 || !graph.values[merged.value].domain.IsLanguage()) continue;
     const auto yes = positive ? *taken : *other, no = positive ? *other : *taken;
-    if (phis[yes.block->value] || phis[no.block->value]) continue;
-    std::optional<ValueOperand> consequent, alternate;
-    for (const auto id : inputs[merged.value].uses) {
-      const auto& use = graph.uses[id.value]; const auto* edge = use.incoming ? std::get_if<EdgeId>(&*use.incoming) : nullptr;
-      if (edge && *edge == yes.incoming) consequent = use.operand;
-      if (edge && *edge == no.incoming) alternate = use.operand;
-    }
-    if (!consequent || !alternate || !closed(*yes.block, *consequent) || !closed(*no.block, *alternate)) continue;
-    result.push_back({TreeLogical::kOr, producer->op, branch_id, merged, *predicate, *alternate,
-        node.block, yes.block, *no.block, join, yes.incoming, no.incoming, consequent});
+    if (!edge_inputs[yes.incoming.value] || !edge_inputs[no.incoming.value]) continue;
+    const auto& consequent = graph.uses[edge_inputs[yes.incoming.value]->value].operand;
+    const auto& alternate = graph.uses[edge_inputs[no.incoming.value]->value].operand;
+    if (!closed(*yes.block, consequent) || !closed(*no.block, alternate)) continue;
+    result.push_back({TreeLogical::kOr, producer->op, branch_id, merged, *predicate, alternate,
+        node.block, yes.block, *no.block, join, yes.incoming, no.incoming, consequent,
+        positive ? node.arms->taken : node.arms->fallthrough,
+        positive ? node.arms->fallthrough : node.arms->taken,
+        inputs[merged.value] == 2 && node.next.has_value()});
   }
   return result;
 }

@@ -159,7 +159,7 @@ class Domain {
 bool Available(const ValueProgram& graph, const SelectionRegion& region, const std::vector<std::uint8_t>& used) {
   // The forest lowers definitions before join consumers. Keep arbitrary CFG
   // layout support in the ordinary phi route until a dependency worklist owns it.
-  return !used[region.header.value] && !used[region.join.value] &&
+  return region.complete_phi && !used[region.header.value] && !used[region.join.value] &&
       region.branch.value < graph.blocks[region.join.value].first_op.value &&
       (!region.consequent || (region.keep && graph.blocks[region.keep->value].first_op.value < graph.blocks[region.join.value].first_op.value)) &&
       graph.blocks[region.evaluate.value].first_op.value < graph.blocks[region.join.value].first_op.value;

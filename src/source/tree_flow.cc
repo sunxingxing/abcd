@@ -315,8 +315,15 @@ class FlowCheck {
         Require(boundary && boundary->block == parent && boundary->index == child, Error::kSequence);
       }
     };
-    if (region.keep) anchors(*region.keep);
-    anchors(region.evaluate);
+    const auto path_anchors = [&](std::optional<ControlId> path, analysis::WorkBlockId terminal) {
+      if (!path) { anchors(terminal); return; }
+      while (path) {
+        budget_.Step(); const auto& part = control_.nodes[path->value];
+        anchors(part.block); path = part.next;
+      }
+    };
+    if (region.keep) path_anchors(region.keep_path, *region.keep);
+    path_anchors(region.evaluate_path, region.evaluate);
   }
   void Try(analysis::TryId id, const BlockStmt& parent, std::uint32_t& child,
       std::size_t& pending) {
