@@ -28,6 +28,9 @@ struct FamilyPrepareFailure {
 // constructor accepts caller-built trees, diagnostic counters or cached proof.
 // Caller owns/admitted file indexes. Destination spans are borrowed only during
 // preparation; embedding elsewhere requires a fresh destination check.
+// Explicit AllowPartial retains the existing capture-free straight-line gaps
+// for class-body drafts. Such members have no ABI/source proof and keep a stage
+// below TreeVerified; complete FamilyEmission rejects them before publication.
 class PreparedFamily {
  public:
   PreparedFamily(PreparedFamily&&) noexcept;
@@ -45,18 +48,19 @@ class PreparedFamily {
       const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& functions,
       const analysis::ClassMethodSites& classes, analysis::ClassSiteId site,
       RouteInputIdentity identity, FamilyDestination destination,
-      analysis::SemanticBudget budget = {});
+      analysis::SemanticBudget budget = {}, RecoveryMode recovery = RecoveryMode::kCompleteOnly);
   [[nodiscard]] static std::variant<PreparedFamily, FamilyPrepareFailure> PrepareConstructor(
       const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
       const abc::MethodLookup&, const analysis::MethodRoleIndex&,
       const analysis::FunctionCreationSites&, const FileFunction& creator,
       analysis::OpId creation, RouteInputIdentity, FamilyDestination,
-      analysis::SemanticBudget budget = {});
+      analysis::SemanticBudget budget = {}, RecoveryMode recovery = RecoveryMode::kCompleteOnly);
   [[nodiscard]] static std::variant<PreparedFamily, FamilyPrepareFailure> PrepareDefinedMember(
       const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
       const abc::MethodLookup&, const analysis::MethodRoleIndex&,
       const analysis::FunctionCreationSites&, const FileFunction&, analysis::OpId,
-      abc::ClassMethodKind, RouteInputIdentity, FamilyDestination, analysis::SemanticBudget = {});
+      abc::ClassMethodKind, RouteInputIdentity, FamilyDestination, analysis::SemanticBudget = {},
+      RecoveryMode recovery = RecoveryMode::kCompleteOnly);
   [[nodiscard]] const ConstructedFamily& Family() const;
   [[nodiscard]] const RouteInputIdentity& Identity() const;
   [[nodiscard]] const analysis::ClassMethodSite* ClassCreation() const;
@@ -83,7 +87,8 @@ class PreparedFamily {
       const corpus::AbcFile& file, const abc::Header& header,
       const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
       const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
-      FunctionContext context, FamilyDestination destination, analysis::SemanticBudget budget);
+      FunctionContext context, FamilyDestination destination, analysis::SemanticBudget budget,
+      RecoveryMode recovery = RecoveryMode::kCompleteOnly);
   explicit PreparedFamily(std::unique_ptr<const Storage> storage);
   std::unique_ptr<const Storage> storage_;
 };

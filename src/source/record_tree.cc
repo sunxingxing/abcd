@@ -286,7 +286,8 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
       const auto last = std::upper_bound(first, definitions.end(), occurrence.operation,
           [](auto id, const auto& site) { return id < site.creation; });
       auto built = BuildClassTree(file, header, index, lookup, roles, *functions, *classes,
-          *function, occurrence.operation, identity, &class_scope, {budget.bytes}, initialization[occurrence.operation.value], std::span(first, last));
+          *function, occurrence.operation, identity, &class_scope, {budget.bytes},
+          initialization[occurrence.operation.value], std::span(first, last), RecoveryMode::kAllowPartial);
       if (const auto* failure = std::get_if<ClassTreeFailure>(&built)) {
         const auto classify = [&](auto&& self, const auto& error) -> RecordSourceResult {
           using T = std::decay_t<decltype(error)>;
@@ -404,17 +405,22 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
         case ModuleImportError::kString: return fail(Error::kModule);
       }
     }
+    bool incomplete = false;
     auto printed = [&]() -> std::variant<std::size_t, TreePrintError> {
       if (!module_family) {
         auto emitted = PrintModuleTree(result->tree, output,
             {budget.output.bytes - *prelude_bytes}, {budget.bytes}, &class_scope);
         if (const auto* error = std::get_if<TreePrintError>(&emitted)) return *error;
-        return std::get<PrintedFunction>(emitted).bytes;
+        const auto& positions = std::get<PrintedFunction>(emitted);
+        incomplete = positions.incomplete;
+        return positions.bytes;
       }
       auto emitted = PrintModuleFamilyDraft(*module_family, output,
           {budget.output.bytes - *prelude_bytes}, {budget.bytes}, &class_scope);
       if (const auto* error = std::get_if<TreePrintError>(&emitted)) return *error;
-      return std::get<PrintedFamilyDraft>(emitted).bytes;
+      const auto& positions = std::get<PrintedFamilyDraft>(emitted);
+      incomplete = positions.members[module_family->root.value].incomplete;
+      return positions.bytes;
     }();
     const auto* body = std::get_if<std::size_t>(&printed);
     if (!body) {
@@ -444,6 +450,7 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     if (file.CheckUnchanged()) return fail(Error::kFileChanged);
     PrintedSource source;
     source.text = std::move(output).str();
+    source.incomplete = incomplete;
     return source;
   } catch (const RecordProgramFailure& failure) { return failure; }
     catch (const std::bad_alloc&) { return fail(Error::kResourceLimit); }

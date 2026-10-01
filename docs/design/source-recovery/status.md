@@ -12,6 +12,35 @@
 
 ## 当前阶段
 
+### 2026-10-01：类成员缺口贯通部分record源码输出
+
+- ValueSuperSpread现可经共同EvaluationShape保留构造器/数组两个用途和全部
+  原有效果。CallableEntry仅在spread的constructor用途保留为未绑定协议输入；
+  newTarget、unknown entry及任意普通读取仍拒绝。ExpressionForest在读取该
+  VM-only输入前拒绝整个操作，不授权native super spread或数组参数改写。
+- 显式AllowPartial接入既有类成员/构造器PreparedFamily和BuildClassTree；复用
+  直线、无捕获leaf的prefix回滚及UnrecoveredStmt，未新增writer或补造函数体。
+  原CompleteOnly接口继续拒绝缺口。部分成员无完整ABI/source证据，receipt停留
+  BindingsFrozen；完整FamilyEmission在写入前拒绝，不能升级为完整发布。
+- 共同printer将成员incomplete传播至类及module根，再经PrintedSource传到CLI和
+  manifest。真实EntryAbility构造器保留constructor(...args)，在PC8标记整个
+  rest/spread表达式缺口；不打印依赖其结果的字段写入、return或虚构super调用。
+- 实际五输入导出 build/stage-one/value-partial-class-pass-1 为
+  **47 complete / 2 incomplete / 57 failure / 46 no-module**，无完整项退化、无
+  legacy writer；/tmp/abcd-partial-class-batch-summary.json。新增部分record：
+  pasteboard EntryBackupAbility（5246）保留async onBackup/onRestore，pushkit
+  EntryFormAbility（6921）保留6个回调及CreateFormData类；两者source_complete=false。
+  输入ABC未改，未读取配对源码生成正文。
+- 7项定向回归通过，6.12秒，/tmp/abcd-partial-class-tests.log；新增协议绑定
+  正反例后binding_plan_test通过，0.78秒，/tmp/abcd-partial-class-binding-tests.log。
+  2项既有派生构造器/继承JS行为回归通过，0.33秒，
+  /tmp/abcd-partial-class-behavior-tests.log。两个新部分文件node --check通过，
+  未执行部分代码；构建日志 /tmp/abcd-partial-class-regression-build.log。
+- EntryAbility record4767仍失败。构造器之后的实际类成员5165在共同相位值分析
+  kValues处拒绝，/tmp/abcd-partial-class-entryability-member.json；不能用部分
+  constructor掩盖该成员。spread完整源码的数组展开/父类品牌合同、其余输入失败及
+  配对语义/表示验收继续开放。全量/RSS/基准保持暂停，阶段一Goal保持active。
+
 ### 2026-10-01：spread-super 初始化分析接入共同函数族投影
 
 - 修复恢复时未提交代码的SSA读取字段错误；range与spread调用复用已有正常流

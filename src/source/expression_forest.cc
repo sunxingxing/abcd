@@ -347,6 +347,11 @@ class ForestBuilder {
               std::optional{Operand(graph_.uses[op.first_use.value].operand, origin)}}, origin);
           continue;
         }
+        // A native spread still lacks its array/parent-brand contract. Refuse
+        // before reading the VM-only callable input; partial recovery retains
+        // an omission at the whole expression's original boundary.
+        if (std::holds_alternative<analysis::ValueSuperSpread>(op.operation))
+          throw Error::kUnsupportedOperation;
         std::array<ExprId, kFixedExpressionOperands> operands{};
         Require(op.use_count <= operands.size(), Error::kUnsupportedOperation);
         for (std::uint32_t j = 0; j < op.use_count; ++j) {

@@ -87,8 +87,12 @@ spread 另以原始寄存器/局部 SSA 的稀疏来源传播证明 acc 是本�
 guard 输入；该结果已接入既有函数族构建入口。原始分析可合并等同来源的 phi，
 当前工作投影仅跟随已有纯 copy，未扩大工作 phi 接受域。
 初始化事实不授权数组展开或 native super spread；父类运行时品牌、newTarget、
-源码参数和数组展开仍须各自满足既有合同。目前 EvaluationShape 仍拒绝
-ValueSuperSpread，真实 EntryAbility 的初始化投影通过不等于构造器源码完成。
+源码参数和数组展开仍须各自满足既有合同。目前 EvaluationShape 保留
+ValueSuperSpread的两个真实用途与效果；ExpressionForest在读取VM-only callable
+之前拒绝整个操作，不输出native spread。真实 EntryAbility 的初始化投影通过
+不等于构造器源码完成。显式AllowPartial可保留已有直线、无捕获leaf的可靠前缀，
+在整个未完成表达式起点标记缺口。类、record和导出清单传递incomplete状态；
+完整FamilyEmission在写入前拒绝没有完整ABI/source证据的成员。
 
 ### 2.4 Cell 与 scope
 

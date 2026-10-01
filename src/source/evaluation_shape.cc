@@ -22,6 +22,7 @@ constexpr std::array kConstruct{Role::kConstructor};
 constexpr std::array kCellStore{Role::kStoredValue};
 constexpr std::array kHeritage{Role::kHeritage};
 constexpr std::array kConstructorGuard{Role::kGuardValue};
+constexpr std::array kSpreadSuper{Role::kConstructor, Role::kInput};
 }  // namespace
 
 std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation& operation) {
@@ -99,6 +100,10 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       return {};
     } else if constexpr (std::is_same_v<T, analysis::ValueSuperCall>) {
       return EvaluationShape{kNoOperands, true, op.arguments};
+    } else if constexpr (std::is_same_v<T, analysis::ValueSuperSpread>) {
+      // Scheduling preserves the explicit constructor and aggregate array;
+      // it does not authorize native spread syntax or an argument-list rewrite.
+      return EvaluationShape{kSpreadSuper, true};
     } else if constexpr (std::is_same_v<T, analysis::ValueSuperCheck>) {
       EvaluationShape shape{kConstructorGuard, false};
       shape.inputs = InputEvaluation::kConstructorGuard;
@@ -107,7 +112,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       return EvaluationShape{kConstruct, true, op.arguments};
     else {
       // Accessors require class/descriptor composition before source evaluation.
-      static_assert(std::is_same_v<T, analysis::ValueSuperSpread> || std::is_same_v<T, analysis::ValueDefineAccessor> || std::is_same_v<T, analysis::ValueGuard> || std::is_same_v<T, analysis::ValueHole> ||
+      static_assert(std::is_same_v<T, analysis::ValueDefineAccessor> || std::is_same_v<T, analysis::ValueGuard> || std::is_same_v<T, analysis::ValueHole> ||
                     std::is_same_v<T, analysis::ValueLexicalLoad> || std::is_same_v<T, analysis::ValueLexicalStore> ||
                     std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                     std::is_same_v<T, analysis::ValueCurrentEnvironment> ||

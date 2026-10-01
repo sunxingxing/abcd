@@ -338,9 +338,10 @@ int Export(const std::filesystem::path& input,
               positions << "]}\n";
               positions.close();
               if (!positions) return Fail(ExportError::kOutput, record.offset.value);
-              record_manifest["source_status"] = static_cast<unsigned>(route_value ? SourceStatus::kWritten : SourceStatus::kIncomplete);
-              record_manifest["source_complete"] = route_value;
-              record_manifest[route_value ? "source" : "incomplete_source"] = source_path;
+              const bool complete = route_value && !artifact->incomplete;
+              record_manifest["source_status"] = static_cast<unsigned>(complete ? SourceStatus::kWritten : SourceStatus::kIncomplete);
+              record_manifest["source_complete"] = complete;
+              record_manifest[complete ? "source" : "incomplete_source"] = source_path;
               record_manifest["entry_positions"] = positions_path;
               const auto methods_path = source_stem.string() + ".method-positions.json";
               std::ofstream method_positions(tree.path / methods_path, std::ios::binary);

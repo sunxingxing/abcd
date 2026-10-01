@@ -22,7 +22,8 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
     const abc::MethodLookup& lookup, const analysis::MethodRoleIndex& roles,
     const analysis::FunctionCreationSites& functions, const analysis::ClassMethodSites& classes,
     const FileFunction& creator, analysis::OpId operation, RouteInputIdentity identity,
-    const GlobalScope* globals, analysis::SemanticBudget budget, const ClassInitializerCall* initializer, std::span<const ClassDefinitionSite> definitions) {
+    const GlobalScope* globals, analysis::SemanticBudget budget, const ClassInitializerCall* initializer,
+    std::span<const ClassDefinitionSite> definitions, RecoveryMode recovery) {
   const auto initial = budget;
   try {
     const auto admit = [&](std::size_t count, std::size_t width) {
@@ -52,7 +53,7 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
     admit(spelling.capacity() - spelling.size(), sizeof(char16_t));
     const FamilyDestination destination{Strictness::kStrict, globals, FunctionFragment::kClassMember};
     auto constructor = Take<PreparedFamily>(PreparedFamily::PrepareConstructor(file, header, index, lookup,
-        roles, functions, creator, operation, identity, destination, budget));
+        roles, functions, creator, operation, identity, destination, budget, recovery));
     admit(constructor.AllocatedBytes(), 1); step(constructor.Work());
     std::vector<PreparedFamily> members;
     admit(buffer.properties.size(), sizeof(PreparedFamily)); members.reserve(buffer.properties.size());
@@ -70,7 +71,7 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
           actual->length != method->length || actual->placement != property.placement)
         return ClassTreeFailure{Error::kMember};
       auto member = Take<PreparedFamily>(PreparedFamily::PrepareClass(file, header, index, lookup, roles,
-          functions, classes, *occurrence, identity, destination, budget));
+          functions, classes, *occurrence, identity, destination, budget, recovery));
       admit(member.AllocatedBytes(), 1); step(member.Work());
       members.push_back(std::move(member));
     }
@@ -89,7 +90,7 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
       ClassDefinitionTree tree{definition_site};
       const auto prepare = [&](abc::ClassMethodKind kind) {
         auto member = Take<PreparedFamily>(PreparedFamily::PrepareDefinedMember(file, header, index, lookup, roles,
-            functions, creator, definition_site.definition, kind, identity, destination, budget));
+            functions, creator, definition_site.definition, kind, identity, destination, budget, recovery));
         admit(member.AllocatedBytes(), 1); step(member.Work()); return member;
       };
       const auto methods = definition_site.Methods();

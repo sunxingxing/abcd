@@ -75,7 +75,8 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareClass(
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& functions,
     const analysis::ClassMethodSites& classes, analysis::ClassSiteId site,
-    RouteInputIdentity identity, FamilyDestination destination, analysis::SemanticBudget allowance) {
+    RouteInputIdentity identity, FamilyDestination destination, analysis::SemanticBudget allowance,
+    RecoveryMode recovery) {
   try {
     Require(destination.strictness == Strictness::kStrict, Error::kStrictness);
     Require(allowance.bytes >= sizeof(Storage), Error::kResourceLimit);
@@ -83,7 +84,7 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareClass(
     auto context = Take<ClassTreeContext, ClassContextFailure>(ClassTreeContext::Resolve(
         file, header, index, lookup, roles, classes, site, identity, resolution_budget));
     return Prepare(file, header, index, lookup, roles, functions,
-        FunctionContext{std::move(context)}, destination, allowance);
+        FunctionContext{std::move(context)}, destination, allowance, recovery);
   } catch (const FamilyPrepareFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return FamilyPrepareFailure{Error::kResourceLimit};
   } catch (const std::length_error&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
@@ -93,14 +94,14 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareDefine
     const abc::MethodLookup& lookup, const analysis::MethodRoleIndex& roles,
     const analysis::FunctionCreationSites& functions, const FileFunction& creator,
     analysis::OpId definition, abc::ClassMethodKind kind, RouteInputIdentity identity,
-    FamilyDestination destination, analysis::SemanticBudget allowance) {
+    FamilyDestination destination, analysis::SemanticBudget allowance, RecoveryMode recovery) {
   try {
     Require(allowance.bytes >= sizeof(Storage), Error::kResourceLimit);
     auto resolution = allowance; resolution.bytes -= sizeof(Storage);
     auto context = Take<ClassTreeContext, ClassContextFailure>(ClassTreeContext::ResolveDefinedMember(
         file, header, index, lookup, roles, functions, creator, definition, kind, identity, resolution));
     return Prepare(file, header, index, lookup, roles, functions,
-        FunctionContext{std::move(context)}, destination, allowance);
+        FunctionContext{std::move(context)}, destination, allowance, recovery);
   } catch (const FamilyPrepareFailure& failure) { return failure; }
     catch (const std::bad_alloc&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
     catch (const std::length_error&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
@@ -110,7 +111,7 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareConstr
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& functions,
     const FileFunction& creator, analysis::OpId creation, RouteInputIdentity identity,
-    FamilyDestination destination, analysis::SemanticBudget allowance) {
+    FamilyDestination destination, analysis::SemanticBudget allowance, RecoveryMode recovery) {
   try {
     Require(destination.strictness == Strictness::kStrict, Error::kStrictness);
     Require(allowance.bytes >= sizeof(Storage), Error::kResourceLimit);
@@ -118,7 +119,7 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareConstr
     auto context = Take<ClassTreeContext, ClassContextFailure>(ClassTreeContext::ResolveConstructor(
         file, header, index, lookup, roles, creator, creation, identity, resolution));
     return Prepare(file, header, index, lookup, roles, functions,
-        FunctionContext{std::move(context)}, destination, allowance);
+        FunctionContext{std::move(context)}, destination, allowance, recovery);
   } catch (const FamilyPrepareFailure& failure) { return failure; }
     catch (const std::bad_alloc&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
     catch (const std::length_error&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
@@ -127,7 +128,8 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
-    FunctionContext root, FamilyDestination destination, analysis::SemanticBudget allowance) {
+    FunctionContext root, FamilyDestination destination, analysis::SemanticBudget allowance,
+    RecoveryMode recovery) {
   try {
     Require(destination.strictness == Strictness::kStrict, Error::kStrictness);
     CheckPlacement(root, destination);
@@ -160,7 +162,7 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
       receipts.push_back(receipt); // Identity only; no stage claim until all proofs close.
     }
     auto family = Take<ConstructedFamily, FamilyTreeFailure>(BuildFileFamilyTrees(
-        file, header, index, std::move(input), root, budget.Left(), modules, module_owner, &lookup));
+        file, header, index, std::move(input), root, budget.Left(), modules, module_owner, &lookup, recovery));
     budget.Account(family.allocated_bytes, family.work);
     for (const auto& member : family.members) {
       budget.Account(0, 1);
@@ -176,8 +178,13 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
           (&member == &family.members[family.root.value] && root.ClassContext() &&
            (IsMethodCallable(member.tree.callable) || member.tree.callable == CallableKind::kBaseConstructor ||
             (member.tree.callable == CallableKind::kDerivedConstructor && !member.tree.constructor_guards.empty()))), Error::kCallable);
-      Require(member.abi.has_value(), Error::kAbi);
-      Require(member.sources.has_value(), Error::kSources);
+      if (member.tree.recovery_issues.empty()) {
+        Require(member.abi.has_value(), Error::kAbi);
+        Require(member.sources.has_value(), Error::kSources);
+      } else {
+        Require(recovery == RecoveryMode::kAllowPartial && !member.abi && !member.sources,
+            Error::kSources);
+      }
     }
     const auto enclosure = Take<FamilyEnclosure, FamilyEnclosureFailure>(
         VerifyFamilyDestination(family, destination.globals, budget.Left()));
@@ -188,7 +195,11 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
       const auto& member = family.members[i]; auto& receipt = receipts[i];
       Require(receipt.identity == member.tree.identity && receipt.method == member.tree.method, Error::kReceipt);
       Require(member.record == receipt.record, Error::kReceipt);
-      receipt.route = SourceRoute::kValueTree; receipt.stage = SourceStage::kTreeVerified;
+      receipt.route = SourceRoute::kValueTree;
+      // Partial trees retain checked bindings, not whole-body flow/ABI/source
+      // proof. FamilyEmission rejects this stage before it can publish bytes.
+      receipt.stage = member.tree.recovery_issues.empty() ? SourceStage::kTreeVerified
+                                                        : SourceStage::kBindingsFrozen;
       receipt.coverage = Coverage::kIncomplete; receipt.work_revision = member.tree.value_revision.value;
       Require(!ValidateRouteReceipt(receipt), Error::kReceipt);
     }

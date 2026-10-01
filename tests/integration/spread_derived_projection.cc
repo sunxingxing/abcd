@@ -1,12 +1,19 @@
 #include "../../src/source/derived_projection.h"
 #include "../../src/source/evaluation_plan.h"
+#include "../../src/source/family_tree.h"
+#include "../../src/source/family_print.h"
+#include "../../src/source/prepared_family.h"
+#include "../../src/source/family_emission.h"
 #include "abcd/corpus/abc_file.h"
 #include "abcd/source/source_route.h"
+#include "abcd/source/record_source.h"
 
 #include <cstdlib>
+#include <algorithm>
 #include <iostream>
 #include <memory>
 #include <source_location>
+#include <sstream>
 
 namespace {
 void Check(bool value, const std::source_location& where = std::source_location::current()) {
@@ -17,7 +24,7 @@ int main(int argc, char** argv) {
   using namespace abcd;
   using namespace abcd::source;
   using namespace abcd::analysis;
-  Check(argc == 2);
+  Check(argc == 2 || argc == 3);
   const auto opened = corpus::AbcFile::Open(argv[1]);
   const auto& file = *std::get<std::unique_ptr<corpus::AbcFile>>(opened);
   const auto fingerprint = std::get<corpus::FileFingerprint>(file.Fingerprint());
@@ -93,6 +100,71 @@ int main(int argc, char** argv) {
   Check(!VerifyDerivedProjection(function, context, protocol));
   // Initialization projection does not authorize a native spread call. The
   // array-expansion and lifetime parent-brand contracts still remain open.
-  Check(!DescribeEvaluation(call.operation));
+  const auto shape = DescribeEvaluation(call.operation);
+  Check(shape && shape->arguments == 0 && shape->roles.size() == 2 &&
+      shape->roles[0] == OperandRole::kConstructor && shape->roles[1] == OperandRole::kInput);
+  const auto scheduled = BuildEvaluationPlan(graph, {}, IncomingCells::kReject,
+      {}, {}, {}, {}, ClosureWrites::kLanguage, {}, protocol.guards);
+  Check(std::holds_alternative<EvaluationPlan>(scheduled));
+  const auto sites = std::get<FunctionCreationSites>(FunctionCreationSites::Build(file, header, index, lookup));
+  auto family = ReadFunctionFamily(file, header, index, lookup, roles, sites, *position,
+      identity, {}, nullptr, &context);
+  Check(std::holds_alternative<FileFamily>(family));
+  auto partial = BuildFileFamilyTrees(file, header, index, std::get<FileFamily>(std::move(family)),
+      context, {}, nullptr, {}, &lookup, RecoveryMode::kAllowPartial);
+  if (const auto* error = std::get_if<FamilyTreeFailure>(&partial)) {
+    std::cerr << "partial tree cause " << error->cause.index() << '\n';
+    std::visit([](const auto& cause) {
+      if constexpr (std::is_enum_v<std::decay_t<decltype(cause)>>)
+        std::cerr << "partial tree error " << static_cast<unsigned>(cause) << '\n';
+    }, error->cause);
+  }
+  Check(std::holds_alternative<ConstructedFamily>(partial));
+  const auto& draft = std::get<ConstructedFamily>(partial);
+  const auto& root = draft.members[draft.root.value];
+  Check(!root.tree.recovery_issues.empty() && !root.abi && !root.sources);
+  std::ostringstream output;
+  const auto printed = PrintClassFamilyDraft(draft, *context.ClassContext(), output);
+  Check(std::holds_alternative<PrintedFamilyDraft>(printed));
+  Check(std::get<PrintedFamilyDraft>(printed).members[draft.root.value].incomplete);
+  Check(output.view().find("INCOMPLETE") != std::string_view::npos);
+  Check(output.view().find("super(") == std::string_view::npos);
+  Check(output.view().find("return ") == std::string_view::npos);
+  const FamilyDestination destination{Strictness::kStrict, nullptr, FunctionFragment::kClassMember};
+  auto ready = PreparedFamily::PrepareConstructor(file, header, index, lookup, roles, sites,
+      parent, *creation, identity, destination, {}, RecoveryMode::kAllowPartial);
+  Check(std::holds_alternative<PreparedFamily>(ready));
+  auto& prepared = std::get<PreparedFamily>(ready);
+  Check(prepared.Receipts().front().stage == SourceStage::kBindingsFrozen);
+  std::ostringstream draft_output;
+  Check(std::holds_alternative<PrintedFamilyDraft>(prepared.PrintDraft(destination, draft_output)));
+  Check(draft_output.str() == output.str());
+  std::ostringstream executable_output;
+  const auto denied = FamilyEmission::Write(std::move(prepared), destination, executable_output, {});
+  Check(std::holds_alternative<FamilyEmitFailure>(denied));
+  Check(executable_output.view().empty());
+  Check(std::holds_alternative<FamilyPrepareFailure>(PreparedFamily::PrepareConstructor(
+      file, header, index, lookup, roles, sites, parent, *creation, identity, destination)));
+  // An incomplete constructor must retain the other real class members and
+  // travel through the enclosing ESM record without upgrading its coverage.
+  const auto record = std::find_if(index.records.begin(), index.records.end(),
+      [](const auto& candidate) { return candidate.offset.value == 5246; });
+  Check(record != index.records.end());
+  const auto packaging = std::get<abc::FilePackaging>(abc::DetectFilePackaging(file, header, index));
+  const auto modules = std::get<RecordModuleContext>(ReadRecordModuleContext(
+      file, header, index, *record, packaging));
+  const auto classes = std::get<ClassMethodSites>(ClassMethodSites::Build(file, header, index, lookup));
+  const auto recovered = BuildRecordSource(file, header, index, lookup, *record, modules, roles,
+      {}, nullptr, RoutePolicy::kRequireValueTree, nullptr, nullptr, &identity, &sites, &classes);
+  Check(std::holds_alternative<PrintedSource>(recovered));
+  const auto& source = std::get<PrintedSource>(recovered);
+  Check(source.incomplete);
+  Check(source.text.find("INCOMPLETE") != std::string::npos);
+  Check(source.text.find("UNRECOVERED: unsupported operation; PC 8") != std::string::npos);
+  Check(source.text.find("async onBackup()") != std::string::npos);
+  Check(source.text.find("async onRestore(bundleVersion)") != std::string::npos);
+  Check(source.text.find("super(") == std::string::npos);
+  Check(source.text.find("export { EntryBackupAbility as \"default\" }") != std::string::npos);
+  if (argc == 3) std::cout << (std::string_view(argv[2]) == "--backup-source" ? source.text : output.str());
   Check(!file.CheckUnchanged());
 }

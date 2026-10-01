@@ -58,8 +58,39 @@ void ReceiverAndUnsupportedAbi() {
     }
   }
 }
+void SpreadProtocolEntry() {
+  using namespace analysis;
+  for (EntryDefinition entry : {EntryDefinition{CallableEntry{}},
+                               EntryDefinition{NewTargetEntry{}},
+                               EntryDefinition{UnknownEntry{abc::RegisterId{0}}}}) {
+    ValueProgram graph;
+    graph.values.push_back({entry, ValueKinds::Language(), UseId{0}});
+    graph.values.push_back({EntryDefinition{ParameterEntry{0}}, ValueKinds::Language(), UseId{1}});
+    graph.values.push_back({OpResult{OpId{0}, {}}, ValueKinds::Language(), UseId{2}});
+    graph.uses.push_back({OpId{0}, OperandRole::kConstructor, ReadPurpose::kOperand, ValueId{0}, {}, {}, {}, {}});
+    graph.uses.push_back({OpId{0}, OperandRole::kInput, ReadPurpose::kOperand, ValueId{1}, {}, {}, {}, {}});
+    graph.uses.push_back({OpId{1}, OperandRole::kReturnValue, ReadPurpose::kOperand, ValueId{2}, {}, {}, {}, {}});
+    graph.ops.push_back({ValueSuperSpread{0}, {0}, 0, {0}, 2, ValueId{2},
+        LanguageEffect::kUserCode, LanguageEffect::kUserCode, ExceptionalCompletion::kMayThrow, {0}});
+    graph.ops.push_back({ValueReturn{}, {0}, 1, {2}, 1, {},
+        LanguageEffect::kNone, LanguageEffect::kNone, ExceptionalCompletion::kImpossible, {1}});
+    graph.blocks.push_back({{0}, 2, {0}, 0});
+    const auto scheduled = BuildEvaluationPlan(graph);
+    Check(std::holds_alternative<EvaluationPlan>(scheduled));
+    const auto built = BuildBindingPlan(graph, std::get<EvaluationPlan>(scheduled), 1);
+    if (std::holds_alternative<CallableEntry>(entry)) {
+      Check(std::holds_alternative<BindingPlan>(built));
+      Check(std::holds_alternative<UnboundValue>(std::get<BindingPlan>(built).values[0]));
+      // It remains a protocol operand, never a fabricated source local.
+      Check(!std::get<BindingPlan>(built).self);
+    } else Check(std::get<BindingError>(built) == BindingError::kUnsupportedEntry);
+    graph.uses[1].role = OperandRole::kArgument;
+    Check(std::holds_alternative<EvaluationError>(BuildEvaluationPlan(graph)));
+  }
+}
 }  // namespace
 int main() {
   ParameterAndUnusedFormals();
   ReceiverAndUnsupportedAbi();
+  SpreadProtocolEntry();
 }

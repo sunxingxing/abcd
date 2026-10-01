@@ -647,6 +647,7 @@ class TreePrinter {
       }
     }
     auto positions = std::get<PrintedClassTree>(std::move(emitted));
+    Result().incomplete |= positions.incomplete;
     Admit(positions.allocated_bytes, 1); Step(positions.work);
     const auto retain = [&](PrintedFunction function, std::size_t offset) {
       auto& retained = Result().class_members;
@@ -1132,6 +1133,7 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
       if (const auto* failure = std::get_if<FamilyPrepareFailure>(&printed)) throw *failure;
       if (const auto* failure = std::get_if<TreePrintError>(&printed)) throw *failure;
       auto positions = std::get<PrintedFamilyDraft>(std::move(printed));
+      for (const auto& body : positions.members) result.incomplete |= body.incomplete;
       if (positions.allocated_bytes > budget.bytes) throw Failure::kResourceLimit;
       if (positions.work > budget.work) throw Failure::kWorkLimit;
       budget.bytes -= positions.allocated_bytes; budget.work -= positions.work;

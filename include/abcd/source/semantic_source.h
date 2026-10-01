@@ -386,6 +386,9 @@ struct PrintedSource {
   // Record-only, immutable emitted declaration state. This does not grant
   // module read/TDZ equivalence or upgrade the enclosing source route.
   std::optional<RecordModuleInitialization> module_initialization;
+  // A retained class/member gap makes the surrounding record incomplete.
+  // This is recovery status, never permission to execute a partial artifact.
+  bool incomplete = false;
 };
 struct SourceCapture {
   GeneratedPosition position;
