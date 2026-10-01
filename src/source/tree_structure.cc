@@ -442,6 +442,8 @@ class StructureCheck {
         else if constexpr (std::is_same_v<T, UnaryExpr> || std::is_same_v<T, AwaitExpr> || std::is_same_v<T, YieldExpr>) add(node.operand);
         else if constexpr (std::is_same_v<T, BinaryExpr> || std::is_same_v<T, LogicalExpr>) {
           add(node.left); add(node.right);
+        } else if constexpr (std::is_same_v<T, ClassExpr>) {
+          if (node.heritage) add(*node.heritage);
         } else if constexpr (std::is_same_v<T, FieldDefinitionExpr>) {
           add(node.receiver); add(node.value);
         } else if constexpr (std::is_same_v<T, AssignmentExpr>) {
@@ -455,7 +457,7 @@ class StructureCheck {
                         std::is_same_v<T, ArgumentSnapshotExpr> ||
                         std::is_same_v<T, ThisExpr> || std::is_same_v<T, CallExpr> ||
                         std::is_same_v<T, ConstructExpr> || std::is_same_v<T, SuperCallExpr> || std::is_same_v<T, EmptyArrayExpr> ||
-                        std::is_same_v<T, EmptyObjectExpr> || std::is_same_v<T, ObjectExpr> || std::is_same_v<T, FunctionExpr> || std::is_same_v<T, ClassExpr>);
+                        std::is_same_v<T, EmptyObjectExpr> || std::is_same_v<T, ObjectExpr> || std::is_same_v<T, FunctionExpr>);
         }
       }, tree_.expressions[expression->value].expression);
     } else {

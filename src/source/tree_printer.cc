@@ -26,6 +26,11 @@
 namespace abcd::source {
 namespace {
 using Error = TreePrintError;
+enum class ClassPrintForm { kExpression, kDerivedBody };
+std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassPart(
+    const ClassTree&, std::ostream&, EmitBudget, analysis::SemanticBudget,
+    const GlobalScope*, std::size_t, ClassPrintForm);
+struct DerivedClassBody { std::shared_ptr<const ClassTree> definition; };
 struct EndExpression { ExprId id; };
 struct Statement { StmtId id; std::size_t depth; };
 struct EndStatement { StmtId id; };
@@ -43,7 +48,7 @@ struct ParameterCursor { std::uint32_t index; };
 struct EndParameter { std::uint32_t index; };
 using PrintAction = std::variant<std::string_view, ExprId, EndExpression,
     Statement, EndStatement, BlockCursor, Indent, PropertyKey, SymbolName, ArgumentCursor,
-    ObjectCursor, EndProperty, BeginFunction, EndFunction, ParameterCursor, EndParameter, SnapshotCursor>;
+    ObjectCursor, EndProperty, BeginFunction, EndFunction, ParameterCursor, EndParameter, SnapshotCursor, DerivedClassBody>;
 struct OwnedAction { std::size_t owner; std::size_t depth; PrintAction action; };
 struct LocatedAnchor { BlockBoundary boundary; AnchorId id; };
 struct OwnerTree { FunctionOwnerId owner; std::size_t member; };
@@ -610,7 +615,21 @@ class TreePrinter {
     // explicit composition. This keeps class/family printer nesting bounded.
     if ((family_ && !ModuleBody()) || !node.definition || node.definition->identity != Tree().identity ||
         node.definition->creation.creator != Tree().method) throw Error::kUnsupportedContext;
-    auto emitted = PrintClassTree(*node.definition, output_, {limit_ - written_}, remaining_, scope_, depth_);
+    if (node.heritage) {
+      const auto& family = node.definition->constructor.Family();
+      if (family.members[family.root.value].tree.callable != CallableKind::kDerivedConstructor)
+        throw Error::kUnsupportedContext;
+      Append("({["); Quoted(node.definition->name); Append("]: class extends (");
+      Push(DerivedClassBody{node.definition}); Push(*node.heritage);
+    } else ClassPart(*node.definition, ClassPrintForm::kExpression);
+  }
+  void Run(const DerivedClassBody& body) {
+    Append(")");
+    ClassPart(*body.definition, ClassPrintForm::kDerivedBody);
+    Append("})["); Quoted(body.definition->name); Append("]");
+  }
+  void ClassPart(const ClassTree& definition, ClassPrintForm form) {
+    auto emitted = PrintClassPart(definition, output_, {limit_ - written_}, remaining_, scope_, depth_, form);
     if (const auto* error = std::get_if<TreePrintError>(&emitted)) throw *error;
     if (const auto* failure = std::get_if<FamilyPrepareFailure>(&emitted)) {
       switch (FamilyRouteFailure(*failure).failure_class) {
@@ -1055,9 +1074,10 @@ std::variant<PrintedFunction, TreePrintError> PrintFunctionTree(
 }  // namespace abcd::source
 
 namespace abcd::source {
-std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassTree(
+namespace {
+std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassPart(
     const ClassTree& tree, std::ostream& output, EmitBudget limit,
-    analysis::SemanticBudget budget, const GlobalScope* globals, std::size_t indent) {
+    analysis::SemanticBudget budget, const GlobalScope* globals, std::size_t indent, ClassPrintForm form) {
   using Failure = TreePrintError;
   const auto initial = budget;
   try {
@@ -1065,11 +1085,11 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassT
         tree.constructor.Identity() != tree.identity ||
         tree.constructor.Family().members[tree.constructor.Family().root.value].tree.method != tree.creation.target)
       return Failure::kUnsupportedContext;
-    // A constructor fragment may contain native super(), but this whole-class
-    // representation has no heritage expression yet. Never publish it as a
-    // base class: that loses inheritance and makes super() a syntax error.
+    // Only the enclosing ClassExpr may emit a derived header/heritage. The
+    // public whole-class route remains restricted to actual base constructors.
     if (tree.constructor.Family().members[tree.constructor.Family().root.value].tree.callable !=
-        CallableKind::kBaseConstructor) return Failure::kUnsupportedContext;
+        (form == ClassPrintForm::kExpression ? CallableKind::kBaseConstructor : CallableKind::kDerivedConstructor))
+      return Failure::kUnsupportedContext;
     PrintedClassTree result;
     auto count = tree.members.size() + 1;
     for (const auto& accessor : tree.definitions) {
@@ -1116,7 +1136,8 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassT
     // Computed-property NamedEvaluation preserves runtime class.name without
     // inventing an immutable class-name binding that shadows a mutable module
     // export read inside a method. The wrapper is never exposed to user code.
-    append("({["); name(); append("]: class {\n");
+    if (form == ClassPrintForm::kExpression) { append("({["); name(); append("]: class {\n"); }
+    else append(" {\n");
     member(tree.constructor);
     for (std::size_t i = 0; i < tree.members.size(); ++i) {
       const auto& family = tree.members[i]; const auto* site = family.ClassCreation();
@@ -1170,7 +1191,8 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassT
       result.initializer = std::move(positions);
     }
     for (std::size_t i = 0; i < indent; ++i) append("  ");
-    append("}})["); name(); append("]");
+    append("}");
+    if (form == ClassPrintForm::kExpression) { append("})["); name(); append("]"); }
     result.allocated_bytes = initial.bytes - budget.bytes;
     result.work = initial.work - budget.work;
     return result;
@@ -1180,4 +1202,10 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassT
     catch (const std::length_error&) { return Failure::kResourceLimit; }
     catch (const std::ios_base::failure&) { return Failure::kWrite; }
 }
+}  // namespace
+std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassTree(
+    const ClassTree& tree, std::ostream& output, EmitBudget limit,
+    analysis::SemanticBudget budget, const GlobalScope* globals, std::size_t indent) {
+  return PrintClassPart(tree, output, limit, budget, globals, indent, ClassPrintForm::kExpression);
 }
+}  // namespace abcd::source

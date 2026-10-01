@@ -12,6 +12,31 @@
 
 ## 当前阶段
 
+### 2026-10-01：共同 ClassExpr 贯通原生继承表达式
+
+- ClassExpr 将 heritage 作为外层 FunctionTree 拥有的表达式，沿用共同求值顺序、
+  操作数对应和节点所有权验证。Hole 表示无 extends；实际 null 保留为 extends null。
+  绑定真实 Base/Derived callable，不根据类名或样本路径判断。语义依据为 pinned
+  v7 RuntimeSetClassInheritanceRelationship：父类构造能力、prototype 读取与异常、
+  静态/实例原型链均由原生 class extends 表达。
+- printer 使用已有迭代动作栈先输出外层 heritage，再组合既有类体及成员位置。
+  无独立 heritage 的公开 PrintClassTree 仍拒绝派生构造器；内部类体路径只供
+  完整 ClassExpr 组合。保留计算属性 NamedEvaluation，避免虚构遮蔽模块绑定的
+  内部类名。新增一次表达式子节点访问，未引入图扫描或独立 writer。
+- 新回归以实际 Index 派生构造器组成最小创建图，覆盖共同树构造/验证/打印；
+  删除或替换 heritage 的篡改被拒绝。该 fixture 不含 Index 其他成员，不当作
+  整类完成证据。初始构造红例 /tmp/abcd-heritage-red-test.log 已观察。
+- derived_class_heritage_source_test 经真实 ClassExpr 创建类，264组构造行为对照
+  通过，并覆盖 extends null、非法父类、prototype 单次读取和异常身份、静态/
+  实例继承及重复创建身份。Proxy 仅验证类定义时的 prototype 读取，不扩大既有
+  super range 的 Proxy 支持域。8项定向测试全部通过（5.12秒），构建与测试日志
+  /tmp/abcd-heritage-verified-build.log、/tmp/abcd-heritage-verified-tests.log。
+- 五输入正式导出 build/stage-one/value-class-heritage-pass-1 仍为34 complete/
+  72 failure/46 no-module，无完整项退化或legacy writer；汇总
+  /tmp/abcd-heritage-batch-summary.json。下个阻断是 record_tree.cc 对真实模块入口
+  调用 VerifyTreeGlobals 时仍传 nullptr（/tmp/abcd-heritage-next-block.log）。
+  阶段一未完成；全量测试/RSS/基准仍暂停。
+
 ### 2026-10-01：逻辑参数与前置成员callee贯通，initialRender完整函数族生成
 
 - 新增normal逻辑值求值组合：已验证单入口菱形的RHS仍由原条件控制，将其作为

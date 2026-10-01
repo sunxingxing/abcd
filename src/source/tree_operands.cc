@@ -367,8 +367,12 @@ class OperandCheck {
               definition.creation.creation.length == operation.length &&
               definition.creation.creation.cache_slot == operation.cache_slot && op.use_count == 1, Error::kOperand);
           const auto* heritage = std::get_if<analysis::ValueId>(&input(0));
-          RequireMeaning(evaluation_.flow == EvaluationFlow::kNormal && heritage &&
-              graph_.values[heritage->value].domain == analysis::ValueKinds::Hole(), Error::kOperand);
+          const bool absent = heritage && graph_.values[heritage->value].domain == analysis::ValueKinds::Hole();
+          const auto& family = definition.constructor.Family();
+          RequireMeaning(evaluation_.flow == EvaluationFlow::kNormal && created.heritage.has_value() != absent &&
+              family.members[family.root.value].tree.callable ==
+                  (absent ? CallableKind::kBaseConstructor : CallableKind::kDerivedConstructor), Error::kOperand);
+          if (created.heritage) Input(input(0), *created.heritage);
         } else {
           static_assert(
                         std::is_same_v<T, analysis::ValueSuperCall> || std::is_same_v<T, analysis::ValueSuperCheck> || std::is_same_v<T, analysis::ValueDefineAccessor> || std::is_same_v<T, analysis::ValueHole> ||

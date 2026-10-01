@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import vm from 'node:vm';
 
-const source = execFileSync(process.argv[2], [process.argv[3], '--derived'], {encoding: 'utf8'});
+const extendsMode = process.argv[4] === '--extends';
+const source = execFileSync(process.argv[2], [process.argv[3], extendsMode ? '--extends' : '--derived'], {encoding: 'utf8'});
 // The reference is an independent behavioral contract. It is never supplied to
 // the C++ engine. Framework substitutes expose order, receiver and exceptions.
 function run(generated, options) {
@@ -58,9 +59,12 @@ function run(generated, options) {
       this.finalizeConstruction();
     }
   }
-  const Type = generated ? vm.runInNewContext(`(class Recovered extends Parent {${source}})`,
+  const Type = generated ? vm.runInNewContext(extendsMode ? `(${source})(Parent)` : `(class Recovered extends Parent {${source}})`,
       {Parent, NavPathStack, ObservedPropertyObjectPU}) : Reference;
   assert.equal(Type.length, 3);
+  assert.equal(Object.getPrototypeOf(Type), Parent);
+  assert.equal(Object.getPrototypeOf(Type.prototype), Parent.prototype);
+  if (generated && extendsMode) assert.equal(Type.name, 'Index');
   assert.throws(() => Type(), /class constructor|Class constructor/);
   let result;
   let failure;
@@ -80,4 +84,42 @@ for (const alternate of [false, true]) for (const generator of [undefined, false
     const options = {alternate, generator, id, fail};
     assert.deepEqual(run(true, options), run(false, options));
   }
+}
+
+if (extendsMode) {
+  // Exercise the actual emitted ClassExpr header, not a test-supplied extends.
+  const factory = vm.runInNewContext(`(${source})`);
+  const nullType = factory(null);
+  assert.equal(Object.getPrototypeOf(nullType.prototype), null);
+  assert.equal(Object.getPrototypeOf(nullType), Object.getPrototypeOf(factory));
+  for (const parent of [undefined, false, 0, 1n, 'parent', Symbol(), {}, () => {}, function* () {}]) {
+    assert.throws(() => factory(parent), error => error.name === 'TypeError');
+  }
+  for (const prototype of [null, {}, undefined, 1, 'invalid']) {
+    const reads = [];
+    const target = function Parent() {};
+    target.prototype = prototype;
+    const parent = new Proxy(target, {get(object, key, receiver) {
+      reads.push(key);
+      return Reflect.get(object, key, receiver);
+    }});
+    if (prototype === null || typeof prototype === 'object') {
+      const type = factory(parent);
+      assert.equal(Object.getPrototypeOf(type), parent);
+      assert.equal(Object.getPrototypeOf(type.prototype), prototype);
+    } else assert.throws(() => factory(parent), error => error.name === 'TypeError');
+    assert.deepEqual(reads, ['prototype']);
+  }
+  const failure = {};
+  const throwing = new Proxy(function Parent() {}, {get(object, key) {
+    assert.equal(key, 'prototype'); throw failure;
+  }});
+  assert.throws(() => factory(throwing), error => error === failure);
+  class Parent { static marker = {}; method() {} }
+  const first = factory(Parent);
+  const second = factory(Parent);
+  assert.notEqual(first, second);
+  assert.notEqual(first.prototype, second.prototype);
+  assert.equal(first.marker, Parent.marker);
+  assert.equal(first.prototype.method, Parent.prototype.method);
 }

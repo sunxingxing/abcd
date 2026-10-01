@@ -305,13 +305,17 @@ class ForestBuilder {
           if (!definition || !*definition) throw Error::kUnsupportedOperation;
           Require(op.use_count == 1 && evaluation_.flow == EvaluationFlow::kNormal, Error::kOwnership);
           const auto* heritage = std::get_if<analysis::ValueId>(&graph_.uses[op.first_use.value].operand);
-          Require(heritage && graph_.values[heritage->value].domain == analysis::ValueKinds::Hole(), Error::kOwnership);
+          const bool absent = heritage && graph_.values[heritage->value].domain == analysis::ValueKinds::Hole();
+          const auto& family = (*definition)->constructor.Family();
+          Require(family.members[family.root.value].tree.callable ==
+              (absent ? CallableKind::kBaseConstructor : CallableKind::kDerivedConstructor), Error::kOwnership);
           const auto& site = (*definition)->creation;
           Require(site.creation.constructor == creation->constructor && site.creation.literal == creation->literal &&
               site.creation.length == creation->length && site.creation.cache_slot == creation->cache_slot &&
               site.pc == graph_.origins[op.origin.value].pc,
               Error::kConstant);
-          forest_.operations[i] = Add(ClassExpr{*definition}, origin);
+          forest_.operations[i] = Add(ClassExpr{*definition, absent ? std::nullopt :
+              std::optional{Operand(graph_.uses[op.first_use.value].operand, origin)}}, origin);
           continue;
         }
         std::array<ExprId, kFixedExpressionOperands> operands{};

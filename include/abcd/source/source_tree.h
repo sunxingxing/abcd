@@ -159,8 +159,13 @@ struct CaptureRange { std::uint32_t first; std::uint32_t count; };
 struct FunctionExpr { FunctionOwnerId child; CaptureRange captures; };
 struct ClassTree;
 // An owned source class definition, bound to this exact creation occurrence.
-// Initial base classes consume absent heritage in the adapter, not as JS Hole.
-struct ClassExpr { std::shared_ptr<const ClassTree> definition; };
+// The adapter consumes absent heritage as an internal Hole, never a JS value.
+struct ClassExpr {
+  std::shared_ptr<const ClassTree> definition;
+  // Evaluated once in the creating scope, before native class initialization.
+  // Absence means no extends; a present null expression means extends null.
+  std::optional<ExprId> heritage;
+};
 // Fresh empty aggregates are expression occurrences, never TreeLiteral values.
 // Buffered elements, descriptors and own-defines need a separate initializer
 // proof before being folded into either node.

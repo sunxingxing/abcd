@@ -974,6 +974,9 @@ if(BUILD_TESTING)
       add_test(NAME derived_constructor_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/derived_constructor.mjs $<TARGET_FILE:class_initializer_file_test>
         ${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc)
+      add_test(NAME derived_class_heritage_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/derived_constructor.mjs $<TARGET_FILE:class_initializer_file_test>
+        ${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc --extends)
       add_test(NAME navmap_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/navmap.mjs $<TARGET_FILE:class_initializer_file_test>
         ${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc)

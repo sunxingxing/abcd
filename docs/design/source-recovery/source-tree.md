@@ -340,3 +340,15 @@ record metadata 字段、寄存器和 VM cell slots 不是源字段名/全局变
 
 当前结构 gate 的证据必须同时覆盖路径/imports/类归属/实例字段/全局/完整签名/函数体；
 部分正文失败时 publish incomplete 状态与拒绝清单，不能仅因壳完整而标 executable。
+
+### 已实现的类继承表达式归属（2026-10-01）
+
+共同 ClassExpr 的 optional heritage 属于创建类的外层 FunctionTree；ClassTree
+继续持有构造器和成员各自的函数族。缺省 heritage 对应内部 Hole 与基类 callable，
+存在的 heritage 对应派生 callable，包括原生 extends null。独立操作数校验对照
+原始创建用途，结构校验将 heritage 当作实际子节点，防止遗漏或重复拥有。
+打印时外层表达式与既有类体组合；公开独立类打印仍不接受缺少 heritage 的派生类。
+依据 pinned ets_runtime/ecmascript/stubs/runtime_stubs-inl.h 中
+RuntimeSetClassInheritanceRelationship，原生 extends 负责父类合法性、prototype
+读取异常及两条原型链；不展开成手工属性搬运。新增遍历成本为该表达式子树的线性
+访问，沿用已有节点/输出计费，无新增每成员全图扫描。

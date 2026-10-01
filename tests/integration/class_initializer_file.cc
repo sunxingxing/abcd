@@ -261,6 +261,58 @@ int main(int argc, char** argv) {
     const auto rejected_class = PrintClassTree(no_heritage, invalid_class, {}, {}, &constructor_globals);
     Check(std::get<TreePrintError>(rejected_class) == TreePrintError::kUnsupportedContext);
     Check(invalid_class.str().empty());
+    // A creation-only fixture isolates outer heritage ownership using the real
+    // derived constructor. It deliberately omits the class's other members.
+    analysis::ValueProgram creation_graph;
+    const auto effects = analysis::LanguageEffect::kAllocation | analysis::LanguageEffect::kUserCode;
+    creation_graph.values = {
+        {analysis::EntryDefinition{analysis::ParameterEntry{0}}, analysis::ValueKinds::Language(), analysis::UseId{0}},
+        {analysis::OpResult{{0}}, analysis::ValueKinds::Language(), analysis::UseId{1}}};
+    creation_graph.origins = {{{0}, no_heritage.creation.pc, {}}, {{1}, {no_heritage.creation.pc.value + 1}, {}}};
+    creation_graph.ops = {
+        {parent.values.graph.ops[creation.value].operation, {0}, 0, {0}, 1, analysis::ValueId{1},
+            effects, effects, analysis::ExceptionalCompletion::kMayThrow, {0}},
+        {analysis::ValueReturn{}, {0}, 1, {1}, 1, {}, {}, {}, analysis::ExceptionalCompletion::kImpossible, {1}}};
+    creation_graph.uses = {
+        {analysis::OpId{0}, analysis::OperandRole::kHeritage, analysis::ReadPurpose::kProtocol, analysis::ValueId{0}},
+        {analysis::OpId{1}, analysis::OperandRole::kReturnValue, analysis::ReadPurpose::kOperand, analysis::ValueId{1}}};
+    creation_graph.blocks = {{{0}, 2, {0}, 0}};
+    std::vector<ExpressionConstant> creation_constants(2);
+    creation_constants[0] = std::make_shared<ClassTree>(std::move(no_heritage));
+    const auto creation_plan = std::get<EvaluationPlan>(BuildEvaluationPlan(creation_graph));
+    const auto creation_control = std::get<ControlPlan>(BuildControlPlan(creation_graph));
+    FunctionSyntax creation_syntax{};
+    creation_syntax.identity = identity; creation_syntax.method = context.ConstructorSite()->creator;
+    creation_syntax.owner = {1}; creation_syntax.callable = CallableKind::kFunction;
+    creation_syntax.strictness = Strictness::kStrict;
+    creation_syntax.names = {u"Parent"}; creation_syntax.parameters.push_back({NameId{0}, NameEvidence::kDebugRange});
+    auto created = BuildFunctionTree(creation_graph, creation_control, creation_plan, creation_syntax, {creation_constants, 1});
+    Check(std::holds_alternative<ConstructedFunction>(created));
+    const auto& creation_tree = std::get<ConstructedFunction>(created).tree;
+    Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(creation_graph, creation_control,
+        creation_plan, creation_tree, {creation_constants, 1})));
+    auto missing_heritage = creation_tree;
+    auto wrong_heritage = creation_tree;
+    bool found_heritage = false;
+    for (std::size_t i = 0; i < creation_tree.expressions.size(); ++i) {
+      const auto* klass = std::get_if<ClassExpr>(&creation_tree.expressions[i].expression);
+      if (!klass) continue;
+      Check(klass->heritage.has_value()); found_heritage = true;
+      std::get<ClassExpr>(missing_heritage.expressions[i].expression).heritage.reset();
+      wrong_heritage.expressions[klass->heritage->value].expression = TreeLiteral{UndefinedLiteral{}};
+    }
+    Check(found_heritage);
+    Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(creation_graph, creation_control,
+        creation_plan, missing_heritage, {creation_constants, 1})));
+    Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(creation_graph, creation_control,
+        creation_plan, wrong_heritage, {creation_constants, 1})));
+    std::ostringstream class_source;
+    Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(creation_tree, class_source, {}, {}, &constructor_globals)));
+    Check(class_source.str().find("extends (Parent)") != std::string::npos);
+    if (argc == 3 && std::string_view(argv[2]) == "--extends") {
+      std::cout << class_source.str(); return 0;
+    }
+
     if (argc == 3 && std::string_view(argv[2]) == "--derived") {
       std::cout << constructor_source.str(); return 0;
     }
