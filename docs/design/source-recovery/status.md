@@ -12,6 +12,28 @@
 
 ## 当前阶段
 
+### 2026-10-01：跨逻辑参数的成员调用建立独立顺序回归
+
+- 将10510的阻断收敛成无捕获、无类、无模块依赖的动态ABC最小规格：同一个
+  obj.probe成员读取分别位于obj.items的&&/||菱形之前和之后。两种形式均能
+  识别完整逻辑区域；前置callee仍是kCrossRegionValue，BuildCallPlan返回
+  kReference，强改kInline被VerifyEvaluationPlan拒绝。这明确是待修复的
+  集成缺口；规格记录当前拒绝不代表阶段一接受拒绝结果。
+- 后置callee形式已经通过导入、简化、共同树语义验证及打印，实际输出先执行
+  items getter/逻辑赋值，再执行probe getter/成员调用。新增运行时对照覆盖
+  items getter修改方法选择、两处getter及调用分别抛出同一异常、receiver、
+  参数/返回对象身份，以及callee.call/apply/bind被替换为抛异常getter。
+  前置/后置参考程序的敏感性负对照确认顺序交换确实被检测，不能仅比较返回值。
+- 两项定向测试logical_regions_test/logical_regions_source_test通过（0.60秒），
+  生成代码行为场景从182扩展为396。构建与测试日志分别为
+  /tmp/abcd-logical-call-gate-build.log和/tmp/abcd-logical-call-gate-tests.log；
+  生成源码/tmp/abcd-logical-call-sources.js。此次仅新增测试/定位证据，没有修改
+  生产恢复能力，没有重跑五输入导出或提升34/72/46覆盖；全量/RSS/基准仍暂停。
+- 下一实施边界明确为联合规划：消除逻辑left的重复SSA观察所需快照，将phi作为
+  join调用的表达式输入，并在同一顺序证明中包含header callee与join参数。
+  当前仅把phi内联到call会把前置callee移到items之后；仅放宽CallPlan不安全。
+  此最小规格应在实际实现完成时改为原生obj.probe(obj.items || [])/&&成功验收。
+
 ### 2026-10-01：正常控制分支贯通原生逻辑表达式输出
 
 - FindLogicalExpressions将现有区域识别与已验证求值森林接通：只选择ToBoolean

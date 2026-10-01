@@ -12,6 +12,22 @@ using namespace abcd;
 using namespace abcd::source;
 using abcd::test::Check;
 namespace {
+analysis::ValueProgram Import(const std::vector<std::uint8_t>& bytes, std::uint32_t locals) {
+  const auto body = test::Body(bytes);
+  using namespace analysis;
+  const auto method_result = BuildSemanticMethod(body, abc::ProfileId::kDynamic1206, locals + 1);
+  Check(std::holds_alternative<SemanticMethod>(method_result));
+  const auto& method = std::get<SemanticMethod>(method_result);
+  const auto proof_result = VerifySemanticSource(body, method, locals, 1);
+  Check(std::holds_alternative<SemanticProof>(proof_result));
+  const auto& proof = std::get<SemanticProof>(proof_result);
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(locals, 1, {false, false, false, false}));
+  auto imported = ImportNormalValues(body, method, proof, frame);
+  Check(std::holds_alternative<ValueProgram>(imported));
+  auto graph = std::get<ValueProgram>(std::move(imported));
+  Check(!std::holds_alternative<ValueSimplifyError>(SimplifyValues(graph, graph.revision)));
+  return graph;
+}
 analysis::ValueProgram Diamond(bool negate, unsigned count = 1, bool direct = false, bool getter = false, bool barrier = false, bool invoke = false) {
   // return arg || [] (or arg && []), retaining the compiler's empty keep arm.
   std::vector<std::uint8_t> bytes;
@@ -33,21 +49,21 @@ analysis::ValueProgram Diamond(bool negate, unsigned count = 1, bool direct = fa
     bytes.insert(bytes.end(), diamond.begin(), diamond.end());
   }
   bytes.insert(bytes.end(), {0x60, 2, 0x64});
-  const auto body = test::Body(bytes);
-  using namespace analysis;
-  const auto method_result = BuildSemanticMethod(body, abc::ProfileId::kDynamic1206, 3);
-  Check(std::holds_alternative<SemanticMethod>(method_result));
-  const auto& method = std::get<SemanticMethod>(method_result);
-  const auto proof_result = VerifySemanticSource(body, method, 2, 1);
-  Check(std::holds_alternative<SemanticProof>(proof_result));
-  const auto& proof = std::get<SemanticProof>(proof_result);
-  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(2, 1, {false, false, false, false}));
-  auto imported = ImportNormalValues(body, method, proof, frame);
-  Check(std::holds_alternative<ValueProgram>(imported));
-  auto graph = std::get<ValueProgram>(std::move(imported));
-  Check(!std::holds_alternative<ValueSimplifyError>(SimplifyValues(graph, graph.revision)));
-  return graph;
+  return Import(bytes, 2);
 }
+analysis::ValueProgram CallDiamond(bool negate, bool method_first) {
+  // The same member read on opposite sides of argument selection is observably
+  // different. Keep both bytecode forms as the cross-region integration gate.
+  const std::vector<std::uint8_t> method{0x60, 3, 0x42, 0, 0, 0, 0x61, 0};
+  std::vector<std::uint8_t> bytes;
+  if (method_first) bytes.insert(bytes.end(), method.begin(), method.end());
+  bytes.insert(bytes.end(), {0x60, 3, 0x42, 0, 1, 0, 0x61, 1, 0xfb, 0x13, 0,
+      static_cast<std::uint8_t>(negate ? 0x4f : 0x51), 6, 0x05, 0, 0x61, 1});
+  if (!method_first) bytes.insert(bytes.end(), method.begin(), method.end());
+  bytes.insert(bytes.end(), {0x60, 0, 0x2e, 0, 3, 1, 0x64});
+  return Import(bytes, 3);
+}
+
 }
 std::string Source(const analysis::ValueProgram& graph, bool compose = true) {
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
@@ -61,11 +77,12 @@ std::string Source(const analysis::ValueProgram& graph, bool compose = true) {
   }
   FunctionSyntax syntax{};
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
-  syntax.names = {u"value", u"probe"}; syntax.parameters.push_back({NameId{0}, NameEvidence::kDebugRange});
+  syntax.names = {u"value", u"probe", u"items"}; syntax.parameters.push_back({NameId{0}, NameEvidence::kDebugRange});
   std::vector<ExpressionConstant> constants(graph.ops.size());
   for (std::size_t i = 0; i < graph.ops.size(); ++i)
-    if (std::holds_alternative<analysis::ValueNamedRead>(graph.ops[i].operation)) constants[i] = NameId{1};
-  const ExpressionConstants view{constants, 2, 0, {}};
+    if (const auto* read = std::get_if<analysis::ValueNamedRead>(&graph.ops[i].operation))
+      constants[i] = NameId{read->name.value + 1};
+  const ExpressionConstants view{constants, 3, 0, {}};
   const auto built = BuildFunctionTree(graph, control, evaluation, std::move(syntax), view);
   Check(std::holds_alternative<ConstructedFunction>(built));
   const auto& tree = std::get<ConstructedFunction>(built).tree;
@@ -92,6 +109,34 @@ std::string Source(const analysis::ValueProgram& graph, bool compose = true) {
   std::ostringstream output;
   Check(std::holds_alternative<PrintedFamilyDraft>(PrintFamilyDraft(family, output)));
   return output.str();
+}
+void CallArguments() {
+  using namespace analysis;
+  for (const bool negate : {false, true}) {
+    auto graph = CallDiamond(negate, true);
+    const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+    auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
+    TreeCheckBudget budget({});
+    const auto logicals = FindLogicalExpressions(graph, control, evaluation, budget);
+    Check(logicals.size() == 1);
+    Check(logicals.front().operation == (negate ? TreeLogical::kAnd : TreeLogical::kOr));
+    // A fully composable argument alone does not license moving the callee.
+    // This is an explicit current integration gap, not an accepted final output.
+    Check(std::get<CallPlanError>(BuildCallPlan(graph, evaluation)) == CallPlanError::kReference);
+    for (const auto& op : graph.ops) if (std::holds_alternative<ValueInvoke>(op.operation)) {
+      const auto callee = std::get<ValueId>(graph.uses[op.first_use.value].operand);
+      const auto producer = std::get<OpResult>(graph.values[callee.value].origin).op;
+      Check(graph.ops[producer.value].block == logicals.front().header);
+      Check(op.block == logicals.front().join);
+      Check(evaluation.operations[producer.value].temporary == TemporaryReason::kCrossRegionValue);
+      auto forged = evaluation;
+      forged.operations[producer.value] = {EvaluationKind::kInline, op.first_use, {}};
+      Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    }
+    // The later member getter already has a legal same-block reference; retain
+    // the logical argument snapshot so its effects still precede that getter.
+    Check(!Source(CallDiamond(negate, false)).empty());
+  }
 }
 void SelectionBudget() {
   const auto graph = Diamond(false, 201);
@@ -175,7 +220,8 @@ int main(int argc, char** argv) {
     std::cout << "[" << Source(Diamond(false)) << "," << Source(Diamond(true)) << "," << Source(Diamond(false, 1, false, true))
               << "," << Source(Diamond(true, 1, false, true))
               << "," << Source(Diamond(false, 1, false, true, false, true))
-              << "," << Source(Diamond(true, 1, false, true, false, true)) << "]\n";
+              << "," << Source(Diamond(true, 1, false, true, false, true))
+              << "," << Source(CallDiamond(false, false)) << "," << Source(CallDiamond(true, false)) << "]\n";
     return 0;
   }
   for (const bool negate : {false, true}) for (const bool direct : {false, true}) {
@@ -201,6 +247,7 @@ int main(int argc, char** argv) {
   const auto uncomposed = Source(Diamond(false, 1, true, false, true), false);
   Check(uncomposed.find("if (") != std::string::npos && uncomposed.find("debugger;") != std::string::npos);
   Check(uncomposed.find(" || ") == std::string::npos);
+  CallArguments();
   SelectionBudget();
   PhiInputs();
   Negatives();

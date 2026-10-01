@@ -5,6 +5,7 @@ import vm from 'node:vm';
 // tree and semantic checks. No source text supplies the engine's expression.
 const source = execFileSync(process.argv[2], ['--sources'], {encoding: 'utf8'});
 const generated = vm.runInNewContext(source, {Array() { throw new Error('mutable Array binding'); }});
+assert.equal(generated.length, 8);
 const reference = [value => value || [], value => value && []];
 const object = {[Symbol.toPrimitive]() { throw new Error('unexpected coercion'); }};
 const values = [undefined, null, false, true, 0, -0, NaN, '', 'text', 0n, 1n, Symbol('value'), object];
@@ -68,6 +69,68 @@ function invoke(fn, payload, fail) {
 for (let i = 0; i < callReference.length; ++i) {
   for (const payload of values) for (const fail of [undefined, 'get', 'call']) {
     assert.deepEqual(invoke(generated[i + 4], payload, fail), invoke(callReference[i], payload, fail));
+    ++scenarios;
+  }
+}
+// These bytecode forms evaluate the argument before looking up the method.
+// The paired earlier-getter form is still rejected by the C++ integration gate.
+// Inlining its phi argument without moving/owning all preceding effects would
+// accidentally swap these two programs, even when ordinary return values agree.
+const argumentReference = [
+  value => { const argument = value.items || []; return value.probe(argument); },
+  value => { const argument = value.items && []; return value.probe(argument); },
+];
+const earlyReference = [value => value.probe(value.items || []), value => value.probe(value.items && [])];
+function argumentCall(fn, payload, fail, mutate) {
+  const events = [], failure = {}, result = {};
+  let generation = 0;
+  const value = {
+    get items() {
+      events.push('items'); assert.equal(this, value);
+      if (fail === 'items') throw failure;
+      if (mutate) ++generation;
+      return payload;
+    },
+    get probe() {
+      events.push('method'); assert.equal(this, value);
+      if (fail === 'method') throw failure;
+      const selected = generation;
+      const method = function(argument) {
+        assert.equal(this, value);
+        events.push(`call:${selected}`);
+        events.push(Object.is(argument, payload) ? 'same argument' :
+          Array.isArray(argument) && argument.length === 0 ? 'empty array' : 'wrong argument');
+        if (fail === 'call') throw failure;
+        return result;
+      };
+      // Source member-call recovery must not consult mutable callee helpers.
+      for (const name of ['call', 'apply', 'bind']) Object.defineProperty(method, name, {
+        get() { throw new Error(`unexpected ${name}`); },
+      });
+      return method;
+    },
+  };
+  try {
+    assert.equal(fn(value), result);
+    return {events, result: 'same result'};
+  } catch (error) {
+    assert.equal(error, failure);
+    return {events, error: 'same exception'};
+  }
+}
+for (let i = 0; i < argumentReference.length; ++i) {
+  for (const payload of values) for (const fail of [undefined, 'items', 'method', 'call']) {
+    for (const mutate of [false, true]) {
+      assert.deepEqual(argumentCall(generated[i + 6], payload, fail, mutate),
+        argumentCall(argumentReference[i], payload, fail, mutate));
+      ++scenarios;
+    }
+  }
+  // Sensitivity check: the oracle distinguishes both getter exceptions and
+  // method replacement; it cannot green-light the wrong evaluation order.
+  for (const fail of [undefined, 'items', 'method']) {
+    assert.notDeepEqual(argumentCall(earlyReference[i], false, fail, true),
+      argumentCall(argumentReference[i], false, fail, true));
     ++scenarios;
   }
 }
