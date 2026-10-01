@@ -883,6 +883,18 @@ if(BUILD_TESTING)
   target_link_libraries(class_initializer_file_test PRIVATE abcd_source abcd_corpus)
   add_executable(spread_derived_projection_test tests/integration/spread_derived_projection.cc)
   target_link_libraries(spread_derived_projection_test PRIVATE abcd_source abcd_corpus)
+  add_executable(module_initialization_input_test tests/integration/module_initialization_input.cc)
+  target_include_directories(module_initialization_input_test PRIVATE tests/support)
+  target_link_libraries(module_initialization_input_test PRIVATE abcd_source abcd_corpus)
+  if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
+    add_test(NAME module_initialization_input_test COMMAND module_initialization_input_test
+      ${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc)
+    if(ABCD_NODE_EXECUTABLE)
+      add_test(NAME module_initialized_read_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/module_initialized_read.mjs
+        $<TARGET_FILE:module_initialization_input_test> ${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc)
+    endif()
+  endif()
   if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
     add_test(NAME spread_derived_projection_test COMMAND spread_derived_projection_test
       "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")

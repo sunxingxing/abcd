@@ -354,9 +354,10 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
         }
         if (OrderedEvaluation(op)) {
           ++serial; ++effects;
-          // The pinned read executes both original ordered events. The guard
-          // has no independent source evaluation, but is never erased from IR.
-          if (std::holds_alternative<analysis::ValueModuleRead>(op.operation)) { ++serial; ++effects; }
+          // Only a paired read owns the second original guard event. An
+          // initialized read remains one effect; no synthetic guard epoch.
+          if (std::holds_alternative<analysis::ValueModuleRead>(op.operation) &&
+              !module_index.peers.empty() && module_index.peers[index]) { ++serial; ++effects; }
         }
         groups[index] = {effects, effects ? serial : 0};
       }

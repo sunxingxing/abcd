@@ -395,7 +395,9 @@ class FlowCheck {
     for (const auto& module : evaluation_.modules) {
       budget_.Step();
       const auto read = module.pair.read.value;
-      const auto guard = module.pair.guard.value;
+      Require(flow_.expressions[read].has_value(), Error::kPlacement);
+      if (!module.pair.guard) continue;
+      const auto guard = module.pair.guard->value;
       // The evaluation checker proved exact guarded adjacency and effect order.
       // Two PC placements own ONE expression occurrence, not two executions.
       Require(flow_.expressions[read] && flow_.expressions[guard] == flow_.expressions[read], Error::kPlacement);

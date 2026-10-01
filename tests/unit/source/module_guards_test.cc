@@ -48,22 +48,24 @@ void Run(std::uint32_t count, bool external, bool wide) {
   test::Check(std::get<ModuleGuardError>(VerifyModuleGuards(input, values.graph, changed_plan)) == ModuleGuardError::kCoverage);
   changed_plan = plan; ++changed_plan.revision.value;
   test::Check(std::get<ModuleGuardError>(VerifyModuleGuards(input, values.graph, changed_plan)) == ModuleGuardError::kRevision);
+  changed_plan = plan; changed_plan.pairs.front().guard.reset();
+  test::Check(std::holds_alternative<ModuleGuardError>(VerifyModuleGuards(input, values.graph, changed_plan)));
   const auto pair = plan.pairs.front();
   const auto reject = [&](const ValueProgram& graph) {
     test::Check(std::holds_alternative<ModuleGuardError>(VerifyModuleGuards(input, graph, plan)));
   };
   auto graph = values.graph;
-  graph.ops[pair.guard.value].life = ValueLife::kRemoved; reject(graph);
+  graph.ops[pair.guard->value].life = ValueLife::kRemoved; reject(graph);
   graph = values.graph;
   ++std::get<ValueModuleRead>(graph.ops[pair.read.value].operation).slot.value; reject(graph);
   graph = values.graph;
-  std::get<ValueGuard>(graph.ops[pair.guard.value].operation).name.reset(); reject(graph);
+  std::get<ValueGuard>(graph.ops[pair.guard->value].operation).name.reset(); reject(graph);
   graph = values.graph;
-  graph.uses[graph.ops[pair.guard.value].first_use.value].operand = SpecialValue::kUndefined; reject(graph);
+  graph.uses[graph.ops[pair.guard->value].first_use.value].operand = SpecialValue::kUndefined; reject(graph);
   graph = values.graph;
-  graph.ops[pair.guard.value].before_throw = LanguageEffect::kNone; reject(graph);
+  graph.ops[pair.guard->value].before_throw = LanguageEffect::kNone; reject(graph);
   graph = values.graph;
-  ++graph.ops[pair.guard.value].order; reject(graph);
+  ++graph.ops[pair.guard->value].order; reject(graph);
   graph = values.graph;
   ++graph.origins[graph.ops[pair.read.value].origin.value].pc.value; reject(graph);
   graph = values.graph;
@@ -72,7 +74,7 @@ void Run(std::uint32_t count, bool external, bool wide) {
     changed_plan = plan; changed_plan.pairs[1] = changed_plan.pairs[0];
     test::Check(std::holds_alternative<ModuleGuardError>(VerifyModuleGuards(input, values.graph, changed_plan)));
     graph = values.graph;
-    graph.uses[graph.ops[pair.guard.value].first_use.value].operand = *graph.ops[plan.pairs[1].read.value].result;
+    graph.uses[graph.ops[pair.guard->value].first_use.value].operand = *graph.ops[plan.pairs[1].read.value].result;
     reject(graph);
   }
   budget = {}; budget.bytes = 0;

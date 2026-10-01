@@ -6,16 +6,18 @@
 
 namespace abcd::analysis { struct PhasedValueInput; }
 namespace abcd::source {
-struct GuardedModuleRead {
+struct ModuleReadSite {
   analysis::OpId read;
-  analysis::OpId guard;
-  bool operator==(const GuardedModuleRead&) const = default;
+  // Absence is an initialized local read, never an omitted required check.
+  // Original input owner evidence independently authorizes this alternative.
+  std::optional<analysis::OpId> guard;
+  bool operator==(const ModuleReadSite&) const = default;
 };
 struct ModuleGuards {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
-  // Original proof order. No entry means no guarded-read lowering permission.
-  std::vector<GuardedModuleRead> pairs;
+  // Original proof order. No entry means no module-read lowering permission.
+  std::vector<ModuleReadSite> pairs;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };
@@ -23,7 +25,7 @@ enum class ModuleGuardError : std::uint8_t {
   kRevision, kOrigin, kCoverage, kRead, kGuard, kOrder, kEffects,
   kUnsupportedProof, kResourceLimit, kWorkLimit
 };
-// Rebase immutable original pair proofs onto unchanged verified working IR.
+// Rebase immutable original guarded/initialized proofs onto working IR.
 // Language result facts from a guarded load are conditional on the WHOLE pair;
 // they never authorize removing the guard or exposing the raw pre-guard value.
 // No module binding/TDZ/name equivalence or publication certificate is produced.

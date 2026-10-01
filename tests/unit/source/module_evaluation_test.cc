@@ -55,8 +55,8 @@ void Run(std::uint32_t count, bool external, bool barrier = true) {
         (!barrier && module.pair.read == modules.back().pair.read ? EvaluationKind::kInline : EvaluationKind::kRoot));
     test::Check(plan.operations[module.pair.read.value].temporary.has_value() ==
         (barrier && module.pair.read == modules.back().pair.read));
-    test::Check(plan.operations[module.pair.guard.value].kind == EvaluationKind::kModuleGuard);
-    test::Check(!plan.operations[module.pair.guard.value].temporary);
+    test::Check(plan.operations[module.pair.guard->value].kind == EvaluationKind::kModuleGuard);
+    test::Check(!plan.operations[module.pair.guard->value].temporary);
   }
   FunctionSyntax syntax{};
   syntax.identity = identity; syntax.method = {300}; syntax.owner = {1};
@@ -73,7 +73,7 @@ void Run(std::uint32_t count, bool external, bool barrier = true) {
   test::Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(graph, control, plan, tree, constants, fixture_budget)));
   const auto flow = std::get<TreeFlow>(VerifyTreeFlow(graph, control, plan, tree, fixture_budget));
   for (const auto& module : modules) {
-    const auto read = module.pair.read.value, guard = module.pair.guard.value;
+    const auto read = module.pair.read.value, guard = module.pair.guard->value;
     test::Check(flow.expressions[read] && flow.expressions[read] == flow.expressions[guard] && !flow.statements[guard]);
     const auto expression = *flow.expressions[read];
     test::Check(std::get<SymbolExpr>(tree.expressions[expression.value].expression).symbol == tree.modules[0].symbol);
@@ -108,17 +108,17 @@ void Run(std::uint32_t count, bool external, bool barrier = true) {
   auto changed = plan;
   changed.modules.clear();
   test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, changed, fixture_budget)));
-  changed = plan; changed.operations[modules[0].pair.guard.value].kind = EvaluationKind::kRemoved;
+  changed = plan; changed.operations[modules[0].pair.guard->value].kind = EvaluationKind::kRemoved;
   test::Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, changed, fixture_budget)) == EvaluationError::kOwnership);
   changed = plan; changed.modules[0].read.space = external ? ModuleSpace::kLocal : ModuleSpace::kExternal;
   test::Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, changed, fixture_budget)) == EvaluationError::kOwnership);
-  changed = plan; ++changed.modules[0].pair.guard.value;
+  changed = plan; ++changed.modules[0].pair.guard->value;
   test::Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, changed, fixture_budget)) == EvaluationError::kOwnership);
   auto broken = graph;
-  broken.ops[modules[0].pair.guard.value].exceptional = ExceptionalCompletion::kImpossible;
+  broken.ops[modules[0].pair.guard->value].exceptional = ExceptionalCompletion::kImpossible;
   test::Check(std::get<EvaluationError>(VerifyEvaluationPlan(broken, plan, fixture_budget)) == EvaluationError::kOrder);
   broken = graph;
-  std::get<ValueGuard>(broken.ops[modules[0].pair.guard.value].operation).name.reset();
+  std::get<ValueGuard>(broken.ops[modules[0].pair.guard->value].operation).name.reset();
   test::Check(std::get<EvaluationError>(VerifyEvaluationPlan(broken, plan, fixture_budget)) == EvaluationError::kInvalidGraph);
   budget = {}; budget.bytes = 0;
   test::Check(std::get<EvaluationError>(IndexModuleEvaluations(graph, modules, budget)) == EvaluationError::kResourceLimit);

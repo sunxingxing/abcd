@@ -2,6 +2,8 @@
 
 #include <new>
 #include <stdexcept>
+#include <algorithm>
+#include <bit>
 
 namespace abcd::source {
 namespace {
@@ -29,13 +31,13 @@ class Correspondence {
         op.exceptional == original.effects.exceptional, Error::kEffects);
     return id;
   }
-  GuardedModuleRead Pair(const analysis::ModuleReadFact& fact) {
+  ModuleReadSite Pair(const analysis::ModuleReadFact& fact) {
     Step();
-    // Initialized reads require an explicit enclosing-owner premise. Catch and
-    // caller guarded variants require phase-aware exceptional IR (T09).
+    // Normal initialized reads retain the genuine creation/store premise;
+    // phase callers require the separate exceptional owner pipeline.
     switch (fact.proof) {
       case analysis::ModuleReadProof::kGuarded: break;
-      case analysis::ModuleReadProof::kInitialized:
+      case analysis::ModuleReadProof::kInitialized: return Initialized(fact);
       case analysis::ModuleReadProof::kCallerGuarded:
       case analysis::ModuleReadProof::kCatchGuarded: throw Error::kUnsupportedProof;
     }
@@ -67,6 +69,29 @@ class Correspondence {
         std::uint64_t{read.value} + 1 == guard.value, Error::kOrder);
     return {read, guard};
   }
+  ModuleReadSite Initialized(const analysis::ModuleReadFact& fact) {
+    const auto read = Operation(fact.instruction);
+    const auto& original = input_.Input().instructions[fact.instruction.value];
+    const auto* load = std::get_if<analysis::ModuleLoad>(&original.operation);
+    const auto& op = graph_.ops[read.value];
+    const auto* current = std::get_if<analysis::ValueModuleRead>(&op.operation);
+    Require(load && current && load->space == analysis::ModuleSpace::kLocal &&
+        current->space == load->space && current->slot == load->slot && !op.use_count &&
+        op.result && op.result->value < graph_.values.size(), Error::kRead);
+    const auto* result = std::get_if<analysis::OpResult>(&graph_.values[op.result->value].origin);
+    Require(result && result->op == read && !result->commit &&
+        graph_.values[op.result->value].domain.IsLanguage() &&
+        graph_.values[op.result->value].life == analysis::ValueLife::kLive, Error::kRead);
+    const auto premises = input_.InitializedModuleReads();
+    // Indexed exact read sites, not one repeated scan per module load.
+    Require(work_ >= std::bit_width(premises.size()) + 1, Error::kWorkLimit);
+    work_ -= std::bit_width(premises.size()) + 1;
+    const auto found = std::lower_bound(premises.begin(), premises.end(), fact.instruction,
+        [](const auto& premise, auto sought) { return premise.instruction < sought; });
+    Require(found != premises.end() && found->instruction == fact.instruction && found->slot == load->slot &&
+        input_.HasOwner(), Error::kUnsupportedProof);
+    return {read, std::nullopt};
+  }
  private:
   const FunctionInput& input_;
   const analysis::ValueProgram& graph_;
@@ -96,11 +121,11 @@ std::variant<ModuleGuards, ModuleGuardError> BuildModuleGuards(
     auto bytes = budget.bytes;
     Require(sizeof(ModuleGuards) <= bytes, Error::kResourceLimit); bytes -= sizeof(ModuleGuards);
     const auto& facts = input.Proof().module_reads;
-    Require(facts.size() <= bytes / sizeof(GuardedModuleRead), Error::kResourceLimit);
+    Require(facts.size() <= bytes / sizeof(ModuleReadSite), Error::kResourceLimit);
     ModuleGuards plan{graph.revision, graph.cfg_revision};
     plan.pairs.reserve(facts.size());
-    Require(plan.pairs.capacity() <= bytes / sizeof(GuardedModuleRead), Error::kResourceLimit);
-    bytes -= plan.pairs.capacity() * sizeof(GuardedModuleRead);
+    Require(plan.pairs.capacity() <= bytes / sizeof(ModuleReadSite), Error::kResourceLimit);
+    bytes -= plan.pairs.capacity() * sizeof(ModuleReadSite);
     Correspondence checked(input, graph, budget.work);
     for (const auto& fact : facts) plan.pairs.push_back(checked.Pair(fact));
     const auto verified = VerifyModuleGuards(input, graph, plan, {bytes, checked.Remaining()});

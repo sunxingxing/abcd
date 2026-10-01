@@ -70,7 +70,9 @@ class AliasBinder {
       Require(read.operation == pair.read, Error::kCoverage);
       const auto local = std::visit([](const auto& binding) { return binding.local; }, read.target);
       local_names_.push_back(local);
-      guard_names_.push_back(*std::get<analysis::ValueGuard>(graph.ops[pair.guard.value].operation).name);
+      if (pair.guard)
+        guard_names_.push_back(*std::get<analysis::ValueGuard>(graph.ops[pair.guard->value].operation).name);
+      else guard_names_.push_back(std::monostate{});
       order_.push_back(i);
       // Allocate source identity by the record inventory, never by function
       // encounter order or name equality. Equal names in different VM slots
@@ -84,9 +86,10 @@ class AliasBinder {
     DecodeNames();
     for (std::size_t i = 0; i < count; ++i) {
       Step();
+      if (!result_.evaluations[i].pair.guard) continue;
       if (classes_[NameIndex(local_names_[i])] != classes_[NameIndex(std::get<abc::EntityOffset>(guard_names_[i]))])
         throw ModuleAliasFailure{Error::kGuardName,
-            graph.origins[graph.ops[result_.evaluations[i].pair.guard.value].origin.value].pc};
+            graph.origins[graph.ops[result_.evaluations[i].pair.guard->value].origin.value].pc};
     }
     std::sort(order_.begin(), order_.end(), [&](auto a, auto b) {
       Step(); return result_.evaluations[a].target < result_.evaluations[b].target;
@@ -135,13 +138,21 @@ class AliasBinder {
   }
   void ResolveGuardNames() {
     std::sort(order_.begin(), order_.end(), [&](auto a, auto b) {
-      Step(); return std::get<abc::PoolIndex>(guard_names_[a]) < std::get<abc::PoolIndex>(guard_names_[b]);
+      Step();
+      const auto* left = std::get_if<abc::PoolIndex>(&guard_names_[a]);
+      const auto* right = std::get_if<abc::PoolIndex>(&guard_names_[b]);
+      return left && right ? *left < *right : !left && right;
     });
     for (std::size_t first = 0; first < order_.size();) {
       Step();
+      if (std::holds_alternative<std::monostate>(guard_names_[order_[first]])) { ++first; continue; }
       const auto slot = std::get<abc::PoolIndex>(guard_names_[order_[first]]);
       auto end = first + 1;
-      while (end < order_.size() && std::get<abc::PoolIndex>(guard_names_[order_[end]]) == slot) { Step(); ++end; }
+      while (end < order_.size()) {
+        const auto* next = std::get_if<abc::PoolIndex>(&guard_names_[order_[end]]);
+        if (!next || *next != slot) break;
+        Step(); ++end;
+      }
       Step(std::bit_width(index_.regions.size()) + 1);
       const auto resolved = abc::ResolvePoolReference(file_, header_, index_, input_.method, slot,
           abc::PoolEntityKind::kString);
@@ -163,7 +174,7 @@ class AliasBinder {
     Reserve(entities_, local_names_.size() * kNamesPerRead);
     for (std::size_t i = 0; i < local_names_.size(); ++i) {
       Step(); entities_.push_back(local_names_[i]);
-      entities_.push_back(std::get<abc::EntityOffset>(guard_names_[i]));
+      if (const auto* guard = std::get_if<abc::EntityOffset>(&guard_names_[i])) entities_.push_back(*guard);
     }
     std::sort(entities_.begin(), entities_.end(), [&](auto a, auto b) { Step(); return a < b; });
     entities_.erase(std::unique(entities_.begin(), entities_.end(), [&](auto a, auto b) {
@@ -209,7 +220,7 @@ class AliasBinder {
   std::size_t bytes_;
   std::uint64_t work_;
   ModuleAliases result_;
-  std::vector<std::variant<abc::PoolIndex, abc::EntityOffset>> guard_names_;
+  std::vector<std::variant<std::monostate, abc::PoolIndex, abc::EntityOffset>> guard_names_;
   std::vector<abc::EntityOffset> local_names_, entities_;
   std::vector<std::size_t> order_, classes_;
   std::vector<std::u16string> decoded_;

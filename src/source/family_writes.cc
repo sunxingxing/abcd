@@ -61,6 +61,18 @@ class WriteCheck {
         const auto checked = std::visit([&](const auto& occurrence) {
           return Capture(parent, child, occurrence, *target.incoming, p);
         }, edge.occurrence);
+        if (const auto* normal_child = std::get_if<CaptureFunction>(&source.function);
+            normal_child && !normal_child->input.InitializedModuleReads().empty()) {
+          const auto* normal_parent = std::get_if<CaptureFunction>(&parent.function);
+          const auto* normal_edge = std::get_if<NormalWriteEdge>(&edge.occurrence);
+          Require(normal_parent && normal_edge, Error::kOwner);
+          const auto modules = VerifyInitializedModuleReads(normal_parent->input, normal_edge->site,
+              normal_child->input, left_);
+          if (const auto* error = std::get_if<FunctionInputError>(&modules))
+            Fail(*error == FunctionInputError::kWorkLimit ? Error::kWorkLimit :
+                *error == FunctionInputError::kResourceLimit ? Error::kResourceLimit : Error::kOwner);
+          Step(std::get<std::uint64_t>(modules));
+        }
         if (const auto* error = std::get_if<CaptureCellError>(&checked))
           Fail(*error == CaptureCellError::kResourceLimit ? Error::kResourceLimit :
               *error == CaptureCellError::kWorkLimit ? Error::kWorkLimit : Error::kCapture);
@@ -195,7 +207,10 @@ class WriteCheck {
     Require(tree.identity == source.function.Identity() && tree.method == source.function.Target(), Error::kOwner);
     Require(source.locals.writes == analysis::ClosureWrites::kLanguage, Error::kDomain);
   }
-  void ClosedRoot(CaptureFunction source) { Require(CaptureChild(source).Input().Captures().empty(), Error::kCapture); }
+  void ClosedRoot(CaptureFunction source) {
+    Require(CaptureChild(source).Input().Captures().empty(), Error::kCapture);
+    Require(source.input.InitializedModuleReads().empty(), Error::kOwner);
+  }
   void ClosedRoot(PhasedFamilyInput source) {
     if (source.storage) Require(source.storage->uses.empty(), Error::kCapture);
     for (const auto& binding : source.function.TreeInput(source.body).input.environments.bindings) {

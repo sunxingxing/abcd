@@ -118,7 +118,10 @@ class FamilyReader {
       };
       FunctionContext context{resolve()};
       Require(index_.methods[target.value].code.has_value(), Error::kMethod);
-      auto child = ReadMethod(target, &context, InputCaptureMode::kConditional);
+      const auto module_input = !parent.Phase()
+          ? std::optional<ParentModuleInput>{{parent.Normal().input, site}} : std::nullopt;
+      auto child = ReadMethod(target, &context, InputCaptureMode::kConditional,
+          module_input ? &*module_input : nullptr);
       const auto child_work = child.Capture();
       auto captured = parent.Phase() ? BindPhasedCaptureCells(index_, lookup_, parent.Phase()->Phases(),
           parent.Body(), parent.Phase()->Locals(), *phase_creation, child_work, context, Remaining()) :
@@ -212,7 +215,7 @@ class FamilyReader {
   }
   analysis::SemanticBudget Remaining() const { return {bytes_, work_}; }
   FamilyFunction ReadMethod(abc::MethodPosition position, const FunctionContext* owner,
-      InputCaptureMode mode = InputCaptureMode::kClosed) {
+      InputCaptureMode mode = InputCaptureMode::kClosed, const ParentModuleInput* modules_input = nullptr) {
     Require(position.value < index_.methods.size() && index_.methods[position.value].code, Error::kMethod);
     if (index_.methods[position.value].code->try_count ||
         (owner && IsGeneratorCallable(owner->Callable()))) {
@@ -227,7 +230,7 @@ class FamilyReader {
       Admit(function.AllocatedBytes(), 1); Step(function.Work()); return function;
     }
     auto read = ReadFunctionValues(file_, header_, index_, position, identity_,
-        InputCaptureMode::kConditional, Remaining(), modules_, owner);
+        InputCaptureMode::kConditional, Remaining(), modules_, owner, modules_input);
     if (const auto* error = std::get_if<FunctionFileFailure>(&read)) Fail(*error);
     auto function = std::get<FileFunction>(std::move(read));
     Admit(function.allocated_bytes, 1);

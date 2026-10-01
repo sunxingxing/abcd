@@ -31,6 +31,6 @@ using FunctionFileFailure = std::variant<FunctionFileError, abc::BodyFailure,
     const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
     abc::MethodPosition method, RouteInputIdentity identity, InputCaptureMode mode,
     analysis::SemanticBudget budget = {}, const RecordModuleContext* modules = nullptr,
-    const FunctionContext* owner = nullptr);
+    const FunctionContext* owner = nullptr, const ParentModuleInput* modules_input = nullptr);
 }  // namespace abcd::source
 #endif

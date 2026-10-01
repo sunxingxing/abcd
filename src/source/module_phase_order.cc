@@ -66,7 +66,8 @@ std::variant<std::uint64_t, EvaluationError> VerifyModulePhaseOrder(
     }
     for (const auto& module : modules) {
       budget.Step();
-      const auto read = module.pair.read, guard = module.pair.guard;
+      Require(module.pair.guard.has_value(), Error::kOrder);
+      const auto read = module.pair.read, guard = *module.pair.guard;
       Require(read.value < graph.ops.size() && guard.value < graph.ops.size(), Error::kInvalidGraph);
       const auto before = graph.ops[read.value].block, after = graph.ops[guard.value].block;
       const auto commit = graph.edges[NormalEdge(graph, before, budget).value].target;
@@ -106,7 +107,8 @@ std::variant<std::uint64_t, EvaluationError> VerifyModuleCatchCopies(
       return bundle ? plan.phis->bundles[*bundle].count : 0U;
     };
     for (const auto& module : plan.modules) {
-      budget.Step(); const auto read = module.pair.read, guard = module.pair.guard;
+      budget.Step(); Require(module.pair.guard.has_value(), Error::kOrder);
+      const auto read = module.pair.read, guard = *module.pair.guard;
       const auto edge = NormalEdge(graph, graph.ops[read.value].block, budget);
       const auto commit = graph.edges[edge.value].target;
       Require(!normal[edge.value] && !normal[NormalEdge(graph, commit, budget).value], Error::kOrder);

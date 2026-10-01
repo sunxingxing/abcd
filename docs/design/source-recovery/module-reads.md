@@ -9,7 +9,7 @@ second body writer or a module source-publication certificate.
 ABC module loads -> original semantic IR -> verified working ValueModuleRead
 record-owned ModuleInfo -----------------> ResolveModuleReads
                                           -> ModuleReads in FileFunction
-original guarded pairs + same record ----> BindModuleAliases
+original guarded/initialized reads ------> BindModuleAliases
                                           -> evaluation + shared SourceTree
                                           -> VerifyModuleAliasTree
                                           -> future record/TDZ proof + printer
@@ -34,11 +34,50 @@ that domain can itself depend on the original two-instruction lowering premise.
 The O(P) pair pass uses indexed origin lookup and O(P) retained storage, where P
 is original module-proof count; verification uses constant additional storage.
 Guarded, initialized, caller-guarded and catch-guarded proofs remain distinct;
-only the first is rebased by the current normal-flow API. Missing proof entries
+normal initialized reads now use the occurrence premise below. Missing proof entries
 remain missing permission, even when a raw unused module read survives in IR.
 Both IR/CFG revision changes invalidate the table. The standalone ValueMethod
 receipt wrapper validates the correspondence but does not retain these private
 plans or gain module-print permission.
+
+## Initialization before a normal child creation
+
+`FunctionInput` indexes the earliest Language-valued module store for each slot
+in its normal entry block. That block dominates reachable execution. A query
+requires an actual later function-creation instruction; stores after that
+creation, branch-local stores and stores beyond the entry block are excluded.
+For E entry instructions and S stores, preparation uses O(E + S log(S+1)) time
+and O(S) retained storage. Child reads query this index in O(log(S+1)), without
+rescanning the parent body for each child or each read.
+
+`ParentModuleInput` is borrowed only during child preparation. File discovery
+supplies the genuine owner context and checks file/profile/record, creator,
+target, PC and original creation operands before using the premise. The child
+retains typed original read/slot/store/creation identities. An adjacent original
+Hole guard keeps its existing guarded path, even when initialization is known.
+Guard-free initialization currently applies only across one normal parent edge;
+phased and inherited grandparent premises are not inferred.
+
+`ModuleReadSite` has an optional guard. Absence means an initialized local read
+with an actual input premise, not permission to delete a guard. Alias binding
+resolves its record slot without inventing a diagnostic-name pool reference.
+The shared evaluation, expression forest and TreeFlow retain one original effect
+and one read origin; guarded reads retain both original events and origins.
+Generated reads remain native live-binding references, never value snapshots
+shared across invocations.
+
+Complete family write verification independently rechecks the original parent
+store, its Language-valued SSA input and its order before the actual creation.
+The existing capture/creation checks still establish the child target and edge.
+A detached root with inherited initialization premises is refused; an input
+premise does not certify module declarations or complete record publication.
+
+The real pasteboard PageA entry 7283 stores slot 1 at PC11 before creating child
+7061 at PC196; the child's raw local read is at PC44. The file family now reads
+successfully. A decoded isolated read/return body using that same occurrence and
+metadata reaches the common AST/printer and passes independent live-value tests.
+It is a focused fixture, not a claim that the complete PageA record executes.
+The record still fails at a different class-member family's evaluation stage.
 
 ## Identity and Semantics
 

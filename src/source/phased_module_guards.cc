@@ -39,7 +39,7 @@ class PhasePairs {
   std::size_t Count() const { return modules_.reads.size(); }
   analysis::SemanticBudget Remaining() const { return remaining_; }
   std::uint64_t Work() const { return initial_.work - remaining_.work; }
-  GuardedModuleRead Pair(std::size_t index) {
+  ModuleReadSite Pair(std::size_t index) {
     Step();
     const auto& fact = modules_.reads[index];
     switch (fact.proof) {
@@ -79,17 +79,17 @@ std::variant<ModuleGuards, ModuleGuardError> BuildPhasedModuleGuards(
   try {
     PhasePairs original(input, graph, budget);
     original.Admit(sizeof(ModuleGuards));
-    Require(original.Count() <= original.Remaining().bytes / sizeof(GuardedModuleRead), Error::kResourceLimit);
+    Require(original.Count() <= original.Remaining().bytes / sizeof(ModuleReadSite), Error::kResourceLimit);
     ModuleGuards plan{graph.revision, graph.cfg_revision};
     plan.pairs.reserve(original.Count());
-    Require(plan.pairs.capacity() <= original.Remaining().bytes / sizeof(GuardedModuleRead), Error::kResourceLimit);
-    original.Admit(plan.pairs.capacity() * sizeof(GuardedModuleRead));
+    Require(plan.pairs.capacity() <= original.Remaining().bytes / sizeof(ModuleReadSite), Error::kResourceLimit);
+    original.Admit(plan.pairs.capacity() * sizeof(ModuleReadSite));
     for (std::size_t i = 0; i < original.Count(); ++i) plan.pairs.push_back(original.Pair(i));
     const auto checked = VerifyPhasedModuleGuards(input, graph, plan, original.Remaining());
     if (const auto* failure = std::get_if<Error>(&checked)) return *failure;
     original.Step(std::get<std::uint64_t>(checked));
     plan.work = original.Work();
-    plan.allocated_bytes = sizeof(ModuleGuards) + plan.pairs.capacity() * sizeof(GuardedModuleRead);
+    plan.allocated_bytes = sizeof(ModuleGuards) + plan.pairs.capacity() * sizeof(ModuleReadSite);
     return plan;
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;

@@ -6,9 +6,10 @@
 #include "function_context.h"
 
 namespace abcd::source {
+struct ParentModuleInput;
 enum class InputCaptureMode : std::uint8_t { kClosed, kConditional };
 enum class FunctionInputError : std::uint8_t {
-  kMode, kCapture, kResourceLimit, kWorkLimit, kOwner
+  kMode, kCapture, kResourceLimit, kWorkLimit, kOwner, kModuleOwner
 };
 struct FunctionInputFailure {
   std::variant<analysis::SemanticFailure, analysis::SemanticProofFailure, FunctionInputError> cause;
@@ -16,6 +17,17 @@ struct FunctionInputFailure {
 struct InputCaptureAccess {
   analysis::InstructionId instruction;
   analysis::LocalAccessKind kind;
+};
+struct EntryModuleStore {
+  analysis::ModuleSlot slot;
+  analysis::InstructionId instruction;
+};
+struct InputModuleRead {
+  analysis::InstructionId instruction;
+  analysis::ModuleSlot slot;
+  abc::EntityOffset creator;
+  abc::CodeOffset creation_pc;
+  analysis::InstructionId store;
 };
 // Same-body input IR and proof cannot be mixed or mutated after construction.
 // Conditional mode records premises, NOT an unconditional input/source receipt.
@@ -34,7 +46,7 @@ class FunctionInput {
       RouteInputIdentity identity, abc::EntityOffset method, abc::EntityOffset record,
       const abc::MethodBody& body, const abc::FrameLayout& frame,
       InputCaptureMode mode, analysis::SemanticBudget budget = {},
-      const FunctionContext* owner = nullptr);
+      const FunctionContext* owner = nullptr, const ParentModuleInput* modules = nullptr);
   bool HasOwner() const { return owner_.has_value(); }
   bool MatchesOwner(const FunctionContext& owner) const;
   const RouteInputIdentity& Identity() const { return identity_; }
@@ -45,6 +57,12 @@ class FunctionInput {
   const analysis::SemanticProof& Proof() const { return proof_; }
   std::span<const CaptureUse> Captures() const { return captures_; }
   std::span<const InputCaptureAccess> CaptureAccesses() const { return accesses_; }
+  std::span<const InputModuleRead> InitializedModuleReads() const { return modules_; }
+  // Entry-block writes are proven Language by this immutable input. Query an
+  // actual later creation; branch-local writes and future stores are excluded.
+  // A slot index is built once per method, not rescanned for every child.
+  std::optional<analysis::InstructionId> ModuleStoreBefore(
+      analysis::ModuleSlot slot, analysis::InstructionId creation) const;
   // All unpreserved callable/class/buffer sites, not just DEFINEFUNC.
   // Complete transitive child validation must discharge these separately.
   std::span<const analysis::InstructionId> Children() const { return proof_.locals.capture_barriers; }
@@ -66,7 +84,8 @@ class FunctionInput {
       abc::EntityOffset record, InputCaptureMode mode,
       analysis::SemanticMethod&& input, analysis::SemanticProof&& proof,
       std::vector<CaptureUse>&& captures, std::vector<InputCaptureAccess>&& accesses,
-      std::size_t allocated_bytes, std::optional<Owner> owner);
+      std::size_t allocated_bytes, std::optional<Owner> owner,
+      std::vector<EntryModuleStore>&& stores, std::vector<InputModuleRead>&& modules);
   RouteInputIdentity identity_;
   abc::EntityOffset method_;
   abc::EntityOffset record_;
@@ -77,7 +96,24 @@ class FunctionInput {
   std::vector<InputCaptureAccess> accesses_;
   std::size_t allocated_bytes_ = 0;
   std::optional<Owner> owner_;
+  std::vector<EntryModuleStore> module_stores_;
+  // Conditional owner premises. Original store/read/creation identities are
+  // retained for independent family publication; input admission is no receipt.
+  std::vector<InputModuleRead> modules_;
 };
+// Borrowed only while reading the immediate child. Never retain a pointer to a
+// family member across vector growth. FunctionInput validates the genuine
+// occurrence context, same record/file identity and original creation opcode.
+struct ParentModuleInput {
+  const FunctionInput& parent;
+  analysis::InstructionId creation;
+};
+// Independent family edge check before publication. The root cannot carry
+// these external premises. Rechecks original local read, entry store domain,
+// exact creation and same-record identity; never grants a snapshot/const fact.
+std::variant<std::uint64_t, FunctionInputError> VerifyInitializedModuleReads(
+    const FunctionInput& parent, analysis::InstructionId creation,
+    const FunctionInput& child, analysis::SemanticBudget budget = {});
 enum class InputBindingError : std::uint8_t { kIdentity, kTarget, kMode };
 using InputBindingResult = std::variant<CapturePlan, CaptureError, InputBindingError>;
 // The unchanged index and genuine BindCreation result belong to these inputs'

@@ -32,7 +32,7 @@ struct ModuleAliasFailure {
       abc::MetadataError> cause;
   std::optional<abc::CodeOffset> pc;
 };
-// Re-resolve the actual record table and original guarded-pair proof. Source
+// Re-resolve the actual record table and guarded/initialized read proof. Source
 // symbols use canonical record binding order: external slots, then local slots
 // (NOT local-export rows). Thus siblings agree independently of which bindings
 // they read. The caller owns the record->ModuleOwnerId assignment.

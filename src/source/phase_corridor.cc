@@ -55,8 +55,9 @@ PhaseCorridors::PhaseCorridors(const ValueProgram& graph, const EvaluationPlan& 
     budget.Array(module_peers_, graph.ops.size());
     for (const auto& module : plan.modules) {
       budget.Step();
+      if (!module.pair.guard) throw EvaluationError::kOrder;
       module_peers_[module.pair.read.value] = module.pair.guard;
-      module_peers_[module.pair.guard.value] = module.pair.read;
+      module_peers_[module.pair.guard->value] = module.pair.read;
     }
   }
   for (const auto& edge : graph.edges) { budget.Step(); ++incoming[edge.target.value]; }

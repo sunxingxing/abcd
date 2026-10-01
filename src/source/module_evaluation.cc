@@ -59,8 +59,20 @@ std::variant<ModuleEvaluationIndex, EvaluationError> IndexModuleEvaluations(
       require(next < modules.size(), Error::kUnsupportedOperation);
       const auto& entry = modules[next++];
       require(entry.pair.read.value == i && entry.read == *read &&
-          std::uint64_t{i} + 1 == entry.pair.guard.value && entry.pair.guard.value < graph.ops.size(), Error::kOwnership);
-      const auto& guard = graph.ops[entry.pair.guard.value];
+          op.use_count == 0 && op.result && op.result->value < graph.values.size(), Error::kOwnership);
+      if (!entry.pair.guard) {
+        const auto* definition = std::get_if<analysis::OpResult>(&graph.values[op.result->value].origin);
+        require(graph.phases.empty() && read->space == analysis::ModuleSpace::kLocal &&
+            definition && definition->op == entry.pair.read && !definition->commit &&
+            graph.values[op.result->value].life == analysis::ValueLife::kLive &&
+            graph.values[op.result->value].domain.IsLanguage() &&
+            op.normal == analysis::LanguageEffect::kModuleRead && op.before_throw == op.normal &&
+            op.exceptional == analysis::ExceptionalCompletion::kMayThrow, Error::kOwnership);
+        continue;
+      }
+      require(std::uint64_t{i} + 1 == entry.pair.guard->value &&
+          entry.pair.guard->value < graph.ops.size(), Error::kOwnership);
+      const auto& guard = graph.ops[entry.pair.guard->value];
       const auto* check = std::get_if<analysis::ValueGuard>(&guard.operation);
       require(guard.life == analysis::ValueLife::kLive && check && check->name && !guard.result &&
           guard.use_count == 1 && guard.first_use.value < graph.uses.size() &&
@@ -82,7 +94,7 @@ std::variant<ModuleEvaluationIndex, EvaluationError> IndexModuleEvaluations(
           op.exceptional == analysis::ExceptionalCompletion::kMayThrow &&
           guard.exceptional == analysis::ExceptionalCompletion::kMayThrow, Error::kOrder);
       result.peers[i] = entry.pair.guard;
-      result.peers[entry.pair.guard.value] = entry.pair.read;
+      result.peers[entry.pair.guard->value] = entry.pair.read;
     }
     require(next == modules.size(), Error::kOwnership);
     if (!graph.phases.empty() && !modules.empty()) {

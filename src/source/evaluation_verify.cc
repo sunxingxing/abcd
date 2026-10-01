@@ -449,7 +449,8 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
               skip_pure();
               Require(expected < end && expected == frame.op.value, Error::kOrder);
               ++expected;
-              if (std::holds_alternative<analysis::ValueModuleRead>(op.operation)) {
+              if (std::holds_alternative<analysis::ValueModuleRead>(op.operation) &&
+                  !module_index.peers.empty() && module_index.peers[frame.op.value]) {
                 if (flow == EvaluationFlow::kPhased) {
                   Require(!fused_guard && !module_index.peers.empty() &&
                       module_index.peers[frame.op.value], Error::kOrder);

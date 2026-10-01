@@ -456,10 +456,11 @@ class ForestBuilder {
     // FunctionTree appends module aliases in this supplied order after the
     // shared IR bindings. This is a source SymbolId, never an ABC slot.
     const SymbolId symbol{static_cast<std::uint32_t>(forest_.bindings.symbols.size() + *found)};
-    const auto expression =
-        Combine(Add(SymbolExpr{symbol}, origin), {graph_.ops[module.pair.guard.value].origin.value});
+    const auto read = Add(SymbolExpr{symbol}, origin);
+    const auto expression = module.pair.guard
+        ? Combine(read, {graph_.ops[module.pair.guard->value].origin.value}) : read;
     forest_.operations[i] = expression;
-    forest_.operations[module.pair.guard.value] = expression;
+    if (module.pair.guard) forest_.operations[module.pair.guard->value] = expression;
   }
   bool CanRetainPrefix() {
     // Initial partial construction handles one normal straight-line region.

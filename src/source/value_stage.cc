@@ -43,6 +43,8 @@ ValueMethod BuildValueStage(RouteInputIdentity identity, abc::EntityOffset metho
       case FunctionInputError::kResourceLimit: return fail(RouteFailureClass::kMemoryLimit, ValueRouteError::kInputStage);
       case FunctionInputError::kWorkLimit: return fail(RouteFailureClass::kWorkLimit, ValueRouteError::kInputStage);
       case FunctionInputError::kMode:
+      case FunctionInputError::kOwner:
+      case FunctionInputError::kModuleOwner:
       case FunctionInputError::kCapture: return fail(RouteFailureClass::kInvariantViolation, ValueRouteError::kInputStage);
     }
     return fail(RouteFailureClass::kInvariantViolation, ValueRouteError::kInputStage);

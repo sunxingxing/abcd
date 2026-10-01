@@ -8,7 +8,8 @@ namespace abcd::source {
 std::variant<FileFunction, FunctionFileFailure> ReadFunctionValues(
     const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
     abc::MethodPosition position, RouteInputIdentity identity, InputCaptureMode mode,
-    analysis::SemanticBudget budget, const RecordModuleContext* modules, const FunctionContext* owner) {
+    analysis::SemanticBudget budget, const RecordModuleContext* modules, const FunctionContext* owner,
+    const ParentModuleInput* modules_input) {
   using Error = FunctionFileError;
   try {
     auto bytes = budget.bytes;
@@ -34,7 +35,7 @@ std::variant<FileFunction, FunctionFileFailure> ReadFunctionValues(
     auto body = std::get<abc::MethodBody>(std::move(decoded));
     arena(body.instructions); arena(body.tries); arena(body.handlers);
     auto proven = FunctionInput::Build(identity, method.offset, method.owner_offset, body, frame, mode,
-        {bytes, budget.work}, owner);
+        {bytes, budget.work}, owner, modules_input);
     if (const auto* error = std::get_if<FunctionInputFailure>(&proven)) return FunctionFileFailure{*error};
     auto input = std::get<FunctionInput>(std::move(proven));
     admit(input.AllocatedBytes(), 1);

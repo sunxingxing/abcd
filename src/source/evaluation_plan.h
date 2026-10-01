@@ -39,9 +39,10 @@ struct FunctionBinding {
 };
 // Conditional source-module obligation. Original ModuleGuards and metadata
 // binding must independently justify each entry before publishing any source.
-// The raw load and Hole check jointly become one throwing live-binding read.
+// A guarded pair, or a parent-proven initialized load without a guard, becomes
+// one throwing live-binding read. Absence never removes an original Hole check.
 struct ModuleEvaluation {
-  GuardedModuleRead pair;
+  ModuleReadSite pair;
   analysis::ValueModuleRead read;
   ModuleSymbol target;
 };

@@ -83,7 +83,7 @@ void Run(std::uint32_t count, bool caught, bool wide, bool external, abc::Profil
   if (split_handler) {
     auto forged = evaluation;
     const auto read = plan.pairs.back().read;
-    const auto consumer = plan.pairs.back().guard.value + 1;
+    const auto consumer = plan.pairs.back().guard->value + 1;
     forged.operations[read.value] = {EvaluationKind::kInline, graph.ops[consumer].first_use, {}};
     test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
     return;
@@ -107,7 +107,7 @@ void Run(std::uint32_t count, bool caught, bool wide, bool external, abc::Profil
     test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(
         graph, evaluation, {SemanticBudget{}.bytes, verified - 1})) == EvaluationError::kWorkLimit);
     auto omitted = evaluation;
-    omitted.operations[plan.pairs.front().guard.value].kind = EvaluationKind::kRemoved;
+    omitted.operations[plan.pairs.front().guard->value].kind = EvaluationKind::kRemoved;
     test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, omitted)));
     if (caught) {
       auto rerouted = graph;
@@ -123,7 +123,7 @@ void Run(std::uint32_t count, bool caught, bool wide, bool external, abc::Profil
     syntax.names = {u"moduleValue"};
     syntax.modules.push_back({{{1}, {0}}, {0}, ModuleAccess::kReadOnly, NameEvidence::kSynthesized});
     std::vector<ExpressionConstant> constants(graph.ops.size());
-    if (property) constants[plan.pairs.back().guard.value + 1] = NameId{0};
+    if (property) constants[plan.pairs.back().guard->value + 1] = NameId{0};
     const auto draft = BuildExceptionFunctionDraft(graph, {body, input, regions, control},
         evaluation, syntax, {constants, 1});
     test::Check(std::holds_alternative<ExceptionFunctionDraft>(draft));
@@ -136,7 +136,7 @@ void Run(std::uint32_t count, bool caught, bool wide, bool external, abc::Profil
     const auto correspondence = std::get<TreeFlow>(VerifyExceptionTreeFlow(
         graph, {body, input, regions, control}, evaluation, tree));
     const auto expression = correspondence.expressions[plan.pairs[0].read.value];
-    test::Check(expression && expression == correspondence.expressions[plan.pairs[0].guard.value]);
+    test::Check(expression && expression == correspondence.expressions[plan.pairs[0].guard->value]);
     const auto origin = std::get<CombinedOrigin>(tree.origins[tree.expressions[expression->value].origin.value]);
     test::Check(origin.part_count == 2);
     test::Check(std::get<OriginalSite>(tree.origins[tree.origin_parts[origin.first_part].value]).pc ==

@@ -12,6 +12,40 @@
 
 ## 当前阶段
 
+### 2026-10-01：创建前模块初始化贯通正常子函数读取
+
+- 真实 pasteboard PageA 入口7283在PC11写入local slot1（PageABuilder），
+  然后在PC196创建7061；子函数PC44无guard读取该slot，原在PC46保存结果时
+  被拒绝为kInternalValue，/tmp/abcd-pagea-file-debug.log。当前完整入口函数族
+  ReadFunctionFamily已成功，不再靠配对源码或名字推断该读取的值域。
+- FunctionInput每方法一次索引正常入口块的最早Language模块写入，查询实际
+  后续创建点；排除未来、分支局部和入口块之外的写入。子函数保留原始read、
+  slot、store、creator及creation PC；同file/profile/record与真实创建操作
+  必须相符。有相邻原始guard时继续旧guarded路径，不据初始化事实删除guard。
+- ModuleReadSite以typed absence表示已初始化的无guard读取。共同aliases、
+  evaluation、ExpressionForest及TreeFlow保留单次读取效果和原始来源；有guard
+  的读取仍保留两个事件。完整family写入检查独立核对父方法原始store及SSA
+  Language输入；含继承初始化前提的detached root继续拒绝。当前仅支持直接
+  normal父创建边，phase和祖父初始化传递仍未支持。
+- 新完整read/return解码夹具先暴露kOrder：旧求值器要求每次module read都消费
+  第二个guard事件。修复后1/2/200/201/400/800次无guard读取贯通共同AST、
+  TreeFlow、metadata aliases及printer；独立JS验证9种值更新后的身份保持，
+  包括-0、NaN、BigInt、Symbol、对象及Proxy，
+  /tmp/abcd-module-initialization-behavior.log。该夹具不是整份PageA执行验收。
+- 定向12/12通过，7.39秒，/tmp/abcd-module-initialization-final-tests.log；
+  其余enclosure/创建点/类投影目标重新链接后5/5通过，4.64秒，
+  /tmp/abcd-module-initialization-enclosure-tests.log。生产和相关目标构建退出0，
+  /tmp/abcd-module-initialization-effect-build.log、
+  /tmp/abcd-module-initialization-final-build.log及
+  /tmp/abcd-module-initialization-enclosure-build.log。
+- 最终五输入导出 build/stage-one/value-module-initialization-pass-2 均退出0，
+  维持 **47 complete / 2 incomplete / 57 failure / 46 no-module**，无完整项
+  退化，无legacy writer，/tmp/abcd-module-initialization-final-batch-summary.json。
+  PageA record6897仍不完整；现在在另一类成员的子函数7255求值规划失败，
+  BuildLiteralPlan返回kLateValue，/tmp/abcd-pagea-7255-literal-debug.log。
+- 下一步解决共同对象初始化/求值顺序缺口，再验证真实record发布、语义和表示。
+  阶段一Goal仍active；全量测试、RSS、基准和更大语料未恢复。
+
 ### 2026-10-01：可证明除法值域贯通共同正常/相位源码路径
 
 - 真实EntryAbility成员5165确认为updateBreakpoint；LLDB定位kValues的具体
