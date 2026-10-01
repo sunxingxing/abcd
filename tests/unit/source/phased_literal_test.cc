@@ -13,7 +13,7 @@ using namespace abcd::source;
 enum class Shape {
   kReturn, kCatch, kObserve, kLate, kBranch, kCatchObserve, kNested, kNestedCatch,
   kNestedCatchObserve, kNestedDispatch, kNestedShared, kNestedSnapshot, kUnary, kUnaryCatch,
-  kUnaryShared, kUnaryUnknown
+  kUnaryShared, kUnaryUnknown, kNestedDeadCopy, kNestedDeadArray
 };
 std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
                   std::uint32_t copies = 0, std::uint32_t fields = 1,
@@ -22,21 +22,24 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   constexpr std::uint8_t kObject = 0, kParameter = 4;
   std::vector<std::uint8_t> bytes{op(abc::Opcode::kCREATEEMPTYOBJECT), op(abc::Opcode::kSTA_V8), kObject};
+  const bool dead_copy = shape == Shape::kNestedDeadCopy || shape == Shape::kNestedDeadArray;
   const bool nested = shape == Shape::kNested || shape == Shape::kNestedCatch ||
-      shape == Shape::kNestedCatchObserve || shape == Shape::kNestedDispatch || shape == Shape::kNestedShared || shape == Shape::kNestedSnapshot;
+      shape == Shape::kNestedCatchObserve || shape == Shape::kNestedDispatch || shape == Shape::kNestedShared || shape == Shape::kNestedSnapshot ||
+      dead_copy;
   const bool arithmetic = shape == Shape::kUnary || shape == Shape::kUnaryCatch ||
       shape == Shape::kUnaryShared || shape == Shape::kUnaryUnknown;
   const bool numeric_update = unary == abc::Opcode::kTONUMERIC_IMM8 ||
       unary == abc::Opcode::kINC_IMM8 || unary == abc::Opcode::kDEC_IMM8;
   const bool caught = shape == Shape::kCatch || shape == Shape::kCatchObserve ||
-      shape == Shape::kNestedCatch || shape == Shape::kNestedCatchObserve || shape == Shape::kNestedDispatch || shape == Shape::kNestedSnapshot || shape == Shape::kUnaryCatch;
+      shape == Shape::kNestedCatch || shape == Shape::kNestedCatchObserve || shape == Shape::kNestedDispatch || shape == Shape::kNestedSnapshot || shape == Shape::kUnaryCatch ||
+      dead_copy;
   constexpr std::uint8_t kSaved = 2, kSnapshotInput = 6, kSnapshotPrelude = 4;
   if (shape == Shape::kNestedSnapshot) bytes.insert(bytes.begin(),
       {op(abc::Opcode::kLDA_V8), kSnapshotInput, op(abc::Opcode::kSTA_V8), kSaved});
   const auto initialized_pc = static_cast<std::uint32_t>(bytes.size());
   if (shape == Shape::kNestedSnapshot) bytes.insert(bytes.end(),
       {op(abc::Opcode::kLDTRUE), op(abc::Opcode::kSTA_V8), kSaved});
-  for (std::uint32_t i = 0; i < copies; ++i)
+  for (std::uint32_t i = 0; i < (dead_copy ? 0 : copies); ++i)
     bytes.insert(bytes.end(), {op(abc::Opcode::kMOV_V8_V8), kObject, kObject});
   if (shape == Shape::kObserve) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kObject,
       op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0});
@@ -46,8 +49,16 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   for (std::uint32_t i = 0; i < fields; ++i) {
     constexpr std::uint8_t kInner = 1;
     if (nested) bytes.insert(bytes.end(), {op(abc::Opcode::kCREATEEMPTYOBJECT), op(abc::Opcode::kSTA_V8), kInner});
-    if (nested) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8),
-        static_cast<std::uint8_t>(shape == Shape::kNestedSnapshot ? kSnapshotInput : kParameter + 1)});
+    if (dead_copy) {
+      if (shape == Shape::kNestedDeadArray)
+        bytes.insert(bytes.end(), {op(abc::Opcode::kCREATEEMPTYARRAY_IMM8), 0, op(abc::Opcode::kSTA_V8), kSaved});
+      else bytes.insert(bytes.end(), {op(abc::Opcode::kMOV_V8_V8), kSaved, kInner});
+      for (std::uint32_t c = 0; c < copies; ++c)
+        bytes.insert(bytes.end(), {op(abc::Opcode::kMOV_V8_V8), kSaved, kSaved});
+    }
+    if (nested && shape != Shape::kNestedDeadArray) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8),
+        static_cast<std::uint8_t>(shape == Shape::kNestedSnapshot ? kSnapshotInput :
+            dead_copy ? kParameter + 2 : kParameter + 1)});
     if (arithmetic) {
       if (shape != Shape::kUnaryUnknown &&
           (unary == abc::Opcode::kNEG_IMM8 || unary == abc::Opcode::kTONUMBER_IMM8 || numeric_update))
@@ -79,7 +90,8 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
     abc::CatchHandler handler; handler.offset = {catch_pc}; handler.length = bytes.size() - catch_pc;
     body.tries.push_back(region); body.handlers.push_back(handler);
   }
-  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(shape == Shape::kNestedSnapshot ? 3 : nested ? 2 : 1, 4, {true, true, false, true}));
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(
+      shape == Shape::kNestedSnapshot || dead_copy ? 3 : nested ? 2 : 1, 4, {true, true, false, true}));
   const auto flow = std::get<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers));
   IdfQuota ssa_work{kDefaultSemanticWork};
   const auto ssa = std::get<ExceptionSsa>(ExceptionSsa::Build(flow, frame.registers, ssa_work));
@@ -139,7 +151,21 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   test::Check(std::get<LiteralError>(BuildPhasedLiteralPlan(graph, evaluation,
       {SemanticBudget{}.bytes, literal.work - 1})) == LiteralError::kWorkLimit);
   test::Check(std::get<LiteralError>(BuildPhasedLiteralPlan(graph, evaluation, {0})) == LiteralError::kResourceLimit);
-  if (shape == Shape::kCatch || shape == Shape::kNestedCatch || shape == Shape::kUnaryCatch) {
+  if (dead_copy) {
+    // A forged dead label cannot hide an own-store effect or a copy whose
+    // result still reaches the outer property, even with an identity alias map.
+    auto invalid = evaluation;
+    invalid.operations[literal.definitions.front().value] = {EvaluationKind::kElidedPure};
+    test::Check(std::get<LiteralError>(VerifyPhasedLiteralPlan(graph, literal, invalid)) == LiteralError::kFlow);
+    const auto definition = literal.definitions.front();
+    const auto rhs = std::get<ValueId>(graph.uses[graph.ops[definition.value].first_use.value + 1].operand);
+    const auto producer = std::get<OpResult>(graph.values[rhs.value].origin).op;
+    test::Check(std::holds_alternative<ValueCopy>(graph.ops[producer.value].operation));
+    invalid = evaluation; invalid.operations[producer.value] = {EvaluationKind::kElidedPure};
+    invalid.aliases[rhs.value] = rhs;
+    test::Check(std::get<LiteralError>(VerifyPhasedLiteralPlan(graph, literal, invalid)) == LiteralError::kFlow);
+  }
+  if (shape == Shape::kCatch || shape == Shape::kNestedCatch || shape == Shape::kUnaryCatch || dead_copy) {
     const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
     const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
     FunctionSyntax syntax{}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
@@ -167,7 +193,8 @@ int main() {
     for (const auto shape : {Shape::kReturn, Shape::kCatch, Shape::kObserve, Shape::kLate, Shape::kBranch,
                              Shape::kCatchObserve, Shape::kNested, Shape::kNestedCatch, Shape::kNestedCatchObserve,
                              Shape::kNestedSnapshot, Shape::kNestedDispatch, Shape::kNestedShared,
-                             Shape::kUnary, Shape::kUnaryCatch, Shape::kUnaryShared, Shape::kUnaryUnknown}) Run(profile, shape);
+                             Shape::kUnary, Shape::kUnaryCatch, Shape::kUnaryShared, Shape::kUnaryUnknown,
+                             Shape::kNestedDeadCopy, Shape::kNestedDeadArray}) Run(profile, shape);
     for (const auto unary : {abcd::abc::Opcode::kNOT_IMM8, abcd::abc::Opcode::kTYPEOF_IMM8,
         abcd::abc::Opcode::kTONUMBER_IMM8, abcd::abc::Opcode::kISTRUE, abcd::abc::Opcode::kISFALSE,
         abcd::abc::Opcode::kTONUMERIC_IMM8, abcd::abc::Opcode::kINC_IMM8, abcd::abc::Opcode::kDEC_IMM8})
@@ -180,6 +207,17 @@ int main() {
       Run(profile, Shape::kNestedCatch, 0, fields);
     for (const auto fields : {2U, 200U, 201U, 400U, 800U})
       Run(profile, Shape::kUnaryCatch, 0, fields);
+    std::uint64_t previous_copies = 0, previous_arrays = 0;
+    for (const auto count : {2U, 200U, 201U, 400U, 800U}) {
+      const auto copy_work = Run(profile, Shape::kNestedDeadCopy, count);
+      Run(profile, Shape::kNestedDeadArray, count);
+      const auto array_work = Run(profile, Shape::kNestedDeadArray, 1, count);
+      if (count > 201) {
+        test::Check(copy_work < 3 * previous_copies);
+        test::Check(array_work < 3 * previous_arrays);
+      }
+      previous_copies = copy_work; previous_arrays = array_work;
+    }
     std::uint64_t previous = 0;
     for (const auto fields : {200U, 201U, 402U, 804U}) {
       const auto work = Run(profile, Shape::kCatch, 0, fields);

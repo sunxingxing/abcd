@@ -5,6 +5,40 @@
 #include "../analysis/value_edits.h"
 
 namespace abcd::source {
+std::variant<std::uint64_t, EvaluationError> VerifyElidedPureEvaluations(
+    const analysis::ValueProgram& graph, const EvaluationPlan& plan, analysis::SemanticBudget budget) {
+  using namespace analysis;
+  using Error = EvaluationError;
+  auto work = budget.work;
+  const auto step = [&] {
+    if (!work) throw Error::kWorkLimit;
+    --work;
+  };
+  try {
+    if (plan.flow != EvaluationFlow::kPhased || plan.operations.size() != graph.ops.size())
+      return Error::kOwnership;
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      step(); const auto& placement = plan.operations[i];
+      if (placement.kind != EvaluationKind::kElidedPure) continue;
+      const auto& op = graph.ops[i];
+      if (op.life != ValueLife::kLive || !CanErasePureOp(op) || placement.consumer || placement.temporary)
+        return Error::kOwnership;
+    }
+    // Local closure certificate, O(ops + uses), independent of the builder's
+    // backwards root worklist. A phi/catch copy remains a real observation.
+    for (const auto& use : graph.uses) {
+      step(); if (use.life != ValueLife::kLive) continue;
+      const auto* value = std::get_if<ValueId>(&use.operand);
+      const auto* result = value ? std::get_if<OpResult>(&graph.values[value->value].origin) : nullptr;
+      if (!result || plan.operations[result->op.value].kind != EvaluationKind::kElidedPure) continue;
+      const auto* owner = std::get_if<OpId>(&use.owner);
+      if (!owner || plan.operations[owner->value].kind != EvaluationKind::kElidedPure)
+        return Error::kOwnership;
+    }
+    return budget.work - work;
+  } catch (Error error) { return error; }
+}
+
 std::variant<EvaluationLivenessCost, EvaluationError> ElidePureEvaluations(
     const analysis::ValueProgram& graph, EvaluationPlan& plan, analysis::SemanticBudget budget) {
   using namespace analysis;

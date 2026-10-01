@@ -1,5 +1,31 @@
 # Literal Initialization
 
+## Unobserved phased transport inside native literals
+
+Phased use censuses exclude operands of an independently checked pure dead
+subgraph, as well as verified aliases. `VerifyElidedPureEvaluations` checks every
+proposed elision for pure effects and no exceptional completion, then checks all
+uses for closure: a dead result cannot reach a retained consumer or phi/catch
+copy. It is independent of the builder's backwards liveness worklist. The extra
+verification costs O(operations + uses) time and O(1) scratch memory, charged to
+the existing literal budget. No original graph operation or PC is removed.
+
+Nonthrowing ordered allocations retain their creation/identity and operand
+interval checks, but have no exceptional exit for catch comparison. Throwing
+owned effects still require the enclosing allocation's handler and staged-copy
+sources. Shared results, unfinished observations and changed catch snapshots
+remain refusals; a forged dead label cannot hide either an effect or a retained
+copy result.
+
+Three-profile decoded fixtures cover pure copy chains and nested empty arrays
+at 2/200/201/400/800 copies/properties. Serialized nested read/array functions
+traverse common file/family emission, ABI, instruction sources and the printer;
+elided copy PCs retain anchors. Independent complete-function behavior checks
+cover getter/Proxy effects and thrown identity, fresh outer/inner objects and
+arrays, prototypes and descriptors. Actual PageA 7421 now passes literal and
+phased evaluation planning; its common expression/call reference construction
+remains incomplete. Focused evidence is not whole-record paired acceptance.
+
 ## Native unary initializer expressions
 
 Common literal nesting admits the shared single-input lowerings for negate,

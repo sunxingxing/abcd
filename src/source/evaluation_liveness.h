@@ -13,5 +13,10 @@ struct EvaluationLivenessCost {
 // exceptional snapshots; eliminating phis requires its own rewrite certificate.
 [[nodiscard]] std::variant<EvaluationLivenessCost, EvaluationError> ElidePureEvaluations(
     const analysis::ValueProgram& graph, EvaluationPlan& plan, analysis::SemanticBudget budget);
+// Independently check a proposed dead subgraph before its operands stop counting
+// as literal observations. Requires fresh value availability/use integrity.
+// No observable operation or retained/phi consumer may enter the dead closure.
+[[nodiscard]] std::variant<std::uint64_t, EvaluationError> VerifyElidedPureEvaluations(
+    const analysis::ValueProgram& graph, const EvaluationPlan& plan, analysis::SemanticBudget budget);
 }  // namespace abcd::source
 #endif

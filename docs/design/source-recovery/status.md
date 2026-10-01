@@ -12,6 +12,46 @@
 
 ## 当前阶段
 
+### 2026-10-01：纯搬运消除与非抛异常数组贯通相位字面量
+
+- 两个canonical use census不再把独立证明为dead的纯操作输入当作对象观察。
+  在使用该前提前，VerifyElidedPureEvaluations先检查每个ElidedPure操作没有
+  可观察效果/异常/consumer/temporary，再检查所有uses的dead closure；结果
+  不能进入保留操作或phi/catch copy。检查独立于builder的backwards worklist，
+  新增O(operations+uses)时间、O(1)临时空间，work计入现有LiteralBudget。
+  原始SSA、phase、uses、PC及最终source anchor保留，没有删图或新writer。
+- 非抛异常的ordered allocation仍保留创建身份及区间顺序，不再要求不存在的
+  exceptional exit；可能抛异常的owned effect继续通过SameCatch核对实际
+  handler和staged catch-copy source。没有放宽共享、未完成观察或catch快照。
+- 真正解码的dead-copy用例在旧实现失败，
+  /tmp/abcd-literal-dead-use-red-tests.log；接用途检查后，额外对象观察census
+  又拒绝同一搬运，/tmp/abcd-literal-dead-use-green-debug.log。两处均接入
+  同一个独立dead closure前提。嵌套非抛异常array在后续SameCatch处实际RED，
+  /tmp/abcd-literal-dead-array-red-tests.log。三profile的2/200/201/400/800
+  copy链及array属性通过求值、异常AST和semantics；几何work增长检查通过。
+  伪造effect/有用途copy为ElidedPure仍以Flow拒绝，既有shared和snapshot负例保留。
+- 三profile序列化dead-read及dead-array夹具贯通共同file/class/family、ABI、
+  instruction sources与printer。完整函数独立对照现为**558个场景**，
+  getter/Proxy/receiver/任意throw身份、保留效果、fresh object/array、prototype、
+  own descriptor及继承setter通过，/tmp/abcd-literal-dead-use-behavior.log。
+  被消除搬运的各原始PC仍有anchor，位置检查及独立instruction correspondence
+  通过。最终构建退出0，/tmp/abcd-literal-dead-use-final-build.log及-scaling-build.log；
+  **20/20定向回归通过21.98秒**，/tmp/abcd-literal-dead-use-final-tests.log。
+  全量/RSS/基准继续暂停，无代理或平台最终验收。
+- 五输入build/stage-one/value-literal-dead-use-pass-1均退出0，维持
+  **48 complete / 2 incomplete / 56 failure / 46 no-module**，无完整项退化、
+  无legacy writer，/tmp/abcd-literal-dead-use-batch-summary.json。
+  没有新增完整record或配对语义/表示验收，阶段一Goal仍active。
+- PageA family成员5（7421）现通过LiteralPlan和相位EvaluationPlan，并进入
+  共同ExpressionForest；FamilyTrees仍以FunctionTreeError kExpression拒绝，
+  /tmp/abcd-literal-dead-use-pagea-family.log。具体为CallPlan kReference：
+  property op58/value70（NamedRead，kRoot/kCrossRegionValue）与invoke op81
+  分处phase block116/162，中间构造嵌套字面量参数，
+  /tmp/abcd-literal-dead-use-pagea-reference.log。
+  下一步接通native member reference的有序字面量参数，保留先getter后参数、
+  receiver及异常快照，不改用可篡改.call/.apply适配。整record仍tree_stage，
+  /tmp/abcd-literal-dead-use-pagea.json；组件通过不是完整7421或PageA发布。
+
 ### 2026-10-01：共同字面量接入受检的一元表达式与原始常量
 
 - LiteralPlan接纳共同AST已有的Negate、BitNot、LogicalNot、TypeOf、ToNumber、

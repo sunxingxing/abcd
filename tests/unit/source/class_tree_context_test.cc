@@ -48,7 +48,7 @@ enum class ExceptionShape {
   kNone, kBranch, kModule, kForwarder, kDeadCopies, kLiveCopies, kReceiver, kReceiverCatch,
   kReceiverArgument, kReceiverPair, kReceiverNumericPair, kReceiverTypeof, kLiteral, kLexical,
   kReceiverResult, kAsyncAwait, kGeneratorYield, kGeneratorCatch, kBufferedLexical, kNestedLiteral, kNestedCall,
-  kNestedNegate, kNestedBitNot
+  kNestedNegate, kNestedBitNot, kNestedDeadRead, kNestedDeadArray
 };
 void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof = false,
          bool object_initializer = false, bool snapshot = false, std::ostream* evidence = nullptr,
@@ -209,7 +209,8 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
           0, kLiteralProtected, kSingleTry, kCatchAll, kLiteralProtected, 1};
     }
     if (exception == ExceptionShape::kNestedLiteral || exception == ExceptionShape::kNestedCall ||
-        exception == ExceptionShape::kNestedNegate || exception == ExceptionShape::kNestedBitNot) {
+        exception == ExceptionShape::kNestedNegate || exception == ExceptionShape::kNestedBitNot ||
+        exception == ExceptionShape::kNestedDeadRead || exception == ExceptionShape::kNestedDeadArray) {
       // Both allocations precede the getter and their own definitions. The
       // catch returns the exact thrown value, never the unfinished objects.
       constexpr std::uint8_t kLocals = 2, kOuter = 0, kInner = 1, kInput = 5,
@@ -248,6 +249,30 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
         member[kCodeSizeOffset] += kUnaryBytes;
         const auto table = kHeaderBytes + member[kCodeSizeOffset];
         member[table + 1] += kUnaryBytes; member[table + 4] += kUnaryBytes;
+      }
+      if (exception == ExceptionShape::kNestedDeadRead) {
+        constexpr std::uint8_t kLocalsWithCopy = 3, kUnused = 2, kReadPc = 6, kCopyBytes = 6;
+        member[0] = kLocalsWithCopy;
+        member[kHeaderBytes + kReadPc + 1] = kInput + 1;
+        member.insert(member.begin() + kHeaderBytes + kReadPc,
+            {op(abc::Opcode::kMOV_V8_V8), kUnused, kInner, op(abc::Opcode::kMOV_V8_V8), kUnused, kUnused});
+        member[kCodeSizeOffset] += kCopyBytes;
+        const auto table = kHeaderBytes + member[kCodeSizeOffset];
+        member[table + 1] += kCopyBytes; member[table + 4] += kCopyBytes;
+      }
+      if (exception == ExceptionShape::kNestedDeadArray) {
+        // The array remains an ordered, fresh creation. Its unused register
+        // copies do not expose it; a nonthrowing allocation has no throw exit.
+        constexpr std::uint8_t kLocalsWithCopy = 3, kUnused = 2, kReadPc = 6, kReadBytes = 6, kGrowth = 1;
+        member[0] = kLocalsWithCopy;
+        member.erase(member.begin() + kHeaderBytes + kReadPc,
+            member.begin() + kHeaderBytes + kReadPc + kReadBytes);
+        member.insert(member.begin() + kHeaderBytes + kReadPc,
+            {op(abc::Opcode::kCREATEEMPTYARRAY_IMM8), 0, kStore, kUnused,
+             op(abc::Opcode::kMOV_V8_V8), kUnused, kUnused});
+        member[kCodeSizeOffset] += kGrowth;
+        const auto table = kHeaderBytes + member[kCodeSizeOffset];
+        member[table + 1] += kGrowth; member[table + 4] += kGrowth;
       }
     }
     if (exception == ExceptionShape::kLexical) {
@@ -1136,6 +1161,14 @@ int main(int argc, char** argv) {
       Run(DefaultEncoding::kNone, false, false, false, &std::cout, shape, profile);
     return 0;
   }
+  if (argc == 2 && (std::string_view(argv[1]) == "--nested-dead-read-json" ||
+      std::string_view(argv[1]) == "--nested-dead-array-json")) {
+    const auto shape = std::string_view(argv[1]) == "--nested-dead-read-json" ?
+        ExceptionShape::kNestedDeadRead : ExceptionShape::kNestedDeadArray;
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      Run(DefaultEncoding::kNone, false, false, false, &std::cout, shape, profile);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--literal-json") {
     Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kLiteral);
     return 0;
@@ -1194,6 +1227,8 @@ int main(int argc, char** argv) {
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kNestedCall);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kNestedNegate);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kNestedBitNot);
+  Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kNestedDeadRead);
+  Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kNestedDeadArray);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverTypeof);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverNumericPair);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverPair);

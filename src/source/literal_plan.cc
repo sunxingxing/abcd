@@ -8,6 +8,7 @@
 #include "../analysis/value_flow.h"
 #include "../analysis/value_edits.h"
 #include "evaluation_aliases.h"
+#include "evaluation_liveness.h"
 #include "phase_corridor.h"
 #include "abcd/analysis/dominators.h"
 
@@ -52,6 +53,12 @@ void Flow(const analysis::ValueProgram& graph, LiteralBudget& budget, const Eval
       throw Error::kFlow;
     }
     budget.Step(std::get<std::uint64_t>(aliases));
+    const auto elided = VerifyElidedPureEvaluations(graph, *evaluation, budget.Remaining());
+    if (const auto* error = std::get_if<EvaluationError>(&elided)) {
+      if (*error == EvaluationError::kWorkLimit) throw Error::kWorkLimit;
+      throw Error::kFlow;
+    }
+    budget.Step(std::get<std::uint64_t>(elided));
     return;
   }
   const auto proof = analysis::VerifyValueFlow(graph, budget.Remaining());
@@ -112,6 +119,9 @@ class LiteralPath {
   }
   bool Alias(analysis::OpId id) const {
     return evaluation_ && evaluation_->operations[id.value].kind == EvaluationKind::kAlias;
+  }
+  bool Elided(analysis::OpId id) const {
+    return evaluation_ && evaluation_->operations[id.value].kind == EvaluationKind::kElidedPure;
   }
   bool Phased() const { return evaluation_ != nullptr; }
   bool After(const analysis::ValueOp& last, const analysis::OperandUse& use) const {
@@ -300,7 +310,9 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
     budget.Step(); const auto& read = graph.uses[u];
     if (read.life != analysis::ValueLife::kLive) continue;
     const auto* user = std::get_if<analysis::OpId>(&read.owner);
-    if (user && (graph.ops[user->value].life != analysis::ValueLife::kLive || path.Alias(*user))) continue;
+    // Flow independently certified dead closure before this census. Its
+    // original operands/PCs remain in the graph and later source anchors.
+    if (user && (graph.ops[user->value].life != analysis::ValueLife::kLive || path.Alias(*user) || path.Elided(*user))) continue;
     const auto operand = path.Resolve(read.operand);
     const auto* value = std::get_if<analysis::ValueId>(&operand);
     const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
@@ -343,7 +355,10 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
     // Every effect folded into native aggregate syntax retains the outer
     // allocation's dispatch and staged catch values, not merely a normal path.
     // Comparing each site's copy bundle once is bounded by original copy volume.
-    if (depth && phases && (owners[i] || plan.nested[i]) && OrderedEvaluation(op))
+    // Nonthrowing allocations still retain ordered creation/identity, but
+    // cannot change a catch snapshot and have no exceptional exit to compare.
+    if (depth && phases && (owners[i] || plan.nested[i]) && OrderedEvaluation(op) &&
+        op.exceptional == analysis::ExceptionalCompletion::kMayThrow)
       Require(phases->SameCatch({static_cast<std::uint32_t>(i)}, stack[0]), Error::kObserved);
     if (Aggregate(op.operation) && (ends[i] || plan.nested[i])) {
       if (depth) {
@@ -540,7 +555,7 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
         if (!value || !objects[value->value]) continue;
         const auto& object = plan.objects[*objects[value->value]];
         if (const auto* op = std::get_if<analysis::OpId>(&use.owner)) {
-          if (graph.ops[op->value].life != analysis::ValueLife::kLive || path.Alias(*op)) continue;
+          if (graph.ops[op->value].life != analysis::ValueLife::kLive || path.Alias(*op) || path.Elided(*op)) continue;
           if (owners[op->value] == object.allocation && graph.ops[op->value].first_use.value == i) continue;
         }
         const auto last = plan.definitions[object.first + std::size_t(object.count) - 1];
