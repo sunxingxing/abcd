@@ -1,5 +1,6 @@
 #include "../../../src/source/logical_regions.h"
 #include "../../../src/source/function_tree.h"
+#include "../../../src/source/call_plan.h"
 #include "../../../src/source/tree_semantics.h"
 #include "../../../src/source/family_print.h"
 #include "../../../src/source/tree_checks.h"
@@ -48,7 +49,7 @@ analysis::ValueProgram OptionalAccess(bool observable_fallback = false, unsigned
   chain.insert(chain.end(), {0x60, 1, 0x64});
   return Import(chain, 1);
 }
-analysis::ValueProgram BufferedOptionalAccess() {
+analysis::ValueProgram BufferedOptionalAccess(bool call = false, bool method_first = false) {
   // Buffered {probe: null} is allocated before the optional RHS, then the
   // existing own field is initialized after its branch/phi join.
   std::vector<std::uint8_t> bytes{0x07, 0, 0, 0, 0x61, 0,
@@ -58,7 +59,17 @@ analysis::ValueProgram BufferedOptionalAccess() {
   bytes.push_back(static_cast<std::uint8_t>(wire));
   if (wire > UINT8_MAX) bytes.push_back(static_cast<std::uint8_t>(wire >> 8));
   bytes.insert(bytes.end(), {0, 0, 0, 0, 0x60, 0, 0x64});
-  return Import(bytes, 2);
+  if (!call) return Import(bytes, 2);
+  // Change the original parameter slot to r3, retaining r0 for the object and
+  // r1 for the callee. These are decoded instructions, not a handcrafted tree.
+  bytes[9] = 3; bytes[15] = 3; bytes[24] = 3;
+  bytes.resize(bytes.size() - 3); // Replace the object-return suffix with a call.
+  const std::vector<std::uint8_t> method{0x60, 3, 0x42, 0, 1, 0, 0x61, 1};
+  if (method_first) bytes.insert(bytes.begin(), method.begin(), method.end());
+  else bytes.insert(bytes.end(), method.begin(), method.end());
+  bytes.insert(bytes.end(), {0x60, 1,
+      static_cast<std::uint8_t>(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 3, 0, 0x64});
+  return Import(bytes, 3);
 }
 analysis::ValueProgram Diamond(bool negate, unsigned count = 1, bool direct = false, bool getter = false, bool barrier = false, bool invoke = false, bool left_getter = false) {
   // return arg || [] (or arg && []), retaining the compiler's empty keep arm.
@@ -339,6 +350,18 @@ void Negatives() {
   Check(FindLogicalRegions(wrong, control).empty());
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--buffered-call-source") {
+    std::cout << Source(BufferedOptionalAccess(true, true)) << "\n";
+    return 0;
+  }
+  // Until region composition owns the whole argument, reject a saved member
+  // Reference rather than re-reading the property after the optional getter.
+  const auto buffered_call = BufferedOptionalAccess(true, true);
+  const auto buffered_evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(buffered_call));
+  const auto buffered_binding = BuildCallPlan(buffered_call, buffered_evaluation);
+  Check(std::holds_alternative<CallPlanError>(buffered_binding));
+  Check(std::get<CallPlanError>(buffered_binding) == CallPlanError::kReference);
+  Check(!Source(BufferedOptionalAccess(true, false)).empty());
   Check(!Source(BufferedOptionalAccess()).empty());
   const auto optional = OptionalAccess();
   Check(optional.cfg_revision.value == 1);
@@ -360,7 +383,7 @@ int main(int argc, char** argv) {
               << "," << Source(CallDiamond(false, false)) << "," << Source(CallDiamond(true, false))
               << "," << Source(CallDiamond(false, false, false, true))
               << "," << Source(CallDiamond(true, false, false, true))
-              << "," << Source(CallDiamond(false, true)) << "," << Source(CallDiamond(true, true)) << "," << Source(optional) << "," << Source(OptionalAccess(false, 2)) << "," << Source(BufferedOptionalAccess()) << "]\n";
+              << "," << Source(CallDiamond(false, true)) << "," << Source(CallDiamond(true, true)) << "," << Source(optional) << "," << Source(OptionalAccess(false, 2)) << "," << Source(BufferedOptionalAccess()) << "," << Source(BufferedOptionalAccess(true, false)) << "]\n";
     return 0;
   }
   for (const bool negate : {false, true}) for (const bool direct : {false, true}) {

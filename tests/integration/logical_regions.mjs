@@ -5,7 +5,7 @@ import vm from 'node:vm';
 // tree and semantic checks. No source text supplies the engine's expression.
 const source = execFileSync(process.argv[2], ['--sources'], {encoding: 'utf8'});
 const generated = vm.runInNewContext(source, {Array() { throw new Error('mutable Array binding'); }});
-assert.equal(generated.length, 15);
+assert.equal(generated.length, 16);
 const reference = [value => value || [], value => value && []];
 const object = {[Symbol.toPrimitive]() { throw new Error('unexpected coercion'); }};
 const values = [undefined, null, false, true, 0, -0, NaN, '', 'text', 0n, 1n, Symbol('value'), object];
@@ -205,4 +205,53 @@ const inherited = vm.runInNewContext(`Object.defineProperty(Object.prototype, 'p
 }); ${source}`);
 assert.equal(inherited[14](null).probe, undefined);
 assert.equal(inherited[14]({probe: object}).probe, object);
+// The late method-read variant is intentionally different from native
+// value.items({probe: value?.probe}): the argument getter runs first.
+const bufferedLateReference = value => {
+  const argument = {probe: value?.probe};
+  return value.items(argument);
+};
+function bufferedCall(fn, payload, fail, replace) {
+  const events = [], failure = {}, result = {};
+  let changed = false;
+  const receiver = {
+    get probe() {
+      assert.equal(this, receiver); events.push('probe');
+      if (fail === 'probe') throw failure;
+      changed = replace;
+      return payload;
+    },
+    get items() {
+      assert.equal(this, receiver); events.push(changed ? 'replacement' : 'method');
+      if (fail === 'method') throw failure;
+      const selected = changed;
+      const callable = function(argument) {
+        assert.equal(this, receiver); events.push(selected ? 'replacement call' : 'call');
+        const descriptor = Object.getOwnPropertyDescriptor(argument, 'probe');
+        assert.equal(descriptor.value, payload);
+        assert.equal(descriptor.writable, true);
+        assert.equal(descriptor.enumerable, true);
+        assert.equal(descriptor.configurable, true);
+        if (fail === 'call') throw failure;
+        return result;
+      };
+      for (const key of ['call', 'apply', 'bind']) Object.defineProperty(callable, key, {
+        get() { throw new Error('mutable invocation helper'); }
+      });
+      return callable;
+    }
+  };
+  try { assert.equal(fn(receiver), result); return {events}; }
+  catch (error) { assert.equal(error, failure); return {events, threw: true}; }
+}
+for (const payload of values) for (const fail of ['', 'probe', 'method', 'call'])
+  for (const replace of [false, true]) {
+    assert.deepEqual(bufferedCall(generated[15], payload, fail, replace),
+                     bufferedCall(bufferedLateReference, payload, fail, replace));
+    ++scenarios;
+  }
+// Sensitivity check: moving a method read across the argument getter changes
+// which callable is selected, even when the receiver itself remains identical.
+assert.notDeepEqual(bufferedCall(bufferedLateReference, object, '', true),
+                   bufferedCall(value => value.items({probe: value?.probe}), object, '', true));
 console.log(`Decoded logical branch values, getters and calls: ${scenarios} behavior scenarios passed`);

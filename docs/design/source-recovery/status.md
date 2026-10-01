@@ -12,6 +12,29 @@
 
 ## 当前阶段
 
+### 2026-10-01：成员引用与可选参数的最小解码集成回归
+
+- 将 ShoppingAvoid 的下一阻塞缩减为动态ABC规格：成员读取、buffered object
+  分配、严格null/undefined分支、属性初始化、带receiver调用。使用同一生成器
+  对照“先读方法”和“后读方法”，不依赖应用、类、捕获或配对源码。
+- 后读方法版本可经共同管线生成并执行；新增104组行为对照，覆盖参数getter、
+  方法getter及调用异常、receiver、属性描述符、返回身份，以及getter改变后续
+  方法选择。call/apply/bind访问器设为抛异常，排除通过可变调用辅助方法绕行。
+  总计1074场景通过；独立敏感性对照证明移动方法读取会改变实际调用对象。
+- 先读方法版本的 ControlPlan/EvaluationPlan 均可构建，BuildCallPlan 明确返回
+  kReference。普通回归保留此拒绝边界，防止仅删除检查就发布错误源码。
+  显式开发探针 `build/logical_regions_test --buffered-call-source` 仍为红例，
+  在要求完整 FunctionTree 时失败（/tmp/abcd-buffered-call-red.log）。此拒绝测试
+  不是目标能力通过；实现完整组合后应升级为成功与行为对照。
+- 当前缺口包含两个关联环节：可选访问的条件值尚未作为高层表达式组合，分步
+  对象初始化尚未与调用参数形成单一求值子树。现有 LogicalRegion 仅识别
+  ToBoolean短路diamond，不能直接覆盖严格null/undefined分支。下一步在共同
+  表达式/求值组合中解决两者，再由独立顺序验证允许提前取得的成员Reference。
+- 4项定向测试通过（1.75秒），/tmp/abcd-buffered-call-tests.log；构建
+  /tmp/abcd-buffered-call-build.log；行为日志 /tmp/abcd-buffered-call-js.log。
+  本次仅增加可复现回归和验证，未扩展生产接受域，未重新执行五输入导出；最近
+  43/63/46计数不变。阶段一仍未完成，全量/RSS/基准/更大语料仍暂停。
+
 ### 2026-10-01：跨控制流缓冲对象初始化保留原始求值位置
 
 - 修正上一条定位：ShoppingAvoid op77 的接收者已正确解析为 op36 的对象分配，
