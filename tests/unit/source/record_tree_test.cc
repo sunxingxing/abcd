@@ -38,38 +38,37 @@ int main(int argc, char** argv) {
   std::vector<std::uint8_t> bytes(640);
   String(bytes, abc::kDynamicHeaderSize, "moduleRecordIdx");
   String(bytes, 90, "isCommonjs");
-  const bool anonymous = argc > 1 && std::string_view(argv[1]) == "anonymous";
-  String(bytes, kRequest, anonymous ? "default" : "answer");
-  if (anonymous) String(bytes, 130, "*default*");
+  const std::string_view mode = argc > 1 ? argv[1] : "";
+  const bool anonymous = mode.starts_with("anonymous");
+  const bool named_default = mode == "named-default";
+  String(bytes, kRequest, anonymous || named_default ? "default" : "answer");
+  if (anonymous || named_default) String(bytes, 130, anonymous ? "*default*" : "answer");
   bytes[kTypeTable] = 5;
   // Empty requests/imports/namespaces, then one local/export name pair.
   Word(bytes, kModule + 16, 1);
-  Word(bytes, kModule + 20, anonymous ? 130 : kRequest);
+  Word(bytes, kModule + 20, anonymous || named_default ? 130 : kRequest);
   Word(bytes, kModule + 24, kRequest);
-  const bool array = argc > 2;
-  const bool late = argc > 3;
-  bytes[597] = 3; bytes[598] = 8;
-  bytes[600] = 0x62; // LDAI_IMM32, pinned dynamic ISA.
-  Word(bytes, 601, 42);
-  bytes[605] = 0x7c; // STMODULEVAR_IMM8
-  bytes[606] = 0;
-  bytes[607] = 0x65; // RETURNUNDEFINED
+  const bool array = mode == "anonymous-array" || (mode == "source" && argc > 2);
+  const bool late = mode == "anonymous-late" || (mode == "source" && argc > 3);
+  const bool repeated = mode == "anonymous-update";
+  std::vector<std::uint8_t> body{0x62, 42, 0, 0, 0, 0x7c, 0, 0x65};
+  std::uint32_t registers = 0;
   if (array) {
     // Snapshot the RHS before allocation; late RHS remains a separate gate.
-    const std::vector<std::uint8_t> body{0x62, 42, 0, 0, 0, 0x61, 1,
-        0x05, 0, 0x61, 0, 0x60, 1, 0x79, 0, 0, 0, 0,
-        0x60, 0, 0x7c, 0, 0x65};
-    bytes[596] = 2; bytes[598] = static_cast<std::uint8_t>(body.size());
-    std::copy(body.begin(), body.end(), bytes.begin() + 600);
+    body = {0x62, 42, 0, 0, 0, 0x61, 1, 0x05, 0, 0x61, 0,
+        0x60, 1, 0x79, 0, 0, 0, 0, 0x60, 0, 0x7c, 0, 0x65};
+    registers = 2;
   }
   if (late) {
-    // Same result with a scalar loaded after allocation: pure SSA literal
-    // propagation must remove the false late-value dependency.
-    const std::vector<std::uint8_t> body{0x05, 0, 0x61, 0, 0x62, 42, 0, 0, 0,
+    body = {0x05, 0, 0x61, 0, 0x62, 42, 0, 0, 0,
         0x79, 0, 0, 0, 0, 0x60, 0, 0x7c, 0, 0x65};
-    bytes[596] = 1; bytes[598] = static_cast<std::uint8_t>(body.size());
-    std::copy(body.begin(), body.end(), bytes.begin() + 600);
+    registers = 1;
   }
+  if (repeated) body = {0x62, 42, 0, 0, 0, 0x7c, 0,
+      0x62, 7, 0, 0, 0, 0x7c, 0, 0x65};
+  bytes[596] = static_cast<std::uint8_t>(registers);
+  bytes[597] = 3; bytes[598] = static_cast<std::uint8_t>(body.size());
+  std::copy(body.begin(), body.end(), bytes.begin() + 600);
   char path[] = "/tmp/abcd-record-module-XXXXXX";
   const int fd = mkstemp(path);
   Check(fd >= 0);
@@ -81,7 +80,10 @@ int main(int argc, char** argv) {
   const auto& file = *std::get<std::unique_ptr<corpus::AbcFile>>(opened);
   abc::Header header;
   header.kind = abc::AbcKind::kDynamic;
-  header.profile = abc::ProfileId::kDynamic1206;
+  header.profile = argc > 2 && std::string_view(argv[2]) == "1202" ? abc::ProfileId::kDynamic1202 :
+      argc > 2 && std::string_view(argv[2]) == "1301" ? abc::ProfileId::kDynamic1301 : abc::ProfileId::kDynamic1206;
+  header.version = header.profile == abc::ProfileId::kDynamic1202 ? abc::AbcVersion{12, 0, 2, 0} :
+      header.profile == abc::ProfileId::kDynamic1301 ? abc::AbcVersion{13, 0, 1, 0} : abc::AbcVersion{12, 0, 6, 0};
   header.layout = abc::DynamicLayout{};
   header.file_size = bytes.size();
   abc::MetadataIndex index;
@@ -101,7 +103,7 @@ int main(int argc, char** argv) {
   abc::MethodInfo entry;
   entry.offset = {320}; entry.owner_offset = record.offset;
   entry.name = "func_main_0"; entry.name_utf16_length = entry.name.size();
-  entry.code = abc::CodeInfo{{596}, {600}, late ? 1U : array ? 2U : 0U, 3, late ? 19U : array ? 23U : 8U, 0};
+  entry.code = abc::CodeInfo{{596}, {600}, registers, 3, static_cast<std::uint32_t>(body.size()), 0};
   index.methods.push_back(entry); index.records.push_back(record);
   const auto context = std::get<source::RecordModuleContext>(read());
   const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
@@ -119,7 +121,16 @@ int main(int argc, char** argv) {
   const auto& source = std::get<source::PrintedSource>(result).text;
   if (anonymous) {
     Check(source.find("*default*") == std::string::npos);
-    Check(source.find(" as \"default\" }") != std::string::npos);
+    if (repeated) {
+      Check(source.find("export default") == std::string::npos);
+      Check(source.find(" as \"default\" }") != std::string::npos);
+    } else {
+      Check(source.find(array || late ? "export default [42];" : "export default 42;") != std::string::npos);
+      Check(source.find("let $default") == std::string::npos);
+    }
+  } else if (named_default) {
+    Check(source.find("let answer = 42;") != std::string::npos);
+    Check(source.find("export { answer as \"default\" }") != std::string::npos);
   } else {
     Check(source.find(array ? "[" : "let answer = 42;") != std::string::npos);
     Check(source.find("export { answer as ") != std::string::npos);

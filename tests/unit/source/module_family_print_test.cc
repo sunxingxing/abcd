@@ -70,6 +70,26 @@ int main(int argc, char** argv) {
     Check(printed.members[2].expressions[child + 1] == printed.functions[child]);
   }
   if (argc > 1) { std::cout << output.str(); return 0; }
+  auto default_family = family;
+  auto& entry = default_family.members[2].tree;
+  entry.names.push_back(u"$default$0");
+  entry.symbols.push_back({{1}, {3}, BindingKind::kLocal, DeclarationKind::kLet, NameEvidence::kSynthesized, {}});
+  entry.expressions.push_back({TreeLiteral{IntegerLiteral{17}}, {0}});
+  entry.statements.push_back({DeclarationStmt{{3}, ExprId{5}}, {0}});
+  entry.children.insert(entry.children.begin(), {5});
+  std::get<BlockStmt>(entry.statements[0].statement).child_count = 5;
+  entry.module_scope = ScopeId{2}; entry.scopes.push_back({ScopeKind::kModule, {}});
+  entry.scopes[0].parent = ScopeId{2};
+  const ModuleDefaultExport default_export{{5}, {{9}, {7}}};
+  entry.modules.push_back({{3}, default_export.binding, ModuleAccess::kMutable, true});
+  std::ostringstream defaults;
+  const auto default_print = PrintModuleFamilyDraft(default_family, defaults, {}, {}, nullptr, default_export);
+  Check(std::holds_alternative<PrintedFamilyDraft>(default_print));
+  Check(defaults.str().starts_with("export default 17;\n"));
+  Check(defaults.str().find("let $default") == std::string::npos);
+  Check(defaults.str().find("return state;") != std::string::npos);
+  const auto range = std::get<PrintedFamilyDraft>(default_print).members[2].statements[5];
+  Check(defaults.str().substr(range.begin, range.end - range.begin) == "export default 17;");
   auto invalid = family;
   invalid.members[2].tree.expressions[0].expression = ThisExpr{{10}};
   std::ostringstream denied;

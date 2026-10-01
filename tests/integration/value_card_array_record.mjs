@@ -13,6 +13,9 @@ assert.equal(run.status, 0, run.stderr + run.stdout);
 const report = JSON.parse(run.stdout);
 assert.equal(report.route, 'value_tree'); assert.equal(report.legacy_writer_used, false);
 assert.equal(report.source_complete, true);
+// A separately checked representation projection, not whole-record style acceptance.
+assert.match(report.source, /export default \(new \(/);
+assert.ok(!report.source.includes('let $default'));
 const reference = stripTypeScriptTypes(readFileSync(paired, 'utf8'));
 async function observe(source, size, failedAt) {
   const context = vm.createContext({});

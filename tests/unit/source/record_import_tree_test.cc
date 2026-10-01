@@ -21,14 +21,15 @@ using namespace abcd;
 void Check(bool value, std::source_location at = std::source_location::current()) {
   if (!value) { std::cerr << "check failed at " << at.line() << '\n'; std::abort(); }
 }
-enum class FixtureCase { kValid, kBindingCollision, kExportCollision, kBranch, kArmStore, kFunction, kCapture, kLocalFunction, kClassFunction, kClassCapture, kGlobal, kGlobalShadow, kGlobalLocalShadow, kAnonymous, kAnonymousFunction, kUnknownName };
+enum class FixtureCase { kValid, kBindingCollision, kExportCollision, kBranch, kArmStore, kFunction, kCapture, kLocalFunction, kClassFunction, kClassCapture, kGlobal, kGlobalShadow, kGlobalLocalShadow, kAnonymous, kAnonymousFunction, kAnonymousSingleClass, kAnonymousClassRead, kUnknownName };
 std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::kDynamic1206) {
   constexpr std::uint32_t kTypes = 256, kPool = 272, kRecord = 512,
       kMethod = 600, kChild = 640, kConstructor = 680, kLiteral = 3000, kModule = 1024, kCode = 4096, kChildCode = 5000, kConstructorCode = 6000, kFileBytes = 8192;
+  const bool single_class = mode == FixtureCase::kAnonymousSingleClass || mode == FixtureCase::kAnonymousClassRead;
   const bool global = mode == FixtureCase::kGlobal || mode == FixtureCase::kGlobalShadow || mode == FixtureCase::kGlobalLocalShadow;
-  const bool anonymous = mode == FixtureCase::kAnonymous || mode == FixtureCase::kAnonymousFunction;
-  const bool family = mode == FixtureCase::kFunction || mode == FixtureCase::kCapture || mode == FixtureCase::kLocalFunction || mode == FixtureCase::kClassFunction || mode == FixtureCase::kClassCapture || mode == FixtureCase::kAnonymousFunction;
-  const bool mixed = mode == FixtureCase::kClassFunction || mode == FixtureCase::kClassCapture;
+  const bool anonymous = mode == FixtureCase::kAnonymous || mode == FixtureCase::kAnonymousFunction || single_class;
+  const bool family = single_class || mode == FixtureCase::kFunction || mode == FixtureCase::kCapture || mode == FixtureCase::kLocalFunction || mode == FixtureCase::kClassFunction || mode == FixtureCase::kClassCapture || mode == FixtureCase::kAnonymousFunction;
+  const bool mixed = single_class || mode == FixtureCase::kClassFunction || mode == FixtureCase::kClassCapture;
   const bool captured = mode == FixtureCase::kCapture || mode == FixtureCase::kClassCapture;
   constexpr unsigned kByteBits = 8;
   std::array<std::string_view, 12> texts{"input", "value", "mutate", "ns", "answer",
@@ -82,9 +83,9 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
   emit(name(Name::kMutate)); emit(name(Name::kMutate)); request(1);
   emit(name(Name::kUnused)); emit(name(Name::kDefault)); request(1);
   emit(1); emit(name(Name::kNamespace)); request(1);
-  emit(3); // Adjacent local export aliases share local slot 0.
+  emit(single_class ? 2 : 3); // Adjacent local export aliases share local slot 0.
   emit(name(Name::kAnswer)); emit(name(anonymous ? Name::kDefault : Name::kAnswer));
-  emit(name(Name::kAnswer)); emit(name(Name::kAnswerAlias));
+  if (!single_class) { emit(name(Name::kAnswer)); emit(name(Name::kAnswerAlias)); }
   emit(name(Name::kSnapshot)); emit(anonymous ? snapshot_export : name(Name::kSnapshot));
   emit(2);
   emit(name(mode == FixtureCase::kExportCollision ? Name::kAnswer : Name::kLive)); emit(name(Name::kValue)); request(1);
@@ -115,9 +116,11 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
   }
   load(false, 0, 0); store(0);
   load(false, 3, 1); store(1); // Namespace follows all three ordinary import slots.
-  load(true, 0, 2); store(0);
-  load(false, 1, 3); op(abc::Opcode::kCALLARG0_IMM8); body.push_back(0);
-  load(false, 0, 0); store(0); // Fresh live read after the dependency mutates it.
+  if (!single_class) {
+    load(true, 0, 2); store(0);
+    load(false, 1, 3); op(abc::Opcode::kCALLARG0_IMM8); body.push_back(0);
+    load(false, 0, 0); store(0); // Fresh live read after the dependency mutates it.
+  }
   if (family) {
     if (mixed) {
       op(abc::Opcode::kLDHOLE); op(abc::Opcode::kSTA_V8); body.push_back(0);
@@ -131,11 +134,13 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
       else { op(abc::Opcode::kLDAI_IMM32); body.insert(body.end(), {1, 0, 0, 0}); }
       op(abc::Opcode::kSTLEXVAR_IMM4_IMM4); body.push_back(0);
     }
-    op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8);
-    body.insert(body.end(), {0, static_cast<std::uint8_t>(guards.size()), 0, 0}); store(0);
-    if (mode == FixtureCase::kCapture) {
-      op(abc::Opcode::kLDAI_IMM32); body.insert(body.end(), {42, 0, 0, 0});
-      op(abc::Opcode::kSTLEXVAR_IMM4_IMM4); body.push_back(0);
+    if (!single_class) {
+      op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8);
+      body.insert(body.end(), {0, static_cast<std::uint8_t>(guards.size()), 0, 0}); store(0);
+      if (mode == FixtureCase::kCapture) {
+        op(abc::Opcode::kLDAI_IMM32); body.insert(body.end(), {42, 0, 0, 0});
+        op(abc::Opcode::kSTLEXVAR_IMM4_IMM4); body.push_back(0);
+      }
     }
   }
   op(abc::Opcode::kRETURNUNDEFINED);
@@ -154,9 +159,18 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
     bytes[kChildCode - 3] = 3; bytes[kChildCode - 2] = static_cast<std::uint8_t>(child_body.size());
     std::copy(child_body.begin(), child_body.end(), bytes.begin() + kChildCode);
   }
+  std::vector<std::uint8_t> constructor_body{static_cast<std::uint8_t>(abc::Opcode::kRETURNUNDEFINED)};
   if (mixed) {
-    bytes[kConstructorCode - 3] = 3; bytes[kConstructorCode - 2] = 1;
-    bytes[kConstructorCode] = static_cast<std::uint8_t>(abc::Opcode::kRETURNUNDEFINED);
+    if (mode == FixtureCase::kAnonymousClassRead) {
+      // The sole default store is unchanged. Only a nested class constructor
+      // reads that slot; syntax selection must inspect its owned family.
+      constructor_body = {static_cast<std::uint8_t>(abc::Opcode::kLDLOCALMODULEVAR_IMM8), 0,
+          static_cast<std::uint8_t>(abc::Opcode::kTHROW_UNDEFINEDIFHOLEWITHNAME_PREF_ID16),
+          static_cast<std::uint8_t>(static_cast<std::uint16_t>(abc::Opcode::kTHROW_UNDEFINEDIFHOLEWITHNAME_PREF_ID16) >> kByteBits),
+          2, 0, static_cast<std::uint8_t>(abc::Opcode::kRETURN)};
+    }
+    bytes[kConstructorCode - 3] = 3; bytes[kConstructorCode - 2] = static_cast<std::uint8_t>(constructor_body.size());
+    std::copy(constructor_body.begin(), constructor_body.end(), bytes.begin() + kConstructorCode);
   }
   char path[] = "/tmp/abcd-record-import-XXXXXX";
   const int fd = mkstemp(path); Check(fd >= 0);
@@ -184,7 +198,7 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
   }
   if (mixed) {
     auto constructor = entry; constructor.offset = {kConstructor}; constructor.name = "Box"; constructor.name_utf16_length = 3;
-    constructor.code = abc::CodeInfo{{kConstructorCode - 4}, {kConstructorCode}, 0, 3, 1, 0};
+    constructor.code = abc::CodeInfo{{kConstructorCode - 4}, {kConstructorCode}, 0, 3, static_cast<std::uint32_t>(constructor_body.size()), 0};
     index.methods.push_back(constructor);
   }
   index.records.push_back(record);
@@ -228,12 +242,19 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
 }
 int main(int argc, char** argv) {
   const std::string_view mode = argc > 1 ? argv[1] : "";
-  const bool anonymous = mode == "--anonymous" || mode == "--anonymous-function";
+  const bool anonymous = mode.starts_with("--anonymous");
   const auto profile = anonymous && argc > 2 && std::string_view(argv[2]) == "1202" ? abc::ProfileId::kDynamic1202 :
       anonymous && argc > 2 && std::string_view(argv[2]) == "1301" ? abc::ProfileId::kDynamic1301 : abc::ProfileId::kDynamic1206;
-  const auto source = Recover(mode == "--anonymous" ? FixtureCase::kAnonymous : mode == "--anonymous-function" ? FixtureCase::kAnonymousFunction : mode == "--global" ? FixtureCase::kGlobal : mode == "--class-capture" ? FixtureCase::kClassCapture : mode == "--class-function" ? FixtureCase::kClassFunction : mode == "--local-function" ? FixtureCase::kLocalFunction : mode == "--function" ? FixtureCase::kFunction : mode == "--capture" ?
+  const auto source = Recover(mode == "--anonymous-single-class" ? FixtureCase::kAnonymousSingleClass : mode == "--anonymous-class-read" ? FixtureCase::kAnonymousClassRead : mode == "--anonymous" ? FixtureCase::kAnonymous : mode == "--anonymous-function" ? FixtureCase::kAnonymousFunction : mode == "--global" ? FixtureCase::kGlobal : mode == "--class-capture" ? FixtureCase::kClassCapture : mode == "--class-function" ? FixtureCase::kClassFunction : mode == "--local-function" ? FixtureCase::kLocalFunction : mode == "--function" ? FixtureCase::kFunction : mode == "--capture" ?
       FixtureCase::kCapture : argc > 2 ? FixtureCase::kBranch : FixtureCase::kValid, profile);
-  if (anonymous) { std::cout << source; return 0; }
+  if (anonymous) {
+    if (mode == "--anonymous-single-class") Check(source.find("export default input;") != std::string::npos);
+    if (mode == "--anonymous-class-read") {
+      Check(source.find("export default") == std::string::npos);
+      Check(source.find("return $default$$$$0;") != std::string::npos);
+    }
+    std::cout << source; return 0;
+  }
   Recover(FixtureCase::kUnknownName);
   Recover(FixtureCase::kClassCapture); Recover(FixtureCase::kClassFunction); Recover(FixtureCase::kFunction); Recover(FixtureCase::kCapture); Recover(FixtureCase::kLocalFunction);
   Recover(FixtureCase::kGlobal); Recover(FixtureCase::kGlobalShadow); Recover(FixtureCase::kGlobalLocalShadow);

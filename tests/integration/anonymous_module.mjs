@@ -68,3 +68,55 @@ for (const profile of ['1202', '1206', '1301']) {
   }
 }
 console.log('anonymous modules: 36 independent executions, 6 valid-syntax mutations');
+
+async function observeClass(source, readsDefault, initial) {
+  const replacement = {};
+  const context = vm.createContext({initial, replacement});
+  const root = new vm.SourceTextModule(source, {context});
+  const dep = new vm.SourceTextModule(`export let value = initial;
+    export default 7; export function mutate() { value = replacement; }`, {context});
+  const side = new vm.SourceTextModule('', {context});
+  const star = new vm.SourceTextModule('export const starValue = 9;', {context});
+  await root.link(name => name === './dep.mjs' ? dep : name === './side.mjs' ? side : star);
+  assert.throws(() => root.namespace.default, {name: 'ReferenceError'});
+  await root.evaluate();
+  const ns = root.namespace;
+  assert.equal(ns.default, initial);
+  assert.deepEqual(Object.keys(ns), ['default', 'depNamespace', 'live', 'snapshot', 'starValue']);
+  assert.equal(ns.snapshot.name, 'Box');
+  dep.namespace.mutate();
+  assert.equal(ns.live, replacement);
+  assert.equal(ns.default, initial);
+  const instance = new ns.snapshot();
+  if (readsDefault && typeof initial === 'object') assert.equal(instance, initial);
+  else {
+    assert.notEqual(instance, initial);
+    assert.equal(Object.getPrototypeOf(instance), ns.snapshot.prototype);
+    assert.deepEqual(Object.keys(instance), []);
+  }
+}
+let classExecutions = 0;
+for (const profile of ['1202', '1206', '1301']) {
+  for (const readsDefault of [false, true]) {
+    const generated = execFileSync(process.argv[2], [readsDefault ? '--anonymous-class-read' : '--anonymous-single-class', profile], {encoding: 'utf8'});
+    const reference = `import './side.mjs'; import {value as input, mutate} from './dep.mjs';
+      import unused from './dep.mjs'; import * as ns from './dep.mjs'; import './star.mjs';
+      export {value as live} from './dep.mjs'; export * as depNamespace from './dep.mjs';
+      export * from './star.mjs'; const result = input; let snapshot = ns;
+      snapshot = class Box { constructor() { ${readsDefault ? 'return result;' : ''} } };
+      export {result as default, snapshot};`;
+    for (const initial of [42, {}]) {
+      await observeClass(generated, readsDefault, initial);
+      await observeClass(reference, readsDefault, initial);
+      classExecutions += 2;
+    }
+    if (readsDefault) {
+      // Replacing the captured slot with a later live import is legal syntax
+      // but changes the object returned by construction after dep mutation.
+      const mutation = generated.replace('return $default$$$$0;', 'return input;');
+      assert.notEqual(mutation, generated); new vm.SourceTextModule(mutation);
+      await assert.rejects(observeClass(mutation, true, {}));
+    } else assert.match(generated, /export default input;/);
+  }
+}
+console.log(`anonymous class exports: ${classExecutions} independent executions, 3 valid-syntax mutations`);

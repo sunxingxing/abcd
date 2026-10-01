@@ -22,6 +22,7 @@
 #include "class_tree_context.h"
 #include "tree_checks.h"
 #include "member_key.h"
+#include "module_default_export.h"
 
 namespace abcd::source {
 namespace {
@@ -131,7 +132,9 @@ class TreePrinter {
     Result().work = initial_.work - remaining_.work;
     return std::move(result_);
   }
-  PrintedFunction Direct(bool module = false, bool fields = false, std::size_t indent = 0) {
+  PrintedFunction Direct(bool module = false, bool fields = false, std::size_t indent = 0,
+      std::optional<ModuleDefaultExport> default_export = {}) {
+    default_export_ = default_export;
     module_body_ = module || fields;
     static_fields_ = fields;
     const auto checked = VerifyTreeStructure(Tree(), remaining_);
@@ -176,7 +179,7 @@ class TreePrinter {
         }
       }
     }
-    if (module) CheckModuleBody();
+    if (module) { CheckModuleBody(); CheckDefaultExport(); }
     for (const auto& node : Tree().expressions) {
       Step();
       if (std::holds_alternative<FunctionExpr>(node.expression)) throw Error::kUnsupportedContext;
@@ -199,7 +202,9 @@ class TreePrinter {
     Result().work = initial_.work - remaining_.work;
     return std::move(result_);
   }
-  PrintedFamilyDraft Draft(std::size_t indent = 0, bool module = false) {
+  PrintedFamilyDraft Draft(std::size_t indent = 0, bool module = false,
+      std::optional<ModuleDefaultExport> default_export = {}) {
+    default_export_ = default_export;
     module_body_ = module;
     if (family_->root.value >= family_->members.size()) throw Error::kUnsupportedContext;
     if (class_root_) {
@@ -242,7 +247,7 @@ class TreePrinter {
       owners_[i] = {Tree().owner, i};
       Result().identity = Tree().identity; Result().method = Tree().method;
       Result().value_revision = Tree().value_revision; Result().cfg_revision = Tree().cfg_revision;
-      if (ModuleBody()) CheckModuleBody();
+      if (ModuleBody()) { CheckModuleBody(); CheckDefaultExport(); }
       Result().fragment = ModuleBody() ? FunctionFragment::kModuleBody :
           ClassRoot() ? FunctionFragment::kClassMember : FunctionFragment::kConditionalExpression;
       Result().incomplete = !Tree().recovery_issues.empty();
@@ -289,6 +294,14 @@ class TreePrinter {
   }
  private:
   bool ModuleBody() const { return module_body_ && (!family_ || current_ == family_->root.value); }
+  void CheckDefaultExport() {
+    if (!default_export_) return;
+    const auto checked = CheckModuleDefaultExport(Tree(), family_, *default_export_, remaining_);
+    if (const auto* error = std::get_if<Error>(&checked)) throw *error;
+    const auto& check = std::get<DefaultExportCheck>(checked);
+    if (!check.eligible) throw Error::kUnsupportedContext;
+    Admit(check.allocated_bytes, 1); Step(check.work);
+  }
   void CheckModuleBody() {
     const auto* body = std::get_if<BlockStmt>(&Tree().statements[Tree().body.value].statement);
     if (!body || !body->child_count || !Tree().parameters.empty() || !Tree().captures.empty() ||
@@ -842,7 +855,11 @@ class TreePrinter {
     if (!ModuleBody() || at.id != Tree().body) Append("{\n");
     Push(BlockCursor{at.id, 0, at.depth});
   }
-  void StatementNode(const DeclarationStmt& node, Statement) {
+  void StatementNode(const DeclarationStmt& node, Statement at) {
+    if (ModuleBody() && default_export_ && at.id == default_export_->declaration) {
+      Append("export default "); Push(std::string_view(";")); Push(*node.initializer);
+      return;
+    }
     switch (Tree().symbols[node.symbol.value].declaration) {
       case DeclarationKind::kLet: Append("let "); break;
       case DeclarationKind::kConst: Append("const "); break;
@@ -979,6 +996,7 @@ class TreePrinter {
   std::size_t written_ = 0;
   std::vector<OwnedAction> actions_;
   bool module_body_ = false;
+  std::optional<ModuleDefaultExport> default_export_;
   bool static_fields_ = false;
   std::vector<LocatedAnchor> located_;
   std::vector<std::vector<LocatedAnchor>> locations_;
@@ -1023,8 +1041,8 @@ std::variant<PrintedFunction, TreePrintError> PrintFunctionTree(
 
 std::variant<PrintedFunction, TreePrintError> PrintModuleTree(
     const FunctionTree& tree, std::ostream& output,
-    EmitBudget limit, analysis::SemanticBudget scratch, const GlobalScope* scope) {
-  try { return TreePrinter(tree, output, limit, scratch, scope).Direct(true);
+    EmitBudget limit, analysis::SemanticBudget scratch, const GlobalScope* scope, std::optional<ModuleDefaultExport> default_export) {
+  try { return TreePrinter(tree, output, limit, scratch, scope).Direct(true, false, 0, default_export);
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit;
@@ -1040,8 +1058,8 @@ std::variant<PrintedFamilyDraft, TreePrintError> PrintFamilyDraft(const Construc
   } catch (const std::ios_base::failure&) { return Error::kWrite; }
 }
 std::variant<PrintedFamilyDraft, TreePrintError> PrintModuleFamilyDraft(const ConstructedFamily& family,
-    std::ostream& output, EmitBudget limit, analysis::SemanticBudget scratch, const GlobalScope* scope) {
-  try { return TreePrinter(family, output, limit, scratch, nullptr, scope).Draft(0, true);
+    std::ostream& output, EmitBudget limit, analysis::SemanticBudget scratch, const GlobalScope* scope, std::optional<ModuleDefaultExport> default_export) {
+  try { return TreePrinter(family, output, limit, scratch, nullptr, scope).Draft(0, true, default_export);
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit;

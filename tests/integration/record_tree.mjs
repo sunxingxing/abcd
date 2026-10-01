@@ -27,3 +27,36 @@ assert.deepEqual(Object.getOwnPropertyDescriptor(array, '0'), {
 });
 assert.equal(Object.getPrototypeOf(array), vm.runInContext('Array.prototype', arrayContext));
 }
+
+let anonymousExecutions = 0;
+for (const profile of ['1202', '1206', '1301']) {
+  for (const mode of ['anonymous', 'anonymous-array', 'anonymous-late', 'anonymous-update', 'named-default']) {
+    const generated = execFileSync(process.argv[2], [mode, profile], {encoding: 'utf8'});
+    const context = vm.createContext({});
+    vm.runInContext('Object.defineProperty(Array.prototype, "0", {set() { throw new Error("inherited setter"); }, configurable: true});', context);
+    const root = new vm.SourceTextModule(generated, {context});
+    await root.link(() => { throw new Error('unexpected import'); });
+    assert.throws(() => root.namespace.default, {name: 'ReferenceError'});
+    await root.evaluate();
+    assert.deepEqual(Object.keys(root.namespace), ['default']);
+    if (mode.includes('array') || mode.includes('late')) {
+      assert.match(generated, /export default \[42\];/);
+      const array = root.namespace.default;
+      assert.equal(array.length, 1);
+      assert.equal(Object.getPrototypeOf(array), vm.runInContext('Array.prototype', context));
+      assert.deepEqual(Object.getOwnPropertyDescriptor(array, '0'), {
+        value: 42, writable: true, enumerable: true, configurable: true,
+      });
+    } else assert.equal(root.namespace.default, mode === 'anonymous-update' ? 7 : 42);
+    if (mode === 'anonymous-update' || mode === 'named-default') assert.ok(!generated.includes('export default'));
+    else assert.ok(!generated.includes('let $default'));
+    ++anonymousExecutions;
+  }
+  const generated = execFileSync(process.argv[2], ['anonymous', profile], {encoding: 'utf8'});
+  const mutation = generated.replace('export default 42;', 'export default 7;');
+  assert.notEqual(mutation, generated);
+  const root = new vm.SourceTextModule(mutation);
+  await root.link(() => { throw new Error('unexpected import'); }); await root.evaluate();
+  assert.notEqual(root.namespace.default, 42);
+}
+console.log(`default expression exports: ${anonymousExecutions} decoded ABC executions, 3 valid-syntax mutations`);

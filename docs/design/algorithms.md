@@ -493,3 +493,24 @@ source identity, independent behavioral checks and remaining scope. A further
 self-review regression alternating two entities with the same growing long
 text found 42526/43545/164838 work before content interning. The final fixture
 keeps this case so entity-only deduplication cannot pass the scaling assertion.
+
+
+Native anonymous-default syntax uses the already-checked sole default export
+slot; there is at most one candidate per record because public export names are
+unique. Inventory/declaration selection is O(A+S+M), for alias rows, root
+statements and module aliases. Eligibility traverses T distinct immutable trees,
+C distinct class definitions and E ownership edges, inspecting N total syntax,
+alias and capture entries. Ordered pointer sets give O(N+E+(T+C)log(T+C+1)) work
+and O(T+C) scratch. Pointer comparisons and scanned entries consume work;
+PMR allocation requests (including discarded queue capacities) consume a bounded
+scratch allowance. Adapter selection and printer revalidation make two passes,
+not one traversal per module variable. Existing structure/enclosure/printing
+costs remain separate. This is local C++20 code using the existing standard
+library, not a new IR, output writer, dependency or class-analysis cache.
+
+The 200/201/400 fixture has root-check work 608/611/1208 and wide-family work
+5420/5453/12352. These counters check bounded growth across 200/201 and geometric
+sizes; they are not whole-process latency, allocator or RSS evidence. Native
+module semantics are exercised independently through Node ESM tests under their
+stated execution premises; pinned frontend provenance remains in
+source-recovery/module-binding-names.md.

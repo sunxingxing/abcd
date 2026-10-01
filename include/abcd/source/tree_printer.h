@@ -77,13 +77,20 @@ struct PrintedFunction {
     EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {},
     const GlobalScope* scope = nullptr);
 
+// Output context for an otherwise unchanged initializer AST. Only the record
+// adapter may select this after proving a sole anonymous default export. The
+// printer rechecks the binding's declaration and transitive lack of uses before
+// suppressing its source name; bytecode origins and initializer order stay put.
+struct ModuleDefaultExport { StmtId declaration; ModuleSymbol binding; };
+
 // Same AST printer for a module initializer. No callable envelope is emitted;
 // only a final top-level return is allowed and its value is evaluated/discarded.
 // The record adapter owns entry identity, declarations, imports and exports.
 [[nodiscard]] std::variant<PrintedFunction, TreePrintError> PrintModuleTree(
     const FunctionTree& tree, std::ostream& output,
     EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {},
-    const GlobalScope* scope = nullptr);
+    const GlobalScope* scope = nullptr,
+    std::optional<ModuleDefaultExport> default_export = {});
 
 // Emits a member fragment for a CLASS body, not an object literal or ordinary
 // function. The containing class/record still needs its own creation proof.

@@ -56,3 +56,31 @@ different callback receiver, item/index order, thrown constructor identity and
 cutoff, exported singleton, fresh arrays/items and the named class export.
 It also declares its mock-host and unmodified-intrinsic scope; it is not an
 unrestricted field-define/field-assignment or Ark VM equivalence claim.
+
+A sole anonymous default binding can now print `export default expression;` at
+its original first-store statement. The record adapter selects it from the
+validated wire sentinel and exact export-slot inventory, only when no other
+public alias shares that slot. The common printer receives a typed declaration
+and ModuleSymbol output context; it does not mutate the FunctionTree, move its
+initializer or reconstruct binding identity from generated text. Both the
+adapter and printer recheck eligibility. Statement/expression ranges still map
+to the original declaration/initializer origins.
+
+The check retains a named binding for any read, assignment, update, closure
+capture, additional declaration, conflicting module target for the same local
+symbol, descendant module alias or incomplete tree.
+It scans ordinary function families plus each owned class constructor/member,
+computed definition family and static initializer. Shared class/tree pointers
+are visited once using bounded ordered sets and an iterative queue; no AST
+cloning or per-variable graph walks. Direct FunctionExpr/ClassExpr initializers
+are retained because default-export NamedEvaluation needs a separate name
+proof. This intentionally conservative boundary does not relax source contracts.
+
+Three-profile decoded scalar/array/repeated-store/named-default cases check
+native ESM TDZ and final values; class cases keep an anonymous default slot when
+only a nested constructor reads it. Independent class executions mutate an
+import before deferred construction to distinguish the original stored object
+from a later live value. The two paired Logger records and CardArray now also
+check native default-export representation separately from their existing
+mock-host behavioral oracles. Class carriers, field representation and remaining
+snapshots still prevent whole-record style acceptance.

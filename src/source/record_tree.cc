@@ -10,6 +10,7 @@
 #include "family_print.h"
 #include "function_tree.h"
 #include "module_aliases.h"
+#include "module_default_export.h"
 #include "module_binding_name.h"
 #include "abcd/source/module_enclosure.h"
 #include "tree_constants.h"
@@ -403,6 +404,38 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
       if (const auto* error = std::get_if<FamilyEnclosureFailure>(&destination))
         return RouteRefusal{FamilyRouteFailure(FamilyPrepareFailure{*error})};
     }
+    std::optional<ModuleDefaultExport> default_export;
+    std::optional<std::size_t> default_alias;
+    // Metadata owns alias selection; the syntax check never dispatches on a
+    // printed name. Keep live/read/shared bindings and incomplete trees intact.
+    for (std::size_t i = 0; i < aliases.size(); ++i)
+      if (aliases[i] == u"default") default_alias = i;
+    if (default_alias) {
+      const auto slot = alias_slots[*default_alias];
+      std::size_t users = 0;
+      for (const auto target : alias_slots) users += target == slot;
+      if (slot >= external && local_names->evidence[slot - external] == NameEvidence::kSynthesized && users == 1) {
+        const auto& root = module_family ? module_family->members[module_family->root.value].tree : result->tree;
+        const ModuleSymbol target{owner, {static_cast<std::uint32_t>(slot)}};
+        std::optional<SymbolId> symbol;
+        for (const auto& alias : root.modules) if (alias.target == target) symbol = alias.symbol;
+        if (symbol) for (std::size_t i = 0; i < root.statements.size(); ++i) {
+          const auto* declaration = std::get_if<DeclarationStmt>(&root.statements[i].statement);
+          if (!declaration || declaration->symbol != *symbol) continue;
+          const ModuleDefaultExport candidate{{static_cast<std::uint32_t>(i)}, target};
+          auto checked = CheckModuleDefaultExport(root, module_family ? &*module_family : nullptr, candidate, {budget.bytes});
+          if (const auto* error = std::get_if<TreePrintError>(&checked)) {
+            if (*error == TreePrintError::kWorkLimit)
+              return RouteRefusal{{RouteFailureClass::kWorkLimit, ValueRouteError::kPrintStage, {}}};
+            return fail(Error::kResourceLimit);
+          }
+          const auto& check = std::get<DefaultExportCheck>(checked);
+          retain(check.allocated_bytes);
+          if (check.eligible) default_export = candidate;
+          break;
+        }
+      }
+    }
     // Bound retained stream capacity and the returned string alongside the
     // still-live graph/tree; the printer retains its own scratch allowance.
     budget.output.bytes = std::min(budget.output.bytes, budget.bytes / 6);
@@ -424,14 +457,14 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     auto printed = [&]() -> std::variant<std::size_t, TreePrintError> {
       if (!module_family) {
         auto emitted = PrintModuleTree(result->tree, output,
-            {budget.output.bytes - *prelude_bytes}, {budget.bytes}, &class_scope);
+            {budget.output.bytes - *prelude_bytes}, {budget.bytes}, &class_scope, default_export);
         if (const auto* error = std::get_if<TreePrintError>(&emitted)) return *error;
         const auto& positions = std::get<PrintedFunction>(emitted);
         incomplete = positions.incomplete;
         return positions.bytes;
       }
       auto emitted = PrintModuleFamilyDraft(*module_family, output,
-          {budget.output.bytes - *prelude_bytes}, {budget.bytes}, &class_scope);
+          {budget.output.bytes - *prelude_bytes}, {budget.bytes}, &class_scope, default_export);
       if (const auto* error = std::get_if<TreePrintError>(&emitted)) return *error;
       const auto& positions = std::get<PrintedFamilyDraft>(emitted);
       incomplete = positions.members[module_family->root.value].incomplete;
@@ -455,6 +488,7 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
       output << text; remaining -= text.size();
     };
     for (std::size_t i = 0; i < aliases.size(); ++i) {
+      if (default_export && i == *default_alias) continue;
       append("export { ");
       for (const auto unit : names[alias_slots[i]]) append(std::string(1, static_cast<char>(unit)));
       append(" as ");
