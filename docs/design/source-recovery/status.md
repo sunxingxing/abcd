@@ -12,6 +12,33 @@
 
 ## 当前阶段
 
+### 2026-10-01：条件结果经字段表达式进入对象参数
+
+- 将对象初始化链从“条件值直接写入字段”扩展到条件值经过同块表达式树再写入。
+  以staged definition为起点，按逆值顺序通过唯一的已固定RHS根及既有inline边
+  建立字段归属索引；不逐选择重扫表达式树。新增O(I+U)扫描和O(I)预算内索引。
+- 所选字段RHS原本的effect snapshot仍由BeforeLogicalFusion恢复并执行局部验证；
+  独立前向区间证明核对实际内联消费者及连续事件，完整消费计数禁止伪造字段RHS。
+  没有放宽普通存储Reference、共享值或插入效果的限制。
+- 真实解码后缀红例在HEAD基线验证失败，/tmp/abcd-field-expression-red.log；
+  现输出value.items({probe: 条件值 + "px" + "px", other: 条件值 + "px" + "px"})，
+  /tmp/abcd-field-expression-source.js。字符串加法保持Symbol.toPrimitive调用、
+  getter/转换/方法的顺序、转换异常及调用receiver；不扩大已有数字NaN-payload准入。
+- 1/2/16/64/200/201表达式深度、201字段加后缀规格通过；运算与写入之间插入
+  debugger、篡改RHS消费者、保留不匹配快照的反例均拒绝。13750组JS行为对照
+  通过。构建 /tmp/abcd-field-expression-final-build.log；14项定向回归通过，
+  14.64秒，/tmp/abcd-field-expression-tests.log。全量测试/RSS/基准仍暂停。
+- 五输入正式导出 build/stage-one/value-field-expression-pass-1 均退出0，保持
+  43 complete / 63 failure / 46 no-module，无完整项退化、无legacy writer；
+  /tmp/abcd-field-expression-batch-summary.json。未新增完整record，不构成阶段一
+  独立配对源码或平台最终验收。
+- 真实ShoppingAvoid较长可选链的精确剩余缺口已确认，/tmp/abcd-shopping-prefix.log：
+  op41是block0的kRoot/kMultipleUses getter；op57是block4的kRoot/kMultipleUses
+  getter，op54为其inline读取前缀。内层op61/64已发现局部选择，但complete_phi=false；
+  子header中的op57快照阻止外层吸收。需要证明这些多用途getter快照在条件表达式
+  内的单次求值与剩余使用，不能直接删除快照或重复getter。op76字段后缀的通用
+  融合机制已实现，但该回调仍需先完成上述完整选择恢复。Goal继续开放。
+
 ### 2026-10-01：多字段条件初始化链与对象参数贯通
 
 - 将单字段对象区间扩展为多个相邻完整选择区域的初始化链。按原字段定义顺序

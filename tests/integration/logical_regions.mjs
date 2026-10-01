@@ -5,7 +5,7 @@ import vm from 'node:vm';
 // tree and semantic checks. No source text supplies the engine's expression.
 const source = execFileSync(process.argv[2], ['--sources'], {encoding: 'utf8'});
 const generated = vm.runInNewContext(source, {Array() { throw new Error('mutable Array binding'); }});
-assert.equal(generated.length, 27);
+assert.equal(generated.length, 28);
 const reference = [value => value || [], value => value && []];
 const object = {[Symbol.toPrimitive]() { throw new Error('unexpected coercion'); }};
 const values = [undefined, null, false, true, 0, -0, NaN, '', 'text', 0n, 1n, Symbol('value'), object];
@@ -412,4 +412,54 @@ for (const duplicate of [false, true]) {
       ++scenarios;
     }
 }
+function bufferedSuffix(fn, first, second, fail, replace) {
+  const events = [], failure = {}, result = {};
+  const receiver = {};
+  const payload = (primitive, index) => ({[Symbol.toPrimitive](hint) {
+    assert.equal(hint, 'default'); events.push(`coerce${index}`);
+    if (replace) Object.defineProperty(receiver, 'items', {value() { throw new Error('method reread'); }, configurable: true});
+    if (fail === `coerce${index}`) throw failure;
+    return primitive;
+  }});
+  for (const [index, name, primitive] of [[1, 'probe', first], [2, 'other', second]])
+    Object.defineProperty(receiver, name, {get() {
+      assert.equal(this, receiver); events.push(`field${index}`);
+      if (fail === `field${index}`) throw failure;
+      return payload(primitive, index);
+    }});
+  Object.defineProperty(receiver, 'items', {configurable: true, get() {
+    assert.equal(this, receiver); events.push('method');
+    if (fail === 'method') throw failure;
+    const method = function(argument) {
+      assert.equal(this, receiver); events.push('call');
+      assert.deepEqual(Object.keys(argument), ['probe', 'other']);
+      assert.equal(argument.probe, first + 'px' + 'px');
+      assert.equal(argument.other, second + 'px' + 'px');
+      if (fail === 'call') throw failure;
+      return result;
+    };
+    for (const name of ['call', 'apply', 'bind']) Object.defineProperty(method, name, {
+      get() { throw new Error('mutable invocation helper'); }
+    });
+    return method;
+  }});
+  try { assert.equal(fn(receiver), result); return {events}; }
+  catch (error) {
+    if (error === failure) return {events, failure: true};
+    // Adding a Symbol to a string throws in both realms; error identity across
+    // realms is not compared. No later getter or call may run after that throw.
+    assert.equal(error.name, 'TypeError');
+    assert.ok(typeof first === 'symbol' || typeof second === 'symbol');
+    return {events, error: error.name};
+  }
+}
+const suffixReference = value => value.items({probe: value?.probe + 'px' + 'px', other: value?.other + 'px' + 'px'});
+for (const first of values.filter(value => value !== object))
+  for (const second of values.filter(value => value !== object))
+    for (const fail of ['', 'method', 'field1', 'coerce1', 'field2', 'coerce2', 'call'])
+      for (const replace of [false, true]) {
+        assert.deepEqual(bufferedSuffix(generated[27], first, second, fail, replace),
+                         bufferedSuffix(suffixReference, first, second, fail, replace));
+        ++scenarios;
+      }
 console.log(`Decoded logical branch values, getters and calls: ${scenarios} behavior scenarios passed`);

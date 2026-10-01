@@ -275,9 +275,10 @@ existing selection-domain passes. Literal
 property construction keeps its separately documented sorting/text costs.
 Budgets include both the persistent projection and temporary indexes. This is
 an internal extension of the existing event-interval proof, without a new
-library or dependency. It composes multiple adjacent selections whose results directly initialize
-ordered fields. A field RHS with additional operations or a gap between selection
-domains still needs a separate proof; no arbitrary CFG traversal is implied.
+library or dependency. It composes multiple adjacent selections whose results initialize ordered
+fields, directly or through a same-block expression tree with a sole pinned RHS
+root. A gap between selection domains still needs a separate proof; no arbitrary
+CFG traversal is implied.
 
 Evidence: decoded early/late member call and direct-return fixtures, getter and
 method replacement/throw behavior comparisons, intervening debugger and shared
@@ -293,3 +294,13 @@ selected phi consumers, each property definition and final object consumption.
 Distinct/repeated keys and 2/3/16/64/128/200/201/256 definitions are decoded
 correctness fixtures. Repeated keys retain every RHS and its original origin;
 intervening debugger and missing/early definition claims remain rejected.
+
+The field-expression extension indexes initializer consumers in reverse value
+order: seed each staged definition, then propagate through its single-use pinned
+RHS and existing local inline operand edges. Every operand is visited once,
+adding O(I+U) work and O(I) space, all budgeted. This avoids walking the same
+expression tree separately for every selection. A selected field RHS restores
+its original effect snapshot for local verification; independent domain
+verification checks its actual inline consumer and contiguous event interval.
+String-add fixtures include user conversion effects and abrupt completion,
+1/2/16/64/200/201 expression depth and 201 fields with suffix operations.

@@ -50,6 +50,20 @@ std::optional<UseId> Consumer(const ValueProgram& graph, const SelectionRegion& 
   }
   return found;
 }
+// A selected initializer may own its previously pinned local RHS. Restore that
+// exact snapshot for the original local proof; the domain separately proves its
+// movement and unique consumption into the property definition.
+bool FieldValue(const ValueProgram& graph, const EvaluationPlan& plan, OpId id) {
+  const auto& placement = plan.operations[id.value];
+  if (placement.kind != EvaluationKind::kInline || !placement.consumer ||
+      placement.consumer->value >= graph.uses.size()) return false;
+  const auto& use = graph.uses[placement.consumer->value];
+  const auto* owner = std::get_if<OpId>(&use.owner);
+  return owner && owner->value < graph.ops.size() && use.role == OperandRole::kStoredValue &&
+      graph.ops[owner->value].block == graph.ops[id.value].block &&
+      plan.operations[owner->value].kind == EvaluationKind::kInitializer &&
+      IsStagedLiteral(plan.literals ? &*plan.literals : nullptr, *owner);
+}
 bool Available(const ValueProgram& graph, const SelectionRegion& region, const std::vector<std::uint8_t>& used) {
   if (!region.complete_phi || region.parent || used[region.header.value] || used[region.join.value]) return false;
   const auto join = graph.blocks[region.join.value].first_op.value;
@@ -59,13 +73,14 @@ bool Available(const ValueProgram& graph, const SelectionRegion& region, const s
 struct SelectionIndex {
   std::vector<std::optional<std::size_t>> headers, objects;
   std::vector<std::optional<UseId>> consumers;
-  std::vector<std::optional<OpId>> fields;
+  std::vector<std::optional<OpId>> fields, expressions;
 };
 SelectionIndex IndexSelections(const ValueProgram& graph, const EvaluationPlan& plan,
     std::span<const SelectionRegion> regions, TreeCheckBudget& budget) {
   SelectionIndex index;
   budget.Array(index.headers, graph.blocks.size()); budget.Array(index.objects, graph.ops.size());
   budget.Array(index.consumers, graph.ops.size()); budget.Array(index.fields, graph.ops.size());
+  budget.Array(index.expressions, graph.ops.size());
   for (std::size_t i = 0; i < regions.size(); ++i) {
     budget.Step(); const auto& region = regions[i];
     if (region.parent || !region.complete_phi) continue;
@@ -80,6 +95,28 @@ SelectionIndex IndexSelections(const ValueProgram& graph, const EvaluationPlan& 
       budget.Step(); index.fields[plan.literals->definitions[object.first + j].value] = object.allocation;
     }
   }
+  // Reverse value order propagates field ownership through existing local
+  // inline trees and the sole pinned RHS root. Each operand is visited once.
+  for (std::size_t i = graph.ops.size(); i-- > 0;) {
+    budget.Step(); const auto& op = graph.ops[i];
+    if (index.fields[i]) index.expressions[i] = OpId{static_cast<std::uint32_t>(i)};
+    if (!index.expressions[i]) continue;
+    for (std::uint32_t j = 0; j < op.use_count; ++j) {
+      budget.Step(); const UseId use{op.first_use.value + j};
+      if (index.fields[i] && graph.uses[use.value].role != OperandRole::kStoredValue) continue;
+      const auto* value = std::get_if<ValueId>(&graph.uses[use.value].operand);
+      const auto* result = value ? std::get_if<OpResult>(&graph.values[value->value].origin) : nullptr;
+      if (!result || result->op.value >= i || graph.ops[result->op.value].block != op.block) continue;
+      const auto placement = BeforeLogicalFusion(graph, plan, result->op.value);
+      const bool root = index.fields[i] && placement.kind == EvaluationKind::kRoot &&
+          placement.temporary == TemporaryReason::kEffectSnapshot;
+      const bool owned = placement.kind == EvaluationKind::kInline && placement.consumer == use;
+      if (root || owned) {
+        Require(!index.expressions[result->op.value]);
+        index.expressions[result->op.value] = index.expressions[i];
+      }
+    }
+  }
   return index;
 }
 struct SelectedObject { OpId allocation; std::span<const OpId> definitions; UseId consumer; };
@@ -91,7 +128,9 @@ std::optional<SelectedObject> ObjectRoute(const ValueProgram& graph, const Evalu
     const std::vector<std::uint8_t>& used, std::vector<const SelectionRegion*>& route, TreeCheckBudget& budget) {
   const auto first_use = index.consumers[route.front()->branch.value];
   if (!first_use || !plan.literals) return {};
-  const auto first = std::get<OpId>(graph.uses[first_use->value].owner);
+  const auto first_owner = std::get<OpId>(graph.uses[first_use->value].owner);
+  if (!index.expressions[first_owner.value]) return {};
+  const auto first = *index.expressions[first_owner.value];
   if (!index.fields[first.value]) return {};
   const auto allocation = *index.fields[first.value];
   const auto& object = plan.literals->objects[*index.objects[allocation.value]];
@@ -111,8 +150,11 @@ std::optional<SelectedObject> ObjectRoute(const ValueProgram& graph, const Evalu
       route.push_back(&regions[*next]);
     }
     const auto& field = graph.ops[definitions[i].value];
-    if (field.use_count != 2 || !std::holds_alternative<ValueOwnWrite>(field.operation) ||
-        index.consumers[route.back()->branch.value] != UseId{field.first_use.value + 1}) return {};
+    const auto use = index.consumers[route.back()->branch.value];
+    if (!use || field.use_count != 2 || !std::holds_alternative<ValueOwnWrite>(field.operation) ||
+        field.block != route.back()->join) return {};
+    const auto owner = std::get<OpId>(graph.uses[use->value].owner);
+    if (index.expressions[owner.value] != definitions[i]) return {};
   }
   const auto& final = graph.ops[definitions.back().value];
   std::optional<UseId> external;
@@ -151,7 +193,7 @@ class Domain {
       DomainIndex& index, TreeCheckBudget& budget, std::optional<SelectedObject> object = {})
       : graph_(graph), plan_(plan), route_(route), intervals_(intervals), index_(index), budget_(budget), object_(object) {
     // Prepay the nonthrowing cleanup as well as index construction.
-    budget_.Step(2 * (route.size() + 1));
+    budget_.Step(2 * (route.size() + 1 + (object_ ? object_->definitions.size() : 0)));
     for (const auto* region : route) {
       index_.blocks[region->header.value] = 1;
       index_.values[region->merged.value] = region->branch;
@@ -160,7 +202,10 @@ class Domain {
       index_.owners[owner.value] = 1;
     }
     index_.blocks[route.back()->join.value] = 1;
-    if (object_) index_.owners[std::get<OpId>(graph.uses[object_->consumer.value].owner).value] = 1;
+    if (object_) {
+      index_.owners[std::get<OpId>(graph.uses[object_->consumer.value].owner).value] = 1;
+      for (const auto field : object_->definitions) index_.owners[field.value] = 1;
+    }
   }
   ~Domain() {
     for (const auto* region : route_) {
@@ -169,7 +214,10 @@ class Domain {
       index_.owners[std::get<OpId>(graph_.uses[use.value].owner).value] = 0;
     }
     index_.blocks[route_.back()->join.value] = 0;
-    if (object_) index_.owners[std::get<OpId>(graph_.uses[object_->consumer.value].owner).value] = 0;
+    if (object_) {
+      index_.owners[std::get<OpId>(graph_.uses[object_->consumer.value].owner).value] = 0;
+      for (const auto field : object_->definitions) index_.owners[field.value] = 0;
+    }
   }
   bool Build(std::vector<std::pair<OpId, UseId>>& selected) {
     std::size_t serial = 0, definition = 0; bool object_consumed = false;
@@ -191,8 +239,10 @@ class Domain {
           const bool literal = object_ && use == object_->consumer && *producer == object_->allocation;
           const bool owned = (placement.kind == EvaluationKind::kInline || placement.kind == EvaluationKind::kLogicalLeft) && placement.consumer == use;
           const auto shape = DescribeEvaluation(op.operation);
+          const bool field_value = field && occurrence.role == OperandRole::kStoredValue &&
+              graph_.ops[producer->value].block == op.block && placement.temporary == TemporaryReason::kEffectSnapshot;
           const bool candidate = index_.owners[id.value] && placement.kind == EvaluationKind::kRoot &&
-              placement.temporary == TemporaryReason::kCrossRegionValue && shape &&
+              (placement.temporary == TemporaryReason::kCrossRegionValue || field_value) && shape &&
               !shape->NeedsSnapshot(occurrence.role) && occurrence.role != OperandRole::kReceiver &&
               !PredicateSnapshot(graph_, op, occurrence.operand);
           if (!owned && !logical && !candidate && !base && !literal) continue;
@@ -229,7 +279,7 @@ class Domain {
           if (placement.kind != EvaluationKind::kInline && placement.kind != EvaluationKind::kLogicalLeft && placement.kind != EvaluationKind::kLogicalValue) continue;
           const bool base = field && *producer == object_->allocation;
           Require(base || placement.consumer == use);
-          if (!base && (placement.kind == EvaluationKind::kLogicalValue || CrossLogicalInline(graph_, plan_, *producer))) {
+          if (!base && (placement.kind == EvaluationKind::kLogicalValue || CrossLogicalInline(graph_, plan_, *producer) || FieldValue(graph_, plan_, *producer))) {
             Require(index_.owners[id.value] && !consumed[producer->value]);
             const auto shape = DescribeEvaluation(op.operation);
             Require(shape && !shape->NeedsSnapshot(occurrence.role) && occurrence.role != OperandRole::kReceiver &&
@@ -288,6 +338,8 @@ OpEvaluation BeforeLogicalFusion(const ValueProgram& graph, const EvaluationPlan
   if (placement.kind == EvaluationKind::kInitializer &&
       IsStagedLiteral(plan.literals ? &*plan.literals : nullptr, OpId{static_cast<std::uint32_t>(operation)}))
     return {EvaluationKind::kRoot, {}, {}};
+  if (FieldValue(graph, plan, OpId{static_cast<std::uint32_t>(operation)}))
+    return {EvaluationKind::kRoot, {}, TemporaryReason::kEffectSnapshot};
   if (placement.kind == EvaluationKind::kLogicalValue) return {EvaluationKind::kRoot, {}, {}};
   if (CrossLogicalInline(graph, plan, OpId{static_cast<std::uint32_t>(operation)}))
     return {EvaluationKind::kRoot, {}, TemporaryReason::kCrossRegionValue};
@@ -338,6 +390,7 @@ void VerifyLogicalValues(const ValueProgram& graph, const EvaluationPlan& plan, 
       budget.Step(); Require(plan.operations[i].kind != EvaluationKind::kLogicalValue &&
           !(plan.operations[i].kind == EvaluationKind::kInitializer &&
             IsStagedLiteral(plan.literals ? &*plan.literals : nullptr, OpId{static_cast<std::uint32_t>(i)})) &&
+          !FieldValue(graph, plan, OpId{static_cast<std::uint32_t>(i)}) &&
           !CrossLogicalInline(graph, plan, OpId{static_cast<std::uint32_t>(i)}));
     }
     return;
@@ -388,7 +441,7 @@ void VerifyLogicalValues(const ValueProgram& graph, const EvaluationPlan& plan, 
     if (IsStagedLiteral(plan.literals ? &*plan.literals : nullptr, OpId{static_cast<std::uint32_t>(i)}) &&
         plan.operations[i].kind == EvaluationKind::kInitializer) Require(consumed[i]);
     if (plan.operations[i].kind == EvaluationKind::kLogicalValue ||
-        CrossLogicalInline(graph, plan, OpId{static_cast<std::uint32_t>(i)})) Require(consumed[i]);
+        FieldValue(graph, plan, OpId{static_cast<std::uint32_t>(i)}) || CrossLogicalInline(graph, plan, OpId{static_cast<std::uint32_t>(i)})) Require(consumed[i]);
   }
 }
 }

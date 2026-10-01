@@ -152,7 +152,7 @@ analysis::ValueProgram BufferedOptionalAccess(bool call = false, bool method_fir
   bytes.push_back(0x64);
   return Import(bytes, 3);
 }
-analysis::ValueProgram BufferedSelections(unsigned count = 2, bool barrier = false, bool distinct = true) {
+analysis::ValueProgram BufferedSelections(unsigned count = 2, bool barrier = false, bool distinct = true, unsigned suffix = 0, bool suffix_barrier = false) {
   // Both distinct keys and repeated own definitions must retain every RHS.
   std::vector<std::uint8_t> bytes{0x60, 3, 0x42, 0, 1, 0, 0x61, 1,
       0x07, 0, 0, 0, 0x61, 0};
@@ -163,6 +163,11 @@ analysis::ValueProgram BufferedSelections(unsigned count = 2, bool barrier = fal
         0x00, 0x4d, 8, 0x60, 3, 0x42, 0, 0, 0});
     const std::uint8_t name = distinct && i % 2 ? 2 : 0;
     bytes[bytes.size() - 2] = name;
+    for (unsigned depth = 0; depth < suffix; ++depth) {
+      bytes.insert(bytes.end(), {0x61, 2, static_cast<std::uint8_t>(abc::Opcode::kLDA_STR_ID16), 0, 0,
+          static_cast<std::uint8_t>(abc::Opcode::kADD2_IMM8_V8), 0, 2});
+    }
+    if (suffix_barrier) bytes.push_back(static_cast<std::uint8_t>(abc::Opcode::kDEBUGGER));
     bytes.push_back(static_cast<std::uint8_t>(wire));
     if (wire > UINT8_MAX) bytes.push_back(static_cast<std::uint8_t>(wire >> 8));
     bytes.insert(bytes.end(), {0, name, 0, 0});
@@ -230,6 +235,7 @@ std::string Source(const analysis::ValueProgram& graph, bool compose = true) {
   FunctionSyntax syntax{};
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   syntax.names = {u"value", u"probe", u"items", u"other"}; syntax.parameters.push_back({NameId{0}, NameEvidence::kDebugRange});
+  syntax.texts = {u"px"};
   std::vector<ConstantProperty> properties{{NameId{1}, NullLiteral{}}};
   for (const auto& op : graph.ops) {
     const auto* field = std::get_if<analysis::ValueOwnWrite>(&op.operation);
@@ -244,7 +250,9 @@ std::string Source(const analysis::ValueProgram& graph, bool compose = true) {
       if (allocation->literal) constants[i] = AggregateConstant{0, static_cast<std::uint32_t>(properties.size())};
     if (const auto* write = std::get_if<analysis::ValueOwnWrite>(&graph.ops[i].operation)) constants[i] = NameId{write->name.value + 1};
   }
-  const ExpressionConstants view{constants, 4, 0, {}, properties};
+  for (std::size_t i = 0; i < graph.ops.size(); ++i)
+    if (std::holds_alternative<analysis::ValueString>(graph.ops[i].operation)) constants[i] = TextId{0};
+  const ExpressionConstants view{constants, 4, 1, {}, properties};
   const auto built = BuildFunctionTree(graph, control, evaluation, std::move(syntax), view);
   Check(std::holds_alternative<ConstructedFunction>(built));
   const auto& tree = std::get<ConstructedFunction>(built).tree;
@@ -474,6 +482,10 @@ void Negatives() {
   Check(FindLogicalRegions(wrong, control).empty());
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--buffered-suffix-source") {
+    std::cout << Source(BufferedSelections(2, false, true, 2)) << "\n";
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--buffered-selections-source") {
     std::cout << Source(BufferedSelections()) << "\n";
     return 0;
@@ -504,6 +516,26 @@ int main(int argc, char** argv) {
     Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(multiple_fields, wrong)));
     wrong = multiple_plan; wrong.logical_objects[object.allocation.value] = first;
     Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(multiple_fields, wrong)));
+  }
+  for (unsigned depth : {1U, 2U, 16U, 64U, 200U, 201U}) {
+    const auto text = Source(BufferedSelections(2, false, true, depth));
+    Check(text.find("$value") == std::string::npos && text.find("$phi") == std::string::npos);
+  }
+  Check(Source(BufferedSelections(201, false, true, 1)).find("$value") == std::string::npos);
+  const auto suffix_gap = BufferedSelections(2, false, true, 2, true);
+  const auto suffix_gap_plan = std::get<EvaluationPlan>(BuildEvaluationPlan(suffix_gap));
+  Check(suffix_gap_plan.logical_objects.empty());
+  Check(std::get<CallPlanError>(BuildCallPlan(suffix_gap, suffix_gap_plan)) == CallPlanError::kReference);
+  const auto suffix_graph = BufferedSelections(2, false, true, 2);
+  const auto suffix_plan = std::get<EvaluationPlan>(BuildEvaluationPlan(suffix_graph));
+  for (const auto& object : suffix_plan.literals->objects) for (unsigned i = 0; i < object.count; ++i) {
+    const auto field = suffix_plan.literals->definitions[object.first + i];
+    const auto value = std::get<analysis::ValueId>(suffix_graph.uses[suffix_graph.ops[field.value].first_use.value + 1].operand);
+    const auto producer = std::get<analysis::OpResult>(suffix_graph.values[value.value].origin).op;
+    auto wrong = suffix_plan; wrong.operations[producer.value].consumer = suffix_graph.ops[field.value].first_use;
+    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(suffix_graph, wrong)));
+    wrong = suffix_plan; wrong.operations[producer.value] = {EvaluationKind::kRoot, {}, TemporaryReason::kEffectSnapshot};
+    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(suffix_graph, wrong)));
   }
   // Native object arguments must retain the original early member Reference.
   const auto buffered_call = BufferedOptionalAccess(true, true);
@@ -610,7 +642,7 @@ int main(int argc, char** argv) {
               << "," << Source(CallDiamond(false, false)) << "," << Source(CallDiamond(true, false))
               << "," << Source(CallDiamond(false, false, false, true))
               << "," << Source(CallDiamond(true, false, false, true))
-              << "," << Source(CallDiamond(false, true)) << "," << Source(CallDiamond(true, true)) << "," << Source(optional) << "," << Source(OptionalAccess(false, 2)) << "," << Source(BufferedOptionalAccess()) << "," << Source(BufferedOptionalAccess(true, false)) << "," << Source(ConditionalDiamond()) << "," << Source(ConditionalDiamond(true)) << "," << Source(ConditionalCall(true)) << "," << Source(ConditionalCall(false)) << "," << Source(OptionalAccess(false, 1, true)) << "," << Source(OptionalCall(true)) << "," << Source(OptionalCall(false)) << "," << Source(NestedSelections(3)) << "," << Source(buffered_call) << "," << Source(BufferedSelections()) << "," << Source(BufferedSelections(2, false, false)) << "]\n";
+              << "," << Source(CallDiamond(false, true)) << "," << Source(CallDiamond(true, true)) << "," << Source(optional) << "," << Source(OptionalAccess(false, 2)) << "," << Source(BufferedOptionalAccess()) << "," << Source(BufferedOptionalAccess(true, false)) << "," << Source(ConditionalDiamond()) << "," << Source(ConditionalDiamond(true)) << "," << Source(ConditionalCall(true)) << "," << Source(ConditionalCall(false)) << "," << Source(OptionalAccess(false, 1, true)) << "," << Source(OptionalCall(true)) << "," << Source(OptionalCall(false)) << "," << Source(NestedSelections(3)) << "," << Source(buffered_call) << "," << Source(BufferedSelections()) << "," << Source(BufferedSelections(2, false, false)) << "," << Source(BufferedSelections(2, false, true, 2)) << "]\n";
     return 0;
   }
   for (const bool negate : {false, true}) for (const bool direct : {false, true}) {
