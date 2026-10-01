@@ -306,3 +306,12 @@ its original effect snapshot for local verification; independent domain
 verification checks its actual inline consumer and contiguous event interval.
 String-add fixtures include user conversion effects and abrupt completion,
 1/2/16/64/200/201 expression depth and 201 fields with suffix operations.
+
+### 组合证明的表达式依赖范围
+
+快照验证从选定比较消费者反向标记原inline子树；逻辑组合Domain从最终消费者、
+分支和对象定义反向标记依赖。每条既有收缩路线增加一次O(I+U)扫描，复用O(I)
+标记与清理列表；不增加逐值图遍历。独立正序区间方程仍计入全部原始效果事件，
+只对参与额外组合的树合并子区间；无关表达式保留既有局部验证。全局consumer
+计数及精确用途检查不变。自行实现，无新增依赖；前置/后置字面量调用及跨debugger
+伪造快照反例见logical_regions_test，行为对照见logical_regions.mjs。

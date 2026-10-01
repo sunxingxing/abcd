@@ -5,7 +5,7 @@ import vm from 'node:vm';
 // tree and semantic checks. No source text supplies the engine's expression.
 const source = execFileSync(process.argv[2], ['--sources'], {encoding: 'utf8'});
 const generated = vm.runInNewContext(source, {Array() { throw new Error('mutable Array binding'); }});
-assert.equal(generated.length, 31);
+assert.equal(generated.length, 32);
 const reference = [value => value || [], value => value && []];
 const object = {[Symbol.toPrimitive]() { throw new Error('unexpected coercion'); }};
 const values = [undefined, null, false, true, 0, -0, NaN, '', 'text', 0n, 1n, Symbol('value'), object];
@@ -504,7 +504,7 @@ for (const call of [true, false]) {
       ++scenarios;
     }
 }
-function trailingGetter(fn, payload, fail) {
+function trailingGetter(fn, payload, fail, leading = false) {
   const events = [], failure = {}, result = {}, inner = [{}, {}];
   const event = name => { events.push(name); if (name === fail) throw failure; };
   Object.defineProperty(inner[0], 'probe', {get() { assert.equal(this, inner[0]); event('inner1'); return inner[1]; }});
@@ -516,8 +516,8 @@ function trailingGetter(fn, payload, fail) {
       assert.equal(this, receiver); const index = ++methods; event(`method${index}`);
       return function(argument) {
         assert.equal(this, receiver); assert.deepEqual(Object.keys(argument), ['probe']);
-        assert.ok(Object.is(argument.probe, index === 1 ? payload : inner[0]));
-        event(`call${index}`); return index === 1 ? result : {};
+        assert.ok(Object.is(argument.probe, index === (leading ? 2 : 1) ? payload : inner[0]));
+        event(`call${index}`); return index === (leading ? 2 : 1) ? result : {};
       };
     }
   };
@@ -532,6 +532,15 @@ const trailingReference = value => {
 for (const payload of values)
   for (const fail of ['', 'method1', 'root1', 'inner1', 'inner2', 'call1', 'method2', 'root2', 'call2']) {
     assert.deepEqual(trailingGetter(generated[30], payload, fail), trailingGetter(trailingReference, payload, fail));
+    ++scenarios;
+  }
+const leadingReference = value => {
+  value.items({probe: value.probe});
+  return value.items({probe: value.probe?.probe?.probe});
+};
+for (const payload of values)
+  for (const fail of ['', 'method1', 'root1', 'call1', 'method2', 'root2', 'inner1', 'inner2', 'call2']) {
+    assert.deepEqual(trailingGetter(generated[31], payload, fail, true), trailingGetter(leadingReference, payload, fail, true));
     ++scenarios;
   }
 console.log(`Decoded logical branch values, getters and calls: ${scenarios} behavior scenarios passed`);

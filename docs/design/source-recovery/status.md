@@ -12,6 +12,28 @@
 
 ## 当前阶段
 
+### 2026-10-01：快照与逻辑组合的依赖范围修复
+
+- MiniGame 方法12784的前置字面量调用不属于后续快照/逻辑对象参数的表达式树，
+  旧的附加区间证明却检查整个块，导致op57的serial22/children.end20误拒绝。
+  快照验证现在从选定比较消费者反向标记原inline依赖；逻辑Domain从最终消费者、
+  选择分支和对象定义反向标记组合依赖。两处仍计入全部中间效果事件，未放宽连续
+  求值、精确consumer、receiver或全局已移动操作的消费计数检查。
+- Domain复用操作标记与清理列表，每个候选结束只清理已标记操作；额外存储O(O)，
+  每条已选路线增加一次操作/用途逆序扫描，不逐producer遍历依赖图。原局部表达式
+  验证保持不变，printer没有文本修补或样本分支。
+- 真实解码的前置对象参数调用复现先失败，修复后完整共同树通过；新增117组前置
+  调用/getter/receiver/参数身份/返回身份/抛出身份对照。伪造跨debugger快照仍拒绝。
+  logical_regions_source_test共15856行为场景通过。
+- 构建日志 /tmp/abcd-snapshot-domain-final-build.log；19项定向回归全部通过，
+  16.25秒，/tmp/abcd-snapshot-domain-tests.log。全量测试/RSS/基准继续暂停。
+- 五输入导出 build/stage-one/value-snapshot-domain-pass-1 均退出0，达到
+  **47 complete / 59 failure / 46 no-module**，无完整项退化、无legacy writer；
+  /tmp/abcd-snapshot-domain-batch-summary.json。新增Immersive MiniGame record12527，
+  完整mjs通过node --check。此为完整性/语法证据，尚非独立配对平台行为或风格验收。
+- 下一步继续剩余真实失败的通用恢复，包括Categories捕获初始化边界；保持初始化
+  语义约束。可选访问表示等风格缺口仍存在，阶段一Goal保持开放。
+
 ### 2026-10-01：常量消除后的共享跳转尾部贯通
 
 - 真实MiniGame方法12896的cross-entry已定位到block3：常量op15已是kRemoved，

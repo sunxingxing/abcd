@@ -183,10 +183,17 @@ analysis::ValueProgram BufferedSelections(unsigned count = 2, bool barrier = fal
   bytes.insert(bytes.end(), {0x60, 1, static_cast<std::uint8_t>(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 3, 0, 0x64});
   return Import(bytes, 3);
 }
-analysis::ValueProgram GetterSelections(unsigned count = 2, bool barrier = false, bool call = true, bool trailing_literal = false, std::optional<FunctionInput>* input = nullptr) {
+analysis::ValueProgram GetterSelections(unsigned count = 2, bool barrier = false, bool call = true, bool trailing_literal = false, std::optional<FunctionInput>* input = nullptr, bool leading_literal = false) {
   std::vector<std::uint8_t> bytes{0x60, 3, 0x42, 0, 1, 0, 0x61, 1,
       0x07, 0, 0, 0, 0x61, 0, 0x60, 3, 0x42, 0, 0, 0, 0x61, 2};
   if (!call) bytes.erase(bytes.begin(), bytes.begin() + 14);
+  if (leading_literal) {
+    const std::vector<std::uint8_t> prefix{0x60, 3, 0x42, 0, 1, 0, 0x61, 1,
+        0x07, 0, 0, 0, 0x61, 0, 0x60, 3, 0x42, 0, 0, 0,
+        static_cast<std::uint8_t>(abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8), 0, 0, 0, 0,
+        0x60, 1, static_cast<std::uint8_t>(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 3, 0};
+    bytes.insert(bytes.begin(), prefix.begin(), prefix.end());
+  }
   std::vector<std::pair<std::size_t, std::size_t>> branches;
   const auto emit = [&](abc::Opcode opcode) {
     const auto wire = static_cast<std::uint16_t>(opcode);
@@ -607,6 +614,7 @@ void Negatives() {
   Check(FindLogicalRegions(wrong, control).empty());
 }
 int main(int argc, char** argv) {
+  Check(!Source(GetterSelections(2, false, true, false, nullptr, true)).empty());
   for (const unsigned count : {1U, 2U, 16U, 200U, 201U})
     Check(!Source(OptionalAccess(false, count, false, false, false, true)).empty());
   Check(!Source(OptionalAccess(false, 1, false, false, false, false, true)).empty());
@@ -712,6 +720,25 @@ int main(int argc, char** argv) {
   const auto getter_gap_plan = std::get<EvaluationPlan>(BuildEvaluationPlan(getter_gap));
   for (const auto& operation : getter_gap_plan.operations) Check(operation.kind != EvaluationKind::kPredicateSnapshot);
   Check(std::get<CallPlanError>(BuildCallPlan(getter_gap, getter_gap_plan)) == CallPlanError::kReference);
+  bool forged_gap = false;
+  for (std::size_t i = 0; i < getter_gap.ops.size() && !forged_gap; ++i) {
+    if (getter_gap_plan.operations[i].temporary != TemporaryReason::kMultipleUses ||
+        !std::holds_alternative<analysis::ValueNamedRead>(getter_gap.ops[i].operation)) continue;
+    for (std::size_t j = 0; j < getter_gap.uses.size(); ++j) {
+      const auto& use = getter_gap.uses[j];
+      const auto* owner = std::get_if<analysis::OpId>(&use.owner);
+      const auto* value = std::get_if<analysis::ValueId>(&use.operand);
+      if (!owner || !value || getter_gap.ops[i].result != *value ||
+          getter_gap.ops[owner->value].block != getter_gap.ops[i].block ||
+          !std::holds_alternative<analysis::ValueBinary>(getter_gap.ops[owner->value].operation)) continue;
+      auto wrong = getter_gap_plan;
+      wrong.operations[i] = {EvaluationKind::kPredicateSnapshot,
+          analysis::UseId{static_cast<std::uint32_t>(j)}, TemporaryReason::kMultipleUses};
+      Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(getter_gap, wrong)));
+      forged_gap = true; break;
+    }
+  }
+  Check(forged_gap);
   // Native object arguments must retain the original early member Reference.
   const auto buffered_call = BufferedOptionalAccess(true, true);
   const auto buffered_evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(buffered_call));
@@ -817,7 +844,7 @@ int main(int argc, char** argv) {
               << "," << Source(CallDiamond(false, false)) << "," << Source(CallDiamond(true, false))
               << "," << Source(CallDiamond(false, false, false, true))
               << "," << Source(CallDiamond(true, false, false, true))
-              << "," << Source(CallDiamond(false, true)) << "," << Source(CallDiamond(true, true)) << "," << Source(optional) << "," << Source(OptionalAccess(false, 2)) << "," << Source(BufferedOptionalAccess()) << "," << Source(BufferedOptionalAccess(true, false)) << "," << Source(ConditionalDiamond()) << "," << Source(ConditionalDiamond(true)) << "," << Source(ConditionalCall(true)) << "," << Source(ConditionalCall(false)) << "," << Source(OptionalAccess(false, 1, true)) << "," << Source(OptionalCall(true)) << "," << Source(OptionalCall(false)) << "," << Source(NestedSelections(3)) << "," << Source(buffered_call) << "," << Source(BufferedSelections()) << "," << Source(BufferedSelections(2, false, false)) << "," << Source(BufferedSelections(2, false, true, 2)) << "," << Source(GetterSelections()) << "," << Source(GetterSelections(2, false, false)) << "," << Source(GetterSelections(2, false, true, true)) << "]\n";
+              << "," << Source(CallDiamond(false, true)) << "," << Source(CallDiamond(true, true)) << "," << Source(optional) << "," << Source(OptionalAccess(false, 2)) << "," << Source(BufferedOptionalAccess()) << "," << Source(BufferedOptionalAccess(true, false)) << "," << Source(ConditionalDiamond()) << "," << Source(ConditionalDiamond(true)) << "," << Source(ConditionalCall(true)) << "," << Source(ConditionalCall(false)) << "," << Source(OptionalAccess(false, 1, true)) << "," << Source(OptionalCall(true)) << "," << Source(OptionalCall(false)) << "," << Source(NestedSelections(3)) << "," << Source(buffered_call) << "," << Source(BufferedSelections()) << "," << Source(BufferedSelections(2, false, false)) << "," << Source(BufferedSelections(2, false, true, 2)) << "," << Source(GetterSelections()) << "," << Source(GetterSelections(2, false, false)) << "," << Source(GetterSelections(2, false, true, true)) << "," << Source(GetterSelections(2, false, true, false, nullptr, true)) << "]\n";
     return 0;
   }
   for (const bool negate : {false, true}) for (const bool direct : {false, true}) {

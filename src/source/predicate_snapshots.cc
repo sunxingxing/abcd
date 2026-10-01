@@ -90,8 +90,40 @@ void VerifyPredicateSnapshots(const ValueProgram& graph, const EvaluationPlan& p
     budget.Step(); if (plan.operations[i].kind == EvaluationKind::kPredicateSnapshot) blocks[graph.ops[i].block.value] = 1;
   }
   const auto candidates = Candidates(graph, plan, budget);
-  std::vector<Interval> intervals; std::vector<std::uint8_t> consumed;
+  std::vector<Interval> intervals; std::vector<std::uint8_t> consumed, needed;
   budget.Array(intervals, graph.ops.size()); budget.Array(consumed, graph.ops.size());
+  budget.Array(needed, graph.ops.size());
+  for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+    budget.Step(); const auto actual = plan.operations[i];
+    if (actual.kind != EvaluationKind::kPredicateSnapshot) continue;
+    Require(actual.consumer && candidates[i] == actual.consumer && actual.temporary == TemporaryReason::kMultipleUses);
+    needed[std::get<OpId>(graph.uses[actual.consumer->value].owner).value] = 1;
+  }
+  // This proof owns the selected comparisons and their original inline operand
+  // trees. Other expressions (e.g. a prior folded literal call) retain their
+  // separate local proof. Still count every event in the block, so an unrelated
+  // intervening effect cannot disappear from a selected snapshot's interval.
+  for (const auto& block : graph.blocks) {
+    budget.Step(); if (!blocks[&block - graph.blocks.data()]) continue;
+    for (auto j = block.op_count; j != 0; --j) {
+      budget.Step(); const auto id = block.first_op.value + j - 1;
+      if (!needed[id]) continue;
+      const auto& op = graph.ops[id];
+      for (std::uint32_t k = 0; k < op.use_count; ++k) {
+        budget.Step(); const UseId use{op.first_use.value + k};
+        const auto* value = std::get_if<ValueId>(&graph.uses[use.value].operand);
+        const auto* source = value ? std::get_if<OpResult>(&graph.values[value->value].origin) : nullptr;
+        if (!source || graph.ops[source->op.value].block != op.block) continue;
+        const auto before = BeforeLogicalFusion(graph, plan, source->op.value);
+        const auto actual = plan.operations[source->op.value];
+        if ((before.kind == EvaluationKind::kInline && before.consumer == use) ||
+            (actual.kind == EvaluationKind::kPredicateSnapshot && actual.consumer == use)) {
+          Require(graph.ops[source->op.value].order < op.order);
+          needed[source->op.value] = 1;
+        }
+      }
+    }
+  }
   for (const auto& block : graph.blocks) {
     budget.Step(); if (!blocks[&block - graph.blocks.data()]) continue;
     std::size_t serial = 0;
@@ -99,7 +131,9 @@ void VerifyPredicateSnapshots(const ValueProgram& graph, const EvaluationPlan& p
       budget.Step(); const OpId id{block.first_op.value + j}; const auto& op = graph.ops[id.value];
       if (op.life != ValueLife::kLive) continue;
       const auto count = Events(op, BeforeLogicalFusion(graph, plan, id.value));
-      intervals[id.value] = {count, serial + count}; std::optional<Interval> children;
+      intervals[id.value] = {count, serial + count};
+      if (!needed[id.value]) { serial += count; continue; }
+      std::optional<Interval> children;
       for (std::uint32_t k = 0; k < op.use_count; ++k) {
         budget.Step(); const UseId use{op.first_use.value + k};
         const auto* value = std::get_if<ValueId>(&graph.uses[use.value].operand);

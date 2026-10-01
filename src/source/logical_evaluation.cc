@@ -174,12 +174,14 @@ std::optional<SelectedObject> ObjectRoute(const ValueProgram& graph, const Evalu
   return SelectedObject{allocation, definitions, *external};
 }
 struct DomainIndex {
-  std::vector<std::uint8_t> blocks, owners;
+  std::vector<std::uint8_t> blocks, owners, needed;
+  std::vector<OpId> needed_ops;
   std::vector<std::optional<OpId>> values;
   std::vector<std::optional<UseId>> branches;
   DomainIndex(const ValueProgram& graph, TreeCheckBudget& budget) {
     budget.Array(blocks, graph.blocks.size()); budget.Array(owners, graph.ops.size());
     budget.Array(values, graph.values.size()); budget.Array(branches, graph.ops.size());
+    budget.Array(needed, graph.ops.size()); budget.Array(needed_ops, graph.ops.size()); needed_ops.clear();
   }
 };
 // Contract a forward chain to its header blocks plus final join. Each selection
@@ -209,8 +211,11 @@ class Domain {
       index_.owners[std::get<OpId>(graph.uses[object_->consumer.value].owner).value] = 1;
       for (const auto field : object_->definitions) index_.owners[field.value] = 1;
     }
+    Dependencies();
   }
   ~Domain() {
+    for (const auto op : index_.needed_ops) index_.needed[op.value] = 0;
+    index_.needed_ops.clear();
     for (const auto* region : route_) {
       index_.blocks[region->header.value] = 0; index_.values[region->merged.value].reset();
       const auto use = *index_.branches[region->branch.value]; index_.branches[region->branch.value].reset();
@@ -231,6 +236,7 @@ class Domain {
         if (op.life != ValueLife::kLive) continue;
         const bool field = object_ && definition < object_->definitions.size() && id == object_->definitions[definition];
         const auto count = Event(id); intervals_[id.value] = {count, serial + count};
+        if (!index_.needed[id.value]) { serial += count; continue; }
         auto expected = serial;
         for (auto ordinal = op.use_count; (Inputs(plan_.operations[id.value].kind) || field) && ordinal != 0; --ordinal) {
           budget_.Step(); const UseId use{op.first_use.value + ordinal - 1}; const auto& occurrence = graph_.uses[use.value];
@@ -241,13 +247,7 @@ class Domain {
           const bool base = field && *producer == object_->allocation;
           const bool literal = object_ && use == object_->consumer && *producer == object_->allocation;
           const bool owned = (placement.kind == EvaluationKind::kInline || placement.kind == EvaluationKind::kLogicalLeft || placement.kind == EvaluationKind::kPredicateSnapshot) && placement.consumer == use;
-          const auto shape = DescribeEvaluation(op.operation);
-          const bool field_value = field && occurrence.role == OperandRole::kStoredValue &&
-              graph_.ops[producer->value].block == op.block && placement.temporary == TemporaryReason::kEffectSnapshot;
-          const bool candidate = index_.owners[id.value] && placement.kind == EvaluationKind::kRoot &&
-              (placement.temporary == TemporaryReason::kCrossRegionValue || field_value) && shape &&
-              !shape->NeedsSnapshot(occurrence.role) && occurrence.role != OperandRole::kReceiver &&
-              !PredicateSnapshot(graph_, op, occurrence.operand);
+          const bool candidate = Candidate(id, occurrence, *producer, field);
           if (!owned && !logical && !candidate && !base && !literal) continue;
           const auto interval = intervals_[producer->value];
           if (interval.count && interval.end != expected) {
@@ -273,6 +273,7 @@ class Domain {
         if (op.life != ValueLife::kLive) continue;
         const bool field = object_ && definition < object_->definitions.size() && id == object_->definitions[definition];
         const auto count = Event(id); intervals_[id.value] = {count, serial + count};
+        if (!index_.needed[id.value]) { serial += count; continue; }
         std::optional<Interval> children;
         for (std::uint32_t ordinal = 0; (Inputs(plan_.operations[id.value].kind) || field) && ordinal < op.use_count; ++ordinal) {
           budget_.Step(); const UseId use{op.first_use.value + ordinal}; const auto& occurrence = graph_.uses[use.value];
@@ -309,6 +310,52 @@ class Domain {
     Require(!object_ || definition == object_->definitions.size());
   }
  private:
+  bool Candidate(OpId id, const OperandUse& occurrence, OpId producer, bool field) const {
+    const auto& op = graph_.ops[id.value]; const auto& placement = plan_.operations[producer.value];
+    const auto shape = DescribeEvaluation(op.operation);
+    const bool field_value = field && occurrence.role == OperandRole::kStoredValue &&
+        graph_.ops[producer.value].block == op.block && placement.temporary == TemporaryReason::kEffectSnapshot;
+    return index_.owners[id.value] && placement.kind == EvaluationKind::kRoot &&
+        (placement.temporary == TemporaryReason::kCrossRegionValue || field_value) && shape &&
+        !shape->NeedsSnapshot(occurrence.role) && occurrence.role != OperandRole::kReceiver &&
+        !PredicateSnapshot(graph_, op, occurrence.operand);
+  }
+  void Needed(OpId id) {
+    if (index_.needed[id.value]) return;
+    budget_.Step(2); // Mark now and prepay nonthrowing cleanup.
+    index_.needed[id.value] = 1; index_.needed_ops.push_back(id);
+  }
+  void Dependencies() {
+    Needed(last_owner_);
+    for (const auto* region : route_) { budget_.Step(); Needed(region->branch); }
+    if (object_) {
+      Needed(object_->allocation);
+      for (const auto field : object_->definitions) { budget_.Step(); Needed(field); }
+    }
+    auto definition = object_ ? object_->definitions.size() : 0;
+    // Reverse the contracted region order once. Only the final consumers and
+    // the trees they own need the additional composition proof; all intervening
+    // effects still advance the forward event clock in Build and Verify.
+    for (auto b = route_.size() + 1; b != 0; --b) {
+      const auto& range = Block(b - 1);
+      for (auto j = Count(b - 1); j != 0; --j) {
+        budget_.Step(); const OpId id{range.first_op.value + j - 1}; const auto& op = graph_.ops[id.value];
+        const bool field = definition && id == object_->definitions[definition - 1];
+        if (field) --definition;
+        if (!index_.needed[id.value] || op.life != ValueLife::kLive) continue;
+        for (std::uint32_t k = 0; (Inputs(plan_.operations[id.value].kind) || field) && k < op.use_count; ++k) {
+          budget_.Step(); const UseId use{op.first_use.value + k}; const auto& occurrence = graph_.uses[use.value];
+          if (IsMemberReceiver(graph_, plan_, occurrence)) continue;
+          const auto producer = Producer(occurrence); if (!producer || !Inside(*producer)) continue;
+          const auto& placement = plan_.operations[producer->value];
+          const bool owned = (placement.kind == EvaluationKind::kInline || placement.kind == EvaluationKind::kLogicalLeft ||
+              placement.kind == EvaluationKind::kLogicalValue || placement.kind == EvaluationKind::kPredicateSnapshot) && placement.consumer == use;
+          const bool object = object_ && *producer == object_->allocation && (field || use == object_->consumer);
+          if (owned || object || index_.branches[producer->value] == use || Candidate(id, occurrence, *producer, field)) Needed(*producer);
+        }
+      }
+    }
+  }
   const WorkBlock& Block(std::size_t index) const {
     const auto id = index < route_.size() ? route_[index]->header : route_.back()->join;
     return graph_.blocks[id.value];
