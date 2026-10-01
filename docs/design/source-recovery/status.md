@@ -12,6 +12,33 @@
 
 ## 当前阶段
 
+### 2026-10-01：PageA完整record的独立配对语义回归
+
+- 新增pagea_record_source_test。生产abc_semantic只读取固定SHA的ABC并退出，
+  oracle随后读取完整PageA.ts，不截取方法、拼接输出或向引擎提供sidecar。
+  转换后ArkTS的两条未初始化private type declaration按legacy TS擦除语义
+  删除，再由Node stripTypeScriptTypes去类型；其他private形式立即失败，
+  不让JS字段undefined初始化污染参考。没有新生产依赖或引擎修改。
+- 两份完整module在独立VM realm运行，对照**474个场景**：模块导入/注册、
+  class及builder名称/length、默认参数、prototype/实例own字段、params两次
+  getter、storage/accessor/lifecycle、初建/更新builder、同步/延迟页面创建族、
+  breakpoint与资源值、onReady捕获，以及async click的值/Promise/thenable、
+  延迟settle、拒绝和任意throw身份。component及pasteboard/系统/UI surface
+  使用Proxy逐次核对getter/call顺序及receiver；ambient call/apply/bind被毒化。
+- 独立输出mutation可捕获移除await、替换捕获receiver和改变toast offset；
+  /tmp/abcd-pagea-paired-mutations.log。初始receiver mutation使用箭头内this，
+  实为语义等价而未被拒绝，随后改为错误global receiver才构成有效负例。
+  CMake配置退出0，/tmp/abcd-pagea-paired-configure.log；PageA、既有Index、
+  相位字面量参数JS及class/family fixture **4/4定向检查通过1.32秒**，
+  /tmp/abcd-pagea-paired-tests.log。本任务仅测试/注册，未修改生产代码。
+- 表示检查：PageA完整输出保留native class、accessor、默认参数、if/条件式、
+  component调用/箭头闭包、嵌套resource object/array和async/await，没有assembly
+  或通用machine writer；但NamedEvaluation包装、较多临时变量/括号与原源码
+  仍有表示差距。因此这只是独立配对行为证据，不授予整体表示Accepted、平台
+  执行收据或全样本完成；PageA CLI仍executable=false，阶段一Goal保持active。
+  全量/RSS/基准/DFX/代理继续暂停。下一步处理其他实际tree_stage拒绝，并保留
+  PageA表示质量改进项，不因一个页面通过停止阶段一开发。
+
 ### 2026-10-01：原生成员引用贯通完整相位字面量参数
 
 - PhaseCorridors一次索引已由LiteralPlan证明的完整initializer区间；native call
