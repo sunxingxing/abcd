@@ -7,7 +7,7 @@
 namespace abcd::source {
 // The builder starts from a freshly constructed local forest. Its backwards
 // choices are checked by independent forward interval equations; the original
-// local forest, conditional RHS and all incoming copies remain checked too.
+// local forest, conditional arms and all incoming copies remain checked too.
 void BuildLogicalValues(const analysis::ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget);
 void VerifyLogicalValues(const analysis::ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget);
 // Only after fresh evaluation verification, which checks the contracted

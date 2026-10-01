@@ -12,6 +12,37 @@
 
 ## 当前阶段
 
+### 2026-10-01：共同条件表达式与成员调用参数贯通
+
+- FunctionTree 新增原生 ConditionalExpr，结构检查按 condition/consequent/alternate
+  独立拥有三个孩子，共同迭代 printer 输出带括号的 ?:。没有专用文本后端或调用辅助函数。
+  原短路区域记录推广为 SelectionRegion；实际双臂选择由原正常控制图、单结果phi
+  及两条原始输入边识别。每条臂必须是单一独占求值子树，不能带额外语句或环境效果。
+- 条件值限定为已证明返回boolean的 ToBoolean/LogicalNot/严格比较；原VM的
+  false-or-zero分支不能直接当JS truthiness，新增原始非boolean分支拒绝收缩规格。
+  两条臂及结果均保留原操作来源。独立TreeFlow核对条件、两条输入、phi去向和边界，
+  TreeOperands核对条件操作数；调换生成树的两条臂会被拒绝。
+- 复用现有前向/后向事件区间证明，把原生条件值组合到唯一join消费者，支持
+  “先读取成员方法，再计算条件参数”的原生调用，并验证callee/receiver配对。
+  没有删除CallPlan检查，也没有call/apply/bind或IIFE绕行。解码回归同时覆盖
+  先读/后读方法，两种分支方向、getter改变后续选择、异常身份、返回身份和接收者。
+- 真实解码规格先观察FunctionTree红例 /tmp/abcd-conditional-decoded-red.log；
+  调用集成红例 /tmp/abcd-conditional-call-red.log。2/3/200/201段条件选择、
+  1/200/201/402层源码树及分支内debugger拒绝收缩通过。14项定向测试通过
+  （10.39秒），/tmp/abcd-conditional-final-tests.log，构建
+  /tmp/abcd-conditional-final-build.log；后续两个拒绝边界测试重跑2项通过（2.78秒），
+  /tmp/abcd-conditional-negative-tests.log。解码JS对照5468场景、AST/printer对照
+  18928场景通过；后者仅证明源码节点组合，不作为ABC识别证据。
+- 五输入正式导出 build/stage-one/value-conditional-pass-1 保持43 complete /
+  63 failure / 46 no-module，无完整项退化、无legacy writer，汇总
+  /tmp/abcd-conditional-batch-summary.json。阶段一仍未完成，未扩大语料或恢复
+  全量测试/RSS/基准。没有新增完整record不能抹去本次共同条件表达式能力交付，
+  也不能把本组件完成计为阶段完成。
+- 下一实际缺口仍是 buffered optional call：可选访问共享多条phi输入，尚不能
+  分层组合为条件值，分步对象初始化也尚未成为单一参数子树。显式
+  --buffered-call-source 目标仍未通过，默认回归继续核对其kReference拒绝边界。
+  后续继续扩展共同区域组合，再收拢为自然对象字面量和原生可选链表达。
+
 ### 2026-10-01：成员引用与可选参数的最小解码集成回归
 
 - 将 ShoppingAvoid 的下一阻塞缩减为动态ABC规格：成员读取、buffered object

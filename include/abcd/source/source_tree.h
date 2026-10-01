@@ -133,6 +133,9 @@ struct BinaryExpr { analysis::BinaryOperator operation; ExprId left; ExprId righ
 // Nullish tests only null/undefined, never ToBoolean or user coercion.
 enum class TreeLogical : std::uint8_t { kAnd, kOr, kNullish };
 struct LogicalExpr { TreeLogical operation; ExprId left; ExprId right; };
+// Evaluate the condition once, then exactly one arm. The node alone does not
+// authorize CFG contraction; source recovery must prove ownership and order.
+struct ConditionalExpr { ExprId condition; ExprId consequent; ExprId alternate; };
 struct SymbolTarget { SymbolId symbol; };
 struct MemberTarget { ExprId base; MemberKey key; };
 using AssignmentTarget = std::variant<SymbolTarget, MemberTarget>;
@@ -189,7 +192,7 @@ struct DataProperty { NameId key; ExprId value; TreeOriginId origin; };
 struct FieldDefinitionExpr { ExprId receiver; NameId name; ExprId value; };
 using TreeExpression = std::variant<TreeLiteral, SymbolExpr, GlobalNameExpr, RealmObjectExpr,
     SymbolConstructorExpr, ThisExpr, MemberExpr,
-                                    UnaryExpr, AwaitExpr, YieldExpr, BinaryExpr, LogicalExpr, AssignmentExpr,
+                                    UnaryExpr, AwaitExpr, YieldExpr, BinaryExpr, LogicalExpr, ConditionalExpr, AssignmentExpr,
                                     CallExpr, ConstructExpr, EmptyArrayExpr, EmptyObjectExpr, ObjectExpr, FunctionExpr,
                                     ArgumentSnapshotExpr, ClassExpr, FieldDefinitionExpr, SuperCallExpr>;
 struct ExprNode { TreeExpression expression; TreeOriginId origin; };

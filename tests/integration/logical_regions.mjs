@@ -5,7 +5,7 @@ import vm from 'node:vm';
 // tree and semantic checks. No source text supplies the engine's expression.
 const source = execFileSync(process.argv[2], ['--sources'], {encoding: 'utf8'});
 const generated = vm.runInNewContext(source, {Array() { throw new Error('mutable Array binding'); }});
-assert.equal(generated.length, 16);
+assert.equal(generated.length, 20);
 const reference = [value => value || [], value => value && []];
 const object = {[Symbol.toPrimitive]() { throw new Error('unexpected coercion'); }};
 const values = [undefined, null, false, true, 0, -0, NaN, '', 'text', 0n, 1n, Symbol('value'), object];
@@ -254,4 +254,59 @@ for (const payload of values) for (const fail of ['', 'probe', 'method', 'call']
 // which callable is selected, even when the receiver itself remains identical.
 assert.notDeepEqual(bufferedCall(bufferedLateReference, object, '', true),
                    bufferedCall(value => value.items({probe: value?.probe}), object, '', true));
+function conditional(fn, predicate, payload, fail) {
+  const events = [], failure = {};
+  const receiver = {
+    get probe() { assert.equal(this, receiver); events.push('predicate'); if (fail === 'predicate') throw failure; return predicate; },
+    get items() { assert.equal(this, receiver); events.push('arm'); if (fail === 'arm') throw failure; return payload; }
+  };
+  try {
+    const result = fn(receiver);
+    if (Array.isArray(result)) { assert.equal(result.length, 0); assert.notEqual(result, fn(receiver)); return {events, array: true}; }
+    assert.ok(Object.is(result, payload)); return {events, result};
+  } catch (error) { assert.equal(error, failure); return {events, threw: true}; }
+}
+for (const [index, reference] of [[16, value => value.probe ? value.items : []],
+                                [17, value => !value.probe ? value.items : []]])
+  for (const predicate of values) for (const payload of values) for (const fail of ['', 'predicate', 'arm']) {
+    assert.deepEqual(conditional(generated[index], predicate, payload, fail), conditional(reference, predicate, payload, fail));
+    ++scenarios;
+  }
+const conditionalCalls = [value => value.items(value.probe ? value.probe : []), value => {
+  const argument = value.probe ? value.probe : []; return value.items(argument);
+}];
+function selectCall(fn, predicate, payload, fail, mutate) {
+  const events = [], failure = {}, returned = {};
+  let current = predicate, reads = 0;
+  const receiver = {
+    get probe() {
+      assert.equal(this, receiver); const phase = ++reads === 1 ? 'predicate' : 'arm';
+      events.push(phase); if (fail === phase) throw failure;
+      return reads === 1 ? current : payload;
+    },
+    get items() {
+      assert.equal(this, receiver); events.push('method'); if (fail === 'method') throw failure;
+      if (mutate) current = payload;
+      const callable = function(argument) {
+        assert.equal(this, receiver); events.push('call'); if (fail === 'call') throw failure;
+        if (Array.isArray(argument)) { assert.equal(argument.length, 0); events.push('array argument'); }
+        else { assert.ok(Object.is(argument, payload)); events.push('selected argument'); }
+        return returned;
+      };
+      for (const key of ['call', 'apply', 'bind']) Object.defineProperty(callable, key, {
+        get() { throw new Error('mutable invocation helper'); }
+      });
+      return callable;
+    }
+  };
+  try { assert.equal(fn(receiver), returned); return {events}; }
+  catch (error) { assert.equal(error, failure); return {events, threw: true}; }
+}
+for (let i = 0; i < conditionalCalls.length; ++i)
+  for (const predicate of values) for (const payload of values)
+    for (const fail of ['', 'predicate', 'arm', 'method', 'call']) for (const mutate of [false, true]) {
+      assert.deepEqual(selectCall(generated[18 + i], predicate, payload, fail, mutate),
+                       selectCall(conditionalCalls[i], predicate, payload, fail, mutate));
+      ++scenarios;
+    }
 console.log(`Decoded logical branch values, getters and calls: ${scenarios} behavior scenarios passed`);

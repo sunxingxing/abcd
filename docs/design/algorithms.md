@@ -189,3 +189,24 @@ writable own data property in the original buffer. This permits native assignmen
 without inherited-setter behavior. No external dependency or license is added.
 Evidence: literal_plan_test and decoded logical_regions source behavior tests;
 this is not a peak-RSS or benchmark claim.
+
+### Native conditional value selection (2026-10-01)
+
+Reuse the checked normal control tree and existing evaluation forest. Index one
+result phi per join and its incoming uses in linear passes. Select only two
+straight arms, each exclusively owned by one phi-input evaluation subtree, and
+boolean-producing predicates (ToBoolean, LogicalNot, strict equality/inequality).
+Preserve raw VM false-or-zero tests outside this domain. A conditional AST owns
+three distinct expression occurrences; the independent flow check pairs its arms
+with the original incoming edges, and operand checking ties its predicate to the
+original branch input. The printer uses the existing bounded iterative action stack.
+
+Selection discovery costs O(operations + values + uses + blocks + control nodes),
+with disjoint arm scans under the verified control-tree ownership contract.
+Scratch storage is linear in those dimensions. Unique join consumers reuse the
+existing forward/backward event interval equations for ordered member references;
+conditional arm effects remain confined to their original choice. No effects or
+allocations are duplicated. Nested/multi-input joins are not yet contracted.
+The implementation is project-local, adds no dependency, and is covered by decoded
+2/3/200/201-region cases, malformed branch/predicate cases, and independent JS
+behavior comparisons. These runs are not a benchmark or peak-memory measurement.

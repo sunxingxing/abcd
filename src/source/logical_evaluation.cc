@@ -11,12 +11,12 @@ bool Inputs(EvaluationKind kind) {
   return kind == EvaluationKind::kRoot || kind == EvaluationKind::kInline ||
       kind == EvaluationKind::kLogicalLeft || kind == EvaluationKind::kLogicalValue;
 }
-std::vector<LogicalRegion> Regions(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget) {
+std::vector<SelectionRegion> Regions(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget) {
   if (plan.flow != EvaluationFlow::kNormal || !plan.phis) return {};
   bool predicate = false;
   for (const auto& op : graph.ops) {
-    budget.Step(); const auto* unary = std::get_if<ValueUnary>(&op.operation);
-    if (op.life == ValueLife::kLive && unary && unary->op == UnaryOperator::kToBoolean) { predicate = true; break; }
+    budget.Step(); const auto* branch = std::get_if<ValueBranch>(&op.operation);
+    if (op.life == ValueLife::kLive && branch) { predicate = true; break; }
   }
   if (!predicate) return {};
   auto built = BuildControlPlan(graph, budget.Remaining());
@@ -28,7 +28,7 @@ std::vector<LogicalRegion> Regions(const ValueProgram& graph, const EvaluationPl
     return {};
   }
   budget.Admit(control->allocated_bytes, 1); budget.Step(control->work);
-  return FindLogicalExpressions(graph, *control, plan, budget);
+  return FindSelectionExpressions(graph, *control, plan, budget);
 }
 std::size_t Events(const ValueOp& op, const OpEvaluation& placement, OpId id, OpId branch) {
   if (id == branch) return 1; // One conditional region; RHS is independently owned/checked.
@@ -36,7 +36,7 @@ std::size_t Events(const ValueOp& op, const OpEvaluation& placement, OpId id, Op
   if (std::holds_alternative<ValueModuleRead>(op.operation)) return 2;
   return OrderedEvaluation(op) || IsEnvironmentState(op.operation);
 }
-std::optional<UseId> Consumer(const ValueProgram& graph, const LogicalRegion& region, TreeCheckBudget& budget) {
+std::optional<UseId> Consumer(const ValueProgram& graph, const SelectionRegion& region, TreeCheckBudget& budget) {
   std::optional<UseId> found;
   for (auto use = graph.values[region.merged.value].first_use; use; use = graph.uses[use->value].next) {
     budget.Step(); const auto& occurrence = graph.uses[use->value];
@@ -50,7 +50,7 @@ std::optional<UseId> Consumer(const ValueProgram& graph, const LogicalRegion& re
   }
   return found;
 }
-std::optional<OpId> Producer(const ValueProgram& graph, const LogicalRegion& region, const OperandUse& use) {
+std::optional<OpId> Producer(const ValueProgram& graph, const SelectionRegion& region, const OperandUse& use) {
   const auto* value = std::get_if<ValueId>(&use.operand);
   if (!value) return {};
   if (*value == region.merged) return region.branch;
@@ -62,7 +62,7 @@ std::optional<OpId> Producer(const ValueProgram& graph, const LogicalRegion& reg
 // checked in its original arm. Distinct selected domains cannot overlap.
 class Domain {
  public:
-  Domain(const ValueProgram& graph, const EvaluationPlan& plan, const LogicalRegion& region,
+  Domain(const ValueProgram& graph, const EvaluationPlan& plan, const SelectionRegion& region,
       UseId consumer, std::vector<Interval>& intervals, TreeCheckBudget& budget)
       : graph_(graph), plan_(plan), region_(region), consumer_(consumer),
         owner_(std::get<OpId>(graph.uses[consumer.value].owner)), intervals_(intervals), budget_(budget) {}
@@ -150,17 +150,18 @@ class Domain {
   bool Inside(OpId id) const { const auto block = graph_.ops[id.value].block; return block == region_.header || block == region_.join; }
   const ValueProgram& graph_;
   const EvaluationPlan& plan_;
-  const LogicalRegion& region_;
+  const SelectionRegion& region_;
   UseId consumer_;
   OpId owner_;
   std::vector<Interval>& intervals_;
   TreeCheckBudget& budget_;
 };
-bool Available(const ValueProgram& graph, const LogicalRegion& region, const std::vector<std::uint8_t>& used) {
+bool Available(const ValueProgram& graph, const SelectionRegion& region, const std::vector<std::uint8_t>& used) {
   // The forest lowers definitions before join consumers. Keep arbitrary CFG
   // layout support in the ordinary phi route until a dependency worklist owns it.
   return !used[region.header.value] && !used[region.join.value] &&
       region.branch.value < graph.blocks[region.join.value].first_op.value &&
+      (!region.consequent || (region.keep && graph.blocks[region.keep->value].first_op.value < graph.blocks[region.join.value].first_op.value)) &&
       graph.blocks[region.evaluate.value].first_op.value < graph.blocks[region.join.value].first_op.value;
 }
 }  // namespace

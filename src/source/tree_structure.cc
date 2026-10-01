@@ -288,6 +288,8 @@ class StructureCheck {
             (expression.form == YieldForm::kDirect || expression.form == YieldForm::kDelegate), Error::kUnsupportedSyntax);
       } else if constexpr (std::is_same_v<T, BinaryExpr>) {
         RequireTree(ValidBinary(expression.operation), Error::kUnsupportedSyntax);
+      } else if constexpr (std::is_same_v<T, ConditionalExpr>) {
+        // Child ownership and scope are checked by the shared iterative walk.
       } else if constexpr (std::is_same_v<T, LogicalExpr>) {
         RequireTree(expression.operation == TreeLogical::kAnd || expression.operation == TreeLogical::kOr ||
                     expression.operation == TreeLogical::kNullish,
@@ -442,6 +444,8 @@ class StructureCheck {
         else if constexpr (std::is_same_v<T, UnaryExpr> || std::is_same_v<T, AwaitExpr> || std::is_same_v<T, YieldExpr>) add(node.operand);
         else if constexpr (std::is_same_v<T, BinaryExpr> || std::is_same_v<T, LogicalExpr>) {
           add(node.left); add(node.right);
+        } else if constexpr (std::is_same_v<T, ConditionalExpr>) {
+          add(node.condition); add(node.consequent); add(node.alternate);
         } else if constexpr (std::is_same_v<T, ClassExpr>) {
           if (node.heritage) add(*node.heritage);
         } else if constexpr (std::is_same_v<T, FieldDefinitionExpr>) {

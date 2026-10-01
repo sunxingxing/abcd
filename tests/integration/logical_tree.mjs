@@ -11,6 +11,9 @@ const references = [
   e => e.target.method((e.subject.value ?? e.fallback()) && e.extra()),
   e => e.target.method(e.subject.value ?? (e.fallback() || e.extra())),
   e => e.target.method(e.subject.value ?? (e.fallback() && e.extra())),
+  e => e.target.method(e.subject.value ? e.fallback() : e.extra()),
+  e => e.target.method((e.subject.value ? e.fallback() : e.extra()) ?? e.tail()),
+  e => e.target.method((e.subject.value ?? e.fallback()) ? e.extra() : e.tail()),
 ];
 const identity = Object.freeze({marker: 'value', [Symbol.toPrimitive]() { throw new Error('unexpected coercion'); }});
 const values = [undefined, null, false, true, 0, -0, NaN, '', 'text', 0n, 1n, Symbol('value'), identity];
@@ -23,6 +26,7 @@ function run(invoke, value, alternate, fail, mutate) {
     subject: {get value() { event('value'); return current; }},
     fallback() { event('fallback'); return alternate; },
     extra() { event('extra'); return extraValue; },
+    tail() { event('tail'); return alternate; },
     target: {get method() {
       event('method');
       // A callee getter can change the argument source. Moving the getter
@@ -50,7 +54,7 @@ const generated = vm.runInNewContext(source, sandbox);
 assert.equal(generated.length, references.length);
 for (let shape = 0; shape < references.length; ++shape) {
   for (const value of values) for (const alternate of values) {
-    for (const fail of [undefined, 'method', 'value', 'fallback', 'extra', 'call']) {
+    for (const fail of [undefined, 'method', 'value', 'fallback', 'extra', 'tail', 'call']) {
       for (const mutate of [false, true]) {
         const actual = run(e => { Object.assign(sandbox, e); return generated[shape](); }, value, alternate, fail, mutate);
         const expected = run(references[shape], value, alternate, fail, mutate);
@@ -60,4 +64,4 @@ for (let shape = 0; shape < references.length; ++shape) {
     }
   }
 }
-console.log(`Nullish member arguments: ${scenarios} behavior scenarios passed`);
+console.log(`Logical and conditional member arguments: ${scenarios} behavior scenarios passed`);

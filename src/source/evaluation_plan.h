@@ -16,7 +16,7 @@ namespace abcd::source {
 // neither a value snapshot nor permission to cross a branch/exception edge.
 // kLogicalLeft owns one native logical LHS: its original boolean use and
 // retained phi input are two observations of that single expression result.
-// kLogicalValue owns the region result at one join consumer, while logical_values
+// kLogicalValue owns a logical/conditional result at one join consumer; logical_values
 // identifies the eliminated phi location. Its cross-region inputs need interval proof.
 enum class EvaluationKind : std::uint8_t {
   kRemoved, kRoot, kInline, kInitializer, kEnvironment, kModuleGuard, kElidedPure, kAlias, kNestedLiteral, kClassProjection, kConstructorGuard, kCellGuard, kPhiInput, kLogicalLeft, kLogicalValue
@@ -73,7 +73,7 @@ struct EvaluationPlan {
   // Conditional same-owner protocol obligation. The source factory must
   // reprove these guards against the unchanged input after default recovery.
   std::vector<analysis::OpId> constructor_guards;
-  // Phi values exclusively owned by native logical expressions, indexed by
+  // Phi values exclusively owned by native logical or conditional expressions, indexed by
   // ValueId. Each entry points to its original conditional branch operation.
   std::vector<std::optional<analysis::OpId>> logical_values;
 };

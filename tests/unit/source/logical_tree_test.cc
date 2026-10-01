@@ -55,6 +55,16 @@ FunctionTree MemberArgument(unsigned shape) {
   else if (shape <= 2) {
     const auto inner = f.Logical(TreeLogical::kNullish, value, fallback);
     argument = f.Logical(shape == 1 ? TreeLogical::kOr : TreeLogical::kAnd, inner, f.Invoke(u"extra"));
+  } else if (shape >= 5) {
+    const auto extra = f.Invoke(u"extra");
+    if (shape == 5) argument = f.Add(ConditionalExpr{value, fallback, extra});
+    else if (shape == 6) {
+      const auto inner = f.Add(ConditionalExpr{value, fallback, extra});
+      argument = f.Logical(TreeLogical::kNullish, inner, f.Invoke(u"tail"));
+    } else {
+      const auto predicate = f.Logical(TreeLogical::kNullish, value, fallback);
+      argument = f.Add(ConditionalExpr{predicate, extra, f.Invoke(u"tail")});
+    }
   } else {
     const auto inner = f.Logical(shape == 3 ? TreeLogical::kOr : TreeLogical::kAnd, fallback, f.Invoke(u"extra"));
     argument = f.Logical(TreeLogical::kNullish, value, inner);
@@ -62,6 +72,28 @@ FunctionTree MemberArgument(unsigned shape) {
   f.tree.arguments.push_back(argument);
   f.Return(f.Add(CallExpr{callee, {0, 1}, CallReference::kMember}));
   return f.tree;
+}
+void Conditionals() {
+  for (const unsigned count : {1U, 200U, 201U, 402U}) {
+    Fixture f;
+    auto value = f.Add(TreeLiteral{NullLiteral{}});
+    for (unsigned i = 0; i < count; ++i)
+      value = f.Add(ConditionalExpr{f.Add(TreeLiteral{BooleanLiteral{true}}), value,
+          f.Add(TreeLiteral{UndefinedLiteral{}})});
+    f.Return(value);
+    const auto source = Print(f.tree);
+    std::size_t found = 0, offset = 0;
+    while ((offset = source.find(" ? ", offset)) != std::string::npos) { ++found; offset += 3; }
+    Check(found == count);
+    for (unsigned child = 0; child < 3; ++child) {
+      auto invalid = f.tree;
+      auto& node = std::get<ConditionalExpr>(invalid.expressions.back().expression);
+      if (child == 0) node.condition = node.consequent;
+      else if (child == 1) node.consequent = node.alternate;
+      else node.alternate = node.condition;
+      Check(std::get<TreeStructureError>(VerifyTreeStructure(invalid)) == TreeStructureError::kOwnership);
+    }
+  }
 }
 void Structure() {
   for (const unsigned count : {1U, 200U, 201U, 402U}) {
@@ -87,12 +119,13 @@ void Structure() {
 int main(int argc, char** argv) {
   if (argc == 2 && std::string_view(argv[1]) == "--sources") {
     std::cout << "[\n";
-    for (unsigned shape = 0; shape < 5; ++shape) {
+    for (unsigned shape = 0; shape < 8; ++shape) {
       if (shape) std::cout << ",\n";
       std::cout << Print(MemberArgument(shape));
     }
     std::cout << "]\n"; return 0;
   }
   Structure();
-  for (unsigned shape = 0; shape < 5; ++shape) Check(!Print(MemberArgument(shape)).empty());
+  Conditionals();
+  for (unsigned shape = 0; shape < 8; ++shape) Check(!Print(MemberArgument(shape)).empty());
 }

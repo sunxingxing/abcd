@@ -393,7 +393,7 @@ int main(int argc, char** argv) {
           Check(evaluation.operations[allocation.value].kind == EvaluationKind::kPhiInput);
           Check(!evaluation.operations[allocation.value].temporary);
           TreeCheckBudget logical_budget({});
-          const auto expressions = FindLogicalExpressions(graph, control, evaluation, logical_budget);
+          const auto expressions = FindSelectionExpressions(graph, control, evaluation, logical_budget);
           Check(expressions.size() == 1 && expressions.front().operation == TreeLogical::kOr);
         }
         if (child.function.Method().value != 10400) continue;

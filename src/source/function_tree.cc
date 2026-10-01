@@ -86,7 +86,7 @@ class TreeBuilder {
     if (!exceptions_ && evaluation_.phis) {
       TreeCheckBudget logical_budget({bytes_, work_});
       try {
-        logicals_ = FindLogicalExpressions(graph_, control_, evaluation_, logical_budget);
+        logicals_ = FindSelectionExpressions(graph_, control_, evaluation_, logical_budget);
         if (!logicals_.empty()) {
           logical_budget.Array(logical_branches_, graph_.ops.size());
           for (std::size_t i = 0; i < logicals_.size(); ++i) logical_branches_[logicals_[i].branch.value] = i;
@@ -989,7 +989,7 @@ class TreeBuilder {
 
   const analysis::ValueProgram& graph_;
   const ControlPlan& control_;
-  std::vector<LogicalRegion> logicals_;
+  std::vector<SelectionRegion> logicals_;
   std::vector<std::optional<std::size_t>> logical_branches_;
   const EvaluationPlan& evaluation_;
   FunctionSyntax syntax_;

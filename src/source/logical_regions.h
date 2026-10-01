@@ -10,7 +10,7 @@ struct EvaluationPlan;
 // A value-selection diamond, not permission to move effects across its header.
 // The expression planner must still own the RHS subtree, remove its phi copies,
 // and preserve the order of every surrounding call/reference before emission.
-struct LogicalRegion {
+struct SelectionRegion {
   TreeLogical operation;
   analysis::OpId boolean;
   analysis::OpId branch;
@@ -23,15 +23,18 @@ struct LogicalRegion {
   analysis::WorkBlockId join;
   analysis::EdgeId keep_input;
   analysis::EdgeId evaluate_input;
+  // Present for a true/false value selection; left is its actual predicate.
+  std::optional<analysis::ValueOperand> consequent;
 };
 // Requires verified simplified normal IR and its verified ControlPlan. Finds
 // ToBoolean diamonds with a single result phi, including an empty keep arm.
 // O(operations + values + uses + control nodes), with indexed block summaries;
 // never scans the whole graph separately for each branch or phi.
-[[nodiscard]] std::vector<LogicalRegion> FindLogicalRegions(
+[[nodiscard]] std::vector<SelectionRegion> FindLogicalRegions(
     const analysis::ValueProgram& graph, const ControlPlan& control, TreeCheckBudget* budget = nullptr);
-// Select only regions whose entire RHS is one owned evaluation subtree.
-[[nodiscard]] std::vector<LogicalRegion> FindLogicalExpressions(
+// Select short-circuit regions or two-arm conditional regions. Every selected
+// arm must be one owned evaluation subtree; the predicate remains at its site.
+[[nodiscard]] std::vector<SelectionRegion> FindSelectionExpressions(
     const analysis::ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, TreeCheckBudget& budget);
 // Indexed eligible LHS producers; only the exact predicate/keep-edge pair is

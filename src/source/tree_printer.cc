@@ -560,6 +560,11 @@ class TreePrinter {
     Append("("); Push(std::string_view(")")); Push(node.right);
     Push(TreeLogicalToken(node.operation)); Push(node.left);
   }
+  void Expression(ConditionalExpr node) {
+    Append("("); Push(std::string_view(")")); Push(node.alternate);
+    Push(std::string_view(" : ")); Push(node.consequent);
+    Push(std::string_view(" ? ")); Push(node.condition);
+  }
   void Expression(const FieldDefinitionExpr& node) {
     if (!static_fields_) throw Error::kUnsupportedContext;
     const auto& name = Tree().names[node.name.value];

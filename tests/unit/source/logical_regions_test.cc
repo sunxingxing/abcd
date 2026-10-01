@@ -49,6 +49,36 @@ analysis::ValueProgram OptionalAccess(bool observable_fallback = false, unsigned
   chain.insert(chain.end(), {0x60, 1, 0x64});
   return Import(chain, 1);
 }
+analysis::ValueProgram ConditionalDiamond(bool negate = false, unsigned count = 1, bool barrier = false, bool raw_predicate = false) {
+  // value.probe ? value.items : [], with two independently evaluated arms.
+  std::vector<std::uint8_t> bytes{0x60, 1, 0x42, 0, 0, 0, 0xfb, 0x13, 0,
+      static_cast<std::uint8_t>(negate ? 0x51 : 0x4f), 10,
+      0x60, 1, 0x42, 0, 1, 0, 0x4d, 4, 0x05, 0, 0x64};
+  if (barrier) {
+    bytes.insert(bytes.begin() + 17, static_cast<std::uint8_t>(abc::Opcode::kDEBUGGER));
+    ++bytes[10];
+  }
+  if (raw_predicate) bytes.erase(bytes.begin() + 6, bytes.begin() + 9);
+  if (count == 1) return Import(bytes, 1);
+  bytes.pop_back();
+  bytes.insert(bytes.end(), {0x61, 0, 0x60, 1, 0x42, 0, 1, 0,
+      static_cast<std::uint8_t>(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 1, 0});
+  std::vector<std::uint8_t> repeated;
+  for (unsigned i = 0; i < count; ++i) repeated.insert(repeated.end(), bytes.begin(), bytes.end());
+  repeated.push_back(0x64);
+  return Import(repeated, 1);
+}
+analysis::ValueProgram ConditionalCall(bool method_first) {
+  const std::vector<std::uint8_t> method{0x60, 3, 0x42, 0, 1, 0, 0x61, 0};
+  std::vector<std::uint8_t> bytes;
+  if (method_first) bytes.insert(bytes.end(), method.begin(), method.end());
+  const std::vector<std::uint8_t> select{0x60, 3, 0x42, 0, 0, 0, 0xfb, 0x13, 0,
+      0x4f, 10, 0x60, 3, 0x42, 0, 0, 0, 0x4d, 4, 0x05, 0, 0x61, 1};
+  bytes.insert(bytes.end(), select.begin(), select.end());
+  if (!method_first) bytes.insert(bytes.end(), method.begin(), method.end());
+  bytes.insert(bytes.end(), {0x60, 0, static_cast<std::uint8_t>(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 3, 1, 0x64});
+  return Import(bytes, 3);
+}
 analysis::ValueProgram BufferedOptionalAccess(bool call = false, bool method_first = false) {
   // Buffered {probe: null} is allocated before the optional RHS, then the
   // existing own field is initialized after its branch/phi join.
@@ -146,6 +176,14 @@ std::string Source(const analysis::ValueProgram& graph, bool compose = true) {
   Check(std::holds_alternative<ConstructedFunction>(built));
   const auto& tree = std::get<ConstructedFunction>(built).tree;
   Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(graph, control, evaluation, tree, view)));
+  for (std::size_t i = 0; i < tree.expressions.size(); ++i) {
+    if (!std::holds_alternative<ConditionalExpr>(tree.expressions[i].expression)) continue;
+    auto wrong = tree;
+    auto& conditional = std::get<ConditionalExpr>(wrong.expressions[i].expression);
+    std::swap(conditional.consequent, conditional.alternate);
+    Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation, wrong, view)));
+    break;
+  }
   if (!regions.empty()) {
     auto wrong_operator = tree;
     bool composed = false;
@@ -176,7 +214,7 @@ void CallArguments() {
     const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
     auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
     TreeCheckBudget budget({});
-    const auto logicals = FindLogicalExpressions(graph, control, evaluation, budget);
+    const auto logicals = FindSelectionExpressions(graph, control, evaluation, budget);
     Check(logicals.size() == 1);
     Check(logicals.front().operation == (negate ? TreeLogical::kAnd : TreeLogical::kOr));
     // The native argument and the earlier callee now share a verified effect
@@ -277,11 +315,11 @@ void SelectionBudget() {
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
   auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
   TreeCheckBudget budget({});
-  Check(FindLogicalExpressions(graph, control, evaluation, budget).size() == 201);
+  Check(FindSelectionExpressions(graph, control, evaluation, budget).size() == 201);
   for (const bool bytes : {false, true}) {
     TreeCheckBudget limited({budget.Bytes() - (bytes ? 1 : 0), budget.Work() - (bytes ? 0 : 1)});
     bool rejected = false;
-    try { static_cast<void>(FindLogicalExpressions(graph, control, evaluation, limited)); }
+    try { static_cast<void>(FindSelectionExpressions(graph, control, evaluation, limited)); }
     catch (TreeStructureError error) {
       rejected = true;
       Check(error == (bytes ? TreeStructureError::kResourceLimit : TreeStructureError::kWorkLimit));
@@ -290,7 +328,7 @@ void SelectionBudget() {
   }
   evaluation.operations.clear();
   TreeCheckBudget fresh({});
-  Check(FindLogicalExpressions(graph, control, evaluation, fresh).empty());
+  Check(FindSelectionExpressions(graph, control, evaluation, fresh).empty());
 }
 void PhiInputs() {
   using namespace analysis;
@@ -362,6 +400,23 @@ int main(int argc, char** argv) {
   Check(std::holds_alternative<CallPlanError>(buffered_binding));
   Check(std::get<CallPlanError>(buffered_binding) == CallPlanError::kReference);
   Check(!Source(BufferedOptionalAccess(true, false)).empty());
+  for (unsigned count : {2U, 3U, 200U, 201U}) {
+    const auto text = Source(ConditionalDiamond(false, count));
+    std::size_t found = 0, offset = 0;
+    while ((offset = text.find(" ? ", offset)) != std::string::npos) { ++found; offset += 3; }
+    Check(found == count);
+  }
+  const auto uncontracted = Source(ConditionalDiamond(false, 1, true));
+  Check(uncontracted.find("debugger;") != std::string::npos && uncontracted.find(" ? ") == std::string::npos);
+  const auto raw_predicate = ConditionalDiamond(false, 1, false, true);
+  const auto raw_control = std::get<ControlPlan>(BuildControlPlan(raw_predicate));
+  const auto raw_evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(raw_predicate));
+  TreeCheckBudget raw_budget({});
+  Check(FindSelectionExpressions(raw_predicate, raw_control, raw_evaluation, raw_budget).empty());
+  Check(!Source(ConditionalCall(true)).empty());
+  Check(!Source(ConditionalCall(false)).empty());
+  Check(Source(ConditionalDiamond()).find(" ? ") != std::string::npos);
+  Check(Source(ConditionalDiamond(true)).find(" ? ") != std::string::npos);
   Check(!Source(BufferedOptionalAccess()).empty());
   const auto optional = OptionalAccess();
   Check(optional.cfg_revision.value == 1);
@@ -383,7 +438,7 @@ int main(int argc, char** argv) {
               << "," << Source(CallDiamond(false, false)) << "," << Source(CallDiamond(true, false))
               << "," << Source(CallDiamond(false, false, false, true))
               << "," << Source(CallDiamond(true, false, false, true))
-              << "," << Source(CallDiamond(false, true)) << "," << Source(CallDiamond(true, true)) << "," << Source(optional) << "," << Source(OptionalAccess(false, 2)) << "," << Source(BufferedOptionalAccess()) << "," << Source(BufferedOptionalAccess(true, false)) << "]\n";
+              << "," << Source(CallDiamond(false, true)) << "," << Source(CallDiamond(true, true)) << "," << Source(optional) << "," << Source(OptionalAccess(false, 2)) << "," << Source(BufferedOptionalAccess()) << "," << Source(BufferedOptionalAccess(true, false)) << "," << Source(ConditionalDiamond()) << "," << Source(ConditionalDiamond(true)) << "," << Source(ConditionalCall(true)) << "," << Source(ConditionalCall(false)) << "]\n";
     return 0;
   }
   for (const bool negate : {false, true}) for (const bool direct : {false, true}) {

@@ -32,7 +32,7 @@ class ForestBuilder {
                 const EvaluationPlan& evaluation, FunctionOwnerId owner,
                 ExpressionConstants constants, analysis::SemanticBudget budget,
                 BindingPlan bindings, std::span<const ModuleSymbol> modules, RecoveryMode recovery,
-                std::span<const std::u16string> names, std::span<const LogicalRegion> logicals)
+                std::span<const std::u16string> names, std::span<const SelectionRegion> logicals)
       : graph_(graph), evaluation_(evaluation), owner_(owner), constants_(constants),
         budget_(budget), bytes_(budget.bytes), work_(budget.work), modules_(modules), recovery_(recovery), names_(names), logicals_(logicals) {
     Require(bindings.allocated_bytes <= bytes_, Error::kResourceLimit);
@@ -67,7 +67,8 @@ class ForestBuilder {
           Require(join < graph_.ops.size() && !logical_joins[join], Error::kOwnership);
           logical_joins[join] = static_cast<std::size_t>(&region - logicals_.data());
         }
-        predicates[region.boolean.value] = predicates[region.branch.value] = 1;
+        if (!region.consequent) predicates[region.boolean.value] = 1;
+        predicates[region.branch.value] = 1;
         selected_edges[region.keep_input.value] = selected_edges[region.evaluate_input.value] = 1;
       }
     }
@@ -359,7 +360,7 @@ class ForestBuilder {
   }
 
  private:
-  void Logical(const LogicalRegion& region) {
+  void Logical(const SelectionRegion& region) {
     Step();
     const TreeOriginId boolean_origin{graph_.ops[region.boolean.value].origin.value};
     const TreeOriginId branch_origin{graph_.ops[region.branch.value].origin.value};
@@ -367,8 +368,17 @@ class ForestBuilder {
     const auto right = std::get<analysis::ValueId>(region.right);
     const auto producer = std::get<analysis::OpResult>(graph_.values[right.value].origin).op;
     Require(forest_.operations[producer.value].has_value(), Error::kOwnership);
-    const auto expression = Combine(Add(LogicalExpr{region.operation, left, *forest_.operations[producer.value]}, boolean_origin), branch_origin);
-    forest_.operations[region.boolean.value] = expression;
+    std::optional<ExprId> consequent;
+    if (region.consequent) {
+      const auto value = std::get<analysis::ValueId>(*region.consequent);
+      const auto source = std::get<analysis::OpResult>(graph_.values[value.value].origin).op;
+      Require(forest_.operations[source.value].has_value(), Error::kOwnership);
+      consequent = forest_.operations[source.value];
+    }
+    const auto expression = consequent
+        ? Add(ConditionalExpr{left, *consequent, *forest_.operations[producer.value]}, branch_origin)
+        : Combine(Add(LogicalExpr{region.operation, left, *forest_.operations[producer.value]}, boolean_origin), branch_origin);
+    if (!region.consequent) forest_.operations[region.boolean.value] = expression;
     if (evaluation_.operations[region.branch.value].kind == EvaluationKind::kLogicalValue) {
       forest_.operations[region.branch.value] = expression;
       return;
@@ -792,13 +802,13 @@ class ForestBuilder {
   std::size_t next_module_ = 0;
   RecoveryMode recovery_;
   std::span<const std::u16string> names_;
-  std::span<const LogicalRegion> logicals_;
+  std::span<const SelectionRegion> logicals_;
 };
 std::variant<ExpressionForest, ExpressionError> BuildForest(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, FunctionOwnerId owner,
     ExpressionConstants constants, analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules,
-    EvaluationFlow flow, RecoveryMode recovery, std::span<const std::u16string> names, std::span<const LogicalRegion> logicals) {
+    EvaluationFlow flow, RecoveryMode recovery, std::span<const std::u16string> names, std::span<const SelectionRegion> logicals) {
   auto bindings = flow == EvaluationFlow::kNormal ? BuildBindingPlan(graph, evaluation, parameter_count, budget)
       : BuildPhasedBindingPlan(graph, evaluation, parameter_count, budget);
   if (const auto* error = std::get_if<BindingError>(&bindings)) {
@@ -818,14 +828,14 @@ std::variant<ExpressionForest, ExpressionError> BuildExpressionForest(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, FunctionOwnerId owner, ExpressionConstants constants,
     analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules, RecoveryMode recovery,
-    std::span<const std::u16string> names, std::span<const LogicalRegion> logicals) {
+    std::span<const std::u16string> names, std::span<const SelectionRegion> logicals) {
   return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kNormal, recovery, names, logicals);
 }
 std::variant<ExpressionForest, ExpressionError> BuildPhasedExpressionForest(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, FunctionOwnerId owner, ExpressionConstants constants,
     analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules, RecoveryMode recovery,
-    std::span<const std::u16string> names, std::span<const LogicalRegion> logicals) {
+    std::span<const std::u16string> names, std::span<const SelectionRegion> logicals) {
   return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kPhased, recovery, names, logicals);
 }
 }  // namespace abcd::source
