@@ -5,7 +5,7 @@ namespace abcd::source {
 namespace {
 using Error = DerivedProjectionError;
 void Require(bool condition, Error error) { if (!condition) throw error; }
-enum class State : std::uint8_t { kUnseen, kActive, kOther, kUndefined, kSuper };
+enum class State : std::uint8_t { kUnseen, kActive, kOther, kUndefined, kSuper, kConstructor };
 }
 std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
     const FileFunction& function, const FunctionContext& owner, analysis::SemanticBudget budget) {
@@ -13,8 +13,23 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
   try {
     Require(owner.Callable() == CallableKind::kDerivedConstructor && owner.ConstructorSite() &&
         function.input.MatchesOwner(owner) && function.frame == owner.Frame(), Error::kOwner);
-    const auto proof = ProveRangeDerivedConstructor(function.body, function.frame,
-        {budget.bytes, budget.work}, function.input.Identity().profile);
+    bool spread = false;
+    for (const auto& instruction : function.input.Input().instructions)
+      spread |= std::holds_alternative<SuperSpread>(instruction.operation);
+    // Select from the actual protocol, never retry a failed range proof under
+    // a more permissive form. Both share normal-flow initialization analysis.
+    const auto proof = [&]() -> std::variant<abc::CodeOffset, DerivedConstructorError> {
+      if (spread) {
+        const auto checked = ProveSpreadDerivedConstructor(function.body, function.frame,
+            {budget.bytes, budget.work}, function.input.Identity().profile);
+        if (const auto* error = std::get_if<DerivedConstructorError>(&checked)) return *error;
+        return std::get<SpreadDerivedConstructor>(checked).super_pc;
+      }
+      const auto checked = ProveRangeDerivedConstructor(function.body, function.frame,
+          {budget.bytes, budget.work}, function.input.Identity().profile);
+      if (const auto* error = std::get_if<DerivedConstructorError>(&checked)) return *error;
+      return std::get<RangeDerivedConstructor>(checked).super_pc;
+    }();
     if (const auto* error = std::get_if<DerivedConstructorError>(&proof))
       throw *error == DerivedConstructorError::kResourceLimit ? Error::kResourceLimit : Error::kProtocol;
     Require(budget.bytes >= sizeof(DerivedProjection), Error::kResourceLimit);
@@ -37,7 +52,7 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
     for (std::size_t i = 0; i < input.instructions.size(); ++i) {
       step();
       const auto& original = input.instructions[i];
-      if (original.pc != std::get<RangeDerivedConstructor>(proof).super_pc) continue;
+      if (original.pc != std::get<abc::CodeOffset>(proof)) continue;
       Require(graph.input.sites[i].has_value(), Error::kOrigin);
       result.call = *graph.input.sites[i]; found = true; break;
     }
@@ -56,6 +71,7 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
         // receiver. This is an owner premise, never a general ABI inference.
         if (const auto* entry = std::get_if<EntryDefinition>(&value.origin)) {
           if (std::holds_alternative<ReceiverEntry>(*entry)) state = State::kUndefined;
+          else if (std::holds_alternative<CallableEntry>(*entry)) state = State::kConstructor;
           break;
         }
         const auto* origin = std::get_if<OpResult>(&value.origin);
@@ -84,7 +100,8 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
       step(); const auto& original = input.instructions[i];
       const auto* check = std::get_if<SuperCheck>(&original.operation);
       const auto* call = std::get_if<SuperRange>(&original.operation);
-      if (!check && !call) continue;
+      const auto* spread_call = std::get_if<SuperSpread>(&original.operation);
+      if (!check && !call && !spread_call) continue;
       Require(graph.input.sites[i].has_value(), Error::kOrigin);
       const auto id = *graph.input.sites[i]; Require(id.value < graph.ops.size(), Error::kOrigin);
       const auto& op = graph.ops[id.value];
@@ -98,6 +115,19 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
         const auto* current = std::get_if<ValueSuperCall>(&op.operation);
         Require(id == result.call && current && current->arguments == call->count &&
             current->cache_slot == call->cache_slot && op.result && op.use_count == call->count, Error::kOrigin);
+      } else if (spread_call) {
+        const auto* current = std::get_if<ValueSuperSpread>(&op.operation);
+        Require(id == result.call && current && current->cache_slot == spread_call->cache_slot &&
+            op.result && op.use_count == 2 && op.first_use.value <= graph.uses.size() &&
+            graph.uses.size() - op.first_use.value >= 2, Error::kOrigin);
+        const auto& constructor = graph.uses[op.first_use.value];
+        const auto& array = graph.uses[op.first_use.value + 1];
+        Require(constructor.life == ValueLife::kLive && array.life == ValueLife::kLive &&
+            constructor.owner == decltype(constructor.owner){id} &&
+            array.owner == decltype(array.owner){id} &&
+            constructor.role == OperandRole::kConstructor && array.role == OperandRole::kInput &&
+            constructor.purpose == ReadPurpose::kOperand && array.purpose == ReadPurpose::kOperand &&
+            classify(constructor.operand) == State::kConstructor, Error::kOperand);
       } else {
         const auto* current = std::get_if<ValueSuperCheck>(&op.operation);
         Require(current && current->kind == check->kind && !op.result && op.use_count == 1 &&

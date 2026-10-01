@@ -17,6 +17,7 @@ enum class Origin : std::uint8_t {
   kBottom,
   kUndefined,
   kSuperResult,
+  kCurrentConstructor,
   kOther
 };
 struct Node {
@@ -55,17 +56,25 @@ bool DominatesInstruction(const DominatorTree& tree,
   return source == target ? first <= later
                           : tree.Dominates(source, target);
 }
-}  // namespace
-
-RangeDerivedConstructorResult ProveRangeDerivedConstructor(
+enum class CallForm { kRange, kSpread };
+using InitializationResult = std::variant<abc::CodeOffset, DerivedConstructorError>;
+InitializationResult ProveInitialization(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
     DerivedConstructorBudget budget, abc::ProfileId profile,
-    std::span<const CapturePreservation> preserved) {
+    std::span<const CapturePreservation> preserved, CallForm form) {
   using Error = DerivedConstructorError;
   if (!frame.function || !frame.new_target || !frame.this_value ||
       frame.registers < frame.locals ||
       frame.this_value->value >= frame.registers ||
       frame.this_value->value < frame.locals)
+    return Error::kFrame;
+  if (form == CallForm::kSpread &&
+      (frame.function->value >= frame.registers ||
+       frame.function->value < frame.locals ||
+       frame.new_target->value >= frame.registers ||
+       frame.new_target->value < frame.locals ||
+       frame.function == frame.this_value ||
+       frame.function == frame.new_target || frame.new_target == frame.this_value))
     return Error::kFrame;
   if (body.instructions.empty() || !body.tries.empty() ||
       !body.handlers.empty())
@@ -81,7 +90,8 @@ RangeDerivedConstructorResult ProveRangeDerivedConstructor(
         site.branch_target->value <= site.offset.value)
       return Error::kControlFlow;
     const auto lifted = LiftSuperInstruction(site.decoded, frame.registers);
-    if (std::holds_alternative<SuperRange>(lifted)) {
+    if ((form == CallForm::kRange && std::holds_alternative<SuperRange>(lifted)) ||
+        (form == CallForm::kSpread && std::holds_alternative<SuperSpread>(lifted))) {
       if (super_index) return Error::kInstruction;
       super_index = i;
     } else if (std::holds_alternative<SuperCheck>(lifted)) {
@@ -223,8 +233,9 @@ RangeDerivedConstructorResult ProveRangeDerivedConstructor(
       auto& node = nodes[i];
       if (std::holds_alternative<MethodEntry>(value.origin)) {
         const auto* reg = std::get_if<abc::RegisterId>(&value.slot);
-        node.origin = reg && *reg == *frame.this_value
-                          ? Origin::kUndefined : Origin::kOther;
+        node.origin = reg && *reg == *frame.this_value ? Origin::kUndefined
+                    : reg && *reg == *frame.function ? Origin::kCurrentConstructor
+                                                    : Origin::kOther;
         continue;
       }
       if (std::holds_alternative<PhiValue>(value.origin)) {
@@ -322,6 +333,17 @@ RangeDerivedConstructorResult ProveRangeDerivedConstructor(
         pending.push_back(targets[edge]);
       }
     }
+    // Spread's acc is an explicit current-constructor operand. Prove its
+    // original SSA identity through copies/phis rather than assuming any
+    // callable invokes this class's parent. Argument expansion is separate.
+    if (form == CallForm::kSpread) {
+      const auto reads = ssa.Reads(InstructionId{static_cast<std::uint32_t>(*super_index)});
+      if (reads.size() != 2 || reads[0].ordinal != 0 ||
+          reads[0].value.value >= register_count ||
+          !std::holds_alternative<Accumulator>(ssa.Values()[reads[0].value.value].slot) ||
+          nodes[reads[0].value.value].origin != Origin::kCurrentConstructor)
+        return Error::kValue;
+    }
     for (std::size_t i = 0; i < body.instructions.size(); ++i) {
       const auto checked = LiftSuperInstruction(
           body.instructions[i].decoded, frame.registers);
@@ -337,11 +359,28 @@ RangeDerivedConstructorResult ProveRangeDerivedConstructor(
            input != Origin::kSuperResult))
         return Error::kGuard;
     }
-    return RangeDerivedConstructor{body.instructions[*super_index].offset};
+    return body.instructions[*super_index].offset;
   } catch (const std::bad_alloc&) {
     return Error::kResourceLimit;
   } catch (const std::length_error&) {
     return Error::kResourceLimit;
   }
+}
+}  // namespace
+RangeDerivedConstructorResult ProveRangeDerivedConstructor(
+    const abc::MethodBody& body, const abc::FrameLayout& frame,
+    DerivedConstructorBudget budget, abc::ProfileId profile,
+    std::span<const CapturePreservation> preserved) {
+  const auto result = ProveInitialization(body, frame, budget, profile, preserved, CallForm::kRange);
+  if (const auto* error = std::get_if<DerivedConstructorError>(&result)) return *error;
+  return RangeDerivedConstructor{std::get<abc::CodeOffset>(result)};
+}
+SpreadDerivedConstructorResult ProveSpreadDerivedConstructor(
+    const abc::MethodBody& body, const abc::FrameLayout& frame,
+    DerivedConstructorBudget budget, abc::ProfileId profile,
+    std::span<const CapturePreservation> preserved) {
+  const auto result = ProveInitialization(body, frame, budget, profile, preserved, CallForm::kSpread);
+  if (const auto* error = std::get_if<DerivedConstructorError>(&result)) return *error;
+  return SpreadDerivedConstructor{std::get<abc::CodeOffset>(result)};
 }
 }  // namespace abcd::analysis

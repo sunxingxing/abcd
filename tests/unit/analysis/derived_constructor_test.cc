@@ -132,6 +132,69 @@ int main() {
       kReturn};
   const auto field_proof = analysis::ProveSpreadFieldDerivedConstructor(
       Body(field_constructor), rest_frame);
+  // The shared sparse initialization proof admits real spread protocol and
+  // arbitrary trailing effects; the old range API must retain its restriction.
+  const auto spread_proof = analysis::ProveSpreadDerivedConstructor(
+      Body(field_constructor), rest_frame);
+  Check(std::holds_alternative<analysis::SpreadDerivedConstructor>(spread_proof));
+  Check(std::get<analysis::SpreadDerivedConstructor>(spread_proof).super_pc.value == 18);
+  Check(std::get<analysis::DerivedConstructorError>(
+      analysis::ProveRangeDerivedConstructor(Body(field_constructor), rest_frame)) ==
+      analysis::DerivedConstructorError::kInstruction);
+  auto wrong_constructor = field_constructor;
+  wrong_constructor[17] = 1;  // LDA newTarget, not the current constructor.
+  Check(std::get<analysis::DerivedConstructorError>(
+      analysis::ProveSpreadDerivedConstructor(Body(wrong_constructor), rest_frame)) ==
+      analysis::DerivedConstructorError::kValue);
+  auto wrong_guard = field_constructor;
+  wrong_guard[27] = kRequireInitialized;
+  Check(std::get<analysis::DerivedConstructorError>(
+      analysis::ProveSpreadDerivedConstructor(Body(wrong_guard), rest_frame)) ==
+      analysis::DerivedConstructorError::kGuard);
+  auto invalid_frame = rest_frame;
+  invalid_frame.new_target = invalid_frame.function;
+  Check(std::get<analysis::DerivedConstructorError>(
+      analysis::ProveSpreadDerivedConstructor(Body(field_constructor), invalid_frame)) ==
+      analysis::DerivedConstructorError::kFrame);
+  invalid_frame.new_target = abc::RegisterId{invalid_frame.registers};
+  Check(std::get<analysis::DerivedConstructorError>(
+      analysis::ProveSpreadDerivedConstructor(Body(field_constructor), invalid_frame)) ==
+      analysis::DerivedConstructorError::kFrame);
+  auto duplicate = field_constructor;
+  duplicate.insert(duplicate.end() - 1, {kLoad, 0, 0xb9, 0, 5});
+  Check(std::get<analysis::DerivedConstructorError>(
+      analysis::ProveSpreadDerivedConstructor(Body(duplicate), rest_frame)) ==
+      analysis::DerivedConstructorError::kInstruction);
+  for (const std::size_t count : {1U, 2U, 200U, 201U, 400U, 800U}) {
+    auto copies = field_constructor;
+    // Shared constructor identity survives real accumulator/register copies.
+    for (std::size_t i = 0; i < count; ++i)
+      copies.insert(copies.begin() + 18, {kStore, 0, kLoad, 0});
+    Check(std::holds_alternative<analysis::SpreadDerivedConstructor>(
+        analysis::ProveSpreadDerivedConstructor(Body(copies), rest_frame)));
+  }
+  auto joined_code = field_constructor;
+  joined_code.erase(joined_code.begin() + 16, joined_code.begin() + 18);
+  const std::vector<std::uint8_t> fork{
+      kLoad, 3, static_cast<std::uint8_t>(abc::Opcode::kJEQZ_IMM8), 6,
+      kLoad, 0, static_cast<std::uint8_t>(abc::Opcode::kJMP_IMM8), 4,
+      kLoad, 0};
+  joined_code.insert(joined_code.begin() + 16, fork.begin(), fork.end());
+  const auto branch_body = [&](const std::vector<std::uint8_t>& code) {
+    auto body = Body(code);
+    for (auto& instruction : body.instructions) {
+      if (instruction.offset.value == 18) instruction.branch_target = abc::CodeOffset{24};
+      if (instruction.offset.value == 22) instruction.branch_target = abc::CodeOffset{26};
+    }
+    return body;
+  };
+  // Equal origins join; a single newTarget incoming value poisons the phi.
+  Check(std::holds_alternative<analysis::SpreadDerivedConstructor>(
+      analysis::ProveSpreadDerivedConstructor(branch_body(joined_code), rest_frame)));
+  joined_code[25] = 1;
+  Check(std::get<analysis::DerivedConstructorError>(
+      analysis::ProveSpreadDerivedConstructor(branch_body(joined_code), rest_frame)) ==
+      analysis::DerivedConstructorError::kValue);
   const auto* fields =
       std::get_if<analysis::SpreadFieldDerivedConstructor>(&field_proof);
   Check(fields && fields->writes.size() == 1 &&

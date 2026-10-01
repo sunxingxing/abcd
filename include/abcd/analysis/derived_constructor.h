@@ -115,6 +115,20 @@ using RangeDerivedConstructorResult =
     DerivedConstructorBudget budget = {},
     abc::ProfileId profile = abc::ProfileId::kDynamic1301,
     std::span<const CapturePreservation> preserved = {});
+struct SpreadDerivedConstructor {
+  abc::CodeOffset super_pc;
+};
+using SpreadDerivedConstructorResult =
+    std::variant<SpreadDerivedConstructor, DerivedConstructorError>;
+// Same sparse normal-flow initialization proof as range calls, additionally
+// proving the explicit acc operand is this invocation's current constructor.
+// Does not authorize native spread: argument-array expansion, parent runtime
+// brand, newTarget and source parameter recovery retain their own obligations.
+[[nodiscard]] SpreadDerivedConstructorResult ProveSpreadDerivedConstructor(
+    const abc::MethodBody& body, const abc::FrameLayout& frame,
+    DerivedConstructorBudget budget = {},
+    abc::ProfileId profile = abc::ProfileId::kDynamic1301,
+    std::span<const CapturePreservation> preserved = {});
 }  // namespace abcd::analysis
 
 #endif  // ABCD_ANALYSIS_DERIVED_CONSTRUCTOR_H_

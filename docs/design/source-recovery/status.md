@@ -12,6 +12,32 @@
 
 ## 当前阶段
 
+### 2026-10-01：spread-super 初始化分析接入共同函数族投影
+
+- 修复恢复时未提交代码的SSA读取字段错误；range与spread调用复用已有正常流
+  支配、寄存器/局部SSA和稀疏来源传播。spread额外检查当前构造器ABI槽身份；
+  原range入口仍拒绝spread，不改变旧调用者合同。等同构造器来源phi可合并，
+  混入newTarget、错误初始化guard、重复super及无效ABI槽均拒绝。
+- ProjectDerivedConstructor从实际原始协议选择分析，并独立检查当前工作图的
+  callable来源、两个用途及其owner、cache、效果与三个初始化guard输入。
+  已进入现有BuildFileFamilyTrees调用路径，没有专用样本writer；工作phi的
+  接受域未扩大，数组展开及父类品牌也未被初始化事实代替。
+- 新增真实pasteboard EntryAbility创建点/构造器5083集成测试，PC18的spread
+  初始化投影及全部3个guard通过；构造器操作数、数组角色、cache、guard输入与
+  guard覆盖篡改均拒绝。临时使用HEAD旧投影构建同一测试，确实在kProtocol失败
+  （退出-6），恢复实现后通过；/tmp/abcd-spread-projection-baseline-test.log。
+- 原始解码回归覆盖1/2/200/201/400/800构造器copy、同源与混合phi以及旧range
+  限制。3项定向回归全部通过，1.81秒，包含既有完整range构造器源码测试；
+  /tmp/abcd-spread-projection-final-tests.log。生产与测试构建退出0，
+  /tmp/abcd-spread-projection-restored-build.log；全量/RSS/基准未恢复。
+- 五输入导出 build/stage-one/value-spread-projection-pass-1 均退出0，维持
+  **47 complete / 59 failure / 46 no-module**，无完整项退化、无legacy writer；
+  /tmp/abcd-spread-projection-batch-summary.json。EntryAbility record4767仍为
+  tree_stage不完整，/tmp/abcd-spread-projection-entryability-record.json。
+- 下一阻塞仍是共同EvaluationShape/展开数组AST、真实参数恢复及父类运行时品牌
+  合同；当前明确拒绝ValueSuperSpread源码，不能据初始化投影宣布构造器、整个
+  record或阶段一完成。语义和配对源码表示验收仍开放，Goal保持active。
+
 ### 2026-10-01：SUPERCALLSPREAD 贯通共同语义与值导入
 
 - 五输入中的多个Ability类原在隐式派生构造器PC18拒绝SUPERCALLSPREAD。

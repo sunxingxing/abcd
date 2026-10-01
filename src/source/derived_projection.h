@@ -13,7 +13,9 @@ enum class DerivedProjectionError : std::uint8_t {
 };
 // Same verified input/work pair, with a genuine derived creation owner. Reprove
 // original initialization and check actual working guard inputs before allowing
-// a source consumer to omit them. This does not authorize heritage emission,
+// a source consumer to omit them. Range and spread share initialization; spread
+// also requires the actual working callable operand to be this invocation's
+// constructor. This does not authorize spread-array expansion, heritage emission,
 // receiver substitution, or changing constructor returns. Caller admits the
 // retained input/work pair; original proof and projection use separate bounded
 // passes with disjoint scratch and the supplied per-pass work limit.

@@ -79,6 +79,17 @@ HomeObjectOwner、参数和 body。构造器是 CallableKind 的一种，不开�
 - 捕获的值域为 language 并不证明捕获值恒等于 this。捕获替换需 identity 和写入证明。
 - 保留 v7 super range 的限制；原有 Proxy 前提拒绝不能通过普通 `super(...args)` 掩盖。
 
+共同派生构造器初始化分析现同时支持 range 和 spread 的单次正常调用协议。
+spread 另以原始寄存器/局部 SSA 的稀疏来源传播证明 acc 是本次调用的当前构造器；
+错误 newTarget、混合来源 phi、重复调用、错误 guard、回边和异常区域继续拒绝。
+旧 range 接口仍只接受 range。ProjectDerivedConstructor 按实际原始协议选择分析，
+并重新核对当前工作图的 callable 身份、构造器/数组用途、cache 元数据、效果与
+guard 输入；该结果已接入既有函数族构建入口。原始分析可合并等同来源的 phi，
+当前工作投影仅跟随已有纯 copy，未扩大工作 phi 接受域。
+初始化事实不授权数组展开或 native super spread；父类运行时品牌、newTarget、
+源码参数和数组展开仍须各自满足既有合同。目前 EvaluationShape 仍拒绝
+ValueSuperSpread，真实 EntryAbility 的初始化投影通过不等于构造器源码完成。
+
 ### 2.4 Cell 与 scope
 
 复用 LocalAccessPlan、初始化证明、CreationBinding 的逐创建点 rebasing。

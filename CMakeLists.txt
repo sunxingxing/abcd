@@ -881,6 +881,12 @@ if(BUILD_TESTING)
   add_test(NAME created_members_scale_test COMMAND created_members_scale_test)
   add_executable(class_initializer_file_test tests/integration/class_initializer_file.cc)
   target_link_libraries(class_initializer_file_test PRIVATE abcd_source abcd_corpus)
+  add_executable(spread_derived_projection_test tests/integration/spread_derived_projection.cc)
+  target_link_libraries(spread_derived_projection_test PRIVATE abcd_source abcd_corpus)
+  if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
+    add_test(NAME spread_derived_projection_test COMMAND spread_derived_projection_test
+      "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
+  endif()
   if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
     add_test(NAME class_initializer_file_test COMMAND class_initializer_file_test
       "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
