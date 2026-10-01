@@ -364,8 +364,10 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     for (const auto& name : lexical_names) lexical_views.push_back(name);
     std::sort(lexical_views.begin(), lexical_views.end());
     class_scope.record_bindings = lexical_views;
-    // No embedding globals have been established by this record adapter yet.
-    const auto globals = VerifyTreeGlobals(result->tree, nullptr, {budget.bytes});
+    // The emitted ESM shares this complete import/local enclosure with its
+    // classes and nested functions. Check free names against it as well;
+    // missing realm/intrinsic bindings still fail their existing checks.
+    const auto globals = VerifyTreeGlobals(result->tree, &class_scope, {budget.bytes});
     if (!std::holds_alternative<TreeGlobals>(globals)) return fail(Error::kValue);
     std::optional<ConstructedFamily> module_family;
     if (!children.empty()) {

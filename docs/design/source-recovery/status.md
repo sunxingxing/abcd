@@ -12,6 +12,35 @@
 
 ## 当前阶段
 
+### 2026-10-01：模块入口全局上下文贯通，新增七个完整 record
+
+- BuildRecordTree 对入口自由全局名复用已建立的完整模块作用域：imports、模块
+  locals、入口词法声明与类/子函数采用同一 enclosure；不再把 nullptr 传给
+  VerifyTreeGlobals。未虚构 realm/Symbol/arguments 宿主能力，既有名称和遮蔽
+  检查保留；无新增宿主前提、白名单或样本特判。
+- 动态ABC模块回归新增未被遮蔽的全局读取，以及与import/local同名的拒绝规格。
+  先观察 record error 6 红例（/tmp/abcd-record-global-red-test.log）。独立模块
+  行为对照覆盖全局getter、副作用顺序、undefined/null/对象值、抛出对象身份和
+  缺失名称 ReferenceError；Node contextified global 抛异常时会重试getter，故
+  对比两份独立程序在同环境的trace，未把宿主模拟行为当成Ark规范。
+- 完整Index record9572首次通过共同函数族、原生extends、全部成员和模块入口
+  输出。新增 index_record_source_test 通过ABC-only正式工具取得整份源码后，
+  才在独立Node进程读取配对Index.ts并去类型，36组整模块/构造器/成员行为对照
+  通过：导入顺序、路由注册、finalize存在/补充两种情况、原型链、new.target、
+  属性访问器、路径跳转、依赖清理及异常身份。原initialRender720组和NavPageMap
+  定向测试继续通过；这些均为受控框架证据，不是设备/整App验收。
+- 13项相关测试通过（11.48秒），日志/tmp/abcd-record-global-final-tests.log；
+  构建日志/tmp/abcd-record-global-final-build.log。未执行全量测试/RSS/基准。
+- 五输入正式导出 build/stage-one/value-record-global-pass-1：Immersive19/16/10，
+  MultiCommunity20/25/9，pasteboard1/9/9，Push模块1/14/9，widgets0/1/9
+  （依次complete/failure/no-module），合计41/65/46，无完整项退化或legacy writer。
+  新增9572、11285、15128、15617、39704、40430、7313，均通过Node语法检查；
+  汇总/tmp/abcd-record-global-batch-summary.json。source_complete是源码恢复状态，
+  不等同于语义/风格已全面验收，正式工具仍明确 executable=false。
+- Index输出仍有空分支、多余布尔翻转和临时变量；风格验收未完成。其他65个失败
+  record仍需贯通，例如ShoppingAvoid11877报告unproved/tree_stage。阶段一Goal
+  保持开放，继续共同功能恢复与独立配对验收，不转入更大corpus。
+
 ### 2026-10-01：共同 ClassExpr 贯通原生继承表达式
 
 - ClassExpr 将 heritage 作为外层 FunctionTree 拥有的表达式，沿用共同求值顺序、

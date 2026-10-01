@@ -980,6 +980,9 @@ if(BUILD_TESTING)
       add_test(NAME navmap_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/navmap.mjs $<TARGET_FILE:class_initializer_file_test>
         ${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc)
+      add_test(NAME index_record_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/index_record.mjs $<TARGET_FILE:abc_semantic>
+        ${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc)
       add_test(NAME initial_render_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/initial_render.mjs $<TARGET_FILE:class_initializer_file_test>
         ${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc)

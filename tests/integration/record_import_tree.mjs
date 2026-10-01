@@ -21,9 +21,16 @@ mutate();
 answer = input;
 export {answer, answer as answerAlias, snapshot};
 `;
-async function setup(source, {cycle = false, defaultExport = true, initial = 42} = {}) {
+async function setup(source, {cycle = false, defaultExport = true, initial = 42, external} = {}) {
   const trace = [];
-  const context = vm.createContext({trace});
+  const context = vm.createContext({trace, externalCase: external});
+  // Define the accessor inside the realm: contextified host accessors can
+  // convert a thrown getter into a missing-binding ReferenceError in Node.
+  if (external) vm.runInContext(`Object.defineProperty(globalThis, 'external', {get() {
+    trace.push('external');
+    if (externalCase.failure) throw externalCase.failure;
+    return externalCase.value;
+  }})`, context);
   const create = (body, identifier) => new vm.SourceTextModule(body, {context, identifier});
   const root = create(source, './root.mjs');
   const dependency = create(`
@@ -116,3 +123,26 @@ for (const mode of ['--function', '--capture', '--local-function', '--class-func
     await assert.rejects(cyclic.root.evaluate(), {name: 'ReferenceError'});
   }
 }
+
+const globalSource = execFileSync(process.argv[2], ['--global'], {encoding: 'utf8'});
+const globalReference = reference.replace('let answer = input;', 'external;\nlet answer = input;');
+const throwingGlobalTraces = [];
+for (const source of [globalSource, globalReference]) {
+  for (const value of [undefined, null, 42, {}]) {
+    const {root, trace} = await setup(source, {external: {value}});
+    await root.evaluate();
+    assert.deepEqual(trace, ['side', 'dep', 'star', 'external', 'mutate']);
+    assert.equal(root.namespace.answer, 43);
+  }
+  const failure = {};
+  const throwing = await setup(source, {external: {failure}});
+  await assert.rejects(throwing.root.evaluate(), error => error === failure);
+  throwingGlobalTraces.push(throwing.trace);
+  assert.equal(throwing.trace.includes('mutate'), false);
+  const missing = await setup(source);
+  await assert.rejects(missing.root.evaluate(), {name: 'ReferenceError'});
+  assert.deepEqual(missing.trace, ['side', 'dep', 'star']);
+}
+// Node's contextified global lookup can retry an accessor that throws;
+// compare the two independent programs in the same realm implementation.
+assert.deepEqual(throwingGlobalTraces[0], throwingGlobalTraces[1]);

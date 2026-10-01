@@ -21,10 +21,11 @@ using namespace abcd;
 void Check(bool value, std::source_location at = std::source_location::current()) {
   if (!value) { std::cerr << "check failed at " << at.line() << '\n'; std::abort(); }
 }
-enum class FixtureCase { kValid, kBindingCollision, kExportCollision, kBranch, kArmStore, kFunction, kCapture, kLocalFunction, kClassFunction, kClassCapture };
+enum class FixtureCase { kValid, kBindingCollision, kExportCollision, kBranch, kArmStore, kFunction, kCapture, kLocalFunction, kClassFunction, kClassCapture, kGlobal, kGlobalShadow, kGlobalLocalShadow };
 std::string Recover(FixtureCase mode) {
   constexpr std::uint32_t kTypes = 256, kPool = 272, kRecord = 512,
       kMethod = 600, kChild = 640, kConstructor = 680, kLiteral = 3000, kModule = 1024, kCode = 4096, kChildCode = 5000, kConstructorCode = 6000, kFileBytes = 8192;
+  const bool global = mode == FixtureCase::kGlobal || mode == FixtureCase::kGlobalShadow || mode == FixtureCase::kGlobalLocalShadow;
   const bool family = mode == FixtureCase::kFunction || mode == FixtureCase::kCapture || mode == FixtureCase::kLocalFunction || mode == FixtureCase::kClassFunction || mode == FixtureCase::kClassCapture;
   const bool mixed = mode == FixtureCase::kClassFunction || mode == FixtureCase::kClassCapture;
   const bool captured = mode == FixtureCase::kCapture || mode == FixtureCase::kClassCapture;
@@ -50,6 +51,10 @@ std::string Recover(FixtureCase mode) {
   bytes[kTypes] = 5; // Pinned dynamic i32 record field type.
   const std::array<Name, 4> guards{Name::kInput, Name::kNamespace, Name::kAnswer, Name::kMutate};
   for (std::size_t i = 0; i < guards.size(); ++i) word(kPool + i * sizeof(std::uint32_t), name(guards[i]));
+  if (global) {
+    text(kTextBase + texts.size() * kTextStride, "external");
+    word(kPool + guards.size() * sizeof(std::uint32_t), mode == FixtureCase::kGlobalShadow ? name(Name::kInput) : mode == FixtureCase::kGlobalLocalShadow ? name(Name::kAnswer) : kTextBase + texts.size() * kTextStride);
+  }
   if (family) word(kPool + guards.size() * sizeof(std::uint32_t), kChild);
   if (mixed) {
     word(kPool + 5 * sizeof(std::uint32_t), kConstructor);
@@ -89,6 +94,10 @@ std::string Recover(FixtureCase mode) {
     body.push_back(static_cast<std::uint8_t>(guard)); body.push_back(static_cast<std::uint8_t>(guard >> kByteBits));
   };
   const auto store = [&](std::uint8_t slot) { op(abc::Opcode::kSTMODULEVAR_IMM8); body.push_back(slot); };
+  if (global) {
+    op(abc::Opcode::kTRYLDGLOBALBYNAME_IMM8_ID16);
+    body.insert(body.end(), {0, static_cast<std::uint8_t>(guards.size()), 0});
+  }
   if (mode == FixtureCase::kBranch || mode == FixtureCase::kArmStore) {
     load(false, 0, 0);
     op(abc::Opcode::kJEQZ_IMM8); const auto branch = body.size(); body.push_back(0);
@@ -148,7 +157,7 @@ std::string Recover(FixtureCase mode) {
   abc::Header header; header.kind = abc::AbcKind::kDynamic; header.profile = abc::ProfileId::kDynamic1206;
   header.version = {12, 0, 6, 0}; header.layout = abc::DynamicLayout{}; header.file_size = bytes.size();
   abc::MetadataIndex index;
-  index.regions.push_back({400, 1000, {1, kTypes}, {static_cast<std::uint32_t>(mixed ? 7 : guards.size() + family), kPool}, {}, {}});
+  index.regions.push_back({400, 1000, {1, kTypes}, {static_cast<std::uint32_t>(mixed ? 7 : guards.size() + family + global), kPool}, {}, {}});
   abc::RecordInfo record; record.offset = {kRecord}; record.field_count = 1; record.method_count = mixed ? 3 : family ? 2 : 1;
   index.fields.push_back({{700}, record.offset, {abc::kDynamicHeaderSize}, {}, 0,
       abc::FieldValue{abc::FieldValueEncoding::kSignedLeb, kModule}});
@@ -182,6 +191,10 @@ std::string Recover(FixtureCase mode) {
         budget, nullptr, source::RoutePolicy::kRequireValueTree, nullptr, nullptr, &identity, family ? &creations : nullptr, mixed ? &classes : nullptr);
   };
   auto result = build();
+  if (mode == FixtureCase::kGlobalShadow || mode == FixtureCase::kGlobalLocalShadow) {
+    Check(std::get<source::RecordProgramFailure>(result).kind == source::RecordProgramError::kValue);
+    Check(unlink(path) == 0); return {};
+  }
   if (mode == FixtureCase::kArmStore) {
     Check(std::get<source::RecordProgramFailure>(result).kind == source::RecordProgramError::kInitializer);
     Check(unlink(path) == 0); return {};
@@ -205,9 +218,10 @@ std::string Recover(FixtureCase mode) {
 }
 int main(int argc, char** argv) {
   const std::string_view mode = argc > 1 ? argv[1] : "";
-  const auto source = Recover(mode == "--class-capture" ? FixtureCase::kClassCapture : mode == "--class-function" ? FixtureCase::kClassFunction : mode == "--local-function" ? FixtureCase::kLocalFunction : mode == "--function" ? FixtureCase::kFunction : mode == "--capture" ?
+  const auto source = Recover(mode == "--global" ? FixtureCase::kGlobal : mode == "--class-capture" ? FixtureCase::kClassCapture : mode == "--class-function" ? FixtureCase::kClassFunction : mode == "--local-function" ? FixtureCase::kLocalFunction : mode == "--function" ? FixtureCase::kFunction : mode == "--capture" ?
       FixtureCase::kCapture : argc > 2 ? FixtureCase::kBranch : FixtureCase::kValid);
   Recover(FixtureCase::kClassCapture); Recover(FixtureCase::kClassFunction); Recover(FixtureCase::kFunction); Recover(FixtureCase::kCapture); Recover(FixtureCase::kLocalFunction);
+  Recover(FixtureCase::kGlobal); Recover(FixtureCase::kGlobalShadow); Recover(FixtureCase::kGlobalLocalShadow);
   Recover(FixtureCase::kBranch); Recover(FixtureCase::kArmStore);
   Recover(FixtureCase::kBindingCollision); Recover(FixtureCase::kExportCollision);
   if (argc > 1) std::cout << source;
