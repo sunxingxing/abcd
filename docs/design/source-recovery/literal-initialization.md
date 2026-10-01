@@ -1,5 +1,30 @@
 # Literal Initialization
 
+## Native unary initializer expressions
+
+Common literal nesting admits the shared single-input lowerings for negate,
+bitwise not, logical not, typeof, ToNumber and ToBoolean. This changes expression
+ownership, not numeric-domain admission: the existing input and tree proofs must
+still certify a language value, including the VM NaN representation restrictions.
+ToNumeric, increment/decrement and VM predicates that repeat an operand remain
+outside this admission; they need their own Number-or-BigInt or snapshot lowering.
+
+Primitive ValueCopy loads are admitted only for a typed integer, float or special
+constant input with no effects or exceptional completion. ValueId copies are not
+primitive leaves. Original constant/unary sites stay in the shared origin DAG.
+The same unique-use census, laminar operand/property order and actual catch-copy
+equivalence apply on both normal and phased paths; sharing cannot duplicate
+coercion or creation. No new writer, dependency or per-variable graph walk is added.
+
+Decoded fixtures cover all six admitted forms in three profiles, 2/200/201/400/800
+unary properties, shared-result refusal, uncertified general-language NEG and
+unsupported numeric updates. Serialized constant NEG and dynamic bitwise-not
+fixtures traverse common file/family emission, ABI, instruction sources and
+printer positions. Complete generated functions are compared with independent
+native expressions for getter/Proxy/ToPrimitive order, arbitrary thrown identity,
+BigInt/Symbol and numeric cases, effects, fresh objects and own descriptors.
+These focused checks do not constitute full-record paired acceptance.
+
 ## Phased native initializer nesting
 
 The same literal ownership model now admits fresh aggregate, read and call

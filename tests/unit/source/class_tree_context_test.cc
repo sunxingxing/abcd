@@ -47,7 +47,8 @@ enum class GeneratorEncoding { kTagged, kExplicitTagged, kExplicitOrdinary };
 enum class ExceptionShape {
   kNone, kBranch, kModule, kForwarder, kDeadCopies, kLiveCopies, kReceiver, kReceiverCatch,
   kReceiverArgument, kReceiverPair, kReceiverNumericPair, kReceiverTypeof, kLiteral, kLexical,
-  kReceiverResult, kAsyncAwait, kGeneratorYield, kGeneratorCatch, kBufferedLexical, kNestedLiteral, kNestedCall
+  kReceiverResult, kAsyncAwait, kGeneratorYield, kGeneratorCatch, kBufferedLexical, kNestedLiteral, kNestedCall,
+  kNestedNegate, kNestedBitNot
 };
 void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof = false,
          bool object_initializer = false, bool snapshot = false, std::ostream* evidence = nullptr,
@@ -207,7 +208,8 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
           kLoad, kObject, kReturn, kReturn,
           0, kLiteralProtected, kSingleTry, kCatchAll, kLiteralProtected, 1};
     }
-    if (exception == ExceptionShape::kNestedLiteral || exception == ExceptionShape::kNestedCall) {
+    if (exception == ExceptionShape::kNestedLiteral || exception == ExceptionShape::kNestedCall ||
+        exception == ExceptionShape::kNestedNegate || exception == ExceptionShape::kNestedBitNot) {
       // Both allocations precede the getter and their own definitions. The
       // catch returns the exact thrown value, never the unfinished objects.
       constexpr std::uint8_t kLocals = 2, kOuter = 0, kInner = 1, kInput = 5,
@@ -227,6 +229,25 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
         member[kCodeSizeOffset] += kCallBytes;
         const auto table = kHeaderBytes + member[kCodeSizeOffset];
         member[table + 1] += kCallBytes; member[table + 4] += kCallBytes;
+      }
+      if (exception == ExceptionShape::kNestedNegate) {
+        // A non-NaN number is certified before NEG. General language values
+        // must still satisfy the numeric domain proof, not merely JS syntax.
+        constexpr std::uint8_t kReadPc = 6, kReadBytes = 6, kGrowth = 1;
+        member.erase(member.begin() + kHeaderBytes + kReadPc,
+            member.begin() + kHeaderBytes + kReadPc + kReadBytes);
+        member.insert(member.begin() + kHeaderBytes + kReadPc,
+            {op(abc::Opcode::kLDAI_IMM32), 1, 0, 0, 0, op(abc::Opcode::kNEG_IMM8), 0});
+        member[kCodeSizeOffset] += kGrowth;
+        const auto table = kHeaderBytes + member[kCodeSizeOffset];
+        member[table + 1] += kGrowth; member[table + 4] += kGrowth;
+      }
+      if (exception == ExceptionShape::kNestedBitNot) {
+        constexpr std::uint8_t kUnaryPc = 12, kUnaryBytes = 2;
+        member.insert(member.begin() + kHeaderBytes + kUnaryPc, {op(abc::Opcode::kNOT_IMM8), 0});
+        member[kCodeSizeOffset] += kUnaryBytes;
+        const auto table = kHeaderBytes + member[kCodeSizeOffset];
+        member[table + 1] += kUnaryBytes; member[table + 4] += kUnaryBytes;
       }
     }
     if (exception == ExceptionShape::kLexical) {
@@ -1107,6 +1128,14 @@ int main(int argc, char** argv) {
       Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kNestedCall, profile);
     return 0;
   }
+  if (argc == 2 && (std::string_view(argv[1]) == "--nested-negate-json" ||
+      std::string_view(argv[1]) == "--nested-bitnot-json")) {
+    const auto shape = std::string_view(argv[1]) == "--nested-negate-json" ?
+        ExceptionShape::kNestedNegate : ExceptionShape::kNestedBitNot;
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      Run(DefaultEncoding::kNone, false, false, false, &std::cout, shape, profile);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--literal-json") {
     Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kLiteral);
     return 0;
@@ -1163,6 +1192,8 @@ int main(int argc, char** argv) {
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kLiteral);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kNestedLiteral);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kNestedCall);
+  Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kNestedNegate);
+  Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kNestedBitNot);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverTypeof);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverNumericPair);
   Run(DefaultEncoding::kNone, false, false, false, nullptr, ExceptionShape::kReceiverPair);

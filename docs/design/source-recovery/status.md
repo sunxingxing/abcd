@@ -12,6 +12,44 @@
 
 ## 当前阶段
 
+### 2026-10-01：共同字面量接入受检的一元表达式与原始常量
+
+- LiteralPlan接纳共同AST已有的Negate、BitNot、LogicalNot、TypeOf、ToNumber、
+  ToBoolean单次输入表达式，复用单用途、层叠区间、原始效果和实际catch-copy
+  检查。整数/浮点/special常量ValueCopy只在typed primitive input、pure且
+  不抛异常时接纳；ValueId变量复制不成为primitive leaf。没有新writer、
+  样本分支、依赖或额外图遍历，算法复杂度和内存边界沿用共同nesting规划。
+- 原数值域证明保留：真实7421拒绝点的NEG输入为NonNaNNumber，
+  /tmp/abcd-literal-unary-pagea-input.log；任意Language NEG仍在独立输入证明
+  拒绝。ToNumeric、INC/DEC和需要重复snapshot的VM谓词没有扩大准入。
+  一元RED实际失败，/tmp/abcd-literal-unary-red-tests.log；接一元后又确认
+  LDAI的ValueCopy常量在dependency discovery拒绝，
+  /tmp/abcd-literal-unary-late-debug.log。修复没有删除late-value检查。
+- 三profile的六种一元形式通过相位evaluation/exception tree/独立semantics，
+  2/200/201/400/800属性覆盖；共享一元值、未经证明的NEG及numeric update
+  继续拒绝。普通路径的共享常量由LateValue改报Observed，仍拒绝；单用途
+  常量接纳，新增真正的晚到binding copy负例保留LateValue拒绝。
+- 三profile序列化constant NEG和dynamic BitNot贯通共同file/class/family、
+  ABI、instruction sources与printer。完整生成函数通过**1128个独立场景**，
+  包含getter/Proxy/ToPrimitive顺序、BigInt/Symbol、数值边界、任意throw身份、
+  保留效果、fresh对象、own descriptor及继承setter，
+  /tmp/abcd-literal-unary-behavior.log；原始constant/unary/property PC及
+  combined origin的printer位置也核对。最终构建退出0，
+  /tmp/abcd-literal-unary-final-build.log及-refusal-build.log；
+  **19/19定向回归通过15.34秒**，/tmp/abcd-literal-unary-final-tests.log。
+  全量/RSS/基准继续暂停，无代理或平台最终验收。
+- 五输入build/stage-one/value-unary-literal-pass-1均退出0，维持
+  **48 complete / 2 incomplete / 56 failure / 46 no-module**，无完整项退化、
+  无legacy writer，/tmp/abcd-literal-unary-batch-summary.json。
+  完整项数量没有增加，不能据此宣布阶段一语义或源码表示验收完成。
+- PageA family成员5（7421）已越过原一元discovery拒绝，但整个LiteralPlan
+  仍不通过。当前VerifyNesting的canonical census拒绝nested array allocation
+  op64/value76的另一个consumer op65（ValueCopy，evaluation为ElidedPure），
+  /tmp/abcd-literal-unary-pagea-shared.log及-shared-owner.log。
+  下一步区分真正观察和独立可消除的无用途搬运，并保留original input/origin
+  对应；不能直接豁免共享对象、catch/phi或有用途的snapshot。整record仍
+  tree_stage/unproved，/tmp/abcd-literal-unary-pagea.json；Goal保持active。
+
 ### 2026-10-01：相位嵌套初始化贯通共同字面量与原生调用
 
 - LiteralPlan将已有单次用途/层叠区间规划接入unique normal phase corridor，

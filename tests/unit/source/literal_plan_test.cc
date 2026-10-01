@@ -14,7 +14,7 @@ namespace {
 using namespace abcd::analysis;
 using namespace abcd::source;
 void Check(bool value, const std::source_location& where = std::source_location::current()) { if (!value) { std::cerr << "check failed at " << where.line() << '\n'; std::abort(); } }
-enum class Prefix { kNone, kObserve, kLateValue };
+enum class Prefix { kNone, kObserve, kLateValue, kLateBinding };
 class Fixture {
  public:
   void Add(ValueOperation operation, bool result, std::initializer_list<std::pair<OperandRole, ValueOperand>> inputs) {
@@ -47,12 +47,15 @@ ValueProgram Graph(std::uint32_t fields, Prefix prefix = Prefix::kNone) {
   fixture.Add(ValueObjectAllocation{}, true, {});
   fixture.graph.ops[0].normal = fixture.graph.ops[0].before_throw = LanguageEffect::kAllocation;
   fixture.graph.ops[0].exceptional = ExceptionalCompletion::kMayThrow;
+  if (prefix == Prefix::kLateBinding)
+    fixture.graph.values.push_back({EntryDefinition{ParameterEntry{0}}, ValueKinds::Language(), {}});
   if (prefix != Prefix::kNone)
-    fixture.Add(ValueCopy{}, true, {{OperandRole::kInput, prefix == Prefix::kObserve ?
-        ValueOperand{ValueId{0}} : ValueOperand{abcd::analysis::IntegerLiteral{1}}}});
+    fixture.Add(ValueCopy{}, true, {{OperandRole::kInput, prefix == Prefix::kObserve ? ValueOperand{ValueId{0}} :
+        prefix == Prefix::kLateBinding ? ValueOperand{ValueId{1}} : ValueOperand{abcd::analysis::IntegerLiteral{1}}}});
   for (std::uint32_t i = 0; i < fields; ++i) {
     fixture.Add(ValueOwnWrite{OwnWriteKind::kDefineField, {i}, 0}, false,
         {{OperandRole::kBase, ValueId{0}}, {OperandRole::kStoredValue,
+          prefix == Prefix::kLateBinding ? ValueOperand{ValueId{2}} :
           prefix == Prefix::kLateValue ? ValueOperand{ValueId{1}} : ValueOperand{abcd::analysis::IntegerLiteral{1}}}});
     auto& op = fixture.graph.ops.back();
     op.normal = op.before_throw = LanguageEffect::kHeapWrite | LanguageEffect::kUserCode;
@@ -156,21 +159,23 @@ void Mutations() {
   graph = Graph(2); graph.values[0].domain = ValueKinds::Unknown();
   Check(std::get<LiteralError>(BuildLiteralPlan(graph)) == LiteralError::kDomain);
   Check(std::get<LiteralError>(BuildLiteralPlan(Graph(2, Prefix::kObserve))) == LiteralError::kObserved);
-  Check(std::get<LiteralError>(BuildLiteralPlan(Graph(2, Prefix::kLateValue))) == LiteralError::kLateValue);
+  Check(std::holds_alternative<LiteralPlan>(BuildLiteralPlan(Graph(1, Prefix::kLateValue))));
+  Check(std::get<LiteralError>(BuildLiteralPlan(Graph(2, Prefix::kLateValue))) == LiteralError::kObserved);
+  Check(std::get<LiteralError>(BuildLiteralPlan(Graph(2, Prefix::kLateBinding))) == LiteralError::kLateValue);
   auto buffered_observed = Graph(2, Prefix::kObserve);
   std::get<ValueObjectAllocation>(buffered_observed.ops[0].operation).literal = abcd::abc::PoolIndex{0};
   Check(std::get<LiteralError>(BuildLiteralPlan(buffered_observed)) == LiteralError::kObserved);
   auto buffered_late = Graph(2, Prefix::kLateValue);
   std::get<ValueObjectAllocation>(buffered_late.ops[0].operation).literal = abcd::abc::PoolIndex{0};
-  Check(std::get<LiteralError>(BuildLiteralPlan(buffered_late)) == LiteralError::kLateValue);
+  Check(std::get<LiteralError>(BuildLiteralPlan(buffered_late)) == LiteralError::kObserved);
 }
 void ArrayBoundaries() {
-  for (const auto prefix : {Prefix::kObserve, Prefix::kLateValue}) {
+  for (const auto prefix : {Prefix::kObserve, Prefix::kLateValue, Prefix::kLateBinding}) {
     auto graph = Graph(2, prefix); graph.ops[0].operation = ValueArrayAllocation{};
     std::uint32_t index = 0;
     for (auto& op : graph.ops) if (std::holds_alternative<ValueOwnWrite>(op.operation))
       op.operation = ValueIndexedWrite{index++, 0};
-    const auto expected = prefix == Prefix::kObserve ? LiteralError::kObserved : LiteralError::kLateValue;
+    const auto expected = prefix == Prefix::kLateBinding ? LiteralError::kLateValue : LiteralError::kObserved;
     Check(std::get<LiteralError>(BuildLiteralPlan(graph)) == expected);
   }
 }
