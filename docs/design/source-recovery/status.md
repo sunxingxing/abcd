@@ -12,6 +12,36 @@
 
 ## 当前阶段
 
+### 2026-10-01：常量消除后的共享跳转尾部贯通
+
+- 真实MiniGame方法12896的cross-entry已定位到block3：常量op15已是kRemoved，
+  仅剩op16跳转。原规则要求活跃常量，故未拆分共享尾部；定位证据
+  /tmp/abcd-minigame-tail.log。没有通过关闭交叉入口检查处理此问题。
+- SpecializePureTails现在支持无phi/无效果的单跳转尾部，原始常量若存在仍遵循
+  原用途限制。复制出边的phi输入，只有真实克隆的常量结果才重映射ValueId，
+  其他ValueId/primitive操作数保持原值；不虚构结果、不复制getter/分配/环境效果。
+  每条原指令来源继续保留，新增jump occurrence由已有来源表完整记录。
+- 一次迭代状态遍历识别纯尾部环，环及进入环的纯链保持不变；1/2/16/200/201个块
+  的纯跳转环连续两次简化均不增长。索引和输出容量均计入预算，实际新增操作/值
+  分别计数，不为jump-only副本分配虚假ValueDefinition。复杂度见algorithms.md。
+- 真实解码的“结果丢弃但getter仍执行”红例在修改前退出134，
+  /tmp/abcd-empty-tail-red.log；现1/2/16/200/201串接规格通过。额外验证原参数值
+  经过共享跳转尾部进入phi，46组可选读取/getter/抛出身份/返回身份行为对照通过。
+- 构建 /tmp/abcd-empty-tail-final-build.log；20项定向回归全部通过，16.03秒，
+  /tmp/abcd-empty-tail-tests.log；命名/合同更新后3项重点重跑通过，5.25秒，
+  /tmp/abcd-empty-tail-final-tests.log。全量测试/RSS/基准仍暂停。
+- 五输入导出 build/stage-one/value-empty-tail-pass-1 均退出0，达到
+  **46 complete / 60 failure / 46 no-module**，无完整项退化、无legacy writer；
+  /tmp/abcd-empty-tail-batch-summary.json。新增Immersive ShoppingFullScreen
+  record13504，完整mjs通过node --check，尚未完成其独立配对平台行为验收。
+- MiniGame现在越过原控制错误，但其后续函数在VerifyPredicateSnapshots的op57
+  失败，serial22与children.end20不符，/tmp/abcd-empty-tail-next-snapshot.log。
+  需要继续核对快照证明与同块其他表达式区间，不能删掉区间约束冒充恢复完成。
+- 另一条已定位的失败为Categories闭包创建site9：depth0/slot0的kLanguage捕获
+  在ScopeFacts返回kInitialization，/tmp/abcd-categories-scope.log。此初始化约束
+  保持不变，不能以闭包稍后可能调用作为已初始化证据。两项均留待通用根因修复。
+  当前可选访问仍为机械条件语句，风格验收未完成，阶段一Goal继续开放。
+
 ### 2026-10-01：普通条件语句的空 taken 臂消除
 
 - 共同 FunctionTree 构建现在可以将非空 fallthrough 臂作为 then：原 taken 臂必须

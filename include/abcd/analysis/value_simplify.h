@@ -19,7 +19,8 @@ struct ValueSimplifyStats {
 // both graphs plus simultaneous scratch. Failure leaves the original unchanged.
 // Requires verified input effects/identity. Checks flow, anchored identity
 // equations, effects and origins before committing. Shared primitive-copy/jump
-// tails may be specialized per incoming edge with matching outgoing phi inputs;
+// tails (including jump-only tails after elision) may be specialized per incoming
+// edge with matching outgoing phi inputs. Pure tail cycles are retained;
 // this advances CFG revision. No effect motion, load duplication or load CSE.
 [[nodiscard]] std::variant<ValueSimplifyStats, ValueSimplifyError> SimplifyValues(
     ValueProgram& graph, IrRevision expected, SemanticBudget budget = {});

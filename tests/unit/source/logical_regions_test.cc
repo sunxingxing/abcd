@@ -35,19 +35,20 @@ analysis::ValueProgram Import(const std::vector<std::uint8_t>& bytes, std::uint3
   Check(!std::holds_alternative<ValueSimplifyError>(SimplifyValues(graph, graph.revision)));
   return graph;
 }
-analysis::ValueProgram OptionalAccess(bool observable_fallback = false, unsigned count = 1, bool distinct_fallback = false, bool corridor_effect = false, bool header_effect = false) {
+analysis::ValueProgram OptionalAccess(bool observable_fallback = false, unsigned count = 1, bool distinct_fallback = false, bool corridor_effect = false, bool header_effect = false, bool discarded = false, bool fallback_parameter = false) {
   // Two strict nullish checks share one undefined-producing arm. This is the
   // real optional-access CFG shape, independent of UI classes/captures.
   std::vector<std::uint8_t> bytes{0x01, 0x27, 0, 1, 0x4f, 0,
       0x00, 0x27, 0, 1, 0x4f, 0, 0x4d, 0};
   const auto fallback = bytes.size();
-  bytes.push_back(0x00);
+  if (fallback_parameter) bytes.insert(bytes.end(), {0x60, 1});
+  else bytes.push_back(0x00);
   if (observable_fallback) bytes.push_back(static_cast<std::uint8_t>(abc::Opcode::kDEBUGGER));
   const auto skip = bytes.size(); bytes.insert(bytes.end(), {0x4d, 0});
   const auto null_fallback = bytes.size();
   if (distinct_fallback) bytes.insert(bytes.end(), {0x01, 0x4d, 0});
   const auto read = bytes.size(); bytes.insert(bytes.end(), {0x60, 1, 0x42, 0, 0, 0});
-  const auto join = bytes.size(); bytes.insert(bytes.end(), {0x61, 1});
+  const auto join = bytes.size(); if (!discarded) bytes.insert(bytes.end(), {0x61, 1});
   bytes[5] = static_cast<std::uint8_t>((distinct_fallback ? null_fallback : fallback) - 4);
   bytes[11] = static_cast<std::uint8_t>(fallback - 10);
   bytes[13] = static_cast<std::uint8_t>(read - 12);
@@ -63,7 +64,8 @@ analysis::ValueProgram OptionalAccess(bool observable_fallback = false, unsigned
   }
   std::vector<std::uint8_t> chain;
   for (unsigned i = 0; i < count; ++i) chain.insert(chain.end(), bytes.begin(), bytes.end());
-  chain.insert(chain.end(), {0x60, 1, 0x64});
+  if (discarded) chain.insert(chain.end(), {0x00, 0x64});
+  else chain.insert(chain.end(), {0x60, 1, 0x64});
   return Import(chain, 1);
 }
 analysis::ValueProgram NestedSelections(unsigned count) {
@@ -605,6 +607,14 @@ void Negatives() {
   Check(FindLogicalRegions(wrong, control).empty());
 }
 int main(int argc, char** argv) {
+  for (const unsigned count : {1U, 2U, 16U, 200U, 201U})
+    Check(!Source(OptionalAccess(false, count, false, false, false, true)).empty());
+  Check(!Source(OptionalAccess(false, 1, false, false, false, false, true)).empty());
+  if (argc == 2 && std::string_view(argv[1]) == "--empty-tail-sources") {
+    std::cout << "[" << Source(OptionalAccess(false, 1, false, false, false, true)) << ","
+              << Source(OptionalAccess(false, 1, false, false, false, false, true)) << "]\n";
+    return 0;
+  }
   Check(Source(GuardedCopy()).find("else") != std::string::npos);
   if (argc == 2 && std::string_view(argv[1]) == "--polarity-sources") {
     std::cout << "[" << Source(GuardedRead(false, false)) << "," << Source(GuardedRead(false, true))

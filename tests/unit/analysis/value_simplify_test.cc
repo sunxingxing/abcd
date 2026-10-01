@@ -61,6 +61,24 @@ void ChainsAndRevision() {
   }
 }
 
+void JumpCycles() {
+  for (const std::uint32_t length : {1U, 2U, 16U, 200U, 201U}) {
+    ValueProgram graph;
+    for (std::uint32_t i = 0; i <= length; ++i) {
+      graph.blocks.push_back({{i}, 1, {i}, 1});
+      graph.ops.push_back({ValueJump{}, {i}, 0, {0}, 0, {}, LanguageEffect::kNone,
+          LanguageEffect::kNone, ExceptionalCompletion::kImpossible, {i}});
+      graph.origins.push_back({{i}, {i}, {}});
+      graph.edges.push_back({{i}, {i == length ? 1U : i + 1}, FlowEdgeKind::kTaken, 0});
+    }
+    for (unsigned repeat = 0; repeat < 2; ++repeat) {
+      const auto result = SimplifyValues(graph, graph.revision);
+      const auto* stats = std::get_if<ValueSimplifyStats>(&result);
+      Check(stats && stats->specialized_edges == 0 && graph.blocks.size() == length + 1);
+    }
+  }
+}
+
 void LiteralRoots() {
   const std::array<ValueOperand, 5> literals{IntegerLiteral{-7}, SpecialValue::kNull,
       SpecialValue::kUndefined, Float64Bits{UINT64_C(0x8000000000000000)},
@@ -210,6 +228,7 @@ void RewriteCertificate() {
 }  // namespace
 
 int main() {
+  JumpCycles();
   LiteralRoots();
   ChainsAndRevision();
   FailureRollback();

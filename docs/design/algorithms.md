@@ -155,11 +155,13 @@ byte budget 约束，不将该计数声称为所有底层解析操作的总成�
 
 ### 2026-10-01：共享原始常量出口的受限节点拆分
 
-实现位于 value_simplify.cc 的 SpecializeConstantJoins，采用 CFG tail duplication
+实现位于 value_simplify.cc 的 SpecializePureTails，采用 CFG tail duplication
 的受限形式；这是本项目实现，无新增第三方依赖或许可证变化。目的为解除编译器
 null/undefined短路判断共用常量出口造成的cross-entry，不能泛化为复制任意基本块。
-前提：已验证的normal ValueProgram；非入口、无phi，活操作恰好是language primitive
-copy和无效果jump；常量结果的所有用途均为唯一出边上的phi输入。每条原路径仍只
+前提：已验证的normal ValueProgram；非入口、无phi，活操作是无效果jump及至多一个
+language primitive copy；已消除的常量不需要重新制造值。常量结果若存在，其所有
+用途均为唯一出边上的phi输入。纯尾部链用一次迭代三色遍历检查，保留进入纯跳转环
+的路径，避免重复简化不断复制环。每条原路径仍只
 执行一次相同常量，没有复制读取、分配、coercion、环境或异常效果。保留原块的一条
 入边保证其可达；副本的出边phi同时重映射常量结果，其他输入由SSA流验证保证可用。
 
