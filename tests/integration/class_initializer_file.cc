@@ -333,6 +333,8 @@ int main(int argc, char** argv) {
           Check(graph.origins[graph.ops[allocation.value].origin.value].pc.value == 77);
           const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph, {}, IncomingCells::kConditional,
               child.children, {}, {}, {}, analysis::ClosureWrites::kLanguage));
+          Check(evaluation.operations[left->op.value].kind == EvaluationKind::kLogicalLeft);
+          Check(!evaluation.operations[left->op.value].temporary);
           Check(evaluation.operations[allocation.value].kind == EvaluationKind::kPhiInput);
           Check(!evaluation.operations[allocation.value].temporary);
           TreeCheckBudget logical_budget({});

@@ -12,6 +12,37 @@
 
 ## 当前阶段
 
+### 2026-10-01：逻辑左值消除重复SSA观察快照
+
+- 正常EvaluationPlan新增kLogicalLeft：只有同一header中的真实producer，其全部
+  活用途恰好是ToBoolean输入及原值保留边phi输入，且所属逻辑区域/RHS可完整
+  组合，才把两个SSA观察交给一个原生&&/||左值。producer至判断之间存在效果或
+  环境变化即保留快照；已验证的初始化cell guard保持原锚点。没有放宽跨块callee。
+- 规划和验证分别从当前IR/ControlPlan核对用途与区域，原求值DFS仍展开左值完整
+  子树并验证原效果顺序。共同森林/TreeFlow/TreeOperands传递同一实际表达式，
+  原keep边和布尔输入分别检查它；保留来源，不复制getter或去掉真实消费者。
+  无候选ToBoolean时跳过额外控制构造；有候选时包含一次现有ControlPlan成本，
+  其余索引、互不重叠header区间和用途链总量线性，均计入既有资源/工作预算。
+- 动态ABC正式共同路径现生成$phi = (value.items || [])及&&形式，省去$value
+  快照；真实10510/PC66在完整children/capture前提下确认kLogicalLeft，PC77
+  仍kPhiInput。合流phi尚未作为后续调用的原生表达式输入，前置callee仍拒绝。
+- 新增额外消费者与真实DEBUGGER屏障负例、错误consumer/伪造普通inline/强制
+  logical-left负例，以及1/200/201/402左值区域和201区域存储/工作欠额测试。
+  JS行为对照扩展至500场景，含共享左值作为第二参数时只读取一次、对象身份、
+  receiver、异常顺序、方法替换及可变call/apply/bind拒用。
+- 十项定向回归通过（8.27秒）：logical_regions_test、logical_regions_source_test、
+  evaluation_plan_test、phi_copies_test、phi_call_test、phi_placement_test、
+  function_tree_test、class_initializer_file_test、derived_constructor_source_test、
+  navmap_source_test。新增预算规格后两项逻辑测试再次通过（1.87秒）。日志
+  /tmp/abcd-logical-left-final-tests.log、/tmp/abcd-logical-left-budget-tests.log；
+  最终生产工具构建日志/tmp/abcd-logical-left-final-build.log。红例先确认旧实现
+  仍打印$value，证据/tmp/abcd-logical-left-red-test.log。
+- 五输入正式导出build/stage-one/value-logical-left-pass-1仍34 complete/
+  72 failure/46 no-module，无完整项退化或legacy writer；对比前轮mjs差异为0。
+  汇总/tmp/abcd-logical-left-batch-summary.json。后续仍需把合流phi与header
+  callee一起纳入join调用的求值顺序规划；整类/阶段一验收未完成，全量/RSS/
+  基准继续暂停。
+
 ### 2026-10-01：跨逻辑参数的成员调用建立独立顺序回归
 
 - 将10510的阻断收敛成无捕获、无类、无模块依赖的动态ABC最小规格：同一个

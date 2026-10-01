@@ -739,7 +739,7 @@ class TreeBuilder {
       } else {
         tree_.operations.push_back({id, *expression});
         if (evaluation.kind == EvaluationKind::kInline || evaluation.kind == EvaluationKind::kNestedLiteral ||
-            evaluation.kind == EvaluationKind::kPhiInput) continue;
+            evaluation.kind == EvaluationKind::kPhiInput || evaluation.kind == EvaluationKind::kLogicalLeft) continue;
         auto evaluated = *expression;
         if (evaluation.temporary) {
           Require(op.result.has_value(), Error::kBinding);

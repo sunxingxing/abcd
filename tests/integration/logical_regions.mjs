@@ -5,7 +5,7 @@ import vm from 'node:vm';
 // tree and semantic checks. No source text supplies the engine's expression.
 const source = execFileSync(process.argv[2], ['--sources'], {encoding: 'utf8'});
 const generated = vm.runInNewContext(source, {Array() { throw new Error('mutable Array binding'); }});
-assert.equal(generated.length, 8);
+assert.equal(generated.length, 10);
 const reference = [value => value || [], value => value && []];
 const object = {[Symbol.toPrimitive]() { throw new Error('unexpected coercion'); }};
 const values = [undefined, null, false, true, 0, -0, NaN, '', 'text', 0n, 1n, Symbol('value'), object];
@@ -81,7 +81,7 @@ const argumentReference = [
   value => { const argument = value.items && []; return value.probe(argument); },
 ];
 const earlyReference = [value => value.probe(value.items || []), value => value.probe(value.items && [])];
-function argumentCall(fn, payload, fail, mutate) {
+function argumentCall(fn, payload, fail, mutate, shared = false) {
   const events = [], failure = {}, result = {};
   let generation = 0;
   const value = {
@@ -95,7 +95,9 @@ function argumentCall(fn, payload, fail, mutate) {
       events.push('method'); assert.equal(this, value);
       if (fail === 'method') throw failure;
       const selected = generation;
-      const method = function(argument) {
+      const method = function(argument, original) {
+        assert.equal(arguments.length, shared ? 2 : 1);
+        if (shared) assert.ok(Object.is(original, payload));
         assert.equal(this, value);
         events.push(`call:${selected}`);
         events.push(Object.is(argument, payload) ? 'same argument' :
@@ -131,6 +133,17 @@ for (let i = 0; i < argumentReference.length; ++i) {
   for (const fail of [undefined, 'items', 'method']) {
     assert.notDeepEqual(argumentCall(earlyReference[i], false, fail, true),
       argumentCall(argumentReference[i], false, fail, true));
+    ++scenarios;
+  }
+}
+const sharedReference = [
+  value => { const original = value.items; return value.probe(original || [], original); },
+  value => { const original = value.items; return value.probe(original && [], original); },
+];
+for (let i = 0; i < sharedReference.length; ++i) {
+  for (const payload of values) for (const fail of [undefined, 'items', 'method', 'call']) {
+    assert.deepEqual(argumentCall(generated[i + 8], payload, fail, true, true),
+      argumentCall(sharedReference[i], payload, fail, true, true));
     ++scenarios;
   }
 }

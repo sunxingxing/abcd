@@ -129,6 +129,7 @@ class FlowCheck {
           if (op.life != analysis::ValueLife::kLive ||
               evaluation_.operations[id.value].kind == EvaluationKind::kInline ||
               evaluation_.operations[id.value].kind == EvaluationKind::kPhiInput ||
+              evaluation_.operations[id.value].kind == EvaluationKind::kLogicalLeft ||
               evaluation_.operations[id.value].kind == EvaluationKind::kNestedLiteral ||
               evaluation_.operations[id.value].kind == EvaluationKind::kInitializer ||
               evaluation_.operations[id.value].kind == EvaluationKind::kClassProjection ||

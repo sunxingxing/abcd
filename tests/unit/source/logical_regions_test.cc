@@ -28,12 +28,15 @@ analysis::ValueProgram Import(const std::vector<std::uint8_t>& bytes, std::uint3
   Check(!std::holds_alternative<ValueSimplifyError>(SimplifyValues(graph, graph.revision)));
   return graph;
 }
-analysis::ValueProgram Diamond(bool negate, unsigned count = 1, bool direct = false, bool getter = false, bool barrier = false, bool invoke = false) {
+analysis::ValueProgram Diamond(bool negate, unsigned count = 1, bool direct = false, bool getter = false, bool barrier = false, bool invoke = false, bool left_getter = false) {
   // return arg || [] (or arg && []), retaining the compiler's empty keep arm.
   std::vector<std::uint8_t> bytes;
   for (unsigned i = 0; i < count; ++i) {
-    std::vector<std::uint8_t> diamond{0x60, 2, 0x61, 1, 0xfb, 0x13, 0,
-        static_cast<std::uint8_t>(negate ? 0x4f : 0x51), 0};
+    std::vector<std::uint8_t> diamond{0x60, 2};
+    if (left_getter) diamond.insert(diamond.end(), {0x42, 0, 1, 0});
+    diamond.insert(diamond.end(), {0x61, 1, 0xfb, 0x13, 0});
+    const auto branch_pc = diamond.size(), delta_operand = branch_pc + 1;
+    diamond.insert(diamond.end(), {static_cast<std::uint8_t>(negate ? 0x4f : 0x51), 0});
     if (getter) {
       diamond.insert(diamond.end(), {0x60, 2, 0x42, 0, 0, 0});
       if (invoke) diamond.insert(diamond.end(), {0x2d, 0, 2});
@@ -43,7 +46,6 @@ analysis::ValueProgram Diamond(bool negate, unsigned count = 1, bool direct = fa
     diamond.insert(diamond.end(), {static_cast<std::uint8_t>(direct ? 0x61 : 0x4d),
         static_cast<std::uint8_t>(direct ? 1 : 4)});
     // Branch offsets target the preserved-value load, or the shared reload.
-    constexpr std::size_t branch_pc = 7, delta_operand = 8;
     diamond[delta_operand] = static_cast<std::uint8_t>(diamond.size() - branch_pc);
     diamond.insert(diamond.end(), {0x60, 1, 0x61, 2});
     bytes.insert(bytes.end(), diamond.begin(), diamond.end());
@@ -51,16 +53,24 @@ analysis::ValueProgram Diamond(bool negate, unsigned count = 1, bool direct = fa
   bytes.insert(bytes.end(), {0x60, 2, 0x64});
   return Import(bytes, 2);
 }
-analysis::ValueProgram CallDiamond(bool negate, bool method_first) {
+analysis::ValueProgram CallDiamond(bool negate, bool method_first, bool barrier = false, bool shared = false) {
   // The same member read on opposite sides of argument selection is observably
   // different. Keep both bytecode forms as the cross-region integration gate.
   const std::vector<std::uint8_t> method{0x60, 3, 0x42, 0, 0, 0, 0x61, 0};
   std::vector<std::uint8_t> bytes;
   if (method_first) bytes.insert(bytes.end(), method.begin(), method.end());
-  bytes.insert(bytes.end(), {0x60, 3, 0x42, 0, 1, 0, 0x61, 1, 0xfb, 0x13, 0,
-      static_cast<std::uint8_t>(negate ? 0x4f : 0x51), 6, 0x05, 0, 0x61, 1});
+  bytes.insert(bytes.end(), {0x60, 3, 0x42, 0, 1, 0, 0x61, 1});
+  if (shared) bytes.insert(bytes.end(), {0x61, 2});
+  if (barrier) bytes.push_back(static_cast<std::uint8_t>(abc::Opcode::kDEBUGGER));
+  bytes.insert(bytes.end(), {0xfb, 0x13, 0});
+  const auto branch_pc = bytes.size();
+  bytes.insert(bytes.end(), {static_cast<std::uint8_t>(negate ? 0x4f : 0x51), 0, 0x05, 0, 0x61, 1});
+  bytes[branch_pc + 1] = static_cast<std::uint8_t>(bytes.size() - branch_pc);
   if (!method_first) bytes.insert(bytes.end(), method.begin(), method.end());
-  bytes.insert(bytes.end(), {0x60, 0, 0x2e, 0, 3, 1, 0x64});
+  bytes.insert(bytes.end(), {0x60, 0});
+  if (shared) bytes.insert(bytes.end(), {static_cast<std::uint8_t>(abc::Opcode::kCALLTHIS2_IMM8_V8_V8_V8), 0, 3, 1, 2});
+  else bytes.insert(bytes.end(), {static_cast<std::uint8_t>(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 3, 1});
+  bytes.push_back(static_cast<std::uint8_t>(abc::Opcode::kRETURN));
   return Import(bytes, 3);
 }
 
@@ -135,7 +145,60 @@ void CallArguments() {
     }
     // The later member getter already has a legal same-block reference; retain
     // the logical argument snapshot so its effects still precede that getter.
-    Check(!Source(CallDiamond(negate, false)).empty());
+    Check(Source(CallDiamond(negate, false)).find("$value") == std::string::npos);
+  }
+}
+void LogicalLefts() {
+  using namespace analysis;
+  for (const bool negate : {false, true}) {
+    const auto graph = CallDiamond(negate, false);
+    const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+    const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
+    const auto region = FindLogicalRegions(graph, control).front();
+    const auto left = std::get<OpResult>(graph.values[region.left.value].origin).op;
+    Check(evaluation.operations[left.value].kind == EvaluationKind::kLogicalLeft);
+    Check(!evaluation.operations[left.value].temporary);
+    auto forged = evaluation;
+    forged.operations[left.value].consumer = graph.ops[region.branch.value].first_use;
+    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    forged = evaluation;
+    forged.operations[left.value].kind = EvaluationKind::kInline;
+    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    for (const bool shared : {false, true}) {
+      const auto excluded = CallDiamond(negate, false, !shared, shared);
+      const auto excluded_control = std::get<ControlPlan>(BuildControlPlan(excluded));
+      const auto excluded_region = FindLogicalRegions(excluded, excluded_control).front();
+      const auto producer = std::get<OpResult>(excluded.values[excluded_region.left.value].origin).op;
+      auto plan = std::get<EvaluationPlan>(BuildEvaluationPlan(excluded));
+      Check(plan.operations[producer.value].kind == EvaluationKind::kRoot);
+      Check(Source(excluded).find("$value") != std::string::npos);
+      plan.operations[producer.value] = {EvaluationKind::kLogicalLeft,
+          excluded.ops[excluded_region.boolean.value].first_use, {}};
+      Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(excluded, plan)));
+    }
+  }
+  for (const unsigned count : {1U, 200U, 201U, 402U}) {
+    const auto graph = Diamond(false, count, false, false, false, false, true);
+    const auto plan = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
+    unsigned selected = 0;
+    for (const auto& op : plan.operations) selected += op.kind == EvaluationKind::kLogicalLeft;
+    Check(selected == count);
+    Check(Source(graph).find("$value") == std::string::npos);
+    if (count == 201) {
+      TreeCheckBudget measured({});
+      const auto inputs = FindLogicalLeftInputs(graph, plan, measured);
+      Check(inputs.size() == graph.ops.size());
+      for (const bool bytes : {false, true}) {
+        TreeCheckBudget limited({measured.Bytes() - (bytes ? 1 : 0), measured.Work() - (bytes ? 0 : 1)});
+        bool rejected = false;
+        try { static_cast<void>(FindLogicalLeftInputs(graph, plan, limited)); }
+        catch (TreeStructureError error) {
+          rejected = true;
+          Check(error == (bytes ? TreeStructureError::kResourceLimit : TreeStructureError::kWorkLimit));
+        }
+        Check(rejected);
+      }
+    }
   }
 }
 void SelectionBudget() {
@@ -221,7 +284,9 @@ int main(int argc, char** argv) {
               << "," << Source(Diamond(true, 1, false, true))
               << "," << Source(Diamond(false, 1, false, true, false, true))
               << "," << Source(Diamond(true, 1, false, true, false, true))
-              << "," << Source(CallDiamond(false, false)) << "," << Source(CallDiamond(true, false)) << "]\n";
+              << "," << Source(CallDiamond(false, false)) << "," << Source(CallDiamond(true, false))
+              << "," << Source(CallDiamond(false, false, false, true))
+              << "," << Source(CallDiamond(true, false, false, true)) << "]\n";
     return 0;
   }
   for (const bool negate : {false, true}) for (const bool direct : {false, true}) {
@@ -248,6 +313,7 @@ int main(int argc, char** argv) {
   Check(uncomposed.find("if (") != std::string::npos && uncomposed.find("debugger;") != std::string::npos);
   Check(uncomposed.find(" || ") == std::string::npos);
   CallArguments();
+  LogicalLefts();
   SelectionBudget();
   PhiInputs();
   Negatives();

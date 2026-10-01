@@ -577,6 +577,7 @@ class ForestBuilder {
         const auto* result = std::get_if<analysis::OpResult>(&graph_.values[value.value].origin);
         Require(result && result->op.value < forest_.operations.size() &&
                 (evaluation_.operations[result->op.value].kind == EvaluationKind::kInline ||
+                 evaluation_.operations[result->op.value].kind == EvaluationKind::kLogicalLeft ||
                  evaluation_.operations[result->op.value].kind == EvaluationKind::kNestedLiteral) &&
                 forest_.operations[result->op.value].has_value(), Error::kUnavailableValue);
         return *forest_.operations[result->op.value];

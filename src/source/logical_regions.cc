@@ -180,4 +180,69 @@ std::vector<LogicalRegion> FindLogicalExpressions(const ValueProgram& graph, con
   }
   regions.resize(count); return regions;
 }
+std::vector<std::optional<UseId>> FindLogicalLeftInputs(const ValueProgram& graph,
+    const EvaluationPlan& evaluation, TreeCheckBudget& budget) {
+  std::vector<std::optional<UseId>> inputs;
+  if (evaluation.flow != EvaluationFlow::kNormal || !evaluation.phis) return inputs;
+  // Most phi-bearing methods have no duplicated logical producer. Avoid
+  // constructing another control plan when no local ToBoolean can own one.
+  bool candidate = false;
+  for (const auto& op : graph.ops) {
+    budget.Step();
+    const auto* unary = std::get_if<ValueUnary>(&op.operation);
+    if (op.life != ValueLife::kLive || !unary || unary->op != UnaryOperator::kToBoolean || op.use_count != 1) continue;
+    const auto* value = std::get_if<ValueId>(&graph.uses[op.first_use.value].operand);
+    const auto* result = value ? std::get_if<OpResult>(&graph.values[value->value].origin) : nullptr;
+    if (!result || graph.ops[result->op.value].block != op.block) continue;
+    const auto kind = evaluation.operations[result->op.value].kind;
+    if (kind == EvaluationKind::kRoot || kind == EvaluationKind::kLogicalLeft) { candidate = true; break; }
+  }
+  if (!candidate) return inputs;
+  auto built = BuildControlPlan(graph, budget.Remaining());
+  const auto* control = std::get_if<ControlPlan>(&built);
+  if (!control) {
+    const auto error = std::get<ControlError>(built);
+    if (error == ControlError::kResourceLimit) throw TreeStructureError::kResourceLimit;
+    if (error == ControlError::kWorkLimit) throw TreeStructureError::kWorkLimit;
+    return inputs;
+  }
+  budget.Admit(control->allocated_bytes, 1); budget.Step(control->work);
+  const auto regions = FindLogicalExpressions(graph, *control, evaluation, budget);
+  if (regions.empty()) return inputs;
+  budget.Array(inputs, graph.ops.size());
+  for (const auto& region : regions) {
+    budget.Step();
+    const auto& value = graph.values[region.left.value];
+    const auto* result = std::get_if<OpResult>(&value.origin);
+    if (!result) continue;
+    const auto& op = graph.ops[result->op.value];
+    const auto& placement = evaluation.operations[result->op.value];
+    if (op.block != region.header || op.order >= graph.ops[region.boolean.value].order ||
+        (placement.kind != EvaluationKind::kRoot && placement.kind != EvaluationKind::kLogicalLeft)) continue;
+    const auto predicate = graph.ops[region.boolean.value].first_use;
+    bool saw_predicate = false, saw_keep = false, exclusive = true;
+    // Eligible producers belong to distinct headers. Their use chains and
+    // trailing header intervals are disjoint; no per-region graph search.
+    for (auto id = value.first_use; id; id = graph.uses[id->value].next) {
+      budget.Step(); const auto& use = graph.uses[id->value];
+      if (use.life != ValueLife::kLive) continue;
+      if (*id == predicate) { saw_predicate = true; continue; }
+      const auto* edge = use.incoming ? std::get_if<EdgeId>(&*use.incoming) : nullptr;
+      if (use.owner == decltype(use.owner){region.merged} && edge && *edge == region.keep_input &&
+          use.role == OperandRole::kPhiInput && use.purpose == ReadPurpose::kOperand && !saw_keep)
+        saw_keep = true;
+      else exclusive = false;
+    }
+    if (!exclusive || !saw_predicate || !saw_keep) continue;
+    bool clear = true;
+    for (auto i = result->op.value + 1; i < region.boolean.value; ++i) {
+      budget.Step(); const auto& between = graph.ops[i];
+      if (between.life != ValueLife::kLive ||
+          evaluation.operations[i].kind == EvaluationKind::kCellGuard) continue;
+      if (OrderedEvaluation(between) || IsEnvironmentState(between.operation)) clear = false;
+    }
+    if (clear) inputs[result->op.value] = predicate;
+  }
+  return inputs;
+}
 }  // namespace abcd::source

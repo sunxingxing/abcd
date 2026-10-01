@@ -4,6 +4,8 @@
 #include "evaluation_aliases.h"
 #include "module_evaluation.h"
 #include "phase_evaluation.h"
+#include "logical_regions.h"
+#include "tree_checks.h"
 
 #include <limits>
 #include <new>
@@ -371,6 +373,15 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
         placement = {EvaluationKind::kPhiInput, plan.phis->inputs[bundle.first], {}};
       }
     }
+    if (flow == EvaluationFlow::kNormal && plan.phis) {
+      TreeCheckBudget logical_budget({bytes, work});
+      const auto inputs = FindLogicalLeftInputs(graph, plan, logical_budget);
+      admit(logical_budget.Bytes(), 1); step(logical_budget.Work());
+      for (std::size_t i = 0; i < inputs.size(); ++i) {
+        step(); if (inputs[i] && !pinned[i])
+          plan.operations[i] = {EvaluationKind::kLogicalLeft, inputs[i], {}};
+      }
+    }
     const auto expressions = BuildPhaseExpressions(graph, plan, {bytes, work});
     if (const auto* error = std::get_if<Error>(&expressions)) return *error;
     const auto& phase_cost = std::get<PhaseEvaluationCost>(expressions);
@@ -394,6 +405,8 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     }
     plan.work = budget.work - work;
     return plan;
+  } catch (TreeStructureError error) {
+    return error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }

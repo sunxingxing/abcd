@@ -537,7 +537,11 @@ class OperandCheck {
           RequireMeaning(flow_.expressions[result->op.value] == expression, Error::kOperand);
           return;
         }
-        if (evaluation_.operations[result->op.value].kind == EvaluationKind::kPhiInput) {
+        if (evaluation_.operations[result->op.value].kind == EvaluationKind::kLogicalLeft) {
+          // Fresh flow selected the predicate/keep edge as one native LHS.
+          // Both original observations must name that exact owned expression.
+          RequireMeaning(flow_.expressions[result->op.value] == expression, Error::kOperand);
+        } else if (evaluation_.operations[result->op.value].kind == EvaluationKind::kPhiInput) {
           RequireMeaning(edge_input_ && flow_.expressions[result->op.value] == expression, Error::kOperand);
         } else if (evaluation_.operations[result->op.value].kind == EvaluationKind::kInline) {
           RequireMeaning(!edge_input_ && flow_.expressions[result->op.value] == expression, Error::kOperand);

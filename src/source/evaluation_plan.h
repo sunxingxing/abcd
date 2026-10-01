@@ -14,8 +14,10 @@
 namespace abcd::source {
 // kPhiInput owns a sole incoming-copy RHS at the same block exit. It is
 // neither a value snapshot nor permission to cross a branch/exception edge.
+// kLogicalLeft owns one native logical LHS: its original boolean use and
+// retained phi input are two observations of that single expression result.
 enum class EvaluationKind : std::uint8_t {
-  kRemoved, kRoot, kInline, kInitializer, kEnvironment, kModuleGuard, kElidedPure, kAlias, kNestedLiteral, kClassProjection, kConstructorGuard, kCellGuard, kPhiInput
+  kRemoved, kRoot, kInline, kInitializer, kEnvironment, kModuleGuard, kElidedPure, kAlias, kNestedLiteral, kClassProjection, kConstructorGuard, kCellGuard, kPhiInput, kLogicalLeft
 };
 enum class EvaluationFlow : std::uint8_t { kNormal, kPhased };
 struct OpEvaluation {

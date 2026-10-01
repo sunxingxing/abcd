@@ -34,5 +34,10 @@ struct LogicalRegion {
 [[nodiscard]] std::vector<LogicalRegion> FindLogicalExpressions(
     const analysis::ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, TreeCheckBudget& budget);
+// Indexed eligible LHS producers; only the exact predicate/keep-edge pair is
+// projected. Requires checked value uses and base evaluation placements. Each
+// producer stays in its header, across no observable event/environment change.
+[[nodiscard]] std::vector<std::optional<analysis::UseId>> FindLogicalLeftInputs(
+    const analysis::ValueProgram& graph, const EvaluationPlan& evaluation, TreeCheckBudget& budget);
 }  // namespace abcd::source
 #endif

@@ -3,6 +3,8 @@
 #include "evaluation_aliases.h"
 #include "module_evaluation.h"
 #include "phase_evaluation.h"
+#include "logical_regions.h"
+#include "tree_checks.h"
 #include "../analysis/value_edits.h"
 
 #include <new>
@@ -216,6 +218,9 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
           phi_inputs[producer->value] = plan.phis->inputs[bundle.first];
       }
     }
+    TreeCheckBudget logical_budget({bytes, work});
+    const auto logical_inputs = FindLogicalLeftInputs(graph, plan, logical_budget);
+    admit(logical_budget.Bytes(), 1); step(logical_budget.Work());
     const auto module_copies = VerifyModuleCatchCopies(graph, plan, {bytes, work});
     if (const auto* error = std::get_if<Error>(&module_copies)) return *error;
     step(std::get<std::uint64_t>(module_copies));
@@ -320,6 +325,9 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
         Require(!pinned[i] && op.result && !placement.temporary && placement.consumer &&
             !phi_inputs.empty() && phi_inputs[i] == placement.consumer && visible[i].first == placement.consumer &&
             !visible[i].multiple, Error::kOwnership);
+      } else if (placement.kind == EvaluationKind::kLogicalLeft) {
+        Require(!pinned[i] && op.result && !placement.temporary && placement.consumer &&
+            !logical_inputs.empty() && logical_inputs[i] == placement.consumer, Error::kOwnership);
       } else if (placement.kind == EvaluationKind::kInline) {
         Require(!pinned[i] || (cross(i) &&
             std::holds_alternative<analysis::ValueModuleRead>(op.operation)), Error::kOwnership);
@@ -414,7 +422,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
             if (!result) continue;
             const auto& producer = graph.ops[result->op.value];
             const auto& placement = plan.operations[result->op.value];
-            if (placement.kind == EvaluationKind::kInline) {
+            if (placement.kind == EvaluationKind::kInline || placement.kind == EvaluationKind::kLogicalLeft) {
               Require(placement.consumer == use_id && (producer.block == op.block || cross(result->op.value)) &&
                       visits[result->op.value] == EvaluationVisit::kUnseen, Error::kOwnership);
               Require(depth < stack.size(), Error::kResourceLimit);
@@ -466,6 +474,8 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
               Error::kOwnership);
     }
     return budget.work - work;
+  } catch (TreeStructureError error) {
+    return error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
