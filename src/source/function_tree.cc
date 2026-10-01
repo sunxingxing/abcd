@@ -332,6 +332,7 @@ class TreeBuilder {
     Grow(drafts_, blocks);
     Grow(links_, statements);
     Grow(tasks_, blocks);
+    Grow(decision_path_, control_.nodes.size());
     Grow(name_order_, syntax_.parameters.size());
     Grow(reserved_names_, constants_.name_count);
     Grow(loops_, control_.loops.size());
@@ -798,12 +799,66 @@ class TreeBuilder {
       branch_polarity_[branch] = BranchPolarity::kFallthrough;
     }
   }
+  void EmitDecision(analysis::OpId op, const ControlNode& node, std::size_t draft) {
+    Require(!exceptions_ && node.decision && node.arms, Error::kControl);
+    decision_path_.clear();
+    const auto* part = &node;
+    while (true) {
+      Step(); const auto& block = graph_.blocks[part->block.value];
+      Require(block.op_count && !HasCopies(block.first_edge) &&
+          !HasCopies(analysis::EdgeId{block.first_edge.value + 1}), Error::kControl);
+      const analysis::OpId branch{block.first_op.value + block.op_count - 1};
+      Require(std::holds_alternative<analysis::ValueBranch>(graph_.ops[branch.value].operation) &&
+          forest_.operations[branch.value], Error::kControl);
+      decision_path_.push_back(branch);
+      if (part != &node) {
+        // Only an already-owned expression subtree may become the conditional
+        // RHS. Snapshots, independent roots, cell/env changes and edge copies
+        // require a richer region; never run them outside this condition.
+        for (std::uint32_t i = 0; i + 1 < block.op_count; ++i) {
+          Step(); const analysis::OpId at{block.first_op.value + i};
+          const auto& original = graph_.ops[at.value];
+          if (original.life != analysis::ValueLife::kLive) continue;
+          const auto kind = evaluation_.operations[at.value].kind;
+          const TreeOriginId origin{original.origin.value};
+          if (kind == EvaluationKind::kAlias || kind == EvaluationKind::kElidedPure) {
+            const AnchorId anchor{static_cast<std::uint32_t>(tree_.anchors.size())};
+            tree_.anchors.push_back({BlockBoundary{drafts_[draft].statement, drafts_[draft].count}, origin});
+            tree_.operations.push_back({at, anchor});
+          } else {
+            Require(kind == EvaluationKind::kInline && forest_.operations[at.value], Error::kOwnership);
+            tree_.operations.push_back({at, *forest_.operations[at.value]});
+          }
+        }
+        tree_.operations.push_back({branch, *forest_.operations[branch.value]});
+      }
+      if (!part->decision) break;
+      part = &control_.nodes[part->decision->evaluate.value];
+    }
+    auto condition = *forest_.operations[decision_path_.back().value];
+    Grow(tree_.expressions, tree_.expressions.size() + decision_path_.size() - 1);
+    for (std::size_t i = decision_path_.size() - 1; i != 0; --i) {
+      Step(); const auto left = decision_path_[i - 1];
+      const ExprId combined{static_cast<std::uint32_t>(tree_.expressions.size())};
+      tree_.expressions.push_back({LogicalExpr{TreeLogical::kOr, *forest_.operations[left.value], condition},
+          TreeOriginId{graph_.ops[left.value].origin.value}});
+      condition = combined;
+    }
+    const TreeOriginId origin{graph_.ops[op.value].origin.value};
+    const auto shared = node.arms->taken ? node.arms->taken : node.arms->fallthrough;
+    const auto& block = graph_.blocks[node.block.value];
+    const analysis::EdgeId edge{block.first_edge.value + (node.arms->taken ? 0U : 1U)};
+    const auto body = Arm(draft, origin, shared, edge);
+    const auto statement = Statement(IfStmt{condition, drafts_[body].statement, {}}, origin);
+    Append(draft, statement); tree_.operations.push_back({op, statement});
+  }
   void EmitBranch(analysis::OpId op, const ControlNode& node,
                   analysis::EdgeId first_edge, std::size_t draft) {
     Require(node.arms.has_value(), Error::kControl);
     const TreeOriginId origin{graph_.ops[op.value].origin.value};
     const auto expression = forest_.operations[op.value];
     Require(expression.has_value(), Error::kOwnership);
+    if (node.decision) { EmitDecision(op, node, draft); return; }
     if (!logical_branches_.empty() && logical_branches_[op.value]) {
       const auto& logical = logicals_[*logical_branches_[op.value]];
       if (logical.parent) { tree_.operations.push_back({op, *expression}); return; }
@@ -1044,6 +1099,7 @@ class TreeBuilder {
   std::vector<SelectionPath> selection_paths_;
   std::vector<SelectionRegion> logicals_;
   std::vector<BranchPolarity> branch_polarity_;
+  std::vector<analysis::OpId> decision_path_;
   std::vector<std::optional<std::size_t>> logical_branches_;
   const EvaluationPlan& evaluation_;
   FunctionSyntax syntax_;

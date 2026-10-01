@@ -60,6 +60,38 @@ class ControlCheck {
         if (degree == analysis::kMaxNormalSuccessors) {
           Require(node.arms.has_value(), Error::kInvalidGraph);
           const auto join = node.next ? node.next : task.stop;
+          if (node.decision) {
+            Require(graph_.Kind() == ControlViewKind::kNormal && join &&
+                node.decision->join == *join &&
+                node.arms->taken.has_value() != node.arms->fallthrough.has_value(), Error::kInvalidGraph);
+            const auto shared = node.arms->taken ? *node.arms->taken : *node.arms->fallthrough;
+            Require(shared != join, Error::kCrossEntry);
+            auto part = id;
+            while (true) {
+              quota_.Work(); const auto& condition = plan_.nodes[part.value];
+              Require(part.value < graph_.NodeCount() && Degree(part) == analysis::kMaxNormalSuccessors &&
+                  std::holds_alternative<std::monostate>(condition.synthetic) && condition.arms &&
+                  condition.arms->taken.has_value() != condition.arms->fallthrough.has_value() &&
+                  (condition.arms->taken ? *condition.arms->taken : *condition.arms->fallthrough) == shared &&
+                  (part == id || !condition.next), Error::kInvalidGraph);
+              const auto selected = condition.arms->taken ? 0U : 1U;
+              const auto evaluate = condition.decision ? condition.decision->evaluate : *join;
+              Require(!condition.decision || condition.decision->join == *join, Error::kInvalidGraph);
+              Arc(part, static_cast<std::uint8_t>(selected), shared, task.scope,
+                  selected == 0 ? EdgePlacement::kTaken : EdgePlacement::kFallthrough);
+              Arc(part, static_cast<std::uint8_t>(1 - selected), evaluate, task.scope,
+                  selected == 0 ? EdgePlacement::kFallthrough : EdgePlacement::kTaken);
+              if (!condition.decision) break;
+              Require(condition.decision->evaluate_on_taken == (selected != 0) &&
+                  evaluate.value < graph_.NodeCount() && !visited_[evaluate.value] &&
+                  indegree_[evaluate.value] == 1, Error::kCrossEntry);
+              const auto& child = plan_.nodes[evaluate.value];
+              Require(child.arms && condition.decision->shared_on_taken == child.arms->taken.has_value(), Error::kInvalidGraph);
+              visited_[evaluate.value] = 1; scopes_[evaluate.value] = task.scope; ++covered;
+              part = evaluate;
+            }
+            Push({shared, join, task.scope}); cursor = node.next; continue;
+          }
           for (std::uint8_t e = 0; e < degree; ++e) {
             quota_.Work();
             const auto child = e == 0 ? node.arms->taken : node.arms->fallthrough;
@@ -112,10 +144,13 @@ class ControlCheck {
     quota_.Size(continued_, plan_.loops.size());
     quota_.Size(exited_, plan_.loops.size());
     quota_.Size(headers_, blocks);
+    quota_.Size(indegree_, blocks);
     std::size_t next_edge = 0;
     for (std::size_t b = 0; b < blocks; ++b) {
       quota_.Work();
       const auto& block = graph_.Node({static_cast<std::uint32_t>(b)});
+      Require(!plan_.nodes[b].decision || (graph_.Kind() == ControlViewKind::kNormal &&
+          block.arc_count == analysis::kMaxNormalSuccessors), Error::kInvalidGraph);
       Require(plan_.nodes[b].block.value == b && std::holds_alternative<std::monostate>(plan_.nodes[b].synthetic) &&
           block.first_arc.value == next_edge && block.arc_count <= analysis::kMaxNormalSuccessors &&
           block.arc_count <= graph_.ArcCount() - next_edge, Error::kInvalidGraph);
@@ -124,6 +159,7 @@ class ControlCheck {
         const auto& edge = graph_.Arc({static_cast<std::uint32_t>(next_edge++)});
         Require(edge.source.value == b && edge.successor == e && edge.target.value < blocks &&
             (edge.kind == analysis::FlowEdgeKind::kTaken || edge.kind == analysis::FlowEdgeKind::kFallthrough), Error::kInvalidGraph);
+        ++indegree_[edge.target.value];
         if (block.arc_count == analysis::kMaxNormalSuccessors)
           Require(edge.kind == (e == 0 ? analysis::FlowEdgeKind::kTaken : analysis::FlowEdgeKind::kFallthrough), Error::kInvalidGraph);
       }
@@ -142,6 +178,7 @@ class ControlCheck {
     for (std::size_t i = blocks; i < plan_.nodes.size(); ++i) {
       quota_.Work();
       const auto& node = plan_.nodes[i];
+      Require(!node.decision, Error::kInvalidGraph);
       Require((i < blocks + plan_.loops.size()) ==
           std::holds_alternative<LoopControl>(node.synthetic), Error::kInvalidGraph);
       if (const auto* wrapper = std::get_if<LoopControl>(&node.synthetic)) {
@@ -242,6 +279,7 @@ class ControlCheck {
   ControlGraphView graph_;
   std::span<const ScopedControlEntry> entries_;
   const ControlPlan& plan_;
+  std::vector<std::uint32_t> indegree_;
   ControlQuota& quota_;
   std::vector<std::uint8_t> visited_, entered_, continued_, exited_;
   std::vector<std::optional<LoopId>> scopes_, headers_;

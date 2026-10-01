@@ -68,7 +68,22 @@ void Shapes() {
   Check(plan && plan->nodes[0].next == ControlId{5});
   Check(plan->nodes[1].arms && !plan->nodes[1].next);
   const std::array<Targets, 4> cross_entry{{{1, 2}, {2, 3}, {3, {}}, {}}};
-  Check(std::get<ControlError>(BuildControlPlan(Graph(cross_entry))) == ControlError::kCrossEntry);
+  // This shared arm is a short-circuit decision, not an illegal body entry.
+  built = BuildControlPlan(Graph(cross_entry));
+  plan = std::get_if<ControlPlan>(&built);
+  Check(plan && plan->nodes[0].decision && plan->nodes[0].decision->evaluate == ControlId{1});
+  Check(std::holds_alternative<std::uint64_t>(VerifyControlPlan(Graph(cross_entry), *plan)));
+  auto changed = *plan;
+  changed.nodes[0].decision->evaluate = {2};
+  Check(std::holds_alternative<ControlError>(VerifyControlPlan(Graph(cross_entry), changed)));
+  changed = *plan; changed.nodes[0].decision->shared_on_taken = false;
+  Check(std::holds_alternative<ControlError>(VerifyControlPlan(Graph(cross_entry), changed)));
+  changed = *plan; changed.nodes[0].decision->join = {2};
+  Check(std::holds_alternative<ControlError>(VerifyControlPlan(Graph(cross_entry), changed)));
+  changed = *plan; changed.nodes[3].decision = *changed.nodes[0].decision;
+  Check(std::holds_alternative<ControlError>(VerifyControlPlan(Graph(cross_entry), changed)));
+  const std::array<Targets, 6> overlapping{{{1, 2}, {3, 4}, {3, 4}, {5, {}}, {5, {}}, {}}};
+  Check(std::get<ControlError>(BuildControlPlan(Graph(overlapping))) == ControlError::kCrossEntry);
   const std::array<Targets, 2> cycle{{{1, {}}, {0, {}}}};
   built = BuildControlPlan(Graph(cycle));
   plan = std::get_if<ControlPlan>(&built);

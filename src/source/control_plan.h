@@ -20,11 +20,21 @@ struct LoopTransfer {
   ControlTransferSource source;
 };
 using ControlSynthetic = std::variant<std::monostate, LoopControl, LoopTransfer>;
+// An original single-entry condition evaluated only when the current test
+// does not enter the shared arm. Its original arcs remain in PlacedEdge.
+// This is control ownership, not permission to inline its effects/phi copies.
+struct ControlDecision {
+  ControlId evaluate;
+  bool evaluate_on_taken;
+  bool shared_on_taken;
+  ControlId join;
+};
 struct ControlNode {
   analysis::WorkBlockId block;
   std::optional<ControlArms> arms;
   std::optional<ControlId> next;
   ControlSynthetic synthetic;
+  std::optional<ControlDecision> decision;
 };
 struct ControlLoop {
   analysis::WorkBlockId header;
@@ -56,7 +66,8 @@ enum class ControlError : std::uint8_t {
 };
 // Requires the verified normal ValueProgram, not old SemanticRegionTree/AST.
 // Single-entry regions and natural loops with at most one normal exit target.
-// Early function exits are allowed. Irreducible/cross-entry regions and multiple
+// Early function exits and single-entry shared-arm decision chains are allowed.
+// Irreducible/genuine cross-entry regions and multiple
 // loop exit targets are typed refusals, never duplicated source subgraphs.
 [[nodiscard]] std::variant<ControlPlan, ControlError> BuildControlPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {});

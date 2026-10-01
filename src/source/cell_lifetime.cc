@@ -91,6 +91,18 @@ class Planner {
           result.blocks[std::get<PhaseControlUnit>(unit).block.value] = task.scope;
         } else {
           result.blocks[node.block.value] = task.scope;
+          // A condition expression has no new lexical block. Its actual CFG
+          // cells still belong to this scope; source emission separately refuses
+          // declarations/environment changes in the conditional RHS.
+          auto decision = node.decision;
+          while (decision) {
+            Step(); const auto at = decision->evaluate;
+            Require(at.value < seen.size() && !seen[at.value], Error::kControl);
+            seen[at.value] = 1;
+            const auto& condition = control_.nodes[at.value];
+            result.blocks[condition.block.value] = task.scope;
+            decision = condition.decision;
+          }
         }
         if (node.arms) {
           if (node.arms->taken) child(task.scope, CellArmScope{task.control, analysis::FlowEdgeKind::kTaken}, *node.arms->taken);

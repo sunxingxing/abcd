@@ -109,7 +109,7 @@ std::vector<SelectionRegion> FindLogicalRegions(const ValueProgram& graph, const
   }
   for (const auto& node : control.nodes) {
     if (budget) budget->Step();
-    if (!node.arms || !node.next || !std::holds_alternative<std::monostate>(node.synthetic)) continue;
+    if (node.decision || !node.arms || !node.next || !std::holds_alternative<std::monostate>(node.synthetic)) continue;
     const auto& header = graph.blocks[node.block.value];
     const auto& summary = blocks[node.block.value];
     if (header.edge_count != 2 || !summary.last || !summary.previous) continue;
@@ -264,7 +264,7 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
   budget.Admit(result.capacity() - control.nodes.size(), sizeof(SelectionRegion));
   for (const auto control_id : order) {
     const auto& node = control.nodes[control_id.value];
-    budget.Step(); if (!node.arms || !std::holds_alternative<std::monostate>(node.synthetic)) continue;
+    budget.Step(); if (node.decision || !node.arms || !std::holds_alternative<std::monostate>(node.synthetic)) continue;
     const auto& block = graph.blocks[node.block.value];
     if (block.edge_count != 2 || !block.op_count) continue;
     const OpId branch_id{block.first_op.value + block.op_count - 1};

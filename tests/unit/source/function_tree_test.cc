@@ -172,6 +172,39 @@ void EmptyTakenBranch() {
   std::get<UnaryExpr>(wrong.expressions[branch.condition.value].expression).operation = TreeUnary::kPlus;
   Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(wrong)));
 }
+void SharedConditionTree() {
+  using namespace analysis;
+  Fixture f;
+  for (std::uint32_t b = 0; b < 2; ++b) {
+    const auto read = f.Add(b, 0, b * 10, ValueNamedRead{{0}}, true,
+        {{OperandRole::kBase, ValueId{0}}}, kRead);
+    const auto compare = f.Add(b, 1, b * 10 + 1, ValueBinary{BinaryOperator::kStrictEqual}, true,
+        {{OperandRole::kLeft, *f.graph.ops[read.value].result}, {OperandRole::kRight, SpecialValue::kUndefined}});
+    f.Add(b, 2, b * 10 + 2, ValueBranch{UnaryOperator::kTrueOrNonzeroNumber}, false,
+        {{OperandRole::kCondition, *f.graph.ops[compare.value].result}});
+  }
+  f.Add(2, 0, 30, ValueNamedWrite{{0}}, false,
+      {{OperandRole::kBase, ValueId{0}}, {OperandRole::kStoredValue, analysis::IntegerLiteral{7}}}, kWrite);
+  f.Add(2, 1, 31, ValueJump{}, false, {});
+  f.Add(3, 0, 40, ValueReturn{}, false, {{OperandRole::kReturnValue, SpecialValue::kUndefined}});
+  f.graph.blocks = {{{0}, 3, {0}, 2}, {{3}, 3, {2}, 2}, {{6}, 2, {4}, 1}, {{8}, 1, {5}, 0}};
+  f.graph.edges = {{{0}, {2}, FlowEdgeKind::kTaken, 0}, {{0}, {1}, FlowEdgeKind::kFallthrough, 1},
+      {{1}, {3}, FlowEdgeKind::kTaken, 0}, {{1}, {2}, FlowEdgeKind::kFallthrough, 1},
+      {{2}, {3}, FlowEdgeKind::kFallthrough, 0}};
+  for (bool head_taken : {false, true}) for (bool child_taken : {false, true}) {
+    auto oriented = f;
+    if (head_taken) std::swap(oriented.graph.edges[0].target, oriented.graph.edges[1].target);
+    if (child_taken) std::swap(oriented.graph.edges[2].target, oriented.graph.edges[3].target);
+    auto tree = std::get<ConstructedFunction>(oriented.Build()).tree;
+    Check(std::holds_alternative<TreeSemantics>(oriented.Verify(tree)));
+    const auto& body = std::get<BlockStmt>(tree.statements[tree.body.value].statement);
+    const auto& branch = std::get<IfStmt>(tree.statements[tree.children[body.first_child].value].statement);
+    const auto logical = std::get<LogicalExpr>(tree.expressions[branch.condition.value].expression);
+    Check(logical.operation == TreeLogical::kOr && !branch.alternate);
+    tree.expressions[branch.condition.value].expression = LogicalExpr{TreeLogical::kAnd, logical.left, logical.right};
+    Check(std::holds_alternative<TreeSemanticError>(oriented.Verify(tree)));
+  }
+}
 void BranchTree() {
   auto f = BranchFixture();
   auto built = f.Build();
@@ -827,6 +860,7 @@ int main() {
   ThrowTree();
   ComputedStoreTree();
   EmptyTakenBranch();
+  SharedConditionTree();
   BranchTree();
   SnapshotTree();
   NameAndConstantRefusals();

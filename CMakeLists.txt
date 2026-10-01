@@ -660,7 +660,13 @@ if(BUILD_TESTING)
   target_include_directories(literal_construct_test PRIVATE tests/support)
   target_link_libraries(literal_construct_test PRIVATE abcd_source)
   add_test(NAME literal_construct_test COMMAND literal_construct_test)
+  add_executable(shared_condition_test tests/integration/shared_condition.cc)
+  target_include_directories(shared_condition_test PRIVATE tests/support)
+  target_link_libraries(shared_condition_test PRIVATE abcd_source abcd_json)
+  add_test(NAME shared_condition_test COMMAND shared_condition_test)
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME shared_condition_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_condition.mjs $<TARGET_FILE:shared_condition_test>)
     add_test(NAME literal_construct_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/literal_construct.mjs $<TARGET_FILE:literal_construct_test>)
     add_test(NAME literal_argument_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

@@ -26,7 +26,7 @@ void VerifyControlSkeleton(ControlGraphView graph, std::span<const ControlId> en
     const auto& block = graph.Node({static_cast<std::uint32_t>(b)});
     Require(block.first_arc.value == edge_count && block.arc_count <= analysis::kMaxNormalSuccessors &&
         block.arc_count <= graph.ArcCount() - edge_count, Error::kInvalidGraph);
-    Require(plan.nodes[b].block.value == b &&
+    Require(plan.nodes[b].block.value == b && !plan.nodes[b].decision &&
         std::holds_alternative<std::monostate>(plan.nodes[b].synthetic), Error::kInvalidGraph);
     for (std::uint8_t e = 0; e < block.arc_count; ++e) {
       quota.Work(); const auto& edge = graph.Arc({static_cast<std::uint32_t>(edge_count++)});

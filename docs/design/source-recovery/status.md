@@ -12,6 +12,52 @@
 
 ## 当前阶段
 
+### 2026-10-01：共享代码分支贯通原生短路条件链
+
+- normal ControlPlan 从原始 CFG 恢复单入口、共享同一代码分支的条件链，
+  使用反向拓扑 memo，新增发现为 O(B+E)。保留每条原始边、分支方向、
+  condition owner 和实际 continuation；共享 body 只归属一次，支持执行后
+  合流及 return 提前结束。ControlVerify 从原始边与 indegree 独立核对，
+  错误 evaluate、方向、join、终止节点注解和真正交叉进入继续拒绝；
+  loop/exception projection 不获得此规则，投影 skeleton 拒绝该注解。
+- FunctionTree/TreeFlow 经同一表达式森林输出原生右结合 || 和一个 if。
+  每个 predicate 与原始 branch/PC 一一核对，只有已拥有的 inline operand
+  才能位于条件 RHS；独立 effect/snapshot、cell/environment 变化及 phi
+  edge copies 继续拒绝，不提前运行后续 getter、不复制共享 body，不增加
+  helper/writer。附加条件块使用实际 enclosing lexical scope，logical/value
+  selection discovery 不误将此控制链当作 phi 选择。
+- 新用例从三 profile 实际 opcode 字节解码，经 FunctionInput、ValueGraph、
+  control/evaluation、共同 AST、独立 semantics、ABI 和 printer。覆盖四种
+  条件方向、普通/提前 return、1/2/200/201/400/800 条件及几何 work；
+  discarded getter 保留拒绝。旧 ControlPlan 上新用例实际 RED，
+  /tmp/abcd-shared-condition-red-build.log 与 red-tests.log。
+- 独立完整函数对照通过 **192456 场景**：不同 primitive/object 值、严格
+  比较无 coercion、getter 改写后续状态、任意 throw、Proxy、native member
+  receiver、non-callable、callee/continuation getter 异常、提前 return，
+  callee 自身及 ambient call/apply/bind 毒化。OR→AND 和重复 getter 的
+  语法合法 mutation 被 oracle 拒绝，
+  /tmp/abcd-shared-condition-completion-behavior.log。
+- 恢复本次实现后的相关构建退出0，
+  /tmp/abcd-shared-condition-restored-build.log；最终 **37/37 定向回归通过
+  130.98秒**，/tmp/abcd-shared-condition-verified-tests.log，含上述完整行为
+  oracle、control/tree、logical/loop、cell/capture、普通/phased literal、
+  派生构造器及完整 PageA/Index 回归。排除的旧 writer 基线失败见下。
+- 五输入 build/stage-one/value-shared-conditions-pass-1 均退出0，保持
+  **50 complete / 3 incomplete / 53 failure / 46 no-module**，无 complete
+  回退、新增 complete 或 legacy writer，
+  /tmp/abcd-shared-condition-batch-summary.json。这未新增完整 record 或
+  整体配对表示 Accepted；全库/RSS/基准/DFX/代理仍暂停。
+- 扩大的定向回归最初36/37通过；额外旧 writer named_call_test 在555行
+  的 AccumulatorFailure variant 断言失败。恢复全部本次生产改动到 HEAD
+  后构建退出0、同一测试仍失败，/tmp/abcd-shared-condition-baseline-build.log
+  与 baseline-test.log，现已完整恢复本次修改。该既有失败不计作通过。
+- 真实 Home 已越过 method5739 的 normal kCrossEntry，整份 record 的首个
+  拒绝移至 method6760/PC85，/tmp/abcd-shared-condition-home-next.log。
+  实际是 BufferedArrayCreation，FamilyReader 调 BindCreation 后得到
+  CreationError::kUnsupportedOpcode，/tmp/abcd-shared-condition-creation-cause.log。
+  下一步贯通 primitive array barrier 与现有共同 array constants，不忽略
+  callable literals、capture barrier 或分配效果。阶段一 Goal active。
+
 ### 2026-10-01：派生 receiver 贯通实际闭包创建作用域
 
 - DerivedProjection 从真实 super stored operand、原始 local SSA 及同文件

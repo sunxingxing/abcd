@@ -31,6 +31,7 @@ class ControlBuilder {
     quota_.Size(up_, (exit_ + 1) * levels_);
     quota_.Size(owned_, exit_);
     quota_.Size(terminal_corridor_, exit_);
+    quota_.Size(decisions_, exit_);
     quota_.Size(tasks_, exit_);
     plan_.view = graph_.Kind();
     plan_.revision = graph_.Revision();
@@ -41,6 +42,7 @@ class ControlBuilder {
     quota_.Size(plan_.edges, graph_.ArcCount());
     Order();
     Postdominators();
+    Decisions();
     Regions();
     plan_.allocated_bytes = plan_.nodes.capacity() * sizeof(ControlNode) +
                             plan_.edges.capacity() * sizeof(PlacedEdge);
@@ -138,6 +140,35 @@ class ControlBuilder {
       }
     }
   }
+  void Decisions() {
+    // Reverse topological summaries recognize arbitrarily long shared-arm
+    // condition chains in O(B+E), never a suffix walk at every branch.
+    // Projected loop/exception ports keep their existing lexical consumer.
+    if (graph_.Kind() != ControlViewKind::kNormal) return;
+    for (std::size_t i = exit_; i != 0; --i) {
+      quota_.Work(); const auto id = order_[i - 1];
+      const auto& node = graph_.Node({id});
+      if (node.arc_count != analysis::kMaxNormalSuccessors) continue;
+      for (std::uint8_t e = 0; e < node.arc_count; ++e) {
+        quota_.Work();
+        const auto evaluate = graph_.Arc({node.first_arc.value + e}).target.value;
+        const auto shared = graph_.Arc({node.first_arc.value + (1 - e)}).target.value;
+        const auto& child = graph_.Node({evaluate});
+        if (indegree_[evaluate] != 1 || child.arc_count != analysis::kMaxNormalSuccessors) continue;
+        for (std::uint8_t c = 0; c < child.arc_count; ++c) {
+          quota_.Work();
+          if (graph_.Arc({child.first_arc.value + c}).target.value != shared) continue;
+          const auto other = graph_.Arc({child.first_arc.value + (1 - c)}).target.value;
+          if (other == shared) continue;
+          if (decisions_[evaluate] &&
+              decisions_[evaluate]->evaluate.value == other &&
+              decisions_[evaluate]->evaluate_on_taken == (c != 0))
+            decisions_[id] = ControlDecision{{evaluate}, e == 0, c == 0, decisions_[evaluate]->join};
+          else decisions_[id] = ControlDecision{{evaluate}, e == 0, c == 0, {other}};
+        }
+      }
+    }
+  }
   void Regions() {
     std::size_t pending = 0;
     for (const auto entry : entries_) {
@@ -159,6 +190,37 @@ class ControlBuilder {
         const auto& block = graph_.Node({cursor});
         if (block.arc_count == analysis::kMaxNormalSuccessors) {
           auto join = parent_[cursor];
+          if (decisions_[cursor]) {
+            join = decisions_[cursor]->join.value;
+            auto part = cursor;
+            const auto& first = *decisions_[cursor];
+            const auto shared = graph_.Arc({block.first_arc.value + (first.evaluate_on_taken ? 1U : 0U)}).target.value;
+            while (true) {
+              quota_.Work(); auto& planned = plan_.nodes[part];
+              const auto& original = graph_.Node({part});
+              const bool taken = part == cursor ? !first.evaluate_on_taken :
+                  plan_.nodes[part].arms->taken.has_value();
+              planned.arms = ControlArms{taken ? std::optional<ControlId>{{shared}} : std::nullopt,
+                  taken ? std::nullopt : std::optional<ControlId>{{shared}}};
+              planned.decision = decisions_[part];
+              for (std::uint8_t e = 0; e < original.arc_count; ++e) {
+                quota_.Work(); const auto edge = original.first_arc.value + e;
+                plan_.edges[edge] = {{edge}, {part}, e == 0 ? EdgePlacement::kTaken : EdgePlacement::kFallthrough};
+              }
+              if (!planned.decision) break;
+              const auto next = planned.decision->evaluate.value;
+              Require(!owned_[next], Error::kCrossEntry); owned_[next] = 1; ++covered;
+              const bool next_taken = planned.decision->shared_on_taken;
+              plan_.nodes[next].arms = ControlArms{next_taken ? std::optional<ControlId>{{shared}} : std::nullopt,
+                  next_taken ? std::nullopt : std::optional<ControlId>{{shared}}};
+              part = next;
+            }
+            Require(pending < tasks_.size(), Error::kResourceLimit);
+            tasks_[pending++] = {shared, join};
+            if (join != task.stop) node.next = ControlId{join};
+            cursor = join;
+            continue;
+          }
           // Early-exit structuring: a private straight terminal arm does not
           // force the continuing arm under another if. Compute this summary
           // once in reverse order, not with a graph walk at each guard. Keep
@@ -207,6 +269,7 @@ class ControlBuilder {
   std::vector<std::uint32_t> indegree_, order_, parent_, depth_, up_;
   std::vector<std::uint8_t> owned_, terminal_corridor_;
   std::vector<RegionTask> tasks_;
+  std::vector<std::optional<ControlDecision>> decisions_;
 };
 }  // namespace
 
