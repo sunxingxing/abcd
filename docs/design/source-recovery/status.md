@@ -12,6 +12,57 @@
 
 ## 当前阶段
 
+### 2026-10-02：无异常出口的数组初始化与原始 try 归属
+
+- 三 profile 的实际解码 own-indexed array 初始化新增正例，成功编译后
+  RED 于 VerifyNesting::SameCatch 的 kObserved，与9165的 allocation92
+  相同。初始夹具错用了普通 indexed store，被 lift 拒绝；改为已有
+  STOWNBYINDEX 后才确认上述语义 RED。
+  /tmp/abcd-array-catch-red-fixed-build.log、red-fixed-test.log、
+  red-fixed-cause.log。没有为测试新增普通 store 兼容入口。
+- 非 throwing allocation 保留 creation/identity 顺序，使用首个真实
+  throwing initializer 核对后续 read、TDZ guard、call 和 definition 的
+  dispatch。当前这类区间必须没有 catch-copy staging；否则会在 native
+  初始化表达式执行之后才写快照，故继续拒绝。原 throwing allocation
+  的 SameCatch/staging 合同不变，没有给非 throwing 操作伪造 handler。
+- 已有 TreeFlow 验证复用 TreeStructure 实际 expression_scopes 和原始
+  try/body/handler 对应关系；一次 memoize 最近 CatchScope，对照 allocation、
+  definition、nested operand 和配对 guard 的原始 instruction scope。
+  因而也检查 literal 被后续 call 吸收的实际执行位置，不假定它仍在
+  allocation 处。不能扩大 protected range 或将 getter/call 移出原 scope。
+  新增 O(S+R+I+F) 工作、O(S) 临时空间；catch anchor 增加 O(I) 工作和
+  O(1) 状态，复用已有预算，没有新 IR、报告、依赖、writer 或证明包装。
+- 三 profile 的数组覆盖2/200/201/400元素的完整树构建、独立流验证和
+  printer，201→400完整 draft work 增长受检。构造器需要十进制属性键
+  constant；初始夹具漏了键映射导致 kExpression，修正测试边界后才 GREEN。
+  六个跨 protected 边界反例在树语义阶段拒绝，六个需要 catch staging
+  的反例仍在 evaluation 阶段拒绝。原模块 guard、slot、definition、
+  nested ownership、PC 和 exact-work 检查继续执行。
+- 12对象和12数组完整函数的独立 lexical TDZ/live-binding oracle通过
+  1776场景及6个合法语法 mutation，其中3个只修改数组输出。核对初次和
+  后续TDZ、初始化期间替换绑定、getter/member receiver与顺序/次数、
+  任意抛出值、catch保存值身份、fresh identity、数组prototype/长度和
+  dense own-data descriptor。不是实际应用整体语义/风格 Accepted。
+- 最终相关构建退出0，79/79定向测试通过199.08秒，
+  /tmp/abcd-array-catch-final-build.log、final-fixture-build.log、
+  verified-tests.log。覆盖既有模块、literal、异常、控制、捕获/class、
+  async/generator RETURN循环及 Home/PageA 完整record。全库、扩大语料、
+  RSS/基准、DFX、调度器、代理仍暂停，内存实测未验证。
+- 五输入 build/stage-one/value-array-catch-pass-1 顺序导出均退出0，保持
+  51 complete / 3 incomplete / 52 failure / 46 no-module，无完整项回退、
+  新增完整record或 legacy writer。
+  /tmp/abcd-array-catch-final-batch.log、final-batch-summary.json。
+- 真实9165（creator9082、creationPC145、family member11）已越过旧数组
+  literal planning 的 kObserved；下一处首次 __cxa_throw 是 ForestBuilder
+  的 ValueUnary::kToNumeric op299，原始PC840、工作PC751，输入Value244、
+  结果245，kUserCode/kMayThrow；ops300/301是Copy，302是Increment，303
+  是Copy。证据 /tmp/abcd-array-catch-real-unary.log、
+  next-update-sequence.log。此失败发生在 TreeFlow 之前，不能把它称为
+  真实9165的完整 try-scope 源码或整函数验收通过。
+- 下一步沿共同 evaluation/tree/operator/printer 恢复原生 numeric update，
+  保留 Number/BigInt、转换/求值次数、post/pre结果、存储与异常顺序，
+  不用 x+1 替代；之后继续完整函数族和配对语义/表示验收。Goal仍active。
+
 ### 2026-10-02：模块 TDZ 配对贯通相位对象初始化
 
 - 新的真实解码对象初始化夹具在成功编译后 RED：与函数9165一样，

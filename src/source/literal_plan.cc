@@ -386,6 +386,7 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
     }
   }
   std::size_t depth = 0;
+  std::optional<analysis::OpId> catch_site;
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     budget.Step(); const auto& op = graph.ops[i];
     if (depth) Require(path.Same(graph.ops[stack[0].value].block, op.block), Error::kFlow);
@@ -401,13 +402,28 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
     const bool nested_guard = i < guards.size() && guards[i] &&
         std::holds_alternative<analysis::ValueGuard>(op.operation) && plan.nested[guards[i]->value];
     if (depth && phases && (owners[i] || plan.nested[i] || nested_guard) && OrderedEvaluation(op) &&
-        op.exceptional == analysis::ExceptionalCompletion::kMayThrow)
-      Require(phases->SameCatch({static_cast<std::uint32_t>(i)}, stack[0]), Error::kObserved);
+        op.exceptional == analysis::ExceptionalCompletion::kMayThrow) {
+      const analysis::OpId site{static_cast<std::uint32_t>(i)};
+      // A nonthrowing allocation has no catch signature. Its first real throw
+      // anchors the initializer's signature; original lexical try ownership is
+      // independently checked by TreeFlow against actual expression scopes.
+      // Until staging can precede this allocation, every folded throw must be
+      // unstaged. Never execute a native initializer before its catch copies.
+      if (!catch_site) {
+        Require(graph.ops[stack[0].value].exceptional == analysis::ExceptionalCompletion::kImpossible &&
+            phases->SameCatch(site, site) && !phases->HasCatchCopies(site), Error::kObserved);
+        catch_site = site;
+      } else Require(phases->SameCatch(site, *catch_site), Error::kObserved);
+    }
     if (Aggregate(op.operation) && (ends[i] || plan.nested[i])) {
       if (depth) {
         Require(plan.nested[i].has_value(), Error::kObserved);
         Require(value_owners[i] == stack[depth - 1], Error::kDefinition);
-      } else Require(!plan.nested[i], Error::kDefinition);
+      } else {
+        Require(!plan.nested[i], Error::kDefinition);
+        catch_site = op.exceptional == analysis::ExceptionalCompletion::kMayThrow ?
+            std::optional{analysis::OpId{static_cast<std::uint32_t>(i)}} : std::nullopt;
+      }
       if (ends[i]) stack[depth++] = {static_cast<std::uint32_t>(i)};
     } else if (depth) {
       if (owners[i]) {

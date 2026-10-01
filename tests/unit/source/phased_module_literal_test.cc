@@ -16,7 +16,8 @@ using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
 std::uint64_t Run(abc::ProfileId profile, std::uint32_t fields, bool caught,
-                  bool call, bool split_dispatch = false, std::ostream* output = nullptr) {
+                  bool call, bool split_dispatch = false, std::ostream* output = nullptr,
+                  bool array = false, bool snapshot = false) {
   constexpr std::uint8_t kObject = 0, kReceiver = 1, kSaved = 2, kParameter = 3;
   constexpr unsigned kByteBits = 8;
   std::vector<std::uint8_t> bytes;
@@ -28,8 +29,15 @@ std::uint64_t Run(abc::ProfileId profile, std::uint32_t fields, bool caught,
   const auto load = [&](std::uint8_t reg) { opcode(abc::Opcode::kLDA_V8); bytes.push_back(reg); };
   const auto store = [&](std::uint8_t reg) { opcode(abc::Opcode::kSTA_V8); bytes.push_back(reg); };
   load(kParameter); store(kSaved);
+  if (snapshot) {
+    opcode(abc::Opcode::kLDEXTERNALMODULEVAR_IMM8); bytes.push_back(0);
+    opcode(abc::Opcode::kTHROW_UNDEFINEDIFHOLEWITHNAME_PREF_ID16); bytes.insert(bytes.end(), {0, 0});
+    opcode(abc::Opcode::kLDTRUE); store(kSaved);
+  }
   const auto allocation_pc = static_cast<std::uint32_t>(bytes.size());
-  opcode(abc::Opcode::kCREATEEMPTYOBJECT); store(kObject);
+  opcode(array ? abc::Opcode::kCREATEEMPTYARRAY_IMM8 : abc::Opcode::kCREATEEMPTYOBJECT);
+  if (array) bytes.push_back(0);
+  store(kObject);
   const auto initialization_pc = static_cast<std::uint32_t>(bytes.size());
   for (std::uint32_t i = 0; i < fields; ++i) {
     opcode(abc::Opcode::kLDEXTERNALMODULEVAR_IMM8); bytes.push_back(i % 2);
@@ -38,10 +46,16 @@ std::uint64_t Run(abc::ProfileId profile, std::uint32_t fields, bool caught,
     if (call) store(kReceiver);
     opcode(abc::Opcode::kLDOBJBYNAME_IMM8_ID16); bytes.insert(bytes.end(), {0, 2, 0});
     if (call) { opcode(abc::Opcode::kCALLTHIS0_IMM8_V8); bytes.insert(bytes.end(), {0, kReceiver}); }
-    opcode(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8);
-    const auto name = i + 3;
-    bytes.insert(bytes.end(), {0, static_cast<std::uint8_t>(name),
-        static_cast<std::uint8_t>(name >> kByteBits), kObject});
+    if (array) {
+      opcode(abc::Opcode::kSTOWNBYINDEX_IMM8_V8_IMM16);
+      bytes.insert(bytes.end(), {0, kObject, static_cast<std::uint8_t>(i),
+          static_cast<std::uint8_t>(i >> kByteBits)});
+    } else {
+      opcode(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8);
+      const auto name = i + 3;
+      bytes.insert(bytes.end(), {0, static_cast<std::uint8_t>(name),
+          static_cast<std::uint8_t>(name >> kByteBits), kObject});
+    }
   }
   load(kObject); opcode(abc::Opcode::kRETURN);
   const auto handler_pc = static_cast<std::uint32_t>(bytes.size());
@@ -49,7 +63,7 @@ std::uint64_t Run(abc::ProfileId profile, std::uint32_t fields, bool caught,
   auto body = test::Body(bytes);
   if (caught) {
     abc::TryRegion region;
-    region.offset = {split_dispatch ? initialization_pc : allocation_pc};
+    region.offset = {snapshot ? 0 : split_dispatch ? initialization_pc : allocation_pc};
     region.length = handler_pc - region.offset.value; region.handler_count = 1;
     body.tries.push_back(region);
     abc::CatchHandler handler; handler.offset = {handler_pc};
@@ -82,7 +96,7 @@ std::uint64_t Run(abc::ProfileId profile, std::uint32_t fields, bool caught,
     bindings.push_back({pair, read, {{1}, {read.slot.value}}});
   }
   const auto built = BuildPhasedEvaluationPlan(graph, {}, IncomingCells::kReject, {}, bindings);
-  if (split_dispatch) {
+  if ((split_dispatch && !array) || snapshot) {
     test::Check(std::get<EvaluationError>(built) == EvaluationError::kUnsupportedOperation);
     return 0;
   }
@@ -94,7 +108,7 @@ std::uint64_t Run(abc::ProfileId profile, std::uint32_t fields, bool caught,
     test::Check(evaluation.operations[pair.read.value].kind == EvaluationKind::kNestedLiteral);
     test::Check(evaluation.operations[pair.guard->value].kind == EvaluationKind::kModuleGuard);
   }
-  if (fields != 2) return evaluation.literals->work;
+  if (fields != 2 && !array) return evaluation.literals->work;
   const auto index = std::get<ModuleEvaluationIndex>(IndexModuleEvaluations(graph, evaluation.modules));
   const auto checked = std::get<std::uint64_t>(VerifyPhasedLiteralPlan(
       graph, *evaluation.literals, evaluation, {}, index.peers));
@@ -134,6 +148,12 @@ std::uint64_t Run(abc::ProfileId profile, std::uint32_t fields, bool caught,
   FunctionSyntax syntax{};
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   syntax.parameters.resize(1); syntax.names = {u"moduleFirst", u"moduleSecond", u"read", u"field0", u"field1"};
+  if (array) {
+    syntax.names.resize(3);
+    for (std::uint32_t i = 0; i < fields; ++i) {
+      const auto key = std::to_string(i); syntax.names.emplace_back(key.begin(), key.end());
+    }
+  }
   syntax.modules = {{{{1}, {0}}, {0}, ModuleAccess::kReadOnly, NameEvidence::kSynthesized},
       {{{1}, {1}}, {1}, ModuleAccess::kReadOnly, NameEvidence::kSynthesized}};
   std::vector<ExpressionConstant> constants(graph.ops.size());
@@ -142,8 +162,13 @@ std::uint64_t Run(abc::ProfileId profile, std::uint32_t fields, bool caught,
   for (std::size_t i = 0; i < evaluation.literals->definitions.size(); ++i)
     constants[evaluation.literals->definitions[i].value] = NameId{static_cast<std::uint32_t>(i + 3)};
   const ExceptionTreeInput context{body, input, regions, control};
-  const auto draft = std::get<ExceptionFunctionDraft>(BuildExceptionFunctionDraft(
-      graph, context, evaluation, syntax, {constants, syntax.names.size()}));
+  const auto constructed = BuildExceptionFunctionDraft(
+      graph, context, evaluation, syntax, {constants, syntax.names.size()});
+  if (split_dispatch) {
+    test::Check(std::get<FunctionTreeError>(constructed) == FunctionTreeError::kSemantics);
+    return evaluation.literals->work;
+  }
+  const auto& draft = std::get<ExceptionFunctionDraft>(constructed);
   const auto correspondence = std::get<TreeFlow>(VerifyExceptionTreeFlow(graph, context, evaluation, draft.tree));
   for (const auto& pair : guards.pairs) {
     const auto expression = correspondence.expressions[pair.read.value];
@@ -160,7 +185,7 @@ std::uint64_t Run(abc::ProfileId profile, std::uint32_t fields, bool caught,
   std::ostringstream source;
   test::Check(std::holds_alternative<PrintedFamilyDraft>(PrintFamilyDraft(family, source)));
   if (output) *output << source.str() << ",\n";
-  return evaluation.literals->work;
+  return array ? draft.work : evaluation.literals->work;
 }
 }  // namespace
 int main(int argc, char** argv) {
@@ -178,6 +203,24 @@ int main(int argc, char** argv) {
           previous = work;
         }
         if (caught) Run(profile, 2, true, call, true);
+      }
+  if (emit) std::cout << "];\n";
+  if (emit) std::cout << "export const arrays = [\n";
+  for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+                            abc::ProfileId::kDynamic1301})
+    for (const bool call : {false, true})
+      for (const bool caught : {false, true}) {
+        std::uint64_t previous = 0;
+        for (const auto fields : {2U, 200U, 201U, 400U}) {
+          const auto work = Run(profile, fields, caught, call, false,
+              emit && fields == 2 ? &std::cout : nullptr, true);
+          if (fields == 400) test::Check(work < previous * 3);
+          previous = work;
+        }
+        if (caught) {
+          Run(profile, 2, true, call, true, nullptr, true);
+          Run(profile, 2, true, call, false, nullptr, true, true);
+        }
       }
   if (emit) std::cout << "];\n";
 }

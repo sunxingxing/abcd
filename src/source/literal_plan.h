@@ -83,8 +83,11 @@ enum class LiteralError : std::uint8_t {
 // phase graph stays intact; copy aliases must have their independent proof.
 // No observations (including exceptional snapshots) before the last define,
 // RHS snapshots precede allocation; checked single-consumer nesting retains
-// operand/property order and the outer allocation's catch-copy sources. Publication
-// additionally requires the versioned resource-exhaustion exclusion.
+// operand/property order and the outer allocation's catch-copy sources. A
+// nonthrowing allocation instead anchors to its first real throwing initializer,
+// only without catch staging. TreeFlow separately discharges original lexical
+// try/handler ownership using independently observed AST expression scopes.
+// Publication additionally requires the versioned resource-exhaustion exclusion.
 // module_guards has the same checked-index contract as the normal-flow API;
 // evaluation construction and verification each supply their own fresh index.
 [[nodiscard]] std::variant<LiteralPlan, LiteralError> BuildPhasedLiteralPlan(

@@ -8,12 +8,14 @@ const probe = `
 export const old = {};
 const invoke = fn => { try { return { returned: fn(old) }; } catch (thrown) { return { thrown }; } };
 export const firstTdz = literals.map(invoke);
+export const firstArrayTdz = arrays.map(invoke);
 let moduleFirst = { read() {} };
 export const secondTdz = literals.map(invoke);
+export const secondArrayTdz = arrays.map(invoke);
 let moduleSecond;
 export function replaceSecond(value) { moduleSecond = value; }
-export function run(index, first, second, saved) {
-  moduleFirst = first; moduleSecond = second; return literals[index](saved);
+export function run(index, first, second, saved, array) {
+  moduleFirst = first; moduleSecond = second; return (array ? arrays : literals)[index](saved);
 }
 `;
 const load = async text => import(`data:text/javascript;base64,${Buffer.from(text + probe).toString('base64')}`);
@@ -22,13 +24,14 @@ let scenarios = 0;
 async function check(text, count = true) {
   const generated = await load(text);
   assert.equal(generated.literals.length, 12);
-  for (const phase of [generated.firstTdz, generated.secondTdz])
+  assert.equal(generated.arrays.length, 12);
+  for (const phase of [generated.firstTdz, generated.secondTdz, generated.firstArrayTdz, generated.secondArrayTdz])
     for (let i = 0; i < phase.length; ++i) {
       if (i % 2) assert.equal(phase[i].returned, generated.old);
       else assert(phase[i].thrown instanceof ReferenceError);
       if (count) ++scenarios;
     }
-  for (let i = 0; i < generated.literals.length; ++i) {
+  for (const array of [false, true]) for (let i = 0; i < generated.literals.length; ++i) {
     const call = Math.floor(i / 2) % 2 === 1;
     const caught = i % 2 === 1;
     for (const value of values)
@@ -64,41 +67,55 @@ async function check(text, count = true) {
           const observe = fn => { try { return { returned: fn() }; } catch (thrown) { return { thrown }; } };
           const expected = observe(() => {
             try {
+              if (array) return call ? [reference.first.read(), referenceSecond.read()] :
+                [reference.first.read, referenceSecond.read];
               return call ? { field0: reference.first.read(), field1: referenceSecond.read() } :
                 { field0: reference.first.read, field1: referenceSecond.read };
             } catch (error) { if (caught) return saved; throw error; }
           });
           const actualWorld = world(generated.replaceSecond);
-          const actual = observe(() => generated.run(i, actualWorld.first, actualWorld.second, saved));
+          const actual = observe(() => generated.run(i, actualWorld.first, actualWorld.second, saved, array));
           assert.deepEqual(actualWorld.log, reference.log);
           assert.deepEqual(Object.keys(actual), Object.keys(expected));
           if ('thrown' in expected) assert(Object.is(actual.thrown, expected.thrown));
           else if (expected.returned === saved) assert.equal(actual.returned, saved);
           else {
             const object = actual.returned;
-            assert.equal(Object.getPrototypeOf(object), Object.prototype);
-            assert.deepEqual(Reflect.ownKeys(object), ['field0', 'field1']);
-            for (const name of ['field0', 'field1']) {
+            assert.equal(Object.getPrototypeOf(object), array ? Array.prototype : Object.prototype);
+            assert.equal(Array.isArray(object), array);
+            assert.deepEqual(Reflect.ownKeys(object), array ? ['0', '1', 'length'] : ['field0', 'field1']);
+            if (array) {
+              assert.equal(object.length, 2);
+              assert.deepEqual(Object.getOwnPropertyDescriptor(object, 'length'),
+                { value: 2, writable: true, enumerable: false, configurable: false });
+            }
+            for (const name of array ? ['0', '1'] : ['field0', 'field1']) {
               const descriptor = Object.getOwnPropertyDescriptor(object, name);
               assert(Object.is(descriptor.value, expected.returned[name]));
               assert(descriptor.writable && descriptor.enumerable && descriptor.configurable);
             }
             assert.notEqual(object, generated.run(i, { read: call ? () => value : value },
-                { read: call ? () => value : value }, saved));
+                { read: call ? () => value : value }, saved, array));
           }
           if (count) ++scenarios;
         }
   }
 }
 await check(source);
-const mutations = [
-  source.replaceAll('moduleFirst.read', '(moduleFirst.read, moduleFirst.read)'),
-  source.replaceAll('moduleFirst', 'temporaryBinding').replaceAll('moduleSecond', 'moduleFirst')
-    .replaceAll('temporaryBinding', 'moduleSecond'),
-  source.replaceAll('moduleFirst.read()', 'moduleFirst.read'),
-];
+const mutations = [];
+const arrayBoundary = source.indexOf('export const arrays');
+assert(arrayBoundary > 0);
+for (const arraysOnly of [false, true]) {
+  const prefix = arraysOnly ? source.slice(0, arrayBoundary) : '';
+  const body = arraysOnly ? source.slice(arrayBoundary) : source;
+  mutations.push(
+    prefix + body.replaceAll('moduleFirst.read', '(moduleFirst.read, moduleFirst.read)'),
+    prefix + body.replaceAll('moduleFirst', 'temporaryBinding').replaceAll('moduleSecond', 'moduleFirst')
+      .replaceAll('temporaryBinding', 'moduleSecond'),
+    prefix + body.replaceAll('moduleFirst.read()', 'moduleFirst.read'));
+}
 for (const mutation of mutations) {
   assert.notEqual(mutation, source);
   await assert.rejects(() => check(mutation, false));
 }
-console.log(`module literals: ${scenarios} scenarios and ${mutations.length} mutations passed`);
+console.log(`module object/array literals: ${scenarios} scenarios and ${mutations.length} mutations passed`);

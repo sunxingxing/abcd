@@ -35,6 +35,7 @@ class PhaseCorridors {
       PhaseLiteralIntervals literals = PhaseLiteralIntervals::kInclude);
   bool CanFuse(analysis::OpId producer, analysis::OpId consumer, analysis::UseId use) const;
   bool SameCatch(analysis::OpId producer, analysis::OpId root);
+  bool HasCatchCopies(analysis::OpId operation) const;
   std::size_t EffectsBefore(analysis::OpId op) const;
   std::size_t EffectCount(analysis::OpId op) const;
   PhaseEffectInterval Interval(analysis::OpId op) const;

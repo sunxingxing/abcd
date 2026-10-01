@@ -215,6 +215,10 @@ bool PhaseCorridors::SameCatch(OpId producer, OpId consumer) {
   }
   return true;
 }
+bool PhaseCorridors::HasCatchCopies(OpId operation) const {
+  const auto bundle = throws_[operation.value];
+  return bundle && plan_.phis->bundles[*bundle].count != 0;
+}
 bool PhaseCorridors::CanFuse(OpId producer, OpId consumer, UseId use) const {
   const auto& child = graph_.ops[producer.value];
   const auto& parent = graph_.ops[consumer.value];

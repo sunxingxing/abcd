@@ -237,9 +237,38 @@ Decoded three-profile object/getter/member-call fixtures cover 2/200/201/400
 fields, geometric work growth, TDZ, mutable bindings, receiver/order, arbitrary
 throws and saved catch-value identity. Missing/moved guards, slot changes,
 ownership/definition mutations and work-budget boundaries are rejected.
-This does not establish support for throwing initializers whose outer allocation
-has no exceptional exit: that allocation supplies no catch witness to the
-current interval contract. No peak-RSS or performance acceptance is claimed.
+The following extension addresses allocations without an exceptional exit.
+No peak-RSS or performance acceptance is claimed.
+
+### Phased initialization under a nonthrowing allocation (2026-10-02)
+
+Keep the allocation's creation/identity event even when it cannot throw. Its
+first actual throwing initializer supplies the interval's dispatch signature;
+every subsequent read, guard, call and definition must match it. Such an interval
+currently requires zero catch-copy staging at every throwing site: the existing
+statement placement cannot execute those copies before a native initializer
+emitted at the earlier allocation. Throwing allocations retain their own catch
+signature and existing staging contract. The CFG and exceptional exits stay
+unchanged; no handler is assigned to a nonthrowing operation.
+
+At the existing independent TreeFlow boundary, reuse TreeStructure's actual AST
+expression scopes and the checked original try/body/handler mapping. Seed native
+try/catch block scopes and memoize the nearest CatchScope along the already
+verified scope-parent forest. Compare each native allocation, property definition,
+nested operand and paired guard against its original instruction scope. This also
+checks an initializer fused into a later call, rather than assuming its AST
+still executes at the allocation. Never walk scope parents once per field or
+expand the original protected range to fit the generated syntax.
+
+This adds O(S+R+I+F) work and O(S) scratch beyond the existing scope and literal
+checks, where S is AST scopes, R original try regions, I operations and F
+definitions. The catch-anchor choice adds O(I) work and O(1) state to the existing
+interval stack. Existing byte/work grants cover scratch; there is no new report,
+IR, dependency or writer. Decoded three-profile dense arrays cover 2/200/201/400
+elements through full tree construction, TDZ, live-binding replacement,
+getter/member receiver/order, arbitrary throws, own descriptors and fresh identity.
+Cross-protected-boundary and required-staging fixtures remain refusals. These are
+focused functional/algorithmic checks, not RSS or benchmark acceptance.
 
 ### Native conditional value selection (2026-10-01)
 

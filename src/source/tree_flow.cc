@@ -24,9 +24,10 @@ class FlowCheck {
   FlowCheck(const analysis::ValueProgram& graph, const ControlPlan& control,
       const EvaluationPlan& evaluation, const FunctionTree& tree,
       TreeCheckBudget& budget, const CompletionTreeView& sequences,
+      std::span<const ScopeId> expression_scopes,
       const ExceptionTreeInput* exceptions = nullptr)
       : graph_(graph), control_(control), evaluation_(evaluation), tree_(tree), budget_(budget),
-        exceptions_(exceptions), sequences_(sequences) {
+        exceptions_(exceptions), sequences_(sequences), expression_scopes_(expression_scopes) {
     budget.Array(placements_, graph.ops.size());
     budget.Array(flow_.expressions, graph.ops.size());
     budget.Array(flow_.statements, graph.ops.size());
@@ -243,6 +244,7 @@ class FlowCheck {
     }
     edges_->Finish();
     Objects();
+    LiteralScopes();
     for (std::size_t i = 0; i < tree_.symbols.size(); ++i) {
       budget_.Step();
       const auto& symbol = tree_.symbols[i];
@@ -585,6 +587,73 @@ class FlowCheck {
       actual = symbol;
     }
   }
+  void LiteralScopes() {
+    if (!exceptions_ || !evaluation_.literals) return;
+    bool needed = false;
+    for (const auto& object : evaluation_.literals->objects) {
+      budget_.Step(); needed |= object.form == LiteralForm::kExpression &&
+          graph_.ops[object.allocation.value].exceptional == analysis::ExceptionalCompletion::kImpossible;
+    }
+    if (!needed) return;
+    // Reuse the independently traversed AST scopes and original try mapping.
+    // Memoize nearest protected/handler scope once, not a parent walk per field.
+    std::vector<std::optional<analysis::CatchScope>> scopes;
+    std::vector<std::uint8_t> resolved;
+    std::vector<ScopeId> path;
+    budget_.Array(scopes, tree_.scopes.size()); budget_.Array(resolved, tree_.scopes.size());
+    budget_.Array(path, tree_.scopes.size());
+    const auto seed = [&](ScopeId scope, analysis::TryId region, analysis::CatchPart part) {
+      Require(!resolved[scope.value], Error::kControl);
+      scopes[scope.value] = analysis::CatchScope{region, part}; resolved[scope.value] = 1;
+    };
+    for (std::size_t r = 0; r < flow_.tries.size(); ++r) {
+      budget_.Step(); Require(flow_.tries[r].has_value(), Error::kControl);
+      const auto& syntax = std::get<TryStmt>(tree_.statements[flow_.tries[r]->value].statement);
+      Require(syntax.handler.has_value(), Error::kControl);
+      const analysis::TryId region{static_cast<std::uint32_t>(r)};
+      seed(sequences_.Block(syntax.body).scope, region, analysis::CatchPart::kProtected);
+      seed(sequences_.Block(syntax.handler->body).scope, region, analysis::CatchPart::kHandler);
+    }
+    for (std::size_t s = 0; s < scopes.size(); ++s) {
+      budget_.Step(); if (resolved[s]) continue;
+      std::size_t count = 0;
+      std::optional<ScopeId> cursor{ScopeId{static_cast<std::uint32_t>(s)}};
+      while (cursor && !resolved[cursor->value]) {
+        budget_.Step(); Require(count < path.size(), Error::kControl);
+        path[count++] = *cursor; cursor = tree_.scopes[cursor->value].parent;
+      }
+      const auto parent = cursor ? scopes[cursor->value] : std::nullopt;
+      while (count) {
+        budget_.Step(); const auto scope = path[--count];
+        scopes[scope.value] = parent; resolved[scope.value] = 1;
+      }
+    }
+    const auto check = [&](analysis::OpId operation, ExprId expression) {
+      budget_.Step();
+      const auto site = graph_.phases[graph_.ops[operation.value].block.value].instruction.value;
+      const auto& expected = exceptions_->regions.layout.scopes[site];
+      const auto& actual = scopes[expression_scopes_[expression.value].value];
+      Require(expected.has_value() == actual.has_value() &&
+          (!expected || (expected->region == actual->region && expected->part == actual->part)), Error::kPlacement);
+    };
+    for (const auto& object : evaluation_.literals->objects) {
+      budget_.Step(); if (object.form != LiteralForm::kExpression) continue;
+      check(object.allocation, *flow_.expressions[object.allocation.value]);
+      for (std::size_t d = object.first; d < std::size_t(object.first) + object.count; ++d) {
+        const auto id = evaluation_.literals->definitions[d];
+        check(id, tree_.properties[flow_.initializers[id.value]->value].value);
+      }
+    }
+    for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
+      budget_.Step(); if (evaluation_.operations[i].kind == EvaluationKind::kNestedLiteral)
+        check({static_cast<std::uint32_t>(i)}, *flow_.expressions[i]);
+    }
+    for (const auto& module : evaluation_.modules) {
+      budget_.Step(); if (!evaluation_.literals->nested.empty() &&
+          evaluation_.literals->nested[module.pair.read.value])
+        check(*module.pair.guard, *flow_.expressions[module.pair.guard->value]);
+    }
+  }
   void Objects() {
     std::size_t count = 0;
     std::vector<std::uint8_t> grouped;
@@ -913,6 +982,7 @@ class FlowCheck {
   TreeCheckBudget& budget_;
   const ExceptionTreeInput* exceptions_;
   const CompletionTreeView& sequences_;
+  std::span<const ScopeId> expression_scopes_;
   TreeFlow flow_;
   struct ConditionalTask { std::size_t region = 0; ExprId expression; };
   std::vector<ConditionalTask> conditional_tasks_;
@@ -988,7 +1058,8 @@ std::variant<TreeFlow, TreeFlowError> VerifyFlow(
       completions = std::get<CompletionPlan>(std::move(result));
     }
     const CompletionTreeView sequences(tree, completions, checked);
-    return FlowCheck(graph, control, evaluation, tree, checked, sequences, exceptions).Run();
+    return FlowCheck(graph, control, evaluation, tree, checked, sequences,
+        std::get<TreeStructure>(structure).expression_scopes, exceptions).Run();
   } catch (Error error) { return error;
   } catch (TreeStructureError error) {
     return error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;
