@@ -230,7 +230,8 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
         for (std::uint32_t i = 0; i < block.op_count; ++i) {
           budget.Step(); const auto id = block.first_op.value + i; const auto& op = graph.ops[id];
           if (op.life != ValueLife::kLive || id == region.branch.value) continue;
-          if (evaluation.operations[id].kind != EvaluationKind::kInline) return {};
+          if (evaluation.operations[id].kind != EvaluationKind::kInline &&
+              evaluation.operations[id].kind != EvaluationKind::kPredicateSnapshot) return {};
         }
         return Path{node.block, region.join, {}, child};
       }

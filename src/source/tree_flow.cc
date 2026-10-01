@@ -71,6 +71,7 @@ class FlowCheck {
     CapturedCells();
     ModuleAliases();
     auto first_child = Declarations();
+    PredicateSnapshots();
     edges_->Consume(analysis::MethodEntryKey{},
         sequences_.Block(tree_.body), first_child);
     std::size_t pending = 1;
@@ -130,6 +131,7 @@ class FlowCheck {
             edges_->Stage(id, block, child);
           if (op.life != analysis::ValueLife::kLive ||
               evaluation_.operations[id.value].kind == EvaluationKind::kInline ||
+              evaluation_.operations[id.value].kind == EvaluationKind::kPredicateSnapshot ||
               evaluation_.operations[id.value].kind == EvaluationKind::kPhiInput ||
               evaluation_.operations[id.value].kind == EvaluationKind::kLogicalLeft ||
               evaluation_.operations[id.value].kind == EvaluationKind::kNestedLiteral ||
@@ -708,6 +710,31 @@ class FlowCheck {
               Error::kSnapshot);
     }
     return count;
+  }
+  void PredicateSnapshots() {
+    bool any = false;
+    for (const auto& op : evaluation_.operations) { budget_.Step(); any |= op.kind == EvaluationKind::kPredicateSnapshot; }
+    if (!any) return;
+    std::vector<std::optional<analysis::OpId>> sources;
+    budget_.Array(sources, tree_.expressions.size());
+    for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
+      budget_.Step(); if (evaluation_.operations[i].kind != EvaluationKind::kPredicateSnapshot) continue;
+      Require(flow_.expressions[i].has_value(), Error::kSnapshot);
+      auto& source = sources[flow_.expressions[i]->value]; Require(!source, Error::kSnapshot);
+      source = analysis::OpId{static_cast<std::uint32_t>(i)};
+    }
+    for (std::size_t i = 0; i < tree_.expressions.size(); ++i) {
+      budget_.Step(); const auto& expression = tree_.expressions[i];
+      const auto* assignment = std::get_if<AssignmentExpr>(&expression.expression);
+      if (!assignment || !sources[assignment->value.value]) continue;
+      const auto source = *sources[assignment->value.value];
+      Require(expression.origin.value == graph_.ops[source.value].origin.value, Error::kSnapshot);
+      RootExpression(source, ExprId{static_cast<std::uint32_t>(i)});
+    }
+    for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
+      budget_.Step(); if (evaluation_.operations[i].kind == EvaluationKind::kPredicateSnapshot)
+        Require(flow_.snapshots[i].has_value(), Error::kSnapshot);
+    }
   }
   void RootExpression(analysis::OpId id, ExprId expression) {
     Require(flow_.expressions[id.value].has_value(), Error::kPlacement);

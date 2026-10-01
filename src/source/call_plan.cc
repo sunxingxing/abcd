@@ -60,7 +60,7 @@ bool StableReceiver(const ValueProgram& graph, const EvaluationPlan& evaluation,
   const auto* result = std::get_if<OpResult>(&definition.origin);
   if (!result) return false;
   const auto& placement = evaluation.operations[result->op.value];
-  return (placement.kind == EvaluationKind::kRoot && placement.temporary.has_value()) ||
+  return ((placement.kind == EvaluationKind::kRoot || placement.kind == EvaluationKind::kPredicateSnapshot) && placement.temporary.has_value()) ||
       ((placement.kind == EvaluationKind::kInline || placement.kind == EvaluationKind::kNestedLiteral) && placement.consumer == base);
 }
 bool Property(const ValueOperation& operation) {

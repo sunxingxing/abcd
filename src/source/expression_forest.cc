@@ -210,7 +210,7 @@ class ForestBuilder {
         std::array<ExprId, kFixedExpressionOperands> operands{};
         Require(op.use_count <= operands.size(), Error::kUnsupportedOperation);
         for (std::uint32_t j = 0; j < op.use_count; ++j) {
-          Step(); operands[j] = Operand(graph_.uses[op.first_use.value + j].operand, origin);
+          Step(); operands[j] = Use(analysis::UseId{op.first_use.value + j}, origin);
         }
         forest_.operations[i] = Lower({static_cast<std::uint32_t>(i)}, op, operands, origin, constants_.operations[i]);
       }
@@ -350,7 +350,7 @@ class ForestBuilder {
         Require(op.use_count <= operands.size(), Error::kUnsupportedOperation);
         for (std::uint32_t j = 0; j < op.use_count; ++j) {
           Step();
-          operands[j] = Operand(graph_.uses[op.first_use.value + j].operand, origin);
+          operands[j] = Use(analysis::UseId{op.first_use.value + j}, origin);
         }
         forest_.operations[i] =
             Lower({static_cast<std::uint32_t>(i)}, op, operands, origin, constants_.operations[i]);
@@ -669,6 +669,19 @@ class ForestBuilder {
         return *forest_.operations[result->op.value];
       }
     }, ResolveEvaluationOperand(evaluation_, operand));
+  }
+  ExprId Use(analysis::UseId use, TreeOriginId origin) {
+    const auto& operand = graph_.uses[use.value].operand;
+    const auto* value = std::get_if<analysis::ValueId>(&operand);
+    const auto* source = value ? std::get_if<analysis::OpResult>(&graph_.values[value->value].origin) : nullptr;
+    if (source && evaluation_.operations[source->op.value].kind == EvaluationKind::kPredicateSnapshot &&
+        evaluation_.operations[source->op.value].consumer == use) {
+      const auto* symbol = std::get_if<SymbolId>(&forest_.bindings.values[value->value]);
+      Require(symbol && forest_.operations[source->op.value], Error::kBinding);
+      return Add(AssignmentExpr{SymbolTarget{*symbol}, *forest_.operations[source->op.value]},
+          TreeOriginId{graph_.ops[source->op.value].origin.value});
+    }
+    return Operand(operand, origin);
   }
   ExprId Unary(analysis::UnaryOperator operation, ExprId input,
                const analysis::ValueOperand& original, TreeOriginId origin) {

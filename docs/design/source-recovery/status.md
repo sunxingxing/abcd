@@ -12,6 +12,35 @@
 
 ## 当前阶段
 
+### 2026-10-01：getter 快照进入严格谓词及消费者边界
+
+- 新增类型化 kPredicateSnapshot：将多用途 named/computed getter 的私有快照赋值
+  放在同块最早的严格比较用途，比较必须内联进入分支；后续用途仍读取同一私有符号。
+  连续事件区间证明限制移动位置，独立前向验证核对用途、快照原因与消费计数。
+  共享 AST 保留原 getter 表达式和来源，精确 UseId 对应赋值，流验证核对声明和唯一写入。
+  没有重复 getter、丢弃快照或改变方法 receiver。
+- 条件对象组合的额外事件证明截止于最后一个实际消费者，不再扫描随后无关的
+  字面量组；后续操作仍由原局部验证覆盖。新增目标调用后另一次 getter/字面量
+  调用的真实解码回归，核对两次调用的顺序、参数、结果身份与各位置异常。
+- 2/3/16/64/200/201 层 getter 选择规格通过；debugger 屏障、缺失消费者、
+  错误快照原因和篡改赋值目标的反例通过。关闭快照投影后已修正 fixture 的
+  源码生成失败，/tmp/abcd-predicate-snapshot-red.log；这是功能禁用敏感性验证，
+  不是 HEAD 基线结果。当前 15739 组逻辑表达式 JS 行为对照通过。
+- 构建 /tmp/abcd-predicate-consumer-final-build.log；14 项定向回归全部通过，
+  11.90 秒，/tmp/abcd-predicate-consumer-final-tests.log。源码证据
+  /tmp/abcd-predicate-consumer-sources.js。全量测试、RSS、基准仍暂停。
+- 五输入正式导出 build/stage-one/value-predicate-consumer-pass-1 均退出0，保持
+  43 complete / 63 failure / 46 no-module；无完整项退化、无 legacy writer，
+  /tmp/abcd-predicate-consumer-batch-summary.json。尚无新增完整 record。
+- 真实 ShoppingAvoid 回调 12139 已越过调用、FunctionTree 和树语义检查，当前
+  在 instruction_sources.cc 的来源数量检查拒绝，证据
+  /tmp/abcd-predicate-consumer-verified-next.log。已有 primitive-tail duplication
+  保留原指令来源但新增操作，旧指令 census 仍假定一个输入 site 恰好对应一个操作。
+  下一步需要让来源映射完整保留同一指令的多个已证明 occurrence 及源码目标，
+  不能仅删除数量/唯一性检查或丢弃克隆目标。该 record 仍未完整导出。
+- 当前输出仍使用带私有快照的条件表达式；原生可选链及独立源码风格验收尚未完成。
+  本次定向行为验证不构成阶段一配对源码最终验收，Goal 继续开放。
+
 ### 2026-10-01：条件结果经字段表达式进入对象参数
 
 - 将对象初始化链从“条件值直接写入字段”扩展到条件值经过同块表达式树再写入。

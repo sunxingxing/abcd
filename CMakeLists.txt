@@ -218,7 +218,7 @@ target_sources(abcd_source PRIVATE src/source/leaf_sources.cc
   src/source/semantic_binding.cc src/source/semantic_capture.cc)
 target_sources(abcd_source PRIVATE src/source/source_route.cc)
 target_sources(abcd_source PRIVATE src/source/value_stage.cc)
-target_sources(abcd_source PRIVATE src/source/control_plan.cc src/source/control_verify.cc src/source/logical_regions.cc src/source/logical_evaluation.cc)
+target_sources(abcd_source PRIVATE src/source/control_plan.cc src/source/control_verify.cc src/source/logical_regions.cc src/source/logical_evaluation.cc src/source/predicate_snapshots.cc)
 target_sources(abcd_source PRIVATE src/source/control_skeleton_verify.cc)
 target_sources(abcd_source PRIVATE src/source/exception_plan.cc)
 target_sources(abcd_source PRIVATE src/source/phased_method.cc)

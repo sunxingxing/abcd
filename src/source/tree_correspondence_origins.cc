@@ -98,7 +98,7 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
     const TreeOriginId origin{op.origin.value};
     if (flow.statements[i])
       RequireMeaning(tree.statements[flow.statements[i]->value].origin == origin, Error::kOrigin);
-    if (flow.snapshots[i]) {
+    if (flow.snapshots[i] && evaluation.operations[i].kind != EvaluationKind::kPredicateSnapshot) {
       const auto& statement = std::get<ExpressionStmt>(tree.statements[flow.statements[i]->value].statement);
       RequireMeaning(tree.expressions[statement.expression.value].origin == origin, Error::kOrigin);
     }

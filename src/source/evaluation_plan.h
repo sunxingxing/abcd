@@ -19,7 +19,7 @@ namespace abcd::source {
 // kLogicalValue owns a logical/conditional result at one join consumer; logical_values
 // identifies the eliminated phi location. Its cross-region inputs need interval proof.
 enum class EvaluationKind : std::uint8_t {
-  kRemoved, kRoot, kInline, kInitializer, kEnvironment, kModuleGuard, kElidedPure, kAlias, kNestedLiteral, kClassProjection, kConstructorGuard, kCellGuard, kPhiInput, kLogicalLeft, kLogicalValue
+  kRemoved, kRoot, kInline, kInitializer, kEnvironment, kModuleGuard, kElidedPure, kAlias, kNestedLiteral, kClassProjection, kConstructorGuard, kCellGuard, kPhiInput, kLogicalLeft, kLogicalValue, kPredicateSnapshot
 };
 enum class EvaluationFlow : std::uint8_t { kNormal, kPhased };
 struct OpEvaluation {

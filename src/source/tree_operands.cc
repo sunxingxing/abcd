@@ -179,7 +179,8 @@ class OperandCheck {
           const auto& binary = Node<BinaryExpr>(expression);
           RequireMeaning(binary.operation == HoleSourceOperator(evaluation_.holes ? &*evaluation_.holes : nullptr,
               current_, operation.op), Error::kOperator);
-          Input(input(0), binary.left); Input(input(1), binary.right);
+          Input(input(0), binary.left, analysis::UseId{op.first_use.value});
+          Input(input(1), binary.right, analysis::UseId{op.first_use.value + 1});
         } else if constexpr (std::is_same_v<T, analysis::ValueHole>) {
           RequireMeaning(evaluation_.holes && tree_.hole && Node<SymbolExpr>(expression).symbol == *tree_.hole,
               Error::kOperand);
@@ -492,7 +493,7 @@ class OperandCheck {
       const auto& definition = graph_.values[id->value];
       if (const auto* producer = std::get_if<analysis::OpResult>(&definition.origin)) {
         const auto& base = evaluation_.operations[producer->op.value];
-        RequireMeaning((base.kind == EvaluationKind::kRoot && flow_.snapshots[producer->op.value].has_value()) ||
+        RequireMeaning(((base.kind == EvaluationKind::kRoot || base.kind == EvaluationKind::kPredicateSnapshot) && flow_.snapshots[producer->op.value].has_value()) ||
             ((base.kind == EvaluationKind::kInline || base.kind == EvaluationKind::kNestedLiteral) && base.consumer == property.first_use), Error::kOperand);
       } else if (std::holds_alternative<analysis::PhiDefinition>(definition.origin))
         // TreeFlow derives this symbol from the actual, exclusively owned edge
@@ -528,7 +529,7 @@ class OperandCheck {
         (!edge_input_ && flow_.expressions[current_.value] == id &&
          std::holds_alternative<CombinedOrigin>(tree_.origins[origin.value])), Error::kOrigin);
   }
-  void Input(const analysis::ValueOperand& operand, ExprId expression) {
+  void Input(const analysis::ValueOperand& operand, ExprId expression, std::optional<analysis::UseId> occurrence = {}) {
     budget_.Step();
     std::visit([&](const auto& value) {
       using T = std::decay_t<decltype(value)>;
@@ -562,6 +563,18 @@ class OperandCheck {
         }
         const auto* result = std::get_if<analysis::OpResult>(&definition.origin);
         RequireMeaning(result != nullptr, Error::kOperand);
+        const auto& placement = evaluation_.operations[result->op.value];
+        if (placement.kind == EvaluationKind::kPredicateSnapshot && placement.consumer &&
+            occurrence == placement.consumer) {
+          // The strict comparison receives the assignment at the exact use
+          // occurrence. All other uses must still read the same private slot.
+          RequireMeaning(!edge_input_ && flow_.snapshots[result->op.value], Error::kOperand);
+          const auto& assignment = Node<AssignmentExpr>(expression);
+          const auto* target = std::get_if<SymbolTarget>(&assignment.target);
+          RequireMeaning(target && target->symbol == *flow_.snapshots[result->op.value] &&
+              assignment.value == flow_.expressions[result->op.value], Error::kOperand);
+          return;
+        }
         if (evaluation_.operations[result->op.value].kind == EvaluationKind::kNestedLiteral) {
           RequireMeaning(flow_.expressions[result->op.value] == expression, Error::kOperand);
           return;

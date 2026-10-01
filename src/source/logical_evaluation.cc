@@ -8,7 +8,7 @@ using namespace analysis;
 void Require(bool condition) { if (!condition) throw EvaluationError::kOwnership; }
 struct Interval { std::size_t count = 0, end = 0; };
 bool Inputs(EvaluationKind kind) {
-  return kind == EvaluationKind::kRoot || kind == EvaluationKind::kInline ||
+  return kind == EvaluationKind::kRoot || kind == EvaluationKind::kInline || kind == EvaluationKind::kPredicateSnapshot ||
       kind == EvaluationKind::kLogicalLeft || kind == EvaluationKind::kLogicalValue;
 }
 std::vector<SelectionRegion> Regions(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget) {
@@ -191,7 +191,10 @@ class Domain {
   Domain(const ValueProgram& graph, const EvaluationPlan& plan, const SelectionIndex& selections,
       std::span<const SelectionRegion* const> route, std::vector<Interval>& intervals,
       DomainIndex& index, TreeCheckBudget& budget, std::optional<SelectedObject> object = {})
-      : graph_(graph), plan_(plan), route_(route), intervals_(intervals), index_(index), budget_(budget), object_(object) {
+      : graph_(graph), plan_(plan), route_(route), intervals_(intervals), index_(index), budget_(budget), object_(object),
+        last_owner_(std::get<OpId>(graph.uses[(object ? object->consumer :
+            *selections.consumers[route.back()->branch.value]).value].owner)) {
+    Require(graph.ops[last_owner_.value].block == route.back()->join);
     // Prepay the nonthrowing cleanup as well as index construction.
     budget_.Step(2 * (route.size() + 1 + (object_ ? object_->definitions.size() : 0)));
     for (const auto* region : route) {
@@ -223,7 +226,7 @@ class Domain {
     std::size_t serial = 0, definition = 0; bool object_consumed = false;
     for (std::size_t b = 0; b <= route_.size(); ++b) {
       const auto& range = Block(b);
-      for (std::uint32_t j = 0; j < range.op_count; ++j) {
+      for (std::uint32_t j = 0; j < Count(b); ++j) {
         budget_.Step(); const OpId id{range.first_op.value + j}; const auto& op = graph_.ops[id.value];
         if (op.life != ValueLife::kLive) continue;
         const bool field = object_ && definition < object_->definitions.size() && id == object_->definitions[definition];
@@ -237,7 +240,7 @@ class Domain {
           const bool logical = index_.branches[producer->value] == use;
           const bool base = field && *producer == object_->allocation;
           const bool literal = object_ && use == object_->consumer && *producer == object_->allocation;
-          const bool owned = (placement.kind == EvaluationKind::kInline || placement.kind == EvaluationKind::kLogicalLeft) && placement.consumer == use;
+          const bool owned = (placement.kind == EvaluationKind::kInline || placement.kind == EvaluationKind::kLogicalLeft || placement.kind == EvaluationKind::kPredicateSnapshot) && placement.consumer == use;
           const auto shape = DescribeEvaluation(op.operation);
           const bool field_value = field && occurrence.role == OperandRole::kStoredValue &&
               graph_.ops[producer->value].block == op.block && placement.temporary == TemporaryReason::kEffectSnapshot;
@@ -265,7 +268,7 @@ class Domain {
     std::size_t serial = 0, definition = 0;
     for (std::size_t b = 0; b <= route_.size(); ++b) {
       const auto& range = Block(b);
-      for (std::uint32_t j = 0; j < range.op_count; ++j) {
+      for (std::uint32_t j = 0; j < Count(b); ++j) {
         budget_.Step(); const OpId id{range.first_op.value + j}; const auto& op = graph_.ops[id.value];
         if (op.life != ValueLife::kLive) continue;
         const bool field = object_ && definition < object_->definitions.size() && id == object_->definitions[definition];
@@ -276,7 +279,9 @@ class Domain {
           if (IsMemberReceiver(graph_, plan_, occurrence)) continue;
           const auto producer = Producer(occurrence); if (!producer || !Inside(*producer)) continue;
           const auto& placement = plan_.operations[producer->value];
-          if (placement.kind != EvaluationKind::kInline && placement.kind != EvaluationKind::kLogicalLeft && placement.kind != EvaluationKind::kLogicalValue) continue;
+          if (placement.kind == EvaluationKind::kPredicateSnapshot && placement.consumer != use) continue;
+          if (placement.kind != EvaluationKind::kInline && placement.kind != EvaluationKind::kLogicalLeft &&
+              placement.kind != EvaluationKind::kLogicalValue && placement.kind != EvaluationKind::kPredicateSnapshot) continue;
           const bool base = field && *producer == object_->allocation;
           Require(base || placement.consumer == use);
           if (!base && (placement.kind == EvaluationKind::kLogicalValue || CrossLogicalInline(graph_, plan_, *producer) || FieldValue(graph_, plan_, *producer))) {
@@ -308,6 +313,11 @@ class Domain {
     const auto id = index < route_.size() ? route_[index]->header : route_.back()->join;
     return graph_.blocks[id.value];
   }
+  std::uint32_t Count(std::size_t block) const {
+    // The transformation ends at its final consumer. Later join operations keep
+    // their separately verified local schedule, including other literal groups.
+    return block < route_.size() ? Block(block).op_count : graph_.ops[last_owner_.value].order + 1;
+  }
   std::size_t Event(OpId id) const {
     if (index_.branches[id.value]) return 1;
     return Events(graph_.ops[id.value], plan_.operations[id.value], id, route_.front()->branch);
@@ -321,7 +331,7 @@ class Domain {
   bool Inside(OpId id) const { return index_.blocks[graph_.ops[id.value].block.value]; }
   const ValueProgram& graph_; const EvaluationPlan& plan_;
   std::span<const SelectionRegion* const> route_; std::vector<Interval>& intervals_;
-  DomainIndex& index_; TreeCheckBudget& budget_; std::optional<SelectedObject> object_;
+  DomainIndex& index_; TreeCheckBudget& budget_; std::optional<SelectedObject> object_; OpId last_owner_;
 };
 }  // namespace
 bool CrossLogicalInline(const ValueProgram& graph, const EvaluationPlan& plan, OpId producer) {
@@ -333,6 +343,7 @@ bool CrossLogicalInline(const ValueProgram& graph, const EvaluationPlan& plan, O
 }
 OpEvaluation BeforeLogicalFusion(const ValueProgram& graph, const EvaluationPlan& plan, std::size_t operation) {
   const auto placement = plan.operations[operation];
+  if (placement.kind == EvaluationKind::kPredicateSnapshot) return {EvaluationKind::kRoot, {}, TemporaryReason::kMultipleUses};
   if (!plan.logical_objects.empty() && plan.logical_objects[operation])
     return {EvaluationKind::kRoot, {}, TemporaryReason::kMultipleUses};
   if (placement.kind == EvaluationKind::kInitializer &&
@@ -346,6 +357,7 @@ OpEvaluation BeforeLogicalFusion(const ValueProgram& graph, const EvaluationPlan
   return placement;
 }
 void BuildLogicalValues(const ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget) {
+  BuildPredicateSnapshots(graph, plan, budget);
   const auto regions = Regions(graph, plan, budget); if (regions.empty()) return;
   const auto index = IndexSelections(graph, plan, regions, budget); DomainIndex domain_index(graph, budget);
   std::vector<Interval> intervals; std::vector<std::uint8_t> used;
@@ -382,6 +394,7 @@ void BuildLogicalValues(const ValueProgram& graph, EvaluationPlan& plan, TreeChe
   }
 }
 void VerifyLogicalValues(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget) {
+  VerifyPredicateSnapshots(graph, plan, budget);
   Require(plan.logical_objects.empty() || plan.logical_objects.size() == graph.ops.size());
   Require(plan.logical_values.empty() || (plan.flow == EvaluationFlow::kNormal && plan.logical_values.size() == graph.values.size()));
   if (plan.logical_values.empty()) {

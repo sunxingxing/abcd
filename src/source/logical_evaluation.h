@@ -5,6 +5,10 @@
 #include "tree_checks.h"
 
 namespace abcd::source {
+// Named/computed getter snapshots can assign their retained private slot at
+// their earliest strict-comparison use, with an independent local order proof.
+void BuildPredicateSnapshots(const analysis::ValueProgram&, EvaluationPlan&, TreeCheckBudget&);
+void VerifyPredicateSnapshots(const analysis::ValueProgram&, const EvaluationPlan&, TreeCheckBudget&);
 // The builder starts from a freshly constructed local forest. Its backwards
 // choices are checked by independent forward interval equations; the original
 // local forest, conditional arms and all incoming copies remain checked too.

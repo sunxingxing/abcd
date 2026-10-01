@@ -739,7 +739,7 @@ class TreeBuilder {
         tree_.operations.push_back({id, statement});
       } else {
         tree_.operations.push_back({id, *expression});
-        if (evaluation.kind == EvaluationKind::kInline || evaluation.kind == EvaluationKind::kNestedLiteral ||
+        if (evaluation.kind == EvaluationKind::kInline || evaluation.kind == EvaluationKind::kPredicateSnapshot || evaluation.kind == EvaluationKind::kNestedLiteral ||
             evaluation.kind == EvaluationKind::kPhiInput || evaluation.kind == EvaluationKind::kLogicalLeft) continue;
         auto evaluated = *expression;
         if (evaluation.temporary) {
