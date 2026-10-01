@@ -213,7 +213,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
       admit(alias_cost.bytes, 1); step(alias_cost.work);
     }
     if (has_definitions) {
-      auto built = flow == EvaluationFlow::kPhased ? BuildPhasedLiteralPlan(graph, plan, {bytes, work}) :
+      auto built = flow == EvaluationFlow::kPhased ? BuildPhasedLiteralPlan(graph, plan, {bytes, work}, module_index.peers) :
           BuildLiteralPlan(graph, {bytes, work}, module_index.peers, plan.class_projection.owners, plan.receiver_guards);
       const auto* error = std::get_if<LiteralError>(&built);
       if (error) {

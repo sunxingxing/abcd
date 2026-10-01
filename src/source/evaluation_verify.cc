@@ -152,7 +152,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     }
     if (plan.literals) {
       const auto checked = flow == EvaluationFlow::kPhased ?
-          VerifyPhasedLiteralPlan(graph, *plan.literals, plan, {bytes, work}) :
+          VerifyPhasedLiteralPlan(graph, *plan.literals, plan, {bytes, work}, module_index.peers) :
           VerifyLiteralPlan(graph, *plan.literals, {bytes, work}, module_index.peers, plan.class_projection.owners, plan.receiver_guards);
       if (const auto* error = std::get_if<LiteralError>(&checked)) {
         if (*error == LiteralError::kResourceLimit) return Error::kResourceLimit;

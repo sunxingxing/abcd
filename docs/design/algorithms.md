@@ -216,6 +216,31 @@ algorithmic and focused test evidence rather than process performance acceptance
 Evidence: literal_plan_test and decoded logical_regions source behavior tests;
 this is not a peak-RSS or benchmark claim.
 
+### Guarded module inputs in phased object initializers (2026-10-02)
+
+Pass the already budgeted symmetric module peer index into the common literal
+builder and independent verifier. Evaluation construction and verification each
+create their own index with the exact live-read census, read/guard effects,
+unique Commit corridor and matching dispatch. Literal ownership absorbs only
+the proved TDZ guard dependency, preserves single-consumer operand/property
+order, and compares both throwing sites against the outer allocation's dispatch
+and staged catch sources. The source tree still maps both original PCs to one
+native module expression. Original module binding/record identity remains a
+separate publication prerequisite. Standalone literal calls without the index
+cannot fold late module reads.
+
+No new index, graph traversal per property or external dependency is introduced.
+The existing peer validation adds O(I) work; interval guard checks add O(I) plus
+their original catch-copy volume, using the existing corridor/catch index and
+budget. Common field grouping retains its separately documented F log F cost.
+Decoded three-profile object/getter/member-call fixtures cover 2/200/201/400
+fields, geometric work growth, TDZ, mutable bindings, receiver/order, arbitrary
+throws and saved catch-value identity. Missing/moved guards, slot changes,
+ownership/definition mutations and work-budget boundaries are rejected.
+This does not establish support for throwing initializers whose outer allocation
+has no exceptional exit: that allocation supplies no catch witness to the
+current interval contract. No peak-RSS or performance acceptance is claimed.
+
 ### Native conditional value selection (2026-10-01)
 
 Reuse the checked normal control tree and existing evaluation forest. Index one

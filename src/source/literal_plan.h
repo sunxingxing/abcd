@@ -85,11 +85,15 @@ enum class LiteralError : std::uint8_t {
 // RHS snapshots precede allocation; checked single-consumer nesting retains
 // operand/property order and the outer allocation's catch-copy sources. Publication
 // additionally requires the versioned resource-exhaustion exclusion.
+// module_guards has the same checked-index contract as the normal-flow API;
+// evaluation construction and verification each supply their own fresh index.
 [[nodiscard]] std::variant<LiteralPlan, LiteralError> BuildPhasedLiteralPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
-    analysis::SemanticBudget budget = {});
+    analysis::SemanticBudget budget = {},
+    std::span<const std::optional<analysis::OpId>> module_guards = {});
 [[nodiscard]] std::variant<std::uint64_t, LiteralError> VerifyPhasedLiteralPlan(
     const analysis::ValueProgram& graph, const LiteralPlan& plan,
-    const EvaluationPlan& evaluation, analysis::SemanticBudget budget = {});
+    const EvaluationPlan& evaluation, analysis::SemanticBudget budget = {},
+    std::span<const std::optional<analysis::OpId>> module_guards = {});
 }  // namespace abcd::source
 #endif

@@ -395,7 +395,12 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
     // Comparing each site's copy bundle once is bounded by original copy volume.
     // Nonthrowing allocations still retain ordered creation/identity, but
     // cannot change a catch snapshot and have no exceptional exit to compare.
-    if (depth && phases && (owners[i] || plan.nested[i]) && OrderedEvaluation(op) &&
+    // A nested module expression owns both throwing events. The peer index
+    // proves the TDZ pair, but its guard must retain the allocation's catch
+    // snapshot too; checking only the read would leave the second event free.
+    const bool nested_guard = i < guards.size() && guards[i] &&
+        std::holds_alternative<analysis::ValueGuard>(op.operation) && plan.nested[guards[i]->value];
+    if (depth && phases && (owners[i] || plan.nested[i] || nested_guard) && OrderedEvaluation(op) &&
         op.exceptional == analysis::ExceptionalCompletion::kMayThrow)
       Require(phases->SameCatch({static_cast<std::uint32_t>(i)}, stack[0]), Error::kObserved);
     if (Aggregate(op.operation) && (ends[i] || plan.nested[i])) {
@@ -428,8 +433,7 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
           if (result && plan.nested[result->op.value] != use)
             Require(result->op.value < stack[0].value, Error::kLateValue);
         }
-      } else if (i < guards.size() && guards[i] &&
-          std::holds_alternative<analysis::ValueGuard>(op.operation) && plan.nested[guards[i]->value]) {
+      } else if (nested_guard) {
         Require(value_owners[guards[i]->value] == stack[depth - 1], Error::kObserved);
       } else Require((!initialized_receivers.empty() && initialized_receivers[i]) ||
           analysis::CanErasePureOp(op), Error::kObserved);
@@ -763,12 +767,13 @@ std::variant<std::uint64_t, LiteralError> VerifyLiteralPlan(
   return VerifyLiterals(graph, plan, nullptr, budget, guards, projected, receiver_guards);
 }
 std::variant<LiteralPlan, LiteralError> BuildPhasedLiteralPlan(
-    const analysis::ValueProgram& graph, const EvaluationPlan& evaluation, analysis::SemanticBudget budget) {
-  return BuildLiterals(graph, &evaluation, budget, {}, {}, {});
+    const analysis::ValueProgram& graph, const EvaluationPlan& evaluation, analysis::SemanticBudget budget,
+    Guards guards) {
+  return BuildLiterals(graph, &evaluation, budget, guards, {}, {});
 }
 std::variant<std::uint64_t, LiteralError> VerifyPhasedLiteralPlan(
     const analysis::ValueProgram& graph, const LiteralPlan& plan, const EvaluationPlan& evaluation,
-    analysis::SemanticBudget budget) {
-  return VerifyLiterals(graph, plan, &evaluation, budget, {}, {}, {});
+    analysis::SemanticBudget budget, Guards guards) {
+  return VerifyLiterals(graph, plan, &evaluation, budget, guards, {}, {});
 }
 }  // namespace abcd::source

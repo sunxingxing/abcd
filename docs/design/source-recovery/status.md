@@ -12,6 +12,50 @@
 
 ## 当前阶段
 
+### 2026-10-02：模块 TDZ 配对贯通相位对象初始化
+
+- 新的真实解码对象初始化夹具在成功编译后 RED：与函数9165一样，
+  BuildLiterals 在模块读取作为 named-read 的晚输入时抛出 kLateValue。
+  /tmp/abcd-module-literal-red-build.log、red-test.log、red-cause.log。
+  新目标首次需要刷新 CMake 配置，未把找不到构建目标计作语义 RED。
+- phased LiteralPlan builder 与独立 verifier 接收已经存在且计费的
+  IndexModuleEvaluations 对称 peer 表；两条路线各自新建/核对索引。
+  共用普通字面量的唯一消费者、operand/property 顺序及 guard-use 投影。
+  模块 read 与 TDZ guard 都独立比较外层 allocation 的 catch dispatch 和
+  staging 来源，不能只比较 read。保留原始 CFG、两次 throwing 事件、
+  slot/record 绑定证明及两个 PC 的 CombinedOrigin，没有改 writer。
+- 原有索引只作为 span 传递，新增校验 O(I) 加原始 catch-copy 量，沿用
+  字节/工作预算和已有 corridor 索引，无逐字段 CFG 搜索或新依赖。
+  详见 algorithms.md。三个 profile 的 getter/member-call 对象夹具覆盖
+  2/200/201/400 字段和201→400工作增长；缺 guard、改 slot、移除 guard、
+  丢 nested 归属、交换定义及改变 guard handler 均拒绝。独立 literal
+  verifier 另检验缺索引、guard dispatch、恰好预算及少一单位的拒绝。
+- 共同 phased evaluation/tree/family/printer 输出12份完整函数；独立
+  lexical TDZ/live-binding oracle 通过888场景和3个合法语法 mutation。
+  包含第一/第二读取 TDZ、getter 内和成员调用内替换后续绑定、receiver、
+  求值顺序/次数、任意调用点抛出的值、catch 保存值身份、fresh object、
+  key 顺序与 own-data descriptor。不是配对应用的整体语义/风格 Accepted。
+- 相关构建退出0，79/79定向测试通过197.84秒；补充独立验证器负例后再
+  构建退出0并通过2/2（6.69秒）。证据
+  /tmp/abcd-module-literal-verified-build.log、verified-tests.log、
+  final-extra-build.log、final-extra-tests.log。全库、扩大语料、RSS/基准、
+  DFX、调度器和代理仍暂停，内存实测未验证。
+- 五输入 build/stage-one/value-module-literals-pass-1 顺序导出均退出0，
+  仍为51 complete / 3 incomplete / 52 failure / 46 no-module；无完整项
+  回退、新增完整record或 legacy writer。
+  /tmp/abcd-module-literal-final-batch.log、final-batch-summary.json。
+- 真实9165已越过旧 kLateValue；直接 __cxa_throw 确认下一处 kObserved
+  来自 VerifyNesting::SameCatch：外层 allocation op92 是空数组
+  ValueArrayAllocation（原始PC254、工作PC228、kImpossible），没有
+  exceptional exit；其 nested module read op94（原始PC258、工作PC232）
+  有 handler PC905、region0/handler0，且双方均无 throw-copy bundle。
+  /tmp/abcd-module-literal-real-next.log、real-catch.log、real-dispatch.log。
+  先前调试前把 allocation 口头称为 buffered object，现以实际类型纠正；
+  并非已证明 catch 快照不同，也不是完整9165源码验收。
+- 下一步为无 throwing exit 的数组 allocation 建立初始化表达式的原始
+  try 归属与异常现场合同，然后继续完整函数族及独立语义/表示验收。
+  不删除 SameCatch 或凭空赋予 handler。阶段一 Goal active、尚未完成。
+
 
 ### 2026-10-02：跨线性相位路径的共享条件与末端分支贯通
 
