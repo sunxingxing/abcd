@@ -207,14 +207,19 @@ void LinearExitCorridors() {
     Check(plan && plan->loops.size() == 2);
     Check(std::holds_alternative<std::uint64_t>(VerifyControlPlan(graph, *plan)));
   }
-  // Single-entry exit arms may branch; do not absorb their multi-entry join.
+  // An exit arm may branch and reconverge internally. Its join belongs to
+  // the loop when all predecessors do, while the header continuation stays out.
   const std::array<Targets, 7> branching{{{1, 6}, {2, 3}, {0, {}}, {4, 5}, {6, {}}, {6, {}}, {}}};
   const auto branching_graph = Graph(branching);
   const auto branched = BuildControlPlan(branching_graph);
   Check(std::holds_alternative<ControlPlan>(branched));
   Check(std::holds_alternative<std::uint64_t>(VerifyControlPlan(branching_graph, std::get<ControlPlan>(branched))));
   const std::array<Targets, 8> shared{{{1, 7}, {2, 3}, {0, {}}, {4, 5}, {6, {}}, {6, {}}, {7, {}}, {}}};
-  Check(std::get<ControlError>(BuildControlPlan(Graph(shared))) == ControlError::kLoopExits);
+  const auto shared_graph = Graph(shared);
+  const auto shared_plan = BuildControlPlan(shared_graph);
+  Check(std::holds_alternative<ControlPlan>(shared_plan));
+  Check(std::get<ControlPlan>(shared_plan).loops.front().exit == analysis::WorkBlockId{7});
+  Check(std::holds_alternative<std::uint64_t>(VerifyControlPlan(shared_graph, std::get<ControlPlan>(shared_plan))));
 }
 void Scaling() {
   for (const std::uint32_t size : {200U, 201U, 4096U}) {

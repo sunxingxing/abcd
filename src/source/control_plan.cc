@@ -103,8 +103,12 @@ class ControlBuilder {
     return parent_[a];
   }
   void Postdominators() {
-    // A DAG permits the postdominator recurrence in one reverse topological
-    // pass. Binary-lifted LCA avoids iterative dominance sets / per-block walks.
+    // A DAG permits the follow-tree recurrence in one reverse topological
+    // pass. Private abrupt arms do not constrain the continuing join: nested
+    // guards may return/continue while their ordinary arms share a suffix.
+    // Binary-lifted LCA avoids iterative sets / per-block walks. This lexical
+    // choice is checked against every original arc, not a claim that the
+    // chosen join postdominates paths which have already left the region.
     // The virtual exit is a real additional tree node, not an absent-ID sentinel.
     parent_[exit_] = exit_;
     // Kahn consumed the counts. Restore them once, so a terminal corridor
@@ -125,10 +129,20 @@ class ControlBuilder {
           ((block.arc_count == 0 && block.termination == ControlTermination::kAbrupt) || (block.arc_count == 1 &&
            terminal_corridor_[graph_.Arc(block.first_arc).target.value]));
       std::uint32_t join = exit_;
+      std::uint8_t continuing = 0;
       for (std::uint8_t e = 0; e < block.arc_count; ++e) {
         quota_.Work();
         const auto target = graph_.Arc({block.first_arc.value + e}).target.value;
-        join = e == 0 ? target : Common(join, target);
+        if (block.arc_count == analysis::kMaxNormalSuccessors && terminal_corridor_[target]) continue;
+        join = continuing++ == 0 ? target : Common(join, target);
+      }
+      // When both arms are abrupt, retain their real common ancestry. They
+      // still belong to this branch, rather than becoming fake continuations.
+      if (continuing == 0 && block.arc_count != 0) {
+        for (std::uint8_t e = 0; e < block.arc_count; ++e) {
+          quota_.Work(); const auto target = graph_.Arc({block.first_arc.value + e}).target.value;
+          join = e == 0 ? target : Common(join, target);
+        }
       }
       parent_[id] = join;
       depth_[id] = depth_[join] + 1;

@@ -6,6 +6,7 @@
 #include "../../../src/source/tree_semantics.h"
 #include "../../../src/source/tree_structure.h"
 #include "analysis/ssa_fixture.h"
+#include "analysis/shared_exit_fixture.h"
 #include "abcd/analysis/exception_locals.h"
 #include "abcd/analysis/coroutine.h"
 #include "abcd/source/async_completion.h"
@@ -1069,6 +1070,14 @@ void FinallyBranch(abc::ProfileId profile, std::ostream* output,
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--shared-exit") {
+    std::cout << "export const shared = [\n";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      Emit(test::SharedExitBody(), profile, 0, 7, false, &std::cout,
+          {}, 1, false, ExpectedCompletion{0, 0});
+    std::cout << "];\n";
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--compiler-finally-expanded") {
     std::cout << "export const functions = [\n";
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,

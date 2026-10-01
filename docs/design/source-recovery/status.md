@@ -12,6 +12,48 @@
 
 ## 当前阶段
 
+### 2026-10-01：循环共享退出段及嵌套提前转移的共同恢复
+
+- 纠正上一任务的调试结论：在 catch 入口读取未赋值局部量误报
+  kInvalidGraph。直接在 __cxa_throw 核对类型、值和调用栈，确认 method9193
+  （MethodPosition140）实际先触发 kLoopExits；真实退出目标为412/348，
+  348有来自循环内339/345的两个前驱，358也有内部汇合。证据
+  /tmp/abcd-control-9193-types.log、abcd-control-real-targets2.log 与
+  abcd-control-9193-graph.json；这些调试快照不作为完整源码验收。
+- ExtendLoopExitCorridors 改为全部原始前驱到达同一 owner 后接纳共享段。
+  外部前驱、独立入口、混合 owner、其他循环及普通零边端口仍阻断归属扩展；
+  保留正常/typed preserving 续接，原始边不变。一次 O(V+E+L) 队列与计数，
+  新增 O(V) 临时索引，沿用现有 quota，不新增 work 准入或通用证明包装。
+  共同 DAG 的 follow tree 在一条私有 abrupt 路径与普通路径之间选择普通
+  续接，使嵌套 continue/return 的普通路径可以汇合；这不是声称该续接
+  postdominate 已离开区域的路径。已有独立 arc/owner verifier仍逐边核对。
+- 新投影图用例在构建退出0后实际 RED：共享段4未归属循环，
+  /tmp/abcd-shared-exit-red-build.log 与 red-tests.log。覆盖1/200/201/400/800
+  段长、几何 work增长、独立入口/额外外部前驱及不改原始邻接；合法 ID 的
+  改后继、跳过共享段 mutation被独立控制验证拒绝。既有“共享内部 join
+  必须拒绝”用例更新为成功，并仍执行原图验证，没有取消外部入口边界。
+- 真实解码 fixture 经普通及相位 SSA、共同 control/evaluation/tree/printer
+  分别生成完整源码。独立 oracle各通过 **1080场景和6个语法合法 mutation**，
+  验证每个调用的 receiver、条件选择、continue/backedge、共享 side/break
+  单次执行、after顺序、payload身份及任意调用点抛出的立即终止。
+  /tmp/abcd-shared-exit-oracle.log；shared_loop_exit_source_test 与
+  phased_shared_loop_exit_source_test。phased fixture不包含真实平台运行或
+  native await wrapper验收，不能据此授予真实应用整体 Accepted。
+- 两组相关构建退出0，**35/35通过74.99秒，22/22通过29.87秒**，共54个
+  不同目标（三个新/更新目标重复验证）；/tmp/abcd-shared-exit-final-build.log、
+  final-tests.log、extra-build.log、extra-tests.log。包含完整 RETURN清理循环、
+  普通/phased组合、derived/class/literal/closure及 Home/PageA/Index回归。
+  全库、扩大语料、RSS/基准、DFX和代理仍暂停，内存实测未验证。
+- 五输入 build/stage-one/value-shared-exit-pass-1 均退出0，保持
+  **51 complete / 3 incomplete / 52 failure / 46 no-module**，无完整record
+  回退或 legacy writer；/tmp/abcd-shared-exit-batch-summary.json。
+  本任务没有新增完整record，阶段一语义和表示验收仍未完成。
+- method9193已越过多出口拒绝，当前真实失败为 **kCrossEntry**：共同
+  skeleton重复接纳348，task(first348,stop358)，
+  /tmp/abcd-shared-exit-next-cause.log。下一步恢复相位图中跨线性求值段的
+  共享条件 arm，保留有条件执行的调用/效果、phi copies和原PC；不能直接
+  移除 cross-entry 检查、复制共享正文或在 printer补结构。Goal继续active。
+
 ### 2026-10-01：DEFINE METHOD 异步成员贯通共同函数族
 
 - CreationTreeContext 的 actual MethodBody 路线保留 kAsync → kAsyncMethod，

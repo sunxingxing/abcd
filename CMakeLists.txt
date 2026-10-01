@@ -1135,6 +1135,10 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_await.mjs $<TARGET_FILE:control_composition_test>)
     add_test(NAME loop_exit_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/loop_exits.mjs $<TARGET_FILE:loop_exit_test>)
+    add_test(NAME shared_loop_exit_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_loop_exit.mjs $<TARGET_FILE:loop_exit_test>)
+    add_test(NAME phased_shared_loop_exit_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_loop_exit.mjs $<TARGET_FILE:control_composition_test> --phased)
     add_test(NAME loop_closure_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/loop_closures.mjs $<TARGET_FILE:loop_closure_file_test>)
     add_test(NAME file_await_capture_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
