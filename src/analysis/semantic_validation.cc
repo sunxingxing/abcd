@@ -1,5 +1,6 @@
 #include "abcd/analysis/semantic_validation.h"
 
+#include <algorithm>
 #include <new>
 #include <stdexcept>
 
@@ -139,29 +140,64 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
     previous_module = premise.instruction;
     language_loads[i] = 1;
   }
-  std::size_t block = 0;
-  for (std::size_t i = 0; i < method.instructions.size(); ++i) {
-    while (block + 1 < method.flow.blocks.size() &&
-           method.flow.blocks[block + 1].first_instruction <= i)
-      ++block;
-    if (!std::holds_alternative<ModuleLoad>(method.instructions[i].operation))
-      continue;
-    if (language_loads[i]) {
-      modules.push_back({InstructionId{static_cast<std::uint32_t>(i)},
-                          ModuleReadProof::kInitialized});
-      continue;
+  {
+    struct EntryStore { ModuleSlot slot; InstructionId instruction; };
+    if (method.flow.blocks.empty()) return Fail(SemanticProofError::kSsaMismatch);
+    const auto& entry = method.flow.blocks.front();
+    if (entry.first_instruction != 0 || entry.instruction_count > method.instructions.size())
+      return Fail(SemanticProofError::kSsaMismatch);
+    std::size_t count = 0;
+    for (std::size_t i = 0; i < entry.instruction_count; ++i)
+      count += std::holds_alternative<ModuleStore>(method.instructions[i].operation);
+    if (count > remaining / sizeof(EntryStore)) return Fail(SemanticProofError::kResourceLimit);
+    std::vector<EntryStore> stores;
+    stores.reserve(count);
+    if (stores.capacity() > remaining / sizeof(EntryStore)) return Fail(SemanticProofError::kResourceLimit);
+    for (std::size_t i = 0; i < entry.instruction_count; ++i)
+      if (const auto* store = std::get_if<ModuleStore>(&method.instructions[i].operation))
+        stores.push_back({store->slot, {static_cast<std::uint32_t>(i)}});
+    std::sort(stores.begin(), stores.end(), [](const auto& a, const auto& b) {
+      return a.slot < b.slot || (a.slot == b.slot && a.instruction < b.instruction);
+    });
+    stores.erase(std::unique(stores.begin(), stores.end(), [](const auto& a, const auto& b) {
+      return a.slot == b.slot;
+    }), stores.end());
+    // Completed entry stores dominate every later normal block. This is only
+    // a candidate premise until the full value solver/read check below proves
+    // every store's operand Language. A prior raw read remains unknown, so a
+    // read/store cycle cannot certify its own first initialization. Live reads
+    // after calls may change values, hence no scalar refinement/forwarding.
+    std::size_t block = 0;
+    for (std::size_t i = 0; i < method.instructions.size(); ++i) {
+      while (block + 1 < method.flow.blocks.size() &&
+             method.flow.blocks[block + 1].first_instruction <= i) ++block;
+      const auto* load = std::get_if<ModuleLoad>(&method.instructions[i].operation);
+      if (!load || !bound->before[i]) continue;
+      const InstructionId site{static_cast<std::uint32_t>(i)};
+      if (language_loads[i]) {
+        modules.push_back({site, ModuleReadProof::kInitialized});
+        continue;
+      }
+      const auto& region = method.flow.blocks[block];
+      const auto* guard = i + 1 < std::size_t(region.first_instruction) + region.instruction_count
+          ? std::get_if<HoleGuard>(&method.instructions[i + 1].operation) : nullptr;
+      if (guard && std::holds_alternative<Accumulator>(guard->value) &&
+          std::holds_alternative<HoleNameSlot>(guard->name)) {
+        // Preserve the existing whole load/guard pair; an initialization
+        // witness does not authorize orphaning or deleting an encoded guard.
+        language_loads[i] = 1;
+        modules.push_back({site, ModuleReadProof::kGuarded});
+        continue;
+      }
+      if (load->space != ModuleSpace::kLocal) continue;
+      const auto found = std::lower_bound(stores.begin(), stores.end(), load->slot,
+          [](const auto& store, auto slot) { return store.slot < slot; });
+      if (found == stores.end() || found->slot != load->slot || found->instruction >= site) continue;
+      language_loads[i] = 1;
+      modules.push_back({site, ModuleReadProof::kStored, found->instruction});
     }
-    const auto& region = method.flow.blocks[block];
-    if (i + 1 >= std::size_t(region.first_instruction) + region.instruction_count)
-      continue;
-    const auto* guard = std::get_if<HoleGuard>(&method.instructions[i + 1].operation);
-    if (!guard || !std::holds_alternative<Accumulator>(guard->value) ||
-        !std::holds_alternative<HoleNameSlot>(guard->name)) continue;
-    // The whole pair lowers to one live binding read that throws on TDZ.
-    // No exception handlers are admitted, so no intermediate VM state escapes.
-    language_loads[i] = 1;
-    modules.push_back({InstructionId{static_cast<std::uint32_t>(i)},
-                        ModuleReadProof::kGuarded});
+    // The entry index is gone before entry facts and the value-flow solver
+    // allocate scratch. Witness IDs remain in the existing read ledger.
   }
   for (std::size_t i = 0; i < language_loads.size(); ++i)
     if (language_loads[i])

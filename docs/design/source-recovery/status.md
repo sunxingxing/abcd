@@ -12,6 +12,57 @@
 
 ## 当前阶段
 
+### 2026-10-02：同函数入口模块初始化与条件更新
+
+- WindowUtil record7618 / entry8202 原先在 PC10 写入 local slot0 的真实
+  undefined，PC19 读取后于 PC21 被 kInternalValue 拒绝。同函数入口 store
+  未形成模块读取依据。最小实际解码测试成功构建后 RED，
+  /tmp/abcd-module-entry-init-red-{build,test}.log。
+- 正常 SemanticProof 新增 kStored 及原始 store InstructionId。排序索引保留
+  每槽首个入口 store，仅授权后续可达本地 load；完整 SSA operand 检查
+  仍要求首个和所有后续 store 都为 Language，拒绝 Hole、循环自证、其他
+  slot、外部读取、未来/分支 store。读取保留实时绑定及宽 Language 域，
+  不转发初值、对象身份或非 undefined 精化。已有编码 guard 对保留；
+  异常/恢复通路不使用 normal 见证。原始/工作 store 的 slot、PC、effects、
+  entry block/顺序、live 状态和 operand 在共同 module_guards 中复核。
+- 真实入口随后在 record kInitializer15 拒绝，最小 decoded record 同样
+  RED：/tmp/abcd-module-entry-init-record-red-{build,test}.log。record_tree
+  仍由根控制序列放置 native let；首次声明于入口块的槽可以在 arm/loop
+  中输出原绑定赋值。条件首次声明和先 arm 写入后根声明仍拒绝，未提升
+  store 或合成提前初始化；非入口支配位置的声明仍待扩展。
+- 三 profile、窄/宽 slot、1/200/201/400、guard/raw 共48个输入/源码对应
+  fixture，另保留实际 undefined 正例、7个不安全初始化反例及 witness
+  slot/life/order/block/PC/domain 变异拒绝。扩展反例初次缺少 dead tail
+  的终结指令而在错误阶段失败；修正 fixture 后保留 kInternalValue 断言，
+  不算生产语义 RED。/tmp/abcd-module-entry-init-undefined-{build,test}.log。
+- 新增 module_entry_initialization_source_test：三 profile、0/1 两种原始
+  分支，6次实际解码→共同 FunctionTree→printer→ESM 执行；核对 namespace
+  TDZ、最终值、唯一根声明与 arm 赋值，12个合法语法 mutation 被检测。
+  6次条件首次声明/未来根声明拒绝。原定向3/3通过2.46秒：
+  /tmp/abcd-module-entry-init-oracle-tests.log。此为独立 fixture oracle，
+  不是配对 WindowUtil 或真实 Ark/宿主验收。
+- 最终相关66 targets build退出0，112/112 tests通过237.10秒；
+  /tmp/abcd-module-entry-init-final-verified-{build,tests}.log，selected.json
+  保存范围。补充 undefined fixture 的 module_guards_test 重建并通过1.55秒。
+  自查完整 Language 检查、第一 store 选择、正常/相位隔离、原生声明与
+  assignment 放置，以及 enum 的所有消费者；新增成本见 algorithms.md。
+- 五输入 fresh `build/stage-one/value-module-entry-init-pass-1` 顺序导出均
+  退出0，56 complete / 3 incomplete / 47 failure / 46 no-module，无新增
+  complete、无原完整项回退、无 legacy writer。证据
+  /tmp/abcd-module-entry-init-final-batch.log、final-batch-summary.json。
+  complete 仍仅表示内部恢复闭合，不代表整应用语义/表示 Accepted。
+- Goal仍active。WindowUtil 已越过入口 PC21 和 record 初始化拒绝；新
+  manifest 保留 tree_stage / unproved PC102。实际失败是 WindowUtil8339
+  构造器 PC39 创建的箭头7754，在 PC100/112 无 guard 读取 slot0 后被
+  拒绝；不是新的 RegionPlan 失败。构造器没有该槽的入口 store，现有
+  ParentModuleInput 只承认直接父级 FunctionCreation/entry-store，尚未
+  传递 record→class→nested function 的初始化依据。下一步必须沿真实
+  class/creation owner 链建立并独立验证依据，不能按模块名或完整 metadata
+  直接宣布所有槽已初始化。证据 /tmp/abcd-module-entry-init-next-method-final.log、
+  next-instructions.jsonl、next-parent-instructions.jsonl。
+  全库、扩大语料、RSS/基准、DFX、调度器、代理和定期审视仍暂停，
+  super spread 的运行环境前提未改变；阶段一完整语义与风格验收仍未完成。
+
 ### 2026-10-02：正常流不可达指令与 SSA/源码贯通
 
 - Community BreakpointType record19234 / getValue19360 在 PC88 已返回，仍有

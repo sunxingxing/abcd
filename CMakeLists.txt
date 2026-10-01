@@ -1106,6 +1106,8 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME record_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_tree.mjs $<TARGET_FILE:record_tree_test>)
+    add_test(NAME module_entry_initialization_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/module_entry_initialization.mjs $<TARGET_FILE:record_tree_test>)
     add_test(NAME anonymous_module_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/anonymous_module.mjs $<TARGET_FILE:record_import_tree_test>)
     add_test(NAME module_family_print_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules

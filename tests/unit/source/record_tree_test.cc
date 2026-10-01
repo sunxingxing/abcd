@@ -39,6 +39,7 @@ int main(int argc, char** argv) {
   String(bytes, abc::kDynamicHeaderSize, "moduleRecordIdx");
   String(bytes, 90, "isCommonjs");
   const std::string_view mode = argc > 1 ? argv[1] : "";
+  const bool stored_branch = mode.starts_with("stored-branch");
   const bool anonymous = mode.starts_with("anonymous");
   const bool named_default = mode == "named-default";
   String(bytes, kRequest, anonymous || named_default ? "default" : "answer");
@@ -66,6 +67,20 @@ int main(int argc, char** argv) {
   }
   if (repeated) body = {0x62, 42, 0, 0, 0, 0x7c, 0,
       0x62, 7, 0, 0, 0, 0x7c, 0, 0x65};
+  if (stored_branch) {
+    const std::uint8_t initial = mode == "stored-branch-zero" ? 0 : 1;
+    // Real local read and two conditional updates of an already declared slot.
+    body = {0x62, initial, 0, 0, 0, 0x7c, 0, 0x7d, 0, 0x4f, 11,
+        0x62, 7, 0, 0, 0, 0x7c, 0, 0x4d, 9,
+        0x62, 9, 0, 0, 0, 0x7c, 0, 0x65};
+  }
+  if (mode == "conditional-first" || mode == "branch-before-root") {
+    body = {0x62, 1, 0, 0, 0, 0x4f, 11,
+        0x62, 7, 0, 0, 0, 0x7c, 0, 0x4d, 9,
+        0x62, 9, 0, 0, 0, 0x7c, 0};
+    if (mode == "branch-before-root") body.insert(body.end(), {0x62, 42, 0, 0, 0, 0x7c, 0});
+    body.push_back(0x65);
+  }
   bytes[596] = static_cast<std::uint8_t>(registers);
   bytes[597] = 3; bytes[598] = static_cast<std::uint8_t>(body.size());
   std::copy(body.begin(), body.end(), bytes.begin() + 600);
@@ -113,13 +128,20 @@ int main(int argc, char** argv) {
   auto result = source::BuildRecordSource(file, header, index, lookup, record, context, roles,
       {}, nullptr, source::RoutePolicy::kRequireValueTree, nullptr, nullptr, &identity);
   if (const auto* error = std::get_if<source::RecordProgramFailure>(&result)) {
+    if (mode == "conditional-first" || mode == "branch-before-root")
+      Check(error->kind == source::RecordProgramError::kInitializer);
+    Check(unlink(path) == 0);
     std::cerr << "record error " << static_cast<unsigned>(error->kind) << '\n'; return 1;
   }
   if (!std::holds_alternative<source::PrintedSource>(result)) {
     std::cerr << "variant " << result.index() << '\n'; return 1;
   }
   const auto& source = std::get<source::PrintedSource>(result).text;
-  if (anonymous) {
+  if (stored_branch) {
+    Check(source.find(mode == "stored-branch-zero" ? "let answer = 0;" : "let answer = 1;") != std::string::npos);
+    Check(source.find("if (") != std::string::npos);
+    Check(source.find("(answer = 7)") != std::string::npos && source.find("(answer = 9)") != std::string::npos);
+  } else if (anonymous) {
     Check(source.find("*default*") == std::string::npos);
     if (repeated) {
       Check(source.find("export default") == std::string::npos);

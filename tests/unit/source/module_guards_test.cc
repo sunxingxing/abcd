@@ -1,10 +1,101 @@
 #include "../../../src/source/function_values.h"
 #include "analysis/ssa_fixture.h"
 
+#include <algorithm>
+
 namespace {
 using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
+void StoredRead(std::uint32_t count, abc::ProfileId profile, bool wide, bool guarded) {
+  RouteInputIdentity identity; identity.profile = profile;
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 0, {false, false, false, false}));
+  const auto wire = [](abc::Opcode op) { return static_cast<std::uint8_t>(op); };
+  std::vector<std::uint8_t> bytes{wire(abc::Opcode::kLDAI_IMM32), 1, 0, 0, 0};
+  const auto slot_count = wide ? count : std::min(count, std::uint32_t{UINT8_MAX} + 1);
+  const auto slot_op = [&](abc::Opcode op, std::uint16_t slot) {
+    bytes.push_back(wire(op));
+    if (wide) bytes.push_back(static_cast<std::uint16_t>(op) >> 8);
+    bytes.push_back(static_cast<std::uint8_t>(slot));
+    if (wide) bytes.push_back(static_cast<std::uint8_t>(slot >> 8));
+  };
+  for (std::uint32_t i = 0; i < count; ++i)
+    slot_op(wide ? abc::Opcode::kWIDE_STMODULEVAR_PREF_IMM16 : abc::Opcode::kSTMODULEVAR_IMM8, i % slot_count);
+  for (std::uint32_t i = 0; i < count; ++i) {
+    slot_op(wide ? abc::Opcode::kWIDE_LDLOCALMODULEVAR_PREF_IMM16 : abc::Opcode::kLDLOCALMODULEVAR_IMM8, i % slot_count);
+    if (guarded) {
+      const auto op = abc::Opcode::kTHROW_UNDEFINEDIFHOLEWITHNAME_PREF_ID16;
+      bytes.insert(bytes.end(), {wire(op), static_cast<std::uint8_t>(static_cast<std::uint16_t>(op) >> 8), 3, 0});
+    }
+  }
+  bytes.push_back(wire(abc::Opcode::kRETURN));
+  const auto body = test::Body(bytes);
+  const auto result = FunctionInput::Build(identity, {300}, {100}, body, frame, InputCaptureMode::kClosed);
+  test::Check(std::holds_alternative<FunctionInput>(result));
+  const auto& input = std::get<FunctionInput>(result);
+  const auto values = std::get<FunctionValues>(BuildFunctionValues(input, body, frame));
+  test::Check(values.modules.pairs.size() == count && input.Proof().module_reads.size() == count);
+  for (std::uint32_t i = 0; i < count; ++i) {
+    const auto& fact = input.Proof().module_reads[i];
+    const auto& pair = values.modules.pairs[i];
+    test::Check(pair.guard.has_value() == guarded);
+    test::Check(fact.proof == (guarded ? ModuleReadProof::kGuarded : ModuleReadProof::kStored));
+    test::Check(guarded ? !fact.store : fact.store == InstructionId{1 + i % slot_count});
+    test::Check(values.graph.values[values.graph.ops[pair.read.value].result->value].domain == ValueKinds::Language());
+  }
+  test::Check(input.InitializedModuleReads().empty() && !input.HasOwner());
+  const auto checked = VerifyModuleGuards(input, values.graph, values.modules);
+  test::Check(std::holds_alternative<std::uint64_t>(checked));
+  SemanticBudget exact; exact.work = std::get<std::uint64_t>(checked);
+  test::Check(std::holds_alternative<std::uint64_t>(VerifyModuleGuards(input, values.graph, values.modules, exact)));
+  --exact.work;
+  test::Check(std::get<ModuleGuardError>(VerifyModuleGuards(input, values.graph, values.modules, exact)) == ModuleGuardError::kWorkLimit);
+  if (!guarded) {
+    const auto store = *values.graph.input.sites[input.Proof().module_reads.front().store->value];
+    auto wrong = values.graph; ++std::get<ValueModuleWrite>(wrong.ops[store.value].operation).slot.value;
+    test::Check(std::holds_alternative<ModuleGuardError>(VerifyModuleGuards(input, wrong, values.modules)));
+    wrong = values.graph; wrong.ops[store.value].life = ValueLife::kRemoved;
+    test::Check(std::holds_alternative<ModuleGuardError>(VerifyModuleGuards(input, wrong, values.modules)));
+    wrong = values.graph; wrong.ops[store.value].order = wrong.ops[values.modules.pairs.front().read.value].order;
+    test::Check(std::holds_alternative<ModuleGuardError>(VerifyModuleGuards(input, wrong, values.modules)));
+    wrong = values.graph; wrong.ops[store.value].block.value = 1;
+    test::Check(std::holds_alternative<ModuleGuardError>(VerifyModuleGuards(input, wrong, values.modules)));
+    wrong = values.graph; ++wrong.origins[wrong.ops[store.value].origin.value].pc.value;
+    test::Check(std::holds_alternative<ModuleGuardError>(VerifyModuleGuards(input, wrong, values.modules)));
+  }
+}
+void StoredReadFailures() {
+  RouteInputIdentity identity; identity.profile = abc::ProfileId::kDynamic1206;
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 0, {false, false, false, false}));
+  // WindowUtil's enum protocol starts with real undefined, not a VM Hole.
+  const auto initialized = test::Body({0x00, 0x7c, 0, 0x7d, 0, 0x64});
+  const auto input = std::get<FunctionInput>(FunctionInput::Build(identity, {300}, {100},
+      initialized, frame, InputCaptureMode::kClosed));
+  test::Check(input.Proof().module_reads.size() == 1 &&
+      input.Proof().module_reads.front().proof == ModuleReadProof::kStored &&
+      input.Proof().module_reads.front().store == InstructionId{1});
+  const auto values = std::get<FunctionValues>(BuildFunctionValues(input, initialized, frame));
+  test::Check(std::holds_alternative<std::uint64_t>(VerifyModuleGuards(input, values.graph, values.modules)));
+  const auto read = values.modules.pairs.front().read;
+  test::Check(values.graph.values[values.graph.ops[read.value].result->value].domain == ValueKinds::Language());
+  auto wrong = values.graph;
+  wrong.values[wrong.ops[read.value].result->value].domain = ValueKinds::Hole();
+  test::Check(std::holds_alternative<ModuleGuardError>(VerifyModuleGuards(input, wrong, values.modules)));
+  const auto reject = [&](std::initializer_list<std::uint8_t> bytes) {
+    const auto body = test::Body(bytes);
+    const auto result = FunctionInput::Build(identity, {300}, {100}, body, frame, InputCaptureMode::kClosed);
+    const auto* failure = std::get_if<FunctionInputFailure>(&result);
+    test::Check(failure && std::holds_alternative<SemanticProofFailure>(failure->cause));
+    test::Check(std::get<SemanticProofFailure>(failure->cause).kind == SemanticProofError::kInternalValue);
+  };
+  reject({0x7d, 0, 0x7c, 0, 0x7d, 0, 0x64}); // Circular first initialization.
+  reject({0x70, 0x7c, 0, 0x7d, 0, 0x64}); // Hole stored, not undefined.
+  reject({0x00, 0x7c, 0, 0x70, 0x7c, 0, 0x7d, 0, 0x64}); // Later non-Language store.
+  reject({0x00, 0x7c, 0, 0x7d, 1, 0x64}); // Different local slot.
+  reject({0x00, 0x7c, 0, 0x7e, 0, 0x64}); // External slot is a different namespace.
+  reject({0x7d, 0, 0x64, 0x00, 0x7c, 0, 0x65}); // Future unreachable store.
+  reject({0x62, 1, 0, 0, 0, 0x4f, 5, 0x00, 0x7c, 0, 0x7d, 0, 0x64}); // Branch-local store.
+}
 void Run(std::uint32_t count, bool external, bool wide) {
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 1, {false, false, false, false}));
   RouteInputIdentity identity;
@@ -92,6 +183,10 @@ void Run(std::uint32_t count, bool external, bool wide) {
 }
 }  // namespace
 int main() {
+  StoredReadFailures();
+  for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+    for (const auto count : {1U, 200U, 201U, 400U})
+      for (const bool wide : {false, true}) for (const bool guarded : {false, true}) StoredRead(count, profile, wide, guarded);
   for (auto count : {0U, 1U, 2U, 200U, 201U, 4096U})
     for (bool external : {false, true}) for (bool wide : {false, true}) Run(count, external, wide);
 }

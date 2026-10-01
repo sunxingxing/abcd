@@ -248,12 +248,16 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     }
     retain(slots->slot_count());
     std::vector<bool> initialized(slots->slot_count());
+    retain(slots->slot_count());
+    std::vector<std::uint8_t> entry_initialized(slots->slot_count());
+    retain(entry_initialized.capacity() - entry_initialized.size());
     std::size_t stores = 0, placed = 0;
     for (const auto& op : graph.ops)
       if (op.life == analysis::ValueLife::kLive &&
           std::holds_alternative<analysis::ValueModuleWrite>(op.operation)) ++stores;
     // Only the root control sequence owns native record declarations. Branch
-    // joins may precede them, but arm/loop stores cannot become a root let.
+    // joins may precede them. Arm/loop writes of a binding initialized on
+    // entry remain assignments, never new declarations or hoisted stores.
     // Traverse source order, not physical SSA block numbering, for first-store
     // identity. Existing tree-flow checks revalidate root declaration placement.
     for (std::optional<ControlId> at = control->entry; at; at = control->nodes[at->value].next) {
@@ -267,9 +271,25 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
           if (store->slot.value >= initialized.size()) return fail(Error::kExport);
           constants->operations[i] = ModuleStoreConstant{store->slot,
               {owner, {static_cast<std::uint32_t>(external + store->slot.value)}}, !initialized[store->slot.value]};
+          if (!initialized[store->slot.value] && node.block.value == 0)
+            entry_initialized[store->slot.value] = 1;
           initialized[store->slot.value] = true; ++placed;
         }
       }
+    }
+    // Reuse the root's native module binding only after its completed entry
+    // declaration. This avoids a per-write dominance traversal and retains
+    // conservative refusal for conditional first initialization / future lets.
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      const auto& op = graph.ops[i];
+      if (op.life != analysis::ValueLife::kLive) continue;
+      const auto* store = std::get_if<analysis::ValueModuleWrite>(&op.operation);
+      if (!store || std::holds_alternative<ModuleStoreConstant>(constants->operations[i])) continue;
+      if (store->slot.value >= initialized.size()) return fail(Error::kExport);
+      if (!entry_initialized[store->slot.value]) return fail(Error::kInitializer);
+      constants->operations[i] = ModuleStoreConstant{store->slot,
+          {owner, {static_cast<std::uint32_t>(external + store->slot.value)}}, false};
+      ++placed;
     }
     if (placed != stores) return fail(Error::kInitializer);
     if (std::find(initialized.begin(), initialized.end(), false) != initialized.end())

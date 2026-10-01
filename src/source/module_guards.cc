@@ -35,9 +35,11 @@ class Correspondence {
     Step();
     // Normal initialized reads retain the genuine creation/store premise;
     // phase callers require the separate exceptional owner pipeline.
+    Require(fact.store.has_value() == (fact.proof == analysis::ModuleReadProof::kStored), Error::kUnsupportedProof);
     switch (fact.proof) {
       case analysis::ModuleReadProof::kGuarded: break;
-      case analysis::ModuleReadProof::kInitialized: return Initialized(fact);
+      case analysis::ModuleReadProof::kInitialized:
+      case analysis::ModuleReadProof::kStored: return Initialized(fact);
       case analysis::ModuleReadProof::kCallerGuarded:
       case analysis::ModuleReadProof::kCatchGuarded: throw Error::kUnsupportedProof;
     }
@@ -82,6 +84,32 @@ class Correspondence {
     Require(result && result->op == read && !result->commit &&
         graph_.values[op.result->value].domain.IsLanguage() &&
         graph_.values[op.result->value].life == analysis::ValueLife::kLive, Error::kRead);
+    if (fact.proof == analysis::ModuleReadProof::kStored) {
+      Require(fact.store && fact.store->value < fact.instruction.value &&
+          !input_.Input().flow.blocks.empty() &&
+          fact.store->value < input_.Input().flow.blocks.front().instruction_count, Error::kUnsupportedProof);
+      const auto store = Operation(*fact.store);
+      const auto* original_store = std::get_if<analysis::ModuleStore>(
+          &input_.Input().instructions[fact.store->value].operation);
+      const auto& current_store = graph_.ops[store.value];
+      const auto* write = std::get_if<analysis::ValueModuleWrite>(&current_store.operation);
+      Require(original_store && write && original_store->slot == load->slot &&
+          write->slot == original_store->slot && current_store.block.value == 0 &&
+          (op.block.value != 0 || current_store.order < op.order) && current_store.use_count == 1 && !current_store.result &&
+          current_store.first_use.value < graph_.uses.size(), Error::kUnsupportedProof);
+      const auto reads = input_.Input().ssa.Reads(*fact.store);
+      Require(reads.size() == 1 && reads.front().value.value < input_.Proof().values.Facts().size() &&
+          input_.Proof().values.Facts()[reads.front().value.value].IsLanguage(), Error::kRead);
+      const auto& use = graph_.uses[current_store.first_use.value];
+      Require(std::get_if<analysis::OpId>(&use.owner) && std::get<analysis::OpId>(use.owner) == store &&
+          use.role == analysis::OperandRole::kStoredValue && use.purpose == analysis::ReadPurpose::kOperand,
+          Error::kRead);
+      if (const auto* value = std::get_if<analysis::ValueId>(&use.operand))
+        Require(value->value < graph_.values.size() &&
+            graph_.values[value->value].life == analysis::ValueLife::kLive &&
+            graph_.values[value->value].domain.IsLanguage(), Error::kRead);
+      return {read, std::nullopt};
+    }
     const auto premises = input_.InitializedModuleReads();
     // Indexed exact read sites, not one repeated scan per module load.
     Require(work_ >= std::bit_width(premises.size()) + 1, Error::kWorkLimit);

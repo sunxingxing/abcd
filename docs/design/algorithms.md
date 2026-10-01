@@ -5,6 +5,30 @@
 
 ## 输入规模与成本
 
+### 正常入口的模块初始化与条件更新（2026-10-02）
+
+`VerifySemanticSource` 为同一个正常函数的入口块收集模块 store，按 typed
+slot/instruction 排序去重，保留每槽最早 store。单调块游标遍历原指令，
+仅为可达、位于 store 之后的本地模块 load 附加 `kStored` 见证。它是候选：
+完整值求解和所有 SSA operand 检查必须证明首个及后续 store 都写入 Language；
+首个 store 之前的 raw load 仍 unknown，不能循环自证。已有 load/guard 对仍
+整体保留，外部模块和异常/恢复路径不使用此见证。读取只获得 Language 域，
+不会转发初值或保持常量、非 undefined、对象身份等精化。
+
+令 S 为入口 store 数、M 为模块 load 数，新增时间
+`O(I + S log(S+1) + M log(S+1))`，暂存 `O(S)`；索引在值求解 scratch 分配前
+释放。见证进入现有 read ledger，空间计入已有 admission。源码对应检查逐 read
+核对原 store/PC、当前 entry block/顺序、slot、live 状态及 Language operand；
+沿用 SSA read 查询的 `O(log(U+1))` 成本，不逐 read 扫描整函数。
+
+Record 声明仍按根控制序列放置。额外每槽一个字节记录是否首次声明于入口块，
+另一次线性操作扫描将其 arm/loop store 规划为对原绑定的赋值；禁止条件首次
+初始化或先分支写入后根声明。新增 `O(O+K)` 时间、`O(K)` 空间，O 为工作操作
+数、K 为本地模块槽数，不为每次写入单独走支配图。其他支配位置的首次声明
+仍是能力缺口。本项目自有实现，复用已有 normal reachability/SSA/源码绑定，
+无新增依赖或外部代码。三 profile、窄/宽 slot、1/200/201/400 项、Hole/cycle/
+分支/未来 store 反例及实际 decoded ESM 执行为定向证据；不是 RSS/性能实测。
+
 用 `I` 表示指令数、`B` 表示基本块数、`E` 表示边数、`R` 表示异常范围数、
 `U` 表示实际 def/use 数、`P` 表示产生的 phi 及其输入数，分别报告其成本。
 集合规模超过 `kPairwiseLimit = 200` 时，避免平方及以上算法。

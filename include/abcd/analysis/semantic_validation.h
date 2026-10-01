@@ -17,20 +17,25 @@ struct CapturedReadFact {
 // immutability. Every transitive child write must discharge this premise.
 enum class ClosureWrites : std::uint8_t { kUnknown, kLanguage };
 enum class ModuleReadProof : std::uint8_t {
-  kGuarded, kInitialized, kCallerGuarded, kCatchGuarded
+  kGuarded, kInitialized, kCallerGuarded, kCatchGuarded, kStored
 };
 constexpr bool IsGuardedModuleRead(ModuleReadProof proof) {
   switch (proof) {
     case ModuleReadProof::kGuarded:
     case ModuleReadProof::kCallerGuarded:
     case ModuleReadProof::kCatchGuarded: return true;
-    case ModuleReadProof::kInitialized: return false;
+    case ModuleReadProof::kInitialized:
+    case ModuleReadProof::kStored: return false;
   }
   return false;
 }
 struct ModuleReadFact {
   InstructionId instruction;
   ModuleReadProof proof;
+  // kStored alone carries the first same-body entry-block store. Full input
+  // verification checks its value and every later store as Language; this is
+  // an initialization witness, never forwarding of the stored value.
+  std::optional<InstructionId> store;
 };
 enum class LocalAccessKind : std::uint8_t { kLoad, kStore };
 struct LocalAccessFact {
@@ -143,6 +148,10 @@ using SemanticProofResult = std::variant<SemanticProof,
 // initialized_modules are sorted, unique same-body LOCAL load sites whose
 // owner proves initialization before invocation, with Language-only later
 // writes. They are not inferred from an export name or an adjacent guard.
+// Independently, a preceding same-body entry-block local store can authorize
+// later normal loads (kStored); all store operands must pass the full Language
+// check. Branch-local stores, external loads and uninitialized cycles do not
+// establish that premise. Neither route snapshots a live module binding.
 // kLanguage enables parametric captured reads only; every resulting capture
 // must be bound and its premise discharged by the parent before publication.
 // Local cells use the separate initialization proof, not this option. The printer must separately
