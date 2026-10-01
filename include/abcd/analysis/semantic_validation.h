@@ -73,6 +73,14 @@ struct LocalAccessPlan {
   // the store's dominator subtree covers these block-entry numbers. Later stores must
   // independently pass Language verification. No closure mutation is inferred.
   std::vector<std::optional<LocalInitialization>> initializations;
+  // Allocation-to-store straight-line prefix with no observer or escape of
+  // the new environment. Capture may precede this store, but no child can run
+  // before it. This is not an initialized value at the creation instruction.
+  struct UnexposedInitialization {
+    InstructionId allocation;
+    InstructionId store;
+  };
+  std::vector<std::optional<UnexposedInitialization>> unexposed_initializations;
   std::vector<std::uint32_t> block_entries;
   // Sorted creation instructions lacking same-body CapturePreservation.
   // Includes callable/class/buffer captures; not merely the previous function.
@@ -85,6 +93,7 @@ struct LocalAccessPlan {
            stores.capacity() * sizeof(LocalStoreSite) +
            allocations.capacity() * sizeof(std::optional<InstructionId>) +
            initializations.capacity() * sizeof(std::optional<LocalInitialization>) +
+           unexposed_initializations.capacity() * sizeof(std::optional<UnexposedInitialization>) +
            block_entries.capacity() * sizeof(std::uint32_t) +
            capture_barriers.capacity() * sizeof(InstructionId);
   }

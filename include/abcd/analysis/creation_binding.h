@@ -21,6 +21,8 @@ struct CapturedSlot {
 };
 // A use obligation, not part of cell identity. Rebase the cell without
 // weakening this requirement; initialization alone proves only Language.
+// A local unexposed-prefix proof may establish Language before any child can
+// execute, rather than at creation; it never establishes Defined or constness.
 enum class CaptureDomain : std::uint8_t { kLanguage, kDefined };
 enum class CaptureRebaseError { kSendableEnvironment };
 

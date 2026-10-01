@@ -27,7 +27,7 @@ namespace {
 using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
-enum class ChildBody { kEmpty, kReceiver, kCapture, kCell, kRecursive, kNestedWriter, kSnapshot };
+enum class ChildBody { kEmpty, kReceiver, kCapture, kCell, kRecursive, kNestedWriter, kSnapshot, kDeferredCapture };
 enum class CallerObject { kAbsent, kPrimitive, kMethod };
 enum class SnapshotCase { kRead, kWrite, kPair, kBranch, kLoop, kSelf, kReceiver };
 constexpr std::uint32_t kPool = 64, kCaller = 256, kTarget = 300, kWriter = 320,
@@ -60,7 +60,8 @@ abc::CodeInfo AppendCode(std::vector<std::uint8_t>& file,
 void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
          bool all_formats = false, std::uint8_t parameters = 0,
          CallerObject object = CallerObject::kAbsent,
-         SnapshotCase snapshot_case = SnapshotCase::kRead, std::ostream* evidence = nullptr) {
+         SnapshotCase snapshot_case = SnapshotCase::kRead, std::ostream* evidence = nullptr,
+         bool deferred_writer = false) {
   std::vector<std::uint8_t> bytes(kCallerCode);
   constexpr unsigned kByteBits = 8;
   for (unsigned i = 0; i < sizeof(kTarget); ++i)
@@ -90,6 +91,7 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
     for (std::uint32_t i = 0; i < count; ++i)
       caller.insert(caller.end(), {kObjectWithBuffer, 0, 1, 0});
   }
+  if (child == ChildBody::kDeferredCapture) caller.insert(caller.end(), {0x09, 1});
   std::vector<std::uint32_t> pcs;
   for (std::uint32_t i = 0; i < count; ++i) {
     pcs.push_back(static_cast<std::uint32_t>(caller.size()));
@@ -102,6 +104,7 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
           static_cast<std::uint8_t>(kWideCache >> kByteBits), 0, 0, parameters});
     else caller.insert(caller.end(), {kDefineFunction, 1, 0, 0, parameters});
   }
+  if (child == ChildBody::kDeferredCapture) caller.insert(caller.end(), {0x00, 0x3d, 0});
   caller.push_back(kReturnUndefined);
   constexpr std::uint32_t kImplicitArguments = 3;
   const auto caller_code = AppendCode(bytes, caller, kImplicitArguments);
@@ -147,6 +150,7 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
       target.insert(target.end(), {static_cast<std::uint8_t>(abc::Opcode::kGETUNMAPPEDARGS), kReturn}); break;
     case ChildBody::kEmpty: target = {kReturnUndefined}; break;
     case ChildBody::kReceiver: target = {kLoad, kReceiver, kReturn}; break;
+    case ChildBody::kDeferredCapture:
     case ChildBody::kCapture: target = {kReadCell, 0, kReturn}; break;
     case ChildBody::kCell:
       target = {kPush, 1, kUndefined, kStoreCell, 0, kReadCell, 0, kPop, kReturn}; break;
@@ -156,10 +160,18 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
       target = {kPush, 1, kUndefined, kStoreCell, 0,
           kDefineFunction, 0, 1, 0, 0, kPop, kReturnUndefined}; break;
   }
+  if (deferred_writer) {
+    test::Check(child == ChildBody::kNestedWriter);
+    // Capture first, initialize privately, then return the actual closure.
+    target = {kPush, 1, kDefineFunction, 0, 1, 0, 0, 0x61, 0,
+        kLoad, static_cast<std::uint8_t>(kImplicitArguments),
+        kStoreCell, 0, kLoad, 0, kPop, kReturn};
+  }
   const auto target_code = AppendCode(bytes, target, kImplicitArguments + parameters);
   std::optional<abc::CodeInfo> writer_code;
   if (child == ChildBody::kNestedWriter)
-    writer_code = AppendCode(bytes, {kUndefined, kStoreCell, 0, kReadCell, 0, kReturn}, kImplicitArguments);
+    writer_code = AppendCode(bytes, deferred_writer ? std::vector<std::uint8_t>{kReadCell, 0, kReturn} :
+        std::vector<std::uint8_t>{kUndefined, kStoreCell, 0, kReadCell, 0, kReturn}, kImplicitArguments);
   char path[] = "/tmp/abcd-creation-tree-XXXXXX";
   const int fd = mkstemp(path);
   test::Check(fd >= 0 && write(fd, bytes.data(), bytes.size()) == static_cast<ssize_t>(bytes.size()));
@@ -449,6 +461,7 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
       test::Check(std::get<FamilyFileError>(std::get<FamilyFileFailure>(ReadFunctionFamily(
           file, header, index, lookup, roles, sites, {0}, identity, family_budget)).cause) == FamilyFileError::kWorkLimit);
     }
+    if (child == ChildBody::kDeferredCapture) { test::Check(unlink(path) == 0); return; }
     if (count != 1 && !all_formats) { test::Check(unlink(path) == 0); return; }
     const auto conditional = ReadFunctionValues(file, header, index, {1}, identity, InputCaptureMode::kConditional);
     test::Check(std::holds_alternative<FileFunction>(conditional));
@@ -500,8 +513,8 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
       test::Check(built.members.size() == (writer_code ? 2U : 1U) && built.root == FileFamily::kRoot &&
           built.members[0].tree.method == abc::EntityOffset{kTarget} &&
           built.members[0].tree.parameters.size() == parameters);
-      test::Check(built.writes && built.writes->captured_stores == (writer_code ? 1U : 0U) &&
-          built.writes->stores == (writer_code ? 2U : child == ChildBody::kCell ? 1U : 0U));
+      test::Check(built.writes && built.writes->captured_stores == (writer_code && !deferred_writer ? 1U : 0U) &&
+          built.writes->stores == (writer_code ? (deferred_writer ? 1U : 2U) : child == ChildBody::kCell ? 1U : 0U));
       auto write_inputs = std::get<FileFamily>(ReadFunctionFamily(file, header, index,
           lookup, roles, sites, {1}, identity));
       const auto stores = std::get<FamilyWrites>(VerifyFamilyWrites(index, write_inputs, built));
@@ -617,6 +630,7 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
         test::Check(std::get<FamilyEmitError>(std::get<FamilyEmitFailure>(exhausted)) == FamilyEmitError::kResourceLimit);
         test::Check(failed_output.str().empty());
       }
+      if (deferred_writer && evidence) *evidence << prepared_output.str();
       retained_source = prepared_output.str();
       retained_family.emplace(std::move(prepared));
       const auto mismatch = BuildFunctionAbi(opened_child.values.graph, built.members[0].tree,
@@ -725,6 +739,11 @@ int main(int argc, char** argv) {
       expansion.Leave(budget.bytes);
     }
   }
+  if (argc == 2 && std::string_view(argv[1]) == "--deferred-source") {
+    Run(1, abc::FunctionKind::kBaseConstructor, ChildBody::kNestedWriter, false, 1,
+        CallerObject::kAbsent, SnapshotCase::kRead, &std::cout, true);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--snapshot-json") {
     for (const auto parameters : {0U, 1U, 2U, 200U, 201U}) {
       for (const auto variant : {SnapshotCase::kRead, SnapshotCase::kWrite, SnapshotCase::kPair, SnapshotCase::kBranch, SnapshotCase::kLoop, SnapshotCase::kSelf}) {
@@ -745,6 +764,8 @@ int main(int argc, char** argv) {
     for (const auto parameters : {0U, 1U, 200U, 201U})
       Run(2, kind, ChildBody::kSnapshot, false, static_cast<std::uint8_t>(parameters));
   for (const auto count : {0U, 1U, 2U, 200U, 201U}) Run(count, abc::FunctionKind::kBaseConstructor, ChildBody::kEmpty);
+  for (const auto count : {1U, 2U, 200U, 201U})
+    Run(count, abc::FunctionKind::kArrow, ChildBody::kDeferredCapture);
   Run(4, abc::FunctionKind::kBaseConstructor, ChildBody::kEmpty, true);
   for (const auto kind : {abc::FunctionKind::kBaseConstructor, abc::FunctionKind::kArrow})
     for (const auto child : {ChildBody::kEmpty, ChildBody::kReceiver, ChildBody::kCapture, ChildBody::kCell}) Run(1, kind, child);
@@ -752,6 +773,8 @@ int main(int argc, char** argv) {
     Run(1, abc::FunctionKind::kBaseConstructor, ChildBody::kEmpty, false, static_cast<std::uint8_t>(count));
   Run(1, abc::FunctionKind::kBaseConstructor, ChildBody::kRecursive);
   Run(1, abc::FunctionKind::kBaseConstructor, ChildBody::kNestedWriter);
+  Run(1, abc::FunctionKind::kBaseConstructor, ChildBody::kNestedWriter, false, 1,
+      CallerObject::kAbsent, SnapshotCase::kRead, nullptr, true);
   for (const auto count : {0U, 1U, 2U, 200U, 201U})
     Run(count, abc::FunctionKind::kBaseConstructor, ChildBody::kEmpty, false, 0, CallerObject::kPrimitive);
   Run(1, abc::FunctionKind::kBaseConstructor, ChildBody::kEmpty, false, 0, CallerObject::kMethod);

@@ -12,6 +12,31 @@
 
 ## 当前阶段
 
+### 2026-10-01：未暴露环境中的延迟捕获初始化贯通
+
+- 原始LocalAccessPlan新增每cell的unexposed initialization证据：同一块内新环境
+  分配后只允许无效果ScalarAssignment、FunctionCreation和对该环境的LexicalStore。
+  任何读取、调用、debugger、外部写入、控制边或其他操作终止此前缀；不会越过
+  观察者重新开始。记录真实首个store，原始SSA的Language写入检查保持不变。
+- NormalScopeFacts可据此接受创建早于store的Language捕获，但要求完整族的
+  Language-only transitive writes；Defined和unknown writes仍拒绝。局部读取仍
+  要求其读取点已初始化，未改相位/异常捕获合同。不是把未来store冒充创建点已初始化。
+- 额外证据构建O(I+C)工作、O(C)存储，查询仍二分cell/store索引后常数检查；
+  不逐捕获扫描指令。容量计入原LocalAccessPlan预算。没有新printer或样本特判。
+- 真实解码正例贯通完整file family、共同树、捕获与写入验证、PreparedFamily及
+  printer：先创建闭包，写入参数值，再返回该闭包。新增deferred_capture_source_test
+  通过56组返回身份、重复读取、跨调用独立cell行为对照。1/2/200/201闭包绑定规格
+  通过；debugger、外部槽写入、Defined、unknown writes及无前缀证据反例继续拒绝。
+- 11项相关定向回归通过，8.26秒，/tmp/abcd-deferred-regression-tests.log；补齐
+  完整源码/行为夹具后3项重点回归通过，1.41秒，/tmp/abcd-deferred-final-tests.log。
+  构建日志 /tmp/abcd-deferred-final-build.log；全量测试/RSS/基准未恢复。
+- 五输入导出 build/stage-one/value-deferred-capture-pass-1 均退出0，维持
+  **47 complete / 59 failure / 46 no-module**，无完整项退化、无legacy writer；
+  /tmp/abcd-deferred-capture-batch-summary.json。Categories越过原捕获边界，但仍在
+  method18433（parent18321、creation PC72）的FunctionInputFailure/SemanticProofFailure
+  失败，CLI报告PC41/tree_stage；/tmp/abcd-deferred-categories-failure.log。
+  尚未恢复完整Categories或完成配对平台/风格验收，阶段一Goal保持开放。
+
 ### 2026-10-01：Categories 延迟初始化捕获的真实边界
 
 - 当前HEAD上重新定位Categories record18101：父方法19017在指令9/PC20创建

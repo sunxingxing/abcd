@@ -37,6 +37,23 @@ contract. It never strengthens values to non-undefined or immutable, and does
 not justify caching a cell read across a call. Environment handles must remain
 unobservable under the existing cell-evaluation checks.
 
+Normal-flow edges also admit deferred initialization in a fresh environment's
+unexposed construction prefix. The original local analysis records each cell's
+first store only while the same block contains allocation, effect-free scalar
+assignments, function creations and stores into that exact environment. A load,
+call, debugger, external store, branch or other operation ends this prefix; it
+cannot restart without a fresh allocation. No closure can execute or escape
+before its required store. Allocation failure cannot expose the environment;
+exception-handler methods do not use this normal-flow proof.
+
+This alternative requires Language-only transitive stores and retains Defined
+and unknown-write rejection. It discharges future child reads without claiming
+the cell is initialized at creation. Local reads retain their original strict
+initialization checks; source emission preserves closure creation and store
+order. The decoded deferred-capture fixture traverses file-family binding,
+common AST, capture/write verification, preparation and printing; its runtime
+test checks returned values and separate cell instances across calls.
+
 ## Cost and Publication Boundary
 
 Site-indexed masks make original-store/signature/barrier coverage linear in input

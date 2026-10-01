@@ -66,6 +66,12 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
         [&](auto a, auto b) { charge(); return Key(a) == Key(b); }), plan.cells.end());
     if (plan.AllocatedBytes() > budget.bytes) return resource();
     auto remaining = budget.bytes - plan.AllocatedBytes();
+    using Unexposed = LocalAccessPlan::UnexposedInitialization;
+    if (plan.cells.size() > remaining / sizeof(std::optional<Unexposed>)) return resource();
+    plan.unexposed_initializations.resize(plan.cells.size());
+    const auto unexposed_bytes = plan.unexposed_initializations.capacity() * sizeof(std::optional<Unexposed>);
+    if (unexposed_bytes > remaining) return resource();
+    remaining -= unexposed_bytes;
     if (plan.cells.size() > remaining / sizeof(std::optional<InstructionId>))
       return resource();
     std::vector<std::optional<InstructionId>> stores(plan.cells.size());
@@ -118,12 +124,30 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
     std::size_t binding = 0;
     std::optional<InstructionId> creation;
     std::size_t preservation = 0;
+    std::optional<EnvironmentId> unexposed;
     for (std::size_t i = 0; i < method.instructions.size(); ++i) {
       charge();
       while (block + 1 < method.flow.blocks.size() &&
              method.flow.blocks[block + 1].first_instruction <= i) ++block;
       const auto first = method.flow.blocks[block].first_instruction;
       const auto& operation = method.instructions[i].operation;
+      if (i == first) unexposed.reset();
+      // Only a fresh environment's uninterrupted, unobservable construction
+      // prefix permits deferred capture initialization. Never restart after a
+      // call, load, external store, branch or other possible observer.
+      if (std::holds_alternative<PushEnvironment>(operation)) {
+        unexposed.reset();
+        if (i + 1 < environments.before.size() && environments.before[i + 1]) {
+          if (const auto* next = std::get_if<EnvironmentId>(&*environments.before[i + 1]);
+              next && next->value < allocations.size() && allocations[next->value] &&
+              allocations[next->value]->value == i) unexposed = *next;
+        }
+      } else if (!std::holds_alternative<FunctionCreation>(operation) &&
+          !std::holds_alternative<LexicalStore>(operation) &&
+          !(std::holds_alternative<ScalarAssignment>(operation) &&
+            method.instructions[i].effects.normal == LanguageEffect::kNone)) {
+        unexposed.reset();
+      }
       const bool captures = CapturesEnvironment(operation);
       bool read_only = false;
       if (preservation < preserved.size() &&
@@ -143,6 +167,7 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
           environments.bindings[binding].instruction != i) continue;
       const auto& site = environments.bindings[binding++];
       const auto* owner = std::get_if<EnvironmentId>(&site.binding.environment);
+      if (!owner || !unexposed || *owner != *unexposed) unexposed.reset();
       if (!owner) continue;
       const LocalCell cell{*owner, site.binding.slot};
       const auto found = std::lower_bound(plan.cells.begin(), plan.cells.end(), cell,
@@ -151,6 +176,8 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
       const auto id = static_cast<std::uint32_t>(found - plan.cells.begin());
       const InstructionId instruction{static_cast<std::uint32_t>(i)};
       if (std::holds_alternative<LexicalStore>(operation)) {
+        if (unexposed && !plan.unexposed_initializations[id])
+          plan.unexposed_initializations[id] = Unexposed{*allocations[owner->value], instruction};
         stores[id] = instruction;
         plan.accesses.push_back({instruction, {id}, LocalAccessKind::kStore});
         plan.stores.push_back({{id}, instruction});

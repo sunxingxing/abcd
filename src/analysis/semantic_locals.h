@@ -11,6 +11,9 @@ namespace abcd::analysis {
 // Function creation since allocation blocks reads unless the owner promises
 // Language-only transitive closure stores. Initialization remains mandatory;
 // this premise says nothing about value identity. No phi-cell promotion.
+// Separately records fresh allocation-to-store prefixes containing only scalar
+// moves, function creations and stores into that environment. These permit
+// capture before initialization, never an early local read or external escape.
 std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
     const SemanticMethod& method, const EnvironmentFlow& environments,
     SemanticBudget budget, ClosureWrites closure_writes,

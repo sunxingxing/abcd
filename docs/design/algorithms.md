@@ -315,3 +315,12 @@ String-add fixtures include user conversion effects and abrupt completion,
 只对参与额外组合的树合并子区间；无关表达式保留既有局部验证。全局consumer
 计数及精确用途检查不变。自行实现，无新增依赖；前置/后置字面量调用及跨debugger
 伪造快照反例见logical_regions_test，行为对照见logical_regions.mjs。
+
+### 未暴露环境的延迟初始化
+
+ProveLocalAccesses沿既有指令/环境绑定扫描记录新环境的连续无观察者前缀，按cell
+保存其首个store和allocation。额外O(I+C)工作/O(C)存储，纳入原预算；闭包捕获
+复用原二分cell/store索引并常数查询此前缀，不逐变量扫描指令或控制图。控制边、
+加载、外部存储及可能观察的操作终止前缀。此实现复用项目环境身份/SSA/完整族
+Language写入合同，无外部依赖；1/2/200/201闭包及独立cell行为用例见
+creation_tree_context_test、capture_plan_test和deferred_capture.mjs。

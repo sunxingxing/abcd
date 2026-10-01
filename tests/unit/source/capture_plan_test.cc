@@ -1,4 +1,5 @@
 #include "../../../src/source/capture_plan.h"
+#include "../../support/analysis/ssa_fixture.h"
 
 #include <cstdlib>
 #include <utility>
@@ -8,6 +9,34 @@ using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
 void Check(bool value) { if (!value) std::abort(); }
+void Deferred() {
+  // Real decoded private-environment construction. Debugger is an observation
+  // barrier; an outer-cell store is an escape even without a direct call.
+  for (const unsigned barrier : {0U, 1U, 2U}) {
+    std::vector<std::uint8_t> bytes{0x09, 1, 0x33, 0, 0, 0, 0};
+    if (barrier == 1) bytes.push_back(static_cast<std::uint8_t>(abc::Opcode::kDEBUGGER));
+    if (barrier == 2) bytes.insert(bytes.end(), {0x00, 0x3d, 0x01});
+    bytes.insert(bytes.end(), {0x00, 0x3d, 0, 0x65});
+    const auto body = test::Body(bytes);
+    const auto method = std::get<SemanticMethod>(BuildSemanticMethod(body, abc::ProfileId::kDynamic1206, 3));
+    const auto proof = std::get<SemanticProof>(VerifySemanticSource(body, method, 3, 0,
+        {}, {}, {}, ClosureWrites::kLanguage));
+    const ScopeFacts scopes(method, proof);
+    const CaptureUse use{{{0}, {0}}, CaptureDomain::kLanguage};
+    const CreationBinding creation{{2}, std::get<FunctionCreation>(method.instructions[1].operation),
+        {{0}, {}}, OrdinaryCapture{EnvironmentId{0}}};
+    const auto result = BuildCapturePlan(scopes, {1}, creation, {&use, 1});
+    if (!barrier) {
+      Check(std::holds_alternative<CapturePlan>(result));
+      const auto& plan = std::get<CapturePlan>(result);
+      Check(std::holds_alternative<std::uint64_t>(VerifyCapturePlan(scopes, {1}, creation, {&use, 1}, plan)));
+      const CaptureUse defined{use.cell, CaptureDomain::kDefined};
+      Check(std::get<CaptureError>(BuildCapturePlan(scopes, {1}, creation, {&defined, 1})) == CaptureError::kScope);
+      const ScopeFacts unknown(method, proof.environments, proof.locals, proof.defined_captures, ClosureWrites::kUnknown);
+      Check(std::get<CaptureError>(BuildCapturePlan(unknown, {1}, creation, {&use, 1})) == CaptureError::kScope);
+    } else Check(std::get<CaptureError>(result) == CaptureError::kScope);
+  }
+}
 SemanticMethod Owner() {
   // Scope-only synthetic facts below do not claim a complete input certificate.
   constexpr std::uint8_t kReturnUndefined = 0x65;
@@ -80,8 +109,8 @@ void Run() {
   locals.stores.clear();
   Check(std::get<CaptureError>(BuildCapturePlan(scopes, {2}, creation, {&use, 1})) == CaptureError::kScope);
   // A closure may capture a cell before its first write, but that does not
-  // establish this planner's Language-at-creation premise. A future dominating
-  // store (or one at the creation site) must not discharge a child's read.
+  // establish a Language read premise. Without an unexposed-prefix proof, a
+  // future dominating store (or one at creation) cannot discharge that read.
   // Categories' decoded parent creates at site 9 and initializes at site 18.
   locals.capture_barriers.clear();
   locals.block_entries = {1};
@@ -97,4 +126,4 @@ void Run() {
   Check(std::holds_alternative<CapturePlan>(BuildCapturePlan(scopes, {2}, creation, {&use, 1})));
 }
 }  // namespace
-int main() { Run(); }
+int main() { Run(); Deferred(); }

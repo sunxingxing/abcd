@@ -55,14 +55,14 @@ std::variant<CaptureCell, ScopeError> NormalScopeFacts::Rebase(
   const auto id = static_cast<std::uint32_t>(found - locals_.cells.begin());
   auto store = std::lower_bound(locals_.stores.begin(), locals_.stores.end(), std::tuple(id, instruction),
       [](auto item, auto target) { return std::tuple(item.cell.value, item.instruction.value) < target; });
-  if (store == locals_.stores.begin() || (--store)->cell.value != id) return Error::kInitialization;
+  const bool prior_store = store != locals_.stores.begin() && (--store)->cell.value == id;
   const auto& blocks = method_.flow.blocks;
   auto block = std::upper_bound(blocks.begin(), blocks.end(), instruction,
       [](auto target, const auto& item) { return target < item.first_instruction; });
   if (block == blocks.begin()) return Error::kSite;
   --block;
   const auto allocation = locals_.allocations[environment->value];
-  bool initialized = allocation && allocation->value >= block->first_instruction &&
+  bool initialized = prior_store && allocation && allocation->value >= block->first_instruction &&
       allocation->value < store->instruction.value && store->instruction.value >= block->first_instruction;
   const auto block_id = static_cast<std::size_t>(block - blocks.begin());
   if (!initialized && id < locals_.initializations.size() && locals_.initializations[id] &&
@@ -70,6 +70,18 @@ std::variant<CaptureCell, ScopeError> NormalScopeFacts::Rebase(
     const auto& scope = *locals_.initializations[id];
     const auto entry = locals_.block_entries[block_id];
     initialized = scope.store.value < instruction && scope.begin <= entry && entry < scope.end;
+  }
+  // A fresh cell may be captured before initialization when the original
+  // allocation-to-store prefix proves no observer/escape. This discharges the
+  // child's eventual Language reads, not a value at the creation site. Defined
+  // requirements and unknown transitive writes retain the strict old rule.
+  if (!initialized && requirement == analysis::CaptureDomain::kLanguage &&
+      writes_ == analysis::ClosureWrites::kLanguage &&
+      id < locals_.unexposed_initializations.size() && locals_.unexposed_initializations[id]) {
+    const auto& prefix = *locals_.unexposed_initializations[id];
+    initialized = allocation && prefix.allocation == *allocation &&
+        prefix.allocation.value >= block->first_instruction &&
+        prefix.allocation.value < instruction && instruction < prefix.store.value;
   }
   if (!allocation || !initialized) return Error::kInitialization;
   if (writes_ == analysis::ClosureWrites::kUnknown) {
