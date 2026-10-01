@@ -29,7 +29,7 @@ analysis::ValueProgram Import(const std::vector<std::uint8_t>& bytes, std::uint3
   Check(!std::holds_alternative<ValueSimplifyError>(SimplifyValues(graph, graph.revision)));
   return graph;
 }
-analysis::ValueProgram OptionalAccess(bool observable_fallback = false, unsigned count = 1, bool distinct_fallback = false, bool corridor_effect = false) {
+analysis::ValueProgram OptionalAccess(bool observable_fallback = false, unsigned count = 1, bool distinct_fallback = false, bool corridor_effect = false, bool header_effect = false) {
   // Two strict nullish checks share one undefined-producing arm. This is the
   // real optional-access CFG shape, independent of UI classes/captures.
   std::vector<std::uint8_t> bytes{0x01, 0x27, 0, 1, 0x4f, 0,
@@ -51,10 +51,34 @@ analysis::ValueProgram OptionalAccess(bool observable_fallback = false, unsigned
     bytes.insert(bytes.begin() + 12, static_cast<std::uint8_t>(abc::Opcode::kDEBUGGER));
     ++bytes[5]; ++bytes[11];
   }
+  if (header_effect) {
+    bytes.insert(bytes.begin() + 6, static_cast<std::uint8_t>(abc::Opcode::kDEBUGGER));
+    ++bytes[5];
+  }
   std::vector<std::uint8_t> chain;
   for (unsigned i = 0; i < count; ++i) chain.insert(chain.end(), bytes.begin(), bytes.end());
   chain.insert(chain.end(), {0x60, 1, 0x64});
   return Import(chain, 1);
+}
+analysis::ValueProgram NestedSelections(unsigned count) {
+  std::vector<std::uint8_t> bytes;
+  std::vector<std::size_t> exits;
+  for (unsigned i = 0; i < count; ++i) {
+    bytes.insert(bytes.end(), {0x00, 0x27, 0, 1});
+    const auto branch = bytes.size(); bytes.insert(bytes.end(), {0x51, 0, 0x00});
+    exits.push_back(bytes.size());
+    bytes.insert(bytes.end(), {static_cast<std::uint8_t>(abc::Opcode::kJMP_IMM16), 0, 0});
+    bytes[branch + 1] = static_cast<std::uint8_t>(bytes.size() - branch);
+  }
+  bytes.insert(bytes.end(), {0x60, 1, 0x42, 0, 0, 0});
+  const auto join = bytes.size(); bytes.push_back(0x64);
+  for (const auto exit : exits) {
+    Check(join - exit <= INT16_MAX);
+    const auto delta = static_cast<std::uint16_t>(join - exit);
+    bytes[exit + 1] = static_cast<std::uint8_t>(delta);
+    bytes[exit + 2] = static_cast<std::uint8_t>(delta >> 8);
+  }
+  return Import(bytes, 1);
 }
 analysis::ValueProgram ConditionalDiamond(bool negate = false, unsigned count = 1, bool barrier = false, bool raw_predicate = false) {
   // value.probe ? value.items : [], with two independently evaluated arms.
@@ -81,6 +105,17 @@ analysis::ValueProgram ConditionalCall(bool method_first) {
   if (method_first) bytes.insert(bytes.end(), method.begin(), method.end());
   const std::vector<std::uint8_t> select{0x60, 3, 0x42, 0, 0, 0, 0xfb, 0x13, 0,
       0x4f, 10, 0x60, 3, 0x42, 0, 0, 0, 0x4d, 4, 0x05, 0, 0x61, 1};
+  bytes.insert(bytes.end(), select.begin(), select.end());
+  if (!method_first) bytes.insert(bytes.end(), method.begin(), method.end());
+  bytes.insert(bytes.end(), {0x60, 0, static_cast<std::uint8_t>(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 3, 1, 0x64});
+  return Import(bytes, 3);
+}
+analysis::ValueProgram OptionalCall(bool method_first) {
+  const std::vector<std::uint8_t> method{0x60, 3, 0x42, 0, 1, 0, 0x61, 0};
+  std::vector<std::uint8_t> bytes;
+  if (method_first) bytes.insert(bytes.end(), method.begin(), method.end());
+  const std::vector<std::uint8_t> select{0x01, 0x27, 0, 3, 0x4f, 10,
+      0x00, 0x27, 0, 3, 0x4f, 4, 0x4d, 5, 0x00, 0x4d, 8, 0x60, 3, 0x42, 0, 0, 0, 0x61, 1};
   bytes.insert(bytes.end(), select.begin(), select.end());
   if (!method_first) bytes.insert(bytes.end(), method.begin(), method.end());
   bytes.insert(bytes.end(), {0x60, 0, static_cast<std::uint8_t>(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 3, 1, 0x64});
@@ -188,6 +223,9 @@ std::string Source(const analysis::ValueProgram& graph, bool compose = true) {
     auto wrong = tree;
     auto& conditional = std::get<ConditionalExpr>(wrong.expressions[i].expression);
     std::swap(conditional.consequent, conditional.alternate);
+    Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation, wrong, view)));
+    wrong = tree;
+    wrong.expressions[i].origin = wrong.expressions[std::get<ConditionalExpr>(wrong.expressions[i].expression).condition.value].origin;
     Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation, wrong, view)));
     break;
   }
@@ -428,11 +466,14 @@ int main(int argc, char** argv) {
   const auto optional = OptionalAccess();
   Check(optional.cfg_revision.value == 1);
   Check(Source(optional).find(" ? ") != std::string::npos);
+  Check(Source(optional).find("if (") == std::string::npos);
+  Check(Source(OptionalCall(true)).find("$phi") == std::string::npos);
+  Check(!Source(OptionalCall(false)).empty());
   const auto optional_control = std::get<ControlPlan>(BuildControlPlan(optional));
   auto optional_evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(optional));
   TreeCheckBudget optional_budget({});
   const auto selected = FindSelectionExpressions(optional, optional_control, optional_evaluation, optional_budget);
-  Check(selected.size() == 1 && !selected.front().complete_phi);
+  Check(selected.size() == 2 && selected.front().parent && !selected.front().complete_phi && selected.back().complete_phi);
   const auto& partial = selected.front();
   optional_evaluation.logical_values.resize(optional.values.size());
   optional_evaluation.logical_values[partial.merged.value] = partial.branch;
@@ -442,6 +483,9 @@ int main(int argc, char** argv) {
   Check(Source(OptionalAccess(false, 1, true)).find(" ? ") != std::string::npos);
   const auto corridor = Source(OptionalAccess(false, 1, false, true));
   Check(corridor.find("debugger;") != std::string::npos && corridor.find(" ? ") == std::string::npos);
+  const auto guarded = Source(OptionalAccess(false, 1, false, false, true));
+  Check(guarded.find("debugger;") != std::string::npos && guarded.find("if (") != std::string::npos &&
+      guarded.find(" ? ") != std::string::npos);
   auto repeated = optional;
   const auto revision = repeated.revision;
   const auto again = std::get<analysis::ValueSimplifyStats>(analysis::SimplifyValues(repeated, revision));
@@ -450,7 +494,14 @@ int main(int argc, char** argv) {
     const auto text = Source(OptionalAccess(false, count));
     std::size_t found = 0, offset = 0;
     while ((offset = text.find(" ? ", offset)) != std::string::npos) { ++found; offset += 3; }
-    Check(found == count);
+    Check(found == 2 * count);
+    Check(text.find("if (") == std::string::npos);
+  }
+  for (unsigned count : {2U, 3U, 200U, 201U, 402U}) {
+    const auto text = Source(NestedSelections(count));
+    std::size_t found = 0, offset = 0;
+    while ((offset = text.find(" ? ", offset)) != std::string::npos) { ++found; offset += 3; }
+    Check(found == count && text.find("if (") == std::string::npos);
   }
   const auto observable = OptionalAccess(true);
   Check(observable.cfg_revision.value == 0);
@@ -464,7 +515,7 @@ int main(int argc, char** argv) {
               << "," << Source(CallDiamond(false, false)) << "," << Source(CallDiamond(true, false))
               << "," << Source(CallDiamond(false, false, false, true))
               << "," << Source(CallDiamond(true, false, false, true))
-              << "," << Source(CallDiamond(false, true)) << "," << Source(CallDiamond(true, true)) << "," << Source(optional) << "," << Source(OptionalAccess(false, 2)) << "," << Source(BufferedOptionalAccess()) << "," << Source(BufferedOptionalAccess(true, false)) << "," << Source(ConditionalDiamond()) << "," << Source(ConditionalDiamond(true)) << "," << Source(ConditionalCall(true)) << "," << Source(ConditionalCall(false)) << "," << Source(OptionalAccess(false, 1, true)) << "]\n";
+              << "," << Source(CallDiamond(false, true)) << "," << Source(CallDiamond(true, true)) << "," << Source(optional) << "," << Source(OptionalAccess(false, 2)) << "," << Source(BufferedOptionalAccess()) << "," << Source(BufferedOptionalAccess(true, false)) << "," << Source(ConditionalDiamond()) << "," << Source(ConditionalDiamond(true)) << "," << Source(ConditionalCall(true)) << "," << Source(ConditionalCall(false)) << "," << Source(OptionalAccess(false, 1, true)) << "," << Source(OptionalCall(true)) << "," << Source(OptionalCall(false)) << "," << Source(NestedSelections(3)) << "]\n";
     return 0;
   }
   for (const bool negate : {false, true}) for (const bool direct : {false, true}) {

@@ -89,6 +89,7 @@ class TreeBuilder {
         logicals_ = FindSelectionExpressions(graph_, control_, evaluation_, logical_budget);
         if (!logicals_.empty()) {
           logical_budget.Array(logical_branches_, graph_.ops.size());
+          Grow(selection_paths_, control_.nodes.size());
           for (std::size_t i = 0; i < logicals_.size(); ++i) logical_branches_[logicals_[i].branch.value] = i;
         }
       } catch (TreeStructureError error) {
@@ -778,15 +779,25 @@ class TreeBuilder {
     Require(expression.has_value(), Error::kOwnership);
     if (!logical_branches_.empty() && logical_branches_[op.value]) {
       const auto& logical = logicals_[*logical_branches_[op.value]];
-      const auto emit_path = [&](std::optional<ControlId> path, analysis::WorkBlockId terminal) {
-        if (!path) { EmitBlock(ControlNode{terminal, {}, {}, {}}, draft); return; }
-        while (path) {
-          Step(); const auto& part = control_.nodes[path->value];
-          EmitBlock(ControlNode{part.block, {}, {}, {}}, draft); path = part.next;
-        }
+      if (logical.parent) { tree_.operations.push_back({op, *expression}); return; }
+      const auto schedule = [&](const SelectionRegion& selection) {
+        if (selection.keep) selection_paths_.push_back({selection.keep_path, *selection.keep});
+        selection_paths_.push_back({selection.evaluate_path, selection.evaluate});
       };
-      if (logical.keep) emit_path(logical.keep_path, *logical.keep);
-      emit_path(logical.evaluate_path, logical.evaluate);
+      schedule(logical);
+      while (!selection_paths_.empty()) {
+        Step(); const auto path = selection_paths_.back(); selection_paths_.pop_back();
+        if (!path.control) { EmitBlock(ControlNode{path.terminal, {}, {}, {}}, draft); continue; }
+        const auto& part = control_.nodes[path.control->value];
+        EmitBlock(part, draft);
+        if (part.arms) {
+          const auto& range = graph_.blocks[part.block.value];
+          const auto branch = range.first_op.value + range.op_count - 1;
+          Require(logical_branches_[branch].has_value(), Error::kOwnership);
+          const auto& nested = logicals_[*logical_branches_[branch]];
+          Require(nested.parent.has_value(), Error::kOwnership); schedule(nested);
+        } else if (part.next) selection_paths_.push_back({part.next, path.terminal});
+      }
       if (evaluation_.operations[op.value].kind == EvaluationKind::kLogicalValue) {
         tree_.operations.push_back({op, *expression});
       } else {
@@ -996,6 +1007,8 @@ class TreeBuilder {
 
   const analysis::ValueProgram& graph_;
   const ControlPlan& control_;
+  struct SelectionPath { std::optional<ControlId> control; analysis::WorkBlockId terminal; };
+  std::vector<SelectionPath> selection_paths_;
   std::vector<SelectionRegion> logicals_;
   std::vector<std::optional<std::size_t>> logical_branches_;
   const EvaluationPlan& evaluation_;

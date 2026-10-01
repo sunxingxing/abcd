@@ -140,7 +140,7 @@ std::vector<SelectionRegion> FindLogicalRegions(const ValueProgram& graph, const
       if (!keep_use || !evaluate_use || !SameValue(keep_use->operand, *left)) continue;
       const bool keep_truthy = keep == 0 ? taken_truthy : !taken_truthy;
       result.push_back({keep_truthy ? TreeLogical::kOr : TreeLogical::kAnd,
-          boolean_id, branch_id, *merged.phi, *left, evaluate_use->operand,
+          boolean_id, branch_id, *merged.phi, *left, SelectionLeaf(evaluate_use->operand),
           node.block, retained.block, *evaluated.block, join, retained.incoming, evaluated.incoming});
       break;
     }
@@ -155,7 +155,7 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
   std::vector<SelectionRegion> result;
   std::vector<std::optional<ValueId>> phis;
   std::vector<std::uint8_t> multiple;
-  std::vector<unsigned> inputs;
+  std::vector<std::size_t> inputs;
   std::vector<std::optional<UseId>> edge_inputs;
   budget.Array(phis, graph.blocks.size()); budget.Array(multiple, graph.blocks.size());
   budget.Array(inputs, graph.values.size()); budget.Array(edge_inputs, graph.edges.size());
@@ -171,7 +171,7 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
     budget.Step(); const auto& use = graph.uses[i];
     if (use.life != ValueLife::kLive) continue;
     if (const auto* value = std::get_if<ValueId>(&use.owner)) {
-      auto& count = inputs[value->value]; if (count <= 2) ++count;
+      ++inputs[value->value];
       const auto* phi = std::get_if<PhiDefinition>(&graph.values[value->value].origin);
       const auto* edge = use.incoming ? std::get_if<EdgeId>(&*use.incoming) : nullptr;
       if (phi && edge && !multiple[phi->block.value]) edge_inputs[edge->value] = UseId{static_cast<std::uint32_t>(i)};
@@ -190,15 +190,52 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
     }
     return true;
   };
-  const auto path = [&](std::optional<ControlId> at, EdgeId entry) -> std::optional<Arm> {
+  // Children precede parents independent of block storage order. Traverse the
+  // checked control forest iteratively; no per-branch whole-graph search.
+  struct Frame { ControlId id; unsigned child = 0; };
+  std::vector<Frame> stack;
+  std::vector<ControlId> order;
+  std::vector<std::uint8_t> visited;
+  std::vector<std::optional<std::size_t>> selected;
+  std::vector<std::size_t> leaf_counts;
+  budget.Array(stack, control.nodes.size()); budget.Array(order, control.nodes.size());
+  budget.Array(visited, control.nodes.size()); budget.Array(selected, control.nodes.size());
+  budget.Array(leaf_counts, control.nodes.size());
+  std::size_t ordered = 0;
+  for (std::size_t root = 0; root < control.nodes.size(); ++root) {
+    budget.Step(); if (visited[root]) continue;
+    std::size_t depth = 1; stack[0] = {ControlId{static_cast<std::uint32_t>(root)}, 0}; visited[root] = 1;
+    while (depth) {
+      budget.Step(); auto& frame = stack[depth - 1]; const auto& node = control.nodes[frame.id.value];
+      if (frame.child == 3) { order[ordered++] = frame.id; --depth; continue; }
+      const auto ordinal = frame.child++;
+      const auto child = ordinal == 0 ? node.next : !node.arms ? std::nullopt :
+          ordinal == 1 ? node.arms->taken : node.arms->fallthrough;
+      if (child && !visited[child->value]) {
+        visited[child->value] = 1; stack[depth++] = {*child, 0};
+      }
+    }
+  }
+  struct Path { WorkBlockId block; WorkBlockId join; std::optional<EdgeId> incoming; std::optional<std::size_t> child; };
+  const auto path = [&](std::optional<ControlId> at, EdgeId entry) -> std::optional<Path> {
     while (at) {
       budget.Step(); const auto& node = control.nodes[at->value];
-      if (node.arms || !std::holds_alternative<std::monostate>(node.synthetic)) return {};
+      if (!std::holds_alternative<std::monostate>(node.synthetic)) return {};
       const auto& block = graph.blocks[node.block.value];
-      if (graph.edges[entry.value].target != node.block || block.edge_count != 1 || phis[node.block.value]) return {};
-      if (!node.next) return Arm{node.block, block.first_edge};
-      // Only control-only prefixes are skipped; an effect or live value belongs
-      // to its own evaluation subtree and cannot disappear into the last arm.
+      if (graph.edges[entry.value].target != node.block || phis[node.block.value]) return {};
+      if (node.arms) {
+        if (node.next || !selected[at->value]) return {};
+        const auto child = *selected[at->value]; const auto& region = result[child];
+        if (region.parent) return {};
+        for (std::uint32_t i = 0; i < block.op_count; ++i) {
+          budget.Step(); const auto id = block.first_op.value + i; const auto& op = graph.ops[id];
+          if (op.life != ValueLife::kLive || id == region.branch.value) continue;
+          if (evaluation.operations[id].kind != EvaluationKind::kInline) return {};
+        }
+        return Path{node.block, region.join, {}, child};
+      }
+      if (block.edge_count != 1) return {};
+      if (!node.next) return Path{node.block, graph.edges[block.first_edge.value].target, block.first_edge, {}};
       for (std::uint32_t i = 0; i < block.op_count; ++i) {
         budget.Step(); const auto& op = graph.ops[block.first_op.value + i];
         if (op.life == ValueLife::kLive && (!std::holds_alternative<ValueJump>(op.operation) || !Pure(op))) return {};
@@ -209,7 +246,8 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
   };
   budget.Admit(control.nodes.size(), sizeof(SelectionRegion)); result.reserve(control.nodes.size());
   budget.Admit(result.capacity() - control.nodes.size(), sizeof(SelectionRegion));
-  for (const auto& node : control.nodes) {
+  for (const auto control_id : order) {
+    const auto& node = control.nodes[control_id.value];
     budget.Step(); if (!node.arms || !std::holds_alternative<std::monostate>(node.synthetic)) continue;
     const auto& block = graph.blocks[node.block.value];
     if (block.edge_count != 2 || !block.op_count) continue;
@@ -231,22 +269,44 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
     const auto taken = path(node.arms->taken, block.first_edge);
     const auto other = path(node.arms->fallthrough, {block.first_edge.value + 1});
     if (!taken || !other) continue;
-    const auto join = graph.edges[taken->incoming.value].target;
-    if (graph.edges[other->incoming.value].target != join || !phis[join.value] || multiple[join.value]) continue;
+    const auto join = taken->join;
+    if (other->join != join || !phis[join.value] || multiple[join.value]) continue;
     if (node.next && (control.nodes[node.next->value].block != join ||
         !std::holds_alternative<std::monostate>(control.nodes[node.next->value].synthetic))) continue;
     const auto merged = *phis[join.value];
     if (inputs[merged.value] < 2 || !graph.values[merged.value].domain.IsLanguage()) continue;
     const auto yes = positive ? *taken : *other, no = positive ? *other : *taken;
-    if (!edge_inputs[yes.incoming.value] || !edge_inputs[no.incoming.value]) continue;
-    const auto& consequent = graph.uses[edge_inputs[yes.incoming.value]->value].operand;
-    const auto& alternate = graph.uses[edge_inputs[no.incoming.value]->value].operand;
-    if (!closed(*yes.block, consequent) || !closed(*no.block, alternate)) continue;
-    result.push_back({TreeLogical::kOr, producer->op, branch_id, merged, *predicate, alternate,
-        node.block, yes.block, *no.block, join, yes.incoming, no.incoming, consequent,
+    const auto operand = [&](const Path& arm) -> std::optional<SelectionOperand> {
+      if (arm.child) {
+        const auto& nested = result[*arm.child];
+        if (nested.merged != merged) return {};
+        return SelectionChild{nested.branch};
+      }
+      if (!arm.incoming || !edge_inputs[arm.incoming->value]) return {};
+      const auto& value = graph.uses[edge_inputs[arm.incoming->value]->value].operand;
+      if (!closed(arm.block, value)) return {};
+      return SelectionLeaf(value);
+    };
+    const auto consequent = operand(yes), alternate = operand(no);
+    if (!consequent || !alternate) continue;
+    const auto leaves = (yes.child ? leaf_counts[*yes.child] : 1) + (no.child ? leaf_counts[*no.child] : 1);
+    auto dependency = branch_id;
+    for (const auto& arm : {yes, no}) {
+      if (arm.child) dependency = std::max(dependency, *result[*arm.child].last_dependency);
+      else {
+        const auto value = std::get<ValueId>(graph.uses[edge_inputs[arm.incoming->value]->value].operand);
+        const auto source = std::get<OpResult>(graph.values[value.value].origin).op;
+        if (!IsSelectionConstant(graph, source)) dependency = std::max(dependency, source);
+      }
+    }
+    selected[control_id.value] = result.size(); leaf_counts[result.size()] = leaves;
+    if (yes.child) result[*yes.child].parent = branch_id;
+    if (no.child) result[*no.child].parent = branch_id;
+    result.push_back({TreeLogical::kOr, producer->op, branch_id, merged, *predicate, *alternate,
+        node.block, yes.block, no.block, join, yes.incoming, no.incoming, *consequent,
         positive ? node.arms->taken : node.arms->fallthrough,
         positive ? node.arms->fallthrough : node.arms->taken,
-        inputs[merged.value] == 2 && node.next.has_value()});
+        leaves == inputs[merged.value] && node.next.has_value(), {}, dependency});
   }
   return result;
 }

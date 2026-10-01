@@ -46,6 +46,8 @@ class ForestBuilder {
     std::vector<std::uint8_t> selected_edges;
     std::vector<std::optional<std::size_t>> logical_joins;
     if (!logicals_.empty()) {
+      Reserve(selection_indices_, graph_.ops.size()); selection_indices_.resize(graph_.ops.size());
+      Reserve(selection_tasks_, logicals_.size());
       Reserve(logical_joins, graph_.ops.size()); logical_joins.resize(graph_.ops.size());
       Reserve(predicates, graph_.ops.size()); predicates.resize(graph_.ops.size());
       Reserve(selected_edges, graph_.edges.size()); selected_edges.resize(graph_.edges.size());
@@ -54,22 +56,27 @@ class ForestBuilder {
         Require(evaluation_.flow == EvaluationFlow::kNormal &&
             region.boolean.value < graph_.ops.size() && region.branch.value < graph_.ops.size() &&
             region.boolean != region.branch && region.left.value < graph_.values.size() &&
-            region.merged.value < graph_.values.size() && region.keep_input.value < graph_.edges.size() &&
-            region.evaluate_input.value < graph_.edges.size() && region.keep_input != region.evaluate_input &&
+            region.merged.value < graph_.values.size() &&
             (region.operation == TreeLogical::kAnd || region.operation == TreeLogical::kOr), Error::kOwnership);
         const auto* right = std::get_if<analysis::ValueId>(&region.right);
-        Require(right && right->value < graph_.values.size() &&
-            std::holds_alternative<analysis::OpResult>(graph_.values[right->value].origin) &&
-            !predicates[region.boolean.value] && !predicates[region.branch.value] &&
-            !selected_edges[region.keep_input.value] && !selected_edges[region.evaluate_input.value], Error::kOwnership);
+        const auto* child = std::get_if<SelectionChild>(&region.right);
+        Require(((right && right->value < graph_.values.size() &&
+            std::holds_alternative<analysis::OpResult>(graph_.values[right->value].origin)) ||
+            (child && child->branch.value < graph_.ops.size())) &&
+            !predicates[region.boolean.value] && !predicates[region.branch.value], Error::kOwnership);
+        for (const auto incoming : {region.keep_input, region.evaluate_input}) {
+          if (!incoming) continue;
+          Require(incoming->value < selected_edges.size() && !selected_edges[incoming->value], Error::kOwnership);
+          selected_edges[incoming->value] = 1;
+        }
         if (evaluation_.operations[region.branch.value].kind == EvaluationKind::kLogicalValue) {
           const auto join = graph_.blocks[region.join.value].first_op.value;
           Require(join < graph_.ops.size() && !logical_joins[join], Error::kOwnership);
           logical_joins[join] = static_cast<std::size_t>(&region - logicals_.data());
         }
+        selection_indices_[region.branch.value] = static_cast<std::size_t>(&region - logicals_.data());
         if (!region.consequent) predicates[region.boolean.value] = 1;
         predicates[region.branch.value] = 1;
-        selected_edges[region.keep_input.value] = selected_edges[region.evaluate_input.value] = 1;
       }
     }
     Require(constants_.operations.size() == graph_.ops.size(), Error::kConstant);
@@ -224,7 +231,7 @@ class ForestBuilder {
     std::optional<std::size_t> last_consumer;
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       Step();
-      if (!logical_joins.empty() && logical_joins[i]) Logical(logicals_[*logical_joins[i]]);
+      if (!logical_joins.empty() && logical_joins[i]) LogicalTree(logicals_[*logical_joins[i]]);
       if (partial && (!last_consumer || *last_consumer < i))
         boundary = {i, forest_.expressions.size(), forest_.arguments.size(),
                     forest_.origins.size(), forest_.origin_parts.size()};
@@ -238,6 +245,10 @@ class ForestBuilder {
       }
       try {
         const auto& op = graph_.ops[i];
+        // Primitive phi leaves may be built before their storage-array position
+        // when a selected join needs them. They remain in the original arm.
+        if (forest_.operations[i] && evaluation_.operations[i].kind == EvaluationKind::kPhiInput &&
+            IsSelectionConstant(graph_, {static_cast<std::uint32_t>(i)})) continue;
         if (op.life != analysis::ValueLife::kLive || (!predicates.empty() && predicates[i])) continue;
         Require(op.origin.value < graph_.origins.size() &&
                     graph_.origins[op.origin.value].disposition == analysis::OriginDisposition::kRetained,
@@ -349,7 +360,7 @@ class ForestBuilder {
     Require(next_function_ == evaluation_.functions.size(), Error::kOwnership);
     Require(next_module_ == evaluation_.modules.size(), Error::kOwnership);
     for (const auto& region : logicals_) {
-      Step(); if (evaluation_.operations[region.branch.value].kind != EvaluationKind::kLogicalValue) Logical(region);
+      Step(); if (evaluation_.operations[region.branch.value].kind != EvaluationKind::kLogicalValue) LogicalTree(region);
     }
     const auto copied = AppendCopyExpressions(graph_, evaluation_, forest_, owner_, work_, selected_edges);
     if (const auto* error = std::get_if<Error>(&copied)) throw *error;
@@ -360,26 +371,51 @@ class ForestBuilder {
   }
 
  private:
+  void LogicalTree(const SelectionRegion& root) {
+    if (forest_.operations[root.branch.value]) return;
+    selection_tasks_.push_back(static_cast<std::size_t>(&root - logicals_.data()));
+    while (!selection_tasks_.empty()) {
+      Step(); const auto index = selection_tasks_.back(); const auto& region = logicals_[index];
+      std::optional<std::size_t> pending;
+      const auto child = [&](const SelectionOperand& input) {
+        const auto* nested = std::get_if<SelectionChild>(&input);
+        if (!nested) return;
+        Require(nested->branch.value < selection_indices_.size() && selection_indices_[nested->branch.value], Error::kOwnership);
+        const auto dependency = *selection_indices_[nested->branch.value];
+        Require(dependency < index && logicals_[dependency].parent == region.branch, Error::kOwnership);
+        if (!forest_.operations[nested->branch.value]) pending = dependency;
+      };
+      child(region.right); if (region.consequent) child(*region.consequent);
+      if (pending) { selection_tasks_.push_back(*pending); continue; }
+      Logical(region); selection_tasks_.pop_back();
+    }
+  }
   void Logical(const SelectionRegion& region) {
     Step();
     const TreeOriginId boolean_origin{graph_.ops[region.boolean.value].origin.value};
     const TreeOriginId branch_origin{graph_.ops[region.branch.value].origin.value};
     const auto left = Operand(region.left, boolean_origin);
-    const auto right = std::get<analysis::ValueId>(region.right);
-    const auto producer = std::get<analysis::OpResult>(graph_.values[right.value].origin).op;
-    Require(forest_.operations[producer.value].has_value(), Error::kOwnership);
-    std::optional<ExprId> consequent;
-    if (region.consequent) {
-      const auto value = std::get<analysis::ValueId>(*region.consequent);
-      const auto source = std::get<analysis::OpResult>(graph_.values[value.value].origin).op;
-      Require(forest_.operations[source.value].has_value(), Error::kOwnership);
-      consequent = forest_.operations[source.value];
-    }
-    const auto expression = consequent
-        ? Add(ConditionalExpr{left, *consequent, *forest_.operations[producer.value]}, branch_origin)
-        : Combine(Add(LogicalExpr{region.operation, left, *forest_.operations[producer.value]}, boolean_origin), branch_origin);
+    const auto operand = [&](const SelectionOperand& input) {
+      analysis::OpId producer;
+      if (const auto* child = std::get_if<SelectionChild>(&input)) producer = child->branch;
+      else {
+        const auto value = std::get<analysis::ValueId>(input);
+        producer = std::get<analysis::OpResult>(graph_.values[value.value].origin).op;
+      }
+      Require(producer.value < forest_.operations.size(), Error::kOwnership);
+      if (!forest_.operations[producer.value]) {
+        Require(evaluation_.operations[producer.value].kind == EvaluationKind::kPhiInput && IsSelectionConstant(graph_, producer), Error::kOwnership);
+        const auto& op = graph_.ops[producer.value];
+        forest_.operations[producer.value] = Operand(graph_.uses[op.first_use.value].operand, TreeOriginId{op.origin.value});
+      }
+      return *forest_.operations[producer.value];
+    };
+    const auto right = operand(region.right);
+    const auto expression = region.consequent
+        ? Add(ConditionalExpr{left, operand(*region.consequent), right}, branch_origin)
+        : Combine(Add(LogicalExpr{region.operation, left, right}, boolean_origin), branch_origin);
     if (!region.consequent) forest_.operations[region.boolean.value] = expression;
-    if (evaluation_.operations[region.branch.value].kind == EvaluationKind::kLogicalValue) {
+    if (region.parent || evaluation_.operations[region.branch.value].kind == EvaluationKind::kLogicalValue) {
       forest_.operations[region.branch.value] = expression;
       return;
     }
@@ -802,6 +838,8 @@ class ForestBuilder {
   std::size_t next_module_ = 0;
   RecoveryMode recovery_;
   std::span<const std::u16string> names_;
+  std::vector<std::optional<std::size_t>> selection_indices_;
+  std::vector<std::size_t> selection_tasks_;
   std::span<const SelectionRegion> logicals_;
 };
 std::variant<ExpressionForest, ExpressionError> BuildForest(

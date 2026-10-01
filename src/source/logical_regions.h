@@ -10,28 +10,47 @@ struct EvaluationPlan;
 // A value-selection diamond, not permission to move effects across its header.
 // The expression planner must still own the RHS subtree, remove its phi copies,
 // and preserve the order of every surrounding call/reference before emission.
+struct SelectionChild { analysis::OpId branch; };
+using SelectionOperand = std::variant<analysis::ValueId, analysis::SpecialValue,
+    analysis::IntegerLiteral, analysis::Float64Bits, SelectionChild>;
+inline SelectionOperand SelectionLeaf(const analysis::ValueOperand& value) {
+  return std::visit([](const auto& input) -> SelectionOperand { return input; }, value);
+}
 struct SelectionRegion {
   TreeLogical operation;
   analysis::OpId boolean;
   analysis::OpId branch;
   analysis::ValueId merged;
   analysis::ValueId left;
-  analysis::ValueOperand right;
+  SelectionOperand right;
   analysis::WorkBlockId header;
   std::optional<analysis::WorkBlockId> keep;
   analysis::WorkBlockId evaluate;
   analysis::WorkBlockId join;
-  analysis::EdgeId keep_input;
-  analysis::EdgeId evaluate_input;
+  std::optional<analysis::EdgeId> keep_input;
+  std::optional<analysis::EdgeId> evaluate_input;
   // Present for a true/false value selection; left is its actual predicate.
-  std::optional<analysis::ValueOperand> consequent;
+  std::optional<SelectionOperand> consequent;
   // Conditional arms may start with empty jump corridors. Their final blocks
   // remain keep/evaluate. A subset of a shared phi must stay an assignment at
   // this branch, never replace the phi's other incoming values.
   std::optional<ControlId> keep_path;
   std::optional<ControlId> evaluate_path;
   bool complete_phi = true;
+  // Exactly one containing selection may own this branch as an expression.
+  std::optional<analysis::OpId> parent;
+  // Latest nonconstant dependency needed before a fused join consumer.
+  std::optional<analysis::OpId> last_dependency;
 };
+inline bool IsSelectionConstant(const analysis::ValueProgram& graph, analysis::OpId id) {
+  if (id.value >= graph.ops.size()) return false;
+  const auto& op = graph.ops[id.value];
+  return op.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueCopy>(op.operation) &&
+      op.result && op.use_count == 1 && op.first_use.value < graph.uses.size() &&
+      !std::holds_alternative<analysis::ValueId>(graph.uses[op.first_use.value].operand) &&
+      op.normal == analysis::LanguageEffect::kNone && op.before_throw == analysis::LanguageEffect::kNone &&
+      op.exceptional == analysis::ExceptionalCompletion::kImpossible;
+}
 // Requires verified simplified normal IR and its verified ControlPlan. Finds
 // ToBoolean diamonds with a single result phi, including an empty keep arm.
 // O(operations + values + uses + control nodes), with indexed block summaries;

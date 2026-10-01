@@ -229,3 +229,28 @@ Decoded 2/3/200/201-region fixtures, distinct outer/inner return values, a forge
 whole-phi fusion and an effectful corridor exercise coverage and ordering. This
 extends the earlier two-input domain without yet composing nested selections
 into one high-level expression; it is not a runtime resource measurement.
+
+### Nested selection trees and join consumers (2026-10-01)
+
+Process the verified control forest in iterative postorder. A typed child branch
+can replace an arm only when it targets the same phi, has one containing parent,
+and its header consists entirely of the predicate's owned inline subtree. Count
+leaf incoming edges bottom-up, preserving partial coverage until a root covers
+all inputs and owns the join. Reuse the existing event interval equations only
+for that root; nested children never independently substitute the shared phi.
+
+Expression construction, placement emission and independent flow verification use
+reusable bounded worklists. Primitive-copy phi leaves with no SSA operand may be
+materialized into AST before their array position, retaining their original arm
+and origin; all nonconstant dependencies must precede the join consumer. This is
+AST scheduling, not effect motion or shared runtime evaluation. Each subtree and
+leaf is built once, including after cloned constant tails were appended past a
+join. No runtime helper or external dependency is introduced.
+
+Discovery and worklists add O(control nodes + operations + values + uses + edges)
+time and space under the checked unique control ownership contract. No recursive
+C++ descent or per-variable reachability pass is used. Decoded 2/3/200/201/402-deep
+trees, distinct short-circuit results, malformed child origins/arms, effectful
+headers and ordered member getter tests cover the extension. This supersedes the
+previous nested-selection exclusion; object initializer fusion remains separate.
+No peak-RSS or benchmark claim is made.

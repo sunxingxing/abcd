@@ -159,10 +159,10 @@ class Domain {
 bool Available(const ValueProgram& graph, const SelectionRegion& region, const std::vector<std::uint8_t>& used) {
   // The forest lowers definitions before join consumers. Keep arbitrary CFG
   // layout support in the ordinary phi route until a dependency worklist owns it.
-  return region.complete_phi && !used[region.header.value] && !used[region.join.value] &&
-      region.branch.value < graph.blocks[region.join.value].first_op.value &&
-      (!region.consequent || (region.keep && graph.blocks[region.keep->value].first_op.value < graph.blocks[region.join.value].first_op.value)) &&
-      graph.blocks[region.evaluate.value].first_op.value < graph.blocks[region.join.value].first_op.value;
+  if (!region.complete_phi || region.parent || used[region.header.value] || used[region.join.value]) return false;
+  const auto join = graph.blocks[region.join.value].first_op.value;
+  if (region.last_dependency) return region.last_dependency->value < join;
+  return region.branch.value < join && graph.blocks[region.evaluate.value].first_op.value < join;
 }
 }  // namespace
 bool CrossLogicalInline(const ValueProgram& graph, const EvaluationPlan& plan, OpId producer) {
@@ -215,7 +215,7 @@ void VerifyLogicalValues(const ValueProgram& graph, const EvaluationPlan& plan, 
   budget.Array(intervals, graph.ops.size()); budget.Array(used, graph.blocks.size());
   budget.Array(consumed, graph.ops.size()); budget.Array(values, graph.values.size());
   for (const auto& region : regions) {
-    budget.Step(); if (!plan.logical_values[region.merged.value]) continue;
+    budget.Step(); if (region.parent || !plan.logical_values[region.merged.value]) continue;
     Require(plan.logical_values[region.merged.value] == region.branch && Available(graph, region, used));
     const auto consumer = Consumer(graph, region, budget);
     const auto& placement = plan.operations[region.branch.value];

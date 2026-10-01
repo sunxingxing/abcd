@@ -5,7 +5,7 @@ import vm from 'node:vm';
 // tree and semantic checks. No source text supplies the engine's expression.
 const source = execFileSync(process.argv[2], ['--sources'], {encoding: 'utf8'});
 const generated = vm.runInNewContext(source, {Array() { throw new Error('mutable Array binding'); }});
-assert.equal(generated.length, 21);
+assert.equal(generated.length, 24);
 const reference = [value => value || [], value => value && []];
 const object = {[Symbol.toPrimitive]() { throw new Error('unexpected coercion'); }};
 const values = [undefined, null, false, true, 0, -0, NaN, '', 'text', 0n, 1n, Symbol('value'), object];
@@ -317,5 +317,48 @@ for (const payload of values) for (const throwing of [false, true]) {
   assert.deepEqual(read(generated[20], undefined, payload, throwing, true),
                    read(distinctReference, undefined, payload, throwing, true));
   ++scenarios;
+}
+const optionalCalls = [value => value.items(value?.probe), value => {
+  const argument = value?.probe; return value.items(argument);
+}];
+function optionalCall(fn, initial, replacement, fail, mutate) {
+  const events = [], failure = {};
+  let current = initial;
+  const receiver = {
+    get probe() {
+      assert.equal(this, receiver); events.push('probe'); if (fail === 'probe') throw failure;
+      return current;
+    },
+    get items() {
+      assert.equal(this, receiver); events.push('method'); if (fail === 'method') throw failure;
+      if (mutate) current = replacement;
+      const callable = function(argument) {
+        assert.equal(this, receiver); events.push('call'); if (fail === 'call') throw failure;
+        return argument;
+      };
+      for (const key of ['call', 'apply', 'bind']) Object.defineProperty(callable, key, {
+        get() { throw new Error('mutable invocation helper'); }
+      });
+      return callable;
+    }
+  };
+  try { return {events, result: fn(receiver)}; }
+  catch (error) { assert.equal(error, failure); return {events, threw: true}; }
+}
+for (let i = 0; i < optionalCalls.length; ++i)
+  for (const initial of values) for (const replacement of values)
+    for (const fail of ['', 'probe', 'method', 'call']) for (const mutate of [false, true]) {
+      assert.deepEqual(optionalCall(generated[21 + i], initial, replacement, fail, mutate),
+                       optionalCall(optionalCalls[i], initial, replacement, fail, mutate));
+      ++scenarios;
+    }
+const nestedReference = value => value === undefined ? undefined : value.probe;
+for (const value of values) {
+  assert.deepEqual(read(generated[23], value, undefined, false, false),
+                   read(nestedReference, value, undefined, false, false)); ++scenarios;
+}
+for (const payload of values) for (const throwing of [false, true]) {
+  assert.deepEqual(read(generated[23], undefined, payload, throwing, true),
+                   read(nestedReference, undefined, payload, throwing, true)); ++scenarios;
 }
 console.log(`Decoded logical branch values, getters and calls: ${scenarios} behavior scenarios passed`);

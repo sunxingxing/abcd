@@ -53,6 +53,7 @@ class FlowCheck {
         budget.Array(logical_branches_, graph.ops.size());
         budget.Array(flow_.logical_operations, graph.ops.size());
         budget.Array(flow_.conditional_operations, graph.ops.size());
+        budget.Array(conditional_tasks_, logicals_.size());
         for (std::size_t i = 0; i < logicals_.size(); ++i) logical_branches_[logicals_[i].branch.value] = i;
       }
     }
@@ -277,15 +278,32 @@ class FlowCheck {
   }
   void Conditional(const SelectionRegion& region, ExprId expression, std::optional<SymbolId> target,
       StmtId parent, std::uint32_t child) {
-    const auto* conditional = std::get_if<ConditionalExpr>(&tree_.expressions[expression.value].expression);
-    Require(conditional && flow_.expressions[region.boolean.value] == conditional->condition, Error::kPlacement);
-    const auto yes = std::get<analysis::OpResult>(graph_.values[std::get<analysis::ValueId>(*region.consequent).value].origin).op;
-    const auto no = std::get<analysis::OpResult>(graph_.values[std::get<analysis::ValueId>(region.right).value].origin).op;
-    Require(flow_.expressions[yes.value] == conditional->consequent && flow_.expressions[no.value] == conditional->alternate, Error::kPlacement);
-    flow_.expressions[region.branch.value] = expression;
-    flow_.conditional_operations[region.branch.value] = 1;
-    LogicalEdges(region, target, conditional->consequent, conditional->alternate, parent, child);
+    std::size_t pending = 1;
+    conditional_tasks_[0] = {static_cast<std::size_t>(&region - logicals_.data()), expression};
+    while (pending) {
+      budget_.Step(); const auto task = conditional_tasks_[--pending]; const auto& current = logicals_[task.region];
+      const auto* conditional = std::get_if<ConditionalExpr>(&tree_.expressions[task.expression.value].expression);
+      Require(conditional && flow_.expressions[current.boolean.value] == conditional->condition, Error::kPlacement);
+      const auto arm = [&](const SelectionOperand& input, ExprId actual) {
+        if (const auto* nested = std::get_if<SelectionChild>(&input)) {
+          Require(nested->branch.value < logical_branches_.size() && logical_branches_[nested->branch.value], Error::kPlacement);
+          const auto index = *logical_branches_[nested->branch.value];
+          Require(logicals_[index].parent == current.branch && logicals_[index].merged == current.merged &&
+              flow_.expressions[nested->branch.value] == actual && pending < conditional_tasks_.size(), Error::kPlacement);
+          conditional_tasks_[pending++] = {index, actual};
+        } else {
+          const auto producer = std::get<analysis::OpResult>(graph_.values[std::get<analysis::ValueId>(input).value].origin).op;
+          Require(flow_.expressions[producer.value] == actual, Error::kPlacement);
+        }
+      };
+      Require(current.consequent.has_value(), Error::kPlacement);
+      arm(*current.consequent, conditional->consequent); arm(current.right, conditional->alternate);
+      flow_.expressions[current.branch.value] = task.expression;
+      flow_.conditional_operations[current.branch.value] = 1;
+      LogicalEdges(current, target, conditional->consequent, conditional->alternate, parent, child);
+    }
   }
+
   void LogicalValue(const SelectionRegion& region, StmtId parent, std::uint32_t child) {
     const auto root = flow_.expressions[region.branch.value];
     if (region.consequent) {
@@ -302,8 +320,8 @@ class FlowCheck {
   }
   void LogicalEdges(const SelectionRegion& region, std::optional<SymbolId> target, ExprId left, ExprId right,
       StmtId parent, std::uint32_t child) {
-    edges_->Select(region.keep_input, region.merged, target, left);
-    edges_->Select(region.evaluate_input, region.merged, target, right);
+    if (region.keep_input) edges_->Select(*region.keep_input, region.merged, target, left);
+    if (region.evaluate_input) edges_->Select(*region.evaluate_input, region.merged, target, right);
     const auto anchors = [&](analysis::WorkBlockId id) {
       const auto& block = graph_.blocks[id.value];
       for (std::uint32_t j = 0; j < block.op_count; ++j) {
@@ -626,7 +644,8 @@ class FlowCheck {
       } else if (std::holds_alternative<analysis::ValueModuleWrite>(op.operation) &&
                  std::holds_alternative<StmtId>(placement)) {
         // Initializations own a declaration statement; updates own assignments.
-      } else if (evaluation_.operations[i].kind == EvaluationKind::kLogicalValue) {
+      } else if (evaluation_.operations[i].kind == EvaluationKind::kLogicalValue ||
+          (!logical_branches_.empty() && logical_branches_[i] && logicals_[*logical_branches_[i]].parent)) {
         const auto* expression = std::get_if<ExprId>(&placement);
         Require(expression != nullptr, Error::kPlacement); flow_.expressions[i] = *expression;
       } else if (std::holds_alternative<analysis::ValueBranch>(op.operation) ||
@@ -727,6 +746,8 @@ class FlowCheck {
   const ExceptionTreeInput* exceptions_;
   const CompletionTreeView& sequences_;
   TreeFlow flow_;
+  struct ConditionalTask { std::size_t region = 0; ExprId expression; };
+  std::vector<ConditionalTask> conditional_tasks_;
   std::vector<SelectionRegion> logicals_;
   std::vector<std::optional<std::size_t>> logical_branches_;
   std::vector<std::optional<std::size_t>> placements_;

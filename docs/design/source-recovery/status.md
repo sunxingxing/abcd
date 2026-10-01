@@ -12,6 +12,38 @@
 
 ## 当前阶段
 
+### 2026-10-01：嵌套选择树及可选访问调用参数贯通
+
+- SelectionOperand 用类型化 SelectionChild 表达子选择，不伪造SSA值或代表边。
+  控制森林迭代后序发现父子关系，每个子选择只有一个父选择；累计真实叶入口
+  数量核对同一个phi的覆盖。子头部必须只有原条件的独占内联子树，额外语句、
+  环境状态或局部phi阻止吸收。局部覆盖限制仍保留，不能替换其他未覆盖入口。
+- 表达式森林、语句放置和独立TreeFlow均使用有界工作列表构建/核对父子选择，
+  避免深层C++递归和逐节点全图搜索。完整树复用原前向/后向事件区间证明，
+  可直接作为唯一join消费者的参数；子选择本身不单独取得phi替换资格。
+- 对数组位置晚于join、但无操作数依赖的原始primitive-copy叶子，允许提前构建
+  其AST，并在原臂中保留其语义位置和来源。读取、分配、调用及其他效果不走此路径；
+  最晚非恒值依赖必须已经构建。修复先前共享常量出口复制到操作数组尾部的调度缺口。
+- 最小可选访问现在直接返回嵌套?:，无if和phi临时变量；提前读取成员的方法调用
+  现在可输出原生 value.items(条件值)，保持callee先读取、receiver及后续getter
+  的顺序。源码证据 /tmp/abcd-selection-tree-sources.js。未使用call/apply/bind。
+  尚未收拢为原生?.，源码表示质量仍有后续工作。
+- 树组合红例 /tmp/abcd-selection-tree-red.log；调用集成红例
+  /tmp/abcd-selection-call-red.log。真实解码2/3/200/201/402层嵌套选择通过；
+  交换分支、篡改来源、子选择冒充完整phi继续拒绝。子头部debugger保留外层if，
+  只组合安全内层。8250组解码JS对照覆盖不同短路返回、getter与方法变更、抛出
+  对象身份、返回身份、可变调用辅助属性以及receiver。
+- 14项定向测试通过（11.24秒），/tmp/abcd-selection-tree-final-tests.log；构建
+  /tmp/abcd-selection-tree-final-build.log。新增子头部拒绝规格后2项重跑通过
+  （3.26秒），/tmp/abcd-selection-header-tests.log。全量测试/RSS/基准仍暂停。
+- 五输入正式导出 build/stage-one/value-selection-tree-pass-1 保持43 complete /
+  63 failure / 46 no-module，无完整项退化、无legacy writer；汇总
+  /tmp/abcd-selection-tree-batch-summary.json。没有增加完整record，未声称独立
+  配对语义/风格或平台验收完成。
+- 下一实际缺口是 buffered optional call 的对象字面量组合：可选条件本身及原生
+  调用参数已打通，但分配/字段初始化还保留为独立语句，提前读取的方法引用仍拒绝。
+  默认解码回归继续核对该kReference边界。阶段一Goal持续开放。
+
 ### 2026-10-01：共享多入口 phi 的局部条件选择
 
 - 根据最小真实解码CFG（/tmp/abcd-optional-join-graph.log）确认：可选访问内层
