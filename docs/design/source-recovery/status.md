@@ -12,6 +12,29 @@
 
 ## 当前阶段
 
+### 2026-10-01：类型化boolean结果的重复转换消除
+
+- ExpressionForest对输入已被BooleanEvaluation证明为boolean的ToBoolean复用原
+  表达式，并用既有CombinedOrigin保留转换来源；独立TreeOperands核对相同的
+  类型化前提。任意语言值仍输出必要的!!，不通过printer字符串替换简化。
+  每次转换仅常数检查并追加两个来源链接，未递归重走表达式树。
+- 真实解码用例覆盖1/2/16/200/201层转换：getter值保留一组!!，严格比较结果
+  不再增加!!。所有原始指令来源覆盖及缺失/篡改来源反例通过。52组独立JS对照
+  覆盖假值、BigInt/Symbol、禁止强制转换的对象、getter次数/receiver和异常身份。
+- 8项定向回归通过，9.69秒，/tmp/abcd-boolean-tests.log；加入来源覆盖后2项
+  重点回归通过，4.59秒，/tmp/abcd-boolean-origin-tests.log。构建证据
+  /tmp/abcd-boolean-final-build.log、/tmp/abcd-boolean-origin-build.log。
+- 五输入导出 build/stage-one/value-boolean-conversion-pass-1 均退出0，维持
+  **47 complete / 59 failure / 46 no-module**，无完整项退化、无legacy writer；
+  /tmp/abcd-boolean-conversion-batch-summary.json。MiniGame实际输出的in比较已
+  去掉一层冗余!!，node --check通过；外层条件/可选访问等表示仍未达到最终风格验收。
+- Categories method18433的原始失败已确定为PC41返回值kInternalValue：PC38为
+  未限定类型的ADD2，当前kStringAdd只在已知字符串前提下证明Language。
+  /tmp/abcd-categories-next-detail.log、/tmp/abcd-categories-18433-instructions.jsonl。
+  既有NaN位模式边界未放宽；本地运行时checkout与锁定commit不同，不能据其当前
+  文件直接修改固定profile合同。数值加法能力仍待进一步取证和恢复。
+- 全量测试/RSS/基准仍暂停；本轮改善源码表示，不代表配对平台或阶段一验收完成。
+
 ### 2026-10-01：未暴露环境中的延迟捕获初始化贯通
 
 - 原始LocalAccessPlan新增每cell的unexposed initialization证据：同一块内新环境

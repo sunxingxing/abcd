@@ -668,6 +668,7 @@ class OperandCheck {
       case U::kTypeOf: Input(operand, UnaryInput(expression, TreeUnary::kTypeof)); return;
       case U::kToNumber: Input(operand, UnaryInput(expression, TreeUnary::kPlus)); return;
       case U::kToBoolean:
+        if (BooleanEvaluation(graph_, operand)) { Input(operand, expression); return; }
         Input(operand, UnaryInput(UnaryInput(expression, TreeUnary::kNot), TreeUnary::kNot)); return;
       case U::kFalseOrZero:
       case U::kTrueOrNonzeroNumber:

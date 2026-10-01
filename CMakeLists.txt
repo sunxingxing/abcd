@@ -1117,6 +1117,9 @@ if(BUILD_TESTING)
     add_test(NAME deferred_capture_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/deferred_capture.mjs
       $<TARGET_FILE:creation_tree_context_test>)
+    add_test(NAME boolean_conversion_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/boolean_conversion.mjs
+      $<TARGET_FILE:logical_regions_test>)
     add_test(NAME constant_group_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/constant_group.mjs
       $<TARGET_FILE:constant_group_fixture>)

@@ -697,7 +697,11 @@ class ForestBuilder {
       case U::kLogicalNot: return unary(TreeUnary::kNot, input);
       case U::kTypeOf: return unary(TreeUnary::kTypeof, input);
       case U::kToNumber: return unary(TreeUnary::kPlus, input);
-      case U::kToBoolean: return unary(TreeUnary::kNot, unary(TreeUnary::kNot, input));
+      case U::kToBoolean:
+        // Typed boolean producers already perform this conversion. Preserve
+        // their single evaluation and combine origins; do not infer from text.
+        return BooleanEvaluation(graph_, original) ? Combine(input, origin)
+            : unary(TreeUnary::kNot, unary(TreeUnary::kNot, input));
       case U::kFalseOrZero:
       case U::kTrueOrNonzeroNumber: {
         if (BooleanEvaluation(graph_, original))

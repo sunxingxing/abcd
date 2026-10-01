@@ -303,7 +303,7 @@ analysis::ValueProgram CallDiamond(bool negate, bool method_first, bool barrier 
 }
 
 }
-std::string Source(const analysis::ValueProgram& graph, bool compose = true, const FunctionInput* input = nullptr) {
+std::string Source(const analysis::ValueProgram& graph, bool compose = true, const FunctionInput* input = nullptr, bool cloned_sources = true) {
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
   const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
   const auto regions = FindLogicalRegions(graph, control);
@@ -404,7 +404,7 @@ std::string Source(const analysis::ValueProgram& graph, bool compose = true, con
       ++counts[source.site.value];
     }
     Check(std::all_of(counts.begin(), counts.end(), [](auto n) { return n != 0; }));
-    Check(std::any_of(counts.begin(), counts.end(), [](auto n) { return n > 1; }));
+    Check(std::any_of(counts.begin(), counts.end(), [](auto n) { return n > 1; }) == cloned_sources);
     auto missing = tree;
     const auto clone = analysis::OpId{static_cast<std::uint32_t>(graph.ops.size() - 1)};
     Check(std::erase_if(missing.operations, [&](const auto& placement) { return placement.operation == clone; }) == 1);
@@ -613,7 +613,27 @@ void Negatives() {
   wrong = graph; ++wrong.revision.value;
   Check(FindLogicalRegions(wrong, control).empty());
 }
+std::string BooleanConversions(unsigned count, bool comparison) {
+  std::vector<std::uint8_t> bytes{0x60, 1, 0x42, 0, 0, 0};
+  if (comparison) bytes.insert(bytes.end(), {0x61, 0, 0x01,
+      static_cast<std::uint8_t>(abc::Opcode::kSTRICTEQ_IMM8_V8), 0, 0});
+  for (unsigned i = 0; i < count; ++i) bytes.push_back(static_cast<std::uint8_t>(abc::Opcode::kISTRUE));
+  bytes.push_back(0x64);
+  std::optional<FunctionInput> input;
+  const auto graph = Import(bytes, 1, &input);
+  return Source(graph, true, &*input, false);
+}
 int main(int argc, char** argv) {
+  for (const auto count : {1U, 2U, 16U, 200U, 201U}) {
+    const auto raw = BooleanConversions(count, false);
+    const auto compared = BooleanConversions(count, true);
+    Check(std::count(raw.begin(), raw.end(), '!') == 2);
+    Check(std::count(compared.begin(), compared.end(), '!') == 0);
+  }
+  if (argc == 2 && std::string_view(argv[1]) == "--boolean-sources") {
+    std::cout << '[' << BooleanConversions(201, false) << ',' << BooleanConversions(201, true) << "]\n";
+    return 0;
+  }
   Check(!Source(GetterSelections(2, false, true, false, nullptr, true)).empty());
   for (const unsigned count : {1U, 2U, 16U, 200U, 201U})
     Check(!Source(OptionalAccess(false, count, false, false, false, true)).empty());
