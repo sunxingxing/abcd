@@ -290,6 +290,13 @@ class StructureCheck {
         RequireTree(ValidBinary(expression.operation), Error::kUnsupportedSyntax);
       } else if constexpr (std::is_same_v<T, ConditionalExpr>) {
         // Child ownership and scope are checked by the shared iterative walk.
+      } else if constexpr (std::is_same_v<T, SequenceExpr>) {
+        // Native comma expression evaluates each owned child once, in order.
+      } else if constexpr (std::is_same_v<T, UpdateExpr>) {
+        RequireTree((expression.direction == UpdateDirection::kIncrement || expression.direction == UpdateDirection::kDecrement) &&
+            (expression.result == UpdateResult::kPrefix || expression.result == UpdateResult::kPostfix), Error::kUnsupportedSyntax);
+        scopes_.Reference(expression.symbol);
+        scopes_.Reference(expression.symbol, true);
       } else if constexpr (std::is_same_v<T, LogicalExpr>) {
         RequireTree(expression.operation == TreeLogical::kAnd || expression.operation == TreeLogical::kOr ||
                     expression.operation == TreeLogical::kNullish,
@@ -442,7 +449,7 @@ class StructureCheck {
         using T = std::decay_t<decltype(node)>;
         if constexpr (std::is_same_v<T, MemberExpr>) { add(node.base); key(node.key); }
         else if constexpr (std::is_same_v<T, UnaryExpr> || std::is_same_v<T, AwaitExpr> || std::is_same_v<T, YieldExpr>) add(node.operand);
-        else if constexpr (std::is_same_v<T, BinaryExpr> || std::is_same_v<T, LogicalExpr>) {
+        else if constexpr (std::is_same_v<T, BinaryExpr> || std::is_same_v<T, LogicalExpr> || std::is_same_v<T, SequenceExpr>) {
           add(node.left); add(node.right);
         } else if constexpr (std::is_same_v<T, ConditionalExpr>) {
           add(node.condition); add(node.consequent); add(node.alternate);
@@ -454,7 +461,7 @@ class StructureCheck {
           if (const auto* member = std::get_if<MemberTarget>(&node.target)) { add(member->base); key(member->key); }
           add(node.value);
         } else {
-          static_assert(std::is_same_v<T, TreeLiteral> || std::is_same_v<T, SymbolExpr> ||
+          static_assert(std::is_same_v<T, UpdateExpr> || std::is_same_v<T, TreeLiteral> || std::is_same_v<T, SymbolExpr> ||
                         std::is_same_v<T, GlobalNameExpr> ||
                         std::is_same_v<T, RealmObjectExpr> ||
                         std::is_same_v<T, SymbolConstructorExpr> ||

@@ -1,0 +1,232 @@
+#include "../../../src/analysis/phased_value_import.h"
+#include "../../../src/source/exception_tree.h"
+#include "../../../src/source/function_values.h"
+#include "../../../src/source/function_tree.h"
+#include "../../../src/source/tree_semantics.h"
+#include "abcd/source/tree_printer.h"
+#include "analysis/ssa_fixture.h"
+
+#include <sstream>
+#include <bit>
+#include <array>
+#include <string_view>
+
+namespace {
+using namespace abcd;
+using namespace abcd::analysis;
+using namespace abcd::source;
+constexpr std::array<std::uint64_t, 5> kSeeds{
+    UINT64_C(0x401c000000000000), UINT64_C(0x8000000000000000),
+    UINT64_C(0x41dfffffffc00000), UINT64_C(0x7ff0000000000000), UINT64_C(0xfff0000000000000)};
+struct Fixture {
+  Fixture(bool decrement, std::uint32_t count, bool phased = false, std::size_t seed = 0,
+          abc::ProfileId profile = abc::ProfileId::kDynamic1206) {
+    // Pinned dynamic ISA: keep the converted old value distinct from each
+    // update result. Mutating the old SSA snapshot corrupts the returned pair.
+    std::vector<std::uint8_t> bytes;
+    constexpr unsigned kByteBits = 8;
+    const auto opcode = [&](abc::Opcode op) {
+      bytes.push_back(static_cast<std::uint8_t>(op));
+      if (static_cast<std::uint16_t>(op) > UINT8_MAX)
+        bytes.push_back(static_cast<std::uint16_t>(op) >> kByteBits);
+    };
+    const auto load = [&](std::uint8_t reg) { opcode(abc::Opcode::kLDA_V8); bytes.push_back(reg); };
+    const auto store = [&](std::uint8_t reg) { opcode(abc::Opcode::kSTA_V8); bytes.push_back(reg); };
+    opcode(abc::Opcode::kFLDAI_IMM64);
+    for (unsigned shift = 0; shift < sizeof(std::uint64_t) * kByteBits; shift += kByteBits)
+      bytes.push_back(static_cast<std::uint8_t>(kSeeds[seed] >> shift));
+    opcode(abc::Opcode::kTONUMERIC_IMM8); bytes.push_back(0); store(1);
+    const auto protected_pc = static_cast<std::uint32_t>(bytes.size());
+    for (std::uint32_t i = 0; i < count; ++i) {
+      opcode(decrement ? abc::Opcode::kDEC_IMM8 : abc::Opcode::kINC_IMM8); bytes.push_back(0);
+    }
+    store(2);
+    load(3); opcode(abc::Opcode::kCALLARGS2_IMM8_V8_V8); bytes.insert(bytes.end(), {0, 1, 2});
+    opcode(abc::Opcode::kCREATEEMPTYOBJECT); store(0);
+    load(1); opcode(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8); bytes.insert(bytes.end(), {0, 0, 0, 0});
+    load(2); opcode(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8); bytes.insert(bytes.end(), {0, 1, 0, 0});
+    load(0); opcode(abc::Opcode::kRETURN);
+    const auto handler_pc = static_cast<std::uint32_t>(bytes.size());
+    if (phased) { load(1); opcode(abc::Opcode::kRETURN); }
+    auto body = test::Body(bytes);
+    if (phased) {
+      abc::TryRegion region; region.offset = {protected_pc};
+      region.length = handler_pc - protected_pc; region.handler_count = 1;
+      body.tries.push_back(region);
+      abc::CatchHandler handler; handler.offset = {handler_pc};
+      handler.length = static_cast<std::uint32_t>(bytes.size()) - handler_pc;
+      body.handlers.push_back(handler);
+    }
+    const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(3, 1, {}));
+    RouteInputIdentity identity;
+    identity.profile = profile;
+    switch (profile) {
+      case abc::ProfileId::kDynamic1202: identity.abc_version = {12, 0, 2, 0}; break;
+      case abc::ProfileId::kDynamic1206: identity.abc_version = {12, 0, 6, 0}; break;
+      case abc::ProfileId::kDynamic1301: identity.abc_version = {13, 0, 1, 0}; break;
+      default: test::Check(false);
+    }
+    FunctionSyntax syntax{};
+    syntax.identity = identity; syntax.method = {200};
+    syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+    syntax.names = {u"old", u"updated"}; syntax.parameters.resize(1);
+    const auto prepare_constants = [&] {
+      constants.resize(graph.ops.size());
+      for (std::size_t i = 0; i < graph.ops.size(); ++i)
+        if (const auto* write = std::get_if<ValueOwnWrite>(&graph.ops[i].operation))
+          constants[i] = NameId{write->name.value};
+    };
+    if (phased) {
+      const auto flow = std::get<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers));
+      IdfQuota quota{kDefaultSemanticWork};
+      const auto ssa = std::get<ExceptionSsa>(ExceptionSsa::Build(flow, frame.registers, quota));
+      std::vector<EntryValueFact> entries;
+      for (std::size_t i = 0; i < ssa.Values().size(); ++i) {
+        const auto& value = ssa.Values()[i];
+        if (const auto* reg = std::get_if<abc::RegisterId>(&value.slot);
+            reg && reg->value >= frame.locals && std::holds_alternative<MethodEntry>(value.origin))
+          entries.push_back({{static_cast<std::uint32_t>(i)}, ValueKinds::Language()});
+      }
+      const auto env = std::get<EnvironmentFlow>(AnalyzeExceptionEnvironments(flow));
+      IdfQuota value_work{kDefaultSemanticWork};
+      const auto values = std::get<ExceptionValueFlow>(ExceptionValueFlow::Build(flow, ssa, entries,
+          value_work, {}, PendingExceptionValues::kLanguage));
+      const auto proof = std::get<ExceptionInputProof>(VerifyExceptionInputs(flow, ssa, env, values));
+      const PhasedValueInput input{flow, ssa, env, values, proof, frame};
+      graph = std::get<ValueProgram>(ImportPhasedValues(input));
+      evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(graph));
+      prepare_constants();
+      const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
+      const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
+      const ExceptionTreeInput context{body, input, regions, control};
+      const auto built = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, {constants, 2});
+      test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
+      tree = std::get<ExceptionFunctionDraft>(built).tree;
+      work = std::get<ExceptionFunctionDraft>(built).work;
+      const auto valid = [&](const FunctionTree& candidate) {
+        return std::holds_alternative<TreeSemantics>(VerifyExceptionTreeSemantics(
+            graph, context, evaluation, candidate, {constants, 2}));
+      };
+      test::Check(valid(tree)); Mutations(valid);
+      return;
+    }
+    const auto input = std::get<FunctionInput>(FunctionInput::Build(identity, {200}, {100},
+        body, frame, InputCaptureMode::kConditional));
+    graph = std::get<FunctionValues>(BuildFunctionValues(input, body, frame)).graph;
+    control = std::get<ControlPlan>(BuildControlPlan(graph));
+    evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
+    prepare_constants();
+    auto built = BuildFunctionTree(graph, control, evaluation, std::move(syntax), {constants, 2});
+    test::Check(std::holds_alternative<ConstructedFunction>(built));
+    work = std::get<ConstructedFunction>(built).work;
+    tree = std::get<ConstructedFunction>(std::move(built)).tree;
+    test::Check(Valid(tree)); Mutations([&](const FunctionTree& candidate) { return Valid(candidate); });
+  }
+  template<class Valid> void Mutations(Valid valid) const {
+    std::optional<ExprId> first, second;
+    for (std::size_t i = 0; i < tree.expressions.size(); ++i)
+      if (std::holds_alternative<UpdateExpr>(tree.expressions[i].expression)) {
+        if (!first) first = ExprId{static_cast<std::uint32_t>(i)};
+        else { second = ExprId{static_cast<std::uint32_t>(i)}; break; }
+      }
+    test::Check(first.has_value());
+    auto changed = tree;
+    auto& update = std::get<UpdateExpr>(changed.expressions[first->value].expression);
+    update.direction = update.direction == UpdateDirection::kIncrement ? UpdateDirection::kDecrement : UpdateDirection::kIncrement;
+    test::Check(!valid(changed));
+    changed = tree; std::get<UpdateExpr>(changed.expressions[first->value].expression).result = UpdateResult::kPostfix;
+    test::Check(!valid(changed));
+    changed = tree; std::get<UpdateExpr>(changed.expressions[first->value].expression).symbol = changed.parameters[0].symbol;
+    test::Check(!valid(changed));
+    const auto scratch = std::get<UpdateExpr>(tree.expressions[first->value].expression).symbol;
+    changed = tree;
+    for (auto& node : changed.expressions)
+      if (auto* read = std::get_if<SymbolExpr>(&node.expression)) { read->symbol = scratch; break; }
+    test::Check(!valid(changed));
+    changed = tree;
+    for (auto& node : changed.expressions)
+      if (auto* sequence = std::get_if<SequenceExpr>(&node.expression)) {
+        std::swap(sequence->left, sequence->right); break;
+      }
+    test::Check(!valid(changed));
+    if (second) {
+      changed = tree; std::get<UpdateExpr>(changed.expressions[second->value].expression).symbol = scratch;
+      for (auto& node : changed.expressions)
+        if (const auto* sequence = std::get_if<SequenceExpr>(&node.expression); sequence && sequence->right == second)
+          std::get<AssignmentExpr>(changed.expressions[sequence->left.value].expression).target = SymbolTarget{scratch};
+      test::Check(!valid(changed));
+    }
+  }
+  bool Valid(const FunctionTree& candidate) const {
+    return std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(
+        graph, control, evaluation, candidate, {constants, 2}));
+  }
+  std::string Print() const {
+    std::ostringstream output;
+    test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, output)));
+    return output.str();
+  }
+  ValueProgram graph;
+  ControlPlan control;
+  EvaluationPlan evaluation;
+  std::vector<ExpressionConstant> constants;
+  FunctionTree tree;
+  std::uint64_t work = 0;
+};
+std::string PrintUpdateSyntax(bool decrement, UpdateResult result) {
+  // Syntax-only native Number/BigInt/coercion coverage, not imported ABC
+  // acceptance for arbitrary value domains.
+  FunctionTree tree;
+  tree.callable = CallableKind::kFunction; tree.strictness = Strictness::kStrict;
+  tree.names = {u"input", u"scratch"};
+  tree.scopes = {{ScopeKind::kParameters, {}}, {ScopeKind::kFunctionBody, ScopeId{0}}};
+  tree.parameter_scope = {0}; tree.body_scope = {1}; tree.body = {2};
+  tree.symbols = {{{0}, {0}, BindingKind::kParameter, DeclarationKind::kParameter, NameEvidence::kSynthesized, {}},
+      {{1}, {1}, BindingKind::kCompilerTemporary, DeclarationKind::kLet, NameEvidence::kSynthesized, TemporaryReason::kNumericUpdate}};
+  tree.parameters = {{SymbolId{0}, {}, false}};
+  tree.origins = {BindingOrigin{SymbolId{1}}};
+  tree.expressions = {{SymbolExpr{SymbolId{0}}, {0}},
+      {AssignmentExpr{SymbolTarget{SymbolId{1}}, ExprId{0}}, {0}},
+      {UpdateExpr{SymbolId{1}, decrement ? UpdateDirection::kDecrement : UpdateDirection::kIncrement, result}, {0}},
+      {SequenceExpr{ExprId{1}, ExprId{2}}, {0}}};
+  tree.statements = {{DeclarationStmt{SymbolId{1}, {}}, {0}},
+      {ReturnStmt{ExprId{3}}, {0}}, {BlockStmt{ScopeId{1}, 0, 2}, {0}}};
+  tree.children = {StmtId{0}, StmtId{1}};
+  std::ostringstream output;
+  test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, output)));
+  return output.str();
+}
+}
+int main(int argc, char** argv) {
+  const bool emit = argc == 2 && std::string_view{argv[1]} == "--emit";
+  if (emit) std::cout << "export const cases = [\n";
+  for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+    for (const bool phased : {false, true})
+      for (const bool decrement : {false, true}) {
+        std::uint64_t previous = 0;
+        for (const auto count : {1U, 2U, 200U, 201U, 400U}) {
+          const Fixture fixture(decrement, count, phased, 0, profile);
+          if (count == 400) test::Check(fixture.work < previous * 3);
+          previous = fixture.work;
+          if (emit && count <= 2) std::cout << "{count:" << count << ",decrement:" << decrement
+              << ",caught:" << phased << ",seed:7,fn:" << fixture.Print() << "},\n";
+        }
+        for (std::size_t seed = 1; seed < kSeeds.size(); ++seed) {
+          const Fixture fixture(decrement, 1, phased, seed, profile);
+          if (emit) {
+            constexpr std::array<std::string_view, 5> kSeedText{"7", "-0", "2147483647", "Infinity", "-Infinity"};
+            std::cout << "{count:1,decrement:" << decrement << ",caught:" << phased
+                << ",seed:" << kSeedText[seed] << ",fn:" << fixture.Print() << "},\n";
+          }
+        }
+      }
+  if (emit) std::cout << "];\n";
+  if (emit) std::cout << "export const syntax = [\n";
+  for (const bool decrement : {false, true})
+    for (const auto result : {UpdateResult::kPrefix, UpdateResult::kPostfix}) {
+      const auto source = PrintUpdateSyntax(decrement, result);
+      if (emit) std::cout << "{decrement:" << decrement << ",postfix:" << (result == UpdateResult::kPostfix)
+          << ",fn:" << source << "},\n";
+    }
+  if (emit) std::cout << "];\n";
+}

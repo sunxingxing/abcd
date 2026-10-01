@@ -214,13 +214,16 @@ class AbiBuilder {
   void Expression(const AssignmentExpr& node) {
     if (const auto* target = std::get_if<SymbolTarget>(&node.target)) Symbol(target->symbol, true);
   }
+  void Expression(const UpdateExpr& node) {
+    Symbol(node.symbol, false); Symbol(node.symbol, true);
+  }
   template <class T> void Expression(const T&) {
     static_assert(std::is_same_v<T, TreeLiteral> || std::is_same_v<T, MemberExpr> ||
         std::is_same_v<T, GlobalNameExpr> ||
         std::is_same_v<T, RealmObjectExpr> ||
         std::is_same_v<T, SymbolConstructorExpr> ||
         std::is_same_v<T, UnaryExpr> || std::is_same_v<T, AwaitExpr> || std::is_same_v<T, YieldExpr> || std::is_same_v<T, BinaryExpr> ||
-        std::is_same_v<T, LogicalExpr> || std::is_same_v<T, ConditionalExpr> || std::is_same_v<T, CallExpr> ||
+        std::is_same_v<T, SequenceExpr> || std::is_same_v<T, LogicalExpr> || std::is_same_v<T, ConditionalExpr> || std::is_same_v<T, CallExpr> ||
         std::is_same_v<T, ConstructExpr> || std::is_same_v<T, SuperCallExpr> || std::is_same_v<T, EmptyArrayExpr> ||
         std::is_same_v<T, EmptyObjectExpr> || std::is_same_v<T, ObjectExpr> || std::is_same_v<T, FunctionExpr> || std::is_same_v<T, ClassExpr> || std::is_same_v<T, FieldDefinitionExpr>);
     // Child expressions are counted once by their arena entries, not recursively.

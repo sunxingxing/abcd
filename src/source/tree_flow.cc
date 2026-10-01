@@ -245,6 +245,7 @@ class FlowCheck {
     edges_->Finish();
     Objects();
     LiteralScopes();
+    NumericUpdates();
     for (std::size_t i = 0; i < tree_.symbols.size(); ++i) {
       budget_.Step();
       const auto& symbol = tree_.symbols[i];
@@ -919,6 +920,54 @@ class FlowCheck {
               Error::kSnapshot);
     }
     return count;
+  }
+  void NumericUpdates() {
+    bool any = false;
+    for (const auto& node : tree_.expressions) {
+      budget_.Step(); any |= std::holds_alternative<UpdateExpr>(node.expression);
+    }
+    if (!any) return;
+    std::vector<std::optional<ExprId>> saves, updates;
+    budget_.Array(saves, tree_.symbols.size());
+    budget_.Array(updates, tree_.symbols.size());
+    for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
+      budget_.Step();
+      const auto& op = graph_.ops[i];
+      const auto* unary = std::get_if<analysis::ValueUnary>(&op.operation);
+      if (op.life != analysis::ValueLife::kLive || evaluation_.operations[i].kind == EvaluationKind::kElidedPure ||
+          !unary || (unary->op != analysis::UnaryOperator::kIncrement && unary->op != analysis::UnaryOperator::kDecrement)) continue;
+      Require(flow_.expressions[i].has_value(), Error::kSnapshot);
+      const auto* sequence = std::get_if<SequenceExpr>(&tree_.expressions[flow_.expressions[i]->value].expression);
+      Require(sequence, Error::kSnapshot);
+      const auto* save = std::get_if<AssignmentExpr>(&tree_.expressions[sequence->left.value].expression);
+      const auto* update = std::get_if<UpdateExpr>(&tree_.expressions[sequence->right.value].expression);
+      const auto* target = save ? std::get_if<SymbolTarget>(&save->target) : nullptr;
+      Require(target && update && target->symbol == update->symbol, Error::kSnapshot);
+      const auto symbol = target->symbol;
+      const auto& binding = tree_.symbols[symbol.value];
+      Require(binding.kind == BindingKind::kCompilerTemporary && binding.scope == tree_.body_scope &&
+          binding.declaration == DeclarationKind::kLet && binding.temporary == TemporaryReason::kNumericUpdate &&
+          declared_[symbol.value] && !assigned_[symbol.value], Error::kSnapshot);
+      assigned_[symbol.value] = 1;
+      saves[symbol.value] = sequence->left; updates[symbol.value] = sequence->right;
+    }
+    // Exclusive scratch cannot be read, captured, reused by another update or
+    // exposed as an SSA result/throw snapshot. Check actual AST references in
+    // one pass, independently of the builder's binding allocation decisions.
+    const auto private_symbol = [&](SymbolId symbol) {
+      return tree_.symbols[symbol.value].temporary == TemporaryReason::kNumericUpdate;
+    };
+    for (std::size_t i = 0; i < tree_.expressions.size(); ++i) {
+      budget_.Step(); const auto id = ExprId{static_cast<std::uint32_t>(i)};
+      const auto& expression = tree_.expressions[i].expression;
+      if (const auto* read = std::get_if<SymbolExpr>(&expression))
+        Require(!private_symbol(read->symbol), Error::kSnapshot);
+      if (const auto* save = std::get_if<AssignmentExpr>(&expression))
+        if (const auto* target = std::get_if<SymbolTarget>(&save->target); target && private_symbol(target->symbol))
+          Require(saves[target->symbol.value] == id, Error::kSnapshot);
+      if (const auto* update = std::get_if<UpdateExpr>(&expression))
+        Require(private_symbol(update->symbol) && updates[update->symbol.value] == id, Error::kSnapshot);
+    }
   }
   void PredicateSnapshots() {
     bool any = false;

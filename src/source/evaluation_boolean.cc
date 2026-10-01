@@ -55,4 +55,16 @@ bool PredicateSnapshot(const analysis::ValueProgram& graph,
           predicate == analysis::UnaryOperator::kTrueOrNonzeroNumber) &&
          !BooleanEvaluation(graph, operand);
 }
+bool NonNaNNumberEvaluation(const analysis::ValueProgram& graph,
+                           const analysis::ValueOperand& operand) {
+  if (std::holds_alternative<analysis::IntegerLiteral>(operand)) return true;
+  if (const auto* number = std::get_if<analysis::Float64Bits>(&operand)) {
+    constexpr std::uint64_t kMagnitudeMask = UINT64_C(0x7fffffffffffffff);
+    constexpr std::uint64_t kInfinityBits = UINT64_C(0x7ff0000000000000);
+    return (number->value & kMagnitudeMask) <= kInfinityBits;
+  }
+  const auto* value = std::get_if<analysis::ValueId>(&operand);
+  return value && value->value < graph.values.size() &&
+      graph.values[value->value].domain.IsNonNaNNumber();
+}
 }  // namespace abcd::source

@@ -240,6 +240,27 @@ ownership/definition mutations and work-budget boundaries are rejected.
 The following extension addresses allocations without an exceptional exit.
 No peak-RSS or performance acceptance is claimed.
 
+### Native numeric update storage (2026-10-02)
+
+ValueUnary increment/decrement owns an additional exclusive compiler symbol,
+not the input SSA binding. Binding allocation counts updates in the existing
+operation pass, then creates an OpId-indexed symbol table and dense UpdateBinding
+entries in one pass. For O operations and U retained updates, the added work is
+O(O), storage O(O + U); the table is absent when U is zero. Existing byte/ID
+admission includes the table, symbols, names and AST nodes.
+
+The common AST represents one input assignment followed by native prefix
+increment/decrement in a two-child comma expression. TreeFlow derives exclusive
+storage from actual node targets and checks all symbol references in one pass;
+for S symbols and X expression nodes the additional check is O(O + S + X)
+work and O(S) scratch, or a single O(X) discovery pass when no update exists.
+It never searches the CFG per update or walks all uses per symbol. Existing
+operand/origin checking proves the original input, new result and occurrence.
+Non-NaN Number identity ToNumeric checks are O(1). General conversion/domain
+admission and source-reference update folding are not claimed by this rule.
+Full draft work scaling is checked at 200/201/400 updates in normal/phased
+three-profile fixtures; RSS and benchmark measurements remain paused.
+
 ### Phased initialization under a nonthrowing allocation (2026-10-02)
 
 Keep the allocation's creation/identity event even when it cannot throw. Its

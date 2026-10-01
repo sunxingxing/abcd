@@ -768,6 +768,10 @@ if(BUILD_TESTING)
   target_include_directories(function_expression_test PRIVATE tests/support)
   target_link_libraries(function_expression_test PRIVATE abcd_source)
   add_test(NAME function_expression_test COMMAND function_expression_test)
+  add_executable(numeric_update_tree_test tests/unit/source/numeric_update_tree_test.cc)
+  target_include_directories(numeric_update_tree_test PRIVATE tests/support)
+  target_link_libraries(numeric_update_tree_test PRIVATE abcd_source)
+  add_test(NAME numeric_update_tree_test COMMAND numeric_update_tree_test)
   target_link_libraries(loop_forest_test PRIVATE abcd_source)
   add_test(NAME loop_forest_test COMMAND loop_forest_test)
   target_link_libraries(control_plan_test PRIVATE abcd_source)
@@ -1125,6 +1129,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_module.mjs $<TARGET_FILE:phased_module_guards_test>)
     add_test(NAME phased_module_literal_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_module_literal.mjs $<TARGET_FILE:phased_module_literal_test>)
+    add_test(NAME numeric_update_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/numeric_update_tree.mjs $<TARGET_FILE:numeric_update_tree_test>)
     add_test(NAME try_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/try_tree.mjs
       $<TARGET_FILE:try_tree_test>)

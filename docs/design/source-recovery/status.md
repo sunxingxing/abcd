@@ -12,6 +12,58 @@
 
 ## 当前阶段
 
+### 2026-10-02：共同源码树的原生 numeric update
+
+- 实际解码对象返回 old/updated 两值的用例，在成功编译并修正测试编码后，
+  RED 于 ForestBuilder::Unary 的 ToNumeric kUnsupportedOperation，与真实9165
+  相同。证据 /tmp/abcd-numeric-red-build.log、red-test.log、red-cause.log。
+  初次测试编码/元数据错误不计作语义 RED。
+- 原有非 NaN Number 事实或非 NaN 数字 immediate 允许 ToNumeric 保持原值，
+  保留一次输入求值、signed zero、infinity 与 CombinedOrigin；builder 和
+  operand verifier 都核对事实。Language、对象、字符串、BigInt、NaN 不提供
+  该身份转换证明，不能从后续 increment 或变量名推断。
+- ValueUnary INC/DEC 汇入共同 UpdateExpr/SequenceExpr 与 printer：一次保存
+  input 到专有 UpdateBinding，再对私有存储执行 native prefix ++/--。
+  不覆盖仍可观察的旧 SSA 值，不用 x+1、函数包装或 legacy writer。
+  TreeFlow 从实际 assignment/update targets 推导所有权，一次引用扫描拒绝
+  scratch 外泄、复用、用户绑定及求值倒置；operand/origin 与 ABI 独立核对
+  输入、direction、新结果、PC 和参数读写。原导入值域准入不变。
+- 新增绑定 O(O) 工作/O(O+U) 存储，仅有 update 时分配 OpId 表；已有预算
+  包含符号、名称、节点。额外 tree 检查 O(O+S+X) 工作/O(S) scratch。
+  algorithms.md 与 numeric-updates/to-numeric 参考说明更新，无新增最终IR、
+  通用证明包装、发布许可、依赖或报告平台。
+- 三 profile 的 normal/phased 实际解码夹具覆盖1/2/200/201/400次增减，
+  完整 draft work 的201→400增长受检；old/new独立、回调receiver/2参数、
+  catch保存值、负零、int32溢出和正负infinity。typed tree负例包括改方向、
+  prefix改postfix、写parameter、scratch读出、交换sequence及成对复用scratch。
+  旧 partial build/file 测试改用仍未恢复的通用 ToNumeric，继续验证缺口和
+  family不完整传播，不继续将已支持的整数 increment 当作必然拒绝。
+- 独立 Node oracle 执行72份真实解码完整函数及4份syntax-only AST，
+  992场景及3个合法语法mutation通过；前者检查调用和异常身份、结果及对象
+  descriptor，后者单独核对native Number/BigInt、post/pre和一次number-hint
+  coercion/任意抛出值。后者不是任意值域ABC支持、Ark差分或配对应用 Accepted。
+- 当前源码中的scratch comma是正确的原生增减表示；尚未证明可折叠成原源码
+  引用的 x++，不能算整应用源码风格验收。通用转换/NaN值域仍是未完成工作。
+- 最终相关构建退出0，84/84定向回归通过176.20秒，包括old partial、ABI、
+  flow/structure、控制/异常、捕获/class、async/generator以及Home/PageA完整
+  record。首轮83项通过，但partial_tree_test因未构建而Not Run；修正构建
+  目标清单、补充成对scratch复用反例后，以上完整84项重跑通过。
+  /tmp/abcd-numeric-final-verified-build.log、final-verified-tests.log；
+  /tmp/abcd-numeric-selected.json保存实际测试/构建目标，不是全库回归。
+- 五输入 build/stage-one/value-numeric-update-pass-1 顺序导出均退出0，保持
+  51 complete / 3 incomplete / 52 failure / 46 no-module，无完整项回退、
+  新增完整record或 legacy writer。
+  /tmp/abcd-numeric-final-batch.log、final-batch-summary.json。
+- 真实9165在 TreeBuilder::Build 返回点 recovery_issues为空，已完成 completion
+  和树语义检查，/tmp/abcd-numeric-real-9165-built.log；不是独立配对语义/风格
+  验收。首个后续 __cxa_throw 属于9193的 EmitDecision：branch op108 原始
+  PC279/工作PC276，RHS op115是 Less，原始PC298/工作PC295，Root、
+  CrossRegionValue，原本49条语句变50条触发kOwnership。
+  /tmp/abcd-numeric-real-decision.log、decision-statement.log、decision-op.log。
+- 下一步在共同decision/求值/树流中保留短路RHS快照的条件执行，不能将语句
+  移到短路外或删除ownership检查；继续完整函数族及配对验收。Goal仍active。
+  全库、扩大语料、RSS/基准、DFX、调度器和代理仍暂停，内存实测未验证。
+
 ### 2026-10-02：无异常出口的数组初始化与原始 try 归属
 
 - 三 profile 的实际解码 own-indexed array 初始化新增正例，成功编译后

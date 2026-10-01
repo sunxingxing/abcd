@@ -59,7 +59,7 @@ enum class DeclarationKind : std::uint8_t { kParameter, kLet, kConst, kCatchPara
 enum class TemporaryReason : std::uint8_t {
   kMultipleUses, kEffectSnapshot, kPhiJoin, kParallelCopyCycle,
   kCrossRegionValue, kReferenceSnapshot, kUnprovedInline, kPredicateSnapshot,
-  kExceptionSnapshot, kPendingCompletion, kInternalSentinel
+  kExceptionSnapshot, kPendingCompletion, kInternalSentinel, kNumericUpdate
 };
 struct TreeScope {
   ScopeKind kind;
@@ -140,6 +140,12 @@ struct SymbolTarget { SymbolId symbol; };
 struct MemberTarget { ExprId base; MemberKey key; };
 using AssignmentTarget = std::variant<SymbolTarget, MemberTarget>;
 struct AssignmentExpr { AssignmentTarget target; ExprId value; };
+// Native syntax. Value-IR updates compute a new value without overwriting the
+// input SSA binding; their builder uses a separately owned private symbol.
+enum class UpdateDirection : std::uint8_t { kIncrement, kDecrement };
+enum class UpdateResult : std::uint8_t { kPrefix, kPostfix };
+struct UpdateExpr { SymbolId symbol; UpdateDirection direction; UpdateResult result; };
+struct SequenceExpr { ExprId left; ExprId right; };
 // Each argument slot and expression occurrence has exactly one syntax owner.
 // Call references are explicit: value calls must not acquire member this or
 // direct-eval semantics merely because their callee prints as an identifier.
@@ -192,7 +198,7 @@ struct DataProperty { NameId key; ExprId value; TreeOriginId origin; };
 struct FieldDefinitionExpr { ExprId receiver; NameId name; ExprId value; };
 using TreeExpression = std::variant<TreeLiteral, SymbolExpr, GlobalNameExpr, RealmObjectExpr,
     SymbolConstructorExpr, ThisExpr, MemberExpr,
-                                    UnaryExpr, AwaitExpr, YieldExpr, BinaryExpr, LogicalExpr, ConditionalExpr, AssignmentExpr,
+                                    UnaryExpr, AwaitExpr, YieldExpr, BinaryExpr, LogicalExpr, ConditionalExpr, AssignmentExpr, UpdateExpr, SequenceExpr,
                                     CallExpr, ConstructExpr, EmptyArrayExpr, EmptyObjectExpr, ObjectExpr, FunctionExpr,
                                     ArgumentSnapshotExpr, ClassExpr, FieldDefinitionExpr, SuperCallExpr>;
 struct ExprNode { TreeExpression expression; TreeOriginId origin; };

@@ -1,5 +1,41 @@
 # Numeric Updates
 
+## Common source tree (2026-10-02)
+
+The common ValueProgram route now constructs native `UpdateExpr` and binary
+`SequenceExpr` syntax. An update owns a private `UpdateBinding`, distinct from
+the input SSA value, result snapshot, parameter, cell, phi and catch staging
+storage. Its expression is `(scratch = input, ++scratch)` or the decrement
+equivalent. The input is evaluated once; the native operator preserves
+Number/BigInt conversion and publishes the new result only on normal completion.
+There is no private helper call or addition/subtraction by an untyped one.
+
+Fresh TreeFlow derives the two allowed scratch references from the actual
+sequence/assignment/update nodes. One scan rejects other reads/writes, scratch
+reuse, observable destinations and reversed evaluation order. Operand checking
+independently verifies the original input, direction, prefix result and origins.
+An ABC postfix protocol can retain its old converted SSA value separately;
+this does not authorize overwriting that old snapshot or inferring a source
+reference update from register copies. Native postfix syntax exists, but the
+current ValueUnary lowering requires the new result, hence prefix on scratch.
+
+The original importer/domain admission remains binding. Actual decoded positive
+cases in this change have proven non-NaN Number inputs/results. The separate
+AST/printer Number/BigInt/coercion oracle proves native syntax behavior, not
+arbitrary-domain ABC recovery or historical Ark VM equivalence. General
+ToNumeric, NaN payload/domain admission and folding a proven source reference
+into idiomatic `x++` remain separate work. The scratch comma representation is
+not whole-application source-style acceptance.
+
+Decoded tests exercise three profiles, ordinary and phased trees, retained old
+values, callback receiver/arguments, catch/throw identity, signed zero, int32
+overflow and infinities, and 200/201/400 updates. Syntax mutations and typed
+tree mutations check old-value corruption, wrong direction/result, scratch
+escape/reuse and evaluation order. Existing source positions and budgets are
+retained; no new publication wrapper or writer is required.
+
+## Earlier scalar diagnostic emitter
+
 The pinned `OpenHarmony-v7.0-Release` interpreter implements `INC_IMM8`,
 `DEC_IMM8`, `DEPRECATED_INC_PREF_V8`, and `DEPRECATED_DEC_PREF_V8` in
 `ets_runtime/ecmascript/interpreter/interpreter-inl.cpp`. All write only acc.

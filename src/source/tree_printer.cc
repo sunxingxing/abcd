@@ -560,6 +560,17 @@ class TreePrinter {
     Append("("); Push(std::string_view(")")); Push(node.right);
     Push(TreeLogicalToken(node.operation)); Push(node.left);
   }
+  void Expression(SequenceExpr node) {
+    Append("("); Push(std::string_view(")")); Push(node.right);
+    Push(std::string_view(", ")); Push(node.left);
+  }
+  void Expression(UpdateExpr node) {
+    const auto token = node.direction == UpdateDirection::kIncrement ? "++" : "--";
+    Append("("); Push(std::string_view(")"));
+    if (node.result == UpdateResult::kPostfix) Push(std::string_view(token));
+    Push(SymbolName{node.symbol});
+    if (node.result == UpdateResult::kPrefix) Append(token);
+  }
   void Expression(ConditionalExpr node) {
     Append("("); Push(std::string_view(")")); Push(node.alternate);
     Push(std::string_view(" : ")); Push(node.consequent);

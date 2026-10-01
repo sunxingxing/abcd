@@ -771,8 +771,12 @@ class ForestBuilder {
         const auto right = Add(LogicalExpr{TreeLogical::kAnd, is_number, nonzero}, origin);
         return Add(LogicalExpr{TreeLogical::kOr, left, right}, origin);
       }
-      // ++/-- require a Number-or-BigInt preserving lowering, not x +/- 1.
-      case U::kToNumeric: case U::kIncrement: case U::kDecrement:
+      case U::kToNumeric:
+        if (NonNaNNumberEvaluation(graph_, original)) return Combine(input, origin);
+        // General coercion still needs a Number/BigInt-preserving value-domain
+        // proof. Do not infer numeric identity from the eventual ++ consumer.
+        throw Error::kUnsupportedOperation;
+      case U::kIncrement: case U::kDecrement:
         throw Error::kUnsupportedOperation;
     }
     throw Error::kUnsupportedOperation;
@@ -802,8 +806,21 @@ class ForestBuilder {
         return Add(SymbolExpr{CellSymbol(id)}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueLexicalStore>)
         return Add(AssignmentExpr{SymbolTarget{CellSymbol(id)}, operands[0]}, origin);
-      else if constexpr (std::is_same_v<T, analysis::ValueUnary>)
+      else if constexpr (std::is_same_v<T, analysis::ValueUnary>) {
+        using U = analysis::UnaryOperator;
+        if (operation.op == U::kIncrement || operation.op == U::kDecrement) {
+          Require(id.value < forest_.bindings.updates.size() && forest_.bindings.updates[id.value], Error::kBinding);
+          const auto symbol = *forest_.bindings.updates[id.value];
+          // Ark publishes acc only on success and leaves the input register
+          // unchanged. The comma owns one input evaluation and a native update
+          // on exclusive scratch; no helper call, user store or x +/- 1.
+          const auto save = Add(AssignmentExpr{SymbolTarget{symbol}, operands[0]}, origin);
+          const auto update = Add(UpdateExpr{symbol, operation.op == U::kIncrement
+              ? UpdateDirection::kIncrement : UpdateDirection::kDecrement, UpdateResult::kPrefix}, origin);
+          return Add(SequenceExpr{save, update}, origin);
+        }
         return Unary(operation.op, operands[0], graph_.uses[op.first_use.value].operand, origin);
+      }
       else if constexpr (std::is_same_v<T, analysis::ValueAwait>)
         return Add(AwaitExpr{operands[0]}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueYield>)

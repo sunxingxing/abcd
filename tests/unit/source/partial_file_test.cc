@@ -37,8 +37,10 @@ void FileDraft(bool nested) {
   }
   const auto caller = Append(bytes, {Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 0, 0, 0,
       Op(abc::Opcode::kRETURNUNDEFINED)});
-  const auto leaf = Append(bytes, {Op(abc::Opcode::kDEBUGGER), Op(abc::Opcode::kLDAI_IMM32),
-      7, 0, 0, 0, Op(abc::Opcode::kINC_IMM8), 0, Op(abc::Opcode::kRETURN)});
+  // Integer updates now recover. General numeric conversion still has a
+  // typed gap, so keep the family incomplete-propagation test on that gap.
+  const auto leaf = Append(bytes, {Op(abc::Opcode::kDEBUGGER), Op(abc::Opcode::kLDTRUE),
+      Op(abc::Opcode::kTONUMERIC_IMM8), 0, Op(abc::Opcode::kRETURNUNDEFINED)});
   const auto target = nested ? Append(bytes, {Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 1, 0, 0,
       Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 2, 0, 0, Op(abc::Opcode::kRETURNUNDEFINED)}) : leaf;
   const auto sibling = nested ? Append(bytes, {Op(abc::Opcode::kLDAI_IMM32), 7, 0, 0, 0,
@@ -81,7 +83,7 @@ void FileDraft(bool nested) {
   test::Check(source.find("debugger;") < source.find("UNRECOVERED"));
   if (!nested) test::Check(source.find("return") == std::string::npos);
   else test::Check(source.find("return 7;") != std::string::npos);
-  test::Check(source.find("PC 1") != std::string::npos);
+  test::Check(source.find("PC 2") != std::string::npos);
   test::Check(!report.contains("family_writes"));
   test::Check(positions.str().find("\"incomplete\":true") != std::string::npos);
   const auto located = nlohmann::json::parse("{" + positions.str() + "\"ready\":true}");

@@ -35,12 +35,16 @@ std::variant<BindingPlan, BindingError> BuildBindings(
   // Upper bound one snapshot per operation plus independent phi and cycle
   // locations. Never coalesce these into mutable source parameters/cells.
   constexpr auto kMaxId = std::numeric_limits<std::uint32_t>::max();
-  std::size_t phi_count = 0, cycle_count = 0, catch_count = 0;
+  std::size_t phi_count = 0, cycle_count = 0, catch_count = 0, update_count = 0;
   bool needs_self = false;
   for (const auto& op : graph.ops) {
     if (work == 0) return Error::kWorkLimit;
     --work;
     needs_self |= op.life == ValueLife::kLive && std::holds_alternative<ValueFrameFunction>(op.operation);
+    const auto* unary = std::get_if<ValueUnary>(&op.operation);
+    const auto kind = evaluation.operations[static_cast<std::size_t>(&op - graph.ops.data())].kind;
+    update_count += op.life == ValueLife::kLive && kind != EvaluationKind::kElidedPure && unary &&
+        (unary->op == UnaryOperator::kIncrement || unary->op == UnaryOperator::kDecrement);
   }
   const std::size_t self_count = needs_self ? 1 : 0;
   const std::size_t hole_count = NeedsHoleToken(evaluation) ? 1 : 0;
@@ -60,7 +64,7 @@ std::variant<BindingPlan, BindingError> BuildBindings(
     cycle_count += count;
   }
   std::size_t fixed_symbols = parameter_count;
-  for (const auto count : {phi_count, cycle_count, self_count, catch_count, slot_count, hole_count}) {
+  for (const auto count : {phi_count, cycle_count, self_count, catch_count, slot_count, hole_count, update_count}) {
     if (count > kMaxId - fixed_symbols) return Error::kResourceLimit;
     fixed_symbols += count;
   }
@@ -73,6 +77,7 @@ std::variant<BindingPlan, BindingError> BuildBindings(
       !admit(bundles, sizeof(std::optional<SymbolId>)) ||
       !admit(cell_count, sizeof(SymbolId)) ||
       !admit(slot_count, sizeof(SymbolId)) ||
+      !admit(update_count ? graph.ops.size() : 0, sizeof(std::optional<SymbolId>)) ||
       !admit(graph.ops.size() + fixed_symbols + cell_count, sizeof(BindingSource)))
     return Error::kResourceLimit;
   try {
@@ -101,10 +106,12 @@ std::variant<BindingPlan, BindingError> BuildBindings(
     plan.cycle_bases.resize(bundles);
     plan.cells.resize(cell_count);
     plan.catch_slots.resize(slot_count);
+    if (update_count) plan.updates.resize(graph.ops.size());
     if (!admit(plan.values.capacity() - graph.values.size(), sizeof(ValueBinding)) ||
         !admit(plan.cycle_bases.capacity() - bundles, sizeof(std::optional<SymbolId>)) ||
         !admit(plan.cells.capacity() - cell_count, sizeof(SymbolId)) ||
         !admit(plan.catch_slots.capacity() - slot_count, sizeof(SymbolId)) ||
+        !admit(plan.updates.capacity() - plan.updates.size(), sizeof(std::optional<SymbolId>)) ||
         !admit(plan.symbols.capacity() - symbol_limit, sizeof(BindingSource)))
       return Error::kResourceLimit;
     for (std::uint32_t i = 0; i < parameter_count; ++i) {
@@ -191,6 +198,16 @@ std::variant<BindingPlan, BindingError> BuildBindings(
       if (!work) return Error::kWorkLimit;
       --work;
       plan.values[i] = plan.values[evaluation.aliases[i].value];
+    }
+    if (update_count) for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      if (!work) return Error::kWorkLimit;
+      --work;
+      const auto& op = graph.ops[i];
+      const auto* unary = std::get_if<ValueUnary>(&op.operation);
+      if (op.life != ValueLife::kLive || evaluation.operations[i].kind == EvaluationKind::kElidedPure ||
+          !unary || (unary->op != UnaryOperator::kIncrement && unary->op != UnaryOperator::kDecrement)) continue;
+      plan.updates[i] = SymbolId{static_cast<std::uint32_t>(plan.symbols.size())};
+      plan.symbols.emplace_back(UpdateBinding{OpId{static_cast<std::uint32_t>(i)}});
     }
     for (std::size_t i = 0; i < bundles; ++i) {
       if (work == 0) return Error::kWorkLimit;

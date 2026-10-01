@@ -680,8 +680,18 @@ class OperandCheck {
           return;
         }
         Predicate(operation, operand, expression); return;
-      case U::kToNumeric: case U::kIncrement: case U::kDecrement:
-        throw Error::kUnsupportedOperation;
+      case U::kToNumeric:
+        RequireMeaning(NonNaNNumberEvaluation(graph_, operand), Error::kOperator);
+        Input(operand, expression); return;
+      case U::kIncrement: case U::kDecrement: {
+        const auto& sequence = Node<SequenceExpr>(expression); LeafOrigin(expression);
+        const auto& save = Node<AssignmentExpr>(sequence.left); LeafOrigin(sequence.left);
+        const auto* target = std::get_if<SymbolTarget>(&save.target);
+        const auto& update = Node<UpdateExpr>(sequence.right); LeafOrigin(sequence.right);
+        RequireMeaning(target && target->symbol == update.symbol && update.result == UpdateResult::kPrefix &&
+            update.direction == (operation == U::kIncrement ? UpdateDirection::kIncrement : UpdateDirection::kDecrement), Error::kOperator);
+        Input(operand, save.value); return;
+      }
     }
     throw Error::kUnsupportedOperation;
   }

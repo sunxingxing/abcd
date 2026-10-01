@@ -19,10 +19,11 @@ struct CycleBinding { std::uint32_t bundle; CopyTempId temporary; };
 struct CellBinding { CellId cell; };
 struct FunctionSelfBinding {};
 struct HoleTokenBinding {};
+struct UpdateBinding { analysis::OpId producer; };
 struct CatchParameterBinding { analysis::ValueId value; analysis::WorkBlockId block; };
 struct CatchSlotBinding { CatchSlotId slot; };
 using BindingSource = std::variant<ParameterBinding, SnapshotBinding, PhiBinding, CycleBinding, CellBinding,
-                                   FunctionSelfBinding, CatchParameterBinding, CatchSlotBinding, HoleTokenBinding>;
+                                   FunctionSelfBinding, CatchParameterBinding, CatchSlotBinding, HoleTokenBinding, UpdateBinding>;
 struct BindingPlan {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
@@ -46,6 +47,9 @@ struct BindingPlan {
   EvaluationFlow flow = EvaluationFlow::kNormal;
   // CatchSlotId indexed private storage, never a phi/cell/parameter alias.
   std::vector<SymbolId> catch_slots;
+  // OpId indexed, private to this single native update occurrence; not an SSA
+  // value, parameter, cell, phi, catch slot or observable old-value snapshot.
+  std::vector<std::optional<SymbolId>> updates;
 };
 enum class BindingError : std::uint8_t {
   kEvaluation, kParameter, kUnsupportedEntry, kLivePhi, kDefinition,

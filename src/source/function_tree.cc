@@ -560,6 +560,8 @@ class TreeBuilder {
       } else if (std::holds_alternative<HoleTokenBinding>(binding)) {
         tree_.hole = SymbolId{static_cast<std::uint32_t>(i)};
         reason = TemporaryReason::kInternalSentinel; prefix = u"$hole";
+      } else if (std::holds_alternative<UpdateBinding>(binding)) {
+        reason = TemporaryReason::kNumericUpdate; prefix = u"$update";
       } else throw Error::kBinding;
       tree_.symbols.push_back({kBodyScope, SyntheticName(prefix, i),
           BindingKind::kCompilerTemporary, tree_.hole == SymbolId{static_cast<std::uint32_t>(i)} ? DeclarationKind::kConst : DeclarationKind::kLet,

@@ -1,5 +1,17 @@
 # Numeric Conversion
 
+The common FunctionTree route also recognizes identity conversion when its
+operand already has a non-NaN Number domain proof, or is a checked non-NaN
+numeric immediate. It retains the single expression occurrence and combines
+original provenance; signed zero and infinities are unchanged. The tree
+operand verifier checks the same domain requirement. This is not a general
+ToNumeric lowering: Language alone, strings, objects, BigInt and NaN do not
+provide this particular identity proof. Their support cannot be inferred from
+a following increment or an apparent counter name.
+
+The conditional expansion described below belongs to the older scalar
+diagnostic emitter; it is not a common-tree or source-record fallback.
+
 The pinned `OpenHarmony-v7.0-Release` handlers `TONUMERIC_IMM8` and
 `DEPRECATED_TONUMERIC_PREF_V8` in `interpreter/interpreter-inl.cpp` read acc
 and an explicit register respectively, preserving source registers and
