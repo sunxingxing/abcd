@@ -165,6 +165,8 @@ ValueOperation Operation(const SemanticOperation& operation) {
       return ValueInvoke{InvokeReceiver::kExplicit, op.Count()};
     } else if constexpr (std::is_same_v<T, SuperRange>) {
       return ValueSuperCall{op.count, op.cache_slot};
+    } else if constexpr (std::is_same_v<T, SuperSpread>) {
+      return ValueSuperSpread{op.cache_slot};
     } else if constexpr (std::is_same_v<T, SuperCheck>) {
       return ValueSuperCheck{op.kind};
     } else if constexpr (std::is_same_v<T, ConstructorCall>) {

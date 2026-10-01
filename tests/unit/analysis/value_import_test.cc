@@ -8,6 +8,56 @@
 int main() {
   using namespace abcd;
   using namespace abcd::analysis;
+  {
+    const auto body = test::Body({static_cast<std::uint8_t>(abc::Opcode::kLDHOLE),
+        static_cast<std::uint8_t>(abc::Opcode::kSTA_V8), 1,
+        static_cast<std::uint8_t>(abc::Opcode::kLDA_V8), 0,
+        static_cast<std::uint8_t>(abc::Opcode::kSUPERCALLSPREAD_IMM8_V8), 0, 1,
+        static_cast<std::uint8_t>(abc::Opcode::kRETURN)});
+    const auto input = std::get<SemanticMethod>(BuildSemanticMethod(body, abc::ProfileId::kDynamic1206, 2));
+    const auto failure = std::get<SemanticProofFailure>(VerifySemanticSource(body, input, 2, 0));
+    test::Check(failure.kind == SemanticProofError::kInternalValue && failure.pc == abc::CodeOffset{5});
+  }
+  // Spread super retains its explicit constructor and aggregate array. Never
+  // reinterpret the array as a single range argument or drop its throwing call.
+  for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
+    for (const unsigned count : {1U, 2U, 200U, 201U}) {
+      std::vector<std::uint8_t> bytes;
+      for (unsigned i = 0; i < count; ++i)
+        bytes.insert(bytes.end(), {static_cast<std::uint8_t>(abc::Opcode::kLDA_V8), 0,
+            static_cast<std::uint8_t>(abc::Opcode::kSUPERCALLSPREAD_IMM8_V8), 7, 1});
+      bytes.push_back(static_cast<std::uint8_t>(abc::Opcode::kRETURN));
+      const auto body = test::Body(bytes);
+      const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 2, {false, false, false, false}));
+      const auto input = std::get<SemanticMethod>(BuildSemanticMethod(body, profile, frame.registers));
+      const auto proof = std::get<SemanticProof>(VerifySemanticSource(body, input, frame.registers, frame.locals));
+      auto graph = std::get<ValueProgram>(ImportNormalValues(body, input, proof, frame));
+      test::Check(!VerifyImportedValues(graph, input, proof, frame));
+      for (unsigned i = 0; i < count; ++i) {
+        const auto& op = graph.ops[2 * i + 1];
+        test::Check(std::get<ValueSuperSpread>(op.operation).cache_slot == 7);
+        test::Check(op.result && op.use_count == 2 && !CanErasePureOp(op));
+        test::Check(op.exceptional == ExceptionalCompletion::kMayThrow && op.normal == op.before_throw);
+        test::Check(op.normal == (LanguageEffect::kHeapRead | LanguageEffect::kHeapWrite |
+            LanguageEffect::kUserCode | LanguageEffect::kAllocation));
+        test::Check(graph.uses[op.first_use.value].role == OperandRole::kConstructor &&
+            graph.uses[op.first_use.value + 1].role == OperandRole::kInput);
+      }
+      auto changed = graph;
+      ++std::get<ValueSuperSpread>(changed.ops[1].operation).cache_slot;
+      test::Check(VerifyImportedValues(changed, input, proof, frame).has_value());
+      changed = graph; changed.ops[1].operation = ValueSuperCall{1, 7};
+      test::Check(VerifyImportedValues(changed, input, proof, frame).has_value());
+      changed = graph;
+      std::swap(changed.uses[changed.ops[1].first_use.value].operand,
+          changed.uses[changed.ops[1].first_use.value + 1].operand);
+      test::Check(VerifyImportedValues(changed, input, proof, frame).has_value());
+      test::Check(!std::holds_alternative<ValueSimplifyError>(SimplifyValues(graph, graph.revision)));
+      for (unsigned i = 0; i < count; ++i)
+        test::Check(graph.ops[2 * i + 1].life == ValueLife::kLive &&
+            std::holds_alternative<ValueSuperSpread>(graph.ops[2 * i + 1].operation));
+    }
+  }
   // Every encoded guard mode retains its input occurrence and exception kind.
   for (const auto mode : {0U, 1U, 2U}) {
     const auto wire = static_cast<std::uint16_t>(abc::Opcode::kTHROW_IFSUPERNOTCORRECTCALL_PREF_IMM8);

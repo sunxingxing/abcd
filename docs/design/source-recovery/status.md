@@ -12,6 +12,32 @@
 
 ## 当前阶段
 
+### 2026-10-01：SUPERCALLSPREAD 贯通共同语义与值导入
+
+- 五输入中的多个Ability类原在隐式派生构造器PC18拒绝SUPERCALLSPREAD。
+  已将既有SuperSpread解码接入寄存器效果、SemanticOperation、语义值域和共同
+  ValueIR导入；不再把已能解码的协议丢在语义提升入口。
+- ValueSuperSpread独立于range super：显式保留acc中的当前构造器与寄存器中的
+  参数数组两个用途，cache slot只是元数据；newTarget仍来自真实调用上下文。
+  保留heap read/write、user code、allocation及MayThrow，只有正常完成写回acc。
+  FunctionInput和相位输入不会在该协议之后沿用已初始化receiver的入口假设。
+- 独立导入验证检查原始PC/操作/用途；篡改cache、交换操作数、改成单参数range
+  call均拒绝，Hole参数数组仍在原始语义检查中拒绝。三种既有profile及
+  1/2/200/201调用规模通过；简化保持调用与效果，未将数组误作一个JS实参。
+- 9项定向回归全部通过，8.98秒，/tmp/abcd-super-spread-regression-tests.log；
+  构建日志 /tmp/abcd-super-spread-regression-build.log。真实pasteboard
+  EntryAbility构造器5083的--conditional-values已values_prepared=true、23操作，
+  /tmp/abcd-super-spread-entryability-values.json。
+- 五输入导出 build/stage-one/value-super-spread-pass-1 均退出0，维持
+  **47 complete / 59 failure / 46 no-module**，无完整项退化、无legacy writer；
+  /tmp/abcd-super-spread-batch-summary.json。EntryAbility record4767仍tree_stage
+  不完整，/tmp/abcd-super-spread-entryability-source.json。
+- 这不是super spread源码完成：EvaluationShape/表达式构建仍明确拒绝该协议，
+  后续需贯通共同派生构造器投影、展开参数AST及实际初始化/返回协议；既有
+  RuntimeSuperCallSpread对父类品牌的合同不能被native super(...args)直接替代。
+  固定参考interpreter-inl.cpp:3901明确读取thisFunc=acc与array=vreg，使用已锁定
+  commit的源码证据。全量/RSS/基准未恢复，阶段一Goal继续开放。
+
 ### 2026-10-01：Categories 数值加法边界的锁定源码与回归证据
 
 - 已取得锁定ets_runtime commit f04900cf951c66c2ea18b2bab5b591d5336c34b9的

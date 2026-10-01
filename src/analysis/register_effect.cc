@@ -142,6 +142,13 @@ RegisterEffect EffectOf(const SuperCheck&) {
   effect.reads[effect.read_count++] = Accumulator{};
   return effect;
 }
+RegisterEffect EffectOf(const SuperSpread& value) {
+  RegisterEffect effect;
+  effect.reads[effect.read_count++] = Accumulator{};
+  effect.reads[effect.read_count++] = value.arguments;
+  effect.write = Accumulator{};
+  return effect;
+}
 RegisterEffect EffectOf(const LexicalStore& value) {
   RegisterEffect effect;
   effect.reads[effect.read_count++] = value.value;
@@ -362,6 +369,8 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
                        std::min<std::uint64_t>(frame_size, UINT32_MAX)));
   if (const auto* range = std::get_if<SuperRange>(&super))
     return EffectOf(*range);
+  if (const auto* spread = std::get_if<SuperSpread>(&super))
+    return EffectOf(*spread);
   if (const auto* check = std::get_if<SuperCheck>(&super))
     return EffectOf(*check);
   if (const auto* error = std::get_if<SuperError>(&super);

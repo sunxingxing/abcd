@@ -227,6 +227,7 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
     return Fail(SemanticError::kMalformedInstruction, site.offset);
   const auto super = LiftSuperInstruction(decoded, frame_size);
   if (const auto* range = std::get_if<SuperRange>(&super)) return *range;
+  if (const auto* spread = std::get_if<SuperSpread>(&super)) return *spread;
   if (const auto* check = std::get_if<SuperCheck>(&super)) return *check;
   if (const auto* error = std::get_if<SuperError>(&super);
       error && *error != SuperError::kUnsupportedOpcode)
@@ -341,10 +342,12 @@ SemanticEffects Effects(const SemanticOperation& operation,
                            LanguageEffect::kHeapWrite | LanguageEffect::kUserCode;
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
-        } else if constexpr (std::is_same_v<T, SuperRange>) {
-          // The pinned range handler obtains the current constructor's parent
-          // and newTarget from call context. User construction may throw after
-          // side effects; only normal completion commits the accumulator.
+        } else if constexpr (std::is_same_v<T, SuperRange> || std::is_same_v<T, SuperSpread>) {
+          // Range uses invocation context; spread additionally reads the
+          // current constructor from acc and its argument array from a register.
+          // Both obtain newTarget from the invocation. Parent lookup/argument
+          // handling and user construction may throw after effects; only normal
+          // completion commits acc. Receiver initialization is a later protocol.
           effects.normal = LanguageEffect::kHeapRead |
                            LanguageEffect::kHeapWrite |
                            LanguageEffect::kUserCode |

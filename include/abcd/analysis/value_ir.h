@@ -251,6 +251,13 @@ struct ValueSuperCall {
   std::optional<std::uint16_t> cache_slot;
   bool operator==(const ValueSuperCall&) const = default;
 };
+// Explicit current constructor and aggregate argument array remain separate
+// uses. Parent/newTarget, array expansion and receiver initialization need the
+// spread protocol proof; this is not a range call with a single argument.
+struct ValueSuperSpread {
+  std::uint8_t cache_slot;
+  bool operator==(const ValueSuperSpread&) const = default;
+};
 // Keep the VM initialization guard until a constructor protocol proof consumes
 // it. A normal successor does not itself authorize dropping the exception.
 struct ValueSuperCheck {
@@ -266,7 +273,7 @@ using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary, ValueHol
     ValueInvoke, ValueConstruct, ValueFunctionCreation, ValueClassCreation, ValueLexicalLoad, ValueLexicalStore,
     ValueEnvironmentPush, ValueEnvironmentPop, ValueCurrentEnvironment, ValueModuleRead,
     ValueModuleWrite, ValuePropertyWrite, ValueDebugger, ValueFrameThis, ValueFrameFunction,
-    ValueGlobalObject, ValueSymbolConstructor, ValueRestArguments, ValueArgumentSnapshot, ValueThrow, ValueSuperCall, ValueSuperCheck>;
+    ValueGlobalObject, ValueSymbolConstructor, ValueRestArguments, ValueArgumentSnapshot, ValueThrow, ValueSuperCall, ValueSuperSpread, ValueSuperCheck>;
 struct ValueOp {
   ValueOperation operation;
   WorkBlockId block;
