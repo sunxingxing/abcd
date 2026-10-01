@@ -52,6 +52,8 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
     std::u16string spelling(name->begin(), name->end());
     admit(spelling.capacity() - spelling.size(), sizeof(char16_t));
     const FamilyDestination destination{Strictness::kStrict, globals, FunctionFragment::kClassMember};
+    const ParentModuleInput modules{creator.input,
+        {creator.values.graph.origins[creator.values.graph.ops[operation.value].origin.value].site.value}};
     auto constructor = Take<PreparedFamily>(PreparedFamily::PrepareConstructor(file, header, index, lookup,
         roles, functions, creator, operation, identity, destination, budget, recovery));
     admit(constructor.AllocatedBytes(), 1); step(constructor.Work());
@@ -71,7 +73,7 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
           actual->length != method->length || actual->placement != property.placement)
         return ClassTreeFailure{Error::kMember};
       auto member = Take<PreparedFamily>(PreparedFamily::PrepareClass(file, header, index, lookup, roles,
-          functions, classes, *occurrence, identity, destination, budget, recovery));
+          functions, classes, *occurrence, identity, destination, budget, recovery, &modules));
       admit(member.AllocatedBytes(), 1); step(member.Work());
       members.push_back(std::move(member));
     }

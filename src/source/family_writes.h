@@ -54,6 +54,8 @@ struct FamilyWriteInput {
 // Language domain and residual placement, every capture edge and every barrier.
 // A closed root plus initialized rebasing and all Language stores closes the
 // transitive write-domain premise by execution induction, NOT immutability.
+// A class root may supply its exact external module-initialization edge; it is
+// independently checked even without reads. Its lexical captures stay closed.
 // Does not authorize snapshots, eliminate writes, or close external source scope.
 [[nodiscard]] std::variant<FamilyWrites, FamilyWriteFailure> VerifyFamilyWrites(
     const abc::MetadataIndex& index, const FileFamily& inputs,

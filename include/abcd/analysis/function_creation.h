@@ -9,6 +9,7 @@ enum class CreationKind { kFunction, kMethod };
 enum class HomeObjectInput { kCurrentFunction, kAccumulator };
 struct FunctionLength {
   std::uint8_t value = 0;
+  bool operator==(const FunctionLength&) const = default;
 };
 struct FunctionCreation {
   CreationKind kind;
@@ -16,6 +17,7 @@ struct FunctionCreation {
   FunctionLength length;
   HomeObjectInput home_object;
   std::uint16_t cache_slot = 0;
+  bool operator==(const FunctionCreation&) const = default;
 };
 enum class CreationError { kUnsupportedOpcode, kMalformedInstruction };
 

@@ -62,7 +62,7 @@ class WriteCheck {
           return Capture(parent, child, occurrence, *target.incoming, p);
         }, edge.occurrence);
         if (const auto* normal_child = std::get_if<CaptureFunction>(&source.function);
-            normal_child && !normal_child->input.InitializedModuleReads().empty()) {
+            normal_child && (!normal_child->input.InitializedModuleReads().empty() || normal_child->input.HasInheritedModules())) {
           const auto* normal_parent = std::get_if<CaptureFunction>(&parent.function);
           const auto* normal_edge = std::get_if<NormalWriteEdge>(&edge.occurrence);
           Require(normal_parent && normal_edge, Error::kOwner);
@@ -217,7 +217,13 @@ class WriteCheck {
   }
   void ClosedRoot(CaptureFunction source) {
     Require(CaptureChild(source).Input().Captures().empty(), Error::kCapture);
-    Require(source.input.InitializedModuleReads().empty(), Error::kOwner);
+    if (const auto* family = std::get_if<const FileFamily*>(&inputs_); family && (*family)->root_modules) {
+      const auto& parent = *(*family)->root_modules;
+      const auto check = VerifyInitializedModuleReads(parent.parent, parent.creation, source.input, left_);
+      if (const auto* error = std::get_if<FunctionInputError>(&check))
+        Fail(*error == FunctionInputError::kWorkLimit ? Error::kWorkLimit : Error::kOwner);
+      Step(std::get<std::uint64_t>(check));
+    } else Require(source.input.InitializedModuleReads().empty() && !source.input.HasInheritedModules(), Error::kOwner);
   }
   void ClosedRoot(PhasedFamilyInput source) {
     if (source.storage) Require(source.storage->uses.empty(), Error::kCapture);

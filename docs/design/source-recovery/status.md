@@ -12,6 +12,57 @@
 
 ## 当前阶段
 
+### 2026-10-02：类创建与嵌套函数的模块初始化贯通
+
+- 实际 WindowUtil record7618 / entry8202 在 PC45 创建类，其构造器8339
+  PC39 创建箭头7754。slot0 已在入口 PC10 初始化，但构造器没有本槽
+  store，旧直接父级规则在箭头 PC100/112 raw load（复制 PC102）拒绝。
+  最小实际解码的类构造器 input admission 成功构建后 RED，
+  /tmp/abcd-class-module-init-red-{build,test}.log。测试初次配置及 site
+  强类型转换修正不算生产语义 RED。
+- 正常 FunctionInput 新增 typed ModuleSlotSet 持久化前缀；已证明
+  Language 的首次入口 store 按原指令排序，每次只复制槽宽路径。类缓冲
+  member 保留真实 ClassCreation 操作数，构造器、定义成员及嵌套函数按
+  原始可达创建点共享父级初始化集合。同一 file/record/creator/PC/完整
+  allocation tuple 必须匹配，分支或未来 store 不提供该依据。
+  初始化 membership 不包含常量、对象身份或非 undefined 精化；读取
+  仍是原生实时模块绑定。已有 guard 对及 normal/phase 边界不变。
+- 完整函数族独立检查继承前缀根身份及原始 read/store/creation，类根
+  即使没有 raw read 也必须提交实际外部创建边。Missing/substituted
+  root edge 不能发布；原始全部 store 的 Language 域仍由共同函数族
+  关闭。FileFamily 外部 parent 引用只借用至本次 tree/write 检查，
+  PreparedFamily 不保留借用。词法捕获的 closed-root 约束不变。
+- 新增实际类/箭头 owner 链测试、1/200/201/400 raw read、错创建/错
+  prefix/branch-late store 反例及透明根发布变异。持久化集合核对
+  1/200/201/400/800、最大65535槽、重复插入零分配、耗尽后不变及恢复，
+  两线程独立扩展共享根并由另一线程释放。实际 allocate_shared rebind
+  分配计入创建方预算；allocator 不保留 stack quota。二分和固定槽宽
+  路径计入 work budget；无 read 的继承边也验证精确/不足预算。
+- 新增 class_module_initialized_read_source_test，经实际 decoded slice
+  →共同 FunctionTree/printer→Node ESM 执行，9种值核对 live update/
+  Object.is/arity，两种合法语法 mutation 被检测。它是独立切片 oracle，
+  不是完整 WindowUtil 配对语义/风格或 Ark/宿主验收。扩展及根发布的
+  定向3/3通过1.49秒，/tmp/abcd-class-module-init-publication-tests.log。
+- 最终关联73 targets build退出0，121/121 tests通过238.45秒；
+  /tmp/abcd-class-module-init-final-verified-{build,tests}.log 与 selected.json。
+  扩大范围首次120/121通过，旧 class_method_test 仍期待 computed key
+  `["method"]`，未改的现行 writer 已输出 native `method`。同步5处表示
+  断言后单独通过；原 Node 行为对照也通过。首次失败证据保留于
+  /tmp/abcd-class-module-init-expanded-first-tests.log，不算本轮生产 RED。
+- 预算修正后的五输入 fresh `build/stage-one/value-class-module-init-pass-2`
+  顺序导出均退出0，56 complete / 3 incomplete / 47 failure / 46 no-module，
+  无新增 complete、原完整项回退或 legacy writer；native default 三个
+  record 断言保留。证据 /tmp/abcd-class-module-init-final-batch.log、
+  final-batch-summary.json。complete 仅表示内部恢复闭合，不能代替整应用
+  配对语义与源码表示 Accepted。
+- WindowUtil 已越过初始化输入失败，仍为 tree_stage/unproved、无 source
+  complete。真实箭头7754 的下一阻点是共同 CallPlan kReference，
+  /tmp/abcd-class-module-init-window-cause.log（VerifyCalls call_plan.cc140）。
+  后续应核对该调用的原 receiver、callee 快照及条件参数求值次序，不能
+  以 `.call` 或放宽 intrinsic/receiver 前提替代原生表示证明。
+  Goal仍active；全库、扩大语料、RSS/基准、DFX、调度器、代理和定期审视
+  仍暂停，super spread 的运行环境前提未改变，阶段一完整验收未完成。
+
 ### 2026-10-02：同函数入口模块初始化与条件更新
 
 - WindowUtil record7618 / entry8202 原先在 PC10 写入 local slot0 的真实

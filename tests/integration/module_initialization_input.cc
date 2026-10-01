@@ -90,7 +90,7 @@ int main(int argc, char** argv) {
   test::Check(child.InitializedModuleReads().size() == 1);
   const auto& read = child.InitializedModuleReads().front();
   test::Check(read.slot == ModuleSlot{1} && read.creator == abc::EntityOffset{7283} &&
-      read.creation_pc == abc::CodeOffset{196} && parent.body.instructions[read.store.value].offset == abc::CodeOffset{11});
+      read.creation_pc == abc::CodeOffset{196} && read.store && parent.body.instructions[read.store->value].offset == abc::CodeOffset{11});
   test::Check(child.Input().instructions[read.instruction.value].pc == abc::CodeOffset{44});
   test::Check(child.Proof().module_reads.size() == 1 &&
       child.Proof().module_reads[0].proof == ModuleReadProof::kInitialized);

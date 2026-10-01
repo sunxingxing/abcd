@@ -61,6 +61,9 @@ struct FileFamily {
   // Discovery/binding work only. ReadFunctionValues still has per-pass caps;
   // this is NOT a cumulative cost for all upstream method analysis passes.
   std::uint64_t work = 0;
+  // External class/function creator is borrowed through immediate tree/write
+  // verification only. PreparedFamily never retains this reference.
+  std::optional<ParentModuleInput> root_modules;
 };
 enum class FamilyFileError : std::uint8_t {
   kMethod, kCreation, kOccurrence, kRecursiveCreation, kResourceLimit, kWorkLimit, kUnsupportedFlow
@@ -95,6 +98,7 @@ struct FamilyFileFailure {
     abc::MethodPosition root, RouteInputIdentity identity,
     analysis::SemanticBudget budget = {}, const RecordModuleContext* modules = nullptr,
     const FunctionContext* owner = nullptr, ModuleOwnerId module_owner = {},
-    FamilyClassMode classes = FamilyClassMode::kReject);
+    FamilyClassMode classes = FamilyClassMode::kReject,
+    const ParentModuleInput* root_modules = nullptr);
 }  // namespace abcd::source
 #endif

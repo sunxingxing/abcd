@@ -48,7 +48,8 @@ class PreparedFamily {
       const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& functions,
       const analysis::ClassMethodSites& classes, analysis::ClassSiteId site,
       RouteInputIdentity identity, FamilyDestination destination,
-      analysis::SemanticBudget budget = {}, RecoveryMode recovery = RecoveryMode::kCompleteOnly);
+      analysis::SemanticBudget budget = {}, RecoveryMode recovery = RecoveryMode::kCompleteOnly,
+      const ParentModuleInput* modules = nullptr);
   [[nodiscard]] static std::variant<PreparedFamily, FamilyPrepareFailure> PrepareConstructor(
       const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
       const abc::MethodLookup&, const analysis::MethodRoleIndex&,
@@ -88,7 +89,7 @@ class PreparedFamily {
       const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
       const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
       FunctionContext context, FamilyDestination destination, analysis::SemanticBudget budget,
-      RecoveryMode recovery = RecoveryMode::kCompleteOnly);
+      RecoveryMode recovery = RecoveryMode::kCompleteOnly, const ParentModuleInput* modules = nullptr);
   explicit PreparedFamily(std::unique_ptr<const Storage> storage);
   std::unique_ptr<const Storage> storage_;
 };

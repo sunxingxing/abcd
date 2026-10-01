@@ -18,6 +18,7 @@ struct ClassMethodSite {
   abc::ClassMethodKind kind;
   abc::ClassPlacement placement;
   std::uint16_t length;
+  ClassCreation creation;
 };
 enum class ClassSiteError : std::uint8_t {
   kMalformedCreation, kTargetMissing, kResourceLimit, kWorkLimit

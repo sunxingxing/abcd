@@ -25,14 +25,16 @@ class FamilyReader {
       : file_(file), header_(header), index_(index), lookup_(lookup), roles_(roles), sites_(sites),
         identity_(identity), budget_(budget), bytes_(budget.bytes), work_(budget.work), modules_(modules), module_owner_(module_owner) {}
 
-  FileFamily Read(abc::MethodPosition root, const FunctionContext* owner, FamilyClassMode classes) {
+  FileFamily Read(abc::MethodPosition root, const FunctionContext* owner, FamilyClassMode classes,
+      const ParentModuleInput* root_modules) {
     class_mode_ = classes;
     Require(root.value < index_.methods.size(), Error::kMethod);
     method_ = index_.methods[root.value].offset;
     Admit(1, sizeof(FamilyReader));
     Grow(active_, index_.methods.size()); Step(index_.methods.size());
     active_.resize(index_.methods.size());
-    auto function = ReadMethod(root, owner);
+    auto function = ReadMethod(root, owner, InputCaptureMode::kConditional, root_modules);
+    if (root_modules) result_.root_modules.emplace(*root_modules);
     Add(std::move(function), {}, {}, root);
     while (!stack_.empty()) {
       Step();
@@ -298,8 +300,9 @@ std::variant<FileFamily, FamilyFileFailure> ReadFunctionFamily(
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
     abc::MethodPosition root, RouteInputIdentity identity,
-    analysis::SemanticBudget budget, const RecordModuleContext* modules, const FunctionContext* owner, ModuleOwnerId module_owner, FamilyClassMode classes) {
-  try { return FamilyReader(file, header, index, lookup, roles, sites, identity, budget, modules, module_owner).Read(root, owner, classes);
+    analysis::SemanticBudget budget, const RecordModuleContext* modules, const FunctionContext* owner, ModuleOwnerId module_owner, FamilyClassMode classes,
+    const ParentModuleInput* root_modules) {
+  try { return FamilyReader(file, header, index, lookup, roles, sites, identity, budget, modules, module_owner).Read(root, owner, classes, root_modules);
   } catch (const FamilyFileFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return FamilyFileFailure{FamilyFileError::kResourceLimit, {}, {}, {}};
   } catch (const std::length_error&) { return FamilyFileFailure{FamilyFileError::kResourceLimit, {}, {}, {}}; }

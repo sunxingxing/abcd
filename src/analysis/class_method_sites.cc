@@ -16,6 +16,7 @@ struct ClassReference {
   abc::EntityOffset creator;
   abc::CodeOffset pc;
   abc::EntityOffset literal;
+  ClassCreation creation;
 };
 template <class T, class... Alternatives>
 T Take(std::variant<Alternatives...> result) {
@@ -61,7 +62,7 @@ void ScanClasses(const corpus::AbcFile& file, const abc::Header& header,
       const auto registers = static_cast<std::uint64_t>(method.code->registers) + method.code->arguments;
       if (creation->parent.value >= registers)
         throw ClassSiteFailure{ClassSiteError::kMalformedCreation};
-      visit(method.offset, instruction.offset, creation->literal);
+      visit(method.offset, instruction.offset, *creation);
     }
   }
 }
@@ -136,11 +137,11 @@ std::variant<ClassMethodSites, ClassSiteFailure> ClassMethodSites::Build(
     std::vector<ClassReference> references;
     references.reserve(references_count);
     budget.Admit(references.capacity() - references_count, sizeof(ClassReference));
-    ScanClasses(file, header, index, budget, [&](auto method, auto pc, auto slot) {
+    ScanClasses(file, header, index, budget, [&](auto method, auto pc, auto creation) {
       if (references.size() == references_count) throw ClassSiteFailure{abc::MetadataError::kFileChanged};
       const auto target = Take<abc::PoolReference>(abc::ResolvePoolReference(
-          file, header, index, method, slot, abc::PoolEntityKind::kLiteralArray));
-      references.push_back({method, pc, target.offset});
+          file, header, index, method, creation.literal, abc::PoolEntityKind::kLiteralArray));
+      references.push_back({method, pc, target.offset, creation});
     });
     if (references.size() != references_count) throw ClassSiteFailure{abc::MetadataError::kFileChanged};
     std::sort(references.begin(), references.end(), [&](const auto& a, const auto& b) {
@@ -167,7 +168,7 @@ std::variant<ClassMethodSites, ClassSiteFailure> ClassMethodSites::Build(
             budget.Step();
             if (result.sites_.size() >= count) throw ClassSiteFailure{abc::MetadataError::kFileChanged};
             result.sites_.push_back({method.target, site.creator, site.pc, site.literal,
-                                    property_index, property.key, method.kind, property.placement, method.length});
+                                    property_index, property.key, method.kind, property.placement, method.length, site.creation});
           }
         });
     if (result.sites_.size() != count || file.CheckUnchanged())

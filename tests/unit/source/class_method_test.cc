@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
   std::ostringstream output;
   const auto result = source::WriteClassMethod(Method(), body, output);
   test::Check(std::get<std::size_t>(result) == output.str().size());
-  test::Check(output.str().starts_with("[\"method\"]($p0)"));
+  test::Check(output.str().starts_with("method($p0)"));
   const auto reject = [&](source::ClassMethod method,
                           source::FunctionEmitError expected) {
     std::ostringstream text;
@@ -110,7 +110,7 @@ int main(int argc, char** argv) {
   std::ostringstream async_source;
   test::Check(std::holds_alternative<std::size_t>(
       source::WriteClassMethod(async, async_body, async_source)));
-  test::Check(async_source.str().starts_with("async [\"method\"]($p0)"));
+  test::Check(async_source.str().starts_with("async method($p0)"));
   const auto reject_async = [&](const abc::MethodBody& candidate) {
     std::ostringstream rejected;
     test::Check(std::get<source::FunctionEmitError>(
@@ -179,7 +179,7 @@ int main(int argc, char** argv) {
   const auto getter_result = source::WriteClassMethod(
       getter, test::Body({0x00, 0x65}), getter_source);
   test::Check(std::holds_alternative<std::size_t>(getter_result));
-  test::Check(getter_source.str().starts_with("get [\"method\"]()"));
+  test::Check(getter_source.str().starts_with("get method()"));
   std::ostringstream observed_self;
   test::Check(std::get<source::FunctionEmitError>(source::WriteClassMethod(
                   getter, test::Body({0x60, 0, 0x64}), observed_self)) ==
@@ -222,7 +222,7 @@ int main(int argc, char** argv) {
   const auto setter_result = source::WriteClassMethod(
       setter, test::Body({0x00, 0x65}), setter_source);
   test::Check(std::holds_alternative<std::size_t>(setter_result));
-  test::Check(setter_source.str().starts_with("set [\"method\"]($p0)"));
+  test::Check(setter_source.str().starts_with("set method($p0)"));
   wrong = Method();
   wrong.attributes.sendable = true;
   reject(wrong, source::FunctionEmitError::kSendable);
@@ -235,7 +235,7 @@ int main(int argc, char** argv) {
   test::Check(std::holds_alternative<std::size_t>(
       source::WriteClassMethod(wrong, body, marked)));
   test::Check(marked.str().starts_with(
-      "[\"method\"]($p0 = void 0)"));
+      "method($p0 = void 0)"));
   wrong.member.length = 2;
   reject(wrong, source::FunctionEmitError::kLength);
   wrong = Method();

@@ -5,6 +5,32 @@
 
 ## 输入规模与成本
 
+### 经类与函数创建链共享模块初始化依据（2026-10-02）
+
+正常 `FunctionInput` 将已证明 Language 的首次入口 store 按原始指令排序，
+建立不可变二叉 trie 前缀。槽宽 W 取自 typed `ModuleSlot` 的 wire 类型，
+每次插入仅复制 W+1 个路径节点，其他分支共享。类缓冲成员保留真实
+`ClassCreation` 操作数；构造器、成员及嵌套函数按原始创建点取得父级前缀。
+依据只有 initialized membership，不包含初值、对象身份或非 undefined 精化。
+分支 store、未来 store、不可达创建及其他 record/file/创建操作数不能提供依据。
+
+令 S 为首次入口 store 数、M 为 raw local load 数，前缀新增
+`O(S log(S+1)+SW)` 时间和 `O(SW+S)` 自有存储。创建点二分查询
+`O(log(S+1))`，membership 查询 `O(W)`；透明祖先仅共享一个根引用，
+不逐 child 复制全部槽、不逐 read 追溯祖先。既有 slot/store 二分索引和
+SSA read 检查成本另计。工作预算逐次计入 W+1 路径及二分上界；
+`allocate_shared` 的实际 rebind 控制块分配计入创建方 admission，节点
+借用方仅计自身引用/索引。allocation allocator 无状态，调用期 TLS quota
+由作用域恢复；释放不访问 quota，可在另一线程释放共享节点。
+
+完整函数族发布逐边复核同一初始化前缀根及真实创建身份；类根即使没有
+模块读取也必须核对外部创建边，不能通过透明根洗掉条件前提。原始所有
+store 的 Language 域仍由既有输入及函数族检查封闭。仅用于正常流；
+phase/resume 不继承该前提。采用常规持久化二叉 trie 与标准库共享所有权，
+本项目自有实现，无新增外部代码、依赖或许可证。1/200/201/400/800、
+最大槽位、预算耗尽/恢复、双线程共享与实际 decoded live-binding 源码
+执行为定向正确性证据，未进行 RSS 或性能实测。
+
 ### 正常入口的模块初始化与条件更新（2026-10-02）
 
 `VerifySemanticSource` 为同一个正常函数的入口块收集模块 store，按 typed

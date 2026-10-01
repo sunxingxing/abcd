@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include <algorithm>
 #include <bit>
+#include <type_traits>
 
 namespace abcd::source {
 namespace {
@@ -40,30 +41,53 @@ FunctionInput::FunctionInput(RouteInputIdentity identity, abc::EntityOffset meth
     analysis::SemanticMethod&& input, analysis::SemanticProof&& proof,
     std::vector<CaptureUse>&& captures, std::vector<InputCaptureAccess>&& accesses,
     std::size_t allocated_bytes, std::optional<Owner> owner,
-    std::vector<EntryModuleStore>&& stores, std::vector<InputModuleRead>&& modules)
+    std::vector<EntryModuleStore>&& stores, std::vector<InputModuleRead>&& modules,
+    ModuleSlotSet entry_modules, std::vector<ModuleInitializationStep>&& steps)
     : identity_(identity), method_(method), record_(record), mode_(mode),
       input_(std::move(input)), proof_(std::move(proof)), captures_(std::move(captures)),
       accesses_(std::move(accesses)), allocated_bytes_(allocated_bytes), owner_(owner),
-      module_stores_(std::move(stores)), modules_(std::move(modules)) {}
+      module_stores_(std::move(stores)), modules_(std::move(modules)),
+      entry_modules_(std::move(entry_modules)), module_steps_(std::move(steps)) {}
 
 std::optional<analysis::InstructionId> FunctionInput::ModuleStoreBefore(
     analysis::ModuleSlot slot, analysis::InstructionId creation) const {
   if (creation.value >= input_.instructions.size() ||
-      !std::holds_alternative<analysis::FunctionCreation>(input_.instructions[creation.value].operation))
+      (!std::holds_alternative<analysis::FunctionCreation>(input_.instructions[creation.value].operation) &&
+       !std::holds_alternative<analysis::ClassCreation>(input_.instructions[creation.value].operation)))
     return {};
   const auto found = std::lower_bound(module_stores_.begin(), module_stores_.end(), slot,
       [](const auto& store, auto sought) { return store.slot < sought; });
   if (found == module_stores_.end() || found->slot != slot || found->instruction >= creation) return {};
   return found->instruction;
 }
+ModuleSlotSet FunctionInput::InitializedModulesBefore(analysis::InstructionId creation) const {
+  if (creation.value >= input_.instructions.size() ||
+      (!std::holds_alternative<analysis::FunctionCreation>(input_.instructions[creation.value].operation) &&
+       !std::holds_alternative<analysis::ClassCreation>(input_.instructions[creation.value].operation))) return {};
+  const auto found = std::lower_bound(module_steps_.begin(), module_steps_.end(), creation,
+      [](const auto& step, auto site) { return step.store < site; });
+  return found == module_steps_.begin() ? entry_modules_ : std::prev(found)->slots;
+}
+bool FunctionInput::MatchesModuleCreation(const FunctionInput& parent, analysis::InstructionId creation) const {
+  if (!owner_ || identity_ != parent.identity_ || record_ != parent.record_ ||
+      owner_->creator != parent.method_ || creation.value >= parent.input_.instructions.size() ||
+      creation.value >= parent.proof_.environments.before.size() ||
+      !parent.proof_.environments.before[creation.value]) return false;
+  const auto& instruction = parent.input_.instructions[creation.value];
+  if (owner_->pc != instruction.pc) return false;
+  return std::visit([&](const auto& expected) {
+    const auto* actual = std::get_if<std::decay_t<decltype(expected)>>(&instruction.operation);
+    return actual && *actual == expected;
+  }, owner_->creation);
+}
 
 FunctionInput::Owner FunctionInput::DescribeOwner(const FunctionContext& owner) {
   if (const auto* site = owner.ClassSite())
-    return {site->creator, site->pc, site->property, owner.Callable(), owner.Mode(), owner.Frame()};
+    return {site->creator, site->pc, site->property, owner.Callable(), owner.Mode(), owner.Frame(), site->creation};
   if (const auto* site = owner.ConstructorSite())
-    return {site->creator, site->pc, {}, owner.Callable(), owner.Mode(), owner.Frame()};
+    return {site->creator, site->pc, {}, owner.Callable(), owner.Mode(), owner.Frame(), site->creation};
   const auto* site = owner.CreationSite();
-  return {site->creator, site->pc, {}, owner.Callable(), owner.Mode(), owner.Frame()};
+  return {site->creator, site->pc, {}, owner.Callable(), owner.Mode(), owner.Frame(), site->creation};
 }
 bool FunctionInput::MatchesOwner(const FunctionContext& owner) const {
   return owner_ && identity_ == owner.Identity() && method_ == owner.Target() &&
@@ -108,25 +132,25 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
       default: throw Error::kMode;
     }
     InputBudget quota(budget); quota.Admit(1, sizeof(FunctionInput));
-    const analysis::FunctionCreationSite* module_creation = nullptr;
+    ModuleSlotSet entry_modules;
     if (module_input) {
-      // A conditional module-read premise belongs to one genuine occurrence.
-      // Same target at another PC, another record or a class context cannot
-      // inherit an unrelated parent's initialization facts.
-      module_creation = owner ? owner->CreationSite() : nullptr;
+      // Match an actual function/class allocation before sharing membership.
+      // A resolved class-buffer member retains that allocation's wire operands.
       const auto& parent = module_input->parent;
-      if (mode != InputCaptureMode::kConditional || !module_creation ||
+      if (mode != InputCaptureMode::kConditional || !context ||
           parent.Identity() != identity || parent.Record() != record ||
-          module_creation->creator != parent.Method() || module_creation->target != method ||
-          module_input->creation.value >= parent.Input().instructions.size())
+          context->creator != parent.Method() ||
+          module_input->creation.value >= parent.Input().instructions.size() ||
+          module_input->creation.value >= parent.Proof().environments.before.size() ||
+          !parent.Proof().environments.before[module_input->creation.value])
         throw Error::kModuleOwner;
       const auto& original = parent.Input().instructions[module_input->creation.value];
-      const auto* operation = std::get_if<analysis::FunctionCreation>(&original.operation);
-      const auto& actual = module_creation->creation;
-      if (original.pc != module_creation->pc || !operation || operation->kind != actual.kind ||
-          operation->method != actual.method || operation->length.value != actual.length.value ||
-          operation->home_object != actual.home_object || operation->cache_slot != actual.cache_slot)
-        throw Error::kModuleOwner;
+      if (original.pc != context->pc || !std::visit([&](const auto& expected) {
+        const auto* actual = std::get_if<std::decay_t<decltype(expected)>>(&original.operation);
+        return actual && *actual == expected;
+      }, context->creation)) throw Error::kModuleOwner;
+      quota.Step(std::bit_width(parent.module_steps_.size()) + 1);
+      entry_modules = parent.InitializedModulesBefore(module_input->creation);
     }
     auto lifted = analysis::BuildSemanticMethod(body, identity.profile,
         frame.registers, quota.Remaining(), {}, &frame);
@@ -170,20 +194,20 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
         // Preserve the established guarded route where it already applies.
         // Initialization is needed only for a raw read without that pair.
         if (!load || load->space != analysis::ModuleSpace::kLocal || guarded(i)) continue;
-        quota.Step(std::bit_width(module_input->parent.module_stores_.size()) + 1);
-        count += module_input->parent.ModuleStoreBefore(load->slot, module_input->creation).has_value();
+        quota.Step(ModuleSlotSet::kPathWork);
+        count += entry_modules.Contains(load->slot);
       }
       quota.Reserve(loads, count); quota.Reserve(module_reads, count);
       for (std::size_t i = 0; i < input->instructions.size(); ++i) {
         quota.Step();
         const auto* load = std::get_if<analysis::ModuleLoad>(&input->instructions[i].operation);
         if (!load || load->space != analysis::ModuleSpace::kLocal || guarded(i)) continue;
-        quota.Step(std::bit_width(module_input->parent.module_stores_.size()) + 1);
+        quota.Step(ModuleSlotSet::kPathWork + std::bit_width(module_input->parent.module_stores_.size()) + 1);
         const auto store = module_input->parent.ModuleStoreBefore(load->slot, module_input->creation);
-        if (!store) continue;
+        if (!entry_modules.Contains(load->slot)) continue;
         const analysis::InstructionId site{static_cast<std::uint32_t>(i)};
         loads.push_back({site});
-        module_reads.push_back({site, load->slot, module_creation->creator, module_creation->pc, *store});
+        module_reads.push_back({site, load->slot, context->creator, context->pc, store});
       }
     }
     auto verified = analysis::VerifySemanticSource(body, *input, frame.registers, frame.locals,
@@ -215,6 +239,24 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
     stores.erase(std::unique(stores.begin(), stores.end(), [&](const auto& a, const auto& b) {
       quota.Step(); return a.slot == b.slot;
     }), stores.end());
+    // Persistent prefix roots share across transparent ancestors. Each new
+    // first entry store changes only ModuleSlot's fixed-width trie path.
+    std::vector<ModuleInitializationStep> steps;
+    quota.Reserve(steps, stores.size());
+    for (const auto& store : stores) steps.push_back({store.instruction, store.slot, {}});
+    std::sort(steps.begin(), steps.end(), [&](const auto& a, const auto& b) {
+      quota.Step(); return a.store < b.store;
+    });
+    auto initialized = entry_modules;
+    std::size_t module_bytes = 0;
+    for (auto& step : steps) {
+      quota.Step(ModuleSlotSet::kPathWork);
+      auto bytes = quota.Remaining().bytes;
+      const auto before = bytes;
+      initialized = initialized.With(step.slot, bytes);
+      quota.Admit(before - bytes, 1); module_bytes += before - bytes;
+      step.slots = initialized;
+    }
     std::vector<CaptureUse> uses;
     std::vector<InputCaptureAccess> accesses;
     std::size_t count = 0;
@@ -250,10 +292,11 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
     if (read != proof->captured_reads.size()) throw Error::kCapture;
     const auto retained = sizeof(FunctionInput) + proof->allocated_bytes +
         uses.capacity() * sizeof(CaptureUse) + accesses.capacity() * sizeof(InputCaptureAccess) +
-        stores.capacity() * sizeof(EntryModuleStore) + module_reads.capacity() * sizeof(InputModuleRead);
+        stores.capacity() * sizeof(EntryModuleStore) + module_reads.capacity() * sizeof(InputModuleRead) +
+        steps.capacity() * sizeof(ModuleInitializationStep) + module_bytes;
     return FunctionInput(identity, method, record, mode, std::move(*input),
         std::move(*proof), std::move(uses), std::move(accesses), retained, context,
-        std::move(stores), std::move(module_reads));
+        std::move(stores), std::move(module_reads), std::move(entry_modules), std::move(steps));
   } catch (Error error) { return FunctionInputFailure{error};
   } catch (const std::bad_alloc&) { return FunctionInputFailure{Error::kResourceLimit};
   } catch (const std::length_error&) { return FunctionInputFailure{Error::kResourceLimit}; }
@@ -264,14 +307,17 @@ std::variant<std::uint64_t, FunctionInputError> VerifyInitializedModuleReads(
     analysis::SemanticBudget budget) {
   try {
     InputBudget quota(budget);
-    if (child.InitializedModuleReads().empty()) return std::uint64_t{0};
+    if (child.InitializedModuleReads().empty() && !child.HasInheritedModules()) return std::uint64_t{0};
     if (!child.HasOwner() || parent.Identity() != child.Identity() || parent.Record() != child.Record() ||
         creation.value >= parent.Input().instructions.size()) throw Error::kModuleOwner;
     const auto& occurrence = parent.Input().instructions[creation.value];
-    if (!std::holds_alternative<analysis::FunctionCreation>(occurrence.operation)) throw Error::kModuleOwner;
+    const auto edge_work = std::bit_width(parent.module_steps_.size()) + 1;
+    quota.Step(edge_work);
+    if (!child.MatchesModuleCreation(parent, creation) ||
+        !child.entry_modules_.Same(parent.InitializedModulesBefore(creation))) throw Error::kModuleOwner;
     const auto& entry = parent.Input().flow.blocks.front();
     std::size_t cursor = 0;
-    std::uint64_t work = 0;
+    std::uint64_t work = edge_work;
     for (const auto& fact : child.Proof().module_reads) {
       quota.Step(); ++work;
       if (fact.proof != analysis::ModuleReadProof::kInitialized) continue;
@@ -279,20 +325,23 @@ std::variant<std::uint64_t, FunctionInputError> VerifyInitializedModuleReads(
       if (cursor >= premises.size()) throw Error::kModuleOwner;
       const auto& premise = premises[cursor++];
       const auto cost = std::bit_width(parent.Input().instructions.size()) + 1;
-      quota.Step(cost); work += cost;
+      quota.Step(cost + ModuleSlotSet::kPathWork); work += cost + ModuleSlotSet::kPathWork;
       const auto store = parent.ModuleStoreBefore(premise.slot, creation);
       if (premise.instruction != fact.instruction || premise.creator != parent.Method() ||
           premise.creation_pc != occurrence.pc || store != premise.store ||
           premise.instruction.value >= child.Input().instructions.size() ||
-          premise.store.value >= parent.Input().instructions.size() || entry.first_instruction != 0 ||
-          premise.store.value >= entry.instruction_count || premise.store >= creation)
+          entry.first_instruction != 0)
         throw Error::kModuleOwner;
       const auto* load = std::get_if<analysis::ModuleLoad>(&child.Input().instructions[premise.instruction.value].operation);
-      const auto* original = std::get_if<analysis::ModuleStore>(&parent.Input().instructions[premise.store.value].operation);
       if (!load || load->space != analysis::ModuleSpace::kLocal || load->slot != premise.slot ||
-          !original || original->slot != premise.slot) throw Error::kModuleOwner;
+          !child.entry_modules_.Contains(premise.slot)) throw Error::kModuleOwner;
+      if (!premise.store) continue; // Complete inherited root identity was checked above.
+      if (premise.store->value >= parent.Input().instructions.size() ||
+          premise.store->value >= entry.instruction_count || *premise.store >= creation) throw Error::kModuleOwner;
+      const auto* original = std::get_if<analysis::ModuleStore>(&parent.Input().instructions[premise.store->value].operation);
+      if (!original || original->slot != premise.slot) throw Error::kModuleOwner;
       quota.Step(cost); work += cost;
-      const auto reads = parent.Input().ssa.Reads(premise.store);
+      const auto reads = parent.Input().ssa.Reads(*premise.store);
       if (reads.size() != 1) throw Error::kModuleOwner;
       const auto kinds = parent.Proof().values.At(reads.front().value);
       if (!kinds || !kinds->IsLanguage()) throw Error::kModuleOwner;

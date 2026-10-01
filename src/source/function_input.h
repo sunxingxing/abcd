@@ -4,6 +4,7 @@
 #include "abcd/source/source_route.h"
 #include "capture_plan.h"
 #include "function_context.h"
+#include "module_slot_set.h"
 
 namespace abcd::source {
 struct ParentModuleInput;
@@ -27,7 +28,14 @@ struct InputModuleRead {
   analysis::ModuleSlot slot;
   abc::EntityOffset creator;
   abc::CodeOffset creation_pc;
+  // A direct parent entry store, or an inherited entry-set premise. Absence
+  // never denotes a fake InstructionId in the immediate parent.
+  std::optional<analysis::InstructionId> store;
+};
+struct ModuleInitializationStep {
   analysis::InstructionId store;
+  analysis::ModuleSlot slot;
+  ModuleSlotSet slots;
 };
 // Same-body input IR and proof cannot be mixed or mutated after construction.
 // Conditional mode records premises, NOT an unconditional input/source receipt.
@@ -59,10 +67,14 @@ class FunctionInput {
   std::span<const InputCaptureAccess> CaptureAccesses() const { return accesses_; }
   std::span<const InputModuleRead> InitializedModuleReads() const { return modules_; }
   // Entry-block writes are proven Language by this immutable input. Query an
-  // actual later creation; branch-local writes and future stores are excluded.
-  // A slot index is built once per method, not rescanned for every child.
+  // actual later function/class creation; branch-local and future stores are
+  // excluded. A slot index and persistent prefixes are built once per method;
+  // inherited membership is shared, never rescanned or copied for every child.
   std::optional<analysis::InstructionId> ModuleStoreBefore(
       analysis::ModuleSlot slot, analysis::InstructionId creation) const;
+  ModuleSlotSet InitializedModulesBefore(analysis::InstructionId creation) const;
+  bool HasInheritedModules() const { return !entry_modules_.Empty(); }
+  bool MatchesModuleCreation(const FunctionInput& parent, analysis::InstructionId creation) const;
   // All unpreserved callable/class/buffer sites, not just DEFINEFUNC.
   // Complete transitive child validation must discharge these separately.
   std::span<const analysis::InstructionId> Children() const { return proof_.locals.capture_barriers; }
@@ -77,6 +89,7 @@ class FunctionInput {
     CallableKind callable;
     Strictness strictness;
     abc::FrameLayout frame;
+    std::variant<analysis::FunctionCreation, analysis::ClassCreation> creation;
     bool operator==(const Owner&) const = default;
   };
   static Owner DescribeOwner(const FunctionContext& owner);
@@ -85,7 +98,8 @@ class FunctionInput {
       analysis::SemanticMethod&& input, analysis::SemanticProof&& proof,
       std::vector<CaptureUse>&& captures, std::vector<InputCaptureAccess>&& accesses,
       std::size_t allocated_bytes, std::optional<Owner> owner,
-      std::vector<EntryModuleStore>&& stores, std::vector<InputModuleRead>&& modules);
+      std::vector<EntryModuleStore>&& stores, std::vector<InputModuleRead>&& modules,
+      ModuleSlotSet entry_modules, std::vector<ModuleInitializationStep>&& steps);
   RouteInputIdentity identity_;
   abc::EntityOffset method_;
   abc::EntityOffset record_;
@@ -100,6 +114,10 @@ class FunctionInput {
   // Conditional owner premises. Original store/read/creation identities are
   // retained for independent family publication; input admission is no receipt.
   std::vector<InputModuleRead> modules_;
+  ModuleSlotSet entry_modules_;
+  std::vector<ModuleInitializationStep> module_steps_;
+  friend std::variant<std::uint64_t, FunctionInputError> VerifyInitializedModuleReads(
+      const FunctionInput&, analysis::InstructionId, const FunctionInput&, analysis::SemanticBudget);
 };
 // Borrowed only while reading the immediate child. Never retain a pointer to a
 // family member across vector growth. FunctionInput validates the genuine
@@ -108,9 +126,9 @@ struct ParentModuleInput {
   const FunctionInput& parent;
   analysis::InstructionId creation;
 };
-// Independent family edge check before publication. The root cannot carry
-// these external premises. Rechecks original local read, entry store domain,
-// exact creation and same-record identity; never grants a snapshot/const fact.
+// Independent family edge check before publication. A root needs its actual
+// external creation edge supplied by the class adapter. Rechecks the persistent
+// prefix identity and original local reads/stores; never grants value snapshots.
 std::variant<std::uint64_t, FunctionInputError> VerifyInitializedModuleReads(
     const FunctionInput& parent, analysis::InstructionId creation,
     const FunctionInput& child, analysis::SemanticBudget budget = {});
