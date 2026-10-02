@@ -442,6 +442,25 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
     if (!family_refuses) {
       const auto& family = std::get<FileFamily>(family_result);
       const std::uint32_t stride = writer_code ? 2 : 1;
+      // Occurrence indices stay rooted at zero while all evaluated child
+      // owners move together, including repeated methods and forwarded cells.
+      constexpr FunctionOwnerId first_owner{37};
+      const auto shifted = std::get<FileFamily>(ReadFunctionFamily(file, header, index,
+          lookup, roles, sites, {0}, identity, {}, nullptr, nullptr, {},
+          FamilyClassMode::kReject, nullptr, first_owner));
+      test::Check(shifted.members.size() == family.members.size() &&
+          shifted.Owner(FileFamily::kRoot) == first_owner);
+      for (std::uint32_t i = 0; i < count; ++i)
+        test::Check(shifted.members[0].children[i].child ==
+            FunctionOwnerId{first_owner.value + i * stride + 1} &&
+            shifted.members[i * stride + 1].incoming->parent == FileFamily::kRoot);
+      const auto boundary = ReadFunctionFamily(file, header, index, lookup, roles,
+          sites, {0}, identity, {}, nullptr, nullptr, {}, FamilyClassMode::kReject,
+          nullptr, {std::numeric_limits<std::uint32_t>::max()});
+      if (count == 0) test::Check(std::get<FileFamily>(boundary).Owner(FileFamily::kRoot).value ==
+          std::numeric_limits<std::uint32_t>::max());
+      else test::Check(std::get<FamilyFileError>(std::get<FamilyFileFailure>(boundary).cause) ==
+          FamilyFileError::kResourceLimit);
       test::Check(family.members.size() == count * stride + 1 && family.members[0].children.size() == count);
       test::Check(!family.members[0].incoming && !family.members[0].context);
       test::Check(family.members[0].objects.size() == (object == CallerObject::kPrimitive ? count : 0));
@@ -487,6 +506,33 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
       }
     }
     if ((child == ChildBody::kEmpty || child == ChildBody::kCell || child == ChildBody::kNestedWriter) && !all_formats) {
+      auto shifted_input = std::get<FileFamily>(ReadFunctionFamily(file, header, index,
+          lookup, roles, sites, {1}, identity, {}, nullptr, &context, {},
+          FamilyClassMode::kReject, nullptr, {37}));
+      const auto shifted = std::get<ConstructedFamily>(BuildFileFamilyTrees(
+          file, header, index, std::move(shifted_input), context));
+      auto shifted_writes = std::get<FileFamily>(ReadFunctionFamily(file, header, index,
+          lookup, roles, sites, {1}, identity, {}, nullptr, &context, {},
+          FamilyClassMode::kReject, nullptr, {37}));
+      test::Check(shifted.root == FileFamily::kRoot);
+      for (std::size_t i = 0; i < shifted.members.size(); ++i)
+        test::Check(shifted.members[i].tree.owner.value == 37 + i);
+      test::Check(std::holds_alternative<FamilyWrites>(VerifyFamilyWrites(index, shifted_writes, shifted)));
+      if (writer_code) {
+        test::Check(!shifted.members[1].tree.captures.empty());
+        for (const auto& capture : shifted.members[1].tree.captures)
+          test::Check(capture.target.owner == FunctionOwnerId{37});
+        auto overflow = std::get<FileFamily>(ReadFunctionFamily(file, header, index,
+            lookup, roles, sites, {1}, identity, {}, nullptr, &context, {},
+            FamilyClassMode::kReject, nullptr, {37}));
+        overflow.first_owner = {std::numeric_limits<std::uint32_t>::max()};
+        test::Check(std::get<FamilyTreeError>(std::get<FamilyTreeFailure>(
+            BuildFileFamilyTrees(file, header, index, std::move(overflow), context)).cause) ==
+            FamilyTreeError::kResourceLimit);
+      }
+      ++shifted_writes.first_owner.value;
+      test::Check(std::get<FamilyWriteFailure>(VerifyFamilyWrites(index, shifted_writes, shifted)).kind ==
+          FamilyWriteError::kOwner);
       auto root_family = std::get<FileFamily>(ReadFunctionFamily(file, header, index,
           lookup, roles, sites, {1}, identity));
       const auto tree_family = BuildFileFamilyTrees(file, header, index, std::move(root_family), context);
@@ -763,7 +809,7 @@ int main(int argc, char** argv) {
   for (const auto kind : {abc::FunctionKind::kBaseConstructor, abc::FunctionKind::kArrow})
     for (const auto parameters : {0U, 1U, 200U, 201U})
       Run(2, kind, ChildBody::kSnapshot, false, static_cast<std::uint8_t>(parameters));
-  for (const auto count : {0U, 1U, 2U, 200U, 201U}) Run(count, abc::FunctionKind::kBaseConstructor, ChildBody::kEmpty);
+  for (const auto count : {0U, 1U, 2U, 200U, 201U, 400U, 800U}) Run(count, abc::FunctionKind::kBaseConstructor, ChildBody::kEmpty);
   for (const auto count : {1U, 2U, 200U, 201U})
     Run(count, abc::FunctionKind::kArrow, ChildBody::kDeferredCapture);
   Run(4, abc::FunctionKind::kBaseConstructor, ChildBody::kEmpty, true);

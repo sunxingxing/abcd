@@ -151,7 +151,7 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   if (const auto* error = std::get_if<FunctionTreeError>(&tree)) std::cerr << "tree failure " << static_cast<unsigned>(*error) << '\n';
   Check(std::holds_alternative<ConstructedFunction>(tree));
   auto built = BuildClassTree(file, header, index, lookup, roles, functions, classes, creator,
-      definitions.front().creation, identity, &globals, {}, nullptr, definitions);
+      definitions.front().creation, identity, &globals, {}, nullptr, definitions, RecoveryMode::kCompleteOnly, {37});
   if (async_method && ordinary_parity != 1) {
     const auto& failure = std::get<ClassTreeFailure>(built);
     const auto& family = std::get<FamilyPrepareFailure>(failure);
@@ -162,6 +162,18 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   if (const auto* error = std::get_if<ClassTreeFailure>(&built)) std::cerr << "class failure " << error->index() << '\n';
   Check(std::holds_alternative<ClassTree>(built));
   *definition = std::get<ClassTree>(std::move(built));
+  // All source occurrences reserve disjoint owners, including phase members.
+  // Parent owner zero is never reused for a class root or its descendants.
+  std::uint32_t next_owner = 37;
+  const auto check_owners = [&](const PreparedFamily& prepared) {
+    const auto& family = prepared.Family();
+    Check(family.root == FileFamily::kRoot);
+    for (const auto& member : family.members) Check(member.tree.owner.value == next_owner++);
+  };
+  check_owners(*definition->constructor);
+  for (const auto& member : definition->members) check_owners(member);
+  for (const auto& site : definition->definitions)
+    for (const auto& member : site.bodies) if (member) check_owners(*member);
   // A complete class cannot lose an actual definition body or its proof.
   for (auto& site : definition->definitions) {
     for (auto& body : site.bodies) {

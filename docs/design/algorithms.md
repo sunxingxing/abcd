@@ -658,3 +658,15 @@ sizes; they are not whole-process latency, allocator or RSS evidence. Native
 module semantics are exercised independently through Node ESM tests under their
 stated execution premises; pinned frontend provenance remains in
 source-recovery/module-binding-names.md.
+
+Source owner allocation separates file-family occurrence indices from AST owners.
+The project-local affine map `first_owner + occurrence` takes O(1) time/space per
+lookup after a checked uint32 range. Discovery, ordinary/phased rebinding and
+write verification retain their existing walks; no owner-to-method search or new
+graph pass is introduced. Class/record composition advances a uint64 cursor once
+per family and sums the actual member counts once, O(F) time and O(1) additional
+space for F embedded families. Exhaustion is a typed resource refusal, never an
+owner wrap or alias. The standard-library representation adds no dependency or
+license requirement. Tests cover repeated creations at 200/201/400/800, shifted
+nested captures and the maximum-owner boundary; these are functional checks,
+not whole-process RSS or benchmark evidence.

@@ -23,6 +23,8 @@ class FamilyTrees {
     Admit(1, sizeof(FamilyTrees));
     Require(!family.members.empty() && (root != nullptr) != entry.has_value(), FamilyTreeError::kContext);
     Require(family.members.size() < std::numeric_limits<std::uint32_t>::max(), FamilyTreeError::kResourceLimit);
+    Require(family.members.size() - 1 <= std::numeric_limits<std::uint32_t>::max() - family.first_owner.value,
+        FamilyTreeError::kResourceLimit);
     // Only a supplied record root has already composed its ClassTree bodies.
     // Their original barriers are checked against those bodies by FamilyWrites;
     // ordinary child families cannot silently inherit this permission.
@@ -40,7 +42,7 @@ class FamilyTrees {
     if (entry) {
       const auto& function = family.members.front().function;
       Require(!function.Phase() && !family.members.front().incoming && !entry->incoming &&
-          entry->tree.owner.value == FileFamily::kRoot.value &&
+          entry->tree.owner == family.Owner(FileFamily::kRoot) &&
           entry->tree.identity == function.Identity() && entry->tree.method == function.Method() &&
           entry->record == function.Record(), FamilyTreeError::kContext);
       trees.push_back(std::move(*entry));
@@ -69,7 +71,7 @@ class FamilyTrees {
       const auto& graph = function.Graph();
       Require(context.Identity() == function.Identity() && context.Target() == function.Method(), FamilyTreeError::kContext);
       auto syntax = Take<ResolvedSyntax, SyntaxResolutionFailure>(ResolveFunctionSyntax(
-          file_, header_, index_, context, phase ? phase->OriginalBody() : function.Body(), graph, {member_.value}, left_));
+          file_, header_, index_, context, phase ? phase->OriginalBody() : function.Body(), graph, family.Owner(member_), left_));
       Account(syntax);
       std::optional<ModuleAliases> normal_aliases;
       const ModuleAliases* aliases = phase ? phase->Phases().Modules() : nullptr;
@@ -198,7 +200,7 @@ class FamilyTrees {
       trees.push_back({std::move(constructed.tree), std::move(flow), std::move(cells),
                        std::move(abi.abi), std::move(sources), function.Record()});
     }
-    auto result = Take<ConstructedFamily, FamilyError>(BuildFunctionFamily(std::move(trees), {FileFamily::kRoot.value}, left_));
+    auto result = Take<ConstructedFamily, FamilyError>(BuildFunctionFamily(std::move(trees), family.Owner(FileFamily::kRoot), left_));
     Account(result);
     const auto enclosure = VerifyFamilyEnclosure(result, left_);
     if (const auto* failure = std::get_if<FamilyEnclosureFailure>(&enclosure)) {
@@ -412,9 +414,9 @@ class FamilyTrees {
       Account(cells);
       auto evaluation = Take<CapturedFunctionBinding, CaptureEvaluationFailure>(phase ?
           BindPhasedCaptureEvaluation(index_, *lookup_, phase->Phases(), phase->Body(), phase->Locals(), *occurrence,
-              child_work, *child.context, cells, {edge.parent.value}, {member_.value}, left_, parent.function.Cells()) :
+              child_work, *child.context, cells, family.Owner(edge.parent), family.Owner(member_), left_, parent.function.Cells()) :
           BindCaptureEvaluation(index_, parent.function.NormalCapture(),
-              child_work, edge.site, edge.creation, cells, {edge.parent.value}, {member_.value}, left_));
+              child_work, edge.site, edge.creation, cells, family.Owner(edge.parent), family.Owner(member_), left_));
       Account(evaluation);
       Require(parent.children.size() < parent.children.capacity(), FamilyTreeError::kParent);
       Require(parent.children.empty() || parent.children.back().creation < evaluation.binding.creation, FamilyTreeError::kParent);

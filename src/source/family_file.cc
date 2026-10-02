@@ -26,8 +26,9 @@ class FamilyReader {
         identity_(identity), budget_(budget), bytes_(budget.bytes), work_(budget.work), modules_(modules), module_owner_(module_owner) {}
 
   FileFamily Read(abc::MethodPosition root, const FunctionContext* owner, FamilyClassMode classes,
-      const ParentModuleInput* root_modules) {
+      const ParentModuleInput* root_modules, FunctionOwnerId first_owner) {
     class_mode_ = classes;
+    result_.first_owner = first_owner;
     Require(root.value < index_.methods.size(), Error::kMethod);
     method_ = index_.methods[root.value].offset;
     Admit(1, sizeof(FamilyReader));
@@ -188,7 +189,7 @@ class FamilyReader {
       const auto work = child.function.Capture();
       const auto* phase = parent.function.Phase();
       Require((phase != nullptr) == edge.phase_operation.has_value(), Error::kCreation);
-      const FunctionOwnerId owner{static_cast<std::uint32_t>(i)};
+      const auto owner = result_.Owner({static_cast<std::uint32_t>(i)});
       auto rebound = phase ? BindPhasedCaptureCells(index_, lookup_, phase->Phases(), phase->Body(),
           phase->Locals(), {*edge.phase_operation, edge.site, edge.creation}, work, *child.context,
           Remaining(), parent.function.Cells()) :
@@ -198,9 +199,9 @@ class FamilyReader {
       Admit(edge.cells.allocated_bytes, 1); Step(edge.cells.work);
       auto evaluated = phase ? BindPhasedCaptureEvaluation(index_, lookup_, phase->Phases(), phase->Body(),
           phase->Locals(), {*edge.phase_operation, edge.site, edge.creation}, work, *child.context,
-          edge.cells, {edge.parent.value}, owner, Remaining(), parent.function.Cells()) :
+          edge.cells, result_.Owner(edge.parent), owner, Remaining(), parent.function.Cells()) :
           BindCaptureEvaluation(index_, parent.function.NormalCapture(),
-              work, edge.site, edge.creation, edge.cells, {edge.parent.value}, owner, Remaining());
+              work, edge.site, edge.creation, edge.cells, result_.Owner(edge.parent), owner, Remaining());
       if (const auto* error = std::get_if<CaptureEvaluationFailure>(&evaluated)) Fail(*error);
       auto evaluation = std::get<CapturedFunctionBinding>(std::move(evaluated));
       Admit(evaluation.allocated_bytes, 1); Step(evaluation.work);
@@ -253,6 +254,8 @@ class FamilyReader {
   }
   void Add(FamilyFunction function, std::optional<FunctionContext> context,
       std::optional<FamilyCreation> incoming, abc::MethodPosition method) {
+    Require(result_.members.size() <= std::numeric_limits<std::uint32_t>::max() - result_.first_owner.value,
+        Error::kResourceLimit);
     AppendRoom(result_.members); AppendRoom(stack_);
     const FamilyId id{static_cast<std::uint32_t>(result_.members.size())};
     FileFamilyMember member{std::move(function), std::move(context), std::move(incoming)};
@@ -301,8 +304,8 @@ std::variant<FileFamily, FamilyFileFailure> ReadFunctionFamily(
     const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
     abc::MethodPosition root, RouteInputIdentity identity,
     analysis::SemanticBudget budget, const RecordModuleContext* modules, const FunctionContext* owner, ModuleOwnerId module_owner, FamilyClassMode classes,
-    const ParentModuleInput* root_modules) {
-  try { return FamilyReader(file, header, index, lookup, roles, sites, identity, budget, modules, module_owner).Read(root, owner, classes, root_modules);
+    const ParentModuleInput* root_modules, FunctionOwnerId first_owner) {
+  try { return FamilyReader(file, header, index, lookup, roles, sites, identity, budget, modules, module_owner).Read(root, owner, classes, root_modules, first_owner);
   } catch (const FamilyFileFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return FamilyFileFailure{FamilyFileError::kResourceLimit, {}, {}, {}};
   } catch (const std::length_error&) { return FamilyFileFailure{FamilyFileError::kResourceLimit, {}, {}, {}}; }

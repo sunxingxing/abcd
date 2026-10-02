@@ -163,7 +163,7 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
     }
     auto input = Take<FileFamily, FamilyFileFailure>(ReadFunctionFamily(
         file, header, index, lookup, roles, sites, root.Position(), root.Identity(), budget.Left(), modules, &root, module_owner,
-        FamilyClassMode::kReject, root_modules));
+        FamilyClassMode::kReject, root_modules, destination.first_owner));
     budget.Account(input.allocated_bytes, input.work);
     Require(input.members.size() <= budget.Left().bytes / sizeof(MethodRouteReceipt), Error::kResourceLimit);
     std::vector<MethodRouteReceipt> receipts;

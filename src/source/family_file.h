@@ -53,8 +53,8 @@ struct FileFamilyMember {
   std::vector<FamilyArray> arrays;
 };
 struct FileFamily {
-  // Preorder, root at kRoot. Occurrence owners equal these stable member IDs;
-  // identical method entities at distinct sites still own distinct syntax.
+  // Preorder, root at kRoot. FamilyId indexes occurrences; syntax owners live
+  // in a caller-reserved contiguous namespace, never a method-entity namespace.
   static constexpr FamilyId kRoot{0};
   std::vector<FileFamilyMember> members;
   std::size_t allocated_bytes = 0;
@@ -64,6 +64,11 @@ struct FileFamily {
   // External class/function creator is borrowed through immediate tree/write
   // verification only. PreparedFamily never retains this reference.
   std::optional<ParentModuleInput> root_modules;
+  FunctionOwnerId first_owner{};
+  // Reader/tree/write entry points verify the complete range before mapping.
+  [[nodiscard]] FunctionOwnerId Owner(FamilyId member) const {
+    return {first_owner.value + member.value};
+  }
 };
 enum class FamilyFileError : std::uint8_t {
   kMethod, kCreation, kOccurrence, kRecursiveCreation, kResourceLimit, kWorkLimit, kUnsupportedFlow
@@ -99,6 +104,6 @@ struct FamilyFileFailure {
     analysis::SemanticBudget budget = {}, const RecordModuleContext* modules = nullptr,
     const FunctionContext* owner = nullptr, ModuleOwnerId module_owner = {},
     FamilyClassMode classes = FamilyClassMode::kReject,
-    const ParentModuleInput* root_modules = nullptr);
+    const ParentModuleInput* root_modules = nullptr, FunctionOwnerId first_owner = {});
 }  // namespace abcd::source
 #endif

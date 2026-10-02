@@ -26,6 +26,27 @@ enclosing-code promise, not a directive injected into a non-simple signature.
 No destination pointer is retained. File/index lifetimes are not extended by the
 prepared owner; trees, names, origins, ABI and capture/flow records own storage.
 
+## Source Owner Namespace
+
+`FamilyId` indexes an occurrence in one `FileFamily`/`ConstructedFamily`; its
+root remains index zero. `FunctionOwnerId` identifies source syntax and is
+separate from that index and the ABC method entity. `FamilyDestination.first_owner`
+reserves a contiguous namespace: occurrence `i` receives owner `first_owner + i`.
+The reader rejects an exhausted range before adding an occurrence. Tree and
+write entry points check the complete range again; a changed base cannot verify
+unchanged trees. Ordinary and phased child evaluation/rebinding use the same
+mapping. Capture targets keep the actual parent source owner.
+
+`BuildClassTree` assigns consecutive disjoint ranges to the constructor, buffer
+members, definition bodies and static initializer. Each prepared family consumes
+its actual occurrence count, including descendants; a method entity or class
+property ordinal is not a range size. `BuildRecordTree` reserves its entire
+record-family range before allocating classes, and advances between classes.
+A uint64 cursor can represent the exhausted uint32 namespace without wraparound.
+Standalone callers may retain the default zero base; embedding callers must
+reserve distinct ranges. This allocation is a prerequisite for external class
+captures, not proof of their cell, initialization, enclosure or write obligations.
+
 ## Printing and Remaining Gates
 
 `PrintDraft` rechecks strictness and actual external bindings before writing

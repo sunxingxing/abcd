@@ -1225,13 +1225,17 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
     auto sites = std::get<analysis::FunctionCreationSites>(analysis::FunctionCreationSites::Build(file, header, index, lookup));
     const FunctionContext owner{std::get<CreationTreeContext>(CreationTreeContext::Resolve(
         file, header, index, lookup, roles, sites, sites.Find({kParent}).first, identity))};
-    auto input = ReadFunctionFamily(file, header, index, lookup, roles, sites, {1}, identity, {}, nullptr, &owner);
+    auto input = ReadFunctionFamily(file, header, index, lookup, roles, sites, {1}, identity, {}, nullptr, &owner,
+        {}, FamilyClassMode::kReject, nullptr, {37});
     test::Check(std::holds_alternative<FileFamily>(input));
     auto built = BuildFileFamilyTrees(file, header, index, std::get<FileFamily>(std::move(input)),
         owner, {}, nullptr, {}, &lookup);
     test::Check(std::holds_alternative<ConstructedFamily>(built));
     const auto& family = std::get<ConstructedFamily>(built);
     test::Check(family.members.size() == 3);
+    test::Check(family.root == FileFamily::kRoot);
+    for (std::size_t i = 0; i < family.members.size(); ++i)
+      test::Check(family.members[i].tree.owner.value == 37 + i);
     test::Check(family.members[1].tree.callable == CallableKind::kAsyncArrow &&
         family.members[1].tree.invocation == InvocationForm::kArrowMethod);
     auto forged = family.members[1].tree;

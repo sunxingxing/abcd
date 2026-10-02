@@ -25,6 +25,8 @@ class WriteCheck {
     }, inputs_);
     Require(count && count <= std::numeric_limits<std::uint32_t>::max() && trees_.members.size() == count &&
         trees_.root == FileFamily::kRoot && trees_.parents.size() == count, Error::kOwner);
+    if (const auto* family = std::get_if<const FileFamily*>(&inputs_))
+      Require(count - 1 <= std::numeric_limits<std::uint32_t>::max() - (*family)->first_owner.value, Error::kOwner);
     Array(offsets_, count);
     std::size_t sites = 0;
     for (std::size_t i = 0; i < count; ++i) {
@@ -34,7 +36,11 @@ class WriteCheck {
       const auto& tree = trees_.members[i].tree;
       const auto& flow = trees_.members[i].flow;
       std::visit([&](auto input) { Owner(input, tree); }, source.function);
-      Require(tree.owner.value == i && tree.value_revision == graph.revision && tree.cfg_revision == graph.cfg_revision &&
+      const auto owner = std::visit([&](auto input) -> FunctionOwnerId {
+        if constexpr (std::is_same_v<decltype(input), const FileFamily*>) return input->Owner(member_);
+        else return {static_cast<std::uint32_t>(i)};
+      }, inputs_);
+      Require(tree.owner == owner && tree.value_revision == graph.revision && tree.cfg_revision == graph.cfg_revision &&
           flow.value_revision == graph.revision && flow.cfg_revision == graph.cfg_revision, Error::kOwner);
       offsets_[i] = sites;
       const auto size = Instructions(source).size();

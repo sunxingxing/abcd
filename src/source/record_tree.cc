@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <numeric>
+#include <limits>
 #include <sstream>
 #include <type_traits>
 #include "function_file.h"
@@ -418,10 +419,16 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     // Parent symbols/scopes now exist. Resolve bodies in this actual native
     // enclosure, keeping the ClassExpr pointer stable. This is single-owner
     // construction: a failed preparation discards the entire unprinted tree.
+    // Reserve the complete record-family namespace, not just root owner zero.
+    // Every later class/initializer consumes its actual number of occurrences.
+    std::uint64_t next_class_owner = result->tree.owner.value +
+        static_cast<std::uint64_t>(family ? family->members.size() : 1);
     for (auto& pending : pending_classes) {
+      if (next_class_owner > std::numeric_limits<std::uint32_t>::max()) return fail(Error::kResourceLimit);
       auto built = BuildClassTree(file, header, index, lookup, roles, *functions, *classes,
           *function, pending.operation, identity, &class_scope, {budget.bytes},
-          initialization[pending.operation.value], pending.definitions, RecoveryMode::kAllowPartial);
+          initialization[pending.operation.value], pending.definitions, RecoveryMode::kAllowPartial,
+          {static_cast<std::uint32_t>(next_class_owner)});
       if (const auto* failure = std::get_if<ClassTreeFailure>(&built))
         return class_failure(*failure, pending.operation);
       auto definition = std::get<ClassTree>(std::move(built));
@@ -429,6 +436,11 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
           definition.member_sites != pending.tree->member_sites || !definition.BodiesPrepared())
         return fail(Error::kClass);
       retain(definition.allocated_bytes);
+      next_class_owner += definition.constructor->Family().members.size();
+      for (const auto& member : definition.members) next_class_owner += member.Family().members.size();
+      for (const auto& site : definition.definitions)
+        for (const auto& member : site.bodies) if (member) next_class_owner += member->Family().members.size();
+      next_class_owner += definition.initializer.has_value();
       *pending.tree = std::move(definition);
     }
     if (!pending_classes.empty()) {

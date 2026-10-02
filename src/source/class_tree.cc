@@ -1,6 +1,7 @@
 #include "class_tree.h"
 #include <bit>
 #include <new>
+#include <limits>
 #include <stdexcept>
 #include <type_traits>
 #include "runtime_name.h"
@@ -109,7 +110,7 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
     const analysis::FunctionCreationSites& functions, const analysis::ClassMethodSites& classes,
     const FileFunction& creator, analysis::OpId operation, RouteInputIdentity identity,
     const GlobalScope* globals, analysis::SemanticBudget budget, const ClassInitializerCall* initializer,
-    std::span<const ClassDefinitionSite> definitions, RecoveryMode recovery) {
+    std::span<const ClassDefinitionSite> definitions, RecoveryMode recovery, FunctionOwnerId first_owner) {
   const auto initial = budget;
   try {
     const auto admit = [&](std::size_t count, std::size_t width) {
@@ -123,19 +124,27 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
     auto tree = Take<ClassTree>(BuildClassLayout(file, header, index, lookup, roles, classes,
         creator, operation, identity, budget, initializer, definitions));
     admit(tree.allocated_bytes, 1); step(tree.work);
-    const FamilyDestination destination{Strictness::kStrict, globals, FunctionFragment::kClassMember};
+    std::uint64_t next_owner = first_owner.value;
+    const auto destination = [&]() -> FamilyDestination {
+      if (next_owner > std::numeric_limits<std::uint32_t>::max())
+        throw ClassTreeFailure{Error::kResourceLimit};
+      return {Strictness::kStrict, globals, FunctionFragment::kClassMember,
+          {static_cast<std::uint32_t>(next_owner)}};
+    };
     const ParentModuleInput modules{creator.input,
         {creator.values.graph.origins[creator.values.graph.ops[operation.value].origin.value].site.value}};
     tree.constructor = Take<PreparedFamily>(PreparedFamily::PrepareConstructor(file, header, index, lookup,
-        roles, functions, creator, operation, identity, destination, budget, recovery));
+        roles, functions, creator, operation, identity, destination(), budget, recovery));
     admit(tree.constructor->AllocatedBytes(), 1); step(tree.constructor->Work());
+    next_owner += tree.constructor->Family().members.size();
     admit(tree.member_sites.size(), sizeof(PreparedFamily)); tree.members.reserve(tree.member_sites.size());
     admit(tree.members.capacity() - tree.member_sites.size(), sizeof(PreparedFamily));
     for (const auto occurrence : tree.member_sites) {
       step(1);
       auto member = Take<PreparedFamily>(PreparedFamily::PrepareClass(file, header, index, lookup, roles,
-          functions, classes, occurrence, identity, destination, budget, recovery, &modules));
+          functions, classes, occurrence, identity, destination(), budget, recovery, &modules));
       admit(member.AllocatedBytes(), 1); step(member.Work());
+      next_owner += member.Family().members.size();
       tree.members.push_back(std::move(member));
     }
     for (auto& definition : tree.definitions) {
@@ -144,8 +153,9 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
       for (std::size_t i = 0; i < methods.size(); ++i) {
         if (!methods[i].operation) continue;
         auto member = Take<PreparedFamily>(PreparedFamily::PrepareDefinedMember(file, header, index, lookup, roles,
-            functions, creator, definition.site.definition, methods[i].kind, identity, destination, budget, recovery));
+            functions, creator, definition.site.definition, methods[i].kind, identity, destination(), budget, recovery));
         admit(member.AllocatedBytes(), 1); step(member.Work());
+        next_owner += member.Family().members.size();
         definition.bodies[i] = std::move(member);
       }
     }
@@ -157,7 +167,8 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
           globals && globals->module_enclosure ? &globals->module_enclosure->Context() : nullptr));
       admit(body.function.allocated_bytes, 1); admit(body.context.AllocatedBytes(), 1); step(body.context.Work());
       auto syntax = Take<ResolvedSyntax>(ResolveFunctionSyntax(file, header, index, body.context,
-          body.function.body, body.function.values.graph, {1}, budget));
+          body.function.body, body.function.values.graph, destination().first_owner, budget));
+      ++next_owner;
       admit(syntax.allocated_bytes, 1); step(syntax.work);
       std::optional<ModuleAliases> aliases;
       if (globals && globals->module_enclosure) {

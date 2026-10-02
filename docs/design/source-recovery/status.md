@@ -12,6 +12,42 @@
 
 ## 当前阶段
 
+### 2026-10-02：函数族 occurrence 索引与源码 owner 分离
+
+- FileFamily/ConstructedFamily 的 FamilyId 继续以0为根索引；新增 caller-reserved
+  first_owner，映射为 first_owner + occurrence。Reader 在追加前检查 uint32
+  范围，tree/write 入口重新核对完整范围；普通及 phased capture evaluation、
+  default 后的重新绑定、syntax 和 family root 构建均使用映射后的 owner。
+  不把 method entity、property ordinal 或 FamilyId 当源码绑定身份。
+- PreparedFamily 传递真实 destination namespace。BuildClassTree 按实际函数族
+  occurrence 数为 constructor、buffer members、definition bodies 和 static
+  initializer 分配不同范围；BuildRecordTree 先保留整个 record family 的范围，
+  再逐类推进。uint64 cursor 表示耗尽后的尾位置，不允许 uint32 回绕。没有新增
+  writer，也没有放宽 outer capture、初始化或 transitive-write 的检查。
+- 最初两个非零 owner 用例在旧实现上2/2失败，family-owner-red-tests.log；实现后
+  2/2通过2.08秒，green-tests.log。补充实际解码的200/201/400/800创建 occurrence、
+  嵌套写入 capture 的 parent owner、async/generator class root、async arrow
+  三成员函数族、最大编号/溢出和write输入owner错配；定向4/4通过3.65秒，
+  boundary-tests.log。移动/借用合同保留，write核对使用重新读取的原始输入。
+- 关联84 targets构建退出0，related-build.log；最新相关146/146通过256.03秒，
+  related-tests.log。追加19项await/generator/async行为测试全部通过91.62秒，
+  phase-tests.log；其中可执行文件已包含在上述最新构建中。新增非零owner的
+  file_async_arguments_source_test已在定向4项内实际执行。没有执行全库测试。
+- 五输入 fresh build/stage-one/value-family-owner-pass-1 顺序导出均退出0，
+  56 complete / 4 incomplete / 46 failure / 46 no-module；没有新增完整项、回退
+  或legacy，56个原完整record源码字节不变，native default record4466/20246/30597
+  保留。final-batch.log / final-batch-summary.json。
+- fresh CommentBarView record21042 / entry21219仍unproved/tree_stage，
+  comment-bar.jsonl。LLDB在FamilyReader::BindEvaluations的原始拒绝点确认
+  method21274已分配first_owner14；它的IncomingCell depth0/slot0具有count0，
+  为子函数转发义务而非直接access。真实BuildClassTree operation40从owner2开始，
+  PrepareDefinedMember definition102到达此处，root-capture-location.log。
+  下一步将实际creator scope/cell、ClassExpr中的source alias和写入证明连接到
+  这些class roots，包括constructor、buffer member和defined member；仅分配owner
+  不代表外层capture已恢复。阶段一语义与表示验收尚未完成，Goal保持active。
+  全库、扩大语料、RSS/基准、DFX、调度器、代理及定期审视仍暂停。
+  本节日志均在 /tmp/abcd-family-owner-*。
+
 ### 2026-10-02：类布局先行，成员在真实 parent 树建立后准备
 
 - 原 record 路径在 parent AST/符号尚不存在时，先把 class 成员作为独立

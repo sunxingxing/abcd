@@ -598,13 +598,14 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     const FunctionContext owner{std::get<ClassTreeContext>(ClassTreeContext::Resolve(
         file, header, index, lookup, roles, sites, range.first, identity))};
     auto input = ReadFunctionFamily(file, header, index, lookup, roles, functions,
-        owner.Position(), identity, {}, nullptr, &owner);
+        owner.Position(), identity, {}, nullptr, &owner, {}, FamilyClassMode::kReject, nullptr, {37});
     Check(std::holds_alternative<FileFamily>(input));
     auto built = BuildFileFamilyTrees(file, header, index, std::get<FileFamily>(std::move(input)),
         owner, {}, nullptr, {}, &lookup);
     Check(std::holds_alternative<ConstructedFamily>(built));
     const auto& family = std::get<ConstructedFamily>(built);
-    Check(family.members.size() == 1 && family.members[0].tree.recovery_issues.empty());
+    Check(family.members.size() == 1 && family.members[0].tree.recovery_issues.empty() &&
+        family.root == FileFamily::kRoot && family.members[0].tree.owner == FunctionOwnerId{37});
     std::ostringstream output;
     auto printed = PrintClassFamilyDraft(family, *owner.ClassContext(), output);
     Check(std::holds_alternative<PrintedFamilyDraft>(printed));
@@ -1017,9 +1018,10 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   Check(std::holds_alternative<PrintedFunction>(printing));
   const auto& printed = std::get<PrintedFunction>(printing);
   auto family_result = PreparedFamily::PrepareClass(file, header, index, lookup, roles,
-      functions, sites, range.first, identity, {Strictness::kStrict, nullptr, FunctionFragment::kClassMember});
+      functions, sites, range.first, identity, {Strictness::kStrict, nullptr, FunctionFragment::kClassMember, {37}});
   Check(std::holds_alternative<PreparedFamily>(family_result));
   const auto& family = std::get<PreparedFamily>(family_result);
+  Check(family.Family().members[family.Family().root.value].tree.owner == FunctionOwnerId{37});
   std::ostringstream family_output;
   const auto family_print = family.PrintDraft({Strictness::kStrict, nullptr, FunctionFragment::kClassMember}, family_output);
   Check(std::holds_alternative<PrintedFamilyDraft>(family_print));
