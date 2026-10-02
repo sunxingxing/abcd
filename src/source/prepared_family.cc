@@ -86,7 +86,7 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareClass(
     const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& functions,
     const analysis::ClassMethodSites& classes, analysis::ClassSiteId site,
     RouteInputIdentity identity, FamilyDestination destination, analysis::SemanticBudget allowance,
-    RecoveryMode recovery, const ParentModuleInput* modules) {
+    RecoveryMode recovery, const ParentModuleInput* modules, const FileFunction* creator) {
   try {
     Require(destination.strictness == Strictness::kStrict, Error::kStrictness);
     Require(allowance.bytes >= sizeof(Storage), Error::kResourceLimit);
@@ -94,7 +94,7 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareClass(
     auto context = Take<ClassTreeContext, ClassContextFailure>(ClassTreeContext::Resolve(
         file, header, index, lookup, roles, classes, site, identity, resolution_budget));
     return Prepare(file, header, index, lookup, roles, functions,
-        FunctionContext{std::move(context)}, destination, allowance, recovery, modules);
+        FunctionContext{std::move(context)}, destination, allowance, recovery, modules, creator);
   } catch (const FamilyPrepareFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return FamilyPrepareFailure{Error::kResourceLimit};
   } catch (const std::length_error&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
@@ -113,7 +113,7 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareDefine
     FunctionContext owner{std::move(context)};
     const auto modules = ModuleInputAt(creator, owner);
     return Prepare(file, header, index, lookup, roles, functions,
-        std::move(owner), destination, allowance, recovery, &modules);
+        std::move(owner), destination, allowance, recovery, &modules, &creator);
   } catch (const FamilyPrepareFailure& failure) { return failure; }
     catch (const std::bad_alloc&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
     catch (const std::length_error&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
@@ -133,7 +133,7 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareConstr
     FunctionContext owner{std::move(context)};
     const auto modules = ModuleInputAt(creator, owner);
     return Prepare(file, header, index, lookup, roles, functions,
-        std::move(owner), destination, allowance, recovery, &modules);
+        std::move(owner), destination, allowance, recovery, &modules, &creator);
   } catch (const FamilyPrepareFailure& failure) { return failure; }
     catch (const std::bad_alloc&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
     catch (const std::length_error&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
@@ -143,7 +143,7 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
     FunctionContext root, FamilyDestination destination, analysis::SemanticBudget allowance,
-    RecoveryMode recovery, const ParentModuleInput* root_modules) {
+    RecoveryMode recovery, const ParentModuleInput* root_modules, const FileFunction* creator) {
   try {
     Require(destination.strictness == Strictness::kStrict, Error::kStrictness);
     CheckPlacement(root, destination);
@@ -163,7 +163,7 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
     }
     auto input = Take<FileFamily, FamilyFileFailure>(ReadFunctionFamily(
         file, header, index, lookup, roles, sites, root.Position(), root.Identity(), budget.Left(), modules, &root, module_owner,
-        FamilyClassMode::kReject, root_modules, destination.first_owner));
+        FamilyClassMode::kReject, root_modules, destination.first_owner, creator));
     budget.Account(input.allocated_bytes, input.work);
     Require(input.members.size() <= budget.Left().bytes / sizeof(MethodRouteReceipt), Error::kResourceLimit);
     std::vector<MethodRouteReceipt> receipts;

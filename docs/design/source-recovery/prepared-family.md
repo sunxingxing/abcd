@@ -15,7 +15,9 @@ an executable/record-completion receipt. No public constructor accepts a tree,
 4. Run shared default projection, edge rebinding, control/evaluation, source AST,
    semantics, flow, ABI, exact lexical enclosure and whole-family store checks.
 5. Require supported ordinary/arrow syntax (or the actual class-method root), strict members, retained ABI and no
-   unresolved module aliases. Root captures still refuse in the shared route.
+   unresolved module aliases. A class creator may bind root cell evidence during
+   input discovery; external root source aliases and visibility still refuse in
+   shared tree preparation until the actual enclosing AST is integrated.
 6. Check the complete actual destination through `VerifyFamilyDestination`.
 7. Check file stability again, move the root creation context and complete family
    into `unique_ptr<const Storage>`, and release input/SSA readers and scratch.

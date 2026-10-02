@@ -682,3 +682,13 @@ Normal and original Before-phase matching share the same initialization/domain
 rules. Decoded positive/negative fixtures exercise all three class-root forms
 and genuine descendant forwarding. This adds no dependency, allocator scheme,
 writer or whole-process memory/latency claim.
+
+External class-root discovery reuses the completed `PlanFamilyCells` pass, then
+performs one binary PC lookup in the verified original creator instruction
+sequence, O(log(I+1)) for I instructions. Defined members additionally use the
+existing indexed `BindCreation` queries; constructor/buffer members use their
+stamped original class context. One shared binding/independent check is retained
+per root, O(K+U) storage for K original/forwarded obligations and U incoming
+cells, with the indexed rebasing costs above. There is no second descendant
+discovery or per-capture method scan. External evidence is not permission for
+closed-root AST or transitive-write publication.

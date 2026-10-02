@@ -142,7 +142,7 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
     for (const auto occurrence : tree.member_sites) {
       step(1);
       auto member = Take<PreparedFamily>(PreparedFamily::PrepareClass(file, header, index, lookup, roles,
-          functions, classes, occurrence, identity, destination(), budget, recovery, &modules));
+          functions, classes, occurrence, identity, destination(), budget, recovery, &modules, &creator));
       admit(member.AllocatedBytes(), 1); step(member.Work());
       next_owner += member.Family().members.size();
       tree.members.push_back(std::move(member));

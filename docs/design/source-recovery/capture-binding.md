@@ -35,9 +35,22 @@ Decoded class fixtures cover constructor, buffer member, defined getter and an
 actual nested function whose class member only forwards the capture. They also
 check uninitialized cells, wrong original environments, modified PC/targets
 and original Before versus Commit. This is cell-binding infrastructure:
-`ReadFunctionFamily` still rejects incoming root cells, and actual class-root
-source aliases, enclosing scope visibility and family write/publication checks
-must be integrated before claiming executable class capture recovery.
+`ReadFunctionFamily` keeps the closed-root refusal unless a genuine normal
+class creator is supplied. After descendant propagation, it binds constructor,
+buffer-member and defined-member root cells at their original creation points.
+The returned `root_capture` owns the complete sparse proof, including count0
+forwarding, and admits only `ParentCell` targets; unresolved outward cells still
+refuse. A PC lookup uses the checked original instruction ordering, not a scan
+of descendants or a guessed working node. Defined members resolve their actual
+`BindCreation` and compare its occurrence with the immutable owner.
+
+Constructor, buffer and defined-member preparation now supply that actual
+creator through the production class path. No creator/context pointer enters
+`root_capture` or `PreparedFamily` storage. Standalone family tree/write consumers
+explicitly reject this external evidence until they receive the real enclosing
+AST. Actual class-root source aliases, scope visibility, default-projection
+rebinding and family write/publication checks remain necessary before executable
+class capture recovery; a cell map alone cannot grant conditional root emission.
 
 FunctionInput now owns a same-body SemanticMethod and SemanticProof, with file
 identity, method, record and explicit Closed/Conditional capture mode. Its

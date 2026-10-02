@@ -22,6 +22,9 @@ class FamilyTrees {
   ConstructedFamily Build(FileFamily& family, const FunctionContext* root, std::optional<FamilyMember> entry = {}) {
     Admit(1, sizeof(FamilyTrees));
     Require(!family.members.empty() && (root != nullptr) != entry.has_value(), FamilyTreeError::kContext);
+    // External cell proof alone cannot supply ClassExpr placement or aliases.
+    // Do not silently pass it through the closed-root evaluation/write path.
+    Require(!family.root_capture, FamilyTreeError::kContext);
     Require(family.members.size() < std::numeric_limits<std::uint32_t>::max(), FamilyTreeError::kResourceLimit);
     Require(family.members.size() - 1 <= std::numeric_limits<std::uint32_t>::max() - family.first_owner.value,
         FamilyTreeError::kResourceLimit);

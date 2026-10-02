@@ -344,7 +344,9 @@ class WriteCheck {
 std::variant<FamilyWrites, FamilyWriteFailure> VerifyFamilyWrites(
     const abc::MetadataIndex& index, const FileFamily& inputs,
     const ConstructedFamily& trees, analysis::SemanticBudget budget, const abc::MethodLookup* lookup) {
-  try { return WriteCheck(index, &inputs, trees, budget, lookup).Run();
+  try {
+    if (inputs.root_capture) return FamilyWriteFailure{Error::kCapture, FileFamily::kRoot, {}};
+    return WriteCheck(index, &inputs, trees, budget, lookup).Run();
   } catch (const FamilyWriteFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return FamilyWriteFailure{Error::kResourceLimit, {0}, {}};
   } catch (const std::length_error&) { return FamilyWriteFailure{Error::kResourceLimit, {0}, {}}; }

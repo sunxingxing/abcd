@@ -206,6 +206,35 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
         return prepared;
       }();
       auto bound = BindCaptureCells(index, {creator.input, creator.values}, work, at, occurrence);
+      const auto read_family = [&](const FileFunction* parent) {
+        return ReadFunctionFamily(file, header, index, lookup, roles, functions, owner.Position(),
+            identity, {}, nullptr, &owner, {}, FamilyClassMode::kReject, nullptr, {37}, parent);
+      };
+      const auto closed = read_family(nullptr);
+      Check(std::holds_alternative<FamilyFileFailure>(closed) &&
+          std::get<CaptureEvaluationError>(std::get<CaptureEvaluationFailure>(std::get<FamilyFileFailure>(closed).cause)) ==
+              CaptureEvaluationError::kOuterCapture);
+      auto discovered = read_family(&creator);
+      Check(std::holds_alternative<FamilyFileFailure>(read_family(&child)));
+      if (!initialized) {
+        Check(std::holds_alternative<FamilyFileFailure>(discovered) &&
+            std::get<CaptureCellError>(std::get<FamilyFileFailure>(discovered).cause) == CaptureCellError::kInput);
+      } else {
+        Check(std::holds_alternative<FileFamily>(discovered));
+        auto& family = std::get<FileFamily>(discovered);
+        Check(family.root_capture && family.Owner(FileFamily::kRoot) == FunctionOwnerId{37});
+        const auto root = family.members.front().function.Capture();
+        Check(family.root_capture->targets.size() == 1 &&
+            std::holds_alternative<ParentCell>(family.root_capture->targets[0].target));
+        Check(std::holds_alternative<std::uint64_t>(VerifyCaptureCells(index,
+            {creator.input, creator.values}, root, at, occurrence, *family.root_capture)));
+        // A bound root is not a closed standalone family. Source integration
+        // must supply and verify its actual enclosing ClassExpr and symbols.
+        auto draft = BuildFileFamilyTrees(file, header, index, std::move(family), owner,
+            {}, nullptr, {}, &lookup);
+        Check(std::holds_alternative<FamilyTreeFailure>(draft) &&
+            std::get<FamilyTreeError>(std::get<FamilyTreeFailure>(draft).cause) == FamilyTreeError::kContext);
+      }
       if (!initialized) { Check(std::get<CaptureCellError>(bound) == CaptureCellError::kInput); return; }
       Check(std::holds_alternative<CaptureCells>(bound));
       const auto& cells = std::get<CaptureCells>(bound);

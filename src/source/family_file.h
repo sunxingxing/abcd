@@ -65,6 +65,9 @@ struct FileFamily {
   // verification only. PreparedFamily never retains this reference.
   std::optional<ParentModuleInput> root_modules;
   FunctionOwnerId first_owner{};
+  // External root binding owns its cell evidence. It is not an intra-family
+  // FunctionExpr edge and does not discharge source visibility or write checks.
+  std::optional<CaptureCells> root_capture;
   // Reader/tree/write entry points verify the complete range before mapping.
   [[nodiscard]] FunctionOwnerId Owner(FamilyId member) const {
     return {first_owner.value + member.value};
@@ -93,7 +96,10 @@ struct FamilyFileFailure {
 // do not gain initialized receiver or publication permissions.
 // Phase roots require an actual owner; phase descendants retain their own
 // original/working owners. Descendant storage demand forwards through members
-// with no direct lexical access, but unresolved incoming root cells are refused.
+// with no direct lexical access. A class root can bind those cells only when
+// its genuine normal root_creator is supplied; absent/outward owners refuse.
+// Root capture evidence is owned, not a fictional intra-family creation edge.
+// Tree/write consumers still require external AST and visibility integration.
 // Result remains conditional: no root enclosure, transitive-write certificate,
 // complete AST, source text or executable receipt is produced here.
 [[nodiscard]] std::variant<FileFamily, FamilyFileFailure> ReadFunctionFamily(
@@ -104,6 +110,7 @@ struct FamilyFileFailure {
     analysis::SemanticBudget budget = {}, const RecordModuleContext* modules = nullptr,
     const FunctionContext* owner = nullptr, ModuleOwnerId module_owner = {},
     FamilyClassMode classes = FamilyClassMode::kReject,
-    const ParentModuleInput* root_modules = nullptr, FunctionOwnerId first_owner = {});
+    const ParentModuleInput* root_modules = nullptr, FunctionOwnerId first_owner = {},
+    const FileFunction* root_creator = nullptr);
 }  // namespace abcd::source
 #endif

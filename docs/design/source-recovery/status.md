@@ -12,6 +12,39 @@
 
 ## 当前阶段
 
+### 2026-10-02：类根函数族在真实creator处绑定完整捕获需求
+
+- ReadFunctionFamily在完整发现及PlanFamilyCells之后，接受借用的实际normal
+  root_creator；通过原始PC的二分查询定位创建点。constructor/buffer使用
+  真实ClassCaptureSite，defined member重新BindCreation并核对不可变owner
+  occurrence。所有root incoming cells复用共同binder，只有ParentCell结果
+  可保留；未提供creator、错误creator、未初始化和未解决outward仍拒绝。
+- FileFamily.root_capture拥有身份、revision和稀疏cell证明，不是伪造的
+  intra-family FunctionExpr边，也不保留creator/context指针。生产constructor、
+  buffer和defined-member准备入口均已接入实际creator。standalone tree/write
+  入口仍拒绝仅有external cell证据的输入，直到接通真正的enclosing AST、
+  source aliases、作用域和写入闭合；没有授权闭包源码直接打印。
+- 新decoded reader要求在忽略creator的旧路径上1/1 RED，red-tests.log；
+  实现后3/3定向通过1.51秒，green-tests.log。最终补充错误creator拒绝后，
+  相关84 targets构建退出0，related-build.log；166/166相关定向回归通过
+  348.65秒，related-tests.log。三profile/prototype/static案例覆盖实际发现
+  的constructor、buffer转发count0和defined getter，并独立VerifyCaptureCells。
+- 五输入fresh build/stage-one/value-class-root-reader-pass-1均退出0；
+  56 complete / 4 incomplete / 46 failure / 46 no-module；没有新增完整项、
+  回退、源码字节变化或legacy，native default record4466/20246/30597保留，
+  final-batch.log / final-batch-summary.json。未执行全库测试。
+- fresh CommentBarView record21042 / entry21219仍unproved/tree_stage，
+  comment-bar.jsonl。LLDB确认拒绝点已到FamilyTrees::Build的external-root
+  AST边界：root_capture存在，parent21219/child21274，原始PC264/site101、
+  working creation101，唯一child cell1映射ParentCell，first_owner14；调用栈
+  来自真实class operation40 / definition102，capture-location.log。不是
+  Reader的kOuterCapture，也没有新增完整record或伪造正文。
+- 下一步在实际parent ClassExpr中建立class-root source aliases，核对定义
+  投影前后的捕获点、可见性和初始化；default residual之后重新绑定，随后
+  独立闭合family writes、enclosure及打印目的地。阶段一语义与表示验收尚未
+  完成，Goal保持active。全库、扩大语料、RSS/基准、DFX、调度器、代理及
+  定期审视仍暂停。本节日志均在 /tmp/abcd-class-root-reader-*。
+
 ### 2026-10-02：真实类创建点复用共同 capture cell 绑定
 
 - CaptureSite以variant区分原始CreationBinding和借用真实FunctionContext的
