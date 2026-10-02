@@ -12,6 +12,47 @@
 
 ## 当前阶段
 
+### 2026-10-02：混合普通与条件属性的原生对象参数
+
+- MultiCommunity CommentItemView 22807 / entry 22958 的 child 23400 在
+  CallPlan 拒绝外层方法读取/调用组合。实际 allocation 68 有定义 76/126/133，
+  只有中间属性含条件构造参数；ObjectRoute 错把“首属性必须来自选择”作为
+  组合前提。mixed_literal_test 的真实 decoded 回归在旧路径构建成功后
+  1/1 RED（1.03 秒），red-build.log / red-tests.log。
+- 现在一次索引每个属性的选择归属和每个对象的首选择，按原定义顺序允许普通
+  前缀、中间和后缀属性。只由首选择遍历对象，避免逐选择重复扫描；多个选择
+  同属一个 RHS 仍不在该路线内。局部 LiteralPlan 已验证的 nested/initializer
+  不重复计入外层事件，staged 外层定义保持独立事件。复用共同区间规划、
+  FunctionTree、Printer 和独立检查，无样本分派、额外 writer 或生产源码输入。
+- 三 profile 覆盖多对象和单对象内重复键两种维度的 1/2/200/201/402 次组合，
+  含标量或嵌套对象的构造参数与成员 receiver；402 的现有 evaluation work
+  小于 201 的三倍。共享对象额外返回、伪造末定义、debugger 效果阻隔均拒绝。
+  green-tests.log 1/1 通过 10.46 秒；扩展后的 5/5 通过 39.36 秒，
+  expanded-build.log / expanded-tests.log。新增 Proxy 后 1/1 通过 0.12 秒，
+  proxy-tests.log；mixed_literal_source_test 共 1,440 个独立原生语法场景，
+  对照 getter/构造/参数顺序、异常身份、callee 替换、new.target、Proxy trap、
+  对象与数组身份、重复键和参数逃逸后的修改。没有执行 RSS 或基准。
+- 最终 86 个相关 targets 构建退出 0，related-build.log；175/175 相关
+  回归通过 395.69 秒，related-tests.log，并按测试名称核对与选择清单完全
+  一致。全库测试、扩大语料、RSS/基准、DFX、调度器及代理仍保持暂停。
+- comment_mixed_literal_source_test 独立读取配对 TS，共 400 个嵌套 Column
+  回调场景通过，paired-test.log；包括构造中替换 Column，验证先前 margin
+  callee/receiver 与后续新 Column 调用，保留资源对象/params 数组及属性描述符。
+  不覆盖 ViewPU 构造、storage 生命周期、完整渲染或真实平台。
+- 五输入 fresh build/stage-one/value-mixed-literal-pass-1 均退出 0：
+  70 complete / 4 incomplete / 32 failure / 46 no-module。新增完整 record
+  CommentItemView 22807；原 69 个完整项无回退或源码字节变化，无 legacy，
+  原生 default records 保留，final-batch.log / final-batch-summary.json。
+  新源码 Node --check 退出 0；manifest executable 仍为 false，完整输出及
+  选定回调通过不代表阶段一整体配对语义/表示验收完成。
+- 下一处真实失败是 MultiCommunity DetailPage 25350 / entry 25577 的
+  child 26659（parent 25714、创建 PC 188，family member 8）。PC 23 方法
+  读取到 PC 84 调用之间，PC 29/35 分配外/内对象，PC 66 条件值写入内层
+  md，PC 73 把内层对象写入外层 span；CallPlan kReference 仍拒绝。
+  需要继续组合两层 staged 对象的归属，不能简单放行原方法快照。
+  detail-next.log / detail-cause.log / detail-owner.log / detail-instructions.jsonl。
+  本节日志前缀 /tmp/abcd-mixed-literal-*，Goal 保持 active。
+
 ### 2026-10-02：嵌套选择的独立 phi 经空汇合块组合
 
 - Immersive Header record 22712 / entry 23320 的 child 22872 在成员调用

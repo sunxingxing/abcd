@@ -672,6 +672,10 @@ if(BUILD_TESTING)
   target_include_directories(literal_global_test PRIVATE tests/support)
   target_link_libraries(literal_global_test PRIVATE abcd_source)
   add_test(NAME literal_global_test COMMAND literal_global_test)
+  add_executable(mixed_literal_test tests/integration/mixed_literal.cc)
+  target_include_directories(mixed_literal_test PRIVATE tests/support)
+  target_link_libraries(mixed_literal_test PRIVATE abcd_source)
+  add_test(NAME mixed_literal_test COMMAND mixed_literal_test)
   add_executable(family_array_test tests/integration/family_array.cc)
   target_include_directories(family_array_test PRIVATE tests/support)
   target_link_libraries(family_array_test PRIVATE abcd_source abcd_json)
@@ -693,6 +697,8 @@ if(BUILD_TESTING)
     add_test(NAME literal_global_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/literal_global.mjs
       $<TARGET_FILE:literal_global_test> $<TARGET_FILE:phased_literal_test>)
+    add_test(NAME mixed_literal_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/mixed_literal.mjs $<TARGET_FILE:mixed_literal_test>)
   endif()
   add_executable(capture_plan_test tests/unit/source/capture_plan_test.cc)
   target_link_libraries(capture_plan_test PRIVATE abcd_source)
@@ -1074,6 +1080,12 @@ if(BUILD_TESTING)
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/hot/src/main/ets/view/HotTitleView.ts")
       add_test(NAME ui_conditional_literals_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/ui_conditional_literals.mjs $<TARGET_FILE:abc_structure>
+        ${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication)
+    endif()
+    if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc" AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/detail/src/main/ets/view/CommentItemView.ts")
+      add_test(NAME comment_mixed_literal_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/comment_mixed_literal.mjs $<TARGET_FILE:abc_structure>
         ${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication)
     endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc" AND

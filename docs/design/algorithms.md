@@ -536,6 +536,36 @@ consecutive selections, both getter/argument orders, effectful bridges, and
 forged consumers/conditional arms. Native JavaScript is the independent behavior
 oracle; this does not establish full paired-record or platform acceptance.
 
+### Mixed ordinary and selected literal fields (2026-10-02)
+
+Extend the existing selected-object route with ordinary definitions before,
+between, and after its selections. Index each selected RHS's containing field
+and each object's first selection once. Only that first selection may visit the
+object's full definition/use list; later candidates cannot repeatedly rescan it.
+Walk fields in their original definition order, advancing from a selection's
+header to its join only at the indexed selected field. Ordinary fields must stay
+in the current block. Multiple selections feeding the same field and unrelated
+control gaps remain outside this route.
+
+Reuse the forward/backward event-interval checks for the whole object and its
+external consumer. A previously checked local literal is one expression event:
+its nested children and non-staged initializer operations are not counted again.
+Its LiteralPlan still independently proves ownership, input snapshots, and
+internal order. Staged outer definitions remain separate events after changing
+their placement to initializer, so builder and verifier count the same sequence.
+This composes existing literal proofs; it does not erase arbitrary allocation
+effects or permit observation of an unfinished object.
+
+The additional indexes and passes cost O(operations + uses + fields + selections)
+time and O(operations) space. The implementation is a local extension of the
+existing expression interval algorithm, with no new dependency or license.
+Three-profile decoded tests exercise both many objects and many interleaved
+definitions in one object at 1/2/200/201/402; at 402 the existing evaluation work
+is below three times the 201 case. Native syntax independently checks repeated
+keys, allocation identity, throwing getters/constructors, receiver, new.target,
+Proxy construction and callee replacement. These are bounded correctness/scaling
+checks, not peak-RSS, benchmark, or full application acceptance.
+
 ### Selected module reads and consecutive consumers (2026-10-01)
 
 Normal selection arms also accept an exact module read/guard pair owned by their

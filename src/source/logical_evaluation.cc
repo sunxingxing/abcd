@@ -83,6 +83,9 @@ struct SelectionIndex {
   std::vector<std::optional<std::size_t>> headers, objects;
   std::vector<std::optional<UseId>> consumers;
   std::vector<std::optional<OpId>> fields, expressions;
+  std::vector<std::optional<std::size_t>> field_regions;
+  std::vector<std::optional<OpId>> first_selections;
+  std::vector<std::uint8_t> ambiguous_fields;
 };
 SelectionIndex IndexSelections(const ValueProgram& graph, const EvaluationPlan& plan,
     std::span<const SelectionRegion> regions, TreeCheckBudget& budget) {
@@ -90,6 +93,8 @@ SelectionIndex IndexSelections(const ValueProgram& graph, const EvaluationPlan& 
   budget.Array(index.headers, graph.blocks.size()); budget.Array(index.objects, graph.ops.size());
   budget.Array(index.consumers, graph.ops.size()); budget.Array(index.fields, graph.ops.size());
   budget.Array(index.expressions, graph.ops.size());
+  budget.Array(index.field_regions, graph.ops.size()); budget.Array(index.first_selections, graph.ops.size());
+  budget.Array(index.ambiguous_fields, graph.ops.size());
   for (std::size_t i = 0; i < regions.size(); ++i) {
     budget.Step(); const auto& region = regions[i];
     if (region.parent || !region.complete_phi) continue;
@@ -126,12 +131,27 @@ SelectionIndex IndexSelections(const ValueProgram& graph, const EvaluationPlan& 
       }
     }
   }
+  // Only the first selected field can start an object's route. Index this once
+  // so ordinary prefix/suffix fields do not cause a whole-object retry at each
+  // later selection. Multiple selections within one RHS need another domain.
+  for (std::size_t i = 0; i < regions.size(); ++i) {
+    budget.Step(); const auto& region = regions[i];
+    const auto use = index.consumers[region.branch.value];
+    if (!use) continue;
+    const auto owner = std::get<OpId>(graph.uses[use->value].owner);
+    const auto field = index.expressions[owner.value];
+    if (!field || !index.fields[field->value]) continue;
+    if (index.field_regions[field->value]) index.ambiguous_fields[field->value] = 1;
+    else index.field_regions[field->value] = i;
+    auto& first = index.first_selections[index.fields[field->value]->value];
+    if (!first || region.branch < *first) first = region.branch;
+  }
   return index;
 }
 struct SelectedObject { OpId allocation; std::span<const OpId> definitions; UseId consumer; };
-// Follow only adjacent complete selections, in the literal's original field
-// order. Indexes make each first-definition candidate visit its fields/use chain
-// once; no per-field whole-object or whole-CFG search is needed.
+// Follow adjacent complete selections and intervening ordinary definitions in
+// original field order. Only the first-selection candidate visits the object's
+// fields/use chain; no per-field whole-object or whole-CFG search is needed.
 std::optional<SelectedObject> ObjectRoute(const ValueProgram& graph, const EvaluationPlan& plan,
     std::span<const SelectionRegion> regions, const SelectionIndex& index,
     const std::vector<SelectionBlock>& used, std::vector<const SelectionRegion*>& route, TreeCheckBudget& budget) {
@@ -144,27 +164,28 @@ std::optional<SelectedObject> ObjectRoute(const ValueProgram& graph, const Evalu
   const auto allocation = *index.fields[first.value];
   const auto& object = plan.literals->objects[*index.objects[allocation.value]];
   const auto definitions = std::span(plan.literals->definitions).subspan(object.first, object.count);
-  if (definitions.empty() || definitions.front() != first ||
+  if (definitions.empty() || index.first_selections[allocation.value] != route.front()->branch ||
       graph.ops[allocation.value].block != route.front()->header) return {};
   const auto* buffer = std::get_if<ValueObjectAllocation>(&graph.ops[allocation.value].operation);
   if (!buffer || !buffer->literal) return {};
-  for (std::size_t i = 0; i < definitions.size(); ++i) {
+  auto block = route.front()->header;
+  bool selected = false;
+  for (const auto definition : definitions) {
     budget.Step();
-    if (i) {
-      const auto next = index.headers[route.back()->join.value];
-      if (!next || !Available(graph, regions[*next], used)) return {};
-      // Strict forward layout is already required by expression construction;
-      // it also excludes a cycle without a per-route visited array.
-      if (regions[*next].branch.value <= route.back()->branch.value) return {};
-      route.push_back(&regions[*next]);
+    if (index.ambiguous_fields[definition.value]) return {};
+    if (const auto next = index.field_regions[definition.value]) {
+      const auto& region = regions[*next];
+      if (region.header != block || !Available(graph, region, used)) return {};
+      if (selected) {
+        if (region.branch <= route.back()->branch) return {};
+        route.push_back(&region);
+      } else if (&region != route.front()) return {};
+      selected = true; block = region.join;
     }
-    const auto& field = graph.ops[definitions[i].value];
-    const auto use = index.consumers[route.back()->branch.value];
-    if (!use || field.use_count != 2 || !std::holds_alternative<ValueOwnWrite>(field.operation) ||
-        field.block != route.back()->join) return {};
-    const auto owner = std::get<OpId>(graph.uses[use->value].owner);
-    if (index.expressions[owner.value] != definitions[i]) return {};
+    const auto& field = graph.ops[definition.value];
+    if (field.use_count != 2 || !std::holds_alternative<ValueOwnWrite>(field.operation) || field.block != block) return {};
   }
+  if (!selected) return {};
   const auto& final = graph.ops[definitions.back().value];
   std::optional<UseId> external;
   for (auto at = graph.values[graph.ops[allocation.value].result->value].first_use; at; at = graph.uses[at->value].next) {
@@ -376,6 +397,13 @@ class Domain {
   }
   std::size_t Event(OpId id) const {
     if (index_.branches[id.value]) return 1;
+    // A checked local literal is an atomic expression in this outer domain.
+    // Its owned children/definitions have already been ordered by LiteralPlan;
+    // counting them again would split that expression. Staged outer fields
+    // remain distinct events, including after conversion to kInitializer.
+    const auto kind = plan_.operations[id.value].kind;
+    if (kind == EvaluationKind::kNestedLiteral ||
+        (kind == EvaluationKind::kInitializer && !IsStagedLiteral(plan_.literals ? &*plan_.literals : nullptr, id))) return 0;
     return Events(graph_.ops[id.value], plan_.operations[id.value], id, route_.front()->branch);
   }
   std::optional<OpId> Producer(const OperandUse& use) const {
