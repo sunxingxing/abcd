@@ -1,3 +1,4 @@
+#include "integer_nan.h"
 #include "staged_literal_names.h"
 #include "expression_forest.h"
 #include "expression_copies.h"
@@ -745,6 +746,14 @@ class ForestBuilder {
     }
     return Operand(operand, origin);
   }
+  ExprId IntegerOperand(ExprId expression, const analysis::ValueOperand& original) {
+    if (!ErasableNaN(original)) return expression;
+    auto* literal = std::get_if<TreeLiteral>(&forest_.expressions[expression.value].expression);
+    auto* number = literal ? std::get_if<NumberLiteral>(literal) : nullptr;
+    Require(number && number->bits == std::get<analysis::Float64Bits>(original).value, Error::kOwnership);
+    number->bits = CanonicalNaNBits();
+    return expression;
+  }
   ExprId Unary(analysis::UnaryOperator operation, ExprId input,
                const analysis::ValueOperand& original, TreeOriginId origin) {
     using U = analysis::UnaryOperator;
@@ -757,7 +766,7 @@ class ForestBuilder {
         Require(LegacyNegationEvaluation(graph_, original), Error::kUnsupportedOperation);
         return unary(TreeUnary::kNegate, input);
       case U::kNegate: return unary(TreeUnary::kNegate, input);
-      case U::kBitNot: return unary(TreeUnary::kBitNot, input);
+      case U::kBitNot: return unary(TreeUnary::kBitNot, IntegerOperand(input, original));
       case U::kLogicalNot: return unary(TreeUnary::kNot, input);
       case U::kTypeOf: return unary(TreeUnary::kTypeof, input);
       case U::kToNumber: return unary(TreeUnary::kPlus, input);
@@ -809,8 +818,10 @@ class ForestBuilder {
       const ExpressionConstant& constant) {
     return std::visit([&](const auto& operation) -> std::optional<ExprId> {
       using T = std::decay_t<decltype(operation)>;
-      if constexpr (std::is_same_v<T, analysis::ValueCopy>)
-        return Combine(operands[0], origin);
+      if constexpr (std::is_same_v<T, analysis::ValueCopy>) {
+        const bool normalize = !evaluation_.integer_nans.empty() && evaluation_.integer_nans[id.value] == NaNProjection::kIntegerCoercion;
+        return Combine(normalize ? IntegerOperand(operands[0], graph_.uses[op.first_use.value].operand) : operands[0], origin);
+      }
       else if constexpr (std::is_same_v<T, analysis::ValueFrameFunction>) {
         Require(forest_.bindings.self.has_value(), Error::kBinding);
         return Add(SymbolExpr{*forest_.bindings.self}, origin);
@@ -858,8 +869,12 @@ class ForestBuilder {
         // Negate the proven original test when the input is not boolean.
         return reverse ? Add(UnaryExpr{TreeUnary::kNot, predicate}, origin) : predicate;
       }
-      else if constexpr (std::is_same_v<T, analysis::ValueBinary>)
-        return Add(BinaryExpr{HoleSourceOperator(evaluation_.holes ? &*evaluation_.holes : nullptr, id, operation.op), operands[0], operands[1]}, origin);
+      else if constexpr (std::is_same_v<T, analysis::ValueBinary>) {
+        const bool integer = IntegerCoercion(op.operation);
+        const auto left = integer ? IntegerOperand(operands[0], graph_.uses[op.first_use.value].operand) : operands[0];
+        const auto right = integer ? IntegerOperand(operands[1], graph_.uses[op.first_use.value + 1].operand) : operands[1];
+        return Add(BinaryExpr{HoleSourceOperator(evaluation_.holes ? &*evaluation_.holes : nullptr, id, operation.op), left, right}, origin);
+      }
       else if constexpr (std::is_same_v<T, analysis::ValueHole>) {
         Require(evaluation_.holes && forest_.bindings.hole, Error::kBinding);
         return Add(SymbolExpr{*forest_.bindings.hole}, origin);

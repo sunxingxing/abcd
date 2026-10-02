@@ -1,3 +1,4 @@
+#include "integer_nan.h"
 #include "staged_literal_names.h"
 #include "tree_correspondence.h"
 #include "class_tree.h"
@@ -171,8 +172,11 @@ class OperandCheck {
           RequireMeaning(op.result && op.result->value < graph_.values.size() &&
               graph_.values[op.result->value].domain.IsLanguage(), Error::kOperand);
           RequireMeaning(Node<ThisExpr>(expression).owner == tree_.owner, Error::kOperand);
-        } else if constexpr (std::is_same_v<T, analysis::ValueCopy> ||
-                      std::is_same_v<T, analysis::ValueThrow> ||
+        } else if constexpr (std::is_same_v<T, analysis::ValueCopy>) {
+          if (!evaluation_.integer_nans.empty() && evaluation_.integer_nans[current_.value] == NaNProjection::kIntegerCoercion)
+            IntegerInput(input(0), expression);
+          else Input(input(0), expression);
+        } else if constexpr (std::is_same_v<T, analysis::ValueThrow> ||
                       std::is_same_v<T, analysis::ValueReturn>) {
           Input(input(0), expression);
         } else if constexpr (std::is_same_v<T, analysis::ValueUnary>) {
@@ -196,8 +200,13 @@ class OperandCheck {
           const auto& binary = Node<BinaryExpr>(expression);
           RequireMeaning(binary.operation == HoleSourceOperator(evaluation_.holes ? &*evaluation_.holes : nullptr,
               current_, operation.op), Error::kOperator);
-          Input(input(0), binary.left, analysis::UseId{op.first_use.value});
-          Input(input(1), binary.right, analysis::UseId{op.first_use.value + 1});
+          if (IntegerCoercion(op.operation)) {
+            IntegerInput(input(0), binary.left, analysis::UseId{op.first_use.value});
+            IntegerInput(input(1), binary.right, analysis::UseId{op.first_use.value + 1});
+          } else {
+            Input(input(0), binary.left, analysis::UseId{op.first_use.value});
+            Input(input(1), binary.right, analysis::UseId{op.first_use.value + 1});
+          }
         } else if constexpr (std::is_same_v<T, analysis::ValueHole>) {
           RequireMeaning(evaluation_.holes && tree_.hole && Node<SymbolExpr>(expression).symbol == *tree_.hole,
               Error::kOperand);
@@ -695,6 +704,11 @@ class OperandCheck {
     LeafOrigin(expression);
     return unary.operand;
   }
+  void IntegerInput(const analysis::ValueOperand& operand, ExprId expression, std::optional<analysis::UseId> occurrence = {}) {
+    if (!ErasableNaN(operand)) { Input(operand, expression, occurrence); return; }
+    LeafOrigin(expression);
+    RequireMeaning(Literal<NumberLiteral>(expression).bits == CanonicalNaNBits(), Error::kOperand);
+  }
   void Unary(analysis::UnaryOperator operation, const analysis::ValueOperand& operand, ExprId expression) {
     using U = analysis::UnaryOperator;
     switch (operation) {
@@ -702,7 +716,7 @@ class OperandCheck {
         RequireMeaning(LegacyNegationEvaluation(graph_, operand), Error::kOperator);
         Input(operand, UnaryInput(expression, TreeUnary::kNegate)); return;
       case U::kNegate: Input(operand, UnaryInput(expression, TreeUnary::kNegate)); return;
-      case U::kBitNot: Input(operand, UnaryInput(expression, TreeUnary::kBitNot)); return;
+      case U::kBitNot: IntegerInput(operand, UnaryInput(expression, TreeUnary::kBitNot)); return;
       case U::kLogicalNot: Input(operand, UnaryInput(expression, TreeUnary::kNot)); return;
       case U::kTypeOf: Input(operand, UnaryInput(expression, TreeUnary::kTypeof)); return;
       case U::kToNumber: Input(operand, UnaryInput(expression, TreeUnary::kPlus)); return;

@@ -1,3 +1,4 @@
+#include "integer_nan.h"
 #include "evaluation_plan.h"
 #include "evaluation_flow.h"
 #include "evaluation_aliases.h"
@@ -83,6 +84,9 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     const auto aliases = VerifyEvaluationAliases(graph, plan, {bytes, work});
     if (const auto* error = std::get_if<Error>(&aliases)) return *error;
     step(std::get<std::uint64_t>(aliases));
+    const auto normalized = VerifyIntegerNaNs(graph, plan, {bytes, work});
+    if (const auto* error = std::get_if<Error>(&normalized)) return *error;
+    step(std::get<std::uint64_t>(normalized));
     auto indexed_modules = IndexModuleEvaluations(graph, plan.modules, {bytes, work});
     if (const auto* error = std::get_if<EvaluationError>(&indexed_modules)) return *error;
     auto module_index = std::get<ModuleEvaluationIndex>(std::move(indexed_modules));

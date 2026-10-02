@@ -13,6 +13,32 @@
 ## 当前阶段
 
 
+### 2026-10-03：整数消费者中的 NaN payload 规范化
+
+- 原非规范 NaN 的 bitwise/NOT 用例改为要求源码贯通后 RED；旧源码树因
+  literal payload 拒绝。新增整数用途投影，只允许已证明 Number 的
+  非规范 NaN 在 bitwise/shift/NOT 中改为 canonical NaN，保持 Number 类型、
+  转换顺序和 mixed BigInt 异常。其他算术、返回、调用、存储不获得权限。
+- 对 materialized 常量，纯复制函数图一次压缩，再一次统计有效用途；
+  所有实际观察均为整数转换且至少有一个观察时才标记 producer。普通
+  未简化复制链与 phased alias 共用该规则，O(values+ops+uses)，原始 IR
+  和来源保持。独立 evaluator verifier 检查标记和用途，operand verifier
+  只在授权位置接受 canonical literal，不全局放宽字面量检查。
+- 初版遗漏普通未简化复制链，Source 构造失败；补齐一次性复制身份压缩
+  后通过。返回同一原始 NaN、伪造 projection、把 canonical NaN 改成零
+  均拒绝。1/2/200/201/402/804 链验证通过，boundary-tests.log 1/1
+  通过 2.27 秒。正常/异常 bitwise 和现代/deprecated NOT 均覆盖。
+- 25 targets 构建退出 0，相关 33/33 CTest 通过 67.61 秒，与
+  selected.json 按名称一致。独立原生场景：42,160 参数、47,120 组合、
+  665 数值/运算符场景通过。五输入 fresh
+  build/stage-one/value-nan-erasure-pass-1 均退出 0，保持
+  75 complete / 5 incomplete / 26 failure / 46 no-module，无完整项回退、
+  完整源码字节变化或 legacy，原生 default records 保留。
+  日志前缀 /tmp/abcd-nan-erasure-*；未运行 full-suite/RSS/扩展语料。
+  一般算术、其他 NaN 观察、构造缺口与阶段一验收仍未完成；合同未变，
+  Goal 保持 active。
+
+
 ### 2026-10-03：已证明 Number 的 ToNumeric 身份恢复
 
 - 新 decoded 现代/deprecated ToNumber→ToNumeric 用例在旧源码树构造 RED，

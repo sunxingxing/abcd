@@ -2,6 +2,7 @@
 #include "evaluation_flow.h"
 #include "evaluation_liveness.h"
 #include "evaluation_aliases.h"
+#include "integer_nan.h"
 #include "module_evaluation.h"
 #include "phase_evaluation.h"
 #include "logical_regions.h"
@@ -416,10 +417,14 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     if (const auto* error = std::get_if<Error>(&expressions)) return *error;
     const auto& phase_cost = std::get<PhaseEvaluationCost>(expressions);
     admit(phase_cost.bytes, 1); step(phase_cost.work);
+    const auto normalized = BuildIntegerNaNs(graph, plan, {bytes, work});
+    if (const auto* error = std::get_if<Error>(&normalized)) return *error;
+    const auto normalization_cost = std::get<IntegerNaNCost>(normalized);
+    admit(normalization_cost.bytes, 1); step(normalization_cost.work);
     const auto checked = VerifyEvaluationForFlow(graph, plan, {bytes, work}, flow);
     if (const auto* error = std::get_if<EvaluationError>(&checked)) return *error;
     step(std::get<std::uint64_t>(checked));
-    plan.allocated_bytes = plan.operations.capacity() * sizeof(OpEvaluation) +
+    plan.allocated_bytes = plan.integer_nans.capacity() * sizeof(NaNProjection) + plan.operations.capacity() * sizeof(OpEvaluation) +
         plan.logical_values.capacity() * sizeof(std::optional<analysis::OpId>) +
         plan.logical_objects.capacity() * sizeof(std::optional<analysis::OpId>) +
         plan.aliases.capacity() * sizeof(analysis::ValueId) +

@@ -118,10 +118,9 @@ coercions or abrupt completion. They enable common compositions such as
 `(1 << value) ** 2` and `(left >>> right) ** 2` without recognizing a source-text
 pattern or introducing another writer.
 
-A noncanonical NaN may have a safe bitwise result while its input literal still
-fails the existing source-tree representation contract. Tests retain separate
-normal-result and explicit source-refusal checks; this change does not silently
-canonicalize such literals. Runtime NaN parameters, including a noncanonical
+A safe bitwise result alone does not authorize changing an input NaN. The
+use-specific integer-consumer proof below permits canonicalization only when
+no payload observer remains; other source-literal uses stay refused. Runtime NaN parameters, including a noncanonical
 payload, are exercised separately through the ordinary/catch generated code.
 
 ## Number type versus arithmetic safety
@@ -163,3 +162,28 @@ ordinary/catch paths, with no UpdateExpr. Removing the Number witness causes the
 independent verifier to reject the previously built identity. Behavior tests
 check one conversion per occurrence, errors, input preservation, signed zero and
 NaN payloads. This removes a lowering artifact; it changes no equivalence scope.
+
+## NaN payload erasure at integer consumers
+
+A valid noncanonical Number NaN may be represented by canonical NaN only where
+its payload cannot be observed. Direct bitwise/shift operands and NOT consume
+Number through ToInt32/ToUint32; Number/BigInt mismatch and conversion order
+remain unchanged. Other operators do not receive this permission.
+
+For materialized constants, the source evaluation projection compresses exact
+pure-copy identities once and makes one census of live observations. A constant
+is eligible only when every effective use is integer-coercing and at least one
+such use exists. Phi transport, returns, calls, stores and guards block the
+projection. The independent evaluation verifier checks the producer, complete
+observation condition and flag; operand verification checks the canonical
+literal only in the authorized producer/use positions. Original Value IR and
+source origins remain intact. A second observable use never receives changed
+bits as an incidental effect of printing the bitwise expression.
+
+The functional-graph compression and use census are O(values + operations +
+uses), with budgeted scratch and one optional per-operation projection table.
+There is no per-use copy-chain traversal, constant folding of arbitrary arithmetic
+or mutable global helper. Decoded normal/phased tests include noncanonical NaNs,
+shared-return refusal, forged flags/literals and 200/201/geometric copy chains.
+This is a use-specific erasure proof, not a blanket claim that NaN payloads are
+unobservable or that all noncanonical literals can be printed.

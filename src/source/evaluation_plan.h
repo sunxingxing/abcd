@@ -46,6 +46,7 @@ struct ModuleEvaluation {
   analysis::ValueModuleRead read;
   ModuleSymbol target;
 };
+enum class NaNProjection : std::uint8_t { kExact, kIntegerCoercion };
 struct EvaluationPlan {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
@@ -83,6 +84,7 @@ struct EvaluationPlan {
   // Indexed by allocation, pointing to the last definition. Original local snapshots
   // remain independently checked.
   std::vector<std::optional<analysis::OpId>> logical_objects;
+  std::vector<NaNProjection> integer_nans;
 };
 inline analysis::ValueId ResolveEvaluationValue(const EvaluationPlan& plan, analysis::ValueId value) {
   return plan.aliases.empty() ? value : plan.aliases[value.value];

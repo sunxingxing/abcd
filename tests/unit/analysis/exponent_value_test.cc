@@ -13,6 +13,7 @@
 #include "../../../src/source/function_tree.h"
 #include "../../../src/source/exception_tree.h"
 #include "../../../src/source/tree_semantics.h"
+#include "../../../src/source/integer_nan.h"
 
 namespace {
 using namespace abcd;
@@ -78,6 +79,17 @@ void Phased(const abc::MethodBody& original, bool admitted, bool representable =
   const ExceptionTreeInput context{body, input, regions, control};
   const auto built = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, resolved);
   if (!representable) {
+    bool checked = false;
+    auto forged = evaluation; forged.integer_nans.resize(graph.ops.size());
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      const auto& op = graph.ops[i];
+      if (!std::holds_alternative<ValueCopy>(op.operation) || op.use_count != 1 ||
+          !ErasableNaN(graph.uses[op.first_use.value].operand)) continue;
+      forged.integer_nans[i] = NaNProjection::kIntegerCoercion; checked = true;
+      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+      break;
+    }
+    test::Check(checked);
     test::Check(std::holds_alternative<FunctionTreeError>(built));
     test::Check(std::get<FunctionTreeError>(built) == FunctionTreeError::kSemantics);
     return;
@@ -96,7 +108,7 @@ void Phased(const abc::MethodBody& original, bool admitted, bool representable =
     test::Check(op.normal == LanguageEffect::kUserCode && op.before_throw == LanguageEffect::kUserCode);
   }
 }
-std::string Source(const abc::MethodBody& body, bool representable = true) {
+std::string Source(const abc::MethodBody& body, bool representable = true, std::uint64_t* work = nullptr) {
   using namespace abcd::source;
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(1, 0, {}));
   const auto input = std::get<SemanticMethod>(BuildSemanticMethod(body,
@@ -106,6 +118,7 @@ std::string Source(const abc::MethodBody& body, bool representable = true) {
   test::Check(!VerifyImportedValues(graph, input, proof, frame));
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
   const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
+  if (work) *work = evaluation.work;
   std::vector<ExpressionConstant> constants(graph.ops.size());
   FunctionSyntax syntax{};
   syntax.callable = CallableKind::kFunction;
@@ -117,6 +130,15 @@ std::string Source(const abc::MethodBody& body, bool representable = true) {
     return {};
   }
   const auto tree = std::get<ConstructedFunction>(built).tree;
+  for (std::size_t i = 0; i < tree.expressions.size(); ++i) {
+    const auto* literal = std::get_if<TreeLiteral>(&tree.expressions[i].expression);
+    const auto* number = literal ? std::get_if<NumberLiteral>(literal) : nullptr;
+    if (!number || number->bits != CanonicalNaNBits()) continue;
+    auto changed = tree;
+    std::get<NumberLiteral>(std::get<TreeLiteral>(changed.expressions[i].expression)).bits = 0;
+    test::Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph,control,evaluation,changed,{constants})));
+    break;
+  }
   std::ostringstream stream;
   const auto printed = std::get<PrintedFunction>(PrintFunctionTree(tree, stream));
   test::Check(!printed.incomplete);
@@ -150,6 +172,31 @@ int main(int argc, char**) {
   const std::array exponents{UINT64_C(0), kSign, bits(1.0), bits(-1.0), bits(2.0), bits(-2.0), bits(3.0),
       bits(-3.0), bits(0.5), bits(-0.5), bits(2147483647.0), bits(-2147483648.0),
       bits(9007199254740992.0), kInfinity, kSign | kInfinity, UINT64_C(0x7ff8000000000000)};
+  {
+    // The same NaN also escapes as a return value. Integer use cannot license
+    // changing its shared payload or a forged projection flag.
+    const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+    std::vector<std::uint8_t> code; Float(code, UINT64_C(0xfff7000000000005));
+    code.insert(code.end(), {op(abc::Opcode::kSTA_V8),0,op(abc::Opcode::kLDAI_IMM32),1,0,0,0,
+        op(abc::Opcode::kOR2_IMM8_V8),0,0,op(abc::Opcode::kLDA_V8),0,op(abc::Opcode::kRETURN)});
+    const auto escaped = test::Body(code);
+    test::Check(NormalResult(escaped) == ValueKinds::Number());
+    Phased(escaped,true,false); Source(escaped,false);
+  }
+  {
+    std::uint64_t previous = 0;
+    const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+    for (const unsigned count : {1U,2U,200U,201U,402U,804U}) {
+      std::vector<std::uint8_t> code; Float(code, UINT64_C(0xfff7000000000005));
+      for (unsigned i=0;i<count;++i) code.insert(code.end(), {op(abc::Opcode::kSTA_V8),0,op(abc::Opcode::kLDA_V8),0});
+      code.insert(code.end(), {op(abc::Opcode::kSTA_V8),0,op(abc::Opcode::kLDAI_IMM32),1,0,0,0,
+          op(abc::Opcode::kOR2_IMM8_V8),0,0,op(abc::Opcode::kRETURN)});
+      const auto body = test::Body(code);
+      std::uint64_t work = 0; Source(body,true,&work); Phased(body,true);
+      if (count == 402 || count == 804) test::Check(work < previous * 3);
+      previous = work;
+    }
+  }
   if (argc > 1) std::cout << "export default [\n";
   for (const auto left : bases) for (const auto right : exponents) {
     const auto a = std::bit_cast<double>(left), b = std::bit_cast<double>(right);
@@ -172,10 +219,8 @@ int main(int argc, char**) {
       if (unsigned_shift) expected = expected.WithoutInt32MinTag();
       const auto body = Arithmetic(left, right, bitwise[index]);
       test::Check(NormalResult(body) == expected);
-      // The result proof does not make a noncanonical input NaN literal
-      // representable in source. Keep that independent tree boundary explicit.
-      const bool representable = !std::isnan(std::bit_cast<double>(left)) ||
-          left == std::bit_cast<std::uint64_t>(std::numeric_limits<double>::quiet_NaN());
+      // Only integer-coercing consumers may discard the literal NaN payload.
+      const bool representable = true;
       Phased(body, true, representable);
       const auto source = Source(body, representable);
       constexpr unsigned kFirstBitwiseOracle = 11;
@@ -203,7 +248,7 @@ int main(int argc, char**) {
       if (std::isfinite(number) && std::trunc(number) == number) expected = expected.WithIntegralNumber();
       test::Check(NormalResult(body) == expected);
       const bool admitted = bitnot || !std::isnan(number);
-      const bool representable = !std::isnan(number) || seed == std::bit_cast<std::uint64_t>(std::numeric_limits<double>::quiet_NaN());
+      const bool representable = bitnot || !std::isnan(number) || seed == std::bit_cast<std::uint64_t>(std::numeric_limits<double>::quiet_NaN());
       Phased(body, admitted, representable);
       if (admitted) {
         const auto source = Source(body, representable);
