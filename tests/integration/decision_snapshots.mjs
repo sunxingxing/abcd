@@ -79,7 +79,9 @@ const call = /\(0, \$arg0\)\(\)/;
 const mutants = [
   source.replace(call, '(0, $arg0)(), (0, $arg0)()'),
   source.replace(call, 'false'),
-  source.replace('))) || (($value5 =', '))) && (($value5 ='),
+  source.replace(
+    /if \((\$value4 === true \|\| typeof \(0, \$value4\) === "number" && \$value4 !== 0) \|\| \(\(\$value5 =/,
+    'if (($1) && (($value5 ='),
 ];
 let mutations = 0;
 for (const mutant of mutants) {

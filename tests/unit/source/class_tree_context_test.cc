@@ -980,7 +980,7 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     Check(std::get<TreePrintError>(PrintFunctionTree(function, output, {}, {}, &shadow)) == TreePrintError::kUnsupportedContext);
     Check(output.view().empty());
     Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(function, output, {}, {}, &scope)));
-    Check(output.view().find("return (typeof (0, run));") != std::string_view::npos);
+    Check(output.view().find("return typeof (0, run);") != std::string_view::npos);
     auto rejected = VerifiedFunction::PrepareClass(file, header, index, lookup, roles, sites, range.first, identity, {}, &shadow);
     Check(std::get<FunctionPrepareFailure>(rejected).kind == FunctionPrepareError::kContext);
     auto family = PreparedFamily::PrepareClass(file, header, index, lookup, roles, functions,

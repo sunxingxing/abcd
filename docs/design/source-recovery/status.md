@@ -13,6 +13,34 @@
 ## 当前阶段
 
 
+### 2026-10-02：统一表达式优先级与子表达式上下文
+
+- 共同 tree_print_tokens 提供强类型 binding strength/associativity；printer
+  的 ExpressionOperand 携带父操作和左右位置，迭代打印保留 ExprId 来源区间。
+  二元/一元/逻辑节点按上下文分组，不做文本替换或 IR 重排。显式处理幂的
+  右结合及左侧一元限制、相邻正负号、nullish/logical 混用；callee 与 await
+  采用相应最低绑定强度。typeof 保留强制 GetValue 的逗号包装。
+- 新 AST/printer 隔离夹具在旧 printer 的分组输出断言 RED，red-tests.log
+  1/1 失败 1.02 秒；不是 ABC 数值域证明。最终 30 个分组/结合性用例、
+  8,400 个独立原生行为场景通过，含 await 时序和逻辑 callee。逻辑/await
+  语法夹具明确构造源 AST，不当作原 IR 或 coroutine 的等价证明。
+  左右深树 1/2/200/201/402/804 检查迭代打印、范围边界和 work 增长；
+  402/804 work 小于前一规模三倍。无物理 RSS 或性能基准声明。
+- 96 个相关 targets 构建退出 0；首轮 related-tests.log 196/199 通过
+  477.65 秒。三个旧格式断言/变异定位点更新后，final-tests.log 5/5 通过
+  14.06 秒。typeof 的 GetValue 包装、变异必须改变源码且被行为 oracle
+  拒绝的断言均保留。按 /tmp/abcd-precedence-selected.json 核对，199 项
+  都有通过证据。生产代码未因这些格式测试失败而放宽语义。
+- 五输入 fresh build/stage-one/value-precedence-pass-1 均退出 0，仍为
+  75 complete / 4 incomplete / 27 failure / 46 no-module，无回退或 legacy。
+  75 个完整源码全部 Node --check 通过；42 个文本变化，用本机 Node 附带
+  Acorn 8.15.0 忽略位置/raw 后逐 record 比较，75 个解析树均相同。
+  syntax.log / ast-check.log / final-batch-summary.json 留存证据。该解析
+  仅用于格式回归比较，不是原 ABC/配对源码语义 oracle，PC 映射仍由打印
+  事件生成；未新增项目依赖。
+- 本节日志前缀 /tmp/abcd-precedence-*。完整 ISA 的数值域、一般 ToNumeric
+  与 deprecated.neg 等剩余能力及阶段一验收仍未完成，Goal 保持 active。
+
 ### 2026-10-02：统一一元操作的字面量组合
 
 - LiteralUnary 原先拒绝 ToNumeric/Increment/Decrement，即使输入已通过

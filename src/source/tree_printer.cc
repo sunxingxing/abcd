@@ -33,6 +33,7 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
     const GlobalScope*, std::size_t, ClassPrintForm, const ClassCaptureDestination* = nullptr);
 struct DerivedClassBody { std::shared_ptr<const ClassTree> definition; ExprId expression; };
 struct EndExpression { ExprId id; };
+struct ExpressionOperand { ExprId id; TreeOperatorContext context; };
 struct Statement { StmtId id; std::size_t depth; };
 struct EndStatement { StmtId id; };
 struct BlockCursor { StmtId id; std::uint32_t index; std::size_t depth; };
@@ -47,7 +48,7 @@ struct BeginFunction {};
 struct EndFunction {};
 struct ParameterCursor { std::uint32_t index; };
 struct EndParameter { std::uint32_t index; };
-using PrintAction = std::variant<std::string_view, ExprId, EndExpression,
+using PrintAction = std::variant<std::string_view, ExprId, EndExpression, ExpressionOperand,
     Statement, EndStatement, BlockCursor, Indent, PropertyKey, SymbolName, ArgumentCursor,
     ObjectCursor, EndProperty, BeginFunction, EndFunction, ParameterCursor, EndParameter, SnapshotCursor, DerivedClassBody>;
 struct OwnedAction { std::size_t owner; std::size_t depth; PrintAction action; };
@@ -540,7 +541,8 @@ class TreePrinter {
   }
   void Expression(const MemberExpr& node) { Member(node.base, node.key); }
   void Expression(AwaitExpr node) {
-    Append("(await "); Push(std::string_view(")")); Push(node.operand);
+    Append("(await "); Push(std::string_view(")"));
+    Push(ExpressionOperand{node.operand, {ExpressionPrecedence::kUnary}});
   }
   void Expression(YieldExpr node) {
     switch (node.form) {
@@ -550,28 +552,21 @@ class TreePrinter {
     Push(std::string_view(")")); Push(node.operand);
   }
   void Expression(UnaryExpr node) {
-    Append("("); Append(TreeUnaryToken(node.operation));
-    // Lifted typeof consumes an already obtained value. JS typeof Identifier
-    // suppresses an unresolvable-name error, unlike TRYLDGLOBALBYNAME followed
-    // by TYPEOF. Force GetValue without evaluating the operand twice.
+    Append(TreeUnaryToken(node.operation));
+    // typeof must obtain a value, preserving unresolvable-name exceptions.
     if (node.operation == TreeUnary::kTypeof) {
-      Append("(0, "); Push(std::string_view("))"));
-    } else Push(std::string_view(")"));
-    Push(node.operand);
+      Append("(0, "); Push(std::string_view(")")); Push(node.operand);
+    } else Push(ExpressionOperand{node.operand, {node.operation}});
   }
   void Expression(BinaryExpr node) {
-    Append("(");
-    Push(std::string_view(")")); Push(node.right);
+    Push(ExpressionOperand{node.right, {node.operation, OperandSide::kRight}});
     Push(TreeBinaryToken(node.operation));
-    // Unary/negative literal printers already parenthesize their complete
-    // expression, including when used as exponentiation's left operand.
-    Push(node.left);
+    Push(ExpressionOperand{node.left, {node.operation, OperandSide::kLeft}});
   }
   void Expression(LogicalExpr node) {
-    // Parenthesize each node: JS forbids bare mixing of ?? with &&/||,
-    // even where precedence alone would make the intended grouping clear.
-    Append("("); Push(std::string_view(")")); Push(node.right);
-    Push(TreeLogicalToken(node.operation)); Push(node.left);
+    Push(ExpressionOperand{node.right, {node.operation, OperandSide::kRight}});
+    Push(TreeLogicalToken(node.operation));
+    Push(ExpressionOperand{node.left, {node.operation, OperandSide::kLeft}});
   }
   void Expression(SequenceExpr node) {
     Append("("); Push(std::string_view(")")); Push(node.right);
@@ -620,7 +615,7 @@ class TreePrinter {
       Push(ArgumentCursor{node.arguments, 0});
       Push(std::string_view("("));
     }
-    Push(node.callee);
+    Push(ExpressionOperand{node.callee, {ExpressionPrecedence::kPrimary}});
   }
   void Expression(const ConstructExpr& node) {
     Append("(new (");
@@ -842,9 +837,14 @@ class TreePrinter {
     if (IsSourceIdentifier(name)) { Append("."); Identifier(name); }
     else { Append("["); Quoted(name); Append("]"); }
   }
-  void Run(ExprId id) {
+  void Run(ExprId id) { Run(ExpressionOperand{id, {}}); }
+  void Run(ExpressionOperand operand) {
+    const auto id = operand.id;
     Result().expressions[id.value].begin = written_;
     Push(EndExpression{id});
+    if (TreeOperandGrouping(Tree().expressions[id.value].expression, operand.context)) {
+      Append("("); Push(std::string_view(")"));
+    }
     std::visit([&](const auto& node) {
       if constexpr (std::is_same_v<std::decay_t<decltype(node)>, ClassExpr>) Expression(node, id);
       else Expression(node);

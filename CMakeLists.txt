@@ -668,6 +668,10 @@ if(BUILD_TESTING)
   target_include_directories(literal_construct_test PRIVATE tests/support)
   target_link_libraries(literal_construct_test PRIVATE abcd_source)
   add_test(NAME literal_construct_test COMMAND literal_construct_test)
+  add_executable(expression_precedence_test tests/integration/expression_precedence.cc)
+  target_include_directories(expression_precedence_test PRIVATE tests/support)
+  target_link_libraries(expression_precedence_test PRIVATE abcd_source)
+  add_test(NAME expression_precedence_test COMMAND expression_precedence_test)
   add_executable(unary_initializer_test tests/integration/unary_initializer.cc)
   target_include_directories(unary_initializer_test PRIVATE tests/support)
   target_link_libraries(unary_initializer_test PRIVATE abcd_source)
@@ -1249,6 +1253,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_cells.mjs $<TARGET_FILE:class_tree_context_test>)
     add_test(NAME phased_literal_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_literal.mjs $<TARGET_FILE:class_tree_context_test>)
+    add_test(NAME expression_precedence_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/expression_precedence.mjs $<TARGET_FILE:expression_precedence_test>)
     add_test(NAME instanceof_expression_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/instanceof_expression.mjs $<TARGET_FILE:instanceof_expression_test>)
     add_test(NAME unary_initializer_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

@@ -285,7 +285,7 @@ const wrongReceiver = report.source.replace('.getUIContext()', '.getUIContext.ca
 assert.notEqual(wrongReceiver, report.source);
 new vm.SourceTextModule(wrongReceiver);
 await assert.rejects(() => exercise(wrongReceiver, defaults));
-const wrongOffset = report.source.replace('dx: 0, dy: (-140)', 'dx: 0, dy: (-139)');
+const wrongOffset = report.source.replace('dx: 0, dy: -140', 'dx: 0, dy: -139');
 assert.notEqual(wrongOffset, report.source);
 new vm.SourceTextModule(wrongOffset);
 assert.notDeepEqual(await exercise(wrongOffset, defaults), await exercise(reference, defaults));
