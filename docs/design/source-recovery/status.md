@@ -12,6 +12,28 @@
 
 ## 当前阶段
 
+### 2026-10-03：剩余失败定位到值域与环境清理入口
+
+- 本轮未修改引擎，新增了下一步实现所需的实际失败证据。WindowUtil record7618
+  / entry8202 的类方法8620（updateAvoidPadding）在 VerifyExceptionInputs
+  返回 kInternalValue：PC127、node106、value210。PC124 为两个属性读取
+  结果的 ADD，属于仍未证明的一般算术值域；未假设宿主属性为 Number。
+  日志 /tmp/abcd-windowutil-values-2.log / 8620.jsonl。
+- VoipCallService record11989 / entry12208 在 ReadFunctionFamily 返回
+  kOccurrence，因为根方法有 try_count 而没有 callable creation owner。
+  原始入口的异常处理器是 PC58 POPLEXENV、PC59 原样 THROW acc；正常
+  路径 PC61 POPLEXENV，随后 PC62 模块发布。异常处理器未出现用户调用，
+  是下一步环境清理投影的候选，不能据此直接清空 exception table。
+  日志 /tmp/abcd-voip-read.log / entry.jsonl。
+- 实现边界：用原 ExceptionFlow 和异常环境分析证明 catch-all、pending
+  exception 未改写、只弹出当前方法拥有的环境、无正常控制流进入 handler，
+  并保持异常向外路由及原始 PC 归属；证据不闭合时继续走原拒绝路径。
+  当前普通 SemanticInput 明确拒绝 exception regions；不得制造普通函数
+  occurrence 或把真实用户 catch 当作清理删除。
+- 未运行新的构建、测试、五输入导出或 RSS；基线仍为上一节77 complete /5
+  incomplete /24 failure /46 no-module。Goal active；下一步优先实现并测试
+  透明环境清理证明及其来源保留，再接入入口恢复。
+
 ### 2026-10-03：参数 cell 的池字符串默认值，HotListView 贯通
 
 - 方法48581 的缺省分支包含 ValueString 再写入参数 cell。CellDefaults 与
