@@ -14,11 +14,26 @@ class SourceIndex {
   InstructionSources Build(const RouteInputIdentity& identity, abc::EntityOffset method,
       std::span<const analysis::SemanticInstruction> instructions, const analysis::ValueProgram& graph,
       const FunctionTree& tree,
-      std::span<const std::optional<analysis::EnvironmentRef>> before = {}) {
+      std::span<const std::optional<analysis::EnvironmentRef>> before = {}, const CleanupBody* cleanup = nullptr) {
     Require(before.empty() || before.size() == instructions.size(), Error::kCoverage);
     Require(identity == tree.identity && method == tree.method, Error::kIdentity);
     Require(graph.revision == tree.value_revision && graph.cfg_revision == tree.cfg_revision, Error::kRevision);
     Require(graph.origins.size() == graph.ops.size() && tree.origins.size() >= graph.origins.size(), Error::kOrigin);
+    if (cleanup) {
+      Require(!before.empty() && cleanup->Normal().instructions.size() == instructions.size(), Error::kIdentity);
+      for (std::size_t i = 0; i < instructions.size(); ++i) {
+        Step(); Require(cleanup->Normal().instructions[i].offset == instructions[i].pc, Error::kOrigin);
+        const auto kind = cleanup->Kind({static_cast<std::uint32_t>(i)});
+        if (!kind) continue;
+        Require(!before[i], Error::kPlacement);
+        if (*kind == CleanupInstructionKind::kPop)
+          Require(std::holds_alternative<analysis::PopEnvironment>(instructions[i].operation), Error::kOrigin);
+        else {
+          const auto* thrown = std::get_if<analysis::ThrowOperation>(&instructions[i].operation);
+          Require(thrown && std::holds_alternative<analysis::Accumulator>(thrown->value), Error::kOrigin);
+        }
+      }
+    }
     InstructionSources result;
     result.input_sites = instructions.size();
     Array(result.occurrences, graph.ops.size());
@@ -60,7 +75,9 @@ class SourceIndex {
             op.life == analysis::ValueLife::kRemoved && !target, Error::kPlacement);
         const auto* source = std::get_if<OriginalSite>(&tree_origin);
         Require(source && Same(*source, origin), Error::kOrigin);
-        target = UnreachableInstruction{};
+        const auto kind = cleanup ? cleanup->Kind({origin.site.value}) : std::nullopt;
+        if (kind) target = CleanupInstruction{*kind};
+        else target = UnreachableInstruction{};
       } else if (origin.disposition == analysis::OriginDisposition::kElidedPure) {
         Require(op.life == analysis::ValueLife::kRemoved && !target, Error::kPlacement);
         const auto* source = std::get_if<ElidedOrigin>(&tree_origin);
@@ -107,9 +124,9 @@ class SourceIndex {
 }  // namespace
 std::variant<InstructionSources, InstructionSourceError> BuildInstructionSources(
     const FunctionInput& input, const analysis::ValueProgram& graph,
-    const FunctionTree& tree, analysis::SemanticBudget budget) {
+    const FunctionTree& tree, analysis::SemanticBudget budget, const CleanupBody* cleanup) {
   try { return SourceIndex(budget).Build(input.Identity(), input.Method(), input.Input().instructions, graph, tree,
-        input.Proof().environments.before);
+        input.Proof().environments.before, cleanup);
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }

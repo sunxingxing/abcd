@@ -26,7 +26,7 @@ inline void CheckInstructionPositions(const source::FunctionTree& tree,
       if constexpr (std::is_same_v<T, ElidedInstruction>) {
         const auto* origin = std::get_if<ElidedOrigin>(&tree.origins[site.origin.value]);
         check(origin && origin->site == site.site);
-      } else if constexpr (std::is_same_v<T, UnreachableInstruction>) {
+      } else if constexpr (std::is_same_v<T, UnreachableInstruction> || std::is_same_v<T, CleanupInstruction>) {
         const auto* origin = std::get_if<OriginalSite>(&tree.origins[site.origin.value]);
         check(origin && origin->site == site.site);
       } else {

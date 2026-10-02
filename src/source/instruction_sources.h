@@ -2,13 +2,15 @@
 #define ABCD_SOURCE_INSTRUCTION_SOURCES_H_
 
 #include "function_input.h"
+#include "cleanup_body.h"
 #include "abcd/source/source_tree.h"
 
 namespace abcd::source {
 class PhasedBody;
 struct ElidedInstruction {};
 struct UnreachableInstruction {};
-using InstructionTarget = std::variant<ExprId, StmtId, AnchorId, PropertyId, ParameterId, ElidedInstruction, UnreachableInstruction>;
+struct CleanupInstruction { CleanupInstructionKind kind; };
+using InstructionTarget = std::variant<ExprId, StmtId, AnchorId, PropertyId, ParameterId, ElidedInstruction, UnreachableInstruction, CleanupInstruction>;
 struct InstructionSource {
   analysis::InputSiteId site;
   TreeOriginId origin;
@@ -26,13 +28,16 @@ enum class InstructionSourceError : std::uint8_t {
   kIdentity, kRevision, kOrigin, kPlacement, kCoverage, kResourceLimit, kWorkLimit
 };
 // Requires fresh semantic/default/flow proofs for the unchanged residual tree.
+// Optional cleanup is the same-body sealed normal projection used to build
+// input; cleanup sites get an explicit non-syntax reason, never a purity claim.
 // Covers every input site and every work operation with its own origin/target.
 // Multiple occurrences do not prove duplication or authorize erasure: callers
 // must retain the existing transformation and fresh semantic/flow proofs.
 // O(input sites + work ops + placements), with bounded dense ordinal indexes.
 [[nodiscard]] std::variant<InstructionSources, InstructionSourceError> BuildInstructionSources(
     const FunctionInput& input, const analysis::ValueProgram& graph,
-    const FunctionTree& tree, analysis::SemanticBudget budget = {});
+    const FunctionTree& tree, analysis::SemanticBudget budget = {},
+    const CleanupBody* cleanup = nullptr);
 // Same census over original phased instructions, not Before/Commit/Catch node
 // ordinals. Requires fresh exception tree/control/flow proofs. Projected pure
 // elisions and aliases retain their original boundary anchors; they are not

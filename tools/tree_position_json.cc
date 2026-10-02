@@ -162,6 +162,12 @@ void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const Pr
           entry["kind"] = "elided_pure"; entry["range"] = nullptr;
         } else if constexpr (std::is_same_v<T, UnreachableInstruction>) {
           entry["kind"] = "unreachable"; entry["range"] = nullptr;
+        } else if constexpr (std::is_same_v<T, CleanupInstruction>) {
+          entry["kind"] = "environment_cleanup"; entry["range"] = nullptr;
+          switch (node.kind) {
+            case CleanupInstructionKind::kPop: entry["cleanup"] = "pop"; break;
+            case CleanupInstructionKind::kRethrow: entry["cleanup"] = "rethrow"; break;
+          }
         } else {
           GeneratedRange range;
           if constexpr (std::is_same_v<T, ExprId>) {

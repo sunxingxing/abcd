@@ -12,6 +12,23 @@
 
 ## 当前阶段
 
+### 2026-10-03：环境清理 PC 的独立来源类型
+
+- InstructionSources 新增 CleanupInstruction，与纯 elision 和正常输入的
+  unreachable 分开。仅在提供同一输入的 CleanupBody 时标记；检查输入规模、
+  每个 PC、正常路径不可达性及 pop/rethrow 的实际语义操作。错误投影拒绝。
+- family emission 接受原始来源但不给这些指令伪造语法范围；位置 JSON 使用
+  kind=environment_cleanup、cleanup=pop/rethrow、range=null，保留原 site
+  和 origin。普通未投影路径仍使用原 unreachable 分类。
+- 三 profile 的合成树经实际 printer 和位置 JSON 验证，每个处理器两个
+  清理站点均明确标记。扩展既有 instruction_positions 测试访问器以穷尽
+  新 variant；初次相关构建因该访问器漏分支失败，补齐后通过。
+  六 targets 构建退出0，相关9/9 CTest通过5.64秒，日志
+  /tmp/abcd-cleanup-source-related-build-2.log / related-tests.log。
+- FileFunction/FamilyReader 尚未接入 CleanupBody，因此没有新增完整项，
+  本轮未重跑五输入/full-suite/RSS。下一步将原始/投影所有权接入模块入口
+  读取，并把这些来源传到入口产物；基线77/5/24/46，Goal active。
+
 ### 2026-10-03：环境清理的原始/正常路径双份所有权与不可达槽
 
 - 新 CleanupBody 工厂保存原始 instructions/tries/handlers 和正常路径视图，

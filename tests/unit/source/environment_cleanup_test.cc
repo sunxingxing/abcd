@@ -1,6 +1,11 @@
 #include "../../../src/source/cleanup_body.h"
 #include "analysis/ssa_fixture.h"
 #include "../../../src/source/function_values.h"
+#include "../../../src/source/function_tree.h"
+#include "../../../src/source/instruction_sources.h"
+#include "../../../tools/tree_position_json.h"
+#include <nlohmann/json.hpp>
+#include <sstream>
 #include "abcd/abc/call_type.h"
 #include <algorithm>
 #include <limits>
@@ -115,6 +120,46 @@ int main(int argc, char** argv) {
       }
       if (count == 402) test::Check(proof.Work() < 3*previous);
       previous = proof.Work();
+    }
+    {
+      const auto original = Body(1);
+      const auto projection = std::get<CleanupBody>(CleanupBody::Build(original,profile,frame));
+      RouteInputIdentity identity; identity.profile = profile;
+      const auto input = std::get<FunctionInput>(FunctionInput::Build(identity,{1},{2},projection.Normal(),frame,InputCaptureMode::kConditional));
+      const auto values = std::get<FunctionValues>(BuildFunctionValues(input,projection.Normal(),frame));
+      const auto control = std::get<ControlPlan>(BuildControlPlan(values.graph));
+      const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(values.graph));
+      FunctionSyntax syntax{}; syntax.identity = identity; syntax.method = {1}; syntax.owner = {0};
+      syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict; syntax.names = {u"observed"};
+      std::vector<ExpressionConstant> constants(values.graph.ops.size());
+      for (std::size_t i = 0; i < values.graph.ops.size(); ++i)
+        if (std::holds_alternative<analysis::ValueGlobalRead>(values.graph.ops[i].operation)) constants[i] = NameId{0};
+      auto tree = std::get<ConstructedFunction>(BuildFunctionTree(values.graph,control,evaluation,std::move(syntax),{constants,1})).tree;
+      const auto sources = std::get<InstructionSources>(BuildInstructionSources(input,values.graph,tree,{},&projection));
+      unsigned cleanup_count = 0;
+      for (const auto& source : sources.occurrences) {
+        const auto kind = projection.Kind({source.site.value});
+        if (!kind) continue;
+        test::Check(std::get<CleanupInstruction>(source.target).kind == *kind); ++cleanup_count;
+      }
+      test::Check(cleanup_count == 2);
+      std::ostringstream generated;
+      const GlobalScope globals{};
+      const auto printed = std::get<PrintedFunction>(PrintFunctionTree(tree,generated,{}, {}, &globals));
+      std::ostringstream serialized; tools::WriteTreePositions(serialized,tree,printed,&sources);
+      const auto json = nlohmann::json::parse(serialized.str());
+      unsigned mapped = 0;
+      for (const auto& source : json.at("instruction_sources")) {
+        const auto kind = projection.Kind({source.at("site").get<std::uint32_t>()});
+        if (!kind) continue;
+        test::Check(source.at("kind") == "environment_cleanup" && source.at("range").is_null());
+        test::Check(source.at("cleanup") == (*kind == CleanupInstructionKind::kPop ? "pop" : "rethrow"));
+        ++mapped;
+      }
+      test::Check(mapped == 2);
+
+      const auto other = std::get<CleanupBody>(CleanupBody::Build(Body(1,Mutation::kDoublePop),profile,frame));
+      test::Check(std::holds_alternative<InstructionSourceError>(BuildInstructionSources(input,values.graph,tree,{},&other)));
     }
     const auto nested_body = Body(1,Mutation::kDoublePop);
     const auto nested = std::get<EnvironmentCleanup>(EnvironmentCleanup::Build(nested_body,profile,frame));
