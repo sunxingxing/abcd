@@ -57,6 +57,14 @@ std::variant<ClassSelfStores, ClassSelfError> FindClassSelfStores(
           !initializers[call.creation.value],Error::kInput);
       initializers[call.creation.value] = call.call;
     }
+    std::vector<std::size_t> effects;
+    array(effects,graph.ops.size()+1);
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      step(); const auto& op = graph.ops[i];
+      effects[i+1] = effects[i] + (op.life == ValueLife::kLive &&
+          (op.normal != LanguageEffect::kNone || op.before_throw != LanguageEffect::kNone ||
+           op.exceptional != ExceptionalCompletion::kImpossible));
+    }
     ClassSelfStores result; admit(1,sizeof(result));
     admit(cells.cells.size(),sizeof(ClassSelfStore)); result.stores.reserve(cells.cells.size());
     admit(result.stores.capacity()-cells.cells.size(),sizeof(ClassSelfStore));
@@ -87,6 +95,19 @@ std::variant<ClassSelfStores, ClassSelfError> FindClassSelfStores(
       if (!std::holds_alternative<ValueClassCreation>(creation.operation) ||
           write.block != creation.block || write.block != invoke.block || allocation.block != creation.block ||
           allocation.order >= creation.order || creation.order >= write.order || write.order >= invoke.order) continue;
+      // Only the fresh base-class creation may intervene before this first
+      // store. No call/closure/other effect can expose the new environment.
+      if (creation.use_count != 1 || effects[store->value]-effects[local->allocation.value+1] != 1) continue;
+      const auto* heritage = std::get_if<ValueId>(&graph.uses[creation.first_use.value].operand);
+      if (!heritage || graph.values[heritage->value].domain != ValueKinds::Hole()) continue;
+      bool observed = false;
+      for (std::uint32_t j = 0; j < cell.count; ++j) {
+        step(); const auto& access = cells.accesses[cell.first+j];
+        if (access.kind != CellAccessKind::kLoad) continue;
+        const auto& load = graph.ops[access.operation.value];
+        if (load.block == creation.block && load.order < invoke.order) observed = true;
+      }
+      if (observed) continue;
       result.stores.push_back({source->op,*store,call,CellId{static_cast<std::uint32_t>(i)},local->allocation});
     }
     result.allocated_bytes = sizeof(result)+result.stores.capacity()*sizeof(ClassSelfStore);

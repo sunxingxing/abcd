@@ -19,7 +19,8 @@ struct ClassSelfStores {
 };
 enum class ClassSelfError : std::uint8_t { kInput, kCells, kFlow, kResourceLimit, kWorkLimit };
 // Discover class-result initialization of a fresh, otherwise unwritten local
-// cell before its static initializer. This does not authorize moving the store:
+// cell before its static initializer, with absent heritage, no intervening
+// observer and no same-block read before the call. This does not authorize moving the store:
 // descendant capture ownership, name shadowing and native class scope must be
 // proved by the eventual source owner. Never infer self from names or slot zero.
 [[nodiscard]] std::variant<ClassSelfStores, ClassSelfError> FindClassSelfStores(

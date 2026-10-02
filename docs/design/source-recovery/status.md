@@ -12,6 +12,19 @@
 
 ## 当前阶段
 
+### 2026-10-03：self cell 首次写入前的私有区间
+
+- FindClassSelfStores 增加共享效果前缀计数：本地环境分配到唯一 self store
+  之间只能有本次 class creation 的效果。要求 absent heritage，并拒绝同块
+  在 initializer call 前读取该 cell；不根据类名、属性名或固定槽位推断。
+  该检查仍是后续顺序证明的前提，不直接放行 ClassProjection。
+- 三 profile、非零槽位、200/201规模和既有预算边界通过；新增分配后
+  DEBUGGER 暴露反例被拒绝。实际 Voip 入口仍能得到同一候选关联。
+  相关2/2通过4.76秒，日志 /tmp/abcd-class-self-private-{build,tests}.log。
+- 字面量初始化器证据与该私有区间尚未组合成同文件、同创建 occurrence 的
+  重排许可；生产输出准入未改变。未重跑五输入/full-suite/RSS，基线仍
+  77/5/24/46，Goal active。
+
 ### 2026-10-03：字面量静态字段初始化的效果证据
 
 - 新 LiteralClassFields 验证单块普通 IR：纯 literal/copy/string、对入口

@@ -93,16 +93,19 @@ void Accessors(abc::ProfileId profile, unsigned count, bool prototype, bool sett
   test::Check(std::get<ClassDefinitionError>(FindClassDefinitions(graph, {0})) == ClassDefinitionError::kResourceLimit);
   test::Check(std::get<ClassDefinitionError>(FindClassDefinitions(graph, {UINT32_MAX, 0})) == ClassDefinitionError::kWorkLimit);
 }
-enum class Case { kSingle, kRepeated, kEscape, kUsedResult, kWrongReceiver, kClassEscape, kBarrier, kPrototype, kLaterBlock, kSelfStore, kSelfOverwrite };
+enum class Case { kSingle, kRepeated, kEscape, kUsedResult, kWrongReceiver, kClassEscape, kBarrier, kPrototype, kLaterBlock, kSelfStore, kSelfOverwrite, kSelfExposed };
 void Run(abc::ProfileId profile, unsigned count, Case kind) {
-  const bool self = kind == Case::kSelfStore || kind == Case::kSelfOverwrite;
+  const bool self = kind == Case::kSelfStore || kind == Case::kSelfOverwrite || kind == Case::kSelfExposed;
   constexpr std::uint8_t kSelfSlot = 2, kSlotShift = 4;
   std::vector<std::uint8_t> bytes;
   const auto op = [&](abc::Opcode code) { bytes.push_back(static_cast<std::uint8_t>(code)); };
   const auto word = [&](std::uint16_t n) { bytes.push_back(n); bytes.push_back(n >> 8); };
   op(abc::Opcode::kLDHOLE); op(abc::Opcode::kSTA_V8); bytes.push_back(0);
   for (unsigned i = 0; i < count; ++i) {
-    if (self) { op(abc::Opcode::kNEWLEXENV_IMM8); bytes.push_back(kSelfSlot+1); }
+    if (self) {
+      op(abc::Opcode::kNEWLEXENV_IMM8); bytes.push_back(kSelfSlot+1);
+      if (kind == Case::kSelfExposed) op(abc::Opcode::kDEBUGGER);
+    }
     op(abc::Opcode::kDEFINECLASSWITHBUFFER_IMM8_ID16_ID16_IMM16_V8);
     bytes.push_back(0); word(7); word(9); word(0); bytes.push_back(0);
     op(abc::Opcode::kSTA_V8); bytes.push_back(1);
@@ -204,7 +207,7 @@ int main() {
       Accessors(profile, count, false, false); Accessors(profile, count, true, true);
       Accessors(profile, count, false, false, AccessorCase::kValid, true);
       Accessors(profile, count, true, true, AccessorCase::kValid, true);
-      Run(profile, count, Case::kSingle); Run(profile, count, Case::kPrototype); Run(profile,count,Case::kLaterBlock); Run(profile,count,Case::kSelfStore); Run(profile,count,Case::kSelfOverwrite);
+      Run(profile, count, Case::kSingle); Run(profile, count, Case::kPrototype); Run(profile,count,Case::kLaterBlock); Run(profile,count,Case::kSelfStore); Run(profile,count,Case::kSelfOverwrite); Run(profile,count,Case::kSelfExposed);
     }
     for (const auto kind : {AccessorCase::kWrongHome, AccessorCase::kEscape, AccessorCase::kNameFlag, AccessorCase::kClassEscape, AccessorCase::kPrototypeEscape, AccessorCase::kBarrier, AccessorCase::kUsedResult, AccessorCase::kLaterClassUse, AccessorCase::kLaterPrototypeUse, AccessorCase::kPair, AccessorCase::kEnvironment})
       Accessors(profile, 1, true, false, kind);
