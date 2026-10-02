@@ -3,6 +3,7 @@
 #include "../../../src/source/function_values.h"
 #include "../../../src/source/function_tree.h"
 #include "../../../src/source/class_self.h"
+#include "../../../src/source/class_initializer_file.h"
 #include "../../../src/source/instruction_sources.h"
 #include "../../../tools/tree_position_json.h"
 #include <nlohmann/json.hpp>
@@ -97,6 +98,26 @@ int main(int argc, char** argv) {
       std::cout << "class self: creation PC " << working.graph.origins[working.graph.ops[binding.creation.value].origin.value].pc.value
           << " store PC " << working.graph.origins[working.graph.ops[binding.store.value].origin.value].pc.value
           << " initializer PC " << working.graph.origins[working.graph.ops[binding.initializer.value].origin.value].pc.value << '\n';
+    const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
+    const auto roles = std::get<analysis::MethodRoleIndex>(analysis::MethodRoleIndex::Build(*file,header,index,lookup));
+    const auto sites = std::get<analysis::FunctionCreationSites>(analysis::FunctionCreationSites::Build(*file,header,index,lookup));
+    FileFunction parent{projected,frame,std::get<FunctionInput>(std::move(input)),std::get<FunctionValues>(std::move(values))};
+    test::Check(parent.values.initializers.calls.size() == 1);
+    auto loaded = ReadClassInitializerFunction(*file,header,index,lookup,roles,sites,parent,parent.values.initializers.calls[0]);
+    test::Check(std::holds_alternative<ClassInitializerFunction>(loaded));
+    const auto& initializer = std::get<ClassInitializerFunction>(loaded).function;
+    test::Check(initializer.input.Captures().empty());
+    unsigned writes = 0, returns = 0;
+    for (const auto& operation : initializer.values.graph.ops) {
+      if (operation.life != analysis::ValueLife::kLive) continue;
+      if (std::holds_alternative<analysis::ValueOwnWrite>(operation.operation)) {
+        const auto& stored = initializer.values.graph.uses[operation.first_use.value+1].operand;
+        test::Check(std::get<analysis::SpecialValue>(stored) == analysis::SpecialValue::kUndefined); ++writes;
+      } else if (std::holds_alternative<analysis::ValueReturn>(operation.operation)) ++returns;
+      else test::Check(std::holds_alternative<analysis::ValueCopy>(operation.operation));
+    }
+    test::Check(writes == 1 && returns == 1);
+    std::cout << "initializer: closed input, one undefined own-field write, no self read\n";
     return 0;
   }
   test::Check(argc == 1);

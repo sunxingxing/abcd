@@ -12,6 +12,20 @@
 
 ## 当前阶段
 
+### 2026-10-03：确认实际静态初始化器的观察边界
+
+- 扩展实际入口回归，经同文件 MethodLookup、MethodRoleIndex、FunctionCreationSites
+  和 ReadClassInitializerFunction 读取真正的初始化器，未用 sidecar 推断行为。
+  method12292 的 closed 输入没有 captures，活跃操作只有一次 this 自有字段
+  写入 undefined 和 return（允许纯 copy）；真实入口测试1/1通过1.06秒。
+  日志 /tmp/abcd-class-self-initializer-{build,test}.log。
+- 其他成员仍有 self cell 读取：方法12125/12153/12264/12319 的 LDLEXVAR
+  不能删除或改为任意调用 receiver。因此“初始化器读取 self”不是当前事实。
+  下一步优先验证无观察静态初始化与唯一 cell 初始化之间的顺序关系，探索
+  保留既有 cell/捕获模型的恢复；不预先强制新增类名绑定，也不直接放宽投影。
+- 本轮仅增加真实输入回归及上述实现边界，未修改生产恢复规则、未重跑五输入
+  或 full-suite/RSS。基线77/5/24/46，Goal保持active。
+
 ### 2026-10-03：类结果到本地 cell 的初始化关联分析
 
 - 新 FindClassSelfStores 复用 ValueFlow、CellPlan 和 ClassInitializerCalls 的
