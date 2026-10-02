@@ -146,3 +146,40 @@ for (const source of [globalSource, globalReference]) {
 // Node's contextified global lookup can retry an accessor that throws;
 // compare the two independent programs in the same realm implementation.
 assert.deepEqual(throwingGlobalTraces[0], throwingGlobalTraces[1]);
+
+// A record with only a class still owns a lexical cell. Its constructor must
+// capture that cell, not substitute a later live read of the imported binding.
+const classCellSource = execFileSync(process.argv[2], ['--class-cell'], {encoding:'utf8'});
+const classCellReference = reference.slice(0, reference.indexOf('let answer')) + `
+export default input;
+let snapshot = ns;
+let captured = input;
+snapshot = class Box { constructor() { return captured; } };
+export {snapshot};
+`;
+async function observeClassCell(source, initial) {
+  const {root, dependency, trace} = await setup(source, {initial});
+  await root.evaluate();
+  const Box = root.namespace.snapshot, captured = root.namespace.default;
+  const object = captured !== null && ['object','function'].includes(typeof captured);
+  assert.equal(Box.name,'Box'); assert.equal(Box.length,0);
+  class Child extends Box {}
+  const check = () => {
+    const first = new Box(), second = new Box(), inherited = new Child();
+    if (object) { assert.equal(first,captured); assert.equal(second,captured); assert.equal(inherited,captured); }
+    else {
+      assert.notEqual(first,second);
+      assert.equal(Object.getPrototypeOf(first),Box.prototype);
+      assert.equal(Object.getPrototypeOf(inherited),Child.prototype);
+    }
+    assert.throws(() => Box(), {name:'TypeError'});
+  };
+  check();
+  try { Reflect.apply(dependency.namespace.mutate,undefined,[]); }
+  catch (error) { assert.equal(error.name,'TypeError'); trace.push('mutation-type-error'); }
+  check();
+  return {trace, keys:Object.keys(root.namespace), object};
+}
+for (const initial of ['42','undefined','null','({marker:1})','(()=>7)','1n','Symbol("x")',
+    '({valueOf(){trace.push("valueOf");return 7;}})'])
+  assert.deepEqual(await observeClassCell(classCellSource,initial), await observeClassCell(classCellReference,initial));

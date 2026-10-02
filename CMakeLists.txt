@@ -1184,6 +1184,12 @@ if(BUILD_TESTING)
         ${ABCD_PAIRED_CORPUS_ROOT})
     endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/modules.abc" AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/src/entry/src/main/ets/entrybackupability/EntryBackupAbility.ts")
+      add_test(NAME backup_class_cells_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/backup_class_cells.mjs $<TARGET_FILE:abc_semantic>
+        ${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts)
+    endif()
+    if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/modules.abc" AND
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/widgets.abc" AND
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/src/entry/src/main/ets/widget/pages/WidgetCard.ts")
       add_test(NAME widget_global_literal_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules

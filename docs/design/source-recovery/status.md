@@ -13,6 +13,33 @@
 ## 当前阶段
 
 
+### 2026-10-02：只有类的 record 根词法环境贯通
+
+- 当前实测 HotRankPage 的一般 SUB 和列表 key 回调的一般 ADD 仍未通过
+  独立值域验证，没有借本次修改放宽。另定位 Push EntryBackupAbility
+  record6659 / entry6809：BuildRecordTree 的根 EvaluationPlan 将 class
+  closure writes 留为 Unknown，CellInitialization 在类创建处拒绝；不是
+  ABC 读取失败。back-up 调试证据位于 /tmp/abcd-backup-*-debug*.log。
+- 新 class-only 合成模块在旧路径 RED，record error 6；根环境先存入
+  import 的值，随后只创建捕获该 cell 的类，不靠普通 DEFINEFUNC 顺带
+  提供写域。record_tree 现在沿既有原子构造流程提供条件性 Language
+  写域：先建原生父 cell，再准备每个类体，最后重验并发布。任一类体失败
+  仍丢弃未打印的父树；没有增加 superclass 非 Proxy 或不可变前提。
+- 三 profile 的正例、类体写入私有 Hole 及缺少父初始化负例通过。独立
+  模块 oracle 验证 import 后续更新不改变已捕获值，对象/函数身份、原始值
+  构造返回规则、子类构造和无 new 拒绝。真实 onBackup/onRestore 对照配对
+  TS 源码，共 1,200 场景通过：logger/JSON/Promise getter 和 receiver、
+  可变 callee、toJSON、异常身份、thenable 与 await 顺序。构造函数及平台
+  生命周期未执行；paired 测试显式要求该 record 仍 incomplete。
+- 18 targets 构建退出 0，相关 24/24 CTest 通过 39.19 秒，按
+  selected.json 名称核对。五输入 fresh
+  build/stage-one/value-record-class-cells-pass-1 均退出 0，变为
+  75 complete / 5 incomplete / 26 failure / 46 no-module。record6659 从
+  failure 推进到带构造缺口标记的部分源码；原 75 个 complete 无回退或源码
+  字节变化，无 legacy，原生 default records 保留。未运行 full-suite/RSS。
+  本节主要日志前缀 /tmp/abcd-record-class-cells-*；阶段一 Goal 保持 active。
+
+
 ### 2026-10-02：位运算／移位的正常结果事实贯通
 
 - decoded `(1 << value) ** 2` 在旧共同 FunctionInput 阶段 RED，

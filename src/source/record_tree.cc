@@ -299,8 +299,14 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     const auto children = family ? std::span<const FunctionBinding>(family->members.front().children) : std::span<const FunctionBinding>{};
     const auto* cells = family ? family->members.front().function.Cells() : nullptr;
     const auto demands = cells ? std::span<const CellDemand>(cells->demands) : std::span<const CellDemand>{};
+    // Class bodies are prepared against this parent's native cells below, just
+    // as function families discharge conditional closure writes after building
+    // their parent. This fact is provisional: every class body/store/capture must
+    // pass preparation and final verification before any record text is emitted.
+    const auto closure_writes = function->values.classes.classes.empty()
+        ? analysis::ClosureWrites::kUnknown : analysis::ClosureWrites::kLanguage;
     auto evaluated = BuildEvaluationPlan(graph, {budget.bytes}, IncomingCells::kReject, children, bindings->evaluations, demands,
-        function->values.initializers.calls, analysis::ClosureWrites::kUnknown, function->values.definitions.sites);
+        function->values.initializers.calls, closure_writes, function->values.definitions.sites);
     auto* evaluation = std::get_if<EvaluationPlan>(&evaluated);
     if (!evaluation) return fail(Error::kValue);
     retain(evaluation->allocated_bytes);

@@ -582,3 +582,24 @@ It deliberately does not print a created function, infer a lexical this binding,
 assume a capture summary, or resolve dependency cycles. The required next step
 is parent-site capture obligations plus owned child ASTs and proper function
 expression/name/strictness emission, followed by independent graph/tree checks.
+
+## Record roots containing only classes
+
+Record evaluation now supplies the same conditional Language closure-write
+premise used by prepared function families when the root has class occurrences.
+This is a construction dependency: native parent cells must exist before class
+constructors/members can bind their original capture sites. It is not an
+assumption about external superclasses or unverified published bodies.
+
+The root remains unprinted while every class layout is replaced by its prepared
+constructor/member families. Their complete cell/store/capture checks still
+apply, including on partially recovered bodies, and the record rechecks final
+tree semantics before printing. A failed class preparation discards the whole
+provisional parent. Roots without classes retain their previous policy.
+
+Synthetic modules exercise a class-only capture, object identity after the
+imported live binding changes, primitive constructor returns and subclassing.
+A constructor writing Hole into the captured cell and a missing parent
+initialization both refuse. The real Backup ability advances to partial source:
+its async methods can be checked independently, while its spread constructor
+retains an explicit gap and the record remains non-executable-equivalent.

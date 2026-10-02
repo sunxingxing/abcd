@@ -21,11 +21,12 @@ using namespace abcd;
 void Check(bool value, std::source_location at = std::source_location::current()) {
   if (!value) { std::cerr << "check failed at " << at.line() << '\n'; std::abort(); }
 }
-enum class FixtureCase { kValid, kBindingCollision, kExportCollision, kBranch, kArmStore, kFunction, kCapture, kLocalFunction, kClassFunction, kClassCapture, kGlobal, kGlobalShadow, kGlobalLocalShadow, kAnonymous, kAnonymousFunction, kAnonymousSingleClass, kAnonymousClassRead, kUnknownName };
+enum class FixtureCase { kValid, kBindingCollision, kExportCollision, kBranch, kArmStore, kFunction, kCapture, kLocalFunction, kClassFunction, kClassCapture, kGlobal, kGlobalShadow, kGlobalLocalShadow, kAnonymous, kAnonymousFunction, kAnonymousSingleClass, kAnonymousClassRead, kClassCell, kClassCellHole, kClassCellUninitialized, kUnknownName };
 std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::kDynamic1206) {
   constexpr std::uint32_t kTypes = 256, kPool = 272, kRecord = 512,
       kMethod = 600, kChild = 640, kConstructor = 680, kLiteral = 3000, kModule = 1024, kCode = 4096, kChildCode = 5000, kConstructorCode = 6000, kFileBytes = 8192;
-  const bool single_class = mode == FixtureCase::kAnonymousSingleClass || mode == FixtureCase::kAnonymousClassRead;
+  const bool class_cell = mode == FixtureCase::kClassCell || mode == FixtureCase::kClassCellHole || mode == FixtureCase::kClassCellUninitialized;
+  const bool single_class = class_cell || mode == FixtureCase::kAnonymousSingleClass || mode == FixtureCase::kAnonymousClassRead;
   const bool global = mode == FixtureCase::kGlobal || mode == FixtureCase::kGlobalShadow || mode == FixtureCase::kGlobalLocalShadow;
   const bool anonymous = mode == FixtureCase::kAnonymous || mode == FixtureCase::kAnonymousFunction || single_class;
   const bool family = single_class || mode == FixtureCase::kFunction || mode == FixtureCase::kCapture || mode == FixtureCase::kLocalFunction || mode == FixtureCase::kClassFunction || mode == FixtureCase::kClassCapture || mode == FixtureCase::kAnonymousFunction;
@@ -122,6 +123,13 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
     load(false, 0, 0); store(0); // Fresh live read after the dependency mutates it.
   }
   if (family) {
+    if (class_cell) {
+      op(abc::Opcode::kNEWLEXENV_IMM8); body.push_back(1);
+      if (mode != FixtureCase::kClassCellUninitialized) {
+        load(false, 0, 0);
+        op(abc::Opcode::kSTLEXVAR_IMM4_IMM4); body.push_back(0);
+      }
+    }
     if (mixed) {
       op(abc::Opcode::kLDHOLE); op(abc::Opcode::kSTA_V8); body.push_back(0);
       op(abc::Opcode::kDEFINECLASSWITHBUFFER_IMM8_ID16_ID16_IMM16_V8);
@@ -161,6 +169,14 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
   }
   std::vector<std::uint8_t> constructor_body{static_cast<std::uint8_t>(abc::Opcode::kRETURNUNDEFINED)};
   if (mixed) {
+    if (class_cell) {
+      constructor_body = {static_cast<std::uint8_t>(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0,
+          static_cast<std::uint8_t>(abc::Opcode::kRETURN)};
+      if (mode == FixtureCase::kClassCellHole)
+        constructor_body = {static_cast<std::uint8_t>(abc::Opcode::kLDHOLE),
+            static_cast<std::uint8_t>(abc::Opcode::kSTLEXVAR_IMM4_IMM4), 0,
+            static_cast<std::uint8_t>(abc::Opcode::kRETURNUNDEFINED)};
+    }
     if (mode == FixtureCase::kAnonymousClassRead) {
       // The sole default store is unchanged. Only a nested class constructor
       // reads that slot; syntax selection must inspect its owned family.
@@ -215,6 +231,10 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
         budget, nullptr, source::RoutePolicy::kRequireValueTree, nullptr, nullptr, &identity, family ? &creations : nullptr, mixed ? &classes : nullptr);
   };
   auto result = build();
+  if (mode == FixtureCase::kClassCellHole || mode == FixtureCase::kClassCellUninitialized) {
+    Check(!std::holds_alternative<source::PrintedSource>(result));
+    Check(unlink(path) == 0); return {};
+  }
   if (mode == FixtureCase::kGlobalShadow || mode == FixtureCase::kGlobalLocalShadow) {
     Check(std::get<source::RecordProgramFailure>(result).kind == source::RecordProgramError::kValue);
     Check(unlink(path) == 0); return {};
@@ -243,6 +263,7 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
 int main(int argc, char** argv) {
   const std::string_view mode = argc > 1 ? argv[1] : "";
   const bool anonymous = mode.starts_with("--anonymous");
+  if (mode == "--class-cell") { std::cout << Recover(FixtureCase::kClassCell); return 0; }
   const auto profile = anonymous && argc > 2 && std::string_view(argv[2]) == "1202" ? abc::ProfileId::kDynamic1202 :
       anonymous && argc > 2 && std::string_view(argv[2]) == "1301" ? abc::ProfileId::kDynamic1301 : abc::ProfileId::kDynamic1206;
   const auto source = Recover(mode == "--anonymous-single-class" ? FixtureCase::kAnonymousSingleClass : mode == "--anonymous-class-read" ? FixtureCase::kAnonymousClassRead : mode == "--anonymous" ? FixtureCase::kAnonymous : mode == "--anonymous-function" ? FixtureCase::kAnonymousFunction : mode == "--global" ? FixtureCase::kGlobal : mode == "--class-capture" ? FixtureCase::kClassCapture : mode == "--class-function" ? FixtureCase::kClassFunction : mode == "--local-function" ? FixtureCase::kLocalFunction : mode == "--function" ? FixtureCase::kFunction : mode == "--capture" ?
@@ -254,6 +275,9 @@ int main(int argc, char** argv) {
       Check(source.find("return $default$$$$0;") != std::string::npos);
     }
     std::cout << source; return 0;
+  }
+  for (const auto candidate : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
+    Recover(FixtureCase::kClassCell, candidate); Recover(FixtureCase::kClassCellHole, candidate); Recover(FixtureCase::kClassCellUninitialized, candidate);
   }
   Recover(FixtureCase::kUnknownName);
   Recover(FixtureCase::kClassCapture); Recover(FixtureCase::kClassFunction); Recover(FixtureCase::kFunction); Recover(FixtureCase::kCapture); Recover(FixtureCase::kLocalFunction);
