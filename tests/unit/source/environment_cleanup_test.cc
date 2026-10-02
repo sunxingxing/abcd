@@ -4,6 +4,7 @@
 #include "../../../src/source/function_tree.h"
 #include "../../../src/source/class_self.h"
 #include "../../../src/source/class_initializer_file.h"
+#include "../../../src/source/literal_class_fields.h"
 #include "../../../src/source/instruction_sources.h"
 #include "../../../tools/tree_position_json.h"
 #include <nlohmann/json.hpp>
@@ -107,6 +108,9 @@ int main(int argc, char** argv) {
     test::Check(std::holds_alternative<ClassInitializerFunction>(loaded));
     const auto& initializer = std::get<ClassInitializerFunction>(loaded).function;
     test::Check(initializer.input.Captures().empty());
+    const auto fields = LiteralClassFields::Build(initializer.values.graph);
+    test::Check(std::holds_alternative<LiteralClassFields>(fields));
+    test::Check(std::get<LiteralClassFields>(fields).Fields().size() == 1);
     unsigned writes = 0, returns = 0;
     for (const auto& operation : initializer.values.graph.ops) {
       if (operation.life != analysis::ValueLife::kLive) continue;

@@ -12,6 +12,23 @@
 
 ## 当前阶段
 
+### 2026-10-03：字面量静态字段初始化的效果证据
+
+- 新 LiteralClassFields 验证单块普通 IR：纯 literal/copy/string、对入口
+  receiver 的 DefineField 字面量写入，以及 undefined return。共享 ValueFlow
+  校验先执行；拒绝其他操作、普通属性写入、Store 模式、自身/参数等非字面量
+  RHS、错误 receiver、私有 tagged NaN 编码和非 undefined 返回。
+- 该证据只描述初始化器；调用方仍必须证明 receiver 是本次创建的普通类对象，
+  且有关 cell/类对象尚无外部观察。不能单凭此结果重排 self store，未改变
+  ClassProjection 的生产准入，也未新增类名遮蔽行为。
+- 实际 method12292 通过，识别一个字段；1/2/200/201/402字段、线性增长、
+  work精确边界和零内存测试通过。相关2/2通过1.54秒，日志
+  /tmp/abcd-literal-class-fields-boundary-build-2.log / boundary-tests-2.log。
+  首版测试漏写 ValueOwnWrite.kind 导致编译失败；修正并明确仅接受
+  DefineField 后通过，未把 Store 与 DefineField 混为一类。
+- 当前尚未接入 self 写入与初始化调用的顺序证明，未重跑五输入/full-suite/RSS；
+  基线77/5/24/46不变，Goal active。
+
 ### 2026-10-03：确认实际静态初始化器的观察边界
 
 - 扩展实际入口回归，经同文件 MethodLookup、MethodRoleIndex、FunctionCreationSites
