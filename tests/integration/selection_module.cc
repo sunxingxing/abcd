@@ -14,7 +14,43 @@ using namespace abcd;
 using namespace abcd::source;
 using namespace abcd::analysis;
 constexpr unsigned kByteBits = 8;
-enum class Selection { kConditional, kAnd, kOr };
+enum class Selection { kConditional, kAnd, kOr, kDecisionAnd, kDecisionOr };
+bool Decision(Selection selection) {
+  return selection == Selection::kDecisionAnd || selection == Selection::kDecisionOr;
+}
+abc::MethodBody DecisionBody(unsigned count, bool direct, Selection selection) {
+  const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+  constexpr auto kGuard = abc::Opcode::kTHROW_UNDEFINEDIFHOLEWITHNAME_PREF_ID16;
+  const bool conjunction = selection == Selection::kDecisionAnd;
+  std::vector<std::uint8_t> bytes;
+  for (unsigned i = 0; i < count; ++i) {
+    // Two predicates share one statement arm. The module read/guard belongs
+    // only to the conditional RHS, even when either arm returns no value.
+    bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 3,
+        op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 1, 0, op(abc::Opcode::kISTRUE)});
+    const auto first = bytes.size();
+    bytes.insert(bytes.end(), {op(conjunction ? abc::Opcode::kJEQZ_IMM8 : abc::Opcode::kJNEZ_IMM8), 0,
+        op(abc::Opcode::kLDEXTERNALMODULEVAR_IMM8), 0, op(kGuard),
+        static_cast<std::uint8_t>(static_cast<std::uint16_t>(kGuard) >> kByteBits), 3, 0});
+    if (!direct) bytes.insert(bytes.end(), {op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 2, 0});
+    bytes.push_back(op(abc::Opcode::kISTRUE));
+    const auto second = bytes.size();
+    bytes.insert(bytes.end(), {op(conjunction ? abc::Opcode::kJEQZ_IMM8 : abc::Opcode::kJNEZ_IMM8), 0});
+    const auto arm = [&](std::uint8_t name) {
+      bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 3,
+          op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, name, 0,
+          op(abc::Opcode::kCALLTHIS0_IMM8_V8), 0, 3});
+    };
+    arm(conjunction ? 0 : 3);
+    const auto jump = bytes.size(); bytes.insert(bytes.end(), {op(abc::Opcode::kJMP_IMM8), 0});
+    bytes[first + 1] = static_cast<std::uint8_t>(bytes.size() - first);
+    bytes[second + 1] = static_cast<std::uint8_t>(bytes.size() - second);
+    arm(conjunction ? 3 : 0);
+    bytes[jump + 1] = static_cast<std::uint8_t>(bytes.size() - jump);
+  }
+  bytes.push_back(op(abc::Opcode::kRETURNUNDEFINED));
+  return test::Body(bytes);
+}
 abc::MethodBody Body(unsigned count, bool direct, bool barrier, Selection selection) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   constexpr auto kGuard = abc::Opcode::kTHROW_UNDEFINEDIFHOLEWITHNAME_PREF_ID16;
@@ -50,10 +86,10 @@ abc::MethodBody Body(unsigned count, bool direct, bool barrier, Selection select
   return test::Body(bytes);
 }
 void Run(unsigned count, bool direct, bool print, bool barrier = false,
-    Selection selection = Selection::kConditional) {
-  const auto body = Body(count, direct, barrier, selection);
+    Selection selection = Selection::kConditional, abc::ProfileId profile = abc::ProfileId::kDynamic1206) {
+  const auto body = Decision(selection) ? DecisionBody(count, direct, selection) : Body(count, direct, barrier, selection);
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(3, 1, {}));
-  RouteInputIdentity identity; identity.profile = abc::ProfileId::kDynamic1206;
+  RouteInputIdentity identity; identity.profile = profile;
   const auto input = std::get<FunctionInput>(FunctionInput::Build(identity, {300}, {100}, body, frame,
       InputCaptureMode::kClosed));
   const auto values = std::get<FunctionValues>(BuildFunctionValues(input, body, frame));
@@ -70,20 +106,25 @@ void Run(unsigned count, bool direct, bool print, bool barrier = false,
   test::Check(std::holds_alternative<CallPlan>(calls));
   unsigned logical = 0;
   for (const auto& placement : evaluation.operations) logical += placement.kind == EvaluationKind::kLogicalValue;
-  test::Check(logical == count);
+  test::Check(logical == (Decision(selection) ? 0 : count));
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+  if (Decision(selection)) {
+    unsigned decisions = 0;
+    for (const auto& node : control.nodes) decisions += node.decision.has_value();
+    test::Check(decisions == count);
+  }
   FunctionSyntax syntax{};
   syntax.identity = identity; syntax.method = input.Method(); syntax.owner = {0};
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
-  syntax.names = {u"value", u"method", u"probe", u"option", u"imported"}; syntax.texts = {u"on"};
+  syntax.names = {u"value", u"method", u"probe", u"option", u"other", u"imported"}; syntax.texts = {u"on"};
   syntax.parameters = {{NameId{0}, NameEvidence::kDebugRange}};
-  syntax.modules = {{{{7}, {0}}, NameId{4}, ModuleAccess::kReadOnly, NameEvidence::kMetadata}};
+  syntax.modules = {{{{7}, {0}}, NameId{5}, ModuleAccess::kReadOnly, NameEvidence::kMetadata}};
   std::vector<ExpressionConstant> constants(graph.ops.size());
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     if (const auto* read = std::get_if<ValueNamedRead>(&graph.ops[i].operation)) constants[i] = NameId{read->name.value + 1};
     if (std::holds_alternative<ValueString>(graph.ops[i].operation)) constants[i] = TextId{0};
   }
-  const ExpressionConstants resolved{constants, 5, 1};
+  const ExpressionConstants resolved{constants, 6, 1};
   const auto built = BuildFunctionTree(graph, control, evaluation, std::move(syntax), resolved);
   test::Check(std::holds_alternative<ConstructedFunction>(built));
   const auto& tree = std::get<ConstructedFunction>(built).tree;
@@ -100,6 +141,17 @@ void Run(unsigned count, bool direct, bool print, bool barrier = false,
     test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
     forged = evaluation; forged.operations[modules.front().pair.guard->value].kind = EvaluationKind::kRemoved;
     test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    if (Decision(selection)) {
+      const auto guard = *modules.front().pair.guard;
+      std::optional<ExprId> other;
+      for (const auto& placement : tree.operations)
+        if (const auto* expression = std::get_if<ExprId>(&placement.node);
+            expression && *expression != *flow.expressions[guard.value]) { other = *expression; break; }
+      test::Check(other.has_value());
+      auto wrong = tree;
+      for (auto& placement : wrong.operations) if (placement.operation == guard) placement.node = *other;
+      test::Check(std::holds_alternative<TreeFlowError>(VerifyTreeFlow(graph, control, evaluation, wrong)));
+    }
   }
   std::ostringstream output;
   test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, output)));
@@ -117,9 +169,17 @@ int main(int argc, char** argv) {
       Run(count, option == "--and-direct-source", true, false, Selection::kAnd);
     else if (option == "--or-source" || option == "--or-direct-source")
       Run(count, option == "--or-direct-source", true, false, Selection::kOr);
+    else if (option == "--decision-and-source" || option == "--decision-and-direct-source")
+      Run(count, option == "--decision-and-direct-source", true, false, Selection::kDecisionAnd);
+    else if (option == "--decision-or-source" || option == "--decision-or-direct-source")
+      Run(count, option == "--decision-or-direct-source", true, false, Selection::kDecisionOr);
     else test::Check(false);
     return 0;
   }
+  for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+    for (const auto count : {1U, 2U, 200U, 201U, 402U})
+      for (const auto selection : {Selection::kDecisionAnd, Selection::kDecisionOr})
+        for (const bool direct : {false, true}) Run(count, direct, false, false, selection, profile);
   for (const auto count : {1U, 2U, 200U, 201U, 400U, 800U})
     for (const auto selection : {Selection::kConditional, Selection::kAnd, Selection::kOr})
       for (const bool direct : {false, true}) Run(count, direct, false, false, selection);

@@ -923,7 +923,11 @@ class TreeBuilder {
             tree_.anchors.push_back({BlockBoundary{drafts_[draft].statement, drafts_[draft].count}, origin});
             tree_.operations.push_back({at, anchor});
           } else {
-            Require(kind == EvaluationKind::kInline && forest_.operations[at.value], Error::kOwnership);
+            // A paired module guard shares its read's expression and origin
+            // combination. Keep the placement inside this conditional RHS;
+            // it is neither another statement nor an unconditional read.
+            Require((kind == EvaluationKind::kInline || kind == EvaluationKind::kModuleGuard) &&
+                forest_.operations[at.value], Error::kOwnership);
             tree_.operations.push_back({at, *forest_.operations[at.value]});
           }
         }

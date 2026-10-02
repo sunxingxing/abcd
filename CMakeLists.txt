@@ -1064,6 +1064,8 @@ if(BUILD_TESTING)
   if(ABCD_NODE_EXECUTABLE)
     add_test(NAME selection_module_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/selection_module.mjs $<TARGET_FILE:selection_module_test>)
+    add_test(NAME decision_module_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_module.mjs $<TARGET_FILE:selection_module_test>)
     add_test(NAME empty_tail_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/empty_tail.mjs $<TARGET_FILE:logical_regions_test>)
     add_test(NAME branch_polarity_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
@@ -1110,6 +1112,12 @@ if(BUILD_TESTING)
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/phone/src/main/ets/view/TabContentView.ts")
       add_test(NAME tab_closure_schedule_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/tab_closure_schedule.mjs $<TARGET_FILE:abc_structure>
+        ${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication)
+    endif()
+    if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc" AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/picture/src/main/ets/view/DetailVerticalView.ts")
+      add_test(NAME vertical_decision_module_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/vertical_decision_module.mjs $<TARGET_FILE:abc_structure>
         ${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication)
     endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc" AND

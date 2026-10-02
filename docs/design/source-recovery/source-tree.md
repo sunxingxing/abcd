@@ -220,6 +220,9 @@ base use。独立求值及树检查仍核对初始化、选择和成员引用顺
 字面量依赖树可能先构造后面的闭包；FunctionBinding须按原creation OpId查找，
 不能用AST构造游标代替身份。保留child owner、capture映射及完整创建计数，
 运行时求值顺序仍由原位置和效果检查决定。
+正常流共享分支的短路decision也保留module read/guard配对：guard与read映射同一
+表达式，保留在条件RHS内，不补独立语句或提前读模块。TreeFlow先核对配对的
+准确ExprId，再核对decision位置；不改变相位异常路径的staging/handler要求。
 嵌套条件可以保留独立的内外层phi：内层完整选择的结果仅有一个活跃使用，且
 经过自身只含纯跳转的join进入父phi时，记录确切forwarded UseId并组合为子表达式。
 保持原CFG、两层phi及边身份；内层边和父转交边分别检查，不把内层所有叶边当作

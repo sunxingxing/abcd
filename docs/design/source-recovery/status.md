@@ -12,6 +12,40 @@
 
 ## 当前阶段
 
+### 2026-10-02：语句短路 decision 保留模块 read/guard 配对
+
+- DetailVerticalView 44437 / entry 44592 的 getPaddingTop 在 RHS 中遇到
+  kModuleGuard，旧 EmitDecision 只接受 kInline。新增真实 decoded AND/OR
+  语句分支在旧实现构建成功后于 FunctionTree 构造失败，red-build.log /
+  red-test.log。现保留 guard 的共享表达式 placement，TreeFlow 复用
+  ModulePairs 的精确 read/guard ExprId 检查；没有删除 guard、新增语句或
+  无条件执行 RHS，相位 staging/handler 接受域未变。
+- 三 profile 覆盖 direct/property module reads、AND/OR 两种共享分支及
+  1/2/200/201/402 次组合；缺失/删除 guard 和篡改 guard 表达式均拒绝。
+  green-tests.log 2/2 通过 12.71 秒；最终定向 4/4 通过 15.17 秒，
+  expanded-build.log / expanded-tests.log。独立原生语法共 7,248 个短路、
+  getter/call顺序、receiver、异常、undefined和词法 TDZ 场景通过。
+- 最终 88 个相关 targets 构建退出 0，related-build.log；183/183 相关
+  回归通过 414.87 秒，related-tests.log，并按名称核对与选择清单一致。
+  全库、扩大语料、RSS/基准、DFX、调度器、代理和定期审视仍保持暂停。
+- vertical_decision_module_source_test 独立读取配对 TS，getPaddingTop
+  362 个方法场景通过，paired-test.log；实际 SyntheticModule export 在
+  state getter 中替换，核对 live binding、各读取点抛错、严格比较不触发
+  coercion，以及两次返回资源对象/params数组的身份和描述符。未覆盖构造、
+  storage或实际渲染，也不将Node词法TDZ对照当作Ark VM验证。
+- 五输入 fresh build/stage-one/value-decision-module-pass-1 均退出 0：
+  73 complete / 4 incomplete / 29 failure / 46 no-module；新增完整
+  DetailVerticalView 44437。原 72 个完整项无回退或源码字节变化，无 legacy，
+  原生 default records 保留，final-batch.log / final-batch-summary.json。
+  新源码 Node --check 退出 0，阶段一整体语义/表示验收仍未完成。
+- 下一处已定位 Immersive Home 23956 / entry 24314 的 child 24258，
+  parent 24645、创建 PC 56、family member 2。ControlBuilder::Regions
+  在 control_plan.cc:218 报 kCrossEntry：task first=40 / stop=42 再进入
+  已 owned 的 cursor 40（covered=31、pending=10）。需核对区域和共享
+  decision 的续接边界，不可跳过 ownership 检查来重复/遗漏执行路径。
+  next-target.log / next-owner.log / next-control.log / next-instructions.jsonl。
+  本节日志前缀 /tmp/abcd-decision-module-*，Goal 保持 active。
+
 ### 2026-10-02：闭包绑定按 creation 身份独立于 AST 构造次序
 
 - TabContentView 42938 / entry 43110 的字面量依赖先构造 OpId 21，而旧

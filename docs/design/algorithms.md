@@ -618,6 +618,24 @@ shared captures, writes after return/throw, and separate factory invocations.
 Malformed creation order, duplicate IDs and self owners remain rejected at the
 evaluation/expression boundary; the family entry itself rebinds from its inputs.
 
+### Guarded module reads in statement decisions (2026-10-02)
+
+Normal shared-arm decisions retain an already verified module guard's placement
+at the same ExprId as its read. The RHS remains conditional; no separate guard
+statement or unconditional module access is introduced. TreeFlow's existing
+ModulePairs check independently requires the exact read/guard expression match
+before decision traversal consumes that pair without an additional statement.
+Phased staging/handler admission is unchanged.
+
+This is constant work per existing operation, with no new index, allocation,
+dependency, or runtime helper. Three-profile decoded AND/OR statement decisions
+cover direct module values and property reads at 1/2/200/201/402 repetitions.
+Missing/removed guards and forged guard-expression placements remain rejected.
+Independent native syntax tests compare short circuiting, getter/call order,
+exceptions and lexical TDZ, while paired getPaddingTop tests exercise a mutable
+module export under a bounded host contract. Neither substitutes for Ark VM or
+full platform acceptance.
+
 ### Selected module reads and consecutive consumers (2026-10-01)
 
 Normal selection arms also accept an exact module read/guard pair owned by their

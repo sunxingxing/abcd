@@ -320,7 +320,9 @@ class FlowCheck {
       edges_->Stage(op, BlockStmt{}, empty);
     }
     const auto kind = evaluation_.operations[op.value].kind;
-    if (kind == EvaluationKind::kInline) return;
+    // ModulePairs already checked the normal read/guard's exact shared ExprId.
+    // This decision consumes no second statement for that guarded read.
+    if (kind == EvaluationKind::kInline || (!exceptions_ && kind == EvaluationKind::kModuleGuard)) return;
     if (kind == EvaluationKind::kRoot && !std::holds_alternative<analysis::ValueJump>(original.operation)) {
       const auto shape = DescribeEvaluation(original.operation);
       Require(exceptions_ && condition && shape && shape->expression &&
