@@ -57,11 +57,12 @@ or the requested complete source-style acceptance.
    pinned catalog for proved numeric inputs. General ToNumber and ToNumeric
    also have decoded normal/phased tests and independent coercion oracles;
    deprecated.neg retains its tag exclusion, and updates retain numeric gates.
-3. Complete arithmetic result proofs, including exponentiation. Decoding EXP
-   and printing `**` currently do not suffice for FunctionInput admission.
-4. Complete the binary/comparison encoded-form matrix and operator combinations
-   across ordinary/phased expression contexts, negative ownership cases and
-   geometric scaling; rerun the fixed stage-one inputs.
+3. Integer-exponent Number EXP now has a common result proof; general
+   arithmetic input domains and right-nested exponent facts remain incomplete.
+4. The decoded binary/comparison matrix now enumerates all 22 encodings under
+   proved input premises. Extend operator combinations across ordinary/phased
+   expression contexts and general input domains; preserve ownership refusals
+   and geometric scaling checks, and rerun the fixed stage-one inputs.
 
 Arithmetic value-domain proof remains a distinct requirement. Existing
 arbitrary-NaN/internal-tag refusals and the deprecated.neg INT32_MIN discrepancy

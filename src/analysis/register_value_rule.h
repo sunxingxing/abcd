@@ -24,7 +24,8 @@ enum class ValueRuleKind {
   kToNumeric,
   kToNumber,
   kNonNaNMultiply,
-  kNonNaNDivide
+  kNonNaNDivide,
+  kIntegralExponent
 };
 struct ValueRule {
   ValueRuleKind kind = ValueRuleKind::kFixed;
@@ -59,8 +60,9 @@ constexpr ValueKinds ConvertedNumericValue(ValueKinds input) {
 // when proved, and unary sign change retains finite/nonzero information.
 constexpr ValueKinds NegatedNumber(ValueKinds input) {
   if (!input.IsNonNaNNumber()) return ValueKinds::Unknown();
-  return (input.IsFiniteNonzeroNumber() ? ValueKinds::FiniteNonzeroNumber() :
+  const auto result = (input.IsFiniteNonzeroNumber() ? ValueKinds::FiniteNonzeroNumber() :
       input.IsFiniteNumber() ? ValueKinds::FiniteNumber() : ValueKinds::NonNaNNumber()).WithoutInt32MinTag();
+  return input.IsIntegralNumber() ? result.WithIntegralNumber() : result;
 }
 constexpr ValueKinds LegacyNegatedNumber(ValueKinds input) {
   return input.ExcludesInt32MinTag() ? NegatedNumber(input) : ValueKinds::Unknown();
@@ -80,6 +82,14 @@ constexpr ValueKinds DivideNumbers(ValueKinds left, ValueKinds right) {
   return left.IsNonNaNNumber() && right.IsNonNaNNumber() &&
                  (left.IsFiniteNonzeroNumber() || right.IsFiniteNonzeroNumber())
              ? ValueKinds::NonNaNNumber() : ValueKinds::Unknown();
+}
+// Pinned EXP delegates Number arithmetic to pow after its NaN/infinity guards.
+// A non-NaN base with a finite integer exponent cannot enter a NaN domain:
+// negative bases, signed zero, overflow/underflow and infinities stay Numbers.
+// Fractional exponents and arbitrary NaN payloads require separate evidence.
+constexpr ValueKinds ExponentNumbers(ValueKinds base, ValueKinds exponent) {
+  return base.IsNonNaNNumber() && exponent.IsIntegralNumber()
+      ? ValueKinds::NonNaNNumber() : ValueKinds::Unknown();
 }
 // Classifies a definite normal-path register definition. Join is one copy;
 // language operations have at most two scalar operands. Property/call/lexical

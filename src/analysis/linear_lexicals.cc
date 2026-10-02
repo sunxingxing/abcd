@@ -418,6 +418,10 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
                     ? ValueKinds::NonNaNNumber()
                     : ValueKinds::Unknown();
             break;
+          case detail::ValueRuleKind::kIntegralExponent:
+            if (access.read_count != detail::kScalarInputs) return fail(Error::kInstruction);
+            state(*access.write) = detail::ExponentNumbers(state(access.reads[0]), state(access.reads[1]));
+            break;
           case detail::ValueRuleKind::kNonNaNDivide:
             if (access.read_count != detail::kScalarInputs) return fail(Error::kInstruction);
             state(*access.write) = detail::DivideNumbers(state(access.reads[0]), state(access.reads[1]));

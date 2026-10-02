@@ -51,7 +51,8 @@ class ValueKinds {
         : IsDefined() && other.IsDefined() ? Refinement::kDefined
                                           : Refinement::kNone;
     return ValueKinds{static_cast<std::uint8_t>(bits_ | other.bits_), refinement,
-                      excludes_min_int32_ && other.excludes_min_int32_};
+                      excludes_min_int32_ && other.excludes_min_int32_,
+                      integral_number_ && other.integral_number_};
   }
   [[nodiscard]] constexpr bool IsEmpty() const { return bits_ == 0; }
   [[nodiscard]] constexpr bool IsLanguage() const { return bits_ == kLanguage; }
@@ -83,6 +84,16 @@ class ValueKinds {
   }
   [[nodiscard]] constexpr bool IsFiniteNonzeroNumber() const {
     return IsLanguage() && refinement_ == Refinement::kFiniteNonzeroNumber;
+  }
+  // Finite integer Number (including signed zero), independent of the VM tag.
+  // Joins retain integrality only when every alternative supplies it.
+  [[nodiscard]] constexpr ValueKinds WithIntegralNumber() const {
+    auto result = *this;
+    if (IsFiniteNumber()) result.integral_number_ = true;
+    return result;
+  }
+  [[nodiscard]] constexpr bool IsIntegralNumber() const {
+    return IsFiniteNumber() && integral_number_;
   }
   // A VM representation fact, not a numeric range guessed from source names.
   // It survives a join only when both alternatives exclude the tagged minimum.
@@ -118,11 +129,13 @@ class ValueKinds {
   static constexpr std::uint8_t kEnvironment = 1 << 2;
   static constexpr std::uint8_t kOtherInternal = 1 << 3;
   explicit constexpr ValueKinds(
-      std::uint8_t bits, Refinement refinement = Refinement::kNone, bool excludes_min_int32 = false)
-      : bits_(bits), refinement_(refinement), excludes_min_int32_(excludes_min_int32) {}
+      std::uint8_t bits, Refinement refinement = Refinement::kNone, bool excludes_min_int32 = false, bool integral_number = false)
+      : bits_(bits), refinement_(refinement), excludes_min_int32_(excludes_min_int32),
+        integral_number_(integral_number) {}
   std::uint8_t bits_ = 0;
   Refinement refinement_ = Refinement::kNone;
   bool excludes_min_int32_ = false;
+  bool integral_number_ = false;
 };
 }  // namespace abcd::analysis
 #endif  // ABCD_ANALYSIS_VALUE_KINDS_H_

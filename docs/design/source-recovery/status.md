@@ -13,6 +13,39 @@
 ## 当前阶段
 
 
+### 2026-10-02：整数指数与完整二元／比较编码矩阵
+
+- 新 decoded binary_initializer 矩阵按 PinnedIsaCatalog 核对全部 22 个
+  binary/comparison 编码，通过同一 FunctionInput、Value IR、表达式树、
+  独立语义/origin 验证与 printer。不同 acc/register 种子检查方向，
+  负数种子区分有符号/无符号移位；与既有 16 unary 编码矩阵合计 38。
+  这是当前输入前提下的编码覆盖，不是任意输入值域完成声明。
+- 首轮在 EXP opcode 27 的 FunctionInput 准入 RED，1/1 失败 4.81 秒，
+  /tmp/abcd-binary-initializer-red-tests.log。新增有限整数 Number 事实，
+  与 VM tagged-int32 排除独立；整数/有限整数 double 字面量建立，复制、
+  身份转换和所有入边均成立的 join 保留。共同 ExponentNumbers 规则
+  在普通/phased SSA 和 linear lexical 分析中复用，无样本分支。
+- pinned EXP / RuntimeExp 的 Number pow 路径在 non-NaN 底数、有限整数
+  指数下不会进入 NaN 域，正常结果为 NonNaNNumber。保留负底数、正负零、
+  无穷、溢出及下溢；小数/无限指数、NaN 底数及任意 Language/BigInt
+  仍无通用准入证明。依赖的 std::pow/源语言幂运算不等于 Ark 二进制验证。
+- 新复合用例另行复现 NEG 计算的负指数丢失整数事实，negated-red-tests.log
+  失败于共同输入准入。修正共享 NegatedNumber，使已有整数事实在已证明
+  求负中保留；现代/旧求负仍分别遵守原有 tag 前提。
+- 指数值域测试包含 ordinary/phased 完整树、lattice 结合/交换律及拒绝
+  边界；连续左嵌套幂与 NEG 指数经真实解码，覆盖三 profile 以及
+  1/2/200/201/402 长度和 work 增长。223 个独立原生场景通过，涵盖
+  运算方向、符号、@@hasInstance 顺序/异常与 Object.is 数值对照；
+  native-cases.log。后续仍需更广的复合表达式和一般输入证明。
+- 24 个相关 targets 构建退出 0；最终选定 31/31 CTest 通过 66.95 秒，
+  与 selected.json 按名称一致；final-build.log / final-tests.log。
+  五输入 fresh build/stage-one/value-exponent-pass-2 均退出 0，仍为
+  75 complete / 4 incomplete / 27 failure / 46 no-module，无完整记录回退、
+  完整源码字节变化或 legacy，三个原生 default records 保留。
+  除首轮矩阵 RED 外，本节日志前缀 /tmp/abcd-exponent-*。
+  full-suite/RSS/扩展语料仍未运行；完整 ISA 输入域及阶段一 Goal 保持 active。
+
+
 ### 2026-10-02：一般 ToNumeric 的独占临时转换
 
 - 独立现代/deprecated decoded 用例在旧 FunctionInput 阶段 RED，

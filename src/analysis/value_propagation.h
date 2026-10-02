@@ -81,7 +81,7 @@ void PropagateValues(std::span<const ValueNode> nodes,
           nodes[target].kind == Kind::kNegate || nodes[target].kind == Kind::kLegacyNegate ||
           nodes[target].kind == Kind::kToNumeric || nodes[target].kind == Kind::kToNumber ||
           nodes[target].kind == Kind::kNonNaNMultiply ||
-          nodes[target].kind == Kind::kNonNaNDivide) {
+          nodes[target].kind == Kind::kNonNaNDivide || nodes[target].kind == Kind::kIntegralExponent) {
         bool ready = true, language = true, equality_inputs = true;
         bool non_nan_number = true;
         for (std::size_t i = 0; i < nodes[target].input_count; ++i) {
@@ -118,6 +118,10 @@ void PropagateValues(std::span<const ValueNode> nodes,
           propagated = nodes[target].input_count == kScalarInputs
               ? MultiplyNumbers(facts[nodes[target].inputs[0].value],
                                 facts[nodes[target].inputs[1].value])
+              : ValueKinds::Unknown();
+        } else if (nodes[target].kind == Kind::kIntegralExponent) {
+          propagated = nodes[target].input_count == kScalarInputs
+              ? ExponentNumbers(facts[nodes[target].inputs[0].value], facts[nodes[target].inputs[1].value])
               : ValueKinds::Unknown();
         } else if (nodes[target].kind == Kind::kNonNaNDivide) {
           propagated = nodes[target].input_count == kScalarInputs

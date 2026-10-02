@@ -1,6 +1,8 @@
 #include "register_value_rule.h"
 
 #include <algorithm>
+#include <bit>
+#include <cmath>
 
 #include "abcd/analysis/array_creation.h"
 #include "abcd/analysis/constant_object.h"
@@ -93,14 +95,19 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment) {
       constexpr std::uint64_t kMagnitudeMask = UINT64_C(0x7fffffffffffffff);
       constexpr std::uint64_t kInfinityBits = UINT64_C(0x7ff0000000000000);
       const auto magnitude = number->value & kMagnitudeMask;
-      if (magnitude <= kInfinityBits)
-        return ValueRule{ValueRuleKind::kFixed,
-            (magnitude != 0 && magnitude < kInfinityBits
-                ? ValueKinds::FiniteNonzeroNumber()
-                : magnitude == 0 ? ValueKinds::FiniteNumber() : ValueKinds::NonNaNNumber()).WithoutInt32MinTag()};
+      if (magnitude <= kInfinityBits) {
+        auto kinds = (magnitude != 0 && magnitude < kInfinityBits
+            ? ValueKinds::FiniteNonzeroNumber()
+            : magnitude == 0 ? ValueKinds::FiniteNumber() : ValueKinds::NonNaNNumber()).WithoutInt32MinTag();
+        if (kinds.IsFiniteNumber()) {
+          const auto literal = std::bit_cast<double>(number->value);
+          if (std::trunc(literal) == literal) kinds = kinds.WithIntegralNumber();
+        }
+        return ValueRule{ValueRuleKind::kFixed, kinds};
+      }
     }
     if (const auto* integer = std::get_if<IntegerLiteral>(value)) {
-      const auto kinds = integer->value != 0 ? ValueKinds::FiniteNonzeroNumber() : ValueKinds::FiniteNumber();
+      const auto kinds = (integer->value != 0 ? ValueKinds::FiniteNonzeroNumber() : ValueKinds::FiniteNumber()).WithIntegralNumber();
       return ValueRule{ValueRuleKind::kFixed, integer->value == INT32_MIN ? kinds : kinds.WithoutInt32MinTag()};
     }
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
@@ -161,6 +168,8 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment) {
       return ValueRule{ValueRuleKind::kNonNaNMultiply, {}};
     if (binary->op == BinaryOperator::kDivide)
       return ValueRule{ValueRuleKind::kNonNaNDivide, {}};
+    if (binary->op == BinaryOperator::kExponent)
+      return ValueRule{ValueRuleKind::kIntegralExponent, {}};
     language = HasLanguageResult(binary->op);
   }
   return language ? ValueRule{ValueRuleKind::kLanguageOperation, {}}
