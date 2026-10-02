@@ -137,12 +137,24 @@ void Owner(CaptureChild function, Quota& quota, bool check_uses = true) {
   } else Require(function.Input().Captures().empty(), Error::kCoverage);
 }
 void Owners(const abc::MetadataIndex& index, CaptureFunction parent, CaptureChild child,
-    const analysis::CreationBinding& creation, Quota& quota) {
+    const CaptureSite& creation, Quota& quota) {
   Owner(parent, quota, false); Owner(child, quota); quota.Step();
   Require(parent.input.Identity() == child.Input().Identity() && parent.input.Record() == child.Input().Record() &&
-      creation.target.position.value < index.methods.size(), Error::kOwner);
-  const auto& target = index.methods[creation.target.position.value];
+      CapturePosition(creation).value < index.methods.size(), Error::kOwner);
+  const auto& target = index.methods[CapturePosition(creation).value];
   Require(target.offset == child.Input().Method() && target.owner_offset == child.Input().Record(), Error::kOwner);
+}
+void ClassOwner(const CaptureParent& parent, CaptureChild child, const CaptureSite& occurrence, Quota& quota) {
+  const auto* creation = std::get_if<ClassCaptureSite>(&occurrence);
+  if (!creation) return;
+  quota.Step();
+  const auto& context = creation->owner;
+  const auto* constructor = context.ConstructorSite();
+  const auto* member = context.ClassSite();
+  Require((constructor != nullptr) != (member != nullptr), Error::kOwner);
+  const auto creator = constructor ? constructor->creator : member->creator;
+  Require(context.Identity() == parent.identity && creator == parent.method &&
+      context.Target() == child.Input().Method() && child.Input().MatchesOwner(context), Error::kOwner);
 }
 CaptureParent Parent(CaptureFunction function) {
   return {function.input.Identity(), function.input.Method(), function.values.graph,
@@ -178,12 +190,19 @@ analysis::OpId Operation(const CaptureParent& function, analysis::InstructionId 
   return Operation(function.graph, function.instructions, site, quota);
 }
 analysis::OpId Creation(const CaptureParent& parent, analysis::InstructionId site,
-    const analysis::CreationBinding& creation, Quota& quota) {
+    const CaptureSite& creation, Quota& quota) {
   const auto id = Operation(parent, site, quota);
-  const auto* operation = std::get_if<analysis::ValueFunctionCreation>(&parent.graph.ops[id.value].operation);
-  Require(operation && operation->kind == creation.creation.kind && operation->method == creation.creation.method &&
-      operation->length == creation.creation.length.value && operation->home_object == creation.creation.home_object &&
-      operation->cache_slot == creation.creation.cache_slot, Error::kCreation);
+  if (const auto* function = std::get_if<analysis::CreationBinding>(&creation)) {
+    const auto* operation = std::get_if<analysis::ValueFunctionCreation>(&parent.graph.ops[id.value].operation);
+    Require(operation && operation->kind == function->creation.kind && operation->method == function->creation.method &&
+        operation->length == function->creation.length.value && operation->home_object == function->creation.home_object &&
+        operation->cache_slot == function->creation.cache_slot, Error::kCreation);
+  } else {
+    const auto* expected = CaptureClassCreation(std::get<ClassCaptureSite>(creation));
+    const auto* operation = std::get_if<analysis::ValueClassCreation>(&parent.graph.ops[id.value].operation);
+    Require(expected && operation && operation->constructor == expected->constructor && operation->literal == expected->literal &&
+        operation->length == expected->length && operation->cache_slot == expected->cache_slot, Error::kCreation);
+  }
   Require(parent.environments && id.value < parent.environments->flow.before.size() &&
       parent.environments->flow.before[id.value], Error::kCreation);
   return id;
@@ -228,10 +247,11 @@ CaptureTarget Rebase(const CaptureParent& parent, analysis::OpId creation, Incom
 
 std::variant<std::uint64_t, CaptureCellError> VerifyCaptureTargets(
     CaptureParent parent, CaptureChild child,
-    analysis::InstructionId site, const analysis::CreationBinding& creation,
+    analysis::InstructionId site, const CaptureSite& creation,
     const CaptureCells& plan, analysis::SemanticBudget budget) {
   try {
     Quota quota(budget); Owner(parent, quota); Owner(child, quota);
+    ClassOwner(parent, child, creation, quota);
     Require(parent.identity == child.Input().Identity(), Error::kOwner);
     Require(plan.identity == parent.identity && plan.parent == parent.method &&
         plan.child == child.Input().Method(), Error::kOwner);
@@ -284,10 +304,11 @@ std::variant<std::uint64_t, CaptureCellError> VerifyCaptureTargets(
 
 std::variant<CaptureCells, CaptureCellError> BindCaptureTargets(
     CaptureParent parent, CaptureChild child,
-    analysis::InstructionId site, const analysis::CreationBinding& creation,
+    analysis::InstructionId site, const CaptureSite& creation,
     CapturePlan input, analysis::SemanticBudget budget) {
   try {
     Quota quota(budget); Owner(parent, quota); Owner(child, quota);
+    ClassOwner(parent, child, creation, quota);
     Require(parent.identity == child.Input().Identity(), Error::kOwner);
     quota.Admit(1, sizeof(CaptureCells));
     const auto operation = Creation(parent, site, creation, quota);
@@ -316,7 +337,7 @@ std::variant<CaptureCells, CaptureCellError> BindCaptureTargets(
 }
 std::variant<std::uint64_t, CaptureCellError> VerifyCaptureCells(
     const abc::MetadataIndex& index, CaptureFunction parent, CaptureChild child,
-    analysis::InstructionId site, const analysis::CreationBinding& creation,
+    analysis::InstructionId site, const CaptureSite& creation,
     const CaptureCells& plan, analysis::SemanticBudget budget) {
   try {
     Quota quota(budget); Owners(index, parent, child, creation, quota);
@@ -327,7 +348,7 @@ std::variant<std::uint64_t, CaptureCellError> VerifyCaptureCells(
 }
 std::variant<CaptureCells, CaptureCellError> BindCaptureCells(
     const abc::MetadataIndex& index, CaptureFunction parent, CaptureChild child,
-    analysis::InstructionId site, const analysis::CreationBinding& creation, analysis::SemanticBudget budget) {
+    analysis::InstructionId site, const CaptureSite& creation, analysis::SemanticBudget budget) {
   try {
     Quota quota(budget); Owners(index, parent, child, creation, quota);
     auto bound = BuildCapturePlan(ScopeFacts(parent.input.Input(), parent.input.Proof()),

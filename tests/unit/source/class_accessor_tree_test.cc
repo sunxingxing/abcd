@@ -1,8 +1,10 @@
 #include "../../../src/source/class_tree.h"
 #include "../../../src/source/tree_constants.h"
 #include "../../../src/source/family_print.h"
+#include "../../../src/source/family_cells.h"
 #include "abcd/source/global_reference.h"
 #include "abcd/analysis/coroutine.h"
+#include "abcd/analysis/exception_locals.h"
 #include <unistd.h>
 #include <algorithm>
 #include <iostream>
@@ -16,16 +18,18 @@ void Check(bool ok, const std::source_location& at = std::source_location::curre
   if (!ok) { std::cerr << "accessor tree check " << at.line() << '\n'; std::abort(); }
 }
 std::string Recover(bool is_static, bool return_prototype = false, int ordinary_parity = -1,
-    bool async_method = false, abc::ProfileId profile = abc::ProfileId::kDynamic1206) {
+    bool async_method = false, abc::ProfileId profile = abc::ProfileId::kDynamic1206,
+    bool capture_cells = false, bool initialized = true) {
   constexpr std::uint32_t kPool = 64, kOwner = 128, kLiteral = 160,
       kCreator = 256, kConstructor = 300, kGetter = 340, kSetter = 380,
+      kBufferMethod = 420, kBufferCode = 864, kNestedMethod = 460, kNestedCode = 1000,
       kCreatorCode = 512, kConstructorCode = 768, kGetterCode = 800, kSetterCode = 832,
       kKey = 900, kPrototype = 920, kField = 944;
-  std::vector<std::uint8_t> bytes(1024);
+  std::vector<std::uint8_t> bytes(1100);
   const auto word = [&](std::size_t at, std::uint32_t n) {
     for (unsigned i = 0; i < sizeof(n); ++i) bytes[at + i] = static_cast<std::uint8_t>(n >> (8 * i));
   };
-  const std::uint32_t pool[] = {kConstructor, kLiteral, kGetter, kSetter, kKey, kPrototype, kField};
+  const std::uint32_t pool[] = {kConstructor, kLiteral, kGetter, kSetter, kKey, kPrototype, kField, kBufferMethod, kNestedMethod};
   for (std::size_t i = 0; i < std::size(pool); ++i) word(kPool + i * sizeof(std::uint32_t), pool[i]);
   const auto text = [&](std::size_t at, std::string_view value) {
     bytes[at++] = static_cast<std::uint8_t>(value.size() * 2 + 1);
@@ -34,10 +38,25 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   text(kKey, "value"); text(kPrototype, "prototype"); text(kField, "_value");
   word(kLiteral, 2); bytes[kLiteral + 4] = static_cast<std::uint8_t>(abc::LiteralTag::kInteger);
   word(kLiteral + 5, 0); // Empty class buffer, prototype split zero.
+  if (capture_cells) {
+    word(kLiteral, 8);
+    bytes[kLiteral + 4] = static_cast<std::uint8_t>(abc::LiteralTag::kString); word(kLiteral + 5, kKey);
+    bytes[kLiteral + 9] = static_cast<std::uint8_t>(abc::LiteralTag::kMethod); word(kLiteral + 10, kBufferMethod);
+    bytes[kLiteral + 14] = static_cast<std::uint8_t>(abc::LiteralTag::kMethodAffiliate);
+    bytes[kLiteral + 15] = 0; bytes[kLiteral + 16] = 0;
+    bytes[kLiteral + 17] = static_cast<std::uint8_t>(abc::LiteralTag::kInteger); word(kLiteral + 18, 1);
+  }
   std::vector<std::uint8_t> code;
   const auto op = [&](abc::Opcode value) { code.push_back(static_cast<std::uint8_t>(value)); };
   const auto load = [&](std::uint8_t r) { op(abc::Opcode::kLDA_V8); code.push_back(r); };
   const auto save = [&](std::uint8_t r) { op(abc::Opcode::kSTA_V8); code.push_back(r); };
+  if (capture_cells) {
+    op(abc::Opcode::kNEWLEXENV_IMM8); code.push_back(1);
+    if (initialized) {
+      op(abc::Opcode::kLDAI_IMM32); code.insert(code.end(), {42, 0, 0, 0});
+      op(abc::Opcode::kSTLEXVAR_IMM4_IMM4); code.push_back(0);
+    }
+  }
   op(abc::Opcode::kLDHOLE); save(0);
   op(abc::Opcode::kDEFINECLASSWITHBUFFER_IMM8_ID16_ID16_IMM16_V8);
   code.insert(code.end(), {0, 0, 0, 1, 0, 0, 0, 0}); save(1);
@@ -64,20 +83,28 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   op(abc::Opcode::kCREATEEMPTYOBJECT); save(0); load(3);
   op(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8); code.insert(code.end(), {0, 6, 0, 0});
   load(return_prototype ? 2 : 1); op(abc::Opcode::kRETURN);
-  // Compact Panda headers: all fixture bodies stay within one ULEB payload.
-  Check(code.size() < 128);
   const auto body = [&](std::uint32_t at, std::uint8_t locals, std::uint8_t args, std::vector<std::uint8_t> data,
       std::uint8_t tries = 0, std::uint8_t try_bytes = 0) {
-    bytes[at] = locals; bytes[at + 1] = args; bytes[at + 2] = static_cast<std::uint8_t>(data.size() - try_bytes); bytes[at + 3] = tries;
-    std::copy(data.begin(), data.end(), bytes.begin() + at + 4);
-    return abc::CodeInfo{{at}, {at + 4}, locals, args, static_cast<std::uint32_t>(data.size() - try_bytes), tries};
+    constexpr std::uint8_t kPayload = 0x7f, kContinuation = 0x80;
+    constexpr unsigned kPayloadBits = 7;
+    auto cursor = at;
+    const auto uleb = [&](std::uint32_t value) {
+      do {
+        const auto part = static_cast<std::uint8_t>(value & kPayload); value >>= kPayloadBits;
+        bytes[cursor++] = part | (value ? kContinuation : 0);
+      } while (value);
+    };
+    const auto size = static_cast<std::uint32_t>(data.size() - try_bytes);
+    uleb(locals); uleb(args); uleb(size); uleb(tries);
+    std::copy(data.begin(), data.end(), bytes.begin() + cursor);
+    return abc::CodeInfo{{at}, {cursor}, locals, args, size, tries};
   };
   const auto opcode = [](abc::Opcode value) { return static_cast<std::uint8_t>(value); };
   abc::MetadataIndex index; index.regions.push_back({kCreator, kCreatorCode, {}, {std::size(pool), kPool}, {}, {}});
-  index.methods.resize(4);
-  const std::uint32_t offsets[] = {kCreator, kConstructor, kGetter, kSetter};
-  const std::string names[] = {"factory", "Accessors", "value", "value"};
-  for (std::size_t i = 0; i < 4; ++i) {
+  index.methods.resize(capture_cells ? 6 : 4);
+  const std::uint32_t offsets[] = {kCreator, kConstructor, kGetter, kSetter, kBufferMethod, kNestedMethod};
+  const std::string names[] = {"factory", "Accessors", "value", "value", "value", "nested"};
+  for (std::size_t i = 0; i < index.methods.size(); ++i) {
     index.methods[i].offset = {offsets[i]}; index.methods[i].owner_offset = {kOwner};
     index.methods[i].name = names[i]; index.methods[i].name_utf16_length = names[i].size();
   }
@@ -88,6 +115,16 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   index.methods[3].code = body(kSetterCode, 1, 4, {opcode(abc::Opcode::kLDTHIS),
       opcode(abc::Opcode::kSTA_V8), 0, opcode(abc::Opcode::kLDA_V8), 4,
       opcode(abc::Opcode::kSTOBJBYNAME_IMM8_ID16_V8), 0, 6, 0, 0, opcode(abc::Opcode::kRETURNUNDEFINED)});
+  if (capture_cells) {
+    const std::vector<std::uint8_t> captured{opcode(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0, opcode(abc::Opcode::kRETURN)};
+    index.methods[1].code = body(kConstructorCode, 0, 3, captured);
+    index.methods[2].code = body(kGetterCode, 0, 3, captured);
+    index.methods[4].code = body(kBufferCode, 0, 3,
+        {opcode(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 8, 0, 0, opcode(abc::Opcode::kRETURN)});
+    index.methods[5].code = body(kNestedCode, 0, 3, captured);
+    constexpr unsigned kFunctionKindShift = 8; // Pinned dynamic method access flags.
+    index.methods[5].access_flags = static_cast<std::uint32_t>(abc::FunctionKind::kBaseConstructor) << kFunctionKindShift;
+  }
   if (async_method) {
     // Same private async await/resume wrapper as the class-buffer fixture,
     // now created by actual DEFINE METHOD and installed by STOWNBYNAME.
@@ -125,10 +162,115 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   const auto roles = std::get<analysis::MethodRoleIndex>(analysis::MethodRoleIndex::Build(file, header, index, lookup));
   const auto functions = std::get<analysis::FunctionCreationSites>(analysis::FunctionCreationSites::Build(file, header, index, lookup));
   const auto classes = std::get<analysis::ClassMethodSites>(analysis::ClassMethodSites::Build(file, header, index, lookup));
-  auto loaded = ReadFunctionValues(file, header, index, {0}, identity, InputCaptureMode::kClosed);
+  auto loaded = ReadFunctionValues(file, header, index, {0}, identity,
+      capture_cells ? InputCaptureMode::kConditional : InputCaptureMode::kClosed);
   Check(std::holds_alternative<FileFunction>(loaded)); const auto& creator = std::get<FileFunction>(loaded);
   const auto& graph = creator.values.graph; const auto& definitions = creator.values.definitions.sites;
   Check(definitions.size() == 4);
+  if (capture_cells) {
+    const auto class_operation = definitions.front().creation;
+    const auto& class_origin = graph.origins[graph.ops[class_operation.value].origin.value];
+    const analysis::InstructionId site{class_origin.site.value};
+    Check(site.value < creator.input.Proof().environments.before.size() &&
+        creator.input.Proof().environments.before[site.value]);
+    const auto environment = *creator.input.Proof().environments.before[site.value];
+    const auto check = [&](const FunctionContext& owner, analysis::InstructionId at, CaptureSite occurrence) {
+      auto values = ReadFunctionValues(file, header, index, owner.Position(), identity,
+          InputCaptureMode::kConditional, {}, nullptr, &owner);
+      Check(std::holds_alternative<FileFunction>(values));
+      const auto& child = std::get<FileFunction>(values);
+      std::optional<FileFamily> forwarding;
+      const auto work = [&]() -> CaptureChild {
+        if (child.input.Method() != abc::EntityOffset{kBufferMethod}) return {child.input, child.values};
+        // Genuine nested creation drives PlanFamilyCells. The class member has
+        // no lexical opcode; its incoming cell is exclusively a descendant demand.
+        Check(child.input.Captures().empty() && child.input.Children().size() == 1);
+        const auto nested_site = child.input.Children().front();
+        auto binding = std::get<analysis::CreationBinding>(analysis::BindCreation(file, header, index, lookup,
+            child.input.Method(), child.body, child.input.Proof().environments, nested_site.value));
+        const auto sites = functions.Find({kNestedMethod}); Check(sites.count == 1);
+        FunctionContext nested_owner{std::get<CreationTreeContext>(CreationTreeContext::Resolve(
+            file, header, index, lookup, roles, functions, sites.first, identity))};
+        auto nested = std::get<FileFunction>(ReadFunctionValues(file, header, index, nested_owner.Position(), identity,
+            InputCaptureMode::kConditional, {}, nullptr, &nested_owner));
+        auto incoming = std::get<CaptureCells>(BindCaptureCells(index, {child.input, child.values},
+            {nested.input, nested.values}, nested_site, binding));
+        forwarding.emplace(); forwarding->members.reserve(2);
+        forwarding->members.push_back({FamilyFunction{std::get<FileFunction>(std::move(values))}});
+        forwarding->members.push_back({FamilyFunction{std::move(nested)}, std::move(nested_owner),
+            FamilyCreation{FileFamily::kRoot, nested_site, binding, std::move(incoming)}});
+        Check(std::holds_alternative<FamilyCellCost>(PlanFamilyCells(*forwarding)));
+        const auto prepared = forwarding->members[0].function.Capture();
+        Check(prepared.OriginalInput().Captures().empty() && prepared.Input().Captures().size() == 1 &&
+            prepared.Cells()->cells.size() == 1 && prepared.Cells()->cells[0].count == 0);
+        return prepared;
+      }();
+      auto bound = BindCaptureCells(index, {creator.input, creator.values}, work, at, occurrence);
+      if (!initialized) { Check(std::get<CaptureCellError>(bound) == CaptureCellError::kInput); return; }
+      Check(std::holds_alternative<CaptureCells>(bound));
+      const auto& cells = std::get<CaptureCells>(bound);
+      Check(cells.targets.size() == 1 && std::holds_alternative<ParentCell>(cells.targets[0].target));
+      Check(std::holds_alternative<std::uint64_t>(VerifyCaptureCells(index,
+          {creator.input, creator.values}, work, at, occurrence, cells)));
+      auto changed = cells; ++changed.input.pc.value;
+      Check(std::get<CaptureCellError>(VerifyCaptureCells(index,
+          {creator.input, creator.values}, work, at, occurrence, changed)) == CaptureCellError::kInput);
+      changed = cells; ++std::get<ParentCell>(changed.targets[0].target).cell.value;
+      Check(std::get<CaptureCellError>(VerifyCaptureCells(index,
+          {creator.input, creator.values}, work, at, occurrence, changed)) == CaptureCellError::kBinding);
+      if (const auto* cls = std::get_if<ClassCaptureSite>(&occurrence)) {
+        const ClassCaptureSite wrong{cls->owner, analysis::CapturedDepth{1}};
+        Check(std::get<CaptureCellError>(BindCaptureCells(index,
+            {creator.input, creator.values}, work, at, wrong)) == CaptureCellError::kInput);
+      }
+    };
+    const FunctionContext constructor{std::get<ClassTreeContext>(ClassTreeContext::ResolveConstructor(
+        file, header, index, lookup, roles, creator, class_operation, identity))};
+    check(constructor, site, ClassCaptureSite{constructor, environment});
+    // The original phase matcher must use this class instruction's Before,
+    // never Commit or a neighboring instruction. This is scope-plan evidence,
+    // not a claim that a whole phased class-containing body can be emitted.
+    const auto phase = std::get<analysis::ExceptionFlow>(analysis::BuildExceptionFlow(
+        creator.body, profile, creator.frame.registers));
+    const auto phase_env = std::get<analysis::EnvironmentFlow>(analysis::AnalyzeExceptionEnvironments(phase));
+    const auto phase_locals = std::get<analysis::ExceptionLocals>(analysis::ProveExceptionLocals(
+        phase, phase_env, {}, {}, analysis::ClosureWrites::kLanguage));
+    bool before_found = false, commit_found = false;
+    const CaptureUse use{{{0}, {0}}, analysis::CaptureDomain::kLanguage};
+    for (std::size_t n = 0; n < phase.nodes.size(); ++n) {
+      const auto& node = phase.nodes[n];
+      if (node.instruction != site) continue;
+      const ScopeFacts scopes(ExceptionScopeFacts{phase, phase_env, phase_locals, {static_cast<std::uint32_t>(n)}});
+      const ClassCaptureSite occurrence{constructor, environment};
+      auto plan = BuildCapturePlan(scopes, site, occurrence, {&use, 1});
+      if (node.phase == analysis::ExceptionPhase::kBefore) {
+        before_found = true;
+        if (initialized) {
+          Check(std::holds_alternative<CapturePlan>(plan));
+          Check(std::holds_alternative<std::uint64_t>(VerifyCapturePlan(scopes, site, occurrence,
+              {&use, 1}, std::get<CapturePlan>(plan))));
+        } else Check(std::get<CaptureError>(plan) == CaptureError::kScope);
+      } else {
+        commit_found |= node.phase == analysis::ExceptionPhase::kCommit;
+        Check(std::get<CaptureError>(plan) == CaptureError::kCreation);
+      }
+    }
+    Check(before_found && commit_found);
+    const auto range = classes.Find({kBufferMethod}); Check(range.count == 1);
+    const FunctionContext member{std::get<ClassTreeContext>(ClassTreeContext::Resolve(
+        file, header, index, lookup, roles, classes, range.first, identity))};
+    check(member, site, ClassCaptureSite{member, environment});
+    const auto& definition = definitions.front();
+    const FunctionContext defined{std::get<ClassTreeContext>(ClassTreeContext::ResolveDefinedMember(
+        file, header, index, lookup, roles, functions, creator, definition.definition,
+        abc::ClassMethodKind::kGetter, identity))};
+    const auto created = *definition.Methods()[0].operation;
+    const analysis::InstructionId instruction{graph.origins[graph.ops[created.value].origin.value].site.value};
+    const auto binding = std::get<analysis::CreationBinding>(analysis::BindCreation(file, header, index, lookup,
+        creator.input.Method(), creator.body, creator.input.Proof().environments, instruction.value));
+    check(defined, instruction, binding);
+    Check(unlink(path) == 0); return {};
+  }
   auto evaluated = BuildEvaluationPlan(graph, {}, IncomingCells::kReject, {}, {}, {}, {}, analysis::ClosureWrites::kUnknown, definitions);
   if (const auto* error = std::get_if<EvaluationError>(&evaluated)) std::cerr << "evaluation " << static_cast<unsigned>(*error) << '\n';
   Check(std::holds_alternative<EvaluationPlan>(evaluated)); const auto& evaluation = std::get<EvaluationPlan>(evaluated);
@@ -228,6 +370,8 @@ int main(int argc, char** argv) {
       std::string_view(argv[1]) == "--method-last" ? 1 : std::string_view(argv[1]) == "--accessor-last" ? 0 : -1); return 0; }
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
     for (const bool is_static : {false, true}) {
+      Recover(is_static, false, -1, false, profile, true);
+      Recover(is_static, false, -1, false, profile, true, false);
       Recover(is_static, false, 1, true, profile);
       Recover(is_static, false, -1, true, profile); // Async setter cannot become native set syntax.
     }

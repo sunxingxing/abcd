@@ -76,13 +76,13 @@ enum class CaptureCellError : std::uint8_t {
 // once, not rebuilt per creation. Same target at two sites produces two plans.
 [[nodiscard]] std::variant<CaptureCells, CaptureCellError> BindCaptureCells(
     const abc::MetadataIndex& index, CaptureFunction parent, CaptureChild child,
-    analysis::InstructionId site, const analysis::CreationBinding& creation,
+    analysis::InstructionId site, const CaptureSite& creation,
     analysis::SemanticBudget budget = {});
 // Checks the supplied cell map against WORKING creation topology and ORIGINAL
 // initialized capture occurrences. Does not rebuild BindCaptureCells.
 [[nodiscard]] std::variant<std::uint64_t, CaptureCellError> VerifyCaptureCells(
     const abc::MetadataIndex& index, CaptureFunction parent, CaptureChild child,
-    analysis::InstructionId site, const analysis::CreationBinding& creation,
+    analysis::InstructionId site, const CaptureSite& creation,
     const CaptureCells& plan, analysis::SemanticBudget budget = {});
 }  // namespace abcd::source
 #endif

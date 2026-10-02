@@ -8,6 +8,37 @@ ordinary/arrow tree preparation; no closure-expression publication is admitted.
 
 ## Inputs and Ownership
 
+`CaptureSite` now distinguishes an original `CreationBinding` from a borrowed
+`ClassCaptureSite`. The latter carries the genuine constructor or buffer-member
+`FunctionContext` and the original creator environment at
+`DEFINECLASSWITHBUFFER`. Defined members keep their actual `DEFINEMETHOD`
+binding; no class root is represented by a fabricated function creation.
+
+Normal and exception `ScopeFacts` match the complete original class operation,
+PC and environment. Exception matching requires the actual original Before
+node, never Commit/Catch or a nearby point. Cell binding additionally checks
+the creator, file identity, child method and immutable child owner stamp, then
+matches the working `ValueClassCreation` through its retained input backlink.
+Class points have no synthetic PC fallback. The existing initialization,
+write-domain, unexposed-prefix and independent original/work cell checks remain
+unchanged. Scope matching by itself does not certify the child owner or AST.
+
+The shared target binder and verifier also handle forwarded zero-access root
+cells supplied by `PlanFamilyCells`. Their obligations remain separate from
+direct lexical opcode occurrences and must resolve to the same parent storage.
+Plans retain owned identity/revision/site/cell evidence, never a borrowed
+context pointer. Dispatch adds constant work per binding; it reuses the existing
+indexed rebasing and sparse target table, without scanning all descendants or
+parent operations for each capture.
+
+Decoded class fixtures cover constructor, buffer member, defined getter and an
+actual nested function whose class member only forwards the capture. They also
+check uninitialized cells, wrong original environments, modified PC/targets
+and original Before versus Commit. This is cell-binding infrastructure:
+`ReadFunctionFamily` still rejects incoming root cells, and actual class-root
+source aliases, enclosing scope visibility and family write/publication checks
+must be integrated before claiming executable class capture recovery.
+
 FunctionInput now owns a same-body SemanticMethod and SemanticProof, with file
 identity, method, record and explicit Closed/Conditional capture mode. Its
 private constructor requires both successful products; there is no default

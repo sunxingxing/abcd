@@ -17,12 +17,12 @@ bool SameCell(const CaptureCell& left, const CaptureCell& right) {
 }  // namespace
 std::variant<std::uint64_t, CaptureError> VerifyCapturePlan(
     const ScopeFacts& scopes, analysis::InstructionId site,
-    const analysis::CreationBinding& creation, std::span<const CaptureUse> uses,
+    const CaptureSite& creation, std::span<const CaptureUse> uses,
     const CapturePlan& plan, analysis::SemanticBudget budget) {
   if (budget.work == 0) return CaptureError::kWorkLimit;
   auto work = budget.work - 1;
-  if (!scopes.Matches(site, creation) || plan.site != site || plan.pc != creation.offset ||
-      plan.target != creation.target.position) return CaptureError::kCreation;
+  if (!scopes.Matches(site, creation) || plan.site != site || plan.pc != CapturePc(creation) ||
+      plan.target != CapturePosition(creation)) return CaptureError::kCreation;
   if (uses.size() != plan.bindings.size()) return CaptureError::kCoverage;
   if (scopes.Writes() != analysis::ClosureWrites::kUnknown &&
       scopes.Writes() != analysis::ClosureWrites::kLanguage) return CaptureError::kScope;
@@ -41,7 +41,7 @@ std::variant<std::uint64_t, CaptureError> VerifyCapturePlan(
 }
 std::variant<CapturePlan, CaptureError> BuildCapturePlan(
     const ScopeFacts& scopes, analysis::InstructionId site,
-    const analysis::CreationBinding& creation, std::span<const CaptureUse> uses,
+    const CaptureSite& creation, std::span<const CaptureUse> uses,
     analysis::SemanticBudget budget) {
   try {
     if (budget.work == 0) return CaptureError::kWorkLimit;
@@ -52,7 +52,9 @@ std::variant<CapturePlan, CaptureError> BuildCapturePlan(
     if (sizeof(CapturePlan) > budget.bytes) return CaptureError::kResourceLimit;
     const auto bytes = budget.bytes - sizeof(CapturePlan);
     if (uses.size() > bytes / sizeof(CaptureBinding)) return CaptureError::kResourceLimit;
-    CapturePlan plan{site, creation.offset, creation.target.position};
+    const auto pc = CapturePc(creation);
+    if (!pc) return CaptureError::kCreation;
+    CapturePlan plan{site, *pc, CapturePosition(creation)};
     plan.writes = scopes.Writes();
     plan.bindings.reserve(uses.size());
     if (plan.bindings.capacity() > bytes / sizeof(CaptureBinding)) return CaptureError::kResourceLimit;

@@ -1,4 +1,5 @@
 #include "scope_facts.h"
+#include "function_context.h"
 
 #include <algorithm>
 #include <bit>
@@ -26,6 +27,15 @@ bool NormalScopeFacts::Matches(analysis::InstructionId site,
       site.value < environments_.before.size() && environments_.before[site.value] &&
       method_.instructions[site.value].pc == creation.offset &&
       *environments_.before[site.value] == ordinary->environment;
+}
+bool NormalScopeFacts::Matches(analysis::InstructionId site, const ClassCaptureSite& creation) const {
+  const auto* expected = CaptureClassCreation(creation);
+  if (!expected || site.value >= method_.instructions.size()) return false;
+  const auto& instruction = method_.instructions[site.value];
+  const auto* operation = std::get_if<analysis::ClassCreation>(&instruction.operation);
+  return operation && *operation == *expected && instruction.pc == CapturePc(creation) &&
+      site.value < environments_.before.size() && environments_.before[site.value] &&
+      *environments_.before[site.value] == creation.environment;
 }
 std::variant<CaptureCell, ScopeError> NormalScopeFacts::Rebase(
     analysis::InstructionId creation, analysis::CapturedSlot capture,
@@ -107,8 +117,31 @@ std::uint64_t ScopeFacts::QueryWork() const {
 analysis::ClosureWrites ScopeFacts::Writes() const {
   return std::visit([](const auto& input) { return input.Writes(); }, input_);
 }
-bool ScopeFacts::Matches(analysis::InstructionId site, const analysis::CreationBinding& creation) const {
-  return std::visit([&](const auto& input) { return input.Matches(site, creation); }, input_);
+std::optional<abc::CodeOffset> CapturePc(const CaptureSite& site) {
+  return std::visit([](const auto& creation) -> std::optional<abc::CodeOffset> {
+    if constexpr (std::is_same_v<std::decay_t<decltype(creation)>, analysis::CreationBinding>) return creation.offset;
+    else {
+      if (const auto* ctor = creation.owner.ConstructorSite()) return ctor->pc;
+      if (const auto* member = creation.owner.ClassSite()) return member->pc;
+      return std::nullopt;
+    }
+  }, site);
+}
+abc::MethodPosition CapturePosition(const CaptureSite& site) {
+  return std::visit([](const auto& creation) {
+    if constexpr (std::is_same_v<std::decay_t<decltype(creation)>, analysis::CreationBinding>) return creation.target.position;
+    else return creation.owner.Position();
+  }, site);
+}
+const analysis::ClassCreation* CaptureClassCreation(const ClassCaptureSite& site) {
+  if (const auto* constructor = site.owner.ConstructorSite()) return &constructor->creation;
+  if (const auto* member = site.owner.ClassSite()) return &member->creation;
+  return nullptr;
+}
+bool ScopeFacts::Matches(analysis::InstructionId site, const CaptureSite& creation) const {
+  return std::visit([&](const auto& input, const auto& occurrence) {
+    return input.Matches(site, occurrence);
+  }, input_, creation);
 }
 std::variant<CaptureCell, ScopeError> ScopeFacts::Rebase(analysis::InstructionId site,
     analysis::CapturedSlot capture, analysis::CaptureDomain domain) const {

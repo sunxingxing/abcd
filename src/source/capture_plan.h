@@ -25,18 +25,20 @@ struct CapturePlan {
 enum class CaptureError : std::uint8_t {
   kCreation, kScope, kCoverage, kBinding, kResourceLimit, kWorkLimit
 };
-// One BindCreation result in the SAME verified owner as ScopeFacts. Uses are
-// child-proven obligations, in occurrence order, not inferred from names.
+// One genuine function/class capture point in the SAME owner as ScopeFacts.
+// Function points use BindCreation; constructor/buffer points borrow their
+// immutable FunctionContext. Uses are child-proven obligations, in occurrence
+// order, not inferred from names.
 // Outer CapturedSlot results retain their domain obligation. A local binding
 // proves initialization/domain, NOT immutability, alias elimination or child
 // emission. Keep the site even when two creations have the same target.
 [[nodiscard]] std::variant<CapturePlan, CaptureError> BuildCapturePlan(
     const ScopeFacts& scopes, analysis::InstructionId site,
-    const analysis::CreationBinding& creation, std::span<const CaptureUse> uses,
+    const CaptureSite& creation, std::span<const CaptureUse> uses,
     analysis::SemanticBudget budget = {});
 [[nodiscard]] std::variant<std::uint64_t, CaptureError> VerifyCapturePlan(
     const ScopeFacts& scopes, analysis::InstructionId site,
-    const analysis::CreationBinding& creation, std::span<const CaptureUse> uses,
+    const CaptureSite& creation, std::span<const CaptureUse> uses,
     const CapturePlan& plan, analysis::SemanticBudget budget = {});
 }  // namespace abcd::source
 #endif

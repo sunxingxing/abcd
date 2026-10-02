@@ -5,6 +5,18 @@
 #include "abcd/analysis/exception_locals.h"
 
 namespace abcd::source {
+class FunctionContext;
+// Borrowed genuine constructor/buffer-member context at DEFINECLASSWITHBUFFER.
+// Defined members retain their real FunctionCreation binding instead. This is
+// an original capture point, never a fabricated DEFINEFUNC for a class body.
+struct ClassCaptureSite {
+  const FunctionContext& owner;
+  analysis::EnvironmentRef environment;
+};
+using CaptureSite = std::variant<analysis::CreationBinding, ClassCaptureSite>;
+[[nodiscard]] std::optional<abc::CodeOffset> CapturePc(const CaptureSite& site);
+[[nodiscard]] abc::MethodPosition CapturePosition(const CaptureSite& site);
+[[nodiscard]] const analysis::ClassCreation* CaptureClassCreation(const ClassCaptureSite& site);
 using CaptureCell = std::variant<analysis::LocalCell, analysis::CapturedSlot>;
 enum class ScopeError : std::uint8_t {
   kSite, kEnvironment, kCell, kInitialization, kWrites, kDomain
@@ -27,6 +39,7 @@ class NormalScopeFacts {
       analysis::CaptureDomain requirement) const;
   [[nodiscard]] bool Matches(analysis::InstructionId site,
       const analysis::CreationBinding& creation) const;
+  [[nodiscard]] bool Matches(analysis::InstructionId site, const ClassCaptureSite& creation) const;
   // Conservative logarithmic comparison/query bound; batch users debit this
   // before each query. Environment ancestry has a fixed uint32 depth domain.
   [[nodiscard]] std::uint64_t QueryWork() const;
@@ -51,6 +64,7 @@ struct ExceptionScopeFacts {
   [[nodiscard]] std::variant<CaptureCell, ScopeError> Rebase(
       analysis::InstructionId site, analysis::CapturedSlot capture, analysis::CaptureDomain domain) const;
   [[nodiscard]] bool Matches(analysis::InstructionId site, const analysis::CreationBinding& creation) const;
+  [[nodiscard]] bool Matches(analysis::InstructionId site, const ClassCaptureSite& creation) const;
   [[nodiscard]] std::uint64_t QueryWork() const;
   analysis::ClosureWrites Writes() const { return locals.writes; }
 };
@@ -64,7 +78,7 @@ class ScopeFacts {
   explicit ScopeFacts(ExceptionScopeFacts input) : input_(input) {}
   [[nodiscard]] std::variant<CaptureCell, ScopeError> Rebase(
       analysis::InstructionId site, analysis::CapturedSlot capture, analysis::CaptureDomain domain) const;
-  [[nodiscard]] bool Matches(analysis::InstructionId site, const analysis::CreationBinding& creation) const;
+  [[nodiscard]] bool Matches(analysis::InstructionId site, const CaptureSite& creation) const;
   [[nodiscard]] std::uint64_t QueryWork() const;
   [[nodiscard]] analysis::ClosureWrites Writes() const;
  private:

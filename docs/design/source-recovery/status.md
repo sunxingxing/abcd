@@ -12,6 +12,36 @@
 
 ## 当前阶段
 
+### 2026-10-02：真实类创建点复用共同 capture cell 绑定
+
+- CaptureSite以variant区分原始CreationBinding和借用真实FunctionContext的
+  ClassCaptureSite。constructor/buffer member在DEFINECLASSWITHBUFFER绑定；
+  defined member保留实际DEFINEMETHOD，未伪造DEFINEFUNC。原始normal/Before
+  scope核对完整ClassCreation、PC和environment，working binder核对真实class
+  operation/backlink、creator、file/child identity及不可变owner stamp。
+  CaptureCells只保留拥有的身份、revision和cell证据，不保留context引用。
+- 既有initialized/domain、unexposed-prefix及独立original/work匹配未放宽。
+  decoded三profile、prototype/static fixture覆盖constructor、buffer、defined
+  getter和真实DEFINEFUNC后代；buffer自身没有lexical access，PlanFamilyCells
+  产生count0转发cell，仍能绑定同一parent storage。未初始化、错environment、
+  改PC/target拒绝；phase scope检查真实Before可用、Commit不可用，不声称整个
+  phased class-containing body已恢复。
+- 功能RED在未实现class matcher时class_accessor_tree_test拒绝，
+  red-tests.log；最终定向3/3通过1.64秒，forwarded-tests.log。相关84 targets
+  构建退出0，related-build.log；166/166相关定向回归通过345.18秒，
+  related-tests.log。没有执行全库测试。
+- 五输入fresh build/stage-one/value-class-capture-cell-pass-1均退出0；
+  56 complete / 4 incomplete / 46 failure / 46 no-module，没有新增完整项、
+  回退或legacy，原56个完整record源码字节不变，native default record
+  4466/20246/30597保留，final-batch.log / final-batch-summary.json。
+- fresh CommentBarView record21042 / entry21219仍unproved/tree_stage，
+  comment-bar.jsonl。当前是原始/working cell绑定能力，Reader仍拒绝root
+  incoming cells；下一步在真实creator处绑定class root，再连接parent AST
+  cell symbol/source alias、作用域可见性及family write/publication证明。
+  不将scope/cell测试计为完整类源码恢复。阶段一语义与表示验收尚未完成，
+  Goal保持active。全库、扩大语料、RSS/基准、DFX、调度器、代理及定期审视
+  仍暂停。本节日志均在 /tmp/abcd-class-capture-*。
+
 ### 2026-10-02：函数族 occurrence 索引与源码 owner 分离
 
 - FileFamily/ConstructedFamily 的 FamilyId 继续以0为根索引；新增 caller-reserved

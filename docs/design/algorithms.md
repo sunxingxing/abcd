@@ -670,3 +670,15 @@ owner wrap or alias. The standard-library representation adds no dependency or
 license requirement. Tests cover repeated creations at 200/201/400/800, shifted
 nested captures and the maximum-owner boundary; these are functional checks,
 not whole-process RSS or benchmark evidence.
+
+Class capture-point dispatch extends the existing project-local capture binder
+with a two-alternative typed site. Matching the original class instruction and
+working class operation takes O(1) work; owner-stamp equality is bounded by the
+fixed occurrence fields. No class buffer or metadata table is rescanned per
+cell. Sparse target storage and original/work environment queries retain the
+capture-binding bounds documented in source-recovery/capture-binding.md,
+including zero-access forwarding obligations from the family propagation pass.
+Normal and original Before-phase matching share the same initialization/domain
+rules. Decoded positive/negative fixtures exercise all three class-root forms
+and genuine descendant forwarding. This adds no dependency, allocator scheme,
+writer or whole-process memory/latency claim.

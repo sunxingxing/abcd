@@ -34,6 +34,14 @@ bool ExceptionScopeFacts::Matches(analysis::InstructionId site,
       operation->cache_slot == creation.creation.cache_slot && !creation.target.attributes.sendable &&
       instruction.pc == creation.offset && *environments.before[before.value] == ordinary->environment;
 }
+bool ExceptionScopeFacts::Matches(analysis::InstructionId site, const ClassCaptureSite& creation) const {
+  const auto* expected = CaptureClassCreation(creation);
+  if (!expected || !Before(*this, site)) return false;
+  const auto& instruction = flow.instructions[site.value];
+  const auto* operation = std::get_if<analysis::ClassCreation>(&instruction.operation);
+  return operation && *operation == *expected && instruction.pc == CapturePc(creation) &&
+      *environments.before[before.value] == creation.environment;
+}
 std::variant<CaptureCell, ScopeError> ExceptionScopeFacts::Rebase(
     analysis::InstructionId site, analysis::CapturedSlot capture, analysis::CaptureDomain domain) const {
   using Error = ScopeError;
