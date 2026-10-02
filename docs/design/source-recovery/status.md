@@ -12,6 +12,29 @@
 
 ## 当前阶段
 
+### 2026-10-03：实现原始异常流上的环境清理证明
+
+- 新 EnvironmentCleanup 从原 MethodBody 构建 ExceptionFlow 和异常环境分析，
+  不接受调用方伪造的环境证书。要求所有 region 为单一 catch-all，handler
+  仅由本方法拥有的 POPLEXENV 和最后 THROW acc 组成，原样抛到 caller；
+  拒绝从正常控制流进入 handler。保留 handler/rethrow instruction IDs 及
+  每个 pop 对应的原 allocation instruction ID，不用跨图 EnvironmentId。
+- 工厂输出封装证明，尚未授权删除 exception table；正常路径对应性和原始
+  清理 PC 的源码归属仍需 residual owner 完成。当前严格范围不包含向外层
+  catch 转发、typed catches 或未使用的异常处理器，不静默忽略它们。
+- 三 profile 的1/2/200/201/402清理区域、双层本地环境、work精确边界及
+  零预算测试通过。负例包括异常值改写、return替代重抛、正常跳入、外部
+  环境 pop、debugger和typed catch。区间二分索引、归属表和单次边扫描，
+  无逐handler全图遍历；分析器沿用上游 byte-bounded 环境分析及其访问计数。
+- 实际 VoipCallService entry12208 通过：pop PC58 -> allocation PC6，
+  rethrow PC59。独立测试直接读取 ABC，没有 sidecar 输入。相关4/4通过
+  1.55秒，日志 /tmp/abcd-environment-cleanup-related-tests.log；新目标首次
+  构建前需重新运行 CMake 配置，配置与构建日志均保留在同前缀目录。
+- 尚未接入 FamilyReader/record 发布，没有重跑五输入/full-suite/RSS。
+  当前基线仍77 complete /5 incomplete /24 failure /46 no-module。
+  下一步构造拥有原始异常信息的正常路径投影，验证来源与捕获映射后接入
+  模块入口；Goal保持active。
+
 ### 2026-10-03：剩余失败定位到值域与环境清理入口
 
 - 本轮未修改引擎，新增了下一步实现所需的实际失败证据。WindowUtil record7618
