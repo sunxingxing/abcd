@@ -94,13 +94,14 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment) {
       const auto magnitude = number->value & kMagnitudeMask;
       if (magnitude <= kInfinityBits)
         return ValueRule{ValueRuleKind::kFixed,
-            magnitude != 0 && magnitude < kInfinityBits
-                ? ValueKinds::FiniteNonzeroNumber() : ValueKinds::NonNaNNumber()};
+            (magnitude != 0 && magnitude < kInfinityBits
+                ? ValueKinds::FiniteNonzeroNumber()
+                : magnitude == 0 ? ValueKinds::FiniteNumber() : ValueKinds::NonNaNNumber()).WithoutInt32MinTag()};
     }
-    if (const auto* integer = std::get_if<IntegerLiteral>(value))
-      return ValueRule{ValueRuleKind::kFixed,
-                      integer->value != 0 ? ValueKinds::FiniteNonzeroNumber()
-                                          : ValueKinds::NonNaNNumber()};
+    if (const auto* integer = std::get_if<IntegerLiteral>(value)) {
+      const auto kinds = integer->value != 0 ? ValueKinds::FiniteNonzeroNumber() : ValueKinds::FiniteNumber();
+      return ValueRule{ValueRuleKind::kFixed, integer->value == INT32_MIN ? kinds : kinds.WithoutInt32MinTag()};
+    }
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
   }
   // Successful ECMAScript property reads expose language values. The pinned
@@ -124,9 +125,10 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment) {
       case UnaryOperator::kNegate:
       case UnaryOperator::kIncrement:
       case UnaryOperator::kDecrement:
+        return ValueRule{ValueRuleKind::kNonNaNUnary, {}};
       case UnaryOperator::kToNumber:
       case UnaryOperator::kToNumeric:
-        return ValueRule{ValueRuleKind::kNonNaNUnary, {}};
+        return ValueRule{ValueRuleKind::kNumericIdentity, {}};
       case UnaryOperator::kToBoolean:
       case UnaryOperator::kLogicalNot:
       case UnaryOperator::kTypeOf:
@@ -147,7 +149,9 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment) {
         binary->op == BinaryOperator::kStrictEqual || binary->op == BinaryOperator::kStrictNotEqual)
       return ValueRule{ValueRuleKind::kEquality, {}};
     if (binary->op == BinaryOperator::kAdd)
-      return ValueRule{ValueRuleKind::kStringAdd, {}};
+      return ValueRule{ValueRuleKind::kAdd, {}};
+    if (binary->op == BinaryOperator::kSubtract)
+      return ValueRule{ValueRuleKind::kSubtract, {}};
     if (binary->op == BinaryOperator::kMultiply)
       return ValueRule{ValueRuleKind::kNonNaNMultiply, {}};
     if (binary->op == BinaryOperator::kDivide)

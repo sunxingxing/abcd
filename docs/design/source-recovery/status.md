@@ -13,6 +13,43 @@
 ## 当前阶段
 
 
+### 2026-10-02：共享加减数值证明
+
+- additive_expression_test 从真实 ADD2/SUB2 解码进入 FunctionInput、
+  ValueProgram、共同树、独立语义及来源验证。旧实现在 FunctionInput
+  断言 RED，red-tests.log 1/1 失败 1.05 秒。现增加含 signed zero 的
+  FiniteNumber 事实，加入共享 AddValues/AdditiveNumbers/SubtractNumbers，
+  普通/phased 传播与 linear lexical 路径一致；后者也补齐遗漏的除法分支。
+- 核对 pinned interpreter-inl.cpp 的 SUB2 fast path 时发现，整数 RHS
+  INT32_MIN 先被取负，C++ 有符号溢出无法据此证明原生减法等价。
+  /tmp/abcd-sub2-boundary.log 的 UBSan 小探针确认源码级未定义行为，
+  不是 Ark VM 二进制运行证据。减法新增 ExcludesInt32MinTag 前提，常量
+  整数最小值不授予，同数值的 FLDAI double 独立授予；合流按交集保留。
+  已知 Number 的 ToNumber/ToNumeric 保留其原事实，递增递减不沿用该排除。
+  其他未知输入及既有非规范 NaN 内部标记反例仍拒绝。
+- boundary-tests.log 4/4 通过 14.17 秒；value-tests.log 2/2 通过 1.99 秒。
+  原有 quotient 证明保持。新增格的合流代数检查、有限/无限/NaN 位模式矩阵、
+  正常/phased 拒绝与 Commit 结果验证；整数最小值经身份转换、由 DEC 产生
+  的拒绝也通过，tag-tests.log 3/3 通过 1.60 秒。
+- 原生结果对照 264 个整数/float/signed-zero/overflow 场景通过；source-tests.log
+  4/4 通过 3.25 秒。真实整数解码覆盖三 profile 和 1/2/200/201/402 次链式
+  运算。整体验收仍未完成；未宣称全数值域可用。
+  五输入 fresh build/stage-one/value-additive-pass-1 均退出 0，仍为
+  75 complete / 4 incomplete / 27 failure / 46 no-module；无回退、完整源码
+  字节变化或 legacy，原生 default records 保留，final-batch-summary.json。
+  首轮 111 targets 构建成功，related-tests.log 215/216 通过 507.68 秒。
+  新纳入的 value_global_import_test 暴露既有 LDGLOBALVAR acc 定义缺失；
+  寄存器效果改用 ReadsGlobal，保留 Var 独立类型、Unknown 结果、消费未知
+  结果的拒绝和源码字面量拒绝。global-tests.log 2/2 通过 3.11 秒。
+  修复后的 fresh build/stage-one/value-additive-pass-2 五输入也均退出 0，
+  complete/partial/failure/no-module 计数及完整源码字节与 pass-1 一致，
+  final-2-batch-summary.json 留存证据。
+  包含生产效果修复后重新构建成功，完整 216/216 回归通过 508.02 秒，
+  final-related-build.log / final-related-tests.log；与
+  /tmp/abcd-additive-selected.json 按测试名称核对一致。
+  共享事实合同见 numeric-facts.md。本节日志前缀 /tmp/abcd-additive-*；
+  完整 ISA/阶段一 Goal 保持 active。
+
 ### 2026-10-02：统一表达式优先级与子表达式上下文
 
 - 共同 tree_print_tokens 提供强类型 binding strength/associativity；printer

@@ -385,7 +385,7 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
     return result;
   const auto global = LiftGlobalAccess(instruction);
   if (const auto* access = std::get_if<GlobalAccess>(&global)) {
-    if (access->operation == GlobalOp::kReadName)
+    if (ReadsGlobal(access->operation))
       return AccumulatorDefinition();
   } else if (std::get<GlobalAccessError>(global) ==
              GlobalAccessError::kMalformedInstruction) {

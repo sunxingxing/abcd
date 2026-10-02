@@ -21,6 +21,19 @@ void Import(std::initializer_list<std::uint8_t> bytes, GlobalLookup lookup) {
   const auto read = std::get<ValueGlobalRead>(op.operation);
   test::Check(read.lookup == lookup && read.name.value == 1);
   test::Check(op.use_count == 0 && op.result.has_value());
+  test::Check(graph.values[op.result->value].domain ==
+      (lookup == GlobalLookup::kName ? ValueKinds::Language() : ValueKinds::Unknown()));
+  if (lookup == GlobalLookup::kVar) {
+    // Register effects describe acc publication, not a Language result or
+    // permission to print an ordinary identifier for the Var lookup family.
+    std::vector<std::uint8_t> consumed(bytes);
+    consumed.back() = static_cast<std::uint8_t>(abc::Opcode::kRETURN);
+    const auto returned_body = test::Body(consumed);
+    const auto returned_method = std::get<SemanticMethod>(BuildSemanticMethod(
+        returned_body, abc::ProfileId::kDynamic1206, frame.registers));
+    const auto checked = VerifySemanticSource(returned_body, returned_method, frame.registers, frame.locals);
+    test::Check(std::get<SemanticProofFailure>(checked).kind == SemanticProofError::kInternalValue);
+  }
   test::Check(op.normal == method.instructions.front().effects.normal);
   test::Check(op.exceptional == ExceptionalCompletion::kMayThrow);
   test::Check(graph.exceptional_exits.size() == 1 && graph.exceptional_exits.front().op == OpId{0});

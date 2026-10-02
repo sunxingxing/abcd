@@ -668,6 +668,14 @@ if(BUILD_TESTING)
   target_include_directories(literal_construct_test PRIVATE tests/support)
   target_link_libraries(literal_construct_test PRIVATE abcd_source)
   add_test(NAME literal_construct_test COMMAND literal_construct_test)
+  add_executable(additive_value_test tests/unit/analysis/additive_value_test.cc)
+  target_include_directories(additive_value_test PRIVATE tests/support)
+  target_link_libraries(additive_value_test PRIVATE abcd_source)
+  add_test(NAME additive_value_test COMMAND additive_value_test)
+  add_executable(additive_expression_test tests/integration/additive_expression.cc)
+  target_include_directories(additive_expression_test PRIVATE tests/support)
+  target_link_libraries(additive_expression_test PRIVATE abcd_source)
+  add_test(NAME additive_expression_test COMMAND additive_expression_test)
   add_executable(expression_precedence_test tests/integration/expression_precedence.cc)
   target_include_directories(expression_precedence_test PRIVATE tests/support)
   target_link_libraries(expression_precedence_test PRIVATE abcd_source)
@@ -1253,6 +1261,9 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_cells.mjs $<TARGET_FILE:class_tree_context_test>)
     add_test(NAME phased_literal_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_literal.mjs $<TARGET_FILE:class_tree_context_test>)
+    add_test(NAME additive_expression_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/additive_expression.mjs
+      $<TARGET_FILE:additive_expression_test> $<TARGET_FILE:additive_value_test>)
     add_test(NAME expression_precedence_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/expression_precedence.mjs $<TARGET_FILE:expression_precedence_test>)
     add_test(NAME instanceof_expression_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

@@ -57,9 +57,10 @@ void PropagateValues(std::span<const ValueNode> nodes,
   }
   // Incremental join propagation is essential: rescanning all inputs of a
   // high-fan-in Phi after each changed source would be quadratic. A fact
-  // gains four VM atoms and can weaken its scalar refinement three times
-  // (FiniteNonzeroNumber -> NonNaNNumber -> Defined -> Language);
-  // operation nodes have at most two fixed inputs.
+  // gains four VM atoms and can weaken its scalar refinement four times
+  // (FiniteNonzeroNumber -> FiniteNumber -> NonNaNNumber -> Defined -> Language);
+  // The int32-tag exclusion can weaken once independently.
+  // Operation nodes have at most two fixed inputs.
   for (std::size_t head = 0; head < pending.size(); ++head) {
     charge();
     ++work.queue_visits;
@@ -74,11 +75,13 @@ void PropagateValues(std::span<const ValueNode> nodes,
       ValueKinds propagated = incoming;
       if (nodes[target].kind == Kind::kLanguageOperation ||
           nodes[target].kind == Kind::kEquality ||
-          nodes[target].kind == Kind::kStringAdd ||
+          nodes[target].kind == Kind::kAdd ||
+          nodes[target].kind == Kind::kSubtract ||
           nodes[target].kind == Kind::kNonNaNUnary ||
+          nodes[target].kind == Kind::kNumericIdentity ||
           nodes[target].kind == Kind::kNonNaNMultiply ||
           nodes[target].kind == Kind::kNonNaNDivide) {
-        bool ready = true, language = true, equality_inputs = true, string = false;
+        bool ready = true, language = true, equality_inputs = true;
         bool non_nan_number = true;
         for (std::size_t i = 0; i < nodes[target].input_count; ++i) {
           const auto input = facts[nodes[target].inputs[i].value];
@@ -86,7 +89,6 @@ void PropagateValues(std::span<const ValueNode> nodes,
           language &= input.IsLanguage();
           equality_inputs &= !input.Contains(VmValueKind::kEnvironment) &&
                              !input.Contains(VmValueKind::kOtherInternal);
-          string |= input.IsString();
           non_nan_number &= input.IsNonNaNNumber();
         }
         if (!ready) {
@@ -95,9 +97,14 @@ void PropagateValues(std::span<const ValueNode> nodes,
           propagated = ValueKinds::Language();
         } else if (!language) {
           propagated = ValueKinds::Unknown();
-        } else if (nodes[target].kind == Kind::kStringAdd) {
-          propagated = string ? ValueKinds::String()
-                              : ValueKinds::Unknown();
+        } else if (nodes[target].kind == Kind::kAdd || nodes[target].kind == Kind::kSubtract) {
+          propagated = nodes[target].input_count == kScalarInputs
+              ? (nodes[target].kind == Kind::kAdd ? AddValues : SubtractNumbers)(
+                    facts[nodes[target].inputs[0].value], facts[nodes[target].inputs[1].value])
+              : ValueKinds::Unknown();
+        } else if (nodes[target].kind == Kind::kNumericIdentity) {
+          propagated = nodes[target].input_count == 1 && non_nan_number
+              ? facts[nodes[target].inputs[0].value] : ValueKinds::Unknown();
         } else if (nodes[target].kind == Kind::kNonNaNUnary) {
           propagated = non_nan_number ? ValueKinds::NonNaNNumber()
                                       : ValueKinds::Unknown();

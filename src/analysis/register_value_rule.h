@@ -16,8 +16,10 @@ enum class ValueRuleKind {
   kJoin,
   kLanguageOperation,
   kEquality,
-  kStringAdd,
+  kAdd,
+  kSubtract,
   kNonNaNUnary,
+  kNumericIdentity,
   kNonNaNMultiply,
   kNonNaNDivide
 };
@@ -25,6 +27,23 @@ struct ValueRule {
   ValueRuleKind kind = ValueRuleKind::kFixed;
   ValueKinds seed;
 };
+// Pinned Add2/Sub2 use IEEE arithmetic after Number conversion. With two
+// non-NaN Numbers and at least one finite operand, no infinity cancellation
+// can produce NaN. Overflow is allowed; arbitrary NaN payloads remain refused.
+constexpr ValueKinds AdditiveNumbers(ValueKinds left, ValueKinds right) {
+  return left.IsNonNaNNumber() && right.IsNonNaNNumber() &&
+      (left.IsFiniteNumber() || right.IsFiniteNumber()) ? ValueKinds::NonNaNNumber() : ValueKinds::Unknown();
+}
+// Pinned interpreter SUB2 negates its int32 RHS before its overflow check.
+// INT32_MIN makes that C++ path undefined. Do not certify native subtraction
+// without evidence that the RHS cannot carry that tag; a double is distinct.
+constexpr ValueKinds SubtractNumbers(ValueKinds left, ValueKinds right) {
+  return right.ExcludesInt32MinTag() ? AdditiveNumbers(left, right) : ValueKinds::Unknown();
+}
+constexpr ValueKinds AddValues(ValueKinds left, ValueKinds right) {
+  if (!left.IsLanguage() || !right.IsLanguage()) return ValueKinds::Unknown();
+  return left.IsString() || right.IsString() ? ValueKinds::String() : AdditiveNumbers(left, right);
+}
 // IEEE Number multiplication cannot create NaN without a NaN input or a
 // zero/infinity pair. Overflow and underflow may lose finite/nonzero facts.
 constexpr ValueKinds MultiplyNumbers(ValueKinds left, ValueKinds right) {

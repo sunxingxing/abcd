@@ -10,8 +10,9 @@ inline constexpr std::size_t kValueKindCount = 4;
 
 // Closed powerset of VM categories. String and non-NaN-number refine Defined
 // (a Language value other than undefined); their mixed join retains Defined.
-// FiniteNonzeroNumber is a strict numeric subset; joins with other non-NaN
-// numbers retain the numeric fact but lose finite/nonzero guarantees.
+// FiniteNonzeroNumber refines FiniteNumber, which includes both signed zeros.
+// Joins weaken finite and nonzero information independently of the separately
+// tracked exclusion of the VM tagged INT32_MIN representation.
 // Empty is analysis bottom, never JS undefined or a language-value proof.
 class ValueKinds {
  public:
@@ -25,6 +26,9 @@ class ValueKinds {
   }
   static constexpr ValueKinds NonNaNNumber() {
     return ValueKinds{kLanguage, Refinement::kNonNaNNumber};
+  }
+  static constexpr ValueKinds FiniteNumber() {
+    return ValueKinds{kLanguage, Refinement::kFiniteNumber};
   }
   static constexpr ValueKinds FiniteNonzeroNumber() {
     return ValueKinds{kLanguage, Refinement::kFiniteNonzeroNumber};
@@ -41,11 +45,13 @@ class ValueKinds {
     if (IsEmpty()) return other;
     if (other.IsEmpty()) return *this;
     const auto refinement = refinement_ == other.refinement_ ? refinement_
+        : IsFiniteNumber() && other.IsFiniteNumber() ? Refinement::kFiniteNumber
         : IsNonNaNNumber() && other.IsNonNaNNumber()
             ? Refinement::kNonNaNNumber
         : IsDefined() && other.IsDefined() ? Refinement::kDefined
                                           : Refinement::kNone;
-    return ValueKinds{static_cast<std::uint8_t>(bits_ | other.bits_), refinement};
+    return ValueKinds{static_cast<std::uint8_t>(bits_ | other.bits_), refinement,
+                      excludes_min_int32_ && other.excludes_min_int32_};
   }
   [[nodiscard]] constexpr bool IsEmpty() const { return bits_ == 0; }
   [[nodiscard]] constexpr bool IsLanguage() const { return bits_ == kLanguage; }
@@ -58,6 +64,7 @@ class ValueKinds {
       case Refinement::kDefined:
       case Refinement::kString:
       case Refinement::kFiniteNonzeroNumber:
+      case Refinement::kFiniteNumber:
       case Refinement::kNonNaNNumber: return true;
     }
     return false;
@@ -67,10 +74,25 @@ class ValueKinds {
   }
   [[nodiscard]] constexpr bool IsNonNaNNumber() const {
     return IsLanguage() && (refinement_ == Refinement::kNonNaNNumber ||
+                           refinement_ == Refinement::kFiniteNumber ||
+                           refinement_ == Refinement::kFiniteNonzeroNumber);
+  }
+  [[nodiscard]] constexpr bool IsFiniteNumber() const {
+    return IsLanguage() && (refinement_ == Refinement::kFiniteNumber ||
                            refinement_ == Refinement::kFiniteNonzeroNumber);
   }
   [[nodiscard]] constexpr bool IsFiniteNonzeroNumber() const {
     return IsLanguage() && refinement_ == Refinement::kFiniteNonzeroNumber;
+  }
+  // A VM representation fact, not a numeric range guessed from source names.
+  // It survives a join only when both alternatives exclude the tagged minimum.
+  [[nodiscard]] constexpr ValueKinds WithoutInt32MinTag() const {
+    auto result = *this;
+    if (IsNonNaNNumber()) result.excludes_min_int32_ = true;
+    return result;
+  }
+  [[nodiscard]] constexpr bool ExcludesInt32MinTag() const {
+    return IsNonNaNNumber() && excludes_min_int32_;
   }
   [[nodiscard]] constexpr bool Contains(VmValueKind kind) const {
     switch (kind) {
@@ -89,17 +111,18 @@ class ValueKinds {
 
  private:
   enum class Refinement : std::uint8_t {
-    kNone, kString, kNonNaNNumber, kDefined, kFiniteNonzeroNumber
+    kNone, kString, kNonNaNNumber, kDefined, kFiniteNonzeroNumber, kFiniteNumber
   };
   static constexpr std::uint8_t kLanguage = 1 << 0;
   static constexpr std::uint8_t kHole = 1 << 1;
   static constexpr std::uint8_t kEnvironment = 1 << 2;
   static constexpr std::uint8_t kOtherInternal = 1 << 3;
   explicit constexpr ValueKinds(
-      std::uint8_t bits, Refinement refinement = Refinement::kNone)
-      : bits_(bits), refinement_(refinement) {}
+      std::uint8_t bits, Refinement refinement = Refinement::kNone, bool excludes_min_int32 = false)
+      : bits_(bits), refinement_(refinement), excludes_min_int32_(excludes_min_int32) {}
   std::uint8_t bits_ = 0;
   Refinement refinement_ = Refinement::kNone;
+  bool excludes_min_int32_ = false;
 };
 }  // namespace abcd::analysis
 #endif  // ABCD_ANALYSIS_VALUE_KINDS_H_
