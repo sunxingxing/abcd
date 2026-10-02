@@ -1231,6 +1231,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_cells.mjs $<TARGET_FILE:class_tree_context_test>)
     add_test(NAME phased_literal_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_literal.mjs $<TARGET_FILE:class_tree_context_test>)
+    add_test(NAME literal_cell_guard_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/literal_cell_guard.mjs $<TARGET_FILE:phased_literal_test>)
     add_test(NAME phased_nested_literal_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_nested_literal.mjs $<TARGET_FILE:class_tree_context_test>)
     add_test(NAME phased_unary_literal_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

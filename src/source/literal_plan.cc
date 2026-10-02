@@ -73,6 +73,17 @@ void Flow(const analysis::ValueProgram& graph, LiteralBudget& budget, const Eval
       throw Error::kFlow;
     }
     budget.Step(std::get<analysis::PhasedValueFlowProof>(proof).work);
+    // Guard omission requires a fresh completed-store/owner witness, not merely
+    // a caller-supplied placement. Keep catch edges and original PC identities.
+    if (evaluation->cells) {
+      const auto cells = VerifyPhasedCellEvaluation(graph, *evaluation->cells, budget.Remaining());
+      if (const auto* error = std::get_if<CellEvaluationError>(&cells)) {
+        if (*error == CellEvaluationError::kResourceLimit) throw Error::kResourceLimit;
+        if (*error == CellEvaluationError::kWorkLimit) throw Error::kWorkLimit;
+        throw Error::kFlow;
+      }
+      budget.Step(std::get<std::uint64_t>(cells));
+    }
     const auto aliases = VerifyEvaluationAliases(graph, *evaluation, budget.Remaining());
     if (const auto* error = std::get_if<EvaluationError>(&aliases)) {
       if (*error == EvaluationError::kResourceLimit) throw Error::kResourceLimit;
@@ -149,6 +160,9 @@ class LiteralPath {
   }
   bool Elided(analysis::OpId id) const {
     return evaluation_ && evaluation_->operations[id.value].kind == EvaluationKind::kElidedPure;
+  }
+  bool InitializedGuard(analysis::OpId id) const {
+    return evaluation_ && evaluation_->cells && IsInitializedCellGuard(graph_, *evaluation_->cells, id);
   }
   bool Phased() const { return evaluation_ != nullptr; }
   bool After(const analysis::ValueOp& last, const analysis::OperandUse& use) const {
@@ -355,7 +369,7 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
     const auto* user = std::get_if<analysis::OpId>(&read.owner);
     // Flow independently certified dead closure before this census. Its
     // original operands/PCs remain in the graph and later source anchors.
-    if (user && (graph.ops[user->value].life != analysis::ValueLife::kLive || path.Alias(*user) || path.Elided(*user) ||
+    if (user && (graph.ops[user->value].life != analysis::ValueLife::kLive || path.Alias(*user) || path.Elided(*user) || path.InitializedGuard(*user) ||
         (!initialized_receivers.empty() && initialized_receivers[user->value]))) continue;
     const auto operand = path.Resolve(read.operand);
     const auto* value = std::get_if<analysis::ValueId>(&operand);
@@ -396,7 +410,7 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     budget.Step(); const auto& op = graph.ops[i];
     if (depth) Require(path.Same(graph.ops[stack[0].value].block, op.block), Error::kFlow);
-    if (op.life != analysis::ValueLife::kLive || path.Alias({static_cast<std::uint32_t>(i)})) continue;
+    if (op.life != analysis::ValueLife::kLive || path.Alias({static_cast<std::uint32_t>(i)}) || path.InitializedGuard({static_cast<std::uint32_t>(i)})) continue;
     // Every effect folded into native aggregate syntax retains the outer
     // allocation's dispatch and staged catch values, not merely a normal path.
     // Comparing each site's copy bundle once is bounded by original copy volume.

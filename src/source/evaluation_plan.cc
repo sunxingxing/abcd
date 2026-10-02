@@ -197,6 +197,15 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     admit(graph.ops.size(), sizeof(EffectInterval));
     step(graph.ops.size()); step(graph.ops.size());
     plan.operations.resize(graph.ops.size());
+    if (plan.cells) {
+      // Classify proved nonthrowing cell checks before literal/corridor planning.
+      // Phased initialization uses completed-store facts, including catch paths.
+      for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+        step();
+        if (IsInitializedCellGuard(graph, *plan.cells, analysis::OpId{static_cast<std::uint32_t>(i)}))
+          plan.operations[i].kind = EvaluationKind::kCellGuard;
+      }
+    }
     std::vector<EffectInterval> groups(graph.ops.size());
     Require(plan.operations.capacity() <= graph.ops.size() && groups.capacity() <= graph.ops.size(),
             Error::kResourceLimit);
@@ -278,7 +287,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
           plan.operations[index].kind = EvaluationKind::kReceiverGuard;
           continue;
         }
-        if (flow == EvaluationFlow::kNormal && plan.cells &&
+        if (plan.cells &&
             IsInitializedCellGuard(graph, *plan.cells, analysis::OpId{static_cast<std::uint32_t>(index)})) {
           plan.operations[index].kind = EvaluationKind::kCellGuard;
           continue;

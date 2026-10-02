@@ -1,5 +1,22 @@
 # Literal Initialization
 
+## Initialized cell guards on phased paths
+
+The common completed-store/conditional incoming-cell proof also identifies
+nonthrowing hole guards before phased literal planning. Literal verification
+rechecks CellEvaluation before excluding such guard operands from the canonical
+use census and guard operations from initializer effect intervals. Placement
+alone is insufficient: missing, stale or invalid initialization evidence refuses.
+Original phase edges and PC origins remain available to independent tree checks;
+conditional incoming evidence still requires enclosing family discharge.
+
+Guard lookup is O(1) per operation/use after the existing indexed initialization
+verification; the extra pass is O(I+U), plus one existing cell-verification cost
+per literal validation. No per-guard dominator rebuild or alias walk is added.
+Three-profile decoded tests cover 1/2/200/201/402 nested fields, checked exception
+trees, forged witnesses and native source payload/identity behavior. This does
+not establish full ProgressBar acceptance or process RSS compliance.
+
 ## Unobserved phased transport inside native literals
 
 Phased use censuses exclude operands of an independently checked pure dead

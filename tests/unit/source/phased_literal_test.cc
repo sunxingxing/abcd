@@ -4,6 +4,7 @@
 #include "../../../src/source/tree_semantics.h"
 #include "analysis/ssa_fixture.h"
 #include "abcd/source/tree_printer.h"
+#include "abcd/analysis/exception_locals.h"
 
 #include <algorithm>
 #include <iostream>
@@ -16,7 +17,7 @@ using namespace abcd::source;
 enum class Shape {
   kReturn, kCatch, kObserve, kLate, kBranch, kCatchObserve, kNested, kNestedCatch,
   kNestedCatchObserve, kNestedDispatch, kNestedShared, kNestedSnapshot, kUnary, kUnaryCatch,
-  kUnaryShared, kUnaryUnknown, kNestedDeadCopy, kNestedDeadArray, kGlobalCatch, kGlobalDispatch
+  kUnaryShared, kUnaryUnknown, kNestedDeadCopy, kNestedDeadArray, kGlobalCatch, kGlobalDispatch, kLexicalCatch
 };
 std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
                   std::uint32_t copies = 0, std::uint32_t fields = 1,
@@ -25,18 +26,26 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   constexpr std::uint8_t kObject = 0, kParameter = 4;
   std::vector<std::uint8_t> bytes{op(abc::Opcode::kCREATEEMPTYOBJECT), op(abc::Opcode::kSTA_V8), kObject};
+  const bool lexical = shape == Shape::kLexicalCatch;
+  std::uint32_t lexical_try_begin = 0;
+  if (lexical) {
+    const std::vector<std::uint8_t> prelude{op(abc::Opcode::kNEWLEXENV_IMM8), 1,
+        op(abc::Opcode::kLDA_V8), kParameter + 1, op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), 0};
+    lexical_try_begin = static_cast<std::uint32_t>(prelude.size());
+    bytes.insert(bytes.begin(), prelude.begin(), prelude.end());
+  }
   const bool dead_copy = shape == Shape::kNestedDeadCopy || shape == Shape::kNestedDeadArray;
   const bool global = shape == Shape::kGlobalCatch || shape == Shape::kGlobalDispatch;
   const bool nested = shape == Shape::kNested || shape == Shape::kNestedCatch ||
       shape == Shape::kNestedCatchObserve || shape == Shape::kNestedDispatch || shape == Shape::kNestedShared || shape == Shape::kNestedSnapshot ||
-      dead_copy || global;
+      dead_copy || global || lexical;
   const bool arithmetic = shape == Shape::kUnary || shape == Shape::kUnaryCatch ||
       shape == Shape::kUnaryShared || shape == Shape::kUnaryUnknown;
   const bool numeric_update = unary == abc::Opcode::kTONUMERIC_IMM8 ||
       unary == abc::Opcode::kINC_IMM8 || unary == abc::Opcode::kDEC_IMM8;
   const bool caught = shape == Shape::kCatch || shape == Shape::kCatchObserve ||
       shape == Shape::kNestedCatch || shape == Shape::kNestedCatchObserve || shape == Shape::kNestedDispatch || shape == Shape::kNestedSnapshot || shape == Shape::kUnaryCatch ||
-      dead_copy || global;
+      dead_copy || global || lexical;
   constexpr std::uint8_t kSaved = 2, kSnapshotInput = 6, kSnapshotPrelude = 4;
   if (shape == Shape::kNestedSnapshot) bytes.insert(bytes.begin(),
       {op(abc::Opcode::kLDA_V8), kSnapshotInput, op(abc::Opcode::kSTA_V8), kSaved});
@@ -60,7 +69,12 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
       for (std::uint32_t c = 0; c < copies; ++c)
         bytes.insert(bytes.end(), {op(abc::Opcode::kMOV_V8_V8), kSaved, kSaved});
     }
-    if (global) bytes.insert(bytes.end(), {op(abc::Opcode::kTRYLDGLOBALBYNAME_IMM8_ID16), 0, 1, 0,
+    if (lexical) {
+      constexpr auto kGuard = static_cast<std::uint16_t>(abc::Opcode::kTHROW_UNDEFINEDIFHOLEWITHNAME_PREF_ID16);
+      constexpr unsigned kByteBits = 8;
+      bytes.insert(bytes.end(), {op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0,
+          static_cast<std::uint8_t>(kGuard), static_cast<std::uint8_t>(kGuard >> kByteBits), 0, 0});
+    } else if (global) bytes.insert(bytes.end(), {op(abc::Opcode::kTRYLDGLOBALBYNAME_IMM8_ID16), 0, 1, 0,
         op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 2, 0});
     else if (nested && shape != Shape::kNestedDeadArray) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8),
         static_cast<std::uint8_t>(shape == Shape::kNestedSnapshot ? kSnapshotInput :
@@ -92,6 +106,7 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   if (caught) {
     abc::TryRegion region; region.offset = {shape == Shape::kCatchObserve || shape == Shape::kNestedCatchObserve || shape == Shape::kNestedDispatch || shape == Shape::kGlobalDispatch ? initialized_pc : 0};
     if (shape == Shape::kNestedSnapshot) region.offset = {kSnapshotPrelude};
+    if (lexical) region.offset = {lexical_try_begin};
     region.length = catch_pc - region.offset.value; region.handler_count = 1;
     abc::CatchHandler handler; handler.offset = {catch_pc}; handler.length = bytes.size() - catch_pc;
     body.tries.push_back(region); body.handlers.push_back(handler);
@@ -109,9 +124,11 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
       entries.push_back({{static_cast<std::uint32_t>(i)}, ValueKinds::Language()});
   }
   const auto env = std::get<EnvironmentFlow>(AnalyzeExceptionEnvironments(flow));
+  std::vector<ExceptionLoadFact> loads;
+  if (lexical) loads = std::get<ExceptionLocals>(ProveExceptionLocals(flow, env)).loads;
   IdfQuota value_work{kDefaultSemanticWork};
   const auto values = std::get<ExceptionValueFlow>(ExceptionValueFlow::Build(flow, ssa, entries,
-      value_work, {}, PendingExceptionValues::kLanguage));
+      value_work, {}, PendingExceptionValues::kLanguage, loads));
   const auto inputs = VerifyExceptionInputs(flow, ssa, env, values);
   if (shape == Shape::kUnaryUnknown) {
     // NEG over arbitrary language values can produce an uncertified VM NaN.
@@ -134,6 +151,25 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   test::Check(evaluation.literals && evaluation.literals->objects.size() == (nested ? fields + 1 : 1));
   test::Check(std::holds_alternative<std::uint64_t>(VerifyPhasedEvaluationPlan(graph, evaluation)));
   const auto& literal = *evaluation.literals;
+  if (lexical) {
+    test::Check(evaluation.cells.has_value());
+    bool checked = false;
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      if (!std::holds_alternative<ValueLexicalLoad>(graph.ops[i].operation)) continue;
+      checked = true;
+      auto invalid = evaluation;
+      invalid.cells->initialization.reads[i] = NotCellRead{};
+      test::Check(std::holds_alternative<LiteralError>(VerifyPhasedLiteralPlan(graph, literal, invalid)));
+      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, invalid)));
+      break;
+    }
+    test::Check(checked);
+    auto invalid = evaluation;
+    ++invalid.cells->initialization.cfg_revision.value;
+    test::Check(std::holds_alternative<LiteralError>(VerifyPhasedLiteralPlan(graph, literal, invalid)));
+    invalid = evaluation; invalid.cells.reset();
+    test::Check(std::holds_alternative<LiteralError>(VerifyPhasedLiteralPlan(graph, literal, invalid)));
+  }
   test::Check(literal.definitions.size() == (nested ? fields * 2 : fields));
   test::Check(std::holds_alternative<std::uint64_t>(VerifyPhasedLiteralPlan(graph, literal, evaluation)));
   test::Check(std::holds_alternative<LiteralError>(VerifyLiteralPlan(graph, literal)));
@@ -171,7 +207,7 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
     invalid.aliases[rhs.value] = rhs;
     test::Check(std::get<LiteralError>(VerifyPhasedLiteralPlan(graph, literal, invalid)) == LiteralError::kFlow);
   }
-  if (shape == Shape::kCatch || shape == Shape::kNestedCatch || shape == Shape::kUnaryCatch || dead_copy || shape == Shape::kGlobalCatch) {
+  if (shape == Shape::kCatch || shape == Shape::kNestedCatch || shape == Shape::kUnaryCatch || dead_copy || shape == Shape::kGlobalCatch || lexical) {
     const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
     const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
     FunctionSyntax syntax{}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
@@ -205,8 +241,9 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
 }  // namespace
 int main(int argc, char** argv) {
   if (argc == 2) {
-    test::Check(std::string_view(argv[1]) == "--global-source");
-    Run(abc::ProfileId::kDynamic1206, Shape::kGlobalCatch, 0, 2,
+    const auto option = std::string_view(argv[1]);
+    test::Check(option == "--global-source" || option == "--lexical-source");
+    Run(abc::ProfileId::kDynamic1206, option == "--lexical-source" ? Shape::kLexicalCatch : Shape::kGlobalCatch, 0, 2,
         abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8, abc::Opcode::kNEG_IMM8, true);
     return 0;
   }
@@ -216,7 +253,7 @@ int main(int argc, char** argv) {
                              Shape::kCatchObserve, Shape::kNested, Shape::kNestedCatch, Shape::kNestedCatchObserve,
                              Shape::kNestedSnapshot, Shape::kNestedDispatch, Shape::kNestedShared,
                              Shape::kUnary, Shape::kUnaryCatch, Shape::kUnaryShared, Shape::kUnaryUnknown,
-                             Shape::kNestedDeadCopy, Shape::kNestedDeadArray, Shape::kGlobalCatch, Shape::kGlobalDispatch}) Run(profile, shape);
+                             Shape::kNestedDeadCopy, Shape::kNestedDeadArray, Shape::kGlobalCatch, Shape::kGlobalDispatch, Shape::kLexicalCatch}) Run(profile, shape);
     for (const auto unary : {abcd::abc::Opcode::kNOT_IMM8, abcd::abc::Opcode::kTYPEOF_IMM8,
         abcd::abc::Opcode::kTONUMBER_IMM8, abcd::abc::Opcode::kISTRUE, abcd::abc::Opcode::kISFALSE,
         abcd::abc::Opcode::kTONUMERIC_IMM8, abcd::abc::Opcode::kINC_IMM8, abcd::abc::Opcode::kDEC_IMM8})
@@ -239,6 +276,12 @@ int main(int argc, char** argv) {
         test::Check(array_work < 3 * previous_arrays);
       }
       previous_copies = copy_work; previous_arrays = array_work;
+    }
+    std::uint64_t lexical_work = 0;
+    for (const auto count : {1U, 2U, 200U, 201U, 402U}) {
+      const auto work = Run(profile, Shape::kLexicalCatch, 0, count);
+      if (count == 402) test::Check(work < 3 * lexical_work);
+      lexical_work = work;
     }
     std::uint64_t previous = 0;
     for (const auto fields : {200U, 201U, 402U, 804U}) {

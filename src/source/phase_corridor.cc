@@ -44,7 +44,7 @@ bool PhaseCorridors::Aggregate(const ValueOperation& operation) {
 }
 bool PhaseCorridors::Event(const ValueOp& op, const OpEvaluation& placement) {
   return op.life == ValueLife::kLive && placement.kind != EvaluationKind::kAlias &&
-      placement.kind != EvaluationKind::kElidedPure && OrderedEvaluation(op);
+      placement.kind != EvaluationKind::kElidedPure && placement.kind != EvaluationKind::kCellGuard && OrderedEvaluation(op);
 }
 PhaseCorridors::PhaseCorridors(const ValueProgram& graph, const EvaluationPlan& plan, PhaseBudget& budget,
     PhaseLiteralIntervals literals)
@@ -132,7 +132,7 @@ PhaseCorridors::PhaseCorridors(const ValueProgram& graph, const EvaluationPlan& 
     if (const auto* owner = std::get_if<OpId>(&use.owner)) {
       const auto kind = plan.operations[owner->value].kind;
       if (graph.ops[owner->value].life != ValueLife::kLive ||
-          kind == EvaluationKind::kAlias || kind == EvaluationKind::kElidedPure) continue;
+          kind == EvaluationKind::kAlias || kind == EvaluationKind::kElidedPure || kind == EvaluationKind::kCellGuard) continue;
       // Only the independently paired guard dependency is absorbed. Catch
       // snapshots and every other canonical use still prevent duplication.
       if (kind == EvaluationKind::kModuleGuard && !module_peers_.empty() &&

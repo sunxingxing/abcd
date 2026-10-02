@@ -13,6 +13,44 @@
 ## 当前阶段
 
 
+### 2026-10-02：phased 字面量中的已初始化 cell guard
+
+- ProgressBar 9550 的 async child 10333 在字面量内使用词法 load 72，
+  其 guard use 70 被独立归属检查视为额外观察。现将已通过共同 cell
+  初始化证明的检查在 literal/corridor 规划前分类；phased 验证同样使用
+  completed-store 和异常路径的初始化证据。LiteralPlan 独立重新验证 cells，
+  只从用途和效果计数中排除已证明不会触发 hole 异常的检查；保留原图和来源。
+- 新增三 profile 的真实 decoded 词法初始化/嵌套对象/try-catch 用例。
+  夹具前两次分别因环境 catch 范围、缺少 ProveExceptionLocals 输入事实而
+  过早失败，已修正；red-3-tests.log 才是目标 BuildPhasedEvaluationPlan
+  断言 RED，1/1 失败 1.05 秒。第一版实现错误地在操作表分配前写 placement，
+  first-cause.log 确认并已修正；second-tests.log 1/1 通过 9.92 秒。
+- 扩展到 1/2/200/201/402 个属性、证明缺失/失效负例、异常 FunctionTree、
+  独立 TreeSemantics 及统一 printer。focused-tests.log 4/4 通过 16.86 秒，
+  含 phased_initialization_test、cell_tree_test、phased_literal_test 和
+  literal_cell_guard_source_test。15 种独立 payload 检查身份、描述符、
+  __proto__ 数据属性、跨调用分配隔离，以及不得访问 payload 的 Proxy。
+- ProgressBar 已越过原 LiteralError::kObserved，但同一 family member 16
+  随后在 BuildPhasedCallPlan 报 kReference，expression-cause.log /
+  call-cause.log；record 仍不完整，不能计新增成功。下一步核对成员 Reference
+  的原始获取点、参数表达式区间及 catch staging。
+- 五输入 fresh build/stage-one/value-literal-cell-guard-pass-1 均退出 0，
+  74 complete / 4 incomplete / 28 failure / 46 no-module；原 74 个完整项
+  无回退或源码字节变化，无 legacy，原生 default records 保留。
+  final-batch-summary.json 留存逐输入证据；本轮尚无新增完整 record。
+- ProgressBar 后续具体为 member call 35 的 property 29，phased block
+  58 到 70；参数 op 31 是 depth 2 / slot 0 的 ValueLexicalLoad，op 32
+  已分类 kCellGuard，但 op 31 仍为 kRoot/kMultipleUses，property 29 为
+  kRoot/kCrossRegionValue。PhaseCorridors::Expression 尚不接纳 lexical
+  load，需在现有单次使用、效果区间和异常快照约束下继续贯通，不能直接
+  允许快照 callee 变成员调用。next-reference-2.log / next-call.log。
+- 89 个相关 targets 构建退出 0；187/187 回归通过 463.46 秒，
+  related-build.log / related-tests.log。与选择清单
+  /tmp/abcd-literal-cell-guard-selected.json 逐项核对测试名称一致。
+  本节日志前缀 /tmp/abcd-literal-cell-guard-*。全库、扩大语料、RSS/基准、DFX、
+  调度器、代理及定期审视仍暂停；Goal 保持 active。
+
+
 ### 2026-10-02：条件值前导区域贯通 Home
 
 - ControlDecision 增加有明确 predicate 续接的区域前导，follow-tree 索引查找

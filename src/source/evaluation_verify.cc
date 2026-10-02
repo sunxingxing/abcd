@@ -273,7 +273,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
         visits[i] = EvaluationVisit::kDone; continue;
       }
       Require(placement.kind != EvaluationKind::kReceiverGuard, Error::kOwnership);
-      const bool cell_guard = flow == EvaluationFlow::kNormal && plan.cells &&
+      const bool cell_guard = plan.cells &&
           IsInitializedCellGuard(graph, *plan.cells, analysis::OpId{static_cast<std::uint32_t>(i)});
       Require(cell_guard == (placement.kind == EvaluationKind::kCellGuard), Error::kOwnership);
       if (cell_guard) {
