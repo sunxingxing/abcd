@@ -446,6 +446,7 @@ class FlowCheck {
     flow_.expressions[region.branch.value] = assignment->value;
     flow_.logical_operations[region.boolean.value] = flow_.logical_operations[region.branch.value] = region.operation;
     LogicalEdges(region, target->symbol, logical->left, logical->right, parent, child);
+    LogicalPrefixes(region, parent, child);
   }
   void Conditional(const SelectionRegion& region, ExprId expression, std::optional<SymbolId> target,
       StmtId parent, std::uint32_t child) {
@@ -499,6 +500,23 @@ class FlowCheck {
           Require(flow_.expressions[producer.value] == actual, Error::kPlacement);
         }
       };
+      for (const auto prefix : current.prefix_regions) {
+        budget_.Step(); const auto branch = DecisionPredicate(control_.nodes[prefix.value]);
+        Require(logical_branches_[branch.value].has_value(), Error::kPlacement);
+        const auto index = *logical_branches_[branch.value];
+        Require(logicals_[index].prefix_parent == current.branch && flow_.expressions[branch.value] &&
+            evaluation_.operations[branch.value].kind == EvaluationKind::kLogicalValue &&
+            pending < conditional_tasks_.size(), Error::kPlacement);
+        conditional_tasks_[pending++] = {index, *flow_.expressions[branch.value], {}};
+      }
+      for (const auto branch : current.arm_prefixes) {
+        budget_.Step(); Require(logical_branches_[branch.value].has_value(), Error::kPlacement);
+        const auto index = *logical_branches_[branch.value];
+        Require(logicals_[index].prefix_parent == current.branch && flow_.expressions[branch.value] &&
+            evaluation_.operations[branch.value].kind == EvaluationKind::kLogicalValue &&
+            pending < conditional_tasks_.size(), Error::kPlacement);
+        conditional_tasks_[pending++] = {index, *flow_.expressions[branch.value], {}};
+      }
       Require(current.consequent.has_value(), Error::kPlacement);
       arm(*current.consequent, conditional->consequent); arm(current.right, conditional->alternate);
       flow_.expressions[current.branch.value] = task.expression;
@@ -520,6 +538,16 @@ class FlowCheck {
     Require(logical && logical->operation == region.operation && flow_.expressions[producer.value] == logical->right, Error::kPlacement);
     flow_.logical_operations[region.boolean.value] = flow_.logical_operations[region.branch.value] = region.operation;
     LogicalEdges(region, {}, logical->left, logical->right, parent, child);
+    LogicalPrefixes(region, parent, child);
+  }
+  void LogicalPrefixes(const SelectionRegion& region, StmtId parent, std::uint32_t child) {
+    for (const auto branch : region.arm_prefixes) {
+      budget_.Step(); Require(logical_branches_[branch.value].has_value(), Error::kPlacement);
+      const auto& prefix = logicals_[*logical_branches_[branch.value]];
+      Require(prefix.consequent && prefix.prefix_parent == region.branch && flow_.expressions[branch.value] &&
+          evaluation_.operations[branch.value].kind == EvaluationKind::kLogicalValue, Error::kPlacement);
+      Conditional(prefix, *flow_.expressions[branch.value], {}, parent, child);
+    }
   }
   void LogicalEdges(const SelectionRegion& region, std::optional<SymbolId> target, ExprId left, ExprId right,
       StmtId parent, std::uint32_t child) {
@@ -921,7 +949,8 @@ class FlowCheck {
         // Initializations own a declaration statement; updates own assignments.
       } else if (evaluation_.operations[i].kind == EvaluationKind::kLogicalValue ||
           decision_branches_[i] ||
-          (!logical_branches_.empty() && logical_branches_[i] && logicals_[*logical_branches_[i]].parent)) {
+          (!logical_branches_.empty() && logical_branches_[i] &&
+           (logicals_[*logical_branches_[i]].parent || logicals_[*logical_branches_[i]].prefix_parent))) {
         const auto* expression = std::get_if<ExprId>(&placement);
         Require(expression != nullptr, Error::kPlacement); flow_.expressions[i] = *expression;
       } else if (std::holds_alternative<analysis::ValueBranch>(op.operation) ||

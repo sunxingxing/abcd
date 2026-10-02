@@ -24,14 +24,17 @@ using ControlSynthetic = std::variant<std::monostate, LoopControl, LoopTransfer>
 // only when the current test misses the shared arm. Original arcs remain in
 // PlacedEdge; a final private fallback stays in the last condition's other arm.
 // This is control ownership, not permission to inline its effects/phi copies.
+enum class DecisionPrefix : std::uint8_t { kLinear, kRegion };
 struct ControlDecision {
   ControlId evaluate;
   bool evaluate_on_taken;
   bool shared_on_taken;
   ControlId join;
   // Absent for an adjacent predicate; otherwise the end of a single-entry
-  // linear evaluation path. Original nodes/arcs remain individually owned.
+  // evaluation prefix. A region prefix can contain nested arms, with its
+  // top-level continuation explicitly pointing to this predicate boundary.
   std::optional<ControlId> predicate;
+  DecisionPrefix prefix = DecisionPrefix::kLinear;
 };
 struct ControlNode {
   analysis::WorkBlockId block;

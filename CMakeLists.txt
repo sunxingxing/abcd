@@ -684,6 +684,10 @@ if(BUILD_TESTING)
   target_include_directories(closure_schedule_test PRIVATE tests/support)
   target_link_libraries(closure_schedule_test PRIVATE abcd_source)
   add_test(NAME closure_schedule_test COMMAND closure_schedule_test)
+  add_executable(decision_prefix_test tests/integration/decision_prefix.cc)
+  target_include_directories(decision_prefix_test PRIVATE tests/support)
+  target_link_libraries(decision_prefix_test PRIVATE abcd_source)
+  add_test(NAME decision_prefix_test COMMAND decision_prefix_test)
   add_executable(family_array_test tests/integration/family_array.cc)
   target_include_directories(family_array_test PRIVATE tests/support)
   target_link_libraries(family_array_test PRIVATE abcd_source abcd_json)
@@ -1066,6 +1070,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/selection_module.mjs $<TARGET_FILE:selection_module_test>)
     add_test(NAME decision_module_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_module.mjs $<TARGET_FILE:selection_module_test>)
+    add_test(NAME decision_prefix_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_prefix.mjs $<TARGET_FILE:decision_prefix_test>)
     add_test(NAME empty_tail_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/empty_tail.mjs $<TARGET_FILE:logical_regions_test>)
     add_test(NAME branch_polarity_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
@@ -1345,6 +1351,12 @@ if(BUILD_TESTING)
       $<TARGET_FILE:computed_store_fixture>)
   endif()
   if(ABCD_NODE_EXECUTABLE AND ABCD_BUILD_TOOLS)
+    if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc" AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/shopping/src/main/ets/view/Home.ts")
+      add_test(NAME home_decision_prefix_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/home_decision_prefix.mjs $<TARGET_FILE:abc_structure>
+        ${ABCD_PAIRED_CORPUS_ROOT}/Immersive)
+    endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc")
       if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/base/src/main/ets/utils/Logger.ts")
         add_test(NAME value_community_logger_record_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules

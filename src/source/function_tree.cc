@@ -997,9 +997,17 @@ class TreeBuilder {
     Require(expression.has_value(), Error::kOwnership);
     if (!logical_branches_.empty() && logical_branches_[op.value]) {
       const auto& logical = logicals_[*logical_branches_[op.value]];
-      if (logical.parent) { tree_.operations.push_back({op, *expression}); return; }
-      for (const auto part : logical.condition_blocks) { Step(); EmitBlock(control_.nodes[part.value], draft, true); }
+      if (logical.parent || logical.prefix_parent) { tree_.operations.push_back({op, *expression}); return; }
       const auto schedule = [&](const SelectionRegion& selection) {
+        for (const auto part : selection.condition_blocks) { Step(); EmitBlock(control_.nodes[part.value], draft, true); }
+        for (const auto part : selection.prefix_regions) {
+          Step(); const auto branch = DecisionPredicate(control_.nodes[part.value]);
+          Require(logical_branches_[branch.value].has_value(), Error::kOwnership);
+          const auto& prefix = logicals_[*logical_branches_[branch.value]];
+          Require(prefix.prefix_parent == selection.branch &&
+              evaluation_.operations[branch.value].kind == EvaluationKind::kLogicalValue, Error::kOwnership);
+          selection_paths_.push_back({part, prefix.join, false});
+        }
         if (selection.keep) selection_paths_.push_back({selection.keep_path, *selection.keep});
         selection_paths_.push_back({selection.evaluate_path, selection.evaluate});
       };
@@ -1014,10 +1022,11 @@ class TreeBuilder {
           const auto branch = range.first_op.value + range.op_count - 1;
           Require(logical_branches_[branch].has_value(), Error::kOwnership);
           const auto& nested = logicals_[*logical_branches_[branch]];
-          Require(nested.parent.has_value(), Error::kOwnership); schedule(nested);
+          Require(nested.parent || nested.prefix_parent, Error::kOwnership); schedule(nested);
           if (part.next) {
-            Require(nested.forwarded.has_value(), Error::kOwnership);
-            selection_paths_.push_back({part.next, path.terminal});
+            if (nested.forwarded || (nested.prefix_parent && path.include_terminal))
+              selection_paths_.push_back({part.next, path.terminal, path.include_terminal});
+            else Require(nested.prefix_parent && control_.nodes[part.next->value].block == nested.join, Error::kOwnership);
           }
         } else if (part.next) selection_paths_.push_back({part.next, path.terminal});
       }
@@ -1239,7 +1248,7 @@ class TreeBuilder {
 
   const analysis::ValueProgram& graph_;
   const ControlPlan& control_;
-  struct SelectionPath { std::optional<ControlId> control; analysis::WorkBlockId terminal; };
+  struct SelectionPath { std::optional<ControlId> control; analysis::WorkBlockId terminal; bool include_terminal = true; };
   std::vector<SelectionPath> selection_paths_;
   std::vector<SelectionRegion> logicals_;
   std::vector<BranchPolarity> branch_polarity_;

@@ -388,6 +388,9 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     }
     if (flow == EvaluationFlow::kNormal && plan.phis) {
       TreeCheckBudget logical_budget({bytes, work});
+      // Nullable/member predicates can expose a complete nested RHS. Prepare
+      // their single-evaluation snapshots before proving a logical LHS owner.
+      BuildPredicateSnapshots(graph, plan, logical_budget);
       const auto inputs = FindLogicalLeftInputs(graph, plan, logical_budget);
       admit(logical_budget.Bytes(), 1); step(logical_budget.Work());
       for (std::size_t i = 0; i < inputs.size(); ++i) {

@@ -13,6 +13,7 @@ struct RegionCheck {
   ControlId first;
   std::optional<ControlId> stop;
   std::optional<LoopId> scope;
+  bool retain_stop = false;
 };
 struct LoopRange { std::size_t begin = 0; std::size_t end = 0; };
 struct LoopVisit { LoopId loop; bool leave; };
@@ -44,6 +45,7 @@ class ControlCheck {
       while (cursor) {
         quota_.Work();
         const auto id = *cursor;
+        if (task.retain_stop && task.stop == id) break;
         Require(id.value < plan_.nodes.size() && !visited_[id.value] && task.stop != id, Error::kCrossEntry);
         visited_[id.value] = 1; scopes_[id.value] = task.scope; ++covered;
         const auto& node = plan_.nodes[id.value];
@@ -95,18 +97,25 @@ class ControlCheck {
               auto next = evaluate;
               const auto predicate = condition.decision->predicate.value_or(evaluate);
               Require(predicate.value < graph_.NodeCount(), Error::kInvalidGraph);
-              while (next != predicate) {
-                quota_.Work();
-                Require(next.value < graph_.NodeCount() && !visited_[next.value] &&
-                    indegree_[next.value] == 1, Error::kCrossEntry);
-                const auto& linear = plan_.nodes[next.value];
-                Require(Degree(next) == 1 && !linear.arms && !linear.decision && linear.next &&
-                    std::holds_alternative<std::monostate>(linear.synthetic), Error::kInvalidGraph);
-                Arc(next, 0, *linear.next, task.scope, EdgePlacement::kNext);
-                visited_[next.value] = 1; scopes_[next.value] = task.scope; ++covered;
-                next = *linear.next;
+              if (condition.decision->prefix == DecisionPrefix::kRegion) {
+                Require(predicate != evaluate && condition.decision->predicate &&
+                    !visited_[predicate.value], Error::kCrossEntry);
+                Push({evaluate, predicate, task.scope, true}); next = predicate;
+              } else {
+                Require(condition.decision->prefix == DecisionPrefix::kLinear, Error::kInvalidGraph);
+                while (next != predicate) {
+                  quota_.Work();
+                  Require(next.value < graph_.NodeCount() && !visited_[next.value] &&
+                      indegree_[next.value] == 1, Error::kCrossEntry);
+                  const auto& linear = plan_.nodes[next.value];
+                  Require(Degree(next) == 1 && !linear.arms && !linear.decision && linear.next &&
+                      std::holds_alternative<std::monostate>(linear.synthetic), Error::kInvalidGraph);
+                  Arc(next, 0, *linear.next, task.scope, EdgePlacement::kNext);
+                  visited_[next.value] = 1; scopes_[next.value] = task.scope; ++covered;
+                  next = *linear.next;
+                }
+                Require(!visited_[next.value] && indegree_[next.value] == 1, Error::kCrossEntry);
               }
-              Require(!visited_[next.value] && indegree_[next.value] == 1, Error::kCrossEntry);
               visited_[next.value] = 1; scopes_[next.value] = task.scope; ++covered;
               selected_taken = condition.decision->shared_on_taken;
               part = next;

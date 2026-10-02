@@ -870,3 +870,25 @@ and all folded exceptional sites' dispatch/catch copies. Decoded 1202/1206/1301
 fixtures cover 200/201/402 fields, buffered/unbuffered objects and direct/member
 reads; measured verifier work at 402 remains below three times the 201 result.
 This is work-counter scaling evidence, not whole-process RSS or latency proof.
+
+Decision evaluation prefixes may contain closed conditional-value regions. The
+existing follow tree supplies nearest matching predicates: queries are indexed
+by evaluation entry and shared target, and one iterative DFS maintains target
+slots with per-frame rollback. This adds O(V+E) work/storage after the existing
+follow/LCA construction, rather than walking ancestors for every branch. Region
+tasks stop before the ending predicate while retaining its explicit continuation;
+that predicate and the effectful shared body each retain one owner. Independent
+control verification traverses the bounded prefix and checks original arcs.
+
+Selection discovery memoizes arm tails in O(N) control-node work. A containment
+forest orders closed prefix selections before their owner in O(I+R log(R+1))
+work and O(I+R) scratch for I operations and R selections. Reverse local-expression
+indexes connect adjacent selectors and propagate their final object-field owner.
+Each attempted selector chain is marked to avoid repeated failed suffix walks;
+existing interval and object-group checks still enforce single consumption and
+original effect order. PhiInput suffixes count as consumers, and a selected
+logical LHS has exactly its predicate occurrence and matching keep-edge copy.
+These are project-local C++20 extensions to the existing algorithms, with no new
+dependency. Three-profile decoded fixtures exercise 1/2/200/201/402 compositions;
+402 evaluation work remains below three times 201. This is bounded work-counter
+evidence, not physical RSS or latency measurement.

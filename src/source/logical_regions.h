@@ -54,6 +54,13 @@ struct SelectionRegion {
   // pure jump-only join. Preserve that actual edge use, not an alias between
   // the two phi identities or permission to move a join's effects.
   std::optional<analysis::UseId> forwarded;
+  // Complete value selections evaluated only inside a decision's RHS prefix.
+  // They retain their own phi/edge identity and must fuse before this owner.
+  std::vector<ControlId> prefix_regions;
+  std::optional<analysis::OpId> prefix_parent;
+  // An arm may apply one owned suffix to an inner selected value before
+  // supplying its outer phi. The child join stays on that arm's path.
+  std::vector<analysis::OpId> arm_prefixes;
 };
 inline bool IsSelectionConstant(const analysis::ValueProgram& graph, analysis::OpId id) {
   if (id.value >= graph.ops.size()) return false;

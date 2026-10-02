@@ -9,7 +9,7 @@ namespace abcd::source {
 namespace {
 using Error = CellLifetimeError;
 void Require(bool condition, Error error) { if (!condition) throw error; }
-struct Task { ControlId control; CellScopeId scope; };
+struct Task { ControlId control; CellScopeId scope; std::optional<ControlId> stop; };
 struct Interval { std::uint32_t begin; std::uint32_t end; };
 struct Visit { CellScopeId scope; bool exit; };
 class Planner {
@@ -68,12 +68,13 @@ class Planner {
     };
     while (!tasks.empty()) {
       Step(); const auto task = tasks.back(); tasks.pop_back();
+      if (task.stop == task.control) continue;
       Require(task.control.value < seen.size() && !seen[task.control.value], Error::kControl);
       seen[task.control.value] = 1;
       const auto& node = control_.nodes[task.control.value];
       if (node.next) {
         Require(tasks.size() < tasks.capacity(), Error::kResourceLimit);
-        tasks.push_back({*node.next, task.scope});
+        tasks.push_back({*node.next, task.scope, task.stop});
       }
       if (const auto* loop = std::get_if<LoopControl>(&node.synthetic)) {
         child(task.scope, CellLoopScope{loop->loop}, control_.loops[loop->loop.value].body);
@@ -101,6 +102,10 @@ class Planner {
         while (decision) {
           Step(); auto at = decision->evaluate;
           const auto last = decision->predicate.value_or(at);
+          if (decision->prefix == DecisionPrefix::kRegion) {
+            Require(at != last && tasks.size() < tasks.capacity(), Error::kControl);
+            tasks.push_back({at, task.scope, last}); at = last;
+          }
           while (true) {
             Step(); Require(at.value < seen.size() && !seen[at.value], Error::kControl);
             seen[at.value] = 1;

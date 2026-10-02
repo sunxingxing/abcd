@@ -1,6 +1,7 @@
 #include "control_plan.h"
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <limits>
 #include <new>
@@ -14,7 +15,7 @@ using Error = ControlError;
 void Require(bool condition, Error error) {
   if (!condition) throw error;
 }
-struct RegionTask { std::uint32_t first; std::uint32_t stop; };
+struct RegionTask { std::uint32_t first; std::uint32_t stop; bool retain_stop = false; };
 class ControlBuilder {
  public:
   ControlBuilder(ControlGraphView graph, std::span<const ControlId> entries, ControlQuota& quota)
@@ -154,6 +155,73 @@ class ControlBuilder {
       }
     }
   }
+  std::vector<std::optional<ControlId>> RegionalPredicates(std::span<const std::uint8_t> roots) {
+    std::vector<std::optional<ControlId>> first_child, next_child, nearest, result;
+    std::vector<std::optional<ControlArcId>> first_query, next_query;
+    quota_.Size(first_child, exit_ + 1); quota_.Size(next_child, exit_);
+    quota_.Size(nearest, exit_); quota_.Size(result, graph_.ArcCount());
+    quota_.Size(first_query, exit_); quota_.Size(next_query, graph_.ArcCount());
+    for (std::size_t i = 0; i < exit_; ++i) {
+      quota_.Work(); const ControlId id{static_cast<std::uint32_t>(i)};
+      next_child[i] = first_child[parent_[i]]; first_child[parent_[i]] = id;
+      const auto node = graph_.Node({id.value});
+      if (node.arc_count != analysis::kMaxNormalSuccessors) continue;
+      for (std::uint8_t e = 0; e < node.arc_count; ++e) {
+        quota_.Work(); const ControlArcId arc{node.first_arc.value + e};
+        const auto evaluate = graph_.Arc(arc).target.value;
+        if (indegree_[evaluate] != 1 || roots[evaluate]) continue;
+        next_query[arc.value] = first_query[evaluate]; first_query[evaluate] = arc;
+      }
+    }
+    // Walk the follow tree once. Each query asks for the nearest ancestor
+    // predicate with an arc to its shared body. Rollback slots avoid per-node
+    // ancestor walks, including deep sequences of conditional value diamonds.
+    struct Frame {
+      ControlId node;
+      std::optional<ControlId> child;
+      bool entered = false;
+      std::array<std::optional<ControlId>, analysis::kMaxNormalSuccessors> previous{};
+    };
+    std::vector<Frame> stack; quota_.Size(stack, exit_ + 1);
+    std::size_t depth = 1;
+    stack[0] = {ControlId{static_cast<std::uint32_t>(exit_)}, first_child[exit_]};
+    while (depth) {
+      quota_.Work(); auto& frame = stack[depth - 1]; const auto id = frame.node.value;
+      if (!frame.entered) {
+        frame.entered = true;
+        if (id < exit_) {
+          const auto node = graph_.Node({id});
+          if (node.arc_count == analysis::kMaxNormalSuccessors) {
+            for (std::uint8_t e = 0; e < node.arc_count; ++e) {
+              quota_.Work(); const auto target = graph_.Arc({node.first_arc.value + e}).target.value;
+              frame.previous[e] = nearest[target]; nearest[target] = frame.node;
+            }
+          }
+          for (auto query = first_query[id]; query; query = next_query[query->value]) {
+            quota_.Work(); const auto edge = graph_.Arc(*query); const auto source = graph_.Node(edge.source);
+            const auto shared = graph_.Arc({source.first_arc.value + (1U - edge.successor)}).target.value;
+            result[query->value] = nearest[shared];
+          }
+        }
+      }
+      if (frame.child) {
+        const auto child = *frame.child; frame.child = next_child[child.value];
+        Require(depth < stack.size(), Error::kResourceLimit);
+        stack[depth++] = {child, first_child[child.value]};
+      } else {
+        if (id < exit_) {
+          const auto node = graph_.Node({id});
+          if (node.arc_count == analysis::kMaxNormalSuccessors) {
+            for (auto e = node.arc_count; e != 0; --e) {
+              quota_.Work(); nearest[graph_.Arc({node.first_arc.value + e - 1}).target.value] = frame.previous[e - 1];
+            }
+          }
+        }
+        --depth;
+      }
+    }
+    return result;
+  }
   void Decisions() {
     // Reverse-topological path summaries cross Before/Commit and ordinary
     // linear evaluation without a suffix walk per branch. Independent roots
@@ -165,6 +233,7 @@ class ControlBuilder {
       quota_.Work(); Require(entry.value < exit_, Error::kInvalidGraph);
       roots[entry.value] = 1;
     }
+    const auto regional = RegionalPredicates(roots);
     for (std::size_t i = exit_; i != 0; --i) {
       quota_.Work(); const auto id = order_[i - 1];
       const auto& node = graph_.Node({id});
@@ -178,8 +247,9 @@ class ControlBuilder {
         quota_.Work();
         const auto evaluate = graph_.Arc({node.first_arc.value + e}).target.value;
         const auto shared = graph_.Arc({node.first_arc.value + (1 - e)}).target.value;
-        if (indegree_[evaluate] != 1 || roots[evaluate] || !predicates[evaluate]) continue;
-        const auto predicate = *predicates[evaluate];
+        const auto candidate = regional[node.first_arc.value + e];
+        if (indegree_[evaluate] != 1 || roots[evaluate] || !candidate) continue;
+        const auto predicate = *candidate;
         const auto& child = graph_.Node({predicate.value});
         for (std::uint8_t c = 0; c < child.arc_count; ++c) {
           quota_.Work();
@@ -196,7 +266,8 @@ class ControlBuilder {
               ControlId{common == exit_ ? other : common};
           if (join.value == shared) continue; // This arm is an unconditional follow, not a decision body.
           decisions_[id] = ControlDecision{{evaluate}, e == 0, c == 0, join,
-              predicate.value == evaluate ? std::nullopt : std::optional<ControlId>{predicate}};
+              predicate.value == evaluate ? std::nullopt : std::optional<ControlId>{predicate},
+              predicates[evaluate] == predicate ? DecisionPrefix::kLinear : DecisionPrefix::kRegion};
         }
       }
     }
@@ -251,18 +322,26 @@ class ControlBuilder {
               }
               auto next = planned.decision->evaluate.value;
               const auto predicate = planned.decision->predicate.value_or(planned.decision->evaluate).value;
-              while (next != predicate) {
-                quota_.Work();
+              if (planned.decision->prefix == DecisionPrefix::kRegion) {
+                Require(next != predicate, Error::kInvalidGraph);
+                Require(pending < tasks_.size(), Error::kResourceLimit);
+                tasks_[pending++] = {next, predicate, true}; next = predicate;
+                Require(!owned_[next], Error::kCrossEntry);
+              } else {
+                Require(planned.decision->prefix == DecisionPrefix::kLinear, Error::kInvalidGraph);
+                while (next != predicate) {
+                  quota_.Work();
+                  Require(!owned_[next] && indegree_[next] == 1, Error::kCrossEntry);
+                  const auto& linear = graph_.Node({next});
+                  Require(linear.arc_count == 1, Error::kInvalidGraph);
+                  owned_[next] = 1; ++covered;
+                  const auto target = graph_.Arc(linear.first_arc).target;
+                  plan_.nodes[next].next = ControlId{target.value};
+                  plan_.edges[linear.first_arc.value] = {{linear.first_arc.value}, {next}, EdgePlacement::kNext};
+                  next = target.value;
+                }
                 Require(!owned_[next] && indegree_[next] == 1, Error::kCrossEntry);
-                const auto& linear = graph_.Node({next});
-                Require(linear.arc_count == 1, Error::kInvalidGraph);
-                owned_[next] = 1; ++covered;
-                const auto target = graph_.Arc(linear.first_arc).target;
-                plan_.nodes[next].next = ControlId{target.value};
-                plan_.edges[linear.first_arc.value] = {{linear.first_arc.value}, {next}, EdgePlacement::kNext};
-                next = target.value;
               }
-              Require(!owned_[next] && indegree_[next] == 1, Error::kCrossEntry);
               owned_[next] = 1; ++covered;
               const bool next_taken = planned.decision->shared_on_taken;
               plan_.nodes[next].arms = ControlArms{next_taken ? std::optional<ControlId>{{shared}} : std::nullopt,
@@ -271,7 +350,7 @@ class ControlBuilder {
             }
             Require(pending < tasks_.size(), Error::kResourceLimit);
             tasks_[pending++] = {shared, join};
-            if (join != task.stop) node.next = ControlId{join};
+            if (join != task.stop || task.retain_stop) node.next = ControlId{join};
             cursor = join;
             continue;
           }
@@ -300,14 +379,15 @@ class ControlBuilder {
             }
           }
           node.arms = arms;
-          if (join != task.stop && join != exit_) node.next = ControlId{join};
+          if ((join != task.stop || task.retain_stop) && join != exit_) node.next = ControlId{join};
           cursor = join;
         } else if (block.arc_count == 1) {
           const auto edge_id = block.first_arc.value;
           const auto target = graph_.Arc({edge_id}).target.value;
           const bool joins = target == task.stop;
-          plan_.edges[edge_id] = {{edge_id}, {cursor}, joins ? EdgePlacement::kJoin : EdgePlacement::kNext};
-          if (!joins) node.next = ControlId{target};
+          const bool follow = !joins || task.retain_stop;
+          plan_.edges[edge_id] = {{edge_id}, {cursor}, follow ? EdgePlacement::kNext : EdgePlacement::kJoin};
+          if (follow) node.next = ControlId{target};
           cursor = target;
         } else break;
       }

@@ -91,6 +91,45 @@ void Shapes() {
   const std::array<Targets, 2> unreachable{{{}, {}}};
   Check(std::get<ControlError>(BuildControlPlan(Graph(unreachable))) == ControlError::kUncoveredBlock);
 }
+void ConditionalDecisionPrefix() {
+  // if (a || ((b ? c : d) == e)) yes(); else no();
+  // The RHS prefix owns a diamond before its final predicate. Shared yes/no
+  // bodies remain single nodes, even when they contain observable operations.
+  std::uint64_t previous = 0;
+  for (const std::uint32_t count : {1U, 2U, 200U, 201U, 402U}) {
+    constexpr std::uint32_t kNodes = 8;
+    std::vector<Targets> targets;
+    for (std::uint32_t i = 0; i < count; ++i) {
+      const auto base = i * kNodes;
+      targets.insert(targets.end(), {{base + 6, base + 1}, {base + 2, base + 3},
+          {base + 4, {}}, {base + 4, {}}, {base + 6, base + 5},
+          {base + 7, {}}, {base + 7, {}},
+          {i + 1 == count ? std::nullopt : std::optional{base + kNodes}, {}}});
+    }
+    const auto graph = Graph(targets);
+    const auto built = BuildControlPlan(graph);
+    Check(std::holds_alternative<ControlPlan>(built));
+    const auto& plan = std::get<ControlPlan>(built);
+    Check(std::holds_alternative<std::uint64_t>(VerifyControlPlan(graph, plan)));
+    for (std::uint32_t i = 0; i < count; ++i) {
+      const auto base = i * kNodes;
+      Check(plan.nodes[base].decision && plan.nodes[base].decision->evaluate == ControlId{base + 1} &&
+          plan.nodes[base].decision->predicate == ControlId{base + 4} &&
+          plan.nodes[base].decision->prefix == DecisionPrefix::kRegion);
+      Check(plan.nodes[base + 1].next == ControlId{base + 4});
+    }
+    if (count == 1) {
+      auto wrong = plan; wrong.nodes[0].decision->prefix = DecisionPrefix::kLinear;
+      Check(std::holds_alternative<ControlError>(VerifyControlPlan(graph, wrong)));
+      wrong = plan; wrong.nodes[0].decision->predicate = ControlId{1};
+      Check(std::holds_alternative<ControlError>(VerifyControlPlan(graph, wrong)));
+      wrong = plan; wrong.nodes[1].arms->taken = ControlId{6};
+      Check(std::holds_alternative<ControlError>(VerifyControlPlan(graph, wrong)));
+    }
+    if (count == 402) Check(plan.work < 3 * previous);
+    previous = plan.work;
+  }
+}
 void Loops() {
   const std::array<Targets, 3> targets{{{1, 2}, {0, {}}, {}}};
   const auto graph = Graph(targets);
@@ -271,6 +310,7 @@ void EarlyExitSequences() {
 }  // namespace
 
 int main() {
+  ConditionalDecisionPrefix();
   const std::array<Targets, 1> targets{};
   auto phased = Graph(targets);
   const auto normal = BuildControlPlan(phased);

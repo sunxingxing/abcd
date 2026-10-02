@@ -472,9 +472,14 @@ class OperandCheck {
           const auto* destination = std::get_if<analysis::ValueId>(&schedule.steps[0].destination);
           const auto* edge = use.incoming ? std::get_if<analysis::EdgeId>(&*use.incoming) : nullptr;
           const auto* incoming = std::get_if<analysis::EdgeId>(&evaluation_.phis->bundles[i].incoming);
-          RequireMeaning(destination && use.owner == decltype(use.owner){*destination} &&
-              edge && incoming && *edge == *incoming &&
-              use.role == analysis::OperandRole::kPhiInput, Error::kOperand);
+          const auto* predicate = std::get_if<analysis::OpId>(&use.owner);
+          if (predicate && !flow_.logical_operations.empty() && flow_.logical_operations[predicate->value]) {
+            // A fused selected LHS is evaluated once by native &&/||. Its
+            // predicate and keep-edge occurrence share that same left subtree.
+            RequireMeaning(flow_.expressions[predicate->value].has_value() &&
+                Node<LogicalExpr>(*flow_.expressions[predicate->value]).left == *copies.selected, Error::kOperand);
+          } else RequireMeaning(destination && use.owner == decltype(use.owner){*destination} &&
+              edge && incoming && *edge == *incoming && use.role == analysis::OperandRole::kPhiInput, Error::kOperand);
         }
         Input(operand, *copies.selected, forwarded);
         continue;

@@ -412,3 +412,18 @@ record metadata 字段、寄存器和 VM cell slots 不是源字段名/全局变
 RuntimeSetClassInheritanceRelationship，原生 extends 负责父类合法性、prototype
 读取异常及两条原型链；不展开成手工属性搬运。新增遍历成本为该表达式子树的线性
 访问，沿用已有节点/输出计费，无新增每成员全图扫描。
+
+### 条件求值前导区域与后缀（2026-10-02）
+
+ControlDecision 的 kRegion 前导保留 evaluate 到 predicate 的单入口区域，
+允许内部条件值汇合，不复制共享的有副作用分支。区域树独立检查原控制边，
+cell scope 遍历在 predicate 前停止，由所属 decision 唯一处理该节点。
+
+当前 FunctionTree 接入的是能够闭合为原生值表达式的前导区域：内层选择
+保留自身 phi/边身份，条件前导与分支内 PhiInput 后缀通过既有迭代建树工作栈
+组合。相邻选择可继续供给下一个 predicate 或对象属性，成员 callee/receiver
+仍须通过统一求值区间检查；模块 read/guard 配对不变。独立 TreeFlow 和
+操作数验证分别核对效果、子选择边和 logical LHS 的精确 keep occurrence。
+
+任意包含语句效果的非线性前导尚未接入语句 decision lowering，仍明确拒绝；
+控制计划能够表示一个区域不等于源码树支持该区域的所有语句组合。

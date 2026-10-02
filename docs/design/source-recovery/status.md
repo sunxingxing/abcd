@@ -12,6 +12,47 @@
 
 ## 当前阶段
 
+
+### 2026-10-02：条件值前导区域贯通 Home
+
+- ControlDecision 增加有明确 predicate 续接的区域前导，follow-tree 索引查找
+  共享目标谓词，保留原 CFG、控制边及单一 owner。独立控制验证与 cell scope
+  遍历遵守同一边界，未复制 Home block 40 的模块读取、guard 和属性读取。
+- 共同选择发现、求值规划、FunctionTree 和独立 TreeFlow/操作数校验接入
+  闭合条件值前导、分支 PhiInput 后缀、相邻选择及对象字段组合。模块配对、
+  成员 callee/receiver 获取顺序不变。任意语句型非线性前导仍未实现，不能
+  将控制表示能力当作完整语句源码恢复能力。
+- 最新 focused-build.log 构建退出 0；focused-tests.log 4/4 通过 43.90 秒：
+  decision_prefix_test、control_plan_test、decision_prefix_source_test、
+  home_decision_prefix_source_test。三 profile 的 1/2/200/201/402 组合覆盖
+  映射缺失、交换条件臂、debugger 阻隔等拒绝例及 work 增长检查。
+  原生表达式独立对照 8,640 场景；Home 配对 592 场景覆盖可空窗口信息、
+  变化 getter、读取中替换 Tabs、receiver、资源身份、描述符及各效果点异常。
+  不覆盖构造、storage、ForEach、完整渲染或真实平台。
+- 五输入 fresh build/stage-one/value-decision-prefix-pass-2 均退出 0：
+  74 complete / 4 incomplete / 28 failure / 46 no-module。新增 Home 23956，
+  原 73 个完整项无回退或源码字节变化，无 legacy，原生 default records
+  保留。final-batch-summary.json 留存逐输入证据；完整输出不代表 executable
+  或整体配对验收通过。
+- 最终 89 个相关 targets 构建退出 0，186/186 回归通过 479.86 秒；
+  与 /tmp/abcd-decision-prefix-selected.json 按名称核对一致，无遗漏。
+  构建及测试日志为 related-build.log / related-tests.log。
+  全库、扩大语料、RSS/基准、DFX、调度器、代理及定期审视仍暂停。
+- 新核对 Content 14411 / entry 14684 仍在 tree_stage PC 41 拒绝；子方法
+  14712 原始 PC 38 的 opcode 10 之后是 PC 41 return，父方法 14656 在
+  PC 87 创建它。next-target.log、next-functions.log 和
+  next-child-instructions.jsonl 保留当前证据；需沿值域前提诊断，不能只为
+  完整率取消内部值约束。本节日志前缀 /tmp/abcd-decision-prefix-*；其中
+  定向构建和测试完整文件名为 final-focused-build.log / final-focused-tests.log。
+  Goal 保持 active，阶段一语义和表示验收均未完成。
+- 下一项 ProgressBar 9550 / entry 9915：async arrow 10333 由 10222 在
+  PC 145 创建，family member 16。phased LiteralPlan 在 VerifyNesting
+  literal_plan.cc:365 报 kObserved；op 72 是 ValueLexicalLoad，计划 nested
+  use 72，但真实 use 70 属于 op 73 的 kGuardValue，仍为 live。需核对词法
+  read/guard 配对及异常归属，不能把它按无效果额外用途忽略。证据为
+  next-progressbar.log、progressbar-cause.log、progressbar-literal.log、
+  progressbar-observed.log 和 progressbar-use-2.log。
+
 ### 2026-10-02：语句短路 decision 保留模块 read/guard 配对
 
 - DetailVerticalView 44437 / entry 44592 的 getPaddingTop 在 RHS 中遇到
