@@ -251,6 +251,27 @@ std::variant<DefaultBody, DefaultBodyError> DefaultBody::Build(
   } catch (const std::length_error&) { return Error::kResourceLimit; }
 }
 
+std::variant<DefaultBody, DefaultBodyError> DefaultBody::BuildCaptured(
+    const analysis::ValueProgram& original, const analysis::ValueEnvironments& environments,
+    const CellPlan& cells, const ParameterPlan& parameters,
+    const DefaultCandidates& candidates, std::uint32_t length, analysis::SemanticBudget budget) {
+  try {
+    auto checked = DefaultValueProof::BuildCaptured(original, environments, cells, parameters, candidates, length, budget);
+    auto* proof = std::get_if<DefaultValueProof>(&checked);
+    if (!proof) {
+      const auto error = std::get<DefaultProofError>(checked);
+      if (error == DefaultProofError::kResourceLimit) return Error::kResourceLimit;
+      if (error == DefaultProofError::kWorkLimit) return Error::kWorkLimit;
+      return error == DefaultProofError::kRevision ? Error::kRevision : Error::kProof;
+    }
+    auto projected = Project(original, *proof, budget);
+    return DefaultBody{std::move(projected.graph), std::move(*proof), std::move(projected.initializers),
+        projected.bytes, projected.work};
+  } catch (Error error) { return error;
+  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
+  } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
+
 std::variant<DefaultBody, DefaultBodyError> DefaultBody::BuildCell(
     const analysis::ValueProgram& original, const analysis::ValueEnvironments& environments,
     const CellPlan& cells, const ParameterPlan& parameters, const CellDefaults& candidates,

@@ -32,6 +32,14 @@ class DefaultBody {
       const analysis::ValueProgram& original, const ParameterPlan& parameters,
       const DefaultCandidates& candidates, std::uint32_t length,
       analysis::SemanticBudget budget = {});
+  [[nodiscard]] static std::variant<DefaultBody, DefaultBodyError> BuildCaptured(
+      const analysis::ValueProgram&, const analysis::ValueEnvironments&,
+      const CellPlan&, const ParameterPlan&, const DefaultCandidates&,
+      std::uint32_t length, analysis::SemanticBudget budget = {});
+  [[nodiscard]] const CapturedDefaultBinding* Capture() const {
+    const auto* proof = std::get_if<DefaultValueProof>(&proof_);
+    return proof && proof->Capture() ? &*proof->Capture() : nullptr;
+  }
   [[nodiscard]] static std::variant<DefaultBody, DefaultBodyError> BuildCell(
       const analysis::ValueProgram& original, const analysis::ValueEnvironments& environments,
       const CellPlan& cells, const ParameterPlan& parameters, const CellDefaults& candidates,

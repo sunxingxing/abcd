@@ -27,8 +27,9 @@ struct PhiCount { bool present = false; bool missing = false; };
 class Checker {
  public:
   Checker(const ValueProgram& graph, const ParameterPlan& parameters,
-          const DefaultCandidates& candidates, SemanticBudget budget)
-      : graph_(graph), parameters_(parameters), candidates_(candidates), initial_(budget), budget_(budget) {}
+          const DefaultCandidates& candidates, SemanticBudget budget,
+          const CapturedDefaultBinding* capture = nullptr)
+      : graph_(graph), parameters_(parameters), candidates_(candidates), initial_(budget), budget_(budget), capture_(capture) {}
   std::vector<DefaultOpPlacement> Check(std::uint32_t length) {
     Require(parameters_.revision == graph_.revision && parameters_.cfg_revision == graph_.cfg_revision &&
         candidates_.revision == graph_.revision && candidates_.cfg_revision == graph_.cfg_revision, Error::kRevision);
@@ -72,12 +73,13 @@ class Checker {
       const auto& candidate = candidates_.values[owner.candidate];
       const OpId id{static_cast<std::uint32_t>(i)};
       if (id != candidate.comparison && id != candidate.branch && id != candidate.initializer &&
-          candidate.undefined != id && candidate.number != id) {
+          candidate.undefined != id && candidate.number != id &&
+          !(capture_ && capture_->candidate.shape.parameter == candidate.parameter && capture_->candidate.guard == id)) {
         // Keep fresh environment initialization in the residual body. Literal
         // defaults commute with it only when it stores unaffected invocation
         // entries; CheckUse below still rejects every raw default-entry escape.
         // No closure, caller cell, load or arbitrary effect is admitted here.
-        if (owner.candidate == 0 && owner.role == BlockRole::kHeader &&
+        if (!capture_ && owner.candidate == 0 && owner.role == BlockRole::kHeader &&
             op.order < graph_.ops[candidate.comparison.value].order) {
           if (const auto* push = std::get_if<ValueEnvironmentPush>(&op.operation)) {
             Require(!prefix_slots && op.use_count == 0, Error::kEffect);
@@ -197,6 +199,30 @@ class Checker {
                                (test->predicate == UnaryOperator::kTrueOrNonzeroNumber);
     Require(graph_.edges[c.missing.value].kind == (missing_taken ? FlowEdgeKind::kTaken : FlowEdgeKind::kFallthrough) &&
         graph_.edges[c.present.value].kind == (missing_taken ? FlowEdgeKind::kFallthrough : FlowEdgeKind::kTaken), Error::kControl);
+    if (capture_ && capture_->candidate.shape.parameter == c.parameter) {
+      Require(c.merged && !c.number, Error::kLiteral);
+      const auto& initializer = Op(c.initializer, c.arm);
+      const auto* load = std::get_if<ValueLexicalLoad>(&initializer.operation);
+      Require(load && load->address.depth.value == capture_->candidate.address.depth.value &&
+          load->address.slot.value == capture_->candidate.address.slot.value &&
+          initializer.use_count == 0 && initializer.result &&
+          SameLiteral(c.fallback, *initializer.result), Error::kLiteral);
+      Require(initializer.normal == (LanguageEffect::kLexicalRead | LanguageEffect::kEnvironmentRead) &&
+          initializer.before_throw == LanguageEffect::kNone &&
+          initializer.exceptional == ExceptionalCompletion::kImpossible, Error::kEffect);
+      Require(graph_.values[initializer.result->value].domain.IsLanguage(), Error::kEffect);
+      Restrict(*initializer.result, i, ValueRole::kInitializer);
+      if (capture_->candidate.guard) {
+        const auto& guard = Op(*capture_->candidate.guard, c.arm);
+        Require(std::holds_alternative<ValueGuard>(guard.operation) && !guard.result &&
+            guard.use_count == 1 && guard.order > initializer.order &&
+            SameLiteral(Operand(guard, 0, OperandRole::kGuardValue), *initializer.result), Error::kEffect);
+        Require(guard.normal == LanguageEffect::kGuard &&
+            guard.before_throw == LanguageEffect::kGuard &&
+            guard.exceptional == ExceptionalCompletion::kMayThrow, Error::kEffect);
+      }
+      return;
+    }
     Require(!std::holds_alternative<ValueId>(c.fallback), Error::kLiteral);
     if (const auto* special = std::get_if<SpecialValue>(&c.fallback))
       Require(*special == SpecialValue::kUndefined || *special == SpecialValue::kNull ||
@@ -295,7 +321,10 @@ class Checker {
     switch (restriction.role) {
       case ValueRole::kEntry: allowed = (op && *op == c.comparison) || (phi && *phi == c.merged); break;
       case ValueRole::kComparison: allowed = op && *op == c.branch; break;
-      case ValueRole::kInitializer: allowed = phi && *phi == c.merged; break;
+      case ValueRole::kInitializer:
+        allowed = (phi && *phi == c.merged) || (op && capture_ &&
+            capture_->candidate.shape.parameter == c.parameter && capture_->candidate.guard == *op);
+        break;
       case ValueRole::kUndefined: allowed = op && *op == c.comparison; break;
       case ValueRole::kNumber: allowed = op && *op == c.initializer; break;
       case ValueRole::kMerged:
@@ -319,6 +348,7 @@ class Checker {
   const DefaultCandidates& candidates_;
   SemanticBudget initial_;
   SemanticBudget budget_;
+  const CapturedDefaultBinding* capture_;
   std::vector<std::optional<BlockOwner>> blocks_;
   std::vector<std::uint32_t> predecessors_;
   std::vector<std::optional<RestrictedValue>> values_;
@@ -328,15 +358,16 @@ class Checker {
 };
 }  // namespace
 
-std::variant<DefaultValueProof, DefaultProofError> DefaultValueProof::Build(
+std::variant<DefaultValueProof, DefaultProofError> DefaultValueProof::BuildChecked(
     const analysis::ValueProgram& graph, const ParameterPlan& parameters,
     const DefaultCandidates& candidates, std::uint32_t length,
-    analysis::SemanticBudget budget) {
+    std::optional<CapturedDefaultBinding> capture, analysis::SemanticBudget budget) {
   try {
-    Checker checker(graph, parameters, candidates, budget);
+    Checker checker(graph, parameters, candidates, budget, capture ? &*capture : nullptr);
     checker.Admit(1, sizeof(DefaultValueProof));
     checker.Admit(candidates.values.size(), sizeof(DefaultCandidate));
     DefaultValueProof proof;
+    proof.capture_ = capture;
     proof.defaults_ = candidates.values;
     checker.Admit(proof.defaults_.capacity() - candidates.values.size(), sizeof(DefaultCandidate));
     checker.Step(candidates.values.size());
@@ -347,6 +378,51 @@ std::variant<DefaultValueProof, DefaultProofError> DefaultValueProof::Build(
         proof.operations_.capacity() * sizeof(DefaultOpPlacement);
     proof.work_ = checker.Work();
     return proof;
+  } catch (Error error) { return error;
+  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
+  } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
+std::variant<DefaultValueProof, DefaultProofError> DefaultValueProof::Build(
+    const ValueProgram& graph, const ParameterPlan& parameters,
+    const DefaultCandidates& candidates, std::uint32_t length, SemanticBudget budget) {
+  return BuildChecked(graph, parameters, candidates, length, {}, budget);
+}
+std::variant<DefaultValueProof, DefaultProofError> DefaultValueProof::BuildCaptured(
+    const ValueProgram& graph, const ValueEnvironments& environments,
+    const CellPlan& cells, const ParameterPlan& parameters,
+    const DefaultCandidates& candidates, std::uint32_t length, SemanticBudget budget) {
+  try {
+    Require(candidates.capture.has_value(), Error::kLiteral);
+    const auto checked = VerifyCellPlan(graph, environments, cells, budget);
+    if (const auto* error = std::get_if<CellError>(&checked)) {
+      if (*error == CellError::kResourceLimit) return Error::kResourceLimit;
+      if (*error == CellError::kWorkLimit) return Error::kWorkLimit;
+      return Error::kRevision;
+    }
+    const auto scope_work = std::get<std::uint64_t>(checked);
+    Require(scope_work <= budget.work, Error::kWorkLimit); budget.work -= scope_work;
+    const auto& capture = *candidates.capture;
+    Require(capture.shape.initializer.value < cells.operations.size(), Error::kShape);
+    const auto cell = cells.operations[capture.shape.initializer.value];
+    Require(cell && cell->value < cells.cells.size(), Error::kShape);
+    const auto* incoming = std::get_if<IncomingCell>(&cells.cells[cell->value].storage);
+    Require(incoming != nullptr, Error::kEffect);
+    // One normalized candidate list reuses the exact CFG/SSA/escape checker.
+    // Charge the copy alongside the retained proof, never once per parameter.
+    const auto count = candidates.values.size() + 1;
+    Require(count > candidates.values.size() && count <= budget.bytes / sizeof(DefaultCandidate), Error::kResourceLimit);
+    Require(count <= budget.work, Error::kWorkLimit); budget.work -= count;
+    DefaultCandidates normalized;
+    normalized.revision = candidates.revision; normalized.cfg_revision = candidates.cfg_revision;
+    normalized.values.reserve(count);
+    Require(normalized.values.capacity() <= budget.bytes / sizeof(DefaultCandidate), Error::kResourceLimit);
+    budget.bytes -= normalized.values.capacity() * sizeof(DefaultCandidate);
+    normalized.values.insert(normalized.values.end(), candidates.values.begin(), candidates.values.end());
+    normalized.values.push_back(capture.shape);
+    auto result = BuildChecked(graph, parameters, normalized, length,
+        CapturedDefaultBinding{capture, *incoming}, budget);
+    if (auto* proof = std::get_if<DefaultValueProof>(&result)) proof->work_ += scope_work + count;
+    return result;
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }

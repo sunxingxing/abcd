@@ -463,7 +463,7 @@ void CapturedBoundary() {
   auto graph = DefaultDiamond();
   graph.ops[2].operation = ValueLexicalLoad{{{0},{3}}};
   graph.ops[2].use_count = 0;
-  graph.ops[2].normal = LanguageEffect::kLexicalRead;
+  graph.ops[2].normal = LanguageEffect::kLexicalRead | LanguageEffect::kEnvironmentRead;
   graph.uses.pop_back();
   Relink(graph);
   const auto found = Find(graph);
@@ -473,6 +473,16 @@ void CapturedBoundary() {
   // Discovery cannot sneak a captured read through the literal-only proof.
   const auto parameters = std::get<ParameterPlan>(BuildParameterPlan(graph,1));
   Check(std::holds_alternative<DefaultProofError>(DefaultValueProof::Build(graph,parameters,found,0)));
+  const auto prove = [&](const ValueProgram& input, const DefaultCandidates& candidates) {
+    const auto env = std::get<ValueEnvironments>(BuildValueEnvironments(input));
+    const auto cells = std::get<CellPlan>(BuildCellPlan(input,env));
+    return DefaultValueProof::BuildCaptured(input,env,cells,parameters,candidates,0);
+  };
+  Check(std::holds_alternative<DefaultValueProof>(prove(graph,found)));
+  auto forged = found; forged.capture->address.slot.value++;
+  Check(std::holds_alternative<DefaultProofError>(prove(graph,forged)));
+  forged = found; forged.capture->shape.present = forged.capture->shape.missing;
+  Check(std::holds_alternative<DefaultProofError>(prove(graph,forged)));
   const UseId guarded{static_cast<std::uint32_t>(graph.uses.size())};
   graph.uses.push_back({OpId{3},OperandRole::kGuardValue,ReadPurpose::kOperand,ValueId{3}});
   graph.ops.insert(graph.ops.begin()+3,{ValueGuard{}, {1},1,guarded,1,{},
@@ -482,8 +492,29 @@ void CapturedBoundary() {
   Relink(graph);
   const auto checked = Find(graph);
   Check(checked.values.empty() && checked.capture && checked.capture->guard == OpId{3});
+  Check(std::holds_alternative<DefaultValueProof>(prove(graph,checked)));
+  const auto env = std::get<ValueEnvironments>(BuildValueEnvironments(graph));
+  const auto cells = std::get<CellPlan>(BuildCellPlan(graph,env));
+  auto stale = cells; ++stale.revision.value;
+  Check(std::get<DefaultProofError>(DefaultValueProof::BuildCaptured(graph,env,stale,parameters,checked,0)) == DefaultProofError::kRevision);
+  SemanticBudget no_work{}; no_work.work = 0;
+  Check(std::get<DefaultProofError>(DefaultValueProof::BuildCaptured(graph,env,cells,parameters,checked,0,no_work)) == DefaultProofError::kWorkLimit);
+  SemanticBudget no_memory{}; no_memory.bytes = 0;
+  Check(std::get<DefaultProofError>(DefaultValueProof::BuildCaptured(graph,env,cells,parameters,checked,0,no_memory)) == DefaultProofError::kResourceLimit);
+  forged = checked; forged.capture->guard.reset();
+  Check(std::holds_alternative<DefaultProofError>(prove(graph,forged)));
+  auto residual = DefaultBody::BuildCaptured(graph,env,cells,parameters,checked,0);
+  Check(std::holds_alternative<DefaultBody>(residual));
+  const auto& body = std::get<DefaultBody>(residual);
+  Check(body.Capture() && body.Capture()->storage.slot.value == 3);
+  Check(body.Graph().ops[2].life == ValueLife::kRemoved && body.Graph().ops[3].life == ValueLife::kRemoved);
+  Check(std::holds_alternative<ValueFlowProof>(VerifyValueFlow(body.Graph())));
+  auto escaped = graph;
+  escaped.uses[5].operand = ValueId{0}; Relink(escaped);
+  Check(std::holds_alternative<DefaultProofError>(prove(escaped,checked)));
   graph.uses[guarded.value].operand=ValueId{0}; Relink(graph);
   Check(!Find(graph).capture);
+  Check(std::holds_alternative<DefaultProofError>(prove(graph,checked)));
   graph.uses[guarded.value].operand=ValueId{3}; Relink(graph);
   graph.ops[3].operation=ValueDebugger{}; graph.ops[3].normal=LanguageEffect::kDebugger;
   Check(!Find(graph).capture);

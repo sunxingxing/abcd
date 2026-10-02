@@ -12,6 +12,28 @@
 
 ## 当前阶段
 
+### 2026-10-03：捕获默认值的独立证明与残余投影
+
+- DefaultValueProof::BuildCaptured 验证原环境/cell plan，要求默认读取属于
+  IncomingCell，并复用原默认参数 CFG、SSA 合流及 use 逃逸检查。校验读取
+  的真实 LexicalRead|EnvironmentRead 效果、Language 值域、可选同值 Hole
+  guard；暂不允许与局部环境分配/初始化前缀交换次序。literal 入口不自动准入。
+- DefaultBody::BuildCaptured 实际生成残余图，将比较、分支、读取和 guard
+  的来源保留为签名操作；封装原 incoming storage 和候选身份。验证图中的
+  剩余 use/dominance，未复制原对应性证书。它尚未接入 family 发布：下一步
+  必须让签名绑定、capture rebinding 和独立 tree verifier 消费该存储义务。
+- 新测试覆盖错误地址/控制边、遗漏或错值 guard、raw parameter 逃逸、陈旧
+  cell revision、零 work/bytes，以及残余读取/guard 移除和来源存储保留。
+  初次测试的逃逸夹具破坏 dominance，已改为可达原参数逃逸；实际 ABC 暴露
+  EnvironmentRead 效果缺项后已修正。五 targets 构建退出 0，定向 6/6
+  通过 4.23 秒，/tmp/abcd-captured-default-proof-final-{build,tests}.log。
+- 在实际 method48015 的原工作图上调用 BuildCaptured 成功，返回 DefaultBody，
+  有第三参数 initializer/op11、guard/op12 和 incoming slot0，残余图成本
+  26,212 bytes / 4,478 work；这是该组件报告，不是 RSS。证据
+  /tmp/abcd-captured-default-residual-real-final.log。此前 LLDB expression 的
+  C++ 异常陷阱曾中断观察，使用 SetTrapExceptions(false) 获得真实返回值。
+  record 仍未贯通，未运行五输入/full-suite/RSS；阶段一 Goal 保持 active。
+
 ### 2026-10-03：有限 Number 乘法的复杂表达式贯通
 
 - 修复共同 MultiplyNumbers 类型规则：两边均有限时，即使可能为零，乘法
