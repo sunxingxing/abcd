@@ -13,6 +13,46 @@
 ## 当前阶段
 
 
+### 2026-10-03：模块发布证明的元数据前提
+
+- RecordModuleContext 保留经 ReadMergedRecordAttributes 校验的普通同步
+  模块属性；OrdinarySynchronous 同时检查文件对象身份、record owner、
+  模块表存在以及非 shared/非 top-level-await。CommonJS 仍在读取时拒绝。
+  该事实不等于无重入或捕获初始化证明，尚未改变生产捕获准入。
+- record_module_context_test 构建退出 0，定向 1/1 通过，覆盖 shared、
+  top-level-await、错误 owner 和第二文件对象的拒绝。日志
+  /tmp/abcd-module-publication-context-build.log / tests.log。
+- 上一节 record_published_capture_test 仍 RED；CMake 与合成发布/重入
+  夹具改动继续保留未提交。下一步将本元数据前提与资源合同、有效模块槽
+  及无观察初始化窗口连接，不能把此 bool 单独当作允许跨发布的权限。
+  阶段一 Goal 保持 active，固定输入统计未变化。
+
+
+### 2026-10-03：正在定位模块发布前后的延迟捕获（未完成）
+
+- 实际 HotListItemView record47697 / entry47847 的 conditional-family
+  失败定位为 child47875（isShowDetail）creation PC17，CaptureCellError::kInput。
+  该 child 读取 slot1 的 isTopThree，实际 slot1 到 entry PC37 才初始化。
+  entry PC15 已发布另一个函数，现有 allocation-to-store unexposed-prefix
+  在 ModuleStore 处终止。证据 /tmp/abcd-hotitem-family.json、
+  /tmp/abcd-hotitem-entry.jsonl、/tmp/abcd-hotitem-detail-instructions.jsonl。
+- 新合成 kPublishedCapture：创建词法环境、创建捕获 reader、模块发布、
+  再做常量/词法初始化。另有 kReentrantCapture 在发布与初始化之间插入
+  module read/call，必须仍拒绝。新 record_published_capture_test 已注册，
+  当前 RED（1.12 秒，route refusal 5），日志
+  /tmp/abcd-published-capture-red-build.log / red-test.log。
+  这两项测试改动尚未提交；没有生产放宽。
+- pinned ModuleValueAccessor::StoreModuleValueInternal 直接进入
+  SourceTextModule::StoreModuleValue；普通已验证模块是本地数组写入/可能分配，
+  但 shared module 的非共享值导出有普通 SyntaxError，sendable function
+  GetCurrentModule 也走不同解析路径。因此不能把所有 ModuleStore 简单加进
+  unexposed 白名单，也不能仅用未来支配 store 当作创建时初始化。
+- 下一步需构造受同文件/record 普通模块元数据与资源排除合同约束的无重入
+  初始化证据，维持原默认和 phased 路径严格性，并在独立 capture verifier
+  中重验。公开方法、共享/TLA/发送型上下文及用户调用边界须分别拒绝或证明。
+  现有 superclass 与一般算术合同不变，Goal 保持 active。
+
+
 ### 2026-10-03：省略模块末尾无效果完成语句
 
 - 新模块空完成用例在旧 printer RED。共同 module-body printer 现在仅省略

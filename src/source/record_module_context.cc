@@ -30,7 +30,8 @@ RecordModuleResult ReadRecordModuleContext(
     return RecordModuleContext(
         file, record.offset,
         std::make_shared<const abc::ModuleInfo>(
-            std::get<abc::ModuleInfo>(std::move(decoded))));
+            std::get<abc::ModuleInfo>(std::move(decoded))),
+        !attributes.shared.value_or(false) && !attributes.top_level_await.value_or(false));
   } catch (const std::bad_alloc&) {
     return RecordModuleFailure{RecordModuleError::kResourceLimit};
   }

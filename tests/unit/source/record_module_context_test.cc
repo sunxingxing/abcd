@@ -37,6 +37,8 @@ int main() {
   std::vector<std::uint8_t> bytes(640);
   String(bytes, abc::kDynamicHeaderSize, "moduleRecordIdx");
   String(bytes, 90, "isCommonjs");
+  String(bytes, 112, "isSharedModule");
+  String(bytes, 144, "hasTopLevelAwait");
   String(bytes, kRequest, "./dependency.mjs");
   bytes[kTypeTable] = 5;
   Word(bytes, kModule + 4, 1);
@@ -71,6 +73,8 @@ int main() {
   const auto result = read();
   const auto& context = std::get<source::RecordModuleContext>(result);
   Check(context.record() == record.offset);
+  Check(context.OrdinarySynchronous(file, record.offset));
+  Check(!context.OrdinarySynchronous(file, {kRecord + 1}));
   Check(context.ForOwner(file, record.offset) != nullptr);
   Check(context.ForOwner(file, {kRecord + 1}) == nullptr);
   Check(context.ForOwner(file, record.offset)->requests[0].value == kRequest);
@@ -93,6 +97,7 @@ int main() {
   Check(std::holds_alternative<std::unique_ptr<corpus::AbcFile>>(second_opened));
   const auto& second = *std::get<std::unique_ptr<corpus::AbcFile>>(second_opened);
   Check(context.ForOwner(second, record.offset) == nullptr);
+  Check(!context.OrdinarySynchronous(second, record.offset));
   std::shared_ptr<const abc::ModuleInfo> retained;
   {
     const auto temporary = read();
@@ -100,6 +105,14 @@ int main() {
                    .ForOwner(file, record.offset);
   }
   Check(retained && retained->requests[0].value == kRequest);
+  for (const std::uint32_t name : {112U,144U}) {
+    index.fields.push_back({{310}, record.offset, {name}, {}, 0,
+        abc::FieldValue{abc::FieldValueEncoding::kSignedLeb, 1}});
+    record.field_count = 2;
+    const auto restricted = read();
+    Check(!std::get<source::RecordModuleContext>(restricted).OrdinarySynchronous(file,record.offset));
+    index.fields.pop_back(); record.field_count = 1;
+  }
   index.fields.push_back({{310}, record.offset, {90}, {}, 0,
                           abc::FieldValue{abc::FieldValueEncoding::kSignedLeb,
                                           1}});

@@ -30,6 +30,11 @@ struct RecordModuleBudget {
 class RecordModuleContext {
  public:
   abc::EntityOffset record() const { return record_; }
+  // Same-file ordinary synchronous module metadata only. This is not a
+  // no-reentry, resource-failure or capture-initialization certificate.
+  bool OrdinarySynchronous(const corpus::AbcFile& file, abc::EntityOffset owner) const {
+    return &file == file_ && owner == record_ && module_ && ordinary_synchronous_;
+  }
   std::shared_ptr<const abc::ModuleInfo> ForOwner(
       const corpus::AbcFile& file, abc::EntityOffset owner) const {
     return &file == file_ && owner == record_ ? module_ : nullptr;
@@ -41,11 +46,12 @@ class RecordModuleContext {
                           const abc::MetadataIndex&, const abc::RecordInfo&,
                           abc::FilePackaging, RecordModuleBudget);
   RecordModuleContext(const corpus::AbcFile& file, abc::EntityOffset record,
-                      std::shared_ptr<const abc::ModuleInfo> module)
-      : file_(&file), record_(record), module_(std::move(module)) {}
+                      std::shared_ptr<const abc::ModuleInfo> module, bool ordinary_synchronous = false)
+      : file_(&file), record_(record), module_(std::move(module)), ordinary_synchronous_(ordinary_synchronous) {}
   const corpus::AbcFile* file_;
   abc::EntityOffset record_;
   std::shared_ptr<const abc::ModuleInfo> module_;
+  bool ordinary_synchronous_ = false;
 };
 using RecordModuleResult =
     std::variant<RecordModuleContext, RecordModuleFailure>;
