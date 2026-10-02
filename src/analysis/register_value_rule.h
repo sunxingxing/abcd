@@ -83,10 +83,13 @@ constexpr ValueKinds UpdatedNumber(ValueKinds input) {
   return input.IsIntegralNumber() ? result.WithIntegralNumber() : result;
 }
 // IEEE Number multiplication cannot create NaN without a NaN input or a
-// zero/infinity pair. Overflow and underflow may lose finite/nonzero facts.
+// zero/infinity pair. Two finite inputs exclude that pair even when both may
+// be zero (e.g. two int32 coercions). Pinned FastRuntimeStub::FastMul performs
+// double multiplication. Overflow and underflow lose finite/nonzero facts.
 constexpr ValueKinds MultiplyNumbers(ValueKinds left, ValueKinds right) {
   return left.IsNonNaNNumber() && right.IsNonNaNNumber() &&
-                 (left.IsFiniteNonzeroNumber() || right.IsFiniteNonzeroNumber())
+                 ((left.IsFiniteNumber() && right.IsFiniteNumber()) ||
+                  left.IsFiniteNonzeroNumber() || right.IsFiniteNonzeroNumber())
              ? ValueKinds::NonNaNNumber() : ValueKinds::Unknown();
 }
 // Pinned FastDiv handles a zero divisor before IEEE division. With no NaN

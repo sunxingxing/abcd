@@ -7,6 +7,7 @@
 #include "analysis/ssa_fixture.h"
 #include "../../src/analysis/phased_value_import.h"
 #include "../../src/source/exception_tree.h"
+#include "../../src/analysis/register_value_rule.h"
 #include <array>
 #include <algorithm>
 #include <iostream>
@@ -17,7 +18,12 @@ using namespace abcd;
 using namespace abcd::source;
 using namespace abcd::analysis;
 constexpr unsigned kByteBits = 8;
-enum class OperandInput { kPositive, kNegative, kParameters, kLeftNumber, kRightNumber, kConverted };
+static_assert(detail::MultiplyNumbers(ValueKinds::FiniteNumber(), ValueKinds::FiniteNumber()).IsNonNaNNumber());
+static_assert(!detail::MultiplyNumbers(ValueKinds::FiniteNumber(), ValueKinds::NonNaNNumber()).IsLanguage());
+static_assert(!detail::MultiplyNumbers(ValueKinds::NonNaNNumber(), ValueKinds::FiniteNumber()).IsLanguage());
+static_assert(!detail::MultiplyNumbers(ValueKinds::Number(), ValueKinds::FiniteNonzeroNumber()).IsLanguage());
+static_assert(!detail::MultiplyNumbers(ValueKinds::FiniteNonzeroNumber(), ValueKinds::Number()).IsLanguage());
+enum class OperandInput { kPositive, kNegative, kParameters, kLeftNumber, kRightNumber, kConverted, kIntegers };
 bool GeneralOperands(abc::Opcode op) {
   switch (op) {
     case abc::Opcode::kADD2_IMM8_V8: case abc::Opcode::kSUB2_IMM8_V8:
@@ -94,7 +100,7 @@ std::uint64_t Phased(const abc::MethodBody& body, const abc::FrameLayout& frame,
 std::uint64_t Run(abc::Opcode binary, abc::ProfileId profile, unsigned count, bool print = false, OperandInput operands = OperandInput::kPositive, bool phased = false, bool square = false) {
   const bool negative = operands == OperandInput::kNegative;
   const bool arguments = operands == OperandInput::kParameters ||
-      operands == OperandInput::kLeftNumber || operands == OperandInput::kRightNumber || operands == OperandInput::kConverted;
+      operands == OperandInput::kLeftNumber || operands == OperandInput::kRightNumber || operands == OperandInput::kConverted || operands == OperandInput::kIntegers;
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   const auto* spec = FindPinnedInstruction(binary); test::Check(spec && (spec->group == IsaGroup::kBinary || spec->group == IsaGroup::kComparison));
   const auto encoded = static_cast<std::uint16_t>(binary);
@@ -108,12 +114,20 @@ std::uint64_t Run(abc::Opcode binary, abc::ProfileId profile, unsigned count, bo
   for (unsigned i = 0; i < count; ++i) {
     if (arguments) {
       if (operands == OperandInput::kLeftNumber) integer(1);
-      else bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 2});
+      else bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), static_cast<std::uint8_t>(operands == OperandInput::kIntegers ? 3 : 2)});
       if (operands == OperandInput::kConverted) bytes.insert(bytes.end(), {op(abc::Opcode::kTONUMBER_IMM8), 0});
+      if (operands == OperandInput::kIntegers) {
+        bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), 1}); integer(0);
+        bytes.insert(bytes.end(), {op(abc::Opcode::kSHL2_IMM8_V8), 0, 1});
+      }
       bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), 1});
       if (operands == OperandInput::kRightNumber) integer(1);
-      else bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 3});
+      else bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), static_cast<std::uint8_t>(operands == OperandInput::kIntegers ? 4 : 3)});
       if (operands == OperandInput::kConverted) bytes.insert(bytes.end(), {op(abc::Opcode::kTONUMBER_IMM8), 0});
+      if (operands == OperandInput::kIntegers) {
+        bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), 2}); integer(0);
+        bytes.insert(bytes.end(), {op(abc::Opcode::kSHL2_IMM8_V8), 0, 2});
+      }
     } else {
       integer(negative ? -7 : 7);
       bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), 1});
@@ -138,14 +152,14 @@ std::uint64_t Run(abc::Opcode binary, abc::ProfileId profile, unsigned count, bo
     abc::TryRegion region; region.length = catch_pc - 1; region.handler_count = 1; body.tries.push_back(region);
     abc::CatchHandler handler; handler.offset = {catch_pc}; handler.length = 1; body.handlers.push_back(handler);
   }
-  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(2, arguments ? 2 : 1, {}));
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(operands == OperandInput::kIntegers ? 3 : 2, arguments ? 2 : 1, {}));
   if (phased) {
-    test::Check(arguments && GeneralOperands(binary));
+    test::Check(arguments && (GeneralOperands(binary) || operands == OperandInput::kIntegers));
     return Phased(body, frame, profile, count, print);
   }
   RouteInputIdentity identity; identity.profile = profile;
   const auto prepared = FunctionInput::Build(identity, {300}, {100}, body, frame, InputCaptureMode::kClosed);
-  if (arguments && !GeneralOperands(binary)) {
+  if (arguments && !GeneralOperands(binary) && operands != OperandInput::kIntegers) {
     test::Check(!std::holds_alternative<FunctionInput>(prepared)); return 0;
   }
   if (!std::holds_alternative<FunctionInput>(prepared)) std::cerr << "Input rejected opcode " << encoded << '\n';
@@ -183,6 +197,12 @@ std::uint64_t Run(abc::Opcode binary, abc::ProfileId profile, unsigned count, bo
 int main(int argc, char** argv) {
   for (const auto& spec : PinnedIsaCatalog()) if (spec.group == IsaGroup::kBinary || spec.group == IsaGroup::kComparison)
     test::Check(std::find(kBinary.begin(), kBinary.end(), spec.opcode) != kBinary.end());
+  if (argc == 2) {
+    const auto option = std::string_view(argv[1]);
+    test::Check(option == "--integer-product-source" || option == "--phased-integer-product-source");
+    Run(abc::Opcode::kMUL2_IMM8_V8, abc::ProfileId::kDynamic1206, 2, true,
+        OperandInput::kIntegers, option == "--phased-integer-product-source", true); return 0;
+  }
   if (argc == 4) {
     const auto option = std::string_view(argv[1]);
     test::Check(option == "--square-source" || option == "--phased-square-source");
@@ -204,6 +224,9 @@ int main(int argc, char** argv) {
         option == "--negative-source" ? OperandInput::kNegative : OperandInput::kPositive,
         option == "--phased-argument-source"); return 0;
   }
+  for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+    for (const bool phased : {false, true})
+      Run(abc::Opcode::kMUL2_IMM8_V8, profile, 2, false, OperandInput::kIntegers, phased, true);
   for (const auto binary : {abc::Opcode::kSHL2_IMM8_V8, abc::Opcode::kSHR2_IMM8_V8,
       abc::Opcode::kASHR2_IMM8_V8, abc::Opcode::kAND2_IMM8_V8, abc::Opcode::kOR2_IMM8_V8, abc::Opcode::kXOR2_IMM8_V8})
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})

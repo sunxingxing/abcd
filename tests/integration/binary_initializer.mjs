@@ -109,6 +109,26 @@ for (const phased of [false,true]) for (const [index, operation] of operations.e
 }
 console.log(`Decoded parameter operators: ${argumentScenarios} coercion/identity/exception scenarios passed`);
 
+// Both shifts produce finite Numbers, including zero. Keep their conversion
+// effects ordered before multiplication, then preserve the product's grouping.
+let productScenarios = 0;
+for (const phased of [false,true]) {
+  const source = execFileSync(process.argv[2], [phased ? '--phased-integer-product-source' : '--integer-product-source'], {encoding:'utf8'});
+  const generated = runInNewContext(source);
+  const reference = (left,right) => {
+    try { return {field0: ((left << 0) * (right << 0)) ** 2,
+                  field1: ((left << 0) * (right << 0)) ** 2}; }
+    catch (error) { if (phased) return undefined; throw error; }
+  };
+  for (let scenario = 0; scenario < 31; ++scenario) for (let wrapping = 0; wrapping < 4; ++wrapping)
+    for (const mutate of [false,true]) for (let failAt = 0; failAt <= 4; ++failAt) {
+      assert.deepEqual(observeArguments(generated,scenario,wrapping,mutate,failAt),
+        observeArguments(reference,scenario,wrapping,mutate,failAt));
+      ++productScenarios;
+    }
+}
+console.log(`Finite product composition: ${productScenarios} scenarios passed`);
+
 let bitwiseCombinations = 0;
 for (const index of [11,12,13,14,15,16]) for (const mode of ['left','right','both','converted']) {
   if (mode === 'both' && index !== 12) continue;

@@ -12,6 +12,22 @@
 
 ## 当前阶段
 
+### 2026-10-03：有限 Number 乘法的复杂表达式贯通
+
+- 修复共同 MultiplyNumbers 类型规则：两边均有限时，即使可能为零，乘法
+  仍产生非 NaN Number。依据 pinned FastRuntimeStub::FastMul 的 double
+  乘法；溢出仍可能为 Infinity，不保留 finite/nonzero。零与可能 Infinity、
+  未知 NaN 输入的拒绝保持，并有编译期负例约束。
+- 实际编码的 `((left << 0) * (right << 0)) ** 2` 在修改前入口拒绝，
+  修改后经共同 IR、普通/异常构树、独立语义验证和 printer 成功。三个历史
+  profiles 都覆盖；原生行为对照包含转换次序、变异、BigInt/Symbol 和异常。
+- 七 targets 构建退出 0，相关 9/9 CTest 通过 24.32 秒。新增组合 2,480
+  场景；既有参数 42,160、位运算组合 47,120、数值 665、优先级 8,400
+  场景通过。日志 /tmp/abcd-finite-product-{red,related-build,related-tests}.log。
+- 三组 38 编码格式覆盖不代表任意输入语义完成。一般 ADD/SUB/MUL/DIV/EXP
+  仍有值域准入边界，原 NaN/private-tag、SUB INT32_MIN 等限制未放宽。
+  未运行固定五输入、full-suite、扩展语料或 RSS；阶段一 Goal 保持 active。
+
 ### 2026-10-03：捕获默认值候选边界（尚未迁移）
 
 - FindDefaultCandidates 在共同入口默认值分支中记录词法读取及可选同值 guard，
