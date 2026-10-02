@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_FUNCTION_FILE_H_
 
 #include "function_values.h"
+#include "cleanup_body.h"
 #include "module_capture_prefix.h"
 #include "module_reads.h"
 #include "abcd/source/record_module_context.h"
@@ -15,11 +16,13 @@ struct FileFunction {
   std::size_t allocated_bytes = 0;
   std::optional<ModuleReads> module_reads;
   std::optional<ModuleCapturePrefix> module_capture_prefix;
+  std::optional<CleanupBody> cleanup;
 };
 enum class FunctionFileError : std::uint8_t { kIdentity, kMethod, kChanged, kResourceLimit };
 using FunctionFileFailure = std::variant<FunctionFileError, abc::BodyFailure,
     abc::MetadataError, abc::FrameError, FunctionInputFailure, FunctionValueFailure,
-    ModuleReadFailure>;
+    ModuleReadFailure, CleanupFailure>;
+enum class FunctionBodyMode : std::uint8_t { kOriginal, kCleanupEntry };
 // Same unchanged file/header/index/identity, with a validated method position.
 // Reads the ABI and body itself and retains original input alongside working
 // values for creation/capture binding. No sidecars, receipts or source claims.
@@ -33,6 +36,7 @@ using FunctionFileFailure = std::variant<FunctionFileError, abc::BodyFailure,
     const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
     abc::MethodPosition method, RouteInputIdentity identity, InputCaptureMode mode,
     analysis::SemanticBudget budget = {}, const RecordModuleContext* modules = nullptr,
-    const FunctionContext* owner = nullptr, const ParentModuleInput* modules_input = nullptr);
+    const FunctionContext* owner = nullptr, const ParentModuleInput* modules_input = nullptr,
+    FunctionBodyMode body_mode = FunctionBodyMode::kOriginal);
 }  // namespace abcd::source
 #endif

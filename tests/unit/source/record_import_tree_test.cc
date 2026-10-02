@@ -22,7 +22,7 @@ using namespace abcd;
 void Check(bool value, std::source_location at = std::source_location::current()) {
   if (!value) { std::cerr << "check failed at " << at.line() << '\n'; std::abort(); }
 }
-enum class FixtureCase { kValid, kBindingCollision, kExportCollision, kBranch, kArmStore, kFunction, kCapture, kCapturedDefault, kCapturedUnusedDefault, kStringDefault, kPublishedCapture, kReentrantCapture, kPublishedCaptureV1, kPublishedBadSlot, kLocalFunction, kClassFunction, kClassCapture, kGlobal, kGlobalShadow, kGlobalLocalShadow, kAnonymous, kAnonymousFunction, kAnonymousSingleClass, kAnonymousClassRead, kClassCell, kClassNamedCell, kClassNamedShadow, kClassCellHole, kClassCellUninitialized, kUnknownName };
+enum class FixtureCase { kValid, kCleanupEntry, kCleanupOverwrite, kBindingCollision, kExportCollision, kBranch, kArmStore, kFunction, kCapture, kCapturedDefault, kCapturedUnusedDefault, kStringDefault, kPublishedCapture, kReentrantCapture, kPublishedCaptureV1, kPublishedBadSlot, kLocalFunction, kClassFunction, kClassCapture, kGlobal, kGlobalShadow, kGlobalLocalShadow, kAnonymous, kAnonymousFunction, kAnonymousSingleClass, kAnonymousClassRead, kClassCell, kClassNamedCell, kClassNamedShadow, kClassCellHole, kClassCellUninitialized, kUnknownName };
 std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool inspect_prefix = false) {
   constexpr std::uint32_t kTypes = 256, kPool = 272, kRecord = 512,
       kMethod = 600, kChild = 640, kConstructor = 680, kLiteral = 3000, kModule = 1024, kCode = 4096, kChildCode = 5000, kConstructorCode = 6000, kFileBytes = 8192;
@@ -31,6 +31,7 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
   const bool single_class = class_cell || mode == FixtureCase::kAnonymousSingleClass || mode == FixtureCase::kAnonymousClassRead;
   const bool global = mode == FixtureCase::kGlobal || mode == FixtureCase::kGlobalShadow || mode == FixtureCase::kGlobalLocalShadow;
   const bool anonymous = mode == FixtureCase::kAnonymous || mode == FixtureCase::kAnonymousFunction || single_class;
+  const bool cleanup_entry = mode == FixtureCase::kCleanupEntry || mode == FixtureCase::kCleanupOverwrite;
   const bool string_default = mode == FixtureCase::kStringDefault;
   const bool unused_default = mode == FixtureCase::kCapturedUnusedDefault;
   const bool captured_default = unused_default || mode == FixtureCase::kCapturedDefault;
@@ -182,11 +183,31 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
       }
     }
   }
+  std::uint32_t cleanup_end = 0, cleanup_handler = 0;
+  constexpr std::uint8_t kPushBytes = 2;
+  if (cleanup_entry) {
+    body.insert(body.begin(),{static_cast<std::uint8_t>(abc::Opcode::kNEWLEXENV_IMM8),1});
+    cleanup_end = static_cast<std::uint32_t>(body.size());
+    op(abc::Opcode::kPOPLEXENV);
+  }
   op(abc::Opcode::kRETURNUNDEFINED);
+  if (cleanup_entry) {
+    cleanup_handler = static_cast<std::uint32_t>(body.size());
+    if (mode == FixtureCase::kCleanupOverwrite) op(abc::Opcode::kLDUNDEFINED);
+    op(abc::Opcode::kPOPLEXENV);
+    const auto thrown = static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
+    body.insert(body.end(),{static_cast<std::uint8_t>(thrown),static_cast<std::uint8_t>(thrown >> kByteBits)});
+  }
   Check(body.size() < 128);
   bytes[kCode - 4] = mixed ? 1 : 0;
   bytes[kCode - 3] = 3; bytes[kCode - 2] = static_cast<std::uint8_t>(body.size());
   std::copy(body.begin(), body.end(), bytes.begin() + kCode);
+  if (cleanup_entry) {
+    bytes[kCode-1] = 1;
+    const std::array<std::uint8_t,6> table{kPushBytes,static_cast<std::uint8_t>(cleanup_end-kPushBytes),1,0,
+        static_cast<std::uint8_t>(cleanup_handler),static_cast<std::uint8_t>(body.size()-cleanup_handler)};
+    std::copy(table.begin(),table.end(),bytes.begin()+kCode+body.size());
+  }
   std::vector<std::uint8_t> child_body;
   if (family) {
     body.swap(child_body);
@@ -262,7 +283,7 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
       abc::FieldValue{abc::FieldValueEncoding::kSignedLeb, kModule}});
   abc::MethodInfo entry; entry.offset = {kMethod}; entry.owner_offset = record.offset;
   entry.name = "func_main_0"; entry.name_utf16_length = entry.name.size();
-  entry.code = abc::CodeInfo{{kCode - 4}, {kCode}, mixed ? 1U : 0U, 3, static_cast<std::uint32_t>(body.size()), 0};
+  entry.code = abc::CodeInfo{{kCode - 4}, {kCode}, mixed ? 1U : 0U, 3, static_cast<std::uint32_t>(body.size()), cleanup_entry ? 1U : 0U};
   index.methods.push_back(entry);
   if (family) {
     auto child = entry; child.offset = {kChild}; child.name = "reader"; child.name_utf16_length = child.name.size();
@@ -314,9 +335,13 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
   }
   const auto build = [&](source::RecordProgramBudget budget = {}) {
     return source::BuildRecordSource(*file, header, index, lookup, record, context, roles,
-        budget, nullptr, source::RoutePolicy::kRequireValueTree, nullptr, nullptr, &identity, family ? &creations : nullptr, mixed ? &classes : nullptr);
+        budget, nullptr, source::RoutePolicy::kRequireValueTree, nullptr, nullptr, &identity, (family || cleanup_entry) ? &creations : nullptr, mixed ? &classes : nullptr);
   };
   auto result = build();
+  if (mode == FixtureCase::kCleanupOverwrite) {
+    Check(!std::holds_alternative<source::PrintedSource>(result));
+    Check(unlink(path) == 0); return {};
+  }
   if (mode == FixtureCase::kReentrantCapture || mode == FixtureCase::kPublishedCaptureV1) {
     Check(!std::holds_alternative<source::PrintedSource>(result));
     Check(unlink(path) == 0); return {};
@@ -342,6 +367,12 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
   if (const auto* error = std::get_if<source::RouteRefusal>(&result))
     std::cerr << "route refusal " << unsigned(error->failure.reason) << '\n';
   Check(std::holds_alternative<source::PrintedSource>(result));
+  if (cleanup_entry) {
+    const auto& sites = std::get<source::PrintedSource>(result).environment_cleanup;
+    Check(sites.size() == 2 && sites[0].pc.value == cleanup_handler &&
+        sites[0].kind == source::CleanupInstructionKind::kPop && sites[0].allocation == abc::CodeOffset{0});
+    Check(sites[1].kind == source::CleanupInstructionKind::kRethrow && !sites[1].allocation);
+  }
   source::RecordProgramBudget small; small.output.bytes = 1;
   Check(std::get<source::RecordProgramFailure>(build(small)).kind == source::RecordProgramError::kOutputLimit);
   source::RecordProgramBudget exhausted; exhausted.bytes = 0;
@@ -361,6 +392,12 @@ int main(int argc, char** argv) {
       Recover(FixtureCase::kPublishedBadSlot,profile,true);
     }
     return 0;
+  }
+  if (mode == "--cleanup-entry") {
+    Recover(FixtureCase::kCleanupOverwrite);
+    for (const auto profile : {abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1301})
+      Recover(FixtureCase::kCleanupEntry,profile);
+    std::cout << Recover(FixtureCase::kCleanupEntry); return 0;
   }
   if (mode == "--string-default") {
     for (const auto profile : {abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1301})

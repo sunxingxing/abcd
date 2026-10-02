@@ -270,7 +270,9 @@ class FamilyReader {
   FamilyFunction ReadMethod(abc::MethodPosition position, const FunctionContext* owner,
       InputCaptureMode mode = InputCaptureMode::kClosed, const ParentModuleInput* modules_input = nullptr) {
     Require(position.value < index_.methods.size() && index_.methods[position.value].code, Error::kMethod);
-    if (index_.methods[position.value].code->try_count ||
+    const bool cleanup_entry = !owner && modules_ && class_mode_ == FamilyClassMode::kRetainRoot &&
+        index_.methods[position.value].code->try_count;
+    if ((index_.methods[position.value].code->try_count && !cleanup_entry) ||
         (owner && IsGeneratorCallable(owner->Callable()))) {
       Require(owner != nullptr, Error::kOccurrence);
       Require(owner->Position() == position && owner->Target() == index_.methods[position.value].offset &&
@@ -283,7 +285,8 @@ class FamilyReader {
       Admit(function.AllocatedBytes(), 1); Step(function.Work()); return function;
     }
     auto read = ReadFunctionValues(file_, header_, index_, position, identity_,
-        InputCaptureMode::kConditional, Remaining(), modules_, owner, modules_input);
+        InputCaptureMode::kConditional, Remaining(), modules_, owner, modules_input,
+        cleanup_entry ? FunctionBodyMode::kCleanupEntry : FunctionBodyMode::kOriginal);
     if (const auto* error = std::get_if<FunctionFileFailure>(&read)) Fail(*error);
     auto function = std::get<FileFunction>(std::move(read));
     Admit(function.allocated_bytes, 1);

@@ -21,9 +21,9 @@ mutate();
 answer = input;
 export {answer, answer as answerAlias, snapshot};
 `;
-async function setup(source, {cycle = false, defaultExport = true, initial = 42, external, namedGlobal = false} = {}) {
+async function setup(source, {cycle = false, defaultExport = true, initial = 42, external, namedGlobal = false, failMutation = false, mutationFailure} = {}) {
   const trace = [];
-  const context = vm.createContext({trace, externalCase: external});
+  const context = vm.createContext({trace, externalCase: external, mutationFailure});
   // Define the accessor inside the realm: contextified host accessors can
   // convert a thrown getter into a missing-binding ReferenceError in Node.
   if (external) vm.runInContext(`Object.defineProperty(globalThis, 'external', {get() {
@@ -41,7 +41,7 @@ async function setup(source, {cycle = false, defaultExport = true, initial = 42,
     trace.push('dep'); export let value = ${initial};
     export function mutate() {
       if (this !== undefined) throw new Error('receiver changed');
-      trace.push('mutate'); ++value;
+      trace.push('mutate'); ${failMutation ? 'throw mutationFailure;' : ''} ++value;
     }
     ${defaultExport ? 'export default 7;' : ''}
   `, './dep.mjs');
@@ -258,3 +258,18 @@ for (const source of [stringDefault,stringReference]) {
     assert.ok(Object.is(reader(value),value));
 }
 console.log('Pool string defaults: escaping, identity and native arity passed');
+
+const cleanupEntry = execFileSync(process.argv[2], ['--cleanup-entry'], {encoding:'utf8'});
+assert.deepEqual(await observe(cleanupEntry),await observe(reference));
+for (const failure of [{},Symbol('failure'),'failure',0,undefined,null]) {
+  for (const source of [cleanupEntry,reference]) {
+    const {root,trace,dependency} = await setup(source,{failMutation:true,mutationFailure:failure});
+    let threw = false;
+    try { await root.evaluate(); } catch (error) { threw = true; assert.equal(error,failure); }
+    assert.equal(threw,true);
+    assert.deepEqual(trace,['side','dep','star','mutate']);
+    assert.equal(root.namespace.answer,42); assert.equal(dependency.namespace.value,42);
+    assert.equal(root.namespace.snapshot,dependency.namespace);
+  }
+}
+console.log('Cleanup module entry: normal exports and unchanged thrown values passed');

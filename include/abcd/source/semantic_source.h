@@ -1,6 +1,7 @@
 #ifndef ABCD_SOURCE_SEMANTIC_SOURCE_H_
 #define ABCD_SOURCE_SEMANTIC_SOURCE_H_
 
+#include "abcd/source/cleanup_origin.h"
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -389,6 +390,7 @@ struct PrintedSource {
   // A retained class/member gap makes the surrounding record incomplete.
   // This is recovery status, never permission to execute a partial artifact.
   bool incomplete = false;
+  std::vector<EnvironmentCleanupSite> environment_cleanup;
 };
 struct SourceCapture {
   GeneratedPosition position;

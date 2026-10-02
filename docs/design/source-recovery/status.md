@@ -12,6 +12,33 @@
 
 ## 当前阶段
 
+### 2026-10-03：清理型模块入口接入读取与发布
+
+- FileFunction 增加 CleanupBody 所有权；FamilyReader 对普通同步模块的零参
+  func_main_0 尝试明确的 CleanupEntry 模式，其他 callable 仍走原 phased
+  路径。失败保留类型化 CleanupFailure，所有原始/正常副本纳入内存预算。
+  原异常信息留存，未制造 callable creation owner。
+- Record 产物保存 EnvironmentCleanupSite，entry-positions JSON 输出独立
+  environment_cleanup 数组（pc、pop/rethrow、allocation_pc、range=null）；
+  不混为 unreachable 或普通语法范围。函数族源码映射也传递其 cleanup owner。
+- 清理型合成模块三 profile 完整输出。独立模块执行对照验证正常导出，以及
+  对象、Symbol、字符串、0、undefined、null 抛出值的身份和模块中止状态。
+  覆写异常值的 handler 仍拒绝，合成产物核对两个原始清理 PC。
+- 另补类初始化之后跨基本块的直接使用：共同 VerifyValueFlow 先证明 SSA
+  可用性；创建和初始化调用仍必须同块，所有正常跨块使用因支配关系发生于
+  调用之后。phi escape、初始化前发布及效果干扰仍拒绝。新用例由 RED 转绿，
+  三 profile 和200/201规模沿用共同测试。
+- 实际 Voip entry12208 越过 kOccurrence 后，定位到 class creation PC13 与
+  initializer call PC51 之间的 lexical store PC28（class self binding）。
+  该存储不是普通 prototype read，仍被 ProjectClassMembers 拒绝；需另外
+  证明并连接原生类内部名称绑定，不能直接放行。证据
+  /tmp/abcd-cleanup-class-store.log，尚未完成实际 record11989。
+- 14 targets 构建退出0，相关19/19通过15.23秒，日志
+  /tmp/abcd-cleanup-entry-related-{build,tests}.log。五输入 fresh
+  build/stage-one/value-cleanup-entry-pass-1 均退出0，77 complete /5 incomplete
+  /24 failure /46 no-module，无完整项回退、完整源码变化或legacy。
+  /tmp/abcd-cleanup-entry-final-*；未运行 full-suite/扩展语料/RSS，Goal active。
+
 ### 2026-10-03：环境清理 PC 的独立来源类型
 
 - InstructionSources 新增 CleanupInstruction，与纯 elision 和正常输入的

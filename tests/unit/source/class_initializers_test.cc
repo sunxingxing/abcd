@@ -92,7 +92,7 @@ void Accessors(abc::ProfileId profile, unsigned count, bool prototype, bool sett
   test::Check(std::get<ClassDefinitionError>(FindClassDefinitions(graph, {0})) == ClassDefinitionError::kResourceLimit);
   test::Check(std::get<ClassDefinitionError>(FindClassDefinitions(graph, {UINT32_MAX, 0})) == ClassDefinitionError::kWorkLimit);
 }
-enum class Case { kSingle, kRepeated, kEscape, kUsedResult, kWrongReceiver, kClassEscape, kBarrier, kPrototype };
+enum class Case { kSingle, kRepeated, kEscape, kUsedResult, kWrongReceiver, kClassEscape, kBarrier, kPrototype, kLaterBlock };
 void Run(abc::ProfileId profile, unsigned count, Case kind) {
   std::vector<std::uint8_t> bytes;
   const auto op = [&](abc::Opcode code) { bytes.push_back(static_cast<std::uint8_t>(code)); };
@@ -112,6 +112,12 @@ void Run(abc::ProfileId profile, unsigned count, Case kind) {
     op(abc::Opcode::kSTA_V8); bytes.push_back(2);
     if (kind == Case::kEscape) { op(abc::Opcode::kSTMODULEVAR_IMM8); bytes.push_back(0); }
     op(abc::Opcode::kCALLTHIS0_IMM8_V8); bytes.push_back(2); bytes.push_back(kind == Case::kWrongReceiver ? 2 : 1);
+    if (kind == Case::kLaterBlock) {
+      constexpr std::uint8_t kJumpSize = 2;
+      op(abc::Opcode::kJMP_IMM8); bytes.push_back(kJumpSize);
+      op(abc::Opcode::kLDA_V8); bytes.push_back(1);
+      op(abc::Opcode::kSTMODULEVAR_IMM8); bytes.push_back(0);
+    }
     if (kind == Case::kRepeated) {
       op(abc::Opcode::kLDA_V8); bytes.push_back(2);
       op(abc::Opcode::kCALLTHIS0_IMM8_V8); bytes.push_back(3); bytes.push_back(1);
@@ -128,7 +134,7 @@ void Run(abc::ProfileId profile, unsigned count, Case kind) {
   test::Check(std::holds_alternative<ClassInitializerCalls>(found));
   const auto& calls = std::get<ClassInitializerCalls>(found);
   test::Check(calls.revision == graph.revision);
-  test::Check(calls.calls.size() == ((kind == Case::kSingle || kind == Case::kClassEscape || kind == Case::kBarrier || kind == Case::kPrototype) ? count : 0));
+  test::Check(calls.calls.size() == ((kind == Case::kSingle || kind == Case::kClassEscape || kind == Case::kBarrier || kind == Case::kPrototype || kind == Case::kLaterBlock) ? count : 0));
   for (const auto& call : calls.calls) {
     test::Check(call.creation < call.method && call.method < call.call);
     test::Check(graph.ops[call.creation.value].result == call.receiver);
@@ -168,7 +174,7 @@ int main() {
       Accessors(profile, count, false, false); Accessors(profile, count, true, true);
       Accessors(profile, count, false, false, AccessorCase::kValid, true);
       Accessors(profile, count, true, true, AccessorCase::kValid, true);
-      Run(profile, count, Case::kSingle); Run(profile, count, Case::kPrototype);
+      Run(profile, count, Case::kSingle); Run(profile, count, Case::kPrototype); Run(profile,count,Case::kLaterBlock);
     }
     for (const auto kind : {AccessorCase::kWrongHome, AccessorCase::kEscape, AccessorCase::kNameFlag, AccessorCase::kClassEscape, AccessorCase::kPrototypeEscape, AccessorCase::kBarrier, AccessorCase::kUsedResult, AccessorCase::kLaterClassUse, AccessorCase::kLaterPrototypeUse, AccessorCase::kPair, AccessorCase::kEnvironment})
       Accessors(profile, 1, true, false, kind);

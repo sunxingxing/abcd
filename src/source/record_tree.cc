@@ -111,6 +111,21 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     }
     const auto& graph = function->values.graph;
     if (function->frame.parameters) return fail(Error::kFrame);
+    std::vector<EnvironmentCleanupSite> cleanup_sites;
+    if (function->cleanup) {
+      const auto& cleanup = *function->cleanup;
+      const auto count = cleanup.Proof().Pops().size() + cleanup.Proof().Handlers().size();
+      if (count > budget.bytes / sizeof(EnvironmentCleanupSite)) return fail(Error::kResourceLimit);
+      retain(count*sizeof(EnvironmentCleanupSite)); cleanup_sites.reserve(count);
+      retain((cleanup_sites.capacity()-count)*sizeof(EnvironmentCleanupSite));
+      for (const auto& pop : cleanup.Proof().Pops())
+        cleanup_sites.push_back({cleanup.Original().instructions[pop.instruction.value].offset,
+            CleanupInstructionKind::kPop,cleanup.Original().instructions[pop.allocation.value].offset});
+      for (const auto& handler : cleanup.Proof().Handlers())
+        cleanup_sites.push_back({cleanup.Original().instructions[handler.rethrow.value].offset,
+            CleanupInstructionKind::kRethrow,{}});
+      std::sort(cleanup_sites.begin(),cleanup_sites.end(),[](const auto& a,const auto& b) { return a.pc < b.pc; });
+    }
     auto controlled = BuildControlPlan(graph, {budget.bytes});
     auto* control = std::get_if<ControlPlan>(&controlled);
     if (!control) return fail(Error::kBody);
@@ -601,6 +616,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     PrintedSource source;
     source.text = std::move(output).str();
     source.incomplete = incomplete;
+    source.environment_cleanup = std::move(cleanup_sites);
     return source;
   } catch (const RecordProgramFailure& failure) { return failure; }
     catch (const std::bad_alloc&) { return fail(Error::kResourceLimit); }

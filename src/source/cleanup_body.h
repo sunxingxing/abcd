@@ -2,9 +2,9 @@
 #define ABCD_SOURCE_CLEANUP_BODY_H_
 
 #include "environment_cleanup.h"
+#include "abcd/source/cleanup_origin.h"
 
 namespace abcd::source {
-enum class CleanupInstructionKind : std::uint8_t { kPop, kRethrow };
 // Owns both the original exception metadata and its normal-path view. Every
 // decoded instruction, branch target and PC is copied unchanged. Cleanup-only
 // sites remain explicit provenance; consumers must not label them globally

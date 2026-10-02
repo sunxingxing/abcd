@@ -1,4 +1,5 @@
 #include "class_initializers.h"
+#include "../analysis/value_flow.h"
 #include <algorithm>
 #include <new>
 #include <stdexcept>
@@ -35,6 +36,13 @@ std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
       result.allocated_bytes = initial.bytes - budget.bytes; result.work = initial.work - budget.work;
       return result;
     }
+    const auto available = VerifyValueFlow(graph,budget);
+    if (const auto* error = std::get_if<ValueAvailabilityError>(&available)) {
+      if (*error == ValueAvailabilityError::kResourceLimit) return Error::kResourceLimit;
+      if (*error == ValueAvailabilityError::kWorkLimit) return Error::kWorkLimit;
+      return Error::kFlow;
+    }
+    step(std::get<ValueFlowProof>(available).work);
     auto found = FindClassInitializerCalls(graph, budget);
     if (const auto* error = std::get_if<Error>(&found)) return *error;
     const auto& candidates = std::get<ClassInitializerCalls>(found);
@@ -87,9 +95,11 @@ std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
         require(owner != nullptr, Error::kFlow);
         if (*owner == call.method || *owner == call.call) continue;
         const auto& op = graph.ops[owner->value];
-        // Different blocks may observe the class only after a separately
-        // established control relation; that extension is not guessed here.
-        require(op.block == invoke.block, Error::kFlow);
+        // Fresh SSA availability proves the creation block dominates this
+        // direct use. Creation and initializer call share one basic block, so
+        // every normal exit from that block has completed the call. Exceptional
+        // exits cannot rejoin this normal-only graph. Phi escapes still reject.
+        if (op.block != invoke.block) continue;
         if (op.order > invoke.order) continue;
         require(*owner > call.creation && *owner < call.call &&
             std::holds_alternative<ValueNamedRead>(op.operation) && op.use_count == 1 &&

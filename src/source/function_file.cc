@@ -9,7 +9,7 @@ std::variant<FileFunction, FunctionFileFailure> ReadFunctionValues(
     const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
     abc::MethodPosition position, RouteInputIdentity identity, InputCaptureMode mode,
     analysis::SemanticBudget budget, const RecordModuleContext* modules, const FunctionContext* owner,
-    const ParentModuleInput* modules_input) {
+    const ParentModuleInput* modules_input, FunctionBodyMode body_mode) {
   using Error = FunctionFileError;
   try {
     auto bytes = budget.bytes;
@@ -34,6 +34,22 @@ std::variant<FileFunction, FunctionFileFailure> ReadFunctionValues(
     if (const auto* error = std::get_if<abc::BodyFailure>(&decoded)) return FunctionFileFailure{*error};
     auto body = std::get<abc::MethodBody>(std::move(decoded));
     arena(body.instructions); arena(body.tries); arena(body.handlers);
+    std::optional<CleanupBody> cleanup;
+    if (body_mode == FunctionBodyMode::kCleanupEntry) {
+      if (owner || !modules || !modules->OrdinarySynchronous(file,method.owner_offset) || frame.parameters ||
+          method.name != "func_main_0") throw Error::kIdentity;
+      auto projected = CleanupBody::Build(body,header.profile,frame,{bytes,budget.work});
+      if (const auto* failure = std::get_if<CleanupFailure>(&projected)) return FunctionFileFailure{*failure};
+      cleanup.emplace(std::get<CleanupBody>(std::move(projected)));
+      admit(cleanup->AllocatedBytes(),1);
+      // Copy before replacing the decoded body; both storages are admitted.
+      // Original exception metadata remains owned by cleanup through emission.
+      abc::MethodBody normal;
+      admit(cleanup->Normal().instructions.size(),sizeof(abc::BodyInstruction));
+      normal.instructions = cleanup->Normal().instructions;
+      admit(normal.instructions.capacity()-normal.instructions.size(),sizeof(abc::BodyInstruction));
+      body = std::move(normal);
+    }
     auto proven = FunctionInput::Build(identity, method.offset, method.owner_offset, body, frame, mode,
         {bytes, budget.work}, owner, modules_input);
     if (const auto* error = std::get_if<FunctionInputFailure>(&proven)) return FunctionFileFailure{*error};
@@ -61,7 +77,7 @@ std::variant<FileFunction, FunctionFileFailure> ReadFunctionValues(
     }
     if (file.CheckUnchanged()) throw Error::kChanged;
     return FileFunction{std::move(body), frame, std::move(input), std::move(values),
-        budget.bytes - bytes, std::move(module_reads)};
+        budget.bytes - bytes, std::move(module_reads), {}, std::move(cleanup)};
   } catch (Error error) { return FunctionFileFailure{error};
   } catch (const std::bad_alloc&) { return FunctionFileFailure{Error::kResourceLimit};
   } catch (const std::length_error&) { return FunctionFileFailure{Error::kResourceLimit}; }

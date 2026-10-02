@@ -335,6 +335,19 @@ int Export(const std::filesystem::path& input,
                     {"begin", {span.begin.byte, span.begin.line, span.begin.column}},
                     {"end", {span.end.byte, span.end.line, span.end.column}}};
               }
+              positions << "],\"environment_cleanup\":[";
+              bool cleanup_comma = false;
+              for (const auto& site : artifact->environment_cleanup) {
+                if (cleanup_comma) positions << ',';
+                cleanup_comma = true;
+                nlohmann::json cleanup{{"pc",site.pc.value},{"range",nullptr}};
+                switch (site.kind) {
+                  case source::CleanupInstructionKind::kPop: cleanup["kind"] = "pop"; break;
+                  case source::CleanupInstructionKind::kRethrow: cleanup["kind"] = "rethrow"; break;
+                }
+                cleanup["allocation_pc"] = site.allocation ? nlohmann::json(site.allocation->value) : nlohmann::json(nullptr);
+                positions << cleanup;
+              }
               positions << "]}\n";
               positions.close();
               if (!positions) return Fail(ExportError::kOutput, record.offset.value);

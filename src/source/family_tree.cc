@@ -208,7 +208,8 @@ class FamilyTrees {
       Account(abi);
       auto sources = Take<InstructionSources, InstructionSourceError>(phase ?
           BuildInstructionSources(phase->Phases(), phase->Body(), constructed.tree, left_) :
-          BuildInstructionSources(function.Normal().input, graph, constructed.tree, left_));
+          BuildInstructionSources(function.Normal().input, graph, constructed.tree, left_,
+              function.Normal().cleanup ? &*function.Normal().cleanup : nullptr));
       Account(sources);
       std::optional<CaptureCells> cells;
       if (member.incoming) cells.emplace(std::move(member.incoming->cells));
