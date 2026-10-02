@@ -64,9 +64,11 @@ class ForestBuilder {
             (region.operation == TreeLogical::kAnd || region.operation == TreeLogical::kOr), Error::kOwnership);
         const auto* right = std::get_if<analysis::ValueId>(&region.right);
         const auto* child = std::get_if<SelectionChild>(&region.right);
+        const auto* snapshot = std::get_if<SelectionSnapshot>(&region.right);
         Require(((right && right->value < graph_.values.size() &&
             std::holds_alternative<analysis::OpResult>(graph_.values[right->value].origin)) ||
-            (child && child->branch.value < graph_.ops.size())) &&
+            (child && child->branch.value < graph_.ops.size()) ||
+            (snapshot && region.consequent && snapshot->value.value < graph_.values.size())) &&
             !predicates[region.boolean.value] && !predicates[region.branch.value], Error::kOwnership);
         for (const auto incoming : {region.keep_input, region.evaluate_input}) {
           if (!incoming) continue;
@@ -401,6 +403,7 @@ class ForestBuilder {
       }
     }
     const auto operand = [&](const SelectionOperand& input) {
+      if (const auto* snapshot = std::get_if<SelectionSnapshot>(&input)) return Operand(snapshot->value, branch_origin);
       analysis::OpId producer;
       if (const auto* child = std::get_if<SelectionChild>(&input)) producer = child->branch;
       else {

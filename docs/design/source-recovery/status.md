@@ -12,6 +12,34 @@
 
 ## 当前阶段
 
+### 2026-10-03：条件分支复用既有快照，HotListItemView 完整源码贯通
+
+- 方法48351 的失败实际为 CallPlanError::kReference：getter/op112 在 block5，
+  call/op138 在 block9。条件的空分支直接转发既有 SSA 值，旧 selection
+  识别只接受分支内的 producer，导致整个参数无法组成表达式。
+- 新增类型化 SelectionSnapshot，空且无效果的 arm 可引用已可用的入口值或
+  私有快照。共同 forest 读取其绑定，不重放 getter；TreeFlow 保留实际 phi
+  edge occurrence，独立 operand checker 验证精确来源。原 receiver、效果
+  区间和消费归属检查未放宽。额外效果 arm、错误快照 symbol 均有拒绝测试。
+- 初版与既有 `x || rhs` 争用条件归属，decision-prefix 回归 RED；现将复用
+  ToBoolean 原操作数的短路形态交给原 logical owner，避免提前占用其子树。
+  三 profile 的 1/2/200/201/402 组合及增长边界通过；相关 28/28 CTest
+  通过61.38秒，另 decision_prefix_test 在 owner-tests.log 通过40.79秒。
+  17 targets 构建退出0，日志 /tmp/abcd-retained-selection-related-*。
+- ABC-only 导出后，独立读取配对 TS 验证 HotListItemView 的 Text.width 与
+  Row.margin 两个回调：616组场景/1232次执行，覆盖 captured/default 参数、
+  nullish 分支、身份、callee 替换及成员/参数 getter 异常。记录全局读取，
+  不在 VM 全局名称 getter 上注入异常，避免 harness 将任意抛出值改为
+  ReferenceError。不是完整 ArkUI 渲染或平台验收。
+- 五输入 fresh build/stage-one/value-retained-selection-pass-1 均退出0，
+  76 complete / 5 incomplete / 25 failure / 46 no-module，无完整项回退或
+  legacy。新增完整 record47697；唯一既有完整源码变化为 DetailPage25350
+  的 isShow()，phi 临时量改为条件表达式。其新增1080组配对谓词场景及原有
+  480组 GridCol 场景通过，detail-tests.log 1/1通过3.73秒。
+  三个原生 default records 保留，日志前缀 /tmp/abcd-retained-selection-final-*。
+  未运行 full-suite/扩展语料/RSS；其他 record 和整个平台语义验收仍未完成，
+  Goal 保持 active。
+
 ### 2026-10-03：未使用形参的捕获默认值
 
 - 方法48295 是普通流；默认形参在函数体中未使用，phi 已消除，但缺省分支

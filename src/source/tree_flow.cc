@@ -488,6 +488,14 @@ class FlowCheck {
         }
       }
       const auto arm = [&](const SelectionOperand& input, ExprId actual) {
+        if (std::holds_alternative<SelectionSnapshot>(input)) {
+          Require(actual.value < tree_.expressions.size() &&
+              (std::holds_alternative<SymbolExpr>(tree_.expressions[actual.value].expression) ||
+               std::holds_alternative<ThisExpr>(tree_.expressions[actual.value].expression)), Error::kPlacement);
+          // LogicalEdges retains this actual occurrence on its original phi
+          // edge. The independent operand checker verifies the exact snapshot.
+          return;
+        }
         if (const auto* nested = std::get_if<SelectionChild>(&input)) {
           Require(nested->branch.value < logical_branches_.size() && logical_branches_[nested->branch.value], Error::kPlacement);
           const auto index = *logical_branches_[nested->branch.value];

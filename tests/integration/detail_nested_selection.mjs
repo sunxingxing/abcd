@@ -6,17 +6,19 @@ import {tmpdir} from 'node:os';
 import {stripTypeScriptTypes} from 'node:module';
 import vm from 'node:vm';
 
-// Independent paired oracle for the two registered GridCol callbacks only.
+// Independent paired oracle for two GridCol callbacks and the isShow predicate.
 // ViewPU construction, storage, child views and real rendering stay outside it.
 const [tool, root] = process.argv.slice(2);
 const temporary = mkdtempSync(join(tmpdir(), 'abcd-detail-nested-'));
-async function trace(source, fold, breakpoint, replace, flip, fail) {
+async function trace(source, fold, breakpoint, replace, flip, fail, show = false, ordinal = 1) {
   const events = [], callbacks = [], failure = {}, seen = new Set(), labels = new Map();
-  let active = false, generation = 0, reads = 0;
+  let active = false, generation = 0, reads = 0, breakpointReads = 0;
+  const hits = new Map();
   const event = (label, args = []) => {
     if (!active) return;
     events.push([label, JSON.parse(JSON.stringify(args))]);
-    if (label === fail) throw failure;
+    const hit = (hits.get(label) ?? 0) + 1; hits.set(label,hit);
+    if (label === fail && hit === ordinal) throw failure;
   };
   const globals = {ViewPU: class {}};
   let prototype;
@@ -90,7 +92,15 @@ async function trace(source, fold, breakpoint, replace, flip, fail) {
     if (replace) context.GridCol = component('GridCol', ++generation);
     return flip && reads % 2 === 0 ? !fold : fold;
   }});
-  Object.defineProperty(instance, 'currentBreakpoint', {get() { event('state:currentBreakpoint'); return breakpoint; }});
+  Object.defineProperty(instance, 'currentBreakpoint', {get() {
+    event('state:currentBreakpoint');
+    return Array.isArray(breakpoint) ? breakpoint[breakpointReads++ % breakpoint.length] : breakpoint;
+  }});
+  if (show) {
+    active = true;
+    try { return {events,value:instance.isShow()}; }
+    catch (error) { assert.equal(error,failure); return {events,threw:true}; }
+  }
   instance.initialRender();
   const selected = callbacks.filter(value => value.type === 'GridCol'); assert.equal(selected.length, 2);
   active = true;
@@ -114,5 +124,17 @@ try {
           await trace(paired, fold, breakpoint, replace, flip, fail));
         ++scenarios;
       }
+  const hostile = {[Symbol.toPrimitive]() { assert.fail('predicate coercion'); }};
+  const token = Symbol('predicate');
+  let predicates = 0;
+  for (const fold of [false,true,undefined,null,-0,NaN,0n,1n,token,hostile])
+    for (const sequence of [['sm'],['md'],['lg'],['md','sm'],['lg','sm'],['sm','md'],[undefined],[token],[hostile]])
+      for (const flip of [false,true]) for (const fail of ['', 'state:currentBreakpoint', 'state:isFoldHorizontal'])
+        for (const ordinal of [1,2]) {
+          assert.deepEqual(await trace(generated,fold,sequence,false,flip,fail,true,ordinal),
+            await trace(paired,fold,sequence,false,flip,fail,true,ordinal));
+          ++predicates;
+        }
+  console.log(`Paired DetailPage isShow: ${predicates} predicate/short-circuit/exception scenarios passed`);
   console.log(`Paired DetailPage nested selection: ${scenarios} bounded GridCol callback scenarios passed`);
 } finally { rmSync(temporary, {recursive: true, force: true}); }

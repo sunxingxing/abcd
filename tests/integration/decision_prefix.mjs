@@ -3,6 +3,10 @@ import {execFileSync} from 'node:child_process';
 import {runInNewContext} from 'node:vm';
 
 const cases = [
+  ['--retained-source', false, target => {
+    let saved;
+    return target.method((saved = target.probe) === undefined || saved === null ? target.yes : saved);
+  }],
   ['--source', false, target => target.method(target.probe || ((target.flag ? target.left : target.right) === target.test) ? target.yes : target.no)],
   ['--arm-source', false, target => target.method(target.probe ? ((target.flag ? target.left : target.right) === target.test) : target.no)],
   ['--leading-source', false, target => target.method((target.leadingFlag ? target.probe : target.leadingOther) ||

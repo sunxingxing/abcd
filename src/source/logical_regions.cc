@@ -232,7 +232,29 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
       if (phi && edge && !multiple[phi->block.value]) edge_inputs[edge->value] = UseId{static_cast<std::uint32_t>(i)};
     }
   }
+  const auto retained = [&](WorkBlockId block, const ValueOperand& input) {
+    const auto* value = std::get_if<ValueId>(&input);
+    if (!value || !graph.values[value->value].domain.IsLanguage()) return false;
+    const auto& origin = graph.values[value->value].origin;
+    if (std::holds_alternative<EntryDefinition>(origin)) return true;
+    const auto* producer = std::get_if<OpResult>(&origin);
+    if (!producer || graph.ops[producer->op.value].block == block) return false;
+    const auto& placement = evaluation.operations[producer->op.value];
+    return placement.kind == EvaluationKind::kPredicateSnapshot ||
+        (placement.kind == EvaluationKind::kRoot && placement.temporary.has_value());
+  };
   const auto closed = [&](WorkBlockId block, const ValueOperand& input) {
+    if (retained(block,input)) {
+      // Availability is already proved by the input flow. An empty arm may
+      // forward its snapshot, but cannot hide another effect or replay a getter.
+      const auto& range = graph.blocks[block.value];
+      for (std::uint32_t i = 0; i < range.op_count; ++i) {
+        budget.Step(); const auto& op = graph.ops[range.first_op.value + i];
+        if (op.life == ValueLife::kLive &&
+            (!std::holds_alternative<ValueJump>(op.operation) || !Pure(op))) return false;
+      }
+      return true;
+    }
     const auto* value = std::get_if<ValueId>(&input);
     const auto* producer = value ? std::get_if<OpResult>(&graph.values[value->value].origin) : nullptr;
     if (!producer || graph.ops[producer->op.value].block != block ||
@@ -458,10 +480,20 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
       if (!arm.incoming || !edge_inputs[arm.incoming->value]) return {};
       const auto& value = graph.uses[edge_inputs[arm.incoming->value]->value].operand;
       if (!closed(arm.block, value)) return {};
+      if (retained(arm.block,value)) return SelectionSnapshot{std::get<ValueId>(value)};
       return SelectionLeaf(value);
     };
     const auto consequent = operand(yes), alternate = operand(no);
     if (!consequent || !alternate) continue;
+    if (unary && unary->op == UnaryOperator::kToBoolean) {
+      const auto& boolean = graph.ops[producer->op.value];
+      const auto* kept = std::get_if<SelectionSnapshot>(&*consequent);
+      if (!kept) kept = std::get_if<SelectionSnapshot>(&*alternate);
+      // x ? x : rhs and x ? rhs : x belong to the existing logical owner.
+      // Do not claim their nested children first as a competing conditional.
+      if (kept && boolean.use_count == 1 &&
+          SameValue(graph.uses[boolean.first_use.value].operand, kept->value)) continue;
+    }
     const auto leaves = (yes.child && !yes.incoming ? leaf_counts[*yes.child] : 1) +
         (no.child && !no.incoming ? leaf_counts[*no.child] : 1);
     auto dependency = branch_id;
@@ -469,6 +501,7 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
       if (arm.child) dependency = std::max(dependency, *result[*arm.child].last_dependency);
       if (!arm.child || arm.suffix) {
         const auto value = std::get<ValueId>(graph.uses[edge_inputs[arm.incoming->value]->value].operand);
+        if (retained(arm.block,value)) continue;
         const auto source = std::get<OpResult>(graph.values[value.value].origin).op;
         if (!IsSelectionConstant(graph, source)) {
           const auto literal = literal_ends.empty() ? std::nullopt : literal_ends[source.value];

@@ -12,7 +12,7 @@ namespace {
 using namespace abcd;
 using namespace abcd::source;
 using namespace abcd::analysis;
-abc::MethodBody Body(unsigned count, bool arm, bool leading, bool object, bool logical, bool barrier) {
+abc::MethodBody Body(unsigned count, bool arm, bool leading, bool object, bool logical, bool barrier, bool retained) {
   const auto op = [](abc::Opcode opcode) { return static_cast<std::uint8_t>(opcode); };
   std::vector<std::uint8_t> bytes;
   const auto read = [&](std::uint8_t name) {
@@ -28,6 +28,20 @@ abc::MethodBody Body(unsigned count, bool arm, bool leading, bool object, bool l
     //     ((target.flag ? target.left : target.right) === target.test)
     //     ? target.yes : target.no)
     read(0); bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), 0});
+    if (retained) {
+      read(1); bytes.insert(bytes.end(),{op(abc::Opcode::kSTA_V8),1,op(abc::Opcode::kLDUNDEFINED),
+          op(abc::Opcode::kSTRICTEQ_IMM8_V8),0,1});
+      const auto missing = jump(abc::Opcode::kJNEZ_IMM8);
+      bytes.insert(bytes.end(),{op(abc::Opcode::kLDNULL),op(abc::Opcode::kSTRICTEQ_IMM8_V8),0,1});
+      const auto nullish = jump(abc::Opcode::kJNEZ_IMM8);
+      if (barrier) bytes.push_back(op(abc::Opcode::kDEBUGGER));
+      bytes.insert(bytes.end(),{op(abc::Opcode::kLDA_V8),1});
+      const auto join = jump(abc::Opcode::kJMP_IMM8);
+      patch(missing); patch(nullish); read(6); patch(join);
+      bytes.insert(bytes.end(),{op(abc::Opcode::kSTA_V8),1,op(abc::Opcode::kLDA_V8),0,
+          op(abc::Opcode::kCALLTHIS1_IMM8_V8_V8),0,3,1});
+      continue;
+    }
     if (object) bytes.insert(bytes.end(), {op(abc::Opcode::kCREATEOBJECTWITHBUFFER_IMM8_ID16), 0, 0, 0,
         op(abc::Opcode::kSTA_V8), 2});
     if (leading) {
@@ -65,8 +79,8 @@ abc::MethodBody Body(unsigned count, bool arm, bool leading, bool object, bool l
   return test::Body(bytes);
 }
 std::uint64_t Run(abc::ProfileId profile, unsigned count, bool print, bool arm = false, bool leading = false, bool object = false,
-    bool logical = false, bool barrier = false) {
-  const auto body = Body(count, arm, leading, object, logical, barrier);
+    bool logical = false, bool barrier = false, bool retained = false) {
+  const auto body = Body(count, arm, leading, object, logical, barrier, retained);
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(3, 1, {}));
   RouteInputIdentity identity; identity.profile = profile;
   const auto input = std::get<FunctionInput>(FunctionInput::Build(identity, {300}, {100}, body, frame, InputCaptureMode::kClosed));
@@ -108,6 +122,13 @@ std::uint64_t Run(abc::ProfileId profile, unsigned count, bool print, bool arm =
     }
     for (std::size_t i = 0; i < tree.expressions.size(); ++i) {
       if (!std::holds_alternative<ConditionalExpr>(tree.expressions[i].expression)) continue;
+      if (retained) {
+        auto wrong_snapshot = tree;
+        const auto& conditional = std::get<ConditionalExpr>(wrong_snapshot.expressions[i].expression);
+        auto* symbol = std::get_if<SymbolExpr>(&wrong_snapshot.expressions[conditional.alternate.value].expression);
+        test::Check(symbol != nullptr); symbol->symbol = tree.parameters[0].symbol;
+        test::Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph,control,evaluation,wrong_snapshot,resolved)));
+      }
       auto forged = tree; auto& expression = std::get<ConditionalExpr>(forged.expressions[i].expression);
       std::swap(expression.consequent, expression.alternate);
       test::Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation, forged, resolved))); break;
@@ -123,11 +144,20 @@ int main(int argc, char** argv) {
   if (argc == 2) {
     const std::string_view option{argv[1]};
     test::Check(option == "--source" || option == "--arm-source" || option == "--leading-source" || option == "--object-source" ||
-        option == "--logical-source" || option == "--logical-object-source");
+        option == "--logical-source" || option == "--logical-object-source" || option == "--retained-source");
     Run(abc::ProfileId::kDynamic1206, 1, true, option == "--arm-source",
         option == "--leading-source" || option == "--object-source" || option == "--logical-object-source",
         option == "--object-source" || option == "--logical-object-source",
-        option == "--logical-source" || option == "--logical-object-source"); return 0;
+        option == "--logical-source" || option == "--logical-object-source", false, option == "--retained-source"); return 0;
+  }
+  for (const auto profile : {abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301}) {
+    std::uint64_t previous = 0;
+    for (const auto count : {1U,2U,200U,201U,402U}) {
+      const auto work = Run(profile,count,false,false,false,false,false,false,true);
+      if (count == 402) test::Check(work < 3 * previous);
+      previous = work;
+    }
+    Run(profile,1,false,false,false,false,false,true,true);
   }
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
     for (const bool arm : {false, true}) for (const bool leading : {false, true}) for (const bool object : {false, true}) {

@@ -1455,6 +1455,12 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/home_decision_prefix.mjs $<TARGET_FILE:abc_structure>
         ${ABCD_PAIRED_CORPUS_ROOT}/Immersive)
     endif()
+    if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc" AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/rank/src/main/ets/view/HotListItemView.ts")
+      add_test(NAME hotitem_retained_selection_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/hotitem_retained_selection.mjs $<TARGET_FILE:abc_semantic>
+        ${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication)
+    endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc")
       if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/base/src/main/ets/utils/Logger.ts")
         add_test(NAME value_community_logger_record_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules

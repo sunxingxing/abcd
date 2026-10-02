@@ -11,12 +11,14 @@ struct EvaluationPlan;
 // The expression planner must still own the RHS subtree, remove its phi copies,
 // and preserve the order of every surrounding call/reference before emission.
 struct SelectionChild { analysis::OpId branch; };
+// A dominating entry/private snapshot, read again without replaying its producer.
+struct SelectionSnapshot { analysis::ValueId value; };
 struct SelectionCondition {
   analysis::OpId branch;
   bool shared_on_taken;
 };
 using SelectionOperand = std::variant<analysis::ValueId, analysis::SpecialValue,
-    analysis::IntegerLiteral, analysis::Float64Bits, SelectionChild>;
+    analysis::IntegerLiteral, analysis::Float64Bits, SelectionChild, SelectionSnapshot>;
 inline SelectionOperand SelectionLeaf(const analysis::ValueOperand& value) {
   return std::visit([](const auto& input) -> SelectionOperand { return input; }, value);
 }
