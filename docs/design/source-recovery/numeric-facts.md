@@ -23,9 +23,11 @@ Do not silently treat that case as native JS subtraction or authorize it from a
 Language-only input. The original noncanonical-NaN counterexamples still refuse.
 
 Normal and phased SSA use the same sparse worklist transfer rules; linear
-lexical analysis calls the same scalar helpers. ToNumber/ToNumeric currently
-preserve all facts of a proved non-NaN Number instead of discarding finite/tag
-information. This is not admission of arbitrary Number/BigInt coercions.
+lexical analysis calls the same scalar helpers. ToNumber preserves all facts of a proved non-NaN Number; otherwise a Language
+input has a Defined normal result. The pinned conversion returns Number or
+throws, including BigInt/Symbol and conversion-hook failures; it does not imply
+non-NaN output. ToNumeric still uses the separate proved-number identity rule.
+This does not admit arbitrary arithmetic over conversion results.
 
 The fixed-height lattice adds one finite refinement and one independently
 weakening exclusion. Phi joins stay incremental; arithmetic nodes inspect at

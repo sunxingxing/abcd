@@ -403,6 +403,10 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
             state(*access.write) = (rule.kind == detail::ValueRuleKind::kNegate ?
                 detail::NegatedNumber : detail::LegacyNegatedNumber)(state(access.reads[0]));
             break;
+          case detail::ValueRuleKind::kToNumber:
+            if (access.read_count != 1) return fail(Error::kInstruction);
+            state(*access.write) = detail::ConvertedNumber(state(access.reads[0]));
+            break;
           case detail::ValueRuleKind::kNumericIdentity:
             if (access.read_count != 1) return fail(Error::kInstruction);
             state(*access.write) = state(access.reads[0]).IsNonNaNNumber()

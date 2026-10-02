@@ -22,6 +22,7 @@ enum class ValueRuleKind {
   kNegate,
   kLegacyNegate,
   kNumericIdentity,
+  kToNumber,
   kNonNaNMultiply,
   kNonNaNDivide
 };
@@ -45,6 +46,13 @@ constexpr ValueKinds SubtractNumbers(ValueKinds left, ValueKinds right) {
 constexpr ValueKinds AddValues(ValueKinds left, ValueKinds right) {
   if (!left.IsLanguage() || !right.IsLanguage()) return ValueKinds::Unknown();
   return left.IsString() || right.IsString() ? ValueKinds::String() : AdditiveNumbers(left, right);
+}
+// Pinned ToNumber returns an existing Number unchanged or constructs a
+// Number from a primitive/string. BigInt/Symbol conversion is abrupt. Thus
+// normal completion is Defined Language, without assuming non-NaN output.
+constexpr ValueKinds ConvertedNumber(ValueKinds input) {
+  if (!input.IsLanguage()) return ValueKinds::Unknown();
+  return input.IsNonNaNNumber() ? input : ValueKinds::Defined();
 }
 // Modern NEG handles the tagged minimum via double overflow; the legacy
 // integer path needs its exclusion. Both produce a non-minimum representation

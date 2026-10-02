@@ -13,6 +13,32 @@
 ## 当前阶段
 
 
+### 2026-10-02：一般 ToNumber 的正常结果证明
+
+- pinned JSTaggedValue::ToNumber 保持已有 Number，转换字符串/原始值或在
+  ToPrimitive(number) 后递归；BigInt/Symbol 为异常路径。正常结果为 Defined
+  Language，不等于 non-NaN。新 kToNumber 规则在普通/phased/linear lexical
+  路径共享 ConvertedNumber；已证明 non-NaN 输入保留原数值/tag 事实。
+  ToNumeric 仍单独使用数值身份前提，没有因这次修改而放宽。
+- 真实 decoded 现代/deprecated 用例在旧 FunctionInput 阶段 RED，
+  red-tests.log 1/1 失败 1.79 秒。现复用共同 UnaryExpr 一元 +，没有可修改
+  Number 辅助调用或额外恢复器。三 profile 的 1/2/200/201/402 次转换经过
+  普通/phased 完整树与独立验证；异常处理返回原参数，验证未被转换写回。
+- focused-tests.log 4/4 通过 8.53 秒。独立原生 2,544 场景覆盖 primitive、
+  自定义转换、valueOf/toString 顺序、Proxy、BigInt/Symbol TypeError、注入
+  异常、转换次数、NaN payload 和 signed zero。私有 Hole 输入仍拒绝，未知
+  参数的转换结果不获得 non-NaN 或 tagged-minimum 排除事实。
+- 114 个相关 targets 构建退出 0，221/221 回归通过 533.40 秒，
+  related-build.log / related-tests.log，与
+  /tmp/abcd-number-conversion-selected.json 按名称核对一致。
+  五输入 fresh build/stage-one/value-number-conversion-pass-1 均退出 0，
+  75 complete / 4 incomplete / 27 failure / 46 no-module，无回退、完整源码
+  字节变化或 legacy，原生 default records 保留；final-batch-summary.json。
+  该交付不代表一般 ToNumeric、
+  任意算术值域或阶段一整体验收完成。本节日志前缀
+  /tmp/abcd-number-conversion-*；Goal 保持 active。
+
+
 ### 2026-10-02：deprecated 求负的独立语义与证明
 
 - 将 DEPRECATED_NEG 保留为 UnaryOperator::kLegacyNegate，不与现代 NEG
