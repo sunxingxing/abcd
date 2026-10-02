@@ -6,6 +6,7 @@
 
 namespace abcd::source {
 struct FileFunction;
+class ModuleCapturePrefix;
 struct ParentCell {
   CellId cell;
   bool operator==(const ParentCell&) const = default;
@@ -31,6 +32,7 @@ struct CaptureFunction {
   const FunctionInput& input;
   const FunctionValues& values;
   const CaptureStorage* storage = nullptr;
+  const ModuleCapturePrefix* module_prefix = nullptr;
 };
 class CaptureChild {
  public:

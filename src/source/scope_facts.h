@@ -27,9 +27,10 @@ enum class ScopeError : std::uint8_t {
 // sites, not dynamic cell instances, especially on loop re-entry.
 class NormalScopeFacts {
  public:
-  NormalScopeFacts(const analysis::SemanticMethod& method, const analysis::SemanticProof& proof)
+  NormalScopeFacts(const analysis::SemanticMethod& method, const analysis::SemanticProof& proof,
+      std::span<const std::optional<analysis::LocalAccessPlan::UnexposedInitialization>> module_prefix = {})
       : NormalScopeFacts(method, proof.environments, proof.locals, proof.defined_captures,
-                   proof.closure_writes) {}
+                   proof.closure_writes) { module_prefix_ = module_prefix; }
   NormalScopeFacts(const analysis::SemanticMethod& method,
       const analysis::EnvironmentFlow& environments, const analysis::LocalAccessPlan& locals,
       const analysis::DefinedCaptures& defined, analysis::ClosureWrites writes)
@@ -46,6 +47,7 @@ class NormalScopeFacts {
   analysis::ClosureWrites Writes() const { return writes_; }
 
  private:
+  std::span<const std::optional<analysis::LocalAccessPlan::UnexposedInitialization>> module_prefix_;
   const analysis::SemanticMethod& method_;
   const analysis::EnvironmentFlow& environments_;
   const analysis::LocalAccessPlan& locals_;
@@ -70,8 +72,9 @@ struct ExceptionScopeFacts {
 };
 class ScopeFacts {
  public:
-  ScopeFacts(const analysis::SemanticMethod& method, const analysis::SemanticProof& proof)
-      : input_(NormalScopeFacts(method, proof)) {}
+  ScopeFacts(const analysis::SemanticMethod& method, const analysis::SemanticProof& proof,
+      std::span<const std::optional<analysis::LocalAccessPlan::UnexposedInitialization>> module_prefix = {})
+      : input_(NormalScopeFacts(method, proof, module_prefix)) {}
   ScopeFacts(const analysis::SemanticMethod& method, const analysis::EnvironmentFlow& environments,
       const analysis::LocalAccessPlan& locals, const analysis::DefinedCaptures& defined,
       analysis::ClosureWrites writes) : input_(NormalScopeFacts(method, environments, locals, defined, writes)) {}

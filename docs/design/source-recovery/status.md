@@ -13,6 +13,32 @@
 ## 当前阶段
 
 
+### 2026-10-03：限定模块发布窗口的捕获准入
+
+- ModuleCapturePrefix 将候选区间限定到同文件普通同步 record 入口、V2/V3
+  资源排除合同、有效本地模块槽和普通非发送型函数创建。复用 metadata
+  slot resolver；独立指令前缀计数检查观察点，核对 allocation、同块范围和
+  对应 cell store。V1、重入、越界槽位及不同输入实例不能获得该证明。
+- 证明绑定不可变 input identity/method 与 move-stable 指令/cell arena；
+  family-owned storage 随父函数传递。原 capture binder/verifier 的精确
+  creation、环境 rebasing 和 transitive Language writes 检查保留；只补充
+  Language 延迟初始化，Defined 和 phased 规则未放宽。此前 RED 的
+  record_published_capture_test 已转绿，注册行纳入正式提交。
+- 三 profile 的定向 4/4 通过 2.10 秒，含独立模块执行对照；初次 C++
+  size_t/uint64_t 同行 auto 推导冲突已修正。19 targets 构建退出 0，
+  related-tests.log 27/27 通过 41.85 秒，按 selected.json 名称核对。
+- 实际 HotListItemView record47697 / entry47847 越过原 child47875
+  捕获失败。下一处为 family member2 / method48015 的 FunctionAbiError
+  kLength，defaults_proved=false；hotitem-next.log 记录定位，不能宣称
+  record 已完成。五输入 fresh
+  build/stage-one/value-qualified-module-prefix-pass-1 均退出 0，仍为
+  75 complete / 5 incomplete / 26 failure / 46 no-module，无完整项回退、
+  完整源码字节变化或 legacy，原生 default records 保留。
+  合同见 module-capture-prefix.md，日志前缀
+  /tmp/abcd-qualified-module-prefix-*。未运行 full-suite/RSS/扩展语料，
+  源码等价合同及 superclass 限制未变，阶段一 Goal 保持 active。
+
+
 ### 2026-10-03：模块发布窗口的独立候选分析
 
 - LocalAccessPlan 新增 module_prefix_initializations，沿现有线性扫描记录

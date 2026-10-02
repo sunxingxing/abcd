@@ -195,3 +195,20 @@ for (const initial of ['42','({marker:1})','(()=>7)']) {
   assert.deepEqual(await observeClassCell(namedClassCellSource,initial), await observeClassCell(classCellReference,initial));
   assert.deepEqual(await observeClassCell(shadowClassCellSource,initial,true), await observeClassCell(shadowClassReference,initial,true));
 }
+
+const publishedCapture = execFileSync(process.argv[2], ['--published-capture'], {encoding:'utf8'});
+const publishedReference = reference.replace('export {answer, answer as answerAlias, snapshot};', `
+let captured;
+answer = function reader() { return captured; };
+captured = 42;
+export {answer, answer as answerAlias, snapshot};
+`);
+for (const source of [publishedCapture,publishedReference]) {
+  const {root,dependency,trace} = await setup(source);
+  await root.evaluate();
+  const reader=root.namespace.answer;
+  assert.equal(reader(),42); assert.equal(root.namespace.answerAlias,reader);
+  Reflect.apply(dependency.namespace.mutate,undefined,[]);
+  assert.equal(reader(),42); assert.equal(root.namespace.answer,reader);
+  assert.deepEqual(trace,['side','dep','star','mutate','mutate']);
+}

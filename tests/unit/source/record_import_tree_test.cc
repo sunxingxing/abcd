@@ -22,7 +22,7 @@ using namespace abcd;
 void Check(bool value, std::source_location at = std::source_location::current()) {
   if (!value) { std::cerr << "check failed at " << at.line() << '\n'; std::abort(); }
 }
-enum class FixtureCase { kValid, kBindingCollision, kExportCollision, kBranch, kArmStore, kFunction, kCapture, kPublishedCapture, kReentrantCapture, kLocalFunction, kClassFunction, kClassCapture, kGlobal, kGlobalShadow, kGlobalLocalShadow, kAnonymous, kAnonymousFunction, kAnonymousSingleClass, kAnonymousClassRead, kClassCell, kClassNamedCell, kClassNamedShadow, kClassCellHole, kClassCellUninitialized, kUnknownName };
+enum class FixtureCase { kValid, kBindingCollision, kExportCollision, kBranch, kArmStore, kFunction, kCapture, kPublishedCapture, kReentrantCapture, kPublishedCaptureV1, kPublishedBadSlot, kLocalFunction, kClassFunction, kClassCapture, kGlobal, kGlobalShadow, kGlobalLocalShadow, kAnonymous, kAnonymousFunction, kAnonymousSingleClass, kAnonymousClassRead, kClassCell, kClassNamedCell, kClassNamedShadow, kClassCellHole, kClassCellUninitialized, kUnknownName };
 std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool inspect_prefix = false) {
   constexpr std::uint32_t kTypes = 256, kPool = 272, kRecord = 512,
       kMethod = 600, kChild = 640, kConstructor = 680, kLiteral = 3000, kModule = 1024, kCode = 4096, kChildCode = 5000, kConstructorCode = 6000, kFileBytes = 8192;
@@ -31,7 +31,7 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
   const bool single_class = class_cell || mode == FixtureCase::kAnonymousSingleClass || mode == FixtureCase::kAnonymousClassRead;
   const bool global = mode == FixtureCase::kGlobal || mode == FixtureCase::kGlobalShadow || mode == FixtureCase::kGlobalLocalShadow;
   const bool anonymous = mode == FixtureCase::kAnonymous || mode == FixtureCase::kAnonymousFunction || single_class;
-  const bool published_capture = mode == FixtureCase::kPublishedCapture || mode == FixtureCase::kReentrantCapture;
+  const bool published_capture = mode == FixtureCase::kPublishedCapture || mode == FixtureCase::kReentrantCapture || mode == FixtureCase::kPublishedCaptureV1 || mode == FixtureCase::kPublishedBadSlot;
   const bool family = published_capture || single_class || mode == FixtureCase::kFunction || mode == FixtureCase::kCapture || mode == FixtureCase::kLocalFunction || mode == FixtureCase::kClassFunction || mode == FixtureCase::kClassCapture || mode == FixtureCase::kAnonymousFunction;
   const bool mixed = single_class || mode == FixtureCase::kClassFunction || mode == FixtureCase::kClassCapture;
   const bool captured = published_capture || mode == FixtureCase::kCapture || mode == FixtureCase::kClassCapture;
@@ -162,7 +162,8 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
     }
     if (!single_class) {
       op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8);
-      body.insert(body.end(), {0, static_cast<std::uint8_t>(guards.size()), 0, 0}); store(0);
+      body.insert(body.end(), {0, static_cast<std::uint8_t>(guards.size()), 0, 0});
+      store(mode == FixtureCase::kPublishedBadSlot ? 99 : 0);
       if (mode == FixtureCase::kReentrantCapture) {
         load(false, 1, 3); op(abc::Opcode::kCALLARG0_IMM8); body.push_back(0);
       }
@@ -249,6 +250,7 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
   const auto classes = std::get<analysis::ClassMethodSites>(analysis::ClassMethodSites::Build(*file, header, index, lookup));
   source::RouteInputIdentity identity; identity.profile = header.profile;
   identity.abc_version = header.version; identity.file_size = header.file_size;
+  if (mode == FixtureCase::kPublishedCaptureV1) identity.contract = source::SourceContract::kLanguageAndHostV1;
   if (inspect_prefix) {
     const auto loaded = source::ReadFunctionValues(*file,header,index,{0},identity,
         source::InputCaptureMode::kConditional,{},&context);
@@ -258,7 +260,21 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
         [](const auto& value) { return value.has_value(); }));
     const auto count = std::count_if(locals.module_prefix_initializations.begin(),locals.module_prefix_initializations.end(),
         [](const auto& value) { return value.has_value(); });
-    Check(count == (mode == FixtureCase::kPublishedCapture ? 1 : 0));
+    Check(count == (mode != FixtureCase::kReentrantCapture ? 1 : 0));
+    const auto& function = std::get<source::FileFunction>(loaded);
+    const auto proof = source::ModuleCapturePrefix::Build(*file,header,index,lookup,index.methods[0],context,function.input,{});
+    Check(std::holds_alternative<std::optional<source::ModuleCapturePrefix>>(proof));
+    const auto& prefix = std::get<std::optional<source::ModuleCapturePrefix>>(proof);
+    const auto has_proof = prefix && std::any_of(prefix->For(function.input).begin(),prefix->For(function.input).end(),
+        [](const auto& value){ return value.has_value(); });
+    Check(has_proof == (mode == FixtureCase::kPublishedCapture));
+    if (has_proof) {
+      const auto other = source::ReadFunctionValues(*file,header,index,{0},identity,source::InputCaptureMode::kConditional,{},&context);
+      Check(prefix->For(std::get<source::FileFunction>(other).input).empty());
+      analysis::SemanticBudget limited; limited.work = 0;
+      Check(std::get<source::ModulePrefixError>(source::ModuleCapturePrefix::Build(
+          *file,header,index,lookup,index.methods[0],context,function.input,limited)) == source::ModulePrefixError::kWorkLimit);
+    }
     Check(unlink(path) == 0); return {};
   }
   const auto build = [&](source::RecordProgramBudget budget = {}) {
@@ -266,7 +282,7 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
         budget, nullptr, source::RoutePolicy::kRequireValueTree, nullptr, nullptr, &identity, family ? &creations : nullptr, mixed ? &classes : nullptr);
   };
   auto result = build();
-  if (mode == FixtureCase::kReentrantCapture) {
+  if (mode == FixtureCase::kReentrantCapture || mode == FixtureCase::kPublishedCaptureV1) {
     Check(!std::holds_alternative<source::PrintedSource>(result));
     Check(unlink(path) == 0); return {};
   }
@@ -306,11 +322,13 @@ int main(int argc, char** argv) {
     for (const auto profile : {abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301}) {
       Recover(FixtureCase::kPublishedCapture,profile,true);
       Recover(FixtureCase::kReentrantCapture,profile,true);
+      Recover(FixtureCase::kPublishedCaptureV1,profile,true);
+      Recover(FixtureCase::kPublishedBadSlot,profile,true);
     }
     return 0;
   }
   if (mode == "--published-capture") {
-    Recover(FixtureCase::kReentrantCapture);
+    Recover(FixtureCase::kReentrantCapture); Recover(FixtureCase::kPublishedCaptureV1);
     std::cout << Recover(FixtureCase::kPublishedCapture); return 0;
   }
   if (mode == "--class-cell") { std::cout << Recover(FixtureCase::kClassCell); return 0; }

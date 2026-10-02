@@ -35,6 +35,20 @@ class FamilyReader {
     Grow(active_, index_.methods.size()); Step(index_.methods.size());
     active_.resize(index_.methods.size());
     auto function = ReadMethod(root, owner, InputCaptureMode::kConditional, root_modules);
+    if (!function.Phase() && modules_ && classes == FamilyClassMode::kRetainRoot) {
+      auto qualified = ModuleCapturePrefix::Build(file_,header_,index_,lookup_,index_.methods[root.value],
+          *modules_,function.Normal().input,Remaining());
+      if (const auto* error=std::get_if<ModulePrefixError>(&qualified)) {
+        if (*error==ModulePrefixError::kResourceLimit) Fail(Error::kResourceLimit);
+        if (*error==ModulePrefixError::kWorkLimit) Fail(Error::kWorkLimit);
+        Fail(*error==ModulePrefixError::kChanged ? abc::MetadataError::kFileChanged : abc::MetadataError::kRead);
+      }
+      function.Normal().module_capture_prefix=std::get<std::optional<ModuleCapturePrefix>>(std::move(qualified));
+      if (function.Normal().module_capture_prefix) {
+        const auto bytes=function.Normal().module_capture_prefix->AllocatedBytes();
+        Admit(bytes,1); Step(function.Normal().module_capture_prefix->Work()); function.Normal().allocated_bytes += bytes;
+      }
+    }
     if (root_modules) result_.root_modules.emplace(*root_modules);
     Add(std::move(function), {}, {}, root);
     while (!stack_.empty()) {
@@ -141,7 +155,7 @@ class FamilyReader {
       const auto child_work = child.Capture();
       auto captured = parent.Phase() ? BindPhasedCaptureCells(index_, lookup_, parent.Phase()->Phases(),
           parent.Body(), parent.Phase()->Locals(), *phase_creation, child_work, context, Remaining()) :
-          BindCaptureCells(index_, {parent.Normal().input, parent.Normal().values}, child_work, site, *binding, Remaining());
+          BindCaptureCells(index_, parent.NormalCapture(), child_work, site, *binding, Remaining());
       if (const auto* error = std::get_if<CaptureCellError>(&captured)) Fail(*error);
       auto cells = std::get<CaptureCells>(std::move(captured));
       Admit(cells.allocated_bytes, 1); Step(cells.work);

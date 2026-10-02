@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_FUNCTION_FILE_H_
 
 #include "function_values.h"
+#include "module_capture_prefix.h"
 #include "module_reads.h"
 #include "abcd/source/record_module_context.h"
 
@@ -13,6 +14,7 @@ struct FileFunction {
   FunctionValues values;
   std::size_t allocated_bytes = 0;
   std::optional<ModuleReads> module_reads;
+  std::optional<ModuleCapturePrefix> module_capture_prefix;
 };
 enum class FunctionFileError : std::uint8_t { kIdentity, kMethod, kChanged, kResourceLimit };
 using FunctionFileFailure = std::variant<FunctionFileError, abc::BodyFailure,

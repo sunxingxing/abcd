@@ -1,3 +1,4 @@
+#include "module_capture_prefix.h"
 #include "capture_cell_targets.h"
 #include "phased_function_file.h"
 #include "function_file.h"
@@ -161,7 +162,8 @@ CaptureParent Parent(CaptureFunction function) {
   return {function.input.Identity(), function.input.Method(), function.values.graph,
       function.values.environments ? &*function.values.environments : nullptr,
       CaptureChild(function).Cells(), function.input.Input().instructions,
-      function.input.Proof().locals.allocations, ScopeFacts(function.input.Input(), function.input.Proof())};
+      function.input.Proof().locals.allocations, ScopeFacts(function.input.Input(), function.input.Proof(),
+          function.module_prefix ? function.module_prefix->For(function.input) : std::span<const std::optional<analysis::LocalAccessPlan::UnexposedInitialization>>{})};
 }
 void Owner(const CaptureParent& parent, Quota& quota) {
   quota.Step();
@@ -420,7 +422,8 @@ std::variant<CaptureCells, CaptureCellError> BindCaptureCells(
     analysis::InstructionId site, const CaptureSite& creation, analysis::SemanticBudget budget) {
   try {
     Quota quota(budget); Owners(index, parent, child, creation, quota);
-    auto bound = BuildCapturePlan(ScopeFacts(parent.input.Input(), parent.input.Proof()),
+    auto bound = BuildCapturePlan(ScopeFacts(parent.input.Input(), parent.input.Proof(),
+        parent.module_prefix ? parent.module_prefix->For(parent.input) : std::span<const std::optional<analysis::LocalAccessPlan::UnexposedInitialization>>{}),
         site, creation, child.Input().Captures(), quota.Remaining());
     if (const auto* error = std::get_if<CaptureError>(&bound)) return InputError(*error);
     auto input = std::get<CapturePlan>(std::move(bound)); quota.Step(input.work);
