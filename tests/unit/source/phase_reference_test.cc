@@ -2,6 +2,7 @@
 #include "../../../src/source/phase_evaluation.h"
 #include "../../../src/source/call_plan.h"
 #include "analysis/ssa_fixture.h"
+#include "abcd/analysis/exception_locals.h"
 
 namespace {
 using namespace abcd;
@@ -11,7 +12,7 @@ enum class Corridor {
   kPure, kEffect, kJump, kBranch, kChangedCatch, kStableCatch, kWrongReceiver, kDuplicate,
   kArgument, kArguments, kReversedArguments, kHandlerChange, kTypeofArgument,
   kClosure, kClosureEnvironment, kClosureHandler, kPureResult, kClosurePureResult,
-  kLiteral, kNestedLiteral, kLiteralArguments, kLiteralReversed, kLiteralHandler
+  kLiteral, kNestedLiteral, kLiteralArguments, kLiteralReversed, kLiteralHandler, kLexical, kLexicalGuard, kLexicalWrite
 };
 std::uint64_t Run(std::uint32_t count, abc::ProfileId profile, Corridor corridor = Corridor::kPure,
                   bool computed = false, bool global = false) {
@@ -35,9 +36,29 @@ std::uint64_t Run(std::uint32_t count, abc::ProfileId profile, Corridor corridor
     bytes.insert(bytes.begin() + 3, {op(abc::Opcode::kTRYLDGLOBALBYNAME_IMM8_ID16), 0, 0, 0,
         op(abc::Opcode::kSTA_V8), kParameter});
   }
+  const bool lexical = corridor == Corridor::kLexical || corridor == Corridor::kLexicalGuard || corridor == Corridor::kLexicalWrite;
+  std::uint32_t try_begin = 0;
+  if (lexical) {
+    const std::vector<std::uint8_t> prelude{op(abc::Opcode::kNEWLEXENV_IMM8), 1,
+        op(abc::Opcode::kLDA_V8), kParameter, op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), 0};
+    try_begin = static_cast<std::uint32_t>(prelude.size());
+    bytes.insert(bytes.begin(), prelude.begin(), prelude.end());
+  }
   for (std::uint32_t i = 0; i < count; ++i)
     bytes.insert(bytes.end(), {op(abc::Opcode::kMOV_V8_V8), kArgument, kArgument});
   switch (corridor) {
+    case Corridor::kLexical: case Corridor::kLexicalGuard: case Corridor::kLexicalWrite:
+      bytes.insert(bytes.end(), {op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0});
+      if (corridor == Corridor::kLexicalGuard) {
+        constexpr auto kGuard = static_cast<std::uint16_t>(abc::Opcode::kTHROW_UNDEFINEDIFHOLEWITHNAME_PREF_ID16);
+        constexpr unsigned kByteBits = 8;
+        bytes.insert(bytes.end(), {static_cast<std::uint8_t>(kGuard),
+            static_cast<std::uint8_t>(kGuard >> kByteBits), 0, 0});
+      }
+      bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), kArgument});
+      if (corridor == Corridor::kLexicalWrite)
+        bytes.insert(bytes.end(), {op(abc::Opcode::kLDTRUE), op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), 0});
+      break;
     case Corridor::kLiteral: case Corridor::kNestedLiteral: case Corridor::kLiteralArguments:
     case Corridor::kLiteralReversed: case Corridor::kLiteralHandler: {
       const auto create = [&](std::uint8_t object) {
@@ -121,7 +142,7 @@ std::uint64_t Run(std::uint32_t count, abc::ProfileId profile, Corridor corridor
   if (snapshot) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kArgument});
   bytes.push_back(op(abc::Opcode::kRETURN));
   auto body = test::Body(bytes);
-  abc::TryRegion region; region.length = handler_pc; region.handler_count = 1;
+  abc::TryRegion region; region.offset = {try_begin}; region.length = handler_pc - try_begin; region.handler_count = 1;
   if (corridor == Corridor::kHandlerChange || corridor == Corridor::kClosureHandler || corridor == Corridor::kLiteralHandler)
     region.length = before_call;
   abc::CatchHandler handler; handler.offset = {handler_pc}; handler.length = snapshot ? 3 : 1;
@@ -138,9 +159,11 @@ std::uint64_t Run(std::uint32_t count, abc::ProfileId profile, Corridor corridor
       entries.push_back({{static_cast<std::uint32_t>(i)}, ValueKinds::Language()});
   }
   const auto env = std::get<EnvironmentFlow>(AnalyzeExceptionEnvironments(flow));
+  std::vector<ExceptionLoadFact> loads;
+  if (lexical) loads = std::get<ExceptionLocals>(ProveExceptionLocals(flow, env)).loads;
   IdfQuota value_work{kDefaultSemanticWork};
   const auto values = std::get<ExceptionValueFlow>(ExceptionValueFlow::Build(flow, ssa, entries,
-      value_work, {}, PendingExceptionValues::kLanguage));
+      value_work, {}, PendingExceptionValues::kLanguage, loads));
   const auto proof = std::get<ExceptionInputProof>(VerifyExceptionInputs(flow, ssa, env, values));
   const PhasedValueInput input{flow, ssa, env, values, proof, frame};
   const auto graph = std::get<ValueProgram>(ImportPhasedValues(input));
@@ -157,7 +180,7 @@ std::uint64_t Run(std::uint32_t count, abc::ProfileId profile, Corridor corridor
     if (std::holds_alternative<ValueFunctionCreation>(graph.ops[i].operation))
       functions.push_back({OpId{static_cast<std::uint32_t>(i)}, FunctionOwnerId{1}, {}});
   const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(graph, {}, IncomingCells::kReject, functions));
-  const bool accepted = corridor == Corridor::kPure || corridor == Corridor::kStableCatch ||
+  const bool accepted = (lexical && corridor != Corridor::kLexicalWrite) || corridor == Corridor::kPure || corridor == Corridor::kStableCatch ||
       corridor == Corridor::kArgument || corridor == Corridor::kArguments || corridor == Corridor::kTypeofArgument ||
       corridor == Corridor::kClosure || pure_result || corridor == Corridor::kLiteral ||
       corridor == Corridor::kNestedLiteral || corridor == Corridor::kLiteralArguments;
@@ -222,6 +245,15 @@ std::uint64_t Run(std::uint32_t count, abc::ProfileId profile, Corridor corridor
 int main() {
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
                             abc::ProfileId::kDynamic1301}) {
+    Run(1, profile, Corridor::kLexical);
+    Run(1, profile, Corridor::kLexicalGuard);
+    Run(1, profile, Corridor::kLexicalWrite);
+    std::uint64_t previous_lexical = 0;
+    for (const auto count : {1U, 2U, 200U, 201U, 402U}) {
+      const auto work = Run(count, profile, Corridor::kLexicalGuard);
+      if (count == 402) test::Check(work < 3 * previous_lexical);
+      previous_lexical = work;
+    }
     std::uint32_t prior_count = 0;
     std::uint64_t prior_work = 0, prior_wrapped_work = 0, prior_retry_work = 0;
     constexpr std::uint32_t kScalingStart = 200;

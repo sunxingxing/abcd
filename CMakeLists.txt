@@ -1142,6 +1142,12 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/widget_global_literal.mjs $<TARGET_FILE:abc_structure>
         ${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts)
     endif()
+    if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc" AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/pasteboard_src/src/main/ets/pages/ProgressBar.ts")
+      add_test(NAME progressbar_cell_reference_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/progressbar_cell_reference.mjs $<TARGET_FILE:abc_structure>
+        ${ABCD_PAIRED_CORPUS_ROOT}/pasteboard)
+    endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
       if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc" AND
          EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")

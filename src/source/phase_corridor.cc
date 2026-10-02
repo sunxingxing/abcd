@@ -27,6 +27,9 @@ bool PhaseCorridors::Expression(const ValueOperation& operation) {
       std::holds_alternative<ValueString>(operation) ||
       std::holds_alternative<ValueUnary>(operation) ||
       std::holds_alternative<ValueBinary>(operation) ||
+      // Cell evaluation proves initialization; the read remains ordered so
+      // callbacks, cell writes and catch snapshots still prevent relocation.
+      std::holds_alternative<ValueLexicalLoad>(operation) ||
       std::holds_alternative<ValueModuleRead>(operation) ||
       std::holds_alternative<ValueGlobalRead>(operation) ||
       std::holds_alternative<ValueNamedRead>(operation) ||

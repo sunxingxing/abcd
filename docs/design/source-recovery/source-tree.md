@@ -427,3 +427,13 @@ cell scope 遍历在 predicate 前停止，由所属 decision 唯一处理该节
 
 任意包含语句效果的非线性前导尚未接入语句 decision lowering，仍明确拒绝；
 控制计划能够表示一个区域不等于源码树支持该区域的所有语句组合。
+
+### phased 词法读取的原生调用组合（2026-10-02）
+
+已证明初始化的 ValueLexicalLoad 可以进入现有跨 phase 表达式规划。读取
+仍是有序事件，不能因 cell 已初始化而视为常量或纯值；原始单次用途、
+效果后缀、同一 corridor、catch staging 和最终根异常上下文约束全部保留。
+读取后若发生 cell 写入，不能将旧读取移动到写入后的调用中。该扩展只增加
+一个 typed operation 支持项，复用既有线性索引、稀疏用途和有界重试，不新增
+按 cell 扫图、独立 writer 或宿主假设。guard 的初始化证据仍由共同 cell
+验证及 family owner 义务提供，不能凭打印后的局部变量拼写推断。

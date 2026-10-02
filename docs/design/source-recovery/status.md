@@ -13,6 +13,46 @@
 ## 当前阶段
 
 
+### 2026-10-02：phased 词法读取作为成员调用参数
+
+- ProgressBar call 35 / property 29 的下一处阻塞确认为
+  PhaseCorridors::Expression 不接纳 ValueLexicalLoad。新增共同
+  phase_reference_test 的 kLexical/kLexicalGuard：在 callee 获取后读取
+  已初始化 cell 作为参数，保留原 guard 和异常图。旧实现在 callee 必须
+  inline 的断言失败，red-tests.log 1/1 RED 0.88 秒。
+- 将 ValueLexicalLoad 接入既有 phased 表达式支持域，仍作为有序效果，
+  不改变 CanFuse 唯一使用、连续效果区间、catch 快照和绑定检查。
+  first-tests.log 1/1 通过 8.07 秒；新增读取后 cell 写入阻隔拒绝例及
+  1/2/200/201/402 复制运输规模用例，barrier-tests.log 1/1 通过 8.51 秒。
+- ProgressBar 9550 / entry 9915 完整输出通过 Node --check，保留两个原生
+  async onClick 回调，无 legacy。独立配对复制按钮测试 246 个场景通过，
+  paired-2.log：正常/拒绝/thenable、各效果点异常、读取参数中替换 callee、
+  receiver、await 前后顺序及文件/资源参数。首次 harness 缺少注册阶段的
+  SymbolGlyph 全局，paired.log 保留失败，补齐隔离组件后通过；未执行
+  构造/storage、另一个粘贴进度回调、真实文件/剪贴板或平台渲染。
+- 五输入 fresh build/stage-one/value-phased-cell-reference-pass-1 均退出 0，
+  75 complete / 4 incomplete / 27 failure / 46 no-module，新增 ProgressBar。
+  原 74 个完整项无状态回退、无 legacy、原生 default records 保留。
+  pasteboard Home 5521、PageA 6897、PageB 7640、PasteBoard 8383 源码有变化：
+  相邻词法读取直接组成成员访问/调用，删除多余快照及随之发生的局部编号变化；
+  changed-source.diff 留存人工核对。其他完整源码字节未变。
+- 89 个相关 targets 构建退出 0，188/188 回归通过 465.21 秒；
+  related-build.log / related-tests.log。与选择清单
+  /tmp/abcd-phased-cell-reference-selected.json 按名称核对一致。
+  上述局部配对证据不代表 record 全部行为验收。
+  全库、扩大语料、RSS/基准、DFX、调度器、代理及定期审视仍暂停。
+  本节日志前缀 /tmp/abcd-phased-cell-reference-*；Goal 保持 active。
+- 下一处定位 HotRankPage 48945 / entry 49171 的普通箭头 child 49640，
+  parent 49226、创建 PC 171、family member 5、profile 1202。普通
+  LiteralPlan 的 EarlyValue 报 kLateValue：buffered allocation op 17
+  （literal 2939）之后，op 28 ValueBinary kAdd 产生 value 44，其已证明
+  domain 为 Language/kString，但未纳入 LiteralExpression。原始函数含
+  PC 64/72 的 ADD2。不能用此证据放行任意数值 ADD2；应保持值域证明并
+  补原生二元初始化表达式的单次使用/效果顺序。next-hotrank.log、
+  next-hotrank-literal.log、next-hotrank-cause-2.log、
+  next-hotrank-instructions.jsonl 留存证据。
+
+
 ### 2026-10-02：phased 字面量中的已初始化 cell guard
 
 - ProgressBar 9550 的 async child 10333 在字面量内使用词法 load 72，
