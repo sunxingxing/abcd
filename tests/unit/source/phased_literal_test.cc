@@ -17,7 +17,7 @@ using namespace abcd::source;
 enum class Shape {
   kReturn, kCatch, kObserve, kLate, kBranch, kCatchObserve, kNested, kNestedCatch,
   kNestedCatchObserve, kNestedDispatch, kNestedShared, kNestedSnapshot, kUnary, kUnaryCatch,
-  kUnaryShared, kUnaryUnknown, kNestedDeadCopy, kNestedDeadArray, kGlobalCatch, kGlobalDispatch, kLexicalCatch
+  kUnaryShared, kUnaryUnknown, kNestedDeadCopy, kNestedDeadArray, kGlobalCatch, kGlobalDispatch, kLexicalCatch, kBinaryCatch
 };
 std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
                   std::uint32_t copies = 0, std::uint32_t fields = 1,
@@ -26,6 +26,7 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   constexpr std::uint8_t kObject = 0, kParameter = 4;
   std::vector<std::uint8_t> bytes{op(abc::Opcode::kCREATEEMPTYOBJECT), op(abc::Opcode::kSTA_V8), kObject};
+  const bool binary = shape == Shape::kBinaryCatch;
   const bool lexical = shape == Shape::kLexicalCatch;
   std::uint32_t lexical_try_begin = 0;
   if (lexical) {
@@ -45,7 +46,7 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
       unary == abc::Opcode::kINC_IMM8 || unary == abc::Opcode::kDEC_IMM8;
   const bool caught = shape == Shape::kCatch || shape == Shape::kCatchObserve ||
       shape == Shape::kNestedCatch || shape == Shape::kNestedCatchObserve || shape == Shape::kNestedDispatch || shape == Shape::kNestedSnapshot || shape == Shape::kUnaryCatch ||
-      dead_copy || global || lexical;
+      dead_copy || global || lexical || binary;
   constexpr std::uint8_t kSaved = 2, kSnapshotInput = 6, kSnapshotPrelude = 4;
   if (shape == Shape::kNestedSnapshot) bytes.insert(bytes.begin(),
       {op(abc::Opcode::kLDA_V8), kSnapshotInput, op(abc::Opcode::kSTA_V8), kSaved});
@@ -79,6 +80,8 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
     else if (nested && shape != Shape::kNestedDeadArray) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8),
         static_cast<std::uint8_t>(shape == Shape::kNestedSnapshot ? kSnapshotInput :
             dead_copy ? kParameter + 2 : kParameter + 1)});
+    if (binary) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_STR_ID16), 0, 0,
+        op(abc::Opcode::kADD2_IMM8_V8), 0, kParameter});
     if (arithmetic) {
       if (shape != Shape::kUnaryUnknown &&
           (unary == abc::Opcode::kNEG_IMM8 || unary == abc::Opcode::kTONUMBER_IMM8 || numeric_update))
@@ -207,14 +210,16 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
     invalid.aliases[rhs.value] = rhs;
     test::Check(std::get<LiteralError>(VerifyPhasedLiteralPlan(graph, literal, invalid)) == LiteralError::kFlow);
   }
-  if (shape == Shape::kCatch || shape == Shape::kNestedCatch || shape == Shape::kUnaryCatch || dead_copy || shape == Shape::kGlobalCatch || lexical) {
+  if (shape == Shape::kCatch || shape == Shape::kNestedCatch || shape == Shape::kUnaryCatch || dead_copy || shape == Shape::kGlobalCatch || lexical || binary) {
     const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
     const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
     FunctionSyntax syntax{}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
     syntax.parameters.resize(1); syntax.names = {u"__proto__", u"Lookup", u"value"};
+    syntax.texts = {u"suffix"};
     std::vector<ExpressionConstant> constants(graph.ops.size());
     for (const auto id : literal.definitions) constants[id.value] = NameId{0};
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      if (std::holds_alternative<ValueString>(graph.ops[i].operation)) constants[i] = TextId{0};
       if (std::holds_alternative<ValueGlobalRead>(graph.ops[i].operation)) constants[i] = NameId{1};
       if (global && std::holds_alternative<ValueNamedRead>(graph.ops[i].operation)) constants[i] = NameId{2};
     }
@@ -223,12 +228,12 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
     // initializer proof. Keep its explicit allowance separate from the exact
     // initializer-work tests above; production defaults are unchanged.
     constexpr SemanticBudget kTreeBudget{};
-    const auto built = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, {constants, syntax.names.size()}, kTreeBudget);
+    const auto built = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, {constants, syntax.names.size(), syntax.texts.size()}, kTreeBudget);
     test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
     const auto& tree = std::get<ExceptionFunctionDraft>(built).tree;
     test::Check(tree.properties.size() == (nested ? fields * 2 : fields));
     test::Check(std::holds_alternative<TreeSemantics>(VerifyExceptionTreeSemantics(
-        graph, context, evaluation, tree, {constants, syntax.names.size()}, kTreeBudget)));
+        graph, context, evaluation, tree, {constants, syntax.names.size(), syntax.texts.size()}, kTreeBudget)));
     if (print) {
       const GlobalScope globals{};
       std::ostringstream output;
@@ -253,7 +258,7 @@ int main(int argc, char** argv) {
                              Shape::kCatchObserve, Shape::kNested, Shape::kNestedCatch, Shape::kNestedCatchObserve,
                              Shape::kNestedSnapshot, Shape::kNestedDispatch, Shape::kNestedShared,
                              Shape::kUnary, Shape::kUnaryCatch, Shape::kUnaryShared, Shape::kUnaryUnknown,
-                             Shape::kNestedDeadCopy, Shape::kNestedDeadArray, Shape::kGlobalCatch, Shape::kGlobalDispatch, Shape::kLexicalCatch}) Run(profile, shape);
+                             Shape::kNestedDeadCopy, Shape::kNestedDeadArray, Shape::kGlobalCatch, Shape::kGlobalDispatch, Shape::kLexicalCatch, Shape::kBinaryCatch}) Run(profile, shape);
     for (const auto unary : {abcd::abc::Opcode::kNOT_IMM8, abcd::abc::Opcode::kTYPEOF_IMM8,
         abcd::abc::Opcode::kTONUMBER_IMM8, abcd::abc::Opcode::kISTRUE, abcd::abc::Opcode::kISFALSE,
         abcd::abc::Opcode::kTONUMERIC_IMM8, abcd::abc::Opcode::kINC_IMM8, abcd::abc::Opcode::kDEC_IMM8})
@@ -277,6 +282,7 @@ int main(int argc, char** argv) {
       }
       previous_copies = copy_work; previous_arrays = array_work;
     }
+    for (const auto count : {1U, 2U, 200U, 201U, 402U}) Run(profile, Shape::kBinaryCatch, 0, count);
     std::uint64_t lexical_work = 0;
     for (const auto count : {1U, 2U, 200U, 201U, 402U}) {
       const auto work = Run(profile, Shape::kLexicalCatch, 0, count);

@@ -1,5 +1,19 @@
 # Literal Initialization
 
+## Native binary initializers
+
+ValueBinary with two operands and an independently established Language result
+can use the existing native BinaryExpr inside normal or phased literal ownership.
+This changes expression eligibility only: arbitrary arithmetic is not promoted
+to Language, and VM NaN/internal-value refusals remain input-proof failures.
+Original operand order, conversions, single-use ownership, initializer intervals
+and phased catch snapshots remain checked. Shared results and debugger barriers
+refuse instead of duplicating or moving evaluation. The eligibility check is O(1),
+with existing reverse operand ownership and independent canonical-use scans;
+there is no new dependency, per-expression graph walk or physical-memory claim.
+Decoded tests and independent native JS oracles cover string addition, strict
+equality, relational comparison and bitwise OR, including coercion and throws.
+
 ## Initialized cell guards on phased paths
 
 The common completed-store/conditional incoming-cell proof also identifies

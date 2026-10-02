@@ -13,6 +13,39 @@
 ## 当前阶段
 
 
+### 2026-10-02：原生二元字面量初始化
+
+- HotRankPage child 49640 的已证明 String ADD2 在 buffered 对象之后产生，
+  旧 LiteralExpression 不接纳二元操作，导致 EarlyValue kLateValue。
+  新 literal_binary_test 使用真实 decoded 全局属性读取和字符串加法，
+  经 FunctionInput/ValueProgram 到统一树与来源检查；旧实现构建成功后
+  在 EvaluationPlan 断言失败，red-tests.log 1/1 RED 1.03 秒。
+- 接纳有两个操作数、结果已证明为 Language 的 ValueBinary，复用原生
+  BinaryExpr 及既有用途/效果/来源验证，不修改算术值域规则。
+  三 profile 覆盖字符串加法、严格相等、关系比较、按位或，以及任意未知
+  ADD2 输入拒绝。共享结果额外返回、删除 nested 映射、debugger 阻隔均拒绝。
+  normal/phased 初始化覆盖 1/2/200/201/402 属性，后者也经过异常源码树及
+  TreeSemantics。phased-tests.log 3/3 通过 19.06 秒。
+- 独立原生表达式对照 12,584 个 coercion/getter/异常场景通过，包括
+  Symbol/BigInt/NaN/-0 与 default/number 转换 hint，behavior-2.log。
+  首次 harness 使用跨环境的 global getter 参考导致 ReferenceError 差异，
+  behavior.log 保留失败；改为在相同 VM 环境运行独立手写原生语法后通过。
+  这是生成 JS 行为证据，不是 Ark VM 的全语义证明。
+- 五输入 fresh build/stage-one/value-literal-binary-pass-1 均退出 0：
+  75 complete / 4 incomplete / 27 failure / 46 no-module。原 75 个完整项
+  无回退或源码字节变化，无 legacy，原生 default records 保留；
+  final-batch-summary.json 留存证据。没有新增完整 record。
+- HotRankPage 越过原字面量失败，随后 method 49199 在原 PC 68 报
+  SemanticProofError::kInternalValue：PC 65 为 opcode 11 的减法，PC 68
+  为结果运输；read SSA value 102 的 domain bits 为 0x0f，未证明 Language。
+  hotrank-domain.log / hotrank-domain-instructions.jsonl 保留定位，不放宽
+  数值 NaN/内部标记限制来凑完整率。
+- 90 个相关 targets 构建退出 0；190/190 回归通过 468.57 秒，
+  related-build.log / related-tests.log，与选择清单
+  /tmp/abcd-literal-binary-selected.json 按名称核对一致。
+  全库、扩大语料、RSS/基准、DFX、调度器、代理及
+  定期审视仍暂停。本节日志前缀 /tmp/abcd-literal-binary-*；Goal 保持 active。
+
 ### 2026-10-02：phased 词法读取作为成员调用参数
 
 - ProgressBar call 35 / property 29 的下一处阻塞确认为

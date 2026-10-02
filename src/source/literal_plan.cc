@@ -269,6 +269,11 @@ bool LiteralExpression(const analysis::ValueProgram& graph, const analysis::Valu
   const bool closure = creation && creation->kind == analysis::CreationKind::kFunction &&
       creation->home_object == analysis::HomeObjectInput::kCurrentFunction && op.use_count == 0;
   return PrimitiveLeaf(graph, op) || LiteralUnary(op.operation) ||
+      // Native binary syntax preserves operand/coercion order. This admission
+      // does not prove a VM result is a language value; input/domain and the
+      // independent literal interval checks remain required.
+      (std::holds_alternative<analysis::ValueBinary>(op.operation) && op.use_count == 2 &&
+       op.result && graph.values[op.result->value].domain.IsLanguage()) ||
       closure ||
       std::holds_alternative<analysis::ValueInvoke>(op.operation) ||
       // Construction is a single-use ordered expression, like a call. The
