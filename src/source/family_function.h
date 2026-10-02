@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_FAMILY_FUNCTION_H_
 
 #include "function_file.h"
+#include "default_body.h"
 #include "phased_function_file.h"
 
 namespace abcd::source {
@@ -22,7 +23,9 @@ class FamilyFunction {
   CaptureChild Capture() const {
     return Phase() ? CaptureChild{*Phase(), Storage()} : CaptureChild{NormalCapture()};
   }
-  CaptureFunction NormalCapture() const { return {Normal().input, Normal().values, Storage(), Normal().module_capture_prefix ? &*Normal().module_capture_prefix : nullptr}; }
+  CaptureFunction NormalCapture() const { return {Normal().input, Normal().values, Storage(), Normal().module_capture_prefix ? &*Normal().module_capture_prefix : nullptr, defaults_ ? &*defaults_ : nullptr}; }
+  std::optional<DefaultBody>& Defaults() { return defaults_; }
+  const std::optional<DefaultBody>& Defaults() const { return defaults_; }
   const CaptureStorage* Storage() const { return storage_ ? &*storage_ : nullptr; }
   const CellPlan* Cells() const { return Capture().Cells(); }
   void SetStorage(CaptureStorage storage) { storage_ = std::move(storage); }
@@ -35,6 +38,7 @@ class FamilyFunction {
  private:
   std::variant<FileFunction, FilePhasedFunction> input_;
   std::optional<CaptureStorage> storage_;
+  std::optional<DefaultBody> defaults_;
 };
 }  // namespace abcd::source
 #endif

@@ -12,6 +12,32 @@
 
 ## 当前阶段
 
+### 2026-10-03：捕获默认参数贯通函数族和原生签名
+
+- FamilyFunction 持有 DefaultBody，生命周期覆盖全族重绑定、构树和最终
+  writes 检查。PlanFamilyCells 从封装证明引入入口存储，原始读取的独立
+  capture 校验检查 retained PC、移除后的操作、原词法地址及同一 incoming
+  storage；普通读取继续要求活跃操作，未取消原 capture domain/creation 检查。
+- 参数签名通过共同 TreeFlow 独立取得 capture symbol；结构、ABI、printer
+  接受外层捕获默认表达式，仍拒绝参数/局部替代、名称遮蔽和无 capture context
+  的证明。普通/方法/构造签名共享原生表达式；phased defaults 仍未迁移。
+- 合成 ABC 的捕获在模块中先设为 1，发布 reader 后改成 42；三个 profile
+  均生成 `function($arg0 = $local0) { return $arg0; }`。独立模块执行对照
+  验证缺省/显式 undefined 取当前值、length=0、所有传入值保持身份，Proxy
+  参数不触发 coercion。新增 record_captured_default_test 和签名篡改负例。
+- 19 targets 构建退出 0；相关 24/24 CTest 通过 18.06 秒。
+  /tmp/abcd-captured-signature-related-{build,tests}.log。初次构建的强 ID 比较
+  与 ControlPlan 前置声明已修正；合成 fixture 的 CodeInfo 参数数与字节头
+  不一致已修正。原生模块及已有 literal defaults 回归通过。
+- 实际 HotListItemView 的 member2/method48015 越过签名、ABI 和来源检查；
+  下一处是 member3/method48295 的 FunctionAbiError::kLength，length2 /
+  parameters3，见 next-default.log。尚不能宣布 record 完成。
+- 五输入 fresh build/stage-one/value-captured-signature-pass-1 均退出 0，
+  75 complete / 5 incomplete / 26 failure / 46 no-module；无完整项回退、
+  完整源码变化或 legacy，三个原生 default records 保留。日志前缀
+  /tmp/abcd-captured-signature-final-*。未运行 full-suite/扩展语料/RSS，
+  源码合同未变，阶段一 Goal 保持 active。
+
 ### 2026-10-03：签名外层存储进入共同 cell/evaluation 计划
 
 - CellPlan 新增 entry_demands，显式保留残余函数体之外使用的 IncomingCell；

@@ -1,4 +1,5 @@
 #include "module_capture_prefix.h"
+#include "default_body.h"
 #include "capture_cell_targets.h"
 #include "phased_function_file.h"
 #include "function_file.h"
@@ -70,6 +71,10 @@ const CellPlan* CaptureChild::Cells() const {
       return function.values.cells ? &*function.values.cells : nullptr;
     else return function->Phases().Cells();
   }, function_);
+}
+const DefaultBody* CaptureChild::Defaults() const {
+  const auto* normal = std::get_if<CaptureFunction>(&function_);
+  return normal ? normal->defaults : nullptr;
 }
 bool CaptureChild::MatchesInput() const {
   return std::visit([](auto function) {
@@ -188,6 +193,35 @@ analysis::OpId Operation(const analysis::ValueProgram& graph,
   Require(origin.site.value == site.value && origin.pc == original.pc && origin.original == original.origin &&
       origin.disposition == analysis::OriginDisposition::kRetained, Error::kCreation);
   return id;
+}
+// A moved original read is still owned by the sealed signature projection.
+// Check its exact original site and retained tombstone before resolving storage;
+// ordinary reads must continue through the live-operation map below.
+std::optional<CellId> SignatureCell(CaptureChild child, analysis::InstructionId site, Quota& quota) {
+  const auto* body = child.Defaults();
+  const auto* capture = body ? body->Capture() : nullptr;
+  if (!capture) return {};
+  quota.Step();
+  const auto& graph = child.Graph();
+  Require(graph.revision == body->Graph().revision && graph.cfg_revision == body->Graph().cfg_revision, Error::kRevision);
+  const auto id = capture->candidate.shape.initializer;
+  Require(id.value < graph.ops.size() && id.value < body->Graph().ops.size(), Error::kCell);
+  const auto& op = graph.ops[id.value];
+  Require(op.origin.value < graph.origins.size(), Error::kCell);
+  const auto& origin = graph.origins[op.origin.value];
+  if (origin.site.value != site.value) return {};
+  const auto instructions = child.Input().Instructions();
+  Require(site.value < instructions.size() && op.life == analysis::ValueLife::kRemoved &&
+      std::holds_alternative<analysis::ValueNop>(op.operation) &&
+      origin.pc == instructions[site.value].pc && origin.original == instructions[site.value].origin &&
+      origin.disposition == analysis::OriginDisposition::kRetained, Error::kCell);
+  const auto* load = std::get_if<analysis::LexicalLoad>(&instructions[site.value].operation);
+  Require(load && load->address.depth.value == capture->candidate.address.depth.value &&
+      load->address.slot.value == capture->candidate.address.slot.value && child.Cells(), Error::kCell);
+  quota.Step(std::bit_width(child.Cells()->cells.size()) + 1);
+  const auto cell = FindCell(*child.Cells(), capture->storage);
+  Require(cell.has_value(), Error::kCell);
+  return cell;
 }
 analysis::OpId Operation(const CaptureParent& function, analysis::InstructionId site, Quota& quota) {
   return Operation(function.graph, function.instructions, site, quota);
@@ -348,9 +382,12 @@ std::variant<std::uint64_t, CaptureCellError> VerifyCaptureTargets(
     Require(accesses.size() <= plan.input.bindings.size(), Error::kCoverage);
     for (std::size_t i = 0; i < accesses.size(); ++i) {
       quota.Step();
-      const auto op = Operation(child.Graph(), child.Input().Instructions(), accesses[i].instruction, quota);
-      Require(child.Cells() && op.value < child.Cells()->operations.size(), Error::kCell);
-      const auto cell = child.Cells()->operations[op.value];
+      auto cell = SignatureCell(child, accesses[i].instruction, quota);
+      if (!cell) {
+        const auto op = Operation(child.Graph(), child.Input().Instructions(), accesses[i].instruction, quota);
+        Require(child.Cells() && op.value < child.Cells()->operations.size(), Error::kCell);
+        cell = child.Cells()->operations[op.value];
+      }
       Require(cell && cell->value >= incoming.first && cell->value - incoming.first < plan.targets.size(), Error::kCell);
       const auto& target = plan.targets[cell->value - incoming.first];
       Require(target.child == *cell && target.target == Project(parent, plan.input.bindings[i].cell, quota), Error::kBinding);

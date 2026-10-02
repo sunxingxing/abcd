@@ -61,8 +61,8 @@ class FamilyTrees {
       member_ = {static_cast<std::uint32_t>(i)};
       default_candidates_.reset();
       defaults_proved_ = false;
-      if (defaults_[i] && defaults_[i]->Storage() == DefaultStorage::kCell) {
-        default_candidates_ = defaults_[i]->Signature().Defaults().size();
+      if (family.members[i].function.Defaults() && family.members[i].function.Defaults()->Storage() == DefaultStorage::kCell) {
+        default_candidates_ = family.members[i].function.Defaults()->Signature().Defaults().size();
         defaults_proved_ = true;
       }
       Step(1);
@@ -133,6 +133,7 @@ class FamilyTrees {
       if (!phase) { normal_control.emplace(Take<ControlPlan, ControlError>(BuildControlPlan(graph, left_))); Account(*normal_control); }
       const auto& control = phase ? phase->Phases().Control() : *normal_control;
       const auto module_evaluations = aliases ? std::span<const ModuleEvaluation>(aliases->evaluations) : std::span<const ModuleEvaluation>{};
+      const auto entries = member.function.Cells() ? std::span<const IncomingCell>(member.function.Cells()->entry_demands) : std::span<const IncomingCell>{};
       const auto demands = member.function.Cells() ? std::span<const CellDemand>(member.function.Cells()->demands) : std::span<const CellDemand>{};
       // Preserve the phased file input's conditional write domain. The complete
       // family below still discharges every original store and capture barrier.
@@ -141,7 +142,7 @@ class FamilyTrees {
               member.children, module_evaluations, demands, {}, phase->Locals().writes) :
           BuildEvaluationPlan(graph, left_, i == 0 && !family.root_capture ? IncomingCells::kReject : IncomingCells::kConditional,
               member.children, module_evaluations, demands, {}, analysis::ClosureWrites::kLanguage, {},
-              guards));
+              guards, entries));
       Account(evaluation);
       std::optional<IncomingCaptureTree> incoming;
       if (member.incoming) {
@@ -163,7 +164,7 @@ class FamilyTrees {
         }
         return Take<ConstructedFunction, FunctionTreeError>(BuildFunctionTree(graph, control,
             evaluation, std::move(syntax.syntax), constants, left_, incoming ? &*incoming : nullptr,
-            member.children.empty() && !defaults_[i] ? recovery_ : RecoveryMode::kCompleteOnly));
+            member.children.empty() && !family.members[i].function.Defaults() ? recovery_ : RecoveryMode::kCompleteOnly));
       }();
       Account(constructed);
       // Naming evidence is creation-specific and must survive arena growth and
@@ -179,7 +180,7 @@ class FamilyTrees {
       if (!constructed.tree.recovery_issues.empty()) {
         // The tree carries a readable omission, not whole-input flow/ABI/source
         // evidence. Keep the original file identity and do not forge those products.
-        Require(member.children.empty() && !defaults_[i] &&
+        Require(member.children.empty() && !family.members[i].function.Defaults() &&
             (!member.incoming || member.incoming->cells.targets.empty()), FamilyTreeError::kContext);
         incomplete = true;
         std::optional<CaptureCells> cells;
@@ -187,9 +188,10 @@ class FamilyTrees {
         trees.push_back({std::move(constructed.tree), {}, std::move(cells), {}, {}, function.Record()});
         continue;
       }
-      if (defaults_[i]) {
+      if (family.members[i].function.Defaults()) {
+        const DefaultCaptureContext capture{control,evaluation};
         auto signature = Take<DefaultSignatureProof, DefaultSignatureError>(
-            BuildDefaultSignature(*defaults_[i], constructed.tree, left_));
+            BuildDefaultSignature(*family.members[i].function.Defaults(), constructed.tree, left_, &capture));
         Account(signature);
         auto semantics = Take<TreeSemantics, TreeSemanticError>(VerifyTreeSemantics(
             graph, control, evaluation, constructed.tree, constants, left_));
@@ -351,7 +353,6 @@ class FamilyTrees {
     return guards;
   }
   void ProjectDefaults(FileFamily& family, const FunctionContext* root) {
-    Reserve(defaults_, family.members.size()); defaults_.resize(family.members.size());
     for (std::size_t i = 0; i < family.members.size(); ++i) {
       Step(1); member_ = {static_cast<std::uint32_t>(i)};
       default_candidates_.reset(); defaults_proved_ = false;
@@ -371,7 +372,11 @@ class FamilyTrees {
           FindDefaultCandidates(values.graph, parameters, length, left_));
       Account(direct);
       std::optional<DefaultBody> projected;
-      if (!direct.values.empty()) {
+      if (direct.capture) {
+        Require(values.cells && values.environments, FamilyTreeError::kContext);
+        projected.emplace(Take<DefaultBody, DefaultBodyError>(DefaultBody::BuildCaptured(values.graph,
+            *values.environments, *values.cells, parameters, direct, length, left_)));
+      } else if (!direct.values.empty()) {
         projected.emplace(Take<DefaultBody, DefaultBodyError>(
             DefaultBody::Build(values.graph, parameters, direct, length, left_)));
       } else {
@@ -395,7 +400,7 @@ class FamilyTrees {
       Step(residual.values.size()); Step(residual.uses.size()); Step(residual.origins.size());
       Step(residual.exceptional_exits.size()); Step(residual.input.sites.size()); Step(residual.input.values.size());
       values.graph = body.Graph();
-      defaults_[i].emplace(std::move(body));
+      family.members[i].function.Defaults().emplace(std::move(body));
       auto environments = Take<analysis::ValueEnvironments, analysis::ValueEnvironmentError>(
           analysis::BuildValueEnvironments(values.graph, left_));
       Account(environments); values.environments = std::move(environments);
@@ -471,7 +476,6 @@ class FamilyTrees {
   FamilyId member_{0};
   std::optional<std::size_t> default_candidates_;
   bool defaults_proved_ = false;
-  std::vector<std::optional<DefaultBody>> defaults_;
   std::vector<std::vector<std::uint8_t>> receiver_cells_;
   std::vector<ReceiverScopes> receiver_scopes_;
 };

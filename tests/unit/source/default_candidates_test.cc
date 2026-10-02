@@ -521,6 +521,24 @@ void CapturedBoundary() {
   Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(body.Graph(), signature_evaluation)));
   Check(std::holds_alternative<EvaluationError>(BuildEvaluationPlan(body.Graph(), {},
       IncomingCells::kReject, {}, {}, {}, {}, ClosureWrites::kLanguage, {}, {}, signature_cells.entry_demands)));
+  const auto control = std::get<ControlPlan>(BuildControlPlan(body.Graph()));
+  FunctionSyntax syntax{{}, {1}, {1}, CallableKind::kFunction, Strictness::kStrict,
+      {{NameId{0}, NameEvidence::kDebugRange}}, {u"value",u"outer"}, {}};
+  syntax.captures.push_back({CellId{0}, {{0},{0}}, NameId{1}});
+  std::vector<ExpressionConstant> constants(body.Graph().ops.size());
+  auto constructed = std::get<ConstructedFunction>(BuildFunctionTree(body.Graph(),control,signature_evaluation,
+      std::move(syntax),{constants,2}));
+  const DefaultCaptureContext context{control,signature_evaluation};
+  Check(std::holds_alternative<DefaultSignatureProof>(BuildDefaultSignature(body,constructed.tree,{},&context)));
+  Check(std::holds_alternative<DefaultSignatureProof>(VerifyDefaultSignature(body,constructed.tree,{},&context)));
+  Check(std::holds_alternative<DefaultSignatureError>(VerifyDefaultSignature(body,constructed.tree)));
+  auto wrong = constructed.tree;
+  const auto init = *wrong.parameters[0].initializer;
+  wrong.expressions[init.value].expression = SymbolExpr{wrong.parameters[0].symbol};
+  Check(std::holds_alternative<DefaultSignatureError>(VerifyDefaultSignature(body,wrong,{},&context)));
+  wrong = constructed.tree;
+  wrong.names[wrong.symbols[wrong.parameters[0].symbol.value].name.value] = u"outer";
+  Check(std::holds_alternative<DefaultSignatureError>(VerifyDefaultSignature(body,wrong,{},&context)));
   auto lost = signature_cells; lost.entry_demands.clear();
   Check(std::holds_alternative<CellError>(VerifyCellPlan(body.Graph(),residual_env,lost)));
   lost = signature_cells; ++lost.entry_demands[0].slot.value;

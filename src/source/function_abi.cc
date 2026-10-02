@@ -56,8 +56,12 @@ class AbiBuilder {
         source_length = static_cast<std::uint32_t>(i);
       }
       if (parameter.initializer) {
-        Require(parameter.initializer->value < tree_.expressions.size() &&
-            std::holds_alternative<TreeLiteral>(tree_.expressions[parameter.initializer->value].expression), Error::kParameter);
+        Require(parameter.initializer->value < tree_.expressions.size(), Error::kParameter);
+        const auto& initializer = tree_.expressions[parameter.initializer->value].expression;
+        const auto* captured = std::get_if<SymbolExpr>(&initializer);
+        Require(std::holds_alternative<TreeLiteral>(initializer) ||
+            (captured && captured->symbol.value < tree_.symbols.size() &&
+             tree_.symbols[captured->symbol.value].kind == BindingKind::kCapture), Error::kParameter);
         if (result_.layout == ParameterLayout::kSimple) source_length = static_cast<std::uint32_t>(i);
         result_.layout = ParameterLayout::kLiteralDefaults;
       }

@@ -212,3 +212,25 @@ for (const source of [publishedCapture,publishedReference]) {
   assert.equal(reader(),42); assert.equal(root.namespace.answer,reader);
   assert.deepEqual(trace,['side','dep','star','mutate','mutate']);
 }
+
+const capturedDefault = execFileSync(process.argv[2], ['--captured-default'], {encoding:'utf8'});
+const defaultReference = reference.replace('export {answer, answer as answerAlias, snapshot};', `
+let captured = 1;
+answer = function reader(value = captured) { return value; };
+captured = 42;
+export {answer, answer as answerAlias, snapshot};
+`);
+for (const source of [capturedDefault,defaultReference]) {
+  const {root,trace} = await setup(source);
+  await root.evaluate();
+  const reader = root.namespace.answer;
+  assert.equal(reader.length,0);
+  assert.equal(reader(),42); assert.equal(reader(undefined),42);
+  const hostile = new Proxy({}, {get() { assert.fail('default coerced the argument'); }});
+  for (const value of [null,false,true,0,-0,NaN,Infinity,3,'text',7n,Symbol('identity'),{},()=>{},hostile])
+    assert.ok(Object.is(reader(value),value));
+  assert.equal(reader(undefined,hostile),42);
+  assert.equal(root.namespace.answerAlias,reader);
+  assert.deepEqual(trace,['side','dep','star','mutate']);
+}
+console.log('Captured defaults: current cell, identity, length and no argument coercion passed');

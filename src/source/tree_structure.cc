@@ -164,8 +164,9 @@ class StructureCheck {
     RequireTree(root && root->scope == tree_.body_scope, Error::kScope);
     if (self_scope) scopes_.Enter(*self_scope);
     scopes_.Enter(tree_.parameter_scope);
-    // Constant defaults cannot observe body bindings or the TDZ of later
-    // formals. They are separate expression occurrences in parameter scope,
+    // Literal and outer-capture defaults cannot read body bindings or later
+    // formals. Captures must also pass active-scope shadowing checks. These
+    // are separate expression occurrences in parameter scope,
     // never borrowed body nodes. General default expressions need an ordered
     // parameter-initialization proof before expanding this admission rule.
     for (const auto& parameter : tree_.parameters) {
@@ -173,8 +174,11 @@ class StructureCheck {
       if (!parameter.initializer) continue;
       const auto id = *parameter.initializer;
       RequireTree(id.value < tree_.expressions.size(), Error::kRange);
-      RequireTree(std::holds_alternative<TreeLiteral>(tree_.expressions[id.value].expression),
-                  Error::kUnsupportedSyntax);
+      const auto& expression = tree_.expressions[id.value].expression;
+      const auto* captured = std::get_if<SymbolExpr>(&expression);
+      RequireTree(std::holds_alternative<TreeLiteral>(expression) ||
+          (captured && captured->symbol.value < tree_.symbols.size() &&
+           tree_.symbols[captured->symbol.value].kind == BindingKind::kCapture), Error::kUnsupportedSyntax);
       SyntaxFrame initializer{id, tree_.parameter_scope, 0, false};
       Enter(initializer);
     }

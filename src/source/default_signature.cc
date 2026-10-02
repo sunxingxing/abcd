@@ -5,6 +5,7 @@
 #include <stdexcept>
 
 #include "tree_checks.h"
+#include "tree_flow.h"
 
 namespace abcd::source {
 namespace {
@@ -41,7 +42,7 @@ void Grow(std::vector<T>& items, std::size_t extra, TreeCheckBudget& budget) {
 }  // namespace
 
 std::variant<DefaultSignatureProof, DefaultSignatureError> BuildDefaultSignature(
-    const DefaultBody& body, FunctionTree& tree, analysis::SemanticBudget budget) {
+    const DefaultBody& body, FunctionTree& tree, analysis::SemanticBudget budget, const DefaultCaptureContext* capture) {
   try {
     const auto& graph = body.Graph();
     Require(tree.value_revision == graph.revision && tree.cfg_revision == graph.cfg_revision, Error::kRevision);
@@ -55,6 +56,22 @@ std::variant<DefaultSignatureProof, DefaultSignatureError> BuildDefaultSignature
     for (const auto& parameter : tree.parameters) {
       checked.Step(); Require(!parameter.initializer && !parameter.rest, Error::kParameter);
     }
+    std::optional<SymbolId> captured_symbol;
+    if (const auto* binding = body.Capture()) {
+      Require(capture && capture->evaluation.cells, Error::kContext);
+      const auto result = VerifyTreeFlow(graph, capture->control, capture->evaluation, tree, checked.Remaining());
+      const auto* flow = std::get_if<TreeFlow>(&result);
+      if (!flow) {
+        const auto error = std::get<TreeFlowError>(result);
+        if (error == TreeFlowError::kResourceLimit) throw Error::kResourceLimit;
+        if (error == TreeFlowError::kWorkLimit) throw Error::kWorkLimit;
+        throw Error::kContext;
+      }
+      checked.Admit(flow->allocated_bytes,1); checked.Step(flow->work);
+      const auto cell = FindCell(capture->evaluation.cells->cells, binding->storage);
+      Require(cell && cell->value < flow->cells.size() && flow->cells[cell->value], Error::kContext);
+      captured_symbol = flow->cells[cell->value];
+    }
     Grow(tree.expressions, body.Signature().Defaults().size(), checked);
     Grow(tree.signature, body.Signature().Operations().size(), checked);
     for (const auto& candidate : body.Signature().Defaults()) {
@@ -63,7 +80,10 @@ std::variant<DefaultSignatureProof, DefaultSignatureError> BuildDefaultSignature
               Error::kParameter);
       const auto origin = graph.ops[candidate.initializer.value].origin;
       const ExprId expression{static_cast<std::uint32_t>(tree.expressions.size())};
-      tree.expressions.push_back({Literal(candidate.fallback), {origin.value}});
+      if (body.Capture() && body.Capture()->candidate.shape.parameter == candidate.parameter) {
+        Require(captured_symbol.has_value(), Error::kContext);
+        tree.expressions.push_back({SymbolExpr{*captured_symbol}, {origin.value}});
+      } else tree.expressions.push_back({Literal(candidate.fallback), {origin.value}});
       tree.parameters[candidate.parameter].initializer = expression;
     }
     for (const auto placement : body.Signature().Operations()) {
@@ -73,7 +93,7 @@ std::variant<DefaultSignatureProof, DefaultSignatureError> BuildDefaultSignature
     }
     // Conservatively keep construction allocations charged during independent
     // validation. No default becomes publishable solely by this constructor.
-    const auto verified = VerifyDefaultSignature(body, tree, checked.Remaining());
+    const auto verified = VerifyDefaultSignature(body, tree, checked.Remaining(), capture);
     const auto* proof = std::get_if<DefaultSignatureProof>(&verified);
     if (!proof) return std::get<Error>(verified);
     checked.Admit(proof->allocated_bytes, 1); checked.Step(proof->work);

@@ -22,7 +22,7 @@ using namespace abcd;
 void Check(bool value, std::source_location at = std::source_location::current()) {
   if (!value) { std::cerr << "check failed at " << at.line() << '\n'; std::abort(); }
 }
-enum class FixtureCase { kValid, kBindingCollision, kExportCollision, kBranch, kArmStore, kFunction, kCapture, kPublishedCapture, kReentrantCapture, kPublishedCaptureV1, kPublishedBadSlot, kLocalFunction, kClassFunction, kClassCapture, kGlobal, kGlobalShadow, kGlobalLocalShadow, kAnonymous, kAnonymousFunction, kAnonymousSingleClass, kAnonymousClassRead, kClassCell, kClassNamedCell, kClassNamedShadow, kClassCellHole, kClassCellUninitialized, kUnknownName };
+enum class FixtureCase { kValid, kBindingCollision, kExportCollision, kBranch, kArmStore, kFunction, kCapture, kCapturedDefault, kPublishedCapture, kReentrantCapture, kPublishedCaptureV1, kPublishedBadSlot, kLocalFunction, kClassFunction, kClassCapture, kGlobal, kGlobalShadow, kGlobalLocalShadow, kAnonymous, kAnonymousFunction, kAnonymousSingleClass, kAnonymousClassRead, kClassCell, kClassNamedCell, kClassNamedShadow, kClassCellHole, kClassCellUninitialized, kUnknownName };
 std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool inspect_prefix = false) {
   constexpr std::uint32_t kTypes = 256, kPool = 272, kRecord = 512,
       kMethod = 600, kChild = 640, kConstructor = 680, kLiteral = 3000, kModule = 1024, kCode = 4096, kChildCode = 5000, kConstructorCode = 6000, kFileBytes = 8192;
@@ -31,10 +31,11 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
   const bool single_class = class_cell || mode == FixtureCase::kAnonymousSingleClass || mode == FixtureCase::kAnonymousClassRead;
   const bool global = mode == FixtureCase::kGlobal || mode == FixtureCase::kGlobalShadow || mode == FixtureCase::kGlobalLocalShadow;
   const bool anonymous = mode == FixtureCase::kAnonymous || mode == FixtureCase::kAnonymousFunction || single_class;
+  const bool captured_default = mode == FixtureCase::kCapturedDefault;
   const bool published_capture = mode == FixtureCase::kPublishedCapture || mode == FixtureCase::kReentrantCapture || mode == FixtureCase::kPublishedCaptureV1 || mode == FixtureCase::kPublishedBadSlot;
-  const bool family = published_capture || single_class || mode == FixtureCase::kFunction || mode == FixtureCase::kCapture || mode == FixtureCase::kLocalFunction || mode == FixtureCase::kClassFunction || mode == FixtureCase::kClassCapture || mode == FixtureCase::kAnonymousFunction;
+  const bool family = captured_default || published_capture || single_class || mode == FixtureCase::kFunction || mode == FixtureCase::kCapture || mode == FixtureCase::kLocalFunction || mode == FixtureCase::kClassFunction || mode == FixtureCase::kClassCapture || mode == FixtureCase::kAnonymousFunction;
   const bool mixed = single_class || mode == FixtureCase::kClassFunction || mode == FixtureCase::kClassCapture;
-  const bool captured = published_capture || mode == FixtureCase::kCapture || mode == FixtureCase::kClassCapture;
+  const bool captured = captured_default || published_capture || mode == FixtureCase::kCapture || mode == FixtureCase::kClassCapture;
   constexpr unsigned kByteBits = 8;
   std::array<std::string_view, 12> texts{"input", "value", "mutate", "ns", "answer",
       "answerAlias", "snapshot", "live", "*", "depNamespace", "default", "unused"};
@@ -167,7 +168,7 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
       if (mode == FixtureCase::kReentrantCapture) {
         load(false, 1, 3); op(abc::Opcode::kCALLARG0_IMM8); body.push_back(0);
       }
-      if (mode == FixtureCase::kCapture || published_capture) {
+      if (captured_default || mode == FixtureCase::kCapture || published_capture) {
         op(abc::Opcode::kLDAI_IMM32); body.insert(body.end(), {42, 0, 0, 0});
         op(abc::Opcode::kSTLEXVAR_IMM4_IMM4); body.push_back(0);
       }
@@ -181,12 +182,24 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
   std::vector<std::uint8_t> child_body;
   if (family) {
     body.swap(child_body);
-    if (captured) { op(abc::Opcode::kLDLEXVAR_IMM4_IMM4); body.push_back(0); }
+    if (captured_default) {
+      op(abc::Opcode::kLDA_V8); body.push_back(4);
+      op(abc::Opcode::kSTA_V8); body.push_back(0);
+      op(abc::Opcode::kLDUNDEFINED);
+      op(abc::Opcode::kSTRICTEQ_IMM8_V8); body.insert(body.end(), {0,0});
+      op(abc::Opcode::kJEQZ_IMM8); body.push_back(10);
+      op(abc::Opcode::kLDLEXVAR_IMM4_IMM4); body.push_back(0);
+      const auto guard = static_cast<std::uint16_t>(abc::Opcode::kTHROW_UNDEFINEDIFHOLEWITHNAME_PREF_ID16);
+      body.insert(body.end(), {static_cast<std::uint8_t>(guard), static_cast<std::uint8_t>(guard >> kByteBits),0,0});
+      op(abc::Opcode::kSTA_V8); body.push_back(4);
+      op(abc::Opcode::kLDA_V8); body.push_back(4);
+    } else if (captured) { op(abc::Opcode::kLDLEXVAR_IMM4_IMM4); body.push_back(0); }
     else if (mode == FixtureCase::kLocalFunction || mode == FixtureCase::kAnonymousFunction) load(true, 0, 2);
     else load(false, 0, 0);
     op(abc::Opcode::kRETURN);
     body.swap(child_body);
-    bytes[kChildCode - 3] = 3; bytes[kChildCode - 2] = static_cast<std::uint8_t>(child_body.size());
+    bytes[kChildCode - 4] = captured_default ? 1 : 0;
+    bytes[kChildCode - 3] = captured_default ? 4 : 3; bytes[kChildCode - 2] = static_cast<std::uint8_t>(child_body.size());
     std::copy(child_body.begin(), child_body.end(), bytes.begin() + kChildCode);
   }
   std::vector<std::uint8_t> constructor_body{static_cast<std::uint8_t>(abc::Opcode::kRETURNUNDEFINED)};
@@ -233,7 +246,7 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
     auto child = entry; child.offset = {kChild}; child.name = "reader"; child.name_utf16_length = child.name.size();
     constexpr unsigned kFunctionKindShift = 8; // Pinned dynamic method access flags.
     child.access_flags = static_cast<std::uint32_t>(abc::FunctionKind::kBaseConstructor) << kFunctionKindShift;
-    child.code = abc::CodeInfo{{kChildCode - 4}, {kChildCode}, 0, 3, static_cast<std::uint32_t>(child_body.size()), 0};
+    child.code = abc::CodeInfo{{kChildCode - 4}, {kChildCode}, captured_default ? 1U : 0U, captured_default ? 4U : 3U, static_cast<std::uint32_t>(child_body.size()), 0};
     index.methods.push_back(child);
   }
   if (mixed) {
@@ -326,6 +339,11 @@ int main(int argc, char** argv) {
       Recover(FixtureCase::kPublishedBadSlot,profile,true);
     }
     return 0;
+  }
+  if (mode == "--captured-default") {
+    for (const auto profile : {abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1301})
+      Recover(FixtureCase::kCapturedDefault,profile);
+    std::cout << Recover(FixtureCase::kCapturedDefault); return 0;
   }
   if (mode == "--published-capture") {
     Recover(FixtureCase::kReentrantCapture); Recover(FixtureCase::kPublishedCaptureV1);

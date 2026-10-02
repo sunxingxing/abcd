@@ -21,12 +21,14 @@ std::variant<FamilyCellCost, CaptureCellError> PlanFamilyCells(
     for (auto& member : family.members) { step(); member.function.ClearStorage(); }
     for (std::size_t i = family.members.size(); i-- > 0;) {
       step(); auto& member = family.members[i]; auto& function = member.function;
-      if (!demands[i].empty()) {
+      const auto* capture = function.Defaults() ? function.Defaults()->Capture() : nullptr;
+      const auto entries = capture ? std::span<const IncomingCell>(&capture->storage,1) : std::span<const IncomingCell>{};
+      if (!demands[i].empty() || !entries.empty()) {
         const auto base = function.Capture();
         require(base.Environments() != nullptr, Error::kCell);
         auto result = function.Phase() ?
             BuildDemandedPhasedCellPlan(function.Graph(), *base.Environments(), demands[i], left) :
-            BuildDemandedCellPlan(function.Graph(), *base.Environments(), demands[i], left);
+            BuildDemandedCellPlan(function.Graph(), *base.Environments(), demands[i], left, entries);
         if (const auto* error = std::get_if<CellError>(&result)) {
           if (*error == CellError::kResourceLimit) throw Error::kResourceLimit;
           if (*error == CellError::kWorkLimit) throw Error::kWorkLimit;

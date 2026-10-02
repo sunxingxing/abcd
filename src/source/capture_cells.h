@@ -7,6 +7,7 @@
 namespace abcd::source {
 struct FileFunction;
 class ModuleCapturePrefix;
+class DefaultBody;
 struct ParentCell {
   CellId cell;
   bool operator==(const ParentCell&) const = default;
@@ -33,6 +34,7 @@ struct CaptureFunction {
   const FunctionValues& values;
   const CaptureStorage* storage = nullptr;
   const ModuleCapturePrefix* module_prefix = nullptr;
+  const DefaultBody* defaults = nullptr;
 };
 class CaptureChild {
  public:
@@ -46,6 +48,7 @@ class CaptureChild {
   const analysis::ValueEnvironments* Environments() const;
   const CellPlan* Cells() const;
   bool MatchesInput() const;
+  const DefaultBody* Defaults() const;
  private:
   std::variant<CaptureFunction, const FilePhasedFunction*> function_;
   const CaptureStorage* storage_ = nullptr;
