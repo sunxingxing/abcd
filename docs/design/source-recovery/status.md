@@ -12,6 +12,22 @@
 
 ## 当前阶段
 
+### 2026-10-03：类结果到本地 cell 的初始化关联分析
+
+- 新 FindClassSelfStores 复用 ValueFlow、CellPlan 和 ClassInitializerCalls 的
+  独立检查，以操作 ID/cell 身份关联 class creation、本地唯一 store 和随后
+  的 initializer call。要求新分配的本地环境、同块原顺序；不读取类名或
+  假定 slot0，不接受调用方篡改的 initializer occurrence。
+- 这是候选存储关系，不是原生类内部名称绑定的证明。现有 ClassTree/捕获
+  模型没有独立的 class-self 源绑定；仍需验证后代捕获归属、名字遮蔽和静态
+  初始化期间的绑定身份。ProjectClassMembers 继续拒绝提前移动该写入。
+- 三 profile、非零槽位2、1/2/200/201规模、重复写入拒绝、陈旧 cell计划、
+  错误调用和精确work边界通过。实际 Voip入口识别 creation PC13 -> store
+  PC28 -> initializer PC51。相关3/3通过3.85秒，日志
+  /tmp/abcd-class-self-final-tests.log；构建日志同前缀。
+- 尚未接入原生类自绑定输出，未重跑五输入/full-suite/RSS；基线仍为
+  77 complete /5 incomplete /24 failure /46 no-module，Goal active。
+
 ### 2026-10-03：清理型模块入口接入读取与发布
 
 - FileFunction 增加 CleanupBody 所有权；FamilyReader 对普通同步模块的零参

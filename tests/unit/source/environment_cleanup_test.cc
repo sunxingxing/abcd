@@ -2,6 +2,7 @@
 #include "analysis/ssa_fixture.h"
 #include "../../../src/source/function_values.h"
 #include "../../../src/source/function_tree.h"
+#include "../../../src/source/class_self.h"
 #include "../../../src/source/instruction_sources.h"
 #include "../../../tools/tree_position_json.h"
 #include <nlohmann/json.hpp>
@@ -88,6 +89,14 @@ int main(int argc, char** argv) {
     auto values = BuildFunctionValues(std::get<FunctionInput>(input),projected,frame);
     test::Check(std::holds_alternative<FunctionValues>(values));
     std::cout << "normal-path input and values accepted; no source publication\n";
+    const auto& working = std::get<FunctionValues>(values);
+    test::Check(working.environments && working.cells);
+    const auto self = std::get<ClassSelfStores>(FindClassSelfStores(working.graph,*working.environments,*working.cells,working.initializers.calls));
+    test::Check(self.stores.size() == 1);
+    for (const auto& binding : self.stores)
+      std::cout << "class self: creation PC " << working.graph.origins[working.graph.ops[binding.creation.value].origin.value].pc.value
+          << " store PC " << working.graph.origins[working.graph.ops[binding.store.value].origin.value].pc.value
+          << " initializer PC " << working.graph.origins[working.graph.ops[binding.initializer.value].origin.value].pc.value << '\n';
     return 0;
   }
   test::Check(argc == 1);

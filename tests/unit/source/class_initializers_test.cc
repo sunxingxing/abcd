@@ -1,4 +1,5 @@
 #include "../../../src/source/class_initializers.h"
+#include "../../../src/source/class_self.h"
 #include "../../../src/source/class_definitions.h"
 #include "../../../src/source/evaluation_plan.h"
 #include "abcd/analysis/value_import.h"
@@ -92,16 +93,23 @@ void Accessors(abc::ProfileId profile, unsigned count, bool prototype, bool sett
   test::Check(std::get<ClassDefinitionError>(FindClassDefinitions(graph, {0})) == ClassDefinitionError::kResourceLimit);
   test::Check(std::get<ClassDefinitionError>(FindClassDefinitions(graph, {UINT32_MAX, 0})) == ClassDefinitionError::kWorkLimit);
 }
-enum class Case { kSingle, kRepeated, kEscape, kUsedResult, kWrongReceiver, kClassEscape, kBarrier, kPrototype, kLaterBlock };
+enum class Case { kSingle, kRepeated, kEscape, kUsedResult, kWrongReceiver, kClassEscape, kBarrier, kPrototype, kLaterBlock, kSelfStore, kSelfOverwrite };
 void Run(abc::ProfileId profile, unsigned count, Case kind) {
+  const bool self = kind == Case::kSelfStore || kind == Case::kSelfOverwrite;
+  constexpr std::uint8_t kSelfSlot = 2, kSlotShift = 4;
   std::vector<std::uint8_t> bytes;
   const auto op = [&](abc::Opcode code) { bytes.push_back(static_cast<std::uint8_t>(code)); };
   const auto word = [&](std::uint16_t n) { bytes.push_back(n); bytes.push_back(n >> 8); };
   op(abc::Opcode::kLDHOLE); op(abc::Opcode::kSTA_V8); bytes.push_back(0);
   for (unsigned i = 0; i < count; ++i) {
+    if (self) { op(abc::Opcode::kNEWLEXENV_IMM8); bytes.push_back(kSelfSlot+1); }
     op(abc::Opcode::kDEFINECLASSWITHBUFFER_IMM8_ID16_ID16_IMM16_V8);
     bytes.push_back(0); word(7); word(9); word(0); bytes.push_back(0);
     op(abc::Opcode::kSTA_V8); bytes.push_back(1);
+    if (self) {
+      op(abc::Opcode::kSTLEXVAR_IMM4_IMM4); bytes.push_back(kSelfSlot << kSlotShift);
+      if (kind == Case::kSelfOverwrite) { op(abc::Opcode::kSTLEXVAR_IMM4_IMM4); bytes.push_back(kSelfSlot << kSlotShift); }
+    }
     if (kind == Case::kClassEscape) { op(abc::Opcode::kSTMODULEVAR_IMM8); bytes.push_back(0); }
     if (kind == Case::kBarrier) op(abc::Opcode::kDEBUGGER);
     if (kind == Case::kPrototype) {
@@ -134,13 +142,35 @@ void Run(abc::ProfileId profile, unsigned count, Case kind) {
   test::Check(std::holds_alternative<ClassInitializerCalls>(found));
   const auto& calls = std::get<ClassInitializerCalls>(found);
   test::Check(calls.revision == graph.revision);
-  test::Check(calls.calls.size() == ((kind == Case::kSingle || kind == Case::kClassEscape || kind == Case::kBarrier || kind == Case::kPrototype || kind == Case::kLaterBlock) ? count : 0));
+  test::Check(calls.calls.size() == ((kind == Case::kSingle || kind == Case::kClassEscape || kind == Case::kBarrier || kind == Case::kPrototype || kind == Case::kLaterBlock || self) ? count : 0));
   for (const auto& call : calls.calls) {
     test::Check(call.creation < call.method && call.method < call.call);
     test::Check(graph.ops[call.creation.value].result == call.receiver);
     test::Check(std::holds_alternative<ValueClassCreation>(graph.ops[call.creation.value].operation));
   }
   if (calls.calls.empty()) return;
+  if (self) {
+    const auto environments = std::get<ValueEnvironments>(BuildValueEnvironments(graph));
+    const auto cells = std::get<CellPlan>(BuildCellPlan(graph,environments));
+    const auto result = std::get<ClassSelfStores>(FindClassSelfStores(graph,environments,cells,calls.calls));
+    test::Check(result.stores.size() == (kind == Case::kSelfStore ? count : 0));
+    for (const auto& binding : result.stores) {
+      test::Check(std::get<AllocatedCell>(cells.cells[binding.cell.value].storage).slot.value == kSelfSlot);
+      test::Check(binding.creation < binding.store && binding.store < binding.initializer);
+    }
+    if (!calls.calls.empty()) {
+      auto wrong = calls.calls; ++wrong.front().call.value;
+      test::Check(std::get<ClassSelfError>(FindClassSelfStores(graph,environments,cells,wrong)) == ClassSelfError::kInput);
+    }
+    SemanticBudget limited; limited.work = result.work;
+    test::Check(std::holds_alternative<ClassSelfStores>(FindClassSelfStores(graph,environments,cells,calls.calls,limited)));
+    --limited.work;
+    test::Check(std::get<ClassSelfError>(FindClassSelfStores(graph,environments,cells,calls.calls,limited)) == ClassSelfError::kWorkLimit);
+    auto stale = cells; ++stale.revision.value;
+    test::Check(std::holds_alternative<ClassSelfError>(FindClassSelfStores(graph,environments,stale,calls.calls)));
+    test::Check(std::holds_alternative<ClassInitializerError>(ProjectClassMembers(graph,calls.calls)));
+    return;
+  }
   const auto projected = ProjectClassMembers(graph, calls.calls);
   if (kind == Case::kClassEscape || kind == Case::kBarrier) {
     test::Check(std::get<ClassInitializerError>(projected) == ClassInitializerError::kFlow);
@@ -174,7 +204,7 @@ int main() {
       Accessors(profile, count, false, false); Accessors(profile, count, true, true);
       Accessors(profile, count, false, false, AccessorCase::kValid, true);
       Accessors(profile, count, true, true, AccessorCase::kValid, true);
-      Run(profile, count, Case::kSingle); Run(profile, count, Case::kPrototype); Run(profile,count,Case::kLaterBlock);
+      Run(profile, count, Case::kSingle); Run(profile, count, Case::kPrototype); Run(profile,count,Case::kLaterBlock); Run(profile,count,Case::kSelfStore); Run(profile,count,Case::kSelfOverwrite);
     }
     for (const auto kind : {AccessorCase::kWrongHome, AccessorCase::kEscape, AccessorCase::kNameFlag, AccessorCase::kClassEscape, AccessorCase::kPrototypeEscape, AccessorCase::kBarrier, AccessorCase::kUsedResult, AccessorCase::kLaterClassUse, AccessorCase::kLaterPrototypeUse, AccessorCase::kPair, AccessorCase::kEnvironment})
       Accessors(profile, 1, true, false, kind);
