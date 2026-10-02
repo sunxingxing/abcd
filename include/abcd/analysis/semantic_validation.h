@@ -86,6 +86,10 @@ struct LocalAccessPlan {
     InstructionId store;
   };
   std::vector<std::optional<UnexposedInitialization>> unexposed_initializations;
+  // Descriptive candidate only: the same straight-line grammar also permits
+  // ModuleStore. It does NOT certify publication, slot bounds, resource-only
+  // failure or a non-shared owner; capture admission must qualify all of these.
+  std::vector<std::optional<UnexposedInitialization>> module_prefix_initializations;
   std::vector<std::uint32_t> block_entries;
   // Sorted creation instructions lacking same-body CapturePreservation.
   // Includes callable/class/buffer captures; not merely the previous function.
@@ -99,6 +103,7 @@ struct LocalAccessPlan {
            allocations.capacity() * sizeof(std::optional<InstructionId>) +
            initializations.capacity() * sizeof(std::optional<LocalInitialization>) +
            unexposed_initializations.capacity() * sizeof(std::optional<UnexposedInitialization>) +
+           module_prefix_initializations.capacity() * sizeof(std::optional<UnexposedInitialization>) +
            block_entries.capacity() * sizeof(std::uint32_t) +
            capture_barriers.capacity() * sizeof(InstructionId);
   }

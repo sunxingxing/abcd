@@ -13,6 +13,25 @@
 ## 当前阶段
 
 
+### 2026-10-03：模块发布窗口的独立候选分析
+
+- LocalAccessPlan 新增 module_prefix_initializations，沿现有线性扫描记录
+  经过 ModuleStore 的 allocation/store 候选区间；与严格 unexposed 表分开。
+  调用、读取、分支、其他观察点和环境不匹配均终止候选，不从中途重启。
+  新表计入分配预算，不新增逐变量 CFG 遍历。
+- 候选不构成初始化许可：当前 CapturePlan/ScopeFacts 尚未消费它。
+  普通模块身份、有效导出槽、资源排除合同和非发送型创建仍必须随后结合
+  验证；不能仅凭候选表或 OrdinarySynchronous bool 放宽捕获。
+- 合成发布/重入 fixture 在三 profile 下核对候选及严格表的差异。
+  module_publication_window_test、capture_plan_test、record_import_tree_test、
+  lexical_value_flow_test 4/4 通过 8.17 秒；日志
+  /tmp/abcd-module-prefix-related-build-2.log / related-tests.log。
+  首次构建请求了不存在的 semantic_validation_test，已改用实际注册目标。
+- 实际 record_published_capture_test 仍 RED，注册行继续留在未提交工作树。
+  本提交没有恢复该 record，也没有重跑固定五输入；下一步需接入经过限定的
+  捕获证明并关闭 RED。阶段一 Goal 保持 active。
+
+
 ### 2026-10-03：模块发布证明的元数据前提
 
 - RecordModuleContext 保留经 ReadMergedRecordAttributes 校验的普通同步
