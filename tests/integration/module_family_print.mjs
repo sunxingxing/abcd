@@ -42,3 +42,12 @@ for (const mode of ['--generator', '--async']) {
     await assert.rejects(module.namespace.receiver.call({then(_, reject) { reject(error); }}), e => e === error);
   }
 }
+
+// A discarded module return still evaluates its assignment, even when the
+// compound expression's final value is undefined.
+const effectful = execFileSync(process.argv[2], ['--undefined-result'], {encoding:'utf8'});
+const compound = new vm.SourceTextModule(effectful + suffix);
+await compound.link(() => { throw Error('unexpected import'); });
+await compound.evaluate();
+assert.equal(compound.namespace.state,42);
+assert.equal(compound.namespace.reader(),42);

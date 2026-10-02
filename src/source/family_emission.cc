@@ -1,3 +1,4 @@
+#include "module_completion.h"
 #include "family_emission.h"
 
 #include <algorithm>
@@ -28,7 +29,11 @@ void CheckPositions(const PreparedFamily& family, const PrintedFamilyDraft& prin
     budget.Step();
     const auto& member = members[i]; const auto& tree = member.tree;
     const auto& positions = printed.members[i]; const auto owner = printed.functions[i];
-    Require(owner.begin < owner.end && owner.end <= printed.bytes && member.sources &&
+    const auto completion = positions.fragment == FunctionFragment::kModuleBody && i == family.Family().root.value
+        ? PureModuleCompletion(tree) : std::nullopt;
+    const auto* body = std::get_if<BlockStmt>(&tree.statements[tree.body.value].statement);
+    const bool empty_completion = completion && body && body->child_count == 1 && owner.begin == owner.end;
+    Require((owner.begin < owner.end || empty_completion) && owner.end <= printed.bytes && member.sources &&
         positions.identity == tree.identity && positions.method == tree.method &&
         positions.value_revision == tree.value_revision && positions.cfg_revision == tree.cfg_revision &&
         positions.bytes == owner.end - owner.begin &&
@@ -58,7 +63,11 @@ void CheckPositions(const PreparedFamily& family, const PrintedFamilyDraft& prin
           else if constexpr (std::is_same_v<T, StmtId>) range = positions.statements[target.value];
           else if constexpr (std::is_same_v<T, PropertyId>) range = positions.properties[target.value];
           else { static_assert(std::is_same_v<T, ParameterId>); range = positions.parameters[target.value]; }
-          Require(owner.begin <= range.begin && range.begin < range.end && range.end <= owner.end, Error::kPositions);
+          bool omitted = false;
+          if constexpr (std::is_same_v<T, ExprId>) omitted = completion && completion->value == target;
+          else if constexpr (std::is_same_v<T, StmtId>) omitted = completion && completion->statement == target;
+          if (omitted) Require(range.begin == owner.end && range.end == owner.end, Error::kPositions);
+          else Require(owner.begin <= range.begin && range.begin < range.end && range.end <= owner.end, Error::kPositions);
         }
       }, source.target);
     }

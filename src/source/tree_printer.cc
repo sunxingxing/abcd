@@ -1,3 +1,4 @@
+#include "module_completion.h"
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/module_enclosure.h"
 
@@ -954,6 +955,15 @@ class TreePrinter {
     const bool root = ModuleBody() && at.id == Tree().body;
     if (at.index == block.child_count) { if (!root) { Run(Indent{at.depth}); Append("}"); } return; }
     Push(BlockCursor{at.id, at.index + 1, at.depth});
+    if (root && at.index + 1 == block.child_count) {
+      if (const auto completion = PureModuleCompletion(Tree())) {
+        // An actual zero-width module-end event, not an invented expression
+        // range. Position consumers validate/serialize its omitted meaning.
+        Result().statements[completion->statement.value] = {written_, written_};
+        if (completion->value) Result().expressions[completion->value->value] = {written_, written_};
+        return;
+      }
+    }
     Push(std::string_view("\n"));
     const auto depth = root ? at.depth : at.depth + 1;
     Push(Statement{Tree().children[block.first_child + at.index], depth});

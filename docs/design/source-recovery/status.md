@@ -13,6 +13,28 @@
 ## 当前阶段
 
 
+### 2026-10-03：省略模块末尾无效果完成语句
+
+- 新模块空完成用例在旧 printer RED。共同 module-body printer 现在仅省略
+  最后 ReturnStmt 的缺省值或直接 UndefinedLiteral，消除 `((void 0));`。
+  普通函数/类方法返回不变，symbol、call、assignment、sequence 等仍求值；
+  独立模块执行验证 `(state = 42, undefined)` 的赋值没有被删掉。
+- 原 IR、树与 origin 保留，printer 为完成 stmt/可选 literal 记录真实
+  模块 body 末尾的零宽事件。family emission 只对该确定情形允许空范围；
+  空 module body 单独验证。位置 JSON 保留 node kind/ID，明确增加
+  `emission: module_completion`，不伪造表达式范围或 AnchorId。
+- boundary-tests.log 6/6 通过 4.24 秒；相关 31/31 通过 37.08 秒，
+  额外位置序列化 1/1 通过 1.01 秒。合并 final-selected.json 核对
+  24 targets / 32 test names 均有构建/通过证据。
+- 五输入 fresh build/stage-one/value-module-completion-pass-1 均退出 0，
+  保持 75 complete / 5 incomplete / 26 failure / 46 no-module，无完整项
+  退化或 legacy，原生 default records 保留。80 份完整/部分源码均可解析；
+  AST 对照证明变化仅为各移除一个末尾无效果 module completion，其他
+  AST 不变。此对照不是完整平台语义验收，构造与一般算术缺口仍在。
+  合同见 module-completion.md，日志前缀 /tmp/abcd-module-completion-*。
+  未运行 full-suite/RSS/扩展语料，Goal 保持 active。
+
+
 ### 2026-10-03：整数消费者中的 NaN payload 规范化
 
 - 原非规范 NaN 的 bitwise/NOT 用例改为要求源码贯通后 RED；旧源码树因

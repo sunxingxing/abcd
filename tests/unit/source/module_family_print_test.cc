@@ -49,6 +49,12 @@ int main(int argc, char** argv) {
   auto family = Fixture();
   const std::string_view mode = argc > 1 ? argv[1] : "";
   auto& receiver = family.members[1].tree;
+  if (mode == "--undefined-result") {
+    auto& root = family.members[2].tree;
+    root.expressions.push_back({TreeLiteral{UndefinedLiteral{}}, {0}});
+    root.expressions.push_back({SequenceExpr{{4},{5}}, {0}});
+    root.statements[4].statement = ReturnStmt{ExprId{6}};
+  }
   if (mode == "--generator" || mode == "--async") {
     receiver.callable = mode == "--generator" ? CallableKind::kGenerator : CallableKind::kAsyncFunction;
     receiver.expressions.push_back({mode == "--generator" ? TreeExpression{YieldExpr{{0}}} :
@@ -90,6 +96,22 @@ int main(int argc, char** argv) {
   Check(defaults.str().find("return state;") != std::string::npos);
   const auto range = std::get<PrintedFamilyDraft>(default_print).members[2].statements[5];
   Check(defaults.str().substr(range.begin, range.end - range.begin) == "export default 17;");
+  {
+    auto empty = Base(99);
+    empty.expressions = {{TreeLiteral{UndefinedLiteral{}}, {0}}};
+    ConstructedFamily completion; completion.root = {0};
+    completion.members = {{std::move(empty), {}, {}}};
+    std::ostringstream omitted;
+    const auto ended = PrintModuleFamilyDraft(completion, omitted);
+    Check(std::holds_alternative<PrintedFamilyDraft>(ended));
+    Check(omitted.str() == "\n");
+    const auto& ranges = std::get<PrintedFamilyDraft>(ended);
+    Check(ranges.members[0].statements[1] == GeneratedRange{0,0});
+    Check(ranges.members[0].expressions[0] == GeneratedRange{0,0});
+    std::ostringstream ordinary;
+    Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(completion.members[0].tree,ordinary)));
+    Check(ordinary.str().find("return") != std::string::npos);
+  }
   auto invalid = family;
   invalid.members[2].tree.expressions[0].expression = ThisExpr{{10}};
   std::ostringstream denied;
