@@ -396,6 +396,25 @@ class TreeBuilder {
       return left < right;
     });
   }
+  bool UniqueReservedName(NameId candidate) {
+    const auto& text = tree_.names[candidate.value];
+    const auto first = std::lower_bound(reserved_names_.begin(), reserved_names_.end(), text,
+        [&](NameId id, std::u16string_view name) { Step(std::min(tree_.names[id.value].size(), name.size()) + 1); return tree_.names[id.value] < name; });
+    if (first == reserved_names_.end() || *first != candidate) return false;
+    const auto next = first + 1;
+    Step(text.size());
+    return next == reserved_names_.end() || tree_.names[next->value] != text;
+  }
+  std::optional<NameId> LocalName(const AllocatedCell& cell) {
+    const auto key = std::pair{cell.allocation.value, cell.slot.value};
+    const auto found = std::lower_bound(syntax_.locals.begin(), syntax_.locals.end(), key,
+        [&](const LocalNameSyntax& name, auto target) {
+          Step(); return std::pair{name.allocation.value, name.slot.value} < target;
+        });
+    if (found == syntax_.locals.end() || found->allocation != cell.allocation || found->slot.value != cell.slot.value)
+      return {};
+    return UniqueReservedName(found->name) ? std::optional{found->name} : std::nullopt;
+  }
   bool ReservedName(std::u16string_view text) {
     const auto found = std::lower_bound(reserved_names_.begin(), reserved_names_.end(), text,
         [&](NameId id, std::u16string_view candidate) {
@@ -467,6 +486,16 @@ class TreeBuilder {
     return true;
   }
   void Bindings() {
+    for (std::size_t i = 0; i < syntax_.locals.size(); ++i) {
+      Step(); const auto& hint = syntax_.locals[i];
+      Require(hint.allocation.value < graph_.ops.size() && hint.name.value < constants_.name_count, Error::kName);
+      Step(tree_.names[hint.name.value].size());
+      const auto* allocation = std::get_if<analysis::ValueEnvironmentPush>(&graph_.ops[hint.allocation.value].operation);
+      Require(allocation && allocation->scope && hint.slot.value < allocation->slots &&
+          AllowsGlobalReference(tree_.names[hint.name.value], {}), Error::kName);
+      if (i) Require(std::pair{syntax_.locals[i - 1].allocation.value, syntax_.locals[i - 1].slot.value} <
+          std::pair{hint.allocation.value, hint.slot.value}, Error::kName);
+    }
     tree_.parameter_scope = kParameterScope;
     tree_.body_scope = kBodyScope;
     if (!syntax_.captures.empty()) tree_.capture_scope = kCaptureScope;
@@ -553,8 +582,9 @@ class TreeBuilder {
         }
         // Final scope is the actual allocation container, never a hoisted
         // function-wide approximation of a possibly per-iteration cell.
-        tree_.symbols.push_back({kBodyScope, SyntheticName(u"$local", i),
-            BindingKind::kLocal, DeclarationKind::kLet, NameEvidence::kSynthesized, {}});
+        const auto name = LocalName(std::get<AllocatedCell>(evaluation_.cells->cells.cells[cell->cell.value].storage));
+        tree_.symbols.push_back({kBodyScope, name ? *name : SyntheticName(u"$local", i),
+            BindingKind::kLocal, DeclarationKind::kLet, name ? NameEvidence::kMetadata : NameEvidence::kSynthesized, {}});
         continue;
       }
       TemporaryReason reason;

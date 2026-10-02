@@ -23,6 +23,11 @@ struct ModuleSyntax {
   NameEvidence evidence = NameEvidence::kSynthesized;
   bool local = false;
 };
+struct LocalNameSyntax {
+  analysis::OpId allocation;
+  analysis::LexicalSlot slot;
+  NameId name;
+};
 struct FunctionSyntax {
   RouteInputIdentity identity;
   abc::EntityOffset method;
@@ -41,6 +46,8 @@ struct FunctionSyntax {
   // Exact creation-proven runtime name. Tree construction may use it for a
   // named-function self binding only when its identifier/scope proof succeeds.
   std::optional<NameId> inferred_name;
+  // Sorted allocation/slot hints; names never establish storage or lifetime.
+  std::vector<LocalNameSyntax> locals;
 };
 }  // namespace abcd::source
 #endif

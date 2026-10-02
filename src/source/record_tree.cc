@@ -1,3 +1,4 @@
+#include "cell_names.h"
 #include "record_tree.h"
 
 #include <algorithm>
@@ -22,12 +23,12 @@
 #include "abcd/source/tree_printer.h"
 
 namespace abcd::source {
-RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Header& header,
+static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::RecordInfo& record,
     const RecordModuleContext& context, abc::MethodPosition entry,
     RouteInputIdentity identity, RecordProgramBudget budget, const abc::MethodLookup& lookup,
     const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites* functions,
-    const analysis::ClassMethodSites* classes) {
+    const analysis::ClassMethodSites* classes, bool metadata_names, bool& proposed_names) {
   using Error = RecordProgramError;
   const auto fail = [](Error kind) { return RecordProgramFailure{kind, {}}; };
   try {
@@ -142,6 +143,23 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     FunctionSyntax syntax{};
     syntax.identity = identity; syntax.method = index.methods[entry.value].offset; syntax.owner = {family ? 0U : 1U};
     syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+    if (metadata_names) {
+      auto named = ResolveCellNames(file, header, index, index.methods[entry.value].offset,
+          graph, constants->names, syntax.locals, {budget.bytes});
+      if (const auto* storage = std::get_if<CellNameStorage>(&named)) retain(storage->bytes);
+      else if (const auto* error = std::get_if<abc::MetadataError>(&named)) {
+        if (*error == abc::MetadataError::kFileChanged) return fail(Error::kFileChanged);
+        if (*error == abc::MetadataError::kResourceLimit) return fail(Error::kResourceLimit);
+        return fail(Error::kRead);
+      } else {
+        const auto constant_error = std::get<TreeConstantError>(named);
+        if (constant_error == TreeConstantError::kResourceLimit) return fail(Error::kResourceLimit);
+        if (constant_error == TreeConstantError::kWorkLimit)
+          return RouteRefusal{{RouteFailureClass::kWorkLimit, ValueRouteError::kContextStage, {}}};
+        return fail(Error::kValue);
+      }
+      proposed_names = !syntax.locals.empty();
+    }
     std::vector<std::u16string> names;
     std::vector<std::u16string> aliases;
     std::vector<std::size_t> alias_slots;
@@ -588,4 +606,30 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     catch (const std::bad_alloc&) { return fail(Error::kResourceLimit); }
     catch (const std::length_error&) { return fail(Error::kResourceLimit); }
 }
+RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::RecordInfo& record,
+    const RecordModuleContext& context, abc::MethodPosition entry,
+    RouteInputIdentity identity, RecordProgramBudget budget, const abc::MethodLookup& lookup,
+    const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites* functions,
+    const analysis::ClassMethodSites* classes) {
+  bool proposed = false;
+  auto result = BuildRecordTreeAttempt(file, header, index, record, context, entry, identity,
+      budget, lookup, roles, functions, classes, true, proposed);
+  if (!proposed || std::holds_alternative<PrintedSource>(result)) return result;
+  // Metadata is a naming hint, not authority to capture a descendant's global.
+  // A failed name-bearing tree is destroyed before this one bounded retry with
+  // generated names. Both attempts use identical semantic/publication gates.
+  bool retry = false;
+  if (const auto* failure = std::get_if<RecordProgramFailure>(&result))
+    retry = failure->kind == RecordProgramError::kValue || failure->kind == RecordProgramError::kClass ||
+        failure->kind == RecordProgramError::kFunction;
+  if (const auto* failure = std::get_if<RouteRefusal>(&result))
+    retry = failure->failure.failure_class == RouteFailureClass::kUnproved ||
+        failure->failure.failure_class == RouteFailureClass::kUnsupported;
+  if (!retry) return result;
+  bool unused = false;
+  return BuildRecordTreeAttempt(file, header, index, record, context, entry, identity,
+      budget, lookup, roles, functions, classes, false, unused);
+}
+
 }

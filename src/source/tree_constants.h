@@ -21,7 +21,7 @@ struct TreeConstants {
   }
 };
 enum class TreeConstantError : std::uint8_t {
-  kElementName, kResourceLimit, kWorkLimit, kObjectLiteral
+  kElementName, kResourceLimit, kWorkLimit, kObjectLiteral, kLexicalName
 };
 using TreeConstantResult = std::variant<TreeConstants, TreeConstantError, abc::MetadataError>;
 // Same-file metadata/graph precondition. Sort/deduplicate pool slots, then

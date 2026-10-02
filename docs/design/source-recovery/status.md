@@ -1,6 +1,6 @@
 # 项目进展与设计审查
 
-更新时间：2026-10-02。设计基线见 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md)。
+更新时间：2026-10-03。设计基线见 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md)。
 本页是当前状态入口；[progress.md](progress.md) 保留历史证据，不覆盖本页结论。
 
 ## 更新规则
@@ -11,6 +11,35 @@
 - 不按文件数、提交数或接口数量宣布完成；必须以原计划的端到端验收为准。
 
 ## 当前阶段
+
+
+### 2026-10-03：命名环境恢复 record 局部变量名
+
+- 真实 ABC 已有 DOMAIN 等命名环境信息，旧路径只校验而不用于源码符号。
+  新 decoded class-only named-cell 用例 RED（record_named_cell_test，1.95 秒），
+  实际仍输出 $local。共享 ResolveCellNames 按 literal 分组，验证 string/slot
+  对并生成 allocation/slot 名称提示；共同 FunctionTree 仍按 cell 身份绑定。
+  禁止名称、重复槽位不冒充语义，当前名称 arena 冲突保留生成名称。
+- record 首次用名称提示构造；若后续作用域/类验证拒绝，可销毁未发布候选
+  后用生成名称重试一次，语义和发布 gate 完全相同。资源、工作量、IO、
+  文件变化和输出限制不重试，没有 legacy 路由。跨类全局 capturedValue
+  读取的负例证明不会被同名局部捕获；原有 Hole/未初始化拒绝仍通过。
+- 三 profile 的真实解码例，以及 alias pool、歧义/非法名称、非法槽位、
+  work 限制和 1/2/200/201/402/804 规模验证通过。首次构建的缺失 include
+  和局部变量重名已修正；boundary-tests.log 5/5 通过 5.67 秒。
+- 22 targets 构建退出 0；related-tests.log 29/29 通过 40.47 秒，按
+  selected.json 名称核对。受影响记录追加 5/5 配对测试通过 8.23 秒；
+  EntryBackupAbility 方法 1,200 场景继续通过，并明确断言 DOMAIN 已恢复。
+- 五输入 fresh build/stage-one/value-cell-names-pass-1 均退出 0，保持
+  75 complete / 5 incomplete / 26 failure / 46 no-module，无完整项退化或
+  legacy。11 complete 和 1 incomplete 源码发生标识符改名；例如 DOMAIN、
+  KEY_TEXTAREA、DATA_KEY、profileId、uiContext。80 份完整/部分源码均经
+  Acorn 解析，非标识符 token 一致。检查脚本最初漏列既有 $binding 生成
+  名称，核对 SyntheticName 后补入；这只是 token 结构证据，不是语义证明。
+  作用域和配对行为验证另行成立；源码位置仍由共同 printer 生成。
+- 合同与复杂度见 cell-names.md。本节日志前缀 /tmp/abcd-cell-names-*。
+  未运行 full-suite/RSS/扩展语料；普通函数局部命名、const 表示、构造缺口、
+  一般算术及阶段一整体验收仍未完成，Goal 保持 active。
 
 
 ### 2026-10-02：只有类的 record 根词法环境贯通

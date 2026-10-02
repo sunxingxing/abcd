@@ -11,6 +11,8 @@ const [tool, root] = process.argv.slice(2);
 const receipt = JSON.parse(execFileSync(tool, [join(root,'modules.abc'),'6809','--record-source','--value-source'], {encoding:'utf8'}));
 assert.equal(receipt.source_complete,false); assert.equal(receipt.legacy_writer_used,false);
 assert.ok(receipt.source.includes('UNRECOVERED'));
+assert.ok(receipt.source.includes('let DOMAIN;'));
+assert.ok(receipt.source.includes('hilog.info(DOMAIN,'));
 const reference = stripTypeScriptTypes(readFileSync(join(root,'src/entry/src/main/ets/entrybackupability/EntryBackupAbility.ts'),'utf8'), {mode:'transform'});
 
 async function observe(source, method, inputCase, promiseMode, failAt, mutate) {

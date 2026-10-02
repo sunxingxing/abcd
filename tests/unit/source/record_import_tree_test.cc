@@ -21,11 +21,12 @@ using namespace abcd;
 void Check(bool value, std::source_location at = std::source_location::current()) {
   if (!value) { std::cerr << "check failed at " << at.line() << '\n'; std::abort(); }
 }
-enum class FixtureCase { kValid, kBindingCollision, kExportCollision, kBranch, kArmStore, kFunction, kCapture, kLocalFunction, kClassFunction, kClassCapture, kGlobal, kGlobalShadow, kGlobalLocalShadow, kAnonymous, kAnonymousFunction, kAnonymousSingleClass, kAnonymousClassRead, kClassCell, kClassCellHole, kClassCellUninitialized, kUnknownName };
+enum class FixtureCase { kValid, kBindingCollision, kExportCollision, kBranch, kArmStore, kFunction, kCapture, kLocalFunction, kClassFunction, kClassCapture, kGlobal, kGlobalShadow, kGlobalLocalShadow, kAnonymous, kAnonymousFunction, kAnonymousSingleClass, kAnonymousClassRead, kClassCell, kClassNamedCell, kClassNamedShadow, kClassCellHole, kClassCellUninitialized, kUnknownName };
 std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::kDynamic1206) {
   constexpr std::uint32_t kTypes = 256, kPool = 272, kRecord = 512,
       kMethod = 600, kChild = 640, kConstructor = 680, kLiteral = 3000, kModule = 1024, kCode = 4096, kChildCode = 5000, kConstructorCode = 6000, kFileBytes = 8192;
-  const bool class_cell = mode == FixtureCase::kClassCell || mode == FixtureCase::kClassCellHole || mode == FixtureCase::kClassCellUninitialized;
+  const bool named_cell = mode == FixtureCase::kClassNamedCell || mode == FixtureCase::kClassNamedShadow;
+  const bool class_cell = named_cell || mode == FixtureCase::kClassCell || mode == FixtureCase::kClassCellHole || mode == FixtureCase::kClassCellUninitialized;
   const bool single_class = class_cell || mode == FixtureCase::kAnonymousSingleClass || mode == FixtureCase::kAnonymousClassRead;
   const bool global = mode == FixtureCase::kGlobal || mode == FixtureCase::kGlobalShadow || mode == FixtureCase::kGlobalLocalShadow;
   const bool anonymous = mode == FixtureCase::kAnonymous || mode == FixtureCase::kAnonymousFunction || single_class;
@@ -71,6 +72,17 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
     word(kPool + 6 * sizeof(std::uint32_t), kLiteral);
     word(kLiteral, 2); bytes[kLiteral + 4] = static_cast<std::uint8_t>(abc::LiteralTag::kInteger);
     word(kLiteral + 5, 0); // Empty class buffer and prototype split.
+  }
+  if (named_cell) {
+    constexpr std::uint32_t kScopeLiteral = kLiteral + 64, kCellName = kLiteral + 128;
+    word(kPool + 7 * sizeof(std::uint32_t), kScopeLiteral);
+    text(kCellName, "capturedValue");
+    if (mode == FixtureCase::kClassNamedShadow) word(kPool + 8 * sizeof(std::uint32_t), kCellName);
+    // Pinned scope literal: leading count, followed by name/slot pairs.
+    word(kScopeLiteral, 6);
+    bytes[kScopeLiteral + 4] = static_cast<std::uint8_t>(abc::LiteralTag::kInteger); word(kScopeLiteral + 5, 1);
+    bytes[kScopeLiteral + 9] = static_cast<std::uint8_t>(abc::LiteralTag::kString); word(kScopeLiteral + 10, kCellName);
+    bytes[kScopeLiteral + 14] = static_cast<std::uint8_t>(abc::LiteralTag::kInteger); word(kScopeLiteral + 15, 0);
   }
   std::size_t cursor = kModule;
   const auto emit = [&](std::uint32_t value) { word(cursor, value); cursor += sizeof(value); };
@@ -124,7 +136,9 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
   }
   if (family) {
     if (class_cell) {
-      op(abc::Opcode::kNEWLEXENV_IMM8); body.push_back(1);
+      if (named_cell) {
+        op(abc::Opcode::kNEWLEXENVWITHNAME_IMM8_ID16); body.insert(body.end(), {1, 7, 0});
+      } else { op(abc::Opcode::kNEWLEXENV_IMM8); body.push_back(1); }
       if (mode != FixtureCase::kClassCellUninitialized) {
         load(false, 0, 0);
         op(abc::Opcode::kSTLEXVAR_IMM4_IMM4); body.push_back(0);
@@ -172,6 +186,8 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
     if (class_cell) {
       constructor_body = {static_cast<std::uint8_t>(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0,
           static_cast<std::uint8_t>(abc::Opcode::kRETURN)};
+      if (mode == FixtureCase::kClassNamedShadow)
+        constructor_body.insert(constructor_body.begin(), {static_cast<std::uint8_t>(abc::Opcode::kTRYLDGLOBALBYNAME_IMM8_ID16), 0, 8, 0});
       if (mode == FixtureCase::kClassCellHole)
         constructor_body = {static_cast<std::uint8_t>(abc::Opcode::kLDHOLE),
             static_cast<std::uint8_t>(abc::Opcode::kSTLEXVAR_IMM4_IMM4), 0,
@@ -197,7 +213,7 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
       profile == abc::ProfileId::kDynamic1301 ? abc::AbcVersion{13, 0, 1, 0} : abc::AbcVersion{12, 0, 6, 0};
   header.layout = abc::DynamicLayout{}; header.file_size = bytes.size();
   abc::MetadataIndex index;
-  index.regions.push_back({400, 1000, {1, kTypes}, {static_cast<std::uint32_t>(mixed ? 7 : guards.size() + family + global), kPool}, {}, {}});
+  index.regions.push_back({400, 1000, {1, kTypes}, {static_cast<std::uint32_t>(mode == FixtureCase::kClassNamedShadow ? 9 : named_cell ? 8 : mixed ? 7 : guards.size() + family + global), kPool}, {}, {}});
   abc::RecordInfo record; record.offset = {kRecord}; record.field_count = 1; record.method_count = mixed ? 3 : family ? 2 : 1;
   index.fields.push_back({{700}, record.offset, {abc::kDynamicHeaderSize}, {}, 0,
       abc::FieldValue{abc::FieldValueEncoding::kSignedLeb, kModule}});
@@ -264,6 +280,18 @@ int main(int argc, char** argv) {
   const std::string_view mode = argc > 1 ? argv[1] : "";
   const bool anonymous = mode.starts_with("--anonymous");
   if (mode == "--class-cell") { std::cout << Recover(FixtureCase::kClassCell); return 0; }
+  if (mode == "--class-shadow-cell") {
+    const auto source = Recover(FixtureCase::kClassNamedShadow);
+    Check(source.find("let capturedValue;") == std::string::npos);
+    std::cout << source; return 0;
+  }
+  if (mode == "--class-named-cell") {
+    const auto source = Recover(FixtureCase::kClassNamedCell);
+    std::cout << source << std::flush;
+    Check(source.find("let capturedValue;") != std::string::npos);
+    Check(source.find("return capturedValue;") != std::string::npos);
+    return 0;
+  }
   const auto profile = anonymous && argc > 2 && std::string_view(argv[2]) == "1202" ? abc::ProfileId::kDynamic1202 :
       anonymous && argc > 2 && std::string_view(argv[2]) == "1301" ? abc::ProfileId::kDynamic1301 : abc::ProfileId::kDynamic1206;
   const auto source = Recover(mode == "--anonymous-single-class" ? FixtureCase::kAnonymousSingleClass : mode == "--anonymous-class-read" ? FixtureCase::kAnonymousClassRead : mode == "--anonymous" ? FixtureCase::kAnonymous : mode == "--anonymous-function" ? FixtureCase::kAnonymousFunction : mode == "--global" ? FixtureCase::kGlobal : mode == "--class-capture" ? FixtureCase::kClassCapture : mode == "--class-function" ? FixtureCase::kClassFunction : mode == "--local-function" ? FixtureCase::kLocalFunction : mode == "--function" ? FixtureCase::kFunction : mode == "--capture" ?
@@ -277,6 +305,7 @@ int main(int argc, char** argv) {
     std::cout << source; return 0;
   }
   for (const auto candidate : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
+    Recover(FixtureCase::kClassNamedCell, candidate); Recover(FixtureCase::kClassNamedShadow, candidate);
     Recover(FixtureCase::kClassCell, candidate); Recover(FixtureCase::kClassCellHole, candidate); Recover(FixtureCase::kClassCellUninitialized, candidate);
   }
   Recover(FixtureCase::kUnknownName);

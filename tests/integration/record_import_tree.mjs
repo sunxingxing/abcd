@@ -21,7 +21,7 @@ mutate();
 answer = input;
 export {answer, answer as answerAlias, snapshot};
 `;
-async function setup(source, {cycle = false, defaultExport = true, initial = 42, external} = {}) {
+async function setup(source, {cycle = false, defaultExport = true, initial = 42, external, namedGlobal = false} = {}) {
   const trace = [];
   const context = vm.createContext({trace, externalCase: external});
   // Define the accessor inside the realm: contextified host accessors can
@@ -31,6 +31,9 @@ async function setup(source, {cycle = false, defaultExport = true, initial = 42,
     if (externalCase.failure) throw externalCase.failure;
     return externalCase.value;
   }})`, context);
+  if (namedGlobal) vm.runInContext(`Object.defineProperty(globalThis,'capturedValue',{get() {
+    trace.push('captured-global'); return 17;
+  }})`,context);
   const create = (body, identifier) => new vm.SourceTextModule(body, {context, identifier});
   const root = create(source, './root.mjs');
   const dependency = create(`
@@ -157,8 +160,8 @@ let captured = input;
 snapshot = class Box { constructor() { return captured; } };
 export {snapshot};
 `;
-async function observeClassCell(source, initial) {
-  const {root, dependency, trace} = await setup(source, {initial});
+async function observeClassCell(source, initial, namedGlobal = false) {
+  const {root, dependency, trace} = await setup(source, {initial, namedGlobal});
   await root.evaluate();
   const Box = root.namespace.snapshot, captured = root.namespace.default;
   const object = captured !== null && ['object','function'].includes(typeof captured);
@@ -183,3 +186,12 @@ async function observeClassCell(source, initial) {
 for (const initial of ['42','undefined','null','({marker:1})','(()=>7)','1n','Symbol("x")',
     '({valueOf(){trace.push("valueOf");return 7;}})'])
   assert.deepEqual(await observeClassCell(classCellSource,initial), await observeClassCell(classCellReference,initial));
+
+const namedClassCellSource = execFileSync(process.argv[2], ['--class-named-cell'], {encoding:'utf8'});
+const shadowClassCellSource = execFileSync(process.argv[2], ['--class-shadow-cell'], {encoding:'utf8'});
+const shadowClassReference = classCellReference.replace('constructor() { return captured; }',
+    'constructor() { capturedValue; return captured; }');
+for (const initial of ['42','({marker:1})','(()=>7)']) {
+  assert.deepEqual(await observeClassCell(namedClassCellSource,initial), await observeClassCell(classCellReference,initial));
+  assert.deepEqual(await observeClassCell(shadowClassCellSource,initial,true), await observeClassCell(shadowClassReference,initial,true));
+}
