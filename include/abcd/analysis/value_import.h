@@ -18,6 +18,8 @@ struct ValueImportFailure {
 // Budget covers additional owned graph + scratch; all input storage must be
 // admitted by the caller alongside this allowance. No strings/legacy AST.
 // Input identity/proof envelopes are mandatory at the source-route boundary.
+// Proven unreachable instructions retain their original sites as removed NOP
+// slots with no executable effects; the immutable input keeps their operations.
 [[nodiscard]] std::variant<ValueProgram, ValueImportFailure> ImportNormalValues(
     const abc::MethodBody& body, const SemanticMethod& method,
     const SemanticProof& proof, const abc::FrameLayout& frame,

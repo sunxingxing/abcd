@@ -1,5 +1,6 @@
-#include "../../../src/source/environment_cleanup.h"
+#include "../../../src/source/cleanup_body.h"
 #include "analysis/ssa_fixture.h"
+#include "../../../src/source/function_values.h"
 #include "abcd/abc/call_type.h"
 #include <algorithm>
 #include <limits>
@@ -72,6 +73,16 @@ int main(int argc, char** argv) {
                 << " allocation PC " << body.instructions[pop.allocation.value].offset.value << '\n';
     for (const auto& handler : cleanup.Handlers())
       std::cout << "handler " << handler.handler.value << " rethrow PC " << body.instructions[handler.rethrow.value].offset.value << '\n';
+    const auto projection = std::get<CleanupBody>(CleanupBody::Build(body,header.profile,frame));
+    const auto& projected = projection.Normal();
+    test::Check(projection.Original().handlers.size() == body.handlers.size());
+    for (const auto& pop : cleanup.Pops()) test::Check(projection.Kind(pop.instruction) == CleanupInstructionKind::kPop);
+    RouteInputIdentity identity; identity.profile = header.profile; identity.abc_version = header.version; identity.file_size = header.file_size;
+    auto input = FunctionInput::Build(identity,method->offset,method->owner_offset,projected,frame,InputCaptureMode::kConditional);
+    test::Check(std::holds_alternative<FunctionInput>(input));
+    auto values = BuildFunctionValues(std::get<FunctionInput>(input),projected,frame);
+    test::Check(std::holds_alternative<FunctionValues>(values));
+    std::cout << "normal-path input and values accepted; no source publication\n";
     return 0;
   }
   test::Check(argc == 1);
@@ -83,6 +94,18 @@ int main(int argc, char** argv) {
       const auto result = EnvironmentCleanup::Build(body,profile,frame);
       test::Check(std::holds_alternative<EnvironmentCleanup>(result));
       const auto& proof = std::get<EnvironmentCleanup>(result);
+      const auto projection = std::get<CleanupBody>(CleanupBody::Build(body,profile,frame));
+      test::Check(projection.Normal().tries.empty() && projection.Normal().handlers.empty());
+      test::Check(projection.Original().tries.size() == body.tries.size() && projection.Normal().instructions.size() == body.instructions.size());
+      for (std::size_t i = 0; i < body.instructions.size(); ++i) {
+        test::Check(projection.Normal().instructions[i].offset == body.instructions[i].offset &&
+            projection.Normal().instructions[i].branch_target == body.instructions[i].branch_target &&
+            projection.Normal().instructions[i].decoded.opcode == body.instructions[i].decoded.opcode &&
+            projection.Normal().instructions[i].decoded.size == body.instructions[i].decoded.size);
+      }
+      for (const auto& pop : proof.Pops()) test::Check(projection.Kind(pop.instruction) == CleanupInstructionKind::kPop);
+      for (const auto& handler : proof.Handlers()) test::Check(projection.Kind(handler.rethrow) == CleanupInstructionKind::kRethrow);
+
       test::Check(proof.Handlers().size() == count && proof.Pops().size() == count);
       for (unsigned i = 0; i < count; ++i) {
         test::Check(proof.Handlers()[i].pop_count == 1 && proof.Handlers()[i].first_pop == i);
@@ -98,6 +121,11 @@ int main(int argc, char** argv) {
     test::Check(nested.Handlers().size() == 1 && nested.Handlers()[0].pop_count == 2);
     test::Check(nested.Pops()[0].allocation.value > nested.Pops()[1].allocation.value);
     const auto bounded_body = Body(1);
+    const auto owned = std::get<CleanupBody>(CleanupBody::Build(bounded_body,profile,frame));
+    analysis::SemanticBudget projection_budget; projection_budget.work = owned.Work();
+    test::Check(std::holds_alternative<CleanupBody>(CleanupBody::Build(bounded_body,profile,frame,projection_budget)));
+    --projection_budget.work;
+    test::Check(std::holds_alternative<CleanupFailure>(CleanupBody::Build(bounded_body,profile,frame,projection_budget)));
     const auto measured = std::get<EnvironmentCleanup>(EnvironmentCleanup::Build(bounded_body,profile,frame));
     analysis::SemanticBudget exact; exact.work = measured.Work();
     test::Check(std::holds_alternative<EnvironmentCleanup>(EnvironmentCleanup::Build(bounded_body,profile,frame,exact)));

@@ -12,6 +12,31 @@
 
 ## 当前阶段
 
+### 2026-10-03：环境清理的原始/正常路径双份所有权与不可达槽
+
+- 新 CleanupBody 工厂保存原始 instructions/tries/handlers 和正常路径视图，
+  内部建立 EnvironmentCleanup 证明后才返回。正常视图只省略异常表，所有
+  decoded 指令、分支目标和 PC 保持；单独保存 pop/rethrow 来源标记，不能
+  在后续发布时把原来可执行的异常清理误称为全局不可达。
+- 实际 Voip 入口的探针暴露通用导入缺口：正常 FunctionInput 已通过，
+  BuildFunctionValues 却在环境分析拒绝 dead POP 的原效果。ImportNormalValues
+  现在仅对原可达性证明排除的站点生成 removed/NOP/无执行效果槽；原操作留在
+  不可变 SemanticMethod，PC/origin 保留。独立 VerifyImportedValues 分别检查
+  live 原操作及 dead 占位，伪造 live 删除、dead 复活或附加效果均拒绝。
+- 三 profile 的不可达 pop/throw、正常环境重建、投影 PC/opcode/branch
+  保留、双层清理、200/201 边界及精确 work 限额通过。实际 entry12208 现在
+  可由 CleanupBody.Normal 建立正常 FunctionInput 和 FunctionValues，测试
+  明确不发布源码。尚未接入 FileFunction/FamilyReader 及源位置序列化。
+- 11 targets 构建退出0，相关10/10通过7.19秒；日志
+  /tmp/abcd-cleanup-body-related-{build,tests}.log。最初 probe 的环境 kFlow
+  拒绝见 /tmp/abcd-cleanup-environment-gap.log，修复后真实入口测试通过。
+- 五输入 fresh build/stage-one/value-cleanup-body-pass-1 均退出0，仍77
+  complete /5 incomplete /24 failure /46 no-module，无完整项回退或legacy。
+  唯一既有完整源码变化为 BreakpointType19234 的末尾 return 移入等价 else；
+  现有配对 value_breakpoint_record_source_test 通过1.43秒。
+  日志 /tmp/abcd-cleanup-body-final-* / breakpoint-tests.log。未运行
+  full-suite/扩展语料/RSS；下一步接入清理来源与入口发布，Goal active。
+
 ### 2026-10-03：实现原始异常流上的环境清理证明
 
 - 新 EnvironmentCleanup 从原 MethodBody 构建 ExceptionFlow 和异常环境分析，

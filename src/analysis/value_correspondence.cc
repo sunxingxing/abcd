@@ -164,20 +164,23 @@ std::optional<ValueImportFailure> VerifyImportedValues(
           snapshot->window.Count() != frame.parameters)
         return fail(Error::kInputMismatch, input.pc);
     }
+    const bool reachable = proof.environments.before[i].has_value();
     if (graph.input.sites[i] != OpId{static_cast<std::uint32_t>(i)} ||
         op.origin.value != i || graph.origins[i].site.value != i ||
         graph.origins[i].pc != input.pc || graph.origins[i].original != input.origin ||
         graph.origins[i].disposition != OriginDisposition::kRetained ||
-        op.life != (proof.environments.before[i] ? ValueLife::kLive : ValueLife::kRemoved) || op.normal != input.effects.normal ||
-        op.before_throw != input.effects.before_throw ||
-        op.exceptional != input.effects.exceptional || op.first_use.value != use_index)
+        op.life != (reachable ? ValueLife::kLive : ValueLife::kRemoved) ||
+        op.normal != (reachable ? input.effects.normal : LanguageEffect::kNone) ||
+        op.before_throw != (reachable ? input.effects.before_throw : LanguageEffect::kNone) ||
+        op.exceptional != (reachable ? input.effects.exceptional : ExceptionalCompletion::kImpossible) || op.first_use.value != use_index)
       return fail(Error::kInputMismatch, input.pc);
     if (op.block.value >= graph.blocks.size()) return fail(Error::kInvalidGraph, input.pc);
     const auto& block = graph.blocks[op.block.value];
     if (op.order >= block.op_count || block.first_op.value + op.order != i)
       return fail(Error::kInvalidGraph, input.pc);
     try {
-      if (op.operation != ImportValueOperation(input.operation)) return fail(Error::kInputMismatch, input.pc);
+      if (reachable ? op.operation != ImportValueOperation(input.operation) :
+          !std::holds_alternative<ValueNop>(op.operation)) return fail(Error::kInputMismatch, input.pc);
     } catch (const ValueImportFailure& error) { return error; }
     if (op.life == ValueLife::kRemoved) {
       if (op.result || op.use_count != 0 || (read_index < reads.size() && reads[read_index].instruction.value == i))

@@ -334,11 +334,16 @@ std::variant<ValueProgram, ValueImportFailure> ImportNormalValues(
         const auto operands = Operands(instruction, quota);
         graph.origins.push_back({{index}, instruction.pc, {}});
         graph.input.sites[index] = OpId{index};
-        graph.ops.push_back({Operation(instruction.operation),
+        const bool reachable = proof.environments.before[index].has_value();
+        // Dead input storage carries provenance, not executable effects. Keep
+        // the original operation in the immutable semantic input; a work NOP
+        // permits environment analysis without calling an effectful pop pure.
+        graph.ops.push_back({reachable ? Operation(instruction.operation) : ValueOperation{ValueNop{}},
             {static_cast<std::uint32_t>(b)}, order, {}, 0, {},
-            instruction.effects.normal, instruction.effects.before_throw,
-            instruction.effects.exceptional, {index},
-            proof.environments.before[index] ? ValueLife::kLive : ValueLife::kRemoved});
+            reachable ? instruction.effects.normal : LanguageEffect::kNone,
+            reachable ? instruction.effects.before_throw : LanguageEffect::kNone,
+            reachable ? instruction.effects.exceptional : ExceptionalCompletion::kImpossible, {index},
+            reachable ? ValueLife::kLive : ValueLife::kRemoved});
         if (proof.environments.before[index] && instruction.effects.exceptional != ExceptionalCompletion::kImpossible)
           graph.exceptional_exits.push_back({{index}, {index}, instruction.effects.before_throw});
       }

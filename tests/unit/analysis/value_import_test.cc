@@ -1,5 +1,6 @@
 #include "abcd/analysis/value_import.h"
 #include "abcd/analysis/value_simplify.h"
+#include "abcd/analysis/value_environment.h"
 #include "../../../src/analysis/value_edits.h"
 #include "../../../src/analysis/value_heritage.h"
 
@@ -8,6 +9,35 @@
 int main() {
   using namespace abcd;
   using namespace abcd::analysis;
+  for (const auto profile : {abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301}) {
+    const auto op = [](abc::Opcode value) { return static_cast<std::uint8_t>(value); };
+    constexpr auto kThrow = static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
+    constexpr unsigned kByteBits = 8;
+    const auto body = test::Body({op(abc::Opcode::kNEWLEXENV_IMM8),1,op(abc::Opcode::kRETURNUNDEFINED),
+        op(abc::Opcode::kPOPLEXENV),static_cast<std::uint8_t>(kThrow),static_cast<std::uint8_t>(kThrow >> kByteBits)});
+    const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0,0,{false,false,false,false}));
+    const auto input = std::get<SemanticMethod>(BuildSemanticMethod(body,profile,0));
+    const auto proof = std::get<SemanticProof>(VerifySemanticSource(body,input,0,0));
+    const auto graph = std::get<ValueProgram>(ImportNormalValues(body,input,proof,frame));
+    test::Check(std::holds_alternative<PopEnvironment>(input.instructions[2].operation));
+    for (const auto index : {2U,3U}) {
+      test::Check(!proof.environments.before[index] && graph.ops[index].life == ValueLife::kRemoved &&
+          std::holds_alternative<ValueNop>(graph.ops[index].operation) &&
+          graph.origins[index].pc == body.instructions[index].offset &&
+          graph.origins[index].disposition == OriginDisposition::kRetained);
+    }
+    test::Check(!VerifyImportedValues(graph,input,proof,frame));
+    test::Check(std::holds_alternative<ValueEnvironments>(BuildValueEnvironments(graph)));
+    auto changed = graph; changed.ops[2].operation = ValueEnvironmentPop{};
+    test::Check(VerifyImportedValues(changed,input,proof,frame).has_value());
+    changed = graph; changed.ops[2].normal = LanguageEffect::kEnvironmentWrite;
+    test::Check(VerifyImportedValues(changed,input,proof,frame).has_value());
+    changed = graph; changed.ops[0].operation = ValueNop{};
+    test::Check(VerifyImportedValues(changed,input,proof,frame).has_value());
+    changed = graph; changed.ops[2].life = ValueLife::kLive;
+    test::Check(VerifyImportedValues(changed,input,proof,frame).has_value());
+  }
+
   {
     const auto body = test::Body({static_cast<std::uint8_t>(abc::Opcode::kLDHOLE),
         static_cast<std::uint8_t>(abc::Opcode::kSTA_V8), 1,
