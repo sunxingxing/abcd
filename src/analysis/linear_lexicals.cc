@@ -411,12 +411,9 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
             if (access.read_count != 1) return fail(Error::kInstruction);
             state(*access.write) = detail::ConvertedNumericValue(state(access.reads[0]));
             break;
-          case detail::ValueRuleKind::kNonNaNUnary:
+          case detail::ValueRuleKind::kNumericUpdate:
             if (access.read_count != 1) return fail(Error::kInstruction);
-            state(*access.write) =
-                state(access.reads[0]).IsNonNaNNumber()
-                    ? ValueKinds::NonNaNNumber()
-                    : ValueKinds::Unknown();
+            state(*access.write) = detail::UpdatedNumber(state(access.reads[0]));
             break;
           case detail::ValueRuleKind::kIntegralExponent:
             if (access.read_count != detail::kScalarInputs) return fail(Error::kInstruction);

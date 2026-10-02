@@ -84,3 +84,20 @@ phased flows, lattice joins, fractional/NaN refusal, signed-zero behavior and
 left-nested powers. Native JS comparisons are source-language evidence, not
 execution of the pinned Ark VM binary. Arithmetic-library approximation and
 platform equivalence remain part of eventual platform acceptance.
+
+## Numeric updates in composed expressions
+
+The shared `UpdatedNumber` rule for modern/deprecated INC and DEC preserves
+finite Number and proven integrality. Pinned integer paths guard overflow;
+binary64 addition/subtraction by one cannot overflow a finite input (near the
+maximum magnitude, one is smaller than half an ULP). Infinities remain non-NaN
+without becoming finite. The rule deliberately drops nonzero and tagged-minimum
+exclusion: updates can produce zero or tagged INT32_MIN. General Language/NaN
+input admission is unchanged.
+
+This lets decoded exponent expressions consume integer results of updates using
+the existing exclusive-scratch lowering and common precedence printer. Ordinary
+and phased tests cover the four update encodings, signed zeros, finite extremes,
+subnormal inputs, infinities and rejected NaNs; nested exponent fixtures cover
+modern update-produced exponents and 200/201/geometric boundaries. No source
+spelling, sample identity or special expression writer supplies the proof.

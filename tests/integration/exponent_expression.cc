@@ -13,8 +13,9 @@ using namespace abcd;
 using namespace abcd::source;
 using namespace abcd::analysis;
 constexpr unsigned kByteBits = 8;
+enum class ExponentInput { kLiteral, kIncrement, kDecrement };
 std::uint64_t Run(abc::ProfileId profile, abc::Opcode binary, std::int32_t seed, std::int32_t step,
-    unsigned count, bool print = false, bool admitted = true) {
+    unsigned count, bool print = false, bool admitted = true, ExponentInput exponent_input = ExponentInput::kLiteral) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   std::vector<std::uint8_t> bytes;
   const auto constant = [&](std::int32_t value) {
@@ -26,7 +27,12 @@ std::uint64_t Run(abc::ProfileId profile, abc::Opcode binary, std::int32_t seed,
   constant(seed);
   for (unsigned i = 0; i < count; ++i) {
     bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), 0});
-    if (step < 0) {
+    if (exponent_input != ExponentInput::kLiteral) {
+      test::Check(step > INT32_MIN && step < INT32_MAX);
+      const bool increment = exponent_input == ExponentInput::kIncrement;
+      constant(step + (increment ? -1 : 1));
+      bytes.insert(bytes.end(), {op(increment ? abc::Opcode::kINC_IMM8 : abc::Opcode::kDEC_IMM8), 0});
+    } else if (step < 0) {
       test::Check(step != INT32_MIN);
       constant(-step); bytes.insert(bytes.end(), {op(abc::Opcode::kNEG_IMM8), 0});
     } else constant(step);
@@ -60,23 +66,27 @@ std::uint64_t Run(abc::ProfileId profile, abc::Opcode binary, std::int32_t seed,
 }
 int main(int argc, char** argv) {
   if (argc == 2) {
-    test::Check(std::string_view(argv[1]) == "--source");
+    const auto option = std::string_view(argv[1]);
+    test::Check(option == "--source" || option == "--increment-source" || option == "--decrement-source");
+    const auto input = option == "--increment-source" ? ExponentInput::kIncrement :
+        option == "--decrement-source" ? ExponentInput::kDecrement : ExponentInput::kLiteral;
     std::cout << "export default [\n";
     for (const auto binary : {abc::Opcode::kEXP_IMM8_V8})
       for (const auto seed : {0, 7, -7, INT32_MIN, INT32_MAX}) for (const auto step : {0, 1, -1, 2, -2, 3}) {
         std::cout << "{seed:" << seed << ",step:" << step << ",fn:";
-        Run(abc::ProfileId::kDynamic1206, binary, seed, step, 2, true);
+        Run(abc::ProfileId::kDynamic1206, binary, seed, step, 2, true, true, input);
         std::cout << "},\n";
       }
     std::cout << "];\n"; return 0;
   }
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+    for (const auto input : {ExponentInput::kLiteral, ExponentInput::kIncrement, ExponentInput::kDecrement})
     for (const auto op : {abc::Opcode::kEXP_IMM8_V8}) {
       for (const auto seed : {0, 7, -7, INT32_MIN, INT32_MAX})
-        for (const auto step : {0, 1, -1, 2, -2, 3}) Run(profile, op, seed, step, 2);
+        for (const auto step : {0, 1, -1, 2, -2, 3}) Run(profile, op, seed, step, 2, false, true, input);
       std::uint64_t previous = 0;
       for (const auto count : {1U, 2U, 200U, 201U, 402U}) {
-        const auto work = Run(profile, op, 0, 1, count);
+        const auto work = Run(profile, op, 0, 1, count, false, true, input);
         if (count == 402) test::Check(work < 3 * previous);
         previous = work;
       }

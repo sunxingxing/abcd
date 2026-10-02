@@ -18,7 +18,7 @@ enum class ValueRuleKind {
   kEquality,
   kAdd,
   kSubtract,
-  kNonNaNUnary,
+  kNumericUpdate,
   kNegate,
   kLegacyNegate,
   kToNumeric,
@@ -66,6 +66,15 @@ constexpr ValueKinds NegatedNumber(ValueKinds input) {
 }
 constexpr ValueKinds LegacyNegatedNumber(ValueKinds input) {
   return input.ExcludesInt32MinTag() ? NegatedNumber(input) : ValueKinds::Unknown();
+}
+// Pinned modern/deprecated INC/DEC guard int32 overflow and otherwise add or
+// subtract one as binary64. Finite inputs stay finite: near the largest finite
+// magnitude, one is below half an ULP. Integer inputs remain integral, but zero
+// and tagged INT32_MIN can be produced, so neither exclusion is inherited.
+constexpr ValueKinds UpdatedNumber(ValueKinds input) {
+  if (!input.IsNonNaNNumber()) return ValueKinds::Unknown();
+  const auto result = input.IsFiniteNumber() ? ValueKinds::FiniteNumber() : ValueKinds::NonNaNNumber();
+  return input.IsIntegralNumber() ? result.WithIntegralNumber() : result;
 }
 // IEEE Number multiplication cannot create NaN without a NaN input or a
 // zero/infinity pair. Overflow and underflow may lose finite/nonzero facts.

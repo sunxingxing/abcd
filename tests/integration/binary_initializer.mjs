@@ -40,13 +40,19 @@ const samples = runInNewContext(exponentSource.replace('export default', ''));
 const view = new DataView(new ArrayBuffer(8));
 const number = hex => { view.setBigUint64(0, BigInt(`0x${hex}`)); return view.getFloat64(0); };
 for (const sample of samples) {
-  assert.ok(Object.is(sample.fn(), number(sample.left) ** number(sample.right)), `${sample.left} ** ${sample.right}`);
+  let expected = number(sample.left);
+  if (sample.update === 1) ++expected;
+  else if (sample.update === -1) --expected;
+  else expected = expected ** number(sample.right);
+  assert.ok(Object.is(sample.fn(), expected), `${sample.left}, exponent/update ${sample.right ?? sample.update}`);
   ++scenarios;
 }
-const nestedSource = execFileSync(process.argv[4], ['--source'], {encoding: 'utf8'});
-for (const sample of runInNewContext(nestedSource.replace('export default', ''))) {
-  let expected = sample.seed;
-  for (let i = 0; i < 2; ++i) expected = expected ** sample.step;
-  assert.ok(Object.is(sample.fn(), expected)); ++scenarios;
+for (const option of ['--source', '--increment-source', '--decrement-source']) {
+  const nestedSource = execFileSync(process.argv[4], [option], {encoding: 'utf8'});
+  for (const sample of runInNewContext(nestedSource.replace('export default', ''))) {
+    let expected = sample.seed;
+    for (let i = 0; i < 2; ++i) expected = expected ** sample.step;
+    assert.ok(Object.is(sample.fn(), expected)); ++scenarios;
+  }
 }
 console.log(`Decoded binary/comparison expressions: ${scenarios} native scenarios passed`);

@@ -148,5 +148,31 @@ int main(int argc, char**) {
         << "',fn:" << source << "},\n";
     }
   }
+  for (const auto unary : {abc::Opcode::kINC_IMM8, abc::Opcode::kDEC_IMM8,
+      abc::Opcode::kDEPRECATED_INC_PREF_V8, abc::Opcode::kDEPRECATED_DEC_PREF_V8})
+    for (const auto seed : bases) {
+      const auto number = std::bit_cast<double>(seed);
+      std::vector<std::uint8_t> code; Float(code, seed);
+      const auto encoded = static_cast<std::uint16_t>(unary);
+      constexpr unsigned kByteBits = 8;
+      if (encoded > UINT8_MAX) {
+        code.insert(code.end(), {static_cast<std::uint8_t>(abc::Opcode::kSTA_V8), 0,
+            static_cast<std::uint8_t>(abc::Opcode::kLDAI_IMM32), 9, 0, 0, 0,
+            static_cast<std::uint8_t>(encoded), static_cast<std::uint8_t>(encoded >> kByteBits), 0});
+      } else code.insert(code.end(), {static_cast<std::uint8_t>(encoded), 0});
+      code.push_back(static_cast<std::uint8_t>(abc::Opcode::kRETURN));
+      const auto body = test::Body(code);
+      auto expected = std::isnan(number) ? ValueKinds::Unknown() : std::isfinite(number)
+          ? ValueKinds::FiniteNumber() : ValueKinds::NonNaNNumber();
+      if (std::isfinite(number) && std::trunc(number) == number) expected = expected.WithIntegralNumber();
+      test::Check(NormalResult(body) == expected);
+      Phased(body, !std::isnan(number));
+      if (!std::isnan(number)) {
+        const auto source = Source(body);
+        const bool increment = unary == abc::Opcode::kINC_IMM8 || unary == abc::Opcode::kDEPRECATED_INC_PREF_V8;
+        if (argc > 1) std::cout << "{left:'" << std::hex << seed << std::dec << "',update:"
+          << (increment ? 1 : -1) << ",fn:" << source << "},\n";
+      }
+    }
   if (argc > 1) std::cout << "];\n";
 }

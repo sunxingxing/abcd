@@ -77,20 +77,18 @@ void PropagateValues(std::span<const ValueNode> nodes,
           nodes[target].kind == Kind::kEquality ||
           nodes[target].kind == Kind::kAdd ||
           nodes[target].kind == Kind::kSubtract ||
-          nodes[target].kind == Kind::kNonNaNUnary ||
+          nodes[target].kind == Kind::kNumericUpdate ||
           nodes[target].kind == Kind::kNegate || nodes[target].kind == Kind::kLegacyNegate ||
           nodes[target].kind == Kind::kToNumeric || nodes[target].kind == Kind::kToNumber ||
           nodes[target].kind == Kind::kNonNaNMultiply ||
           nodes[target].kind == Kind::kNonNaNDivide || nodes[target].kind == Kind::kIntegralExponent) {
         bool ready = true, language = true, equality_inputs = true;
-        bool non_nan_number = true;
         for (std::size_t i = 0; i < nodes[target].input_count; ++i) {
           const auto input = facts[nodes[target].inputs[i].value];
           ready &= !input.IsEmpty();
           language &= input.IsLanguage();
           equality_inputs &= !input.Contains(VmValueKind::kEnvironment) &&
                              !input.Contains(VmValueKind::kOtherInternal);
-          non_nan_number &= input.IsNonNaNNumber();
         }
         if (!ready) {
           propagated = {};
@@ -111,9 +109,9 @@ void PropagateValues(std::span<const ValueNode> nodes,
           propagated = nodes[target].input_count == 1 ? ConvertedNumericValue(facts[nodes[target].inputs[0].value]) : ValueKinds::Unknown();
         } else if (nodes[target].kind == Kind::kToNumeric) {
           propagated = nodes[target].input_count == 1 ? ConvertedNumericValue(facts[nodes[target].inputs[0].value]) : ValueKinds::Unknown();
-        } else if (nodes[target].kind == Kind::kNonNaNUnary) {
-          propagated = non_nan_number ? ValueKinds::NonNaNNumber()
-                                      : ValueKinds::Unknown();
+        } else if (nodes[target].kind == Kind::kNumericUpdate) {
+          propagated = nodes[target].input_count == 1
+              ? UpdatedNumber(facts[nodes[target].inputs[0].value]) : ValueKinds::Unknown();
         } else if (nodes[target].kind == Kind::kNonNaNMultiply) {
           propagated = nodes[target].input_count == kScalarInputs
               ? MultiplyNumbers(facts[nodes[target].inputs[0].value],

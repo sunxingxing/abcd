@@ -13,6 +13,29 @@
 ## 当前阶段
 
 
+### 2026-10-02：更新表达式保留有限整数事实
+
+- 真实 decoded 组合用例复现 INC/DEC 产生的指数在 FunctionInput 被拒绝，
+  red-tests.log 记录失败。原因是旧 kNonNaNUnary 只保留粗粒度 non-NaN。
+  新 kNumericUpdate / UpdatedNumber 由普通/phased SSA 与 linear lexical
+  共用；有限输入更新一后仍有限，已证明整数仍为整数，无样本分支。
+- 对照 pinned interpreter-inl.cpp 的四种现代/deprecated 更新编码：
+  整数路径保护溢出，double 路径加减一。规则不继承 nonzero 或 tagged
+  INT32_MIN 排除，避免错误地授权后续 SUB2/legacy NEG；NaN 与一般
+  Language 准入仍未放宽。更新仍复用既有独占 scratch 和共同 printer。
+- 新边界用例覆盖 signed zero、subnormal、最大有限 double、无穷、
+  拒绝 NaN，四编码均经过普通/phased 树与独立验证。幂表达式分别从
+  literal/NEG/INC/DEC 构造指数，三 profile、1/2/200/201/402 长度均验证。
+  boundary-tests.log 3/3 通过 5.83 秒；原生行为矩阵扩至 335 场景通过。
+- 24 targets 构建退出 0；选定 31/31 CTest 通过 66.86 秒，按
+  selected.json 名称核对一致。五输入 fresh
+  build/stage-one/value-update-facts-pass-1 均退出 0，保持
+  75 complete / 4 incomplete / 27 failure / 46 no-module；无完整记录回退、
+  完整源码字节变化或 legacy，原生 default records 保留。
+  本节日志前缀 /tmp/abcd-update-facts-*；未运行 full-suite/RSS/扩展语料。
+  编码矩阵不等于一般输入语义或阶段一完整验收，Goal 保持 active。
+
+
 ### 2026-10-02：整数指数与完整二元／比较编码矩阵
 
 - 新 decoded binary_initializer 矩阵按 PinnedIsaCatalog 核对全部 22 个
