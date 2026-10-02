@@ -753,6 +753,9 @@ class ForestBuilder {
       return Add(UnaryExpr{kind, operand}, origin);
     };
     switch (operation) {
+      case U::kLegacyNegate:
+        Require(LegacyNegationEvaluation(graph_, original), Error::kUnsupportedOperation);
+        return unary(TreeUnary::kNegate, input);
       case U::kNegate: return unary(TreeUnary::kNegate, input);
       case U::kBitNot: return unary(TreeUnary::kBitNot, input);
       case U::kLogicalNot: return unary(TreeUnary::kNot, input);

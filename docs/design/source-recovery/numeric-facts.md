@@ -38,3 +38,15 @@ finite extremes, infinities, NaN rejection, normal/phased results, identity
 conversion and update-created tagged minima. Independent native JS compares
 actual generated results with Object.is. These component checks do not replace
 full record, platform or source-style acceptance.
+
+## Modern and deprecated negation
+
+The semantic model retains `kLegacyNegate` separately from `kNegate`. Pinned
+modern NEG explicitly promotes tagged INT32_MIN to a double result; deprecated
+NEG lacks that guard. Legacy lowering therefore requires non-NaN Number input
+and ExcludesInt32MinTag. Both proved forms preserve finite/nonzero facts and
+produce a representation excluding tagged INT32_MIN. The common forest and
+independent operand verifier recheck the legacy premise, including literal
+operands exposed by copy propagation. The old standalone scalar formatter has
+no such witness and refuses the legacy operation. This is conditional native
+lowering, not blanket admission of every input or an alias of opcode identity.

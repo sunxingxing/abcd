@@ -28,7 +28,7 @@ const references = [
   () => typeof 9, () => typeof 9, () => +9, () => 9, () => -9, () => ~9,
   () => { let value = 9; return ++value; }, () => { let value = 9; return --value; },
   () => !!9, () => !9, () => +7, () => 7, () => ~7,
-  () => { let value = 7; return ++value; }, () => { let value = 7; return --value; }
+  () => { let value = 7; return ++value; }, () => { let value = 7; return --value; }, () => -7
 ];
 assert.ok(process.argv[3]);
 for (const [index, reference] of references.entries()) {
@@ -43,4 +43,4 @@ for (const [index, reference] of references.entries()) {
     assert.ok(descriptor.writable && descriptor.enumerable && descriptor.configurable);
   }
 }
-console.log('Fifteen normal unary encodings passed independent acc/register operand and result checks');
+console.log('Sixteen normal unary encodings passed independent acc/register operand and result checks');

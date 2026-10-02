@@ -19,6 +19,7 @@ bool BooleanResult(const analysis::ScalarExpression& expression) {
       case UnaryOperator::kFalseOrZero:
       case UnaryOperator::kTrueOrNonzeroNumber:
         return true;
+      case UnaryOperator::kLegacyNegate:
       case UnaryOperator::kNegate:
       case UnaryOperator::kBitNot:
       case UnaryOperator::kTypeOf:

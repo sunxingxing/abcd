@@ -251,7 +251,7 @@ bool LiteralUnary(const analysis::ValueOperation& operation) {
   switch (unary->op) {
     // These shared AST lowerings evaluate their input exactly once. Domain,
     // coercion/throw order and catch snapshots remain independently checked.
-    case U::kNegate: case U::kBitNot: case U::kLogicalNot: case U::kTypeOf:
+    case U::kLegacyNegate: case U::kNegate: case U::kBitNot: case U::kLogicalNot: case U::kTypeOf:
     case U::kToNumber: case U::kToBoolean:
     // Updates use the common exclusive scratch binding and evaluate input
     // once. ToNumeric still requires the common numeric-domain lowering;

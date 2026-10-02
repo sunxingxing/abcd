@@ -78,6 +78,7 @@ void PropagateValues(std::span<const ValueNode> nodes,
           nodes[target].kind == Kind::kAdd ||
           nodes[target].kind == Kind::kSubtract ||
           nodes[target].kind == Kind::kNonNaNUnary ||
+          nodes[target].kind == Kind::kNegate || nodes[target].kind == Kind::kLegacyNegate ||
           nodes[target].kind == Kind::kNumericIdentity ||
           nodes[target].kind == Kind::kNonNaNMultiply ||
           nodes[target].kind == Kind::kNonNaNDivide) {
@@ -102,6 +103,10 @@ void PropagateValues(std::span<const ValueNode> nodes,
               ? (nodes[target].kind == Kind::kAdd ? AddValues : SubtractNumbers)(
                     facts[nodes[target].inputs[0].value], facts[nodes[target].inputs[1].value])
               : ValueKinds::Unknown();
+        } else if (nodes[target].kind == Kind::kNegate || nodes[target].kind == Kind::kLegacyNegate) {
+          propagated = nodes[target].input_count == 1 ?
+              (nodes[target].kind == Kind::kNegate ? NegatedNumber : LegacyNegatedNumber)(
+                  facts[nodes[target].inputs[0].value]) : ValueKinds::Unknown();
         } else if (nodes[target].kind == Kind::kNumericIdentity) {
           propagated = nodes[target].input_count == 1 && non_nan_number
               ? facts[nodes[target].inputs[0].value] : ValueKinds::Unknown();

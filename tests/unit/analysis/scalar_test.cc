@@ -118,6 +118,7 @@ int main() {
       {{0xfc, 9, 7}, UnaryOperator::kIncrement, true},
       {{0xfc, 10, 7}, UnaryOperator::kDecrement, true},
       {{0x1f, 99}, UnaryOperator::kNegate, false},
+      {{0xfc, 7, 7}, UnaryOperator::kLegacyNegate, true},
       {{0x20, 99}, UnaryOperator::kBitNot, false},
       {{0xfc, 8, 7}, UnaryOperator::kBitNot, true},
       {{0x23}, UnaryOperator::kToBoolean, false},
@@ -191,9 +192,8 @@ int main() {
         ScalarError::kUnsupportedOpcode);  // VM hole is not JS undefined.
   Check(std::get<ScalarError>(LiftScalarInstruction(Decode({0x0b, 0, 3}), 3)) ==
         ScalarError::kRegisterRange);
-  Check(std::get<ScalarError>(LiftScalarInstruction(Decode({0xfc, 7, 0}), 1)) ==
-        ScalarError::kUnsupportedOpcode);  // Legacy INT_MIN path needs a
-                                           // runtime profile.
+  // Lifting preserves legacy identity; source admission still needs numeric/tag proof.
+  Check(std::holds_alternative<ScalarAssignment>(LiftScalarInstruction(Decode({0xfc, 7, 0}), 1)));
   auto malformed = Decode({0x0a, 0, 0});
   const auto membership = Decode({0x25, 0xff, 0xff});
   Check(membership.opcode == abcd::abc::Opcode::kISIN_IMM8_V8);

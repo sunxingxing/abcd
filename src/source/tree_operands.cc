@@ -698,6 +698,9 @@ class OperandCheck {
   void Unary(analysis::UnaryOperator operation, const analysis::ValueOperand& operand, ExprId expression) {
     using U = analysis::UnaryOperator;
     switch (operation) {
+      case U::kLegacyNegate:
+        RequireMeaning(LegacyNegationEvaluation(graph_, operand), Error::kOperator);
+        Input(operand, UnaryInput(expression, TreeUnary::kNegate)); return;
       case U::kNegate: Input(operand, UnaryInput(expression, TreeUnary::kNegate)); return;
       case U::kBitNot: Input(operand, UnaryInput(expression, TreeUnary::kBitNot)); return;
       case U::kLogicalNot: Input(operand, UnaryInput(expression, TreeUnary::kNot)); return;

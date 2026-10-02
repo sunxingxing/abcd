@@ -13,6 +13,35 @@
 ## 当前阶段
 
 
+### 2026-10-02：deprecated 求负的独立语义与证明
+
+- 将 DEPRECATED_NEG 保留为 UnaryOperator::kLegacyNegate，不与现代 NEG
+  混同。共享 NegatedNumber/LegacyNegatedNumber 规则保留有限/非零事实，
+  输出排除 tagged INT32_MIN；legacy 额外要求输入已有该排除。现代 NEG
+  的整数最小值 double 路径与 legacy 的缺失路径分别对照 pinned 源码。
+  共同表达式构造和独立操作数验证都检查 legacy 前提后下降为原生求负。
+  缺少证明的旧轻量 scalar writer 仍拒绝，而非另开无证明输出路径。
+- 新真实 decoded 夹具在旧 FunctionInput 阶段 RED，red-tests.log 1/1
+  失败 1.06 秒；首次构建的 IntegerLiteral 名称歧义已修正，构建日志保留。
+  三 profile 覆盖 int/double、signed zero、infinity、连续 1/2/200/201/402
+  次求负；tagged 最小整数和危险 NaN 拒绝。普通/phased 完整树与独立语义
+  验证通过，phased-tests.log 2/2 通过 2.22 秒。
+- 移除输入排除证明后，构造及独立 TreeSemantics 都拒绝，witness-tests.log
+  2/2 通过 2.09 秒；该项是显式数值前提的隔离 verifier 边界测试。8 个原生
+  求负结果对照通过。统一 unary_initializer 矩阵按 PinnedIsaCatalog 检查
+  全部 16 种一元编码均列入，并保持 acc/register 种子区分及三 profile 验证。
+- 更新仍把 legacy neg/instanceof 当 unsupported 的标量/寄存器效果测试，
+  class heritage 保留 caller-private 寄存器事实；unsupported 失效用例使用
+  真正未支持的 runtime 指令。integration-tests.log 定向 7/7 通过 7.02 秒。
+- 113 个相关 targets 构建退出 0，219/219 回归通过 535.34 秒，
+  related-build.log / related-tests.log，与 /tmp/abcd-legacy-negate-selected.json
+  按名称核对一致；未宣称任意输入值域均支持。
+  五输入 fresh build/stage-one/value-legacy-negate-pass-1 均退出 0，仍为
+  75 complete / 4 incomplete / 27 failure / 46 no-module，无回退、完整源码
+  字节变化或 legacy，原生 default records 保留，final-batch-summary.json。
+  本节日志前缀 /tmp/abcd-legacy-negate-*；完整 ISA 与阶段一 Goal 保持 active。
+
+
 ### 2026-10-02：共享加减数值证明
 
 - additive_expression_test 从真实 ADD2/SUB2 解码进入 FunctionInput、

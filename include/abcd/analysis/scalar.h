@@ -53,7 +53,8 @@ enum class UnaryOperator {
   kIncrement,
   kDecrement,
   kFalseOrZero,
-  kTrueOrNonzeroNumber
+  kTrueOrNonzeroNumber,
+  kLegacyNegate
 };
 struct UnaryExpression {
   UnaryOperator op;

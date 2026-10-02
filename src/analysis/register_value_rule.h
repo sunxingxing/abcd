@@ -19,6 +19,8 @@ enum class ValueRuleKind {
   kAdd,
   kSubtract,
   kNonNaNUnary,
+  kNegate,
+  kLegacyNegate,
   kNumericIdentity,
   kNonNaNMultiply,
   kNonNaNDivide
@@ -43,6 +45,17 @@ constexpr ValueKinds SubtractNumbers(ValueKinds left, ValueKinds right) {
 constexpr ValueKinds AddValues(ValueKinds left, ValueKinds right) {
   if (!left.IsLanguage() || !right.IsLanguage()) return ValueKinds::Unknown();
   return left.IsString() || right.IsString() ? ValueKinds::String() : AdditiveNumbers(left, right);
+}
+// Modern NEG handles the tagged minimum via double overflow; the legacy
+// integer path needs its exclusion. Both produce a non-minimum representation
+// when proved, and unary sign change retains finite/nonzero information.
+constexpr ValueKinds NegatedNumber(ValueKinds input) {
+  if (!input.IsNonNaNNumber()) return ValueKinds::Unknown();
+  return (input.IsFiniteNonzeroNumber() ? ValueKinds::FiniteNonzeroNumber() :
+      input.IsFiniteNumber() ? ValueKinds::FiniteNumber() : ValueKinds::NonNaNNumber()).WithoutInt32MinTag();
+}
+constexpr ValueKinds LegacyNegatedNumber(ValueKinds input) {
+  return input.ExcludesInt32MinTag() ? NegatedNumber(input) : ValueKinds::Unknown();
 }
 // IEEE Number multiplication cannot create NaN without a NaN input or a
 // zero/infinity pair. Overflow and underflow may lose finite/nonzero facts.

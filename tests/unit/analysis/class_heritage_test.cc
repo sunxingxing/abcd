@@ -22,9 +22,16 @@ int main() {
   // LDTHIS only replaces the accumulator; it cannot change a private slot.
   check({0x70, 0x61, 0, 0x6f}, HeritageKind::kAbsent);
   check({0x6f, 0x70, 0x61, 0}, HeritageKind::kAbsent);
+  // Typed legacy negation reads its source slot without overwriting it.
+  // This structural fact does not authorize negating Hole in source output.
+  check({0x70, 0x61, 0, 0xfc, 7, 0}, HeritageKind::kAbsent);
   // An unsupported operation kills old facts, but new definitions recover.
-  check({0x70, 0x61, 0, 0xfc, 7, 0}, HeritageKind::kUnknown);
-  check({0xfc, 7, 0, 0x70, 0x61, 0}, HeritageKind::kAbsent);
+  constexpr auto kUnknown = static_cast<std::uint16_t>(abc::Opcode::kCALLRUNTIME_TOPROPERTYKEY_PREF_NONE);
+  constexpr unsigned kByteBits = 8;
+  constexpr auto kPrefix = static_cast<std::uint8_t>(kUnknown);
+  constexpr auto kSubopcode = static_cast<std::uint8_t>(kUnknown >> kByteBits);
+  check({0x70, 0x61, 0, kPrefix, kSubopcode}, HeritageKind::kUnknown);
+  check({kPrefix, kSubopcode, 0x70, 0x61, 0}, HeritageKind::kAbsent);
   // A supported call clobbers acc, not a caller-private parent register.
   check({0x70, 0x61, 0, 0x29, 0}, HeritageKind::kAbsent);
   check({0x70, 0x29, 0, 0x61, 0}, HeritageKind::kUnknown);

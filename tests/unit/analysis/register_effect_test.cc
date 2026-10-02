@@ -49,6 +49,8 @@ int main() {
                      {{0x45, 2, 2}, {reg}, reg},
                      {{0x0a, 0, 2}, {reg, acc}, acc},
                      {{0x1f, 0}, {acc}, acc},
+                     {{0xfc, 7, 2}, {reg}, acc},
+                     {{0x26, 0, 2}, {reg, acc}, acc},
                      {{0x37, 0, 2}, {reg, acc}, acc},
                      {{0}, {}, acc},
                      {{0x62, 1, 0, 0, 0}, {}, acc},
@@ -163,8 +165,6 @@ int main() {
     Check(std::get<ScalarError>(LiftRegisterEffect(Decode(code), 2)) ==
           ScalarError::kRegisterRange);
   for (const auto code : {std::initializer_list<std::uint8_t>{0xfd, 4, 1, 0, 1},
-                          {0xfc, 7, 0},
-                          {0x26, 0, 0},
                           {0xfc, 27, 0, 1}})
     Check(std::get<ScalarError>(LiftRegisterEffect(Decode(code), 2)) ==
           ScalarError::kUnsupportedOpcode);

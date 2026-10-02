@@ -668,6 +668,10 @@ if(BUILD_TESTING)
   target_include_directories(literal_construct_test PRIVATE tests/support)
   target_link_libraries(literal_construct_test PRIVATE abcd_source)
   add_test(NAME literal_construct_test COMMAND literal_construct_test)
+  add_executable(legacy_negation_test tests/integration/legacy_negation.cc)
+  target_include_directories(legacy_negation_test PRIVATE tests/support)
+  target_link_libraries(legacy_negation_test PRIVATE abcd_source)
+  add_test(NAME legacy_negation_test COMMAND legacy_negation_test)
   add_executable(additive_value_test tests/unit/analysis/additive_value_test.cc)
   target_include_directories(additive_value_test PRIVATE tests/support)
   target_link_libraries(additive_value_test PRIVATE abcd_source)
@@ -1261,6 +1265,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_cells.mjs $<TARGET_FILE:class_tree_context_test>)
     add_test(NAME phased_literal_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_literal.mjs $<TARGET_FILE:class_tree_context_test>)
+    add_test(NAME legacy_negation_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/legacy_negation.mjs $<TARGET_FILE:legacy_negation_test>)
     add_test(NAME additive_expression_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/additive_expression.mjs
       $<TARGET_FILE:additive_expression_test> $<TARGET_FILE:additive_value_test>)

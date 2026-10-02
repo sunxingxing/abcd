@@ -66,9 +66,8 @@ struct UnarySpec {
   UnaryInput input;
 };
 std::optional<UnarySpec> UnaryOp(Opcode opcode) {
-  // DEPRECATED_NEG is intentionally absent: the pinned C++ handler negates
-  // INT32_MIN without the modern overflow path. Require a runtime-specific
-  // proof before treating it as the language-level unary minus operation.
+  // The deprecated int path lacks the modern INT32_MIN overflow handling.
+  // Keep its semantic identity until numeric/tag proof authorizes native minus.
   using enum UnaryInput;
   switch (opcode) {
     case Opcode::kINC_IMM8:
@@ -79,6 +78,8 @@ std::optional<UnarySpec> UnaryOp(Opcode opcode) {
       return UnarySpec{UnaryOperator::kIncrement, kRegister};
     case Opcode::kDEPRECATED_DEC_PREF_V8:
       return UnarySpec{UnaryOperator::kDecrement, kRegister};
+    case Opcode::kDEPRECATED_NEG_PREF_V8:
+      return UnarySpec{UnaryOperator::kLegacyNegate, kRegister};
     case Opcode::kNEG_IMM8:
       return UnarySpec{UnaryOperator::kNegate, kCachedAccumulator};
     case Opcode::kNOT_IMM8:

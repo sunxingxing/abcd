@@ -7,7 +7,7 @@ bool Boolean(analysis::UnaryOperator op) {
   switch (op) {
     case U::kToBoolean: case U::kLogicalNot: case U::kFalseOrZero:
     case U::kTrueOrNonzeroNumber: return true;
-    case U::kNegate: case U::kBitNot: case U::kTypeOf: case U::kToNumber:
+    case U::kLegacyNegate: case U::kNegate: case U::kBitNot: case U::kTypeOf: case U::kToNumber:
     case U::kToNumeric: case U::kIncrement: case U::kDecrement: return false;
   }
   return false;
@@ -66,5 +66,12 @@ bool NonNaNNumberEvaluation(const analysis::ValueProgram& graph,
   const auto* value = std::get_if<analysis::ValueId>(&operand);
   return value && value->value < graph.values.size() &&
       graph.values[value->value].domain.IsNonNaNNumber();
+}
+bool LegacyNegationEvaluation(const analysis::ValueProgram& graph, const analysis::ValueOperand& operand) {
+  if (const auto* integer = std::get_if<analysis::IntegerLiteral>(&operand)) return integer->value != INT32_MIN;
+  if (std::holds_alternative<analysis::Float64Bits>(operand)) return NonNaNNumberEvaluation(graph, operand);
+  if (const auto* special = std::get_if<analysis::SpecialValue>(&operand)) return *special == analysis::SpecialValue::kInfinity;
+  const auto* value = std::get_if<analysis::ValueId>(&operand);
+  return value && value->value < graph.values.size() && graph.values[value->value].domain.ExcludesInt32MinTag();
 }
 }  // namespace abcd::source

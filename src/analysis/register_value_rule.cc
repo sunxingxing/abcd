@@ -30,6 +30,7 @@ bool HasLanguageResult(UnaryOperator op) {
     case UnaryOperator::kFalseOrZero:
     case UnaryOperator::kTrueOrNonzeroNumber:
       return true;
+    case UnaryOperator::kLegacyNegate:
     case UnaryOperator::kNegate:
     case UnaryOperator::kToNumber:
     case UnaryOperator::kToNumeric:
@@ -123,6 +124,9 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment) {
     // inputs, whose coercions or NaN payloads need separate proofs.
     switch (unary->op) {
       case UnaryOperator::kNegate:
+        return ValueRule{ValueRuleKind::kNegate, {}};
+      case UnaryOperator::kLegacyNegate:
+        return ValueRule{ValueRuleKind::kLegacyNegate, {}};
       case UnaryOperator::kIncrement:
       case UnaryOperator::kDecrement:
         return ValueRule{ValueRuleKind::kNonNaNUnary, {}};

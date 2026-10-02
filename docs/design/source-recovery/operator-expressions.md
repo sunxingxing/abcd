@@ -54,8 +54,9 @@ proof of the requested final expression presentation quality.
 2. Add missing instanceof to the common typed operation route, with pinned
    runtime operand order, @@hasInstance, Proxy, primitive and exception tests.
 3. Enumerate and test all 38 encodings through shared input, values, tree and
-   printer. Close unary ToNumeric/update composition and deprecated.neg gaps
-   using runtime/profile evidence rather than assuming identical old semantics.
+   printer. The unary initializer matrix now covers all 16 unary encodings for
+   proved numeric inputs; deprecated.neg retains its tag exclusion. Complete
+   general ToNumeric/update domains using runtime/profile evidence.
 4. Complete centralized precedence/context printing and nested expression tests.
 5. Expand operator combinations across ordinary/phased expression contexts,
    negative ownership cases and geometric scaling; rerun fixed stage-one inputs.

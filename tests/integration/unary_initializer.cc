@@ -6,6 +6,7 @@
 #include "abcd/source/tree_printer.h"
 #include "analysis/ssa_fixture.h"
 #include <array>
+#include <algorithm>
 #include <iostream>
 #include <sstream>
 
@@ -23,7 +24,7 @@ constexpr std::array kUnary{
   abc::Opcode::kISTRUE, abc::Opcode::kISFALSE,
   abc::Opcode::kDEPRECATED_TONUMBER_PREF_V8, abc::Opcode::kDEPRECATED_TONUMERIC_PREF_V8,
   abc::Opcode::kDEPRECATED_NOT_PREF_V8, abc::Opcode::kDEPRECATED_INC_PREF_V8,
-  abc::Opcode::kDEPRECATED_DEC_PREF_V8};
+  abc::Opcode::kDEPRECATED_DEC_PREF_V8, abc::Opcode::kDEPRECATED_NEG_PREF_V8};
 std::uint64_t Run(abc::Opcode unary, abc::ProfileId profile, unsigned count, bool print = false) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   const auto* spec = FindPinnedInstruction(unary); test::Check(spec && spec->group == IsaGroup::kUnary);
@@ -68,6 +69,8 @@ std::uint64_t Run(abc::Opcode unary, abc::ProfileId profile, unsigned count, boo
 }
 }
 int main(int argc, char** argv) {
+  for (const auto& spec : PinnedIsaCatalog()) if (spec.group == IsaGroup::kUnary)
+    test::Check(std::find(kUnary.begin(), kUnary.end(), spec.opcode) != kUnary.end());
   if (argc == 3) {
     test::Check(std::string_view(argv[1]) == "--source");
     const auto index = std::stoul(argv[2]); test::Check(index < kUnary.size());
