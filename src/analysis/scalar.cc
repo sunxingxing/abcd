@@ -12,6 +12,8 @@ using abc::OperandKind;
 
 std::optional<BinaryOperator> BinaryOp(Opcode opcode) {
   switch (opcode) {
+    case Opcode::kINSTANCEOF_IMM8_V8:
+      return BinaryOperator::kInstanceOf;
     case Opcode::kISIN_IMM8_V8:
       return BinaryOperator::kIn;
     case Opcode::kADD2_IMM8_V8:
@@ -142,7 +144,7 @@ ScalarResult LiftScalarInstruction(const DecodedInstruction& instruction,
             instruction, {OperandKind::kImmediate, OperandKind::kRegister},
             frame_size))
       return *error;
-    if (*op == BinaryOperator::kIn &&
+    if ((*op == BinaryOperator::kIn || *op == BinaryOperator::kInstanceOf) &&
         (instruction.operands[kFirstOperand].raw_bits > UINT8_MAX ||
          instruction.operands[kBinaryRegister].raw_bits > UINT8_MAX))
       return ScalarError::kMalformedInstruction;

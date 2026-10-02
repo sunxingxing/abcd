@@ -42,6 +42,8 @@ bool Identifier(std::basic_string_view<Char> name) {
 
 std::optional<std::string_view> BinaryToken(BinaryOperator op) {
   switch (op) {
+    case BinaryOperator::kInstanceOf:
+      return "instanceof";
     case BinaryOperator::kIn:
       return "in";
     case BinaryOperator::kAdd:

@@ -13,6 +13,39 @@
 ## 当前阶段
 
 
+### 2026-10-02：完整 ISA 运算符与复杂表达式覆盖（用户新增优先任务）
+
+- 用户明确要求在共同贯通方案上覆盖 isa.yaml 的所有 unary/binary/
+  comparation 操作，兼顾优先级和复杂表达式，禁止按样本定制。实施合同见
+  operator-expressions.md。固定 runtime_core/isa/isa.yaml 的三个组共
+  37 条签名、38 种编码（typeof 两种宽度）；包含 deprecated 一元形式。
+  runtime_core 与 ets_runtime 的当前 HEAD 均与固定 lock 一致。
+- 首个明确缺口 instanceof 已新增到共同 BinaryOperator、标量提升、正常
+  Language 结果分类、布尔谓词、源码树验证及 printer。参考 pinned
+  interpreter-inl.cpp 的 INSTANCEOF_IMM8_V8（寄存器左、acc 右）和
+  RuntimeInstanceof -> JSObject::InstanceOf；保留 user-code/throw 效果。
+- 新 decoded 共同流水线夹具在旧实现 FunctionInput 阶段 RED，
+  /tmp/abcd-instanceof-red-tests.log，1/1 失败 1.04 秒。接入后三 profile
+  1/2/200/201/402 次组合通过；原 scalar_test 中的“instanceof 不支持”断言
+  已更新为成功和编码越界拒绝。second-tests.log 2/2 通过 0.91 秒，
+  behavior.log 独立原生 144 个 @@hasInstance、Proxy、绑定函数、primitive、
+  TypeError/注入异常场景通过。换操作数/伪造运算类型拒绝检查已通过；negative-tests.log
+  3/3 通过 1.22 秒。
+- 94 个相关 targets 构建退出 0。首轮 related-tests.log 194/195 通过
+  478.23 秒；register_ssa_test 仍把 instanceof 当作 unsupported。更新为
+  正例，并以合法但未支持的 runtime 指令保留不可达/拒绝边界后，
+  ssa-tests-3.log 4/4 通过 3.23 秒；与 /tmp/abcd-instanceof-selected.json
+  按名称核对，195 项均有通过证据。第一次替代夹具使用无效 opcode，被
+  CFG 提前拒绝，已修正；相关失败与构建日志保留，没有改生产验证来迁就测试。
+- 五输入 fresh build/stage-one/value-instanceof-pass-1 均退出 0，仍为
+  75 complete / 4 incomplete / 27 failure / 46 no-module；无回退、完整源码
+  字节变化或 legacy，原生 default records 保留。证据日志前缀为
+  /tmp/abcd-instanceof-*。
+- 当前只完成 instanceof 子项，不宣称全覆盖。deprecated.neg 的 INT32_MIN 行为、数值域
+  证明、ToNumeric/update 组合及统一优先级/结合性打印仍需逐项完成。
+  阶段一目标保留，新增工作不读取配对源码生成答案；Goal 保持 active。
+
+
 ### 2026-10-02：原生二元字面量初始化
 
 - HotRankPage child 49640 的已证明 String ADD2 在 buffered 对象之后产生，

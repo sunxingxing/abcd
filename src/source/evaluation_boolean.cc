@@ -17,7 +17,7 @@ bool Boolean(analysis::BinaryOperator op) {
   switch (op) {
     case B::kEqual: case B::kNotEqual: case B::kLess: case B::kLessEqual:
     case B::kGreater: case B::kGreaterEqual: case B::kStrictEqual:
-    case B::kStrictNotEqual: case B::kIn: return true;
+    case B::kStrictNotEqual: case B::kInstanceOf: case B::kIn: return true;
     case B::kAdd: case B::kSubtract: case B::kMultiply: case B::kDivide:
     case B::kRemainder: case B::kExponent: case B::kShiftLeft:
     case B::kShiftRightUnsigned: case B::kShiftRightSigned:

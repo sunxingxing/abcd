@@ -91,7 +91,8 @@ int main() {
                               {0x1b, BinaryOperator::kExponent},
                               {0x27, BinaryOperator::kStrictNotEqual},
                               {0x28, BinaryOperator::kStrictEqual},
-                              {0x25, BinaryOperator::kIn}};
+                              {0x25, BinaryOperator::kIn},
+                              {static_cast<std::uint8_t>(abcd::abc::Opcode::kINSTANCEOF_IMM8_V8), BinaryOperator::kInstanceOf}};
   for (const auto& test : binaries) {
     const auto assignment = std::get<ScalarAssignment>(
         LiftScalarInstruction(Decode({test.opcode, 255, 7}), 8));
@@ -208,8 +209,11 @@ int main() {
   }
   const auto instance = Decode({0x26, 0, 0});
   Check(instance.opcode == abcd::abc::Opcode::kINSTANCEOF_IMM8_V8);
-  Check(std::get<ScalarError>(LiftScalarInstruction(instance, 1)) ==
-        ScalarError::kUnsupportedOpcode);
+  Check(std::holds_alternative<ScalarAssignment>(LiftScalarInstruction(instance, 1)));
+  for (const auto operand : {0U, 1U}) {
+    auto invalid = instance; invalid.operands[operand].raw_bits = 256;
+    Check(std::get<ScalarError>(LiftScalarInstruction(invalid, 257)) == ScalarError::kMalformedInstruction);
+  }
   malformed.operand_count = 1;
   Check(std::get<ScalarError>(LiftScalarInstruction(malformed, 1)) ==
         ScalarError::kMalformedInstruction);

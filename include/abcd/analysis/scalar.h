@@ -39,7 +39,8 @@ enum class BinaryOperator {
   kBitXor,
   kStrictEqual,
   kStrictNotEqual,
-  kIn
+  kIn,
+  kInstanceOf
 };
 enum class UnaryOperator {
   kNegate,

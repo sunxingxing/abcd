@@ -49,6 +49,7 @@ bool HasLanguageResult(BinaryOperator op) {
     case BinaryOperator::kGreaterEqual:
     case BinaryOperator::kStrictEqual:
     case BinaryOperator::kStrictNotEqual:
+    case BinaryOperator::kInstanceOf:
     case BinaryOperator::kIn:
     // Pinned v7 FastMod/RuntimeMod2 canonicalize NaN before construction;
     // finite fmod and BigInt remainder also return language values.

@@ -39,6 +39,7 @@ bool BooleanResult(const analysis::ScalarExpression& expression) {
       case BinaryOperator::kGreaterEqual:
       case BinaryOperator::kStrictEqual:
       case BinaryOperator::kStrictNotEqual:
+      case BinaryOperator::kInstanceOf:
       case BinaryOperator::kIn:
         return true;
       case BinaryOperator::kAdd:

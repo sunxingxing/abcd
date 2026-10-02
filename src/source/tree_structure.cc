@@ -41,7 +41,7 @@ bool ValidBinary(analysis::BinaryOperator operation) {
     case B::kLess: case B::kLessEqual: case B::kGreater: case B::kGreaterEqual:
     case B::kShiftLeft: case B::kShiftRightUnsigned: case B::kShiftRightSigned:
     case B::kBitAnd: case B::kBitOr: case B::kBitXor: case B::kStrictEqual:
-    case B::kStrictNotEqual: case B::kIn: return true;
+    case B::kStrictNotEqual: case B::kInstanceOf: case B::kIn: return true;
   }
   return false;
 }

@@ -27,6 +27,7 @@ std::string_view TreeBinaryToken(analysis::BinaryOperator operation) {
     case Op::kStrictEqual: return " === ";
     case Op::kStrictNotEqual: return " !== ";
     case Op::kIn: return " in ";
+    case Op::kInstanceOf: return " instanceof ";
   }
   throw TreePrintError::kUnsupportedContext;
 }

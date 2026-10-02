@@ -112,7 +112,13 @@ int main() {
             legacy.Values()[legacy.Reads({0})[0].value.value].slot)
             .value == 2);
   Check(!legacy.Write({0}));
-  const auto dead = build(Body({0x65, 0x26, 0, 0, 0x65}));
+  // A valid runtime-call encoding outside scalar recovery keeps the refusal
+  // boundary covered without depending on an operator being unimplemented.
+  constexpr auto kUnsupported = static_cast<std::uint16_t>(abc::Opcode::kCALLRUNTIME_TOPROPERTYKEY_PREF_NONE);
+  constexpr unsigned kByteBits = 8;
+  constexpr auto kPrefix = static_cast<std::uint8_t>(kUnsupported);
+  constexpr auto kSubopcode = static_cast<std::uint8_t>(kUnsupported >> kByteBits);
+  const auto dead = build(Body({0x65, kPrefix, kSubopcode, 0x65}));
   Check(dead.Values().empty() && dead.Reads({1}).empty() &&
         dead.work.rename_instructions == 1);
   const auto sparse = build(body, UINT64_MAX);
@@ -129,7 +135,9 @@ int main() {
   auto resume = graph;
   resume.blocks[0].successors[0].kind = FlowEdgeKind::kResume;
   Check(rejected(body, resume).kind == RegisterUseError::kResumeEdge);
-  const auto unknown = Body({0x26, 0, 0, 0x65});
+  const auto instance = build(Body({0x26, 0, 0, 0x65}));
+  Check(instance.Reads({0}).size() == 2 && instance.Write({0}).has_value());
+  const auto unknown = Body({kPrefix, kSubopcode, 0x65});
   Check(rejected(unknown, std::get<NormalFlow>(BuildNormalFlow(unknown)))
             .instruction == ScalarError::kUnsupportedOpcode);
   Check(rejected(body, {}).kind == RegisterUseError::kInvalidGraph);
