@@ -425,6 +425,48 @@ void DistinctCells(std::uint8_t count) {
     test::Check(binding.binding.captures[i] == CellId{i});
   }
 }
+void StringCellDefault() {
+  const auto op = [](abc::Opcode value) { return static_cast<std::uint8_t>(value); };
+  constexpr abc::PoolIndex kStringSlot{0x1234};
+  constexpr std::uint8_t kJoinDistance = 7; // JEQZ(2) + LDA_STR(3) + STLEXVAR(2).
+  const auto body = test::Body({kPush,1,kLoad,1,kStoreCell,0,kReadCell,0,op(abc::Opcode::kSTA_V8),0,
+      op(abc::Opcode::kLDUNDEFINED),op(abc::Opcode::kSTRICTEQ_IMM8_V8),0,0,op(abc::Opcode::kJEQZ_IMM8),kJoinDistance,
+      op(abc::Opcode::kLDA_STR_ID16),static_cast<std::uint8_t>(kStringSlot.value),static_cast<std::uint8_t>(kStringSlot.value >> 8),
+      kStoreCell,0,kReadCell,0,kReturn});
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(1,1,{false,false,false,false}));
+  const auto input = std::get<FunctionInput>(FunctionInput::Build(Identity(),kParent,kRecord,body,frame,InputCaptureMode::kConditional));
+  const auto values = std::get<FunctionValues>(BuildFunctionValues(input,body,frame));
+  const auto parameters = std::get<ParameterPlan>(BuildParameterPlan(values.graph,1));
+  const auto found = std::get<CellDefaults>(FindCellDefaults(values.graph,*values.cells,parameters,0));
+  test::Check(found.candidates.size() == 1);
+  test::Check(found.candidates[0].text == kStringSlot);
+  const auto prove = [&](const CellDefaults& proposed) {
+    return CellDefaultProof::Build(values.graph,*values.environments,*values.cells,parameters,proposed,0);
+  };
+  test::Check(std::holds_alternative<CellDefaultProof>(prove(found)));
+  auto wrong = found; ++wrong.candidates[0].text->value;
+  test::Check(std::get<CellDefaultProofError>(prove(wrong)) == CellDefaultProofError::kLiteral);
+  wrong = found; wrong.candidates[0].text.reset();
+  test::Check(std::get<CellDefaultProofError>(prove(wrong)) == CellDefaultProofError::kLiteral);
+  const auto residual = std::get<DefaultBody>(DefaultBody::BuildCell(values.graph,
+      *values.environments,*values.cells,parameters,found,0));
+  test::Check(residual.Strings().size() == 1 && residual.Strings()[0].string == kStringSlot &&
+      residual.Strings()[0].operation == found.candidates[0].fallback_store);
+  const auto& graph = residual.Graph();
+  const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+  const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
+  std::vector<ExpressionConstant> constants(graph.ops.size());
+  constants[found.candidates[0].fallback_store.value] = TextId{0};
+  const ExpressionConstants resolved{constants,0,2};
+  FunctionSyntax syntax; syntax.identity = Identity(); syntax.method = kParent; syntax.owner = {0};
+  syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+  syntax.parameters.resize(1); syntax.texts = {u"expected",u"wrong"};
+  auto tree = std::get<ConstructedFunction>(BuildFunctionTree(graph,control,evaluation,std::move(syntax),resolved)).tree;
+  const DefaultSignatureContext context{control,evaluation,&resolved};
+  test::Check(std::holds_alternative<DefaultSignatureProof>(BuildDefaultSignature(residual,tree,{},&context)));
+  tree.expressions[tree.parameters[0].initializer->value].expression = TreeLiteral{TextId{1}};
+  test::Check(std::get<DefaultSignatureError>(VerifyDefaultSignature(residual,tree,{},&context)) == DefaultSignatureError::kLiteral);
+}
 void CellDefaultDiscovery() {
   constexpr std::uint8_t kSave = 0x61, kUndefined = 0x00, kNull = 0x01,
       kStrictEqual = 0x28, kJumpIfFalse = 0x4f, kJoinDistance = 5;
@@ -536,7 +578,7 @@ void CreationEvaluation(bool pop) {
   }
 }
 }  // namespace
-int main() {
+int main() { StringCellDefault();
   for (const auto count : {0U, 1U, 2U, 200U, 201U}) Occurrences(count);
   for (const auto count : {1U, 2U, 200U, 201U}) DistinctCells(static_cast<std::uint8_t>(count));
   ForwardingAndChildren();

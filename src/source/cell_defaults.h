@@ -17,6 +17,7 @@ struct CellDefault {
   analysis::ValueOperand fallback;
   analysis::WorkBlockId header, arm, join;
   analysis::EdgeId present, missing, merge;
+  std::optional<abc::PoolIndex> text;
 };
 struct CellDefaults {
   analysis::IrRevision revision;

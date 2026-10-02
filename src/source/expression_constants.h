@@ -8,6 +8,8 @@
 namespace abcd::source {
 // Constants are resolved by the ABC adapter before syntax construction. Pool
 // indices never become executable tree operands. Entries are indexed by OpId.
+// Sealed signature projection supplies pool-backed literals at removed sites.
+struct SignatureString { analysis::OpId operation; abc::PoolIndex string; };
 struct AggregateConstant {
   std::uint32_t first;
   std::uint32_t count;

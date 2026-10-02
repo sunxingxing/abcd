@@ -21,7 +21,7 @@ struct TreeConstants {
   }
 };
 enum class TreeConstantError : std::uint8_t {
-  kElementName, kResourceLimit, kWorkLimit, kObjectLiteral, kLexicalName
+  kElementName, kResourceLimit, kWorkLimit, kObjectLiteral, kLexicalName, kSignatureLiteral
 };
 using TreeConstantResult = std::variant<TreeConstants, TreeConstantError, abc::MetadataError>;
 // Same-file metadata/graph precondition. Sort/deduplicate pool slots, then
@@ -30,6 +30,7 @@ using TreeConstantResult = std::variant<TreeConstants, TreeConstantError, abc::M
 [[nodiscard]] TreeConstantResult ResolveTreeConstants(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, abc::EntityOffset method,
-    const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {});
+    const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {},
+    std::span<const SignatureString> signature = {});
 }  // namespace abcd::source
 #endif

@@ -81,7 +81,7 @@ class FamilyTrees {
       const auto& graph = function.Graph();
       Require(context.Identity() == function.Identity() && context.Target() == function.Method(), FamilyTreeError::kContext);
       auto syntax = Take<ResolvedSyntax, SyntaxResolutionFailure>(ResolveFunctionSyntax(
-          file_, header_, index_, context, phase ? phase->OriginalBody() : function.Body(), graph, family.Owner(member_), left_));
+          file_, header_, index_, context, phase ? phase->OriginalBody() : function.Body(), graph, family.Owner(member_), left_, function.Defaults() ? function.Defaults()->Strings() : std::span<const SignatureString>{}));
       Account(syntax);
       std::optional<ModuleAliases> normal_aliases;
       const ModuleAliases* aliases = phase ? phase->Phases().Modules() : nullptr;
@@ -189,7 +189,7 @@ class FamilyTrees {
         continue;
       }
       if (family.members[i].function.Defaults()) {
-        const DefaultCaptureContext capture{control,evaluation};
+        const DefaultSignatureContext capture{control,evaluation,&constants};
         auto signature = Take<DefaultSignatureProof, DefaultSignatureError>(
             BuildDefaultSignature(*family.members[i].function.Defaults(), constructed.tree, left_, &capture));
         Account(signature);

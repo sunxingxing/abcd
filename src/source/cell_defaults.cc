@@ -42,7 +42,8 @@ class Finder {
         if (block.store) block.arm = false;
         block.store = id;
       } else if (!std::holds_alternative<ValueJump>(op.operation) &&
-                 !std::holds_alternative<ValueCopy>(op.operation)) block.arm = false;
+                 !std::holds_alternative<ValueCopy>(op.operation) &&
+                 !std::holds_alternative<ValueString>(op.operation)) block.arm = false;
     }
     Reserve(result.candidates, parameters_.formals.size() - length);
     WorkBlockId header{0};
@@ -85,6 +86,7 @@ class Finder {
   std::optional<ValueOperand> Literal(const ValueOperand& operand) {
     if (!std::holds_alternative<ValueId>(operand)) return operand;
     const auto op = Producer(operand);
+    if (op && std::holds_alternative<ValueString>(graph_.ops[op->value].operation) && graph_.ops[op->value].use_count == 0) return operand;
     if (!op || !std::holds_alternative<ValueCopy>(graph_.ops[op->value].operation) || graph_.ops[op->value].use_count != 1) return {};
     const auto& input = Operand(*op, 0);
     if (std::holds_alternative<ValueId>(input)) return {};
@@ -147,8 +149,14 @@ class Finder {
     if (cells_.operations[store.value] != cell) return {};
     const auto literal = Literal(Operand(store, 0));
     if (!literal) return {};
+    std::optional<abc::PoolIndex> text;
+    if (const auto source = Producer(*literal)) {
+      const auto* string = std::get_if<ValueString>(&graph_.ops[source->value].operation);
+      if (!string) return {};
+      text = string->string;
+    }
     return CellDefault{parameter->index, *entry, *cell, first.operation, *load, *comparison,
-        *branch, store, *literal, header, arm, join, *present, *missing, arm_block.first_edge};
+        *branch, store, *literal, header, arm, join, *present, *missing, arm_block.first_edge, text};
   }
   const ValueProgram& graph_;
   const CellPlan& cells_;

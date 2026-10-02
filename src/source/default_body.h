@@ -3,6 +3,7 @@
 
 #include "default_value_proof.h"
 #include "cell_default_proof.h"
+#include "expression_constants.h"
 
 namespace abcd::source {
 enum class DefaultBodyError : std::uint8_t {
@@ -12,6 +13,7 @@ struct DefaultInitializer {
   std::uint32_t parameter;
   analysis::ValueOperand fallback;
   analysis::OpId initializer;
+  std::optional<abc::PoolIndex> text;
 };
 enum class DefaultStorage : std::uint8_t { kValue, kCell };
 struct DefaultSignatureView {
@@ -48,6 +50,7 @@ class DefaultBody {
   [[nodiscard]] DefaultSignatureView Signature() const {
     return {initializers_, std::visit([](const auto& proof) { return proof.Operations(); }, proof_)};
   }
+  [[nodiscard]] std::span<const SignatureString> Strings() const { return strings_; }
   [[nodiscard]] DefaultStorage Storage() const {
     return std::holds_alternative<CellDefaultProof>(proof_) ? DefaultStorage::kCell : DefaultStorage::kValue;
   }
@@ -55,12 +58,13 @@ class DefaultBody {
   [[nodiscard]] std::uint64_t Work() const { return work_; }
  private:
   DefaultBody(analysis::ValueProgram graph, std::variant<DefaultValueProof, CellDefaultProof> proof,
-              std::vector<DefaultInitializer> initializers,
+              std::vector<DefaultInitializer> initializers, std::vector<SignatureString> strings,
               std::size_t bytes, std::uint64_t work)
-      : graph_(std::move(graph)), proof_(std::move(proof)), initializers_(std::move(initializers)), allocated_bytes_(bytes), work_(work) {}
+      : graph_(std::move(graph)), proof_(std::move(proof)), initializers_(std::move(initializers)), strings_(std::move(strings)), allocated_bytes_(bytes), work_(work) {}
   analysis::ValueProgram graph_;
   std::variant<DefaultValueProof, CellDefaultProof> proof_;
   std::vector<DefaultInitializer> initializers_;
+  std::vector<SignatureString> strings_;
   std::size_t allocated_bytes_;
   std::uint64_t work_;
 };

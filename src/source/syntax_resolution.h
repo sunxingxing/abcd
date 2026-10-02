@@ -39,6 +39,7 @@ using SyntaxResolutionFailure = std::variant<SyntaxResolutionError,
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const FunctionContext& context,
     const abc::MethodBody& body, const analysis::ValueProgram& graph,
-    FunctionOwnerId owner, analysis::SemanticBudget budget = {});
+    FunctionOwnerId owner, analysis::SemanticBudget budget = {},
+    std::span<const SignatureString> signature = {});
 }  // namespace abcd::source
 #endif

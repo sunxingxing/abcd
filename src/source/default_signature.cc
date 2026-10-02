@@ -42,7 +42,7 @@ void Grow(std::vector<T>& items, std::size_t extra, TreeCheckBudget& budget) {
 }  // namespace
 
 std::variant<DefaultSignatureProof, DefaultSignatureError> BuildDefaultSignature(
-    const DefaultBody& body, FunctionTree& tree, analysis::SemanticBudget budget, const DefaultCaptureContext* capture) {
+    const DefaultBody& body, FunctionTree& tree, analysis::SemanticBudget budget, const DefaultSignatureContext* capture) {
   try {
     const auto& graph = body.Graph();
     Require(tree.value_revision == graph.revision && tree.cfg_revision == graph.cfg_revision, Error::kRevision);
@@ -80,7 +80,12 @@ std::variant<DefaultSignatureProof, DefaultSignatureError> BuildDefaultSignature
               Error::kParameter);
       const auto origin = graph.ops[candidate.initializer.value].origin;
       const ExprId expression{static_cast<std::uint32_t>(tree.expressions.size())};
-      if (body.Capture() && body.Capture()->candidate.shape.parameter == candidate.parameter) {
+      if (candidate.text) {
+        Require(capture && capture->constants && candidate.initializer.value < capture->constants->operations.size(), Error::kLiteral);
+        const auto* text = std::get_if<TextId>(&capture->constants->operations[candidate.initializer.value]);
+        Require(text && text->value < tree.texts.size(), Error::kLiteral);
+        tree.expressions.push_back({TreeLiteral{*text},{origin.value}});
+      } else if (body.Capture() && body.Capture()->candidate.shape.parameter == candidate.parameter) {
         Require(captured_symbol.has_value(), Error::kContext);
         tree.expressions.push_back({SymbolExpr{*captured_symbol}, {origin.value}});
       } else tree.expressions.push_back({Literal(candidate.fallback), {origin.value}});

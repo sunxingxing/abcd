@@ -12,6 +12,36 @@
 
 ## 当前阶段
 
+### 2026-10-03：参数 cell 的池字符串默认值，HotListView 贯通
+
+- 方法48581 的缺省分支包含 ValueString 再写入参数 cell。CellDefaults 与
+  独立 CellDefaultProof 现在保留 pool index，验证同 arm 的纯字符串 producer、
+  精确 store、String 值域及独占 use；错误 pool/缺失字符串证据仍拒绝。
+- DefaultBody 保存带来源的 SignatureString 请求。共同 TreeConstants 解析器
+  合并普通与签名请求，复用 slot/entity 排序去重及 UTF-16 arena；签名请求
+  必须指向 removed/retained-origin 操作，重复或活跃站点拒绝。请求及临时
+  seen 表纳入预算，遍历前检查 work。签名构建/独立验证使用同一已解析 TextId，
+  不把 pool index 输出为源码，也不读取 sidecar。普通和 standalone 语法解析
+  均传递请求；目前新增发现路径为 cell-backed 字符串默认值。
+- 另修正 SSA literal defaults 对严格普通函数/箭头的旧限制；同一入口逃逸、
+  参数环境、ABI、无 self 及来源证明保留。实际 HotListView member13 因该
+  旧限制拒绝，修复后 record48379 完整输出。
+- 字符串 cell 用例从 RED 转绿，三 profile 的真实编码 fixture 覆盖引号、
+  反斜杠和换行；原生测试核对 length 和非 undefined 参数身份。错误 pool、
+  TextId、重复请求、活跃站点和 elided-pure origin 有负例。首轮编译的
+  standalone constant_view/control 引用已修正；fixture 漏报 pool 槽数导致
+  kIndexRange，修正其元数据后通过。
+- 17 targets 构建退出0，相关23/23通过12.66秒；工作预算预扣调整后定向
+  7/7通过6.07秒。日志 /tmp/abcd-string-default-related-* / final-tests.log。
+  新独立 HotListView 配对测试462组，执行 header 注册及其 Text 回调，覆盖
+  默认标题、parent/receiver 分离、捕获默认值与异常；不执行 ForEach 子视图
+  或真实渲染。HotListItemView 既有配对回归同时通过。
+- 五输入 fresh build/stage-one/value-string-default-pass-1 均退出0，
+  77 complete / 5 incomplete / 24 failure / 46 no-module。仅新增48379，
+  无完整项回退、既有完整源码变化或 legacy，三个原生 default records 保留。
+  证据 /tmp/abcd-string-default-final-*；未运行 full-suite/扩展语料/RSS，
+  其他失败和全平台验收尚未完成，Goal 保持 active。
+
 ### 2026-10-03：条件分支复用既有快照，HotListItemView 完整源码贯通
 
 - 方法48351 的失败实际为 CallPlanError::kReference：getter/op112 在 block5，

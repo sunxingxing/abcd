@@ -322,7 +322,7 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
       throw Error::kEvaluation;
     if (!phased) { budget.Admit(evaluation->allocated_bytes, 1); budget.Step(evaluation->work); }
     auto syntax_result = ResolveFunctionSyntax(file, header, index, *context, *body,
-        graph, {context->Position().value}, budget.Remaining());
+        graph, {context->Position().value}, budget.Remaining(), defaults ? defaults->Strings() : std::span<const SignatureString>{});
     auto* resolved_syntax = std::get_if<ResolvedSyntax>(&syntax_result);
     if (!resolved_syntax) {
       const auto& failure = std::get<SyntaxResolutionFailure>(syntax_result);
@@ -423,7 +423,8 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
       // Keep original and residual IR alive until BOTH signature migration and
       // residual body correspondence succeed. No caller-supplied certificate
       // or legacy writer can fill a gap in this publication boundary.
-      const auto signature = BuildDefaultSignature(*defaults, function->tree, budget.Remaining());
+      const DefaultSignatureContext signature_context{*control,*evaluation,&constant_view};
+      const auto signature = BuildDefaultSignature(*defaults, function->tree, budget.Remaining(), &signature_context);
       const auto* proof = std::get_if<DefaultSignatureProof>(&signature);
       if (!proof) {
         const auto error = std::get<DefaultSignatureError>(signature);

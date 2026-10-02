@@ -239,6 +239,11 @@ void BodyProjection() {
         TreeFlowError::kPlacement);
   syntax_tree.statements[syntax_tree.body.value].origin = TreeOriginId{3};
   auto signed_tree = syntax_tree;
+  for (const auto callable : {CallableKind::kFunction,CallableKind::kArrow}) {
+    auto ordinary = signed_tree; ordinary.callable = callable;
+    Check(std::holds_alternative<DefaultSignatureProof>(BuildDefaultSignature(owner,ordinary)));
+    Check(std::holds_alternative<DefaultSignatureProof>(VerifyDefaultSignature(owner,ordinary)));
+  }
   const auto signature = BuildDefaultSignature(owner, signed_tree);
   Check(std::holds_alternative<DefaultSignatureProof>(signature));
   Check(signed_tree.signature.size() == 3 && signed_tree.parameters[0].initializer.has_value());
@@ -528,7 +533,7 @@ void CapturedBoundary() {
   std::vector<ExpressionConstant> constants(body.Graph().ops.size());
   auto constructed = std::get<ConstructedFunction>(BuildFunctionTree(body.Graph(),control,signature_evaluation,
       std::move(syntax),{constants,2}));
-  const DefaultCaptureContext context{control,signature_evaluation};
+  const DefaultSignatureContext context{control,signature_evaluation};
   Check(std::holds_alternative<DefaultSignatureProof>(BuildDefaultSignature(body,constructed.tree,{},&context)));
   Check(std::holds_alternative<DefaultSignatureProof>(VerifyDefaultSignature(body,constructed.tree,{},&context)));
   Check(std::holds_alternative<DefaultSignatureError>(VerifyDefaultSignature(body,constructed.tree)));

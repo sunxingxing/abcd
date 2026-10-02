@@ -843,6 +843,7 @@ if(BUILD_TESTING)
   add_test(NAME record_published_capture_test COMMAND record_import_tree_test --published-capture)
   add_test(NAME record_captured_default_test COMMAND record_import_tree_test --captured-default)
   add_test(NAME record_unused_captured_default_test COMMAND record_import_tree_test --unused-captured-default)
+  add_test(NAME record_string_default_test COMMAND record_import_tree_test --string-default)
   add_test(NAME module_publication_window_test COMMAND record_import_tree_test --publication-window)
   target_link_libraries(record_tree_test PRIVATE abcd_source)
   add_test(NAME record_tree_test COMMAND record_tree_test)
@@ -1454,6 +1455,12 @@ if(BUILD_TESTING)
       add_test(NAME home_decision_prefix_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/home_decision_prefix.mjs $<TARGET_FILE:abc_structure>
         ${ABCD_PAIRED_CORPUS_ROOT}/Immersive)
+    endif()
+    if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc" AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/rank/src/main/ets/view/HotListView.ts")
+      add_test(NAME hotlist_string_defaults_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/hotlist_string_defaults.mjs $<TARGET_FILE:abc_semantic>
+        ${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication)
     endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc" AND
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/rank/src/main/ets/view/HotListItemView.ts")

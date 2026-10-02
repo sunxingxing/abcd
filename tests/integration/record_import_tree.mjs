@@ -245,3 +245,16 @@ for (const source of [unusedCapturedDefault,unusedDefaultReference]) {
     assert.equal(reader(value),99);
 }
 console.log('Unused captured defaults: native signature and return behavior passed');
+
+const stringDefault = execFileSync(process.argv[2], ['--string-default'], {encoding:'utf8'});
+const stringValue = 'line "quote"\\path\n';
+const stringReference = reference.replace('export {answer, answer as answerAlias, snapshot};',
+  `answer = function reader(value = ${JSON.stringify(stringValue)}) { return value; };\nexport {answer, answer as answerAlias, snapshot};`);
+for (const source of [stringDefault,stringReference]) {
+  const {root} = await setup(source); await root.evaluate();
+  const reader = root.namespace.answer;
+  assert.equal(reader.length,0); assert.equal(reader(),stringValue); assert.equal(reader(undefined),stringValue);
+  for (const value of [null,false,0,-0,NaN,1n,Symbol('value'),{},()=>{},''])
+    assert.ok(Object.is(reader(value),value));
+}
+console.log('Pool string defaults: escaping, identity and native arity passed');

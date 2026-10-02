@@ -17,7 +17,7 @@ std::variant<ResolvedSyntax, SyntaxResolutionFailure> ResolveFunctionSyntax(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const FunctionContext& context,
     const abc::MethodBody& body, const analysis::ValueProgram& graph,
-    FunctionOwnerId owner, analysis::SemanticBudget budget) {
+    FunctionOwnerId owner, analysis::SemanticBudget budget, std::span<const SignatureString> signature) {
   try {
     auto bytes = budget.bytes;
     auto work = budget.work;
@@ -39,7 +39,7 @@ std::variant<ResolvedSyntax, SyntaxResolutionFailure> ResolveFunctionSyntax(
         identity.file_size == header.file_size, Error::kContext);
     const auto& method = index.methods[context.Position().value];
     admit(1, sizeof(ResolvedSyntax));
-    auto resolved = ResolveTreeConstants(file, header, index, method.offset, graph, {bytes, work});
+    auto resolved = ResolveTreeConstants(file, header, index, method.offset, graph, {bytes, work}, signature);
     if (const auto* error = std::get_if<TreeConstantError>(&resolved)) return SyntaxResolutionFailure{*error};
     if (const auto* error = std::get_if<abc::MetadataError>(&resolved)) return SyntaxResolutionFailure{*error};
     ResolvedSyntax result;

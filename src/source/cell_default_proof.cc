@@ -206,8 +206,22 @@ class Checker {
     Pure(branch); Move(c.branch, c.parameter, c.header);
     const auto& store = Op(c.fallback_store);
     Require(std::holds_alternative<ValueLexicalStore>(store.operation) && store.use_count == 1 && !store.result &&
-        cells_.operations[c.fallback_store.value] == c.cell && !std::holds_alternative<ValueId>(c.fallback), Error::kCell);
-    Require(Literal(Operand(c.fallback_store, 0, OperandRole::kStoredValue), c.fallback, c.fallback_store, c.parameter, c.arm), Error::kLiteral);
+        cells_.operations[c.fallback_store.value] == c.cell, Error::kCell);
+    if (c.text) {
+      const auto* value = std::get_if<ValueId>(&c.fallback);
+      Require(value && value->value < graph_.values.size() &&
+          Equal(Operand(c.fallback_store,0,OperandRole::kStoredValue),c.fallback), Error::kLiteral);
+      const auto* source = std::get_if<OpResult>(&graph_.values[value->value].origin);
+      Require(source != nullptr, Error::kLiteral);
+      const auto& load = Op(source->op);
+      const auto* string = std::get_if<ValueString>(&load.operation);
+      Require(string && string->string == *c.text && load.use_count == 0 && load.result == *value &&
+          load.block == c.arm && load.order < store.order && graph_.values[value->value].domain.IsString(), Error::kLiteral);
+      Pure(load); Move(source->op,c.parameter,c.arm); Restrict(*value,c.fallback_store);
+    } else {
+      Require(!std::holds_alternative<ValueId>(c.fallback), Error::kLiteral);
+      Require(Literal(Operand(c.fallback_store,0,OperandRole::kStoredValue),c.fallback,c.fallback_store,c.parameter,c.arm), Error::kLiteral);
+    }
     Move(c.fallback_store, c.parameter, c.arm);
   }
   const ValueProgram& graph_;

@@ -22,9 +22,9 @@ class ConstantResolver {
  public:
   ConstantResolver(const corpus::AbcFile& file, const abc::Header& header,
       const abc::MetadataIndex& index, abc::EntityOffset method,
-      const analysis::ValueProgram& graph, analysis::SemanticBudget budget)
+      const analysis::ValueProgram& graph, analysis::SemanticBudget budget, std::span<const SignatureString> signature)
       : file_(file), header_(header), index_(index), method_(method), graph_(graph),
-        budget_(budget), bytes_(budget.bytes), work_(budget.work) {}
+        budget_(budget), bytes_(budget.bytes), work_(budget.work), signature_(signature) {}
   TreeConstants Resolve() {
     if (file_.Size() != header_.file_size || file_.CheckUnchanged()) throw abc::MetadataError::kFileChanged;
     if (graph_.ops.size() >= std::numeric_limits<std::uint32_t>::max()) throw Error::kResourceLimit;
@@ -67,6 +67,20 @@ class ConstantResolver {
         // harmless; no source operation or semantic premise is inferred here.
         needs_number_type |= (unary && unary->op == analysis::UnaryOperator::kTrueOrNonzeroNumber) ||
                              (branch && branch->predicate == analysis::UnaryOperator::kTrueOrNonzeroNumber);
+      }
+    }
+    if (!signature_.empty()) {
+      std::vector<std::uint8_t> seen;
+      Reserve(seen,graph_.ops.size()); seen.resize(graph_.ops.size()); Step(graph_.ops.size());
+      for (const auto& literal : signature_) {
+        Step();
+        if (literal.operation.value >= graph_.ops.size() || seen[literal.operation.value]) throw Error::kSignatureLiteral;
+        const auto& op = graph_.ops[literal.operation.value];
+        if (op.life != analysis::ValueLife::kRemoved || op.origin.value >= graph_.origins.size() ||
+            graph_.origins[op.origin.value].disposition != analysis::OriginDisposition::kRetained)
+          throw Error::kSignatureLiteral;
+        seen[literal.operation.value] = 1;
+        uses_.push_back({literal.string,literal.operation,TextUse::kLiteral});
       }
     }
     std::sort(uses_.begin(), uses_.end(), [&](const auto& a, const auto& b) {
@@ -177,13 +191,14 @@ class ConstantResolver {
   std::uint64_t work_;
   TreeConstants result_;
   std::vector<ConstantUse> uses_;
+  std::span<const SignatureString> signature_;
 };
 }  // namespace
 TreeConstantResult ResolveTreeConstants(const corpus::AbcFile& file,
     const abc::Header& header, const abc::MetadataIndex& index,
     abc::EntityOffset method, const analysis::ValueProgram& graph,
-    analysis::SemanticBudget budget) {
-  try { return ConstantResolver(file, header, index, method, graph, budget).Resolve();
+    analysis::SemanticBudget budget, std::span<const SignatureString> signature) {
+  try { return ConstantResolver(file, header, index, method, graph, budget, signature).Resolve();
   } catch (Error error) { return error;
   } catch (abc::MetadataError error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;

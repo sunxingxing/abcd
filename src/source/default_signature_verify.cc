@@ -35,7 +35,7 @@ bool SameLiteral(const TreeLiteral& syntax, const analysis::ValueOperand& value)
 }
 class SignatureCheck {
  public:
-  SignatureCheck(const DefaultBody& body, const FunctionTree& tree, TreeCheckBudget& budget, const DefaultCaptureContext* capture)
+  SignatureCheck(const DefaultBody& body, const FunctionTree& tree, TreeCheckBudget& budget, const DefaultSignatureContext* capture)
       : body_(body), tree_(tree), budget_(budget), capture_(capture) {}
   void Run() {
     const auto& graph = body_.Graph();
@@ -48,9 +48,7 @@ class SignatureCheck {
         tree_.callable == CallableKind::kDerivedConstructor;
     // Literal and outer-cell initializers do not read the current receiver.
     // Owner/ABI and incoming capture binding remain separate obligations.
-    Require((tree_.callable == CallableKind::kMethod || constructor ||
-        ((body_.Storage() == DefaultStorage::kCell || body_.Capture()) && ordinary)) &&
-        tree_.strictness == Strictness::kStrict && !tree_.self,
+    Require((ordinary || constructor) && tree_.strictness == Strictness::kStrict && !tree_.self,
             Error::kContext);
     std::optional<SymbolId> expected_capture;
     if (const auto* binding = body_.Capture()) {
@@ -91,7 +89,12 @@ class SignatureCheck {
       const auto id = *parameter.initializer;
       const auto& node = tree_.expressions[id.value]; // Structure verified first.
       const auto* literal = std::get_if<TreeLiteral>(&node.expression);
-      if (body_.Capture() && body_.Capture()->candidate.shape.parameter == i) {
+      if (formals[i]->text) {
+        Require(capture_ && capture_->constants && formals[i]->initializer.value < capture_->constants->operations.size(), Error::kLiteral);
+        const auto* expected = std::get_if<TextId>(&capture_->constants->operations[formals[i]->initializer.value]);
+        const auto* text = literal ? std::get_if<TextId>(literal) : nullptr;
+        Require(text && expected && *text == *expected && text->value < tree_.texts.size(), Error::kLiteral);
+      } else if (body_.Capture() && body_.Capture()->candidate.shape.parameter == i) {
         const auto* symbol = std::get_if<SymbolExpr>(&node.expression);
         Require(symbol && expected_capture == symbol->symbol, Error::kContext);
       } else Require(literal && SameLiteral(*literal, formals[i]->fallback), Error::kLiteral);
@@ -145,12 +148,12 @@ class SignatureCheck {
   const DefaultBody& body_;
   const FunctionTree& tree_;
   TreeCheckBudget& budget_;
-  const DefaultCaptureContext* capture_;
+  const DefaultSignatureContext* capture_;
 };
 }  // namespace
 
 std::variant<DefaultSignatureProof, DefaultSignatureError> VerifyDefaultSignature(
-    const DefaultBody& body, const FunctionTree& tree, analysis::SemanticBudget budget, const DefaultCaptureContext* capture) {
+    const DefaultBody& body, const FunctionTree& tree, analysis::SemanticBudget budget, const DefaultSignatureContext* capture) {
   try {
     Require(tree.value_revision == body.Graph().revision && tree.cfg_revision == body.Graph().cfg_revision,
             Error::kRevision);

@@ -190,11 +190,13 @@ template<class Proof> class Projection {
 struct ProjectedDefault {
   ValueProgram graph;
   std::vector<DefaultInitializer> initializers;
+  std::vector<SignatureString> strings;
   std::size_t bytes;
   std::uint64_t work;
 };
 template<class Proof> ProjectedDefault Project(const ValueProgram& original,
     const Proof& proof, SemanticBudget budget) {
+  const auto initial_work = budget.work;
   Require(proof.Work() <= budget.work, Error::kWorkLimit);
   const auto count = proof.Defaults().size();
   budget.work -= proof.Work();
@@ -208,8 +210,20 @@ template<class Proof> ProjectedDefault Project(const ValueProgram& original,
   for (const auto& candidate : proof.Defaults()) {
     if constexpr (std::is_same_v<Proof, DefaultValueProof>)
       initializers.push_back({candidate.parameter, candidate.fallback, candidate.initializer});
-    else initializers.push_back({candidate.parameter, candidate.fallback, candidate.fallback_store});
+    else initializers.push_back({candidate.parameter,candidate.fallback,candidate.fallback_store,candidate.text});
   }
+  std::vector<SignatureString> strings;
+  std::size_t string_count = 0;
+  Require(count <= budget.work, Error::kWorkLimit); budget.work -= count;
+  for (const auto& candidate : initializers) string_count += candidate.text.has_value();
+  Require(string_count <= budget.bytes / sizeof(SignatureString), Error::kResourceLimit);
+  strings.reserve(string_count);
+  Require(strings.capacity() <= budget.bytes / sizeof(SignatureString), Error::kResourceLimit);
+  const auto string_bytes = strings.capacity() * sizeof(SignatureString); budget.bytes -= string_bytes;
+  Require(count <= budget.work, Error::kWorkLimit); budget.work -= count;
+  for (const auto& candidate : initializers)
+    if (candidate.text) strings.push_back({candidate.initializer,*candidate.text});
+  const auto preparation_work = initial_work - budget.work;
   Projection<Proof> projection(original, proof, budget);
   auto graph = projection.Build();
   std::size_t bytes = sizeof(DefaultBody) + proof.AllocatedBytes();
@@ -222,8 +236,8 @@ template<class Proof> ProjectedDefault Project(const ValueProgram& original,
   arena(graph.uses); arena(graph.origins); arena(graph.exceptional_exits);
   arena(graph.input.sites); arena(graph.input.values);
   Require(bytes <= budget.bytes, Error::kResourceLimit);
-  return {std::move(graph), std::move(initializers), bytes + initializer_bytes,
-      proof.Work() + count + projection.Work()};
+  return {std::move(graph),std::move(initializers),std::move(strings),bytes + initializer_bytes + string_bytes,
+      preparation_work + projection.Work()};
 }
 }  // namespace
 
@@ -244,7 +258,7 @@ std::variant<DefaultBody, DefaultBodyError> DefaultBody::Build(
     }
     auto proof = std::move(*verified);
     auto projected = Project(original, proof, budget);
-    return DefaultBody{std::move(projected.graph), std::move(proof), std::move(projected.initializers),
+    return DefaultBody{std::move(projected.graph), std::move(proof), std::move(projected.initializers), std::move(projected.strings),
         projected.bytes, projected.work};
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
@@ -265,7 +279,7 @@ std::variant<DefaultBody, DefaultBodyError> DefaultBody::BuildCaptured(
       return error == DefaultProofError::kRevision ? Error::kRevision : Error::kProof;
     }
     auto projected = Project(original, *proof, budget);
-    return DefaultBody{std::move(projected.graph), std::move(*proof), std::move(projected.initializers),
+    return DefaultBody{std::move(projected.graph), std::move(*proof), std::move(projected.initializers), std::move(projected.strings),
         projected.bytes, projected.work};
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
@@ -286,7 +300,7 @@ std::variant<DefaultBody, DefaultBodyError> DefaultBody::BuildCell(
       return error == CellDefaultProofError::kRevision ? Error::kRevision : Error::kProof;
     }
     auto projected = Project(original, *proof, budget);
-    return DefaultBody{std::move(projected.graph), std::move(*proof), std::move(projected.initializers),
+    return DefaultBody{std::move(projected.graph), std::move(*proof), std::move(projected.initializers), std::move(projected.strings),
         projected.bytes, projected.work};
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;

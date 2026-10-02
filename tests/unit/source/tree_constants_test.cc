@@ -64,6 +64,24 @@ void Run(std::string_view name, bool element) {
     ++budget.work;
     Check(std::holds_alternative<TreeConstants>(ResolveTreeConstants(file, header, index, {kMethod}, graph, budget)));
   }
+  // Signature-only constants share the same pool/entity deduplication, but
+  // cannot overwrite live operations or claim elided-pure origins.
+  analysis::ValueProgram residual;
+  analysis::ValueOp removed{}; removed.operation = analysis::ValueNop{};
+  removed.life = analysis::ValueLife::kRemoved; removed.origin = {0};
+  residual.ops.push_back(removed); residual.origins.push_back({{0},{0},{}});
+  const SignatureString requested[]{{{0},{1}}};
+  const auto resolved = std::get<TreeConstants>(ResolveTreeConstants(file,header,index,{kMethod},residual,{},requested));
+  Check(resolved.names.empty() && resolved.texts.size() == 1 &&
+      resolved.texts[0] == std::u16string(name.begin(),name.end()));
+  Check(std::get<TextId>(resolved.operations[0]) == TextId{0});
+  const SignatureString duplicate[]{{{0},{0}},{{0},{1}}};
+  Check(std::get<TreeConstantError>(ResolveTreeConstants(file,header,index,{kMethod},residual,{},duplicate)) == TreeConstantError::kSignatureLiteral);
+  residual.ops[0].life = analysis::ValueLife::kLive;
+  Check(std::get<TreeConstantError>(ResolveTreeConstants(file,header,index,{kMethod},residual,{},requested)) == TreeConstantError::kSignatureLiteral);
+  residual.ops[0].life = analysis::ValueLife::kRemoved;
+  residual.origins[0].disposition = analysis::OriginDisposition::kElidedPure;
+  Check(std::get<TreeConstantError>(ResolveTreeConstants(file,header,index,{kMethod},residual,{},requested)) == TreeConstantError::kSignatureLiteral);
   Check(unlink(path) == 0);
 }
 }  // namespace
