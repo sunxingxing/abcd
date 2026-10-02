@@ -249,6 +249,16 @@ void ForwardedStorage() {
       demands.push_back({{1}, {{1}, {slot}}});
       demands.push_back({{1}, {{1}, {slot}}});  // Two descendant uses share storage.
     }
+    std::vector<IncomingCell> entries;
+    for (std::uint16_t slot = 0; slot < count; ++slot) {
+      entries.push_back({{0},{slot}}); entries.push_back({{0},{slot}});
+    }
+    const auto entry_only = std::get<CellPlan>(BuildDemandedCellPlan(graph, environments, {}, {}, entries));
+    test::Check(entry_only.cells.size() == count && entry_only.accesses.empty());
+    test::Check(std::holds_alternative<std::uint64_t>(VerifyCellPlan(graph, environments, entry_only)));
+    const auto shared = std::get<CellPlan>(BuildDemandedCellPlan(graph, environments, demands, {}, entries));
+    test::Check(shared.cells.size() == count && shared.accesses.empty());
+    test::Check(std::holds_alternative<std::uint64_t>(VerifyCellPlan(graph, environments, shared)));
     const auto many = std::get<CellPlan>(BuildDemandedCellPlan(graph, environments, demands));
     test::Check(many.cells.size() == count && many.accesses.empty());
     test::Check(std::holds_alternative<std::uint64_t>(VerifyCellPlan(graph, environments, many)));

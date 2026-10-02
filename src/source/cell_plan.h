@@ -41,6 +41,10 @@ struct CellPlan {
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
   std::vector<CellDemand> demands;
+  // Incoming storage used outside the residual body (e.g. a native parameter
+  // initializer). These are binding obligations, never fabricated body reads
+  // or evidence of initialization. The signature owner must prove each demand.
+  std::vector<IncomingCell> entry_demands;
 };
 // Query an unchanged verified plan. O(log(cells + 1)); no allocation.
 [[nodiscard]] std::optional<CellId> FindCell(const CellPlan& plan, const CellStorage& storage);
@@ -55,7 +59,8 @@ enum class CellError : std::uint8_t {
     analysis::SemanticBudget budget = {});
 [[nodiscard]] std::variant<CellPlan, CellError> BuildDemandedCellPlan(
     const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
-    std::span<const CellDemand> demands, analysis::SemanticBudget budget = {});
+    std::span<const CellDemand> demands, analysis::SemanticBudget budget = {},
+    std::span<const IncomingCell> entry_demands = {});
 [[nodiscard]] std::variant<std::uint64_t, CellError> VerifyCellPlan(
     const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
     const CellPlan& plan, analysis::SemanticBudget budget = {});

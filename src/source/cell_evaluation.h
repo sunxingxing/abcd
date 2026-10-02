@@ -28,7 +28,8 @@ enum class CellEvaluationError : std::uint8_t {
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {},
     IncomingCells incoming = IncomingCells::kReject,
     analysis::ClosureWrites writes = analysis::ClosureWrites::kUnknown,
-    std::span<const CellDemand> demands = {});
+    std::span<const CellDemand> demands = {},
+    std::span<const IncomingCell> entry_demands = {});
 [[nodiscard]] std::variant<std::uint64_t, CellEvaluationError> VerifyCellEvaluation(
     const analysis::ValueProgram& graph, const CellEvaluation& plan, analysis::SemanticBudget budget = {});
 // Phase-aware storage and completed-store witnesses, not source lifetimes.

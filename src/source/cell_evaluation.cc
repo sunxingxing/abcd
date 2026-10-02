@@ -99,15 +99,17 @@ std::variant<std::uint64_t, CellEvaluationError> VerifyEvaluation(
 }
 std::variant<CellEvaluation, CellEvaluationError> BuildEvaluation(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
-    analysis::ClosureWrites writes, CellFlow flow, std::span<const CellDemand> demands) {
+    analysis::ClosureWrites writes, CellFlow flow, std::span<const CellDemand> demands,
+    std::span<const IncomingCell> entry_demands = {}) {
   try {
     Quota quota(budget); quota.Admit(sizeof(CellEvaluation));
     const auto build_environments = flow == CellFlow::kPhased
         ? analysis::BuildPhasedValueEnvironments : analysis::BuildValueEnvironments;
     auto environments = Take(build_environments(graph, quota.Remaining()), Error::kEnvironment);
     quota.Admit(environments.allocated_bytes); quota.Step(environments.work);
-    const auto build_cells = flow == CellFlow::kPhased ? BuildDemandedPhasedCellPlan : BuildDemandedCellPlan;
-    auto cells = Take(build_cells(graph, environments, demands, quota.Remaining()), Error::kCells);
+    auto cells = Take(flow == CellFlow::kPhased
+        ? BuildDemandedPhasedCellPlan(graph, environments, demands, quota.Remaining())
+        : BuildDemandedCellPlan(graph, environments, demands, quota.Remaining(), entry_demands), Error::kCells);
     quota.Admit(cells.allocated_bytes); quota.Step(cells.work);
     const auto build_initialization = flow == CellFlow::kPhased
         ? BuildPhasedCellInitializations : BuildCellInitializations;
@@ -124,8 +126,9 @@ std::variant<CellEvaluation, CellEvaluationError> BuildEvaluation(
 }  // namespace
 std::variant<CellEvaluation, CellEvaluationError> BuildCellEvaluation(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
-    analysis::ClosureWrites writes, std::span<const CellDemand> demands) {
-  return BuildEvaluation(graph, budget, incoming, writes, CellFlow::kNormal, demands);
+    analysis::ClosureWrites writes, std::span<const CellDemand> demands,
+    std::span<const IncomingCell> entry_demands) {
+  return BuildEvaluation(graph, budget, incoming, writes, CellFlow::kNormal, demands, entry_demands);
 }
 std::variant<std::uint64_t, CellEvaluationError> VerifyCellEvaluation(
     const analysis::ValueProgram& graph, const CellEvaluation& plan, analysis::SemanticBudget budget) {

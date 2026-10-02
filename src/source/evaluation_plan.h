@@ -187,7 +187,8 @@ struct EvaluationShape {
     std::span<const ClassInitializerCall> initializers = {},
     analysis::ClosureWrites closure_writes = analysis::ClosureWrites::kUnknown,
     std::span<const ClassDefinitionSite> definitions = {},
-    std::span<const analysis::OpId> receiver_guards = {});
+    std::span<const analysis::OpId> receiver_guards = {},
+    std::span<const IncomingCell> entry_demands = {});
 // Iteratively expands the proposed forest in the declared input order, checking
 // exact ordered occurrences and availability. Cross-phase expressions require
 // contiguous effect intervals and equal catch snapshots at their final roots.

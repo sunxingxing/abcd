@@ -12,6 +12,27 @@
 
 ## 当前阶段
 
+### 2026-10-03：签名外层存储进入共同 cell/evaluation 计划
+
+- CellPlan 新增 entry_demands，显式保留残余函数体之外使用的 IncomingCell；
+  不伪造 load、access 或 creation。共同排序/索引合并函数体访问、子函数
+  demand 和入口 demand；校验器验证存储覆盖，遗漏或改错地址会被拒绝。
+  该表只表达待绑定义务，不提供初始化证明；当前 phased 计划拒绝此需求。
+- 普通 BuildCellEvaluation/BuildEvaluationPlan 与独立 evaluation verifier
+  已传播该表，零 body access 时仍构建 cell 计划。Conditional 模式保留义务，
+  Reject 模式仍拒绝外层存储。全部持久 vector 纳入预算，无逐需求全图扫描。
+- 上一提交的真实默认残余图形态已通过单元验证：移除 load/guard 后保留
+  原 incoming cell，operations 不伪造读取，求值计划保留 entry demand。
+  0/1/2/200/201 项验证重复入口需求、与子函数需求共用 storage 的去重。
+  八 targets 构建完成，相关 8/8 CTest 通过 6.49 秒；日志
+  /tmp/abcd-signature-cell-related-{build,tests}.log，末次单目标构建
+  /tmp/abcd-signature-cell-closed-build.log。首次编译暴露旧 ternary 函数指针
+  的签名差异，已改为显式普通/异常调用并完成验证。
+- 下一步仍是端到端接线：FamilyFunction 持有 DefaultBody、PlanFamilyCells
+  从封装证明引入 entry demand、捕获校验将已迁移的原读取映射到签名 cell，
+  最后构建并验证原生捕获默认表达式和参数作用域。尚未接入 family 发布，
+  record 完成数未验证变化；未运行五输入/full-suite/RSS，Goal 保持 active。
+
 ### 2026-10-03：捕获默认值的独立证明与残余投影
 
 - DefaultValueProof::BuildCaptured 验证原环境/cell plan，要求默认读取属于

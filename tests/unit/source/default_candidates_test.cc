@@ -509,6 +509,22 @@ void CapturedBoundary() {
   Check(body.Capture() && body.Capture()->storage.slot.value == 3);
   Check(body.Graph().ops[2].life == ValueLife::kRemoved && body.Graph().ops[3].life == ValueLife::kRemoved);
   Check(std::holds_alternative<ValueFlowProof>(VerifyValueFlow(body.Graph())));
+  const auto residual_env = std::get<ValueEnvironments>(BuildValueEnvironments(body.Graph()));
+  const auto signature_cells = std::get<CellPlan>(BuildDemandedCellPlan(body.Graph(),residual_env,{}, {},
+      {&body.Capture()->storage,1}));
+  Check(signature_cells.cells.size() == 1 && signature_cells.cells[0].count == 0);
+  Check(signature_cells.accesses.empty() && !signature_cells.operations[2]);
+  Check(std::holds_alternative<std::uint64_t>(VerifyCellPlan(body.Graph(),residual_env,signature_cells)));
+  const auto signature_evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(body.Graph(), {},
+      IncomingCells::kConditional, {}, {}, {}, {}, ClosureWrites::kLanguage, {}, {}, signature_cells.entry_demands));
+  Check(signature_evaluation.cells && signature_evaluation.cells->cells.entry_demands.size() == 1);
+  Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(body.Graph(), signature_evaluation)));
+  Check(std::holds_alternative<EvaluationError>(BuildEvaluationPlan(body.Graph(), {},
+      IncomingCells::kReject, {}, {}, {}, {}, ClosureWrites::kLanguage, {}, {}, signature_cells.entry_demands)));
+  auto lost = signature_cells; lost.entry_demands.clear();
+  Check(std::holds_alternative<CellError>(VerifyCellPlan(body.Graph(),residual_env,lost)));
+  lost = signature_cells; ++lost.entry_demands[0].slot.value;
+  Check(std::holds_alternative<CellError>(VerifyCellPlan(body.Graph(),residual_env,lost)));
   auto escaped = graph;
   escaped.uses[5].operand = ValueId{0}; Relink(escaped);
   Check(std::holds_alternative<DefaultProofError>(prove(escaped,checked)));

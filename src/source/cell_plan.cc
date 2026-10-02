@@ -125,6 +125,13 @@ std::variant<std::uint64_t, CellError> VerifyPlan(
       Require(cell.has_value(), Error::kStorage);
       demanded[cell->value] = 1;
     }
+    Require(flow == CellFlow::kNormal || plan.entry_demands.empty(), Error::kAccess);
+    for (const auto& demand : plan.entry_demands) {
+      quota.Step(std::bit_width(plan.cells.size()) + 1);
+      const auto cell = FindCell(plan, demand);
+      Require(cell.has_value(), Error::kStorage);
+      demanded[cell->value] = 1;
+    }
     std::size_t next = 0;
     for (std::size_t c = 0; c < plan.cells.size(); ++c) {
       quota.Step(); const auto& cell = plan.cells[c];
@@ -162,7 +169,8 @@ std::variant<std::uint64_t, CellError> VerifyPlan(
 
 std::variant<CellPlan, CellError> BuildPlan(
     const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
-    analysis::SemanticBudget budget, CellFlow flow, std::span<const CellDemand> demands = {}) {
+    analysis::SemanticBudget budget, CellFlow flow, std::span<const CellDemand> demands = {},
+    std::span<const IncomingCell> entry_demands = {}) {
   try {
     Quota quota(budget); Environment(graph, environments, quota, flow);
     Require(environments.flow.bindings.size() <= std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
@@ -170,13 +178,19 @@ std::variant<CellPlan, CellError> BuildPlan(
     auto allocations = Allocations(environments, quota);
     std::vector<Candidate> candidates;
     Require(demands.size() <= std::numeric_limits<std::uint32_t>::max() - environments.flow.bindings.size(), Error::kResourceLimit);
-    quota.Size(candidates, environments.flow.bindings.size() + demands.size());
+    const auto body_count = environments.flow.bindings.size() + demands.size();
+    Require(entry_demands.size() <= std::numeric_limits<std::uint32_t>::max() - body_count, Error::kResourceLimit);
+    Require(flow == CellFlow::kNormal || entry_demands.empty(), Error::kAccess);
+    quota.Size(candidates, body_count + entry_demands.size());
     for (std::size_t i = 0; i < environments.flow.bindings.size(); ++i) {
       quota.Step(); const auto& binding = environments.flow.bindings[i];
       candidates[i] = {Storage(binding.binding, allocations), CellAccess{{binding.instruction}, Kind(graph.ops[binding.instruction])}};
     }
     for (std::size_t i = 0; i < demands.size(); ++i)
       candidates[environments.flow.bindings.size() + i] = {DemandStorage(graph, environments, allocations, demands[i], quota), {}};
+    for (std::size_t i = 0; i < entry_demands.size(); ++i) {
+      quota.Step(); candidates[body_count + i] = {entry_demands[i], {}};
+    }
     std::sort(candidates.begin(), candidates.end(), [&](const auto& a, const auto& b) {
       quota.Step();
       return std::tuple(Key(a.storage), a.access ? std::optional{a.access->operation} : std::nullopt) <
@@ -190,6 +204,8 @@ std::variant<CellPlan, CellError> BuildPlan(
     quota.Size(plan.cells, count); quota.Size(plan.accesses, environments.flow.bindings.size()); quota.Size(plan.operations, graph.ops.size());
     quota.Size(plan.demands, demands.size());
     std::copy(demands.begin(), demands.end(), plan.demands.begin());
+    quota.Size(plan.entry_demands, entry_demands.size());
+    std::copy(entry_demands.begin(), entry_demands.end(), plan.entry_demands.begin());
     count = 0;
     std::size_t access = 0;
     for (std::size_t i = 0; i < candidates.size(); ++i) {
@@ -206,7 +222,7 @@ std::variant<CellPlan, CellError> BuildPlan(
     quota.Step(std::get<std::uint64_t>(checked));
     plan.allocated_bytes = sizeof(plan) + plan.cells.capacity() * sizeof(Cell) +
         plan.accesses.capacity() * sizeof(CellAccess) + plan.operations.capacity() * sizeof(std::optional<CellId>) +
-        plan.allocations.capacity() * sizeof(analysis::OpId) + plan.demands.capacity() * sizeof(CellDemand);
+        plan.allocations.capacity() * sizeof(analysis::OpId) + plan.demands.capacity() * sizeof(CellDemand) + plan.entry_demands.capacity() * sizeof(IncomingCell);
     plan.work = quota.Work(); return plan;
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
@@ -225,8 +241,9 @@ std::variant<std::uint64_t, CellError> VerifyCellPlan(
 }
 std::variant<CellPlan, CellError> BuildDemandedCellPlan(
     const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
-    std::span<const CellDemand> demands, analysis::SemanticBudget budget) {
-  return BuildPlan(graph, environments, budget, CellFlow::kNormal, demands);
+    std::span<const CellDemand> demands, analysis::SemanticBudget budget,
+    std::span<const IncomingCell> entry_demands) {
+  return BuildPlan(graph, environments, budget, CellFlow::kNormal, demands, entry_demands);
 }
 std::variant<CellPlan, CellError> BuildPhasedCellPlan(
     const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,

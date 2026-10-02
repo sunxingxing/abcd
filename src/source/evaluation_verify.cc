@@ -114,7 +114,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
         Error::kOwnership);
     const auto projected_op = [&](std::size_t i) { return !projection.owners.empty() && projection.owners[i].has_value(); };
     bool has_definitions = false;
-    bool has_cells = plan.cells && !plan.cells->cells.demands.empty();
+    bool has_cells = plan.cells && (!plan.cells->cells.demands.empty() || !plan.cells->cells.entry_demands.empty());
     bool has_arguments = false;
     std::size_t next_function = 0;
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {

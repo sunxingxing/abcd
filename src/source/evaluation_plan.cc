@@ -23,7 +23,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
     std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules,
     EvaluationFlow flow, std::span<const CellDemand> demands, std::span<const ClassInitializerCall> initializers,
-    analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards) {
+    analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands = {}) {
   try {
     Require(incoming == IncomingCells::kReject || incoming == IncomingCells::kConditional, Error::kUnsupportedOperation);
     auto work = budget.work;
@@ -119,7 +119,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     admit(literal_allocations.capacity() - graph.ops.size(), sizeof(std::uint8_t));
     admit(visible.capacity() - graph.ops.size(), sizeof(EvaluationUses));
     bool has_definitions = false;
-    bool has_cells = !demands.empty();
+    bool has_cells = !demands.empty() || !entry_demands.empty();
     bool has_arguments = false;
     std::size_t next_function = 0;
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
@@ -160,9 +160,10 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
       plan.holes = std::get<HoleProtocol>(std::move(analyzed));
     }
     if (has_cells) {
-      const auto build_cells = flow == EvaluationFlow::kPhased ? BuildPhasedCellEvaluation : BuildCellEvaluation;
-      auto built = build_cells(graph, {bytes, work}, incoming,
-          functions.empty() ? closure_writes : analysis::ClosureWrites::kLanguage, demands);
+      const auto writes = functions.empty() ? closure_writes : analysis::ClosureWrites::kLanguage;
+      auto built = flow == EvaluationFlow::kPhased
+          ? BuildPhasedCellEvaluation(graph, {bytes, work}, incoming, writes, demands)
+          : BuildCellEvaluation(graph, {bytes, work}, incoming, writes, demands, entry_demands);
       if (const auto* error = std::get_if<CellEvaluationError>(&built)) {
         if (*error == CellEvaluationError::kResourceLimit) return Error::kResourceLimit;
         if (*error == CellEvaluationError::kWorkLimit) return Error::kWorkLimit;
@@ -452,8 +453,8 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
 std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
     std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules, std::span<const CellDemand> demands,
-    std::span<const ClassInitializerCall> initializers, analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards) {
-  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kNormal, demands, initializers, closure_writes, definitions, receiver_guards);
+    std::span<const ClassInitializerCall> initializers, analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands) {
+  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kNormal, demands, initializers, closure_writes, definitions, receiver_guards, entry_demands);
 }
 std::variant<EvaluationPlan, EvaluationError> BuildPhasedEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
