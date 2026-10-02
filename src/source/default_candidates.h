@@ -22,12 +22,20 @@ struct DefaultCandidate {
   std::optional<analysis::OpId> undefined;
   std::optional<analysis::OpId> number;
 };
+// A nonliteral boundary, not a migrated default. Captured-cell scope, guard,
+// initializer environment and source ownership still need separate proof.
+struct CapturedDefaultCandidate {
+  DefaultCandidate shape;
+  analysis::LexicalAddress address;
+  std::optional<analysis::OpId> guard;
+};
 struct DefaultCandidates {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
   std::vector<DefaultCandidate> values;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
+  std::optional<CapturedDefaultCandidate> capture;
 };
 enum class DefaultCandidateError : std::uint8_t {
   kRevision, kInvalidGraph, kResourceLimit, kWorkLimit

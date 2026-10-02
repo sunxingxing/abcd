@@ -25,6 +25,9 @@ struct BlockFacts {
   std::optional<OpId> value_op;
   std::optional<ValueId> phi;
   bool visited = false;
+  std::optional<OpId> capture_load;
+  std::optional<OpId> capture_guard;
+  bool ambiguous_capture = false;
 };
 struct PhiFacts {
   std::array<std::optional<UseId>, 2> inputs;
@@ -68,6 +71,7 @@ class Finder {
       next_parameter = candidate->parameter + 1;
       header = candidate->join;
     }
+    if (capture_ && capture_->shape.parameter == next_parameter) result.capture = capture_;
     // Persistent result only; scratch peak was admitted alongside it above.
     result.allocated_bytes = sizeof(DefaultCandidates) + result.values.capacity() * sizeof(DefaultCandidate);
     result.work = initial_.work - budget_.work;
@@ -109,6 +113,14 @@ class Finder {
           (std::holds_alternative<ValueEnvironmentPush>(op.operation) ||
            std::holds_alternative<ValueLexicalStore>(op.operation))) ++block.environment_prefix;
       ++block.operations; block.last = OpId{static_cast<std::uint32_t>(i)};
+      if (std::holds_alternative<ValueLexicalLoad>(op.operation)) {
+        if (block.capture_load) block.ambiguous_capture = true;
+        else block.capture_load = block.last;
+      }
+      if (std::holds_alternative<ValueGuard>(op.operation)) {
+        if (block.capture_guard) block.ambiguous_capture = true;
+        else block.capture_guard = block.last;
+      }
       if (!std::holds_alternative<ValueJump>(op.operation)) {
         ++block.value_operations; block.value_op = block.last;
       }
@@ -251,6 +263,26 @@ class Finder {
     }
     if (!incoming || !fallback || !arm_facts.value_op) return {};
     auto literal = fallback->operand;
+    if (arm_facts.capture_load && !arm_facts.ambiguous_capture) {
+      const auto id = *arm_facts.capture_load;
+      const auto& load = graph_.ops[id.value];
+      const auto* value = std::get_if<ValueId>(&literal);
+      if (value && load.result == *value && load.use_count == 0 &&
+          arm_facts.value_operations == 1U + (arm_facts.capture_guard ? 1U : 0U)) {
+        bool valid = true;
+        if (arm_facts.capture_guard) {
+          const auto& guard = graph_.ops[arm_facts.capture_guard->value];
+          const auto* guarded = guard.use_count == 1 ? std::get_if<ValueId>(&Use(guard,0).operand) : nullptr;
+          valid = guard.order > load.order && guarded && *guarded == *value && !guard.result &&
+              Use(guard,0).role == OperandRole::kGuardValue;
+        }
+        if (valid) capture_ = CapturedDefaultCandidate{
+            DefaultCandidate{parameter->index,*entry,merged,literal,id,producer->op,*facts.last,
+                header,arm,join,present,missing,arm_block.first_edge,undefined_op,{}},
+            std::get<ValueLexicalLoad>(load.operation).address,arm_facts.capture_guard};
+      }
+      return {};
+    }
     std::optional<OpId> number_op;
     {
       const auto& initializer = graph_.ops[arm_facts.value_op->value];
@@ -298,6 +330,7 @@ class Finder {
   SemanticBudget budget_;
   std::vector<BlockFacts> blocks_;
   std::vector<PhiFacts> phis_;
+  std::optional<CapturedDefaultCandidate> capture_;
 };
 }  // namespace
 std::variant<DefaultCandidates, DefaultCandidateError> FindDefaultCandidates(

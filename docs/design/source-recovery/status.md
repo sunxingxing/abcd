@@ -12,6 +12,18 @@
 
 ## 当前阶段
 
+### 2026-10-03：捕获默认值候选边界（尚未迁移）
+
+- FindDefaultCandidates 在共同入口默认值分支中记录词法读取及可选同值 guard，
+  与已证明的 literal defaults 分开。重复读取、错误 guard、额外效果不会匹配。
+  候选保留参数、合流、控制边、词法地址和原始操作；未改变签名迁移准入。
+- 修正新测试夹具的悬空 removed use 后，default_candidates_test 通过。
+  四个相关 targets 构建退出 0，定向 6/6 CTest 通过 3.19 秒，日志
+  /tmp/abcd-captured-default-related-build-2.log / related-tests.log。
+  首次相关构建误用了不存在的 default_signature_test，已按注册目标修正。
+- method48015 的捕获默认参数仍需环境、捕获重绑定、签名来源和独立验证；
+  本改动不能修复其 length 拒绝。未重跑五输入、full-suite 或 RSS；Goal 未完成。
+
 
 ### 2026-10-03：限定模块发布窗口的捕获准入
 

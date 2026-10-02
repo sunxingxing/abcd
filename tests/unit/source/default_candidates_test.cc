@@ -459,5 +459,34 @@ void MaterializedNumber() {
   Check(std::get<DefaultProofError>(DefaultValueProof::Build(graph, parameters, candidates, 0)) ==
         DefaultProofError::kEscapedValue);
 }
+void CapturedBoundary() {
+  auto graph = DefaultDiamond();
+  graph.ops[2].operation = ValueLexicalLoad{{{0},{3}}};
+  graph.ops[2].use_count = 0;
+  graph.ops[2].normal = LanguageEffect::kLexicalRead;
+  graph.uses.pop_back();
+  Relink(graph);
+  const auto found = Find(graph);
+  Check(found.values.empty() && found.capture.has_value());
+  Check(found.capture->shape.initializer == OpId{2});
+  Check(found.capture->address.slot.value == 3 && !found.capture->guard);
+  // Discovery cannot sneak a captured read through the literal-only proof.
+  const auto parameters = std::get<ParameterPlan>(BuildParameterPlan(graph,1));
+  Check(std::holds_alternative<DefaultProofError>(DefaultValueProof::Build(graph,parameters,found,0)));
+  const UseId guarded{static_cast<std::uint32_t>(graph.uses.size())};
+  graph.uses.push_back({OpId{3},OperandRole::kGuardValue,ReadPurpose::kOperand,ValueId{3}});
+  graph.ops.insert(graph.ops.begin()+3,{ValueGuard{}, {1},1,guarded,1,{},
+      LanguageEffect::kGuard,LanguageEffect::kGuard,ExceptionalCompletion::kMayThrow,{4}});
+  graph.origins.push_back({{4},{4},{}});
+  graph.uses[5].owner=OpId{4}; ++graph.blocks[1].op_count; ++graph.blocks[2].first_op.value;
+  Relink(graph);
+  const auto checked = Find(graph);
+  Check(checked.values.empty() && checked.capture && checked.capture->guard == OpId{3});
+  graph.uses[guarded.value].operand=ValueId{0}; Relink(graph);
+  Check(!Find(graph).capture);
+  graph.uses[guarded.value].operand=ValueId{3}; Relink(graph);
+  graph.ops[3].operation=ValueDebugger{}; graph.ops[3].normal=LanguageEffect::kDebugger;
+  Check(!Find(graph).capture);
+}
 }  // namespace
-int main() { UnusedDefault(); EnvironmentPrefix(); MatchAndBoundaries(); RejectCoincidences(); NegatedLiteral(); ProofAndEscapes(); BodyProjection(); SnapshotDefault(); UndefinedProducer(); MaterializedNumber(); }
+int main() { CapturedBoundary(); UnusedDefault(); EnvironmentPrefix(); MatchAndBoundaries(); RejectCoincidences(); NegatedLiteral(); ProofAndEscapes(); BodyProjection(); SnapshotDefault(); UndefinedProducer(); MaterializedNumber(); }
