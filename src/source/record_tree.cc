@@ -15,6 +15,7 @@
 #include "abcd/source/module_enclosure.h"
 #include "tree_constants.h"
 #include "tree_globals.h"
+#include "tree_semantics.h"
 #include "abcd/source/scalar_expression.h"
 #include "abcd/source/string_literal.h"
 #include "abcd/source/tree_printer.h"
@@ -314,48 +315,61 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     std::sort(definitions.begin(), definitions.end(), [](const auto& a, const auto& b) {
       return a.creation != b.creation ? a.creation < b.creation : a.definition < b.definition;
     });
+    const auto class_failure = [&](const ClassTreeFailure& failure, analysis::OpId creation) -> RecordSourceResult {
+      const auto classify = [&](auto&& self, const auto& error) -> RecordSourceResult {
+        using T = std::decay_t<decltype(error)>;
+        if constexpr (std::is_same_v<T, FamilyPrepareFailure>)
+          return RouteRefusal{FamilyRouteFailure(error)};
+        else if constexpr (std::is_same_v<T, ClassContextFailure> || std::is_same_v<T, CreationContextFailure>)
+          return std::visit([&](const auto& nested) { return self(self, nested); }, error.error);
+        else if constexpr (std::is_same_v<T, ClassInitializerReadFailure> || std::is_same_v<T, SyntaxResolutionFailure> || std::is_same_v<T, FunctionFileFailure>)
+          return std::visit([&](const auto& nested) { return self(self, nested); }, error);
+        else if constexpr (std::is_same_v<T, ModuleAliasFailure>)
+          return std::visit([&](const auto& nested) { return self(self, nested); }, error.cause);
+        else if constexpr (std::is_same_v<T, ModuleReadFailure>)
+          return std::visit([&](const auto& nested) { return self(self, nested); }, error.reason);
+        else if constexpr (std::is_same_v<T, FunctionValueFailure>) return RouteRefusal{error.cause};
+        else if constexpr (requires { error.kind; }) return self(self, error.kind);
+        else {
+          if constexpr (requires { T::kResourceLimit; })
+            if (error == T::kResourceLimit) return fail(Error::kResourceLimit);
+          if constexpr (requires { T::kWorkLimit; })
+            if (error == T::kWorkLimit)
+              return RouteRefusal{{RouteFailureClass::kWorkLimit, ValueRouteError::kContextStage, {}}};
+          if constexpr (requires { T::kFileChanged; })
+            if (error == T::kFileChanged) return fail(Error::kFileChanged);
+          if constexpr (requires { T::kRead; })
+            if (error == T::kRead) return fail(Error::kRead);
+          return RecordProgramFailure{Error::kClass, graph.origins[graph.ops[creation.value].origin.value].pc};
+        }
+      };
+      return std::visit([&](const auto& error) { return classify(classify, error); }, failure);
+    };
+    struct PendingClass {
+      analysis::OpId operation;
+      std::shared_ptr<ClassTree> tree;
+      std::span<const ClassDefinitionSite> definitions;
+    };
+    retain(function->values.classes.classes.size() * sizeof(PendingClass));
+    std::vector<PendingClass> pending_classes;
+    pending_classes.reserve(function->values.classes.classes.size());
+    retain((pending_classes.capacity() - function->values.classes.classes.size()) * sizeof(PendingClass));
     for (const auto& occurrence : function->values.classes.classes) {
       if (!functions || !classes) return fail(Error::kClass);
       const auto first = std::lower_bound(definitions.begin(), definitions.end(), occurrence.operation,
           [](const auto& site, auto id) { return site.creation < id; });
       const auto last = std::upper_bound(first, definitions.end(), occurrence.operation,
           [](auto id, const auto& site) { return id < site.creation; });
-      auto built = BuildClassTree(file, header, index, lookup, roles, *functions, *classes,
-          *function, occurrence.operation, identity, &class_scope, {budget.bytes},
-          initialization[occurrence.operation.value], std::span(first, last), RecoveryMode::kAllowPartial);
-      if (const auto* failure = std::get_if<ClassTreeFailure>(&built)) {
-        const auto classify = [&](auto&& self, const auto& error) -> RecordSourceResult {
-          using T = std::decay_t<decltype(error)>;
-          if constexpr (std::is_same_v<T, FamilyPrepareFailure>)
-            return RouteRefusal{FamilyRouteFailure(error)};
-          else if constexpr (std::is_same_v<T, ClassContextFailure> || std::is_same_v<T, CreationContextFailure>)
-            return std::visit([&](const auto& nested) { return self(self, nested); }, error.error);
-          else if constexpr (std::is_same_v<T, ClassInitializerReadFailure> || std::is_same_v<T, SyntaxResolutionFailure> || std::is_same_v<T, FunctionFileFailure>)
-            return std::visit([&](const auto& nested) { return self(self, nested); }, error);
-          else if constexpr (std::is_same_v<T, ModuleAliasFailure>)
-            return std::visit([&](const auto& nested) { return self(self, nested); }, error.cause);
-          else if constexpr (std::is_same_v<T, ModuleReadFailure>)
-            return std::visit([&](const auto& nested) { return self(self, nested); }, error.reason);
-          else if constexpr (std::is_same_v<T, FunctionValueFailure>) return RouteRefusal{error.cause};
-          else if constexpr (requires { error.kind; }) return self(self, error.kind);
-          else {
-            if constexpr (requires { T::kResourceLimit; })
-              if (error == T::kResourceLimit) return fail(Error::kResourceLimit);
-            if constexpr (requires { T::kWorkLimit; })
-              if (error == T::kWorkLimit)
-                return RouteRefusal{{RouteFailureClass::kWorkLimit, ValueRouteError::kContextStage, {}}};
-            if constexpr (requires { T::kFileChanged; })
-              if (error == T::kFileChanged) return fail(Error::kFileChanged);
-            if constexpr (requires { T::kRead; })
-              if (error == T::kRead) return fail(Error::kRead);
-            return RecordProgramFailure{Error::kClass, graph.origins[graph.ops[occurrence.operation.value].origin.value].pc};
-          }
-        };
-        return std::visit([&](const auto& error) { return classify(classify, error); }, *failure);
-      }
-      auto definition = std::get<ClassTree>(std::move(built));
+      auto layout = BuildClassLayout(file, header, index, lookup, roles, *classes,
+          *function, occurrence.operation, identity, {budget.bytes},
+          initialization[occurrence.operation.value], std::span(first, last));
+      if (const auto* failure = std::get_if<ClassTreeFailure>(&layout))
+        return class_failure(*failure, occurrence.operation);
+      auto definition = std::get<ClassTree>(std::move(layout));
       retain(definition.allocated_bytes);
-      constants->operations[occurrence.operation.value] = std::make_shared<ClassTree>(std::move(definition));
+      auto retained = std::make_shared<ClassTree>(std::move(definition));
+      constants->operations[occurrence.operation.value] = retained;
+      pending_classes.push_back({occurrence.operation, std::move(retained), std::span(first, last)});
     }
     const auto view = constants->View();
     syntax.names = std::move(constants->names); syntax.texts = std::move(constants->texts);
@@ -401,6 +415,29 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     for (const auto& name : lexical_names) lexical_views.push_back(name);
     std::sort(lexical_views.begin(), lexical_views.end());
     class_scope.record_bindings = lexical_views;
+    // Parent symbols/scopes now exist. Resolve bodies in this actual native
+    // enclosure, keeping the ClassExpr pointer stable. This is single-owner
+    // construction: a failed preparation discards the entire unprinted tree.
+    for (auto& pending : pending_classes) {
+      auto built = BuildClassTree(file, header, index, lookup, roles, *functions, *classes,
+          *function, pending.operation, identity, &class_scope, {budget.bytes},
+          initialization[pending.operation.value], pending.definitions, RecoveryMode::kAllowPartial);
+      if (const auto* failure = std::get_if<ClassTreeFailure>(&built))
+        return class_failure(*failure, pending.operation);
+      auto definition = std::get<ClassTree>(std::move(built));
+      if (definition.name != pending.tree->name || definition.callable != pending.tree->callable ||
+          definition.member_sites != pending.tree->member_sites || !definition.BodiesPrepared())
+        return fail(Error::kClass);
+      retain(definition.allocated_bytes);
+      *pending.tree = std::move(definition);
+    }
+    if (!pending_classes.empty()) {
+      // The provisional parent check cannot certify bodies. Recheck actual
+      // final constants/constructor kinds before family assembly or printing.
+      auto checked = VerifyTreeSemantics(graph, *control, *evaluation, result->tree, view, {budget.bytes});
+      if (!std::holds_alternative<TreeSemantics>(checked)) return fail(Error::kValue);
+      retain(std::get<TreeSemantics>(checked).allocated_bytes);
+    }
     // The emitted ESM shares this complete import/local enclosure with its
     // classes and nested functions. Check free names against it as well;
     // missing realm/intrinsic bindings still fail their existing checks.

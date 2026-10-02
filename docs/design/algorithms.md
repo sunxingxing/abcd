@@ -5,6 +5,35 @@
 
 ## 输入规模与成本
 
+### 类布局先行与实际 parent 树组合（2026-10-02）
+
+`BuildClassLayout` 从实际 ClassCreation、构造器 context 和 literal buffer
+解析 callable、名称、按 wire 顺序的成员 occurrence、定义位置和静态初始化
+调用。布局没有 PreparedFamily 或伪造正文，只供共同 ClassExpr 建立 parent
+AST。record 获得真实符号与作用域后，在其完整 native enclosure 中准备
+constructor、buffer 成员、定义成员和静态初始化，原 ClassExpr 指针保持稳定。
+赋值期间只有当前 builder 拥有可变引用，没有并发 reader；失败丢弃整个未打印
+record。成功后对完整常量和实际构造器 callable 再作一次 TreeSemantics 检查。
+
+布局检查只证明原操作/投影位置，不能证明缺席的正文。完成后的 operand
+检查保留实际函数创建身份和 body 对应；printer、默认导出分析和 family
+write barrier 需要全部正文。缺 constructor、缺 buffer 成员、缺定义成员
+任一 descriptor half，或缺原静态初始化时，不能打印完整类。
+
+令 L 为 literal entries、M 为 buffer methods、D 为定义 sites、C 为文件
+occurrence index 大小。布局使用已有 DecodeClassBuffer 和精确二分 occurrence
+查询；既有 literal 读取/解码成本另计，布局新增 O(M log(C+1) + D) 时间、
+O(M+D) 保留元数据。literal 解码 scratch 单独 admission。record 当前先解析布局，body factory 再解析一次
+同一冻结布局，重复次数为常数，不是按每个成员重扫 buffer；原方法族准备
+成本另计。record 的最终语义检查仅一次，沿原操作/AST/控制索引遍历，保留
+原检查自身的复杂度；没有逐 class 重建 parent 图或 tree。资源 charge 包含
+布局、完整正文及验证 scratch，仍是保守 admission，不是 RSS 实测。
+
+采用项目自有 typed occurrence 和 staged AST 构建，无新增依赖或许可证。
+实际 ABC 的 IconInfo 配对执行、三 profile 的 decoded 定义成员及原有静态
+字段/record 测试用于正确性验证。此改动建立外部 class capture 绑定所需
+parent 树；外部 incoming cell、owner 分离和独立 capture 证明仍需继续实施。
+
 ### 普通流的原生成员调用链（2026-10-02）
 
 复用异常流已有的 `IsMemberReceiver`：仅当原 ValueInvoke 的显式 receiver

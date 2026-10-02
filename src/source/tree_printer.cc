@@ -645,8 +645,7 @@ class TreePrinter {
     if ((family_ && !ModuleBody()) || !node.definition || node.definition->identity != Tree().identity ||
         node.definition->creation.creator != Tree().method) throw Error::kUnsupportedContext;
     if (node.heritage) {
-      const auto& family = node.definition->constructor.Family();
-      if (family.members[family.root.value].tree.callable != CallableKind::kDerivedConstructor)
+      if (!node.definition->BodiesPrepared() || node.definition->callable != CallableKind::kDerivedConstructor)
         throw Error::kUnsupportedContext;
       Append("({["); Quoted(node.definition->name); Append("]: class extends (");
       Push(DerivedClassBody{node.definition}); Push(*node.heritage);
@@ -1116,13 +1115,14 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
   using Failure = TreePrintError;
   const auto initial = budget;
   try {
-    if (ResourceFailures(tree.identity.contract) != ResourceFailureScope::kExcluded ||
-        tree.constructor.Identity() != tree.identity ||
-        tree.constructor.Family().members[tree.constructor.Family().root.value].tree.method != tree.creation.target)
+    if (!tree.BodiesPrepared() || ResourceFailures(tree.identity.contract) != ResourceFailureScope::kExcluded ||
+        tree.constructor->Identity() != tree.identity ||
+        tree.constructor->Family().members[tree.constructor->Family().root.value].tree.method != tree.creation.target)
       return Failure::kUnsupportedContext;
     // Only the enclosing ClassExpr may emit a derived header/heritage. The
     // public whole-class route remains restricted to actual base constructors.
-    if (tree.constructor.Family().members[tree.constructor.Family().root.value].tree.callable !=
+    if (tree.constructor->Family().members[tree.constructor->Family().root.value].tree.callable != tree.callable ||
+        tree.callable !=
         (form == ClassPrintForm::kExpression ? CallableKind::kBaseConstructor : CallableKind::kDerivedConstructor))
       return Failure::kUnsupportedContext;
     PrintedClassTree result;
@@ -1174,7 +1174,7 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
     // export read inside a method. The wrapper is never exposed to user code.
     if (form == ClassPrintForm::kExpression) { append("({["); name(); append("]: class {\n"); }
     else append(" {\n");
-    member(tree.constructor);
+    member(*tree.constructor);
     for (std::size_t i = 0; i < tree.members.size(); ++i) {
       const auto& family = tree.members[i]; const auto* site = family.ClassCreation();
       if (!site || family.Identity() != tree.identity || site->creator != tree.creation.creator ||

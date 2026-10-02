@@ -308,8 +308,7 @@ class ForestBuilder {
           Require(op.use_count == 1 && evaluation_.flow == EvaluationFlow::kNormal, Error::kOwnership);
           const auto* heritage = std::get_if<analysis::ValueId>(&graph_.uses[op.first_use.value].operand);
           const bool absent = heritage && graph_.values[heritage->value].domain == analysis::ValueKinds::Hole();
-          const auto& family = (*definition)->constructor.Family();
-          Require(family.members[family.root.value].tree.callable ==
+          Require((*definition)->callable ==
               (absent ? CallableKind::kBaseConstructor : CallableKind::kDerivedConstructor), Error::kOwnership);
           const auto& site = (*definition)->creation;
           Require(site.creation.constructor == creation->constructor && site.creation.literal == creation->literal &&

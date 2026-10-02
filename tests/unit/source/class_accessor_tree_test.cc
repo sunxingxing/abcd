@@ -133,6 +133,23 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   if (const auto* error = std::get_if<EvaluationError>(&evaluated)) std::cerr << "evaluation " << static_cast<unsigned>(*error) << '\n';
   Check(std::holds_alternative<EvaluationPlan>(evaluated)); const auto& evaluation = std::get<EvaluationPlan>(evaluated);
   GlobalScope globals{};
+  auto layout = BuildClassLayout(file, header, index, lookup, roles, classes, creator,
+      definitions.front().creation, identity, {}, nullptr, definitions);
+  Check(std::holds_alternative<ClassTree>(layout));
+  std::ostringstream pending;
+  Check(std::get<TreePrintError>(PrintClassTree(std::get<ClassTree>(layout), pending, {}, {}, &globals)) ==
+      TreePrintError::kUnsupportedContext);
+  Check(pending.str().empty());
+  auto definition = std::make_shared<ClassTree>(std::get<ClassTree>(std::move(layout)));
+  auto constants = std::get<TreeConstants>(ResolveTreeConstants(file, header, index, {kCreator}, graph));
+  constants.operations[definitions.front().creation.value] = definition;
+  FunctionSyntax syntax{}; syntax.identity = identity; syntax.method = {kCreator}; syntax.owner = {0};
+  syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+  syntax.names = constants.names; syntax.texts = constants.texts;
+  const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+  auto tree = BuildFunctionTree(graph, control, evaluation, syntax, constants.View());
+  if (const auto* error = std::get_if<FunctionTreeError>(&tree)) std::cerr << "tree failure " << static_cast<unsigned>(*error) << '\n';
+  Check(std::holds_alternative<ConstructedFunction>(tree));
   auto built = BuildClassTree(file, header, index, lookup, roles, functions, classes, creator,
       definitions.front().creation, identity, &globals, {}, nullptr, definitions);
   if (async_method && ordinary_parity != 1) {
@@ -144,16 +161,20 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   }
   if (const auto* error = std::get_if<ClassTreeFailure>(&built)) std::cerr << "class failure " << error->index() << '\n';
   Check(std::holds_alternative<ClassTree>(built));
-  auto definition = std::make_shared<ClassTree>(std::get<ClassTree>(std::move(built)));
-  auto constants = std::get<TreeConstants>(ResolveTreeConstants(file, header, index, {kCreator}, graph));
-  constants.operations[definitions.front().creation.value] = definition;
-  FunctionSyntax syntax{}; syntax.identity = identity; syntax.method = {kCreator}; syntax.owner = {0};
-  syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
-  syntax.names = constants.names; syntax.texts = constants.texts;
-  const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
-  auto tree = BuildFunctionTree(graph, control, evaluation, syntax, constants.View());
-  if (const auto* error = std::get_if<FunctionTreeError>(&tree)) std::cerr << "tree failure " << static_cast<unsigned>(*error) << '\n';
-  Check(std::holds_alternative<ConstructedFunction>(tree));
+  *definition = std::get<ClassTree>(std::move(built));
+  // A complete class cannot lose an actual definition body or its proof.
+  for (auto& site : definition->definitions) {
+    for (auto& body : site.bodies) {
+      if (!body) continue;
+      auto missing_body = std::move(body); body.reset();
+      std::ostringstream rejected;
+      Check(std::get<TreePrintError>(PrintClassTree(*definition, rejected, {}, {}, &globals)) ==
+          TreePrintError::kUnsupportedContext);
+      Check(rejected.str().empty());
+      Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(graph, control, evaluation, syntax, constants.View())));
+      body = std::move(missing_body);
+    }
+  }
   // Independent operand checking must reject removal or substitution of the
   // prepared body behind an otherwise well-formed projection certificate.
   auto missing = std::move(definition->definitions.back()); definition->definitions.pop_back();

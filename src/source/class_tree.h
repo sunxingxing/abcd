@@ -24,17 +24,32 @@ struct ClassTree {
   RouteInputIdentity identity;
   ClassConstructorSite creation;
   std::u16string name;
-  PreparedFamily constructor;
+  // Constructor context and literal occurrences are resolved before the parent
+  // AST. Body preparation fills this same construction-owned object only while
+  // no consumers run; publication/printing requires every occurrence below.
+  CallableKind callable = CallableKind::kMethod;
+  std::vector<analysis::ClassSiteId> member_sites;
+  std::optional<ClassInitializerCall> initializer_site;
+  std::optional<PreparedFamily> constructor;
   std::vector<PreparedFamily> members;
   std::vector<ClassDefinitionTree> definitions;
   std::optional<ClassStaticFields> initializer;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
+  [[nodiscard]] bool BodiesPrepared() const;
 };
 enum class ClassTreeError : std::uint8_t { kCreation, kMember, kName, kResourceLimit, kWorkLimit };
 using ClassTreeFailure = std::variant<ClassTreeError, ClassContextFailure, FamilyPrepareFailure,
     abc::MetadataError, abc::LiteralFailure, abc::ClassBufferError, ClassInitializerReadFailure,
     SyntaxResolutionFailure, EvaluationError, ControlError, FunctionTreeError, ModuleAliasFailure, ModuleAliasTreeError>;
+// Resolve the actual creation and member inventory without preparing bodies.
+// This construction-only object may enter the parent's AST, but cannot print.
+[[nodiscard]] std::variant<ClassTree, ClassTreeFailure> BuildClassLayout(
+    const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
+    const abc::MethodLookup&, const analysis::MethodRoleIndex&,
+    const analysis::ClassMethodSites&, const FileFunction&, analysis::OpId,
+    RouteInputIdentity, analysis::SemanticBudget = {},
+    const ClassInitializerCall* = nullptr, std::span<const ClassDefinitionSite> = {});
 // Fresh unchanged caller and same-file indexes are admitted by the caller.
 // Constructor and every member use the shared family pipeline. Refusal of any
 // member refuses this creation by default. Explicit AllowPartial may retain a

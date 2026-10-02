@@ -39,8 +39,15 @@ class OperandCheck {
       budget_.Step();
       RequireMeaning(call.creation.value < constants_.operations.size(), Error::kConstant);
       const auto* definition = std::get_if<std::shared_ptr<const ClassTree>>(&constants_.operations[call.creation.value]);
-      RequireMeaning(definition && *definition && (*definition)->initializer &&
-          (*definition)->initializer->call == call, Error::kConstant);
+      RequireMeaning(definition && *definition && (*definition)->initializer_site &&
+          *(*definition)->initializer_site == call, Error::kConstant);
+      // A layout carries the original call, never a fabricated initializer
+      // body. Final record verification repeats this check after preparation.
+      if (!(*definition)->constructor) {
+        RequireMeaning(!(*definition)->initializer, Error::kConstant);
+        continue;
+      }
+      RequireMeaning((*definition)->initializer && (*definition)->initializer->call == call, Error::kConstant);
       const auto& fields = *(*definition)->initializer;
       const auto* site = fields.context.CreationSite();
       const auto* method = std::get_if<analysis::ValueFunctionCreation>(&graph_.ops[call.method.value].operation);
@@ -68,7 +75,8 @@ class OperandCheck {
       };
       const auto methods = definition_site.Methods();
       for (std::size_t i = 0; i < methods.size(); ++i) {
-        RequireMeaning(found->bodies[i].has_value() == methods[i].operation.has_value(), Error::kConstant);
+        RequireMeaning((*definition)->constructor ?
+            found->bodies[i].has_value() == methods[i].operation.has_value() : !found->bodies[i], Error::kConstant);
         if (found->bodies[i]) check(*found->bodies[i], *methods[i].operation, methods[i].kind);
       }
     }
@@ -398,10 +406,13 @@ class OperandCheck {
               definition.creation.creation.cache_slot == operation.cache_slot && op.use_count == 1, Error::kOperand);
           const auto* heritage = std::get_if<analysis::ValueId>(&input(0));
           const bool absent = heritage && graph_.values[heritage->value].domain == analysis::ValueKinds::Hole();
-          const auto& family = definition.constructor.Family();
           RequireMeaning(evaluation_.flow == EvaluationFlow::kNormal && created.heritage.has_value() != absent &&
-              family.members[family.root.value].tree.callable ==
+              definition.callable ==
                   (absent ? CallableKind::kBaseConstructor : CallableKind::kDerivedConstructor), Error::kOperand);
+          if (definition.constructor) {
+            const auto& family = definition.constructor->Family();
+            RequireMeaning(family.members[family.root.value].tree.callable == definition.callable, Error::kOperand);
+          }
           if (created.heritage) Input(input(0), *created.heritage);
         } else {
           static_assert(

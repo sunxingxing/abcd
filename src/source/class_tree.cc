@@ -17,13 +17,22 @@ template<class T, class... U> T Take(std::variant<U...> value) {
   throw ClassTreeFailure{Error::kCreation};
 }
 }
-std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
+bool ClassTree::BodiesPrepared() const {
+  if (!constructor || members.size() != member_sites.size() ||
+      initializer.has_value() != initializer_site.has_value()) return false;
+  for (const auto& definition : definitions) {
+    const auto methods = definition.site.Methods();
+    for (std::size_t i = 0; i < methods.size(); ++i)
+      if (definition.bodies[i].has_value() != methods[i].operation.has_value()) return false;
+  }
+  return true;
+}
+std::variant<ClassTree, ClassTreeFailure> BuildClassLayout(
     const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
     const abc::MethodLookup& lookup, const analysis::MethodRoleIndex& roles,
-    const analysis::FunctionCreationSites& functions, const analysis::ClassMethodSites& classes,
-    const FileFunction& creator, analysis::OpId operation, RouteInputIdentity identity,
-    const GlobalScope* globals, analysis::SemanticBudget budget, const ClassInitializerCall* initializer,
-    std::span<const ClassDefinitionSite> definitions, RecoveryMode recovery) {
+    const analysis::ClassMethodSites& classes, const FileFunction& creator,
+    analysis::OpId operation, RouteInputIdentity identity, analysis::SemanticBudget budget,
+    const ClassInitializerCall* initializer, std::span<const ClassDefinitionSite> definitions) {
   const auto initial = budget;
   try {
     const auto admit = [&](std::size_t count, std::size_t width) {
@@ -48,18 +57,14 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
     admit(buffer.properties.capacity(), sizeof(abc::ClassProperty));
     const auto name = RuntimeName(index.methods[context.Position().value]);
     if (!name) return ClassTreeFailure{Error::kName};
+    ClassTree tree;
+    tree.identity = identity; tree.creation = site; tree.callable = context.Callable();
     admit(name->size() + 1, sizeof(char16_t)); step(name->size());
-    std::u16string spelling(name->begin(), name->end());
-    admit(spelling.capacity() - spelling.size(), sizeof(char16_t));
-    const FamilyDestination destination{Strictness::kStrict, globals, FunctionFragment::kClassMember};
-    const ParentModuleInput modules{creator.input,
-        {creator.values.graph.origins[creator.values.graph.ops[operation.value].origin.value].site.value}};
-    auto constructor = Take<PreparedFamily>(PreparedFamily::PrepareConstructor(file, header, index, lookup,
-        roles, functions, creator, operation, identity, destination, budget, recovery));
-    admit(constructor.AllocatedBytes(), 1); step(constructor.Work());
-    std::vector<PreparedFamily> members;
-    admit(buffer.properties.size(), sizeof(PreparedFamily)); members.reserve(buffer.properties.size());
-    admit(members.capacity() - buffer.properties.size(), sizeof(PreparedFamily));
+    tree.name.assign(name->begin(), name->end());
+    admit(tree.name.capacity() - tree.name.size(), sizeof(char16_t));
+    admit(buffer.properties.size(), sizeof(analysis::ClassSiteId));
+    tree.member_sites.reserve(buffer.properties.size());
+    admit(tree.member_sites.capacity() - buffer.properties.size(), sizeof(analysis::ClassSiteId));
     for (std::size_t i = 0; i < buffer.properties.size(); ++i) {
       step(1); const auto& property = buffer.properties[i];
       const auto* method = std::get_if<abc::ClassMethod>(&property.value);
@@ -72,33 +77,77 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
       if (!actual || actual->literal != resolved.offset || actual->kind != method->kind ||
           actual->length != method->length || actual->placement != property.placement)
         return ClassTreeFailure{Error::kMember};
-      auto member = Take<PreparedFamily>(PreparedFamily::PrepareClass(file, header, index, lookup, roles,
-          functions, classes, *occurrence, identity, destination, budget, recovery, &modules));
-      admit(member.AllocatedBytes(), 1); step(member.Work());
-      members.push_back(std::move(member));
+      tree.member_sites.push_back(*occurrence);
     }
-    // The enclosing evaluation independently proves these definitions movable.
-    // Retain their actual wire order and both halves of each descriptor; never
-    // sort by property key or drop a superseded body's preparation obligation.
-    std::vector<ClassDefinitionTree> defined_members;
-    admit(definitions.size(), sizeof(ClassDefinitionTree)); defined_members.reserve(definitions.size());
-    admit(defined_members.capacity() - definitions.size(), sizeof(ClassDefinitionTree));
+    // Layout retains actual wire order. Projection/movement is a separate
+    // parent-tree obligation; a metadata inventory grants no executable body.
+    admit(definitions.size(), sizeof(ClassDefinitionTree));
+    tree.definitions.reserve(definitions.size());
+    admit(tree.definitions.capacity() - definitions.size(), sizeof(ClassDefinitionTree));
     std::optional<analysis::OpId> previous;
-    for (const auto& definition_site : definitions) {
+    for (const auto& definition : definitions) {
       step(1);
-      if (definition_site.creation != operation || (previous && *previous >= definition_site.definition) || initializer)
+      if (definition.creation != operation || (previous && *previous >= definition.definition) || initializer)
         return ClassTreeFailure{Error::kCreation};
-      previous = definition_site.definition;
-      ClassDefinitionTree tree{definition_site};
-      const auto prepare = [&](abc::ClassMethodKind kind) {
+      previous = definition.definition;
+      tree.definitions.push_back({definition});
+    }
+    if (initializer) {
+      if (initializer->creation != operation) return ClassTreeFailure{Error::kCreation};
+      tree.initializer_site = *initializer;
+    }
+    if (file.CheckUnchanged()) return ClassTreeFailure{abc::MetadataError::kFileChanged};
+    tree.allocated_bytes = initial.bytes - budget.bytes; tree.work = initial.work - budget.work;
+    return tree;
+  } catch (const ClassTreeFailure& failure) { return failure; }
+    catch (const std::bad_alloc&) { return ClassTreeFailure{Error::kResourceLimit}; }
+    catch (const std::length_error&) { return ClassTreeFailure{Error::kResourceLimit}; }
+}
+std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
+    const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
+    const abc::MethodLookup& lookup, const analysis::MethodRoleIndex& roles,
+    const analysis::FunctionCreationSites& functions, const analysis::ClassMethodSites& classes,
+    const FileFunction& creator, analysis::OpId operation, RouteInputIdentity identity,
+    const GlobalScope* globals, analysis::SemanticBudget budget, const ClassInitializerCall* initializer,
+    std::span<const ClassDefinitionSite> definitions, RecoveryMode recovery) {
+  const auto initial = budget;
+  try {
+    const auto admit = [&](std::size_t count, std::size_t width) {
+      if (count > budget.bytes / width) throw ClassTreeFailure{Error::kResourceLimit};
+      budget.bytes -= count * width;
+    };
+    const auto step = [&](std::uint64_t count) {
+      if (count > budget.work) throw ClassTreeFailure{Error::kWorkLimit};
+      budget.work -= count;
+    };
+    auto tree = Take<ClassTree>(BuildClassLayout(file, header, index, lookup, roles, classes,
+        creator, operation, identity, budget, initializer, definitions));
+    admit(tree.allocated_bytes, 1); step(tree.work);
+    const FamilyDestination destination{Strictness::kStrict, globals, FunctionFragment::kClassMember};
+    const ParentModuleInput modules{creator.input,
+        {creator.values.graph.origins[creator.values.graph.ops[operation.value].origin.value].site.value}};
+    tree.constructor = Take<PreparedFamily>(PreparedFamily::PrepareConstructor(file, header, index, lookup,
+        roles, functions, creator, operation, identity, destination, budget, recovery));
+    admit(tree.constructor->AllocatedBytes(), 1); step(tree.constructor->Work());
+    admit(tree.member_sites.size(), sizeof(PreparedFamily)); tree.members.reserve(tree.member_sites.size());
+    admit(tree.members.capacity() - tree.member_sites.size(), sizeof(PreparedFamily));
+    for (const auto occurrence : tree.member_sites) {
+      step(1);
+      auto member = Take<PreparedFamily>(PreparedFamily::PrepareClass(file, header, index, lookup, roles,
+          functions, classes, occurrence, identity, destination, budget, recovery, &modules));
+      admit(member.AllocatedBytes(), 1); step(member.Work());
+      tree.members.push_back(std::move(member));
+    }
+    for (auto& definition : tree.definitions) {
+      step(1);
+      const auto methods = definition.site.Methods();
+      for (std::size_t i = 0; i < methods.size(); ++i) {
+        if (!methods[i].operation) continue;
         auto member = Take<PreparedFamily>(PreparedFamily::PrepareDefinedMember(file, header, index, lookup, roles,
-            functions, creator, definition_site.definition, kind, identity, destination, budget, recovery));
-        admit(member.AllocatedBytes(), 1); step(member.Work()); return member;
-      };
-      const auto methods = definition_site.Methods();
-      for (std::size_t i = 0; i < methods.size(); ++i)
-        if (methods[i].operation) tree.bodies[i] = prepare(methods[i].kind);
-      defined_members.push_back(std::move(tree));
+            functions, creator, definition.site.definition, methods[i].kind, identity, destination, budget, recovery));
+        admit(member.AllocatedBytes(), 1); step(member.Work());
+        definition.bodies[i] = std::move(member);
+      }
     }
     std::optional<ClassStaticFields> fields;
     if (initializer) {
@@ -143,8 +192,9 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
       fields = ClassStaticFields{*initializer, std::move(body.context), std::move(built.tree), body.function.input.Record()};
     }
     if (file.CheckUnchanged()) return ClassTreeFailure{abc::MetadataError::kFileChanged};
-    return ClassTree{identity, site, std::move(spelling), std::move(constructor), std::move(members), std::move(defined_members), std::move(fields),
-        initial.bytes - budget.bytes, initial.work - budget.work};
+    tree.initializer = std::move(fields);
+    tree.allocated_bytes = initial.bytes - budget.bytes; tree.work = initial.work - budget.work;
+    return tree;
   } catch (const ClassTreeFailure& failure) { return failure; }
     catch (const std::bad_alloc&) { return ClassTreeFailure{Error::kResourceLimit}; }
     catch (const std::length_error&) { return ClassTreeFailure{Error::kResourceLimit}; }

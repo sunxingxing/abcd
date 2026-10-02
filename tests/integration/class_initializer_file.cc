@@ -255,8 +255,10 @@ int main(int argc, char** argv) {
     // Fragment success must not permit a whole class to silently lose extends.
     // This deliberately minimal container tests the class printer's boundary;
     // it is not evidence that the actual class's remaining members recovered.
-    ClassTree no_heritage{identity, *context.ConstructorSite(), u"Index",
-        std::move(std::get<PreparedFamily>(prepared_constructor)), {}, {}, {}};
+    ClassTree no_heritage;
+    no_heritage.identity = identity; no_heritage.creation = *context.ConstructorSite();
+    no_heritage.name = u"Index"; no_heritage.callable = context.Callable();
+    no_heritage.constructor = std::move(std::get<PreparedFamily>(prepared_constructor));
     std::ostringstream invalid_class;
     const auto rejected_class = PrintClassTree(no_heritage, invalid_class, {}, {}, &constructor_globals);
     Check(std::get<TreePrintError>(rejected_class) == TreePrintError::kUnsupportedContext);

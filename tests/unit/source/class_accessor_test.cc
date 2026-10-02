@@ -51,7 +51,7 @@ int main(int argc, char** argv) {
   const auto getter = Accessor(abc::ClassMethodKind::kGetter,
                                abc::ClassPlacement::kPrototype);
   Member(getter, output);
-  Check(output.str().starts_with("get [\"value\"]()"));
+  Check(output.str().starts_with("get value()"));
   auto wrong = getter;
   wrong.effective_kind = source::EffectiveMethodKind::kOrdinary;
   std::ostringstream rejected;

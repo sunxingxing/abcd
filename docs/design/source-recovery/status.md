@@ -12,6 +12,50 @@
 
 ## 当前阶段
 
+### 2026-10-02：类布局先行，成员在真实 parent 树建立后准备
+
+- 原 record 路径在 parent AST/符号尚不存在时，先把 class 成员作为独立
+  rooted family 准备，无法接入实际外层 capture。新增 BuildClassLayout
+  只解析真实 constructor context/callable、literal buffer occurrence、
+  按 wire 顺序的定义 sites 和静态初始化调用；无 PreparedFamily 或假正文。
+  class_tree_source_test 的布局先行要求先 RED，red-test.log；随后共同
+  ClassExpr 可建立 parent 树，布局本身仍拒绝打印。
+- 生产 BuildRecordTree 已先放入布局，建立真实 record AST/符号和完整
+  native enclosure，再准备 constructor、buffer 成员、定义成员和静态
+  字段。ClassExpr 指针不变，只有当前 builder 持有可变构建引用；失败
+  丢弃未打印 record。完成后再次 VerifyTreeSemantics 核对实际 callable、
+  原始调用、定义、heritage 与 body 对应，不将 provisional 检查当成正文
+  证明。printer、默认导出分析及 family write barrier 拒绝未准备的类。
+- 回归覆盖 IconInfo 的 ABC-only 布局 → parent AST → 实际成员准备 →
+  配对 JS 执行；缺 constructor、缺 buffer member、错误 callable、缺
+  descriptor half 均拒绝。三 profile 的 decoded 定义成员也先建立布局
+  和 parent AST，再准备/打印正文，既有原始 operation/PC 与 family
+  检查保留。首批8/8通过5.61秒，green-tests-2.log。
+- 关联选择146项；首轮81 targets构建退出0，141通过/5未通过，250.54秒，
+  final-tests.log。选择脚本漏建 class_writer_test、constructor_call_test、
+  class_accessor_test，后两项的JS测试也依赖缺失可执行文件；已补建三个
+  目标，实际关联构建覆盖84 targets。补建后的13项复验12通过/1失败，
+  final-repair-tests.log；LLDB证实旧 class_accessor_test 的唯一失败断言
+  在54行，仍期待 get ["value"]()，已存在的 printer 输出 get value()。
+  更新这一过时表示断言，保留错误 kind 的拒绝及无输出检查。最终定向
+  13/13通过2.56秒，final-focused-tests.log；本轮146项均有通过证据，
+  不声称执行了全库或一次全绿146项命令。构建日志 final-build.log、
+  final-repair-build.log、accessor-final-build.log，选择清单 selected.json。
+- 五输入 fresh build/stage-one/value-class-layout-pass-1 顺序导出均退出0，
+  56 complete / 4 incomplete / 46 failure / 46 no-module；无新增完整项、
+  回退或legacy，56个原完整record的源码字节均未变化，三个native default
+  record仍保留。final-batch.log / final-batch-summary.json。此次对原
+  value-member-chain-pass-1 manifest 的重新统计亦为56/4/46/46，上一节
+  56/3/47/46属于汇总错误，已更正；没有因本轮改变完成或失败分类。
+- 真实 CommentBarView record21042 / entry21219仍以unproved/tree_stage
+  拒绝，comment-bar.jsonl。本轮解决准备顺序，尚未绑定 class rooted
+  family 的外层 incoming cell；下一步分离record与成员root的owner，
+  在实际创建/定义位置绑定原始cell、source alias和transitive-write证明。
+  不忽略 kOuterCapture、不伪造初始化值、不放宽原始ModuleStore escape
+  或外层cell前提。阶段一完整语义/表示验收仍未完成，Goal保持active。
+  全库、扩大语料、RSS/基准、DFX、调度器、代理及定期审视仍暂停。
+  本节日志均在 /tmp/abcd-class-layout-*。
+
 ### 2026-10-02：普通流的成员调用链与真实源码表示
 
 - 普通 ProjectEvaluationUses 将原成员引用的 base 和显式 VM receiver
@@ -41,7 +85,7 @@
   符号 opcode 整理后的定向3/3通过11.99秒，final-focused-tests.log。
   最终关联127/127通过203.01秒，final-tests.log，选择清单见selected.json。
 - 五输入 fresh `build/stage-one/value-member-chain-pass-1` 顺序导出均
-  退出0，仍为56 complete / 3 incomplete / 47 failure / 46 no-module，
+  退出0，仍为56 complete / 4 incomplete / 46 failure / 46 no-module，
   没有新增 complete、完整项回退或 legacy writer，native default 三项
   保留。29个原完整 record 的源码变化，相关临时声明967降至204；
   此计数是表示变化，不是这些 record 的全量语义验收。证据

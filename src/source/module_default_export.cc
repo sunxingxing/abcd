@@ -118,7 +118,8 @@ std::variant<DefaultExportCheck, TreePrintError> CheckModuleDefaultExport(
           if (!node->definition) return result(false);
           if (!seen_classes.insert(node->definition.get()).second) continue;
           const auto& definition = *node->definition;
-          add_family(definition.constructor.Family());
+          if (!definition.BodiesPrepared()) return result(false);
+          add_family(definition.constructor->Family());
           for (const auto& member : definition.members) { step(); add_family(member.Family()); }
           for (const auto& site : definition.definitions) for (const auto& member : site.bodies) {
             step(); if (member) add_family(member->Family());
