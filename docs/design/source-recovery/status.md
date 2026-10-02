@@ -13,6 +13,36 @@
 ## 当前阶段
 
 
+### 2026-10-03：区分 Number 类型与 non-NaN 数值安全事实
+
+- decoded `(+left << +right) ** 2` 在旧输入准入 RED，number-type-red-test
+  记录 opcode21 拒绝；NOT 生成的指数另行 RED。新增 Number refinement，
+  包含 NaN、排除 BigInt/private marker，不授予 finite/non-NaN/integral。
+  Join 保留共同 Number 类型；有限和表示排除事实仍独立削弱。
+- ToNumber 使用独立 ConvertedNumber 规则；ToNumeric 保留 BigInt 的
+  一般 Defined 边界，并保留已有 Number 事实。已接受 FLDAI NaN 与 canonical
+  NaN 常量获得 Number，impure 编码仍 Unknown。普通/phased SSA 与 linear
+  lexical 共用规则，无源码文本或样本分支。
+- 位运算可据 Number（含 NaN）正常返回 int32。现代/deprecated NOT 的
+  Number 路径新增有限整数结果证明；一般 Language 仍可能 BigInt，只到
+  Defined。没有授予 tagged-minimum 排除，没有删除一般算术/求负的
+  NaN/private-tag 检查。组合继续复用原生表达式树与优先级打印。
+- boundary-tests.log 6/6 通过 16.79 秒；三 profile 的普通/异常路径、
+  subtype join、Number/BigInt/Symbol、signed zero、NaN 与幂/位运算组合
+  验证通过。独立原生场景分别为 42,160 参数、47,120 组合、645 数值场景。
+- 24 targets 构建退出 0，相关首轮 30/31 通过 60.66 秒。原寄存器测试
+  两处仍期望 NaN 输入为宽泛 Language，更新为 Number；危险 ADD/NEG
+  结果仍 Unknown 和原拒绝 PC 的断言不变。repair-tests.log 4/4 通过
+  8.58 秒；按 selected.json 合并核对，31 项均有通过证据。
+- 五输入 fresh build/stage-one/value-number-type-pass-1 均退出 0，保持
+  75 complete / 5 incomplete / 26 failure / 46 no-module，无完整项退化、
+  完整源码字节变化或 legacy，原生 default records 保留。
+  日志前缀 /tmp/abcd-number-type-*；未运行 full-suite/RSS/扩展语料。
+- 已异步询问最终等价验收应以同版 Ark 重编译执行还是现有跨引擎合同为准；
+  尚未收到选择，当前合同及此前拒绝的 superclass 非 Proxy 假设都未改变。
+  本次类型改进不依赖合同变更，阶段一 Goal 保持 active。
+
+
 ### 2026-10-03：命名环境恢复 record 局部变量名
 
 - 真实 ABC 已有 DOMAIN 等命名环境信息，旧路径只校验而不用于源码符号。

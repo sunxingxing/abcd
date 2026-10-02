@@ -126,12 +126,16 @@ std::string Source(const abc::MethodBody& body, bool representable = true) {
 int main(int argc, char**) {
   const auto integral = ValueKinds::FiniteNumber().WithIntegralNumber();
   test::Check(integral.IsIntegralNumber());
+  test::Check(integral.IsNumber());
+  test::Check(ValueKinds::Number().IsDefined() && !ValueKinds::Number().IsNonNaNNumber());
+  test::Check(integral.Join(ValueKinds::Number()) == ValueKinds::Number());
+  test::Check(ValueKinds::Number().Join(ValueKinds::String()) == ValueKinds::Defined());
   test::Check(!integral.Join(ValueKinds::FiniteNumber()).IsIntegralNumber());
   test::Check(integral.Join(ValueKinds::FiniteNonzeroNumber().WithIntegralNumber()).IsIntegralNumber());
   test::Check(!ValueKinds::NonNaNNumber().WithIntegralNumber().IsIntegralNumber());
   const std::array kinds{ValueKinds{}, integral, integral.WithoutInt32MinTag(),
       ValueKinds::FiniteNonzeroNumber().WithIntegralNumber(), ValueKinds::FiniteNumber(),
-      ValueKinds::FiniteNonzeroNumber(), ValueKinds::NonNaNNumber(), ValueKinds::String(),
+      ValueKinds::FiniteNonzeroNumber(), ValueKinds::NonNaNNumber(), ValueKinds::Number(), ValueKinds::String(),
       ValueKinds::Defined(), ValueKinds::Language(), ValueKinds::Hole(), ValueKinds::Unknown()};
   for (const auto a : kinds) for (const auto b : kinds) {
     test::Check(a.Join(a) == a && a.Join(b) == b.Join(a));
@@ -164,8 +168,7 @@ int main(int argc, char**) {
   for (std::size_t index = 0; index < bitwise.size(); ++index)
     for (const auto left : bases) for (const auto right : {bits(0.0), bits(31.0), UINT64_C(0x7ff8000000000000)}) {
       const bool unsigned_shift = bitwise[index] == abc::Opcode::kSHR2_IMM8_V8;
-      const bool known_number = !std::isnan(std::bit_cast<double>(left)) || !std::isnan(std::bit_cast<double>(right));
-      auto expected = unsigned_shift || known_number ? ValueKinds::FiniteNumber().WithIntegralNumber() : ValueKinds::Defined();
+      auto expected = ValueKinds::FiniteNumber().WithIntegralNumber();
       if (unsigned_shift) expected = expected.WithoutInt32MinTag();
       const auto body = Arithmetic(left, right, bitwise[index]);
       test::Check(NormalResult(body) == expected);
@@ -180,7 +183,8 @@ int main(int argc, char**) {
         << "',binary:" << kFirstBitwiseOracle + index << ",fn:" << source << "},\n";
     }
   for (const auto unary : {abc::Opcode::kINC_IMM8, abc::Opcode::kDEC_IMM8,
-      abc::Opcode::kDEPRECATED_INC_PREF_V8, abc::Opcode::kDEPRECATED_DEC_PREF_V8})
+      abc::Opcode::kDEPRECATED_INC_PREF_V8, abc::Opcode::kDEPRECATED_DEC_PREF_V8,
+      abc::Opcode::kNOT_IMM8, abc::Opcode::kDEPRECATED_NOT_PREF_V8})
     for (const auto seed : bases) {
       const auto number = std::bit_cast<double>(seed);
       std::vector<std::uint8_t> code; Float(code, seed);
@@ -193,16 +197,19 @@ int main(int argc, char**) {
       } else code.insert(code.end(), {static_cast<std::uint8_t>(encoded), 0});
       code.push_back(static_cast<std::uint8_t>(abc::Opcode::kRETURN));
       const auto body = test::Body(code);
-      auto expected = std::isnan(number) ? ValueKinds::Unknown() : std::isfinite(number)
+      const bool bitnot = unary == abc::Opcode::kNOT_IMM8 || unary == abc::Opcode::kDEPRECATED_NOT_PREF_V8;
+      auto expected = bitnot ? ValueKinds::FiniteNumber().WithIntegralNumber() : std::isnan(number) ? ValueKinds::Unknown() : std::isfinite(number)
           ? ValueKinds::FiniteNumber() : ValueKinds::NonNaNNumber();
       if (std::isfinite(number) && std::trunc(number) == number) expected = expected.WithIntegralNumber();
       test::Check(NormalResult(body) == expected);
-      Phased(body, !std::isnan(number));
-      if (!std::isnan(number)) {
-        const auto source = Source(body);
+      const bool admitted = bitnot || !std::isnan(number);
+      const bool representable = !std::isnan(number) || seed == std::bit_cast<std::uint64_t>(std::numeric_limits<double>::quiet_NaN());
+      Phased(body, admitted, representable);
+      if (admitted) {
+        const auto source = Source(body, representable);
         const bool increment = unary == abc::Opcode::kINC_IMM8 || unary == abc::Opcode::kDEPRECATED_INC_PREF_V8;
-        if (argc > 1) std::cout << "{left:'" << std::hex << seed << std::dec << "',update:"
-          << (increment ? 1 : -1) << ",fn:" << source << "},\n";
+        if (argc > 1 && representable) std::cout << "{left:'" << std::hex << seed << std::dec << "',bitnot:"
+          << (bitnot ? "true" : "false") << ",update:" << (increment ? 1 : -1) << ",fn:" << source << "},\n";
       }
     }
   if (argc > 1) std::cout << "];\n";

@@ -91,7 +91,7 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment) {
         return ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};
       // IEEE binary64 exponent/significand fields distinguish finite values,
       // signed zero, infinities and NaNs without evaluating/quieting a payload.
-      // NaNs below the VM's impure threshold remain Language, not non-NaN.
+      // NaNs below the VM's impure threshold remain Number, not non-NaN.
       constexpr std::uint64_t kMagnitudeMask = UINT64_C(0x7fffffffffffffff);
       constexpr std::uint64_t kInfinityBits = UINT64_C(0x7ff0000000000000);
       const auto magnitude = number->value & kMagnitudeMask;
@@ -105,10 +105,16 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment) {
         }
         return ValueRule{ValueRuleKind::kFixed, kinds};
       }
+      return ValueRule{ValueRuleKind::kFixed, ValueKinds::Number()};
     }
     if (const auto* integer = std::get_if<IntegerLiteral>(value)) {
       const auto kinds = (integer->value != 0 ? ValueKinds::FiniteNonzeroNumber() : ValueKinds::FiniteNumber()).WithIntegralNumber();
       return ValueRule{ValueRuleKind::kFixed, integer->value == INT32_MIN ? kinds : kinds.WithoutInt32MinTag()};
+    }
+    if (const auto* special = std::get_if<SpecialValue>(value)) {
+      if (*special == SpecialValue::kNaN) return ValueRule{ValueRuleKind::kFixed, ValueKinds::Number()};
+      if (*special == SpecialValue::kInfinity)
+        return ValueRule{ValueRuleKind::kFixed, ValueKinds::NonNaNNumber().WithoutInt32MinTag()};
     }
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
   }
@@ -134,6 +140,8 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment) {
         return ValueRule{ValueRuleKind::kNegate, {}};
       case UnaryOperator::kLegacyNegate:
         return ValueRule{ValueRuleKind::kLegacyNegate, {}};
+      case UnaryOperator::kBitNot:
+        return ValueRule{ValueRuleKind::kBitNot, {}};
       case UnaryOperator::kIncrement:
       case UnaryOperator::kDecrement:
         return ValueRule{ValueRuleKind::kNumericUpdate, {}};
@@ -144,7 +152,6 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment) {
       case UnaryOperator::kToBoolean:
       case UnaryOperator::kLogicalNot:
       case UnaryOperator::kTypeOf:
-      case UnaryOperator::kBitNot:
       case UnaryOperator::kFalseOrZero:
       case UnaryOperator::kTrueOrNonzeroNumber:
         break;

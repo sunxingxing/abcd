@@ -45,7 +45,7 @@ std::uint64_t Run(abc::ProfileId profile, unsigned count, bool print = false, bo
   const auto& graph = values.graph;
   for (const auto& operation : graph.ops) if (const auto* unary = std::get_if<ValueUnary>(&operation.operation);
       unary && unary->op == UnaryOperator::kToNumber) {
-    test::Check(operation.result && graph.values[operation.result->value].domain == ValueKinds::Defined());
+    test::Check(operation.result && graph.values[operation.result->value].domain == ValueKinds::Number());
   }
   if (count == 1) {
     const auto private_body = test::Body({static_cast<std::uint8_t>(abc::Opcode::kLDHOLE),

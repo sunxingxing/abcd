@@ -1,7 +1,7 @@
 # Shared numeric facts
 
 The common value analysis distinguishes FiniteNonzeroNumber, FiniteNumber
-(including both signed zeros), NonNaNNumber, Defined and Language. Numeric
+(including both signed zeros), NonNaNNumber, Number (including NaN), Defined and Language. Numeric
 joins keep finite information when both inputs are finite and drop nonzero
 information when zero is possible. No source/debug spelling supplies a fact.
 
@@ -23,11 +23,11 @@ Do not silently treat that case as native JS subtraction or authorize it from a
 Language-only input. The original noncanonical-NaN counterexamples still refuse.
 
 Normal and phased SSA use the same sparse worklist transfer rules; linear
-lexical analysis calls the same scalar helpers. ToNumber preserves all facts of a proved non-NaN Number; otherwise a Language
-input has a Defined normal result. The pinned conversion returns Number or
+lexical analysis calls the same scalar helpers. ToNumber preserves all facts of a proved Number; otherwise a Language
+input has a Number normal result. The pinned conversion returns Number or
 throws, including BigInt/Symbol and conversion-hook failures; it does not imply
-non-NaN output. ToNumeric has the same Defined normal-result bound while retaining BigInt
-semantics. Known non-NaN Number input uses identity; other inputs use exclusive
+non-NaN output. ToNumeric preserves existing Number facts but otherwise has a
+Defined normal-result bound while retaining BigInt semantics. Known non-NaN Number input uses identity; other inputs use exclusive
 postfix scratch under the resource-exclusion contract. Independent verification
 checks the old-value result and rejects reads/captures/reuse of that scratch.
 V1 does not authorize the extra numeric operation. This does not admit arbitrary
@@ -107,7 +107,7 @@ spelling, sample identity or special expression writer supplies the proof.
 `BitwiseValues` and `UnsignedShiftValues` are shared by ordinary/phased SSA and
 linear lexical analysis. Pinned RuntimeShl2/Ashr2/And2/Or2/Xor2 perform ToNumeric
 left before right and reject mixed Number/BigInt. If either operand is proved a
-non-NaN Number, every normal result is an int32 Number: finite and integral,
+Number (including NaN), every normal result is an int32 Number: finite and integral,
 but potentially zero or tagged INT32_MIN. With two unclassified Language inputs,
 the result is only Defined because BigInt remains possible.
 
@@ -123,3 +123,23 @@ fails the existing source-tree representation contract. Tests retain separate
 normal-result and explicit source-refusal checks; this change does not silently
 canonicalize such literals. Runtime NaN parameters, including a noncanonical
 payload, are exercised separately through the ordinary/catch generated code.
+
+## Number type versus arithmetic safety
+
+`Number` is a distinct refinement between NonNaNNumber and Defined. Accepted
+FLDAI NaNs and the canonical NaN constant establish Number without claiming
+non-NaN, finiteness, integrality or a representation exclusion. Impure encodings
+still remain Unknown. Joins preserve Number only when every alternative is a
+Number; joining with String or a possible BigInt loses that type fact.
+
+The typed ToNumber rule now uses `ConvertedNumber`; ToNumeric keeps its separate
+BigInt-preserving rule. Bitwise operations and NOT can use a Number type proof
+because their normal Number path converts through int32/uint32, including NaN.
+NOT yields a finite integral Number for a proved Number input and otherwise only
+Defined. Neither signed bitwise nor NOT inherits a tagged-minimum exclusion.
+
+This admits decoded `(+left << +right) ** 2` and NOT-produced integer exponents
+through the existing expression tree. General ADD/SUB/MUL/DIV/EXP and numeric
+update/negation still require their independent stronger premises. A Number
+fact is not permission to ignore NaN payloads or exceptional conversion. The
+execution-equivalence contract has not changed with this refinement.

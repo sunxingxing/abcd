@@ -77,7 +77,7 @@ void PropagateValues(std::span<const ValueNode> nodes,
           nodes[target].kind == Kind::kEquality ||
           nodes[target].kind == Kind::kAdd ||
           nodes[target].kind == Kind::kSubtract ||
-          nodes[target].kind == Kind::kNumericUpdate ||
+          nodes[target].kind == Kind::kNumericUpdate || nodes[target].kind == Kind::kBitNot ||
           nodes[target].kind == Kind::kBitwise || nodes[target].kind == Kind::kUnsignedShift ||
           nodes[target].kind == Kind::kNegate || nodes[target].kind == Kind::kLegacyNegate ||
           nodes[target].kind == Kind::kToNumeric || nodes[target].kind == Kind::kToNumber ||
@@ -107,9 +107,12 @@ void PropagateValues(std::span<const ValueNode> nodes,
               (nodes[target].kind == Kind::kNegate ? NegatedNumber : LegacyNegatedNumber)(
                   facts[nodes[target].inputs[0].value]) : ValueKinds::Unknown();
         } else if (nodes[target].kind == Kind::kToNumber) {
-          propagated = nodes[target].input_count == 1 ? ConvertedNumericValue(facts[nodes[target].inputs[0].value]) : ValueKinds::Unknown();
+          propagated = nodes[target].input_count == 1 ? ConvertedNumber(facts[nodes[target].inputs[0].value]) : ValueKinds::Unknown();
         } else if (nodes[target].kind == Kind::kToNumeric) {
           propagated = nodes[target].input_count == 1 ? ConvertedNumericValue(facts[nodes[target].inputs[0].value]) : ValueKinds::Unknown();
+        } else if (nodes[target].kind == Kind::kBitNot) {
+          propagated = nodes[target].input_count == 1
+              ? BitNotValue(facts[nodes[target].inputs[0].value]) : ValueKinds::Unknown();
         } else if (nodes[target].kind == Kind::kNumericUpdate) {
           propagated = nodes[target].input_count == 1
               ? UpdatedNumber(facts[nodes[target].inputs[0].value]) : ValueKinds::Unknown();

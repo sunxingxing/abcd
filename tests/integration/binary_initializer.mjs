@@ -110,13 +110,13 @@ for (const phased of [false,true]) for (const [index, operation] of operations.e
 console.log(`Decoded parameter operators: ${argumentScenarios} coercion/identity/exception scenarios passed`);
 
 let bitwiseCombinations = 0;
-for (const index of [11,12,13,14,15,16]) for (const mode of ['left','right','both']) {
+for (const index of [11,12,13,14,15,16]) for (const mode of ['left','right','both','converted']) {
   if (mode === 'both' && index !== 12) continue;
   for (const phased of [false,true]) {
     const source = execFileSync(process.argv[2], [phased ? '--phased-square-source' : '--square-source', String(index), mode], {encoding:'utf8'});
     const generated = runInNewContext(source);
     const reference = (left,right) => {
-      const calculate = () => operations[index](mode === 'left' ? 1 : left, mode === 'right' ? 1 : right) ** 2;
+      const calculate = () => operations[index](mode === 'left' ? 1 : mode === 'converted' ? +left : left, mode === 'right' ? 1 : mode === 'converted' ? +right : right) ** 2;
       try { return {field0:calculate(), field1:calculate()}; }
       catch (error) { if (phased) return undefined; throw error; }
     };
@@ -137,13 +137,14 @@ const number = hex => { view.setBigUint64(0, BigInt(`0x${hex}`)); return view.ge
 for (const sample of samples) {
   let expected = number(sample.left);
   if (sample.binary !== undefined) expected = operations[sample.binary](expected, number(sample.right));
+  else if (sample.bitnot) expected = ~expected;
   else if (sample.update === 1) ++expected;
   else if (sample.update === -1) --expected;
   else expected = expected ** number(sample.right);
   assert.ok(Object.is(sample.fn(), expected), `${sample.left}, exponent/update ${sample.right ?? sample.update}`);
   ++scenarios;
 }
-for (const option of ['--source', '--increment-source', '--decrement-source']) {
+for (const option of ['--source', '--increment-source', '--decrement-source', '--bitnot-source']) {
   const nestedSource = execFileSync(process.argv[4], [option], {encoding: 'utf8'});
   for (const sample of runInNewContext(nestedSource.replace('export default', ''))) {
     let expected = sample.seed;

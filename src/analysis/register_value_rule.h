@@ -27,7 +27,8 @@ enum class ValueRuleKind {
   kNonNaNDivide,
   kIntegralExponent,
   kBitwise,
-  kUnsignedShift
+  kUnsignedShift,
+  kBitNot
 };
 struct ValueRule {
   ValueRuleKind kind = ValueRuleKind::kFixed;
@@ -50,12 +51,15 @@ constexpr ValueKinds AddValues(ValueKinds left, ValueKinds right) {
   if (!left.IsLanguage() || !right.IsLanguage()) return ValueKinds::Unknown();
   return left.IsString() || right.IsString() ? ValueKinds::String() : AdditiveNumbers(left, right);
 }
-// Pinned ToNumber returns Number; ToNumeric also preserves BigInt. Both have
-// Defined Language normal results, without assuming non-NaN output. Existing
-// non-NaN Number inputs retain their finer identity facts.
+// ToNumber normal completion excludes BigInt, but may retain a NaN payload.
+// ToNumeric preserves BigInt, so its general bound remains Defined Language.
+constexpr ValueKinds ConvertedNumber(ValueKinds input) {
+  if (!input.IsLanguage()) return ValueKinds::Unknown();
+  return input.IsNumber() ? input : ValueKinds::Number();
+}
 constexpr ValueKinds ConvertedNumericValue(ValueKinds input) {
   if (!input.IsLanguage()) return ValueKinds::Unknown();
-  return input.IsNonNaNNumber() ? input : ValueKinds::Defined();
+  return input.IsNumber() ? input : ValueKinds::Defined();
 }
 // Modern NEG handles the tagged minimum via double overflow; the legacy
 // integer path needs its exclusion. Both produce a non-minimum representation
@@ -99,8 +103,14 @@ constexpr ValueKinds DivideNumbers(ValueKinds left, ValueKinds right) {
 // result int32; otherwise normal results are Number or BigInt, never undefined.
 constexpr ValueKinds BitwiseValues(ValueKinds left, ValueKinds right) {
   if (!left.IsLanguage() || !right.IsLanguage()) return ValueKinds::Unknown();
-  return left.IsNonNaNNumber() || right.IsNonNaNNumber()
+  return left.IsNumber() || right.IsNumber()
       ? ValueKinds::FiniteNumber().WithIntegralNumber() : ValueKinds::Defined();
+}
+// Bitwise NOT also preserves BigInt; a proved Number takes ToInt32 and yields
+// an integer Number. INT32_MIN remains possible, so no tag exclusion is added.
+constexpr ValueKinds BitNotValue(ValueKinds input) {
+  if (!input.IsLanguage()) return ValueKinds::Unknown();
+  return input.IsNumber() ? ValueKinds::FiniteNumber().WithIntegralNumber() : ValueKinds::Defined();
 }
 // RuntimeShr2 rejects BigInt unsigned shift. uint32 normal results cannot carry
 // the negative tagged INT32_MIN representation; this is not true of other shifts.

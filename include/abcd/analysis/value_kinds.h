@@ -24,6 +24,7 @@ class ValueKinds {
   static constexpr ValueKinds String() {
     return ValueKinds{kLanguage, Refinement::kString};
   }
+  static constexpr ValueKinds Number() { return ValueKinds{kLanguage, Refinement::kNumber}; }
   static constexpr ValueKinds NonNaNNumber() {
     return ValueKinds{kLanguage, Refinement::kNonNaNNumber};
   }
@@ -48,6 +49,7 @@ class ValueKinds {
         : IsFiniteNumber() && other.IsFiniteNumber() ? Refinement::kFiniteNumber
         : IsNonNaNNumber() && other.IsNonNaNNumber()
             ? Refinement::kNonNaNNumber
+        : IsNumber() && other.IsNumber() ? Refinement::kNumber
         : IsDefined() && other.IsDefined() ? Refinement::kDefined
                                           : Refinement::kNone;
     return ValueKinds{static_cast<std::uint8_t>(bits_ | other.bits_), refinement,
@@ -64,6 +66,7 @@ class ValueKinds {
       case Refinement::kNone: return false;
       case Refinement::kDefined:
       case Refinement::kString:
+      case Refinement::kNumber:
       case Refinement::kFiniteNonzeroNumber:
       case Refinement::kFiniteNumber:
       case Refinement::kNonNaNNumber: return true;
@@ -72,6 +75,10 @@ class ValueKinds {
   }
   [[nodiscard]] constexpr bool IsString() const {
     return IsLanguage() && refinement_ == Refinement::kString;
+  }
+  // Number includes NaN but excludes BigInt and every VM-private marker.
+  [[nodiscard]] constexpr bool IsNumber() const {
+    return IsLanguage() && (refinement_ == Refinement::kNumber || IsNonNaNNumber());
   }
   [[nodiscard]] constexpr bool IsNonNaNNumber() const {
     return IsLanguage() && (refinement_ == Refinement::kNonNaNNumber ||
@@ -122,7 +129,7 @@ class ValueKinds {
 
  private:
   enum class Refinement : std::uint8_t {
-    kNone, kString, kNonNaNNumber, kDefined, kFiniteNonzeroNumber, kFiniteNumber
+    kNone, kString, kNonNaNNumber, kDefined, kFiniteNonzeroNumber, kFiniteNumber, kNumber
   };
   static constexpr std::uint8_t kLanguage = 1 << 0;
   static constexpr std::uint8_t kHole = 1 << 1;

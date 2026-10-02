@@ -22,7 +22,7 @@ int main() {
     const auto method = std::get<SemanticMethod>(BuildSemanticMethod(input, abc::ProfileId::kDynamic1206, 1));
     IdfQuota work{UINT64_MAX};
     const auto facts = std::get<RegisterValueFlow>(RegisterValueFlow::Build(input, method.ssa, 1, {}, work));
-    Check(facts.At(*method.ssa.Write({0})) == ValueKinds::Language());
+    Check(facts.At(*method.ssa.Write({0})) == ValueKinds::Number());
     Check(facts.At(*method.ssa.Write({3})) == ValueKinds::Unknown());
     const auto proof = VerifySemanticSource(input, method, 1, 0);
     const auto* failure = std::get_if<SemanticProofFailure>(&proof);
@@ -67,7 +67,7 @@ int main() {
     const InstructionId last{bytes.size() == 10 ? 0U : 1U};
     Check(types.At(*named.Write(last)) == ValueKinds::Unknown());
     if (last.value == 1)
-      Check(types.At(*named.Write({0})) == ValueKinds::Language());
+      Check(types.At(*named.Write({0})) == ValueKinds::Number());
   }
   const auto analyze = [](const abc::MethodBody& input) {
     IdfQuota work{UINT64_MAX};
