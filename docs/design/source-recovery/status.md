@@ -12,6 +12,26 @@
 
 ## 当前阶段
 
+### 2026-10-03：未使用形参的捕获默认值
+
+- 方法48295 是普通流；默认形参在函数体中未使用，phi 已消除，但缺省分支
+  的 lexical load/guard 仍活跃。Finder 现在让有/无 merge 共用同一捕获
+  识别规则；独立证明仍检查完整控制边、入口 use、读取值域、guard 和逃逸。
+  未把未使用参数等同于可删除默认值初始化，也未合成 `= undefined`。
+- 新 record_unused_captured_default_test 在修改前 RED（route refusal5），
+  修改后三个 profile 均贯通原生签名。独立模块对照验证 length0 和各类
+  参数下返回99；单元检查无 phi 时仍迁移四个原始操作、保留捕获 guard，
+  以及遗漏 guard 的拒绝。原有使用默认值的路径继续通过。
+- 七 targets 构建退出 0，相关 11/11 CTest 通过 4.77 秒，日志
+  /tmp/abcd-unused-capture-related-{build,tests}.log。实际 HotListItemView
+  越过 member3/method48295，下一处为 member4/method48351 的
+  ExpressionError::kUnsupportedOperation（包装为 FunctionTreeError::kExpression），
+  证据 next-method.log / next-expression.log；仍未完成该 record。
+- 五输入 fresh build/stage-one/value-unused-captured-default-pass-1 均退出0，
+  仍为 75 complete / 5 incomplete / 26 failure / 46 no-module，无完整项
+  回退、源码变化或 legacy。日志 /tmp/abcd-unused-capture-final-*。
+  未运行 full-suite/扩展语料/RSS，Goal 保持 active。
+
 ### 2026-10-03：捕获默认参数贯通函数族和原生签名
 
 - FamilyFunction 持有 DefaultBody，生命周期覆盖全族重绑定、构树和最终

@@ -161,6 +161,21 @@ class Finder {
         ordinal < graph_.edges.size() - block.first_edge.value);
     return graph_.edges[block.first_edge.value + ordinal];
   }
+  void CaptureBoundary(DefaultCandidate shape, const BlockFacts& facts) {
+    if (!facts.capture_load || facts.ambiguous_capture) return;
+    const auto& load = graph_.ops[facts.capture_load->value];
+    const auto* value = std::get_if<ValueId>(&shape.fallback);
+    if (!value || load.result != *value || load.use_count != 0 ||
+        facts.value_operations != 1U + (facts.capture_guard ? 1U : 0U)) return;
+    if (facts.capture_guard) {
+      const auto& guard = graph_.ops[facts.capture_guard->value];
+      const auto* guarded = guard.use_count == 1 ? std::get_if<ValueId>(&Use(guard,0).operand) : nullptr;
+      if (guard.order <= load.order || !guarded || *guarded != *value || guard.result ||
+          Use(guard,0).role != OperandRole::kGuardValue) return;
+    }
+    capture_ = CapturedDefaultCandidate{shape,
+        std::get<ValueLexicalLoad>(load.operation).address,facts.capture_guard};
+  }
   std::optional<DefaultCandidate> Match(WorkBlockId header) {
     const auto& facts = blocks_[header.value];
     const auto& block = graph_.blocks[header.value];
@@ -233,6 +248,12 @@ class Finder {
     if (arm_facts.value_operations > kLiteralAndNegation ||
         arm_facts.operations > arm_facts.value_operations + 1) return {};
     if (blocks_[join.value].phis == 0) {
+      if (arm_facts.capture_load) {
+        const auto& load = graph_.ops[arm_facts.capture_load->value];
+        if (load.result) CaptureBoundary(DefaultCandidate{parameter->index,*entry,{},*load.result,*arm_facts.capture_load,
+            producer->op,*facts.last,header,arm,join,present,missing,arm_block.first_edge,undefined_op,{}}, arm_facts);
+        return {};
+      }
       // Dead default assignments still carry their original literal operation.
       // Do not invent an initializer from length, or pick between several literals.
       if (arm_facts.value_operations != 0 || !arm_facts.unused_literal ||
@@ -263,24 +284,9 @@ class Finder {
     }
     if (!incoming || !fallback || !arm_facts.value_op) return {};
     auto literal = fallback->operand;
-    if (arm_facts.capture_load && !arm_facts.ambiguous_capture) {
-      const auto id = *arm_facts.capture_load;
-      const auto& load = graph_.ops[id.value];
-      const auto* value = std::get_if<ValueId>(&literal);
-      if (value && load.result == *value && load.use_count == 0 &&
-          arm_facts.value_operations == 1U + (arm_facts.capture_guard ? 1U : 0U)) {
-        bool valid = true;
-        if (arm_facts.capture_guard) {
-          const auto& guard = graph_.ops[arm_facts.capture_guard->value];
-          const auto* guarded = guard.use_count == 1 ? std::get_if<ValueId>(&Use(guard,0).operand) : nullptr;
-          valid = guard.order > load.order && guarded && *guarded == *value && !guard.result &&
-              Use(guard,0).role == OperandRole::kGuardValue;
-        }
-        if (valid) capture_ = CapturedDefaultCandidate{
-            DefaultCandidate{parameter->index,*entry,merged,literal,id,producer->op,*facts.last,
-                header,arm,join,present,missing,arm_block.first_edge,undefined_op,{}},
-            std::get<ValueLexicalLoad>(load.operation).address,arm_facts.capture_guard};
-      }
+    if (arm_facts.capture_load) {
+      CaptureBoundary(DefaultCandidate{parameter->index,*entry,merged,literal,*arm_facts.capture_load,
+          producer->op,*facts.last,header,arm,join,present,missing,arm_block.first_edge,undefined_op,{}}, arm_facts);
       return {};
     }
     std::optional<OpId> number_op;

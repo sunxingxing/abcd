@@ -200,7 +200,7 @@ class Checker {
     Require(graph_.edges[c.missing.value].kind == (missing_taken ? FlowEdgeKind::kTaken : FlowEdgeKind::kFallthrough) &&
         graph_.edges[c.present.value].kind == (missing_taken ? FlowEdgeKind::kFallthrough : FlowEdgeKind::kTaken), Error::kControl);
     if (capture_ && capture_->candidate.shape.parameter == c.parameter) {
-      Require(c.merged && !c.number, Error::kLiteral);
+      Require(!c.number, Error::kLiteral);
       const auto& initializer = Op(c.initializer, c.arm);
       const auto* load = std::get_if<ValueLexicalLoad>(&initializer.operation);
       Require(load && load->address.depth.value == capture_->candidate.address.depth.value &&

@@ -234,3 +234,14 @@ for (const source of [capturedDefault,defaultReference]) {
   assert.deepEqual(trace,['side','dep','star','mutate']);
 }
 console.log('Captured defaults: current cell, identity, length and no argument coercion passed');
+
+const unusedCapturedDefault = execFileSync(process.argv[2], ['--unused-captured-default'], {encoding:'utf8'});
+const unusedDefaultReference = defaultReference.replace('return value;', 'return 99;');
+for (const source of [unusedCapturedDefault,unusedDefaultReference]) {
+  const {root} = await setup(source); await root.evaluate();
+  const reader=root.namespace.answer;
+  assert.equal(reader.length,0); assert.equal(reader(),99);
+  for (const value of [undefined,null,false,0,-0,NaN,1n,Symbol('value'),{},()=>{}])
+    assert.equal(reader(value),99);
+}
+console.log('Unused captured defaults: native signature and return behavior passed');

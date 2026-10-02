@@ -22,7 +22,7 @@ using namespace abcd;
 void Check(bool value, std::source_location at = std::source_location::current()) {
   if (!value) { std::cerr << "check failed at " << at.line() << '\n'; std::abort(); }
 }
-enum class FixtureCase { kValid, kBindingCollision, kExportCollision, kBranch, kArmStore, kFunction, kCapture, kCapturedDefault, kPublishedCapture, kReentrantCapture, kPublishedCaptureV1, kPublishedBadSlot, kLocalFunction, kClassFunction, kClassCapture, kGlobal, kGlobalShadow, kGlobalLocalShadow, kAnonymous, kAnonymousFunction, kAnonymousSingleClass, kAnonymousClassRead, kClassCell, kClassNamedCell, kClassNamedShadow, kClassCellHole, kClassCellUninitialized, kUnknownName };
+enum class FixtureCase { kValid, kBindingCollision, kExportCollision, kBranch, kArmStore, kFunction, kCapture, kCapturedDefault, kCapturedUnusedDefault, kPublishedCapture, kReentrantCapture, kPublishedCaptureV1, kPublishedBadSlot, kLocalFunction, kClassFunction, kClassCapture, kGlobal, kGlobalShadow, kGlobalLocalShadow, kAnonymous, kAnonymousFunction, kAnonymousSingleClass, kAnonymousClassRead, kClassCell, kClassNamedCell, kClassNamedShadow, kClassCellHole, kClassCellUninitialized, kUnknownName };
 std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool inspect_prefix = false) {
   constexpr std::uint32_t kTypes = 256, kPool = 272, kRecord = 512,
       kMethod = 600, kChild = 640, kConstructor = 680, kLiteral = 3000, kModule = 1024, kCode = 4096, kChildCode = 5000, kConstructorCode = 6000, kFileBytes = 8192;
@@ -31,7 +31,8 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
   const bool single_class = class_cell || mode == FixtureCase::kAnonymousSingleClass || mode == FixtureCase::kAnonymousClassRead;
   const bool global = mode == FixtureCase::kGlobal || mode == FixtureCase::kGlobalShadow || mode == FixtureCase::kGlobalLocalShadow;
   const bool anonymous = mode == FixtureCase::kAnonymous || mode == FixtureCase::kAnonymousFunction || single_class;
-  const bool captured_default = mode == FixtureCase::kCapturedDefault;
+  const bool unused_default = mode == FixtureCase::kCapturedUnusedDefault;
+  const bool captured_default = unused_default || mode == FixtureCase::kCapturedDefault;
   const bool published_capture = mode == FixtureCase::kPublishedCapture || mode == FixtureCase::kReentrantCapture || mode == FixtureCase::kPublishedCaptureV1 || mode == FixtureCase::kPublishedBadSlot;
   const bool family = captured_default || published_capture || single_class || mode == FixtureCase::kFunction || mode == FixtureCase::kCapture || mode == FixtureCase::kLocalFunction || mode == FixtureCase::kClassFunction || mode == FixtureCase::kClassCapture || mode == FixtureCase::kAnonymousFunction;
   const bool mixed = single_class || mode == FixtureCase::kClassFunction || mode == FixtureCase::kClassCapture;
@@ -192,7 +193,8 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
       const auto guard = static_cast<std::uint16_t>(abc::Opcode::kTHROW_UNDEFINEDIFHOLEWITHNAME_PREF_ID16);
       body.insert(body.end(), {static_cast<std::uint8_t>(guard), static_cast<std::uint8_t>(guard >> kByteBits),0,0});
       op(abc::Opcode::kSTA_V8); body.push_back(4);
-      op(abc::Opcode::kLDA_V8); body.push_back(4);
+      if (unused_default) { op(abc::Opcode::kLDAI_IMM32); body.insert(body.end(),{99,0,0,0}); }
+      else { op(abc::Opcode::kLDA_V8); body.push_back(4); }
     } else if (captured) { op(abc::Opcode::kLDLEXVAR_IMM4_IMM4); body.push_back(0); }
     else if (mode == FixtureCase::kLocalFunction || mode == FixtureCase::kAnonymousFunction) load(true, 0, 2);
     else load(false, 0, 0);
@@ -340,10 +342,11 @@ int main(int argc, char** argv) {
     }
     return 0;
   }
-  if (mode == "--captured-default") {
+  if (mode == "--captured-default" || mode == "--unused-captured-default") {
+    const auto fixture = mode == "--captured-default" ? FixtureCase::kCapturedDefault : FixtureCase::kCapturedUnusedDefault;
     for (const auto profile : {abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1301})
-      Recover(FixtureCase::kCapturedDefault,profile);
-    std::cout << Recover(FixtureCase::kCapturedDefault); return 0;
+      Recover(fixture,profile);
+    std::cout << Recover(fixture); return 0;
   }
   if (mode == "--published-capture") {
     Recover(FixtureCase::kReentrantCapture); Recover(FixtureCase::kPublishedCaptureV1);

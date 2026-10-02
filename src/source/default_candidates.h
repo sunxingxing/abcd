@@ -7,7 +7,8 @@ namespace abcd::source {
 struct DefaultCandidate {
   std::uint32_t parameter;
   analysis::ValueId entry;
-  // Absent only for an unused default whose original literal was elided.
+  // Absent for an unused default; its literal may be elided, but a captured
+  // read/guard must remain owned by the initializer even without a merge.
   std::optional<analysis::ValueId> merged;
   analysis::ValueOperand fallback;
   analysis::OpId initializer;
