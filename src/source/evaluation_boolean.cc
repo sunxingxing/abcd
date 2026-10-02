@@ -1,4 +1,5 @@
 #include "evaluation_plan.h"
+#include "../analysis/register_value_rule.h"
 
 namespace abcd::source {
 namespace {
@@ -58,14 +59,20 @@ bool PredicateSnapshot(const analysis::ValueProgram& graph,
 bool NonNaNNumberEvaluation(const analysis::ValueProgram& graph,
                            const analysis::ValueOperand& operand) {
   if (std::holds_alternative<analysis::IntegerLiteral>(operand)) return true;
-  if (const auto* number = std::get_if<analysis::Float64Bits>(&operand)) {
-    constexpr std::uint64_t kMagnitudeMask = UINT64_C(0x7fffffffffffffff);
-    constexpr std::uint64_t kInfinityBits = UINT64_C(0x7ff0000000000000);
-    return (number->value & kMagnitudeMask) <= kInfinityBits;
-  }
+  if (const auto* number = std::get_if<analysis::Float64Bits>(&operand))
+    return analysis::detail::FloatNumberKinds(*number).IsNonNaNNumber();
   const auto* value = std::get_if<analysis::ValueId>(&operand);
   return value && value->value < graph.values.size() &&
       graph.values[value->value].domain.IsNonNaNNumber();
+}
+bool NumberEvaluation(const analysis::ValueProgram& graph, const analysis::ValueOperand& operand) {
+  if (std::holds_alternative<analysis::IntegerLiteral>(operand)) return true;
+  if (const auto* number = std::get_if<analysis::Float64Bits>(&operand))
+    return analysis::detail::FloatNumberKinds(*number).IsNumber();
+  if (const auto* special = std::get_if<analysis::SpecialValue>(&operand))
+    return *special == analysis::SpecialValue::kNaN || *special == analysis::SpecialValue::kInfinity;
+  const auto* value = std::get_if<analysis::ValueId>(&operand);
+  return value && value->value < graph.values.size() && graph.values[value->value].domain.IsNumber();
 }
 bool LegacyNegationEvaluation(const analysis::ValueProgram& graph, const analysis::ValueOperand& operand) {
   if (const auto* integer = std::get_if<analysis::IntegerLiteral>(&operand)) return integer->value != INT32_MIN;
@@ -78,6 +85,6 @@ bool NeedsNumericScratch(const analysis::ValueProgram& graph, const analysis::Va
   const auto* unary = std::get_if<analysis::ValueUnary>(&op.operation);
   if (!unary || op.use_count != 1 || op.first_use.value >= graph.uses.size()) return false;
   return unary->op == analysis::UnaryOperator::kIncrement || unary->op == analysis::UnaryOperator::kDecrement ||
-      (unary->op == analysis::UnaryOperator::kToNumeric && !NonNaNNumberEvaluation(graph, graph.uses[op.first_use.value].operand));
+      (unary->op == analysis::UnaryOperator::kToNumeric && !NumberEvaluation(graph, graph.uses[op.first_use.value].operand));
 }
 }  // namespace abcd::source

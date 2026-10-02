@@ -161,6 +161,7 @@ struct EvaluationShape {
 // or apparent loop-counter shape. Arbitrary Language includes BigInt/coercion.
 [[nodiscard]] bool LegacyNegationEvaluation(const analysis::ValueProgram& graph,
                                           const analysis::ValueOperand& operand);
+[[nodiscard]] bool NumberEvaluation(const analysis::ValueProgram& graph, const analysis::ValueOperand& operand);
 [[nodiscard]] bool NonNaNNumberEvaluation(const analysis::ValueProgram& graph,
                                         const analysis::ValueOperand& operand);
 // An unproved ToNumeric input uses exclusive scratch for one conversion.

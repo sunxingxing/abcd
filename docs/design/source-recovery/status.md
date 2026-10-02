@@ -13,6 +13,31 @@
 ## 当前阶段
 
 
+### 2026-10-03：已证明 Number 的 ToNumeric 身份恢复
+
+- 新 decoded 现代/deprecated ToNumber→ToNumeric 用例在旧源码树构造 RED，
+  1/1 失败 1.99 秒。旧 NonNaNNumber 前提使 Number（可含 NaN）仍分配
+  postfix scratch，V1 因额外运算被拒绝。现用共享 NumberEvaluation
+  判断，binding allocation、forest 和独立 operands verifier 一致消费证明。
+- 提取 FloatNumberKinds 复用原有 IEEE/私有 tag 分类，避免 source 层另写
+  边界；Integer、特殊 NaN/Infinity 和 ValueId Number 分别处理。impure
+  编码和越界 ValueId 拒绝，非规范 NaN 字面量的可表示性 gate 不变。
+  一般未知 Number/BigInt 输入仍使用原 scratch 与资源排除约束。
+- 三 profile、1/2/200/201/402 长度的普通/catch 路径在 V1 下通过，树中
+  不含 UpdateExpr；删除 Number witness 后独立语义检查拒绝已有身份树。
+  现代/旧单次链均实际生成 `return +value;`。测试中的 IntegerLiteral
+  名称歧义已限定 analysis 命名空间修正。
+- 25 targets 构建退出 0，相关 33/33 CTest 通过 71.32 秒，与
+  selected.json 按名称一致。独立 ToNumber 语义 oracle 对照生成链，
+  2,544 场景通过，包括原参数身份、一次转换、异常、signed zero 和 NaN
+  payload；没有可修改的全局转换 helper 或新增 writer。
+- 五输入 fresh build/stage-one/value-numeric-identity-pass-1 均退出 0，
+  保持 75 complete / 5 incomplete / 26 failure / 46 no-module，无完整项
+  回退、完整源码字节变化或 legacy，原生 default records 保留。
+  日志前缀 /tmp/abcd-numeric-identity-*；未运行 full-suite/RSS/扩展语料。
+  等价验收环境选择仍未收到答复，现有合同未变，阶段一 Goal 保持 active。
+
+
 ### 2026-10-03：区分 Number 类型与 non-NaN 数值安全事实
 
 - decoded `(+left << +right) ** 2` 在旧输入准入 RED，number-type-red-test

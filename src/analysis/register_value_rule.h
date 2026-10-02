@@ -126,6 +126,8 @@ constexpr ValueKinds ExponentNumbers(ValueKinds base, ValueKinds exponent) {
   return base.IsNonNaNNumber() && exponent.IsIntegralNumber()
       ? ValueKinds::NonNaNNumber() : ValueKinds::Unknown();
 }
+// Shared literal classification, including the pinned private-tag boundary.
+[[nodiscard]] ValueKinds FloatNumberKinds(Float64Bits number);
 // Classifies a definite normal-path register definition. Join is one copy;
 // language operations have at most two scalar operands. Property/call/lexical
 // results stay unknown absent heap/callee/cell evidence, not optimistic JS

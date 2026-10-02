@@ -27,7 +27,7 @@ lexical analysis calls the same scalar helpers. ToNumber preserves all facts of 
 input has a Number normal result. The pinned conversion returns Number or
 throws, including BigInt/Symbol and conversion-hook failures; it does not imply
 non-NaN output. ToNumeric preserves existing Number facts but otherwise has a
-Defined normal-result bound while retaining BigInt semantics. Known non-NaN Number input uses identity; other inputs use exclusive
+Defined normal-result bound while retaining BigInt semantics. Known Number input (including NaN) uses identity; other inputs use exclusive
 postfix scratch under the resource-exclusion contract. Independent verification
 checks the old-value result and rejects reads/captures/reuse of that scratch.
 V1 does not authorize the extra numeric operation. This does not admit arbitrary
@@ -143,3 +143,23 @@ through the existing expression tree. General ADD/SUB/MUL/DIV/EXP and numeric
 update/negation still require their independent stronger premises. A Number
 fact is not permission to ignore NaN payloads or exceptional conversion. The
 execution-equivalence contract has not changed with this refinement.
+
+## ToNumeric identity for proven Number
+
+Source planning and independent operand verification now use `NumberEvaluation`
+for ToNumeric. A proved Number is returned unchanged, including NaN and signed
+zero; no postfix scratch or hidden arithmetic is needed. The Number proof may
+come from ToNumber or another verified producer. Without it, the existing
+Number/BigInt-preserving scratch lowering and resource-exclusion gate remain.
+
+Literal classification is shared through `FloatNumberKinds`, including the
+pinned impure-NaN boundary. Integer and canonical special Number operands are
+handled explicitly; VM-private bit patterns and invalid ValueIds do not become
+Number identities. Source representability of noncanonical NaN literals remains
+an independent boundary.
+
+Decoded modern/deprecated ToNumber-to-ToNumeric chains run under V1 as well as
+ordinary/catch paths, with no UpdateExpr. Removing the Number witness causes the
+independent verifier to reject the previously built identity. Behavior tests
+check one conversion per occurrence, errors, input preservation, signed zero and
+NaN payloads. This removes a lowering artifact; it changes no equivalence scope.

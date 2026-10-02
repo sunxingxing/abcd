@@ -717,7 +717,7 @@ class OperandCheck {
         }
         Predicate(operation, operand, expression); return;
       case U::kToNumeric:
-        if (NonNaNNumberEvaluation(graph_, operand)) { Input(operand, expression); return; }
+        if (NumberEvaluation(graph_, operand)) { Input(operand, expression); return; }
         RequireMeaning(ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded, Error::kOperator);
         [[fallthrough]];
       case U::kIncrement: case U::kDecrement: {

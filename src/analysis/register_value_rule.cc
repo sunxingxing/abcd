@@ -76,37 +76,31 @@ bool HasLanguageResult(BinaryOperator op) {
   return false;
 }
 }  // namespace
+ValueKinds FloatNumberKinds(Float64Bits number) {
+  // Pinned JSTaggedValue::IsImpureNaN compares raw bits against TAG_INT minus
+  // DOUBLE_ENCODE_OFFSET. Share this boundary with source numeric identities;
+  // never classify a VM-private encoding as Number merely because it is FLDAI.
+  constexpr std::uint64_t kImpureNaNBitsMin = UINT64_C(0xfffe000000000000);
+  if (number.value >= kImpureNaNBitsMin) return ValueKinds::Unknown();
+  constexpr std::uint64_t kMagnitudeMask = UINT64_C(0x7fffffffffffffff);
+  constexpr std::uint64_t kInfinityBits = UINT64_C(0x7ff0000000000000);
+  const auto magnitude = number.value & kMagnitudeMask;
+  if (magnitude > kInfinityBits) return ValueKinds::Number();
+  auto kinds = (magnitude != 0 && magnitude < kInfinityBits ? ValueKinds::FiniteNonzeroNumber() :
+      magnitude == 0 ? ValueKinds::FiniteNumber() : ValueKinds::NonNaNNumber()).WithoutInt32MinTag();
+  if (kinds.IsFiniteNumber()) {
+    const auto literal = std::bit_cast<double>(number.value);
+    if (std::trunc(literal) == literal) kinds = kinds.WithIntegralNumber();
+  }
+  return kinds;
+}
 ValueRule DescribeScalarValue(const ScalarAssignment& assignment) {
   if (const auto* value = std::get_if<ScalarValue>(&assignment.expression)) {
     if (std::holds_alternative<Accumulator>(*value) ||
         std::holds_alternative<abc::RegisterId>(*value))
       return ValueRule{ValueRuleKind::kJoin, {}};
-    if (const auto* number = std::get_if<Float64Bits>(value)) {
-      // Pinned JSTaggedValue::IsImpureNaN compares raw bits with TAG_INT -
-      // DOUBLE_ENCODE_OFFSET. Release construction only adds that offset;
-      // raw FLDAI payloads can therefore encode Hole/other internal values.
-      constexpr std::uint64_t kImpureNaNBitsMin =
-          UINT64_C(0xfffe000000000000);
-      if (number->value >= kImpureNaNBitsMin)
-        return ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};
-      // IEEE binary64 exponent/significand fields distinguish finite values,
-      // signed zero, infinities and NaNs without evaluating/quieting a payload.
-      // NaNs below the VM's impure threshold remain Number, not non-NaN.
-      constexpr std::uint64_t kMagnitudeMask = UINT64_C(0x7fffffffffffffff);
-      constexpr std::uint64_t kInfinityBits = UINT64_C(0x7ff0000000000000);
-      const auto magnitude = number->value & kMagnitudeMask;
-      if (magnitude <= kInfinityBits) {
-        auto kinds = (magnitude != 0 && magnitude < kInfinityBits
-            ? ValueKinds::FiniteNonzeroNumber()
-            : magnitude == 0 ? ValueKinds::FiniteNumber() : ValueKinds::NonNaNNumber()).WithoutInt32MinTag();
-        if (kinds.IsFiniteNumber()) {
-          const auto literal = std::bit_cast<double>(number->value);
-          if (std::trunc(literal) == literal) kinds = kinds.WithIntegralNumber();
-        }
-        return ValueRule{ValueRuleKind::kFixed, kinds};
-      }
-      return ValueRule{ValueRuleKind::kFixed, ValueKinds::Number()};
-    }
+    if (const auto* number = std::get_if<Float64Bits>(value))
+      return ValueRule{ValueRuleKind::kFixed, FloatNumberKinds(*number)};
     if (const auto* integer = std::get_if<IntegerLiteral>(value)) {
       const auto kinds = (integer->value != 0 ? ValueKinds::FiniteNonzeroNumber() : ValueKinds::FiniteNumber()).WithIntegralNumber();
       return ValueRule{ValueRuleKind::kFixed, integer->value == INT32_MIN ? kinds : kinds.WithoutInt32MinTag()};

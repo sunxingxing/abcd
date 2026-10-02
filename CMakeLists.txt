@@ -668,6 +668,10 @@ if(BUILD_TESTING)
   target_include_directories(literal_construct_test PRIVATE tests/support)
   target_link_libraries(literal_construct_test PRIVATE abcd_source)
   add_test(NAME literal_construct_test COMMAND literal_construct_test)
+  add_executable(numeric_identity_test tests/integration/numeric_identity.cc)
+  target_include_directories(numeric_identity_test PRIVATE tests/support)
+  target_link_libraries(numeric_identity_test PRIVATE abcd_source)
+  add_test(NAME numeric_identity_test COMMAND numeric_identity_test)
   add_executable(numeric_conversion_test tests/integration/numeric_conversion.cc)
   target_include_directories(numeric_conversion_test PRIVATE tests/support)
   target_link_libraries(numeric_conversion_test PRIVATE abcd_source)
@@ -1297,6 +1301,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_literal.mjs $<TARGET_FILE:class_tree_context_test>)
     add_test(NAME binary_initializer_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/binary_initializer.mjs $<TARGET_FILE:binary_initializer_test> $<TARGET_FILE:exponent_value_test> $<TARGET_FILE:exponent_expression_test>)
+    add_test(NAME numeric_identity_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/number_conversion.mjs $<TARGET_FILE:numeric_identity_test>)
     add_test(NAME numeric_conversion_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/numeric_conversion.mjs $<TARGET_FILE:numeric_conversion_test>)
     add_test(NAME number_conversion_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

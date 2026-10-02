@@ -789,7 +789,7 @@ class ForestBuilder {
         return Add(LogicalExpr{TreeLogical::kOr, left, right}, origin);
       }
       case U::kToNumeric:
-        if (NonNaNNumberEvaluation(graph_, original)) return Combine(input, origin);
+        if (NumberEvaluation(graph_, original)) return Combine(input, origin);
         // General conversion is handled by exclusive postfix scratch above.
         // Identity must still follow an input fact, never the later consumer.
         throw Error::kUnsupportedOperation;
