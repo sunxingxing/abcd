@@ -63,8 +63,13 @@ Common literal nesting admits the shared single-input lowerings for negate,
 bitwise not, logical not, typeof, ToNumber and ToBoolean. This changes expression
 ownership, not numeric-domain admission: the existing input and tree proofs must
 still certify a language value, including the VM NaN representation restrictions.
-ToNumeric, increment/decrement and VM predicates that repeat an operand remain
-outside this admission; they need their own Number-or-BigInt or snapshot lowering.
+ToNumeric and increment/decrement now reuse the common numeric-domain and
+exclusive UpdateBinding lowerings. Updates save their operand once to compiler
+scratch and perform native prefix update there; they do not write the source
+operand or substitute arithmetic by one. ToNumeric currently lowers identity
+only for proved non-NaN Number input. Literal eligibility does not widen that
+proof to arbitrary Number/BigInt coercions. VM predicates that repeat a snapshot
+operand remain outside this initializer admission.
 
 Primitive ValueCopy loads are admitted only for a typed integer, float or special
 constant input with no effects or exceptional completion. ValueId copies are not

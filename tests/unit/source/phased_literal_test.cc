@@ -145,7 +145,7 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   const auto result = BuildPhasedEvaluationPlan(graph);
   if (shape == Shape::kObserve || shape == Shape::kBranch || shape == Shape::kCatchObserve ||
       shape == Shape::kNestedCatchObserve || shape == Shape::kNestedDispatch || shape == Shape::kNestedShared || shape == Shape::kNestedSnapshot ||
-      shape == Shape::kUnaryShared || shape == Shape::kGlobalDispatch || numeric_update) {
+      shape == Shape::kUnaryShared || shape == Shape::kGlobalDispatch) {
     test::Check(std::get<EvaluationError>(result) == EvaluationError::kUnsupportedOperation);
     return 0;
   }
@@ -247,9 +247,14 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
 int main(int argc, char** argv) {
   if (argc == 2) {
     const auto option = std::string_view(argv[1]);
-    test::Check(option == "--global-source" || option == "--lexical-source");
-    Run(abc::ProfileId::kDynamic1206, option == "--lexical-source" ? Shape::kLexicalCatch : Shape::kGlobalCatch, 0, 2,
-        abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8, abc::Opcode::kNEG_IMM8, true);
+    const bool update = option == "--increment-source" || option == "--decrement-source" || option == "--numeric-source";
+    test::Check(option == "--global-source" || option == "--lexical-source" || update);
+    const auto unary = option == "--increment-source" ? abc::Opcode::kINC_IMM8 :
+        option == "--decrement-source" ? abc::Opcode::kDEC_IMM8 :
+        option == "--numeric-source" ? abc::Opcode::kTONUMERIC_IMM8 : abc::Opcode::kNEG_IMM8;
+    Run(abc::ProfileId::kDynamic1206, update ? Shape::kUnaryCatch :
+        option == "--lexical-source" ? Shape::kLexicalCatch : Shape::kGlobalCatch, 0, 2,
+        abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8, unary, true);
     return 0;
   }
   for (const auto profile : {abcd::abc::ProfileId::kDynamic1202, abcd::abc::ProfileId::kDynamic1206,
@@ -263,6 +268,16 @@ int main(int argc, char** argv) {
         abcd::abc::Opcode::kTONUMBER_IMM8, abcd::abc::Opcode::kISTRUE, abcd::abc::Opcode::kISFALSE,
         abcd::abc::Opcode::kTONUMERIC_IMM8, abcd::abc::Opcode::kINC_IMM8, abcd::abc::Opcode::kDEC_IMM8})
       Run(profile, Shape::kUnaryCatch, 0, 1, abcd::abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8, unary);
+    for (const auto unary : {abc::Opcode::kTONUMERIC_IMM8, abc::Opcode::kINC_IMM8, abc::Opcode::kDEC_IMM8}) {
+      Run(profile, Shape::kUnaryUnknown, 0, 1, abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8, unary);
+      Run(profile, Shape::kUnaryShared, 0, 1, abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8, unary);
+      std::uint64_t previous = 0;
+      for (const auto fields : {1U, 2U, 200U, 201U, 402U}) {
+        const auto work = Run(profile, Shape::kUnaryCatch, 0, fields, abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8, unary);
+        if (fields == 402) test::Check(work < 3 * previous);
+        previous = work;
+      }
+    }
     for (const auto opcode : {abcd::abc::Opcode::kSTOWNBYNAME_IMM16_ID16_V8,
         abcd::abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8, abcd::abc::Opcode::kDEFINEPROPERTYBYNAME_IMM8_ID16_V8})
       Run(profile, Shape::kCatch, 0, 1, opcode);

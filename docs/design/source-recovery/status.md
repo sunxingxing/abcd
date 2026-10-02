@@ -13,6 +13,30 @@
 ## 当前阶段
 
 
+### 2026-10-02：统一一元操作的字面量组合
+
+- LiteralUnary 原先拒绝 ToNumeric/Increment/Decrement，即使输入已通过
+  数值域证明，共同 AST 也已有独占 UpdateBinding 和原生 Sequence/Update
+  下降。新的正例先在旧实现失败，/tmp/abcd-unary-initializer-red-tests.log，
+  1/1 RED 1.08 秒。现只扩展共同字面量归属支持域，不改变数值证明或
+  ToNumeric 的 Number/BigInt 区别，不写回原操作数。
+- 现代三个操作在 try/catch 字面量中经过完整树与独立语义检查。未知输入
+  值域、共享结果拒绝仍有效，三 profile 的 1/2/200/201/402 属性验证通过。
+  focused-tests.log 4/4 通过 18.89 秒，含既有 numeric_update_tree 的行为对照。
+- 新普通路径矩阵覆盖 15 种一元编码，现代 acc 种子 9、deprecated 寄存器
+  种子 7，显式检查不同输入路由；每种均覆盖三 profile 和 1/2/200/201/402
+  初始化。normal-source-tests.log 2/2 通过 4.05 秒；独立手写原生结果核对
+  15 种编码，另核对三种 phased 输出的分组、own property 与分配身份。
+  这是已证明数值输入上的组合覆盖，不能称任意输入类型均已完成。
+- deprecated.neg 仍未纳入成功清单，其固定运行时边界单独待解；完整 ISA
+  运算符、复杂表达式优先级及阶段一验收仍未完成。95 个相关 targets 构建退出 0，197/197 回归通过 475.51 秒，
+  related-build.log / related-tests.log，与 selected.json 按名称核对一致。
+  五输入 fresh build/stage-one/value-unary-initializer-pass-1 均退出 0，
+  75 complete / 4 incomplete / 27 failure / 46 no-module，无回退、完整源码
+  字节变化或 legacy，原生 default records 保留；final-batch-summary.json。
+  本节日志前缀 /tmp/abcd-unary-initializer-*。
+
+
 ### 2026-10-02：完整 ISA 运算符与复杂表达式覆盖（用户新增优先任务）
 
 - 用户明确要求在共同贯通方案上覆盖 isa.yaml 的所有 unary/binary/

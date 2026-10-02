@@ -668,6 +668,10 @@ if(BUILD_TESTING)
   target_include_directories(literal_construct_test PRIVATE tests/support)
   target_link_libraries(literal_construct_test PRIVATE abcd_source)
   add_test(NAME literal_construct_test COMMAND literal_construct_test)
+  add_executable(unary_initializer_test tests/integration/unary_initializer.cc)
+  target_include_directories(unary_initializer_test PRIVATE tests/support)
+  target_link_libraries(unary_initializer_test PRIVATE abcd_source)
+  add_test(NAME unary_initializer_test COMMAND unary_initializer_test)
   add_executable(instanceof_expression_test tests/integration/instanceof_expression.cc)
   target_include_directories(instanceof_expression_test PRIVATE tests/support)
   target_link_libraries(instanceof_expression_test PRIVATE abcd_source)
@@ -1247,6 +1251,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_literal.mjs $<TARGET_FILE:class_tree_context_test>)
     add_test(NAME instanceof_expression_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/instanceof_expression.mjs $<TARGET_FILE:instanceof_expression_test>)
+    add_test(NAME unary_initializer_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/unary_initializer.mjs $<TARGET_FILE:phased_literal_test> $<TARGET_FILE:unary_initializer_test>)
     add_test(NAME literal_binary_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/literal_binary.mjs $<TARGET_FILE:literal_binary_test>)
     add_test(NAME literal_cell_guard_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

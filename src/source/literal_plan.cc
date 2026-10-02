@@ -252,10 +252,12 @@ bool LiteralUnary(const analysis::ValueOperation& operation) {
     // These shared AST lowerings evaluate their input exactly once. Domain,
     // coercion/throw order and catch snapshots remain independently checked.
     case U::kNegate: case U::kBitNot: case U::kLogicalNot: case U::kTypeOf:
-    case U::kToNumber: case U::kToBoolean: return true;
-    // Numeric update/conversion need separate Number-or-BigInt lowering;
+    case U::kToNumber: case U::kToBoolean:
+    // Updates use the common exclusive scratch binding and evaluate input
+    // once. ToNumeric still requires the common numeric-domain lowering;
+    // literal ownership grants neither a conversion proof nor a user write.
+    case U::kToNumeric: case U::kIncrement: case U::kDecrement: return true;
     // VM predicates repeat a snapshot leaf, not an owned effect expression.
-    case U::kToNumeric: case U::kIncrement: case U::kDecrement:
     case U::kFalseOrZero: case U::kTrueOrNonzeroNumber: return false;
   }
   return false;
