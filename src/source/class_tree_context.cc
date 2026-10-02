@@ -99,6 +99,7 @@ std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::Resolve(
     ClassTreeContext result;
     result.identity_ = identity;
     result.site_ = *occurrence;
+    result.occurrence_ = site;
     result.position_ = *position;
     result.frame_ = frame;
     result.callable_ = callable;

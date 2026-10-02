@@ -64,7 +64,8 @@ using ClassTreeFailure = std::variant<ClassTreeError, ClassContextFailure, Famil
     const GlobalScope* globals = nullptr, analysis::SemanticBudget budget = {},
     const ClassInitializerCall* initializer = nullptr,
     std::span<const ClassDefinitionSite> definitions = {},
-    RecoveryMode recovery = RecoveryMode::kCompleteOnly, FunctionOwnerId first_owner = {});
+    RecoveryMode recovery = RecoveryMode::kCompleteOnly, FunctionOwnerId first_owner = {},
+    const CaptureTree* parent = nullptr);
 struct PrintedClassTree {
   // Each member's positions remain relative to its own byte offset, preserving
   // the existing family source maps without expanding their origin graphs.

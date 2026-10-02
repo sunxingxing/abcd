@@ -19,12 +19,11 @@ class FamilyTrees {
       RecoveryMode recovery)
       : file_(file), header_(header), index_(index), initial_(budget), left_(budget),
         modules_(modules), module_owner_(owner), lookup_(lookup), recovery_(recovery) {}
-  ConstructedFamily Build(FileFamily& family, const FunctionContext* root, std::optional<FamilyMember> entry = {}) {
+  ConstructedFamily Build(FileFamily& family, const FunctionContext* root, std::optional<FamilyMember> entry = {},
+      const ExternalFamilyCapture* external = nullptr) {
     Admit(1, sizeof(FamilyTrees));
     Require(!family.members.empty() && (root != nullptr) != entry.has_value(), FamilyTreeError::kContext);
-    // External cell proof alone cannot supply ClassExpr placement or aliases.
-    // Do not silently pass it through the closed-root evaluation/write path.
-    Require(!family.root_capture, FamilyTreeError::kContext);
+    Require(!family.root_capture || (external && root && root->ClassContext() && lookup_), FamilyTreeError::kContext);
     Require(family.members.size() < std::numeric_limits<std::uint32_t>::max(), FamilyTreeError::kResourceLimit);
     Require(family.members.size() - 1 <= std::numeric_limits<std::uint32_t>::max() - family.first_owner.value,
         FamilyTreeError::kResourceLimit);
@@ -37,6 +36,14 @@ class FamilyTrees {
     }
     ProjectDefaults(family, root);
     Rebind(family);
+    if (family.root_capture) {
+      auto cells = Take<CaptureCells, CaptureCellError>(BindClassRootCaptureCells(file_, header_, index_, *lookup_,
+          external->creator, family.members.front().function.Capture(), *root, left_));
+      Account(cells);
+      Step(Take<std::uint64_t, CaptureCellError>(VerifyClassRootCaptureCells(file_, header_, index_, *lookup_,
+          external->creator, family.members.front().function.Capture(), *root, cells, left_)));
+      family.root_capture = std::move(cells);
+    }
     Reserve(receiver_cells_, family.members.size()); receiver_cells_.resize(family.members.size());
     Reserve(receiver_scopes_, family.members.size()); receiver_scopes_.resize(family.members.size());
     std::vector<FamilyMember> trees;
@@ -130,9 +137,9 @@ class FamilyTrees {
       // Preserve the phased file input's conditional write domain. The complete
       // family below still discharges every original store and capture barrier.
       auto evaluation = Take<EvaluationPlan, EvaluationError>(phase ?
-          BuildPhasedEvaluationPlan(graph, left_, i == 0 ? IncomingCells::kReject : IncomingCells::kConditional,
+          BuildPhasedEvaluationPlan(graph, left_, i == 0 && !family.root_capture ? IncomingCells::kReject : IncomingCells::kConditional,
               member.children, module_evaluations, demands, {}, phase->Locals().writes) :
-          BuildEvaluationPlan(graph, left_, i == 0 ? IncomingCells::kReject : IncomingCells::kConditional,
+          BuildEvaluationPlan(graph, left_, i == 0 && !family.root_capture ? IncomingCells::kReject : IncomingCells::kConditional,
               member.children, module_evaluations, demands, {}, analysis::ClosureWrites::kLanguage, {},
               guards));
       Account(evaluation);
@@ -141,6 +148,9 @@ class FamilyTrees {
         const auto parent = member.incoming->parent.value;
         Require(parent < trees.size(), FamilyTreeError::kParent);
         incoming.emplace(IncomingCaptureTree{member.incoming->cells, {trees[parent].tree, trees[parent].flow}});
+      } else if (i == 0 && family.root_capture) {
+        incoming.emplace(IncomingCaptureTree{*family.root_capture, external->source.tree,
+            ClassCaptureAnchor{external->source.creation, *root}});
       }
       auto constants = syntax.View();
       constants.receiver_guards = guards;
@@ -465,8 +475,8 @@ std::variant<ConstructedFamily, FamilyTreeFailure> BuildFileFamilyTrees(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, FileFamily family, const FunctionContext& root,
     analysis::SemanticBudget budget, const RecordModuleContext* modules, ModuleOwnerId module_owner,
-    const abc::MethodLookup* lookup, RecoveryMode recovery) {
-  try { return FamilyTrees(file, header, index, budget, modules, module_owner, lookup, recovery).Build(family, &root);
+    const abc::MethodLookup* lookup, RecoveryMode recovery, const ExternalFamilyCapture* external) {
+  try { return FamilyTrees(file, header, index, budget, modules, module_owner, lookup, recovery).Build(family, &root, {}, external);
   } catch (const FamilyTreeFailure& error) { return error;
   } catch (const std::bad_alloc&) { return FamilyTreeFailure{{0}, FamilyTreeError::kResourceLimit};
   } catch (const std::length_error&) { return FamilyTreeFailure{{0}, FamilyTreeError::kResourceLimit}; }

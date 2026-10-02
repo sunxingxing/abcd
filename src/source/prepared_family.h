@@ -16,6 +16,7 @@ struct FamilyDestination {
   FunctionFragment fragment = FunctionFragment::kFunctionExpression;
   // Caller-reserved syntax namespace. FamilyId remains an occurrence index.
   FunctionOwnerId first_owner{};
+  const ClassCaptureParent* captures = nullptr;
 };
 enum class FamilyPrepareError : std::uint8_t {
   kStrictness, kCallable, kModules, kAbi, kFileChanged, kResourceLimit, kWorkLimit,

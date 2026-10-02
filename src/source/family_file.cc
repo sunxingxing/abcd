@@ -165,43 +165,15 @@ class FamilyReader {
     // owns its stamps/cell map; a class root never becomes an ordinary family edge.
     if (!creator || !owner || !owner->ClassContext())
       Fail(CaptureEvaluationFailure{CaptureEvaluationError::kOuterCapture});
-    Require(owner->Identity() == creator->input.Identity(), Error::kOccurrence);
     parent_ = creator->input.Method();
-    const auto* function = owner->CreationSite();
-    const auto* constructor = owner->ConstructorSite();
-    const auto* member = owner->ClassSite();
-    const auto pc = function ? std::optional<abc::CodeOffset>{function->pc} :
-        constructor ? std::optional<abc::CodeOffset>{constructor->pc} :
-        member ? std::optional<abc::CodeOffset>{member->pc} : std::nullopt;
-    Require(pc.has_value(), Error::kCreation); pc_ = *pc;
-    const auto& instructions = creator->input.Input().instructions;
-    Step(std::bit_width(instructions.size()) + 1);
-    const auto found = std::lower_bound(instructions.begin(), instructions.end(), *pc,
-        [](const auto& instruction, auto sought) { return instruction.pc < sought; });
-    Require(found != instructions.end() && found->pc == *pc, Error::kCreation);
-    const analysis::InstructionId site{static_cast<std::uint32_t>(found - instructions.begin())};
-    auto occurrence = [&]() -> CaptureSite {
-      if (function) {
-        Require(function->creator == creator->input.Method(), Error::kOccurrence);
-        constexpr std::size_t kMethodLookups = 2;
-        Step(std::bit_width(index_.regions.size()) + kMethodLookups * std::bit_width(index_.methods.size()) + 1);
-        auto bound = analysis::BindCreation(file_, header_, index_, lookup_, creator->input.Method(),
-            creator->body, creator->input.Proof().environments, site.value);
-        Require(std::holds_alternative<analysis::CreationBinding>(bound), Error::kCreation);
-        auto creation = std::get<analysis::CreationBinding>(std::move(bound));
-        Require(creation.target.position == owner->Position() && creation.creation == function->creation,
-            Error::kOccurrence);
-        return creation;
-      }
-      const auto& before = creator->input.Proof().environments.before;
-      Require(site.value < before.size() && before[site.value], Error::kCreation);
-      return ClassCaptureSite{*owner, *before[site.value]};
-    }();
+    if (const auto* site = owner->CreationSite()) pc_ = site->pc;
+    else if (const auto* site = owner->ConstructorSite()) pc_ = site->pc;
+    else if (const auto* site = owner->ClassSite()) pc_ = site->pc;
     const auto child = result_.members.front().function.Capture();
-    Require(child.Input().MatchesOwner(*owner), Error::kOccurrence);
-    auto bound = BindCaptureCells(index_, {creator->input, creator->values}, child, site, occurrence, Remaining());
+    auto bound = BindClassRootCaptureCells(file_, header_, index_, lookup_, *creator, child, *owner, Remaining());
     if (const auto* error = std::get_if<CaptureCellError>(&bound)) Fail(*error);
     auto cells = std::get<CaptureCells>(std::move(bound));
+    pc_ = cells.input.pc;
     Admit(cells.allocated_bytes, 1); Step(cells.work);
     for (const auto& target : cells.targets) {
       Step();

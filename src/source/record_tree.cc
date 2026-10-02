@@ -423,12 +423,20 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     // Every later class/initializer consumes its actual number of occurrences.
     std::uint64_t next_class_owner = result->tree.owner.value +
         static_cast<std::uint64_t>(family ? family->members.size() : 1);
+    std::optional<TreeFlow> class_parent_flow;
+    if (!pending_classes.empty()) {
+      auto checked = VerifyTreeFlow(graph, *control, *evaluation, result->tree, {budget.bytes});
+      if (!std::holds_alternative<TreeFlow>(checked)) return fail(Error::kValue);
+      class_parent_flow.emplace(std::get<TreeFlow>(std::move(checked)));
+      retain(class_parent_flow->allocated_bytes);
+    }
+    const auto class_parent = class_parent_flow ? std::optional<CaptureTree>{{result->tree, *class_parent_flow}} : std::nullopt;
     for (auto& pending : pending_classes) {
       if (next_class_owner > std::numeric_limits<std::uint32_t>::max()) return fail(Error::kResourceLimit);
       auto built = BuildClassTree(file, header, index, lookup, roles, *functions, *classes,
           *function, pending.operation, identity, &class_scope, {budget.bytes},
           initialization[pending.operation.value], pending.definitions, RecoveryMode::kAllowPartial,
-          {static_cast<std::uint32_t>(next_class_owner)});
+          {static_cast<std::uint32_t>(next_class_owner)}, class_parent ? &*class_parent : nullptr);
       if (const auto* failure = std::get_if<ClassTreeFailure>(&built))
         return class_failure(*failure, pending.operation);
       auto definition = std::get<ClassTree>(std::move(built));

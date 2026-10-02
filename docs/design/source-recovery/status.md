@@ -12,6 +12,37 @@
 
 ## 当前阶段
 
+### 2026-10-02：类根捕获接入真实 enclosing AST 和共同 source aliases
+
+- ClassCaptureAnchor通过实际parent TreeFlow定位ClassExpr，核对constructor
+  的完整创建元数据、buffer member的不可变ClassSiteId/property位置，以及
+  defined member的实际method operation/kind/placement。共同alias builder和
+  独立capture-tree检查复用父cell到symbol映射，复制名称和来源，保留qualified
+  CapturedSymbol；没有伪造FunctionExpr、局部存储或替代正文。
+- RecordTree每个record准备一次实际parent flow；ClassTree/PreparedFamily借用
+  parent AST及真实creator接通root构建。default projection和后代需求传播后，
+  共享原始创建点resolver重新绑定并独立核对root cells，拒绝过期revision。
+  enclosing ClassExpr作用域可见性和完整family writes尚未闭合；write入口仍
+  明确拒绝external root，没有获得PreparedFamily或可执行打印许可。
+- 未实现anchor时实际decoded alias正例1/1 RED，red-tests.log；最终定向4/4
+  通过2.59秒，focused-tests.log。三profile/prototype/static覆盖constructor、
+  getter、buffer零访问转发及真实后代；改target/name/anchor/member occurrence
+  拒绝，ExternalFamilyCapture完整AST构建后仍在FamilyWrite kCapture拒绝。
+- 相关84 targets构建退出0，related-build.log；166/166相关回归通过348.68秒，
+  related-tests.log。五输入fresh build/stage-one/value-class-capture-alias-pass-1
+  均退出0，56 complete / 4 incomplete / 46 failure / 46 no-module；无新增完整
+  项、回退、既有完整源码字节变化或legacy，native default records
+  4466/20246/30597保留，final-batch.log / final-batch-summary.json。
+- fresh CommentBarView entry21219仍unproved/tree_stage。LLDB实际看到root
+  initialRender21274的AST包含aliasSymbol1→owner0/symbol0，首个后代21548
+  也构建成功；下一后代arrow21436在ExpressionForest的UnsupportedOperation
+  失败。它的真实creator21274、创建PC56、source first_owner14；不是旧root
+  Context/OuterCapture拒绝。source-location.log / expression-error.log。
+- 下一步定位21436的具体expression/call失败，并继续闭合parent ClassExpr
+  捕获可见性、transitive writes和目的地打印。阶段一语义与表示验收未完成，
+  Goal保持active；全库、扩大语料、RSS/基准、DFX、调度器、代理及定期审视
+  仍暂停。本节日志均在 /tmp/abcd-class-capture-alias-*。
+
 ### 2026-10-02：类根函数族在真实creator处绑定完整捕获需求
 
 - ReadFunctionFamily在完整发现及PlanFamilyCells之后，接受借用的实际normal

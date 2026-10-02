@@ -11,7 +11,7 @@ void Require(bool condition, Error error) { if (!condition) throw error; }
 }  // namespace
 std::variant<CaptureAliases, CaptureTreeError> BindCaptureAliases(
     const CaptureCells& cells, CaptureTree parent, FunctionOwnerId child,
-    NameId first_name, analysis::SemanticBudget budget) {
+    NameId first_name, analysis::SemanticBudget budget, const ClassCaptureAnchor* class_anchor) {
   try {
     auto bytes = budget.bytes;
     auto work = budget.work;
@@ -30,14 +30,21 @@ std::variant<CaptureAliases, CaptureTreeError> BindCaptureAliases(
     Require(tree.owner != child && tree.identity == cells.identity && tree.method == cells.parent, Error::kOwner);
     Require(tree.value_revision == cells.parent_revision && tree.cfg_revision == cells.parent_cfg &&
         flow.value_revision == cells.parent_revision && flow.cfg_revision == cells.parent_cfg, Error::kRevision);
-    Require(cells.creation.value < flow.expressions.size() && flow.expressions[cells.creation.value], Error::kCreation);
-    const auto expression = *flow.expressions[cells.creation.value];
-    Require(expression.value < tree.expressions.size(), Error::kCreation);
-    const auto* creation = std::get_if<FunctionExpr>(&tree.expressions[expression.value].expression);
-    Require(creation && creation->child == child, Error::kCreation);
-    const auto range = creation->captures;
-    Require(range.first <= tree.closure_captures.size() && range.count <= tree.closure_captures.size() - range.first &&
-        range.count == cells.targets.size(), Error::kCoverage);
+    CaptureRange range{};
+    if (class_anchor) {
+      const auto checked = VerifyClassCaptureAnchor(cells, parent, *class_anchor, {bytes, work});
+      if (const auto* error = std::get_if<Error>(&checked)) throw *error;
+      step(std::get<std::uint64_t>(checked));
+    } else {
+      Require(cells.creation.value < flow.expressions.size() && flow.expressions[cells.creation.value], Error::kCreation);
+      const auto expression = *flow.expressions[cells.creation.value];
+      Require(expression.value < tree.expressions.size(), Error::kCreation);
+      const auto* creation = std::get_if<FunctionExpr>(&tree.expressions[expression.value].expression);
+      Require(creation && creation->child == child, Error::kCreation);
+      range = creation->captures;
+      Require(range.first <= tree.closure_captures.size() && range.count <= tree.closure_captures.size() - range.first &&
+          range.count == cells.targets.size(), Error::kCoverage);
+    }
     Require(cells.targets.size() <= std::numeric_limits<std::uint32_t>::max() - first_name.value, Error::kResourceLimit);
     CaptureAliases result;
     admit(1, sizeof(result));
@@ -50,7 +57,8 @@ std::variant<CaptureAliases, CaptureTreeError> BindCaptureAliases(
       Require(target != nullptr, Error::kOuterCapture);
       Require(target->cell.value < flow.cells.size() && flow.cells[target->cell.value], Error::kCell);
       const auto symbol = *flow.cells[target->cell.value];
-      Require(symbol.value < tree.symbols.size() && tree.closure_captures[range.first + i] == symbol, Error::kTarget);
+      Require(symbol.value < tree.symbols.size() &&
+          (class_anchor || tree.closure_captures[range.first + i] == symbol), Error::kTarget);
       const auto& source = tree.symbols[symbol.value];
       Require(source.kind == BindingKind::kLocal || source.kind == BindingKind::kCapture, Error::kCell);
       Require(source.name.value < tree.names.size(), Error::kName);

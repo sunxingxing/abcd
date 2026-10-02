@@ -5,6 +5,7 @@
 #include "capture_input.h"
 
 namespace abcd::source {
+struct FileFunction;
 struct ParentCell {
   CellId cell;
   bool operator==(const ParentCell&) const = default;
@@ -72,6 +73,17 @@ enum class CaptureCellError : std::uint8_t {
   kOwner, kRevision, kCreation, kInput, kCell, kCoverage, kBinding,
   kResourceLimit, kWorkLimit
 };
+// Resolve the actual original class-root creation point, then reuse the common
+// normal-parent/normal-or-phase-child cell binder. Defaults must freshly rebind
+// this proof after residual graphs and descendant demands settle.
+[[nodiscard]] std::variant<CaptureCells, CaptureCellError> BindClassRootCaptureCells(
+    const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
+    const abc::MethodLookup&, const FileFunction& creator, CaptureChild child,
+    const FunctionContext& owner, analysis::SemanticBudget = {});
+[[nodiscard]] std::variant<std::uint64_t, CaptureCellError> VerifyClassRootCaptureCells(
+    const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
+    const abc::MethodLookup&, const FileFunction& creator, CaptureChild child,
+    const FunctionContext& owner, const CaptureCells&, analysis::SemanticBudget = {});
 // One genuine same-file resolved creation. Per-function plans are prepared
 // once, not rebuilt per creation. Same target at two sites produces two plans.
 [[nodiscard]] std::variant<CaptureCells, CaptureCellError> BindCaptureCells(

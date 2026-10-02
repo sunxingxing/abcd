@@ -1,5 +1,6 @@
 #include "capture_cell_targets.h"
 #include "phased_function_file.h"
+#include "function_file.h"
 
 #include <algorithm>
 #include <bit>
@@ -243,7 +244,75 @@ CaptureTarget Rebase(const CaptureParent& parent, analysis::OpId creation, Incom
   Require(environment.value < allocations.size(), Error::kCell);
   return Target(parent, AllocatedCell{allocations[environment.value], binding->slot}, quota);
 }
+struct ClassRootPoint { analysis::InstructionId site; CaptureSite creation; };
+ClassRootPoint RootPoint(const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup, const FileFunction& creator,
+    CaptureChild child, const FunctionContext& owner, Quota& quota) {
+  quota.Step();
+  Require(owner.ClassContext() && owner.Identity() == creator.input.Identity() &&
+      child.Input().MatchesOwner(owner), Error::kOwner);
+  const auto* function = owner.CreationSite();
+  const auto* constructor = owner.ConstructorSite();
+  const auto* member = owner.ClassSite();
+  const auto pc = function ? std::optional<abc::CodeOffset>{function->pc} :
+      constructor ? std::optional<abc::CodeOffset>{constructor->pc} :
+      member ? std::optional<abc::CodeOffset>{member->pc} : std::nullopt;
+  Require(pc.has_value(), Error::kCreation);
+  const auto& instructions = creator.input.Input().instructions;
+  quota.Step(std::bit_width(instructions.size()) + 1);
+  const auto found = std::lower_bound(instructions.begin(), instructions.end(), *pc,
+      [](const auto& instruction, auto sought) { return instruction.pc < sought; });
+  Require(found != instructions.end() && found->pc == *pc, Error::kCreation);
+  const analysis::InstructionId site{static_cast<std::uint32_t>(found - instructions.begin())};
+  if (function) {
+    Require(function->creator == creator.input.Method(), Error::kOwner);
+    constexpr std::size_t kMethodLookups = 2;
+    quota.Step(std::bit_width(index.regions.size()) + kMethodLookups * std::bit_width(index.methods.size()) + 1);
+    auto resolved = analysis::BindCreation(file, header, index, lookup, creator.input.Method(),
+        creator.body, creator.input.Proof().environments, site.value);
+    Require(std::holds_alternative<analysis::CreationBinding>(resolved), Error::kCreation);
+    auto binding = std::get<analysis::CreationBinding>(std::move(resolved));
+    Require(binding.target.position == owner.Position() && binding.creation == function->creation, Error::kOwner);
+    return {site, std::move(binding)};
+  }
+  const auto& before = creator.input.Proof().environments.before;
+  Require(site.value < before.size() && before[site.value], Error::kCreation);
+  return {site, ClassCaptureSite{owner, *before[site.value]}};
+}
 }  // namespace
+
+std::variant<CaptureCells, CaptureCellError> BindClassRootCaptureCells(
+    const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
+    const abc::MethodLookup& lookup, const FileFunction& creator, CaptureChild child,
+    const FunctionContext& owner, analysis::SemanticBudget budget) {
+  try {
+    Quota quota(budget);
+    const auto point = RootPoint(file, header, index, lookup, creator, child, owner, quota);
+    auto bound = BindCaptureCells(index, {creator.input, creator.values}, child, point.site, point.creation, quota.Remaining());
+    if (const auto* error = std::get_if<CaptureCellError>(&bound)) return *error;
+    auto cells = std::get<CaptureCells>(std::move(bound));
+    cells.work += quota.Work();
+    return cells;
+  } catch (CaptureCellError error) { return error;
+  } catch (const std::bad_alloc&) { return CaptureCellError::kResourceLimit;
+  } catch (const std::length_error&) { return CaptureCellError::kResourceLimit; }
+}
+std::variant<std::uint64_t, CaptureCellError> VerifyClassRootCaptureCells(
+    const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
+    const abc::MethodLookup& lookup, const FileFunction& creator, CaptureChild child,
+    const FunctionContext& owner, const CaptureCells& cells, analysis::SemanticBudget budget) {
+  try {
+    Quota quota(budget);
+    const auto point = RootPoint(file, header, index, lookup, creator, child, owner, quota);
+    const auto checked = VerifyCaptureCells(index, {creator.input, creator.values}, child,
+        point.site, point.creation, cells, quota.Remaining());
+    if (const auto* error = std::get_if<CaptureCellError>(&checked)) return *error;
+    quota.Step(std::get<std::uint64_t>(checked));
+    return quota.Work();
+  } catch (CaptureCellError error) { return error;
+  } catch (const std::bad_alloc&) { return CaptureCellError::kResourceLimit;
+  } catch (const std::length_error&) { return CaptureCellError::kResourceLimit; }
+}
 
 std::variant<std::uint64_t, CaptureCellError> VerifyCaptureTargets(
     CaptureParent parent, CaptureChild child,

@@ -46,11 +46,32 @@ of descendants or a guessed working node. Defined members resolve their actual
 
 Constructor, buffer and defined-member preparation now supply that actual
 creator through the production class path. No creator/context pointer enters
-`root_capture` or `PreparedFamily` storage. Standalone family tree/write consumers
-explicitly reject this external evidence until they receive the real enclosing
-AST. Actual class-root source aliases, scope visibility, default-projection
-rebinding and family write/publication checks remain necessary before executable
-class capture recovery; a cell map alone cannot grant conditional root emission.
+`root_capture` or `PreparedFamily` storage. Family tree construction now accepts
+a borrowed `ExternalFamilyCapture` containing that creator and the actual parent
+tree/flow plus class operation. Missing enclosing AST still refuses. Default
+projection and descendant propagation settle first; the shared original-point
+resolver then freshly binds and independently verifies the complete root proof
+against the residual graph, never using pre-projection child revisions/cell IDs.
+
+`ClassCaptureAnchor` extends the common alias builder and capture-tree verifier.
+It locates a genuine `ClassExpr` through the actual parent flow. Constructor
+metadata must match the class layout; buffer members additionally retain their
+immutable `ClassSiteId` and match its property slot; defined members use binary
+lookup in the ordered definition inventory and match their actual method
+operation, kind and placement. No synthetic `FunctionExpr` or bytecode creation
+is inserted to stand in for the class. All aliases derive from the parent's
+checked CellId-to-SymbolId map and copy its spelling/evidence; they own qualified
+`CapturedSymbol` targets and declare no replacement local storage. Independent
+checking compares actual child aliases, cell maps, callable kind and UTF-16
+names with the parent, including zero-access forwarding demands.
+
+The record adapter prepares one parent flow before member bodies, not one graph
+walk per member. Parent tree/flow/context references are synchronous only.
+Class-layout structure alone does not check the newly recovered closure's lexical
+visibility: the eventual enclosing ClassExpr must carry/check those references.
+Whole-family writes and destination/printing still reject external roots until
+that source-scope and transitive-write integration is complete. These aliases
+are conditional AST evidence, not permission for standalone executable output.
 
 FunctionInput now owns a same-body SemanticMethod and SemanticProof, with file
 identity, method, record and explicit Closed/Conditional capture mode. Its

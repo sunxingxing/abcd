@@ -692,3 +692,17 @@ per root, O(K+U) storage for K original/forwarded obligations and U incoming
 cells, with the indexed rebasing costs above. There is no second descendant
 discovery or per-capture method scan. External evidence is not permission for
 closed-root AST or transitive-write publication.
+
+Class-root source anchoring uses the actual parent TreeFlow expression index.
+Constructor and buffer occurrence checks take O(1); defined-member checks use
+the ordered ClassDefinitionTree inventory in O(log(D+1)) for D definitions.
+Buffer contexts retain the immutable ClassSiteId so there is no per-member scan
+of all methods or properties. The common alias binder/independent verifier keep
+O(K+S) work/storage for K incoming cells and S copied/compared UTF-16 units,
+plus the single anchor lookup. No new capture-name lookup or cell scalarization
+is introduced. Normal records prepare the parent flow once before all class
+members, retaining its existing linear indexes and conservatively charging its
+verification output/scratch. Post-default root binding uses the same indexed
+original-point resolver as discovery and checks fresh revisions/storage. This
+is project-local C++20/standard-library code with no dependency or writer, and
+does not claim whole-process RSS/latency or final scope/write publication.

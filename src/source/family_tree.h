@@ -15,6 +15,10 @@
 #include "family_writes.h"
 
 namespace abcd::source {
+struct ExternalFamilyCapture {
+  const FileFunction& creator;
+  ClassCaptureParent source;
+};
 enum class FamilyTreeError : std::uint8_t {
   kContext, kParent, kModules, kResourceLimit, kWorkLimit
 };
@@ -50,7 +54,8 @@ struct FamilyTreeFailure {
     const abc::MetadataIndex& index, FileFamily family, const FunctionContext& root,
     analysis::SemanticBudget budget = {}, const RecordModuleContext* modules = nullptr,
     ModuleOwnerId module_owner = {}, const abc::MethodLookup* lookup = nullptr,
-    RecoveryMode recovery = RecoveryMode::kCompleteOnly);
+    RecoveryMode recovery = RecoveryMode::kCompleteOnly,
+    const ExternalFamilyCapture* external = nullptr);
 // Reuse a record adapter's root tree and checked flow, then construct all actual
 // children with the same defaults/capture/ABI pipeline. No fictional creation
 // context or function parameters are supplied for the module entry. Input and

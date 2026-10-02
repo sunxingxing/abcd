@@ -1189,7 +1189,8 @@ class TreeBuilder {
         graph_.cfg_revision == cells.child_cfg, Error::kCapture);
     Require(syntax_.names.size() <= std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
     auto bound = BindCaptureAliases(cells, incoming_->parent, syntax_.owner,
-        {static_cast<std::uint32_t>(syntax_.names.size())}, {bytes_, work_});
+        {static_cast<std::uint32_t>(syntax_.names.size())}, {bytes_, work_},
+        incoming_->class_anchor ? &*incoming_->class_anchor : nullptr);
     const auto* error = std::get_if<CaptureTreeError>(&bound);
     if (error) {
       if (*error == CaptureTreeError::kResourceLimit) throw Error::kResourceLimit;
@@ -1218,7 +1219,8 @@ class TreeBuilder {
     }
     Require(flow->allocated_bytes >= storage.bytes, Error::kCapture);
     Admit(flow->allocated_bytes - storage.bytes, 1); Step(flow->work);
-    const auto verified = VerifyCaptureTree(incoming_->cells, incoming_->parent, {tree_, *flow}, {bytes_, work_});
+    const auto verified = VerifyCaptureTree(incoming_->cells, incoming_->parent, {tree_, *flow}, {bytes_, work_},
+        incoming_->class_anchor ? &*incoming_->class_anchor : nullptr);
     if (const auto* error = std::get_if<CaptureTreeError>(&verified)) {
       if (*error == CaptureTreeError::kResourceLimit) throw Error::kResourceLimit;
       if (*error == CaptureTreeError::kWorkLimit) throw Error::kWorkLimit;

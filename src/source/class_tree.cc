@@ -110,7 +110,8 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
     const analysis::FunctionCreationSites& functions, const analysis::ClassMethodSites& classes,
     const FileFunction& creator, analysis::OpId operation, RouteInputIdentity identity,
     const GlobalScope* globals, analysis::SemanticBudget budget, const ClassInitializerCall* initializer,
-    std::span<const ClassDefinitionSite> definitions, RecoveryMode recovery, FunctionOwnerId first_owner) {
+    std::span<const ClassDefinitionSite> definitions, RecoveryMode recovery, FunctionOwnerId first_owner,
+    const CaptureTree* parent) {
   const auto initial = budget;
   try {
     const auto admit = [&](std::size_t count, std::size_t width) {
@@ -125,11 +126,13 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
         creator, operation, identity, budget, initializer, definitions));
     admit(tree.allocated_bytes, 1); step(tree.work);
     std::uint64_t next_owner = first_owner.value;
+    std::optional<ClassCaptureParent> source_parent;
+    if (parent) source_parent.emplace(ClassCaptureParent{*parent, operation});
     const auto destination = [&]() -> FamilyDestination {
       if (next_owner > std::numeric_limits<std::uint32_t>::max())
         throw ClassTreeFailure{Error::kResourceLimit};
       return {Strictness::kStrict, globals, FunctionFragment::kClassMember,
-          {static_cast<std::uint32_t>(next_owner)}};
+          {static_cast<std::uint32_t>(next_owner)}, source_parent ? &*source_parent : nullptr};
     };
     const ParentModuleInput modules{creator.input,
         {creator.values.graph.origins[creator.values.graph.ops[operation.value].origin.value].site.value}};

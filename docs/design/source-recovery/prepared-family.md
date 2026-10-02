@@ -16,8 +16,10 @@ an executable/record-completion receipt. No public constructor accepts a tree,
    semantics, flow, ABI, exact lexical enclosure and whole-family store checks.
 5. Require supported ordinary/arrow syntax (or the actual class-method root), strict members, retained ABI and no
    unresolved module aliases. A class creator may bind root cell evidence during
-   input discovery; external root source aliases and visibility still refuse in
-   shared tree preparation until the actual enclosing AST is integrated.
+   input discovery. Supplying the actual parent tree/flow and class operation
+   now builds checked, qualified root aliases after fresh default rebinding;
+   enclosing visibility, whole-family writes and printing remain publication
+   obligations. An external cell map alone still cannot obtain a PreparedFamily.
 6. Check the complete actual destination through `VerifyFamilyDestination`.
 7. Check file stability again, move the root creation context and complete family
    into `unique_ptr<const Storage>`, and release input/SSA readers and scratch.
@@ -25,6 +27,13 @@ an executable/record-completion receipt. No public constructor accepts a tree,
 `FamilyDestination` is a caller trust boundary. A null global context admits no
 global reads; it is not a guessed empty record. Strictness is also an explicit
 enclosing-code promise, not a directive injected into a non-simple signature.
+
+`FamilyDestination::captures` borrows a genuine `ClassCaptureParent` only during
+preparation. The shared builder independently checks the actual class layout and
+occurrence, then derives aliases from existing parent cell symbols. It never
+retains the parent tree/flow or context pointer. Current external-root writes
+still refuse; the conditional root AST cannot bypass this gate or be printed as
+a standalone class member.
 No destination pointer is retained. File/index lifetimes are not extended by the
 prepared owner; trees, names, origins, ABI and capture/flow records own storage.
 

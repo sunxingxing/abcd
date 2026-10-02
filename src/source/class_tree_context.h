@@ -68,6 +68,7 @@ class ClassTreeContext {
   [[nodiscard]] const RouteInputIdentity& Identity() const { return identity_; }
   [[nodiscard]] const analysis::ClassMethodSite& Site() const { return std::get<analysis::ClassMethodSite>(site_); }
   [[nodiscard]] abc::MethodPosition Position() const { return position_; }
+  [[nodiscard]] std::optional<analysis::ClassSiteId> Occurrence() const { return occurrence_; }
   [[nodiscard]] const abc::FrameLayout& Frame() const { return frame_; }
   [[nodiscard]] std::u16string_view Name() const { return name_; }
   [[nodiscard]] CallableKind Callable() const { return callable_; }
@@ -79,6 +80,7 @@ class ClassTreeContext {
   RouteInputIdentity identity_;
   std::variant<analysis::ClassMethodSite, ClassConstructorSite, ClassDefinedMember> site_;
   abc::MethodPosition position_;
+  std::optional<analysis::ClassSiteId> occurrence_;
   abc::FrameLayout frame_;
   CallableKind callable_ = CallableKind::kMethod;
   std::u16string name_;

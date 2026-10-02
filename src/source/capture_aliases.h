@@ -11,7 +11,10 @@ struct CaptureAliases {
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };
-// Actual parent cell symbols at an actual FunctionExpr occurrence. The caller
+// Actual parent cell symbols at an actual FunctionExpr or class-root anchor.
+// A class anchor checks genuine layout/occurrence identity, not yet enclosing
+// lexical visibility or transitive writes; conditional syntax is not emission.
+// The caller
 // supplies unchanged checked CaptureCells and parent tree/flow products, not
 // assumed equality between parent/child CellIds or source SymbolIds. Child
 // spelling is copied exactly; no scalar snapshot or new declaration is made.
@@ -19,6 +22,7 @@ struct CaptureAliases {
 // with VerifyCaptureTree. An unresolved outward target stays unsupported.
 [[nodiscard]] std::variant<CaptureAliases, CaptureTreeError> BindCaptureAliases(
     const CaptureCells& cells, CaptureTree parent, FunctionOwnerId child,
-    NameId first_name = {}, analysis::SemanticBudget budget = {});
+    NameId first_name = {}, analysis::SemanticBudget budget = {},
+    const ClassCaptureAnchor* class_anchor = nullptr);
 }  // namespace abcd::source
 #endif

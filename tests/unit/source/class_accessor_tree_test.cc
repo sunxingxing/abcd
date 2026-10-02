@@ -174,6 +174,24 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
     Check(site.value < creator.input.Proof().environments.before.size() &&
         creator.input.Proof().environments.before[site.value]);
     const auto environment = *creator.input.Proof().environments.before[site.value];
+    std::shared_ptr<ClassTree> source_layout;
+    std::optional<ConstructedFunction> source_parent;
+    std::optional<TreeFlow> source_flow;
+    if (initialized) {
+      source_layout = std::make_shared<ClassTree>(std::get<ClassTree>(BuildClassLayout(
+          file, header, index, lookup, roles, classes, creator, class_operation, identity, {}, nullptr, definitions)));
+      auto constants = std::get<TreeConstants>(ResolveTreeConstants(file, header, index, creator.input.Method(), graph));
+      constants.operations[class_operation.value] = source_layout;
+      FunctionSyntax syntax{}; syntax.identity = identity; syntax.method = creator.input.Method(); syntax.owner = {0};
+      syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+      syntax.names = constants.names; syntax.texts = constants.texts;
+      const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+      const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph, {}, IncomingCells::kReject,
+          {}, {}, {}, {}, analysis::ClosureWrites::kLanguage, definitions));
+      source_parent.emplace(std::get<ConstructedFunction>(BuildFunctionTree(graph, control, evaluation,
+          std::move(syntax), constants.View())));
+      source_flow.emplace(std::get<TreeFlow>(VerifyTreeFlow(graph, control, evaluation, source_parent->tree)));
+    }
     const auto check = [&](const FunctionContext& owner, analysis::InstructionId at, CaptureSite occurrence) {
       auto values = ReadFunctionValues(file, header, index, owner.Position(), identity,
           InputCaptureMode::kConditional, {}, nullptr, &owner);
@@ -228,12 +246,57 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
             std::holds_alternative<ParentCell>(family.root_capture->targets[0].target));
         Check(std::holds_alternative<std::uint64_t>(VerifyCaptureCells(index,
             {creator.input, creator.values}, root, at, occurrence, *family.root_capture)));
+        Check(std::holds_alternative<std::uint64_t>(VerifyClassRootCaptureCells(
+            file, header, index, lookup, creator, root, owner, *family.root_capture)));
+        auto stale = *family.root_capture; ++stale.child_revision.value;
+        Check(std::get<CaptureCellError>(VerifyClassRootCaptureCells(
+            file, header, index, lookup, creator, root, owner, stale)) == CaptureCellError::kRevision);
+        auto& member = family.members.front();
+        auto syntax = std::get<ResolvedSyntax>(ResolveFunctionSyntax(file, header, index, owner,
+            member.function.Body(), root.Graph(), family.Owner(FileFamily::kRoot)));
+        const auto control = std::get<ControlPlan>(BuildControlPlan(root.Graph()));
+        const auto demands = root.Cells() ? std::span<const CellDemand>(root.Cells()->demands) : std::span<const CellDemand>{};
+        const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(root.Graph(), {}, IncomingCells::kConditional,
+            member.children, {}, demands, {}, analysis::ClosureWrites::kLanguage));
+        IncomingCaptureTree incoming{*family.root_capture, {source_parent->tree, *source_flow},
+            ClassCaptureAnchor{class_operation, owner}};
+        const auto view = syntax.View();
+        auto constructed = BuildFunctionTree(root.Graph(), control, evaluation, std::move(syntax.syntax), view, {}, &incoming);
+        Check(std::holds_alternative<ConstructedFunction>(constructed));
+        const auto& tree = std::get<ConstructedFunction>(constructed).tree;
+        Check(tree.captures.size() == 1 && tree.captures[0].target.owner == source_parent->tree.owner);
+        const auto flow = std::get<TreeFlow>(VerifyTreeFlow(root.Graph(), control, evaluation, tree));
+        Check(std::holds_alternative<std::uint64_t>(VerifyCaptureTree(*family.root_capture,
+            incoming.parent, {tree, flow}, {}, &*incoming.class_anchor)));
+        auto changed_tree = tree; ++changed_tree.captures[0].target.symbol.value;
+        Check(std::get<CaptureTreeError>(VerifyCaptureTree(*family.root_capture,
+            incoming.parent, {changed_tree, flow}, {}, &*incoming.class_anchor)) == CaptureTreeError::kTarget);
+        ClassCaptureAnchor wrong{{class_operation.value + 1}, owner};
+        Check(std::get<CaptureTreeError>(VerifyCaptureTree(*family.root_capture,
+            incoming.parent, {tree, flow}, {}, &wrong)) == CaptureTreeError::kCreation);
+        changed_tree = tree;
+        const auto capture_name = tree.symbols[tree.captures[0].symbol.value].name;
+        changed_tree.names[capture_name.value].append(u"Changed");
+        Check(std::get<CaptureTreeError>(VerifyCaptureTree(*family.root_capture,
+            incoming.parent, {changed_tree, flow}, {}, &*incoming.class_anchor)) == CaptureTreeError::kName);
+        if (const auto* method = owner.ClassSite()) {
+          auto& id = source_layout->member_sites[method->property]; const auto saved = id; ++id.value;
+          Check(std::get<CaptureTreeError>(VerifyCaptureTree(*family.root_capture,
+              incoming.parent, {tree, flow}, {}, &*incoming.class_anchor)) == CaptureTreeError::kCreation);
+          id = saved;
+        }
         // A bound root is not a closed standalone family. Source integration
         // must supply and verify its actual enclosing ClassExpr and symbols.
         auto draft = BuildFileFamilyTrees(file, header, index, std::move(family), owner,
             {}, nullptr, {}, &lookup);
         Check(std::holds_alternative<FamilyTreeFailure>(draft) &&
             std::get<FamilyTreeError>(std::get<FamilyTreeFailure>(draft).cause) == FamilyTreeError::kContext);
+        auto externally_bound = std::get<FileFamily>(read_family(&creator));
+        const ExternalFamilyCapture external{creator, {incoming.parent, class_operation}};
+        auto contextual = BuildFileFamilyTrees(file, header, index, std::move(externally_bound), owner,
+            {}, nullptr, {}, &lookup, RecoveryMode::kCompleteOnly, &external);
+        Check(std::holds_alternative<FamilyTreeFailure>(contextual) &&
+            std::get<FamilyWriteFailure>(std::get<FamilyTreeFailure>(contextual).cause).kind == FamilyWriteError::kCapture);
       }
       if (!initialized) { Check(std::get<CaptureCellError>(bound) == CaptureCellError::kInput); return; }
       Check(std::holds_alternative<CaptureCells>(bound));

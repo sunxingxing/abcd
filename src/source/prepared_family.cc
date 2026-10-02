@@ -176,8 +176,14 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
       receipt.method = member.function.Method(); receipt.record = member.function.Record();
       receipts.push_back(receipt); // Identity only; no stage claim until all proofs close.
     }
+    std::optional<ExternalFamilyCapture> external;
+    if (destination.captures) {
+      Require(creator != nullptr, Error::kPlacement);
+      external.emplace(ExternalFamilyCapture{*creator, *destination.captures});
+    }
     auto family = Take<ConstructedFamily, FamilyTreeFailure>(BuildFileFamilyTrees(
-        file, header, index, std::move(input), root, budget.Left(), modules, module_owner, &lookup, recovery));
+        file, header, index, std::move(input), root, budget.Left(), modules, module_owner, &lookup, recovery,
+        external ? &*external : nullptr));
     budget.Account(family.allocated_bytes, family.work);
     for (const auto& member : family.members) {
       budget.Account(0, 1);
