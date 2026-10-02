@@ -680,6 +680,10 @@ if(BUILD_TESTING)
   target_include_directories(nested_selection_test PRIVATE tests/support)
   target_link_libraries(nested_selection_test PRIVATE abcd_source)
   add_test(NAME nested_selection_test COMMAND nested_selection_test)
+  add_executable(closure_schedule_test tests/integration/closure_schedule.cc)
+  target_include_directories(closure_schedule_test PRIVATE tests/support)
+  target_link_libraries(closure_schedule_test PRIVATE abcd_source)
+  add_test(NAME closure_schedule_test COMMAND closure_schedule_test)
   add_executable(family_array_test tests/integration/family_array.cc)
   target_include_directories(family_array_test PRIVATE tests/support)
   target_link_libraries(family_array_test PRIVATE abcd_source abcd_json)
@@ -705,6 +709,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/mixed_literal.mjs $<TARGET_FILE:mixed_literal_test>)
     add_test(NAME nested_selection_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/nested_selection.mjs $<TARGET_FILE:nested_selection_test>)
+    add_test(NAME closure_schedule_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/closure_schedule.mjs $<TARGET_FILE:closure_schedule_test>)
   endif()
   add_executable(capture_plan_test tests/unit/source/capture_plan_test.cc)
   target_link_libraries(capture_plan_test PRIVATE abcd_source)
@@ -1098,6 +1104,12 @@ if(BUILD_TESTING)
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/detail/src/main/ets/view/DetailPage.ts")
       add_test(NAME detail_nested_selection_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/detail_nested_selection.mjs $<TARGET_FILE:abc_structure>
+        ${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication)
+    endif()
+    if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc" AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/phone/src/main/ets/view/TabContentView.ts")
+      add_test(NAME tab_closure_schedule_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/tab_closure_schedule.mjs $<TARGET_FILE:abc_structure>
         ${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication)
     endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc" AND

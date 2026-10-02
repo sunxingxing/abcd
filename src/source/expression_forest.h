@@ -59,8 +59,9 @@ enum class ExpressionError : std::uint8_t {
   kBinding, kOrigin, kConstant, kUnavailableValue, kUnsupportedOperation,
   kOwnership, kResourceLimit, kWorkLimit
 };
-// Inputs must have passed import/rewrite verification. Builds each inline tree
-// once, in operation order, without recursion or sharing effectful expressions.
+// Inputs must have passed import/rewrite verification. Builds each owned tree
+// once in dependency order, without recursion or sharing effectful expressions.
+// Checked placements retain runtime order; binding identity uses original IDs.
 // Output is NOT a frozen/publication-ready tree; scope/control/source proofs
 // still have to be checked after statement assembly.
 // The actual callable distinguishes the derived VM entry's undefined value

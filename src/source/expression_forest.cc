@@ -347,7 +347,7 @@ class ForestBuilder {
         break;
       }
     }
-    Require(next_function_ == evaluation_.functions.size(), Error::kOwnership);
+    Require(built_functions_ == evaluation_.functions.size(), Error::kOwnership);
     Require(next_module_ == evaluation_.modules.size(), Error::kOwnership);
     for (const auto& region : logicals_) {
       Step(); if (evaluation_.operations[region.branch.value].kind != EvaluationKind::kLogicalValue) LogicalTree(region);
@@ -906,9 +906,16 @@ class ForestBuilder {
         return Add(EmptyObjectExpr{}, origin);
       }
       else if constexpr (std::is_same_v<T, analysis::ValueFunctionCreation>) {
-        Require(next_function_ < evaluation_.functions.size(), Error::kOwnership);
-        const auto& function = evaluation_.functions[next_function_++];
-        Require(function.creation == id && function.child != owner_, Error::kOwnership);
+        // Literal dependencies are constructed before ordinary roots. Binding
+        // identity follows the original creation, never that AST build order.
+        // Evaluation verification established the sorted, unique creation map.
+        const auto found = std::lower_bound(evaluation_.functions.begin(), evaluation_.functions.end(), id,
+            [&](const FunctionBinding& binding, analysis::OpId creation) {
+              Step(); return binding.creation < creation;
+            });
+        Require(found != evaluation_.functions.end() && found->creation == id && found->child != owner_, Error::kOwnership);
+        ++built_functions_;
+        const auto& function = *found;
         const CaptureRange captures{static_cast<std::uint32_t>(forest_.closure_captures.size()),
             static_cast<std::uint32_t>(function.captures.size())};
         for (const auto cell : function.captures) {
@@ -951,7 +958,7 @@ class ForestBuilder {
   std::uint64_t work_;
   ExpressionForest forest_;
   std::vector<std::optional<std::size_t>> objects_;
-  std::size_t next_function_ = 0;
+  std::size_t built_functions_ = 0;
   std::span<const ModuleSymbol> modules_;
   std::vector<std::size_t> module_order_;
   std::size_t next_module_ = 0;

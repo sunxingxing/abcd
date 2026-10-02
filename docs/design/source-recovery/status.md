@@ -12,6 +12,47 @@
 
 ## 当前阶段
 
+### 2026-10-02：闭包绑定按 creation 身份独立于 AST 构造次序
+
+- TabContentView 42938 / entry 43110 的字面量依赖先构造 OpId 21，而旧
+  next_function_ 游标取到 creation 10 / child 23，当前 owner 22。现从已验证
+  有序唯一的 FunctionBinding 表按原 OpId 二分查找，保留 child 非自身 owner、
+  capture映射及完整创建计数；没有删除检查或改变运行时函数创建顺序。
+  每个函数族 F 次创建合计 O(F log(F+1)) 查找、常量额外空间。
+- 新增文件支持的真实 Code 解码函数族（元数据是测试夹具，不是容器解析证据），
+  普通闭包先交给消费回调，之后返回字面量内读/写闭包，分别读取两 cell 并
+  共享写入。旧路径 1/1 RED 1.03 秒，FamilyTree kExpression，red-tests.log /
+  red-cause.log。修复后小例成功；402 组的 1,207 成员耗尽独立准备接口默认
+  64 MiB 累计额度，明确报 FamilyEnclosure kResourceLimit，large-detail.log。
+  规模夹具显式使用 128 MiB，生产额度不变，三 profile 的 1/2/200/201/402
+  组全部通过，402 的全族 work 小于 201 的三倍；sized-tests.log 1/1 通过
+  5.34 秒。未执行 RSS 或宣称全进程内存达标。
+- 原生 JS 独立对照共 1,100 个名称/length/身份、不同 capture、调用中抛错、
+  返回或抛错后继续写共享 cell 的场景，另验证两次 factory 调用隔离。
+  负例最初放在会重新绑定的 family 入口，被正常修正；现移至实际
+  evaluation/expression 输入边界，乱序、重复 creation、自身 owner 均拒绝。
+  最终定向 3/3 通过 9.28 秒，boundary-build.log / boundary-tests.log。
+- 88 个相关 targets 构建退出 0，related-build.log；181/181 相关回归通过
+  408.83 秒，related-tests.log，并按测试名称核对与选择清单一致。
+  全库、扩大语料、RSS/基准、DFX、调度器、代理及定期审视仍暂停。
+- tab_closure_schedule_source_test 独立读取配对 TS，100 个 TabContent
+  普通 content/字面量 builder 回调场景通过，paired-test.log；延迟执行、
+  改变 tabBarsInfo、改变执行顺序、alien receiver、资源对象、异常及 HotPoint
+  子回调注册均对照。不覆盖 ViewPU 构造、storage、子视图执行或真实渲染。
+- 五输入 fresh build/stage-one/value-closure-schedule-pass-1 均退出 0：
+  72 complete / 4 incomplete / 30 failure / 46 no-module；新增完整
+  TabContentView 42938。原 71 个完整项无回退或源码字节变化，无 legacy，
+  原生 default records 保留，final-batch.log / final-batch-summary.json。
+  新源码 Node --check 退出 0；这些证据仍不是阶段一整体配对验收。
+- 下一处失败为 DetailVerticalView 44437 / entry 44592 的 getPaddingTop
+  （method position 764、family member 0）。共享短路条件的第二块包含
+  已配对 ValueGuard / kModuleGuard（OpId 17）；EmitDecision 在
+  function_tree.cc:926 仅接受 kInline，报 FunctionTree kOwnership。
+  需沿共同 decision 构造及独立 TreeFlow 处理原模块 read/guard 配对，不能
+  删除 guard 或使短路 RHS 无条件执行。next-target.log / next-owner.log /
+  next-cause.log 保留证据。
+  本节日志前缀 /tmp/abcd-closure-schedule-*，Goal 保持 active。
+
 ### 2026-10-02：嵌套条件对象按真实父属性组成归属树
 
 - DetailPage 25350 / entry 25577 的 child 26659 将条件值先写入内层 md，再

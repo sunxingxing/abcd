@@ -596,6 +596,28 @@ below three times the 201 case. Native syntax checks identity, prototypes,
 descriptors, branch effects and member references; paired DetailPage callbacks
 are separately bounded evidence. No RSS, benchmark, or whole-platform claim.
 
+### Creation binding lookup across AST schedules (2026-10-02)
+
+Literal dependency construction may visit a later closure before an earlier
+ordinary root. Resolve FunctionBinding by its original creation OpId with binary
+search in the sorted unique map already checked by evaluation verification.
+Do not interpret the AST build sequence as instruction or binding order. Retain
+the exact child owner, capture list and complete constructed-function census;
+the existing placement and scope checks still prove runtime order and lifetime.
+
+For F creations this lookup adds O(F log(F+1)) comparisons and constant lookup
+storage, reusing the existing vector and standard-library lower_bound. There is
+no copied map, new dependency, or runtime helper. File-backed decoded families
+exercise three profiles and 1/2/200/201/402 groups of three mixed closures. The
+largest synthetic family has 1,207 members and uses an explicit 128 MiB cumulative
+preparation allowance; the standalone 64 MiB default reports resource exhaustion
+for that fixture. Production limits are unchanged. Whole-family work at 402
+groups stays below three times the 201 case, without making an RSS claim.
+Native behavior tests independently cover closure names/identity, distinct and
+shared captures, writes after return/throw, and separate factory invocations.
+Malformed creation order, duplicate IDs and self owners remain rejected at the
+evaluation/expression boundary; the family entry itself rebinds from its inputs.
+
 ### Selected module reads and consecutive consumers (2026-10-01)
 
 Normal selection arms also accept an exact module read/guard pair owned by their
