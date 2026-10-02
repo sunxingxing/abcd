@@ -668,6 +668,10 @@ if(BUILD_TESTING)
   target_include_directories(literal_construct_test PRIVATE tests/support)
   target_link_libraries(literal_construct_test PRIVATE abcd_source)
   add_test(NAME literal_construct_test COMMAND literal_construct_test)
+  add_executable(numeric_conversion_test tests/integration/numeric_conversion.cc)
+  target_include_directories(numeric_conversion_test PRIVATE tests/support)
+  target_link_libraries(numeric_conversion_test PRIVATE abcd_source)
+  add_test(NAME numeric_conversion_test COMMAND numeric_conversion_test)
   add_executable(number_conversion_test tests/integration/number_conversion.cc)
   target_include_directories(number_conversion_test PRIVATE tests/support)
   target_link_libraries(number_conversion_test PRIVATE abcd_source)
@@ -1269,6 +1273,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_cells.mjs $<TARGET_FILE:class_tree_context_test>)
     add_test(NAME phased_literal_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_literal.mjs $<TARGET_FILE:class_tree_context_test>)
+    add_test(NAME numeric_conversion_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/numeric_conversion.mjs $<TARGET_FILE:numeric_conversion_test>)
     add_test(NAME number_conversion_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/number_conversion.mjs $<TARGET_FILE:number_conversion_test>)
     add_test(NAME legacy_negation_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

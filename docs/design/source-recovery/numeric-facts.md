@@ -26,8 +26,13 @@ Normal and phased SSA use the same sparse worklist transfer rules; linear
 lexical analysis calls the same scalar helpers. ToNumber preserves all facts of a proved non-NaN Number; otherwise a Language
 input has a Defined normal result. The pinned conversion returns Number or
 throws, including BigInt/Symbol and conversion-hook failures; it does not imply
-non-NaN output. ToNumeric still uses the separate proved-number identity rule.
-This does not admit arbitrary arithmetic over conversion results.
+non-NaN output. ToNumeric has the same Defined normal-result bound while retaining BigInt
+semantics. Known non-NaN Number input uses identity; other inputs use exclusive
+postfix scratch under the resource-exclusion contract. Independent verification
+checks the old-value result and rejects reads/captures/reuse of that scratch.
+V1 does not authorize the extra numeric operation. This does not admit arbitrary
+arithmetic over conversion results. See ECMAScript 13.4.2.1 for the returned
+ToNumeric oldValue; this is distinct from platform differential acceptance.
 
 The fixed-height lattice adds one finite refinement and one independently
 weakening exclusion. Phi joins stay incremental; arithmetic nodes inspect at

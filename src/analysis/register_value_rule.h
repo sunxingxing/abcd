@@ -21,7 +21,7 @@ enum class ValueRuleKind {
   kNonNaNUnary,
   kNegate,
   kLegacyNegate,
-  kNumericIdentity,
+  kToNumeric,
   kToNumber,
   kNonNaNMultiply,
   kNonNaNDivide
@@ -47,10 +47,10 @@ constexpr ValueKinds AddValues(ValueKinds left, ValueKinds right) {
   if (!left.IsLanguage() || !right.IsLanguage()) return ValueKinds::Unknown();
   return left.IsString() || right.IsString() ? ValueKinds::String() : AdditiveNumbers(left, right);
 }
-// Pinned ToNumber returns an existing Number unchanged or constructs a
-// Number from a primitive/string. BigInt/Symbol conversion is abrupt. Thus
-// normal completion is Defined Language, without assuming non-NaN output.
-constexpr ValueKinds ConvertedNumber(ValueKinds input) {
+// Pinned ToNumber returns Number; ToNumeric also preserves BigInt. Both have
+// Defined Language normal results, without assuming non-NaN output. Existing
+// non-NaN Number inputs retain their finer identity facts.
+constexpr ValueKinds ConvertedNumericValue(ValueKinds input) {
   if (!input.IsLanguage()) return ValueKinds::Unknown();
   return input.IsNonNaNNumber() ? input : ValueKinds::Defined();
 }

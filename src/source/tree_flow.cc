@@ -1027,7 +1027,9 @@ class FlowCheck {
       const auto& op = graph_.ops[i];
       const auto* unary = std::get_if<analysis::ValueUnary>(&op.operation);
       if (op.life != analysis::ValueLife::kLive || evaluation_.operations[i].kind == EvaluationKind::kElidedPure ||
-          !unary || (unary->op != analysis::UnaryOperator::kIncrement && unary->op != analysis::UnaryOperator::kDecrement)) continue;
+          !unary || !NeedsNumericScratch(graph_, op)) continue;
+      if (unary->op == analysis::UnaryOperator::kToNumeric)
+        Require(ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded, Error::kSnapshot);
       Require(flow_.expressions[i].has_value(), Error::kSnapshot);
       const auto* sequence = std::get_if<SequenceExpr>(&tree_.expressions[flow_.expressions[i]->value].expression);
       Require(sequence, Error::kSnapshot);

@@ -133,7 +133,7 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment) {
       case UnaryOperator::kToNumber:
         return ValueRule{ValueRuleKind::kToNumber, {}};
       case UnaryOperator::kToNumeric:
-        return ValueRule{ValueRuleKind::kNumericIdentity, {}};
+        return ValueRule{ValueRuleKind::kToNumeric, {}};
       case UnaryOperator::kToBoolean:
       case UnaryOperator::kLogicalNot:
       case UnaryOperator::kTypeOf:

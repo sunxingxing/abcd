@@ -790,8 +790,8 @@ class ForestBuilder {
       }
       case U::kToNumeric:
         if (NonNaNNumberEvaluation(graph_, original)) return Combine(input, origin);
-        // General coercion still needs a Number/BigInt-preserving value-domain
-        // proof. Do not infer numeric identity from the eventual ++ consumer.
+        // General conversion is handled by exclusive postfix scratch above.
+        // Identity must still follow an input fact, never the later consumer.
         throw Error::kUnsupportedOperation;
       case U::kIncrement: case U::kDecrement:
         throw Error::kUnsupportedOperation;
@@ -825,15 +825,18 @@ class ForestBuilder {
         return Add(AssignmentExpr{SymbolTarget{CellSymbol(id)}, operands[0]}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueUnary>) {
         using U = analysis::UnaryOperator;
-        if (operation.op == U::kIncrement || operation.op == U::kDecrement) {
+        if (NeedsNumericScratch(graph_, op)) {
           Require(id.value < forest_.bindings.updates.size() && forest_.bindings.updates[id.value], Error::kBinding);
           const auto symbol = *forest_.bindings.updates[id.value];
           // Ark publishes acc only on success and leaves the input register
           // unchanged. The comma owns one input evaluation and a native update
           // on exclusive scratch; no helper call, user store or x +/- 1.
           const auto save = Add(AssignmentExpr{SymbolTarget{symbol}, operands[0]}, origin);
-          const auto update = Add(UpdateExpr{symbol, operation.op == U::kIncrement
-              ? UpdateDirection::kIncrement : UpdateDirection::kDecrement, UpdateResult::kPrefix}, origin);
+          // ToNumeric returns the postfix old value; only compiler scratch
+          // receives the extra arithmetic result. Publication gates resources.
+          const auto update = Add(UpdateExpr{symbol, operation.op == U::kDecrement
+              ? UpdateDirection::kDecrement : UpdateDirection::kIncrement,
+              operation.op == U::kToNumeric ? UpdateResult::kPostfix : UpdateResult::kPrefix}, origin);
           return Add(SequenceExpr{save, update}, origin);
         }
         return Unary(operation.op, operands[0], graph_.uses[op.first_use.value].operand, origin);

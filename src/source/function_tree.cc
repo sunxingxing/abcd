@@ -571,7 +571,12 @@ class TreeBuilder {
       } else if (std::holds_alternative<HoleTokenBinding>(binding)) {
         tree_.hole = SymbolId{static_cast<std::uint32_t>(i)};
         reason = TemporaryReason::kInternalSentinel; prefix = u"$hole";
-      } else if (std::holds_alternative<UpdateBinding>(binding)) {
+      } else if (const auto* update = std::get_if<UpdateBinding>(&binding)) {
+        Require(update->producer.value < graph_.ops.size(), Error::kBinding);
+        const auto* unary = std::get_if<analysis::ValueUnary>(&graph_.ops[update->producer.value].operation);
+        Require(unary, Error::kBinding);
+        if (unary->op == analysis::UnaryOperator::kToNumeric)
+          Require(ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded, Error::kBinding);
         reason = TemporaryReason::kNumericUpdate; prefix = u"$update";
       } else throw Error::kBinding;
       tree_.symbols.push_back({kBodyScope, SyntheticName(prefix, i),

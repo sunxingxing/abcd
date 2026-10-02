@@ -13,6 +13,37 @@
 ## 当前阶段
 
 
+### 2026-10-02：一般 ToNumeric 的独占临时转换
+
+- 独立现代/deprecated decoded 用例在旧 FunctionInput 阶段 RED，
+  red-tests.log 1/1 失败 2.17 秒。正常结果为 Defined Language，保留
+  Number/BigInt 而不授予 non-NaN 事实；已证明 Number 仍走身份下降。
+- 其他输入复用独占 UpdateBinding，保存输入一次并返回原生 postfix 的
+  oldValue。依据 ECMAScript 13.4.2.1，oldValue 正是 ToNumeric 的结果；
+  额外更新只写不可观察的编译器 scratch。构造、TreeFlow 和操作数验证
+  均检查隔离与 postfix 形式；仅资源差异排除契约允许该下降，V1 拒绝。
+  无可修改的全局转换器或独立 writer。此处是源语言下降，不声称 Ark VM
+  二进制或平台端到端验证。
+- boundary-tests.log 2/2 通过 4.37 秒，覆盖改成 prefix、改写参数、V1
+  契约及私有 Hole 拒绝。expanded-tests.log 5/5 通过 23.55 秒，包含既有
+  更新表达式与 phased 字面量。独立 ToPrimitive(number)/BigInt 保留 oracle
+  对照现代/旧编码及普通/catch 路径，共 2,624 场景通过，验证调用次数、顺序、异常、BigInt、
+  signed zero、原始与对象返回的 NaN payload。三 profile 的
+  1/2/200/201/402 次转换均验证。
+- 规范依据：https://tc39.es/ecma262/2023/multipage/ecmascript-language-expressions.html#sec-postfix-increment-operator
+  115 targets 构建退出 0；相关 223 项首轮 221/223 通过，539.75 秒。
+  两个 partial 夹具仍把一般 ToNumeric 当源码缺口；改用缺少数值/tag
+  证明的 deprecated NEG，并保留 prefix 回滚、PC 和嵌套不完整传播断言。
+  中间尝试的 modern NEG 在结果未使用时本可恢复，未作为最终负例。
+  修正后 repair-tests.log 5/5 通过 4.82 秒；按名称合并核对
+  /tmp/abcd-numeric-conversion-selected.json，223 项均已有通过证据。
+  五输入 fresh build/stage-one/value-numeric-conversion-pass-1 均退出 0，
+  75 complete / 4 incomplete / 27 failure / 46 no-module，无回退、完整源码
+  字节变化或 legacy，原生 default records 保留；final-batch-summary.json。
+  该项不是任意算术值域或阶段一完成声明；日志前缀
+  /tmp/abcd-numeric-conversion-*。完整 ISA 与阶段一 Goal 保持 active。
+
+
 ### 2026-10-02：一般 ToNumber 的正常结果证明
 
 - pinned JSTaggedValue::ToNumber 保持已有 Number，转换字符串/原始值或在

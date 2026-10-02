@@ -45,21 +45,23 @@ and exponentiation with unary/negative left operands. Never reassociate floating
 arithmetic or coercing addition because the operator appears mathematically
 associative. Mixing nullish with logical operators, conditional expressions,
 assignment/update, await, calls and member bases requires their actual grammar
-constraints. Current fully parenthesized output is a safe starting point, not
-proof of the requested final expression presentation quality.
+constraints. The common printer now uses typed precedence, associativity and operand-side
+contexts. Printer-only fixtures do not prove decoded numeric-domain admission
+or the requested complete source-style acceptance.
 
 ## Current gaps and execution order
 
-1. Complete in-flight literal-binary validation and commit its verified change.
-2. Add missing instanceof to the common typed operation route, with pinned
-   runtime operand order, @@hasInstance, Proxy, primitive and exception tests.
-3. Enumerate and test all 38 encodings through shared input, values, tree and
-   printer. The unary initializer matrix now covers all 16 unary encodings for
-   proved numeric inputs; deprecated.neg retains its tag exclusion. Complete
-   general ToNumeric/update domains using runtime/profile evidence.
-4. Complete centralized precedence/context printing and nested expression tests.
-5. Expand operator combinations across ordinary/phased expression contexts,
-   negative ownership cases and geometric scaling; rerun fixed stage-one inputs.
+1. Shared binary literal composition, instanceof and centralized precedence
+   printing are implemented and verified; keep them on the common route.
+2. Unary initializer fixtures enumerate all 16 unary encodings through the
+   pinned catalog for proved numeric inputs. General ToNumber and ToNumeric
+   also have decoded normal/phased tests and independent coercion oracles;
+   deprecated.neg retains its tag exclusion, and updates retain numeric gates.
+3. Complete arithmetic result proofs, including exponentiation. Decoding EXP
+   and printing `**` currently do not suffice for FunctionInput admission.
+4. Complete the binary/comparison encoded-form matrix and operator combinations
+   across ordinary/phased expression contexts, negative ownership cases and
+   geometric scaling; rerun the fixed stage-one inputs.
 
 Arithmetic value-domain proof remains a distinct requirement. Existing
 arbitrary-NaN/internal-tag refusals and the deprecated.neg INT32_MIN discrepancy

@@ -163,6 +163,8 @@ struct EvaluationShape {
                                           const analysis::ValueOperand& operand);
 [[nodiscard]] bool NonNaNNumberEvaluation(const analysis::ValueProgram& graph,
                                         const analysis::ValueOperand& operand);
+// An unproved ToNumeric input uses exclusive scratch for one conversion.
+[[nodiscard]] bool NeedsNumericScratch(const analysis::ValueProgram&, const analysis::ValueOp&);
 [[nodiscard]] bool PredicateSnapshot(const analysis::ValueProgram& graph,
     const analysis::ValueOp& consumer, const analysis::ValueOperand& operand);
 // Requires verified normal IR. Produces a single-parent expression forest;

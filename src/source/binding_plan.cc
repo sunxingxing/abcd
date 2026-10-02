@@ -41,10 +41,8 @@ std::variant<BindingPlan, BindingError> BuildBindings(
     if (work == 0) return Error::kWorkLimit;
     --work;
     needs_self |= op.life == ValueLife::kLive && std::holds_alternative<ValueFrameFunction>(op.operation);
-    const auto* unary = std::get_if<ValueUnary>(&op.operation);
     const auto kind = evaluation.operations[static_cast<std::size_t>(&op - graph.ops.data())].kind;
-    update_count += op.life == ValueLife::kLive && kind != EvaluationKind::kElidedPure && unary &&
-        (unary->op == UnaryOperator::kIncrement || unary->op == UnaryOperator::kDecrement);
+    update_count += op.life == ValueLife::kLive && kind != EvaluationKind::kElidedPure && NeedsNumericScratch(graph, op);
   }
   const std::size_t self_count = needs_self ? 1 : 0;
   const std::size_t hole_count = NeedsHoleToken(evaluation) ? 1 : 0;
@@ -203,9 +201,8 @@ std::variant<BindingPlan, BindingError> BuildBindings(
       if (!work) return Error::kWorkLimit;
       --work;
       const auto& op = graph.ops[i];
-      const auto* unary = std::get_if<ValueUnary>(&op.operation);
       if (op.life != ValueLife::kLive || evaluation.operations[i].kind == EvaluationKind::kElidedPure ||
-          !unary || (unary->op != UnaryOperator::kIncrement && unary->op != UnaryOperator::kDecrement)) continue;
+          !NeedsNumericScratch(graph, op)) continue;
       plan.updates[i] = SymbolId{static_cast<std::uint32_t>(plan.symbols.size())};
       plan.symbols.emplace_back(UpdateBinding{OpId{static_cast<std::uint32_t>(i)}});
     }

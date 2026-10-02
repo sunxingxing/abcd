@@ -66,10 +66,12 @@ still certify a language value, including the VM NaN representation restrictions
 ToNumeric and increment/decrement now reuse the common numeric-domain and
 exclusive UpdateBinding lowerings. Updates save their operand once to compiler
 scratch and perform native prefix update there; they do not write the source
-operand or substitute arithmetic by one. ToNumeric currently lowers identity
-only for proved non-NaN Number input. Literal eligibility does not widen that
-proof to arbitrary Number/BigInt coercions. VM predicates that repeat a snapshot
-operand remain outside this initializer admission.
+operand or substitute arithmetic by one. ToNumeric uses identity for proved
+non-NaN Number input; other Language inputs return the old value of an exclusive
+postfix scratch update under the resource-exclusion contract. The common
+operand and flow verifiers check that contract and scratch ownership. Literal
+eligibility does not bypass those checks or certify subsequent arithmetic. VM
+predicates that repeat a snapshot operand remain outside this admission.
 
 Primitive ValueCopy loads are admitted only for a typed integer, float or special
 constant input with no effects or exceptional completion. ValueId copies are not

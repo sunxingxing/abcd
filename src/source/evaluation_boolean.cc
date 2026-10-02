@@ -74,4 +74,10 @@ bool LegacyNegationEvaluation(const analysis::ValueProgram& graph, const analysi
   const auto* value = std::get_if<analysis::ValueId>(&operand);
   return value && value->value < graph.values.size() && graph.values[value->value].domain.ExcludesInt32MinTag();
 }
+bool NeedsNumericScratch(const analysis::ValueProgram& graph, const analysis::ValueOp& op) {
+  const auto* unary = std::get_if<analysis::ValueUnary>(&op.operation);
+  if (!unary || op.use_count != 1 || op.first_use.value >= graph.uses.size()) return false;
+  return unary->op == analysis::UnaryOperator::kIncrement || unary->op == analysis::UnaryOperator::kDecrement ||
+      (unary->op == analysis::UnaryOperator::kToNumeric && !NonNaNNumberEvaluation(graph, graph.uses[op.first_use.value].operand));
+}
 }  // namespace abcd::source

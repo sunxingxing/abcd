@@ -133,7 +133,7 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   const auto values = std::get<ExceptionValueFlow>(ExceptionValueFlow::Build(flow, ssa, entries,
       value_work, {}, PendingExceptionValues::kLanguage, loads));
   const auto inputs = VerifyExceptionInputs(flow, ssa, env, values);
-  if (shape == Shape::kUnaryUnknown) {
+  if (shape == Shape::kUnaryUnknown && unary != abc::Opcode::kTONUMERIC_IMM8 && unary != abc::Opcode::kTONUMBER_IMM8) {
     // NEG over arbitrary language values can produce an uncertified VM NaN.
     // Preserve the input proof refusal rather than admitting native syntax.
     test::Check(std::holds_alternative<ExceptionInputFailure>(inputs));
@@ -210,7 +210,8 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
     invalid.aliases[rhs.value] = rhs;
     test::Check(std::get<LiteralError>(VerifyPhasedLiteralPlan(graph, literal, invalid)) == LiteralError::kFlow);
   }
-  if (shape == Shape::kCatch || shape == Shape::kNestedCatch || shape == Shape::kUnaryCatch || dead_copy || shape == Shape::kGlobalCatch || lexical || binary) {
+  if (shape == Shape::kCatch || shape == Shape::kNestedCatch || shape == Shape::kUnaryCatch || dead_copy || shape == Shape::kGlobalCatch || lexical || binary ||
+      (shape == Shape::kUnaryUnknown && (unary == abc::Opcode::kTONUMERIC_IMM8 || unary == abc::Opcode::kTONUMBER_IMM8))) {
     const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
     const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
     FunctionSyntax syntax{}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;

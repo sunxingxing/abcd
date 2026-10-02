@@ -10,7 +10,10 @@ namespace {
 using namespace abcd;
 using namespace abcd::source;
 // Opcode values from pinned runtime_core/isa/isa.yaml, dynamic 12.0.6 profile.
-constexpr std::uint8_t kDebugger = 0xb0, kInteger = 0x62, kToNumeric = 0x1e, kReturn = 0x64,
+constexpr auto kLegacyNegate = static_cast<std::uint16_t>(abc::Opcode::kDEPRECATED_NEG_PREF_V8);
+constexpr std::uint8_t kNegateHigh = static_cast<std::uint8_t>(kLegacyNegate >> 8);
+constexpr std::uint8_t kStore = static_cast<std::uint8_t>(abc::Opcode::kSTA_V8);
+constexpr std::uint8_t kDebugger = 0xb0, kInteger = 0x62, kNegate = static_cast<std::uint8_t>(kLegacyNegate), kReturn = 0x64,
     kReturnUndefined = 0x65, kLoad = 0x60, kCall = 0x29, kTypeof = 0x1c, kZeroBranch = 0x4f;
 std::variant<ConstructedFunction, FunctionTreeError> Build(
     std::initializer_list<std::uint8_t> bytes, RecoveryMode recovery, bool valid_constants = true) {
@@ -52,9 +55,9 @@ std::string Print(const FunctionTree& tree) {
   return output.str();
 }
 void DecodedPrefix() {
-  // General ToNumeric still needs a value-domain/coercion lowering. Numeric
-  // updates with proven inputs now recover; keep the gap test on a real gap.
-  const auto bytes = {kDebugger, kLoad, std::uint8_t{0}, kToNumeric, std::uint8_t{0}, kReturnUndefined};
+  // Deprecated NEG still needs a numeric/tag-exclusion proof. Conversion now recovers;
+  // preserve the partial-output boundary on an actual unsupported domain.
+  const auto bytes = {kDebugger, kLoad, std::uint8_t{0}, kNegate, kNegateHigh, std::uint8_t{0}, kReturnUndefined};
   const auto complete = Build(bytes, RecoveryMode::kCompleteOnly);
   test::Check(std::holds_alternative<FunctionTreeError>(complete));
   test::Check(std::get<FunctionTreeError>(complete) == FunctionTreeError::kExpression);
@@ -69,26 +72,26 @@ void DecodedPrefix() {
   test::Check(output.str().find("return") == std::string::npos);
   test::Check(output.str().find("undefined") == std::string::npos);
   test::Check(tree.recovery_issues.size() == 1 && tree.recovery_issues[0].begin.has_value());
-  // lda's parameter copy is elided; the first retained gap is ToNumeric.
+  // lda's parameter copy is elided; the first retained gap is deprecated NEG.
   test::Check(tree.recovery_issues[0].begin == abc::CodeOffset{3});
   test::Check(std::holds_alternative<FunctionTreeError>(Build(bytes, RecoveryMode::kAllowPartial, false)));
 }
 void InlineBoundary() {
-  const auto recovered = Build({kDebugger, kLoad, 0, kTypeof, 0,
-      kToNumeric, 0, kReturnUndefined}, RecoveryMode::kAllowPartial);
+  const auto recovered = Build({kDebugger, kLoad, 0, kTypeof, 0, kStore, 0,
+      kNegate, kNegateHigh, 0, kReturnUndefined}, RecoveryMode::kAllowPartial);
   test::Check(std::holds_alternative<ConstructedFunction>(recovered));
   const auto& tree = std::get<ConstructedFunction>(recovered).tree;
   const auto source = Print(tree);
   test::Check(source.find("debugger;") < source.find("UNRECOVERED"));
   test::Check(source.find("return") == std::string::npos);
-  // The unsupported conversion consumes the unfinished typeof expression.
+  // The unsupported negation consumes the unfinished typeof expression.
   // No orphan operand or stand-alone numeric expression may survive rollback.
   test::Check(tree.expressions.empty());
   test::Check(tree.recovery_issues[0].begin == abc::CodeOffset{3});
 }
 void RetainedCall() {
   const auto recovered = Build({kLoad, 0, kCall, 0, kDebugger, kLoad, 0,
-      kToNumeric, 0, kReturnUndefined}, RecoveryMode::kAllowPartial);
+      kNegate, kNegateHigh, 0, kReturnUndefined}, RecoveryMode::kAllowPartial);
   test::Check(std::holds_alternative<ConstructedFunction>(recovered));
   const auto& tree = std::get<ConstructedFunction>(recovered).tree;
   const auto source = Print(tree);
@@ -101,7 +104,7 @@ void CompleteAndBranched() {
   const auto& tree = std::get<ConstructedFunction>(complete).tree;
   test::Check(tree.recovery_issues.empty());
   test::Check(Print(tree).find("return 7;") != std::string::npos);
-  const auto branch = Build({kDebugger, kLoad, 0, kToNumeric, 0, kInteger, 7, 0, 0, 0,
+  const auto branch = Build({kDebugger, kLoad, 0, kNegate, kNegateHigh, 0, kInteger, 7, 0, 0, 0,
       kZeroBranch, 3, kReturnUndefined, kReturnUndefined}, RecoveryMode::kAllowPartial);
   test::Check(std::holds_alternative<FunctionTreeError>(branch));
   test::Check(std::get<FunctionTreeError>(branch) == FunctionTreeError::kExpression);

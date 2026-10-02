@@ -717,15 +717,17 @@ class OperandCheck {
         }
         Predicate(operation, operand, expression); return;
       case U::kToNumeric:
-        RequireMeaning(NonNaNNumberEvaluation(graph_, operand), Error::kOperator);
-        Input(operand, expression); return;
+        if (NonNaNNumberEvaluation(graph_, operand)) { Input(operand, expression); return; }
+        RequireMeaning(ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded, Error::kOperator);
+        [[fallthrough]];
       case U::kIncrement: case U::kDecrement: {
         const auto& sequence = Node<SequenceExpr>(expression); LeafOrigin(expression);
         const auto& save = Node<AssignmentExpr>(sequence.left); LeafOrigin(sequence.left);
         const auto* target = std::get_if<SymbolTarget>(&save.target);
         const auto& update = Node<UpdateExpr>(sequence.right); LeafOrigin(sequence.right);
-        RequireMeaning(target && target->symbol == update.symbol && update.result == UpdateResult::kPrefix &&
-            update.direction == (operation == U::kIncrement ? UpdateDirection::kIncrement : UpdateDirection::kDecrement), Error::kOperator);
+        RequireMeaning(target && target->symbol == update.symbol &&
+            update.result == (operation == U::kToNumeric ? UpdateResult::kPostfix : UpdateResult::kPrefix) &&
+            update.direction == (operation == U::kDecrement ? UpdateDirection::kDecrement : UpdateDirection::kIncrement), Error::kOperator);
         Input(operand, save.value); return;
       }
     }
