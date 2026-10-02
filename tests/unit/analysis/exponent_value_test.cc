@@ -2,6 +2,7 @@
 #include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <sstream>
 
 #include "analysis/ssa_fixture.h"
@@ -35,7 +36,7 @@ ValueKinds NormalResult(const abc::MethodBody& body) {
   const auto values = std::get<RegisterValueFlow>(RegisterValueFlow::Build(body, ssa, 1, {}, quota));
   return *values.At(ssa.Reads({static_cast<std::uint32_t>(body.instructions.size() - 1)})[0].value);
 }
-void Phased(const abc::MethodBody& original, bool admitted) {
+void Phased(const abc::MethodBody& original, bool admitted, bool representable = true) {
   auto body = original;
   const auto return_pc = body.instructions.back().offset;
   // An arithmetic operation's normal result never appears on its own catch edge.
@@ -76,6 +77,11 @@ void Phased(const abc::MethodBody& original, bool admitted) {
   std::vector<ExpressionConstant> constants(graph.ops.size()); const ExpressionConstants resolved{constants};
   const ExceptionTreeInput context{body, input, regions, control};
   const auto built = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, resolved);
+  if (!representable) {
+    test::Check(std::holds_alternative<FunctionTreeError>(built));
+    test::Check(std::get<FunctionTreeError>(built) == FunctionTreeError::kSemantics);
+    return;
+  }
   test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
   const auto& tree = std::get<ExceptionFunctionDraft>(built).tree;
   test::Check(std::holds_alternative<TreeSemantics>(VerifyExceptionTreeSemantics(graph, context, evaluation, tree, resolved)));
@@ -90,7 +96,7 @@ void Phased(const abc::MethodBody& original, bool admitted) {
     test::Check(op.normal == LanguageEffect::kUserCode && op.before_throw == LanguageEffect::kUserCode);
   }
 }
-std::string Source(const abc::MethodBody& body) {
+std::string Source(const abc::MethodBody& body, bool representable = true) {
   using namespace abcd::source;
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(1, 0, {}));
   const auto input = std::get<SemanticMethod>(BuildSemanticMethod(body,
@@ -104,8 +110,13 @@ std::string Source(const abc::MethodBody& body) {
   FunctionSyntax syntax{};
   syntax.callable = CallableKind::kFunction;
   syntax.strictness = Strictness::kStrict;
-  const auto tree = std::get<ConstructedFunction>(BuildFunctionTree(graph, control, evaluation,
-      syntax, {constants})).tree;
+  const auto built = BuildFunctionTree(graph, control, evaluation, syntax, {constants});
+  if (!representable) {
+    test::Check(std::holds_alternative<FunctionTreeError>(built));
+    test::Check(std::get<FunctionTreeError>(built) == FunctionTreeError::kSemantics);
+    return {};
+  }
+  const auto tree = std::get<ConstructedFunction>(built).tree;
   std::ostringstream stream;
   const auto printed = std::get<PrintedFunction>(PrintFunctionTree(tree, stream));
   test::Check(!printed.incomplete);
@@ -148,6 +159,26 @@ int main(int argc, char**) {
         << "',fn:" << source << "},\n";
     }
   }
+  constexpr std::array bitwise{abc::Opcode::kSHL2_IMM8_V8, abc::Opcode::kSHR2_IMM8_V8,
+      abc::Opcode::kASHR2_IMM8_V8, abc::Opcode::kAND2_IMM8_V8, abc::Opcode::kOR2_IMM8_V8, abc::Opcode::kXOR2_IMM8_V8};
+  for (std::size_t index = 0; index < bitwise.size(); ++index)
+    for (const auto left : bases) for (const auto right : {bits(0.0), bits(31.0), UINT64_C(0x7ff8000000000000)}) {
+      const bool unsigned_shift = bitwise[index] == abc::Opcode::kSHR2_IMM8_V8;
+      const bool known_number = !std::isnan(std::bit_cast<double>(left)) || !std::isnan(std::bit_cast<double>(right));
+      auto expected = unsigned_shift || known_number ? ValueKinds::FiniteNumber().WithIntegralNumber() : ValueKinds::Defined();
+      if (unsigned_shift) expected = expected.WithoutInt32MinTag();
+      const auto body = Arithmetic(left, right, bitwise[index]);
+      test::Check(NormalResult(body) == expected);
+      // The result proof does not make a noncanonical input NaN literal
+      // representable in source. Keep that independent tree boundary explicit.
+      const bool representable = !std::isnan(std::bit_cast<double>(left)) ||
+          left == std::bit_cast<std::uint64_t>(std::numeric_limits<double>::quiet_NaN());
+      Phased(body, true, representable);
+      const auto source = Source(body, representable);
+      constexpr unsigned kFirstBitwiseOracle = 11;
+      if (argc > 1 && representable) std::cout << "{left:'" << std::hex << left << "',right:'" << right << std::dec
+        << "',binary:" << kFirstBitwiseOracle + index << ",fn:" << source << "},\n";
+    }
   for (const auto unary : {abc::Opcode::kINC_IMM8, abc::Opcode::kDEC_IMM8,
       abc::Opcode::kDEPRECATED_INC_PREF_V8, abc::Opcode::kDEPRECATED_DEC_PREF_V8})
     for (const auto seed : bases) {

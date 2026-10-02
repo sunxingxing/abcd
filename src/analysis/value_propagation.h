@@ -78,6 +78,7 @@ void PropagateValues(std::span<const ValueNode> nodes,
           nodes[target].kind == Kind::kAdd ||
           nodes[target].kind == Kind::kSubtract ||
           nodes[target].kind == Kind::kNumericUpdate ||
+          nodes[target].kind == Kind::kBitwise || nodes[target].kind == Kind::kUnsignedShift ||
           nodes[target].kind == Kind::kNegate || nodes[target].kind == Kind::kLegacyNegate ||
           nodes[target].kind == Kind::kToNumeric || nodes[target].kind == Kind::kToNumber ||
           nodes[target].kind == Kind::kNonNaNMultiply ||
@@ -116,6 +117,11 @@ void PropagateValues(std::span<const ValueNode> nodes,
           propagated = nodes[target].input_count == kScalarInputs
               ? MultiplyNumbers(facts[nodes[target].inputs[0].value],
                                 facts[nodes[target].inputs[1].value])
+              : ValueKinds::Unknown();
+        } else if (nodes[target].kind == Kind::kBitwise || nodes[target].kind == Kind::kUnsignedShift) {
+          propagated = nodes[target].input_count == kScalarInputs
+              ? (nodes[target].kind == Kind::kBitwise ? BitwiseValues : UnsignedShiftValues)(
+                  facts[nodes[target].inputs[0].value], facts[nodes[target].inputs[1].value])
               : ValueKinds::Unknown();
         } else if (nodes[target].kind == Kind::kIntegralExponent) {
           propagated = nodes[target].input_count == kScalarInputs

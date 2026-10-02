@@ -41,11 +41,14 @@ function observeArguments(fn, scenario, wrapping, mutate, failAt) {
   const events = [], failure = {}; let steps = 0;
   const event = value => { events.push(value); if (++steps === failAt) throw failure; };
   const shared = {}, symbol = Symbol('shared');
+  const nanView = new DataView(new ArrayBuffer(8));
+  nanView.setBigUint64(0, 0xfff7000000000005n);
+  const payloadNaN = nanView.getFloat64(0);
   const pairs = [[7,3], [-7,3], [0,-0], [NaN,2], [Infinity,-Infinity], ['12','2'],
     ['x',2], [null,undefined], [false,0], [1n,2n], [1n,2], [0n,0n], [-8n,2n],
     [2n,-1n], [Symbol('value'),1], [symbol,symbol], [Symbol('a'),Symbol('b')],
     [{},{}], [shared,shared], [true,'1'], [9007199254740992,9007199254740993n],
-    ['9007199254740993',9007199254740993n], ['20','3'], [undefined,null]];
+    ['9007199254740993',9007199254740993n], ['20','3'], [undefined,null], [payloadNaN,3]];
   let pair;
   if (scenario < pairs.length) pair = pairs[scenario];
   else switch (scenario - pairs.length) {
@@ -96,7 +99,7 @@ for (const phased of [false,true]) for (const [index, operation] of operations.e
     try { return {field0: operation(left,right), field1: operation(left,right)}; }
     catch (error) { if (phased) return undefined; throw error; }
   };
-  for (let scenario = 0; scenario < 30; ++scenario) for (let wrapping = 0; wrapping < 4; ++wrapping)
+  for (let scenario = 0; scenario < 31; ++scenario) for (let wrapping = 0; wrapping < 4; ++wrapping)
     for (const mutate of [false,true]) for (let failAt = 0; failAt <= 4; ++failAt) {
       assert.deepEqual(observeArguments(generated,scenario,wrapping,mutate,failAt),
         observeArguments(reference,scenario,wrapping,mutate,failAt),
@@ -106,13 +109,35 @@ for (const phased of [false,true]) for (const [index, operation] of operations.e
 }
 console.log(`Decoded parameter operators: ${argumentScenarios} coercion/identity/exception scenarios passed`);
 
+let bitwiseCombinations = 0;
+for (const index of [11,12,13,14,15,16]) for (const mode of ['left','right','both']) {
+  if (mode === 'both' && index !== 12) continue;
+  for (const phased of [false,true]) {
+    const source = execFileSync(process.argv[2], [phased ? '--phased-square-source' : '--square-source', String(index), mode], {encoding:'utf8'});
+    const generated = runInNewContext(source);
+    const reference = (left,right) => {
+      const calculate = () => operations[index](mode === 'left' ? 1 : left, mode === 'right' ? 1 : right) ** 2;
+      try { return {field0:calculate(), field1:calculate()}; }
+      catch (error) { if (phased) return undefined; throw error; }
+    };
+    for (let scenario = 0; scenario < 31; ++scenario) for (let wrapping = 0; wrapping < 4; ++wrapping)
+      for (const mutate of [false,true]) for (let failAt = 0; failAt <= 4; ++failAt) {
+        assert.deepEqual(observeArguments(generated,scenario,wrapping,mutate,failAt),
+          observeArguments(reference,scenario,wrapping,mutate,failAt),
+          `bitwise ${index}, ${mode}, phased ${phased}, scenario ${scenario}`);
+        ++bitwiseCombinations;
+      }
+  }
+}
+console.log(`Decoded bitwise compositions: ${bitwiseCombinations} coercion/exception scenarios passed`);
 const exponentSource = execFileSync(process.argv[3], ['--source'], {encoding: 'utf8'});
 const samples = runInNewContext(exponentSource.replace('export default', ''));
 const view = new DataView(new ArrayBuffer(8));
 const number = hex => { view.setBigUint64(0, BigInt(`0x${hex}`)); return view.getFloat64(0); };
 for (const sample of samples) {
   let expected = number(sample.left);
-  if (sample.update === 1) ++expected;
+  if (sample.binary !== undefined) expected = operations[sample.binary](expected, number(sample.right));
+  else if (sample.update === 1) ++expected;
   else if (sample.update === -1) --expected;
   else expected = expected ** number(sample.right);
   assert.ok(Object.is(sample.fn(), expected), `${sample.left}, exponent/update ${sample.right ?? sample.update}`);

@@ -415,6 +415,12 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
             if (access.read_count != 1) return fail(Error::kInstruction);
             state(*access.write) = detail::UpdatedNumber(state(access.reads[0]));
             break;
+          case detail::ValueRuleKind::kBitwise:
+          case detail::ValueRuleKind::kUnsignedShift:
+            if (access.read_count != detail::kScalarInputs) return fail(Error::kInstruction);
+            state(*access.write) = (rule.kind == detail::ValueRuleKind::kBitwise ? detail::BitwiseValues : detail::UnsignedShiftValues)(
+                state(access.reads[0]), state(access.reads[1]));
+            break;
           case detail::ValueRuleKind::kIntegralExponent:
             if (access.read_count != detail::kScalarInputs) return fail(Error::kInstruction);
             state(*access.write) = detail::ExponentNumbers(state(access.reads[0]), state(access.reads[1]));

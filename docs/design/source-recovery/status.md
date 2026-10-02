@@ -13,6 +13,34 @@
 ## 当前阶段
 
 
+### 2026-10-02：位运算／移位的正常结果事实贯通
+
+- decoded `(1 << value) ** 2` 在旧共同 FunctionInput 阶段 RED，
+  red-tests.log 记录 opcode 21 的准入失败。新增共享 kBitwise/kUnsignedShift
+  规则，由普通/phased SSA 与 linear lexical 调用同一 helper。
+- 对照 pinned interpreter-inl.cpp、RuntimeShl2/Ashr2/And2/Or2/Xor2：
+  一侧已证明 non-NaN Number 时，混合 BigInt 走异常，正常结果为有限整数
+  Number；不能继承 nonzero 或 tagged-minimum 排除。双方仅 Language
+  时仍可能是 BigInt，仅保留 Defined。RuntimeShr2/BigInt unsigned-shift
+  路径拒绝 BigInt，正常 uint32 结果额外证明排除 tagged INT32_MIN。
+- 六种位运算/移位与幂组合经过真实解码、普通/catch 共同表达式树和
+  独立验证，保留左右转换顺序与异常。独立原生对照：42,160 参数场景、
+  32,240 位运算组合场景、587 数值/组合场景通过，final-native.log。
+  未加入源码文本识别、样本判断、额外 writer 或 Number 全局辅助调用。
+- 边界扩展发现非规范 NaN 字面量被现有源码树拒绝。调试定位左操作数
+  0xfff7000000000005；数值结果证明成立，但普通/异常构造明确返回
+  kSemantics，不能将数值域准入当源码可表示性。现分别断言该拒绝，保留
+  canonical NaN 源码案例和同一非规范 NaN 的运行时参数行为对照。
+  boundary-tests-2.log 3/3 通过 9.63 秒；未靠改写 NaN payload 消除失败。
+- 24 targets 构建退出 0，相关 31/31 CTest 通过 61.66 秒，与
+  selected.json 按名称一致。五输入 fresh
+  build/stage-one/value-bitwise-facts-pass-1 均退出 0，保持
+  75 complete / 4 incomplete / 27 failure / 46 no-module；无完整记录回退、
+  完整源码字节变化或 legacy，三个原生 default records 保留。
+  本节日志前缀 /tmp/abcd-bitwise-facts-*；full-suite/RSS/扩展语料未运行。
+  任意算术输入、NaN 字面量及完整阶段一验收仍未关闭，Goal 保持 active。
+
+
 ### 2026-10-02：一般参数二元／比较运算的行为验证
 
 - binary_initializer 从纯常量矩阵扩展到双 Language 参数，17 个已准入

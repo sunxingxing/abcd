@@ -170,6 +170,11 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment) {
       return ValueRule{ValueRuleKind::kNonNaNDivide, {}};
     if (binary->op == BinaryOperator::kExponent)
       return ValueRule{ValueRuleKind::kIntegralExponent, {}};
+    if (binary->op == BinaryOperator::kShiftRightUnsigned)
+      return ValueRule{ValueRuleKind::kUnsignedShift, {}};
+    if (binary->op == BinaryOperator::kShiftLeft || binary->op == BinaryOperator::kShiftRightSigned ||
+        binary->op == BinaryOperator::kBitAnd || binary->op == BinaryOperator::kBitOr || binary->op == BinaryOperator::kBitXor)
+      return ValueRule{ValueRuleKind::kBitwise, {}};
     language = HasLanguageResult(binary->op);
   }
   return language ? ValueRule{ValueRuleKind::kLanguageOperation, {}}

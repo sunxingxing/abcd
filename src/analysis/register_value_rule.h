@@ -25,7 +25,9 @@ enum class ValueRuleKind {
   kToNumber,
   kNonNaNMultiply,
   kNonNaNDivide,
-  kIntegralExponent
+  kIntegralExponent,
+  kBitwise,
+  kUnsignedShift
 };
 struct ValueRule {
   ValueRuleKind kind = ValueRuleKind::kFixed;
@@ -91,6 +93,20 @@ constexpr ValueKinds DivideNumbers(ValueKinds left, ValueKinds right) {
   return left.IsNonNaNNumber() && right.IsNonNaNNumber() &&
                  (left.IsFiniteNonzeroNumber() || right.IsFiniteNonzeroNumber())
              ? ValueKinds::NonNaNNumber() : ValueKinds::Unknown();
+}
+// Pinned RuntimeShl2/Ashr2/And2/Or2/Xor2 convert left then right with ToNumeric.
+// Mixed Number/BigInt is abrupt. One proved Number therefore makes every normal
+// result int32; otherwise normal results are Number or BigInt, never undefined.
+constexpr ValueKinds BitwiseValues(ValueKinds left, ValueKinds right) {
+  if (!left.IsLanguage() || !right.IsLanguage()) return ValueKinds::Unknown();
+  return left.IsNonNaNNumber() || right.IsNonNaNNumber()
+      ? ValueKinds::FiniteNumber().WithIntegralNumber() : ValueKinds::Defined();
+}
+// RuntimeShr2 rejects BigInt unsigned shift. uint32 normal results cannot carry
+// the negative tagged INT32_MIN representation; this is not true of other shifts.
+constexpr ValueKinds UnsignedShiftValues(ValueKinds left, ValueKinds right) {
+  return left.IsLanguage() && right.IsLanguage()
+      ? ValueKinds::FiniteNumber().WithIntegralNumber().WithoutInt32MinTag() : ValueKinds::Unknown();
 }
 // Pinned EXP delegates Number arithmetic to pow after its NaN/infinity guards.
 // A non-NaN base with a finite integer exponent cannot enter a NaN domain:

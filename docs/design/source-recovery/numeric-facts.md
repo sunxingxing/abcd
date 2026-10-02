@@ -101,3 +101,25 @@ and phased tests cover the four update encodings, signed zeros, finite extremes,
 subnormal inputs, infinities and rejected NaNs; nested exponent fixtures cover
 modern update-produced exponents and 200/201/geometric boundaries. No source
 spelling, sample identity or special expression writer supplies the proof.
+
+## Bitwise normal-result facts
+
+`BitwiseValues` and `UnsignedShiftValues` are shared by ordinary/phased SSA and
+linear lexical analysis. Pinned RuntimeShl2/Ashr2/And2/Or2/Xor2 perform ToNumeric
+left before right and reject mixed Number/BigInt. If either operand is proved a
+non-NaN Number, every normal result is an int32 Number: finite and integral,
+but potentially zero or tagged INT32_MIN. With two unclassified Language inputs,
+the result is only Defined because BigInt remains possible.
+
+RuntimeShr2 and BigInt::UnsignedRightShift reject every BigInt unsigned-shift
+path. Thus two Language inputs give a finite integral uint32 normal result,
+which independently excludes the negative tagged minimum. Neither rule removes
+coercions or abrupt completion. They enable common compositions such as
+`(1 << value) ** 2` and `(left >>> right) ** 2` without recognizing a source-text
+pattern or introducing another writer.
+
+A noncanonical NaN may have a safe bitwise result while its input literal still
+fails the existing source-tree representation contract. Tests retain separate
+normal-result and explicit source-refusal checks; this change does not silently
+canonicalize such literals. Runtime NaN parameters, including a noncanonical
+payload, are exercised separately through the ordinary/catch generated code.
