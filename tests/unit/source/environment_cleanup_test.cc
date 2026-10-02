@@ -3,6 +3,7 @@
 #include "../../../src/source/function_values.h"
 #include "../../../src/source/function_tree.h"
 #include "../../../src/source/class_self.h"
+#include "../../../src/source/class_self_order.h"
 #include "../../../src/source/class_initializer_file.h"
 #include "../../../src/source/literal_class_fields.h"
 #include "../../../src/source/instruction_sources.h"
@@ -121,6 +122,35 @@ int main(int argc, char** argv) {
       else test::Check(std::holds_alternative<analysis::ValueCopy>(operation.operation));
     }
     test::Check(writes == 1 && returns == 1);
+    const ClassInitializerWitness witness{parent.values.initializers.calls[0],std::get<ClassInitializerFunction>(loaded)};
+    const auto order = std::get<ClassSelfOrder>(ClassSelfOrder::Build(parent,{&witness,1}));
+    test::Check(order.Stores(parent.values.graph).size() == 1);
+    const auto copy = parent.values.graph; test::Check(order.Stores(copy).empty());
+    auto wrong = witness; ++wrong.call.method.value;
+    test::Check(std::holds_alternative<ClassSelfOrderError>(ClassSelfOrder::Build(parent,{&wrong,1})));
+    const ClassInitializerWitness repeated[]{witness,witness};
+    test::Check(std::get<ClassSelfOrderError>(ClassSelfOrder::Build(parent,repeated)) == ClassSelfOrderError::kInput);
+    auto& initializer_graph = std::get<ClassInitializerFunction>(loaded).function.values.graph;
+    for (auto& operation : initializer_graph.ops) {
+      auto* field = std::get_if<analysis::ValueOwnWrite>(&operation.operation);
+      if (!field || operation.life != analysis::ValueLife::kLive) continue;
+      const auto original_kind = field->kind; field->kind = analysis::OwnWriteKind::kStore;
+      test::Check(std::get<ClassSelfOrderError>(ClassSelfOrder::Build(parent,{&witness,1})) == ClassSelfOrderError::kObservation);
+      field->kind = original_kind;
+    }
+    auto& initializer_values = std::get<ClassInitializerFunction>(loaded).function.values;
+    ++initializer_values.method.value;
+    test::Check(std::get<ClassSelfOrderError>(ClassSelfOrder::Build(parent,{&witness,1})) == ClassSelfOrderError::kOwner);
+    --initializer_values.method.value;
+    analysis::SemanticBudget exact_order; exact_order.work = order.Work();
+    test::Check(std::holds_alternative<ClassSelfOrder>(ClassSelfOrder::Build(parent,{&witness,1},exact_order)));
+    --exact_order.work;
+    test::Check(std::get<ClassSelfOrderError>(ClassSelfOrder::Build(parent,{&witness,1},exact_order)) == ClassSelfOrderError::kWorkLimit);
+    ++initializer_graph.revision.value;
+    // A changed parent is not authorized by the retained arena-bound evidence.
+    ++parent.values.graph.revision.value; test::Check(order.Stores(parent.values.graph).empty());
+    --parent.values.graph.revision.value; --initializer_graph.revision.value;
+
     std::cout << "initializer: closed input, one undefined own-field write, no self read\n";
     return 0;
   }

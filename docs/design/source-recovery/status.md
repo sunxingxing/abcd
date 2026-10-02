@@ -12,6 +12,21 @@
 
 ## 当前阶段
 
+### 2026-10-03：同 occurrence 的 self/初始化器组合证据
+
+- 新 ClassSelfOrder 对整个父图一次索引 self 候选，再逐初始化器验证同文件/
+  record/方法、实际 creation PC、定义的 wire 属性、调用 callee 的真实 SSA
+  producer及零参 Method 上下文，结合 LiteralClassFields；不把另一方法的
+  字面量体作为当前调用的许可。重复凭据拒绝，无逐类全图重扫。
+- 结果绑定父图 move-stable op/value arena、规模和 IR/CFG revision。图副本
+  即使 revision 相同也不取得 stores，父图 revision 变化后凭据不再适用。
+  原型 spelling、完整效果区间与后代捕获发布仍是独立义务；尚未传入
+  ProjectClassMembers，不据此宣称已恢复实际 record。
+- 实际 Voip入口与初始化器组合通过。错配 callee/method、重复 witness、
+  Store 替换 DefineField、图复制/修改及精确 work 边界负例通过。相关3/3
+  通过5.22秒，日志 /tmp/abcd-class-self-order-boundary-{build,tests}.log。
+- 未重跑五输入/full-suite/RSS，基线77/5/24/46不变，Goal active。
+
 ### 2026-10-03：self cell 首次写入前的私有区间
 
 - FindClassSelfStores 增加共享效果前缀计数：本地环境分配到唯一 self store
