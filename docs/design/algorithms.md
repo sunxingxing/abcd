@@ -566,6 +566,36 @@ keys, allocation identity, throwing getters/constructors, receiver, new.target,
 Proxy construction and callee replacement. These are bounded correctness/scaling
 checks, not peak-RSS, benchmark, or full application acceptance.
 
+### Staged object ownership trees (2026-10-02)
+
+Index the sole external consumer of each staged object, excluding only its own
+definition-base occurrences. A child may join a parent's group only when both
+objects have one eligible external consumer and the child's actual consumer is
+the stored RHS of a parent definition. Require forward allocation/definition/use
+order. Parent allocations precede children, so one forward pass resolves every
+root without repeated ancestor walks. Shared or otherwise ineligible parents
+do not acquire child ownership.
+
+Prefix-summed ranges group allocations and merge field definitions in original
+operation order. Each root's first selection visits that group once. The existing
+selection route retains the original blocks and each conditional arm; the event
+domain maintains a separate interval for every allocation, extending it at that
+object's own definitions and consuming it at the exact parent field or final
+external use. Constructor, getter, branch, and unrelated-effect events retain
+their existing checks. The AST still owns one ObjectExpr per original allocation
+and records each object's own last definition, not a shared synthetic object.
+
+Indexing is O(I+U+F+L) time and O(I+F+L) space for operations, uses, staged fields,
+and literal objects; arrays share the existing budget. It extends the project's
+typed expression-ownership/event-interval algorithm, with no external dependency,
+runtime wrapper, graph rewrite, or license change. Three-profile decoded tests
+cover nested depths up to 201 within actual V8 operand limits, 200/201/402 separate
+trees and siblings under one parent, shared-child rejection, effect gaps, and
+forged child consumers/last definitions. Existing evaluation work at 402 remains
+below three times the 201 case. Native syntax checks identity, prototypes,
+descriptors, branch effects and member references; paired DetailPage callbacks
+are separately bounded evidence. No RSS, benchmark, or whole-platform claim.
+
 ### Selected module reads and consecutive consumers (2026-10-01)
 
 Normal selection arms also accept an exact module read/guard pair owned by their

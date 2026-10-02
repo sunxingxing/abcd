@@ -12,6 +12,45 @@
 
 ## 当前阶段
 
+### 2026-10-02：嵌套条件对象按真实父属性组成归属树
+
+- DetailPage 25350 / entry 25577 的 child 26659 将条件值先写入内层 md，再
+  写入外层 span；此前单对象 Domain 只折叠内层，外层成员调用仍被 CallPlan
+  kReference 拒绝。nested_selection_test 构建成功后在两层真实 decoded
+  用例退出失败，red-build.log / red-tests.log，1/1 RED 1.52 秒。
+- 对各 staged 对象索引唯一外部 UseId，只把真实父属性 stored RHS 连接为
+  归属边；父 allocation 先于子 allocation，一次正向解析根，前缀和分组并按
+  原操作顺序归并定义。共同 Domain 对每个 allocation 单独维护效果区间，
+  并逐对象保留 consumer、末定义、ObjectExpr、字段及 PC 来源。未新增 writer、
+  wrapper、图改写或样本逻辑；每组仅由首选择遍历，复杂度见 algorithms.md。
+- 三 profile 覆盖 1/2/7/32/64/128/200/201 层，以及 1/2/200/201/402 组
+  独立对象树和单父对象下兄弟子对象。真实 V8 operand 限制保留；402 的既有
+  evaluation work 小于 201 的三倍。额外返回共享 child、缺失 child 映射、
+  伪造 consumer/末定义和效果阻隔拒绝。首轮 3/3 通过 33.87 秒，green-tests.log；
+  扩展 3/3 通过 3.27 秒，expanded-tests.log；兄弟子对象 3/3 通过 7.64 秒，
+  siblings-tests.log。独立原生语法共 4,200 个身份、原型、属性描述符、分支、
+  getter 替换和异常场景通过。
+- 最终 87 个相关 targets 构建退出 0，related-build.log；178/178 相关
+  回归通过 400.50 秒，related-tests.log，并按名称核对无遗漏，包含兄弟子对象
+  间的 debugger 拒绝。全库、扩大语料、RSS/基准、DFX、调度器及代理仍暂停。
+- detail_nested_selection_source_test 独立读取配对 TS，两个 GridCol 回调共
+  480 个场景通过，paired-test.log；验证条件 getter 中替换 GridCol 后，先前
+  create callee/receiver 及后续新对象调用，保留 span 内属性顺序、资源对象与
+  params 数组。未覆盖 ViewPU 构造、storage、子视图实例化和真实渲染。
+- 五输入 fresh build/stage-one/value-staged-object-tree-pass-1 均退出 0：
+  71 complete / 4 incomplete / 31 failure / 46 no-module；新增完整 DetailPage
+  25350，原 70 个完整项无回退或源码字节变化，无 legacy，原生 default records
+  保留，final-batch.log / final-batch-summary.json。原定旧输出目录已存在，
+  首次脚本按保护断言停止，未覆盖旧产物，随后使用上述新目录完成导出。
+  新源码 Node --check 退出 0；完整输出仍不等同整体配对/平台验收。
+- 下一项定位到 TabContentView 42938 / entry 43110。表达式构造
+  ValueFunctionCreation 报 kOwnership；实际 lowering OpId 21，却由
+  next_function_ 游标取到 creation 10 / child 23，当前 owner 22，说明失败
+  是 creation 不匹配而非 self owner。NestedTrees 在普通操作前构造字面量
+  依赖，需按真实 creation 身份关联 FunctionBinding，不能依赖构造遍历次序，
+  也不能删除 owner/capture 检查。next-expression.log / next-function-id.log。
+  本节日志前缀 /tmp/abcd-nested-selection-*，Goal 保持 active。
+
 ### 2026-10-02：混合普通与条件属性的原生对象参数
 
 - MultiCommunity CommentItemView 22807 / entry 22958 的 child 23400 在
