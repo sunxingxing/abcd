@@ -13,6 +13,28 @@
 ## 当前阶段
 
 
+### 2026-10-02：一般参数二元／比较运算的行为验证
+
+- binary_initializer 从纯常量矩阵扩展到双 Language 参数，17 个已准入
+  运算经过真实解码、Value IR、普通/异常表达式树、独立验证和共同 printer。
+  ADD/SUB/MUL/DIV/EXP 的一般输入拒绝作为明确负例保留，不把编码覆盖
+  误报为任意输入支持。三个 profile 的 decoded 普通/catch 用例通过。
+- 独立 oracle 比较重复属性初始化中的求值/转换次序、左右转换期间的
+  状态修改、BigInt/Symbol/NaN/signed zero、Proxy、对象/参数/receiver
+  身份、@@hasInstance 及注入异常。catch 路径与 ABC 一致返回 undefined，
+  不把被中断的后续字段视为已执行。40,800 个一般参数场景通过，既有
+  335 个数值/组合场景也通过；final-native.log。
+- 首次夹具构建发生本地 input 命名冲突，已修正；首轮 oracle 将包装前
+  对象误当作 @@hasInstance 参数，改为核对实际传入参数后通过。
+  没有因此修改生产语义或放宽异常对照。
+- binary_initializer_test 构建退出 0，普通及 catch 2/2 CTest 通过
+  10.83 秒，phased-build.log / phased-tests.log。本节日志前缀
+  /tmp/abcd-binary-arguments-*。本轮仅修改测试与文档，没有生产修改，
+  未重复五输入导出或扩大测试/RSS范围；最新五输入证据仍为上一节的
+  value-update-facts-pass-1，75 complete / 4 incomplete / 27 failure /
+  46 no-module。此验证不是 Ark 二进制或阶段一完成声明，Goal 保持 active。
+
+
 ### 2026-10-02：更新表达式保留有限整数事实
 
 - 真实 decoded 组合用例复现 INC/DEC 产生的指数在 FunctionInput 被拒绝，

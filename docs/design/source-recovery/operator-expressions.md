@@ -83,3 +83,22 @@ by a snapshot generated from the implementation. Keep source-location evidence
 and budgets, including 200/201 and geometric tests, and preserve paused full
 suite/RSS/corpus expansion constraints. Opcode decoding, a token table or
 syntax-only parsing cannot close the goal.
+
+## General-parameter binary verification
+
+The decoded matrix additionally routes two Language parameters through all 17
+currently admitted general binary/comparison operators: remainder, loose/strict
+equality, ordered comparison, shifts, bitwise operations, in and instanceof.
+ADD/SUB/MUL/DIV/EXP retain explicit general-input refusals; successful constant
+cases do not remove those gates. Ordinary and try/catch fixtures share the same
+bytecode construction and production expression pipeline, and retain separate
+source and independent tree checks.
+
+The handwritten native oracle reconstructs operands for each execution and
+compares coercion events, receiver/argument identity, mutation order, primitive
+and mixed BigInt/Symbol results, Proxy accesses, @@hasInstance and injected
+failures. Both repeated field expressions and interruption before a later field
+are observed. Catch fixtures return undefined, matching their actual ABC catch
+body. These checks cover source-language behavior, not execution of the pinned
+Ark binary; they do not establish whole-record completion or general arithmetic
+admission. No production behavior depends on the fixture's operator list.
