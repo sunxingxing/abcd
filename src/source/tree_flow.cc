@@ -448,7 +448,7 @@ class FlowCheck {
   void Conditional(const SelectionRegion& region, ExprId expression, std::optional<SymbolId> target,
       StmtId parent, std::uint32_t child) {
     std::size_t pending = 1;
-    conditional_tasks_[0] = {static_cast<std::size_t>(&region - logicals_.data()), expression};
+    conditional_tasks_[0] = {static_cast<std::size_t>(&region - logicals_.data()), expression, target};
     while (pending) {
       budget_.Step(); const auto task = conditional_tasks_[--pending]; const auto& current = logicals_[task.region];
       const auto* conditional = std::get_if<ConditionalExpr>(&tree_.expressions[task.expression.value].expression);
@@ -488,9 +488,10 @@ class FlowCheck {
         if (const auto* nested = std::get_if<SelectionChild>(&input)) {
           Require(nested->branch.value < logical_branches_.size() && logical_branches_[nested->branch.value], Error::kPlacement);
           const auto index = *logical_branches_[nested->branch.value];
-          Require(logicals_[index].parent == current.branch && logicals_[index].merged == current.merged &&
+          Require(logicals_[index].parent == current.branch &&
+              (logicals_[index].merged == current.merged || logicals_[index].forwarded) &&
               flow_.expressions[nested->branch.value] == actual && pending < conditional_tasks_.size(), Error::kPlacement);
-          conditional_tasks_[pending++] = {index, actual};
+          conditional_tasks_[pending++] = {index, actual, logicals_[index].forwarded ? std::nullopt : task.target};
         } else {
           const auto producer = std::get<analysis::OpResult>(graph_.values[std::get<analysis::ValueId>(input).value].origin).op;
           Require(flow_.expressions[producer.value] == actual, Error::kPlacement);
@@ -500,7 +501,7 @@ class FlowCheck {
       arm(*current.consequent, conditional->consequent); arm(current.right, conditional->alternate);
       flow_.expressions[current.branch.value] = task.expression;
       flow_.conditional_operations[current.branch.value] = 1;
-      LogicalEdges(current, target, conditional->consequent, conditional->alternate, parent, child);
+      LogicalEdges(current, task.target, conditional->consequent, conditional->alternate, parent, child);
     }
   }
 
@@ -1094,7 +1095,7 @@ class FlowCheck {
   const CompletionTreeView& sequences_;
   std::span<const ScopeId> expression_scopes_;
   TreeFlow flow_;
-  struct ConditionalTask { std::size_t region = 0; ExprId expression; };
+  struct ConditionalTask { std::size_t region = 0; ExprId expression; std::optional<SymbolId> target; };
   std::vector<ConditionalTask> conditional_tasks_;
   std::vector<SelectionRegion> logicals_;
   std::vector<std::optional<std::size_t>> logical_branches_;

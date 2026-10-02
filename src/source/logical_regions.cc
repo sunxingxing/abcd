@@ -174,8 +174,11 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
   std::vector<std::uint8_t> multiple;
   std::vector<std::size_t> inputs;
   std::vector<std::optional<UseId>> edge_inputs;
+  struct UniqueUse { std::optional<UseId> use; bool multiple = false; };
+  std::vector<UniqueUse> value_uses;
   budget.Array(phis, graph.blocks.size()); budget.Array(multiple, graph.blocks.size());
   budget.Array(inputs, graph.values.size()); budget.Array(edge_inputs, graph.edges.size());
+  budget.Array(value_uses, graph.values.size());
   for (std::size_t i = 0; i < graph.values.size(); ++i) {
     budget.Step(); const auto& value = graph.values[i];
     if (value.life != ValueLife::kLive) continue;
@@ -187,6 +190,11 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
   for (std::size_t i = 0; i < graph.uses.size(); ++i) {
     budget.Step(); const auto& use = graph.uses[i];
     if (use.life != ValueLife::kLive) continue;
+    if (const auto* value = std::get_if<ValueId>(&use.operand)) {
+      auto& used = value_uses[value->value];
+      if (used.use) used.multiple = true;
+      else used.use = UseId{static_cast<std::uint32_t>(i)};
+    }
     if (const auto* value = std::get_if<ValueId>(&use.owner)) {
       ++inputs[value->value];
       const auto* phi = std::get_if<PhiDefinition>(&graph.values[value->value].origin);
@@ -255,7 +263,7 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
       const auto& block = graph.blocks[node.block.value];
       if (graph.edges[entry.value].target != node.block || phis[node.block.value]) return {};
       if (node.arms) {
-        if (node.next || !selected[at->value]) return {};
+        if (!selected[at->value]) return {};
         const auto child = *selected[at->value]; const auto& region = result[child];
         if (region.parent) return {};
         for (std::uint32_t i = 0; i < block.op_count; ++i) {
@@ -265,7 +273,20 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
               evaluation.operations[id].kind != EvaluationKind::kPredicateSnapshot &&
               !OwnedModuleGuard(graph, evaluation, modules, id)) return {};
         }
-        return Path{node.block, region.join, {}, child};
+        if (!node.next) return Path{node.block, region.join, {}, child};
+        // Distinct joins remain distinct in the CFG/SSA. Only an exclusively
+        // consumed child phi and a single pure forwarding block can disappear
+        // into the parent's selected expression. Each child is examined once.
+        const auto& bridge = control.nodes[node.next->value];
+        const auto& tail = graph.blocks[bridge.block.value];
+        if (!region.complete_phi || bridge.block != region.join || bridge.next || bridge.arms ||
+            !std::holds_alternative<std::monostate>(bridge.synthetic) || tail.edge_count != 1 ||
+            value_uses[region.merged.value].multiple) return {};
+        for (std::uint32_t i = 0; i < tail.op_count; ++i) {
+          budget.Step(); const auto& op = graph.ops[tail.first_op.value + i];
+          if (op.life == ValueLife::kLive && (!std::holds_alternative<ValueJump>(op.operation) || !Pure(op))) return {};
+        }
+        return Path{bridge.block, graph.edges[tail.first_edge.value].target, tail.first_edge, child};
       }
       if (block.edge_count != 1) return {};
       if (!node.next) return Path{node.block, graph.edges[block.first_edge.value].target, block.first_edge, {}};
@@ -364,7 +385,12 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
     const auto operand = [&](const Path& arm) -> std::optional<SelectionOperand> {
       if (arm.child) {
         const auto& nested = result[*arm.child];
-        if (nested.merged != merged) return {};
+        if (nested.merged != merged) {
+          if (!arm.incoming || !edge_inputs[arm.incoming->value] ||
+              value_uses[nested.merged.value].use != edge_inputs[arm.incoming->value] ||
+              value_uses[nested.merged.value].multiple ||
+              !SameValue(graph.uses[edge_inputs[arm.incoming->value]->value].operand, nested.merged)) return {};
+        } else if (arm.incoming) return {};
         return SelectionChild{nested.branch};
       }
       if (!arm.incoming || !edge_inputs[arm.incoming->value]) return {};
@@ -374,7 +400,8 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
     };
     const auto consequent = operand(yes), alternate = operand(no);
     if (!consequent || !alternate) continue;
-    const auto leaves = (yes.child ? leaf_counts[*yes.child] : 1) + (no.child ? leaf_counts[*no.child] : 1);
+    const auto leaves = (yes.child && !yes.incoming ? leaf_counts[*yes.child] : 1) +
+        (no.child && !no.incoming ? leaf_counts[*no.child] : 1);
     auto dependency = branch_id;
     for (const auto& arm : {yes, no}) {
       if (arm.child) dependency = std::max(dependency, *result[*arm.child].last_dependency);
@@ -388,8 +415,10 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
       }
     }
     selected[control_id.value] = result.size(); leaf_counts[result.size()] = leaves;
-    if (yes.child) result[*yes.child].parent = branch_id;
-    if (no.child) result[*no.child].parent = branch_id;
+    for (const auto& arm : {yes, no}) if (arm.child) {
+      auto& nested = result[*arm.child]; nested.parent = branch_id;
+      if (arm.incoming) nested.forwarded = edge_inputs[arm.incoming->value];
+    }
     result.push_back({TreeLogical::kOr, producer->op, branch_id, merged, *predicate, *alternate,
         node.block, yes.block, no.block, join, yes.incoming, no.incoming, *consequent,
         node.decision ? (node.arms->taken ? node.arms->taken : node.arms->fallthrough) : positive ? node.arms->taken : node.arms->fallthrough,

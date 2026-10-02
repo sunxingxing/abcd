@@ -462,7 +462,21 @@ class OperandCheck {
       if (copies.selected) {
         RequireMeaning(copies.expressions.empty() && copies.temporaries.empty() && schedule.steps.size() == 1, Error::kOperand);
         origin_ = tree_.expressions[copies.selected->value].origin;
-        Input(std::get<analysis::ValueOperand>(schedule.steps[0].source), *copies.selected);
+        const auto& operand = std::get<analysis::ValueOperand>(schedule.steps[0].source);
+        std::optional<analysis::UseId> forwarded;
+        if (const auto* value = std::get_if<analysis::ValueId>(&operand);
+            value && !evaluation_.logical_values.empty() && evaluation_.logical_values[value->value]) {
+          forwarded = evaluation_.operations[evaluation_.logical_values[value->value]->value].consumer;
+          RequireMeaning(forwarded && forwarded->value < graph_.uses.size(), Error::kOperand);
+          const auto& use = graph_.uses[forwarded->value];
+          const auto* destination = std::get_if<analysis::ValueId>(&schedule.steps[0].destination);
+          const auto* edge = use.incoming ? std::get_if<analysis::EdgeId>(&*use.incoming) : nullptr;
+          const auto* incoming = std::get_if<analysis::EdgeId>(&evaluation_.phis->bundles[i].incoming);
+          RequireMeaning(destination && use.owner == decltype(use.owner){*destination} &&
+              edge && incoming && *edge == *incoming &&
+              use.role == analysis::OperandRole::kPhiInput, Error::kOperand);
+        }
+        Input(operand, *copies.selected, forwarded);
         continue;
       }
       RequireMeaning(copies.expressions.size() == schedule.steps.size(), Error::kOperand);
@@ -568,7 +582,9 @@ class OperandCheck {
         }
         if (std::holds_alternative<analysis::PhiDefinition>(definition.origin)) {
           if (!evaluation_.logical_values.empty() && evaluation_.logical_values[value.value]) {
-            RequireMeaning(!edge_input_ && flow_.expressions[evaluation_.logical_values[value.value]->value] == expression, Error::kOperand);
+            const auto branch = *evaluation_.logical_values[value.value];
+            RequireMeaning((!edge_input_ || (occurrence && evaluation_.operations[branch.value].consumer == occurrence)) &&
+                flow_.expressions[branch.value] == expression, Error::kOperand);
             return;
           }
           LeafOrigin(expression);

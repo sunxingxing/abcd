@@ -1011,6 +1011,10 @@ class TreeBuilder {
           Require(logical_branches_[branch].has_value(), Error::kOwnership);
           const auto& nested = logicals_[*logical_branches_[branch]];
           Require(nested.parent.has_value(), Error::kOwnership); schedule(nested);
+          if (part.next) {
+            Require(nested.forwarded.has_value(), Error::kOwnership);
+            selection_paths_.push_back({part.next, path.terminal});
+          }
         } else if (part.next) selection_paths_.push_back({part.next, path.terminal});
       }
       if (evaluation_.operations[op.value].kind == EvaluationKind::kLogicalValue) {

@@ -110,6 +110,38 @@ analysis::ValueProgram ConditionalDiamond(bool negate = false, unsigned count = 
   repeated.push_back(0x64);
   return Import(repeated, 1);
 }
+analysis::ValueProgram ForwardedSelection(unsigned count = 1, bool barrier = false,
+    abc::ProfileId profile = abc::ProfileId::kDynamic1206,
+    std::optional<FunctionInput>* input = nullptr, bool late_method = false) {
+  // Separate inner/outer joins: value.items(value.probe
+  //     ? (value.other ? value.probe : []) : []). The inner phi crosses
+  // only its empty join before becoming one input of the outer phi.
+  std::vector<std::uint8_t> bytes;
+  const std::vector<std::uint8_t> method{0x60, 3, 0x42, 0, 1, 0, 0x61, 0};
+  for (unsigned i = 0; i < count; ++i) {
+    if (!late_method) bytes.insert(bytes.end(), method.begin(), method.end());
+    bytes.insert(bytes.end(), {0x60, 3, 0x42, 0, 0, 0, 0xfb, 0x13, 0});
+    const auto outer = bytes.size(); bytes.insert(bytes.end(), {0x4f, 0});
+    bytes.insert(bytes.end(), {0x60, 3, 0x42, 0, 2, 0, 0xfb, 0x13, 0});
+    const auto inner = bytes.size(); bytes.insert(bytes.end(), {0x4f, 0});
+    bytes.insert(bytes.end(), {0x60, 3, 0x42, 0, 0, 0});
+    const auto inner_jump = bytes.size(); bytes.insert(bytes.end(), {0x4d, 0});
+    bytes[inner + 1] = static_cast<std::uint8_t>(bytes.size() - inner);
+    bytes.insert(bytes.end(), {0x05, 0});
+    bytes[inner_jump + 1] = static_cast<std::uint8_t>(bytes.size() - inner_jump);
+    if (barrier) bytes.push_back(static_cast<std::uint8_t>(abc::Opcode::kDEBUGGER));
+    const auto outer_jump = bytes.size(); bytes.insert(bytes.end(), {0x4d, 0});
+    bytes[outer + 1] = static_cast<std::uint8_t>(bytes.size() - outer);
+    bytes.insert(bytes.end(), {0x05, 0});
+    bytes[outer_jump + 1] = static_cast<std::uint8_t>(bytes.size() - outer_jump);
+    bytes.insert(bytes.end(), {0x61, 1});
+    if (late_method) bytes.insert(bytes.end(), method.begin(), method.end());
+    bytes.insert(bytes.end(), {0x60, 0,
+        static_cast<std::uint8_t>(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 3, 1});
+  }
+  bytes.push_back(static_cast<std::uint8_t>(abc::Opcode::kRETURN));
+  return Import(bytes, 3, input, profile);
+}
 analysis::ValueProgram ConditionalCall(bool method_first) {
   const std::vector<std::uint8_t> method{0x60, 3, 0x42, 0, 1, 0, 0x61, 0};
   std::vector<std::uint8_t> bytes;
@@ -425,7 +457,20 @@ std::string Source(const analysis::ValueProgram& graph, bool compose = true, con
   const auto& tree = std::get<ConstructedFunction>(built).tree;
   Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(graph, control, evaluation, tree, view)));
   TreeCheckBudget decision_budget({});
+  bool forwarded_checked = false;
   for (const auto& region : FindSelectionExpressions(graph, control, evaluation, decision_budget)) {
+    if (region.forwarded && !forwarded_checked) {
+      for (std::size_t i = 0; i < tree.expressions.size(); ++i) {
+        if (!std::holds_alternative<ConditionalExpr>(tree.expressions[i].expression) ||
+            tree.expressions[i].origin.value != graph.ops[region.branch.value].origin.value) continue;
+        auto wrong = tree;
+        auto& conditional = std::get<ConditionalExpr>(wrong.expressions[i].expression);
+        std::swap(conditional.consequent, conditional.alternate);
+        Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation, wrong, view)));
+        forwarded_checked = true; break;
+      }
+      Check(forwarded_checked);
+    }
     if (region.conditions.empty()) continue;
     for (std::size_t i = 0; i < tree.expressions.size(); ++i) {
       if (!std::holds_alternative<ConditionalExpr>(tree.expressions[i].expression)) continue;
@@ -729,6 +774,46 @@ std::string BooleanConversions(unsigned count, bool comparison) {
   return Source(graph, true, &*input, false);
 }
 int main(int argc, char** argv) {
+  if (argc == 1 || (argc == 2 && std::string_view(argv[1]) == "--forwarded-selection-sources")) {
+    const bool emit = argc == 2;
+    if (emit) std::cout << '[';
+    bool first = true;
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
+      for (const auto count : {1U, 2U, 200U, 201U, 402U}) {
+        std::optional<FunctionInput> input;
+        const auto graph = ForwardedSelection(count, false, profile, &input);
+        const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
+        const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+        TreeCheckBudget selection_budget({});
+        const auto selections = FindSelectionExpressions(graph, control, evaluation, selection_budget);
+        unsigned forwarded = 0;
+        for (const auto& selection : selections) {
+          if (!selection.forwarded) continue;
+          ++forwarded;
+          if (count != 1) continue;
+          auto forged = evaluation;
+          forged.logical_values[selection.merged.value].reset();
+          Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+          forged = evaluation;
+          forged.operations[selection.branch.value].consumer = graph.ops[selection.boolean.value].first_use;
+          Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+        }
+        Check(forwarded == count);
+        const auto source = Source(graph, true, &*input, false);
+        Check(source.find("if (") == std::string::npos && source.find("$phi") == std::string::npos);
+        if (emit) { if (!first) std::cout << ','; first = false; std::cout << source; }
+      }
+      const auto blocked = ForwardedSelection(1, true, profile);
+      const auto plan = std::get<EvaluationPlan>(BuildEvaluationPlan(blocked));
+      Check(std::get<CallPlanError>(BuildCallPlan(blocked, plan)) == CallPlanError::kReference);
+      const auto late = Source(ForwardedSelection(1, false, profile, nullptr, true));
+      Check(late.find("if (") == std::string::npos && late.find("$phi") != std::string::npos);
+      if (emit) std::cout << ',' << late;
+      const auto retained = Source(ForwardedSelection(1, true, profile, nullptr, true));
+      Check(retained.find("debugger;") != std::string::npos && retained.find("if (") != std::string::npos);
+    }
+    if (emit) { std::cout << "]\n"; return 0; }
+  }
   if (argc == 1 || (argc == 2 && std::string_view(argv[1]) == "--member-chain-sources")) {
     const bool emit = argc == 2;
     if (emit) std::cout << '[';

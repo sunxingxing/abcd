@@ -510,6 +510,32 @@ headers and ordered member getter tests cover the extension. This supersedes the
 previous nested-selection exclusion; object initializer fusion remains separate.
 No peak-RSS or benchmark claim is made.
 
+### Forwarded selection phis (2026-10-02)
+
+A complete child selection can also feed a distinct parent phi through the
+child's single jump-only join. Keep both CFG/SSA identities and record the exact
+forwarding UseId. A single indexed live-use census proves that the child result
+has no other consumer. The join must contain no live operation except pure
+jumps; it cannot carry another control subtree or continuation. Parent coverage
+counts this forwarding input once, rather than counting the child's leaves as
+additional parent inputs. This is ordinary SSA value-selection composition,
+implemented locally with the existing control postorder and no new dependency.
+
+The common evaluation plan owns the child's phi expression at that exact edge
+use. Expression construction and placement visit the child and its bridge once;
+flow checking keeps parent and child copy targets separate. Operand checking
+matches the actual copy destination, incoming edge, and child expression, so an
+edge cannot acquire a conditional value merely because its phi was fused
+elsewhere. Shared results, effectful joins, and stale/forged consumers remain
+outside this composition. Normal-only handling does not extend catch domains.
+
+The added census and checks are O(values + uses + control nodes + operations)
+time and space. No per-phi graph walk, CFG rewrite, or text-based recovery is
+introduced. Three-profile decoded member-call cases cover 1/2/200/201/402
+consecutive selections, both getter/argument orders, effectful bridges, and
+forged consumers/conditional arms. Native JavaScript is the independent behavior
+oracle; this does not establish full paired-record or platform acceptance.
+
 ### Selected module reads and consecutive consumers (2026-10-01)
 
 Normal selection arms also accept an exact module read/guard pair owned by their

@@ -1054,6 +1054,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/logical_regions.mjs $<TARGET_FILE:logical_regions_test>)
     add_test(NAME decision_selection_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_selection.mjs $<TARGET_FILE:logical_regions_test>)
+    add_test(NAME forwarded_selection_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/forwarded_selection.mjs $<TARGET_FILE:logical_regions_test>)
     add_test(NAME member_chain_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/member_chain.mjs $<TARGET_FILE:logical_regions_test>)
     add_test(NAME logical_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

@@ -50,6 +50,10 @@ struct SelectionRegion {
   // never a copied CFG or an unconditional evaluation of the RHS.
   std::vector<SelectionCondition> conditions;
   std::vector<ControlId> condition_blocks;
+  // A complete child phi may feed exactly one parent phi through its own
+  // pure jump-only join. Preserve that actual edge use, not an alias between
+  // the two phi identities or permission to move a join's effects.
+  std::optional<analysis::UseId> forwarded;
 };
 inline bool IsSelectionConstant(const analysis::ValueProgram& graph, analysis::OpId id) {
   if (id.value >= graph.ops.size()) return false;

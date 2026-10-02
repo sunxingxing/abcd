@@ -12,6 +12,48 @@
 
 ## 当前阶段
 
+### 2026-10-02：嵌套选择的独立 phi 经空汇合块组合
+
+- Immersive Header record 22712 / entry 23320 的 child 22872 在成员调用
+  规划处拒绝：PC 38 读取方法，PC 152 调用，参数内层选择的 phi 经纯跳转
+  join 转交外层 phi。旧选择发现只接纳共享同一 phi 的嵌套，导致方法保留为
+  cross-region snapshot。新增 decoded 回归在旧实现构建成功后退出 134，
+  red-build.log / red-test.log；新实现已通过该真实路径，未放宽 CallPlan。
+- 共同 SelectionRegion 记录精确 forwarded UseId；单次活跃使用、完整 child
+  选择及只含纯跳转的 join 才能组合。保持原 CFG、两层 phi 和入边身份，父
+  覆盖计数只计一次转交；求值规划、共同 FunctionTree、边复制及独立操作数
+  检查贯通，未增加专项 writer、运行时 helper 或配对源码生产输入。
+  O(values + uses + control nodes + operations)，复用 postorder/worklist；
+  算法与边界见 algorithms.md、source-tree.md。
+- 三 profile 的 1/2/200/201/402 次组合通过共同 AST、TreeSemantics 和
+  InstructionSources；错误 consumer、缺失 phi 映射及交换子条件两臂均拒绝。
+  getter 在参数之后时保留参数快照；effectful join 保留原 if/debugger，提前
+  读取方法的对应不能融合情形仍拒绝。首轮 5/5 定向测试通过 24.11 秒；扩展
+  后 2/2 通过 14.86 秒，expanded-build.log / expanded-tests.log。
+  forwarded_selection_source_test 对实际生成 JS 与独立原生条件语法比较
+  3,960 个效果、异常身份、receiver、getter 替换及新数组身份场景。
+- 85 个相关 targets 构建退出 0，related-build.log。相关回归在中断前已
+  96 项通过；原进程句柄丢失且无存活构建/CTest 进程，按通过名称清单补跑
+  剩余 76 项，全部通过，remaining-tests.log。两段记录去重核对覆盖全部
+  172 个选择目标，无遗漏或失败；没有重新启动已通过部分，也未执行全库测试。
+- 五输入 fresh build/stage-one/value-forwarded-selection-pass-1 均退出 0，
+  69 complete / 4 incomplete / 33 failure / 46 no-module；原 69 个完整项无
+  回退或源码字节变化，无 legacy，原生 default records 保留，final-batch.log
+  / final-batch-summary.json。本次闭合真实子函数路径，未新增完整 record。
+- Header 后续独立缺口已确认：child 23436，parent 23152，创建 PC 76；
+  PC 16 ADD2、PC 19 RETURN 报 SemanticProof kInternalValue，
+  header-next-owner.log / header-next-instructions.jsonl。独立诊断
+  23655 --family-source-draft 仍非完整/可执行证明，不能据此执行或宣称配对通过。
+- 下一项已定位 MultiCommunity CommentItemView record 22807 / entry 22958，
+  child 23400（parent 23624、创建 PC 18）的 CallPlan kReference：PC 182
+  方法读取到 PC 378 调用之间有混合普通/条件属性的对象参数；需检查 ObjectRoute
+  的首字段/连续字段限制，以及条件值经构造和成员调用到属性 RHS 的归属。
+  实际 allocation 68 的定义为 76/126/133，中间定义含条件值；
+  comment-next.log / comment-reference.log / comment-instructions.jsonl，
+  进一步的计划快照为 /tmp/abcd-mixed-literal-plan.log。
+  整体语义和表示验收未完成，Goal 保持 active；全库、扩大语料、RSS/基准、
+  DFX、调度器、代理及定期审视仍暂停。本节日志前缀 /tmp/abcd-forwarded-selection-*。
+
 ### 2026-10-02：原生字面量接纳单次全局名称读取
 
 - 实际WidgetCard member728的nested NamedRead输入是allocation之后的

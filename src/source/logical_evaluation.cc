@@ -451,6 +451,12 @@ void BuildLogicalValues(const ValueProgram& graph, EvaluationPlan& plan, TreeChe
     }
     for (const auto& [producer, use] : selected) { budget.Step(); plan.operations[producer.value] = {EvaluationKind::kInline, use, {}}; }
   }
+  for (const auto& region : regions) {
+    budget.Step(); if (!region.forwarded) continue;
+    if (plan.logical_values.empty()) budget.Array(plan.logical_values, graph.values.size());
+    plan.logical_values[region.merged.value] = region.branch;
+    plan.operations[region.branch.value] = {EvaluationKind::kLogicalValue, region.forwarded, {}};
+  }
 }
 void VerifyLogicalValues(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget) {
   VerifyPredicateSnapshots(graph, plan, budget);
@@ -509,6 +515,14 @@ void VerifyLogicalValues(const ValueProgram& graph, const EvaluationPlan& plan, 
           *index.consumers[selected_region->branch.value];
       used[selected_region->join.value].prefix_end = std::get<OpId>(graph.uses[consumer.value].owner);
     }
+  }
+  for (const auto& region : regions) {
+    budget.Step(); if (!region.forwarded) continue;
+    const auto& placement = plan.operations[region.branch.value];
+    Require(region.parent && region.complete_phi && !values[region.merged.value] && !consumed[region.branch.value] &&
+        plan.logical_values[region.merged.value] == region.branch && placement.kind == EvaluationKind::kLogicalValue &&
+        placement.consumer == region.forwarded && !placement.temporary);
+    values[region.merged.value] = 1; consumed[region.branch.value] = 1;
   }
   for (std::size_t i = 0; i < values.size(); ++i) { budget.Step(); Require(plan.logical_values[i].has_value() == (values[i] != 0)); }
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
