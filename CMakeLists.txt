@@ -1061,6 +1061,12 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/literal_buffer.mjs $<TARGET_FILE:literal_plan_test>)
     add_test(NAME literal_call_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/literal_call.mjs $<TARGET_FILE:literal_plan_test>)
+    if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc" AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/hot/src/main/ets/view/HotTitleView.ts")
+      add_test(NAME ui_conditional_literals_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/ui_conditional_literals.mjs $<TARGET_FILE:abc_structure>
+        ${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication)
+    endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
       if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc" AND
          EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")

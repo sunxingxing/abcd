@@ -448,6 +448,16 @@ original branch input. The printer uses the existing bounded iterative action st
 
 Selection discovery costs O(operations + values + uses + blocks + control nodes),
 with disjoint arm scans under the verified control-tree ownership contract.
+Fresh same-block native literals can also own an arm's phi RHS. One indexed
+pass over the checked LiteralPlan records each allocation's last definition;
+phi census excludes only its actual own-definition base uses. Its complete
+unobserved initialization interval stays inside that edge expression, including
+nested allocations/getters, while any independent suffix event remains a
+barrier. Conditional discovery consumes that interval and waits for its final
+definition before constructing the arm. This adds O(operations + definitions)
+scratch/work per index; eligible edge suffixes and producer use chains remain
+disjoint. It reuses the existing literal ownership/effect verifier and native
+AST; no invocation intrinsic, IIFE, dependency or license change is introduced.
 Scratch storage is linear in those dimensions. Unique join consumers reuse the
 existing forward/backward event interval equations for ordered member references;
 conditional arm effects remain confined to their original choice. No effects or

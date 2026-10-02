@@ -1,4 +1,6 @@
 #include "phi_copy_checks.h"
+#include "literal_plan.h"
+#include "tree_checks.h"
 
 #include <new>
 #include <stdexcept>
@@ -77,9 +79,28 @@ std::variant<PhiCopies, PhiCopyError> BuildPhasedPhiCopies(
     const analysis::ValueProgram& graph, analysis::SemanticBudget allowance, PhiDomain domain) {
   return BuildCopies(graph, allowance, PhiFlow::kPhased, domain);
 }
+std::vector<std::optional<analysis::OpId>> IndexPhiLiteralEnds(
+    const analysis::ValueProgram& graph, const LiteralPlan& literals, TreeCheckBudget& budget) {
+  std::vector<std::optional<analysis::OpId>> ends;
+  if (!graph.phases.empty()) return ends;
+  budget.Array(ends, graph.ops.size());
+  for (const auto& object : literals.objects) {
+    budget.Step(); if (object.form != LiteralForm::kExpression) continue;
+    const auto& allocation = graph.ops[object.allocation.value];
+    auto last = object.allocation; bool same_block = true;
+    for (std::uint32_t i = 0; i < object.count; ++i) {
+      budget.Step(); const auto id = literals.definitions[object.first + i];
+      same_block &= graph.ops[id.value].block == allocation.block;
+      last = std::max(last, id);
+    }
+    if (same_block) ends[object.allocation.value] = last;
+  }
+  return ends;
+}
 std::optional<analysis::OpId> PhiExpressionProducer(
     const analysis::ValueProgram& graph, const PhiCopies& copies, const PhiBundle& bundle,
-    std::span<const std::optional<analysis::OpId>> module_guards) {
+    std::span<const std::optional<analysis::OpId>> module_guards,
+    std::span<const std::optional<analysis::OpId>> literal_ends) {
   using namespace analysis;
   if (copies.flow != PhiFlow::kNormal || bundle.count != 1 ||
       bundle.schedule.steps.size() != 1 || bundle.schedule.temporaries != 0) return {};
@@ -94,10 +115,19 @@ std::optional<analysis::OpId> PhiExpressionProducer(
   const auto& op = graph.ops[producer->op.value];
   const auto guard = std::holds_alternative<ValueModuleRead>(op.operation) &&
       !module_guards.empty() ? module_guards[producer->op.value] : std::nullopt;
+  const auto literal = literal_ends.empty() ? std::nullopt : literal_ends[producer->op.value];
   bool found = false;
   for (auto id = graph.values[value->value].first_use; id; id = graph.uses[id->value].next) {
+    const auto& occurrence = graph.uses[id->value];
+    if (occurrence.life != ValueLife::kLive) continue;
     if (*id == input) { if (found) return {}; found = true; }
-    else if (!guard || *id != graph.ops[guard->value].first_use) return {};
+    else if (!guard || *id != graph.ops[guard->value].first_use) {
+      const auto* owner = std::get_if<OpId>(&occurrence.owner);
+      if (!literal || !owner || *owner <= producer->op || *owner > *literal ||
+          occurrence.role != OperandRole::kBase || *id != graph.ops[owner->value].first_use ||
+          (!std::holds_alternative<ValueOwnWrite>(graph.ops[owner->value].operation) &&
+           !std::holds_alternative<ValueIndexedWrite>(graph.ops[owner->value].operation))) return {};
+    }
   }
   if (!found) return {};
   const auto& block = graph.blocks[op.block.value];
@@ -106,6 +136,10 @@ std::optional<analysis::OpId> PhiExpressionProducer(
   // Only inert control may follow. In particular environment changes, getters,
   // stores and additional roots remain barriers even if the result is unused.
   for (std::uint32_t order = op.order + 1; order < block.op_count; ++order) {
+    // Fresh LiteralPlan proves all initialization/RHS effects in this interval
+    // belong to the one native object expression. Never skip an arbitrary
+    // suffix, staged definition, escape, or independent observable root.
+    if (literal && block.first_op.value + order <= literal->value) continue;
     // IndexModuleEvaluations proved adjacent read/guard operands and effects.
     // Retain both at this phi expression; no other throwing suffix may move.
     if (guard && block.first_op.value + order == guard->value) continue;

@@ -168,6 +168,8 @@ namespace {
 std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, const ModuleEvaluationIndex& modules, TreeCheckBudget& budget) {
   std::vector<SelectionRegion> result;
+  const auto literal_ends = evaluation.literals ? IndexPhiLiteralEnds(graph, *evaluation.literals, budget) :
+      std::vector<std::optional<OpId>>{};
   std::vector<std::optional<ValueId>> phis;
   std::vector<std::uint8_t> multiple;
   std::vector<std::size_t> inputs;
@@ -197,10 +199,12 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
     const auto* producer = value ? std::get_if<OpResult>(&graph.values[value->value].origin) : nullptr;
     if (!producer || graph.ops[producer->op.value].block != block ||
         evaluation.operations[producer->op.value].kind != EvaluationKind::kPhiInput) return false;
+    const auto literal = literal_ends.empty() ? std::nullopt : literal_ends[producer->op.value];
     const auto& range = graph.blocks[block.value];
     for (std::uint32_t i = 0; i < range.op_count; ++i) {
       budget.Step(); const auto id = range.first_op.value + i; const auto& op = graph.ops[id];
       if (op.life != ValueLife::kLive || std::holds_alternative<ValueJump>(op.operation)) continue;
+      if (literal && id >= producer->op.value && id <= literal->value) continue;
       if (id != producer->op.value && evaluation.operations[id].kind != EvaluationKind::kInline &&
           !OwnedModuleGuard(graph, evaluation, modules, id)) return false;
     }
@@ -377,7 +381,10 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
       else {
         const auto value = std::get<ValueId>(graph.uses[edge_inputs[arm.incoming->value]->value].operand);
         const auto source = std::get<OpResult>(graph.values[value.value].origin).op;
-        if (!IsSelectionConstant(graph, source)) dependency = std::max(dependency, source);
+        if (!IsSelectionConstant(graph, source)) {
+          const auto literal = literal_ends.empty() ? std::nullopt : literal_ends[source.value];
+          dependency = std::max(dependency, literal.value_or(source));
+        }
       }
     }
     selected[control_id.value] = result.size(); leaf_counts[result.size()] = leaves;

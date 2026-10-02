@@ -543,4 +543,77 @@ for (const payload of values)
     assert.deepEqual(trailingGetter(generated[31], payload, fail, true), trailingGetter(leadingReference, payload, fail, true));
     ++scenarios;
   }
+const literalSource = execFileSync(process.argv[2], ['--literal-selection-sources'], {encoding: 'utf8'});
+const literalFunctions = vm.runInNewContext(literalSource, {
+  Array() { throw new Error('mutable Array binding'); },
+  Reflect: {apply() { throw new Error('mutable Reflect binding'); }}
+});
+assert.equal(literalFunctions.length, 6);
+function literalSelection(fn, getter, predicate, payload, fail, replace) {
+  const events = [], failure = {}, returned = {}, argumentsSeen = [];
+  let reads = 0;
+  const receiver = {};
+  const event = name => {
+    events.push(name);
+    if (replace) Object.defineProperty(receiver, 'items', {configurable: true,
+      value() { throw new Error('method must not be reread'); }});
+    if (name === fail) throw failure;
+  };
+  Object.defineProperty(receiver, 'probe', {get() {
+    assert.equal(this, receiver); const first = ++reads === 1;
+    event(first ? 'predicate' : 'probe arm');
+    return first ? predicate : payload;
+  }});
+  Object.defineProperty(receiver, 'other', {get() {
+    assert.equal(this, receiver); event('other arm'); return payload;
+  }});
+  Object.defineProperty(receiver, 'items', {configurable: true, get() {
+    assert.equal(this, receiver); events.push('method');
+    if (fail === 'method') throw failure;
+    const method = function(argument) {
+      assert.equal(this, receiver); events.push('call');
+      assert.deepEqual(Object.keys(argument), ['probe']);
+      const descriptor = Object.getOwnPropertyDescriptor(argument, 'probe');
+      assert.equal(descriptor.writable, true);
+      assert.equal(descriptor.enumerable, true);
+      assert.equal(descriptor.configurable, true);
+      assert.notEqual(argument, argumentsSeen[0]);
+      if (getter) assert.ok(Object.is(argument.probe, payload));
+      else {
+        assert.ok(Array.isArray(argument.probe)); assert.equal(argument.probe.length, 0);
+        if (argumentsSeen.length) assert.notEqual(argument.probe, argumentsSeen[0].probe);
+      }
+      argumentsSeen.push(argument);
+      if (fail === 'call') throw failure;
+      return returned;
+    };
+    for (const name of ['call', 'apply', 'bind']) Object.defineProperty(method, name, {
+      get() { throw new Error('mutable invocation helper'); }
+    });
+    return method;
+  }});
+  try {
+    assert.equal(fn(receiver), returned);
+    if (!replace && !fail) {
+      reads = 0;
+      assert.equal(fn(receiver), returned);
+    }
+    return {events};
+  }
+  catch (error) { assert.equal(error, failure); return {events, threw: true}; }
+}
+const literalReferences = [
+  value => value.items(value.probe ? {probe: []} : {probe: []}),
+  value => value.items(value.probe ? {probe: value.probe} : {probe: value.other})
+];
+for (let i = 0; i < literalFunctions.length; ++i) {
+  const getter = i % 2 === 1;
+  for (const predicate of values) for (const payload of values)
+    for (const fail of ['', 'method', 'predicate', 'probe arm', 'other arm', 'call'])
+      for (const replace of [false, true]) {
+        assert.deepEqual(literalSelection(literalFunctions[i], getter, predicate, payload, fail, replace),
+                         literalSelection(literalReferences[Number(getter)], getter, predicate, payload, fail, replace));
+        ++scenarios;
+      }
+}
 console.log(`Decoded logical branch values, getters and calls: ${scenarios} behavior scenarios passed`);

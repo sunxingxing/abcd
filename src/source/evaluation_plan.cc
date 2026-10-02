@@ -372,10 +372,14 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     Require(next_op == graph.ops.size(), Error::kInvalidGraph);
     if (flow == EvaluationFlow::kNormal && plan.phis) {
       // One eligible bundle per single-exit source block; suffix scans are disjoint.
+      TreeCheckBudget literal_budget({bytes, work});
+      const auto literal_ends = plan.literals ? IndexPhiLiteralEnds(graph, *plan.literals, literal_budget) :
+          std::vector<std::optional<analysis::OpId>>{};
+      admit(literal_budget.Bytes(), 1); step(literal_budget.Work());
       step(graph.ops.size());
       for (const auto& bundle : plan.phis->bundles) {
         step();
-        const auto producer = PhiExpressionProducer(graph, *plan.phis, bundle, module_index.peers);
+        const auto producer = PhiExpressionProducer(graph, *plan.phis, bundle, module_index.peers, literal_ends);
         if (!producer || pinned[producer->value]) continue;
         auto& placement = plan.operations[producer->value];
         if (placement.kind != EvaluationKind::kRoot) continue;

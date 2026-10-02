@@ -121,6 +121,40 @@ analysis::ValueProgram ConditionalCall(bool method_first) {
   bytes.insert(bytes.end(), {0x60, 0, static_cast<std::uint8_t>(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 3, 1, 0x64});
   return Import(bytes, 3);
 }
+analysis::ValueProgram ConditionalLiteralCall(bool getter = false, bool barrier = false,
+    unsigned count = 1, abc::ProfileId profile = abc::ProfileId::kDynamic1206,
+    std::optional<FunctionInput>* input = nullptr) {
+  // Read the method before the branch, then initialize a fresh buffered object
+  // in only the selected arm. Its field RHS may itself be a nested allocation
+  // or a getter that replaces the method. Neither reference may be reread.
+  std::vector<std::uint8_t> bytes;
+  const auto emit = [&](abc::Opcode opcode) {
+    const auto wire = static_cast<std::uint16_t>(opcode);
+    bytes.push_back(static_cast<std::uint8_t>(wire));
+    if (wire > UINT8_MAX) bytes.push_back(static_cast<std::uint8_t>(wire >> 8));
+  };
+  for (unsigned i = 0; i < count; ++i) {
+    bytes.insert(bytes.end(), {0x60, 3, 0x42, 0, 1, 0, 0x61, 0,
+        0x60, 3, 0x42, 0, 0, 0, 0xfb, 0x13, 0});
+    const auto branch = bytes.size(); bytes.insert(bytes.end(), {0x4f, 0});
+    const auto arm = [&](bool taken) {
+      bytes.insert(bytes.end(), {0x07, 0, 0, 0, 0x61, 2});
+      if (getter) bytes.insert(bytes.end(), {0x60, 3, 0x42, 0, static_cast<std::uint8_t>(taken ? 2 : 0), 0});
+      else bytes.insert(bytes.end(), {0x05, 0});
+      emit(abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8);
+      bytes.insert(bytes.end(), {0, 0, 0, 2});
+      if (barrier) emit(abc::Opcode::kDEBUGGER);
+      bytes.insert(bytes.end(), {0x60, 2});
+    };
+    arm(false); const auto jump = bytes.size(); bytes.insert(bytes.end(), {0x4d, 0});
+    bytes[branch + 1] = static_cast<std::uint8_t>(bytes.size() - branch);
+    arm(true); bytes[jump + 1] = static_cast<std::uint8_t>(bytes.size() - jump);
+    bytes.insert(bytes.end(), {0x61, 1, 0x60, 0});
+    emit(abc::Opcode::kCALLTHIS1_IMM8_V8_V8); bytes.insert(bytes.end(), {0, 3, 1});
+  }
+  bytes.push_back(0x64);
+  return Import(bytes, 3, input, profile);
+}
 analysis::ValueProgram DecisionCall(unsigned count = 1, bool barrier = false,
     abcd::abc::ProfileId profile = abcd::abc::ProfileId::kDynamic1206,
     std::optional<FunctionInput>* input = nullptr) {
@@ -935,6 +969,33 @@ int main(int argc, char** argv) {
   Check(FindSelectionExpressions(raw_predicate, raw_control, raw_evaluation, raw_budget).empty());
   Check(!Source(ConditionalCall(true)).empty());
   Check(!Source(ConditionalCall(false)).empty());
+  Check(Source(ConditionalLiteralCall()).find(" ? ") != std::string::npos);
+  Check(Source(ConditionalLiteralCall(true)).find(" ? ") != std::string::npos);
+  for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+    for (const bool getter : {false, true}) {
+      std::optional<FunctionInput> input;
+      const auto graph = ConditionalLiteralCall(getter, false, 1, profile, &input);
+      Check(Source(graph, true, &*input, false).find(" ? ") != std::string::npos);
+      const auto blocked = ConditionalLiteralCall(getter, true, 1, profile);
+      auto plan = std::get<EvaluationPlan>(BuildEvaluationPlan(blocked));
+      Check(std::get<CallPlanError>(BuildCallPlan(blocked, plan)) == CallPlanError::kReference);
+      for (std::size_t i = 0; i < blocked.ops.size(); ++i) {
+        if (!std::holds_alternative<analysis::ValueObjectAllocation>(blocked.ops[i].operation)) continue;
+        auto forged = plan;
+        const auto value = *blocked.ops[i].result;
+        for (auto at = blocked.values[value.value].first_use; at; at = blocked.uses[at->value].next) {
+          if (!std::holds_alternative<analysis::ValueId>(blocked.uses[at->value].owner)) continue;
+          forged.operations[i] = {EvaluationKind::kPhiInput, *at, {}};
+          Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(blocked, forged)));
+        }
+      }
+    }
+  for (const unsigned count : {200U, 201U, 402U}) {
+    const auto text = Source(ConditionalLiteralCall(true, false, count));
+    std::size_t found = 0, offset = 0;
+    while ((offset = text.find(" ? ", offset)) != std::string::npos) { ++found; offset += 3; }
+    Check(found == count && text.find("$phi") == std::string::npos);
+  }
   Check(Source(ConditionalDiamond()).find(" ? ") != std::string::npos);
   Check(Source(ConditionalDiamond(true)).find(" ? ") != std::string::npos);
   Check(!Source(BufferedOptionalAccess()).empty());
@@ -988,6 +1049,17 @@ int main(int argc, char** argv) {
     std::cout << observable_source << '\n'; return 0;
   }
 
+  if (argc == 2 && std::string_view(argv[1]) == "--literal-selection-sources") {
+    std::cout << '['; bool first = true;
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const bool getter : {false, true}) {
+        std::optional<FunctionInput> input;
+        const auto graph = ConditionalLiteralCall(getter, false, 1, profile, &input);
+        if (!first) std::cout << ',';
+        first = false; std::cout << Source(graph, true, &*input, false);
+      }
+    std::cout << "]\n"; return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--sources") {
     std::cout << "[" << Source(Diamond(false)) << "," << Source(Diamond(true)) << "," << Source(Diamond(false, 1, false, true))
               << "," << Source(Diamond(true, 1, false, true))

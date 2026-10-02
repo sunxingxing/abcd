@@ -203,6 +203,11 @@ callee 获取点、home object 和参数求值次序。`obj.m(args)` 会在求�
 intrinsic 绑定及正确调用协议证明；`.call` 和 Reflect 本身可被篡改。
 可融合时使用原生 member call 并证明 callee 获取及参数效果顺序一致；复杂参数若只能
 通过 IIFE/箭头包裹，必须先证明 this/arguments/new.target/await/return 及作用域不变。
+正常流条件参数的两臂可以是已验证的完整字面量初始化：同块LiteralPlan的最后
+definition索引界定唯一未暴露对象的表达式范围，phi只排除真实own-definition
+base use。独立求值及树检查仍核对初始化、选择和成员引用顺序；任何额外效果
+或初始化后的观察屏障仍拒绝融合。对象语法、嵌套分配和getter留在原选择臂，
+不在合流后重新读取成员，不借助可篡改的.call/apply/Reflect或包裹函数。
 本计划不把这种包裹作为万能降级。无法忠实表达的 staged reference 明确拒绝，
 保留诊断，不能因为降低临时量优先级而输出错误调用。
 Call 节点另有 `EvalMode = NotEval | DirectEval | IndirectEval` 及 binding 证书，

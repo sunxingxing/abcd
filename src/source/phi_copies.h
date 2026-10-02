@@ -4,6 +4,8 @@
 #include "edge_copies.h"
 
 namespace abcd::source {
+struct LiteralPlan;
+class TreeCheckBudget;
 enum class PhiFlow : std::uint8_t { kNormal, kPhased };
 enum class PhiDomain : std::uint8_t { kLanguage, kHoleTransport };
 struct PhiBundle {
@@ -41,11 +43,18 @@ enum class PhiCopyError : std::uint8_t {
 // evaluated directly by its single phi assignment. Requires verified PhiCopies;
 // module_guards, when supplied, is the checked symmetric module-pair index.
 // Its read owns the original guard use/event, not an additional source use.
+// literal_ends is the index of freshly checked native expression literals;
+// their unobserved initialization interval remains inside the same edge RHS.
 // Scans only that producer's trailing block suffix. Each eligible edge has a
 // distinct source block, so visiting all bundles is linear in graph size.
 [[nodiscard]] std::optional<analysis::OpId> PhiExpressionProducer(
     const analysis::ValueProgram& graph, const PhiCopies& copies, const PhiBundle& bundle,
-    std::span<const std::optional<analysis::OpId>> module_guards = {});
+    std::span<const std::optional<analysis::OpId>> module_guards = {},
+    std::span<const std::optional<analysis::OpId>> literal_ends = {});
+// O(ops + definitions), no per-phi literal inventory scan. Statements/corridors
+// are excluded: only verified same-block native literal expressions qualify.
+[[nodiscard]] std::vector<std::optional<analysis::OpId>> IndexPhiLiteralEnds(
+    const analysis::ValueProgram& graph, const LiteralPlan& literals, TreeCheckBudget& budget);
 // Same parallel-copy algorithm, but availability is Before/Commit/Catch aware.
 // Abstract edge schedules are NOT permission to execute writes before a throw.
 // Exceptional edges require separate staging and catch-entry commit placement.

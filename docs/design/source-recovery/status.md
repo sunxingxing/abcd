@@ -12,6 +12,42 @@
 
 ## 当前阶段
 
+### 2026-10-02：条件臂原生字面量贯通 phi 输入与成员调用
+
+- PhiExpressionProducer复用fresh LiteralPlan，同块kExpression对象/数组的
+  allocation→最后definition一次索引；唯一phi使用只排除实际own-definition
+  base uses。初始化整体仍在原始选择臂内，独立suffix效果、staged定义和
+  额外观察继续拒绝。正常求值及独立checker使用该索引，conditional发现
+  核对完整初始化范围并等待最后definition；没有.call/Reflect.apply、IIFE、
+  新writer、样本ID分派或配对源码输入。索引O(I+D)，无逐phi全表扫描。
+- 实际decoded buffered两臂对象、nested empty array/late getter在旧实现上
+  1/1 RED，red-tests.log；基本实现1/1通过8.23秒，green-tests.log。扩展到
+  三profile、200/201/402连续选择、初始化后debugger及伪造PhiInput拒绝，
+  含独立TreeSemantics和实际InstructionSources。logical_regions.mjs新增
+  receiver、getters替换方法、任意相关抛出、own descriptors及重复调用的新
+  对象/数组身份对照；相关最终运行记录28,024个场景通过。
+- 相关84 targets构建退出0，related-build.log；166/166相关回归通过361.92秒，
+  related-tests.log。五输入fresh build/stage-one/value-conditional-literal-pass-1
+  均退出0，59 complete / 4 incomplete / 43 failure / 46 no-module；新增
+  MultiCommunityApplication records27518/37896/38925，原56个完整项无回退、
+  字节变化或legacy，native default records4466/20246/30597保留，
+  final-batch.log / final-batch-summary.json。
+- 新完整产物DetailTitleView、HotPointPage、HotTitleView均通过Node --check。
+  独立读取配对.ts之后新增ui_conditional_literals_source_test；注册后重新
+  构建abc_structure退出0，paired-build.log；1/1通过2.08秒，paired-tests.log。
+  144个受控场景对照initialRender注册及Blank.height、Column.padding、
+  Text字体/透明度相关回调参数、getter/receiver顺序和异常。仅该测试读取
+  配对源码，生产导出仍ABC-only。此证据不覆盖ViewPU构造、属性生命周期、
+  完整渲染或应用平台行为；整体语义及表示验收仍未完成。
+- fresh CommentBarView entry21219仍unproved/tree_stage，comment-bar.jsonl；
+  LLDB确认initialRender21274的实际函数族22个成员均完成共同构建，member2
+  method21436已越过旧CallPlan kReference，随后在root的FamilyWrite kCapture
+  拒绝，actual-members.log。不能将这些conditional AST计为可打印完整record。
+- 下一步继续闭合实际parent ClassExpr捕获可见性、external-root transitive
+  writes及拥有的enclosure/printing证据。阶段一Goal保持active；全库、扩大
+  语料、RSS/基准、DFX、调度器、代理及定期审视仍暂停。本节日志均在
+  /tmp/abcd-conditional-literal-*。
+
 ### 2026-10-02：类根捕获接入真实 enclosing AST 和共同 source aliases
 
 - ClassCaptureAnchor通过实际parent TreeFlow定位ClassExpr，核对constructor
