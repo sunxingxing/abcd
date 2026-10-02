@@ -12,6 +12,48 @@
 
 ## 当前阶段
 
+### 2026-10-02：原生字面量接纳单次全局名称读取
+
+- 实际WidgetCard member728的nested NamedRead输入是allocation之后的
+  GlobalRead/kName，共同AST已有GlobalNameExpr，但LiteralExpression种类
+  判定尚未接纳，造成LiteralPlan kLateValue。新增真实decoded fixture在
+  旧路径1/1 RED 1.03秒，red-tests.log；实现后1/1通过1.02秒，green-tests.log。
+  现在只接纳零operand的kName，kVar继续拒绝；共同表达式、成员Reference、
+  scope和operand检查复用，未新增writer、样本分派或配对源码生产输入。
+- 单次消费、unexposed allocation、属性/operand效果顺序、catch dispatch及
+  捕获快照要求不变。真实三profile decoded测试覆盖buffered/unbuffered、
+  direct/member全局读取、200/201/402字段；402 verifier work小于201的
+  三倍。共享读取、debugger阻隔、伪造nested witness、kVar和外部同名binding
+  拒绝。phased测试增加同catch正例和不同dispatch拒绝，并经共同异常AST。
+- 最终定向构建退出0，final-focused-build.log；4/4通过12.60秒，
+  final-focused-tests-2.log。独立native syntax oracle包含1,280个全局/属性
+  getter、binding替换、缺失名字、null、任意相关抛出、异常返回与对象identity
+  场景。Node contextified external global getter可能把抛出替换为ReferenceError，
+  此宿主限制在测试中显式说明，不将其当成实际Ark VM异常证明。
+  最终85个相关targets构建退出0，related-build.log；171/171相关回归
+  通过362.24秒，related-tests.log。未执行全库测试或RSS/基准。
+- 独立widget_global_literal_source_test读取配对TS，生产导出仍ABC-only。
+  两个WidgetCard record共176个选定回调场景，含FlexDirection getter中替换
+  Flex、保持先前create callee/receiver，以及padding/onClick/branch/route
+  效果与异常对照。不覆盖构造、storage生命周期、完整渲染或实际平台。
+- 五输入fresh build/stage-one/value-literal-global-pass-1均退出0；
+  69 complete / 4 incomplete / 33 failure / 46 no-module；新增7个完整record：
+  CardItemView31525、CallComponent4631、ExamplePage7989、GetTokenPage8867、
+  Index9604、WidgetCard12347（modules）及564（widgets）。原62完整项无
+  回退或源码字节变化，无legacy；native default records4466/20246/30597
+  保留，final-batch.log / final-batch-summary.json。7个新.mjs均Node --check
+  退出0，new-source-syntax.log。完整输出不是整个record的配对语义验收。
+- 下一步沿其余33个failure/4个incomplete的真实共同路径继续；保留已记录
+  TestAbilityPage模板/ADD2转换差异、ModuleStore prefix、NaN和SuperSpread
+  未证明边界。fresh Immersive CommonView19072 / entry19740在
+  FamilyReader读取真实child19852（parent19712，创建PC72）时报告
+  SemanticProof kInternalValue/PC41；实际PC38为ADD2，PC41为RETURN，
+  common-view-reader.log / common-view-target.log / common-view-instructions.json。
+  尚需定位其具体值域原因，不假定NaN canonicalization或放宽内部值返回。
+  阶段一整体语义及表示验收未完成，Goal保持active；全库、
+  扩大语料、RSS/基准、DFX、调度器、代理及定期审视仍暂停。
+  本节日志前缀/tmp/abcd-literal-global-*。
+
 ### 2026-10-02：类根捕获贯通完整写入、实际父作用域与共同打印
 
 - ConstructedFamily/PreparedFamily拥有外部root_capture，区别于intra-family

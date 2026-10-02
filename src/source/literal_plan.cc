@@ -248,6 +248,7 @@ bool LiteralUnary(const analysis::ValueOperation& operation) {
 }
 bool LiteralExpression(const analysis::ValueProgram& graph, const analysis::ValueOp& op, std::size_t index, Guards guards) {
   const auto* creation = std::get_if<analysis::ValueFunctionCreation>(&op.operation);
+  const auto* global = std::get_if<analysis::ValueGlobalRead>(&op.operation);
   // Creating a closure does not execute its body. The same literal interval
   // proof retains creation order and forbids intervening environment changes;
   // EvaluationPlan/FamilyTree still own the child and all capture obligations.
@@ -261,6 +262,10 @@ bool LiteralExpression(const analysis::ValueProgram& graph, const analysis::Valu
       // evaluation/operand checks retain callee, arguments and throw order.
       std::holds_alternative<analysis::ValueConstruct>(op.operation) ||
       std::holds_alternative<analysis::ValueLexicalLoad>(op.operation) ||
+      // Name lookup already has a common GlobalNameExpr lowering. Nest only
+      // that lookup kind; the same use census, effect/catch interval and final
+      // scope checks retain getter throws and forbid repeated/escaped reads.
+      (global && global->lookup == analysis::GlobalLookup::kName && op.use_count == 0) ||
       std::holds_alternative<analysis::ValueNamedRead>(op.operation) ||
       std::holds_alternative<analysis::ValuePropertyRead>(op.operation) ||
       (std::holds_alternative<analysis::ValueModuleRead>(op.operation) &&
@@ -295,7 +300,8 @@ bool ReferenceReceiver(const analysis::ValueProgram& graph, analysis::UseId use,
 // creation may execute in native literal syntax only when every intervening
 // observable operation is an owned creation, definition, or single-use read
 // expression. Subtrees stay within their property interval and preserve
-// operand order. No global reads, catch snapshots or escaping allocations.
+// operand order. Name globals retain their actual read site and lexical
+// destination; var/object-global lookups, catch snapshots and escapes refuse.
 void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
     const std::vector<std::optional<analysis::OpId>>& owners, LiteralBudget& budget, Guards guards,
     const LiteralPath& path, const EvaluationPlan* evaluation,

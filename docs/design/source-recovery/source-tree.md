@@ -320,6 +320,13 @@ CaptureCells、source aliases 和完整 family writes。ConstructedFamily/Prepar
 TestAbilityPage 的配对 TS 模板插值在自定义 ToPrimitive 对象上与 ABC ADD2
 存在已观测差异，不能为模板风格改写已确定的默认提示加法语义。
 
+原生字面量的嵌套 RHS 可复用共同 GlobalNameExpr 接纳 kName 全局读取，
+保持每个读取及后续属性 getter 的实际求值点。完整初始化的单次消费、未暴露、
+效果顺序和异常处理器/捕获快照检查不变，kVar 仍不能伪装为名称读取。
+实际 WidgetCard 的 Flex.create({direction: FlexDirection.Column}) 因此走共同
+对象表达式及成员 Reference；全局/属性 getter 不能导致重新读取先前取得的
+callee/receiver。配对验证仅在独立测试执行选定回调，不是平台渲染证明。
+
 模块别名使用独立 `ModuleOwnerId`、`ModuleSymbol` 和 `TreeModuleAlias`，不复用
 函数 owner，也不把 ABC slot/pool ID 放入可执行 AST 操作数。作用域链为
 `module -> captures（可选）-> parameters -> body -> blocks`；模块别名属于

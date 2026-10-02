@@ -668,6 +668,10 @@ if(BUILD_TESTING)
   target_include_directories(literal_construct_test PRIVATE tests/support)
   target_link_libraries(literal_construct_test PRIVATE abcd_source)
   add_test(NAME literal_construct_test COMMAND literal_construct_test)
+  add_executable(literal_global_test tests/integration/literal_global.cc)
+  target_include_directories(literal_global_test PRIVATE tests/support)
+  target_link_libraries(literal_global_test PRIVATE abcd_source)
+  add_test(NAME literal_global_test COMMAND literal_global_test)
   add_executable(family_array_test tests/integration/family_array.cc)
   target_include_directories(family_array_test PRIVATE tests/support)
   target_link_libraries(family_array_test PRIVATE abcd_source abcd_json)
@@ -686,6 +690,9 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/literal_construct.mjs $<TARGET_FILE:literal_construct_test>)
     add_test(NAME literal_argument_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/literal_argument.mjs $<TARGET_FILE:literal_construct_test>)
+    add_test(NAME literal_global_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/literal_global.mjs
+      $<TARGET_FILE:literal_global_test> $<TARGET_FILE:phased_literal_test>)
   endif()
   add_executable(capture_plan_test tests/unit/source/capture_plan_test.cc)
   target_link_libraries(capture_plan_test PRIVATE abcd_source)
@@ -1075,6 +1082,13 @@ if(BUILD_TESTING)
       add_test(NAME class_root_captures_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/class_root_captures.mjs $<TARGET_FILE:abc_structure>
         ${ABCD_PAIRED_CORPUS_ROOT})
+    endif()
+    if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/modules.abc" AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/widgets.abc" AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/src/entry/src/main/ets/widget/pages/WidgetCard.ts")
+      add_test(NAME widget_global_literal_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/widget_global_literal.mjs $<TARGET_FILE:abc_structure>
+        ${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts)
     endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
       if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc" AND

@@ -733,3 +733,14 @@ released child tables. Printer passes the actual parent ExprId as syntax only;
 class-operation identity is stamped by layout construction, not inferred there.
 Project-local C++20 code, existing active-scope/standard sorting algorithms and
 licenses; no new dependency or whole-process performance/RSS claim.
+
+Literal-expression eligibility also admits ValueGlobalRead with kName and zero
+operands, using the existing GlobalNameExpr lowering and scope checks. kVar is
+not name syntax and remains refused. The eligibility test is O(1); it adds no
+index, graph walk, snapshot or new dependency. Existing linear reverse ownership
+propagation, canonical use census and laminar interval traversal still check
+single consumption, unobserved allocation, source operand/property effect order
+and all folded exceptional sites' dispatch/catch copies. Decoded 1202/1206/1301
+fixtures cover 200/201/402 fields, buffered/unbuffered objects and direct/member
+reads; measured verifier work at 402 remains below three times the 201 result.
+This is work-counter scaling evidence, not whole-process RSS or latency proof.
