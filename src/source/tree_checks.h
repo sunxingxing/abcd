@@ -40,6 +40,7 @@ class TreeScopeCheck {
   void Enter(ScopeId scope);
   void Leave(ScopeId scope);
   void Reference(SymbolId symbol, bool assignment = false);
+  void EnclosingReference(std::u16string_view name, const ModuleSymbol* module = nullptr);
   void Declare(SymbolId symbol, ScopeId scope, bool initializer);
   void CatchParameter(SymbolId symbol, ScopeId scope);
   void Finish();
@@ -54,6 +55,7 @@ class TreeScopeCheck {
   std::vector<std::optional<SymbolId>> previous_;
   std::vector<std::uint8_t> declared_;
   std::vector<std::uint8_t> entered_;
+  std::vector<std::optional<ModuleSymbol>> modules_;
 };
 
 // Canonical origin arenas own contiguous part ranges, referencing only earlier

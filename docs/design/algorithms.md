@@ -716,3 +716,20 @@ verification output/scratch. Post-default root binding uses the same indexed
 original-point resolver as discovery and checks fresh revisions/storage. This
 is project-local C++20/standard-library code with no dependency or writer, and
 does not claim whole-process RSS/latency or final scope/write publication.
+
+Class-root integration retains the owned rebased CaptureCells in the constructed
+family and independently rechecks original initialization, current aliases and
+all Language stores/descendant barriers in the shared FamilyWrites traversal.
+The final parent structure traversal resolves root captures with the existing
+active-spelling scope index, O(1) per qualified symbol. External reads in all
+prepared class-member descendants query that parent's sorted spelling index in
+O(log(S+1)) comparisons for S parent symbols; compared UTF-16 lengths are counted.
+Each child builds a symbol-indexed module-target table once, O(N+M) time/storage
+for N symbols and M module aliases. There is no per-read alias scan or per-member
+parent-tree replay. Beyond the existing parent checks this is O(C+N+M+E log(S+1))
+work, plus spelling units, for C root captures and E external expressions, with
+O(S+max(N)) additional scratch; budget charging remains conservative across
+released child tables. Printer passes the actual parent ExprId as syntax only;
+class-operation identity is stamped by layout construction, not inferred there.
+Project-local C++20 code, existing active-scope/standard sorting algorithms and
+licenses; no new dependency or whole-process performance/RSS claim.

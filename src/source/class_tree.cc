@@ -59,7 +59,7 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassLayout(
     const auto name = RuntimeName(index.methods[context.Position().value]);
     if (!name) return ClassTreeFailure{Error::kName};
     ClassTree tree;
-    tree.identity = identity; tree.creation = site; tree.callable = context.Callable();
+    tree.identity = identity; tree.creation = site; tree.operation = operation; tree.callable = context.Callable();
     admit(name->size() + 1, sizeof(char16_t)); step(name->size());
     tree.name.assign(name->begin(), name->end());
     admit(tree.name.capacity() - tree.name.size(), sizeof(char16_t));

@@ -30,8 +30,8 @@ using Error = TreePrintError;
 enum class ClassPrintForm { kExpression, kDerivedBody };
 std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassPart(
     const ClassTree&, std::ostream&, EmitBudget, analysis::SemanticBudget,
-    const GlobalScope*, std::size_t, ClassPrintForm);
-struct DerivedClassBody { std::shared_ptr<const ClassTree> definition; };
+    const GlobalScope*, std::size_t, ClassPrintForm, const ClassCaptureDestination* = nullptr);
+struct DerivedClassBody { std::shared_ptr<const ClassTree> definition; ExprId expression; };
 struct EndExpression { ExprId id; };
 struct Statement { StmtId id; std::size_t depth; };
 struct EndStatement { StmtId id; };
@@ -137,7 +137,7 @@ class TreePrinter {
     default_export_ = default_export;
     module_body_ = module || fields;
     static_fields_ = fields;
-    const auto checked = VerifyTreeStructure(Tree(), remaining_);
+    const auto checked = VerifyTreeStructure(Tree(), remaining_, scope_);
     if (const auto* error = std::get_if<TreeStructureError>(&checked)) {
       if (*error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
       if (*error == TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
@@ -220,7 +220,7 @@ class TreePrinter {
     Array(printed_, family_->members.size());
     for (std::size_t i = 0; i < family_->members.size(); ++i) {
       current_ = i; Step();
-      const auto checked = VerifyTreeStructure(Tree(), remaining_);
+      const auto checked = VerifyTreeStructure(Tree(), remaining_, scope_);
       const auto* structure = std::get_if<TreeStructure>(&checked);
       if (!structure) {
         switch (std::get<TreeStructureError>(checked)) {
@@ -638,26 +638,28 @@ class TreePrinter {
   }
   void Expression(EmptyArrayExpr) { Append("[]"); }
   void Expression(EmptyObjectExpr) { Append("({})"); }
-  void Expression(const ClassExpr& node) {
+  void Expression(const ClassExpr& node, ExprId expression) {
     // Only the already composed module root admits class definitions here.
-    // Member bodies use their own closed families; nested captures still need
-    // explicit composition. This keeps class/family printer nesting bounded.
+    // Member families own their external root evidence. The already checked
+    // parent syntax is passed explicitly, without recovering scope/CFG here.
+    // Classes inside descendant functions still need their own composition.
     if ((family_ && !ModuleBody()) || !node.definition || node.definition->identity != Tree().identity ||
         node.definition->creation.creator != Tree().method) throw Error::kUnsupportedContext;
     if (node.heritage) {
       if (!node.definition->BodiesPrepared() || node.definition->callable != CallableKind::kDerivedConstructor)
         throw Error::kUnsupportedContext;
       Append("({["); Quoted(node.definition->name); Append("]: class extends (");
-      Push(DerivedClassBody{node.definition}); Push(*node.heritage);
-    } else ClassPart(*node.definition, ClassPrintForm::kExpression);
+      Push(DerivedClassBody{node.definition, expression}); Push(*node.heritage);
+    } else ClassPart(*node.definition, ClassPrintForm::kExpression, expression);
   }
   void Run(const DerivedClassBody& body) {
     Append(")");
-    ClassPart(*body.definition, ClassPrintForm::kDerivedBody);
+    ClassPart(*body.definition, ClassPrintForm::kDerivedBody, body.expression);
     Append("})["); Quoted(body.definition->name); Append("]");
   }
-  void ClassPart(const ClassTree& definition, ClassPrintForm form) {
-    auto emitted = PrintClassPart(definition, output_, {limit_ - written_}, remaining_, scope_, depth_, form);
+  void ClassPart(const ClassTree& definition, ClassPrintForm form, ExprId expression) {
+    const ClassCaptureDestination parent{Tree(), expression};
+    auto emitted = PrintClassPart(definition, output_, {limit_ - written_}, remaining_, scope_, depth_, form, &parent);
     if (const auto* error = std::get_if<TreePrintError>(&emitted)) throw *error;
     if (const auto* failure = std::get_if<FamilyPrepareFailure>(&emitted)) {
       switch (FamilyRouteFailure(*failure).failure_class) {
@@ -843,7 +845,10 @@ class TreePrinter {
   void Run(ExprId id) {
     Result().expressions[id.value].begin = written_;
     Push(EndExpression{id});
-    std::visit([&](const auto& node) { Expression(node); }, Tree().expressions[id.value].expression);
+    std::visit([&](const auto& node) {
+      if constexpr (std::is_same_v<std::decay_t<decltype(node)>, ClassExpr>) Expression(node, id);
+      else Expression(node);
+    }, Tree().expressions[id.value].expression);
   }
   void Run(EndExpression end) { Result().expressions[end.id.value].end = written_; }
   void Run(Indent indent) {
@@ -1111,7 +1116,8 @@ namespace abcd::source {
 namespace {
 std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassPart(
     const ClassTree& tree, std::ostream& output, EmitBudget limit,
-    analysis::SemanticBudget budget, const GlobalScope* globals, std::size_t indent, ClassPrintForm form) {
+    analysis::SemanticBudget budget, const GlobalScope* globals, std::size_t indent, ClassPrintForm form,
+    const ClassCaptureDestination* parent) {
   using Failure = TreePrintError;
   const auto initial = budget;
   try {
@@ -1125,6 +1131,13 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
         tree.callable !=
         (form == ClassPrintForm::kExpression ? CallableKind::kBaseConstructor : CallableKind::kDerivedConstructor))
       return Failure::kUnsupportedContext;
+    if (!parent) {
+      if (tree.constructor->Family().root_capture) return Failure::kUnsupportedContext;
+      for (const auto& member : tree.members) if (member.Family().root_capture) return Failure::kUnsupportedContext;
+      for (const auto& site : tree.definitions)
+        for (const auto& member : site.bodies)
+          if (member && member->Family().root_capture) return Failure::kUnsupportedContext;
+    }
     PrintedClassTree result;
     auto count = tree.members.size() + 1;
     for (const auto& accessor : tree.definitions) {
@@ -1156,7 +1169,7 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
         }
       }
     };
-    const FamilyDestination destination{Strictness::kStrict, globals, FunctionFragment::kClassMember};
+    const FamilyDestination destination{Strictness::kStrict, globals, FunctionFragment::kClassMember, {}, nullptr, parent};
     const auto member = [&](const PreparedFamily& family) {
       auto printed = family.PrintDraft(destination, output, {limit.bytes - result.bytes}, budget, indent + 1);
       if (const auto* failure = std::get_if<FamilyPrepareFailure>(&printed)) throw *failure;

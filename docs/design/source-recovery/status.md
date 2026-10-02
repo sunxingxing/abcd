@@ -12,6 +12,61 @@
 
 ## 当前阶段
 
+### 2026-10-02：类根捕获贯通完整写入、实际父作用域与共同打印
+
+- ConstructedFamily/PreparedFamily拥有外部root_capture，区别于intra-family
+  incoming边，不保留creator/context/parent tree指针。完整FamilyWrites重新
+  核对实际原始创建点、初始化、父子revision与source aliases，保留所有
+  后代Language stores、barriers和模块初始化要求；不是immutable snapshot。
+- 最终父TreeStructure在实际ClassExpr活跃作用域解析每个prepared root的
+  qualified capture，并检查全族global/module/宿主辅助绑定的外层遮蔽。
+  复用active-symbol和sorted-spelling索引，child module targets一次索引，
+  不逐read扫描aliases或逐member重放父图；复杂度见algorithms.md。
+  共同printer传入实际ExprId/syntax，独立捕获类仍不能脱离父目的地打印。
+  construction-only capture view不能代替final enclosure；该回归旧路径
+  1/1 RED 1.03秒，final-destination-red-tests.log，收紧后3/3通过5.07秒，
+  final-destination-green-tests.log。
+- 实际decoded fixture三profile、prototype/static覆盖constructor、getter、
+  setter及class-buffer→真实后代转发。完整writes与目的地各自先RED，
+  root-writes-rebind-tests.log最终1/1通过1.25秒；最终父scope拒绝sibling
+  block的同名cell、stale revision及缺失外部目的地。独立native class oracle
+  96个共享可变cell、分离factory、receiver/property写入抛出后的状态及
+  函数/实例身份场景通过。没有伪造FunctionExpr或样本定制生产逻辑。
+- 相关84 targets构建退出0，related-build.log；167/167相关回归通过
+  357.95秒，related-tests.log。新配对测试注册后abc_structure和
+  class_accessor_tree_test构建退出0，final-destination-green-build.log；
+  上述3/3包含class_root_captures_source_test，独立读取配对TS，仅执行
+  三个新record的选定UI回调，共288个primitive参数/host效果受控场景。
+  不覆盖ViewPU构造、属性生命周期、完整渲染或实际应用平台行为。
+  最终目的地收紧后84 targets重新构建退出0，final-related-build.log；
+  168/168相关回归通过361.29秒，final-related-tests.log。未执行全库测试。
+- 五输入fresh build/stage-one/value-class-root-capture-pass-1均退出0；
+  62 complete / 4 incomplete / 40 failure / 46 no-module，新增完整
+  CommentBarView21042、CommentInputView22215、TestAbilityPage11277。
+  原59个完整项无回退或源码字节变化，无legacy，native default records
+  4466/20246/30597保留，final-batch.log / final-batch-summary.json。
+  三个新.mjs均Node --check退出0；source_complete仍不是整体配对验收。
+  最终目的地收紧后重新五输入value-class-root-capture-pass-2均退出0，
+  原62个完整项无回退或字节变化，final-destination-batch-summary.json；
+  三个新record的该版本再次Node --check退出0。
+- TestAbilityPage配对模板插值的自定义Symbol.toPrimitive对象收到string
+  hint，生成的ABC ADD2加法收到default hint。独立反例明确保留不等价；
+  不以primitive域通过代替整个语义域。固定运行时f04900cf的RuntimeAdd2
+  调用ToPrimitive无preference，js_tagged_value.h默认NO_PREFERENCE，
+  支持当前ABC加法语义；尚无实际Ark VM执行证据。不能为模板风格修改
+  已确定的ABC行为，阶段一整体语义/表示验收仍未完成。
+- fresh WidgetCard record564 / entry1118的真实defined method1419族在
+  member1（method728，creator1419，PC24）EvaluationPlan报告Unsupported。
+  LLDB进一步定位到LiteralPlan kLateValue：nested NamedRead op15的
+  输入来自allocation之后的GlobalRead op12，literal_plan.cc:752；
+  widget-location.log / widget-member.log / widget-literal-location.log。
+  没有视为可打印完整record，下一步沿共同literal表达式及独立顺序检查
+  处理该实际阻断，并继续其余40个failure/4个incomplete。
+  不放宽未暴露prefix的ModuleStore或未证明的NaN/SuperSpread语义要求。
+  Goal保持active；全库、扩大语料、RSS/基准、DFX、调度器、代理及定期
+  审视仍暂停。本节日志前缀/tmp/abcd-class-root-capture-*，另有
+  /tmp/abcd-class-root-writes-*及/tmp/abcd-class-root-enclosure-*。
+
 ### 2026-10-02：条件臂原生字面量贯通 phi 输入与成员调用
 
 - PhiExpressionProducer复用fresh LiteralPlan，同块kExpression对象/数组的

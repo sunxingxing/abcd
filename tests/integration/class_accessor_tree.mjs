@@ -74,3 +74,72 @@ for (const placement of ['prototype', 'static', 'retained', 'method-last', 'acce
   }
   assert.deepEqual(observe(create), observe(reference));
 }
+
+// This bytecode fixture captures one initialized outer cell in the constructor,
+// class-buffer method, its nested function, and repeated getter/setter roots.
+// The oracle is independent native syntax; the engine never reads it.
+const captured = spawnSync(tool, ['--capture-json'], {encoding: 'utf8', timeout: 60_000});
+assert.equal(captured.status, 0, captured.stderr);
+let captureScenarios = 0;
+for (const line of captured.stdout.trim().split('\n')) {
+  const {source, static: isStatic} = JSON.parse(line);
+  const create = vm.runInNewContext(`"use strict"; ${source}`);
+  const reference = () => {
+    let cell = 42;
+    const nested = () => ({nested: function () { cell = 99; return cell; }}).nested;
+    return isStatic ? class Accessors {
+      constructor() { return cell; }
+      shared() { return nested(); }
+      static get value() { return cell; }
+      static set value(value) { cell = value; this._value = value; }
+      static get value() { return cell; }
+      static set value(value) { cell = value; this._value = value; }
+    } : class Accessors {
+      constructor() { return cell; }
+      shared() { return nested(); }
+      get value() { return cell; }
+      set value(value) { cell = value; this._value = value; }
+      get value() { return cell; }
+      set value(value) { cell = value; this._value = value; }
+    };
+  };
+  function observe(factory, value, throwStore) {
+    const C = factory(), D = factory();
+    const home = isStatic ? C : C.prototype, other = isStatic ? D : D.prototype;
+    const getter = Object.getOwnPropertyDescriptor(home, 'value').get;
+    const setter = Object.getOwnPropertyDescriptor(home, 'value').set;
+    assert.equal(Reflect.apply(getter, null, []), 42);
+    assert.notEqual(C, D); assert.notEqual(new C(), new C());
+    const first = C.prototype.shared(), second = C.prototype.shared();
+    assert.notEqual(first, second);
+    assert.equal(first.name, 'nested'); assert.equal(first.length, 0);
+    assert.equal(first(), 99); assert.equal(Reflect.apply(getter, undefined, []), 99);
+    assert.equal(isStatic ? D.value : new D().value, 42);
+    const events = [], sentinel = {};
+    const receiver = new Proxy({}, {set(target, key, input, actual) {
+      assert.equal(actual, receiver); assert.equal(key, '_value'); assert.equal(input, value);
+      assert.equal(Reflect.apply(getter, {}, []), value);
+      events.push('store after cell write');
+      if (throwStore) throw sentinel;
+      return Reflect.set(target, key, input);
+    }});
+    if (throwStore) assert.throws(() => Reflect.apply(setter, receiver, [value]), e => e === sentinel);
+    else assert.equal(Reflect.apply(setter, receiver, [value]), undefined);
+    assert.equal(Reflect.apply(getter, receiver, []), value);
+    assert.equal(isStatic ? D.value : new D().value, 42);
+    // Failure after the lexical store must leave that same cell changed.
+    assert.throws(() => Reflect.apply(setter, Object.freeze({}), [value]), e => e.name === 'TypeError');
+    assert.equal(Reflect.apply(getter, {}, []), value);
+    assert.equal(second(), 99); assert.equal(Reflect.apply(getter, {}, []), 99);
+    assert.equal(Object.getOwnPropertyDescriptor(other, 'value').get.call(null), 42);
+    return {events, name: C.name, getterName: getter.name, setterName: setter.name,
+      sharedName: C.prototype.shared.name, keys: Reflect.ownKeys(home)};
+  }
+  for (const value of [undefined, null, false, 0, NaN, 'text', {}, Symbol('cell')]) {
+    for (const throwStore of [false, true]) {
+      assert.deepEqual(observe(create, value, throwStore), observe(reference, value, throwStore));
+      ++captureScenarios;
+    }
+  }
+}
+console.log(`class capture scenarios: ${captureScenarios}`);

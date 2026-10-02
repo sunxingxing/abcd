@@ -16,7 +16,11 @@ struct FamilyDestination {
   FunctionFragment fragment = FunctionFragment::kFunctionExpression;
   // Caller-reserved syntax namespace. FamilyId remains an occurrence index.
   FunctionOwnerId first_owner{};
+  // Construction only; it cannot replace a final checked printing destination.
   const ClassCaptureParent* captures = nullptr;
+  // Final enclosing structure must have checked this ClassExpr and its actual
+  // member roots; this borrowed view never survives synchronous printing.
+  const ClassCaptureDestination* enclosure = nullptr;
 };
 enum class FamilyPrepareError : std::uint8_t {
   kStrictness, kCallable, kModules, kAbi, kFileChanged, kResourceLimit, kWorkLimit,

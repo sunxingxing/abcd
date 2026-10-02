@@ -33,7 +33,7 @@ class EnclosureCheck {
     for (std::size_t i = 0; i < count; ++i) {
       member_ = FamilyId{static_cast<std::uint32_t>(i)}; Step();
       const auto& tree = family_.members[i].tree;
-      auto checked = VerifyTreeStructure(tree, left_);
+      auto checked = VerifyTreeStructure(tree, left_, extent_ == EnclosureExtent::kDestination ? scope_ : nullptr);
       if (const auto* error = std::get_if<TreeStructureError>(&checked)) {
         switch (*error) {
           case TreeStructureError::kResourceLimit: Fail(Error::kResourceLimit);

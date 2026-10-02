@@ -215,6 +215,8 @@ class FamilyTrees {
     }
     auto result = Take<ConstructedFamily, FamilyError>(BuildFunctionFamily(std::move(trees), family.Owner(FileFamily::kRoot), left_));
     Account(result);
+    result.root_capture = std::move(family.root_capture);
+    family.root_capture.reset();
     const auto enclosure = VerifyFamilyEnclosure(result, left_);
     if (const auto* failure = std::get_if<FamilyEnclosureFailure>(&enclosure)) {
       member_ = failure->member; Fail(*failure);
@@ -225,7 +227,10 @@ class FamilyTrees {
       result.work = initial_.work - left_.work;
       return result;
     }
-    const auto writes = VerifyFamilyWrites(index_, family, result, left_, lookup_);
+    std::optional<ClassRootWriteInput> root_writes;
+    if (result.root_capture) root_writes.emplace(ClassRootWriteInput{
+        file_, header_, *lookup_, external->creator, *root, external->source});
+    const auto writes = VerifyFamilyWrites(index_, family, result, left_, lookup_, root_writes ? &*root_writes : nullptr);
     if (const auto* failure = std::get_if<FamilyWriteFailure>(&writes)) {
       member_ = failure->member; Fail(*failure);
     }

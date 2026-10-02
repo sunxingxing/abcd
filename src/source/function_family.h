@@ -39,6 +39,9 @@ struct ConstructedFamily {
   std::size_t allocated_bytes = 0; // Additional retained layout, not input members.
   std::uint64_t work = 0;
   std::optional<FamilyWriteFacts> writes;
+  // Owned external class-root cell evidence, separate from intra-family edges.
+  // The actual enclosing syntax is borrowed anew at each embedding.
+  std::optional<CaptureCells> root_capture;
 };
 enum class FamilyError : std::uint8_t {
   kRoot, kOwner, kMissingChild, kMultipleParents, kCycle, kCapture,

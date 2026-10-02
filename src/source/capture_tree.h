@@ -9,8 +9,8 @@ class FunctionContext;
 // Borrowed, unchanged products of the common structure/flow/operand checks.
 // Revisions are necessary, not a substitute for those checks. In particular
 // ordinary FunctionExpr structure proves visibility at the creation site.
-// A class layout alone does not: class-root aliases remain conditional until
-// enclosing ClassExpr scope references and family write checks are connected.
+// A class layout alone does not: final enclosing ClassExpr structure checks
+// must resolve the composed roots' captures, and family writes stay independent.
 struct CaptureTree {
   const FunctionTree& tree;
   const TreeFlow& flow;
@@ -26,6 +26,14 @@ struct ClassCaptureParent {
   CaptureTree tree;
   analysis::OpId creation;
 };
+// Borrow the unchanged final parent whose structure traversal checked the
+// composed ClassExpr's lexical references. Revisions/names/occurrence are
+// rechecked per root; visibility is checked once in the parent traversal,
+// never by replaying the whole parent for each member. No printer CFG inference.
+struct ClassCaptureDestination {
+  const FunctionTree& tree;
+  ExprId expression;
+};
 enum class CaptureTreeError : std::uint8_t {
   kOwner, kRevision, kCreation, kCoverage, kCell, kTarget, kName,
   kOuterCapture, kWorkLimit, kResourceLimit
@@ -40,6 +48,9 @@ struct IncomingCaptureTree {
 [[nodiscard]] std::variant<std::uint64_t, CaptureTreeError> VerifyClassCaptureAnchor(
     const CaptureCells& cells, CaptureTree parent, const ClassCaptureAnchor& anchor,
     analysis::SemanticBudget budget = {});
+[[nodiscard]] std::variant<std::uint64_t, CaptureTreeError> VerifyClassCaptureDestination(
+    const CaptureCells&, const FunctionTree& child, ClassCaptureDestination,
+    const FunctionContext& owner, analysis::SemanticBudget budget = {});
 // Connects a previously verified CaptureCells proof to actual parent/child
 // syntax. No tree reconstruction or symbol-number agreement is assumed.
 // O(captures + compared UTF-16 units), constant scratch. Caller admits both

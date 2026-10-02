@@ -15,8 +15,9 @@ using Inputs = std::variant<const FileFamily*, std::span<const FamilyWriteInput>
 class WriteCheck {
  public:
   WriteCheck(const abc::MetadataIndex& index, Inputs inputs,
-      const ConstructedFamily& trees, analysis::SemanticBudget budget, const abc::MethodLookup* lookup = nullptr)
-      : index_(index), inputs_(inputs), trees_(trees), initial_(budget), left_(budget), lookup_(lookup) {}
+      const ConstructedFamily& trees, analysis::SemanticBudget budget, const abc::MethodLookup* lookup = nullptr,
+      const ClassRootWriteInput* external = nullptr)
+      : index_(index), inputs_(inputs), trees_(trees), initial_(budget), left_(budget), lookup_(lookup), external_(external) {}
   FamilyWrites Run() {
     Admit(1, sizeof(WriteCheck));
     const auto count = std::visit([](auto input) -> std::size_t {
@@ -50,6 +51,32 @@ class WriteCheck {
     member_ = FileFamily::kRoot; pc_.reset();
     const auto root = Member(0);
     Require(!root.incoming && !trees_.members[0].incoming && !trees_.parents[0], Error::kCapture);
+    if (trees_.root_capture) {
+      Require(external_ && std::holds_alternative<const FileFamily*>(inputs_), Error::kCapture);
+      const auto& cells = *trees_.root_capture;
+      const auto checked = VerifyClassRootCaptureCells(external_->file, external_->header, index_, external_->lookup,
+          external_->creator, Child(root), external_->owner, cells, left_);
+      if (const auto* error = std::get_if<CaptureCellError>(&checked))
+        Fail(*error == CaptureCellError::kResourceLimit ? Error::kResourceLimit :
+            *error == CaptureCellError::kWorkLimit ? Error::kWorkLimit : Error::kCapture);
+      Step(std::get<std::uint64_t>(checked));
+      const auto* file_family = std::get<const FileFamily*>(inputs_);
+      if (file_family->root_capture) {
+        const auto original = VerifyClassRootCaptureCells(external_->file, external_->header, index_, external_->lookup,
+            external_->creator, Child(root), external_->owner, *file_family->root_capture, left_);
+        if (const auto* error = std::get_if<CaptureCellError>(&original))
+          Fail(*error == CaptureCellError::kResourceLimit ? Error::kResourceLimit :
+              *error == CaptureCellError::kWorkLimit ? Error::kWorkLimit : Error::kCapture);
+        Step(std::get<std::uint64_t>(original));
+      }
+      const ClassCaptureAnchor anchor{external_->parent.creation, external_->owner};
+      const auto aliases = VerifyCaptureTree(cells, external_->parent.tree,
+          {trees_.members[0].tree, trees_.members[0].flow}, left_, &anchor);
+      if (const auto* error = std::get_if<CaptureTreeError>(&aliases))
+        Fail(*error == CaptureTreeError::kResourceLimit ? Error::kResourceLimit :
+            *error == CaptureTreeError::kWorkLimit ? Error::kWorkLimit : Error::kCapture);
+      Step(std::get<std::uint64_t>(aliases));
+    }
     std::visit([&](auto input) { ClosedRoot(input); }, root.function);
     Array(barriers_, sites); Array(signature_, sites);
     for (std::size_t i = 0; i < count; ++i) {
@@ -222,7 +249,7 @@ class WriteCheck {
     Require(source.locals.writes == analysis::ClosureWrites::kLanguage, Error::kDomain);
   }
   void ClosedRoot(CaptureFunction source) {
-    Require(CaptureChild(source).Input().Captures().empty(), Error::kCapture);
+    Require(trees_.root_capture || CaptureChild(source).Input().Captures().empty(), Error::kCapture);
     if (const auto* family = std::get_if<const FileFamily*>(&inputs_); family && (*family)->root_modules) {
       const auto& parent = *(*family)->root_modules;
       const auto check = VerifyInitializedModuleReads(parent.parent, parent.creation, source.input, left_);
@@ -232,9 +259,9 @@ class WriteCheck {
     } else Require(source.input.InitializedModuleReads().empty() && !source.input.HasInheritedModules(), Error::kOwner);
   }
   void ClosedRoot(PhasedFamilyInput source) {
-    if (source.storage) Require(source.storage->uses.empty(), Error::kCapture);
+    if (source.storage) Require(trees_.root_capture || source.storage->uses.empty(), Error::kCapture);
     for (const auto& binding : source.function.TreeInput(source.body).input.environments.bindings) {
-      Step(); Require(!std::holds_alternative<analysis::CapturedDepth>(binding.binding.environment), Error::kCapture);
+      Step(); Require(trees_.root_capture || !std::holds_alternative<analysis::CapturedDepth>(binding.binding.environment), Error::kCapture);
     }
   }
   CaptureChild Child(const FamilyWriteInput& source) const {
@@ -333,6 +360,7 @@ class WriteCheck {
   const ConstructedFamily& trees_;
   analysis::SemanticBudget initial_, left_;
   const abc::MethodLookup* lookup_;
+  const ClassRootWriteInput* external_;
   FamilyId member_{0};
   std::optional<abc::CodeOffset> pc_;
   FamilyWriteFacts facts_;
@@ -343,10 +371,11 @@ class WriteCheck {
 }  // namespace
 std::variant<FamilyWrites, FamilyWriteFailure> VerifyFamilyWrites(
     const abc::MetadataIndex& index, const FileFamily& inputs,
-    const ConstructedFamily& trees, analysis::SemanticBudget budget, const abc::MethodLookup* lookup) {
+    const ConstructedFamily& trees, analysis::SemanticBudget budget, const abc::MethodLookup* lookup,
+    const ClassRootWriteInput* external) {
   try {
-    if (inputs.root_capture) return FamilyWriteFailure{Error::kCapture, FileFamily::kRoot, {}};
-    return WriteCheck(index, &inputs, trees, budget, lookup).Run();
+    if (inputs.root_capture && !trees.root_capture) return FamilyWriteFailure{Error::kCapture, FileFamily::kRoot, {}};
+    return WriteCheck(index, &inputs, trees, budget, lookup, external).Run();
   } catch (const FamilyWriteFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return FamilyWriteFailure{Error::kResourceLimit, {0}, {}};
   } catch (const std::length_error&) { return FamilyWriteFailure{Error::kResourceLimit, {0}, {}}; }

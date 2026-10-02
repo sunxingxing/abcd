@@ -39,6 +39,7 @@ TreeScopeCheck::TreeScopeCheck(const FunctionTree& tree, TreeCheckBudget& budget
   budget.Array(previous_, count);
   budget.Array(declared_, count);
   budget.Array(entered_, tree.scopes.size());
+  budget.Array(modules_, count);
   if (tree.self) {
     RequireTree(tree.self->value < count &&
         (AllowsNamedSelf(tree.callable) || IsArrowCallable(tree.callable)) &&
@@ -143,6 +144,7 @@ TreeScopeCheck::TreeScopeCheck(const FunctionTree& tree, TreeCheckBudget& budget
       default: throw Error::kBinding;
     }
     if (!alias.local) declared_[alias.symbol.value] = 1;
+    modules_[alias.symbol.value] = alias.target;
     targets[i] = alias.target;
   }
   std::sort(targets.begin(), targets.end(), [&](auto a, auto b) { budget.Step(); return a < b; });
@@ -196,6 +198,21 @@ void TreeScopeCheck::Declare(SymbolId symbol, ScopeId scope, bool initializer) {
               !declared_[symbol.value], Error::kBinding);
   RequireTree(tree_.symbols[symbol.value].declaration != DeclarationKind::kConst || initializer, Error::kBinding);
   declared_[symbol.value] = 1;
+}
+void TreeScopeCheck::EnclosingReference(std::u16string_view name, const ModuleSymbol* module) {
+  // The parent traversal already activated the exact creation scope. Binary
+  // search the shared spelling index, never walk ancestors per child read.
+  const auto found = std::lower_bound(ordered_.begin(), ordered_.end(), name, [&](SymbolId id, auto wanted) {
+    const auto& actual = tree_.names[tree_.symbols[id.value].name.value];
+    budget_.Step(std::min(actual.size(), wanted.size()) + 1); return actual < wanted;
+  });
+  if (found == ordered_.end()) return;
+  const auto& actual = tree_.names[tree_.symbols[found->value].name.value];
+  budget_.Step(std::min(actual.size(), name.size()) + 1);
+  if (actual != name) return;
+  const auto active = active_[groups_[found->value]];
+  RequireTree(!active || (module && modules_[active->value] && *modules_[active->value] == *module),
+      TreeStructureError::kBinding);
 }
 void TreeScopeCheck::CatchParameter(SymbolId symbol, ScopeId scope) {
   RequireTree(symbol.value < tree_.symbols.size(), Error::kRange);

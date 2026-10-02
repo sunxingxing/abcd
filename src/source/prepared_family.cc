@@ -239,10 +239,22 @@ std::variant<FamilyEnclosure, FamilyPrepareFailure> PreparedFamily::CheckDestina
     return FamilyPrepareFailure{Error::kStrictness};
   const auto expected = storage_->context.ClassContext() ? FunctionFragment::kClassMember : FunctionFragment::kFunctionExpression;
   if (destination.fragment != expected) return FamilyPrepareFailure{Error::kPlacement};
+  std::uint64_t capture_work = 0;
+  if (storage_->family.root_capture) {
+    if (!destination.enclosure) return FamilyPrepareFailure{Error::kPlacement};
+    const auto checked = VerifyClassCaptureDestination(*storage_->family.root_capture,
+        storage_->family.members[storage_->family.root.value].tree, *destination.enclosure, storage_->context, budget);
+    if (const auto* error = std::get_if<CaptureTreeError>(&checked))
+      return FamilyPrepareFailure{*error == CaptureTreeError::kResourceLimit ? Error::kResourceLimit :
+          *error == CaptureTreeError::kWorkLimit ? Error::kWorkLimit : Error::kPlacement};
+    capture_work = std::get<std::uint64_t>(checked); budget.work -= capture_work;
+  }
   auto result = VerifyFamilyDestination(storage_->family, destination.globals, budget);
   if (const auto* failure = std::get_if<FamilyEnclosureFailure>(&result))
     return FamilyPrepareFailure{*failure};
-  return std::get<FamilyEnclosure>(std::move(result));
+  auto enclosure = std::get<FamilyEnclosure>(std::move(result));
+  enclosure.work += capture_work;
+  return enclosure;
 }
 std::variant<PrintedFamilyDraft, FamilyPrepareFailure, TreePrintError> PreparedFamily::PrintDraft(
     FamilyDestination destination, std::ostream& output,

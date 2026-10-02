@@ -4,6 +4,7 @@
 #include "abcd/source/source_tree.h"
 
 namespace abcd::source {
+struct GlobalScope;
 enum class TreeStructureError : std::uint8_t {
   kRange, kOwnership, kScope, kBinding, kName, kTarget, kOrigin,
   kUnsupportedSyntax, kResourceLimit, kWorkLimit
@@ -25,6 +26,6 @@ struct TreeStructure {
 // TDZ/initialization, effects, CFG edges and ABI facts need semantic validation.
 [[nodiscard]] std::variant<TreeStructure, TreeStructureError>
 VerifyTreeStructure(const FunctionTree& tree,
-                    analysis::SemanticBudget budget = {});
+                    analysis::SemanticBudget budget = {}, const GlobalScope* destination = nullptr);
 }  // namespace abcd::source
 #endif

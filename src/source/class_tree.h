@@ -23,6 +23,7 @@ struct ClassDefinitionTree {
 struct ClassTree {
   RouteInputIdentity identity;
   ClassConstructorSite creation;
+  analysis::OpId operation{}; // Actual creation in the unchanged owner graph.
   std::u16string name;
   // Constructor context and literal occurrences are resolved before the parent
   // AST. Body preparation fills this same construction-owned object only while

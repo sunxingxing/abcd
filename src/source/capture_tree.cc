@@ -77,33 +77,32 @@ std::variant<std::uint64_t, CaptureTreeError> VerifyCaptureTree(
     return budget.work - work;
   } catch (Error error) { return error; }
 }
-std::variant<std::uint64_t, CaptureTreeError> VerifyClassCaptureAnchor(
-    const CaptureCells& cells, CaptureTree parent, const ClassCaptureAnchor& anchor,
+static std::variant<std::uint64_t, CaptureTreeError> CheckClassSyntax(
+    const CaptureCells& cells, ClassCaptureDestination parent, const FunctionContext& owner,
     analysis::SemanticBudget budget) {
   try {
     auto work = budget.work;
     const auto step = [&](std::uint64_t count = 1) { Require(count <= work, Error::kWorkLimit); work -= count; };
     step();
-    const auto& owner = anchor.owner;
     Require(owner.ClassContext() && owner.Identity() == cells.identity && owner.Target() == cells.child &&
         parent.tree.identity == cells.identity && parent.tree.method == cells.parent, Error::kOwner);
-    Revision(parent, cells.parent_revision, cells.parent_cfg);
-    Require(anchor.creation.value < parent.flow.expressions.size() && parent.flow.expressions[anchor.creation.value], Error::kCreation);
-    const auto expression = *parent.flow.expressions[anchor.creation.value];
+    Require(parent.tree.value_revision == cells.parent_revision && parent.tree.cfg_revision == cells.parent_cfg, Error::kRevision);
+    const auto expression = parent.expression;
     Require(expression.value < parent.tree.expressions.size(), Error::kCreation);
     const auto* syntax = std::get_if<ClassExpr>(&parent.tree.expressions[expression.value].expression);
     Require(syntax && syntax->definition, Error::kCreation);
     const auto& layout = *syntax->definition;
+    const auto creation = layout.operation;
     Require(layout.identity == cells.identity && layout.creation.creator == cells.parent, Error::kOwner);
     if (const auto* constructor = owner.ConstructorSite()) {
-      Require(!owner.ClassContext()->Occurrence() && cells.creation == anchor.creation &&
+      Require(!owner.ClassContext()->Occurrence() && cells.creation == creation &&
           cells.input.pc == constructor->pc && cells.input.target == owner.Position() &&
           layout.creation.target == constructor->target && layout.creation.creator == constructor->creator &&
           layout.creation.pc == constructor->pc && layout.creation.creation == constructor->creation, Error::kCreation);
     } else if (const auto* member = owner.ClassSite()) {
       const auto occurrence = owner.ClassContext()->Occurrence();
       Require(occurrence && member->property < layout.member_sites.size() && layout.member_sites[member->property] == *occurrence &&
-          cells.creation == anchor.creation && cells.input.pc == member->pc && cells.input.target == owner.Position() &&
+          cells.creation == creation && cells.input.pc == member->pc && cells.input.target == owner.Position() &&
           layout.creation.creator == member->creator && layout.creation.pc == member->pc &&
           layout.creation.creation == member->creation, Error::kCreation);
     } else {
@@ -114,8 +113,48 @@ std::variant<std::uint64_t, CaptureTreeError> VerifyClassCaptureAnchor(
       const auto found = std::lower_bound(layout.definitions.begin(), layout.definitions.end(), defined->definition,
           [](const auto& definition, auto wanted) { return definition.site.definition < wanted; });
       Require(found != layout.definitions.end() && found->site.definition == defined->definition &&
-          found->site.creation == anchor.creation && found->site.Method(defined->kind) == cells.creation &&
+          found->site.creation == creation && found->site.Method(defined->kind) == cells.creation &&
           defined->placement == (found->site.prototype ? abc::ClassPlacement::kPrototype : abc::ClassPlacement::kStatic), Error::kCreation);
+    }
+    return budget.work - work;
+  } catch (Error error) { return error; }
+}
+std::variant<std::uint64_t, CaptureTreeError> VerifyClassCaptureAnchor(
+    const CaptureCells& cells, CaptureTree parent, const ClassCaptureAnchor& anchor,
+    analysis::SemanticBudget budget) {
+  try {
+    Revision(parent, cells.parent_revision, cells.parent_cfg);
+    Require(anchor.creation.value < parent.flow.expressions.size() && parent.flow.expressions[anchor.creation.value], Error::kCreation);
+    const auto expression = *parent.flow.expressions[anchor.creation.value];
+    Require(expression.value < parent.tree.expressions.size(), Error::kCreation);
+    const auto* syntax = std::get_if<ClassExpr>(&parent.tree.expressions[expression.value].expression);
+    Require(syntax && syntax->definition && syntax->definition->operation == anchor.creation, Error::kCreation);
+    return CheckClassSyntax(cells, {parent.tree, expression}, anchor.owner, budget);
+  } catch (Error error) { return error; }
+}
+std::variant<std::uint64_t, CaptureTreeError> VerifyClassCaptureDestination(
+    const CaptureCells& cells, const FunctionTree& child, ClassCaptureDestination parent,
+    const FunctionContext& owner, analysis::SemanticBudget budget) {
+  try {
+    const auto anchor = CheckClassSyntax(cells, parent, owner, budget);
+    if (const auto* error = std::get_if<Error>(&anchor)) return *error;
+    auto work = budget.work - std::get<std::uint64_t>(anchor);
+    const auto step = [&](std::uint64_t count = 1) { Require(count <= work, Error::kWorkLimit); work -= count; };
+    Require(child.identity == cells.identity && child.method == cells.child && child.owner != parent.tree.owner &&
+        child.callable == owner.Callable(), Error::kOwner);
+    Require(child.value_revision == cells.child_revision && child.cfg_revision == cells.child_cfg, Error::kRevision);
+    Require(child.captures.size() == cells.targets.size(), Error::kCoverage);
+    for (const auto& alias : child.captures) {
+      step();
+      Require(alias.target.owner == parent.tree.owner && alias.target.symbol.value < parent.tree.symbols.size() &&
+          alias.symbol.value < child.symbols.size(), Error::kTarget);
+      const auto& source = parent.tree.symbols[alias.target.symbol.value];
+      const auto& target = child.symbols[alias.symbol.value];
+      Require((source.kind == BindingKind::kLocal || source.kind == BindingKind::kCapture) &&
+          target.kind == BindingKind::kCapture, Error::kCell);
+      Require(source.name.value < parent.tree.names.size() && target.name.value < child.names.size(), Error::kName);
+      const auto& name = parent.tree.names[source.name.value];
+      step(name.size()); Require(name == child.names[target.name.value], Error::kName);
     }
     return budget.work - work;
   } catch (Error error) { return error; }

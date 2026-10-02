@@ -307,6 +307,19 @@ register_uses/accumulator_used 扫描生成一组 VM let。
 独立 `VerifiedFunction` 发布与 printer 显式拒绝未闭合捕获或子函数的树；printer
 在写入前拒绝创建节点。不能把条件父/子树检查通过视为完整闭包源码已经贯通。
 
+类根使用真实 ClassExpr 锚点，constructor、buffer 与 defined member 共用
+CaptureCells、source aliases 和完整 family writes。ConstructedFamily/PreparedFamily
+拥有 root_capture，区别于 intra-family incoming 边；不保留父 tree/context 指针。
+写入检查重新核对实际创建点初始化、父子 revisions、别名对应及全部后代原始写入，
+保留模块初始化检查；它不授权 immutable snapshot。最终父树在 ClassExpr 的
+活跃作用域解析每个实际 root capture，并检查后代 global/module/宿主辅助绑定
+是否被外层词法声明遮蔽。未准备的 layout 仍不是完整正文。
+共同 printer 传入实际 ExprId/parent syntax 到 PreparedFamily 的目的地检查，
+不推断 CFG/cell，也不在每个 member 重放整个父图。缺失外部目的地的捕获类
+不能经独立 PrintClassTree 输出；完整 record 仍需父级语义、写入和模块闭合。
+TestAbilityPage 的配对 TS 模板插值在自定义 ToPrimitive 对象上与 ABC ADD2
+存在已观测差异，不能为模板风格改写已确定的默认提示加法语义。
+
 模块别名使用独立 `ModuleOwnerId`、`ModuleSymbol` 和 `TreeModuleAlias`，不复用
 函数 owner，也不把 ABC slot/pool ID 放入可执行 AST 操作数。作用域链为
 `module -> captures（可选）-> parameters -> body -> blocks`；模块别名属于

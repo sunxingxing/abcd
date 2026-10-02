@@ -10,6 +10,7 @@
 #include <type_traits>
 
 #include "tree_checks.h"
+#include "class_tree.h"
 #include "abcd/source/global_reference.h"
 #include "abcd/source/scalar_expression.h"
 
@@ -59,8 +60,9 @@ void CheckCallable(const FunctionTree& tree) {
 
 class StructureCheck {
  public:
-  StructureCheck(const FunctionTree& tree, TreeCheckBudget& budget, std::vector<ScopeId>& expression_scopes)
-      : tree_(tree), budget_(budget), scopes_(tree, budget), expression_scopes_(expression_scopes) {
+  StructureCheck(const FunctionTree& tree, TreeCheckBudget& budget, std::vector<ScopeId>& expression_scopes,
+      const GlobalScope* destination)
+      : tree_(tree), budget_(budget), scopes_(tree, budget), expression_scopes_(expression_scopes), destination_(destination) {
     budget.Array(expression_scopes_, tree.expressions.size());
     budget.Array(expressions_, tree.expressions.size());
     budget.Array(statements_, tree.statements.size());
@@ -258,6 +260,7 @@ class StructureCheck {
             Error::kBinding);
       } else if constexpr (std::is_same_v<T, ClassExpr>) {
         RequireTree(expression.definition != nullptr, Error::kOwnership);
+        ClassCaptures(*expression.definition);
       } else if constexpr (std::is_same_v<T, FunctionExpr>) {
         RequireTree(expression.child != tree_.owner && next_function_ < functions_.size(), Error::kOwnership);
         functions_[next_function_++] = expression.child;
@@ -516,10 +519,66 @@ class StructureCheck {
     return tree_.arguments[slot];
   }
 
+  void ClassCaptures(const ClassTree& definition) {
+    const auto family = [&](const PreparedFamily& prepared) {
+      const auto& built = prepared.Family();
+      RequireTree(built.root.value < built.members.size(), Error::kOwnership);
+      const auto& root = built.members[built.root.value].tree;
+      for (const auto& alias : root.captures) {
+        budget_.Step(); RequireTree(alias.target.owner == tree_.owner, Error::kBinding);
+        scopes_.Reference(alias.target.symbol);
+      }
+      // A prepared member's internal enclosure is closed; this checks only
+      // its actual outer lexical destination, including TDZ name shadowing.
+      for (const auto& member : built.members) {
+        const auto& child = member.tree;
+        std::vector<std::optional<ModuleSymbol>> modules;
+        if (!child.modules.empty()) {
+          budget_.Array(modules, child.symbols.size());
+          for (const auto& alias : child.modules) {
+            budget_.Step(); RequireTree(alias.symbol.value < modules.size() && !modules[alias.symbol.value], Error::kBinding);
+            modules[alias.symbol.value] = alias.target;
+          }
+        }
+        for (const auto& node : child.expressions) {
+          budget_.Step();
+          if (const auto* global = std::get_if<GlobalNameExpr>(&node.expression)) {
+            RequireTree(global->name.value < child.names.size(), Error::kRange);
+            scopes_.EnclosingReference(child.names[global->name.value]);
+          } else if (const auto* reference = std::get_if<SymbolExpr>(&node.expression)) {
+            RequireTree(reference->symbol.value < child.symbols.size(), Error::kRange);
+            const auto& symbol = child.symbols[reference->symbol.value];
+            if (symbol.kind != BindingKind::kModule) continue;
+            RequireTree(symbol.name.value < child.names.size(), Error::kRange);
+            // Module identity is checked by the prepared destination; lexical
+            // aliases refer to the same record binding in the enclosing tree.
+            RequireTree(reference->symbol.value < modules.size() && modules[reference->symbol.value], Error::kBinding);
+            scopes_.EnclosingReference(child.names[symbol.name.value], &*modules[reference->symbol.value]);
+          } else if (destination_) {
+            if (std::holds_alternative<RealmObjectExpr>(node.expression)) {
+              const auto binding = ResolveRealmBinding(child.identity.contract, destination_);
+              RequireTree(binding.has_value(), Error::kBinding); scopes_.EnclosingReference(binding->name);
+            } else if (std::holds_alternative<SymbolConstructorExpr>(node.expression)) {
+              const auto binding = ResolveSymbolBinding(destination_);
+              RequireTree(binding.has_value(), Error::kBinding); scopes_.EnclosingReference(*binding);
+            } else if (std::holds_alternative<ArgumentSnapshotExpr>(node.expression)) {
+              const auto binding = ResolveArgumentSnapshotBinding(destination_);
+              RequireTree(binding.has_value(), Error::kBinding); scopes_.EnclosingReference(*binding);
+            }
+          }
+        }
+      }
+    };
+    if (definition.constructor) family(*definition.constructor);
+    for (const auto& member : definition.members) family(member);
+    for (const auto& site : definition.definitions)
+      for (const auto& member : site.bodies) if (member) family(*member);
+  }
   const FunctionTree& tree_;
   TreeCheckBudget& budget_;
   TreeScopeCheck scopes_;
   std::vector<ScopeId>& expression_scopes_;
+  const GlobalScope* destination_;
   std::vector<std::uint8_t> expressions_;
   std::vector<std::uint8_t> statements_;
   std::vector<std::uint8_t> children_;
@@ -534,7 +593,7 @@ class StructureCheck {
 }  // namespace
 
 std::variant<TreeStructure, TreeStructureError> VerifyTreeStructure(
-    const FunctionTree& tree, analysis::SemanticBudget budget) {
+    const FunctionTree& tree, analysis::SemanticBudget budget, const GlobalScope* destination) {
   try {
     const auto measured = MeasureTreeStorage(tree, budget);
     if (const auto* error = std::get_if<TreeStorageError>(&measured))
@@ -558,7 +617,7 @@ std::variant<TreeStructure, TreeStructureError> VerifyTreeStructure(
     }
     checked.Admit(1, sizeof(TreeStructure));
     TreeStructure result{tree.value_revision, tree.cfg_revision};
-    result.maximum_depth = StructureCheck(tree, checked, result.expression_scopes).Run();
+    result.maximum_depth = StructureCheck(tree, checked, result.expression_scopes, destination).Run();
     CheckTreeOrigins(tree, checked);
     result.allocated_bytes = checked.Bytes(); result.work = checked.Work();
     return result;

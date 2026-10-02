@@ -49,17 +49,28 @@ struct FamilyWriteInput {
   std::span<const FamilyClassObligation> classes;
   std::span<const FamilyArray> arrays;
 };
+struct ClassRootWriteInput {
+  const corpus::AbcFile& file;
+  const abc::Header& header;
+  const abc::MethodLookup& lookup;
+  const FileFunction& creator;
+  const FunctionContext& owner;
+  ClassCaptureParent parent;
+};
 // Requires unchanged, complete file-family inputs and freshly verified semantic
 // trees/default signatures/flows/capture layout. Rechecks every original store's
 // Language domain and residual placement, every capture edge and every barrier.
 // A closed root plus initialized rebasing and all Language stores closes the
 // transitive write-domain premise by execution induction, NOT immutability.
 // A class root may supply its exact external module-initialization edge; it is
-// independently checked even without reads. Its lexical captures stay closed.
+// independently checked even without reads. External lexical roots require the
+// genuine initialized creator/cell and enclosing AST correspondence below;
+// every descendant and original Language store is still checked.
 // Does not authorize snapshots, eliminate writes, or close external source scope.
 [[nodiscard]] std::variant<FamilyWrites, FamilyWriteFailure> VerifyFamilyWrites(
     const abc::MetadataIndex& index, const FileFamily& inputs,
-    const ConstructedFamily& trees, analysis::SemanticBudget budget = {}, const abc::MethodLookup* lookup = nullptr);
+    const ConstructedFamily& trees, analysis::SemanticBudget budget = {}, const abc::MethodLookup* lookup = nullptr,
+    const ClassRootWriteInput* external = nullptr);
 [[nodiscard]] std::variant<FamilyWrites, FamilyWriteFailure> VerifyFamilyWrites(
     const abc::MetadataIndex& index, std::span<const FamilyWriteInput> inputs,
     const ConstructedFamily& trees, analysis::SemanticBudget budget = {});

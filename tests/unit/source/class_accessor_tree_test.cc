@@ -2,6 +2,7 @@
 #include "../../../src/source/tree_constants.h"
 #include "../../../src/source/family_print.h"
 #include "../../../src/source/family_cells.h"
+#include "../../../src/source/tree_structure.h"
 #include "abcd/source/global_reference.h"
 #include "abcd/analysis/coroutine.h"
 #include "abcd/analysis/exception_locals.h"
@@ -24,7 +25,7 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
       kCreator = 256, kConstructor = 300, kGetter = 340, kSetter = 380,
       kBufferMethod = 420, kBufferCode = 864, kNestedMethod = 460, kNestedCode = 1000,
       kCreatorCode = 512, kConstructorCode = 768, kGetterCode = 800, kSetterCode = 832,
-      kKey = 900, kPrototype = 920, kField = 944;
+      kKey = 900, kPrototype = 920, kField = 944, kCaptureKey = 968;
   std::vector<std::uint8_t> bytes(1100);
   const auto word = [&](std::size_t at, std::uint32_t n) {
     for (unsigned i = 0; i < sizeof(n); ++i) bytes[at + i] = static_cast<std::uint8_t>(n >> (8 * i));
@@ -36,11 +37,12 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
     std::copy(value.begin(), value.end(), bytes.begin() + at);
   };
   text(kKey, "value"); text(kPrototype, "prototype"); text(kField, "_value");
+  text(kCaptureKey, "shared");
   word(kLiteral, 2); bytes[kLiteral + 4] = static_cast<std::uint8_t>(abc::LiteralTag::kInteger);
   word(kLiteral + 5, 0); // Empty class buffer, prototype split zero.
   if (capture_cells) {
     word(kLiteral, 8);
-    bytes[kLiteral + 4] = static_cast<std::uint8_t>(abc::LiteralTag::kString); word(kLiteral + 5, kKey);
+    bytes[kLiteral + 4] = static_cast<std::uint8_t>(abc::LiteralTag::kString); word(kLiteral + 5, kCaptureKey);
     bytes[kLiteral + 9] = static_cast<std::uint8_t>(abc::LiteralTag::kMethod); word(kLiteral + 10, kBufferMethod);
     bytes[kLiteral + 14] = static_cast<std::uint8_t>(abc::LiteralTag::kMethodAffiliate);
     bytes[kLiteral + 15] = 0; bytes[kLiteral + 16] = 0;
@@ -117,11 +119,20 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
       opcode(abc::Opcode::kSTOBJBYNAME_IMM8_ID16_V8), 0, 6, 0, 0, opcode(abc::Opcode::kRETURNUNDEFINED)});
   if (capture_cells) {
     const std::vector<std::uint8_t> captured{opcode(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0, opcode(abc::Opcode::kRETURN)};
+    index.methods[4].name = "shared"; index.methods[4].name_utf16_length = 6;
     index.methods[1].code = body(kConstructorCode, 0, 3, captured);
     index.methods[2].code = body(kGetterCode, 0, 3, captured);
     index.methods[4].code = body(kBufferCode, 0, 3,
         {opcode(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 8, 0, 0, opcode(abc::Opcode::kRETURN)});
-    index.methods[5].code = body(kNestedCode, 0, 3, captured);
+    index.methods[5].code = body(kNestedCode, 0, 3, {
+        opcode(abc::Opcode::kLDAI_IMM32), 99, 0, 0, 0,
+        opcode(abc::Opcode::kSTLEXVAR_IMM4_IMM4), 0,
+        opcode(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0, opcode(abc::Opcode::kRETURN)});
+    index.methods[3].code = body(kSetterCode, 1, 4, {
+        opcode(abc::Opcode::kLDA_V8), 4, opcode(abc::Opcode::kSTLEXVAR_IMM4_IMM4), 0,
+        opcode(abc::Opcode::kLDTHIS), opcode(abc::Opcode::kSTA_V8), 0,
+        opcode(abc::Opcode::kLDA_V8), 4, opcode(abc::Opcode::kSTOBJBYNAME_IMM8_ID16_V8), 0, 6, 0, 0,
+        opcode(abc::Opcode::kRETURNUNDEFINED)});
     constexpr unsigned kFunctionKindShift = 8; // Pinned dynamic method access flags.
     index.methods[5].access_flags = static_cast<std::uint32_t>(abc::FunctionKind::kBaseConstructor) << kFunctionKindShift;
   }
@@ -295,8 +306,17 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
         const ExternalFamilyCapture external{creator, {incoming.parent, class_operation}};
         auto contextual = BuildFileFamilyTrees(file, header, index, std::move(externally_bound), owner,
             {}, nullptr, {}, &lookup, RecoveryMode::kCompleteOnly, &external);
-        Check(std::holds_alternative<FamilyTreeFailure>(contextual) &&
-            std::get<FamilyWriteFailure>(std::get<FamilyTreeFailure>(contextual).cause).kind == FamilyWriteError::kCapture);
+        Check(std::holds_alternative<ConstructedFamily>(contextual));
+        auto& built = std::get<ConstructedFamily>(contextual);
+        Check(built.root_capture && built.root_capture->targets.size() == 1 && built.writes);
+        auto input_again = std::get<FileFamily>(read_family(&creator));
+        const ClassRootWriteInput actual{file, header, lookup, creator, owner, external.source};
+        Check(std::holds_alternative<FamilyWrites>(VerifyFamilyWrites(index, input_again, built, {}, &lookup, &actual)));
+        Check(std::get<FamilyWriteFailure>(VerifyFamilyWrites(index, input_again, built, {}, &lookup)).kind == FamilyWriteError::kCapture);
+        ++built.root_capture->child_revision.value;
+        Check(std::get<FamilyWriteFailure>(VerifyFamilyWrites(index, input_again, built, {}, &lookup, &actual)).kind == FamilyWriteError::kCapture);
+        --built.root_capture->child_revision.value;
+        if (owner.ClassSite()) Check(built.writes->captured_stores == 1 && built.writes->creations == 1);
       }
       if (!initialized) { Check(std::get<CaptureCellError>(bound) == CaptureCellError::kInput); return; }
       Check(std::holds_alternative<CaptureCells>(bound));
@@ -361,7 +381,67 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
     const auto binding = std::get<analysis::CreationBinding>(analysis::BindCreation(file, header, index, lookup,
         creator.input.Method(), creator.body, creator.input.Proof().environments, instruction.value));
     check(defined, instruction, binding);
-    Check(unlink(path) == 0); return {};
+    std::string captured_source;
+    if (initialized) {
+      GlobalScope globals{};
+      const CaptureTree parent{source_parent->tree, *source_flow};
+      auto complete = BuildClassTree(file, header, index, lookup, roles, functions, classes, creator,
+          class_operation, identity, &globals, {}, nullptr, definitions, RecoveryMode::kCompleteOnly, {37}, &parent);
+      Check(std::holds_alternative<ClassTree>(complete));
+      *source_layout = std::get<ClassTree>(std::move(complete));
+      std::ostringstream detached;
+      const auto detached_result = PrintClassTree(*source_layout, detached, {}, {}, &globals);
+      Check(std::holds_alternative<TreePrintError>(detached_result) &&
+          std::get<TreePrintError>(detached_result) == TreePrintError::kUnsupportedContext);
+      Check(detached.str().empty());
+      Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(source_parent->tree)));
+      const auto& constructor = *source_layout->constructor;
+      const auto capture = constructor.Family().members[constructor.Family().root.value].tree.captures.front().target.symbol;
+      auto sibling = source_parent->tree;
+      auto& body = std::get<BlockStmt>(sibling.statements[sibling.body.value].statement);
+      Check(body.first_child == 0 && body.child_count == sibling.children.size());
+      const ScopeId scope{static_cast<std::uint32_t>(sibling.scopes.size())};
+      sibling.scopes.push_back({ScopeKind::kBlock, sibling.body_scope}); sibling.symbols[capture.value].scope = scope;
+      std::vector<StmtId> outside, inside;
+      for (const auto id : sibling.children) {
+        const auto& statement = sibling.statements[id.value].statement;
+        const auto* declaration = std::get_if<DeclarationStmt>(&statement);
+        const auto* expression = std::get_if<ExpressionStmt>(&statement);
+        const auto* assignment = expression ? std::get_if<AssignmentExpr>(&sibling.expressions[expression->expression.value].expression) : nullptr;
+        const auto* target = assignment ? std::get_if<SymbolTarget>(&assignment->target) : nullptr;
+        ((declaration && declaration->symbol == capture) || (target && target->symbol == capture) ? inside : outside).push_back(id);
+      }
+      Check(inside.size() == 2);
+      const StmtId block{static_cast<std::uint32_t>(sibling.statements.size())}; outside.insert(outside.begin(), block);
+      sibling.children = outside; sibling.children.insert(sibling.children.end(), inside.begin(), inside.end());
+      body.child_count = outside.size();
+      sibling.statements.push_back({BlockStmt{scope, static_cast<std::uint32_t>(outside.size()), static_cast<std::uint32_t>(inside.size())},
+          sibling.statements[sibling.body.value].origin});
+      const auto class_expression = *source_flow->expressions[class_operation.value];
+      const auto empty_layout = std::make_shared<ClassTree>(std::get<ClassTree>(BuildClassLayout(
+          file, header, index, lookup, roles, classes, creator, class_operation, identity, {}, nullptr, definitions)));
+      auto& class_node = std::get<ClassExpr>(sibling.expressions[class_expression.value].expression);
+      class_node.definition = empty_layout;
+      Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(sibling)));
+      class_node.definition = source_layout;
+      Check(std::get<TreeStructureError>(VerifyTreeStructure(sibling)) == TreeStructureError::kScope);
+      const ClassCaptureDestination actual{source_parent->tree, class_expression};
+      const FamilyDestination destination{Strictness::kStrict, &globals, FunctionFragment::kClassMember, {}, nullptr, &actual};
+      Check(std::holds_alternative<FamilyEnclosure>(constructor.CheckDestination(destination)));
+      // The construction flow is not a checked final lexical destination.
+      const ClassCaptureParent construction{parent, class_operation};
+      auto construction_only = destination;
+      construction_only.enclosure = nullptr; construction_only.captures = &construction;
+      Check(std::holds_alternative<FamilyPrepareFailure>(constructor.CheckDestination(construction_only)));
+      auto wrong_parent = source_parent->tree; ++wrong_parent.value_revision.value;
+      const ClassCaptureDestination stale{wrong_parent, class_expression};
+      auto bad_destination = destination; bad_destination.enclosure = &stale;
+      Check(std::holds_alternative<FamilyPrepareFailure>(constructor.CheckDestination(bad_destination)));
+      std::ostringstream output;
+      Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(source_parent->tree, output, {}, {}, &globals)));
+      captured_source = output.str();
+    }
+    Check(unlink(path) == 0); return captured_source;
   }
   auto evaluated = BuildEvaluationPlan(graph, {}, IncomingCells::kReject, {}, {}, {}, {}, analysis::ClosureWrites::kUnknown, definitions);
   if (const auto* error = std::get_if<EvaluationError>(&evaluated)) std::cerr << "evaluation " << static_cast<unsigned>(*error) << '\n';
@@ -452,6 +532,12 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--capture-json") {
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const bool is_static : {false, true})
+        std::cout << nlohmann::json{{"source", Recover(is_static, false, -1, false, profile, true)}, {"static", is_static}}.dump() << '\n';
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--async-json") {
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
       for (const bool is_static : {false, true})
