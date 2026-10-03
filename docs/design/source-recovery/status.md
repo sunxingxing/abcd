@@ -12,6 +12,33 @@
 
 ## 当前阶段
 
+### 2026-10-03：phased 条件参数与保留callee的原生调用贯通
+
+- 新phase_selection_calls.cc在phased局部表达式规划后消费同一图候选，绑定
+  callee、条件phi、参数use、调用及可选的一次唯一使用寄存器传递。前后路径
+  必须无独立效果/phi复制；callee、计算臂和调用保留相同异常签名且无移动
+  catch暂存。CallPlan继续独立证明receiver，不重读getter或使用.call辅助。
+- 构建器与独立验证接入logical_values及精确跨区域引用；原局部forest仍按
+  原位置验证，独立VerifyPhaseExpressions入口也验证调用单元后才排除这些
+  跨区域边。删除声明、错参数use、越界consumer、错传递表均拒绝。
+- phi后的寄存器复制归属到条件值根，标量谓词保留原分支PC；没有把分支PC
+  合并到两个表达式产生重复执行归属。独立来源校验拒绝丢失复制来源。
+- 真实字节码三profile、1/2/200/201连续调用验证原生method(conditional)；
+  12096组独立运行对照覆盖字面量/getter参数、getter改写method、非callable、
+  返回/抛出值身份、receiver、短路和.call污染。旧复杂可选链拒绝规格仍通过。
+- -j4构建最终退出0；selection_module_test通过25.02秒，相关11/11回归
+  42.68秒。独立入口与多phi参数预索引补强后最终4/4通过27.97秒，日志
+  /tmp/abcd-phase-call-final-build2.log、/tmp/abcd-phase-call-related-tests.log、
+  /tmp/abcd-phase-call-final-tests.log。初次编译的CombinedOrigin字段及测试
+  缺少budget实参已修正；运行过的通过结果均来自成功构建。
+- fresh build/stage-one/value-phase-call-pass-2五输入均退出0，仍78 complete /
+  5 incomplete /23 failure /46 no-module；既有完整源码逐字不变，无回退/legacy。
+- 边界未缩小：当前每调用只组合一个条件参数，允许一次唯一使用的phi复制，
+  前缀独立效果、shared-arm可选链、多条件参数仍不支持。提前统计phi参数数
+  以避免多个选择反复扫描同一callee长前缀。下一步继续处理方法3613的
+  JSON.parse前缀及共享空值分支，不将本轮子集视作阶段完成。Goal active，
+  full-suite/扩展语料/RSS未恢复。
+
 ### 2026-10-03：phased 条件发现解除控制树顺序依赖
 
 - 将现有phased区域发现改为直接读取原始phase图与phi边：一次索引normal

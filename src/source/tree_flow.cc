@@ -132,8 +132,8 @@ class FlowCheck {
           const analysis::OpId id = predicate.value_or(analysis::OpId{source.first_op.value + i});
           const auto& op = graph_.ops[id.value];
           if (exceptions_ && !predicate && std::holds_alternative<analysis::ValueBranch>(op.operation)) {
-            Require(evaluation_.operations[id.value].kind == EvaluationKind::kRoot &&
-                source.edge_count == 1 && !edges_->HasCopies(source.first_edge), Error::kControl);
+            Require((evaluation_.operations[id.value].kind == EvaluationKind::kRoot ||
+                evaluation_.operations[id.value].kind == EvaluationKind::kLogicalValue) && source.edge_count == 1 && !edges_->HasCopies(source.first_edge), Error::kControl);
             continue;
           }
           if (exceptions_ && op.life == analysis::ValueLife::kLive)
@@ -448,6 +448,16 @@ class FlowCheck {
     LogicalEdges(region, target->symbol, logical->left, logical->right, parent, child);
     LogicalPrefixes(region, parent, child);
   }
+  bool SelectionOrigin(const SelectionRegion& region, ExprId expression) const {
+    const auto origin = tree_.expressions[expression.value].origin;
+    const TreeOriginId branch{graph_.ops[region.branch.value].origin.value};
+    if (origin == branch) return true;
+    const auto input = evaluation_.operations[region.branch.value].consumer;
+    if (!exceptions_ || !input) return false;
+    const auto* owner = std::get_if<analysis::OpId>(&graph_.uses[input->value].owner);
+    if (!owner || owner->value >= evaluation_.phase_transports.size() || !evaluation_.phase_transports[owner->value]) return false;
+    return origin.value == graph_.ops[owner->value].origin.value;
+  }
   void Conditional(const SelectionRegion& region, ExprId expression, std::optional<SymbolId> target,
       StmtId parent, std::uint32_t child) {
     std::size_t pending = 1;
@@ -455,8 +465,7 @@ class FlowCheck {
     while (pending) {
       budget_.Step(); const auto task = conditional_tasks_[--pending]; const auto& current = logicals_[task.region];
       const auto* conditional = std::get_if<ConditionalExpr>(&tree_.expressions[task.expression.value].expression);
-      Require(conditional && tree_.expressions[task.expression.value].origin.value ==
-          graph_.ops[current.branch.value].origin.value, Error::kPlacement);
+      Require(conditional && SelectionOrigin(current, task.expression), Error::kPlacement);
       if (current.conditions.empty()) {
         Require(flow_.expressions[current.boolean.value] == conditional->condition, Error::kPlacement);
       } else {

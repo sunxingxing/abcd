@@ -821,6 +821,14 @@ class ForestBuilder {
     return std::visit([&](const auto& operation) -> std::optional<ExprId> {
       using T = std::decay_t<decltype(operation)>;
       if constexpr (std::is_same_v<T, analysis::ValueCopy>) {
+        if (id.value < evaluation_.phase_transports.size() && evaluation_.phase_transports[id.value]) {
+          // The scalar predicate retains the branch site. The transport owns
+          // the conditional value root, so do not merge that branch site into
+          // a second expression and fabricate duplicate execution ownership.
+          Require(std::holds_alternative<ConditionalExpr>(forest_.expressions[operands[0].value].expression), Error::kOwnership);
+          forest_.expressions[operands[0].value].origin = origin;
+          return operands[0];
+        }
         const bool normalize = !evaluation_.integer_nans.empty() && evaluation_.integer_nans[id.value] == NaNProjection::kIntegerCoercion;
         return Combine(normalize ? IntegerOperand(operands[0], graph_.uses[op.first_use.value].operand) : operands[0], origin);
       }

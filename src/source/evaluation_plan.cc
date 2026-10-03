@@ -422,6 +422,11 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     if (const auto* error = std::get_if<Error>(&expressions)) return *error;
     const auto& phase_cost = std::get<PhaseEvaluationCost>(expressions);
     admit(phase_cost.bytes, 1); step(phase_cost.work);
+    if (flow == EvaluationFlow::kPhased) {
+      TreeCheckBudget selection_budget({bytes, work});
+      BuildPhaseSelectionCalls(graph, plan, selection_budget);
+      admit(selection_budget.Bytes(), 1); step(selection_budget.Work());
+    }
     const auto normalized = BuildIntegerNaNs(graph, plan, {bytes, work});
     if (const auto* error = std::get_if<Error>(&normalized)) return *error;
     const auto normalization_cost = std::get<IntegerNaNCost>(normalized);
@@ -429,7 +434,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     const auto checked = VerifyEvaluationForFlow(graph, plan, {bytes, work}, flow);
     if (const auto* error = std::get_if<EvaluationError>(&checked)) return *error;
     step(std::get<std::uint64_t>(checked));
-    plan.allocated_bytes = plan.integer_nans.capacity() * sizeof(NaNProjection) + plan.operations.capacity() * sizeof(OpEvaluation) +
+    plan.allocated_bytes = plan.phase_transports.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_calls.capacity() * sizeof(PhaseSelectionCall) + plan.integer_nans.capacity() * sizeof(NaNProjection) + plan.operations.capacity() * sizeof(OpEvaluation) +
         plan.logical_values.capacity() * sizeof(std::optional<analysis::OpId>) +
         plan.logical_objects.capacity() * sizeof(std::optional<analysis::OpId>) +
         plan.aliases.capacity() * sizeof(analysis::ValueId) +

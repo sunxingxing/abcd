@@ -6,6 +6,7 @@
 #include "../../src/source/function_tree.h"
 #include "../../src/source/tree_semantics.h"
 #include "../../src/source/call_plan.h"
+#include "../../src/source/phase_evaluation.h"
 #include "../../src/source/instruction_sources.h"
 #include "analysis/ssa_fixture.h"
 #include "abcd/source/tree_printer.h"
@@ -182,11 +183,39 @@ void Run(unsigned count, bool direct, bool print, bool barrier = false,
   if (print) std::cout << output.str();
 }
 
+abc::MethodBody CallSelectionBody(unsigned count, bool computed) {
+  const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+  std::vector<std::uint8_t> bytes;
+  for (unsigned i = 0; i < count; ++i) {
+    bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 3,
+        op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0, op(abc::Opcode::kSTA_V8), 0,
+        op(abc::Opcode::kLDA_V8), 4, op(abc::Opcode::kISTRUE)});
+    const auto branch = bytes.size(); bytes.insert(bytes.end(), {op(abc::Opcode::kJEQZ_IMM8), 0});
+    bytes.insert(bytes.end(), {op(abc::Opcode::kLDAI_IMM32), 7, 0, 0, 0});
+    const auto jump = bytes.size(); bytes.insert(bytes.end(), {op(abc::Opcode::kJMP_IMM8), 0});
+    bytes[branch + 1] = static_cast<std::uint8_t>(bytes.size() - branch);
+    if (computed) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 3,
+        op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 2, 0});
+    else bytes.insert(bytes.end(), {op(abc::Opcode::kLDAI_IMM32), 0xc0, 1, 0, 0});
+    bytes[jump + 1] = static_cast<std::uint8_t>(bytes.size() - jump);
+    bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), 1, op(abc::Opcode::kLDA_V8), 0,
+        op(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 3, 1});
+  }
+  bytes.push_back(op(abc::Opcode::kRETURN));
+  const auto end = static_cast<std::uint32_t>(bytes.size());
+  bytes.push_back(op(abc::Opcode::kRETURN));
+  auto body = test::Body(bytes);
+  abc::TryRegion region; region.offset = {0}; region.length = end; region.handler_count = 1;
+  abc::CatchHandler handler; handler.offset = {end}; handler.length = 1;
+  body.tries.push_back(region); body.handlers.push_back(handler);
+  return body;
+}
+
 void RunPhased(unsigned count, bool direct, bool print, Selection selection,
-    abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool one_arm = false) {
-  const auto body = Decision(selection) ? DecisionBody(count, direct, selection, true, one_arm) :
+    abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool one_arm = false, bool call_selection = false, bool computed = false) {
+  const auto body = call_selection ? CallSelectionBody(count, computed) : Decision(selection) ? DecisionBody(count, direct, selection, true, one_arm) :
       Body(count, direct, false, selection, true);
-  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(3, 1, {}));
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(3, call_selection ? 2 : 1, {}));
   const auto flow = std::get<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers));
   IdfQuota quota{kDefaultSemanticWork};
   const auto ssa = std::get<ExceptionSsa>(ExceptionSsa::Build(flow, frame.registers, quota));
@@ -211,7 +240,7 @@ void RunPhased(unsigned count, bool direct, bool print, Selection selection,
     bindings.push_back({pair, std::get<ValueModuleRead>(graph.ops[pair.read.value].operation), {{7}, {0}}});
   const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(
       graph, {}, IncomingCells::kReject, {}, bindings));
-  if (!Decision(selection)) {
+  if (!Decision(selection) && !call_selection) {
     // Until phased selections own the whole argument expression, preserve the
     // native receiver gate. Never lower the retained callee through .call.
     const auto calls = BuildPhasedCallPlan(graph, evaluation);
@@ -228,6 +257,21 @@ void RunPhased(unsigned count, bool direct, bool print, Selection selection,
   syntax.names = {u"value", u"method", u"probe", u"option", u"other", u"imported"};
   syntax.texts = {u"on"};
   syntax.parameters = {{NameId{0}, NameEvidence::kDebugRange}};
+  if (call_selection) {
+    syntax.names.push_back(u"flag");
+    syntax.parameters.push_back({NameId{6}, NameEvidence::kDebugRange});
+    test::Check(std::holds_alternative<CallPlan>(BuildPhasedCallPlan(graph, evaluation)));
+    test::Check(evaluation.phase_calls.size() == count);
+    auto forged = evaluation; forged.phase_calls.clear();
+    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    if (count == 1) test::Check(std::holds_alternative<EvaluationError>(VerifyPhaseExpressions(graph, forged, {})));
+    forged = evaluation; forged.phase_transports.clear();
+    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    forged = evaluation; forged.phase_calls.front().argument = graph.ops[forged.phase_calls.front().callee.value].first_use;
+    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    forged = evaluation; forged.operations[forged.phase_calls.front().callee.value].consumer = UseId{static_cast<std::uint32_t>(graph.uses.size())};
+    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+  }
   syntax.modules = {{{{7}, {0}}, NameId{5}, ModuleAccess::kReadOnly, NameEvidence::kMetadata}};
   std::vector<ExpressionConstant> constants(graph.ops.size());
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
@@ -250,11 +294,18 @@ void RunPhased(unsigned count, bool direct, bool print, Selection selection,
   }
   test::Check(std::holds_alternative<TreeSemantics>(VerifyExceptionTreeSemantics(graph, context, evaluation, tree, resolved)));
   const auto tree_flow = std::get<TreeFlow>(VerifyExceptionTreeFlow(graph, context, evaluation, tree));
+  if (call_selection) {
+    auto wrong = tree;
+    const auto& call = evaluation.phase_calls.front();
+    const auto expression = *tree_flow.expressions[call.branch.value];
+    wrong.expressions[expression.value].origin = TreeOriginId{graph.ops[call.branch.value].origin.value};
+    test::Check(std::holds_alternative<TreeSemanticError>(VerifyExceptionTreeSemantics(graph, context, evaluation, wrong, resolved)));
+  }
   for (const auto& binding : bindings) {
     const auto read = binding.pair.read.value, guard = binding.pair.guard->value;
     test::Check(tree_flow.expressions[read] && tree_flow.expressions[read] == tree_flow.expressions[guard]);
   }
-  if (count == 1) {
+  if (count == 1 && !bindings.empty()) {
     auto forged = evaluation; forged.modules.front().pair.guard.reset();
     test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
     auto wrong = tree;
@@ -275,7 +326,10 @@ int main(int argc, char** argv) {
     const std::string_view option{argv[1]};
     test::Check(argc == 2 || std::string_view{argv[2]} == "--twice");
     const auto count = argc == 3 ? 2U : 1U;
-    if (option == "--phased-selection-refusal")
+    if (option == "--phased-call-selection-source" || option == "--phased-computed-call-selection-source")
+      RunPhased(count, false, true, Selection::kConditional, abc::ProfileId::kDynamic1206, false, true,
+          option == "--phased-computed-call-selection-source");
+    else if (option == "--phased-selection-refusal")
       RunPhased(count, false, false, Selection::kConditional);
     else if (option == "--phased-one-arm-source" || option == "--phased-one-arm-direct-source")
       RunPhased(count, option == "--phased-one-arm-direct-source", true, Selection::kDecisionAnd,
@@ -297,6 +351,9 @@ int main(int argc, char** argv) {
     else test::Check(false);
     return 0;
   }
+  for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+    for (const auto count : {1U, 2U, 200U, 201U})
+      for (const bool computed : {false, true}) RunPhased(count, false, false, Selection::kConditional, profile, false, true, computed);
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
     for (const auto count : {1U, 2U, 200U, 201U})
       for (const auto selection : {Selection::kDecisionAnd, Selection::kDecisionOr})

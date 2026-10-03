@@ -737,7 +737,7 @@ class TreeBuilder {
       if (exceptions_ && std::holds_alternative<analysis::ValueBranch>(op.operation)) {
         // Branch successors belong to Commit. Its condition may be emitted
         // there only across an empty Before->Commit boundary, never phi writes.
-        Require(evaluation.kind == EvaluationKind::kRoot && block.edge_count == 1 &&
+        Require((evaluation.kind == EvaluationKind::kRoot || evaluation.kind == EvaluationKind::kLogicalValue) && block.edge_count == 1 &&
             !HasCopies(block.first_edge), Error::kControl);
         continue;
       }

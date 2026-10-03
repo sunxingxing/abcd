@@ -243,7 +243,7 @@ target_sources(abcd_source PRIVATE src/source/loop_forest.cc)
 target_sources(abcd_source PRIVATE src/source/loop_control.cc)
 target_sources(abcd_source PRIVATE src/source/loop_exit_corridors.cc)
 target_sources(abcd_source PRIVATE src/source/literal_plan.cc)
-target_sources(abcd_source PRIVATE src/source/phased_selections.cc)
+target_sources(abcd_source PRIVATE src/source/phased_selections.cc src/source/phase_selection_calls.cc)
 target_sources(abcd_source PRIVATE src/source/scope_facts.cc src/source/exception_scope_facts.cc src/source/capture_plan.cc src/source/phased_capture_input.cc)
 target_sources(abcd_source PRIVATE src/source/cell_plan.cc)
 target_sources(abcd_source PRIVATE src/source/cell_lifetime.cc src/source/phased_capture_cells.cc)
@@ -1148,6 +1148,8 @@ if(BUILD_TESTING)
   if(ABCD_NODE_EXECUTABLE)
     add_test(NAME selection_module_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/selection_module.mjs $<TARGET_FILE:selection_module_test>)
+    add_test(NAME phased_call_selection_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_call_selection.mjs $<TARGET_FILE:selection_module_test>)
     add_test(NAME phased_one_arm_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_module.mjs $<TARGET_FILE:selection_module_test> --one-arm)
     add_test(NAME phased_decision_module_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

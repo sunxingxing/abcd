@@ -3,6 +3,7 @@
 #include <new>
 #include <stdexcept>
 #include "phase_corridor.h"
+#include "logical_evaluation.h"
 
 namespace abcd::source {
 namespace {
@@ -30,7 +31,7 @@ std::vector<OpId> Roots(const ValueProgram& graph, const EvaluationPlan& plan, P
     budget.Step(); --i;
     roots[i] = OpId{static_cast<std::uint32_t>(i)};
     const auto& placement = plan.operations[i];
-    if (placement.kind != EvaluationKind::kInline) continue;
+    if (placement.kind != EvaluationKind::kInline || CrossLogicalInline(graph, plan, OpId{static_cast<std::uint32_t>(i)})) continue;
     Require(placement.consumer && placement.consumer->value < graph.uses.size(), Error::kOwnership);
     const auto* owner = std::get_if<OpId>(&graph.uses[placement.consumer->value].owner);
     Require(owner && owner->value > i && owner->value < roots.size(), Error::kOwnership);
@@ -85,7 +86,7 @@ void Schedule(const ValueProgram& graph, EvaluationPlan& plan, PhaseCorridors& c
 }  // namespace
 bool CrossPhaseInline(const ValueProgram& graph, const EvaluationPlan& plan, OpId producer) {
   const auto& placement = plan.operations[producer.value];
-  if (plan.flow != EvaluationFlow::kPhased ||
+  if (plan.flow != EvaluationFlow::kPhased || CrossLogicalInline(graph, plan, producer) ||
       (placement.kind != EvaluationKind::kInline && placement.kind != EvaluationKind::kNestedLiteral) ||
       !placement.consumer) return false;
   const auto* owner = std::get_if<OpId>(&graph.uses[placement.consumer->value].owner);
@@ -132,7 +133,10 @@ std::variant<PhaseEvaluationCost, EvaluationError> VerifyPhaseExpressions(
     const ValueProgram& graph, const EvaluationPlan& plan, SemanticBudget allowance) {
   try {
     if (plan.flow != EvaluationFlow::kPhased) return PhaseEvaluationCost{};
-    PhaseBudget budget(allowance);
+    TreeCheckBudget selected_budget(allowance);
+    if (!plan.phase_calls.empty() || !plan.phase_transports.empty() || !plan.logical_values.empty())
+      VerifyPhaseSelectionCalls(graph, plan, selected_budget);
+    PhaseBudget budget(selected_budget.Remaining());
     PhaseCorridors corridors(graph, plan, budget);
     const auto roots = Roots(graph, plan, budget);
     std::vector<EffectInterval> intervals;
@@ -152,7 +156,8 @@ std::variant<PhaseEvaluationCost, EvaluationError> VerifyPhaseExpressions(
       for (std::uint32_t ordinal = 0; ordinal < op.use_count; ++ordinal) {
         budget.Step(); const UseId use{op.first_use.value + ordinal};
         const auto producer = Producer(graph, plan, use);
-        if (!producer || plan.operations[producer->value].kind != EvaluationKind::kInline) continue;
+        if (!producer || plan.operations[producer->value].kind != EvaluationKind::kInline ||
+            CrossLogicalInline(graph, plan, *producer)) continue;
         const auto& occurrence = graph.uses[use.value];
         if (IsMemberReceiver(graph, plan, occurrence)) continue;
         const auto child = intervals[producer->value];
@@ -177,13 +182,18 @@ std::variant<PhaseEvaluationCost, EvaluationError> VerifyPhaseExpressions(
     }
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       budget.Step();
-      Require(plan.operations[i].kind != EvaluationKind::kInline || consumed[i], Error::kOwnership);
+      Require(plan.operations[i].kind != EvaluationKind::kInline || consumed[i] ||
+          CrossLogicalInline(graph, plan, OpId{static_cast<std::uint32_t>(i)}), Error::kOwnership);
       if (plan.operations[i].kind == EvaluationKind::kInline &&
+          !CrossLogicalInline(graph, plan, OpId{static_cast<std::uint32_t>(i)}) &&
           PhaseCorridors::Event(graph.ops[i], plan.operations[i]) &&
           graph.ops[i].exceptional == ExceptionalCompletion::kMayThrow)
         Require(corridors.SameCatch(OpId{static_cast<std::uint32_t>(i)}, roots[i]), Error::kOrder);
     }
-    return budget.Cost();
+    const auto cost = budget.Cost();
+    return PhaseEvaluationCost{selected_budget.Bytes() + cost.bytes, selected_budget.Work() + cost.work};
+  } catch (TreeStructureError error) {
+    return error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }

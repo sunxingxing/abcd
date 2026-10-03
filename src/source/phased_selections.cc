@@ -34,6 +34,7 @@ std::vector<SelectionRegion> FindPhasedPhiSelections(const analysis::ValueProgra
     budget.Step(); roots[i] = OpId{static_cast<std::uint32_t>(i)};
     const auto& placement = evaluation.operations[i];
     if (placement.kind != EvaluationKind::kInline || !placement.consumer) continue;
+    if (placement.consumer->value >= graph.uses.size()) throw EvaluationError::kOwnership;
     const auto* owner = std::get_if<OpId>(&graph.uses[placement.consumer->value].owner);
     if (owner && owner->value > i) roots[i] = roots[owner->value];
   }

@@ -14,6 +14,8 @@ void VerifyPredicateSnapshots(const analysis::ValueProgram&, const EvaluationPla
 // local forest, conditional arms and all incoming copies remain checked too.
 void BuildLogicalValues(const analysis::ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget);
 void VerifyLogicalValues(const analysis::ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget);
+void BuildPhaseSelectionCalls(const analysis::ValueProgram&, EvaluationPlan&, TreeCheckBudget&);
+void VerifyPhaseSelectionCalls(const analysis::ValueProgram&, const EvaluationPlan&, TreeCheckBudget&);
 // Only after fresh evaluation verification, which checks the contracted
 // diamond's effect intervals and its exclusively owned incoming values.
 bool CrossLogicalInline(const analysis::ValueProgram& graph, const EvaluationPlan& plan, analysis::OpId producer);
