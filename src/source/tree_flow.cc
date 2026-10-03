@@ -182,7 +182,7 @@ class FlowCheck {
             }
             flow_.expressions[id.value] = branch->condition;
             const TreeOriginId origin{op.origin.value};
-            if (!exceptions_ && !node.arms->taken && node.arms->fallthrough && !branch->alternate) {
+            if (!node.arms->taken && node.arms->fallthrough && !branch->alternate) {
               // Derive polarity from actual arm ownership, not a builder flag.
               // The omitted original taken edge must have no phi assignments.
               std::uint32_t empty = 0;

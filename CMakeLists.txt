@@ -1146,6 +1146,8 @@ if(BUILD_TESTING)
   if(ABCD_NODE_EXECUTABLE)
     add_test(NAME selection_module_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/selection_module.mjs $<TARGET_FILE:selection_module_test>)
+    add_test(NAME phased_one_arm_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_module.mjs $<TARGET_FILE:selection_module_test> --one-arm)
     add_test(NAME phased_decision_module_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_module.mjs $<TARGET_FILE:selection_module_test> --phased)
     add_test(NAME decision_module_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

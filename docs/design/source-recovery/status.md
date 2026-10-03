@@ -12,6 +12,27 @@
 
 ## 当前阶段
 
+### 2026-10-03：phased 单分支正文直接输出
+
+- 将共同分支方向选择及独立 TreeFlow 对应规则用于 phased Commit 节点。
+  当 taken 分支无正文且无phi赋值时，反向谓词并直接输出 fallthrough 正文；
+  不再生成空if加else。原条件的求值次数、边归属、catch边、源PC不变。
+  仍消费被省略边的空copy bundle，不允许隐藏必要phi赋值。
+- 新真实字节码单分支AST规格先复现旧输出；三profile、1/2/200/201重复
+  条件验证无alternate且正文非空。3624组独立短路/效果/TDZ场景通过。
+- 相关targets -j4构建退出0；10/10回归54.44秒，额外Home与ProgressBar
+  配对2/2通过2.12秒。Voip配对300组保持通过。日志
+  /tmp/abcd-phased-arm-related-{build,tests}.log 与
+  /tmp/abcd-phased-arm-pasteboard-tests.log。
+- fresh build/stage-one/value-phased-arm-pass-1 五输入均退出0；仍78 complete /
+  5 incomplete /23 failure /46 no-module，无回退或legacy。四个完整record
+  5521/8383/9550/11989的diff仅为上述空分支反向；其他完整源码未变化。
+  这是一项表示质量改进，不代表临时变量/可选链/switch等完整风格验收通过。
+- 检查CommonView失败时确认实际阻塞来自子回调19852、父19712创建PC72：
+  SemanticProofFailure::kInternalValue PC41，紧邻PC38通用算术结果。
+  并非模块入口19740的分支PC41；证据 /tmp/abcd-common-view-nested.log。
+  保留算术语义边界，不凭样本猜测数值类型。Goal active；未跑full-suite/RSS。
+
 ### 2026-10-03：异常短路条件中的模块 guard 归属贯通
 
 - 方法12319拒绝已定位到 EmitDecisionBlock：kModuleGuard 被错误地要求作为

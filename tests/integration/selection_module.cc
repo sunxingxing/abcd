@@ -22,7 +22,7 @@ enum class Selection { kConditional, kAnd, kOr, kDecisionAnd, kDecisionOr };
 bool Decision(Selection selection) {
   return selection == Selection::kDecisionAnd || selection == Selection::kDecisionOr;
 }
-abc::MethodBody DecisionBody(unsigned count, bool direct, Selection selection, bool caught = false) {
+abc::MethodBody DecisionBody(unsigned count, bool direct, Selection selection, bool caught = false, bool one_arm = false) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   constexpr auto kGuard = abc::Opcode::kTHROW_UNDEFINEDIFHOLEWITHNAME_PREF_ID16;
   const bool conjunction = selection == Selection::kDecisionAnd;
@@ -37,15 +37,19 @@ abc::MethodBody DecisionBody(unsigned count, bool direct, Selection selection, b
         op(abc::Opcode::kLDEXTERNALMODULEVAR_IMM8), 0, op(kGuard),
         static_cast<std::uint8_t>(static_cast<std::uint16_t>(kGuard) >> kByteBits), 3, 0});
     if (!direct) bytes.insert(bytes.end(), {op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 2, 0});
-    bytes.push_back(op(abc::Opcode::kISTRUE));
+    if (!one_arm) bytes.push_back(op(abc::Opcode::kISTRUE));
     const auto second = bytes.size();
-    bytes.insert(bytes.end(), {op(conjunction ? abc::Opcode::kJEQZ_IMM8 : abc::Opcode::kJNEZ_IMM8), 0});
+    if (!one_arm) bytes.insert(bytes.end(), {op(conjunction ? abc::Opcode::kJEQZ_IMM8 : abc::Opcode::kJNEZ_IMM8), 0});
     const auto arm = [&](std::uint8_t name) {
       bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 3,
           op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, name, 0,
           op(abc::Opcode::kCALLTHIS0_IMM8_V8), 0, 3});
     };
     arm(conjunction ? 0 : 3);
+    if (one_arm) {
+      bytes[first + 1] = static_cast<std::uint8_t>(bytes.size() - first);
+      continue;
+    }
     const auto jump = bytes.size(); bytes.insert(bytes.end(), {op(abc::Opcode::kJMP_IMM8), 0});
     bytes[first + 1] = static_cast<std::uint8_t>(bytes.size() - first);
     bytes[second + 1] = static_cast<std::uint8_t>(bytes.size() - second);
@@ -171,8 +175,8 @@ void Run(unsigned count, bool direct, bool print, bool barrier = false,
 }
 
 void RunPhased(unsigned count, bool direct, bool print, Selection selection,
-    abc::ProfileId profile = abc::ProfileId::kDynamic1206) {
-  const auto body = DecisionBody(count, direct, selection, true);
+    abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool one_arm = false) {
+  const auto body = DecisionBody(count, direct, selection, true, one_arm);
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(3, 1, {}));
   const auto flow = std::get<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers));
   IdfQuota quota{kDefaultSemanticWork};
@@ -202,7 +206,7 @@ void RunPhased(unsigned count, bool direct, bool print, Selection selection,
   const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
   unsigned decisions = 0;
   for (const auto& node : control.skeleton.nodes) decisions += node.decision.has_value();
-  test::Check(decisions == count);
+  test::Check(decisions == (one_arm ? 0 : count));
   const ExceptionTreeInput context{body, input, regions, control};
   FunctionSyntax syntax{}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   syntax.names = {u"value", u"method", u"probe", u"option", u"other", u"imported"};
@@ -215,6 +219,16 @@ void RunPhased(unsigned count, bool direct, bool print, Selection selection,
   const auto built = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, resolved);
   test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
   const auto& tree = std::get<ExceptionFunctionDraft>(built).tree;
+  if (one_arm) {
+    unsigned branches = 0;
+    for (const auto& node : tree.statements) if (const auto* branch = std::get_if<IfStmt>(&node.statement)) {
+      ++branches;
+      test::Check(!branch->alternate);
+      const auto& body = std::get<BlockStmt>(tree.statements[branch->consequent.value].statement);
+      test::Check(body.child_count != 0);
+    }
+    test::Check(branches == count);
+  }
   test::Check(std::holds_alternative<TreeSemantics>(VerifyExceptionTreeSemantics(graph, context, evaluation, tree, resolved)));
   const auto tree_flow = std::get<TreeFlow>(VerifyExceptionTreeFlow(graph, context, evaluation, tree));
   for (const auto& binding : bindings) {
@@ -242,7 +256,10 @@ int main(int argc, char** argv) {
     const std::string_view option{argv[1]};
     test::Check(argc == 2 || std::string_view{argv[2]} == "--twice");
     const auto count = argc == 3 ? 2U : 1U;
-    if (option == "--phased-decision-and-source" || option == "--phased-decision-and-direct-source")
+    if (option == "--phased-one-arm-source" || option == "--phased-one-arm-direct-source")
+      RunPhased(count, option == "--phased-one-arm-direct-source", true, Selection::kDecisionAnd,
+          abc::ProfileId::kDynamic1206, true);
+    else if (option == "--phased-decision-and-source" || option == "--phased-decision-and-direct-source")
       RunPhased(count, option == "--phased-decision-and-direct-source", true, Selection::kDecisionAnd);
     else if (option == "--phased-decision-or-source" || option == "--phased-decision-or-direct-source")
       RunPhased(count, option == "--phased-decision-or-direct-source", true, Selection::kDecisionOr);
@@ -262,7 +279,10 @@ int main(int argc, char** argv) {
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
     for (const auto count : {1U, 2U, 200U, 201U})
       for (const auto selection : {Selection::kDecisionAnd, Selection::kDecisionOr})
-        for (const bool direct : {false, true}) RunPhased(count, direct, false, selection, profile);
+        for (const bool direct : {false, true}) {
+          RunPhased(count, direct, false, selection, profile);
+          if (selection == Selection::kDecisionAnd) RunPhased(count, direct, false, selection, profile, true);
+        }
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
     for (const auto count : {1U, 2U, 200U, 201U, 402U})
       for (const auto selection : {Selection::kDecisionAnd, Selection::kDecisionOr})

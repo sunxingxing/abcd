@@ -928,7 +928,9 @@ class TreeBuilder {
         orient(node, !node.decision->evaluate_on_taken);
         const auto predicate = node.decision->predicate.value_or(node.decision->evaluate);
         orient(control_.nodes[predicate.value], node.decision->shared_on_taken);
-      } else if (!exceptions_ && node.arms && !node.arms->taken && node.arms->fallthrough) {
+      } else if (node.arms && !node.arms->taken && node.arms->fallthrough) {
+        // In phased control the branch lives in its Commit block. Orient only
+        // the two normal successor arms; catch edges stay at the throwing op.
         const auto branch = DecisionPredicate(node);
         const auto& block = DecisionBlock(node);
         if (copied[block.first_edge.value] || (!logical_branches_.empty() && logical_branches_[branch.value])) continue;
