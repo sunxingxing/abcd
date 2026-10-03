@@ -2,6 +2,8 @@
 #include "../../../src/source/evaluation_plan.h"
 #include "../../../src/source/exception_tree.h"
 #include "../../../src/source/tree_semantics.h"
+#include "../../../src/source/logical_regions.h"
+#include "../../../src/source/tree_checks.h"
 #include "analysis/ssa_fixture.h"
 #include "abcd/source/tree_printer.h"
 #include "abcd/analysis/exception_locals.h"
@@ -188,6 +190,17 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   test::Check(evaluation.literals && evaluation.literals->objects.size() == (nested ? fields + 1 : 1));
   test::Check(std::holds_alternative<std::uint64_t>(VerifyPhasedEvaluationPlan(graph, evaluation)));
   const auto& literal = *evaluation.literals;
+  if (shape == Shape::kStagedSelection || shape == Shape::kStagedComputed || shape == Shape::kStagedCall) {
+    TreeCheckBudget candidate_budget({});
+    const auto candidates = FindPhasedPhiSelections(graph, evaluation, candidate_budget);
+    test::Check(candidates.size() == fields);
+    for (const auto& candidate : candidates) {
+      test::Check(!candidate.keep_path && !candidate.evaluate_path);
+      test::Check(candidate.keep_input && candidate.evaluate_input &&
+          graph.edges[candidate.keep_input->value].target == candidate.join &&
+          graph.edges[candidate.evaluate_input->value].target == candidate.join);
+    }
+  }
   if (lexical) {
     test::Check(evaluation.cells.has_value());
     bool checked = false;
@@ -248,6 +261,19 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
       (shape == Shape::kUnaryUnknown && (unary == abc::Opcode::kTONUMERIC_IMM8 || unary == abc::Opcode::kTONUMBER_IMM8))) {
     const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
     const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
+    if (fields == 1 && (shape == Shape::kStagedSelection || shape == Shape::kStagedComputed || shape == Shape::kStagedCall)) {
+      TreeCheckBudget region_budget({});
+      const auto selected = FindPhasedSelections(graph, control.skeleton, evaluation, region_budget);
+      test::Check(selected.size() == 1 && selected.front().keep_path && selected.front().evaluate_path);
+      auto wrong = control.skeleton;
+      bool changed = false;
+      for (auto& node : wrong.nodes) if (node.block == selected.front().header && node.arms) {
+        node.arms->taken = node.arms->fallthrough; changed = true; break;
+      }
+      test::Check(changed);
+      TreeCheckBudget wrong_budget({});
+      test::Check(FindPhasedSelections(graph, wrong, evaluation, wrong_budget).empty());
+    }
     FunctionSyntax syntax{}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
     syntax.parameters.resize(1); syntax.names = {u"__proto__", u"Lookup", u"value"};
     syntax.texts = {u"suffix"};

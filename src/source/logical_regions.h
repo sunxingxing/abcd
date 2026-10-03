@@ -84,6 +84,11 @@ inline bool IsSelectionConstant(const analysis::ValueProgram& graph, analysis::O
 [[nodiscard]] std::vector<SelectionRegion> FindSelectionExpressions(
     const analysis::ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, TreeCheckBudget& budget);
+// Candidate discovery from checked phase/SSA edges before a control tree is
+// available. Endpoints are original block IDs; keep_path/evaluate_path remain
+// empty until FindPhasedSelections binds the actual control owner.
+[[nodiscard]] std::vector<SelectionRegion> FindPhasedPhiSelections(
+    const analysis::ValueProgram& graph, const EvaluationPlan& evaluation, TreeCheckBudget& budget);
 // Phased adapter for the same SelectionRegion/AST path. Requires verified
 // control/evaluation. Original phase blocks, phi occurrences and catch edges stay
 // authoritative. Selected expression arms cannot require pre-throw copies.

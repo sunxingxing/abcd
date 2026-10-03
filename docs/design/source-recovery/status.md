@@ -12,6 +12,26 @@
 
 ## 当前阶段
 
+### 2026-10-03：phased 条件发现解除控制树顺序依赖
+
+- 将现有phased区域发现改为直接读取原始phase图与phi边：一次索引normal
+  入边、phi输入、表达式根和catch暂存；每臂在首个合流/分支/catch/phi复制处
+  停止，保留原exception边。FindPhasedPhiSelections在控制树建立前可用，
+  返回既有SelectionRegion及原block/edge身份，不授予源控制树归属。
+- 现有源码路径已改用上述候选，再由FindPhasedSelections核对真实控制树的
+  header、join、两臂完整路径并绑定ControlId。没有第二个源码writer，也没有
+  将ControlId与WorkBlockId混用。错绑taken到fallthrough的用例明确拒绝。
+- 三profile的1/2/200/201/402字面量/getter/成员调用区域同时验证独立图发现
+  与控制绑定；phased_literal_test通过23.85秒。相关targets -j4构建退出0，
+  另11/11回归39.93秒；日志 /tmp/abcd-phase-graph-{regions,related}-build.log、
+  /tmp/abcd-phase-graph-unit-tests.log、/tmp/abcd-phase-graph-related-tests.log。
+- fresh build/stage-one/value-phase-graph-pass-1五输入均退出0，保持78 complete /
+  5 incomplete /23 failure /46 no-module；所有既有完整源码逐字不变，无回退/
+  legacy。此次是已用于生成器的区域算法整合，没有新增完整record。
+- 下一步在phased求值规划阶段消费同一图候选，闭合条件值到调用参数的唯一
+  使用关系、callee与条件前缀的效果顺序、catch签名和receiver；方法3613
+  仍未修复。不能以候选发现代替调用融合完成。Goal active，暂停项未恢复。
+
 ### 2026-10-03：phased 计算型选择臂与原生成员调用
 
 - PhiExpressionProducer允许唯一使用的计算结果直接在自身Commit的出边phi

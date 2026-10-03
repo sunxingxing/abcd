@@ -3,15 +3,18 @@
 #include "tree_checks.h"
 
 namespace abcd::source {
-std::vector<SelectionRegion> FindPhasedSelections(const analysis::ValueProgram& graph,
-    const ControlPlan& control, const EvaluationPlan& evaluation, TreeCheckBudget& budget) {
+std::vector<SelectionRegion> FindPhasedPhiSelections(const analysis::ValueProgram& graph,
+    const EvaluationPlan& evaluation, TreeCheckBudget& budget) {
   using namespace analysis;
   std::vector<SelectionRegion> result;
   if (!evaluation.phis || evaluation.phis->flow != PhiFlow::kPhased) return result;
   std::vector<std::optional<UseId>> inputs;
-  std::vector<std::uint32_t> copies, uses;
+  std::vector<std::uint32_t> copies, uses, incoming;
   budget.Array(inputs, graph.edges.size()); budget.Array(copies, graph.edges.size());
-  budget.Array(uses, graph.values.size());
+  budget.Array(uses, graph.values.size()); budget.Array(incoming, graph.blocks.size());
+  for (const auto& edge : graph.edges) {
+    budget.Step(); if (edge.kind != FlowEdgeKind::kException) ++incoming[edge.target.value];
+  }
   for (const auto& bundle : evaluation.phis->bundles) {
     budget.Step(); const auto* edge = std::get_if<EdgeId>(&bundle.incoming);
     if (!edge) continue;
@@ -43,18 +46,17 @@ std::vector<SelectionRegion> FindPhasedSelections(const analysis::ValueProgram& 
     if (stage && evaluation.phis->bundles[i].count) staged[stage->operation.value] = 1;
   }
   struct Arm { WorkBlockId tail; EdgeId edge; ValueId value; ValueId merged; };
-  const auto arm = [&](ControlId first, WorkBlockId join, EdgeId entry) -> std::optional<Arm> {
-    auto at = first;
+  const auto arm = [&](EdgeId entry) -> std::optional<Arm> {
+    auto at = graph.edges[entry.value].target;
     std::optional<OpId> producer;
     if (copies[entry.value]) return {};
-    // Each admitted arm is an existing single-entry control path. Nested
-    // regions stop discovery; no exception edges or synthetic units are erased.
-    for (std::size_t visited = 0; visited < control.nodes.size(); ++visited) {
-      budget.Step(); const auto& node = control.nodes[at.value];
-      if (node.arms || node.decision || !std::holds_alternative<std::monostate>(node.synthetic) ||
-          node.block.value >= graph.blocks.size() || graph.edges[entry.value].target != node.block) return {};
-      const auto& block = graph.blocks[node.block.value];
-      if (graph.phases[node.block.value].phase == ExceptionPhase::kCatch) return {};
+    // Follow original normal edges only for candidate discovery, while
+    // retaining every exception edge in the authoritative graph. Single-entry
+    // tails stop at the first phi edge, merge, nested branch or catch entry;
+    // different candidate arms cannot rescan a shared suffix.
+    for (std::size_t visited = 0; visited < graph.blocks.size(); ++visited) {
+      budget.Step(); const auto& block = graph.blocks[at.value];
+      if (incoming[at.value] != 1 || graph.phases[at.value].phase == ExceptionPhase::kCatch) return {};
       std::optional<EdgeId> normal;
       for (std::uint32_t e = 0; e < block.edge_count; ++e) {
         budget.Step(); const EdgeId edge{block.first_edge.value + e};
@@ -82,49 +84,96 @@ std::vector<SelectionRegion> FindPhasedSelections(const analysis::ValueProgram& 
       }
       const auto edge = *normal;
       if (graph.edges[edge.value].kind == FlowEdgeKind::kException) return {};
-      if (!node.next) {
-        if (!producer || graph.edges[edge.value].target != join || !inputs[edge.value]) return {};
+      if (copies[edge.value]) {
+        if (!producer || !inputs[edge.value]) return {};
         const auto input = *inputs[edge.value]; const auto& use = graph.uses[input.value];
         const auto* value = std::get_if<ValueId>(&use.operand);
         const auto* merged = std::get_if<ValueId>(&use.owner);
         if (!value || !merged || graph.ops[producer->value].result != *value ||
             evaluation.operations[producer->value].consumer != input) return {};
-        return Arm{node.block, edge, *value, *merged};
+        return Arm{at, edge, *value, *merged};
       }
-      if (copies[edge.value]) return {};
-      entry = edge; at = *node.next;
+      at = graph.edges[edge.value].target;
     }
     return {};
   };
-  budget.Admit(control.nodes.size(), sizeof(SelectionRegion)); result.reserve(control.nodes.size());
-  budget.Admit(result.capacity() - control.nodes.size(), sizeof(SelectionRegion));
-  for (const auto& node : control.nodes) {
-    budget.Step();
-    if (!node.arms || !node.arms->taken || !node.arms->fallthrough || !node.next || node.decision ||
-        !std::holds_alternative<std::monostate>(node.synthetic) || node.block.value >= graph.phases.size()) continue;
-    const auto& phase = graph.phases[node.block.value];
+  budget.Admit(graph.blocks.size(), sizeof(SelectionRegion)); result.reserve(graph.blocks.size());
+  budget.Admit(result.capacity() - graph.blocks.size(), sizeof(SelectionRegion));
+  for (std::size_t b = 0; b < graph.blocks.size(); ++b) {
+    budget.Step(); const WorkBlockId header_id{static_cast<std::uint32_t>(b)};
+    const auto& phase = graph.phases[b];
     if (phase.phase != ExceptionPhase::kCommit || !phase.operation) continue;
     const auto branch = *phase.operation; const auto& op = graph.ops[branch.value];
     if (!std::holds_alternative<ValueBranch>(op.operation) || op.use_count != 1) continue;
     const auto* condition = std::get_if<ValueId>(&graph.uses[op.first_use.value].operand);
     const auto* predicate = condition ? std::get_if<OpResult>(&graph.values[condition->value].origin) : nullptr;
     if (!predicate) continue;
-    const auto join = control.nodes[node.next->value].block;
-    const auto& header = graph.blocks[node.block.value];
+    const auto& header = graph.blocks[b];
     if (header.edge_count != 2) continue;
-    const auto yes = arm(*node.arms->taken, join, header.first_edge);
-    const auto no = arm(*node.arms->fallthrough, join, EdgeId{header.first_edge.value + 1});
+    const auto yes = arm(header.first_edge);
+    const auto no = arm(EdgeId{header.first_edge.value + 1});
     if (!yes || !no || yes->edge == no->edge || yes->merged != no->merged || uses[yes->merged.value] != 2) continue;
+    const auto join = graph.edges[yes->edge.value].target;
     const auto* merged = std::get_if<PhiDefinition>(&graph.values[yes->merged.value].origin);
-    if (!merged || merged->block != join) continue;
+    if (!merged || merged->block != join || graph.edges[no->edge.value].target != join) continue;
     SelectionRegion region{TreeLogical::kOr, predicate->op, branch, yes->merged, *condition,
-        no->value, node.block, yes->tail, no->tail, join, yes->edge, no->edge};
-    region.consequent = yes->value; region.keep_path = node.arms->taken; region.evaluate_path = node.arms->fallthrough;
+        no->value, header_id, yes->tail, no->tail, join, yes->edge, no->edge};
+    region.consequent = yes->value;
     // Retain the original branch predicate (including VM boolean-vs-zero
     // semantics), rather than assuming JavaScript truthiness from source style.
     budget.Array(region.conditions, 1); region.conditions[0] = {branch, true};
     result.push_back(std::move(region));
   }
   return result;
+}
+// Bind graph candidates to the actual exception-control owner before emission.
+// Control IDs never substitute for phase-block IDs in the discovery algorithm.
+std::vector<SelectionRegion> FindPhasedSelections(const analysis::ValueProgram& graph,
+    const ControlPlan& control, const EvaluationPlan& evaluation, TreeCheckBudget& budget) {
+  using namespace analysis;
+  auto regions = FindPhasedPhiSelections(graph, evaluation, budget);
+  std::vector<std::optional<ControlId>> headers;
+  std::vector<std::uint8_t> counts;
+  budget.Array(headers, graph.blocks.size()); budget.Array(counts, graph.blocks.size());
+  for (std::size_t i = 0; i < control.nodes.size(); ++i) {
+    budget.Step(); const auto& node = control.nodes[i];
+    if (!node.arms || node.block.value >= headers.size() ||
+        !std::holds_alternative<std::monostate>(node.synthetic)) continue;
+    if (counts[node.block.value]) { headers[node.block.value].reset(); continue; }
+    counts[node.block.value] = 1; headers[node.block.value] = ControlId{static_cast<std::uint32_t>(i)};
+  }
+  const auto path = [&](std::optional<ControlId> first, EdgeId edge, WorkBlockId terminal) {
+    for (std::size_t visited = 0; first && visited < control.nodes.size(); ++visited) {
+      budget.Step(); const auto& node = control.nodes[first->value];
+      if (node.arms || node.decision || !std::holds_alternative<std::monostate>(node.synthetic) ||
+          node.block != graph.edges[edge.value].target) return false;
+      if (node.block == terminal) return !node.next;
+      const auto& block = graph.blocks[node.block.value];
+      std::optional<EdgeId> normal;
+      for (std::uint32_t e = 0; e < block.edge_count; ++e) {
+        budget.Step(); const EdgeId candidate{block.first_edge.value + e};
+        if (graph.edges[candidate.value].kind == FlowEdgeKind::kException) continue;
+        if (normal) return false;
+        normal = candidate;
+      }
+      if (!normal) return false;
+      edge = *normal; first = node.next;
+    }
+    return false;
+  };
+  std::size_t kept = 0;
+  for (auto& region : regions) {
+    budget.Step(); if (!headers[region.header.value]) continue;
+    const auto& node = control.nodes[headers[region.header.value]->value];
+    if (node.decision || !node.next || control.nodes[node.next->value].block != region.join) continue;
+    const auto first = graph.blocks[region.header.value].first_edge;
+    if (!path(node.arms->taken, first, *region.keep) ||
+        !path(node.arms->fallthrough, EdgeId{first.value + 1}, region.evaluate)) continue;
+    region.keep_path = node.arms->taken; region.evaluate_path = node.arms->fallthrough;
+    if (&regions[kept] != &region) regions[kept] = std::move(region);
+    ++kept;
+  }
+  regions.resize(kept);
+  return regions;
 }
 }  // namespace abcd::source
