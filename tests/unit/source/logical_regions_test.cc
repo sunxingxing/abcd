@@ -300,10 +300,15 @@ analysis::ValueProgram BufferedSelections(unsigned count = 2, bool barrier = fal
   bytes.insert(bytes.end(), {0x60, 1, static_cast<std::uint8_t>(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 3, 0, 0x64});
   return Import(bytes, 3);
 }
-analysis::ValueProgram GetterSelections(unsigned count = 2, bool barrier = false, bool call = true, bool trailing_literal = false, std::optional<FunctionInput>* input = nullptr, bool leading_literal = false) {
+analysis::ValueProgram GetterSelections(unsigned count = 2, bool barrier = false, bool call = true, bool trailing_literal = false, std::optional<FunctionInput>* input = nullptr, bool leading_literal = false, bool invoked = false) {
   std::vector<std::uint8_t> bytes{0x60, 3, 0x42, 0, 1, 0, 0x61, 1,
       0x07, 0, 0, 0, 0x61, 0, 0x60, 3, 0x42, 0, 0, 0, 0x61, 2};
   if (!call) bytes.erase(bytes.begin(), bytes.begin() + 14);
+  if (invoked) {
+    // A call-result snapshot participates through the common expression shape.
+    // Getter/call order and receiver remain separate original uses.
+    bytes.insert(bytes.end() - 2, {static_cast<std::uint8_t>(abc::Opcode::kCALLTHIS0_IMM8_V8), 0, 3});
+  }
   if (leading_literal) {
     const std::vector<std::uint8_t> prefix{0x60, 3, 0x42, 0, 1, 0, 0x61, 1,
         0x07, 0, 0, 0, 0x61, 0, 0x60, 3, 0x42, 0, 0, 0,
@@ -330,7 +335,9 @@ analysis::ValueProgram GetterSelections(unsigned count = 2, bool barrier = false
     if (barrier) emit(abc::Opcode::kDEBUGGER);
     bytes.insert(bytes.end(), {0x01, 0x27, 0, 2}); branches.push_back(jump(abc::Opcode::kJEQZ_IMM32));
     bytes.insert(bytes.end(), {0x00, 0x27, 0, 2}); branches.push_back(jump(abc::Opcode::kJEQZ_IMM32));
-    bytes.insert(bytes.end(), {0x60, 2, 0x42, 0, 0, 0, 0x61, 2});
+    bytes.insert(bytes.end(), {0x60, 2, 0x42, 0, 0, 0});
+    if (invoked) bytes.insert(bytes.end(), {static_cast<std::uint8_t>(abc::Opcode::kCALLTHIS0_IMM8_V8), 0, 2});
+    bytes.insert(bytes.end(), {0x61, 2});
   }
   bytes.insert(bytes.end(), {0x60, 2});
   const auto end = jump(abc::Opcode::kJMP_IMM32);
@@ -338,7 +345,8 @@ analysis::ValueProgram GetterSelections(unsigned count = 2, bool barrier = false
   const auto fallback_end = jump(abc::Opcode::kJMP_IMM32);
   for (const auto branch : branches) patch(branch, fallback);
   patch(end, bytes.size()); patch(fallback_end, bytes.size());
-  if (!call) { bytes.push_back(0x64); return Import(bytes, 3, input); }
+  if (!call) { bytes.push_back(0x64); return Import(bytes, 3, input, abc::ProfileId::kDynamic1206,
+      invoked ? analysis::CallResultValues::kLanguage : analysis::CallResultValues::kUnknown); }
   emit(abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8); bytes.insert(bytes.end(), {0, 0, 0, 0});
   bytes.insert(bytes.end(), {0x60, 1, static_cast<std::uint8_t>(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 3, 0});
   if (trailing_literal) {
@@ -348,7 +356,8 @@ analysis::ValueProgram GetterSelections(unsigned count = 2, bool barrier = false
     bytes.insert(bytes.end(), {0x60, 1, static_cast<std::uint8_t>(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 3, 0, 0x60, 2});
   }
   bytes.push_back(0x64);
-  return Import(bytes, 3, input);
+  return Import(bytes, 3, input, abc::ProfileId::kDynamic1206,
+      invoked ? analysis::CallResultValues::kLanguage : analysis::CallResultValues::kUnknown);
 }
 analysis::ValueProgram GuardedCopy() {
   // The empty taken control arm still writes the joined SSA value. An effect
@@ -774,6 +783,21 @@ std::string BooleanConversions(unsigned count, bool comparison) {
   return Source(graph, true, &*input, false);
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--call-snapshot-source") {
+    std::cout << Source(GetterSelections(2, false, true, false, nullptr, false, true)) << "\n"; return 0;
+  }
+  if (argc == 1) for (unsigned count : {1U, 2U, 200U, 201U}) {
+    const auto graph = GetterSelections(count, false, true, false, nullptr, false, true);
+    Check(!Source(graph).empty());
+    const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
+    Check(std::holds_alternative<CallPlan>(BuildCallPlan(graph, evaluation)));
+    for (std::size_t i = 0; i < graph.ops.size(); ++i)
+      if (evaluation.operations[i].kind == EvaluationKind::kPredicateSnapshot) {
+        auto forged = evaluation; forged.operations[i].consumer.reset();
+        Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+        break;
+      }
+  }
   if (argc == 1 || (argc == 2 && std::string_view(argv[1]) == "--forwarded-selection-sources")) {
     const bool emit = argc == 2;
     if (emit) std::cout << '[';

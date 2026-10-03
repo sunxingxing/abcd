@@ -12,6 +12,33 @@
 
 ## 当前阶段
 
+### 2026-10-03：删除引用同块门槛与快照 producer 白名单，两真实 record 出稿
+
+- CallPlan 删除 property/call 同块及手工 cross-flow 分类；共同 EvaluationPlan
+  新鲜独立验证承担定义/使用、可用性、单次所有权和事件顺序，引用仍核对原
+  callee result、base/receiver、原使用关系。未删除正确性义务。
+- 谓词快照从共同 EvaluationShape 的 expression/eager 语义能力选择 producer，
+  不再用 getter/call 等 opcode 白名单；原正向区间覆盖全部事件，其他使用保留
+  private snapshot。未增加样本路径/名称/局部序列分派。
+  [审计替换进度](shape-restrictions-audit.md) 明确还保留的候选范围，不宣称七类
+  问题全部修复。规则 revision66。
+- 原字节码回归含多层调用结果的 nullable 选择、1/2/200/201表达式和伪造快照
+  使用拒绝。270组独立 native 场景通过，涵盖早期nullish、identity、原callee /
+  receiver、callee改写和任意异常；/tmp/abcd-expression-snapshot-native-final.log。
+- 240组配对 pasteboard onWindowStageCreate/error callback 场景通过，
+  /tmp/abcd-reference-paste-paired.log。配对TS仅进入测试，引擎命令只接收ABC。
+  未构造不完整派生类、调用updateBreakpoint或验收平台/整个record。
+- -j4生产及相关目标最终构建退出0：/tmp/abcd-reference-model-final-build.log。
+  12/12相关回归33.84秒通过，/tmp/abcd-reference-model-tests.log。
+  新增早期nullish和配对测试注册后2/2通过，reference-model-paired-tests.log。
+- fresh build/stage-one/value-expression-reference-pass-1 五输入退出0，78 complete /
+  9 incomplete /19 failure /46 no-module；已有完整源码逐字未变，无legacy。
+  pasteboard record4767输出3487字节，MultiCommunity record40957输出2682字节，
+  两者failure→incomplete。仍分别保留constructor和updateBreakpoint的两个缺口。
+  /tmp/abcd-reference-model-final-batch.log、final-batch-summary.json。
+- Goal active；阶段一与object creaters原目标保持，完整语义/表示验收未完成。
+  full-suite/扩展语料/RSS/基准/DFX/定期审视没有恢复。
+
 ### 2026-10-03：按用户要求审计局部形状限制，禁止追加样本匹配
 
 - 用户明确禁止因为样本增加条件匹配。本次已加入 AGENTS.md §1a：样本只作

@@ -55,3 +55,21 @@ AGENTS.md 已加入通用恢复规则：禁止以样本身份和局部形状追�
 
 当前 pasteboard record4767 仍未恢复，不宣称这个问题已修复。阶段一和 object
 creator 全组目标保持原范围，完整语义与源码风格验收仍未达到。
+
+## 规则 66 的首项替换
+
+CallPlan 不再检查 property/call 的同块关系或手工枚举 cross-flow 例外。已有
+共同 EvaluationPlan 的新鲜独立验证先证明可用性、定义/使用、单次所有权及效果
+顺序；CallPlan 再检查原 property result、callee use、base/receiver 身份及使用
+关系。并未通过删除引用身份或顺序义务来放行。
+
+predicate snapshot 的 producer 类型白名单已删除。候选能力来自共同
+EvaluationShape：可形成表达式且输入语义为 eager；正向事件区间重新核对
+producer 子树和所有干预效果。于是调用结果、其他表达式与 getter 复用同一个
+快照机制，而不需为每种 opcode/样本加入匹配分支。尚有 earliest-use/strict
+comparison/branch 的局部候选范围，未宣称完整替换所有 snapshot/CFG 边界。
+
+真实 pasteboard record4767 和 MultiCommunity record40957 均从 failure 进入
+incomplete；原 callee-before-JSON.stringify 的调用已恢复。测试覆盖返回对象/
+primitive/nullish、getter/方法改写、receiver、抛出值及连续1/2/200/201表达式。
+七类审计事项仍有开放项，后续不能再靠枚举局部模板扩大接受范围。

@@ -28,7 +28,11 @@ std::vector<std::optional<UseId>> Candidates(const ValueProgram& graph,
   for (std::size_t i = 0; i < first.size(); ++i) {
     budget.Step(); if (!first[i]) continue;
     const auto& operation = graph.ops[i].operation;
-    if (!std::holds_alternative<ValueNamedRead>(operation) && !std::holds_alternative<ValuePropertyRead>(operation)) { first[i].reset(); continue; }
+    // Snapshot an expression's value, not an opcode family. The common shape
+    // specifies evaluation capability; the forward interval proof below owns
+    // every effect and rejects movement across unrelated effects.
+    const auto shape = DescribeEvaluation(operation);
+    if (!shape || !shape->expression || shape->inputs != InputEvaluation::kEager) { first[i].reset(); continue; }
     const auto owner = std::get<OpId>(graph.uses[first[i]->value].owner);
     const auto& compare = graph.ops[owner.value];
     const auto* binary = std::get_if<ValueBinary>(&compare.operation);

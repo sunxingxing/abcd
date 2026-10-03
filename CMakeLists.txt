@@ -1193,6 +1193,15 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/empty_tail.mjs $<TARGET_FILE:logical_regions_test>)
     add_test(NAME branch_polarity_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/branch_polarity.mjs $<TARGET_FILE:logical_regions_test>)
+    if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc" AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/pasteboard_src/src/main/ets/entryability/EntryAbility.ts")
+      add_test(NAME pasteboard_partial_callback_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/pasteboard_partial_callback.mjs $<TARGET_FILE:abc_semantic>
+        "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc"
+        "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/pasteboard_src/src/main/ets/entryability/EntryAbility.ts")
+    endif()
+    add_test(NAME expression_snapshot_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/expression_snapshot.mjs $<TARGET_FILE:logical_regions_test>)
     add_test(NAME logical_regions_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/logical_regions.mjs $<TARGET_FILE:logical_regions_test>)
     add_test(NAME decision_selection_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

@@ -215,9 +215,10 @@ std::variant<std::uint64_t, CallPlanError> VerifyCalls(const analysis::ValueProg
           member->receiver.value == op.first_use.value + 1, Error::kBinding);
       const auto& property = graph.ops[member->property.value];
       const auto& placement = evaluation.operations[member->property.value];
-      Require(property.life == ValueLife::kLive && Property(property.operation) && property.result &&
-          ((property.block == op.block && property.order < op.order) ||
-           (CrossPhaseInline(graph, evaluation, member->property) || CrossLogicalInline(graph, evaluation, member->property))), Error::kReference);
+      // Fresh evaluation verification owns availability and total effect order,
+      // including selected regions and phases. CFG block placement is not a
+      // Reference semantic: retain the original property result/base instead.
+      Require(property.life == ValueLife::kLive && Property(property.operation) && property.result, Error::kReference);
       Require((placement.kind == EvaluationKind::kInline ||
           (placement.kind == EvaluationKind::kNestedLiteral && evaluation.operations[i].kind == EvaluationKind::kNestedLiteral)) &&
           placement.consumer == op.first_use, Error::kReference);
