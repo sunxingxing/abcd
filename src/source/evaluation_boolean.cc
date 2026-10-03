@@ -47,13 +47,10 @@ bool BooleanEvaluation(const analysis::ValueProgram& graph, const analysis::Valu
 
 bool PredicateSnapshot(const analysis::ValueProgram& graph,
     const analysis::ValueOp& consumer, const analysis::ValueOperand& operand) {
-  std::optional<analysis::UnaryOperator> predicate;
-  if (const auto* branch = std::get_if<analysis::ValueBranch>(&consumer.operation)) predicate = branch->predicate;
-  if (const auto* unary = std::get_if<analysis::ValueUnary>(&consumer.operation)) predicate = unary->op;
   // These VM predicates expand to repeated JS reads unless the operand is
   // already Boolean. Never duplicate an arbitrary expression/getter here.
-  return (predicate == analysis::UnaryOperator::kFalseOrZero ||
-          predicate == analysis::UnaryOperator::kTrueOrNonzeroNumber) &&
+  const auto shape = DescribeEvaluation(consumer.operation);
+  return shape && shape->source == SourceEvaluation::kSnapshotInputs &&
          !BooleanEvaluation(graph, operand);
 }
 bool NonNaNNumberEvaluation(const analysis::ValueProgram& graph,

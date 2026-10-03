@@ -210,19 +210,6 @@ analysis::OpId Allocation(const analysis::ValueProgram& graph, analysis::OpId id
       (!same_path || path.Before(allocation, op)), Error::kReceiver);
   return result->op;
 }
-// Primitive loads have no mutable identity, binding read or coercion. Phased
-// integer/float/special loads use ValueCopy; do not admit SSA binding copies.
-// Domain and resolved constants remain independently checked by the tree.
-bool PrimitiveLeaf(const analysis::ValueProgram& graph, const analysis::ValueOp& op) {
-  if (!analysis::CanErasePureOp(op)) return false;
-  if (std::holds_alternative<analysis::ValueString>(op.operation)) return op.use_count == 0;
-  if (!std::holds_alternative<analysis::ValueCopy>(op.operation) || op.use_count != 1) return false;
-  const auto& use = graph.uses[op.first_use.value];
-  return use.role == analysis::OperandRole::kInput && use.purpose == analysis::ReadPurpose::kOperand &&
-      (std::holds_alternative<analysis::IntegerLiteral>(use.operand) ||
-       std::holds_alternative<analysis::Float64Bits>(use.operand) ||
-       std::holds_alternative<analysis::SpecialValue>(use.operand));
-}
 void EarlyValue(const analysis::ValueProgram& graph, const analysis::ValueOp& allocation,
     const analysis::ValueOperand& original, const LiteralPath& path) {
   const auto operand = path.Resolve(original);
@@ -244,58 +231,25 @@ bool Aggregate(const analysis::ValueOperation& op) {
   return std::holds_alternative<analysis::ValueArrayAllocation>(op) ||
       std::holds_alternative<analysis::ValueObjectAllocation>(op);
 }
-bool LiteralUnary(const analysis::ValueOperation& operation) {
-  const auto* unary = std::get_if<analysis::ValueUnary>(&operation);
-  if (!unary) return false;
-  using U = analysis::UnaryOperator;
-  switch (unary->op) {
-    // These shared AST lowerings evaluate their input exactly once. Domain,
-    // coercion/throw order and catch snapshots remain independently checked.
-    case U::kLegacyNegate: case U::kNegate: case U::kBitNot: case U::kLogicalNot: case U::kTypeOf:
-    case U::kToNumber: case U::kToBoolean:
-    // Updates use the common exclusive scratch binding and evaluate input
-    // once. ToNumeric still requires the common numeric-domain lowering;
-    // literal ownership grants neither a conversion proof nor a user write.
-    case U::kToNumeric: case U::kIncrement: case U::kDecrement: return true;
-    // VM predicates repeat a snapshot leaf, not an owned effect expression.
-    case U::kFalseOrZero: case U::kTrueOrNonzeroNumber: return false;
-  }
-  return false;
-}
 bool LiteralExpression(const analysis::ValueProgram& graph, const analysis::ValueOp& op, std::size_t index, Guards guards) {
-  const auto* creation = std::get_if<analysis::ValueFunctionCreation>(&op.operation);
-  const auto* global = std::get_if<analysis::ValueGlobalRead>(&op.operation);
-  // Creating a closure does not execute its body. The same literal interval
-  // proof retains creation order and forbids intervening environment changes;
-  // EvaluationPlan/FamilyTree still own the child and all capture obligations.
-  const bool closure = creation && creation->kind == analysis::CreationKind::kFunction &&
-      creation->home_object == analysis::HomeObjectInput::kCurrentFunction && op.use_count == 0;
-  return PrimitiveLeaf(graph, op) || LiteralUnary(op.operation) ||
-      // Native binary syntax preserves operand/coercion order. This admission
-      // does not prove a VM result is a language value; input/domain and the
-      // independent literal interval checks remain required.
-      (std::holds_alternative<analysis::ValueBinary>(op.operation) && op.use_count == 2 &&
-       op.result && graph.values[op.result->value].domain.IsLanguage()) ||
-      closure ||
-      // Input-backed record creation keeps both operands and fresh identity.
-      // The shared forest/operand checker owns exact done-flag conversion;
-      // literal intervals still reject escapes and catch observations.
-      std::holds_alternative<analysis::ValueIterResult>(op.operation) ||
-      std::holds_alternative<analysis::ValueInvoke>(op.operation) ||
-      // Construction is a single-use ordered expression, like a call. The
-      // nesting census forbids exposing the unfinished literal to it; shared
-      // evaluation/operand checks retain callee, arguments and throw order.
-      std::holds_alternative<analysis::ValueConstruct>(op.operation) ||
-      std::holds_alternative<analysis::ValueConstructApply>(op.operation) ||
-      std::holds_alternative<analysis::ValueLexicalLoad>(op.operation) ||
-      // Name lookup already has a common GlobalNameExpr lowering. Nest only
-      // that lookup kind; the same use census, effect/catch interval and final
-      // scope checks retain getter throws and forbid repeated/escaped reads.
-      (global && global->lookup == analysis::GlobalLookup::kName && op.use_count == 0) ||
-      std::holds_alternative<analysis::ValueNamedRead>(op.operation) ||
-      std::holds_alternative<analysis::ValuePropertyRead>(op.operation) ||
-      (std::holds_alternative<analysis::ValueModuleRead>(op.operation) &&
-       index < guards.size() && guards[index]);
+  const auto shape = DescribeEvaluation(op.operation);
+  if (!shape || !shape->expression || shape->Count() != op.use_count ||
+      shape->inputs != InputEvaluation::kEager || !op.result ||
+      !graph.values[op.result->value].domain.IsLanguage()) return false;
+  switch (shape->source) {
+    case SourceEvaluation::kPure:
+      if (!analysis::CanErasePureOp(op)) return false;
+      break;
+    case SourceEvaluation::kDirect: case SourceEvaluation::kSnapshotInputs: break;
+    case SourceEvaluation::kSuspending: case SourceEvaluation::kInvocation:
+    case SourceEvaluation::kUnsupported: return false;
+  }
+  // Expression capability never discharges module TDZ, single ownership,
+  // capture environment, escape, effect/catch order or repeated-input reads.
+  // The common module proof owns this paired guard; interval/use proofs below
+  // own all other obligations, regardless of operation kind or block layout.
+  return !std::holds_alternative<analysis::ValueModuleRead>(op.operation) ||
+      (index < guards.size() && guards[index]);
 }
 // A native member call consumes its base through the callee Reference. The
 // duplicate wire receiver is not a second evaluation. Recognize only the exact
@@ -396,15 +350,19 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     budget.Step(); if (!plan.nested[i] || Aggregate(graph.ops[i].operation)) continue;
     const auto& op = graph.ops[i];
+    const auto shape = DescribeEvaluation(op.operation);
+    Require(shape.has_value(), Error::kDefinition);
     std::optional<std::size_t> previous;
     for (std::uint32_t u = 0; u < op.use_count; ++u) {
       budget.Step(); const analysis::UseId use{op.first_use.value + u};
+      Require(!CheckEvaluationUse(graph, graph.uses[use.value], *shape, u), Error::kDefinition);
       if (ReferenceReceiver(graph, use, path)) continue;
       const auto operand = path.Resolve(graph.uses[use.value].operand);
       const auto* value = std::get_if<analysis::ValueId>(&operand);
       const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
       if (!result) continue;
       if (plan.nested[result->op.value] == use) {
+        Require(!PredicateSnapshot(graph, op, operand), Error::kLateValue);
         // An aggregate operand occupies its entire initialization interval,
         // not just its allocation site. Arguments must be complete, disjoint
         // and in source operand order before their consuming expression.
@@ -810,6 +768,7 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
           const auto* value = std::get_if<analysis::ValueId>(&operand);
           const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
           if (!result || result->op.value < allocation[i]->value) continue;
+          Require(!PredicateSnapshot(graph, op, operand), Error::kLateValue);
           Require(Aggregate(graph.ops[result->op.value].operation) ||
               LiteralExpression(graph, graph.ops[result->op.value], result->op.value, guards), Error::kLateValue);
           Require(!plan.nested[result->op.value], Error::kObserved);

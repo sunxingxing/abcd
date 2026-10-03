@@ -30,9 +30,17 @@ constexpr std::array kIterResult{Role::kInput, Role::kCondition};
 std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation& operation) {
   return std::visit([](const auto& op) -> std::optional<EvaluationShape> {
     using T = std::decay_t<decltype(op)>;
-    if constexpr (std::is_same_v<T, analysis::ValueCopy> || std::is_same_v<T, analysis::ValueUnary> ||
-                  std::is_same_v<T, analysis::ValueAwait> || std::is_same_v<T, analysis::ValueYield>)
-      return EvaluationShape{kInput, true};
+    if constexpr (std::is_same_v<T, analysis::ValueCopy>) {
+      EvaluationShape shape{kInput, true}; shape.source = SourceEvaluation::kPure; return shape;
+    }
+    else if constexpr (std::is_same_v<T, analysis::ValueUnary>) {
+      EvaluationShape shape{kInput, true};
+      if (op.op == analysis::UnaryOperator::kFalseOrZero || op.op == analysis::UnaryOperator::kTrueOrNonzeroNumber)
+        shape.source = SourceEvaluation::kSnapshotInputs;
+      return shape;
+    } else if constexpr (std::is_same_v<T, analysis::ValueAwait> || std::is_same_v<T, analysis::ValueYield>) {
+      EvaluationShape shape{kInput, true}; shape.source = SourceEvaluation::kSuspending; return shape;
+    }
     else if constexpr (std::is_same_v<T, analysis::ValueBinary>) return EvaluationShape{kBinary, true};
     else if constexpr (std::is_same_v<T, analysis::ValueNamedRead>) return EvaluationShape{kNamedRead, true};
     else if constexpr (std::is_same_v<T, analysis::ValueLexicalLoad>) return EvaluationShape{kNoOperands, true};
@@ -55,7 +63,12 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       }
       return {};
     }
-    else if constexpr (std::is_same_v<T, analysis::ValueBranch>) return EvaluationShape{kBranch, false};
+    else if constexpr (std::is_same_v<T, analysis::ValueBranch>) {
+      EvaluationShape shape{kBranch, false};
+      if (op.predicate == analysis::UnaryOperator::kFalseOrZero || op.predicate == analysis::UnaryOperator::kTrueOrNonzeroNumber)
+        shape.source = SourceEvaluation::kSnapshotInputs;
+      return shape;
+    }
     else if constexpr (std::is_same_v<T, analysis::ValueReturn>) return EvaluationShape{kReturn, false};
     else if constexpr (std::is_same_v<T, analysis::ValueThrow>) return EvaluationShape{kThrow, false};
     else if constexpr (std::is_same_v<T, analysis::ValueJump>) return EvaluationShape{kNoOperands, false};
@@ -70,8 +83,12 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       shape.inputs = InputEvaluation::kConditionalArgument;
       return shape;
     }
-    else if constexpr (std::is_same_v<T, analysis::ValueString> || std::is_same_v<T, analysis::ValueHole>)
-      return EvaluationShape{kNoOperands, true};
+    else if constexpr (std::is_same_v<T, analysis::ValueString>) {
+      EvaluationShape shape{kNoOperands, true}; shape.source = SourceEvaluation::kPure; return shape;
+    }
+    else if constexpr (std::is_same_v<T, analysis::ValueHole>) {
+      EvaluationShape shape{kNoOperands, true}; shape.source = SourceEvaluation::kUnsupported; return shape;
+    }
     else if constexpr (std::is_same_v<T, analysis::ValueFunctionCreation>) {
       if (op.kind == analysis::CreationKind::kFunction && op.home_object == analysis::HomeObjectInput::kCurrentFunction)
         return EvaluationShape{kNoOperands, true};
@@ -91,8 +108,13 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       return EvaluationShape{kIterResult, true};
     else if constexpr (std::is_same_v<T, analysis::ValueGlobalRead>) {
       switch (op.lookup) {
-        case analysis::GlobalLookup::kName: case analysis::GlobalLookup::kVar:
+        case analysis::GlobalLookup::kName:
           return EvaluationShape{kNoOperands, true};
+        case analysis::GlobalLookup::kVar: {
+          // IC-dependent var lookup has no equivalent GlobalNameExpr lowering.
+          // Scheduling this event is not permission to print a lexical read.
+          EvaluationShape shape{kNoOperands, true}; shape.source = SourceEvaluation::kUnsupported; return shape;
+        }
       }
       return {};
     }
@@ -104,13 +126,15 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       return {};
     } else if constexpr (std::is_same_v<T, analysis::ValueSuperCall>) {
       switch (op.source) {
-        case analysis::SuperArgumentSource::kExplicit:
-          return EvaluationShape{kNoOperands, true, op.arguments};
+        case analysis::SuperArgumentSource::kExplicit: {
+          EvaluationShape shape{kNoOperands, true, op.arguments}; shape.source = SourceEvaluation::kInvocation; return shape;
+        }
         case analysis::SuperArgumentSource::kInvocationFrame: {
           if (op.arguments || op.cache_slot) return {};
           EvaluationShape shape{kConstruct, true};
           shape.inputs = InputEvaluation::kInvocationConstructor;
           shape.invocation_constructor = true;
+          shape.source = SourceEvaluation::kInvocation;
           return shape;
         }
       }
@@ -120,6 +144,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       // it does not authorize native spread syntax or an argument-list rewrite.
       EvaluationShape shape{kSpreadSuper, true};
       shape.invocation_constructor = true;
+      shape.source = SourceEvaluation::kInvocation;
       return shape;
     } else if constexpr (std::is_same_v<T, analysis::ValueSuperCheck>) {
       EvaluationShape shape{kReceiverGuard, false};

@@ -273,3 +273,26 @@ pasteboard_partial_callback_source_test、retained_selection_source_test、
 expression_snapshot_source_test、forwarded_selection_source_test。日志
 /tmp/abcd-reference-shape-current-tests.log。未重新构建、未运行全套/扩展
 语料/RSS；pasteboard callback 通过不等于整个 record 已完整恢复。
+
+## 规则 73：literal 复用共同源码求值能力
+
+前节新增的 LiteralExpression/LiteralUnary 独立operation准入列表已替换。
+现有 EvaluationShape 同时描述 SourceEvaluation：直接表达式、纯值、重复
+snapshot输入、暂停、调用帧协议及无源码降低能力。literal从共同能力和
+输入/结果语义发现候选，原 use/effect/catch/escape/environment 证明决定
+实际归属，producer种类不再作为第二份可扩充白名单。
+
+共同类型分派是描述指令/降低语义的边界，不是移动原列表后继续逐个给
+literal授权。原来遗漏的this、当前函数身份和纯binding copy自动进入该
+机制；单次使用与共享使用仍不同。重复输入谓词复用 PredicateSnapshot 和
+BooleanEvaluation：原存储输入可重复读，Boolean降低可单次消费子树；不能
+把getter子树复制进展开式。独立verifier重查嵌套输入角色/purpose及snapshot
+义务。pure copy/string的额外效果、模块TDZ、HomeObject、异常和super协议
+仍需各自真实证明。没有把“表达式”标签当作暂停或运行时等价证明。
+
+真实DEFINEFUNC owner的编码用例经共同输入/树/ABI恢复此前拒绝的嵌套对象，
+有复制/NOP、1/2/200/201/402变化及效果/共享/所有权负例。272组独立行为
+对照通过；24项相关定向检查通过，细节及失败修复证据见status.md。五输入
+及106份源码无回退/内容变化，阶段一依然80 complete/26 incomplete。
+这关闭的是第13类独立列表事项；前表12类中尚存的布局/表示限制未因此关闭，
+literal的phased phi存储版本和跨块区间也没有完整贯通。

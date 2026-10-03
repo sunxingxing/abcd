@@ -161,7 +161,10 @@ void Mutations() {
   Check(std::get<LiteralError>(BuildLiteralPlan(Graph(2, Prefix::kObserve))) == LiteralError::kObserved);
   Check(std::holds_alternative<LiteralPlan>(BuildLiteralPlan(Graph(1, Prefix::kLateValue))));
   Check(std::get<LiteralError>(BuildLiteralPlan(Graph(2, Prefix::kLateValue))) == LiteralError::kObserved);
-  Check(std::get<LiteralError>(BuildLiteralPlan(Graph(2, Prefix::kLateBinding))) == LiteralError::kLateValue);
+  // A pure binding copy is an expression now. Sharing its result across
+  // initializers still refuses duplication through the common use census.
+  Check(std::holds_alternative<LiteralPlan>(BuildLiteralPlan(Graph(1, Prefix::kLateBinding))));
+  Check(std::get<LiteralError>(BuildLiteralPlan(Graph(2, Prefix::kLateBinding))) == LiteralError::kObserved);
   auto buffered_observed = Graph(2, Prefix::kObserve);
   std::get<ValueObjectAllocation>(buffered_observed.ops[0].operation).literal = abcd::abc::PoolIndex{0};
   Check(std::get<LiteralError>(BuildLiteralPlan(buffered_observed)) == LiteralError::kObserved);
@@ -175,8 +178,7 @@ void ArrayBoundaries() {
     std::uint32_t index = 0;
     for (auto& op : graph.ops) if (std::holds_alternative<ValueOwnWrite>(op.operation))
       op.operation = ValueIndexedWrite{index++, 0};
-    const auto expected = prefix == Prefix::kLateBinding ? LiteralError::kLateValue : LiteralError::kObserved;
-    Check(std::get<LiteralError>(BuildLiteralPlan(graph)) == expected);
+    Check(std::get<LiteralError>(BuildLiteralPlan(graph)) == LiteralError::kObserved);
   }
 }
 void Budgets() {
@@ -876,8 +878,79 @@ void RhsSnapshot() {
   forged.operations[0].consumer = UseId{graph.ops[2].first_use.value + 1};
   Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
 }
+enum class PredicateInput { kParameter, kBoolean, kLateRead, kEarlyRead };
+ValueProgram PredicateGraph(PredicateInput kind) {
+  Fixture fixture;
+  fixture.graph.values.push_back({EntryDefinition{ParameterEntry{0}}, ValueKinds::Language(), {}});
+  ValueId input{0};
+  const auto read = [&] {
+    fixture.Add(ValueNamedRead{{0}}, true, {{OperandRole::kBase, input}});
+    input = *fixture.graph.ops.back().result;
+    auto& op = fixture.graph.ops.back();
+    op.normal = op.before_throw = LanguageEffect::kHeapRead | LanguageEffect::kUserCode;
+    op.exceptional = ExceptionalCompletion::kMayThrow;
+  };
+  if (kind == PredicateInput::kEarlyRead) read();
+  fixture.Add(ValueObjectAllocation{}, true, {});
+  const auto allocation = *fixture.graph.ops.back().result;
+  fixture.graph.ops.back().normal = fixture.graph.ops.back().before_throw = LanguageEffect::kAllocation;
+  fixture.graph.ops.back().exceptional = ExceptionalCompletion::kMayThrow;
+  if (kind == PredicateInput::kLateRead) read();
+  if (kind == PredicateInput::kBoolean) {
+    fixture.Add(ValueUnary{UnaryOperator::kLogicalNot}, true, {{OperandRole::kInput, input}});
+    input = *fixture.graph.ops.back().result;
+  }
+  fixture.Add(ValueUnary{UnaryOperator::kFalseOrZero}, true, {{OperandRole::kInput, input}});
+  const auto predicate = *fixture.graph.ops.back().result;
+  fixture.Add(ValueOwnWrite{OwnWriteKind::kDefineField, {1}, 0}, false,
+      {{OperandRole::kBase, allocation}, {OperandRole::kStoredValue, predicate}});
+  fixture.graph.ops.back().normal = fixture.graph.ops.back().before_throw = LanguageEffect::kHeapWrite | LanguageEffect::kUserCode;
+  fixture.graph.ops.back().exceptional = ExceptionalCompletion::kMayThrow;
+  fixture.Add(ValueReturn{}, false, {{OperandRole::kReturnValue, allocation}});
+  fixture.graph.blocks = {{{0}, static_cast<std::uint32_t>(fixture.graph.ops.size()), {0}, 0}};
+  return std::move(fixture.graph);
+}
+void PredicateLiterals(bool print = false) {
+  for (const auto kind : {PredicateInput::kParameter, PredicateInput::kBoolean, PredicateInput::kEarlyRead}) {
+    const auto graph = PredicateGraph(kind);
+    const auto planned = BuildEvaluationPlan(graph);
+    Check(std::holds_alternative<EvaluationPlan>(planned));
+    const auto& evaluation = std::get<EvaluationPlan>(planned);
+    const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+    FunctionSyntax syntax{}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+    syntax.names = {u"input", u"value", u"probe"}; syntax.parameters = {{NameId{0}, NameEvidence::kDebugRange}};
+    std::vector<ExpressionConstant> constants(graph.ops.size());
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      if (std::holds_alternative<ValueOwnWrite>(graph.ops[i].operation)) constants[i] = NameId{1};
+      if (std::holds_alternative<ValueNamedRead>(graph.ops[i].operation)) constants[i] = NameId{2};
+    }
+    const ExpressionConstants resolved{constants, syntax.names.size()};
+    const auto built = BuildFunctionTree(graph, control, evaluation, std::move(syntax), resolved);
+    Check(std::holds_alternative<ConstructedFunction>(built));
+    const auto& tree = std::get<ConstructedFunction>(built).tree;
+    Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(graph, control, evaluation, tree, resolved)));
+    std::ostringstream out; Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, out)));
+    if (print) std::cout << out.str() << '\n';
+  }
+  auto graph = PredicateGraph(PredicateInput::kLateRead);
+  Check(std::get<LiteralError>(BuildLiteralPlan(graph)) == LiteralError::kLateValue);
+  const auto predicate = graph.ops.size() - 3;
+  graph.ops[predicate].operation = ValueUnary{UnaryOperator::kLogicalNot};
+  const auto planned = BuildLiteralPlan(graph);
+  Check(std::holds_alternative<LiteralPlan>(planned));
+  const auto plan = std::get<LiteralPlan>(planned);
+  graph.ops[predicate].operation = ValueUnary{UnaryOperator::kFalseOrZero};
+  Check(std::holds_alternative<LiteralError>(VerifyLiteralPlan(graph, plan)));
+  for (const ValueOperation suspended : {ValueOperation{ValueAwait{}}, ValueOperation{ValueYield{}}}) {
+    graph.ops[predicate].operation = suspended;
+    Check(std::holds_alternative<LiteralError>(VerifyLiteralPlan(graph, plan)));
+    Check(std::holds_alternative<LiteralError>(BuildLiteralPlan(graph)));
+  }
+}
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--predicate-sources") { PredicateLiterals(true); return 0; }
+  PredicateLiterals();
   if (argc == 2 && std::string_view(argv[1]) == "--staged-source") { StagedBuffer(true); return 0; }
   StagedBuffer(); ClosureBoundaries(); ReceiverGuardBoundaries();
   if (argc == 2 && std::string_view(argv[1]) == "--late-call-source") { LateMemberCalls(true); return 0; }

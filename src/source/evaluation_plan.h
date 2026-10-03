@@ -145,6 +145,10 @@ enum class ReferenceBoundary : std::uint8_t { kNone, kBeforeStoredValue };
 // ConstructorGuard retains the VM check as an ordered event and snapshots its
 // input. It does not authorize guard elision or reading uninitialized JS this.
 enum class InputEvaluation : std::uint8_t { kEager, kConditionalArgument, kClassHeritage, kReceiverGuard, kInvocationConstructor };
+// Source lowering capability, independent of opcode layout and SSA ownership.
+// Snapshot inputs can expand to repeated reads; suspension and invocation
+// protocols need their own control/ABI owner before expression composition.
+enum class SourceEvaluation : std::uint8_t { kDirect, kPure, kSnapshotInputs, kSuspending, kInvocation, kUnsupported };
 struct EvaluationShape {
   // Fixed prefix followed by argument occurrences. No array proportional to
   // range-call arity is allocated merely to describe their roles.
@@ -158,6 +162,7 @@ struct EvaluationShape {
   // The current invocation constructor is a protocol identity, never a JS
   // variable. Derived lowering must separately prove its actual origin.
   bool invocation_constructor = false;
+  SourceEvaluation source = SourceEvaluation::kDirect;
   [[nodiscard]] bool NeedsArgumentFrame() const {
     return inputs == InputEvaluation::kConditionalArgument || inputs == InputEvaluation::kInvocationConstructor;
   }

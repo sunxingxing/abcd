@@ -12,6 +12,42 @@
 
 ## 当前阶段
 
+### 2026-10-04：literal 嵌套采用共同源码求值能力，移除独立类型准入列表
+
+- 规则revision73。EvaluationShape 增加 typed SourceEvaluation，描述直接
+  表达式、纯值、重复snapshot输入、暂停、调用帧协议及尚无源码降低的操作。
+  LiteralExpression 删除 PrimitiveLeaf/LiteralUnary 和 call/construct/read/
+  closure/binary 类型列表，消费同一形状、输入元数、eager语义及Language域。
+  PredicateSnapshot 也复用共同重复输入描述；没有新增样本/布局匹配。
+- literal 原有所有权、Reference、效果/异常区间、捕获环境和逃逸证明保留。
+  模块TDZ仍依赖真实guard证明；纯copy/string不得隐藏附加效果。嵌套输入
+  复用 CheckEvaluationUse 核对角色/purpose；未知值的VM谓词不得重复执行
+  getter/其他owned表达式。早先存储值可作为snapshot，已证明Boolean的输入
+  可采用共同单次降低；await/yield、super及IC var lookup的既有缺口未放宽。
+- 新真实DEFINEFUNC occurrence/ABI上下文的编码fixture经输入、ValueIR、
+  literal/evaluation、FunctionTree、tree semantics、ABI和instruction sources
+  恢复嵌套对象里的this与当前函数身份、普通调用及复制/NOP变体。旧实现在
+  evaluation阶段拒绝，/tmp/abcd-literal-capability-red-test.log。1/2/200/201/
+  402对象与线性工作增长、共享值、伪造所有权、额外效果及debugger负例通过。
+- 新272组独立源码行为对照通过，含严格destination下primitive/nullish/
+  object receiver、函数自身身份、构造调用/不同newTarget、Proxy callback、
+  任意抛出值、属性描述符、早先getter的一次读取及VM谓词。谓词部分为共同
+  ValueIR/AST语义fixture，不冒充原ABC协程/控制恢复。纯binding copy单次
+  使用正例通过；多个初始化器共享copy仍由使用普查拒绝，旧LateValue断言
+  更新为Observed，未删除反例。fixture源码不进入引擎。
+- -j4构建退出0：/tmp/abcd-literal-capability-verified-build.log，另copy、
+  branch、semantic构建日志同前缀。24项相关定向检查通过：tests.log中17项、
+  copy-tests.log中的literal_plan_test复验、branch-tests.log中5项及
+  pasteboard-tests.log中1项。初次失败及修复记录保留，没有算入通过。
+  full-suite/扩展语料/RSS/基准/DFX保持暂停。
+- fresh build/stage-one/value-literal-capability-pass-1 固定五输入退出0，
+  SHA均匹配现有abc-index.json；仍80 complete /26 incomplete /0 failure /
+  46 no-module，无legacy或complete回退。106份完整/部分源码内容逐字未变，
+  语法解析通过，/tmp/abcd-literal-capability-syntax.log；导出/比较日志同前缀。
+  此次实现关闭literal独立表达式准入列表事项，未解决其余跨块/相位组合
+  限制或26份不完整模块的数值、构造协议和遗漏正文。Goal active，完整
+  阶段一语义及源码表示验收仍未达到。
+
 ### 2026-10-04：恢复准入条件当前复核，补充 literal 嵌套能力列表
 
 - 基线66e48615。历史引用同块校验的来源和删除再次核实；当前 VerifyCalls

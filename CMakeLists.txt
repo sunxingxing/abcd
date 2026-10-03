@@ -686,6 +686,10 @@ if(BUILD_TESTING)
   target_include_directories(literal_construct_test PRIVATE tests/support)
   target_link_libraries(literal_construct_test PRIVATE abcd_source)
   add_test(NAME literal_construct_test COMMAND literal_construct_test)
+  add_executable(literal_intrinsic_test tests/integration/literal_intrinsic.cc)
+  target_include_directories(literal_intrinsic_test PRIVATE tests/support)
+  target_link_libraries(literal_intrinsic_test PRIVATE abcd_source)
+  add_test(NAME literal_intrinsic_test COMMAND literal_intrinsic_test)
   add_executable(numeric_identity_test tests/integration/numeric_identity.cc)
   target_include_directories(numeric_identity_test PRIVATE tests/support)
   target_link_libraries(numeric_identity_test PRIVATE abcd_source)
@@ -774,6 +778,9 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_condition.mjs $<TARGET_FILE:shared_condition_test>)
     add_test(NAME literal_construct_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/literal_construct.mjs $<TARGET_FILE:literal_construct_test>)
+    add_test(NAME literal_intrinsic_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/literal_intrinsic.mjs
+      $<TARGET_FILE:literal_intrinsic_test> $<TARGET_FILE:literal_plan_test>)
     add_test(NAME literal_argument_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/literal_argument.mjs $<TARGET_FILE:literal_construct_test>)
     add_test(NAME literal_global_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
