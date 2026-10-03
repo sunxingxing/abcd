@@ -12,6 +12,30 @@
 
 ## 当前阶段
 
+### 2026-10-03：phased 计算型选择臂与原生成员调用
+
+- PhiExpressionProducer允许唯一使用的计算结果直接在自身Commit的出边phi
+  赋值中求值，没有跨过其他操作；原Before异常暂存位置仍保留。跨inert尾部
+  的优化仍只限字面量，不授予一般计算跨跳转/作用域的移动许可。
+- 同一FindPhasedSelections以一次反向索引确认每个臂只有一个闭合表达式
+  根，允许该根的已验证inline子树与模块guard。沿真实normal路径发现臂，
+  不删除exception边；非空pre-throw copy、独立效果、嵌套区域仍拒绝。
+  独立ExpressionScopes另核对phi计算及inline事件的原始try/handler作用域。
+- 真实字节码三profile覆盖1/2/200/201/402连续getter与成员调用选择臂；
+  共同AST输出 condition ? object.value() : null，未使用.call替代receiver。
+  43组getter、59组成员调用对照通过，覆盖短路、返回值/异常值身份、getter
+  与调用分别抛错、receiver与被修改的.call属性。交换选择结果仍拒绝。
+- 相关targets -j4构建退出0，11/11组合回归61.27秒；增加成员调用用例后
+  最终5/5通过23.71秒。日志 /tmp/abcd-phase-computed-related-{build,tests}.log、
+  /tmp/abcd-phase-computed-call-build.log、/tmp/abcd-phase-computed-final-tests.log。
+  控制组合、catch snapshots、Voip300组及ProgressBar配对均通过。
+- fresh build/stage-one/value-phase-computed-pass-1五输入均退出0，仍78 complete /
+  5 incomplete /23 failure /46 no-module，无回退/legacy。8383/9550/11989
+  减少计算结果的中间快照；其他完整源码未变化。
+- 仍未闭合：分支前保留的方法引用与整个条件参数融合、可选链shared-arm
+  条件和嵌套选择。Push方法3613的kReference仍保留，不把本轮分支内部调用
+  支持冒充完整参数组合。Goal active；full-suite/扩展语料/RSS仍未恢复。
+
 ### 2026-10-03：phased 条件区域进入共同 SelectionRegion
 
 - 新 phased_selections.cc 从真实Commit分支、单入口控制路径和两条原始phi

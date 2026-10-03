@@ -1,6 +1,7 @@
 #include "phi_copy_checks.h"
 #include "literal_plan.h"
 #include "tree_checks.h"
+#include "phase_corridor.h"
 
 #include <new>
 #include <stdexcept>
@@ -131,9 +132,15 @@ std::optional<analysis::OpId> PhiExpressionProducer(
   }
   if (!found) return {};
   if (copies.flow == PhiFlow::kPhased) {
-    // A literal can be emitted at its sole normal phi edge without retaining
-    // a register snapshot. Keep all throwing/computed expressions at their
-    // original sites until the phase-expression owner proves their movement.
+    // A computed RHS may execute at its own Commit's outgoing copy. There
+    // is no intervening operation, and the original Before-stage snapshots
+    // still precede it. Moving across a tail remains literal-only below.
+    if (producer->commit && graph.edges[edge->value].source == *producer->commit &&
+        graph.blocks[producer->commit->value].edge_count == 1 &&
+        graph.blocks[producer->commit->value].first_edge == *edge &&
+        graph.edges[edge->value].kind != FlowEdgeKind::kException &&
+        PhaseCorridors::Expression(op.operation) && !std::holds_alternative<ValueCopy>(op.operation))
+      return producer->op;
     const bool literal_copy = std::holds_alternative<ValueCopy>(op.operation) && op.use_count == 1 &&
         !std::holds_alternative<ValueId>(graph.uses[op.first_use.value].operand);
     if ((!literal_copy && !std::holds_alternative<ValueString>(op.operation)) ||

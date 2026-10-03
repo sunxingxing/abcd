@@ -86,7 +86,7 @@ inline bool IsSelectionConstant(const analysis::ValueProgram& graph, analysis::O
     const EvaluationPlan& evaluation, TreeCheckBudget& budget);
 // Phased adapter for the same SelectionRegion/AST path. Requires verified
 // control/evaluation. Original phase blocks, phi occurrences and catch edges stay
-// authoritative; currently only closed pure literal arms can be selected.
+// authoritative. Selected expression arms cannot require pre-throw copies.
 [[nodiscard]] std::vector<SelectionRegion> FindPhasedSelections(
     const analysis::ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, TreeCheckBudget& budget);

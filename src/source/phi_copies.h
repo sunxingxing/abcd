@@ -45,8 +45,9 @@ enum class PhiCopyError : std::uint8_t {
 // Its read owns the original guard use/event, not an additional source use.
 // literal_ends is the index of freshly checked native expression literals;
 // their unobserved initialization interval remains inside the same edge RHS.
-// Phased inputs admit only nonthrowing primitive literals, through single-exit
-// inert tails after their Commit; catch edges and computed values stay pinned.
+// Phased computed inputs may execute at their own Commit's outgoing normal
+// edge; only nonthrowing primitive literals can cross an inert tail. Original
+// pre-throw staging remains in place; catch edges are never phi-expression sites.
 // Tail scans stop at any other producer, so eligible suffixes are disjoint and
 // visiting all bundles is linear in graph size.
 [[nodiscard]] std::optional<analysis::OpId> PhiExpressionProducer(

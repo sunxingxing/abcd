@@ -15,7 +15,7 @@ using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
 enum class Shape {
-  kStagedSelection, kStaged, kStagedObserve, kStagedCatchObserve, kReturn, kCatch, kObserve, kLate, kBranch, kCatchObserve, kNested, kNestedCatch,
+  kStagedCall, kStagedComputed, kStagedSelection, kStaged, kStagedObserve, kStagedCatchObserve, kReturn, kCatch, kObserve, kLate, kBranch, kCatchObserve, kNested, kNestedCatch,
   kNestedCatchObserve, kNestedDispatch, kNestedShared, kNestedSnapshot, kUnary, kUnaryCatch,
   kUnaryShared, kUnaryUnknown, kNestedDeadCopy, kNestedDeadArray, kGlobalCatch, kGlobalDispatch, kLexicalCatch, kBinaryCatch
 };
@@ -26,7 +26,7 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   constexpr std::uint8_t kObject = 0, kParameter = 4;
   std::vector<std::uint8_t> bytes{op(abc::Opcode::kCREATEEMPTYOBJECT), op(abc::Opcode::kSTA_V8), kObject};
-  const bool staged = shape == Shape::kStagedSelection || shape == Shape::kStaged || shape == Shape::kStagedObserve || shape == Shape::kStagedCatchObserve;
+  const bool staged = shape == Shape::kStagedCall || shape == Shape::kStagedComputed || shape == Shape::kStagedSelection || shape == Shape::kStaged || shape == Shape::kStagedObserve || shape == Shape::kStagedCatchObserve;
   if (staged) bytes = {op(abc::Opcode::kCREATEOBJECTWITHBUFFER_IMM8_ID16), 0, 0, 0,
       op(abc::Opcode::kSTA_V8), kObject};
   const bool binary = shape == Shape::kBinaryCatch;
@@ -61,12 +61,20 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   if (shape == Shape::kObserve || shape == Shape::kStagedObserve) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kObject,
       op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0});
   const auto selection = [&] {
+    if (shape == Shape::kStagedComputed || shape == Shape::kStagedCall) {
+      bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kParameter,
+          op(abc::Opcode::kISTRUE), op(abc::Opcode::kJNEZ_IMM8), 5,
+          op(abc::Opcode::kLDNULL), op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(shape == Shape::kStagedCall ? 11 : 8),
+          op(abc::Opcode::kLDA_V8), kParameter, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 1, 0});
+      if (shape == Shape::kStagedCall) bytes.insert(bytes.end(), {op(abc::Opcode::kCALLTHIS0_IMM8_V8), 0, kParameter});
+      return;
+    }
     bytes.insert(bytes.end(), {
         op(abc::Opcode::kLDA_V8), kParameter, op(abc::Opcode::kJEQZ_IMM8), 9,
         op(abc::Opcode::kLDAI_IMM32), 7, 0, 0, 0,
         op(abc::Opcode::kJMP_IMM8), 3, op(abc::Opcode::kLDNULL)});
   };
-  if (staged && shape != Shape::kStagedSelection) bytes.insert(bytes.end(), {
+  if (staged && shape != Shape::kStagedSelection && shape != Shape::kStagedComputed && shape != Shape::kStagedCall) bytes.insert(bytes.end(), {
       op(abc::Opcode::kLDA_V8), kParameter, op(abc::Opcode::kJEQZ_IMM8), 10,
       op(abc::Opcode::kLDA_V8), kParameter, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 1, 0,
       op(abc::Opcode::kJMP_IMM8), 3, op(abc::Opcode::kLDNULL)});
@@ -74,7 +82,7 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   if (!nested && !arithmetic && !staged) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kParameter});
   if (shape == Shape::kLate) bytes.insert(bytes.end(), {op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0});
   for (std::uint32_t i = 0; i < fields; ++i) {
-    if (shape == Shape::kStagedSelection) selection();
+    if (shape == Shape::kStagedSelection || shape == Shape::kStagedComputed || shape == Shape::kStagedCall) selection();
     constexpr std::uint8_t kInner = 1;
     if (nested) bytes.insert(bytes.end(), {op(abc::Opcode::kCREATEEMPTYOBJECT), op(abc::Opcode::kSTA_V8), kInner});
     if (dead_copy) {
@@ -265,7 +273,7 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
     const auto built = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, resolved, kTreeBudget);
     test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
     const auto& tree = std::get<ExceptionFunctionDraft>(built).tree;
-    if (shape == Shape::kStagedSelection) {
+    if (shape == Shape::kStagedSelection || shape == Shape::kStagedComputed || shape == Shape::kStagedCall) {
       test::Check(std::count_if(tree.expressions.begin(), tree.expressions.end(),
           [](const auto& node) { return std::holds_alternative<ConditionalExpr>(node.expression); }) == fields);
       auto wrong = tree;
@@ -292,6 +300,11 @@ int main(int argc, char** argv) {
   if (argc == 2) {
     const auto option = std::string_view(argv[1]);
     const bool update = option == "--increment-source" || option == "--decrement-source" || option == "--numeric-source";
+    if (option == "--computed-source" || option == "--computed-call-source") {
+      Run(abc::ProfileId::kDynamic1206, option == "--computed-call-source" ? Shape::kStagedCall : Shape::kStagedComputed, 0, 1,
+          abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8, abc::Opcode::kNEG_IMM8, true);
+      return 0;
+    }
     if (option == "--staged-source" || option == "--conditional-source") {
       Run(abc::ProfileId::kDynamic1206, option == "--conditional-source" ? Shape::kStagedSelection : Shape::kStaged, 0, 2,
           abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8, abc::Opcode::kNEG_IMM8, true);
@@ -350,6 +363,8 @@ int main(int argc, char** argv) {
       Run(profile, Shape::kBinaryCatch, 0, count);
       Run(profile, Shape::kStaged, 0, count);
       Run(profile, Shape::kStagedSelection, 0, count);
+      Run(profile, Shape::kStagedComputed, 0, count);
+      Run(profile, Shape::kStagedCall, 0, count);
     }
     std::uint64_t lexical_work = 0;
     for (const auto count : {1U, 2U, 200U, 201U, 402U}) {

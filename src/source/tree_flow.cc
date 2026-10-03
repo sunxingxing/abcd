@@ -245,7 +245,7 @@ class FlowCheck {
     }
     edges_->Finish();
     Objects();
-    LiteralScopes();
+    ExpressionScopes();
     NumericUpdates();
     for (std::size_t i = 0; i < tree_.symbols.size(); ++i) {
       budget_.Step();
@@ -687,10 +687,13 @@ class FlowCheck {
       actual = symbol;
     }
   }
-  void LiteralScopes() {
-    if (!exceptions_ || !evaluation_.literals) return;
+  void ExpressionScopes() {
+    if (!exceptions_) return;
     bool needed = false;
-    for (const auto& object : evaluation_.literals->objects) {
+    for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
+      budget_.Step(); needed |= evaluation_.operations[i].kind == EvaluationKind::kPhiInput && OrderedEvaluation(graph_.ops[i]);
+    }
+    if (evaluation_.literals) for (const auto& object : evaluation_.literals->objects) {
       budget_.Step(); needed |= object.form == LiteralForm::kExpression &&
           graph_.ops[object.allocation.value].exceptional == analysis::ExceptionalCompletion::kImpossible;
     }
@@ -736,6 +739,15 @@ class FlowCheck {
       Require(expected.has_value() == actual.has_value() &&
           (!expected || (expected->region == actual->region && expected->part == actual->part)), Error::kPlacement);
     };
+    for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
+      budget_.Step();
+      const auto kind = evaluation_.operations[i].kind;
+      if ((kind == EvaluationKind::kPhiInput || kind == EvaluationKind::kInline) && OrderedEvaluation(graph_.ops[i])) {
+        Require(flow_.expressions[i].has_value(), Error::kPlacement);
+        check({static_cast<std::uint32_t>(i)}, *flow_.expressions[i]);
+      }
+    }
+    if (!evaluation_.literals) return;
     for (const auto& object : evaluation_.literals->objects) {
       budget_.Step(); if (object.form != LiteralForm::kExpression) continue;
       check(object.allocation, *flow_.expressions[object.allocation.value]);
