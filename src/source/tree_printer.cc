@@ -645,7 +645,7 @@ class TreePrinter {
     if ((family_ && !ModuleBody()) || !node.definition || node.definition->identity != Tree().identity ||
         node.definition->creation.creator != Tree().method) throw Error::kUnsupportedContext;
     if (node.heritage) {
-      if (!node.definition->BodiesPrepared() || node.definition->callable != CallableKind::kDerivedConstructor)
+      if (!node.definition->DraftPrepared() || node.definition->callable != CallableKind::kDerivedConstructor)
         throw Error::kUnsupportedContext;
       Append("({["); Quoted(node.definition->name); Append("]: class extends (");
       Push(DerivedClassBody{node.definition, expression}); Push(*node.heritage);
@@ -1147,7 +1147,10 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
   using Failure = TreePrintError;
   const auto initial = budget;
   try {
-    if (!tree.BodiesPrepared() || ResourceFailures(tree.identity.contract) != ResourceFailureScope::kExcluded ||
+    const auto readiness_work = tree.members.size() + tree.omissions.size() + tree.definitions.size();
+    if (readiness_work > budget.work) return Failure::kWorkLimit;
+    budget.work -= readiness_work;
+    if (!tree.DraftPrepared() || ResourceFailures(tree.identity.contract) != ResourceFailureScope::kExcluded ||
         tree.constructor->Identity() != tree.identity ||
         tree.constructor->Family().members[tree.constructor->Family().root.value].tree.method != tree.creation.target)
       return Failure::kUnsupportedContext;
@@ -1159,7 +1162,7 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
       return Failure::kUnsupportedContext;
     if (!parent) {
       if (tree.constructor->Family().root_capture) return Failure::kUnsupportedContext;
-      for (const auto& member : tree.members) if (member.Family().root_capture) return Failure::kUnsupportedContext;
+      for (const auto& member : tree.members) if (member && member->Family().root_capture) return Failure::kUnsupportedContext;
       for (const auto& site : tree.definitions)
         for (const auto& member : site.bodies)
           if (member && member->Family().root_capture) return Failure::kUnsupportedContext;
@@ -1195,6 +1198,12 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
         }
       }
     };
+    const auto number = [&](std::size_t value) {
+      std::array<char, std::numeric_limits<std::size_t>::digits10 + 1> buffer;
+      const auto converted = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value);
+      if (converted.ec != std::errc{}) throw Failure::kUnsupportedContext;
+      append(std::string_view(buffer.data(), static_cast<std::size_t>(converted.ptr - buffer.data())));
+    };
     const FamilyDestination destination{Strictness::kStrict, globals, FunctionFragment::kClassMember, {}, nullptr, parent};
     const auto member = [&](const PreparedFamily& family) {
       auto printed = family.PrintDraft(destination, output, {limit.bytes - result.bytes}, budget, indent + 1);
@@ -1211,11 +1220,24 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
     // Computed-property NamedEvaluation preserves runtime class.name without
     // inventing an immutable class-name binding that shadows a mutable module
     // export read inside a method. The wrapper is never exposed to user code.
+    if (!tree.omissions.empty()) append("/* INCOMPLETE class: unrecovered members */\n");
     if (form == ClassPrintForm::kExpression) { append("({["); name(); append("]: class {\n"); }
     else append(" {\n");
     member(*tree.constructor);
+    std::size_t gap = 0;
     for (std::size_t i = 0; i < tree.members.size(); ++i) {
-      const auto& family = tree.members[i]; const auto* site = family.ClassCreation();
+      if (!tree.members[i]) {
+        const auto& omitted = tree.omissions[gap++];
+        // Only numeric identities enter this diagnostic comment. No unknown
+        // body/signature, user-controlled comment text or source span is faked.
+        for (std::size_t level = 0; level <= indent; ++level) append("  ");
+        append("/* UNRECOVERED class member "); number(i);
+        append("; method "); number(omitted.context.Target().value);
+        append("; input proof PC "); number(omitted.Pc().value);
+        append(" */\n"); result.incomplete = true;
+        continue;
+      }
+      const auto& family = *tree.members[i]; const auto* site = family.ClassCreation();
       if (!site || family.Identity() != tree.identity || site->creator != tree.creation.creator ||
           site->pc != tree.creation.pc || site->property != i) throw Failure::kUnsupportedContext;
       member(family);

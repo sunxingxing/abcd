@@ -35,7 +35,7 @@ std::variant<DefaultExportCheck, TreePrintError> CheckModuleDefaultExport(
   try {
     ExportScratch scratch(budget.bytes);
     auto work = budget.work;
-    const auto step = [&] { if (!work) throw Error::kWorkLimit; --work; };
+    const auto step = [&](std::uint64_t count = 1) { if (count > work) throw Error::kWorkLimit; work -= count; };
     const auto result = [&](bool eligible) { return DefaultExportCheck{eligible, scratch.Allocated(), budget.work - work}; };
     step();
     if (family && (family->root.value >= family->members.size() ||
@@ -118,9 +118,10 @@ std::variant<DefaultExportCheck, TreePrintError> CheckModuleDefaultExport(
           if (!node->definition) return result(false);
           if (!seen_classes.insert(node->definition.get()).second) continue;
           const auto& definition = *node->definition;
+          step(definition.members.size() + definition.omissions.size() + definition.definitions.size());
           if (!definition.BodiesPrepared()) return result(false);
           add_family(definition.constructor->Family());
-          for (const auto& member : definition.members) { step(); add_family(member.Family()); }
+          for (const auto& member : definition.members) { step(); add_family(member->Family()); }
           for (const auto& site : definition.definitions) for (const auto& member : site.bodies) {
             step(); if (member) add_family(member->Family());
           }

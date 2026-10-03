@@ -138,6 +138,8 @@ enum class SemanticProofError : std::uint8_t {
 struct SemanticProofFailure {
   SemanticProofError kind;
   abc::CodeOffset pc;
+  std::size_t allocated_bytes = 0;
+  std::uint64_t work_units = 0;
 };
 using SemanticProofResult = std::variant<SemanticProof,
                                          SemanticProofFailure>;

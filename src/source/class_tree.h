@@ -20,6 +20,22 @@ struct ClassDefinitionTree {
   ClassDefinitionSite site;
   std::array<std::optional<PreparedFamily>, 2> bodies;
 };
+// An actual member occurrence whose original input proof failed before
+// family discovery. No FunctionTree, executable body or source receipt exists.
+struct ClassMemberOmission {
+  ClassTreeContext context;
+  std::variant<analysis::SemanticProofFailure, analysis::ExceptionInputFailure> failure;
+  [[nodiscard]] abc::CodeOffset Pc() const {
+    return std::visit([](const auto& proof) {return proof.pc;}, failure);
+  }
+  [[nodiscard]] bool InputGap() const {
+    return std::visit([](const auto& proof) {
+      if constexpr (std::is_same_v<std::decay_t<decltype(proof)>, analysis::ExceptionInputFailure>)
+        return proof.kind == analysis::ExceptionInputError::kInternalValue && proof.node && proof.value;
+      else return proof.kind == analysis::SemanticProofError::kInternalValue;
+    }, failure);
+  }
+};
 struct ClassTree {
   RouteInputIdentity identity;
   ClassConstructorSite creation;
@@ -32,12 +48,14 @@ struct ClassTree {
   std::vector<analysis::ClassSiteId> member_sites;
   std::optional<ClassInitializerCall> initializer_site;
   std::optional<PreparedFamily> constructor;
-  std::vector<PreparedFamily> members;
+  std::vector<std::optional<PreparedFamily>> members;
+  std::vector<ClassMemberOmission> omissions; // Ordered by original property.
   std::vector<ClassDefinitionTree> definitions;
   std::optional<ClassStaticFields> initializer;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
   [[nodiscard]] bool BodiesPrepared() const;
+  [[nodiscard]] bool DraftPrepared() const;
 };
 enum class ClassTreeError : std::uint8_t { kCreation, kMember, kName, kResourceLimit, kWorkLimit };
 struct ClassParentScope { bool independent; std::uint64_t work; };

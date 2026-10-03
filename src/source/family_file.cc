@@ -280,14 +280,27 @@ class FamilyReader {
       std::optional<PhasedModuleBinding> modules;
       if (modules_) modules.emplace(PhasedModuleBinding{file_, header_, index_, *modules_, module_owner_});
       auto read = FilePhasedFunction::Read(file_, header_, index_, *owner, Remaining(), modules ? &*modules : nullptr, mode);
-      if (const auto* error = std::get_if<PhasedFileFailure>(&read)) Fail(*error);
+      if (auto* error = std::get_if<PhasedFileFailure>(&read)) {
+        if (auto* failed = std::get_if<PhasedInputFailure>(error)) {
+          failed->allocated_bytes += budget_.bytes - bytes_;
+          failed->work += budget_.work - work_;
+        }
+        Fail(*error);
+      }
       auto function = std::get<FilePhasedFunction>(std::move(read));
       Admit(function.AllocatedBytes(), 1); Step(function.Work()); return function;
     }
     auto read = ReadFunctionValues(file_, header_, index_, position, identity_,
         InputCaptureMode::kConditional, Remaining(), modules_, owner, modules_input,
         cleanup_entry ? FunctionBodyMode::kCleanupEntry : FunctionBodyMode::kOriginal);
-    if (const auto* error = std::get_if<FunctionFileFailure>(&read)) Fail(*error);
+    if (auto* error = std::get_if<FunctionFileFailure>(&read)) {
+      if (auto* input = std::get_if<FunctionInputFailure>(error))
+        if (auto* failed = std::get_if<analysis::SemanticProofFailure>(&input->cause)) {
+          failed->allocated_bytes += budget_.bytes - bytes_;
+          failed->work_units += budget_.work - work_;
+        }
+      Fail(*error);
+    }
     auto function = std::get<FileFunction>(std::move(read));
     Admit(function.allocated_bytes, 1);
     return function;

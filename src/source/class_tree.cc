@@ -30,7 +30,7 @@ std::variant<ClassParentScope, ClassTreeError> CheckClassParentScope(
     };
     if (!independent(*tree.constructor)) return ClassParentScope{false, initial - work};
     for (const auto& member : tree.members)
-      if (!independent(member)) return ClassParentScope{false, initial - work};
+      if (!independent(*member)) return ClassParentScope{false, initial - work};
     return ClassParentScope{true, initial - work};
   } catch (ClassTreeError error) { return error; }
 }
@@ -46,8 +46,22 @@ template<class T, class... U> T Take(std::variant<U...> value) {
 }
 }
 bool ClassTree::BodiesPrepared() const {
+  return omissions.empty() && DraftPrepared();
+}
+bool ClassTree::DraftPrepared() const {
   if (!constructor || members.size() != member_sites.size() ||
       initializer.has_value() != initializer_site.has_value()) return false;
+  std::size_t gap = 0;
+  for (std::size_t i = 0; i < members.size(); ++i) {
+    if (members[i]) continue;
+    if (gap >= omissions.size()) return false;
+    const auto& omitted = omissions[gap++];
+    const auto& context = omitted.context;
+    if (context.Identity() != identity || context.Occurrence() != member_sites[i] ||
+        context.Site().property != i || context.Site().creator != creation.creator || context.Site().pc != creation.pc ||
+        !omitted.InputGap()) return false;
+  }
+  if (gap != omissions.size()) return false;
   for (const auto& definition : definitions) {
     const auto methods = definition.site.Methods();
     for (std::size_t i = 0; i < methods.size(); ++i)
@@ -167,12 +181,46 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
         roles, functions, creator, operation, identity, destination(), budget, recovery));
     admit(tree.constructor->AllocatedBytes(), 1); step(tree.constructor->Work());
     next_owner += tree.constructor->Family().members.size();
-    admit(tree.member_sites.size(), sizeof(PreparedFamily)); tree.members.reserve(tree.member_sites.size());
-    admit(tree.members.capacity() - tree.member_sites.size(), sizeof(PreparedFamily));
+    admit(tree.member_sites.size(), sizeof(std::optional<PreparedFamily>)); tree.members.reserve(tree.member_sites.size());
+    admit(tree.members.capacity() - tree.member_sites.size(), sizeof(std::optional<PreparedFamily>));
     for (const auto occurrence : tree.member_sites) {
       step(1);
-      auto member = Take<PreparedFamily>(PreparedFamily::PrepareClass(file, header, index, lookup, roles,
-          functions, classes, occurrence, identity, destination(), budget, recovery, &modules, &creator));
+      auto prepared = PreparedFamily::PrepareClass(file, header, index, lookup, roles,
+          functions, classes, occurrence, identity, destination(), budget, recovery, &modules, &creator);
+      if (const auto* failed = std::get_if<FamilyPrepareFailure>(&prepared);
+          failed && recovery == RecoveryMode::kAllowPartial) {
+        const auto* family = std::get_if<FamilyFileFailure>(&failed->cause);
+        const auto* phase = family ? std::get_if<PhasedFileFailure>(&family->cause) : nullptr;
+        const auto* input = phase ? std::get_if<PhasedInputFailure>(phase) : nullptr;
+        const auto* normal = family ? std::get_if<FunctionFileFailure>(&family->cause) : nullptr;
+        const auto* normal_input = normal ? std::get_if<FunctionInputFailure>(normal) : nullptr;
+        const auto* normal_proof = normal_input ? std::get_if<analysis::SemanticProofFailure>(&normal_input->cause) : nullptr;
+        const auto* actual = classes.At(occurrence);
+        // Keep only an original root input-domain refusal. Invalid input,
+        // quotas, failed descendants and later family proofs still refuse.
+        const bool input_gap = input && input->cause.kind == analysis::ExceptionInputError::kInternalValue;
+        const bool normal_gap = normal_proof && normal_proof->kind == analysis::SemanticProofError::kInternalValue;
+        if ((input_gap || normal_gap) && actual && family->method == actual->target && !family->parent) {
+          admit(input_gap ? input->allocated_bytes : normal_proof->allocated_bytes, 1);
+          step(input_gap ? input->work : normal_proof->work_units);
+          auto context = Take<ClassTreeContext>(ClassTreeContext::Resolve(file, header, index, lookup,
+              roles, classes, occurrence, identity, budget));
+          admit(context.AllocatedBytes(), 1); step(context.Work());
+          if (tree.omissions.size() == tree.omissions.capacity()) {
+            const auto old = tree.omissions.capacity();
+            const auto capacity = old ? old * 2 : 1;
+            if (capacity < old || capacity > budget.bytes / sizeof(ClassMemberOmission))
+              throw ClassTreeFailure{Error::kResourceLimit};
+            tree.omissions.reserve(capacity);
+            admit(tree.omissions.capacity() - old, sizeof(ClassMemberOmission));
+          }
+          if (input_gap) tree.omissions.push_back({std::move(context), input->cause});
+          else tree.omissions.push_back({std::move(context), *normal_proof});
+          tree.members.emplace_back();
+          continue;
+        }
+      }
+      auto member = Take<PreparedFamily>(std::move(prepared));
       admit(member.AllocatedBytes(), 1); step(member.Work());
       next_owner += member.Family().members.size();
       tree.members.push_back(std::move(member));

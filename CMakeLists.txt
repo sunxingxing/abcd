@@ -926,6 +926,10 @@ if(BUILD_TESTING)
   target_include_directories(apply_function_file_test PRIVATE tests/support)
   target_link_libraries(apply_function_file_test PRIVATE abcd_source abcd_json)
   add_test(NAME apply_function_file_test COMMAND apply_function_file_test)
+  add_executable(class_member_gap_test tests/unit/source/class_member_gap_test.cc)
+  target_include_directories(class_member_gap_test PRIVATE tests/support)
+  target_link_libraries(class_member_gap_test PRIVATE abcd_source)
+  add_test(NAME class_member_gap_test COMMAND class_member_gap_test)
   target_include_directories(value_creation_import_test PRIVATE src/analysis tests/support)
   target_link_libraries(value_creation_import_test PRIVATE abcd_analysis)
   add_test(NAME value_creation_import_test COMMAND value_creation_import_test)
@@ -1325,6 +1329,13 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_constants_record.mjs $<TARGET_FILE:abc_semantic>
         "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"
         "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/default/src/main/ets/constants/Constants.ts")
+    endif()
+    if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc" AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/commons/src/main/ets/utils/WindowUtil.ts")
+      add_test(NAME window_partial_members_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/window_partial_members.mjs $<TARGET_FILE:abc_semantic>
+        "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"
+        "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/commons/src/main/ets/utils/WindowUtil.ts")
     endif()
     add_test(NAME record_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_tree.mjs $<TARGET_FILE:record_tree_test>)

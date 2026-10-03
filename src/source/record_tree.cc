@@ -480,11 +480,11 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
         return class_failure(*failure, pending.operation);
       auto definition = std::get<ClassTree>(std::move(built));
       if (definition.name != pending.tree->name || definition.callable != pending.tree->callable ||
-          definition.member_sites != pending.tree->member_sites || !definition.BodiesPrepared())
+          definition.member_sites != pending.tree->member_sites || !definition.DraftPrepared())
         return fail(Error::kClass);
       retain(definition.allocated_bytes);
       next_class_owner += definition.constructor->Family().members.size();
-      for (const auto& member : definition.members) next_class_owner += member.Family().members.size();
+      for (const auto& member : definition.members) if (member) next_class_owner += member->Family().members.size();
       for (const auto& site : definition.definitions)
         for (const auto& member : site.bodies) if (member) next_class_owner += member->Family().members.size();
       next_class_owner += definition.initializer.has_value();

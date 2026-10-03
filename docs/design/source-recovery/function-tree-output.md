@@ -48,8 +48,10 @@ FunctionRecovery = (Complete | Incomplete, issues)
 - 未知控制关系中的独立片段如需展示，只作注明位置的注释片段，不伪造 AST 嵌套。
 - 子函数不完整时，在子函数前标记，包含它的函数/record 同步保持不完整；其他
   已恢复成员继续输出。签名本身未知时也明确标出，不凭空构造合法 callable。
-- 部分输出仅做阅读/结构检查，不作为等价行为测试的执行输入。完整测试函数仍
-  对照返回值、异常、效果和捕获行为。
+- 部分输出作为整体仅做阅读/结构检查，不作为整个函数/record 的等价执行验收。
+  其中已完整准备的成员可在受控环境中隔离做定向行为对照；不能调用缺口成员，
+  也不能把这些局部结果计为 record、构造器或平台验收。完整测试函数仍对照
+  返回值、异常、效果和捕获行为。
 - 损坏节点 ID、内部不变量失败、无法可靠解码的输入不冒充普通能力缺口。停止
   受影响部分，保留已有可靠结果和错误信息；不能捕获所有错误后宣称部分恢复成功。
 
@@ -83,3 +85,35 @@ work 统计和调用方显式传入有限额度的底层兼容接口保留，但
 片段，但不能冒充该控制组合已经完整支持。全 ISA、字段/全局/签名/函数体整合及
 整份 record 的最终目标不变。演进任务见
 [C00–C09 计划](../../superpowers/plans/2026-09-28-unified-control-regions.md)。
+
+## 类成员的输入证明缺口（规则 64）
+
+`ClassTree` 的 wire-order 成员槽现为有类型的 optional PreparedFamily。
+显式 AllowPartial 下，只有原成员根的 normal SemanticProofFailure 或 phased
+ExceptionInputFailure 的 kInternalValue 可产生 `ClassMemberOmission`。
+真正的 ClassTreeContext 仍从同一文件、profile、角色和 literal occurrence 解析；
+它不是一个代替输入证明的 FunctionTree。签名/正文都没有恢复时只输出安全的
+数值身份注释，不合成空函数、return、throw 或成功 source receipt。
+
+`DraftPrepared` 独立检查每个缺失槽与 omission 的顺序、身份、原始创建 PC、
+property、site 及类型化原因。`BodiesPrepared` 对任何 omission 返回 false；
+phased parent 独立性和完整 default-export 移动仍拒绝该类。原 record 草稿和
+共同 printer 可保留其他完整成员，输出 INCOMPLETE class 与逐个 UNRECOVERED
+注释，并将 incomplete 传到 parent/record。缺失成员不获得伪造的函数位置表。
+
+完整 family-write 扫描继续把整个实际 class creation 作为原有 class barrier；
+它只核对该 barrier 的覆盖，不因此证明缺失成员的内部写入或执行许可。
+缺失的成员没有 body、ABI 或 complete receipt。失败子函数、后续 tree/family
+证明、损坏解码/analysis identity、资源/工作限额和构造器/initializer 失败仍
+按原失败路径处理，不能用 catch-all 错误转换制造部分成功。
+
+Phased 输入失败现保留原 ExceptionInputFailure，而非压扁为 kValues；暂停/恢复
+归一化后的 PC 映射回原指令。正常/异常分析及 file/family 准备层保留可计费的
+失败工作/分配，类恢复在继续前扣除这些保守费用。ordered omission 扫描与
+两倍容量增长为线性；printer 使用固定数字缓冲，不复制整图或扫描所有成员找
+每个缺口。200/201 个成员测试覆盖顺序、完整模式拒绝、缺失/错配声明和损坏输入。
+
+阶段一 WindowUtil record7618 的 8620/8539/8431 仍分别缺输入证明，在该共同
+路径下保留其他成员和完整 WindowInfo 构造器/字段。setUIContext、
+setSystemBarEnabled 及后者 callback 的配对对照只检验这些恢复出的完整成员；
+不构造不完整类、不调用缺失方法，也不声称该 record 或 HarmonyOS API 已验收。

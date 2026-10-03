@@ -592,7 +592,7 @@ class StructureCheck {
       }
     };
     if (definition.constructor) family(*definition.constructor);
-    for (const auto& member : definition.members) family(member);
+    for (const auto& member : definition.members) if (member) family(*member);
     for (const auto& site : definition.definitions)
       for (const auto& member : site.bodies) if (member) family(*member);
   }

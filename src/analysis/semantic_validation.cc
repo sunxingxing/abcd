@@ -246,8 +246,10 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
             AcceptsProtocolHole(method.instructions[i].operation,
                                 method.ssa.Values()[read.value.value])) continue;
         if (!kinds || !kinds->IsLanguage())
-          return Fail(SemanticProofError::kInternalValue,
-                      body.instructions[i].offset);
+          return SemanticProofFailure{SemanticProofError::kInternalValue, body.instructions[i].offset,
+              budget.bytes - remaining + analyzed->AllocatedBytes(),
+              argument_inputs.work + bound->instruction_visits + locals->work_units + quota.Consumed() +
+                  body.instructions.size() + method.ssa.AllReads().size()};
       }
     }
     const auto bytes = method.allocated_bytes +

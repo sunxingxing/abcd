@@ -63,9 +63,12 @@ std::uint64_t FilePhasedFunction::Work() const { return storage_->work; }
 namespace {
 using Error = PhasedFileError;
 void Require(bool ok, Error error) { if (!ok) throw PhasedFileFailure{error}; }
-template<class T, class E> T Take(std::variant<T, E> result) {
+template<class T, class... E> T Take(std::variant<T, E...> result) {
   if (auto* value = std::get_if<T>(&result)) return std::move(*value);
-  throw PhasedFileFailure{std::get<E>(std::move(result))};
+  std::visit([](const auto& error) {
+    if constexpr (!std::is_same_v<T, std::decay_t<decltype(error)>>) throw PhasedFileFailure{error};
+  }, result);
+  throw PhasedFileFailure{Error::kIdentity};
 }
 }  // namespace
 std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
@@ -132,9 +135,14 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
     // File families retain the same Language-write premise in Locals below;
     // VerifyFamilyWrites must discharge every descendant store. The lower-level
     // standalone builder keeps Unknown, and no cell read becomes a snapshot.
-    auto phases = Take<PhasedBody>(PhasedBody::Build(context, body, left, modules,
+    auto analyzed = PhasedBody::Build(context, body, left, modules,
         mode == InputCaptureMode::kConditional ? analysis::CapturedValues::kLanguage : analysis::CapturedValues::kReject,
-        analysis::ClosureWrites::kLanguage, awaits, source_pcs, yields));
+        analysis::ClosureWrites::kLanguage, awaits, source_pcs, yields);
+    if (auto* failure = std::get_if<PhasedInputFailure>(&analyzed)) {
+      failure->allocated_bytes += budget.bytes - left.bytes;
+      failure->work += budget.work - left.work;
+    }
+    auto phases = Take<PhasedBody>(std::move(analyzed));
     admit(phases.AllocatedBytes()); step(phases.Work());
     const auto input = phases.TreeInput(body).input;
     // Retain the conditional scope proof once per method. This does NOT

@@ -110,7 +110,7 @@ ExceptionTreeInput PhasedBody::TreeInput(const abc::MethodBody& body) const {
 std::size_t PhasedBody::AllocatedBytes() const { return storage_->bytes; }
 std::uint64_t PhasedBody::Work() const { return storage_->work; }
 
-std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
+std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure> PhasedBody::Build(
     const FunctionContext& context, const abc::MethodBody& body, analysis::SemanticBudget budget,
     const PhasedModuleBinding* binding, analysis::CapturedValues capture_mode,
     analysis::ClosureWrites writes, std::span<const analysis::AwaitSite> awaits,
@@ -230,9 +230,18 @@ std::variant<PhasedBody, PhasedMethodError> PhasedBody::Build(
         NormalCallResults(context.Identity().contract), receiver), Error::kValues);
     quota.Admit(values.AllocatedBytes()); quota.Step(value_work.Consumed());
     const auto arguments = frame.extra_arguments ? std::optional{ArgumentFrameFact{frame}} : std::nullopt;
-    auto proof = PhaseResult<ExceptionInputProof>(VerifyExceptionInputs(flow, ssa, environments,
-        values, quota.Remaining().work, arguments ? &*arguments : nullptr,
-        ExceptionInputDomain::kHoleTransport), Error::kValues);
+    auto verified = VerifyExceptionInputs(flow, ssa, environments, values, quota.Remaining().work,
+        arguments ? &*arguments : nullptr, ExceptionInputDomain::kHoleTransport);
+    if (const auto* failure = std::get_if<ExceptionInputFailure>(&verified)) {
+      auto original = *failure;
+      if (original.node && original.node->value < flow.nodes.size()) {
+        const auto site = flow.nodes[original.node->value].instruction;
+        if (site.value < flow.instructions.size())
+          original.pc = flow.instructions[site.value].origin.value_or(original.pc);
+      }
+      return PhasedInputFailure{original, quota.Bytes(), quota.Work() + failure->work_units};
+    }
+    auto proof = std::get<ExceptionInputProof>(std::move(verified));
     quota.Step(proof.work_units);
     const PhasedValueInput input{flow, ssa, environments, values, proof, frame};
     auto imported = PhaseResult<ImportedPhases>(BuildPhasedValues(input, quota.Remaining()), Error::kImport);
@@ -298,6 +307,7 @@ std::variant<PhasedMethod, PhasedMethodError> PhasedMethod::Build(
     const PhasedModuleBinding* binding) {
   auto built = PhasedBody::Build(context, body, budget, binding);
   if (const auto* error = std::get_if<PhasedMethodError>(&built)) return *error;
+  if (std::holds_alternative<PhasedInputFailure>(built)) return PhasedMethodError::kValues;
   return Evaluate(std::get<PhasedBody>(std::move(built)), budget);
 }
 std::variant<PhasedMethod, PhasedMethodError> PhasedMethod::Evaluate(

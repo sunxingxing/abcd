@@ -265,7 +265,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // retaining getter order, argument availability, receivers and catch scopes.
 // Rules 63 admit creation-proven direct functions to the shared apply
 // constructor path; child bodies, array ownership and order remain mandatory.
-inline constexpr std::uint32_t kRouteEvidenceRules = 63;
+// Rules 64 preserve actual class-member input failures as explicit omissions
+// in drafts; their absence never certifies bodies or executable publication.
+inline constexpr std::uint32_t kRouteEvidenceRules = 64;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

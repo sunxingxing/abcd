@@ -176,7 +176,10 @@ class WriteCheck {
       const auto* node = std::get_if<ClassExpr>(&target.tree.expressions[expression.value].expression);
       Require(node && node->definition, Error::kCoverage);
       const auto& definition = *node->definition;
-      Require(definition.BodiesPrepared() && definition.identity == target.tree.identity && definition.creation.creator == target.tree.method &&
+      Step(definition.members.size() + definition.omissions.size() + definition.definitions.size());
+      // This scan certifies the original class barrier, not member bodies.
+      // A marked omission never discharges class-internal writes or publication.
+      Require(definition.DraftPrepared() && definition.identity == target.tree.identity && definition.creation.creator == target.tree.method &&
           definition.creation.pc == graph.origins[graph.ops[creation.value].origin.value].pc &&
           std::holds_alternative<analysis::ValueClassCreation>(graph.ops[creation.value].operation), Error::kCoverage);
       Require(!owners[creation.value], Error::kCoverage); owners[creation.value] = creation;

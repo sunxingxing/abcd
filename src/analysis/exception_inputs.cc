@@ -10,16 +10,16 @@ std::variant<ExceptionInputProof, ExceptionInputFailure> VerifyExceptionInputs(
     const EnvironmentFlow& environments, const ExceptionValueFlow& values,
     std::uint64_t work, const ArgumentFrameFact* arguments, ExceptionInputDomain domain) {
   using Error = ExceptionInputError;
-  const auto fail = [](Error kind, abc::CodeOffset pc = {},
+  ExceptionInputProof proof;
+  const auto fail = [&](Error kind, abc::CodeOffset pc = {},
                        std::optional<ExceptionNodeId> node = {},
                        std::optional<SsaValueId> value = {}) {
-    return ExceptionInputFailure{kind, pc, node, value};
+    return ExceptionInputFailure{kind, pc, node, value, proof.work_units};
   };
   if (flow.nodes.size() != environments.before.size() ||
       flow.nodes.size() > UINT32_MAX ||
       values.Facts().size() != ssa.Values().size())
     return fail(Error::kMismatchedAnalysis);
-  ExceptionInputProof proof;
   const auto reads = ssa.AllReads();
   std::optional<ArgumentWindow> window;
   std::size_t cursor = 0;

@@ -11,6 +11,13 @@ enum class PhasedMethodError : std::uint8_t {
   kInput, kSsa, kEnvironment, kValues, kImport, kRegion, kControl, kEvaluation,
   kResourceLimit, kWorkLimit, kContract, kModules, kCells
 };
+// Preserve the exact failed input proof and consumed analysis work. No graph
+// or input certificate is constructed from this envelope.
+struct PhasedInputFailure {
+  analysis::ExceptionInputFailure cause;
+  std::size_t allocated_bytes = 0;
+  std::uint64_t work = 0;
+};
 // Owns original exception analyses and the checked working body before child
 // evaluation. Family discovery must inspect actual creation operations here,
 // then discharge child/capture obligations before constructing source trees.
@@ -25,7 +32,7 @@ class PhasedBody {
   PhasedBody(PhasedBody&&) noexcept;
   PhasedBody& operator=(PhasedBody&&) noexcept;
   ~PhasedBody();
-  [[nodiscard]] static std::variant<PhasedBody, PhasedMethodError> Build(
+  [[nodiscard]] static std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure> Build(
       const FunctionContext& context, const abc::MethodBody& body,
       analysis::SemanticBudget budget = {}, const PhasedModuleBinding* modules = nullptr,
       analysis::CapturedValues captures = analysis::CapturedValues::kReject,

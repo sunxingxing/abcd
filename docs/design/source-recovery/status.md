@@ -12,6 +12,40 @@
 
 ## 当前阶段
 
+### 2026-10-03：类成员输入缺口保留其他恢复结果，真实 WindowUtil 出稿
+
+- 实际 record7618 先在 method8620 phased kValues 阻断整个类；保留原输入失败
+  后定位为 PC127，再发现 8539 PC15、8431 PC34。新 `ClassMemberOmission`
+  从实际成员根的 normal/phased kInternalValue 生成，保存原 ClassTreeContext，
+  未创建 FunctionTree、body、ABI 或 complete receipt。共享 ClassTree/printer
+  输出 wire-order 缺口注释和 INCOMPLETE class，其他 PreparedFamily 不被丢弃。
+  [边界与实现合同](function-tree-output.md) 未放宽数值/NaN 域，也未读取 sidecar。
+- DraftPrepared 核对缺失槽/occurrence/identity/原创建PC/property/typed reason；
+  BodiesPrepared 对 omission 拒绝，phased parent 独立性和完整 default-export
+  移动仍拒绝。原 class barrier 只证明 parent family-write 覆盖，不证明缺失
+  成员写入。失败子函数、后续 family/tree、损坏输入、限额和 initializer/ctor
+  失败保留原拒绝；不 catch-all、不合成空方法或假异常正文。
+- 原 ExceptionInputFailure 和归一化后的原始 PC 进入共同失败投影；normal /
+  phased 及 file/family 准备保留失败分析费用，恢复前保守计费。成员槽线性扫描，
+  omission arena 两倍增长；固定数字缓冲打印注释。normal/try-catch、重复模板
+  3/200/201 个实际成员、缺失/错配 omission、完整模式和损坏输入边界已验证。
+- -j4 生产及相关目标构建退出0：/tmp/abcd-member-gap-verified-build.log。
+  13/13相关回归50.91秒通过，/tmp/abcd-member-gap-tests.log；强化原失败
+  kind/PC/费用断言后单测通过1.19秒，final-proof-build.log/test.log。
+  新增 INCOMPLETE class 标记后生产构建退出0，marker-build.log；最终2/2
+  通过3.96秒，/tmp/abcd-member-gap-marker-tests.log。规则 revision 64。
+- 572组配对 WindowUtil setUIContext、setSystemBarEnabled/callback 场景通过，
+  /tmp/abcd-member-gap-paired.log。配对 TS 仅进独立测试；引擎工具只接收 ABC。
+  此测试以完整 prototype 方法隔离调用，未构造不完整类、调用缺口成员或
+  验证平台 API；不计为 record 执行/语义/源码风格的完整验收。
+- fresh build/stage-one/value-member-gap-pass-2 五输入退出0，78 complete /
+  7 incomplete /21 failure /46 no-module。WindowUtil record7618 failure →
+  incomplete，13155字节保留其他成员与 WindowInfo 构造器/字段，仍有上述三个
+  明确缺口。既有完整源码逐字未变、无 legacy，native default 记录仍保留。
+  证据 /tmp/abcd-member-gap-marker-batch.log、marker-batch-summary.json。
+- Goal active；阶段一与 object creaters 全组未完成。未恢复 full-suite、扩展
+  语料、RSS/基准、DFX 或定期设计审视；此次费用计数不是完整进程峰值证明。
+
 ### 2026-10-03：Apply 构造复用直接函数来源证明
 
 - `DirectFunctionObject` 共同类型接口从原 canonical SSA 创建来源区分类/函数，

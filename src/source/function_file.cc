@@ -52,7 +52,13 @@ std::variant<FileFunction, FunctionFileFailure> ReadFunctionValues(
     }
     auto proven = FunctionInput::Build(identity, method.offset, method.owner_offset, body, frame, mode,
         {bytes, budget.work}, owner, modules_input);
-    if (const auto* error = std::get_if<FunctionInputFailure>(&proven)) return FunctionFileFailure{*error};
+    if (auto* error = std::get_if<FunctionInputFailure>(&proven)) {
+      if (auto* failure = std::get_if<analysis::SemanticProofFailure>(&error->cause)) {
+        failure->allocated_bytes += budget.bytes - bytes;
+        failure->work_units += method.code->instruction_bytes;
+      }
+      return FunctionFileFailure{*error};
+    }
     auto input = std::get<FunctionInput>(std::move(proven));
     admit(input.AllocatedBytes(), 1);
     auto prepared = BuildFunctionValues(input, body, frame, {bytes, budget.work});

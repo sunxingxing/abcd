@@ -161,9 +161,24 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
           enclosure.Context().ForOwner(file, record), Error::kModules);
       modules = &enclosure.Context(); module_owner = enclosure.Owner();
     }
-    auto input = Take<FileFamily, FamilyFileFailure>(ReadFunctionFamily(
-        file, header, index, lookup, roles, sites, root.Position(), root.Identity(), budget.Left(), modules, &root, module_owner,
-        FamilyClassMode::kReject, root_modules, destination.first_owner, creator));
+    auto read = ReadFunctionFamily(file, header, index, lookup, roles, sites, root.Position(), root.Identity(),
+        budget.Left(), modules, &root, module_owner, FamilyClassMode::kReject, root_modules, destination.first_owner, creator);
+    if (auto* failed = std::get_if<FamilyFileFailure>(&read)) {
+      if (auto* phase = std::get_if<PhasedFileFailure>(&failed->cause))
+        if (auto* input = std::get_if<PhasedInputFailure>(phase)) {
+          input->allocated_bytes += allowance.bytes - budget.Left().bytes;
+          input->work += allowance.work - budget.Left().work;
+        }
+    }
+    if (auto* failed = std::get_if<FamilyFileFailure>(&read)) {
+      if (auto* normal = std::get_if<FunctionFileFailure>(&failed->cause))
+        if (auto* input = std::get_if<FunctionInputFailure>(normal))
+          if (auto* proof = std::get_if<analysis::SemanticProofFailure>(&input->cause)) {
+            proof->allocated_bytes += allowance.bytes - budget.Left().bytes;
+            proof->work_units += allowance.work - budget.Left().work;
+          }
+    }
+    auto input = Take<FileFamily, FamilyFileFailure>(std::move(read));
     budget.Account(input.allocated_bytes, input.work);
     Require(input.members.size() <= budget.Left().bytes / sizeof(MethodRouteReceipt), Error::kResourceLimit);
     std::vector<MethodRouteReceipt> receipts;

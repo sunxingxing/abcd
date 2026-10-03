@@ -485,7 +485,7 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
     for (const auto& member : family.members) Check(member.tree.owner.value == next_owner++);
   };
   check_owners(*definition->constructor);
-  for (const auto& member : definition->members) check_owners(member);
+  for (const auto& member : definition->members) { Check(member.has_value()); check_owners(*member); }
   for (const auto& site : definition->definitions)
     for (const auto& member : site.bodies) if (member) check_owners(*member);
   // A complete class cannot lose an actual definition body or its proof.

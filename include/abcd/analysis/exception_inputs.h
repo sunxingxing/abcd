@@ -13,6 +13,7 @@ struct ExceptionInputFailure {
   abc::CodeOffset pc;
   std::optional<ExceptionNodeId> node;
   std::optional<SsaValueId> value;
+  std::uint64_t work_units = 0;
 };
 struct ExceptionInputProof {
   std::uint64_t reads = 0;

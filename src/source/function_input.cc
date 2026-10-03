@@ -214,7 +214,12 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
         quota.Remaining(), captures, loads, writes, {}, NormalCallResults(identity.contract), receiver,
         arguments ? &*arguments : nullptr);
     auto* proof = std::get_if<analysis::SemanticProof>(&verified);
-    if (!proof) return FunctionInputFailure{std::get<analysis::SemanticProofFailure>(verified)};
+    if (!proof) {
+      auto failure = std::get<analysis::SemanticProofFailure>(verified);
+      failure.allocated_bytes += budget.bytes - quota.Remaining().bytes;
+      failure.work_units += budget.work - quota.Remaining().work;
+      return FunctionInputFailure{failure};
+    }
     quota.Admit(proof->allocated_bytes, 1);
     // Normal entry dominates all reachable blocks. Its completed Language
     // stores initialize a module slot before later creations; no name/metadata
