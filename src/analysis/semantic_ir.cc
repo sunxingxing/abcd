@@ -230,6 +230,7 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
   if (std::get<HoleError>(hole) != HoleError::kUnsupportedOpcode)
     return Fail(SemanticError::kMalformedInstruction, site.offset);
   const auto super = LiftSuperInstruction(decoded, frame_size);
+  if (const auto* forward = std::get_if<SuperForward>(&super)) return *forward;
   if (const auto* range = std::get_if<SuperRange>(&super)) return *range;
   if (const auto* spread = std::get_if<SuperSpread>(&super)) return *spread;
   if (const auto* check = std::get_if<SuperCheck>(&super)) return *check;
@@ -358,7 +359,7 @@ SemanticEffects Effects(const SemanticOperation& operation,
                            LanguageEffect::kHeapWrite | LanguageEffect::kUserCode;
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
-        } else if constexpr (std::is_same_v<T, SuperRange> || std::is_same_v<T, SuperSpread>) {
+        } else if constexpr (std::is_same_v<T, SuperForward> || std::is_same_v<T, SuperRange> || std::is_same_v<T, SuperSpread>) {
           // Range uses invocation context; spread additionally reads the
           // current constructor from acc and its argument array from a register.
           // Both obtain newTarget from the invocation. Parent lookup/argument
@@ -368,6 +369,8 @@ SemanticEffects Effects(const SemanticOperation& operation,
                            LanguageEffect::kHeapWrite |
                            LanguageEffect::kUserCode |
                            LanguageEffect::kAllocation;
+          if constexpr (std::is_same_v<T, SuperForward>)
+            effects.normal = effects.normal | LanguageEffect::kArgumentsRead;
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, ThrowOperation>) {

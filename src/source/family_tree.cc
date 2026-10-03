@@ -155,6 +155,7 @@ class FamilyTrees {
       }
       auto constants = syntax.View();
       constants.receiver_guards = guards;
+      if (derived && derived->implicit) constants.implicit_constructor = &function.Normal();
       auto constructed = [&]() -> ConstructedFunction {
         if (phase) {
           auto draft = Take<ExceptionFunctionDraft, FunctionTreeError>(BuildExceptionFunctionDraft(graph,

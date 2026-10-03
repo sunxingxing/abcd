@@ -78,7 +78,8 @@ std::variant<DerivedValueStates, Error> BuildDerivedValueStates(
     const auto phi_inputs = locals ? locals->values.AllInputs().size() : 0;
     Require(phi_inputs <= std::numeric_limits<std::size_t>::max() - count, Error::kResourceLimit);
     std::vector<State> states; size(states, count);
-    std::vector<StateEdge> edges; reserve(edges, count + phi_inputs);
+    Require(graph.uses.size() <= std::numeric_limits<std::size_t>::max() - count - phi_inputs, Error::kResourceLimit);
+    std::vector<StateEdge> edges; reserve(edges, count + phi_inputs + graph.uses.size());
     std::vector<std::optional<SsaValueId>> reads;
     if (locals) {
       size(reads, input.instructions.size());
@@ -109,7 +110,7 @@ std::variant<DerivedValueStates, Error> BuildDerivedValueStates(
         Require(value->value < values && graph.values[value->value].life == ValueLife::kLive, Error::kOperand);
         Require(edges.size() < edges.capacity(), Error::kResourceLimit);
         edges.push_back({StateId{value->value}, target});
-      } else states[target.value] = Literal(operand);
+      } else states[target.value] = Join(states[target.value], Literal(operand));
     };
     for (std::size_t i = 0; i < values; ++i) {
       step(); const auto& value = graph.values[i]; const StateId target{i};
@@ -119,12 +120,18 @@ std::variant<DerivedValueStates, Error> BuildDerivedValueStates(
             std::holds_alternative<CallableEntry>(*entry) ? State::kConstructor : State::kOther;
         continue;
       }
+      if (std::holds_alternative<PhiDefinition>(value.origin)) {
+        continue;
+      }
       const auto* result = std::get_if<OpResult>(&value.origin);
       if (!result) { states[i] = State::kOther; continue; }
       Require(result->op.value < graph.ops.size(), Error::kOrigin);
       const auto& op = graph.ops[result->op.value];
       Require(op.life == ValueLife::kLive && op.result == ValueId{static_cast<std::uint32_t>(i)}, Error::kOrigin);
-      if (result->op == call) { states[i] = State::kSuper; continue; }
+      const auto* super = std::get_if<ValueSuperCall>(&op.operation);
+      if (result->op == call || (super && super->source == SuperArgumentSource::kInvocationFrame)) {
+        states[i] = State::kSuper; continue;
+      }
       if (std::holds_alternative<ValueCopy>(op.operation)) {
         Require(op.normal == LanguageEffect::kNone && op.before_throw == LanguageEffect::kNone &&
             op.exceptional == ExceptionalCompletion::kImpossible && op.use_count == 1 &&
@@ -165,6 +172,13 @@ std::variant<DerivedValueStates, Error> BuildDerivedValueStates(
       Require(use.life == ValueLife::kLive && use.owner == decltype(use.owner){*graph.input.sites[store_site->instruction.value]} &&
           use.role == OperandRole::kStoredValue && use.purpose == ReadPurpose::kOperand, Error::kOperand);
       edge(use.operand, target);
+    }
+    for (const auto& use : graph.uses) {
+      step(); if (use.life != ValueLife::kLive) continue;
+      const auto* target = std::get_if<ValueId>(&use.owner);
+      if (!target || !std::holds_alternative<PhiDefinition>(graph.values[target->value].origin)) continue;
+      Require(use.role == OperandRole::kPhiInput, Error::kOperand);
+      edge(use.operand, StateId{target->value});
     }
     if (locals) for (const auto& input_edge : locals->values.AllInputs()) {
       step(); Require(input_edge.phi.value < cells && input_edge.value.value < cells &&

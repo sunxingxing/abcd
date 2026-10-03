@@ -250,12 +250,14 @@ struct ValueConstructApply {
   std::uint16_t profile_slot;
   bool operator==(const ValueConstructApply&) const = default;
 };
-// Pinned range super call: parent and newTarget come from the invocation,
+// Pinned super call: parent and newTarget come from the invocation,
 // not from an explicit constructor operand. Only normal completion writes acc;
 // initializing/checking this remains a separate constructor protocol obligation.
+enum class SuperArgumentSource : std::uint8_t { kExplicit, kInvocationFrame };
 struct ValueSuperCall {
   std::uint16_t arguments;
   std::optional<std::uint16_t> cache_slot;
+  SuperArgumentSource source = SuperArgumentSource::kExplicit;
   bool operator==(const ValueSuperCall&) const = default;
 };
 // Explicit current constructor and aggregate argument array remain separate

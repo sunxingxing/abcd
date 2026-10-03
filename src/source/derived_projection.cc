@@ -1,5 +1,6 @@
 #include "derived_projection.h"
 #include "derived_value_states.h"
+#include "implicit_constructor.h"
 #include "abcd/source/capture_preservation.h"
 #include <new>
 #include <stdexcept>
@@ -33,12 +34,29 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
       Require(preserved.AllocatedBytes() <= budget.bytes && preserved.work_units <= budget.work, Error::kResourceLimit);
       budget.bytes -= preserved.AllocatedBytes(); budget.work -= preserved.work_units;
     }
+    bool forwarding = false;
+    for (const auto& instruction : function.input.Input().instructions)
+      forwarding |= std::holds_alternative<SuperForward>(instruction.operation);
+    std::optional<ImplicitConstructorProof> implicit;
+    if (forwarding) {
+      Require(owner.Length() == 0, Error::kProtocol);
+      auto proof = ProveImplicitConstructor(function, budget);
+      if (const auto* error = std::get_if<Error>(&proof)) throw *error;
+      implicit = std::get<ImplicitConstructorProof>(proof);
+      Require(implicit->allocated_bytes <= budget.bytes, Error::kResourceLimit);
+      budget.bytes -= implicit->allocated_bytes;
+      Require(implicit->work <= budget.work, Error::kWorkLimit); budget.work -= implicit->work;
+    }
     bool spread = false;
     for (const auto& instruction : function.input.Input().instructions)
       spread |= std::holds_alternative<SuperSpread>(instruction.operation);
     // Select from the actual protocol, never retry a failed range proof under
     // a more permissive form. Both share normal-flow initialization analysis.
     const auto proof = [&]() -> std::variant<abc::CodeOffset, DerivedConstructorError> {
+      if (implicit) {
+        const auto& graph = function.values.graph;
+        return graph.origins[graph.ops[implicit->first_call.value].origin.value].pc;
+      }
       if (spread) {
         const auto checked = ProveSpreadDerivedConstructor(function.body, function.frame,
             {budget.bytes, budget.work}, function.input.Identity().profile, preserved.sites);
@@ -59,6 +77,7 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
     Require(graph.input.sites.size() == input.instructions.size(), Error::kOrigin);
     const auto step = [&] { Require(budget.work != 0, Error::kWorkLimit); --budget.work; };
     DerivedProjection result{graph.revision, graph.cfg_revision, {}};
+    result.implicit = implicit.has_value();
     bool found = false;
     for (std::size_t i = 0; i < input.instructions.size(); ++i) {
       step();
@@ -151,7 +170,8 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
       const auto* check = std::get_if<SuperCheck>(&original.operation);
       const auto* call = std::get_if<SuperRange>(&original.operation);
       const auto* spread_call = std::get_if<SuperSpread>(&original.operation);
-      if (!check && !call && !spread_call) continue;
+      const auto* frame_call = std::get_if<SuperForward>(&original.operation);
+      if (!check && !call && !spread_call && !frame_call) continue;
       Require(graph.input.sites[i].has_value(), Error::kOrigin);
       const auto id = *graph.input.sites[i]; Require(id.value < graph.ops.size(), Error::kOrigin);
       const auto& op = graph.ops[id.value];
@@ -161,9 +181,16 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
           origin.disposition == OriginDisposition::kRetained && op.normal == original.effects.normal &&
           op.before_throw == original.effects.before_throw && op.exceptional == original.effects.exceptional,
           Error::kOrigin);
-      if (call) {
+      if (frame_call) {
         const auto* current = std::get_if<ValueSuperCall>(&op.operation);
-        Require(id == result.call && current && current->arguments == call->count &&
+        Require(result.implicit && current && current->source == SuperArgumentSource::kInvocationFrame &&
+            !current->arguments && !current->cache_slot && op.result && op.use_count == 1, Error::kOrigin);
+        const auto& use = graph.uses[op.first_use.value];
+        Require(use.role == OperandRole::kConstructor && use.purpose == ReadPurpose::kProtocol &&
+            classify(use.operand) == State::kConstructor, Error::kOperand);
+      } else if (call) {
+        const auto* current = std::get_if<ValueSuperCall>(&op.operation);
+        Require(id == result.call && current && current->source == SuperArgumentSource::kExplicit && current->arguments == call->count &&
             current->cache_slot == call->cache_slot && op.result && op.use_count == call->count, Error::kOrigin);
       } else if (spread_call) {
         const auto* current = std::get_if<ValueSuperSpread>(&op.operation);
@@ -207,7 +234,7 @@ std::optional<DerivedProjectionError> VerifyDerivedProjection(
   const auto checked = ProjectDerivedConstructor(function, owner, budget, captures);
   if (const auto* error = std::get_if<Error>(&checked)) return *error;
   const auto& expected = std::get<DerivedProjection>(checked);
-  if (expected.call != projection.call || expected.guards != projection.guards ||
+  if (expected.implicit != projection.implicit || expected.call != projection.call || expected.guards != projection.guards ||
       expected.receiver_cells != projection.receiver_cells ||
       expected.receiver_initializations != projection.receiver_initializations) return Error::kCoverage;
   return {};

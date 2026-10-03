@@ -103,11 +103,24 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       }
       return {};
     } else if constexpr (std::is_same_v<T, analysis::ValueSuperCall>) {
-      return EvaluationShape{kNoOperands, true, op.arguments};
+      switch (op.source) {
+        case analysis::SuperArgumentSource::kExplicit:
+          return EvaluationShape{kNoOperands, true, op.arguments};
+        case analysis::SuperArgumentSource::kInvocationFrame: {
+          if (op.arguments || op.cache_slot) return {};
+          EvaluationShape shape{kConstruct, true};
+          shape.inputs = InputEvaluation::kInvocationConstructor;
+          shape.invocation_constructor = true;
+          return shape;
+        }
+      }
+      return {};
     } else if constexpr (std::is_same_v<T, analysis::ValueSuperSpread>) {
       // Scheduling preserves the explicit constructor and aggregate array;
       // it does not authorize native spread syntax or an argument-list rewrite.
-      return EvaluationShape{kSpreadSuper, true};
+      EvaluationShape shape{kSpreadSuper, true};
+      shape.invocation_constructor = true;
+      return shape;
     } else if constexpr (std::is_same_v<T, analysis::ValueSuperCheck>) {
       EvaluationShape shape{kReceiverGuard, false};
       shape.inputs = InputEvaluation::kReceiverGuard;
@@ -150,7 +163,7 @@ std::optional<EvaluationError> CheckEvaluationUse(
   const bool conditional = shape.inputs == InputEvaluation::kConditionalArgument;
   const bool heritage = shape.inputs == InputEvaluation::kClassHeritage;
   const bool receiver_guard = shape.inputs == InputEvaluation::kReceiverGuard;
-  const auto purpose = conditional || heritage || receiver_guard ? analysis::ReadPurpose::kProtocol : analysis::ReadPurpose::kOperand;
+  const auto purpose = conditional || heritage || receiver_guard || shape.inputs == InputEvaluation::kInvocationConstructor ? analysis::ReadPurpose::kProtocol : analysis::ReadPurpose::kOperand;
   if (use.purpose != purpose) return EvaluationError::kProtocolOperand;
   if (use.role != shape.Role(ordinal)) return EvaluationError::kInvalidGraph;
   // Hole is absence of extends, never a source value or undefined. Mixed

@@ -197,3 +197,30 @@ retained_selection_source_test、forwarded_selection_source_test。日志：
 pasteboard 配对脚本覆盖240组原 callback 场景并要求 record 保持 incomplete。
 验证的是已有构建的行为，没有重新构建未完成的工作区 SuperForward 修改，
 也不证明所有 phased 多选择、共享引用或阶段一完整语义已覆盖。
+
+## 规则 71：原调用帧转发采用整个函数的语义证明
+
+前述审计时未完成的 SuperForward 现已贯通共同 IR、frame fact、evaluation、
+SourceTree、ABI 与 class printer。当前 normal 路径调用 ProveImplicitConstructor，
+不调用 ProveForwardingDerivedConstructor 的直线 prologue 模板。原 CFG 上的
+转发次数与终止传播、共同 SSA/copy/phi 身份和物理 frame 写入分析负责证明；
+不限定原始转发站点数量、寄存器布局、同块或邻接。多个分支分别转发、汇合
+返回 super phi 的 fixture 经共同 FunctionTree/ABI 通过。
+
+该证明允许将真正等价的整个函数表示为语言原生的隐式派生构造器。源类省略
+显式 constructor，保留原始 IR/树来源与 typed implicit fragment。它不是将
+forward 指令局部替换成 super(...args)：后者观察 iterator，前者直接转发原
+调用参数。绑定/Proxy parent、动态父构造器和 newTarget 行为通过独立对照；
+不得以这种转发的 IsConstructor runtime 规则放宽另一个 super spread 协议。
+
+以下仍是未完成的共同证明范围：循环的终止、异常相位和额外可观察效果；
+调用前物理参数/newTarget 写入后恢复尚未通过版本化 frame 读证明，当前拒绝；
+printer 尚未承载此形式的额外捕获/模块环境。这些不是语言禁止条件，不允许
+增加局部恢复写入序列、producer白名单或新的布局例外去补。range/spread 与
+legacy 构造器的既有模板仍开放，前表其余项目也未全部关闭。
+
+15/15 定向回归32.10秒通过，含寄存器复制、0/1/200/201间隔、分支转发及
+跳过/重复转发、替换constructor、修改frame、效果、错误返回和回边负例。
+185组构造行为及70组异步方法 paired对照通过。固定五输入从78 complete /
+26 incomplete /2 failure到80/26/0，原78份源码逐字未变；此为组件交付，
+不代替阶段一与 object creators 全组验收。细节见 implicit-constructors.md。

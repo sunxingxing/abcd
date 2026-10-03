@@ -1,3 +1,5 @@
+#include "abcd/analysis/semantic_ir.h"
+#include "abcd/analysis/register_effect.h"
 #include "abcd/analysis/derived_constructor.h"
 
 #include <array>
@@ -22,6 +24,23 @@ abcd::abc::MethodBody Body(std::span<const std::uint8_t> bytes) {
 }  // namespace
 
 int main() {
+  for (const auto profile : {abcd::abc::ProfileId::kDynamic1206, abcd::abc::ProfileId::kDynamic1301, abcd::abc::ProfileId::kDynamic1202}) {
+    using namespace abcd; using namespace analysis;
+    const auto wire = static_cast<std::uint16_t>(abc::Opcode::kCALLRUNTIME_SUPERCALLFORWARDALLARGS_PREF_V8);
+    const std::array<std::uint8_t,3> bytes{static_cast<std::uint8_t>(wire), static_cast<std::uint8_t>(wire >> 8), 5};
+    const auto decoded = std::get<abc::DecodedInstruction>(abc::DecodeInstruction(bytes, profile));
+    const auto lifted = LiftSemanticInstruction({{0},decoded,{}}, profile, 10);
+    Check(std::holds_alternative<SemanticInstruction>(lifted));
+    const auto& instruction = std::get<SemanticInstruction>(lifted);
+    Check(std::get<SuperForward>(instruction.operation).constructor.value == 5);
+    Check((instruction.effects.normal | LanguageEffect::kArgumentsRead) == instruction.effects.normal);
+    Check(instruction.effects.normal == instruction.effects.before_throw &&
+          instruction.effects.exceptional == ExceptionalCompletion::kMayThrow);
+    const auto effect = std::get<RegisterEffect>(LiftRegisterEffect(decoded, 10));
+    Check(effect.read_count == 1 && std::get<abc::RegisterId>(effect.reads[0]).value == 5 &&
+          effect.write && std::holds_alternative<Accumulator>(*effect.write));
+  }
+
   using namespace abcd;
   constexpr std::uint8_t kMove = 0x44;
   constexpr std::uint8_t kLoad = 0x60;

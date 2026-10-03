@@ -6,6 +6,7 @@
 #include "abcd/source/source_tree.h"
 
 namespace abcd::source {
+struct FileFunction;
 // Constants are resolved by the ABC adapter before syntax construction. Pool
 // indices never become executable tree operands. Entries are indexed by OpId.
 // Sealed signature projection supplies pool-backed literals at removed sites.
@@ -42,6 +43,9 @@ struct ExpressionConstants {
   // Same-owner ProjectDerivedConstructor result, revalidated after defaults.
   // Sorted original guard IDs; these become anchors, never JS this reads.
   std::span<const analysis::OpId> receiver_guards;
+  // Only retained during construction; semantic verification reproves this
+  // exact owner/input/work pair before any immutable family is published.
+  const FileFunction* implicit_constructor = nullptr;
 };
 }  // namespace abcd::source
 #endif

@@ -164,7 +164,8 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
     // protocols. Super/resume ownership must supply a phase-specific proof.
     for (const auto& instruction : input->instructions) {
       quota.Step();
-      if ((std::holds_alternative<analysis::SuperRange>(instruction.operation) ||
+      if ((std::holds_alternative<analysis::SuperForward>(instruction.operation) ||
+          std::holds_alternative<analysis::SuperRange>(instruction.operation) ||
           std::holds_alternative<analysis::SuperSpread>(instruction.operation)))
         receiver = analysis::FrameReceiver::kUnknown;
     }

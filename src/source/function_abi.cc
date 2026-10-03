@@ -70,7 +70,8 @@ class AbiBuilder {
       formals_[parameter.symbol.value] = static_cast<std::uint32_t>(i);
       result_.parameters[i].symbol = parameter.symbol;
     }
-    Require(length == source_length, Error::kLength);
+    Require(tree_.ImplicitConstructor() ? (tree_.callable == CallableKind::kDerivedConstructor && length == 0) :
+        length == source_length, Error::kLength);
     // SSA uses carry already-simplified entry identities. Do not count removed
     // MOVs as source ABI uses or use their register destinations as symbols.
     for (const auto& use : graph_.uses) {
@@ -82,6 +83,13 @@ class AbiBuilder {
                       evaluation_->operations[owner->value].kind == EvaluationKind::kAlias)) continue;
       if (const auto* owner = std::get_if<analysis::OpId>(&use.owner);
           owner && IsReceiverGuard(tree_, *owner)) continue;
+      if (tree_.ImplicitConstructor() && use.role == analysis::OperandRole::kConstructor &&
+          use.purpose == analysis::ReadPurpose::kProtocol) {
+        const auto* owner = std::get_if<analysis::OpId>(&use.owner);
+        const auto* call = owner ? std::get_if<analysis::ValueSuperCall>(&graph_.ops[owner->value].operation) : nullptr;
+        Require(call && call->source == analysis::SuperArgumentSource::kInvocationFrame, Error::kEntry);
+        continue; // TreeOperands reproved the native constructor and raw frame.
+      }
       const auto* id = std::get_if<analysis::ValueId>(&use.operand);
       if (!id) continue;
       Require(id->value < graph_.values.size(), Error::kEntry);

@@ -329,14 +329,14 @@ class ForestBuilder {
           continue;
         }
         if (const auto* call = std::get_if<analysis::ValueSuperCall>(&op.operation)) {
-          Require(op.use_count == call->arguments && op.result, Error::kOwnership);
-          const ArgumentRange arguments{static_cast<std::uint32_t>(forest_.arguments.size()), op.use_count};
-          for (std::uint32_t j = 0; j < op.use_count; ++j) {
+          Require(op.use_count == call->arguments + (call->source == analysis::SuperArgumentSource::kInvocationFrame ? 1U : 0U) && op.result, Error::kOwnership);
+          const ArgumentRange arguments{static_cast<std::uint32_t>(forest_.arguments.size()), call->arguments};
+          for (std::uint32_t j = 0; j < call->arguments; ++j) {
             Step();
             Require(forest_.arguments.size() < forest_.arguments.capacity(), Error::kResourceLimit);
             forest_.arguments.push_back(Operand(graph_.uses[op.first_use.value + j].operand, origin));
           }
-          forest_.operations[i] = Add(SuperCallExpr{arguments}, origin);
+          forest_.operations[i] = Add(SuperCallExpr{arguments, call->source}, origin);
           continue;
         }
         if (std::holds_alternative<analysis::ValueArgumentSnapshot>(op.operation)) {

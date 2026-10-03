@@ -138,6 +138,12 @@ RegisterEffect EffectOf(const ApplyConstructorCall& value) {
   effect.reads[effect.read_count++] = Accumulator{};
   return effect;
 }
+RegisterEffect EffectOf(const SuperForward& value) {
+  RegisterEffect effect;
+  effect.write = Accumulator{};
+  effect.reads[effect.read_count++] = value.constructor;
+  return effect;
+}
 RegisterEffect EffectOf(const SuperRange& value) {
   RegisterEffect effect;
   effect.write = Accumulator{};
@@ -377,6 +383,7 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
   const auto super = LiftSuperInstruction(
       instruction, static_cast<std::uint32_t>(
                        std::min<std::uint64_t>(frame_size, UINT32_MAX)));
+  if (const auto* forward = std::get_if<SuperForward>(&super)) return EffectOf(*forward);
   if (const auto* range = std::get_if<SuperRange>(&super))
     return EffectOf(*range);
   if (const auto* spread = std::get_if<SuperSpread>(&super))

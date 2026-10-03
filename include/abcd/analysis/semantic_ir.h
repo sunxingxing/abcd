@@ -136,7 +136,7 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        CurrentEnvironment, FunctionCreation,
                                        LoadHole, SuperCheck, RestCopy,
                                        BufferedArrayCreation, AwaitValue, YieldValue,
-                                       ThrowOperation, SuperRange, SuperSpread, ClassCreation,
+                                       ThrowOperation, SuperForward, SuperRange, SuperSpread, ClassCreation,
                                        DefineAccessor, IndexedWrite, GlobalObjectLoad, DebuggerOperation,
                                        FrameThisLoad, FrameFunctionLoad, SymbolConstructorLoad,
                                        ArgumentSnapshot, AsyncEnter, AsyncSettle>;

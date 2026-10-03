@@ -50,7 +50,9 @@ std::variant<ExceptionInputProof, ExceptionInputFailure> VerifyExceptionInputs(
     const bool snapshot = node.phase == ExceptionPhase::kBefore &&
         environments.before[i] &&
         std::holds_alternative<ArgumentSnapshot>(instruction.operation);
-    if (snapshot) {
+    const bool forwarding = node.phase == ExceptionPhase::kBefore &&
+        environments.before[i] && std::holds_alternative<SuperForward>(instruction.operation);
+    if (snapshot || forwarding) {
       // The count/tail are implicit invocation inputs even when no declared
       // register is read. Never infer ownership from an empty SSA read list.
       if (!arguments || !flow.frame || arguments->frame != *flow.frame)
@@ -62,6 +64,8 @@ std::variant<ExceptionInputProof, ExceptionInputFailure> VerifyExceptionInputs(
         window = *valid;
         proof.arguments = *arguments;
       }
+    }
+    if (snapshot) {
       if (!MatchesArgumentSnapshot(instruction, *window) ||
           node.successor_count > node.successors.size())
         return fail(Error::kMismatchedAnalysis, pc, id);

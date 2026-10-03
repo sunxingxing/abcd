@@ -188,7 +188,7 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure> PhasedBody::Buil
       // raw suspend/resume is not admitted by the common semantic importer.
       // Pinned runtime: RuntimeStubs::SaveFrameToContext saves This/Method;
       // interpreter-inl.cpp restores state->thisObj/function on resume.
-      if ((std::holds_alternative<SuperRange>(instruction.operation) ||
+      if ((std::holds_alternative<SuperForward>(instruction.operation) || std::holds_alternative<SuperRange>(instruction.operation) ||
           std::holds_alternative<SuperSpread>(instruction.operation))) receiver = FrameReceiver::kUnknown;
     }
     std::optional<ExceptionLocals> locals;

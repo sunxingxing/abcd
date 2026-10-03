@@ -12,6 +12,43 @@
 
 ## 当前阶段
 
+### 2026-10-04：原调用帧 super 转发贯通共同 IR 与隐式派生构造器
+
+- 规则 revision71。SuperForward 保留 typed invocation-frame 参数来源、
+  constructor SSA 身份、ArgumentsRead 效果及真实 frame fact；normal/exception
+  输入、值导入和 EvaluationPlan 的构建/验证共用 NeedsArgumentFrame 能力，
+  不再仅为 GETUNMAPPEDARGS 保存隐含输入。spread 的 runtime 类型限制未放宽。
+- ProveImplicitConstructor 在原 CFG、共同 DerivedValueStates 和寄存器访问
+  窗口上证明：每条正常路径恰好转发一次、实际 CallableEntry、未改变的原
+  参数/newTarget、无其他可观察效果、真实 this guard 和返回 super receiver。
+  phi 经稀疏依赖传播，可有多个互斥分支调用；不调用旧 forwarding prologue
+  模板，不按样本、固定寄存器、PC、同块或邻接分派。
+- SourceTree 保留原始节点与来源，同时显式记录 implicit constructor 形式；
+  tree operands 重新证明整个函数，ABI 核对 source length0。共同 class printer
+  输出默认构造器注释并省略显式 constructor，来源 fragment 明确标记 implicit。
+  原调用帧转发不读 iterator，不能写成 super(...args)。语义、复杂度及未证明
+  范围见[隐式构造器设计](implicit-constructors.md)和[条件审计](shape-restrictions-audit.md)。
+- -j4 相关生产/测试构建退出0，日志 /tmp/abcd-super-forward-verified-build-2.log；
+  最后 profile/exception 测试目标构建退出0，profile-build.log 同属该前缀。
+  15/15 定向回归32.10秒通过，/tmp/abcd-super-forward-final-green-tests.log。
+  新 fixture 经共同输入、值、projection、evaluation、tree 和普通 ABI 验证，
+  覆盖寄存器复制、0/1/200/201间隔、多分支转发及身份/次数/效果/返回反例。
+  新增 lifting 测试使用既有1202/1206/1301语义 profile；未扩展2400支持。
+- 独立 paired TS 只进入测试，引擎只读 ABC。185组直接/bound/Proxy parent、
+  动态 parent/newTarget、原始参数身份、iterator getter、返回/抛出及200/201
+  参数对照通过；另70组 Backup async方法/getter/异常对照通过。未宣称
+  EntryAbility 的所有 instance fields、宿主平台或阶段一完整风格/语义验收。
+- fresh build/stage-one/value-super-forward-pass-2 固定五输入退出0：80 complete /
+  26 incomplete /0 failure /46 no-module，Immersive8917/9308新完整输出2083/697
+  字节；原78份complete源码逐字未变，无legacy和complete回退。日志与比较
+  /tmp/abcd-super-forward-verified-batch.log、verified-batch-summary.json。
+  两份新模块语法解析通过，/tmp/abcd-super-forward-final-syntax.log；语法与
+  source_complete不代替整阶段独立行为/风格验收。
+- 当前 native proof 仍未覆盖循环终止、异常相位、额外效果/词法环境，以及
+  调用前写入后恢复的 frame 值等共同证明缺口；range/spread/legacy 模板和
+  审计中的其他开放项未全部替换。Goal active，阶段一/object creators全组
+  目标未完成；full-suite/扩展语料/RSS/基准/DFX/定期审视保持暂停。
+
 ### 2026-10-04：按用户要求复核引用同块校验，扩展局部恢复条件审计
 
 - 历史 c9c8a93b 的 property/call 同块条件为早期块内求值证明边界，非成员

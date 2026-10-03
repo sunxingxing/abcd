@@ -207,7 +207,7 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
   const auto super = LiftSuperInstruction(instruction,
       static_cast<std::uint32_t>(std::min<std::uint64_t>(frame_size, UINT32_MAX)));
-  if (std::holds_alternative<SuperRange>(super) || std::holds_alternative<SuperSpread>(super))
+  if (std::holds_alternative<SuperForward>(super) || std::holds_alternative<SuperRange>(super) || std::holds_alternative<SuperSpread>(super))
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
   if (std::holds_alternative<ReceiverCall>(
           LiftReceiverCall(instruction, frame_size)))

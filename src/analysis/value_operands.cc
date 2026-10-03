@@ -123,6 +123,9 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
           return false;
         default: return false;
       }
+    } else if constexpr (std::is_same_v<T, SuperForward>) {
+      Append(plan, OperandRole::kConstructor, op.constructor, ReadPurpose::kProtocol);
+      plan.write = Accumulator{};
     } else if constexpr (std::is_same_v<T, SuperSpread>) {
       // The accumulator is the actual current constructor, not the parent.
       // The register holds one aggregate argument array, not one JS argument.

@@ -158,7 +158,10 @@ struct ArrayArguments { ExprId array; };
 using ConstructArguments = std::variant<ArgumentRange, ArrayArguments>;
 struct ConstructExpr { ExprId constructor; ConstructArguments arguments; };
 // The parent constructor and newTarget are supplied by the derived invocation.
-struct SuperCallExpr { ArgumentRange arguments; };
+struct SuperCallExpr {
+  ArgumentRange arguments;
+  analysis::SuperArgumentSource source = analysis::SuperArgumentSource::kExplicit;
+};
 // Fresh pinned arguments object. Slots are conditional current-value leaves;
 // count and extra tail belong to this owner's unexposed native invocation.
 // Publication requires an explicit exact factory, not a mutable global helper.
@@ -308,7 +311,12 @@ struct YieldReturnComposition {
   // of native finally; falling through that chain preserves caller payload.
   std::optional<StmtId> completion_block;
 };
+enum class ConstructorForm : std::uint8_t { kExplicit, kImplicit };
 struct FunctionTree {
+  // Native class absence of an explicit constructor; whole-function CFG/SSA
+  // proof supplies its executable default behavior, including raw forwarding.
+  ConstructorForm constructor_form = ConstructorForm::kExplicit;
+  bool ImplicitConstructor() const { return constructor_form == ConstructorForm::kImplicit; }
   // Original guard operations retained as non-executing source anchors.
   // The adapter proves the same derived protocol or an initialized captured
   // receiver preserved through its complete original creation family.

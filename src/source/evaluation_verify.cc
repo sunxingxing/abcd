@@ -119,8 +119,8 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     std::size_t next_function = 0;
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       const auto& op = graph.ops[i];
-      has_arguments |= op.life == analysis::ValueLife::kLive &&
-          std::holds_alternative<analysis::ValueArgumentSnapshot>(op.operation);
+      const auto shape = op.life == analysis::ValueLife::kLive ? DescribeEvaluation(op.operation) : std::nullopt;
+      has_arguments |= shape && shape->NeedsArgumentFrame();
       if (op.life == analysis::ValueLife::kLive && IsEnvironmentState(op.operation)) ++environment_epoch;
       environment_epochs[i] = environment_epoch;
       step(); has_definitions |= !projected_op(i) && op.life == analysis::ValueLife::kLive &&

@@ -144,7 +144,7 @@ enum class ReferenceBoundary : std::uint8_t { kNone, kBeforeStoredValue };
 // does not establish constructor/member bodies, captures or inheritance syntax.
 // ConstructorGuard retains the VM check as an ordered event and snapshots its
 // input. It does not authorize guard elision or reading uninitialized JS this.
-enum class InputEvaluation : std::uint8_t { kEager, kConditionalArgument, kClassHeritage, kReceiverGuard };
+enum class InputEvaluation : std::uint8_t { kEager, kConditionalArgument, kClassHeritage, kReceiverGuard, kInvocationConstructor };
 struct EvaluationShape {
   // Fixed prefix followed by argument occurrences. No array proportional to
   // range-call arity is allocated merely to describe their roles.
@@ -155,6 +155,12 @@ struct EvaluationShape {
   // Precomputed RHS values cannot be fused across reference/key conversion.
   ReferenceBoundary reference = ReferenceBoundary::kNone;
   InputEvaluation inputs = InputEvaluation::kEager;
+  // The current invocation constructor is a protocol identity, never a JS
+  // variable. Derived lowering must separately prove its actual origin.
+  bool invocation_constructor = false;
+  [[nodiscard]] bool NeedsArgumentFrame() const {
+    return inputs == InputEvaluation::kConditionalArgument || inputs == InputEvaluation::kInvocationConstructor;
+  }
   [[nodiscard]] bool NeedsSnapshot(analysis::OperandRole role) const {
     return inputs == InputEvaluation::kConditionalArgument || inputs == InputEvaluation::kReceiverGuard ||
         (reference == ReferenceBoundary::kBeforeStoredValue &&

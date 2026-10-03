@@ -148,12 +148,11 @@ std::variant<BindingPlan, BindingError> BuildBindings(
             if (!work) return Error::kWorkLimit;
             --work;
             const auto* owner = std::get_if<OpId>(&graph.uses[use->value].owner);
-            // Spread's current constructor is a retained VM protocol input,
-            // not a source local. The forest refuses the whole operation before
-            // reading it; partial drafts may therefore keep an earlier prefix.
-            // Do not grant this exemption to newTarget or arbitrary consumers.
-            if (owner && std::holds_alternative<CallableEntry>(*entry) &&
-                std::holds_alternative<ValueSuperSpread>(graph.ops[owner->value].operation) &&
+            // Common evaluation capability retains the invocation identity.
+            // It grants no source local or constructor equivalence; derived
+            // projection owns that proof. Never exempt newTarget consumers.
+            const auto shape = owner ? DescribeEvaluation(graph.ops[owner->value].operation) : std::nullopt;
+            if (shape && shape->invocation_constructor && std::holds_alternative<CallableEntry>(*entry) &&
                 graph.uses[use->value].role == OperandRole::kConstructor)
               continue;
             if (!owner || (evaluation.operations[owner->value].kind != EvaluationKind::kElidedPure &&

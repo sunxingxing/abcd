@@ -128,8 +128,8 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     std::size_t next_function = 0;
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       const auto& op = graph.ops[i];
-      has_arguments |= op.life == analysis::ValueLife::kLive &&
-          std::holds_alternative<analysis::ValueArgumentSnapshot>(op.operation);
+      const auto shape = op.life == analysis::ValueLife::kLive ? DescribeEvaluation(op.operation) : std::nullopt;
+      has_arguments |= shape && shape->NeedsArgumentFrame();
       step(); has_definitions |= !projected_op(i) && op.life == analysis::ValueLife::kLive &&
           (std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation));
       has_cells |= op.life == analysis::ValueLife::kLive && NeedsCellEvaluation(op.operation);

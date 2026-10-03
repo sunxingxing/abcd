@@ -46,6 +46,12 @@ bool ValidBinary(analysis::BinaryOperator operation) {
   return false;
 }
 void CheckCallable(const FunctionTree& tree) {
+  switch (tree.constructor_form) {
+    case ConstructorForm::kExplicit: break;
+    case ConstructorForm::kImplicit:
+      RequireTree(tree.callable == CallableKind::kDerivedConstructor, Error::kUnsupportedSyntax); break;
+    default: throw Error::kUnsupportedSyntax;
+  }
   RequireTree(tree.strictness == Strictness::kStrict || tree.strictness == Strictness::kSloppy,
               Error::kUnsupportedSyntax);
   switch (tree.callable) {
@@ -331,8 +337,12 @@ class StructureCheck {
       } else if constexpr (std::is_same_v<T, CallExpr> || std::is_same_v<T, SuperCallExpr>) {
         RequireTree(expression.arguments.first <= tree_.arguments.size() &&
             expression.arguments.count <= tree_.arguments.size() - expression.arguments.first, Error::kRange);
-        if constexpr (std::is_same_v<T, SuperCallExpr>)
-          RequireTree(tree_.callable == CallableKind::kDerivedConstructor, Error::kUnsupportedSyntax);
+        if constexpr (std::is_same_v<T, SuperCallExpr>) {
+          RequireTree(tree_.callable == CallableKind::kDerivedConstructor &&
+              (expression.source == analysis::SuperArgumentSource::kExplicit ||
+               (expression.source == analysis::SuperArgumentSource::kInvocationFrame &&
+                tree_.ImplicitConstructor() && expression.arguments.count == 0)), Error::kUnsupportedSyntax);
+        }
         if constexpr (std::is_same_v<T, CallExpr>) {
           RequireTree(expression.reference == CallReference::kValue ||
               expression.reference == CallReference::kMember, Error::kUnsupportedSyntax);

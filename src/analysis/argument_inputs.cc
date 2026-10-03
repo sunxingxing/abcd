@@ -44,7 +44,10 @@ std::variant<ArgumentInputCheck, SemanticProofFailure> VerifyArgumentInputs(
     const auto& instruction = method.instructions[i];
     const auto* snapshot = std::get_if<ArgumentSnapshot>(&instruction.operation);
     if (encoded != (snapshot != nullptr)) return fail(Error::kSsaMismatch);
-    if (!snapshot) continue;
+    const bool forwarding = std::holds_alternative<SuperForward>(instruction.operation);
+    const bool encoded_forward = site.decoded.opcode == abc::Opcode::kCALLRUNTIME_SUPERCALLFORWARDALLARGS_PREF_V8;
+    if (forwarding != encoded_forward) return fail(Error::kSsaMismatch);
+    if (!snapshot && !forwarding) continue;
     if (!arguments) return fail(Error::kArgumentOwner);
     if (!window) {
       if (arguments->frame.registers != frame_size ||
@@ -56,6 +59,10 @@ std::variant<ArgumentInputCheck, SemanticProofFailure> VerifyArgumentInputs(
       window = *valid;
       checked.fact = *arguments;
     }
+    // Direct forwarding also owns the raw invocation count/tail. Its explicit
+    // constructor read remains in ordinary SSA; physical argument writes are
+    // checked against the original frame by the native constructor projection.
+    if (forwarding) continue;
     if (site.decoded.operand_count != 0 || instruction.pc != site.offset ||
         !MatchesArgumentSnapshot(instruction, *window))
       return fail(Error::kSsaMismatch);

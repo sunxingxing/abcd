@@ -1,3 +1,4 @@
+#include "implicit_constructor.h"
 #include "integer_nan.h"
 #include "function_object.h"
 #include "staged_literal_names.h"
@@ -112,6 +113,16 @@ class OperandCheck {
         RequireMeaning(symbol.value < module_aliases.size() && !module_aliases[symbol.value], Error::kOperand);
         module_aliases[symbol.value] = i;
       }
+    }
+    RequireMeaning(tree_.ImplicitConstructor() == (constants_.implicit_constructor != nullptr), Error::kOperand);
+    if (constants_.implicit_constructor) {
+      RequireMeaning(tree_.callable == CallableKind::kDerivedConstructor &&
+          &constants_.implicit_constructor->values.graph == &graph_ &&
+          tree_.identity == constants_.implicit_constructor->input.Identity() &&
+          tree_.method == constants_.implicit_constructor->input.Method(), Error::kOperand);
+      const auto proof = ProveImplicitConstructor(*constants_.implicit_constructor, budget_.Remaining());
+      RequireMeaning(std::holds_alternative<ImplicitConstructorProof>(proof), Error::kOperand);
+      budget_.Step(std::get<ImplicitConstructorProof>(proof).work);
     }
     RequireMeaning(tree_.receiver_guards == evaluation_.receiver_guards, Error::kOperand);
     RequireMeaning(tree_.receiver_guards.size() == constants_.receiver_guards.size() &&
@@ -354,7 +365,10 @@ class OperandCheck {
         } else if constexpr (std::is_same_v<T, analysis::ValueSuperCall>) {
           RequireMeaning(tree_.callable == CallableKind::kDerivedConstructor, Error::kOperand);
           const auto& call = Node<SuperCallExpr>(expression);
-          Arguments(op, call.arguments, 0, operation.arguments);
+          RequireMeaning(call.source == operation.source, Error::kOperand);
+          if (operation.source == analysis::SuperArgumentSource::kInvocationFrame) {
+            RequireMeaning(tree_.ImplicitConstructor() && op.use_count == 1 && !call.arguments.count && !operation.arguments, Error::kOperand);
+          } else Arguments(op, call.arguments, 0, operation.arguments);
         } else if constexpr (std::is_same_v<T, analysis::ValueConstruct>) {
           const auto& construct = Node<ConstructExpr>(expression);
           Input(input(0), construct.constructor);

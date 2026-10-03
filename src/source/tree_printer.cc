@@ -252,7 +252,7 @@ class TreePrinter {
       Result().identity = Tree().identity; Result().method = Tree().method;
       Result().value_revision = Tree().value_revision; Result().cfg_revision = Tree().cfg_revision;
       if (ModuleBody()) { CheckModuleBody(); CheckDefaultExport(); }
-      Result().fragment = ModuleBody() ? FunctionFragment::kModuleBody :
+      Result().fragment = Tree().ImplicitConstructor() ? FunctionFragment::kImplicitConstructor : ModuleBody() ? FunctionFragment::kModuleBody :
           ClassRoot() ? FunctionFragment::kClassMember : FunctionFragment::kConditionalExpression;
       Result().incomplete = !Tree().recovery_issues.empty();
       if (!Tree().modules.empty() && scope_ && scope_->module_enclosure) {
@@ -629,7 +629,8 @@ class TreePrinter {
     Push(node.constructor);
   }
   void Expression(const SuperCallExpr& node) {
-    if (Tree().callable != CallableKind::kDerivedConstructor || !ClassRoot())
+    if (Tree().callable != CallableKind::kDerivedConstructor || !ClassRoot() ||
+        node.source != analysis::SuperArgumentSource::kExplicit)
       throw Error::kUnsupportedContext;
     Append("super(");
     Push(std::string_view(")"));
@@ -705,6 +706,18 @@ class TreePrinter {
     if (family_) {
       if (printed_[current_]) throw Error::kUnsupportedContext;
       printed_[current_] = true; draft_.functions[current_].begin = written_;
+    }
+    if (Tree().ImplicitConstructor()) {
+      if (!ClassRoot() || !class_root_->Constructor() || Tree().callable != CallableKind::kDerivedConstructor ||
+          Result().incomplete || !Tree().captures.empty() || !Tree().modules.empty()) throw Error::kUnsupportedContext;
+      const auto begin = written_;
+      Run(Indent{depth_}); Append("/* implicit default constructor */");
+      const GeneratedRange range{begin, written_};
+      for (auto& at : Result().parameters) at = range;
+      for (auto& at : Result().expressions) at = range;
+      for (auto& at : Result().statements) at = range;
+      for (auto& at : Result().anchors) at = begin;
+      Run(EndFunction{}); return;
     }
     if (Result().incomplete) {
       Append("/* INCOMPLETE: partial decompilation; not executable-equivalent. */");

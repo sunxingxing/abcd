@@ -77,7 +77,7 @@ std::optional<Transfer> Access(const abc::DecodedInstruction& instruction,
   const auto super = LiftSuperInstruction(
       instruction, static_cast<std::uint32_t>(
                        std::min<std::uint64_t>(frame_size, UINT32_MAX)));
-  if (std::holds_alternative<SuperRange>(super))
+  if (std::holds_alternative<SuperForward>(super) || std::holds_alternative<SuperRange>(super))
     return Transfer{false, AccumulatorWrite::kValue};
   if (std::holds_alternative<SuperCheck>(super))
     return Transfer{true, AccumulatorWrite::kPreserve};

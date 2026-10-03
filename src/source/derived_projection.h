@@ -19,6 +19,7 @@ struct DerivedProjection {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
   analysis::OpId call;
+  bool implicit = false;
   std::vector<analysis::OpId> guards;
   // Allocated cells whose every direct store is this invocation's super
   // result, with all descendant captures independently proved read-only.

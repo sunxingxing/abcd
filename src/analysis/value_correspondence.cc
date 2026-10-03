@@ -158,6 +158,10 @@ std::optional<ValueImportFailure> VerifyImportedValues(
     if (!take(1)) return fail(Error::kWorkLimit);
     const auto& op = graph.ops[i];
     const auto& input = method.instructions[i];
+    if (std::holds_alternative<SuperForward>(input.operation)) {
+      needs_arguments = true;
+      if (!graph.arguments || graph.arguments->frame != frame) return fail(Error::kInputMismatch, input.pc);
+    }
     if (const auto* snapshot = std::get_if<ArgumentSnapshot>(&input.operation)) {
       needs_arguments = true;
       if (!graph.arguments || snapshot->window.First() != frame.first_parameter ||
