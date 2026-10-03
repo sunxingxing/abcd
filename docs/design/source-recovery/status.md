@@ -12,6 +12,34 @@
 
 ## 当前阶段
 
+### 2026-10-03：嵌套成员引用跨已验证条件参数，真实 Push 拒绝消除
+
+- 复现实际 Push method3613 / outer Invoke69 / callee29 的 kReference。
+  PhaseSelectionCall 现保留原 ancestor callee/call 链；phase_references 按 OpId
+  索引 actual callee UseId。原 local forest、receiver 与 AST 操作数校验仍独立。
+  [顺序与异常证明](phased-call-references.md) 不使用样本名称、打印文本或源 sidecar。
+- 单入口/出口原 commit 前缀只接受纯操作和子引用已有的效果依赖，异常签名
+  与调用相同、无 catch/phi 暂存；独立效果、较早 effectful 参数与多 selection
+  owner 不放开。最终 owner 反向索引一次，ancestor 前缀不重叠，向量几何准入。
+  Field/call/use/index 声明丢失或伪造均拒绝，不重读 getter，不借助 .call。
+- 三动态 profile 覆盖 1/2/200/201 连续调用，单链深度 1/2/200/201 也通过。
+  78624 组 native 场景含两级 getter/receiver、callee 改写、非 callable、短路与
+  各处异常。新增独立效果前缀拒绝。572 组真实配对 Push registration/callback
+  场景通过；配对 TS 只作为测试 oracle，运行引擎的工具命令只接收 ABC。
+- -j4 生产及相关目标构建退出0；11/11相关回归88.60秒，日志
+  /tmp/abcd-call-spine-related-build.log、/tmp/abcd-call-spine-related-tests.log。
+  新增 barrier/计费注释后最终5/5通过55.54秒，/tmp/abcd-call-spine-final-build.log、
+  /tmp/abcd-call-spine-final-tests.log。规则 revision 62。
+- fresh build/stage-one/value-call-spine-pass-1 五输入退出0：78 complete /
+  6 incomplete /22 failure /46 no-module；既有完整源码逐字未变，无回退/legacy。
+  Push record3444 从 failure 转 incomplete，输出6425字节注册方法及 callbacks；
+  剩余 derived constructor PC8 仍标记缺口，不构造此不完整类做完整行为声明。
+  配对测试以 prototype 方法调用隔离该缺口，不代表 record/platform 验收完成。
+- 证据 /tmp/abcd-call-spine-final-batch.log、batch-summary.json、
+  /tmp/abcd-call-spine-push-record.jsonl、/tmp/abcd-call-spine-paired.log。
+  Goal active；继续真实阶段一与 object creaters 未完成目标，full-suite/扩展语料/
+  RSS/基准/DFX/定期审视均未恢复。
+
 ### 2026-10-03：创建表达式进入共同字面量与异常相位组合
 
 - 只读检查固定五份 ABC 全部方法：解码失败为 0，regexp/excluded-keys/

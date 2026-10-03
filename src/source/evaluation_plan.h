@@ -48,12 +48,17 @@ struct ModuleEvaluation {
   ModuleSymbol target;
 };
 enum class NaNProjection : std::uint8_t { kExact, kIntegerCoercion };
+struct PhaseCallReference {
+  analysis::OpId callee, call;
+  bool operator==(const PhaseCallReference&) const = default;
+};
 struct PhaseSelectionCall {
   analysis::OpId callee, call, branch;
   analysis::ValueId value;
   analysis::UseId argument;
   std::optional<analysis::OpId> transport;
   std::vector<analysis::OpId> prefix;
+  std::vector<PhaseCallReference> ancestors;
   bool operator==(const PhaseSelectionCall&) const = default;
 };
 struct EvaluationPlan {
@@ -92,6 +97,9 @@ struct EvaluationPlan {
   // Sorted callee occurrences whose reference encloses one checked phased
   // selection argument. Ordinary cross-phase inline edges are not this form.
   std::vector<PhaseSelectionCall> phase_calls;
+  // Direct and ancestor callee references, indexed by original operation.
+  // Entries are separately checked; they never license a .call substitution.
+  std::vector<std::optional<analysis::UseId>> phase_references;
   std::vector<std::optional<analysis::UseId>> phase_transports;
   std::vector<std::optional<analysis::OpId>> phase_prefixes;
   // Selected buffered allocations own a chain of staged definitions across selections.

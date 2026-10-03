@@ -19,7 +19,7 @@ using namespace abcd;
 using namespace abcd::source;
 using namespace abcd::analysis;
 constexpr unsigned kByteBits = 8;
-enum class CallPrefix { kNone, kGetter, kCall, kNullish, kWrappedNullish, kEscapingNullish };
+enum class CallPrefix { kNone, kGetter, kCall, kNullish, kWrappedNullish, kEscapingNullish, kMemberWrappedNullish, kMemberBarrierNullish };
 enum class Selection { kConditional, kAnd, kOr, kDecisionAnd, kDecisionOr };
 bool Decision(Selection selection) {
   return selection == Selection::kDecisionAnd || selection == Selection::kDecisionOr;
@@ -184,23 +184,31 @@ void Run(unsigned count, bool direct, bool print, bool barrier = false,
   if (print) std::cout << output.str();
 }
 
-abc::MethodBody CallSelectionBody(unsigned count, bool computed, CallPrefix prefix, unsigned guards) {
+abc::MethodBody CallSelectionBody(unsigned count, bool computed, CallPrefix prefix, unsigned guards, unsigned depth = 1) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+  const bool member_wrapped = prefix == CallPrefix::kMemberBarrierNullish || prefix == CallPrefix::kMemberWrappedNullish;
+  test::Check(!member_wrapped || depth <= UINT8_MAX - 5);
+  const std::uint8_t value = member_wrapped ? 3 + depth : 3, flag = value + 1, wrap = value + 2;
   std::vector<std::uint8_t> bytes;
   for (unsigned i = 0; i < count; ++i) {
-    bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 3,
+    if (member_wrapped) for (unsigned level = 0; level < depth; ++level) bytes.insert(bytes.end(),
+        {op(abc::Opcode::kLDA_V8), wrap, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 3, 0,
+         op(abc::Opcode::kSTA_V8), static_cast<std::uint8_t>(3 + level)});
+    if (prefix == CallPrefix::kMemberBarrierNullish) bytes.insert(bytes.end(),
+        {op(abc::Opcode::kLDA_V8), value, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 3, 0});
+    bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), value,
         op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0, op(abc::Opcode::kSTA_V8), 0});
-    if (prefix == CallPrefix::kNone) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 4});
+    if (prefix == CallPrefix::kNone) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), flag});
     else {
-      bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 3,
+      bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), value,
           op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 1, 0});
-      if (prefix == CallPrefix::kCall || prefix == CallPrefix::kNullish || prefix == CallPrefix::kWrappedNullish || prefix == CallPrefix::kEscapingNullish) {
-        bytes.insert(bytes.end(), {op(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 3, 4, op(abc::Opcode::kSTA_V8), 2});
+      if (prefix == CallPrefix::kCall || prefix == CallPrefix::kNullish || prefix == CallPrefix::kWrappedNullish || prefix == CallPrefix::kMemberBarrierNullish || prefix == CallPrefix::kMemberWrappedNullish || prefix == CallPrefix::kEscapingNullish) {
+        bytes.insert(bytes.end(), {op(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, value, flag, op(abc::Opcode::kSTA_V8), 2});
         if (prefix == CallPrefix::kCall) bytes.insert(bytes.end(), {
             op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 3, 0});
       }
     }
-    if (prefix == CallPrefix::kNullish || prefix == CallPrefix::kWrappedNullish || prefix == CallPrefix::kEscapingNullish) {
+    if (prefix == CallPrefix::kNullish || prefix == CallPrefix::kWrappedNullish || prefix == CallPrefix::kMemberBarrierNullish || prefix == CallPrefix::kMemberWrappedNullish || prefix == CallPrefix::kEscapingNullish) {
       std::vector<std::size_t> branches;
       for (unsigned guard = 0; guard < guards; ++guard) {
         bytes.insert(bytes.end(), {op(guard % 2 ? abc::Opcode::kLDUNDEFINED : abc::Opcode::kLDNULL),
@@ -226,14 +234,18 @@ abc::MethodBody CallSelectionBody(unsigned count, bool computed, CallPrefix pref
     const auto jump = bytes.size(); bytes.insert(bytes.end(), {op(abc::Opcode::kJMP_IMM8), 0});
     bytes[branch + 1] = static_cast<std::uint8_t>(bytes.size() - branch);
     if (computed) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8),
-        static_cast<std::uint8_t>(prefix == CallPrefix::kCall ? 2 : 3),
+        static_cast<std::uint8_t>(prefix == CallPrefix::kCall ? 2 : value),
         op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 2, 0});
     else bytes.insert(bytes.end(), {op(abc::Opcode::kLDAI_IMM32), 0xc0, 1, 0, 0});
     bytes[jump + 1] = static_cast<std::uint8_t>(bytes.size() - jump);
     }
     bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), 1, op(abc::Opcode::kLDA_V8), 0,
-        op(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 3, 1});
-    if (prefix == CallPrefix::kWrappedNullish || prefix == CallPrefix::kEscapingNullish) {
+        op(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, value, 1});
+    if (member_wrapped) {
+      for (unsigned level = depth; level-- > 0;) bytes.insert(bytes.end(),
+          {op(abc::Opcode::kSTA_V8), 1, op(abc::Opcode::kLDA_V8), static_cast<std::uint8_t>(3 + level),
+           op(abc::Opcode::kCALLTHIS2_IMM8_V8_V8_V8), 0, wrap, flag, 1});
+    } else if (prefix == CallPrefix::kWrappedNullish || prefix == CallPrefix::kEscapingNullish) {
       bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), 1, op(abc::Opcode::kLDA_V8), 5});
       if (prefix == CallPrefix::kEscapingNullish) bytes.insert(bytes.end(), {op(abc::Opcode::kCALLARGS2_IMM8_V8_V8), 0, 2, 1});
       else bytes.insert(bytes.end(), {op(abc::Opcode::kCALLARG1_IMM8_V8), 0, 1});
@@ -250,10 +262,10 @@ abc::MethodBody CallSelectionBody(unsigned count, bool computed, CallPrefix pref
 }
 
 void RunPhased(unsigned count, bool direct, bool print, Selection selection,
-    abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool one_arm = false, bool call_selection = false, bool computed = false, CallPrefix prefix = CallPrefix::kNone, unsigned guard_count = 2) {
-  const auto body = call_selection ? CallSelectionBody(count, computed, prefix, guard_count) : Decision(selection) ? DecisionBody(count, direct, selection, true, one_arm) :
+    abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool one_arm = false, bool call_selection = false, bool computed = false, CallPrefix prefix = CallPrefix::kNone, unsigned guard_count = 2, unsigned depth = 1) {
+  const auto body = call_selection ? CallSelectionBody(count, computed, prefix, guard_count, depth) : Decision(selection) ? DecisionBody(count, direct, selection, true, one_arm) :
       Body(count, direct, false, selection, true);
-  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(3, call_selection ? ((prefix == CallPrefix::kWrappedNullish || prefix == CallPrefix::kEscapingNullish) ? 3 : 2) : 1, {}));
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout((prefix == CallPrefix::kMemberWrappedNullish || prefix == CallPrefix::kMemberBarrierNullish) ? 3 + depth : 3, call_selection ? ((prefix == CallPrefix::kWrappedNullish || prefix == CallPrefix::kEscapingNullish || prefix == CallPrefix::kMemberWrappedNullish || prefix == CallPrefix::kMemberBarrierNullish) ? 3 : 2) : 1, {}));
   const auto flow = std::get<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers));
   IdfQuota quota{kDefaultSemanticWork};
   const auto ssa = std::get<ExceptionSsa>(ExceptionSsa::Build(flow, frame.registers, quota));
@@ -280,6 +292,10 @@ void RunPhased(unsigned count, bool direct, bool print, Selection selection,
     bindings.push_back({pair, std::get<ValueModuleRead>(graph.ops[pair.read.value].operation), {{7}, {0}}});
   const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(
       graph, {}, IncomingCells::kReject, {}, bindings));
+  if (prefix == CallPrefix::kMemberBarrierNullish) {
+    test::Check(std::get<CallPlanError>(BuildPhasedCallPlan(graph, evaluation)) == CallPlanError::kReference);
+    return;
+  }
   if (prefix == CallPrefix::kEscapingNullish) {
     test::Check(evaluation.phase_calls.empty());
     test::Check(std::get<CallPlanError>(BuildPhasedCallPlan(graph, evaluation)) == CallPlanError::kReference);
@@ -296,7 +312,7 @@ void RunPhased(unsigned count, bool direct, bool print, Selection selection,
   const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
   unsigned decisions = 0;
   for (const auto& node : control.skeleton.nodes) decisions += node.decision.has_value();
-  test::Check(decisions == ((prefix == CallPrefix::kNullish || prefix == CallPrefix::kWrappedNullish || prefix == CallPrefix::kEscapingNullish) ? count * (guard_count - 1) : one_arm || !Decision(selection) ? 0 : count));
+  test::Check(decisions == ((prefix == CallPrefix::kNullish || prefix == CallPrefix::kWrappedNullish || prefix == CallPrefix::kMemberBarrierNullish || prefix == CallPrefix::kMemberWrappedNullish || prefix == CallPrefix::kEscapingNullish) ? count * (guard_count - 1) : one_arm || !Decision(selection) ? 0 : count));
   const ExceptionTreeInput context{body, input, regions, control};
   FunctionSyntax syntax{}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   syntax.names = {u"value", u"method", u"probe", u"option", u"other", u"imported"};
@@ -305,7 +321,7 @@ void RunPhased(unsigned count, bool direct, bool print, Selection selection,
   if (call_selection) {
     syntax.names.push_back(u"flag");
     syntax.parameters.push_back({NameId{6}, NameEvidence::kDebugRange});
-    if (prefix == CallPrefix::kWrappedNullish) {
+    if (prefix == CallPrefix::kWrappedNullish || prefix == CallPrefix::kMemberWrappedNullish) {
       syntax.names.push_back(u"wrap"); syntax.parameters.push_back({NameId{7}, NameEvidence::kDebugRange});
     }
     test::Check(std::holds_alternative<CallPlan>(BuildPhasedCallPlan(graph, evaluation)));
@@ -317,6 +333,15 @@ void RunPhased(unsigned count, bool direct, bool print, Selection selection,
     test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
     forged = evaluation; forged.phase_prefixes.clear();
     test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    forged = evaluation; forged.phase_references.clear();
+    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    if (prefix == CallPrefix::kMemberWrappedNullish) {
+      test::Check(evaluation.phase_calls.front().ancestors.size() == depth);
+      forged = evaluation; forged.phase_calls.front().ancestors.clear();
+      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+      forged = evaluation; ++forged.phase_calls.front().ancestors.front().call.value;
+      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    }
     if (prefix != CallPrefix::kNone) {
       test::Check(!evaluation.phase_calls.front().prefix.empty());
       forged = evaluation; forged.phase_calls.front().prefix.clear();
@@ -383,6 +408,8 @@ int main(int argc, char** argv) {
     const auto count = argc == 3 ? 2U : 1U;
     if (option == "--phased-escaping-nullish-refusal")
       RunPhased(count, false, false, Selection::kConditional, abc::ProfileId::kDynamic1206, false, true, true, CallPrefix::kEscapingNullish);
+    else if (option == "--phased-member-wrapped-source")
+      RunPhased(count, false, true, Selection::kConditional, abc::ProfileId::kDynamic1206, false, true, true, CallPrefix::kMemberWrappedNullish);
     else if (option == "--phased-nullish-source" || option == "--phased-wrapped-nullish-source")
       RunPhased(count, false, true, Selection::kConditional, abc::ProfileId::kDynamic1206, false, true, true,
           option == "--phased-wrapped-nullish-source" ? CallPrefix::kWrappedNullish : CallPrefix::kNullish);
@@ -415,13 +442,18 @@ int main(int argc, char** argv) {
     return 0;
   }
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+    RunPhased(1, false, false, Selection::kConditional, profile, false, true, true, CallPrefix::kMemberBarrierNullish);
+  for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+    for (const auto depth : {1U, 2U, 200U, 201U})
+      RunPhased(1, false, false, Selection::kConditional, profile, false, true, true, CallPrefix::kMemberWrappedNullish, 2, depth);
+  for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
     for (const auto guards : {2U, 200U, 201U, 402U})
       RunPhased(1, false, false, Selection::kConditional, profile, false, true, true, CallPrefix::kNullish, guards);
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
     for (const auto count : {1U, 2U, 200U, 201U})
       for (const bool computed : {false, true}) {
         RunPhased(count, false, false, Selection::kConditional, profile, false, true, computed);
-        if (computed) for (const auto prefix : {CallPrefix::kGetter, CallPrefix::kCall, CallPrefix::kNullish, CallPrefix::kWrappedNullish})
+        if (computed) for (const auto prefix : {CallPrefix::kGetter, CallPrefix::kCall, CallPrefix::kNullish, CallPrefix::kWrappedNullish, CallPrefix::kMemberWrappedNullish})
           RunPhased(count, false, false, Selection::kConditional, profile, false, true, computed, prefix);
       }
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})

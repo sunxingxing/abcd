@@ -434,7 +434,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     const auto checked = VerifyEvaluationForFlow(graph, plan, {bytes, work}, flow);
     if (const auto* error = std::get_if<EvaluationError>(&checked)) return *error;
     step(std::get<std::uint64_t>(checked));
-    plan.allocated_bytes = plan.phase_prefixes.capacity() * sizeof(std::optional<analysis::OpId>) + plan.phase_transports.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_calls.capacity() * sizeof(PhaseSelectionCall) + plan.integer_nans.capacity() * sizeof(NaNProjection) + plan.operations.capacity() * sizeof(OpEvaluation) +
+    plan.allocated_bytes = plan.phase_references.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_prefixes.capacity() * sizeof(std::optional<analysis::OpId>) + plan.phase_transports.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_calls.capacity() * sizeof(PhaseSelectionCall) + plan.integer_nans.capacity() * sizeof(NaNProjection) + plan.operations.capacity() * sizeof(OpEvaluation) +
         plan.logical_values.capacity() * sizeof(std::optional<analysis::OpId>) +
         plan.logical_objects.capacity() * sizeof(std::optional<analysis::OpId>) +
         plan.aliases.capacity() * sizeof(analysis::ValueId) +
@@ -445,7 +445,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
         plan.receiver_guards.capacity() * sizeof(analysis::OpId) +
         (plan.phis ? plan.phis->allocated_bytes : 0) +
         (plan.literals ? plan.literals->allocated_bytes : 0);
-    for (const auto& call : plan.phase_calls) plan.allocated_bytes += call.prefix.capacity() * sizeof(analysis::OpId);
+    for (const auto& call : plan.phase_calls) plan.allocated_bytes += call.prefix.capacity() * sizeof(analysis::OpId) + call.ancestors.capacity() * sizeof(PhaseCallReference);
     if (plan.self_order) plan.allocated_bytes += plan.self_order->AllocatedBytes();
     if (plan.cells) plan.allocated_bytes += plan.cells->allocated_bytes;
     if (plan.exceptions) plan.allocated_bytes += plan.exceptions->allocated_bytes;

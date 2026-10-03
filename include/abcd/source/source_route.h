@@ -261,7 +261,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // verify private complete array arguments and retain original effect order.
 // Rules 61 compose input-backed iterator records through checked literal and
 // phased expression intervals, retaining identity, operands and catch scopes.
-inline constexpr std::uint32_t kRouteEvidenceRules = 61;
+// Rules 62 bind nested phased member references to their original call spine,
+// retaining getter order, argument availability, receivers and catch scopes.
+inline constexpr std::uint32_t kRouteEvidenceRules = 62;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

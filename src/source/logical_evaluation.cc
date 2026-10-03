@@ -603,10 +603,8 @@ bool CrossLogicalInline(const ValueProgram& graph, const EvaluationPlan& plan, O
   if (placement.kind != EvaluationKind::kInline || !placement.consumer ||
       placement.consumer->value >= graph.uses.size()) return false;
   if (plan.flow == EvaluationFlow::kPhased) {
-    if (producer.value < plan.phase_transports.size() && plan.phase_transports[producer.value]) return true;
-    const auto at = std::lower_bound(plan.phase_calls.begin(), plan.phase_calls.end(), producer,
-        [](const auto& call, auto op) { return call.callee < op; });
-    return at != plan.phase_calls.end() && at->callee == producer;
+    return (producer.value < plan.phase_transports.size() && plan.phase_transports[producer.value]) ||
+        (producer.value < plan.phase_references.size() && plan.phase_references[producer.value]);
   }
   const auto* owner = std::get_if<OpId>(&graph.uses[placement.consumer->value].owner);
   return owner && owner->value < graph.ops.size() && graph.ops[owner->value].block != graph.ops[producer.value].block;
@@ -693,7 +691,7 @@ void VerifyLogicalValues(const ValueProgram& graph, const EvaluationPlan& plan, 
   if (plan.flow == EvaluationFlow::kPhased) {
     VerifyPhaseSelectionCalls(graph, plan, budget); return;
   }
-  Require(plan.phase_calls.empty() && plan.phase_transports.empty() && plan.phase_prefixes.empty());
+  Require(plan.phase_calls.empty() && plan.phase_transports.empty() && plan.phase_prefixes.empty() && plan.phase_references.empty());
   Require(plan.logical_objects.empty() || plan.logical_objects.size() == graph.ops.size());
   Require(plan.logical_values.empty() || (plan.flow == EvaluationFlow::kNormal && plan.logical_values.size() == graph.values.size()));
   if (plan.logical_values.empty()) {

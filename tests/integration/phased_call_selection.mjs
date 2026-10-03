@@ -9,10 +9,10 @@ const options = [undefined, null, false, 0, -0, NaN, 'argument', symbol, token];
 let cases = 0;
 const variants = [{computed: false, prefix: 'none'}, {computed: true, prefix: 'none'},
   {computed: true, prefix: 'getter'}, {computed: true, prefix: 'call'},
-  {computed: true, prefix: 'nullish'}, {computed: true, prefix: 'wrapped'}];
+  {computed: true, prefix: 'nullish'}, {computed: true, prefix: 'wrapped'}, {computed: true, prefix: 'member'}];
 for (const {computed, prefix} of variants) for (const count of [1, 2]) {
-  const nullable = prefix === 'nullish' || prefix === 'wrapped';
-  const source = execFileSync(tool, [prefix === 'nullish' ? '--phased-nullish-source' : prefix === 'wrapped' ? '--phased-wrapped-nullish-source' : prefix === 'getter' ? '--phased-prefix-getter-source' : prefix === 'call' ? '--phased-prefix-call-source' :
+  const nullable = prefix === 'nullish' || prefix === 'wrapped' || prefix === 'member';
+  const source = execFileSync(tool, [prefix === 'member' ? '--phased-member-wrapped-source' : prefix === 'nullish' ? '--phased-nullish-source' : prefix === 'wrapped' ? '--phased-wrapped-nullish-source' : prefix === 'getter' ? '--phased-prefix-getter-source' : prefix === 'call' ? '--phased-prefix-call-source' :
     computed ? '--phased-computed-call-selection-source' : '--phased-call-selection-source', ...(count === 2 ? ['--twice'] : [])], {encoding: 'utf8'});
   assert.ok(source.includes('value.method(') && source.includes(' ? '));
   assert.ok(!source.includes('.call(') && !source.includes('INCOMPLETE'));
@@ -23,7 +23,8 @@ for (const {computed, prefix} of variants) for (const count of [1, 2]) {
       for (let i = 0; i < count; ++i) {
         if (nullable) {
           let parsed;
-          if (prefix === 'wrapped') result = wrap(value.method((parsed = value.probe(flag), parsed?.option)));
+          if (prefix === 'member') result = wrap.other(flag, value.method((parsed = value.probe(flag), parsed?.option)));
+          else if (prefix === 'wrapped') result = wrap(value.method((parsed = value.probe(flag), parsed?.option)));
           else result = value.method((parsed = value.probe(flag), parsed?.option));
         } else if (prefix === 'getter') result = value.method(value.probe ? 7 : value.option);
         else if (prefix === 'call') {
@@ -89,10 +90,20 @@ for (const {computed, prefix} of variants) for (const count of [1, 2]) {
     if (prototype) Object.defineProperty(prototype, 'option', {configurable: true, get() {
       assert.ok(Object.is(this, flag)); event('primitive-option'); if (replace) ++version; return option;
     }});
-    const wrap = function(argument) {
+    let wrap = function(argument) {
       assert.equal(this, undefined); assert.equal(argument, token); event('wrap'); return token;
     };
     Object.defineProperty(wrap, 'call', {get() { assert.fail('wrapper .call helper'); }});
+    if (prefix === 'member') wrap = new Proxy({}, {get(_target, key, receiver) {
+      assert.equal(key, 'other'); assert.equal(receiver, wrap); event('get-wrap-member', version);
+      const captured = version;
+      const outer = function(first, argument) {
+        assert.equal(this, wrap); assert.ok(Object.is(first, flag)); assert.equal(argument, token);
+        event('wrap-member', captured); return token;
+      };
+      Object.defineProperty(outer, 'call', {get() { assert.fail('member wrapper .call helper'); }});
+      return outer;
+    }});
     try {
       const result = fn(value, flag, wrap);
       assert.ok(result === token || result === failure || (noncallable && result instanceof TypeError));
