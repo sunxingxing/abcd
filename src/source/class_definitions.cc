@@ -1,4 +1,5 @@
 #include "class_definitions.h"
+#include "effect_order.h"
 #include "../analysis/value_edits.h"
 #include <new>
 #include <stdexcept>
@@ -80,7 +81,6 @@ std::variant<ClassDefinitionSites, ClassDefinitionError> FindClassDefinitions(
         owner = producer(input(*owner, 0, OperandRole::kBase));
       }
       if (!owner || !std::holds_alternative<ValueClassCreation>(graph.ops[owner->value].operation)) continue;
-      if (graph.ops[owner->value].block != op.block || graph.ops[owner->value].order >= op.order) continue;
       std::optional<OpId> methods[2]; bool valid = true;
       for (std::uint32_t n = 0; n < (accessor ? 2U : 1U); ++n) {
         step(); const auto ordinal = accessor ? 2 + n : 1;
@@ -93,7 +93,7 @@ std::variant<ClassDefinitionSites, ClassDefinitionError> FindClassDefinitions(
         const auto& method = graph.ops[method_id->value];
         const auto* creation = std::get_if<ValueFunctionCreation>(&method.operation);
         if (!creation || creation->kind != CreationKind::kMethod || creation->home_object != HomeObjectInput::kAccumulator ||
-            (accessor && creation->length != n) || method.block != op.block || method.order >= op.order || method.use_count != 1 ||
+            (accessor && creation->length != n) || method.use_count != 1 ||
             producer(input(*method_id, 0, OperandRole::kHomeObject, ReadPurpose::kProtocol)) != producer(base)) { valid = false; break; }
         require(method.result.has_value());
         const auto use = graph.values[method.result->value].first_use;
@@ -109,6 +109,17 @@ std::variant<ClassDefinitionSites, ClassDefinitionError> FindClassDefinitions(
       // Ordinary [[Set]], DefineField and name-setting variants are distinct.
       if (!accessor) site.members = ClassMethodDefinition{*methods[0]};
       result.sites.push_back(site);
+    }
+    if (!result.sites.empty()) {
+      auto built = BuildEffectOrder(graph, budget);
+      if (const auto* error = std::get_if<ValueAvailabilityError>(&built)) {
+        if (*error == ValueAvailabilityError::kResourceLimit) return Error::kResourceLimit;
+        if (*error == ValueAvailabilityError::kWorkLimit) return Error::kWorkLimit;
+        return Error::kFlow;
+      }
+      const auto& order = std::get<EffectOrder>(built);
+      admit(order.allocated_bytes, 1); step(order.work);
+      for (auto& site : result.sites) { step(); site.order = {order.position[site.definition.value]}; }
     }
     result.allocated_bytes = initial.bytes - budget.bytes; result.work = initial.work - budget.work;
     return result;

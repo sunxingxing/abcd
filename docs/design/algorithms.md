@@ -5,6 +5,36 @@
 
 ## 输入规模与成本
 
+### 共同效果前驱与跨块类成员投影（2026-10-04）
+
+`BuildEffectOrder` 消费真实 normal ValueIR。共同 `VerifyValueFlow` 检查图、
+定义/使用与 phi 输入边，并返回本次已构造的支配树；调用者不另建支配树。
+按 typed language effect、exception、environment 和 debugger 语义标记
+有序效果，记录每块最后效果。incoming CSR 一次建成；无效果源块到后继的
+依赖图用迭代 Kosaraju 两次 DFS 收缩 SCC，再按凝聚图依赖顺序传播效果
+前驱身份。多个不同身份合并成 opaque join，效果数量相同不构成同一历史。
+effects 是依赖叶，pure loop 不需要枚举特殊循环形状或递归调用栈。
+
+算法来源为标准 SCC 凝聚与 SSA 支配性质，自有实现，没有复制外部代码、
+新增依赖或第三方许可证要求。前提是已验证 reachable normal graph；不
+接受 phased 图，不宣称完整异常图或全路径终止证明。私有 class 投影要求
+所有被拥有的效果构成从实际创建出发的单一链，前驱支配后继、最后安装是
+唯一尾部，外部观察晚于它；原 HomeObject、捕获与 descriptor 对应保留。
+这允许把未被观察的成员创建投影到 class syntax；pure loop 上不额外假定
+终止。循环内重复安装或条件遗漏不能满足该效果身份/支配链。
+
+全 CFG reverse postorder 给 `DefinitionOrder`，只在上述证明后用于 syntax
+排序。物理 OpId 只作索引，禁止用其数值推断移动许可。B块、E边、U使用、
+N操作、V值的共同构造时间 O((B+E) log B + U log U + N+V)，存储
+O(B+E+U+N+V)；投影线性普查，C个成员排序 O(C log C)。候选发现和独立
+投影各构造一次并按真实费用保守记账，没有逐 class CFG 分析或二次普查。
+
+三profile、1/200/201/402安装、纯分块/diamond/loop、物理顺序反转及
+效果/遗漏/重复/伪造顺序反例是定向正确性证据。432组observer和96组capture
+行为对照通过；没有延迟/分配/RSS性能实测，暂停的完整语料与性能检查未恢复。
+维护风险是 phased/initializer/活跃安装结果 alias 对应尚未接入，不能靠
+新增局部模式放行。日志、固定五输入和验收边界见 source-recovery/status.md。
+
 ### 类布局先行与实际 parent 树组合（2026-10-02）
 
 `BuildClassLayout` 从实际 ClassCreation、构造器 context 和 literal buffer

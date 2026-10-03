@@ -1,7 +1,7 @@
 #include "class_definitions.h"
 #include "cell_evaluation.h"
 #include "../analysis/value_edits.h"
-#include "../analysis/value_flow.h"
+#include "effect_order.h"
 #include <new>
 #include <stdexcept>
 namespace abcd::source {
@@ -21,48 +21,34 @@ std::variant<ClassDefinitionProjection, ClassDefinitionError> ProjectClassDefini
     };
     ClassDefinitionProjection result;
     if (requested.empty()) return result;
-    // All direct and phi-edge observations must have fresh SSA availability.
-    // Installations currently share the creation block: completing that block
-    // completes the corridor. Dominated later uses need no placement template.
-    // This normal-only proof does not authorize moving installations across
-    // blocks or discarding exception paths. Regression: class_initializers_test.
-    const auto available = VerifyValueFlow(graph, budget);
-    if (const auto* error = std::get_if<ValueAvailabilityError>(&available)) {
-      if (*error == ValueAvailabilityError::kResourceLimit) return Error::kResourceLimit;
-      if (*error == ValueAvailabilityError::kWorkLimit) return Error::kWorkLimit;
-      return Error::kFlow;
-    }
-    const auto& flow = std::get<ValueFlowProof>(available);
-    step(flow.work); admit(flow.allocated_bytes, 1);
     auto discovered = FindClassDefinitions(graph, budget);
     if (const auto* error = std::get_if<Error>(&discovered)) return *error;
     const auto& candidates = std::get<ClassDefinitionSites>(discovered);
     admit(candidates.allocated_bytes, 1); step(candidates.work);
-    // Dense operation indexes and prefix sums make the class use census once
-    // per class, not once per member. Shared prototype reads are claimed once.
-    struct Corridor { std::optional<OpId> last; std::size_t effects = 0; };
+    auto built = BuildEffectOrder(graph, budget);
+    if (const auto* error = std::get_if<ValueAvailabilityError>(&built)) {
+      if (*error == ValueAvailabilityError::kResourceLimit) return Error::kResourceLimit;
+      if (*error == ValueAvailabilityError::kWorkLimit) return Error::kWorkLimit;
+      return Error::kFlow;
+    }
+    const auto& order = std::get<EffectOrder>(built);
+    admit(order.allocated_bytes, 1); step(order.work);
+    // Private class effects must form one identity-preserving predecessor
+    // chain rooted at creation. Pure splits/joins/loops are transparent;
+    // branch-skipped installs and intervening effects cannot join this chain.
+    // Regression: class_initializers_test, class_accessor_tree_source_test.
+    struct Corridor { std::optional<OpId> last; std::optional<OpId> tail; };
     admit(graph.ops.size(), sizeof(Corridor));
     std::vector<Corridor> corridors(graph.ops.size());
     admit(corridors.capacity() - corridors.size(), sizeof(Corridor));
-    admit(graph.ops.size() + 1, sizeof(std::size_t));
-    std::vector<std::size_t> effects(graph.ops.size() + 1);
-    admit(effects.capacity() - effects.size(), sizeof(std::size_t));
+    admit(graph.ops.size(), sizeof(std::uint8_t));
+    std::vector<std::uint8_t> successors(graph.ops.size());
+    admit(successors.capacity() - successors.size(), sizeof(std::uint8_t));
     admit(graph.ops.size(), sizeof(std::optional<OpId>));
     result.owners.resize(graph.ops.size());
     admit(result.owners.capacity() - result.owners.size(), sizeof(std::optional<OpId>));
     admit(requested.size(), sizeof(OpId)); result.prototypes.reserve(requested.size());
     admit(result.prototypes.capacity() - requested.size(), sizeof(OpId));
-    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
-      step(); const auto& op = graph.ops[i];
-      require(op.block.value < graph.blocks.size());
-      const auto& block = graph.blocks[op.block.value];
-      require(i >= block.first_op.value && i - block.first_op.value < block.op_count &&
-          op.order == i - block.first_op.value);
-      effects[i + 1] = effects[i] + (op.life == ValueLife::kLive &&
-          (op.normal != LanguageEffect::kNone || op.before_throw != LanguageEffect::kNone ||
-           op.exceptional != ExceptionalCompletion::kImpossible || IsEnvironmentState(op.operation) ||
-           std::holds_alternative<ValueDebugger>(op.operation)));
-    }
     std::size_t next = 0;
     std::optional<OpId> previous;
     for (const auto& site : requested) {
@@ -70,15 +56,15 @@ std::variant<ClassDefinitionProjection, ClassDefinitionError> ProjectClassDefini
       while (next < candidates.sites.size() && candidates.sites[next].definition < site.definition) { step(); ++next; }
       require(next < candidates.sites.size() && candidates.sites[next] == site); ++next;
       auto& corridor = corridors[site.creation.value];
-      corridor.last = site.definition;
+      if (!corridor.last || order.position[corridor.last->value] < site.order.value) corridor.last = site.definition;
       const auto claim = [&](OpId id, bool shared = false) {
-        require(id > site.creation && id <= site.definition && graph.ops[id.value].block == graph.ops[site.creation.value].block,
-            Error::kFlow);
+        const auto& op = graph.ops[id.value]; const auto& definition = graph.ops[site.definition.value];
+        require(order.Before(graph, site.creation, op.block, op.order) &&
+            (id == site.definition || order.Before(graph, id, definition.block, definition.order)), Error::kFlow);
         if (result.owners[id.value]) {
           require(shared && result.owners[id.value] == site.creation); return;
         }
         result.owners[id.value] = site.creation;
-        corridor.effects += effects[id.value + 1] - effects[id.value];
         if (shared) result.prototypes.push_back(id);
       };
       claim(site.definition);
@@ -89,37 +75,49 @@ std::variant<ClassDefinitionProjection, ClassDefinitionError> ProjectClassDefini
       const auto value = graph.ops[site.definition.value].result;
       require(!value || !graph.values[value->value].first_use, Error::kFlow);
     }
-    const auto completed = [&](const OperandUse& use, OpId creation, const ValueOp& end) {
-      WorkBlockId block; std::uint32_t order;
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      step(); if (!result.owners[i] || !HasOrderedEffect(graph.ops[i])) continue;
+      const auto creation = *result.owners[i];
+      const auto* predecessor = std::get_if<OpId>(&order.before[i]);
+      require(predecessor && (*predecessor == creation || result.owners[predecessor->value] == creation), Error::kFlow);
+      require(order.Before(graph, *predecessor, graph.ops[i].block, graph.ops[i].order), Error::kFlow);
+      require(!successors[predecessor->value], Error::kFlow); successors[predecessor->value] = 1;
+    }
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      step(); if (!result.owners[i] || !HasOrderedEffect(graph.ops[i]) || successors[i]) continue;
+      auto& corridor = corridors[result.owners[i]->value];
+      require(!corridor.tail, Error::kFlow); corridor.tail = OpId{static_cast<std::uint32_t>(i)};
+    }
+    const auto completed = [&](const OperandUse& use, OpId creation, OpId end) {
+      WorkBlockId block; std::uint32_t position;
       if (const auto* owner = std::get_if<OpId>(&use.owner)) {
         require(owner->value < graph.ops.size(), Error::kFlow);
         if (result.owners[owner->value] == creation) return;
         const auto& observer = graph.ops[owner->value];
-        block = observer.block; order = observer.order;
+        block = observer.block; position = observer.order;
       } else {
         // A phi observes the value on its actual incoming edge, not at the
         // merge's numeric position. Availability includes parallel/back edges.
         require(use.incoming && std::holds_alternative<EdgeId>(*use.incoming), Error::kFlow);
         const auto& edge = graph.edges[std::get<EdgeId>(*use.incoming).value];
-        block = edge.source; order = graph.blocks[block.value].op_count;
+        block = edge.source; position = graph.blocks[block.value].op_count;
       }
-      require(block != end.block || order > end.order, Error::kFlow);
+      require(order.Before(graph, end, block, position), Error::kFlow);
     };
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       step(); const auto& corridor = corridors[i];
       if (!corridor.last) continue;
       const auto& creation = graph.ops[i];
-      const auto& end = graph.ops[corridor.last->value];
-      require(effects[corridor.last->value + 1] - effects[i + 1] == corridor.effects, Error::kFlow);
+      require(corridor.tail == corridor.last && HasOrderedEffect(creation), Error::kFlow);
       require(creation.result.has_value());
       for (auto use = graph.values[creation.result->value].first_use; use; use = graph.uses[use->value].next) {
-        step(); completed(graph.uses[use->value], OpId{static_cast<std::uint32_t>(i)}, end);
+        step(); completed(graph.uses[use->value], OpId{static_cast<std::uint32_t>(i)}, *corridor.last);
       }
     }
     for (const auto prototype : result.prototypes) {
       step(); const auto& op = graph.ops[prototype.value]; require(op.result.has_value());
       const auto creation = result.owners[prototype.value]; require(creation.has_value());
-      const auto& end = graph.ops[corridors[creation->value].last->value];
+      const auto end = *corridors[creation->value].last;
       bool retain = false;
       for (auto use = graph.values[op.result->value].first_use; use; use = graph.uses[use->value].next) {
         step(); const auto& occurrence = graph.uses[use->value];

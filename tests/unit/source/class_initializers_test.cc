@@ -10,7 +10,7 @@ namespace {
 using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
-enum class AccessorCase { kValid, kWrongHome, kEscape, kNameFlag, kClassEscape, kPrototypeEscape, kBarrier, kUsedResult, kLaterClassUse, kLaterPrototypeUse, kPair, kEnvironment, kLaterBlock, kLaterPhi, kLaterLoop };
+enum class AccessorCase { kValid, kWrongHome, kEscape, kNameFlag, kClassEscape, kPrototypeEscape, kBarrier, kUsedResult, kLaterClassUse, kLaterPrototypeUse, kPair, kEnvironment, kLaterBlock, kLaterPhi, kLaterLoop, kSplitInstall, kPureDiamond, kEffectDiamond, kPureLoop, kRepeatedInstall, kConditionalInstall, kBalancedEffects };
 void Accessors(abc::ProfileId profile, unsigned count, bool prototype, bool setter, AccessorCase kind = AccessorCase::kValid, bool ordinary = false) {
   std::vector<std::uint8_t> bytes;
   const auto op = [&](abc::Opcode code) { bytes.push_back(static_cast<std::uint8_t>(code)); };
@@ -21,6 +21,8 @@ void Accessors(abc::ProfileId profile, unsigned count, bool prototype, bool sett
   op(abc::Opcode::kDEFINECLASSWITHBUFFER_IMM8_ID16_ID16_IMM16_V8);
   bytes.push_back(0); word(7); word(9); word(0); bytes.push_back(0); save(1);
   for (unsigned i = 0; i < count; ++i) {
+    const auto conditional = bytes.size();
+    if (kind == AccessorCase::kConditionalInstall) { load(6); op(abc::Opcode::kJEQZ_IMM8); bytes.push_back(0); }
     load(1);
     if (prototype) { op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16); bytes.push_back(0); word(13); }
     save(2);
@@ -29,9 +31,17 @@ void Accessors(abc::ProfileId profile, unsigned count, bool prototype, bool sett
     if (kind == AccessorCase::kBarrier) op(abc::Opcode::kDEBUGGER);
     if (kind == AccessorCase::kEnvironment) { op(abc::Opcode::kNEWLEXENV_IMM8); bytes.push_back(0); }
     op(abc::Opcode::kLDA_STR_ID16); word(15); save(3);
+    if (kind == AccessorCase::kPureDiamond || kind == AccessorCase::kEffectDiamond || kind == AccessorCase::kBalancedEffects) {
+      load(6); op(abc::Opcode::kJEQZ_IMM8); bytes.push_back(5);
+      op(kind == AccessorCase::kEffectDiamond || kind == AccessorCase::kBalancedEffects ? abc::Opcode::kDEBUGGER : abc::Opcode::kNOP);
+      op(abc::Opcode::kJMP_IMM8); bytes.push_back(3); op(kind == AccessorCase::kBalancedEffects ? abc::Opcode::kDEBUGGER : abc::Opcode::kNOP);
+    }
+    if (kind == AccessorCase::kPureLoop) { load(6); op(abc::Opcode::kJNEZ_IMM8); bytes.push_back(static_cast<std::uint8_t>(-2)); }
+    const auto repeated = bytes.size();
     load(kind == AccessorCase::kWrongHome ? 3 : 2);
     op(abc::Opcode::kDEFINEMETHOD_IMM8_ID16_IMM8); bytes.push_back(0); word(11); bytes.push_back(setter ? 1 : 0);
     save(setter ? 5 : 4);
+    if (kind == AccessorCase::kSplitInstall) { op(abc::Opcode::kJMP_IMM8); bytes.push_back(2); }
     if (kind == AccessorCase::kEscape) { op(abc::Opcode::kSTMODULEVAR_IMM8); bytes.push_back(0); }
     if (ordinary) {
       op(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8); bytes.push_back(0); word(15); bytes.push_back(2);
@@ -43,8 +53,14 @@ void Accessors(abc::ProfileId profile, unsigned count, bool prototype, bool sett
     op(kind == AccessorCase::kNameFlag ? abc::Opcode::kLDTRUE : abc::Opcode::kLDFALSE);
     op(abc::Opcode::kDEFINEGETTERSETTERBYVALUE_V8_V8_V8_V8);
     bytes.insert(bytes.end(), {2, 3, 4, 5});
+    if (kind == AccessorCase::kRepeatedInstall) {
+      load(6); const auto branch = bytes.size(); op(abc::Opcode::kJNEZ_IMM8);
+      bytes.push_back(static_cast<std::uint8_t>(static_cast<int>(repeated) - static_cast<int>(branch)));
+    }
+    if (kind == AccessorCase::kConditionalInstall) bytes[conditional + 3] = bytes.size() - (conditional + 2);
   }
   const bool later_flow = kind == AccessorCase::kLaterBlock || kind == AccessorCase::kLaterPhi || kind == AccessorCase::kLaterLoop;
+  const bool installs = kind == AccessorCase::kSplitInstall || kind == AccessorCase::kPureDiamond || kind == AccessorCase::kPureLoop;
   if (kind == AccessorCase::kLaterBlock) { op(abc::Opcode::kJMP_IMM8); bytes.push_back(2); }
   if (kind == AccessorCase::kLaterLoop) {
     load(6); op(abc::Opcode::kJNEZ_IMM8); bytes.push_back(static_cast<std::uint8_t>(-2));
@@ -57,9 +73,10 @@ void Accessors(abc::ProfileId profile, unsigned count, bool prototype, bool sett
     load(kind == AccessorCase::kLaterClassUse ? 1 : 2);
     op(abc::Opcode::kSTMODULEVAR_IMM8); bytes.push_back(0);
   }
-  if (kind != AccessorCase::kLaterPhi) op(kind == AccessorCase::kUsedResult ? abc::Opcode::kRETURN : abc::Opcode::kRETURNUNDEFINED);
+  if (installs || kind == AccessorCase::kConditionalInstall || kind == AccessorCase::kEffectDiamond || kind == AccessorCase::kRepeatedInstall) load(1);
+  if (kind != AccessorCase::kLaterPhi) op(kind == AccessorCase::kUsedResult || installs || kind == AccessorCase::kConditionalInstall || kind == AccessorCase::kEffectDiamond || kind == AccessorCase::kRepeatedInstall ? abc::Opcode::kRETURN : abc::Opcode::kRETURNUNDEFINED);
   const auto body = test::Body(bytes);
-  const auto args = later_flow ? 1U : 0U;
+  const auto args = later_flow || installs || kind == AccessorCase::kConditionalInstall || kind == AccessorCase::kEffectDiamond || kind == AccessorCase::kRepeatedInstall || kind == AccessorCase::kBalancedEffects ? 1U : 0U;
   const auto method = std::get<SemanticMethod>(BuildSemanticMethod(body, profile, 6 + args));
   const auto proof = std::get<SemanticProof>(VerifySemanticSource(body, method, 6, args));
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(6, args, {false, false, false, false}));
@@ -76,7 +93,7 @@ void Accessors(abc::ProfileId profile, unsigned count, bool prototype, bool sett
   }
   if (candidate) {
     const auto projected = ProjectClassDefinitions(graph, result.sites);
-    if (later_flow || kind == AccessorCase::kValid || kind == AccessorCase::kLaterClassUse || kind == AccessorCase::kLaterPrototypeUse || kind == AccessorCase::kPair) {
+    if (installs || later_flow || kind == AccessorCase::kValid || kind == AccessorCase::kLaterClassUse || kind == AccessorCase::kLaterPrototypeUse || kind == AccessorCase::kPair) {
       test::Check(std::holds_alternative<ClassDefinitionProjection>(projected));
       const auto& projection = std::get<ClassDefinitionProjection>(projected);
       test::Check(projection.prototypes.size() == (prototype ? count : 0));
@@ -96,6 +113,8 @@ void Accessors(abc::ProfileId profile, unsigned count, bool prototype, bool sett
       evaluation.class_projection.owners[result.sites.front().definition.value].reset();
       test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, evaluation)));
       auto forged = result.sites; ++forged.front().key.value;
+      test::Check(std::get<ClassDefinitionError>(ProjectClassDefinitions(graph, forged)) == ClassDefinitionError::kInput);
+      forged = result.sites; ++forged.front().order.value;
       test::Check(std::get<ClassDefinitionError>(ProjectClassDefinitions(graph, forged)) == ClassDefinitionError::kInput);
       if (count > 1) {
         forged = result.sites; std::swap(forged[0], forged[1]);
@@ -229,7 +248,12 @@ void Run(abc::ProfileId profile, unsigned count, Case kind) {
   test::Check(std::get<ClassInitializerError>(FindClassInitializerCalls(graph)) == ClassInitializerError::kInput);
 }
 }
-int main() {
+int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--cross-install") {
+    for (const auto kind : {AccessorCase::kSplitInstall, AccessorCase::kPureDiamond, AccessorCase::kPureLoop})
+      Accessors(abc::ProfileId::kDynamic1206, 1, true, false, kind);
+    return 0;
+  }
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
     for (const auto count : {1U, 200U, 201U, 402U}) {
       Accessors(profile, count, false, false); Accessors(profile, count, true, true);
@@ -239,9 +263,13 @@ int main() {
         Accessors(profile, count, true, true, kind);
         Accessors(profile, count, true, false, kind, true);
       }
+      for (const auto kind : {AccessorCase::kSplitInstall, AccessorCase::kPureDiamond, AccessorCase::kPureLoop})
+        Accessors(profile, count, true, false, kind);
       Run(profile, count, Case::kSingle); Run(profile, count, Case::kPrototype); Run(profile,count,Case::kLaterBlock); Run(profile,count,Case::kSelfStore); Run(profile,count,Case::kSelfOverwrite); Run(profile,count,Case::kSelfExposed);
     }
     for (const auto kind : {AccessorCase::kWrongHome, AccessorCase::kEscape, AccessorCase::kNameFlag, AccessorCase::kClassEscape, AccessorCase::kPrototypeEscape, AccessorCase::kBarrier, AccessorCase::kUsedResult, AccessorCase::kLaterClassUse, AccessorCase::kLaterPrototypeUse, AccessorCase::kPair, AccessorCase::kEnvironment})
+      Accessors(profile, 1, true, false, kind);
+    for (const auto kind : {AccessorCase::kConditionalInstall, AccessorCase::kEffectDiamond, AccessorCase::kRepeatedInstall, AccessorCase::kBalancedEffects})
       Accessors(profile, 1, true, false, kind);
     for (const auto kind : {AccessorCase::kWrongHome, AccessorCase::kEscape, AccessorCase::kClassEscape,
         AccessorCase::kPrototypeEscape, AccessorCase::kBarrier, AccessorCase::kUsedResult,

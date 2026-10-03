@@ -1266,11 +1266,11 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
           site->pc != tree.creation.pc || site->property != i) throw Failure::kUnsupportedContext;
       member(family);
     }
-    std::optional<analysis::OpId> previous_definition;
+    std::optional<DefinitionOrder> previous_definition;
     for (const auto& accessor : tree.definitions) {
-      if (tree.initializer || (previous_definition && *previous_definition >= accessor.site.definition))
+      if (tree.initializer || (previous_definition && *previous_definition >= accessor.site.order))
         throw Failure::kUnsupportedContext;
-      previous_definition = accessor.site.definition;
+      previous_definition = accessor.site.order;
       const auto emit_member = [&](const PreparedFamily& family, abc::ClassMethodKind kind) {
         const auto* site = family.DefinedMemberCreation();
         if (!site || family.Identity() != tree.identity || site->function.creator != tree.creation.creator ||

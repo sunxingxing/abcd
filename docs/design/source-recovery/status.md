@@ -12,6 +12,41 @@
 
 ## 当前阶段
 
+### 2026-10-04：类成员跨块安装采用共同效果前驱与支配证明
+
+- 规则revision75。FindClassDefinitions 删除 creation/installation 与
+  method/installation 的同块条件；ProjectClassDefinitions 的 claim 也不再
+  依赖同块布局。共同 EffectOrder 复用当前 VerifyValueFlow 的真实支配树，
+  记录每个操作的效果前驱身份。无效果分块、分支汇合及纯循环透明传播；
+  不同效果历史保持 typed opaque join，不能用效果数量相同证明等价。
+- 被投影的 prototype 读取、方法创建和成员安装必须组成从原 class 创建
+  开始的单一效果链；前驱支配后继，唯一尾部是最后安装，所有外部直接/
+  phi边观察晚于该安装。HomeObject、捕获环境、方法单次使用、描述符及
+  异常/效果义务保留。带活跃结果的 accessor 安装仍因 alias 对应缺口拒绝，
+  phased class 与 class initializer 尚未贯通，审计第6类没有整体关闭。
+- native 成员按共同 CFG reverse postorder 的 DefinitionOrder 排列，
+  该顺序仅用于已通过效果链/支配证明后的序列化，不授权移动。候选表仍按
+  definition ID 索引；实际物理指令顺序反转不改变方法覆盖语义。共享 SSA
+  验证返回已构造的支配树，避免调用者另建；候选发现和独立投影各运行一次
+  有界全图构造并记账，无每类 CFG 扫描。复杂度与算法来源见 algorithms.md。
+- 编码 fixture 覆盖三profile、1/200/201/402安装、跨块/纯diamond/纯loop，
+  debugger单臂干预、两臂相同数量但不同身份的效果、跳过/重复安装以及伪造
+  DefinitionOrder 负例。优先链接 HEAD 原候选发现实现后的 --cross-install
+  正例在第87行失败：/tmp/abcd-class-effects-red.log；这是有界原实现链接
+  对照，非整个HEAD重建。432组独立 observer 源码行为对照通过，比revision74
+  增加288组，另保留96组capture对照。包含反转物理指令、getter/setter与
+  普通方法覆盖、函数身份/名称、描述符、receiver、Proxy及任意抛出值。
+- -j4最终构建退出0：/tmp/abcd-class-effects-final-build.log。稳定二进制上
+  13/13相关定向检查18.32秒通过：final-tests.log；含 normal/phased 值流
+  精确费用与资源负例、evaluation、tree/source route、文件级class与成员
+  遗漏检查。前节两项已知legacy失败此次未重跑，不把它们算作通过。
+- fresh build/stage-one/value-class-effects-pass-1 固定五输入均退出0，
+  SHA匹配abc-index.json；仍80 complete /26 incomplete /0 failure /
+  46 no-module，无legacy或完整模块回退。106份完整/部分源码逐字未变并
+  通过语法解析，/tmp/abcd-class-effects-content.log与syntax.log。
+  full-suite/扩展语料/RSS/基准/DFX继续暂停。Goal active；数值输入域、
+  构造协议和遗漏正文仍阻断阶段一完整语义与源码表示验收。
+
 ### 2026-10-04：类成员安装后的观察复用共同 SSA 可用性证明
 
 - 规则revision74。ProjectClassDefinitions 不再要求 class/prototype 的外部

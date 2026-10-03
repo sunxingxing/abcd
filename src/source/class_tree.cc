@@ -1,5 +1,6 @@
 #include "class_tree.h"
 #include <bit>
+#include <algorithm>
 #include <new>
 #include <limits>
 #include <stdexcept>
@@ -141,13 +142,18 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassLayout(
     admit(definitions.size(), sizeof(ClassDefinitionTree));
     tree.definitions.reserve(definitions.size());
     admit(tree.definitions.capacity() - definitions.size(), sizeof(ClassDefinitionTree));
-    std::optional<analysis::OpId> previous;
     for (const auto& definition : definitions) {
       step(1);
-      if (definition.creation != operation || (previous && *previous >= definition.definition) || initializer)
+      if (definition.creation != operation || initializer)
         return ClassTreeFailure{Error::kCreation};
-      previous = definition.definition;
       tree.definitions.push_back({definition});
+    }
+    std::sort(tree.definitions.begin(), tree.definitions.end(), [&](const auto& a, const auto& b) {
+      step(1); return a.site.order < b.site.order;
+    });
+    for (std::size_t i = 1; i < tree.definitions.size(); ++i) {
+      step(1); if (tree.definitions[i - 1].site.order == tree.definitions[i].site.order)
+        return ClassTreeFailure{Error::kCreation};
     }
     if (initializer) {
       if (initializer->creation != operation) return ClassTreeFailure{Error::kCreation};

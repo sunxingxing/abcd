@@ -18,7 +18,7 @@ using namespace abcd::source;
 void Check(bool ok, const std::source_location& at = std::source_location::current()) {
   if (!ok) { std::cerr << "accessor tree check " << at.line() << '\n'; std::abort(); }
 }
-enum class ObserverFlow { kSameBlock, kSplit, kSelection };
+enum class ObserverFlow { kSameBlock, kSplit, kSelection, kInstallSplit, kInstallDiamond, kReverseInstall };
 std::string Recover(bool is_static, bool return_prototype = false, int ordinary_parity = -1,
     bool async_method = false, abc::ProfileId profile = abc::ProfileId::kDynamic1206,
     bool capture_cells = false, bool initialized = true, bool input_gap = false,
@@ -66,14 +66,22 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   code.insert(code.end(), {0, 0, 0, 1, 0, 0, 0, 0}); save(1);
   if (!is_static) { op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16); code.insert(code.end(), {0, 5, 0}); }
   save(2);
+  const auto member_start = code.size();
+  std::array<std::vector<std::uint8_t>, 4> packets;
   // Repeated definitions test ordering and preserving the opposite descriptor
   // half. Every original method occurrence must still have a prepared body.
   for (unsigned i = 0; i < 4; ++i) {
+    const auto packet_start = code.size();
     const bool setter = i % 2;
     op(abc::Opcode::kLDA_STR_ID16); code.insert(code.end(), {4, 0}); save(3);
+    if (observers == ObserverFlow::kInstallDiamond) {
+      load(9); op(abc::Opcode::kJEQZ_IMM8); code.push_back(5);
+      op(abc::Opcode::kNOP); op(abc::Opcode::kJMP_IMM8); code.push_back(3); op(abc::Opcode::kNOP);
+    }
     load(2); op(abc::Opcode::kDEFINEMETHOD_IMM8_ID16_IMM8);
     code.insert(code.end(), {0, static_cast<std::uint8_t>(setter ? 3 : 2), 0, static_cast<std::uint8_t>(setter)});
     save(setter ? 5 : 4);
+    if (observers == ObserverFlow::kInstallSplit) { op(abc::Opcode::kJMP_IMM8); code.push_back(2); }
     if (static_cast<int>(i % 2) == ordinary_parity) {
       op(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8); code.insert(code.end(), {0, 4, 0, 2});
     } else {
@@ -81,6 +89,22 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
       op(abc::Opcode::kLDFALSE); op(abc::Opcode::kDEFINEGETTERSETTERBYVALUE_V8_V8_V8_V8);
       code.insert(code.end(), {2, 3, 4, 5});
     }
+    packets[i].assign(code.begin() + packet_start, code.end());
+  }
+  if (observers == ObserverFlow::kReverseInstall) {
+    code.resize(member_start);
+    const auto first_jump = code.size(); op(abc::Opcode::kJMP_IMM8); code.push_back(0);
+    std::array<std::size_t, 4> starts, jumps;
+    for (std::size_t i = packets.size(); i; --i) {
+      starts[i - 1] = code.size(); code.insert(code.end(), packets[i - 1].begin(), packets[i - 1].end());
+      jumps[i - 1] = code.size(); op(abc::Opcode::kJMP_IMM8); code.push_back(0);
+    }
+    const auto patch = [&](std::size_t jump, std::size_t target) {
+      const auto delta = static_cast<std::ptrdiff_t>(target) - static_cast<std::ptrdiff_t>(jump);
+      Check(delta >= INT8_MIN && delta <= INT8_MAX); code[jump + 1] = static_cast<std::uint8_t>(delta);
+    };
+    patch(first_jump, starts[0]);
+    for (std::size_t i = 0; i < jumps.size(); ++i) patch(jumps[i], i + 1 < starts.size() ? starts[i + 1] : code.size());
   }
   if (observers == ObserverFlow::kSplit) { op(abc::Opcode::kJMP_IMM8); code.push_back(2); }
   // A distinct ordinary object literal in the same graph must still be
@@ -119,7 +143,8 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
     index.methods[i].offset = {offsets[i]}; index.methods[i].owner_offset = {kOwner};
     index.methods[i].name = names[i]; index.methods[i].name_utf16_length = names[i].size();
   }
-  index.methods[0].code = body(kCreatorCode, 6, observers == ObserverFlow::kSelection ? 4 : 3, code);
+  const bool parameter = observers == ObserverFlow::kSelection || observers == ObserverFlow::kInstallDiamond;
+  index.methods[0].code = body(kCreatorCode, 6, parameter ? 4 : 3, code);
   index.methods[1].code = body(kConstructorCode, 0, 3, {opcode(abc::Opcode::kRETURNUNDEFINED)});
   index.methods[2].code = body(kGetterCode, 0, 3, {opcode(abc::Opcode::kLDTHIS),
       opcode(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 6, 0, opcode(abc::Opcode::kRETURN)});
@@ -570,7 +595,7 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   Check(std::holds_alternative<ConstructedFamily>(composed));
   std::ostringstream module;
   auto module_print = PrintModuleFamilyDraft(std::get<ConstructedFamily>(composed), module, {}, {}, &globals);
-  if (observers == ObserverFlow::kSelection) {
+  if (parameter) {
     // This fixture is an ordinary function with a real parameter. A module
     // body destination must not discard its signature while printing classes.
     Check(std::get<TreePrintError>(module_print) == TreePrintError::kUnsupportedContext);
@@ -587,9 +612,13 @@ int main(int argc, char** argv) {
   if (argc == 2 && std::string_view(argv[1]) == "--observers-json") {
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
       for (const bool is_static : {false, true})
-        for (const auto flow : {ObserverFlow::kSplit, ObserverFlow::kSelection})
+        for (const auto flow : {ObserverFlow::kSplit, ObserverFlow::kSelection, ObserverFlow::kInstallSplit, ObserverFlow::kInstallDiamond, ObserverFlow::kReverseInstall}) {
           std::cout << nlohmann::json{{"source", Recover(is_static, false, -1, false, profile, false, true, false, flow)},
               {"static", is_static}, {"selection", flow == ObserverFlow::kSelection}}.dump() << '\n';
+          if (flow == ObserverFlow::kReverseInstall)
+            std::cout << nlohmann::json{{"source", Recover(is_static, false, 1, false, profile, false, true, false, flow)},
+                {"static", is_static}, {"selection", false}, {"ordinary", true}}.dump() << '\n';
+        }
     return 0;
   }
   if (argc == 2 && std::string_view(argv[1]) == "--partial-json") {

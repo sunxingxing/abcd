@@ -87,7 +87,8 @@ using ClassTreeFailure = std::variant<ClassTreeError, ClassContextFailure, Famil
 // Constructor and every member use the shared family pipeline. Refusal of any
 // member refuses this creation by default. Explicit AllowPartial may retain a
 // supported prefix/issue tree; no old writer or fabricated body substitutes.
-// Definition sites are ordered, actual occurrences for this class. The enclosing
+// Definition sites are actual occurrences for this class. Their common CFG
+// positions order native members, independently of physical bytecode layout. The enclosing
 // evaluation must independently prove their projection before publication.
 [[nodiscard]] std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
     const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,

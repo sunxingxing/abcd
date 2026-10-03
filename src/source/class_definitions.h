@@ -18,6 +18,10 @@ struct ClassDefinitionMethod {
   std::optional<analysis::OpId> operation;
   abc::ClassMethodKind kind;
 };
+struct DefinitionOrder {
+  std::uint32_t value = 0;
+  auto operator<=>(const DefinitionOrder&) const = default;
+};
 struct ClassDefinitionSite {
   analysis::OpId creation;
   analysis::OpId definition;
@@ -25,6 +29,9 @@ struct ClassDefinitionSite {
   std::optional<analysis::OpId> prototype;
   abc::PoolIndex key;
   std::variant<ClassAccessorDefinition, ClassMethodDefinition> members;
+  // CFG reverse-postorder position, not bytecode/operation-ID order. It only
+  // orders syntax after the common effect/dominance projection succeeds.
+  DefinitionOrder order;
   std::array<ClassDefinitionMethod, 2> Methods() const {
     if (const auto* accessor = std::get_if<ClassAccessorDefinition>(&members))
       return {{{accessor->getter, abc::ClassMethodKind::kGetter}, {accessor->setter, abc::ClassMethodKind::kSetter}}};
@@ -44,7 +51,9 @@ struct ClassDefinitionSites {
 };
 enum class ClassDefinitionError : std::uint8_t { kInput, kFlow, kResourceLimit, kWorkLimit };
 // Fresh simplified normal IR. Discover exact class/home/function occurrences
-// without consulting method names. O(ops + uses). This does not move effects:
+// without consulting method names. A shared EffectOrder supplies execution
+// positions; sites remain sorted by definition ID only for indexed lookup.
+// O((B+E) log B + U log U + ops + values). This does not move effects:
 // prototype names, descriptor semantics, class escape corridors, and actual
 // member bodies still need checking before projection into native class syntax.
 [[nodiscard]] std::variant<ClassDefinitionSites, ClassDefinitionError> FindClassDefinitions(
@@ -59,7 +68,7 @@ struct ClassDefinitionProjection {
 // the entire class-to-last-definition corridor unobserved. Prototype spellings,
 // descriptor keys and prepared bodies remain source-level obligations. No live
 // definition-result alias or escaping prototype is silently discarded.
-// One shared SSA availability proof, then O(ops + uses + sites) projection.
+// Bounded shared SSA/effect constructions, then O(ops + uses + sites) projection.
 // Total O((blocks + edges) log blocks + uses log uses + ops + values + sites),
 // including repeated definitions on the same class; no per-class CFG walks.
 [[nodiscard]] std::variant<ClassDefinitionProjection, ClassDefinitionError> ProjectClassDefinitions(

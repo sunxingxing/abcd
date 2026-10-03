@@ -81,12 +81,22 @@ const observers = spawnSync(tool, ['--observers-json'], {encoding: 'utf8', timeo
 assert.equal(observers.status, 0, observers.stderr);
 let observerScenarios = 0;
 for (const line of observers.stdout.trim().split('\n')) {
-  const {source, static: isStatic, selection} = JSON.parse(line);
+  const {source, static: isStatic, selection, ordinary} = JSON.parse(line);
   assert.match(source, /class\s*(?:Accessors\s*)?\{/);
   assert.doesNotMatch(source, /INCOMPLETE/);
   const recovered = vm.runInNewContext(`'use strict'; ${source}`);
   const reference = parameter => {
-    const C = isStatic ? class Accessors {
+    const C = ordinary ? (isStatic ? class Accessors {
+      static get value() { return this._value; }
+      static value(value) { this._value = value; }
+      static get value() { return this._value; }
+      static value(value) { this._value = value; }
+    } : class Accessors {
+      get value() { return this._value; }
+      value(value) { this._value = value; }
+      get value() { return this._value; }
+      value(value) { this._value = value; }
+    }) : isStatic ? class Accessors {
       static get value() { return this._value; }
       static set value(value) { this._value = value; }
       static get value() { return this._value; }
@@ -108,6 +118,7 @@ for (const line of observers.stdout.trim().split('\n')) {
       const C = isPrototype ? first.constructor : first;
       const home = isStatic ? C : C.prototype;
       const descriptor = Object.getOwnPropertyDescriptor(home, 'value');
+      const writer = descriptor.set ?? descriptor.value;
       const events = [], value = {}, sentinel = {};
       const receiver = new Proxy({}, {
         get(target, key, actual) { assert.equal(actual, receiver); events.push(['get', key]); return value; },
@@ -115,17 +126,18 @@ for (const line of observers.stdout.trim().split('\n')) {
           assert.equal(actual, receiver); assert.equal(input, value); events.push(['set', key]); return true;
         },
       });
-      assert.equal(Reflect.apply(descriptor.set, receiver, [value]), undefined);
-      assert.equal(Reflect.apply(descriptor.get, receiver, []), value);
+      assert.equal(Reflect.apply(writer, receiver, [value]), undefined);
+      if (descriptor.get) assert.equal(Reflect.apply(descriptor.get, receiver, []), value);
       const throws = new Proxy({}, {get() { throw sentinel; }, set() { throw sentinel; }});
-      assert.throws(() => Reflect.apply(descriptor.get, throws, []), e => e === sentinel);
-      assert.throws(() => Reflect.apply(descriptor.set, throws, [value]), e => e === sentinel);
+      if (descriptor.get) assert.throws(() => Reflect.apply(descriptor.get, throws, []), e => e === sentinel);
+      assert.throws(() => Reflect.apply(writer, throws, [value]), e => e === sentinel);
       const otherHome = isStatic ? second : typeof second === 'function' ? second.prototype : second;
-      assert.notEqual(descriptor.get, Object.getOwnPropertyDescriptor(otherHome, 'value').get);
+      const other = Object.getOwnPropertyDescriptor(otherHome, 'value');
+      assert.notEqual(descriptor.get ?? writer, other.get ?? other.value);
       return {isPrototype, name: C.name, keys: Reflect.ownKeys(home), events,
-        getter: descriptor.get.name, setter: descriptor.set.name,
-        length: [descriptor.get.length, descriptor.set.length],
-        enumerable: descriptor.enumerable, configurable: descriptor.configurable};
+        getter: descriptor.get?.name, setter: descriptor.set?.name, method: descriptor.value?.name,
+        length: [descriptor.get?.length, writer.length],
+        writable: descriptor.writable, enumerable: descriptor.enumerable, configurable: descriptor.configurable};
     };
     assert.deepEqual(observe(recovered), observe(reference)); ++observerScenarios;
   }

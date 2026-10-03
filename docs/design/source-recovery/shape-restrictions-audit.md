@@ -319,3 +319,28 @@ claim仍限制creation/method/installation同块，原效果区间、HomeObject�
 不进入引擎。共享SSA证明的实际资源费用也纳入投影预算。10项不同相关
 检查通过；另两项legacy失败在优先链接原实现后仍复现，完整证据见status.md。
 五输入仍80 complete/26 incomplete，106份源码内容未变，未达阶段一验收。
+
+## 规则 75：跨块类成员安装不再以同块布局准入
+
+FindClassDefinitions 中 creation/installation、method/installation 的同块
+条件及 ProjectClassDefinitions 的同块 claim 已删除。共同 EffectOrder 从
+真实 normal CFG/SSA 和 typed effect/exception/environment 语义构造效果
+前驱；无效果依赖 SCC 透明传播同一前驱身份。不同路径上不同的效果即使
+数量一致仍形成 opaque join。没有枚举允许的分块、opcode序列、寄存器、PC
+或graph形状；pure diamond/loop 自动使用同一机制。
+
+投影要求私有 class 的所有被移入成员效果组成从原创建出发的单一前驱链，
+每个前驱支配后继，唯一尾部为最后安装。外部 class/prototype 观察仍须
+晚于最后安装；phi使用按真实输入边检查。HomeObject/函数身份、捕获环境、
+原方法单次消费和descriptor义务未放宽。条件跳过安装、循环重复安装、
+环境/debugger干预继续拒绝；不声称证明全路径终止或完整异常图。
+
+原 bytecode/OpId 的升序只保留为索引边界，不再决定 native 成员覆盖顺序。
+DefinitionOrder 取共同 CFG reverse postorder，并在上述链/支配证明成立后
+用于语法排序。物理布局反转的端到端 getter/data-method 覆盖用例检查真实
+执行顺序；伪造顺序由 fresh candidate 对应检查拒绝。
+
+这关闭了第6类中的 defined-member 同块门槛，未关闭其 class initializer、
+phased scope/capture 接口和活跃 accessor-result alias 缺口。前表其他开放
+项也未因这次替换消失。13项相关检查、432组observer及96组capture原生
+对照通过；固定五输入与106份源码无回退，完整证据与剩余gate见status.md。

@@ -2,6 +2,7 @@
 #define ABCD_ANALYSIS_VALUE_FLOW_H_
 
 #include "abcd/analysis/value_ir.h"
+#include "abcd/analysis/dominators.h"
 
 namespace abcd::analysis {
 enum class ValueAvailabilityError : std::uint8_t {
@@ -14,12 +15,14 @@ struct ValueFlowProof {
   std::uint64_t work;
   // Conservative simultaneous scratch charge, including dominator peak.
   std::size_t allocated_bytes = 0;
+  DominatorTree dominators;
 };
 struct PhasedValueFlowProof {
   IrRevision revision;
   CfgRevision cfg_revision;
   std::uint64_t work;
   std::size_t allocated_bytes = 0;
+  DominatorTree dominators;
 };
 // Availability across Before/Commit/Catch, not input/handler correspondence or
 // permission to publish source. Only explicit throw's unreachable, valueless

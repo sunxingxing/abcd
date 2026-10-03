@@ -73,8 +73,8 @@ class OperandCheck {
       const auto* definition = std::get_if<std::shared_ptr<const ClassTree>>(&constants_.operations[definition_site.creation.value]);
       RequireMeaning(definition && *definition, Error::kConstant);
       const auto& members = (*definition)->definitions;
-      const auto found = std::lower_bound(members.begin(), members.end(), definition_site.definition,
-          [&](const auto& member, auto id) { budget_.Step(); return member.site.definition < id; });
+      const auto found = std::lower_bound(members.begin(), members.end(), definition_site.order,
+          [&](const auto& member, auto position) { budget_.Step(); return member.site.order < position; });
       RequireMeaning(found != members.end() && found->site == definition_site, Error::kConstant);
       const auto check = [&](const ClassDefinedMember* site, const RouteInputIdentity& identity,
           analysis::OpId method_id, abc::ClassMethodKind kind) {

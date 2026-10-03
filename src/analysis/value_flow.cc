@@ -229,7 +229,7 @@ static std::variant<ValueFlowProof, ValueAvailabilityError> VerifyAvailability(
     auto flow = ReadFlow(graph, quota, predecessors);
     const auto allowance = quota.Remaining();
     auto built = BuildNormalDominators(flow, {}, {allowance.bytes, allowance.work});
-    const auto* dominators = std::get_if<DominatorTree>(&built);
+    auto* dominators = std::get_if<DominatorTree>(&built);
     if (!dominators) {
       const auto error = std::get<DominatorError>(built);
       if (error == DominatorError::kWorkLimit) return Error::kWorkLimit;
@@ -309,7 +309,7 @@ static std::variant<ValueFlowProof, ValueAvailabilityError> VerifyAvailability(
     }
     return ValueFlowProof{graph.revision, graph.cfg_revision,
                           budget.work - quota.Remaining().work,
-                          budget.bytes - quota.Remaining().bytes};
+                          budget.bytes - quota.Remaining().bytes, std::move(*dominators)};
   } catch (Error error) {
     return error;
   } catch (const std::bad_alloc&) {
@@ -328,9 +328,9 @@ std::variant<ValueFlowProof, ValueAvailabilityError> VerifyValueFlow(
 std::variant<PhasedValueFlowProof, ValueAvailabilityError> VerifyPhasedValueFlow(
     const ValueProgram& graph, SemanticBudget budget) {
   if (graph.phases.empty()) return Error::kInvalidGraph;
-  const auto checked = VerifyAvailability(graph, budget);
-  if (const auto* proof = std::get_if<ValueFlowProof>(&checked))
-    return PhasedValueFlowProof{proof->revision, proof->cfg_revision, proof->work, proof->allocated_bytes};
+  auto checked = VerifyAvailability(graph, budget);
+  if (auto* proof = std::get_if<ValueFlowProof>(&checked))
+    return PhasedValueFlowProof{proof->revision, proof->cfg_revision, proof->work, proof->allocated_bytes, std::move(proof->dominators)};
   return std::get<ValueAvailabilityError>(checked);
 }
 }  // namespace abcd::analysis
