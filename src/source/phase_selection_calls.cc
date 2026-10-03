@@ -137,6 +137,9 @@ class CallSelections {
     for (std::size_t i = 0; i < prefix_count; ++i) owners_[prefix_[i].value] = region.branch;
     for (const auto& condition : region.conditions) owners_[condition.branch.value] = region.branch;
     for (const auto* arm : {&region.right, &*region.consequent}) {
+      // Snapshot inputs have no producer owned by the selected arm. Discovery
+      // preserves their inert path, original edge use and available binding.
+      if (std::holds_alternative<SelectionSnapshot>(*arm)) continue;
       const auto* input = std::get_if<ValueId>(arm);
       const auto* producer = input ? std::get_if<OpResult>(&graph_.values[input->value].origin) : nullptr;
       if (!producer) return {};
@@ -151,8 +154,16 @@ class CallSelections {
     for (std::size_t i = 0; i < prefix_count; ++i) {
       budget_.Step(); const auto value = *graph_.ops[prefix_[i].value].result;
       for (auto at = heads_[value.value]; at; at = next_[at->value]) {
-        budget_.Step(); const auto* owner = std::get_if<OpId>(&graph_.uses[at->value].owner);
-        if (!owner || owners_[roots_[owner->value].value] != region.branch) return {};
+        budget_.Step(); const auto& use = graph_.uses[at->value];
+        if (const auto* owner = std::get_if<OpId>(&use.owner);
+            owner && owners_[roots_[owner->value].value] == region.branch) continue;
+        // A retained selected-arm input is an actual observation on this
+        // region's phi edge. It belongs to the same argument expression, not
+        // to an external phi or an enclosing call's earlier argument.
+        const auto* merged = std::get_if<ValueId>(&use.owner);
+        const auto* edge = use.incoming ? std::get_if<EdgeId>(&*use.incoming) : nullptr;
+        if (!merged || *merged != region.merged || use.role != OperandRole::kPhiInput ||
+            !edge || (*edge != region.keep_input && *edge != region.evaluate_input)) return {};
       }
     }
     PhaseSelectionCall selected{callee, *call, region.branch, region.merged, argument, transport};

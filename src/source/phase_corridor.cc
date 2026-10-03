@@ -234,6 +234,21 @@ bool PhaseCorridors::CanFuse(OpId producer, OpId consumer, UseId use) const {
       !Expression(child.operation) || !Expression(parent.operation)) return false;
   const auto& uses = uses_[child.result->value];
   if (uses.multiple || uses.first != use) return false;
+  // A pure language expression with only literal inputs has no binding state,
+  // receiver identity or catch timing to preserve across a CFG split. Original
+  // SSA availability still applies. Use shared evaluation semantics, never an
+  // opcode list; mutable/phi/catch reads retain the corridor rules below.
+  const auto shape = DescribeEvaluation(child.operation);
+  if (shape && shape->expression && shape->inputs == InputEvaluation::kEager &&
+      child.normal == LanguageEffect::kNone && child.before_throw == LanguageEffect::kNone &&
+      child.exceptional == ExceptionalCompletion::kImpossible &&
+      graph_.values[child.result->value].domain.IsLanguage()) {
+    bool invariant = true;
+    for (std::uint32_t i = 0; i < child.use_count; ++i) {
+      budget_.Step(); invariant &= !std::holds_alternative<ValueId>(graph_.uses[child.first_use.value + i].operand);
+    }
+    if (invariant) return true;
+  }
   // First phi/catch snapshots must remain stored. Their raw bindings are not
   // interchangeable with a later read, even when a copy has no language effect.
   if (std::holds_alternative<ValueCopy>(child.operation) &&

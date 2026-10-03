@@ -105,3 +105,19 @@ HasRetainedEvaluationValue 按 ValueDefinition 的穷尽类型及 EvaluationPlan
 opcode、寄存器、PC 或 selection 数量匹配。normal 的先前 phi→后续选择已
 贯通，1440 native /1584 paired方法场景通过；异常相位的选择/reference组合
 仍有缺口，record5374未恢复。七类审计事项并未全部关闭。
+
+## 规则 69：异常相位的保留值与输入边归属
+
+异常选择发现现在先解析已经验证的复制别名，再使用共同保留值分类，将
+无producer且无隐藏效果的分支作为原 binding 的一次读取。首次phi/catch
+materialization没有被别名消除。调用前缀的使用普查核对真实phi owner和输入
+edge：当前选择输入属于同一参数表达式，外部phi及较早的其他参数不能读取
+尚未执行的移动前缀。
+
+纯、不会抛出、结果为Language且只含literal输入的共同 eager表达式，现可
+跨CFG分块安排到唯一原消费者。判断来自共享DescribeEvaluation与效果/值域，
+不新增producer opcode白名单；有状态输入、getter及first materialization
+继续保留控制/顺序义务。单selection、有限arm/copy布局等旧边界仍开放，未
+扩大其局部模式列表。record5374已从failure进入incomplete，constructor缺口
+与阶段一完整验收仍保留。定向副作用/错误分支值反例及独立行为对照支持本次
+接受域，不能据此宣布七类审计事项全部解决。

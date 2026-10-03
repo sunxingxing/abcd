@@ -12,6 +12,37 @@
 
 ## 当前阶段
 
+### 2026-10-03：异常选择转发保留值，原始 phi 边归属与不变表达式贯通
+
+- FindPhasedPhiSelections 复用 HasRetainedEvaluationValue 与既有复制别名索引，
+  惰性分支可转发已有 binding，首次 phi/catch materialization 仍保留。输入
+  表示复用 SelectionSnapshot；原始异常边、copies、可用性及分支效果仍验证。
+- PhaseSelectionCalls 将当前选择的真实 phi-input edge 计入同一参数表达式
+  的观察归属；外部phi、其他call的较早参数仍拒绝。不是因为没有producer
+  就跳过值/效果检查，也不靠样本名、固定PC或新opcode序列分派。
+- PhaseCorridors 对无效果、无异常、Language结果且只含literal输入的共同
+  eager表达式，允许跨CFG分块内联。该类不读可变binding，按共同求值语义
+  判断；phi/catch首次复制与其他有状态输入继续走原有控制/顺序检查。
+  规则revision69，旧单selection/corridor候选边界尚未全部替换。
+- Push record5374 failure→incomplete，输出4601字节，恢复 EntryAbility 的
+  onCreate/onNewWant、colorMode catch、token注册及其他成员；constructor
+  PC8仍未恢复。整个record/平台/真实Promise callback执行未验收。
+- 三既有动态profile ×1/2/200/201，覆盖入口、前置getter、调用后的保留
+  snapshot与较早literal参数；含分支效果拒绝、丢失求值计划及错换分支值
+  的反例。2912 native场景与3312配对方法场景通过；配对TS只进入测试，
+  引擎命令只读取ABC。/tmp/abcd-phase-retained-ownership-native.log、paired.log。
+- -j4生产及相关目标构建退出0，final-build.log；14/14相关回归85.56秒通过，
+  /tmp/abcd-phase-retained-ownership-final-tests.log。最终分支值负例目标重建
+  退出0，/tmp/abcd-phase-retained-ownership-negative-build.log；最终3/3回归
+  64.90秒通过，/tmp/abcd-phase-retained-ownership-negative-tests.log。
+- fresh build/stage-one/value-phased-retained-pass-1 五输入退出0，78 complete /
+  11 incomplete /17 failure /46 no-module；已有完整源码逐字未变，无legacy。
+  /tmp/abcd-phase-retained-ownership-final-batch.log、final-batch-summary.json。
+  Push现无failure，7份incomplete均保留constructor PC8；其余缺口仍包括
+  WindowUtil/其他record的数值输入、派生super spread等运行时语义边界。
+- Goal active；阶段一及object creaters原范围保持，全record语义/表示验收
+  尚未达到。full-suite/扩展语料/RSS/基准/DFX/定期审视保持暂停。
+
 ### 2026-10-03：共同保留值分类贯通后续选择表达式，恢复 TestAbility 方法
 
 - 新 HasRetainedEvaluationValue 共享入口参数/receiver、phi、catch binding 与

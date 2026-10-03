@@ -1,5 +1,6 @@
 #include "logical_regions.h"
 #include "evaluation_plan.h"
+#include "evaluation_liveness.h"
 #include "tree_checks.h"
 
 #include <algorithm>
@@ -48,7 +49,7 @@ std::vector<SelectionRegion> FindPhasedPhiSelections(const analysis::ValueProgra
     const auto* stage = std::get_if<ThrowCopies>(&evaluation.exceptions->placements[i]);
     if (stage && evaluation.phis->bundles[i].count) staged[stage->operation.value] = 1;
   }
-  struct Arm { WorkBlockId tail; EdgeId edge; ValueId value; ValueId merged; };
+  struct Arm { WorkBlockId tail; EdgeId edge; SelectionOperand value; ValueId merged; };
   const auto arm = [&](EdgeId entry, std::size_t first_incoming = 1) -> std::optional<Arm> {
     auto at = graph.edges[entry.value].target;
     std::optional<OpId> producer;
@@ -88,13 +89,23 @@ std::vector<SelectionRegion> FindPhasedPhiSelections(const analysis::ValueProgra
       const auto edge = *normal;
       if (graph.edges[edge.value].kind == FlowEdgeKind::kException) return {};
       if (copies[edge.value]) {
-        if (!producer || !inputs[edge.value]) return {};
+        if (!inputs[edge.value]) return {};
         const auto input = *inputs[edge.value]; const auto& use = graph.uses[input.value];
         const auto* value = std::get_if<ValueId>(&use.operand);
         const auto* merged = std::get_if<ValueId>(&use.owner);
-        if (!value || !merged || graph.ops[producer->value].result != *value ||
-            evaluation.operations[producer->value].consumer != input) return {};
-        return Arm{at, edge, *value, *merged};
+        if (!value || !merged) return {};
+        if (producer) {
+          if (graph.ops[producer->value].result != *value ||
+              evaluation.operations[producer->value].consumer != input) return {};
+          return Arm{at, edge, *value, *merged};
+        }
+        // An inert arm forwards an original available binding. Resolve verified
+        // copy aliases once; preserve the first phi/catch materialization and
+        // all authoritative exception edges instead of replaying its producer.
+        const auto resolved = ResolveEvaluationOperand(evaluation, use.operand);
+        const auto* retained = std::get_if<ValueId>(&resolved);
+        if (!retained || !HasRetainedEvaluationValue(graph, evaluation, *retained)) return {};
+        return Arm{at, edge, SelectionSnapshot{*retained}, *merged};
       }
       at = graph.edges[edge.value].target;
     }

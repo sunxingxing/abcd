@@ -1186,6 +1186,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/selection_module.mjs $<TARGET_FILE:selection_module_test>)
     add_test(NAME phased_call_selection_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_call_selection.mjs $<TARGET_FILE:selection_module_test>)
+    add_test(NAME phased_retained_input_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_retained_input.mjs $<TARGET_FILE:selection_module_test>)
     add_test(NAME phased_one_arm_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_module.mjs $<TARGET_FILE:selection_module_test> --one-arm)
     add_test(NAME phased_decision_module_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
@@ -1207,6 +1209,13 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME retained_selection_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/retained_selection.mjs $<TARGET_FILE:logical_regions_test>)
+    if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/modules.abc" AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/src/entry/src/main/ets/entryability/EntryAbility.ts")
+      add_test(NAME phased_retained_paired_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/retained_selection_paired.mjs $<TARGET_FILE:abc_semantic>
+        "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/modules.abc"
+        "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/src/entry/src/main/ets/entryability/EntryAbility.ts" --entry)
+    endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/modules.abc" AND
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/src/entry/src/main/ets/abilities/TestAbility.ts")
       add_test(NAME retained_selection_paired_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules

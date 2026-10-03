@@ -19,7 +19,7 @@ using namespace abcd;
 using namespace abcd::source;
 using namespace abcd::analysis;
 constexpr unsigned kByteBits = 8;
-enum class CallPrefix { kNone, kGetter, kCall, kNullish, kWrappedNullish, kEscapingNullish, kMemberWrappedNullish, kMemberBarrierNullish };
+enum class CallPrefix { kNone, kGetter, kCall, kNullish, kWrappedNullish, kEscapingNullish, kMemberWrappedNullish, kMemberBarrierNullish, kRetainedInput, kRetainedGetter, kRetainedBarrier, kRetainedPrefix, kRetainedLiteralArgs };
 enum class Selection { kConditional, kAnd, kOr, kDecisionAnd, kDecisionOr };
 bool Decision(Selection selection) {
   return selection == Selection::kDecisionAnd || selection == Selection::kDecisionOr;
@@ -191,6 +191,8 @@ abc::MethodBody CallSelectionBody(unsigned count, bool computed, CallPrefix pref
   const std::uint8_t value = member_wrapped ? 3 + depth : 3, flag = value + 1, wrap = value + 2;
   std::vector<std::uint8_t> bytes;
   for (unsigned i = 0; i < count; ++i) {
+    if (prefix == CallPrefix::kRetainedGetter) bytes.insert(bytes.end(),
+        {op(abc::Opcode::kLDA_V8),value,op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16),0,2,0,op(abc::Opcode::kSTA_V8),2});
     if (member_wrapped) for (unsigned level = 0; level < depth; ++level) bytes.insert(bytes.end(),
         {op(abc::Opcode::kLDA_V8), wrap, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 3, 0,
          op(abc::Opcode::kSTA_V8), static_cast<std::uint8_t>(3 + level)});
@@ -198,7 +200,12 @@ abc::MethodBody CallSelectionBody(unsigned count, bool computed, CallPrefix pref
         {op(abc::Opcode::kLDA_V8), value, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 3, 0});
     bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), value,
         op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0, op(abc::Opcode::kSTA_V8), 0});
-    if (prefix == CallPrefix::kNone) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), flag});
+    if (prefix == CallPrefix::kRetainedLiteralArgs) bytes.insert(bytes.end(),
+        {op(abc::Opcode::kLDA_STR_ID16),0,0,op(abc::Opcode::kSTA_V8),2});
+    if (prefix == CallPrefix::kRetainedPrefix) bytes.insert(bytes.end(),
+        {op(abc::Opcode::kLDA_V8),value,op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16),0,2,0,op(abc::Opcode::kSTA_V8),2});
+    if (prefix == CallPrefix::kRetainedGetter || prefix == CallPrefix::kRetainedPrefix) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8),2});
+    else if (prefix == CallPrefix::kNone || prefix == CallPrefix::kRetainedInput || prefix == CallPrefix::kRetainedBarrier || prefix == CallPrefix::kRetainedLiteralArgs) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), flag});
     else {
       bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), value,
           op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 1, 0});
@@ -233,14 +240,19 @@ abc::MethodBody CallSelectionBody(unsigned count, bool computed, CallPrefix pref
     bytes.insert(bytes.end(), {op(abc::Opcode::kLDAI_IMM32), 7, 0, 0, 0});
     const auto jump = bytes.size(); bytes.insert(bytes.end(), {op(abc::Opcode::kJMP_IMM8), 0});
     bytes[branch + 1] = static_cast<std::uint8_t>(bytes.size() - branch);
-    if (computed) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8),
+    if (prefix == CallPrefix::kRetainedBarrier) bytes.push_back(op(abc::Opcode::kDEBUGGER));
+    if (prefix == CallPrefix::kRetainedInput || prefix == CallPrefix::kRetainedBarrier || prefix == CallPrefix::kRetainedGetter || prefix == CallPrefix::kRetainedPrefix || prefix == CallPrefix::kRetainedLiteralArgs)
+      bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8),static_cast<std::uint8_t>(prefix == CallPrefix::kRetainedGetter || prefix == CallPrefix::kRetainedPrefix ? 2 : flag)});
+    else if (computed) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8),
         static_cast<std::uint8_t>(prefix == CallPrefix::kCall ? 2 : value),
         op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 2, 0});
     else bytes.insert(bytes.end(), {op(abc::Opcode::kLDAI_IMM32), 0xc0, 1, 0, 0});
     bytes[jump + 1] = static_cast<std::uint8_t>(bytes.size() - jump);
     }
-    bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), 1, op(abc::Opcode::kLDA_V8), 0,
-        op(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, value, 1});
+    bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), 1, op(abc::Opcode::kLDA_V8), 0});
+    if (prefix == CallPrefix::kRetainedLiteralArgs)
+      bytes.insert(bytes.end(), {op(abc::Opcode::kCALLTHIS2_IMM8_V8_V8_V8),0,value,2,1});
+    else bytes.insert(bytes.end(), {op(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, value, 1});
     if (member_wrapped) {
       for (unsigned level = depth; level-- > 0;) bytes.insert(bytes.end(),
           {op(abc::Opcode::kSTA_V8), 1, op(abc::Opcode::kLDA_V8), static_cast<std::uint8_t>(3 + level),
@@ -292,7 +304,7 @@ void RunPhased(unsigned count, bool direct, bool print, Selection selection,
     bindings.push_back({pair, std::get<ValueModuleRead>(graph.ops[pair.read.value].operation), {{7}, {0}}});
   const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(
       graph, {}, IncomingCells::kReject, {}, bindings));
-  if (prefix == CallPrefix::kMemberBarrierNullish) {
+  if (prefix == CallPrefix::kMemberBarrierNullish || prefix == CallPrefix::kRetainedBarrier) {
     test::Check(std::get<CallPlanError>(BuildPhasedCallPlan(graph, evaluation)) == CallPlanError::kReference);
     return;
   }
@@ -342,7 +354,7 @@ void RunPhased(unsigned count, bool direct, bool print, Selection selection,
       forged = evaluation; ++forged.phase_calls.front().ancestors.front().call.value;
       test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
     }
-    if (prefix != CallPrefix::kNone) {
+    if (prefix != CallPrefix::kNone && prefix != CallPrefix::kRetainedInput && prefix != CallPrefix::kRetainedGetter && prefix != CallPrefix::kRetainedLiteralArgs) {
       test::Check(!evaluation.phase_calls.front().prefix.empty());
       forged = evaluation; forged.phase_calls.front().prefix.clear();
       test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
@@ -380,6 +392,16 @@ void RunPhased(unsigned count, bool direct, bool print, Selection selection,
     const auto expression = *tree_flow.expressions[call.branch.value];
     wrong.expressions[expression.value].origin = TreeOriginId{graph.ops[call.branch.value].origin.value};
     test::Check(std::holds_alternative<TreeSemanticError>(VerifyExceptionTreeSemantics(graph, context, evaluation, wrong, resolved)));
+    if (count <= 2 && (prefix == CallPrefix::kRetainedInput || prefix == CallPrefix::kRetainedGetter ||
+        prefix == CallPrefix::kRetainedPrefix || prefix == CallPrefix::kRetainedLiteralArgs)) {
+      wrong = tree;
+      auto* selected = std::get_if<ConditionalExpr>(&wrong.expressions[expression.value].expression);
+      test::Check(selected != nullptr);
+      selected->alternate = selected->consequent;
+      // The independent original-edge operand checker must reject replacing
+      // the retained branch value with the other arm's constant expression.
+      test::Check(std::holds_alternative<TreeSemanticError>(VerifyExceptionTreeSemantics(graph, context, evaluation, wrong, resolved)));
+    }
   }
   for (const auto& binding : bindings) {
     const auto read = binding.pair.read.value, guard = binding.pair.guard->value;
@@ -406,7 +428,13 @@ int main(int argc, char** argv) {
     const std::string_view option{argv[1]};
     test::Check(argc == 2 || std::string_view{argv[2]} == "--twice");
     const auto count = argc == 3 ? 2U : 1U;
-    if (option == "--phased-escaping-nullish-refusal")
+    if (option == "--phased-retained-prefix-source" || option == "--phased-retained-literal-args-source")
+      RunPhased(count, false, true, Selection::kConditional, abc::ProfileId::kDynamic1206, false, true, false,
+          option == "--phased-retained-prefix-source" ? CallPrefix::kRetainedPrefix : CallPrefix::kRetainedLiteralArgs);
+    else if (option == "--phased-retained-input-source" || option == "--phased-retained-getter-source")
+      RunPhased(count, false, true, Selection::kConditional, abc::ProfileId::kDynamic1206, false, true, false,
+          option == "--phased-retained-getter-source" ? CallPrefix::kRetainedGetter : CallPrefix::kRetainedInput);
+    else if (option == "--phased-escaping-nullish-refusal")
       RunPhased(count, false, false, Selection::kConditional, abc::ProfileId::kDynamic1206, false, true, true, CallPrefix::kEscapingNullish);
     else if (option == "--phased-member-wrapped-source")
       RunPhased(count, false, true, Selection::kConditional, abc::ProfileId::kDynamic1206, false, true, true, CallPrefix::kMemberWrappedNullish);
@@ -441,6 +469,10 @@ int main(int argc, char** argv) {
     else test::Check(false);
     return 0;
   }
+  for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+    for (const auto count : {1U, 2U, 200U, 201U})
+      for (const auto prefix : {CallPrefix::kRetainedInput, CallPrefix::kRetainedGetter, CallPrefix::kRetainedBarrier, CallPrefix::kRetainedPrefix, CallPrefix::kRetainedLiteralArgs})
+        RunPhased(count, false, false, Selection::kConditional, profile, false, true, false, prefix);
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
     RunPhased(1, false, false, Selection::kConditional, profile, false, true, true, CallPrefix::kMemberBarrierNullish);
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
