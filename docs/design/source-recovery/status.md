@@ -12,6 +12,38 @@
 
 ## 当前阶段
 
+### 2026-10-04：类表达式复用声明与赋值的原生名称推断
+
+- 规则revision76。共同 TreePrinter 给直接 identifier 初始化/赋值的 RHS
+  传递实际 binding NameId。ClassExpr 的原 runtime name 与实际打印 spelling
+  一致时输出匿名 `class` / `class extends`，由语言 NamedEvaluation 保持
+  `.name`；不添加会遮蔽可变外部绑定的 immutable class self。名称不匹配、
+  属性赋值或其他表达式 destination 继续用 computed-property 推断。此为
+  已恢复 AST 的语法表示选择，不新增 ValueIR/CFG 或 recovery 准入条件。
+- 三profile真实编码模块覆盖首次 class 声明、已有绑定上的 class 赋值及
+  runtime name 不匹配；随后把同一个模块 binding 改为导入值，原构造器
+  必须继续读到该值。63组独立 ESM 对照通过，含 TDZ、导入/初始化、导出
+  alias、类身份/name/length/descriptor、NaN/Infinity及构造调用。6个合法
+  语法 mutant 添加 named class self 后改变构造返回身份，检测到这项差异；
+  原 computed-property reference source 仅进入测试，不进入引擎。
+- -j4生产构建退出0：/tmp/abcd-class-binding-final-build.log；最终fixture
+  构建assignment-build.log。稳定二进制 verified-tests.log中9/9检查3.90秒
+  通过；新增mutant后record_import_tree_source_test单独复验1.18秒通过。
+  paired-tests.log另外4项固定输入独立对照（static class、viewmodel、local
+  model及HomeModel）通过，共13项不同相关检查。此前fixture pool/参数元数据
+  和新print form错误、未准备的fixture均有失败日志，未计入通过。优先链接
+  HEAD旧printer的实际编码正例在第404行失败：class-binding-red.log；这是
+  有界翻译单元链接对照，非整个HEAD重建。full-suite/RSS/扩展语料仍暂停。
+- fresh build/stage-one/value-class-binding-pass-1 固定五输入均退出0，SHA
+  匹配abc-index；仍80 complete /26 incomplete /0 failure /46 no-module，
+  无legacy或完整模块回退。38份完整及15份部分源码实际改善，106份全部通过
+  语法解析。输出有47个直接class声明，名称/使用上下文不同的48个包装保留；
+  /tmp/abcd-class-binding-content.log、syntax.log及batch.log记录当前证据。
+- 新fixture曾暴露子函数 ValueModuleWrite 没有 ModuleStoreConstant 对应，
+  在 expression forest kConstant 拒绝；测试改用真实模块入口重新赋值来
+  验证本次语法规则。该子函数写入能力仍是具体共同接口缺口，不能称已支持。
+  数值输入域、宿主构造协议和缺失正文仍阻断阶段一验收；Goal active。
+
 ### 2026-10-04：类成员跨块安装采用共同效果前驱与支配证明
 
 - 规则revision75。FindClassDefinitions 删除 creation/installation 与

@@ -28,13 +28,13 @@
 namespace abcd::source {
 namespace {
 using Error = TreePrintError;
-enum class ClassPrintForm { kExpression, kDerivedBody };
+enum class ClassPrintForm { kExpression, kInferredExpression, kDerivedBody };
 std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassPart(
     const ClassTree&, std::ostream&, EmitBudget, analysis::SemanticBudget,
     const GlobalScope*, std::size_t, ClassPrintForm, const ClassCaptureDestination* = nullptr);
-struct DerivedClassBody { std::shared_ptr<const ClassTree> definition; ExprId expression; };
+struct DerivedClassBody { std::shared_ptr<const ClassTree> definition; ExprId expression; bool inferred = false; };
 struct EndExpression { ExprId id; };
-struct ExpressionOperand { ExprId id; TreeOperatorContext context; };
+struct ExpressionOperand { ExprId id; TreeOperatorContext context; std::optional<NameId> inferred_name = {}; };
 struct Statement { StmtId id; std::size_t depth; };
 struct EndStatement { StmtId id; };
 struct BlockCursor { StmtId id; std::uint32_t index; std::size_t depth; };
@@ -592,9 +592,11 @@ class TreePrinter {
     Push(node.value);
   }
   void Expression(const AssignmentExpr& node) {
-    Append("("); Push(std::string_view(")")); Push(node.value);
+    Append("("); Push(std::string_view(")"));
+    const auto* symbol = std::get_if<SymbolTarget>(&node.target);
+    Push(ExpressionOperand{node.value, {}, symbol ? std::optional{Tree().symbols[symbol->symbol.value].name} : std::nullopt});
     Push(std::string_view(" = "));
-    if (const auto* symbol = std::get_if<SymbolTarget>(&node.target)) Push(SymbolName{symbol->symbol});
+    if (symbol) Push(SymbolName{symbol->symbol});
     else {
       const auto& member = std::get<MemberTarget>(node.target);
       Member(member.base, member.key);
@@ -634,24 +636,30 @@ class TreePrinter {
   }
   void Expression(EmptyArrayExpr) { Append("[]"); }
   void Expression(EmptyObjectExpr) { Append("({})"); }
-  void Expression(const ClassExpr& node, ExprId expression) {
+  void Expression(const ClassExpr& node, ExprId expression, std::optional<NameId> inferred_name = {}) {
     // Only the already composed module root admits class definitions here.
     // Member families own their external root evidence. The already checked
     // parent syntax is passed explicitly, without recovering scope/CFG here.
     // Classes inside descendant functions still need their own composition.
     if ((family_ && !ModuleBody()) || !node.definition || node.definition->identity != Tree().identity ||
         node.definition->creation.creator != Tree().method) throw Error::kUnsupportedContext;
+    // Identifier initialization/assignment performs NamedEvaluation without
+    // adding an immutable inner class binding. Reuse that language context
+    // only when its actual printed spelling gives the original runtime name.
+    // Mismatches and other destinations retain computed-property inference.
+    const bool inferred = inferred_name && Tree().names[inferred_name->value] == node.definition->name;
     if (node.heritage) {
       if (!node.definition->DraftPrepared() || node.definition->callable != CallableKind::kDerivedConstructor)
         throw Error::kUnsupportedContext;
-      Append("({["); Quoted(node.definition->name); Append("]: class extends (");
-      Push(DerivedClassBody{node.definition, expression}); Push(*node.heritage);
-    } else ClassPart(*node.definition, ClassPrintForm::kExpression, expression);
+      if (!inferred) { Append("({["); Quoted(node.definition->name); Append("]: "); }
+      Append("class extends (");
+      Push(DerivedClassBody{node.definition, expression, inferred}); Push(*node.heritage);
+    } else ClassPart(*node.definition, inferred ? ClassPrintForm::kInferredExpression : ClassPrintForm::kExpression, expression);
   }
   void Run(const DerivedClassBody& body) {
     Append(")");
     ClassPart(*body.definition, ClassPrintForm::kDerivedBody, body.expression);
-    Append("})["); Quoted(body.definition->name); Append("]");
+    if (!body.inferred) { Append("})["); Quoted(body.definition->name); Append("]"); }
   }
   void ClassPart(const ClassTree& definition, ClassPrintForm form, ExprId expression) {
     const ClassCaptureDestination parent{Tree(), expression};
@@ -872,7 +880,7 @@ class TreePrinter {
       Append("("); Push(std::string_view(")"));
     }
     std::visit([&](const auto& node) {
-      if constexpr (std::is_same_v<std::decay_t<decltype(node)>, ClassExpr>) Expression(node, id);
+      if constexpr (std::is_same_v<std::decay_t<decltype(node)>, ClassExpr>) Expression(node, id, operand.inferred_name);
       else if constexpr (std::is_same_v<std::decay_t<decltype(node)>, MemberExpr>) {
         const auto* context = std::get_if<PostfixContext>(&operand.context.parent);
         Member(node.base, node.key, context && *context == PostfixContext::kConstructor ?
@@ -902,7 +910,7 @@ class TreePrinter {
         throw Error::kUnsupportedContext;
     }
     Name(node.symbol); Push(std::string_view(";"));
-    if (node.initializer) { Append(" = "); Push(*node.initializer); }
+    if (node.initializer) { Append(" = "); Push(ExpressionOperand{*node.initializer, {}, Tree().symbols[node.symbol.value].name}); }
   }
   void StatementNode(ExpressionStmt node, Statement) {
     Push(std::string_view(";")); Push(node.expression);
@@ -1172,7 +1180,7 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
     // public whole-class route remains restricted to actual base constructors.
     if (tree.constructor->Family().members[tree.constructor->Family().root.value].tree.callable != tree.callable ||
         tree.callable !=
-        (form == ClassPrintForm::kExpression ? CallableKind::kBaseConstructor : CallableKind::kDerivedConstructor))
+        (form == ClassPrintForm::kDerivedBody ? CallableKind::kDerivedConstructor : CallableKind::kBaseConstructor))
       return Failure::kUnsupportedContext;
     if (!parent) {
       if (tree.constructor->Family().root_capture) return Failure::kUnsupportedContext;
@@ -1238,6 +1246,7 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
     // export read inside a method. The wrapper is never exposed to user code.
     if (member_gaps) append("/* INCOMPLETE class: unrecovered members */\n");
     if (form == ClassPrintForm::kExpression) { append("({["); name(); append("]: class {\n"); }
+    else if (form == ClassPrintForm::kInferredExpression) append("class {\n");
     else append(" {\n");
     member(*tree.constructor);
     const auto omitted_member = [&](const ClassMemberOmission& omitted) {

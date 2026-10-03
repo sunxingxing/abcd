@@ -344,3 +344,17 @@ DefinitionOrder 取共同 CFG reverse postorder，并在上述链/支配证明�
 phased scope/capture 接口和活跃 accessor-result alias 缺口。前表其他开放
 项也未因这次替换消失。13项相关检查、432组observer及96组capture原生
 对照通过；固定五输入与106份源码无回退，完整证据与剩余gate见status.md。
+
+## 规则 76：名称推断是语法上下文，不是恢复准入
+
+直接 identifier declaration/assignment 的 ClassExpr 现在复用该语言位置
+自带的 NamedEvaluation。实际 binding spelling 等于原 runtime class name
+时可去掉计算属性包装；不一致时保留包装，不拒绝已恢复 AST，不扩大效果
+移动许可。这是生成文本/名称边界上的正确性规则，不能用类似字符串比较
+反过来按函数/应用名称选择生产语义。成员属性赋值、非直接 RHS和其他目的地
+不会继承这个 identifier 上下文；也不凭原 class name 引入 immutable self。
+
+实际编码首次声明、后续赋值、名称不匹配和模块绑定重赋值的63组独立对照
+通过；6个 named-class-self 合法语法 mutant 改变行为，证明名字相同不足以
+证明 lexical binding 对应。它改善固定输入的源码表示，未关闭其他开放准入
+限制或26份不完整模块的正文缺口。

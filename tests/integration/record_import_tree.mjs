@@ -90,6 +90,58 @@ for (const initial of [0, 42])
 const cyclic = await setup(conditional, {cycle: true});
 await assert.rejects(cyclic.root.evaluate(), {name: 'ReferenceError'});
 
+// Decoded class initializers may use the surrounding binding's native
+// NamedEvaluation, but must keep reading that mutable module slot in bodies.
+// A named class expression would incorrectly introduce an immutable self.
+let classBindings = 0;
+for (const profile of ['1202', '1206', '1301']) {
+  for (const mode of ['--class-binding', '--class-binding-mismatch', '--class-binding-assignment']) {
+    const generated = execFileSync(process.argv[2], [mode, profile], {encoding: 'utf8'});
+    if (mode === '--class-binding') {
+      assert.match(generated, /let snapshot = class \{/);
+      assert.doesNotMatch(generated, /class snapshot/);
+    } else if (mode === '--class-binding-assignment') assert.match(generated, /\(snapshot = class \{/);
+    else assert.match(generated, /let snapshot = \(\{\["Box"\]: class \{/);
+    const expectedName = mode === '--class-binding-mismatch' ? 'Box' : 'snapshot';
+    const paired = reference.replace('let snapshot = ns;', mode === '--class-binding-assignment' ? 'let snapshot = ns;' : '').replace(
+      'export {answer, answer as answerAlias, snapshot};', `
+      ${mode === '--class-binding-assignment' ? '' : 'let '}snapshot = ({[${JSON.stringify(expectedName)}]: class { constructor() { return snapshot; } }})[${JSON.stringify(expectedName)}];
+      answer = snapshot;
+      snapshot = input;
+      export {answer, answer as answerAlias, snapshot};`);
+    for (const initial of [-2, -1, 0, 1, 42, NaN, Infinity]) {
+      for (const source of [generated, paired]) {
+        const {root} = await setup(source, {initial});
+        assert.throws(() => root.namespace.snapshot, {name: 'ReferenceError'});
+        await root.evaluate();
+        const C = root.namespace.answer;
+        assert.equal(root.namespace.answerAlias, C);
+        assert.equal(C.name, expectedName); assert.equal(C.length, 0);
+        assert.equal(root.namespace.snapshot, initial + 1);
+        const instance = new C();
+        assert.notEqual(instance, C);
+        assert.equal(Object.getPrototypeOf(instance), C.prototype);
+        const name = Object.getOwnPropertyDescriptor(C, 'name');
+        assert.equal(name.writable, false); assert.equal(name.enumerable, false); assert.equal(name.configurable, true);
+        assert.throws(() => C(), {name: 'TypeError'});
+      }
+      ++classBindings;
+    }
+    if (mode !== '--class-binding-mismatch') {
+      const mutant = generated.replace(/class (?=\{)/, 'class snapshot ');
+      assert.notEqual(mutant, generated);
+      const {root} = await setup(mutant);
+      await root.evaluate();
+      const C = root.namespace.answer;
+      // Valid syntax and the same .name, but the invented inner binding
+      // changes the returned identity after the outer slot is reassigned.
+      assert.equal(C.name, expectedName);
+      assert.equal(new C(), C);
+    }
+  }
+}
+console.log(`${classBindings} mutable class binding scenarios passed`);
+
 for (const mode of ['--function', '--capture', '--local-function', '--class-function', '--class-capture']) {
   const generated = execFileSync(process.argv[2], [mode], {encoding: 'utf8'});
   const mixed = mode === '--class-function' || mode === '--class-capture';

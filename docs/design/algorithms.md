@@ -5,6 +5,26 @@
 
 ## 输入规模与成本
 
+### class 的 identifier 名称推断上下文（2026-10-04）
+
+共同 printer 的表达式 action 携带 optional NameId；直接变量初始化与
+identifier 赋值填入实际 symbol spelling，其余表达式不继承。ClassExpr
+比较该 spelling 与已恢复 runtime name，匹配时使用匿名 class 语法自带的
+NamedEvaluation，不匹配时保留 computed-property 包装。没有改变 AST 的
+binding、effects、捕获或执行位置，不按样本/方法身份调度恢复。
+
+语义来源是 [ECMA-262 NamedEvaluation](https://tc39.es/ecma262/multipage/syntax-directed-operations.html#sec-runtime-semantics-namedevaluation)
+及 identifier assignment/class definition evaluation，自有打印实现，无新增
+依赖或外部代码。匿名语法不添加 immutable class self；原外部绑定在重赋值
+后仍由构造器/方法读取。比较总成本为实际候选名称字符数，action 增量空间
+每个待打印表达式 O(1)，复用迭代 action stack 及位置映射。非直接 RHS、
+成员属性、名称被重命名和非identifier runtime name仍走原正确的包装路径。
+
+三profile编码模块63组行为对照与6个合法语法 mutant验证此边界；固定五输入
+38份完整及15份部分源码改善，106份语法解析通过，另有13项相关定向检查。
+这是正确性/表示证据，没有恢复暂停的性能/RSS实测。剩余phase/scope/capture
+能力边界仍由原共同分析决定，不能以打印成功替代阶段一验收。
+
 ### 共同效果前驱与跨块类成员投影（2026-10-04）
 
 `BuildEffectOrder` 消费真实 normal ValueIR。共同 `VerifyValueFlow` 检查图、

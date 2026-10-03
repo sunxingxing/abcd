@@ -277,7 +277,7 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // selection arms, including prior phi results without replaying their producer.
 // Rules 69 preserve canonical retained inputs on phased selection edges and
 // allow invariant pure evaluations across CFG splits without mutable bindings.
-inline constexpr std::uint32_t kRouteEvidenceRules = 75;
+inline constexpr std::uint32_t kRouteEvidenceRules = 76;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,
