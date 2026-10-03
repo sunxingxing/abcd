@@ -18,6 +18,7 @@ struct ValueNode {
   ValueRuleKind kind = detail::ValueRuleKind::kFixed;
   std::array<SsaValueId, kScalarInputs> inputs{};
   std::uint8_t input_count = 0;
+  ValueKinds normal_result = ValueKinds::Language();
 };
 
 // Shared finite-height solver. Callers validate node/edge indices and build
@@ -57,9 +58,10 @@ void PropagateValues(std::span<const ValueNode> nodes,
   }
   // Incremental join propagation is essential: rescanning all inputs of a
   // high-fan-in Phi after each changed source would be quadratic. A fact
-  // gains four VM atoms and can weaken its scalar refinement four times
-  // (FiniteNonzeroNumber -> FiniteNumber -> NonNaNNumber -> Defined -> Language);
-  // The int32-tag exclusion can weaken once independently.
+  // gains a bounded set of VM atoms and weakens along the fixed-height scalar
+  // lattice. Boolean/null and String normal results are conditional, never
+  // seeds for an unproved input cycle. Integrality/tag exclusion each weaken
+  // once independently; no per-variable CFG scan or interval iteration.
   // Operation nodes have at most two fixed inputs.
   for (std::size_t head = 0; head < pending.size(); ++head) {
     charge();
@@ -94,7 +96,7 @@ void PropagateValues(std::span<const ValueNode> nodes,
         if (!ready) {
           propagated = {};
         } else if (nodes[target].kind == Kind::kEquality && equality_inputs) {
-          propagated = ValueKinds::Language();
+          propagated = nodes[target].normal_result;
         } else if (!language) {
           propagated = ValueKinds::Unknown();
         } else if (nodes[target].kind == Kind::kAdd || nodes[target].kind == Kind::kSubtract) {
@@ -136,7 +138,7 @@ void PropagateValues(std::span<const ValueNode> nodes,
                               facts[nodes[target].inputs[1].value])
               : ValueKinds::Unknown();
         } else {
-          propagated = ValueKinds::Language();
+          propagated = nodes[target].normal_result;
         }
       }
       const auto joined = facts[target].Join(propagated);

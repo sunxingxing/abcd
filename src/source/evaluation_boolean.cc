@@ -74,9 +74,12 @@ bool NumberEvaluation(const analysis::ValueProgram& graph, const analysis::Value
 bool LegacyNegationEvaluation(const analysis::ValueProgram& graph, const analysis::ValueOperand& operand) {
   if (const auto* integer = std::get_if<analysis::IntegerLiteral>(&operand)) return integer->value != INT32_MIN;
   if (std::holds_alternative<analysis::Float64Bits>(operand)) return NonNaNNumberEvaluation(graph, operand);
-  if (const auto* special = std::get_if<analysis::SpecialValue>(&operand)) return *special == analysis::SpecialValue::kInfinity;
+  if (const auto* special = std::get_if<analysis::SpecialValue>(&operand))
+    return analysis::detail::LegacyNegatedNumber(analysis::detail::DescribeScalarValue(
+        {analysis::Accumulator{}, analysis::ScalarValue{*special}}).seed).IsLanguage();
   const auto* value = std::get_if<analysis::ValueId>(&operand);
-  return value && value->value < graph.values.size() && graph.values[value->value].domain.ExcludesInt32MinTag();
+  return value && value->value < graph.values.size() &&
+      analysis::detail::LegacyNegatedNumber(graph.values[value->value].domain).IsLanguage();
 }
 bool NeedsNumericScratch(const analysis::ValueProgram& graph, const analysis::ValueOp& op) {
   const auto* unary = std::get_if<analysis::ValueUnary>(&op.operation);

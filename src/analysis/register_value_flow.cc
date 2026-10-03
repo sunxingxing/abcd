@@ -164,8 +164,10 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
           return ValueFlowFailure{Error::kInstruction, instruction, *error};
         const auto rule = std::get<detail::ValueRule>(lifted);
         nodes[i].kind = rule.kind;
-        facts[i] = rule.seed;
-        if (rule.kind == Kind::kFixed) continue;
+        if (rule.kind == Kind::kFixed) { facts[i] = rule.seed; continue; }
+        // Refined normal results depend on checked input facts; seeding a
+        // Boolean/String result early could certify an unproved input cycle.
+        nodes[i].normal_result = rule.seed.IsEmpty() ? ValueKinds::Language() : rule.seed;
         const auto reads = ssa.Reads(instruction);
         if (reads.empty() || reads.size() > kScalarInputs ||
             (rule.kind == Kind::kJoin && reads.size() != 1))

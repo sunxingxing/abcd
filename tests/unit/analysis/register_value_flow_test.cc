@@ -2,6 +2,7 @@
 #include "abcd/analysis/semantic_validation.h"
 
 #include "analysis/ssa_fixture.h"
+#include "../../../src/analysis/register_value_rule.h"
 
 using namespace abcd;
 using namespace analysis;
@@ -11,6 +12,31 @@ void VerifyValueFlow();
 void VerifyValueScaling();
 }  // namespace abcd::test
 int main() {
+  const auto primitive=ValueKinds::ZeroOrOnePrimitive();
+  Check(primitive.IsLanguage() && primitive.IsDefined() && !primitive.IsNumber());
+  Check(!primitive.IsIntegralNumber() && !primitive.ExcludesInt32MinTag());
+  Check(primitive.Join(ValueKinds::String())==ValueKinds::Defined());
+  Check(primitive.Join(ValueKinds::Number())==ValueKinds::Defined());
+  Check(primitive.Join(ValueKinds::Language())==ValueKinds::Language());
+  Check(!primitive.Join(ValueKinds::Hole()).IsLanguage());
+  const auto converted=detail::ConvertedNumber(primitive);
+  Check(converted.IsFiniteNumber() && converted.IsIntegralNumber() && converted.ExcludesInt32MinTag());
+  Check(detail::ConvertedNumericValue(primitive)==converted);
+  Check(!detail::AddValues(primitive,ValueKinds::Number()).IsLanguage());
+  Check(!detail::MultiplyNumbers(primitive,ValueKinds::NonNaNNumber()).IsLanguage());
+  Check(!detail::DivideNumbers(primitive,primitive).IsLanguage());
+  Check(!detail::NegatedNumber(ValueKinds::Language()).IsLanguage());
+  Check(!detail::LegacyNegatedNumber(ValueKinds::Number()).IsLanguage());
+  // Boolean normal-result refinement does not seed an input whose origin is
+  // still unproved: typeof/environment and istrue/Hole remain Unknown.
+  for (const auto bytes : {std::initializer_list<std::uint8_t>{0x09,1,0x1c,0,0x64},
+      {0x70,0x23,0x64}}) {
+    const auto body=Body(bytes);
+    const auto method=std::get<SemanticMethod>(BuildSemanticMethod(body,abc::ProfileId::kDynamic1206,0));
+    IdfQuota work{UINT64_MAX};
+    const auto facts=std::get<RegisterValueFlow>(RegisterValueFlow::Build(body,method.ssa,0,{},work));
+    Check(facts.At(*method.ssa.Write({1}))==ValueKinds::Unknown());
+  }
   {
     // Pinned v7 ADD2 feeds its double result directly to JSTaggedValue. The
     // accepted negative signaling NaN 0xfff7000000000005 can quiet to
@@ -52,7 +78,7 @@ int main() {
           input, std::get<NormalFlow>(BuildNormalFlow(input)), 1, work));
       const auto kinds = std::get<RegisterValueFlow>(RegisterValueFlow::Build(input, renamed, 1, {}, work));
       Check(kinds.At(*renamed.Write({0})) == (environment ? ValueKinds::Environment() : ValueKinds::Hole()));
-      Check(kinds.At(*renamed.Write({3})) == (environment ? ValueKinds::Unknown() : ValueKinds::Language()));
+      Check(kinds.At(*renamed.Write({3})) == (environment ? ValueKinds::Unknown() : ValueKinds::ZeroOrOnePrimitive()));
     }
   }
   for (const auto bytes :
@@ -97,8 +123,6 @@ int main() {
         Case{{0x6c, 0x64}, ValueKinds::Language()},
         Case{{0xae, 0x64}, ValueKinds::Language()},
         Case{{0x8c, 0, 0, 0, 0, 0x64}, ValueKinds::Language()},
-        Case{{0, 0x23, 0x64}, ValueKinds::Language()},
-        Case{{0, 0x61, 0, 0x28, 0, 0, 0x64}, ValueKinds::Language()},
         Case{{0x70, 0xfe, 9, 0, 0, 0x64}, ValueKinds::Hole()}}) {
     const auto input = Body(item.code);
     IdfQuota work{UINT64_MAX};
@@ -114,6 +138,16 @@ int main() {
               static_cast<unsigned>(input.instructions[i].decoded.opcode));
         Check(kinds.At(*value) == item.kind);
       }
+  }
+  for (const auto bytes : {std::initializer_list<std::uint8_t>{0,0x23,0x64},
+      {0,0x61,0,0x28,0,0,0x64}}) {
+    const auto input=Body(bytes);
+    IdfQuota work{UINT64_MAX};
+    const auto named=std::get<RegisterSsa>(RegisterSsa::Build(input,
+        std::get<NormalFlow>(BuildNormalFlow(input)),4,work));
+    const auto kinds=std::get<RegisterValueFlow>(RegisterValueFlow::Build(input,named,4,{},work));
+    Check(kinds.At(*named.Write({0}))==ValueKinds::Language());
+    Check(kinds.At(*named.Write({static_cast<std::uint32_t>(input.instructions.size()-2)}))==ValueKinds::ZeroOrOnePrimitive());
   }
   const auto cyclic = Body({0x45, 0, 0, 0x4d, 0xfd});
   const auto cyclic_ssa = std::get<RegisterSsa>(RegisterSsa::Build(

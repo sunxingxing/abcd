@@ -187,3 +187,47 @@ or mutable global helper. Decoded normal/phased tests include noncanonical NaNs,
 shared-return refusal, forged flags/literals and 200/201/geometric copy chains.
 This is a use-specific erasure proof, not a blanket claim that NaN payloads are
 unobservable or that all noncanonical literals can be printed.
+
+
+## Boolean/null coercion and conditional normal results (rules 80)
+
+`ZeroOrOnePrimitive` describes Boolean or null, not a Number or a wrapper object.
+Pinned `JSTaggedValue::ToNumber` in `ecmascript/js_tagged_value.cpp` maps true to
+1 and false/null to 0; `ToNumeric` delegates this non-BigInt path to ToNumber.
+RuntimeInc/Dec/Neg and binary runtime stubs retain their original conversions,
+normal completion and exception effects. Both repository identities remain those
+in `openharmony-v7.0-release.lock.json`; no new runtime/dependency is introduced.
+
+The shared `ArithmeticNumber` converts this proved domain to a finite integral
+Number excluding the tagged minimum. Ordinary/phased SSA and linear lexical
+analysis reuse it in existing arithmetic/conversion rules. The original value
+remains non-Number, including after a Boolean/null phi join. Joins with Number or
+String weaken to Defined; joins with undefined/general Language or VM markers
+cannot authorize a numeric conversion fact. There is no guessed parameter,
+property, host API, debug-type or printed-expression evidence.
+
+Boolean-producing unary/comparison operations have this conditional normal
+result; typeof has a conditional String result. Shared ValueNode stores that
+result separately from fixed literal seeds. It is propagated only after input
+obligations hold (including the existing equality marker policy), never injected
+before an unproved cycle has input evidence. This admits native comparison
+arithmetic and typeof string concatenation without another expression writer.
+Legacy minus independently rechecks the same coercion/tag fact on actual value
+and literal operands. General NaN, infinity/zero multiplication, possible
+zero/zero division, tagged-minimum and arbitrary Language refusals remain.
+
+Encoded ordinary and catch fixtures test Boolean/null literals, ordered/strict
+comparison results, Boolean/null phi transport, modern ToNumber/ToNumeric and
+negation, legacy negation, all four numeric update formats and NOT in arithmetic
+initializers. Both operand positions use actual encoding; three profiles and
+1/200/201/402 phi dimensions are checked. The independent native oracle exercises
+coercion/getter/Proxy mutations, Symbol/BigInt, signed zeros, NaN payload inputs
+and arbitrary thrown values; the newly added primitive matrix has 112840
+comparisons. The branch fixture uses real named property writes: first-own-store
+aggregate projection spanning a branch is still an existing source-evaluation
+gap, not claimed successful here. Complete mode/independent tree checks verify
+actual generated source, not a reference-source return or INCOMPLETE success.
+
+This refinement does not prove the fixed stage-one inputs' parameter/property
+arithmetic. Native JS comparison is not execution of the pinned Ark VM binary,
+and these component tests do not close full-record/platform/style acceptance.

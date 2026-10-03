@@ -154,8 +154,10 @@ std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
           return ValueFlowFailure{Error::kInstruction, InstructionId{site}, *error};
         const auto rule = std::get<detail::ValueRule>(described);
         nodes[i].kind = rule.kind;
-        facts[i] = rule.seed;
-        if (rule.kind == Kind::kFixed) continue;
+        if (rule.kind == Kind::kFixed) { facts[i] = rule.seed; continue; }
+        // Refined normal results depend on checked input facts; seeding a
+        // Boolean/String result early could certify an unproved input cycle.
+        nodes[i].normal_result = rule.seed.IsEmpty() ? ValueKinds::Language() : rule.seed;
         // Commit has no operand reads. Its value depends on the original
         // operation's Before reads, not the handler's overwritten accumulator.
         const auto reads = ssa.Reads(*before[node.instruction.value]);

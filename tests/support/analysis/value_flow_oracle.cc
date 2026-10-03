@@ -111,7 +111,7 @@ void VerifyValueFlow() {
             case abc::Opcode::kISTRUE: {
               const auto input = expected[ssa.Reads(id)[0].value.value];
               next = input.IsEmpty()      ? ValueKinds{}
-                     : input.IsLanguage() ? ValueKinds::Language()
+                     : input.IsLanguage() ? ValueKinds::ZeroOrOnePrimitive()
                                           : ValueKinds::Unknown();
               break;
             }

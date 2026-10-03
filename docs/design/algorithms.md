@@ -943,3 +943,22 @@ These are project-local C++20 extensions to the existing algorithms, with no new
 dependency. Three-profile decoded fixtures exercise 1/2/200/201/402 compositions;
 402 evaluation work remains below three times 201. This is bounded work-counter
 evidence, not physical RSS or latency measurement.
+
+
+### Conditional primitive normal-result facts (2026-10-04)
+
+The existing finite-height sparse value solver stores one typed normal-result
+fact per operation node, separately from literal seeds. Boolean/null and typeof
+refinements become available only after their input obligations hold. Ordinary
+and phased adapters build this same node representation; linear lexical flow
+calls the same fixed-width coercion/arithmetic transfer helpers. There is no
+per-value CFG scan, interval solver, producer-layout admission or new dependency.
+Costs remain O(values + dependency edges) times the fixed lattice height; actual
+ValueNode size is admitted by existing scratch accounting. Boolean/null joins
+add a fixed refinement branch, not input-dependent lattice height. Numeric
+conversions/arithmetic inspect at most two operands. The source verifier checks
+legacy negation using the same literal/domain semantics, without a separate
+producer list. Source fixtures include 200/201/402 phi dimensions and bounded
+work tests. These are correctness/accounting evidence, not RSS or latency
+measurements; full corpus/RSS/benchmarks remain paused. Provenance and coverage
+are recorded in source-recovery/numeric-facts.md.

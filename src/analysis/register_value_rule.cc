@@ -106,6 +106,8 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment) {
       return ValueRule{ValueRuleKind::kFixed, integer->value == INT32_MIN ? kinds : kinds.WithoutInt32MinTag()};
     }
     if (const auto* special = std::get_if<SpecialValue>(value)) {
+      if (*special == SpecialValue::kTrue || *special == SpecialValue::kFalse || *special == SpecialValue::kNull)
+        return ValueRule{ValueRuleKind::kFixed, ValueKinds::ZeroOrOnePrimitive()};
       if (*special == SpecialValue::kNaN) return ValueRule{ValueRuleKind::kFixed, ValueKinds::Number()};
       if (*special == SpecialValue::kInfinity)
         return ValueRule{ValueRuleKind::kFixed, ValueKinds::NonNaNNumber().WithoutInt32MinTag()};
@@ -145,10 +147,11 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment) {
         return ValueRule{ValueRuleKind::kToNumeric, {}};
       case UnaryOperator::kToBoolean:
       case UnaryOperator::kLogicalNot:
-      case UnaryOperator::kTypeOf:
       case UnaryOperator::kFalseOrZero:
       case UnaryOperator::kTrueOrNonzeroNumber:
-        break;
+        return ValueRule{ValueRuleKind::kLanguageOperation, ValueKinds::ZeroOrOnePrimitive()};
+      case UnaryOperator::kTypeOf:
+        return ValueRule{ValueRuleKind::kLanguageOperation, ValueKinds::String()};
     }
     language = HasLanguageResult(unary->op);
   }
@@ -160,7 +163,11 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment) {
     // remove coercion/exception effects from the operation.
     if (binary->op == BinaryOperator::kEqual || binary->op == BinaryOperator::kNotEqual ||
         binary->op == BinaryOperator::kStrictEqual || binary->op == BinaryOperator::kStrictNotEqual)
-      return ValueRule{ValueRuleKind::kEquality, {}};
+      return ValueRule{ValueRuleKind::kEquality, ValueKinds::ZeroOrOnePrimitive()};
+    if (binary->op == BinaryOperator::kLess || binary->op == BinaryOperator::kLessEqual ||
+        binary->op == BinaryOperator::kGreater || binary->op == BinaryOperator::kGreaterEqual ||
+        binary->op == BinaryOperator::kInstanceOf || binary->op == BinaryOperator::kIn)
+      return ValueRule{ValueRuleKind::kLanguageOperation, ValueKinds::ZeroOrOnePrimitive()};
     if (binary->op == BinaryOperator::kAdd)
       return ValueRule{ValueRuleKind::kAdd, {}};
     if (binary->op == BinaryOperator::kSubtract)

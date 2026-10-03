@@ -173,3 +173,43 @@ for (const option of ['--source', '--increment-source', '--decrement-source', '-
   }
 }
 console.log(`Decoded binary/comparison expressions: ${scenarios} native scenarios passed`);
+
+// Numeric facts come from decoded literals/comparisons, not argument types.
+// Rebuild comparison inputs on each run so getter/coercion mutations remain
+// observable across both fields; strict equality must not invoke those hooks.
+let primitiveScenarios = 0;
+for (const phased of [false,true]) for (let mode=0;mode<19;++mode)
+  for (const index of mode===10 ? [0] : [0,1,2,3,17]) {
+    const source=execFileSync(process.argv[2],['--primitive-source',String(index),String(mode),phased?'phased':'normal'],{encoding:'utf8'});
+    const generated=runInNewContext(source);
+    const reference=(left,right) => {
+      const seed=() => {
+        switch(mode) {
+          case 0:return true; case 1:return null; case 2:return left<right;
+          case 3:return left===right; case 4:return +true; case 5:return -true;
+          case 6:return -null; case 7:return +true; case 8:return false;
+          case 9:return left===false || left===0 ? null : true;
+          case 10:return typeof left;
+          case 11:return true;case 12:return null;case 13:return false;
+          case 14:{let value=true;return ++value;}
+          case 15:{let value=true;return --value;}
+          case 16:{let value=true;return ++value;}
+          case 17:{let value=true;return --value;}
+          case 18:return ~true;
+          default:assert.fail('unknown fixture seed');
+        }
+      };
+      const calculate=() => mode>=11 && mode<=13 ? operations[index](2,seed()) : operations[index](seed(),2);
+      try {return {field0:calculate(),field1:calculate()};}
+      catch(error) {if(phased)return undefined;throw error;}
+    };
+    for(let scenario=0;scenario<31;++scenario) for(const wrapping of [0,1])
+      for(const mutate of [false,true]) for(const failAt of [0,1,2,3,4]) {
+        assert.deepEqual(observeArguments(generated,scenario,wrapping,mutate,failAt),
+          observeArguments(reference,scenario,wrapping,mutate,failAt),
+          `primitive ${mode}, operator ${index}, phased ${phased}, scenario ${scenario}, wrapping ${wrapping}, mutate ${mutate}, failAt ${failAt}`);
+        ++primitiveScenarios;
+      }
+    assert.ok(!source.includes('UNRECOVERED'));
+  }
+console.log(`Decoded primitive arithmetic: ${primitiveScenarios} scenarios passed`);

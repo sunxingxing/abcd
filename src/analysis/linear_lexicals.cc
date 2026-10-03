@@ -389,7 +389,7 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
             return fail(Error::kInstruction);
           case detail::ValueRuleKind::kLanguageOperation:
           case detail::ValueRuleKind::kEquality:
-            state(*access.write) = ValueKinds::Language();
+            state(*access.write) = rule.seed.IsEmpty() ? ValueKinds::Language() : rule.seed;
             break;
           case detail::ValueRuleKind::kAdd:
           case detail::ValueRuleKind::kSubtract:

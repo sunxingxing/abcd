@@ -32,12 +32,23 @@ enum class ValueRuleKind {
 };
 struct ValueRule {
   ValueRuleKind kind = ValueRuleKind::kFixed;
+  // Fixed definitions seed the solver. For kLanguageOperation/kEquality,
+  // this is a conditional normal result; input obligations still run first.
   ValueKinds seed;
 };
+// Pinned JSTaggedValue::ToNumber maps Boolean/null to tagged 0/1. A
+// coercion fact never reclassifies the original value as Number or authorizes
+// dropping its conversion. Arbitrary Language/String/Object/BigInt stay unknown.
+constexpr ValueKinds ArithmeticNumber(ValueKinds input) {
+  if (input.IsZeroOrOnePrimitive())
+    return ValueKinds::FiniteNumber().WithIntegralNumber().WithoutInt32MinTag();
+  return input.IsNumber() ? input : ValueKinds::Unknown();
+}
 // Pinned Add2/Sub2 use IEEE arithmetic after Number conversion. With two
 // non-NaN Numbers and at least one finite operand, no infinity cancellation
 // can produce NaN. Overflow is allowed; arbitrary NaN payloads remain refused.
 constexpr ValueKinds AdditiveNumbers(ValueKinds left, ValueKinds right) {
+  left = ArithmeticNumber(left); right = ArithmeticNumber(right);
   return left.IsNonNaNNumber() && right.IsNonNaNNumber() &&
       (left.IsFiniteNumber() || right.IsFiniteNumber()) ? ValueKinds::NonNaNNumber() : ValueKinds::Unknown();
 }
@@ -45,6 +56,7 @@ constexpr ValueKinds AdditiveNumbers(ValueKinds left, ValueKinds right) {
 // INT32_MIN makes that C++ path undefined. Do not certify native subtraction
 // without evidence that the RHS cannot carry that tag; a double is distinct.
 constexpr ValueKinds SubtractNumbers(ValueKinds left, ValueKinds right) {
+  right = ArithmeticNumber(right);
   return right.ExcludesInt32MinTag() ? AdditiveNumbers(left, right) : ValueKinds::Unknown();
 }
 constexpr ValueKinds AddValues(ValueKinds left, ValueKinds right) {
@@ -55,22 +67,24 @@ constexpr ValueKinds AddValues(ValueKinds left, ValueKinds right) {
 // ToNumeric preserves BigInt, so its general bound remains Defined Language.
 constexpr ValueKinds ConvertedNumber(ValueKinds input) {
   if (!input.IsLanguage()) return ValueKinds::Unknown();
-  return input.IsNumber() ? input : ValueKinds::Number();
+  return input.IsZeroOrOnePrimitive() ? ArithmeticNumber(input) : input.IsNumber() ? input : ValueKinds::Number();
 }
 constexpr ValueKinds ConvertedNumericValue(ValueKinds input) {
   if (!input.IsLanguage()) return ValueKinds::Unknown();
-  return input.IsNumber() ? input : ValueKinds::Defined();
+  return input.IsZeroOrOnePrimitive() ? ArithmeticNumber(input) : input.IsNumber() ? input : ValueKinds::Defined();
 }
 // Modern NEG handles the tagged minimum via double overflow; the legacy
 // integer path needs its exclusion. Both produce a non-minimum representation
 // when proved, and unary sign change retains finite/nonzero information.
 constexpr ValueKinds NegatedNumber(ValueKinds input) {
+  if (input.IsZeroOrOnePrimitive()) input = ArithmeticNumber(input);
   if (!input.IsNonNaNNumber()) return ValueKinds::Unknown();
   const auto result = (input.IsFiniteNonzeroNumber() ? ValueKinds::FiniteNonzeroNumber() :
       input.IsFiniteNumber() ? ValueKinds::FiniteNumber() : ValueKinds::NonNaNNumber()).WithoutInt32MinTag();
   return input.IsIntegralNumber() ? result.WithIntegralNumber() : result;
 }
 constexpr ValueKinds LegacyNegatedNumber(ValueKinds input) {
+  if (input.IsZeroOrOnePrimitive()) input = ArithmeticNumber(input);
   return input.ExcludesInt32MinTag() ? NegatedNumber(input) : ValueKinds::Unknown();
 }
 // Pinned modern/deprecated INC/DEC guard int32 overflow and otherwise add or
@@ -78,6 +92,7 @@ constexpr ValueKinds LegacyNegatedNumber(ValueKinds input) {
 // magnitude, one is below half an ULP. Integer inputs remain integral, but zero
 // and tagged INT32_MIN can be produced, so neither exclusion is inherited.
 constexpr ValueKinds UpdatedNumber(ValueKinds input) {
+  if (input.IsZeroOrOnePrimitive()) input = ArithmeticNumber(input);
   if (!input.IsNonNaNNumber()) return ValueKinds::Unknown();
   const auto result = input.IsFiniteNumber() ? ValueKinds::FiniteNumber() : ValueKinds::NonNaNNumber();
   return input.IsIntegralNumber() ? result.WithIntegralNumber() : result;
@@ -87,6 +102,8 @@ constexpr ValueKinds UpdatedNumber(ValueKinds input) {
 // be zero (e.g. two int32 coercions). Pinned FastRuntimeStub::FastMul performs
 // double multiplication. Overflow and underflow lose finite/nonzero facts.
 constexpr ValueKinds MultiplyNumbers(ValueKinds left, ValueKinds right) {
+  if (left.IsZeroOrOnePrimitive()) left = ArithmeticNumber(left);
+  if (right.IsZeroOrOnePrimitive()) right = ArithmeticNumber(right);
   return left.IsNonNaNNumber() && right.IsNonNaNNumber() &&
                  ((left.IsFiniteNumber() && right.IsFiniteNumber()) ||
                   left.IsFiniteNonzeroNumber() || right.IsFiniteNonzeroNumber())
@@ -97,6 +114,8 @@ constexpr ValueKinds MultiplyNumbers(ValueKinds left, ValueKinds right) {
 // zero/zero reaches raw division. Overflow, underflow and signed zero remain
 // non-NaN Numbers. This proves the normal result only, never erases effects.
 constexpr ValueKinds DivideNumbers(ValueKinds left, ValueKinds right) {
+  if (left.IsZeroOrOnePrimitive()) left = ArithmeticNumber(left);
+  if (right.IsZeroOrOnePrimitive()) right = ArithmeticNumber(right);
   return left.IsNonNaNNumber() && right.IsNonNaNNumber() &&
                  (left.IsFiniteNonzeroNumber() || right.IsFiniteNonzeroNumber())
              ? ValueKinds::NonNaNNumber() : ValueKinds::Unknown();
@@ -105,6 +124,8 @@ constexpr ValueKinds DivideNumbers(ValueKinds left, ValueKinds right) {
 // Mixed Number/BigInt is abrupt. One proved Number therefore makes every normal
 // result int32; otherwise normal results are Number or BigInt, never undefined.
 constexpr ValueKinds BitwiseValues(ValueKinds left, ValueKinds right) {
+  if (left.IsZeroOrOnePrimitive()) left = ArithmeticNumber(left);
+  if (right.IsZeroOrOnePrimitive()) right = ArithmeticNumber(right);
   if (!left.IsLanguage() || !right.IsLanguage()) return ValueKinds::Unknown();
   return left.IsNumber() || right.IsNumber()
       ? ValueKinds::FiniteNumber().WithIntegralNumber() : ValueKinds::Defined();
@@ -112,6 +133,7 @@ constexpr ValueKinds BitwiseValues(ValueKinds left, ValueKinds right) {
 // Bitwise NOT also preserves BigInt; a proved Number takes ToInt32 and yields
 // an integer Number. INT32_MIN remains possible, so no tag exclusion is added.
 constexpr ValueKinds BitNotValue(ValueKinds input) {
+  if (input.IsZeroOrOnePrimitive()) input = ArithmeticNumber(input);
   if (!input.IsLanguage()) return ValueKinds::Unknown();
   return input.IsNumber() ? ValueKinds::FiniteNumber().WithIntegralNumber() : ValueKinds::Defined();
 }
@@ -126,6 +148,7 @@ constexpr ValueKinds UnsignedShiftValues(ValueKinds left, ValueKinds right) {
 // negative bases, signed zero, overflow/underflow and infinities stay Numbers.
 // Fractional exponents and arbitrary NaN payloads require separate evidence.
 constexpr ValueKinds ExponentNumbers(ValueKinds base, ValueKinds exponent) {
+  base = ArithmeticNumber(base); exponent = ArithmeticNumber(exponent);
   return base.IsNonNaNNumber() && exponent.IsIntegralNumber()
       ? ValueKinds::NonNaNNumber() : ValueKinds::Unknown();
 }

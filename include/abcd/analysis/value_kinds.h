@@ -24,6 +24,14 @@ class ValueKinds {
   static constexpr ValueKinds String() {
     return ValueKinds{kLanguage, Refinement::kString};
   }
+  // Boolean or null: neither is Number, but ToNumber/ToNumeric returns
+  // exactly zero or one without invoking user code. Undefined is excluded.
+  static constexpr ValueKinds ZeroOrOnePrimitive() {
+    return ValueKinds{kLanguage, Refinement::kZeroOrOnePrimitive};
+  }
+  [[nodiscard]] constexpr bool IsZeroOrOnePrimitive() const {
+    return IsLanguage() && refinement_ == Refinement::kZeroOrOnePrimitive;
+  }
   static constexpr ValueKinds Number() { return ValueKinds{kLanguage, Refinement::kNumber}; }
   static constexpr ValueKinds NonNaNNumber() {
     return ValueKinds{kLanguage, Refinement::kNonNaNNumber};
@@ -66,6 +74,7 @@ class ValueKinds {
       case Refinement::kNone: return false;
       case Refinement::kDefined:
       case Refinement::kString:
+      case Refinement::kZeroOrOnePrimitive:
       case Refinement::kNumber:
       case Refinement::kFiniteNonzeroNumber:
       case Refinement::kFiniteNumber:
@@ -129,7 +138,7 @@ class ValueKinds {
 
  private:
   enum class Refinement : std::uint8_t {
-    kNone, kString, kNonNaNNumber, kDefined, kFiniteNonzeroNumber, kFiniteNumber, kNumber
+    kNone, kString, kNonNaNNumber, kDefined, kFiniteNonzeroNumber, kFiniteNumber, kNumber, kZeroOrOnePrimitive
   };
   static constexpr std::uint8_t kLanguage = 1 << 0;
   static constexpr std::uint8_t kHole = 1 << 1;

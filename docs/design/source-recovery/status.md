@@ -12,6 +12,42 @@
 
 ## 当前阶段
 
+### 2026-10-04：布尔/null 转换事实贯通共同算术规则
+
+- 规则 revision80。共同 ValueKinds 增加 ZeroOrOnePrimitive，准确表示Boolean/
+  null而非Number；依 pinned JSTaggedValue::ToNumber/ToNumeric 的0/1语义，
+  ArithmeticNumber 给既有算术/转换规则提供有限整数与tagged-minimum排除事实。
+  正常/异常SSA和linear lexical复用这些规则，比较/布尔运算的normal结果与
+  typeof的String结果在共同ValueNode中传播，输入义务成立之前不seed，防止
+  未证明循环自证。源打印和legacy negation独立校验仍走同一树/operand接口。
+- 原始Boolean/null值不变成Number，也不省略真实转换；与其他Number/String
+  混合会失去此精确域，undefined/Hole/environment/一般Language不提供该事实。
+  不猜参数、属性或宿主返回类型；任意NaN/tag边界与MIN_INT32的旧负例保留。
+  支持比较结果/Boolean-null phi/typeof字符串组合及现代/旧版update/negation/
+  转换参与共同算术表达式，无sample、opcode序列、producer或块布局匹配。
+- 真实编码新增三profile normal/catch组合，分别覆盖加/减/乘/除/幂、两侧
+  primitive操作数、null负零、比较副作用及所有四种update；共享值流oracle
+  更新为真实Boolean结果，保留输入未证明的typeof/environment及istrue/Hole
+  负例。1/200/201/402 phi维度通过，新增112840组独立native行为对照通过，
+  包含getter/ToPrimitive、Proxy、Symbol/BigInt、NaN payload、mutation和任意
+  抛出值。引擎输入只有真实编码，reference源码仅在独立测试使用。
+- RED true+2实际在输入证明拒绝：/tmp/abcd-primitive-arithmetic-red.log。
+  初次phi用例的first-own-store聚合跨branch在Evaluation阶段失败（保留debug
+  backtrace）；改用真实named property writes验证本次算术/phi能力，不为该
+  聚合缺口增设生产匹配，也不把它算成功。首轮旧oracle失败已按语义更新，
+  失败不计通过。最终 -j4 构建 final-build.log / guard-build.log 均退出0，
+  当前稳定二进制22/22相关检查72.20秒通过：
+  /tmp/abcd-primitive-arithmetic-final-tests.log；native数量见LastTest.log。
+- fresh build/stage-one/value-primitive-arithmetic-pass-1 固定五输入均退出0，
+  80 complete /26 incomplete /0 failure /46 no-module，没有complete回退或
+  legacy writer。五输入SHA/size与manifest/abc-index一致；106份完整/部分
+  源码全部解析并与revision79字节一致：final-batch.log / final-syntax.log。
+  新共同事实没有消除这些输入的参数/属性算术缺口，阶段一仍未完成。
+- 实际检查pasteboard方法5165、MultiCommunity方法41244的除法及Immersive
+  方法8620的属性加减，尚无非NaN/数值域事实可用。导入父类构造协议、跨branch
+  首次声明/聚合归属和phased初始化也仍有开放项。SourceContract V3未改；
+  full-suite/RSS/扩展语料/基准/DFX保持暂停。Goal active，继续实际开发。
+
 ### 2026-10-04：普通模块读取与创建点复用共同初始化分析
 
 - 规则 revision79。ModuleSlotSet 与完整 SSA/IDF 初始化算法移入 analysis，
