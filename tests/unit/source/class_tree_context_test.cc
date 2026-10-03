@@ -41,7 +41,7 @@ static_assert(!std::is_constructible_v<VerifiedFunction, FunctionTree>);
 static_assert(std::is_same_v<decltype(std::declval<VerifiedFunction&>().Tree()),
                              const FunctionTree&>);
 void Check(bool condition) { if (!condition) std::abort(); }
-enum class RestEncoding { kNone, kNarrow, kWide, kLeading, kUnused, kReassigned, kPhysicalRead, kRepeated, kSnapshot, kWrongIndex };
+enum class RestEncoding { kNone, kNarrow, kWide, kLeading, kUnused, kReassigned, kPhysicalRead, kRepeated, kSnapshot, kWrongIndex, kReordered, kGap, kRelocated };
 enum class DefaultEncoding { kNone, kInteger, kNegation };
 enum class GeneratorEncoding { kTagged, kExplicitTagged, kExplicitOrdinary };
 enum class ExceptionShape {
@@ -494,19 +494,23 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     // allocation and its store. A physical argument is never the rest array.
     const std::uint8_t slots = encoded_length + 4;
     std::vector<std::uint8_t> code;
-    for (std::uint8_t i = 0; i < slots; ++i)
+    const std::uint8_t rest_local = rest == RestEncoding::kRelocated ? 0 : slots - 1;
+    for (std::uint8_t at = 0; at < slots; ++at) {
+      const auto i = static_cast<std::uint8_t>(rest == RestEncoding::kReordered ? slots - 1 - at : at);
       code.insert(code.end(), {static_cast<std::uint8_t>(abc::Opcode::kMOV_V8_V8), i,
           static_cast<std::uint8_t>(slots + i)});
+      if (rest == RestEncoding::kGap) code.push_back(static_cast<std::uint8_t>(abc::Opcode::kNOP));
+    }
     if (rest == RestEncoding::kWide) code.insert(code.end(), {0xfd, 0x0b, encoded_length, 0});
     else code.insert(code.end(), {0xcf, static_cast<std::uint8_t>(rest == RestEncoding::kWrongIndex ? 1 : encoded_length)});
-    code.insert(code.end(), {kStore, static_cast<std::uint8_t>(slots - 1)});
+    code.insert(code.end(), {kStore, rest_local});
     if (rest == RestEncoding::kRepeated) code.insert(code.end(), {0xcf, encoded_length});
     if (rest == RestEncoding::kReassigned)
       code.insert(code.end(), {kInteger, 7, 0, 0, 0, kStore, static_cast<std::uint8_t>(slots - 1)});
     if (rest == RestEncoding::kSnapshot) code.push_back(static_cast<std::uint8_t>(abc::Opcode::kGETUNMAPPEDARGS));
     else if (rest == RestEncoding::kUnused) code.push_back(kUndefined);
     else code.insert(code.end(), {kLoad, static_cast<std::uint8_t>(
-        rest == RestEncoding::kPhysicalRead ? 2 * slots - 1 : slots - 1)});
+        rest == RestEncoding::kPhysicalRead ? 2 * slots - 1 : rest_local)});
     code.push_back(kReturn);
     member = {slots, slots, static_cast<std::uint8_t>(code.size()), 0};
     member.insert(member.end(), code.begin(), code.end());
@@ -1151,7 +1155,8 @@ int main(int argc, char** argv) {
       for (const bool placement : {false, true})
         for (const auto rest : {RestEncoding::kNarrow, RestEncoding::kWide, RestEncoding::kLeading,
             RestEncoding::kUnused, RestEncoding::kReassigned, RestEncoding::kPhysicalRead,
-            RestEncoding::kRepeated, RestEncoding::kSnapshot, RestEncoding::kWrongIndex})
+            RestEncoding::kRepeated, RestEncoding::kSnapshot, RestEncoding::kWrongIndex,
+            RestEncoding::kReordered, RestEncoding::kGap, RestEncoding::kRelocated})
           Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kNone,
               profile, placement, GeneratorEncoding::kTagged, rest);
     return 0;

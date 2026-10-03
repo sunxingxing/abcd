@@ -271,7 +271,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // live module aliases, unchanged Before/Commit events and family-write checks.
 // Rules 66 use common expression capabilities for single-evaluation snapshots
 // and rely on verified value/effect ownership for References, not CFG colocation.
-inline constexpr std::uint32_t kRouteEvidenceRules = 66;
+// Rules 67 derive native rest ownership from CFG effects and SSA argument
+// transports; no fixed MOV/COPYRESTARGS/STA prologue permits the signature.
+inline constexpr std::uint32_t kRouteEvidenceRules = 67;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

@@ -12,6 +12,28 @@
 
 ## 当前阶段
 
+### 2026-10-03：ValueTree rest 参数从 CFG/SSA 来源恢复，移除固定前导布局
+
+- ResolveFunctionSyntax 不再依赖 ProveRestPrologue 的固定复制数量/位置/寄存器
+  排列。新 ProveRestOwnership 检查 owner argument window、独立 allocation、
+  原 CFG 前驱效果/重复执行、physical tail 输入写入、SSA transport 的可观察
+  使用。资源/工作超限类型化返回，未根据样本或局部序列扩大白名单。
+- [审计替换进度](shape-restrictions-audit.md) 标明本项覆盖 normal ValueIR；
+  legacy writer/FindRestLocal/专用派生构造器的旧模板尚未全部替换。原语义
+  义务保留：额外数组、GETUNMAPPEDARGS 和原始 scalar argument 不能当同一rest。
+- 三既有动态profile、prototype/static 的实际文件内函数族覆盖 copy重排、NOP
+  和rest暂存local改变，48 complete families /24 protocol refusals原生对照通过。
+  /tmp/abcd-rest-origin-native.log。额外0/1/200/201 NOP、physical scalar使用、
+  先前observable效果和精确资源/工作预算通过。
+- -j4生产和相关目标最终构建退出0，/tmp/abcd-rest-origin-final-build.log。
+  6/6相关回归4.60秒通过，/tmp/abcd-rest-origin-tests.log。规则revision67。
+- fresh build/stage-one/value-rest-origin-pass-1 五输入退出0，仍78 complete /
+  9 incomplete /19 failure /46 no-module；完整源码逐字未变，无legacy。
+  /tmp/abcd-rest-origin-final-batch.log、final-batch-summary.json。signature来源
+  扩展不代表remaining constructor/数值/其他body缺口已解决。
+- Goal active；阶段一与object creaters原范围不变。full-suite/扩展语料/RSS/
+  基准/DFX/定期审视保持暂停，工程计费不作为整进程峰值证明。
+
 ### 2026-10-03：删除引用同块门槛与快照 producer 白名单，两真实 record 出稿
 
 - CallPlan 删除 property/call 同块及手工 cross-flow 分类；共同 EvaluationPlan

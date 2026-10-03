@@ -73,3 +73,21 @@ comparison/branch 的局部候选范围，未宣称完整替换所有 snapshot/C
 incomplete；原 callee-before-JSON.stringify 的调用已恢复。测试覆盖返回对象/
 primitive/nullish、getter/方法改写、receiver、抛出值及连续1/2/200/201表达式。
 七类审计事项仍有开放项，后续不能再靠枚举局部模板扩大接受范围。
+
+## 规则 67：ValueTree rest 来源证明
+
+共同语法解析不再调用固定 MOV/COPYRESTARGS/STA ProveRestPrologue 模板。
+新 ProveRestOwnership 从当前已验证 ValueProgram、原 body 和 owner frame 出发：
+定位独立 rest allocation；反向 CFG reachability 检查前驱效果和重复执行；原
+instruction correspondence 检查隐式 physical argument 输入没有被提前覆盖；
+SSA def-use worklist 检查原始最后声明参数只能做透明 transport，不能变成
+native rest array 的可观察标量使用。GETUNMAPPEDARGS 仍是独立快照。
+
+重排 ABI copy、NOP、改变 rest 暂存局部位置都不需要新生产匹配分支。文件内
+真实 method/family 经过共同签名、AST、ABI 和 printer，48 complete families /
+24 rejected protocol cases 的原生对照通过。200/201 NOP 与资源/工作预算测试
+验证这个来源机制。
+
+当前接口处理 normal ValueIR。旧 legacy semantic writer、FindRestLocal 和
+spread/forwarding constructor 专用分析仍含旧模板；此项未宣称已删完。
+完整 CFG 的异常 rest 和派生构造器状态分析继续沿用本审计的通用替换要求。

@@ -1,4 +1,5 @@
 #include "syntax_resolution.h"
+#include "rest_ownership.h"
 
 #include <limits>
 #include <new>
@@ -111,13 +112,16 @@ std::variant<ResolvedSyntax, SyntaxResolutionFailure> ResolveFunctionSyntax(
       rest_argument = rest->first_argument;
     }
     if (rest_argument) {
-      // OH7 CompileParameters/CopyRestArgs and RuntimeCopyRestArgs: move only
-      // a single allocation across pure entry copies. Independent copies,
-      // hidden arguments snapshots and original physical-slot reads cannot
-      // refer to the same native rest binding. Retain that refusal here.
-      step(body.instructions.size());
-      const auto prologue = analysis::ProveRestPrologue(body, frame, *rest_argument);
-      Require(prologue.has_value(), Error::kParameters);
+      // Hoist only an allocation owned by this argument frame. CFG effects
+      // and SSA origins establish this; compiler copy order and local numbers
+      // do not define native rest. Independent arrays/scalar slots stay distinct.
+      const auto ownership = ProveRestOwnership(graph, body, frame, *rest_argument, {bytes, work});
+      if (const auto* error = std::get_if<RestOwnershipError>(&ownership)) {
+        if (*error == RestOwnershipError::kResourceLimit) throw Error::kResourceLimit;
+        if (*error == RestOwnershipError::kWorkLimit) throw Error::kWorkLimit;
+        throw Error::kParameters;
+      }
+      const auto& proof = std::get<RestOwnership>(ownership); admit(proof.allocated_bytes, 1); step(proof.work);
       syntax.parameters[*rest_argument].rest = true;
     }
     if (file.CheckUnchanged()) return SyntaxResolutionFailure{abc::MetadataError::kFileChanged};

@@ -3,7 +3,7 @@ import {execFileSync} from 'node:child_process';
 
 const fixtures = execFileSync(process.argv[2], ['--rest-json'],
   {encoding: 'utf8', timeout: 60_000}).trim().split('\n').map(JSON.parse);
-assert.equal(fixtures.length, 30);
+assert.equal(fixtures.length, 48);
 for (const fixture of fixtures) {
   assert.ok(!fixture.source.includes('INCOMPLETE'));
   const text = `export class Recovered { ${fixture.source} }`;
