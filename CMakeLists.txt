@@ -1239,6 +1239,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/defined_async_method.mjs $<TARGET_FILE:class_accessor_tree_test>)
     add_test(NAME class_accessor_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/class_accessor_tree.mjs $<TARGET_FILE:class_accessor_tree_test>)
+    add_test(NAME class_member_omissions_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/class_member_omissions.mjs $<TARGET_FILE:class_accessor_tree_test>)
     add_test(NAME array_constants_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/array_constants.mjs $<TARGET_FILE:array_constants_test>)
     add_test(NAME literal_buffer_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
@@ -1304,6 +1306,12 @@ if(BUILD_TESTING)
         ${ABCD_PAIRED_CORPUS_ROOT}/pasteboard)
     endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
+      if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/minigame/src/main/ets/view/Content.ts")
+        add_test(NAME class_family_gap_paired_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/class_family_gap_paired.mjs $<TARGET_FILE:abc_semantic>
+          ${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc
+          ${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/minigame/src/main/ets/view/Content.ts)
+      endif()
       if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc" AND
          EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
         add_test(NAME viewmodel_batch_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules

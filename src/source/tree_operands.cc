@@ -75,19 +75,30 @@ class OperandCheck {
       const auto found = std::lower_bound(members.begin(), members.end(), definition_site.definition,
           [&](const auto& member, auto id) { budget_.Step(); return member.site.definition < id; });
       RequireMeaning(found != members.end() && found->site == definition_site, Error::kConstant);
-      const auto check = [&](const PreparedFamily& family, analysis::OpId method_id, abc::ClassMethodKind kind) {
-        budget_.Step(); const auto* site = family.DefinedMemberCreation();
+      const auto check = [&](const ClassDefinedMember* site, const RouteInputIdentity& identity,
+          analysis::OpId method_id, abc::ClassMethodKind kind) {
+        budget_.Step();
         const auto* method = std::get_if<analysis::ValueFunctionCreation>(&graph_.ops[method_id.value].operation);
-        RequireMeaning(site && method && family.Identity() == tree_.identity &&
+        RequireMeaning(site && method && identity == tree_.identity &&
             site->function.creator == tree_.method && site->definition == definition_site.definition && site->kind == kind &&
             site->function.pc == graph_.origins[graph_.ops[method_id.value].origin.value].pc &&
             site->function.creation.method == method->method, Error::kConstant);
       };
       const auto methods = definition_site.Methods();
       for (std::size_t i = 0; i < methods.size(); ++i) {
+        const auto& omitted = found->omissions[i];
+        RequireMeaning(!(found->bodies[i] && omitted), Error::kConstant);
         RequireMeaning((*definition)->constructor ?
-            found->bodies[i].has_value() == methods[i].operation.has_value() : !found->bodies[i], Error::kConstant);
-        if (found->bodies[i]) check(*found->bodies[i], *methods[i].operation, methods[i].kind);
+            (found->bodies[i].has_value() || omitted.has_value()) == methods[i].operation.has_value() :
+            !found->bodies[i] && !omitted, Error::kConstant);
+        if (found->bodies[i]) check(found->bodies[i]->DefinedMemberCreation(), found->bodies[i]->Identity(),
+            *methods[i].operation, methods[i].kind);
+        if (omitted) {
+          // Recheck the original definition occurrence even for a marked gap.
+          // Its context grants no internal body/closure/ABI proof.
+          RequireMeaning(omitted->InputGap(), Error::kConstant);
+          check(omitted->context.DefinedMember(), omitted->context.Identity(), *methods[i].operation, methods[i].kind);
+        }
       }
     }
     std::size_t next_function = 0;

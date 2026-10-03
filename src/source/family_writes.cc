@@ -202,7 +202,8 @@ class WriteCheck {
           Step();
           if (!methods[k].operation) continue;
           const auto operation = *methods[k].operation;
-          Require(operation.value < owners.size() && !owners[operation.value] && member.bodies[k], Error::kCoverage);
+          Require(operation.value < owners.size() && !owners[operation.value] &&
+              (member.bodies[k] || member.omissions[k]), Error::kCoverage);
           owners[operation.value] = creation;
         }
       }

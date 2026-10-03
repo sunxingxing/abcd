@@ -20,7 +20,7 @@ void Check(bool ok, const std::source_location& at = std::source_location::curre
 }
 std::string Recover(bool is_static, bool return_prototype = false, int ordinary_parity = -1,
     bool async_method = false, abc::ProfileId profile = abc::ProfileId::kDynamic1206,
-    bool capture_cells = false, bool initialized = true) {
+    bool capture_cells = false, bool initialized = true, bool input_gap = false) {
   constexpr std::uint32_t kPool = 64, kOwner = 128, kLiteral = 160,
       kCreator = 256, kConstructor = 300, kGetter = 340, kSetter = 380,
       kBufferMethod = 420, kBufferCode = 864, kNestedMethod = 460, kNestedCode = 1000,
@@ -117,6 +117,10 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   index.methods[3].code = body(kSetterCode, 1, 4, {opcode(abc::Opcode::kLDTHIS),
       opcode(abc::Opcode::kSTA_V8), 0, opcode(abc::Opcode::kLDA_V8), 4,
       opcode(abc::Opcode::kSTOBJBYNAME_IMM8_ID16_V8), 0, 6, 0, 0, opcode(abc::Opcode::kRETURNUNDEFINED)});
+  if (input_gap) index.methods[2].code = body(kGetterCode, 1, 3, {
+      opcode(abc::Opcode::kLDTHIS), opcode(abc::Opcode::kSTA_V8), 0,
+      opcode(abc::Opcode::kLDTHIS), opcode(abc::Opcode::kADD2_IMM8_V8), 0, 0,
+      opcode(abc::Opcode::kSTA_V8), 0, opcode(abc::Opcode::kRETURN)});
   if (capture_cells) {
     const std::vector<std::uint8_t> captured{opcode(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0, opcode(abc::Opcode::kRETURN)};
     index.methods[4].name = "shared"; index.methods[4].name_utf16_length = 6;
@@ -473,9 +477,38 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
     Check(std::get<ClassContextError>(context.error) == ClassContextError::kKind);
     Check(unlink(path) == 0); return {};
   }
+  if (input_gap) {
+    Check(std::holds_alternative<ClassTreeFailure>(built));
+    built = BuildClassTree(file, header, index, lookup, roles, functions, classes, creator,
+        definitions.front().creation, identity, &globals, {}, nullptr, definitions, RecoveryMode::kAllowPartial, {37});
+  }
   if (const auto* error = std::get_if<ClassTreeFailure>(&built)) std::cerr << "class failure " << error->index() << '\n';
   Check(std::holds_alternative<ClassTree>(built));
   *definition = std::get<ClassTree>(std::move(built));
+  Check(definition->DraftPrepared() && definition->BodiesPrepared() != input_gap);
+  if (input_gap) {
+    Check(definition->definitions[0].omissions[0] && definition->definitions[2].omissions[0]);
+    Check(!definition->definitions[0].bodies[0] && !definition->definitions[2].bodies[0]);
+    auto gap = std::move(definition->definitions[0].omissions[0]);
+    definition->definitions[0].omissions[0].reset();
+    Check(!definition->DraftPrepared());
+    Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(graph, control, evaluation, syntax, constants.View())));
+    definition->definitions[0].omissions[0] = std::move(gap);
+    auto& omission = *definition->definitions[0].omissions[0];
+    ++omission.root.value;
+    Check(!definition->DraftPrepared());
+    Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(graph, control, evaluation, syntax, constants.View())));
+    --omission.root.value;
+    auto conflict = std::move(definition->definitions[1].bodies[1]);
+    definition->definitions[1].bodies[1].reset();
+    definition->definitions[0].bodies[0] = std::move(conflict);
+    Check(!definition->DraftPrepared());
+    Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(graph, control, evaluation, syntax, constants.View())));
+    definition->definitions[1].bodies[1] = std::move(definition->definitions[0].bodies[0]);
+    definition->definitions[0].bodies[0].reset();
+    Check(definition->DraftPrepared());
+    Check(std::holds_alternative<ConstructedFunction>(BuildFunctionTree(graph, control, evaluation, syntax, constants.View())));
+  }
   // All source occurrences reserve disjoint owners, including phase members.
   // Parent owner zero is never reused for a class root or its descendants.
   std::uint32_t next_owner = 37;
@@ -509,7 +542,8 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   std::ostringstream output;
   auto printed = PrintFunctionTree(std::get<ConstructedFunction>(tree).tree, output, {}, {}, &globals);
   Check(std::holds_alternative<PrintedFunction>(printed));
-  Check(std::get<PrintedFunction>(printed).class_members.size() == 5);
+  Check(std::get<PrintedFunction>(printed).class_members.size() == (input_gap ? 3 : 5));
+  Check(std::get<PrintedFunction>(printed).incomplete == input_gap);
   const auto read_family = [&] {
     return std::get<FileFamily>(ReadFunctionFamily(file, header, index, lookup, roles, functions, {0}, identity,
         {}, nullptr, nullptr, {}, FamilyClassMode::kRetainRoot));
@@ -527,11 +561,19 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   std::ostringstream module;
   auto module_print = PrintModuleFamilyDraft(std::get<ConstructedFamily>(composed), module, {}, {}, &globals);
   Check(std::holds_alternative<PrintedFamilyDraft>(module_print));
-  Check(std::get<PrintedFamilyDraft>(module_print).members[0].class_members.size() == 5);
+  Check(std::get<PrintedFamilyDraft>(module_print).members[0].class_members.size() == (input_gap ? 3 : 5));
+  Check(std::get<PrintedFamilyDraft>(module_print).members[0].incomplete == input_gap);
   Check(unlink(path) == 0); return output.str();
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--partial-json") {
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const bool is_static : {false, true})
+        std::cout << nlohmann::json{{"source", Recover(is_static, false, -1, false, profile, false, true, true)},
+            {"static", is_static}, {"incomplete", true}}.dump() << '\n';
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--capture-json") {
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
       for (const bool is_static : {false, true})
@@ -548,6 +590,7 @@ int main(int argc, char** argv) {
       std::string_view(argv[1]) == "--method-last" ? 1 : std::string_view(argv[1]) == "--accessor-last" ? 0 : -1); return 0; }
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
     for (const bool is_static : {false, true}) {
+      Recover(is_static, false, -1, false, profile, false, true, true);
       Recover(is_static, false, -1, false, profile, true);
       Recover(is_static, false, -1, false, profile, true, false);
       Recover(is_static, false, 1, true, profile);

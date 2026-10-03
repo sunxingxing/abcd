@@ -1168,10 +1168,12 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
           if (member && member->Family().root_capture) return Failure::kUnsupportedContext;
     }
     PrintedClassTree result;
+    bool member_gaps = !tree.omissions.empty();
     auto count = tree.members.size() + 1;
     for (const auto& accessor : tree.definitions) {
       if (!budget.work) return Failure::kWorkLimit;
       --budget.work; count += accessor.bodies[0].has_value() + accessor.bodies[1].has_value();
+      member_gaps |= accessor.omissions[0].has_value() || accessor.omissions[1].has_value();
     }
     if (count > budget.bytes / sizeof(PrintedClassTree::Member)) return Failure::kResourceLimit;
     budget.bytes -= count * sizeof(PrintedClassTree::Member); result.members.reserve(count);
@@ -1220,10 +1222,20 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
     // Computed-property NamedEvaluation preserves runtime class.name without
     // inventing an immutable class-name binding that shadows a mutable module
     // export read inside a method. The wrapper is never exposed to user code.
-    if (!tree.omissions.empty()) append("/* INCOMPLETE class: unrecovered members */\n");
+    if (member_gaps) append("/* INCOMPLETE class: unrecovered members */\n");
     if (form == ClassPrintForm::kExpression) { append("({["); name(); append("]: class {\n"); }
     else append(" {\n");
     member(*tree.constructor);
+    const auto omitted_member = [&](const ClassMemberOmission& omitted) {
+      append("; method "); number(omitted.context.Target().value);
+      append("; failed method "); number(omitted.method.value);
+      if (omitted.parent) {
+        append("; parent "); number(omitted.parent->value);
+        append("; creation PC "); number(omitted.creation_pc->value);
+      }
+      append("; input proof PC "); number(omitted.Pc().value);
+      append(" */\n"); result.incomplete = true;
+    };
     std::size_t gap = 0;
     for (std::size_t i = 0; i < tree.members.size(); ++i) {
       if (!tree.members[i]) {
@@ -1232,9 +1244,7 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
         // body/signature, user-controlled comment text or source span is faked.
         for (std::size_t level = 0; level <= indent; ++level) append("  ");
         append("/* UNRECOVERED class member "); number(i);
-        append("; method "); number(omitted.context.Target().value);
-        append("; input proof PC "); number(omitted.Pc().value);
-        append(" */\n"); result.incomplete = true;
+        omitted_member(omitted);
         continue;
       }
       const auto& family = *tree.members[i]; const auto* site = family.ClassCreation();
@@ -1257,8 +1267,13 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
       };
       const auto methods = accessor.site.Methods();
       for (std::size_t i = 0; i < methods.size(); ++i) {
-        if (accessor.bodies[i].has_value() != methods[i].operation.has_value()) throw Failure::kUnsupportedContext;
         if (accessor.bodies[i]) emit_member(*accessor.bodies[i], methods[i].kind);
+        else if (accessor.omissions[i]) {
+          for (std::size_t level = 0; level <= indent; ++level) append("  ");
+          append("/* UNRECOVERED class definition "); number(accessor.site.definition.value);
+          append("; slot "); number(i);
+          omitted_member(*accessor.omissions[i]);
+        }
       }
     }
     if (tree.initializer) {

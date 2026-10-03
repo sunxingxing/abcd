@@ -16,25 +16,33 @@ struct ClassStaticFields {
   FunctionTree tree;
   abc::EntityOffset record;
 };
-struct ClassDefinitionTree {
-  ClassDefinitionSite site;
-  std::array<std::optional<PreparedFamily>, 2> bodies;
-};
-// An actual member occurrence whose original input proof failed before
-// family discovery. No FunctionTree, executable body or source receipt exists.
+// Original input failure at a real root or descendant creation occurrence.
+// The entire containing class member is omitted; a nested callback never gets
+// a fabricated FunctionTree/body/signature or source receipt.
 struct ClassMemberOmission {
   ClassTreeContext context;
   std::variant<analysis::SemanticProofFailure, analysis::ExceptionInputFailure> failure;
+  abc::EntityOffset root;
+  abc::EntityOffset method;
+  std::optional<abc::EntityOffset> parent;
+  std::optional<abc::CodeOffset> creation_pc;
   [[nodiscard]] abc::CodeOffset Pc() const {
     return std::visit([](const auto& proof) {return proof.pc;}, failure);
   }
   [[nodiscard]] bool InputGap() const {
+    if (root != context.Target() || parent.has_value() != creation_pc.has_value() ||
+        (!parent && method != root)) return false;
     return std::visit([](const auto& proof) {
       if constexpr (std::is_same_v<std::decay_t<decltype(proof)>, analysis::ExceptionInputFailure>)
         return proof.kind == analysis::ExceptionInputError::kInternalValue && proof.node && proof.value;
       else return proof.kind == analysis::SemanticProofError::kInternalValue;
     }, failure);
   }
+};
+struct ClassDefinitionTree {
+  ClassDefinitionSite site;
+  std::array<std::optional<PreparedFamily>, 2> bodies;
+  std::array<std::optional<ClassMemberOmission>, 2> omissions;
 };
 struct ClassTree {
   RouteInputIdentity identity;

@@ -85,6 +85,10 @@ struct FamilyFileFailure {
   std::optional<abc::EntityOffset> method;
   std::optional<abc::EntityOffset> parent;
   std::optional<abc::CodeOffset> creation_pc;
+  // Requested root, retained while method/parent follow actual DFS occurrences.
+  // This binds a descendant input refusal to its containing family; it grants
+  // neither a child body nor permission to ignore other failure categories.
+  std::optional<abc::EntityOffset> root;
 };
 // Reads the complete supported creation family, using an explicit DFS stack
 // and active-method index. No C++ recursion, per-edge metadata scan, guessed

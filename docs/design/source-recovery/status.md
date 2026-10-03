@@ -1,6 +1,6 @@
 # 项目进展与设计审查
 
-更新时间：2026-10-03。设计基线见 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md)。
+更新时间：2026-10-04。设计基线见 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md)。
 本页是当前状态入口；[progress.md](progress.md) 保留历史证据，不覆盖本页结论。
 
 ## 更新规则
@@ -11,6 +11,47 @@
 - 不按文件数、提交数或接口数量宣布完成；必须以原计划的端到端验收为准。
 
 ## 当前阶段
+
+### 2026-10-04：成员函数族输入失败保留独立类成员，统一定义成员缺口
+
+- FamilyReader 在读取根输入前记录请求的 root，DFS 中继续保留真实失败
+  method、parent、creation PC。ClassMemberOmission 复用这份来源，将根或
+  任意深度后代的原始 InternalValue 输入失败标记为整个所属成员未恢复。
+  不造 callback body/signature，不把资源、损坏输入、捕获或后续树证明失败
+  转成缺口。正常与异常相位复用同一机制，没有按样本、PC、opcode序列或
+  嵌套深度分派；构造器及静态初始化器规则未放宽。规则revision70。
+- DEFINEMETHOD 的普通成员、getter/setter 与 class buffer 成员共用缺口表示。
+  父树逐个核对原定义、identity、kind及实际创建PC；family writes 只证明
+  原 class 创建屏障，不授予缺失函数族的内部写入/ABI/source证据。
+  BodiesPrepared 对所有缺口返回false，打印与record均保留 incomplete。
+- 根输入、1/2/3层真实嵌套、三动态profile、普通/异常输入、literal/defined
+  成员、200/201 occurrence验证通过。缺失/错误root、缺失缺口、body与
+  omission冲突、父创建来源不完整、损坏寄存器、内存/工作预算负例保留。
+  accessor测试另核对父树与record-family整条组合路径及不完整状态传递。
+- -j4生产及相关目标构建退出0，/tmp/abcd-member-family-gap-final-build.log；
+  13/13定向回归6.98秒通过，/tmp/abcd-member-family-gap-final-tests.log。
+  84个独立retained setter场景与486个Content方法/callback配对场景通过；
+  配对TS仅进入测试，引擎只读取ABC。/tmp/abcd-member-family-gap-paired.log。
+  未运行遗漏initialRender、UI平台或整个record/constructor的语义验收。
+- fresh build/stage-one/value-member-family-gap-pass-3 五输入退出0，78 complete /
+  26 incomplete /2 failure /46 no-module。15个整record failure→incomplete，
+  新保留Content(2245字节)、CommonView(20203字节)及其他独立成员；原78份
+  complete源码逐字未变，无legacy。final-batch.log、final-batch-summary.json
+  位于/tmp/abcd-member-family-gap-前缀下；15份新部分模块仅语法解析通过，
+  /tmp/abcd-member-family-gap-syntax.log，不等于执行或完整语义验收。
+- 剩余整record failure为Immersive 8917/9308；两个constructor 9167/9544
+  的PC12均为callruntime.supercallforwardallargs，FamilyReader明确报告
+  SemanticFailure::kUnsupportedInstruction。LiftSuperInstruction已有typed
+  SuperForward，共同SemanticInstruction/ValueIR尚未接入。证据为
+  /tmp/abcd-member-family-gap-next-root-failure.log和next-*-constructor.json。
+  pinned runtime_stubs-inl.h::RuntimeSuperCallForwardAllArgs检查IsConstructor，
+  从原调用frame直接转发全部参数；不能混同JSFunction限制的super spread，
+  也不能用ProveForwardingDerivedConstructor的直线状态序列补一个样本。
+  下一项需在共同frame/SSA/this状态模型保留直接转发与可观察参数修改。
+  数值/tag输入、派生super spread与遗漏函数体缺口继续开放。缺口注释包含
+  所属成员、实际失败method及parent/creation PC，不能以failure数量下降
+  冒充body覆盖率提升。Goal active，阶段一/object creaters原范围未完成。
+  full-suite/扩展语料/RSS/基准/DFX/定期审视保持暂停。
 
 ### 2026-10-03：异常选择转发保留值，原始 phi 边归属与不变表达式贯通
 

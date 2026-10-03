@@ -31,6 +31,7 @@ class FamilyReader {
     result_.first_owner = first_owner;
     Require(root.value < index_.methods.size(), Error::kMethod);
     method_ = index_.methods[root.value].offset;
+    root_ = method_;
     Admit(1, sizeof(FamilyReader));
     Grow(active_, index_.methods.size()); Step(index_.methods.size());
     active_.resize(index_.methods.size());
@@ -247,7 +248,7 @@ class FamilyReader {
     }
   }
   template <class T> [[noreturn]] void Fail(T cause) const {
-    throw FamilyFileFailure{std::move(cause), method_, parent_, pc_};
+    throw FamilyFileFailure{std::move(cause), method_, parent_, pc_, root_};
   }
   void Require(bool condition, Error error) const { if (!condition) Fail(error); }
   void Step(std::uint64_t count = 1) {
@@ -377,6 +378,7 @@ class FamilyReader {
   std::vector<FamilyCursor> stack_;
   std::vector<std::uint8_t> active_;
   std::optional<abc::EntityOffset> method_;
+  std::optional<abc::EntityOffset> root_;
   std::optional<abc::EntityOffset> parent_;
   std::optional<abc::CodeOffset> pc_;
 };
