@@ -1146,6 +1146,8 @@ if(BUILD_TESTING)
   if(ABCD_NODE_EXECUTABLE)
     add_test(NAME selection_module_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/selection_module.mjs $<TARGET_FILE:selection_module_test>)
+    add_test(NAME phased_decision_module_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_module.mjs $<TARGET_FILE:selection_module_test> --phased)
     add_test(NAME decision_module_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_module.mjs $<TARGET_FILE:selection_module_test>)
     add_test(NAME decision_prefix_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
@@ -1466,6 +1468,12 @@ if(BUILD_TESTING)
       $<TARGET_FILE:computed_store_fixture>)
   endif()
   if(ABCD_NODE_EXECUTABLE AND ABCD_BUILD_TOOLS)
+    if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/modules.abc" AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/src/entry/src/main/ets/service/VoipCallService.ts")
+      add_test(NAME voip_service_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/voip_service.mjs $<TARGET_FILE:abc_semantic>
+        ${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts)
+    endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc" AND
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/shopping/src/main/ets/view/Home.ts")
       add_test(NAME home_decision_prefix_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules

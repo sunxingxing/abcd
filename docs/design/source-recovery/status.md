@@ -12,6 +12,34 @@
 
 ## 当前阶段
 
+### 2026-10-03：异常短路条件中的模块 guard 归属贯通
+
+- 方法12319拒绝已定位到 EmitDecisionBlock：kModuleGuard 被错误地要求作为
+  独立求值根。生成器及独立 TreeFlow 校验现复用已有精确 module read/guard
+  共享 ExprId，只登记原PC归属，不重复读取 live binding；两个原始 throwing
+  site 的 scope 与 catch-copy 检查均保留，不放宽模块绑定或TDZ前提。
+- 新真实字节码三profile用例覆盖 AND/OR、直接模块值/属性读取、1/2/200/201
+  重复条件和真try/catch。伪造guard缺失、错误AST归属继续拒绝；源实现前
+  已复现 kOwnership，校验器对应缺口同步修正。
+- 新增 phased 模式独立对照7248组短路/副作用/TDZ场景，并检查异常必须由
+  原catch返回，不能用外抛冒充。普通模式同一对照继续保留。
+- VoipCallService record11989首次 source_complete=true，经共同模块/类/
+  async/闭包路径输出。独立读取配对TS、strip types后，用宿主stub对照300组
+  场景：主消息处理、各事件、回调、关闭、同步抛错、Promise拒绝、call参数
+  own字段属性与pixel对象身份。非HarmonyOS运行证据，非完整应用验收。
+- fresh build/stage-one/value-phased-decision-pass-1 五输入均退出0：
+  78 complete /5 incomplete /23 failure /46 no-module；唯一新增11989，
+  无完整项回退、既有完整源码变化或legacy。日志
+  /tmp/abcd-phased-decision-final-batch.log 与
+  /tmp/abcd-phased-decision-final-batch-summary.json。
+- 相关targets -j4构建退出0，10/10回归通过52.71秒；日志
+  /tmp/abcd-phased-decision-related-build.log 与
+  /tmp/abcd-phased-decision-related-tests.log。
+- 表示质量仍未通过最终验收：该record保留原生class、static async、await与
+  try/catch，但字段初始化/可选链/条件值仍有多个phi及快照临时变量，switch
+  显示为条件链。后续沿共同phased表达式恢复改进，不用配对源码修饰输出。
+  full-suite/扩展语料/RSS继续暂缓，Goal active。
+
 ### 2026-10-03：异常图跨分支的分步对象构造
 
 - LiteralPlan 复用既有 kStatements/共同 AST，在 phased CFG 中允许缓冲对象

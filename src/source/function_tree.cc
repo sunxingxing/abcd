@@ -859,7 +859,11 @@ class TreeBuilder {
       }
       const auto expression = forest_.operations[id.value];
       Require(expression.has_value(), Error::kOwnership);
-      if (placement.kind != EvaluationKind::kInline) {
+      // Module read and TDZ guard share the verified read expression. Its
+      // root is already scheduled in this RHS; recording the guard must not
+      // evaluate the live binding twice. Scope/catch-copy checks above still
+      // apply to both original throwing sites.
+      if (placement.kind != EvaluationKind::kInline && placement.kind != EvaluationKind::kModuleGuard) {
         const auto shape = DescribeEvaluation(op.operation);
         Require(exceptions_ && placement.kind == EvaluationKind::kRoot && shape && shape->expression &&
             !forest_.module_initializations[id.value] && !IsReceiverGuard(tree_, id) &&

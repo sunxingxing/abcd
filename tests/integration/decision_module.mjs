@@ -2,19 +2,20 @@ import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import vm from 'node:vm';
 
-const [tool] = process.argv.slice(2);
+const [tool, mode] = process.argv.slice(2);
+const phased = mode === "--phased";
 const failure = {}, token = {};
 const hostile = {[Symbol.toPrimitive]() { assert.fail('truthiness must not coerce'); }};
 const values = [undefined, null, false, -0, NaN, 1, 2n, Symbol('value'), token, hostile];
 let scenarios = 0;
 for (const conjunction of [false, true]) for (const direct of [false, true]) for (const count of [1, 2]) {
-  const option = `--decision-${conjunction ? 'and' : 'or'}-${direct ? 'direct-' : ''}source`;
+  const option = `--${phased ? "phased-" : ""}decision-${conjunction ? 'and' : 'or'}-${direct ? 'direct-' : ''}source`;
   const source = execFileSync(tool, [option, ...(count === 2 ? ['--twice'] : [])], {encoding: 'utf8'});
   assert.ok(source.includes('if (') && !source.includes('INCOMPLETE'));
   const condition = `value.probe ${conjunction ? '&&' : '||'} imported${direct ? '' : '.option'}`;
-  const oracle = `(function(value) { for (let i = 0; i < ${count}; ++i) {
+  const oracle = `(function(value) { ${phased ? "try {" : ""} for (let i = 0; i < ${count}; ++i) {
     if (${condition}) value.method(); else value.other();
-  } })`;
+  } ${phased ? "} catch (error) { return error; }" : ""} })`;
   const pair = vm.runInNewContext(`(() => { let imported; return {
     generated: ${source}, oracle: ${oracle}, set(value) { imported = value; }
   }; })()`);
@@ -33,8 +34,10 @@ for (const conjunction of [false, true]) for (const direct of [false, true]) for
         event('other'); return function() { assert.equal(this, value); event('no'); return token; };
       }
     };
-    try { assert.equal(fn(value), undefined); events.push('return'); }
+    let returned = false;
+    try { const result = fn(value); returned = true; if (phased && result !== undefined) throw result; assert.equal(result, undefined); events.push('return'); }
     catch (error) {
+      if (phased) assert.ok(returned, 'the bytecode catch must return the thrown value');
       if (error === failure) events.push('sentinel');
       else if (missing && !direct && error.name === 'TypeError') events.push('TypeError');
       else throw error;
@@ -54,9 +57,9 @@ for (const conjunction of [false, true]) for (const direct of [false, true]) for
   const tdz = vm.runInNewContext(`(() => {
     const functions = [${source}, ${oracle}], results = [];
     for (const fn of functions) for (const probe of [false, true]) {
-      const events = [];
-      try { fn({probe, method() { events.push('yes'); }, other() { events.push('no'); }}); }
-      catch (error) { events.push(error.name); }
+      const events = []; let returned = false;
+      try { const result = fn({probe, method() { events.push('yes'); }, other() { events.push('no'); }}); returned = true; if (result !== undefined) throw result; }
+      catch (error) { if (${phased} && !returned) throw error; events.push(error.name); }
       results.push(events);
     }
     let imported; return results;

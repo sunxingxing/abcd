@@ -1,4 +1,8 @@
 #include "../../src/source/function_values.h"
+#include "../../src/analysis/phased_value_import.h"
+#include "../../src/source/exception_tree.h"
+#include "../../src/source/module_guards.h"
+#include "abcd/analysis/exception_modules.h"
 #include "../../src/source/function_tree.h"
 #include "../../src/source/tree_semantics.h"
 #include "../../src/source/call_plan.h"
@@ -18,7 +22,7 @@ enum class Selection { kConditional, kAnd, kOr, kDecisionAnd, kDecisionOr };
 bool Decision(Selection selection) {
   return selection == Selection::kDecisionAnd || selection == Selection::kDecisionOr;
 }
-abc::MethodBody DecisionBody(unsigned count, bool direct, Selection selection) {
+abc::MethodBody DecisionBody(unsigned count, bool direct, Selection selection, bool caught = false) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   constexpr auto kGuard = abc::Opcode::kTHROW_UNDEFINEDIFHOLEWITHNAME_PREF_ID16;
   const bool conjunction = selection == Selection::kDecisionAnd;
@@ -49,7 +53,15 @@ abc::MethodBody DecisionBody(unsigned count, bool direct, Selection selection) {
     bytes[jump + 1] = static_cast<std::uint8_t>(bytes.size() - jump);
   }
   bytes.push_back(op(abc::Opcode::kRETURNUNDEFINED));
-  return test::Body(bytes);
+  const auto handler_pc = static_cast<std::uint32_t>(bytes.size());
+  if (caught) bytes.push_back(op(abc::Opcode::kRETURN));
+  auto body = test::Body(bytes);
+  if (caught) {
+    abc::TryRegion region; region.offset = {0}; region.length = handler_pc; region.handler_count = 1;
+    abc::CatchHandler handler; handler.offset = {handler_pc}; handler.length = 1;
+    body.tries.push_back(region); body.handlers.push_back(handler);
+  }
+  return body;
 }
 abc::MethodBody Body(unsigned count, bool direct, bool barrier, Selection selection) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
@@ -157,13 +169,84 @@ void Run(unsigned count, bool direct, bool print, bool barrier = false,
   test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, output)));
   if (print) std::cout << output.str();
 }
+
+void RunPhased(unsigned count, bool direct, bool print, Selection selection,
+    abc::ProfileId profile = abc::ProfileId::kDynamic1206) {
+  const auto body = DecisionBody(count, direct, selection, true);
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(3, 1, {}));
+  const auto flow = std::get<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers));
+  IdfQuota quota{kDefaultSemanticWork};
+  const auto ssa = std::get<ExceptionSsa>(ExceptionSsa::Build(flow, frame.registers, quota));
+  std::vector<EntryValueFact> entries;
+  for (std::size_t i = 0; i < ssa.Values().size(); ++i) {
+    const auto& value = ssa.Values()[i];
+    const auto* reg = std::get_if<abc::RegisterId>(&value.slot);
+    if (reg && reg->value >= frame.locals && std::holds_alternative<MethodEntry>(value.origin))
+      entries.push_back({{static_cast<std::uint32_t>(i)}, ValueKinds::Language()});
+  }
+  const auto modules = std::get<ExceptionModules>(ProveExceptionModules(flow, ssa));
+  const auto env = std::get<EnvironmentFlow>(AnalyzeExceptionEnvironments(flow));
+  IdfQuota value_work{kDefaultSemanticWork};
+  const auto values = std::get<ExceptionValueFlow>(ExceptionValueFlow::Build(flow, ssa, entries,
+      value_work, {}, PendingExceptionValues::kLanguage, modules.loads));
+  const auto proof = std::get<ExceptionInputProof>(VerifyExceptionInputs(flow, ssa, env, values));
+  const PhasedValueInput input{flow, ssa, env, values, proof, frame};
+  const auto graph = std::get<ValueProgram>(ImportPhasedValues(input));
+  const auto guards = std::get<ModuleGuards>(BuildPhasedModuleGuards(input, graph));
+  std::vector<ModuleEvaluation> bindings;
+  for (const auto& pair : guards.pairs)
+    bindings.push_back({pair, std::get<ValueModuleRead>(graph.ops[pair.read.value].operation), {{7}, {0}}});
+  const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(
+      graph, {}, IncomingCells::kReject, {}, bindings));
+  const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
+  const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
+  unsigned decisions = 0;
+  for (const auto& node : control.skeleton.nodes) decisions += node.decision.has_value();
+  test::Check(decisions == count);
+  const ExceptionTreeInput context{body, input, regions, control};
+  FunctionSyntax syntax{}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+  syntax.names = {u"value", u"method", u"probe", u"option", u"other", u"imported"};
+  syntax.parameters = {{NameId{0}, NameEvidence::kDebugRange}};
+  syntax.modules = {{{{7}, {0}}, NameId{5}, ModuleAccess::kReadOnly, NameEvidence::kMetadata}};
+  std::vector<ExpressionConstant> constants(graph.ops.size());
+  for (std::size_t i = 0; i < graph.ops.size(); ++i)
+    if (const auto* read = std::get_if<ValueNamedRead>(&graph.ops[i].operation)) constants[i] = NameId{read->name.value + 1};
+  const ExpressionConstants resolved{constants, syntax.names.size(), 0};
+  const auto built = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, resolved);
+  test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
+  const auto& tree = std::get<ExceptionFunctionDraft>(built).tree;
+  test::Check(std::holds_alternative<TreeSemantics>(VerifyExceptionTreeSemantics(graph, context, evaluation, tree, resolved)));
+  const auto tree_flow = std::get<TreeFlow>(VerifyExceptionTreeFlow(graph, context, evaluation, tree));
+  for (const auto& binding : bindings) {
+    const auto read = binding.pair.read.value, guard = binding.pair.guard->value;
+    test::Check(tree_flow.expressions[read] && tree_flow.expressions[read] == tree_flow.expressions[guard]);
+  }
+  if (count == 1) {
+    auto forged = evaluation; forged.modules.front().pair.guard.reset();
+    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    auto wrong = tree;
+    const auto guard = *bindings.front().pair.guard;
+    for (auto& placement : wrong.operations) if (placement.operation == guard) placement.node = AnchorId{0};
+    test::Check(std::holds_alternative<TreeFlowError>(VerifyExceptionTreeFlow(graph, context, evaluation, wrong)));
+  }
+  if (print) {
+    std::ostringstream output;
+    test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, output)));
+    std::cout << output.str();
+  }
+}
+
 }  // namespace
 int main(int argc, char** argv) {
   if (argc == 2 || argc == 3) {
     const std::string_view option{argv[1]};
     test::Check(argc == 2 || std::string_view{argv[2]} == "--twice");
     const auto count = argc == 3 ? 2U : 1U;
-    if (option == "--source" || option == "--direct-source")
+    if (option == "--phased-decision-and-source" || option == "--phased-decision-and-direct-source")
+      RunPhased(count, option == "--phased-decision-and-direct-source", true, Selection::kDecisionAnd);
+    else if (option == "--phased-decision-or-source" || option == "--phased-decision-or-direct-source")
+      RunPhased(count, option == "--phased-decision-or-direct-source", true, Selection::kDecisionOr);
+    else if (option == "--source" || option == "--direct-source")
       Run(count, option == "--direct-source", true);
     else if (option == "--and-source" || option == "--and-direct-source")
       Run(count, option == "--and-direct-source", true, false, Selection::kAnd);
@@ -176,6 +259,10 @@ int main(int argc, char** argv) {
     else test::Check(false);
     return 0;
   }
+  for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+    for (const auto count : {1U, 2U, 200U, 201U})
+      for (const auto selection : {Selection::kDecisionAnd, Selection::kDecisionOr})
+        for (const bool direct : {false, true}) RunPhased(count, direct, false, selection, profile);
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
     for (const auto count : {1U, 2U, 200U, 201U, 402U})
       for (const auto selection : {Selection::kDecisionAnd, Selection::kDecisionOr})
