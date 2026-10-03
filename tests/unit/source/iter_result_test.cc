@@ -18,19 +18,35 @@ namespace {
 using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
+enum class Composition { kRoot, kEmptyObject, kBufferedObject, kCall, kShared };
 std::uint8_t Op(abc::Opcode code) { return static_cast<std::uint8_t>(code); }
-abc::MethodBody Body(std::uint32_t count, bool computed, bool boolean, bool caught) {
+abc::MethodBody Body(std::uint32_t count, bool computed, bool boolean, bool caught, Composition composition = Composition::kRoot) {
+  const std::uint8_t parameter = composition == Composition::kRoot ? 2 : 3;
   std::vector<std::uint8_t> code;
   for (std::uint32_t i = 0; i < count; ++i) {
-    if (computed) code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), 2,
+    if (composition == Composition::kEmptyObject || composition == Composition::kShared)
+      code.insert(code.end(), {Op(abc::Opcode::kCREATEEMPTYOBJECT), Op(abc::Opcode::kSTA_V8), 2});
+    if (composition == Composition::kBufferedObject) code.insert(code.end(),
+        {Op(abc::Opcode::kCREATEOBJECTWITHBUFFER_IMM8_ID16), 0, 0, 0, Op(abc::Opcode::kSTA_V8), 2});
+    if (composition == Composition::kCall) code.insert(code.end(),
+        {Op(abc::Opcode::kLDA_V8), 5, Op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 2, 0,
+         Op(abc::Opcode::kSTA_V8), 2});
+    if (computed) code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), parameter,
         Op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0, Op(abc::Opcode::kSTA_V8), 0,
-        Op(abc::Opcode::kLDA_V8), 2,
+        Op(abc::Opcode::kLDA_V8), parameter,
         Op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 1, 0, Op(abc::Opcode::kSTA_V8), 1});
-    else if (boolean) code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), 3,
+    else if (boolean) code.insert(code.end(), {Op(abc::Opcode::kLDA_V8), static_cast<std::uint8_t>(parameter + 1),
         Op(abc::Opcode::kISTRUE), Op(abc::Opcode::kSTA_V8), 1});
     code.insert(code.end(), {Op(abc::Opcode::kCREATEITERRESULTOBJ_V8_V8),
-        static_cast<std::uint8_t>(computed ? 0 : 2),
-        static_cast<std::uint8_t>(computed || boolean ? 1 : 3)});
+        static_cast<std::uint8_t>(computed ? 0 : parameter),
+        static_cast<std::uint8_t>(computed || boolean ? 1 : parameter + 1)});
+    if (composition == Composition::kShared) code.insert(code.end(), {Op(abc::Opcode::kSTA_V8), 0});
+    if (composition == Composition::kEmptyObject || composition == Composition::kBufferedObject || composition == Composition::kShared)
+      code.insert(code.end(), {Op(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8), 0, 2, 0, 2,
+          Op(abc::Opcode::kLDA_V8), static_cast<std::uint8_t>(composition == Composition::kShared ? 0 : 2)});
+    if (composition == Composition::kCall) code.insert(code.end(),
+        {Op(abc::Opcode::kSTA_V8), 0, Op(abc::Opcode::kLDA_V8), 2,
+         Op(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 5, 0});
   }
   code.push_back(Op(abc::Opcode::kRETURN));
   const auto handler = static_cast<std::uint32_t>(code.size());
@@ -65,9 +81,9 @@ void Admission(abc::ProfileId profile) {
   }
 }
 void Run(abc::ProfileId profile, bool phased, std::uint32_t count, bool computed,
-         bool boolean, bool print = false) {
-  const auto body = Body(count, computed, boolean, phased);
-  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(2, 2, {}));
+         bool boolean, bool print = false, Composition composition = Composition::kRoot) {
+  const auto body = Body(count, computed, boolean, phased, composition);
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(composition == Composition::kRoot ? 2 : 3, composition == Composition::kCall ? 3 : 2, {}));
   ValueProgram graph;
   std::optional<ExceptionFlow> phases;
   std::optional<ExceptionSsa> ssa;
@@ -112,18 +128,38 @@ void Run(abc::ProfileId profile, bool phased, std::uint32_t count, bool computed
   }
   test::Check(creations.size() == count);
   const auto scheduled = phased ? BuildPhasedEvaluationPlan(graph) : BuildEvaluationPlan(graph);
+  if (composition == Composition::kShared) {
+    test::Check(std::holds_alternative<EvaluationError>(scheduled)); return;
+  }
   test::Check(std::holds_alternative<EvaluationPlan>(scheduled));
   const auto evaluation = std::get<EvaluationPlan>(scheduled);
+  if (composition == Composition::kEmptyObject || composition == Composition::kBufferedObject) {
+    test::Check(evaluation.literals.has_value());
+    for (const auto creation : creations) {
+      test::Check(evaluation.literals->nested[creation.value].has_value());
+      if (count <= 2) {
+        auto wrong = evaluation; wrong.literals->nested[creation.value].reset();
+        const auto checked = phased ? VerifyPhasedEvaluationPlan(graph, wrong) : VerifyEvaluationPlan(graph, wrong);
+        test::Check(std::holds_alternative<EvaluationError>(checked));
+      }
+    }
+  }
   FunctionSyntax syntax{}; syntax.identity.profile = profile; syntax.method = {100};
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
-  syntax.names = {u"value", u"done", u"input", u"flag"};
+  syntax.names = {u"value", u"done", u"input", u"flag", u"result", u"receiver"};
   syntax.parameters = {{NameId{2}, NameEvidence::kDebugRange}, {NameId{3}, NameEvidence::kDebugRange}};
+  if (composition == Composition::kCall) syntax.parameters.push_back({NameId{5}, NameEvidence::kDebugRange});
   std::vector<ExpressionConstant> constants(graph.ops.size());
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
-    if (const auto* read = std::get_if<ValueNamedRead>(&graph.ops[i].operation)) constants[i] = NameId{read->name.value};
+    if (const auto* read = std::get_if<ValueNamedRead>(&graph.ops[i].operation)) constants[i] = NameId{read->name.value == 2 ? 4U : read->name.value};
+    if (std::holds_alternative<ValueOwnWrite>(graph.ops[i].operation)) constants[i] = NameId{4};
+    if (const auto* buffer = std::get_if<ValueObjectAllocation>(&graph.ops[i].operation); buffer && buffer->literal)
+      constants[i] = AggregateConstant{0, 1};
     if (std::holds_alternative<ValueIterResult>(graph.ops[i].operation)) constants[i] = IterResultConstant{{0}, {1}};
   }
-  const ExpressionConstants resolved{constants, syntax.names.size(), 0};
+  const std::vector<ConstantProperty> properties = composition == Composition::kBufferedObject ?
+      std::vector<ConstantProperty>{{NameId{4}, NullLiteral{}}} : std::vector<ConstantProperty>{};
+  const ExpressionConstants resolved{constants, syntax.names.size(), 0, {}, properties};
   FunctionTree tree;
   std::optional<ControlPlan> control;
   std::optional<ExceptionPlan> regions;
@@ -147,7 +183,7 @@ void Run(abc::ProfileId profile, bool phased, std::uint32_t count, bool computed
         : VerifyTreeSemantics(graph, *control, evaluation, candidate, resolved);
   };
   test::Check(std::holds_alternative<TreeSemantics>(verify(tree)));
-  test::Check(tree.properties.size() == count * 2 && tree.recovery_issues.empty());
+  test::Check(tree.properties.size() == count * (composition == Composition::kEmptyObject || composition == Composition::kBufferedObject ? 3 : 2) && tree.recovery_issues.empty());
   if (count <= 2) {
     auto wrong = tree; std::swap(wrong.properties[0], wrong.properties[1]);
     test::Check(std::holds_alternative<TreeSemanticError>(verify(wrong)));
@@ -157,7 +193,7 @@ void Run(abc::ProfileId profile, bool phased, std::uint32_t count, bool computed
     test::Check(std::holds_alternative<TreeSemanticError>(verify(wrong)));
     wrong = tree; wrong.properties[0].origin = TreeOriginId{static_cast<std::uint32_t>(tree.origins.size() - 1)};
     test::Check(std::holds_alternative<TreeSemanticError>(verify(wrong)));
-    if (!phased && !computed) {
+    if (!phased && !computed && composition == Composition::kRoot) {
       char path[] = "/tmp/abcd-iter-constants-XXXXXX";
       const auto fd = mkstemp(path); test::Check(fd >= 0 && close(fd) == 0);
       const auto opened = corpus::AbcFile::Open(path);
@@ -183,6 +219,10 @@ void Run(abc::ProfileId profile, bool phased, std::uint32_t count, bool computed
 int main(int argc, char** argv) {
   if (argc == 2) {
     const std::string_view option{argv[1]};
+    if (option == "--nested-source" || option == "--nested-buffer-source" || option == "--call-source") {
+      Run(abc::ProfileId::kDynamic1206, true, 1, true, false, true, option == "--call-source" ? Composition::kCall :
+          option == "--nested-buffer-source" ? Composition::kBufferedObject : Composition::kEmptyObject); return 0;
+    }
     const bool caught = option == "--caught-source";
     const bool computed = caught || option == "--computed-source";
     const bool boolean = option == "--boolean-source";
@@ -197,6 +237,11 @@ int main(int argc, char** argv) {
         Run(profile, phased, count, false, false);
         Run(profile, phased, count, true, false);
         Run(profile, phased, count, false, true);
+        for (const auto composition : {Composition::kEmptyObject, Composition::kBufferedObject, Composition::kCall}) {
+          Run(profile, phased, count, true, false, false, composition);
+          Run(profile, phased, count, false, true, false, composition);
+        }
+        if (count <= 2) Run(profile, phased, count, false, false, false, Composition::kShared);
       }
   }
 }

@@ -259,7 +259,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // checking ordered own data properties and the runtime's exact true flag.
 // Rules 60 require class-creation constructor identity for apply construction,
 // verify private complete array arguments and retain original effect order.
-inline constexpr std::uint32_t kRouteEvidenceRules = 60;
+// Rules 61 compose input-backed iterator records through checked literal and
+// phased expression intervals, retaining identity, operands and catch scopes.
+inline constexpr std::uint32_t kRouteEvidenceRules = 61;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

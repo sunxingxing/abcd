@@ -277,6 +277,10 @@ bool LiteralExpression(const analysis::ValueProgram& graph, const analysis::Valu
       (std::holds_alternative<analysis::ValueBinary>(op.operation) && op.use_count == 2 &&
        op.result && graph.values[op.result->value].domain.IsLanguage()) ||
       closure ||
+      // Input-backed record creation keeps both operands and fresh identity.
+      // The shared forest/operand checker owns exact done-flag conversion;
+      // literal intervals still reject escapes and catch observations.
+      std::holds_alternative<analysis::ValueIterResult>(op.operation) ||
       std::holds_alternative<analysis::ValueInvoke>(op.operation) ||
       // Construction is a single-use ordered expression, like a call. The
       // nesting census forbids exposing the unfinished literal to it; shared

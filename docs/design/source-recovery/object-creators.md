@@ -64,6 +64,21 @@ pattern 在创建处的异常与非法源码字面量导致的 parse-time 异常
 保留历史格式和完整 generator 协议矩阵，既有 owner 子集不算整组完成。
 阶段一 fixed-five 的完整 record 验收仍独立，不以新增操作或测试数量替代。
 
+### 阶段一实际使用与表达式组合
+
+2026-10-03 只读检查固定五份 ABC 的全部方法，解码失败为 0。正则创建、
+excluded-keys 和 newobjapply 未出现；缓冲对象创建分别为
+524 /1480 /179 /62 /2 次，所有相关 literal 都没有 method/accessor tag。
+检查读取 ABC 与固定解码/池/字面量接口，不读取配对源码，不改变上述完整覆盖目标。
+证据 /tmp/abcd-creator-census-summary.log、/tmp/abcd-buffer-creator-census-summary.log。
+
+迭代结果对象虽然不是缓冲 aggregate，仍是普通、拥有输入的创建表达式。
+共同 LiteralPlan 的 expression 候选与 PhaseCorridors 现均识别 ValueIterResult；
+原使用普查、laminar 初始化区间、异常签名及 AST 对应关系继续独立验证。
+同一个 Lower / ObjectExpr / DataProperty 输出可嵌入空/缓冲对象的 record，也可
+直接作为原生成员调用参数；没有新增专用 writer 或无类型创建父类。
+共享/逃逸的 record 不获重复构建许可，缺失 nested ownership 继续拒绝。
+
 ## Apply 构造
 
 两个 cache 宽度使用同一个 `ApplyConstructorCall` / `ValueConstructApply`。

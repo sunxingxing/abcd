@@ -12,6 +12,34 @@
 
 ## 当前阶段
 
+### 2026-10-03：创建表达式进入共同字面量与异常相位组合
+
+- 只读检查固定五份 ABC 全部方法：解码失败为 0，regexp/excluded-keys/
+  newobjapply 未出现；现代缓冲对象分别 524/1480/179/62/2 次，其 literal
+  均不含 method/accessor tag。未读取配对源码或修改输入；不以未出现缩减
+  用户要求的完整 object creaters 覆盖。日志 /tmp/abcd-creator-census-summary.log、
+  /tmp/abcd-buffer-creator-census-summary.log。
+- 新真实字节码先复现迭代结果作为对象 initializer 时的求值规划拒绝。
+  LiteralPlan 与 PhaseCorridors 现将 ValueIterResult 视为拥有输入的创建表达式，
+  复用原嵌套所有权、效果区间及异常签名检查。共同 Lower/ObjectExpr/property
+  arena 输出嵌套的空/缓冲对象及 native 成员调用参数，没有 group writer。
+  原 fresh identity、done 精确 true 转换及所有输入/来源验证保持；共享/逃逸
+  record 与删除 nested ownership 的反例仍拒绝。规则 revision 61。
+- 三动态 profile、normal/phase、直接/computed/Boolean flag，以及
+  1/2/200/201/402 连续创建组合通过。3179 组独立 native 对照验证两层对象
+  身份、descriptor、getter 顺序、callee 改写、receiver、.call 污染和任意异常值。
+- -j4 生产及相关目标构建退出 0；12/12 回归 82.74 秒，日志
+  /tmp/abcd-record-composition-related-build.log、
+  /tmp/abcd-record-composition-related-tests.log。原 iterator-result、apply、
+  literal/constructor、class/generator 及收据 revision 回归均在此次范围内。
+- fresh build/stage-one/value-record-composition-pass-1 五输入退出 0，仍为
+  78 complete /5 incomplete /23 failure /46 no-module；完整源码逐字未变，
+  无回退/legacy。证据 /tmp/abcd-record-composition-final-batch.log 和
+  /tmp/abcd-record-composition-final-batch-summary.json。此次未新增完整 record。
+- Goal active；实际阶段一仍需解决真实成员调用/控制/数值等阻点，同时保留
+  object creaters 未完成的 regex/rest/历史格式及创建 owner 协议。full-suite、
+  扩展语料、RSS/基准、DFX 和定期审视均未恢复。
+
 ### 2026-10-03：apply 构造复用共同参数接口与类创建证明
 
 - NEWOBJAPPLY 的窄/宽 cache 编码进入同一个 ApplyConstructorCall /

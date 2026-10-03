@@ -1152,6 +1152,8 @@ if(BUILD_TESTING)
   if(ABCD_NODE_EXECUTABLE)
     add_test(NAME iter_result_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/iter_result_tree.mjs $<TARGET_FILE:iter_result_tree_test>)
+    add_test(NAME iter_result_composition_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/iter_result_composition.mjs $<TARGET_FILE:iter_result_tree_test>)
     add_test(NAME apply_construct_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/apply_construct.mjs $<TARGET_FILE:apply_construct_test>)
   endif()
