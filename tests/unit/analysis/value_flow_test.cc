@@ -46,6 +46,9 @@ int main() {
   auto verified = VerifyValueFlow(graph);
   const auto* proof = std::get_if<ValueFlowProof>(&verified);
   Check(proof && proof->revision == graph.revision && proof->work != 0);
+  Check(proof->allocated_bytes != 0);
+  Check(std::holds_alternative<ValueFlowProof>(VerifyValueFlow(graph, {proof->allocated_bytes, proof->work})));
+  Check(std::get<ValueAvailabilityError>(VerifyValueFlow(graph, {proof->allocated_bytes - 1, proof->work})) == ValueAvailabilityError::kResourceLimit);
   graph.uses[3].incoming = EdgeId{0};
   Check(std::get<ValueAvailabilityError>(VerifyValueFlow(graph)) == ValueAvailabilityError::kInvalidPhi);
   graph.uses[3].incoming = EdgeId{1};

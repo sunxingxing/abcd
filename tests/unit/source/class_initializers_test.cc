@@ -2,6 +2,7 @@
 #include "../../../src/source/class_self.h"
 #include "../../../src/source/class_definitions.h"
 #include "../../../src/source/evaluation_plan.h"
+#include "../../../src/analysis/value_edits.h"
 #include "abcd/analysis/value_import.h"
 #include "abcd/analysis/value_simplify.h"
 #include "analysis/ssa_fixture.h"
@@ -9,7 +10,7 @@ namespace {
 using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
-enum class AccessorCase { kValid, kWrongHome, kEscape, kNameFlag, kClassEscape, kPrototypeEscape, kBarrier, kUsedResult, kLaterClassUse, kLaterPrototypeUse, kPair, kEnvironment };
+enum class AccessorCase { kValid, kWrongHome, kEscape, kNameFlag, kClassEscape, kPrototypeEscape, kBarrier, kUsedResult, kLaterClassUse, kLaterPrototypeUse, kPair, kEnvironment, kLaterBlock, kLaterPhi, kLaterLoop };
 void Accessors(abc::ProfileId profile, unsigned count, bool prototype, bool setter, AccessorCase kind = AccessorCase::kValid, bool ordinary = false) {
   std::vector<std::uint8_t> bytes;
   const auto op = [&](abc::Opcode code) { bytes.push_back(static_cast<std::uint8_t>(code)); };
@@ -43,15 +44,25 @@ void Accessors(abc::ProfileId profile, unsigned count, bool prototype, bool sett
     op(abc::Opcode::kDEFINEGETTERSETTERBYVALUE_V8_V8_V8_V8);
     bytes.insert(bytes.end(), {2, 3, 4, 5});
   }
-  if (kind == AccessorCase::kLaterClassUse || kind == AccessorCase::kLaterPrototypeUse) {
+  const bool later_flow = kind == AccessorCase::kLaterBlock || kind == AccessorCase::kLaterPhi || kind == AccessorCase::kLaterLoop;
+  if (kind == AccessorCase::kLaterBlock) { op(abc::Opcode::kJMP_IMM8); bytes.push_back(2); }
+  if (kind == AccessorCase::kLaterLoop) {
+    load(6); op(abc::Opcode::kJNEZ_IMM8); bytes.push_back(static_cast<std::uint8_t>(-2));
+  }
+  if (kind == AccessorCase::kLaterPhi) {
+    load(6); op(abc::Opcode::kJEQZ_IMM8); bytes.push_back(8);
+    load(1); save(0); op(abc::Opcode::kJMP_IMM8); bytes.push_back(6);
+    load(2); save(0); load(0); op(abc::Opcode::kRETURN);
+  } else if (later_flow || kind == AccessorCase::kLaterClassUse || kind == AccessorCase::kLaterPrototypeUse) {
     load(kind == AccessorCase::kLaterClassUse ? 1 : 2);
     op(abc::Opcode::kSTMODULEVAR_IMM8); bytes.push_back(0);
   }
-  op(kind == AccessorCase::kUsedResult ? abc::Opcode::kRETURN : abc::Opcode::kRETURNUNDEFINED);
+  if (kind != AccessorCase::kLaterPhi) op(kind == AccessorCase::kUsedResult ? abc::Opcode::kRETURN : abc::Opcode::kRETURNUNDEFINED);
   const auto body = test::Body(bytes);
-  const auto method = std::get<SemanticMethod>(BuildSemanticMethod(body, profile, 6));
-  const auto proof = std::get<SemanticProof>(VerifySemanticSource(body, method, 6, 0));
-  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(6, 0, {false, false, false, false}));
+  const auto args = later_flow ? 1U : 0U;
+  const auto method = std::get<SemanticMethod>(BuildSemanticMethod(body, profile, 6 + args));
+  const auto proof = std::get<SemanticProof>(VerifySemanticSource(body, method, 6, args));
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(6, args, {false, false, false, false}));
   auto graph = std::get<ValueProgram>(ImportNormalValues(body, method, proof, frame));
   test::Check(!std::holds_alternative<ValueSimplifyError>(SimplifyValues(graph, graph.revision)));
   const auto result = std::get<ClassDefinitionSites>(FindClassDefinitions(graph));
@@ -65,14 +76,18 @@ void Accessors(abc::ProfileId profile, unsigned count, bool prototype, bool sett
   }
   if (candidate) {
     const auto projected = ProjectClassDefinitions(graph, result.sites);
-    if (kind == AccessorCase::kValid || kind == AccessorCase::kLaterClassUse || kind == AccessorCase::kLaterPrototypeUse || kind == AccessorCase::kPair) {
+    if (later_flow || kind == AccessorCase::kValid || kind == AccessorCase::kLaterClassUse || kind == AccessorCase::kLaterPrototypeUse || kind == AccessorCase::kPair) {
+      test::Check(std::holds_alternative<ClassDefinitionProjection>(projected));
       const auto& projection = std::get<ClassDefinitionProjection>(projected);
       test::Check(projection.prototypes.size() == (prototype ? count : 0));
       for (const auto& site : result.sites) {
         test::Check(projection.owners[site.definition.value] == site.creation);
         for (const auto& method : site.Methods())
           if (method.operation) test::Check(projection.owners[method.operation->value] == site.creation);
-        if (site.prototype) test::Check(projection.owners[site.prototype->value] == (kind == AccessorCase::kLaterPrototypeUse ? std::optional<OpId>{} : site.creation));
+        if (site.prototype) {
+          const bool retain = (kind == AccessorCase::kLaterPrototypeUse || later_flow) && site == result.sites.back();
+          test::Check(projection.owners[site.prototype->value] == (retain ? std::optional<OpId>{} : site.creation));
+        }
       }
       auto evaluated = BuildEvaluationPlan(graph, {}, IncomingCells::kReject, {}, {}, {}, {}, ClosureWrites::kUnknown, result.sites);
       test::Check(std::holds_alternative<EvaluationPlan>(evaluated));
@@ -88,6 +103,19 @@ void Accessors(abc::ProfileId profile, unsigned count, bool prototype, bool sett
       }
       test::Check(std::get<ClassDefinitionError>(ProjectClassDefinitions(graph, result.sites, {0})) == ClassDefinitionError::kResourceLimit);
       test::Check(std::get<ClassDefinitionError>(ProjectClassDefinitions(graph, result.sites, {UINT32_MAX, 0})) == ClassDefinitionError::kWorkLimit);
+      if (later_flow) {
+        auto invalid = graph;
+        invalid.edges.front().target = {static_cast<std::uint32_t>(invalid.blocks.size())};
+        test::Check(std::get<ClassDefinitionError>(ProjectClassDefinitions(invalid, result.sites)) == ClassDefinitionError::kFlow);
+        if (count == 1) {
+          invalid = graph;
+          const auto& creation = invalid.ops[result.sites.front().creation.value];
+          // Keep CFG and def-use chains valid while introducing an unavailable
+          // class result at its own heritage read. No stale proof may admit it.
+          test::Check(!ReplaceUse(invalid, creation.first_use, *creation.result));
+          test::Check(std::get<ClassDefinitionError>(ProjectClassDefinitions(invalid, result.sites)) == ClassDefinitionError::kFlow);
+        }
+      }
     } else test::Check(std::get<ClassDefinitionError>(projected) == ClassDefinitionError::kFlow);
   }
   test::Check(std::get<ClassDefinitionError>(FindClassDefinitions(graph, {0})) == ClassDefinitionError::kResourceLimit);
@@ -207,6 +235,10 @@ int main() {
       Accessors(profile, count, false, false); Accessors(profile, count, true, true);
       Accessors(profile, count, false, false, AccessorCase::kValid, true);
       Accessors(profile, count, true, true, AccessorCase::kValid, true);
+      for (const auto kind : {AccessorCase::kLaterBlock, AccessorCase::kLaterPhi, AccessorCase::kLaterLoop}) {
+        Accessors(profile, count, true, true, kind);
+        Accessors(profile, count, true, false, kind, true);
+      }
       Run(profile, count, Case::kSingle); Run(profile, count, Case::kPrototype); Run(profile,count,Case::kLaterBlock); Run(profile,count,Case::kSelfStore); Run(profile,count,Case::kSelfOverwrite); Run(profile,count,Case::kSelfExposed);
     }
     for (const auto kind : {AccessorCase::kWrongHome, AccessorCase::kEscape, AccessorCase::kNameFlag, AccessorCase::kClassEscape, AccessorCase::kPrototypeEscape, AccessorCase::kBarrier, AccessorCase::kUsedResult, AccessorCase::kLaterClassUse, AccessorCase::kLaterPrototypeUse, AccessorCase::kPair, AccessorCase::kEnvironment})

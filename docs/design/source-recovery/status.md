@@ -12,6 +12,45 @@
 
 ## 当前阶段
 
+### 2026-10-04：类成员安装后的观察复用共同 SSA 可用性证明
+
+- 规则revision74。ProjectClassDefinitions 不再要求 class/prototype 的外部
+  观察者与最后安装同块。先独立运行 VerifyValueFlow，证明真实定义支配
+  直接使用或phi输入边；原安装仍在创建块，完成该块即完成安装。块内
+  观察仍须晚于最后安装，跨块不以block/op数值顺序推断时序。phi读取按
+  实际incoming edge source定位，保留仍有外部使用的prototype原读取。
+- HomeObject、原方法单次使用、描述符、捕获环境、整个安装区间的所有效果
+  及早期逃逸校验保留。候选发现/claim 中 creation、method、installation
+  同块条件仍是公开的未完成边界；没有替换跨块安装的全路径效果/次数证明，
+  也没有放宽phased类或任意宿主构造器语义。审计第6类未整体关闭。
+- ValueFlowProof/PhasedValueFlowProof 返回共同验证的保守scratch字节费用，
+  投影在共享预算中记账；normal/phased精确费用及少一字节反例通过。每次
+  投影只有一次共享可用性证明，后续线性所有权/使用普查，无每类CFG扫描。
+  编码用例覆盖三profile、1/200/201/402安装、后续分块/phi/循环使用；
+  非法边、仍保持def-use但提前读取自身结果、伪造投影、早期逃逸、环境/
+  debugger干预负例仍拒绝。旧投影的分块正例失败见
+  /tmp/abcd-class-observer-red-test.log: class_initializers_test第79行。
+- 新144组独立源码行为对照通过：三profile、静态/prototype成员、分块及
+  phi选择、任意参数/不触发Proxy转换、类和函数身份、描述符、getter/setter
+  receiver/效果与任意抛出值。真实编码输入经共同ValueIR、evaluation、
+  FunctionTree、class/member构建、tree flow及printer；源码仅进入测试。
+  带参数fixture输出完整函数，module-body destination拒绝丢弃其签名。
+  这是共同树/草稿行为验证，不冒充阶段一所有模块的publication验收。
+- -j4构建退出0，/tmp/abcd-class-observer-final-build.log及
+  final-fixture-build.log。12项相关定向检查中9项当次通过；新JS断言修正
+  NamedEvaluation允许的匿名class表示后，class_accessor_tree_source_test
+  单独通过，paired-tests.log，合计10项不同检查通过。两项legacy检查
+  created_class_test第132行、record_accessor_test仍失败：将本次改变的
+  两个生产翻译单元重新编译为HEAD原投影/值流实现并优先链接后同样失败，
+  /tmp/abcd-class-observer-baseline.log；这是有界链接对照，非整个HEAD重建。
+  没有把这两项算作通过，失败日志及fixture修复日志同前缀保留。
+- fresh build/stage-one/value-class-observer-pass-1 固定五输入退出0，SHA
+  匹配现有abc-index.json，仍80 complete /26 incomplete /0 failure /
+  46 no-module，无legacy或完整模块回退。106份完整/部分源码逐字未变且
+  语法解析通过，/tmp/abcd-class-observer-content.log及syntax.log。
+  full-suite/扩展语料/RSS/基准/DFX保持暂停。Goal active；剩余数值输入域、
+  构造协议、跨块安装及遗漏正文继续阻断阶段一完整语义/源码表示验收。
+
 ### 2026-10-04：literal 嵌套采用共同源码求值能力，移除独立类型准入列表
 
 - 规则revision73。EvaluationShape 增加 typed SourceEvaluation，描述直接

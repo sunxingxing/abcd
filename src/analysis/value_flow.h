@@ -12,11 +12,14 @@ struct ValueFlowProof {
   IrRevision revision;
   CfgRevision cfg_revision;
   std::uint64_t work;
+  // Conservative simultaneous scratch charge, including dominator peak.
+  std::size_t allocated_bytes = 0;
 };
 struct PhasedValueFlowProof {
   IrRevision revision;
   CfgRevision cfg_revision;
   std::uint64_t work;
+  std::size_t allocated_bytes = 0;
 };
 // Availability across Before/Commit/Catch, not input/handler correspondence or
 // permission to publish source. Only explicit throw's unreachable, valueless

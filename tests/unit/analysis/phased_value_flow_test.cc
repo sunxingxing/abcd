@@ -152,6 +152,10 @@ int main() {
   Check(std::holds_alternative<ValueAvailabilityError>(VerifyPhasedValueFlow(graph)));
   graph = ReadAndCatch();
   const auto work = std::get<PhasedValueFlowProof>(checked).work;
+  const auto bytes = std::get<PhasedValueFlowProof>(checked).allocated_bytes;
+  Check(bytes != 0);
+  Check(std::holds_alternative<PhasedValueFlowProof>(VerifyPhasedValueFlow(graph, {bytes, work})));
+  Check(std::get<ValueAvailabilityError>(VerifyPhasedValueFlow(graph, {bytes - 1, work})) == ValueAvailabilityError::kResourceLimit);
   Check(std::holds_alternative<PhasedValueFlowProof>(
       VerifyPhasedValueFlow(graph, {SemanticBudget{}.bytes, work})));
   Check(std::get<ValueAvailabilityError>(VerifyPhasedValueFlow(

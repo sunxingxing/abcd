@@ -75,6 +75,63 @@ for (const placement of ['prototype', 'static', 'retained', 'method-last', 'acce
   assert.deepEqual(observe(create), observe(reference));
 }
 
+// Completed class installations dominate later direct/phi observations. This
+// fixture's encoded CFG varies; the oracle never enters the recovery engine.
+const observers = spawnSync(tool, ['--observers-json'], {encoding: 'utf8', timeout: 60_000});
+assert.equal(observers.status, 0, observers.stderr);
+let observerScenarios = 0;
+for (const line of observers.stdout.trim().split('\n')) {
+  const {source, static: isStatic, selection} = JSON.parse(line);
+  assert.match(source, /class\s*(?:Accessors\s*)?\{/);
+  assert.doesNotMatch(source, /INCOMPLETE/);
+  const recovered = vm.runInNewContext(`'use strict'; ${source}`);
+  const reference = parameter => {
+    const C = isStatic ? class Accessors {
+      static get value() { return this._value; }
+      static set value(value) { this._value = value; }
+      static get value() { return this._value; }
+      static set value(value) { this._value = value; }
+    } : class Accessors {
+      get value() { return this._value; }
+      set value(value) { this._value = value; }
+      get value() { return this._value; }
+      set value(value) { this._value = value; }
+    };
+    return selection && (parameter === false || parameter === 0) ? (isStatic ? C : C.prototype) : C;
+  };
+  const throwing = new Proxy({}, {get() { throw new Error('condition must not coerce'); }});
+  for (const parameter of [false, 0, -0, true, 1, NaN, undefined, null, '', '0', {}, throwing]) {
+    const observe = factory => {
+      const first = factory(parameter), second = factory(parameter);
+      assert.notEqual(first, second);
+      const isPrototype = typeof first !== 'function';
+      const C = isPrototype ? first.constructor : first;
+      const home = isStatic ? C : C.prototype;
+      const descriptor = Object.getOwnPropertyDescriptor(home, 'value');
+      const events = [], value = {}, sentinel = {};
+      const receiver = new Proxy({}, {
+        get(target, key, actual) { assert.equal(actual, receiver); events.push(['get', key]); return value; },
+        set(target, key, input, actual) {
+          assert.equal(actual, receiver); assert.equal(input, value); events.push(['set', key]); return true;
+        },
+      });
+      assert.equal(Reflect.apply(descriptor.set, receiver, [value]), undefined);
+      assert.equal(Reflect.apply(descriptor.get, receiver, []), value);
+      const throws = new Proxy({}, {get() { throw sentinel; }, set() { throw sentinel; }});
+      assert.throws(() => Reflect.apply(descriptor.get, throws, []), e => e === sentinel);
+      assert.throws(() => Reflect.apply(descriptor.set, throws, [value]), e => e === sentinel);
+      const otherHome = isStatic ? second : typeof second === 'function' ? second.prototype : second;
+      assert.notEqual(descriptor.get, Object.getOwnPropertyDescriptor(otherHome, 'value').get);
+      return {isPrototype, name: C.name, keys: Reflect.ownKeys(home), events,
+        getter: descriptor.get.name, setter: descriptor.set.name,
+        length: [descriptor.get.length, descriptor.set.length],
+        enumerable: descriptor.enumerable, configurable: descriptor.configurable};
+    };
+    assert.deepEqual(observe(recovered), observe(reference)); ++observerScenarios;
+  }
+}
+console.log(`class observer scenarios: ${observerScenarios}`);
+
 // This bytecode fixture captures one initialized outer cell in the constructor,
 // class-buffer method, its nested function, and repeated getter/setter roots.
 // The oracle is independent native syntax; the engine never reads it.

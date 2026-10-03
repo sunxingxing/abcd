@@ -1,6 +1,7 @@
 #include "class_definitions.h"
 #include "cell_evaluation.h"
 #include "../analysis/value_edits.h"
+#include "../analysis/value_flow.h"
 #include <new>
 #include <stdexcept>
 namespace abcd::source {
@@ -20,6 +21,19 @@ std::variant<ClassDefinitionProjection, ClassDefinitionError> ProjectClassDefini
     };
     ClassDefinitionProjection result;
     if (requested.empty()) return result;
+    // All direct and phi-edge observations must have fresh SSA availability.
+    // Installations currently share the creation block: completing that block
+    // completes the corridor. Dominated later uses need no placement template.
+    // This normal-only proof does not authorize moving installations across
+    // blocks or discarding exception paths. Regression: class_initializers_test.
+    const auto available = VerifyValueFlow(graph, budget);
+    if (const auto* error = std::get_if<ValueAvailabilityError>(&available)) {
+      if (*error == ValueAvailabilityError::kResourceLimit) return Error::kResourceLimit;
+      if (*error == ValueAvailabilityError::kWorkLimit) return Error::kWorkLimit;
+      return Error::kFlow;
+    }
+    const auto& flow = std::get<ValueFlowProof>(available);
+    step(flow.work); admit(flow.allocated_bytes, 1);
     auto discovered = FindClassDefinitions(graph, budget);
     if (const auto* error = std::get_if<Error>(&discovered)) return *error;
     const auto& candidates = std::get<ClassDefinitionSites>(discovered);
@@ -75,6 +89,22 @@ std::variant<ClassDefinitionProjection, ClassDefinitionError> ProjectClassDefini
       const auto value = graph.ops[site.definition.value].result;
       require(!value || !graph.values[value->value].first_use, Error::kFlow);
     }
+    const auto completed = [&](const OperandUse& use, OpId creation, const ValueOp& end) {
+      WorkBlockId block; std::uint32_t order;
+      if (const auto* owner = std::get_if<OpId>(&use.owner)) {
+        require(owner->value < graph.ops.size(), Error::kFlow);
+        if (result.owners[owner->value] == creation) return;
+        const auto& observer = graph.ops[owner->value];
+        block = observer.block; order = observer.order;
+      } else {
+        // A phi observes the value on its actual incoming edge, not at the
+        // merge's numeric position. Availability includes parallel/back edges.
+        require(use.incoming && std::holds_alternative<EdgeId>(*use.incoming), Error::kFlow);
+        const auto& edge = graph.edges[std::get<EdgeId>(*use.incoming).value];
+        block = edge.source; order = graph.blocks[block.value].op_count;
+      }
+      require(block != end.block || order > end.order, Error::kFlow);
+    };
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       step(); const auto& corridor = corridors[i];
       if (!corridor.last) continue;
@@ -83,13 +113,7 @@ std::variant<ClassDefinitionProjection, ClassDefinitionError> ProjectClassDefini
       require(effects[corridor.last->value + 1] - effects[i + 1] == corridor.effects, Error::kFlow);
       require(creation.result.has_value());
       for (auto use = graph.values[creation.result->value].first_use; use; use = graph.uses[use->value].next) {
-        step(); const auto* owner = std::get_if<OpId>(&graph.uses[use->value].owner);
-        require(owner && owner->value < graph.ops.size(), Error::kFlow);
-        if (result.owners[owner->value] == OpId{static_cast<std::uint32_t>(i)}) continue;
-        const auto& observer = graph.ops[owner->value];
-        // Other blocks need a separate dominance/lifetime proof. Do not infer
-        // that a numerically later block observes the fully defined class.
-        require(observer.block == end.block && observer.order > end.order, Error::kFlow);
+        step(); completed(graph.uses[use->value], OpId{static_cast<std::uint32_t>(i)}, end);
       }
     }
     for (const auto prototype : result.prototypes) {
@@ -98,11 +122,9 @@ std::variant<ClassDefinitionProjection, ClassDefinitionError> ProjectClassDefini
       const auto& end = graph.ops[corridors[creation->value].last->value];
       bool retain = false;
       for (auto use = graph.values[op.result->value].first_use; use; use = graph.uses[use->value].next) {
-        step(); const auto* owner = std::get_if<OpId>(&graph.uses[use->value].owner);
-        require(owner && owner->value < graph.ops.size(), Error::kFlow);
-        if (result.owners[owner->value] == creation) continue;
-        const auto& observer = graph.ops[owner->value];
-        require(observer.block == end.block && observer.order > end.order, Error::kFlow);
+        step(); const auto& occurrence = graph.uses[use->value];
+        if (const auto* owner = std::get_if<OpId>(&occurrence.owner); owner && result.owners[owner->value] == creation) continue;
+        completed(occurrence, *creation, end);
         retain = true;
       }
       // A later ordinary method may share this prototype. Keep its actual read

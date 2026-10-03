@@ -308,7 +308,8 @@ static std::variant<ValueFlowProof, ValueAvailabilityError> VerifyAvailability(
       Require(counts[i] == expected && expected != 0, Error::kInvalidPhi);
     }
     return ValueFlowProof{graph.revision, graph.cfg_revision,
-                          budget.work - quota.Remaining().work};
+                          budget.work - quota.Remaining().work,
+                          budget.bytes - quota.Remaining().bytes};
   } catch (Error error) {
     return error;
   } catch (const std::bad_alloc&) {
@@ -329,7 +330,7 @@ std::variant<PhasedValueFlowProof, ValueAvailabilityError> VerifyPhasedValueFlow
   if (graph.phases.empty()) return Error::kInvalidGraph;
   const auto checked = VerifyAvailability(graph, budget);
   if (const auto* proof = std::get_if<ValueFlowProof>(&checked))
-    return PhasedValueFlowProof{proof->revision, proof->cfg_revision, proof->work};
+    return PhasedValueFlowProof{proof->revision, proof->cfg_revision, proof->work, proof->allocated_bytes};
   return std::get<ValueAvailabilityError>(checked);
 }
 }  // namespace abcd::analysis

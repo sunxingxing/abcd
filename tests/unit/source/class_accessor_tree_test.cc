@@ -18,9 +18,11 @@ using namespace abcd::source;
 void Check(bool ok, const std::source_location& at = std::source_location::current()) {
   if (!ok) { std::cerr << "accessor tree check " << at.line() << '\n'; std::abort(); }
 }
+enum class ObserverFlow { kSameBlock, kSplit, kSelection };
 std::string Recover(bool is_static, bool return_prototype = false, int ordinary_parity = -1,
     bool async_method = false, abc::ProfileId profile = abc::ProfileId::kDynamic1206,
-    bool capture_cells = false, bool initialized = true, bool input_gap = false) {
+    bool capture_cells = false, bool initialized = true, bool input_gap = false,
+    ObserverFlow observers = ObserverFlow::kSameBlock) {
   constexpr std::uint32_t kPool = 64, kOwner = 128, kLiteral = 160,
       kCreator = 256, kConstructor = 300, kGetter = 340, kSetter = 380,
       kBufferMethod = 420, kBufferCode = 864, kNestedMethod = 460, kNestedCode = 1000,
@@ -80,11 +82,18 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
       code.insert(code.end(), {2, 3, 4, 5});
     }
   }
+  if (observers == ObserverFlow::kSplit) { op(abc::Opcode::kJMP_IMM8); code.push_back(2); }
   // A distinct ordinary object literal in the same graph must still be
   // planned; class method installations must not be claimed as its fields.
   op(abc::Opcode::kCREATEEMPTYOBJECT); save(0); load(3);
   op(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8); code.insert(code.end(), {0, 6, 0, 0});
-  load(return_prototype ? 2 : 1); op(abc::Opcode::kRETURN);
+  if (observers == ObserverFlow::kSelection) {
+    // The class/prototype is selected on incoming edges after all installs.
+    // Physical argument 9 follows six locals and three implicit ABI arguments.
+    load(9); op(abc::Opcode::kJEQZ_IMM8); code.push_back(8);
+    load(1); save(0); op(abc::Opcode::kJMP_IMM8); code.push_back(6);
+    load(2); save(0); load(0); op(abc::Opcode::kRETURN);
+  } else { load(return_prototype ? 2 : 1); op(abc::Opcode::kRETURN); }
   const auto body = [&](std::uint32_t at, std::uint8_t locals, std::uint8_t args, std::vector<std::uint8_t> data,
       std::uint8_t tries = 0, std::uint8_t try_bytes = 0) {
     constexpr std::uint8_t kPayload = 0x7f, kContinuation = 0x80;
@@ -110,7 +119,7 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
     index.methods[i].offset = {offsets[i]}; index.methods[i].owner_offset = {kOwner};
     index.methods[i].name = names[i]; index.methods[i].name_utf16_length = names[i].size();
   }
-  index.methods[0].code = body(kCreatorCode, 6, 3, code);
+  index.methods[0].code = body(kCreatorCode, 6, observers == ObserverFlow::kSelection ? 4 : 3, code);
   index.methods[1].code = body(kConstructorCode, 0, 3, {opcode(abc::Opcode::kRETURNUNDEFINED)});
   index.methods[2].code = body(kGetterCode, 0, 3, {opcode(abc::Opcode::kLDTHIS),
       opcode(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 6, 0, opcode(abc::Opcode::kRETURN)});
@@ -463,6 +472,7 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   constants.operations[definitions.front().creation.value] = definition;
   FunctionSyntax syntax{}; syntax.identity = identity; syntax.method = {kCreator}; syntax.owner = {0};
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+  syntax.parameters.resize(creator.frame.parameters);
   syntax.names = constants.names; syntax.texts = constants.texts;
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
   auto tree = BuildFunctionTree(graph, control, evaluation, syntax, constants.View());
@@ -560,6 +570,13 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   Check(std::holds_alternative<ConstructedFamily>(composed));
   std::ostringstream module;
   auto module_print = PrintModuleFamilyDraft(std::get<ConstructedFamily>(composed), module, {}, {}, &globals);
+  if (observers == ObserverFlow::kSelection) {
+    // This fixture is an ordinary function with a real parameter. A module
+    // body destination must not discard its signature while printing classes.
+    Check(std::get<TreePrintError>(module_print) == TreePrintError::kUnsupportedContext);
+    Check(module.str().empty());
+    Check(unlink(path) == 0); return output.str();
+  }
   Check(std::holds_alternative<PrintedFamilyDraft>(module_print));
   Check(std::get<PrintedFamilyDraft>(module_print).members[0].class_members.size() == (input_gap ? 3 : 5));
   Check(std::get<PrintedFamilyDraft>(module_print).members[0].incomplete == input_gap);
@@ -567,6 +584,14 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--observers-json") {
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const bool is_static : {false, true})
+        for (const auto flow : {ObserverFlow::kSplit, ObserverFlow::kSelection})
+          std::cout << nlohmann::json{{"source", Recover(is_static, false, -1, false, profile, false, true, false, flow)},
+              {"static", is_static}, {"selection", flow == ObserverFlow::kSelection}}.dump() << '\n';
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--partial-json") {
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
       for (const bool is_static : {false, true})

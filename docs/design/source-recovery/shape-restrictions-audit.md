@@ -296,3 +296,26 @@ BooleanEvaluation：原存储输入可重复读，Boolean降低可单次消费�
 及106份源码无回退/内容变化，阶段一依然80 complete/26 incomplete。
 这关闭的是第13类独立列表事项；前表12类中尚存的布局/表示限制未因此关闭，
 literal的phased phi存储版本和跨块区间也没有完整贯通。
+
+## 规则 74：已完成类成员安装的后续观察
+
+ProjectClassDefinitions 的 class/prototype 外部观察者同块门槛已替换。
+共同 VerifyValueFlow 在当前原始图上证明SSA定义支配直接使用及phi实际
+输入边。现有安装全部位于创建块，正常离开该块前必已完成全部安装；
+故支配的其他块使用无需再匹配布局。创建块内仍按真实operation order
+证明晚于最后安装，不能把未来定义或更早逃逸当作合法观察。phi按incoming
+edge的source位置读取，不按merge块或PC大小推断时序。保留外部使用的
+prototype读取与身份，不隐藏已安装方法或duplicated getter。
+
+这不是删除所有class同块条件：FindClassDefinitions的候选范围与projection
+claim仍限制creation/method/installation同块，原效果区间、HomeObject、
+捕获和安装次数义务未变。跨块安装需要共同全路径效果/控制证明，此项仍
+开放；也未扩大class initializer和phased接口的局部模板。禁止以新增
+特殊分块、寄存器或方法名称匹配代替后续共同实现。
+
+编码fixture覆盖后续分块、phi及循环观察和1/200/201/402安装；旧代码的
+分块用例拒绝，当前通过共同evaluation独立复验。144组独立原生对照核对
+类/方法身份、命名、描述符、receiver、Proxy效果/任意抛出值，配对源码
+不进入引擎。共享SSA证明的实际资源费用也纳入投影预算。10项不同相关
+检查通过；另两项legacy失败在优先链接原实现后仍复现，完整证据见status.md。
+五输入仍80 complete/26 incomplete，106份源码内容未变，未达阶段一验收。

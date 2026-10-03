@@ -59,7 +59,9 @@ struct ClassDefinitionProjection {
 // the entire class-to-last-definition corridor unobserved. Prototype spellings,
 // descriptor keys and prepared bodies remain source-level obligations. No live
 // definition-result alias or escaping prototype is silently discarded.
-// O(ops + uses + sites), including repeated definitions on the same class.
+// One shared SSA availability proof, then O(ops + uses + sites) projection.
+// Total O((blocks + edges) log blocks + uses log uses + ops + values + sites),
+// including repeated definitions on the same class; no per-class CFG walks.
 [[nodiscard]] std::variant<ClassDefinitionProjection, ClassDefinitionError> ProjectClassDefinitions(
     const analysis::ValueProgram&, std::span<const ClassDefinitionSite>, analysis::SemanticBudget = {});
 }
