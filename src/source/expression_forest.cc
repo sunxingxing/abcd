@@ -133,6 +133,35 @@ class ForestBuilder {
       Require(constant->count <= kMaxId - buffered_properties, Error::kResourceLimit);
       buffered_properties += constant->count;
     }
+    std::size_t indexed_arguments = 0;
+    std::vector<std::uint32_t> array_sizes;
+    bool indexed = false;
+    for (const auto& call : forest_.calls.operations) {
+      Step(); const auto* construct = std::get_if<ConstructCall>(&call);
+      indexed |= construct && construct->array &&
+          evaluation_.operations[construct->array->value].kind == EvaluationKind::kRoot;
+    }
+    if (indexed) {
+      Reserve(array_sizes, graph_.ops.size()); array_sizes.resize(graph_.ops.size()); Step(graph_.ops.size());
+      for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
+        Step(); const auto* array = std::get_if<analysis::ValueArrayAllocation>(&graph_.ops[i].operation);
+        if (!array || !array->literal || graph_.ops[i].life != analysis::ValueLife::kLive) continue;
+        const auto* constant = std::get_if<AggregateConstant>(&constants_.operations[i]);
+        Require(constant && constant->kind == AggregateKind::kArray, Error::kConstant);
+        array_sizes[i] = constant->count;
+      }
+      if (evaluation_.literals) for (const auto& object : evaluation_.literals->objects) {
+        Step(); if (!std::holds_alternative<analysis::ValueArrayAllocation>(graph_.ops[object.allocation.value].operation)) continue;
+        Require(object.count <= kMaxId - array_sizes[object.allocation.value], Error::kResourceLimit);
+        array_sizes[object.allocation.value] += object.count;
+      }
+      for (const auto& call : forest_.calls.operations) {
+        Step(); const auto* construct = std::get_if<ConstructCall>(&call);
+        if (!construct || !construct->array || evaluation_.operations[construct->array->value].kind != EvaluationKind::kRoot) continue;
+        Require(array_sizes[construct->array->value] <= kMaxId - indexed_arguments, Error::kResourceLimit);
+        indexed_arguments += array_sizes[construct->array->value];
+      }
+    }
     std::size_t captures = 0;
     for (const auto& function : evaluation_.functions) {
       Step(); Require(function.captures.size() <= kMaxId - captures, Error::kResourceLimit);
@@ -175,8 +204,11 @@ class ForestBuilder {
     Require(prefixes <= (kMaxId - operation_nodes - copies * kNodesPerCopy) / kNodesPerPrefix, Error::kResourceLimit);
     const auto expression_nodes = operation_nodes + copies * kNodesPerCopy + prefixes * kNodesPerPrefix;
     Require(buffered_properties <= kMaxId - expression_nodes, Error::kResourceLimit);
-    Reserve(forest_.expressions, expression_nodes + buffered_properties);
-    Reserve(forest_.arguments, graph_.uses.size());
+    constexpr std::size_t kNodesPerIndexedArgument = 3; // Snapshot leaf, numeric key, member read.
+    Require(indexed_arguments <= (kMaxId - expression_nodes - buffered_properties) / kNodesPerIndexedArgument &&
+        indexed_arguments <= kMaxId - graph_.uses.size(), Error::kResourceLimit);
+    Reserve(forest_.expressions, expression_nodes + buffered_properties + indexed_arguments * kNodesPerIndexedArgument);
+    Reserve(forest_.arguments, graph_.uses.size() + indexed_arguments);
     Reserve(forest_.origins, graph_.origins.size() + graph_.ops.size() + bundles + commits);
     Reserve(forest_.edge_assignments, normal_copies);
     Reserve(forest_.edges, bundles - staged_bundles);
@@ -320,7 +352,13 @@ class ForestBuilder {
         if (const auto* creation = std::get_if<analysis::ValueClassCreation>(&op.operation)) {
           const auto* definition = std::get_if<std::shared_ptr<const ClassTree>>(&constants_.operations[i]);
           if (!definition || !*definition) throw Error::kUnsupportedOperation;
-          Require(op.use_count == 1 && evaluation_.flow == EvaluationFlow::kNormal, Error::kOwnership);
+          Require(op.use_count == 1, Error::kOwnership);
+          if (evaluation_.flow == EvaluationFlow::kPhased) {
+            const auto checked = CheckClassParentScope(**definition, work_);
+            if (std::holds_alternative<ClassTreeError>(checked)) throw Error::kWorkLimit;
+            const auto scope = std::get<ClassParentScope>(checked); Step(scope.work);
+            Require(scope.independent, Error::kOwnership);
+          }
           const auto* heritage = std::get_if<analysis::ValueId>(&graph_.uses[op.first_use.value].operand);
           const bool absent = heritage && graph_.values[heritage->value].domain == analysis::ValueKinds::Hole();
           Require((*definition)->callable ==
@@ -656,6 +694,26 @@ class ForestBuilder {
   ExprId Call(const analysis::ValueOp& op, const CallBinding& binding, TreeOriginId origin) {
     const bool member = std::holds_alternative<MemberCall>(binding);
     const auto callee = Operand(graph_.uses[op.first_use.value].operand, origin);
+    if (const auto* construct = std::get_if<ConstructCall>(&binding); construct && construct->array) {
+      if (evaluation_.operations[construct->array->value].kind == EvaluationKind::kRoot) {
+        Require(forest_.operations[construct->array->value].has_value(), Error::kOwnership);
+        const auto& original = forest_.expressions[forest_.operations[construct->array->value]->value].expression;
+        const auto* array = std::get_if<ObjectExpr>(&original);
+        Require((array && array->kind == AggregateKind::kArray) || std::holds_alternative<EmptyArrayExpr>(original), Error::kOwnership);
+        const auto count = array ? array->properties.count : 0;
+        const ArgumentRange arguments{static_cast<std::uint32_t>(forest_.arguments.size()), count};
+        for (std::uint32_t i = 0; i < count; ++i) {
+          Step(); const auto base = Operand(graph_.uses[op.first_use.value + 1].operand, origin);
+          const auto key = Literal(NumberLiteral{std::bit_cast<std::uint64_t>(static_cast<double>(i))}, origin);
+          const auto member = Add(MemberExpr{base, ComputedKey{key}}, origin);
+          Require(forest_.arguments.size() < forest_.arguments.capacity(), Error::kResourceLimit);
+          forest_.arguments.push_back(member);
+        }
+        return Add(ConstructExpr{callee, arguments}, origin);
+      }
+      const auto array = Use(analysis::UseId{op.first_use.value + 1}, origin);
+      return Add(ConstructExpr{callee, ArrayArguments{array}}, origin);
+    }
     // The proved member reference owns its base. Do not create an orphan syntax
     // node for the raw receiver occurrence or evaluate that base a second time.
     constexpr std::uint32_t kValuePrefix = 1;
@@ -1013,7 +1071,7 @@ class ForestBuilder {
                       std::is_same_v<T, analysis::ValueDefineAccessor> ||
                       std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                       std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
-                      std::is_same_v<T, analysis::ValueInvoke> || std::is_same_v<T, analysis::ValueSuperCall> || std::is_same_v<T, analysis::ValueSuperSpread> || std::is_same_v<T, analysis::ValueSuperCheck> || std::is_same_v<T, analysis::ValueConstruct> ||
+                      std::is_same_v<T, analysis::ValueInvoke> || std::is_same_v<T, analysis::ValueSuperCall> || std::is_same_v<T, analysis::ValueSuperSpread> || std::is_same_v<T, analysis::ValueSuperCheck> || std::is_same_v<T, analysis::ValueConstruct> || std::is_same_v<T, analysis::ValueConstructApply> ||
                       std::is_same_v<T, analysis::ValueNop>);
         throw Error::kUnsupportedOperation;
       }

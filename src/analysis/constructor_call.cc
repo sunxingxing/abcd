@@ -1,6 +1,27 @@
 #include "abcd/analysis/constructor_call.h"
 
 namespace abcd::analysis {
+std::variant<ApplyConstructorCall, ConstructorCallError> LiftApplyConstructorCall(
+    const abc::DecodedInstruction& instruction, std::uint64_t frame_size) {
+  std::uint64_t cache_max;
+  switch (instruction.opcode) {
+    case abc::Opcode::kNEWOBJAPPLY_IMM8_V8: cache_max = UINT8_MAX; break;
+    case abc::Opcode::kNEWOBJAPPLY_IMM16_V8: cache_max = UINT16_MAX; break;
+    default: return ConstructorCallError::kUnsupportedOpcode;
+  }
+  constexpr std::size_t kCache = 0, kConstructor = 1, kOperands = 2;
+  if (instruction.operand_count != kOperands ||
+      instruction.operands[kCache].kind != abc::OperandKind::kImmediate ||
+      instruction.operands[kCache].raw_bits > cache_max ||
+      instruction.operands[kConstructor].kind != abc::OperandKind::kRegister ||
+      instruction.operands[kConstructor].raw_bits > UINT8_MAX)
+    return ConstructorCallError::kMalformedInstruction;
+  if (instruction.operands[kConstructor].raw_bits >= frame_size)
+    return ConstructorCallError::kRegisterRange;
+  return ApplyConstructorCall{{static_cast<std::uint32_t>(instruction.operands[kConstructor].raw_bits)},
+      static_cast<std::uint16_t>(instruction.operands[kCache].raw_bits)};
+}
+
 std::uint32_t ConstructorCall::ArgumentCount() const {
   return inputs.count == 0 ? 0 : inputs.count - 1;
 }

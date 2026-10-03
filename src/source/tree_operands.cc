@@ -24,6 +24,14 @@ class OperandCheck {
     RequireMeaning(constants_.operations.size() == graph_.ops.size() &&
                    constants_.name_count <= tree_.names.size() &&
                    constants_.text_count <= tree_.texts.size(), Error::kConstant);
+    const auto indexed = IndexCallArgumentUses(graph_, evaluation_, budget_.Remaining());
+    if (const auto* error = std::get_if<CallPlanError>(&indexed)) {
+      if (*error == CallPlanError::kResourceLimit) throw Error::kResourceLimit;
+      if (*error == CallPlanError::kWorkLimit) throw Error::kWorkLimit;
+      throw Error::kOperand;
+    }
+    const auto& uses = std::get<CallArgumentUses>(indexed);
+    budget_.Admit(uses.allocated_bytes, 1); budget_.Step(uses.work);
     if (evaluation_.literals) RequireMeaning(CheckStagedLiteralNames(*evaluation_.literals, constants_, tree_.names,
         [&](std::uint64_t count) { budget_.Step(count); },
         [&](std::size_t count, std::size_t width) { budget_.Admit(count, width); }), Error::kConstant);
@@ -339,7 +347,49 @@ class OperandCheck {
           const auto& construct = Node<ConstructExpr>(expression);
           Input(input(0), construct.constructor);
           constexpr std::uint32_t kConstructorPrefix = 1;
-          Arguments(op, construct.arguments, kConstructorPrefix, operation.arguments);
+          const auto* arguments = std::get_if<ArgumentRange>(&construct.arguments);
+          RequireMeaning(arguments, Error::kOperand);
+          Arguments(op, *arguments, kConstructorPrefix, operation.arguments);
+        } else if constexpr (std::is_same_v<T, analysis::ValueConstructApply>) {
+          const auto& construct = Node<ConstructExpr>(expression);
+          RequireMeaning(op.use_count == 2 &&
+              ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded, Error::kOperand);
+          const auto callee = ResolveEvaluationOperand(evaluation_, input(0));
+          const auto* callee_value = std::get_if<analysis::ValueId>(&callee);
+          RequireMeaning(callee_value && callee_value->value < graph_.values.size(), Error::kOperand);
+          const auto* constructor = std::get_if<analysis::OpResult>(&graph_.values[callee_value->value].origin);
+          RequireMeaning(constructor && constructor->op.value < graph_.ops.size() &&
+              std::holds_alternative<analysis::ValueClassCreation>(graph_.ops[constructor->op.value].operation), Error::kOperand);
+          const auto source = ResolveEvaluationOperand(evaluation_, input(1));
+          const auto* value = std::get_if<analysis::ValueId>(&source);
+          RequireMeaning(value && value->value < graph_.values.size() &&
+              value->value < uses.values.size() && uses.values[value->value] == 1, Error::kOperand);
+          const auto* result = std::get_if<analysis::OpResult>(&graph_.values[value->value].origin);
+          RequireMeaning(result && result->op.value < graph_.ops.size() &&
+              std::holds_alternative<analysis::ValueArrayAllocation>(graph_.ops[result->op.value].operation), Error::kOperand);
+          const auto& placement = evaluation_.operations[result->op.value];
+          Input(input(0), construct.constructor);
+          if (const auto* arguments = std::get_if<ArgumentRange>(&construct.arguments)) {
+            RequireMeaning(placement.kind == EvaluationKind::kRoot && placement.temporary &&
+                flow_.expressions[result->op.value].has_value(), Error::kOperand);
+            const auto& allocation = tree_.expressions[flow_.expressions[result->op.value]->value].expression;
+            const auto* array = std::get_if<ObjectExpr>(&allocation);
+            RequireMeaning((array && array->kind == AggregateKind::kArray) ||
+                std::holds_alternative<EmptyArrayExpr>(allocation), Error::kOperand);
+            RequireMeaning(arguments->count == (array ? array->properties.count : 0), Error::kOperand);
+            for (std::uint32_t a = 0; a < arguments->count; ++a) {
+              budget_.Step(); const auto& member = Node<MemberExpr>(tree_.arguments[arguments->first + a]);
+              const auto* key = std::get_if<ComputedKey>(&member.key);
+              RequireMeaning(key && Literal<NumberLiteral>(key->expression).bits ==
+                  std::bit_cast<std::uint64_t>(static_cast<double>(a)), Error::kOperand);
+              Input(input(1), member.base);
+            }
+            return;
+          }
+          const auto& arguments = std::get<ArrayArguments>(construct.arguments);
+          RequireMeaning((placement.kind == EvaluationKind::kInline || placement.kind == EvaluationKind::kNestedLiteral) &&
+              placement.consumer == analysis::UseId{op.first_use.value + 1}, Error::kOperand);
+          Input(input(1), arguments.array);
         } else if constexpr (std::is_same_v<T, analysis::ValueIterResult>) {
           const auto& object = Node<ObjectExpr>(expression);
           const auto* keys = std::get_if<IterResultConstant>(&constants_.operations[i]);
@@ -434,7 +484,13 @@ class OperandCheck {
               definition.creation.creation.cache_slot == operation.cache_slot && op.use_count == 1, Error::kOperand);
           const auto* heritage = std::get_if<analysis::ValueId>(&input(0));
           const bool absent = heritage && graph_.values[heritage->value].domain == analysis::ValueKinds::Hole();
-          RequireMeaning(evaluation_.flow == EvaluationFlow::kNormal && created.heritage.has_value() != absent &&
+          if (evaluation_.flow == EvaluationFlow::kPhased) {
+            const auto checked = CheckClassParentScope(definition, budget_.Remaining().work);
+            if (std::holds_alternative<ClassTreeError>(checked)) throw Error::kWorkLimit;
+            const auto scope = std::get<ClassParentScope>(checked); budget_.Step(scope.work);
+            RequireMeaning(scope.independent, Error::kOperand);
+          }
+          RequireMeaning(created.heritage.has_value() != absent &&
               definition.callable ==
                   (absent ? CallableKind::kBaseConstructor : CallableKind::kDerivedConstructor), Error::kOperand);
           if (definition.constructor) {

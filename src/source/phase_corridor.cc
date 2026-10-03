@@ -39,7 +39,8 @@ bool PhaseCorridors::Expression(const ValueOperation& operation) {
       // environment barriers and the final-root epoch check remain binding.
       std::holds_alternative<ValueFunctionCreation>(operation) ||
       std::holds_alternative<ValueInvoke>(operation) ||
-      std::holds_alternative<ValueConstruct>(operation);
+      std::holds_alternative<ValueConstruct>(operation) ||
+      std::holds_alternative<ValueConstructApply>(operation);
 }
 bool PhaseCorridors::Aggregate(const ValueOperation& operation) {
   return std::holds_alternative<ValueObjectAllocation>(operation) ||

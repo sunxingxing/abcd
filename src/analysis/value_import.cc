@@ -173,6 +173,8 @@ ValueOperation Operation(const SemanticOperation& operation) {
       return ValueSuperCheck{op.kind};
     } else if constexpr (std::is_same_v<T, ConstructorCall>) {
       return ValueConstruct{op.ArgumentCount()};
+    } else if constexpr (std::is_same_v<T, ApplyConstructorCall>) {
+      return ValueConstructApply{op.profile_slot};
     } else {
       throw ValueImportFailure{Error::kUnsupportedOperation, {}};
     }

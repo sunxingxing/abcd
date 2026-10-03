@@ -12,6 +12,42 @@
 
 ## 当前阶段
 
+### 2026-10-03：apply 构造复用共同参数接口与类创建证明
+
+- NEWOBJAPPLY 的窄/宽 cache 编码进入同一个 ApplyConstructorCall /
+  ValueConstructApply、register/value/exception 输入、OperandView、求值规划和
+  CallPlan。constructor 与 acc 数组保留为两个输入，缓存元数据保留；索引读取、
+  构造副作用和异常均未标成纯操作。未添加 sample writer 或 opcode 名字派发。
+- ConstructArguments 以 variant 复用已有 ArgumentRange 和拥有原创建子树的
+  ArrayArguments。完整且未逃逸的数组在顺序允许时输出直接 native 参数；
+  存在后续 getter/观察时保留原数组快照，按连续索引取参，复用原 MemberExpr。
+  没有 spread、Reflect.construct 或可变全局工厂依赖。原创建、初始化及参数
+  来源区间保留；容量准入与 canonical 使用普查按操作/使用/输出数线性计费。
+- 复核固定 NewObject / Proxy::ConstructInternal 发现重要差异：Proxy target
+  不可构造时，固定 C++ 路径可能仍读取执行 construct trap；JS new 先拒绝。
+  初期“任意 constructor”对照因此不作为最终验收。现 CallPlan 及独立 AST 检查
+  均要求真实 ValueClassCreation 的原始 constructor OpId，拒绝未知参数/getter
+  值，不增加用户拒绝过的 JSFunction 生命周期假设。普通函数等其他来源及
+  完整 Proxy 差异仍待建模。边界模型不是 Ark VM 实际执行结果。
+- 已准备且无父 cell/module 依赖、无 initializer/defined-member 投影的类，通过
+  计费的 CheckClassParentScope 进入同一 phased forest/独立操作数检查；缺失正文
+  拒绝，其他类仍需要 phase capture/projection 桥。原 phase 图不被擦除或替换。
+  测试 constructor 正文从真实文件字节码解码、准备；低层 phase fixture 独立
+  建立 handler，创建位于保护区域之前，不声称生产 phased class reader 全完成。
+- 三动态 profile、两编码、normal/phase，覆盖 1/2/200/201/402 连续构造和
+  1/2/200/201 参数；缺 constructor/array 证明、共享/外部数组、错属性/索引、
+  V1 资源范围、未准备正文和预算反例均拒绝。4626 组 native 对照通过，覆盖
+  返回对象身份、getter 顺序、任意异常值、原型索引/iterator/Reflect 污染。
+- -j4 生产及相关目标构建退出 0：/tmp/abcd-apply-final-build.log；14/14 回归
+  68.10 秒：/tmp/abcd-apply-final-tests.log。新增索引伪造反例后最终 2/2 通过
+  32.68 秒，/tmp/abcd-apply-proof-final-tests.log；纯 include/规则注释收尾构建
+  日志 /tmp/abcd-apply-include-final-build.log。规则 revision 60。
+- fresh build/stage-one/value-apply-construct-pass-1 五输入均退出 0，仍为
+  78 complete /5 incomplete /23 failure /46 no-module；既有完整源码逐字未变，
+  无回退/legacy。证据 /tmp/abcd-apply-final-batch.log 和 batch-summary.json。
+  此次未增加完整 record。Goal active；继续 object creaters 的完整缺口与阶段一
+  record 验收，未恢复 full-suite、扩展语料、RSS/基准或定期审视。
+
 ### 2026-10-03：object creaters 优先，迭代结果对象贯通
 
 - 已按用户最新要求把 object creaters 的完整 26 格式置于当前优先级；

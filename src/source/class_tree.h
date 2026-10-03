@@ -40,6 +40,12 @@ struct ClassTree {
   [[nodiscard]] bool BodiesPrepared() const;
 };
 enum class ClassTreeError : std::uint8_t { kCreation, kMember, kName, kResourceLimit, kWorkLimit };
+struct ClassParentScope { bool independent; std::uint64_t work; };
+// A prepared class with no parent cells/modules can retain its exact creation
+// in a phased parent without borrowing normal-SSA capture identities. Static
+// initializer/defined-member projection needs its own phase bridge.
+[[nodiscard]] std::variant<ClassParentScope, ClassTreeError> CheckClassParentScope(
+    const ClassTree&, std::uint64_t work = analysis::kDefaultSemanticWork);
 using ClassTreeFailure = std::variant<ClassTreeError, ClassContextFailure, FamilyPrepareFailure,
     abc::MetadataError, abc::LiteralFailure, abc::ClassBufferError, ClassInitializerReadFailure,
     SyntaxResolutionFailure, EvaluationError, ControlError, FunctionTreeError, ModuleAliasFailure, ModuleAliasTreeError>;

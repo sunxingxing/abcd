@@ -315,7 +315,20 @@ class StructureCheck {
         RequireTree(expression.slots.first <= tree_.arguments.size() &&
             expression.slots.count <= tree_.arguments.size() - expression.slots.first &&
             expression.slots.count == tree_.parameters.size(), Error::kRange);
-      } else if constexpr (std::is_same_v<T, CallExpr> || std::is_same_v<T, ConstructExpr> || std::is_same_v<T, SuperCallExpr>) {
+      } else if constexpr (std::is_same_v<T, ConstructExpr>) {
+        if (const auto* arguments = std::get_if<ArgumentRange>(&expression.arguments)) {
+          RequireTree(arguments->first <= tree_.arguments.size() &&
+              arguments->count <= tree_.arguments.size() - arguments->first, Error::kRange);
+        } else {
+          const auto array = std::get<ArrayArguments>(expression.arguments).array;
+          RequireTree(ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded &&
+              array.value < tree_.expressions.size(), Error::kUnsupportedSyntax);
+          const auto& child = tree_.expressions[array.value].expression;
+          const auto* aggregate = std::get_if<ObjectExpr>(&child);
+          RequireTree(std::holds_alternative<EmptyArrayExpr>(child) ||
+              (aggregate && aggregate->kind == AggregateKind::kArray), Error::kUnsupportedSyntax);
+        }
+      } else if constexpr (std::is_same_v<T, CallExpr> || std::is_same_v<T, SuperCallExpr>) {
         RequireTree(expression.arguments.first <= tree_.arguments.size() &&
             expression.arguments.count <= tree_.arguments.size() - expression.arguments.first, Error::kRange);
         if constexpr (std::is_same_v<T, SuperCallExpr>)
@@ -433,8 +446,13 @@ class StructureCheck {
       }
       if (const auto* call = std::get_if<CallExpr>(&syntax))
         return NextCall(frame, call->callee, call->arguments);
-      if (const auto* construct = std::get_if<ConstructExpr>(&syntax))
-        return NextCall(frame, construct->constructor, construct->arguments);
+      if (const auto* construct = std::get_if<ConstructExpr>(&syntax)) {
+        if (const auto* arguments = std::get_if<ArgumentRange>(&construct->arguments))
+          return NextCall(frame, construct->constructor, *arguments);
+        if (frame.next_child == 0) { ++frame.next_child; return construct->constructor; }
+        if (frame.next_child == 1) { ++frame.next_child; return std::get<ArrayArguments>(construct->arguments).array; }
+        return {};
+      }
       if (const auto* super = std::get_if<SuperCallExpr>(&syntax)) {
         if (frame.next_child == super->arguments.count) return {};
         const auto slot = super->arguments.first + frame.next_child++;

@@ -47,7 +47,7 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
           return ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};
       }
       return ScalarError::kMalformedInstruction;
-    } else if constexpr (std::is_same_v<T, ConstructorCall> ||
+    } else if constexpr (std::is_same_v<T, ConstructorCall> || std::is_same_v<T, ApplyConstructorCall> ||
                          std::is_same_v<T, SuperRange> || std::is_same_v<T, SuperSpread> ||
                          std::is_same_v<T, ReceiverCall> ||
                          std::is_same_v<T, EmptyObjectCreation> ||

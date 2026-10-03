@@ -68,6 +68,9 @@ std::optional<Transfer> Access(const abc::DecodedInstruction& instruction,
   if (std::holds_alternative<ReceiverCall>(
           LiftReceiverCall(instruction, frame_size)))
     return Transfer{true, AccumulatorWrite::kValue};
+  if (std::holds_alternative<ApplyConstructorCall>(
+          LiftApplyConstructorCall(instruction, frame_size)))
+    return Transfer{true, AccumulatorWrite::kValue};
   if (std::holds_alternative<ConstructorCall>(
           LiftConstructorCall(instruction, frame_size)))
     return Transfer{false, AccumulatorWrite::kValue};

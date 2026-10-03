@@ -200,7 +200,9 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
       std::holds_alternative<IndexedRead>(
           LiftIndexedRead(instruction, frame_size)))
     return ValueRule{ValueRuleKind::kLanguageOperation, {}};
-  if (std::holds_alternative<ConstructorCall>(
+  if (std::holds_alternative<ApplyConstructorCall>(
+          LiftApplyConstructorCall(instruction, frame_size)) ||
+      std::holds_alternative<ConstructorCall>(
           LiftConstructorCall(instruction, frame_size)))
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
   const auto super = LiftSuperInstruction(instruction,

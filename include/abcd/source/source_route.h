@@ -257,7 +257,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // retaining file-backed member records and rechecking lexical ancestry on reuse.
 // Rules 59 admit iterator-result creation through shared value/tree stages,
 // checking ordered own data properties and the runtime's exact true flag.
-inline constexpr std::uint32_t kRouteEvidenceRules = 59;
+// Rules 60 require class-creation constructor identity for apply construction,
+// verify private complete array arguments and retain original effect order.
+inline constexpr std::uint32_t kRouteEvidenceRules = 60;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

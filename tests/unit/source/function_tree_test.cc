@@ -566,7 +566,8 @@ void CallTree(CallCase kind, std::uint32_t count, bool computed) {
   auto invalid = tree;
   std::visit([&](auto& node) {
     using T = std::decay_t<decltype(node)>;
-    if constexpr (std::is_same_v<T, CallExpr> || std::is_same_v<T, ConstructExpr>) ++node.arguments.count;
+    if constexpr (std::is_same_v<T, CallExpr>) ++node.arguments.count;
+    else if constexpr (std::is_same_v<T, ConstructExpr>) ++std::get<ArgumentRange>(node.arguments).count;
   }, invalid.expressions[call->value].expression);
   Check(std::get<TreeStructureError>(VerifyTreeStructure(invalid)) == TreeStructureError::kRange);
 }

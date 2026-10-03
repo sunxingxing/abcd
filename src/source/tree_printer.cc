@@ -42,6 +42,7 @@ struct Indent { std::size_t depth; };
 struct PropertyKey { NameId id; };
 struct SymbolName { SymbolId id; };
 struct ArgumentCursor { ArgumentRange range; std::uint32_t index; };
+struct ArrayArgumentCursor { ExprId array; };
 struct SnapshotCursor { ArgumentRange range; std::uint32_t index; };
 struct ObjectCursor { PropertyRange range; std::uint32_t index; AggregateKind kind = AggregateKind::kObject; };
 struct EndProperty { PropertyId id; };
@@ -51,7 +52,7 @@ struct ParameterCursor { std::uint32_t index; };
 struct EndParameter { std::uint32_t index; };
 using PrintAction = std::variant<std::string_view, ExprId, EndExpression, ExpressionOperand,
     Statement, EndStatement, BlockCursor, Indent, PropertyKey, SymbolName, ArgumentCursor,
-    ObjectCursor, EndProperty, BeginFunction, EndFunction, ParameterCursor, EndParameter, SnapshotCursor, DerivedClassBody>;
+    ObjectCursor, EndProperty, BeginFunction, EndFunction, ParameterCursor, EndParameter, SnapshotCursor, DerivedClassBody, ArrayArgumentCursor>;
 struct OwnedAction { std::size_t owner; std::size_t depth; PrintAction action; };
 struct LocatedAnchor { BlockBoundary boundary; AnchorId id; };
 struct OwnerTree { FunctionOwnerId owner; std::size_t member; };
@@ -622,7 +623,8 @@ class TreePrinter {
   void Expression(const ConstructExpr& node) {
     Append("(new (");
     Push(std::string_view("))"));
-    Push(ArgumentCursor{node.arguments, 0});
+    if (const auto* arguments = std::get_if<ArgumentRange>(&node.arguments)) Push(ArgumentCursor{*arguments, 0});
+    else Push(ArrayArgumentCursor{std::get<ArrayArguments>(node.arguments).array});
     Push(std::string_view(")("));
     Push(node.constructor);
   }
@@ -823,6 +825,18 @@ class TreePrinter {
     if (cursor.index != 0) Append(", ");
     Push(ArgumentCursor{cursor.range, cursor.index + 1});
     Push(Tree().arguments[cursor.range.first + cursor.index]);
+  }
+  void Run(ArrayArgumentCursor cursor) {
+    // A checked private array is an argument carrier, never a spread iterable.
+    // Keep its origin span and each property's span while omitting only the
+    // unobservable allocation; resource failures are excluded by tree admission.
+    Result().expressions[cursor.array.value].begin = written_;
+    Push(EndExpression{cursor.array});
+    const auto& syntax = Tree().expressions[cursor.array.value].expression;
+    if (std::holds_alternative<EmptyArrayExpr>(syntax)) return;
+    const auto* array = std::get_if<ObjectExpr>(&syntax);
+    if (!array || array->kind != AggregateKind::kArray) throw Error::kUnsupportedContext;
+    Push(ObjectCursor{array->properties, 0, AggregateKind::kArray});
   }
   void Run(SnapshotCursor cursor) {
     if (cursor.index == cursor.range.count) return;

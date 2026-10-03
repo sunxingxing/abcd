@@ -19,6 +19,7 @@ constexpr std::array kThrow{Role::kThrownValue};
 constexpr std::array kCall{Role::kCallee};
 constexpr std::array kReceiverCall{Role::kCallee, Role::kReceiver};
 constexpr std::array kConstruct{Role::kConstructor};
+constexpr std::array kConstructApply{Role::kConstructor, Role::kInput};
 constexpr std::array kCellStore{Role::kStoredValue};
 constexpr std::array kHeritage{Role::kHeritage};
 constexpr std::array kReceiverGuard{Role::kGuardValue};
@@ -111,6 +112,8 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       EvaluationShape shape{kReceiverGuard, false};
       shape.inputs = InputEvaluation::kReceiverGuard;
       return shape;
+    } else if constexpr (std::is_same_v<T, analysis::ValueConstructApply>) {
+      return EvaluationShape{kConstructApply, true};
     } else if constexpr (std::is_same_v<T, analysis::ValueConstruct>)
       return EvaluationShape{kConstruct, true, op.arguments};
     else {
@@ -209,7 +212,7 @@ bool OrderedEvaluation(const analysis::ValueOp& op) {
                     std::is_same_v<T, analysis::ValueThrow> || std::is_same_v<T, analysis::ValueHole> ||
                     std::is_same_v<T, analysis::ValueJump> ||
                     std::is_same_v<T, analysis::ValueGuard> ||
-                    std::is_same_v<T, analysis::ValueInvoke> || std::is_same_v<T, analysis::ValueConstruct> ||
+                    std::is_same_v<T, analysis::ValueInvoke> || std::is_same_v<T, analysis::ValueConstruct> || std::is_same_v<T, analysis::ValueConstructApply> ||
                     std::is_same_v<T, analysis::ValueArrayAllocation> ||
                     std::is_same_v<T, analysis::ValueObjectAllocation> ||
                     std::is_same_v<T, analysis::ValueIterResult> ||

@@ -131,6 +131,13 @@ RegisterEffect EffectOf(const ConstructorCall& value) {
   effect.range = RegisterRange{value.inputs.first, value.inputs.count};
   return effect;
 }
+RegisterEffect EffectOf(const ApplyConstructorCall& value) {
+  RegisterEffect effect;
+  effect.write = Accumulator{};
+  effect.reads[effect.read_count++] = value.constructor;
+  effect.reads[effect.read_count++] = Accumulator{};
+  return effect;
+}
 RegisterEffect EffectOf(const SuperRange& value) {
   RegisterEffect effect;
   effect.write = Accumulator{};
@@ -362,6 +369,9 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
       !Unsupported(result))
     return result;
   if (auto result = Adapt(LiftConstructorCall(instruction, frame_size));
+      !Unsupported(result))
+    return result;
+  if (auto result = Adapt(LiftApplyConstructorCall(instruction, frame_size));
       !Unsupported(result))
     return result;
   const auto super = LiftSuperInstruction(

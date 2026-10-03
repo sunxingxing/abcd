@@ -152,7 +152,11 @@ struct SequenceExpr { ExprId left; ExprId right; };
 struct ArgumentRange { std::uint32_t first; std::uint32_t count; };
 enum class CallReference : std::uint8_t { kValue, kMember };
 struct CallExpr { ExprId callee; ArgumentRange arguments; CallReference reference; };
-struct ConstructExpr { ExprId constructor; ArgumentRange arguments; };
+// A private complete array can supply native arguments without invoking its
+// iterator. Keep its original creation/initializer origins as one owned child.
+struct ArrayArguments { ExprId array; };
+using ConstructArguments = std::variant<ArgumentRange, ArrayArguments>;
+struct ConstructExpr { ExprId constructor; ConstructArguments arguments; };
 // The parent constructor and newTarget are supplied by the derived invocation.
 struct SuperCallExpr { ArgumentRange arguments; };
 // Fresh pinned arguments object. Slots are conditional current-value leaves;

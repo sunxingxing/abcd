@@ -8,6 +8,33 @@
 #include "abcd/source/module_enclosure.h"
 #include "abcd/source/global_reference.h"
 namespace abcd::source {
+std::variant<ClassParentScope, ClassTreeError> CheckClassParentScope(
+    const ClassTree& tree, std::uint64_t work) {
+  const auto initial = work;
+  const auto step = [&](std::uint64_t count = 1) {
+    if (count > work) throw ClassTreeError::kWorkLimit;
+    work -= count;
+  };
+  try {
+    step(); step(tree.member_sites.size()); step(tree.members.size()); step(tree.definitions.size());
+    if (tree.initializer_site || !tree.definitions.empty() || !tree.BodiesPrepared())
+      return ClassParentScope{false, initial - work};
+    const auto independent = [&](const PreparedFamily& prepared) {
+      step(); const auto& family = prepared.Family();
+      if ((family.root_capture && !family.root_capture->targets.empty()) ||
+          !family.members[family.root.value].tree.captures.empty()) return false;
+      for (const auto& member : family.members) {
+        step(); if (!member.tree.modules.empty()) return false;
+      }
+      return true;
+    };
+    if (!independent(*tree.constructor)) return ClassParentScope{false, initial - work};
+    for (const auto& member : tree.members)
+      if (!independent(member)) return ClassParentScope{false, initial - work};
+    return ClassParentScope{true, initial - work};
+  } catch (ClassTreeError error) { return error; }
+}
+
 namespace {
 using Error = ClassTreeError;
 template<class T, class... U> T Take(std::variant<U...> value) {

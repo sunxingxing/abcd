@@ -282,6 +282,7 @@ bool LiteralExpression(const analysis::ValueProgram& graph, const analysis::Valu
       // nesting census forbids exposing the unfinished literal to it; shared
       // evaluation/operand checks retain callee, arguments and throw order.
       std::holds_alternative<analysis::ValueConstruct>(op.operation) ||
+      std::holds_alternative<analysis::ValueConstructApply>(op.operation) ||
       std::holds_alternative<analysis::ValueLexicalLoad>(op.operation) ||
       // Name lookup already has a common GlobalNameExpr lowering. Nest only
       // that lookup kind; the same use census, effect/catch interval and final

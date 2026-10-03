@@ -246,6 +246,10 @@ struct ValueConstruct {
   std::uint32_t arguments;
   bool operator==(const ValueConstruct&) const = default;
 };
+struct ValueConstructApply {
+  std::uint16_t profile_slot;
+  bool operator==(const ValueConstructApply&) const = default;
+};
 // Pinned range super call: parent and newTarget come from the invocation,
 // not from an explicit constructor operand. Only normal completion writes acc;
 // initializing/checking this remains a separate constructor protocol obligation.
@@ -273,7 +277,7 @@ struct ValueHole { bool operator==(const ValueHole&) const = default; };
 using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary, ValueHole, ValueAwait, ValueYield,
     ValueNamedRead, ValueNamedWrite, ValueOwnWrite, ValueIndexedWrite, ValueDefineAccessor, ValuePropertyRead, ValueBranch, ValueJump,
     ValueReturn, ValueNop, ValueString, ValueGlobalRead, ValueGuard, ValueArrayAllocation, ValueObjectAllocation, ValueIterResult,
-    ValueInvoke, ValueConstruct, ValueFunctionCreation, ValueClassCreation, ValueLexicalLoad, ValueLexicalStore,
+    ValueInvoke, ValueConstruct, ValueConstructApply, ValueFunctionCreation, ValueClassCreation, ValueLexicalLoad, ValueLexicalStore,
     ValueEnvironmentPush, ValueEnvironmentPop, ValueCurrentEnvironment, ValueModuleRead,
     ValueModuleWrite, ValuePropertyWrite, ValueDebugger, ValueFrameThis, ValueFrameFunction,
     ValueGlobalObject, ValueSymbolConstructor, ValueRestArguments, ValueArgumentSnapshot, ValueThrow, ValueSuperCall, ValueSuperSpread, ValueSuperCheck>;

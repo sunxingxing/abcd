@@ -162,6 +162,10 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
   if (const auto* call = std::get_if<ConstructorCall>(&constructor)) return *call;
   if (std::get<ConstructorCallError>(constructor) != ConstructorCallError::kUnsupportedOpcode)
     return Fail(SemanticError::kMalformedInstruction, site.offset);
+  const auto apply = LiftApplyConstructorCall(decoded, frame_size);
+  if (const auto* call = std::get_if<ApplyConstructorCall>(&apply)) return *call;
+  if (std::get<ConstructorCallError>(apply) != ConstructorCallError::kUnsupportedOpcode)
+    return Fail(SemanticError::kMalformedInstruction, site.offset);
   const auto object = LiftObjectCreation(decoded);
   if (const auto* empty = std::get_if<EmptyObjectCreation>(&object)) return *empty;
   if (const auto* buffered = std::get_if<BufferedObjectCreation>(&object)) return *buffered;
@@ -338,6 +342,13 @@ SemanticEffects Effects(const SemanticOperation& operation,
                              std::is_same_v<T, BufferedArrayCreation> ||
                              std::is_same_v<T, BufferedObjectCreation>) {
           effects.normal = LanguageEffect::kAllocation;
+          effects.before_throw = effects.normal;
+          effects.exceptional = ExceptionalCompletion::kMayThrow;
+        } else if constexpr (std::is_same_v<T, ApplyConstructorCall>) {
+          // RuntimeNewObjApply first copies JSArray indices to a TaggedArray,
+          // then constructs with func as newTarget. Index getters can throw.
+          effects.normal = LanguageEffect::kAllocation | LanguageEffect::kHeapRead |
+                           LanguageEffect::kHeapWrite | LanguageEffect::kUserCode;
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, OrdinaryCall> ||

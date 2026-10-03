@@ -66,6 +66,66 @@ bool StableReceiver(const ValueProgram& graph, const EvaluationPlan& evaluation,
 bool Property(const ValueOperation& operation) {
   return std::holds_alternative<ValueNamedRead>(operation) || std::holds_alternative<ValuePropertyRead>(operation);
 }
+std::vector<std::size_t> ArrayUses(const ValueProgram& graph, const EvaluationPlan& evaluation,
+    CallBudget& budget) {
+  bool needed = false;
+  for (const auto& op : graph.ops) {
+    budget.Step(); needed |= op.life == ValueLife::kLive &&
+        std::holds_alternative<ValueConstructApply>(op.operation);
+  }
+  if (!needed) return {};
+  budget.Admit(graph.values.size(), sizeof(std::size_t)); budget.Step(graph.values.size());
+  std::vector<std::size_t> counts(graph.values.size());
+  budget.Admit(counts.capacity() - graph.values.size(), sizeof(std::size_t));
+  for (const auto& use : graph.uses) {
+    budget.Step();
+    if (const auto* owner = std::get_if<OpId>(&use.owner)) {
+      const auto kind = evaluation.operations[owner->value].kind;
+      if (graph.ops[owner->value].life != ValueLife::kLive || kind == EvaluationKind::kAlias ||
+          kind == EvaluationKind::kElidedPure) continue;
+      // Fresh LiteralPlan checks these receiver occurrences as own definitions,
+      // not observations. A stored self-reference is still counted separately.
+      if (kind == EvaluationKind::kInitializer && use.role == OperandRole::kBase) continue;
+    }
+    const auto canonical = ResolveEvaluationOperand(evaluation, use.operand);
+    if (const auto* value = std::get_if<ValueId>(&canonical)) ++counts[value->value];
+  }
+  return counts;
+}
+OpId ApplyArray(const ValueProgram& graph, const EvaluationPlan& evaluation, const ValueOp& call,
+    std::span<const std::size_t> uses) {
+  Require(call.use_count == 2, Error::kArrayArguments);
+  const UseId use{call.first_use.value + 1};
+  const auto input = ResolveEvaluationOperand(evaluation, graph.uses[use.value].operand);
+  const auto* value = std::get_if<ValueId>(&input);
+  Require(value && value->value < graph.values.size() && value->value < uses.size() &&
+      uses[value->value] == 1, Error::kArrayArguments);
+  const auto* result = std::get_if<OpResult>(&graph.values[value->value].origin);
+  Require(result && result->op.value < graph.ops.size(), Error::kArrayArguments);
+  const auto& allocation = graph.ops[result->op.value];
+  const auto& placement = evaluation.operations[result->op.value];
+  // Fresh evaluation verification proves the canonical sole consumer, complete
+  // literal interval and catch order. No repeated use-chain scan per argument.
+  Require(allocation.life == ValueLife::kLive &&
+      std::holds_alternative<ValueArrayAllocation>(allocation.operation) &&
+      (((placement.kind == EvaluationKind::kInline || placement.kind == EvaluationKind::kNestedLiteral) &&
+        placement.consumer == use) || (placement.kind == EvaluationKind::kRoot && placement.temporary)),
+      Error::kArrayArguments);
+  return result->op;
+}
+OpId ApplyConstructor(const ValueProgram& graph, const EvaluationPlan& evaluation, const ValueOp& call) {
+  const auto input = ResolveEvaluationOperand(evaluation, graph.uses[call.first_use.value].operand);
+  const auto* value = std::get_if<ValueId>(&input);
+  Require(value && value->value < graph.values.size(), Error::kConstructorIdentity);
+  const auto* result = std::get_if<OpResult>(&graph.values[value->value].origin);
+  // Runtime NewObject dispatches Proxy::ConstructInternal before checking
+  // IsConstructor. A proxy of an arrow can run a trap that native `new` skips.
+  // Creation-proven classes have stable constructor identity; arbitrary host
+  // values/getters need further runtime modeling, never a lifetime assumption.
+  Require(result && result->op.value < graph.ops.size() &&
+      std::holds_alternative<ValueClassCreation>(graph.ops[result->op.value].operation), Error::kConstructorIdentity);
+  return result->op;
+}
 std::variant<std::uint64_t, CallPlanError> VerifyCalls(const ValueProgram& graph,
     const EvaluationPlan& evaluation, const CallPlan& plan, SemanticBudget budget, EvaluationFlow flow);
 std::variant<CallPlan, CallPlanError> BuildCalls(const analysis::ValueProgram& graph,
@@ -78,11 +138,17 @@ std::variant<CallPlan, CallPlanError> BuildCalls(const analysis::ValueProgram& g
     CallPlan plan{graph.revision, graph.cfg_revision, {}};
     plan.operations.resize(graph.ops.size());
     checked.Admit(plan.operations.capacity() - graph.ops.size(), sizeof(CallBinding));
+    const auto array_uses = ArrayUses(graph, evaluation, checked);
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       checked.Step(); const auto& op = graph.ops[i];
       if (op.life != ValueLife::kLive || evaluation.operations[i].kind == EvaluationKind::kClassProjection) continue;
       if (std::holds_alternative<ValueConstruct>(op.operation)) {
         plan.operations[i] = ConstructCall{};
+        continue;
+      }
+      if (std::holds_alternative<ValueConstructApply>(op.operation)) {
+        plan.operations[i] = ConstructCall{ApplyArray(graph, evaluation, op, array_uses),
+            ApplyConstructor(graph, evaluation, op)};
         continue;
       }
       const auto* invoke = std::get_if<ValueInvoke>(&op.operation);
@@ -120,14 +186,25 @@ std::variant<std::uint64_t, CallPlanError> VerifyCalls(const analysis::ValueProg
     Require(plan.operations.size() == graph.ops.size(), Error::kBinding);
     CallBudget checked(budget);
     checked.Evaluation(graph, evaluation, flow);
+    const auto array_uses = ArrayUses(graph, evaluation, checked);
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       checked.Step(); const auto& op = graph.ops[i];
       const auto& binding = plan.operations[i];
       const auto* invoke = std::get_if<ValueInvoke>(&op.operation);
-      if (op.life != ValueLife::kLive || evaluation.operations[i].kind == EvaluationKind::kClassProjection || (!invoke && !std::holds_alternative<ValueConstruct>(op.operation))) {
+      if (op.life != ValueLife::kLive || evaluation.operations[i].kind == EvaluationKind::kClassProjection ||
+          (!invoke && !std::holds_alternative<ValueConstruct>(op.operation) &&
+           !std::holds_alternative<ValueConstructApply>(op.operation))) {
         Require(std::holds_alternative<NoCall>(binding), Error::kBinding); continue;
       }
-      if (!invoke) { Require(std::holds_alternative<ConstructCall>(binding), Error::kBinding); continue; }
+      if (!invoke) {
+        const auto* construct = std::get_if<ConstructCall>(&binding);
+        Require(construct, Error::kBinding);
+        if (std::holds_alternative<ValueConstructApply>(op.operation)) {
+          Require(construct->array == ApplyArray(graph, evaluation, op, array_uses), Error::kArrayArguments);
+          Require(construct->constructor == ApplyConstructor(graph, evaluation, op), Error::kConstructorIdentity);
+        } else Require(!construct->array && !construct->constructor, Error::kBinding);
+        continue;
+      }
       if (invoke->receiver == InvokeReceiver::kUndefined) {
         const auto* value = std::get_if<ValueCall>(&binding);
         Require(value && value->eval == EvalMode::kIndirect, Error::kBinding); continue;
@@ -156,6 +233,17 @@ std::variant<std::uint64_t, CallPlanError> VerifyCalls(const analysis::ValueProg
   } catch (const std::length_error&) { return Error::kResourceLimit; }
 }
 }  // namespace
+std::variant<CallArgumentUses, CallPlanError> IndexCallArgumentUses(
+    const analysis::ValueProgram& graph, const EvaluationPlan& evaluation, analysis::SemanticBudget budget) {
+  try {
+    CallBudget quota(budget); quota.Admit(1, sizeof(CallArgumentUses));
+    auto uses = ArrayUses(graph, evaluation, quota);
+    const auto bytes = sizeof(CallArgumentUses) + uses.capacity() * sizeof(std::size_t);
+    return CallArgumentUses{std::move(uses), bytes, quota.Work()};
+  } catch (CallPlanError error) { return error;
+  } catch (const std::bad_alloc&) { return CallPlanError::kResourceLimit;
+  } catch (const std::length_error&) { return CallPlanError::kResourceLimit; }
+}
 std::variant<CallPlan, CallPlanError> BuildCallPlan(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, analysis::SemanticBudget budget) {
   return BuildCalls(graph, evaluation, budget, EvaluationFlow::kNormal);
