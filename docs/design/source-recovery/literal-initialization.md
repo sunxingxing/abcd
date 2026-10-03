@@ -1,5 +1,45 @@
 # Literal Initialization
 
+## Allocation-site availability instead of phi block identity
+
+Rule 81 removes the phased `phi.block == allocation.block` admission in
+`EarlyValue`. Literal planning retains the dominator result already computed by
+fresh `VerifyValueFlow`/`VerifyPhasedValueFlow` and calls the shared
+`ValueAvailableAt` query at the actual allocation. Entry, operation result,
+successful Commit, phi entry and catch entry use the same availability semantics
+as the original operand verifier. A different block alone is neither permission
+nor a refusal. The retained dominator vector is charged to the literal budget;
+this adds O(B) retained storage and O(1) work per early operand, without another
+dominator build or a per-property graph walk. The existing Lengauer-Tarjan
+implementation and its provenance remain unchanged.
+
+Availability is only one obligation. Native initialization still has its checked
+ordered interval/unique normal phase corridor, actual SSA identity, no unfinished
+observation and catch-copy obligations. That interval cannot reenter a phi block
+dominating its allocation, so its edge copies cannot change that phi location
+between allocation and definition. The normal route keeps the same local native
+interval. Late phi values and pre-Commit operation results cannot become early
+leaves. Production aliasing still retains the first materialization of mutable
+phi/catch storage; this change does not relax that separate contract.
+
+Three-profile encoded cases cover a selection before allocation with copies and
+block splits at 0/1/200/201/402, and a selection after allocation as a negative.
+Additional candidate-IR cases legally forward pure copies to the same phi and
+verify literal/evaluation plans independently; the old block admission rejects
+that representation. Original encoded cases also build and independently check
+exception source trees and compare native behavior, including fresh identity,
+own `__proto__` descriptors, inherited prototype behavior and no coercion/getter
+effects. The forwarded candidate is **not** a raw imported-ABC source receipt:
+`VerifyImportedPhases` still requires original import correspondence. Extending
+that correspondence to proved working-IR edits remains open; no copy-pattern
+exception or new publication premise was added here.
+
+The separate first-own-definition gap across a selection remains open. Existing
+staged assignment requires a buffered writable own property; replacing a first
+own definition on an empty object with ordinary assignment could invoke an
+inherited setter. This rule neither permits that substitution nor completes
+stage-one acceptance.
+
 ## Native binary initializers
 
 ValueBinary with two operands and an independently established Language result

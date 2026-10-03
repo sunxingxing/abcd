@@ -383,3 +383,19 @@ analysis::BuildModuleInitialization 的 all-path 候选，完整输入验证再�
 current_store.block==0 / 同块order条件。工作图移除/移动store不能靠旧输入证明
 放行。phased parent、guard成功Commit与首次source声明归属仍是开放项；
 没有增加branch形状、producer列表或sample身份匹配。详见module-reads.md。
+
+## 规则 81：literal 的早期输入改用实际分配点可用性
+
+删除 `literal_plan.cc::EarlyValue` 的 phased `phi.block == allocation.block`
+和 producer 块身份分派。普通及 phased 路径保留 fresh ValueFlow 产生的支配树，
+在真实 allocation 的 block/order 上复用共同可用性查询，包括成功 Commit 与
+phi/catch entry；查询不提供值域、效果搬移或源存储版本权限。原来的 native
+interval/unique phase corridor、no-escape 和 catch-copy 证明仍独立成立。
+不再因为一个已可用的 phi 来自另一块而拒绝，也不把晚于分配的 phi 当早期叶。
+
+原始编码的 phi materialization 之前就可输出；本次 RED 来自同一编码消除
+纯复制后的等价候选 IR。候选证明和原始编码到独立源码树的验证分别记录，
+不能把修改过的候选直接当原始 import 证据：当前 `VerifyImportedPhases`
+对这种 working-IR 编辑的对应关系尚未贯通。该边界未添加新的本地匹配例外。
+首次 own-definition 跨选择的原生表示仍开放；不得用普通 Set 替换
+DefineOwnProperty。细节与验证层见 literal-initialization.md。

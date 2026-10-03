@@ -24,6 +24,12 @@ struct PhasedValueFlowProof {
   std::size_t allocated_bytes = 0;
   DominatorTree dominators;
 };
+// Query an additional evaluation site using a fresh proof of this graph.
+// Availability is after a successful Commit and at phi/catch block entry;
+// it does not authorize moving effects or reading mutable source storage.
+[[nodiscard]] bool ValueAvailableAt(const ValueProgram& graph,
+    const DominatorTree& dominators, ValueId value, WorkBlockId block,
+    std::uint32_t order);
 // Availability across Before/Commit/Catch, not input/handler correspondence or
 // permission to publish source. Only explicit throw's unreachable, valueless
 // Commit is admitted; other unreachable phases still reject.

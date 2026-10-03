@@ -12,6 +12,39 @@
 
 ## 当前阶段
 
+### 2026-10-04：literal 早期输入复用共同分配点可用性
+
+- 规则 revision81。删除 EarlyValue 的 phased phi.block==allocation.block
+  及 producer 块身份分派；保留 fresh normal/phased ValueFlow 已产生的支配树，
+  在真实分配点查询共同 ValueAvailableAt。成功 Commit、phi/catch entry 与
+  原始 operand 可用性检查共用语义。保留值域、实际 SSA 输入、初始化区间/
+  unique phase corridor、未完成观测及 catch-copy 义务，不放行晚定义值。
+  支配树保留存储计入现有预算；O(B)保留空间、每 early operand O(1)查询，
+  没有额外支配树重建、每变量图遍历、sample或图形匹配。设计与审计分别更新
+  literal-initialization.md / shape-restrictions-audit.md。
+- 三profile、0/1/200/201/402 copy与block split验证原始编码路径及纯复制
+  消除后的候选IR。候选RED确实在Evaluation拒绝，日志
+  /tmp/abcd-literal-phi-forwarded-red.log；原始编码此前已保留phi快照并可输出，
+  不能把它称为本次新完成正文。候选独立literal/evaluation复核通过；原始
+  编码完整exception源码树与43组独立native行为对照通过，含fresh identity、
+  own __proto__ descriptor、prototype和无getter/coercion副作用。
+- raw import对应关系仍是独立义务：对转发候选尝试原始ExceptionPlan时被
+  VerifyImportedPhases拒绝，backtrace及green-tests.log保留失败证据。测试
+  明确分开候选证明与原始编码源码路径，没有为copy形状加发布例外，也没有
+  将该候选证明作为端到端成功。first-own-definition跨选择仍开放；空对象
+  的DefineOwnProperty不能偷换成可能触发继承setter的普通Set。
+- 最终单构建 -j4 退出0：/tmp/abcd-literal-phi-final-build.log。
+  final-tests.log记录11/11相关检查35.94秒通过。随后只增补可用性查询的
+  早/晚phi正负断言，availability-query-build.log退出0，受影响两项检查
+  2/2通过25.97秒；生产未再修改。初次测试夹具的narrowing编译失败及首次
+  raw import对应失败均未计通过。full-suite/RSS/扩展语料/基准/DFX保持暂停。
+- fresh build/stage-one/value-literal-phi-availability-pass-1 固定五输入均
+  退出0：80 complete /26 incomplete /0 failure /46 no-module，无完整回退，
+  legacy writer均0。五输入SHA/size与manifest/abc-index一致，106份源码
+  全部解析且与revision80字节一致：final-batch.log / final-syntax.log。
+  这些证据没有减少参数/属性算术、导入super构造协议及其他正文/表示缺口。
+  阶段一语义与源码风格双验收仍未完成，Goal保持active。
+
 ### 2026-10-04：布尔/null 转换事实贯通共同算术规则
 
 - 规则 revision80。共同 ValueKinds 增加 ZeroOrOnePrimitive，准确表示Boolean/

@@ -62,17 +62,19 @@ std::vector<std::uint8_t> InitializedReceiverChecks(const analysis::ValueProgram
   }
   return initialized;
 }
-void Flow(const analysis::ValueProgram& graph, LiteralBudget& budget, const EvaluationPlan* evaluation) {
+analysis::DominatorTree Flow(const analysis::ValueProgram& graph, LiteralBudget& budget, const EvaluationPlan* evaluation) {
   if (evaluation) {
     Require(evaluation->flow == EvaluationFlow::kPhased && !graph.phases.empty() &&
         evaluation->operations.size() == graph.ops.size(), Error::kFlow);
-    const auto proof = analysis::VerifyPhasedValueFlow(graph, budget.Remaining());
+    auto proof = analysis::VerifyPhasedValueFlow(graph, budget.Remaining());
     if (const auto* error = std::get_if<analysis::ValueAvailabilityError>(&proof)) {
       if (*error == analysis::ValueAvailabilityError::kResourceLimit) throw Error::kResourceLimit;
       if (*error == analysis::ValueAvailabilityError::kWorkLimit) throw Error::kWorkLimit;
       throw Error::kFlow;
     }
     budget.Step(std::get<analysis::PhasedValueFlowProof>(proof).work);
+    auto& dominators = std::get<analysis::PhasedValueFlowProof>(proof).dominators;
+    budget.Admit(dominators.nodes.capacity(), sizeof(analysis::DominatorNode));
     // Guard omission requires a fresh completed-store/owner witness, not merely
     // a caller-supplied placement. Keep catch edges and original PC identities.
     if (evaluation->cells) {
@@ -97,21 +99,25 @@ void Flow(const analysis::ValueProgram& graph, LiteralBudget& budget, const Eval
       throw Error::kFlow;
     }
     budget.Step(std::get<std::uint64_t>(elided));
-    return;
+    return std::move(dominators);
   }
-  const auto proof = analysis::VerifyValueFlow(graph, budget.Remaining());
+  auto proof = analysis::VerifyValueFlow(graph, budget.Remaining());
   if (const auto* error = std::get_if<analysis::ValueAvailabilityError>(&proof)) {
     if (*error == analysis::ValueAvailabilityError::kResourceLimit) throw Error::kResourceLimit;
     if (*error == analysis::ValueAvailabilityError::kWorkLimit) throw Error::kWorkLimit;
     throw Error::kFlow;
   }
   budget.Step(std::get<analysis::ValueFlowProof>(proof).work);
+  auto& dominators = std::get<analysis::ValueFlowProof>(proof).dominators;
+  budget.Admit(dominators.nodes.capacity(), sizeof(analysis::DominatorNode));
+  return std::move(dominators);
 }
 struct LiteralPosition { std::optional<analysis::WorkBlockId> head; std::size_t order = 0; };
 class LiteralPath {
  public:
-  LiteralPath(const analysis::ValueProgram& graph, const EvaluationPlan* evaluation, LiteralBudget& budget)
-      : graph_(graph), evaluation_(evaluation) {
+  LiteralPath(const analysis::ValueProgram& graph, const EvaluationPlan* evaluation, LiteralBudget& budget,
+      const analysis::DominatorTree& dominators)
+      : graph_(graph), evaluation_(evaluation), dominators_(dominators) {
     if (!evaluation) return;
     std::vector<std::size_t> incoming;
     std::vector<std::optional<analysis::WorkBlockId>> next;
@@ -147,6 +153,9 @@ class LiteralPath {
   analysis::ValueOperand Resolve(const analysis::ValueOperand& operand) const {
     return evaluation_ ? ResolveEvaluationOperand(*evaluation_, operand) : operand;
   }
+  bool Available(analysis::ValueId value, const analysis::ValueOp& site) const {
+    return analysis::ValueAvailableAt(graph_, dominators_, value, site.block, site.order);
+  }
   bool Same(analysis::WorkBlockId a, analysis::WorkBlockId b) const {
     if (!evaluation_) return a == b;
     return positions_[a.value].head && positions_[a.value].head == positions_[b.value].head;
@@ -179,6 +188,7 @@ class LiteralPath {
  private:
   const analysis::ValueProgram& graph_;
   const EvaluationPlan* evaluation_;
+  const analysis::DominatorTree& dominators_;
   std::vector<LiteralPosition> positions_;
 };
 analysis::OpId Allocation(const analysis::ValueProgram& graph, analysis::OpId id, const LiteralPath& path, bool same_path = true) {
@@ -217,15 +227,12 @@ void EarlyValue(const analysis::ValueProgram& graph, const analysis::ValueOp& al
   if (!value) return;
   const auto& definition = graph.values[value->value];
   Require(definition.domain.IsLanguage(), Error::kDomain);
-  if (const auto* result = std::get_if<analysis::OpResult>(&definition.origin)) {
-    const auto& producer = graph.ops[result->op.value];
-    Require(!path.Same(producer.block, allocation.block) || path.Before(producer, allocation), Error::kLateValue);
-  } else if (const auto* phi = std::get_if<analysis::PhiDefinition>(&definition.origin)) {
-    // Direct mutable phi leaves cannot be moved over an intervening edge copy.
-    Require(!path.Phased() || phi->block == allocation.block, Error::kLateValue);
-  }
-  // Fresh flow proof supplies dominance. A different-block producer available
-  // at the same-block own-write is also available at the allocation block entry.
+  // The fresh common SSA proof owns availability at the actual allocation,
+  // including successful Commit and dominating phi/catch entry. A native
+  // initializer remains in the already checked unique corridor: it cannot
+  // reenter a dominating phi block and overwrite its source edge-copy storage.
+  // Do not replace this proof with producer/block identity matching.
+  Require(path.Available(*value, allocation), Error::kLateValue);
 }
 bool Aggregate(const analysis::ValueOperation& op) {
   return std::holds_alternative<analysis::ValueArrayAllocation>(op) ||
@@ -553,7 +560,7 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
   try {
     LiteralBudget budget(allowance);
     Require(plan.revision == graph.revision && plan.cfg_revision == graph.cfg_revision, Error::kRevision);
-    Flow(graph, budget, evaluation);
+    const auto dominators = Flow(graph, budget, evaluation);
     Require(guards.empty() || guards.size() == graph.ops.size(), Error::kDefinition);
     Require(projected.empty() || projected.size() == graph.ops.size(), Error::kDefinition);
     for (std::size_t i = 0; i < guards.size(); ++i) {
@@ -561,7 +568,7 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
       if (guards[i]) Require(guards[i]->value < graph.ops.size() &&
           guards[guards[i]->value] == analysis::OpId{static_cast<std::uint32_t>(i)}, Error::kDefinition);
     }
-    LiteralPath path(graph, evaluation, budget);
+    LiteralPath path(graph, evaluation, budget, dominators);
     Require(plan.objects.size() <= graph.ops.size() && plan.definitions.size() <= graph.ops.size(), Error::kCoverage);
     Require(plan.nested.empty() || plan.nested.size() == graph.ops.size(), Error::kCoverage);
     Require(plan.staged.empty() || plan.staged.size() == graph.ops.size(), Error::kCoverage);
@@ -677,7 +684,7 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
     std::span<const analysis::OpId> receiver_guards) {
   try {
     LiteralBudget budget(allowance);
-    Flow(graph, budget, evaluation);
+    const auto dominators = Flow(graph, budget, evaluation);
     Require(guards.empty() || guards.size() == graph.ops.size(), Error::kDefinition);
     Require(projected.empty() || projected.size() == graph.ops.size(), Error::kDefinition);
     for (std::size_t i = 0; i < guards.size(); ++i) {
@@ -685,7 +692,7 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
       if (guards[i]) Require(guards[i]->value < graph.ops.size() &&
           guards[guards[i]->value] == analysis::OpId{static_cast<std::uint32_t>(i)}, Error::kDefinition);
     }
-    LiteralPath path(graph, evaluation, budget);
+    LiteralPath path(graph, evaluation, budget, dominators);
     Require(graph.ops.size() <= std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
     std::size_t count = 0;
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {

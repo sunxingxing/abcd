@@ -213,6 +213,11 @@ bool Available(const ValueProgram& graph, const DominatorTree& dominators,
 }
 }  // namespace
 
+bool ValueAvailableAt(const ValueProgram& graph, const DominatorTree& dominators,
+                      ValueId value, WorkBlockId block, std::uint32_t order) {
+  return Available(graph, dominators, value, block, order);
+}
+
 static std::variant<ValueFlowProof, ValueAvailabilityError> VerifyAvailability(
     const ValueProgram& graph, SemanticBudget budget) {
   try {
