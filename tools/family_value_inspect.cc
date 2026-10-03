@@ -80,8 +80,9 @@ void Draft(nlohmann::json& report, const ConstructedFamily& family,
 template <class Error> unsigned Code(const Error& error) {
   if constexpr (std::is_enum_v<Error>) return static_cast<unsigned>(error);
   else if constexpr (requires { error.kind; }) return static_cast<unsigned>(error.kind);
-  else if constexpr (requires { error.error; }) return std::visit([](const auto& nested) { return Code(nested); }, error.error);
-  else if constexpr (requires { error.cause; }) return std::visit([](const auto& nested) { return Code(nested); }, error.cause);
+  else if constexpr (requires { error.error; }) return Code(error.error);
+  else if constexpr (requires { error.cause; }) return Code(error.cause);
+  else if constexpr (requires { error.reason; }) return Code(error.reason);
   else return std::visit([](const auto& nested) { return Code(nested); }, error);
 }
 void Failure(nlohmann::json& report, const FamilyFileFailure& failure) {
@@ -95,6 +96,10 @@ void Failure(nlohmann::json& report, const FamilyFileFailure& failure) {
       report["family_error"] = Code(error);
     } else if constexpr (std::is_same_v<T, ClassInitializerError>) {
       report["class_projection_error"] = Code(error);
+    } else if constexpr (std::is_same_v<T, ClassSelfError> || std::is_same_v<T, ClassSelfOrderError>) {
+      report["class_self_error"] = Code(error);
+    } else if constexpr (std::is_same_v<T, ClassInitializerReadFailure>) {
+      report["initializer_read_failure"] = error.index(); report["initializer_read_error"] = Code(error);
     } else if constexpr (std::is_same_v<T, BufferedArrayError> || std::is_same_v<T, abc::MetadataError> ||
         std::is_same_v<T, abc::LiteralFailure>) {
       report["array_error"] = Code(error);

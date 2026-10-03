@@ -23,7 +23,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
     std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules,
     EvaluationFlow flow, std::span<const CellDemand> demands, std::span<const ClassInitializerCall> initializers,
-    analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands = {}) {
+    analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands = {}, const ClassSelfOrder* self_order = nullptr) {
   try {
     Require(incoming == IncomingCells::kReject || incoming == IncomingCells::kConditional, Error::kUnsupportedOperation);
     auto work = budget.work;
@@ -72,7 +72,11 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
           Error::kOwnership);
     }
 
-    auto projected = ProjectClassMembers(graph, initializers, {bytes, work}, definitions);
+    if (self_order) {
+      Require(!self_order->Stores(graph).empty(),Error::kOwnership);
+      admit(self_order->AllocatedBytes(),1); plan.self_order = *self_order;
+    }
+    auto projected = ProjectClassMembers(graph, initializers, {bytes, work}, definitions, plan.self_order ? &*plan.self_order : nullptr);
     if (const auto* error = std::get_if<ClassInitializerError>(&projected))
       return *error == ClassInitializerError::kResourceLimit ? Error::kResourceLimit :
           *error == ClassInitializerError::kWorkLimit ? Error::kWorkLimit : Error::kOwnership;
@@ -436,6 +440,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
         plan.receiver_guards.capacity() * sizeof(analysis::OpId) +
         (plan.phis ? plan.phis->allocated_bytes : 0) +
         (plan.literals ? plan.literals->allocated_bytes : 0);
+    if (plan.self_order) plan.allocated_bytes += plan.self_order->AllocatedBytes();
     if (plan.cells) plan.allocated_bytes += plan.cells->allocated_bytes;
     if (plan.exceptions) plan.allocated_bytes += plan.exceptions->allocated_bytes;
     for (const auto& function : plan.functions) {
@@ -453,8 +458,8 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
 std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
     std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules, std::span<const CellDemand> demands,
-    std::span<const ClassInitializerCall> initializers, analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands) {
-  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kNormal, demands, initializers, closure_writes, definitions, receiver_guards, entry_demands);
+    std::span<const ClassInitializerCall> initializers, analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands, const ClassSelfOrder* self_order) {
+  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kNormal, demands, initializers, closure_writes, definitions, receiver_guards, entry_demands, self_order);
 }
 std::variant<EvaluationPlan, EvaluationError> BuildPhasedEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,

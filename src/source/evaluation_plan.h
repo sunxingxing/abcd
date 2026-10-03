@@ -10,6 +10,7 @@
 #include "module_guards.h"
 #include "hole_protocol.h"
 #include "class_initializers.h"
+#include "class_self_order.h"
 
 namespace abcd::source {
 enum class BranchPolarity : std::uint8_t { kTaken, kFallthrough };
@@ -85,6 +86,7 @@ struct EvaluationPlan {
   // remain independently checked.
   std::vector<std::optional<analysis::OpId>> logical_objects;
   std::vector<NaNProjection> integer_nans;
+  std::optional<ClassSelfOrder> self_order;
 };
 inline analysis::ValueId ResolveEvaluationValue(const EvaluationPlan& plan, analysis::ValueId value) {
   return plan.aliases.empty() ? value : plan.aliases[value.value];
@@ -188,7 +190,7 @@ struct EvaluationShape {
     analysis::ClosureWrites closure_writes = analysis::ClosureWrites::kUnknown,
     std::span<const ClassDefinitionSite> definitions = {},
     std::span<const analysis::OpId> receiver_guards = {},
-    std::span<const IncomingCell> entry_demands = {});
+    std::span<const IncomingCell> entry_demands = {}, const ClassSelfOrder* self_order = nullptr);
 // Iteratively expands the proposed forest in the declared input order, checking
 // exact ordered occurrences and availability. Cross-phase expressions require
 // contiguous effect intervals and equal catch snapshots at their final roots.

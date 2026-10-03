@@ -1,4 +1,5 @@
 #include "class_initializers.h"
+#include "class_self_order.h"
 #include "../analysis/value_flow.h"
 #include <algorithm>
 #include <new>
@@ -6,7 +7,7 @@
 namespace abcd::source {
 std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
     const analysis::ValueProgram& graph, std::span<const ClassInitializerCall> requested,
-    analysis::SemanticBudget budget, std::span<const ClassDefinitionSite> definitions) {
+    analysis::SemanticBudget budget, std::span<const ClassDefinitionSite> definitions, const ClassSelfOrder* self_order) {
   using namespace analysis;
   using Error = ClassInitializerError;
   const auto initial = budget;
@@ -70,6 +71,14 @@ std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
           (op.normal != LanguageEffect::kNone || op.before_throw != LanguageEffect::kNone ||
            op.exceptional != ExceptionalCompletion::kImpossible));
     }
+    std::vector<std::optional<ClassSelfStore>> self_stores;
+    if (self_order) {
+      const auto stores = self_order->Stores(graph);
+      require(!stores.empty(),Error::kInput);
+      admit(graph.ops.size(),sizeof(std::optional<ClassSelfStore>)); step(graph.ops.size()); self_stores.resize(graph.ops.size());
+      admit(self_stores.capacity()-self_stores.size(),sizeof(std::optional<ClassSelfStore>));
+      for (const auto& store : stores) { step(); require(store.store.value < self_stores.size() && !self_stores[store.store.value]); self_stores[store.store.value] = store; }
+    }
     std::optional<OpId> previous;
     for (const auto& call : requested) {
       step(); require(!previous || *previous < call.method); previous = call.method;
@@ -84,7 +93,7 @@ std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
       const auto& block = graph.blocks[creation.block.value];
       require(call.creation.value >= block.first_op.value &&
           call.call.value - block.first_op.value < block.op_count);
-      std::size_t reads = 0;
+      std::size_t reads = 0, self_writes = 0;
       const auto project = [&](OpId id) {
         require(!result.owners[id.value]); result.owners[id.value] = call.creation;
       };
@@ -95,6 +104,12 @@ std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
         require(owner != nullptr, Error::kFlow);
         if (*owner == call.method || *owner == call.call) continue;
         const auto& op = graph.ops[owner->value];
+        if (!self_stores.empty() && self_stores[owner->value]) {
+          const auto& self = *self_stores[owner->value];
+          require(self.creation == call.creation && self.initializer == call.call &&
+              std::holds_alternative<ValueLexicalStore>(op.operation) && occurrence.role == OperandRole::kStoredValue,Error::kFlow);
+          ++self_writes; continue; // Retained cell write, never projected away.
+        }
         // Fresh SSA availability proves the creation block dominates this
         // direct use. Creation and initializer call share one basic block, so
         // every normal exit from that block has completed the call. Exceptional
@@ -112,7 +127,7 @@ std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
       require(effects[call.method.value + 1] != effects[call.method.value] &&
           effects[call.call.value + 1] != effects[call.call.value]);
       constexpr std::size_t kMethodAndCall = 2;
-      require(effects[call.call.value + 1] - effects[call.creation.value + 1] == reads + kMethodAndCall,
+      require(effects[call.call.value + 1] - effects[call.creation.value + 1] == reads + self_writes + kMethodAndCall,
           Error::kFlow);
     }
     result.allocated_bytes = initial.bytes - budget.bytes;

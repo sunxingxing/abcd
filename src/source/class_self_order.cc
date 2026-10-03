@@ -12,6 +12,12 @@ std::span<const ClassSelfStore> ClassSelfOrder::Stores(const analysis::ValueProg
       graph.revision != revision_ || graph.cfg_revision != cfg_) return {};
   return stores_;
 }
+std::span<const std::optional<analysis::LocalAccessPlan::UnexposedInitialization>> ClassSelfOrder::Prefixes(
+    const FunctionInput& input, const analysis::ValueProgram& graph) const {
+  if (Stores(graph).empty() || input.Input().instructions.data() != instructions_ ||
+      input.Proof().locals.cells.data() != cells_) return {};
+  return prefixes_;
+}
 std::variant<ClassSelfOrder, ClassSelfOrderError> ClassSelfOrder::Build(const FileFunction& parent,
     std::span<const ClassInitializerWitness> witnesses, analysis::SemanticBudget budget) {
   using namespace analysis;
@@ -77,10 +83,39 @@ std::variant<ClassSelfOrder, ClassSelfOrderError> ClassSelfOrder::Build(const Fi
       admit(fields.AllocatedBytes(),1); step(fields.Work());
       result.stores_.push_back(store); indexed[call.call.value].reset();
     }
+    const auto& input = parent.input;
+    const auto& locals = input.Proof().locals;
+    admit(locals.cells.size(),sizeof(decltype(result.prefixes_)::value_type)); step(locals.cells.size());
+    result.prefixes_.resize(locals.cells.size());
+    admit(result.prefixes_.capacity()-result.prefixes_.size(),sizeof(decltype(result.prefixes_)::value_type));
+    if (parent.module_capture_prefix) {
+      const auto inherited = parent.module_capture_prefix->For(input);
+      require(inherited.empty() || inherited.size() == result.prefixes_.size(),Error::kOwner);
+      for (std::size_t i = 0; i < inherited.size(); ++i) { step(); result.prefixes_[i] = inherited[i]; }
+    }
+    std::vector<std::optional<LocalCellId>> stored;
+    admit(input.Input().instructions.size(),sizeof(decltype(stored)::value_type)); step(input.Input().instructions.size());
+    stored.resize(input.Input().instructions.size()); admit(stored.capacity()-stored.size(),sizeof(decltype(stored)::value_type));
+    for (const auto& site : locals.stores) {
+      step(); require(site.instruction.value < stored.size() && !stored[site.instruction.value],Error::kInput);
+      stored[site.instruction.value] = site.cell;
+    }
+    for (const auto& store : result.stores_) {
+      step();
+      const auto allocation = graph.origins[graph.ops[store.allocation.value].origin.value].site.value;
+      const auto at = graph.origins[graph.ops[store.store.value].origin.value].site.value;
+      require(at < stored.size() && stored[at] && stored[at]->value < locals.cells.size(),Error::kInput);
+      const auto cell = *stored[at]; const auto& local = locals.cells[cell.value];
+      require(local.environment.value < locals.allocations.size() && locals.allocations[local.environment.value] == InstructionId{allocation} &&
+          input.Input().instructions[at].pc == graph.origins[graph.ops[store.store.value].origin.value].pc,Error::kInput);
+      result.prefixes_[cell.value] = LocalAccessPlan::UnexposedInitialization{{allocation},{at}};
+    }
+    result.instructions_ = input.Input().instructions.data(); result.cells_ = locals.cells.data();
     result.operations_ = graph.ops.data(); result.values_ = graph.values.data();
     result.operation_count_ = graph.ops.size(); result.value_count_ = graph.values.size();
     result.revision_ = graph.revision; result.cfg_ = graph.cfg_revision;
-    result.bytes_ = sizeof(result)+result.stores_.capacity()*sizeof(ClassSelfStore);
+    result.bytes_ = sizeof(result)+result.stores_.capacity()*sizeof(ClassSelfStore) +
+        result.prefixes_.capacity()*sizeof(decltype(result.prefixes_)::value_type);
     result.work_ = initial.work-budget.work; return result;
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;

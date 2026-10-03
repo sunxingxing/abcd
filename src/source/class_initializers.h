@@ -4,6 +4,7 @@
 #include <span>
 #include "class_definitions.h"
 namespace abcd::source {
+class ClassSelfOrder;
 struct ClassInitializerCall {
   analysis::OpId creation;
   analysis::OpId method;
@@ -39,6 +40,6 @@ struct ClassProjection {
 };
 [[nodiscard]] std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
     const analysis::ValueProgram&, std::span<const ClassInitializerCall>, analysis::SemanticBudget = {},
-    std::span<const ClassDefinitionSite> = {});
+    std::span<const ClassDefinitionSite> = {}, const ClassSelfOrder* = nullptr);
 }
 #endif

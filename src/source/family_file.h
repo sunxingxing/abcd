@@ -9,6 +9,7 @@
 #include "phased_creations.h"
 #include "object_buffer.h"
 #include "record_array.h"
+#include "class_initializer_file.h"
 
 namespace abcd::source {
 struct FamilyCreation {
@@ -79,7 +80,8 @@ enum class FamilyFileError : std::uint8_t {
 struct FamilyFileFailure {
   std::variant<FamilyFileError, FunctionFileFailure, CreationContextFailure,
       CaptureCellError, CaptureEvaluationFailure, BodyEmitFailure, PhasedFileFailure, PhasedCreationFailure,
-      ClassInitializerError, BufferedArrayError, abc::MetadataError, abc::LiteralFailure> cause;
+      ClassInitializerError, BufferedArrayError, abc::MetadataError, abc::LiteralFailure,
+      ClassInitializerReadFailure, ClassSelfError, ClassSelfOrderError> cause;
   std::optional<abc::EntityOffset> method;
   std::optional<abc::EntityOffset> parent;
   std::optional<abc::CodeOffset> creation_pc;

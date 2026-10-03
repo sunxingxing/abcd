@@ -1,5 +1,6 @@
 #include "module_capture_prefix.h"
 #include "default_body.h"
+#include "class_self_order.h"
 #include "capture_cell_targets.h"
 #include "phased_function_file.h"
 #include "function_file.h"
@@ -163,12 +164,20 @@ void ClassOwner(const CaptureParent& parent, CaptureChild child, const CaptureSi
   Require(context.Identity() == parent.identity && creator == parent.method &&
       context.Target() == child.Input().Method() && child.Input().MatchesOwner(context), Error::kOwner);
 }
+auto Prefixes(CaptureFunction function) {
+  if (function.self_order) {
+    const auto self = function.self_order->Prefixes(function.input,function.values.graph);
+    if (!self.empty()) return self;
+  }
+  return function.module_prefix ? function.module_prefix->For(function.input) :
+      std::span<const std::optional<analysis::LocalAccessPlan::UnexposedInitialization>>{};
+}
 CaptureParent Parent(CaptureFunction function) {
   return {function.input.Identity(), function.input.Method(), function.values.graph,
       function.values.environments ? &*function.values.environments : nullptr,
       CaptureChild(function).Cells(), function.input.Input().instructions,
       function.input.Proof().locals.allocations, ScopeFacts(function.input.Input(), function.input.Proof(),
-          function.module_prefix ? function.module_prefix->For(function.input) : std::span<const std::optional<analysis::LocalAccessPlan::UnexposedInitialization>>{})};
+          Prefixes(function))};
 }
 void Owner(const CaptureParent& parent, Quota& quota) {
   quota.Step();
@@ -324,7 +333,7 @@ std::variant<CaptureCells, CaptureCellError> BindClassRootCaptureCells(
   try {
     Quota quota(budget);
     const auto point = RootPoint(file, header, index, lookup, creator, child, owner, quota);
-    auto bound = BindCaptureCells(index, {creator.input, creator.values}, child, point.site, point.creation, quota.Remaining());
+    auto bound = BindCaptureCells(index, {creator.input, creator.values, nullptr, creator.module_capture_prefix ? &*creator.module_capture_prefix : nullptr, nullptr, creator.self_order ? &*creator.self_order : nullptr}, child, point.site, point.creation, quota.Remaining());
     if (const auto* error = std::get_if<CaptureCellError>(&bound)) return *error;
     auto cells = std::get<CaptureCells>(std::move(bound));
     cells.work += quota.Work();
@@ -340,7 +349,7 @@ std::variant<std::uint64_t, CaptureCellError> VerifyClassRootCaptureCells(
   try {
     Quota quota(budget);
     const auto point = RootPoint(file, header, index, lookup, creator, child, owner, quota);
-    const auto checked = VerifyCaptureCells(index, {creator.input, creator.values}, child,
+    const auto checked = VerifyCaptureCells(index, {creator.input, creator.values, nullptr, creator.module_capture_prefix ? &*creator.module_capture_prefix : nullptr, nullptr, creator.self_order ? &*creator.self_order : nullptr}, child,
         point.site, point.creation, cells, quota.Remaining());
     if (const auto* error = std::get_if<CaptureCellError>(&checked)) return *error;
     quota.Step(std::get<std::uint64_t>(checked));
@@ -460,7 +469,7 @@ std::variant<CaptureCells, CaptureCellError> BindCaptureCells(
   try {
     Quota quota(budget); Owners(index, parent, child, creation, quota);
     auto bound = BuildCapturePlan(ScopeFacts(parent.input.Input(), parent.input.Proof(),
-        parent.module_prefix ? parent.module_prefix->For(parent.input) : std::span<const std::optional<analysis::LocalAccessPlan::UnexposedInitialization>>{}),
+        Prefixes(parent)),
         site, creation, child.Input().Captures(), quota.Remaining());
     if (const auto* error = std::get_if<CaptureError>(&bound)) return InputError(*error);
     auto input = std::get<CapturePlan>(std::move(bound)); quota.Step(input.work);

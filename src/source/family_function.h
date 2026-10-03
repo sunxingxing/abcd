@@ -23,7 +23,7 @@ class FamilyFunction {
   CaptureChild Capture() const {
     return Phase() ? CaptureChild{*Phase(), Storage()} : CaptureChild{NormalCapture()};
   }
-  CaptureFunction NormalCapture() const { return {Normal().input, Normal().values, Storage(), Normal().module_capture_prefix ? &*Normal().module_capture_prefix : nullptr, defaults_ ? &*defaults_ : nullptr}; }
+  CaptureFunction NormalCapture() const { return {Normal().input, Normal().values, Storage(), Normal().module_capture_prefix ? &*Normal().module_capture_prefix : nullptr, defaults_ ? &*defaults_ : nullptr, Normal().self_order ? &*Normal().self_order : nullptr}; }
   std::optional<DefaultBody>& Defaults() { return defaults_; }
   const std::optional<DefaultBody>& Defaults() const { return defaults_; }
   const CaptureStorage* Storage() const { return storage_ ? &*storage_ : nullptr; }

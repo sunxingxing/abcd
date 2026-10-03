@@ -12,6 +12,27 @@
 
 ## 当前阶段
 
+### 2026-10-03：self 顺序证据接入投影与捕获
+
+- FamilyReader 批量读取候选对应的真实初始化器并建立 ClassSelfOrder；父
+  FileFunction 持有证据，EvaluationPlan 保留不可变副本，独立校验再次使用。
+  ProjectClassMembers 仅将有证据的 self store 计入允许区间，仍保留它的
+  普通 cell 写入，不删除写入或取消 prototype spelling/效果区间检查。
+- 组合证据另映射到原始 input local-cell/allocation/store，绑定原始指令与
+  cell arena。class-root 捕获通过同一 ScopeFacts 规则使用这项私有初始化
+  前缀；仍限 Language 和原写入合同，Defined/其他路径未放宽。复制父图、
+  revision变化、缺少证据和错配调用继续拒绝。
+- 实际 Voip越过 self-store 和 class-root capture 拒绝。下一处是方法12264
+  的 phased BuildLiteralPlan 返回 LiteralError::kReceiver，见
+  /tmp/abcd-self-order-phase-next.log；未宣称record11989完成。
+- 16 targets 构建退出0，相关21/21通过17.70秒，日志
+  /tmp/abcd-self-order-related-{build,tests}.log。首次工具构建暴露新错误
+  variant 未穷尽以及嵌套 cause/reason 处理缺项，修正现有诊断访问器后通过；
+  原错误variant次序保留。实际入口测试验证有证据投影通过且self写入仍未投影。
+- 五输入 fresh build/stage-one/value-self-order-pass-1 均退出0，仍为
+  77 complete /5 incomplete /24 failure /46 no-module，无完整项回退、
+  完整源码变化或legacy。未运行 full-suite/扩展语料/RSS，Goal active。
+
 ### 2026-10-03：同 occurrence 的 self/初始化器组合证据
 
 - 新 ClassSelfOrder 对整个父图一次索引 self 候选，再逐初始化器验证同文件/

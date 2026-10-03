@@ -292,6 +292,34 @@ class FamilyReader {
     Admit(function.allocated_bytes, 1);
     return function;
   }
+  void SelfOrder(FileFunction& parent) {
+    const auto& values = parent.values;
+    if (!values.cells || !values.environments || values.initializers.calls.empty()) return;
+    auto found = FindClassSelfStores(values.graph,*values.environments,*values.cells,values.initializers.calls,Remaining());
+    if (const auto* error = std::get_if<ClassSelfError>(&found)) Fail(*error);
+    const auto& candidates = std::get<ClassSelfStores>(found);
+    Admit(candidates.allocated_bytes,1); Step(candidates.work);
+    if (candidates.stores.empty()) return;
+    std::vector<std::optional<std::size_t>> calls;
+    Grow(calls,values.graph.ops.size()); Step(values.graph.ops.size()); calls.resize(values.graph.ops.size());
+    for (std::size_t i = 0; i < values.initializers.calls.size(); ++i) { Step(1); calls[values.initializers.calls[i].call.value] = i; }
+    std::vector<ClassInitializerFunction> bodies;
+    std::vector<ClassInitializerWitness> witnesses;
+    Grow(bodies,candidates.stores.size()); Grow(witnesses,candidates.stores.size());
+    for (const auto& store : candidates.stores) {
+      Step(1); Require(calls[store.initializer.value].has_value(),Error::kCreation);
+      const auto& call = values.initializers.calls[*calls[store.initializer.value]];
+      auto loaded = ReadClassInitializerFunction(file_,header_,index_,lookup_,roles_,sites_,parent,call,Remaining(),modules_);
+      if (const auto* error = std::get_if<ClassInitializerReadFailure>(&loaded)) Fail(*error);
+      auto body = std::get<ClassInitializerFunction>(std::move(loaded));
+      Admit(body.function.allocated_bytes,1); Admit(body.context.AllocatedBytes(),1); Step(body.context.Work());
+      bodies.push_back(std::move(body)); witnesses.push_back({call,bodies.back()});
+    }
+    auto built = ClassSelfOrder::Build(parent,witnesses,Remaining());
+    if (const auto* error = std::get_if<ClassSelfOrderError>(&built)) Fail(*error);
+    parent.self_order.emplace(std::get<ClassSelfOrder>(std::move(built)));
+    Admit(parent.self_order->AllocatedBytes(),1); Step(parent.self_order->Work());
+  }
   void Add(FamilyFunction function, std::optional<FunctionContext> context,
       std::optional<FamilyCreation> incoming, abc::MethodPosition method) {
     Require(result_.members.size() <= std::numeric_limits<std::uint32_t>::max() - result_.first_owner.value,
@@ -302,8 +330,10 @@ class FamilyReader {
     Grow(member.children, member.function.Children().size());
     if (id == FileFamily::kRoot && class_mode_ == FamilyClassMode::kRetainRoot) {
       Require(!member.function.Phase(), Error::kUnsupportedFlow);
+      SelfOrder(member.function.Normal());
       const auto& values = member.function.Normal().values;
-      auto projected = ProjectClassMembers(values.graph, values.initializers.calls, Remaining(), values.definitions.sites);
+      const auto& order = member.function.Normal().self_order;
+      auto projected = ProjectClassMembers(values.graph, values.initializers.calls, Remaining(), values.definitions.sites, order ? &*order : nullptr);
       if (const auto* error = std::get_if<ClassInitializerError>(&projected)) Fail(*error);
       member.class_projection.emplace(std::get<ClassProjection>(std::move(projected)));
       Admit(member.class_projection->allocated_bytes, 1); Step(member.class_projection->work);

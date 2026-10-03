@@ -125,7 +125,20 @@ int main(int argc, char** argv) {
     const ClassInitializerWitness witness{parent.values.initializers.calls[0],std::get<ClassInitializerFunction>(loaded)};
     const auto order = std::get<ClassSelfOrder>(ClassSelfOrder::Build(parent,{&witness,1}));
     test::Check(order.Stores(parent.values.graph).size() == 1);
+    const auto projection_allowed = ProjectClassMembers(parent.values.graph,parent.values.initializers.calls,{},parent.values.definitions.sites,&order);
+    test::Check(std::holds_alternative<ClassProjection>(projection_allowed));
+    const auto& projected_class = std::get<ClassProjection>(projection_allowed);
+    const auto& self_store = order.Stores(parent.values.graph).front();
+    test::Check(!projected_class.owners[self_store.store.value]);
+    test::Check(projected_class.owners[witness.call.call.value] == witness.call.creation);
+    test::Check(std::holds_alternative<ClassInitializerError>(ProjectClassMembers(parent.values.graph,parent.values.initializers.calls)));
+    const auto prefixes = order.Prefixes(parent.input,parent.values.graph);
+    test::Check(prefixes.size() == parent.input.Proof().locals.cells.size());
+    test::Check(std::count_if(prefixes.begin(),prefixes.end(),[](const auto& value) { return value.has_value(); }) == 1);
+
     const auto copy = parent.values.graph; test::Check(order.Stores(copy).empty());
+    test::Check(order.Prefixes(parent.input,copy).empty());
+    test::Check(std::holds_alternative<ClassInitializerError>(ProjectClassMembers(copy,parent.values.initializers.calls,{},parent.values.definitions.sites,&order)));
     auto wrong = witness; ++wrong.call.method.value;
     test::Check(std::holds_alternative<ClassSelfOrderError>(ClassSelfOrder::Build(parent,{&wrong,1})));
     const ClassInitializerWitness repeated[]{witness,witness};

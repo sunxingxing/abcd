@@ -134,7 +134,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     auto* constants = std::get_if<TreeConstants>(&resolved);
     if (!constants) return fail(Error::kValue);
     retain(constants->allocated_bytes);
-    auto projected = ProjectClassMembers(graph, function->values.initializers.calls, {budget.bytes}, function->values.definitions.sites);
+    auto projected = ProjectClassMembers(graph, function->values.initializers.calls, {budget.bytes}, function->values.definitions.sites, function->self_order ? &*function->self_order : nullptr);
     const auto* projection = std::get_if<ClassProjection>(&projected);
     if (!projection) {
       const auto error = std::get<ClassInitializerError>(projected);
@@ -339,7 +339,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     const auto closure_writes = function->values.classes.classes.empty()
         ? analysis::ClosureWrites::kUnknown : analysis::ClosureWrites::kLanguage;
     auto evaluated = BuildEvaluationPlan(graph, {budget.bytes}, IncomingCells::kReject, children, bindings->evaluations, demands,
-        function->values.initializers.calls, closure_writes, function->values.definitions.sites);
+        function->values.initializers.calls, closure_writes, function->values.definitions.sites, {}, {}, function->self_order ? &*function->self_order : nullptr);
     auto* evaluation = std::get_if<EvaluationPlan>(&evaluated);
     if (!evaluation) return fail(Error::kValue);
     retain(evaluation->allocated_bytes);

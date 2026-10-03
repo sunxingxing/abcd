@@ -7,6 +7,7 @@
 namespace abcd::source {
 struct FileFunction;
 class ModuleCapturePrefix;
+class ClassSelfOrder;
 class DefaultBody;
 struct ParentCell {
   CellId cell;
@@ -35,6 +36,7 @@ struct CaptureFunction {
   const CaptureStorage* storage = nullptr;
   const ModuleCapturePrefix* module_prefix = nullptr;
   const DefaultBody* defaults = nullptr;
+  const ClassSelfOrder* self_order = nullptr;
 };
 class CaptureChild {
  public:

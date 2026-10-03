@@ -104,7 +104,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     std::vector<std::size_t> environment_epochs(graph.ops.size());
     admit(environment_epochs.capacity() - graph.ops.size(), sizeof(std::size_t));
     std::size_t environment_epoch = 0;
-    auto projected = ProjectClassMembers(graph, plan.class_initializers, {bytes, work}, plan.class_definitions);
+    auto projected = ProjectClassMembers(graph, plan.class_initializers, {bytes, work}, plan.class_definitions, plan.self_order ? &*plan.self_order : nullptr);
     if (const auto* error = std::get_if<ClassInitializerError>(&projected))
       return *error == ClassInitializerError::kResourceLimit ? Error::kResourceLimit :
           *error == ClassInitializerError::kWorkLimit ? Error::kWorkLimit : Error::kOwnership;

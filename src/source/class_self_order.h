@@ -1,9 +1,11 @@
 #ifndef ABCD_SOURCE_CLASS_SELF_ORDER_H_
 #define ABCD_SOURCE_CLASS_SELF_ORDER_H_
 #include "class_self.h"
+#include "abcd/analysis/semantic_validation.h"
 
 namespace abcd::source {
 struct FileFunction;
+class FunctionInput;
 struct ClassInitializerFunction;
 struct ClassInitializerWitness {
   ClassInitializerCall call;
@@ -18,16 +20,23 @@ enum class ClassSelfOrderError : std::uint8_t {
 // corridor and descendant capture publication remain separate obligations.
 class ClassSelfOrder {
  public:
+  ClassSelfOrder(const ClassSelfOrder&) = default;
+  ClassSelfOrder& operator=(const ClassSelfOrder&) = default;
   ClassSelfOrder(ClassSelfOrder&&) noexcept = default;
   ClassSelfOrder& operator=(ClassSelfOrder&&) noexcept = default;
   static std::variant<ClassSelfOrder, ClassSelfOrderError> Build(const FileFunction&,
       std::span<const ClassInitializerWitness>, analysis::SemanticBudget = {});
   std::span<const ClassSelfStore> Stores(const analysis::ValueProgram& graph) const;
+  std::span<const std::optional<analysis::LocalAccessPlan::UnexposedInitialization>> Prefixes(
+      const FunctionInput&, const analysis::ValueProgram&) const;
   std::size_t AllocatedBytes() const { return bytes_; }
   std::uint64_t Work() const { return work_; }
  private:
   ClassSelfOrder() = default;
   std::vector<ClassSelfStore> stores_;
+  std::vector<std::optional<analysis::LocalAccessPlan::UnexposedInitialization>> prefixes_;
+  const analysis::SemanticInstruction* instructions_ = nullptr;
+  const analysis::LocalCell* cells_ = nullptr;
   const analysis::ValueOp* operations_ = nullptr;
   const analysis::ValueDefinition* values_ = nullptr;
   analysis::IrRevision revision_;
