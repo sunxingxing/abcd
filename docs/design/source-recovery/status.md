@@ -12,6 +12,24 @@
 
 ## 当前阶段
 
+### 2026-10-03：按用户要求审计局部形状限制，禁止追加样本匹配
+
+- 用户明确禁止因为样本增加条件匹配。本次已加入 AGENTS.md §1a：样本只作
+  故障发现/独立测试，恢复按 ISA 语义、通用 reference/def-use/控制依赖/效果
+  与异常分析；不能追加局部序列、固定寄存器/PC、graph 形状或 producer 白名单。
+  真正的身份/receiver/作用域/异常/资源义务保留，但不再把某个编译器布局当定义。
+- [审计报告](shape-restrictions-audit.md) 明确限定本次范围。src/include/tools
+  的身份文本搜索未发现列举的应用名称/样本路径生产语义分派；文本搜索不是
+  全分支证明。人工核对定位七类形状限制，分列 P1/P2 与通用替换机制。
+- 当前 callee/call 同块并非语言要求，是尚未提供通用引用顺序证书的实现门槛。
+  已撤回未提交的 ValueInvoke 谓词快照白名单扩展；不靠为 pasteboard 再增加
+  producer 形状解决它。源码已恢复 87176c10，生产工具重建退出0，
+  /tmp/abcd-shape-audit-restored-build.log；git diff --check 通过。
+- 本次为明确请求的专项审计，不恢复定期审视，不声称已改完七类实现。
+  pasteboard record4767 仍失败；下一实施交付是共同 Reference/有序表达式模型，
+  处理 normal/phased、多条件参数、复制/分块、getter、receiver 和异常快照。
+  阶段一及 object creaters 原范围不变，Goal active；既有暂停项保持。
+
 ### 2026-10-03：父级模块初始化贯通异常成员，恢复 setImmersiveType
 
 - 从真实 method8539 PC15 定位：class 创建前的本地模块初始化未传到 phased

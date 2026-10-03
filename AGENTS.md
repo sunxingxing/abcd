@@ -36,6 +36,25 @@ authorized. Linked specialist contracts remain binding.
   source. Prefer typed absence. `kPairwiseLimit = 200` does not justify
   selecting a quadratic production algorithm.
 
+## 1a. General Recovery, No Sample or Shape Patches
+- Never dispatch recovery using sample paths, application/record/function names,
+  sidecar source, printed text, or diagnostic strings. Samples may expose a bug
+  and serve as independent tests; they cannot define production semantics.
+- Do not add a local opcode sequence, fixed register/PC layout, exact graph
+  shape, operation whitelist, fixed number of selections, or same-block rule to
+  make one case pass. Model instruction meaning through pinned ISA/profile
+  adapters and recover structure through common value/reference, def-use,
+  dominance, control dependence, effect order, and exception analyses.
+- Distinguish language/VM invariants from implementation admission limits.
+  Keep real identity, receiver, side-effect, scope, exception and resource
+  requirements. Prove them with the general model; do not treat one recognized
+  compiler layout as their definition or remove correctness checks blindly.
+- Existing structural fast paths may remain temporarily while their common
+  replacement is implemented. They must have explicit prerequisites and a
+  documented coverage gap; do not expand them by adding more local patterns.
+  Equivalent register allocation, copies, block splitting and independent
+  expression composition must not require new production match branches.
+
 ## 2. Performance
 - Entire decompiler process peak memory must not exceed 1,000,000,000 bytes
   (conservative interpretation of 1G), including all workers, file mappings,
