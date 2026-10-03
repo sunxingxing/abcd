@@ -54,6 +54,14 @@ authorized. Linked specialist contracts remain binding.
   documented coverage gap; do not expand them by adding more local patterns.
   Equivalent register allocation, copies, block splitting and independent
   expression composition must not require new production match branches.
+- Recovery checks must state the semantic obligation they prove and use the
+  common analysis that owns it. Once availability, identity, execution count,
+  effect and exception order are proved, do not add a block-layout, adjacency,
+  producer-list or selection-count check as a second admission condition.
+  A representation limitation must be documented as an implementation gap,
+  never described as a language invariant. Review new recovery conditions
+  against docs/design/source-recovery/shape-restrictions-audit.md; exercise
+  equivalent register/copy/block variations and adverse semantic cases.
 
 ## 2. Performance
 - Entire decompiler process peak memory must not exceed 1,000,000,000 bytes

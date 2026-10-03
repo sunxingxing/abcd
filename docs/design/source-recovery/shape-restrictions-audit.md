@@ -7,6 +7,9 @@
 
 ## 结论
 
+本节及下表记录 2026-10-03 的历史基线；最新核对见文末
+“2026-10-04：当前引用校验与扩展审计”。已替换项不能继续当作当前缺陷报告。
+
 此次文本搜索没有发现以 pasteboard、WindowUtil、Immersive、PushMessage、
 EntryAbility、Widget、hilog、JSON 或 sample 路径进行生产语义分派的实现。
 仅有 fixture/sample 的说明性注释。文本搜索只能支持这一有限结论，不能证明
@@ -136,3 +139,61 @@ edge：当前选择输入属于同一参数表达式，外部phi及较早的其�
 callback正文或内部写入/ABI/source收据。1/2/3层、三profile和200/201回归，
 完整组合的访问器反例及独立方法行为对照支持这个表示接入。15个record现
 可保留其他成员，未宣称数值语义、遗漏函数体或七类既有审计事项已经完成。
+
+## 2026-10-04：当前引用校验与扩展审计
+
+本次按用户要求复核，基线 79324555。工作区另有未完成的 SuperForward 接入；
+以下不将其作为已交付能力。人工核对调用引用、normal/phased 选择、谓词快照、
+rest、派生构造器、类成员与初始化器、literal 输入和 legacy 模块/数组/super
+整理；另搜索 src/include/tools 的样本身份文本和块/邻接条件。未逐行审计所有
+生产分支，也未运行全套、扩展语料或 RSS。搜索命中需结合用途判断；真实名称、
+ISA 解码、枚举穷尽性和操作数元数校验不是样本分派或布局特例。
+
+### 同块校验的来源和现状
+
+历史提交 c9c8a93b（2026-09-26，调用引用与 receiver 证明）在 VerifyCalls 中
+要求 property.block == call.block 且 property.order < call.order，同时要求
+property 为 callee 的内联 producer。它用块内次序限制早期表达式恢复范围，
+防止 getter 重读、receiver 改变和求值乱序；这不是 VM 或语言对成员调用的
+限制。历史代码本身不足以证明其因某个样本而加入，不能据此推断作者动机。
+
+766afe0c 已删除同块条件及 CrossPhaseInline/CrossLogicalInline 的例外枚举。
+当前 src/source/call_plan.cc::VerifyCalls 先独立调用 VerifyEvaluationPlan 或
+VerifyPhasedEvaluationPlan，再核对原 property result、callee/base/receiver
+身份和实际 consumer。callee 在分支前、参数在汇合后的关系本身不再拒绝。
+仍要求 property 被当前表达式内联拥有：这是现有 MemberCall 的表示边界，
+不是所有合法显式 receiver 调用的定义，不能新增更多 placement 枚举来填洞。
+
+### 当前待替换项
+
+| 优先级 | 当前源码位置 | 观察到的实现边界 | 必须保留的义务及共同替换方向 |
+|---|---|---|---|
+| P1 | src/source/call_plan.cc::VerifyCalls，约215行 | callee property 只接受当前表达式的 inline/nested-literal consumer | 保留原 callee/base/key 与 receiver；用共同 Reference 和保留值表示承载共享/已存储引用，证明一次读取和调用时序 |
+| P1 | src/source/phase_selection_calls.cc::Check/Ancestors，约113/211行 | phi_arguments 和 root_selections 必须各为1，另有单入 corridor | 对整个调用联合索引参数和引用，安排全部选择依赖；保持原 phi 输入边、执行条件、catch snapshot 和效果，不靠限制参数数量避免重复扫描 |
+| P1 | src/source/predicate_snapshots.cc::Candidates，约20/38行 | 最早同块使用必须为 strict equal/not-equal，并内联进同块 branch | producer 白名单已删；尚需通用 snapshot 所有权/支配/控制依赖与效果区间，保留一次求值和所有使用身份 |
+| P1 | src/analysis/rest_arguments.cc::ProveRestPrologue；src/source/rest_binding.cc::FindRestLocal | 固定起始 ABI MOV、寄存器布局及紧邻 rest/STA；旧路径仍调用 | normal ValueTree 已用 ProveRestOwnership；剩余 legacy/构造器使用必须迁移共同 frame、SSA、参数写入和动态数量证明，不能扩充 prologue 模板 |
+| P1 | src/analysis/derived_constructor.cc；spread_field_constructor.cc；range_derived_constructor.cc，约38/79行 | 直线状态序列、copy opcode 列表；range/spread 拒绝异常范围及回边 | 用共同 CFG/SSA 全路径证明 constructor/this 状态、转发输入、返回、异常和效果；runtime 差异仍保留，不能假定 host/import 构造器类型 |
+| P1 | src/source/class_definitions.cc，约83/96行；class_initializers.cc，约58/70行 | class、method、安装或初始化调用必须同块且按固定局部顺序 | 此为新增确认的共同 ValueTree 候选边界；应以真实 HomeObject、创建/安装 occurrence、捕获、支配、class 逃逸和所有 intervening effects 证明可投影性 |
+| P2 | src/source/logical_regions.cc::FindSelectionExpressions 等 | branch/ToBoolean 邻接、有限 arm/phi 布局 | 用通用控制依赖与区域表示产生候选，typed predicate/phi 定义语义；二元分支或操作数元数本身不是缺陷 |
+| P2 | src/source/class_tree.cc::CheckClassParentScope，约20行 | phased class 不接受 initializer/defined members 或父 captures/modules | 作用域/模块/创建环境接口尚未贯通；禁止把“无捕获/模块”视为 class 语言要求；部分成员缺口不等于完整环境证明 |
+| P2 | src/source/literal_plan.cc::EarlyValue，约236行 | phased phi 输入要求 phi.block == allocation.block | phi 是可被边复制改写的存储，不能盲删校验；共同 snapshot/edge-copy 版本证明应保证输入在 allocation 与 initializer 之间不变 |
+| P2 | src/source/super_arguments.cc::ProveSuperArguments，约67行 | legacy super 每个参数必须来自调用前紧邻的 load/save 对，且只支持单 super 区域 | 直接通过真实 def-use 和有序参数依赖整理，保留原参数快照、this 初始化和效果；不扩充寄存器排列或 load/save 模式 |
+| P2 | src/source/array_literals.cc::FoldArrayExpressions/FoldArrayLiterals；class_assembly.cc | legacy 数组/类整理按同块连续语句与操作列表推进 | 共同 LiteralPlan/ClassTree 是迁移方向；保留新对象身份、定义/逃逸/观测、属性描述符和捕获时机，不追加 legacy 白名单 |
+| P2 | src/source/module_binding.cc，约73行 | 未证明初始化的模块 load 要求下一条指令就是 Hole guard | 需用原 module binding、Hole 状态、guard 输入的 SSA 身份及控制/异常效果证明；TDZ 行为必须保留，邻接仅是旧实现边界 |
+
+以上是恢复能力限制，不是已证明的错误放行；同块比较也可能是在实现一个已
+声明为局部范围的优化，不能只凭搜索命中全部删除。特别是 literal phi 的
+edge-copy、模块 TDZ、getter、super 和 class 捕获会在粗暴放宽后改变语义。
+通用证明负责正确性；表示接口负责表达证明后的结果。两者已有完整证据后，
+不得再加样本/块形状等第二重准入条件。AGENTS.md 已明确该规则及变形/负例
+验证要求。本次没有扩展任何生产模式，也未声称这些开放项已全部修复。
+
+### 本次验证
+
+现有 build 二进制执行 5/5 定向测试通过（15.11秒）：logical_regions_test、
+expression_snapshot_source_test、pasteboard_partial_callback_source_test、
+retained_selection_source_test、forwarded_selection_source_test。日志：
+/tmp/abcd-reference-shape-audit-tests.log。通用表达式快照另直接执行270组场景；
+pasteboard 配对脚本覆盖240组原 callback 场景并要求 record 保持 incomplete。
+验证的是已有构建的行为，没有重新构建未完成的工作区 SuperForward 修改，
+也不证明所有 phased 多选择、共享引用或阶段一完整语义已覆盖。

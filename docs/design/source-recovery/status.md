@@ -12,6 +12,26 @@
 
 ## 当前阶段
 
+### 2026-10-04：按用户要求复核引用同块校验，扩展局部恢复条件审计
+
+- 历史 c9c8a93b 的 property/call 同块条件为早期块内求值证明边界，非成员
+  调用语义；766afe0c 已移除该条件和 cross-flow 例外枚举。当前 VerifyCalls
+  通过共同 EvaluationPlan 的新鲜验证证明顺序，保留原 callee/base/receiver
+  身份。仍有 inline-owned callee 的表示边界，不能声称任意共享引用已支持。
+- 更新[当前条件审计](shape-restrictions-audit.md)：复核既有七类事项，并新增
+  确认共同 class definitions/initializers 同块候选、phased literal phi 同块
+  输入、legacy super 参数邻接、array/class 连续整理和 module Hole guard
+  邻接。逐项区分真实语义义务、实现边界和通用替换方向；非全生产逐行审计。
+- AGENTS.md 明确禁止在共同身份/可用性/执行次数/效果/异常证明之后另加
+  块布局、邻接、producer 列表或 selection 数量的准入条件。现有缺口须公开，
+  不能通过扩大局部模板掩盖；变形布局与反语义场景进入定向验证。
+- 本次为规则/审计文档更新，没有扩大生产接受域。现有 build 的5/5定向
+  回归15.11秒通过，/tmp/abcd-reference-shape-audit-tests.log；另直接验证
+  270组通用快照场景。pasteboard 测试覆盖240组callback配对，record仍为
+  incomplete。未重新构建工作区未完成的 SuperForward 修改；其15个源码
+  改动保留，未纳入本次提交。full-suite/扩展语料/RSS/定期审视继续暂停。
+  Goal active，阶段一与 object creators 全组目标尚未完成。
+
 ### 2026-10-04：成员函数族输入失败保留独立类成员，统一定义成员缺口
 
 - FamilyReader 在读取根输入前记录请求的 root，DFS 中继续保留真实失败
