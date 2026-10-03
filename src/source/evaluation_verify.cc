@@ -221,7 +221,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
       step(std::get<std::uint64_t>(checked));
     }
     std::vector<std::optional<analysis::UseId>> phi_inputs;
-    if (flow == EvaluationFlow::kNormal && plan.phis) {
+    if (plan.phis) {
       TreeCheckBudget literal_budget({bytes, work});
       const auto literal_ends = plan.literals ? IndexPhiLiteralEnds(graph, *plan.literals, literal_budget) :
           std::vector<std::optional<analysis::OpId>>{};

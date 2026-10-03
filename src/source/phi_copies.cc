@@ -102,7 +102,7 @@ std::optional<analysis::OpId> PhiExpressionProducer(
     std::span<const std::optional<analysis::OpId>> module_guards,
     std::span<const std::optional<analysis::OpId>> literal_ends) {
   using namespace analysis;
-  if (copies.flow != PhiFlow::kNormal || bundle.count != 1 ||
+  if (bundle.count != 1 ||
       bundle.schedule.steps.size() != 1 || bundle.schedule.temporaries != 0) return {};
   const auto* edge = std::get_if<EdgeId>(&bundle.incoming);
   if (!edge) return {};
@@ -130,6 +130,36 @@ std::optional<analysis::OpId> PhiExpressionProducer(
     }
   }
   if (!found) return {};
+  if (copies.flow == PhiFlow::kPhased) {
+    // A literal can be emitted at its sole normal phi edge without retaining
+    // a register snapshot. Keep all throwing/computed expressions at their
+    // original sites until the phase-expression owner proves their movement.
+    const bool literal_copy = std::holds_alternative<ValueCopy>(op.operation) && op.use_count == 1 &&
+        !std::holds_alternative<ValueId>(graph.uses[op.first_use.value].operand);
+    if ((!literal_copy && !std::holds_alternative<ValueString>(op.operation)) ||
+        op.life != ValueLife::kLive || op.normal != LanguageEffect::kNone ||
+        op.before_throw != LanguageEffect::kNone || op.exceptional != ExceptionalCompletion::kImpossible ||
+        !producer->commit || graph.edges[edge->value].kind == FlowEdgeKind::kException) return {};
+    auto at = *producer->commit;
+    // Single-exit inert tails cannot overlap another eligible producer: that
+    // producer's live operation is a barrier. Reject cycles and catch entries.
+    for (std::size_t visited = 0; visited < graph.blocks.size(); ++visited) {
+      const auto& tail = graph.blocks[at.value];
+      if (graph.phases[at.value].phase == ExceptionPhase::kCatch || tail.edge_count != 1) return {};
+      for (std::uint32_t i = 0; i < tail.op_count; ++i) {
+        const auto& later = graph.ops[tail.first_op.value + i];
+        if (later.life != ValueLife::kLive) continue;
+        if ((!std::holds_alternative<ValueJump>(later.operation) && !std::holds_alternative<ValueNop>(later.operation)) ||
+            later.result || later.use_count || later.normal != LanguageEffect::kNone ||
+            later.before_throw != LanguageEffect::kNone || later.exceptional != ExceptionalCompletion::kImpossible) return {};
+      }
+      const auto& next = graph.edges[tail.first_edge.value];
+      if (next.kind == FlowEdgeKind::kException) return {};
+      if (tail.first_edge == *edge) return producer->op;
+      at = next.target;
+    }
+    return {};
+  }
   const auto& block = graph.blocks[op.block.value];
   if (op.life != ValueLife::kLive || block.edge_count != 1 || block.first_edge != *edge ||
       graph.edges[edge->value].source != op.block) return {};

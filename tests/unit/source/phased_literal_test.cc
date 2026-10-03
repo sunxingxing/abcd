@@ -158,6 +158,18 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   }
   test::Check(std::holds_alternative<EvaluationPlan>(result));
   const auto& evaluation = std::get<EvaluationPlan>(result);
+  if (shape == Shape::kStaged) {
+    test::Check(std::any_of(evaluation.operations.begin(), evaluation.operations.end(),
+        [](const OpEvaluation& op) { return op.kind == EvaluationKind::kPhiInput; }));
+    for (std::size_t i = 0; i < evaluation.operations.size(); ++i) {
+      if (evaluation.operations[i].kind != EvaluationKind::kPhiInput) continue;
+      test::Check(graph.ops[i].normal == LanguageEffect::kNone &&
+          graph.ops[i].exceptional == ExceptionalCompletion::kImpossible);
+      auto forged = evaluation;
+      forged.operations[i].consumer = UseId{0};
+      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    }
+  }
   test::Check(evaluation.literals && evaluation.literals->objects.size() == (nested ? fields + 1 : 1));
   test::Check(std::holds_alternative<std::uint64_t>(VerifyPhasedEvaluationPlan(graph, evaluation)));
   const auto& literal = *evaluation.literals;

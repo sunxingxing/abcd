@@ -12,6 +12,32 @@
 
 ## 当前阶段
 
+### 2026-10-03：phased phi 边的纯常量表达式
+
+- 共同 PhiExpressionProducer/求值构建器/独立校验器开始支持 phased 普通
+  phi边的唯一使用原始值字面量。只跨Commit之后的单出口无效果jump/nop
+  尾部；拒绝catch入口/异常边、共享值、计算值及任何独立效果。源码直接
+  给phi赋常量，移除多余寄存器快照；没有删异常表或复制normal替身CFG。
+- phased staged字节码回归先在旧实现失败，现三profile及1/2/200/201/402
+  字段用例通过；伪造phi consumer继续拒绝。相关targets -j4构建退出0；
+  9/9定向回归54.54秒，额外ProgressBar配对1/1通过1.38秒。日志
+  /tmp/abcd-phase-phi-related-{build,tests}.log 与
+  /tmp/abcd-phase-phi-progressbar-tests.log。
+- fresh build/stage-one/value-phase-phi-pass-1五输入均退出0，仍78 complete /
+  5 incomplete /23 failure /46 no-module，无回退/legacy。8383/9550/11989
+  的源码移除了常量快照及随之重编号，其他完整项未变化；对应Voip300场景
+  配对仍通过。这不是完整条件值/可选链组合验收。
+- 新阻塞定位：PushMessageAbility record3444子方法3613，ValueNamedRead
+  op40/PC109的方法引用跨过可选链参数，到ValueInvoke op66/PC170；
+  BuildPhasedCallPlan返回kReference。完整区域尚未成为原生参数表达式，
+  因此不得重读getter或借.call绕过。记录于
+  /tmp/abcd-push-message-reference.log 与 /tmp/abcd-push-message-method.log。
+- tests/integration/selection_module.cc新增真实字节码phased条件参数回归，
+  phased_selection_reference_refusal_test证明上述接收者边界仍在；后续须
+  将其改为完整成功/行为对照，不能把拒绝本身当成目标。下一步扩展统一
+  SelectionRegion对phased分支路径/phi边的归属，组合条件值与调用引用。
+  Goal active；full-suite/扩展语料/RSS未恢复。
+
 ### 2026-10-03：phased 单分支正文直接输出
 
 - 将共同分支方向选择及独立 TreeFlow 对应规则用于 phased Commit 节点。

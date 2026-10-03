@@ -45,8 +45,10 @@ enum class PhiCopyError : std::uint8_t {
 // Its read owns the original guard use/event, not an additional source use.
 // literal_ends is the index of freshly checked native expression literals;
 // their unobserved initialization interval remains inside the same edge RHS.
-// Scans only that producer's trailing block suffix. Each eligible edge has a
-// distinct source block, so visiting all bundles is linear in graph size.
+// Phased inputs admit only nonthrowing primitive literals, through single-exit
+// inert tails after their Commit; catch edges and computed values stay pinned.
+// Tail scans stop at any other producer, so eligible suffixes are disjoint and
+// visiting all bundles is linear in graph size.
 [[nodiscard]] std::optional<analysis::OpId> PhiExpressionProducer(
     const analysis::ValueProgram& graph, const PhiCopies& copies, const PhiBundle& bundle,
     std::span<const std::optional<analysis::OpId>> module_guards = {},

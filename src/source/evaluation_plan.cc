@@ -385,7 +385,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
       next_op += block.op_count;
     }
     Require(next_op == graph.ops.size(), Error::kInvalidGraph);
-    if (flow == EvaluationFlow::kNormal && plan.phis) {
+    if (plan.phis) {
       // One eligible bundle per single-exit source block; suffix scans are disjoint.
       TreeCheckBudget literal_budget({bytes, work});
       const auto literal_ends = plan.literals ? IndexPhiLiteralEnds(graph, *plan.literals, literal_budget) :

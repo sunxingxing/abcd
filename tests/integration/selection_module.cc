@@ -67,7 +67,7 @@ abc::MethodBody DecisionBody(unsigned count, bool direct, Selection selection, b
   }
   return body;
 }
-abc::MethodBody Body(unsigned count, bool direct, bool barrier, Selection selection) {
+abc::MethodBody Body(unsigned count, bool direct, bool barrier, Selection selection, bool caught = false) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   constexpr auto kGuard = abc::Opcode::kTHROW_UNDEFINEDIFHOLEWITHNAME_PREF_ID16;
   std::vector<std::uint8_t> bytes;
@@ -99,7 +99,15 @@ abc::MethodBody Body(unsigned count, bool direct, bool barrier, Selection select
         op(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 3, 1});
   }
   bytes.push_back(op(abc::Opcode::kRETURN));
-  return test::Body(bytes);
+  const auto handler_pc = static_cast<std::uint32_t>(bytes.size());
+  if (caught) bytes.push_back(op(abc::Opcode::kRETURN));
+  auto body = test::Body(bytes);
+  if (caught) {
+    abc::TryRegion region; region.offset = {0}; region.length = handler_pc; region.handler_count = 1;
+    abc::CatchHandler handler; handler.offset = {handler_pc}; handler.length = 1;
+    body.tries.push_back(region); body.handlers.push_back(handler);
+  }
+  return body;
 }
 void Run(unsigned count, bool direct, bool print, bool barrier = false,
     Selection selection = Selection::kConditional, abc::ProfileId profile = abc::ProfileId::kDynamic1206) {
@@ -176,7 +184,8 @@ void Run(unsigned count, bool direct, bool print, bool barrier = false,
 
 void RunPhased(unsigned count, bool direct, bool print, Selection selection,
     abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool one_arm = false) {
-  const auto body = DecisionBody(count, direct, selection, true, one_arm);
+  const auto body = Decision(selection) ? DecisionBody(count, direct, selection, true, one_arm) :
+      Body(count, direct, false, selection, true);
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(3, 1, {}));
   const auto flow = std::get<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers));
   IdfQuota quota{kDefaultSemanticWork};
@@ -202,20 +211,30 @@ void RunPhased(unsigned count, bool direct, bool print, Selection selection,
     bindings.push_back({pair, std::get<ValueModuleRead>(graph.ops[pair.read.value].operation), {{7}, {0}}});
   const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(
       graph, {}, IncomingCells::kReject, {}, bindings));
+  if (!Decision(selection)) {
+    // Until phased selections own the whole argument expression, preserve the
+    // native receiver gate. Never lower the retained callee through .call.
+    const auto calls = BuildPhasedCallPlan(graph, evaluation);
+    test::Check(std::get<CallPlanError>(calls) == CallPlanError::kReference);
+    return;
+  }
   const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
   const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
   unsigned decisions = 0;
   for (const auto& node : control.skeleton.nodes) decisions += node.decision.has_value();
-  test::Check(decisions == (one_arm ? 0 : count));
+  test::Check(decisions == (one_arm || !Decision(selection) ? 0 : count));
   const ExceptionTreeInput context{body, input, regions, control};
   FunctionSyntax syntax{}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   syntax.names = {u"value", u"method", u"probe", u"option", u"other", u"imported"};
+  syntax.texts = {u"on"};
   syntax.parameters = {{NameId{0}, NameEvidence::kDebugRange}};
   syntax.modules = {{{{7}, {0}}, NameId{5}, ModuleAccess::kReadOnly, NameEvidence::kMetadata}};
   std::vector<ExpressionConstant> constants(graph.ops.size());
-  for (std::size_t i = 0; i < graph.ops.size(); ++i)
+  for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     if (const auto* read = std::get_if<ValueNamedRead>(&graph.ops[i].operation)) constants[i] = NameId{read->name.value + 1};
-  const ExpressionConstants resolved{constants, syntax.names.size(), 0};
+    if (std::holds_alternative<ValueString>(graph.ops[i].operation)) constants[i] = TextId{0};
+  }
+  const ExpressionConstants resolved{constants, syntax.names.size(), syntax.texts.size()};
   const auto built = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, resolved);
   test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
   const auto& tree = std::get<ExceptionFunctionDraft>(built).tree;
@@ -256,7 +275,9 @@ int main(int argc, char** argv) {
     const std::string_view option{argv[1]};
     test::Check(argc == 2 || std::string_view{argv[2]} == "--twice");
     const auto count = argc == 3 ? 2U : 1U;
-    if (option == "--phased-one-arm-source" || option == "--phased-one-arm-direct-source")
+    if (option == "--phased-selection-refusal")
+      RunPhased(count, false, false, Selection::kConditional);
+    else if (option == "--phased-one-arm-source" || option == "--phased-one-arm-direct-source")
       RunPhased(count, option == "--phased-one-arm-direct-source", true, Selection::kDecisionAnd,
           abc::ProfileId::kDynamic1206, true);
     else if (option == "--phased-decision-and-source" || option == "--phased-decision-and-direct-source")
