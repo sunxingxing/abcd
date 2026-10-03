@@ -55,7 +55,7 @@ class FlowCheck {
         (exceptions ? exceptions->control.units.size() : graph.blocks.size()));
     flow_.first_control = {static_cast<std::uint32_t>(control.nodes.size() - flow_.controls.size())};
     budget.Array(flow_.control_statements, flow_.controls.size());
-    if (!exceptions && evaluation.phis) {
+    if (evaluation.phis) {
       logicals_ = FindSelectionExpressions(graph, control, evaluation, budget);
       if (!logicals_.empty()) {
         budget.Array(logical_branches_, graph.ops.size());

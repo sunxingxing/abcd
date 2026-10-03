@@ -83,7 +83,7 @@ class TreeBuilder {
       }
       Step(std::get<std::uint64_t>(control));
     }
-    if (!exceptions_ && evaluation_.phis) {
+    if (evaluation_.phis) {
       TreeCheckBudget logical_budget({bytes_, work_});
       try {
         logicals_ = FindSelectionExpressions(graph_, control_, evaluation_, logical_budget);

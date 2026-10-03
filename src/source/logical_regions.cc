@@ -548,6 +548,11 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
 }  // namespace
 std::vector<SelectionRegion> FindSelectionExpressions(const ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, TreeCheckBudget& budget) {
+  if (!graph.phases.empty() && control.view == ControlViewKind::kProjection &&
+      evaluation.flow == EvaluationFlow::kPhased && control.revision == graph.revision &&
+      control.cfg_revision == graph.cfg_revision && evaluation.revision == graph.revision &&
+      evaluation.cfg_revision == graph.cfg_revision && evaluation.operations.size() == graph.ops.size())
+    return FindPhasedSelections(graph, control, evaluation, budget);
   if (!graph.phases.empty() || control.view != ControlViewKind::kNormal ||
       control.revision != graph.revision || control.cfg_revision != graph.cfg_revision ||
       evaluation.flow != EvaluationFlow::kNormal || evaluation.operations.size() != graph.ops.size() ||

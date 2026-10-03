@@ -57,8 +57,7 @@ class ForestBuilder {
       Reserve(selected_edges, graph_.edges.size()); selected_edges.resize(graph_.edges.size());
       for (const auto& region : logicals_) {
         Step();
-        Require(evaluation_.flow == EvaluationFlow::kNormal &&
-            region.boolean.value < graph_.ops.size() && region.branch.value < graph_.ops.size() &&
+        Require(region.boolean.value < graph_.ops.size() && region.branch.value < graph_.ops.size() &&
             region.boolean != region.branch && region.left.value < graph_.values.size() &&
             region.merged.value < graph_.values.size() &&
             (region.operation == TreeLogical::kAnd || region.operation == TreeLogical::kOr), Error::kOwnership);

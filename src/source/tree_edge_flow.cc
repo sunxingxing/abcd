@@ -123,8 +123,12 @@ void TreeEdgeFlow::Select(analysis::EdgeId incoming, analysis::ValueId expected,
   Require(incoming.value < bundles_.size() && bundles_[incoming.value], TreeFlowError::kControl);
   const auto id = *bundles_[incoming.value];
   const auto& bundle = evaluation_.phis->bundles[id];
-  Require(!visited_[id] && !evaluation_.exceptions && bundle.count == 1 &&
+  Require(!visited_[id] && bundle.count == 1 &&
       bundle.schedule.steps.size() == 1 && bundle.schedule.temporaries == 0, TreeFlowError::kSequence);
+  if (evaluation_.exceptions) {
+    const auto* normal = std::get_if<NormalCopies>(&evaluation_.exceptions->placements[id]);
+    Require(normal && normal->edge == incoming, TreeFlowError::kSequence);
+  }
   const auto* phi = std::get_if<analysis::ValueId>(&bundle.schedule.steps[0].destination);
   Require(phi && *phi == expected, TreeFlowError::kSnapshot);
   const bool fused = !evaluation_.logical_values.empty() && evaluation_.logical_values[phi->value].has_value();

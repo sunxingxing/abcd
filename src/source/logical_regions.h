@@ -84,6 +84,12 @@ inline bool IsSelectionConstant(const analysis::ValueProgram& graph, analysis::O
 [[nodiscard]] std::vector<SelectionRegion> FindSelectionExpressions(
     const analysis::ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, TreeCheckBudget& budget);
+// Phased adapter for the same SelectionRegion/AST path. Requires verified
+// control/evaluation. Original phase blocks, phi occurrences and catch edges stay
+// authoritative; currently only closed pure literal arms can be selected.
+[[nodiscard]] std::vector<SelectionRegion> FindPhasedSelections(
+    const analysis::ValueProgram& graph, const ControlPlan& control,
+    const EvaluationPlan& evaluation, TreeCheckBudget& budget);
 // Indexed eligible LHS producers; only the exact predicate/keep-edge pair is
 // projected. Requires checked value uses and base evaluation placements. Each
 // producer stays in its header, across no observable event/environment change.

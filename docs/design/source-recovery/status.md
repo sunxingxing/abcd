@@ -12,6 +12,30 @@
 
 ## 当前阶段
 
+### 2026-10-03：phased 条件区域进入共同 SelectionRegion
+
+- 新 phased_selections.cc 从真实Commit分支、单入口控制路径和两条原始phi
+  边发现闭合条件区域，返回既有SelectionRegion；共同表达式forest、函数树
+  和独立TreeFlow均使用它。没有复制normal替身图、删除异常边或另建writer。
+- 当前两臂限已验证的纯字面量phi输入及无效果控制/别名；共享phi、额外边
+  赋值、嵌套区域、独立效果、catch入口继续拒绝。保留原ValueBranch谓词，
+  不把VM的false/zero判断猜成JS truthiness。TreeEdgeFlow::Select只扩展到
+  与原edge匹配的NormalCopies；ThrowCopies仍不允许直接成为选择表达式。
+- 新真实字节码规格先复现原语句输出，现生成原生ConditionalExpr；三profile
+  覆盖1/2/200/201/402连续区域，交换两个结果会被独立语义校验拒绝。native
+  43组字面量选择对照通过，覆盖false/0/-0、null/undefined、Symbol和对象。
+- 相关targets -j4构建退出0；9/9回归56.12秒。补强连续区域及拒绝复用同一
+  phi边后，最终3/3通过20.65秒；日志
+  /tmp/abcd-phase-selection-related-{build,tests}.log 与
+  /tmp/abcd-phase-selection-final-{build,tests}.log。Voip配对300组仍通过。
+- 五输入fresh build/stage-one/value-phase-selection-pass-2确认78 complete /
+  5 incomplete /23 failure /46 no-module，无回退/legacy。与phase-phi基线
+  比较，8383和11989仅把纯字面量if/else赋值改为条件表达式；二次导出一致。
+- 未完成的目标明确保留：计算型phased分支、可选链参数与保留receiver的
+  调用组合尚未闭合，phased_selection_reference_refusal_test仍为拒绝。
+  下一步需把效果/异常签名和分支子表达式归属纳入同一SelectionRegion，
+  不以本轮纯字面量覆盖替代完整范围。Goal active，未运行full-suite/RSS。
+
 ### 2026-10-03：phased phi 边的纯常量表达式
 
 - 共同 PhiExpressionProducer/求值构建器/独立校验器开始支持 phased 普通
