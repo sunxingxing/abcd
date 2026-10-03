@@ -117,3 +117,29 @@ Phased 输入失败现保留原 ExceptionInputFailure，而非压扁为 kValues�
 路径下保留其他成员和完整 WindowInfo 构造器/字段。setUIContext、
 setSystemBarEnabled 及后者 callback 的配对对照只检验这些恢复出的完整成员；
 不构造不完整类、不调用缺失方法，也不声称该 record 或 HarmonyOS API 已验收。
+
+## 父级模块初始化进入异常函数（规则 65）
+
+共同 `FunctionInput::IsCreatorOf` 校验同一文件身份/record、真实可达创建位置、PC
+和类型化创建操作，normal 与 phased reader 复用该接口。FilePhasedFunction
+只在 Conditional 模式接收 ParentModuleInput；创建前的持久模块成员集合和原
+store witness 保留在拥有者中。集合只表示初始化，不保存或冻结模块值。
+
+未带 Hole guard 的本地读取进入已存在的 ProveExceptionModules initialized
+路径。ExceptionInputProof 保留拥有者的不可变 load-premise span，PhasedBody
+拥有其 move-stable arena；独立 importer 重新检查这些原坐标。带 guard 的读取
+仍走原成对证明，没有把后续 guard 删除。源码别名、属性 getter 和后续读取仍
+是同一实时模块绑定。
+
+共同 ModuleGuards/ModuleEvaluation 接受 Initialized 单事件，独立检查真实
+Before/Commit 和 SSA result origin；PhaseCorridors 计一次原事件，catch copies
+保持原位置，不为不存在的 guard 制造事件或搬移异常快照。family-write 校验在
+外层类根或真实 normal-parent 创建边再次核对初始化集合、读取槽和原 store 的
+Language 域。无创建证明、闭合模式、晚写入、缺失 premise、ownerless publication
+和限额拒绝保留。
+
+文件内真实 class/member 读取覆盖创建前/后的区别、1/200/201 次读取、丢失
+premise 与 guard-plan 声明、工作预算。真实 WindowUtil method8539 已恢复；
+配对测试分开转换 enum 与类正文以保留 ABC 实际执行的 enum 属性读取，验证
+setter/receiver、enum getter、条件分支和异常。两个数值缺口仍然存在，不能以
+该成员或 Node 对照宣称整个 record 或平台语义验收完成。

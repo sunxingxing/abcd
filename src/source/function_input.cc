@@ -81,6 +81,20 @@ bool FunctionInput::MatchesModuleCreation(const FunctionInput& parent, analysis:
   }, owner_->creation);
 }
 
+bool FunctionInput::IsCreatorOf(const FunctionContext& child, abc::EntityOffset child_record,
+    analysis::InstructionId creation) const {
+  const auto owner = DescribeOwner(child);
+  if (identity_ != child.Identity() || record_ != child_record || owner.creator != method_ ||
+      creation.value >= input_.instructions.size() || creation.value >= proof_.environments.before.size() ||
+      !proof_.environments.before[creation.value]) return false;
+  const auto& instruction = input_.instructions[creation.value];
+  if (instruction.pc != owner.pc) return false;
+  return std::visit([&](const auto& expected) {
+    const auto* actual = std::get_if<std::decay_t<decltype(expected)>>(&instruction.operation);
+    return actual && *actual == expected;
+  }, owner.creation);
+}
+
 FunctionInput::Owner FunctionInput::DescribeOwner(const FunctionContext& owner) {
   if (const auto* site = owner.ClassSite())
     return {site->creator, site->pc, site->property, owner.Callable(), owner.Mode(), owner.Frame(), site->creation};
@@ -137,19 +151,9 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
       // Match an actual function/class allocation before sharing membership.
       // A resolved class-buffer member retains that allocation's wire operands.
       const auto& parent = module_input->parent;
-      if (mode != InputCaptureMode::kConditional || !context ||
-          parent.Identity() != identity || parent.Record() != record ||
-          context->creator != parent.Method() ||
-          module_input->creation.value >= parent.Input().instructions.size() ||
-          module_input->creation.value >= parent.Proof().environments.before.size() ||
-          !parent.Proof().environments.before[module_input->creation.value])
-        throw Error::kModuleOwner;
-      const auto& original = parent.Input().instructions[module_input->creation.value];
-      if (original.pc != context->pc || !std::visit([&](const auto& expected) {
-        const auto* actual = std::get_if<std::decay_t<decltype(expected)>>(&original.operation);
-        return actual && *actual == expected;
-      }, context->creation)) throw Error::kModuleOwner;
-      quota.Step(std::bit_width(parent.module_steps_.size()) + 1);
+      if (mode != InputCaptureMode::kConditional || !owner ||
+          !parent.IsCreatorOf(*owner, record, module_input->creation)) throw Error::kModuleOwner;
+      quota.Step(parent.ModuleInitializationWork());
       entry_modules = parent.InitializedModulesBefore(module_input->creation);
     }
     auto lifted = analysis::BuildSemanticMethod(body, identity.profile,

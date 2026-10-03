@@ -106,6 +106,18 @@ class WriteCheck {
                 *error == FunctionInputError::kResourceLimit ? Error::kResourceLimit : Error::kOwner);
           Step(std::get<std::uint64_t>(modules));
         }
+        if (const auto* phase_child = std::get_if<PhasedFamilyInput>(&source.function);
+            phase_child && phase_child->owner && (!phase_child->owner->InitializedModuleReads().empty() ||
+                !phase_child->owner->EntryModules().Empty())) {
+          const auto* normal_parent = std::get_if<CaptureFunction>(&parent.function);
+          const auto* normal_edge = std::get_if<NormalWriteEdge>(&edge.occurrence);
+          Require(normal_parent && normal_edge, Error::kOwner);
+          const auto modules = VerifyInitializedModuleReads(normal_parent->input, normal_edge->site,
+              *phase_child->owner, left_);
+          if (const auto* error = std::get_if<FunctionInputError>(&modules))
+            Fail(*error == FunctionInputError::kWorkLimit ? Error::kWorkLimit : Error::kOwner);
+          Step(std::get<std::uint64_t>(modules));
+        }
         if (const auto* error = std::get_if<CaptureCellError>(&checked))
           Fail(*error == CaptureCellError::kResourceLimit ? Error::kResourceLimit :
               *error == CaptureCellError::kWorkLimit ? Error::kWorkLimit : Error::kCapture);
@@ -262,6 +274,16 @@ class WriteCheck {
     } else Require(source.input.InitializedModuleReads().empty() && !source.input.HasInheritedModules(), Error::kOwner);
   }
   void ClosedRoot(PhasedFamilyInput source) {
+    if (const auto* family = std::get_if<const FileFamily*>(&inputs_); family && (*family)->root_modules) {
+      Require(source.owner != nullptr, Error::kOwner);
+      const auto& parent = *(*family)->root_modules;
+      const auto check = VerifyInitializedModuleReads(parent.parent, parent.creation, *source.owner, left_);
+      if (const auto* error = std::get_if<FunctionInputError>(&check))
+        Fail(*error == FunctionInputError::kWorkLimit ? Error::kWorkLimit : Error::kOwner);
+      Step(std::get<std::uint64_t>(check));
+    } else Require(source.function.TreeInput(source.body).input.proof.initialized_modules.empty() &&
+        (!source.owner || (source.owner->InitializedModuleReads().empty() && source.owner->EntryModules().Empty())),
+        Error::kOwner);
     if (source.storage) Require(trees_.root_capture || source.storage->uses.empty(), Error::kCapture);
     for (const auto& binding : source.function.TreeInput(source.body).input.environments.bindings) {
       Step(); Require(trees_.root_capture || !std::holds_alternative<analysis::CapturedDepth>(binding.binding.environment), Error::kCapture);

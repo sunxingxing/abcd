@@ -279,7 +279,7 @@ class FamilyReader {
           owner->Identity() == identity_, Error::kOccurrence);
       std::optional<PhasedModuleBinding> modules;
       if (modules_) modules.emplace(PhasedModuleBinding{file_, header_, index_, *modules_, module_owner_});
-      auto read = FilePhasedFunction::Read(file_, header_, index_, *owner, Remaining(), modules ? &*modules : nullptr, mode);
+      auto read = FilePhasedFunction::Read(file_, header_, index_, *owner, Remaining(), modules ? &*modules : nullptr, mode, modules_input);
       if (auto* error = std::get_if<PhasedFileFailure>(&read)) {
         if (auto* failed = std::get_if<PhasedInputFailure>(error)) {
           failed->allocated_bytes += budget_.bytes - bytes_;

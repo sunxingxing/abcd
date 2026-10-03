@@ -1,9 +1,11 @@
 #include "phased_function_file.h"
 
+#include <bit>
 #include <new>
 #include <stdexcept>
 
 #include "module_aliases.h"
+#include "abcd/analysis/hole_guard.h"
 #include "generator_completion.h"
 
 namespace abcd::source {
@@ -16,13 +18,16 @@ struct PhasedOwner {
   Strictness mode;
   abc::FrameLayout frame;
   std::uint32_t length;
+  std::variant<analysis::FunctionCreation, analysis::ClassCreation> creation;
   bool operator==(const PhasedOwner&) const = default;
 };
 PhasedOwner DescribeOwner(const FunctionContext& context) {
   if (const auto* site = context.ClassSite())
-    return {site->creator, site->pc, site->property, context.Callable(), context.Mode(), context.Frame(), context.Length()};
+    return {site->creator, site->pc, site->property, context.Callable(), context.Mode(), context.Frame(), context.Length(), site->creation};
+  if (const auto* site = context.ConstructorSite())
+    return {site->creator, site->pc, {}, context.Callable(), context.Mode(), context.Frame(), context.Length(), site->creation};
   const auto* site = context.CreationSite();
-  return {site->creator, site->pc, {}, context.Callable(), context.Mode(), context.Frame(), context.Length()};
+  return {site->creator, site->pc, {}, context.Callable(), context.Mode(), context.Frame(), context.Length(), site->creation};
 }
 }  // namespace
 struct FilePhasedFunction::Storage {
@@ -35,6 +40,8 @@ struct FilePhasedFunction::Storage {
   std::vector<CaptureUse> captures;
   std::vector<InputCaptureAccess> accesses;
   PhasedOwner owner;
+  ModuleSlotSet entry_modules;
+  std::vector<InputModuleRead> module_reads;
   abc::EntityOffset record;
   std::size_t bytes;
   std::uint64_t work;
@@ -57,6 +64,20 @@ bool FilePhasedFunction::MatchesOwner(const FunctionContext& context) const {
   return storage_->phases.Identity() == context.Identity() && storage_->phases.Target() == context.Target() &&
       storage_->owner == DescribeOwner(context);
 }
+std::span<const InputModuleRead> FilePhasedFunction::InitializedModuleReads() const { return storage_->module_reads; }
+const ModuleSlotSet& FilePhasedFunction::EntryModules() const { return storage_->entry_modules; }
+bool FilePhasedFunction::MatchesModuleCreation(const FunctionInput& parent, analysis::InstructionId creation) const {
+  const auto& owner = storage_->owner;
+  if (Phases().Identity() != parent.Identity() || Record() != parent.Record() || owner.creator != parent.Method() ||
+      creation.value >= parent.Input().instructions.size() || creation.value >= parent.Proof().environments.before.size() ||
+      !parent.Proof().environments.before[creation.value]) return false;
+  const auto& instruction = parent.Input().instructions[creation.value];
+  if (owner.pc != instruction.pc) return false;
+  return std::visit([&](const auto& expected) {
+    const auto* actual = std::get_if<std::decay_t<decltype(expected)>>(&instruction.operation);
+    return actual && *actual == expected;
+  }, owner.creation);
+}
 abc::EntityOffset FilePhasedFunction::Record() const { return storage_->record; }
 std::size_t FilePhasedFunction::AllocatedBytes() const { return storage_->bytes; }
 std::uint64_t FilePhasedFunction::Work() const { return storage_->work; }
@@ -74,7 +95,7 @@ template<class T, class... E> T Take(std::variant<T, E...> result) {
 std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
     const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
     const FunctionContext& context, analysis::SemanticBudget budget, const PhasedModuleBinding* modules,
-    InputCaptureMode mode) {
+    InputCaptureMode mode, const ParentModuleInput* parent_modules) {
   try {
     auto left = budget;
     const auto admit = [&](std::size_t count, std::size_t width = 1) {
@@ -132,12 +153,47 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
       original.emplace(std::move(body)); body = std::move(normalized);
     }
     Require(mode == InputCaptureMode::kClosed || mode == InputCaptureMode::kConditional, Error::kIdentity);
+    ModuleSlotSet entry_modules;
+    std::vector<analysis::LanguageLoadFact> initialized;
+    std::vector<InputModuleRead> module_reads;
+    if (parent_modules) {
+      Require(mode == InputCaptureMode::kConditional &&
+          parent_modules->parent.IsCreatorOf(context, method.owner_offset, parent_modules->creation), Error::kIdentity);
+      step(parent_modules->parent.ModuleInitializationWork());
+      entry_modules = parent_modules->parent.InitializedModulesBefore(parent_modules->creation);
+      std::size_t count = 0;
+      const auto candidate = [&](std::size_t i) {
+        const auto lifted = analysis::LiftModuleLoad(body.instructions[i].decoded);
+        const auto* load = std::get_if<analysis::ModuleLoad>(&lifted);
+        if (!load || load->space != analysis::ModuleSpace::kLocal || !entry_modules.Contains(load->slot))
+          return std::optional<analysis::ModuleSlot>{};
+        if (i + 1 < body.instructions.size() && std::holds_alternative<analysis::HoleGuard>(
+            analysis::LiftHoleInstruction(body.instructions[i + 1].decoded, frame.registers)))
+          return std::optional<analysis::ModuleSlot>{};
+        return std::optional{load->slot};
+      };
+      for (std::size_t i = 0; i < body.instructions.size(); ++i) {step(ModuleSlotSet::kPathWork + 2); count += candidate(i).has_value();}
+      admit(count, sizeof(analysis::LanguageLoadFact)); initialized.reserve(count);
+      admit(initialized.capacity() - count, sizeof(analysis::LanguageLoadFact));
+      admit(count, sizeof(InputModuleRead)); module_reads.reserve(count);
+      admit(module_reads.capacity() - count, sizeof(InputModuleRead));
+      for (std::size_t i = 0; i < body.instructions.size(); ++i) {
+        step(ModuleSlotSet::kPathWork + 2);
+        const auto slot = candidate(i); if (!slot) continue;
+        const analysis::InstructionId site{static_cast<std::uint32_t>(i)};
+        initialized.push_back({site});
+        step(parent_modules->parent.ModuleInitializationWork());
+        module_reads.push_back({site, *slot, parent_modules->parent.Method(),
+            parent_modules->parent.Input().instructions[parent_modules->creation.value].pc,
+            parent_modules->parent.ModuleStoreBefore(*slot, parent_modules->creation)});
+      }
+    }
     // File families retain the same Language-write premise in Locals below;
     // VerifyFamilyWrites must discharge every descendant store. The lower-level
     // standalone builder keeps Unknown, and no cell read becomes a snapshot.
     auto analyzed = PhasedBody::Build(context, body, left, modules,
         mode == InputCaptureMode::kConditional ? analysis::CapturedValues::kLanguage : analysis::CapturedValues::kReject,
-        analysis::ClosureWrites::kLanguage, awaits, source_pcs, yields);
+        analysis::ClosureWrites::kLanguage, awaits, source_pcs, yields, initialized);
     if (auto* failure = std::get_if<PhasedInputFailure>(&analyzed)) {
       failure->allocated_bytes += budget.bytes - left.bytes;
       failure->work += budget.work - left.work;
@@ -194,10 +250,52 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
     }
     Require(!file.CheckUnchanged(), Error::kChanged);
     return FilePhasedFunction(std::make_unique<const Storage>(Storage{std::move(body), std::move(original), std::move(phases),
-        std::move(locals), std::move(children), mode, std::move(uses), std::move(accesses), DescribeOwner(context), method.owner_offset,
+        std::move(locals), std::move(children), mode, std::move(uses), std::move(accesses), DescribeOwner(context), std::move(entry_modules), std::move(module_reads), method.owner_offset,
         budget.bytes - left.bytes, budget.work - left.work}));
   } catch (const PhasedFileFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return PhasedFileFailure{Error::kResourceLimit};
   } catch (const std::length_error&) { return PhasedFileFailure{Error::kResourceLimit}; }
+}
+std::variant<std::uint64_t, FunctionInputError> VerifyInitializedModuleReads(
+    const FunctionInput& parent, analysis::InstructionId creation, const FilePhasedFunction& child,
+    analysis::SemanticBudget budget) {
+  using Error = FunctionInputError;
+  try {
+    std::uint64_t work = 0;
+    const auto step = [&](std::uint64_t count = 1) {
+      if (count > budget.work - work) throw Error::kWorkLimit;
+      work += count;
+    };
+    const auto premises = child.InitializedModuleReads();
+    if (premises.empty() && child.EntryModules().Empty()) return work;
+    step(parent.ModuleInitializationWork());
+    if (!child.MatchesModuleCreation(parent, creation) ||
+        !child.EntryModules().Same(parent.InitializedModulesBefore(creation))) throw Error::kModuleOwner;
+    const auto input = child.Phases().TreeInput(child.Body()).input;
+    if (premises.size() != input.proof.initialized_modules.size() || parent.Input().flow.blocks.empty())
+      throw Error::kModuleOwner;
+    const auto& entry = parent.Input().flow.blocks.front();
+    for (std::size_t i = 0; i < premises.size(); ++i) {
+      const auto& premise = premises[i];
+      const auto cost = std::bit_width(parent.Input().instructions.size()) + 1;
+      step(cost + ModuleSlotSet::kPathWork);
+      if (premise.instruction != input.proof.initialized_modules[i].instruction ||
+          premise.creator != parent.Method() || premise.creation_pc != parent.Input().instructions[creation.value].pc ||
+          premise.instruction.value >= input.flow.instructions.size() || entry.first_instruction != 0 ||
+          !child.EntryModules().Contains(premise.slot) ||
+          premise.store != parent.ModuleStoreBefore(premise.slot, creation)) throw Error::kModuleOwner;
+      const auto* load = std::get_if<analysis::ModuleLoad>(&input.flow.instructions[premise.instruction.value].operation);
+      if (!load || load->space != analysis::ModuleSpace::kLocal || load->slot != premise.slot) throw Error::kModuleOwner;
+      if (!premise.store) continue;
+      if (premise.store->value >= entry.instruction_count || *premise.store >= creation) throw Error::kModuleOwner;
+      const auto* store = std::get_if<analysis::ModuleStore>(&parent.Input().instructions[premise.store->value].operation);
+      if (!store || store->slot != premise.slot) throw Error::kModuleOwner;
+      step(cost);
+      const auto reads = parent.Input().ssa.Reads(*premise.store);
+      const auto kinds = reads.size() == 1 ? parent.Proof().values.At(reads.front().value) : std::nullopt;
+      if (!kinds || !kinds->IsLanguage()) throw Error::kModuleOwner;
+    }
+    return work;
+  } catch (Error error) {return error;}
 }
 }  // namespace abcd::source

@@ -22,7 +22,7 @@ class PhasePairs {
       throw Error::kOrigin;
     }
     Step(std::get<analysis::PhasedImportProof>(checked).work);
-    auto proved = analysis::ProveExceptionModules(input.flow, input.ssa, remaining_);
+    auto proved = analysis::ProveExceptionModules(input.flow, input.ssa, remaining_, input.proof.initialized_modules);
     if (const auto* failure = std::get_if<analysis::ExceptionModuleError>(&proved)) {
       if (*failure == analysis::ExceptionModuleError::kResourceLimit) throw Error::kResourceLimit;
       throw Error::kUnsupportedProof;
@@ -45,8 +45,18 @@ class PhasePairs {
     switch (fact.proof) {
       case analysis::ModuleReadProof::kCallerGuarded:
       case analysis::ModuleReadProof::kCatchGuarded: break;
+      case analysis::ModuleReadProof::kInitialized: {
+        const auto site = fact.instruction.value;
+        Require(site < graph_.input.sites.size() && graph_.input.sites[site], Error::kOrigin);
+        const auto read = *graph_.input.sites[site];
+        Require(read.value < graph_.ops.size(), Error::kRead);
+        const auto& op = graph_.ops[read.value];
+        const auto* current = std::get_if<analysis::ValueModuleRead>(&op.operation);
+        Require(current && current->space == analysis::ModuleSpace::kLocal && op.result &&
+            graph_.values[op.result->value].domain.IsLanguage() && !op.use_count, Error::kRead);
+        return {read, {}};
+      }
       case analysis::ModuleReadProof::kGuarded:
-      case analysis::ModuleReadProof::kInitialized:
       case analysis::ModuleReadProof::kStored: throw Error::kUnsupportedProof;
     }
     const auto site = fact.instruction.value;

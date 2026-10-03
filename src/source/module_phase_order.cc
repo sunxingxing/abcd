@@ -66,7 +66,18 @@ std::variant<std::uint64_t, EvaluationError> VerifyModulePhaseOrder(
     }
     for (const auto& module : modules) {
       budget.Step();
-      Require(module.pair.guard.has_value(), Error::kOrder);
+      if (!module.pair.guard) {
+        const auto read = module.pair.read;
+        Require(read.value < graph.ops.size() && graph.ops[read.value].result, Error::kInvalidGraph);
+        const auto before = graph.ops[read.value].block;
+        const auto commit = graph.edges[NormalEdge(graph, before, budget).value].target;
+        const auto* origin = std::get_if<OpResult>(&graph.values[graph.ops[read.value].result->value].origin);
+        Require(graph.phases[before.value].phase == ExceptionPhase::kBefore &&
+            graph.phases[before.value].operation == read && graph.phases[commit.value].phase == ExceptionPhase::kCommit &&
+            graph.phases[commit.value].operation == read && origin && origin->op == read && origin->commit == commit,
+            Error::kOrder);
+        continue;
+      }
       const auto read = module.pair.read, guard = *module.pair.guard;
       Require(read.value < graph.ops.size() && guard.value < graph.ops.size(), Error::kInvalidGraph);
       const auto before = graph.ops[read.value].block, after = graph.ops[guard.value].block;
@@ -107,7 +118,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyModuleCatchCopies(
       return bundle ? plan.phis->bundles[*bundle].count : 0U;
     };
     for (const auto& module : plan.modules) {
-      budget.Step(); Require(module.pair.guard.has_value(), Error::kOrder);
+      budget.Step(); if (!module.pair.guard) continue;
       const auto read = module.pair.read, guard = *module.pair.guard;
       const auto edge = NormalEdge(graph, graph.ops[read.value].block, budget);
       const auto commit = graph.edges[edge.value].target;

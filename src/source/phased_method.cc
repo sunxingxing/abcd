@@ -18,6 +18,7 @@ struct PhasedBody::Storage {
   analysis::EnvironmentFlow environments;
   analysis::ExceptionValueFlow values;
   analysis::ExceptionInputProof proof;
+  std::vector<analysis::LanguageLoadFact> initialized_modules;
   analysis::ValueProgram graph;
   std::optional<analysis::ValueEnvironments> cell_environments;
   std::optional<CellPlan> cells;
@@ -114,7 +115,8 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure> PhasedBody::Buil
     const FunctionContext& context, const abc::MethodBody& body, analysis::SemanticBudget budget,
     const PhasedModuleBinding* binding, analysis::CapturedValues capture_mode,
     analysis::ClosureWrites writes, std::span<const analysis::AwaitSite> awaits,
-    std::span<const abc::CodeOffset> source_pcs, std::span<const analysis::YieldSite> yields) {
+    std::span<const abc::CodeOffset> source_pcs, std::span<const analysis::YieldSite> yields,
+    std::span<const analysis::LanguageLoadFact> initialized_modules) {
   using namespace analysis;
   try {
     // Recovered scopes/snapshots can allocate at different VM locations.
@@ -153,8 +155,12 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure> PhasedBody::Buil
     auto environments = PhaseResult<EnvironmentFlow>(AnalyzeExceptionEnvironments(flow,
         {quota.Remaining().bytes}), Error::kEnvironment);
     quota.Admit(environments.allocated_bytes); quota.Step(environments.instruction_visits);
+    quota.Admit(initialized_modules.size(), sizeof(LanguageLoadFact));
+    std::vector<LanguageLoadFact> initialized(initialized_modules.begin(), initialized_modules.end());
+    quota.Admit(initialized.capacity() - initialized_modules.size(), sizeof(LanguageLoadFact));
+    quota.Step(initialized.size());
     auto modules = PhaseResult<ExceptionModules>(ProveExceptionModules(flow, ssa,
-        quota.Remaining()), Error::kValues);
+        quota.Remaining(), initialized), Error::kValues);
     quota.Admit(modules.AllocatedBytes()); quota.Step(modules.work_units);
     auto receiver = FrameReceiver::kUnknown;
     switch (context.Callable()) {
@@ -231,7 +237,7 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure> PhasedBody::Buil
     quota.Admit(values.AllocatedBytes()); quota.Step(value_work.Consumed());
     const auto arguments = frame.extra_arguments ? std::optional{ArgumentFrameFact{frame}} : std::nullopt;
     auto verified = VerifyExceptionInputs(flow, ssa, environments, values, quota.Remaining().work,
-        arguments ? &*arguments : nullptr, ExceptionInputDomain::kHoleTransport);
+        arguments ? &*arguments : nullptr, ExceptionInputDomain::kHoleTransport, initialized);
     if (const auto* failure = std::get_if<ExceptionInputFailure>(&verified)) {
       auto original = *failure;
       if (original.node && original.node->value < flow.nodes.size()) {
@@ -294,7 +300,7 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure> PhasedBody::Buil
         regions, quota.Remaining()), Error::kControl);
     quota.Admit(control.allocated_bytes); quota.Step(control.work);
     return PhasedBody(std::make_unique<Storage>(Storage{context.Identity(), context.Target(), frame, std::move(flow), std::move(ssa),
-        std::move(environments), std::move(values), std::move(proof), std::move(imported.graph),
+        std::move(environments), std::move(values), std::move(proof), std::move(initialized), std::move(imported.graph),
         std::move(cell_environments), std::move(cells),
         std::move(guards), std::move(aliases), std::move(regions), std::move(control),
         quota.Bytes(), quota.Work()}));

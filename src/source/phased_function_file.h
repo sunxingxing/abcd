@@ -27,7 +27,7 @@ class FilePhasedFunction {
   [[nodiscard]] static std::variant<FilePhasedFunction, PhasedFileFailure> Read(
       const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
       const FunctionContext& context, analysis::SemanticBudget budget = {},
-      const PhasedModuleBinding* modules = nullptr, InputCaptureMode mode = InputCaptureMode::kClosed);
+      const PhasedModuleBinding* modules = nullptr, InputCaptureMode mode = InputCaptureMode::kClosed, const ParentModuleInput* parent_modules = nullptr);
   const abc::MethodBody& Body() const;
   const abc::MethodBody& OriginalBody() const;
   const PhasedBody& Phases() const;
@@ -37,6 +37,9 @@ class FilePhasedFunction {
   std::span<const CaptureUse> Captures() const;
   std::span<const InputCaptureAccess> CaptureAccesses() const;
   bool MatchesOwner(const FunctionContext& context) const;
+  bool MatchesModuleCreation(const FunctionInput&, analysis::InstructionId) const;
+  std::span<const InputModuleRead> InitializedModuleReads() const;
+  const ModuleSlotSet& EntryModules() const;
   abc::EntityOffset Record() const;
   std::size_t AllocatedBytes() const;
   // Decoded instruction-byte charge plus phase/local recorded work. Metadata
@@ -47,5 +50,7 @@ class FilePhasedFunction {
   explicit FilePhasedFunction(std::unique_ptr<const Storage> storage);
   std::unique_ptr<const Storage> storage_;
 };
+[[nodiscard]] std::variant<std::uint64_t, FunctionInputError> VerifyInitializedModuleReads(
+    const FunctionInput&, analysis::InstructionId, const FilePhasedFunction&, analysis::SemanticBudget = {});
 }  // namespace abcd::source
 #endif

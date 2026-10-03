@@ -12,6 +12,31 @@
 
 ## 当前阶段
 
+### 2026-10-03：父级模块初始化贯通异常成员，恢复 setImmersiveType
+
+- 从真实 method8539 PC15 定位：class 创建前的本地模块初始化未传到 phased
+  reader。共享 IsCreatorOf 验证创建 identity/record/PC/typed operation，normal
+  与 phased 复用；异常输入保留 immutable 初始化 premise，独立 importer、
+  ModuleGuards、实时 alias、Before/Commit、单事件顺序和 family-write 再核对。
+  [实现与边界](function-tree-output.md) 没有制造正常输入或冻结模块值。
+- 创建前/后、Conditional/Closed、1/200/201 实际读取、缺失 premise/guard
+  声明和工作预算通过。已有带 guard 的读取继续保留配对异常证明；单读取不
+  伪造 guard 或搬移 catch copies。root/normal-parent phased child 的原 store
+  Language 域重新验证；ownerless 初始化 publication 仍拒绝。
+- -j4 生产与相关目标构建退出0，/tmp/abcd-phase-module-final-build.log、
+  /tmp/abcd-phase-module-related-build.log、unit-final-build.log。
+  11/11相关回归14.37秒通过，/tmp/abcd-phase-module-tests.log。规则 revision65。
+- WindowUtil setImmersiveType(type) 正文现恢复，余两个明确数值缺口：8620
+  PC127、8431 PC34。输出14046字节。1428组配对 prototype 方法/callback
+  对照通过，/tmp/abcd-phase-module-paired-2.log；含新增 setter/enum getter/
+  receiver/异常。配对 TS 仅进测试，enum/类分开转换防止 Node 内联 enum 常量
+  掩盖 ABC 的属性读取。没有构造不完整类或调用遗漏方法，不计为平台/record验收。
+- fresh build/stage-one/value-phase-module-pass-1 五输入退出0，仍78 complete /
+  7 incomplete /21 failure /46 no-module；已有完整源码逐字未变，无 legacy。
+  /tmp/abcd-phase-module-final-batch.log、final-batch-summary.json。
+- Goal active，阶段一及 object creaters 全组未完成。full-suite/扩展语料/RSS/
+  基准/DFX/定期审视均未恢复；当前工程计费不是整进程峰值证明。
+
 ### 2026-10-03：类成员输入缺口保留其他恢复结果，真实 WindowUtil 出稿
 
 - 实际 record7618 先在 method8620 phased kValues 阻断整个类；保留原输入失败

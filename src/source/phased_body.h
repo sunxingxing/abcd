@@ -39,7 +39,8 @@ class PhasedBody {
       analysis::ClosureWrites writes = analysis::ClosureWrites::kUnknown,
       std::span<const analysis::AwaitSite> awaits = {},
       std::span<const abc::CodeOffset> source_pcs = {},
-      std::span<const analysis::YieldSite> yields = {});
+      std::span<const analysis::YieldSite> yields = {},
+      std::span<const analysis::LanguageLoadFact> initialized_modules = {});
   const analysis::ValueProgram& Graph() const;
   const RouteInputIdentity& Identity() const;
   abc::EntityOffset Target() const;

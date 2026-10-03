@@ -8,7 +8,8 @@ namespace abcd::analysis {
 std::variant<ExceptionInputProof, ExceptionInputFailure> VerifyExceptionInputs(
     const ExceptionFlow& flow, const ExceptionSsa& ssa,
     const EnvironmentFlow& environments, const ExceptionValueFlow& values,
-    std::uint64_t work, const ArgumentFrameFact* arguments, ExceptionInputDomain domain) {
+    std::uint64_t work, const ArgumentFrameFact* arguments, ExceptionInputDomain domain,
+    std::span<const LanguageLoadFact> initialized_modules) {
   using Error = ExceptionInputError;
   ExceptionInputProof proof;
   const auto fail = [&](Error kind, abc::CodeOffset pc = {},
@@ -28,6 +29,16 @@ std::variant<ExceptionInputProof, ExceptionInputFailure> VerifyExceptionInputs(
     proof.work_units += units;
     return true;
   };
+  std::optional<InstructionId> previous_module;
+  for (const auto& premise : initialized_modules) {
+    if (!charge()) return fail(Error::kResourceLimit);
+    if (premise.instruction.value >= flow.instructions.size() ||
+        (previous_module && premise.instruction <= *previous_module)) return fail(Error::kMismatchedAnalysis);
+    const auto* load = std::get_if<ModuleLoad>(&flow.instructions[premise.instruction.value].operation);
+    if (!load || load->space != ModuleSpace::kLocal) return fail(Error::kMismatchedAnalysis);
+    previous_module = premise.instruction;
+  }
+  proof.initialized_modules = initialized_modules;
   for (std::size_t i = 0; i < flow.nodes.size(); ++i) {
     if (!charge()) return fail(Error::kResourceLimit);
     const ExceptionNodeId id{static_cast<std::uint32_t>(i)};

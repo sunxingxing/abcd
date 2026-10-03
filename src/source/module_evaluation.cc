@@ -69,8 +69,13 @@ std::variant<ModuleEvaluationIndex, EvaluationError> IndexModuleEvaluations(
           op.use_count == 0 && op.result && op.result->value < graph.values.size(), Error::kOwnership);
       if (!entry.pair.guard) {
         const auto* definition = std::get_if<analysis::OpResult>(&graph.values[op.result->value].origin);
-        require(graph.phases.empty() && read->space == analysis::ModuleSpace::kLocal &&
-            definition && definition->op == entry.pair.read && !definition->commit &&
+        const bool normal = graph.phases.empty() && definition && !definition->commit;
+        const bool phased = !graph.phases.empty() && definition && definition->commit &&
+            definition->commit->value < graph.phases.size() &&
+            graph.phases[definition->commit->value].phase == analysis::ExceptionPhase::kCommit &&
+            graph.phases[definition->commit->value].operation == entry.pair.read;
+        require((normal || phased) && read->space == analysis::ModuleSpace::kLocal &&
+            definition && definition->op == entry.pair.read &&
             graph.values[op.result->value].life == analysis::ValueLife::kLive &&
             graph.values[op.result->value].domain.IsLanguage() &&
             op.normal == analysis::LanguageEffect::kModuleRead && op.before_throw == op.normal &&

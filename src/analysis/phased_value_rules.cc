@@ -37,7 +37,7 @@ void CheckPhaseInput(const PhasedValueInput& input, PhaseQuota& quota) {
   const auto checked = VerifyExceptionInputs(input.flow, input.ssa, input.environments,
       input.values, quota.Remaining().work,
       input.proof.arguments ? &*input.proof.arguments : nullptr,
-      ExceptionInputDomain::kHoleTransport);
+      ExceptionInputDomain::kHoleTransport, input.proof.initialized_modules);
   if (const auto* failure = std::get_if<ExceptionInputFailure>(&checked))
     throw ValueImportFailure{failure->kind == ExceptionInputError::kResourceLimit
         ? PhaseError::kWorkLimit : PhaseError::kInputMismatch, failure->pc};

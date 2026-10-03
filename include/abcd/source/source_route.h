@@ -267,7 +267,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // constructor path; child bodies, array ownership and order remain mandatory.
 // Rules 64 preserve actual class-member input failures as explicit omissions
 // in drafts; their absence never certifies bodies or executable publication.
-inline constexpr std::uint32_t kRouteEvidenceRules = 64;
+// Rules 65 bind parent-initialized module reads through phased method input,
+// live module aliases, unchanged Before/Commit events and family-write checks.
+inline constexpr std::uint32_t kRouteEvidenceRules = 65;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

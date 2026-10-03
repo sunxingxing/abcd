@@ -83,7 +83,8 @@ PhaseCorridors::PhaseCorridors(const ValueProgram& graph, const EvaluationPlan& 
     budget.Array(module_peers_, graph.ops.size());
     for (const auto& module : plan.modules) {
       budget.Step();
-      if (!module.pair.guard) throw EvaluationError::kOrder;
+      // An initialized read has one unchanged event; only guarded pairs fuse.
+      if (!module.pair.guard) continue;
       module_peers_[module.pair.read.value] = module.pair.guard;
       module_peers_[module.pair.guard->value] = module.pair.read;
     }
@@ -191,8 +192,9 @@ std::size_t PhaseCorridors::EffectCount(OpId op) const {
   if (std::holds_alternative<ValueModuleRead>(graph_.ops[op.value].operation)) {
     // IndexModuleEvaluations proved adjacency through the read's empty Commit
     // phase; VerifyModuleCatchCopies also preserves both exception snapshots.
-    if (module_peers_.empty() || !module_peers_[op.value])
-      throw EvaluationError::kOrder;
+    // IndexModuleEvaluations covers every read. Initialized local reads keep
+    // their single original event and do not consume a fictitious guard.
+    if (module_peers_.empty() || !module_peers_[op.value]) return 1;
     return kGuardedReadEffects;
   }
   return 1;

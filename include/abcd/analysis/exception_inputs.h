@@ -19,6 +19,9 @@ struct ExceptionInputProof {
   std::uint64_t reads = 0;
   std::uint64_t work_units = 0;
   std::optional<ArgumentFrameFact> arguments;
+  // Borrowed owner-certified original-coordinate local load premises. Source
+  // owners retain their immutable arena and independently close creation/writes.
+  std::span<const LanguageLoadFact> initialized_modules;
 };
 // Import can retain a Hole-valued protocol without interpreting it as JS.
 // Source consumers still use kLanguage; transport is not source admission.
@@ -44,6 +47,7 @@ VerifyExceptionInputs(const ExceptionFlow& flow, const ExceptionSsa& ssa,
                       const ExceptionValueFlow& values,
                       std::uint64_t work = kDefaultSemanticWork,
                       const ArgumentFrameFact* arguments = nullptr,
-                      ExceptionInputDomain domain = ExceptionInputDomain::kLanguage);
+                      ExceptionInputDomain domain = ExceptionInputDomain::kLanguage,
+                      std::span<const LanguageLoadFact> initialized_modules = {});
 }  // namespace abcd::analysis
 #endif

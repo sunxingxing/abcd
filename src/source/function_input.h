@@ -1,6 +1,8 @@
 #ifndef ABCD_SOURCE_FUNCTION_INPUT_H_
 #define ABCD_SOURCE_FUNCTION_INPUT_H_
 
+#include <bit>
+
 #include "abcd/source/source_route.h"
 #include "capture_plan.h"
 #include "function_context.h"
@@ -75,6 +77,11 @@ class FunctionInput {
   ModuleSlotSet InitializedModulesBefore(analysis::InstructionId creation) const;
   bool HasInheritedModules() const { return !entry_modules_.Empty(); }
   bool MatchesModuleCreation(const FunctionInput& parent, analysis::InstructionId creation) const;
+  // Same typed creation check for normal/phased children, before input build.
+  bool IsCreatorOf(const FunctionContext&, abc::EntityOffset child_record, analysis::InstructionId) const;
+  std::uint64_t ModuleInitializationWork() const {
+    return std::bit_width(module_steps_.size()) + 1;
+  }
   // All unpreserved callable/class/buffer sites, not just DEFINEFUNC.
   // Complete transitive child validation must discharge these separately.
   std::span<const analysis::InstructionId> Children() const { return proof_.locals.capture_barriers; }
