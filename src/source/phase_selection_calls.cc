@@ -21,6 +21,7 @@ class CallSelections {
     accounted_work_ = phase_budget_.Cost().work; budget.Step(accounted_work_);
     budget.Array(uses_, graph.values.size()); budget.Array(incoming_, graph.blocks.size());
     budget.Array(copied_, graph.edges.size()); budget.Array(phi_arguments_, graph.ops.size());
+    budget.Array(callees_, graph.values.size()); budget.Array(prefix_, graph.ops.size());
     for (const auto& edge : graph.edges) {
       budget.Step(); if (edge.kind != FlowEdgeKind::kException) ++incoming_[edge.target.value];
     }
@@ -36,6 +37,12 @@ class CallSelections {
       }
       const auto operand = ResolveEvaluationOperand(plan, use.operand);
       if (const auto* value = std::get_if<ValueId>(&operand)) {
+        if (use.role == OperandRole::kCallee) {
+          if (const auto* owner = std::get_if<OpId>(&use.owner)) {
+            const auto* invoke = std::get_if<ValueInvoke>(&graph.ops[owner->value].operation);
+            if (invoke && invoke->receiver == InvokeReceiver::kExplicit) callees_[value->value] = 1;
+          }
+        }
         auto& uses = uses_[value->value];
         if (uses.first) uses.multiple = true;
         else uses.first = UseId{static_cast<std::uint32_t>(i)};
@@ -89,11 +96,13 @@ class CallSelections {
         callee.value >= region.branch.value || region.branch.value >= call->value ||
         corridors_.HasCatchCopies(callee) || corridors_.HasCatchCopies(*call) ||
         !corridors_.SameCatch(callee, *call)) return {};
-    // The callee reference encloses the selection. Prefix/tail operations may
-    // not observe its delayed publication or perform independent effects.
-    // Keep computed prefix snapshots unsupported until they have an explicit
-    // expression owner; never replay a getter or dispatch through .call.
-    if (!Inert(*result->commit, region.header) || !Inert(region.join, invoke.block, true)) return {};
+    // Prefix roots retain their snapshots, in original execution order inside
+    // the condition. The callee is evaluated first; normal-path copies and
+    // pre-throw staging remain barriers. A different saved method reference
+    // stops the walk, preventing overlapping ownership and repeated long scans.
+    std::size_t prefix_count = 0;
+    if (!Prefix(*result->commit, region.header, *call, region.branch, prefix_count) ||
+        !Inert(region.join, invoke.block, true)) return {};
     for (const auto* arm : {&region.right, &*region.consequent}) {
       const auto* input = std::get_if<ValueId>(arm);
       const auto* producer = input ? std::get_if<OpResult>(&graph_.values[input->value].origin) : nullptr;
@@ -102,12 +111,48 @@ class CallSelections {
       if (op.exceptional == ExceptionalCompletion::kMayThrow &&
           !corridors_.SameCatch(producer->op, *call)) return {};
     }
-    return PhaseSelectionCall{callee, *call, region.branch, region.merged, argument, transport};
+    PhaseSelectionCall selected{callee, *call, region.branch, region.merged, argument, transport};
+    budget_.Array(selected.prefix, prefix_count);
+    std::copy_n(prefix_.begin(), prefix_count, selected.prefix.begin());
+    return selected;
   }
   void Account() {
     budget_.Step(phase_budget_.Cost().work - accounted_work_);
   }
  private:
+  bool Prefix(WorkBlockId at, WorkBlockId end, OpId call, OpId branch, std::size_t& count) {
+    for (std::size_t visited = 0; visited < graph_.blocks.size(); ++visited) {
+      budget_.Step(); if (at == end) return true;
+      if (incoming_[at.value] != 1 || graph_.phases[at.value].phase == ExceptionPhase::kCatch) return false;
+      const auto& block = graph_.blocks[at.value];
+      for (std::uint32_t i = 0; i < block.op_count; ++i) {
+        budget_.Step(); const OpId id{block.first_op.value + i}; const auto& op = graph_.ops[id.value];
+        if (op.life != ValueLife::kLive) continue;
+        if (corridors_.HasCatchCopies(id)) return false;
+        const auto kind = BeforeLogicalFusion(graph_, plan_, id.value).kind;
+        if (kind == EvaluationKind::kAlias || kind == EvaluationKind::kElidedPure ||
+            id == branch || std::holds_alternative<ValueJump>(op.operation) || std::holds_alternative<ValueNop>(op.operation)) {
+          if (!Pure(op)) return false;
+          continue;
+        }
+        if (op.exceptional == ExceptionalCompletion::kMayThrow && !corridors_.SameCatch(id, call)) return false;
+        if (kind == EvaluationKind::kInline || kind == EvaluationKind::kModuleGuard) continue;
+        if (kind != EvaluationKind::kRoot || !op.result || !PhaseCorridors::Expression(op.operation) ||
+            callees_[op.result->value] || count >= prefix_.size()) return false;
+        prefix_[count++] = id;
+      }
+      std::optional<EdgeId> normal;
+      for (std::uint32_t i = 0; i < block.edge_count; ++i) {
+        budget_.Step(); const EdgeId edge{block.first_edge.value + i};
+        if (graph_.edges[edge.value].kind == FlowEdgeKind::kException) continue;
+        if (normal || copied_[edge.value]) return false;
+        normal = edge;
+      }
+      if (!normal) return false;
+      at = graph_.edges[normal->value].target;
+    }
+    return false;
+  }
   bool Inert(WorkBlockId at, WorkBlockId end, bool join_entry = false) {
     for (std::size_t visited = 0; visited < graph_.blocks.size(); ++visited) {
       budget_.Step(); if (at == end) return true;
@@ -137,7 +182,8 @@ class CallSelections {
   std::uint64_t accounted_work_ = 0;
   std::vector<PhaseUse> uses_;
   std::vector<std::uint32_t> incoming_, phi_arguments_;
-  std::vector<std::uint8_t> copied_;
+  std::vector<std::uint8_t> copied_, callees_;
+  std::vector<OpId> prefix_;
 };
 }
 void BuildPhaseSelectionCalls(const ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget) {
@@ -148,17 +194,23 @@ void BuildPhaseSelectionCalls(const ValueProgram& graph, EvaluationPlan& plan, T
   budget.Admit(regions.size(), sizeof(PhaseSelectionCall)); calls.reserve(regions.size());
   budget.Admit(calls.capacity() - regions.size(), sizeof(PhaseSelectionCall));
   for (const auto& region : regions) {
-    budget.Step(); if (const auto call = proof.Check(region)) calls.push_back(*call);
+    budget.Step(); if (auto call = proof.Check(region)) calls.push_back(std::move(*call));
   }
   proof.Account();
   if (calls.empty()) return;
   std::sort(calls.begin(), calls.end(), [&](const auto& a, const auto& b) { budget.Step(); return a.callee < b.callee; });
   budget.Array(plan.logical_values, graph.values.size());
   budget.Array(plan.phase_transports, graph.ops.size());
+  budget.Array(plan.phase_prefixes, graph.ops.size());
   for (std::size_t i = 0; i < calls.size(); ++i) {
     budget.Step(); const auto& call = calls[i];
     Require(!i || calls[i - 1].callee < call.callee);
     Require(!plan.logical_values[call.value.value]);
+    Require(!plan.phase_prefixes[call.callee.value]);
+    for (const auto prefix : call.prefix) {
+      budget.Step(); Require(!plan.phase_prefixes[prefix.value] && plan.operations[prefix.value].kind == EvaluationKind::kRoot);
+      plan.phase_prefixes[prefix.value] = call.branch;
+    }
     plan.logical_values[call.value.value] = call.branch;
     const auto input = call.transport ? graph.ops[call.transport->value].first_use : call.argument;
     plan.operations[call.branch.value] = {EvaluationKind::kLogicalValue, input, {}};
@@ -175,20 +227,22 @@ void VerifyPhaseSelectionCalls(const ValueProgram& graph, const EvaluationPlan& 
   Require(plan.logical_objects.empty());
   Require(plan.logical_values.empty() || plan.logical_values.size() == graph.values.size());
   if (plan.phase_calls.empty()) {
-    Require(plan.logical_values.empty() && plan.phase_transports.empty());
+    Require(plan.logical_values.empty() && plan.phase_transports.empty() && plan.phase_prefixes.empty());
     for (const auto& op : plan.operations) { budget.Step(); Require(op.kind != EvaluationKind::kLogicalValue); }
     return;
   }
-  Require(!plan.logical_values.empty() && plan.phase_transports.size() == graph.ops.size());
+  Require(!plan.logical_values.empty() && plan.phase_transports.size() == graph.ops.size() &&
+      plan.phase_prefixes.size() == graph.ops.size());
   for (std::size_t i = 0; i < plan.phase_calls.size(); ++i) {
     budget.Step(); const auto& call = plan.phase_calls[i];
     Require(call.callee.value < graph.ops.size() && (!i || plan.phase_calls[i - 1].callee < call.callee));
   }
   const auto regions = FindPhasedPhiSelections(graph, plan, budget);
   CallSelections proof(graph, plan, budget);
-  std::vector<std::uint8_t> values, calls, transports, branches;
+  std::vector<std::uint8_t> values, calls, transports, branches, prefixes;
   budget.Array(values, graph.values.size()); budget.Array(calls, plan.phase_calls.size());
   budget.Array(transports, graph.ops.size()); budget.Array(branches, graph.ops.size());
+  budget.Array(prefixes, graph.ops.size());
   for (const auto& region : regions) {
     budget.Step(); if (!plan.logical_values[region.merged.value]) continue;
     const auto expected = proof.Check(region); Require(expected.has_value());
@@ -201,6 +255,11 @@ void VerifyPhaseSelectionCalls(const ValueProgram& graph, const EvaluationPlan& 
     const auto& branch = plan.operations[region.branch.value]; const auto& callee = plan.operations[expected->callee.value];
     const auto input = expected->transport ? graph.ops[expected->transport->value].first_use : expected->argument;
     branches[region.branch.value] = 1;
+    for (const auto prefix : expected->prefix) {
+      budget.Step(); Require(!prefixes[prefix.value] && plan.phase_prefixes[prefix.value] == region.branch &&
+          plan.operations[prefix.value].kind == EvaluationKind::kRoot);
+      prefixes[prefix.value] = 1;
+    }
     if (expected->transport) {
       const auto op = expected->transport->value;
       Require(!transports[op] && plan.phase_transports[op] == expected->argument &&
@@ -216,6 +275,7 @@ void VerifyPhaseSelectionCalls(const ValueProgram& graph, const EvaluationPlan& 
   for (const auto value : calls) { budget.Step(); Require(value != 0); }
   for (std::size_t i = 0; i < transports.size(); ++i) {
     budget.Step(); Require(plan.phase_transports[i].has_value() == (transports[i] != 0));
+    Require(plan.phase_prefixes[i].has_value() == (prefixes[i] != 0));
     Require((plan.operations[i].kind == EvaluationKind::kLogicalValue) == (branches[i] != 0));
   }
 }

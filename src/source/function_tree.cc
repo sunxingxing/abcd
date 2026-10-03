@@ -798,7 +798,8 @@ class TreeBuilder {
         tree_.operations.push_back({id, statement});
       } else {
         tree_.operations.push_back({id, *expression});
-        if (evaluation.kind == EvaluationKind::kInline || evaluation.kind == EvaluationKind::kPredicateSnapshot || evaluation.kind == EvaluationKind::kNestedLiteral ||
+        if ((id.value < evaluation_.phase_prefixes.size() && evaluation_.phase_prefixes[id.value]) ||
+            evaluation.kind == EvaluationKind::kInline || evaluation.kind == EvaluationKind::kPredicateSnapshot || evaluation.kind == EvaluationKind::kNestedLiteral ||
             evaluation.kind == EvaluationKind::kPhiInput || evaluation.kind == EvaluationKind::kLogicalLeft) continue;
         const auto evaluated = RootExpression(id, *expression);
         Append(draft, Statement(ExpressionStmt{evaluated}, origin));

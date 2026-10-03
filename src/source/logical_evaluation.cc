@@ -576,6 +576,28 @@ class Domain {
   DomainIndex& index_; TreeCheckBudget& budget_; std::optional<SelectedObject> object_; OpId last_owner_;
 };
 }  // namespace
+const PhaseSelectionCall* FindPhaseSelectionCall(const ValueProgram& graph, const EvaluationPlan& plan, OpId branch) {
+  if (plan.flow != EvaluationFlow::kPhased || plan.phase_calls.empty() || branch.value >= plan.operations.size()) return nullptr;
+  auto input = plan.operations[branch.value].consumer;
+  if (!input || input->value >= graph.uses.size()) return nullptr;
+  auto owner = std::get_if<OpId>(&graph.uses[input->value].owner);
+  if (!owner) return nullptr;
+  if (owner->value < plan.phase_transports.size() && plan.phase_transports[owner->value]) {
+    input = plan.phase_transports[owner->value];
+    if (input->value >= graph.uses.size()) return nullptr;
+    owner = std::get_if<OpId>(&graph.uses[input->value].owner);
+  }
+  if (!owner || owner->value >= graph.ops.size()) return nullptr;
+  const auto& call = graph.ops[owner->value];
+  if (!std::holds_alternative<ValueInvoke>(call.operation)) return nullptr;
+  const auto operand = ResolveEvaluationOperand(plan, graph.uses[call.first_use.value].operand);
+  const auto* value = std::get_if<ValueId>(&operand);
+  const auto* source = value ? std::get_if<OpResult>(&graph.values[value->value].origin) : nullptr;
+  if (!source) return nullptr;
+  const auto found = std::lower_bound(plan.phase_calls.begin(), plan.phase_calls.end(), source->op,
+      [](const auto& entry, auto id) { return entry.callee < id; });
+  return found != plan.phase_calls.end() && found->callee == source->op && found->branch == branch ? &*found : nullptr;
+}
 bool CrossLogicalInline(const ValueProgram& graph, const EvaluationPlan& plan, OpId producer) {
   const auto& placement = plan.operations[producer.value];
   if (placement.kind != EvaluationKind::kInline || !placement.consumer ||
@@ -671,7 +693,7 @@ void VerifyLogicalValues(const ValueProgram& graph, const EvaluationPlan& plan, 
   if (plan.flow == EvaluationFlow::kPhased) {
     VerifyPhaseSelectionCalls(graph, plan, budget); return;
   }
-  Require(plan.phase_calls.empty() && plan.phase_transports.empty());
+  Require(plan.phase_calls.empty() && plan.phase_transports.empty() && plan.phase_prefixes.empty());
   Require(plan.logical_objects.empty() || plan.logical_objects.size() == graph.ops.size());
   Require(plan.logical_values.empty() || (plan.flow == EvaluationFlow::kNormal && plan.logical_values.size() == graph.values.size()));
   if (plan.logical_values.empty()) {

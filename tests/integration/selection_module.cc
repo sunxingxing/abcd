@@ -19,6 +19,7 @@ using namespace abcd;
 using namespace abcd::source;
 using namespace abcd::analysis;
 constexpr unsigned kByteBits = 8;
+enum class CallPrefix { kNone, kGetter, kCall };
 enum class Selection { kConditional, kAnd, kOr, kDecisionAnd, kDecisionOr };
 bool Decision(Selection selection) {
   return selection == Selection::kDecisionAnd || selection == Selection::kDecisionOr;
@@ -183,18 +184,27 @@ void Run(unsigned count, bool direct, bool print, bool barrier = false,
   if (print) std::cout << output.str();
 }
 
-abc::MethodBody CallSelectionBody(unsigned count, bool computed) {
+abc::MethodBody CallSelectionBody(unsigned count, bool computed, CallPrefix prefix) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   std::vector<std::uint8_t> bytes;
   for (unsigned i = 0; i < count; ++i) {
     bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 3,
-        op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0, op(abc::Opcode::kSTA_V8), 0,
-        op(abc::Opcode::kLDA_V8), 4, op(abc::Opcode::kISTRUE)});
+        op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0, op(abc::Opcode::kSTA_V8), 0});
+    if (prefix == CallPrefix::kNone) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 4});
+    else {
+      bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 3,
+          op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 1, 0});
+      if (prefix == CallPrefix::kCall) bytes.insert(bytes.end(), {
+          op(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 3, 4, op(abc::Opcode::kSTA_V8), 2,
+          op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 3, 0});
+    }
+    bytes.push_back(op(abc::Opcode::kISTRUE));
     const auto branch = bytes.size(); bytes.insert(bytes.end(), {op(abc::Opcode::kJEQZ_IMM8), 0});
     bytes.insert(bytes.end(), {op(abc::Opcode::kLDAI_IMM32), 7, 0, 0, 0});
     const auto jump = bytes.size(); bytes.insert(bytes.end(), {op(abc::Opcode::kJMP_IMM8), 0});
     bytes[branch + 1] = static_cast<std::uint8_t>(bytes.size() - branch);
-    if (computed) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 3,
+    if (computed) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8),
+        static_cast<std::uint8_t>(prefix == CallPrefix::kCall ? 2 : 3),
         op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 2, 0});
     else bytes.insert(bytes.end(), {op(abc::Opcode::kLDAI_IMM32), 0xc0, 1, 0, 0});
     bytes[jump + 1] = static_cast<std::uint8_t>(bytes.size() - jump);
@@ -212,8 +222,8 @@ abc::MethodBody CallSelectionBody(unsigned count, bool computed) {
 }
 
 void RunPhased(unsigned count, bool direct, bool print, Selection selection,
-    abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool one_arm = false, bool call_selection = false, bool computed = false) {
-  const auto body = call_selection ? CallSelectionBody(count, computed) : Decision(selection) ? DecisionBody(count, direct, selection, true, one_arm) :
+    abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool one_arm = false, bool call_selection = false, bool computed = false, CallPrefix prefix = CallPrefix::kNone) {
+  const auto body = call_selection ? CallSelectionBody(count, computed, prefix) : Decision(selection) ? DecisionBody(count, direct, selection, true, one_arm) :
       Body(count, direct, false, selection, true);
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(3, call_selection ? 2 : 1, {}));
   const auto flow = std::get<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers));
@@ -267,6 +277,13 @@ void RunPhased(unsigned count, bool direct, bool print, Selection selection,
     if (count == 1) test::Check(std::holds_alternative<EvaluationError>(VerifyPhaseExpressions(graph, forged, {})));
     forged = evaluation; forged.phase_transports.clear();
     test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    forged = evaluation; forged.phase_prefixes.clear();
+    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    if (prefix != CallPrefix::kNone) {
+      test::Check(!evaluation.phase_calls.front().prefix.empty());
+      forged = evaluation; forged.phase_calls.front().prefix.clear();
+      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    }
     forged = evaluation; forged.phase_calls.front().argument = graph.ops[forged.phase_calls.front().callee.value].first_use;
     test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
     forged = evaluation; forged.operations[forged.phase_calls.front().callee.value].consumer = UseId{static_cast<std::uint32_t>(graph.uses.size())};
@@ -326,7 +343,10 @@ int main(int argc, char** argv) {
     const std::string_view option{argv[1]};
     test::Check(argc == 2 || std::string_view{argv[2]} == "--twice");
     const auto count = argc == 3 ? 2U : 1U;
-    if (option == "--phased-call-selection-source" || option == "--phased-computed-call-selection-source")
+    if (option == "--phased-prefix-getter-source" || option == "--phased-prefix-call-source")
+      RunPhased(count, false, true, Selection::kConditional, abc::ProfileId::kDynamic1206, false, true, true,
+          option == "--phased-prefix-call-source" ? CallPrefix::kCall : CallPrefix::kGetter);
+    else if (option == "--phased-call-selection-source" || option == "--phased-computed-call-selection-source")
       RunPhased(count, false, true, Selection::kConditional, abc::ProfileId::kDynamic1206, false, true,
           option == "--phased-computed-call-selection-source");
     else if (option == "--phased-selection-refusal")
@@ -353,7 +373,11 @@ int main(int argc, char** argv) {
   }
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
     for (const auto count : {1U, 2U, 200U, 201U})
-      for (const bool computed : {false, true}) RunPhased(count, false, false, Selection::kConditional, profile, false, true, computed);
+      for (const bool computed : {false, true}) {
+        RunPhased(count, false, false, Selection::kConditional, profile, false, true, computed);
+        if (computed) for (const auto prefix : {CallPrefix::kGetter, CallPrefix::kCall})
+          RunPhased(count, false, false, Selection::kConditional, profile, false, true, computed, prefix);
+      }
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
     for (const auto count : {1U, 2U, 200U, 201U})
       for (const auto selection : {Selection::kDecisionAnd, Selection::kDecisionOr})

@@ -16,6 +16,8 @@ void BuildLogicalValues(const analysis::ValueProgram& graph, EvaluationPlan& pla
 void VerifyLogicalValues(const analysis::ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget);
 void BuildPhaseSelectionCalls(const analysis::ValueProgram&, EvaluationPlan&, TreeCheckBudget&);
 void VerifyPhaseSelectionCalls(const analysis::ValueProgram&, const EvaluationPlan&, TreeCheckBudget&);
+// Lookup on a freshly verified plan, following the original phi transport.
+const PhaseSelectionCall* FindPhaseSelectionCall(const analysis::ValueProgram&, const EvaluationPlan&, analysis::OpId branch);
 // Only after fresh evaluation verification, which checks the contracted
 // diamond's effect intervals and its exclusively owned incoming values.
 bool CrossLogicalInline(const analysis::ValueProgram& graph, const EvaluationPlan& plan, analysis::OpId producer);

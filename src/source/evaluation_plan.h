@@ -53,6 +53,7 @@ struct PhaseSelectionCall {
   analysis::ValueId value;
   analysis::UseId argument;
   std::optional<analysis::OpId> transport;
+  std::vector<analysis::OpId> prefix;
   bool operator==(const PhaseSelectionCall&) const = default;
 };
 struct EvaluationPlan {
@@ -92,6 +93,7 @@ struct EvaluationPlan {
   // selection argument. Ordinary cross-phase inline edges are not this form.
   std::vector<PhaseSelectionCall> phase_calls;
   std::vector<std::optional<analysis::UseId>> phase_transports;
+  std::vector<std::optional<analysis::OpId>> phase_prefixes;
   // Selected buffered allocations own a chain of staged definitions across selections.
   // Indexed by allocation, pointing to the last definition. Original local snapshots
   // remain independently checked.

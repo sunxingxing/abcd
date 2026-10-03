@@ -7,16 +7,24 @@ const hostile = {[Symbol.toPrimitive]() { assert.fail('condition coerced'); }};
 const flags = [undefined, null, false, 0, -0, NaN, '', true, 1, 1n, symbol, hostile];
 const options = [undefined, null, false, 0, -0, NaN, 'argument', symbol, token];
 let cases = 0;
-for (const computed of [false, true]) for (const count of [1, 2]) {
-  const source = execFileSync(tool, [computed ? '--phased-computed-call-selection-source' :
-    '--phased-call-selection-source', ...(count === 2 ? ['--twice'] : [])], {encoding: 'utf8'});
+const variants = [{computed: false, prefix: 'none'}, {computed: true, prefix: 'none'},
+  {computed: true, prefix: 'getter'}, {computed: true, prefix: 'call'}];
+for (const {computed, prefix} of variants) for (const count of [1, 2]) {
+  const source = execFileSync(tool, [prefix === 'getter' ? '--phased-prefix-getter-source' : prefix === 'call' ? '--phased-prefix-call-source' :
+    computed ? '--phased-computed-call-selection-source' : '--phased-call-selection-source', ...(count === 2 ? ['--twice'] : [])], {encoding: 'utf8'});
   assert.ok(source.includes('value.method(') && source.includes(' ? '));
   assert.ok(!source.includes('.call(') && !source.includes('INCOMPLETE'));
   const recovered = Function(`"use strict"; return ${source}`)();
   const reference = (value, flag) => {
     try {
       let result;
-      for (let i = 0; i < count; ++i) result = value.method(flag ? 7 : computed ? value.option : 448);
+      for (let i = 0; i < count; ++i) {
+        if (prefix === 'getter') result = value.method(value.probe ? 7 : value.option);
+        else if (prefix === 'call') {
+          let parsed;
+          result = value.method((parsed = value.probe(flag), parsed.other ? 7 : parsed.option));
+        } else result = value.method(flag ? 7 : computed ? value.option : 448);
+      }
       return result;
     } catch (error) { return error; }
   };
@@ -41,6 +49,26 @@ for (const computed of [false, true]) for (const count of [1, 2]) {
         Object.defineProperty(method, 'call', {get() { assert.fail('mutable .call helper'); }});
         return method;
       }
+      if (key === 'probe') {
+        assert.notEqual(prefix, 'none'); event('get-probe');
+        if (replace) ++version;
+        if (prefix === 'getter') return flag;
+        const probe = function(input) {
+          assert.equal(this, value); assert.ok(Object.is(input, flag)); event('probe-call');
+          if (replace) ++version;
+          const parsed = {
+            get other() {
+              assert.equal(this, parsed); event('get-other'); if (replace) ++version; return flag;
+            },
+            get option() {
+              assert.equal(this, parsed); event('get-parsed-option'); if (replace) ++version; return option;
+            },
+          };
+          return parsed;
+        };
+        Object.defineProperty(probe, 'call', {get() { assert.fail('prefix .call helper'); }});
+        return probe;
+      }
       assert.equal(key, 'option'); event('get-option');
       if (replace) ++version;
       return option;
@@ -52,7 +80,7 @@ for (const computed of [false, true]) for (const count of [1, 2]) {
     return {trace, outcome: result === token ? 'return' : result === failure ? 'sentinel' : 'TypeError'};
   }
   for (const flag of flags) for (const option of options) for (const replace of [false, true])
-    for (const failAt of [0, 1, 2, 3, 4, 5, 6]) for (const noncallable of [false, true]) {
+    for (const failAt of Array.from({length: 13}, (_, i) => i)) for (const noncallable of [false, true]) {
       assert.deepEqual(run(recovered, flag, option, replace, failAt, noncallable),
         run(reference, flag, option, replace, failAt, noncallable));
       ++cases;

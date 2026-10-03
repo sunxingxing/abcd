@@ -134,7 +134,7 @@ std::variant<PhaseEvaluationCost, EvaluationError> VerifyPhaseExpressions(
   try {
     if (plan.flow != EvaluationFlow::kPhased) return PhaseEvaluationCost{};
     TreeCheckBudget selected_budget(allowance);
-    if (!plan.phase_calls.empty() || !plan.phase_transports.empty() || !plan.logical_values.empty())
+    if (!plan.phase_calls.empty() || !plan.phase_transports.empty() || !plan.phase_prefixes.empty() || !plan.logical_values.empty())
       VerifyPhaseSelectionCalls(graph, plan, selected_budget);
     PhaseBudget budget(selected_budget.Remaining());
     PhaseCorridors corridors(graph, plan, budget);

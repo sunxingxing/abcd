@@ -9,6 +9,7 @@
 #include "tree_checks.h"
 #include "tree_edge_flow.h"
 #include "logical_regions.h"
+#include "logical_evaluation.h"
 
 namespace abcd::source {
 namespace {
@@ -139,6 +140,7 @@ class FlowCheck {
           if (exceptions_ && op.life == analysis::ValueLife::kLive)
             edges_->Stage(id, block, child);
           if (op.life != analysis::ValueLife::kLive ||
+              (id.value < evaluation_.phase_prefixes.size() && evaluation_.phase_prefixes[id.value]) ||
               evaluation_.operations[id.value].kind == EvaluationKind::kInline ||
               evaluation_.operations[id.value].kind == EvaluationKind::kPredicateSnapshot ||
               evaluation_.operations[id.value].kind == EvaluationKind::kPhiInput ||
@@ -466,10 +468,20 @@ class FlowCheck {
       budget_.Step(); const auto task = conditional_tasks_[--pending]; const auto& current = logicals_[task.region];
       const auto* conditional = std::get_if<ConditionalExpr>(&tree_.expressions[task.expression.value].expression);
       Require(conditional && SelectionOrigin(current, task.expression), Error::kPlacement);
+      auto selected_condition = conditional->condition;
+      if (const auto* call = FindPhaseSelectionCall(graph_, evaluation_, current.branch)) {
+        for (const auto prefix : call->prefix) {
+          budget_.Step(); const auto& node = tree_.expressions[selected_condition.value];
+          const auto* sequence = std::get_if<SequenceExpr>(&node.expression);
+          Require(sequence && node.origin.value == graph_.ops[current.branch.value].origin.value, Error::kPlacement);
+          RootExpression(prefix, sequence->left);
+          selected_condition = sequence->right;
+        }
+      }
       if (current.conditions.empty()) {
-        Require(flow_.expressions[current.boolean.value] == conditional->condition, Error::kPlacement);
+        Require(flow_.expressions[current.boolean.value] == selected_condition, Error::kPlacement);
       } else {
-        auto condition = conditional->condition;
+        auto condition = selected_condition;
         for (std::size_t i = 0; i < current.conditions.size(); ++i) {
           budget_.Step(); const auto& scalar = current.conditions[i];
           auto expression = condition;
@@ -700,7 +712,8 @@ class FlowCheck {
     if (!exceptions_) return;
     bool needed = false;
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
-      budget_.Step(); needed |= evaluation_.operations[i].kind == EvaluationKind::kPhiInput && OrderedEvaluation(graph_.ops[i]);
+      budget_.Step(); needed |= (evaluation_.operations[i].kind == EvaluationKind::kPhiInput ||
+          (i < evaluation_.phase_prefixes.size() && evaluation_.phase_prefixes[i])) && OrderedEvaluation(graph_.ops[i]);
     }
     if (evaluation_.literals) for (const auto& object : evaluation_.literals->objects) {
       budget_.Step(); needed |= object.form == LiteralForm::kExpression &&
@@ -751,7 +764,8 @@ class FlowCheck {
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       budget_.Step();
       const auto kind = evaluation_.operations[i].kind;
-      if ((kind == EvaluationKind::kPhiInput || kind == EvaluationKind::kInline) && OrderedEvaluation(graph_.ops[i])) {
+      if ((kind == EvaluationKind::kPhiInput || kind == EvaluationKind::kInline ||
+          (i < evaluation_.phase_prefixes.size() && evaluation_.phase_prefixes[i])) && OrderedEvaluation(graph_.ops[i])) {
         Require(flow_.expressions[i].has_value(), Error::kPlacement);
         check({static_cast<std::uint32_t>(i)}, *flow_.expressions[i]);
       }

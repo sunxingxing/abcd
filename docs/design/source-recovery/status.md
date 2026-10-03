@@ -12,6 +12,28 @@
 
 ## 当前阶段
 
+### 2026-10-03：条件参数调用的有副作用前缀
+
+- PhaseSelectionCall保存原执行顺序的前缀表达式根及phase_prefixes唯一归属；
+  共同forest在条件中生成SequenceExpr和既有私有快照赋值。callee仍先读取，
+  prefix中的getter/调用只执行一次，重复使用的返回对象保留同一快照。
+  生成器不再另发这些根的语句，独立TreeFlow按序核对每个根及赋值/作用域。
+- Prefix证明仍拒绝normal phi复制、非空catch暂存、环境/其他独立语句；
+  每个may-throw site须与最终调用具有相同异常签名。另一个保留的方法引用
+  是扫描屏障，避免前缀重叠与重复长路径扫描；原局部forest/receiver验证保留。
+- 新真实字节码先复现getter前缀拒绝，现支持getter和函数调用前缀，函数结果
+  在谓词及参数分支中复用。三profile及1/2/200/201连续调用通过；删除前缀
+  列表/归属表的负例拒绝。44928组native对照覆盖前缀改写method、非callable、
+  getter/调用/参数各位置抛错、receiver及共享返回对象，无.call替代。
+- 相关targets -j4构建退出0；9/9组合回归通过76.73秒，日志
+  /tmp/abcd-phase-prefix-related-build.log、/tmp/abcd-phase-prefix-related-tests.log；
+  native独立日志 /tmp/abcd-phase-prefix-native.log。Voip和ProgressBar配对通过。
+- fresh build/stage-one/value-phase-prefix-pass-1五输入均退出0，仍78 complete /
+  5 incomplete /23 failure /46 no-module，无完整源码变化、回退或legacy。
+- 方法3613仍需shared-arm空值分支发现/绑定才能使用此次前缀能力；多条件
+  参数和更长phi传递也未放开。本轮不是目标缩减或阶段完成。Goal active，
+  full-suite/扩展语料/RSS未恢复。
+
 ### 2026-10-03：phased 条件参数与保留callee的原生调用贯通
 
 - 新phase_selection_calls.cc在phased局部表达式规划后消费同一图候选，绑定

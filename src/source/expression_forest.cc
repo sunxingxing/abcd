@@ -3,6 +3,7 @@
 #include "expression_forest.h"
 #include "expression_copies.h"
 #include "class_tree.h"
+#include "logical_evaluation.h"
 
 #include <array>
 #include <algorithm>
@@ -160,7 +161,14 @@ class ForestBuilder {
     Require(copies <= (kMaxId - operation_nodes) / kNodesPerCopy &&
             bundles <= kMaxId - graph_.origins.size() - graph_.ops.size(), Error::kResourceLimit);
     Require(commits <= kMaxId - graph_.origins.size() - graph_.ops.size() - bundles, Error::kResourceLimit);
-    const auto expression_nodes = operation_nodes + copies * kNodesPerCopy;
+    std::size_t prefixes = 0;
+    for (const auto& call : evaluation_.phase_calls) {
+      Step(); Require(call.prefix.size() <= kMaxId - prefixes, Error::kResourceLimit);
+      prefixes += call.prefix.size();
+    }
+    constexpr std::size_t kNodesPerPrefix = 2; // Optional snapshot assignment, then sequence.
+    Require(prefixes <= (kMaxId - operation_nodes - copies * kNodesPerCopy) / kNodesPerPrefix, Error::kResourceLimit);
+    const auto expression_nodes = operation_nodes + copies * kNodesPerCopy + prefixes * kNodesPerPrefix;
     Require(buffered_properties <= kMaxId - expression_nodes, Error::kResourceLimit);
     Reserve(forest_.expressions, expression_nodes + buffered_properties);
     Reserve(forest_.arguments, graph_.uses.size());
@@ -417,6 +425,21 @@ class ForestBuilder {
       }
       return *forest_.operations[producer.value];
     };
+    if (const auto* call = FindPhaseSelectionCall(graph_, evaluation_, region.branch)) {
+      for (auto i = call->prefix.size(); i != 0;) {
+        Step(); const auto id = call->prefix[--i]; const auto& op = graph_.ops[id.value];
+        Require(forest_.operations[id.value].has_value(), Error::kOwnership);
+        auto prefix = *forest_.operations[id.value];
+        const TreeOriginId origin{op.origin.value};
+        if (evaluation_.operations[id.value].temporary) {
+          Require(op.result.has_value(), Error::kOwnership);
+          const auto* symbol = std::get_if<SymbolId>(&forest_.bindings.values[op.result->value]);
+          Require(symbol != nullptr, Error::kBinding);
+          prefix = Add(AssignmentExpr{SymbolTarget{*symbol}, prefix}, origin);
+        }
+        left = Add(SequenceExpr{prefix, left}, branch_origin);
+      }
+    }
     const auto right = operand(region.right);
     const auto expression = region.consequent
         ? Add(ConditionalExpr{left, operand(*region.consequent), right}, branch_origin)
