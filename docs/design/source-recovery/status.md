@@ -12,6 +12,43 @@
 
 ## 当前阶段
 
+### 2026-10-04：模块初始化通过共同 SSA 传播到真实创建点
+
+- 规则revision78。删除 FunctionInput 的 parent entry-block 初始化准入；
+  复用现有 RegisterSsa/IdfIndex 的完整 placement、Boolean must meet 与
+  DominatorTree 遍历，在每个真实 function/class allocation 保存持久化
+  ModuleSlotSet。成功且已证明 Language 的原始 store 建立事实；FALSE
+  沿真实 phi 输入传播，循环不自证。分支双方初始化可在汇合成立，仅一方
+  初始化、零次循环、未来或不可达 store 均不能授予权限。普通 parent 的
+  创建点集合同时供 normal/phased child 使用，不省略异常/resume 边。
+- EntryModuleStore 只保留可选直接 provenance，已不决定初始化接受范围；
+  family 独立重核真实 owner/创建 occurrence 和 immutable root 身份。旧
+  初始化 input fixture 的非入口 store 现成功，更新为正例，保留缺失store、
+  错误 owner/creation、套用旧 parent root 的负例。真实 module metadata、
+  TDZ、作用域、原始 effects 和 child write 的身份校验未放宽。设计与复杂度
+  见 module-reads.md / algorithms.md；不按具体分支/寄存器/PC形状恢复。
+- 新编码状态用例覆盖两侧/单侧初始化、post-join store、zero-trip/do-first
+  loop、创建先于store、不可达store、200/201/256/512/1024独立slot及creation
+  维度、精确work和resource失败。新增完整ESM生成用例在父分支之后初始化，
+  再创建普通writer或带catch的writer；三profile、分支执行/跳过和20种值
+  共480组独立行为对照通过，包含身份、receiver、无强制转换、live exports、
+  arity/name、TDZ、初始化抛出和cycle失败。reference source仅进入测试。
+- -j4最终构建退出0：/tmp/abcd-module-initialization-final-build.log；
+  更新旧spec后的fixture构建 updated-spec-build.log退出0。稳定二进制
+  final-tests.log 中12/12相关测试6.84秒通过。此前旧测试取failure variant
+  而新实现已成功，调试定位在module_initialization_input.cc原136行；修正
+  语义预期后复验，没有把旧拒绝当正例成功。首轮integration build未结束时
+  的过早测试使用旧fixture，未计入本次验证。未运行full-suite/RSS/扩展语料。
+- fresh build/stage-one/value-module-init-flow-pass-1 固定五输入导出均退出0；
+  80 complete /26 incomplete /0 failure /46 no-module，完整结果无回退、
+  legacy writer均0。本共同能力没有减少这些输入的剩余缺口，也不代替阶段一
+  的语义/表示双验收。批次：/tmp/abcd-module-initialization-verified-batch.log。
+  五输入SHA与manifest/abc-index一致，106份完整/部分源码全部通过Node语法
+  检查，与revision77源码字节均未改变：syntax-all.log。
+- 仍开放：phased parent 的成功Commit初始化、创建先于初始化的escape/
+  invocation证明、parent raw local read接入、仅branch arm首次初始化的
+  source声明归属。数值输入域与宿主构造协议等阶段一缺口保留；Goal active。
+
 ### 2026-10-04：子函数模块写入复用初始化证明和共同别名/源码树
 
 - 规则revision77。正常及phased family 绑定实际 ValueModuleWrite，包含没有

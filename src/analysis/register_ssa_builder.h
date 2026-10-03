@@ -25,12 +25,13 @@ struct RegisterSsa::Builder {
   Builder(const abc::MethodBody* input, const NormalFlow& flow,
           std::uint64_t frame, IdfQuota& work, IdfBudget budget,
           std::span<const SemanticInstruction> lifted,
-          std::span<const RegisterSite> effects)
+          std::span<const RegisterSite> effects, SsaPlacement mode)
       : body(input),
         graph(flow),
         semantics(lifted),
         sites(effects),
         frame_size(frame),
+        placement(mode),
         quota(work),
         initial_units(work.Consumed()),
         memory(budget.bytes) {}
@@ -55,6 +56,7 @@ struct RegisterSsa::Builder {
   std::span<const SemanticInstruction> semantics;
   std::span<const RegisterSite> sites;
   std::uint64_t frame_size;
+  SsaPlacement placement;
   IdfQuota& quota;
   std::uint64_t initial_units;
   std::uint64_t instructions = 0;

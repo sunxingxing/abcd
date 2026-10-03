@@ -123,7 +123,8 @@ int main(int argc, char** argv) {
       FunctionInputError::kModuleOwner);
   test::Check(std::get<FunctionInputError>(VerifyInitializedModuleReads(wrong_record, creation, child)) ==
       FunctionInputError::kModuleOwner);
-  // A later module store beyond the entry block cannot substitute for PC11.
+  // Initialization before the genuine creation is independent of entry-block
+  // layout. The changed input needs its own immutable state premise.
   auto later_body = parent.body;
   for (auto& instruction : later_body.instructions) {
     if (instruction.offset == abc::CodeOffset{11}) instruction.decoded.operands[0].raw_bits = 0;
@@ -133,10 +134,21 @@ int main(int argc, char** argv) {
       later_body, parent.frame, InputCaptureMode::kConditional));
   const ParentModuleInput late{later, creation};
   test::Check(!later.ModuleStoreBefore({1}, creation));
-  test::Check(std::get<SemanticProofFailure>(std::get<FunctionInputFailure>(build(&late, &context)).cause).kind ==
-      SemanticProofError::kInternalValue);
+  test::Check(later.InitializedModulesBefore(creation).Contains({1}));
+  const auto late_child = std::get<FunctionInput>(build(&late, &context));
+  test::Check(late_child.InitializedModuleReads().size() == 1 &&
+      !late_child.InitializedModuleReads()[0].store);
+  test::Check(std::holds_alternative<std::uint64_t>(VerifyInitializedModuleReads(later, creation, late_child)));
   test::Check(std::get<FunctionInputError>(VerifyInitializedModuleReads(later, creation, child)) ==
       FunctionInputError::kModuleOwner);
+  for (auto& instruction : later_body.instructions)
+    if (instruction.offset == abc::CodeOffset{194}) instruction.decoded.operands[0].raw_bits = 0;
+  const auto absent = std::get<FunctionInput>(FunctionInput::Build(identity, parent.input.Method(), parent.input.Record(),
+      later_body, parent.frame, InputCaptureMode::kConditional));
+  const ParentModuleInput missing{absent, creation};
+  test::Check(!absent.InitializedModulesBefore(creation).Contains({1}));
+  test::Check(std::get<SemanticProofFailure>(std::get<FunctionInputFailure>(build(&missing, &context)).cause).kind ==
+      SemanticProofError::kInternalValue);
   // Real file preparation, metadata aliases and effect indexing use the same
   // guard-free read; parent evidence does not invent an absent TDZ guard.
   const auto record = std::find_if(index.records.begin(), index.records.end(),

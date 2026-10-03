@@ -24,11 +24,13 @@ using namespace abcd;
 void Check(bool value, std::source_location at = std::source_location::current()) {
   if (!value) { std::cerr << "check failed at " << at.line() << '\n'; std::abort(); }
 }
-enum class FixtureCase { kValid, kCleanupEntry, kCleanupOverwrite, kBindingCollision, kExportCollision, kBranch, kArmStore, kFunction, kCapture, kCapturedDefault, kCapturedUnusedDefault, kStringDefault, kPublishedCapture, kReentrantCapture, kPublishedCaptureV1, kPublishedBadSlot, kLocalFunction, kClassFunction, kClassCapture, kGlobal, kGlobalShadow, kGlobalLocalShadow, kAnonymous, kAnonymousFunction, kAnonymousSingleClass, kAnonymousClassRead, kClassCell, kClassNamedCell, kClassNamedShadow, kClassCellHole, kClassCellUninitialized, kUnknownName, kClassBinding, kClassBindingMismatch, kClassBindingAssignment, kModuleWriter, kModuleWriterBranch, kModuleWriterEarly, kModuleWriterLiteral, kModuleWriterCatch };
+enum class FixtureCase { kValid, kCleanupEntry, kCleanupOverwrite, kBindingCollision, kExportCollision, kBranch, kArmStore, kFunction, kCapture, kCapturedDefault, kCapturedUnusedDefault, kStringDefault, kPublishedCapture, kReentrantCapture, kPublishedCaptureV1, kPublishedBadSlot, kLocalFunction, kClassFunction, kClassCapture, kGlobal, kGlobalShadow, kGlobalLocalShadow, kAnonymous, kAnonymousFunction, kAnonymousSingleClass, kAnonymousClassRead, kClassCell, kClassNamedCell, kClassNamedShadow, kClassCellHole, kClassCellUninitialized, kUnknownName, kClassBinding, kClassBindingMismatch, kClassBindingAssignment, kModuleWriter, kModuleWriterBranch, kModuleWriterEarly, kModuleWriterLiteral, kModuleWriterCatch, kModuleWriterParentBranch, kModuleWriterParentBranchCatch };
 std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool inspect_prefix = false) {
   constexpr std::uint32_t kTypes = 256, kPool = 272, kRecord = 512,
       kMethod = 600, kChild = 640, kConstructor = 680, kLiteral = 3000, kModule = 1024, kCode = 4096, kChildCode = 5000, kConstructorCode = 6000, kFileBytes = 8192;
-  const bool module_writer = mode == FixtureCase::kModuleWriter || mode == FixtureCase::kModuleWriterBranch || mode == FixtureCase::kModuleWriterEarly || mode == FixtureCase::kModuleWriterLiteral || mode == FixtureCase::kModuleWriterCatch;
+  const bool parent_branch = mode == FixtureCase::kModuleWriterParentBranch || mode == FixtureCase::kModuleWriterParentBranchCatch;
+  const bool writer_catch = mode == FixtureCase::kModuleWriterCatch || mode == FixtureCase::kModuleWriterParentBranchCatch;
+  const bool module_writer = mode == FixtureCase::kModuleWriter || mode == FixtureCase::kModuleWriterBranch || mode == FixtureCase::kModuleWriterEarly || mode == FixtureCase::kModuleWriterLiteral || writer_catch || parent_branch;
   const bool child_parameter = module_writer || mode == FixtureCase::kCapturedDefault || mode == FixtureCase::kCapturedUnusedDefault || mode == FixtureCase::kStringDefault;
   const bool class_binding = mode == FixtureCase::kClassBinding || mode == FixtureCase::kClassBindingMismatch || mode == FixtureCase::kClassBindingAssignment;
   const bool named_cell = mode == FixtureCase::kClassNamedCell || mode == FixtureCase::kClassNamedShadow;
@@ -138,7 +140,7 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
     op(abc::Opcode::kTRYLDGLOBALBYNAME_IMM8_ID16);
     body.insert(body.end(), {0, static_cast<std::uint8_t>(guards.size()), 0});
   }
-  if (mode == FixtureCase::kBranch || mode == FixtureCase::kArmStore) {
+  if (mode == FixtureCase::kBranch || mode == FixtureCase::kArmStore || parent_branch) {
     load(false, 0, 0);
     op(abc::Opcode::kJEQZ_IMM8); const auto branch = body.size(); body.push_back(0);
     if (mode == FixtureCase::kArmStore) store(0);
@@ -232,7 +234,7 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
       }
       store(1);
       op(abc::Opcode::kLDA_V8); body.push_back(4);
-      if (mode == FixtureCase::kModuleWriterCatch) { op(abc::Opcode::kTHROW_PREF_NONE); body.push_back(0); }
+      if (writer_catch) { op(abc::Opcode::kTHROW_PREF_NONE); body.push_back(0); }
     } else if (string_default) {
       op(abc::Opcode::kNEWLEXENV_IMM8); body.push_back(1);
       op(abc::Opcode::kLDA_V8); body.push_back(4);
@@ -266,7 +268,7 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
     bytes[kChildCode - 4] = child_parameter ? 1 : 0;
     bytes[kChildCode - 3] = child_parameter ? 4 : 3; bytes[kChildCode - 2] = static_cast<std::uint8_t>(child_body.size());
     std::copy(child_body.begin(), child_body.end(), bytes.begin() + kChildCode);
-    if (mode == FixtureCase::kModuleWriterCatch) {
+    if (writer_catch) {
       bytes[kChildCode - 1] = 1;
       // LDA(2), store(2), LDA(2), THROW(2); Catch observes original thrown acc.
       const std::array<std::uint8_t, 6> table{0, 8, 1, 0, 8, 1};
@@ -323,7 +325,7 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
     auto child = entry; child.offset = {kChild}; child.name = "reader"; child.name_utf16_length = child.name.size();
     constexpr unsigned kFunctionKindShift = 8; // Pinned dynamic method access flags.
     child.access_flags = static_cast<std::uint32_t>(abc::FunctionKind::kBaseConstructor) << kFunctionKindShift;
-    child.code = abc::CodeInfo{{kChildCode - 4}, {kChildCode}, child_parameter ? 1U : 0U, child_parameter ? 4U : 3U, static_cast<std::uint32_t>(child_body.size()), mode == FixtureCase::kModuleWriterCatch ? 1U : 0U};
+    child.code = abc::CodeInfo{{kChildCode - 4}, {kChildCode}, child_parameter ? 1U : 0U, child_parameter ? 4U : 3U, static_cast<std::uint32_t>(child_body.size()), writer_catch ? 1U : 0U};
     index.methods.push_back(child);
   }
   if (mixed) {
@@ -375,13 +377,13 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
     Check(family_input.members.size() == 2);
     auto& child = family_input.members[1].function;
     if (const auto* phase = child.Phase()) {
-      Check(mode == FixtureCase::kModuleWriterCatch);
+      Check(writer_catch);
       const auto* bindings = phase->Phases().Modules();
       Check(bindings && bindings->evaluations.empty() && bindings->writes.size() == 1 &&
           bindings->aliases.size() == 1 && bindings->aliases[0].access == source::ModuleAccess::kMutable &&
           !bindings->aliases[0].local && !bindings->writes[0].binding.initialize);
     } else {
-      Check(mode != FixtureCase::kModuleWriterCatch);
+      Check(!writer_catch);
       auto& input = child.Normal();
       const auto bind = [&](const source::FunctionValues& values, analysis::SemanticBudget budget = {}) {
         return source::BindModuleAliases(*file, header, index, input.input, values, context,
@@ -471,8 +473,8 @@ int main(int argc, char** argv) {
     Check(generated.find(mode == "--class-binding" ? "let snapshot = class {" : mode == "--class-binding-assignment" ? "(snapshot = class {" : "let snapshot = ({[\"Box\"]: class {") != std::string::npos);
     std::cout << generated; return 0;
   }
-  if (mode == "--module-writer" || mode == "--module-writer-branch" || mode == "--module-writer-early" || mode == "--module-writer-literal" || mode == "--module-writer-catch") {
-    const auto fixture = mode == "--module-writer" ? FixtureCase::kModuleWriter : mode == "--module-writer-branch" ? FixtureCase::kModuleWriterBranch : mode == "--module-writer-literal" ? FixtureCase::kModuleWriterLiteral : mode == "--module-writer-catch" ? FixtureCase::kModuleWriterCatch : FixtureCase::kModuleWriterEarly;
+  if (mode == "--module-writer" || mode == "--module-writer-branch" || mode == "--module-writer-early" || mode == "--module-writer-literal" || mode == "--module-writer-catch" || mode == "--module-writer-parent-branch" || mode == "--module-writer-parent-branch-catch") {
+    const auto fixture = mode == "--module-writer" ? FixtureCase::kModuleWriter : mode == "--module-writer-branch" ? FixtureCase::kModuleWriterBranch : mode == "--module-writer-literal" ? FixtureCase::kModuleWriterLiteral : mode == "--module-writer-catch" ? FixtureCase::kModuleWriterCatch : mode == "--module-writer-parent-branch" ? FixtureCase::kModuleWriterParentBranch : mode == "--module-writer-parent-branch-catch" ? FixtureCase::kModuleWriterParentBranchCatch : FixtureCase::kModuleWriterEarly;
     const auto profile = argc > 2 && std::string_view(argv[2]) == "1202" ? abc::ProfileId::kDynamic1202 :
         argc > 2 && std::string_view(argv[2]) == "1301" ? abc::ProfileId::kDynamic1301 : abc::ProfileId::kDynamic1206;
     const auto generated = Recover(fixture, profile);

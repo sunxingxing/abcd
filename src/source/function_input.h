@@ -6,7 +6,7 @@
 #include "abcd/source/source_route.h"
 #include "capture_plan.h"
 #include "function_context.h"
-#include "module_slot_set.h"
+#include "module_initialization.h"
 
 namespace abcd::source {
 struct ParentModuleInput;
@@ -33,11 +33,6 @@ struct InputModuleRead {
   // A direct parent entry store, or an inherited entry-set premise. Absence
   // never denotes a fake InstructionId in the immediate parent.
   std::optional<analysis::InstructionId> store;
-};
-struct ModuleInitializationStep {
-  analysis::InstructionId store;
-  analysis::ModuleSlot slot;
-  ModuleSlotSet slots;
 };
 // Same-body input IR and proof cannot be mixed or mutated after construction.
 // Conditional mode records premises, NOT an unconditional input/source receipt.
@@ -68,10 +63,10 @@ class FunctionInput {
   std::span<const CaptureUse> Captures() const { return captures_; }
   std::span<const InputCaptureAccess> CaptureAccesses() const { return accesses_; }
   std::span<const InputModuleRead> InitializedModuleReads() const { return modules_; }
-  // Entry-block writes are proven Language by this immutable input. Query an
-  // actual later function/class creation; branch-local and future stores are
-  // excluded. A slot index and persistent prefixes are built once per method;
-  // inherited membership is shared, never rescanned or copied for every child.
+  // Legacy direct-entry store backlinks are optional evidence only. The
+  // initialized state at each actual creation instead uses whole normal CFG
+  // sparse SSA, Boolean meet and persistent dominator snapshots. Branches and
+  // loops preserve definite initialization without copying all slots per child.
   std::optional<analysis::InstructionId> ModuleStoreBefore(
       analysis::ModuleSlot slot, analysis::InstructionId creation) const;
   ModuleSlotSet InitializedModulesBefore(analysis::InstructionId creation) const;
@@ -81,7 +76,7 @@ class FunctionInput {
   // Same typed creation check for normal/phased children, before input build.
   bool IsCreatorOf(const FunctionContext&, abc::EntityOffset child_record, analysis::InstructionId) const;
   std::uint64_t ModuleInitializationWork() const {
-    return std::bit_width(module_steps_.size()) + 1;
+    return std::bit_width(module_creations_.size()) + 1;
   }
   // All unpreserved callable/class/buffer sites, not just DEFINEFUNC.
   // Complete transitive child validation must discharge these separately.
@@ -107,7 +102,7 @@ class FunctionInput {
       std::vector<CaptureUse>&& captures, std::vector<InputCaptureAccess>&& accesses,
       std::size_t allocated_bytes, std::optional<Owner> owner,
       std::vector<EntryModuleStore>&& stores, std::vector<InputModuleRead>&& modules,
-      ModuleSlotSet entry_modules, std::vector<ModuleInitializationStep>&& steps);
+      ModuleSlotSet entry_modules, std::vector<ModuleCreationState>&& creations);
   RouteInputIdentity identity_;
   abc::EntityOffset method_;
   abc::EntityOffset record_;
@@ -123,7 +118,7 @@ class FunctionInput {
   // retained for independent family publication; input admission is no receipt.
   std::vector<InputModuleRead> modules_;
   ModuleSlotSet entry_modules_;
-  std::vector<ModuleInitializationStep> module_steps_;
+  std::vector<ModuleCreationState> module_creations_;
   friend std::variant<std::uint64_t, FunctionInputError> VerifyInitializedModuleReads(
       const FunctionInput&, analysis::InstructionId, const FunctionInput&, analysis::SemanticBudget);
 };

@@ -54,7 +54,23 @@ std::optional<IdfError> RegisterSsa::Builder::Place(const RegisterUses& uses,
     Charge();
     const RegisterBindingId id{binding};
     const auto definitions = uses.Definitions(id), upward = uses.UpwardUses(id);
-    if (definitions.empty() || upward.empty()) continue;
+    if (definitions.empty()) continue;
+    // Complete placement supports sparse state queries through persistent
+    // snapshots without fabricating a read of every binding at every query.
+    // It uses the same indexed IDF; no per-binding whole-CFG walk is added.
+    if (placement == SsaPlacement::kComplete) {
+      auto placed_result = index.Place(definitions, quota, {}, {memory.Available()});
+      if (const auto* error = std::get_if<IdfError>(&placed_result)) return *error;
+      const auto& placed = std::get<PhiPlacement>(placed_result);
+      memory.Observe(placed.work.peak_bytes);
+      Retained placed_bytes{memory, placed.AllocatedBytes()};
+      for (const auto block : placed.Blocks()) {
+        Charge();
+        phis.push_back({block, id, {}});
+      }
+      continue;
+    }
+    if (upward.empty()) continue;
     auto live_result =
         index.LiveIn(definitions, upward, quota, {memory.Available()});
     if (const auto* error = std::get_if<IdfError>(&live_result)) return *error;
@@ -118,16 +134,16 @@ RegisterSsa::Build(const abc::MethodBody& body, const NormalFlow& graph,
 }
 std::variant<RegisterSsa, RegisterUseFailure, IdfError, DominatorError, SsaError>
 RegisterSsa::BuildSites(std::span<const RegisterSite> sites, const NormalFlow& graph,
-                       std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget) {
-  return BuildImpl(nullptr, graph, frame_size, quota, budget, {}, sites);
+                       std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget, SsaPlacement placement) {
+  return BuildImpl(nullptr, graph, frame_size, quota, budget, {}, sites, placement);
 }
 std::variant<RegisterSsa, RegisterUseFailure, IdfError, DominatorError, SsaError>
 RegisterSsa::BuildImpl(const abc::MethodBody* body, const NormalFlow& graph,
     std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget,
     std::span<const SemanticInstruction> semantics,
-    std::span<const RegisterSite> sites) {
+    std::span<const RegisterSite> sites, SsaPlacement placement) {
   try {
-    Builder builder{body, graph, frame_size, quota, budget, semantics, sites};
+    Builder builder{body, graph, frame_size, quota, budget, semantics, sites, placement};
     auto used = body
         ? RegisterUses::Build(*body, graph, frame_size, quota,
                              {builder.memory.Available()}, semantics)

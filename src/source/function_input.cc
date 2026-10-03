@@ -42,12 +42,12 @@ FunctionInput::FunctionInput(RouteInputIdentity identity, abc::EntityOffset meth
     std::vector<CaptureUse>&& captures, std::vector<InputCaptureAccess>&& accesses,
     std::size_t allocated_bytes, std::optional<Owner> owner,
     std::vector<EntryModuleStore>&& stores, std::vector<InputModuleRead>&& modules,
-    ModuleSlotSet entry_modules, std::vector<ModuleInitializationStep>&& steps)
+    ModuleSlotSet entry_modules, std::vector<ModuleCreationState>&& creations)
     : identity_(identity), method_(method), record_(record), mode_(mode),
       input_(std::move(input)), proof_(std::move(proof)), captures_(std::move(captures)),
       accesses_(std::move(accesses)), allocated_bytes_(allocated_bytes), owner_(owner),
       module_stores_(std::move(stores)), modules_(std::move(modules)),
-      entry_modules_(std::move(entry_modules)), module_steps_(std::move(steps)) {}
+      entry_modules_(std::move(entry_modules)), module_creations_(std::move(creations)) {}
 
 std::optional<analysis::InstructionId> FunctionInput::ModuleStoreBefore(
     analysis::ModuleSlot slot, analysis::InstructionId creation) const {
@@ -64,9 +64,9 @@ ModuleSlotSet FunctionInput::InitializedModulesBefore(analysis::InstructionId cr
   if (creation.value >= input_.instructions.size() ||
       (!std::holds_alternative<analysis::FunctionCreation>(input_.instructions[creation.value].operation) &&
        !std::holds_alternative<analysis::ClassCreation>(input_.instructions[creation.value].operation))) return {};
-  const auto found = std::lower_bound(module_steps_.begin(), module_steps_.end(), creation,
-      [](const auto& step, auto site) { return step.store < site; });
-  return found == module_steps_.begin() ? entry_modules_ : std::prev(found)->slots;
+  const auto found = std::lower_bound(module_creations_.begin(), module_creations_.end(), creation,
+      [](const auto& state, auto site) { return state.creation < site; });
+  return found != module_creations_.end() && found->creation == creation ? found->slots : ModuleSlotSet{};
 }
 bool FunctionInput::MatchesModuleCreation(const FunctionInput& parent, analysis::InstructionId creation) const {
   if (!owner_ || identity_ != parent.identity_ || record_ != parent.record_ ||
@@ -249,24 +249,16 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
     stores.erase(std::unique(stores.begin(), stores.end(), [&](const auto& a, const auto& b) {
       quota.Step(); return a.slot == b.slot;
     }), stores.end());
-    // Persistent prefix roots share across transparent ancestors. Each new
-    // first entry store changes only ModuleSlot's fixed-width trie path.
-    std::vector<ModuleInitializationStep> steps;
-    quota.Reserve(steps, stores.size());
-    for (const auto& store : stores) steps.push_back({store.instruction, store.slot, {}});
-    std::sort(steps.begin(), steps.end(), [&](const auto& a, const auto& b) {
-      quota.Step(); return a.store < b.store;
-    });
-    auto initialized = entry_modules;
-    std::size_t module_bytes = 0;
-    for (auto& step : steps) {
-      quota.Step(ModuleSlotSet::kPathWork);
-      auto bytes = quota.Remaining().bytes;
-      const auto before = bytes;
-      initialized = initialized.With(step.slot, bytes);
-      quota.Admit(before - bytes, 1); module_bytes += before - bytes;
-      step.slots = initialized;
+    auto initialized = BuildModuleCreationStates(*input, *proof, entry_modules, quota.Remaining());
+    if (const auto* error = std::get_if<ModuleInitializationError>(&initialized)) {
+      switch (*error) {
+        case ModuleInitializationError::kWorkLimit: throw Error::kWorkLimit;
+        case ModuleInitializationError::kResourceLimit: throw Error::kResourceLimit;
+        case ModuleInitializationError::kInput: throw Error::kModuleOwner;
+      }
     }
+    auto states = std::get<ModuleCreationStates>(std::move(initialized));
+    quota.Admit(states.allocated_bytes, 1); quota.Step(states.work);
     std::vector<CaptureUse> uses;
     std::vector<InputCaptureAccess> accesses;
     std::size_t count = 0;
@@ -303,10 +295,10 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
     const auto retained = sizeof(FunctionInput) + proof->allocated_bytes +
         uses.capacity() * sizeof(CaptureUse) + accesses.capacity() * sizeof(InputCaptureAccess) +
         stores.capacity() * sizeof(EntryModuleStore) + module_reads.capacity() * sizeof(InputModuleRead) +
-        steps.capacity() * sizeof(ModuleInitializationStep) + module_bytes;
+        states.allocated_bytes;
     return FunctionInput(identity, method, record, mode, std::move(*input),
         std::move(*proof), std::move(uses), std::move(accesses), retained, context,
-        std::move(stores), std::move(module_reads), std::move(entry_modules), std::move(steps));
+        std::move(stores), std::move(module_reads), std::move(entry_modules), std::move(states.states));
   } catch (Error error) { return FunctionInputFailure{error};
   } catch (const std::bad_alloc&) { return FunctionInputFailure{Error::kResourceLimit};
   } catch (const std::length_error&) { return FunctionInputFailure{Error::kResourceLimit}; }
@@ -321,7 +313,7 @@ std::variant<std::uint64_t, FunctionInputError> VerifyInitializedModuleReads(
     if (!child.HasOwner() || parent.Identity() != child.Identity() || parent.Record() != child.Record() ||
         creation.value >= parent.Input().instructions.size()) throw Error::kModuleOwner;
     const auto& occurrence = parent.Input().instructions[creation.value];
-    const auto edge_work = std::bit_width(parent.module_steps_.size()) + 1;
+    const auto edge_work = std::bit_width(parent.module_creations_.size()) + 1;
     quota.Step(edge_work);
     if (!child.MatchesModuleCreation(parent, creation) ||
         !child.entry_modules_.Same(parent.InitializedModulesBefore(creation))) throw Error::kModuleOwner;

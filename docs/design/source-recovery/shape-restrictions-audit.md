@@ -358,3 +358,15 @@ phased scope/capture 接口和活跃 accessor-result alias 缺口。前表其他
 通过；6个 named-class-self 合法语法 mutant 改变行为，证明名字相同不足以
 证明 lexical binding 对应。它改善固定输入的源码表示，未关闭其他开放准入
 限制或26份不完整模块的正文缺口。
+
+
+## 规则 78：父函数初始化不再限定入口块
+
+审计后续发现 FunctionInput 的 creation-time 初始化只收集入口块 store；
+这也是旧实现范围，不是语言要求。现以已有 sparse SSA 的完整 IDF、Boolean
+must meet 和支配遍历证明正常 CFG 的初始化状态，并在真实 function/class
+创建处保存共享持久化集合。不同分支、汇合或循环不再需要新的形状匹配。
+Language store、真实 owner/创建身份、TDZ、异常和效果义务保留；早于初始化
+的创建仍缺 escape/invocation 证明。正常 parent 的结果供 normal/phased
+child 共同使用，phased parent 的成功 Commit 分析仍未贯通。源码首次声明
+和父函数 raw read 的独立边界没有被这项替换隐藏。详见 module-reads.md。

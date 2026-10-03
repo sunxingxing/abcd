@@ -66,21 +66,30 @@ and platform behavior are separate acceptance layers.
 
 ## Initialization before a normal child creation
 
-`FunctionInput` indexes the earliest Language-valued module store for each slot
-in its normal entry block. That block dominates reachable execution. A query
-requires an actual later function-creation instruction; stores after that
-creation, branch-local stores and stores beyond the entry block are excluded.
-For E entry instructions and S stores, preparation uses O(E + S log(S+1)) time
-and O(S) retained storage. Child reads query this index in O(log(S+1)), without
-rescanning the parent body for each child or each read.
+Rules 78 replaces the entry-block initialization admission with sparse SSA over
+all reachable normal control flow. Original successful Language-valued module
+stores define TRUE; incoming slots use the immutable parent-entry premise.
+Complete (unpruned) IDF placement represents joins without fabricating reads of
+every slot at every child creation. An indexed reverse-phi worklist propagates
+FALSE for Boolean AND, including zero-trip and cyclic paths. Dominator traversal
+then shares persistent slot-set roots and records a snapshot at each genuine
+function/class allocation. Instruction IDs index snapshots; numeric ID order
+does not choose control-flow ownership.
+
+A store in a joining block initializes subsequent creations. Stores on both
+branch arms can establish the same fact at their join; a store on just one arm
+cannot. A loop does not prove initialization merely by containing a store. The
+analysis consumes the owner's original normal semantic proof and unchanged CFG;
+it does not omit exception/resume edges or prove phased parent execution.
 
 `ParentModuleInput` is borrowed only during child preparation. File discovery
 supplies the genuine owner context and checks file/profile/record, creator,
-target, PC and original creation operands before using the premise. The child
-retains typed original read/slot/store/creation identities. An adjacent original
-Hole guard keeps its existing guarded path, even when initialization is known.
-Guard-free initialization currently applies only across one normal parent edge;
-phased and inherited grandparent premises are not inferred.
+target, PC and original creation operands before using the premise. Normal and
+phased children retain the exact creation-time root; publication independently
+rechecks its identity. An adjacent original Hole guard retains its guarded path.
+Legacy direct-entry store backlinks remain optional provenance; their absence
+no longer blocks a proved initialized slot beyond the entry block. Transparent
+normal ancestors can pass the same persistent premise to their actual children.
 
 `ModuleReadSite` has an optional guard. Absence means an initialized local read
 with an actual input premise, not permission to delete a guard. Alias binding
@@ -91,7 +100,8 @@ Generated reads remain native live-binding references, never value snapshots
 shared across invocations.
 
 Complete family write verification independently rechecks the original parent
-store, its Language-valued SSA input and its order before the actual creation.
+creation and its immutable initialization root. Optional direct-entry store
+backlinks also retain their original Language-valued input/order checks.
 The existing capture/creation checks still establish the child target and edge.
 A detached root with inherited initialization premises is refused; an input
 premise does not certify module declarations or complete record publication.
@@ -300,18 +310,41 @@ O((R+W) log(R+W+1)) sorting, with O(R+W) scratch/retained records plus names. En
 membership uses the existing fixed-width ModuleSlot trie, not a parent-body walk
 for each write. Every scan, comparison, allocation and membership path is charged.
 
-The creation-time index still admits normal parent **entry-block** stores only;
-this is a documented implementation boundary, not a VM invariant. Writers created
-before initialization, or initialization proved only in other parent blocks,
-need common must-initialization and escape/invocation analysis. A successful child
-Hole guard can also establish initialization, but its **successful Commit**, not
-its Before node, must govern subsequent writes through catch paths. These missing
-proofs remain explicit gaps. Do not widen coverage with another fixed sequence,
-same-block condition or a count of guards/selections.
+Rules 78 now proves normal parent initialization outside the entry block through
+the common SSA/dominance mechanism above. Writers created before initialization
+still need escape/invocation analysis. A successful child Hole guard can also
+establish initialization, but its **successful Commit**, not its Before node,
+must govern subsequent writes through catch paths. Raw local reads in the parent
+and record declarations first initialized solely inside branch arms retain their
+separate integration gaps. Do not widen these with fixed sequences, same-block
+conditions or a count of guards/selections.
 
 `module_writer_source_test` uses real encoded fixtures in profiles 1202/1206/1301
-for parameter, branch, constant and catch writes. Independent native ESM checks
+for parameter, branch, constant and catch writes, including parent initialization
+after a branch join with both taken and bypassed branches. Independent native ESM checks
 cover return/value identity, aliases and live exports, arity/name, no coercion,
 initialization failures and cyclic TDZ. The early-created writer refuses with
 `ModuleAliasError::kInitialization`; it is not counted as successful recovery.
 Mutating a retained slot disagrees with its original store and fails coverage.
+
+## Rules 78: initialization analysis cost and limits
+
+This reuses RegisterSsa/IdfIndex and the existing dominator implementation (their
+algorithm provenance and maintenance contracts are in algorithms.md); no new
+third-party dependency or pattern recognizer is introduced. For I instructions,
+S distinct stored slots, V abstract SSA values, P phi inputs, B blocks and C real
+creations, scans and false propagation cost O(I+V+P+B+C), beyond sorting stores,
+phis and creation identities and the indexed SSA/dominator construction cost.
+Store-to-slot lookup costs O(log(S+1)). Sparse phi output V/P can itself be dense
+for some CFGs; this is counted, admitted and work/byte bounded, not assumed linear
+in I. No per-slot whole-CFG scan or S-by-C fabricated-read matrix is constructed.
+
+Persistent set insertion follows ModuleSlot's fixed-width path; unchanged roots
+share storage across blocks/creations/ancestors. Queries cost O(log(C+1)) plus
+fixed-width slot membership. Accounting conservatively charges temporary SSA,
+indexes, worklist, dominators and allocated trie nodes, as well as returned state
+records. Exhaustion returns typed work/resource failure, never FALSE permission
+or silently changed semantics. Unit fixtures exercise 200/201 and geometric
+independent slot/creation dimensions, exact work exhaustion, unreachable writes,
+before-store creation, diamonds and zero-trip/do-first loops. Work counters are
+not a whole-process RSS or latency measurement.

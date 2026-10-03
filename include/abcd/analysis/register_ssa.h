@@ -46,6 +46,9 @@ struct PhiInput {
   SsaValueId value;
 };
 enum class SsaError { kWorkLimit, kResourceLimit };
+// Complete IDF keeps state joins even without upward reads. Owners can query
+// persistent state snapshots without inserting a dense binding/read matrix.
+enum class SsaPlacement { kPruned, kComplete };
 struct SsaWork {
   std::uint64_t rename_instructions = 0;
   std::uint64_t units = 0;
@@ -79,7 +82,8 @@ class RegisterSsa {
   [[nodiscard]] static std::variant<RegisterSsa, RegisterUseFailure, IdfError,
                                     DominatorError, SsaError>
   BuildSites(std::span<const RegisterSite> sites, const NormalFlow& graph,
-             std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget = {});
+             std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget = {},
+             SsaPlacement placement = SsaPlacement::kPruned);
   [[nodiscard]] std::span<const RegisterValue> Values() const {
     return {values_.get(), values_ ? value_count_ : 0};
   }
@@ -104,7 +108,8 @@ class RegisterSsa {
   BuildImpl(const abc::MethodBody* body, const NormalFlow& graph,
             std::uint64_t frame_size, IdfQuota& quota, IdfBudget budget,
             std::span<const SemanticInstruction> semantics,
-            std::span<const RegisterSite> sites);
+            std::span<const RegisterSite> sites,
+            SsaPlacement placement = SsaPlacement::kPruned);
   struct Builder;
   RegisterSsa() = default;
   std::unique_ptr<RegisterValue[]> values_;
