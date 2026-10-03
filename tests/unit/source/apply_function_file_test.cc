@@ -105,7 +105,7 @@ void Run(abc::ProfileId profile, bool wide, bool caught, bool empty, std::uint32
   test::Check(ready.Family().members.size() == 2);
   std::ostringstream source;
   test::Check(std::holds_alternative<PrintedFamilyDraft>(ready.PrintDraft(destination, source)));
-  test::Check(source.str().find("new (") != std::string::npos && source.str().find("...") == std::string::npos);
+  test::Check(source.str().find("new ") != std::string::npos && source.str().find("...") == std::string::npos);
   if (output) *output << nlohmann::json{{"source", source.str()}, {"caught", caught}, {"empty", empty}, {"arrow", arrow}, {"new_target", new_target}} << '\n';
   test::Check(unlink(path) == 0);
 }

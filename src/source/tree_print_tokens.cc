@@ -44,6 +44,9 @@ ExpressionPrecedence Precedence(const TreeExpression& node) {
   if (const auto* binary = std::get_if<BinaryExpr>(&node)) return TreeBinarySyntax(binary->operation).precedence;
   if (std::holds_alternative<UnaryExpr>(node)) return ExpressionPrecedence::kUnary;
   if (const auto* logical = std::get_if<LogicalExpr>(&node)) return LogicalPrecedence(logical->operation);
+  if (std::holds_alternative<MemberExpr>(node) || std::holds_alternative<CallExpr>(node) ||
+      std::holds_alternative<ConstructExpr>(node) || std::holds_alternative<SuperCallExpr>(node))
+    return ExpressionPrecedence::kPostfix;
   // Other composite forms still print their own grouping. Primary leaves
   // need none; never infer precedence by examining printed text.
   return ExpressionPrecedence::kPrimary;
@@ -72,6 +75,14 @@ bool TreeOperandGrouping(const TreeExpression& child, const TreeOperatorContext&
           ((parent == TreeLogical::kNullish) != (logical->operation == TreeLogical::kNullish))) return true;
       const auto precedence = LogicalPrecedence(parent);
       return child_precedence < precedence || (child_precedence == precedence && context.side == OperandSide::kRight);
+    } else if constexpr (std::is_same_v<T, PostfixContext>) {
+      if (parent == PostfixContext::kConstructor &&
+          (std::holds_alternative<CallExpr>(child) || std::holds_alternative<SuperCallExpr>(child))) return true;
+      // An integer's decimal dot belongs to NumericLiteral (1.value is not a
+      // member access). Group numeric bases regardless of current formatting.
+      if (parent != PostfixContext::kCallCallee) if (const auto* literal = std::get_if<TreeLiteral>(&child);
+          literal && (std::holds_alternative<IntegerLiteral>(*literal) || std::holds_alternative<NumberLiteral>(*literal))) return true;
+      return child_precedence < ExpressionPrecedence::kPostfix;
     } else if constexpr (std::is_same_v<T, ExpressionPrecedence>) return child_precedence < parent;
     else return false;
   }, context.parent);

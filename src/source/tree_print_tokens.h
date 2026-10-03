@@ -10,7 +10,7 @@ namespace abcd::source {
 // adjacent signs and nullish/logical mixing) are checked separately.
 enum class ExpressionPrecedence : std::uint8_t {
   kLowest, kLogicalOr, kLogicalAnd, kBitOr, kBitXor, kBitAnd, kEquality,
-  kRelational, kShift, kAdditive, kMultiplicative, kExponent, kUnary, kPrimary
+  kRelational, kShift, kAdditive, kMultiplicative, kExponent, kUnary, kPostfix, kPrimary
 };
 enum class OperatorAssociativity : std::uint8_t { kLeft, kRight };
 enum class OperandSide : std::uint8_t { kLeft, kRight };
@@ -19,8 +19,12 @@ struct BinarySyntax {
   ExpressionPrecedence precedence;
   OperatorAssociativity associativity = OperatorAssociativity::kLeft;
 };
+// ECMA-262 Left-Hand-Side Expressions: new requires MemberExpression, while
+// call/member chains may include CallExpression. Propagate kConstructor down
+// member bases so a factory call is grouped without guessing printed tokens.
+enum class PostfixContext : std::uint8_t { kMemberBase, kCallCallee, kConstructor };
 struct TreeOperatorContext {
-  std::variant<std::monostate, analysis::BinaryOperator, TreeUnary, TreeLogical, ExpressionPrecedence> parent;
+  std::variant<std::monostate, analysis::BinaryOperator, TreeUnary, TreeLogical, ExpressionPrecedence, PostfixContext> parent;
   OperandSide side = OperandSide::kLeft;
 };
 [[nodiscard]] BinarySyntax TreeBinarySyntax(analysis::BinaryOperator);

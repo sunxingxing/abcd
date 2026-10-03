@@ -527,20 +527,14 @@ class TreePrinter {
     Push(std::string_view("])"));
     Push(SnapshotCursor{node.slots, 0});
   }
-  void Member(ExprId base, const MemberKey& key) {
+  void Member(ExprId base, const MemberKey& key, PostfixContext context = PostfixContext::kMemberBase) {
     if (const auto* name = std::get_if<NameId>(&key)) Push(PropertyKey{*name});
     else {
       Push(std::string_view("]"));
       Push(std::get<ComputedKey>(key).expression);
       Push(std::string_view("["));
     }
-    const auto& expression = Tree().expressions[base.value].expression;
-    const bool primary = std::holds_alternative<SymbolExpr>(expression) ||
-        std::holds_alternative<ThisExpr>(expression) ||
-        std::holds_alternative<MemberExpr>(expression);
-    if (!primary) Push(std::string_view(")"));
-    Push(base);
-    if (!primary) Push(std::string_view("("));
+    Push(ExpressionOperand{base, {context}});
   }
   void Expression(const MemberExpr& node) { Member(node.base, node.key); }
   void Expression(AwaitExpr node) {
@@ -612,21 +606,23 @@ class TreePrinter {
       Push(std::string_view(")"));
       Push(ArgumentCursor{node.arguments, 0});
       Push(std::string_view(")("));
+      // Value projection also preserves indirect eval for an identifier named
+      // eval. Never omit it merely because a lexical callee looks callable.
+      Push(node.callee);
     } else {
-      Append("(");
-      Push(std::string_view("))"));
+      Push(std::string_view(")"));
       Push(ArgumentCursor{node.arguments, 0});
       Push(std::string_view("("));
+      Push(ExpressionOperand{node.callee, {PostfixContext::kCallCallee}});
     }
-    Push(ExpressionOperand{node.callee, {ExpressionPrecedence::kPrimary}});
   }
   void Expression(const ConstructExpr& node) {
-    Append("(new (");
-    Push(std::string_view("))"));
+    Append("new ");
+    Push(std::string_view(")"));
     if (const auto* arguments = std::get_if<ArgumentRange>(&node.arguments)) Push(ArgumentCursor{*arguments, 0});
     else Push(ArrayArgumentCursor{std::get<ArrayArguments>(node.arguments).array});
-    Push(std::string_view(")("));
-    Push(node.constructor);
+    Push(std::string_view("("));
+    Push(ExpressionOperand{node.constructor, {PostfixContext::kConstructor}});
   }
   void Expression(const SuperCallExpr& node) {
     if (Tree().callable != CallableKind::kDerivedConstructor || !ClassRoot() ||
@@ -877,6 +873,11 @@ class TreePrinter {
     }
     std::visit([&](const auto& node) {
       if constexpr (std::is_same_v<std::decay_t<decltype(node)>, ClassExpr>) Expression(node, id);
+      else if constexpr (std::is_same_v<std::decay_t<decltype(node)>, MemberExpr>) {
+        const auto* context = std::get_if<PostfixContext>(&operand.context.parent);
+        Member(node.base, node.key, context && *context == PostfixContext::kConstructor ?
+            PostfixContext::kConstructor : PostfixContext::kMemberBase);
+      }
       else Expression(node);
     }, Tree().expressions[id.value].expression);
   }

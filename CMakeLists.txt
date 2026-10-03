@@ -1443,6 +1443,8 @@ if(BUILD_TESTING)
       $<TARGET_FILE:additive_expression_test> $<TARGET_FILE:additive_value_test>)
     add_test(NAME expression_precedence_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/expression_precedence.mjs $<TARGET_FILE:expression_precedence_test>)
+    add_test(NAME postfix_expression_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/postfix_expression.mjs $<TARGET_FILE:expression_precedence_test>)
     add_test(NAME instanceof_expression_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/instanceof_expression.mjs $<TARGET_FILE:instanceof_expression_test>)
     add_test(NAME unary_initializer_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

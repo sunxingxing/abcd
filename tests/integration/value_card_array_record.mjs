@@ -14,7 +14,7 @@ const report = JSON.parse(run.stdout);
 assert.equal(report.route, 'value_tree'); assert.equal(report.legacy_writer_used, false);
 assert.equal(report.source_complete, true);
 // A separately checked representation projection, not whole-record style acceptance.
-assert.match(report.source, /export default \(new \(/);
+assert.match(report.source, /export default new /);
 assert.ok(!report.source.includes('let $default'));
 const reference = stripTypeScriptTypes(readFileSync(paired, 'utf8'));
 async function observe(source, size, failedAt) {
@@ -83,7 +83,7 @@ for (const size of [0, 1, 2, 200, 201, 400]) {
     ++scenarios;
   }
 }
-const mutation = report.source.replace('new (CardItem)(item, index)', 'new (CardItem)(item, 0)');
+const mutation = report.source.replace('new CardItem(item, index)', 'new CardItem(item, 0)');
 assert.notEqual(mutation, report.source); new vm.SourceTextModule(mutation);
 await assert.rejects(observe(mutation, 2, -1));
 assert.match(report.source, /\(item, index\) =>/);

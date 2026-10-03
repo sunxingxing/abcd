@@ -5,7 +5,7 @@ import vm from 'node:vm';
 const poison = {poison: true};
 function load(option) {
   const source = execFileSync(process.argv[2], [option], {encoding: 'utf8'});
-  assert.ok(source.includes('new (') && source.includes('constructor('));
+  assert.ok(source.includes('new ') && source.includes('constructor('));
   assert.ok(!source.includes('...') && !source.includes('Reflect.') && !source.includes('.apply('));
   const context = vm.createContext({poison});
   vm.runInContext(`

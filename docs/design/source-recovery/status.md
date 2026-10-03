@@ -12,6 +12,45 @@
 
 ## 当前阶段
 
+### 2026-10-04：调用、构造与成员链使用共同语言语法分组
+
+- 规则 revision72。共同 TreeOperatorContext 增加 typed PostfixContext，
+  区分 member base、call callee 与 new 的 MemberExpression 目标，并接入
+  既有优先级表。printer 仅消费 AST 和该语法上下文，不新增字节码、样本、
+  同块、邻接或 producer 准入条件，也不改 callee/receiver/effect 证明。
+- 正常/异常、range/apply 和 record/member 复用同一打印路径：
+  `(new (Ctor)(arg))`→`new Ctor(arg)`，`(object.method(arg))`→
+  `object.method(arg)`。构造上下文沿 member base 传播，工厂结果可写为
+  `new (factory()).Ctor(arg)`，不误解为先构造 factory 后调用 Ctor。
+  数字 base 保留 `(1).field` 分组；binary/unary/logical 优先级继续共同处理。
+  值调用仍为 `(0, callee)(args)`，保留 receiver 擦除及 indirect eval；逗号
+  内部冗余括号移除。语法依据 ECMA-262 13.3 Left-Hand-Side Expressions、
+  13.3.5 EvaluateNew、13.3.6 EvaluateCall：
+  https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#sec-left-hand-side-expressions。
+- 新增14个共同 ValueIR→AST/printer 场景；逻辑/数字两项明确为 AST 语法
+  fixture，不冒充原 ABC 数值域或协程证明。2538组独立 postfix 行为对照
+  通过，覆盖工厂、长 member 链、bound/Proxy、getter、receiver、newTarget、
+  身份、primitive/object返回与任意异常。1/2/200/201/402/804链和既有
+  binary组合使用迭代 action stack，线性工作增长检查通过；未恢复RSS/基准。
+- -j4相关生产和测试目标构建退出0，/tmp/abcd-postfix-verified-build.log；
+  新增长链目标构建退出0，/tmp/abcd-postfix-chain-build.log。20项相关定向
+  检查通过（final-tests.log 中18项、default-final-tests.log 中CardArray/Logger
+  两项），日志前缀 /tmp/abcd-postfix-。旧括号表示断言与CardArray的反语义
+  mutation更新到新拼写，其行为对照和错误索引拒绝仍保留。
+- 另运行的历史 record_function_test 在期望 `$local0` 导出名的第134行失败。
+  用 HEAD 的旧 printer/token 源码单独编译并链接同一fixture，在同一断言
+  复现；未将它算作通过或本次打印回归，未改该无关旧命名断言。证据
+  /tmp/abcd-postfix-baseline-build.log、baseline-test.log。全套仍未运行。
+- fresh build/stage-one/value-postfix-pass-1 固定五输入退出0，仍80 complete /
+  26 incomplete /0 failure /46 no-module，无legacy或complete回退；55份完整
+  模块应用新的语言表达写法。80份完整源码共445080→435138字节只是产物
+  变化统计，不是性能或整体表示质量验收。106份完整/部分模块语法解析通过，
+  /tmp/abcd-postfix-final-syntax.log；比较见final-batch-summary.json。
+- 此项推进阶段一的源码表示要求，没有解决26份不完整模块的数值、构造协议
+  和其他正文缺口，也未声称整个record/平台/全阶段语义或源码风格已验收。
+  Goal active；下一项继续从共同输入/效果/控制证明处恢复遗漏正文，不能
+  以未知语言值假设或宿主constructor类型假设消除真实runtime差异。
+
 ### 2026-10-04：原调用帧 super 转发贯通共同 IR 与隐式派生构造器
 
 - 规则 revision71。SuperForward 保留 typed invocation-frame 参数来源、

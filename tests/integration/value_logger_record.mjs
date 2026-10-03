@@ -23,7 +23,7 @@ const pairedText = readFileSync(paired, 'utf8');
 const erased = pairedText.replace(/^\s*private\s+[A-Za-z_$][\w$]*\s*:\s*[^;=\n]+;\s*$/gm, '');
 assert.equal((pairedText.match(/^\s*private\s+[A-Za-z_$][\w$]*\s*:\s*[^;=\n]+;\s*$/gm) ?? []).length, 2);
 // A separately checked representation projection, not whole-record style acceptance.
-assert.match(report.source, /export default \(new \(/);
+assert.match(report.source, /export default new /);
 assert.ok(!report.source.includes('let $default'));
 const reference = stripTypeScriptTypes(erased);
 const methods = ['debug', 'info', 'warn', 'error'];

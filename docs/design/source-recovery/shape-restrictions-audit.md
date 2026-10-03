@@ -224,3 +224,17 @@ legacy 构造器的既有模板仍开放，前表其余项目也未全部关闭�
 185组构造行为及70组异步方法 paired对照通过。固定五输入从78 complete /
 26 incomplete /2 failure到80/26/0，原78份源码逐字未变；此为组件交付，
 不代替阶段一与 object creators 全组验收。细节见 implicit-constructors.md。
+
+## 规则 72：语法分组不承担恢复准入
+
+共同打印上下文已区分 member/call/new 的语言 grammar，替换旧 Member printer
+按 Symbol/This/Member 列表决定括号的写法。new 的 MemberExpression 上下文
+向 member base 传播，任意深度的工厂调用均在原调用处正确分组；没有新增
+graph形状或producer白名单去取得恢复许可。callee、receiver和求值顺序仍
+由原共同分析决定，所有被接受的 AST 都由同一个打印器处理。
+
+值调用的 `(0, callee)` 是语言 Reference/GetValue 与 indirect-eval 表示义务，
+不能因 callee 恰好是 identifier 而删除；这种语法规则与同块/邻接准入不同。
+数字成员base及new目标中的call分组也是语言grammar，不能靠删括号提升外观。
+14种组合、2538组行为对照及200/201长链验证支持这次表示变更；前述12项
+能力审计中的开放语义/表示缺口没有因此全部关闭。

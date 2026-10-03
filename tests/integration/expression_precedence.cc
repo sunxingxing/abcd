@@ -24,15 +24,28 @@ class Fixture {
   ValueId Invoke(ValueId callee, ValueId argument) {
     return Add(ValueInvoke{InvokeReceiver::kUndefined, 1}, {{OperandRole::kCallee, callee}, {OperandRole::kArgument, argument}});
   }
-  std::string Print(ValueId result, bool logical = false, bool awaited = false) {
+  ValueId Construct(ValueId callee, ValueId argument) {
+    return Add(ValueConstruct{1}, {{OperandRole::kConstructor, callee}, {OperandRole::kArgument, argument}});
+  }
+  ValueId Read(ValueId base, unsigned name) {
+    return Add(ValueNamedRead{{name}}, {{OperandRole::kBase, base}});
+  }
+  ValueId MemberCall(ValueId base, ValueId argument) {
+    const auto callee = Read(base, 4);
+    return Add(ValueInvoke{InvokeReceiver::kExplicit, 1}, {{OperandRole::kCallee, callee},
+        {OperandRole::kReceiver, base}, {OperandRole::kArgument, argument}});
+  }
+  std::string Print(ValueId result, bool logical = false, bool awaited = false, bool numeric_base = false) {
     Add(ValueReturn{}, {{OperandRole::kReturnValue, result}}, false);
     graph.blocks.push_back({{0}, static_cast<std::uint32_t>(graph.ops.size()), {0}, 0});
     const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
     const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
     FunctionSyntax syntax{}; syntax.owner = {0}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
-    syntax.names = {u"a", u"b", u"c"};
+    syntax.names = {u"a", u"b", u"c", u"ctor", u"fn", u"value"};
     for (unsigned i = 0; i < 3; ++i) syntax.parameters.push_back({NameId{i}, NameEvidence::kDebugRange});
     std::vector<ExpressionConstant> constants(graph.ops.size());
+    for (std::size_t i = 0; i < graph.ops.size(); ++i)
+      if (const auto* read = std::get_if<ValueNamedRead>(&graph.ops[i].operation)) constants[i] = NameId{read->name.value};
     const ExpressionConstants resolved{constants, syntax.names.size()};
     const auto built = BuildFunctionTree(graph, control, evaluation, std::move(syntax), resolved);
     test::Check(std::holds_alternative<ConstructedFunction>(built));
@@ -58,6 +71,13 @@ class Fixture {
         returned->value = ExprId{static_cast<std::uint32_t>(tree.expressions.size())};
         tree.expressions.push_back({AwaitExpr{operand}, tree.expressions[operand.value].origin});
       }
+    }
+    if (numeric_base) {
+      // Isolated lexical grammar fixture: an integer base needs grouping before
+      // a dot, independently of the original parameter's source spelling.
+      for (auto& expression : tree.expressions)
+        if (const auto* symbol = std::get_if<SymbolExpr>(&expression.expression); symbol && symbol->symbol.value == 0)
+          expression.expression = TreeLiteral{source::IntegerLiteral{1}};
     }
     std::ostringstream out;
     const auto printed = PrintFunctionTree(tree, out);
@@ -125,14 +145,38 @@ std::string Case(unsigned index) {
     case 27: value = f.Binary(BinaryOperator::kBitOr, f.Binary(BinaryOperator::kBitAnd, {0}, {1}), {2}); break;
     case 28: value = f.Binary(BinaryOperator::kAdd, {0}, f.Binary(BinaryOperator::kMultiply, {1}, {2})); break;
     case 29: value = f.Invoke(f.Binary(BinaryOperator::kBitOr, {0}, {1}), {2}); break;
+    case 30: value = f.Construct({0}, {1}); break;
+    case 31: value = f.Construct(f.Invoke({0}, {1}), {2}); break;
+    case 32: value = f.Construct(f.Read({0}, 3), {1}); break;
+    case 33: value = f.Construct(f.Read(f.Invoke({0}, {1}), 3), {2}); break;
+    case 34: value = f.MemberCall(f.Invoke({0}, {1}), {2}); break;
+    case 35: value = f.Read(f.Invoke({0}, {1}), 5); break;
+    case 36: value = f.Read(f.Construct({0}, {1}), 5); break;
+    case 37: value = f.Construct(f.Construct({0}, {1}), {2}); break;
+    case 38: value = f.Binary(BinaryOperator::kAdd, f.Construct({0}, {1}), {2}); break;
+    case 39: value = f.Invoke(f.Read({0}, 4), {1}); break;
+    case 40: value = f.Read({0}, 5); break;
+    case 41: value = f.Read(f.Unary(UnaryOperator::kNegate, {0}), 5); break;
+    case 42: value = f.Construct(f.Binary(BinaryOperator::kBitOr, {0}, {1}), {2}); break;
+    case 43: value = f.Construct(f.Read(f.Read(f.Invoke({0}, {1}), 3), 3), {2}); break;
     default: test::Check(false);
   }
-  return f.Print(value, (index >= 20 && index <= 27) || index == 29, index == 28);
+  return f.Print(value, (index >= 20 && index <= 27) || index == 29 || index == 42, index == 28, index == 40);
+}
+std::string PostfixChain(unsigned count, std::uint64_t* work = nullptr) {
+  Fixture fixture;
+  auto constructor = fixture.Invoke({0}, {1});
+  for (unsigned i = 0; i < count; ++i) constructor = fixture.Read(constructor, 3);
+  const auto source = fixture.Print(fixture.Construct(constructor, {2}));
+  if (work) *work = fixture.Work();
+  return source;
 }
 int main(int argc, char** argv) {
   if (argc == 3) {
-    test::Check(std::string_view(argv[1]) == "--source");
-    std::cout << Case(static_cast<unsigned>(std::stoul(argv[2]))); return 0;
+    const auto count = static_cast<unsigned>(std::stoul(argv[2]));
+    if (std::string_view(argv[1]) == "--postfix-chain") std::cout << PostfixChain(count);
+    else { test::Check(std::string_view(argv[1]) == "--source"); std::cout << Case(count); }
+    return 0;
   }
   constexpr std::array<std::string_view, 30> expected{
     "a - (b - c)", "a - b - c", "a / (b / c)", "a / b / c",
@@ -142,9 +186,23 @@ int main(int argc, char** argv) {
     "a ** -b", "typeof (0, a + b)", "a & (b | c)", "a & b | c",
     "a ?? (b && c)", "(a ?? b) && c", "a || b && c", "(a || b) ?? c",
     "a && (b || c)", "a ?? (b ?? c)", "a ?? b ?? c", "a && b || c",
-    "(await (a + b * c))", "(0, (a || b))(c)"};
+    "(await (a + b * c))", "(0, a || b)(c)"};
   for (unsigned i = 0; i < expected.size(); ++i)
     test::Check(Case(i).find(std::string("return ") + std::string(expected[i]) + ";") != std::string::npos);
+  constexpr std::array<std::string_view, 14> postfix{
+    "return new a(b);", "return new ((0, a)(b))(c);", "return new a.ctor(b);",
+    "return new ((0, a)(b)).ctor(c);", ".fn(c);", "return (0, a)(b).value;",
+    "return new a(b).value;", "return new new a(b)(c);", "return new a(b) + c;",
+    "return (0, a.fn)(b);", "return (1).value;", "return (-a).value;",
+    "return new (a || b)(c);", "return new ((0, a)(b)).ctor.ctor(c);"};
+  for (unsigned i = 0; i < postfix.size(); ++i) test::Check(Case(i + 30).find(postfix[i]) != std::string::npos);
+  std::uint64_t previous_postfix = 0;
+  for (const auto count : {1U, 2U, 200U, 201U, 402U, 804U}) {
+    std::uint64_t work = 0;
+    test::Check(PostfixChain(count, &work).find("return new ((0, a)(b)).ctor") != std::string::npos);
+    if (count > 201) test::Check(work < 3 * previous_postfix);
+    previous_postfix = work;
+  }
   for (const bool right : {false, true}) {
     std::uint64_t previous = 0;
     for (const auto count : {1U, 2U, 200U, 201U, 402U, 804U}) {
