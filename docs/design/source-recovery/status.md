@@ -12,6 +12,34 @@
 
 ## 当前阶段
 
+### 2026-10-03：Apply 构造复用直接函数来源证明
+
+- `DirectFunctionObject` 共同类型接口从原 canonical SSA 创建来源区分类/函数，
+  CallPlan 与最终 AST 分别核对。直接 DEFINEFUNC 现进入原 apply 数组、顺序、
+  native ConstructExpr 路径；保留完整真实 child 正文/捕获/ABI，不新增 writer。
+  [固定运行时语义与边界](object-creators.md) 仍拒绝未知参数/getter/Proxy 来源，
+  不给任何宿主函数授予 lifetime brand；arrow 保留原构造 TypeError 行为。
+- 文件内实际 Code 实体、DEFINEFUNC occurrence 与 constructor 正文先复现拒绝，
+  后贯通 PreparedFamily/共享打印；三 profile、两 cache 宽度、normal/try-catch、
+  空/两个 getter 参数，连续 1/2/200/201 构造通过。隐式 new.target 读取仍由
+  原 owner/body gate 拒绝，身份接口不代替该证明。没有读取配对源码做恢复。
+- 6148 组 native 独立 length/index 参数 oracle 通过，核对返回值、对象/函数
+  身份、getter 顺序、任意异常值、arrow 非可构造路径及 Array/iterator/
+  Reflect.construct/Function.prototype.apply/继承索引污染。日志
+  /tmp/abcd-apply-function-native.log；这是 Node 对照，不是 Ark VM 验证。
+- -j4 生产和全部相关目标最终构建退出0，日志
+  /tmp/abcd-apply-function-verified-build.log。8/8相关回归68.56秒通过，
+  /tmp/abcd-apply-function-tests.log。新增 fixture 的首次红测退出134，
+  /tmp/abcd-apply-function-red.log。规则 revision 63。
+- fresh build/stage-one/value-apply-function-pass-1 五输入退出0，仍为
+  78 complete /6 incomplete /22 failure /46 no-module；没有完整 record 回归，
+  既有完整源码逐字未变，无 legacy。日志
+  /tmp/abcd-apply-function-final-batch.log、final-batch-summary.json。
+  固定五输入没有 apply 使用；本项扩展不提高这批 record 完成数量。
+- object creaters 全组及阶段一 Goal 仍 active。regexp、excluded-keys、历史
+  buffer profile、完整 generator/async-generator 和未证明 apply 输入仍开放；
+  full-suite/扩展语料/RSS/基准/DFX/定期审视未恢复。
+
 ### 2026-10-03：嵌套成员引用跨已验证条件参数，真实 Push 拒绝消除
 
 - 复现实际 Push method3613 / outer Invoke69 / callee29 的 kReference。

@@ -1,4 +1,5 @@
 #include "integer_nan.h"
+#include "function_object.h"
 #include "staged_literal_names.h"
 #include "tree_correspondence.h"
 #include "class_tree.h"
@@ -359,7 +360,7 @@ class OperandCheck {
           RequireMeaning(callee_value && callee_value->value < graph_.values.size(), Error::kOperand);
           const auto* constructor = std::get_if<analysis::OpResult>(&graph_.values[callee_value->value].origin);
           RequireMeaning(constructor && constructor->op.value < graph_.ops.size() &&
-              std::holds_alternative<analysis::ValueClassCreation>(graph_.ops[constructor->op.value].operation), Error::kOperand);
+              DirectFunctionObject(graph_.ops[constructor->op.value].operation).has_value(), Error::kOperand);
           const auto source = ResolveEvaluationOperand(evaluation_, input(1));
           const auto* value = std::get_if<analysis::ValueId>(&source);
           RequireMeaning(value && value->value < graph_.values.size() &&

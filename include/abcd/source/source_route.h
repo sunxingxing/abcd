@@ -263,7 +263,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // phased expression intervals, retaining identity, operands and catch scopes.
 // Rules 62 bind nested phased member references to their original call spine,
 // retaining getter order, argument availability, receivers and catch scopes.
-inline constexpr std::uint32_t kRouteEvidenceRules = 62;
+// Rules 63 admit creation-proven direct functions to the shared apply
+// constructor path; child bodies, array ownership and order remain mandatory.
+inline constexpr std::uint32_t kRouteEvidenceRules = 63;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

@@ -18,7 +18,7 @@ ets_runtime `f04900cf951c66c2ea18b2bab5b591d5336c34b9`。
 | createobjectwithbuffer | 2 | 共同对象常量及初始化计划；未证明的方法/访问器仍拒绝 |
 | deprecated.createobjectwithbuffer | 1 | 显式拒绝；须独立历史 profile/池解析 |
 | createregexpwithliteral | 2 | 尚缺 pattern/flags 解析和原生 regexp AST |
-| newobjapply | 2 | 共同构造接口支持实际类创建来源与未逃逸的完整数组；未知目标/数组仍缺证明 |
+| newobjapply | 2 | 共同构造接口支持实际类/函数创建来源与未逃逸的完整数组；未知目标/数组仍缺证明 |
 | newobjrange / wide | 3 | 共同 constructor operands、CallPlan 和 ConstructExpr |
 | newlexenv / wide | 2 | 共同环境/cell 生命周期，环境对象不会打印为 JS 值 |
 | newlexenvwithname / wide | 2 | 同上，scope literal 是调试命名证据 |
@@ -97,7 +97,7 @@ CallPlan 与最终 AST 语义检查分别使用原图重新检查，只有唯一
 并保留其创建 OpId；原 ClassTree 的身份、字节码、完整成员正文与捕获校验继续有效。
 这证明该值始终是创建出的类构造器，不假设任意参数/宿主返回值在生命周期内
 保持 JSFunction。未知 constructor/getter 结果、数组参数、共享/逃逸数组和普通
-对象仍分别类型化拒绝。普通函数创建、其他已证类型及完整 Proxy 差异待继续建模。
+对象仍分别类型化拒绝。其他已证类型及完整 Proxy 差异待继续建模。
 
 构造 AST 共用 `ConstructArguments` 类型化接口：显式 `ArgumentRange` 或拥有
 原创建子树的 `ArrayArguments`。顺序证书允许内联时，现有对象 property cursor
@@ -122,3 +122,29 @@ AST/printer，原 API 不被 reinterpret 为 apply。完整组验证与任意数
 桥。测试的 class constructor 正文由文件中实际字节码解码、准备，不是 placeholder。
 低层 phase fixture 另建立明确的 handler 图，类创建保留在 protected region 之前；
 这不代表实际 record 的 phased class reader 和捕获 gate 已全部完成。
+
+### 直接函数身份复用
+
+规则 63 将 apply 的 constructor 来源检查抽取为共同 `DirectFunctionObject`
+类型化接口，CallPlan 与最终 AST 校验都从原 canonical SSA 来源独立调用它。
+接受实际 ValueClassCreation，或 kind=Function/home=CurrentFunction 的
+ValueFunctionCreation；不按名称、目标源码或样本路径推断。无需虚基类或
+另一套 body writer；normal/phased、数组内联/快照和 native ConstructExpr
+继续走已有公共路径。检查是常数时间，不增加 per-call 图扫描或持久缓存。
+
+固定 OH7 `runtime_stubs-inl.h::RuntimeDefinefunc` 返回工厂创建的直接函数，
+`runtime_stubs.cpp::NewObject` 将这种身份送入
+`js_function.cpp::JSFunction::ConstructInternal`；后者先检查 IsConstructor。
+原生 new 同样在参数求值后检查可构造性。对象的属性或 prototype 变化不能
+将直接函数身份变成 Proxy；因此也可打印构造 arrow 的原始 TypeError 行为，
+不将 arrow 错改成可构造的普通函数。未知函数参数/getter、绑定函数及 Proxy
+没有这项来源证据，继续拒绝。完整创建 occurrence、真实 child 正文、捕获和
+函数 ABI 仍由原文件族管线校验；这个接口不授予正文省略权限。
+
+文件内真实 factory/DEFINEFUNC/constructor 字节码回归覆盖三动态 profile、
+两种 cache 宽度、normal/try-catch、空/两个 getter 参数以及 1/2/200/201
+连续构造。额外 arrow 用例核对原生失败及异常返回；读取隐式 new.target 槽
+的未闭合正文仍拒绝。native oracle 按 length/index 独立复制参数，污染
+Array/iterator、Reflect.construct、Function.prototype.apply 和继承的索引
+getter/setter，核对身份、返回对象、getter 顺序和任意异常值。
+这不是 Ark VM 执行证明，也不表示整个 object creaters 组完成。

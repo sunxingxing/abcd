@@ -1,4 +1,5 @@
 #include "call_plan.h"
+#include "function_object.h"
 #include "phase_evaluation.h"
 #include "logical_evaluation.h"
 
@@ -120,10 +121,10 @@ OpId ApplyConstructor(const ValueProgram& graph, const EvaluationPlan& evaluatio
   const auto* result = std::get_if<OpResult>(&graph.values[value->value].origin);
   // Runtime NewObject dispatches Proxy::ConstructInternal before checking
   // IsConstructor. A proxy of an arrow can run a trap that native `new` skips.
-  // Creation-proven classes have stable constructor identity; arbitrary host
+  // Creation-proven classes/functions have stable direct identity; arbitrary host
   // values/getters need further runtime modeling, never a lifetime assumption.
   Require(result && result->op.value < graph.ops.size() &&
-      std::holds_alternative<ValueClassCreation>(graph.ops[result->op.value].operation), Error::kConstructorIdentity);
+      DirectFunctionObject(graph.ops[result->op.value].operation).has_value(), Error::kConstructorIdentity);
   return result->op;
 }
 std::variant<std::uint64_t, CallPlanError> VerifyCalls(const ValueProgram& graph,
