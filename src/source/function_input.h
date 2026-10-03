@@ -6,7 +6,8 @@
 #include "abcd/source/source_route.h"
 #include "capture_plan.h"
 #include "function_context.h"
-#include "module_initialization.h"
+#include "module_slot_set.h"
+#include "abcd/analysis/module_initialization.h"
 
 namespace abcd::source {
 struct ParentModuleInput;
@@ -102,7 +103,7 @@ class FunctionInput {
       std::vector<CaptureUse>&& captures, std::vector<InputCaptureAccess>&& accesses,
       std::size_t allocated_bytes, std::optional<Owner> owner,
       std::vector<EntryModuleStore>&& stores, std::vector<InputModuleRead>&& modules,
-      ModuleSlotSet entry_modules, std::vector<ModuleCreationState>&& creations);
+      ModuleSlotSet entry_modules, std::vector<analysis::ModuleStateSnapshot>&& creations);
   RouteInputIdentity identity_;
   abc::EntityOffset method_;
   abc::EntityOffset record_;
@@ -118,7 +119,7 @@ class FunctionInput {
   // retained for independent family publication; input admission is no receipt.
   std::vector<InputModuleRead> modules_;
   ModuleSlotSet entry_modules_;
-  std::vector<ModuleCreationState> module_creations_;
+  std::vector<analysis::ModuleStateSnapshot> module_creations_;
   friend std::variant<std::uint64_t, FunctionInputError> VerifyInitializedModuleReads(
       const FunctionInput&, analysis::InstructionId, const FunctionInput&, analysis::SemanticBudget);
 };

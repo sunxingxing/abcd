@@ -1,4 +1,5 @@
 #include "abcd/analysis/semantic_validation.h"
+#include "abcd/analysis/module_initialization.h"
 
 #include <algorithm>
 #include <new>
@@ -128,6 +129,7 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
                                 {*depth, site.binding.slot}});
     }
   }
+  std::uint64_t initialization_work = 0;
   std::optional<InstructionId> previous_module;
   for (const auto& premise : initialized_modules) {
     const auto i = premise.instruction.value;
@@ -162,11 +164,25 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
     stores.erase(std::unique(stores.begin(), stores.end(), [](const auto& a, const auto& b) {
       return a.slot == b.slot;
     }), stores.end());
-    // Completed entry stores dominate every later normal block. This is only
-    // a candidate premise until the full value solver/read check below proves
-    // every store's operand Language. A prior raw read remains unknown, so a
-    // read/store cycle cannot certify its own first initialization. Live reads
-    // after calls may change values, hence no scalar refinement/forwarding.
+    // Structural candidates use all normal paths. Full value verification
+    // below checks EVERY store input before any candidate becomes permission;
+    // entry-false joins prevent a read/store cycle bootstrapping itself.
+    std::optional<ModuleInitialization> candidates;
+    const bool local_reads = std::any_of(method.instructions.begin(), method.instructions.end(),
+        [](const auto& instruction) {
+          const auto* load = std::get_if<ModuleLoad>(&instruction.operation);
+          return load && load->space == ModuleSpace::kLocal;
+        });
+    if (local_reads) {
+      if (locals->work_units > budget.work) return Fail(SemanticProofError::kResourceLimit);
+      auto built = BuildModuleInitialization(method, {}, {remaining, budget.work - locals->work_units});
+      if (const auto* error = std::get_if<ModuleInitializationError>(&built))
+        return Fail(*error == ModuleInitializationError::kInput ?
+            SemanticProofError::kSsaMismatch : SemanticProofError::kResourceLimit);
+      candidates = std::get<ModuleInitialization>(std::move(built));
+      remaining -= candidates->allocated_bytes; budget.work -= candidates->work;
+      initialization_work = candidates->work;
+    }
     std::size_t block = 0;
     for (std::size_t i = 0; i < method.instructions.size(); ++i) {
       while (block + 1 < method.flow.blocks.size() &&
@@ -190,13 +206,19 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
         continue;
       }
       if (load->space != ModuleSpace::kLocal) continue;
+      if (!candidates) continue;
+      const auto state = std::lower_bound(candidates->states.begin(), candidates->states.end(), site,
+          [](const auto& state, auto id) { return state.instruction < id; });
+      if (state == candidates->states.end() || state->instruction != site ||
+          !state->slots.Contains(load->slot)) continue;
       const auto found = std::lower_bound(stores.begin(), stores.end(), load->slot,
           [](const auto& store, auto slot) { return store.slot < slot; });
-      if (found == stores.end() || found->slot != load->slot || found->instruction >= site) continue;
+      const auto witness = found != stores.end() && found->slot == load->slot && found->instruction < site
+          ? std::optional{found->instruction} : std::nullopt;
       language_loads[i] = 1;
-      modules.push_back({site, ModuleReadProof::kStored, found->instruction});
+      modules.push_back({site, ModuleReadProof::kStored, witness});
     }
-    // The entry index is gone before entry facts and the value-flow solver
+    // Candidate roots and the optional backlink index are gone before the solver
     // allocate scratch. Witness IDs remain in the existing read ledger.
   }
   for (std::size_t i = 0; i < language_loads.size(); ++i)
@@ -248,7 +270,7 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
         if (!kinds || !kinds->IsLanguage())
           return SemanticProofFailure{SemanticProofError::kInternalValue, body.instructions[i].offset,
               budget.bytes - remaining + analyzed->AllocatedBytes(),
-              argument_inputs.work + bound->instruction_visits + locals->work_units + quota.Consumed() +
+              argument_inputs.work + bound->instruction_visits + locals->work_units + initialization_work + quota.Consumed() +
                   body.instructions.size() + method.ssa.AllReads().size()};
       }
     }

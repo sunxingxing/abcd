@@ -24,12 +24,13 @@ using namespace abcd;
 void Check(bool value, std::source_location at = std::source_location::current()) {
   if (!value) { std::cerr << "check failed at " << at.line() << '\n'; std::abort(); }
 }
-enum class FixtureCase { kValid, kCleanupEntry, kCleanupOverwrite, kBindingCollision, kExportCollision, kBranch, kArmStore, kFunction, kCapture, kCapturedDefault, kCapturedUnusedDefault, kStringDefault, kPublishedCapture, kReentrantCapture, kPublishedCaptureV1, kPublishedBadSlot, kLocalFunction, kClassFunction, kClassCapture, kGlobal, kGlobalShadow, kGlobalLocalShadow, kAnonymous, kAnonymousFunction, kAnonymousSingleClass, kAnonymousClassRead, kClassCell, kClassNamedCell, kClassNamedShadow, kClassCellHole, kClassCellUninitialized, kUnknownName, kClassBinding, kClassBindingMismatch, kClassBindingAssignment, kModuleWriter, kModuleWriterBranch, kModuleWriterEarly, kModuleWriterLiteral, kModuleWriterCatch, kModuleWriterParentBranch, kModuleWriterParentBranchCatch };
+enum class FixtureCase { kValid, kCleanupEntry, kCleanupOverwrite, kBindingCollision, kExportCollision, kBranch, kArmStore, kFunction, kCapture, kCapturedDefault, kCapturedUnusedDefault, kStringDefault, kPublishedCapture, kReentrantCapture, kPublishedCaptureV1, kPublishedBadSlot, kLocalFunction, kClassFunction, kClassCapture, kGlobal, kGlobalShadow, kGlobalLocalShadow, kAnonymous, kAnonymousFunction, kAnonymousSingleClass, kAnonymousClassRead, kClassCell, kClassNamedCell, kClassNamedShadow, kClassCellHole, kClassCellUninitialized, kUnknownName, kClassBinding, kClassBindingMismatch, kClassBindingAssignment, kModuleWriter, kModuleWriterBranch, kModuleWriterEarly, kModuleWriterLiteral, kModuleWriterCatch, kModuleWriterParentBranch, kModuleWriterParentBranchCatch, kModuleWriterParentBranchRaw, kModuleWriterParentBranchRawCatch };
 std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool inspect_prefix = false) {
   constexpr std::uint32_t kTypes = 256, kPool = 272, kRecord = 512,
       kMethod = 600, kChild = 640, kConstructor = 680, kLiteral = 3000, kModule = 1024, kCode = 4096, kChildCode = 5000, kConstructorCode = 6000, kFileBytes = 8192;
-  const bool parent_branch = mode == FixtureCase::kModuleWriterParentBranch || mode == FixtureCase::kModuleWriterParentBranchCatch;
-  const bool writer_catch = mode == FixtureCase::kModuleWriterCatch || mode == FixtureCase::kModuleWriterParentBranchCatch;
+  const bool parent_raw = mode == FixtureCase::kModuleWriterParentBranchRaw || mode == FixtureCase::kModuleWriterParentBranchRawCatch;
+  const bool parent_branch = mode == FixtureCase::kModuleWriterParentBranch || mode == FixtureCase::kModuleWriterParentBranchCatch || parent_raw;
+  const bool writer_catch = mode == FixtureCase::kModuleWriterCatch || mode == FixtureCase::kModuleWriterParentBranchCatch || mode == FixtureCase::kModuleWriterParentBranchRawCatch;
   const bool module_writer = mode == FixtureCase::kModuleWriter || mode == FixtureCase::kModuleWriterBranch || mode == FixtureCase::kModuleWriterEarly || mode == FixtureCase::kModuleWriterLiteral || writer_catch || parent_branch;
   const bool child_parameter = module_writer || mode == FixtureCase::kCapturedDefault || mode == FixtureCase::kCapturedUnusedDefault || mode == FixtureCase::kStringDefault;
   const bool class_binding = mode == FixtureCase::kClassBinding || mode == FixtureCase::kClassBindingMismatch || mode == FixtureCase::kClassBindingAssignment;
@@ -150,7 +151,9 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
   load(false, 0, 0); store(0);
   if ((!class_binding || mode == FixtureCase::kClassBindingAssignment) && mode != FixtureCase::kModuleWriterEarly) { load(false, 3, 1); store(1); } // Namespace follows ordinary imports.
   if (!single_class) {
-    load(true, 0, 2); store(0);
+    if (parent_raw) { op(abc::Opcode::kLDLOCALMODULEVAR_IMM8); body.push_back(0); }
+    else load(true, 0, 2);
+    store(0);
     load(false, 1, 3); op(abc::Opcode::kCALLARG0_IMM8); body.push_back(0);
     load(false, 0, 0); store(0); // Fresh live read after the dependency mutates it.
   }
@@ -473,8 +476,8 @@ int main(int argc, char** argv) {
     Check(generated.find(mode == "--class-binding" ? "let snapshot = class {" : mode == "--class-binding-assignment" ? "(snapshot = class {" : "let snapshot = ({[\"Box\"]: class {") != std::string::npos);
     std::cout << generated; return 0;
   }
-  if (mode == "--module-writer" || mode == "--module-writer-branch" || mode == "--module-writer-early" || mode == "--module-writer-literal" || mode == "--module-writer-catch" || mode == "--module-writer-parent-branch" || mode == "--module-writer-parent-branch-catch") {
-    const auto fixture = mode == "--module-writer" ? FixtureCase::kModuleWriter : mode == "--module-writer-branch" ? FixtureCase::kModuleWriterBranch : mode == "--module-writer-literal" ? FixtureCase::kModuleWriterLiteral : mode == "--module-writer-catch" ? FixtureCase::kModuleWriterCatch : mode == "--module-writer-parent-branch" ? FixtureCase::kModuleWriterParentBranch : mode == "--module-writer-parent-branch-catch" ? FixtureCase::kModuleWriterParentBranchCatch : FixtureCase::kModuleWriterEarly;
+  if (mode == "--module-writer" || mode == "--module-writer-branch" || mode == "--module-writer-early" || mode == "--module-writer-literal" || mode == "--module-writer-catch" || mode == "--module-writer-parent-branch" || mode == "--module-writer-parent-branch-catch" || mode == "--module-writer-parent-branch-raw" || mode == "--module-writer-parent-branch-raw-catch") {
+    const auto fixture = mode == "--module-writer" ? FixtureCase::kModuleWriter : mode == "--module-writer-branch" ? FixtureCase::kModuleWriterBranch : mode == "--module-writer-literal" ? FixtureCase::kModuleWriterLiteral : mode == "--module-writer-catch" ? FixtureCase::kModuleWriterCatch : mode == "--module-writer-parent-branch" ? FixtureCase::kModuleWriterParentBranch : mode == "--module-writer-parent-branch-catch" ? FixtureCase::kModuleWriterParentBranchCatch : mode == "--module-writer-parent-branch-raw" ? FixtureCase::kModuleWriterParentBranchRaw : mode == "--module-writer-parent-branch-raw-catch" ? FixtureCase::kModuleWriterParentBranchRawCatch : FixtureCase::kModuleWriterEarly;
     const auto profile = argc > 2 && std::string_view(argv[2]) == "1202" ? abc::ProfileId::kDynamic1202 :
         argc > 2 && std::string_view(argv[2]) == "1301" ? abc::ProfileId::kDynamic1301 : abc::ProfileId::kDynamic1206;
     const auto generated = Recover(fixture, profile);

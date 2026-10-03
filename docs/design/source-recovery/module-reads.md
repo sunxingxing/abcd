@@ -66,9 +66,11 @@ and platform behavior are separate acceptance layers.
 
 ## Initialization before a normal child creation
 
-Rules 78 replaces the entry-block initialization admission with sparse SSA over
-all reachable normal control flow. Original successful Language-valued module
-stores define TRUE; incoming slots use the immutable parent-entry premise.
+Rules 78/79 replace the entry-block initialization admission with sparse SSA over
+all reachable normal control flow. Original module stores define structural TRUE
+candidates; full unchanged input verification independently checks every store
+operand as Language before any candidate grants permission. Incoming slots use
+the immutable parent-entry premise.
 Complete (unpruned) IDF placement represents joins without fabricating reads of
 every slot at every child creation. An indexed reverse-phi worklist propagates
 FALSE for Boolean AND, including zero-trip and cyclic paths. Dominator traversal
@@ -79,8 +81,9 @@ does not choose control-flow ownership.
 A store in a joining block initializes subsequent creations. Stores on both
 branch arms can establish the same fact at their join; a store on just one arm
 cannot. A loop does not prove initialization merely by containing a store. The
-analysis consumes the owner's original normal semantic proof and unchanged CFG;
-it does not omit exception/resume edges or prove phased parent execution.
+analysis uses the owner's unchanged normal CFG; full semantic verification
+discharges store obligations before permission is published. It does not omit
+exception/resume edges or prove phased parent execution.
 
 `ParentModuleInput` is borrowed only during child preparation. File discovery
 supplies the genuine owner context and checks file/profile/record, creator,
@@ -314,10 +317,11 @@ Rules 78 now proves normal parent initialization outside the entry block through
 the common SSA/dominance mechanism above. Writers created before initialization
 still need escape/invocation analysis. A successful child Hole guard can also
 establish initialization, but its **successful Commit**, not its Before node,
-must govern subsequent writes through catch paths. Raw local reads in the parent
-and record declarations first initialized solely inside branch arms retain their
-separate integration gaps. Do not widen these with fixed sequences, same-block
-conditions or a count of guards/selections.
+must govern subsequent writes through catch paths. Rules 79 also connects
+same-body raw local reads to these shared candidates. Record declarations first
+initialized solely inside branch arms still require separate control/scope
+integration. Do not widen these with fixed sequences, same-block conditions or
+a count of guards/selections.
 
 `module_writer_source_test` uses real encoded fixtures in profiles 1202/1206/1301
 for parameter, branch, constant and catch writes, including parent initialization
@@ -348,3 +352,49 @@ or silently changed semantics. Unit fixtures exercise 200/201 and geometric
 independent slot/creation dimensions, exact work exhaustion, unreachable writes,
 before-store creation, diamonds and zero-trip/do-first loops. Work counters are
 not a whole-process RSS or latency measurement.
+
+## Rules 79: same-body reads share original and working state analysis
+
+ModuleSlotSet and the sparse initialization algorithm now belong to analysis;
+source has only a type include/alias, not a second implementation. The owner
+adapter records before-site snapshots for real local module reads and function/
+class allocations. An abstract site's own successful store affects later sites,
+never its before snapshot. FunctionInput retains only the creation snapshots.
+
+VerifySemanticSource replaces its entry-store admission with common all-path
+candidates. Every original register use, including every store operand, must
+subsequently pass Language verification. Unknown/Hole inputs therefore cannot
+bootstrap initialization, even through read/store cycles. kStored keeps an
+optional old direct-entry backlink as provenance; a join of stores on both arms
+need not invent one dominating store. Adjacent encoded Hole guards retain their
+existing guarded path and both original effects. Reads still use a fresh native
+live binding, including after calls which change its value.
+
+Build/VerifyModuleGuards rebuild the same initialization analysis on the CURRENT
+normal ValueProgram. The adapter first verifies value availability/control, then
+checks each live module write's actual stored operand and domain, slot and uses.
+An original input candidate does not authorize moving/removing a working store.
+Lookup at the actual read uses common sparse SSA and persistent snapshots; no
+current_store.block==0 or same-block order condition remains for kStored.
+Original read/store origins, effects and slot correspondence remain checked;
+phased parents and successful child guard Commit facts are not inferred.
+
+Both adapters add linear scans/storage and fixed-width persistent insertions on
+top of the already documented SSA/dominator/sort/output costs. Working analysis
+runs once per module-guard build/verification, not once per read. Candidate roots
+and optional backlink indexes die before the original value solver's scratch;
+working build roots also die before independent source verification reuses its
+scratch allowance. Allocation/work admission remains typed and conservative,
+with lexical work reserved before candidate analysis to prevent quota wrap.
+No new dependency,
+capability wrapper, interpreter helper or per-variable CFG walk is introduced.
+
+Encoded tests cover joined/two-arm/one-arm stores, zero-trip/do-first loops,
+unknown/Hole cycles, current-store removal, exact work/resource limits and shared
+200/201/geometric dimensions. Full record source fixtures exercise raw reads
+following parent branch joins in normal and catch-child families across three
+profiles; independent ESM compares both branch directions, exports/live updates,
+TDZ, name/arity, receiver, value/error identity and no coercion. First source RED
+was the actual family refusal, not reference-source output or INCOMPLETE success.
+Record declaration placement, host/numeric proofs and stage-one whole-corpus
+acceptance remain distinct gates.

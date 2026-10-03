@@ -2,6 +2,7 @@
 #include <vector>
 
 #include "../../../src/source/function_input.h"
+#include "../../../src/source/function_values.h"
 #include "analysis/ssa_fixture.h"
 
 namespace {
@@ -47,7 +48,12 @@ class Body {
     Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8);
     bytes.insert(bytes.end(), {0, 0, 0, 0});
   }
-  source::FunctionInput Input() {
+  void Read(std::uint16_t slot) {
+    Op(abc::Opcode::kWIDE_LDLOCALMODULEVAR_PREF_IMM16);
+    bytes.push_back(static_cast<std::uint8_t>(slot));
+    bytes.push_back(static_cast<std::uint8_t>(slot >> 8));
+  }
+  auto TryInput() {
     Op(abc::Opcode::kRETURNUNDEFINED);
     auto body = test::Body(bytes);
     source::RouteInputIdentity identity;
@@ -55,9 +61,11 @@ class Body {
     identity.abc_version = {12, 0, 6, 0};
     auto frame = std::get<abc::FrameLayout>(
         abc::BuildFrameLayout(0, 1, {false, false, false, false}));
-    return std::get<source::FunctionInput>(
-        source::FunctionInput::Build(identity, {300}, {200}, body, frame,
-                                     source::InputCaptureMode::kConditional));
+    return source::FunctionInput::Build(identity, {300}, {200}, body, frame,
+                                        source::InputCaptureMode::kConditional);
+  }
+  source::FunctionInput Input() {
+    return std::get<source::FunctionInput>(TryInput());
   }
   void Check(const source::FunctionInput& input, std::size_t creation,
              std::uint16_t slot, bool initialized) const {
@@ -142,6 +150,112 @@ void UnreachableStore() {
   auto input = body.Input();
   body.Check(input, 0, 0, false);
 }
+void CheckRead(Body& body, bool initialized) {
+  body.Read(1);
+  body.Op(abc::Opcode::kRETURN);
+  const auto built = body.TryInput();
+  if (!initialized) {
+    const auto* failure = std::get_if<source::FunctionInputFailure>(&built);
+    test::Check(
+        failure &&
+        std::holds_alternative<analysis::SemanticProofFailure>(failure->cause));
+    test::Check(std::get<analysis::SemanticProofFailure>(failure->cause).kind ==
+                analysis::SemanticProofError::kInternalValue);
+    return;
+  }
+  const auto& input = std::get<source::FunctionInput>(built);
+  test::Check(input.Proof().module_reads.size() == 1 &&
+              input.Proof().module_reads[0].proof ==
+                  analysis::ModuleReadProof::kStored);
+  const auto frame = std::get<abc::FrameLayout>(
+      abc::BuildFrameLayout(0, 1, {false, false, false, false}));
+  const auto candidate = analysis::BuildModuleInitialization(input.Input(), {});
+  const auto work = std::get<analysis::ModuleInitialization>(candidate).work;
+  analysis::SemanticBudget limited;
+  limited.work = work + input.Proof().locals.work_units - 1;
+  // Candidate analysis may not spend work already reserved for the lexical
+  // proof. Subtracting it afterward must never wrap into an unlimited quota.
+  test::Check(std::holds_alternative<analysis::SemanticProofFailure>(
+      analysis::VerifySemanticSource(test::Body(body.bytes), input.Input(),
+                                     frame.registers, frame.locals, limited)));
+  const auto values =
+      source::BuildFunctionValues(input, test::Body(body.bytes), frame);
+  test::Check(std::holds_alternative<source::FunctionValues>(values));
+  const auto& graph = std::get<source::FunctionValues>(values);
+  test::Check(graph.modules.pairs.size() == 1 && !graph.modules.pairs[0].guard);
+  auto changed = graph.graph;
+  // Remove just one real store. The branch graph and read identity still
+  // exist; initialization must be rechecked on current control flow.
+  for (auto& op : changed.ops) {
+    if (!std::holds_alternative<analysis::ValueModuleWrite>(op.operation))
+      continue;
+    op.life = analysis::ValueLife::kRemoved;
+    break;
+  }
+  test::Check(std::holds_alternative<source::ModuleGuardError>(
+      source::VerifyModuleGuards(input, changed, graph.modules)));
+}
+void CombinedSiteOrder() {
+  using namespace analysis;
+  const std::array<ModuleStateSite, 2> sites{
+      {{{0}, ModuleSlot{1}, true}, {{1}, {}, true}}};
+  NormalFlow flow;
+  flow.blocks.resize(1);
+  flow.blocks[0].instruction_count = sites.size();
+  const auto built = BuildModuleInitialization(sites, flow, {});
+  const auto& states = std::get<ModuleInitialization>(built).states;
+  test::Check(states.size() == 2 && !states[0].slots.Contains({1}) &&
+              states[1].slots.Contains({1}));
+}
+void RawReads() {
+  {
+    Body body;
+    body.Argument();
+    auto branch = body.Branch();
+    body.Op(abc::Opcode::kLDTRUE);
+    body.Target(branch, body.bytes.size());
+    body.Store(1);
+    CheckRead(body, true);
+  }
+  for (const bool both : {false, true}) {
+    Body body;
+    body.Argument();
+    auto branch = body.Branch();
+    body.Store(1);
+    auto jump = body.Jump();
+    body.Target(branch, body.bytes.size());
+    if (both) body.Store(1);
+    body.Target(jump, body.bytes.size());
+    CheckRead(body, both);
+  }
+  for (const bool executes : {false, true}) {
+    Body body;
+    const auto start = body.bytes.size();
+    if (executes) body.Store(1);
+    body.Argument();
+    auto branch = body.Branch();
+    if (!executes) body.Store(1);
+    auto jump = body.Jump();
+    body.Target(jump, start);
+    body.Target(branch, body.bytes.size());
+    CheckRead(body, executes);
+  }
+  {
+    // An uninitialized read/store cycle cannot manufacture its own premise.
+    Body body;
+    body.Read(1);
+    body.Op(abc::Opcode::kSTMODULEVAR_IMM8);
+    body.bytes.push_back(1);
+    CheckRead(body, false);
+  }
+  {
+    Body body;
+    body.Op(abc::Opcode::kLDHOLE);
+    body.Op(abc::Opcode::kSTMODULEVAR_IMM8);
+    body.bytes.push_back(1);
+    CheckRead(body, false);
+  }
+}
 std::uint64_t IndependentDiamonds(std::uint16_t count) {
   Body body;
   for (std::uint16_t slot = 0; slot < count; ++slot) {
@@ -163,27 +277,25 @@ std::uint64_t IndependentDiamonds(std::uint16_t count) {
     body.Check(input, slot * 3 + 2, slot, slot % 2 == 0);
     if (slot) body.Check(input, slot * 3 + 2, slot - 1, (slot - 1) % 2 == 0);
   }
-  const auto built =
-      source::BuildModuleCreationStates(input.Input(), input.Proof(), {});
-  test::Check(std::holds_alternative<source::ModuleCreationStates>(built));
-  const auto& states = std::get<source::ModuleCreationStates>(built);
+  const auto built = analysis::BuildModuleInitialization(input.Input(), {});
+  test::Check(std::holds_alternative<analysis::ModuleInitialization>(built));
+  const auto& states = std::get<analysis::ModuleInitialization>(built);
   test::Check(states.states.size() == count * 3);
   analysis::SemanticBudget limited;
   limited.work = states.work;
-  test::Check(std::holds_alternative<source::ModuleCreationStates>(
-      source::BuildModuleCreationStates(input.Input(), input.Proof(), {},
-                                        limited)));
+  test::Check(std::holds_alternative<analysis::ModuleInitialization>(
+      analysis::BuildModuleInitialization(input.Input(), {}, limited)));
   --limited.work;
-  test::Check(std::get<source::ModuleInitializationError>(
-                  source::BuildModuleCreationStates(
-                      input.Input(), input.Proof(), {}, limited)) ==
-              source::ModuleInitializationError::kWorkLimit);
+  test::Check(
+      std::get<analysis::ModuleInitializationError>(
+          analysis::BuildModuleInitialization(input.Input(), {}, limited)) ==
+      analysis::ModuleInitializationError::kWorkLimit);
   limited = {};
   limited.bytes = 0;
-  test::Check(std::get<source::ModuleInitializationError>(
-                  source::BuildModuleCreationStates(
-                      input.Input(), input.Proof(), {}, limited)) ==
-              source::ModuleInitializationError::kResourceLimit);
+  test::Check(
+      std::get<analysis::ModuleInitializationError>(
+          analysis::BuildModuleInitialization(input.Input(), {}, limited)) ==
+      analysis::ModuleInitializationError::kResourceLimit);
   return states.work;
 }
 }  // namespace
@@ -193,6 +305,8 @@ int main() {
   Diamond(false);
   Loop(false);
   Loop(true);
+  CombinedSiteOrder();
+  RawReads();
   BeforeStore();
   UnreachableStore();
   IndependentDiamonds(200);

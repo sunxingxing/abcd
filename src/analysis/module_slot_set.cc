@@ -1,9 +1,9 @@
-#include "module_slot_set.h"
+#include "abcd/analysis/module_slot_set.h"
 
 #include <limits>
 #include <stdexcept>
 
-namespace abcd::source {
+namespace abcd::analysis {
 namespace {
 constexpr unsigned kSlotBits = ModuleSlotSet::kPathWork - 1;
 // allocate_shared rebinds to the actual control-block allocation type. Charge

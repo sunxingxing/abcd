@@ -1,4 +1,5 @@
 #include "module_guards.h"
+#include "module_state_flow.h"
 
 #include <new>
 #include <stdexcept>
@@ -12,7 +13,15 @@ void Require(bool condition, Error error) { if (!condition) throw error; }
 class Correspondence {
  public:
   Correspondence(const FunctionInput& input, const analysis::ValueProgram& graph,
-      std::uint64_t work) : input_(input), graph_(graph), work_(work) {}
+      analysis::SemanticBudget budget) : input_(input), graph_(graph), work_(budget.work) {
+    if (std::any_of(input.Proof().module_reads.begin(), input.Proof().module_reads.end(),
+        [](const auto& fact) { return fact.proof == analysis::ModuleReadProof::kStored; })) {
+      auto built=BuildWorkingModuleState(graph,budget);
+      if (const auto* error=std::get_if<Error>(&built)) throw *error;
+      states_=std::get<analysis::ModuleInitialization>(std::move(built));
+      Require(states_->work<=work_,Error::kWorkLimit);work_-=states_->work;
+    }
+  }
   void Step() { Require(work_ != 0, Error::kWorkLimit); --work_; }
   std::uint64_t Remaining() const { return work_; }
   analysis::OpId Operation(analysis::InstructionId site) {
@@ -35,7 +44,7 @@ class Correspondence {
     Step();
     // Normal initialized reads retain the genuine creation/store premise;
     // phase callers require the separate exceptional owner pipeline.
-    Require(fact.store.has_value() == (fact.proof == analysis::ModuleReadProof::kStored), Error::kUnsupportedProof);
+    Require(!fact.store || fact.proof == analysis::ModuleReadProof::kStored, Error::kUnsupportedProof);
     switch (fact.proof) {
       case analysis::ModuleReadProof::kGuarded: break;
       case analysis::ModuleReadProof::kInitialized:
@@ -85,29 +94,20 @@ class Correspondence {
         graph_.values[op.result->value].domain.IsLanguage() &&
         graph_.values[op.result->value].life == analysis::ValueLife::kLive, Error::kRead);
     if (fact.proof == analysis::ModuleReadProof::kStored) {
-      Require(fact.store && fact.store->value < fact.instruction.value &&
-          !input_.Input().flow.blocks.empty() &&
-          fact.store->value < input_.Input().flow.blocks.front().instruction_count, Error::kUnsupportedProof);
-      const auto store = Operation(*fact.store);
-      const auto* original_store = std::get_if<analysis::ModuleStore>(
-          &input_.Input().instructions[fact.store->value].operation);
-      const auto& current_store = graph_.ops[store.value];
-      const auto* write = std::get_if<analysis::ValueModuleWrite>(&current_store.operation);
-      Require(original_store && write && original_store->slot == load->slot &&
-          write->slot == original_store->slot && current_store.block.value == 0 &&
-          (op.block.value != 0 || current_store.order < op.order) && current_store.use_count == 1 && !current_store.result &&
-          current_store.first_use.value < graph_.uses.size(), Error::kUnsupportedProof);
-      const auto reads = input_.Input().ssa.Reads(*fact.store);
-      Require(reads.size() == 1 && reads.front().value.value < input_.Proof().values.Facts().size() &&
-          input_.Proof().values.Facts()[reads.front().value.value].IsLanguage(), Error::kRead);
-      const auto& use = graph_.uses[current_store.first_use.value];
-      Require(std::get_if<analysis::OpId>(&use.owner) && std::get<analysis::OpId>(use.owner) == store &&
-          use.role == analysis::OperandRole::kStoredValue && use.purpose == analysis::ReadPurpose::kOperand,
-          Error::kRead);
-      if (const auto* value = std::get_if<analysis::ValueId>(&use.operand))
-        Require(value->value < graph_.values.size() &&
-            graph_.values[value->value].life == analysis::ValueLife::kLive &&
-            graph_.values[value->value].domain.IsLanguage(), Error::kRead);
+      Require(states_.has_value(), Error::kUnsupportedProof);
+      const analysis::InstructionId site{read.value};
+      const auto cost=std::bit_width(states_->states.size())+1+ModuleSlotSet::kPathWork;
+      Require(cost<=work_,Error::kWorkLimit); work_-=cost;
+      const auto found=std::lower_bound(states_->states.begin(),states_->states.end(),site,
+          [](const auto& state,auto id) { return state.instruction<id; });
+      Require(found!=states_->states.end() && found->instruction==site &&
+          found->slots.Contains(load->slot),Error::kUnsupportedProof);
+      if (fact.store) {
+        const auto store=Operation(*fact.store);
+        const auto* original=std::get_if<analysis::ModuleStore>(&input_.Input().instructions[fact.store->value].operation);
+        const auto* current=std::get_if<analysis::ValueModuleWrite>(&graph_.ops[store.value].operation);
+        Require(original && current && original->slot==load->slot && current->slot==original->slot,Error::kRead);
+      }
       return {read, std::nullopt};
     }
     const auto premises = input_.InitializedModuleReads();
@@ -124,6 +124,7 @@ class Correspondence {
   const FunctionInput& input_;
   const analysis::ValueProgram& graph_;
   std::uint64_t work_;
+  std::optional<analysis::ModuleInitialization> states_;
 };
 }  // namespace
 std::variant<std::uint64_t, ModuleGuardError> VerifyModuleGuards(
@@ -133,7 +134,7 @@ std::variant<std::uint64_t, ModuleGuardError> VerifyModuleGuards(
     Require(plan.revision == graph.revision && plan.cfg_revision == graph.cfg_revision, Error::kRevision);
     const auto& facts = input.Proof().module_reads;
     Require(plan.pairs.size() == facts.size(), Error::kCoverage);
-    Correspondence checked(input, graph, budget.work);
+    Correspondence checked(input, graph, budget);
     for (std::size_t i = 0; i < facts.size(); ++i) {
       checked.Step();
       Require(i == 0 || facts[i - 1].instruction < facts[i].instruction, Error::kCoverage);
@@ -154,12 +155,18 @@ std::variant<ModuleGuards, ModuleGuardError> BuildModuleGuards(
     plan.pairs.reserve(facts.size());
     Require(plan.pairs.capacity() <= bytes / sizeof(ModuleReadSite), Error::kResourceLimit);
     bytes -= plan.pairs.capacity() * sizeof(ModuleReadSite);
-    Correspondence checked(input, graph, budget.work);
-    for (const auto& fact : facts) plan.pairs.push_back(checked.Pair(fact));
-    const auto verified = VerifyModuleGuards(input, graph, plan, {bytes, checked.Remaining()});
+    auto work = budget.work;
+    {
+      Correspondence checked(input, graph, {bytes,work});
+      for (const auto& fact : facts) plan.pairs.push_back(checked.Pair(fact));
+      work = checked.Remaining();
+    }
+    // Release candidate roots before independent current-graph verification;
+    // both passes share one bounded scratch allowance, never two live copies.
+    const auto verified = VerifyModuleGuards(input, graph, plan, {bytes, work});
     if (const auto* error = std::get_if<Error>(&verified)) return *error;
     plan.allocated_bytes = budget.bytes - bytes;
-    plan.work = budget.work - checked.Remaining() + std::get<std::uint64_t>(verified);
+    plan.work = budget.work - work + std::get<std::uint64_t>(verified);
     return plan;
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;

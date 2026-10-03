@@ -9,6 +9,8 @@
 namespace abcd::source {
 namespace {
 using Error = FunctionInputError;
+using analysis::ModuleInitializationError;
+using analysis::ModuleInitialization;
 class InputBudget {
  public:
   explicit InputBudget(analysis::SemanticBudget budget) : remaining_(budget) {}
@@ -42,7 +44,7 @@ FunctionInput::FunctionInput(RouteInputIdentity identity, abc::EntityOffset meth
     std::vector<CaptureUse>&& captures, std::vector<InputCaptureAccess>&& accesses,
     std::size_t allocated_bytes, std::optional<Owner> owner,
     std::vector<EntryModuleStore>&& stores, std::vector<InputModuleRead>&& modules,
-    ModuleSlotSet entry_modules, std::vector<ModuleCreationState>&& creations)
+    ModuleSlotSet entry_modules, std::vector<analysis::ModuleStateSnapshot>&& creations)
     : identity_(identity), method_(method), record_(record), mode_(mode),
       input_(std::move(input)), proof_(std::move(proof)), captures_(std::move(captures)),
       accesses_(std::move(accesses)), allocated_bytes_(allocated_bytes), owner_(owner),
@@ -65,8 +67,8 @@ ModuleSlotSet FunctionInput::InitializedModulesBefore(analysis::InstructionId cr
       (!std::holds_alternative<analysis::FunctionCreation>(input_.instructions[creation.value].operation) &&
        !std::holds_alternative<analysis::ClassCreation>(input_.instructions[creation.value].operation))) return {};
   const auto found = std::lower_bound(module_creations_.begin(), module_creations_.end(), creation,
-      [](const auto& state, auto site) { return state.creation < site; });
-  return found != module_creations_.end() && found->creation == creation ? found->slots : ModuleSlotSet{};
+      [](const auto& state, auto site) { return state.instruction < site; });
+  return found != module_creations_.end() && found->instruction == creation ? found->slots : ModuleSlotSet{};
 }
 bool FunctionInput::MatchesModuleCreation(const FunctionInput& parent, analysis::InstructionId creation) const {
   if (!owner_ || identity_ != parent.identity_ || record_ != parent.record_ ||
@@ -249,7 +251,7 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
     stores.erase(std::unique(stores.begin(), stores.end(), [&](const auto& a, const auto& b) {
       quota.Step(); return a.slot == b.slot;
     }), stores.end());
-    auto initialized = BuildModuleCreationStates(*input, *proof, entry_modules, quota.Remaining());
+    auto initialized = analysis::BuildModuleInitialization(*input, entry_modules, quota.Remaining());
     if (const auto* error = std::get_if<ModuleInitializationError>(&initialized)) {
       switch (*error) {
         case ModuleInitializationError::kWorkLimit: throw Error::kWorkLimit;
@@ -257,8 +259,15 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
         case ModuleInitializationError::kInput: throw Error::kModuleOwner;
       }
     }
-    auto states = std::get<ModuleCreationStates>(std::move(initialized));
+    auto states = std::get<ModuleInitialization>(std::move(initialized));
     quota.Admit(states.allocated_bytes, 1); quota.Step(states.work);
+    // The common analysis also answers same-body reads. This owner retains
+    // only child-creation snapshots; original read proof lives in SemanticProof.
+    std::erase_if(states.states, [&](const auto& state) {
+      quota.Step(); const auto& operation=input->instructions[state.instruction.value].operation;
+      return !std::holds_alternative<analysis::FunctionCreation>(operation) &&
+          !std::holds_alternative<analysis::ClassCreation>(operation);
+    });
     std::vector<CaptureUse> uses;
     std::vector<InputCaptureAccess> accesses;
     std::size_t count = 0;

@@ -12,6 +12,42 @@
 
 ## 当前阶段
 
+### 2026-10-04：普通模块读取与创建点复用共同初始化分析
+
+- 规则 revision79。ModuleSlotSet 与完整 SSA/IDF 初始化算法移入 analysis，
+  原始 SemanticMethod 与当前 ValueProgram 分别提供真实 store/read/creation
+  站点，共用 Boolean must meet、支配树与持久化 before-site 快照。删除原始
+  raw local read 的 entry-block store 准入，以及 source stored-read 的
+  current_store.block==0 / 同块order准入。汇合事实不需要伪造一个支配store；
+  kStored 的直接入口 backlink 仅是可选 provenance，没有第二套算法。
+- 原始候选先形成结构事实，完整值域验证随后核对每个store操作数为Language，
+  再发布读取/子创建权限；单侧store、零次loop、Hole及read/store循环不能自证。
+  source 独立验证 CURRENT 图的可用性、actual write/use/domain，再重算初始化，
+  移除/移动store不能借旧输入放行。原始slot/origin/effects、live binding、TDZ
+  和正常/异常边界保留；FunctionInput只持有真实创建点快照。不扩大样本名称、
+  producer白名单、branch形状或opcode序列匹配。设计见module-reads.md。
+- 真实编码回归包含joined/two-arm/one-arm、zero-trip/do-first、未知/Hole循环、
+  当前store移除、before-site顺序、200/201/256/512/1024维度及精确work/resource。
+  候选分析先保留lexical验证work，新增预算回归防止unsigned quota wrap。
+  构建临时根在独立复核前释放，两个pass复用一个scratch额度。普通及catch
+  family的父分支raw read都输出完整源码，三profile独立native ESM对照扩展到
+  720组，覆盖分支两方向、身份、receiver、无转换、arity/name、live exports、
+  初始化异常及cycle TDZ。reference source仅进入测试。
+- 最终单构建 -j4 退出0：/tmp/abcd-module-normal-read-lifetime-final-build.log。
+  稳定二进制 lifetime-final-tests.log 中13/13相关检查10.67秒通过；720组对照
+  包含于module_writer_source_test。首次实际raw family输出RED拒绝保留在
+  red.log；搬移类型冲突及拼写错误的编译失败未计成功。full-suite/RSS/
+  扩展语料/基准/DFX仍暂停。
+- fresh build/stage-one/value-module-normal-read-pass-2 固定五输入均退出0；
+  80 complete /26 incomplete /0 failure /46 no-module，无完整回退、legacy
+  writer均0。final-batch.log记录本次当前构建；五输入SHA/size与manifest及
+  abc-index一致，106份完整/部分源码全部通过Node语法解析，字节与revision78
+  均一致：/tmp/abcd-module-normal-read-final-syntax.log。共同能力已闭合，
+  没有减少这五个输入的剩余缺口，不能替代阶段一语义/表示双验收。
+- 仍开放：phased parent 的成功Commit初始化、创建先于初始化的escape/
+  invocation证明、仅branch arm首次初始化的源码声明归属；算术输入域与导入
+  父类构造协议继续阻断部分函数正文。Goal active，继续实际开发。
+
 ### 2026-10-04：模块初始化通过共同 SSA 传播到真实创建点
 
 - 规则revision78。删除 FunctionInput 的 parent entry-block 初始化准入；

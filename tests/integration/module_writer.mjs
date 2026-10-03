@@ -41,7 +41,7 @@ async function setup(source, fail = false, failure = undefined, cycle = false, i
   return {root, dependency, trace};
 }
 let comparisons = 0;
-const modes = ['--module-writer', '--module-writer-branch', '--module-writer-literal', '--module-writer-catch', '--module-writer-parent-branch', '--module-writer-parent-branch-catch'];
+const modes = ['--module-writer', '--module-writer-branch', '--module-writer-literal', '--module-writer-catch', '--module-writer-parent-branch', '--module-writer-parent-branch-catch', '--module-writer-parent-branch-raw', '--module-writer-parent-branch-raw-catch'];
 for (const profile of ['1202', '1206', '1301']) {
   // The current entry proof deliberately refuses early-created writers whose
   // initialization needs escape/call analysis. Never equate a refused gap with

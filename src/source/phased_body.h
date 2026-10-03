@@ -3,11 +3,11 @@
 
 #include "exception_tree.h"
 #include "function_context.h"
+#include "module_slot_set.h"
 
 namespace abcd::source {
 struct PhasedModuleBinding;
 struct ModuleAliases;
-class ModuleSlotSet;
 enum class PhasedMethodError : std::uint8_t {
   kInput, kSsa, kEnvironment, kValues, kImport, kRegion, kControl, kEvaluation,
   kResourceLimit, kWorkLimit, kContract, kModules, kCells

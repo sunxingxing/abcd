@@ -1,4 +1,4 @@
-#include "module_initialization.h"
+#include "abcd/analysis/module_initialization.h"
 
 #include <algorithm>
 #include <bit>
@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <type_traits>
 
-namespace abcd::source {
+namespace abcd::analysis {
 namespace {
 using Error = ModuleInitializationError;
 class Quota {
@@ -45,43 +45,57 @@ class Quota {
   analysis::SemanticBudget initial, left;
 };
 }  // namespace
-std::variant<ModuleCreationStates, ModuleInitializationError>
-BuildModuleCreationStates(const analysis::SemanticMethod& input,
-                          const analysis::SemanticProof& proof,
-                          const ModuleSlotSet& entry,
+std::variant<ModuleInitialization, ModuleInitializationError>
+BuildModuleInitialization(std::span<const ModuleStateSite> program,
+                          const NormalFlow& flow, const ModuleSlotSet& entry,
                           analysis::SemanticBudget budget) {
   using namespace analysis;
   try {
     Quota quota(budget);
-    quota.Admit(sizeof(ModuleCreationStates));
-    quota.Require(
-        input.instructions.size() <= UINT32_MAX && !input.flow.blocks.empty() &&
-        input.flow.blocks.size() < UINT32_MAX &&
-        proof.environments.before.size() == input.instructions.size());
-    ModuleCreationStates result;
-    std::vector<ModuleSlot> slots;
-    quota.Reserve(slots, input.instructions.size());
-    std::size_t creations = 0;
-    for (std::size_t i = 0; i < input.instructions.size(); ++i) {
+    quota.Admit(sizeof(ModuleInitialization));
+    quota.Require(program.size() <= UINT32_MAX && !flow.blocks.empty() &&
+                  flow.blocks.size() < UINT32_MAX);
+    auto dominated =
+        BuildNormalDominators(flow, {}, {quota.left.bytes, quota.left.work});
+    if (const auto* error = std::get_if<DominatorError>(&dominated)) {
+      if (*error == DominatorError::kResourceLimit) throw Error::kResourceLimit;
+      if (*error == DominatorError::kWorkLimit) throw Error::kWorkLimit;
+      throw Error::kInput;
+    }
+    const auto& tree = std::get<DominatorTree>(dominated);
+    quota.Admit(tree.work.allocated_bytes);
+    quota.Step(tree.work.steps);
+    std::vector<std::uint8_t> reachable_site;
+    quota.Size(reachable_site, program.size());
+    for (std::size_t block = 0; block < flow.blocks.size(); ++block) {
       quota.Step();
-      if (!proof.environments.before[i]) continue;
-      const auto& operation = input.instructions[i].operation;
-      if (const auto* store = std::get_if<ModuleStore>(&operation)) {
-        // Writes are TRUE only after the owner's original value proof. A raw
-        // read/Hole/write cycle cannot initialize itself through this analysis.
-        quota.Step(std::bit_width(input.ssa.AllReads().size()) + 1);
-        const auto reads = input.ssa.Reads({static_cast<std::uint32_t>(i)});
-        quota.Require(reads.size() == 1);
-        const auto domain = proof.values.At(reads.front().value);
-        quota.Require(domain && domain->IsLanguage());
-        slots.push_back(store->slot);
+      const auto& region = flow.blocks[block];
+      quota.Require(region.first_instruction <= program.size() &&
+                    region.instruction_count <=
+                        program.size() - region.first_instruction);
+      if (!tree.nodes[block].begin) continue;
+      for (std::size_t site = region.first_instruction;
+           site <
+           std::size_t(region.first_instruction) + region.instruction_count;
+           ++site) {
+        quota.Step();
+        reachable_site[site] = 1;
       }
-      creations += std::holds_alternative<FunctionCreation>(operation) ||
-                   std::holds_alternative<ClassCreation>(operation);
+    }
+    ModuleInitialization result;
+    std::vector<ModuleSlot> slots;
+    quota.Reserve(slots, program.size());
+    std::size_t creations = 0;
+    for (std::size_t i = 0; i < program.size(); ++i) {
+      quota.Step();
+      if (!reachable_site[i]) continue;
+      const auto& site = program[i];
+      if (site.store) slots.push_back(*site.store);
+      creations += site.snapshot;
     }
     quota.Reserve(result.states, creations);
     if (!creations)
-      return ModuleCreationStates{{},
+      return ModuleInitialization{{},
                                   quota.initial.bytes - quota.left.bytes,
                                   quota.initial.work - quota.left.work};
     std::sort(slots.begin(), slots.end(), [&](auto a, auto b) {
@@ -95,39 +109,37 @@ BuildModuleCreationStates(const analysis::SemanticMethod& input,
                             }),
                 slots.end());
     if (slots.empty()) {
-      for (std::size_t i = 0; i < input.instructions.size(); ++i) {
+      for (std::size_t i = 0; i < program.size(); ++i) {
         quota.Step();
-        if (!proof.environments.before[i]) continue;
-        const auto& operation = input.instructions[i].operation;
-        if (std::holds_alternative<FunctionCreation>(operation) ||
-            std::holds_alternative<ClassCreation>(operation))
+        if (!reachable_site[i]) continue;
+        const auto& site = program[i];
+        if (site.snapshot)
           result.states.push_back({{static_cast<std::uint32_t>(i)}, entry});
       }
       result.allocated_bytes = quota.initial.bytes - quota.left.bytes;
       result.work = quota.initial.work - quota.left.work;
       return result;
     }
-    std::vector<RegisterSite> sites;
-    quota.Size(sites, input.instructions.size());
-    for (std::size_t i = 0; i < sites.size(); ++i) {
+    std::vector<RegisterSite> effects;
+    quota.Size(effects, program.size());
+    for (std::size_t i = 0; i < effects.size(); ++i) {
       quota.Step();
-      sites[i].pc = input.instructions[i].pc;
-      if (!proof.environments.before[i]) continue;
-      if (const auto* store =
-              std::get_if<ModuleStore>(&input.instructions[i].operation)) {
-        const auto found = std::lower_bound(slots.begin(), slots.end(),
-                                            store->slot, [&](auto a, auto b) {
+      effects[i].pc = program[i].pc;
+      if (!reachable_site[i]) continue;
+      if (const auto store = program[i].store) {
+        const auto found = std::lower_bound(slots.begin(), slots.end(), *store,
+                                            [&](auto a, auto b) {
                                               quota.Step();
                                               return a < b;
                                             });
-        quota.Require(found != slots.end() && *found == store->slot);
-        sites[i].effect.write =
+        quota.Require(found != slots.end() && *found == *store);
+        effects[i].effect.write =
             abc::RegisterId{static_cast<std::uint32_t>(found - slots.begin())};
       }
     }
     IdfQuota ssa_work(quota.left.work);
     auto built =
-        RegisterSsa::BuildSites(sites, input.flow, slots.size(), ssa_work,
+        RegisterSsa::BuildSites(effects, flow, slots.size(), ssa_work,
                                 {quota.left.bytes}, SsaPlacement::kComplete);
     quota.Step(ssa_work.Consumed());
     if (!std::holds_alternative<RegisterSsa>(built))
@@ -207,16 +219,6 @@ BuildModuleCreationStates(const analysis::SemanticMethod& input,
         }
       }
     }
-    auto dominated = BuildNormalDominators(input.flow, {},
-                                           {quota.left.bytes, quota.left.work});
-    if (const auto* error = std::get_if<DominatorError>(&dominated)) {
-      if (*error == DominatorError::kResourceLimit) throw Error::kResourceLimit;
-      if (*error == DominatorError::kWorkLimit) throw Error::kWorkLimit;
-      throw Error::kInput;
-    }
-    const auto& tree = std::get<DominatorTree>(dominated);
-    quota.Admit(tree.work.allocated_bytes);
-    quota.Step(tree.work.steps);
     struct InitializedPhi {
       BlockId block;
       ModuleSlot slot;
@@ -265,21 +267,19 @@ BuildModuleCreationStates(const analysis::SemanticMethod& input,
       auto state = parent ? completed[parent->value] : entry;
       for (auto i = phi_offsets[id.value]; i < phi_offsets[id.value + 1]; ++i)
         quota.Insert(state, phis[i].slot);
-      const auto& block = input.flow.blocks[id.value];
-      quota.Require(block.first_instruction <= input.instructions.size() &&
+      const auto& block = flow.blocks[id.value];
+      quota.Require(block.first_instruction <= program.size() &&
                     block.instruction_count <=
-                        input.instructions.size() - block.first_instruction);
+                        program.size() - block.first_instruction);
       for (std::size_t i = block.first_instruction;
            i < std::size_t(block.first_instruction) + block.instruction_count;
            ++i) {
         quota.Step();
-        quota.Require(proof.environments.before[i].has_value());
-        const auto& operation = input.instructions[i].operation;
-        if (const auto* store = std::get_if<ModuleStore>(&operation))
-          quota.Insert(state, store->slot);
-        if (std::holds_alternative<FunctionCreation>(operation) ||
-            std::holds_alternative<ClassCreation>(operation))
+        quota.Require(reachable_site[i]);
+        const auto& site = program[i];
+        if (site.snapshot)
           result.states.push_back({{static_cast<std::uint32_t>(i)}, state});
+        if (site.store) quota.Insert(state, *site.store);
       }
       completed[id.value] = std::move(state);
     }
@@ -287,7 +287,7 @@ BuildModuleCreationStates(const analysis::SemanticMethod& input,
     std::sort(result.states.begin(), result.states.end(),
               [&](const auto& a, const auto& b) {
                 quota.Step();
-                return a.creation < b.creation;
+                return a.instruction < b.instruction;
               });
     result.allocated_bytes = quota.initial.bytes - quota.left.bytes;
     result.work = quota.initial.work - quota.left.work;
@@ -300,4 +300,38 @@ BuildModuleCreationStates(const analysis::SemanticMethod& input,
     return Error::kResourceLimit;
   }
 }
-}  // namespace abcd::source
+std::variant<ModuleInitialization, ModuleInitializationError>
+BuildModuleInitialization(const SemanticMethod& input,
+                          const ModuleSlotSet& entry, SemanticBudget budget) {
+  try {
+    Quota quota(budget);
+    std::vector<ModuleStateSite> sites;
+    quota.Size(sites, input.instructions.size());
+    for (std::size_t i = 0; i < sites.size(); ++i) {
+      quota.Step();
+      const auto& instruction = input.instructions[i];
+      sites[i].pc = instruction.pc;
+      if (const auto* store = std::get_if<ModuleStore>(&instruction.operation))
+        sites[i].store = store->slot;
+      const auto* load = std::get_if<ModuleLoad>(&instruction.operation);
+      sites[i].snapshot =
+          (load && load->space == ModuleSpace::kLocal) ||
+          std::holds_alternative<FunctionCreation>(instruction.operation) ||
+          std::holds_alternative<ClassCreation>(instruction.operation);
+    }
+    auto built =
+        BuildModuleInitialization(sites, input.flow, entry, quota.left);
+    if (auto* result = std::get_if<ModuleInitialization>(&built)) {
+      result->allocated_bytes += quota.initial.bytes - quota.left.bytes;
+      result->work += quota.initial.work - quota.left.work;
+    }
+    return built;
+  } catch (Error error) {
+    return error;
+  } catch (const std::bad_alloc&) {
+    return Error::kResourceLimit;
+  } catch (const std::length_error&) {
+    return Error::kResourceLimit;
+  }
+}
+}  // namespace abcd::analysis

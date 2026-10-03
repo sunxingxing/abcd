@@ -370,3 +370,16 @@ Language store、真实 owner/创建身份、TDZ、异常和效果义务保留�
 的创建仍缺 escape/invocation 证明。正常 parent 的结果供 normal/phased
 child 共同使用，phased parent 的成功 Commit 分析仍未贯通。源码首次声明
 和父函数 raw read 的独立边界没有被这项替换隐藏。详见 module-reads.md。
+
+
+## 规则 79：同函数读取与当前图复用共同初始化分析
+
+SemanticValidation 的 raw local read 已不再只认 entry-block store。共用
+analysis::BuildModuleInitialization 的 all-path 候选，完整输入验证再逐项
+核对所有store的Language操作数，单侧写入、零次循环和Hole/read-store循环
+不能自证。ModuleReadFact::kStored 的入口store backlink变为可选来源，不是
+准入条件。source ModuleGuards 用同一个算法重算 CURRENT ValueProgram 的
+初始化状态，并检查实际write/use/domain和原始身份/effects；删除其stored-read
+current_store.block==0 / 同块order条件。工作图移除/移动store不能靠旧输入证明
+放行。phased parent、guard成功Commit与首次source声明归属仍是开放项；
+没有增加branch形状、producer列表或sample身份匹配。详见module-reads.md。

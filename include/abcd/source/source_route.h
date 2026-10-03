@@ -279,7 +279,7 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // allow invariant pure evaluations across CFG splits without mutable bindings.
 // Rules 77 bind child module writes using immutable initialized-entry premises,
 // canonical native aliases and actual normal/phased store operands; no new declaration.
-inline constexpr std::uint32_t kRouteEvidenceRules = 78;
+inline constexpr std::uint32_t kRouteEvidenceRules = 79;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,
