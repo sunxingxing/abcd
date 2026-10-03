@@ -15,7 +15,7 @@ using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
 enum class Shape {
-  kReturn, kCatch, kObserve, kLate, kBranch, kCatchObserve, kNested, kNestedCatch,
+  kStaged, kStagedObserve, kStagedCatchObserve, kReturn, kCatch, kObserve, kLate, kBranch, kCatchObserve, kNested, kNestedCatch,
   kNestedCatchObserve, kNestedDispatch, kNestedShared, kNestedSnapshot, kUnary, kUnaryCatch,
   kUnaryShared, kUnaryUnknown, kNestedDeadCopy, kNestedDeadArray, kGlobalCatch, kGlobalDispatch, kLexicalCatch, kBinaryCatch
 };
@@ -26,6 +26,9 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   constexpr std::uint8_t kObject = 0, kParameter = 4;
   std::vector<std::uint8_t> bytes{op(abc::Opcode::kCREATEEMPTYOBJECT), op(abc::Opcode::kSTA_V8), kObject};
+  const bool staged = shape == Shape::kStaged || shape == Shape::kStagedObserve || shape == Shape::kStagedCatchObserve;
+  if (staged) bytes = {op(abc::Opcode::kCREATEOBJECTWITHBUFFER_IMM8_ID16), 0, 0, 0,
+      op(abc::Opcode::kSTA_V8), kObject};
   const bool binary = shape == Shape::kBinaryCatch;
   const bool lexical = shape == Shape::kLexicalCatch;
   std::uint32_t lexical_try_begin = 0;
@@ -44,7 +47,7 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
       shape == Shape::kUnaryShared || shape == Shape::kUnaryUnknown;
   const bool numeric_update = unary == abc::Opcode::kTONUMERIC_IMM8 ||
       unary == abc::Opcode::kINC_IMM8 || unary == abc::Opcode::kDEC_IMM8;
-  const bool caught = shape == Shape::kCatch || shape == Shape::kCatchObserve ||
+  const bool caught = staged || shape == Shape::kCatch || shape == Shape::kCatchObserve ||
       shape == Shape::kNestedCatch || shape == Shape::kNestedCatchObserve || shape == Shape::kNestedDispatch || shape == Shape::kNestedSnapshot || shape == Shape::kUnaryCatch ||
       dead_copy || global || lexical || binary;
   constexpr std::uint8_t kSaved = 2, kSnapshotInput = 6, kSnapshotPrelude = 4;
@@ -55,10 +58,14 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
       {op(abc::Opcode::kLDTRUE), op(abc::Opcode::kSTA_V8), kSaved});
   for (std::uint32_t i = 0; i < (dead_copy ? 0 : copies); ++i)
     bytes.insert(bytes.end(), {op(abc::Opcode::kMOV_V8_V8), kObject, kObject});
-  if (shape == Shape::kObserve) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kObject,
+  if (shape == Shape::kObserve || shape == Shape::kStagedObserve) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kObject,
       op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0});
+  if (staged) bytes.insert(bytes.end(), {
+      op(abc::Opcode::kLDA_V8), kParameter, op(abc::Opcode::kJEQZ_IMM8), 10,
+      op(abc::Opcode::kLDA_V8), kParameter, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 1, 0,
+      op(abc::Opcode::kJMP_IMM8), 3, op(abc::Opcode::kLDNULL)});
   if (shape == Shape::kBranch) bytes.insert(bytes.end(), {op(abc::Opcode::kJEQZ_IMM8), 2});
-  if (!nested && !arithmetic) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kParameter});
+  if (!nested && !arithmetic && !staged) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kParameter});
   if (shape == Shape::kLate) bytes.insert(bytes.end(), {op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0});
   for (std::uint32_t i = 0; i < fields; ++i) {
     constexpr std::uint8_t kInner = 1;
@@ -102,12 +109,12 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
       op(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8), 0, 0, 0, kObject});
   bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kObject, op(abc::Opcode::kRETURN)});
   const auto catch_pc = static_cast<std::uint32_t>(bytes.size());
-  if (shape == Shape::kCatchObserve || shape == Shape::kNestedCatchObserve) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kObject});
+  if (shape == Shape::kStagedCatchObserve || shape == Shape::kCatchObserve || shape == Shape::kNestedCatchObserve) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kObject});
   if (shape == Shape::kNestedSnapshot) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kSaved});
   if (caught) bytes.push_back(op(abc::Opcode::kRETURN));
   auto body = test::Body(bytes);
   if (caught) {
-    abc::TryRegion region; region.offset = {shape == Shape::kCatchObserve || shape == Shape::kNestedCatchObserve || shape == Shape::kNestedDispatch || shape == Shape::kGlobalDispatch ? initialized_pc : 0};
+    abc::TryRegion region; region.offset = {shape == Shape::kStagedCatchObserve || shape == Shape::kCatchObserve || shape == Shape::kNestedCatchObserve || shape == Shape::kNestedDispatch || shape == Shape::kGlobalDispatch ? initialized_pc : 0};
     if (shape == Shape::kNestedSnapshot) region.offset = {kSnapshotPrelude};
     if (lexical) region.offset = {lexical_try_begin};
     region.length = catch_pc - region.offset.value; region.handler_count = 1;
@@ -143,7 +150,7 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   const PhasedValueInput input{flow, ssa, env, values, proof, frame};
   const auto graph = std::get<ValueProgram>(ImportPhasedValues(input));
   const auto result = BuildPhasedEvaluationPlan(graph);
-  if (shape == Shape::kObserve || shape == Shape::kBranch || shape == Shape::kCatchObserve ||
+  if (shape == Shape::kStagedObserve || shape == Shape::kStagedCatchObserve || shape == Shape::kObserve || shape == Shape::kBranch || shape == Shape::kCatchObserve ||
       shape == Shape::kNestedCatchObserve || shape == Shape::kNestedDispatch || shape == Shape::kNestedShared || shape == Shape::kNestedSnapshot ||
       shape == Shape::kUnaryShared || shape == Shape::kGlobalDispatch) {
     test::Check(std::get<EvaluationError>(result) == EvaluationError::kUnsupportedOperation);
@@ -210,7 +217,7 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
     invalid.aliases[rhs.value] = rhs;
     test::Check(std::get<LiteralError>(VerifyPhasedLiteralPlan(graph, literal, invalid)) == LiteralError::kFlow);
   }
-  if (shape == Shape::kCatch || shape == Shape::kNestedCatch || shape == Shape::kUnaryCatch || dead_copy || shape == Shape::kGlobalCatch || lexical || binary ||
+  if (staged || shape == Shape::kCatch || shape == Shape::kNestedCatch || shape == Shape::kUnaryCatch || dead_copy || shape == Shape::kGlobalCatch || lexical || binary ||
       (shape == Shape::kUnaryUnknown && (unary == abc::Opcode::kTONUMERIC_IMM8 || unary == abc::Opcode::kTONUMBER_IMM8))) {
     const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
     const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
@@ -222,19 +229,26 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       if (std::holds_alternative<ValueString>(graph.ops[i].operation)) constants[i] = TextId{0};
       if (std::holds_alternative<ValueGlobalRead>(graph.ops[i].operation)) constants[i] = NameId{1};
-      if (global && std::holds_alternative<ValueNamedRead>(graph.ops[i].operation)) constants[i] = NameId{2};
+      if ((global || staged) && std::holds_alternative<ValueNamedRead>(graph.ops[i].operation)) constants[i] = NameId{2};
     }
+    std::vector<ConstantProperty> properties;
+    if (staged) {
+      test::Check(literal.objects.front().form == LiteralForm::kStatements);
+      constants[literal.objects.front().allocation.value] = AggregateConstant{0, 1};
+      properties.push_back({NameId{0}, NullLiteral{}});
+    }
+    const ExpressionConstants resolved{constants, syntax.names.size(), syntax.texts.size(), {}, properties};
     const ExceptionTreeInput context{body, input, regions, control};
     // This exercises repeated independent tree/phase checks as well as the
     // initializer proof. Keep its explicit allowance separate from the exact
     // initializer-work tests above; production defaults are unchanged.
     constexpr SemanticBudget kTreeBudget{};
-    const auto built = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, {constants, syntax.names.size(), syntax.texts.size()}, kTreeBudget);
+    const auto built = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, resolved, kTreeBudget);
     test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
     const auto& tree = std::get<ExceptionFunctionDraft>(built).tree;
-    test::Check(tree.properties.size() == (nested ? fields * 2 : fields));
+    test::Check(tree.properties.size() == (staged ? 1 : nested ? fields * 2 : fields));
     test::Check(std::holds_alternative<TreeSemantics>(VerifyExceptionTreeSemantics(
-        graph, context, evaluation, tree, {constants, syntax.names.size(), syntax.texts.size()}, kTreeBudget)));
+        graph, context, evaluation, tree, resolved, kTreeBudget)));
     if (print) {
       const GlobalScope globals{};
       std::ostringstream output;
@@ -249,6 +263,11 @@ int main(int argc, char** argv) {
   if (argc == 2) {
     const auto option = std::string_view(argv[1]);
     const bool update = option == "--increment-source" || option == "--decrement-source" || option == "--numeric-source";
+    if (option == "--staged-source") {
+      Run(abc::ProfileId::kDynamic1206, Shape::kStaged, 0, 2,
+          abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8, abc::Opcode::kNEG_IMM8, true);
+      return 0;
+    }
     test::Check(option == "--global-source" || option == "--lexical-source" || update);
     const auto unary = option == "--increment-source" ? abc::Opcode::kINC_IMM8 :
         option == "--decrement-source" ? abc::Opcode::kDEC_IMM8 :
@@ -260,7 +279,7 @@ int main(int argc, char** argv) {
   }
   for (const auto profile : {abcd::abc::ProfileId::kDynamic1202, abcd::abc::ProfileId::kDynamic1206,
                             abcd::abc::ProfileId::kDynamic1301}) {
-    for (const auto shape : {Shape::kReturn, Shape::kCatch, Shape::kObserve, Shape::kLate, Shape::kBranch,
+    for (const auto shape : {Shape::kStaged, Shape::kStagedObserve, Shape::kStagedCatchObserve, Shape::kReturn, Shape::kCatch, Shape::kObserve, Shape::kLate, Shape::kBranch,
                              Shape::kCatchObserve, Shape::kNested, Shape::kNestedCatch, Shape::kNestedCatchObserve,
                              Shape::kNestedSnapshot, Shape::kNestedDispatch, Shape::kNestedShared,
                              Shape::kUnary, Shape::kUnaryCatch, Shape::kUnaryShared, Shape::kUnaryUnknown,
@@ -298,7 +317,10 @@ int main(int argc, char** argv) {
       }
       previous_copies = copy_work; previous_arrays = array_work;
     }
-    for (const auto count : {1U, 2U, 200U, 201U, 402U}) Run(profile, Shape::kBinaryCatch, 0, count);
+    for (const auto count : {1U, 2U, 200U, 201U, 402U}) {
+      Run(profile, Shape::kBinaryCatch, 0, count);
+      Run(profile, Shape::kStaged, 0, count);
+    }
     std::uint64_t lexical_work = 0;
     for (const auto count : {1U, 2U, 200U, 201U, 402U}) {
       const auto work = Run(profile, Shape::kLexicalCatch, 0, count);

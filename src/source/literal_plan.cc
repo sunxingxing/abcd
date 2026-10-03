@@ -490,14 +490,16 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
 // write, only these own-field base uses may observe the fresh object. Acyclic
 // control plus dominance excludes an escape followed by a later initialization.
 void VerifyStaged(const analysis::ValueProgram& graph, const LiteralPlan& plan,
-    std::span<const std::optional<analysis::OpId>> owners, LiteralBudget& budget) {
+    std::span<const std::optional<analysis::OpId>> owners, LiteralBudget& budget, const LiteralPath& path) {
   if (plan.staged.empty()) return;
-  Require(graph.phases.empty(), Error::kFlow);
   analysis::NormalFlow flow; budget.Size(flow.blocks, graph.blocks.size());
   std::vector<std::size_t> incoming, order, rank;
   budget.Size(incoming, graph.blocks.size()); budget.Size(order, graph.blocks.size()); budget.Size(rank, graph.blocks.size());
   for (std::size_t b = 0; b < graph.blocks.size(); ++b) {
     budget.Step(); auto& output = flow.blocks[b]; const auto& block = graph.blocks[b];
+    // Phased Before/Commit/Catch edges all participate in dominance. Never
+    // drop an exception edge to make a private initialization appear complete.
+    Require(block.edge_count <= output.successors.size(), Error::kFlow);
     output.successor_count = block.edge_count;
     for (std::uint32_t e = 0; e < block.edge_count; ++e) {
       budget.Step(); const auto& edge = graph.edges[block.first_edge.value + e];
@@ -523,6 +525,8 @@ void VerifyStaged(const analysis::ValueProgram& graph, const LiteralPlan& plan,
   }
   const auto& dom = std::get<analysis::DominatorTree>(built);
   budget.Step(dom.work.steps); budget.Admit(dom.work.allocated_bytes, 1);
+  std::vector<std::optional<analysis::OpId>> finals, allocations;
+  budget.Size(finals, graph.values.size()); budget.Size(allocations, graph.values.size());
   for (const auto& object : plan.objects) {
     budget.Step(); if (object.form != LiteralForm::kStatements) continue;
     const auto& allocation = graph.ops[object.allocation.value];
@@ -535,23 +539,47 @@ void VerifyStaged(const analysis::ValueProgram& graph, const LiteralPlan& plan,
       if (rank[op.block.value] > rank[graph.ops[last.value].block.value] ||
           (op.block == graph.ops[last.value].block && op.order > graph.ops[last.value].order)) last = id;
     }
-    const auto& final = graph.ops[last.value];
-    for (auto at = graph.values[allocation.result->value].first_use; at; at = graph.uses[at->value].next) {
-      budget.Step(); const auto& use = graph.uses[at->value];
-      if (use.life != analysis::ValueLife::kLive) continue;
-      analysis::WorkBlockId block; std::size_t position;
-      if (const auto* user = std::get_if<analysis::OpId>(&use.owner)) {
-        const auto& op = graph.ops[user->value];
-        if (owners[user->value] == object.allocation && *at == op.first_use) continue;
-        block = op.block; position = op.order;
-      } else {
-        Require(use.incoming && std::holds_alternative<analysis::EdgeId>(*use.incoming), Error::kObserved);
-        block = graph.edges[std::get<analysis::EdgeId>(*use.incoming).value].source;
-        position = graph.blocks[block.value].op_count;
-      }
-      Require(dom.Dominates({final.block.value}, {block.value}) &&
-          (final.block != block || final.order < position), Error::kObserved);
+    finals[allocation.result->value] = last;
+    allocations[allocation.result->value] = object.allocation;
+  }
+  // Resolve each occurrence once. Copy aliases in phased IR must not hide an
+  // early escape; conversely, a pure register copy is not an observation.
+  for (std::size_t i = 0; i < graph.uses.size(); ++i) {
+    budget.Step(); const auto& use = graph.uses[i];
+    if (use.life != analysis::ValueLife::kLive) continue;
+    const auto operand = path.Resolve(use.operand);
+    const auto* value = std::get_if<analysis::ValueId>(&operand);
+    if (!value || !finals[value->value]) continue;
+    const auto& final = graph.ops[finals[value->value]->value];
+    analysis::WorkBlockId block; std::size_t position;
+    if (const auto* user = std::get_if<analysis::OpId>(&use.owner)) {
+      const auto& op = graph.ops[user->value];
+      if (op.life != analysis::ValueLife::kLive || path.Alias(*user) || path.Elided(*user)) continue;
+      if (owners[user->value] == allocations[value->value] && i == op.first_use.value) continue;
+      block = op.block; position = op.order;
+    } else {
+      Require(use.incoming && std::holds_alternative<analysis::EdgeId>(*use.incoming), Error::kObserved);
+      const auto& edge = graph.edges[std::get<analysis::EdgeId>(*use.incoming).value];
+      // A before-throw snapshot does not prove completion of the final write.
+      Require(edge.kind != analysis::FlowEdgeKind::kException, Error::kObserved);
+      block = edge.source; position = graph.blocks[block.value].op_count;
     }
+    auto completed = final.block;
+    if (path.Phased()) {
+      const auto& before = graph.blocks[final.block.value];
+      std::optional<analysis::WorkBlockId> commit;
+      for (std::uint32_t e = 0; e < before.edge_count; ++e) {
+        budget.Step(); const auto& edge = graph.edges[before.first_edge.value + e];
+        if (edge.kind == analysis::FlowEdgeKind::kException) continue;
+        const auto& phase = graph.phases[edge.target.value];
+        Require(!commit && phase.phase == analysis::ExceptionPhase::kCommit &&
+            phase.operation == finals[value->value], Error::kFlow);
+        commit = edge.target;
+      }
+      Require(commit.has_value(), Error::kFlow); completed = *commit;
+    }
+    Require(dom.Dominates({completed.value}, {block.value}) &&
+        (final.block != block || final.order < position), Error::kObserved);
   }
 }
 struct FieldOwner { analysis::OpId allocation; analysis::OpId definition; };
@@ -604,7 +632,7 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
           previous_index = indexed->index;
         }
         if (object.form == LiteralForm::kStatements) {
-          Require(!evaluation && (plan.nested.empty() || !plan.nested[id.value]), Error::kDefinition);
+          Require(plan.nested.empty() || !plan.nested[id.value], Error::kDefinition);
           owners[id.value] = object.allocation; continue;
         }
         Require(path.Before(graph.ops[prior.value], op), Error::kDefinition); prior = id;
@@ -625,7 +653,7 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
           (std::holds_alternative<analysis::ValueOwnWrite>(graph.ops[i].operation) || std::holds_alternative<analysis::ValueIndexedWrite>(graph.ops[i].operation));
       Require(owners[i].has_value() == own && (!IsStagedLiteral(&plan, {static_cast<std::uint32_t>(i)}) || own), Error::kCoverage);
     }
-    VerifyStaged(graph, plan, owners, budget);
+    VerifyStaged(graph, plan, owners, budget, path);
     const auto initialized_receivers = InitializedReceiverChecks(graph, receiver_guards, budget, evaluation);
     VerifyNesting(graph, plan, owners, budget, guards, path, evaluation, initialized_receivers);
     if (evaluation) {
@@ -642,6 +670,7 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
         const auto* value = std::get_if<analysis::ValueId>(&operand);
         if (!value || !objects[value->value]) continue;
         const auto& object = plan.objects[*objects[value->value]];
+        if (object.form == LiteralForm::kStatements) continue;
         if (const auto* op = std::get_if<analysis::OpId>(&use.owner)) {
           if (graph.ops[op->value].life != analysis::ValueLife::kLive || path.Alias(*op) || path.Elided(*op)) continue;
           if (owners[op->value] == object.allocation && graph.ops[op->value].first_use.value == i) continue;
@@ -709,7 +738,7 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
       const auto& op = graph.ops[i];
       if ((!projected.empty() && projected[i]) || op.life != analysis::ValueLife::kLive || IsReceiverField(graph, op) || !(std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) continue;
       const analysis::OpId id{static_cast<std::uint32_t>(i)};
-      fields[next++] = {Allocation(graph, id, path, evaluation != nullptr), id};
+      fields[next++] = {Allocation(graph, id, path, false), id};
     }
     std::sort(fields.begin(), fields.end(), [&](const auto& a, const auto& b) {
       budget.Step();

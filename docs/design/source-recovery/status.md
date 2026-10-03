@@ -12,6 +12,28 @@
 
 ## 当前阶段
 
+### 2026-10-03：异常图跨分支的分步对象构造
+
+- LiteralPlan 复用既有 kStatements/共同 AST，在 phased CFG 中允许缓冲对象
+  的字段定义跨分支；分配、RHS、字段写入仍保留各自原始控制流与异常位置。
+  不复制源码、不引入样本识别或 IIFE。现有 writable own data property 名称
+  验证继续决定能否输出普通赋值；不允许借此触发继承 setter。
+- 支配分析包括 Before/Commit/Catch 全部边；统一使用规范化 operand 做一次
+  use census，寄存器 copy 不能隐藏提前逃逸。外部观察必须位于最终写入的
+  正常 Commit 支配范围；提前观察、catch 快照和循环继续拒绝。
+- 真实字节码用例先在原实现复现失败；新增三 profile 分支/异常/提前观察/
+  catch 观察及 1/2/200/201/402 字段用例。native 对照43组验证 getter次数、
+  receiver、抛出值身份、对象身份、字段属性与 __proto__。这是定向行为验证，
+  不替代 Ark 平台或完整应用验收。
+- 相关 targets -j4 构建退出0；12/12测试通过38.36秒，日志
+  /tmp/abcd-phased-staged-related-{build,tests}.log。固定五输入 fresh
+  build/stage-one/value-phased-staged-pass-1 全部退出0，仍为77 complete /
+  5 incomplete /24 failure /46 no-module；无完整项回退、源码变化或legacy。
+- Voip 方法12264已越过原LiteralError::kReceiver；下一处为方法12319的
+  FunctionTreeError::kOwnership，证据 /tmp/abcd-phased-staged-next-method.log
+  和 /tmp/abcd-phased-staged-next-family.log。record11989仍失败，阶段一未完成。
+  未运行 full-suite/扩展语料/RSS；Goal保持active。
+
 ### 2026-10-03：self 顺序证据接入投影与捕获
 
 - FamilyReader 批量读取候选对应的真实初始化器并建立 ClassSelfOrder；父
