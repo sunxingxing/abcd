@@ -238,3 +238,38 @@ graph形状或producer白名单去取得恢复许可。callee、receiver和求�
 数字成员base及new目标中的call分组也是语言grammar，不能靠删括号提升外观。
 14种组合、2538组行为对照及200/201长链验证支持这次表示变更；前述12项
 能力审计中的开放语义/表示缺口没有因此全部关闭。
+
+## 2026-10-04：当前提交复核与 literal 嵌套补充
+
+复核基线 66e48615，工作区干净。再次核对历史 c9c8a93b、删除同块条件的
+766afe0c 和当前 VerifyCalls：同块限制没有回归；inline-owned callee 表示
+边界仍在。src/include/tools 的 pasteboard、WindowUtil、Immersive、
+PushMessage、EntryAbility、Widget、abc_with_code 文本搜索未命中；这仍只
+证明所搜身份文本没有被用于生产分派，不证明不存在其他隐蔽特例。
+
+补充一类此前表格未独立列出的实现边界，使当前清单为13类：
+
+| 优先级 | 当前源码位置 | 实现边界 | 通用替换方向与真实义务 |
+|---|---|---|---|
+| P1 | src/source/literal_plan.cc::LiteralExpression/LiteralUnary，约247/265行 | literal 嵌套单独列举 unary、binary、call、construct、read、closure 等可接受表达式；共同 DescribeEvaluation 已有表达式能力描述，两处能力需分别维护 | 共同接口描述 AST lowering 的输入求值次数、eager/conditional/suspension 行为和 Reference 消费方式；结合 literal 所有权、效果/异常区间、创建环境和逃逸证明决定嵌套，不再通过追加 operation 类型扩大准入 |
+
+不能仅将这份列表替换为 DescribeEvaluation(...).expression：该属性目前不
+证明一次求值、暂停语义或安全的原生表示。FalseOrZero/TrueOrNonzeroNumber
+打印会重复读取 snapshot，不能把有副作用子树直接代入；await/yield 也不能
+靠表达式标签忽略暂停。binary 的 use_count == 2 是两个输入操作数的元数，
+不是“只允许两个使用者”的恢复限制；Language domain、closure HomeObject、
+模块 Hole guard 和全局 lookup 的语义区别仍须逐项证明。
+
+前表 class 同块项还覆盖 ProjectClassDefinitions 的第二层检查：约64行的
+claim 限定 creation/definition 同块，约93/107行限定 class/prototype 的
+外部观察者与最后安装同块且在其后。只改 FindClassDefinitions 的候选发现
+不能修复跨块投影。共同替换必须同时证明安装的执行条件/次数、所有观察者
+看见完整类、HomeObject/捕获身份与 intervening effects；不能以 block ID 或
+operation ID 的数值顺序推断 dominance/lifetime。
+
+本次仅更新审计及状态，没有扩大生产接受域或删除真实语义义务。当前现有
+build 重跑5/5定向测试通过（15.10秒）：logical_regions_test、
+pasteboard_partial_callback_source_test、retained_selection_source_test、
+expression_snapshot_source_test、forwarded_selection_source_test。日志
+/tmp/abcd-reference-shape-current-tests.log。未重新构建、未运行全套/扩展
+语料/RSS；pasteboard callback 通过不等于整个 record 已完整恢复。

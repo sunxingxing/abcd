@@ -12,6 +12,22 @@
 
 ## 当前阶段
 
+### 2026-10-04：恢复准入条件当前复核，补充 literal 嵌套能力列表
+
+- 基线66e48615。历史引用同块校验的来源和删除再次核实；当前 VerifyCalls
+  没有同块条件，仍有 inline-owned callee 表示边界。AGENTS.md 中禁止在
+  共同语义证明之后追加布局、邻接、producer列表或selection数量准入的
+  规则继续有效；没有新增生产特例。
+- [条件审计](shape-restrictions-audit.md) 补充 LiteralExpression/LiteralUnary
+  的独立表达式类型列表，当前13类开放事项；同时明确 class 投影的 claim
+  与外部观察者同块限制也需共同替换，仅放宽候选发现不能完成修复。
+  区分输入元数、数值域、重复snapshot读取和暂停语义等真实义务，不将所有
+  typed dispatch 误判为特例，也不盲删校验。
+- 现有build重跑5/5调用/快照/选择定向回归15.10秒通过，日志
+  /tmp/abcd-reference-shape-current-tests.log。本次只改文档，未重新构建；
+  full-suite/扩展语料/RSS保持暂停。尚未通用替换所有13类限制，阶段一
+  完整语义/源码表示验收仍开放。
+
 ### 2026-10-04：调用、构造与成员链使用共同语言语法分组
 
 - 规则 revision72。共同 TreeOperatorContext 增加 typed PostfixContext，
