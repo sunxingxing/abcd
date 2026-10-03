@@ -85,13 +85,15 @@ class FamilyTrees {
       Account(syntax);
       std::optional<ModuleAliases> normal_aliases;
       const ModuleAliases* aliases = phase ? phase->Phases().Modules() : nullptr;
-      if (aliases || (!phase && !function.Normal().values.modules.pairs.empty())) {
+      if (aliases || (!phase && (!function.Normal().values.modules.pairs.empty() || std::any_of(graph.ops.begin(), graph.ops.end(),
+          [&](const auto& op) { Step(1); return op.life == analysis::ValueLife::kLive &&
+              std::holds_alternative<analysis::ValueModuleWrite>(op.operation); })))) {
         Require(modules_ != nullptr, FamilyTreeError::kModules);
         Require(syntax.syntax.names.size() < std::numeric_limits<std::uint32_t>::max(), FamilyTreeError::kResourceLimit);
         const auto first_name = static_cast<std::uint32_t>(syntax.syntax.names.size());
         if (!phase) {
           normal_aliases = Take<ModuleAliases, ModuleAliasFailure>(BindModuleAliases(file_, header_, index_,
-              function.Normal().input, function.Normal().values, *modules_, module_owner_, {first_name}, left_));
+              function.Normal().input, function.Normal().values, *modules_, module_owner_, {first_name}, left_, ModuleAccess::kMutable));
           Account(*normal_aliases); aliases = &*normal_aliases;
         }
         Require(aliases && aliases->record == modules_->record() && aliases->owner == module_owner_ &&
@@ -110,6 +112,11 @@ class FamilyTrees {
           Step(1); alias.name.value += first_name - aliases->first_name.value;
           syntax.syntax.modules.push_back(alias);
         }
+      }
+      if (aliases) for (const auto& write : aliases->writes) {
+        Step(1); Require(write.operation.value < syntax.operations.size() && !write.binding.initialize,
+            FamilyTreeError::kModules);
+        syntax.operations[write.operation.value] = write.binding;
       }
       std::optional<DerivedProjection> derived;
       if (context.Callable() == CallableKind::kDerivedConstructor) {

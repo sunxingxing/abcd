@@ -7,6 +7,7 @@
 namespace abcd::source {
 struct PhasedModuleBinding;
 struct ModuleAliases;
+class ModuleSlotSet;
 enum class PhasedMethodError : std::uint8_t {
   kInput, kSsa, kEnvironment, kValues, kImport, kRegion, kControl, kEvaluation,
   kResourceLimit, kWorkLimit, kContract, kModules, kCells
@@ -40,7 +41,8 @@ class PhasedBody {
       std::span<const analysis::AwaitSite> awaits = {},
       std::span<const abc::CodeOffset> source_pcs = {},
       std::span<const analysis::YieldSite> yields = {},
-      std::span<const analysis::LanguageLoadFact> initialized_modules = {});
+      std::span<const analysis::LanguageLoadFact> initialized_modules = {},
+      const ModuleSlotSet* entry_modules = nullptr);
   const analysis::ValueProgram& Graph() const;
   const RouteInputIdentity& Identity() const;
   abc::EntityOffset Target() const;

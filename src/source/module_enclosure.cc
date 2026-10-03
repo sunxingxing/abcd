@@ -130,8 +130,9 @@ std::variant<ModuleDestination, ModuleEnclosureError> VerifyModuleDestination(
             alias.target.symbol.value >= enclosure.Names().size() && symbol.scope == tree.body_scope &&
             symbol.kind == BindingKind::kLocal && symbol.declaration == DeclarationKind::kLet, Error::kBinding);
       } else {
-        Require(alias.access == ModuleAccess::kReadOnly && symbol.scope == *tree.module_scope &&
-            symbol.kind == BindingKind::kModule && symbol.declaration == DeclarationKind::kConst, Error::kBinding);
+        Require((alias.access == ModuleAccess::kReadOnly || (local && alias.access == ModuleAccess::kMutable)) &&
+            symbol.scope == *tree.module_scope && symbol.kind == BindingKind::kModule &&
+            symbol.declaration == (alias.access == ModuleAccess::kMutable ? DeclarationKind::kLet : DeclarationKind::kConst), Error::kBinding);
       }
       const std::u16string_view name = tree.names[symbol.name.value];
       if (local) Require(budget.Equal(name, std::u16string_view(

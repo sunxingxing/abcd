@@ -1411,6 +1411,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/module_family_print.mjs $<TARGET_FILE:module_family_print_test>)
     add_test(NAME record_import_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_import_tree.mjs $<TARGET_FILE:record_import_tree_test>)
+    add_test(NAME module_writer_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/module_writer.mjs $<TARGET_FILE:record_import_tree_test>)
     add_test(NAME module_store_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/module_store_tree.mjs $<TARGET_FILE:module_store_tree_test>)
     add_test(NAME derived_cells_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

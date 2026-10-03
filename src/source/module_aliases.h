@@ -5,9 +5,14 @@
 #include "function_syntax.h"
 #include "function_values.h"
 #include "module_reads.h"
+#include "expression_constants.h"
 #include "abcd/source/record_module_context.h"
 
 namespace abcd::source {
+struct ModuleWriteBinding {
+  analysis::OpId operation;
+  ModuleStoreConstant binding;
+};
 struct ModuleAliases {
   RouteInputIdentity identity;
   abc::EntityOffset method;
@@ -24,9 +29,12 @@ struct ModuleAliases {
   std::vector<std::u16string> names;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
+  // Actual retained writes into bindings initialized at callable creation.
+  // These are assignments only; declaration ownership stays in the record.
+  std::vector<ModuleWriteBinding> writes;
 };
 enum class ModuleAliasError : std::uint8_t {
-  kIdentity, kCoverage, kGuardName, kResourceLimit, kWorkLimit
+  kIdentity, kCoverage, kGuardName, kResourceLimit, kWorkLimit, kInitialization
 };
 struct ModuleAliasFailure {
   std::variant<ModuleAliasError, ModuleGuardError, ModuleReadFailure,
@@ -37,8 +45,10 @@ struct ModuleAliasFailure {
 // symbols use canonical record binding order: external slots, then local slots
 // (NOT local-export rows). Thus siblings agree independently of which bindings
 // they read. The caller owns the record->ModuleOwnerId assignment.
-// Every returned alias is read-only: local exports do not establish source
-// declaration kind or write permission. This never freezes a live value.
+// ReadOnly requests bind reads (the record proves its own first stores).
+// Mutable requests also bind actual callable writes; the request grants nothing.
+// A local alias becomes mutable only for actual Language writes with an
+// immutable initialized-entry premise. Metadata alone grants no writes.
 // This binds metadata/name/evaluation obligations only. It is NOT a TDZ,
 // cyclic-initialization, scope, dependency or executable-publication proof.
 // File/index/input/verified working IR/context are unchanged and caller-admitted.
@@ -46,7 +56,8 @@ struct ModuleAliasFailure {
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const FunctionInput& input,
     const FunctionValues& values, const RecordModuleContext& context,
-    ModuleOwnerId owner, NameId first_name = {}, analysis::SemanticBudget budget = {});
+    ModuleOwnerId owner, NameId first_name = {}, analysis::SemanticBudget budget = {},
+    ModuleAccess access = ModuleAccess::kReadOnly);
 
 struct PhasedModuleInput {
   const RouteInputIdentity& identity;
@@ -55,6 +66,7 @@ struct PhasedModuleInput {
   const analysis::PhasedValueInput& phases;
   const analysis::ValueProgram& graph;
   const ModuleGuards& guards;
+  const ModuleSlotSet* entry_modules = nullptr;
 };
 // Caller-owned record table and file/index, reused across sibling methods.
 // Do not rediscover packaging or scan every record for every method.

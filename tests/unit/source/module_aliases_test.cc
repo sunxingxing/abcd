@@ -167,6 +167,10 @@ void Run(const Fixture& fixture, std::uint32_t count, bool local) {
     changed = tree;
     changed.modules[0].access = ModuleAccess::kMutable;
     test::Check(std::get<ModuleAliasTreeError>(VerifyModuleAliasTree(bound, evaluation, changed)) == ModuleAliasTreeError::kAccess);
+    auto forged = bound;
+    forged.aliases[0].access = ModuleAccess::kMutable;
+    changed.symbols[changed.modules[0].symbol.value].declaration = DeclarationKind::kLet;
+    test::Check(std::get<ModuleAliasTreeError>(VerifyModuleAliasTree(forged, evaluation, changed)) == ModuleAliasTreeError::kAccess);
     auto changed_plan = evaluation; ++changed_plan.modules[0].target.owner.value;
     test::Check(std::get<ModuleAliasTreeError>(VerifyModuleAliasTree(bound, changed_plan, tree)) == ModuleAliasTreeError::kTarget);
   }

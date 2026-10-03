@@ -36,6 +36,23 @@ std::variant<std::uint64_t, ModuleAliasTreeError> VerifyModuleAliasTree(
     if (tree.module_scope)
       Require(tree.module_scope->value < tree.scopes.size() &&
           tree.scopes[tree.module_scope->value].kind == ScopeKind::kModule, Error::kTarget);
+    std::vector<ModuleSymbol> writes;
+    Require(bindings.writes.size() <= budget.bytes / sizeof(ModuleSymbol), Error::kResourceLimit);
+    writes.reserve(bindings.writes.size());
+    Require(writes.capacity() <= budget.bytes / sizeof(ModuleSymbol), Error::kResourceLimit);
+    budget.bytes -= writes.capacity() * sizeof(ModuleSymbol);
+    std::optional<analysis::OpId> previous_write;
+    for (const auto& write : bindings.writes) {
+      step();
+      Require((!previous_write || *previous_write < write.operation) &&
+          write.operation.value < evaluation.operations.size() && !write.binding.initialize &&
+          write.binding.target.owner == bindings.owner, Error::kCoverage);
+      previous_write = write.operation;
+      writes.push_back(write.binding.target);
+    }
+    std::sort(writes.begin(), writes.end(), [&](auto a, auto b) { step(); return a < b; });
+    writes.erase(std::unique(writes.begin(), writes.end(), [&](auto a, auto b) { step(); return a == b; }), writes.end());
+    std::size_t next_write = 0;
     std::vector<std::size_t> order;
     Require(tree.modules.size() <= budget.bytes / sizeof(std::size_t), Error::kResourceLimit);
     order.reserve(tree.modules.size());
@@ -53,10 +70,14 @@ std::variant<std::uint64_t, ModuleAliasTreeError> VerifyModuleAliasTree(
           actual.symbol.value < tree.symbols.size(), Error::kTarget);
       const auto& symbol = tree.symbols[actual.symbol.value];
       Require(symbol.kind == BindingKind::kModule && symbol.scope == *tree.module_scope, Error::kTarget);
-      // BindModuleAliases proves read permission only, including for locals.
-      // A mutated table must not grant writes without the future store proof.
-      Require(expected.access == ModuleAccess::kReadOnly && actual.access == expected.access &&
-          symbol.declaration == DeclarationKind::kConst, Error::kAccess);
+      // Fresh binding evidence grants writes only for proved initialized slots.
+      // Child aliases never become initializer-owned declarations.
+      Require(next_write == writes.size() || writes[next_write] >= expected.target, Error::kTarget);
+      const bool written = next_write < writes.size() && writes[next_write] == expected.target;
+      if (written) ++next_write;
+      Require(expected.access == (written ? ModuleAccess::kMutable : ModuleAccess::kReadOnly), Error::kAccess);
+      Require(!expected.local && !actual.local && actual.access == expected.access &&
+          symbol.declaration == (expected.access == ModuleAccess::kMutable ? DeclarationKind::kLet : DeclarationKind::kConst), Error::kAccess);
       Require(expected.name.value >= bindings.first_name.value &&
           expected.name.value - bindings.first_name.value < bindings.names.size() &&
           symbol.name.value < tree.names.size() && symbol.evidence == expected.evidence, Error::kName);
@@ -65,6 +86,7 @@ std::variant<std::uint64_t, ModuleAliasTreeError> VerifyModuleAliasTree(
       Require(spelling.size() == name.size(), Error::kName);
       step(name.size()); Require(spelling == name, Error::kName);
     }
+    Require(next_write == writes.size(), Error::kCoverage);
     return budget.work - work;
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;

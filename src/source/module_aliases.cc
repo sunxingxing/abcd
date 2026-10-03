@@ -11,6 +11,8 @@
 
 #include "abcd/abc/string_entity.h"
 #include "abcd/corpus/abc_file.h"
+#include "../analysis/phased_value_import.h"
+#include "../analysis/register_value_rule.h"
 
 namespace abcd::source {
 namespace {
@@ -20,6 +22,8 @@ struct AliasSource {
   abc::EntityOffset method, record;
   const analysis::ValueProgram& graph;
   const ModuleGuards& guards;
+  const ModuleSlotSet* entry_modules;
+  ModuleAccess access;
   std::variant<std::reference_wrapper<const FunctionInput>,
       std::reference_wrapper<const analysis::PhasedValueInput>> input;
 };
@@ -83,6 +87,7 @@ class AliasBinder {
       result_.evaluations.push_back({pair, read.read,
           {result_.owner, {static_cast<std::uint32_t>(base + read.read.slot.value)}}});
     }
+    ResolveWrites(external);
     ResolveGuardNames();
     DecodeNames();
     for (std::size_t i = 0; i < count; ++i) {
@@ -93,9 +98,10 @@ class AliasBinder {
             graph.origins[graph.ops[result_.evaluations[i].pair.guard->value].origin.value].pc};
     }
     std::optional<ModuleBindingNames> local_bindings;
-    if (std::any_of(reads.bindings.begin(), reads.bindings.end(), [](const auto& read) {
+    if (!result_.writes.empty() || std::any_of(reads.bindings.begin(), reads.bindings.end(), [](const auto& read) {
         return read.read.space == analysis::ModuleSpace::kLocal;
       })) {
+      Require(module != nullptr, Error::kCoverage);
       auto named = ResolveModuleBindingNames(file_, header_, *module, {bytes_, work_});
       if (const auto* failure = std::get_if<ModuleBindingNameFailure>(&named)) {
         std::visit([&](auto error) {
@@ -110,37 +116,47 @@ class AliasBinder {
       local_bindings.emplace(std::get<ModuleBindingNames>(std::move(named)));
       Admit(local_bindings->allocated_bytes, 1); Step(local_bindings->work);
     }
-    std::sort(order_.begin(), order_.end(), [&](auto a, auto b) {
-      Step(); return result_.evaluations[a].target < result_.evaluations[b].target;
+    struct AliasEntry { ModuleSymbol target; std::optional<std::size_t> read; bool writable; };
+    std::vector<AliasEntry> entries;
+    Require(result_.writes.size() <= kMaxId - count, Error::kResourceLimit);
+    Reserve(entries, count + result_.writes.size());
+    for (std::size_t i = 0; i < count; ++i) {
+      Step(); entries.push_back({result_.evaluations[i].target, i, false});
+    }
+    for (const auto& write : result_.writes) {
+      Step(); entries.push_back({write.binding.target, {}, true});
+    }
+    std::sort(entries.begin(), entries.end(), [&](const auto& a, const auto& b) {
+      Step(); return a.target < b.target;
     });
     std::size_t aliases = 0;
     std::optional<ModuleSymbol> previous;
-    for (const auto i : order_) {
-      Step();
-      if (previous != result_.evaluations[i].target) ++aliases;
-      previous = result_.evaluations[i].target;
+    for (const auto& entry : entries) {
+      Step(); if (previous != entry.target) ++aliases;
+      previous = entry.target;
     }
     Require(aliases <= kMaxId - result_.first_name.value, Error::kResourceLimit);
     Reserve(result_.aliases, aliases); Reserve(result_.names, aliases);
-    previous.reset();
-    for (const auto i : order_) {
-      Step();
-      const auto& evaluation = result_.evaluations[i];
-      if (previous == evaluation.target) continue;
-      previous = evaluation.target;
-      const NameId name{result_.first_name.value + static_cast<std::uint32_t>(result_.names.size())};
-      const bool local = evaluation.read.space == analysis::ModuleSpace::kLocal;
-      const auto slot = evaluation.read.slot.value;
+    for (std::size_t first = 0; first < entries.size();) {
+      Step(); const auto target = entries[first].target;
+      auto end = first + 1;
+      bool writable = entries[first].writable;
+      while (end < entries.size() && entries[end].target == target) {
+        Step(); writable |= entries[end++].writable;
+      }
+      const bool local = target.symbol.value >= external;
+      const auto slot = target.symbol.value - (local ? external : 0);
+      Require(!writable || local, Error::kCoverage);
       Require(!local || (local_bindings && slot < local_bindings->locals.size()), Error::kCoverage);
-      const auto& text = local ? local_bindings->locals[slot] : decoded_[NameIndex(local_names_[i])];
+      Require(local || entries[first].read.has_value(), Error::kCoverage);
+      const auto& text = local ? local_bindings->locals[slot] : decoded_[NameIndex(local_names_[*entries[first].read])];
+      const NameId name{result_.first_name.value + static_cast<std::uint32_t>(result_.names.size())};
       Step(text.size()); Admit(text.size(), sizeof(char16_t)); Admit(1, sizeof(char16_t));
       auto& copy = result_.names.emplace_back(text);
       Admit(copy.capacity() - text.size(), sizeof(char16_t));
-      // This adapter proves reads only. A local-export row does NOT prove a
-      // let/const declaration or permission to write. ReadOnly restricts this
-      // alias, not the live binding's value; record/store proof may widen it.
-      result_.aliases.push_back({evaluation.target, name, ModuleAccess::kReadOnly,
+      result_.aliases.push_back({target, name, writable ? ModuleAccess::kMutable : ModuleAccess::kReadOnly,
           local ? local_bindings->evidence[slot] : NameEvidence::kMetadata});
+      first = end;
     }
     if (file_.CheckUnchanged()) throw abc::MetadataError::kFileChanged;
     result_.allocated_bytes = budget_.bytes - bytes_;
@@ -158,6 +174,66 @@ class AliasBinder {
   }
   template <class T> void Reserve(std::vector<T>& array, std::size_t count) {
     Admit(count, sizeof(T)); array.reserve(count); Admit(array.capacity() - count, sizeof(T));
+  }
+  void ResolveWrites(std::size_t external) {
+    // The record initializer binds reads here and proves declarations/stores
+    // through its own original first-store adapter. Callable references request
+    // mutable access; this request alone never establishes initialization.
+    if (input_.access == ModuleAccess::kReadOnly) return;
+    Require(input_.access == ModuleAccess::kMutable, Error::kCoverage);
+    const auto& graph = input_.graph;
+    std::size_t count = 0;
+    for (const auto& op : graph.ops) {
+      Step(); count += op.life == analysis::ValueLife::kLive &&
+          std::holds_alternative<analysis::ValueModuleWrite>(op.operation);
+    }
+    Reserve(result_.writes, count);
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      Step(); const auto& op = graph.ops[i];
+      const auto* write = std::get_if<analysis::ValueModuleWrite>(&op.operation);
+      if (!write || op.life != analysis::ValueLife::kLive) continue;
+      // STMODULEVAR can initialize Hole, whereas native assignment has TDZ.
+      // Reuse the immutable creation-time premise, across arbitrary child CFG
+      // and effects. Never infer initialization from a metadata export row.
+      Step(ModuleSlotSet::kPathWork);
+      if (!input_.entry_modules || !input_.entry_modules->Contains(write->slot)) {
+        Require(op.origin.value < graph.origins.size(), Error::kCoverage);
+        throw ModuleAliasFailure{Error::kInitialization, graph.origins[op.origin.value].pc};
+      }
+      Require(op.origin.value < graph.origins.size() && op.use_count == 1 && !op.result &&
+          op.first_use.value < graph.uses.size(), Error::kCoverage);
+      const auto& origin = graph.origins[op.origin.value];
+      const auto& original = std::visit([&](const auto& source) -> const analysis::SemanticInstruction& {
+        if constexpr (std::is_same_v<std::decay_t<decltype(source.get())>, FunctionInput>) {
+          Require(origin.site.value < source.get().Input().instructions.size(), Error::kCoverage);
+          return source.get().Input().instructions[origin.site.value];
+        } else {
+          Require(origin.site.value < source.get().flow.instructions.size(), Error::kCoverage);
+          return source.get().flow.instructions[origin.site.value];
+        }
+      }, input_.input);
+      const auto* store = std::get_if<analysis::ModuleStore>(&original.operation);
+      Require(store && store->slot == write->slot && origin.pc == original.pc &&
+          origin.original == original.origin && origin.disposition == analysis::OriginDisposition::kRetained &&
+          op.normal == original.effects.normal && op.before_throw == original.effects.before_throw &&
+          op.exceptional == original.effects.exceptional, Error::kCoverage);
+      const auto& use = graph.uses[op.first_use.value];
+      const analysis::OpId id{static_cast<std::uint32_t>(i)};
+      const auto* owner = std::get_if<analysis::OpId>(&use.owner);
+      const auto domain = std::visit([&](const auto& operand) -> analysis::ValueKinds {
+        if constexpr (std::is_same_v<std::decay_t<decltype(operand)>, analysis::ValueId>) {
+          Require(operand.value < graph.values.size() && graph.values[operand.value].life == analysis::ValueLife::kLive,
+              Error::kCoverage);
+          return graph.values[operand.value].domain;
+        } else return analysis::detail::DescribeScalarValue(
+            {analysis::Accumulator{}, analysis::ScalarValue{operand}}).seed;
+      }, use.operand);
+      Require(owner && *owner == id && use.role == analysis::OperandRole::kStoredValue &&
+          use.purpose == analysis::ReadPurpose::kOperand && domain.IsLanguage(), Error::kCoverage);
+      Require(write->slot.value <= kMaxId - external, Error::kResourceLimit);
+      result_.writes.push_back({id, {write->slot,
+          {result_.owner, {static_cast<std::uint32_t>(external + write->slot.value)}}, false}});
+    }
   }
   void ResolveGuardNames() {
     std::sort(order_.begin(), order_.end(), [&](auto a, auto b) {
@@ -266,12 +342,12 @@ std::variant<ModuleAliases, ModuleAliasFailure> BindModuleAliases(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const FunctionInput& input,
     const FunctionValues& values, const RecordModuleContext& context,
-    ModuleOwnerId owner, NameId first_name, analysis::SemanticBudget budget) {
+    ModuleOwnerId owner, NameId first_name, analysis::SemanticBudget budget, ModuleAccess access) {
   if (values.identity != input.Identity() || values.method != input.Method() ||
       values.record != input.Record() || values.capture_mode != input.Mode())
     return ModuleAliasFailure{Error::kIdentity};
   return BindAliases(file, header, index, {input.Identity(), input.Method(), input.Record(),
-      values.graph, values.modules, std::cref(input)}, context, owner, first_name, budget);
+      values.graph, values.modules, &input.EntryModules(), access, std::cref(input)}, context, owner, first_name, budget);
 }
 std::variant<ModuleAliases, ModuleAliasFailure> BindPhasedModuleAliases(
     const corpus::AbcFile& file, const abc::Header& header,
@@ -279,6 +355,6 @@ std::variant<ModuleAliases, ModuleAliasFailure> BindPhasedModuleAliases(
     const RecordModuleContext& context, ModuleOwnerId owner, NameId first_name,
     analysis::SemanticBudget budget) {
   return BindAliases(file, header, index, {input.identity, input.method, input.record,
-      input.graph, input.guards, std::cref(input.phases)}, context, owner, first_name, budget);
+      input.graph, input.guards, input.entry_modules, ModuleAccess::kMutable, std::cref(input.phases)}, context, owner, first_name, budget);
 }
 }  // namespace abcd::source

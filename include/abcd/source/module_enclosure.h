@@ -51,7 +51,8 @@ class ModuleEnclosure {
 };
 // Recheck actual aliases and complete intervening lexical bindings at every
 // publication. Local read aliases additionally require GlobalScope's record
-// declaration premise; it does not authorize writes or early initialization.
+// declaration premise. Mutable child references additionally need the separately
+// verified callable-entry initialization/write proof; never early initialization.
 // The initializer role additionally admits its own mutable local declarations;
 // callers must establish their original first-store and slot/name correspondence.
 // It never grants that role to nested functions.

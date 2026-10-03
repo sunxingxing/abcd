@@ -171,7 +171,7 @@ comparison work are additional dimensions. Retained storage is O(M + S_out),
 including copied name payload S_out; this does not admit or claim an unbounded
 record/family cache.
 
-All aliases from this read-only adapter have `ModuleAccess::kReadOnly`, including
+Aliases from the default read-only request have `ModuleAccess::kReadOnly`, including
 locals. This limits operations through the alias; it does not freeze a live
 binding or infer a `const` source declaration. A local-export row alone does
 not prove declaration kind or legal writes. Store/record proof must establish
@@ -259,3 +259,59 @@ It specifies external/local/namespace bindings, adjacent export aliases, stable
 sibling identity, nonzero name-arena bases, guard-name mismatch, changed AST
 spelling/target/access, altered evaluation targets, revisions, resource/work
 limits and 200/201/geometric sizes. It remains uncompiled/unrun.
+
+
+## Callable module writes (rules 77)
+
+The normal and phased family routes now request mutable binding access and
+inventory **actual retained `ValueModuleWrite` sites**, including write-only
+functions with no module reads. The request alone grants no permission. The
+binder rechecks original typed slot/effects/origin and the actual stored operand's
+Language domain. Literal operands use the same pinned numeric value rules;
+VM-private NaN encodings do not become Language merely because they are literals.
+
+A write currently consumes the immutable `FunctionInput` / `FilePhasedFunction`
+creation-time initialized-slot set. These are the same move-stable persistent
+roots and genuine parent edges already used for initialized module reads. The
+family publication check revalidates that root identity against the actual parent
+creation even if the child has no reads. A slot may be written in any child block,
+branch or exception region; no child block colocation or producer list is used.
+
+The semantic reason for requiring initialization is pinned v7.0
+`SourceTextModule::StoreModuleValue`: raw storage can create a slot's value array
+and initialize Hole. Native assignment to an uninitialized lexical binding throws
+ReferenceError. A metadata local-export row cannot erase that difference. Native
+record declarations remain at the original initializer stores. Child aliases
+stay `local=false`, in module scope; they use `let` access permission and ordinary
+`AssignmentExpr`, never a new declaration or an initializer constant. Import
+aliases stay read-only, and the actual record route retains its ordinary-module
+admission (shared module export checks must not disappear).
+
+Read and write destinations share the canonical external-then-local module
+identity and one sorted alias inventory. Fresh `VerifyModuleAliasTree` checks
+mutable aliases against the actual write inventory, rather than trusting an
+access enum; changing both a syntax alias and its access table does not grant
+writes without the write proof. Common TreeOperands independently checks the
+original store against the actual assignment's symbol and RHS. Normal/phased
+instruction, effect, scope and destination validation still run.
+
+For I operations, R reads and W writes, the new inventory costs O(I) scans and
+O((R+W) log(R+W+1)) sorting, with O(R+W) scratch/retained records plus names. Entry
+membership uses the existing fixed-width ModuleSlot trie, not a parent-body walk
+for each write. Every scan, comparison, allocation and membership path is charged.
+
+The creation-time index still admits normal parent **entry-block** stores only;
+this is a documented implementation boundary, not a VM invariant. Writers created
+before initialization, or initialization proved only in other parent blocks,
+need common must-initialization and escape/invocation analysis. A successful child
+Hole guard can also establish initialization, but its **successful Commit**, not
+its Before node, must govern subsequent writes through catch paths. These missing
+proofs remain explicit gaps. Do not widen coverage with another fixed sequence,
+same-block condition or a count of guards/selections.
+
+`module_writer_source_test` uses real encoded fixtures in profiles 1202/1206/1301
+for parameter, branch, constant and catch writes. Independent native ESM checks
+cover return/value identity, aliases and live exports, arity/name, no coercion,
+initialization failures and cyclic TDZ. The early-created writer refuses with
+`ModuleAliasError::kInitialization`; it is not counted as successful recovery.
+Mutating a retained slot disagrees with its original store and fails coverage.

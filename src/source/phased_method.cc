@@ -116,7 +116,7 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure> PhasedBody::Buil
     const PhasedModuleBinding* binding, analysis::CapturedValues capture_mode,
     analysis::ClosureWrites writes, std::span<const analysis::AwaitSite> awaits,
     std::span<const abc::CodeOffset> source_pcs, std::span<const analysis::YieldSite> yields,
-    std::span<const analysis::LanguageLoadFact> initialized_modules) {
+    std::span<const analysis::LanguageLoadFact> initialized_modules, const ModuleSlotSet* entry_modules) {
   using namespace analysis;
   try {
     // Recovered scopes/snapshots can allocate at different VM locations.
@@ -276,7 +276,9 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure> PhasedBody::Buil
     }
     std::optional<ModuleGuards> guards;
     std::optional<ModuleAliases> aliases;
-    if (!modules.reads.empty()) {
+    if (!modules.reads.empty() || std::any_of(imported.graph.ops.begin(), imported.graph.ops.end(),
+        [&](const auto& op) { quota.Step(1); return op.life == ValueLife::kLive &&
+            std::holds_alternative<ValueModuleWrite>(op.operation); })) {
       guards = PhaseResult<ModuleGuards>(BuildPhasedModuleGuards(input, imported.graph,
           quota.Remaining()), Error::kImport);
       quota.Admit(guards->allocated_bytes); quota.Step(guards->work);
@@ -287,7 +289,7 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure> PhasedBody::Buil
         if (method.offset != context.Target() || method.owner_offset != binding->record.record())
           return Error::kModules;
         const PhasedModuleInput selected{context.Identity(), method.offset, method.owner_offset,
-            input, imported.graph, *guards};
+            input, imported.graph, *guards, entry_modules};
         aliases = PhaseResult<ModuleAliases>(BindPhasedModuleAliases(binding->file, binding->header,
             binding->index, selected, binding->record, binding->owner, {}, quota.Remaining()), Error::kModules);
         quota.Admit(aliases->allocated_bytes); quota.Step(aliases->work);

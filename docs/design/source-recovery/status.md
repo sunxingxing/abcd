@@ -12,6 +12,42 @@
 
 ## 当前阶段
 
+### 2026-10-04：子函数模块写入复用初始化证明和共同别名/源码树
+
+- 规则revision77。正常及phased family 绑定实际 ValueModuleWrite，包含没有
+  module read 的只写函数。共同 metadata/slot 身份、原始 store/effects/origin、
+  Language 值域和 creation-time 持久化初始化集合均核对；参数和 literal
+  不按 producer 或 child basic block 分派。phase before/commit/catch 保留。
+  所有写入仍走共同 AssignmentExpr、TreeOperands、scope 和 destination；
+  子函数别名保持 module scope / local=false，不补声明、不提前初始化。
+- VerifyModuleAliasTree 从实际写入 inventory 推导 mutable access；同时修改
+  expected/actual access 和符号let仍不能给只读别名授予写权限。literal 复用
+  pinned numeric规则，原始slot不对应、缺失初始化证明、超出work预算均拒绝。
+  原始普通模块发布继续排除 shared module；导入仍不能写。设计与复杂度见
+  [module-reads.md](module-reads.md) 的 rules77。
+- 初始化是具体语义义务：STMODULEVAR可初始化Hole，native let assignment
+  保留TDZ。此次复用的是既有immutable entry证明；parent entry-block准入仍
+  是旧实现边界，不能当语言不变量。创建早于初始化、其他parent块中的首次
+  初始化及child成功guard之后的写入，还需要共同must-initialization与
+  escape/invocation证明；不以增加同块/固定序列匹配扩展该边界。
+- 三profile真实ABC编码覆盖参数、分支、常量和catch写入。240组独立native
+  ESM行为对照通过，含undefined/null/boolean/NaN/Infinity/BigInt/Symbol/
+  object/function身份、无强制转换、name/length、live export及alias、初始化
+  抛出和cycle TDZ。fixture另检查fresh只写别名、actual原始slot不对应、精确
+  work预算，以及early-created writer的typed initialization拒绝，未将拒绝
+  计入成功覆盖。新增test直接读取ABC，不传reference source给引擎。
+- -j4最终构建退出0：/tmp/abcd-module-writer-proof-build.log；新版本5/5相关
+  检查4.88秒通过：/tmp/abcd-module-writer-verified-tests.log。此前fixture
+  length、prefixed throw编码与测试不可复制input的失败已修正，失败不计通过。
+  full-suite/RSS/扩展语料仍暂停；未用过去的测试或旧二进制代替本次证据。
+- fresh build/stage-one/value-module-writes-pass-2 固定五输入导出均退出0；
+  80 complete /26 incomplete /0 failure /46 no-module，与revision76相比没有
+  complete回退或源码内容变化，legacy writer均0。此共同能力交付没有减少
+  固定五输入的剩余缺口，不能宣称阶段一完成。批次证据位于
+  /tmp/abcd-module-writer-verified-batch.log。五份原始输入SHA与abc-index一致；
+  106份完整/部分源码全通过Node语法检查，源码字节对照revision76均未改变：
+  /tmp/abcd-module-writer-syntax-all.log。Goal active，继续实际开发。
+
 ### 2026-10-04：类表达式复用声明与赋值的原生名称推断
 
 - 规则revision76。共同 TreePrinter 给直接 identifier 初始化/赋值的 RHS

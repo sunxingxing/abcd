@@ -193,7 +193,7 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
     // standalone builder keeps Unknown, and no cell read becomes a snapshot.
     auto analyzed = PhasedBody::Build(context, body, left, modules,
         mode == InputCaptureMode::kConditional ? analysis::CapturedValues::kLanguage : analysis::CapturedValues::kReject,
-        analysis::ClosureWrites::kLanguage, awaits, source_pcs, yields, initialized);
+        analysis::ClosureWrites::kLanguage, awaits, source_pcs, yields, initialized, &entry_modules);
     if (auto* failure = std::get_if<PhasedInputFailure>(&analyzed)) {
       failure->allocated_bytes += budget.bytes - left.bytes;
       failure->work += budget.work - left.work;

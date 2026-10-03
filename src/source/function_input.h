@@ -76,6 +76,7 @@ class FunctionInput {
       analysis::ModuleSlot slot, analysis::InstructionId creation) const;
   ModuleSlotSet InitializedModulesBefore(analysis::InstructionId creation) const;
   bool HasInheritedModules() const { return !entry_modules_.Empty(); }
+  const ModuleSlotSet& EntryModules() const { return entry_modules_; }
   bool MatchesModuleCreation(const FunctionInput& parent, analysis::InstructionId creation) const;
   // Same typed creation check for normal/phased children, before input build.
   bool IsCreatorOf(const FunctionContext&, abc::EntityOffset child_record, analysis::InstructionId) const;
