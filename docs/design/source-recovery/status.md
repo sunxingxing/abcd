@@ -12,6 +12,35 @@
 
 ## 当前阶段
 
+### 2026-10-03：object creaters 优先，迭代结果对象贯通
+
+- 已按用户最新要求把 object creaters 的完整 26 格式置于当前优先级；
+  [完整清单与公共接口](object-creators.md) 分别记录既有路径、协议条件及缺口，
+  不将 decode、保守拒绝或 generator owner 子集计作全组完成。
+- CREATEITERRESULTOBJ 现从既有 LiftIterResult 进入共同 SemanticOperation /
+  ValueOperation、OperandView、EvaluationShape、常量解析和 ExpressionForest；
+  normal 与 Before/Commit/Catch 图使用同一描述。输出复用 ObjectExpr /
+  DataProperty 和原 printer，未添加 group writer、样本规则或可变全局工厂。
+- 创建点保留 allocation/may-throw、正常完成才更新 acc 和新对象身份；
+  value/done 的键、顺序、descriptor、原输入与来源由独立 TreeFlow /
+  TreeSemantics 验证。canonical Boolean flag 直接输出，其余 Language 值
+  使用严格等于 true。规则 revision 升为 59，旧收据不会误复用。
+- 新测试覆盖三动态 profile、normal/异常图、直接/计算/布尔输入、
+  1/2/200/201/402 连续创建及伪造 IR/键/顺序/表达式/来源拒绝；
+  2312 组 native 对照验证身份、属性、getter 顺序、异常值和工厂/原型污染。
+  新真实字节码先复现共同 semantic lift 拒绝后通过；fixture 临时文件 unlink
+  改变 ctime 的错误已修正，最终通过来自成功构建。
+- -j4 最终生产及相关目标构建退出 0；10/10 回归 32.11 秒，日志
+  /tmp/abcd-object-creator-final-build.log、/tmp/abcd-object-creator-final-tests.log。
+  包括原 iterator-result、缓冲字面量、创建导入、常量解析、generator method
+  与收据 revision 回归。没有恢复 full-suite、扩展语料或 RSS/基准任务。
+- fresh build/stage-one/value-object-creators-pass-1 五输入均退出 0，保持
+  78 complete /5 incomplete /23 failure /46 no-module；既有完整源码逐字未变，
+  无 complete 回退或 legacy writer。证据 /tmp/abcd-object-creator-final-batch.log、
+  /tmp/abcd-object-creator-final-batch-summary.json。本次没有新增完整 record。
+- 当前缺口仍含 regexp、excluded-keys rest、apply 构造、deprecated 池布局及
+  完整协程协议矩阵。后续沿共同表达式/区域接口补齐；Goal active，阶段一未完成。
+
 ### 2026-10-03：phased 共享分支与嵌套调用
 
 - 图发现一次索引相邻纯判断路径及链父关系，仅从最大链根恢复SelectionRegion，

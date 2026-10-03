@@ -33,10 +33,14 @@ class ConstantResolver {
     Reserve(result_.operations, graph_.ops.size());
     result_.operations.resize(graph_.ops.size());
     std::size_t indexed_names = 0;
+    bool needs_iter_result = false;
     for (const auto& op : graph_.ops) {
       Step(); indexed_names += op.life == analysis::ValueLife::kLive &&
           std::holds_alternative<analysis::ValueIndexedWrite>(op.operation);
+      needs_iter_result |= op.life == analysis::ValueLife::kLive &&
+          std::holds_alternative<analysis::ValueIterResult>(op.operation);
     }
+    if (needs_iter_result) indexed_names += IterResultConstant::kProperties;
     Reserve(result_.names, indexed_names);
     bool needs_number_type = false;
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
@@ -149,6 +153,17 @@ class ConstantResolver {
     if (needs_number_type) {
       result_.number_type_text = TextId{static_cast<std::uint32_t>(result_.texts.size())};
       Copy(u"number", result_.texts);
+    }
+    if (needs_iter_result) {
+      const IterResultConstant keys{NameId{static_cast<std::uint32_t>(result_.names.size())},
+          NameId{static_cast<std::uint32_t>(result_.names.size() + 1)}};
+      Copy(u"value", result_.names); Copy(u"done", result_.names);
+      for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
+        Step();
+        if (graph_.ops[i].life == analysis::ValueLife::kLive &&
+            std::holds_alternative<analysis::ValueIterResult>(graph_.ops[i].operation))
+          result_.operations[i] = keys;
+      }
     }
     const auto objects = ResolveObjectConstants(file_, header_, index_, method_, graph_, result_, {bytes_, work_});
     if (const auto* error = std::get_if<TreeConstantError>(&objects)) throw *error;

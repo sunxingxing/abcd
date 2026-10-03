@@ -118,6 +118,11 @@ class ForestBuilder {
     std::size_t buffered_properties = 0;
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       Step(); const auto& op = graph_.ops[i];
+      if (op.life == analysis::ValueLife::kLive &&
+          std::holds_alternative<analysis::ValueIterResult>(op.operation)) {
+        Require(buffered_properties <= kMaxId - IterResultConstant::kProperties, Error::kResourceLimit);
+        buffered_properties += IterResultConstant::kProperties;
+      }
       const auto* object = std::get_if<analysis::ValueObjectAllocation>(&op.operation);
       const auto* array = std::get_if<analysis::ValueArrayAllocation>(&op.operation);
       if (op.life != analysis::ValueLife::kLive || !((object && object->literal) || (array && array->literal))) continue;
@@ -948,6 +953,18 @@ class ForestBuilder {
       }
       else if constexpr (std::is_same_v<T, analysis::ValueFrameThis>)
         return Add(ThisExpr{owner_}, origin);
+      else if constexpr (std::is_same_v<T, analysis::ValueIterResult>) {
+        const auto* keys = std::get_if<IterResultConstant>(&constant);
+        Require(keys && keys->value.value < constants_.name_count &&
+            keys->done.value < constants_.name_count && keys->value != keys->done, Error::kConstant);
+        const auto done = BooleanEvaluation(graph_, ResolveEvaluationOperand(evaluation_, graph_.uses[op.first_use.value + 1].operand))
+            ? operands[1] : Add(BinaryExpr{analysis::BinaryOperator::kStrictEqual, operands[1],
+                Literal(BooleanLiteral{true}, origin)}, origin);
+        const PropertyRange properties{static_cast<std::uint32_t>(forest_.properties.size()), IterResultConstant::kProperties};
+        forest_.properties.push_back({keys->value, operands[0], origin});
+        forest_.properties.push_back({keys->done, done, origin});
+        return Add(ObjectExpr{properties}, origin);
+      }
       else if constexpr (std::is_same_v<T, analysis::ValueGlobalObject>)
         return Add(RealmObjectExpr{}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueSymbolConstructor>)

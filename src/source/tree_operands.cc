@@ -340,6 +340,25 @@ class OperandCheck {
           Input(input(0), construct.constructor);
           constexpr std::uint32_t kConstructorPrefix = 1;
           Arguments(op, construct.arguments, kConstructorPrefix, operation.arguments);
+        } else if constexpr (std::is_same_v<T, analysis::ValueIterResult>) {
+          const auto& object = Node<ObjectExpr>(expression);
+          const auto* keys = std::get_if<IterResultConstant>(&constants_.operations[i]);
+          RequireMeaning(keys && keys->value.value < constants_.name_count &&
+              keys->done.value < constants_.name_count &&
+              tree_.names[keys->value.value] == u"value" && tree_.names[keys->done.value] == u"done" &&
+              object.kind == AggregateKind::kObject && object.buffered == 0 &&
+              object.properties.count == IterResultConstant::kProperties && op.use_count == IterResultConstant::kProperties, Error::kConstant);
+          const auto& value = tree_.properties[object.properties.first];
+          const auto& done = tree_.properties[object.properties.first + 1];
+          RequireMeaning(value.key == keys->value && done.key == keys->done, Error::kConstant);
+          Input(input(0), value.value);
+          if (BooleanEvaluation(graph_, ResolveEvaluationOperand(evaluation_, input(1)))) Input(input(1), done.value);
+          else {
+            const auto& test = Node<BinaryExpr>(done.value);
+            RequireMeaning(test.operation == analysis::BinaryOperator::kStrictEqual, Error::kOperator);
+            Input(input(1), test.left);
+            RequireMeaning(Literal<BooleanLiteral>(test.right).value, Error::kOperand);
+          }
         } else if constexpr (std::is_same_v<T, analysis::ValueArrayAllocation> ||
                              std::is_same_v<T, analysis::ValueObjectAllocation>) {
           constexpr bool array = std::is_same_v<T, analysis::ValueArrayAllocation>;

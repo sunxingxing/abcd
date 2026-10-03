@@ -236,6 +236,10 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
   if (const auto* copy = std::get_if<RestCopy>(&rest)) return *copy;
   if (std::get<RestError>(rest) != RestError::kUnsupportedOpcode)
     return Fail(SemanticError::kMalformedInstruction, site.offset);
+  const auto iter_result = LiftIterResult(decoded, frame_size);
+  if (const auto* created = std::get_if<IterResult>(&iter_result)) return *created;
+  if (std::get<IterResultError>(iter_result) != IterResultError::kUnsupportedOpcode)
+    return Fail(SemanticError::kMalformedInstruction, site.offset);
   const auto global = LiftGlobalAccess(decoded);
   if (const auto* access = std::get_if<GlobalAccess>(&global)) return *access;
   if (std::get<GlobalAccessError>(global) !=
@@ -330,6 +334,7 @@ SemanticEffects Effects(const SemanticOperation& operation,
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, EmptyObjectCreation> ||
+                             std::is_same_v<T, IterResult> ||
                              std::is_same_v<T, BufferedArrayCreation> ||
                              std::is_same_v<T, BufferedObjectCreation>) {
           effects.normal = LanguageEffect::kAllocation;

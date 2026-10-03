@@ -189,6 +189,9 @@ struct ValueObjectAllocation {
   std::optional<abc::PoolIndex> literal;
   bool operator==(const ValueObjectAllocation&) const = default;
 };
+// RuntimeCreateIterResultObj creates ordinary own data properties in this
+// order. Its done flag uses IsTrue, never truthiness or user coercion.
+struct ValueIterResult { bool operator==(const ValueIterResult&) const = default; };
 // Unresolved creation template, not a reusable function value. The origin site
 // binds its environment/module and target profile; source publication still
 // requires CreationBinding, CapturePlan and complete child-tree verification.
@@ -269,7 +272,7 @@ struct ValueSuperCheck {
 struct ValueHole { bool operator==(const ValueHole&) const = default; };
 using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary, ValueHole, ValueAwait, ValueYield,
     ValueNamedRead, ValueNamedWrite, ValueOwnWrite, ValueIndexedWrite, ValueDefineAccessor, ValuePropertyRead, ValueBranch, ValueJump,
-    ValueReturn, ValueNop, ValueString, ValueGlobalRead, ValueGuard, ValueArrayAllocation, ValueObjectAllocation,
+    ValueReturn, ValueNop, ValueString, ValueGlobalRead, ValueGuard, ValueArrayAllocation, ValueObjectAllocation, ValueIterResult,
     ValueInvoke, ValueConstruct, ValueFunctionCreation, ValueClassCreation, ValueLexicalLoad, ValueLexicalStore,
     ValueEnvironmentPush, ValueEnvironmentPop, ValueCurrentEnvironment, ValueModuleRead,
     ValueModuleWrite, ValuePropertyWrite, ValueDebugger, ValueFrameThis, ValueFrameFunction,

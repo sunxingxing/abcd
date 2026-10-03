@@ -20,6 +20,7 @@
 #include "abcd/analysis/global_access.h"
 #include "abcd/analysis/hole_guard.h"
 #include "abcd/analysis/indexed_write.h"
+#include "abcd/analysis/iter_result.h"
 #include "abcd/analysis/lexical.h"
 #include "abcd/analysis/module_load.h"
 #include "abcd/analysis/module_store.h"
@@ -128,7 +129,7 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        GlobalAccess, BranchOperation,
                                        JumpOperation, ReturnOperation,
                                        StringLoad, OrdinaryCall, ReceiverCall,
-                                       EmptyObjectCreation, BufferedObjectCreation,
+                                       EmptyObjectCreation, BufferedObjectCreation, IterResult,
                                        ConstructorCall, ModuleStore,
                                        LexicalLoad, LexicalStore,
                                        PushEnvironment, PopEnvironment,

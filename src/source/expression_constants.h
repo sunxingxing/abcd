@@ -16,6 +16,14 @@ struct AggregateConstant {
   AggregateKind kind = AggregateKind::kObject;
 };
 struct ConstantProperty { NameId key; TreeLiteral value; };
+// Language-defined keys for input-backed intrinsic records. Resolve these
+// once per method, like buffered keys; no pool ID reaches executable syntax.
+struct IterResultConstant {
+  // JSIterator::CreateIterResultObject, ECMA CreateIterResultObject steps 3/4.
+  static constexpr std::uint32_t kProperties = 2;
+  NameId value;
+  NameId done;
+};
 // Record binding adapter supplies the same metadata slot and native symbol.
 // Initialization is a declaration at this exact store, never an eager `let`.
 struct ModuleStoreConstant {
@@ -23,7 +31,7 @@ struct ModuleStoreConstant {
   ModuleSymbol target;
   bool initialize = false;
 };
-using ExpressionConstant = std::variant<std::monostate, NameId, TextId, AggregateConstant, ModuleStoreConstant,
+using ExpressionConstant = std::variant<std::monostate, NameId, TextId, AggregateConstant, IterResultConstant, ModuleStoreConstant,
     std::shared_ptr<const ClassTree>>;
 struct ExpressionConstants {
   std::span<const ExpressionConstant> operations;

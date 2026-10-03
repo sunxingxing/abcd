@@ -23,6 +23,7 @@ constexpr std::array kCellStore{Role::kStoredValue};
 constexpr std::array kHeritage{Role::kHeritage};
 constexpr std::array kReceiverGuard{Role::kGuardValue};
 constexpr std::array kSpreadSuper{Role::kConstructor, Role::kInput};
+constexpr std::array kIterResult{Role::kInput, Role::kCondition};
 }  // namespace
 
 std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation& operation) {
@@ -85,6 +86,8 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
     }
     else if constexpr (std::is_same_v<T, analysis::ValueArrayAllocation>)
       return EvaluationShape{kNoOperands, true};
+    else if constexpr (std::is_same_v<T, analysis::ValueIterResult>)
+      return EvaluationShape{kIterResult, true};
     else if constexpr (std::is_same_v<T, analysis::ValueGlobalRead>) {
       switch (op.lookup) {
         case analysis::GlobalLookup::kName: case analysis::GlobalLookup::kVar:
@@ -209,6 +212,7 @@ bool OrderedEvaluation(const analysis::ValueOp& op) {
                     std::is_same_v<T, analysis::ValueInvoke> || std::is_same_v<T, analysis::ValueConstruct> ||
                     std::is_same_v<T, analysis::ValueArrayAllocation> ||
                     std::is_same_v<T, analysis::ValueObjectAllocation> ||
+                    std::is_same_v<T, analysis::ValueIterResult> ||
                     std::is_same_v<T, analysis::ValueNop>);
       return true;
     }

@@ -58,7 +58,8 @@ bool CanErasePureOp(const ValueOp& op) {
                     std::is_same_v<T, ValueThrow> || std::is_same_v<T, ValueHole> ||
                     std::is_same_v<T, ValueGuard> ||
                     std::is_same_v<T, ValueInvoke> || std::is_same_v<T, ValueSuperCall> || std::is_same_v<T, ValueSuperSpread> || std::is_same_v<T, ValueSuperCheck> || std::is_same_v<T, ValueConstruct> ||
-                    std::is_same_v<T, ValueArrayAllocation> || std::is_same_v<T, ValueObjectAllocation>);
+                    std::is_same_v<T, ValueArrayAllocation> || std::is_same_v<T, ValueObjectAllocation> ||
+                    std::is_same_v<T, ValueIterResult>);
       return false;
     }
   }, op.operation);

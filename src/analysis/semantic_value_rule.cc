@@ -51,6 +51,7 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
                          std::is_same_v<T, SuperRange> || std::is_same_v<T, SuperSpread> ||
                          std::is_same_v<T, ReceiverCall> ||
                          std::is_same_v<T, EmptyObjectCreation> ||
+                         std::is_same_v<T, IterResult> ||
                          std::is_same_v<T, BufferedObjectCreation> ||
                          std::is_same_v<T, BufferedArrayCreation> ||
                          std::is_same_v<T, RestCopy> ||
