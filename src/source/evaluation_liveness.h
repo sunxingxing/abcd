@@ -4,6 +4,11 @@
 #include "evaluation_plan.h"
 
 namespace abcd::source {
+// Representation fact after original availability/phi-copy verification: a
+// value already has stable source storage and can be read without replaying
+// its producer. This is not dominance or permission to move its definition.
+[[nodiscard]] bool HasRetainedEvaluationValue(const analysis::ValueProgram&,
+    const EvaluationPlan&, analysis::ValueId);
 struct EvaluationLivenessCost {
   std::size_t bytes;
   std::uint64_t work;

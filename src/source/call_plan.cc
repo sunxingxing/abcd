@@ -1,4 +1,5 @@
 #include "call_plan.h"
+#include "evaluation_liveness.h"
 #include "function_object.h"
 #include "phase_evaluation.h"
 #include "logical_evaluation.h"
@@ -49,20 +50,12 @@ bool StableReceiver(const ValueProgram& graph, const EvaluationPlan& evaluation,
                     const ValueOperand& operand, UseId base) {
   const auto* id = std::get_if<ValueId>(&operand);
   if (!id) return true; // Primitive literal, with no property-key coercion here.
+  if (HasRetainedEvaluationValue(graph, evaluation, *id)) return true;
   const auto& definition = graph.values[id->value];
-  if (const auto* entry = std::get_if<EntryDefinition>(&definition.origin))
-    return std::holds_alternative<ParameterEntry>(*entry) || std::holds_alternative<ReceiverEntry>(*entry);
-  // Fresh evaluation verification proves phi availability and edge copies.
-  // This is a private provisional location, not a captured/mutable source cell.
-  // The caller requires the same block, a checked logical diamond, or a no-copy phase corridor,
-  // so no incoming-edge assignment can intervene between them.
-  if (std::holds_alternative<PhiDefinition>(definition.origin))
-    return evaluation.phis.has_value();
   const auto* result = std::get_if<OpResult>(&definition.origin);
   if (!result) return false;
   const auto& placement = evaluation.operations[result->op.value];
-  return ((placement.kind == EvaluationKind::kRoot || placement.kind == EvaluationKind::kPredicateSnapshot) && placement.temporary.has_value()) ||
-      ((placement.kind == EvaluationKind::kInline || placement.kind == EvaluationKind::kNestedLiteral) && placement.consumer == base);
+  return (placement.kind == EvaluationKind::kInline || placement.kind == EvaluationKind::kNestedLiteral) && placement.consumer == base;
 }
 bool Property(const ValueOperation& operation) {
   return std::holds_alternative<ValueNamedRead>(operation) || std::holds_alternative<ValuePropertyRead>(operation);

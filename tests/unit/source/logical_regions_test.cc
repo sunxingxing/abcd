@@ -1,4 +1,5 @@
 #include "../../../src/source/logical_regions.h"
+#include "../../../src/source/evaluation_liveness.h"
 #include "../../../src/source/instruction_sources.h"
 #include "../../../src/source/function_tree.h"
 #include "../../../src/source/call_plan.h"
@@ -358,6 +359,28 @@ analysis::ValueProgram GetterSelections(unsigned count = 2, bool barrier = false
   bytes.push_back(0x64);
   return Import(bytes, 3, input, abc::ProfileId::kDynamic1206,
       invoked ? analysis::CallResultValues::kLanguage : analysis::CallResultValues::kUnknown);
+}
+analysis::ValueProgram RetainedSelection() {
+  using abc::Opcode;
+  const auto op = [](Opcode code) {return static_cast<std::uint8_t>(code);};
+  std::vector<std::uint8_t> code{0x60,4,0x42,0,0,0};
+  const auto branch = [&](Opcode opcode) {
+    const auto pc = code.size(); code.insert(code.end(), {op(opcode),0}); return pc;
+  };
+  const auto patch = [&](std::size_t pc, std::size_t target) {code[pc + 1] = static_cast<std::uint8_t>(target - pc);};
+  const auto first = branch(Opcode::kJEQZ_IMM8);
+  code.insert(code.end(), {0x60,4,0x42,0,2,0,0x61,0});
+  const auto first_join = branch(Opcode::kJMP_IMM8); patch(first,code.size());
+  code.insert(code.end(), {0x00,0x61,0}); patch(first_join,code.size());
+  // An observable boundary keeps this first phi in its real private storage.
+  code.push_back(op(Opcode::kDEBUGGER));
+  code.insert(code.end(), {0x60,4,0x42,0,1,0,0x61,1,0x01,0x27,0,0});
+  const auto null = branch(Opcode::kJEQZ_IMM8);
+  code.insert(code.end(), {0x00,0x27,0,0}); const auto undefined = branch(Opcode::kJEQZ_IMM8);
+  code.insert(code.end(), {0x60,0}); const auto join = branch(Opcode::kJMP_IMM8);
+  patch(null,code.size()); patch(undefined,code.size()); code.insert(code.end(), {0x62,7,0,0,0});
+  patch(join,code.size()); code.insert(code.end(), {0x61,2,0x60,1,op(Opcode::kCALLTHIS1_IMM8_V8_V8),0,4,2,0x64});
+  return Import(code,4,nullptr,abc::ProfileId::kDynamic1206,analysis::CallResultValues::kLanguage);
 }
 analysis::ValueProgram GuardedCopy() {
   // The empty taken control arm still writes the joined SSA value. An effect
@@ -783,6 +806,26 @@ std::string BooleanConversions(unsigned count, bool comparison) {
   return Source(graph, true, &*input, false);
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--retained-selection-source") {
+    std::cout << Source(RetainedSelection()) << "\n"; return 0;
+  }
+  if (argc == 1) {
+    const auto graph = RetainedSelection(); const auto plan = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
+    Check(std::holds_alternative<CallPlan>(BuildCallPlan(graph,plan)));
+    Check(!Source(graph).empty());
+    unsigned retained = 0;
+    for (std::size_t i = 0; i < graph.values.size(); ++i) {
+      if (graph.values[i].life != analysis::ValueLife::kLive ||
+          !std::holds_alternative<analysis::PhiDefinition>(graph.values[i].origin)) continue;
+      const analysis::ValueId value{static_cast<std::uint32_t>(i)};
+      Check(HasRetainedEvaluationValue(graph, plan, value)); ++retained;
+      auto invalid = plan; invalid.phis.reset();
+      Check(!HasRetainedEvaluationValue(graph, invalid, value));
+      Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, invalid)));
+    }
+    Check(retained >= 2);
+  }
+
   if (argc == 2 && std::string_view(argv[1]) == "--call-snapshot-source") {
     std::cout << Source(GetterSelections(2, false, true, false, nullptr, false, true)) << "\n"; return 0;
   }

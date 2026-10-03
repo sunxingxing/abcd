@@ -1,5 +1,6 @@
 #include "logical_regions.h"
 #include "evaluation_plan.h"
+#include "evaluation_liveness.h"
 #include "tree_checks.h"
 #include "module_evaluation.h"
 
@@ -236,12 +237,9 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
     const auto* value = std::get_if<ValueId>(&input);
     if (!value || !graph.values[value->value].domain.IsLanguage()) return false;
     const auto& origin = graph.values[value->value].origin;
-    if (std::holds_alternative<EntryDefinition>(origin)) return true;
-    const auto* producer = std::get_if<OpResult>(&origin);
-    if (!producer || graph.ops[producer->op.value].block == block) return false;
-    const auto& placement = evaluation.operations[producer->op.value];
-    return placement.kind == EvaluationKind::kPredicateSnapshot ||
-        (placement.kind == EvaluationKind::kRoot && placement.temporary.has_value());
+    if (const auto* producer = std::get_if<OpResult>(&origin);
+        producer && graph.ops[producer->op.value].block == block) return false;
+    return HasRetainedEvaluationValue(graph, evaluation, *value);
   };
   const auto closed = [&](WorkBlockId block, const ValueOperand& input) {
     if (retained(block,input)) {

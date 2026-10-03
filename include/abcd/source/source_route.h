@@ -273,7 +273,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // and rely on verified value/effect ownership for References, not CFG colocation.
 // Rules 67 derive native rest ownership from CFG effects and SSA argument
 // transports; no fixed MOV/COPYRESTARGS/STA prologue permits the signature.
-inline constexpr std::uint32_t kRouteEvidenceRules = 67;
+// Rules 68 share retained value storage semantics between call receivers and
+// selection arms, including prior phi results without replaying their producer.
+inline constexpr std::uint32_t kRouteEvidenceRules = 68;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

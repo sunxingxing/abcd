@@ -12,6 +12,31 @@
 
 ## 当前阶段
 
+### 2026-10-03：共同保留值分类贯通后续选择表达式，恢复 TestAbility 方法
+
+- 新 HasRetainedEvaluationValue 共享入口参数/receiver、phi、catch binding 与
+  已有 operation temporary 的表示事实，选择表达式与调用 receiver 复用。
+  不增加 producer 白名单、样本身份或局部序列分支；原输入/求值验证仍承担
+  可用性、phi copies、单次执行与效果顺序。该查询不授权移动定义或重复 getter。
+- 更早汇合的 phi 现可作为后续条件表达式的保留输入。Push record4224 从
+  failure→incomplete，输出2326字节，恢复 onCreate/onNewWant 及其他成员；
+  constructor PC8 缺口保留。规则revision68。
+- 1440组独立 native 对照通过，涵盖原 JEQZ predicate、phi identity、getter
+  改写、receiver 与异常顺序；1584组配对 TS 方法场景通过，配对源码只进入
+  测试，引擎只读取ABC。未调用不完整constructor，不计作record/平台验收。
+  /tmp/abcd-retained-values-paired.log；对应两项已注册CTest并再次通过。
+- -j4生产及相关目标构建退出0，/tmp/abcd-retained-values-final-build.log。
+  12/12相关回归23.23秒通过，/tmp/abcd-retained-values-final-tests.log；包含
+  缺少phi计划时拒绝、调用身份/顺序与已有选择表达式回归。
+- fresh build/stage-one/value-retained-selection-pass-2 五输入退出0，78 complete /
+  10 incomplete /18 failure /46 no-module；已有完整源码逐字未变，无legacy。
+  /tmp/abcd-retained-values-final-batch.log、final-batch-summary.json。
+- 下一阻断已定位：Push record5374 的 phased member reference，原callee PC242、
+  call PC298，callee仍保留为root；/tmp/abcd-retained-next-reference.log。
+  需将保留值/选择恢复贯通异常相位，不能删除引用身份检查或增加局部模式。
+- Goal active；阶段一、object creaters全组及独立语义/表示验收尚未完成。
+  full-suite/扩展语料/RSS/基准/DFX/定期审视保持暂停。
+
 ### 2026-10-03：ValueTree rest 参数从 CFG/SSA 来源恢复，移除固定前导布局
 
 - ResolveFunctionSyntax 不再依赖 ProveRestPrologue 的固定复制数量/位置/寄存器

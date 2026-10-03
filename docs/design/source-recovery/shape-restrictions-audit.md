@@ -91,3 +91,17 @@ native rest array 的可观察标量使用。GETUNMAPPEDARGS 仍是独立快照�
 当前接口处理 normal ValueIR。旧 legacy semantic writer、FindRestLocal 和
 spread/forwarding constructor 专用分析仍含旧模板；此项未宣称已删完。
 完整 CFG 的异常 rest 和派生构造器状态分析继续沿用本审计的通用替换要求。
+
+## 规则 68：已有存储值的共同语义分类
+
+选择表达式的 retained-input 判断不再漏掉更早汇合的 phi。共同
+HasRetainedEvaluationValue 按 ValueDefinition 的穷尽类型及 EvaluationPlan 的
+实际存储表示，识别参数/receiver、phi、catch binding 和 operation temporary；
+调用 receiver 也复用该接口。原始值可用性与 phi-copy 验证仍须先成立，查询
+本身不证明 dominance、不移动定义，也不允许重放 producer。
+
+同一 arm 内尚需执行的 producer 仍走原 arm-owned evaluation 检查，不能靠
+“已有临时变量”隐藏该 arm 的效果。此为共同表示分类的遗漏修复，未增加新的
+opcode、寄存器、PC 或 selection 数量匹配。normal 的先前 phi→后续选择已
+贯通，1440 native /1584 paired方法场景通过；异常相位的选择/reference组合
+仍有缺口，record5374未恢复。七类审计事项并未全部关闭。
