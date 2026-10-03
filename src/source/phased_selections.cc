@@ -2,6 +2,8 @@
 #include "evaluation_plan.h"
 #include "tree_checks.h"
 
+#include <algorithm>
+
 namespace abcd::source {
 std::vector<SelectionRegion> FindPhasedPhiSelections(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, TreeCheckBudget& budget) {
@@ -47,7 +49,7 @@ std::vector<SelectionRegion> FindPhasedPhiSelections(const analysis::ValueProgra
     if (stage && evaluation.phis->bundles[i].count) staged[stage->operation.value] = 1;
   }
   struct Arm { WorkBlockId tail; EdgeId edge; ValueId value; ValueId merged; };
-  const auto arm = [&](EdgeId entry) -> std::optional<Arm> {
+  const auto arm = [&](EdgeId entry, std::size_t first_incoming = 1) -> std::optional<Arm> {
     auto at = graph.edges[entry.value].target;
     std::optional<OpId> producer;
     if (copies[entry.value]) return {};
@@ -57,7 +59,7 @@ std::vector<SelectionRegion> FindPhasedPhiSelections(const analysis::ValueProgra
     // different candidate arms cannot rescan a shared suffix.
     for (std::size_t visited = 0; visited < graph.blocks.size(); ++visited) {
       budget.Step(); const auto& block = graph.blocks[at.value];
-      if (incoming[at.value] != 1 || graph.phases[at.value].phase == ExceptionPhase::kCatch) return {};
+      if (incoming[at.value] != (visited == 0 ? first_incoming : 1) || graph.phases[at.value].phase == ExceptionPhase::kCatch) return {};
       std::optional<EdgeId> normal;
       for (std::uint32_t e = 0; e < block.edge_count; ++e) {
         budget.Step(); const EdgeId edge{block.first_edge.value + e};
@@ -98,12 +100,70 @@ std::vector<SelectionRegion> FindPhasedPhiSelections(const analysis::ValueProgra
     }
     return {};
   };
+  struct ConditionLink {
+    WorkBlockId next;
+    bool shared_on_taken = false, next_shared_on_taken = false;
+    std::vector<WorkBlockId> path;
+  };
+  std::vector<std::optional<ConditionLink>> links;
+  std::vector<std::uint8_t> parent;
+  std::vector<WorkBlockId> scratch;
+  budget.Array(links, graph.blocks.size()); budget.Array(parent, graph.blocks.size());
+  budget.Array(scratch, graph.blocks.size());
+  const auto next_condition = [&](EdgeId entry) -> std::optional<ConditionLink> {
+    if (copies[entry.value]) return {};
+    auto at = graph.edges[entry.value].target; std::size_t count = 0;
+    for (; count < graph.blocks.size();) {
+      budget.Step();
+      if (incoming[at.value] != 1 || graph.phases[at.value].phase == ExceptionPhase::kCatch) return {};
+      scratch[count++] = at;
+      const auto& block = graph.blocks[at.value]; const auto& phase = graph.phases[at.value];
+      if (phase.phase == ExceptionPhase::kCommit && phase.operation && block.edge_count == 2 &&
+          std::holds_alternative<ValueBranch>(graph.ops[phase.operation->value].operation)) {
+        ConditionLink link{at}; budget.Array(link.path, count);
+        std::copy_n(scratch.begin(), count, link.path.begin()); return link;
+      }
+      for (std::uint32_t i = 0; i < block.op_count; ++i) {
+        budget.Step(); const OpId id{block.first_op.value + i}; const auto& op = graph.ops[id.value];
+        if (op.life != ValueLife::kLive) continue;
+        const auto kind = evaluation.operations[id.value].kind;
+        if (staged[id.value] || op.normal != LanguageEffect::kNone || op.before_throw != LanguageEffect::kNone ||
+            op.exceptional != ExceptionalCompletion::kImpossible) return {};
+        if (kind != EvaluationKind::kInline && kind != EvaluationKind::kAlias && kind != EvaluationKind::kElidedPure &&
+            !std::holds_alternative<ValueBranch>(op.operation) && !std::holds_alternative<ValueJump>(op.operation) &&
+            !std::holds_alternative<ValueNop>(op.operation)) return {};
+      }
+      if (block.edge_count != 1 || copies[block.first_edge.value] ||
+          graph.edges[block.first_edge.value].kind == FlowEdgeKind::kException) return {};
+      at = graph.edges[block.first_edge.value].target;
+    }
+    return {};
+  };
+  // Index adjacent scalar tests once. Mark chain children so a long shared-arm
+  // decision is visited only from its maximal root, never once per suffix.
+  for (std::size_t b = 0; b < graph.blocks.size(); ++b) {
+    budget.Step(); const auto& phase = graph.phases[b]; const auto& block = graph.blocks[b];
+    if (phase.phase != ExceptionPhase::kCommit || !phase.operation || block.edge_count != 2 ||
+        !std::holds_alternative<ValueBranch>(graph.ops[phase.operation->value].operation)) continue;
+    for (std::uint32_t side = 0; side != 2; ++side) {
+      const auto shared = graph.edges[block.first_edge.value + side].target;
+      if (incoming[shared.value] < 2) continue;
+      auto link = next_condition(EdgeId{block.first_edge.value + (1 - side)});
+      if (!link) continue;
+      const auto& next = graph.blocks[link->next.value];
+      const bool taken = graph.edges[next.first_edge.value].target == shared;
+      const bool other = graph.edges[next.first_edge.value + 1].target == shared;
+      if (taken == other || parent[link->next.value]) continue;
+      link->shared_on_taken = side == 0; link->next_shared_on_taken = taken;
+      parent[link->next.value] = 1; links[b] = std::move(link); break;
+    }
+  }
   budget.Admit(graph.blocks.size(), sizeof(SelectionRegion)); result.reserve(graph.blocks.size());
   budget.Admit(result.capacity() - graph.blocks.size(), sizeof(SelectionRegion));
   for (std::size_t b = 0; b < graph.blocks.size(); ++b) {
     budget.Step(); const WorkBlockId header_id{static_cast<std::uint32_t>(b)};
     const auto& phase = graph.phases[b];
-    if (phase.phase != ExceptionPhase::kCommit || !phase.operation) continue;
+    if (parent[b] || phase.phase != ExceptionPhase::kCommit || !phase.operation) continue;
     const auto branch = *phase.operation; const auto& op = graph.ops[branch.value];
     if (!std::holds_alternative<ValueBranch>(op.operation) || op.use_count != 1) continue;
     const auto* condition = std::get_if<ValueId>(&graph.uses[op.first_use.value].operand);
@@ -111,8 +171,27 @@ std::vector<SelectionRegion> FindPhasedPhiSelections(const analysis::ValueProgra
     if (!predicate) continue;
     const auto& header = graph.blocks[b];
     if (header.edge_count != 2) continue;
-    const auto yes = arm(header.first_edge);
-    const auto no = arm(EdgeId{header.first_edge.value + 1});
+    std::vector<SelectionCondition> conditions;
+    std::vector<WorkBlockId> phases;
+    std::size_t condition_count = 1, phase_count = 0;
+    auto last = header_id;
+    for (std::size_t visited = 0; links[last.value] && visited < graph.blocks.size(); ++visited) {
+      budget.Step(); ++condition_count; phase_count += links[last.value]->path.size(); last = links[last.value]->next;
+    }
+    if (condition_count > graph.blocks.size()) continue;
+    budget.Array(conditions, condition_count); budget.Array(phases, phase_count);
+    conditions[0] = {branch, links[b] ? links[b]->shared_on_taken : true};
+    std::size_t condition_at = 1, phase_at = 0; auto cursor = header_id;
+    while (links[cursor.value]) {
+      budget.Step(); const auto& link = *links[cursor.value];
+      conditions[condition_at++] = {*graph.phases[link.next.value].operation, link.next_shared_on_taken};
+      for (const auto block : link.path) { budget.Step(); phases[phase_at++] = block; }
+      cursor = link.next;
+    }
+    const EdgeId shared{header.first_edge.value + (conditions.front().shared_on_taken ? 0U : 1U)};
+    const EdgeId fallback{graph.blocks[last.value].first_edge.value + (conditions.back().shared_on_taken ? 1U : 0U)};
+    const auto yes = arm(shared, condition_count);
+    const auto no = arm(fallback);
     if (!yes || !no || yes->edge == no->edge || yes->merged != no->merged || uses[yes->merged.value] != 2) continue;
     const auto join = graph.edges[yes->edge.value].target;
     const auto* merged = std::get_if<PhiDefinition>(&graph.values[yes->merged.value].origin);
@@ -122,7 +201,7 @@ std::vector<SelectionRegion> FindPhasedPhiSelections(const analysis::ValueProgra
     region.consequent = yes->value;
     // Retain the original branch predicate (including VM boolean-vs-zero
     // semantics), rather than assuming JavaScript truthiness from source style.
-    budget.Array(region.conditions, 1); region.conditions[0] = {branch, true};
+    region.conditions = std::move(conditions); region.condition_phases = std::move(phases);
     result.push_back(std::move(region));
   }
   return result;
@@ -166,11 +245,35 @@ std::vector<SelectionRegion> FindPhasedSelections(const analysis::ValueProgram& 
   for (auto& region : regions) {
     budget.Step(); if (!headers[region.header.value]) continue;
     const auto& node = control.nodes[headers[region.header.value]->value];
-    if (node.decision || !node.next || control.nodes[node.next->value].block != region.join) continue;
+    if (!node.next || control.nodes[node.next->value].block != region.join) continue;
+    const auto* last = &node; std::size_t phase = 0; bool bound = true;
+    budget.Array(region.condition_blocks, region.condition_phases.size());
+    for (std::size_t i = 1; i < region.conditions.size() && bound; ++i) {
+      budget.Step();
+      if (!last->decision || last->decision->evaluate_on_taken == region.conditions[i - 1].shared_on_taken ||
+          last->decision->shared_on_taken != region.conditions[i].shared_on_taken) { bound = false; break; }
+      auto at = last->decision->evaluate; const auto terminal = last->decision->predicate.value_or(at);
+      for (std::size_t visited = 0; visited < control.nodes.size(); ++visited) {
+        budget.Step(); const auto& part = control.nodes[at.value];
+        if (phase >= region.condition_phases.size() || part.block != region.condition_phases[phase] ||
+            !std::holds_alternative<std::monostate>(part.synthetic)) { bound = false; break; }
+        region.condition_blocks[phase++] = at;
+        if (at == terminal) { last = &part; break; }
+        if (part.arms || part.decision || !part.next) { bound = false; break; }
+        at = *part.next;
+      }
+      if (!bound || graph.phases[last->block.value].operation != region.conditions[i].branch) bound = false;
+    }
+    if (!bound || phase != region.condition_phases.size() || last->decision) continue;
+    const bool first_taken = region.conditions.front().shared_on_taken;
+    const bool last_taken = region.conditions.back().shared_on_taken;
     const auto first = graph.blocks[region.header.value].first_edge;
-    if (!path(node.arms->taken, first, *region.keep) ||
-        !path(node.arms->fallthrough, EdgeId{first.value + 1}, region.evaluate)) continue;
-    region.keep_path = node.arms->taken; region.evaluate_path = node.arms->fallthrough;
+    const auto end = graph.blocks[last->block.value].first_edge;
+    const auto shared = first_taken ? node.arms->taken : node.arms->fallthrough;
+    const auto fallback = last_taken ? last->arms->fallthrough : last->arms->taken;
+    if (!path(shared, EdgeId{first.value + (first_taken ? 0U : 1U)}, *region.keep) ||
+        !path(fallback, EdgeId{end.value + (last_taken ? 1U : 0U)}, region.evaluate)) continue;
+    region.keep_path = shared; region.evaluate_path = fallback;
     if (&regions[kept] != &region) regions[kept] = std::move(region);
     ++kept;
   }

@@ -63,6 +63,9 @@ struct SelectionRegion {
   // An arm may apply one owned suffix to an inner selected value before
   // supplying its outer phi. The child join stays on that arm's path.
   std::vector<analysis::OpId> arm_prefixes;
+  // Original phase blocks on short-circuited scalar-test paths. The control
+  // adapter binds these to condition_blocks without conflating the ID spaces.
+  std::vector<analysis::WorkBlockId> condition_phases;
 };
 inline bool IsSelectionConstant(const analysis::ValueProgram& graph, analysis::OpId id) {
   if (id.value >= graph.ops.size()) return false;

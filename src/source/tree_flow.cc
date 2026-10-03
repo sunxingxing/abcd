@@ -500,7 +500,7 @@ class FlowCheck {
             budget_.Step(); const analysis::OpId op{block.first_op.value + i};
             if (std::holds_alternative<analysis::ValueBranch>(graph_.ops[op.value].operation) ||
                 evaluation_.operations[op.value].kind == EvaluationKind::kModuleGuard) continue;
-            DecisionOperation(op, parent, child);
+            DecisionOperation(op, parent, child, nullptr, exceptions_ ? std::optional{current.branch} : std::nullopt);
           }
           for (std::uint8_t i = 0; i < block.edge_count; ++i) {
             budget_.Step(); std::uint32_t empty = 0;

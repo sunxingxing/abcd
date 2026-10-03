@@ -8,18 +8,24 @@ const flags = [undefined, null, false, 0, -0, NaN, '', true, 1, 1n, symbol, host
 const options = [undefined, null, false, 0, -0, NaN, 'argument', symbol, token];
 let cases = 0;
 const variants = [{computed: false, prefix: 'none'}, {computed: true, prefix: 'none'},
-  {computed: true, prefix: 'getter'}, {computed: true, prefix: 'call'}];
+  {computed: true, prefix: 'getter'}, {computed: true, prefix: 'call'},
+  {computed: true, prefix: 'nullish'}, {computed: true, prefix: 'wrapped'}];
 for (const {computed, prefix} of variants) for (const count of [1, 2]) {
-  const source = execFileSync(tool, [prefix === 'getter' ? '--phased-prefix-getter-source' : prefix === 'call' ? '--phased-prefix-call-source' :
+  const nullable = prefix === 'nullish' || prefix === 'wrapped';
+  const source = execFileSync(tool, [prefix === 'nullish' ? '--phased-nullish-source' : prefix === 'wrapped' ? '--phased-wrapped-nullish-source' : prefix === 'getter' ? '--phased-prefix-getter-source' : prefix === 'call' ? '--phased-prefix-call-source' :
     computed ? '--phased-computed-call-selection-source' : '--phased-call-selection-source', ...(count === 2 ? ['--twice'] : [])], {encoding: 'utf8'});
   assert.ok(source.includes('value.method(') && source.includes(' ? '));
   assert.ok(!source.includes('.call(') && !source.includes('INCOMPLETE'));
   const recovered = Function(`"use strict"; return ${source}`)();
-  const reference = (value, flag) => {
+  const reference = (value, flag, wrap) => {
     try {
       let result;
       for (let i = 0; i < count; ++i) {
-        if (prefix === 'getter') result = value.method(value.probe ? 7 : value.option);
+        if (nullable) {
+          let parsed;
+          if (prefix === 'wrapped') result = wrap(value.method((parsed = value.probe(flag), parsed?.option)));
+          else result = value.method((parsed = value.probe(flag), parsed?.option));
+        } else if (prefix === 'getter') result = value.method(value.probe ? 7 : value.option);
         else if (prefix === 'call') {
           let parsed;
           result = value.method((parsed = value.probe(flag), parsed.other ? 7 : parsed.option));
@@ -42,7 +48,7 @@ for (const {computed, prefix} of variants) for (const count of [1, 2]) {
         if (noncallable && !version) return null;
         const method = function(argument) {
           assert.equal(this, value);
-          assert.ok(Object.is(argument, flag ? 7 : computed ? option : 448));
+          assert.ok(Object.is(argument, nullable ? (flag == null ? undefined : option) : flag ? 7 : computed ? option : 448));
           event('call', capturedVersion, argument);
           return token;
         };
@@ -56,6 +62,7 @@ for (const {computed, prefix} of variants) for (const count of [1, 2]) {
         const probe = function(input) {
           assert.equal(this, value); assert.ok(Object.is(input, flag)); event('probe-call');
           if (replace) ++version;
+          if (nullable && (flag == null || (typeof flag !== 'object' && typeof flag !== 'function'))) return flag;
           const parsed = {
             get other() {
               assert.equal(this, parsed); event('get-other'); if (replace) ++version; return flag;
@@ -75,9 +82,27 @@ for (const {computed, prefix} of variants) for (const count of [1, 2]) {
     }});
     // The original bytecode handler returns the exception; an escaping throw
     // is a failure, not an interchangeable outcome in this harness.
-    const result = fn(value, flag);
-    assert.ok(result === token || result === failure || (noncallable && result instanceof TypeError));
-    return {trace, outcome: result === token ? 'return' : result === failure ? 'sentinel' : 'TypeError'};
+    const prototype = nullable && flag != null ?
+      ({boolean: Boolean.prototype, number: Number.prototype, string: String.prototype,
+        bigint: BigInt.prototype, symbol: Symbol.prototype})[typeof flag] : undefined;
+    const previous = prototype && Object.getOwnPropertyDescriptor(prototype, 'option');
+    if (prototype) Object.defineProperty(prototype, 'option', {configurable: true, get() {
+      assert.ok(Object.is(this, flag)); event('primitive-option'); if (replace) ++version; return option;
+    }});
+    const wrap = function(argument) {
+      assert.equal(this, undefined); assert.equal(argument, token); event('wrap'); return token;
+    };
+    Object.defineProperty(wrap, 'call', {get() { assert.fail('wrapper .call helper'); }});
+    try {
+      const result = fn(value, flag, wrap);
+      assert.ok(result === token || result === failure || (noncallable && result instanceof TypeError));
+      return {trace, outcome: result === token ? 'return' : result === failure ? 'sentinel' : 'TypeError'};
+    } finally {
+      if (prototype) {
+        if (previous) Object.defineProperty(prototype, 'option', previous);
+        else delete prototype.option;
+      }
+    }
   }
   for (const flag of flags) for (const option of options) for (const replace of [false, true])
     for (const failAt of Array.from({length: 13}, (_, i) => i)) for (const noncallable of [false, true]) {

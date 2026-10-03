@@ -22,6 +22,19 @@ class CallSelections {
     budget.Array(uses_, graph.values.size()); budget.Array(incoming_, graph.blocks.size());
     budget.Array(copied_, graph.edges.size()); budget.Array(phi_arguments_, graph.ops.size());
     budget.Array(callees_, graph.values.size()); budget.Array(prefix_, graph.ops.size());
+    budget.Array(heads_, graph.values.size()); budget.Array(next_, graph.uses.size());
+    budget.Array(roots_, graph.ops.size()); budget.Array(owners_, graph.ops.size());
+    for (std::size_t i = graph.ops.size(); i-- > 0;) {
+      budget.Step(); roots_[i] = OpId{static_cast<std::uint32_t>(i)};
+      const auto placement = BeforeLogicalFusion(graph, plan, i);
+      if (placement.kind != EvaluationKind::kInline || !placement.consumer) continue;
+      if (placement.consumer->value >= graph.uses.size()) throw EvaluationError::kOwnership;
+      if (const auto* owner = std::get_if<OpId>(&graph.uses[placement.consumer->value].owner);
+          owner && owner->value > i) roots_[i] = roots_[owner->value];
+    }
+    for (const auto& module : plan.modules) {
+      budget.Step(); if (module.pair.guard) roots_[module.pair.guard->value] = roots_[module.pair.read.value];
+    }
     for (const auto& edge : graph.edges) {
       budget.Step(); if (edge.kind != FlowEdgeKind::kException) ++incoming_[edge.target.value];
     }
@@ -43,6 +56,7 @@ class CallSelections {
             if (invoke && invoke->receiver == InvokeReceiver::kExplicit) callees_[value->value] = 1;
           }
         }
+        next_[i] = heads_[value->value]; heads_[value->value] = UseId{static_cast<std::uint32_t>(i)};
         auto& uses = uses_[value->value];
         if (uses.first) uses.multiple = true;
         else uses.first = UseId{static_cast<std::uint32_t>(i)};
@@ -83,8 +97,9 @@ class CallSelections {
     if (!call || use.role != OperandRole::kArgument || phi_arguments_[call->value] != 1) return {};
     const auto& invoke = graph_.ops[call->value];
     const auto* operation = std::get_if<ValueInvoke>(&invoke.operation);
+    const auto call_kind = BeforeLogicalFusion(graph_, plan_, call->value).kind;
     if (!operation || operation->receiver != InvokeReceiver::kExplicit ||
-        BeforeLogicalFusion(graph_, plan_, call->value).kind != EvaluationKind::kRoot) return {};
+        (call_kind != EvaluationKind::kRoot && call_kind != EvaluationKind::kInline)) return {};
     const auto callee_value = ResolveEvaluationOperand(plan_, graph_.uses[invoke.first_use.value].operand);
     const auto* value = std::get_if<ValueId>(&callee_value);
     const auto* result = value ? std::get_if<OpResult>(&graph_.values[value->value].origin) : nullptr;
@@ -103,13 +118,26 @@ class CallSelections {
     std::size_t prefix_count = 0;
     if (!Prefix(*result->commit, region.header, *call, region.branch, prefix_count) ||
         !Inert(region.join, invoke.block, true)) return {};
+    for (std::size_t i = 0; i < prefix_count; ++i) owners_[prefix_[i].value] = region.branch;
+    for (const auto& condition : region.conditions) owners_[condition.branch.value] = region.branch;
     for (const auto* arm : {&region.right, &*region.consequent}) {
       const auto* input = std::get_if<ValueId>(arm);
       const auto* producer = input ? std::get_if<OpResult>(&graph_.values[input->value].origin) : nullptr;
       if (!producer) return {};
+      owners_[producer->op.value] = region.branch;
       const auto& op = graph_.ops[producer->op.value];
       if (op.exceptional == ExceptionalCompletion::kMayThrow &&
           !corridors_.SameCatch(producer->op, *call)) return {};
+    }
+    // A moved prefix snapshot may be consumed only by this prefix, scalar
+    // decision or selected arms. In particular an earlier argument of an
+    // enclosing call must not read it before the inner call evaluates it.
+    for (std::size_t i = 0; i < prefix_count; ++i) {
+      budget_.Step(); const auto value = *graph_.ops[prefix_[i].value].result;
+      for (auto at = heads_[value.value]; at; at = next_[at->value]) {
+        budget_.Step(); const auto* owner = std::get_if<OpId>(&graph_.uses[at->value].owner);
+        if (!owner || owners_[roots_[owner->value].value] != region.branch) return {};
+      }
     }
     PhaseSelectionCall selected{callee, *call, region.branch, region.merged, argument, transport};
     budget_.Array(selected.prefix, prefix_count);
@@ -183,7 +211,9 @@ class CallSelections {
   std::vector<PhaseUse> uses_;
   std::vector<std::uint32_t> incoming_, phi_arguments_;
   std::vector<std::uint8_t> copied_, callees_;
-  std::vector<OpId> prefix_;
+  std::vector<OpId> prefix_, roots_;
+  std::vector<std::optional<UseId>> heads_, next_;
+  std::vector<std::optional<OpId>> owners_;
 };
 }
 void BuildPhaseSelectionCalls(const ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget) {

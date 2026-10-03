@@ -12,6 +12,31 @@
 
 ## 当前阶段
 
+### 2026-10-03：phased 共享分支与嵌套调用
+
+- 图发现一次索引相邻纯判断路径及链父关系，仅从最大链根恢复SelectionRegion，
+  保留每个scalar branch及短路方向；共享臂入口数必须恰好匹配链长度。
+  condition_phases保留原WorkBlockId，再逐点绑定真实ControlId，不识别null字面量
+  或样本名字来选择规则。第二判断的scope/空catch-copy继续独立检查。
+- 条件参数允许其消费调用已有合法phase inline父节点。新前缀使用普查要求
+  被移动快照只被所属前缀、条件或选择臂消费，防止外层较早参数先读未初始化
+  快照；phased_prefix_escape_refusal_test专门验证这一边界。
+- Native 67392组对照覆盖null/undefined、通过原型getter观察非空假值读取、
+  callee改写、各位置异常及嵌套间接调用。三profile及1/2/200/201调用通过；
+  单条2/200/201/402判断链也通过，避免只测试许多短链掩盖后缀重复扫描。
+- -j4构建最终退出0，9/9组合回归88.64秒，最终3/3通过1.90秒；日志
+  /tmp/abcd-phase-shared-related-build2.log、/tmp/abcd-phase-shared-related-tests.log、
+  /tmp/abcd-phase-shared-final-tests.log。嵌套fixture显式使用生产路由的
+  NormalCallResults(kSourceContract)，输入证明未放宽；长链测试参数重名已修正。
+- fresh build/stage-one/value-phase-shared-pass-1五输入均退出0：78 complete /
+  5 incomplete /23 failure /46 no-module，无回退/legacy。8383/9550/11989
+  的共享空值if/else赋值收敛为共同条件表达式；Voip/ProgressBar配对通过。
+- 实际Push record3444方法3613已越过原callee op40/调用op66的拒绝；当前
+  下一处为外层callee op29（pool32）、Invoke op69（显式receiver、4参数），
+  仍为kReference。证据 /tmp/abcd-phase-shared-next-call.log。下一步需将嵌套
+  调用链外层方法引用纳入顺序证明，不能把内层成功当整record完成。
+  Goal active；full-suite/扩展语料/RSS未恢复。
+
 ### 2026-10-03：条件参数调用的有副作用前缀
 
 - PhaseSelectionCall保存原执行顺序的前缀表达式根及phase_prefixes唯一归属；
