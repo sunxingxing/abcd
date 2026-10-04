@@ -12,6 +12,42 @@
 
 ## 当前阶段
 
+### 2026-10-04：布尔选择与 NOT 复用共同打印观察
+
+- 规则 revision85。共同 printer 将观察扩为 Value/Truthiness/Discarded，
+  用 typed polarity 迭代组合 NOT 与 BooleanLiteral conditional。正向选择
+  的精确值为!!condition，反向为!condition；truthiness消费可省去正向
+  转换。相同布尔结果用(condition,true/false)保留原GetValue、getter与
+  异常；discarded只省去无用户钩子的转换/结果。&&/||左侧仍消费truthiness，
+  ??左侧仍观察精确值。原AST身份、效果、scope和输入接受域/V3没有改变。
+- 共同grammar对剩余unary及被暴露子表达式重新分组，含exponent左侧。
+  被省略的NOT、选择和literal节点保留非空/有界来源范围；无样本/producer/
+  opcode/CFG准入匹配。44种选择/上下文，1/2/200/201/402/804深度与工作量
+  检查通过，270080组独立getter/Proxy/短路/任意抛出值/返回身份对照及4项
+  语义mutant有效。另保留75520组布尔上下文对照。这是printer隔离层；
+  原始ABC完整路径由既有normal/phased/配对回归另行验证。
+- RED boolean-choice-red.log证实旧printer保留布尔ternary。首轮Node oracle
+  错将不同执行的新Symbol/对象直接比较，随后改为先验证各自输入身份；
+  另一轮mutant误认为去掉NOT会丢getter，现区分结果类型与丢condition负例。
+  追加discarded测试时曾将夹具代码放错条件块，编译失败，已修复。上述
+  失败均未计入通过。discard-repair-build.log退出0，discard-tests.log
+  3/3通过；final-build.log、module-build.log均以单构建-j4退出0。
+- /tmp/abcd-boolean-choice-final-tests.log 27/27通过82.18秒，包括源码
+  precedence/postfix、branch、normal/phased snapshot、class/module、
+  unary/literal和pasteboard/Home/DetailPage配对行为。没有恢复暂停的
+  full-suite、扩展语料、RSS、基准、DFX或代理。
+- fresh build/stage-one/value-boolean-choice-pass-1 固定五输入全部退出0，
+  80 complete/26 incomplete/0 failure/46 no-module，无完整回退或legacy
+  writer。batch.log/syntax.log确认输入SHA/size与manifest/index一致，
+  106份源码全部解析；38份complete及16份incomplete表示改善，其余字节
+  不变。实际PageB/HotTitleView的membership否定由false/true ternary变为
+  !("finalizeConstruction" in ViewPU.prototype)，来自ABC AST而非sidecar。
+- 同步shape-restrictions-audit.md：CallPlan和Receiver同块门槛未回归，
+  phased单selection仍在；补充prepared_family.cc显式派生根要求非空
+  receiver_guards的发布边界，尚需共同初始化/receiver生命周期证明接入。
+  当前38份源码改善不新增完整record，未知算术域、导入super协议、共享
+  Reference与剩余正文/高层结构缺口保留；阶段一双验收未完成，Goal active。
+
 ### 2026-10-04：构造初始化改用真实 CFG 单次调用证明
 
 - 规则 revision84。按原用户审计请求继续核对构造路径，删除

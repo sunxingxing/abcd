@@ -5,6 +5,26 @@
 
 ## 输入规模与成本
 
+### 布尔选择与 NOT 的共同打印组合（2026-10-04）
+
+规则85在已恢复 FunctionTree 的打印 action 中携带 Value/Truthiness/Discarded
+观察与 Boolean polarity。迭代消费任意长度的 NOT 和两侧 BooleanLiteral 的
+ConditionalExpr；不同布尔结果转为最少必要 NOT，相同结果通过 comma 保留
+原条件 GetValue。Discarded 只省去无用户钩子的布尔转换与未观察的结果，
+&&/|| 左侧仍消费 truthiness，?? 左侧仍消费精确值。原输入验证、效果/异常、
+Reference、scope 和 AST 身份没有改变，不提供 opcode/CFG/样本恢复许可。
+
+来源为 ECMA-262 ToBoolean、logical NOT、conditional 和 comma evaluation；
+项目自有实现，无复制外部代码、新增依赖或第三方许可证要求。共同 grammar
+处理被暴露的子表达式和剩余 unary，原节点位置范围随事件栈结束。N个访问的
+AST节点、L个输出字节的时间 O(N+L)，action 与位置空间 O(N)；每次 polarity
+action 消费一层节点，不回溯重扫，不递归打印，literal 查询为常数时间。
+
+44种选择/观察组合、1/2/200/201/402/804深度的工作量与范围检查，以及
+270080组getter/Proxy/结果身份/短路/异常独立对照验证此边界。夹具是 printer
+隔离层；真实解码及配对行为另行验证。没有恢复暂停的性能/RSS或扩展语料
+测量，既有算术域、构造协议和阶段一语义/源码风格缺口仍在。
+
 ### 派生构造初始化的单次调用证明（2026-10-04）
 
 range/spread 共用 `ProveInitialization`，不以 branch target 的 PC 大小、

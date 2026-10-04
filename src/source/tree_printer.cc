@@ -34,13 +34,16 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
     const GlobalScope*, std::size_t, ClassPrintForm, const ClassCaptureDestination* = nullptr);
 struct DerivedClassBody { std::shared_ptr<const ClassTree> definition; ExprId expression; bool inferred = false; };
 struct EndExpression { ExprId id; };
-enum class ExpressionObservation : std::uint8_t { kValue, kTruthiness };
+enum class ExpressionObservation : std::uint8_t { kValue, kTruthiness, kDiscarded };
 struct ExpressionOperand {
   ExprId id;
   TreeOperatorContext context;
   std::optional<NameId> inferred_name = {};
   ExpressionObservation observation = ExpressionObservation::kValue;
 };
+// Composition of language Boolean results, not a bytecode recovery pattern.
+// Keep the original parent grammar until a remaining conversion is emitted.
+struct BooleanOperand { ExpressionOperand expression; bool inverted; };
 struct Statement { StmtId id; std::size_t depth; };
 struct EndStatement { StmtId id; };
 struct BlockCursor { StmtId id; std::uint32_t index; std::size_t depth; };
@@ -56,7 +59,7 @@ struct BeginFunction {};
 struct EndFunction {};
 struct ParameterCursor { std::uint32_t index; };
 struct EndParameter { std::uint32_t index; };
-using PrintAction = std::variant<std::string_view, ExprId, EndExpression, ExpressionOperand,
+using PrintAction = std::variant<std::string_view, ExprId, EndExpression, ExpressionOperand, BooleanOperand,
     Statement, EndStatement, BlockCursor, Indent, PropertyKey, SymbolName, ArgumentCursor,
     ObjectCursor, EndProperty, BeginFunction, EndFunction, ParameterCursor, EndParameter, SnapshotCursor, DerivedClassBody, ArrayArgumentCursor>;
 struct OwnedAction { std::size_t owner; std::size_t depth; PrintAction action; };
@@ -571,14 +574,20 @@ class TreePrinter {
     // &&/|| preserve truthiness and short-circuit effects in a Boolean context.
     // ?? selects by nullness: removing a Boolean conversion from its left would
     // change whether the right runs. Exact-value consumers keep both operands.
-    if (node.operation == TreeLogical::kNullish) observation = ExpressionObservation::kValue;
-    Push(ExpressionOperand{node.right, {node.operation, OperandSide::kRight}, {}, observation});
+    auto left = observation == ExpressionObservation::kDiscarded ? ExpressionObservation::kTruthiness : observation;
+    auto right = observation;
+    if (node.operation == TreeLogical::kNullish) {
+      left = ExpressionObservation::kValue;
+      if (observation != ExpressionObservation::kDiscarded) right = ExpressionObservation::kValue;
+    }
+    Push(ExpressionOperand{node.right, {node.operation, OperandSide::kRight}, {}, right});
     Push(TreeLogicalToken(node.operation));
-    Push(ExpressionOperand{node.left, {node.operation, OperandSide::kLeft}, {}, observation});
+    Push(ExpressionOperand{node.left, {node.operation, OperandSide::kLeft}, {}, left});
   }
   void Expression(SequenceExpr node) {
     Append("("); Push(std::string_view(")")); Push(node.right);
-    Push(std::string_view(", ")); Push(node.left);
+    Push(std::string_view(", "));
+    Push(ExpressionOperand{node.left, {}, {}, ExpressionObservation::kDiscarded});
   }
   void Expression(UpdateExpr node) {
     const auto token = node.direction == UpdateDirection::kIncrement ? "++" : "--";
@@ -885,28 +894,74 @@ class TreePrinter {
     else { Append("["); Quoted(name); Append("]"); }
   }
   void Run(ExprId id) { Run(ExpressionOperand{id, {}}); }
-  void Run(ExpressionOperand operand) {
-    const auto id = operand.id;
+  void BeginExpression(ExprId id) {
     Result().expressions[id.value].begin = written_;
     Push(EndExpression{id});
-    // ECMA-262 ToBoolean and logical NOT have no user conversion hooks. Only
-    // truthiness consumers may omit !!; a returned/stored value must remain a
-    // Boolean. Preserve both origin spans and let the exposed child decide its
-    // actual grammar grouping. Consume pairs once, never rescan a unary chain.
-    if (operand.observation == ExpressionObservation::kTruthiness) {
-      const auto* outer = std::get_if<UnaryExpr>(&Tree().expressions[id.value].expression);
-      if (outer && outer->operation == TreeUnary::kNot) {
-        const auto inner_id = outer->operand;
-        const auto* inner = std::get_if<UnaryExpr>(&Tree().expressions[inner_id.value].expression);
-        if (inner && inner->operation == TreeUnary::kNot) {
-          Result().expressions[inner_id.value].begin = written_;
-          Push(EndExpression{inner_id});
-          operand.id = inner->operand;
-          Push(operand);
-          return;
-        }
-      }
+  }
+  std::optional<bool> BooleanLiteralValue(ExprId id) const {
+    const auto* literal = std::get_if<TreeLiteral>(&Tree().expressions[id.value].expression);
+    const auto* boolean = literal ? std::get_if<BooleanLiteral>(literal) : nullptr;
+    return boolean ? std::optional{boolean->value} : std::nullopt;
+  }
+  bool BooleanChoice(ConditionalExpr node, ExpressionOperand operand, bool inverted) {
+    const auto yes = BooleanLiteralValue(node.consequent);
+    const auto no = BooleanLiteralValue(node.alternate);
+    if (!yes || !no) return false;
+    // The omitted literal branches retain ranges covering their normalized
+    // expression. Constant selections still evaluate the original condition;
+    // neither its getter/throw nor its GetValue may disappear.
+    BeginExpression(node.consequent); BeginExpression(node.alternate);
+    if (operand.observation == ExpressionObservation::kDiscarded) {
+      operand.id = node.condition; operand.inferred_name.reset(); Push(operand);
+    } else if (*yes == *no) {
+      Append("(");
+      Push(std::string_view((*yes != inverted) ? ", true)" : ", false)"));
+      Push(ExpressionOperand{node.condition, {}, {}, ExpressionObservation::kDiscarded});
+    } else {
+      operand.id = node.condition; operand.inferred_name.reset();
+      Push(BooleanOperand{operand, inverted != !*yes});
     }
+    return true;
+  }
+  void Run(BooleanOperand operand) {
+    const auto id = operand.expression.id;
+    const auto& expression = Tree().expressions[id.value].expression;
+    if (const auto* unary = std::get_if<UnaryExpr>(&expression);
+        unary && unary->operation == TreeUnary::kNot) {
+      BeginExpression(id);
+      operand.expression.id = unary->operand;
+      operand.inverted = !operand.inverted;
+      Push(operand); return;
+    }
+    if (const auto* conditional = std::get_if<ConditionalExpr>(&expression);
+        conditional && BooleanLiteralValue(conditional->consequent) && BooleanLiteralValue(conditional->alternate)) {
+      BeginExpression(id);
+      BooleanChoice(*conditional, operand.expression, operand.inverted);
+      return;
+    }
+    // NOT/Boolean choices compose as a polarity. ToBoolean has no user hook:
+    // emit at most one NOT, or two for a positive exact Boolean value. A pure
+    // truthiness observation may expose the child with its real parent grammar.
+    if (operand.expression.observation != ExpressionObservation::kDiscarded &&
+        (operand.inverted || operand.expression.observation == ExpressionObservation::kValue)) {
+      if (TreeOperandGrouping(TreeExpression{UnaryExpr{TreeUnary::kNot, id}}, operand.expression.context)) {
+        Append("("); Push(std::string_view(")"));
+      }
+      Append(operand.inverted ? "!" : "!!");
+      Push(ExpressionOperand{id, {TreeUnary::kNot}, {}, ExpressionObservation::kTruthiness});
+    } else Push(operand.expression);
+  }
+  void Run(ExpressionOperand operand) {
+    const auto id = operand.id;
+    BeginExpression(id);
+    const auto& expression = Tree().expressions[id.value].expression;
+    if (const auto* unary = std::get_if<UnaryExpr>(&expression);
+        unary && unary->operation == TreeUnary::kNot) {
+      operand.id = unary->operand; operand.inferred_name.reset();
+      Push(BooleanOperand{operand, true}); return;
+    }
+    if (const auto* conditional = std::get_if<ConditionalExpr>(&expression);
+        conditional && BooleanChoice(*conditional, operand, false)) return;
     if (TreeOperandGrouping(Tree().expressions[id.value].expression, operand.context)) {
       Append("("); Push(std::string_view(")"));
     }

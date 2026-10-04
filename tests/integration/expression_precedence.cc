@@ -12,6 +12,12 @@ namespace {
 using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
+struct ChoiceFixture {
+  bool consequent;
+  bool alternate;
+  unsigned depth;
+  unsigned context;
+};
 class Fixture {
  public:
   Fixture() {
@@ -36,7 +42,7 @@ class Fixture {
         {OperandRole::kReceiver, base}, {OperandRole::kArgument, argument}});
   }
   std::string Print(ValueId result, bool logical = false, bool awaited = false, bool numeric_base = false,
-      bool predicate = false, bool selected = false) {
+      bool predicate = false, bool selected = false, std::optional<ChoiceFixture> choice = {}) {
     Add(ValueReturn{}, {{OperandRole::kReturnValue, result}}, false);
     graph.blocks.push_back({{0}, static_cast<std::uint32_t>(graph.ops.size()), {0}, 0});
     const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
@@ -100,6 +106,43 @@ class Fixture {
         returned->value = add(ConditionalExpr{condition, yes, no});
       }
     }
+    if (choice) {
+      // Isolate language AST Boolean choices, including value consumers that
+      // must preserve a Boolean rather than only the condition's truthiness.
+      for (auto& statement : tree.statements) if (auto* returned = std::get_if<ReturnStmt>(&statement.statement); returned && returned->value) {
+        auto value = *returned->value;
+        const auto origin = tree.expressions[value.value].origin;
+        const auto add = [&](TreeExpression expression) {
+          const ExprId id{static_cast<std::uint32_t>(tree.expressions.size())};
+          tree.expressions.push_back({std::move(expression), origin}); return id;
+        };
+        const auto right = [&] { return add(MemberExpr{add(SymbolExpr{tree.parameters[1].symbol}), NameId{5}}); };
+        if (choice->context >= 8) {
+          const auto boolean = [&](ExprId input) {
+            return add(UnaryExpr{TreeUnary::kNot, add(UnaryExpr{TreeUnary::kNot, input})});
+          };
+          const auto left = boolean(value), rhs = boolean(right());
+          value = add(LogicalExpr{choice->context == 8 ? TreeLogical::kNullish :
+              choice->context == 9 ? TreeLogical::kAnd : TreeLogical::kOr, left, rhs});
+        }
+        for (unsigned i = 0; i < choice->depth; ++i) {
+          const auto yes = add(TreeLiteral{BooleanLiteral{choice->consequent}});
+          const auto no = add(TreeLiteral{BooleanLiteral{choice->alternate}});
+          value = add(ConditionalExpr{value, yes, no});
+        }
+        switch (choice->context) {
+          case 0: case 1: case 8: case 9: case 10: break;
+          case 2: value = add(LogicalExpr{TreeLogical::kOr, value, right()}); break;
+          case 3: value = add(LogicalExpr{TreeLogical::kNullish, value, right()}); break;
+          case 4: value = add(UnaryExpr{TreeUnary::kNot, value}); break;
+          case 5: value = add(BinaryExpr{BinaryOperator::kAdd, value, right()}); break;
+          case 6: value = add(BinaryExpr{BinaryOperator::kExponent, value, right()}); break;
+          case 7: value = add(BinaryExpr{BinaryOperator::kStrictEqual, value, right()}); break;
+          default: test::Check(false);
+        }
+        returned->value = value;
+      }
+    }
     if (predicate) {
       // Printer isolation: a native condition observes truthiness, whereas
       // returns, assignments and nullish selections still observe exact values.
@@ -114,6 +157,31 @@ class Fixture {
         tree.expressions.push_back({ConditionalExpr{condition, yes, no}, origin});
       }
     }
+    if (choice && choice->context == 1) {
+      // A real IfStmt supplies truthiness observation. Its independent return
+      // literals also distinguish exact-value printing from branch printing.
+      const auto count = tree.statements.size();
+      for (std::size_t i = 0; i < count; ++i) {
+        const auto* returned = std::get_if<ReturnStmt>(&tree.statements[i].statement);
+        if (!returned || !returned->value) continue;
+        const auto condition = *returned->value;
+        const auto origin = tree.statements[i].origin;
+        const auto arm = [&](bool value) {
+          const ExprId expression{static_cast<std::uint32_t>(tree.expressions.size())};
+          tree.expressions.push_back({TreeLiteral{BooleanLiteral{value}}, origin});
+          const StmtId statement{static_cast<std::uint32_t>(tree.statements.size())};
+          tree.statements.push_back({ReturnStmt{expression}, origin});
+          const auto first = static_cast<std::uint32_t>(tree.children.size());
+          tree.children.push_back(statement);
+          const ScopeId scope{static_cast<std::uint32_t>(tree.scopes.size())};
+          tree.scopes.push_back({ScopeKind::kBlock, tree.body_scope});
+          const StmtId block{static_cast<std::uint32_t>(tree.statements.size())};
+          tree.statements.push_back({BlockStmt{scope, first, 1}, origin}); return block;
+        };
+        const auto yes = arm(true), no = arm(false);
+        tree.statements[i].statement = IfStmt{condition, yes, no};
+      }
+    }
     std::ostringstream out;
     const auto printed = PrintFunctionTree(tree, out);
     test::Check(std::holds_alternative<PrintedFunction>(printed));
@@ -123,7 +191,11 @@ class Fixture {
     for (std::size_t i = 0; i < positions.expressions.size(); ++i) {
       const auto range = positions.expressions[i];
       test::Check(range.begin <= range.end && range.end <= text.size());
-      if (std::holds_alternative<UnaryExpr>(tree.expressions[i].expression))
+      if (std::holds_alternative<UnaryExpr>(tree.expressions[i].expression) ||
+          std::holds_alternative<ConditionalExpr>(tree.expressions[i].expression))
+        test::Check(range.begin < range.end);
+      if (const auto* literal = std::get_if<TreeLiteral>(&tree.expressions[i].expression);
+          literal && std::holds_alternative<BooleanLiteral>(*literal))
         test::Check(range.begin < range.end);
     }
     return text;
@@ -244,10 +316,24 @@ std::string BooleanContext(unsigned index, unsigned count = 2, std::uint64_t* wo
   if (work) *work = f.Work();
   return source;
 }
+std::string BooleanChoice(unsigned index, unsigned depth = 1, std::uint64_t* work = nullptr) {
+  test::Check(index < 44 && depth > 0);
+  Fixture fixture;
+  const auto condition = fixture.Read({0}, 5);
+  const auto form = index % 4, context = index / 4;
+  const auto source = fixture.Print(condition, false, false, false, false, false,
+      ChoiceFixture{form != 1 && form != 3, form != 0 && form != 3, depth, context});
+  if (work) *work = fixture.Work();
+  return source;
+}
 int main(int argc, char** argv) {
   if (argc == 4) {
-    test::Check(std::string_view(argv[1]) == "--boolean-chain");
-    std::cout << BooleanContext(static_cast<unsigned>(std::stoul(argv[2])), static_cast<unsigned>(std::stoul(argv[3])));
+    if (std::string_view(argv[1]) == "--boolean-choice")
+      std::cout << BooleanChoice(static_cast<unsigned>(std::stoul(argv[2])), static_cast<unsigned>(std::stoul(argv[3])));
+    else {
+      test::Check(std::string_view(argv[1]) == "--boolean-chain");
+      std::cout << BooleanContext(static_cast<unsigned>(std::stoul(argv[2])), static_cast<unsigned>(std::stoul(argv[3])));
+    }
     return 0;
   }
   if (argc == 3) {
@@ -258,11 +344,11 @@ int main(int argc, char** argv) {
     return 0;
   }
   constexpr std::array<std::string_view, 14> boolean_contexts{
-      "(a.value ? true : false)", "return !!a.value;", "(a.value || b.value ? true : false)",
-      "return !!a.value || !!b.value;", "(a.value && b.value ? true : false)",
-      "(!!a.value ?? !!b.value ? true : false)", "return !a.value;", "(a.value || b.value ? true : false)",
-      "(a.value < b.value ? true : false)", "return ~!!a.value;",
-      "((a.value || b.value) && c.value ? true : false)", "return !(a.value ?? b.value);",
+      "return !!a.value;", "return !!a.value;", "return !!(a.value || b.value);",
+      "return !!a.value || !!b.value;", "return !!(a.value && b.value);",
+      "return !!(!!a.value ?? !!b.value);", "return !a.value;", "return !!(a.value || b.value);",
+      "return !!(a.value < b.value);", "return ~!!a.value;",
+      "return !!((a.value || b.value) && c.value);", "return !(a.value ?? b.value);",
       "return (a.value ? !!b.value : !!c.value);", "(a.value ? b.value : c.value)"};
   for (unsigned i = 0; i < boolean_contexts.size(); ++i)
     test::Check(BooleanContext(i).find(boolean_contexts[i]) != std::string::npos);
@@ -271,8 +357,18 @@ int main(int argc, char** argv) {
     for (const unsigned count : {1U, 2U, 200U, 201U, 402U, 804U}) {
       std::uint64_t work = 0;
       const auto text = BooleanContext(observation, count, &work);
-      test::Check(text.find(count % 2 ? "!a.value" : observation == 0 ? "(a.value ?" : "!!a.value") != std::string::npos);
+      test::Check(text.find(count % 2 ? "!a.value" : "!!a.value") != std::string::npos);
       if (count > 201) test::Check(work < 3 * previous);
+      previous = work;
+    }
+  }
+  for (unsigned index = 0; index < 44; ++index) {
+    std::uint64_t previous = 0;
+    for (const unsigned depth : {1U, 2U, 200U, 201U, 402U, 804U}) {
+      std::uint64_t work = 0;
+      const auto text = BooleanChoice(index, depth, &work);
+      test::Check(text.find(" ? ") == std::string::npos);
+      if (depth > 201) test::Check(work < 3 * previous);
       previous = work;
     }
   }

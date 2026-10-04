@@ -105,8 +105,9 @@ admission. No production behavior depends on the fixture's operator list.
 
 ## Boolean observation in the common printer
 
-Rule 83 gives each printer operand a typed observation: exact value or
-truthiness. If/conditional tests and logical NOT consume truthiness. Within that
+Rule 83 introduced typed exact-value/truthiness observations. Rule 85 adds a
+discarded-value observation and composes Boolean choices with logical NOT.
+If/conditional tests and logical NOT consume truthiness. Within that
 context, &&/|| and selected conditional branches forward the same observation;
 an exact-value consumer keeps every Boolean conversion. Assignment RHS, call
 arguments, property bases/keys, arithmetic operands and returns remain values.
@@ -121,18 +122,43 @@ truthiness. This is a source-AST observation rule, not a new VM value-domain
 premise or an admission rule based on compiler/opcode/CFG layout. ToNumber,
 ToNumeric and bitwise conversion remain independent obligations.
 
-The iterative printer consumes adjacent NOT pairs only under truthiness
-observation. An exact value still returns a Boolean; odd chains keep one NOT
-and even value chains keep two. The exposed child's original parent context
-decides precedence/nullish grammar, rather than inheriting the discarded
-unary's precedence. Both original expression spans cover the emitted child;
-the AST, original operations, scope and effect proofs are unchanged. Work and
-action storage remain linear, without recursive printing or chain rescans.
+The iterative printer composes NOT and Boolean-literal conditional results as
+a typed polarity. `condition ? true : false` prints as `!!condition` for an
+exact value and as the condition for truthiness; the inverted choice prints as
+`!condition`. Arbitrary compositions consume each node once and emit at most
+one negative or two positive NOT operators. Nonliteral branch values retain
+their conditional evaluation. These are language expression identities, not
+opcode sequences, producer lists or graph-shape recovery permissions.
+
+Equal Boolean arms still evaluate the condition: `condition ? true : true`
+prints as `(condition, true)`, with the corresponding false/inverted result.
+The condition's value is discarded, but its GetValue, getter, reference errors
+and arbitrary thrown value remain observable. This follows
+[conditional evaluation](https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#sec-conditional-operator)
+and [comma evaluation](https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#sec-comma-operator).
+Nested discarded Boolean results may lose their pure conversions and literal
+selection; they never lose the original condition evaluation. For discarded
+&&/||, the left still observes truthiness and the selected right is discarded.
+For discarded ??, the left still observes its exact value and only the right
+is discarded. This keeps nullish selection and short-circuit effects intact.
+
+The exposed child's original parent context decides precedence/nullish grammar,
+rather than inheriting an omitted unary's precedence. A remaining conversion
+uses the common unary grouping rules, including exponentiation's left operand.
+Omitted NOT, conditional and Boolean-literal nodes retain nonempty spans over
+their normalized expression; AST identities, original operations, scope and
+effect proofs are unchanged. Work and action storage remain linear, without
+recursive printing or chain rescans. No VM profile, input admission or V3 host
+premise changes with this output transformation.
 
 Printer isolation tests distinguish exact results, predicates, short-circuit
 logical/nullish expressions, conditional branches, comparisons, and bitwise
 consumers. They exercise 1/2/200/201/402/804 NOT depths, span bounds and an
-independent getter/Proxy/mutation/throw oracle. Existing decoded ordinary,
+independent getter/Proxy/mutation/throw oracle. Boolean choices additionally
+cover all four Boolean-arm combinations in eleven contexts, 1/2/200/201/402/804
+depths, exact Boolean results, comma GetValue, nullish selection, exponent
+grouping and four effective semantic mutants. These are printer isolation
+tests, not a proof of arbitrary decoded arithmetic inputs. Existing ordinary,
 phased, branch, snapshot and paired-record tests independently cover the full
 source route. These layers do not close general arithmetic admission or the
 whole phase-one semantic/style goal.

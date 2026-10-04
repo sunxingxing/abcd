@@ -1465,6 +1465,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/expression_precedence.mjs $<TARGET_FILE:expression_precedence_test>)
     add_test(NAME boolean_context_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/boolean_context.mjs $<TARGET_FILE:expression_precedence_test>)
+    add_test(NAME boolean_choice_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/boolean_choice.mjs $<TARGET_FILE:expression_precedence_test>)
     add_test(NAME postfix_expression_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/postfix_expression.mjs $<TARGET_FILE:expression_precedence_test>)
     add_test(NAME instanceof_expression_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

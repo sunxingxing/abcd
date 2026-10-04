@@ -1,6 +1,6 @@
 # 按用户要求进行的恢复条件审计
 
-最新替换状态见文末规则84；历史表中的严格比较候选及literal同块条件不再是
+最新替换状态及补充事项见文末规则85；历史表中的严格比较候选及literal同块条件不再是
 当前准入条件。未替换项继续开放，不能将本次局部交付称为全量审计闭合。
 
 2026-10-03，基线 87176c10。此为本次明确请求的审计，不恢复定期审视。
@@ -454,3 +454,29 @@ parent brand、spread-array 展开及 legacy 直线模板仍有独立边界。�
 实际改变嵌套保存赋值的问题，已让负例保留super效果而仅破坏receiver身份。
 旧writer assignments失败单独记录，没有计入通过。最新验证与五输入
 状态见 status.md；未进行逐行全量生产审计、full-suite、扩展语料或RSS。
+
+## 规则 85：语法恒等变换与恢复准入分开，补充发布层门槛
+
+当前再次核对 CallPlan 与 tree_operands::Receiver，同块比较及
+CrossPhaseInline/CrossLogicalInline 例外没有回归；共同求值独立验证与实际
+callee/base/receiver 对应仍在。phase_selection_calls 的 phi_arguments 和
+root_selections 各为1门槛仍在，不能视为已由这些修复关闭。
+
+新共同 printer 用 typed Value/Truthiness/Discarded 和 polarity 组合 NOT 与
+BooleanLiteral 条件分支。这种源语言布尔恒等式仅改变已恢复树的表示，不
+决定哪个指令、布局或样本可以恢复；条件 GetValue、getter/throw 和 nullish
+左侧精确值保留。不得将这类 AST 语法变换误用为 producer/CFG 准入模板。
+独立行为与来源范围验证见 operator-expressions.md、status.md。
+
+本次补充确认另一项发布边界：prepared_family.cc 约216行的 root callable
+检查，在实际 ClassContext 下仍要求显式 DerivedConstructor 的
+receiver_guards 非空。规则84的共同初始化分析已不以 guard 存在与否准入，
+这里不能再用 guard 数量代替初始化/receiver 生命周期证明。暂未修改这个
+独立发布接口；后续需消费原 owner、实际初始化证明、完整树/ABI、捕获和
+constructor 上下文，避免直接删除后让未初始化 receiver 获得发布许可。
+隐式构造路径有独立协议证明，不能据其成功宣称此显式根接口已经贯通。
+
+当前审计仍有 inline-owned Reference、phased 多selection、initializer/
+capture/模块相位、首次 own-definition 和 legacy 构造/rest 等开放项。本轮
+27项相关检查通过，并重新导出固定五输入；未逐行审计所有生产条件，也未
+恢复暂停的全套、扩展语料、性能或RSS验证。全部审计事项尚未关闭。
