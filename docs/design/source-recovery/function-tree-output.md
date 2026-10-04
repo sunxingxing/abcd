@@ -86,19 +86,28 @@ work 统计和调用方显式传入有限额度的底层兼容接口保留，但
 整份 record 的最终目标不变。演进任务见
 [C00–C09 计划](../../superpowers/plans/2026-09-28-unified-control-regions.md)。
 
-## 原生函数尾部完成的表示（规则 100）
+## 原生函数尾部完成的表示（规则 100、103）
 
 共同 printer 可将实际 function body 最后一个直接子语句的 bare return 或
 typed undefined literal return 表示为自然结束；FunctionTree、原指令来源和
 控制计划保持完整。更早/嵌套 return、变量读取、复合表达式、call、await/yield
 及 finally 中的 return 不在这个语法投影范围内。
 
+规则103的 ImplicitTailCompletion 还允许 base/derived constructor 的实际
+body尾部直接返回自身 ThisExpr，通过原生构造完成自然结束。当前实例身份
+不变；derived this未初始化时，原生完成的GetThisBinding仍抛出ReferenceError。
+不能移除try/catch/finally中的this读取，否则可能把异常移出原保护范围。
+普通function/method的receiver返回、别名、属性读取、call和sequence均保留。
+语法尾部是这个安全投影的边界，不是ABC恢复的块布局准入条件；还没有为
+嵌套控制中的等价完成建立通用消除证明。依据
+[ECMA-262 2024 Construct](https://tc39.es/ecma262/2024/multipage/ordinary-and-exotic-objects-behaviours.html#sec-ecmascript-function-objects-construct-argumentslist-newtarget)。
+
 async generator 的有操作数 return 隐含 Await，连 undefined literal 也必须
 保留，避免改变完成通知相对其他微任务的顺序。此区别来自语言语义，不是
 按样本/编译器布局设置的准入条件。见
 [ReturnStatement evaluation](https://tc39.es/ecma262/2024/multipage/ecmascript-language-statements-and-declarations.html#sec-return-statement-runtime-semantics-evaluation)。
 
-省略的原 return/字面量在结束 block 前保留共同零宽位置，序列化标记
+省略的原 return/字面量或receiver在结束 block 前保留共同零宽位置，序列化标记
 tail_completion；module root 沿用 module_completion，位置在 module owner
 末尾。位置消费方核对实际 body、owner 及前一个 sibling 的范围，不把这些
 事件当作无来源节点或捏造有长度的源码片段。静态字段和隐式构造器原投影

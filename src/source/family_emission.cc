@@ -31,7 +31,7 @@ void CheckPositions(const PreparedFamily& family, const PrintedFamilyDraft& prin
     const auto& positions = printed.members[i]; const auto owner = printed.functions[i];
     const bool module = positions.fragment == FunctionFragment::kModuleBody && i == family.Family().root.value;
     const auto completion = positions.fragment == FunctionFragment::kStaticFields ||
-        positions.fragment == FunctionFragment::kImplicitConstructor ? std::nullopt : PureTailCompletion(tree);
+        positions.fragment == FunctionFragment::kImplicitConstructor ? std::nullopt : ImplicitTailCompletion(tree);
     const auto* body = std::get_if<BlockStmt>(&tree.statements[tree.body.value].statement);
     const bool empty_completion = module && completion && body && body->child_count == 1 && owner.begin == owner.end;
     Require((owner.begin < owner.end || empty_completion) && owner.end <= printed.bytes && member.sources &&

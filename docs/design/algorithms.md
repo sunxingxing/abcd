@@ -1384,7 +1384,7 @@ undefined. That return must remain; its bare return has no such operand.
 Checking only eventual values or iterator request order misses this job boundary.
 Independent microtask markers distinguish completion before/after the marker.
 
-`PureTailCompletion` takes O(1) work/space per callable and reuses existing flat
+`ImplicitTailCompletion` (formerly `PureTailCompletion`) takes O(1) work/space per callable and reuses existing flat
 tree tables. The printer writes the original return/literal at one zero-width
 byte boundary before its closing block; emission checks that boundary within the
 real owner/body and after the prior sibling. Serialization reports
@@ -1395,6 +1395,31 @@ callable kinds, retained effects/control/finalizers, asynchronous job order and
 queued iterator requests; actual paired HomeModel verifies source style and
 observable callback behavior independently.
 
+
+### Constructor receiver tail completion (2026-10-04, rules 103)
+
+Extend the same constant-time projection with the typed base/derived callable
+kind and a direct ThisExpr owned by that constructor. No CFG walk, bytecode
+pattern, inferred function name or additional admission premise is introduced.
+The original AST return, operand and instruction-source occurrences remain;
+printer, emission checks and position serialization share the same query.
+
+Provenance: ECMA-262 2024
+[Construct](https://tc39.es/ecma262/2024/multipage/ordinary-and-exotic-objects-behaviours.html#sec-ecmascript-function-objects-construct-argumentslist-newtarget).
+Explicit return of the bound receiver and native fallthrough return the same
+object, including a replacement object returned by super and alternate newTarget.
+Uninitialized derived this throws in both forms. Reads inside try/catch/finally
+must stay there; dropping them could change handler/finalizer behavior. Earlier
+returns, alias/property reads, compound operands and ordinary callable receiver
+returns remain. More general redundant-completion elimination needs control and
+exception ownership proof; this syntax projection does not assert that gap closed.
+
+No dependency, imported implementation, cache or license change. Maintenance
+requires retaining callable/owner identity, original provenance and exception
+boundaries. Native syntax oracles cover 24 base/derived cases and 8,640 identity,
+effect and exception scenarios, independently of actual paired decoded
+constructors and full HomeModel record behavior/style checks. Physical RSS and
+larger corpus benchmarks remain paused.
 
 ## Generator preserving completion syntax ownership (rules 101)
 

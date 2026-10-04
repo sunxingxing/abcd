@@ -57,6 +57,7 @@ const homeRun = spawnSync(tool, [abc, '16638'], {encoding: 'utf8', timeout: 60_0
 assert.equal(homeRun.status, 0, homeRun.stderr);
 assert.match(homeRun.stdout, /this\.tabBarList = \[\]/);
 assert.match(homeRun.stdout, /this\.initTabBarList\(\)/);
+assert.doesNotMatch(homeRun.stdout, /return this;/, 'constructor receiver completion should use native fallthrough');
 const homePaired = process.argv[5];
 async function home(source) {
   const module = new vm.SourceTextModule(source);

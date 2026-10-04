@@ -87,6 +87,8 @@ try {
         'unnamed call arguments should use native function syntax');
       assert.doesNotMatch(actual.get(specifier), /return \(void 0\);/,
         'effect-free terminal undefined returns should use native fallthrough');
+      assert.doesNotMatch(actual.get(specifier), /return this;/,
+        'constructor receiver completion should use native fallthrough');
     }
     expected.set(specifier, stripTypeScriptTypes(readFileSync(join(root, 'Immersive_src', paired), 'utf8')));
   }

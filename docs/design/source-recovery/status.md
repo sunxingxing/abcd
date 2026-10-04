@@ -12,6 +12,41 @@
 
 ## 当前阶段
 
+### 2026-10-04：构造器以原生完成表示尾部 receiver 返回
+
+- 规则revision103，基线06701bf9。真实HomeModel构造器和独立语法fixture
+  在旧printer中仍输出return this；red-tests.log 2/2失败3.07秒，实际
+  constructor及完整record各自增加源码表示断言。此次不改变数值验收合同。
+- ImplicitTailCompletion扩展规则100的共同尾部投影：实际base/derived
+  constructor body末尾直接返回自身ThisExpr时使用自然完成。AST、控制、
+  operand、原instruction来源及零宽位置保留，printer/emission/serializer
+  共用同一查询。不依赖样本、函数名、PC、寄存器、opcode或CFG同块条件。
+- ECMA-262 2024 Construct保证同一receiver身份；未初始化derived this
+  的原生完成仍抛出ReferenceError。提前/嵌套、try/catch/finally保护内的
+  返回、普通function receiver返回、其他对象、alias/member/call/sequence
+  均保留。语法尾部是安全投影边界；更广完成消除仍需控制/异常归属证明。
+- 新24组base/derived语法fixture经真实ClassTreeContext和同一printer，
+  独立Node oracle共8,640场景通过：原对象/替代super对象/alternate
+  newTarget身份，super/event/getter/prototype异常，保护范围、finally覆盖、
+  arity和不可Call。fixture只验证语法投影，不冒充原ABC构造器发布证据；
+  实际CommonConstants/HomeModel解码及完整HomeModel配对另行验收。
+- /tmp/abcd-constructor-tail-build-1.log四目标单-j4成功；tests-1.log
+  首轮6/6通过9.29秒。related-build.log的25个实际注册目标单-j4成功，
+  related-tests.log 41/41通过151.81秒，含类/派生捕获/default forwarding、
+  record整合、tail原生async/generator job顺序及两项返回清理组合。
+  已知402选择的资源失败用例不在此相关选择中，未宣称全量测试通过。
+- fresh build/stage-one/constructor-tail-pass-1固定五输入全部退出0，
+  仍80complete/26incomplete/0failure/46no-module，无完整回退、新完整
+  项或legacy writer。batch-1.log/syntax-1.log核对原index/manifest SHA和
+  size，106份源码解析通过。23完整和2部分记录表示改善；所有文本变化
+  仅删除29行构造尾部return this，原30处降至1处，style-summary-1.json
+  保存逐文件diff核对。部分record仍不作为整份等价执行输入。
+- author self-review核对native完成、未初始化异常时点、protected返回、
+  原节点/来源位置和class上下文；O(1)查询，无新增依赖或全图遍历。
+  普通数值、未知父类构造协议、Reference/phase/字段/全局/签名和整份阶段一
+  独立语义/表示验收仍未完成，Goal active。代理、全量测试、扩展语料、
+  RSS/基准及DFX继续暂停，不宣称实测进程峰值内存达标。
+
 ### 2026-10-04：普通初始化与捕获使用支配区域及真实路径
 
 - 规则 revision102，基线 dd07273e。完成此前已复现的普通 cell 初始化

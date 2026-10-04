@@ -1152,8 +1152,9 @@ if(BUILD_TESTING)
   endif()
   add_executable(class_tree_sample tests/integration/class_tree_sample.cc)
   target_link_libraries(class_tree_sample PRIVATE abcd_source abcd_corpus)
-  add_executable(constructor_tree_sample tests/integration/constructor_tree_sample.cc)
-  target_link_libraries(constructor_tree_sample PRIVATE abcd_source abcd_corpus)
+  add_executable(constructor_tree_sample tests/integration/constructor_tree_sample.cc
+    tests/integration/constructor_tail_syntax.cc tools/tree_position_json.cc)
+  target_link_libraries(constructor_tree_sample PRIVATE abcd_source abcd_corpus abcd_json)
   add_executable(class_sample_fixture tests/integration/class_sample.cc)
   target_include_directories(class_sample_fixture PRIVATE tests/support)
   target_link_libraries(class_sample_fixture PRIVATE abcd_source abcd_corpus)
@@ -1405,6 +1406,11 @@ if(BUILD_TESTING)
         "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"
         "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/commons/src/main/ets/constants/CommonConstants.ts"
         "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/shopping/src/main/ets/model/HomeModel.ts")
+      if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
+        add_test(NAME constructor_tail_completion_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/constructor_tail_completion.mjs $<TARGET_FILE:constructor_tree_sample>
+          "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc" "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
+      endif()
       add_test(NAME value_class_record_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_class_record.mjs $<TARGET_FILE:abc_semantic>
         "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")

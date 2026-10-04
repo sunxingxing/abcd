@@ -2,6 +2,7 @@
 #include "../../src/source/family_emission.h"
 #include "../../src/source/family_route_failure.h"
 #include "abcd/corpus/abc_file.h"
+#include "constructor_tail_syntax.h"
 #include <cstdlib>
 #include <charconv>
 #include <string_view>
@@ -14,9 +15,9 @@ void Check(bool condition) { if (!condition) std::abort(); }
 int main(int argc, char** argv) {
   using namespace abcd;
   using namespace abcd::source;
-  Check(argc == 2 || argc == 3);
+  Check(argc == 2 || argc == 3 || argc == 4);
   std::uint32_t entity = 7312;
-  if (argc == 3) {
+  if (argc >= 3) {
     const std::string_view text{argv[2]};
     const auto parsed = std::from_chars(text.data(), text.data() + text.size(), entity);
     Check(parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size());
@@ -47,6 +48,10 @@ int main(int argc, char** argv) {
   const auto valid_context = ClassTreeContext::ResolveConstructor(file, header, index, lookup, roles,
       caller, occurrence, identity);
   const auto& context = std::get<ClassTreeContext>(valid_context);
+  if (argc == 4) {
+    Check(std::string_view(argv[3]) == "--tail-syntax");
+    ConstructorTailSyntax(context); Check(!file.CheckUnchanged()); return 0;
+  }
   Check(context.Constructor() && context.Length() == 0);
   auto& working = std::get<analysis::ValueClassCreation>(caller.values.graph.ops[occurrence.value].operation);
   ++working.length;
