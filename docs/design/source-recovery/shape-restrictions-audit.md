@@ -1,6 +1,6 @@
 # 按用户要求进行的恢复条件审计
 
-最新替换状态及补充事项见文末规则85；历史表中的严格比较候选及literal同块条件不再是
+最新替换状态及补充事项见文末规则86；历史表中的严格比较候选及literal同块条件不再是
 当前准入条件。未替换项继续开放，不能将本次局部交付称为全量审计闭合。
 
 2026-10-03，基线 87176c10。此为本次明确请求的审计，不恢复定期审视。
@@ -480,3 +480,24 @@ constructor 上下文，避免直接删除后让未初始化 receiver 获得发�
 capture/模块相位、首次 own-definition 和 legacy 构造/rest 等开放项。本轮
 27项相关检查通过，并重新导出固定五输入；未逐行审计所有生产条件，也未
 恢复暂停的全套、扩展语料、性能或RSS验证。全部审计事项尚未关闭。
+
+## 规则 86：显式派生根不再以 guard 存在准入
+
+前节补充的 PreparedFamily::Prepare 发布门槛已删除。真实 ClassContext
+和 root placement 保留；FamilyTrees 对实际同 owner 输入先证明构造初始化
+协议，再构建/验证 SourceTree、ABI、来源及全族捕获/写入，发布层不再重复
+要求 receiver_guards 非空。RED 在完整构建后命中 kCallable；无 guard 的
+正例经同一通路进入完整 family emission，没有另加局部序列或布局分支。
+
+未新增“无 guard 即 initialized”的假设。原 guard 的实际输入及覆盖、cell
+初始化与 descendant preservation 仍独立证明。没有可省略的 root guard 时，
+可写 cell 不一定使寄存器初始化协议失败，但不能获得 immutable receiver
+事实；真实 child initialized guard 无证据时继续拒绝。不得将这两种义务
+合成新的“必须只读捕获”或“必须出现某种 guard”模板。
+
+测试真实序列化的三profile owner/constructor/child，包含复制规模、分支
+捕获、字面量初始化、getter和原始/current-IR变造。夹具省略 guard 后曾
+遗漏必要 accumulator receiver load，现修正输入而未增加生产模式。旧负例
+要求“协议全部拒绝”的假设也已分解为实际 receiver 事实/guard 省略义务。
+具体构建及失败修复证据见 status.md；当前开放的 phased 多selection、
+inline-owned Reference、initializer/捕获/模块相位与legacy模板仍未关闭。

@@ -10,6 +10,7 @@
 #include <sstream>
 #include <source_location>
 #include <memory>
+#include <type_traits>
 namespace {
 using namespace abcd;
 using namespace abcd::source;
@@ -23,7 +24,8 @@ enum class CaptureScenario { kReceiver, kUndefined, kForwarded, kUninitializedGu
   kInitialUndefined, kEarlyCreation, kBranchInitialization };
 std::uint64_t Run(abc::ProfileId profile, std::size_t copies, Child child, bool print,
     CellBranch branch = CellBranch::kNone, bool literal = false, bool reference = false,
-    CaptureScenario scenario = CaptureScenario::kReceiver, bool receiver_literal = false) {
+    CaptureScenario scenario = CaptureScenario::kReceiver, bool receiver_literal = false,
+    bool guarded = true) {
   // Pinned dynamic ISA fixture: actual derived class occurrence and closure,
   // receiver saved into local cell after super, read again after DEFINEFUNC.
   constexpr std::uint32_t kPool = 64, kOwner = 80, kLiteral = 128,
@@ -36,9 +38,9 @@ std::uint64_t Run(abc::ProfileId profile, std::size_t copies, Child child, bool 
   std::vector<std::uint8_t> constructor{
       static_cast<std::uint8_t>(abc::Opcode::kNEWLEXENV_IMM8), 1,
       static_cast<std::uint8_t>(abc::Opcode::kMOV_V8_V8), kSavedReceiver, kReceiver,
-      kSuper, 0, 1, kArgument, kStore, kResult,
-      kLoad, kSavedReceiver, kCheckPrefix, kSuperCheck, 1,
-      kLoad, kResult, kStore, kReceiver, kLoad, kReceiver, kLexStore, 0};
+      kSuper, 0, 1, kArgument, kStore, kResult};
+  if (guarded) constructor.insert(constructor.end(), {kLoad, kSavedReceiver, kCheckPrefix, kSuperCheck, 1});
+  constructor.insert(constructor.end(), {kLoad, kResult, kStore, kReceiver, kLoad, kReceiver, kLexStore, 0});
   if (scenario == CaptureScenario::kInitialUndefined || scenario == CaptureScenario::kForwarded ||
       scenario == CaptureScenario::kEarlyCreation) {
     constructor.insert(constructor.begin() + 2, {kLoad, kReceiver, kLexStore, 0});
@@ -81,8 +83,11 @@ std::uint64_t Run(abc::ProfileId profile, std::size_t copies, Child child, bool 
       // A proved initialized receiver check sits inside the literal interval,
       // immediately before the getter used by its second property. It must
       // keep its PC anchor without becoming an extra observable effect.
-      for (std::size_t i = 0; i < copies; ++i)
+      for (std::size_t i = 0; guarded && i < copies; ++i)
         constructor.insert(constructor.end(), {kLoad, kReceiver, kCheckPrefix, kSuperCheck, 0});
+      // The getter always reads the receiver. With no guards, the accumulator
+      // still holds the closure stored in the first property, not that receiver.
+      constructor.insert(constructor.end(), {kLoad, kReceiver});
       constructor.insert(constructor.end(), {
           static_cast<std::uint8_t>(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 5, 0,
           static_cast<std::uint8_t>(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8), 0, 5, 0, 2});
@@ -92,7 +97,9 @@ std::uint64_t Run(abc::ProfileId profile, std::size_t copies, Child child, bool 
   constructor.insert(constructor.end(), {
       static_cast<std::uint8_t>(abc::Opcode::kSTOBJBYNAME_IMM8_ID16_V8), 0, 3, 0, kReceiver});
   for (std::size_t i = 0; i < copies; ++i) constructor.insert(constructor.end(), {kLexLoad, 0, kStore, 3});
-  constructor.insert(constructor.end(), {kLexLoad, 0, kCheckPrefix, kSuperCheck, 0, kReturn});
+  constructor.insert(constructor.end(), {kLexLoad, 0});
+  if (guarded) constructor.insert(constructor.end(), {kCheckPrefix, kSuperCheck, 0});
+  constructor.push_back(kReturn);
   std::vector<std::uint8_t> descendant{kLexLoad, 0, kReturn};
   // LD/STLEXVAR_IMM4_IMM4 packs depth in the low nibble and slot in the high
   // nibble (the pinned dynamic ISA). Slot 1 is Language but stores undefined.
@@ -199,16 +206,38 @@ std::uint64_t Run(abc::ProfileId profile, std::size_t copies, Child child, bool 
   const DerivedCaptureInput captures{file, header, index, lookup};
   const auto projected = ProjectDerivedConstructor(function, context, {}, &captures);
   if (child != Child::kReadOnly || branch == CellBranch::kMixed) {
-    Check(std::get<DerivedProjectionError>(projected) == DerivedProjectionError::kProtocol);
+    if (const auto* error = std::get_if<DerivedProjectionError>(&projected))
+      Check(*error == DerivedProjectionError::kProtocol);
+    else {
+      // Register initialization alone can succeed without root guards, but a
+      // writable/mixed cell grants no immutable receiver fact. The descendant's
+      // real initialized guard cannot be omitted or falsely published.
+      Check(!guarded && reference);
+      const auto& protocol = std::get<DerivedProjection>(projected);
+      Check(protocol.receiver_cells.empty() && protocol.receiver_initializations.empty());
+      const auto functions = std::get<FunctionCreationSites>(FunctionCreationSites::Build(file, header, index, lookup));
+      Check(std::holds_alternative<FamilyPrepareFailure>(PreparedFamily::PrepareConstructor(
+          file, header, index, lookup, roles, functions, parent, creation, identity,
+          {Strictness::kStrict, nullptr, FunctionFragment::kClassMember})));
+    }
     Check(!file.CheckUnchanged()); Check(unlink(path) == 0); return 0;
   }
   if (const auto* error = std::get_if<DerivedProjectionError>(&projected)) std::cerr << "projection error " << static_cast<unsigned>(*error) << '\n';
   Check(std::holds_alternative<DerivedProjection>(projected));
   const auto& protocol = std::get<DerivedProjection>(projected);
+  Check(protocol.guards.size() == (guarded ? (receiver_literal ? copies + 2 : 2) : 0));
   Check(protocol.receiver_cells.size() + protocol.receiver_initializations.size() ==
       (scenario == CaptureScenario::kBranchInitialization ? 2 : 1));
   Check(!VerifyDerivedProjection(function, context, protocol, {}, &captures));
-  Check(std::get<DerivedProjectionError>(ProjectDerivedConstructor(function, context)) == DerivedProjectionError::kProtocol);
+  const auto without_captures = ProjectDerivedConstructor(function, context);
+  if (guarded) Check(std::get<DerivedProjectionError>(without_captures) == DerivedProjectionError::kProtocol);
+  else {
+    // With no lexical guards to omit, register initialization alone is valid.
+    // It does not grant receiver origins to captured cells without preservation.
+    Check(std::holds_alternative<DerivedProjection>(without_captures));
+    const auto& isolated = std::get<DerivedProjection>(without_captures);
+    Check(isolated.receiver_cells.empty() && isolated.receiver_initializations.empty());
+  }
   MethodConstants constants(file, header, index, context.Target(), {});
   const auto preserved = std::get<CapturePreservations>(ProveCapturePreservation(function.body, constants, &lookup, {}));
   const auto classified = BuildDerivedValueStates(function, protocol.call, preserved.sites, {});
@@ -243,7 +272,21 @@ std::uint64_t Run(abc::ProfileId profile, std::size_t copies, Child child, bool 
   });
   Check(store != graph.ops.rend()); auto& operand = graph.uses[store->first_use.value].operand;
   const auto original = operand; operand = SpecialValue::kUndefined;
-  Check(std::get<DerivedProjectionError>(ProjectDerivedConstructor(function, context, {}, &captures)) == DerivedProjectionError::kOperand);
+  if (guarded)
+    Check(std::get<DerivedProjectionError>(ProjectDerivedConstructor(function, context, {}, &captures)) == DerivedProjectionError::kOperand);
+  else {
+    // The edited store needs no guard omission, but loses its receiver fact.
+    // A cached projection cannot keep the original cell initialization claim.
+    const auto changed = ProjectDerivedConstructor(function, context, {}, &captures);
+    if (const auto* error = std::get_if<DerivedProjectionError>(&changed))
+      Check(*error == DerivedProjectionError::kOperand);
+    else {
+      const auto& changed_protocol = std::get<DerivedProjection>(changed);
+      Check(changed_protocol.receiver_cells != protocol.receiver_cells ||
+          changed_protocol.receiver_initializations != protocol.receiver_initializations);
+    }
+    Check(VerifyDerivedProjection(function, context, protocol, {}, &captures).has_value());
+  }
   operand = original;
   // A later cell read cannot retroactively initialize the store that defines
   // that cell. Reject working-graph feedback before solving receiver origins.
@@ -262,7 +305,9 @@ std::uint64_t Run(abc::ProfileId profile, std::size_t copies, Child child, bool 
   const DerivedCaptureInput wrong_input{file, wrong_header, index, lookup};
   Check(std::get<DerivedProjectionError>(ProjectDerivedConstructor(function, context, {}, &wrong_input)) == DerivedProjectionError::kOwner);
 
-  auto missing = protocol; missing.guards.pop_back();
+  auto missing = protocol;
+  if (missing.guards.empty()) missing.guards.push_back(protocol.call);
+  else missing.guards.pop_back();
   Check(VerifyDerivedProjection(function, context, missing, {}, &captures) == DerivedProjectionError::kCoverage);
   auto wrong_receiver = protocol; wrong_receiver.receiver_cells.clear(); wrong_receiver.receiver_initializations.clear();
   Check(VerifyDerivedProjection(function, context, wrong_receiver, {}, &captures) == DerivedProjectionError::kCoverage);
@@ -276,12 +321,26 @@ std::uint64_t Run(abc::ProfileId profile, std::size_t copies, Child child, bool 
     Check(std::holds_alternative<FamilyPrepareFailure>(prepared));
     Check(!file.CheckUnchanged()); Check(unlink(path) == 0); return work;
   }
-  if (const auto* error = std::get_if<FamilyPrepareFailure>(&prepared)) std::cerr << "family failure " << error->cause.index() << '\n';
+  if (const auto* error = std::get_if<FamilyPrepareFailure>(&prepared)) {
+    std::cerr << "family failure " << error->cause.index() << " copies " << copies << " guarded " << guarded
+              << " literal " << literal << " scenario " << static_cast<unsigned>(scenario);
+    if (const auto* kind = std::get_if<FamilyPrepareError>(&error->cause))
+      std::cerr << " preparation error " << static_cast<unsigned>(*kind);
+    if (const auto* tree = std::get_if<FamilyTreeFailure>(&error->cause)) {
+      std::cerr << " member " << tree->member.value << " tree cause " << tree->cause.index();
+      std::visit([](const auto& cause) {
+        if constexpr (std::is_enum_v<std::decay_t<decltype(cause)>>)
+          std::cerr << " error " << static_cast<unsigned>(cause);
+      }, tree->cause);
+    }
+    std::cerr << '\n';
+  }
   Check(std::holds_alternative<PreparedFamily>(prepared));
   const auto family_work = std::get<PreparedFamily>(prepared).Work();
+  Check(std::get<PreparedFamily>(prepared).Family().members.front().tree.receiver_guards == protocol.guards);
   if (receiver_literal) {
     const auto& tree = std::get<PreparedFamily>(prepared).Family().members.front().tree;
-    Check(tree.receiver_guards.size() == copies + 2);
+    Check(tree.receiver_guards.size() == (guarded ? copies + 2 : 0));
     std::size_t anchors = 0;
     for (const auto& placement : tree.operations)
       if (std::binary_search(tree.receiver_guards.begin(), tree.receiver_guards.end(), placement.operation)) {
@@ -304,14 +363,46 @@ std::uint64_t Run(abc::ProfileId profile, std::size_t copies, Child child, bool 
 int main(int argc, char** argv) {
   Check(argc == 1 || (argc == 2 && (std::string_view(argv[1]) == "--source" ||
       std::string_view(argv[1]) == "--literal-source" || std::string_view(argv[1]) == "--reference-source" ||
-      std::string_view(argv[1]) == "--forward-reference-source" || std::string_view(argv[1]) == "--receiver-literal-source")));
+      std::string_view(argv[1]) == "--forward-reference-source" || std::string_view(argv[1]) == "--receiver-literal-source" ||
+      std::string_view(argv[1]) == "--unguarded-source" || std::string_view(argv[1]) == "--unguarded-literal-source" ||
+      std::string_view(argv[1]) == "--unguarded-receiver-literal-source" ||
+      std::string_view(argv[1]) == "--unguarded-reference-source" || std::string_view(argv[1]) == "--unguarded-forward-reference-source")));
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
     if (argc == 2) { Run(profile, 1, Child::kReadOnly, true, CellBranch::kNone,
-        (std::string_view(argv[1]) == "--literal-source" || std::string_view(argv[1]) == "--receiver-literal-source"), std::string_view(argv[1]) == "--reference-source" ||
-        std::string_view(argv[1]) == "--forward-reference-source",
-        std::string_view(argv[1]) == "--forward-reference-source" ? CaptureScenario::kForwarded :
-        std::string_view(argv[1]) == "--reference-source" ? CaptureScenario::kInitialUndefined : CaptureScenario::kReceiver,
-        std::string_view(argv[1]) == "--receiver-literal-source"); continue; }
+        (std::string_view(argv[1]) == "--literal-source" || std::string_view(argv[1]) == "--receiver-literal-source" ||
+         std::string_view(argv[1]) == "--unguarded-literal-source" ||
+         std::string_view(argv[1]) == "--unguarded-receiver-literal-source"), std::string_view(argv[1]) == "--reference-source" ||
+        std::string_view(argv[1]) == "--forward-reference-source" || std::string_view(argv[1]) == "--unguarded-reference-source" ||
+        std::string_view(argv[1]) == "--unguarded-forward-reference-source",
+        std::string_view(argv[1]) == "--forward-reference-source" || std::string_view(argv[1]) == "--unguarded-forward-reference-source" ? CaptureScenario::kForwarded :
+        std::string_view(argv[1]) == "--reference-source" || std::string_view(argv[1]) == "--unguarded-reference-source" ? CaptureScenario::kInitialUndefined : CaptureScenario::kReceiver,
+        std::string_view(argv[1]) == "--receiver-literal-source" || std::string_view(argv[1]) == "--unguarded-receiver-literal-source",
+        std::string_view(argv[1]) != "--unguarded-source" && std::string_view(argv[1]) != "--unguarded-literal-source" &&
+        std::string_view(argv[1]) != "--unguarded-receiver-literal-source" &&
+        std::string_view(argv[1]) != "--unguarded-reference-source" && std::string_view(argv[1]) != "--unguarded-forward-reference-source"); continue; }
+    // These are real file bodies with the same owner and protocol, not edited
+    // cached trees. Guard presence cannot stand in for initialization proof.
+    for (const auto count : {1U, 200U, 201U, 402U}) {
+      Run(profile, count, Child::kReadOnly, false, CellBranch::kNone, false, false,
+          CaptureScenario::kReceiver, false, false);
+      Run(profile, count, Child::kReadOnly, false, CellBranch::kReceiver, true, false,
+          CaptureScenario::kInitialUndefined, false, false);
+      Run(profile, count, Child::kReadOnly, false, CellBranch::kNone, true, false,
+          CaptureScenario::kReceiver, true, false);
+      Run(profile, count, Child::kReadOnly, false, CellBranch::kNone, false, true,
+          CaptureScenario::kInitialUndefined, false, false);
+      Run(profile, count, Child::kReadOnly, false, CellBranch::kNone, false, true,
+          CaptureScenario::kForwarded, false, false);
+    }
+    Run(profile, 1, Child::kWrite, false, CellBranch::kNone, false, true,
+        CaptureScenario::kReceiver, false, false);
+    Run(profile, 1, Child::kEscape, false, CellBranch::kNone, false, true,
+        CaptureScenario::kReceiver, false, false);
+    Run(profile, 1, Child::kReadOnly, false, CellBranch::kMixed, false, true,
+        CaptureScenario::kReceiver, false, false);
+    for (const auto scenario : {CaptureScenario::kUndefined, CaptureScenario::kUninitializedGuard,
+        CaptureScenario::kEarlyCreation, CaptureScenario::kBranchInitialization})
+      Run(profile, 1, Child::kReadOnly, false, CellBranch::kNone, false, true, scenario, false, false);
     std::uint64_t previous = 0;
     for (const auto count : {1U, 200U, 201U, 400U, 800U}) {
       const auto work = Run(profile, count, Child::kReadOnly, false);

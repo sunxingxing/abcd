@@ -12,6 +12,43 @@
 
 ## 当前阶段
 
+### 2026-10-04：显式派生构造器发布复用共同初始化证明
+
+- 规则 revision86。删除PreparedFamily::Prepare中显式DerivedConstructor
+  必须有receiver_guards的第二重准入条件。实际root/ClassContext和placement
+  保留；FamilyTrees已经对同owner输入执行ProjectDerivedConstructor，再
+  构建并验证树/flow/ABI/来源、捕获与整族写入。发布消费这条既有通路，
+  没有新证明包装、DFX前置或局部序列/布局匹配，SourceContract V3不变。
+- 无guard不等于捕获receiver已知。没有descendant preservation时仅寄存器
+  初始化可成立，不能产生immutable cell事实；可写/混合cell与子函数实际
+  initialized guard分别验证。修改当前store、伪造guard列表、陈旧receiver
+  事实、错误来源与owner继续拒绝。协议、guard省略与源码表示义务分开，
+  不能把“全部捕获必须只读”或“必须有guard”作为构造器语言要求。
+- 文件化编码夹具覆盖三profile的60组完整构造/字面量/分支捕获/成员调用/
+  传递捕获，1/200/201/402复制变化及21组负例；不是新增真实完整record。
+  生成的完整constructor fragments另有7686组独立无guard行为对照，检查
+  父返回、newTarget/Proxy、getter/descriptor、receiver、创建时调用闭包、
+  任意抛出值和负例mutation。输入和高层oracle分离，无sidecar进入引擎。
+- RED早期曾因旧夹具把协议与guard义务混合而bad_variant_access/断言失败，
+  分解后refined-tests.log明确命中原kCallable门槛。省略literal guard时
+  夹具漏掉accumulator receiver load，导致错误getter输入及evaluation拒绝，
+  已修正编码而未添加生产模式。boundary-tests.log最终4/4通过18.55秒。
+  integration-tests.log首轮16/18通过，两项captured/forwarded旧文本mutant
+  未改变嵌套保存赋值；现保留真实super效果而破坏cell receiver身份，负例
+  实际生效。reference-tests.log最终5/5通过28.57秒，含更新后的完整C++
+  矩阵、两个修复测试及两个新无guard成员调用测试。上述失败未计入通过。
+- 合计24项不同相关检查已通过，包括normal/phased类、捕获、range/spread/
+  forwarding、async方法和pasteboard/Home/class-root配对行为。相关单构建
+  -j4的final/repair/boundary/integration/reference-build.log均退出0；日志
+  前缀为/tmp/abcd-constructor-publish-。full-suite、扩展语料、RSS、基准、
+  DFX及代理继续暂停。临时诊断代码已移除，未新增生产文本匹配。
+- fresh build/stage-one/value-constructor-publish-pass-1 固定五输入全部
+  退出0，80 complete/26 incomplete/0 failure/46 no-module，无完整回退
+  或legacy writer。batch.log/syntax.log确认输入SHA/size与manifest/index
+  一致，106份源码均解析且与revision85字节一致。此次关闭显式派生根
+  的guard存在门槛，没有减少现有未知算术域、导入super协议、共享Reference、
+  phased多selection与正文缺口；阶段一语义/风格双验收未完成，Goal active。
+
 ### 2026-10-04：布尔选择与 NOT 复用共同打印观察
 
 - 规则 revision85。共同 printer 将观察扩为 Value/Truthiness/Discarded，

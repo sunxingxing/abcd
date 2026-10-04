@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import vm from 'node:vm';
 
-const literal = process.argv[3] === '--literal';
-const reports = execFileSync(process.argv[2], [literal ? '--literal-source' : '--source'], {encoding: 'utf8'})
+const literal = process.argv.includes('--literal');
+const unguarded = process.argv.includes('--unguarded');
+const mode = unguarded ? (literal ? '--unguarded-literal-source' : '--unguarded-source') :
+  (literal ? '--literal-source' : '--source');
+const reports = execFileSync(process.argv[2], [mode], {encoding: 'utf8'})
   .trim().split('\n').map(JSON.parse);
 assert.equal(reports.length, 3);
 let scenarios = 0;
@@ -108,4 +111,4 @@ for (const {source} of reports) {
     assert.throws(() => exercise(inferred, 'ordinary', 'none', {}, false));
   }
 }
-console.log(`Derived ${literal ? 'literal closure' : 'cell'} constructors: ${scenarios} complete constructor/capture/parent-result/Proxy/throw scenarios passed.`);
+console.log(`Derived ${unguarded ? 'unguarded ' : ''}${literal ? 'literal closure' : 'cell'} constructors: ${scenarios} complete constructor/capture/parent-result/Proxy/throw scenarios passed.`);

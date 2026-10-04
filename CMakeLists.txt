@@ -1428,12 +1428,22 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/derived_cells.mjs $<TARGET_FILE:derived_cells_test>)
     add_test(NAME literal_closure_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/derived_cells.mjs $<TARGET_FILE:derived_cells_test> --literal)
+    add_test(NAME unguarded_derived_cells_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/derived_cells.mjs $<TARGET_FILE:derived_cells_test> --unguarded)
+    add_test(NAME unguarded_literal_closure_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/derived_cells.mjs $<TARGET_FILE:derived_cells_test> --literal --unguarded)
     add_test(NAME derived_literal_receiver_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/derived_literal_receiver.mjs $<TARGET_FILE:derived_cells_test>)
+    add_test(NAME unguarded_derived_literal_receiver_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/derived_literal_receiver.mjs $<TARGET_FILE:derived_cells_test> --unguarded)
     add_test(NAME captured_receiver_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/captured_receiver.mjs $<TARGET_FILE:derived_cells_test>)
     add_test(NAME forwarded_receiver_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/captured_receiver.mjs $<TARGET_FILE:derived_cells_test> --forwarded)
+    add_test(NAME unguarded_captured_receiver_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/captured_receiver.mjs $<TARGET_FILE:derived_cells_test> --unguarded)
+    add_test(NAME unguarded_forwarded_receiver_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/captured_receiver.mjs $<TARGET_FILE:derived_cells_test> --forwarded --unguarded)
     add_test(NAME phased_cells_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_cells.mjs $<TARGET_FILE:class_tree_context_test>)
     add_test(NAME phased_computed_call_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

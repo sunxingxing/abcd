@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import vm from 'node:vm';
 
-const forwarded = process.argv[3] === '--forwarded';
-const reports = execFileSync(process.argv[2], [forwarded ? '--forward-reference-source' : '--reference-source'], {encoding: 'utf8'})
+const forwarded = process.argv.includes('--forwarded');
+const unguarded = process.argv.includes('--unguarded');
+const mode = unguarded ? (forwarded ? '--unguarded-forward-reference-source' : '--unguarded-reference-source') :
+  (forwarded ? '--forward-reference-source' : '--reference-source');
+const reports = execFileSync(process.argv[2], [mode], {encoding: 'utf8'})
   .trim().split('\n').map(JSON.parse);
 assert.equal(reports.length, 3);
 const reference = `constructor(argument) { super(argument); this.callback = (() => ${forwarded ? '() => ' : ''}this.action(this.argument)); }`;
@@ -116,9 +119,11 @@ for (const {source} of reports) {
           assert.deepEqual(exercise(source, base, mode, setter, proxy, argument),
             exercise(reference, base, mode, setter, proxy, argument)); ++scenarios;
         }
-  const superResult = source.match(/\((\$value\d+) = super\(/)?.[1];
-  assert.ok(superResult);
-  const changed = source.replace(` = ${superResult});`, ' = null);');
+  // Corrupt the receiver cell while preserving the real super invocation and
+  // its saved result, whether saving is nested or occurs in an earlier statement.
+  const changed = source.replace(
+    /(\(\$local\d+ = )(\(\$value\d+ = super\([^)]*\)\)|\$value\d+)(\);)/,
+    '$1($2, null)$3');
   assert.notEqual(changed, source);
   assert.doesNotThrow(() => new vm.Script(`(class Type extends Parent { ${changed} })`));
   assert.throws(() => exercise(changed, 'ordinary', 'return', 'own', false, {}));
@@ -127,4 +132,4 @@ for (const {source} of reports) {
   assert.doesNotThrow(() => new vm.Script(`(class Type extends Parent { ${earlyThis} })`));
   assert.throws(() => exercise(earlyThis, 'ordinary', 'return', 'own', false, {}));
 }
-console.log(`Captured receiver member calls: ${scenarios} complete constructor/capture/getter/receiver/throw scenarios passed.`);
+console.log(`${unguarded ? 'Unguarded captured' : 'Captured'} receiver member calls: ${scenarios} complete constructor/capture/getter/receiver/throw scenarios passed.`);

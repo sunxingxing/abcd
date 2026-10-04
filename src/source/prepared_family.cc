@@ -206,6 +206,9 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
       // Creation/phase owners already checked the actual coroutine protocol.
       // Publication preserves those callable kinds; the original plain-only
       // allowlist must not reject a complete shared async/generator tree.
+      // FamilyTrees already proves the actual derived initialization protocol
+      // before building its tree/ABI. Guard presence is not that proof: a
+      // same-owner constructor without guards must not face a second gate.
       Require(member.tree.callable == CallableKind::kFunction ||
           member.tree.callable == CallableKind::kAsyncFunction ||
           member.tree.callable == CallableKind::kGenerator ||
@@ -213,7 +216,7 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
           IsArrowCallable(member.tree.callable) ||
           (&member == &family.members[family.root.value] && root.ClassContext() &&
            (IsMethodCallable(member.tree.callable) || member.tree.callable == CallableKind::kBaseConstructor ||
-            (member.tree.callable == CallableKind::kDerivedConstructor && !member.tree.receiver_guards.empty()))), Error::kCallable);
+            member.tree.callable == CallableKind::kDerivedConstructor)), Error::kCallable);
       if (member.tree.recovery_issues.empty()) {
         Require(member.abi.has_value(), Error::kAbi);
         Require(member.sources.has_value(), Error::kSources);

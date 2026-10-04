@@ -42,6 +42,37 @@ modules 的表示目前未贯通；不能默默丢弃。
 
 ## 算法与验证边界
 
+### 显式派生构造器的共同发布（规则86）
+
+PreparedFamily 的 callable 检查不再要求显式 DerivedConstructor 的
+receiver_guards 非空。BuildFileFamilyTrees 对真实 ClassContext 下的同 owner
+构造器已调用 ProjectDerivedConstructor：原初始化 CFG/SSA、当前输入/IR、
+receiver 和所有实际 guard 的覆盖与输入均在该通路检查。完整树随后经过
+语义、流、ABI、来源、捕获和整族写入验证。发布层消费这条既有构建通路，
+不以 guard 的存在或数量增加第二重恢复门槛，也不新增证明包装/接口。
+
+空 guard 列表并不提供捕获 receiver 事实。没有同文件 descendant preservation
+时，仅寄存器初始化可能成立；可写或混合 cell 不能成为 immutable receiver。
+子函数实际 initialized guard 的省略仍须初始化、创建时支配和完整传递捕获
+证据。不满足时拒绝该省略/完整源码，不将 guard 缺失推断为 this 已初始化。
+当前 frame/parent brand、spread 展开、异常与多 super site 的独立缺口未改变。
+
+序列化文件测试覆盖三个 profile 的60组完整构造/字面量/分支捕获、成员调用、
+传递捕获与
+1/200/201/402复制变化，以及21组写入/混合来源/早期创建/未初始化 guard
+负例。空列表伪造 guard、陈旧 cell 事实、修改当前 store/来源等负例继续
+新鲜复验；不能用缓存 revision 相等代替协议证明。新增独立原生对照覆盖
+7686组无 guard 构造、父返回/Proxy、getter/descriptor、成员receiver、传递
+闭包和抛出值。
+这些是生成完整 constructor fragment 的验证，不证明任意导入父类、整份
+真实 record 或阶段一所有输入已经完成。
+
+本次仅删除常数时间的重复门槛，复用既有共同构建成本；无新依赖、算法或
+许可证事项。没有恢复暂停的RSS、性能、全套或扩展语料测试，当前证据及
+固定五输入产物见 status.md。
+
+### 隐式转发的复杂度与既有验证
+
 CFG 使用 Kahn 拓扑调度，其来源是标准有向图拓扑排序；值状态使用既有稀疏
 单调数据流。V为值数、U为使用数、B/E为块/边数、I为指令及其规格访问窗口
 数量：工作 O(V+U+B+E+I)，内存 O(V+U+B+E)，受 SemanticBudget 限制；没有

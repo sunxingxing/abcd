@@ -8,7 +8,8 @@ const reference = `constructor(argument) {
   super(argument);
   this.callback = {callback: (0, () => this), argument: this.argument};
 }`;
-const reports = execFileSync(process.argv[2], ['--receiver-literal-source'], {encoding: 'utf8'})
+const unguarded = process.argv.includes('--unguarded');
+const reports = execFileSync(process.argv[2], [unguarded ? '--unguarded-receiver-literal-source' : '--receiver-literal-source'], {encoding: 'utf8'})
   .trim().split('\n').map(JSON.parse);
 assert.equal(reports.length, 3);
 let scenarios = 0;
@@ -117,4 +118,4 @@ for (const {source} of reports) {
     assert.throws(() => exercise(mutated, 'ordinary', 'value', 'none', false, {}));
   }
 }
-console.log(`Derived receiver literal: ${scenarios} complete constructor/getter/capture/parent-result/Proxy/throw scenarios passed.`);
+console.log(`Derived ${unguarded ? 'unguarded ' : ''}receiver literal: ${scenarios} complete constructor/getter/capture/parent-result/Proxy/throw scenarios passed.`);
