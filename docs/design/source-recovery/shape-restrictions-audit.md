@@ -1,6 +1,6 @@
 # 按用户要求进行的恢复条件审计
 
-最新替换状态及补充事项见文末规则89；历史表中的严格比较候选及literal同块条件不再是
+最新替换状态及补充事项见文末规则90；历史表中的严格比较候选及literal同块条件不再是
 当前准入条件。未替换项继续开放，不能将本次局部交付称为全量审计闭合。
 
 2026-10-03，基线 87176c10。此为本次明确请求的审计，不恢复定期审视。
@@ -603,3 +603,25 @@ Reference、多参数及1/2/200/201/402复制变化。不同 receiver、debugger
 inline-owned Reference、single-entry candidate/prefix、class initializer
 同块、phased scope/capture/module 和 legacy 模板仍未全部替换。本次沿既有
 审计发现推进共同实现，不声称已经逐行关闭全仓全部恢复条件。
+
+
+## 规则 90：模块读取不再按 producer 类型强制保留为 root
+
+补测直接模块值作为conditional参数时，IndexPhiExpressionInputs已经由
+共同原UseId、原边和all-path尾部证明可以表达；但builder/verifier又为
+所有phased ValueModuleRead设置pinned。此前inline模块读取另有类型例外，
+phi输入却被第二重准入拒绝。这是早期实现范围限制，不是TDZ/模块语言要求。
+
+删除全局module pin及对应inline例外，共同观察/效果/原边/Reference证明
+消费这一producer。没有增加direct/property或placement名单。模块绑定、
+原guard输入、原Before/Commit/catch对应、catch slot来源与最终树中的guard/
+read共同表达式仍独立验证。原始SSA与staging不改写，不猜initialized状态。
+多观察、额外debugger效果和不同catch状态不因pin删除而获得移动权限。
+
+三profile72组实际模块参数正例及18组额外效果拒绝通过；9252组native
+行为对照包含模块绑定变化、getter替换、receiver、noncallable、caught
+completion、TDZ与未取分支。phased and/or目前保留高层ConditionalExpr，
+原生logical表示仍是风格缺口。固定五输入无complete回退且源码字节不变。
+具体新鲜构建和28项相关验证见status.md；这关闭直接模块选择参数的pin
+缺口，没有关闭模块guard邻接、scope/capture、多真实copy安排、单入口
+candidate、initializer同块或legacy模板，也未做全仓逐生产分支审计。

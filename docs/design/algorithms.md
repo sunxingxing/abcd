@@ -1131,3 +1131,18 @@ covers three profiles and 435 cases. Recorded evaluation work at 50/100/200/201
 arguments is 625937/1234982/2453012/2465192, with geometric checks and exact quota
 negative cases. These are scoped work-accounting checks, not whole-pipeline
 latency, allocation measurements or full-process RSS; those checks remain paused.
+
+
+### Module phi-expression admission (2026-10-04, rules 90)
+
+Module reads consume the same checked observation and original incoming-edge
+proof as other producers. Remove unconditional phased module root pinning and
+its inline-only type exception. IndexModuleEvaluations, VerifyModulePhaseOrder
+and VerifyModuleCatchCopies still prove the original binding/guard, events and
+catch staging; final source-tree checks retain original operands and scopes.
+This introduces no algorithm, dependency, scratch index or repeated scan. It
+reuses rules 88/89 tail, identity and observation analyses with their existing
+cost bounds. Multiple observations and foreign effects do not become movable.
+Tests exercise three profiles, 72 positive decoded module-selection cases,
+18 debugger barriers and 9252 independently evaluated native scenarios. Full
+process RSS and performance benchmarks remain paused and unmeasured.

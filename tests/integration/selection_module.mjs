@@ -4,10 +4,11 @@ import vm from 'node:vm';
 
 let scenarios = 0;
 for (const phased of [false, true])
-for (const selection of phased ? ['conditional'] : ['conditional', 'and', 'or'])
-for (const direct of phased ? [false] : [false, true]) {
+for (const selection of ['conditional', 'and', 'or'])
+for (const direct of [false, true]) {
   const prefix = selection === 'conditional' ? '' : `${selection}-`;
-  const option = `--${phased ? 'phased-module-selection-' : prefix}${direct ? 'direct-' : ''}source`;
+  const phasedPrefix = `phased-module-${selection === 'conditional' ? 'selection' : selection}-`;
+  const option = `--${phased ? phasedPrefix : prefix}${direct ? 'direct-' : ''}source`;
   const source = execFileSync(process.argv[2], [option], {encoding: 'utf8'});
   assert.ok(!source.includes('INCOMPLETE'));
   const module = `imported${direct ? '' : '.option'}`;

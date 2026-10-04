@@ -12,6 +12,44 @@
 
 ## 当前阶段
 
+### 2026-10-04：模块选择参数删除 producer-specific pin
+
+- 规则revision90。直接受TDZ检查的模块值作为conditional参数曾命中
+  kReference；实际IndexPhiExpressionInputs已经给出原UseId候选，但
+  BuildEvaluation和VerifyEvaluationForFlow又把所有phased ValueModuleRead
+  一律pinned，使共同原边证明不能被消费。删除这层producer-specific准入，
+  同时删除inline verifier中用于绕过该pin的module类型例外。
+- 沿用共同观察普查、phi原边/all-path尾部、选择参数、Reference和树通路，
+  没有新增direct/property、样本、opcode序列、寄存器/PC或layout匹配。
+  IndexModuleEvaluations仍核对模块绑定/原guard输入和原phase order；
+  VerifyModuleCatchCopies、exception staging、原effect/operand/scope树验证
+  保留。实际多次观察或不同catch签名继续保留snapshot；不假定模块已初始化。
+- selection_module_test新增三profile、1/2/200/201规模、conditional/and/or
+  和direct/property共72组完整解码/draft/树正例，另18组分支debugger效果
+  屏障拒绝。缺phase_calls记录、删guard、变造原树guard归属仍拒绝。
+  独立native模块对照扩至9252组，覆盖原callee/getter替换、receiver、动态
+  模块绑定、精确身份、任意throw/catch、非callable、TDZ和未取分支。
+  短路行为通过；phased and/or仍以ConditionalExpr打印，惯用logical形式
+  尚未统一，不把行为通过说成该表示质量验收完成。
+- /tmp/abcd-module-input-日志：red-build.log退出0，red.log在旧实现
+  kReference正例断言处退出134；diagnostic-build/log确认有原phi候选却
+  未被消费，临时诊断已移除。build.log退出0；final-build.log及
+  final-build-2.log均单构建-j4退出0，完整重链相关12target，最终包含
+  rules90、新增正/负矩阵与实际abc_structure/abc_semantic工具。
+  final-tests.log最终28/28通过143.24秒；test-output.log保存完整输出，
+  包含模块/初始化/异常/引用unit、435组joint解码、177984组joint native、
+  模块literal、phased选择/保留输入、pasteboard callback和PageA/
+  ProgressBar、Backup、VoIP、Home的独立配对检查。未恢复full-suite、
+  扩展语料、RSS、基准、DFX、代理或周期审计。
+- fresh build/stage-one/module-value-phi-pass-1固定五输入全退出0，
+  80 complete/26 incomplete/0 failure/46 no-module，无complete回退或
+  legacy writer。batch.log/syntax.log核对SHA/size与原index/manifest一致，
+  106份源码全部解析，源码字节与revision89一致；没有新增真实完整record。
+  直接模块选择参数缺口关闭，但single-entry候选、inline-owned Reference、
+  多份真实parallel-copy RHS、class initializer、phased scope/capture及
+  module guard邻接接口仍开放。未知算术域和导入super协议缺口仍在，
+  阶段一语义/风格双验收未完成，Goal active。
+
 ### 2026-10-04：共同 SSA 身份投影消除冗余 phi/copy 屏障
 
 - 规则revision89。AnalyzeValueIdentities复用迭代Tarjan，对原phi及纯copy

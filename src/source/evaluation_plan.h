@@ -14,8 +14,9 @@
 
 namespace abcd::source {
 enum class BranchPolarity : std::uint8_t { kTaken, kFallthrough };
-// kPhiInput owns a sole incoming-copy RHS at the same block exit. It is
-// neither a value snapshot nor permission to cross a branch/exception edge.
+// kPhiInput owns a sole executable incoming-copy RHS at its original edge.
+// Original availability, effects and exceptional staging prove placement;
+// it is neither a value snapshot nor permission for arbitrary movement.
 // kLogicalLeft owns one native logical LHS: its original boolean use and
 // retained phi input are two observations of that single expression result.
 // kLogicalValue owns a logical/conditional result at one join consumer; logical_values
@@ -83,8 +84,9 @@ struct EvaluationPlan {
   std::optional<analysis::ArgumentFrameFact> arguments;
   EvaluationFlow flow = EvaluationFlow::kNormal;
   std::optional<ExceptionCopies> exceptions;
-  // Flat, independently checked copy identities. Empty in the normal route,
-  // whose IR is already simplified. Never aliases a phi or catch binding.
+  // Flat, independently checked copy/phi identities. Empty in the normal route,
+  // whose IR is already simplified. Catch bindings and unresolved mutable phi
+  // locations retain their original identity and first snapshot.
   std::vector<analysis::ValueId> aliases;
   std::optional<HoleProtocol> holes;
   std::vector<ClassInitializerCall> class_initializers;

@@ -274,9 +274,9 @@ abc::MethodBody CallSelectionBody(unsigned count, bool computed, CallPrefix pref
 }
 
 void RunPhased(unsigned count, bool direct, bool print, Selection selection,
-    abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool one_arm = false, bool call_selection = false, bool computed = false, CallPrefix prefix = CallPrefix::kNone, unsigned guard_count = 2, unsigned depth = 1) {
+    abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool one_arm = false, bool call_selection = false, bool computed = false, CallPrefix prefix = CallPrefix::kNone, unsigned guard_count = 2, unsigned depth = 1, bool effect_barrier = false) {
   const auto body = call_selection ? CallSelectionBody(count, computed, prefix, guard_count, depth) : Decision(selection) ? DecisionBody(count, direct, selection, true, one_arm) :
-      Body(count, direct, false, selection, true);
+      Body(count, direct, effect_barrier, selection, true);
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout((prefix == CallPrefix::kMemberWrappedNullish || prefix == CallPrefix::kMemberBarrierNullish) ? 3 + depth : 3, call_selection ? ((prefix == CallPrefix::kWrappedNullish || prefix == CallPrefix::kEscapingNullish || prefix == CallPrefix::kMemberWrappedNullish || prefix == CallPrefix::kMemberBarrierNullish) ? 3 : 2) : 1, {}));
   const auto flow = std::get<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers));
   IdfQuota quota{kDefaultSemanticWork};
@@ -304,6 +304,11 @@ void RunPhased(unsigned count, bool direct, bool print, Selection selection,
     bindings.push_back({pair, std::get<ValueModuleRead>(graph.ops[pair.read.value].operation), {{7}, {0}}});
   const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(
       graph, {}, IncomingCells::kReject, {}, bindings));
+  if (effect_barrier) {
+    test::Check(evaluation.phase_calls.empty());
+    test::Check(std::get<CallPlanError>(BuildPhasedCallPlan(graph, evaluation)) == CallPlanError::kReference);
+    return;
+  }
   if (prefix == CallPrefix::kMemberBarrierNullish || prefix == CallPrefix::kRetainedBarrier) {
     test::Check(std::get<CallPlanError>(BuildPhasedCallPlan(graph, evaluation)) == CallPlanError::kReference);
     return;
@@ -313,8 +318,14 @@ void RunPhased(unsigned count, bool direct, bool print, Selection selection,
     test::Check(std::get<CallPlanError>(BuildPhasedCallPlan(graph, evaluation)) == CallPlanError::kReference);
     return;
   }
-  if (!Decision(selection) && !call_selection)
+  if (!Decision(selection) && !call_selection) {
     test::Check(std::holds_alternative<CallPlan>(BuildPhasedCallPlan(graph, evaluation)));
+    test::Check(evaluation.phase_calls.size() == count);
+    if (count == 1) {
+      auto missing = evaluation; missing.phase_calls.clear();
+      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, missing)));
+    }
+  }
   const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
   const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
   unsigned decisions = 0;
@@ -442,8 +453,13 @@ int main(int argc, char** argv) {
     else if (option == "--phased-call-selection-source" || option == "--phased-computed-call-selection-source")
       RunPhased(count, false, true, Selection::kConditional, abc::ProfileId::kDynamic1206, false, true,
           option == "--phased-computed-call-selection-source");
-    else if (option == "--phased-module-selection" || option == "--phased-module-selection-source")
-      RunPhased(count, false, option != "--phased-module-selection", Selection::kConditional);
+    else if (option == "--phased-module-selection" || option == "--phased-module-selection-source" ||
+        option == "--phased-module-selection-direct-source" || option == "--phased-module-and-source" ||
+        option == "--phased-module-and-direct-source" || option == "--phased-module-or-source" ||
+        option == "--phased-module-or-direct-source")
+      RunPhased(count, option.ends_with("-direct-source"), option != "--phased-module-selection",
+          option == "--phased-module-and-source" || option == "--phased-module-and-direct-source" ? Selection::kAnd :
+          option == "--phased-module-or-source" || option == "--phased-module-or-direct-source" ? Selection::kOr : Selection::kConditional);
     else if (option == "--phased-one-arm-source" || option == "--phased-one-arm-direct-source")
       RunPhased(count, option == "--phased-one-arm-direct-source", true, Selection::kDecisionAnd,
           abc::ProfileId::kDynamic1206, true);
@@ -466,7 +482,13 @@ int main(int argc, char** argv) {
   }
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
     for (const auto count : {1U, 2U, 200U, 201U})
-      RunPhased(count, false, false, Selection::kConditional, profile);
+      for (const auto selection : {Selection::kConditional, Selection::kAnd, Selection::kOr})
+        for (const bool direct : {false, true})
+          RunPhased(count, direct, false, selection, profile);
+  for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+    for (const auto selection : {Selection::kConditional, Selection::kAnd, Selection::kOr})
+      for (const bool direct : {false, true})
+        RunPhased(1, direct, false, selection, profile, false, false, false, CallPrefix::kNone, 2, 1, true);
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
     for (const auto count : {1U, 2U, 200U, 201U})
       for (const auto prefix : {CallPrefix::kRetainedInput, CallPrefix::kRetainedGetter, CallPrefix::kRetainedBarrier, CallPrefix::kRetainedPrefix, CallPrefix::kRetainedLiteralArgs})
