@@ -16,7 +16,8 @@ struct PrintedFamilyDraft {
 // Internal diagnostic syntax only, NOT executable publication. Requires fresh
 // unchanged shared family/tree/capture products. Root/global/module enclosure,
 // strictness and transitive premises remain unresolved. Inferred names use
-// computed-property NamedEvaluation, never an invented lexical self binding.
+// native destination naming or computed-property NamedEvaluation when needed,
+// never an invented lexical self binding.
 // Trees lacking name evidence remain anonymous diagnostic syntax. Uses
 // the SAME iterative printer as verified members, with per-owner event ranges.
 // Every range uses absolute UTF-8 byte offsets within this entire draft.

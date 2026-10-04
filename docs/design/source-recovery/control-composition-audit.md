@@ -11,6 +11,18 @@
 Rules 58，源码执行契约 V3。本文是按用户要求进行的一次性审计，不恢复定期审视。
 行号均针对该基线；后续实现以符号和测试为准。
 
+2026-10-04增量事实（规则98）：printer不再仅凭inferred_name元数据要求
+额外命名包装及资源失败排除。它根据已验证FunctionTree的直接语法所有权
+计算目的名称，保持实际function.name；匹配时使用原生匿名函数，不增加
+内部不可变self绑定。必须包装的资源校验、创建self和arrow-method own
+arguments语义保持。声明/identifier赋值/数据属性等语法分派是语言规则，
+不是字节码恢复的布局匹配；不涉及CFG、opcode、样本或printed text。
+648组行为及1/200/201/402规模、实际HomeModel配对和固定五输入已验证。
+default export直接function/class initializer仍被module_default_export的
+既有准入排除；本轮补测明确登记其命名上下文证明缺口，未盲删该检查。
+inline-owned Reference、module guard邻接、phased corridor及单块prefix
+仍需共同身份/效果/作用域表示；不因本次printer改动宣布这些边界解决。
+
 ## 结论
 
 方向与最初设计兼容，但**不能把剩余工作描述成只缺一个区域树**。

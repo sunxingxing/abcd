@@ -34,6 +34,21 @@ async function exercise(sources) {
     const value = constants[key]; originals.set(key, value);
     Object.defineProperty(constants, key, { configurable: true, get() { trace.push(key); return value; } });
   }
+  const textList = originals.get('TAB_BAR_TEXT_LIST');
+  Object.defineProperty(textList, 'map', { configurable: true, get() {
+    trace.push('map');
+    return function(callback) {
+      assert.equal(this, textList);
+      const name = Object.getOwnPropertyDescriptor(callback, 'name');
+      assert.deepEqual({value: name.value, writable: name.writable, enumerable: name.enumerable, configurable: name.configurable},
+        {value: '', writable: false, enumerable: false, configurable: true});
+      assert.equal(callback.length, 2);
+      assert.equal(Object.hasOwn(callback, 'prototype'), false);
+      assert.throws(() => Reflect.construct(callback, []), error => error.name === 'TypeError');
+      // map's callback receiver cannot replace an arrow's lexical captures.
+      return Reflect.apply(Array.prototype.map, this, [callback, {poison: true}]);
+    };
+  }});
   const model = new HomeModel(), list = model.getTabBarList();
   assert.equal(list, model.getTabBarList());
   assert.equal(list.length, originals.get('TAB_BAR_TEXT_LIST').length);
@@ -67,6 +82,8 @@ try {
     assert.equal(record.source_complete, true, `record ${entity}`);
     assert.equal(record.legacy_writer_used, false);
     actual.set(specifier, readFileSync(join(destination, record.source), 'utf8'));
+    if (entity === 16474) assert.doesNotMatch(actual.get(specifier), /\(\{\[""\]:/,
+      'unnamed call arguments should use native function syntax');
     expected.set(specifier, stripTypeScriptTypes(readFileSync(join(root, 'Immersive_src', paired), 'utf8')));
   }
   assert.deepEqual(await exercise(actual), await exercise(expected));

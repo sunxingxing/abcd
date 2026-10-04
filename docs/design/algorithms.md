@@ -1311,3 +1311,24 @@ O(B)，在当前remaining memory内使用并在支配构造前释放；失败cyc
 共同效果构造复杂度沿用前节；self候选/访问和capture-site索引线性扫描，
 cell查找O(log C)，没有逐class CFG遍历。1/200/201/402定向work检查是
 算法增长回归，不是已暂停的全流程峰值RSS或性能基准。
+
+### 原生函数名称的语法上下文（2026-10-04，规则98）
+
+共同TreePrinter在既有结构/函数所有权验证后预计算每个子函数的命名选择。
+来源是ECMAScript的IsAnonymousFunctionDefinition/NamedEvaluation：
+[identifier赋值](https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#sec-assignment-operators-runtime-semantics-evaluation)
+及[对象数据属性](https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#sec-object-initializer-runtime-semantics-propertydefinitionevaluation)。
+这只核对输出语言语法，不引入新ISA/profile或依赖；原创建元数据、self、
+invocation、capture和发布证明保持，在线规范草案不替代锁定的Ark行为。
+
+先线性扫描所有表达式，赋予无推断上下文，再扫描直接声明/赋值/属性/字段
+的函数操作数。设表达式X、属性P、语句S、函数成员F、名称比较字符总量L，
+新增工作O(X+P+S+(X+P+S)log(F+1)+L)，新增scratch O(F)字节。
+复用既有排序owner索引；所有扫描、比较及native选择数组均计费。不逐绑定
+重走子树、def-use或CFG，不从源码片段匹配命名许可。预输出资源校验仅在
+最终需要包装时触发；独立fragment无目的语法证明，保持原命名策略。
+
+1/200/201/402成员整体printer work253/35949/36132/73353；精确work
+成功、少一单位拒绝。648组名称/调用行为及可变外部捕获对照保持名称属性
+而不引入内部self；实际配对回调另外检查词法receiver。全流程RSS和性能
+基准继续暂停；计费scratch及work不是进程峰值或吞吐测量。

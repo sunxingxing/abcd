@@ -34,11 +34,13 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
     const GlobalScope*, std::size_t, ClassPrintForm, const ClassCaptureDestination* = nullptr);
 struct DerivedClassBody { std::shared_ptr<const ClassTree> definition; ExprId expression; bool inferred = false; };
 struct EndExpression { ExprId id; };
+struct NoInferredName {};
+using NameContext = std::variant<NoInferredName, NameId>;
 enum class ExpressionObservation : std::uint8_t { kValue, kTruthiness, kDiscarded };
 struct ExpressionOperand {
   ExprId id;
   TreeOperatorContext context;
-  std::optional<NameId> inferred_name = {};
+  NameContext inferred_name = {};
   ExpressionObservation observation = ExpressionObservation::kValue;
 };
 // Composition of language Boolean results, not a bytecode recovery pattern.
@@ -231,6 +233,7 @@ class TreePrinter {
     Array(draft_.members, family_->members.size()); Array(draft_.functions, family_->members.size());
     Array(locations_, family_->members.size()); Array(owners_, family_->members.size());
     Array(printed_, family_->members.size());
+    Array(native_names_, family_->members.size());
     for (std::size_t i = 0; i < family_->members.size(); ++i) {
       current_ = i; Step();
       const auto checked = VerifyTreeStructure(Tree(), remaining_, scope_);
@@ -251,11 +254,6 @@ class TreePrinter {
       // Only the actual class root is a class member. An arrow method carrier
       // retains its original callable kind and cannot observe its home object.
       if ((IsMethodCallable(Tree().callable) || Tree().callable == CallableKind::kBaseConstructor || Tree().callable == CallableKind::kDerivedConstructor) && !ClassRoot())
-        throw Error::kUnsupportedContext;
-      // Naming adds a fresh, unobservable wrapper object. Its allocation-failure
-      // timing is admitted only by the already-versioned resource-failure scope.
-      if (Tree().inferred_name && (!Tree().self || Tree().self_form == SelfForm::kCreationBinding) &&
-          ResourceFailures(Tree().identity.contract) != ResourceFailureScope::kExcluded)
         throw Error::kUnsupportedContext;
       owners_[i] = {Tree().owner, i};
       Result().identity = Tree().identity; Result().method = Tree().method;
@@ -298,6 +296,7 @@ class TreePrinter {
       Step(); if (owners_[i - 1].owner == owners_[i].owner) throw Error::kUnsupportedContext;
     }
     PrepareFamilyStatus();
+    PrepareNativeNames();
     current_ = family_->root.value; depth_ = indent;
     Push(BeginFunction{}); Drain(); Append("\n");
     for (const auto emitted : printed_) { Step(); if (!emitted) throw Error::kUnsupportedContext; }
@@ -306,6 +305,73 @@ class TreePrinter {
     return std::move(draft_);
   }
  private:
+  std::u16string_view ContextName(NameContext context) const {
+    if (const auto* name = std::get_if<NameId>(&context)) return Tree().names[name->value];
+    return u"";
+  }
+  bool NativeName() const { return family_ && native_names_[current_]; }
+  void PrepareNativeNames() {
+    const auto set = [&](ExprId id, NameContext context) {
+      const auto* function = std::get_if<FunctionExpr>(&Tree().expressions[id.value].expression);
+      if (!function) return;
+      const auto child = std::lower_bound(owners_.begin(), owners_.end(), function->child,
+          [&](const auto& item, FunctionOwnerId owner) { Step(); return item.owner < owner; });
+      if (child == owners_.end() || child->owner != function->child) throw Error::kUnsupportedContext;
+      const auto& target = family_->members[child->member].tree;
+      const auto expected = ContextName(context);
+      if (target.inferred_name)
+        Step(std::min(target.names[target.inferred_name->value].size(), expected.size()) + 1);
+      native_names_[child->member] = target.inferred_name && !target.self &&
+          target.invocation == InvocationForm::kDeclared &&
+          target.names[target.inferred_name->value] == expected;
+    };
+    // ECMA IsAnonymousFunctionDefinition/NamedEvaluation belongs to the actual
+    // expression destination. Identifier bindings and own data properties infer
+    // names; calls, returns, arrays, sequence/conditional/logical operands and
+    // member assignments do not. Parentheses preserve this grammar context.
+    // No inner self binding is introduced. Retain creation-self envelopes and
+    // arrow-method argument carriers. Standalone fragments have no destination
+    // proof and retain their naming wrapper. Regression: native_function_names.
+    // First seed destinations without inference, then override the direct
+    // function operands of naming constructs; never walk a subtree per binding.
+    for (std::size_t i = 0; i < family_->members.size(); ++i) {
+      current_ = i;
+      for (std::size_t e = 0; e < Tree().expressions.size(); ++e) {
+        Step(); set(ExprId{static_cast<std::uint32_t>(e)}, {});
+      }
+    }
+    for (std::size_t i = 0; i < family_->members.size(); ++i) {
+      current_ = i;
+      for (const auto& expression : Tree().expressions) {
+        Step();
+        if (const auto* assignment = std::get_if<AssignmentExpr>(&expression.expression)) {
+          if (const auto* symbol = std::get_if<SymbolTarget>(&assignment->target))
+            set(assignment->value, Tree().symbols[symbol->symbol.value].name);
+        } else if (const auto* object = std::get_if<ObjectExpr>(&expression.expression);
+            object && object->kind == AggregateKind::kObject) {
+          for (std::uint32_t p = 0; p < object->properties.count; ++p) {
+            Step(); const auto& property = Tree().properties[object->properties.first + p];
+            set(property.value, property.key);
+          }
+        } else if (const auto* field = std::get_if<FieldDefinitionExpr>(&expression.expression)) {
+          set(field->value, field->name);
+        }
+      }
+      for (std::size_t at = 0; at < Tree().statements.size(); ++at) {
+        Step(); const auto* declaration = std::get_if<DeclarationStmt>(&Tree().statements[at].statement);
+        if (!declaration || !declaration->initializer) continue;
+        set(*declaration->initializer, Tree().symbols[declaration->symbol.value].name);
+      }
+    }
+    // Extra allocation is conditional on the final syntax, not merely metadata
+    // carrying a runtime name. Fail preflight while the output is still empty.
+    for (std::size_t i = 0; i < family_->members.size(); ++i) {
+      current_ = i; Step();
+      if (Tree().inferred_name && !NativeName() && (!Tree().self || Tree().self_form == SelfForm::kCreationBinding) &&
+          ResourceFailures(Tree().identity.contract) != ResourceFailureScope::kExcluded)
+        throw Error::kUnsupportedContext;
+    }
+  }
   bool ModuleBody() const { return module_body_ && (!family_ || current_ == family_->root.value); }
   void CheckDefaultExport() {
     if (!default_export_) return;
@@ -616,12 +682,12 @@ class TreePrinter {
       Identifier(name);
     else { Append("["); Quoted(name); Append("]"); }
     Append(" = ");
-    Push(node.value);
+    Push(ExpressionOperand{node.value, {}, node.name});
   }
   void Expression(const AssignmentExpr& node) {
     Append("("); Push(std::string_view(")"));
     const auto* symbol = std::get_if<SymbolTarget>(&node.target);
-    Push(ExpressionOperand{node.value, {}, symbol ? std::optional{Tree().symbols[symbol->symbol.value].name} : std::nullopt});
+    Push(ExpressionOperand{node.value, {}, symbol ? NameContext{Tree().symbols[symbol->symbol.value].name} : NameContext{}});
     Push(std::string_view(" = "));
     if (symbol) Push(SymbolName{symbol->symbol});
     else {
@@ -663,7 +729,7 @@ class TreePrinter {
   }
   void Expression(EmptyArrayExpr) { Append("[]"); }
   void Expression(EmptyObjectExpr) { Append("({})"); }
-  void Expression(const ClassExpr& node, ExprId expression, std::optional<NameId> inferred_name = {}) {
+  void Expression(const ClassExpr& node, ExprId expression, NameContext inferred_name = {}) {
     // Only the already composed module root admits class definitions here.
     // Member families own their external root evidence. The already checked
     // parent syntax is passed explicitly, without recovering scope/CFG here.
@@ -674,7 +740,7 @@ class TreePrinter {
     // adding an immutable inner class binding. Reuse that language context
     // only when its actual printed spelling gives the original runtime name.
     // Mismatches and other destinations retain computed-property inference.
-    const bool inferred = inferred_name && Tree().names[inferred_name->value] == node.definition->name;
+    const bool inferred = ContextName(inferred_name) == node.definition->name;
     if (node.heritage) {
       if (!node.definition->DraftPrepared() || node.definition->callable != CallableKind::kDerivedConstructor)
         throw Error::kUnsupportedContext;
@@ -775,7 +841,7 @@ class TreePrinter {
           Tree().callable == CallableKind::kGenerator ? "(function* " :
           Tree().callable == CallableKind::kAsyncFunction ? "(async function " : "(function ");
       Name(*Tree().self); Append("(");
-    } else if (Tree().inferred_name) {
+    } else if (Tree().inferred_name && !NativeName()) {
       if (Tree().self) {
         // The private const is initialized before the target can be invoked.
         // An arrow envelope preserves enclosing lexical this/arguments/target.
@@ -812,7 +878,7 @@ class TreePrinter {
     }
     // Class-body syntax closes with the block itself, not an expression wrap.
     if (!ClassRoot() && !ModuleBody()) {
-      if (Tree().inferred_name && (!Tree().self || Tree().self_form == SelfForm::kCreationBinding)) {
+      if (Tree().inferred_name && !NativeName() && (!Tree().self || Tree().self_form == SelfForm::kCreationBinding)) {
         Append("})["); Quoted(Tree().names[Tree().inferred_name->value]); Append("]");
         if (Tree().self) { Append("; return "); Name(*Tree().self); Append("; })()"); }
       } else Append(")");
@@ -861,7 +927,8 @@ class TreePrinter {
       }
     }
     Push(ObjectCursor{cursor.range, cursor.index + 1, cursor.kind});
-    Push(EndProperty{id}); Push(property.value);
+    Push(EndProperty{id}); Push(ExpressionOperand{property.value, {},
+        cursor.kind == AggregateKind::kObject ? NameContext{property.key} : NameContext{}});
   }
   void Run(EndProperty property) { Result().properties[property.id.value].end = written_; }
   void Run(ArgumentCursor cursor) {
@@ -917,13 +984,13 @@ class TreePrinter {
     // neither its getter/throw nor its GetValue may disappear.
     BeginExpression(node.consequent); BeginExpression(node.alternate);
     if (operand.observation == ExpressionObservation::kDiscarded) {
-      operand.id = node.condition; operand.inferred_name.reset(); Push(operand);
+      operand.id = node.condition; operand.inferred_name = {}; Push(operand);
     } else if (*yes == *no) {
       Append("(");
       Push(std::string_view((*yes != inverted) ? ", true)" : ", false)"));
       Push(ExpressionOperand{node.condition, {}, {}, ExpressionObservation::kDiscarded});
     } else {
-      operand.id = node.condition; operand.inferred_name.reset();
+      operand.id = node.condition; operand.inferred_name = {};
       Push(BooleanOperand{operand, inverted != !*yes});
     }
     return true;
@@ -962,7 +1029,7 @@ class TreePrinter {
     const auto& expression = Tree().expressions[id.value].expression;
     if (const auto* unary = std::get_if<UnaryExpr>(&expression);
         unary && unary->operation == TreeUnary::kNot) {
-      operand.id = unary->operand; operand.inferred_name.reset();
+      operand.id = unary->operand; operand.inferred_name = {};
       Push(BooleanOperand{operand, true}); return;
     }
     if (const auto* conditional = std::get_if<ConditionalExpr>(&expression);
@@ -1147,6 +1214,7 @@ class TreePrinter {
   std::vector<std::vector<LocatedAnchor>> locations_;
   std::vector<OwnerTree> owners_;
   std::vector<std::uint8_t> printed_;
+  std::vector<std::uint8_t> native_names_;
 };
 }  // namespace
 

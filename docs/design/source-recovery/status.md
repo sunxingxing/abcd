@@ -12,6 +12,47 @@
 
 ## 当前阶段
 
+### 2026-10-04：按实际源码上下文恢复原生匿名函数表示
+
+- 规则revision98。实际HomeModel配对表示RED复现调用参数被强制打印为
+  computed-property命名包装。共同printer从FunctionTree的直接语法所有权
+  计算NameContext：声明、identifier赋值和对象数据属性推断名称；调用、
+  返回、数组、成员赋值、sequence/conditional/logical操作数不推断名称。
+  比较实际目的名称与原runtime name，仅在相等时使用原生匿名语法，不添加
+  内部具名绑定。原self创建envelope和arrow-method arguments carrier保持。
+- wrapper额外分配校验移至最终命名语法的preflight。原生名称匹配的V1
+  函数族不再因inferred_name元数据被拒绝；真正需要包装的V1仍在输出前
+  拒绝。名称是语言可观察的属性及文本边界，未用函数名选择恢复算法，也
+  未加入样本、指令序列、块布局或表达式形状准入条件。
+- 新增648组printer/native行为对照：6种普通/arrow/async/generator
+  callable、9种表达式位置、普通/__proto__/换行属性名和4种原名称。
+  验证name descriptor、arity、prototype、构造行为、async拒绝、generator
+  yield/next/throw及重复创建身份；可变外部chosen捕获对照排除内部self
+  遮蔽。实际HomeModel通过getter顺序、callback空名称/arity/不可构造和
+  hostile map thisArg检查，保留独立配对源码行为对照。
+- 1/200/201/402成员规模及精确work边界通过。整体printer work为
+  253/35949/36132/73353，计费scratch为7449/524132/526621/1048414；
+  不代替全流程RSS或基准。新增命名扫描复用既有owner二分索引，按语法
+  occurrence扫描，没有逐变量/绑定的子树或CFG遍历。
+- /tmp/abcd-native-name-red-test.log复现实际表示RED。final-build-2.log
+  相关33目标单-j4成功；final-tests-2.log 50/50通过98.53秒，具体规模
+  及行为证据见test-output.log。首轮52项中created_function_test及其JS
+  包装测试失败于旧寄存器表示断言；使用HEAD0304a097原测试和原printer
+  独立对照仍失败于183。临时表示诊断进一步复现legacy LeafSources
+  kCreation拒绝，原printer亦相同。最终未修改这两项旧测试，不计为通过；
+  baseline/original-test.log、test.log和created-backtrace-2.log保留证据。
+- fresh build/stage-one/native-function-name-pass-1固定五输入全退出0，
+  80 complete/26 incomplete/0 failure/46 no-module，无回退、新完整项或
+  legacy writer。46个完整及23个仍incomplete的记录表示改善；空函数名
+  包装从732处降至0。batch-1.log与syntax-1.log核对原index/manifest
+  SHA和size，106份源码解析通过；这不表示所有记录已完成独立语义验收。
+- author self-review检查直接命名上下文、实际名称、自绑定/arguments、
+  唯一函数所有权及预输出资源校验。default export直接function/class
+  initializer的命名投影仍是独立缺口，未放宽其既有检查。一般数值域、
+  未知父类协议、inline-owned Reference、module guard邻接、相位corridor、
+  一般字段/签名/父作用域及CanRetainPrefix边界仍开放。阶段一未完成，
+  Goal active；代理、全量测试、扩展语料、RSS/基准及DFX继续暂停。
+
 ### 2026-10-04：以 SSA 身份消除原生类的丢弃 prototype 读取
 
 - 规则revision97。实际六个配对模块的表示RED显示，未使用的.prototype
