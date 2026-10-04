@@ -1,6 +1,8 @@
 #include "../../../src/source/literal_class_fields.h"
 #include "analysis/ssa_fixture.h"
 #include "../../../src/source/effect_order.h"
+#include "../../../src/source/evaluation_plan.h"
+#include <algorithm>
 
 namespace {
 using namespace abcd;
@@ -22,7 +24,7 @@ ValueProgram Graph(std::uint32_t count, bool frame = false) {
     graph.uses.push_back({operation,OperandRole::kBase,ReadPurpose::kOperand,ValueId{0},{},{},
         i ? std::optional{UseId{first-2}} : std::nullopt,
         i+1 < count ? std::optional{UseId{first+2}} : std::nullopt});
-    graph.uses.push_back({operation,OperandRole::kStoredValue,ReadPurpose::kOperand,IntegerLiteral{42}});
+    graph.uses.push_back({operation,OperandRole::kStoredValue,ReadPurpose::kOperand,analysis::IntegerLiteral{42}});
     graph.ops.push_back({ValueOwnWrite{OwnWriteKind::kDefineField,{i},0},{0},operation.value,{first},2,{},kEffects,kEffects,ExceptionalCompletion::kMayThrow,{operation.value}});
     graph.origins.push_back({{operation.value},{operation.value},{}});
     graph.exceptional_exits.push_back({operation,{operation.value},kEffects});
@@ -76,7 +78,7 @@ ValueProgram AcrossBlocks(std::uint32_t count, FieldFlow flow) {
     const auto order = reverse ? count-i-1 : i;
     const auto next = reverse ? (i ? first_field+i-1 : tail) : first_field+i+1;
     add(ValueOwnWrite{OwnWriteKind::kDefineField, {order}, 0},
-      {{OperandRole::kBase, ValueId{0}}, {OperandRole::kStoredValue, IntegerLiteral{static_cast<std::int32_t>(order)}}},
+      {{OperandRole::kBase, ValueId{0}}, {OperandRole::kStoredValue, analysis::IntegerLiteral{static_cast<std::int32_t>(order)}}},
       {{next, FlowEdgeKind::kFallthrough}}, kEffects);
   }
   if (suffix_fork) {
@@ -101,8 +103,107 @@ ValueProgram AcrossBlocks(std::uint32_t count, FieldFlow flow) {
   }
   return graph;
 }
+ValueProgram CopiedLiteral(std::uint32_t count, bool reverse, bool string) {
+  ValueProgram graph;
+  graph.values.push_back({EntryDefinition{ReceiverEntry{}}, ValueKinds::Language(), {}});
+  for (std::uint32_t i = 0; i <= count; ++i)
+    graph.values.push_back({EntryDefinition{UnknownEntry{}}, string ? ValueKinds::String() : ValueKinds::Number(), {}});
+  const auto add = [&](ValueOperation operation, std::optional<ValueId> result,
+      std::initializer_list<std::pair<OperandRole, ValueOperand>> inputs, std::optional<std::uint32_t> next) {
+    const WorkBlockId block{static_cast<std::uint32_t>(graph.blocks.size())};
+    const OpId id{static_cast<std::uint32_t>(graph.ops.size())};
+    const auto first = static_cast<std::uint32_t>(graph.uses.size());
+    const bool field = std::holds_alternative<ValueOwnWrite>(operation);
+    const auto effects = field ? LanguageEffect::kHeapWrite | LanguageEffect::kUserCode : LanguageEffect::kNone;
+    graph.ops.push_back({operation, block, 0, {first}, static_cast<std::uint32_t>(inputs.size()), result,
+      effects, effects, field ? ExceptionalCompletion::kMayThrow : ExceptionalCompletion::kImpossible, {id.value}});
+    graph.origins.push_back({{id.value}, {id.value}, {}});
+    if (result) graph.values[result->value].origin = OpResult{id};
+    for (const auto& [role, operand] : inputs) {
+      const UseId at{static_cast<std::uint32_t>(graph.uses.size())};
+      OperandUse use{id, role, ReadPurpose::kOperand, operand};
+      if (const auto* value = std::get_if<ValueId>(&operand)) {
+        use.next = graph.values[value->value].first_use;
+        if (use.next) graph.uses[use.next->value].previous = at;
+        graph.values[value->value].first_use = at;
+      }
+      graph.uses.push_back(use);
+    }
+    graph.blocks.push_back({id, 1, {static_cast<std::uint32_t>(graph.edges.size())}, static_cast<std::uint8_t>(next ? 1 : 0)});
+    if (next) graph.edges.push_back({block, {*next}, FlowEdgeKind::kFallthrough, 0});
+    if (field) graph.exceptional_exits.push_back({id, {id.value}, effects});
+  };
+  add(ValueNop{}, {}, {}, reverse ? count+3 : 1);
+  for (std::uint32_t i = 0; i < count+3; ++i) {
+    const auto position = reverse ? count+2-i : i;
+    const auto block = static_cast<std::uint32_t>(graph.blocks.size());
+    const std::optional<std::uint32_t> next = position == count+2 ? std::nullopt :
+      std::optional<std::uint32_t>{reverse ? block-1 : block+1};
+    if (!position) {
+      if (string) add(ValueString{{0}}, ValueId{1}, {}, next);
+      else add(ValueCopy{}, ValueId{1}, {{OperandRole::kInput, analysis::IntegerLiteral{42}}}, next);
+    } else if (position <= count) add(ValueCopy{}, ValueId{position+1},
+      {{OperandRole::kInput, ValueId{position}}}, next);
+    else if (position == count+1) add(ValueOwnWrite{OwnWriteKind::kDefineField, {0}, 0}, {},
+      {{OperandRole::kBase, ValueId{0}}, {OperandRole::kStoredValue, ValueId{count+1}}}, next);
+    else add(ValueReturn{}, {}, {{OperandRole::kReturnValue, SpecialValue::kUndefined}}, {});
+  }
+  return graph;
+}
 }
 int main() {
+  {
+    auto graph = CopiedLiteral(201, true, true);
+    const auto source = std::get<OpResult>(graph.values[1].origin).op;
+    const auto built = BuildEvaluationPlan(graph);
+    test::Check(std::holds_alternative<EvaluationPlan>(built));
+    const auto& plan = std::get<EvaluationPlan>(built);
+    test::Check(plan.closed_expressions[source.value].has_value());
+    test::Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(graph, plan)));
+    auto changed = plan;
+    changed.closed_expressions[source.value].reset();
+    test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, changed)));
+    changed = plan;
+    const auto field = std::find_if(graph.ops.begin(), graph.ops.end(), [](const ValueOp& op) {
+      return std::holds_alternative<ValueOwnWrite>(op.operation);
+    });
+    test::Check(field != graph.ops.end() && field->first_use != changed.closed_expressions[source.value]);
+    changed.closed_expressions[source.value] = field->first_use;
+    changed.operations[source.value].consumer = changed.closed_expressions[source.value];
+    test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, changed)));
+    graph.ops[source.value].normal = LanguageEffect::kHeapRead;
+    test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, plan)));
+    test::Check(std::holds_alternative<LiteralClassFieldError>(LiteralClassFields::Build(graph)));
+    graph.ops[source.value].normal = LanguageEffect::kNone;
+    graph.ops[source.value].operation = ValueFrameThis{};
+    // Even a no-throw frame read depends on its original implicit context.
+    test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, plan)));
+    test::Check(std::holds_alternative<LiteralClassFieldError>(LiteralClassFields::Build(graph)));
+    graph.ops[source.value].operation = ValueString{{0}};
+    graph.values[1].domain = ValueKinds::Unknown();
+    test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, plan)));
+    test::Check(std::holds_alternative<LiteralClassFieldError>(LiteralClassFields::Build(graph)));
+  }
+  for (const bool string : {false, true}) for (const bool reverse : {false, true}) {
+    std::uint64_t previous = 0;
+    for (const auto count : {1U, 200U, 201U, 402U}) {
+      const auto graph = CopiedLiteral(count, reverse, string);
+      test::Check(std::holds_alternative<EffectOrder>(BuildEffectOrder(graph)));
+      const auto built = LiteralClassFields::Build(graph);
+      if (const auto* error = std::get_if<LiteralClassFieldError>(&built))
+        std::cerr << "literal copy reverse=" << reverse << " string=" << string << " error=" << static_cast<int>(*error) << '\n';
+      test::Check(std::holds_alternative<LiteralClassFields>(built));
+      const auto& proof = std::get<LiteralClassFields>(built);
+      test::Check(proof.Fields().size() == 1);
+      SemanticBudget budget; budget.work = proof.Work();
+      test::Check(std::holds_alternative<LiteralClassFields>(LiteralClassFields::Build(graph, budget)));
+      --budget.work;
+      test::Check(std::get<LiteralClassFieldError>(LiteralClassFields::Build(graph, budget)) == LiteralClassFieldError::kWorkLimit);
+      if (count == 402) test::Check(proof.Work() < 3*previous);
+      previous = proof.Work();
+      std::cout << "literal copy reverse=" << reverse << " string=" << string << " count=" << count << " work=" << proof.Work() << '\n';
+    }
+  }
   for (const auto flow : {FieldFlow::kEmptyEntry, FieldFlow::kSplit, FieldFlow::kReverse, FieldFlow::kDiamond, FieldFlow::kExitFork}) {
     std::uint64_t previous = 0;
     for (const auto count : {1U, 200U, 201U, 402U}) {
@@ -159,7 +260,7 @@ int main() {
   auto graph = Graph(1);
   graph.values[0].origin = EntryDefinition{ParameterEntry{0}};
   test::Check(std::get<LiteralClassFieldError>(LiteralClassFields::Build(graph)) == LiteralClassFieldError::kUnsupported);
-  graph = Graph(1); graph.uses[2].operand = IntegerLiteral{1};
+  graph = Graph(1); graph.uses[2].operand = analysis::IntegerLiteral{1};
   test::Check(std::get<LiteralClassFieldError>(LiteralClassFields::Build(graph)) == LiteralClassFieldError::kUnsupported);
   graph = Graph(1); std::get<ValueOwnWrite>(graph.ops[0].operation).kind = OwnWriteKind::kStore;
   test::Check(std::get<LiteralClassFieldError>(LiteralClassFields::Build(graph)) == LiteralClassFieldError::kUnsupported);

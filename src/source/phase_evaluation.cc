@@ -84,9 +84,12 @@ void Schedule(const ValueProgram& graph, EvaluationPlan& plan, PhaseCorridors& c
   }
 }
 }  // namespace
-bool CrossPhaseInline(const ValueProgram& graph, const EvaluationPlan& plan, OpId producer) {
+bool CrossEvaluationInline(const ValueProgram& graph, const EvaluationPlan& plan, OpId producer) {
   const auto& placement = plan.operations[producer.value];
-  if (plan.flow != EvaluationFlow::kPhased || CrossLogicalInline(graph, plan, producer) ||
+  const bool closed = plan.flow == EvaluationFlow::kNormal && producer.value < plan.closed_expressions.size() &&
+      plan.closed_expressions[producer.value] && plan.closed_expressions[producer.value] == placement.consumer &&
+      IsClosedPureValue(graph, producer);
+  if ((plan.flow != EvaluationFlow::kPhased && !closed) || CrossLogicalInline(graph, plan, producer) ||
       (placement.kind != EvaluationKind::kInline && placement.kind != EvaluationKind::kNestedLiteral) ||
       !placement.consumer) return false;
   const auto* owner = std::get_if<OpId>(&graph.uses[placement.consumer->value].owner);

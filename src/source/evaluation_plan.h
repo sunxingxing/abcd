@@ -107,6 +107,9 @@ struct EvaluationPlan {
   // Direct and ancestor callee references, indexed by original operation.
   // Entries are separately checked; they never license a .call substitution.
   std::vector<std::optional<analysis::UseId>> phase_references;
+  // Exact owned occurrences of normal-flow closed pure expressions. Separate
+  // from logical selection and phased event/catch certificates.
+  std::vector<std::optional<analysis::UseId>> closed_expressions;
   std::vector<std::optional<analysis::UseId>> phase_transports;
   std::vector<std::optional<analysis::OpId>> phase_prefixes;
   // Selected buffered allocations own a chain of staged definitions across selections.
@@ -195,6 +198,9 @@ struct EvaluationShape {
 [[nodiscard]] std::optional<EvaluationShape> DescribeEvaluation(
     const analysis::ValueOperation& operation);
 [[nodiscard]] bool OrderedEvaluation(const analysis::ValueOp& operation);
+// A language expression with no dependencies, effects, implicit context or
+// abrupt completion. Fresh availability/ownership still governs each use.
+[[nodiscard]] bool IsClosedPureValue(const analysis::ValueProgram&, analysis::OpId);
 // Constant-time semantic checks. Conditional slot uses remain protocol reads:
 // their producers execute at the original point, never inside a count predicate.
 [[nodiscard]] std::optional<EvaluationError> CheckArgumentSnapshot(

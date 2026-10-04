@@ -1,6 +1,6 @@
 # 按用户要求进行的恢复条件审计
 
-最新替换状态及补充事项见文末规则95；历史表中的严格比较候选及literal同块条件不再是
+最新替换状态及补充事项见文末规则96；历史表中的严格比较候选及literal同块条件不再是
 当前准入条件。未替换项继续开放，不能将本次局部交付称为全量审计闭合。
 
 2026-10-03，基线 87176c10。此为本次明确请求的审计，不恢复定期审视。
@@ -653,7 +653,7 @@ raw VM zero/nonzero对null/undefined/NaN不同于JS truthiness，不能贸然替
 | class_tree.cc::CheckClassParentScope | phased parent接口仍排除initializer、defined-member、captures和modules | 贯通真实创建scope/捕获/module/异常对应，不能直接删掉父作用域义务 |
 | class_self.cc::FindClassSelfStores | 同块/order和效果数量已由规则93的共同EffectOrder身份/支配/必达替换；实际唯一首次store及初始化器正文接口范围仍有限 | 多次写入与一般初始化器须由共同cell/观察/执行顺序模型表达，不能增加数量模板 |
 | semantic_locals.cc / scope_facts.cc | 规则93以真实拓扑排序替换物理forward-edge准入；既有一般cell初始化仍依赖原指令排序，循环保留局部路径 | activation-sensitive初始化数据流证明每次分配到读取的全路径store；不能以PC大小或同块替代 |
-| literal_class_fields.cc::Build | 规则95以共同首/后效果必达、原前驱身份/支配及normal return替换单块/无边和物理return次序；literal RHS与无参数接口仍有限 | 一般RHS依赖、条件字段、phased执行/this与cell观察证明；String/copy事实仍需脱离物理扫描，不能继续扩大局部列表 |
+| literal_class_fields.cc::Build | 规则95替换单块/无边和物理return次序；规则96以SSA定义memo替换String/copy物理扫描；literal RHS与无参数接口仍有限 | 一般RHS依赖、phi/条件字段、phased执行/this与cell观察证明，不能继续扩大局部列表 |
 | literal_plan.h::IsReceiverField；tree_structure.cc | 规则94共用实际ReceiverEntry与已证明初始化FrameThis的来源接口；删除直接ThisExpr结构门槛，保留原读与跨块绑定身份 | 多次/保留frame读取的native字段投影仍需共同观察/顺序证明；不将frame read等同ABI快照，不推断derived/arrow初始化 |
 | legacy rest/super/array/class/module整理 | 既有直线/局部序列模板未全部迁移 | typed CFG/SSA/协议状态和共同FunctionTree通路；不继续扩大模板集合 |
 
@@ -736,3 +736,30 @@ endpoint，字段证书沿原exact-next效果链恢复顺序，检查前驱身�
 正文条件字段的native表示、一般RHS表达式与局部String/copy事实、phased
 字段及保留receiver的存储省略仍未闭合；没有把这次通用效果替换称为
 全部static initializer或阶段一完成，也不继续扩充旧literal-only模板。
+
+## 规则96：SSA字面量来源与共同无依赖纯值表示
+
+本次从最新固定五输入的26个incomplete核对实际拒绝指令。普通函数中的
+参数/属性/宿主调用算术没有可安全补齐的数值域事实；未知父类super spread
+协议也未被布局放行。这些不是同块门槛，不借配对源码猜类型或父类品牌。
+
+实际替换了LiteralClassFields按物理遍历确认String/copy的局部事实。现在
+每个值从当前SSA定义追溯、缓存，不因块被分割、逆向排列或复制链变长
+新增恢复分支。首/后效果、receiver来源、可用性、descriptor及normal
+return合同保持。一般表达式、phi字面量及phased字段仍开放。
+
+完整文件回归又暴露两个表示缺口：普通流无依赖纯值跨块时强制局部存储，
+以及森林依赖物理构造顺序。现以共同typed SourceEvaluation纯值合同、
+无输入/效果/异常/隐式上下文和原Language值作为证明前提，记录确切唯一
+消费UseId，独立重查census及所有权，再从原constant/origin预构造一次。
+这是无依赖语言值的语义证明，不是字符串opcode、特定寄存器、PC、块形状
+或样本选择。logical selection、phased reference和纯值所有权分别校验。
+
+额外登记expression_forest.cc::CanRetainPrefix的实现边界：仍只保留单块
+normal正文前缀，拒绝异常/phi/复杂作用域等前缀。不能称作语言语义条件，
+后续应以共同控制/效果/完成与缺口归属替换，不追加局部布局模板。
+CallPlan的非inline callee引用存储、其他旧rest/派生协议快路径、一般
+字段/表达式和作用域接口仍未全部闭合；本轮不宣称完成逐分支全库审计。
+
+验证与固定五输入结果见status.md当前规则96；原生产样本身份文本搜索的
+有限结论不升级为全库不存在特例的证明。AGENTS.md第1a节的禁止规则继续有效。

@@ -142,7 +142,9 @@ for (const placement of memberMap.operations) {
   }
   if (placement.operation === 6) {
     assert.equal(placement.kind, 'expression');
-    assert.match(memberBytes.subarray(range.begin, range.end).toString(), /^\(\$arg0\.run\(/);
+    // The expression range covers the native call itself; statement wrappers
+    // are not part of its AST node. Receiver/throw behavior is checked above.
+    assert.match(memberBytes.subarray(range.begin, range.end).toString(), /^\$arg0\.run\(/);
   }
 }
 for (const placement of map.operations) {

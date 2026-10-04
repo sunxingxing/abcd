@@ -213,6 +213,16 @@ std::optional<EvaluationError> CheckEvaluationUse(
   return {};
 }
 
+bool IsClosedPureValue(const analysis::ValueProgram& graph, analysis::OpId id) {
+  const auto& op = graph.ops[id.value];
+  const auto shape = DescribeEvaluation(op.operation);
+  return op.life == analysis::ValueLife::kLive && op.result &&
+      graph.values[op.result->value].domain.IsLanguage() && shape && shape->expression &&
+      shape->source == SourceEvaluation::kPure && shape->inputs == InputEvaluation::kEager &&
+      shape->Count() == 0 && op.use_count == 0 &&
+      op.normal == analysis::LanguageEffect::kNone && op.before_throw == analysis::LanguageEffect::kNone &&
+      op.exceptional == analysis::ExceptionalCompletion::kImpossible;
+}
 bool OrderedEvaluation(const analysis::ValueOp& op) {
   if (op.normal != analysis::LanguageEffect::kNone ||
       op.before_throw != analysis::LanguageEffect::kNone ||

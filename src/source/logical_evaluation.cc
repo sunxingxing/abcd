@@ -604,6 +604,7 @@ bool CrossLogicalInline(const ValueProgram& graph, const EvaluationPlan& plan, O
   const auto& placement = plan.operations[producer.value];
   if (placement.kind != EvaluationKind::kInline || !placement.consumer ||
       placement.consumer->value >= graph.uses.size()) return false;
+  if (producer.value < plan.closed_expressions.size() && plan.closed_expressions[producer.value]) return false;
   if (plan.flow == EvaluationFlow::kPhased) {
     return (producer.value < plan.phase_transports.size() && plan.phase_transports[producer.value]) ||
         (producer.value < plan.phase_references.size() && plan.phase_references[producer.value]);

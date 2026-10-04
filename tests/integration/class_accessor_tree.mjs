@@ -9,8 +9,9 @@ for (const [flag, captured] of [['--initializers-json', false], ['--self-initial
   assert.equal(run.status, 0, run.stderr);
   let scenarios = 0;
   for (const line of run.stdout.trim().split('\n')) {
-    const {source, self = captured, fields = false} = JSON.parse(line);
-    assert.match(source, /static _value = 42;/);
+    const {source, self = captured, fields = false, string_value = false} = JSON.parse(line);
+    const initialValue = string_value ? 'value' : 42;
+    assert.match(source, string_value ? /static _value = "value";/ : /static _value = 42;/);
     if (fields) {
       assert.match(source, /static _other = 17;/);
       assert.ok(source.indexOf('static _other') < source.indexOf('static _value'));
@@ -20,9 +21,9 @@ for (const [flag, captured] of [['--initializers-json', false], ['--self-initial
     // Actual captured constructors read the outer cell; the oracle enters only
     // after generation and is never supplied to the bytecode recovery engine.
     const reference = fields ? self ? () => {
-      let C = class Accessors {constructor() {return C;} static _other = 17; static _value = 42;};
+      let C = class Accessors {constructor() {return C;} static _other = 17; static _value = initialValue;};
       return C;
-    } : () => class Accessors {static _other = 17; static _value = 42;} : self ? () => {
+    } : () => class Accessors {static _other = 17; static _value = initialValue;} : self ? () => {
       let C = class Accessors {constructor() {return C;} static _value = 42;};
       return C;
     } : () => class Accessors {static _value = 42;};
@@ -30,7 +31,7 @@ for (const [flag, captured] of [['--initializers-json', false], ['--self-initial
       const describe = factory => {
         const C = factory(input), D = factory(input);
         assert.notEqual(C, D); assert.notEqual(C.prototype, D.prototype);
-        assert.equal(C._value, 42);
+        assert.equal(C._value, initialValue);
         if (fields) {
           assert.equal(C._other, 17);
           const other = Object.getOwnPropertyDescriptor(C, '_other');
@@ -45,7 +46,7 @@ for (const [flag, captured] of [['--initializers-json', false], ['--self-initial
         const descriptor = Object.getOwnPropertyDescriptor(C, '_value');
         const value = {};
         assert.equal(Reflect.set(C, '_value', value), true); assert.equal(C._value, value);
-        assert.equal(new C()._value, self ? value : undefined); assert.equal(D._value, 42);
+        assert.equal(new C()._value, self ? value : undefined); assert.equal(D._value, initialValue);
         return {name: C.name, length: C.length, keys: Reflect.ownKeys(C), prototypeKeys: Reflect.ownKeys(C.prototype),
           value: descriptor.value, writable: descriptor.writable, enumerable: descriptor.enumerable, configurable: descriptor.configurable};
       };

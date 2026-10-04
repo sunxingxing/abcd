@@ -20,7 +20,7 @@ void Check(bool ok, const std::source_location& at = std::source_location::curre
   if (!ok) { std::cerr << "accessor tree check " << at.line() << '\n'; std::abort(); }
 }
 enum class ObserverFlow { kSameBlock, kSplit, kSelection, kInstallSplit, kInstallDiamond, kReverseInstall, kInitializerSplit, kInitializerDiamond, kInitializerReverse };
-enum class FieldBody { kSameBlock, kSplit, kReverse };
+enum class FieldBody { kSameBlock, kSplit, kReverse, kReverseString };
 std::string Recover(bool is_static, bool return_prototype = false, int ordinary_parity = -1,
     bool async_method = false, abc::ProfileId profile = abc::ProfileId::kDynamic1206,
     bool capture_cells = false, bool initialized = true, bool input_gap = false,
@@ -197,17 +197,26 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
       opcode(abc::Opcode::kRETURNUNDEFINED)});
     index.methods[2].code = body(kGetterCode, 1, 3, std::move(fields));
     if (field_body != FieldBody::kSameBlock) {
+      const bool string_value = field_body == FieldBody::kReverseString;
       const auto packet = [&](std::uint8_t key, std::uint8_t value) {
         std::vector<std::uint8_t> data;
         if (frame_this) data.push_back(opcode(abc::Opcode::kLDTHIS));
-        else data.insert(data.end(), {opcode(abc::Opcode::kLDA_V8), 3});
+        else data.insert(data.end(), {opcode(abc::Opcode::kLDA_V8), static_cast<std::uint8_t>(string_value ? 4 : 3)});
         data.insert(data.end(), {opcode(abc::Opcode::kSTA_V8), 0,
           opcode(abc::Opcode::kLDA_V8), 0, opcode(abc::Opcode::kSTA_V8), 0,
           opcode(abc::Opcode::kLDAI_IMM32), value, 0, 0, 0,
           opcode(abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8), 0, key, 0, 0});
         return data;
       };
-      const auto first = packet(9, 17), second = packet(6, 42);
+      const auto first = packet(9, 17);
+      auto second = packet(6, 42);
+      if (string_value) {
+        const auto immediate = std::find(second.begin(), second.end(), opcode(abc::Opcode::kLDAI_IMM32));
+        Check(immediate != second.end());
+        const auto at = static_cast<std::size_t>(immediate-second.begin());
+        second.erase(second.begin()+at, second.begin()+at+5);
+        second.insert(second.begin()+at, {opcode(abc::Opcode::kLDA_V8), 1});
+      }
       std::vector<std::uint8_t> data;
       if (field_body == FieldBody::kSplit) {
         data = first; data.insert(data.end(), {opcode(abc::Opcode::kJMP_IMM8), 2});
@@ -217,12 +226,14 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
         const auto second_at = data.size(); data.insert(data.end(), second.begin(), second.end());
         const auto to_return = data.size(); data.insert(data.end(), {opcode(abc::Opcode::kJMP_IMM8), 0});
         data.insert(data.end(), first.begin(), first.end());
+        if (string_value) data.insert(data.end(), {opcode(abc::Opcode::kLDA_STR_ID16), 4, 0,
+          opcode(abc::Opcode::kSTA_V8), 1});
         const auto to_second = data.size(); data.insert(data.end(), {opcode(abc::Opcode::kJMP_IMM8),
           static_cast<std::uint8_t>(static_cast<std::ptrdiff_t>(second_at)-static_cast<std::ptrdiff_t>(to_second))});
         data[to_return+1] = static_cast<std::uint8_t>(data.size()-to_return);
       }
       data.push_back(opcode(abc::Opcode::kRETURNUNDEFINED));
-      index.methods[2].code = body(kInitializerCode, 1, 3, std::move(data));
+      index.methods[2].code = body(kInitializerCode, string_value ? 2 : 1, 3, std::move(data));
     }
   }
   index.methods[3].code = body(kSetterCode, 1, 4, {opcode(abc::Opcode::kLDTHIS),
@@ -359,6 +370,10 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
     Check(std::holds_alternative<TreeFlow>(VerifyTreeFlow(graph, control, evaluation, source.tree)));
     std::ostringstream output;
     const auto printed = PrintFunctionTree(source.tree, output, {}, {}, &globals);
+    if (const auto* text = std::get_if<PrintedFunction>(&printed); text && text->incomplete)
+      std::cerr << output.str() << '\n';
+    if (const auto* error = std::get_if<TreePrintError>(&printed))
+      std::cerr << "field print error " << static_cast<unsigned>(*error) << " after " << output.str() << '\n';
     Check(std::holds_alternative<PrintedFunction>(printed) && !std::get<PrintedFunction>(printed).incomplete);
     if (self_initializer) {
       const auto flow = std::get<TreeFlow>(VerifyTreeFlow(graph, control, evaluation, source.tree));
@@ -788,10 +803,10 @@ int main(int argc, char** argv) {
   if (argc == 2 && std::string_view(argv[1]) == "--body-initializers-json") {
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
       for (const auto outer : {ObserverFlow::kInitializerSplit, ObserverFlow::kInitializerDiamond, ObserverFlow::kInitializerReverse})
-        for (const auto body : {FieldBody::kSplit, FieldBody::kReverse})
+        for (const auto body : {FieldBody::kSplit, FieldBody::kReverse, FieldBody::kReverseString})
           for (const bool frame : {false, true})
             for (const bool self : {false, true})
-              std::cout << nlohmann::json{{"self", self}, {"fields", true}, {"source", Recover(true, false, -1, false, profile,
+              std::cout << nlohmann::json{{"self", self}, {"fields", true}, {"string_value", body == FieldBody::kReverseString}, {"source", Recover(true, false, -1, false, profile,
                   false, true, false, outer, self, frame, body)}} << '\n';
     return 0;
   }

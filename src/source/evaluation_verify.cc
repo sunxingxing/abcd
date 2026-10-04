@@ -31,6 +31,8 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     Require(plan.operations.size() == graph.ops.size(), Error::kInvalidGraph);
     Require(plan.logical_objects.empty() || plan.logical_objects.size() == graph.ops.size(), Error::kOwnership);
     Require(plan.arguments == graph.arguments, Error::kOwnership);
+    Require(plan.closed_expressions.empty() || (flow == EvaluationFlow::kNormal &&
+        plan.closed_expressions.size() == graph.ops.size()), Error::kOwnership);
     auto work = budget.work;
     const auto step = [&](std::size_t count = 1) {
       Require(count <= work, Error::kWorkLimit); work -= count;
@@ -234,7 +236,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     // proves ordered intervals and final throw owners. The forest below must
     // still visit every operation exactly once.
     const auto cross = [&](std::size_t i) {
-      return CrossPhaseInline(graph, plan, analysis::OpId{static_cast<std::uint32_t>(i)});
+      return CrossEvaluationInline(graph, plan, analysis::OpId{static_cast<std::uint32_t>(i)});
     };
     admit(graph.ops.size(), sizeof(EvaluationFrame));
     admit(graph.ops.size(), sizeof(EvaluationVisit));
@@ -246,6 +248,11 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
       step();
       const auto& op = graph.ops[i];
       const auto placement = BeforeLogicalFusion(graph, plan, i);
+      if (!plan.closed_expressions.empty() && plan.closed_expressions[i]) {
+        Require(IsClosedPureValue(graph, {static_cast<std::uint32_t>(i)}) &&
+            placement.kind == EvaluationKind::kInline && placement.consumer == plan.closed_expressions[i] &&
+            !placement.temporary, Error::kOwnership);
+      }
       const bool nested = plan.literals && !plan.literals->nested.empty() && plan.literals->nested[i].has_value();
       Require(nested == (placement.kind == EvaluationKind::kNestedLiteral), Error::kOwnership);
       if (op.life != analysis::ValueLife::kLive) {
@@ -336,6 +343,9 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
         Require(placement.consumer->value < graph.uses.size(), Error::kOwnership);
         const auto& use = graph.uses[placement.consumer->value];
         const auto* owner = std::get_if<analysis::OpId>(&use.owner);
+        if (!plan.closed_expressions.empty() && plan.closed_expressions[i]) {
+          Require(visible[i].first == placement.consumer && !visible[i].multiple && owner, Error::kOwnership);
+        }
         if (!cross(i)) {
           Require(visible[i].first == placement.consumer && !visible[i].multiple && owner &&
               graph.ops[owner->value].block == op.block && graph.ops[owner->value].order > op.order,

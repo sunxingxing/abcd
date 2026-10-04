@@ -250,6 +250,19 @@ class ForestBuilder {
         forest_.origins.emplace_back(OriginalSite{origin.site, origin.pc, origin.original});
     }
     NestedTrees();
+    // Dependency-free expressions may precede their consumers in execution
+    // while following them in the storage array. Build the verified owned
+    // leaves once from their original constants/origins, without replaying an
+    // effect, context read or allocation. Their physical visit is then inert.
+    for (std::size_t i = 0; i < evaluation_.closed_expressions.size(); ++i) {
+      Step(); if (!evaluation_.closed_expressions[i]) continue;
+      const auto& op = graph_.ops[i];
+      Require(IsClosedPureValue(graph_, {static_cast<std::uint32_t>(i)}) &&
+          op.origin.value < graph_.origins.size() &&
+          graph_.origins[op.origin.value].disposition == analysis::OriginDisposition::kRetained, Error::kOwnership);
+      forest_.operations[i] = Lower({static_cast<std::uint32_t>(i)}, op, {}, {op.origin.value}, constants_.operations[i]);
+      Require(forest_.operations[i].has_value(), Error::kUnsupportedOperation);
+    }
     const bool partial = CanRetainPrefix();
     struct Boundary {
       std::size_t operation = 0, expressions = 0, arguments = 0, origins = 0, parts = 0;
@@ -271,6 +284,7 @@ class ForestBuilder {
       }
       try {
         const auto& op = graph_.ops[i];
+        if (!evaluation_.closed_expressions.empty() && evaluation_.closed_expressions[i]) continue;
         // Primitive phi leaves may be built before their storage-array position
         // when a selected join needs them. They remain in the original arm.
         if (forest_.operations[i] && evaluation_.operations[i].kind == EvaluationKind::kPhiInput &&

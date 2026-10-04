@@ -5,6 +5,31 @@
 
 ## 输入规模与成本
 
+### 字面量来源与无依赖纯表达式所有权（2026-10-04）
+
+规则96的LiteralClassFields按实际SSA OpResult追溯字符串及透明copy的
+字面量来源，以Unknown/Visiting/Absent/Proven缓存每个值，迭代展开而不
+递归。每个定义最多展开、回填一次，物理OpId/块顺序不决定事实。入口、
+receiver、phi、未知值、效果来源或无基础的循环均不能凭String域变成
+字面量；可用性、效果链和返回义务仍由原共同证明承担。一般表达式及phi
+字面量来源尚未覆盖，此为已有literal证书的来源替换，不是完整RHS恢复。
+
+共同EvaluationShape的SourceEvaluation::kPure、无显式依赖、eager输入、
+Language结果及无正常/异常效果组成closed pure value事实；隐式frame读、
+分配及可能抛出的操作不满足该合同。普通流保留原单次消费UseId到
+EvaluationPlan.closed_expressions，独立校验原可用性、实际use census、
+consumer、语言域和源语义。该所有权与logical selection、phased效果/
+catch所有权分开；不能把任意跨块inline当作条件选择。Forest预构造这些
+无依赖节点一次，使用原constants/origin，再在原物理位置跳过重复构造。
+不重放getter/this，不授予一般依赖表达式的移动或临时变量消除权限。
+
+来源为SSA def-use、memoization和既有typed求值形状，项目自有实现；无
+第三方代码、依赖或许可证变化。I/V/U为操作/值/用途数，literal查询总
+时间O(I+V)、暂存O(V)；closed所有权建立/校验/预构造均O(I)，原use
+census为O(U)。索引仅在需要时分配O(I)，计入EvaluationPlan retained
+bytes；literal状态/路径及所有额外work均计预算。1/200/201/402、正向/
+逆序复制链和完整文件源码回归见status.md，不代替暂停的全语料RSS测量。
+
 ### 字段初始化正文的共同必达效果与完成（2026-10-04）
 
 规则95复用EffectOrder的逆向must worklist：Endpoint为原OpId、NormalReturn

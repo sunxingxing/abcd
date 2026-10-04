@@ -20,8 +20,9 @@ struct PhaseEvaluationCost {
 [[nodiscard]] bool IsMemberReceiver(const analysis::ValueProgram& graph,
     const EvaluationPlan& plan, const analysis::OperandUse& use);
 // Only after fresh evaluation verification; lookup, not a certificate. Includes
-// the same owned cross-phase references in freshly checked literal nesting.
-[[nodiscard]] bool CrossPhaseInline(const analysis::ValueProgram& graph,
+// the same owned cross-phase references in freshly checked literal nesting,
+// and normal-flow closed pure values with independently checked single uses.
+[[nodiscard]] bool CrossEvaluationInline(const analysis::ValueProgram& graph,
     const EvaluationPlan& plan, analysis::OpId producer);
 }  // namespace abcd::source
 #endif

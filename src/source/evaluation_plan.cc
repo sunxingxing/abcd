@@ -402,6 +402,31 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
       BuildLogicalValues(graph, plan, logical_budget);
       admit(logical_budget.Bytes(), 1); step(logical_budget.Work());
     }
+    if (flow == EvaluationFlow::kNormal) {
+      // Closed pure values need no local storage merely because a block was
+      // split or laid out backwards. Keep original single-use ownership and
+      // the same source origin; this never moves a context read or effect.
+      for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+        step();
+        if (pinned[i] || plan.operations[i].kind != EvaluationKind::kRoot ||
+            !IsClosedPureValue(graph, {static_cast<std::uint32_t>(i)}) ||
+            visible[i].multiple || !visible[i].first) continue;
+        const auto use = *visible[i].first;
+        const auto& occurrence = graph.uses[use.value];
+        const auto* owner = std::get_if<analysis::OpId>(&occurrence.owner);
+        if (!owner || graph.ops[owner->value].block == graph.ops[i].block) continue;
+        const auto shape = DescribeEvaluation(graph.ops[owner->value].operation);
+        if (!shape || shape->NeedsSnapshot(occurrence.role) ||
+            PredicateSnapshot(graph, graph.ops[owner->value], occurrence.operand)) continue;
+        if (plan.closed_expressions.empty()) {
+          admit(graph.ops.size(), sizeof(std::optional<analysis::UseId>)); step(graph.ops.size());
+          plan.closed_expressions.resize(graph.ops.size());
+          admit(plan.closed_expressions.capacity()-graph.ops.size(), sizeof(std::optional<analysis::UseId>));
+        }
+        plan.closed_expressions[i] = use;
+        plan.operations[i] = {EvaluationKind::kInline, use, {}};
+      }
+    }
     const auto expressions = BuildPhaseExpressions(graph, plan, {bytes, work});
     if (const auto* error = std::get_if<Error>(&expressions)) return *error;
     const auto& phase_cost = std::get<PhaseEvaluationCost>(expressions);
@@ -418,7 +443,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     const auto checked = VerifyEvaluationForFlow(graph, plan, {bytes, work}, flow);
     if (const auto* error = std::get_if<EvaluationError>(&checked)) return *error;
     step(std::get<std::uint64_t>(checked));
-    plan.allocated_bytes = plan.phase_references.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_prefixes.capacity() * sizeof(std::optional<analysis::OpId>) + plan.phase_transports.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_calls.capacity() * sizeof(PhaseSelectionCall) + plan.integer_nans.capacity() * sizeof(NaNProjection) + plan.operations.capacity() * sizeof(OpEvaluation) +
+    plan.allocated_bytes = plan.closed_expressions.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_references.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_prefixes.capacity() * sizeof(std::optional<analysis::OpId>) + plan.phase_transports.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_calls.capacity() * sizeof(PhaseSelectionCall) + plan.integer_nans.capacity() * sizeof(NaNProjection) + plan.operations.capacity() * sizeof(OpEvaluation) +
         plan.logical_values.capacity() * sizeof(std::optional<analysis::OpId>) +
         plan.logical_objects.capacity() * sizeof(std::optional<analysis::OpId>) +
         plan.aliases.capacity() * sizeof(analysis::ValueId) +

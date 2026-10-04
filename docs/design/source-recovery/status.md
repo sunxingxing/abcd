@@ -12,6 +12,49 @@
 
 ## 当前阶段
 
+### 2026-10-04：字面量来源与无依赖纯值脱离物理块顺序
+
+- 规则revision96。LiteralClassFields用SSA OpResult及透明copy的迭代memo
+  替换String/copy物理扫描；每个值最多展开/回填一次。原首/后效果、
+  receiver、字段descriptor、可用性和undefined正常返回合同保持。
+  不把String域、receiver、未知入口或phi当作字面量来源。一般RHS、phi
+  来源和phased字段仍开放；没有追加opcode序列、样本或块布局匹配。
+- 完整逆序字符串文件RED进一步暴露普通流强制局部存储和Forest物理
+  构造顺序。共同SourceEvaluation::kPure、无依赖/effects/异常/隐式
+  上下文及Language结果给出closed pure事实；EvaluationPlan记录确切
+  唯一消费UseId，独立验证实际census/可用性/源语义。它与logical/
+  phased所有权分开，Forest按原constant/origin预构造一次，没有重读
+  getter/this或改变receiver。不为一般依赖表达式授予移动权限。
+- 新增36组三profile真实字节/file/context/FunctionTree/family/printer
+  用例，含外部split/diamond/reverse、正文逆序string、ABI/frame来源及
+  captured class self；540组独立native行为对照通过。总body模式108组/
+  1620对照，原135+135 initializer、270 frame、432 observer及96 capture
+  对照保持。验证值、字段顺序/描述符、class/prototype身份、写后行为和
+  factory独立性，输出原生static字符串字段，未以INCOMPLETE计成功。
+- 数字/字符串复制链正向与逆序覆盖1/200/201/402及精确work边界，402
+  work小于201的三倍；string work328/14855/14928/29601，数字332/
+  14859/14932/29605。缺失/错误消费证书、HeapRead来源、隐式frame读取
+  及Unknown域反例拒绝；原bypass、divergence、重复字段、barrier、错误
+  receiver/descriptor、私有tagged NaN负例保持。不代替暂停的RSS基准。
+- 证据前缀/tmp/abcd-literal-origin-：unit-red-test.log在新鲜EffectOrder
+  成功后复现逆序copy kUnsupported；red-test.log复现完整string文件
+  拒绝。中间组件GREEN仍有完整文件失败，补齐上述共同表示后才通过。
+  测试整数类型歧义经完整qualification修正；首40项38通过，新增错误
+  use变造实际未变位置、旧phased expression范围要求多余括号，均修正
+  为真实变造/原生调用范围。final-build-4.log单构建-j4退出0；最终
+  final-tests-2.log 40/40通过58.90秒，test-output.log保留全部对照。
+- fresh build/stage-one/literal-value-origin-pass-1固定五输入全退出0，
+  80 complete/26 incomplete/0 failure/46 no-module，无新增完整项、
+  完整回退或legacy writer。batch-1.log与syntax-1.log核对index/manifest
+  原SHA及size，106份源码解析通过，与规则95字节一致。仍未取得普通
+  参数/属性/宿主返回算术的安全数值域事实，也未改变未知父类super协议。
+  阶段一语义与表示双验收未完成，Goal active。
+- 按本次用户审计继续登记CanRetainPrefix单块normal限制为实现边界，
+  后续按共同控制/完成与缺口归属替换；不扩充局部布局模板。非inline
+  callee Reference存储、一般字段/表达式、phased与作用域接口及旧协议
+  快路径仍未全闭合，不宣称逐分支全库审计完成。full-suite、扩展语料、
+  RSS/基准、DFX、代理及周期审计继续暂停。
+
 ### 2026-10-04：字段初始化正文以共同效果链取代单块门槛
 
 - 规则revision95。LiteralClassFields删除单块/无边限制及按物理遍历遇到

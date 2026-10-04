@@ -26,17 +26,51 @@ std::variant<LiteralClassFields, LiteralClassFieldError> LiteralClassFields::Bui
     const auto& order = std::get<EffectOrder>(checked);
     step(order.work); admit(order.allocated_bytes,1);
     require(graph.phases.empty() && !graph.arguments);
-    std::vector<std::uint8_t> literals;
-    admit(graph.values.size(),sizeof(std::uint8_t)); step(graph.values.size()); literals.resize(graph.values.size());
-    admit(literals.capacity()-literals.size(),sizeof(std::uint8_t));
+    enum class LiteralState : std::uint8_t { kUnknown, kVisiting, kAbsent, kProven };
+    std::vector<LiteralState> literals;
+    admit(graph.values.size(),sizeof(LiteralState)); step(graph.values.size()); literals.resize(graph.values.size());
+    admit(literals.capacity()-literals.size(),sizeof(LiteralState));
+    std::vector<ValueId> path;
+    admit(graph.values.size(),sizeof(ValueId)); path.reserve(graph.values.size());
+    admit(path.capacity()-graph.values.size(),sizeof(ValueId));
     enum class FieldState : std::uint8_t { kAbsent, kPending, kConsumed };
     std::vector<FieldState> fields;
     admit(graph.ops.size(),sizeof(FieldState)); step(graph.ops.size()); fields.resize(graph.ops.size());
     admit(fields.capacity()-fields.size(),sizeof(FieldState));
-    const auto literal = [&](const ValueOperand& operand) {
+    const auto immediate = [&](const ValueOperand& operand) {
       if (const auto* number = std::get_if<Float64Bits>(&operand)) return detail::FloatNumberKinds(*number).IsNumber();
+      return !std::holds_alternative<ValueId>(operand);
+    };
+    // Literal identity follows verified SSA definitions, never physical block
+    // order. Memoize each transparent chain once; unknown/receiver/effectful
+    // sources and ungrounded cycles do not become literals. Flow verification
+    // separately owns availability; these facts never authorize replay/motion.
+    const auto literal = [&](const ValueOperand& operand) {
       const auto* value = std::get_if<ValueId>(&operand);
-      return !value || literals[value->value] != 0;
+      if (!value) return immediate(operand);
+      auto current = *value;
+      path.clear();
+      bool proven = false;
+      while (literals[current.value] == LiteralState::kUnknown) {
+        step(); literals[current.value] = LiteralState::kVisiting; path.push_back(current);
+        const auto& definition = graph.values[current.value];
+        const auto* origin = std::get_if<OpResult>(&definition.origin);
+        if (!origin || definition.life != ValueLife::kLive) break;
+        const auto& op = graph.ops[origin->op.value];
+        if (op.life != ValueLife::kLive || op.result != current ||
+            op.normal != LanguageEffect::kNone || op.before_throw != LanguageEffect::kNone ||
+            op.exceptional != ExceptionalCompletion::kImpossible) break;
+        if (std::holds_alternative<ValueString>(op.operation)) {
+          proven = op.use_count == 0 && definition.domain.IsString(); break;
+        }
+        if (!std::holds_alternative<ValueCopy>(op.operation) || op.use_count != 1) break;
+        const auto& input = graph.uses[op.first_use.value].operand;
+        if (const auto* source = std::get_if<ValueId>(&input)) current = *source;
+        else { proven = immediate(input); break; }
+      }
+      proven |= literals[current.value] == LiteralState::kProven;
+      for (const auto id : path) { step(); literals[id.value] = proven ? LiteralState::kProven : LiteralState::kAbsent; }
+      return proven;
     };
     LiteralClassFields result;
     admit(1,sizeof(result)); admit(graph.ops.size(),sizeof(OpId)); result.fields_.reserve(graph.ops.size());
@@ -64,10 +98,9 @@ std::variant<LiteralClassFields, LiteralClassFieldError> LiteralClassFields::Bui
       if (op.result && IsReceiverOperand(graph, ValueOperand{*op.result})) continue;
       if (std::holds_alternative<ValueString>(op.operation)) {
         require(op.result && op.use_count == 0 && graph.values[op.result->value].domain.IsString());
-        literals[op.result->value] = 1;
+        require(literal(ValueOperand{*op.result}));
       } else if (std::holds_alternative<ValueCopy>(op.operation)) {
-        require(op.result && op.use_count == 1 && literal(graph.uses[op.first_use.value].operand));
-        literals[op.result->value] = 1;
+        require(op.result && op.use_count == 1 && literal(ValueOperand{*op.result}));
       } else if (std::holds_alternative<ValueReturn>(op.operation)) {
         require(!op.result && op.use_count == 1);
         const auto* value = std::get_if<SpecialValue>(&graph.uses[op.first_use.value].operand);
