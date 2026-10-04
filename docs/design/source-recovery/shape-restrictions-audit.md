@@ -1046,3 +1046,20 @@ creation 误判兄弟分支，也不能漏掉地址更晚但执行更早的 crea
 reaching-value 快照；所有路径初始化的合流、循环/异常 activation transfer、
 旧 deferred/module prefix 及既有 coroutine 包装限制仍是明确覆盖缺口。
 这是此前定位的初始化条件修复，不是全仓形状条件审计已经闭合。
+
+## 2026-10-05：undefined 静态字段声明是语言表示规则（规则 115）
+
+共同printer对FieldDefinitionExpr中确切的UndefinedLiteral省略初始化
+表达式，输出原生字段声明。没有按字节码生产者或样本名称判断值，也不
+省略字段本身：无初始化声明仍在原位置定义自身undefined数据属性。
+receiver及静态字段投影的既有义务保持；表达式来源是字段名后的零宽
+事件。非字面量RHS不因运行结果可能为undefined而被省略或移位。
+
+真实VoIP配对验收检查继承getter/setter不会被触发、字段和方法descriptor/
+name/length，以及受控Promise中的共享字段重读、请求交错、参数getter
+改写callee和原异常身份。样本名称/源码文本仅用于独立测试定位及有效JS篡改，
+不进入生产恢复。1/200/201/402字段和非字面量RHS检查共同打印与来源。
+
+仍开放：已有staged buffered literal跨选择时的机械赋值表示，以及普通/
+异常native initializer interval的布局限制。它们不能因字段声明缩短就
+被当作已解决，也不能靠增加更多局部形状或删除效果/异常义务来扩展。

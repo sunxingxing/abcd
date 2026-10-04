@@ -12,8 +12,22 @@ const recovered = JSON.parse(execFileSync(tool, [join(root, 'modules.abc'), '122
   '--record-source', '--value-source'], {encoding: 'utf8'}));
 assert.equal(recovered.source_complete, true);
 assert.equal(recovered.legacy_writer_used, false);
+// Source representation is checked independently from execution. The field
+// still exists as an own undefined data property; an initializer is redundant.
+assert.match(recovered.source, /static callId;/);
 const paired = stripTypeScriptTypes(readFileSync(join(root,
   'src/entry/src/main/ets/service/VoipCallService.ts'), 'utf8'));
+async function loadService(source, hosts, context) {
+  const module = new vm.SourceTextModule(source, {context});
+  await module.link(specifier => {
+    assert.ok(hosts.has(specifier));
+    return new vm.SyntheticModule(['default'], function() {
+      this.setExport('default', hosts.get(specifier));
+    }, {context});
+  });
+  await module.evaluate();
+  return module.namespace.VoipCallService;
+}
 async function observe(source, scenario) {
   const events = [], failure = {code: 17, message: 'failure'};
   let steps = 0, listener;
@@ -77,15 +91,24 @@ async function observe(source, scenario) {
     assert.equal(this, hilog); event(name, ...args);
   };
   const context = vm.createContext({Uint8Array});
-  const module = new vm.SourceTextModule(source, {context});
+  // Native fields use DefineOwnProperty even when they have no initializer.
+  // An assignment to an inherited setter would lose the class's own field.
+  vm.runInContext(`Object.defineProperty(Function.prototype, 'callId', {
+    configurable: true, get() { throw new Error('inherited field read'); },
+    set() { throw new Error('inherited field write'); }
+  })`, context);
   const hosts = new Map([['@hms:telephony.voipCall', voip], ['@ohos:hilog', hilog], ['@ohos:multimedia.image', image]]);
-  await module.link(specifier => {
-    assert.ok(hosts.has(specifier));
-    return new vm.SyntheticModule(['default'], function() { this.setExport('default', hosts.get(specifier)); }, {context});
-  });
-  await module.evaluate();
-  const service = module.namespace.VoipCallService;
+  const service = await loadService(source, hosts, context);
   assert.equal(service.callId, undefined);
+  const field = Object.getOwnPropertyDescriptor(service, 'callId');
+  assert.deepEqual({...field}, {value: undefined, writable: true, enumerable: true, configurable: true});
+  assert.equal(service.name, 'VoipCallService'); assert.equal(service.length, 0);
+  for (const [name, length] of [['processVoIPMainMsg', 2], ['processVoipCallEvent', 1], ['close', 0]]) {
+    const method = Object.getOwnPropertyDescriptor(service, name);
+    assert.equal(method.value.name, name); assert.equal(method.value.length, length);
+    assert.equal(method.enumerable, false); assert.equal(method.writable, true);
+    assert.equal(method.configurable, true);
+  }
   let outcome = 'return';
   try {
     if (scenario.mode === 'event') {
@@ -105,6 +128,86 @@ async function observe(source, scenario) {
   }
   return {events, outcome, callId: service.callId};
 }
+
+// Keep host promises unresolved until the driver releases a specific request.
+// This observes suspension, concurrent requests, live field reads after await,
+// and callee snapshots before argument getters, independently of ABC layouts.
+async function observeScheduled(source, scenario) {
+  const events = [], pending = [], outcomes = [], runs = [];
+  let service, currentId = 'initial-call', finished = 0, replaced = false;
+  const abort = {code: 99, message: 'original getter exception'};
+  const failure = {};
+  for (const key of ['code', 'message']) Object.defineProperty(failure, key, {get() {
+    events.push(['error:get', key]); currentId = `error:${key}`;
+    if (scenario.errorGetter === key) throw abort;
+    return key === 'code' ? 17 : 'failure';
+  }});
+  const request = label => function(id, value) {
+    assert.equal(this, voip);
+    const number = pending.length;
+    events.push(['request', number, label, id, value]);
+    return new Promise((resolve, reject) => pending.push({number, resolve, reject, settled: false}));
+  };
+  const ui = new Proxy({VOIP_CALL_EVENT_VOICE_ANSWER: 1, VOIP_CALL_EVENT_VIDEO_ANSWER: 2,
+    VOIP_CALL_EVENT_REJECT: 3, VOIP_CALL_EVENT_HANGUP: 4}, {get(target, key) {
+    events.push(['ui:get', key]); return target[key];
+  }});
+  const state = new Proxy({VOIP_CALL_STATE_ANSWERED: 11, VOIP_CALL_STATE_ACTIVE: 12,
+    VOIP_CALL_STATE_DISCONNECTED: 13}, {get(target, key) {
+    events.push(['state:get', key]);
+    if (scenario.replaceCallee && !replaced) {
+      replaced = true; voip.reportCallStateChange = request('replacement');
+      events.push(['replace-callee']);
+    }
+    return target[key];
+  }});
+  const voip = {VoipCallUiEvent: ui, VoipCallState: state, reportCallStateChange: request('initial')};
+  const hilog = {error(...args) { assert.equal(this, hilog); events.push(['error', ...args]); }};
+  service = await loadService(source, new Map([['@hms:telephony.voipCall', voip],
+    ['@ohos:hilog', hilog], ['@ohos:multimedia.image', {}]]), vm.createContext({Uint8Array}));
+  Object.defineProperty(service, 'callId', {configurable: true, get() {
+    events.push(['callId:get', currentId]); return currentId;
+  }});
+  const start = input => {
+    const number = runs.length;
+    const run = service.processVoipCallEvent(input);
+    assert.equal(typeof run.then, 'function');
+    runs.push(run.then(value => {
+      assert.equal(value, undefined); outcomes[number] = 'return'; ++finished;
+    }, error => {
+      assert.equal(error, abort); outcomes[number] = 'original-getter-exception'; ++finished;
+    }));
+  };
+  start(scenario.input);
+  const firstRequests = [1, 2, 3, 4].includes(scenario.input) ? 1 : 0;
+  assert.equal(pending.length, firstRequests, 'only the first request may start before suspension');
+  if (scenario.concurrent) {
+    currentId = 'concurrent-call'; start(1);
+    assert.equal(pending.length, firstRequests + 1);
+  }
+  // Native await and the foreign-realm Promise adoption can require multiple
+  // microtasks. The limit detects a stuck fixture; no wall-clock sleep or
+  // timeout is used to infer completion or to start dependent work.
+  const advance = async predicate => {
+    for (let i = 0; i < 16 && !predicate(); ++i) await Promise.resolve();
+    assert.ok(predicate(), 'settled request must resume or finish its operation');
+  };
+  await advance(() => finished + pending.length >= runs.length);
+  while (pending.some(item => !item.settled)) {
+    assert.ok(pending.length <= runs.length * 2);
+    const available = pending.filter(item => !item.settled);
+    const item = scenario.reverse ? available.at(-1) : available[0];
+    currentId = `resume:${item.number}`;
+    events.push(['release', item.number, currentId]);
+    item.settled = true;
+    const priorRequests = pending.length, priorFinished = finished;
+    if (item.number === scenario.failRequest) item.reject(failure); else item.resolve(undefined);
+    await advance(() => pending.length > priorRequests || finished > priorFinished);
+  }
+  await advance(() => finished === runs.length);
+  await Promise.all(runs);
+  return {events, outcomes, currentId};
+}
 let cases = 0;
 const compare = async scenario => {
   assert.deepEqual(await observe(recovered.source, scenario), await observe(paired, scenario), JSON.stringify(scenario));
@@ -121,4 +224,35 @@ for (const input of [1, 2, 3, 4, 5, undefined, null, '1'])
 for (const mode of ['callback', 'close']) for (const input of [1, 3, 5])
   for (const noPixel of [false, true])
     await compare({mode, input, scene: {scene: 'video'}, noPixel, noInfo: true, callId: '', failAt: 0});
-console.log(`${cases} paired VoipCallService scenarios passed; HarmonyOS runtime and source-style acceptance remain separate`);
+let scheduledCases = 0;
+for (const input of [1, 2, 3, 4, 5, undefined, null, '1'])
+  for (const concurrent of [false, true]) for (const reverse of [false, true])
+    for (const failRequest of [-1, 0, 1, 2]) for (const errorGetter of ['none', 'code', 'message'])
+      for (const replaceCallee of [false, true]) {
+        const scenario = {input, concurrent, reverse, failRequest, errorGetter, replaceCallee};
+        assert.deepEqual(await observeScheduled(recovered.source, scenario),
+          await observeScheduled(paired, scenario), JSON.stringify(scenario));
+        ++scheduledCases;
+      }
+
+// Ensure the oracle detects valid-source changes to suspension, live field
+// reads and receiver. Mutations never enter the production recovery engine.
+const scenario = {input: 1, concurrent: true, reverse: true, failRequest: -1,
+  errorGetter: 'none', replaceCallee: true};
+const expected = await observeScheduled(paired, scenario);
+const eventStart = recovered.source.indexOf('static async processVoipCallEvent(');
+const eventEnd = recovered.source.indexOf('static close(', eventStart);
+assert.ok(eventStart >= 0 && eventEnd > eventStart);
+const body = recovered.source.slice(eventStart, eventEnd);
+const mutate = change => recovered.source.slice(0, eventStart) + change(body) + recovered.source.slice(eventEnd);
+const stale = mutate(text => text.replaceAll('$local1.callId', '"stale-call"'));
+assert.notEqual(stale, recovered.source);
+assert.notDeepEqual(await observeScheduled(stale, scenario), expected);
+const receiver = mutate(text => text.replaceAll('voipCall.reportCallStateChange(', '(0, voipCall.reportCallStateChange)('));
+assert.notEqual(receiver, recovered.source);
+await assert.rejects(() => observeScheduled(receiver, scenario), assert.AssertionError);
+const eager = mutate(text => text.replace('(await $value3);', '(void $value3);'));
+assert.notEqual(eager, recovered.source);
+await assert.rejects(() => observeScheduled(eager, scenario), assert.AssertionError);
+console.log(`${cases} paired VoipCallService scenarios and ${scheduledCases} controlled schedules passed; ` +
+  'three semantic mutations detected; HarmonyOS runtime and complete source-style acceptance remain separate');

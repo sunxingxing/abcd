@@ -1,6 +1,7 @@
 #include "../../../src/source/tree_structure.h"
 #include "../../../src/source/tree_labels.h"
 #include "../../../src/source/family_print.h"
+#include "abcd/source/tree_printer.h"
 
 #include <cstdlib>
 #include <bit>
@@ -383,6 +384,52 @@ void RequiredTryBlocks() {
     Expect(tree, TreeStructureError::kUnsupportedSyntax);
   }
 }
+void StaticUndefinedFields() {
+  for (const unsigned count : {1U, 200U, 201U, 402U}) {
+    auto tree = Minimal();
+    tree.callable = CallableKind::kMethod;
+    tree.expressions.clear(); tree.statements.resize(1); tree.children.clear();
+    for (unsigned i = 0; i < count; ++i) {
+      const auto first = static_cast<std::uint32_t>(tree.expressions.size());
+      const NameId name{static_cast<std::uint32_t>(tree.names.size())};
+      const auto generated = "field" + std::to_string(i);
+      tree.names.push_back(i == 0 ? u"constructor" : i == 1 ? u"prototype" :
+          i == 2 ? u"field name" : std::u16string(generated.begin(), generated.end()));
+      tree.expressions.push_back({ThisExpr{tree.owner}, {0}});
+      tree.expressions.push_back({TreeLiteral{UndefinedLiteral{}}, {0}});
+      tree.expressions.push_back({FieldDefinitionExpr{{first}, name, {first + 1}}, {0}});
+      tree.children.push_back({static_cast<std::uint32_t>(tree.statements.size())});
+      tree.statements.push_back({ExpressionStmt{{first + 2}}, {0}});
+    }
+    const ExprId completion{static_cast<std::uint32_t>(tree.expressions.size())};
+    tree.expressions.push_back({TreeLiteral{UndefinedLiteral{}}, {0}});
+    tree.children.push_back({static_cast<std::uint32_t>(tree.statements.size())});
+    tree.statements.push_back({ReturnStmt{completion}, {0}});
+    tree.statements[0].statement = BlockStmt{tree.body_scope, 0, count + 1};
+    std::ostringstream output;
+    const auto result = PrintStaticFields(tree, output);
+    Check(std::holds_alternative<PrintedFunction>(result));
+    const auto& printed = std::get<PrintedFunction>(result);
+    Check(output.str().find(" = ") == std::string::npos);
+    Check(output.str().find("static [\"constructor\"];") != std::string::npos);
+    if (count > 1) Check(output.str().find("static [\"prototype\"];") != std::string::npos);
+    if (count > 2) Check(output.str().find("static [\"field name\"];") != std::string::npos);
+    for (unsigned i = 0; i < count; ++i) {
+      const auto& omitted = printed.expressions[i * 3 + 1];
+      const auto& field = printed.expressions[i * 3 + 2];
+      Check(omitted.begin == omitted.end && omitted.begin > 0);
+      Check(omitted.begin >= field.begin && omitted.end <= field.end);
+    }
+    // Other expressions still execute. Syntax shortening is only for the
+    // undefined literal, never a read/conversion or an arbitrary RHS producer.
+    const ExprId operand{static_cast<std::uint32_t>(tree.expressions.size())};
+    tree.expressions.push_back({TreeLiteral{UndefinedLiteral{}}, {0}});
+    tree.expressions[1].expression = UnaryExpr{TreeUnary::kTypeof, operand};
+    std::ostringstream evaluated;
+    Check(std::holds_alternative<PrintedFunction>(PrintStaticFields(tree, evaluated)));
+    Check(evaluated.str().find(" = ") != std::string::npos);
+  }
+}
 }  // namespace
 int main() {
   SuperContext();
@@ -397,4 +444,5 @@ int main() {
   DeepLoops();
   BlockExits();
   RequiredTryBlocks();
+  StaticUndefinedFields();
 }

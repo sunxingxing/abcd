@@ -688,6 +688,14 @@ class TreePrinter {
     if (ClassifyObjectKey(name) == MemberKeySyntax::kIdentifier && name != u"prototype" && name != u"constructor")
       Identifier(name);
     else { Append("["); Quoted(name); Append("]"); }
+    const auto* literal = std::get_if<TreeLiteral>(&Tree().expressions[node.value.value].expression);
+    if (literal && std::holds_alternative<UndefinedLiteral>(*literal)) {
+      // A declaration without an initializer still defines an own undefined
+      // data property. Omit only this inert literal, never a read/conversion;
+      // retain its provenance as a zero-width event at the field's name.
+      Result().expressions[node.value.value] = {written_, written_};
+      return;
+    }
     Append(" = ");
     Push(ExpressionOperand{node.value, {}, node.name});
   }

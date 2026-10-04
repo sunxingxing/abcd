@@ -12,6 +12,47 @@
 
 ## 当前阶段
 
+### 2026-10-05：无初始化静态字段的原生声明与 VoIP 受控暂停验收
+
+- 规则revision115，基线9498dcce；25aa工作树和
+  codex/resume-generator-post-loop保持。上轮算术边界解释未改变默认V3，
+  本轮不依赖数值政策变更。固定五ABC与Goal的完整阶段一范围保持。
+- VoIP真实record11989/entry12208已完整生成，但静态字段仍显示
+  `static callId = (void 0);`。独立表示检查先RED；共同FunctionTree
+  printer现对FieldDefinitionExpr的UndefinedLiteral输出无初始化声明。
+  原生字段仍DefineOwnProperty，值为undefined，具有writable/enumerable/
+  configurable属性；不是省略字段、改成赋值或用读取结果推断undefined。
+  RHS的来源保留为字段名后的零宽表达式事件，其他读取/转换RHS仍执行。
+  无样本名、opcode序列、寄存器/PC、同块、生产者名单或选择数准入。
+- tree_structure_test覆盖1/200/201/402字段、普通/计算名称、constructor/
+  prototype等特殊键、零宽来源范围和保留非字面量RHS。真实VoIP的原300
+  配对场景新增Function.prototype继承getter/setter反例、实际字段描述符、
+  类及方法name/length和方法属性检查。引擎只读ABC；TS只进独立Node oracle。
+- 复用voip_service_source_test新增768个受控Promise场景，检查await前
+  仅发出首项请求、暂停期间不提前执行、恢复后重读共享callId、双请求
+  正反释放顺序、callee先于参数getter保存、方法替换、首/后请求拒绝、
+  catch中code/message读取与其抛出原对象身份。合法JS语义篡改三项：
+  缓存错误字段值、丢失receiver、去掉首个await，均被独立oracle检测。
+  这是受控宿主行为证据，不是HarmonyOS通话/UI实测，也不表示整个record
+  的源码风格验收已完成；对象字段机械展开和条件链表示仍存在。
+- 日志前缀/tmp/abcd-voip-fields-*。red.log记录表示失败。build-1已构建
+  前三个target后因误写class_initializer_file目标名退出2；核对CMake并
+  改为class_initializer_file_test，build-2退出0，合计七个target已构建。
+  定向tests-1 6/6通过6.90秒，tests-2 3/3通过6.77秒，含共同树、类字段/
+  静态类、来源路由与VoIP；未运行全套。默认syntax-1误传合同标签失败，
+  核对manifest后syntax-2及language syntax-1均通过，未更改合同来通过检查。
+- fresh voip-fields-{default,language}-pass-1各五输入退出0，分别
+  80complete/26incomplete-source/0source-failure/46no-module与
+  95complete/11incomplete-source/0source-failure/46no-module。无legacy、
+  新增complete或complete降级；各106份源码解析、SHA/size对原index检查
+  通过。两模式仅record11989源码字节变化；输入ABC与配对源码未修改。
+- 当前字面量所有权支持native interval与staged buffered writes；跨条件
+  初始化仍分配对象并保留逐项赋值。它是高层表示缺口，不能盲删interval/
+  catch snapshot/own-property要求来合并。未知父类SuperSpread、WindowUtil
+  NEG数值输入、实例字段/全局/完整签名/函数体整合及所有record独立验收
+  仍开放，Goal保持active。代理、全套、扩展语料、RSS/基准、调度/DFX及
+  定期审视保持暂停。
+
 ### 2026-10-05：共同封闭表达式贯通类字段初始化
 
 - 规则revision114，基线e00cf12e；25aa工作树、分支
