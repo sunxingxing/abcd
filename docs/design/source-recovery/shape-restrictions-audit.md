@@ -1,6 +1,6 @@
 # 按用户要求进行的恢复条件审计
 
-最新替换状态见文末规则82；历史表中的严格比较候选及literal同块条件不再是
+最新替换状态见文末规则84；历史表中的严格比较候选及literal同块条件不再是
 当前准入条件。未替换项继续开放，不能将本次局部交付称为全量审计闭合。
 
 2026-10-03，基线 87176c10。此为本次明确请求的审计，不恢复定期审视。
@@ -425,3 +425,32 @@ logical/conditional 使用原始谓词 occurrence，原 logical-LHS 证明查询
 own-definition、初始化器/捕获投影与剩余 legacy 构造模板仍开放。不能继续
 增加 producer 白名单、selection 数量枚举、邻接或块布局例外。具体契约见
 expression-snapshots.md；验证与固定五输入证据见 status.md。
+
+## 规则 84：构造初始化不以向后 PC 或 guard 布局准入
+
+后续核对 `range_derived_constructor.cc::ProveInitialization` 发现三项额外
+布局条件：任何 branch_target<=PC 一律拒绝、至少出现一个 super guard、
+super 必须支配所有 guard。这些不是初始化不变量。range/spread 现在共享
+真实 normal CFG 的 successor 可达性，只有通过 call block 的循环才拒绝
+该单次调用表示；其他循环和向后物理布局不要求新的恢复分支。guard 按
+其实际 SSA 输入逐项证明，未初始化输入可以在 super 前检查，no-op 不
+要求 super 在前；没有 guard 时也不伪造 guard 或输入事实。
+
+正常 return 的原始支配、super 来源、current constructor、每个初始化/
+未初始化 guard 的真实值、文件/owner/current-IR 对应及完整 guard coverage
+均保留。重复调用负例在新的 CFG 证明处拒绝；错误 working guard 输入和
+原始错误来源继续拒绝。新增遍历 O(B+E) 时间/O(B) scratch，并计费真实
+初始化和边访问；不按每项 guard 重新遍历。算法及预算见 algorithms.md。
+
+这是构造初始化证明的替换，不能当作原生构造/整类输出许可。单 super
+site 接口、多路径 invocation frame、异常控制、捕获/receiver 初始化、
+parent brand、spread-array 展开及 legacy 直线模板仍有独立边界。多个
+互斥 super site 尚未表示；不能按数量、opcode 序列或固定图形补充模板。
+旧审计表的 rest/构造模板类事项及 phased call/reference 事项未全部关闭。
+
+720个三profile真实解码用例、1/200/201/402/804块的CFG链、预算边界与
+40个原始input/current-IR投影用例通过；实际source路径的构造/捕获/Proxy/
+异常与配对回调另有独立Node对照。首轮行为mutation暴露了旧文本替换未
+实际改变嵌套保存赋值的问题，已让负例保留super效果而仅破坏receiver身份。
+旧writer assignments失败单独记录，没有计入通过。最新验证与五输入
+状态见 status.md；未进行逐行全量生产审计、full-suite、扩展语料或RSS。

@@ -90,7 +90,12 @@ for (const {source} of reports) {
         assert.deepEqual(exercise(source, kind, setter, value, proxy),
           exercise(reference, kind, setter, value, proxy)); ++scenarios;
       }
-  const changed = source.replace(/(\(\$local\d+ = )\$value\d+(\);)/, '$1null$2');
+  // Preserve the actual super invocation and its saved result while corrupting
+  // only the captured receiver. Eager use-site saving may be nested in the
+  // receiver assignment; neither valid representation can evade the mutant.
+  const changed = source.replace(
+    /(\(\$local\d+ = )(\(\$value\d+ = super\([^)]*\)\)|\$value\d+)(\);)/,
+    '$1($2, null)$3');
   assert.notEqual(changed, source);
   assert.doesNotThrow(() => new vm.Script(`(class Type extends Parent { ${changed} })`));
   assert.throws(() => exercise(changed, 'ordinary', 'none', {}, false));

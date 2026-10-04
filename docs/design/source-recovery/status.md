@@ -12,6 +12,37 @@
 
 ## 当前阶段
 
+### 2026-10-04：构造初始化改用真实 CFG 单次调用证明
+
+- 规则 revision84。按原用户审计请求继续核对构造路径，删除
+  ProveInitialization 的 backward-PC 一律拒绝、至少一个guard及super支配
+  全部guard门槛。range/spread共享一次successor可达性遍历，调用所在块
+  可重复时拒绝；独立前/后循环和向后物理布局不再需要新匹配。正常return
+  支配与每项guard的真实SSA输入独立验证，没有虚构guard、父类或值域。
+  current-IR投影继续复验owner、来源、receiver和完整guard对应。
+- 新遍历O(B+E)时间/O(B)scratch，每块至多入队一次，容量、初始化及
+  边访问计入预算；原支配/稀疏SSA算法保留。算法/剩余接口边界分别更新
+  algorithms.md、shape-restrictions-audit.md。单super site、异常/capture/
+  parent brand/spread展开及legacy构造模板仍开放；这不是原生整类许可。
+- RED /tmp/abcd-constructor-flow-red.log确认旧guard存在门槛拒绝真实解码
+  输入。720个三profile、range/spread、有/无guard、复制槽、前/后循环/
+  重复调用/向后布局用例通过；另有1/200/201/402/804块CFG链和精确work
+  边界、40个same-file owner下的input/current-IR投影与伪造guard负例。
+  解码/projection夹具并非真实新complete record，未声称完整源码验收。
+- 单构建-j4：首次final-build.log在测试夹具returned声明位置编译失败，
+  修正后repaired-build.log与boundary-build.log均退出0。首轮19项检查
+  中，derived_cells_source_test的旧文本mutant未实际改变嵌套保存赋值；
+  已修正为保留super效果而破坏捕获receiver，实际负例生效。另有已知
+  base_constructor_js_test旧writer assignments失败，与历史基线位置
+  一致，未计入通过。最终final-tests.log的19/19通过43.78秒，含630+630
+  构造/闭包、1890receiver literal、240配对回调、362Home及185构造/
+  70async对照。full-suite/RSS/扩展语料/基准/DFX和代理保持暂停。
+- fresh build/stage-one/value-constructor-flow-pass-1固定五输入全部退出0，
+  80 complete/26 incomplete/0 failure/46 no-module，无完整回退及legacy
+  writer。batch.log/syntax.log确认输入SHA/size与manifest/index一致，
+  106份源码全部解析且与revision83字节一致。本次替换实际证明边界，未
+  减少现有未知算术域、导入super及正文缺口；阶段一双验收未完成，Goal active。
+
 ### 2026-10-04：共同打印器的布尔观察上下文
 
 - 规则 revision83。打印操作数增加 typed Value/Truthiness 观察上下文，if、

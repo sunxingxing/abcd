@@ -102,6 +102,68 @@ int main(int argc, char** argv) {
   };
   const auto constructor = static_cast<std::uint8_t>(function.frame.function->value);
   const auto parameter = static_cast<std::uint8_t>(function.frame.first_parameter.value);
+  // Retain the real same-file owner while replacing only the decoded test
+  // body. This checks input/current-IR projection, not native parent-brand or
+  // whole-class publication. All layouts use the same common protocol proof.
+  std::size_t initialization_cases = 0;
+  for (const bool spread : {false, true}) for (const bool after : {false, true})
+    for (const bool guards : {false, true}) for (const unsigned count : {0U, 1U, 200U, 201U, 402U}) {
+      std::vector<std::uint8_t> bytes;
+      const auto jump = [&](abc::Opcode opcode) {
+        const auto pc = bytes.size(); emit(bytes, opcode);
+        bytes.insert(bytes.end(), sizeof(std::int32_t), 0); return pc;
+      };
+      const auto target = [&](std::size_t pc, std::size_t label) {
+        const auto delta = static_cast<std::uint32_t>(label - pc);
+        for (std::size_t b = 0; b < sizeof(delta); ++b)
+          bytes[pc + 1 + b] = static_cast<std::uint8_t>(delta >> (CHAR_BIT * b));
+      };
+      const auto loop = [&] {
+        const auto begin = bytes.size();
+        emit(bytes, abc::Opcode::kLDA_V8); bytes.push_back(parameter);
+        const auto exit = jump(abc::Opcode::kJEQZ_IMM32);
+        for (unsigned i = 0; i < count; ++i) emit(bytes, abc::Opcode::kNOP);
+        const auto back = jump(abc::Opcode::kJMP_IMM32);
+        target(back, begin); target(exit, bytes.size());
+      };
+      if (!after) loop();
+      if (guards) {
+        emit(bytes, abc::Opcode::kLDA_V8); bytes.push_back(function.frame.this_value->value);
+        emit(bytes, abc::Opcode::kTHROW_IFSUPERNOTCORRECTCALL_PREF_IMM8); bytes.push_back(1);
+      }
+      if (spread) {
+        emit(bytes, abc::Opcode::kLDA_V8); bytes.push_back(constructor);
+        emit(bytes, abc::Opcode::kSUPERCALLSPREAD_IMM8_V8); bytes.insert(bytes.end(), {0, parameter});
+      } else {
+        emit(bytes, abc::Opcode::kSUPERCALLTHISRANGE_IMM8_IMM8_V8); bytes.insert(bytes.end(), {0, 1, parameter});
+      }
+      emit(bytes, abc::Opcode::kSTA_V8); bytes.push_back(0);
+      if (guards) { emit(bytes, abc::Opcode::kTHROW_IFSUPERNOTCORRECTCALL_PREF_IMM8); bytes.push_back(0); }
+      if (after) loop();
+      emit(bytes, abc::Opcode::kLDA_V8); bytes.push_back(0); emit(bytes, abc::Opcode::kRETURN);
+      auto body = test::Body(bytes);
+      auto input = std::get<FunctionInput>(FunctionInput::Build(identity, context.Target(), function.input.Record(),
+          body, function.frame, InputCaptureMode::kClosed, {}, &context));
+      auto values = std::get<FunctionValues>(BuildFunctionValues(input, body, function.frame));
+      FileFunction candidate{std::move(body), function.frame, std::move(input), std::move(values)};
+      const auto projected = ProjectDerivedConstructor(candidate, context);
+      if (const auto* error = std::get_if<DerivedProjectionError>(&projected))
+        std::cerr << "initialization projection error " << static_cast<unsigned>(*error) << '\n';
+      Check(std::holds_alternative<DerivedProjection>(projected));
+      const auto& protocol = std::get<DerivedProjection>(projected);
+      Check(protocol.guards.size() == (guards ? 2 : 0));
+      Check(!VerifyDerivedProjection(candidate, context, protocol));
+      if (guards) {
+        auto& op = candidate.values.graph.ops[protocol.guards.front().value];
+        auto& use = candidate.values.graph.uses[op.first_use.value];
+        const auto saved = use.operand;
+        use.operand = SpecialValue::kNull;
+        Check(VerifyDerivedProjection(candidate, context, protocol) == DerivedProjectionError::kOperand);
+        use.operand = saved;
+      }
+      ++initialization_cases;
+    }
+  std::cout << "working initialization cases " << initialization_cases << '\n';
   const auto forward = [&](std::vector<std::uint8_t>& bytes, std::uint8_t reg) {
     emit(bytes, abc::Opcode::kCALLRUNTIME_SUPERCALLFORWARDALLARGS_PREF_V8); bytes.push_back(reg);
   };

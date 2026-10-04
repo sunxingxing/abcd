@@ -56,6 +56,52 @@ bool DominatesInstruction(const DominatorTree& tree,
   return source == target ? first <= later
                           : tree.Dominates(source, target);
 }
+std::optional<DerivedConstructorError> ProveSingleInvocation(
+    const NormalFlow& graph, BlockId call, DerivedConstructorBudget& budget) {
+  using Error = DerivedConstructorError;
+  // Initialization represents one dynamic super invocation. A backward PC is
+  // not repetition: follow actual successors once and reject only a cycle
+  // through the call block. Independent loops and layout permutations are
+  // transparent. Normal CFG cannot prove missing exceptional/resume paths.
+  if (call.value >= graph.blocks.size()) return Error::kControlFlow;
+  const auto count = graph.blocks.size();
+  if (count > budget.bytes / sizeof(std::uint8_t)) return Error::kResourceLimit;
+  std::vector<std::uint8_t> seen(count);
+  if (seen.capacity() > budget.bytes / sizeof(std::uint8_t))
+    return Error::kResourceLimit;
+  budget.bytes -= seen.capacity() * sizeof(std::uint8_t);
+  if (count > budget.bytes / sizeof(BlockId)) return Error::kResourceLimit;
+  std::vector<BlockId> pending;
+  pending.reserve(count);
+  if (pending.capacity() > budget.bytes / sizeof(BlockId))
+    return Error::kResourceLimit;
+  budget.bytes -= pending.capacity() * sizeof(BlockId);
+  if (count > budget.work) return Error::kResourceLimit;
+  budget.work -= count;
+  seen[call.value] = 1;
+  pending.push_back(call);
+  for (std::size_t cursor = 0; cursor < pending.size(); ++cursor) {
+    const auto& block = graph.blocks[pending[cursor].value];
+    for (std::size_t e = 0; e < block.successor_count; ++e) {
+      if (budget.work == 0) return Error::kResourceLimit;
+      --budget.work;
+      const auto edge = block.successors[e];
+      if (edge.kind != FlowEdgeKind::kTaken &&
+          edge.kind != FlowEdgeKind::kFallthrough)
+        return Error::kControlFlow;
+      if (edge.target.value >= count || edge.target == call)
+        return Error::kControlFlow;
+      if (!seen[edge.target.value]) {
+        seen[edge.target.value] = 1;
+        pending.push_back(edge.target);
+      }
+    }
+  }
+  // Scratch is dead on return; its peak admission remains checked above.
+  budget.bytes += seen.capacity() * sizeof(std::uint8_t) +
+                  pending.capacity() * sizeof(BlockId);
+  return {};
+}
 enum class CallForm { kRange, kSpread };
 using InitializationResult = std::variant<abc::CodeOffset, DerivedConstructorError>;
 InitializationResult ProveInitialization(
@@ -80,29 +126,24 @@ InitializationResult ProveInitialization(
       !body.handlers.empty())
     return Error::kControlFlow;
   std::optional<std::size_t> super_index;
-  std::size_t guard_count = 0;
   bool lexical_loads = false;
   for (std::size_t i = 0; i < body.instructions.size(); ++i) {
     const auto& site = body.instructions[i];
     lexical_loads |= std::holds_alternative<LexicalLoad>(
         LiftLexicalInstruction(site.decoded, frame.registers));
-    if (site.branch_target &&
-        site.branch_target->value <= site.offset.value)
-      return Error::kControlFlow;
     const auto lifted = LiftSuperInstruction(site.decoded, frame.registers);
     if ((form == CallForm::kRange && std::holds_alternative<SuperRange>(lifted)) ||
         (form == CallForm::kSpread && std::holds_alternative<SuperSpread>(lifted))) {
       if (super_index) return Error::kInstruction;
       super_index = i;
-    } else if (std::holds_alternative<SuperCheck>(lifted)) {
-      ++guard_count;
-    } else if (!std::holds_alternative<SuperError>(lifted) ||
-               std::get<SuperError>(lifted) !=
-                   SuperError::kUnsupportedOpcode) {
+    } else if (!std::holds_alternative<SuperCheck>(lifted) &&
+               (!std::holds_alternative<SuperError>(lifted) ||
+                std::get<SuperError>(lifted) !=
+                    SuperError::kUnsupportedOpcode)) {
       return Error::kInstruction;
     }
   }
-  if (!super_index || guard_count == 0) return Error::kInstruction;
+  if (!super_index) return Error::kInstruction;
   try {
     const auto built = BuildNormalFlow(body, {budget.bytes});
     if (!std::holds_alternative<NormalFlow>(built))
@@ -132,6 +173,8 @@ InitializationResult ProveInitialization(
                    region.instruction_count; ++i)
         blocks[i] = BlockId{block};
     }
+    if (const auto error = ProveSingleInvocation(graph, blocks[*super_index], budget))
+      return *error;
     std::size_t returns = 0;
     for (std::size_t i = 0; i < body.instructions.size(); ++i) {
       const auto opcode = body.instructions[i].decoded.opcode;
@@ -141,10 +184,6 @@ InitializationResult ProveInitialization(
         if (!DominatesInstruction(tree, blocks, *super_index, i))
           return Error::kReturn;
       }
-      if (std::holds_alternative<SuperCheck>(LiftSuperInstruction(
-              body.instructions[i].decoded, frame.registers)) &&
-          !DominatesInstruction(tree, blocks, *super_index, i))
-        return Error::kGuard;
     }
     if (returns == 0) return Error::kReturn;
     IdfQuota quota{budget.work};
@@ -344,6 +383,8 @@ InitializationResult ProveInitialization(
           nodes[reads[0].value.value].origin != Origin::kCurrentConstructor)
         return Error::kValue;
     }
+    // Each guard is discharged by its actual SSA origin, including guards
+    // before super and runtime no-ops. Presence or placement is not a protocol.
     for (std::size_t i = 0; i < body.instructions.size(); ++i) {
       const auto checked = LiftSuperInstruction(
           body.instructions[i].decoded, frame.registers);

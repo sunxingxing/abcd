@@ -108,8 +108,9 @@ using RangeDerivedConstructorResult =
 // capture-capable creation not covered by a same-body preservation certificate.
 // Later cell loads remain unknown. The default
 // profile is the pinned v7 dynamic 13.0.1 contract; file owners pass theirs.
-// Backedges and exception regions are refused until their state transitions
-// can be represented without reordering effects.
+// CFG successor reachability proves the call cannot repeat. Independent loops
+// and backward physical layouts are admitted; guard count/placement do not
+// define initialization. Exception regions remain outside this normal proof.
 [[nodiscard]] RangeDerivedConstructorResult ProveRangeDerivedConstructor(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
     DerivedConstructorBudget budget = {},

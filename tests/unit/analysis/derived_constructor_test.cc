@@ -5,10 +5,12 @@
 #include <array>
 #include <cstdlib>
 #include <vector>
+#include <iostream>
+#include <source_location>
 
 namespace {
-void Check(bool condition) {
-  if (!condition) std::abort();
+void Check(bool condition, std::source_location where = std::source_location::current()) {
+  if (!condition) { std::cerr << where.line() << '\n'; std::abort(); }
 }
 abcd::abc::MethodBody Body(std::span<const std::uint8_t> bytes) {
   abcd::abc::MethodBody body;
@@ -21,9 +23,176 @@ abcd::abc::MethodBody Body(std::span<const std::uint8_t> bytes) {
   }
   return body;
 }
+enum class Region { kStraight, kBefore, kAfter, kThroughCall, kBackwardLayout };
+enum class Label { kLoop, kExit, kCall, kTail, kCount };
+class InitializationCode {
+ public:
+  void Emit(abcd::abc::Opcode opcode,
+            std::initializer_list<std::uint8_t> operands = {}) {
+    const auto wire = static_cast<std::uint16_t>(opcode);
+    bytes.push_back(static_cast<std::uint8_t>(wire));
+    if (wire > UINT8_MAX) bytes.push_back(static_cast<std::uint8_t>(wire >> 8));
+    bytes.insert(bytes.end(), operands.begin(), operands.end());
+  }
+  void Mark(Label label) {
+    labels[static_cast<std::size_t>(label)] = bytes.size();
+  }
+  void Jump(abcd::abc::Opcode opcode, Label target) {
+    fixes.push_back({bytes.size(), target});
+    Emit(opcode, {0, 0, 0, 0});
+  }
+  abcd::abc::MethodBody Decode(abcd::abc::ProfileId profile) {
+    for (const auto [pc, target] : fixes) {
+      const auto delta = static_cast<std::uint32_t>(
+          labels[static_cast<std::size_t>(target)] - pc);
+      for (std::size_t byte = 0; byte < sizeof(delta); ++byte)
+        bytes[pc + 1 + byte] = static_cast<std::uint8_t>(delta >> (8 * byte));
+    }
+    abcd::abc::MethodBody body;
+    for (std::uint32_t pc = 0; pc < bytes.size();) {
+      const auto decoded = std::get<abcd::abc::DecodedInstruction>(
+          abcd::abc::DecodeInstruction(std::span(bytes).subspan(pc), profile));
+      abcd::abc::BodyInstruction site{{pc}, decoded, {}};
+      if (decoded.branch_delta)
+        site.branch_target = abcd::abc::CodeOffset{
+            static_cast<std::uint32_t>(pc + *decoded.branch_delta)};
+      body.instructions.push_back(site);
+      pc += decoded.size;
+    }
+    return body;
+  }
+
+ private:
+  std::vector<std::uint8_t> bytes;
+  std::array<std::size_t, static_cast<std::size_t>(Label::kCount)> labels{};
+  std::vector<std::pair<std::size_t, Label>> fixes;
+};
+void InitializationFixtures() {
+  using namespace abcd;
+  using namespace analysis;
+  using abc::Opcode;
+  const auto frame = std::get<abc::FrameLayout>(
+      abc::BuildFrameLayout(4, 4, abc::CallFlags{true, true, false, true}));
+  const auto constructor = static_cast<std::uint8_t>(frame.function->value);
+  const auto receiver = static_cast<std::uint8_t>(frame.this_value->value);
+  const auto parameter = static_cast<std::uint8_t>(frame.first_parameter.value);
+  std::size_t cases = 0;
+  for (const auto profile :
+       {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
+        abc::ProfileId::kDynamic1301})
+    for (const auto region :
+         {Region::kStraight, Region::kBefore, Region::kAfter,
+          Region::kThroughCall, Region::kBackwardLayout})
+      for (const bool spread : {false, true})
+        for (const bool guards : {false, true})
+          for (const unsigned count : {0U, 1U, 200U, 201U, 402U, 804U})
+            for (const std::uint8_t saved : {0U, 2U}) {
+              InitializationCode code;
+              const auto padding = [&] {
+                for (unsigned i = 0; i < count; ++i) code.Emit(Opcode::kNOP);
+              };
+              const auto loop = [&] {
+                code.Mark(Label::kLoop);
+                code.Emit(Opcode::kLDA_V8, {parameter});
+                code.Jump(Opcode::kJEQZ_IMM32, Label::kExit);
+                padding();
+                code.Jump(Opcode::kJMP_IMM32, Label::kLoop);
+                code.Mark(Label::kExit);
+              };
+              if (region == Region::kBackwardLayout) {
+                code.Jump(Opcode::kJMP_IMM32, Label::kCall);
+                code.Mark(Label::kTail);
+                padding();
+                code.Emit(Opcode::kLDA_V8, {saved});
+                code.Emit(Opcode::kRETURN);
+                code.Mark(Label::kCall);
+              }
+              if (region == Region::kBefore) loop();
+              if (region == Region::kThroughCall) {
+                code.Mark(Label::kLoop);
+                padding();
+              }
+              if (guards) {
+                code.Emit(Opcode::kLDA_V8, {receiver});
+                code.Emit(Opcode::kTHROW_IFSUPERNOTCORRECTCALL_PREF_IMM8, {1});
+                // A runtime no-op does not require super to precede it.
+                code.Emit(Opcode::kLDA_V8, {parameter});
+                code.Emit(Opcode::kTHROW_IFSUPERNOTCORRECTCALL_PREF_IMM8, {2});
+              }
+              if (spread) {
+                code.Emit(Opcode::kLDA_V8, {constructor});
+                code.Emit(Opcode::kSUPERCALLSPREAD_IMM8_V8, {0, parameter});
+              } else
+                code.Emit(Opcode::kSUPERCALLTHISRANGE_IMM8_IMM8_V8,
+                          {0, 1, parameter});
+              code.Emit(Opcode::kSTA_V8, {saved});
+              if (guards)
+                code.Emit(Opcode::kTHROW_IFSUPERNOTCORRECTCALL_PREF_IMM8, {0});
+              if (region == Region::kAfter) loop();
+              if (region == Region::kStraight) padding();
+              if (region == Region::kThroughCall) {
+                code.Emit(Opcode::kLDA_V8, {parameter});
+                code.Jump(Opcode::kJEQZ_IMM32, Label::kLoop);
+              }
+              if (region == Region::kBackwardLayout)
+                code.Jump(Opcode::kJMP_IMM32, Label::kTail);
+              else {
+                code.Emit(Opcode::kLDA_V8, {saved});
+                code.Emit(Opcode::kRETURN);
+              }
+              const auto body = code.Decode(profile);
+              const bool accept = region != Region::kThroughCall;
+              if (spread)
+                {
+                  const auto proof = ProveSpreadDerivedConstructor(body, frame, {}, profile);
+                  Check(std::holds_alternative<SpreadDerivedConstructor>(proof) == accept);
+                  if (!accept) Check(std::get<DerivedConstructorError>(proof) == DerivedConstructorError::kControlFlow);
+                }
+              else {
+                const auto proof = ProveRangeDerivedConstructor(body, frame, {}, profile);
+                Check(std::holds_alternative<RangeDerivedConstructor>(proof) == accept);
+                if (!accept) Check(std::get<DerivedConstructorError>(proof) == DerivedConstructorError::kControlFlow);
+              }
+              ++cases;
+            }
+  // The work boundary is measured on real decoding/SSA, independently of the
+  // implementation's queue sizes. A budget below the first success must fail.
+  InitializationCode code;
+  code.Emit(Opcode::kSUPERCALLTHISRANGE_IMM8_IMM8_V8, {0, 1, parameter});
+  code.Emit(Opcode::kRETURN);
+  const auto body = code.Decode(abc::ProfileId::kDynamic1301);
+  std::uint64_t lower = 0, upper = 1;
+  const auto accepts = [&](std::uint64_t work) {
+    return std::holds_alternative<RangeDerivedConstructor>(ProveRangeDerivedConstructor(
+        body, frame, {DerivedConstructorBudget::kDefaultBytes, work}));
+  };
+  while (!accepts(upper)) { Check(upper < 1000000); upper *= 2; }
+  while (upper - lower > 1) {
+    const auto middle = lower + (upper - lower) / 2;
+    if (accepts(middle)) upper = middle; else lower = middle;
+  }
+  Check(accepts(upper));
+  Check(std::get<DerivedConstructorError>(ProveRangeDerivedConstructor(
+      body, frame, {DerivedConstructorBudget::kDefaultBytes, upper - 1})) == DerivedConstructorError::kResourceLimit);
+  // Grow the CFG, not just an instruction list in one block. The encoded
+  // offset is the specified IMM32 branch width (opcode plus int32 payload).
+  constexpr auto kNextBranch = std::uint8_t{1 + sizeof(std::int32_t)};
+  for (const unsigned count : {1U, 200U, 201U, 402U, 804U}) {
+    InitializationCode chain;
+    chain.Emit(Opcode::kSUPERCALLTHISRANGE_IMM8_IMM8_V8, {0, 1, parameter});
+    chain.Emit(Opcode::kSTA_V8, {0});
+    for (unsigned i = 0; i < count; ++i)
+      chain.Emit(Opcode::kJMP_IMM32, {kNextBranch, 0, 0, 0});
+    chain.Emit(Opcode::kLDA_V8, {0}); chain.Emit(Opcode::kRETURN);
+    Check(std::holds_alternative<RangeDerivedConstructor>(
+        ProveRangeDerivedConstructor(chain.Decode(abc::ProfileId::kDynamic1301), frame)));
+  }
+  std::cout << "decoded initialization cases " << cases << '\n';
+}
 }  // namespace
 
 int main() {
+  InitializationFixtures();
   for (const auto profile : {abcd::abc::ProfileId::kDynamic1206, abcd::abc::ProfileId::kDynamic1301, abcd::abc::ProfileId::kDynamic1202}) {
     using namespace abcd; using namespace analysis;
     const auto wire = static_cast<std::uint16_t>(abc::Opcode::kCALLRUNTIME_SUPERCALLFORWARDALLARGS_PREF_V8);

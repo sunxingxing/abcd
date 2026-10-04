@@ -5,6 +5,26 @@
 
 ## 输入规模与成本
 
+### 派生构造初始化的单次调用证明（2026-10-04）
+
+range/spread 共用 `ProveInitialization`，不以 branch target 的 PC 大小、
+guard 数量或 guard 是否在 super 后决定恢复。`ProveSingleInvocation`
+从真实 call block 沿 normal CFG successor 做一次迭代可达性遍历；存在
+返回 call block 的路径才表示调用可能重复。其他块的循环和向后物理布局
+不提供也不破坏初始化证明。正常 return 的支配与每项 guard 的实际 SSA
+origin 仍独立成立；原始/current-IR 对应、receiver 和捕获另行验证。
+
+标准图可达性算法，项目自有实现，无外部代码或新增依赖。B 块、E 边的
+新增时间 O(B+E)，scratch O(B)，每块最多入队一次。分配容量和初始化/
+边访问计入现有预算，scratch 结束即释放；不按每个 guard 重新遍历图。
+原支配/稀疏 SSA 成本不变。这是正确性及预算边界证据，不是暂停的延迟、
+分配或 RSS 实测。正常图不证明缺失的异常/resume 路径。
+
+当前接口仍表示一个原始 super site，要求它支配正常 return；多个互斥
+super site、异常区域、escaping cell、未证明的 parent brand/参数展开
+和 legacy 线性构造模板仍有缺口。不得将上述临时表示边界扩充为本地
+序列或 CFG 形状列表。验证层与剩余阶段一 gate 见 source-recovery/status.md。
+
 ### class 的 identifier 名称推断上下文（2026-10-04）
 
 共同 printer 的表达式 action 携带 optional NameId；直接变量初始化与
