@@ -1,4 +1,5 @@
 #include "class_initializers.h"
+#include "../analysis/value_flow.h"
 #include <new>
 #include <stdexcept>
 namespace abcd::source {
@@ -31,6 +32,18 @@ std::variant<ClassInitializerCalls, ClassInitializerError> FindClassInitializerC
     }
     admit(methods, sizeof(ClassInitializerCall)); result.calls.reserve(methods);
     admit(result.calls.capacity() - methods, sizeof(ClassInitializerCall));
+    if (methods) {
+      // Common SSA availability validates every actual home/callee occurrence.
+      // Numeric operation positions and block membership grant no extra proof.
+      auto checked = VerifyValueFlow(graph, budget);
+      if (const auto* error = std::get_if<ValueAvailabilityError>(&checked)) {
+        if (*error == ValueAvailabilityError::kResourceLimit) return Error::kResourceLimit;
+        if (*error == ValueAvailabilityError::kWorkLimit) return Error::kWorkLimit;
+        return Error::kFlow;
+      }
+      const auto& flow = std::get<ValueFlowProof>(checked);
+      admit(flow.allocated_bytes, 1); step(flow.work);
+    }
     const auto operand = [&](OpId id, std::uint32_t ordinal, OperandRole role, ReadPurpose purpose) -> const ValueOperand& {
       Require(id.value < graph.ops.size());
       const auto& op = graph.ops[id.value];
@@ -54,8 +67,7 @@ std::variant<ClassInitializerCalls, ClassInitializerError> FindClassInitializerC
       if (!origin) continue;
       Require(origin->op.value < graph.ops.size());
       const auto& owner = graph.ops[origin->op.value];
-      if (owner.life != ValueLife::kLive || !std::holds_alternative<ValueClassCreation>(owner.operation) ||
-          owner.block != op.block || owner.order >= op.order) continue;
+      if (owner.life != ValueLife::kLive || !std::holds_alternative<ValueClassCreation>(owner.operation)) continue;
       Require(owner.result == *home);
       const auto first = graph.values[op.result->value].first_use;
       if (!first) continue;
@@ -67,7 +79,7 @@ std::variant<ClassInitializerCalls, ClassInitializerError> FindClassInitializerC
       const auto& call = graph.ops[call_id->value];
       const auto* invoke = std::get_if<ValueInvoke>(&call.operation);
       if (call.life != ValueLife::kLive || !invoke || invoke->receiver != InvokeReceiver::kExplicit ||
-          invoke->arguments || call.block != op.block || call.order <= op.order) continue;
+          invoke->arguments) continue;
       Require(call.use_count == 2 && call.result && call.result->value < graph.values.size());
       const auto* callee = std::get_if<ValueId>(&operand(*call_id, 0, OperandRole::kCallee, ReadPurpose::kOperand));
       const auto* receiver = std::get_if<ValueId>(&operand(*call_id, 1, OperandRole::kReceiver, ReadPurpose::kOperand));

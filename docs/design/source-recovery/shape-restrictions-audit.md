@@ -648,9 +648,12 @@ raw VM zero/nonzero对null/undefined/NaN不同于JS truthiness，不能贸然替
 |---|---|---|
 | call_plan.cc:215 | MemberCall的property仍要求inline-owned或已有nested-literal接口 | 真正保存的Reference及有序参数安排，保留callee/base/key/receiver身份，不重读getter |
 | phased_selections.cc:25/63/129 | 唯一实际copy RHS、arm/condition单入口corridor | 同一依赖/控制/效果模型安排全部真实RHS并证明区域归属，不枚举数量或前驱形状 |
-| class_initializers.cc:58/70 | class creation、method及initializer call仍比较同块/order | 创建和调用原occurrence、SSA home/receiver、支配及全路径效果证明 |
+| class_initializers.cc / class_initializer_projection.cc | 同块/order/OpId门槛与效果数量比较已由规则92替换；当前ClassTree仍只有一个initializer接口 | 多次真实初始化区段须由共同顺序/owner模型表达，不能增加count模板 |
 | module_guards.cc:79 | guarded read仍要求block/order/OpId邻接 | 以原guard事实、精确输入及相位/TDZ对应证明所属读取，保留原抛出顺序 |
 | class_tree.cc::CheckClassParentScope | phased parent接口仍排除initializer、defined-member、captures和modules | 贯通真实创建scope/捕获/module/异常对应，不能直接删掉父作用域义务 |
+| class_self.cc::FindClassSelfStores | allocation/creation/store/call仍同块/order，首次store前用效果数量确认仅creation | 使用共同cell初始化、原效果身份、全路径必达及闭包可观察性证明 |
+| literal_class_fields.cc::Build | 已有literal-only快速路径要求单块、无边、无参数及局部类型集合 | 统一field依赖/执行顺序/this与cell观察证明；既有路径只作为明确未迁移边界 |
+| literal_plan.h::IsReceiverField | 直接字段接口只消费ReceiverEntry，FrameThis结果尚未进入同一identity证明 | 根据真实ABI/callable/this初始化状态建立身份对应，保留派生TDZ与arrow lexical-this差异 |
 | legacy rest/super/array/class/module整理 | 既有直线/局部序列模板未全部迁移 | typed CFG/SSA/协议状态和共同FunctionTree通路；不继续扩大模板集合 |
 
 CallPlan同块及CrossPhaseInline/CrossLogicalInline例外没有回归，模块producer
@@ -658,3 +661,19 @@ pin、selection数量及computed Commit邻接门槛已经替换。上表的边�
 这不是全仓每个生产分支逐行审计闭合，也不能推断原作者因某个样本加入。
 禁止追加样本/名字/布局匹配的规则继续有效。真实身份、effect、scope、TDZ、
 异常和资源校验继续有效，不能把“避免特例匹配”理解为删除语义证明。
+
+### 2026-10-04：规则92，class initializer删掉同块及数量式效果走廊
+
+FindClassInitializerCalls以fresh共同SSA可用性验证实际home/callee/receiver。
+ProjectClassMembers消费共同EffectOrder，原前驱身份加新增after的全路径
+下一效果必达事实，取代同块、物理OpId先后及prefix效果数量比较。
+纯分块/菱形和逆物理布局无需新增生产匹配；绕过call、重复call、可能
+不终止及任意夹杂效果不能挪进class syntax。phi观察按其原incoming edge
+检查是否由call支配，真实self cell写入保留，未替代self初始化证明。
+
+零length、零实参、method不逃逸、未使用call结果及单initializer接口仍
+是现有静态字段表示的前提/接口范围，不宣称所有ordinary method call都
+是static initializer。实际body、DefineOwnProperty、receiver及scope还须
+由独立共同树通路证明；多参数/多initializer应通过相应接口与分析扩展。
+本次额外核查并登记class_self及literal_class_fields的局部限制，未扩大旧
+fast path，也不宣称全仓每个条件已逐行迁移完成。验证及剩余gate见status。

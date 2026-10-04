@@ -5,6 +5,29 @@
 
 ## 输入规模与成本
 
+### 类初始化调用的共同效果必达索引（2026-10-04）
+
+规则92的调用识别以fresh VerifyValueFlow证明class home、method callee及
+receiver实际使用处的SSA可用性；不再要求creation/method/call同块或比较
+物理OpId。语法投影复用BuildEffectOrder的原效果前驱身份和dominance，
+新增after索引回答所有路径是否必然到达同一下一效果。每块首个有序效果
+为边界；反向邻接/worklist求must-reach，各后继必须同意同一原OpId。
+正常退出失败，未收敛纯循环失败，不同效果历史失败。反向块内扫描把
+结果分配给实际操作，不能把不同效果的相同数量视为同一历史。
+
+初始化方法、调用、已证明的self store及有独立名称义务的prototype读取
+构成creation到call的唯一原效果链；其余class观察须由call支配，phi在
+实际incoming edge上检查。self store保持真实cell写入。调用可能绕过、
+重复执行、永远到不了或有任意interposed effect时，不准提前进class syntax。
+这不是固定块形状或指令模板；名称、源文件和opcode序列不参与准入。
+
+来源为既有共同SSA/dominance、效果依赖及must数据流方程；项目自有实现，
+没有新增依赖或复制第三方代码。令I/U/B/E为操作/使用/块/边，新增after
+时间O(I+B+E)、空间O(I+B)，复用已有反向邻接；整体继承共同SSA与
+效果索引成本及预算。每个原use和效果至多归属一条class链，不按class
+重新走CFG。解码覆盖200/201及402规模、分块/菱形控制；完整源树另覆盖
+逆物理布局。full-suite、完整进程RSS及延迟基准继续暂停。
+
 ### 保留值选择的共同真值投影（2026-10-04）
 
 规则91的ProjectSelectionLogicals在已验证SelectionRegion之后运行，原控制/

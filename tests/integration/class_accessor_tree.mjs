@@ -2,6 +2,33 @@ import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import vm from 'node:vm';
 const [tool] = process.argv.slice(2);
+// Decode real class/method/call bytes with pure splits at both boundaries.
+// The independent native oracle enters only after engine source generation.
+const initializers = spawnSync(tool, ['--initializers-json'], {encoding: 'utf8', timeout: 60_000});
+assert.equal(initializers.status, 0, initializers.stderr);
+let initializerScenarios = 0;
+for (const line of initializers.stdout.trim().split('\n')) {
+  const {source} = JSON.parse(line);
+  assert.match(source, /static _value = 42;/);
+  assert.doesNotMatch(source, /INCOMPLETE|\.call\(|Object\.defineProperty/);
+  const create = vm.runInNewContext(`'use strict'; ${source}`);
+  const reference = () => class Accessors {static _value = 42;};
+  for (const input of [undefined, null, false, true, 0, -0, NaN, 1, 0n, 1n, '', 'x', Symbol(), {}, []]) {
+    const describe = factory => {
+      const C = factory(input), D = factory(input);
+      assert.notEqual(C, D); assert.notEqual(C.prototype, D.prototype);
+      assert.equal(C._value, 42); assert.equal(new C()._value, undefined);
+      const value = {};
+      assert.equal(Reflect.set(C, '_value', value), true); assert.equal(C._value, value);
+      assert.equal(D._value, 42);
+      const descriptor = Object.getOwnPropertyDescriptor(D, '_value');
+      return {name: C.name, length: C.length, keys: Reflect.ownKeys(C), prototypeKeys: Reflect.ownKeys(C.prototype),
+        value: descriptor.value, writable: descriptor.writable, enumerable: descriptor.enumerable, configurable: descriptor.configurable};
+    };
+    assert.deepEqual(describe(create), describe(reference)); ++initializerScenarios;
+  }
+}
+console.log(`cross-block initializer native comparisons: ${initializerScenarios}`);
 for (const placement of ['prototype', 'static', 'retained', 'method-last', 'accessor-last']) {
   const run = spawnSync(tool, [`--${placement}`], {encoding: 'utf8', timeout: 60_000});
   assert.equal(run.status, 0, run.stderr);

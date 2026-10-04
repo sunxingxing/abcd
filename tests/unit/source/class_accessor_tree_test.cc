@@ -18,7 +18,7 @@ using namespace abcd::source;
 void Check(bool ok, const std::source_location& at = std::source_location::current()) {
   if (!ok) { std::cerr << "accessor tree check " << at.line() << '\n'; std::abort(); }
 }
-enum class ObserverFlow { kSameBlock, kSplit, kSelection, kInstallSplit, kInstallDiamond, kReverseInstall };
+enum class ObserverFlow { kSameBlock, kSplit, kSelection, kInstallSplit, kInstallDiamond, kReverseInstall, kInitializerSplit, kInitializerDiamond, kInitializerReverse };
 std::string Recover(bool is_static, bool return_prototype = false, int ordinary_parity = -1,
     bool async_method = false, abc::ProfileId profile = abc::ProfileId::kDynamic1206,
     bool capture_cells = false, bool initialized = true, bool input_gap = false,
@@ -54,6 +54,14 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   const auto op = [&](abc::Opcode value) { code.push_back(static_cast<std::uint8_t>(value)); };
   const auto load = [&](std::uint8_t r) { op(abc::Opcode::kLDA_V8); code.push_back(r); };
   const auto save = [&](std::uint8_t r) { op(abc::Opcode::kSTA_V8); code.push_back(r); };
+  const bool initializer = observers == ObserverFlow::kInitializerSplit || observers == ObserverFlow::kInitializerDiamond || observers == ObserverFlow::kInitializerReverse;
+  const auto corridor = [&] {
+    if (observers == ObserverFlow::kInitializerSplit) { op(abc::Opcode::kJMP_IMM8); code.push_back(2); }
+    else {
+      load(9); op(abc::Opcode::kJEQZ_IMM8); code.push_back(5);
+      op(abc::Opcode::kNOP); op(abc::Opcode::kJMP_IMM8); code.push_back(3); op(abc::Opcode::kNOP);
+    }
+  };
   if (capture_cells) {
     op(abc::Opcode::kNEWLEXENV_IMM8); code.push_back(1);
     if (initialized) {
@@ -66,11 +74,25 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   code.insert(code.end(), {0, 0, 0, 1, 0, 0, 0, 0}); save(1);
   if (!is_static) { op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16); code.insert(code.end(), {0, 5, 0}); }
   save(2);
+  if (observers == ObserverFlow::kInitializerReverse) {
+    const auto jump = code.size(); op(abc::Opcode::kJMP_IMM8); code.push_back(0);
+    const auto call = code.size(); load(4); op(abc::Opcode::kCALLTHIS0_IMM8_V8); code.insert(code.end(), {0, 1});
+    const auto end_jump = code.size(); op(abc::Opcode::kJMP_IMM8); code.push_back(0);
+    const auto method = code.size(); load(1); op(abc::Opcode::kDEFINEMETHOD_IMM8_ID16_IMM8);
+    code.insert(code.end(), {0, 2, 0, 0}); save(4);
+    const auto backward = code.size(); op(abc::Opcode::kJMP_IMM8);
+    code.push_back(static_cast<std::uint8_t>(static_cast<std::ptrdiff_t>(call) - static_cast<std::ptrdiff_t>(backward)));
+    code[jump + 1] = method - jump; code[end_jump + 1] = code.size() - end_jump;
+  } else if (initializer) {
+    corridor(); load(1); op(abc::Opcode::kDEFINEMETHOD_IMM8_ID16_IMM8);
+    code.insert(code.end(), {0, 2, 0, 0}); save(4);
+    corridor(); load(4); op(abc::Opcode::kCALLTHIS0_IMM8_V8); code.insert(code.end(), {0, 1});
+  }
   const auto member_start = code.size();
   std::array<std::vector<std::uint8_t>, 4> packets;
   // Repeated definitions test ordering and preserving the opposite descriptor
   // half. Every original method occurrence must still have a prepared body.
-  for (unsigned i = 0; i < 4; ++i) {
+  for (unsigned i = 0; i < (initializer ? 0U : 4U); ++i) {
     const auto packet_start = code.size();
     const bool setter = i % 2;
     op(abc::Opcode::kLDA_STR_ID16); code.insert(code.end(), {4, 0}); save(3);
@@ -109,8 +131,10 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   if (observers == ObserverFlow::kSplit) { op(abc::Opcode::kJMP_IMM8); code.push_back(2); }
   // A distinct ordinary object literal in the same graph must still be
   // planned; class method installations must not be claimed as its fields.
-  op(abc::Opcode::kCREATEEMPTYOBJECT); save(0); load(3);
-  op(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8); code.insert(code.end(), {0, 6, 0, 0});
+  if (!initializer) {
+    op(abc::Opcode::kCREATEEMPTYOBJECT); save(0); load(3);
+    op(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8); code.insert(code.end(), {0, 6, 0, 0});
+  }
   if (observers == ObserverFlow::kSelection) {
     // The class/prototype is selected on incoming edges after all installs.
     // Physical argument 9 follows six locals and three implicit ABI arguments.
@@ -143,11 +167,16 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
     index.methods[i].offset = {offsets[i]}; index.methods[i].owner_offset = {kOwner};
     index.methods[i].name = names[i]; index.methods[i].name_utf16_length = names[i].size();
   }
-  const bool parameter = observers == ObserverFlow::kSelection || observers == ObserverFlow::kInstallDiamond;
+  const bool parameter = observers == ObserverFlow::kSelection || observers == ObserverFlow::kInstallDiamond || observers == ObserverFlow::kInitializerDiamond;
   index.methods[0].code = body(kCreatorCode, 6, parameter ? 4 : 3, code);
   index.methods[1].code = body(kConstructorCode, 0, 3, {opcode(abc::Opcode::kRETURNUNDEFINED)});
   index.methods[2].code = body(kGetterCode, 0, 3, {opcode(abc::Opcode::kLDTHIS),
       opcode(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 6, 0, opcode(abc::Opcode::kRETURN)});
+  if (initializer) index.methods[2].code = body(kGetterCode, 1, 3, {
+      opcode(abc::Opcode::kLDA_V8), 3, opcode(abc::Opcode::kSTA_V8), 0,
+      opcode(abc::Opcode::kLDAI_IMM32), 42, 0, 0, 0,
+      opcode(abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8), 0, 6, 0, 0,
+      opcode(abc::Opcode::kRETURNUNDEFINED)});
   index.methods[3].code = body(kSetterCode, 1, 4, {opcode(abc::Opcode::kLDTHIS),
       opcode(abc::Opcode::kSTA_V8), 0, opcode(abc::Opcode::kLDA_V8), 4,
       opcode(abc::Opcode::kSTOBJBYNAME_IMM8_ID16_V8), 0, 6, 0, 0, opcode(abc::Opcode::kRETURNUNDEFINED)});
@@ -215,6 +244,36 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
       capture_cells ? InputCaptureMode::kConditional : InputCaptureMode::kClosed);
   Check(std::holds_alternative<FileFunction>(loaded)); const auto& creator = std::get<FileFunction>(loaded);
   const auto& graph = creator.values.graph; const auto& definitions = creator.values.definitions.sites;
+  if (initializer) {
+    Check(definitions.empty() && creator.values.initializers.calls.size() == 1);
+    const auto& call = creator.values.initializers.calls.front();
+    const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph, {}, IncomingCells::kReject,
+        {}, {}, {}, creator.values.initializers.calls));
+    GlobalScope globals{};
+    auto layout = std::make_shared<ClassTree>(std::get<ClassTree>(BuildClassLayout(file, header, index,
+        lookup, roles, classes, creator, call.creation, identity, {}, &call)));
+    auto constants = std::get<TreeConstants>(ResolveTreeConstants(file, header, index, {kCreator}, graph));
+    constants.operations[call.creation.value] = layout;
+    FunctionSyntax syntax{}; syntax.identity = identity; syntax.method = {kCreator}; syntax.owner = {0};
+    syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+    syntax.parameters.resize(creator.frame.parameters); syntax.names = constants.names; syntax.texts = constants.texts;
+    const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+    auto source = std::get<ConstructedFunction>(BuildFunctionTree(graph, control, evaluation, syntax, constants.View()));
+    auto prepared = BuildClassTree(file, header, index, lookup, roles, functions, classes, creator,
+        call.creation, identity, &globals, {}, &call, {}, RecoveryMode::kCompleteOnly, {37});
+    if (const auto* failure = std::get_if<ClassTreeFailure>(&prepared)) {
+      std::cerr << "initializer tree failure " << failure->index();
+      if (const auto* error = std::get_if<EvaluationError>(failure)) std::cerr << " evaluation " << static_cast<unsigned>(*error);
+      std::cerr << '\n';
+    }
+    Check(std::holds_alternative<ClassTree>(prepared)); *layout = std::get<ClassTree>(std::move(prepared));
+    Check(layout->BodiesPrepared());
+    Check(std::holds_alternative<TreeFlow>(VerifyTreeFlow(graph, control, evaluation, source.tree)));
+    std::ostringstream output;
+    const auto printed = PrintFunctionTree(source.tree, output, {}, {}, &globals);
+    Check(std::holds_alternative<PrintedFunction>(printed) && !std::get<PrintedFunction>(printed).incomplete);
+    Check(unlink(path) == 0); return output.str();
+  }
   Check(definitions.size() == 4);
   if (capture_cells) {
     const auto class_operation = definitions.front().creation;
@@ -609,6 +668,12 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--initializers-json") {
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const auto flow : {ObserverFlow::kInitializerSplit, ObserverFlow::kInitializerDiamond, ObserverFlow::kInitializerReverse})
+        std::cout << nlohmann::json{{"source", Recover(true, false, -1, false, profile, false, true, false, flow)}}.dump() << '\n';
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--observers-json") {
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
       for (const bool is_static : {false, true})

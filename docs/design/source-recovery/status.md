@@ -12,6 +12,51 @@
 
 ## 当前阶段
 
+### 2026-10-04：类初始化调用以共同 SSA 与效果必达事实替换同块门槛
+
+- 规则revision92。FindClassInitializerCalls删除creation/method/call同块及
+  局部order比较，以fresh VerifyValueFlow证明原home/callee/receiver使用处
+  可用性。ProjectClassMembers删除creation/call同块、物理OpId先后及
+  prefix效果数量比较，复用BuildEffectOrder的前驱身份/dominance与新增
+  after全路径下一效果索引。纯块拆分、菱形分支及逆物理布局共享同一通路。
+- 原creation到initializer call必须形成唯一私有效果链，且每步所有路径
+  必达原下一效果。绕过call、可能无限循环、重复执行call及分支夹杂效果
+  不能挪入class syntax。所有非私有class观察须由call支配；phi按实际
+  incoming edge检验，已证明self store保留实际cell写入。getter/prototype
+  名称、actual child body、DefineOwnProperty、scope和receiver义务未删除。
+  没有加入样本/名字/PC布局/指令序列或更多局部图形匹配。
+- 三profile、1/200/201/402规模，48组新增跨creation/call拆块及菱形
+  解码/投影正例，12组绕过/不终止/重复调用/不同分支效果屏障反例。
+  发现与投影分别验证精确work边界。1206拆块projection work为
+  449/61893/62203/124659；菱形为717/114100/114671/229588，
+  201及402增长断言通过。不是暂停的RSS或完整延迟基准。
+- 新增九组三profile真实字节/文件/类上下文/FunctionTree/printer正例，
+  包括method物理排在call之后但CFG先定义再调用。生成完整native
+  static _value = 42，经独立oracle做135组空值/Boolean/number/BigInt/
+  Symbol/对象输入、类/原型身份、字段描述符及写后独立性对照。
+  完整源码进入对照；没有以拒绝、INCOMPLETE或返回参考源码计成功。
+- /tmp/abcd-class-order-日志保留过程：初版新增菱形夹具未重新读取home/
+  callee，unit在candidate断言退出134；修正夹具真实accumulator后通过。
+  首版完整树夹具使用LDTHIS，现有IsReceiverField接口只接受实际ABI
+  ReceiverEntry，得到EvaluationError::kUnsupportedOperation；改用固定
+  profile ABI实际receiver读取后通过。这个FrameThis统一身份接口仍有
+  覆盖缺口，未向生产增加LDTHIS局部序列特例。诊断不计入验证通过。
+- final-build.log及final-build-2.log均单构建-j4退出0，重链实际
+  abc_structure/abc_semantic和相关类/初始化/字段/cleanup targets。
+  tests.log首轮17/17通过256.58秒，含joint-selection及selection-module
+  原语义/Reference回归；追加逆物理布局、work增长断言并释放只用一次的
+  SSA证明scratch后，final-tests.log最终13/13通过22.65秒。
+  test-output.log保留最终work、135组新增对照及432组既有class observer输出。
+- fresh build/stage-one/class-effect-order-pass-2固定五输入全退出0；
+  80 complete/26 incomplete/0 failure/46 no-module，无完整记录回退或
+  legacy writer。batch-2.log/syntax-2.log核对原index与manifest SHA/size；
+  106份源码全部解析，与规则91源码字节一致。此项修复扩大通用布局覆盖，
+  未增加真实输入complete record，阶段一双验收仍未完成。
+- shape审计额外登记class_self同块/效果数量、literal_class_fields单块
+  快速路径及单initializer表示接口；module guard邻接、inline-owned
+  Reference、多copy RHS、phased parent scope/capture等尚未全部迁移。
+  Goal active。full-suite、扩展语料、RSS、基准、DFX、代理及周期审计继续暂停。
+
 ### 2026-10-04：保留值选择以共同真值方程恢复 logical 表示
 
 - 规则revision91。SelectionLogical只投影既有已验证SelectionRegion的表示，

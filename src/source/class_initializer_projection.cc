@@ -1,6 +1,6 @@
 #include "class_initializers.h"
 #include "class_self_order.h"
-#include "../analysis/value_flow.h"
+#include "effect_order.h"
 #include <algorithm>
 #include <new>
 #include <stdexcept>
@@ -37,22 +37,28 @@ std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
       result.allocated_bytes = initial.bytes - budget.bytes; result.work = initial.work - budget.work;
       return result;
     }
-    const auto available = VerifyValueFlow(graph,budget);
+    const auto available = BuildEffectOrder(graph,budget);
     if (const auto* error = std::get_if<ValueAvailabilityError>(&available)) {
       if (*error == ValueAvailabilityError::kResourceLimit) return Error::kResourceLimit;
       if (*error == ValueAvailabilityError::kWorkLimit) return Error::kWorkLimit;
       return Error::kFlow;
     }
-    step(std::get<ValueFlowProof>(available).work);
+    const auto& order = std::get<EffectOrder>(available);
+    admit(order.allocated_bytes, 1); step(order.work);
     auto found = FindClassInitializerCalls(graph, budget);
     if (const auto* error = std::get_if<Error>(&found)) return *error;
     const auto& candidates = std::get<ClassInitializerCalls>(found);
     admit(candidates.allocated_bytes, 1); step(candidates.work);
-    // Prefix counts and one ownership entry per class avoid rescanning an
-    // arbitrarily long corridor for each method. O(ops + uses + calls log calls).
-    admit(graph.ops.size() + 1, sizeof(std::size_t));
-    std::vector<std::size_t> effects(graph.ops.size() + 1);
-    admit(effects.capacity() - effects.size(), sizeof(std::size_t));
+    // The same effect-predecessor identities used by member definitions prove
+    // one private creation-to-call chain. Pure CFG splits are transparent;
+    // different histories, repeated calls and early escapes cannot be fused.
+    // Regression: class_initializers_test cross-initializer decoded cases.
+    admit(graph.ops.size(), sizeof(std::optional<OpId>));
+    std::vector<std::optional<OpId>> effects(graph.ops.size());
+    admit(effects.capacity() - effects.size(), sizeof(std::optional<OpId>));
+    admit(graph.ops.size(), sizeof(std::uint8_t));
+    std::vector<std::uint8_t> successors(graph.ops.size());
+    admit(successors.capacity() - successors.size(), sizeof(std::uint8_t));
     admit(graph.ops.size(), sizeof(std::uint8_t));
     std::vector<std::uint8_t> claimed(graph.ops.size());
     admit(claimed.capacity() - claimed.size(), sizeof(std::uint8_t));
@@ -61,16 +67,6 @@ std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
     admit(result.owners.capacity() - result.owners.size(), sizeof(std::optional<OpId>));
     admit(graph.ops.size(), sizeof(OpId)); result.prototypes.reserve(graph.ops.size());
     admit(result.prototypes.capacity() - graph.ops.size(), sizeof(OpId));
-    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
-      step(); const auto& op = graph.ops[i];
-      require(op.block.value < graph.blocks.size());
-      const auto& block = graph.blocks[op.block.value];
-      require(i >= block.first_op.value && i - block.first_op.value < block.op_count &&
-          op.order == i - block.first_op.value);
-      effects[i + 1] = effects[i] + (op.life == ValueLife::kLive &&
-          (op.normal != LanguageEffect::kNone || op.before_throw != LanguageEffect::kNone ||
-           op.exceptional != ExceptionalCompletion::kImpossible));
-    }
     std::vector<std::optional<ClassSelfStore>> self_stores;
     if (self_order) {
       const auto stores = self_order->Stores(graph);
@@ -85,50 +81,58 @@ std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
       const auto actual = std::lower_bound(candidates.calls.begin(), candidates.calls.end(), call.method,
           [&](const auto& candidate, auto method) { step(); return candidate.method < method; });
       require(actual != candidates.calls.end() && *actual == call);
-      require(call.creation < call.method && call.method < call.call && !claimed[call.creation.value]);
+      require(!claimed[call.creation.value]);
       claimed[call.creation.value] = 1;
       const auto& creation = graph.ops[call.creation.value];
       const auto& invoke = graph.ops[call.call.value];
-      require(creation.block == invoke.block);
-      const auto& block = graph.blocks[creation.block.value];
-      require(call.creation.value >= block.first_op.value &&
-          call.call.value - block.first_op.value < block.op_count);
-      std::size_t reads = 0, self_writes = 0;
       const auto project = [&](OpId id) {
+        const auto& op = graph.ops[id.value];
+        require(order.Before(graph, call.creation, op.block, op.order) &&
+            (id == call.call || order.Before(graph, id, invoke.block, invoke.order)), Error::kFlow);
         require(!result.owners[id.value]); result.owners[id.value] = call.creation;
+        require(HasOrderedEffect(op), Error::kFlow); effects[id.value] = call.creation;
       };
       project(call.method); project(call.call);
       for (auto use = graph.values[call.receiver.value].first_use; use; use = graph.uses[use->value].next) {
         step(); const auto& occurrence = graph.uses[use->value];
         const auto* owner = std::get_if<OpId>(&occurrence.owner);
-        require(owner != nullptr, Error::kFlow);
+        if (!owner) {
+          require(occurrence.incoming && std::holds_alternative<EdgeId>(*occurrence.incoming), Error::kFlow);
+          const auto& edge = graph.edges[std::get<EdgeId>(*occurrence.incoming).value];
+          require(order.Before(graph, call.call, edge.source, graph.blocks[edge.source.value].op_count), Error::kFlow);
+          continue;
+        }
         if (*owner == call.method || *owner == call.call) continue;
         const auto& op = graph.ops[owner->value];
         if (!self_stores.empty() && self_stores[owner->value]) {
           const auto& self = *self_stores[owner->value];
           require(self.creation == call.creation && self.initializer == call.call &&
               std::holds_alternative<ValueLexicalStore>(op.operation) && occurrence.role == OperandRole::kStoredValue,Error::kFlow);
-          ++self_writes; continue; // Retained cell write, never projected away.
+          require(order.Before(graph, call.creation, op.block, op.order) &&
+              order.Before(graph, *owner, invoke.block, invoke.order) && !effects[owner->value], Error::kFlow);
+          effects[owner->value] = call.creation;
+          continue; // Retained cell write, never projected away.
         }
-        // Fresh SSA availability proves the creation block dominates this
-        // direct use. Creation and initializer call share one basic block, so
-        // every normal exit from that block has completed the call. Exceptional
-        // exits cannot rejoin this normal-only graph. Phi escapes still reject.
-        if (op.block != invoke.block) continue;
-        if (op.order > invoke.order) continue;
-        require(*owner > call.creation && *owner < call.call &&
-            std::holds_alternative<ValueNamedRead>(op.operation) && op.use_count == 1 &&
+        // Every unowned observation, including a phi's actual incoming edge,
+        // must occur after the call on all paths. Numeric placement says nothing
+        // about an observer in a bypass arm or an earlier loop iteration.
+        if (order.Before(graph, call.call, op.block, op.order)) continue;
+        require(std::holds_alternative<ValueNamedRead>(op.operation) && op.use_count == 1 &&
             occurrence.role == OperandRole::kBase && op.result &&
             !graph.values[op.result->value].first_use, Error::kFlow);
         // Named-read spelling remains an explicit source-level obligation.
-        require(effects[owner->value + 1] != effects[owner->value]);
-        project(*owner); result.prototypes.push_back(*owner); ++reads;
+        project(*owner); result.prototypes.push_back(*owner);
       }
-      require(effects[call.method.value + 1] != effects[call.method.value] &&
-          effects[call.call.value + 1] != effects[call.call.value]);
-      constexpr std::size_t kMethodAndCall = 2;
-      require(effects[call.call.value + 1] - effects[call.creation.value + 1] == reads + self_writes + kMethodAndCall,
-          Error::kFlow);
+      require(HasOrderedEffect(creation), Error::kFlow);
+    }
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      step(); if (!effects[i]) continue;
+      const auto* predecessor = std::get_if<OpId>(&order.before[i]);
+      require(predecessor && (*predecessor == *effects[i] || effects[predecessor->value] == effects[i]), Error::kFlow);
+      require(order.Before(graph, *predecessor, graph.ops[i].block, graph.ops[i].order) &&
+          order.after[predecessor->value] == OpId{static_cast<std::uint32_t>(i)} &&
+          !successors[predecessor->value], Error::kFlow);
+      successors[predecessor->value] = 1;
     }
     result.allocated_bytes = initial.bytes - budget.bytes;
     result.work = initial.work - budget.work;

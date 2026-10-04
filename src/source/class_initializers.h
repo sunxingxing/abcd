@@ -20,8 +20,10 @@ struct ClassInitializerCalls {
 };
 enum class ClassInitializerError : std::uint8_t { kInput, kFlow, kResourceLimit, kWorkLimit };
 // Fresh simplified normal IR. Identify a nonescaping zero-argument method's
-// single call on its own class home object, in original order and block.
-// O(operations + uses), with direct def/use indexes. Names are never consulted.
+// single call on its own class home object. Fresh common SSA availability proves
+// creation/home/callee order across arbitrary CFG splits; block layout cannot
+// impose a second admission condition. Names are never consulted.
+// Cost is the common flow proof plus O(operations + uses), with def/use indexes.
 // This establishes invocation identity only: moving the call into class syntax
 // still needs body/return/field semantics and a class escape/effect corridor.
 [[nodiscard]] std::variant<ClassInitializerCalls, ClassInitializerError> FindClassInitializerCalls(

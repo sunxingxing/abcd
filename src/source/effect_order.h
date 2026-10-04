@@ -11,6 +11,9 @@ using EffectPredecessor = std::variant<EntryEffect, EffectJoin, analysis::OpId>;
 struct EffectOrder {
   analysis::DominatorTree dominators;
   std::vector<EffectPredecessor> before;
+  // Exact next ordered effect reached by every path, before any divergence or
+  // normal exit. Absence is no permission to advance an effect across control.
+  std::vector<std::optional<analysis::OpId>> after;
   std::vector<std::uint32_t> position;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;

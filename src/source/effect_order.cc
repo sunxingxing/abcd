@@ -46,6 +46,7 @@ std::variant<EffectOrder, analysis::ValueAvailabilityError> BuildEffectOrder(
     size(tails, count); size(offsets, count + 1); size(cursor, count);
     size(finish, count); size(stack, count); size(next, count); size(visited, count); size(components, count);
     size(result.before, graph.ops.size()); size(result.position, graph.ops.size());
+    size(result.after, graph.ops.size());
     for (std::size_t b = 0; b < count; ++b) {
       step(); const auto& block = graph.blocks[b];
       for (std::uint32_t p = 0; p < block.op_count; ++p) {
@@ -127,6 +128,54 @@ std::variant<EffectOrder, analysis::ValueAvailabilityError> BuildEffectOrder(
       for (std::uint32_t p = 0; p < block.op_count; ++p) {
         step(); const OpId id{block.first_op.value + p}; result.before[id.value] = previous;
         if (HasOrderedEffect(graph.ops[id.value])) previous = id;
+      }
+    }
+    // Backwards must-reach equations stop at each block's first real effect.
+    // Every successor must agree on one endpoint. Exits fail; unresolved pure
+    // cycles fail because termination cannot be inferred from a CFG SCC.
+    // This complements before[] (past identity), rather than comparing counts.
+    std::vector<std::optional<OpId>> heads, endpoints;
+    std::vector<std::size_t> pending;
+    std::vector<std::uint8_t> failed, queued;
+    size(heads, count); size(endpoints, count); size(pending, count);
+    size(failed, count); size(queued, count);
+    std::size_t queue_size = 0;
+    for (std::size_t b = 0; b < count; ++b) {
+      step(); const auto& block = graph.blocks[b];
+      for (std::uint32_t p = 0; p < block.op_count; ++p) {
+        step(); const OpId id{block.first_op.value + p};
+        if (HasOrderedEffect(graph.ops[id.value])) { heads[b] = id; break; }
+      }
+      if (heads[b] || !block.edge_count) {
+        endpoints[b] = heads[b]; queued[b] = 1; stack[queue_size++] = b;
+      } else pending[b] = block.edge_count;
+    }
+    for (std::size_t first = 0; first < queue_size; ++first) {
+      step(); const auto b = stack[first];
+      for (auto p = offsets[b]; p < offsets[b + 1]; ++p) {
+        step(); const auto parent = incoming[p]; if (queued[parent]) continue;
+        if (!endpoints[b] || (endpoints[parent] && endpoints[parent] != endpoints[b])) failed[parent] = 1;
+        else endpoints[parent] = endpoints[b];
+        require(pending[parent] != 0); --pending[parent];
+        if (!pending[parent] || failed[parent]) {
+          if (failed[parent]) endpoints[parent].reset();
+          queued[parent] = 1; stack[queue_size++] = parent;
+        }
+      }
+    }
+    for (std::size_t b = 0; b < count; ++b) {
+      step(); const auto& block = graph.blocks[b];
+      std::optional<OpId> following; bool agrees = block.edge_count != 0;
+      for (std::uint32_t e = 0; e < block.edge_count; ++e) {
+        step(); const auto target = graph.edges[block.first_edge.value + e].target.value;
+        if (!queued[target] || !endpoints[target] || (following && following != endpoints[target])) agrees = false;
+        else following = endpoints[target];
+      }
+      if (!agrees) following.reset();
+      for (auto p = block.op_count; p; --p) {
+        step(); const OpId id{block.first_op.value + p - 1};
+        result.after[id.value] = following;
+        if (HasOrderedEffect(graph.ops[id.value])) following = id;
       }
     }
     result.allocated_bytes = initial.bytes - budget.bytes; result.work = initial.work - budget.work;
