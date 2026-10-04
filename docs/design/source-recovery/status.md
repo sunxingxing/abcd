@@ -12,6 +12,45 @@
 
 ## 当前阶段
 
+### 2026-10-04：字段初始化正文以共同效果链取代单块门槛
+
+- 规则revision95。LiteralClassFields删除单块/无边限制及按物理遍历遇到
+  return后禁止后续field的检查，消费共同EffectOrder的原前驱身份、支配、
+  必达首效果、下一效果和normal return事实。返回实际执行顺序的Fields，
+  不按OpId/PC排序。每条正常路径须完整执行同一字段链一次；绕过、重复、
+  分支效果和前后divergence仍拒绝，没有新增split/diamond/reverse模板。
+- 共同逆向must索引区分exact OpId、NormalReturn及未证明endpoint。
+  不同原return可以同意正常完成，但原返回值由消费方另查；此证书要求
+  undefined。纯循环不因存在出口就获终止证明。空入口reverse RED暴露
+  首物理op不等于入口控制位置，现从同一方程给出EffectOrder.first。
+  ReceiverEntry与FrameThis仍保留各自原读取，this初始化/字段descriptor
+  和真实initializer owner义务不变。
+- 72组三profile真实字节/file/context/FunctionTree/family/printer用例，
+  含外部split/diamond/reverse、正文split/reverse、ABI/frame两种来源及
+  captured class self；新增1080组独立native对照。恢复两个原生static
+  字段，验证定义顺序、值、描述符、class/prototype身份、写后结果与
+  factory独立性。270组frame、135+135组initializer、432组observer、
+  96组capture原对照继续通过。没有用拒绝或INCOMPLETE计完整成功。
+- 五种组件布局含空入口逆序、纯菱形和分支不同return，均覆盖1/200/201/
+  402、原字段顺序、精确work边界和几何增长；5组bypass、前后纯循环、
+  重复field及debugger反例拒绝。split work190/14319/14390/28661，
+  diamond337/14466/14537/28808，空入口181/14310/14381/28652。
+  这不代表全部菱形native字段投影完成，也不是暂停的RSS/延迟基准。
+- /tmp/abcd-field-body-保存RED/GREEN及最终证据：首完整文件先成功打印
+  ordinary两个字段，再在self正文证书失败；组件原EffectOrder通过，
+  LiteralClassFields报kUnsupported。夹具两次类型/成员编译错误纠正后
+  才计RED。空入口count200另经RED→GREEN。final-build-2.log单构建-j4
+  退出0；final-tests.log最终22/22通过36.59秒，含真实Immersive字段与
+  accessor行为回归；test-output.log保留work和native对照。
+- fresh build/stage-one/field-body-order-pass-1固定五输入全退出0，80
+  complete/26 incomplete/0 failure/46 no-module，无完整回退/新增或legacy
+  writer。batch-1.log和syntax-1.log核对原index/manifest SHA及size，106
+  份源码解析通过，与规则94字节一致；阶段一语义和表示双验收未完成。
+- literal RHS事实的局部String/copy扫描及更一般表达式、phased字段、
+  多次/保留receiver存储的native投影、条件字段与初始化器作用域仍开放；
+  本次没有以首效果或return计数替代这些语义/表示义务。Goal active。
+  full-suite、扩展语料、RSS、基准、DFX、代理及周期审计继续暂停。
+
 ### 2026-10-04：字段 receiver 共用来源接口并保留跨块原读取
 
 - 规则revision94。IsReceiverOperand共用typed来源查询：实际ReceiverEntry

@@ -4,18 +4,25 @@ import vm from 'node:vm';
 const [tool] = process.argv.slice(2);
 // Decode real class/method/call bytes with pure splits at both boundaries.
 // The independent native oracle enters only after engine source generation.
-for (const [flag, captured] of [['--initializers-json', false], ['--self-initializers-json', true], ['--frame-initializers-json', false]]) {
+for (const [flag, captured] of [['--initializers-json', false], ['--self-initializers-json', true], ['--frame-initializers-json', false], ['--body-initializers-json', false]]) {
   const run = spawnSync(tool, [flag], {encoding: 'utf8', timeout: 60_000});
   assert.equal(run.status, 0, run.stderr);
   let scenarios = 0;
   for (const line of run.stdout.trim().split('\n')) {
-    const {source, self = captured} = JSON.parse(line);
+    const {source, self = captured, fields = false} = JSON.parse(line);
     assert.match(source, /static _value = 42;/);
+    if (fields) {
+      assert.match(source, /static _other = 17;/);
+      assert.ok(source.indexOf('static _other') < source.indexOf('static _value'));
+    }
     assert.doesNotMatch(source, /INCOMPLETE|\.call\(|Object\.defineProperty/);
     const create = vm.runInNewContext(`'use strict'; ${source}`);
     // Actual captured constructors read the outer cell; the oracle enters only
     // after generation and is never supplied to the bytecode recovery engine.
-    const reference = self ? () => {
+    const reference = fields ? self ? () => {
+      let C = class Accessors {constructor() {return C;} static _other = 17; static _value = 42;};
+      return C;
+    } : () => class Accessors {static _other = 17; static _value = 42;} : self ? () => {
       let C = class Accessors {constructor() {return C;} static _value = 42;};
       return C;
     } : () => class Accessors {static _value = 42;};
@@ -24,6 +31,13 @@ for (const [flag, captured] of [['--initializers-json', false], ['--self-initial
         const C = factory(input), D = factory(input);
         assert.notEqual(C, D); assert.notEqual(C.prototype, D.prototype);
         assert.equal(C._value, 42);
+        if (fields) {
+          assert.equal(C._other, 17);
+          const other = Object.getOwnPropertyDescriptor(C, '_other');
+          assert.deepEqual({value: other.value, writable: other.writable, enumerable: other.enumerable, configurable: other.configurable},
+            {value: 17, writable: true, enumerable: true, configurable: true});
+          assert.equal(new C()._other, self ? 17 : undefined);
+        }
         if (self) {
           assert.equal(new C(), C); assert.equal(new D(), D);
           assert.equal(Reflect.construct(C, []), C);

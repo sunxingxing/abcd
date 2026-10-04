@@ -1,6 +1,6 @@
 # 按用户要求进行的恢复条件审计
 
-最新替换状态及补充事项见文末规则94；历史表中的严格比较候选及literal同块条件不再是
+最新替换状态及补充事项见文末规则95；历史表中的严格比较候选及literal同块条件不再是
 当前准入条件。未替换项继续开放，不能将本次局部交付称为全量审计闭合。
 
 2026-10-03，基线 87176c10。此为本次明确请求的审计，不恢复定期审视。
@@ -653,7 +653,7 @@ raw VM zero/nonzero对null/undefined/NaN不同于JS truthiness，不能贸然替
 | class_tree.cc::CheckClassParentScope | phased parent接口仍排除initializer、defined-member、captures和modules | 贯通真实创建scope/捕获/module/异常对应，不能直接删掉父作用域义务 |
 | class_self.cc::FindClassSelfStores | 同块/order和效果数量已由规则93的共同EffectOrder身份/支配/必达替换；实际唯一首次store及初始化器正文接口范围仍有限 | 多次写入与一般初始化器须由共同cell/观察/执行顺序模型表达，不能增加数量模板 |
 | semantic_locals.cc / scope_facts.cc | 规则93以真实拓扑排序替换物理forward-edge准入；既有一般cell初始化仍依赖原指令排序，循环保留局部路径 | activation-sensitive初始化数据流证明每次分配到读取的全路径store；不能以PC大小或同块替代 |
-| literal_class_fields.cc::Build | 已有literal-only快速路径要求单块、无边、无参数及局部类型集合 | 统一field依赖/执行顺序/this与cell观察证明；既有路径只作为明确未迁移边界 |
+| literal_class_fields.cc::Build | 规则95以共同首/后效果必达、原前驱身份/支配及normal return替换单块/无边和物理return次序；literal RHS与无参数接口仍有限 | 一般RHS依赖、条件字段、phased执行/this与cell观察证明；String/copy事实仍需脱离物理扫描，不能继续扩大局部列表 |
 | literal_plan.h::IsReceiverField；tree_structure.cc | 规则94共用实际ReceiverEntry与已证明初始化FrameThis的来源接口；删除直接ThisExpr结构门槛，保留原读与跨块绑定身份 | 多次/保留frame读取的native字段投影仍需共同观察/顺序证明；不将frame read等同ABI快照，不推断derived/arrow初始化 |
 | legacy rest/super/array/class/module整理 | 既有直线/局部序列模板未全部迁移 | typed CFG/SSA/协议状态和共同FunctionTree通路；不继续扩大模板集合 |
 
@@ -719,3 +719,20 @@ native static printer仍需单独关闭implicit receiver与原存储/event省略
 literal RHS；没有扩大这条旧快速路径的布局模板。当前重新核对CallPlan
 同块条件未回归；inline-owned Reference、module_guards邻接和phased
 单RHS/入口仍是开放接口边界，不宣称全仓逐行审计闭合。
+
+### 2026-10-04：规则95，字段正文的共同执行链与正常返回
+
+LiteralClassFields不再要求正文只有一个块或没有边，也不以物理扫描中
+return先出现来拒绝后续字段。共同EffectOrder新增必达首效果与正常返回
+endpoint，字段证书沿原exact-next效果链恢复顺序，检查前驱身份/支配及
+全部原字段归属一次。纯菱形/逆布局/空入口不需要生产分支；绕过字段、
+重复执行、可能无限循环或夹杂效果仍没有class self私有区间许可。
+
+不同return站点可以同意正常完成；返回值不由endpoint合并推断，消费方
+仍检查实际undefined输入。normal return与未证明终止不再都用空after
+表示。共享分析保留原操作及图，没有据sample/PC/寄存器猜测顺序。
+
+72组完整真实文件与1080组native对照、1/200/201/402组件矩阵见status。
+正文条件字段的native表示、一般RHS表达式与局部String/copy事实、phased
+字段及保留receiver的存储省略仍未闭合；没有把这次通用效果替换称为
+全部static initializer或阶段一完成，也不继续扩充旧literal-only模板。

@@ -10,10 +10,17 @@ struct EffectJoin {
 using EffectPredecessor = std::variant<EntryEffect, EffectJoin, analysis::OpId>;
 struct EffectOrder {
   analysis::DominatorTree dominators;
+  // Exact first effect reached by all paths from method entry, including empty
+  // entry blocks. This is a control fact, not the first physical operation.
+  std::optional<analysis::OpId> first;
   std::vector<EffectPredecessor> before;
   // Exact next ordered effect reached by every path, before any divergence or
   // normal exit. Absence is no permission to advance an effect across control.
   std::vector<std::optional<analysis::OpId>> after;
+  // All normal paths after this operation reach a real return without another
+  // ordered effect or divergence. Return values remain the caller's obligation.
+  // Distinct return occurrences can agree on completion without equating PCs.
+  std::vector<std::uint8_t> normal_return;
   std::vector<std::uint32_t> position;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;

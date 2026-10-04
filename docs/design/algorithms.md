@@ -5,6 +5,27 @@
 
 ## 输入规模与成本
 
+### 字段初始化正文的共同必达效果与完成（2026-10-04）
+
+规则95复用EffectOrder的逆向must worklist：Endpoint为原OpId、NormalReturn
+或未证明。首有序效果切断依赖；真实return作为正常完成边界；后继必须
+同意同一原效果或正常返回。无出口证据/纯循环保留失败，不能把“有出口”
+当作必终止。相同正常完成不合并其返回值或原PC，消费方另检查实际输入。
+入口endpoint来自同一方程，包括空入口块，不能借第一个物理op取代。
+
+LiteralClassFields一次分类原字段及既有literal事实，再沿必达首/后效果链
+检查原前驱身份与dominance，最后证明无后续效果且必正常返回。每个字段
+只能消费一次；所有原字段必须归属此链。字段结果按实际效果身份顺序，
+不再按物理OpId/PC排列。this/owner、literal RHS、return值及descriptor
+各自保留原证明；一般RHS/条件字段和phased原生投影仍有覆盖缺口。
+
+来源为既有SSA/dominance、效果依赖与must数据流，项目自有实现，无新
+依赖、第三方代码或许可证变化。I/V/B/E/F为操作/值/块/边/字段数，索引
+新增时间O(I+B+E)、空间O(I+B)；证书在共同分析外O(I+V+F)时间/空间，
+查询O(1)，不按字段重走CFG。预算计入endpoint/normal-return及字段状态
+数组，继承共享索引整体成本。1/200/201/402、空入口/逆序/纯菱形/不同
+return及divergence反例与完整native对照提供证据；没有恢复RSS/基准。
+
 ### 字段 receiver 的共同来源查询（2026-10-04）
 
 规则94在fresh verified/simplified ValueProgram上以实际ValueDefinition

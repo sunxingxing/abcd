@@ -20,20 +20,23 @@ void Check(bool ok, const std::source_location& at = std::source_location::curre
   if (!ok) { std::cerr << "accessor tree check " << at.line() << '\n'; std::abort(); }
 }
 enum class ObserverFlow { kSameBlock, kSplit, kSelection, kInstallSplit, kInstallDiamond, kReverseInstall, kInitializerSplit, kInitializerDiamond, kInitializerReverse };
+enum class FieldBody { kSameBlock, kSplit, kReverse };
 std::string Recover(bool is_static, bool return_prototype = false, int ordinary_parity = -1,
     bool async_method = false, abc::ProfileId profile = abc::ProfileId::kDynamic1206,
     bool capture_cells = false, bool initialized = true, bool input_gap = false,
-    ObserverFlow observers = ObserverFlow::kSameBlock, bool self_initializer = false, bool frame_this = false) {
+    ObserverFlow observers = ObserverFlow::kSameBlock, bool self_initializer = false, bool frame_this = false,
+    FieldBody field_body = FieldBody::kSameBlock) {
   constexpr std::uint32_t kPool = 64, kOwner = 128, kLiteral = 160,
       kCreator = 256, kConstructor = 300, kGetter = 340, kSetter = 380,
       kBufferMethod = 420, kBufferCode = 864, kNestedMethod = 460, kNestedCode = 1000,
       kCreatorCode = 512, kConstructorCode = 768, kGetterCode = 800, kSetterCode = 832,
       kKey = 900, kPrototype = 920, kField = 944, kCaptureKey = 968;
-  std::vector<std::uint8_t> bytes(1100);
+  constexpr std::uint32_t kOtherField = 1150, kInitializerCode = 1200;
+  std::vector<std::uint8_t> bytes(1600);
   const auto word = [&](std::size_t at, std::uint32_t n) {
     for (unsigned i = 0; i < sizeof(n); ++i) bytes[at + i] = static_cast<std::uint8_t>(n >> (8 * i));
   };
-  const std::uint32_t pool[] = {kConstructor, kLiteral, kGetter, kSetter, kKey, kPrototype, kField, kBufferMethod, kNestedMethod};
+  const std::uint32_t pool[] = {kConstructor, kLiteral, kGetter, kSetter, kKey, kPrototype, kField, kBufferMethod, kNestedMethod, kOtherField};
   for (std::size_t i = 0; i < std::size(pool); ++i) word(kPool + i * sizeof(std::uint32_t), pool[i]);
   const auto text = [&](std::size_t at, std::string_view value) {
     bytes[at++] = static_cast<std::uint8_t>(value.size() * 2 + 1);
@@ -41,6 +44,7 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   };
   text(kKey, "value"); text(kPrototype, "prototype"); text(kField, "_value");
   text(kCaptureKey, "shared");
+  text(kOtherField, "_other");
   word(kLiteral, 2); bytes[kLiteral + 4] = static_cast<std::uint8_t>(abc::LiteralTag::kInteger);
   word(kLiteral + 5, 0); // Empty class buffer, prototype split zero.
   if (capture_cells) {
@@ -192,6 +196,34 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
       opcode(abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8), 0, 6, 0, 0,
       opcode(abc::Opcode::kRETURNUNDEFINED)});
     index.methods[2].code = body(kGetterCode, 1, 3, std::move(fields));
+    if (field_body != FieldBody::kSameBlock) {
+      const auto packet = [&](std::uint8_t key, std::uint8_t value) {
+        std::vector<std::uint8_t> data;
+        if (frame_this) data.push_back(opcode(abc::Opcode::kLDTHIS));
+        else data.insert(data.end(), {opcode(abc::Opcode::kLDA_V8), 3});
+        data.insert(data.end(), {opcode(abc::Opcode::kSTA_V8), 0,
+          opcode(abc::Opcode::kLDA_V8), 0, opcode(abc::Opcode::kSTA_V8), 0,
+          opcode(abc::Opcode::kLDAI_IMM32), value, 0, 0, 0,
+          opcode(abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8), 0, key, 0, 0});
+        return data;
+      };
+      const auto first = packet(9, 17), second = packet(6, 42);
+      std::vector<std::uint8_t> data;
+      if (field_body == FieldBody::kSplit) {
+        data = first; data.insert(data.end(), {opcode(abc::Opcode::kJMP_IMM8), 2});
+        data.insert(data.end(), second.begin(), second.end());
+      } else {
+        data = {opcode(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(second.size()+4)};
+        const auto second_at = data.size(); data.insert(data.end(), second.begin(), second.end());
+        const auto to_return = data.size(); data.insert(data.end(), {opcode(abc::Opcode::kJMP_IMM8), 0});
+        data.insert(data.end(), first.begin(), first.end());
+        const auto to_second = data.size(); data.insert(data.end(), {opcode(abc::Opcode::kJMP_IMM8),
+          static_cast<std::uint8_t>(static_cast<std::ptrdiff_t>(second_at)-static_cast<std::ptrdiff_t>(to_second))});
+        data[to_return+1] = static_cast<std::uint8_t>(data.size()-to_return);
+      }
+      data.push_back(opcode(abc::Opcode::kRETURNUNDEFINED));
+      index.methods[2].code = body(kInitializerCode, 1, 3, std::move(data));
+    }
   }
   index.methods[3].code = body(kSetterCode, 1, 4, {opcode(abc::Opcode::kLDTHIS),
       opcode(abc::Opcode::kSTA_V8), 0, opcode(abc::Opcode::kLDA_V8), 4,
@@ -753,6 +785,16 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--body-initializers-json") {
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const auto outer : {ObserverFlow::kInitializerSplit, ObserverFlow::kInitializerDiamond, ObserverFlow::kInitializerReverse})
+        for (const auto body : {FieldBody::kSplit, FieldBody::kReverse})
+          for (const bool frame : {false, true})
+            for (const bool self : {false, true})
+              std::cout << nlohmann::json{{"self", self}, {"fields", true}, {"source", Recover(true, false, -1, false, profile,
+                  false, true, false, outer, self, frame, body)}} << '\n';
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--frame-initializers-json") {
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
       for (const auto flow : {ObserverFlow::kInitializerSplit, ObserverFlow::kInitializerDiamond, ObserverFlow::kInitializerReverse})
