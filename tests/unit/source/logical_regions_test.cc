@@ -992,8 +992,8 @@ int main(int argc, char** argv) {
     const auto text = Source(BufferedSelections(count));
     Check(text.find("$value") == std::string::npos && text.find("$phi") == std::string::npos);
     std::size_t found = 0, offset = 0;
-    while ((offset = text.find(" ? ", offset)) != std::string::npos) { ++found; offset += 3; }
-    Check(found == 2 * count);
+    while ((offset = text.find("?.", offset)) != std::string::npos) { ++found; offset += 2; }
+    Check(found == count && text.find(" ? ") == std::string::npos);
   }
   Check(Source(BufferedSelections(2, false, false)).find("$value") == std::string::npos);
   const auto interrupted = BufferedSelections(2, true);
@@ -1154,7 +1154,7 @@ int main(int argc, char** argv) {
   Check(!Source(BufferedOptionalAccess()).empty());
   const auto optional = OptionalAccess();
   Check(optional.cfg_revision.value == 1);
-  Check(Source(optional).find(" ? ") != std::string::npos);
+  Check(Source(optional).find("?.") != std::string::npos);
   Check(Source(optional).find("if (") == std::string::npos);
   Check(Source(OptionalCall(true)).find("$phi") == std::string::npos);
   Check(!Source(OptionalCall(false)).empty());
@@ -1182,8 +1182,8 @@ int main(int argc, char** argv) {
   for (unsigned count : {2U, 3U, 200U, 201U}) {
     const auto text = Source(OptionalAccess(false, count));
     std::size_t found = 0, offset = 0;
-    while ((offset = text.find(" ? ", offset)) != std::string::npos) { ++found; offset += 3; }
-    Check(found == 2 * count);
+    while ((offset = text.find("?.", offset)) != std::string::npos) { ++found; offset += 2; }
+    Check(found == count && text.find(" ? ") == std::string::npos);
     Check(text.find("if (") == std::string::npos);
   }
   for (unsigned count : {2U, 3U, 200U, 201U, 402U}) {

@@ -5,6 +5,7 @@
 #include <type_traits>
 
 #include "../../src/source/instruction_sources.h"
+#include "../../src/source/optional_access.h"
 #include "abcd/source/tree_printer.h"
 
 namespace abcd::test {
@@ -15,6 +16,9 @@ inline void CheckInstructionPositions(const source::FunctionTree& tree,
     source::GeneratedRange owner) {
   using namespace source;
   const auto check = [](bool ok) { if (!ok) std::abort(); };
+  const auto optional_result = PlanOptionalAccess(tree);
+  check(std::holds_alternative<OptionalAccessSyntax>(optional_result));
+  const auto& optional = std::get<OptionalAccessSyntax>(optional_result);
   check(positions.identity == tree.identity && positions.method == tree.method &&
       positions.value_revision == tree.value_revision && positions.cfg_revision == tree.cfg_revision &&
       owner.begin < owner.end && positions.bytes == owner.end - owner.begin);
@@ -44,6 +48,21 @@ inline void CheckInstructionPositions(const source::FunctionTree& tree,
           }();
           check(target.value < ranges.size());
           const auto range = ranges[target.value];
+          if constexpr (std::is_same_v<T, ExprId>) {
+            if (!optional.omitted_by.empty() && optional.omitted_by[target.value]) {
+              const auto root = *optional.omitted_by[target.value];
+              const auto member = *optional.members[root.value];
+              const auto base = std::get<MemberExpr>(tree.expressions[member.value].expression).base;
+              const auto guard = positions.expressions[root.value];
+              const auto access = positions.expressions[member.value];
+              const auto receiver = positions.expressions[base.value];
+              check(range == GeneratedRange{receiver.end, receiver.end} &&
+                  owner.begin <= guard.begin && guard.begin <= access.begin &&
+                  access.begin <= receiver.begin && receiver.begin < receiver.end &&
+                  receiver.end < access.end && access.end <= guard.end && guard.end <= owner.end);
+              return;
+            }
+          }
           check(owner.begin <= range.begin && range.begin < range.end && range.end <= owner.end);
         }
       }

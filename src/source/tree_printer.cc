@@ -1,4 +1,5 @@
 #include "tail_completion.h"
+#include "optional_access.h"
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/module_enclosure.h"
 
@@ -50,7 +51,7 @@ struct Statement { StmtId id; std::size_t depth; };
 struct EndStatement { StmtId id; };
 struct BlockCursor { StmtId id; std::uint32_t index; std::size_t depth; };
 struct Indent { std::size_t depth; };
-struct PropertyKey { NameId id; };
+struct PropertyKey { NameId id; bool optional = false; };
 struct SymbolName { SymbolId id; };
 struct ArgumentCursor { ArgumentRange range; std::uint32_t index; };
 struct ArrayArgumentCursor { ExprId array; };
@@ -136,6 +137,7 @@ class TreePrinter {
     Append(") ");
     Push(Statement{Tree().body, 0});
     Drain();
+    FinalizeOptionalRanges();
     for (std::size_t i = 0; i < Tree().anchors.size(); ++i) {
       Step();
       if (std::holds_alternative<FunctionExit>(Tree().anchors[i].position))
@@ -211,7 +213,7 @@ class TreePrinter {
     Array(Result().properties, Tree().properties.size()); Array(Result().statements, Tree().statements.size());
     Array(Result().anchors, Tree().anchors.size()); PrepareAnchors();
     if (module || fields) Push(Statement{Tree().body, indent}); else Push(BeginFunction{});
-    Drain(); Append("\n");
+    Drain(); FinalizeOptionalRanges(); Append("\n");
     Result().bytes = written_;
     Result().allocated_bytes = initial_.bytes - remaining_.bytes;
     Result().work = initial_.work - remaining_.work;
@@ -298,7 +300,9 @@ class TreePrinter {
     PrepareFamilyStatus();
     PrepareNativeNames();
     current_ = family_->root.value; depth_ = indent;
-    Push(BeginFunction{}); Drain(); Append("\n");
+    Push(BeginFunction{}); Drain();
+    for (std::size_t i = 0; i < family_->members.size(); ++i) { current_ = i; FinalizeOptionalRanges(); }
+    Append("\n");
     for (const auto emitted : printed_) { Step(); if (!emitted) throw Error::kUnsupportedContext; }
     draft_.bytes = written_; draft_.allocated_bytes = initial_.bytes - remaining_.bytes;
     draft_.work = initial_.work - remaining_.work;
@@ -602,12 +606,12 @@ class TreePrinter {
     Push(std::string_view("])"));
     Push(SnapshotCursor{node.slots, 0});
   }
-  void Member(ExprId base, const MemberKey& key, PostfixContext context = PostfixContext::kMemberBase) {
-    if (const auto* name = std::get_if<NameId>(&key)) Push(PropertyKey{*name});
+  void Member(ExprId base, const MemberKey& key, PostfixContext context = PostfixContext::kMemberBase, bool optional = false) {
+    if (const auto* name = std::get_if<NameId>(&key)) Push(PropertyKey{*name, optional});
     else {
       Push(std::string_view("]"));
       Push(std::get<ComputedKey>(key).expression);
-      Push(std::string_view("["));
+      Push(std::string_view(optional ? "?.[" : "["));
     }
     Push(ExpressionOperand{base, {context}});
   }
@@ -962,8 +966,8 @@ class TreePrinter {
   void Run(PropertyKey key) {
     const auto& name = Tree().names[key.id.value];
     Step(name.size());
-    if (IsSourceIdentifier(name)) { Append("."); Identifier(name); }
-    else { Append("["); Quoted(name); Append("]"); }
+    if (IsSourceIdentifier(name)) { Append(key.optional ? "?." : "."); Identifier(name); }
+    else { Append(key.optional ? "?.[" : "["); Quoted(name); Append("]"); }
   }
   void Run(ExprId id) { Run(ExpressionOperand{id, {}}); }
   void BeginExpression(ExprId id) {
@@ -1027,6 +1031,14 @@ class TreePrinter {
     const auto id = operand.id;
     BeginExpression(id);
     const auto& expression = Tree().expressions[id.value].expression;
+    if (!Optional().members.empty() && Optional().members[id.value]) {
+      // Parentheses end this chain: a following call/member must still execute
+      // on undefined. Value calls keep their existing indirect-call projection.
+      const auto member = *Optional().members[id.value];
+      const auto& read = std::get<MemberExpr>(Tree().expressions[member.value].expression);
+      Append("("); Push(std::string_view(")")); BeginExpression(member);
+      Member(read.base, read.key, PostfixContext::kMemberBase, true); return;
+    }
     if (const auto* unary = std::get_if<UnaryExpr>(&expression);
         unary && unary->operation == TreeUnary::kNot) {
       operand.id = unary->operand; operand.inferred_name = {};
@@ -1174,6 +1186,16 @@ class TreePrinter {
     Push(Indent{depth});
   }
   void PrepareAnchors() {
+    auto planned = PlanOptionalAccess(Tree(), remaining_);
+    if (const auto* error = std::get_if<TreeStructureError>(&planned)) {
+      if (*error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
+      if (*error == TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
+      throw Error::kUnsupportedContext;
+    }
+    if (family_ && optionals_.empty()) Array(optionals_, family_->members.size());
+    auto& syntax = family_ ? optionals_[current_] : optional_;
+    syntax = std::get<OptionalAccessSyntax>(std::move(planned));
+    Admit(syntax.allocated_bytes, 1); Step(syntax.work);
     Array(Located(), Tree().anchors.size());
     std::size_t count = 0;
     for (std::size_t i = 0; i < Tree().anchors.size(); ++i) {
@@ -1188,6 +1210,21 @@ class TreePrinter {
   }
   static bool Less(BlockBoundary left, BlockBoundary right) {
     return left.block != right.block ? left.block < right.block : left.index < right.index;
+  }
+  const OptionalAccessSyntax& Optional() const { return family_ ? optionals_[current_] : optional_; }
+  void FinalizeOptionalRanges() {
+    const auto& syntax = Optional();
+    const auto finalize = [&](const auto& omitted, auto& ranges) {
+      for (std::size_t i = 0; i < omitted.size(); ++i) {
+        Step(); if (!omitted[i]) continue;
+        const auto member = *syntax.members[omitted[i]->value];
+        const auto base = std::get<MemberExpr>(Tree().expressions[member.value].expression).base;
+        const auto boundary = Result().expressions[base.value].end;
+        ranges[i] = {boundary, boundary};
+      }
+    };
+    finalize(syntax.omitted_by, Result().expressions);
+    finalize(syntax.omitted_properties_by, Result().properties);
   }
   void Boundary(BlockBoundary position) {
     // Binary lookup per structural boundary, not a scan of every method anchor.
@@ -1221,6 +1258,8 @@ class TreePrinter {
   std::vector<OwnerTree> owners_;
   std::vector<std::uint8_t> printed_;
   std::vector<std::uint8_t> native_names_;
+  OptionalAccessSyntax optional_;
+  std::vector<OptionalAccessSyntax> optionals_;
 };
 }  // namespace
 

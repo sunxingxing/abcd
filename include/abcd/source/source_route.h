@@ -281,7 +281,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // canonical native aliases and actual normal/phased store operands; no new declaration.
 // Rules 103 project constructor tail returns of their own receiver through
 // native completion, retaining tree/control/origins and protected reads.
-inline constexpr std::uint32_t kRouteEvidenceRules = 103;
+// Rules 104 use a null/undefined/other abstract interpretation for optional
+// member syntax; original tree/control and omitted predicate origins remain.
+inline constexpr std::uint32_t kRouteEvidenceRules = 104;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

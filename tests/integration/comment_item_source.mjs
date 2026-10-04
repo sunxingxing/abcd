@@ -8,6 +8,9 @@ const [engine, abc, paired] = process.argv.slice(2);
 const report = JSON.parse(execFileSync(engine, [abc, '20678', '--record-source', '--value-source'], { encoding: 'utf8' }));
 assert.equal(report.source_complete, true);
 assert.equal(report.legacy_writer_used, false);
+assert.match(report.source, /item\?\.reviewCnt/);
+assert.match(report.source, /item\?\.subContent/);
+assert.doesNotMatch(report.source, /item !== null|item !== \(void 0\)/);
 const generated = await import(`data:text/javascript;base64,${Buffer.from(report.source).toString('base64')}`);
 assert.deepEqual(Object.keys(generated), ['CommentItem']);
 const text = readFileSync(paired, 'utf8');
@@ -78,4 +81,4 @@ for (const item of [null, undefined]) {
   assert.throws(() => new Reference(item), TypeError);
   ++scenarios;
 }
-console.log(`CommentItem complete module: ${scenarios} paired constructor scenarios passed; representation acceptance remains separate`);
+console.log(`CommentItem complete module: ${scenarios} paired constructor scenarios and optional-access representation passed`);

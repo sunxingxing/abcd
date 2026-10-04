@@ -3,6 +3,18 @@
 最新替换状态及补充事项见文末规则99；历史表中的严格比较候选及literal同块条件不再是
 当前准入条件。未替换项继续开放，不能将本次局部交付称为全量审计闭合。
 
+规则104补充：原生optional member使用null/undefined/other域的共同
+抽象解释，按SymbolId或ThisExpr.owner关联原稳定读取。允许严格比较、
+NOT、AND/OR及条件组合，不要求固定guard数量、顺序、CFG块或表达式
+arena顺序。成员base/key与外部call/member边界保留；纯条件证明永不
+执行的opaque arm，来源事件沿完整AST所有权记录，不扩展字节码匹配。
+opaque效果分支不能仅凭长得像optional而删除；不同binding、缺少null
+路径、非undefined fallback和truthiness均不能替代nullish语义。
+1/200/201/402组合、反向arena、计算键/异常/外部value-call与member
+分别验证，实际CommentItem配对通过。尚未实现原生optional call叶子、
+effectful base快照/alias和整链压缩；完整family仍核对子函数owner发布，
+不因为不可达就伪造子函数完成。这些实现缺口不作为语言不变量宣称。
+
 规则103补充：构造器尾部receiver完成复用共同ImplicitTailCompletion，
 按typed callable、ThisExpr.owner和真实AST body位置选择原生完成表示。
 不增加ABC的同块、PC、寄存器、样本或opcode序列准入。实际body尾部

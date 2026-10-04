@@ -1485,3 +1485,40 @@ introduced. Maintenance requires preserving the original block/site ownership,
 Language-store checks and exposure transfer when extending cell lifetimes.
 Decoded fixtures exercise 1/200/201/402 disjoint regions and reversed block
 layouts; generated common-tree source has independent identity/effect tests.
+
+## Optional member syntax (rules 104)
+
+PlanOptionalAccess interprets typed expression meanings over the finite language
+partition null/undefined/other, tracking one stable SymbolId or ThisExpr owner,
+pure predicate truth and undefined/same-member results. This is a small abstract
+interpretation with Kahn dependency scheduling, derived from ECMA-262 2024
+13.3.9; no external implementation or dependency is imported. Its invariant is
+exactly one original member read on the non-nullish path, none on nullish paths,
+with original receiver/key, exception scope and effect ownership preserved.
+
+Each expression has one syntax owner. The semantic dependency forest has at
+most three immediate operands per node; a bottom-up queue resolves arbitrary
+arena order, and a top-down pass retains outermost proven projections without
+replaying subtrees for every candidate. A second queue streams the complete
+syntax ownership of omitted opaque arms, including variadic arguments and
+aggregate properties. Every omitted expression is enqueued once; selected
+member/base/key ownership stays independently printed. Predicate conditional
+joins retain common truth/results instead of requiring a fixed number or order
+of null checks. Unknown/effectful computation is never inferred from spelling.
+
+For N expressions, A argument slots and P properties, time/storage is O(N+A+P)
+(with a fixed three-domain abstract state); no per-selection subtree search or
+per-variable CFG walk is added. Trees without a selection or stable member have
+an O(N) allocation-free pre-scan. Retained plans and conservative temporary
+scratch use the existing byte/work accounting; no new production quota or
+physical RSS claim is introduced. Printer ranges are finalized in one linear
+pass at selected base.end; emission and streamed JSON use the same projection.
+
+Maintenance must keep typed identity, pure guards and optional-chain boundaries
+separate from source recovery admission. Member-leaf syntax is current coverage;
+optional call leaves, effectful base snapshots/aliases, whole-chain compaction
+and omitted child-function publication remain separate representation gaps.
+Node comparisons cover primitive falsy values, computed-key conversion, getter
+and call exceptions, external access/call, discarded effects, reverse arena
+order and 1/200/201/402 repeated guard composition. Decoded logical/record
+fixtures separately validate the common engine route, not just constructed ASTs.

@@ -86,6 +86,32 @@ work 统计和调用方显式传入有限额度的底层兼容接口保留，但
 整份 record 的最终目标不变。演进任务见
 [C00–C09 计划](../../superpowers/plans/2026-09-28-unified-control-regions.md)。
 
+## 原生可选成员访问的表示（规则 104）
+
+PlanOptionalAccess在已经检查的FunctionTree上解释null、undefined、other
+三个语言值域，证明nullish路径返回undefined、其他路径恰好执行同一个
+MemberExpr。纯谓词按typed SymbolId/ThisExpr.owner关联稳定读取，支持
+严格比较、NOT、AND/OR及条件组合，不按两个guard、opcode序列、寄存器、
+块布局、源码名字或样本选择。效果、异常与所有权仍由原贯通分析负责；
+全局getter或不同binding不能凭同样拼写获得稳定身份。
+
+共同printer用原MemberExpr的base/key输出?.name或?.[key]。外部member
+与call通过括号结束本次optional chain；value-call沿用间接调用表示，不能
+因成员文本改变this/direct-eval语义。nullish路径不计算key、不读取getter；
+非nullish路径仍保留原key转换、receiver和异常。依据
+[ECMA-262 2024 Optional Chains](https://tc39.es/ecma262/2024/multipage/ecmascript-language-expressions.html#sec-optional-chains)。
+
+不改FunctionTree、CFG、operand或原instruction来源。被省略的测试与原
+分支节点在已打印base.end、原生?.之前保留零宽事件，位置序列化标记
+optional_access及projection root。纯条件证明永不执行的opaque arm，也
+沿完整AST所有权保留其调用/聚合子节点事件；不捏造有长度的源码片段。
+printer、family emission与serializer使用同一计划，错误仍保留真实分类。
+
+当前叶子是稳定binding/receiver的成员读取。原生optional call、effectful
+base的单次快照/alias证明和整条链合并仍未完成；未打印的子函数owner
+仍受现有完整family约束，不能因不可达分支就伪造其发布完成。这些是
+实现/表示缺口，不是语言禁止条件，亦不授权删除原身份/效果义务。
+
 ## 原生函数尾部完成的表示（规则 100、103）
 
 共同 printer 可将实际 function body 最后一个直接子语句的 bare return 或

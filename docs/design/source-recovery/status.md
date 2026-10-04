@@ -1,6 +1,6 @@
 # 项目进展与设计审查
 
-更新时间：2026-10-04。设计基线见 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md)。
+更新时间：2026-10-05。设计基线见 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md)。
 本页是当前状态入口；[progress.md](progress.md) 保留历史证据，不覆盖本页结论。
 
 ## 更新规则
@@ -11,6 +11,51 @@
 - 不按文件数、提交数或接口数量宣布完成；必须以原计划的端到端验收为准。
 
 ## 当前阶段
+
+### 2026-10-05：以共同 nullish 解释恢复原生可选成员访问
+
+- 规则revision104，基线e7762a23。CommentItem实际完整record旧输出仍将
+  optional member展开为嵌套三元；paired-red.log保留1/1表示断言失败。
+  本轮不改变数值验收合同，不增加样本/名字/opcode/寄存器/PC/同块匹配。
+- PlanOptionalAccess解释null/undefined/other三个语言域，按typed SymbolId
+  或ThisExpr.owner证明原稳定读取；严格比较、NOT、AND/OR与条件谓词
+  共用传播/合流。Kahn解决任意arena顺序，top-down保留最外层投影，
+  不限制guard数或顺序，不逐候选重放子树。原FunctionTree、CFG、控制、
+  operand及instruction来源保留，同一printer输出?.name/?.[key]。
+- 原selected member/base/key及其getter、转换、receiver和异常仍执行一次；
+  nullish路径不执行key/getter。括号结束本次chain，外部member与value
+  call仍执行，间接调用不取得成员this或direct-eval语义。不同binding、
+  null fallback、truthiness、缺少null路径与有副作用的guard/fallback不
+  冒充optional member。effectful base仍需独立快照/alias证明。
+- 省略节点在已打印base.end、?.之前记录零宽事件；emission/serializer
+  共用计划和optional_access/projection标记。新dead-arm反例在旧实现
+  source位置断言RED（dead-arm-red.log，exit134），修复沿完整AST所有权
+  流式保留调用/聚合子节点及属性事件，不捏造源码长度；资源/work失败
+  保持typed分类，serializer无法提供真实计划时传播写入失败。
+- 新152组语法fixture覆盖1/200/201/402重复guard、反向arena、嵌套谓词、
+  quoted/computed key、外部member/value-call、discarded call/aggregate
+  及效果反例；独立Node oracle共13,376场景通过，另检查来源序列化。
+  fixture只验证语法投影，实际decoded logical/normal/phased组合及
+  CommentItem完整module的2,422配对构造场景分别验收，不读取sidecar生成。
+- 日志前缀/tmp/abcd-optional-access-*。首轮focused-tests-1.log 4/6通过，
+  两项停在旧的每访问两个三元表达式断言；核对实际生成源码后更新形式
+  断言及严格零宽事件oracle，focused-tests-2.log 6/6通过27.13秒。
+  related-build.log的35个实际注册目标单-j4成功，related-tests.log
+  最终73/73通过454.30秒，含类/构造器、捕获、联合选择、模块、异常
+  相位、getter/effect及generator return/suspend/loop回归。
+- fresh build/stage-one/optional-access-pass-1固定五ABC均退出0，仍为
+  80complete/26incomplete/0failure/46no-module，无新完整项、完整回退
+  或legacy writer。batch-1.log/syntax-1.log核对原index/manifest SHA和
+  size，106份源码全部解析通过。4个record（3完整、1部分）的6处展开式
+  恢复为?.；style-summary-1.json逐项核对完整diff。部分record仍不作为
+  整份等价执行输入，源码语法通过不代表所有record行为已验收。
+- author self-review核对稳定身份、纯谓词、false/0/-0/NaN/string/BigInt/
+  Symbol、key/getter/call次序、chain边界、来源位置及线性所有权队列。
+  O(N+A+P)时间/空间，无新依赖；没有独立代理审查或进程峰值RSS结论。
+  原生optional call、effectful base快照/alias、整链压缩及被省略子函数
+  owner的完整family发布仍是表示缺口。一般数值、未知父构造协议、字段/
+  全局/签名/Reference/phase与阶段一独立语义/表示验收仍未完成，Goal
+  active；全量测试、扩展语料、RSS/基准、调度器/DFX及代理继续暂停。
 
 ### 2026-10-04：构造器以原生完成表示尾部 receiver 返回
 
