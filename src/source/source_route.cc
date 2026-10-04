@@ -29,7 +29,7 @@ constexpr std::array kProfiles{
     abc::ProfileId::kDynamic2400, abc::ProfileId::kStatic0107};
 constexpr std::string_view kContractNames[]{"language_and_host_v1",
                                             "language_and_host_v2",
-                                            "language_and_host_v3"};
+                                            "language_and_host_v3", "language_arithmetic_v1"};
 constexpr std::string_view kRouteNames[]{"legacy", "value_tree"};
 constexpr std::string_view kStageNames[]{
     "decoded", "input_verified", "values_imported", "values_verified",
@@ -128,7 +128,8 @@ std::optional<RouteReceiptError> ValidateRouteReceipt(
       identity.abc_version == abc::AbcVersion{} ||
       (identity.contract != SourceContract::kLanguageAndHostV1 &&
        identity.contract != SourceContract::kLanguageAndHostV2 &&
-       identity.contract != SourceContract::kLanguageAndHostV3))
+       identity.contract != SourceContract::kLanguageAndHostV3 &&
+       identity.contract != SourceContract::kLanguageArithmeticV1))
     return RouteReceiptError::kIdentity;
   const auto valid_entity = [&](const auto& entity) {
     return !entity || (entity->value >= abc::kDynamicHeaderSize &&

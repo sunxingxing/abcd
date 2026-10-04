@@ -143,6 +143,7 @@ struct SemanticProof {
   DefinedCaptures defined_captures;
   FrameReceiver receiver = FrameReceiver::kUnknown;
   std::optional<ArgumentFrameFact> arguments;
+  ArithmeticSemantics arithmetic = ArithmeticSemantics::kPinnedRuntime;
 };
 enum class SemanticProofError : std::uint8_t {
   kAccumulator,  // Retained serialized value; generic proof now uses SSA.
@@ -207,6 +208,7 @@ using SemanticProofResult = std::variant<SemanticProof,
     std::span<const CapturePreservation> preserved = {},
     CallResultValues calls = CallResultValues::kUnknown,
     FrameReceiver receiver = FrameReceiver::kUnknown,
-    const ArgumentFrameFact* arguments = nullptr);
+    const ArgumentFrameFact* arguments = nullptr,
+    ArithmeticSemantics arithmetic = ArithmeticSemantics::kPinnedRuntime);
 }  // namespace abcd::analysis
 #endif  // ABCD_ANALYSIS_SEMANTIC_VALIDATION_H_

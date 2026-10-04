@@ -42,7 +42,7 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
                                          ClosureWrites closure_writes,
                                          std::span<const CapturePreservation> preserved,
                                          CallResultValues calls, FrameReceiver receiver,
-                                         const ArgumentFrameFact* arguments) {
+                                         const ArgumentFrameFact* arguments, ArithmeticSemantics arithmetic) {
   try {
   if (first_abi_register > frame_size ||
       method.instructions.size() != body.instructions.size() ||
@@ -242,7 +242,7 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
     IdfQuota quota{budget.work - locals->work_units};
     auto values = RegisterValueFlow::BuildWithLanguageLoads(
         body, method.ssa, frame_size, entries, loads, quota, {remaining},
-        method.instructions, calls, receiver);
+        method.instructions, calls, receiver, arithmetic);
     auto* analyzed = std::get_if<RegisterValueFlow>(&values);
     if (!analyzed) {
       const auto& failure = std::get<ValueFlowFailure>(values);
@@ -282,7 +282,7 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
     return SemanticProof{std::move(*bound),
                          std::move(*analyzed),
                          bytes, std::move(modules), std::move(captured_reads),
-                         std::move(*locals), closure_writes, {}, receiver, argument_inputs.fact};
+                         std::move(*locals), closure_writes, {}, receiver, argument_inputs.fact, arithmetic};
   } catch (const std::bad_alloc&) {
     return Fail(SemanticProofError::kResourceLimit);
   } catch (const std::length_error&) {

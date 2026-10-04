@@ -94,7 +94,7 @@ ValueKinds FloatNumberKinds(Float64Bits number) {
   }
   return kinds;
 }
-ValueRule DescribeScalarValue(const ScalarAssignment& assignment) {
+ValueRule DescribeScalarValue(const ScalarAssignment& assignment, ArithmeticSemantics arithmetic) {
   if (const auto* value = std::get_if<ScalarValue>(&assignment.expression)) {
     if (std::holds_alternative<Accumulator>(*value) ||
         std::holds_alternative<abc::RegisterId>(*value))
@@ -168,35 +168,40 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment) {
         binary->op == BinaryOperator::kGreater || binary->op == BinaryOperator::kGreaterEqual ||
         binary->op == BinaryOperator::kInstanceOf || binary->op == BinaryOperator::kIn)
       return ValueRule{ValueRuleKind::kLanguageOperation, ValueKinds::ZeroOrOnePrimitive()};
+    const auto numeric_rule = [&](ValueRuleKind kind) {
+      return ValueRule{kind, {}, arithmetic};
+    };
+    if (binary->op == BinaryOperator::kRemainder && arithmetic == ArithmeticSemantics::kSourceLanguage)
+      return ValueRule{ValueRuleKind::kLanguageOperation, ValueKinds::Defined()};
     if (binary->op == BinaryOperator::kAdd)
-      return ValueRule{ValueRuleKind::kAdd, {}};
+      return numeric_rule(ValueRuleKind::kAdd);
     if (binary->op == BinaryOperator::kSubtract)
-      return ValueRule{ValueRuleKind::kSubtract, {}};
+      return numeric_rule(ValueRuleKind::kSubtract);
     if (binary->op == BinaryOperator::kMultiply)
-      return ValueRule{ValueRuleKind::kNonNaNMultiply, {}};
+      return numeric_rule(ValueRuleKind::kNonNaNMultiply);
     if (binary->op == BinaryOperator::kDivide)
-      return ValueRule{ValueRuleKind::kNonNaNDivide, {}};
+      return numeric_rule(ValueRuleKind::kNonNaNDivide);
     if (binary->op == BinaryOperator::kExponent)
-      return ValueRule{ValueRuleKind::kIntegralExponent, {}};
+      return numeric_rule(ValueRuleKind::kIntegralExponent);
     if (binary->op == BinaryOperator::kShiftRightUnsigned)
-      return ValueRule{ValueRuleKind::kUnsignedShift, {}};
+      return numeric_rule(ValueRuleKind::kUnsignedShift);
     if (binary->op == BinaryOperator::kShiftLeft || binary->op == BinaryOperator::kShiftRightSigned ||
         binary->op == BinaryOperator::kBitAnd || binary->op == BinaryOperator::kBitOr || binary->op == BinaryOperator::kBitXor)
-      return ValueRule{ValueRuleKind::kBitwise, {}};
+      return numeric_rule(ValueRuleKind::kBitwise);
     language = HasLanguageResult(binary->op);
   }
   return language ? ValueRule{ValueRuleKind::kLanguageOperation, {}}
                   : ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};
 }
 std::variant<ValueRule, ScalarError> DescribeRegisterValue(
-    const abc::DecodedInstruction& instruction, std::uint64_t frame_size) {
+    const abc::DecodedInstruction& instruction, std::uint64_t frame_size, ArithmeticSemantics arithmetic) {
   const auto effect = LiftRegisterEffect(instruction, frame_size);
   if (const auto* error = std::get_if<ScalarError>(&effect)) return *error;
   if (!std::get<RegisterEffect>(effect).write)
     return ScalarError::kMalformedInstruction;
   const auto scalar = LiftScalarInstruction(instruction, frame_size);
   if (const auto* assignment = std::get_if<ScalarAssignment>(&scalar))
-    return DescribeScalarValue(*assignment);
+    return DescribeScalarValue(*assignment, arithmetic);
   if (std::holds_alternative<LoadHole>(
           LiftHoleInstruction(instruction, frame_size)))
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::Hole()};

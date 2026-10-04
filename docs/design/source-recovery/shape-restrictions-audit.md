@@ -3,6 +3,17 @@
 最新替换状态及补充事项见文末规则99；历史表中的严格比较候选及literal同块条件不再是
 当前准入条件。未替换项继续开放，不能将本次局部交付称为全量审计闭合。
 
+规则109补充：语言算术是显式SourceContract前提，经共同typed数值规则
+贯通normal/phased SSA和linear分析，不以样本、数值碰巧安全、opcode
+序列、PC/寄存器、同块或producer名单选择恢复。默认解释器表示前提
+保持，语言输入、receiver、效果/异常、scope和来源义务仍由原分析负责。
+普通二元表达式/copy/块拆分及复合优先级使用相同树和printer，无第二套
+布局准入。遇到raw copy transport的snapshot来源模型缺口时没有删除
+origin校验；两次局部放宽已全部撤回，后续必须共同区分计算来源与传输
+wrapper来源。类成员部分输出目前只传播input gap，不能传播tree gap，
+新模式的7个typed tree失败因此暂时没有部分源码；这两项是实现缺口，
+不能描述为语言禁止，也不能计作阶段一或全量条件审计完成。
+
 规则108补充：普通 ControlDecision 路径中的语句根现进入共同 FunctionTree
 语句 staging，以块内私有条件变量及同层 if 保留执行条件和顺序，不再
 把“必须是 inline expression”作为这一表示的要求。选择依据是共同

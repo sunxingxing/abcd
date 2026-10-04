@@ -22,6 +22,11 @@ source-level UBSan probe establishes this limitation, not actual Ark VM output.
 Do not silently treat that case as native JS subtraction or authorize it from a
 Language-only input. The original noncanonical-NaN counterexamples still refuse.
 
+An explicit opt-in [language arithmetic contract](language-arithmetic.md)
+uses source-language binary numeric rules while preserving the default pinned
+contract and its restrictions above. It does not certify actual Ark binary
+output or relax input, scope, receiver, effect or exception obligations.
+
 Normal and phased SSA use the same sparse worklist transfer rules; linear
 lexical analysis calls the same scalar helpers. ToNumber preserves all facts of a proved Number; otherwise a Language
 input has a Number normal result. The pinned conversion returns Number or

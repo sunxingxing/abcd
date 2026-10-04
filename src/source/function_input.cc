@@ -219,7 +219,7 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
     }
     auto verified = analysis::VerifySemanticSource(body, *input, frame.registers, frame.locals,
         quota.Remaining(), captures, loads, writes, {}, NormalCallResults(identity.contract), receiver,
-        arguments ? &*arguments : nullptr);
+        arguments ? &*arguments : nullptr, Arithmetic(identity.contract));
     auto* proof = std::get_if<analysis::SemanticProof>(&verified);
     if (!proof) {
       auto failure = std::get<analysis::SemanticProofFailure>(verified);

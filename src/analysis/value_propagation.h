@@ -19,6 +19,7 @@ struct ValueNode {
   std::array<SsaValueId, kScalarInputs> inputs{};
   std::uint8_t input_count = 0;
   ValueKinds normal_result = ValueKinds::Language();
+  ArithmeticSemantics arithmetic = ArithmeticSemantics::kPinnedRuntime;
 };
 
 // Shared finite-height solver. Callers validate node/edge indices and build
@@ -140,6 +141,15 @@ void PropagateValues(std::span<const ValueNode> nodes,
         } else {
           propagated = nodes[target].normal_result;
         }
+      }
+      if (nodes[target].arithmetic == ArithmeticSemantics::kSourceLanguage &&
+          nodes[target].input_count == kScalarInputs) {
+        const auto left = facts[nodes[target].inputs[0].value];
+        const auto right = facts[nodes[target].inputs[1].value];
+        // Bottom inputs must wait; a source-language premise cannot seed an
+        // unproved cycle or upgrade internal markers to language values.
+        if (!left.IsEmpty() && !right.IsEmpty())
+          propagated = SourceBinaryValue(nodes[target].kind, left, right, propagated);
       }
       const auto joined = facts[target].Join(propagated);
       if (joined == facts[target]) continue;

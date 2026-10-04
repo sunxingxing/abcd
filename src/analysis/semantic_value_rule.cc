@@ -6,17 +6,17 @@
 
 namespace abcd::analysis::detail {
 std::variant<ValueRule, ScalarError> DescribeRegisterValue(
-    const SemanticInstruction& instruction, CallResultValues calls, FrameReceiver receiver) {
+    const SemanticInstruction& instruction, CallResultValues calls, FrameReceiver receiver, ArithmeticSemantics arithmetic) {
   if (!instruction.effects.normal_registers.write)
     return ScalarError::kMalformedInstruction;
   // This is the typed counterpart of the decoded rule boundary. Preserve its
   // conservative facts; adding a new IR alternative must require review here,
   // not default to Language or silently re-read its original opcode.
-  return std::visit([calls, receiver](const auto& operation)
+  return std::visit([calls, receiver, arithmetic](const auto& operation)
       -> std::variant<ValueRule, ScalarError> {
     using T = std::decay_t<decltype(operation)>;
     if constexpr (std::is_same_v<T, ScalarAssignment>) {
-      return DescribeScalarValue(operation);
+      return DescribeScalarValue(operation, arithmetic);
     } else if constexpr (std::is_same_v<T, NamedRead> ||
                          std::is_same_v<T, AwaitValue> || std::is_same_v<T, YieldValue>) {
       return ValueRule{ValueRuleKind::kLanguageOperation, {}};

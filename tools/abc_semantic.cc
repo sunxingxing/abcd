@@ -150,7 +150,8 @@ int FailStage(InspectError kind, unsigned stage_error,
 int Inspect(const std::filesystem::path& path, std::uint32_t entity,
             std::optional<source::SourceForm> form, bool all_records,
             InspectDetail detail, source::RoutePolicy policy,
-            ValueSourceScope scope = ValueSourceScope::kMember) {
+            ValueSourceScope scope = ValueSourceScope::kMember,
+            source::SourceContract contract = source::kSourceContract) {
   auto opened = corpus::AbcFile::Open(path);
   const auto* owned = std::get_if<std::unique_ptr<corpus::AbcFile>>(&opened);
   if (!owned) return Fail(InspectError::kOpen);
@@ -163,6 +164,8 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
   const auto* header = std::get_if<abc::Header>(&parsed);
   if (!header || header->checksum != hash->adler32)
     return Fail(InspectError::kHeader);
+  auto identity = source::MakeRouteInputIdentity(*hash, *header);
+  identity.contract = contract;
   constexpr std::size_t kIndexBytes = 256 * 1024 * 1024;
   const auto indexed = abc::BuildMetadataIndex(file, *header, {kIndexBytes});
   const auto* index = std::get_if<abc::MetadataIndex>(&indexed);
@@ -178,7 +181,7 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
   if (scope == ValueSourceScope::kConditionalValues || scope == ValueSourceScope::kConditionalFamily ||
       scope == ValueSourceScope::kFamilyDraft)
     return InspectValueSource(file, *header, *index, *method,
-        source::MakeRouteInputIdentity(*hash, *header), std::cout, scope);
+        identity, std::cout, scope);
   const auto& code = *method->code;
   if (code.registers >
       std::numeric_limits<std::uint32_t>::max() - code.arguments)
@@ -193,20 +196,20 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
   // falls back to the old AST or writer.
   if (scope == ValueSourceScope::kRecordSlice)
     return InspectValueSource(file, *header, *index, *method,
-        source::MakeRouteInputIdentity(*hash, *header), std::cout, scope);
+        identity, std::cout, scope);
   if (policy == source::RoutePolicy::kRequireValueTree) {
     if (form && *form == source::SourceForm::kRecord)
       return InspectValueSource(file, *header, *index, *method,
-          source::MakeRouteInputIdentity(*hash, *header), std::cout, ValueSourceScope::kRecordTree);
+          identity, std::cout, ValueSourceScope::kRecordTree);
     if (form && *form != source::SourceForm::kFunction) {
       return ReportRouteReceipt(ValueRouteReceipt(
-          source::MakeRouteInputIdentity(*hash, *header),
+          identity,
           {source::RouteFailureClass::kUnsupported,
            source::ValueRouteError::kRouteUnavailable, {}},
           method->offset.value, method->owner_offset.value));
     }
     return InspectValueSource(file, *header, *index, *method,
-        source::MakeRouteInputIdentity(*hash, *header), std::cout);
+        identity, std::cout);
   }
   if (detail == InspectDetail::kExceptionFlow || detail == InspectDetail::kExceptionTemplate) {
     // Child templates need the same-file membership and role owners used by
@@ -523,7 +526,7 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
           // unreachable today. Consume the typed failure rather than
           // re-deriving it (A01).
           return ReportRouteReceipt(ValueRouteReceipt(
-              source::MakeRouteInputIdentity(*hash, *header),
+              identity,
               failure.failure, entity, method->owner_offset.value));
         } else {
           constexpr auto stage = [] {
@@ -572,7 +575,7 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc < 3 || argc > 5) {
+  if (argc < 3 || argc > 6) {
     std::cerr << "usage: abc_semantic INPUT.abc METHOD_ENTITY [--class-source|--function-source|--record-source] [--value-source]\n"
                  "       abc_semantic INPUT.abc METHOD_ENTITY --instructions|--exception-flow|--exception-template\n"
                  "       abc_semantic INPUT.abc --all-records\n"
@@ -587,6 +590,7 @@ int main(int argc, char** argv) {
                  "  and any combination of a detail mode with --value-source are rejected\n"
                  "  regardless of option order\n"
                  "  --value-source requires the unified value-tree route\n"
+                 "  --language-arithmetic explicitly selects language numeric semantics on that route\n"
                  "  ordinary function expressions require a strict enclosing destination;\n"
                  "  method/closure fragments do not certify a complete executable record\n"
                  "  unimplemented stages return a typed route receipt with no source text and\n"
@@ -611,13 +615,16 @@ int main(int argc, char** argv) {
   unsigned forms = 0;
   unsigned details = 0;
   unsigned value_routes = 0;
+  unsigned language_arithmetic = 0;
   unsigned record_slices = 0;
   unsigned conditional_values = 0;
   unsigned conditional_families = 0;
   unsigned family_drafts = 0;
   for (int i = 3; i < argc; ++i) {
     const std::string_view option{argv[i]};
-    if (option == "--family-source-draft") {
+    if (option == "--language-arithmetic") {
+      ++language_arithmetic;
+    } else if (option == "--family-source-draft") {
       ++family_drafts;
     } else if (option == "--conditional-family") {
       ++conditional_families;
@@ -647,6 +654,10 @@ int main(int argc, char** argv) {
       return Fail(InspectError::kArguments);
     }
   }
+  // Numeric opt-in is limited to the common source route, in every order.
+  if (language_arithmetic > 1 || (language_arithmetic &&
+      (value_routes != 1 || details || record_slices || conditional_values || conditional_families || family_drafts)))
+    return Fail(InspectError::kArguments);
   // Duplicate or conflicting selectors are rejected in every order.
   if (family_drafts > 1 || (family_drafts && (forms || details || value_routes || record_slices || conditional_values || conditional_families)))
     return Fail(InspectError::kArguments);
@@ -679,5 +690,6 @@ int main(int argc, char** argv) {
   const auto policy = value_routes
                           ? source::RoutePolicy::kRequireValueTree
                           : source::RoutePolicy::kLegacyAllowed;
-  return Inspect(argv[1], entity, form, false, InspectDetail::kSummary, policy);
+  return Inspect(argv[1], entity, form, false, InspectDetail::kSummary, policy,
+      ValueSourceScope::kMember, language_arithmetic ? source::SourceContract::kLanguageArithmeticV1 : source::kSourceContract);
 }

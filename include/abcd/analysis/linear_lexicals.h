@@ -1,6 +1,7 @@
 #ifndef ABCD_ANALYSIS_LINEAR_LEXICALS_H_
 #define ABCD_ANALYSIS_LINEAR_LEXICALS_H_
 
+#include "abcd/analysis/arithmetic_semantics.h"
 #include "abcd/analysis/creation_binding.h"
 #include "abcd/analysis/environment_flow.h"
 #include "abcd/analysis/module_load.h"
@@ -95,7 +96,8 @@ class LinearLexicals {
       CapturedValues captured_values = CapturedValues::kReject,
       std::span<const std::uint8_t> named_scopes = {},
       std::span<const std::uint8_t> guarded_module_loads = {},
-      std::span<const StagedNamedInvocation> staged_calls = {});
+      std::span<const StagedNamedInvocation> staged_calls = {},
+      ArithmeticSemantics arithmetic = ArithmeticSemantics::kPinnedRuntime);
   std::span<const LinearStatement> Statements() const {
     return {statements_.get(), statements_ ? statement_count_ : 0};
   }

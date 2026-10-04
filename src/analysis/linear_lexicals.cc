@@ -24,7 +24,7 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
     CapturedValues captured_values,
     std::span<const std::uint8_t> named_scopes,
     std::span<const std::uint8_t> guarded_module_loads,
-    std::span<const StagedNamedInvocation> staged_calls) {
+    std::span<const StagedNamedInvocation> staged_calls, ArithmeticSemantics arithmetic) {
   using Error = LinearLexicalError;
   abc::CodeOffset offset{};
   const auto fail = [&](Error kind) {
@@ -375,8 +375,10 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
         }
       }
       if (access.write) {
+        const auto numeric_left = access.read_count == detail::kScalarInputs ? state(access.reads[0]) : ValueKinds{};
+        const auto numeric_right = access.read_count == detail::kScalarInputs ? state(access.reads[1]) : ValueKinds{};
         const auto described =
-            detail::DescribeRegisterValue(instruction, frame_size);
+            detail::DescribeRegisterValue(instruction, frame_size, arithmetic);
         if (std::holds_alternative<ScalarError>(described))
           return fail(Error::kInstruction);
         const auto rule = std::get<detail::ValueRule>(described);
@@ -440,6 +442,8 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
                 state(access.reads[0]), state(access.reads[1]));
             break;
         }
+        if (rule.arithmetic == ArithmeticSemantics::kSourceLanguage && access.read_count == detail::kScalarInputs)
+          state(*access.write) = detail::SourceBinaryValue(rule.kind, numeric_left, numeric_right, state(*access.write));
       }
     }
     if (creation_cursor != creations.size() ||

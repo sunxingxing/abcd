@@ -2,6 +2,7 @@
 #define ABCD_ANALYSIS_REGISTER_VALUE_RULE_H_
 
 #include "abcd/analysis/register_effect.h"
+#include "abcd/analysis/arithmetic_semantics.h"
 #include "abcd/analysis/call_result.h"
 #include "abcd/analysis/frame_receiver.h"
 #include "abcd/analysis/value_kinds.h"
@@ -35,6 +36,7 @@ struct ValueRule {
   // Fixed definitions seed the solver. For kLanguageOperation/kEquality,
   // this is a conditional normal result; input obligations still run first.
   ValueKinds seed;
+  ArithmeticSemantics arithmetic = ArithmeticSemantics::kPinnedRuntime;
 };
 // Pinned JSTaggedValue::ToNumber maps Boolean/null to tagged 0/1. A
 // coercion fact never reclassifies the original value as Number or authorizes
@@ -152,6 +154,21 @@ constexpr ValueKinds ExponentNumbers(ValueKinds base, ValueKinds exponent) {
   return base.IsNonNaNNumber() && exponent.IsIntegralNumber()
       ? ValueKinds::NonNaNNumber() : ValueKinds::Unknown();
 }
+// ECMAScript 6.1.6 numeric types: every normal binary result is Number,
+// BigInt, or (ADD) String. Preserve existing sound refinements; only replace
+// the pinned UB/payload proof gap under an explicit language premise. Input
+// obligations, conversions, effects and exceptional completion are unchanged.
+constexpr ValueKinds SourceBinaryValue(ValueRuleKind kind, ValueKinds left,
+                                       ValueKinds right, ValueKinds pinned) {
+  if (!left.IsLanguage() || !right.IsLanguage()) return ValueKinds::Unknown();
+  if (pinned.IsLanguage()) return pinned;
+  if (kind == ValueRuleKind::kSubtract) {
+    const auto additive = AdditiveNumbers(left, right);
+    if (additive.IsLanguage()) return additive;
+  }
+  left = ArithmeticNumber(left); right = ArithmeticNumber(right);
+  return left.IsNumber() && right.IsNumber() ? ValueKinds::Number() : ValueKinds::Defined();
+}
 // Shared literal classification, including the pinned private-tag boundary.
 [[nodiscard]] ValueKinds FloatNumberKinds(Float64Bits number);
 // Classifies a definite normal-path register definition. Join is one copy;
@@ -159,11 +176,14 @@ constexpr ValueKinds ExponentNumbers(ValueKinds base, ValueKinds exponent) {
 // results stay unknown absent heap/callee/cell evidence, not optimistic JS
 // types.
 std::variant<ValueRule, ScalarError> DescribeRegisterValue(
-    const abc::DecodedInstruction& instruction, std::uint64_t frame_size);
-ValueRule DescribeScalarValue(const ScalarAssignment& assignment);
+    const abc::DecodedInstruction& instruction, std::uint64_t frame_size,
+    ArithmeticSemantics arithmetic = ArithmeticSemantics::kPinnedRuntime);
+ValueRule DescribeScalarValue(const ScalarAssignment& assignment,
+    ArithmeticSemantics arithmetic = ArithmeticSemantics::kPinnedRuntime);
 std::variant<ValueRule, ScalarError> DescribeRegisterValue(
     const SemanticInstruction& instruction,
     CallResultValues calls = CallResultValues::kUnknown,
-    FrameReceiver receiver = FrameReceiver::kUnknown);
+    FrameReceiver receiver = FrameReceiver::kUnknown,
+    ArithmeticSemantics arithmetic = ArithmeticSemantics::kPinnedRuntime);
 }  // namespace abcd::analysis::detail
 #endif  // ABCD_ANALYSIS_REGISTER_VALUE_RULE_H_

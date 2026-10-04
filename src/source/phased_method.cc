@@ -124,7 +124,8 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure> PhasedBody::Buil
     switch (context.Identity().contract) {
       case SourceContract::kLanguageAndHostV1: return Error::kContract;
       case SourceContract::kLanguageAndHostV2:
-      case SourceContract::kLanguageAndHostV3: break;
+      case SourceContract::kLanguageAndHostV3:
+      case SourceContract::kLanguageArithmeticV1: break;
       default: return Error::kContract;
     }
     PhaseBudget quota(budget);
@@ -233,7 +234,7 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure> PhasedBody::Buil
     // them to initialized cells and complete-family writes close that premise.
     auto values = PhaseResult<ExceptionValueFlow>(ExceptionValueFlow::Build(flow, ssa, entries,
         value_work, {quota.Remaining().bytes}, PendingExceptions(context.Identity().contract), loads, {},
-        NormalCallResults(context.Identity().contract), receiver), Error::kValues);
+        NormalCallResults(context.Identity().contract), receiver, Arithmetic(context.Identity().contract)), Error::kValues);
     quota.Admit(values.AllocatedBytes()); quota.Step(value_work.Consumed());
     const auto arguments = frame.extra_arguments ? std::optional{ArgumentFrameFact{frame}} : std::nullopt;
     auto verified = VerifyExceptionInputs(flow, ssa, environments, values, quota.Remaining().work,

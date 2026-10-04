@@ -47,7 +47,8 @@ class ExceptionValueFlow {
       CallResultValues calls = CallResultValues::kUnknown,
       // Owner premise for frame.thisObj at every LDTHIS, not the ABI slot.
       // Receiver-changing super/resume protocols require separate ownership.
-      FrameReceiver receiver = FrameReceiver::kUnknown);
+      FrameReceiver receiver = FrameReceiver::kUnknown,
+      ArithmeticSemantics arithmetic = ArithmeticSemantics::kPinnedRuntime);
   [[nodiscard]] std::span<const ValueKinds> Facts() const {
     return {facts_.get(), facts_ ? count_ : 0};
   }

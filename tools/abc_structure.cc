@@ -147,7 +147,7 @@ std::string Hex(const corpus::Sha256& hash) {
   return result;
 }
 int Export(const std::filesystem::path& input,
-           const std::filesystem::path& output, SourceMode mode) {
+           const std::filesystem::path& output, SourceMode mode, source::SourceContract contract) {
   const bool emit_source = mode != SourceMode::kNone;
   // Value-tree mode admits the route per record and never plans legacy
   // emission: role indexes and source paths below exist only for the legacy
@@ -174,7 +174,8 @@ int Export(const std::filesystem::path& input,
     return Fail(ExportError::kHeader);
   // Bind each record invocation to this input. The entry reports its actual
   // recovery result; the batch layer does not fabricate route refusals.
-  const auto identity = source::MakeRouteInputIdentity(*hash, *header);
+  auto identity = source::MakeRouteInputIdentity(*hash, *header);
+  identity.contract = contract;
   const auto route_policy = route_value
                                 ? source::RoutePolicy::kRequireValueTree
                                 : source::RoutePolicy::kLegacyAllowed;
@@ -231,7 +232,7 @@ int Export(const std::filesystem::path& input,
            << "\",\"sha256\":\"" << Hex(hash->sha256)
            << "\",\"packaging\":" << static_cast<unsigned>(*packaging)
            << ",\"source_contract\":\""
-           << source::SourceContractName(source::kSourceContract)
+           << source::SourceContractName(identity.contract)
            << "\",\"source_route\":\""
            << (route_value ? source::SourceRouteName(source::SourceRoute::kValueTree)
                : emit_source ? source::SourceRouteName(source::SourceRoute::kLegacy)
@@ -473,15 +474,24 @@ int Export(const std::filesystem::path& input,
 }
 }  // namespace
 int main(int argc, char** argv) {
-  if (argc != 3 &&
-      !(argc == 4 && (std::string_view(argv[3]) == "--source" ||
-                      std::string_view(argv[3]) == "--shared-source" ||
-                      std::string_view(argv[3]) == "--value-source"))) {
-    std::cerr << "usage: abc_structure INPUT.abc OUTPUT_DIR [--source|--shared-source|--value-source]\n"
-                 "  --value-source requires the unified value-tree route for every record;\n"
-                 "  unsupported records retain typed failures without source files\n";
+  SourceMode mode = SourceMode::kNone;
+  unsigned modes = 0, language = 0;
+  bool valid = argc >= 3 && argc <= 5;
+  for (int i = 3; valid && i < argc; ++i) {
+    const std::string_view option{argv[i]};
+    if (option == "--language-arithmetic") { ++language; continue; }
+    ++modes;
+    if (option == "--value-source") mode = SourceMode::kValueTree;
+    else if (option == "--shared-source") mode = SourceMode::kShared;
+    else if (option == "--source") mode = SourceMode::kLegacy;
+    else valid = false;
+  }
+  if (!valid || modes > 1 || language > 1 || (language && mode != SourceMode::kValueTree)) {
+    std::cerr << "usage: abc_structure INPUT.abc OUTPUT_DIR [--source|--shared-source|--value-source] [--language-arithmetic]\n"
+                 "  --language-arithmetic requires --value-source and explicitly selects language numeric semantics\n";
     return EXIT_FAILURE;
   }
+  const auto contract = language ? source::SourceContract::kLanguageArithmeticV1 : source::kSourceContract;
 #if !defined(__APPLE__)
   // Darwin rejects this Linux virtual-address-space limit; it also cannot
   // establish the process RSS contract. Existing bounded stage allocations
@@ -493,11 +503,7 @@ int main(int argc, char** argv) {
   if (setrlimit(RLIMIT_AS, &limit) != 0) return EXIT_FAILURE;
 #endif
   try {
-    const auto mode = argc == 3 ? SourceMode::kNone
-        : std::string_view(argv[3]) == "--shared-source" ? SourceMode::kShared
-        : std::string_view(argv[3]) == "--value-source" ? SourceMode::kValueTree
-                                                        : SourceMode::kLegacy;
-    return Export(argv[1], argv[2], mode);
+    return Export(argv[1], argv[2], mode, contract);
   } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';
     return EXIT_FAILURE;

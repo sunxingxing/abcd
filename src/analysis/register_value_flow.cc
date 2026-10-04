@@ -50,9 +50,9 @@ RegisterValueFlow::BuildWithLanguageLoads(
     std::uint64_t frame_size, std::span<const EntryValueFact> entries,
     std::span<const LanguageLoadFact> loads, IdfQuota& quota,
     IdfBudget budget, std::span<const SemanticInstruction> semantics,
-    CallResultValues calls, FrameReceiver receiver) {
+    CallResultValues calls, FrameReceiver receiver, ArithmeticSemantics arithmetic) {
   return Analyze(body, ssa, frame_size, entries, nullptr, loads, quota,
-                 budget, semantics, calls, receiver);
+                 budget, semantics, calls, receiver, arithmetic);
 }
 
 std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
@@ -61,7 +61,7 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
     const LexicalValueContext* lexicals,
     std::span<const LanguageLoadFact> loads, IdfQuota& quota,
     IdfBudget budget, std::span<const SemanticInstruction> semantics,
-    CallResultValues calls, FrameReceiver receiver) {
+    CallResultValues calls, FrameReceiver receiver, ArithmeticSemantics arithmetic) {
   using Kind = detail::ValueRuleKind;
   using Error = ValueFlowError;
   try {
@@ -158,12 +158,13 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
         }
         const auto lifted = semantics.empty()
             ? detail::DescribeRegisterValue(
-                  body.instructions[instruction.value].decoded, frame_size)
-            : detail::DescribeRegisterValue(semantics[instruction.value], calls, receiver);
+                  body.instructions[instruction.value].decoded, frame_size, arithmetic)
+            : detail::DescribeRegisterValue(semantics[instruction.value], calls, receiver, arithmetic);
         if (const auto* error = std::get_if<ScalarError>(&lifted))
           return ValueFlowFailure{Error::kInstruction, instruction, *error};
         const auto rule = std::get<detail::ValueRule>(lifted);
         nodes[i].kind = rule.kind;
+        nodes[i].arithmetic = rule.arithmetic;
         if (rule.kind == Kind::kFixed) { facts[i] = rule.seed; continue; }
         // Refined normal results depend on checked input facts; seeding a
         // Boolean/String result early could certify an unproved input cycle.

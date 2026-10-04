@@ -9,7 +9,7 @@
 
 namespace abcd::source {
 enum class SourceContract : std::uint8_t {
-  kLanguageAndHostV1, kLanguageAndHostV2, kLanguageAndHostV3
+  kLanguageAndHostV1, kLanguageAndHostV2, kLanguageAndHostV3, kLanguageArithmeticV1
 };
 enum class RealmBindingPolicy : std::uint8_t { kExplicitHost, kStableGlobalThis };
 enum class ResourceFailureScope : std::uint8_t { kObservable, kExcluded };
@@ -25,10 +25,25 @@ enum class CallableTextPolicy : std::uint8_t { kUnspecified, kRecovered };
 // User approval: 2026-09-27; see source-contract-v3.md. Never reinterpret V2.
 inline constexpr SourceContract kSourceContract = SourceContract::kLanguageAndHostV3;
 
+// Opt-in language arithmetic changes the numeric equivalence premise only;
+// it does not claim measured equivalence to a particular Ark binary. See
+// language-arithmetic.md. The default remains the existing V3 contract.
+constexpr analysis::ArithmeticSemantics Arithmetic(SourceContract contract) {
+  switch (contract) {
+    case SourceContract::kLanguageAndHostV1:
+    case SourceContract::kLanguageAndHostV2:
+    case SourceContract::kLanguageAndHostV3:
+      return analysis::ArithmeticSemantics::kPinnedRuntime;
+    case SourceContract::kLanguageArithmeticV1:
+      return analysis::ArithmeticSemantics::kSourceLanguage;
+  }
+  std::terminate();
+}
 constexpr analysis::PendingExceptionValues PendingExceptions(SourceContract contract) {
   switch (contract) {
     case SourceContract::kLanguageAndHostV1:
     case SourceContract::kLanguageAndHostV2:
+    case SourceContract::kLanguageArithmeticV1:
     case SourceContract::kLanguageAndHostV3:
       return analysis::PendingExceptionValues::kLanguage;
   }
@@ -38,6 +53,7 @@ constexpr analysis::CallResultValues NormalCallResults(SourceContract contract) 
   switch (contract) {
     case SourceContract::kLanguageAndHostV1: return analysis::CallResultValues::kUnknown;
     case SourceContract::kLanguageAndHostV2: return analysis::CallResultValues::kLanguage;
+    case SourceContract::kLanguageArithmeticV1:
     case SourceContract::kLanguageAndHostV3: return analysis::CallResultValues::kLanguage;
   }
   std::terminate();
@@ -46,6 +62,7 @@ constexpr RealmBindingPolicy RealmBinding(SourceContract contract) {
   switch (contract) {
     case SourceContract::kLanguageAndHostV1: return RealmBindingPolicy::kExplicitHost;
     case SourceContract::kLanguageAndHostV2: return RealmBindingPolicy::kStableGlobalThis;
+    case SourceContract::kLanguageArithmeticV1:
     case SourceContract::kLanguageAndHostV3: return RealmBindingPolicy::kStableGlobalThis;
   }
   std::terminate();
@@ -54,6 +71,7 @@ constexpr ResourceFailureScope ResourceFailures(SourceContract contract) {
   switch (contract) {
     case SourceContract::kLanguageAndHostV1: return ResourceFailureScope::kObservable;
     case SourceContract::kLanguageAndHostV2: return ResourceFailureScope::kExcluded;
+    case SourceContract::kLanguageArithmeticV1:
     case SourceContract::kLanguageAndHostV3: return ResourceFailureScope::kExcluded;
   }
   std::terminate();
@@ -63,6 +81,7 @@ constexpr CallableTextPolicy CallableText(SourceContract contract) {
     case SourceContract::kLanguageAndHostV1:
     case SourceContract::kLanguageAndHostV2:
       return CallableTextPolicy::kUnspecified;
+    case SourceContract::kLanguageArithmeticV1:
     case SourceContract::kLanguageAndHostV3:
       return CallableTextPolicy::kRecovered;
   }
@@ -73,6 +92,7 @@ constexpr std::string_view SourceContractName(SourceContract contract) {
   switch (contract) {
     case SourceContract::kLanguageAndHostV1: return "language_and_host_v1";
     case SourceContract::kLanguageAndHostV2: return "language_and_host_v2";
+    case SourceContract::kLanguageArithmeticV1: return "language_arithmetic_v1";
     case SourceContract::kLanguageAndHostV3: return "language_and_host_v3";
   }
   std::terminate();

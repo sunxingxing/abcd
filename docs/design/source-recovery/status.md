@@ -12,6 +12,69 @@
 
 ## 当前阶段
 
+### 2026-10-05：显式语言算术合同贯通共同数值分析
+
+- 规则revision109，基线ca89ec64。用户要求解释INT32_MIN/NaN边界，
+  尚未选择新的默认验收标准。默认kLanguageAndHostV3保持；新增显式
+  kLanguageArithmeticV1及CLI --value-source --language-arithmetic。
+  具体边界、来源和非承诺范围见[语言算术合同](language-arithmetic.md)。
+  解释器源码中的UB及标签编码证据不冒充实际Ark二进制结果，也不证明
+  固定五ABC实际触发边界。
+- SourceContract映射typed ArithmeticSemantics，经FunctionInput/
+  SemanticProof和PhasedBody贯通共同scalar adapter、normal/phased SSA
+  稀疏求解器；LinearLexicals复用同一转移，并在覆盖accumulator前保存
+  两个输入事实。仅已证明语言输入的normal binary completion得到语言
+  数值结果；既有有限值/整数/String精度保持，Hole、环境、未初始化及
+  impure literal不能升级。默认规则、unary转换/update、未知父构造协议
+  保持；效果、异常、receiver、scope及instruction来源检查未删除。
+- 普通运算仍使用共同ValueBinary/BinaryExpr、FunctionTree及printer，
+  优先级/括号沿用原设计。无新writer、样本/名称分派、opcode序列、PC/
+  寄存器、同块、producer名单或selection数量准入。模式身份进入实际
+  receipt/manifest；CLI两种flag顺序及不兼容/重复参数验证通过。
+- 三个dynamic profile分别实际解码，12个binary operator、5种表达式/
+  copy/纯块拆分组合、normal和try/catch共360个完整生成函数。独立Node
+  通过302,760个场景，覆盖int32/double边界、NaN、正负零、String、
+  BigInt/Symbol、转换getter/receiver/顺序/次数及原抛出token；含正常及
+  异常相位。typed输入反例、合同篡改拒绝和0-INT32_MIN后接NEG的
+  normal/linear验证通过。200/201/402既有work的201→402比小于3；
+  无新逐变量CFG扫描，转移每节点O(1)，沿用O(V+U)稀疏存储。
+- 实际Content(14411)/PictureDetail(45391)先仅从ABC生成完整record，
+  再读取配对源码；受控宿主下注册的key callback及Content资源数组
+  444个场景通过。未执行未知构造器，也不授予整份UI/record独立行为
+  验收。sidecar未进入引擎输入，拒绝/INCOMPLETE不计为行为成功。
+- 日志前缀/tmp/abcd-language-arithmetic-*。最初red-tests.log 1/1在
+  普通ADD语义输入拒绝处失败。final-build.log实际13个target单-j4
+  退出0；final-tests.log 17/17通过56.91秒，包含新mode/CLI/paired/
+  source及既有additive/exponent/conversion、snapshot和logical检查。
+  早期build-4请求未注册predicate_snapshot_test而退出2，改为实际
+  注册target后构建成功；未启动全量套件。
+- 另两项旧quotient_value_test/quotient_values_source_test在未修改
+  TreeFlow时已失败（tests-2.log）。raw ImportNormalValues保留copy
+  后，snapshot RHS的计算来源与transport wrapper来源没有共同对齐；
+  这是现有来源模型/测试路径缺口。两次局部放宽不能闭合来源证明，且
+  会允许既有origin篡改，故全部撤回；最终TreeFlow与基线一致，原
+  decision_snapshots_source_test重新通过。这两项仍未修复，不能把
+  17项定向通过报告为全部回归通过，后续需共同计算/传输来源建模。
+  最终final-known-failures.log再次2/2失败1.38秒，未执行基线二进制
+  对照，不能将“本轮未修改此来源路径”当作基线测试失败的完整证明。
+- fresh固定五ABC两模式全部退出0、无legacy writer、无既有complete
+  回退，原有80份完整源码未变化。default-pass-1为80complete/26incomplete-source/
+  0source-failure/46no-module，106份源码解析通过并与基线逐字节相同。
+  language-arithmetic-pass-2为88complete/11incomplete-source/
+  7typed source-failure/46no-module，99份实际源码解析通过。两模式
+  原ABC的SHA/size均与index一致；语法检查不能替代完整行为验收。
+- 新完整record为Immersive的Content/Categories/CommonView/Header/
+  Recommend/Welfare和MultiCommunityApplication的MircoBlogView/
+  PictureDetail。7个新暴露的tree_stage失败为FlashSale/Selection/
+  CommentListView/FollowView/FoundView/HotColumnView/HotRankPage。
+  默认模式这些记录原有部分源码；新模式通过输入后，现有类成员省略
+  只接受input gap，尚不能传播后续tree gap，故只有元数据及typed失败。
+  这是显式模式的部分输出覆盖缺口，不能称为无source-failure或全覆盖。
+- 下一步需要共同tree gap传播/来源模型、未知父构造协议及实例字段/
+  全局变量/完整签名/函数体整合，固定五ABC整体语义与表示验收仍未
+  完成。Goal active；代理、全量套件、扩展语料、RSS/基准、调度器/DFX
+  和定期审视继续暂停。本组件不改变默认验收政策或阶段一目标。
+
 ### 2026-10-05：共同语句树恢复普通共享决策的语句前缀
 
 - 规则revision108，基线7e059c35。上一轮数值说明没有改变验收合同；

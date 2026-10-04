@@ -720,6 +720,13 @@ if(BUILD_TESTING)
   target_include_directories(numeric_identity_test PRIVATE tests/support)
   target_link_libraries(numeric_identity_test PRIVATE abcd_source)
   add_test(NAME numeric_identity_test COMMAND numeric_identity_test)
+  add_executable(language_arithmetic_test tests/integration/language_arithmetic.cc)
+  target_include_directories(language_arithmetic_test PRIVATE tests/support)
+  target_link_libraries(language_arithmetic_test PRIVATE abcd_source)
+  add_test(NAME language_arithmetic_test COMMAND language_arithmetic_test)
+  add_test(NAME language_arithmetic_cli_test COMMAND ${CMAKE_COMMAND}
+    -DABCD_SEMANTIC=$<TARGET_FILE:abc_semantic> -DABCD_STRUCTURE=$<TARGET_FILE:abc_structure>
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/language_arithmetic_cli.cmake)
   add_executable(numeric_conversion_test tests/integration/numeric_conversion.cc)
   target_include_directories(numeric_conversion_test PRIVATE tests/support)
   target_link_libraries(numeric_conversion_test PRIVATE abcd_source)
@@ -1534,6 +1541,14 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/binary_initializer.mjs $<TARGET_FILE:binary_initializer_test> $<TARGET_FILE:exponent_value_test> $<TARGET_FILE:exponent_expression_test>)
     add_test(NAME numeric_identity_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/number_conversion.mjs $<TARGET_FILE:numeric_identity_test>)
+    if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc" AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc")
+      add_test(NAME language_arithmetic_paired_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        --experimental-vm-modules ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/language_arithmetic_paired.mjs
+        $<TARGET_FILE:abc_structure> ${ABCD_PAIRED_CORPUS_ROOT})
+    endif()
+    add_test(NAME language_arithmetic_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/language_arithmetic.mjs $<TARGET_FILE:language_arithmetic_test>)
     add_test(NAME numeric_conversion_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/numeric_conversion.mjs $<TARGET_FILE:numeric_conversion_test>)
     add_test(NAME number_conversion_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

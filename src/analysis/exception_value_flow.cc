@@ -11,7 +11,7 @@ std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
     PendingExceptionValues pending_values,
     std::span<const ExceptionLoadFact> loads,
     std::span<const ExceptionPendingFact> pending_facts,
-    CallResultValues calls, FrameReceiver receiver) {
+    CallResultValues calls, FrameReceiver receiver, ArithmeticSemantics arithmetic) {
   using Error = ValueFlowError;
   using Kind = detail::ValueRuleKind;
   const auto invalid = [] { return ValueFlowFailure{Error::kInvalidSsa, {}, {}}; };
@@ -149,11 +149,12 @@ std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
           continue;
         }
         const auto described = detail::DescribeRegisterValue(
-            flow.instructions[node.instruction.value], calls, receiver);
+            flow.instructions[node.instruction.value], calls, receiver, arithmetic);
         if (const auto* error = std::get_if<ScalarError>(&described))
           return ValueFlowFailure{Error::kInstruction, InstructionId{site}, *error};
         const auto rule = std::get<detail::ValueRule>(described);
         nodes[i].kind = rule.kind;
+        nodes[i].arithmetic = rule.arithmetic;
         if (rule.kind == Kind::kFixed) { facts[i] = rule.seed; continue; }
         // Refined normal results depend on checked input facts; seeding a
         // Boolean/String result early could certify an unproved input cycle.

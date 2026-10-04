@@ -2,6 +2,7 @@
 #define ABCD_ANALYSIS_REGISTER_VALUE_FLOW_H_
 
 #include "abcd/analysis/register_ssa.h"
+#include "abcd/analysis/arithmetic_semantics.h"
 #include "abcd/analysis/call_result.h"
 #include "abcd/analysis/frame_receiver.h"
 #include "abcd/analysis/value_kinds.h"
@@ -79,7 +80,8 @@ class RegisterValueFlow {
                          IdfQuota& quota, IdfBudget budget = {},
                          std::span<const SemanticInstruction> semantics = {},
                          CallResultValues calls = CallResultValues::kUnknown,
-                         FrameReceiver receiver = FrameReceiver::kUnknown);
+                         FrameReceiver receiver = FrameReceiver::kUnknown,
+      ArithmeticSemantics arithmetic = ArithmeticSemantics::kPinnedRuntime);
   // Same unchanged inputs as the escape proof. Nonescaping local cells join
   // Hole and ALL stores, not reaching stores. Captured/escaped cells stay top.
   [[nodiscard]] static std::variant<RegisterValueFlow, ValueFlowFailure>
@@ -109,7 +111,8 @@ class RegisterValueFlow {
       std::span<const LanguageLoadFact> loads, IdfQuota& quota,
       IdfBudget budget, std::span<const SemanticInstruction> semantics = {},
       CallResultValues calls = CallResultValues::kUnknown,
-      FrameReceiver receiver = FrameReceiver::kUnknown);
+      FrameReceiver receiver = FrameReceiver::kUnknown,
+      ArithmeticSemantics arithmetic = ArithmeticSemantics::kPinnedRuntime);
   RegisterValueFlow() = default;
   std::unique_ptr<ValueKinds[]> facts_;
   std::size_t count_ = 0;
