@@ -12,6 +12,38 @@
 
 ## 当前阶段
 
+### 2026-10-04：共同打印器的布尔观察上下文
+
+- 规则 revision83。打印操作数增加 typed Value/Truthiness 观察上下文，if、
+  conditional test 和逻辑 NOT 消费 truthiness；&&/|| 和选中的 conditional
+  分支只在同一上下文传递该观察。共同 printer 省去该上下文的成对 NOT，
+  不按样本、opcode序列或 CFG 形状决定恢复。return、赋值 RHS、参数、属性
+  引用、算术和 nullish 操作数继续观察精确值；不能把 false 改成0、undefined
+  或对象，也不能改变 ?? 的 RHS 执行条件。其他数值/tag/构造协议准入未变。
+- 被暴露的子表达式重新使用原父 grammar context，保留 &&/||/??、比较及
+  unary grouping；NOT 的原始两个 span 覆盖实际输出。树、来源、绑定和
+  原效果证明不变，显式栈逐对处理，O(nodes)时间和空间，不递归重扫链。
+  ECMA-262 ToBoolean/Logical NOT 的无用户转换钩子语义为依据；具体合同和
+  官方资料链接见 operator-expressions.md。没有新增宿主前提或更改V3。
+- RED /tmp/abcd-predicate-context-red.log 确认原打印器仍输出 !!a.value。
+  新增14种 printer隔离观察用例、1/2/200/201/402/804深度及非空/有界
+  unary来源span，75520组独立getter/Proxy/短路/nullish/conditional/value/
+  mutation/抛出值对照通过。printer夹具不是原始ABC输入证明；既有真实
+  normal/phased/branch/snapshot 和配对record测试另验证完整源码路径。
+- 单构建 -j4 退出0：/tmp/abcd-predicate-context-build.log，26/26相关
+  检查78.60秒通过：predicate-context-tests.log，含Home/DetailPage实际
+  配对行为和decode生成源码。随后只增补conditional分支及span断言，
+  nested-build.log / span-build.log均退出0，span-tests.log的2/2复核通过。
+  初次语法检查曾与仅测试夹具的构建重叠；构建结束后重新执行，最终采用
+  predicate-context-final-syntax.log。full-suite/RSS/扩展语料/基准暂停。
+- fresh build/stage-one/value-boolean-context-pass-1 固定五输入均退出0，
+  80 complete /26 incomplete /0 failure /46 no-module，无完整回退或
+  legacy writer。输入SHA/size与manifest/abc-index一致，106份源码全部
+  解析；39份complete、19份incomplete采用更自然的条件表达，其余字节不变。
+  来源为当前ABC生成AST，配对源码未进入引擎。此为源码表示质量推进，没有
+  新增完整record；未知域算术、导入super协议、存储Reference、多selection
+  及剩余高层结构仍开放，阶段一语义/源码风格双验收未完成，Goal active。
+
 ### 2026-10-04：共同 eager 使用点保存与成员 Reference 复核
 
 - 规则 revision82。删除 tree_operands::Receiver 中残留的第二重

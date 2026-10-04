@@ -34,7 +34,13 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
     const GlobalScope*, std::size_t, ClassPrintForm, const ClassCaptureDestination* = nullptr);
 struct DerivedClassBody { std::shared_ptr<const ClassTree> definition; ExprId expression; bool inferred = false; };
 struct EndExpression { ExprId id; };
-struct ExpressionOperand { ExprId id; TreeOperatorContext context; std::optional<NameId> inferred_name = {}; };
+enum class ExpressionObservation : std::uint8_t { kValue, kTruthiness };
+struct ExpressionOperand {
+  ExprId id;
+  TreeOperatorContext context;
+  std::optional<NameId> inferred_name = {};
+  ExpressionObservation observation = ExpressionObservation::kValue;
+};
 struct Statement { StmtId id; std::size_t depth; };
 struct EndStatement { StmtId id; };
 struct BlockCursor { StmtId id; std::uint32_t index; std::size_t depth; };
@@ -553,17 +559,22 @@ class TreePrinter {
     // typeof must obtain a value, preserving unresolvable-name exceptions.
     if (node.operation == TreeUnary::kTypeof) {
       Append("(0, "); Push(std::string_view(")")); Push(node.operand);
-    } else Push(ExpressionOperand{node.operand, {node.operation}});
+    } else Push(ExpressionOperand{node.operand, {node.operation}, {},
+        node.operation == TreeUnary::kNot ? ExpressionObservation::kTruthiness : ExpressionObservation::kValue});
   }
   void Expression(BinaryExpr node) {
     Push(ExpressionOperand{node.right, {node.operation, OperandSide::kRight}});
     Push(TreeBinaryToken(node.operation));
     Push(ExpressionOperand{node.left, {node.operation, OperandSide::kLeft}});
   }
-  void Expression(LogicalExpr node) {
-    Push(ExpressionOperand{node.right, {node.operation, OperandSide::kRight}});
+  void Expression(LogicalExpr node, ExpressionObservation observation) {
+    // &&/|| preserve truthiness and short-circuit effects in a Boolean context.
+    // ?? selects by nullness: removing a Boolean conversion from its left would
+    // change whether the right runs. Exact-value consumers keep both operands.
+    if (node.operation == TreeLogical::kNullish) observation = ExpressionObservation::kValue;
+    Push(ExpressionOperand{node.right, {node.operation, OperandSide::kRight}, {}, observation});
     Push(TreeLogicalToken(node.operation));
-    Push(ExpressionOperand{node.left, {node.operation, OperandSide::kLeft}});
+    Push(ExpressionOperand{node.left, {node.operation, OperandSide::kLeft}, {}, observation});
   }
   void Expression(SequenceExpr node) {
     Append("("); Push(std::string_view(")")); Push(node.right);
@@ -576,10 +587,12 @@ class TreePrinter {
     Push(SymbolName{node.symbol});
     if (node.result == UpdateResult::kPrefix) Append(token);
   }
-  void Expression(ConditionalExpr node) {
-    Append("("); Push(std::string_view(")")); Push(node.alternate);
-    Push(std::string_view(" : ")); Push(node.consequent);
-    Push(std::string_view(" ? ")); Push(node.condition);
+  void Expression(ConditionalExpr node, ExpressionObservation observation) {
+    Append("("); Push(std::string_view(")"));
+    Push(ExpressionOperand{node.alternate, {}, {}, observation});
+    Push(std::string_view(" : ")); Push(ExpressionOperand{node.consequent, {}, {}, observation});
+    Push(std::string_view(" ? "));
+    Push(ExpressionOperand{node.condition, {}, {}, ExpressionObservation::kTruthiness});
   }
   void Expression(const FieldDefinitionExpr& node) {
     if (!static_fields_) throw Error::kUnsupportedContext;
@@ -876,11 +889,31 @@ class TreePrinter {
     const auto id = operand.id;
     Result().expressions[id.value].begin = written_;
     Push(EndExpression{id});
+    // ECMA-262 ToBoolean and logical NOT have no user conversion hooks. Only
+    // truthiness consumers may omit !!; a returned/stored value must remain a
+    // Boolean. Preserve both origin spans and let the exposed child decide its
+    // actual grammar grouping. Consume pairs once, never rescan a unary chain.
+    if (operand.observation == ExpressionObservation::kTruthiness) {
+      const auto* outer = std::get_if<UnaryExpr>(&Tree().expressions[id.value].expression);
+      if (outer && outer->operation == TreeUnary::kNot) {
+        const auto inner_id = outer->operand;
+        const auto* inner = std::get_if<UnaryExpr>(&Tree().expressions[inner_id.value].expression);
+        if (inner && inner->operation == TreeUnary::kNot) {
+          Result().expressions[inner_id.value].begin = written_;
+          Push(EndExpression{inner_id});
+          operand.id = inner->operand;
+          Push(operand);
+          return;
+        }
+      }
+    }
     if (TreeOperandGrouping(Tree().expressions[id.value].expression, operand.context)) {
       Append("("); Push(std::string_view(")"));
     }
     std::visit([&](const auto& node) {
       if constexpr (std::is_same_v<std::decay_t<decltype(node)>, ClassExpr>) Expression(node, id, operand.inferred_name);
+      else if constexpr (std::is_same_v<std::decay_t<decltype(node)>, LogicalExpr> ||
+          std::is_same_v<std::decay_t<decltype(node)>, ConditionalExpr>) Expression(node, operand.observation);
       else if constexpr (std::is_same_v<std::decay_t<decltype(node)>, MemberExpr>) {
         const auto* context = std::get_if<PostfixContext>(&operand.context.parent);
         Member(node.base, node.key, context && *context == PostfixContext::kConstructor ?
@@ -921,7 +954,7 @@ class TreePrinter {
       Push(Statement{*node.alternate, at.depth}); Push(std::string_view(" else "));
     }
     Push(Statement{node.consequent, at.depth}); Push(std::string_view(") "));
-    Push(node.condition);
+    Push(ExpressionOperand{node.condition, {}, {}, ExpressionObservation::kTruthiness});
   }
   void StatementNode(ReturnStmt node, Statement) {
     if (static_fields_) return;

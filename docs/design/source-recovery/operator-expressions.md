@@ -102,3 +102,37 @@ are observed. Catch fixtures return undefined, matching their actual ABC catch
 body. These checks cover source-language behavior, not execution of the pinned
 Ark binary; they do not establish whole-record completion or general arithmetic
 admission. No production behavior depends on the fixture's operator list.
+
+## Boolean observation in the common printer
+
+Rule 83 gives each printer operand a typed observation: exact value or
+truthiness. If/conditional tests and logical NOT consume truthiness. Within that
+context, &&/|| and selected conditional branches forward the same observation;
+an exact-value consumer keeps every Boolean conversion. Assignment RHS, call
+arguments, property bases/keys, arithmetic operands and returns remain values.
+Nullish selection keeps its operands as values even in a Boolean context:
+`!!left ?? right` and `left ?? right` have different RHS execution conditions.
+
+The language justification is ECMAScript
+[ToBoolean](https://tc39.es/ecma262/multipage/abstract-operations.html#sec-toboolean)
+and [logical NOT evaluation](https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#sec-logical-not-operator):
+they introduce no user conversion hooks, and negating twice preserves
+truthiness. This is a source-AST observation rule, not a new VM value-domain
+premise or an admission rule based on compiler/opcode/CFG layout. ToNumber,
+ToNumeric and bitwise conversion remain independent obligations.
+
+The iterative printer consumes adjacent NOT pairs only under truthiness
+observation. An exact value still returns a Boolean; odd chains keep one NOT
+and even value chains keep two. The exposed child's original parent context
+decides precedence/nullish grammar, rather than inheriting the discarded
+unary's precedence. Both original expression spans cover the emitted child;
+the AST, original operations, scope and effect proofs are unchanged. Work and
+action storage remain linear, without recursive printing or chain rescans.
+
+Printer isolation tests distinguish exact results, predicates, short-circuit
+logical/nullish expressions, conditional branches, comparisons, and bitwise
+consumers. They exercise 1/2/200/201/402/804 NOT depths, span bounds and an
+independent getter/Proxy/mutation/throw oracle. Existing decoded ordinary,
+phased, branch, snapshot and paired-record tests independently cover the full
+source route. These layers do not close general arithmetic admission or the
+whole phase-one semantic/style goal.

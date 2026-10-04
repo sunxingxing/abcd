@@ -35,7 +35,8 @@ class Fixture {
     return Add(ValueInvoke{InvokeReceiver::kExplicit, 1}, {{OperandRole::kCallee, callee},
         {OperandRole::kReceiver, base}, {OperandRole::kArgument, argument}});
   }
-  std::string Print(ValueId result, bool logical = false, bool awaited = false, bool numeric_base = false) {
+  std::string Print(ValueId result, bool logical = false, bool awaited = false, bool numeric_base = false,
+      bool predicate = false, bool selected = false) {
     Add(ValueReturn{}, {{OperandRole::kReturnValue, result}}, false);
     graph.blocks.push_back({{0}, static_cast<std::uint32_t>(graph.ops.size()), {0}, 0});
     const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
@@ -79,14 +80,52 @@ class Fixture {
         if (const auto* symbol = std::get_if<SymbolExpr>(&expression.expression); symbol && symbol->symbol.value == 0)
           expression.expression = TreeLiteral{source::IntegerLiteral{1}};
     }
+    if (selected) {
+      // Isolate conditional branch observation as well as predicate observation.
+      // Both branches contain conversions, with getters evaluated only on the
+      // selected branch. These syntax nodes make no imported-IR proof claim.
+      for (auto& statement : tree.statements) if (auto* returned = std::get_if<ReturnStmt>(&statement.statement); returned && returned->value) {
+        const auto condition = *returned->value;
+        const auto origin = tree.expressions[condition.value].origin;
+        const auto add = [&](TreeExpression expression) {
+          const ExprId id{static_cast<std::uint32_t>(tree.expressions.size())};
+          tree.expressions.push_back({std::move(expression), origin}); return id;
+        };
+        const auto branch = [&](unsigned parameter) {
+          const auto base = add(SymbolExpr{tree.parameters[parameter].symbol});
+          const auto member = add(MemberExpr{base, NameId{5}});
+          return add(UnaryExpr{TreeUnary::kNot, add(UnaryExpr{TreeUnary::kNot, member})});
+        };
+        const auto yes = branch(1), no = branch(2);
+        returned->value = add(ConditionalExpr{condition, yes, no});
+      }
+    }
+    if (predicate) {
+      // Printer isolation: a native condition observes truthiness, whereas
+      // returns, assignments and nullish selections still observe exact values.
+      for (auto& statement : tree.statements) if (auto* returned = std::get_if<ReturnStmt>(&statement.statement); returned && returned->value) {
+        const auto condition = *returned->value;
+        const auto origin = tree.expressions[condition.value].origin;
+        const ExprId yes{static_cast<std::uint32_t>(tree.expressions.size())};
+        tree.expressions.push_back({TreeLiteral{BooleanLiteral{true}}, origin});
+        const ExprId no{static_cast<std::uint32_t>(tree.expressions.size())};
+        tree.expressions.push_back({TreeLiteral{BooleanLiteral{false}}, origin});
+        returned->value = ExprId{static_cast<std::uint32_t>(tree.expressions.size())};
+        tree.expressions.push_back({ConditionalExpr{condition, yes, no}, origin});
+      }
+    }
     std::ostringstream out;
     const auto printed = PrintFunctionTree(tree, out);
     test::Check(std::holds_alternative<PrintedFunction>(printed));
     const auto& positions = std::get<PrintedFunction>(printed);
     work_ = positions.work;
     const auto text = out.str();
-    for (const auto range : positions.expressions)
+    for (std::size_t i = 0; i < positions.expressions.size(); ++i) {
+      const auto range = positions.expressions[i];
       test::Check(range.begin <= range.end && range.end <= text.size());
+      if (std::holds_alternative<UnaryExpr>(tree.expressions[i].expression))
+        test::Check(range.begin < range.end);
+    }
     return text;
   }
   std::uint64_t Work() const { return work_; }
@@ -171,12 +210,71 @@ std::string PostfixChain(unsigned count, std::uint64_t* work = nullptr) {
   if (work) *work = fixture.Work();
   return source;
 }
+std::string BooleanContext(unsigned index, unsigned count = 2, std::uint64_t* work = nullptr) {
+  Fixture f;
+  const auto boolean = [&](ValueId input) { return f.Unary(UnaryOperator::kToBoolean, input); };
+  auto value = f.Read({0}, 5);
+  bool logical = false, predicate = false, selected = false;
+  switch (index) {
+    case 0: case 1:
+      for (unsigned i = 0; i < count; ++i) value = f.Unary(UnaryOperator::kLogicalNot, value);
+      predicate = index == 0; break;
+    case 2: case 3: case 4: case 5:
+      value = boolean(value);
+      value = f.Binary(index == 4 ? BinaryOperator::kBitAnd : index == 5 ? BinaryOperator::kBitXor : BinaryOperator::kBitOr,
+          value, boolean(f.Read({1}, 5)));
+      logical = true; predicate = index != 3; break;
+    case 6: value = f.Unary(UnaryOperator::kLogicalNot, boolean(value)); break;
+    case 7:
+      value = boolean(f.Binary(BinaryOperator::kBitOr, boolean(value), boolean(f.Read({1}, 5))));
+      logical = true; predicate = true; break;
+    case 8: value = boolean(f.Binary(BinaryOperator::kLess, value, f.Read({1}, 5))); predicate = true; break;
+    case 9: value = f.Unary(UnaryOperator::kBitNot, boolean(value)); break;
+    case 10:
+      value = f.Binary(BinaryOperator::kBitAnd,
+          boolean(f.Binary(BinaryOperator::kBitOr, value, f.Read({1}, 5))), boolean(f.Read({2}, 5)));
+      logical = true; predicate = true; break;
+    case 11:
+      value = f.Unary(UnaryOperator::kLogicalNot, boolean(f.Binary(BinaryOperator::kBitXor, value, f.Read({1}, 5))));
+      logical = true; break;
+    case 12: case 13: value = boolean(value); selected = true; predicate = index == 13; break;
+    default: test::Check(false);
+  }
+  auto source = f.Print(value, logical, false, false, predicate, selected);
+  if (work) *work = f.Work();
+  return source;
+}
 int main(int argc, char** argv) {
+  if (argc == 4) {
+    test::Check(std::string_view(argv[1]) == "--boolean-chain");
+    std::cout << BooleanContext(static_cast<unsigned>(std::stoul(argv[2])), static_cast<unsigned>(std::stoul(argv[3])));
+    return 0;
+  }
   if (argc == 3) {
     const auto count = static_cast<unsigned>(std::stoul(argv[2]));
     if (std::string_view(argv[1]) == "--postfix-chain") std::cout << PostfixChain(count);
+    else if (std::string_view(argv[1]) == "--boolean-context") std::cout << BooleanContext(count);
     else { test::Check(std::string_view(argv[1]) == "--source"); std::cout << Case(count); }
     return 0;
+  }
+  constexpr std::array<std::string_view, 14> boolean_contexts{
+      "(a.value ? true : false)", "return !!a.value;", "(a.value || b.value ? true : false)",
+      "return !!a.value || !!b.value;", "(a.value && b.value ? true : false)",
+      "(!!a.value ?? !!b.value ? true : false)", "return !a.value;", "(a.value || b.value ? true : false)",
+      "(a.value < b.value ? true : false)", "return ~!!a.value;",
+      "((a.value || b.value) && c.value ? true : false)", "return !(a.value ?? b.value);",
+      "return (a.value ? !!b.value : !!c.value);", "(a.value ? b.value : c.value)"};
+  for (unsigned i = 0; i < boolean_contexts.size(); ++i)
+    test::Check(BooleanContext(i).find(boolean_contexts[i]) != std::string::npos);
+  for (const unsigned observation : {0U, 1U}) {
+    std::uint64_t previous = 0;
+    for (const unsigned count : {1U, 2U, 200U, 201U, 402U, 804U}) {
+      std::uint64_t work = 0;
+      const auto text = BooleanContext(observation, count, &work);
+      test::Check(text.find(count % 2 ? "!a.value" : observation == 0 ? "(a.value ?" : "!!a.value") != std::string::npos);
+      if (count > 201) test::Check(work < 3 * previous);
+      previous = work;
+    }
   }
   constexpr std::array<std::string_view, 30> expected{
     "a - (b - c)", "a - b - c", "a / (b / c)", "a / b / c",
