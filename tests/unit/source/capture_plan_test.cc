@@ -114,15 +114,14 @@ void Run() {
   // Categories' decoded parent creates at site 9 and initializes at site 18.
   locals.capture_barriers.clear();
   locals.block_entries = {1};
-  locals.initializations.resize(2);
   for (const auto store : {InstructionId{2}, InstructionId{3}}) {
     locals.stores = {{{0}, store}};
-    locals.initializations[0] = LocalInitialization{store, 1, 2};
+    locals.initializations = {{{0}, store, {0}, 1, 2}};
     Check(std::get<ScopeError>(scopes.Rebase({2}, use.cell, use.domain)) == ScopeError::kInitialization);
     Check(std::get<CaptureError>(BuildCapturePlan(scopes, {2}, creation, {&use, 1})) == CaptureError::kScope);
   }
   locals.stores = {{{0}, {1}}};
-  locals.initializations[0] = LocalInitialization{{1}, 1, 2};
+  locals.initializations = {{{0}, {1}, {0}, 1, 2}};
   Check(std::holds_alternative<CapturePlan>(BuildCapturePlan(scopes, {2}, creation, {&use, 1})));
 }
 }  // namespace

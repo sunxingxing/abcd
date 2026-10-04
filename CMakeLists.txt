@@ -836,6 +836,10 @@ if(BUILD_TESTING)
   target_include_directories(function_input_test PRIVATE tests/support)
   target_link_libraries(function_input_test PRIVATE abcd_source)
   add_test(NAME function_input_test COMMAND function_input_test)
+  add_executable(normal_initialization_test tests/unit/source/normal_initialization_test.cc)
+  target_include_directories(normal_initialization_test PRIVATE tests/support)
+  target_link_libraries(normal_initialization_test PRIVATE abcd_source abcd_json)
+  add_test(NAME normal_initialization_test COMMAND normal_initialization_test)
   add_executable(module_initialization_test tests/unit/source/module_initialization_test.cc)
   target_include_directories(module_initialization_test PRIVATE tests/support)
   target_link_libraries(module_initialization_test PRIVATE abcd_source)
@@ -1505,6 +1509,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/expression_precedence.mjs $<TARGET_FILE:expression_precedence_test>)
     add_test(NAME boolean_context_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/boolean_context.mjs $<TARGET_FILE:expression_precedence_test>)
+    add_test(NAME normal_initialization_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/normal_initialization.mjs $<TARGET_FILE:normal_initialization_test>)
     add_test(NAME boolean_choice_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/boolean_choice.mjs $<TARGET_FILE:expression_precedence_test>)
     add_test(NAME postfix_expression_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

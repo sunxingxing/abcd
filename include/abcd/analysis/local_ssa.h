@@ -3,14 +3,11 @@
 
 #include "abcd/analysis/register_ssa.h"
 #include "abcd/analysis/capture_effect.h"
+#include "abcd/analysis/instruction_rank.h"
 
 namespace abcd::analysis {
 enum class LocalSsaError { kControlFlow, kEnvironment, kInstruction, kResourceLimit };
 enum class LocalReadState : std::uint8_t { kUnreachable, kPreserved, kExposed, kCapture };
-struct InstructionRank {
-  std::uint32_t value;
-  auto operator<=>(const InstructionRank&) const = default;
-};
 struct LocalSsa {
   // RegisterId here indexes local cells, NOT VM registers. InstructionValue
   // and read coordinates still index the original unchanged body. Entries are

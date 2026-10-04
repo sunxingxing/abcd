@@ -12,6 +12,48 @@
 
 ## 当前阶段
 
+### 2026-10-04：普通初始化与捕获使用支配区域及真实路径
+
+- 规则 revision102，基线 dd07273e。完成此前已复现的普通 cell 初始化
+  地址限制修复：原入口对 allocation→store→load 的合法执行，只因 store
+  或 allocation 的块放在更晚地址就拒绝。日志前缀
+  /tmp/abcd-normal-initialization-*，原 red-tests.log 保留 FunctionInput
+  拒绝证据。没有用样本、名字、opcode 序列或固定块布局选择生产语义。
+- LocalAccessPlan 收集各 cell 的初始化 store 支配区域，保留外层、互不
+  重叠的区域；读取和 NormalScopeFacts 共用 InitializationBefore。
+  allocation 身份、支配关系和所有写入的 Language 义务保留，只在同一
+  实际 block 比较 instruction 顺序。Defined guard 的创建点查询也改用
+  实际 block/支配事实，跨块不额外比较原地址。
+- 未保留 capture 的暴露沿正常 DAG 前驱传播，捕获前状态排除当前创建点；
+  地址更晚但执行更早的捕获仍拒绝，兄弟分支及 fresh allocation 之前的
+  捕获不误算当前环境暴露。复用 Kahn/Lengauer-Tarjan/Euler，抽出共同
+  InstructionRank 类型；rank 不替代支配、路径、reaching value 或效果证明。
+- 新解码夹具有两种反向布局，三 profile 分别实际解码，1/200/201/402
+  读取贯通 FunctionInput→ValueProgram→FunctionTree→同一 printer。
+  另有 1/200/201/402 个独立初始化区域、兄弟捕获、旧环境捕获、可写
+  暴露、store bypass 和晚 guard 正反例。Defined guard 单元视图仅测试
+  Rebase 查询，不冒充完整 Defined producer 发布验收。
+- related-build-2.log 的23个目标单-j4构建退出0；related-tests.log
+  29/29通过133.15秒。首次相关构建因CTest别名误当target而退出2，已按
+  注册的实际可执行目标修正。function_input旧源码位置断言仍要求每个
+  expression非零宽，与规则100的undefined尾部完成契约不符；现严格
+  检查实际return/literal、owner/body、共同零宽边界及结束缩进/括号。
+  更正后的首次4项复验通过3.23秒。最后补实各profile解码并重建新目标，
+  profile-tests.log 2/2通过4.02秒；24份实际生成源码的独立Node oracle
+  共336个身份/副作用场景通过，不用参考源码返回或INCOMPLETE充当成功。
+- fresh build/stage-one/normal-initialization-pass-1 固定五输入均退出0，
+  仍80complete/26incomplete/0failure/46no-module，无新完整项、回退或
+  legacy writer。batch-1.log/syntax-1.log核对原index/manifest SHA和size，
+  106份源码解析通过，全部与generator-completion-pass-1字节相同。
+- author self-review核对区域嵌套/剪枝、同块顺序、所有前驱暴露、分配
+  身份、查询调用方及保留写入义务。算法成本和边界见algorithms.md。
+  所有路径初始化的合流、真实循环/异常activation transfer、旧deferred/
+  module prefix布局和协程包装仍是缺口，不宣称所有形状条件审计闭合。
+  普通数值和未知父构造器仍阻断当前26项；数值验收标准尚无用户新选择，
+  本轮不改变合同。字段/全局/签名/Reference/phase及整份阶段一独立语义/
+  表示验收未完成，Goal active。代理、全量测试、扩展语料、RSS/基准及
+  DFX继续暂停；本轮不宣称进程峰值内存达标。
+
 
 ### 2026-10-04：以共同语法退出恢复 generator RETURN 清理
 

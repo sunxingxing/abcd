@@ -1426,3 +1426,37 @@ and block-target tests exercise 200/201/402, effects, identity and exceptions.
 The 402 return-selection fixture still exhausts the existing cumulative 64MiB
 admission during family enclosure; this counter is not a measured process peak.
 Full RSS/throughput and accounting redesign remain paused.
+
+## Normal cell initialization regions and exposure (rules 102)
+
+Reuse the repository's simple Lengauer-Tarjan dominators, Euler intervals and
+Kahn DAG order. Allocation must dominate each initializing store; instruction
+coordinates order sites only in the same actual block. Sort candidates by cell,
+dominator entry and same-block store coordinate, then retain outermost disjoint
+regions. A binary interval lookup proves initialization at a read/creation, not
+the cell's reaching value. Every store keeps its separate Language obligation.
+Sibling stores do not prove initialization of their join without an all-path
+transfer proof. Cycles retain the existing activation-local admission boundary.
+
+An entry-reachable DAG pass assigns typed InstructionRank coordinates and
+propagates the maximum unpreserved capture rank along actual successors. The
+state before each instruction excludes that instruction's own capture. Once
+allocation/initialization ownership is independently proved, comparing the
+incoming capture rank with the dominating allocation rank detects a possible
+exposure since allocation. Unrelated sibling captures never enter that path;
+captures before a fresh allocation refer to the earlier environment. A rank
+comparison alone is not dominance, path membership or a reordering license.
+
+For I instructions, B blocks, E edges and A lexical accesses, cost including the
+existing dominator build is O((B+E) log(2+B) + A log(2+A+B) + I) time and
+O(I+B+E+A) storage. Queries cost O(log(2+A)); exposure after the common pass is
+O(1). No per-cell or per-creation CFG walk is added. Existing capacity and work
+admission covers retained arrays and conservative scratch; it is not process
+peak RSS. Physical RSS and larger corpus benchmarks remain paused.
+
+Algorithm provenance is the same dominator/Kahn implementation documented above;
+no external code, dependency, license change or version-unpinned adapter is
+introduced. Maintenance requires preserving the original block/site ownership,
+Language-store checks and exposure transfer when extending cell lifetimes.
+Decoded fixtures exercise 1/200/201/402 disjoint regions and reversed block
+layouts; generated common-tree source has independent identity/effect tests.

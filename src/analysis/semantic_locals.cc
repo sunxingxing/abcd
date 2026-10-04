@@ -2,9 +2,11 @@
 #include "abcd/analysis/block_order.h"
 
 #include <algorithm>
+#include <bit>
 #include <new>
 #include <stdexcept>
 #include <tuple>
+#include <type_traits>
 
 namespace abcd::analysis {
 namespace {
@@ -18,6 +20,30 @@ bool CapturesEnvironment(const SemanticOperation& operation) {
          std::holds_alternative<BufferedArrayCreation>(operation);
 }
 }  // namespace
+std::optional<InstructionId> LocalAccessPlan::InitializationBefore(
+    LocalCellId cell, BlockId block, InstructionId site) const {
+  if (block.value >= block_entries.size() || !block_entries[block.value]) return {};
+  const auto entry = block_entries[block.value];
+  auto found = std::upper_bound(initializations.begin(), initializations.end(), std::tuple(cell.value, entry),
+      [](auto key, const LocalInitialization& fact) { return key < std::tuple(fact.cell.value, fact.begin); });
+  if (found == initializations.begin()) return {};
+  const auto& fact = *--found;
+  if (fact.cell.value != cell.value || entry < fact.begin || entry >= fact.end ||
+      (fact.block == block && fact.store >= site)) return {};
+  return fact.store;
+}
+bool LocalAccessPlan::PreservesSince(InstructionId allocation, InstructionId site) const {
+  if (!site_order.empty()) {
+    if (allocation.value >= site_order.size() || site.value >= site_order.size() ||
+        site.value >= capture_before.size() || !site_order[allocation.value] || !site_order[site.value] ||
+        *site_order[allocation.value] >= *site_order[site.value]) return false;
+    return !capture_before[site.value] || *capture_before[site.value] < *site_order[allocation.value];
+  }
+  // Existing cyclic path is admitted only for a fresh same-block allocation;
+  // initialization must separately establish that activation-local ownership.
+  const auto next = std::lower_bound(capture_barriers.begin(), capture_barriers.end(), site);
+  return next == capture_barriers.begin() || *(next - 1) < allocation;
+}
 std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
     const SemanticMethod& method, const EnvironmentFlow& environments,
     SemanticBudget budget, ClosureWrites closure_writes,
@@ -100,6 +126,7 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
     // Cyclic cell lifetimes still require a separate initialization transfer
     // proof; this existing dominance path must not pretend to establish it.
     bool acyclic = false;
+    std::optional<BlockOrder> order;
     if (!plan.cells.empty()) {
       // Ordering visits each edge at most three times, including failure on a
       // cycle. Charge that bound even when the API returns no partial product.
@@ -112,14 +139,19 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
       auto ordered = OrderAcyclicBlocks(method.flow, {}, {remaining});
       acyclic = std::holds_alternative<BlockOrder>(ordered);
       if (!acyclic && std::get<OrderError>(ordered) != OrderError::kCycle) return resource();
+      if (acyclic) {
+        order.emplace(std::get<BlockOrder>(std::move(ordered)));
+        if (order->work.allocated_bytes > remaining) return resource();
+        remaining -= order->work.allocated_bytes;
+      }
     }
     std::optional<DominatorTree> dominance;
     if (acyclic && !plan.cells.empty()) {
-      if (plan.cells.size() > remaining / sizeof(std::optional<LocalInitialization>))
+      if (count > remaining / sizeof(LocalInitialization))
         return resource();
-      plan.initializations.resize(plan.cells.size());
+      plan.initializations.reserve(count);
       const auto init_bytes = plan.initializations.capacity() *
-                              sizeof(std::optional<LocalInitialization>);
+                              sizeof(LocalInitialization);
       if (init_bytes > remaining) return resource();
       remaining -= init_bytes;
       if (method.flow.blocks.size() > remaining / sizeof(std::uint32_t)) return resource();
@@ -135,6 +167,8 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
       if (tree->work.eval_steps > remaining_work) return resource();
       remaining_work -= tree->work.eval_steps;
       dominance.emplace(std::move(*tree));
+      if (dominance->work.allocated_bytes > remaining) return resource();
+      remaining -= dominance->work.allocated_bytes;
       for (std::size_t i = 0; i < plan.block_entries.size(); ++i)
         plan.block_entries[i] = dominance->nodes[i].begin;
     }
@@ -206,8 +240,7 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
         plan.accesses.push_back({instruction, {id}, LocalAccessKind::kStore});
         plan.stores.push_back({{id}, instruction});
         const auto allocated = allocations[owner->value];
-        if (dominance && !plan.initializations[id] && allocated &&
-            allocated->value < i) {
+        if (dominance && allocated) {
           // In an acyclic CFG, the same environment allocation may precede a
           // branch and initialize only after its join. Require dominance of
           // the store, not textual co-location. Store dominance is retained
@@ -224,26 +257,21 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
           const auto allocation_block = static_cast<std::uint32_t>(
               after_allocation - method.flow.blocks.begin() - 1);
           const auto& scope = dominance->nodes[block];
-          if (scope.begin && dominance->Dominates(
+          if (scope.begin && (allocation_block != block || allocated->value < i) && dominance->Dominates(
                   BlockId{allocation_block},
                   BlockId{static_cast<std::uint32_t>(block)}))
-            plan.initializations[id] = LocalInitialization{
-                instruction, scope.begin, scope.end};
+            plan.initializations.push_back(LocalInitialization{
+                {id}, instruction, {static_cast<std::uint32_t>(block)}, scope.begin, scope.end});
         }
       } else if (std::holds_alternative<LexicalLoad>(operation)) {
         const auto allocated = allocations[owner->value];
         const bool same_block = allocated && allocated->value >= first &&
                                 stores[id] && stores[id]->value >= first;
-        bool initialized = same_block;
-        if (!initialized && dominance && plan.initializations[id]) {
-          const auto& scope = *plan.initializations[id];
-          const auto entry = plan.block_entries[block];
-          initialized = scope.store.value < i &&
-                        scope.begin <= entry && entry < scope.end;
-        }
-        if (!allocated || allocated->value >= i || !initialized ||
+        // DAG reads are checked after all initialization regions are collected;
+        // physical scanning cannot know a dominating store at a later address.
+        if (!acyclic && (!allocated || allocated->value >= i || !same_block ||
             (closure_writes == ClosureWrites::kUnknown && creation &&
-             creation->value >= allocated->value))
+             creation->value >= allocated->value)))
           return SemanticProofFailure{SemanticProofError::kInternalValue,
                                        method.instructions[i].pc};
         plan.accesses.push_back({instruction, {id}, LocalAccessKind::kLoad});
@@ -255,6 +283,58 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
     if (preservation != preserved.size())
       return SemanticProofFailure{SemanticProofError::kEnvironment,
                                    preserved[preservation].pc};
+    if (acyclic) {
+      std::sort(plan.initializations.begin(), plan.initializations.end(), [&](const auto& a, const auto& b) {
+        charge(); return std::tuple(a.cell.value, a.begin, a.store.value) < std::tuple(b.cell.value, b.begin, b.store.value);
+      });
+      // Dominator regions nest or are disjoint. Keep each cell's outermost
+      // regions; equal regions retain the earliest in-block store. No address
+      // comparison chooses between different blocks or forwards a cell value.
+      std::size_t kept = 0;
+      for (const auto fact : plan.initializations) {
+        charge();
+        if (kept && plan.initializations[kept - 1].cell.value == fact.cell.value && fact.begin < plan.initializations[kept - 1].end) continue;
+        plan.initializations[kept++] = fact;
+      }
+      plan.initializations.resize(kept);
+      const auto size = [&](auto& vector, std::size_t n) {
+        using T = typename std::decay_t<decltype(vector)>::value_type;
+        if (n > remaining / sizeof(T)) throw resource();
+        vector.resize(n);
+        if (vector.capacity() > remaining / sizeof(T)) throw resource();
+        remaining -= vector.capacity() * sizeof(T);
+      };
+      size(plan.site_order, method.instructions.size()); size(plan.capture_before, method.instructions.size());
+      std::vector<std::uint8_t> captures;
+      std::vector<std::optional<InstructionRank>> incoming;
+      size(captures, method.instructions.size()); size(incoming, method.flow.blocks.size());
+      for (const auto site : plan.capture_barriers) { charge(); captures[site.value] = 1; }
+      std::uint32_t rank = 0;
+      for (const auto id : order->blocks) {
+        charge(); const auto& region = method.flow.blocks[id.value]; auto latest = incoming[id.value];
+        for (std::size_t i = region.first_instruction; i < std::size_t(region.first_instruction) + region.instruction_count; ++i) {
+          charge(); const InstructionRank current{rank++};
+          plan.site_order[i] = current; plan.capture_before[i] = latest;
+          if (captures[i]) latest = current;
+        }
+        for (std::size_t e = 0; e < region.successor_count; ++e) {
+          charge(); auto& target = incoming[region.successors[e].target.value];
+          if (latest && (!target || *target < *latest)) target = latest;
+        }
+      }
+      block = 0;
+      for (const auto& access : plan.accesses) {
+        charge(); if (access.kind != LocalAccessKind::kLoad) continue;
+        const auto site = access.instruction;
+        while (block + 1 < method.flow.blocks.size() && method.flow.blocks[block + 1].first_instruction <= site.value) { charge(); ++block; }
+        const auto allocated = allocations[plan.cells[access.cell.value].environment.value];
+        // Debit the indexed query's comparison bound; exposure itself is O(1).
+        for (auto comparisons = std::bit_width(plan.initializations.size()); comparisons; --comparisons) charge();
+        if (!allocated || !plan.InitializationBefore(access.cell, {static_cast<std::uint32_t>(block)}, site) ||
+            (closure_writes == ClosureWrites::kUnknown && !plan.PreservesSince(*allocated, site)))
+          return SemanticProofFailure{SemanticProofError::kInternalValue, method.instructions[site.value].pc};
+      }
+    }
     std::sort(plan.stores.begin(), plan.stores.end(), [&](auto a, auto b) {
       charge();
       return std::tie(a.cell.value, a.instruction.value) <

@@ -4,6 +4,7 @@
 #include "abcd/analysis/environment_flow.h"
 #include "abcd/analysis/capture_effect.h"
 #include "abcd/analysis/linear_lexicals.h"
+#include "abcd/analysis/instruction_rank.h"
 #include "abcd/analysis/register_value_flow.h"
 #include "abcd/analysis/semantic_ir.h"
 
@@ -49,7 +50,9 @@ struct LocalStoreSite {
   InstructionId instruction;
 };
 struct LocalInitialization {
+  LocalCellId cell;
   InstructionId store;
+  BlockId block;
   std::uint32_t begin;
   std::uint32_t end;
 };
@@ -75,10 +78,14 @@ struct LocalAccessPlan {
   std::vector<LocalAccessFact> accesses;
   std::vector<LocalStoreSite> stores;
   std::vector<std::optional<InstructionId>> allocations;
-  // Forward-only CFG certificate: allocation dominates the initial store;
-  // the store's dominator subtree covers these block-entry numbers. Later stores must
-  // independently pass Language verification. No closure mutation is inferred.
-  std::vector<std::optional<LocalInitialization>> initializations;
+  // DAG activation certificate: allocation dominates each retained store;
+  // disjoint dominator subtrees are sorted by (cell, begin). Multiple branches
+  // need separate regions, never a first store selected by address. These are
+  // initialization witnesses, not reaching values. All stores remain Language
+  // obligations; joins without a dominating store require another proof.
+  std::vector<LocalInitialization> initializations;
+  [[nodiscard]] std::optional<InstructionId> InitializationBefore(
+      LocalCellId cell, BlockId block, InstructionId site) const;
   // Allocation-to-store straight-line prefix with no observer or escape of
   // the new environment. Capture may precede this store, but no child can run
   // before it. This is not an initialized value at the creation instruction.
@@ -100,17 +107,24 @@ struct LocalAccessPlan {
   // Includes callable/class/buffer captures; not merely the previous function.
   // Empty means the verifier found no unpreserved sites, not initialization.
   std::vector<InstructionId> capture_barriers;
+  // Reachable DAG ranks and the latest unpreserved creation rank on ANY path
+  // before each site. Rank alone never proves path membership or dominance.
+  std::vector<std::optional<InstructionRank>> site_order;
+  std::vector<std::optional<InstructionRank>> capture_before;
+  [[nodiscard]] bool PreservesSince(InstructionId allocation, InstructionId site) const;
   std::uint64_t work_units = 0;
   std::size_t AllocatedBytes() const {
     return cells.capacity() * sizeof(LocalCell) +
            accesses.capacity() * sizeof(LocalAccessFact) +
            stores.capacity() * sizeof(LocalStoreSite) +
            allocations.capacity() * sizeof(std::optional<InstructionId>) +
-           initializations.capacity() * sizeof(std::optional<LocalInitialization>) +
+           initializations.capacity() * sizeof(LocalInitialization) +
            unexposed_initializations.capacity() * sizeof(std::optional<UnexposedInitialization>) +
            module_prefix_initializations.capacity() * sizeof(std::optional<UnexposedInitialization>) +
            block_entries.capacity() * sizeof(std::uint32_t) +
-           capture_barriers.capacity() * sizeof(InstructionId);
+           capture_barriers.capacity() * sizeof(InstructionId) +
+           site_order.capacity() * sizeof(std::optional<InstructionRank>) +
+           capture_before.capacity() * sizeof(std::optional<InstructionRank>);
   }
 };
 struct SemanticProof {

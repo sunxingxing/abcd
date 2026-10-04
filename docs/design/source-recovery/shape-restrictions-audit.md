@@ -864,3 +864,22 @@ semantic_locals/scope_facts 初始化顺序的跨块 PC 比较。它们是尚待
 替换的实现限制。本轮定位的 402 select-many 失败在 FamilyEnclosure 的
 TreeStructure 资源准入；累计 tree/scratch admission 不等同真实 RSS。
 未抬高阈值、删除检查、修改正例预期或开展暂缓的 DFX。
+
+## 2026-10-04：普通 cell 初始化不依赖跨块地址顺序（规则 102）
+
+semantic_locals 原按物理顺序选每个 cell 的首个 store，且在支配证明后
+仍比较 allocation/store/load 的 instruction 编号。scope_facts 对已支配
+creation 的初始化 store 和 Defined guard 也比较跨块编号。这些是布局
+限制，不是初始化或 Defined 的语义定义。
+
+现由共同 LocalAccessPlan 保留每个 cell 的 disjoint dominator regions，
+读取与捕获调用同一 InitializationBefore。store 支配、allocation 身份及
+全部写入值域义务保留。同块编号仍表示真实指令顺序；跨块不以 PC 选择
+执行先后。未保留捕获的暴露沿实际 DAG 前驱传播，不能按更早的物理
+creation 误判兄弟分支，也不能漏掉地址更晚但执行更早的 creation。
+
+解码回归覆盖两种反向布局、三个历史 profile、1/200/201/402 读取和独立
+初始化区域，以及分支绕过 store、未知捕获暴露和晚 guard 负例。区域不是
+reaching-value 快照；所有路径初始化的合流、循环/异常 activation transfer、
+旧 deferred/module prefix 及既有 coroutine 包装限制仍是明确覆盖缺口。
+这是此前定位的初始化条件修复，不是全仓形状条件审计已经闭合。

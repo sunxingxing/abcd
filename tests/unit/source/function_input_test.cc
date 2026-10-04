@@ -145,8 +145,26 @@ void TreeBinding(const FunctionValues& parent, const FunctionValues& child,
     for (std::size_t i = 0; i < family.members.size(); ++i) {
       test::Check(printed.members[i].method == family.members[i].tree.method);
       test::Check(printed.members[i].fragment == FunctionFragment::kConditionalExpression);
-      for (const auto& range : printed.members[i].expressions)
-        test::Check(range.begin >= printed.functions[i].begin && range.end <= printed.functions[i].end && range.begin < range.end);
+      const auto& tree = family.members[i].tree;
+      for (std::size_t e = 0; e < printed.members[i].expressions.size(); ++e) {
+        const auto range = printed.members[i].expressions[e];
+        test::Check(range.begin >= printed.functions[i].begin && range.end <= printed.functions[i].end && range.begin <= range.end);
+        if (range.begin != range.end) continue;
+        // Native undefined tail completion retains zero-width source events.
+        // Other expression omissions must still fail this ownership test.
+        const auto* literal = std::get_if<TreeLiteral>(&tree.expressions[e].expression);
+        const auto& body = std::get<BlockStmt>(tree.statements[tree.body.value].statement);
+        test::Check(literal && std::holds_alternative<UndefinedLiteral>(*literal) && body.child_count);
+        const auto tail = tree.children[body.first_child + body.child_count - 1];
+        const auto* returned = std::get_if<ReturnStmt>(&tree.statements[tail.value].statement);
+        test::Check(returned && returned->value == ExprId{static_cast<std::uint32_t>(e)});
+        const auto block_range = printed.members[i].statements[tree.body.value];
+        test::Check(printed.members[i].statements[tail.value] == range &&
+            block_range.begin <= range.begin && range.end < block_range.end);
+        const auto source = output.str();
+        const auto suffix = std::string_view(source).substr(range.begin, block_range.end - range.begin);
+        test::Check(suffix.find_first_not_of(' ') == suffix.size() - 1 && suffix.back() == '}');
+      }
     }
     for (std::size_t i = 0; i < outer.expressions.size(); ++i)
       if (std::holds_alternative<FunctionExpr>(outer.expressions[i].expression))

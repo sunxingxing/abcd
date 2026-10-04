@@ -10,6 +10,8 @@ namespace abcd::analysis {
 // Physical backward edges do not establish cycles. Cyclic graphs retain the
 // stricter same-block allocation/store/read proof until activation-sensitive
 // initialization transfer replaces it.
+// Each cell may have disjoint initializing dominator regions. Original site
+// numbers order instructions only inside one block, never across blocks.
 // Function creation since allocation blocks reads unless the owner promises
 // Language-only transitive closure stores. Initialization remains mandatory;
 // this premise says nothing about value identity. No phi-cell promotion.

@@ -186,3 +186,24 @@ polarity 映射，不能把 native If 的 alternate 当作固定 RETURN arm。�
 arm 后的 following-sequence 放置仍是已有实现边界。它们不是语言不变量，
 本轮没有扩大匹配，也没有宣称任意协程控制布局都已恢复。402 返回选择的
 默认 64MiB 累计准入仍有资源缺口；budget 平台/峰值验证继续暂缓。
+
+## 普通流 cell 初始化与捕获路径（规则 102）
+
+普通无环流的 LocalAccessPlan 收集每个实际 cell 的全部初始化 store，
+先证明 allocation 支配 store，再以 store 的支配子树建立互不重叠的区域。
+读取和创建点共用 InitializationBefore 查询；跨块执行先后来自支配关系，
+仅同块使用原 instruction 顺序。多个兄弟分支可各有初始化区域，不能按
+物理扫描的第一个 store 定义整个 cell 的支持域。
+
+这些事实只证明初始化，不转发或冻结某个 store 的值。所有原始 store
+仍须通过 Language 域检查。分支汇合处没有共同支配 store 时，尚需独立的
+所有路径初始化证明；当前区域接口不能据两个兄弟 store 授予该事实。
+
+未证明只读的捕获沿真实正常前驱传播，创建点查询其所有到达路径上的
+暴露状态；兄弟分支或 fresh allocation 之前的捕获不是当前环境的暴露。
+rank 是 DAG 分析坐标，不能替代路径或支配证明。Defined guard 也以实际
+block 所有权和支配区间查询，同块才要求 guard 先于 creation。
+
+真实循环仍保留 fresh 同块 allocation/store/read 的已有实现限制，异常
+和重复激活需要对应的生命周期转移。已有 deferred/module prefix 接口
+保持，未扩大其局部布局条件，也未改变数值和父级构造语义合同。

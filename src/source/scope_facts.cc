@@ -8,10 +8,11 @@
 
 namespace abcd::source {
 std::uint64_t NormalScopeFacts::QueryWork() const {
-  // Five binary searches plus the fixed ancestry walk and bounded field checks.
+  // Seven possible binary searches plus ancestry and bounded field checks.
   constexpr auto kChecks = std::numeric_limits<std::uint32_t>::digits;
   return 2 * kChecks + std::bit_width(locals_.cells.size()) +
-      std::bit_width(locals_.stores.size()) + std::bit_width(method_.flow.blocks.size()) +
+      std::bit_width(locals_.stores.size()) + 2 * std::bit_width(method_.flow.blocks.size()) +
+      std::bit_width(locals_.initializations.size()) +
       std::bit_width(locals_.capture_barriers.size()) + std::bit_width(defined_.guards.size());
 }
 bool NormalScopeFacts::Matches(analysis::InstructionId site,
@@ -75,12 +76,8 @@ std::variant<CaptureCell, ScopeError> NormalScopeFacts::Rebase(
   bool initialized = prior_store && allocation && allocation->value >= block->first_instruction &&
       allocation->value < store->instruction.value && store->instruction.value >= block->first_instruction;
   const auto block_id = static_cast<std::size_t>(block - blocks.begin());
-  if (!initialized && id < locals_.initializations.size() && locals_.initializations[id] &&
-      block_id < locals_.block_entries.size()) {
-    const auto& scope = *locals_.initializations[id];
-    const auto entry = locals_.block_entries[block_id];
-    initialized = scope.store.value < instruction && scope.begin <= entry && entry < scope.end;
-  }
+  if (!initialized) initialized = locals_.InitializationBefore(
+      {id}, {static_cast<std::uint32_t>(block_id)}, creation).has_value();
   // A fresh cell may be captured before initialization when the original
   // allocation-to-store prefix proves no observer/escape. This discharges the
   // child's eventual Language reads, not a value at the creation site. Defined
@@ -103,9 +100,7 @@ std::variant<CaptureCell, ScopeError> NormalScopeFacts::Rebase(
   }
   if (!allocation || !initialized) return Error::kInitialization;
   if (writes_ == analysis::ClosureWrites::kUnknown) {
-    const auto next = std::lower_bound(locals_.capture_barriers.begin(), locals_.capture_barriers.end(), creation);
-    if (next != locals_.capture_barriers.begin() && (next - 1)->value >= allocation->value)
-      return Error::kWrites;
+    if (!locals_.PreservesSince(*allocation, creation)) return Error::kWrites;
   } else if (writes_ != analysis::ClosureWrites::kLanguage) return Error::kWrites;
   if (requirement == analysis::CaptureDomain::kDefined) {
     if (block_id >= defined_.block_entries.size()) return Error::kDomain;
@@ -114,8 +109,16 @@ std::variant<CaptureCell, ScopeError> NormalScopeFacts::Rebase(
         [](auto target, const auto& guard) { return target < std::tuple(guard.cell.value, guard.begin); });
     if (found_guard == defined_.guards.begin()) return Error::kDomain;
     const auto& guard = *--found_guard;
-    if (guard.cell.value != id || guard.instruction.value >= instruction || entry < guard.begin ||
+    if (guard.cell.value != id || guard.instruction.value >= method_.instructions.size() || entry < guard.begin ||
         entry >= guard.end) return Error::kDomain;
+    const auto after_guard = std::upper_bound(blocks.begin(), blocks.end(), guard.instruction.value,
+        [](auto target, const auto& item) { return target < item.first_instruction; });
+    if (after_guard == blocks.begin()) return Error::kDomain;
+    const auto guard_block = after_guard - 1;
+    // A dominating guard in another block already completed on this path.
+    // Instruction order is meaningful only inside its actual owning block.
+    if (guard.instruction.value - guard_block->first_instruction >= guard_block->instruction_count ||
+        (guard_block == block && guard.instruction >= creation)) return Error::kDomain;
   }
   return CaptureCell{cell};
 }
