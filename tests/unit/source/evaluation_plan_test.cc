@@ -136,8 +136,9 @@ void SharedValue() {
        {analysis::OperandRole::kRight, analysis::ValueId{1}}});
   fixture.Return({2});
   const auto plan = fixture.Plan();
-  Check(plan.operations[0].kind == EvaluationKind::kRoot);
+  Check(plan.operations[0].kind == EvaluationKind::kPredicateSnapshot);
   Check(plan.operations[0].temporary == TemporaryReason::kMultipleUses);
+  Check(plan.operations[0].consumer == fixture.graph.ops[1].first_use);
   analysis::SemanticBudget budget;
   budget.work = plan.work - 1;
   Check(std::get<EvaluationError>(BuildEvaluationPlan(fixture.graph, budget)) == EvaluationError::kWorkLimit);
@@ -211,7 +212,7 @@ void SharedAndUnusedCalls() {
        {analysis::OperandRole::kRight, analysis::ValueId{1}}});
   fixture.Return({2});
   const auto plan = fixture.Plan();
-  Check(plan.operations[0].kind == EvaluationKind::kRoot &&
+  Check(plan.operations[0].kind == EvaluationKind::kPredicateSnapshot &&
         plan.operations[0].temporary == TemporaryReason::kMultipleUses);
   Fixture unused;
   unused.Add(analysis::ValueConstruct{0}, true,

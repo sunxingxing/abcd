@@ -118,7 +118,8 @@ void SharedValue() {
   // One freshly created function stored twice must stay one allocation.
   Fixture fixture({kPush, 2, kFunction, 0, 0, 0, 0, kStore, 0, kStore, kSlotOne, kPop, kReturnUndefined}, false);
   const auto operation = fixture.evaluation.functions[0].creation.value;
-  test::Check(fixture.flow.snapshots[operation] && fixture.evaluation.operations[operation].kind == EvaluationKind::kRoot);
+  test::Check(fixture.flow.snapshots[operation] &&
+      fixture.evaluation.operations[operation].kind == EvaluationKind::kPredicateSnapshot);
   std::size_t count = 0;
   for (const auto& node : fixture.tree.expressions) count += std::holds_alternative<FunctionExpr>(node.expression);
   test::Check(count == 1 && fixture.Valid(fixture.tree));

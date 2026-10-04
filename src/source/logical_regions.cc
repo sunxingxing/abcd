@@ -1,6 +1,7 @@
 #include "logical_regions.h"
 #include "evaluation_plan.h"
 #include "evaluation_liveness.h"
+#include "logical_evaluation.h"
 #include "tree_checks.h"
 #include "module_evaluation.h"
 
@@ -654,7 +655,7 @@ std::vector<std::optional<UseId>> FindLogicalLeftInputs(const ValueProgram& grap
     const auto* value = std::get_if<ValueId>(&graph.uses[op.first_use.value].operand);
     const auto* result = value ? std::get_if<OpResult>(&graph.values[value->value].origin) : nullptr;
     if (!result || graph.ops[result->op.value].block != op.block) continue;
-    const auto kind = evaluation.operations[result->op.value].kind;
+    const auto kind = BeforeLogicalFusion(graph, evaluation, result->op.value).kind;
     if (kind == EvaluationKind::kRoot || kind == EvaluationKind::kLogicalLeft) { candidate = true; break; }
   }
   if (!candidate) return inputs;
@@ -676,7 +677,7 @@ std::vector<std::optional<UseId>> FindLogicalLeftInputs(const ValueProgram& grap
     const auto* result = std::get_if<OpResult>(&value.origin);
     if (!result) continue;
     const auto& op = graph.ops[result->op.value];
-    const auto& placement = evaluation.operations[result->op.value];
+    const auto placement = BeforeLogicalFusion(graph, evaluation, result->op.value);
     if (op.block != region.header || op.order >= graph.ops[region.boolean.value].order ||
         (placement.kind != EvaluationKind::kRoot && placement.kind != EvaluationKind::kLogicalLeft)) continue;
     const auto predicate = graph.ops[region.boolean.value].first_use;

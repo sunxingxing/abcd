@@ -401,10 +401,11 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
         placement = {EvaluationKind::kPhiInput, plan.phis->inputs[bundle.first], {}};
       }
     }
-    if (flow == EvaluationFlow::kNormal && plan.phis) {
+    if (flow == EvaluationFlow::kNormal) {
       TreeCheckBudget logical_budget({bytes, work});
-      // Nullable/member predicates can expose a complete nested RHS. Prepare
-      // their single-evaluation snapshots before proving a logical LHS owner.
+      // Use-site assignments are independent of phi/predicate syntax. A later
+      // logical LHS proof may supersede the provisional snapshot using the
+      // original forest, without losing any other retained observation.
       BuildPredicateSnapshots(graph, plan, logical_budget);
       const auto inputs = FindLogicalLeftInputs(graph, plan, logical_budget);
       admit(logical_budget.Bytes(), 1); step(logical_budget.Work());

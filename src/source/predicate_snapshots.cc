@@ -34,22 +34,27 @@ std::vector<std::optional<UseId>> Candidates(const ValueProgram& graph,
     const auto shape = DescribeEvaluation(operation);
     if (!shape || !shape->expression || shape->inputs != InputEvaluation::kEager) { first[i].reset(); continue; }
     const auto owner = std::get<OpId>(graph.uses[first[i]->value].owner);
-    const auto& compare = graph.ops[owner.value];
-    const auto* binary = std::get_if<ValueBinary>(&compare.operation);
+    const auto& consumer = graph.ops[owner.value];
+    const auto consumer_shape = DescribeEvaluation(consumer.operation);
     const auto placement = BeforeLogicalFusion(graph, plan, owner.value);
-    bool eligible = binary && (binary->op == BinaryOperator::kStrictEqual || binary->op == BinaryOperator::kStrictNotEqual) &&
-        placement.kind == EvaluationKind::kInline && placement.consumer;
-    if (eligible) {
-      const auto* branch = std::get_if<OpId>(&graph.uses[placement.consumer->value].owner);
-      eligible = branch && graph.ops[branch->value].block == compare.block &&
-          std::holds_alternative<ValueBranch>(graph.ops[branch->value].operation);
-    }
+    // The exact eager occurrence receives one assignment, irrespective of its
+    // source syntax. Reference-before-RHS and repeated-input lowering retain
+    // their existing snapshots; the interval proof owns all intervening effects.
+    const bool eligible = consumer_shape && consumer_shape->inputs == InputEvaluation::kEager &&
+        !consumer_shape->NeedsSnapshot(graph.uses[first[i]->value].role) &&
+        !PredicateSnapshot(graph, consumer, graph.uses[first[i]->value].operand) &&
+        (placement.kind == EvaluationKind::kRoot || placement.kind == EvaluationKind::kInline);
     if (!eligible) first[i].reset();
   }
   return first;
 }
 std::size_t Events(const ValueOp& op, OpEvaluation placement) {
-  if (placement.kind == EvaluationKind::kCellGuard || placement.kind == EvaluationKind::kModuleGuard) return 0;
+  // Domain proofs discharge guards and fold literal/class operations before
+  // forest planning. Count the same projected events as the main planner;
+  // independently verified native definitions are not standalone writes here.
+  if (placement.kind == EvaluationKind::kCellGuard || placement.kind == EvaluationKind::kModuleGuard ||
+      placement.kind == EvaluationKind::kReceiverGuard || placement.kind == EvaluationKind::kInitializer ||
+      placement.kind == EvaluationKind::kNestedLiteral || placement.kind == EvaluationKind::kClassProjection) return 0;
   if (std::holds_alternative<ValueModuleRead>(op.operation)) return 2;
   return OrderedEvaluation(op) || IsEnvironmentState(op.operation);
 }
@@ -103,7 +108,7 @@ void VerifyPredicateSnapshots(const ValueProgram& graph, const EvaluationPlan& p
     Require(actual.consumer && candidates[i] == actual.consumer && actual.temporary == TemporaryReason::kMultipleUses);
     needed[std::get<OpId>(graph.uses[actual.consumer->value].owner).value] = 1;
   }
-  // This proof owns the selected comparisons and their original inline operand
+  // This proof owns the selected consumers and their original inline operand
   // trees. Other expressions (e.g. a prior folded literal call) retain their
   // separate local proof. Still count every event in the block, so an unrelated
   // intervening effect cannot disappear from a selected snapshot's interval.

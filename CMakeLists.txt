@@ -586,6 +586,9 @@ if(BUILD_TESTING)
   add_executable(logical_regions_test tests/unit/source/logical_regions_test.cc)
   target_link_libraries(logical_regions_test PRIVATE abcd_source)
   add_test(NAME logical_regions_test COMMAND logical_regions_test)
+  add_executable(eager_snapshot_test tests/unit/source/eager_snapshot_test.cc)
+  target_link_libraries(eager_snapshot_test PRIVATE abcd_source)
+  add_test(NAME eager_snapshot_test COMMAND eager_snapshot_test)
   add_executable(logical_tree_test tests/unit/source/logical_tree_test.cc)
   target_link_libraries(logical_tree_test PRIVATE abcd_source)
   add_test(NAME logical_tree_test COMMAND logical_tree_test)
@@ -1249,6 +1252,8 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME expression_snapshot_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/expression_snapshot.mjs $<TARGET_FILE:logical_regions_test>)
+    add_test(NAME eager_snapshot_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/eager_snapshot.mjs $<TARGET_FILE:eager_snapshot_test>)
     add_test(NAME logical_regions_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/logical_regions.mjs $<TARGET_FILE:logical_regions_test>)
     add_test(NAME decision_selection_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

@@ -296,12 +296,15 @@ void SnapshotTree() {
   Check(tree.symbols.size() == 2);
   Check(tree.symbols[1].temporary == TemporaryReason::kMultipleUses);
   const auto& root = std::get<BlockStmt>(tree.statements[tree.body.value].statement);
-  Check(root.child_count == 3);
+  Check(root.child_count == 2);
   const auto& declaration = std::get<DeclarationStmt>(tree.statements[tree.children[root.first_child].value].statement);
   Check(declaration.symbol == SymbolId{1} && !declaration.initializer);
-  const auto& snapshot = std::get<ExpressionStmt>(tree.statements[tree.children[root.first_child + 1].value].statement);
-  const auto& assignment = std::get<AssignmentExpr>(tree.expressions[snapshot.expression.value].expression);
+  const auto& returned = std::get<ReturnStmt>(tree.statements[tree.children[root.first_child + 1].value].statement);
+  const auto& comparison = std::get<BinaryExpr>(tree.expressions[returned.value->value].expression);
+  const auto& assignment = std::get<AssignmentExpr>(tree.expressions[comparison.left.value].expression);
   Check(std::get<SymbolTarget>(assignment.target).symbol == SymbolId{1});
+  Check(std::get<SymbolExpr>(tree.expressions[comparison.right.value].expression).symbol == SymbolId{1});
+  Check(std::holds_alternative<TreeSemantics>(f.Verify(tree)));
 }
 void NameAndConstantRefusals() {
   auto f = BranchFixture();

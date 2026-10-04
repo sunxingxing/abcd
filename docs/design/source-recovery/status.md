@@ -12,6 +12,49 @@
 
 ## 当前阶段
 
+### 2026-10-04：共同 eager 使用点保存与成员 Reference 复核
+
+- 规则 revision82。删除 tree_operands::Receiver 中残留的第二重
+  property/call 同块或 CrossPhaseInline/CrossLogicalInline 枚举门槛。
+  VerifyTreeFlow 在操作数检查前新鲜复核 normal/phased EvaluationPlan；
+  实际 property result、consumer、base/receiver 身份和存储对应继续成立。
+  没有重读 callee/getter 或引入可变 .call/.apply。历史同块条件是局部
+  实现边界，不能充当语言/VM 不变量；禁止新增布局匹配的规则仍生效。
+- predicate snapshot 的 strict comparison→branch 候选条件改用共同
+  DescribeEvaluation eager 语义与完整效果区间；不再要求函数有 phi。
+  森林和操作数复核携带真实 UseId，保存赋值只在该使用点执行，其他使用
+  读取同一个私有槽。logical/conditional 保留各自实际谓词 occurrence；
+  native logical keep 绑定已经验证的左值，不重复保存，不把普通 phi
+  私有槽读取误当成 logical keep。事件域与主森林一致，已经独立证明的
+  receiver/cell/module guard 和 folded literal/class 定义不产生独立事件；
+  staged 定义恢复其原始 root 事件。没有放松 guard/literal 的独立证明。
+  契约见 expression-snapshots.md，最新审计见 shape-restrictions-audit.md。
+- 新增三 profile、0/1/200/201/402 copy、寄存器互换、getter barrier、block
+  split 的840个真实解码夹具及258720组独立 Node 行为对照，覆盖 setter、
+  typeof、computed read/equality、单次/重复参数、computed-write reference
+  边界、receiver、共享身份、key coercion、mutation及任意抛出值。缺失
+  consumer、错误私有符号、跨效果/块的伪造保存与精确 work 边界负例保留。
+  引擎仅接收编码输入；native reference 仅进入独立测试。
+- 调试发现两项真实 complete 回退：普通 saved phi 被误要求拥有 logical
+  owner，以及构造函数 snapshot 复核把已证明的 guard/折叠定义算作独立
+  事件。均修复共同对应关系，没有样本生产分支；失败日志保留。新增的
+  临时出版检查曾误断言平台 executable=true，已撤去重复规格，复用既有
+  Home 完整配对测试；source_complete 不授予平台执行收据。
+- 最终单构建 -j4 退出0：/tmp/abcd-eager-snapshot-projection-build.log。
+  projection-final-tests.log 记录27/27相关检查82.68秒通过，包含真实
+  pasteboard 回调240组和 Home record362组配对行为；新增源码对照通过。
+  changed DetailPage 额外复核1/1通过3.98秒：detail-tests.log，包含1080组
+  短路谓词和528组嵌套GridCol场景。此前 guard-tests/projection-tests 的
+  失败不计通过。full-suite/RSS/扩展语料/基准/DFX保持暂停。
+- fresh build/stage-one/value-eager-snapshot-pass-3 固定五输入均退出0：
+  80 complete /26 incomplete /0 failure /46 no-module，没有完整回退或
+  legacy writer。五输入SHA/size与manifest/abc-index一致，106份源码
+  全部解析。相较revision81，四份complete和两份incomplete源码改为实际
+  使用点保存，其余字节不变；检查见 guard-batch.log / guard-syntax.log。
+  当前 interval 仍为 normal 局部证明，跨块继续保留原保存；phased commit/
+  throw/catch版本、存储Reference、多selection参数、首次own-definition及
+  legacy构造模板仍开放。阶段一语义/源码风格双验收未完成，Goal active。
+
 ### 2026-10-04：literal 早期输入复用共同分配点可用性
 
 - 规则 revision81。删除 EarlyValue 的 phased phi.block==allocation.block

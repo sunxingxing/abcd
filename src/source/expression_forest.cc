@@ -313,7 +313,7 @@ class ForestBuilder {
               [&](auto index, auto target) { Step(); return modules_[index] < target; });
           Require(found != module_order_.end() && modules_[*found] == binding->target, Error::kBinding);
           const SymbolId symbol{static_cast<std::uint32_t>(forest_.bindings.symbols.size() + *found)};
-          const auto value = Operand(graph_.uses[op.first_use.value].operand, origin);
+          const auto value = Use(op.first_use, origin);
           if (binding->initialize) {
             forest_.module_initializations[i] = symbol;
             forest_.operations[i] = value;
@@ -334,7 +334,7 @@ class ForestBuilder {
           for (std::uint32_t j = 0; j < call->arguments; ++j) {
             Step();
             Require(forest_.arguments.size() < forest_.arguments.capacity(), Error::kResourceLimit);
-            forest_.arguments.push_back(Operand(graph_.uses[op.first_use.value + j].operand, origin));
+            forest_.arguments.push_back(Use(analysis::UseId{op.first_use.value + j}, origin));
           }
           forest_.operations[i] = Add(SuperCallExpr{arguments, call->source}, origin);
           continue;
@@ -439,7 +439,12 @@ class ForestBuilder {
     const TreeOriginId boolean_origin{graph_.ops[region.boolean.value].origin.value};
     const TreeOriginId branch_origin{graph_.ops[region.branch.value].origin.value};
     ExprId left;
-    if (region.conditions.empty()) left = Operand(region.left, boolean_origin);
+    if (region.conditions.empty()) {
+      // Logical LHS uses the original predicate input; a conditional retains
+      // the predicate's result. Preserve the actual occurrence in either form.
+      const auto use = graph_.ops[region.consequent ? region.branch.value : region.boolean.value].first_use;
+      left = Use(use, boolean_origin);
+    }
     if (!region.conditions.empty()) {
       Require(region.consequent && region.conditions.front().branch == region.branch, Error::kOwnership);
       const auto last = region.conditions.back().branch;
@@ -693,7 +698,7 @@ class ForestBuilder {
   }
   ExprId Call(const analysis::ValueOp& op, const CallBinding& binding, TreeOriginId origin) {
     const bool member = std::holds_alternative<MemberCall>(binding);
-    const auto callee = Operand(graph_.uses[op.first_use.value].operand, origin);
+    const auto callee = Use(op.first_use, origin);
     if (const auto* construct = std::get_if<ConstructCall>(&binding); construct && construct->array) {
       if (evaluation_.operations[construct->array->value].kind == EvaluationKind::kRoot) {
         Require(forest_.operations[construct->array->value].has_value(), Error::kOwnership);
@@ -723,7 +728,7 @@ class ForestBuilder {
     for (std::uint32_t ordinal = prefix; ordinal < op.use_count; ++ordinal) {
       Step();
       Require(forest_.arguments.size() < forest_.arguments.capacity(), Error::kResourceLimit);
-      forest_.arguments.push_back(Operand(graph_.uses[op.first_use.value + ordinal].operand, origin));
+      forest_.arguments.push_back(Use(analysis::UseId{op.first_use.value + ordinal}, origin));
     }
     if (std::holds_alternative<ConstructCall>(binding))
       return Add(ConstructExpr{callee, arguments}, origin);

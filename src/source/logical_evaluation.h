@@ -5,8 +5,9 @@
 #include "tree_checks.h"
 
 namespace abcd::source {
-// Named/computed getter snapshots can assign their retained private slot at
-// their earliest strict-comparison use, with an independent local order proof.
+// Eager expressions can assign their retained private slot at the earliest
+// eligible use. Current interval proofs are local; reference/RHS and repeated
+// input boundaries retain snapshots. No consumer opcode or predicate shape gate.
 void BuildPredicateSnapshots(const analysis::ValueProgram&, EvaluationPlan&, TreeCheckBudget&);
 void VerifyPredicateSnapshots(const analysis::ValueProgram&, const EvaluationPlan&, TreeCheckBudget&);
 // The builder starts from a freshly constructed local forest. Its backwards

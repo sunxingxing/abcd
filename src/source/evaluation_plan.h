@@ -20,6 +20,10 @@ enum class BranchPolarity : std::uint8_t { kTaken, kFallthrough };
 // retained phi input are two observations of that single expression result.
 // kLogicalValue owns a logical/conditional result at one join consumer; logical_values
 // identifies the eliminated phi location. Its cross-region inputs need interval proof.
+// kPredicateSnapshot is the historical name for an eager use-site assignment:
+// one consumer saves the value, all remaining occurrences read its private slot.
+// Consumer syntax does not decide admission; reference/repeated-input boundaries
+// and the independently checked effect interval still own that permission.
 enum class EvaluationKind : std::uint8_t {
   kRemoved, kRoot, kInline, kInitializer, kEnvironment, kModuleGuard, kElidedPure, kAlias, kNestedLiteral, kClassProjection, kReceiverGuard, kCellGuard, kPhiInput, kLogicalLeft, kLogicalValue, kPredicateSnapshot
 };

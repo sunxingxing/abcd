@@ -687,7 +687,8 @@ void LogicalLefts() {
       const auto excluded_region = FindLogicalRegions(excluded, excluded_control).front();
       const auto producer = std::get<OpResult>(excluded.values[excluded_region.left.value].origin).op;
       auto plan = std::get<EvaluationPlan>(BuildEvaluationPlan(excluded));
-      Check(plan.operations[producer.value].kind == EvaluationKind::kRoot);
+      Check(plan.operations[producer.value].kind ==
+          (shared ? EvaluationKind::kPredicateSnapshot : EvaluationKind::kRoot));
       Check(Source(excluded).find("$value") != std::string::npos);
       plan.operations[producer.value] = {EvaluationKind::kLogicalLeft,
           excluded.ops[excluded_region.boolean.value].first_use, {}};

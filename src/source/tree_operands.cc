@@ -159,14 +159,14 @@ class OperandCheck {
       if (!predicate && !flow_.conditional_operations.empty() && flow_.conditional_operations[i]) {
         const auto& conditional = Node<ConditionalExpr>(expression);
         RequireMeaning(std::holds_alternative<analysis::ValueBranch>(op.operation) && op.use_count == 1, Error::kOperand);
-        Input(graph_.uses[op.first_use.value].operand, conditional.condition);
+        Input(graph_.uses[op.first_use.value].operand, conditional.condition, op.first_use);
         continue;
       }
       if (!flow_.logical_operations.empty() && flow_.logical_operations[i]) {
         const auto& logical = Node<LogicalExpr>(expression);
         RequireMeaning(logical.operation == *flow_.logical_operations[i], Error::kOperand);
         if (std::holds_alternative<analysis::ValueUnary>(op.operation))
-          Input(graph_.uses[op.first_use.value].operand, logical.left);
+          Input(graph_.uses[op.first_use.value].operand, logical.left, op.first_use);
         else RequireMeaning(std::holds_alternative<analysis::ValueBranch>(op.operation), Error::kOperand);
         continue;
       }
@@ -205,20 +205,20 @@ class OperandCheck {
           RequireMeaning(Node<ThisExpr>(expression).owner == tree_.owner, Error::kOperand);
         } else if constexpr (std::is_same_v<T, analysis::ValueCopy>) {
           if (!evaluation_.integer_nans.empty() && evaluation_.integer_nans[current_.value] == NaNProjection::kIntegerCoercion)
-            IntegerInput(input(0), expression);
-          else Input(input(0), expression);
+            IntegerInput(input(0), expression, op.first_use);
+          else InputAt(0, expression);
         } else if constexpr (std::is_same_v<T, analysis::ValueThrow> ||
                       std::is_same_v<T, analysis::ValueReturn>) {
-          Input(input(0), expression);
+          InputAt(0, expression);
         } else if constexpr (std::is_same_v<T, analysis::ValueUnary>) {
           Unary(operation.op, input(0), expression);
         } else if constexpr (std::is_same_v<T, analysis::ValueAwait>) {
-          Input(input(0), Node<AwaitExpr>(expression).operand);
+          InputAt(0, Node<AwaitExpr>(expression).operand);
         } else if constexpr (std::is_same_v<T, analysis::ValueYield>) {
           const auto& yielded = Node<YieldExpr>(expression);
           RequireMeaning((yielded.form == YieldForm::kDirect && operation.origin.form == analysis::YieldForm::kDirect) ||
               (yielded.form == YieldForm::kDelegate && operation.origin.form == analysis::YieldForm::kDelegate), Error::kOperator);
-          Input(input(0), yielded.operand);
+          InputAt(0, yielded.operand);
         } else if constexpr (std::is_same_v<T, analysis::ValueBranch>) {
           if (flow_.branch_polarity[current_.value] == BranchPolarity::kFallthrough) {
             using U = analysis::UnaryOperator;
@@ -257,13 +257,13 @@ class OperandCheck {
             const auto* declaration = std::get_if<DeclarationStmt>(&tree_.statements[flow_.statements[i]->value].statement);
             RequireMeaning(declaration && declaration->initializer == expression, Error::kOperand);
             symbol = declaration->symbol;
-            Input(input(0), expression);
+            InputAt(0, expression);
           } else {
             const auto& assignment = Node<AssignmentExpr>(expression);
             const auto* target = std::get_if<SymbolTarget>(&assignment.target);
             RequireMeaning(target != nullptr, Error::kOperand);
             symbol = target->symbol;
-            Input(input(0), assignment.value);
+            InputAt(0, assignment.value);
           }
           RequireMeaning(symbol.value < module_aliases.size() && module_aliases[symbol.value], Error::kOperand);
           const auto& alias = tree_.modules[*module_aliases[symbol.value]];
@@ -279,22 +279,22 @@ class OperandCheck {
           const auto& assignment = Node<AssignmentExpr>(expression);
           const auto* target = std::get_if<SymbolTarget>(&assignment.target);
           RequireMeaning(target && target->symbol == CellSymbol(), Error::kOperand);
-          Input(input(0), assignment.value);
+          InputAt(0, assignment.value);
         } else if constexpr (std::is_same_v<T, analysis::ValueNamedRead>) {
           const auto& member = Node<MemberExpr>(expression);
           Named(member.key, constants_.operations[i]);
-          Input(input(0), member.base);
+          InputAt(0, member.base);
         } else if constexpr (std::is_same_v<T, analysis::ValueNamedWrite>) {
           const auto& assigned = Node<AssignmentExpr>(expression);
           const auto* member = std::get_if<MemberTarget>(&assigned.target);
           RequireMeaning(member != nullptr, Error::kOperator);
           Named(member->key, constants_.operations[i]);
-          Input(input(0), member->base); Input(input(1), assigned.value);
+          InputAt(0, member->base); InputAt(1, assigned.value);
         } else if constexpr (std::is_same_v<T, analysis::ValuePropertyRead>) {
           const auto& member = Node<MemberExpr>(expression);
           const auto* key = std::get_if<ComputedKey>(&member.key);
           RequireMeaning(key != nullptr, Error::kOperator);
-          Input(input(0), member.base); Input(input(1), key->expression);
+          InputAt(0, member.base); InputAt(1, key->expression);
         } else if constexpr (std::is_same_v<T, analysis::ValuePropertyWrite>) {
           RequireMeaning(tree_.strictness == Strictness::kStrict, Error::kUnsupportedOperation);
           const auto& assignment = Node<AssignmentExpr>(expression);
@@ -302,8 +302,8 @@ class OperandCheck {
           RequireMeaning(member != nullptr, Error::kOperator);
           const auto* key = std::get_if<ComputedKey>(&member->key);
           RequireMeaning(key != nullptr, Error::kOperator);
-          Input(input(0), member->base); Input(input(1), key->expression);
-          Input(input(2), assignment.value);
+          InputAt(0, member->base); InputAt(1, key->expression);
+          InputAt(2, assignment.value);
         } else if constexpr (std::is_same_v<T, analysis::ValueIndexedWrite>) {
           RequireMeaning(flow_.initializers[i].has_value(), Error::kOperand);
           const auto& property = tree_.properties[flow_.initializers[i]->value];
@@ -311,7 +311,7 @@ class OperandCheck {
           RequireMeaning(property.key.value < tree_.names.size() &&
               tree_.names[property.key.value] == std::u16string(expected.begin(), expected.end()), Error::kConstant);
           const auto previous = edge_input_; edge_input_ = true;
-          Input(input(1), property.value); edge_input_ = previous;
+          InputAt(1, property.value); edge_input_ = previous;
         } else if constexpr (std::is_same_v<T, analysis::ValueOwnWrite>) {
           if (IsStagedLiteral(evaluation_.literals ? &*evaluation_.literals : nullptr, current_) &&
               evaluation_.operations[i].kind != EvaluationKind::kInitializer) {
@@ -319,14 +319,14 @@ class OperandCheck {
             const auto* member = std::get_if<MemberTarget>(&assignment.target);
             RequireMeaning(member != nullptr, Error::kOperand);
             Named(member->key, constants_.operations[i]);
-            Input(input(0), member->base); Input(input(1), assignment.value);
+            InputAt(0, member->base); InputAt(1, assignment.value);
             return;
           }
           if (IsReceiverField(graph_, op)) {
             const auto& field = Node<FieldDefinitionExpr>(expression);
             const auto* name = std::get_if<NameId>(&constants_.operations[i]);
             RequireMeaning(name && field.name == *name, Error::kConstant);
-            Input(input(0), field.receiver); Input(input(1), field.value);
+            InputAt(0, field.receiver); InputAt(1, field.value);
             return;
           }
           RequireMeaning(flow_.initializers[i].has_value(), Error::kOperand);
@@ -337,7 +337,7 @@ class OperandCheck {
           // appears in syntax, always as a pre-allocation snapshot or leaf.
           const auto previous = edge_input_;
           edge_input_ = !IsStagedLiteral(evaluation_.literals ? &*evaluation_.literals : nullptr, current_);
-          Input(input(1), property.value);
+          InputAt(1, property.value);
           edge_input_ = previous;
         } else if constexpr (std::is_same_v<T, analysis::ValueString>) {
           const auto* text = std::get_if<TextId>(&constants_.operations[i]);
@@ -350,7 +350,7 @@ class OperandCheck {
               Node<GlobalNameExpr>(expression).name == *name, Error::kConstant);
         } else if constexpr (std::is_same_v<T, analysis::ValueInvoke>) {
           const auto& call = Node<CallExpr>(expression);
-          Input(input(0), call.callee);
+          InputAt(0, call.callee);
           constexpr std::uint32_t kValuePrefix = 1;
           constexpr std::uint32_t kMemberPrefix = 2;
           if (operation.receiver == analysis::InvokeReceiver::kExplicit) {
@@ -371,7 +371,7 @@ class OperandCheck {
           } else Arguments(op, call.arguments, 0, operation.arguments);
         } else if constexpr (std::is_same_v<T, analysis::ValueConstruct>) {
           const auto& construct = Node<ConstructExpr>(expression);
-          Input(input(0), construct.constructor);
+          InputAt(0, construct.constructor);
           constexpr std::uint32_t kConstructorPrefix = 1;
           const auto* arguments = std::get_if<ArgumentRange>(&construct.arguments);
           RequireMeaning(arguments, Error::kOperand);
@@ -394,7 +394,7 @@ class OperandCheck {
           RequireMeaning(result && result->op.value < graph_.ops.size() &&
               std::holds_alternative<analysis::ValueArrayAllocation>(graph_.ops[result->op.value].operation), Error::kOperand);
           const auto& placement = evaluation_.operations[result->op.value];
-          Input(input(0), construct.constructor);
+          InputAt(0, construct.constructor);
           if (const auto* arguments = std::get_if<ArgumentRange>(&construct.arguments)) {
             RequireMeaning(placement.kind == EvaluationKind::kRoot && placement.temporary &&
                 flow_.expressions[result->op.value].has_value(), Error::kOperand);
@@ -408,14 +408,14 @@ class OperandCheck {
               const auto* key = std::get_if<ComputedKey>(&member.key);
               RequireMeaning(key && Literal<NumberLiteral>(key->expression).bits ==
                   std::bit_cast<std::uint64_t>(static_cast<double>(a)), Error::kOperand);
-              Input(input(1), member.base);
+              InputAt(1, member.base);
             }
             return;
           }
           const auto& arguments = std::get<ArrayArguments>(construct.arguments);
           RequireMeaning((placement.kind == EvaluationKind::kInline || placement.kind == EvaluationKind::kNestedLiteral) &&
               placement.consumer == analysis::UseId{op.first_use.value + 1}, Error::kOperand);
-          Input(input(1), arguments.array);
+          InputAt(1, arguments.array);
         } else if constexpr (std::is_same_v<T, analysis::ValueIterResult>) {
           const auto& object = Node<ObjectExpr>(expression);
           const auto* keys = std::get_if<IterResultConstant>(&constants_.operations[i]);
@@ -427,12 +427,12 @@ class OperandCheck {
           const auto& value = tree_.properties[object.properties.first];
           const auto& done = tree_.properties[object.properties.first + 1];
           RequireMeaning(value.key == keys->value && done.key == keys->done, Error::kConstant);
-          Input(input(0), value.value);
-          if (BooleanEvaluation(graph_, ResolveEvaluationOperand(evaluation_, input(1)))) Input(input(1), done.value);
+          InputAt(0, value.value);
+          if (BooleanEvaluation(graph_, ResolveEvaluationOperand(evaluation_, input(1)))) InputAt(1, done.value);
           else {
             const auto& test = Node<BinaryExpr>(done.value);
             RequireMeaning(test.operation == analysis::BinaryOperator::kStrictEqual, Error::kOperator);
-            Input(input(1), test.left);
+            InputAt(1, test.left);
             RequireMeaning(Literal<BooleanLiteral>(test.right).value, Error::kOperand);
           }
         } else if constexpr (std::is_same_v<T, analysis::ValueArrayAllocation> ||
@@ -523,7 +523,7 @@ class OperandCheck {
             const auto& family = definition.constructor->Family();
             RequireMeaning(family.members[family.root.value].tree.callable == definition.callable, Error::kOperand);
           }
-          if (created.heritage) Input(input(0), *created.heritage);
+          if (created.heritage) InputAt(0, *created.heritage);
         } else {
           static_assert(
                         std::is_same_v<T, analysis::ValueSuperCall> || std::is_same_v<T, analysis::ValueSuperSpread> || std::is_same_v<T, analysis::ValueSuperCheck> || std::is_same_v<T, analysis::ValueDefineAccessor> || std::is_same_v<T, analysis::ValueHole> ||
@@ -591,7 +591,27 @@ class OperandCheck {
           } else RequireMeaning(destination && use.owner == decltype(use.owner){*destination} &&
               edge && incoming && *edge == *incoming && use.role == analysis::OperandRole::kPhiInput, Error::kOperand);
         }
-        Input(operand, *copies.selected, forwarded);
+        // A shared native LHS may save its value at the predicate occurrence.
+        // The keep edge retains that evaluated value, never executes its save
+        // again. Bind the copy to the same freshly checked logical-left node.
+        bool retained_left = false;
+        if (const auto* value = std::get_if<analysis::ValueId>(&operand)) {
+          const auto* source = std::get_if<analysis::OpResult>(&graph_.values[value->value].origin);
+          if (source) {
+            const auto& placement = evaluation_.operations[source->op.value];
+            if (placement.kind == EvaluationKind::kPredicateSnapshot && placement.consumer) {
+              const auto* owner = std::get_if<analysis::OpId>(&graph_.uses[placement.consumer->value].owner);
+              if (owner && !flow_.logical_operations.empty() && flow_.logical_operations[owner->value] &&
+                  flow_.expressions[owner->value] &&
+                  Node<LogicalExpr>(*flow_.expressions[owner->value]).left == *copies.selected) {
+                const auto previous = edge_input_; edge_input_ = false;
+                Input(operand, *copies.selected, placement.consumer);
+                edge_input_ = previous; retained_left = true;
+              }
+            }
+          }
+        }
+        if (!retained_left) Input(operand, *copies.selected, forwarded);
         continue;
       }
       RequireMeaning(copies.expressions.size() == schedule.steps.size(), Error::kOperand);
@@ -616,7 +636,7 @@ class OperandCheck {
     RequireMeaning(arguments.count == count && arguments.first <= tree_.arguments.size() &&
         count <= tree_.arguments.size() - arguments.first, Error::kOperand);
     for (std::uint32_t i = 0; i < count; ++i)
-      Input(graph_.uses[op.first_use.value + prefix + i].operand, tree_.arguments[arguments.first + i]);
+      Input(graph_.uses[op.first_use.value + prefix + i].operand, tree_.arguments[arguments.first + i], analysis::UseId{op.first_use.value + prefix + i});
   }
   void Receiver(const analysis::ValueOp& op, const CallExpr& call,
       const analysis::ValueOperand& callee, const analysis::ValueOperand& receiver) {
@@ -633,8 +653,6 @@ class OperandCheck {
     RequireMeaning((std::holds_alternative<analysis::ValueNamedRead>(property.operation) ||
         std::holds_alternative<analysis::ValuePropertyRead>(property.operation)) &&
         property.life == analysis::ValueLife::kLive &&
-        ((property.block == op.block && property.order < op.order) ||
-         (CrossPhaseInline(graph_, evaluation_, result->op) || CrossLogicalInline(graph_, evaluation_, result->op))) &&
         (placement.kind == EvaluationKind::kInline || placement.kind == EvaluationKind::kNestedLiteral) &&
         placement.consumer == op.first_use, Error::kOperand);
     const auto& member = Node<MemberExpr>(call.callee);
@@ -655,7 +673,10 @@ class OperandCheck {
     const auto saved_current = current_;
     origin_ = {property.origin.value};
     current_ = result->op;
-    Input(receiver, member.base);
+    // Fresh evaluation owns availability/order. The native Reference evaluates
+    // its base once at the property occurrence; its suppressed receiver is that
+    // same identity, including a retained assignment at this exact occurrence.
+    Input(receiver, member.base, property.first_use);
     origin_ = saved_origin;
     current_ = saved_current;
   }
@@ -677,6 +698,12 @@ class OperandCheck {
     RequireMeaning(origin == origin_ ||
         (!edge_input_ && flow_.expressions[current_.value] == id &&
          std::holds_alternative<CombinedOrigin>(tree_.origins[origin.value])), Error::kOrigin);
+  }
+  void InputAt(std::uint32_t ordinal, ExprId expression) {
+    // Carry the actual occurrence through scalar/argument lowering. A value
+    // alone cannot distinguish the saving use from later private-slot reads.
+    const analysis::UseId use{graph_.ops[current_.value].first_use.value + ordinal};
+    Input(graph_.uses[use.value].operand, expression, use);
   }
   void Input(const analysis::ValueOperand& operand, ExprId expression, std::optional<analysis::UseId> occurrence = {}) {
     budget_.Step();
@@ -718,7 +745,7 @@ class OperandCheck {
         const auto& placement = evaluation_.operations[result->op.value];
         if (placement.kind == EvaluationKind::kPredicateSnapshot && placement.consumer &&
             occurrence == placement.consumer) {
-          // The strict comparison receives the assignment at the exact use
+          // The eager consumer receives the assignment at the exact use
           // occurrence. All other uses must still read the same private slot.
           RequireMeaning(!edge_input_ && flow_.snapshots[result->op.value], Error::kOperand);
           const auto& assignment = Node<AssignmentExpr>(expression);
@@ -811,28 +838,29 @@ class OperandCheck {
     RequireMeaning(Literal<NumberLiteral>(expression).bits == CanonicalNaNBits(), Error::kOperand);
   }
   void Unary(analysis::UnaryOperator operation, const analysis::ValueOperand& operand, ExprId expression) {
+    const auto occurrence = graph_.ops[current_.value].first_use;
     using U = analysis::UnaryOperator;
     switch (operation) {
       case U::kLegacyNegate:
         RequireMeaning(LegacyNegationEvaluation(graph_, operand), Error::kOperator);
-        Input(operand, UnaryInput(expression, TreeUnary::kNegate)); return;
-      case U::kNegate: Input(operand, UnaryInput(expression, TreeUnary::kNegate)); return;
-      case U::kBitNot: IntegerInput(operand, UnaryInput(expression, TreeUnary::kBitNot)); return;
-      case U::kLogicalNot: Input(operand, UnaryInput(expression, TreeUnary::kNot)); return;
-      case U::kTypeOf: Input(operand, UnaryInput(expression, TreeUnary::kTypeof)); return;
-      case U::kToNumber: Input(operand, UnaryInput(expression, TreeUnary::kPlus)); return;
+        Input(operand, UnaryInput(expression, TreeUnary::kNegate), occurrence); return;
+      case U::kNegate: Input(operand, UnaryInput(expression, TreeUnary::kNegate), occurrence); return;
+      case U::kBitNot: IntegerInput(operand, UnaryInput(expression, TreeUnary::kBitNot), occurrence); return;
+      case U::kLogicalNot: Input(operand, UnaryInput(expression, TreeUnary::kNot), occurrence); return;
+      case U::kTypeOf: Input(operand, UnaryInput(expression, TreeUnary::kTypeof), occurrence); return;
+      case U::kToNumber: Input(operand, UnaryInput(expression, TreeUnary::kPlus), occurrence); return;
       case U::kToBoolean:
-        if (BooleanEvaluation(graph_, operand)) { Input(operand, expression); return; }
-        Input(operand, UnaryInput(UnaryInput(expression, TreeUnary::kNot), TreeUnary::kNot)); return;
+        if (BooleanEvaluation(graph_, operand)) { Input(operand, expression, occurrence); return; }
+        Input(operand, UnaryInput(UnaryInput(expression, TreeUnary::kNot), TreeUnary::kNot), occurrence); return;
       case U::kFalseOrZero:
       case U::kTrueOrNonzeroNumber:
         if (BooleanEvaluation(graph_, operand)) {
-          Input(operand, operation == U::kFalseOrZero ? UnaryInput(expression, TreeUnary::kNot) : expression);
+          Input(operand, operation == U::kFalseOrZero ? UnaryInput(expression, TreeUnary::kNot) : expression, occurrence);
           return;
         }
         Predicate(operation, operand, expression); return;
       case U::kToNumeric:
-        if (NumberEvaluation(graph_, operand)) { Input(operand, expression); return; }
+        if (NumberEvaluation(graph_, operand)) { Input(operand, expression, occurrence); return; }
         RequireMeaning(ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded, Error::kOperator);
         [[fallthrough]];
       case U::kIncrement: case U::kDecrement: {
@@ -843,7 +871,7 @@ class OperandCheck {
         RequireMeaning(target && target->symbol == update.symbol &&
             update.result == (operation == U::kToNumeric ? UpdateResult::kPostfix : UpdateResult::kPrefix) &&
             update.direction == (operation == U::kDecrement ? UpdateDirection::kDecrement : UpdateDirection::kIncrement), Error::kOperator);
-        Input(operand, save.value); return;
+        Input(operand, save.value, occurrence); return;
       }
     }
     throw Error::kUnsupportedOperation;

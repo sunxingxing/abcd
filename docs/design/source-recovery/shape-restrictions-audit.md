@@ -1,5 +1,8 @@
 # 按用户要求进行的恢复条件审计
 
+最新替换状态见文末规则82；历史表中的严格比较候选及literal同块条件不再是
+当前准入条件。未替换项继续开放，不能将本次局部交付称为全量审计闭合。
+
 2026-10-03，基线 87176c10。此为本次明确请求的审计，不恢复定期审视。
 目标是查出把编译器局部形状当作恢复准入条件的实现，并规定后续通用替换方式。
 本次覆盖 src/include/tools 的样本身份文本搜索，并人工检查调用引用、条件表达式、
@@ -399,3 +402,26 @@ interval/unique phase corridor、no-escape 和 catch-copy 证明仍独立成立�
 对这种 working-IR 编辑的对应关系尚未贯通。该边界未添加新的本地匹配例外。
 首次 own-definition 跨选择的原生表示仍开放；不得用普通 Set 替换
 DefineOwnProperty。细节与验证层见 literal-initialization.md。
+
+## 规则 82：共同 eager 使用点保存与引用复核
+
+再次核对发现 `tree_operands.cc::Receiver` 仍有第二重
+`property.block==call.block` 或 CrossPhaseInline/CrossLogicalInline 枚举门槛。
+`VerifyTreeFlow` 在操作数复核前已新鲜独立验证共同 normal/phased EvaluationPlan。
+该额外布局门槛现已删除；实际 property result、consumer、base/receiver、私有
+存储和原始使用点对应继续校验，没有 callee 重读或 `.call/.apply` 替代。
+
+`predicate_snapshots.cc::Candidates` 的“strict comparison 内联进 branch”候选
+条件已删除。共同 DescribeEvaluation 的 eager 语义、reference/repeated-input
+边界和已有完整效果区间证明决定保存位置。普通函数无需有 phi 才运行该机制。
+源码森林与操作数校验携带真实 UseId，覆盖 scalar/call/module store；native
+logical/conditional 使用原始谓词 occurrence，原 logical-LHS 证明查询原森林。
+逻辑 keep edge 必须绑定真实已验证的左值；其他已保存值仍走普通 private-slot
+校验。不能因 producer 是 snapshot 就推断任意 phi 输入属于那个逻辑左值。
+
+这不是关闭所有表达式限制。当前 use-site interval 仍为 normal 局部证明，
+跨块可继续保留原始独立保存；phased 保存需要共同 Commit/throw/catch 版本
+模型。单 selection 的 phased call、inline-owned callee 表示、literal 首次
+own-definition、初始化器/捕获投影与剩余 legacy 构造模板仍开放。不能继续
+增加 producer 白名单、selection 数量枚举、邻接或块布局例外。具体契约见
+expression-snapshots.md；验证与固定五输入证据见 status.md。
