@@ -3,6 +3,7 @@
 #include "../../../src/source/expression_forest.h"
 #include "../../../src/source/function_tree.h"
 #include "../../../src/source/tree_semantics.h"
+#include "../../../src/source/tree_checks.h"
 
 #include <bit>
 #include <cstdlib>
@@ -211,6 +212,212 @@ void PhiInputSnapshot() {
   forged = evaluation;
   forged.phis->bundles[0].schedule.steps.clear();
   Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, forged)) == EvaluationError::kLivePhi);
+}
+// A getter may cross an inert decision only when every normal path reaches
+// the same original phi observation. This diamond is an algorithm fixture;
+// production must not require its shape or replay the getter on both arms.
+ValueProgram InertTail() {
+  ValueProgram graph;
+  graph.blocks = {{{0}, 1, {0}, 1}, {{1}, 1, {1}, 2}, {{2}, 1, {3}, 1},
+                  {{3}, 1, {4}, 1}, {{4}, 1, {5}, 1}, {{5}, 1, {6}, 0}};
+  graph.edges = {{{0}, {1}, FlowEdgeKind::kFallthrough, 0},
+                 {{1}, {2}, FlowEdgeKind::kTaken, 0},
+                 {{1}, {3}, FlowEdgeKind::kFallthrough, 1},
+                 {{2}, {4}, FlowEdgeKind::kFallthrough, 0},
+                 {{3}, {4}, FlowEdgeKind::kFallthrough, 0},
+                 {{4}, {5}, FlowEdgeKind::kFallthrough, 0}};
+  graph.values = {
+      {EntryDefinition{ParameterEntry{0}}, ValueKinds::Language(), {}},
+      {OpResult{{0}, {}}, ValueKinds::Language(), {}},
+      {PhiDefinition{{5}}, ValueKinds::Language(), {}}};
+  const auto effects = LanguageEffect::kHeapRead | LanguageEffect::kUserCode;
+  graph.ops = {{ValueNamedRead{{0}},
+                {0},
+                0,
+                {0},
+                1,
+                ValueId{1},
+                effects,
+                effects,
+                ExceptionalCompletion::kMayThrow,
+                {0}},
+               {ValueBranch{UnaryOperator::kToBoolean},
+                {1},
+                0,
+                {1},
+                1,
+                {},
+                LanguageEffect::kNone,
+                LanguageEffect::kNone,
+                ExceptionalCompletion::kImpossible,
+                {1}},
+               {ValueJump{},
+                {2},
+                0,
+                {2},
+                0,
+                {},
+                LanguageEffect::kNone,
+                LanguageEffect::kNone,
+                ExceptionalCompletion::kImpossible,
+                {2}},
+               {ValueJump{},
+                {3},
+                0,
+                {2},
+                0,
+                {},
+                LanguageEffect::kNone,
+                LanguageEffect::kNone,
+                ExceptionalCompletion::kImpossible,
+                {3}},
+               {ValueJump{},
+                {4},
+                0,
+                {2},
+                0,
+                {},
+                LanguageEffect::kNone,
+                LanguageEffect::kNone,
+                ExceptionalCompletion::kImpossible,
+                {4}},
+               {ValueReturn{},
+                {5},
+                0,
+                {2},
+                1,
+                {},
+                LanguageEffect::kNone,
+                LanguageEffect::kNone,
+                ExceptionalCompletion::kImpossible,
+                {5}}};
+  Append(graph, {OpId{0},
+                 OperandRole::kBase,
+                 ReadPurpose::kOperand,
+                 ValueId{0},
+                 {},
+                 {},
+                 {},
+                 {}});
+  Append(graph, {OpId{1},
+                 OperandRole::kCondition,
+                 ReadPurpose::kOperand,
+                 ValueId{0},
+                 {},
+                 {},
+                 {},
+                 {}});
+  Append(graph, {OpId{5},
+                 OperandRole::kReturnValue,
+                 ReadPurpose::kOperand,
+                 ValueId{2},
+                 {},
+                 {},
+                 {},
+                 {}});
+  Append(graph, {ValueId{2},
+                 OperandRole::kPhiInput,
+                 ReadPurpose::kOperand,
+                 ValueId{1},
+                 EdgeId{5},
+                 {},
+                 {},
+                 {}});
+  return graph;
+}
+void PhiExpressionTails() {
+  const auto candidate = [](const ValueProgram& graph) {
+    const auto copies = Plan(graph);
+    TreeCheckBudget budget({});
+    return IndexPhiExpressionInputs(graph, copies, {}, {}, budget)[0];
+  };
+  const auto graph = InertTail();
+  Check(candidate(graph) == UseId{3});
+  auto changed = graph;
+  changed.edges[4].target = {3};  // One successor diverges forever.
+  Check(!candidate(changed));
+  changed = graph;
+  changed.ops[3].operation = ValueDebugger{};
+  changed.ops[3].normal = LanguageEffect::kDebugger;
+  Check(!candidate(changed));
+  changed = graph;
+  changed.values.push_back({PhiDefinition{{4}}, ValueKinds::Language(), {}});
+  Append(changed, {ValueId{3},
+                   OperandRole::kPhiInput,
+                   ReadPurpose::kOperand,
+                   ValueId{0},
+                   EdgeId{3},
+                   {},
+                   {},
+                   {}});
+  Append(changed, {ValueId{3},
+                   OperandRole::kPhiInput,
+                   ReadPurpose::kOperand,
+                   ValueId{0},
+                   EdgeId{4},
+                   {},
+                   {},
+                   {}});
+  Check(!candidate(
+      changed));  // An intervening parallel-copy event remains owned.
+  changed = graph;
+  changed.values[0].first_use = UseId{0};
+  changed.uses[0].previous.reset();
+  changed.uses[1].operand = ValueId{1};
+  changed.uses[1].next = UseId{3};
+  changed.uses[3].previous = UseId{1};
+  changed.values[1].first_use = UseId{1};
+  Check(!candidate(changed));  // A second observation must retain the snapshot.
+  changed = graph;
+  changed.edges[4].target = {6};  // One path returns without observing the phi.
+  changed.blocks.push_back({{6}, 1, {6}, 0});
+  changed.ops.push_back({ValueReturn{},
+                         {6},
+                         0,
+                         {4},
+                         1,
+                         {},
+                         LanguageEffect::kNone,
+                         LanguageEffect::kNone,
+                         ExceptionalCompletion::kImpossible,
+                         {6}});
+  Append(changed, {OpId{6},
+                   OperandRole::kReturnValue,
+                   ReadPurpose::kOperand,
+                   ValueId{0},
+                   {},
+                   {},
+                   {},
+                   {}});
+  Check(!candidate(changed));
+  std::uint64_t previous_work = 0;
+  for (const std::uint32_t count : {1U, 200U, 201U, 402U}) {
+    changed = graph;
+    changed.edges[0].target = {6};
+    for (std::uint32_t i = 0; i < count; ++i) {
+      const WorkBlockId block{6 + i};
+      changed.blocks.push_back({OpId{6 + i}, 1, EdgeId{6 + i}, 1});
+      changed.edges.push_back(
+          {block, i + 1 == count ? WorkBlockId{1} : WorkBlockId{7 + i},
+           FlowEdgeKind::kFallthrough, 0});
+      changed.ops.push_back({ValueJump{},
+                             block,
+                             0,
+                             {4},
+                             0,
+                             {},
+                             LanguageEffect::kNone,
+                             LanguageEffect::kNone,
+                             ExceptionalCompletion::kImpossible,
+                             {6 + i}});
+    }
+    const auto copies = Plan(changed);
+    TreeCheckBudget budget({});
+    Check(IndexPhiExpressionInputs(changed, copies, {}, {}, budget)[0] ==
+          UseId{3});
+    if (previous_work && count > 200) Check(budget.Work() <= previous_work * 3);
+    previous_work = budget.Work();
+  }
 }
 void EdgeSyntax() {
   for (const std::uint32_t count : {1U, 2U, 200U, 201U, 4096U}) {

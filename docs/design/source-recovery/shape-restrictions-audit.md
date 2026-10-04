@@ -19,7 +19,11 @@ EntryAbility、Widget、hilog、JSON 或 sample 路径进行生产语义分派�
 没有隐蔽特例。以下确实存在的是以局部布局或子集形状限制恢复能力的实现。
 它们不能被称为语言语义要求，也不能继续靠追加形状匹配扩充。
 
-## 需要通用替换的条件
+## 初次审计发现（历史基线）
+
+下表保留首次审计的发现；不是当前仍有这些条件的声明。CallPlan同块、
+predicate producer/strict-comparison、单selection及computed phi Commit
+邻接门槛已分别替换，当前剩余项和关闭证据见后续规则66至88。
 
 | 优先级 | 位置 | 当前限制 | 应替换的通用机制 |
 |---|---|---|---|
@@ -535,3 +539,35 @@ computed arm后跟pure jump限制没有产生候选，已记录为缺口，没�
 opcode/tail匹配。确认为有实现准入限制，不据此断言其历史作者因样本加入。
 禁止继续用样本/布局匹配扩大这些路径；真实语义校验继续保留。具体新鲜
 构建/测试/固定五输入证据见status.md，审计仍非全仓生产分支逐行关闭。
+
+
+## 规则 88：phi 表达式以全路径效果证明替代 Commit 邻接
+
+删除PhiExpressionProducer的computed producer必须紧邻原phi输入边及
+仅primitive literal可跨inert tail的限制。IndexPhiExpressionInputs先一次
+普查实际UseId观察，再从原normal copy边反向求必须到达的同一EdgeId。
+普通与phased共用此索引；正常块查询producer自有literal/guard区间结束
+后的尾部，相位图查询实际Commit。checked module guard和native literal
+内部定义仍属于同一表达式，不能被当作额外观察或样本模板。
+
+所有正常分支必须到达同一原phi边；返回/外来效果/环境改变/中间copy或
+无限循环使证明失败。单次原观察、原throw staging和最终TreeFlow的原
+protected/handler scope核对保留。typed EvaluationShape记录normal control
+意义，路径分析不按opcode串、producer名单、前驱个数或图形模板准入。
+索引是线性工作/空间，不逐参数或逐phi重走尾部，见algorithms.md。
+
+216组三profile实际解码用例及88992组完整生成源码对照通过，覆盖两侧
+getter、多参数、prefix/outer Reference、throw/noncallable及18项有效
+mutation。另有normal图纯branch/merge和1/200/201/402块尾部，divergence、
+早退、debugger、额外观察与中间phi-copy拒绝。固定五输入无complete回退，
+真实VoIP方法的一处双分支getter改成ConditionalExpr，独立配对服务300组
+行为对照通过；不是HarmonyOS主机运行验收，阶段一仍未完成。
+
+本轮诊断还确认：true arm插入冗余MOV自身会新增一个真实SSA phi输入，
+现有IndexPhiExpressionInputs及FindPhasedPhiSelections仍以bundle.count /
+schedule.steps为1准入。此例也被初始夹具触发，不能把它的拒绝全归因于
+Commit邻接；夹具移除这个独立变化后双getter路径通过。多parallel-copy
+RHS需要按实际值身份/存活/复制顺序共同安排，不能删除count门槛就放行。
+该缺口、单入candidate/prefix、inline-owned Reference、class initializer
+同块、phased scope/capture/module接口及legacy模板仍开放。禁止用更多
+样本/opcode/寄存器/PC/数量匹配修补；不得断言已完成全仓逐分支审计。

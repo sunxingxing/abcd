@@ -237,7 +237,7 @@ target_sources(abcd_source PRIVATE src/source/tree_structure.cc src/source/tree_
 target_sources(abcd_source PRIVATE src/source/tree_flow.cc)
 target_sources(abcd_source PRIVATE src/source/tree_operands.cc src/source/tree_correspondence_origins.cc src/source/tree_semantics.cc src/source/tree_globals.cc)
 target_sources(abcd_source PRIVATE src/source/edge_copies.cc src/source/edge_copy_verify.cc)
-target_sources(abcd_source PRIVATE src/source/phi_copies.cc src/source/phi_copy_verify.cc)
+target_sources(abcd_source PRIVATE src/source/phi_copies.cc src/source/phi_copy_verify.cc src/source/phi_expression_inputs.cc)
 target_sources(abcd_source PRIVATE src/source/tree_edge_flow.cc)
 target_sources(abcd_source PRIVATE src/source/loop_forest.cc)
 target_sources(abcd_source PRIVATE src/source/loop_control.cc)

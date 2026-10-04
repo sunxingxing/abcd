@@ -154,6 +154,9 @@ enum class InputEvaluation : std::uint8_t { kEager, kConditionalArgument, kClass
 // Snapshot inputs can expand to repeated reads; suspension and invocation
 // protocols need their own control/ABI owner before expression composition.
 enum class SourceEvaluation : std::uint8_t { kDirect, kPure, kSnapshotInputs, kSuspending, kInvocation, kUnsupported };
+// Normal control observes existing operands and chooses successors. It has no
+// language effect of its own; purity and all-path execution still need proof.
+enum class ControlEvaluation : std::uint8_t { kNone, kNormal };
 struct EvaluationShape {
   // Fixed prefix followed by argument occurrences. No array proportional to
   // range-call arity is allocated merely to describe their roles.
@@ -168,6 +171,7 @@ struct EvaluationShape {
   // variable. Derived lowering must separately prove its actual origin.
   bool invocation_constructor = false;
   SourceEvaluation source = SourceEvaluation::kDirect;
+  ControlEvaluation control = ControlEvaluation::kNone;
   [[nodiscard]] bool NeedsArgumentFrame() const {
     return inputs == InputEvaluation::kConditionalArgument || inputs == InputEvaluation::kInvocationConstructor;
   }

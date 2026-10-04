@@ -7,15 +7,16 @@ const hostile = {[Symbol.toPrimitive]() { assert.fail('condition coerced'); }};
 const flags = [undefined, null, false, 0, -0, NaN, '', true, 1, 1n, symbol, hostile];
 const options = [undefined, null, false, 0, -0, NaN, 'argument', symbol, token];
 let cases = 0;
-for (const form of ['plain', 'prefix', 'wrapped']) for (const count of [1, 2, 3, 200, 201]) {
-  const prefix = form === 'prefix', wrapped = form === 'wrapped';
-  const source = execFileSync(tool, [wrapped ? '--wrapped-source' : prefix ? '--prefix-source' : '--source', String(count)], {encoding: 'utf8'});
+for (const form of ['plain', 'prefix', 'wrapped', 'dual', 'dual-prefix', 'dual-wrapped']) for (const count of [1, 2, 3, 200, 201]) {
+  const prefix = form.endsWith('prefix'), wrapped = form.endsWith('wrapped'), dual = form.startsWith('dual');
+  const source = execFileSync(tool, [form === 'plain' ? '--source' : `--${form}-source`, String(count)], {encoding: 'utf8'});
   assert.ok(source.includes('value.method(') && source.includes(' ? '));
   assert.ok(!source.includes('.call(') && !source.includes('INCOMPLETE'));
   const recovered = Function(`"use strict"; return ${source}`)();
   // An independent language expression fixes reference acquisition and every
   // argument evaluation before the actual call. It never enters engine inputs.
-  const argument = prefix ? '(value.other, value.probe ? 7 : value.option)' : '(value.probe ? 7 : value.option)';
+  const selected = `value.probe ? ${dual ? 'value.alternative' : '7'} : value.option`;
+  const argument = prefix ? `(value.other, ${selected})` : `(${selected})`;
   const call = `value.method(${Array(count).fill(argument).join(', ')})`;
   const reference = Function(`"use strict"; return function(value) {
     try { return ${wrapped ? `value.other(${call})` : call}; }
@@ -66,8 +67,13 @@ for (const form of ['plain', 'prefix', 'wrapped']) for (const count of [1, 2, 3,
         // decision or phi with another, including its retained getter value.
         const selected = predicate++ % 2 ? !flag : flag;
         if (replace) ++version;
-        if (selected) expected.push(7);
+        if (selected && !dual) expected.push(7);
         return selected;
+      }
+      if (key === 'alternative') {
+        assert.ok(dual); event('alternative', version);
+        if (replace) ++version;
+        expected.push(token); return token;
       }
       assert.equal(key, 'option'); event('option', version);
       if (replace) ++version;
@@ -91,7 +97,7 @@ for (const form of ['plain', 'prefix', 'wrapped']) for (const count of [1, 2, 3,
   if (count === 2) {
     const mutants = [source.replace('value.method(', '(0, value.method)('),
       source.replace('value.method(', 'value.method(7, '),
-      source.replace('? value.option : 7', '? 7 : value.option')];
+      source.replace(`? value.option : ${dual ? 'value.alternative' : '7'}`, `? ${dual ? 'value.alternative' : '7'} : value.option`)];
     for (const mutated of mutants) {
       assert.notEqual(mutated, source);
       const mutant = Function(`"use strict"; return ${mutated}`)();

@@ -64,14 +64,16 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       return {};
     }
     else if constexpr (std::is_same_v<T, analysis::ValueBranch>) {
-      EvaluationShape shape{kBranch, false};
+      EvaluationShape shape{kBranch, false}; shape.control = ControlEvaluation::kNormal;
       if (op.predicate == analysis::UnaryOperator::kFalseOrZero || op.predicate == analysis::UnaryOperator::kTrueOrNonzeroNumber)
         shape.source = SourceEvaluation::kSnapshotInputs;
       return shape;
     }
     else if constexpr (std::is_same_v<T, analysis::ValueReturn>) return EvaluationShape{kReturn, false};
     else if constexpr (std::is_same_v<T, analysis::ValueThrow>) return EvaluationShape{kThrow, false};
-    else if constexpr (std::is_same_v<T, analysis::ValueJump>) return EvaluationShape{kNoOperands, false};
+    else if constexpr (std::is_same_v<T, analysis::ValueJump> || std::is_same_v<T, analysis::ValueNop>) {
+      EvaluationShape shape{kNoOperands, false}; shape.control = ControlEvaluation::kNormal; return shape;
+    }
     else if constexpr (std::is_same_v<T, analysis::ValueDebugger>) return EvaluationShape{kNoOperands, false};
     else if constexpr (std::is_same_v<T, analysis::ValueFrameThis>) return EvaluationShape{kNoOperands, true};
     else if constexpr (std::is_same_v<T, analysis::ValueFrameFunction>) return EvaluationShape{kNoOperands, true};

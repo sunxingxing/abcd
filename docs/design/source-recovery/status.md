@@ -12,6 +12,48 @@
 
 ## 当前阶段
 
+### 2026-10-04：computed phi 跨纯控制尾部复用全路径证明
+
+- 规则revision88。PhiExpressionProducer的computed Commit邻接及
+  primitive-literal-only尾部准入删除。普通与phased共用
+  IndexPhiExpressionInputs：一次原UseId观察普查、原normal-copy边
+  endpoint索引与反向全路径worklist，不逐参数/phi重扫尾部。typed
+  EvaluationShape区分normal control；没有新增opcode串、producer名单、
+  固定前驱或图形条件。原module guard/literal所有权、单次观察、throw
+  staging、最终树operand/effect/protected-handler scope核对继续保留。
+- joint_selection_call_test扩至三profile216组解码矩阵，覆盖双getter、
+  1/2/3/50/100/200/201参数、prefix/outer member Reference及复制规模；
+  实际draft/树flow及精确配额负例通过。joint_selection_call.mjs有88992组
+  生成源码行为对照和18项有效mutation，保留receiver、getter替换、每个
+  参数的独立选择、精确身份、throw与noncallable时机。phi_copies_test
+  新增正常图branch/merge、1/200/201/402块尾部及divergence、早退、
+  debugger、额外观察和中间复制拒绝。evaluation work为
+  574601/1133946/2252576/2263762，几何增长通过。
+- 初始双getter加arm内MOV自身夹具命中phase_calls数目断言；诊断发现
+  bundle实际有两份SSA phi复制，除邻接外还触发既有single-copy候选限制。
+  移除这个独立arm复制变化后双getter通过，branch前复制规模变化仍测。
+  该初始失败不能作为单独邻接RED证据。多parallel-copy RHS共同安排尚未
+  贯通，作为审计缺口保留；不是去掉count检查就获得赋值顺序证明。
+- /tmp/abcd-phi-tail-final-build-2.log单构建-j4退出0，重链相关六target。
+  初次final-build.log因不存在的phased_call_selection_test target退出2；
+  正确注册的source test使用selection_module_test，已纠正并完整重建。
+  initial-tests.log 3/3通过119.11秒，含完整selection_module_test矩阵；
+  final-tests.log 12/12通过69.16秒，含新phi unit、joint unit/native、
+  phased选择/保留输入/module、pasteboard callback、三项phased literal
+  和Home配对检查。voip-tests.log另1/1通过0.44秒，有300组独立配对
+  VoipCallService行为对照。合计14项不同相关检查，不计失败或旧二进制。
+  test-output.log保存最终12项详细输出。未恢复full-suite、扩展语料、
+  RSS、基准、DFX、代理或周期审计。
+- fresh build/stage-one/value-phi-inert-tail-pass-1 固定五输入全退出0，
+  80 complete/26 incomplete/0 failure/46 no-module，无complete回退或
+  legacy writer。batch.log/syntax.log核对SHA/size与原index/manifest一致，
+  106份源码全部解析。一份真实push VoIP record11989的双分支属性读取
+  从if/额外快照恢复为ConditionalExpr；其余源码字节与revision87相同。
+  这是源码表示改进，没有新增完整record，不等于主机运行/全面风格验收。
+  MemberCall inline-owned表示、single-copy/single-entry候选、initializer
+  同块、phased scope/capture/module及legacy模板仍开放；未知算术域和
+  导入super协议缺口保留。阶段一语义/风格双验收尚未完成，Goal active。
+
 ### 2026-10-04：同一成员调用的选择参数联合恢复
 
 - 规则revision87。删除phase_selection_calls的phi_arguments和

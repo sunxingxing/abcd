@@ -39,21 +39,17 @@ enum class PhiCopyError : std::uint8_t {
 [[nodiscard]] std::variant<std::uint64_t, PhiCopyError> VerifyPhiCopies(
     const analysis::ValueProgram& graph, const PhiCopies& plan,
     analysis::SemanticBudget budget = {});
-// A sole-use expression at the end of a single-successor normal block may be
-// evaluated directly by its single phi assignment. Requires verified PhiCopies;
-// module_guards, when supplied, is the checked symmetric module-pair index.
-// Its read owns the original guard use/event, not an additional source use.
-// literal_ends is the index of freshly checked native expression literals;
-// their unobserved initialization interval remains inside the same edge RHS.
-// Phased computed inputs may execute at their own Commit's outgoing normal
-// edge; only nonthrowing primitive literals can cross an inert tail. Original
-// pre-throw staging remains in place; catch edges are never phi-expression sites.
-// Tail scans stop at any other producer, so eligible suffixes are disjoint and
-// visiting all bundles is linear in graph size.
-[[nodiscard]] std::optional<analysis::OpId> PhiExpressionProducer(
-    const analysis::ValueProgram& graph, const PhiCopies& copies, const PhiBundle& bundle,
-    std::span<const std::optional<analysis::OpId>> module_guards = {},
-    std::span<const std::optional<analysis::OpId>> literal_ends = {});
+// Fresh PhiCopies and checked module/literal indexes are prerequisites.
+// Sole observations move to their original phi input only when all normal
+// paths from completion reach that edge once through inert evaluation, without
+// another copy, effect, environment change or divergence. No producer whitelist
+// or Commit adjacency. Original pre-throw staging remains at its original site;
+// AST flow/operand/scope checks still own the eventual source placement.
+// One use census and backwards all-path tail index: O(I+B+E+U+P) work/scratch.
+[[nodiscard]] std::vector<std::optional<analysis::UseId>> IndexPhiExpressionInputs(
+    const analysis::ValueProgram& graph, const PhiCopies& copies,
+    std::span<const std::optional<analysis::OpId>> module_guards,
+    std::span<const std::optional<analysis::OpId>> literal_ends, TreeCheckBudget& budget);
 // O(ops + definitions), no per-phi literal inventory scan. Statements/corridors
 // are excluded: only verified same-block native literal expressions qualify.
 [[nodiscard]] std::vector<std::optional<analysis::OpId>> IndexPhiLiteralEnds(

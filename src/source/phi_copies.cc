@@ -1,7 +1,6 @@
 #include "phi_copy_checks.h"
 #include "literal_plan.h"
 #include "tree_checks.h"
-#include "phase_corridor.h"
 
 #include <new>
 #include <stdexcept>
@@ -97,96 +96,5 @@ std::vector<std::optional<analysis::OpId>> IndexPhiLiteralEnds(
     if (same_block) ends[object.allocation.value] = last;
   }
   return ends;
-}
-std::optional<analysis::OpId> PhiExpressionProducer(
-    const analysis::ValueProgram& graph, const PhiCopies& copies, const PhiBundle& bundle,
-    std::span<const std::optional<analysis::OpId>> module_guards,
-    std::span<const std::optional<analysis::OpId>> literal_ends) {
-  using namespace analysis;
-  if (bundle.count != 1 ||
-      bundle.schedule.steps.size() != 1 || bundle.schedule.temporaries != 0) return {};
-  const auto* edge = std::get_if<EdgeId>(&bundle.incoming);
-  if (!edge) return {};
-  const auto input = copies.inputs[bundle.first];
-  const auto& use = graph.uses[input.value];
-  const auto* value = std::get_if<ValueId>(&use.operand);
-  if (!value) return {};
-  const auto* producer = std::get_if<OpResult>(&graph.values[value->value].origin);
-  if (!producer) return {};
-  const auto& op = graph.ops[producer->op.value];
-  const auto guard = std::holds_alternative<ValueModuleRead>(op.operation) &&
-      !module_guards.empty() ? module_guards[producer->op.value] : std::nullopt;
-  const auto literal = literal_ends.empty() ? std::nullopt : literal_ends[producer->op.value];
-  bool found = false;
-  for (auto id = graph.values[value->value].first_use; id; id = graph.uses[id->value].next) {
-    const auto& occurrence = graph.uses[id->value];
-    if (occurrence.life != ValueLife::kLive) continue;
-    if (*id == input) { if (found) return {}; found = true; }
-    else if (!guard || *id != graph.ops[guard->value].first_use) {
-      const auto* owner = std::get_if<OpId>(&occurrence.owner);
-      if (!literal || !owner || *owner <= producer->op || *owner > *literal ||
-          occurrence.role != OperandRole::kBase || *id != graph.ops[owner->value].first_use ||
-          (!std::holds_alternative<ValueOwnWrite>(graph.ops[owner->value].operation) &&
-           !std::holds_alternative<ValueIndexedWrite>(graph.ops[owner->value].operation))) return {};
-    }
-  }
-  if (!found) return {};
-  if (copies.flow == PhiFlow::kPhased) {
-    // A computed RHS may execute at its own Commit's outgoing copy. There
-    // is no intervening operation, and the original Before-stage snapshots
-    // still precede it. Moving across a tail remains literal-only below.
-    if (producer->commit && graph.edges[edge->value].source == *producer->commit &&
-        graph.blocks[producer->commit->value].edge_count == 1 &&
-        graph.blocks[producer->commit->value].first_edge == *edge &&
-        graph.edges[edge->value].kind != FlowEdgeKind::kException &&
-        PhaseCorridors::Expression(op.operation) && !std::holds_alternative<ValueCopy>(op.operation))
-      return producer->op;
-    const bool literal_copy = std::holds_alternative<ValueCopy>(op.operation) && op.use_count == 1 &&
-        !std::holds_alternative<ValueId>(graph.uses[op.first_use.value].operand);
-    if ((!literal_copy && !std::holds_alternative<ValueString>(op.operation)) ||
-        op.life != ValueLife::kLive || op.normal != LanguageEffect::kNone ||
-        op.before_throw != LanguageEffect::kNone || op.exceptional != ExceptionalCompletion::kImpossible ||
-        !producer->commit || graph.edges[edge->value].kind == FlowEdgeKind::kException) return {};
-    auto at = *producer->commit;
-    // Single-exit inert tails cannot overlap another eligible producer: that
-    // producer's live operation is a barrier. Reject cycles and catch entries.
-    for (std::size_t visited = 0; visited < graph.blocks.size(); ++visited) {
-      const auto& tail = graph.blocks[at.value];
-      if (graph.phases[at.value].phase == ExceptionPhase::kCatch || tail.edge_count != 1) return {};
-      for (std::uint32_t i = 0; i < tail.op_count; ++i) {
-        const auto& later = graph.ops[tail.first_op.value + i];
-        if (later.life != ValueLife::kLive) continue;
-        if ((!std::holds_alternative<ValueJump>(later.operation) && !std::holds_alternative<ValueNop>(later.operation)) ||
-            later.result || later.use_count || later.normal != LanguageEffect::kNone ||
-            later.before_throw != LanguageEffect::kNone || later.exceptional != ExceptionalCompletion::kImpossible) return {};
-      }
-      const auto& next = graph.edges[tail.first_edge.value];
-      if (next.kind == FlowEdgeKind::kException) return {};
-      if (tail.first_edge == *edge) return producer->op;
-      at = next.target;
-    }
-    return {};
-  }
-  const auto& block = graph.blocks[op.block.value];
-  if (op.life != ValueLife::kLive || block.edge_count != 1 || block.first_edge != *edge ||
-      graph.edges[edge->value].source != op.block) return {};
-  // Only inert control may follow. In particular environment changes, getters,
-  // stores and additional roots remain barriers even if the result is unused.
-  for (std::uint32_t order = op.order + 1; order < block.op_count; ++order) {
-    // Fresh LiteralPlan proves all initialization/RHS effects in this interval
-    // belong to the one native object expression. Never skip an arbitrary
-    // suffix, staged definition, escape, or independent observable root.
-    if (literal && block.first_op.value + order <= literal->value) continue;
-    // IndexModuleEvaluations proved adjacent read/guard operands and effects.
-    // Retain both at this phi expression; no other throwing suffix may move.
-    if (guard && block.first_op.value + order == guard->value) continue;
-    const auto& later = graph.ops[block.first_op.value + order];
-    if (later.life != ValueLife::kLive) continue;
-    if ((!std::holds_alternative<ValueJump>(later.operation) &&
-         !std::holds_alternative<ValueNop>(later.operation)) || later.result || later.use_count ||
-        later.normal != LanguageEffect::kNone || later.before_throw != LanguageEffect::kNone ||
-        later.exceptional != ExceptionalCompletion::kImpossible) return {};
-  }
-  return producer->op;
 }
 }  // namespace abcd::source

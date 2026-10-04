@@ -1047,3 +1047,41 @@ Recorded evaluation work for 50/100/200/201 arguments is
 exact verifier work admission, one-step-short failure, and zero-byte refusal.
 These are bounded regression/work-accounting checks; paused benchmarks,
 full-corpus peak RSS and aggregate process-memory validation have not resumed.
+
+
+### All-path inert phi-expression tails (2026-10-04, rules 88)
+
+IndexPhiExpressionInputs consumes freshly checked PhiCopies and checked native
+literal/module indexes. Let I/B/E/U/P be original operations, blocks, edges,
+uses and phi bundles. Census each live original observation once, excluding only
+already verified expression-owned module guards and literal definitions. The
+common typed EvaluationShape marks normal control separately from language
+expression ownership. An inert operation has no normal/pre-throw language
+effect, no exceptional completion or environment transition; memory/protocol
+reads do not become inert just because their effect flags are empty.
+
+For every inert block, index its non-copy normal successors and reverse edges.
+Seed endpoints at the actual normal phi-copy edge. A backwards worklist proves
+that every successor must reach the same edge: foreign effects, catch entries,
+terminal paths, competing copy edges and unresolved cycles fail the proof.
+Each block is queued once and every indexed edge is processed at most once.
+Query a phased producer at its actual Commit; query a normal producer after its
+checked owned interval. Neither query requires a particular jump tail, unique
+predecessor, adjacency or producer whitelist. Original exception staging stays
+at its site, and the eventual source tree independently checks original scope,
+operands and effect order. The index is not publication permission by itself.
+
+Work and additional scratch are O(I+B+E+U+P), charged through the existing shared
+byte/work budget. The normal query scans only a block's bounded original edge
+range; the phased guard fallback likewise inspects that original operation's
+outgoing phases. No per-phi value-use or graph scan remains. Single-copy bundle
+and literal-ownership adapters retain documented coverage gaps; their existing
+costs and discovery/source-tree costs are separate. Provenance is the existing
+ValueProgram/evaluation semantics and backwards must-reach data flow, with no
+external implementation or new dependency/license.
+
+Regression coverage includes pure branching/merging, early return, divergence,
+foreign debugger effects, repeated observations, intervening copies and
+1/200/201/402-block chains. Joint member-call evaluation work at
+50/100/200/201 arguments is 574601/1133946/2252576/2263762; geometric checks pass.
+These checks do not claim latency or full-process RSS; those remain paused.

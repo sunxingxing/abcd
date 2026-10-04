@@ -222,19 +222,11 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     }
     std::vector<std::optional<analysis::UseId>> phi_inputs;
     if (plan.phis) {
-      TreeCheckBudget literal_budget({bytes, work});
-      const auto literal_ends = plan.literals ? IndexPhiLiteralEnds(graph, *plan.literals, literal_budget) :
+      TreeCheckBudget phi_budget({bytes, work});
+      const auto literal_ends = plan.literals ? IndexPhiLiteralEnds(graph, *plan.literals, phi_budget) :
           std::vector<std::optional<analysis::OpId>>{};
-      admit(literal_budget.Bytes(), 1); step(literal_budget.Work());
-      admit(graph.ops.size(), sizeof(std::optional<analysis::UseId>)); step(graph.ops.size());
-      phi_inputs.resize(graph.ops.size());
-      admit(phi_inputs.capacity() - graph.ops.size(), sizeof(std::optional<analysis::UseId>));
-      step(graph.ops.size());
-      for (const auto& bundle : plan.phis->bundles) {
-        step();
-        if (const auto producer = PhiExpressionProducer(graph, *plan.phis, bundle, module_index.peers, literal_ends))
-          phi_inputs[producer->value] = plan.phis->inputs[bundle.first];
-      }
+      phi_inputs = IndexPhiExpressionInputs(graph, *plan.phis, module_index.peers, literal_ends, phi_budget);
+      admit(phi_budget.Bytes(), 1); step(phi_budget.Work());
     }
     TreeCheckBudget logical_budget({bytes, work});
     const auto logical_inputs = FindLogicalLeftInputs(graph, plan, logical_budget);

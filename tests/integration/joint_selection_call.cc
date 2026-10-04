@@ -16,26 +16,32 @@ namespace {
 using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
-enum class Form { kPlain, kPrefix, kWrapped, kReversed, kBarrier };
+enum class Form { kPlain, kPrefix, kWrapped, kDual, kDualPrefix, kDualWrapped, kReversed, kBarrier };
+bool Wrapped(Form form) { return form == Form::kWrapped || form == Form::kDualWrapped; }
+bool Prefix(Form form) { return form == Form::kPrefix || form == Form::kDualPrefix; }
+bool Dual(Form form) { return form == Form::kDual || form == Form::kDualPrefix || form == Form::kDualWrapped; }
 abc::MethodBody Body(unsigned arguments, unsigned copies, Form form) {
   test::Check(arguments > 0 && arguments + 2 < UINT8_MAX);
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   const auto callee = static_cast<std::uint8_t>(arguments + 1);
-  const auto parameter = static_cast<std::uint8_t>(arguments + (form == Form::kWrapped ? 3 : 2));
+  const auto parameter = static_cast<std::uint8_t>(arguments + (Wrapped(form) ? 3 : 2));
   std::vector<std::uint8_t> bytes{op(abc::Opcode::kMOV_V8_V8), 0, parameter};
-  if (form == Form::kWrapped) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 0,
+  if (Wrapped(form)) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 0,
       op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 3, 0, op(abc::Opcode::kSTA_V8), static_cast<std::uint8_t>(arguments + 2)});
   bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 0, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0,
       op(abc::Opcode::kSTA_V8), callee});
   for (unsigned argument = 0; argument < arguments; ++argument) {
     for (unsigned copy = 0; copy < copies; ++copy)
       bytes.insert(bytes.end(), {op(abc::Opcode::kMOV_V8_V8), 0, 0});
-    if (form == Form::kPrefix) bytes.insert(bytes.end(),
+    if (Prefix(form)) bytes.insert(bytes.end(),
         {op(abc::Opcode::kLDA_V8), 0, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 3, 0});
     bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 0,
         op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 1, 0, op(abc::Opcode::kISTRUE)});
     const auto branch = bytes.size(); bytes.insert(bytes.end(), {op(abc::Opcode::kJEQZ_IMM8), 0});
-    bytes.insert(bytes.end(), {op(abc::Opcode::kLDAI_IMM32), 7, 0, 0, 0});
+    if (Dual(form)) {
+      bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 0,
+          op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 4, 0});
+    } else bytes.insert(bytes.end(), {op(abc::Opcode::kLDAI_IMM32), 7, 0, 0, 0});
     const auto jump = bytes.size(); bytes.insert(bytes.end(), {op(abc::Opcode::kJMP_IMM8), 0});
     bytes[branch + 1] = static_cast<std::uint8_t>(bytes.size() - branch);
     bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 0,
@@ -47,7 +53,7 @@ abc::MethodBody Body(unsigned arguments, unsigned copies, Form form) {
   }
   bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), callee,
       op(abc::Opcode::kCALLTHISRANGE_IMM8_IMM8_V8), 0, static_cast<std::uint8_t>(arguments), 0});
-  if (form == Form::kWrapped) bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), 1,
+  if (Wrapped(form)) bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), 1,
       op(abc::Opcode::kLDA_V8), static_cast<std::uint8_t>(arguments + 2),
       op(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 0, 1});
   bytes.push_back(op(abc::Opcode::kRETURN));
@@ -61,7 +67,7 @@ abc::MethodBody Body(unsigned arguments, unsigned copies, Form form) {
 }
 std::uint64_t Run(unsigned arguments, unsigned copies, abc::ProfileId profile, Form form, bool print) {
   const auto body = Body(arguments, copies, form);
-  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(arguments + (form == Form::kWrapped ? 3 : 2), 1, {}));
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(arguments + (Wrapped(form) ? 3 : 2), 1, {}));
   const auto flow = std::get<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers));
   IdfQuota quota{kDefaultSemanticWork};
   const auto ssa = std::get<ExceptionSsa>(ExceptionSsa::Build(flow, frame.registers, quota));
@@ -90,7 +96,7 @@ std::uint64_t Run(unsigned arguments, unsigned copies, abc::ProfileId profile, F
   }
   test::Check(evaluation.phase_calls.size() == arguments);
   test::Check(std::holds_alternative<CallPlan>(BuildPhasedCallPlan(graph, evaluation)));
-  if (form == Form::kWrapped) test::Check(evaluation.phase_calls.front().ancestors.size() == 1);
+  if (Wrapped(form)) test::Check(evaluation.phase_calls.front().ancestors.size() == 1);
   for (unsigned i = 1; i < arguments; ++i) {
     test::Check(evaluation.phase_calls[i].callee == evaluation.phase_calls[0].callee);
     test::Check(evaluation.phase_calls[i - 1].argument < evaluation.phase_calls[i].argument);
@@ -116,7 +122,7 @@ std::uint64_t Run(unsigned arguments, unsigned copies, abc::ProfileId profile, F
   const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
   const ExceptionTreeInput context{body, input, regions, control};
   FunctionSyntax syntax{}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
-  syntax.names = {u"value", u"method", u"probe", u"option", u"other"};
+  syntax.names = {u"value", u"method", u"probe", u"option", u"other", u"alternative"};
   syntax.parameters = {{NameId{0}, NameEvidence::kDebugRange}};
   std::vector<ExpressionConstant> constants(graph.ops.size());
   for (std::size_t i = 0; i < graph.ops.size(); ++i)
@@ -139,14 +145,17 @@ int main(int argc, char** argv) {
     const unsigned arguments = std::stoul(argv[2]);
     Run(arguments, 1, abc::ProfileId::kDynamic1206,
         std::string_view{argv[1]} == "--prefix-source" ? Form::kPrefix :
-        std::string_view{argv[1]} == "--wrapped-source" ? Form::kWrapped : Form::kPlain, true);
+        std::string_view{argv[1]} == "--wrapped-source" ? Form::kWrapped :
+        std::string_view{argv[1]} == "--dual-source" ? Form::kDual :
+        std::string_view{argv[1]} == "--dual-prefix-source" ? Form::kDualPrefix :
+        std::string_view{argv[1]} == "--dual-wrapped-source" ? Form::kDualWrapped : Form::kPlain, true);
     return 0;
   }
   unsigned scenarios = 0;
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
     std::uint64_t previous_work = 0;
     for (const auto arguments : {1U, 2U, 3U, 50U, 100U, 200U, 201U}) {
-      for (const auto form : {Form::kPlain, Form::kPrefix, Form::kWrapped, Form::kReversed, Form::kBarrier}) {
+      for (const auto form : {Form::kPlain, Form::kPrefix, Form::kWrapped, Form::kDual, Form::kDualPrefix, Form::kDualWrapped, Form::kReversed, Form::kBarrier}) {
         const auto work = Run(arguments, 1, profile, form, false); ++scenarios;
         if (form == Form::kWrapped && arguments >= 50) {
           if (previous_work) test::Check(work <= previous_work * 3);
@@ -156,7 +165,7 @@ int main(int argc, char** argv) {
       }
     }
     for (const auto copies : {2U, 200U, 201U, 402U})
-      for (const auto form : {Form::kPrefix, Form::kWrapped}) { Run(3, copies, profile, form, false); ++scenarios; }
+      for (const auto form : {Form::kPrefix, Form::kWrapped, Form::kDualPrefix, Form::kDualWrapped}) { Run(3, copies, profile, form, false); ++scenarios; }
   }
   std::cout << scenarios << " decoded joint-call scenarios passed\n";
 }
