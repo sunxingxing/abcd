@@ -287,8 +287,9 @@ class StructureCheck {
         }
       } else if constexpr (std::is_same_v<T, FieldDefinitionExpr>) {
         RequireTree(expression.name.value < tree_.names.size(), Error::kName);
-        RequireTree(expression.receiver.value < tree_.expressions.size() &&
-            std::holds_alternative<ThisExpr>(tree_.expressions[expression.receiver.value].expression), Error::kUnsupportedSyntax);
+        // The receiver may be the original read's retained binding. Common
+        // operand correspondence proves its identity; structure must not force
+        // a new inline this read. Native field publication closes its context.
       } else if constexpr (std::is_same_v<T, MemberExpr>) {
         Key(expression.key);
       } else if constexpr (std::is_same_v<T, UnaryExpr>) {

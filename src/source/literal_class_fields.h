@@ -6,7 +6,7 @@
 namespace abcd::source {
 enum class LiteralClassFieldError : std::uint8_t { kUnsupported, kFlow, kResourceLimit, kWorkLimit };
 // Closed initializer effect certificate: one straight-line body, literal own
-// writes through the entry receiver, then undefined return. The class owner
+// writes through a proven receiver source, then undefined return. The class owner
 // must separately prove this receiver is its freshly created ordinary class;
 // this certificate alone neither permits reordering nor excludes abrupt writes.
 class LiteralClassFields {

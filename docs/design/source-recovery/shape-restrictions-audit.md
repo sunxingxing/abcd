@@ -1,6 +1,6 @@
 # 按用户要求进行的恢复条件审计
 
-最新替换状态及补充事项见文末规则93；历史表中的严格比较候选及literal同块条件不再是
+最新替换状态及补充事项见文末规则94；历史表中的严格比较候选及literal同块条件不再是
 当前准入条件。未替换项继续开放，不能将本次局部交付称为全量审计闭合。
 
 2026-10-03，基线 87176c10。此为本次明确请求的审计，不恢复定期审视。
@@ -654,7 +654,7 @@ raw VM zero/nonzero对null/undefined/NaN不同于JS truthiness，不能贸然替
 | class_self.cc::FindClassSelfStores | 同块/order和效果数量已由规则93的共同EffectOrder身份/支配/必达替换；实际唯一首次store及初始化器正文接口范围仍有限 | 多次写入与一般初始化器须由共同cell/观察/执行顺序模型表达，不能增加数量模板 |
 | semantic_locals.cc / scope_facts.cc | 规则93以真实拓扑排序替换物理forward-edge准入；既有一般cell初始化仍依赖原指令排序，循环保留局部路径 | activation-sensitive初始化数据流证明每次分配到读取的全路径store；不能以PC大小或同块替代 |
 | literal_class_fields.cc::Build | 已有literal-only快速路径要求单块、无边、无参数及局部类型集合 | 统一field依赖/执行顺序/this与cell观察证明；既有路径只作为明确未迁移边界 |
-| literal_plan.h::IsReceiverField | 直接字段接口只消费ReceiverEntry，FrameThis结果尚未进入同一identity证明 | 根据真实ABI/callable/this初始化状态建立身份对应，保留派生TDZ与arrow lexical-this差异 |
+| literal_plan.h::IsReceiverField；tree_structure.cc | 规则94共用实际ReceiverEntry与已证明初始化FrameThis的来源接口；删除直接ThisExpr结构门槛，保留原读与跨块绑定身份 | 多次/保留frame读取的native字段投影仍需共同观察/顺序证明；不将frame read等同ABI快照，不推断derived/arrow初始化 |
 | legacy rest/super/array/class/module整理 | 既有直线/局部序列模板未全部迁移 | typed CFG/SSA/协议状态和共同FunctionTree通路；不继续扩大模板集合 |
 
 CallPlan同块及CrossPhaseInline/CrossLogicalInline例外没有回归，模块producer
@@ -699,3 +699,23 @@ Language-only事实；Defined、未知child writes和一般cell初始化仍有�
 使用原支配证明。该局部迁移尚未替换一般cell的PC顺序和循环activation
 限制，已列入开放项。没有生产opcode串、样本身份或新图形枚举分支。
 验证与阶段一边界见status.md；不把此项交付称为全仓审计闭合。
+
+### 2026-10-04：规则94，字段receiver来源与保留读取分离
+
+IsReceiverOperand按实际entry/operation origin与已证明Language域识别
+receiver来源，IsReceiverField与LiteralClassFields共用查询。FrameThis与
+ReceiverEntry保持各自SSA身份和原事件，不因为都是Language就互相替换。
+真实owner/context建立frame初始化事实；相同原字节脱离owner仍拒绝，
+derived/arrow/未知this没有获得新的初始化许可。没有新增LDTHIS局部序列。
+
+完整字段源树的分块用例进一步发现结构检查要求receiver直接是ThisExpr。
+这是internal AST的表示限制，不是字段语义要求；现允许共同BindingPlan
+保留原读取，TreeOperands独立核对原base use、存储身份及descriptor语义。
+native static printer仍需单独关闭implicit receiver与原存储/event省略义务；
+尚未证明的snapshot树保持不可发布，而不是把symbol重新打印成this。
+
+新真实file/frame initializer用例18组、独立native对照270组，组件正反例
+及200/201/402 work证据见status.md。一般literal字段正文仍要求单块及
+literal RHS；没有扩大这条旧快速路径的布局模板。当前重新核对CallPlan
+同块条件未回归；inline-owned Reference、module_guards邻接和phased
+单RHS/入口仍是开放接口边界，不宣称全仓逐行审计闭合。

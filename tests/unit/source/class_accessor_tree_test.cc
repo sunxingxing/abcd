@@ -23,7 +23,7 @@ enum class ObserverFlow { kSameBlock, kSplit, kSelection, kInstallSplit, kInstal
 std::string Recover(bool is_static, bool return_prototype = false, int ordinary_parity = -1,
     bool async_method = false, abc::ProfileId profile = abc::ProfileId::kDynamic1206,
     bool capture_cells = false, bool initialized = true, bool input_gap = false,
-    ObserverFlow observers = ObserverFlow::kSameBlock, bool self_initializer = false) {
+    ObserverFlow observers = ObserverFlow::kSameBlock, bool self_initializer = false, bool frame_this = false) {
   constexpr std::uint32_t kPool = 64, kOwner = 128, kLiteral = 160,
       kCreator = 256, kConstructor = 300, kGetter = 340, kSetter = 380,
       kBufferMethod = 420, kBufferCode = 864, kNestedMethod = 460, kNestedCode = 1000,
@@ -181,11 +181,18 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
       {opcode(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0, opcode(abc::Opcode::kRETURN)});
   index.methods[2].code = body(kGetterCode, 0, 3, {opcode(abc::Opcode::kLDTHIS),
       opcode(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 6, 0, opcode(abc::Opcode::kRETURN)});
-  if (initializer) index.methods[2].code = body(kGetterCode, 1, 3, {
-      opcode(abc::Opcode::kLDA_V8), 3, opcode(abc::Opcode::kSTA_V8), 0,
+  if (initializer) {
+    std::vector<std::uint8_t> fields;
+    if (frame_this) fields.push_back(opcode(abc::Opcode::kLDTHIS));
+    else fields.insert(fields.end(), {opcode(abc::Opcode::kLDA_V8), 3});
+    // Private register copies pass through the common SSA canonicalizer.
+    fields.insert(fields.end(), {opcode(abc::Opcode::kSTA_V8), 0,
+      opcode(abc::Opcode::kLDA_V8), 0, opcode(abc::Opcode::kSTA_V8), 0,
       opcode(abc::Opcode::kLDAI_IMM32), 42, 0, 0, 0,
       opcode(abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8), 0, 6, 0, 0,
       opcode(abc::Opcode::kRETURNUNDEFINED)});
+    index.methods[2].code = body(kGetterCode, 1, 3, std::move(fields));
+  }
   index.methods[3].code = body(kSetterCode, 1, 4, {opcode(abc::Opcode::kLDTHIS),
       opcode(abc::Opcode::kSTA_V8), 0, opcode(abc::Opcode::kLDA_V8), 4,
       opcode(abc::Opcode::kSTOBJBYNAME_IMM8_ID16_V8), 0, 6, 0, 0, opcode(abc::Opcode::kRETURNUNDEFINED)});
@@ -249,6 +256,17 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   const auto roles = std::get<analysis::MethodRoleIndex>(analysis::MethodRoleIndex::Build(file, header, index, lookup));
   const auto functions = std::get<analysis::FunctionCreationSites>(analysis::FunctionCreationSites::Build(file, header, index, lookup));
   const auto classes = std::get<analysis::ClassMethodSites>(analysis::ClassMethodSites::Build(file, header, index, lookup));
+  if (frame_this) {
+    // Raw frame reads need the genuine initializer owner; the same bytes
+    // loaded as an ownerless method must not acquire an initialized-this fact.
+    const auto detached = ReadFunctionValues(file, header, index, {2}, identity, InputCaptureMode::kClosed);
+    Check(std::holds_alternative<FunctionFileFailure>(detached));
+    const auto& failure = std::get<FunctionFileFailure>(detached);
+    Check(std::holds_alternative<FunctionInputFailure>(failure));
+    const auto& input = std::get<FunctionInputFailure>(failure).cause;
+    Check(std::holds_alternative<analysis::SemanticProofFailure>(input) &&
+        std::get<analysis::SemanticProofFailure>(input).kind == analysis::SemanticProofError::kInternalValue);
+  }
   auto loaded = ReadFunctionValues(file, header, index, {0}, identity,
       capture_cells || self_initializer ? InputCaptureMode::kConditional : InputCaptureMode::kClosed);
   if (const auto* failure = std::get_if<FunctionFileFailure>(&loaded)) {
@@ -735,6 +753,13 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--frame-initializers-json") {
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const auto flow : {ObserverFlow::kInitializerSplit, ObserverFlow::kInitializerDiamond, ObserverFlow::kInitializerReverse})
+        for (const bool self : {false, true})
+          std::cout << nlohmann::json{{"self", self}, {"source", Recover(true, false, -1, false, profile, false, true, false, flow, self, true)}} << '\n';
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--self-initializers-json") {
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
       for (const auto flow : {ObserverFlow::kInitializerSplit, ObserverFlow::kInitializerDiamond, ObserverFlow::kInitializerReverse})

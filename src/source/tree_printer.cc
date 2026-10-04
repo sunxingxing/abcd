@@ -605,6 +605,11 @@ class TreePrinter {
   }
   void Expression(const FieldDefinitionExpr& node) {
     if (!static_fields_) throw Error::kUnsupportedContext;
+    // Native static syntax has an implicit receiver. Retained receiver reads
+    // remain representable internally, but need a separate projection proof
+    // before this printer can omit their storage/event.
+    const auto* receiver = std::get_if<ThisExpr>(&Tree().expressions[node.receiver.value].expression);
+    if (!receiver || receiver->owner != Tree().owner) throw Error::kUnsupportedContext;
     const auto& name = Tree().names[node.name.value];
     Append("static ");
     if (ClassifyObjectKey(name) == MemberKeySyntax::kIdentifier && name != u"prototype" && name != u"constructor")

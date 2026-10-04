@@ -5,6 +5,24 @@
 
 ## 输入规模与成本
 
+### 字段 receiver 的共同来源查询（2026-10-04）
+
+规则94在fresh verified/simplified ValueProgram上以实际ValueDefinition
+origin及Language域查询ReceiverEntry或ValueFrameThis。来源依据既有
+typed ABI/frame与callable owner初始化合同；没有外部代码、新依赖或许可
+变化。该查询不求两个SSA值的等价、不回放frame read、不沿每个字段
+重走CFG/copy链；原copy canonicalization、availability、效果和域证明
+仍分别成立。每个查询O(1)时间/空间，原LiteralClassFields单次扫描和
+线性scratch成本不变，新增frame读取计入既有flow/work预算。
+
+FieldDefinitionExpr内的receiver使用共同binding表示保存的原读取；树
+结构不要求直接ThisExpr，独立operand/flow/origin证明实际输入。native
+static syntax的implicit receiver上下文另在打印边界关闭；跨块/多字段
+保留读尚缺省略storage/event的投影，不能以AST形状代替这项证明。
+1/2/200/201/402字段证书精确work与几何增长、跨块源树正反例、三profile
+实际file/context输出及270组独立native对照提供本项证据。literal-only
+单块快速路径仍未迁移，完整进程RSS/延迟基准继续暂停。
+
 ### 类初始化调用的共同效果必达索引（2026-10-04）
 
 规则92的调用识别以fresh VerifyValueFlow证明class home、method callee及

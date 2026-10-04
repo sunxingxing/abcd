@@ -7,11 +7,15 @@
 #include <cstdlib>
 #include <type_traits>
 #include <utility>
+#include <iostream>
+#include <source_location>
 
 namespace {
 using namespace abcd;
 using namespace abcd::source;
-void Check(bool condition) { if (!condition) std::abort(); }
+void Check(bool condition, const std::source_location& at = std::source_location::current()) {
+  if (!condition) { std::cerr << "function tree check " << at.line() << '\n'; std::abort(); }
+}
 class Fixture {
  public:
   Fixture() {
@@ -692,6 +696,41 @@ void OwnDefinitionRefusal() {
         EvaluationError::kUnsupportedOperation);
   }
 }
+void ReceiverFields() {
+  using namespace analysis;
+  for (const bool split : {false, true}) {
+    Fixture fixture;
+    fixture.Add(0, 0, 0, ValueFrameThis{}, true, {});
+    if (split) fixture.Add(0, 1, 1, ValueJump{}, false, {});
+    const auto field = fixture.Add(split ? 1 : 0, split ? 0 : 1, 2,
+        ValueOwnWrite{OwnWriteKind::kDefineField, {0}, 0}, false,
+        {{OperandRole::kBase, ValueId{2}}, {OperandRole::kStoredValue, analysis::IntegerLiteral{42}}}, kWrite);
+    fixture.constants[field.value] = NameId{1};
+    fixture.Add(split ? 1 : 0, split ? 1 : 2, 3, ValueReturn{}, false,
+        {{OperandRole::kReturnValue, SpecialValue::kUndefined}});
+    fixture.graph.blocks = split ? std::vector<WorkBlock>{{{0}, 2, {0}, 1}, {{2}, 2, {1}, 0}} :
+        std::vector<WorkBlock>{{{0}, 3, {0}, 0}};
+    if (split) fixture.graph.edges = {{{0}, {1}, FlowEdgeKind::kTaken, 0}};
+    auto built = fixture.Build();
+    Check(std::holds_alternative<ConstructedFunction>(built));
+    auto tree = std::get<ConstructedFunction>(std::move(built)).tree;
+    Check(std::holds_alternative<TreeSemantics>(fixture.Verify(tree)));
+    const auto expression = std::get<ExprId>(tree.operations[field.value].node);
+    Check(std::holds_alternative<FieldDefinitionExpr>(tree.expressions[expression.value].expression));
+    auto changed = tree;
+    const auto receiver = std::get<FieldDefinitionExpr>(changed.expressions[expression.value].expression).receiver;
+    const auto read = std::get<ExprId>(tree.operations[0].node);
+    changed.expressions[read.value].expression = ThisExpr{{tree.owner.value + 1}};
+    Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(changed)));
+    changed = tree;
+    changed.expressions[receiver.value].expression = SymbolExpr{tree.parameters[0].symbol};
+    Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(changed)));
+    changed = tree;
+    changed.expressions[expression.value].expression = AssignmentExpr{
+        MemberTarget{receiver, NameId{1}}, std::get<FieldDefinitionExpr>(tree.expressions[expression.value].expression).value};
+    Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(changed)));
+  }
+}
 void DebuggerTree() {
   using namespace analysis;
   Fixture fixture;
@@ -832,6 +871,7 @@ void FrameReceiverTree() {
 }
 }  // namespace
 int main() {
+  ReceiverFields();
   SuperTree();
   ConstructorGuardAnchors();
   DerivedEntryValue();

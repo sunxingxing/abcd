@@ -4,62 +4,42 @@ import vm from 'node:vm';
 const [tool] = process.argv.slice(2);
 // Decode real class/method/call bytes with pure splits at both boundaries.
 // The independent native oracle enters only after engine source generation.
-const initializers = spawnSync(tool, ['--initializers-json'], {encoding: 'utf8', timeout: 60_000});
-assert.equal(initializers.status, 0, initializers.stderr);
-let initializerScenarios = 0;
-for (const line of initializers.stdout.trim().split('\n')) {
-  const {source} = JSON.parse(line);
-  assert.match(source, /static _value = 42;/);
-  assert.doesNotMatch(source, /INCOMPLETE|\.call\(|Object\.defineProperty/);
-  const create = vm.runInNewContext(`'use strict'; ${source}`);
-  const reference = () => class Accessors {static _value = 42;};
-  for (const input of [undefined, null, false, true, 0, -0, NaN, 1, 0n, 1n, '', 'x', Symbol(), {}, []]) {
-    const describe = factory => {
-      const C = factory(input), D = factory(input);
-      assert.notEqual(C, D); assert.notEqual(C.prototype, D.prototype);
-      assert.equal(C._value, 42); assert.equal(new C()._value, undefined);
-      const value = {};
-      assert.equal(Reflect.set(C, '_value', value), true); assert.equal(C._value, value);
-      assert.equal(D._value, 42);
-      const descriptor = Object.getOwnPropertyDescriptor(D, '_value');
-      return {name: C.name, length: C.length, keys: Reflect.ownKeys(C), prototypeKeys: Reflect.ownKeys(C.prototype),
-        value: descriptor.value, writable: descriptor.writable, enumerable: descriptor.enumerable, configurable: descriptor.configurable};
-    };
-    assert.deepEqual(describe(create), describe(reference)); ++initializerScenarios;
+for (const [flag, captured] of [['--initializers-json', false], ['--self-initializers-json', true], ['--frame-initializers-json', false]]) {
+  const run = spawnSync(tool, [flag], {encoding: 'utf8', timeout: 60_000});
+  assert.equal(run.status, 0, run.stderr);
+  let scenarios = 0;
+  for (const line of run.stdout.trim().split('\n')) {
+    const {source, self = captured} = JSON.parse(line);
+    assert.match(source, /static _value = 42;/);
+    assert.doesNotMatch(source, /INCOMPLETE|\.call\(|Object\.defineProperty/);
+    const create = vm.runInNewContext(`'use strict'; ${source}`);
+    // Actual captured constructors read the outer cell; the oracle enters only
+    // after generation and is never supplied to the bytecode recovery engine.
+    const reference = self ? () => {
+      let C = class Accessors {constructor() {return C;} static _value = 42;};
+      return C;
+    } : () => class Accessors {static _value = 42;};
+    for (const input of [undefined, null, false, true, 0, -0, NaN, 1, 0n, 1n, '', 'x', Symbol(), {}, []]) {
+      const describe = factory => {
+        const C = factory(input), D = factory(input);
+        assert.notEqual(C, D); assert.notEqual(C.prototype, D.prototype);
+        assert.equal(C._value, 42);
+        if (self) {
+          assert.equal(new C(), C); assert.equal(new D(), D);
+          assert.equal(Reflect.construct(C, []), C);
+        } else assert.equal(new C()._value, undefined);
+        const descriptor = Object.getOwnPropertyDescriptor(C, '_value');
+        const value = {};
+        assert.equal(Reflect.set(C, '_value', value), true); assert.equal(C._value, value);
+        assert.equal(new C()._value, self ? value : undefined); assert.equal(D._value, 42);
+        return {name: C.name, length: C.length, keys: Reflect.ownKeys(C), prototypeKeys: Reflect.ownKeys(C.prototype),
+          value: descriptor.value, writable: descriptor.writable, enumerable: descriptor.enumerable, configurable: descriptor.configurable};
+      };
+      assert.deepEqual(describe(create), describe(reference)); ++scenarios;
+    }
   }
+  console.log(`${flag} native comparisons: ${scenarios}`);
 }
-console.log(`cross-block initializer native comparisons: ${initializerScenarios}`);
-const selfInitializers = spawnSync(tool, ['--self-initializers-json'], {encoding: 'utf8', timeout: 60_000});
-assert.equal(selfInitializers.status, 0, selfInitializers.stderr);
-let selfScenarios = 0;
-for (const line of selfInitializers.stdout.trim().split('\n')) {
-  const {source} = JSON.parse(line);
-  assert.match(source, /static _value = 42;/);
-  assert.doesNotMatch(source, /INCOMPLETE|\.call\(|Object\.defineProperty/);
-  const create = vm.runInNewContext(`'use strict'; ${source}`);
-  // The actual constructor reads the outer mutable cell. A named class binding
-  // or a fabricated constructor does not discharge that original capture.
-  const reference = () => {
-    let C = class Accessors {constructor() {return C;} static _value = 42;};
-    return C;
-  };
-  for (const input of [undefined, null, false, true, 0, -0, NaN, 1, 0n, 1n, '', 'x', Symbol(), {}, []]) {
-    const describe = factory => {
-      const C = factory(input), D = factory(input);
-      assert.notEqual(C, D); assert.notEqual(C.prototype, D.prototype);
-      assert.equal(new C(), C); assert.equal(new D(), D);
-      assert.equal(Reflect.construct(C, []), C);
-      const descriptor = Object.getOwnPropertyDescriptor(C, '_value');
-      const value = {};
-      assert.equal(Reflect.set(C, '_value', value), true);
-      assert.equal(new C()._value, value); assert.equal(D._value, 42);
-      return {name: C.name, length: C.length, keys: Reflect.ownKeys(C), prototypeKeys: Reflect.ownKeys(C.prototype),
-        value: descriptor.value, writable: descriptor.writable, enumerable: descriptor.enumerable, configurable: descriptor.configurable};
-    };
-    assert.deepEqual(describe(create), describe(reference)); ++selfScenarios;
-  }
-}
-console.log(`cross-block self initializer native comparisons: ${selfScenarios}`);
 for (const placement of ['prototype', 'static', 'retained', 'method-last', 'accessor-last']) {
   const run = spawnSync(tool, [`--${placement}`], {encoding: 'utf8', timeout: 60_000});
   assert.equal(run.status, 0, run.stderr);

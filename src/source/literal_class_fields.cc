@@ -1,4 +1,5 @@
 #include "literal_class_fields.h"
+#include "literal_plan.h"
 #include "../analysis/value_flow.h"
 #include "../analysis/register_value_rule.h"
 
@@ -46,15 +47,16 @@ std::variant<LiteralClassFields, LiteralClassFieldError> LiteralClassFields::Bui
             op.before_throw == kOwnWriteEffects && op.exceptional == ExceptionalCompletion::kMayThrow);
         const auto& base = graph.uses[op.first_use.value];
         const auto& value = graph.uses[op.first_use.value+1];
-        const auto* receiver = std::get_if<ValueId>(&base.operand);
-        const auto* entry = receiver ? std::get_if<EntryDefinition>(&graph.values[receiver->value].origin) : nullptr;
-        require(entry && std::holds_alternative<ReceiverEntry>(*entry) && base.role == OperandRole::kBase &&
+        require(IsReceiverOperand(graph, base.operand) && base.role == OperandRole::kBase &&
             value.role == OperandRole::kStoredValue && literal(value.operand));
         result.fields_.push_back({static_cast<std::uint32_t>(i)});
         continue;
       }
       require(op.normal == LanguageEffect::kNone && op.before_throw == LanguageEffect::kNone &&
           op.exceptional == ExceptionalCompletion::kImpossible);
+      // Receiver transport keeps its original event/uses. It is never a literal
+      // RHS or permission to reread/replay the frame across other operations.
+      if (op.result && IsReceiverOperand(graph, ValueOperand{*op.result})) continue;
       if (std::holds_alternative<ValueString>(op.operation)) {
         require(op.result && op.use_count == 0 && graph.values[op.result->value].domain.IsString());
         literals[op.result->value] = 1;

@@ -12,6 +12,42 @@
 
 ## 当前阶段
 
+### 2026-10-04：字段 receiver 共用来源接口并保留跨块原读取
+
+- 规则revision94。IsReceiverOperand共用typed来源查询：实际ReceiverEntry
+  和已证明Language的ValueFrameThis分别保留原SSA身份；共同字段识别与
+  LiteralClassFields消费同一接口。原callable owner证明this初始化，不能
+  从ABI槽、LDTHIS出现或样本正文推断；不把frame read别名成entry快照。
+- 新增跨块源树用例发现FieldDefinitionExpr结构检查强制直接ThisExpr，
+  拒绝共同BindingPlan保留的原receiver。现由共同operand/origin/flow验证
+  原读取与存储身份；结构检查只管合法树边，避免为了内联重读this。
+  static打印仍单独关闭implicit receiver上下文义务；需存储的receiver
+  尚不能投影成native static syntax。字段描述符没有替成普通assignment。
+- 十八组三profile真实字节/文件/initializer owner/FunctionTree/family/
+  printer用例，含外部split、diamond、逆物理布局及真实class self捕获；
+  新增270组独立native JS对照验证字段描述符、类/原型身份、写后结果与
+  factory独立性。原135+135组初始化器、432组observer及96组capture
+  对照继续通过。原frame读取在脱离真实owner时仍报InternalValue。
+- 两种receiver来源的1/2/200/201/402字段证书、精确work边界与几何
+  增长通过。frame work39/50/2228/2239/4450，entry work36/47/2225/
+  2236/4447。Unknown、错FrameFunction来源、receiver充当literal RHS、
+  错this owner/参数身份和assignment描述符变造继续拒绝。规模检查是
+  组件证据，不是多字段完整native表示或暂停的RSS/延迟基准。
+- /tmp/abcd-frame-receiver-保存构建/验证：首轮跨块夹具的错误successor
+  ordinal修正后，实际树语义拒绝暴露上述直接ThisExpr结构门槛。中途
+  诊断编辑的编译错误已纠正，失败不计成功。final-build-2.log单构建-j4
+  退出0；final-tests-2.log最终15/15通过23.51秒，test-output.log保存
+  work与native对照。没有运行全套、扩展语料、RSS或基准。
+- fresh build/stage-one/frame-receiver-fields-pass-1固定五输入全退出0，
+  80 complete/26 incomplete/0 failure/46 no-module，无完整回退或legacy
+  writer。batch-1.log/syntax-1.log核对原index/manifest SHA及size，106份
+  源码解析通过，与规则93源码字节一致；本次没有新增complete record。
+- LiteralClassFields的单块/literal-only快速路径、多次/保留frame读取
+  的native字段投影、phased字段和一般cell生命周期仍开放。module guard
+  邻接、inline-owned Reference、phased多RHS/入口及父scope/capture等
+  已登记，不扩充局部模板。阶段一语义与表示双验收未完成，Goal active；
+  full-suite、扩展语料、RSS、基准、DFX、代理及周期审计继续暂停。
+
 ### 2026-10-04：class self 初始化贯通共同效果顺序、原捕获和函数族写入
 
 - 规则revision93。FindClassSelfStores删除allocation/creation/store/call

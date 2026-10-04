@@ -6,6 +6,23 @@
 
 namespace abcd::source {
 struct EvaluationPlan;
+// Typed receiver sources in a freshly verified, simplified owner graph. The
+// ABI snapshot and frame read retain their own origins; this predicate never
+// equates their SSA identities, replays a frame read, or proves a derived/arrow
+// receiver initialized. Frame reads need the original Language-domain proof.
+inline bool IsReceiverOperand(const analysis::ValueProgram& graph, const analysis::ValueOperand& operand) {
+  const auto* value = std::get_if<analysis::ValueId>(&operand);
+  if (!value || value->value >= graph.values.size()) return false;
+  const auto& definition = graph.values[value->value];
+  if (definition.life != analysis::ValueLife::kLive || !definition.domain.IsLanguage()) return false;
+  if (const auto* entry = std::get_if<analysis::EntryDefinition>(&definition.origin))
+    return std::holds_alternative<analysis::ReceiverEntry>(*entry);
+  const auto* origin = std::get_if<analysis::OpResult>(&definition.origin);
+  if (!origin || origin->op.value >= graph.ops.size()) return false;
+  const auto& producer = graph.ops[origin->op.value];
+  return producer.life == analysis::ValueLife::kLive && producer.result == *value &&
+      std::holds_alternative<analysis::ValueFrameThis>(producer.operation);
+}
 // A direct initialized receiver field is an ordered definition, not a fresh
 // object-literal property. Syntax must preserve DefineOwnProperty semantics.
 inline bool IsReceiverField(const analysis::ValueProgram& graph, const analysis::ValueOp& op) {
@@ -13,10 +30,7 @@ inline bool IsReceiverField(const analysis::ValueProgram& graph, const analysis:
   if (!graph.phases.empty() || !field || field->kind != analysis::OwnWriteKind::kDefineField ||
       op.use_count != 2 || op.first_use.value >= graph.uses.size()) return false;
   const auto& base = graph.uses[op.first_use.value];
-  const auto* value = std::get_if<analysis::ValueId>(&base.operand);
-  if (base.role != analysis::OperandRole::kBase || !value || value->value >= graph.values.size()) return false;
-  const auto* entry = std::get_if<analysis::EntryDefinition>(&graph.values[value->value].origin);
-  return entry && std::holds_alternative<analysis::ReceiverEntry>(*entry);
+  return base.role == analysis::OperandRole::kBase && IsReceiverOperand(graph, base.operand);
 }
 enum class LiteralForm : std::uint8_t { kExpression, kStatements };
 struct ObjectInit {
