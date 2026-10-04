@@ -12,6 +12,63 @@
 
 ## 当前阶段
 
+### 2026-10-05：共享条件复用共同块放置及已初始化 cell 事实
+
+- 规则revision110，基线1dcd9ad5；上一轮已完成实际开发提交，Goal仍
+  active。本轮从实际HotRankPage的tree_stage失败继续，不改变默认
+  数值合同或固定五ABC范围。lldb异常栈定位到EmitDecision的第二套
+  inline/module-guard名单；原局部load后的kCellGuard已由共同cell分析
+  证明初始化，普通块支持它，共享条件却再次拒绝。诊断日志前缀
+  /tmp/abcd-tree-recovery-hotrank-*；首个逐调用条件断点太慢，主动
+  结束自己的调试进程后改用throw断点，未重启或处理历史进程。
+- 普通共享条件的predicate与linear prefix改用同一EmitBlock；原
+  EvaluationPlan的expression/anchor/statement归属及控制顺序保持。
+  有语句根或环境声明时沿用共同平层predicate staging，其余保留原生
+  logical。未增加cell-guard局部生产分支、opcode序列、同块、PC、
+  寄存器或样本名单；没有另一套writer或源文本补丁。
+- fresh TreeFlow的IndexPlacements独立检查实际cell初始化、receiver/
+  class/hole等anchor语义；DecisionOperation消费该已检查placement，
+  验证原BlockBoundary及表达式/sequence归属，不再施加第二个producer
+  名单。原scope、操作数、效果、异常、身份及来源检查保持；环境声明
+  仍须实际语句归属，不能伪装为无声明anchor。上轮raw-copy snapshot
+  来源缺口没有通过放宽PredicateSnapshots或origin检查来处理。
+- 新decision_cells_test三个dynamic profile分别实际解码，2/200/
+  201/402条件和direct/copy/拆块/反向比较/条件内局部作用域共60个
+  完整函数，经过FunctionInput→FunctionValues→FunctionTree、独立
+  TreeSemantics及InstructionSources；Node通过25,320个getter
+  receiver/次数/顺序、异常token和返回身份场景，保留原生logical，
+  无INCOMPLETE、switch或Reflect输出。初始化事实篡改、guard anchor
+  位置及来源篡改均拒绝；201→402共同work比小于3。恢复和fresh flow
+  沿用O(I+B+T)遍历/存储，没有逐变量CFG扫描或新依赖。
+- ABC-only生成HotRankPage(48945)完整record后才打开配对TypeScript，
+  受控宿主下隔离calcMarginTop/getDisplayCount实际方法，6,467个
+  场景覆盖边界、String/BigInt/Symbol、offset转换、属性get/set顺序、
+  失败token、状态及原输入对象返回身份。未调用构造器或UI，不授予
+  全record/真实平台完整行为验收；新HotColumnView无整份配对行为
+  验收，不用其source_complete标志代替最终阶段验收。
+- 日志前缀/tmp/abcd-decision-cells-*。red-build成功，red-tests
+  1/1失败于真实完整树构建；build-1及final-build的11个实际target
+  单-j4退出0。tests-2初版6/6通过40.71秒；补齐局部作用域和实际
+  配对后final-tests 17/17通过84.20秒，含normal/phased cell、
+  control/snapshot、nullish、language arithmetic/source/paired和
+  route检查。随后增加guard origin篡改及logical表示断言，仅重建/
+  重跑两个直接受影响测试，mutations-tests.log 2/2通过8.55秒。
+  未执行全套。
+- 最终规则110 fresh固定五ABC两模式均退出0，input SHA/size保持与
+  原index一致；没有legacy writer或既有complete回退/源码变化。
+  decision-cells-language-pass-2为90complete/11incomplete-source/
+  5typed source-failure/46no-module，101份实际源码全部解析通过，
+  原有99份逐字节未变化。相比规则109新增完整HotColumnView(36781)
+  和HotRankPage(48945)。decision-cells-default-pass-1仍80complete/
+  26incomplete-source/0source-failure/46no-module，106份源码解析
+  通过、内容逐字节一致；默认numeric政策没有改变。
+- 剩余五个tree失败为FlashSale/Selection/CommentListView/FollowView/
+  FoundView。类成员input-only omission及raw-copy来源、未知父构造
+  协议、实例字段/全局变量/完整签名/函数体整合和整份阶段一独立语义/
+  表示验收继续开放；两项旧quotient检查的失败未在本轮宣称已修复。
+  后续继续推进实际失败函数，不能以这两个记录或本组件代替Goal完成。
+  代理、全量套件、扩展语料、RSS/基准、调度器/DFX及定期审视仍暂停。
+
 ### 2026-10-05：显式语言算术合同贯通共同数值分析
 
 - 规则revision109，基线ca89ec64。用户要求解释INT32_MIN/NaN边界，

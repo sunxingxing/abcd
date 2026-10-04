@@ -961,7 +961,8 @@ class TreeBuilder {
   }
   bool DecisionStatements(const ControlNode& root) {
     // Select a representation from the common evaluation placements. Statement
-    // roots cannot be operands of a native logical. No opcode/layout admission.
+    // roots and lexical declarations retain their conditional statement scope.
+    // No opcode/layout admission; expression/anchor placement stays shared.
     if (exceptions_) return false;
     const auto* part = &root;
     while (part->decision) {
@@ -973,7 +974,8 @@ class TreeBuilder {
         for (std::uint32_t i = 0; i < block.op_count; ++i) {
           Step(); const auto id = block.first_op.value + i;
           if (graph_.ops[id].life == analysis::ValueLife::kLive &&
-              evaluation_.operations[id].kind == EvaluationKind::kRoot &&
+              (evaluation_.operations[id].kind == EvaluationKind::kRoot ||
+               evaluation_.operations[id].kind == EvaluationKind::kEnvironment) &&
               !std::holds_alternative<analysis::ValueBranch>(graph_.ops[id].operation) &&
               !std::holds_alternative<analysis::ValueJump>(graph_.ops[id].operation)) return true;
         }
@@ -1069,28 +1071,12 @@ class TreeBuilder {
       Require(forest_.operations[branch.value].has_value(), Error::kControl);
 
       if (part != &node) {
-        // Normal blocks retain their existing pure-expression ownership.
-        // Phased RHS roots were retained in the preceding linear path.
-        for (std::uint32_t i = 0; !exceptions_ && i + 1 < block.op_count; ++i) {
-          Step(); const analysis::OpId at{block.first_op.value + i};
-          const auto& original = graph_.ops[at.value];
-          if (original.life != analysis::ValueLife::kLive) continue;
-          const auto kind = evaluation_.operations[at.value].kind;
-          const TreeOriginId origin{original.origin.value};
-          if (kind == EvaluationKind::kAlias || kind == EvaluationKind::kElidedPure) {
-            const AnchorId anchor{static_cast<std::uint32_t>(tree_.anchors.size())};
-            tree_.anchors.push_back({BlockBoundary{drafts_[draft].statement, drafts_[draft].count}, origin});
-            tree_.operations.push_back({at, anchor});
-          } else {
-            // A paired module guard shares its read's expression and origin
-            // combination. Keep the placement inside this conditional RHS;
-            // it is neither another statement nor an unconditional read.
-            Require((kind == EvaluationKind::kInline || kind == EvaluationKind::kModuleGuard) &&
-                forest_.operations[at.value], Error::kOwnership);
-            tree_.operations.push_back({at, *forest_.operations[at.value]});
-          }
-        }
-        tree_.operations.push_back({branch, *forest_.operations[branch.value]});
+        // Evaluation owns expression/anchor/statement placement. Reuse the
+        // same block consumer instead of admitting a second producer list for
+        // shared decisions. Statement roots use staging above; anchors retain
+        // original positions without replaying already-proved guards.
+        if (!exceptions_) EmitBlock(*part, draft, true);
+        else tree_.operations.push_back({branch, *forest_.operations[branch.value]});
       }
       auto condition = *forest_.operations[branch.value];
       Grow(tree_.expressions, tree_.expressions.size() + decision_roots_.size());
@@ -1116,7 +1102,8 @@ class TreeBuilder {
         }
         // Keep retained roots in the conditional RHS, in original path order.
         // Native comma syntax preserves each snapshot's normal-completion write.
-        EmitDecisionBlock(linear, draft, op);
+        if (!exceptions_) EmitBlock(linear, draft);
+        else EmitDecisionBlock(linear, draft, op);
         next = *linear.next;
       }
       selected_taken = decision.shared_on_taken;

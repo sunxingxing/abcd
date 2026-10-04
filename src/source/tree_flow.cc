@@ -327,9 +327,19 @@ class FlowCheck {
       edges_->Stage(op, BlockStmt{}, empty);
     }
     const auto kind = evaluation_.operations[op.value].kind;
-    // ModulePairs already checked the read/guard's exact shared ExprId.
-    // This decision consumes no second statement for that guarded read.
-    if (kind == EvaluationKind::kInline || kind == EvaluationKind::kModuleGuard) return;
+    const auto& placement = tree_.operations[*placements_[op.value]].node;
+    if (const auto* anchor = std::get_if<AnchorId>(&placement)) {
+      // IndexPlacements independently proves the semantic reason for each
+      // anchor (including actual initialized-cell facts). Only its boundary
+      // belongs to this control consumer; no second producer-list admission.
+      const auto* boundary = std::get_if<BlockBoundary>(&sequences_.Anchor(*anchor));
+      Require(boundary && boundary->block == parent && boundary->index == child, Error::kSequence);
+      Require(!IsEnvironmentState(original.operation), Error::kPlacement);
+      return;
+    }
+    // Actual expression ownership/operands are checked by the common consumers;
+    // a shared decision does not give the operation another executable root.
+    if (kind != EvaluationKind::kRoot && std::holds_alternative<ExprId>(placement)) return;
     if (kind == EvaluationKind::kRoot && !std::holds_alternative<analysis::ValueJump>(original.operation)) {
       const auto shape = DescribeEvaluation(original.operation);
       Require(exceptions_ && condition && shape && shape->expression &&
@@ -342,12 +352,7 @@ class FlowCheck {
       RootExpression(op, sequence->left); *condition = sequence->right;
       return;
     }
-    Require(kind == EvaluationKind::kAlias || kind == EvaluationKind::kElidedPure ||
-        std::holds_alternative<analysis::ValueJump>(original.operation), Error::kPlacement);
-    const auto* anchor = std::get_if<AnchorId>(&tree_.operations[*placements_[op.value]].node);
-    Require(anchor, Error::kPlacement);
-    const auto* boundary = std::get_if<BlockBoundary>(&sequences_.Anchor(*anchor));
-    Require(boundary && boundary->block == parent && boundary->index == child, Error::kSequence);
+    throw Error::kPlacement;
   }
   void DecisionRead(ExprId expression, SymbolId saved) {
     const auto* read = std::get_if<SymbolExpr>(&tree_.expressions[expression.value].expression);

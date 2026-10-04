@@ -3,6 +3,16 @@
 最新替换状态及补充事项见文末规则99；历史表中的严格比较候选及literal同块条件不再是
 当前准入条件。未替换项继续开放，不能将本次局部交付称为全量审计闭合。
 
+规则110补充：实际共享条件遇到已经证明初始化的cell guard仍受
+EmitDecision自己的inline/module-guard名单拦截。predicate及normal
+linear prefix现复用同一EmitBlock，不追加cell-guard特例；语句根和
+环境声明使用原共同staging。fresh flow先由IndexPlacements证明
+实际cell/receiver/class/hole等anchor语义，再验证其原位置，不增加
+第二个producer准入。初始化事实、anchor位置/来源篡改均拒绝，copy/
+拆块/反向比较/条件内局部作用域无需新匹配。原snapshot来源校验未
+放宽；五个实际tree失败、input-only omission及历史开放项仍待恢复。
+此项是已定位重复条件的替换，不宣称全量审计或阶段一完成。
+
 规则109补充：语言算术是显式SourceContract前提，经共同typed数值规则
 贯通normal/phased SSA和linear分析，不以样本、数值碰巧安全、opcode
 序列、PC/寄存器、同块或producer名单选择恢复。默认解释器表示前提

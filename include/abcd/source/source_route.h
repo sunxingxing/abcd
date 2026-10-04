@@ -291,7 +291,8 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // retained assignments become native bases without replaying their RHS effects.
 // Rules 108 retain conditional statement roots through flat predicate staging.
 // Rules 109 bind an explicit language arithmetic premise through common value rules.
-inline constexpr std::uint32_t kRouteEvidenceRules = 109;
+// Rules 110 share normal block placement with decision predicates and prefixes.
+inline constexpr std::uint32_t kRouteEvidenceRules = 110;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

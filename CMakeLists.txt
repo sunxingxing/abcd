@@ -724,6 +724,10 @@ if(BUILD_TESTING)
   target_include_directories(language_arithmetic_test PRIVATE tests/support)
   target_link_libraries(language_arithmetic_test PRIVATE abcd_source)
   add_test(NAME language_arithmetic_test COMMAND language_arithmetic_test)
+  add_executable(decision_cells_test tests/integration/decision_cells.cc)
+  target_include_directories(decision_cells_test PRIVATE tests/support)
+  target_link_libraries(decision_cells_test PRIVATE abcd_source)
+  add_test(NAME decision_cells_test COMMAND decision_cells_test)
   add_test(NAME language_arithmetic_cli_test COMMAND ${CMAKE_COMMAND}
     -DABCD_SEMANTIC=$<TARGET_FILE:abc_semantic> -DABCD_STRUCTURE=$<TARGET_FILE:abc_structure>
     -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/language_arithmetic_cli.cmake)
@@ -1546,9 +1550,14 @@ if(BUILD_TESTING)
       add_test(NAME language_arithmetic_paired_test COMMAND ${ABCD_NODE_EXECUTABLE}
         --experimental-vm-modules ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/language_arithmetic_paired.mjs
         $<TARGET_FILE:abc_structure> ${ABCD_PAIRED_CORPUS_ROOT})
+      add_test(NAME decision_cells_paired_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        --experimental-vm-modules ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_cells_paired.mjs
+        $<TARGET_FILE:abc_structure> ${ABCD_PAIRED_CORPUS_ROOT})
     endif()
     add_test(NAME language_arithmetic_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/language_arithmetic.mjs $<TARGET_FILE:language_arithmetic_test>)
+    add_test(NAME decision_cells_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_cells.mjs $<TARGET_FILE:decision_cells_test>)
     add_test(NAME numeric_conversion_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/numeric_conversion.mjs $<TARGET_FILE:numeric_conversion_test>)
     add_test(NAME number_conversion_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
