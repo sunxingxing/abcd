@@ -4,14 +4,18 @@ import vm from 'node:vm';
 const [tool] = process.argv.slice(2);
 // Decode real class/method/call bytes with pure splits at both boundaries.
 // The independent native oracle enters only after engine source generation.
-for (const [flag, captured] of [['--initializers-json', false], ['--self-initializers-json', true], ['--frame-initializers-json', false], ['--body-initializers-json', false]]) {
+for (const [flag, captured] of [['--initializers-json', false], ['--self-initializers-json', true], ['--frame-initializers-json', false], ['--body-initializers-json', false], ['--closed-initializers-json', true]]) {
   const run = spawnSync(tool, [flag], {encoding: 'utf8', timeout: 60_000});
   assert.equal(run.status, 0, run.stderr);
   let scenarios = 0;
   for (const line of run.stdout.trim().split('\n')) {
-    const {source, self = captured, fields = false, string_value = false} = JSON.parse(line);
-    const initialValue = string_value ? 'value' : 42;
-    assert.match(source, string_value ? /static _value = "value";/ : /static _value = 42;/);
+    const {source, self = captured, fields = false, string_value = false, compound = false} = JSON.parse(line);
+    const initialValue = compound ? !(typeof 'value' === typeof '_value') : string_value ? 'value' : 42;
+    if (compound) {
+      assert.match(source, /static _value =/);
+      assert.match(source, /typeof "value"/); assert.match(source, /typeof "_value"/);
+      assert.match(source, /===/); assert.match(source, /!\(/);
+    } else assert.match(source, string_value ? /static _value = "value";/ : /static _value = 42;/);
     if (fields) {
       assert.match(source, /static _other = 17;/);
       assert.ok(source.indexOf('static _other') < source.indexOf('static _value'));

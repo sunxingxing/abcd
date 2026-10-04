@@ -1,20 +1,20 @@
-#ifndef ABCD_SOURCE_LITERAL_CLASS_FIELDS_H_
-#define ABCD_SOURCE_LITERAL_CLASS_FIELDS_H_
+#ifndef ABCD_SOURCE_CLOSED_CLASS_FIELDS_H_
+#define ABCD_SOURCE_CLOSED_CLASS_FIELDS_H_
 
 #include "abcd/analysis/value_ir.h"
 
 namespace abcd::source {
-enum class LiteralClassFieldError : std::uint8_t { kUnsupported, kFlow, kResourceLimit, kWorkLimit };
+enum class ClosedClassFieldError : std::uint8_t { kUnsupported, kFlow, kResourceLimit, kWorkLimit };
 // Closed initializer effect certificate: all paths execute one ordered chain of
-// literal own writes through proven receiver sources, then undefined return. CFG
+// closed own writes through proven receiver sources, then undefined return. CFG
 // placement is irrelevant; divergence, bypass and repeated writes fail. The class owner
 // must separately prove this receiver is its freshly created ordinary class;
 // this certificate alone neither permits reordering nor excludes abrupt writes.
-class LiteralClassFields {
+class ClosedClassFields {
  public:
-  LiteralClassFields(LiteralClassFields&&) noexcept = default;
-  LiteralClassFields& operator=(LiteralClassFields&&) noexcept = default;
-  static std::variant<LiteralClassFields, LiteralClassFieldError> Build(
+  ClosedClassFields(ClosedClassFields&&) noexcept = default;
+  ClosedClassFields& operator=(ClosedClassFields&&) noexcept = default;
+  static std::variant<ClosedClassFields, ClosedClassFieldError> Build(
       const analysis::ValueProgram&, analysis::SemanticBudget = {});
   std::span<const analysis::OpId> Fields() const { return fields_; }
   analysis::IrRevision Revision() const { return revision_; }
@@ -22,7 +22,7 @@ class LiteralClassFields {
   std::size_t AllocatedBytes() const { return bytes_; }
   std::uint64_t Work() const { return work_; }
  private:
-  LiteralClassFields() = default;
+  ClosedClassFields() = default;
   std::vector<analysis::OpId> fields_;
   analysis::IrRevision revision_;
   analysis::CfgRevision cfg_revision_;

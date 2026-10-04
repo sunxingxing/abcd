@@ -12,6 +12,59 @@
 
 ## 当前阶段
 
+### 2026-10-05：共同封闭表达式贯通类字段初始化
+
+- 规则revision114，基线e00cf12e；25aa工作树、分支
+  codex/resume-generator-post-loop。上轮数值边界解释未授权改变默认政策；
+  本轮沿用默认V3和显式language arithmetic，完成不依赖新数值政策的
+  字段初始化与源码表示缺口。Goal仍active，固定五ABC范围保持。
+- 实际三profile字节码增加typeof/严格比较/逻辑取反组合初始化，包含
+  initializer的纯拆块、反向物理块和外层直线/分支/反向调用，以及ABI
+  receiver或真实frame读取。旧实现RED，LLDB定位到ClassSelfOrder调用
+  LiteralClassFields的String/Copy生产者名单；不是样本、名称或同块要求。
+- ClosedValues复用共同DescribeEvaluation、OrderedEvaluation、实际
+  operand角色/语言域及AnalyzeValueIdentities的copy/phi SCC根。单调
+  稀疏工作表按原始UseId逐次解除输入依赖，不递归遍历表达式、不按局部
+  opcode序列匹配。参数/捕获/frame/cell/heap等隐含上下文不能成为封闭
+  RHS；即使类型为Number/String或伪造无效果，仍无封闭叶子事实。
+  同一外部身份锚定的phi可传递封闭值，不同选择值不因各臂纯净就成为
+  封闭值。依赖全部已证明后才传播结果，私有NaN/内部值边界保持。
+- 原证书更名ClosedClassFields，移除String/Copy局部扫描和重复branch
+  名单；共同控制shape负责角色/arity，原EffectOrder的全路径单次字段
+  链、真实receiver、DefineField descriptor、undefined return、方法
+  owner及未暴露self-cell义务保持。实际源码仍由原FunctionTree和
+  ClassStaticFields打印，没有另一套字段writer或新的发布前置。
+- 新实际源码暴露typeof字面量也加逗号的表示问题。共同printer仅对
+  GlobalNameExpr保留强制GetValue包装，防止typeof吞掉未解析名称异常；
+  符号保留TDZ语义，其他表达式沿用共同优先级/括号。新字段输出为
+  `static _value = !(typeof "value" === typeof "_value");`。并非按字段
+  名称、源码文本或样本选择规则。既有自由全局typeof保护测试保持。
+- closed_class_fields_test涵盖正常/反向的1/200/201/402层组合、复制链、
+  相同身份/不同选择phi、重复同一输入、Number/String参数、伪造无
+  效果的global/lexical/frame读取，以及原bypass/循环/重复写/效果barrier/
+  receiver/descriptor/NaN反例。201→402组合work为18,394→36,484，
+  不代替RSS或全语料性能证据。36份实际解码完整类源码新增540组独立
+  Node对照：字段值/属性描述符、顺序、类/原型身份、捕获self构造器、
+  实例/Reflect.construct及改写后的隔离；原初始化行为矩阵也保持。
+- 日志前缀/tmp/abcd-closed-fields-*。red-source-1与red-trace-1记录
+  原始失败；表示检查也先观察到typeof多余逗号。build-1缺少求值头文件、
+  build-2测试误用不存在的Boolean工厂，修正后build-3和final-build-1
+  均退出0；后者实际10个target、单-j4。首轮8/8通过7.72秒；最终定向
+  15/15通过33.50秒，含来源路由、类初始化/default candidates、括号/
+  Boolean语境及固定输入中的配对静态类与Content局部行为。未运行全套。
+- fresh closed-fields-{default,language}-pass-2各五输入退出0，分别
+  80complete/26incomplete-source/0source-failure/46no-module及
+  95complete/11incomplete-source/0source-failure/46no-module。
+  无legacy、complete降级或新增complete；各106份完整/部分源码解析和
+  原index的SHA/size检查通过。相对raw-copy基线，各模式53份源码减少
+  typeof逗号包装，其中完整源码分别36/51份；final输出与本轮pass-1
+  逐字节一致。输入样本未修改。
+- 本轮解决封闭无效果标量组合的类self初始化证明及typeof表示；不声称
+  任意字段初始化已完成。带真实效果/异常的RHS、一般控制/暂存字段
+  表示、异常相位初始化、未知父构造协议、WindowUtil NEG数值输入、
+  实例字段/全局/完整签名/函数体整合及全部record独立验收仍开放。
+  代理、全套、扩展语料、RSS/基准、调度/DFX及定期审视保持暂停。
+
 ### 2026-10-05：普通与异常路径共用原始 copy/phi 身份投影
 
 - 规则revision113，基线88c040b2；25aa工作树、分支

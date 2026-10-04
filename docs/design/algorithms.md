@@ -1638,3 +1638,32 @@ and work remain in the existing grants and plan reports. Three-profile exact
 and simplified 200/201/402 copy variants check evaluation-work scaling; existing
 phi tests retain 200/201/4096 identity and actual parallel-copy cases. These
 scoped checks do not measure physical RSS or full-corpus latency.
+
+
+### Closed initializer values (2026-10-05, rules 114)
+
+ClosedValues is a project-owned sparse Boolean data-flow analysis over verified
+SSA. Provenance is the existing source evaluation/effect adapter and read-only
+iterative Tarjan copy/phi identity index, with a monotone all-operands transfer.
+No new dependency or licensing obligation is introduced. Callers first verify
+availability/uses and imported instruction semantics; results are queried on
+that unchanged graph. Closure means context independence without observable
+effects or abrupt completion, not permission to replay or move a source tree.
+
+The identity index gives flat canonical roots. Eligible native expression
+results have reverse dependencies keyed by each actual UseId and a pending
+operand count. Immediate closed primitives and dependency-free expressions seed
+a bounded queue; each result is enqueued once and each input occurrence is
+visited once. Repeated occurrences of the same operand discharge separately.
+Copy/phi aliases query the same root; ungrounded cycles and distinct-choice
+phis receive no seed. Work and storage are O(V+U+O), including identity indexing;
+there is no recursive expression walk or per-variable CFG search.
+
+ClosedClassFields retains the separate shared normal EffectOrder cost and
+all-path exactly-once field chain. It consumes the common closure facts instead
+of a String/Copy producer scan. Actual field trees and expression parentheses
+still come from the existing FunctionTree printer. Effects, exceptions, phased
+field initialization and general control/temporary syntax remain coverage gaps;
+coarse instruction effects are not reclassified merely because operands look
+like constants. Existing 200/201/402 scoped work checks are preserved and
+extended to composed expressions, without reviving RSS or timing benchmarks.

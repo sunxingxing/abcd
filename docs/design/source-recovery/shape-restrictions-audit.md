@@ -1,7 +1,26 @@
 # 按用户要求进行的恢复条件审计
 
-最新替换状态见本页规则113及后续各项补充。历史候选不是当前实现的证明；
+最新替换状态见本页规则114及后续各项补充。历史候选不是当前实现的证明；
 未替换项继续开放，不能将局部交付称为全量审计闭合。
+
+规则114补充：ClassSelfOrder的初始化观察证明原仅扫描String/Copy，
+这是封闭表达式分析的实现缺口，不是语言不允许复合字段初始化。现由
+共同ClosedValues使用source evaluation capability、真实效果/异常、
+语言输入和exact copy/phi SCC身份，稀疏传播上下文无关值；不追加
+producer名单、同块、相邻、selection数量或源码/样本匹配。同一身份
+phi可以传递，多个不同选择值不能凭臂内纯净获得同一封闭结果；参数
+类型不等于闭合，frame/lexical/global/heap/捕获仍有真实观察义务。
+ClosedClassFields保留共同EffectOrder的单次字段链和真实receiver/
+DefineField/owner/self-cell证明，控制角色复用共同shape。原normal CFG
+证书的phased缺口及有真实效果/异常RHS的表达式观察证明仍未闭合。
+实际生成的复杂字段使用原FunctionTree/ClassStaticFields；36份三profile
+类源码、540独立行为、反向/拆块/复制/身份phi/重复输入及反例已验证。
+
+共同typeof printer原给全部操作数加逗号。现只为GlobalNameExpr保留
+强制取值，防止未解析名称异常被typeof吞掉；符号TDZ和其他值表达式
+沿用原语义及优先级。此分派依赖语言AST reference类型，不涉及原指令
+或CFG形状。固定五输入的既有typeof表达式简化，无完整record降级；
+独立配对静态类/Content局部检查不等于全部record或阶段一完成。
 
 规则113补充：普通source evaluation原假定输入已经简化，将原始
 ValueCopy按表达式合并来源，破坏首次保存赋值的计算owner。这是模型

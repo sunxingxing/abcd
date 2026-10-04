@@ -20,7 +20,7 @@ void Check(bool ok, const std::source_location& at = std::source_location::curre
   if (!ok) { std::cerr << "accessor tree check " << at.line() << '\n'; std::abort(); }
 }
 enum class ObserverFlow { kSameBlock, kSplit, kSelection, kInstallSplit, kInstallDiamond, kReverseInstall, kInitializerSplit, kInitializerDiamond, kInitializerReverse };
-enum class FieldBody { kSameBlock, kSplit, kReverse, kReverseString };
+enum class FieldBody { kSameBlock, kSplit, kReverse, kReverseString, kCompoundSplit, kCompoundReverse };
 enum class PrototypeRead { kNone, kNamed, kComputed };
 std::string Recover(bool is_static, bool return_prototype = false, int ordinary_parity = -1,
     bool async_method = false, abc::ProfileId profile = abc::ProfileId::kDynamic1206,
@@ -208,10 +208,11 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
     index.methods[2].code = body(kGetterCode, 1, 3, std::move(fields));
     if (field_body != FieldBody::kSameBlock) {
       const bool string_value = field_body == FieldBody::kReverseString;
+      const bool compound = field_body == FieldBody::kCompoundSplit || field_body == FieldBody::kCompoundReverse;
       const auto packet = [&](std::uint8_t key, std::uint8_t value) {
         std::vector<std::uint8_t> data;
         if (frame_this) data.push_back(opcode(abc::Opcode::kLDTHIS));
-        else data.insert(data.end(), {opcode(abc::Opcode::kLDA_V8), static_cast<std::uint8_t>(string_value ? 4 : 3)});
+        else data.insert(data.end(), {opcode(abc::Opcode::kLDA_V8), static_cast<std::uint8_t>(string_value || compound ? 4 : 3)});
         data.insert(data.end(), {opcode(abc::Opcode::kSTA_V8), 0,
           opcode(abc::Opcode::kLDA_V8), 0, opcode(abc::Opcode::kSTA_V8), 0,
           opcode(abc::Opcode::kLDAI_IMM32), value, 0, 0, 0,
@@ -220,6 +221,18 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
       };
       const auto first = packet(9, 17);
       auto second = packet(6, 42);
+      if (compound) {
+        const auto immediate = std::find(second.begin(), second.end(), opcode(abc::Opcode::kLDAI_IMM32));
+        Check(immediate != second.end());
+        const auto at = static_cast<std::size_t>(immediate-second.begin());
+        second.erase(second.begin()+at, second.begin()+at+5);
+        // !(typeof "value" === typeof "_value"), with independent expression
+        // composition and a saved operand; the oracle sees only generated JS.
+        second.insert(second.begin()+at, {opcode(abc::Opcode::kLDA_STR_ID16), 4, 0,
+          opcode(abc::Opcode::kTYPEOF_IMM8), 0, opcode(abc::Opcode::kSTA_V8), 1,
+          opcode(abc::Opcode::kLDA_STR_ID16), 6, 0, opcode(abc::Opcode::kTYPEOF_IMM8), 0,
+          opcode(abc::Opcode::kSTRICTEQ_IMM8_V8), 0, 1, opcode(abc::Opcode::kISFALSE)});
+      }
       if (string_value) {
         const auto immediate = std::find(second.begin(), second.end(), opcode(abc::Opcode::kLDAI_IMM32));
         Check(immediate != second.end());
@@ -228,7 +241,7 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
         second.insert(second.begin()+at, {opcode(abc::Opcode::kLDA_V8), 1});
       }
       std::vector<std::uint8_t> data;
-      if (field_body == FieldBody::kSplit) {
+      if (field_body == FieldBody::kSplit || field_body == FieldBody::kCompoundSplit) {
         data = first; data.insert(data.end(), {opcode(abc::Opcode::kJMP_IMM8), 2});
         data.insert(data.end(), second.begin(), second.end());
       } else {
@@ -243,7 +256,7 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
         data[to_return+1] = static_cast<std::uint8_t>(data.size()-to_return);
       }
       data.push_back(opcode(abc::Opcode::kRETURNUNDEFINED));
-      index.methods[2].code = body(kInitializerCode, string_value ? 2 : 1, 3, std::move(data));
+      index.methods[2].code = body(kInitializerCode, string_value || compound ? 2 : 1, 3, std::move(data));
     }
   }
   index.methods[3].code = body(kSetterCode, 1, 4, {opcode(abc::Opcode::kLDTHIS),
@@ -831,6 +844,15 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--closed-initializers-json") {
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const auto outer : {ObserverFlow::kInitializerSplit, ObserverFlow::kInitializerDiamond, ObserverFlow::kInitializerReverse})
+        for (const auto body : {FieldBody::kCompoundSplit, FieldBody::kCompoundReverse})
+          for (const bool frame : {false, true})
+            std::cout << nlohmann::json{{"self", true}, {"fields", true}, {"compound", true}, {"source", Recover(true, false, -1, false, profile,
+                false, true, false, outer, true, frame, body)}} << '\n';
+    return 0;
+  }
   if (argc == 2 && (std::string_view(argv[1]) == "--prototype-read" || std::string_view(argv[1]) == "--computed-prototype-read")) {
     const auto kind = std::string_view(argv[1]) == "--prototype-read" ? PrototypeRead::kNamed : PrototypeRead::kComputed;
     std::cout << Recover(false, false, -1, false, abc::ProfileId::kDynamic1206, false, true, false,

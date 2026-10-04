@@ -1,6 +1,6 @@
 #include "class_self_order.h"
 #include "class_initializer_file.h"
-#include "literal_class_fields.h"
+#include "closed_class_fields.h"
 
 #include <new>
 #include <stdexcept>
@@ -73,13 +73,13 @@ std::variant<ClassSelfOrder, ClassSelfOrderError> ClassSelfOrder::Build(const Fi
           site->creation.length.value == method->length && site->creation.cache_slot == method->cache_slot &&
           site->creation.home_object == method->home_object && context.Callable() == CallableKind::kMethod &&
           !context.Length() && !context.Frame().parameters && body.input.Captures().empty(),Error::kOwner);
-      auto checked = LiteralClassFields::Build(body.values.graph,budget);
-      if (const auto* error = std::get_if<LiteralClassFieldError>(&checked)) {
-        if (*error == LiteralClassFieldError::kResourceLimit) return Error::kResourceLimit;
-        if (*error == LiteralClassFieldError::kWorkLimit) return Error::kWorkLimit;
+      auto checked = ClosedClassFields::Build(body.values.graph,budget);
+      if (const auto* error = std::get_if<ClosedClassFieldError>(&checked)) {
+        if (*error == ClosedClassFieldError::kResourceLimit) return Error::kResourceLimit;
+        if (*error == ClosedClassFieldError::kWorkLimit) return Error::kWorkLimit;
         return Error::kObservation;
       }
-      const auto& fields = std::get<LiteralClassFields>(checked);
+      const auto& fields = std::get<ClosedClassFields>(checked);
       admit(fields.AllocatedBytes(),1); step(fields.Work());
       result.stores_.push_back(store); indexed[call.call.value].reset();
     }

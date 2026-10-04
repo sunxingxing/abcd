@@ -377,7 +377,7 @@ int main(int argc, char** argv) {
     "(a ** b) ** c", "a ** b ** c", "(-a) ** b", "-(a ** b)",
     "a + b * c", "(a + b) * c", "a + (b + c)", "-(-a)",
     "~(a & b)", "!(a instanceof b)", "a < b == c", "a < (b == c)",
-    "a ** -b", "typeof (0, a + b)", "a & (b | c)", "a & b | c",
+    "a ** -b", "typeof (a + b)", "a & (b | c)", "a & b | c",
     "a ?? (b && c)", "(a ?? b) && c", "a || b && c", "(a || b) ?? c",
     "a && (b || c)", "a ?? (b ?? c)", "a ?? b ?? c", "a && b || c",
     "(await (a + b * c))", "(0, a || b)(c)"};

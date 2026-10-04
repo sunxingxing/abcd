@@ -629,8 +629,11 @@ class TreePrinter {
   }
   void Expression(UnaryExpr node) {
     Append(TreeUnaryToken(node.operation));
-    // typeof must obtain a value, preserving unresolvable-name exceptions.
-    if (node.operation == TreeUnary::kTypeof) {
+    // A VM value load throws for an unresolvable global; bare typeof would
+    // suppress that exception. Lexical symbols retain TDZ errors, and other
+    // operand syntax already obtains a value. Do not wrap those in a comma.
+    if (node.operation == TreeUnary::kTypeof &&
+        std::holds_alternative<GlobalNameExpr>(Tree().expressions[node.operand.value].expression)) {
       Append("(0, "); Push(std::string_view(")")); Push(node.operand);
     } else Push(ExpressionOperand{node.operand, {node.operation}, {},
         node.operation == TreeUnary::kNot ? ExpressionObservation::kTruthiness : ExpressionObservation::kValue});

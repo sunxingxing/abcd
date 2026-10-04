@@ -475,7 +475,7 @@ void CapturedBoundary() {
   Check(found.values.empty() && found.capture.has_value());
   Check(found.capture->shape.initializer == OpId{2});
   Check(found.capture->address.slot.value == 3 && !found.capture->guard);
-  // Discovery cannot sneak a captured read through the literal-only proof.
+  // Discovery cannot sneak a captured read through the closed-value proof.
   const auto parameters = std::get<ParameterPlan>(BuildParameterPlan(graph,1));
   Check(std::holds_alternative<DefaultProofError>(DefaultValueProof::Build(graph,parameters,found,0)));
   const auto prove = [&](const ValueProgram& input, const DefaultCandidates& candidates) {

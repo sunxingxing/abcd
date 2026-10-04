@@ -15,7 +15,7 @@ enum class ClassSelfOrderError : std::uint8_t {
   kOwner, kInput, kObservation, kResourceLimit, kWorkLimit
 };
 // Same-file occurrence-bound evidence joining a private self-store interval
-// with literal-only initialization of that fresh base class. The parent must
+// with context-free initialization of that fresh base class. The parent must
 // remain unchanged and alive. Prototype spelling, the surrounding effect
 // corridor and descendant capture publication remain separate obligations.
 class ClassSelfOrder {

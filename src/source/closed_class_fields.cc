@@ -1,17 +1,17 @@
-#include "literal_class_fields.h"
-#include "literal_plan.h"
+#include "closed_class_fields.h"
 #include "effect_order.h"
 #include "../analysis/value_flow.h"
-#include "../analysis/register_value_rule.h"
+#include "closed_values.h"
+#include "evaluation_plan.h"
 
 #include <new>
 #include <stdexcept>
 
 namespace abcd::source {
-std::variant<LiteralClassFields, LiteralClassFieldError> LiteralClassFields::Build(
+std::variant<ClosedClassFields, ClosedClassFieldError> ClosedClassFields::Build(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget) {
   using namespace analysis;
-  using Error = LiteralClassFieldError;
+  using Error = ClosedClassFieldError;
   const auto initial = budget;
   try {
     const auto require = [](bool condition, Error error = Error::kUnsupported) { if (!condition) throw error; };
@@ -26,53 +26,17 @@ std::variant<LiteralClassFields, LiteralClassFieldError> LiteralClassFields::Bui
     const auto& order = std::get<EffectOrder>(checked);
     step(order.work); admit(order.allocated_bytes,1);
     require(graph.phases.empty() && !graph.arguments);
-    enum class LiteralState : std::uint8_t { kUnknown, kVisiting, kAbsent, kProven };
-    std::vector<LiteralState> literals;
-    admit(graph.values.size(),sizeof(LiteralState)); step(graph.values.size()); literals.resize(graph.values.size());
-    admit(literals.capacity()-literals.size(),sizeof(LiteralState));
-    std::vector<ValueId> path;
-    admit(graph.values.size(),sizeof(ValueId)); path.reserve(graph.values.size());
-    admit(path.capacity()-graph.values.size(),sizeof(ValueId));
+    const auto closed = ClosedValues::Build(graph,budget);
+    if (const auto* error = std::get_if<ClosedValueError>(&closed))
+      return *error == ClosedValueError::kResourceLimit ? Error::kResourceLimit :
+          *error == ClosedValueError::kWorkLimit ? Error::kWorkLimit : Error::kFlow;
+    const auto& values = std::get<ClosedValues>(closed);
+    step(values.Work()); admit(values.AllocatedBytes(),1);
     enum class FieldState : std::uint8_t { kAbsent, kPending, kConsumed };
     std::vector<FieldState> fields;
     admit(graph.ops.size(),sizeof(FieldState)); step(graph.ops.size()); fields.resize(graph.ops.size());
     admit(fields.capacity()-fields.size(),sizeof(FieldState));
-    const auto immediate = [&](const ValueOperand& operand) {
-      if (const auto* number = std::get_if<Float64Bits>(&operand)) return detail::FloatNumberKinds(*number).IsNumber();
-      return !std::holds_alternative<ValueId>(operand);
-    };
-    // Literal identity follows verified SSA definitions, never physical block
-    // order. Memoize each transparent chain once; unknown/receiver/effectful
-    // sources and ungrounded cycles do not become literals. Flow verification
-    // separately owns availability; these facts never authorize replay/motion.
-    const auto literal = [&](const ValueOperand& operand) {
-      const auto* value = std::get_if<ValueId>(&operand);
-      if (!value) return immediate(operand);
-      auto current = *value;
-      path.clear();
-      bool proven = false;
-      while (literals[current.value] == LiteralState::kUnknown) {
-        step(); literals[current.value] = LiteralState::kVisiting; path.push_back(current);
-        const auto& definition = graph.values[current.value];
-        const auto* origin = std::get_if<OpResult>(&definition.origin);
-        if (!origin || definition.life != ValueLife::kLive) break;
-        const auto& op = graph.ops[origin->op.value];
-        if (op.life != ValueLife::kLive || op.result != current ||
-            op.normal != LanguageEffect::kNone || op.before_throw != LanguageEffect::kNone ||
-            op.exceptional != ExceptionalCompletion::kImpossible) break;
-        if (std::holds_alternative<ValueString>(op.operation)) {
-          proven = op.use_count == 0 && definition.domain.IsString(); break;
-        }
-        if (!std::holds_alternative<ValueCopy>(op.operation) || op.use_count != 1) break;
-        const auto& input = graph.uses[op.first_use.value].operand;
-        if (const auto* source = std::get_if<ValueId>(&input)) current = *source;
-        else { proven = immediate(input); break; }
-      }
-      proven |= literals[current.value] == LiteralState::kProven;
-      for (const auto id : path) { step(); literals[id.value] = proven ? LiteralState::kProven : LiteralState::kAbsent; }
-      return proven;
-    };
-    LiteralClassFields result;
+    ClosedClassFields result;
     admit(1,sizeof(result)); admit(graph.ops.size(),sizeof(OpId)); result.fields_.reserve(graph.ops.size());
     admit(result.fields_.capacity()-graph.ops.size(),sizeof(OpId));
     bool returned = false; std::size_t field_count = 0;
@@ -87,28 +51,28 @@ std::variant<LiteralClassFields, LiteralClassFieldError> LiteralClassFields::Bui
         const auto& base = graph.uses[op.first_use.value];
         const auto& value = graph.uses[op.first_use.value+1];
         require(IsReceiverOperand(graph, base.operand) && base.role == OperandRole::kBase &&
-            value.role == OperandRole::kStoredValue && literal(value.operand));
+            value.role == OperandRole::kStoredValue && values.Contains(graph,value.operand));
         fields[i] = FieldState::kPending; ++field_count;
         continue;
       }
       require(op.normal == LanguageEffect::kNone && op.before_throw == LanguageEffect::kNone &&
           op.exceptional == ExceptionalCompletion::kImpossible);
-      // Receiver transport keeps its original event/uses. It is never a literal
+      // Receiver transport keeps its original event/uses. It is never a closed
       // RHS or permission to reread/replay the frame across other operations.
       if (op.result && IsReceiverOperand(graph, ValueOperand{*op.result})) continue;
-      if (std::holds_alternative<ValueString>(op.operation)) {
-        require(op.result && op.use_count == 0 && graph.values[op.result->value].domain.IsString());
-        require(literal(ValueOperand{*op.result}));
-      } else if (std::holds_alternative<ValueCopy>(op.operation)) {
-        require(op.result && op.use_count == 1 && literal(ValueOperand{*op.result}));
+      if (op.result) {
+        require(values.Expression(OpId{static_cast<std::uint32_t>(i)}));
       } else if (std::holds_alternative<ValueReturn>(op.operation)) {
         require(!op.result && op.use_count == 1);
         const auto* value = std::get_if<SpecialValue>(&graph.uses[op.first_use.value].operand);
         require(value && *value == SpecialValue::kUndefined); returned = true;
-      } else if (std::holds_alternative<ValueBranch>(op.operation)) {
-        require(!op.result && op.use_count == 1 && graph.uses[op.first_use.value].role == OperandRole::kCondition);
-      } else require((std::holds_alternative<ValueNop>(op.operation) || std::holds_alternative<ValueJump>(op.operation)) &&
-          !op.result && op.use_count == 0);
+      } else {
+        const auto shape = DescribeEvaluation(op.operation);
+        require(shape && shape->control == ControlEvaluation::kNormal && shape->Count() == op.use_count);
+        for (std::uint32_t u = 0; u < op.use_count; ++u) {
+          step(); require(!CheckEvaluationUse(graph,graph.uses[op.first_use.value+u],*shape,u));
+        }
+      }
     }
     require(returned && field_count != 0);
     // Shared past identity and future must-reach prove each original definition
