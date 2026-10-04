@@ -4,6 +4,7 @@
 #include "logical_evaluation.h"
 #include "tree_checks.h"
 #include "module_evaluation.h"
+#include "cell_evaluation.h"
 
 #include <array>
 #include <algorithm>
@@ -62,8 +63,13 @@ bool Pure(const ValueOp& op) {
   return op.normal == LanguageEffect::kNone && op.before_throw == LanguageEffect::kNone &&
       op.exceptional == ExceptionalCompletion::kImpossible;
 }
-bool OwnedModuleGuard(const ValueProgram& graph, const EvaluationPlan& evaluation,
+bool OwnedGuard(const ValueProgram& graph, const EvaluationPlan& evaluation,
     const ModuleEvaluationIndex& modules, std::size_t id) {
+  // The common initialization proof discharges the guard, not the cell read.
+  // Fresh evaluation verification checks both that fact and its anchor; no
+  // extra consumer or event is introduced by conditional expression syntax.
+  if (evaluation.cells && IsInitializedCellGuard(graph, *evaluation.cells,
+      OpId{static_cast<std::uint32_t>(id)})) return true;
   // The checked pair retains its throwing guard inside the same selected
   // subtree. Never ignore arbitrary guards or a separately rooted module read.
   if (modules.peers.empty() || !modules.peers[id] ||
@@ -265,7 +271,7 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
       if (op.life != ValueLife::kLive || std::holds_alternative<ValueJump>(op.operation)) continue;
       if (literal && id >= producer->op.value && id <= literal->value) continue;
       if (id != producer->op.value && evaluation.operations[id].kind != EvaluationKind::kInline &&
-          !OwnedModuleGuard(graph, evaluation, modules, id)) return false;
+          !OwnedGuard(graph, evaluation, modules, id)) return false;
     }
     return true;
   };
@@ -325,7 +331,7 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
           if (op.life != ValueLife::kLive || id == region.branch.value) continue;
           if (evaluation.operations[id].kind != EvaluationKind::kInline &&
               evaluation.operations[id].kind != EvaluationKind::kPredicateSnapshot &&
-              !OwnedModuleGuard(graph, evaluation, modules, id)) return {};
+              !OwnedGuard(graph, evaluation, modules, id)) return {};
         }
         if (!node.next) return Path{node.block, region.join, {}, child};
         // Distinct joins remain distinct in the CFG/SSA. Only an exclusively
@@ -370,11 +376,12 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
     if (!producer || graph.ops[producer->op.value].block != node.block ||
         evaluation.operations[producer->op.value].kind != EvaluationKind::kInline ||
         evaluation.operations[producer->op.value].consumer != op.first_use) continue;
-    const auto& condition = graph.ops[producer->op.value].operation;
-    const auto* unary = std::get_if<ValueUnary>(&condition);
-    const auto* binary = std::get_if<ValueBinary>(&condition);
-    if (!(unary && (unary->op == UnaryOperator::kToBoolean || unary->op == UnaryOperator::kLogicalNot)) &&
-        !(binary && (binary->op == BinaryOperator::kStrictEqual || binary->op == BinaryOperator::kStrictNotEqual))) continue;
+    // Numeric VM tests agree with source truthiness on Boolean results. The
+    // common result proof owns this fact; an operator admission list cannot
+    // define conditional syntax. Evaluation ownership still preserves all
+    // getter/coercion/exception sites before entering the selected arm.
+    if (!BooleanEvaluation(graph, graph.uses[op.first_use.value].operand)) continue;
+    const auto* unary = std::get_if<ValueUnary>(&graph.ops[producer->op.value].operation);
     std::size_t condition_count = 0, condition_block_count = 0, prefix_count = 0;
     const auto* tail = &node;
     bool shared_taken = node.arms->taken.has_value();
@@ -407,7 +414,7 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
               const auto kind = evaluation.operations[id].kind;
               if (kind != EvaluationKind::kInline && kind != EvaluationKind::kPredicateSnapshot &&
                   kind != EvaluationKind::kAlias && kind != EvaluationKind::kElidedPure &&
-                  !OwnedModuleGuard(graph, evaluation, modules, id)) decision_closed = false;
+                  !OwnedGuard(graph, evaluation, modules, id)) decision_closed = false;
             }
             if (!decision_closed) break;
             prefix_regions[prefix_count++] = next; prefix_value = prefix.merged;
@@ -421,7 +428,7 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
                 std::holds_alternative<ValueJump>(operation.operation)) continue;
             const auto kind = evaluation.operations[id].kind;
             if (kind != EvaluationKind::kInline && kind != EvaluationKind::kAlias &&
-                kind != EvaluationKind::kElidedPure && !OwnedModuleGuard(graph, evaluation, modules, id)) decision_closed = false;
+                kind != EvaluationKind::kElidedPure && !OwnedGuard(graph, evaluation, modules, id)) decision_closed = false;
           }
           if (!decision_closed) break;
           condition_blocks[condition_block_count++] = next;
@@ -611,7 +618,7 @@ std::vector<SelectionRegion> FindSelectionExpressions(const ValueProgram& graph,
         const auto kind = evaluation.operations[id.value].kind;
         if (kind != EvaluationKind::kInline && kind != EvaluationKind::kPredicateSnapshot &&
             kind != EvaluationKind::kAlias && kind != EvaluationKind::kElidedPure &&
-            !OwnedModuleGuard(graph, evaluation, *modules, id.value)) closed = false;
+            !OwnedGuard(graph, evaluation, *modules, id.value)) closed = false;
       }
       if (!closed) break;
       prefix = node.next;
@@ -620,7 +627,7 @@ std::vector<SelectionRegion> FindSelectionExpressions(const ValueProgram& graph,
       budget.Step(); const auto id = block.first_op.value + j; const auto& op = graph.ops[id];
       if (op.life != ValueLife::kLive || std::holds_alternative<ValueJump>(op.operation)) continue;
       if (evaluation.operations[id].kind != EvaluationKind::kInline && id != producer->op.value &&
-          !OwnedModuleGuard(graph, evaluation, *modules, id)) closed = false;
+          !OwnedGuard(graph, evaluation, *modules, id)) closed = false;
     }
     if (region.keep) {
       const auto& keep = graph.blocks[region.keep->value];

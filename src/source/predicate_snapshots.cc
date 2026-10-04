@@ -1,4 +1,5 @@
 #include "logical_evaluation.h"
+#include "cell_evaluation.h"
 
 namespace abcd::source {
 namespace {
@@ -18,6 +19,10 @@ std::vector<std::optional<UseId>> Candidates(const ValueProgram& graph,
     const auto* value = std::get_if<ValueId>(&use.operand);
     const auto* source = value ? std::get_if<OpResult>(&graph.values[value->value].origin) : nullptr;
     if (!owner || !source || graph.ops[source->op.value].block != graph.ops[owner->value].block) continue;
+    // Initialization owns this guard's dependency and original anchor. It is
+    // not a language read occurrence and cannot claim the snapshot assignment;
+    // the next real eager use still must pass the common effect interval proof.
+    if (plan.cells && IsInitializedCellGuard(graph, *plan.cells, *owner)) continue;
     const auto placement = BeforeLogicalFusion(graph, plan, source->op.value);
     if (placement.kind != EvaluationKind::kRoot || placement.temporary != TemporaryReason::kMultipleUses) continue;
     auto& previous = first[source->op.value];

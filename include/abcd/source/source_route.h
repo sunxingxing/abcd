@@ -293,7 +293,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // Rules 109 bind an explicit language arithmetic premise through common value rules.
 // Rules 110 share normal block placement with decision predicates and prefixes.
 // Rules 111 share verified cell initialization with normal literal ownership.
-inline constexpr std::uint32_t kRouteEvidenceRules = 111;
+// Rules 112 share Boolean results, linear prefixes and initialized cell uses
+// with conditional-call expression ownership; effect/Reference proofs remain.
+inline constexpr std::uint32_t kRouteEvidenceRules = 112;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

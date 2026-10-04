@@ -732,6 +732,10 @@ if(BUILD_TESTING)
   target_include_directories(normal_literal_cells_test PRIVATE tests/support)
   target_link_libraries(normal_literal_cells_test PRIVATE abcd_source)
   add_test(NAME normal_literal_cells_test COMMAND normal_literal_cells_test)
+  add_executable(comparison_call_test tests/integration/comparison_call.cc)
+  target_include_directories(comparison_call_test PRIVATE tests/support)
+  target_link_libraries(comparison_call_test PRIVATE abcd_source)
+  add_test(NAME comparison_call_test COMMAND comparison_call_test)
   add_test(NAME language_arithmetic_cli_test COMMAND ${CMAKE_COMMAND}
     -DABCD_SEMANTIC=$<TARGET_FILE:abc_semantic> -DABCD_STRUCTURE=$<TARGET_FILE:abc_structure>
     -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/language_arithmetic_cli.cmake)
@@ -1567,6 +1571,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_cells.mjs $<TARGET_FILE:decision_cells_test>)
     add_test(NAME normal_literal_cells_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/normal_literal_cells.mjs $<TARGET_FILE:normal_literal_cells_test>)
+    add_test(NAME comparison_call_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/comparison_call.mjs $<TARGET_FILE:comparison_call_test>)
     add_test(NAME numeric_conversion_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/numeric_conversion.mjs $<TARGET_FILE:numeric_conversion_test>)
     add_test(NAME number_conversion_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
@@ -1752,6 +1758,11 @@ if(BUILD_TESTING)
         ${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication)
     endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc")
+      if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/hot/src/main/ets/view/FollowView.ts")
+        add_test(NAME comparison_call_paired_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/comparison_call_paired.mjs
+          $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication")
+      endif()
       if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/base/src/main/ets/utils/Logger.ts")
         add_test(NAME value_community_logger_record_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
           ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_logger_record.mjs

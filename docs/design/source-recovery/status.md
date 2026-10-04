@@ -12,6 +12,73 @@
 
 ## 当前阶段
 
+### 2026-10-05：比较条件与直线前缀贯通原生成员调用
+
+- 规则revision112，基线de503f4b，当前工作树为25aa、分支
+  codex/resume-generator-post-loop。上一轮解释数值边界没有改变实现或
+  默认验收政策；本轮核验并接续未提交的comparison_call夹具及实际
+  FollowView失败，完成共同恢复代码、解码/行为验证和固定五ABC导出。
+  默认V3和显式language arithmetic仍分别记录，不替用户选择新政策。
+- FindConditionalExpressions复用BooleanEvaluation证明VM数值分支与
+  语言truthiness一致，移除重复的ToBoolean/NOT/strict equality准入
+  名单。十种宽松/严格相等、大小比较、in、instanceof的Boolean结果
+  使用相同条件表达式路径；任意Number不能因此获得Boolean事实。
+- 原normal logical Domain只覆盖header/join，callee与条件之间的纯
+  拆块遗漏前缀。现一次索引普通边的直线执行关系，从selection header
+  回溯其执行前缀；Build和fresh Verify共用原效果区间方程，已消费的
+  旧join prefix在其consumer后停止，避免重扫已消费长前缀。纯无参数
+  control anchor依据共同shape及原效果/异常字段不计语言效果，真实
+  getter/coercion/environment/throw仍推进事件时钟。拓扑索引O(B+E)，
+  前缀在既有有界domain访问内线性处理，无逐变量CFG扫描或新依赖。
+  单入口/单后继只是直线区间执行次数的充分证明，不是Reference语言
+  准入；非线性前缀与其他历史表示缺口没有因此全部解决。
+- 实际后续失败中，已初始化cell guard又被PredicateSnapshots选成
+  首次使用，阻止lexical读取的赋值快照。候选census和selected subtree
+  闭合复用IsInitializedCellGuard；fresh cell verification仍检查实际
+  初始化、revision、读取及owner，guard保留原anchor，cell读保持有序。
+  没有新增opcode序列、PC/寄存器/样本/名称、同块或selection数量匹配；
+  CallPlan的原生Reference/receiver要求、scope、执行次数、效果/异常
+  和来源检查未删除，也未使用可覆写的.call补救。
+- 新comparison_call_test实际解码三个dynamic profile，十种比较乘
+  direct/copy/1至4块直线拆分/inverted/initialized cell五形式，共150个
+  两调用完整函数；另18个200/201/402规模函数均经过FunctionInput、
+  FunctionValues、EvaluationPlan、完整FunctionTree、fresh TreeSemantics
+  及InstructionSources，201→402共同work比小于3。实际树保留原生
+  ConditionalExpr；callee consumer、snapshot consumer和初始化read
+  事实篡改均拒绝。Node对150函数134,400场景通过，覆盖Symbol/BigInt/
+  NaN/-0、ToPrimitive、Proxy/in/hasInstance、callee在参数getter中
+  被改写、hostile own call、receiver、get/call次数和顺序及原异常身份。
+  这些不是真实Ark二进制或暂缓RSS/全语料性能验收。
+- ABC-only导出FollowView32779完整record后才读取配对TypeScript，
+  新comparison_call_paired_source_test通过6,426个注册list item click
+  和optional content回调场景，含重复indexTitleSelected读取、callee
+  改写、receiver、状态、空值及各事件处原异常。未调用构造器或完整UI，
+  不授予整份record/阶段一独立行为验收。已生成源码的scrollToIndex
+  恢复原生成员调用加条件参数，content恢复optional member。
+- 日志前缀/tmp/abcd-comparison-call-*。原比较夹具在真实tree阶段RED；
+  拓扑扩展后的tests-2仍2/2失败，定位到纯control anchor事件计数。
+  build-4因局部Pure函数不在该文件作用域而编译失败，改为共同shape和
+  明确效果字段后build-5/tests-3通过；新增cell夹具cell-red-test再次
+  RED，build-6/tests-4通过。final-build-1实际12个target单-j4退出0；
+  final-tests-1定向24/24通过254.35秒。paired-regressions-1另3/3
+  通过10.28秒，含ProgressBar、HotRankPage及普通literal配对；route
+  target另行构建后route-test-1为1/1通过。没有执行全套，也未重跑或
+  宣称修复两项旧quotient来源缺口。
+- fresh固定五ABC两模式全部退出0，无legacy writer或complete回退；
+  comparison-call-language-pass-1为95complete/11incomplete-source/
+  0source-failure/46no-module，新完整FollowView32779。已有完整源码
+  中MircoBlogView28438、HotColumnView36781、HotRankPage48945的比较
+  选择改为条件表达式，ProgressBar9550的retained read并入首次赋值
+  快照；逐份diff已检查，HotRankPage/ProgressBar配对回归通过，前两份
+  没有整份配对行为验收。comparison-call-default-pass-1仍80complete/
+  26incomplete-source/0source-failure/46no-module，仅ProgressBar快照
+  表示变化。两模式各106份源码均解析通过，五输入SHA/size与原index
+  一致，无样本修改；记录完整标志和语法检查不代替全阶段一验收。
+- 剩余11份部分源码、未知父构造协议、普通literal和非线性前缀的完整
+  控制泛化、raw-copy计算/传输来源、实例字段/全局/完整签名/函数体
+  整合与全部record的独立行为/表示验收仍开放。Goal active；代理、
+  全套、扩展语料、RSS/基准、调度/DFX和定期审视保持暂停。
+
 ### 2026-10-05：普通对象初始化贯通共同 cell 证明
 
 - 规则revision111，基线7e8fe5a4。上轮提交是实际进展，数值政策解释

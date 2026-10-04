@@ -1,7 +1,33 @@
 # 按用户要求进行的恢复条件审计
 
-最新替换状态见本页规则111及后续各项补充。历史候选不是当前实现的证明；
+最新替换状态见本页规则112及后续各项补充。历史候选不是当前实现的证明；
 未替换项继续开放，不能将局部交付称为全量审计闭合。
+
+规则112补充：普通conditional恢复原先重复限定ToBoolean/NOT和严格
+相等，而共同BooleanEvaluation已经拥有全部比较结果事实。现用共同
+Boolean结果证明VM false/zero分支与语言truthiness相符，不按比较名单
+定义源码条件表达式，也不把任意Number视为Boolean。既有def-use、
+selection arm归属、效果/异常和来源验证保持。
+
+普通logical Domain原遗漏header之前的直线执行块；纯control transfer
+又被保守OrderedEvaluation计为一个事件，导致等价拆块后callee仍是
+跨region临时量。现一次索引普通控制边的直线执行关系，将该前缀纳入
+同一Build/fresh Verify效果方程；纯control anchor依据共同shape和原
+无效果/无异常事实不推进语言事件时钟。原来取得的callee、receiver及
+条件参数形成一个原生Reference调用；CallPlan检查保持，未使用.call。
+单incoming/单ordinary successor是直线执行次数的充分证明，不是语言
+不变量或额外Reference准入条件。一般非线性前缀、跨控制literal和
+历史开放项仍是实现覆盖缺口，不能把本次称为全部图形限制消除。
+
+已初始化cell guard原在快照census中抢占首次使用，又在selected
+subtree中成为额外producer限制。现两处复用IsInitializedCellGuard，
+fresh verification检查实际初始化/read/revision/owner和原anchor；
+不为guard添加指令模式，不将cell读取视为纯操作。三个profile、十种
+比较、复制、1至4块拆分、取反、cell快照及200/201/402真实完整树和
+独立Node行为均验证，consumer/初始化事实篡改拒绝；实际FollowView
+先ABC生成再读sidecar，注册回调6,426场景通过。固定五输入无完整
+记录降级，四份已有源码的条件/快照表示变化逐份检查；完整record、
+构造器/UI及阶段一全体验收仍未完成。
 
 规则111补充：普通LiteralPath原未接收共同CellEvaluation，因而把一个
 已证明初始化的lexical read后的guard当作额外消费者和效果，拒绝合法

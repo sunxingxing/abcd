@@ -162,3 +162,29 @@ tests, not a proof of arbitrary decoded arithmetic inputs. Existing ordinary,
 phased, branch, snapshot and paired-record tests independently cover the full
 source route. These layers do not close general arithmetic admission or the
 whole phase-one semantic/style goal.
+
+## Comparison arguments and linear execution prefixes (rule 112)
+
+Normal conditional discovery consumes the common BooleanEvaluation result
+proof instead of repeating an operator admission list. All ten equality,
+relational, in and instanceof results use the same conditional representation;
+numeric VM false/zero tests agree with source truthiness on these Boolean
+values. The shared expression printer retains original grouping and precedence.
+
+Logical evaluation indexes linear ordinary control corridors once in O(B+E),
+then includes the original prefix operations in its existing forward/reverse
+operand and effect interval equations. Pure parameter-free control anchors
+have no language event; getters, conversions, environment changes and abrupt
+completion still do. Previously consumed join prefixes stop at their consumer.
+Single-entry/single-successor corridors prove equal execution counts for this
+linear composition, not a language restriction on references. General nonlinear
+prefix composition remains a coverage gap. No alternative writer or dependency.
+
+Initialized cell guards reuse the common initialization proof both when locating
+the first real snapshot occurrence and when closing selected subtrees. The
+original guard anchor and ordered cell read survive fresh verification. Native
+member-call references retain the original callee lookup before conditional
+arguments, including parameter getters that overwrite the property; overwritable
+.call is never a substitute. Decoded tests, independent generated JS and paired
+callback evidence are recorded in status.md. They do not close all operator,
+constructor, complete-record or stage-one acceptance requirements.
