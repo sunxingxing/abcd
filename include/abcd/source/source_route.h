@@ -285,7 +285,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // member syntax; original tree/control and omitted predicate origins remain.
 // Rules 105 share nullish value/predicate outcomes for native ?? and optional
 // member syntax, retaining opaque fallback effects and unchanged tree origins.
-inline constexpr std::uint32_t kRouteEvidenceRules = 105;
+// Rules 106 project retained SSA values through shared finite truth/nullish
+// domains; eager snapshot ownership and original effect/exception sites remain.
+inline constexpr std::uint32_t kRouteEvidenceRules = 106;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

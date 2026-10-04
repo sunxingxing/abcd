@@ -121,15 +121,24 @@ receiver实际使用处的SSA可用性；不再要求creation/method/call同块�
 规则91的ProjectSelectionLogicals在已验证SelectionRegion之后运行，原控制/
 phi/异常模型不变。按原inline consumer森林迭代路径压缩求根；按typed
 ToBoolean、LogicalNot和有Boolean输入证明的VM谓词形成一元方程，单次
-邻接表/worklist求canonical保留值和极性。branch自身predicate和shared-arm
+邻接表/worklist求canonical保留值和极性。规则106将同一方程扩展为
+null、undefined、其他假值、其他真值四个不相交域；严格null/undefined
+比较解释原常量和操作数身份，允许交换操作数和取反，不匹配指令序列。
+方程另记录中间结果是否为Boolean，Boolean再与null/undefined比较恒假，
+不能把原输入的null域误授予该结果。branch自身predicate和shared-arm
 polarity也参与方程，不能只看Boolean producer。不同观察归属/其他效果或
 不等价VM谓词保留原ConditionalExpr；此为安全代数表示，不是恢复准入模板。
+各scalar判断按共同shared-arm控制合并可达域，恰好保留truthy/falsy/
+non-nullish原值时分别构建既有OR/AND/Nullish LogicalExpr。
 
 原first input UseId随方程保留，Source Use消费原saving assignment。省略
 的是单次branch-owned纯truth计算，未省略getter、外部Boolean观察或模块
 TDZ。每个原truth/branch来源合入同一logical根；fresh TreeFlow复算事实，
 原边与operand/origin检查确认实际保存、精确值和调用顺序。不存在从输出
 文本反推恢复或根据样本答案替换producer的路径。
+规则106删除operand检查在fresh truth证明后重复要求unary/copy/branch的
+producer名单。实际saving UseId、selected phi、效果/异常和来源检查保留，
+改成OR、交换两支或替换保存值的实际树仍被拒绝。
 
 来源为既有typed VM/profile语义与ECMA-262 ToBoolean/logical evaluation的
 等价关系；项目自有实现，没有复制外部代码或新增依赖/许可证。令I为操作，
@@ -144,6 +153,13 @@ raw VM谓词和外部观察；50/100/200/201/400重复条件的draft work为
 514547/977270/1902979/1912237/3754389。该工作量检查及源码/native/配对
 回归不是暂停的完整进程RSS/延迟/分配基准。single-entry候选、多真实copy
 RHS及parent scope等既有覆盖缺口不由这项代数投影宣称完成。
+规则106另有三profile、1/200/201/402次严格比较的真实解码夹具，含
+反向操作数、NOT、寄存器copy及纯块拆分、缺少undefined、不同返回值、
+Boolean中间结果及成员call producer。96个完整生成函数独立验证150,528次
+行为；另外12个
+debugger条件前缀仅记录既有FunctionTree kOwnership缺口，未生成源码，
+不计为行为通过。这类statement-only前缀需共同控制/语句表示，不能删除
+barrier或额外匹配其局部布局来产生逻辑表达式。
 
 ### 布尔选择与 NOT 的共同打印组合（2026-10-04）
 

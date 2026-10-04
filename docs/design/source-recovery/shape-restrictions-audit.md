@@ -3,6 +3,18 @@
 最新替换状态及补充事项见文末规则99；历史表中的严格比较候选及literal同块条件不再是
 当前准入条件。未替换项继续开放，不能将本次局部交付称为全量审计闭合。
 
+规则106补充：已proved retained SSA的fallback改由共同四域方程解释
+strict null/undefined比较、NOT、truthiness及shared-arm条件合并，原
+saving UseId/assignment/phi/effect/exception与instruction origins保留。
+没有根据赋值语法、getter producer种类、两个guard、寄存器或块布局选择。
+TreeOperands原unary/copy/branch名单在fresh语义证明之后重复拦截binary
+比较，现删除该额外producer条件；保存身份、逻辑运算和边选择检查保持，
+三项实际树篡改仍拒绝。decoded copy/拆块/反向比较/Boolean中间结果与
+完整HotListItemView配对分别验证，未借配对源码生成。
+条件间debugger暴露既有statement-only决策前缀kOwnership缺口，12例
+没有完整源码，不计为行为成功；没有删除barrier或为它新增布局匹配。
+其他alias、optional链/调用和历史未替换控制条件继续开放。
+
 规则105补充：PlanNullishSyntax共用三个值域及typed结果身份恢复??，
 不要求固定guard数量、producer列表、CFG同块或literal池编号。fallback
 保留原AST子树，调用/getter/sequence仅在nullish路径执行。重复UTF-16

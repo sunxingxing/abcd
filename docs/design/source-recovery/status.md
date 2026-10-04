@@ -12,6 +12,60 @@
 
 ## 当前阶段
 
+### 2026-10-05：原保存值经共同四域方程恢复空值选择
+
+- 规则revision106，基线eb8fd3cd。继续固定五ABC的阶段一语义/表示目标，
+  用户数值边界解释没有改变验收标准。旧实现新decoded夹具及真实HotList
+  width/gap表示断言2/2 RED，日志前缀/tmp/abcd-nullish-selection-*。
+- ProjectSelectionLogicals沿用原inline consumer森林和shared-arm控制，
+  方程扩展为null/undefined/其他假值/其他真值四域。严格比较、交换操作数、
+  NOT、copy及有Boolean输入事实的VM谓词统一传播；Boolean中间结果再与
+  null/undefined比较不能获得原输入的nullish域。各scalar原可达域合并后，
+  kept值域分别选择既有OR/AND/Nullish LogicalExpr，不按guard数量、样本、
+  名称、opcode序列、寄存器、PC、同块或assignment语法匹配。
+- 原first UseId与snapshot assignment作为LogicalExpr.left保留；getter或
+  call执行一次，其他使用读取原保存值。fallback保留原树和执行条件，
+  receiver、类型转换、效果/异常、phi/control及instruction来源不变。
+  fresh TreeFlow已有事实后，TreeOperands仍以unary/copy/branch名单额外
+  拦截binary比较，tests-1.log记录5/9失败；删除该重复producer条件，
+  原保存身份、边选择和来源检查保持。不是删除真实语义义务。
+- 三profile、1/200/201/402重复guard的108个真实解码夹具包含反向比较、
+  NOT、寄存器copy/纯块拆分、缺少undefined、不同结果、Boolean中间结果
+  及成员调用产生原值。96个完整生成函数通过150,528次独立Node行为对照，
+  覆盖getter/call receiver、改写、执行次数、原异常身份、正负零/NaN/
+  BigInt/Symbol/object/function返回身份及fallback条件；错误OR、交换两支、
+  替换保存值的实际树篡改均拒绝。
+- 另外12个条件间debugger用例发现既有FunctionTree decision的statement-only
+  前缀kOwnership表示缺口。没有native logical投影、完整源码或行为通过，
+  不计为成功。共同控制/语句表示仍待实现，不删除barrier、不追加布局匹配。
+- 真实HotListItemView完整记录两个新??风格断言及616个callback/default/
+  reference、572个detail配对场景通过。新增Immersive完整onWindowStageCreate
+  方法及callback的780个配对场景通过，含JSON.stringify的receiver、返回
+  身份、callee改写和异常顺序；完整record其他成员/构造器及HarmonyOS host
+  不因此获整体验收。pasteboard的同类完整方法/错误callback另通过240个
+  场景，仍未调用该partial record的缺口成员。
+- build-2.log五目标、related-build.log实际37目标单-j4构建退出0。
+  tests-2.log 8/10通过，剩余两项是debugger既有树构建缺口；不伪造输出。
+  build-3.log因新unit漏含tree_checks.h失败，补齐后build-4.log与tests-4.log
+  2/2通过12.66秒。related-tests.log 80/81通过466.11秒；追加调用夹具时
+  运行中的Node已期望108条，尚未重建的exe仅输出96条，导致一项数量失败。
+  final-configure.log、final-build.log三目标单-j4退出0，重建后final-tests.log
+  五项全部通过16.40秒。原81项加新paired/已有pasteboard callback共83项
+  当前相关验证闭合；没有恢复全量套件、402-return已知资源缺口或RSS基准。
+- fresh build/stage-one/nullish-selection-pass-1固定五ABC均退出0，仍为
+  80complete/26incomplete/0failure/46no-module，无完整回退、新完整项或
+  legacy writer。batch-1.log/syntax-1.log核对index/manifest SHA和size，
+  106份源码全部解析通过。style-summary-1.json逐项检查全部diff：6个
+  record（2完整、4部分）新增6处??，并减少3处旧??冗余括号，没有其他
+  源码文字变化；含HotList属性读取和多个应用JSON.stringify调用结果。
+- 继承原稀疏方程O(I+V+B+C)时间/存储与共同SSA/census O(I+V+U)成本，
+  四域状态大小固定，condition block纯度一次缓存，无逐候选全图遍历。
+  author self-review已核对纯谓词、Boolean中间值、snapshot/occurrence、
+  shared-arm、负例及所有导出diff；无新依赖、代理或实测RSS结论。
+  statement-only前缀、其他alias、optional call/整链/未打印child owner，
+  一般数值、未知父构造协议及阶段一独立语义/表示验收仍未完成。Goal active；
+  全量测试、扩展语料、RSS/基准、调度器/DFX和代理继续暂停。
+
 ### 2026-10-05：共同空值分析恢复原生 fallback 表达式
 
 - 规则revision105，基线fd46be6d。旧HotListItemView将showDetail ?? false

@@ -590,6 +590,9 @@ if(BUILD_TESTING)
   add_executable(nullish_fallback_test tests/unit/source/nullish_fallback_test.cc tools/tree_position_json.cc)
   target_link_libraries(nullish_fallback_test PRIVATE abcd_source abcd_json)
   add_test(NAME nullish_fallback_test COMMAND nullish_fallback_test)
+  add_executable(nullish_selection_test tests/unit/source/nullish_selection_test.cc)
+  target_link_libraries(nullish_selection_test PRIVATE abcd_source abcd_json)
+  add_test(NAME nullish_selection_test COMMAND nullish_selection_test)
   add_executable(module_family_print_test tests/unit/source/module_family_print_test.cc)
   target_link_libraries(module_family_print_test PRIVATE abcd_source abcd_json)
   add_test(NAME module_family_print_test COMMAND module_family_print_test)
@@ -1494,6 +1497,15 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/optional_access.mjs $<TARGET_FILE:optional_access_test>)
     add_test(NAME nullish_fallback_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/nullish_fallback.mjs $<TARGET_FILE:nullish_fallback_test>)
+    add_test(NAME nullish_selection_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/nullish_selection.mjs $<TARGET_FILE:nullish_selection_test>)
+    if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc" AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/default/src/main/ets/entryability/EntryAbility.ts")
+      add_test(NAME retained_call_nullish_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/retained_call_nullish.mjs $<TARGET_FILE:abc_semantic>
+        "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"
+        "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/default/src/main/ets/entryability/EntryAbility.ts")
+    endif()
     add_test(NAME phased_cells_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_cells.mjs $<TARGET_FILE:class_tree_context_test>)
     add_test(NAME phased_computed_call_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

@@ -131,6 +131,21 @@ nullish_fallback和projection；family emission与printer共用同一计划。
 当前guard使用稳定binding/receiver。首次effectful读取和assignment前缀
 尚需共同单次求值/alias证明，不能新增局部赋值形状匹配。这是表示缺口。
 
+规则106在ABC/SSA层复用ProjectSelectionLogicals恢复已证明retained值的
+原生??。四域（null/undefined/其他假值/其他真值）方程解释原严格比较、
+NOT和truthiness；原first UseId、snapshot assignment、phi/control/effect/
+exception与来源保持。效果读取的保存位置作为LogicalExpr.left进入共同
+树及printer，不通过语法匹配assignment推断单次执行。
+例如原已保存getter的展开式恢复为($value = object.property) ?? fallback；
+fallback仍只在nullish路径执行，其他使用仍读取同一个保存值。
+
+fresh TreeFlow证明后，operand不再重复要求unary/copy/branch producer
+名单；原保存身份和selected edge等义务照常核对。复制、纯块拆分、反向
+比较和任意重复guard不用新增匹配分支。PlanNullishSyntax的其他effectful
+alias、optional member/call/整链与未打印child owner缺口保持。
+条件之间的statement-only前缀仍是共同FunctionTree构建缺口，debugger
+反例没有完整源码或行为通过，不能用忽略语句来扩大原生逻辑表示。
+
 ## 原生函数尾部完成的表示（规则 100、103）
 
 共同 printer 可将实际 function body 最后一个直接子语句的 bare return 或

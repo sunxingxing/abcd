@@ -169,14 +169,12 @@ class OperandCheck {
       if (!flow_.selection_truths.empty() && flow_.selection_truths[i]) {
         const auto& truth = *flow_.selection_truths[i];
         const auto& logical = Node<LogicalExpr>(expression);
-        RequireMeaning(flow_.logical_operations[i] && logical.operation == *flow_.logical_operations[i] &&
-            (std::holds_alternative<analysis::ValueUnary>(op.operation) ||
-             std::holds_alternative<analysis::ValueCopy>(op.operation) ||
-             std::holds_alternative<analysis::ValueBranch>(op.operation)), Error::kOperand);
+        RequireMeaning(flow_.logical_operations[i] && logical.operation == *flow_.logical_operations[i], Error::kOperand);
         // Fresh flow proved the original pure truth equations and polarity,
         // not merely an operator shape. Check the retained input identity at
         // its original saving use; phi-edge inputs are verified below, and
-        // ordered prefixes were consumed by flow.
+        // ordered prefixes were consumed by flow. Those semantic obligations,
+        // not an additional producer-kind list, authorize this projection.
         origin_ = {graph_.ops[truth.branch.value].origin.value};
         Input(truth.value, truth.input, truth.occurrence);
         continue;

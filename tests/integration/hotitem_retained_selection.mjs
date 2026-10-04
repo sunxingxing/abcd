@@ -13,6 +13,8 @@ const recovered = JSON.parse(execFileSync(tool, [join(root,'modules.abc'), '4784
 assert.equal(recovered.source_complete,true);
 assert.equal(recovered.legacy_writer_used,false);
 assert.match(recovered.source, /showDetail \?\? false/);
+assert.match(recovered.source, /params\.indexWidth\)\s*\?\?/);
+assert.match(recovered.source, /params\.indexIconGap\)\s*\?\?/);
 const paired = stripTypeScriptTypes(readFileSync(join(root,
   'src/rank/src/main/ets/view/HotListItemView.ts'),'utf8'));
 const inputObject = {[Symbol.toPrimitive]() { assert.fail('coerced retained object'); }};

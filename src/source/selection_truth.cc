@@ -6,17 +6,42 @@
 namespace abcd::source {
 namespace {
 using namespace analysis;
+// ECMA-262 ToBoolean and ?? need these four disjoint language domains. The
+// other domains include all Number/BigInt/string/object/Symbol values; no
+// numeric safety fact or user conversion is inferred from this partition.
+enum class TruthDomain : std::uint8_t { kNull, kUndefined, kFalsy, kTruthy, kCount };
+using TruthMask = std::uint8_t;
+constexpr TruthMask Bit(TruthDomain domain) { return TruthMask{1} << static_cast<unsigned>(domain); }
+constexpr TruthMask kAll = (TruthMask{1} << static_cast<unsigned>(TruthDomain::kCount)) - 1;
+constexpr TruthMask kTruthy = Bit(TruthDomain::kTruthy);
+constexpr TruthMask kOther = Bit(TruthDomain::kFalsy) | kTruthy;
+enum class Predicate : std::uint8_t { kCopy, kBoolean, kNot, kNull, kUndefined };
 struct Truth {
   ValueId value;
-  bool positive;
+  TruthMask mask;
   UseId occurrence;
+  bool boolean_result;
 };
 struct Equation {
   ValueId input;
   OpId owner;
-  bool positive;
+  Predicate predicate;
+  bool inverted;
   UseId occurrence;
 };
+Truth Apply(const Equation& equation, Truth input) {
+  switch (equation.predicate) {
+    case Predicate::kCopy: break;
+    case Predicate::kBoolean: input.boolean_result = true; break;
+    case Predicate::kNot: input.mask ^= kAll; input.boolean_result = true; break;
+    case Predicate::kNull:
+      input.mask = input.boolean_result ? 0 : Bit(TruthDomain::kNull); input.boolean_result = true; break;
+    case Predicate::kUndefined:
+      input.mask = input.boolean_result ? 0 : Bit(TruthDomain::kUndefined); input.boolean_result = true; break;
+  }
+  if (equation.inverted) input.mask ^= kAll;
+  return input;
+}
 std::optional<bool> TruthPolarity(const ValueProgram& graph, UnaryOperator op, const ValueOperand& input) {
   switch (op) {
     case UnaryOperator::kToBoolean: return true;
@@ -84,21 +109,35 @@ void ProjectSelectionLogicals(const ValueProgram& graph, const ControlPlan& cont
   budget.Array(pure_blocks, graph.blocks.size());
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     budget.Step(); const auto& op = graph.ops[i];
-    if (op.life != ValueLife::kLive || !op.result || op.use_count != 1 ||
+    if (op.life != ValueLife::kLive || !op.result ||
         evaluation.operations[i].kind != EvaluationKind::kInline ||
         op.normal != LanguageEffect::kNone || op.before_throw != LanguageEffect::kNone ||
         op.exceptional != ExceptionalCompletion::kImpossible ||
         !std::holds_alternative<ValueBranch>(graph.ops[roots[i].value].operation)) continue;
-    const auto operand = ResolveEvaluationOperand(evaluation, graph.uses[op.first_use.value].operand);
+    Predicate predicate = Predicate::kCopy; bool inverted = false;
+    std::optional<UseId> occurrence;
+    if (const auto* binary = std::get_if<ValueBinary>(&op.operation)) {
+      if (op.use_count != 2 || (binary->op != BinaryOperator::kStrictEqual && binary->op != BinaryOperator::kStrictNotEqual)) continue;
+      for (unsigned i = 0; i < op.use_count; ++i) {
+        const auto operand = ResolveEvaluationOperand(evaluation, graph.uses[op.first_use.value + i].operand);
+        const auto* constant = std::get_if<SpecialValue>(&operand);
+        if (!constant || (*constant != SpecialValue::kNull && *constant != SpecialValue::kUndefined)) continue;
+        predicate = *constant == SpecialValue::kNull ? Predicate::kNull : Predicate::kUndefined;
+        occurrence = UseId{op.first_use.value + 1 - i}; break;
+      }
+      if (!occurrence) continue;
+      inverted = binary->op == BinaryOperator::kStrictNotEqual;
+    } else if (op.use_count == 1) occurrence = op.first_use;
+    else continue;
+    const auto operand = ResolveEvaluationOperand(evaluation, graph.uses[occurrence->value].operand);
     const auto* input = std::get_if<ValueId>(&operand);
     if (!input || !graph.values[input->value].domain.IsLanguage()) continue;
-    bool positive = true;
     if (const auto* unary = std::get_if<ValueUnary>(&op.operation)) {
       const auto polarity = TruthPolarity(graph, unary->op, operand);
       if (!polarity) continue;
-      positive = *polarity;
-    } else if (!std::holds_alternative<ValueCopy>(op.operation)) continue;
-    equations[op.result->value] = Equation{*input, roots[i], positive, op.first_use};
+      predicate = *polarity ? Predicate::kBoolean : Predicate::kNot;
+    } else if (!std::holds_alternative<ValueCopy>(op.operation) && !std::holds_alternative<ValueBinary>(op.operation)) continue;
+    equations[op.result->value] = Equation{*input, roots[i], predicate, inverted, *occurrence};
   }
   std::size_t pending = 0;
   for (std::size_t i = 0; i < equations.size(); ++i) {
@@ -107,15 +146,15 @@ void ProjectSelectionLogicals(const ValueProgram& graph, const ControlPlan& cont
     if (input && input->owner == equation.owner) {
       next[i] = dependents[equation.input.value]; dependents[equation.input.value] = ValueId{static_cast<std::uint32_t>(i)};
     } else {
-      truths[i] = Truth{equation.input, equation.positive, equation.occurrence}; queue[pending++] = {static_cast<std::uint32_t>(i)};
+      truths[i] = Apply(equation, Truth{equation.input, kTruthy, equation.occurrence, false});
+      queue[pending++] = {static_cast<std::uint32_t>(i)};
     }
   }
   for (std::size_t i = 0; i < pending; ++i) {
     budget.Step(); const auto value = queue[i];
     for (auto child = dependents[value.value]; child; child = next[child->value]) {
       budget.Step(); const auto& equation = *equations[child->value];
-      truths[child->value] = Truth{truths[value.value]->value, truths[value.value]->positive == equation.positive,
-          truths[value.value]->occurrence};
+      truths[child->value] = Apply(equation, *truths[value.value]);
       queue[pending++] = *child;
     }
   }
@@ -153,9 +192,10 @@ void ProjectSelectionLogicals(const ValueProgram& graph, const ControlPlan& cont
           equations[value->value]->owner != branch || !truths[value->value]) return false;
       const auto polarity = TruthPolarity(graph, std::get<ValueBranch>(op.operation).predicate, operand);
       if (!polarity) return false;
-      auto truth = *truths[value->value]; truth.positive = (truth.positive == *polarity) == on_taken;
-      if (condition && (condition->value != truth.value || condition->positive != truth.positive)) return false;
+      auto truth = *truths[value->value]; if (*polarity != on_taken) truth.mask ^= kAll;
+      if (condition && condition->value != truth.value) return false;
       if (!condition) condition = truth;
+      else condition->mask |= truth.mask;
       auto cursor = *value;
       while (equations[cursor.value] && equations[cursor.value]->owner == branch) {
         budget.Step(); const auto* result = std::get_if<OpResult>(&graph.values[cursor.value].origin);
@@ -176,8 +216,13 @@ void ProjectSelectionLogicals(const ValueProgram& graph, const ControlPlan& cont
     // Identical arms have a separate constant-selection simplification. Keep
     // their original representation here; neither arm supplies a logical RHS.
     if (keep_yes == keep_no) continue;
-    const bool truthy_keep = condition->positive == keep_yes;
-    SelectionLogical logical{truthy_keep ? TreeLogical::kOr : TreeLogical::kAnd,
+    const auto kept = keep_yes ? condition->mask : TruthMask(condition->mask ^ kAll);
+    std::optional<TreeLogical> operation;
+    if (kept == kTruthy) operation = TreeLogical::kOr;
+    else if (kept == TruthMask(kTruthy ^ kAll)) operation = TreeLogical::kAnd;
+    else if (kept == kOther) operation = TreeLogical::kNullish;
+    if (!operation) continue;
+    SelectionLogical logical{*operation,
         condition->value, condition->occurrence, keep_yes, {}};
     budget.Array(logical.truths, count); std::copy_n(path.begin(), count, logical.truths.begin());
     region.logical = std::move(logical);
