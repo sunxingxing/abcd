@@ -313,13 +313,8 @@ void RunPhased(unsigned count, bool direct, bool print, Selection selection,
     test::Check(std::get<CallPlanError>(BuildPhasedCallPlan(graph, evaluation)) == CallPlanError::kReference);
     return;
   }
-  if (!Decision(selection) && !call_selection) {
-    // Until phased selections own the whole argument expression, preserve the
-    // native receiver gate. Never lower the retained callee through .call.
-    const auto calls = BuildPhasedCallPlan(graph, evaluation);
-    test::Check(std::get<CallPlanError>(calls) == CallPlanError::kReference);
-    return;
-  }
+  if (!Decision(selection) && !call_selection)
+    test::Check(std::holds_alternative<CallPlan>(BuildPhasedCallPlan(graph, evaluation)));
   const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
   const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
   unsigned decisions = 0;
@@ -447,8 +442,8 @@ int main(int argc, char** argv) {
     else if (option == "--phased-call-selection-source" || option == "--phased-computed-call-selection-source")
       RunPhased(count, false, true, Selection::kConditional, abc::ProfileId::kDynamic1206, false, true,
           option == "--phased-computed-call-selection-source");
-    else if (option == "--phased-selection-refusal")
-      RunPhased(count, false, false, Selection::kConditional);
+    else if (option == "--phased-module-selection" || option == "--phased-module-selection-source")
+      RunPhased(count, false, option != "--phased-module-selection", Selection::kConditional);
     else if (option == "--phased-one-arm-source" || option == "--phased-one-arm-direct-source")
       RunPhased(count, option == "--phased-one-arm-direct-source", true, Selection::kDecisionAnd,
           abc::ProfileId::kDynamic1206, true);
@@ -469,6 +464,9 @@ int main(int argc, char** argv) {
     else test::Check(false);
     return 0;
   }
+  for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+    for (const auto count : {1U, 2U, 200U, 201U})
+      RunPhased(count, false, false, Selection::kConditional, profile);
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
     for (const auto count : {1U, 2U, 200U, 201U})
       for (const auto prefix : {CallPrefix::kRetainedInput, CallPrefix::kRetainedGetter, CallPrefix::kRetainedBarrier, CallPrefix::kRetainedPrefix, CallPrefix::kRetainedLiteralArgs})

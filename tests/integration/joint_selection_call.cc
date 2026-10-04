@@ -16,10 +16,11 @@ namespace {
 using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
-enum class Form { kPlain, kPrefix, kWrapped, kDual, kDualPrefix, kDualWrapped, kReversed, kBarrier };
-bool Wrapped(Form form) { return form == Form::kWrapped || form == Form::kDualWrapped; }
-bool Prefix(Form form) { return form == Form::kPrefix || form == Form::kDualPrefix; }
-bool Dual(Form form) { return form == Form::kDual || form == Form::kDualPrefix || form == Form::kDualWrapped; }
+enum class Form { kPlain, kPrefix, kWrapped, kDual, kDualPrefix, kDualWrapped, kDualCopies, kDualCopiesPrefix, kDualCopiesWrapped, kDualReferenceCopies, kDualReferenceCopiesPrefix, kDualReferenceCopiesWrapped, kChangedBase, kReversed, kBarrier };
+bool Wrapped(Form form) { return form == Form::kWrapped || form == Form::kDualWrapped || form == Form::kDualCopiesWrapped || form == Form::kDualReferenceCopiesWrapped; }
+bool Prefix(Form form) { return form == Form::kPrefix || form == Form::kDualPrefix || form == Form::kDualCopiesPrefix || form == Form::kDualReferenceCopiesPrefix; }
+bool Dual(Form form) { return form == Form::kDual || form == Form::kDualPrefix || form == Form::kDualWrapped || form == Form::kDualCopies || form == Form::kDualCopiesPrefix || form == Form::kDualCopiesWrapped || form == Form::kDualReferenceCopies || form == Form::kDualReferenceCopiesPrefix || form == Form::kDualReferenceCopiesWrapped || form == Form::kChangedBase; }
+bool ReferenceCopies(Form form) { return form == Form::kDualReferenceCopies || form == Form::kDualReferenceCopiesPrefix || form == Form::kDualReferenceCopiesWrapped; }
 abc::MethodBody Body(unsigned arguments, unsigned copies, Form form) {
   test::Check(arguments > 0 && arguments + 2 < UINT8_MAX);
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
@@ -41,6 +42,10 @@ abc::MethodBody Body(unsigned arguments, unsigned copies, Form form) {
     if (Dual(form)) {
       bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 0,
           op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 4, 0});
+      if (ReferenceCopies(form)) bytes.insert(bytes.end(), {op(abc::Opcode::kMOV_V8_V8), callee, callee});
+      else if (form == Form::kDualCopies || form == Form::kDualCopiesPrefix || form == Form::kDualCopiesWrapped || form == Form::kChangedBase)
+        bytes.insert(bytes.end(), {op(abc::Opcode::kMOV_V8_V8), 0,
+            form == Form::kChangedBase ? callee : std::uint8_t{0}});
     } else bytes.insert(bytes.end(), {op(abc::Opcode::kLDAI_IMM32), 7, 0, 0, 0});
     const auto jump = bytes.size(); bytes.insert(bytes.end(), {op(abc::Opcode::kJMP_IMM8), 0});
     bytes[branch + 1] = static_cast<std::uint8_t>(bytes.size() - branch);
@@ -89,7 +94,7 @@ std::uint64_t Run(unsigned arguments, unsigned copies, abc::ProfileId profile, F
   const auto planned = BuildPhasedEvaluationPlan(graph);
   test::Check(std::holds_alternative<EvaluationPlan>(planned));
   const auto& evaluation = std::get<EvaluationPlan>(planned);
-  if (form == Form::kBarrier || (form == Form::kReversed && arguments > 1)) {
+  if (form == Form::kBarrier || form == Form::kChangedBase || (form == Form::kReversed && arguments > 1)) {
     test::Check(evaluation.phase_calls.empty());
     test::Check(std::get<CallPlanError>(BuildPhasedCallPlan(graph, evaluation)) == CallPlanError::kReference);
     return evaluation.work;
@@ -102,6 +107,22 @@ std::uint64_t Run(unsigned arguments, unsigned copies, abc::ProfileId profile, F
     test::Check(evaluation.phase_calls[i - 1].argument < evaluation.phase_calls[i].argument);
   }
   if (arguments <= 3) {
+    bool identity_phi = false;
+    for (std::size_t i=0;i<graph.values.size();++i) {
+      if (!std::holds_alternative<PhiDefinition>(graph.values[i].origin) || evaluation.aliases[i] == ValueId{static_cast<std::uint32_t>(i)}) continue;
+      identity_phi = true;
+      auto forged_alias = evaluation;
+      forged_alias.aliases[i] = ValueId{static_cast<std::uint32_t>(i)};
+      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph,forged_alias)));
+      break;
+    }
+    if (ReferenceCopies(form) || form == Form::kDualCopies || form == Form::kDualCopiesPrefix || form == Form::kDualCopiesWrapped) test::Check(identity_phi);
+    auto forged_projection = *evaluation.phis;
+    const auto projected = std::find(forged_projection.projection.begin(),forged_projection.projection.end(),PhiCopyUse::kIdentity);
+    if (projected != forged_projection.projection.end()) {
+      *projected = PhiCopyUse::kRetained;
+      test::Check(std::get<PhiCopyError>(VerifyPhasedPhiCopies(graph,forged_projection)) == PhiCopyError::kInput);
+    }
     const auto work = std::get<std::uint64_t>(VerifyPhasedEvaluationPlan(graph, evaluation));
     SemanticBudget exact; exact.work = work;
     test::Check(std::holds_alternative<std::uint64_t>(VerifyPhasedEvaluationPlan(graph, evaluation, exact)));
@@ -146,6 +167,12 @@ int main(int argc, char** argv) {
     Run(arguments, 1, abc::ProfileId::kDynamic1206,
         std::string_view{argv[1]} == "--prefix-source" ? Form::kPrefix :
         std::string_view{argv[1]} == "--wrapped-source" ? Form::kWrapped :
+        std::string_view{argv[1]} == "--dual-reference-copies-source" ? Form::kDualReferenceCopies :
+        std::string_view{argv[1]} == "--dual-reference-copies-prefix-source" ? Form::kDualReferenceCopiesPrefix :
+        std::string_view{argv[1]} == "--dual-reference-copies-wrapped-source" ? Form::kDualReferenceCopiesWrapped :
+        std::string_view{argv[1]} == "--dual-copies-source" ? Form::kDualCopies :
+        std::string_view{argv[1]} == "--dual-copies-prefix-source" ? Form::kDualCopiesPrefix :
+        std::string_view{argv[1]} == "--dual-copies-wrapped-source" ? Form::kDualCopiesWrapped :
         std::string_view{argv[1]} == "--dual-source" ? Form::kDual :
         std::string_view{argv[1]} == "--dual-prefix-source" ? Form::kDualPrefix :
         std::string_view{argv[1]} == "--dual-wrapped-source" ? Form::kDualWrapped : Form::kPlain, true);
@@ -155,7 +182,7 @@ int main(int argc, char** argv) {
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
     std::uint64_t previous_work = 0;
     for (const auto arguments : {1U, 2U, 3U, 50U, 100U, 200U, 201U}) {
-      for (const auto form : {Form::kPlain, Form::kPrefix, Form::kWrapped, Form::kDual, Form::kDualPrefix, Form::kDualWrapped, Form::kReversed, Form::kBarrier}) {
+      for (const auto form : {Form::kPlain, Form::kPrefix, Form::kWrapped, Form::kDual, Form::kDualPrefix, Form::kDualWrapped, Form::kDualCopies, Form::kDualCopiesPrefix, Form::kDualCopiesWrapped, Form::kDualReferenceCopies, Form::kDualReferenceCopiesPrefix, Form::kDualReferenceCopiesWrapped, Form::kChangedBase, Form::kReversed, Form::kBarrier}) {
         const auto work = Run(arguments, 1, profile, form, false); ++scenarios;
         if (form == Form::kWrapped && arguments >= 50) {
           if (previous_work) test::Check(work <= previous_work * 3);
@@ -165,7 +192,7 @@ int main(int argc, char** argv) {
       }
     }
     for (const auto copies : {2U, 200U, 201U, 402U})
-      for (const auto form : {Form::kPrefix, Form::kWrapped, Form::kDualPrefix, Form::kDualWrapped}) { Run(3, copies, profile, form, false); ++scenarios; }
+      for (const auto form : {Form::kPrefix, Form::kWrapped, Form::kDualPrefix, Form::kDualWrapped, Form::kDualCopies, Form::kDualCopiesPrefix, Form::kDualCopiesWrapped, Form::kDualReferenceCopies, Form::kDualReferenceCopiesPrefix, Form::kDualReferenceCopiesWrapped}) { Run(3, copies, profile, form, false); ++scenarios; }
   }
   std::cout << scenarios << " decoded joint-call scenarios passed\n";
 }

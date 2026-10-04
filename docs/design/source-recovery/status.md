@@ -12,6 +12,60 @@
 
 ## 当前阶段
 
+### 2026-10-04：共同 SSA 身份投影消除冗余 phi/copy 屏障
+
+- 规则revision89。AnalyzeValueIdentities复用迭代Tarjan，对原phi及纯copy
+  方程证明单一外部ValueId锚点；多锚点、无锚点或不相容域不折叠。普通
+  SimplifyPhis继续只改phi方程，source使用只读索引。原phased SSA和全部
+  UseId保留；catch绑定/异常staging、真正mutable phi首次快照仍独立。
+- PhiCopies保存原复制全集与typed projection，独立复算身份后仅安排实际
+  executable schedule；expression_input记录唯一剩余原UseId。normal边
+  屏障、选择发现、Reference corridor、BindingPlan和树flow统一消费投影，
+  不再以冗余phi的raw count挡住arm自复制。多份真实不同值的parallel-copy
+  RHS共同安排仍开放，不能把本次说成删除所有single-copy表示边界。
+- IndexEvaluationUses一次普查canonical原观察，保留穿过身份phi/copy的
+  最终真实使用，排除已证明搬运，替换逐producer原use-chain计数。Builder
+  和verifier分别复算；module/literal/class/cell/receiver义务继续保留。
+  没有新增样本路径、名字、寄存器/PC布局、局部opcode串或producer名单。
+  原callee/base/receiver、getter一次求值、throw/effect/scope仍独立验证。
+- joint_selection_call_test三profile435组解码矩阵通过，覆盖base/callee
+  arm内MOV自身、两侧getter、prefix/outer member Reference、多参数、
+  1/2/200/201/402复制及200/201边界。混合外部值、实际receiver改变、
+  debugger、反向参数、alias/projection变造及精确配额负例保留。evaluation
+  work为625937/1234982/2453012/2465192，几何增长通过。完整生成源码
+  177984组独立行为对照、36项有效mutation通过；没有用拒绝代替正例。
+- 旧phased_selection_reference_refusal_test期待普通conditional模块属性
+  参数必拒绝，现在该函数生成完整draft/原生MemberCall并通过树语义/flow；
+  改名phased_module_selection_test。新增1/2/200/201和三profile正例，
+  selection_module.mjs扩至5397组effect/receiver/identity/throw/TDZ对照，
+  包含getter替换、模块绑定变化、非callable、未取分支和caught异常。
+  补测direct module值选择参数仍命中kReference；该路径未通过，不作覆盖
+  声明，也没有增加生产direct/property匹配。待贯通原guard/参数接口。
+- /tmp/abcd-phi-identities-日志：red-build.log退出0，red.log在旧实现
+  命中arm自复制phase_calls数目断言；build.log重建核心退出0。
+  final-build.log曾因测试variant equality不可编译退出2，修正测试的
+  ValueId比较后final-build-2/3/4.log均退出0，单构建-j4。
+  final-tests.log前置19/19通过121.27秒；最终verified-tests.log有26项
+  通过及1项selection_module_test失败108.10秒，该失败是补测仍不支持的
+  direct module路径。明确收窄新增正例至已证明的module-property参数后，
+  module-final-build.log退出0，module-final-tests.log 8/8通过78.07秒，
+  其中包括完整selection解码矩阵及新增native模块对照。最终合计28项
+  不同相关检查通过；失败和旧二进制结果不充当成功证据。随后native对照
+  明确区分catch返回与异常外泄，module-catch-tests.log另1/1通过，仍为
+  5397组；不重复计入28项。
+- fresh build/stage-one/value-phi-identities-pass-2固定五输入全退出0，
+  80 complete/26 incomplete/0 failure/46 no-module，无complete回退或
+  legacy writer。final-batch.log/final-syntax.log核对SHA/size与原index/
+  manifest一致，106份源码全部解析。与revision88相比7个complete record
+  和1个partial record减少无用await结果快照；其中pasteboard PageA/
+  ProgressBar、push Backup class/VoIP及Home实际配对行为检查通过。
+  不据此宣称全部受影响方法、HarmonyOS主机或源码风格验收完成。
+- shape审计和algorithms同步说明readonly SCC、原输入全集、canonical
+  census及成本边界。inline-owned Reference、single-entry候选、class
+  initializer同块、phased scope/capture/module和legacy模板仍开放；未知
+  算术域和导入super协议缺口仍在，阶段一语义/风格双验收未完成，Goal active。
+  full-suite、扩展语料、RSS、基准、DFX、代理和周期审计继续暂停。
+
 ### 2026-10-04：computed phi 跨纯控制尾部复用全路径证明
 
 - 规则revision88。PhiExpressionProducer的computed Commit邻接及

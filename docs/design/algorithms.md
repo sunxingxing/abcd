@@ -1085,3 +1085,49 @@ foreign debugger effects, repeated observations, intervening copies and
 1/200/201/402-block chains. Joint member-call evaluation work at
 50/100/200/201 arguments is 574601/1133946/2252576/2263762; geometric checks pass.
 These checks do not claim latency or full-process RSS; those remain paused.
+
+
+### Read-only phi/copy identities and observation projection (2026-10-04, rules 89)
+
+AnalyzeValueIdentities reuses the iterative Tarjan implementation underlying
+SimplifyPhis. The ordinary mutating pass still operates on phi equations only;
+source projection also includes live, pure ValueCopy equations. Index their
+actual incoming OperandUse dependencies once. An SCC aliases its members only
+when all external dependencies resolve to one canonical ValueId anchor and that
+anchor's value domain is admitted by every member. Multiple anchors, literal
+operands without an identity, unanchored cycles and domain mismatch retain their
+original identities. No producer replay or structural compiler-pattern premise.
+
+For V original values and U uses, this index takes O(V+U) work and storage.
+Each vertex/dependency is visited a constant number of times; dependency-order
+SCC completion produces flat canonical roots without repeated global scans.
+Normal simplification rewrites checked occurrences afterwards. Read-only source
+projection preserves original phased SSA and every original occurrence. Existing
+language parameter/receiver/operation-result bindings can anchor source aliases;
+unresolved mutable phi and catch bindings retain first-snapshot/staging ownership.
+
+PhiCopies retains complete original copies/UseIds and a typed per-copy projection.
+Build and Verify independently compute identities; the shared parallel-copy
+algorithm schedules only remaining writes. expression_input names the original
+UseId when exactly one executable copy survives. Original exceptional staging
+and scope verification remain mandatory. The O(V+U) identity passes are bounded
+constant passes, not one graph traversal per phi, edge, argument or producer.
+Genuine multiple-copy RHS expression ordering remains a coverage gap.
+
+IndexEvaluationUses indexes canonical producer observations in O(I+U log(G+1))
+work and O(I) result storage, for I operations and G checked receiver guards.
+Already proved alias/identity-phi transport is not an observation; actual final
+uses still are, including uses transported across branches. Module/literal/class/
+cell/receiver projections retain their independent proofs. Builder and verifier
+recompute this census instead of repeatedly walking raw producer use chains.
+All new scratch/capacity and index work use existing byte/work quotas. Retained
+projection bytes are included in the plan's allocation report.
+
+Provenance is the existing SSA, value-domain, iterative Tarjan and parallel-copy
+implementation, with no new external dependency, license or maintenance surface.
+Tests cover anchored/unanchored distinction, mixed anchors, copy/phi SCCs,
+1/200/201/402 values and exact original-occurrence preservation. Joint recovery
+covers three profiles and 435 cases. Recorded evaluation work at 50/100/200/201
+arguments is 625937/1234982/2453012/2465192, with geometric checks and exact quota
+negative cases. These are scoped work-accounting checks, not whole-pipeline
+latency, allocation measurements or full-process RSS; those checks remain paused.

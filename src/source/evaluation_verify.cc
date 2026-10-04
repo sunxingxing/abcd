@@ -94,12 +94,11 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     admit(graph.ops.size(), sizeof(std::uint8_t)); step(graph.ops.size());
     std::vector<std::uint8_t> pinned(graph.ops.size());
     admit(pinned.capacity() - graph.ops.size(), sizeof(std::uint8_t));
-    admit(graph.ops.size(), sizeof(std::uint8_t) + sizeof(EvaluationUses));
+    admit(graph.ops.size(), sizeof(std::uint8_t));
     step(graph.ops.size()); step(graph.ops.size());
     std::vector<std::uint8_t> literal_allocations(graph.ops.size());
-    std::vector<EvaluationUses> visible(graph.ops.size());
+    std::vector<EvaluationUses> visible;
     admit(literal_allocations.capacity() - graph.ops.size(), sizeof(std::uint8_t));
-    admit(visible.capacity() - graph.ops.size(), sizeof(EvaluationUses));
     admit(graph.ops.size(), sizeof(std::size_t));
     std::vector<std::size_t> environment_epochs(graph.ops.size());
     admit(environment_epochs.capacity() - graph.ops.size(), sizeof(std::size_t));
@@ -178,21 +177,13 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
             pinned[result->op.value] = 1;
       }
     }
-    // Producer use chains are disjoint. Charge their total once, and cache the
-    // projection so even a shared aggregate with many consumers stays linear.
-    step(graph.uses.size());
-    if (!plan.receiver_guards.empty()) {
-      const auto depth = std::bit_width(plan.receiver_guards.size());
-      Require(graph.uses.size() <= work / depth, Error::kWorkLimit);
-      step(graph.uses.size() * depth);
-    }
-    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
-      step();
-      if (graph.ops[i].life == analysis::ValueLife::kLive)
-        visible[i] = ProjectEvaluationUses(graph, plan, {static_cast<std::uint32_t>(i)}, module_index,
-            literal_allocations[i] != 0, plan.class_projection.owners,
-            flow == EvaluationFlow::kNormal && plan.cells ? &*plan.cells : nullptr, plan.receiver_guards);
-    }
+    // Recompute actual observations after identity projection, including uses
+    // transported through phi/copy aliases. Each original use is visited once.
+    TreeCheckBudget use_budget({bytes,work});
+    visible = IndexEvaluationUses(graph,plan,module_index,literal_allocations,projection.owners,
+        flow == EvaluationFlow::kNormal && plan.cells ? &*plan.cells : nullptr,plan.receiver_guards,use_budget);
+    admit(use_budget.Bytes(),1); step(use_budget.Work());
+
     bool has_phi = false;
     for (const auto& value : graph.values) {
       step();

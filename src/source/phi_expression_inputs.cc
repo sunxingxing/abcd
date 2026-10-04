@@ -42,7 +42,7 @@ class PhiTails {
     for (const auto& bundle : copies.bundles) {
       budget.Step();
       if (const auto* edge = std::get_if<EdgeId>(&bundle.incoming))
-        copied_[edge->value] = bundle.count != 0;
+        copied_[edge->value] = !bundle.schedule.steps.empty();
     }
     for (std::size_t b = 0; b < graph.blocks.size(); ++b) {
       budget.Step();
@@ -171,6 +171,11 @@ std::vector<std::optional<analysis::UseId>> IndexPhiExpressionInputs(
     TreeCheckBudget& budget) {
   using namespace analysis;
   PhiTails tails(graph, copies, budget);
+  std::vector<std::uint8_t> identity_inputs;
+  budget.Array(identity_inputs,graph.uses.size());
+  for (std::size_t i=0;i<copies.inputs.size();++i) {
+    budget.Step(); if(copies.projection[i] == PhiCopyUse::kIdentity) identity_inputs[copies.inputs[i].value] = 1;
+  }
   std::vector<PhiObservation> observations;
   budget.Array(observations, graph.ops.size());
   std::vector<std::optional<UseId>> inputs;
@@ -180,7 +185,7 @@ std::vector<std::optional<analysis::UseId>> IndexPhiExpressionInputs(
   for (std::size_t i = 0; i < graph.uses.size(); ++i) {
     budget.Step();
     const auto& use = graph.uses[i];
-    if (use.life != ValueLife::kLive) continue;
+    if (use.life != ValueLife::kLive || identity_inputs[i]) continue;
     const auto* value = std::get_if<ValueId>(&use.operand);
     const auto* producer =
         value ? std::get_if<OpResult>(&graph.values[value->value].origin)
@@ -211,12 +216,12 @@ std::vector<std::optional<analysis::UseId>> IndexPhiExpressionInputs(
   }
   for (const auto& bundle : copies.bundles) {
     budget.Step();
-    if (bundle.count != 1 || bundle.schedule.steps.size() != 1 ||
+    if (!bundle.expression_input || bundle.schedule.steps.size() != 1 ||
         bundle.schedule.temporaries)
       continue;
     const auto* edge = std::get_if<EdgeId>(&bundle.incoming);
     if (!edge) continue;
-    const auto input = copies.inputs[bundle.first];
+    const auto input = *bundle.expression_input;
     const auto* value = std::get_if<ValueId>(&graph.uses[input.value].operand);
     const auto* producer =
         value ? std::get_if<OpResult>(&graph.values[value->value].origin)

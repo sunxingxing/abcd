@@ -15,6 +15,9 @@ std::variant<std::uint64_t, PhiCopyError> VerifyPhiCopiesForFlow(
         (flow == PhiFlow::kPhased && plan.domain == PhiDomain::kHoleTransport), PhiCopyError::kDomain);
     CheckPhiFlow(graph, budget, flow);
     RequirePhiCopy(plan.inputs.size() == plan.copies.size(), PhiCopyError::kInput);
+    RequirePhiCopy(plan.projection.size() == plan.copies.size(),PhiCopyError::kInput);
+    const auto identities = PhiIdentities(graph,budget,flow);
+    std::vector<ParallelCopy> effective; budget.Reserve(effective,plan.copies.size());
     std::vector<std::uint8_t> seen;
     budget.Array(seen, graph.uses.size());
     std::size_t first = 0;
@@ -24,6 +27,7 @@ std::variant<std::uint64_t, PhiCopyError> VerifyPhiCopiesForFlow(
       RequirePhiCopy(bundle.first == first && bundle.count != 0 &&
           bundle.count <= plan.copies.size() - first &&
           (!previous || IncomingLess(*previous, bundle.incoming)), PhiCopyError::kBundle);
+      effective.clear(); std::optional<analysis::UseId> expression_input;
       for (std::size_t i = first; i < first + bundle.count; ++i) {
         budget.Step();
         const auto input = plan.inputs[i];
@@ -34,9 +38,13 @@ std::variant<std::uint64_t, PhiCopyError> VerifyPhiCopiesForFlow(
         CheckPhiDomain(graph, use, plan.domain);
         RequirePhiCopy(std::get<analysis::ValueId>(use.owner) == plan.copies[i].destination &&
             SameCopyValue(use.operand, plan.copies[i].source), PhiCopyError::kInput);
+        const bool identity = SourcePhiAlias(graph,identities,plan.copies[i].destination).has_value();
+        RequirePhiCopy(plan.projection[i] == (identity ? PhiCopyUse::kIdentity : PhiCopyUse::kRetained),PhiCopyError::kInput);
+        if (!identity) { effective.push_back(plan.copies[i]); expression_input = input; }
       }
-      const auto checked = VerifyEdgeCopies(std::span<const ParallelCopy>{plan.copies}.subspan(first, bundle.count),
-                                            bundle.schedule, budget.Remaining());
+      if (effective.size() != 1) expression_input.reset();
+      RequirePhiCopy(bundle.expression_input == expression_input,PhiCopyError::kInput);
+      const auto checked = VerifyEdgeCopies(effective, bundle.schedule, budget.Remaining());
       if (const auto* error = std::get_if<CopyError>(&checked)) throw PhiScheduleError(*error);
       budget.Step(std::get<std::uint64_t>(checked));
       first += bundle.count;

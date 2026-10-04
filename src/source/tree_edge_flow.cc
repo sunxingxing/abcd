@@ -123,7 +123,7 @@ void TreeEdgeFlow::Select(analysis::EdgeId incoming, analysis::ValueId expected,
   Require(incoming.value < bundles_.size() && bundles_[incoming.value], TreeFlowError::kControl);
   const auto id = *bundles_[incoming.value];
   const auto& bundle = evaluation_.phis->bundles[id];
-  Require(!visited_[id] && bundle.count == 1 &&
+  Require(!visited_[id] && bundle.expression_input &&
       bundle.schedule.steps.size() == 1 && bundle.schedule.temporaries == 0, TreeFlowError::kSequence);
   if (evaluation_.exceptions) {
     const auto* normal = std::get_if<NormalCopies>(&evaluation_.exceptions->placements[id]);
@@ -223,7 +223,7 @@ void TreeEdgeFlow::Finish() {
   for (std::size_t i = 0; i < graph_.values.size(); ++i) {
     budget_.Step();
     const auto& value = graph_.values[i];
-    const bool phi = value.life == analysis::ValueLife::kLive &&
+    const bool phi = (evaluation_.aliases.empty() || evaluation_.aliases[i] == analysis::ValueId{static_cast<std::uint32_t>(i)}) && value.life == analysis::ValueLife::kLive &&
         std::holds_alternative<analysis::PhiDefinition>(value.origin);
     Require(flow_.phis[i].has_value() == (phi && (evaluation_.logical_values.empty() || !evaluation_.logical_values[i])), TreeFlowError::kSnapshot);
   }

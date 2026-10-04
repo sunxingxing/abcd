@@ -4,6 +4,8 @@
 #include "edge_copy_index.h"
 #include "phi_copies.h"
 #include "../analysis/value_flow.h"
+#include "../analysis/value_phi.h"
+#include "evaluation_aliases.h"
 
 namespace abcd::source {
 inline void RequirePhiCopy(bool condition, PhiCopyError error) { if (!condition) throw error; }
@@ -43,6 +45,17 @@ inline void CheckPhiFlow(const analysis::ValueProgram& graph, CopyBudget& budget
   if (error == analysis::ValueAvailabilityError::kResourceLimit) throw PhiCopyError::kResourceLimit;
   if (error == analysis::ValueAvailabilityError::kWorkLimit) throw PhiCopyError::kWorkLimit;
   throw PhiCopyError::kFlow;
+}
+inline std::vector<analysis::ValueId> PhiIdentities(const analysis::ValueProgram& graph,
+    CopyBudget& budget, PhiFlow flow) {
+  if (flow != PhiFlow::kPhased) return {};
+  auto indexed = analysis::AnalyzeValueIdentities(graph, budget.Remaining());
+  if (const auto* error = std::get_if<analysis::ValueSimplifyError>(&indexed))
+    throw *error == analysis::ValueSimplifyError::kWorkLimit ? PhiCopyError::kWorkLimit :
+        *error == analysis::ValueSimplifyError::kResourceLimit ? PhiCopyError::kResourceLimit : PhiCopyError::kFlow;
+  auto result = std::get<analysis::ValueIdentities>(std::move(indexed));
+  budget.Admit(result.allocated_bytes,1); budget.Step(result.work);
+  return std::move(result.canonical);
 }
 // Shared implementation behind explicit normal/phased entry points. The mode
 // is checked against both the graph proof and retained plan, not caller text.

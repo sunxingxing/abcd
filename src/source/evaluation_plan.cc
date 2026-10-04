@@ -116,12 +116,11 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     admit(graph.ops.size(), sizeof(std::uint8_t)); step(graph.ops.size());
     std::vector<std::uint8_t> pinned(graph.ops.size());
     admit(pinned.capacity() - graph.ops.size(), sizeof(std::uint8_t));
-    admit(graph.ops.size(), sizeof(std::uint8_t) + sizeof(EvaluationUses));
+    admit(graph.ops.size(), sizeof(std::uint8_t));
     step(graph.ops.size()); step(graph.ops.size());
     std::vector<std::uint8_t> literal_allocations(graph.ops.size());
-    std::vector<EvaluationUses> visible(graph.ops.size());
+    std::vector<EvaluationUses> visible;
     admit(literal_allocations.capacity() - graph.ops.size(), sizeof(std::uint8_t));
-    admit(visible.capacity() - graph.ops.size(), sizeof(EvaluationUses));
     bool has_definitions = false;
     bool has_cells = !demands.empty() || !entry_demands.empty();
     bool has_arguments = false;
@@ -258,21 +257,10 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
           plan.operations[i] = {EvaluationKind::kNestedLiteral, plan.literals->nested[i], {}};
       }
     }
-    // Producer use chains are disjoint. Charge their total once, and cache the
-    // projection so even a shared aggregate with many consumers stays linear.
-    step(graph.uses.size());
-    if (!plan.receiver_guards.empty()) {
-      const auto depth = std::bit_width(plan.receiver_guards.size());
-      Require(graph.uses.size() <= work / depth, Error::kWorkLimit);
-      step(graph.uses.size() * depth);
-    }
-    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
-      step();
-      if (graph.ops[i].life == analysis::ValueLife::kLive)
-        visible[i] = ProjectEvaluationUses(graph, plan, {static_cast<std::uint32_t>(i)}, module_index,
-            literal_allocations[i] != 0, plan.class_projection.owners,
-            flow == EvaluationFlow::kNormal && plan.cells ? &*plan.cells : nullptr, plan.receiver_guards);
-    }
+    TreeCheckBudget use_budget({bytes,work});
+    visible = IndexEvaluationUses(graph,plan,module_index,literal_allocations,plan.class_projection.owners,
+        flow == EvaluationFlow::kNormal && plan.cells ? &*plan.cells : nullptr,plan.receiver_guards,use_budget);
+    admit(use_budget.Bytes(),1); step(use_budget.Work());
     std::size_t next_op = 0;
     for (std::size_t b = 0; b < graph.blocks.size(); ++b) {
       step();

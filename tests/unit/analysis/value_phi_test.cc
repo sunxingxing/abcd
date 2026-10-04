@@ -51,9 +51,53 @@ ValueProgram LoopPhis(std::uint32_t count, PhiShape shape, bool mixed = false) {
   }
   return graph;
 }
+ValueProgram CopyRing(std::uint32_t count, bool mixed) {
+  ValueProgram graph;
+  graph.blocks = {{{0},count+1,{0},2},{{count+1},1,{2},0}};
+  graph.edges = {{{0},{0},FlowEdgeKind::kTaken,0},{{0},{1},FlowEdgeKind::kFallthrough,1}};
+  graph.values = {{EntryDefinition{ParameterEntry{0}},ValueKinds::Language(),{}},
+                  {EntryDefinition{ParameterEntry{1}},ValueKinds::Language(),{}}};
+  for(std::uint32_t i=0;i<count;++i) graph.values.push_back({PhiDefinition{{0}},ValueKinds::Language(),{}});
+  for(std::uint32_t i=0;i<count;++i) graph.values.push_back({OpResult{OpId{i},{}},ValueKinds::Language(),{}});
+  for(std::uint32_t i=0;i<count;++i) {
+    graph.ops.push_back({ValueCopy{},{0},i,{i},1,ValueId{2+count+i},LanguageEffect::kNone,LanguageEffect::kNone,ExceptionalCompletion::kImpossible,{i}});
+    Append(graph,{OpId{i},OperandRole::kInput,ReadPurpose::kOperand,ValueId{2+(i+1)%count},{},{},{},{}});
+  }
+  graph.ops.push_back({ValueBranch{UnaryOperator::kToBoolean},{0},count,{count},1,{},LanguageEffect::kNone,LanguageEffect::kNone,ExceptionalCompletion::kImpossible,{count}});
+  graph.ops.push_back({ValueReturn{},{1},0,{count+1},1,{},LanguageEffect::kNone,LanguageEffect::kNone,ExceptionalCompletion::kImpossible,{count+1}});
+  Append(graph,{OpId{count},OperandRole::kCondition,ReadPurpose::kOperand,ValueId{0},{},{},{},{}});
+  Append(graph,{OpId{count+1},OperandRole::kReturnValue,ReadPurpose::kOperand,ValueId{2},{},{},{},{}});
+  for(std::uint32_t i=0;i<count;++i) {
+    Append(graph,{ValueId{2+i},OperandRole::kPhiInput,ReadPurpose::kOperand,ValueId{mixed && i+1==count ? 1U : 0U},MethodEntryKey{},{},{},{}});
+    Append(graph,{ValueId{2+i},OperandRole::kPhiInput,ReadPurpose::kOperand,ValueId{2+count+i},EdgeId{0},{},{},{}});
+  }
+  return graph;
+}
+void ReadOnlyIdentities() {
+  std::uint64_t previous_work=0;
+  for(const std::uint32_t count : {1U,200U,201U,402U}) {
+    for(const bool mixed : {false,true}) {
+      const auto graph=CopyRing(count,mixed);
+      Check(std::holds_alternative<ValueFlowProof>(VerifyValueFlow(graph)));
+      const auto indexed=AnalyzeValueIdentities(graph);
+      Check(std::holds_alternative<ValueIdentities>(indexed));
+      const auto& identities=std::get<ValueIdentities>(indexed);
+      for(std::uint32_t i=2;i<graph.values.size();++i)
+        Check(identities.canonical[i] == ValueId{mixed ? (count == 1 ? 1U : i) : 0U});
+      // A read-only projection leaves every original occurrence and equation.
+      Check(std::get<ValueId>(graph.uses[count+1].operand) == ValueId{2});
+      Check(std::holds_alternative<ValueFlowProof>(VerifyValueFlow(graph)));
+      if(!mixed) {
+        if(previous_work && count>200) Check(identities.work <= previous_work*3);
+        previous_work=identities.work;
+      }
+    }
+  }
+}
 }  // namespace
 
 int main() {
+  ReadOnlyIdentities();
   constexpr std::array<std::uint32_t, 4> kSizes{1, 200, 201, 4096};
   for (const auto count : kSizes) {
     for (const auto shape : {PhiShape::kChain, PhiShape::kRing}) {

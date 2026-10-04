@@ -3,6 +3,7 @@
 #include <new>
 #include <stdexcept>
 #include "../analysis/value_edits.h"
+#include "../analysis/value_phi.h"
 
 namespace abcd::source {
 namespace {
@@ -15,6 +16,8 @@ class AliasQuota {
   void Step(std::uint64_t count = 1) {
     Require(count <= left_.work, Error::kWorkLimit); left_.work -= count;
   }
+  void Admit(std::size_t bytes) { Require(bytes <= left_.bytes, Error::kResourceLimit); left_.bytes -= bytes; }
+  SemanticBudget Remaining() const { return left_; }
   template<class T> void Array(std::vector<T>& values, std::size_t count) {
     Require(count <= left_.bytes / sizeof(T), Error::kResourceLimit);
     left_.bytes -= count * sizeof(T); Step(count); values.resize(count);
@@ -44,8 +47,38 @@ std::optional<ValueId> AliasInput(const ValueProgram& graph, const ValueOp& op) 
   if (value.domain.IsEmpty() || value.domain.Join(admitted) != admitted) return {};
   return *source;
 }
+ValueIdentities IdentityFacts(const ValueProgram& graph, AliasQuota& quota) {
+  auto indexed = AnalyzeValueIdentities(graph, quota.Remaining());
+  if (const auto* error = std::get_if<ValueSimplifyError>(&indexed))
+    throw *error == ValueSimplifyError::kWorkLimit ? Error::kWorkLimit :
+        *error == ValueSimplifyError::kResourceLimit ? Error::kResourceLimit : Error::kOwnership;
+  auto result = std::get<ValueIdentities>(std::move(indexed));
+  quota.Admit(result.allocated_bytes); quota.Step(result.work); return result;
+}
 enum class AliasVisit : std::uint8_t { kUnseen, kActive, kResolved };
 }  // namespace
+
+bool IsIdentityPhiInput(const EvaluationPlan& plan, const analysis::OperandUse& use) {
+  const auto* phi = std::get_if<analysis::ValueId>(&use.owner);
+  return phi && !plan.aliases.empty() && plan.aliases[phi->value] != *phi;
+}
+bool SourceIdentityRoot(const analysis::ValueProgram& graph, analysis::ValueId root) {
+  using namespace analysis;
+  const auto& value = graph.values[root.value];
+  if (value.life != ValueLife::kLive || !value.domain.IsLanguage()) return false;
+  if (const auto* entry = std::get_if<EntryDefinition>(&value.origin))
+    return std::holds_alternative<ParameterEntry>(*entry) || std::holds_alternative<ReceiverEntry>(*entry);
+  return std::holds_alternative<OpResult>(value.origin);
+}
+std::optional<analysis::ValueId> SourcePhiAlias(const analysis::ValueProgram& graph,
+    std::span<const analysis::ValueId> identities, analysis::ValueId value) {
+  using namespace analysis;
+  if (identities.empty() || graph.values[value.value].life != ValueLife::kLive) return {};
+  const auto* phi = std::get_if<PhiDefinition>(&graph.values[value.value].origin);
+  if (!phi || (!graph.phases.empty() && graph.phases[phi->block.value].phase == ExceptionPhase::kCatch)) return {};
+  const auto root = identities[value.value];
+  return root != value && SourceIdentityRoot(graph, root) ? std::optional{root} : std::nullopt;
+}
 
 std::variant<EvaluationAliasCost, EvaluationError> BuildEvaluationAliases(
     const analysis::ValueProgram& graph, EvaluationPlan& plan, analysis::SemanticBudget budget) {
@@ -69,6 +102,21 @@ std::variant<EvaluationAliasCost, EvaluationError> BuildEvaluationAliases(
         plan.aliases[op.result->value] = *source;
         plan.operations[i].kind = EvaluationKind::kAlias;
       }
+    }
+    const auto identities = IdentityFacts(graph, quota);
+    for (std::size_t i=0;i<graph.values.size();++i) {
+      quota.Step(); const ValueId value{static_cast<std::uint32_t>(i)};
+      if (const auto root = SourcePhiAlias(graph, identities.canonical, value)) {
+        plan.aliases[i] = *root; continue;
+      }
+      const auto* result = std::get_if<OpResult>(&graph.values[i].origin);
+      const auto root = identities.canonical[i];
+      if (!result || root == value || !SourceIdentityRoot(graph, root) ||
+          plan.operations[result->op.value].kind == EvaluationKind::kElidedPure) continue;
+      // The equation index certifies actual pure copies, including first
+      // materializations of a collapsed phi. Real mutable phi/catch roots keep
+      // their original first snapshot; later ordinary aliases still compress.
+      plan.aliases[i] = root; plan.operations[result->op.value].kind = EvaluationKind::kAlias;
     }
     // Functional-graph compression, as in value_simplify.cc. Each unresolved
     // vertex is visited once; no per-use/per-call walk down a copy chain.
@@ -104,11 +152,16 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationAliases(
     }
     Require(plan.aliases.size() == graph.values.size(), Error::kOwnership);
     AliasQuota quota(budget);
+    const auto identities = IdentityFacts(graph, quota);
     for (std::size_t i = 0; i < graph.values.size(); ++i) {
       quota.Step();
       const auto root = plan.aliases[i];
       Require(root.value < graph.values.size() && plan.aliases[root.value] == root, Error::kOwnership);
       const auto* result = std::get_if<OpResult>(&graph.values[i].origin);
+      if (std::holds_alternative<PhiDefinition>(graph.values[i].origin)) {
+        Require(root == SourcePhiAlias(graph,identities.canonical,ValueId{static_cast<std::uint32_t>(i)}).value_or(ValueId{static_cast<std::uint32_t>(i)}),Error::kOwnership);
+        continue;
+      }
       if (root.value == i) {
         Require(!result || plan.operations[result->op.value].kind != EvaluationKind::kAlias, Error::kOwnership);
         continue;
@@ -116,8 +169,9 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationAliases(
       Require(result && plan.operations[result->op.value].kind == EvaluationKind::kAlias, Error::kOwnership);
       const auto& op = graph.ops[result->op.value];
       const auto source = AliasInput(graph, op);
-      Require(source && op.result == ValueId{static_cast<std::uint32_t>(i)} &&
-          plan.aliases[source->value] == root, Error::kOwnership);
+      Require(op.result == ValueId{static_cast<std::uint32_t>(i)} &&
+          ((source && plan.aliases[source->value] == root) ||
+           (identities.canonical[i] == root && SourceIdentityRoot(graph, root))), Error::kOwnership);
     }
     return quota.Cost().work;
   } catch (Error error) { return error; }

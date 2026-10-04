@@ -4,6 +4,7 @@
 #include "evaluation_plan.h"
 
 namespace abcd::source {
+class TreeCheckBudget;
 struct ModuleEvaluationIndex {
   // Symmetric read<->guard lookup; empty for all other operations.
   std::vector<std::optional<analysis::OpId>> peers;
@@ -32,22 +33,23 @@ struct EvaluationUses {
   std::optional<analysis::UseId> first;
   bool multiple = false;
 };
-// Project a verified use chain: absorb the indexed guard dependency and, for
+// Project verified observations: absorb the indexed guard dependency and, for
 // a freshly verified normal LiteralPlan allocation, its initializer receivers.
 // A member reference consumes its matching explicit VM receiver without a
 // second source evaluation; mismatches and independent observers stay visible.
 // Class projections consume the checked method/call/prototype uses as well.
 // Fresh normal CellEvaluation witnesses also consume proved initialization
 // checks; no parent/capture premise is invented by this use projection.
-// Receiver protocol uses also disappear only under the factory's independently
-// proved guard obligation. O(1) without projections; otherwise O(producer uses
-// * log(receiver guards + 1)), with disjoint chains across producers.
-// Cache once per producer, never rescan a shared producer for every consumer.
-[[nodiscard]] EvaluationUses ProjectEvaluationUses(const analysis::ValueProgram& graph,
-    const EvaluationPlan& plan, analysis::OpId operation, const ModuleEvaluationIndex& modules,
-    bool project_initializers = false,
-    std::span<const std::optional<analysis::OpId>> class_projection = {},
-    const CellEvaluation* initialized_cells = nullptr,
-    std::span<const analysis::OpId> receiver_guards = {});
+// Receiver protocol uses disappear only under the original guard obligation.
+// One canonical-use census includes observations transported through proved
+// copy/phi identities. O(I+U log(G+1)) work and O(I) result storage; no scan per
+// producer or alias chain. Normal operands have identity canonicalization.
+[[nodiscard]] std::vector<EvaluationUses> IndexEvaluationUses(const analysis::ValueProgram& graph,
+    const EvaluationPlan& plan, const ModuleEvaluationIndex& modules,
+    std::span<const std::uint8_t> literal_allocations,
+    std::span<const std::optional<analysis::OpId>> class_projection,
+    const CellEvaluation* initialized_cells, std::span<const analysis::OpId> receiver_guards,
+    TreeCheckBudget& budget);
+
 }  // namespace abcd::source
 #endif

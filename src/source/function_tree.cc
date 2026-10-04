@@ -915,7 +915,7 @@ class TreeBuilder {
       Step();
       if (const auto* edge = std::get_if<analysis::EdgeId>(&bundle.incoming)) {
         Require(edge->value < copied.size(), Error::kControl);
-        if (bundle.count) copied[edge->value] = 1;
+        if (!bundle.schedule.steps.empty()) copied[edge->value] = 1;
       }
     }
     for (const auto& node : control_.nodes) {

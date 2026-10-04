@@ -13,7 +13,9 @@ struct PhiBundle {
   std::uint32_t first;
   std::uint32_t count;
   EdgeCopies schedule;
+  std::optional<analysis::UseId> expression_input;
 };
+enum class PhiCopyUse : std::uint8_t { kRetained, kIdentity };
 struct PhiCopies {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
@@ -24,6 +26,9 @@ struct PhiCopies {
   std::uint64_t work = 0;
   PhiFlow flow = PhiFlow::kNormal;
   PhiDomain domain = PhiDomain::kLanguage;
+  // Original occurrences remain complete; only proved normal phi identities
+  // disappear from executable schedules. Exceptional staging stays intact.
+  std::vector<PhiCopyUse> projection;
 };
 enum class PhiCopyError : std::uint8_t {
   kRevision, kFlow, kDomain, kInput, kBundle, kSchedule, kResourceLimit, kWorkLimit

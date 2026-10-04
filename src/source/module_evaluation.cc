@@ -1,41 +1,49 @@
 #include "module_evaluation.h"
 #include "phase_evaluation.h"
+#include "evaluation_aliases.h"
+#include "tree_checks.h"
+#include <bit>
 
 #include <new>
 #include <stdexcept>
 
 namespace abcd::source {
-EvaluationUses ProjectEvaluationUses(const analysis::ValueProgram& graph,
-    const EvaluationPlan& plan, analysis::OpId operation, const ModuleEvaluationIndex& modules, bool project_initializers,
-    std::span<const std::optional<analysis::OpId>> class_projection, const CellEvaluation* initialized_cells,
-    std::span<const analysis::OpId> receiver_guards) {
-  const auto& op = graph.ops[operation.value];
-  if (!op.result) return {};
-  std::optional<analysis::UseId> consumed;
-  if (std::holds_alternative<analysis::ValueModuleRead>(op.operation) && !modules.peers.empty())
-    if (const auto guard = modules.peers[operation.value]) consumed = graph.ops[guard->value].first_use;
-  EvaluationUses result;
-  for (auto id = graph.values[op.result->value].first_use; id; id = graph.uses[id->value].next) {
-    if (id == consumed) continue;
-    const auto& use = graph.uses[id->value];
-    // Both flows consume the explicit VM receiver through the original member
-    // reference. Keep other observations; effect order and CallPlan must still
-    // prove the getter, base and receiver agree before native syntax is built.
-    if (IsMemberReceiver(graph, plan, use)) continue;
-    if (const auto* owner = std::get_if<analysis::OpId>(&use.owner)) {
+std::vector<EvaluationUses> IndexEvaluationUses(const analysis::ValueProgram& graph,
+    const EvaluationPlan& plan, const ModuleEvaluationIndex& modules,
+    std::span<const std::uint8_t> literal_allocations,
+    std::span<const std::optional<analysis::OpId>> class_projection,
+    const CellEvaluation* initialized_cells, std::span<const analysis::OpId> receiver_guards,
+    TreeCheckBudget& budget) {
+  using namespace analysis;
+  std::vector<EvaluationUses> result; budget.Array(result,graph.ops.size());
+  for (std::size_t i=0;i<graph.uses.size();++i) {
+    budget.Step(); const auto& use = graph.uses[i];
+    if (use.life != ValueLife::kLive || IsIdentityPhiInput(plan,use)) continue;
+    const auto operand = ResolveEvaluationOperand(plan,use.operand);
+    const auto* value = std::get_if<ValueId>(&operand);
+    const auto* producer = value ? std::get_if<OpResult>(&graph.values[value->value].origin) : nullptr;
+    if (!producer) continue;
+    const auto id = producer->op;
+    if (const auto* owner = std::get_if<OpId>(&use.owner)) {
+      if (plan.operations[owner->value].kind == EvaluationKind::kAlias ||
+          plan.operations[owner->value].kind == EvaluationKind::kElidedPure) continue;
+      if (!modules.peers.empty() && modules.peers[id.value] == *owner &&
+          std::holds_alternative<ValueModuleRead>(graph.ops[id.value].operation)) continue;
       if (!class_projection.empty() && class_projection[owner->value]) continue;
-      if (initialized_cells && IsInitializedCellGuard(graph, *initialized_cells, *owner)) continue;
-      if (std::binary_search(receiver_guards.begin(), receiver_guards.end(), *owner)) continue;
-    }
-    if (project_initializers && use.role == analysis::OperandRole::kBase) {
-      if (const auto* owner = std::get_if<analysis::OpId>(&use.owner)) {
+      if (initialized_cells && IsInitializedCellGuard(graph,*initialized_cells,*owner)) continue;
+      if (!receiver_guards.empty()) {
+        budget.Step(std::bit_width(receiver_guards.size()));
+        if (std::binary_search(receiver_guards.begin(),receiver_guards.end(),*owner)) continue;
+      }
+      if (literal_allocations[id.value] && use.role == OperandRole::kBase) {
         const auto& operation = graph.ops[owner->value].operation;
-        if (std::holds_alternative<analysis::ValueOwnWrite>(operation) ||
-            std::holds_alternative<analysis::ValueIndexedWrite>(operation)) continue;
+        if (std::holds_alternative<ValueOwnWrite>(operation) || std::holds_alternative<ValueIndexedWrite>(operation)) continue;
       }
     }
-    if (result.first) { result.multiple = true; break; }
-    result.first = id;
+    if (IsMemberReceiver(graph,plan,use)) continue;
+    auto& occurrence = result[id.value];
+    if (occurrence.first) occurrence.multiple = true;
+    else occurrence.first = UseId{static_cast<std::uint32_t>(i)};
   }
   return result;
 }

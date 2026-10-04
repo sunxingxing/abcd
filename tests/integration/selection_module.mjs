@@ -3,15 +3,18 @@ import {execFileSync} from 'node:child_process';
 import vm from 'node:vm';
 
 let scenarios = 0;
-for (const selection of ['conditional', 'and', 'or']) for (const direct of [false, true]) {
+for (const phased of [false, true])
+for (const selection of phased ? ['conditional'] : ['conditional', 'and', 'or'])
+for (const direct of phased ? [false] : [false, true]) {
   const prefix = selection === 'conditional' ? '' : `${selection}-`;
-  const option = `--${prefix}${direct ? 'direct-' : ''}source`;
+  const option = `--${phased ? 'phased-module-selection-' : prefix}${direct ? 'direct-' : ''}source`;
   const source = execFileSync(process.argv[2], [option], {encoding: 'utf8'});
   assert.ok(!source.includes('INCOMPLETE'));
   const module = `imported${direct ? '' : '.option'}`;
   const expression = selection === 'conditional' ? `value.probe === 'on' ? ${module} : 448` :
     `value.probe ${selection === 'and' ? '&&' : '||'} ${module}`;
-  const reference = `(function(value) { return value.method(${expression}); })`;
+  const statements = `return value.method(${expression});`;
+  const reference = `(function(value) { ${phased ? `try { ${statements} } catch (error) { return error; }` : statements} })`;
   const selected = probe => selection === 'conditional' ? probe === 'on' : selection === 'and' ? !!probe : !probe;
   const pair = vm.runInNewContext(`(() => { let imported; return {
     recovered: ${source}, reference: ${reference}, set(value) { imported = value; }
@@ -41,8 +44,14 @@ for (const selection of ['conditional', 'and', 'or']) for (const direct of [fals
         return probe;
       }
     };
-    try { assert.equal(fn(value), payload); events.push('return'); }
+    try {
+      const result = fn(value);
+      if (phased && result === thrown) events.push('sentinel');
+      else if (phased && bad && result?.name === 'TypeError') events.push('TypeError');
+      else { assert.equal(result, payload); events.push('return'); }
+    }
     catch (error) {
+      assert.equal(phased, false, 'caught completion escaped the recovered function');
       if (error === thrown) events.push('sentinel');
       else if (bad && error.name === 'TypeError') events.push('TypeError');
       else throw error;
@@ -69,8 +78,8 @@ for (const selection of ['conditional', 'and', 'or']) for (const direct of [fals
         selection === 'and' ? '[false, true]' : '[true, false]'}) {
       let calls = 0;
       try { const result = fn({probe, method(argument) { ++calls; return argument; }});
-        results.push([result, calls]); }
-      catch (error) { results.push([error.name, calls]); }
+        results.push([${phased} && result?.name === 'ReferenceError' ? result.name : result, calls]); }
+      catch (error) { if (${phased}) throw error; results.push([error.name, calls]); }
     }
     let imported; return results;
   })()`);
@@ -79,8 +88,9 @@ for (const selection of ['conditional', 'and', 'or']) for (const direct of [fals
   assert.equal(JSON.stringify(tdz.slice(0, 2)), JSON.stringify(tdz.slice(2)));
   scenarios += 4;
   const sequence = execFileSync(process.argv[2], [option, '--twice'], {encoding: 'utf8'});
+  const repeatedBody = `value.method(${expression}); return value.method(${expression});`;
   const repeated = vm.runInNewContext(`(() => { let imported; return {
-    recovered: ${sequence}, reference(value) { value.method(${expression}); return value.method(${expression}); },
+    recovered: ${sequence}, reference(value) { ${phased ? `try { ${repeatedBody} } catch (error) { return error; }` : repeatedBody} },
     set(value) { imported = value; }
   }; })()`);
   function repeat(fn, probe, fail) {
@@ -99,12 +109,17 @@ for (const selection of ['conditional', 'and', 'or']) for (const direct of [fals
       }
     };
     try {
-      assert.equal(fn(value), 2);
+      const result = fn(value);
+      if (phased && result === thrown) { events.push('sentinel'); return events; }
+      assert.equal(result, 2);
       assert.equal(argumentsSeen.length, 2);
       for (let i = 0; i < 2; ++i) assert.equal(argumentsSeen[i], selected(probe) ? namespaces[i] :
         selection === 'conditional' ? 448 : probe);
       events.push('return');
-    } catch (error) { assert.equal(error, thrown); events.push('sentinel'); }
+    } catch (error) {
+      assert.equal(phased, false, 'caught repeated completion escaped the recovered function');
+      assert.equal(error, thrown); events.push('sentinel');
+    }
     return events;
   }
   for (const probe of ['on', 'off', undefined, false, true]) for (let fail = 0; fail <= 8; ++fail) {

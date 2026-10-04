@@ -21,9 +21,9 @@ std::vector<SelectionRegion> FindPhasedPhiSelections(const analysis::ValueProgra
   for (const auto& bundle : evaluation.phis->bundles) {
     budget.Step(); const auto* edge = std::get_if<EdgeId>(&bundle.incoming);
     if (!edge) continue;
-    copies[edge->value] = bundle.count;
-    if (bundle.count == 1 && bundle.schedule.steps.size() == 1 && !bundle.schedule.temporaries)
-      inputs[edge->value] = evaluation.phis->inputs[bundle.first];
+    copies[edge->value] = static_cast<std::uint32_t>(bundle.schedule.steps.size());
+    if (bundle.expression_input && bundle.schedule.steps.size() == 1 && !bundle.schedule.temporaries)
+      inputs[edge->value] = bundle.expression_input;
   }
   for (const auto& use : graph.uses) {
     budget.Step();

@@ -1,6 +1,7 @@
 #include "logical_evaluation.h"
 #include "logical_regions.h"
 #include "phase_corridor.h"
+#include "evaluation_aliases.h"
 
 #include <algorithm>
 
@@ -41,11 +42,11 @@ class CallSelections {
       budget.Step(); if (edge.kind != FlowEdgeKind::kException) ++incoming_[edge.target.value];
     }
     if (plan.phis) for (const auto& bundle : plan.phis->bundles) {
-      budget.Step(); if (const auto* edge = std::get_if<EdgeId>(&bundle.incoming)) copied_[edge->value] = bundle.count != 0;
+      budget.Step(); if (const auto* edge = std::get_if<EdgeId>(&bundle.incoming)) copied_[edge->value] = !bundle.schedule.steps.empty();
     }
     for (std::size_t i = 0; i < graph.uses.size(); ++i) {
       budget.Step(); const auto& use = graph.uses[i];
-      if (use.life != ValueLife::kLive) continue;
+      if (use.life != ValueLife::kLive || IsIdentityPhiInput(plan, use)) continue;
       if (const auto* op = std::get_if<OpId>(&use.owner)) {
         const auto kind = BeforeLogicalFusion(graph, plan, op->value).kind;
         if (kind == EvaluationKind::kAlias || kind == EvaluationKind::kElidedPure) continue;

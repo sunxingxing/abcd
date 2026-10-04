@@ -44,17 +44,29 @@ std::variant<PhiCopies, PhiCopyError> BuildCopies(
     }
     budget.Reserve(result.bundles, bundles);
     std::size_t schedule_bytes = 0;
+    const auto identities = PhiIdentities(graph,budget,flow);
+    budget.Array(result.projection,count);
+    std::vector<ParallelCopy> effective; budget.Reserve(effective,count);
     for (std::size_t first = 0; first < count;) {
       budget.Step();
       const auto key = *graph.uses[result.inputs[first].value].incoming;
       auto end = first + 1;
       while (end < count && SameIncoming(key, *graph.uses[result.inputs[end].value].incoming)) { budget.Step(); ++end; }
-      auto built = BuildEdgeCopies(std::span<const ParallelCopy>{result.copies}.subspan(first, end - first), budget.Remaining());
+      effective.clear(); std::optional<analysis::UseId> expression_input;
+      for (auto i=first;i<end;++i) {
+        budget.Step();
+        if (SourcePhiAlias(graph,identities,result.copies[i].destination)) {
+          result.projection[i] = PhiCopyUse::kIdentity; continue;
+        }
+        effective.push_back(result.copies[i]); expression_input = result.inputs[i];
+      }
+      if (effective.size() != 1) expression_input.reset();
+      auto built = BuildEdgeCopies(effective, budget.Remaining());
       auto* schedule = std::get_if<EdgeCopies>(&built);
       if (!schedule) throw PhiScheduleError(std::get<CopyError>(built));
       budget.Admit(schedule->allocated_bytes, 1); budget.Step(schedule->work);
       schedule_bytes += schedule->allocated_bytes; // Already bounded by the shared byte grant.
-      result.bundles.push_back({key, static_cast<std::uint32_t>(first), static_cast<std::uint32_t>(end - first), std::move(*schedule)});
+      result.bundles.push_back({key, static_cast<std::uint32_t>(first), static_cast<std::uint32_t>(end - first), std::move(*schedule),expression_input});
       first = end;
     }
     const auto checked = VerifyPhiCopiesForFlow(graph, result, budget.Remaining(), flow);
@@ -62,6 +74,7 @@ std::variant<PhiCopies, PhiCopyError> BuildCopies(
     budget.Step(std::get<std::uint64_t>(checked));
     result.allocated_bytes = sizeof(result) + schedule_bytes +
         result.inputs.capacity() * sizeof(analysis::UseId) + result.copies.capacity() * sizeof(ParallelCopy) +
+        result.projection.capacity() * sizeof(PhiCopyUse) +
         result.bundles.capacity() * sizeof(PhiBundle);
     result.work = budget.Work();
     return result;

@@ -1,6 +1,6 @@
 # 按用户要求进行的恢复条件审计
 
-最新替换状态及补充事项见文末规则86；历史表中的严格比较候选及literal同块条件不再是
+最新替换状态及补充事项见文末规则89；历史表中的严格比较候选及literal同块条件不再是
 当前准入条件。未替换项继续开放，不能将本次局部交付称为全量审计闭合。
 
 2026-10-03，基线 87176c10。此为本次明确请求的审计，不恢复定期审视。
@@ -176,7 +176,7 @@ VerifyPhasedEvaluationPlan，再核对原 property result、callee/base/receiver
 | 优先级 | 当前源码位置 | 观察到的实现边界 | 必须保留的义务及共同替换方向 |
 |---|---|---|---|
 | P1 | src/source/call_plan.cc::VerifyCalls，约215行 | callee property 只接受当前表达式的 inline/nested-literal consumer | 保留原 callee/base/key 与 receiver；用共同 Reference 和保留值表示承载共享/已存储引用，证明一次读取和调用时序 |
-| P1 | src/source/phase_selection_calls.cc::Prefix；src/source/phased_selections.cc；src/source/phi_copies.cc::PhiExpressionProducer | 规则87已移除phi_arguments/root_selections单选择门槛；仍有单入corridor、有限arm/phi候选和会抛出producer必须在自身Commit outgoing edge供phi的限制 | 共同Reference联合安排同一调用的全部选择已贯通；后续用控制依赖/区域及真实edge-copy时序替代候选布局，不能扩大local opcode或tail白名单 |
+| P1 | src/source/phase_selection_calls.cc::Prefix；src/source/phased_selections.cc；src/source/phi_expression_inputs.cc | 规则87已移除单选择门槛，88替换Commit邻接，89投影冗余phi/copy身份；单入候选和多份真实parallel-copy RHS共同安排仍开放 | 共同Reference联合安排同一调用的全部选择；继续贯通控制依赖/区域及真实edge-copy时序，不能扩大local opcode或tail白名单 |
 | P1 | src/source/predicate_snapshots.cc::Candidates，约20/38行 | 最早同块eager occurrence可接收snapshot assignment；规则82已去除strict-comparison/branch限定 | producer与consumer白名单已删；尚需跨块snapshot所有权/支配/控制依赖与效果区间，保留一次求值和所有使用身份 |
 | P1 | src/analysis/rest_arguments.cc::ProveRestPrologue；src/source/rest_binding.cc::FindRestLocal | 固定起始 ABI MOV、寄存器布局及紧邻 rest/STA；旧路径仍调用 | normal ValueTree 已用 ProveRestOwnership；剩余 legacy/构造器使用必须迁移共同 frame、SSA、参数写入和动态数量证明，不能扩充 prologue 模板 |
 | P1 | src/analysis/derived_constructor.cc；spread_field_constructor.cc；range_derived_constructor.cc，约38/79行 | legacy直线状态序列及copy opcode列表仍在；共同ValueTree的回边/guard存在门槛已由规则84/86移除 | 共同CFG/SSA单次调用、receiver、guard输入与cell事实已贯通；剩余多super site、捕获/异常与导入父协议不以legacy布局定义，不能假定host/import构造器类型 |
@@ -571,3 +571,35 @@ RHS需要按实际值身份/存活/复制顺序共同安排，不能删除count�
 该缺口、单入candidate/prefix、inline-owned Reference、class initializer
 同块、phased scope/capture/module接口及legacy模板仍开放。禁止用更多
 样本/opcode/寄存器/PC/数量匹配修补；不得断言已完成全仓逐分支审计。
+
+
+## 规则 89：冗余 phi/copy 不再充当正常边屏障
+
+arm 中 MOV 自身会产生额外 SSA phi，原 bundle.count == 1 把实际值不变也
+当成多份写入；这属于表示/分析缺口，不能解释成成员调用的语言限制。
+共同 AnalyzeValueIdentities 复用迭代 Tarjan，按原 PhiDefinition/纯 ValueCopy
+方程证明同一外部 ValueId 锚点，不看寄存器、PC、块布局或 producer 名单。
+多个不同外部值、无外部锚点、域不相容不会折叠；catch binding 和真正的
+mutable phi 首次快照仍独立。原 phased SSA、全部输入 UseId 和 catch staging
+保留，PhiCopies 独立复算身份并验证原输入全集，只投影 executable schedule。
+
+正常边屏障及唯一 expression_input 改用实际保留的 schedule；共同 canonical
+use census 保留穿过身份 phi/copy 的最终观察，不把搬运计为额外求值，也不
+遗漏共享 getter/receiver。BindingPlan、选择恢复、Reference corridor 和树
+flow 消费同一已验证投影。删除的是冗余身份造成的 raw-count 限制；多份真正
+不同值的 parallel-copy RHS 顺序仍未贯通，不能宣称单份 RHS 边界全部关闭。
+
+旧 phased-selection-refusal 测试假定普通 conditional module-property 参数
+必拒绝；现在它经过完整 draft、树语义/flow 和原 guard/staging 验证生成
+原生 MemberCall，测试改为正例。独立 Node 检查 getter 替换、receiver、模块
+绑定变化、throw/catch、非 callable、TDZ 与未取分支；不经 .call/.apply。
+补测直接 module 值作为选择参数仍命中 kReference，保留为 phased module
+参数/guard 接口缺口；没有新增生产 direct/property 分支或放宽 TDZ 义务。
+
+435组三profile解码矩阵覆盖 base/callee arm 自复制、getter/prefix/outer
+Reference、多参数及1/2/200/201/402复制变化。不同 receiver、debugger、
+反向参数及变造 alias/projection 拒绝仍测；完整生成源码另有177984组行为
+对照和36项有效 mutation。构建、最终模块测试及固定五输入证据见 status.md。
+inline-owned Reference、single-entry candidate/prefix、class initializer
+同块、phased scope/capture/module 和 legacy 模板仍未全部替换。本次沿既有
+审计发现推进共同实现，不声称已经逐行关闭全仓全部恢复条件。

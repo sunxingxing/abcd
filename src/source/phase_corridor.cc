@@ -1,4 +1,5 @@
 #include "phase_corridor.h"
+#include "evaluation_aliases.h"
 
 #include <type_traits>
 
@@ -108,7 +109,7 @@ PhaseCorridors::PhaseCorridors(const ValueProgram& graph, const EvaluationPlan& 
     for (std::size_t b = 0; b < plan.phis->bundles.size(); ++b) {
       budget.Step(); const auto& placement = plan.exceptions->placements[b];
       if (const auto* normal = std::get_if<NormalCopies>(&placement))
-        copied[normal->edge.value] = plan.phis->bundles[b].count != 0;
+        copied[normal->edge.value] = !plan.phis->bundles[b].schedule.steps.empty();
       if (const auto* raised = std::get_if<ThrowCopies>(&placement)) throws_[raised->operation.value] = b;
     }
   }
@@ -135,6 +136,7 @@ PhaseCorridors::PhaseCorridors(const ValueProgram& graph, const EvaluationPlan& 
   }
   for (std::size_t i = 0; i < graph.uses.size(); ++i) {
     budget.Step(); const auto& use = graph.uses[i];
+    if (use.life != ValueLife::kLive || IsIdentityPhiInput(plan,use)) continue;
     if (const auto* owner = std::get_if<OpId>(&use.owner)) {
       const auto kind = plan.operations[owner->value].kind;
       if (graph.ops[owner->value].life != ValueLife::kLive ||
