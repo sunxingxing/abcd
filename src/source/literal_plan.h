@@ -6,6 +6,7 @@
 
 namespace abcd::source {
 struct EvaluationPlan;
+struct CellEvaluation;
 // Typed receiver sources in a freshly verified, simplified owner graph. The
 // ABI snapshot and frame read retain their own origins; this predicate never
 // equates their SSA identities, replays a frame read, or proves a derived/arrow
@@ -79,20 +80,25 @@ enum class LiteralError : std::uint8_t {
 // receiver_guards is the unchanged derived/captured receiver protocol proof.
 // Only its initialized checks can lie inside a native initializer interval;
 // the caller independently discharges their receiver origins and keeps PC anchors.
+// cells carries the common completed-store/owner proof. Both construction and
+// verification freshly check it before ignoring initialized checks in use/effect
+// censuses. A Language domain or caller placement alone is insufficient.
 // Direct receiver fields stay ordered statement roots and are excluded from
 // literal ownership. Not AST/publication permission: preserve snapshots and sites.
 [[nodiscard]] std::variant<LiteralPlan, LiteralError> BuildLiteralPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {},
     std::span<const std::optional<analysis::OpId>> module_guards = {},
     std::span<const std::optional<analysis::OpId>> class_projection = {},
-    std::span<const analysis::OpId> receiver_guards = {});
+    std::span<const analysis::OpId> receiver_guards = {},
+    const CellEvaluation* cells = nullptr);
 // Checks supplied groups against use chains and fresh flow, without regrouping.
 [[nodiscard]] std::variant<std::uint64_t, LiteralError> VerifyLiteralPlan(
     const analysis::ValueProgram& graph, const LiteralPlan& plan,
     analysis::SemanticBudget budget = {},
     std::span<const std::optional<analysis::OpId>> module_guards = {},
     std::span<const std::optional<analysis::OpId>> class_projection = {},
-    std::span<const analysis::OpId> receiver_guards = {});
+    std::span<const analysis::OpId> receiver_guards = {},
+    const CellEvaluation* cells = nullptr);
 // Same initializer model across unique normal phase corridors. The original
 // phase graph stays intact; copy aliases must have their independent proof.
 // No observations (including exceptional snapshots) before the last define,

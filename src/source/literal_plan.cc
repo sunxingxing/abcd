@@ -62,7 +62,7 @@ std::vector<std::uint8_t> InitializedReceiverChecks(const analysis::ValueProgram
   }
   return initialized;
 }
-analysis::DominatorTree Flow(const analysis::ValueProgram& graph, LiteralBudget& budget, const EvaluationPlan* evaluation) {
+analysis::DominatorTree Flow(const analysis::ValueProgram& graph, LiteralBudget& budget, const EvaluationPlan* evaluation, const CellEvaluation* cells) {
   if (evaluation) {
     Require(evaluation->flow == EvaluationFlow::kPhased && !graph.phases.empty() &&
         evaluation->operations.size() == graph.ops.size(), Error::kFlow);
@@ -110,14 +110,25 @@ analysis::DominatorTree Flow(const analysis::ValueProgram& graph, LiteralBudget&
   budget.Step(std::get<analysis::ValueFlowProof>(proof).work);
   auto& dominators = std::get<analysis::ValueFlowProof>(proof).dominators;
   budget.Admit(dominators.nodes.capacity(), sizeof(analysis::DominatorNode));
+  if (cells) {
+    const auto checked = VerifyCellEvaluation(graph, *cells, budget.Remaining());
+    if (const auto* error = std::get_if<CellEvaluationError>(&checked)) {
+      if (*error == CellEvaluationError::kResourceLimit) throw Error::kResourceLimit;
+      if (*error == CellEvaluationError::kWorkLimit) throw Error::kWorkLimit;
+      throw Error::kFlow;
+    }
+    budget.Step(std::get<std::uint64_t>(checked));
+  }
   return std::move(dominators);
 }
 struct LiteralPosition { std::optional<analysis::WorkBlockId> head; std::size_t order = 0; };
 class LiteralPath {
  public:
   LiteralPath(const analysis::ValueProgram& graph, const EvaluationPlan* evaluation, LiteralBudget& budget,
-      const analysis::DominatorTree& dominators)
-      : graph_(graph), evaluation_(evaluation), dominators_(dominators) {
+      const analysis::DominatorTree& dominators, const CellEvaluation* cells)
+      : graph_(graph), evaluation_(evaluation),
+        cells_(evaluation ? (evaluation->cells ? &*evaluation->cells : nullptr) : cells),
+        dominators_(dominators) {
     if (!evaluation) return;
     std::vector<std::size_t> incoming;
     std::vector<std::optional<analysis::WorkBlockId>> next;
@@ -171,7 +182,7 @@ class LiteralPath {
     return evaluation_ && evaluation_->operations[id.value].kind == EvaluationKind::kElidedPure;
   }
   bool InitializedGuard(analysis::OpId id) const {
-    return evaluation_ && evaluation_->cells && IsInitializedCellGuard(graph_, *evaluation_->cells, id);
+    return cells_ && IsInitializedCellGuard(graph_, *cells_, id);
   }
   bool Phased() const { return evaluation_ != nullptr; }
   bool After(const analysis::ValueOp& last, const analysis::OperandUse& use) const {
@@ -188,6 +199,7 @@ class LiteralPath {
  private:
   const analysis::ValueProgram& graph_;
   const EvaluationPlan* evaluation_;
+  const CellEvaluation* cells_;
   const analysis::DominatorTree& dominators_;
   std::vector<LiteralPosition> positions_;
 };
@@ -556,11 +568,11 @@ struct FieldOwner { analysis::OpId allocation; analysis::OpId definition; };
 std::variant<std::uint64_t, LiteralError> VerifyLiterals(
     const analysis::ValueProgram& graph, const LiteralPlan& plan, const EvaluationPlan* evaluation,
     analysis::SemanticBudget allowance, Guards guards, Guards projected,
-    std::span<const analysis::OpId> receiver_guards) {
+    std::span<const analysis::OpId> receiver_guards, const CellEvaluation* cells) {
   try {
     LiteralBudget budget(allowance);
     Require(plan.revision == graph.revision && plan.cfg_revision == graph.cfg_revision, Error::kRevision);
-    const auto dominators = Flow(graph, budget, evaluation);
+    const auto dominators = Flow(graph, budget, evaluation, cells);
     Require(guards.empty() || guards.size() == graph.ops.size(), Error::kDefinition);
     Require(projected.empty() || projected.size() == graph.ops.size(), Error::kDefinition);
     for (std::size_t i = 0; i < guards.size(); ++i) {
@@ -568,7 +580,7 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
       if (guards[i]) Require(guards[i]->value < graph.ops.size() &&
           guards[guards[i]->value] == analysis::OpId{static_cast<std::uint32_t>(i)}, Error::kDefinition);
     }
-    LiteralPath path(graph, evaluation, budget, dominators);
+    LiteralPath path(graph, evaluation, budget, dominators, cells);
     Require(plan.objects.size() <= graph.ops.size() && plan.definitions.size() <= graph.ops.size(), Error::kCoverage);
     Require(plan.nested.empty() || plan.nested.size() == graph.ops.size(), Error::kCoverage);
     Require(plan.staged.empty() || plan.staged.size() == graph.ops.size(), Error::kCoverage);
@@ -681,10 +693,10 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
 
 std::variant<LiteralPlan, LiteralError> BuildLiterals(
     const analysis::ValueProgram& graph, const EvaluationPlan* evaluation, analysis::SemanticBudget allowance, Guards guards, Guards projected,
-    std::span<const analysis::OpId> receiver_guards) {
+    std::span<const analysis::OpId> receiver_guards, const CellEvaluation* cells) {
   try {
     LiteralBudget budget(allowance);
-    const auto dominators = Flow(graph, budget, evaluation);
+    const auto dominators = Flow(graph, budget, evaluation, cells);
     Require(guards.empty() || guards.size() == graph.ops.size(), Error::kDefinition);
     Require(projected.empty() || projected.size() == graph.ops.size(), Error::kDefinition);
     for (std::size_t i = 0; i < guards.size(); ++i) {
@@ -692,7 +704,7 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
       if (guards[i]) Require(guards[i]->value < graph.ops.size() &&
           guards[guards[i]->value] == analysis::OpId{static_cast<std::uint32_t>(i)}, Error::kDefinition);
     }
-    LiteralPath path(graph, evaluation, budget, dominators);
+    LiteralPath path(graph, evaluation, budget, dominators, cells);
     Require(graph.ops.size() <= std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
     std::size_t count = 0;
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
@@ -783,7 +795,7 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
         }
       }
     }
-    const auto verified = VerifyLiterals(graph, plan, evaluation, budget.Remaining(), guards, projected, receiver_guards);
+    const auto verified = VerifyLiterals(graph, plan, evaluation, budget.Remaining(), guards, projected, receiver_guards, cells);
     if (const auto* error = std::get_if<Error>(&verified)) return *error;
     budget.Step(std::get<std::uint64_t>(verified));
     plan.allocated_bytes = sizeof(plan) + plan.objects.capacity() * sizeof(ObjectInit) +
@@ -801,22 +813,22 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
 }  // namespace
 std::variant<LiteralPlan, LiteralError> BuildLiteralPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, Guards guards, Guards projected,
-    std::span<const analysis::OpId> receiver_guards) {
-  return BuildLiterals(graph, nullptr, budget, guards, projected, receiver_guards);
+    std::span<const analysis::OpId> receiver_guards, const CellEvaluation* cells) {
+  return BuildLiterals(graph, nullptr, budget, guards, projected, receiver_guards, cells);
 }
 std::variant<std::uint64_t, LiteralError> VerifyLiteralPlan(
     const analysis::ValueProgram& graph, const LiteralPlan& plan, analysis::SemanticBudget budget, Guards guards, Guards projected,
-    std::span<const analysis::OpId> receiver_guards) {
-  return VerifyLiterals(graph, plan, nullptr, budget, guards, projected, receiver_guards);
+    std::span<const analysis::OpId> receiver_guards, const CellEvaluation* cells) {
+  return VerifyLiterals(graph, plan, nullptr, budget, guards, projected, receiver_guards, cells);
 }
 std::variant<LiteralPlan, LiteralError> BuildPhasedLiteralPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation, analysis::SemanticBudget budget,
     Guards guards) {
-  return BuildLiterals(graph, &evaluation, budget, guards, {}, {});
+  return BuildLiterals(graph, &evaluation, budget, guards, {}, {}, nullptr);
 }
 std::variant<std::uint64_t, LiteralError> VerifyPhasedLiteralPlan(
     const analysis::ValueProgram& graph, const LiteralPlan& plan, const EvaluationPlan& evaluation,
     analysis::SemanticBudget budget, Guards guards) {
-  return VerifyLiterals(graph, plan, &evaluation, budget, guards, {}, {});
+  return VerifyLiterals(graph, plan, &evaluation, budget, guards, {}, {}, nullptr);
 }
 }  // namespace abcd::source

@@ -1,7 +1,25 @@
 # 按用户要求进行的恢复条件审计
 
-最新替换状态及补充事项见文末规则99；历史表中的严格比较候选及literal同块条件不再是
-当前准入条件。未替换项继续开放，不能将本次局部交付称为全量审计闭合。
+最新替换状态见本页规则111及后续各项补充。历史候选不是当前实现的证明；
+未替换项继续开放，不能将局部交付称为全量审计闭合。
+
+规则111补充：普通LiteralPath原未接收共同CellEvaluation，因而把一个
+已证明初始化的lexical read后的guard当作额外消费者和效果，拒绝合法
+的对象初始化。普通构建及fresh验证现显式传入同一cell事实，每次独立
+核验revision、实际环境/写入/读取和初始化owner；use与效果区间的
+两处census复用IsInitializedCellGuard，不增加ValueGuard生产白名单、
+opcode序列、相邻操作、样本、寄存器或PC匹配。缺少或伪造证明仍拒绝，
+Language值域本身不能授权移除guard。捕获owner的条件义务仍须家庭
+分析闭合；这份初始化证明不保证闭包不可写。
+
+解码回归包括三profile、复制、对象分配前纯块拆分、嵌套对象及2/200/
+201/402规模，实际树保持原生ObjectExpr。getter的次数、receiver、
+顺序、原异常、payload身份和新对象/属性描述符独立对照。旧异常fixture
+将kPhiInput误解为纯producer的断言在修改前HEAD也失败；现由既有
+fresh树验证及带getter/异常的Node对照检查原执行位置，不删除效果校验。
+异常LiteralPath的既有语义保持。普通字面量初始化跨控制流的完整泛化、
+剩余FollowView成员调用、raw-copy来源及历史开放项仍待共同模型恢复，
+不能把本次贯通称为所有布局限制或阶段一验收完成。
 
 规则110补充：实际共享条件遇到已经证明初始化的cell guard仍受
 EmitDecision自己的inline/module-guard名单拦截。predicate及normal

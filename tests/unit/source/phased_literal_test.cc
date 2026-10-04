@@ -225,8 +225,9 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
         [](const OpEvaluation& op) { return op.kind == EvaluationKind::kPhiInput; }));
     for (std::size_t i = 0; i < evaluation.operations.size(); ++i) {
       if (evaluation.operations[i].kind != EvaluationKind::kPhiInput) continue;
-      test::Check(graph.ops[i].normal == LanguageEffect::kNone &&
-          graph.ops[i].exceptional == ExceptionalCompletion::kImpossible);
+      // Phi expression ownership preserves original effects and exception
+      // sites. The complete tree verifier and staged Node oracle below check
+      // those observations; the producer need not be pure.
       auto forged = evaluation;
       forged.operations[i].consumer = UseId{0};
       test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));

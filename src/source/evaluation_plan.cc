@@ -226,7 +226,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     }
     if (has_definitions) {
       auto built = flow == EvaluationFlow::kPhased ? BuildPhasedLiteralPlan(graph, plan, {bytes, work}, module_index.peers) :
-          BuildLiteralPlan(graph, {bytes, work}, module_index.peers, plan.class_projection.owners, plan.receiver_guards);
+          BuildLiteralPlan(graph, {bytes, work}, module_index.peers, plan.class_projection.owners, plan.receiver_guards, plan.cells ? &*plan.cells : nullptr);
       const auto* error = std::get_if<LiteralError>(&built);
       if (error) {
         if (*error == LiteralError::kResourceLimit) return Error::kResourceLimit;

@@ -12,6 +12,64 @@
 
 ## 当前阶段
 
+### 2026-10-05：普通对象初始化贯通共同 cell 证明
+
+- 规则revision111，基线7e8fe5a4。上轮提交是实际进展，数值政策解释
+  不视为新授权；默认V3、五ABC范围及暂停项保持。从FlashSale和
+  CommentListView的实际throw栈定位到LiteralPlan::VerifyNesting的
+  kObserved：普通路径未接收共同cell事实，把已初始化read的guard
+  当额外观察；异常路径已有同一事实。诊断日志前缀
+  /tmp/abcd-tree-failures-*及/tmp/abcd-normal-literal-cells-*。
+- normal BuildLiteralPlan/VerifyLiteralPlan显式接收CellEvaluation；
+  fresh flow每次核验环境、实际写/读、revision和初始化owner，原
+  LiteralPath的use及effect census复用IsInitializedCellGuard。
+  构建和独立evaluation验证均贯通同一事实。未添加guard/opcode名单、
+  相邻指令、样本/名称、PC、寄存器或同块准入；未删除scope、捕获
+  owner、receiver、异常、效果或来源要求。没有证明仍保守拒绝；
+  这份证明不表示闭包不可写。异常路径原语义保持。
+- 新normal_literal_cells_test实际解码三个dynamic profile，direct/
+  copies/分配前纯块拆分/nested四形式，2/200/201/402规模共48个
+  完整FunctionInput→FunctionValues→FunctionTree，fresh TreeSemantics
+  和InstructionSources均通过。树保留原生ObjectExpr；独立Node
+  4,416个场景覆盖getter顺序、receiver、执行次数、原抛出token、
+  payload身份、新对象及属性描述符。无证明、伪造revision/读事实、
+  Hole读取的构建与fresh验证反例保持拒绝；201→402 work比小于3。
+  新增cell核验沿用共同线性分析，每次use判断O(1)，未引入逐变量CFG
+  扫描或新依赖；不是暂缓的真实RSS/全语料性能证明。
+- 实际FlashSale(21488)/CommentListView(24096)先从ABC导出，再打开
+  配对TS；受控宿主下margin/gutter/padding注册回调3,888个场景
+  通过，覆盖嵌套initializer、重复getter、空值fallback、成员调用、
+  宿主构造顺序及每个事件处的原异常。未执行这两个类的构造器或
+  完整UI，不计作完整record/阶段一独立行为验收；Selection/FoundView
+  的新complete也不能替代整份配对验收。
+- red-build首次因新增target未配置而退出2，显式configure后red-build-2
+  成功；red-test真正失败于普通BuildEvaluationPlan。build-1通过并
+  使48函数green。build-2的7target单-j4通过，tests-2为7/8通过：
+  旧phased_literal_test把kPhiInput等同纯producer，在line228失败。
+  仅恢复五个生产文件到HEAD后重建baseline target，baseline-test在
+  同一断言失败，随后完整恢复WIP。现移除这条过时纯度断言，保留
+  consumer篡改、完整异常树及Node getter/异常对照，不放宽生产证明。
+- final-build的9个target单-j4退出0。final-tests定向17项中16通过，
+  新paired测试因受控宿主缺__Common__失败；补齐fixture后只重跑
+  paired-test-2，1/1通过5.10秒，其余16项通过证据保持。包含literal
+  plan/construct/intrinsic/argument、normal/phased cell、staged/conditional
+  literal及decision回归。没有执行全套；两项旧quotient来源缺口未修复。
+- fresh固定五ABC两模式全部退出0；normal-literal-cells-language-pass-1
+  为94complete/11incomplete-source/1typed source-failure/46no-module，
+  105份源码全部语法通过，原有101份逐字节不变。相比规则110新完整
+  FlashSale21488、Selection26777、CommentListView24096、FoundView35059。
+  normal-literal-cells-default-pass-1仍80complete/26incomplete-source/
+  0source-failure/46no-module，106份语法通过，全部逐字节不变。输入
+  SHA/size均与既有index一致，没有legacy writer、complete回退或改样本。
+- 剩余FollowView32779已定位到CallPlan::VerifyCalls的kReference：
+  callee property20在block0，call38在block3，callee被共同evaluation
+  保留为kCrossRegionValue。不能删除引用证明或用可覆写的.call替代；
+  下一步需将条件参数、getter和receiver顺序贯通共同表达式归属。
+  普通literal跨控制流的完整泛化、input-only omission、raw-copy来源、
+  未知父构造协议、实例字段/全局/完整签名/函数体及全阶段一独立
+  行为/表示验收仍开放。Goal active，代理、全套、扩展语料、RSS/基准、
+  调度/DFX及定期审视继续暂停。
+
 ### 2026-10-05：共享条件复用共同块放置及已初始化 cell 事实
 
 - 规则revision110，基线1dcd9ad5；上一轮已完成实际开发提交，Goal仍
