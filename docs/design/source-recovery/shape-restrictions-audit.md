@@ -3,6 +3,15 @@
 最新替换状态及补充事项见文末规则99；历史表中的严格比较候选及literal同块条件不再是
 当前准入条件。未替换项继续开放，不能将本次局部交付称为全量审计闭合。
 
+规则105补充：PlanNullishSyntax共用三个值域及typed结果身份恢复??，
+不要求固定guard数量、producer列表、CFG同块或literal池编号。fallback
+保留原AST子树，调用/getter/sequence仅在nullish路径执行。重复UTF-16
+literal内容以一次排序规范化，false/0及正负零不混同。不同binding的
+谓词不能因两个分支同值或最终truth已知就消失：TDZ读取仍可能抛出。
+新增两项TDZ反例在实现中先复现错误投影后修正；独立行为测试要求保留
+异常。首次effectful读取/赋值前缀的共同快照与alias还未实现，保留展开式；
+此缺口不作为语言不变量，不用新增局部assignment/opcode匹配扩大支持。
+
 规则104补充：原生optional member使用null/undefined/other域的共同
 抽象解释，按SymbolId或ThisExpr.owner关联原稳定读取。允许严格比较、
 NOT、AND/OR及条件组合，不要求固定guard数量、顺序、CFG块或表达式

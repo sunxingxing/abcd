@@ -12,6 +12,7 @@ const recovered = JSON.parse(execFileSync(tool, [join(root,'modules.abc'), '4784
   '--record-source','--value-source'], {encoding:'utf8'}));
 assert.equal(recovered.source_complete,true);
 assert.equal(recovered.legacy_writer_used,false);
+assert.match(recovered.source, /showDetail \?\? false/);
 const paired = stripTypeScriptTypes(readFileSync(join(root,
   'src/rank/src/main/ets/view/HotListItemView.ts'),'utf8'));
 const inputObject = {[Symbol.toPrimitive]() { assert.fail('coerced retained object'); }};
@@ -104,4 +105,35 @@ for (const callback of [2,3]) for (const probe of [undefined,null,false,0,-0,NaN
       await observe(paired,callback,probe,override,replace,failAt));
     ++scenarios;
   }
-console.log(`Paired HotListItemView: ${scenarios} selected callback/default/reference scenarios passed`);
+async function detail(source, showDetail, inputIndex, failAt) {
+  const events = [], failure = {};
+  const event = label => { events.push(label); if (events.length === failAt) throw failure; };
+  const common = {get TOP_COUNT() { event('TOP_COUNT'); return 3; }};
+  const context = vm.createContext({});
+  // Export the existing local only for this test; do not rewrite its body.
+  const module = new vm.SourceTextModule(`${source}\nexport {isShowDetail};`, {context});
+  await module.link(() => new vm.SyntheticModule(['CommonConstants'], function() {
+    this.setExport('CommonConstants', common);
+  }, {context}));
+  await module.evaluate();
+  const index = inputIndex === 'coercion' ? {[Symbol.toPrimitive](hint) {
+    assert.equal(hint, 'number'); event('index-conversion'); return 2;
+  }} : inputIndex;
+  let result;
+  try { result = module.namespace.isShowDetail(showDetail, index); }
+  catch (error) {
+    if (error === failure) result = 'sentinel';
+    else if (Object.getPrototypeOf(error) === vm.runInContext('TypeError.prototype', context)) result = 'TypeError';
+    else throw error;
+  }
+  return {events, result};
+}
+let detailScenarios = 0;
+for (const showDetail of [undefined, null, false, 0, -0, NaN, '', true, 1, 'detail', 1n, inputSymbol, inputObject])
+  for (const index of [undefined, null, -0, NaN, 2, 3, 4, '2', 2n, inputSymbol, 'coercion'])
+    for (const failAt of [0, 1, 2, 3]) {
+      assert.deepEqual(await detail(recovered.source, showDetail, index, failAt), await detail(paired, showDetail, index, failAt));
+      ++detailScenarios;
+    }
+assert.equal(detailScenarios, 572);
+console.log(`Paired HotListItemView: ${scenarios} callback/default/reference and ${detailScenarios} nullish detail scenarios passed`);

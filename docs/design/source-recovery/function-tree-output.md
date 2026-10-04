@@ -86,9 +86,9 @@ work 统计和调用方显式传入有限额度的底层兼容接口保留，但
 整份 record 的最终目标不变。演进任务见
 [C00–C09 计划](../../superpowers/plans/2026-09-28-unified-control-regions.md)。
 
-## 原生可选成员访问的表示（规则 104）
+## 原生空值语法的表示（规则 104、105）
 
-PlanOptionalAccess在已经检查的FunctionTree上解释null、undefined、other
+PlanNullishSyntax在已经检查的FunctionTree上解释null、undefined、other
 三个语言值域，证明nullish路径返回undefined、其他路径恰好执行同一个
 MemberExpr。纯谓词按typed SymbolId/ThisExpr.owner关联稳定读取，支持
 严格比较、NOT、AND/OR及条件组合，不按两个guard、opcode序列、寄存器、
@@ -111,6 +111,25 @@ printer、family emission与serializer使用同一计划，错误仍保留真实
 base的单次快照/alias证明和整条链合并仍未完成；未打印的子函数owner
 仍受现有完整family约束，不能因不可达分支就伪造其发布完成。这些是
 实现/表示缺口，不是语言禁止条件，亦不授权删除原身份/效果义务。
+
+规则105将同一计划扩展为typed OptionalMemberSyntax/NullishFallbackSyntax
+投影。两个nullish域返回同一fallback、其他域返回原稳定值时，使用现有
+LogicalExpr kNullish打印value ?? fallback；不改变原AST或控制结构。
+fallback是保留的原子树，可包含call、member、sequence及另一binding的
+条件。它只在nullish路径执行，原getter、调用receiver、转换及异常仍由
+原树负责；外部value-call沿用间接调用，??与&&/||混合遵守原生括号规则。
+依据[ECMA-262 2024 Binary Logical Operators](https://tc39.es/ecma262/2024/multipage/ecmascript-language-expressions.html#sec-binary-logical-operators-runtime-semantics-evaluation)。
+
+fallback结果相等依据原ExprId、typed稳定身份或literal值；UTF-16字符串
+先按内容排序规范化TextId，重复literal池编号不成为准入条件。false与0、
+正负零及不同字符串不合并，effectful的不同执行occurrence不凭文本相似
+合并。其他binding的谓词即使两支同值也必须保留，不能丢掉TDZ异常；
+最终truth已知也不能使实际执行过的其他绑定读取获得纯guard资格。
+
+省略节点及属性继续在原value.end记录零宽事件，serializer标记
+nullish_fallback和projection；family emission与printer共用同一计划。
+当前guard使用稳定binding/receiver。首次effectful读取和assignment前缀
+尚需共同单次求值/alias证明，不能新增局部赋值形状匹配。这是表示缺口。
 
 ## 原生函数尾部完成的表示（规则 100、103）
 

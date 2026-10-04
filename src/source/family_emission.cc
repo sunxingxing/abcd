@@ -1,5 +1,5 @@
 #include "tail_completion.h"
-#include "optional_access.h"
+#include "nullish_syntax.h"
 #include "family_emission.h"
 
 #include <algorithm>
@@ -34,14 +34,14 @@ void CheckPositions(const PreparedFamily& family, const PrintedFamilyDraft& prin
     const auto completion = positions.fragment == FunctionFragment::kStaticFields ||
         positions.fragment == FunctionFragment::kImplicitConstructor ? std::nullopt : ImplicitTailCompletion(tree);
     const auto* body = std::get_if<BlockStmt>(&tree.statements[tree.body.value].statement);
-    const auto optional_result = PlanOptionalAccess(tree, budget.Left());
-    if (const auto* error = std::get_if<TreeStructureError>(&optional_result)) {
+    const auto nullish_result = PlanNullishSyntax(tree, budget.Left());
+    if (const auto* error = std::get_if<TreeStructureError>(&nullish_result)) {
       if (*error == TreeStructureError::kResourceLimit) throw FamilyEmitFailure{Error::kResourceLimit};
       if (*error == TreeStructureError::kWorkLimit) throw FamilyEmitFailure{Error::kWorkLimit};
     }
-    Require(std::holds_alternative<OptionalAccessSyntax>(optional_result), Error::kPositions);
-    const auto& optional = std::get<OptionalAccessSyntax>(optional_result);
-    budget.Admit(optional.allocated_bytes, 1); budget.Step(optional.work);
+    Require(std::holds_alternative<NullishSyntax>(nullish_result), Error::kPositions);
+    const auto& nullish = std::get<NullishSyntax>(nullish_result);
+    budget.Admit(nullish.allocated_bytes, 1); budget.Step(nullish.work);
     const bool empty_completion = module && completion && body && body->child_count == 1 && owner.begin == owner.end;
     Require((owner.begin < owner.end || empty_completion) && owner.end <= printed.bytes && member.sources &&
         positions.identity == tree.identity && positions.method == tree.method &&
@@ -78,15 +78,21 @@ void CheckPositions(const PreparedFamily& family, const PrintedFamilyDraft& prin
           else if constexpr (std::is_same_v<T, StmtId>) omitted = completion && completion->statement == target;
           std::optional<ExprId> guarded;
           if constexpr (std::is_same_v<T, ExprId>)
-            if (!optional.omitted_by.empty()) guarded = optional.omitted_by[target.value];
+            if (!nullish.omitted_by.empty()) guarded = nullish.omitted_by[target.value];
           if constexpr (std::is_same_v<T, PropertyId>)
-            if (!optional.omitted_properties_by.empty()) guarded = optional.omitted_properties_by[target.value];
+            if (!nullish.omitted_properties_by.empty()) guarded = nullish.omitted_properties_by[target.value];
           if (guarded) {
-            const auto member = *optional.members[guarded->value];
-            const auto base = std::get<MemberExpr>(tree.expressions[member.value].expression).base;
+            const auto base = nullish.Base(tree, *guarded);
             const auto boundary = positions.expressions[base.value].end;
             const auto selection = positions.expressions[guarded->value];
-            const auto access = positions.expressions[member.value];
+            auto access = selection;
+            if (const auto* member = std::get_if<OptionalMemberSyntax>(&*nullish.projections[guarded->value]))
+              access = positions.expressions[member->member.value];
+            else {
+              const auto& coalesce = std::get<NullishFallbackSyntax>(*nullish.projections[guarded->value]);
+              const auto fallback = positions.expressions[coalesce.fallback.value];
+              Require(boundary <= fallback.begin && fallback.begin < fallback.end && fallback.end <= selection.end, Error::kPositions);
+            }
             Require(range == GeneratedRange{boundary, boundary} &&
                 owner.begin <= selection.begin && selection.begin <= access.begin &&
                 access.begin <= positions.expressions[base.value].begin && boundary < access.end &&

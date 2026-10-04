@@ -1,4 +1,4 @@
-#include "../../../src/source/optional_access.h"
+#include "../../../src/source/nullish_syntax.h"
 #include "abcd/source/tree_printer.h"
 #include "../../../tools/tree_position_json.h"
 #include <algorithm>
@@ -122,13 +122,13 @@ int main(int argc, char** argv) {
       Syntax syntax; syntax.Build(form, count);
       if (reversed) syntax.ReverseArena();
       const bool accepted = form <= Form::kOuterMember || form >= Form::kDeadCall;
-      const auto result = PlanOptionalAccess(syntax.tree);
-      Check(std::holds_alternative<OptionalAccessSyntax>(result));
-      const auto& plan = std::get<OptionalAccessSyntax>(result);
-      Check((!plan.members.empty() && bool(plan.members[syntax.selection.value])) == accepted);
+      const auto result = PlanNullishSyntax(syntax.tree);
+      Check(std::holds_alternative<NullishSyntax>(result));
+      const auto& plan = std::get<NullishSyntax>(result);
+      Check((!plan.projections.empty() && bool(plan.projections[syntax.selection.value])) == accepted);
       if (accepted) {
-        Check(plan.members[syntax.selection.value] == syntax.member);
-        Check(std::count_if(plan.members.begin(), plan.members.end(), [](const auto& member) { return bool(member); }) == 1);
+        Check(std::get<OptionalMemberSyntax>(*plan.projections[syntax.selection.value]).member == syntax.member);
+        Check(std::count_if(plan.projections.begin(), plan.projections.end(), [](const auto& projection) { return bool(projection); }) == 1);
         Check(!plan.omitted_by[syntax.member.value]);
         Check(!plan.omitted_by[std::get<MemberExpr>(syntax.tree.expressions[syntax.member.value].expression).base.value]);
       }

@@ -5,7 +5,7 @@
 #include <type_traits>
 
 #include "../../src/source/instruction_sources.h"
-#include "../../src/source/optional_access.h"
+#include "../../src/source/nullish_syntax.h"
 #include "abcd/source/tree_printer.h"
 
 namespace abcd::test {
@@ -16,9 +16,9 @@ inline void CheckInstructionPositions(const source::FunctionTree& tree,
     source::GeneratedRange owner) {
   using namespace source;
   const auto check = [](bool ok) { if (!ok) std::abort(); };
-  const auto optional_result = PlanOptionalAccess(tree);
-  check(std::holds_alternative<OptionalAccessSyntax>(optional_result));
-  const auto& optional = std::get<OptionalAccessSyntax>(optional_result);
+  const auto nullish_result = PlanNullishSyntax(tree);
+  check(std::holds_alternative<NullishSyntax>(nullish_result));
+  const auto& nullish = std::get<NullishSyntax>(nullish_result);
   check(positions.identity == tree.identity && positions.method == tree.method &&
       positions.value_revision == tree.value_revision && positions.cfg_revision == tree.cfg_revision &&
       owner.begin < owner.end && positions.bytes == owner.end - owner.begin);
@@ -49,13 +49,19 @@ inline void CheckInstructionPositions(const source::FunctionTree& tree,
           check(target.value < ranges.size());
           const auto range = ranges[target.value];
           if constexpr (std::is_same_v<T, ExprId>) {
-            if (!optional.omitted_by.empty() && optional.omitted_by[target.value]) {
-              const auto root = *optional.omitted_by[target.value];
-              const auto member = *optional.members[root.value];
-              const auto base = std::get<MemberExpr>(tree.expressions[member.value].expression).base;
+            if (!nullish.omitted_by.empty() && nullish.omitted_by[target.value]) {
+              const auto root = *nullish.omitted_by[target.value];
+              const auto base = nullish.Base(tree, root);
               const auto guard = positions.expressions[root.value];
-              const auto access = positions.expressions[member.value];
               const auto receiver = positions.expressions[base.value];
+              auto access = guard;
+              if (const auto* member = std::get_if<OptionalMemberSyntax>(&*nullish.projections[root.value]))
+                access = positions.expressions[member->member.value];
+              else {
+                const auto& coalesce = std::get<NullishFallbackSyntax>(*nullish.projections[root.value]);
+                const auto fallback = positions.expressions[coalesce.fallback.value];
+                check(receiver.end <= fallback.begin && fallback.begin < fallback.end && fallback.end <= guard.end);
+              }
               check(range == GeneratedRange{receiver.end, receiver.end} &&
                   owner.begin <= guard.begin && guard.begin <= access.begin &&
                   access.begin <= receiver.begin && receiver.begin < receiver.end &&

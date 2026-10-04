@@ -1,5 +1,5 @@
 #include "../src/source/tail_completion.h"
-#include "../src/source/optional_access.h"
+#include "../src/source/nullish_syntax.h"
 #include "tree_position_json.h"
 #include "../src/source/instruction_sources.h"
 #include "../src/source/family_emission.h"
@@ -8,6 +8,7 @@
 
 #include <nlohmann/json.hpp>
 #include <ostream>
+#include <stdexcept>
 #include <type_traits>
 
 namespace abcd::tools {
@@ -51,12 +52,19 @@ void Array(std::ostream& output, const Items& items, Encode encode) {
 }  // namespace
 void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const PrintedFunction& printed,
     const InstructionSources* sources) {
-  const auto optional_result = source::PlanOptionalAccess(tree);
-  if (!std::holds_alternative<source::OptionalAccessSyntax>(optional_result)) {
+  const auto nullish_result = source::PlanNullishSyntax(tree);
+  if (!std::holds_alternative<source::NullishSyntax>(nullish_result)) {
     // A failed projection cannot supply truthful source-position metadata.
     output.setstate(std::ios::failbit); return;
   }
-  const auto& optional = std::get<source::OptionalAccessSyntax>(optional_result);
+  const auto& nullish = std::get<source::NullishSyntax>(nullish_result);
+  const auto emission = [&](ExprId root) -> std::string_view {
+    switch (nullish.Form(root)) {
+      case NullishForm::kOptionalMember: return "optional_access";
+      case NullishForm::kFallback: return "nullish_fallback";
+    }
+    throw std::logic_error("invalid nullish form");
+  };
   // Stream tables independently: do not expand each node's transitive PC set,
   // or hold an unbounded JSON DOM duplicating the complete source tree.
   output << "{\"unit\":\"utf8_byte\",\"source_contract\":"
@@ -127,11 +135,11 @@ void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const Pr
       if (completion && ((label == "expressions" && completion->value == ExprId{static_cast<std::uint32_t>(i)}) ||
           (label == "statements" && completion->statement == StmtId{static_cast<std::uint32_t>(i)})))
         item["emission"] = completion_label;
-      if (label == "expressions" && !optional.omitted_by.empty() && optional.omitted_by[i]) {
-        item["emission"] = "optional_access"; item["projection"] = optional.omitted_by[i]->value;
+      if (label == "expressions" && !nullish.omitted_by.empty() && nullish.omitted_by[i]) {
+        item["emission"] = emission(*nullish.omitted_by[i]); item["projection"] = nullish.omitted_by[i]->value;
       }
-      if (label == "properties" && !optional.omitted_properties_by.empty() && optional.omitted_properties_by[i]) {
-        item["emission"] = "optional_access"; item["projection"] = optional.omitted_properties_by[i]->value;
+      if (label == "properties" && !nullish.omitted_properties_by.empty() && nullish.omitted_properties_by[i]) {
+        item["emission"] = emission(*nullish.omitted_properties_by[i]); item["projection"] = nullish.omitted_properties_by[i]->value;
       }
       output << item;
     }
@@ -204,12 +212,12 @@ void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const Pr
             }();
             if (omitted) entry["emission"] = completion_label;
             if constexpr (std::is_same_v<T, ExprId>)
-              if (!optional.omitted_by.empty() && optional.omitted_by[node.value]) {
-                entry["emission"] = "optional_access"; entry["projection"] = optional.omitted_by[node.value]->value;
+              if (!nullish.omitted_by.empty() && nullish.omitted_by[node.value]) {
+                entry["emission"] = emission(*nullish.omitted_by[node.value]); entry["projection"] = nullish.omitted_by[node.value]->value;
               }
             if constexpr (std::is_same_v<T, PropertyId>)
-              if (!optional.omitted_properties_by.empty() && optional.omitted_properties_by[node.value]) {
-                entry["emission"] = "optional_access"; entry["projection"] = optional.omitted_properties_by[node.value]->value;
+              if (!nullish.omitted_properties_by.empty() && nullish.omitted_properties_by[node.value]) {
+                entry["emission"] = emission(*nullish.omitted_properties_by[node.value]); entry["projection"] = nullish.omitted_properties_by[node.value]->value;
               }
           }
           entry["node"] = node.value;

@@ -1,5 +1,5 @@
 #include "tail_completion.h"
-#include "optional_access.h"
+#include "nullish_syntax.h"
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/module_enclosure.h"
 
@@ -137,7 +137,7 @@ class TreePrinter {
     Append(") ");
     Push(Statement{Tree().body, 0});
     Drain();
-    FinalizeOptionalRanges();
+    FinalizeNullishRanges();
     for (std::size_t i = 0; i < Tree().anchors.size(); ++i) {
       Step();
       if (std::holds_alternative<FunctionExit>(Tree().anchors[i].position))
@@ -213,7 +213,7 @@ class TreePrinter {
     Array(Result().properties, Tree().properties.size()); Array(Result().statements, Tree().statements.size());
     Array(Result().anchors, Tree().anchors.size()); PrepareAnchors();
     if (module || fields) Push(Statement{Tree().body, indent}); else Push(BeginFunction{});
-    Drain(); FinalizeOptionalRanges(); Append("\n");
+    Drain(); FinalizeNullishRanges(); Append("\n");
     Result().bytes = written_;
     Result().allocated_bytes = initial_.bytes - remaining_.bytes;
     Result().work = initial_.work - remaining_.work;
@@ -301,7 +301,7 @@ class TreePrinter {
     PrepareNativeNames();
     current_ = family_->root.value; depth_ = indent;
     Push(BeginFunction{}); Drain();
-    for (std::size_t i = 0; i < family_->members.size(); ++i) { current_ = i; FinalizeOptionalRanges(); }
+    for (std::size_t i = 0; i < family_->members.size(); ++i) { current_ = i; FinalizeNullishRanges(); }
     Append("\n");
     for (const auto emitted : printed_) { Step(); if (!emitted) throw Error::kUnsupportedContext; }
     draft_.bytes = written_; draft_.allocated_bytes = initial_.bytes - remaining_.bytes;
@@ -1031,13 +1031,21 @@ class TreePrinter {
     const auto id = operand.id;
     BeginExpression(id);
     const auto& expression = Tree().expressions[id.value].expression;
-    if (!Optional().members.empty() && Optional().members[id.value]) {
+    if (!Nullish().projections.empty() && Nullish().projections[id.value]) {
       // Parentheses end this chain: a following call/member must still execute
       // on undefined. Value calls keep their existing indirect-call projection.
-      const auto member = *Optional().members[id.value];
-      const auto& read = std::get<MemberExpr>(Tree().expressions[member.value].expression);
-      Append("("); Push(std::string_view(")")); BeginExpression(member);
-      Member(read.base, read.key, PostfixContext::kMemberBase, true); return;
+      Append("("); Push(std::string_view(")"));
+      std::visit([&](const auto& syntax) {
+        using T = std::decay_t<decltype(syntax)>;
+        if constexpr (std::is_same_v<T, OptionalMemberSyntax>) {
+          const auto& read = std::get<MemberExpr>(Tree().expressions[syntax.member.value].expression);
+          BeginExpression(syntax.member); Member(read.base, read.key, PostfixContext::kMemberBase, true);
+        } else {
+          static_assert(std::is_same_v<T, NullishFallbackSyntax>);
+          Expression(LogicalExpr{TreeLogical::kNullish, syntax.value, syntax.fallback}, operand.observation);
+        }
+      }, *Nullish().projections[id.value]);
+      return;
     }
     if (const auto* unary = std::get_if<UnaryExpr>(&expression);
         unary && unary->operation == TreeUnary::kNot) {
@@ -1186,15 +1194,15 @@ class TreePrinter {
     Push(Indent{depth});
   }
   void PrepareAnchors() {
-    auto planned = PlanOptionalAccess(Tree(), remaining_);
+    auto planned = PlanNullishSyntax(Tree(), remaining_);
     if (const auto* error = std::get_if<TreeStructureError>(&planned)) {
       if (*error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
       if (*error == TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
       throw Error::kUnsupportedContext;
     }
-    if (family_ && optionals_.empty()) Array(optionals_, family_->members.size());
-    auto& syntax = family_ ? optionals_[current_] : optional_;
-    syntax = std::get<OptionalAccessSyntax>(std::move(planned));
+    if (family_ && nullishes_.empty()) Array(nullishes_, family_->members.size());
+    auto& syntax = family_ ? nullishes_[current_] : nullish_;
+    syntax = std::get<NullishSyntax>(std::move(planned));
     Admit(syntax.allocated_bytes, 1); Step(syntax.work);
     Array(Located(), Tree().anchors.size());
     std::size_t count = 0;
@@ -1211,14 +1219,13 @@ class TreePrinter {
   static bool Less(BlockBoundary left, BlockBoundary right) {
     return left.block != right.block ? left.block < right.block : left.index < right.index;
   }
-  const OptionalAccessSyntax& Optional() const { return family_ ? optionals_[current_] : optional_; }
-  void FinalizeOptionalRanges() {
-    const auto& syntax = Optional();
+  const NullishSyntax& Nullish() const { return family_ ? nullishes_[current_] : nullish_; }
+  void FinalizeNullishRanges() {
+    const auto& syntax = Nullish();
     const auto finalize = [&](const auto& omitted, auto& ranges) {
       for (std::size_t i = 0; i < omitted.size(); ++i) {
         Step(); if (!omitted[i]) continue;
-        const auto member = *syntax.members[omitted[i]->value];
-        const auto base = std::get<MemberExpr>(Tree().expressions[member.value].expression).base;
+        const auto base = syntax.Base(Tree(), *omitted[i]);
         const auto boundary = Result().expressions[base.value].end;
         ranges[i] = {boundary, boundary};
       }
@@ -1258,8 +1265,8 @@ class TreePrinter {
   std::vector<OwnerTree> owners_;
   std::vector<std::uint8_t> printed_;
   std::vector<std::uint8_t> native_names_;
-  OptionalAccessSyntax optional_;
-  std::vector<OptionalAccessSyntax> optionals_;
+  NullishSyntax nullish_;
+  std::vector<NullishSyntax> nullishes_;
 };
 }  // namespace
 

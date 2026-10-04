@@ -12,6 +12,59 @@
 
 ## 当前阶段
 
+### 2026-10-05：共同空值分析恢复原生 fallback 表达式
+
+- 规则revision105，基线fd46be6d。旧HotListItemView将showDetail ?? false
+  展开为两层三元；red-tests.log保留新语法fixture与真实record的2/2失败。
+  用户要求数值边界解释未授权修改合同，本轮普通算术规则保持。
+- 原PlanOptionalAccess重命名为PlanNullishSyntax，typed variant共用
+  OptionalMemberSyntax与NullishFallbackSyntax。严格比较、NOT、AND/OR、
+  条件结果在null/undefined/other域传播；纯guard按SymbolId/ThisExpr.owner
+  关联原稳定读取，其他域返回原值、两个nullish域返回同一fallback时复用
+  既有LogicalExpr kNullish和共同printer。原AST/CFG/control/operand与
+  instruction来源不变，无sample/名字/opcode序列/寄存器/PC/同块匹配。
+- fallback保留为原opaque子树，call/member/sequence/其他binding条件不
+  被重放或提前执行，原receiver/getter/异常不变。外部value-call仍间接；
+  ??混合&&/||保留语法括号。结果身份依据原ExprId、typed稳定身份或
+  literal值，UTF-16文本一次排序规范化，重复池编号不成为准入条件。
+  false/0、正负零及不同文本不合并，不凭文本相似合并effectful occurrence。
+- 自检新增两项TDZ反例：另一binding的条件两支同值，或先执行该条件再经
+  OR得出已知truth，原WIP错误省略读取。foreign-red.log与guard-red-tests.log
+  各1/1失败后修正。其他binding的结果保留整个原子树；可消除predicate
+  必须证明每个可能执行的分支均纯且属于同一引用域。不是按局部形状补匹配。
+- 省略节点及属性在已打印value.end保留零宽事件，emission/serializer共用
+  typed计划与nullish_fallback/projection标记，member投影沿用optional_access。
+  缺失计划保持typed失败或输出流失败，不捏造有长度的来源位置。
+- 新176组语法fixture覆盖1/200/201/402条件组合、反向arena、不同guard
+  形式、相同/不同TextId内容、正负零、fallback绑定/call/getter/sequence、
+  外部value-call、mixed逻辑及实际let-TDZ。独立Node oracle通过76,032场景。
+  fixture只验证共同语法投影；真实decoded组合与paired记录另行验收。
+- HotListItemView完整record新风格断言与572个isShowDetail配对场景通过，
+  另保留616个callback/default/reference场景。实际TestAbility/EntryAbility
+  共4,896个完整onCreate/onNewWant方法配对场景通过，并检查原生??表示；
+  不调用未恢复构造器、不授予这些partial record或HarmonyOS平台验收。
+- 日志前缀/tmp/abcd-nullish-fallback-*。build-2.log失败于位置测试中变量
+  声明顺序，修正后build-3.log五目标单-j4成功；focused-tests-2.log
+  8/8通过30.02秒。追加TDZ guard反例修正后，related-build-2.log的36个
+  实际目标单-j4退出0。主related-tests.log 76/76通过348.35秒；核对-I
+  范围参数发现漏选两项，additional-tests.log 2/2通过113.56秒，另
+  entry-paired-tests.log 1/1通过1.63秒，共79项通过。包括类/构造器、
+  capture、module、normal/phased选择、getter/effect、优先级/原生名称及
+  generator return/suspend/loop。未运行已知402-return资源缺口或全量套件。
+- fresh build/stage-one/nullish-fallback-pass-1固定五ABC均退出0，仍为
+  80complete/26incomplete/0failure/46no-module，无完整回退、新完整项
+  或legacy writer。batch-1.log/syntax-1.log核对原index/manifest SHA和
+  size，106份源码全部解析通过。style-summary-1.json核对所有diff：
+  3个record（1完整、2部分）的5处展开式改为??，没有其他源码文本变化。
+- author self-review核对guard读取/TDZ、原fallback occurrence及effects、
+  receiver、精确literal、来源和迭代所有权。O(N+A+P+M log(2+M)+C)时间，
+  O(N+A+P+M)存储，M为文本项、C为UTF-16比较工作；没有将字符串比较
+  隐藏为常数，也没有逐候选重放。没有新依赖、独立代理审查或实测RSS结论。
+  首次effectful读取/assignment前缀快照与alias、optional call/整链/被省略
+  子函数owner仍是表示缺口。一般数值、未知父构造协议及阶段一独立语义/
+  表示验收未完成，Goal active；代理、全量测试、扩展语料、RSS/基准和DFX
+  继续暂停。
+
 ### 2026-10-05：以共同 nullish 解释恢复原生可选成员访问
 
 - 规则revision104，基线e7762a23。CommentItem实际完整record旧输出仍将
