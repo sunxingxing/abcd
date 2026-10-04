@@ -11,6 +11,7 @@ const output = JSON.parse(run.stdout.trim());
 assert.equal(output.record, 3444); assert.equal(output.source_complete, false);
 assert.equal(output.executable, false); assert.equal(output.legacy_writer_used, false);
 assert.ok(output.source.includes('registerDefaultEvent()') && output.source.includes('registerIMEvent()'));
+assert.equal(output.source.match(/\?\./g)?.length, 2);
 const reference = stripTypeScriptTypes(readFileSync(paired, 'utf8'));
 const token = {}, failure = {code: 23, message: 'failure'};
 const parsedValues = [undefined, null, false, 0, '', true, 1, 1n, Symbol('value'), {}, []];

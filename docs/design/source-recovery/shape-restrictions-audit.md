@@ -3,6 +3,19 @@
 最新替换状态及补充事项见文末规则99；历史表中的严格比较候选及literal同块条件不再是
 当前准入条件。未替换项继续开放，不能将本次局部交付称为全量审计闭合。
 
+规则107补充：既有nullish抽象解释新增AssignmentExpr/SequenceExpr的
+语言转移规则及按路径的有序reference formation。typed SymbolTarget
+写入与赋值结果是同一RHS值；用原ExprId保留整个assignment/RHS，不按
+局部assignment形状、getter/call名单、两个guard、寄存器或同块选择。
+每个可能路径的形成 occurrence及其先前读取必须相容；不能提前到旧值
+读取之前、丢失另一个赋值或把条件形成改为必执行。这些检查承担实际
+执行/身份义务。不同guard数量、反向arena、copy/块拆分及任意RHS组合
+不需要新的生产分支；已证明SSA/效果/来源不再额外受布局条件拦截。
+当前native base引用一个保留的原ExprId，分离的多次形成效果暂未合并；
+这是表示能力缺口，原条件源码仍完整输出，不作为语言禁止或整函数拒绝。
+不同副作用fallback occurrence、一般alias、optional call/整链和历史
+未替换项继续开放；此次不宣称全量条件审计或阶段一验收闭合。
+
 规则106补充：已proved retained SSA的fallback改由共同四域方程解释
 strict null/undefined比较、NOT、truthiness及shared-arm条件合并，原
 saving UseId/assignment/phi/effect/exception与instruction origins保留。

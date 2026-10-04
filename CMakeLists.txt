@@ -590,6 +590,12 @@ if(BUILD_TESTING)
   add_executable(nullish_fallback_test tests/unit/source/nullish_fallback_test.cc tools/tree_position_json.cc)
   target_link_libraries(nullish_fallback_test PRIVATE abcd_source abcd_json)
   add_test(NAME nullish_fallback_test COMMAND nullish_fallback_test)
+  add_executable(snapshot_syntax_test tests/unit/source/snapshot_syntax_test.cc tools/tree_position_json.cc)
+  target_link_libraries(snapshot_syntax_test PRIVATE abcd_source abcd_json)
+  add_test(NAME snapshot_syntax_test COMMAND snapshot_syntax_test)
+  add_executable(snapshot_optional_test tests/unit/source/snapshot_optional_test.cc)
+  target_link_libraries(snapshot_optional_test PRIVATE abcd_source abcd_json)
+  add_test(NAME snapshot_optional_test COMMAND snapshot_optional_test)
   add_executable(nullish_selection_test tests/unit/source/nullish_selection_test.cc)
   target_link_libraries(nullish_selection_test PRIVATE abcd_source abcd_json)
   add_test(NAME nullish_selection_test COMMAND nullish_selection_test)
@@ -1497,6 +1503,10 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/optional_access.mjs $<TARGET_FILE:optional_access_test>)
     add_test(NAME nullish_fallback_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/nullish_fallback.mjs $<TARGET_FILE:nullish_fallback_test>)
+    add_test(NAME snapshot_syntax_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/snapshot_syntax.mjs $<TARGET_FILE:snapshot_syntax_test>)
+    add_test(NAME snapshot_optional_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/snapshot_optional.mjs $<TARGET_FILE:snapshot_optional_test>)
     add_test(NAME nullish_selection_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/nullish_selection.mjs $<TARGET_FILE:nullish_selection_test>)
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc" AND
@@ -1683,6 +1693,12 @@ if(BUILD_TESTING)
       add_test(NAME voip_service_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/voip_service.mjs $<TARGET_FILE:abc_semantic>
         ${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts)
+    endif()
+    if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc" AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/default/src/main/ets/pages/fullScreenImmersive/componentPageImmersive/MiniGame.ts")
+      add_test(NAME minigame_optional_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/minigame_optional.mjs $<TARGET_FILE:abc_structure>
+        ${ABCD_PAIRED_CORPUS_ROOT}/Immersive)
     endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc" AND
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/shopping/src/main/ets/view/Home.ts")

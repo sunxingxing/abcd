@@ -11,10 +11,33 @@ constexpr auto kDomains = static_cast<std::size_t>(NullishDomain::kCount);
 enum class Truth : std::uint8_t { kFalse = 1, kTrue = 2, kUnknown = 3 };
 using Reference = std::variant<SymbolId, FunctionOwnerId>;
 using Result = ExprId;
+struct Formation {
+  std::optional<ExprId> expression;
+  bool preceding_read = false;
+  bool valid = true;
+};
+Formation Follow(Formation first, Formation second) {
+  // Native access retains the original reference-forming expression in its
+  // entirety. Never move it ahead of an old-value read or discard a separate
+  // write. These are ordering/value obligations, not guard-layout limits.
+  if (second.expression && (first.preceding_read || first.expression)) first.valid = false;
+  if (!first.expression) {
+    first.expression = second.expression;
+    first.preceding_read |= second.preceding_read;
+  }
+  first.valid &= second.valid;
+  return first;
+}
+Formation Join(Formation left, Formation right) {
+  left.valid &= right.valid && left.expression == right.expression;
+  left.preceding_read |= right.preceding_read;
+  return left;
+}
 struct Meaning {
   std::optional<Reference> reference;
   std::array<Truth, kDomains> truths{Truth::kUnknown, Truth::kUnknown, Truth::kUnknown};
   std::array<std::optional<Result>, kDomains> results;
+  std::array<Formation, kDomains> formations;
   bool predicate = false;
 };
 // Dependency arity is the three fields of ConditionalExpr, not a corpus limit.
@@ -24,7 +47,8 @@ Inputs Children(const TreeExpression& expression) {
   return std::visit([](const auto& node) -> Inputs {
     using T = std::decay_t<decltype(node)>;
     if constexpr (std::is_same_v<T, ConditionalExpr>) return {{{node.condition, node.consequent, node.alternate}}, 3};
-    else if constexpr (std::is_same_v<T, BinaryExpr> || std::is_same_v<T, LogicalExpr>) return {{{node.left, node.right}}, 2};
+    else if constexpr (std::is_same_v<T, BinaryExpr> || std::is_same_v<T, LogicalExpr> ||
+        std::is_same_v<T, SequenceExpr>) return {{{node.left, node.right}}, 2};
     else if constexpr (std::is_same_v<T, UnaryExpr>) return {{{node.operand}}, 1};
     else return {};
   }, expression);
@@ -34,6 +58,12 @@ std::optional<Reference> StableReference(const FunctionTree& tree, ExprId id) {
   const auto& expression = tree.expressions[id.value].expression;
   if (const auto* symbol = std::get_if<SymbolExpr>(&expression)) return Reference{symbol->symbol};
   if (const auto* receiver = std::get_if<ThisExpr>(&expression)) return Reference{receiver->owner};
+  return {};
+}
+std::optional<Reference> FormedReference(const FunctionTree& tree, ExprId id) {
+  if (const auto stable = StableReference(tree, id)) return stable;
+  if (const auto* assignment = std::get_if<AssignmentExpr>(&tree.expressions[id.value].expression))
+    if (const auto* target = std::get_if<SymbolTarget>(&assignment->target)) return Reference{target->symbol};
   return {};
 }
 bool MergeReference(Meaning& result, const Meaning& input) {
@@ -78,6 +108,15 @@ Meaning Interpret(const FunctionTree& tree, ExprId id, const std::vector<Meaning
   }
   if (const auto reference = StableReference(tree, id)) {
     result.reference = reference; result.predicate = true;
+    for (auto& formation : result.formations) formation.preceding_read = true;
+    result.truths = {Truth::kFalse, Truth::kFalse, Truth::kUnknown}; return result;
+  }
+  if (const auto reference = FormedReference(tree, id)) {
+    // Assignment returns its RHS and stores that same value. Keep this actual
+    // occurrence, including arbitrary RHS effects and the target's scope check;
+    // subsequent pure reads observe its saved value. No producer whitelist.
+    result.reference = reference; result.predicate = true;
+    for (auto& formation : result.formations) formation.expression = id;
     result.truths = {Truth::kFalse, Truth::kFalse, Truth::kUnknown}; return result;
   }
   if (std::holds_alternative<MemberExpr>(expression)) {
@@ -88,9 +127,10 @@ Meaning Interpret(const FunctionTree& tree, ExprId id, const std::vector<Meaning
   if (const auto* binary = std::get_if<BinaryExpr>(&expression)) {
     if (binary->operation != analysis::BinaryOperator::kStrictEqual &&
         binary->operation != analysis::BinaryOperator::kStrictNotEqual) return result;
-    auto reference = StableReference(tree, binary->left);
+    auto input = binary->left;
+    auto reference = FormedReference(tree, input);
     auto constant = binary->right;
-    if (!reference) { reference = StableReference(tree, binary->right); constant = binary->left; }
+    if (!reference) { input = binary->right; reference = FormedReference(tree, input); constant = binary->left; }
     if (!reference) return result;
     const auto* literal = std::get_if<TreeLiteral>(&tree.expressions[constant.value].expression);
     if (!literal) return result;
@@ -99,6 +139,7 @@ Meaning Interpret(const FunctionTree& tree, ExprId id, const std::vector<Meaning
     if (std::holds_alternative<UndefinedLiteral>(*literal)) equal = NullishDomain::kUndefined;
     if (!equal) return result;
     result.reference = reference; result.predicate = true;
+    result.formations = meanings[input.value].formations;
     for (std::size_t domain = 0; domain < kDomains; ++domain) {
       const bool matches = domain == static_cast<std::size_t>(*equal);
       const bool positive = binary->operation == analysis::BinaryOperator::kStrictEqual;
@@ -125,7 +166,19 @@ Meaning Interpret(const FunctionTree& tree, ExprId id, const std::vector<Meaning
             a == Truth::kTrue && b == Truth::kTrue ? Truth::kTrue : Truth::kUnknown;
       else result.truths[domain] = a == Truth::kTrue || b == Truth::kTrue ? Truth::kTrue :
             a == Truth::kFalse && b == Truth::kFalse ? Truth::kFalse : Truth::kUnknown;
+      const auto stop = logical->operation == TreeLogical::kAnd ? Truth::kFalse : Truth::kTrue;
+      result.formations[domain] = a == stop ? left.formations[domain] : a == Truth::kUnknown ?
+          Join(left.formations[domain], Follow(left.formations[domain], right.formations[domain])) :
+          Follow(left.formations[domain], right.formations[domain]);
     }
+    return result;
+  }
+  if (const auto* sequence = std::get_if<SequenceExpr>(&expression)) {
+    const auto& left = meanings[sequence->left.value]; const auto& right = meanings[sequence->right.value];
+    if (!left.predicate || !right.predicate || !MergeReference(result, left) || !MergeReference(result, right)) return result;
+    result.predicate = true; result.results = right.results; result.truths = right.truths;
+    for (std::size_t domain = 0; domain < kDomains; ++domain)
+      result.formations[domain] = Follow(left.formations[domain], right.formations[domain]);
     return result;
   }
   if (const auto* selection = std::get_if<ConditionalExpr>(&expression)) {
@@ -151,12 +204,14 @@ Meaning Interpret(const FunctionTree& tree, ExprId id, const std::vector<Meaning
     result.predicate = true;
     for (std::size_t domain = 0; domain < kDomains; ++domain) {
       const auto choose = condition.truths[domain];
-      // Known final truth is insufficient: every actually evaluated guard
-      // must be a pure read of this same reference (or a constant). Otherwise
-      // a later OR/AND could hide an independent TDZ/receiver exception.
+      // Known final truth is insufficient: guards must belong to this same
+      // reference domain. Ordered formation separately retains their effects;
+      // foreign reads cannot lose a TDZ/receiver exception through OR/AND.
       const bool pure_yes = yes.predicate && compatible(yes), pure_no = no.predicate && compatible(no);
       result.predicate &= choose == Truth::kTrue ? pure_yes : choose == Truth::kFalse ? pure_no : pure_yes && pure_no;
       const auto a = outcome(yes, selection->consequent, domain), b = outcome(no, selection->alternate, domain);
+      result.formations[domain] = Follow(condition.formations[domain], choose == Truth::kTrue ? yes.formations[domain] :
+          choose == Truth::kFalse ? no.formations[domain] : Join(yes.formations[domain], no.formations[domain]));
       if (choose == Truth::kTrue) {
         result.results[domain] = a; result.truths[domain] = truth(yes, domain);
       } else if (choose == Truth::kFalse) {
@@ -223,15 +278,19 @@ std::variant<NullishSyntax, TreeStructureError> PlanNullishSyntax(
       const auto nil = meaning.results[static_cast<std::size_t>(NullishDomain::kNull)];
       const auto absent = meaning.results[static_cast<std::size_t>(NullishDomain::kUndefined)];
       const auto other = meaning.results[static_cast<std::size_t>(NullishDomain::kOther)];
+      bool ordered = true;
+      const auto formed = meaning.formations[0].expression;
+      for (const auto& formation : meaning.formations)
+        ordered &= formation.valid && formation.expression == formed;
       if (std::holds_alternative<ConditionalExpr>(tree.expressions[id.value].expression) &&
-          meaning.reference && nil && absent && other && SameResult(tree, texts, *nil, *absent)) {
+          ordered && meaning.reference && nil && absent && other && SameResult(tree, texts, *nil, *absent)) {
         const auto* literal = std::get_if<TreeLiteral>(&tree.expressions[nil->value].expression);
         const auto* member = std::get_if<MemberExpr>(&tree.expressions[other->value].expression);
         if (literal && std::holds_alternative<UndefinedLiteral>(*literal) && member &&
             StableReference(tree, member->base) == meaning.reference)
-          plan.projections[id.value] = OptionalMemberSyntax{*other};
+          plan.projections[id.value] = OptionalMemberSyntax{*other, formed.value_or(member->base)};
         else if (StableReference(tree, *other) == meaning.reference && !SameResult(tree, texts, *nil, *other))
-          plan.projections[id.value] = NullishFallbackSyntax{*other, *nil};
+          plan.projections[id.value] = NullishFallbackSyntax{formed.value_or(*other), *nil};
       }
       if (parent[id.value] && !--pending[parent[id.value]->value]) queue[ready++] = *parent[id.value];
     }
@@ -250,6 +309,13 @@ std::variant<NullishSyntax, TreeStructureError> PlanNullishSyntax(
         queue[ready++] = next;
       }
       if (plan.omitted_by[id.value]) plan.projections[id.value].reset();
+    }
+    for (std::size_t i = 0; i < count; ++i) {
+      budget.Step(); if (!plan.projections[i]) continue;
+      if (const auto* member = std::get_if<OptionalMemberSyntax>(&*plan.projections[i])) {
+        const auto base = std::get<MemberExpr>(tree.expressions[member->member.value].expression).base;
+        if (base != member->base) plan.omitted_by[base.value] = ExprId{static_cast<std::uint32_t>(i)};
+      }
     }
     // Nullish abstract interpretation can prove an opaque arm unreachable.
     // Its entire syntax ownership still needs event ranges, including variadic
@@ -277,14 +343,14 @@ std::variant<NullishSyntax, TreeStructureError> PlanNullishSyntax(
 bool NullishSyntax::Retains(ExprId root, ExprId child) const {
   return std::visit([&](const auto& syntax) {
     using T = std::decay_t<decltype(syntax)>;
-    if constexpr (std::is_same_v<T, OptionalMemberSyntax>) return syntax.member == child;
+    if constexpr (std::is_same_v<T, OptionalMemberSyntax>) return syntax.member == child || syntax.base == child;
     else { static_assert(std::is_same_v<T, NullishFallbackSyntax>); return syntax.value == child || syntax.fallback == child; }
   }, *projections[root.value]);
 }
-ExprId NullishSyntax::Base(const FunctionTree& tree, ExprId root) const {
+ExprId NullishSyntax::Base(const FunctionTree&, ExprId root) const {
   return std::visit([&](const auto& syntax) {
     using T = std::decay_t<decltype(syntax)>;
-    if constexpr (std::is_same_v<T, OptionalMemberSyntax>) return std::get<MemberExpr>(tree.expressions[syntax.member.value].expression).base;
+    if constexpr (std::is_same_v<T, OptionalMemberSyntax>) return syntax.base;
     else { static_assert(std::is_same_v<T, NullishFallbackSyntax>); return syntax.value; }
   }, *projections[root.value]);
 }

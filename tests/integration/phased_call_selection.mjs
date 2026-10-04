@@ -14,7 +14,9 @@ for (const {computed, prefix} of variants) for (const count of [1, 2]) {
   const nullable = prefix === 'nullish' || prefix === 'wrapped' || prefix === 'member';
   const source = execFileSync(tool, [prefix === 'member' ? '--phased-member-wrapped-source' : prefix === 'nullish' ? '--phased-nullish-source' : prefix === 'wrapped' ? '--phased-wrapped-nullish-source' : prefix === 'getter' ? '--phased-prefix-getter-source' : prefix === 'call' ? '--phased-prefix-call-source' :
     computed ? '--phased-computed-call-selection-source' : '--phased-call-selection-source', ...(count === 2 ? ['--twice'] : [])], {encoding: 'utf8'});
-  assert.ok(source.includes('value.method(') && source.includes(' ? '));
+  assert.ok(source.includes('value.method('));
+  assert.ok(source.includes(nullable ? '?.' : ' ? '));
+  assert.equal(source.match(/\?\./g)?.length ?? 0, nullable ? count : 0);
   assert.ok(!source.includes('.call(') && !source.includes('INCOMPLETE'));
   const recovered = Function(`"use strict"; return ${source}`)();
   const reference = (value, flag, wrap) => {

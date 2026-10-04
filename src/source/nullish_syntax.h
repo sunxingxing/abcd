@@ -2,13 +2,13 @@
 #define ABCD_SOURCE_NULLISH_SYNTAX_H_
 #include "tree_structure.h"
 namespace abcd::source {
-struct OptionalMemberSyntax { ExprId member; };
+struct OptionalMemberSyntax { ExprId member; ExprId base; };
 struct NullishFallbackSyntax { ExprId value; ExprId fallback; };
 using NullishProjection = std::variant<OptionalMemberSyntax, NullishFallbackSyntax>;
 enum class NullishForm : std::uint8_t { kOptionalMember, kFallback };
 // Native nullish syntax over an unchanged verified expression tree.
-// Only pure tests of the same stable binding/receiver may be discharged;
-// computed keys, getters and outside calls retain their original ownership.
+// Tests refer to one binding/receiver domain. An ordered reference-forming
+// expression is retained as the base; keys/getters/calls keep their ownership.
 struct NullishSyntax {
   std::vector<std::optional<NullishProjection>> projections;
   std::vector<std::optional<ExprId>> omitted_by;

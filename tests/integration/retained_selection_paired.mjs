@@ -16,6 +16,8 @@ assert.equal(report.executable, false);
 assert.equal(report.legacy_writer_used, false);
 assert.ok(report.source.includes('onCreate(') && report.source.includes('onNewWant('));
 assert.match(report.source, /\?\? "default value"/);
+assert.equal(report.source.match(/\?\./g)?.length, 2);
+assert.ok(!report.source.includes('!== null ?'), 'optional parameter read remains expanded');
 const reference = stripTypeScriptTypes(readFileSync(paired, 'utf8'));
 const values = [undefined, null, false, 0, -0, NaN, '', 'text', 1n, Symbol('value'), {}, []];
 

@@ -1552,3 +1552,38 @@ arena order, equal/different texts, signed zero, foreign-binding TDZ, call/gette
 exceptions, opaque fallback sequences and outside value calls. Actual decoded
 HotListItemView and retained-selection methods receive separate paired behavior
 and source-style checks; fixtures are not decoded-body publication evidence.
+
+
+## Ordered reference formation in nullish syntax (rule 107)
+
+The existing ECMA-262 2024 assignment/sequence semantics supply the transfer:
+a SymbolTarget assignment returns its stored RHS value. Preserve that entire
+original ExprId, including arbitrary RHS effects, scope checks and exceptions.
+Each null/undefined/other domain carries a fixed-size formation/read/order
+summary. Sequential composition and short-circuit/conditional joins establish
+that every possible path retains the same occurrence before its guarded reads.
+Moving it ahead of an old-value read, dropping a distinct write or making a
+conditional formation mandatory cannot authorize native optional access.
+
+This extends the existing finite interpretation and Kahn ownership traversal,
+not a bytecode/assignment sequence matcher. It adds no producer whitelist,
+selection count, register/PC/block condition, dependency or copied third-party
+code. Assignment RHS ownership remains opaque to the guard proof and fully
+retained by the original AST. OptionalMemberSyntax explicitly retains its base
+and original member/key; all discharged reads retain zero-width event ranges at
+that base.end. Shared printer/emission/serializer consume the same plan.
+
+For N expressions, A arguments, P properties, M text entries and C compared
+UTF-16 work, complexity stays O(N+A+P+M log(2+M)+C) time and O(N+A+P+M) space.
+The new per-domain state is constant size and counted by the existing budget;
+no per-candidate graph or expression replay is introduced. 1/200/201/402 guard
+fixtures, reverse arenas and 201-to-402 geometric work checks cover scaling.
+They are not process RSS, latency benchmarks or full-corpus evidence.
+
+The current native base refers to one retained original expression. Combining
+separated formation effects, general alias transport, independent effectful
+fallback occurrences, optional call/whole-chain syntax and omitted child owners
+remain representation gaps. Original condition source continues to print for
+unprojected cases; this is not an admission limit on complete function recovery.
+Maintenance must preserve execution count, receiver/key order, target checks,
+TDZ, exception identity and original producer/instruction provenance.

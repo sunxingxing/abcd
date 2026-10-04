@@ -86,7 +86,7 @@ work 统计和调用方显式传入有限额度的底层兼容接口保留，但
 整份 record 的最终目标不变。演进任务见
 [C00–C09 计划](../../superpowers/plans/2026-09-28-unified-control-regions.md)。
 
-## 原生空值语法的表示（规则 104、105）
+## 原生空值语法的表示（规则 104、105、107）
 
 PlanNullishSyntax在已经检查的FunctionTree上解释null、undefined、other
 三个语言值域，证明nullish路径返回undefined、其他路径恰好执行同一个
@@ -107,10 +107,26 @@ optional_access及projection root。纯条件证明永不执行的opaque arm，�
 沿完整AST所有权保留其调用/聚合子节点事件；不捏造有长度的源码片段。
 printer、family emission与serializer使用同一计划，错误仍保留真实分类。
 
-当前叶子是稳定binding/receiver的成员读取。原生optional call、effectful
-base的单次快照/alias证明和整条链合并仍未完成；未打印的子函数owner
-仍受现有完整family约束，不能因不可达分支就伪造其发布完成。这些是
-实现/表示缺口，不是语言禁止条件，亦不授权删除原身份/效果义务。
+规则107进一步解释AssignmentExpr的语言语义：赋值表达式返回写入同一
+SymbolId的RHS值，原整个assignment occurrence可以成为native base。
+按null/undefined/other各路径传播reference formation、先前读取与执行
+顺序，支持严格比较两种操作数方向、NOT、AND/OR、条件与Sequence组合。
+这不是匹配“assignment后两个guard”的局部语法/字节码模板；RHS可包含
+任意原有call/getter/复合效果，全部随原赋值保留，不按producer种类准入。
+依据[ECMA-262 2024 Assignment Evaluation](https://tc39.es/ecma262/2024/multipage/ecmascript-language-expressions.html#sec-assignment-operators-runtime-semantics-evaluation)。
+
+每条可能执行路径必须保留同一个原形成表达式，不能将其提前到旧值读取
+之前或丢掉另一次写入，也不能从只在部分路径执行的保存中制造必执行base。
+这是当前以一个原ExprId表示native base的能力边界，不是语言禁止多个
+赋值；未能表示的情况继续打印原条件，不拒绝其完整函数或虚构源语义。
+独立、分离的多次形成效果与一般alias transport仍需共同表示扩展。
+
+OptionalMemberSyntax保留原member/key并显式指定已证明的base；原Symbol
+base读取与其他消除的guard继续在保存表达式的end记录零宽来源。赋值本身
+及任意RHS子树保持实际非零范围，nullish路径不计算key/getter。原AST、
+control、operand、instruction origin、scope和exception证明保持不变。
+原生optional call、整条链合并及未打印子函数owner仍未完成；不能因为
+不可达分支伪造family发布或整份阶段一验收。
 
 规则105将同一计划扩展为typed OptionalMemberSyntax/NullishFallbackSyntax
 投影。两个nullish域返回同一fallback、其他域返回原稳定值时，使用现有
@@ -128,8 +144,8 @@ fallback结果相等依据原ExprId、typed稳定身份或literal值；UTF-16字
 
 省略节点及属性继续在原value.end记录零宽事件，serializer标记
 nullish_fallback和projection；family emission与printer共用同一计划。
-当前guard使用稳定binding/receiver。首次effectful读取和assignment前缀
-尚需共同单次求值/alias证明，不能新增局部赋值形状匹配。这是表示缺口。
+规则107使同一ordered formation也成为??的保留value；fallback仍是原
+子树。独立副作用fallback occurrence的合并与一般alias transport保持缺口。
 
 规则106在ABC/SSA层复用ProjectSelectionLogicals恢复已证明retained值的
 原生??。四域（null/undefined/其他假值/其他真值）方程解释原严格比较、

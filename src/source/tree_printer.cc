@@ -1039,7 +1039,7 @@ class TreePrinter {
         using T = std::decay_t<decltype(syntax)>;
         if constexpr (std::is_same_v<T, OptionalMemberSyntax>) {
           const auto& read = std::get<MemberExpr>(Tree().expressions[syntax.member.value].expression);
-          BeginExpression(syntax.member); Member(read.base, read.key, PostfixContext::kMemberBase, true);
+          BeginExpression(syntax.member); Member(syntax.base, read.key, PostfixContext::kMemberBase, true);
         } else {
           static_assert(std::is_same_v<T, NullishFallbackSyntax>);
           Expression(LogicalExpr{TreeLogical::kNullish, syntax.value, syntax.fallback}, operand.observation);

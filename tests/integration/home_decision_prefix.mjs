@@ -87,6 +87,7 @@ try {
   const record = JSON.parse(readFileSync(join(output, 'manifest.json'), 'utf8')).records.find(value => value.entity === 23956);
   assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, false);
   const generated = readFileSync(join(output, record.source), 'utf8');
+  assert.equal(generated.match(/\?\./g)?.length, 12);
   const paired = stripTypeScriptTypes(readFileSync(join(root, 'Immersive_src/shopping/src/main/ets/view/Home.ts'), 'utf8'));
   const sequences = [['sm'], ['lg'], ['xl'], [null], [undefined], [Symbol('breakpoint')], [hostile], ['lg', 'sm', 'xl', null, undefined]];
   const failures = [{fail: '', ordinal: 1}, ...['get:create', 'call:create', 'window', 'width',

@@ -12,6 +12,59 @@
 
 ## 当前阶段
 
+### 2026-10-05：共同有序保存值恢复带副作用 base 的空值访问
+
+- 规则revision107，基线d848a966。上轮数值边界解释没有改变验收合同；
+  本轮继续固定五ABC的阶段一目标，实施恢复功能和独立行为/表示验证。
+  新实际decoded用例在旧实现2/2 RED，原函数已通过共同语义验证但没有?.；
+  日志前缀/tmp/abcd-snapshot-optional-*，不靠样本或配对源码生成结果。
+- PlanNullishSyntax复用原null/undefined/other解释、Kahn所有权与结果合流，
+  新增AssignmentExpr返回其SymbolTarget所保存RHS值的语言转移，以及
+  Sequence/短路/conditional各域的有序形成与先前读取事实。整个原赋值及
+  任意RHS效果成为native base；不匹配两个guard、赋值邻接、producer名单、
+  opcode序列、寄存器、PC或同块。已证明SSA/控制/效果/异常/receiver、
+  scope与原instruction来源保持，不新增恢复准入条件或第二套writer。
+- OptionalMemberSyntax明确保留base和原member/key；被消除的Symbol base
+  及guard在保存表达式end记录零宽事件，赋值/RHS仍有实际范围。共同
+  printer、family emission与serializer消费同一typed计划；目标写入、
+  RHS异常、key转换、getter、调用receiver及外部chain边界保持。
+  同一形成也可以作为??的原value。分离的多次形成、旧值条件读取、只在
+  部分路径保存不能被改变执行顺序/次数；不能投影时仍完整打印原条件。
+- 三profile分别实际解码，1/200/201/402 guard的96个完整生成函数包含
+  反向比较、NOT、copy/纯块拆分、getter/call、计算成员键和缺少undefined/
+  不同结果反例，15,360个独立Node场景通过。另80组纯语法夹具包含反向
+  arena、Sequence、任意RHS复合效果、动态key转换、外部value-call、
+  旧值读取、再次赋值、部分路径保存及其他binding效果；384,000个行为
+  场景、严格来源序列化与201→402几何work检查通过。语法夹具不冒充
+  原ABC完整函数证据，未用typed拒绝/INCOMPLETE代替复合行为成功。
+- 实际TestAbility/EntryAbility完整onCreate/onNewWant方法4,896配对场景
+  通过并新增原生?.断言，不调用未恢复构造器。Home Tabs/onChange的592
+  场景、MiniGame受控宿主下constructor/Column/Content/update/延迟参数
+  callback的880场景、Push两注册方法及callback的572场景分别通过；
+  这些不授予部分record、其他方法或实际OpenHarmony UI/平台完整验收。
+- related-build.log的39个实际target单-j4构建退出0。related-tests.log
+  85/86通过491.13秒；唯一失败为旧phased-call测试强制“三元必须存在”，
+  核对实际?.输出后按nullable/count更新表示断言，保持原行为oracle。
+  最后重新配置注册MiniGame测试，final-tests.log 4/4通过5.52秒，含
+  78,624 phased调用receiver/效果/异常场景及上述三个实际配对测试；
+  共89项当前相关检查闭合，未重复启动全量套件。早期补充语法夹具把两个
+  独立getter fallback误当相同结果，tests-2.log 4/6；该既有表示缺口
+  保留，??正例改为同一语言值，tests-3.log 6/6通过20.05秒。首次
+  MiniGame测试使用已存在输出目录被writer拒绝，改为临时子目录后通过。
+- fresh build/stage-one/snapshot-optional-pass-1固定五ABC均退出0，仍为
+  80complete/26incomplete/0failure/46no-module，无新完整项、完整回退或
+  legacy writer。原index/manifest SHA和size一致，106份源码解析通过。
+  已逐项检查全部diff：6个record（2完整、4部分）的24处展开式改为?.，
+  无其他源码文本变化；style-summary-1.json保留各record计数。
+- author自检核对typed赋值语义、路径形成/旧值/重复写入、opaque RHS、
+  原子树与source event所有权、key/receiver、TDZ及short-circuit异常。
+  复杂度保持O(N+A+P+M log(2+M)+C)时间、O(N+A+P+M)存储；没有新
+  外部依赖、代理或实测RSS结论。一般alias transport、分离形成效果、
+  独立effectful fallback、optional call/整链/child owner及statement-only
+  决策前缀仍有表示缺口。普通数值、未知父构造协议和字段/全局/签名/
+  函数体整合、整份阶段一独立语义/表示验收仍未完成，Goal active；代理、
+  全量测试、扩展语料、RSS/基准、调度器/DFX及定期审视继续暂停。
+
 ### 2026-10-05：原保存值经共同四域方程恢复空值选择
 
 - 规则revision106，基线eb8fd3cd。继续固定五ABC的阶段一语义/表示目标，
