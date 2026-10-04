@@ -295,7 +295,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
         continue;
       }
       if (placement.kind == EvaluationKind::kAlias) {
-        Require(flow == EvaluationFlow::kPhased && op.result &&
+        Require(op.result &&
             ResolveEvaluationValue(plan, *op.result) != *op.result &&
             !placement.consumer && !placement.temporary, Error::kOwnership);
         visits[i] = EvaluationVisit::kDone;

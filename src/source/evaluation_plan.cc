@@ -219,11 +219,14 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
       if (const auto* error = std::get_if<Error>(&live)) return *error;
       const auto cost = std::get<EvaluationLivenessCost>(live);
       admit(cost.bytes, 1); step(cost.work);
-      const auto aliases = BuildEvaluationAliases(graph, plan, {bytes, work});
-      if (const auto* error = std::get_if<Error>(&aliases)) return *error;
-      const auto alias_cost = std::get<EvaluationAliasCost>(aliases);
-      admit(alias_cost.bytes, 1); step(alias_cost.work);
     }
+    // Copy identity belongs to the source projection in either flow. Exact
+    // imports retain transport anchors; simplification is an optimization,
+    // never a prerequisite for assigning one computation its original site.
+    const auto aliases = BuildEvaluationAliases(graph, plan, {bytes, work});
+    if (const auto* error = std::get_if<Error>(&aliases)) return *error;
+    const auto alias_cost = std::get<EvaluationAliasCost>(aliases);
+    admit(alias_cost.bytes, 1); step(alias_cost.work);
     if (has_definitions) {
       auto built = flow == EvaluationFlow::kPhased ? BuildPhasedLiteralPlan(graph, plan, {bytes, work}, module_index.peers) :
           BuildLiteralPlan(graph, {bytes, work}, module_index.peers, plan.class_projection.owners, plan.receiver_guards, plan.cells ? &*plan.cells : nullptr);
@@ -338,7 +341,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
           if (const auto error = CheckEvaluationUse(graph, occurrence, *shape, ordinal - 1)) return *error;
           const auto* value = std::get_if<analysis::ValueId>(&occurrence.operand);
           if (!value) continue;
-          const auto& definition = graph.values[value->value];
+          const auto& definition = graph.values[ResolveEvaluationValue(plan, *value).value];
           const auto* result = std::get_if<analysis::OpResult>(&definition.origin);
           if (!result || visible[result->op.value].first != use || visible[result->op.value].multiple) continue;
           if (pinned[result->op.value]) continue;

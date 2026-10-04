@@ -84,8 +84,9 @@ struct EvaluationPlan {
   std::optional<analysis::ArgumentFrameFact> arguments;
   EvaluationFlow flow = EvaluationFlow::kNormal;
   std::optional<ExceptionCopies> exceptions;
-  // Flat, independently checked copy/phi identities. Empty in the normal route,
-  // whose IR is already simplified. Catch bindings and unresolved mutable phi
+  // Flat, independently checked copy/phi identities in either flow. Exact
+  // imports retain original transport anchors; optimization is optional.
+  // Catch bindings and unresolved mutable phi
   // locations retain their original identity and first snapshot.
   std::vector<analysis::ValueId> aliases;
   std::optional<HoleProtocol> holes;

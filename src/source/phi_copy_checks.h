@@ -47,8 +47,9 @@ inline void CheckPhiFlow(const analysis::ValueProgram& graph, CopyBudget& budget
   throw PhiCopyError::kFlow;
 }
 inline std::vector<analysis::ValueId> PhiIdentities(const analysis::ValueProgram& graph,
-    CopyBudget& budget, PhiFlow flow) {
-  if (flow != PhiFlow::kPhased) return {};
+    CopyBudget& budget) {
+  // Both flows preserve exact incoming uses. Identity transport adds no
+  // mutable phi write; the same SCC equations own its source projection.
   auto indexed = analysis::AnalyzeValueIdentities(graph, budget.Remaining());
   if (const auto* error = std::get_if<analysis::ValueSimplifyError>(&indexed))
     throw *error == analysis::ValueSimplifyError::kWorkLimit ? PhiCopyError::kWorkLimit :

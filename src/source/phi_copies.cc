@@ -44,7 +44,7 @@ std::variant<PhiCopies, PhiCopyError> BuildCopies(
     }
     budget.Reserve(result.bundles, bundles);
     std::size_t schedule_bytes = 0;
-    const auto identities = PhiIdentities(graph,budget,flow);
+    const auto identities = PhiIdentities(graph,budget);
     budget.Array(result.projection,count);
     std::vector<ParallelCopy> effective; budget.Reserve(effective,count);
     for (std::size_t first = 0; first < count;) {

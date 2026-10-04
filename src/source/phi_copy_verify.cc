@@ -16,7 +16,7 @@ std::variant<std::uint64_t, PhiCopyError> VerifyPhiCopiesForFlow(
     CheckPhiFlow(graph, budget, flow);
     RequirePhiCopy(plan.inputs.size() == plan.copies.size(), PhiCopyError::kInput);
     RequirePhiCopy(plan.projection.size() == plan.copies.size(),PhiCopyError::kInput);
-    const auto identities = PhiIdentities(graph,budget,flow);
+    const auto identities = PhiIdentities(graph,budget);
     std::vector<ParallelCopy> effective; budget.Reserve(effective,plan.copies.size());
     std::vector<std::uint8_t> seen;
     budget.Array(seen, graph.uses.size());

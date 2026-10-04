@@ -1612,3 +1612,29 @@ are representation capacity bounds, not VM constants or acceptance thresholds.
 Decoded 200/201/402 fixtures exercise geometric work through the existing
 counters. They do not constitute process RSS, a timing benchmark, full-corpus
 validation, or completion of the pending fields/signatures/body gate.
+
+
+### Shared exact-import identity projection (2026-10-05, rules 113)
+
+Normal and phased evaluation now use the same read-only copy/phi SCC identity
+index described under rules 89. Mutation by SimplifyValues is an optimization;
+exact imported normal graphs retain every original instruction and use. Source
+aliases keep zero-width transport anchors while the canonical producer owns
+its computation, private snapshot assignment and all real observations.
+PhiCopies independently derives the same identity projection in either flow,
+retaining the complete incoming census and scheduling actual writes only.
+
+The planner, eager snapshot intervals and expression Use lookup resolve the
+same flat canonical identity. No per-use copy-chain walk or origin-membership
+exception is added. TreeFlow, operands and correspondence still independently
+verify the saving occurrence, private symbol, effect order and original sites.
+
+Provenance, licensing and maintenance are unchanged: project-owned iterative
+Tarjan identity analysis, functional-graph compression, observation indexing
+and parallel-copy scheduling; no new dependency. Each identity pass remains
+O(V+U) time/storage. They are bounded constant passes in build and fresh verify;
+existing copy scheduling/sorting costs are separate. Allocated index capacity
+and work remain in the existing grants and plan reports. Three-profile exact
+and simplified 200/201/402 copy variants check evaluation-work scaling; existing
+phi tests retain 200/201/4096 identity and actual parallel-copy cases. These
+scoped checks do not measure physical RSS or full-corpus latency.

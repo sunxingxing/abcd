@@ -17,12 +17,13 @@ std::vector<std::optional<UseId>> Candidates(const ValueProgram& graph,
     if (use.life != ValueLife::kLive) continue;
     const auto* owner = std::get_if<OpId>(&use.owner);
     const auto* value = std::get_if<ValueId>(&use.operand);
-    const auto* source = value ? std::get_if<OpResult>(&graph.values[value->value].origin) : nullptr;
+    const auto* source = value ? std::get_if<OpResult>(&graph.values[ResolveEvaluationValue(plan, *value).value].origin) : nullptr;
     if (!owner || !source || graph.ops[source->op.value].block != graph.ops[owner->value].block) continue;
     // Initialization owns this guard's dependency and original anchor. It is
     // not a language read occurrence and cannot claim the snapshot assignment;
     // the next real eager use still must pass the common effect interval proof.
-    if (plan.cells && IsInitializedCellGuard(graph, *plan.cells, *owner)) continue;
+    if (plan.operations[owner->value].kind == EvaluationKind::kAlias ||
+        (plan.cells && IsInitializedCellGuard(graph, *plan.cells, *owner))) continue;
     const auto placement = BeforeLogicalFusion(graph, plan, source->op.value);
     if (placement.kind != EvaluationKind::kRoot || placement.temporary != TemporaryReason::kMultipleUses) continue;
     auto& previous = first[source->op.value];
@@ -79,7 +80,7 @@ void BuildPredicateSnapshots(const ValueProgram& graph, EvaluationPlan& plan, Tr
       for (auto k = op.use_count; k != 0; --k) {
         budget.Step(); const UseId use{op.first_use.value + k - 1};
         const auto* value = std::get_if<ValueId>(&graph.uses[use.value].operand);
-        const auto* source = value ? std::get_if<OpResult>(&graph.values[value->value].origin) : nullptr;
+        const auto* source = value ? std::get_if<OpResult>(&graph.values[ResolveEvaluationValue(plan, *value).value].origin) : nullptr;
         if (!source || graph.ops[source->op.value].block != op.block) continue;
         const auto placement = plan.operations[source->op.value];
         const bool owned = placement.kind == EvaluationKind::kInline && placement.consumer == use;
@@ -126,7 +127,7 @@ void VerifyPredicateSnapshots(const ValueProgram& graph, const EvaluationPlan& p
       for (std::uint32_t k = 0; k < op.use_count; ++k) {
         budget.Step(); const UseId use{op.first_use.value + k};
         const auto* value = std::get_if<ValueId>(&graph.uses[use.value].operand);
-        const auto* source = value ? std::get_if<OpResult>(&graph.values[value->value].origin) : nullptr;
+        const auto* source = value ? std::get_if<OpResult>(&graph.values[ResolveEvaluationValue(plan, *value).value].origin) : nullptr;
         if (!source || graph.ops[source->op.value].block != op.block) continue;
         const auto before = BeforeLogicalFusion(graph, plan, source->op.value);
         const auto actual = plan.operations[source->op.value];
@@ -151,7 +152,7 @@ void VerifyPredicateSnapshots(const ValueProgram& graph, const EvaluationPlan& p
       for (std::uint32_t k = 0; k < op.use_count; ++k) {
         budget.Step(); const UseId use{op.first_use.value + k};
         const auto* value = std::get_if<ValueId>(&graph.uses[use.value].operand);
-        const auto* source = value ? std::get_if<OpResult>(&graph.values[value->value].origin) : nullptr;
+        const auto* source = value ? std::get_if<OpResult>(&graph.values[ResolveEvaluationValue(plan, *value).value].origin) : nullptr;
         if (!source || graph.ops[source->op.value].block != op.block) continue;
         const auto placement = BeforeLogicalFusion(graph, plan, source->op.value);
         const auto actual = plan.operations[source->op.value];

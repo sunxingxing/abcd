@@ -12,6 +12,58 @@
 
 ## 当前阶段
 
+### 2026-10-05：普通与异常路径共用原始 copy/phi 身份投影
+
+- 规则revision113，基线88c040b2；25aa工作树、分支
+  codex/resume-generator-post-loop。本轮开始时工作树干净。上一轮数值
+  边界解释没有更改代码或默认合同；本轮完成不依赖新算术政策的实际
+  raw-copy来源缺口，默认V3、显式language arithmetic及固定五ABC范围保持。
+- 两项旧quotient检查在当前HEAD复现2/2失败，LLDB定位到TreeFlow的
+  PredicateSnapshots：ValueCopy合并了保存赋值的来源，计算与传输被
+  混为一个表达式。未删除或放宽snapshot/origin校验。普通路径现复用
+  既有Build/VerifyEvaluationAliases与AnalyzeValueIdentities；纯copy
+  和单外部身份锚定的phi仅投影身份，原指令保留原位置/原来源anchor，
+  计算、首次保存与其他读取仍分别由原树验证器检查。未锚定循环、多个
+  不同身份、内部值、真实mutable phi及catch作用域保留原义务。
+- 共同planner、predicate候选/效果区间及ExpressionForest::Use查询
+  同一canonical value，仍使用原UseId选择唯一保存位置。扩展raw getter
+  测试发现Use漏查身份而产生孤立表达式；共同解析修正后通过。普通
+  PhiCopies原未接身份方程，导致已alias的phi仍要求不存在的mutable
+  binding；Build/fresh Verify现与异常路径使用同一SCC身份与typed
+  PhiCopyUse投影。没有新增opcode序列、样本/名称、PC/寄存器、同块、
+  producer名单或selection数量准入，也没有新的来源宽松匹配。
+- eager_snapshot增加raw/simplified两路线：三profile、七种消费者、
+  0/1/200/201/402复制链、寄存器交换、效果barrier、纯拆块，共1,680
+  完整函数；另18个实际分支汇合函数检查身份phi与两种布尔路径。
+  fresh TreeSemantics/InstructionSources及复制身份、consumer、赋值
+  target和另一真实原始来源的篡改检查保持。201→402共同evaluation
+  work比小于3；仍非RSS/全语料性能验收。Node独立对照检查payload
+  身份、getter/键转换/写入/调用顺序及次数、receiver、原抛出token，
+  正常/异常/改写后不得重读保存值，共528,528个独立场景通过。
+- phi_copies旧夹具用同一参数锚定全部phi却强制要求mutable搬运，已
+  改为参数/receiver不同身份以保留真实并行复制与循环scratch测试；
+  相同身份另独立检查全部原输入保留、执行schedule为空及伪造projection
+  拒绝。1/2/200/201/4096的既有定向规模保留，没有扩展语料或基准。
+- 日志前缀/tmp/abcd-raw-copy-*。red-tests-1旧quotient为2/2失败；
+  tests-2暴露新raw getter，phi-red-test-1暴露汇合binding；原phi单测
+  的陈旧强制搬运断言在tests-4失败，修正独立夹具后通过。final-build-1
+  因测试误用不存在的Frame访问器编译失败，使用夹具实际参数数后，
+  final-build-2实际18个target单-j4退出0。final-tests-1定向35/35
+  通过278.23秒，含新raw/phi、既有比较/cell/literal/selection、数值
+  identity、语言算术/CLI/配对、异常staging/liveness及来源路由检查。
+  没有执行全套或恢复暂缓验证项。
+- fresh raw-copy-default-pass-1：80complete/26incomplete-source/
+  0source-failure/46no-module；raw-copy-language-pass-1：95complete/
+  11incomplete-source/0source-failure/46no-module。两模式各五输入退出0，
+  无legacy writer或complete回退，各106份完整/部分源码解析通过，全部
+  源码与comparison-call基线逐字节一致；SHA/size匹配原corpus index。
+  输入样本未改。该模型修复没有增加本轮完整record数量。
+- Goal active。剩余未知父构造协议、WindowUtil成员的NEG数值输入、
+  非线性前缀与跨控制literal完整泛化、实例字段/全局/完整签名/函数体
+  整合及所有record的独立行为/表示验收仍开放；组件通过、source_complete
+  标志和语法解析不代替阶段一验收。代理、全套、扩展语料、RSS/基准、
+  调度/DFX及定期审视保持暂停。
+
 ### 2026-10-05：比较条件与直线前缀贯通原生成员调用
 
 - 规则revision112，基线de503f4b，当前工作树为25aa、分支

@@ -83,7 +83,7 @@ std::optional<analysis::ValueId> SourcePhiAlias(const analysis::ValueProgram& gr
 std::variant<EvaluationAliasCost, EvaluationError> BuildEvaluationAliases(
     const analysis::ValueProgram& graph, EvaluationPlan& plan, analysis::SemanticBudget budget) {
   try {
-    Require(plan.flow == EvaluationFlow::kPhased && plan.operations.size() == graph.ops.size() &&
+    Require(plan.operations.size() == graph.ops.size() &&
         plan.aliases.empty(), Error::kOwnership);
     AliasQuota quota(budget);
     quota.Array(plan.aliases, graph.values.size());
@@ -146,10 +146,6 @@ std::variant<EvaluationAliasCost, EvaluationError> BuildEvaluationAliases(
 std::variant<std::uint64_t, EvaluationError> VerifyEvaluationAliases(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan, analysis::SemanticBudget budget) {
   try {
-    if (plan.flow == EvaluationFlow::kNormal) {
-      Require(plan.aliases.empty(), Error::kOwnership);
-      return std::uint64_t{0};
-    }
     Require(plan.aliases.size() == graph.values.size(), Error::kOwnership);
     AliasQuota quota(budget);
     const auto identities = IdentityFacts(graph, quota);

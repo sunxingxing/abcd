@@ -858,7 +858,8 @@ class ForestBuilder {
   }
   ExprId Use(analysis::UseId use, TreeOriginId origin) {
     const auto& operand = graph_.uses[use.value].operand;
-    const auto* value = std::get_if<analysis::ValueId>(&operand);
+    const auto resolved = ResolveEvaluationOperand(evaluation_, operand);
+    const auto* value = std::get_if<analysis::ValueId>(&resolved);
     const auto* source = value ? std::get_if<analysis::OpResult>(&graph_.values[value->value].origin) : nullptr;
     if (source && evaluation_.operations[source->op.value].kind == EvaluationKind::kPredicateSnapshot &&
         evaluation_.operations[source->op.value].consumer == use) {

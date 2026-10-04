@@ -27,7 +27,7 @@ void Append(ValueProgram& graph, OperandUse use) {
   definition.first_use = id;
   graph.uses.push_back(use);
 }
-ValueProgram Graph(std::uint32_t count, bool loop) {
+ValueProgram Graph(std::uint32_t count, bool loop, bool identity = false) {
   ValueProgram graph;
   graph.blocks = {{{0}, 1, {0}, 2}, {{1}, 1, {2}, 0}};
   graph.edges = {{{0}, {loop ? 0U : 1U}, FlowEdgeKind::kTaken, 0},
@@ -35,6 +35,7 @@ ValueProgram Graph(std::uint32_t count, bool loop) {
   graph.values.push_back({EntryDefinition{ParameterEntry{0}}, ValueKinds::Language(), {}});
   for (std::uint32_t i = 0; i < count; ++i)
     graph.values.push_back({PhiDefinition{{loop ? 0U : 1U}}, ValueKinds::Language(), {}});
+  graph.values.push_back({EntryDefinition{ReceiverEntry{}}, ValueKinds::Language(), {}});
   graph.ops.push_back({ValueBranch{UnaryOperator::kToBoolean}, {0}, 0, {0}, 1, {},
       LanguageEffect::kNone, LanguageEffect::kNone, ExceptionalCompletion::kImpossible, {0}});
   graph.ops.push_back({ValueReturn{}, {1}, 0, {1}, 1, {},
@@ -44,9 +45,15 @@ ValueProgram Graph(std::uint32_t count, bool loop) {
   for (std::uint32_t i = 1; i <= count; ++i) {
     const IncomingKey first = loop ? IncomingKey{MethodEntryKey{}} : IncomingKey{EdgeId{0}};
     const IncomingKey second = EdgeId{loop ? 0U : 1U};
-    Append(graph, {ValueId{i}, OperandRole::kPhiInput, ReadPurpose::kOperand, ValueId{0}, first, {}, {}, {}});
-    Append(graph, {ValueId{i}, OperandRole::kPhiInput, ReadPurpose::kOperand,
-        ValueId{loop ? i % count + 1 : 0}, second, {}, {}, {}});
+    // Retained parallel-copy fixtures need genuinely different incoming
+    // identities. A single parameter anchor is a collapsible SCC, even when
+    // its backedge looks like a register cycle.
+    const ValueId receiver{count + 1};
+    const auto seed = !identity && loop && i % 2 == 0 ? receiver : ValueId{0};
+    const auto back = loop && count > 1 ? ValueId{i % count + 1}
+        : identity ? ValueId{0} : receiver;
+    Append(graph, {ValueId{i}, OperandRole::kPhiInput, ReadPurpose::kOperand, seed, first, {}, {}, {}});
+    Append(graph, {ValueId{i}, OperandRole::kPhiInput, ReadPurpose::kOperand, back, second, {}, {}, {}});
   }
   return graph;
 }
@@ -142,6 +149,15 @@ void EntryAndScaling() {
       auto missing = evaluation;
       missing.phis.reset();
       Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, missing, budget)) == EvaluationError::kLivePhi);
+      const auto same = Graph(count, loop, true);
+      const auto identity_plan = Plan(same, PhiBudget(same));
+      for (const auto& bundle : identity_plan.bundles)
+        Check(bundle.schedule.steps.empty() && bundle.schedule.temporaries == 0);
+      for (const auto projection : identity_plan.projection)
+        Check(projection == PhiCopyUse::kIdentity);
+      auto forged = identity_plan;
+      forged.projection[0] = PhiCopyUse::kRetained;
+      Check(std::get<PhiCopyError>(VerifyPhiCopies(same, forged)) == PhiCopyError::kInput);
       Check(plan.work <= budget.work);
       budget.work = plan.work;
       Check(std::holds_alternative<PhiCopies>(BuildPhiCopies(graph, budget)));
@@ -449,7 +465,8 @@ void EdgeSyntax() {
         Check(!owned[assignment.value.value]); owned[assignment.value.value] = true;
         const auto& rhs = forest.expressions[assignment.value.value];
         Check(rhs.origin == node.origin);
-        Check(std::get<SymbolExpr>(rhs.expression).symbol == SymbolId{0});
+        if (edge == 0) Check(std::get<SymbolExpr>(rhs.expression).symbol == SymbolId{0});
+        else Check(std::holds_alternative<ThisExpr>(rhs.expression));
       }
     }
     SemanticBudget budget;

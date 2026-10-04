@@ -1,7 +1,20 @@
 # 按用户要求进行的恢复条件审计
 
-最新替换状态见本页规则112及后续各项补充。历史候选不是当前实现的证明；
+最新替换状态见本页规则113及后续各项补充。历史候选不是当前实现的证明；
 未替换项继续开放，不能将局部交付称为全量审计闭合。
+
+规则113补充：普通source evaluation原假定输入已经简化，将原始
+ValueCopy按表达式合并来源，破坏首次保存赋值的计算owner。这是模型
+缺口，不是语言对复制数量、块布局或指令相邻性的要求。普通与异常
+路径现复用既有copy/phi SCC身份事实、canonical observation census、
+PhiCopyUse投影及原始anchor；共同Use构建器与保存区间查同一身份。
+计算与传输不再争用一个赋值来源，snapshot/operand/origin校验保持。
+只有实际身份等价方程允许投影，多个锚点、无锚点、scope与内部值义务
+继续保留。原始/简化、三profile、长复制链、寄存器交换、拆块、效果
+barrier及真实汇合的完整树/行为验证，另有身份/consumer/target/来源
+与phi projection篡改反例。原来的同参数phi测试另保留为空schedule，
+真实并行复制测试改用不同参数/receiver身份；不把强制生成临时搬运
+作为语义要求。未改默认数值合同，未宣称全量限制审计或阶段一完成。
 
 规则112补充：普通conditional恢复原先重复限定ToBoolean/NOT和严格
 相等，而共同BooleanEvaluation已经拥有全部比较结果事实。现用共同

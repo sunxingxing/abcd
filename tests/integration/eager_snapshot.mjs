@@ -5,7 +5,7 @@ import vm from 'node:vm';
 const text = execFileSync(process.argv[2], ['--sources'], {encoding: 'utf8', maxBuffer: 8 * 1024 * 1024});
 assert.ok(!text.includes('INCOMPLETE'));
 const cases = vm.runInNewContext(`"use strict"; (${text})`);
-assert.equal(cases.length, 840);
+assert.equal(cases.length, 1698);
 
 function reference(value, consumer, barrier) {
   let key;
@@ -25,7 +25,7 @@ function reference(value, consumer, barrier) {
   return saved;
 }
 
-function observe(fn, payloadIndex, failAt, mutate) {
+function observe(fn, payloadIndex, failAt, mutate, condition) {
   const trace = [], failure = Symbol('failure'); let events = 0;
   const event = (...parts) => { trace.push(parts); if (++events === failAt) throw failure; };
   const coerce = { [Symbol.toPrimitive](hint) { event('coerce-value', hint); return 'lookup'; } };
@@ -61,7 +61,7 @@ function observe(fn, payloadIndex, failAt, mutate) {
   });
   let completed = false, thrown;
   try {
-    assert.ok(Object.is(fn(value), saved)); completed = true;
+    assert.ok(Object.is(fn(value, condition), saved)); completed = true;
   } catch (error) {
     if (error === failure) thrown = 'injected';
     else if (error instanceof TypeError || error?.name === 'TypeError') thrown = 'TypeError';
@@ -71,10 +71,11 @@ function observe(fn, payloadIndex, failAt, mutate) {
 }
 
 let comparisons = 0;
-for (const item of cases) for (let payload = 0; payload < 14; ++payload)
+for (const item of cases) for (const condition of item.selection ? [false, true] : [false])
+  for (let payload = 0; payload < 14; ++payload)
   for (const mutate of [false, true]) for (let failAt = 0; failAt <= 10; ++failAt) {
-    assert.deepEqual(observe(item.source, payload, failAt, mutate),
-      observe(value => reference(value, item.consumer, item.barrier), payload, failAt, mutate));
+    assert.deepEqual(observe(item.source, payload, failAt, mutate, condition),
+      observe(value => reference(value, item.consumer, item.barrier), payload, failAt, mutate, condition));
     ++comparisons;
   }
 console.log(`${cases.length} decoded source trees and ${comparisons} independent eager snapshot comparisons passed`);
