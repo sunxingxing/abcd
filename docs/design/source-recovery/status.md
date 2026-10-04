@@ -12,6 +12,49 @@
 
 ## 当前阶段
 
+
+### 2026-10-04：以共同语法退出恢复 generator RETURN 清理
+
+- 规则revision101。此前尾部变更暴露的generator暂停/循环失败已定位到
+  RecoverFinalizers：旧TailWithin只允许尾部Block/If，且固定alternate
+  为RETURN arm。改为共同AST Euler祖先区间，实际原位的labelled block
+  break，以及原resume fallthrough与新鲜TreeFlow polarity的映射。
+  不是扩大loop/try/opcode白名单，也没有删除原控制/operand/effect检查。
+- BlockStmt支持LabelId；共同StatementChild接口复用于标签和completion
+  祖先遍历。break只能退出真实祖先block/loop，continue仍只接受loop。
+  语法校验拒绝缺标签、错目标、continue-to-block、function body label及
+  try/catch/finally语法必需块上的标签。投影后重分配实际语法标签。
+- 原preserving ReturnStmt及operand/origin保留在清理外的NEXT审核路径；
+  清理原终止位置改为break，嵌套循环不会继续执行，中间finally仍可覆盖
+  完成。逆投影核对目标/标签/origin/实际RETURN arm，再恢复原序列交给
+  原SSA和control检查。不合成/读取调用者payload，不伪造VM指令来源。
+- /tmp/abcd-generator-gaps-throw-backtrace-1.log与new-route-1.log记录
+  原尾部拒绝和实际consequent RETURN；首次tests-1仍有两项失败，依据
+  共同polarity修正后tests-2.log 3/3通过47.93秒。最终final-build.log
+  37个相关目标单-j4成功；final-tests.log 77项中76通过、1失败，
+  202.67秒。两项file_generator_return_suspend/loop_source通过实际
+  暂停、返回/抛出覆盖、loop/nested-loop/post-loop和200/201/402对照。
+  block target新增1/200/201/402结构/打印正例及非法transfer负例通过。
+  self-review再补try/finally必需块的合法基线及非法标签负例，grammar-build
+  单-j4成功、grammar-tests.log tree_structure_test 1/1通过。
+- 唯一剩余file_generator_return_source失败于select-many的402规模，
+  不是源码语义通过。resource-backtrace-1.log定位FamilyEnclosure的
+  TreeStructure资源拒绝：entry预算56,482,117 bytes，enclosure入口
+  剩2,712,854。默认64MiB累计准入包含重复借用树容量/已结束scratch，
+  不等同进程峰值。本轮未抬阈值、删检查或修改正例。select-partial
+  独立记录原进程SIGABRT及其此前输出的8份200/201 fixture；原native
+  行为oracle验证这8份通过，不能冒充原12份或整个CTest通过。
+- fresh build/stage-one/generator-completion-pass-1固定五输入全退出0，
+  仍80complete/26incomplete/0failure/46no-module，无新完整项、回退或
+  legacy writer。batch-1.log及syntax-1.log核对原index/manifest SHA和
+  size，106份源码解析通过且与tail-completion-pass-1字节相同。
+- author self-review核对分支polarity、真实祖先、nested finally退出、
+  原节点/来源及label消费者；共同接口无新依赖，索引/标签O(S+C)。旧
+  yield/guard同一源码序列包装、following placement、cloned completion
+  精确身份以及semantic_locals/scope_facts初始化PC条件仍是实现缺口。
+  数值/父构造器/Reference/phase/字段/签名与完整阶段一验收保持开放，
+  Goal active。代理、全量测试、扩展语料、RSS/基准及DFX继续暂停。
+
 ### 2026-10-04：以共同语法投影恢复自然函数尾部
 
 - 规则revision100。实际HomeModel表示RED复现callback/method末尾的

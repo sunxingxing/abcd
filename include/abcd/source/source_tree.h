@@ -209,7 +209,13 @@ using TreeExpression = std::variant<TreeLiteral, SymbolExpr, GlobalNameExpr, Rea
                                     CallExpr, ConstructExpr, EmptyArrayExpr, EmptyObjectExpr, ObjectExpr, FunctionExpr,
                                     ArgumentSnapshotExpr, ClassExpr, FieldDefinitionExpr, SuperCallExpr>;
 struct ExprNode { TreeExpression expression; TreeOriginId origin; };
-struct BlockStmt { ScopeId scope; std::uint32_t first_child; std::uint32_t child_count; };
+struct LabelId { std::uint32_t value; auto operator<=>(const LabelId&) const = default; };
+struct BlockStmt {
+  ScopeId scope;
+  std::uint32_t first_child;
+  std::uint32_t child_count;
+  std::optional<LabelId> label;
+};
 struct DeclarationStmt { SymbolId symbol; std::optional<ExprId> initializer; };
 struct ExpressionStmt { ExprId expression; };
 struct IfStmt { ExprId condition; StmtId consequent; std::optional<StmtId> alternate; };
@@ -226,7 +232,6 @@ struct TryStmt {
 };
 // Canonical loop syntax: while (true), with the original header predicate in
 // the body. This keeps header effects and edge copies at their actual sites.
-struct LabelId { std::uint32_t value; auto operator<=>(const LabelId&) const = default; };
 struct LoopStmt { StmtId body; std::optional<LabelId> label; };
 // Targets are enclosing syntax owners, never CFG/region IDs. Outer transfers
 // carry a preassigned label; the printer must not infer or retarget a jump.
@@ -307,9 +312,12 @@ struct YieldReturnComposition {
   StmtId enclosure, branch;
   std::optional<StmtId> completion;
   YieldCleanupPlacement cleanup;
-  // A preserving terminal nested in a tail-only Block/If chain is moved out
-  // of native finally; falling through that chain preserves caller payload.
+  // Original private preserving RETURN stays outside native finally. Its
+  // actual cleanup site becomes a break to the labelled cleanup owner, so
+  // nested loops/try/finally keep their real exit and cleanup semantics.
   std::optional<StmtId> completion_block;
+  std::optional<StmtId> preserving_exit;
+  std::optional<StmtId> cleanup_arm;
 };
 enum class ConstructorForm : std::uint8_t { kExplicit, kImplicit };
 struct FunctionTree {
@@ -365,7 +373,7 @@ struct FunctionTree {
   // creation-time const, separate from the target's runtime name and body.
   SelfForm self_form = SelfForm::kNamedFunction;
   InvocationForm invocation = InvocationForm::kDeclared;
-  // LabelId -> loop statement, function-local and separate from variable names.
+  // LabelId -> loop or block statement, function-local and separate from names.
   std::vector<StmtId> labels;
   std::vector<FinalizerComposition> finalizers;
   std::vector<YieldReturnComposition> yield_returns;

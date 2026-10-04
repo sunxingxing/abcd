@@ -332,6 +332,57 @@ void DeepLoops() {
     Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
   }
 }
+void BlockExits() {
+  for (const std::uint32_t depth : {1U, 200U, 201U, 402U}) {
+    auto tree = Minimal(); tree.expressions.clear(); tree.statements.resize(1); tree.children.clear();
+    tree.scopes.push_back({ScopeKind::kBlock, ScopeId{1}});
+    tree.statements.push_back({BlockStmt{{2}, 1, 1}, {0}}); tree.children.push_back({1});
+    for (std::uint32_t i = 0; i < depth; ++i) {
+      const StmtId loop{static_cast<std::uint32_t>(tree.statements.size())};
+      const ScopeId scope{static_cast<std::uint32_t>(tree.scopes.size())};
+      tree.children.push_back(loop);
+      tree.scopes.push_back({ScopeKind::kBlock, ScopeId{scope.value - 1}});
+      tree.statements.push_back({LoopStmt{{loop.value + 1}}, {0}});
+      tree.statements.push_back({BlockStmt{scope, static_cast<std::uint32_t>(tree.children.size()), 1}, {0}});
+    }
+    const StmtId exit{static_cast<std::uint32_t>(tree.statements.size())};
+    tree.statements.push_back({BreakStmt{{1}}, {0}}); tree.children.push_back(exit);
+    Check(std::holds_alternative<TreeStorage>(AssignTreeLabels(tree)));
+    Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+    Check(tree.labels == std::vector<StmtId>{{1}});
+    std::ostringstream output;
+    Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, output)));
+    Check(output.str().find("$exit0: {") != std::string::npos && output.str().find("break $exit0;") != std::string::npos);
+    auto invalid = tree;
+    invalid.statements[exit.value].statement = ContinueStmt{{1}, LabelId{0}};
+    Expect(invalid, TreeStructureError::kTarget);
+    Check(std::get<TreeStructureError>(AssignTreeLabels(invalid)) == TreeStructureError::kTarget);
+    invalid = tree; std::get<BreakStmt>(invalid.statements[exit.value].statement).label.reset();
+    Expect(invalid, TreeStructureError::kTarget);
+    invalid = tree; invalid.labels[0] = {0}; Expect(invalid, TreeStructureError::kTarget);
+    invalid = tree; std::get<BlockStmt>(invalid.statements[0].statement).label = LabelId{0};
+    Expect(invalid, TreeStructureError::kScope);
+  }
+}
+void RequiredTryBlocks() {
+  // A label belongs to a Statement, while try/catch/finally require a Block
+  // directly. Valid label targets alone must not authorize invalid grammar.
+  for (const StmtId target : {StmtId{2}, StmtId{3}}) {
+    auto tree = Minimal(); tree.expressions.clear();
+    tree.scopes.push_back({ScopeKind::kBlock, tree.body_scope});
+    tree.scopes.push_back({ScopeKind::kBlock, tree.body_scope});
+    tree.statements = {{BlockStmt{tree.body_scope, 0, 1}, {0}},
+        {TryStmt{{2}, {}, StmtId{3}}, {0}}, {BlockStmt{{2}, 1, 0}, {0}},
+        {BlockStmt{{3}, 1, 0}, {0}}};
+    tree.children = {{1}};
+    Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+    const auto exit = StmtId{static_cast<std::uint32_t>(tree.statements.size())};
+    tree.statements.push_back({BreakStmt{target}, {0}}); tree.children.push_back(exit);
+    std::get<BlockStmt>(tree.statements[target.value].statement).child_count = 1;
+    Check(std::holds_alternative<TreeStorage>(AssignTreeLabels(tree)));
+    Expect(tree, TreeStructureError::kUnsupportedSyntax);
+  }
+}
 }  // namespace
 int main() {
   SuperContext();
@@ -344,4 +395,6 @@ int main() {
   DeepTrees();
   LoopTargets();
   DeepLoops();
+  BlockExits();
+  RequiredTryBlocks();
 }

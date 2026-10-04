@@ -253,6 +253,15 @@ class TreeBuilder {
       throw error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;
     }
     Step(recovery.Work()); Admit(recovery.Bytes(), 1);
+    // Completion projection introduces block exits and can move existing loop
+    // transfers. Reassign labels from actual syntax ancestry before verification.
+    const auto labels = AssignTreeLabels(tree_, {bytes_, work_});
+    if (const auto* error = std::get_if<TreeStructureError>(&labels)) {
+      if (*error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
+      if (*error == TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
+      throw Error::kStructure;
+    }
+    Admit(std::get<TreeStorage>(labels).bytes, 1); Step(std::get<TreeStorage>(labels).work);
   }
   void CheckCellLifetimes() {
     auto environments = analysis::BuildPhasedValueEnvironments(graph_, {bytes_, work_});

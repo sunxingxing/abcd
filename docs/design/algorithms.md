@@ -1394,3 +1394,35 @@ No dependency or external implementation is added. Tests cover six native
 callable kinds, retained effects/control/finalizers, asynchronous job order and
 queued iterator requests; actual paired HomeModel verifies source style and
 observable callback behavior independently.
+
+
+## Generator preserving completion syntax ownership (rules 101)
+
+`StatementChild` exhaustively enumerates typed AST children for both actual
+block storage and completion sequence views. An iterative Euler traversal builds
+statement entry/exit intervals once per projection. With S statements and C child
+occurrences, construction is O(S+C) time/space; ownership queries are O(1).
+Compared with walking each terminal's parent chain, nested independent completion
+sites do not add repeated ancestor walks. Label assignment uses the same child
+interface, O(S+C) work/space, with no recursive C++ stack or function-boundary
+crossing. Existing byte/work admission covers arrays and owned label capacity.
+
+The source primitive is a labelled block with a typed break at the original
+preserving RETURN site. RETURN arm selection uses common branch polarity.
+Origins and original terminals remain for the inverse SSA/control audit.
+Prerequisites: pinned resume semantics, fresh flow, valid syntax ownership and
+independently checked finalizer routing. Existing same-sequence yield/guard and
+following placement restrictions remain coverage gaps; this change does not
+claim arbitrary coroutine layout support.
+
+Semantic provenance: ECMA-262 2024
+[14.13.4 LabelledEvaluation](https://tc39.es/ecma262/2024/multipage/ecmascript-language-statements-and-declarations.html#sec-labelled-statements-runtime-semantics-labelled-evaluation)
+absorbs the matching break; [14.15.3 try evaluation](https://tc39.es/ecma262/2024/multipage/ecmascript-language-statements-and-declarations.html#sec-try-statement-runtime-semantics-evaluation)
+executes finally and preserves the prior completion when it completes normally.
+The traversal and label implementation are repository-owned, with no imported
+code, new dependency or additional license obligation. Maintenance requires
+exhaustive updates when adding statement variants. Directed decoded generator
+and block-target tests exercise 200/201/402, effects, identity and exceptions.
+The 402 return-selection fixture still exhausts the existing cumulative 64MiB
+admission during family enclosure; this counter is not a measured process peak.
+Full RSS/throughput and accounting redesign remain paused.

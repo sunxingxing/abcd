@@ -167,7 +167,7 @@ class StructureCheck {
     }
     RequireTree(tree_.body.value < tree_.statements.size(), Error::kRange);
     const auto* root = std::get_if<BlockStmt>(&tree_.statements[tree_.body.value].statement);
-    RequireTree(root && root->scope == tree_.body_scope, Error::kScope);
+    RequireTree(root && root->scope == tree_.body_scope && !root->label, Error::kScope);
     if (self_scope) scopes_.Enter(*self_scope);
     scopes_.Enter(tree_.parameter_scope);
     // Literal and outer-capture defaults cannot read body bindings or later
@@ -372,12 +372,13 @@ class StructureCheck {
     RequireTree(id.value < tree_.statements.size() &&
                 std::holds_alternative<BlockStmt>(tree_.statements[id.value].statement), Error::kScope);
   }
-  void Transfer(StmtId target, std::optional<LabelId> label, std::optional<StmtId> nearest) {
+  void Transfer(StmtId target, std::optional<LabelId> label, std::optional<StmtId> nearest, bool continues) {
     RequireTree(target.value < statements_.size() && statements_[target.value] == 1, Error::kTarget);
     const auto* loop = std::get_if<LoopStmt>(&tree_.statements[target.value].statement);
-    RequireTree(loop != nullptr, Error::kTarget);
-    if (target == nearest) { RequireTree(!label, Error::kTarget); return; }
-    RequireTree(label && loop->label == label && label->value < tree_.labels.size() &&
+    const auto* block = std::get_if<BlockStmt>(&tree_.statements[target.value].statement);
+    RequireTree(loop || (!continues && block), Error::kTarget);
+    if (loop && target == nearest) { RequireTree(!label, Error::kTarget); return; }
+    RequireTree(label && (loop ? loop->label : block->label) == label && label->value < tree_.labels.size() &&
         tree_.labels[label->value] == target, Error::kTarget);
     labels_used_[label->value] = 1;
   }
@@ -397,6 +398,8 @@ class StructureCheck {
     const auto& node = tree_.statements[id.value];
     RequireTree(node.origin.value < tree_.origins.size(), Error::kOrigin);
     if (const auto* block = std::get_if<BlockStmt>(&node.statement)) {
+      if (block->label) RequireTree(block->label->value < tree_.labels.size() &&
+          tree_.labels[block->label->value] == id, Error::kTarget);
       RequireTree(block->scope.value < tree_.scopes.size(), Error::kScope);
       const auto& scope = tree_.scopes[block->scope.value];
       const auto kind = frame.catch_parameter ? ScopeKind::kCatch :
@@ -418,15 +421,19 @@ class StructureCheck {
       RequireBlock(region->body);
       if (region->handler) RequireBlock(region->handler->body);
       if (region->finalizer) RequireBlock(*region->finalizer);
+      RequireTree(!std::get<BlockStmt>(tree_.statements[region->body.value].statement).label &&
+          (!region->handler || !std::get<BlockStmt>(tree_.statements[region->handler->body.value].statement).label) &&
+          (!region->finalizer || !std::get<BlockStmt>(tree_.statements[region->finalizer->value].statement).label),
+          Error::kUnsupportedSyntax);
     } else if (const auto* loop = std::get_if<LoopStmt>(&node.statement)) {
       RequireBlock(loop->body);
       if (loop->label) RequireTree(loop->label->value < tree_.labels.size() &&
           tree_.labels[loop->label->value] == id, Error::kTarget);
       frame.loop = id;
     } else if (const auto* transfer = std::get_if<BreakStmt>(&node.statement)) {
-      Transfer(transfer->target, transfer->label, frame.loop);
+      Transfer(transfer->target, transfer->label, frame.loop, false);
     } else if (const auto* transfer = std::get_if<ContinueStmt>(&node.statement)) {
-      Transfer(transfer->target, transfer->label, frame.loop);
+      Transfer(transfer->target, transfer->label, frame.loop, true);
     } else if (const auto* missing = std::get_if<UnrecoveredStmt>(&node.statement)) {
       RequireTree(missing->issue.value < tree_.recovery_issues.size(), Error::kRange);
     }

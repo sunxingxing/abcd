@@ -191,3 +191,14 @@ ctest --test-dir build -R '^(control_plan_test|loop_forest_test|exception_plan_t
 
 以上是语义交叉核验，不把在线规范草案当作新的 Ark profile。实施必须继续依据
 已锁定的 OpenHarmony-v7.0-Release 和各历史 profile 的具体行为。
+
+
+## 2026-10-04：preserving generator RETURN 的原位语法退出
+
+规则101以共同labelled block break替换TailWithin尾部准入，原位退出通过
+loop/try/finally；RETURN arm依原resume outcome与共同branch polarity确定。
+原completion与operand仍由逆投影交给SSA/control校验。详见
+[FunctionTree契约](function-tree-output.md)与[形状限制审计](shape-restrictions-audit.md)。
+77项定向验证76通过；402 select-many资源拒绝仍开放，不能作为完成证据。
+既有yield/guard同序列包装和following placement仍待公共控制所有权模型
+替换；本次没有宣称所有控制布局均支持，也未恢复暂停的DFX/RSS/全量测试。

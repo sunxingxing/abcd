@@ -1054,7 +1054,8 @@ class TreePrinter {
     constexpr std::string_view kIndent = "  ";
     for (std::size_t i = 0; i < indent.depth; ++i) Append(kIndent);
   }
-  void StatementNode(const BlockStmt&, Statement at) {
+  void StatementNode(const BlockStmt& node, Statement at) {
+    if (node.label) { Label(*node.label); Append(": "); }
     if (!ModuleBody() || at.id != Tree().body) Append("{\n");
     Push(BlockCursor{at.id, 0, at.depth});
   }
@@ -1115,7 +1116,11 @@ class TreePrinter {
     Append("while (true) ");
     Push(Statement{node.body, at.depth});
   }
-  void Label(LabelId label) { Append("$loop"); Numeric(label.value); }
+  void Label(LabelId label) {
+    const auto target = Tree().labels[label.value];
+    Append(std::holds_alternative<BlockStmt>(Tree().statements[target.value].statement) ? "$exit" : "$loop");
+    Numeric(label.value);
+  }
   void Transfer(std::string_view token, std::optional<LabelId> label) {
     Append(token);
     if (label) { Append(" "); Label(*label); }

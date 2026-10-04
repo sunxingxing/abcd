@@ -161,3 +161,28 @@ premise 与 guard-plan 声明、工作预算。真实 WindowUtil method8539 已�
 配对测试分开转换 enum 与类正文以保留 ABC 实际执行的 enum 属性读取，验证
 setter/receiver、enum getter、条件分支和异常。两个数值缺口仍然存在，不能以
 该成员或 Node 对照宣称整个 record 或平台语义验收完成。
+
+
+## Generator RETURN 的显式清理退出（规则 101）
+
+恢复保留调用者 RETURN payload 的清理路径时，不再要求原终止语句只处于
+尾部 Block/If 链。共同 FunctionTree 的 BlockStmt 可携带 LabelId，BreakStmt
+可退出真实祖先 block；ContinueStmt 仍只接受循环。标签分配、语法校验和
+printer 共用这些类型，不按 opcode、样本或局部图形状选择表示。
+
+原 preserving ReturnStmt 保留在清理外的 NEXT 审核路径。清理中原终止位置
+放置指向该清理 block 的 break，正常退出 finalizer 后保留原 pending RETURN；
+中间 finally 的返回或抛出仍能替换它。原终止的 operand/origin 不删除，不读取
+或制造调用者 payload。逆投影核对实际 break 的所有权、目标、标签及 origin，
+恢复原序列交给既有 SSA/control/operand 检查；源码事件沿用原 instruction
+origin，不宣称新增一条 VM 指令。
+
+RETURN arm 从原 resume adapter 的 fallthrough 事实与共同 TreeFlow 的分支
+polarity 映射，不能把 native If 的 alternate 当作固定 RETURN arm。一次
+迭代 Euler 遍历为实际 AST 的 Block/If/Try/Loop 所有权建立区间；查询包含
+关系不宣称循环或 try 是可透明穿过的尾部。
+
+现有 yield/guard 包装投影仍要求同一源码序列、yield 在 guard 之前；空 RETURN
+arm 后的 following-sequence 放置仍是已有实现边界。它们不是语言不变量，
+本轮没有扩大匹配，也没有宣称任意协程控制布局都已恢复。402 返回选择的
+默认 64MiB 累计准入仍有资源缺口；budget 平台/峰值验证继续暂缓。

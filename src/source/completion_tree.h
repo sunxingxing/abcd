@@ -60,6 +60,7 @@ class CompletionTreeView {
     CompletionPlan::YieldReturn plan;
     StmtId yielded, branch;
     std::optional<StmtId> completion;
+    std::optional<StmtId> cleanup_arm;
   };
   std::vector<YieldCorridor> yield_routes_;
 };

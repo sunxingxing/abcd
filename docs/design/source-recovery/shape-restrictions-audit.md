@@ -839,3 +839,28 @@ IsJSFunction，再私有 array 参数读取和 JSFunction::Construct。原生默
 打印 super(...args) 又引入用户可观察 iterator。这些是尚未承载的真实 VM
 义务，不能因源码常见写法或未知 SDK 父类名称删除。已有 invocation-frame
 forward-all-args 隐式构造器证明保持。尚无样本运行证明该边界实际触发。
+
+
+## 2026-10-04：以共同退出语义替换 preserving RETURN 的尾部匹配（规则 101）
+
+RecoverFinalizers/CompletionTreeView 原 TailParents/TailWithin 仅承认尾部
+Block/If 路径，拒绝已证明 preserving completion 的循环/暂停清理；另把
+native If.alternate 固定当 RETURN，无法接受共同谓词反转后的源码。
+
+改为实际 AST 的 Euler 祖先区间和原位、显式的 labelled block break。循环、
+try/finally 不视作透明结构；break 终止原执行位置后的清理，途经的 finally
+照常执行。RETURN arm 由原适配器的 fallthrough 与新鲜 TreeFlow polarity
+确定，逆投影也重验该事实。原 completion 节点、operand、origin 和既有
+控制/副作用/异常校验保留；不是删除校验或加入 loop/try 的局部白名单。
+
+Block labels 只能供实际祖先 break 使用；continue-to-block、错目标、缺标签、
+function body label 和 try/catch/finally 必需块上的非法标签拒绝。实际暂停
+和 loop/nested-loop/post-loop override fixture 贯通共同引擎与 Node 行为对照，
+覆盖三 profile、多种分支宽度和 200/201/402 规模，不用拒绝作为正例。
+
+仍开放：既有 yield 与 guard 的同一源码序列包装、following placement、
+completion_plan 按原 PC 查找 cloned occurrence 的精确身份，以及此前
+semantic_locals/scope_facts 初始化顺序的跨块 PC 比较。它们是尚待公共模型
+替换的实现限制。本轮定位的 402 select-many 失败在 FamilyEnclosure 的
+TreeStructure 资源准入；累计 tree/scratch admission 不等同真实 RSS。
+未抬高阈值、删除检查、修改正例预期或开展暂缓的 DFX。
