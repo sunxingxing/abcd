@@ -172,14 +172,14 @@ VerifyPhasedEvaluationPlan，再核对原 property result、callee/base/receiver
 | 优先级 | 当前源码位置 | 观察到的实现边界 | 必须保留的义务及共同替换方向 |
 |---|---|---|---|
 | P1 | src/source/call_plan.cc::VerifyCalls，约215行 | callee property 只接受当前表达式的 inline/nested-literal consumer | 保留原 callee/base/key 与 receiver；用共同 Reference 和保留值表示承载共享/已存储引用，证明一次读取和调用时序 |
-| P1 | src/source/phase_selection_calls.cc::Check/Ancestors，约113/211行 | phi_arguments 和 root_selections 必须各为1，另有单入 corridor | 对整个调用联合索引参数和引用，安排全部选择依赖；保持原 phi 输入边、执行条件、catch snapshot 和效果，不靠限制参数数量避免重复扫描 |
-| P1 | src/source/predicate_snapshots.cc::Candidates，约20/38行 | 最早同块使用必须为 strict equal/not-equal，并内联进同块 branch | producer 白名单已删；尚需通用 snapshot 所有权/支配/控制依赖与效果区间，保留一次求值和所有使用身份 |
+| P1 | src/source/phase_selection_calls.cc::Prefix；src/source/phased_selections.cc；src/source/phi_copies.cc::PhiExpressionProducer | 规则87已移除phi_arguments/root_selections单选择门槛；仍有单入corridor、有限arm/phi候选和会抛出producer必须在自身Commit outgoing edge供phi的限制 | 共同Reference联合安排同一调用的全部选择已贯通；后续用控制依赖/区域及真实edge-copy时序替代候选布局，不能扩大local opcode或tail白名单 |
+| P1 | src/source/predicate_snapshots.cc::Candidates，约20/38行 | 最早同块eager occurrence可接收snapshot assignment；规则82已去除strict-comparison/branch限定 | producer与consumer白名单已删；尚需跨块snapshot所有权/支配/控制依赖与效果区间，保留一次求值和所有使用身份 |
 | P1 | src/analysis/rest_arguments.cc::ProveRestPrologue；src/source/rest_binding.cc::FindRestLocal | 固定起始 ABI MOV、寄存器布局及紧邻 rest/STA；旧路径仍调用 | normal ValueTree 已用 ProveRestOwnership；剩余 legacy/构造器使用必须迁移共同 frame、SSA、参数写入和动态数量证明，不能扩充 prologue 模板 |
-| P1 | src/analysis/derived_constructor.cc；spread_field_constructor.cc；range_derived_constructor.cc，约38/79行 | 直线状态序列、copy opcode 列表；range/spread 拒绝异常范围及回边 | 用共同 CFG/SSA 全路径证明 constructor/this 状态、转发输入、返回、异常和效果；runtime 差异仍保留，不能假定 host/import 构造器类型 |
-| P1 | src/source/class_definitions.cc，约83/96行；class_initializers.cc，约58/70行 | class、method、安装或初始化调用必须同块且按固定局部顺序 | 此为新增确认的共同 ValueTree 候选边界；应以真实 HomeObject、创建/安装 occurrence、捕获、支配、class 逃逸和所有 intervening effects 证明可投影性 |
+| P1 | src/analysis/derived_constructor.cc；spread_field_constructor.cc；range_derived_constructor.cc，约38/79行 | legacy直线状态序列及copy opcode列表仍在；共同ValueTree的回边/guard存在门槛已由规则84/86移除 | 共同CFG/SSA单次调用、receiver、guard输入与cell事实已贯通；剩余多super site、捕获/异常与导入父协议不以legacy布局定义，不能假定host/import构造器类型 |
+| P1 | src/source/class_definitions.cc，约83/96行；class_initializers.cc，约58/70行 | 规则74/75已替换defined-member同块条件；class initializer owner/method/call仍受同块局部次序限制 | 已定义成员复用真实HomeObject、occurrence和normal-CFG效果顺序；初始化器及phased捕获环境仍需共同证明，不能追加局部序列 |
 | P2 | src/source/logical_regions.cc::FindSelectionExpressions 等 | branch/ToBoolean 邻接、有限 arm/phi 布局 | 用通用控制依赖与区域表示产生候选，typed predicate/phi 定义语义；二元分支或操作数元数本身不是缺陷 |
 | P2 | src/source/class_tree.cc::CheckClassParentScope，约20行 | phased class 不接受 initializer/defined members 或父 captures/modules | 作用域/模块/创建环境接口尚未贯通；禁止把“无捕获/模块”视为 class 语言要求；部分成员缺口不等于完整环境证明 |
-| P2 | src/source/literal_plan.cc::EarlyValue，约236行 | phased phi 输入要求 phi.block == allocation.block | phi 是可被边复制改写的存储，不能盲删校验；共同 snapshot/edge-copy 版本证明应保证输入在 allocation 与 initializer 之间不变 |
+| P2 | src/source/literal_plan.cc::EarlyValue，约236行 | 规则81已以共同availability替换phased phi/allocation同块；working-IR导入对应、首次OwnDefinition候选仍开放 | 保留snapshot/edge-copy版本与定义/观察顺序；剩余候选要贯通共同ownership，不追加block/producer类型匹配 |
 | P2 | src/source/super_arguments.cc::ProveSuperArguments，约67行 | legacy super 每个参数必须来自调用前紧邻的 load/save 对，且只支持单 super 区域 | 直接通过真实 def-use 和有序参数依赖整理，保留原参数快照、this 初始化和效果；不扩充寄存器排列或 load/save 模式 |
 | P2 | src/source/array_literals.cc::FoldArrayExpressions/FoldArrayLiterals；class_assembly.cc | legacy 数组/类整理按同块连续语句与操作列表推进 | 共同 LiteralPlan/ClassTree 是迁移方向；保留新对象身份、定义/逃逸/观测、属性描述符和捕获时机，不追加 legacy 白名单 |
 | P2 | src/source/module_binding.cc，约73行 | 未证明初始化的模块 load 要求下一条指令就是 Hole guard | 需用原 module binding、Hole 状态、guard 输入的 SSA 身份及控制/异常效果证明；TDZ 行为必须保留，邻接仅是旧实现边界 |
@@ -501,3 +501,37 @@ capture/模块相位、首次 own-definition 和 legacy 构造/rest 等开放项
 要求“协议全部拒绝”的假设也已分解为实际 receiver 事实/guard 省略义务。
 具体构建及失败修复证据见 status.md；当前开放的 phased 多selection、
 inline-owned Reference、initializer/捕获/模块相位与legacy模板仍未关闭。
+
+
+## 规则 87：联合选择参数与索引祖先 Reference
+
+删除phase_selection_calls的phi_arguments == 1和root_selections == 1
+准入，不再以选择数量避免共用callee的重复扫描。实际argument UseId决定
+源码参数次序，同一call联合检查从callee Commit经各selection header/join
+到实际call的分段依赖；整组失败保留原快照，不能部分移走callee。prefix
+只由相应decision拥有，原phi输入/transport/branch身份分别验证。普通
+branch也登记decision ownership，避免把其真实Boolean输入误判为外部使用。
+
+多条selection记录可以对应一个成员Reference，phase_references只保存
+其同一实际callee-use。Build/Verify/ExpressionForest/TreeFlow仍使用原
+ValueProgram与共同ConditionalExpr/MemberCall及printer，没有样本名、
+固定参数个数、局部opcode串或新增placement例外。callee与branch的物理
+OpId先后门槛也由真实CFG分段路径取代，outer callee与child的次序复用
+引用区间；receiver/getter、原use、正常复制、catch scope/staging仍保留。
+
+祖先Reference按实际inline consumer关系连接。预索引正常corridor的
+效果归属区间和catch一致性，路径终点进入前停止，终点的其他前驱不会
+新增single-entry门槛。每个祖先关系只查询一次、存储其联合引用一次，
+避免多个selection/兄弟参数重扫长前缀；详见algorithms.md。三profile
+129组解码正/负例覆盖1/2/3/50/100/200/201参数、前缀getter、外层成员调用、
+复制变化、反向参数、debugger屏障、伪造argument/callee/缺项及配额边界；
+另有44496组生成源码行为对照和9项有效mutation。
+
+当前开放项包括MemberCall的inline-owned表示边界、单入prefix/control
+candidate、PhiExpressionProducer的computed Commit邻接与literal-only
+inert tail、class initializer同块、phased scope/capture/module接口以及
+legacy rest/super/array/class/module模板。初次双getter arm夹具因现有
+computed arm后跟pure jump限制没有产生候选，已记录为缺口，没有追加
+opcode/tail匹配。确认为有实现准入限制，不据此断言其历史作者因样本加入。
+禁止继续用样本/布局匹配扩大这些路径；真实语义校验继续保留。具体新鲜
+构建/测试/固定五输入证据见status.md，审计仍非全仓生产分支逐行关闭。

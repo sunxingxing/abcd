@@ -575,6 +575,10 @@ if(BUILD_TESTING)
   target_include_directories(phase_reference_test PRIVATE tests/support)
   target_link_libraries(phase_reference_test PRIVATE abcd_source)
   add_test(NAME phase_reference_test COMMAND phase_reference_test)
+  add_executable(joint_selection_call_test tests/integration/joint_selection_call.cc)
+  target_include_directories(joint_selection_call_test PRIVATE tests/support)
+  target_link_libraries(joint_selection_call_test PRIVATE abcd_source)
+  add_test(NAME joint_selection_call_test COMMAND joint_selection_call_test)
   target_link_libraries(class_tree_context_test PRIVATE abcd_source abcd_json)
   add_test(NAME class_tree_context_test COMMAND class_tree_context_test)
   add_executable(module_completion_positions_test tests/unit/source/module_completion_positions_test.cc tools/tree_position_json.cc)
@@ -1211,6 +1215,8 @@ if(BUILD_TESTING)
   if(ABCD_NODE_EXECUTABLE)
     add_test(NAME selection_module_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/selection_module.mjs $<TARGET_FILE:selection_module_test>)
+    add_test(NAME joint_selection_call_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/joint_selection_call.mjs $<TARGET_FILE:joint_selection_call_test>)
     add_test(NAME phased_call_selection_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_call_selection.mjs $<TARGET_FILE:selection_module_test>)
     add_test(NAME phased_retained_input_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

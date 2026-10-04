@@ -594,8 +594,10 @@ const PhaseSelectionCall* FindPhaseSelectionCall(const ValueProgram& graph, cons
   const auto* value = std::get_if<ValueId>(&operand);
   const auto* source = value ? std::get_if<OpResult>(&graph.values[value->value].origin) : nullptr;
   if (!source) return nullptr;
-  const auto found = std::lower_bound(plan.phase_calls.begin(), plan.phase_calls.end(), source->op,
-      [](const auto& entry, auto id) { return entry.callee < id; });
+  const auto found = std::lower_bound(plan.phase_calls.begin(), plan.phase_calls.end(),
+      std::pair{source->op, *input}, [](const auto& entry, const auto& key) {
+        return entry.callee != key.first ? entry.callee < key.first : entry.argument < key.second;
+      });
   return found != plan.phase_calls.end() && found->callee == source->op && found->branch == branch ? &*found : nullptr;
 }
 bool CrossLogicalInline(const ValueProgram& graph, const EvaluationPlan& plan, OpId producer) {

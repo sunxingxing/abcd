@@ -1002,3 +1002,48 @@ producer list. Source fixtures include 200/201/402 phi dimensions and bounded
 work tests. These are correctness/accounting evidence, not RSS or latency
 measurements; full corpus/RSS/benchmarks remain paused. Provenance and coverage
 are recorded in source-recovery/numeric-facts.md.
+
+
+### Joint phased call selections and ancestor references (2026-10-04)
+
+Let I/B/E/V/U be original operations, phase blocks, edges, values and uses;
+S selected-argument candidates; A actual ancestor-call relations; Q original
+exception-staging copy entries compared. The existing ValueProgram, canonical
+operand/def-use index, phase evaluation and SelectionRegion proof stay primary.
+Group candidates by actual call and argument UseId, in O(S log(S+1)) ordering
+work. A call's original reference encloses every selected argument. Each
+argument owns its own decision, original phi edges, optional pure transport,
+and ordered prefix; walk successive Commit/header/join segments once, then
+require the final normal path to reach the call without a foreign event/copy.
+Reject the whole group on failure. Do not limit selection or argument counts.
+
+Index normal corridors once in O(B+E+I+Q) work and O(B+I) storage, recording
+positions before each block, homogeneous effect-owner runs, original exception
+scope consistency, and the outgoing interval before an endpoint is entered.
+The endpoint may have other predecessors. Root identity comes from the existing
+checked inline forest, not opcode/name matching. Query a reference prefix in
+O(1) plus the original catch comparison: every intervening effect must belong
+to its child reference's root, without normal or catch copies. Pure closed
+cycles remain unindexed; this retains the earlier linear-corridor coverage gap.
+Memoize each actual inline consumer/ancestor relation once, storing the union
+of accepted references once across selected records. There is no graph walk
+per argument or copied ancestor list per selection.
+
+Additional storage is O(I+B+E+V+U+S+A); candidate ordering and existing binary
+lookups add O(S log(S+1)), while indexing, disjoint prefix census and ancestor
+queries add O(I+B+E+V+U+A+Q). Discovery, alias/phi, control, source-tree and
+scope validation retain their separate costs; this is not a whole-pipeline
+complexity claim. New index arrays/capacity growth, planner scans and candidate sorting
+comparisons are charged to the shared byte/work quota. Existing AST lookup
+and consumer validation retain their own charging granularity. Provenance is the existing source evaluation,
+normal-CFG/SSA and phase corridor model, with no external code/dependency or
+new license. The original single-entry candidate/path restrictions remain
+explicit coverage gaps, not language or VM invariants.
+
+joint_selection_call_test covers three profiles, 1/2/3/50/100/200/201 arguments,
+1/2/200/201/402 copies, outer member calls and rejection/mutation boundaries.
+Recorded evaluation work for 50/100/200/201 arguments is
+538235/1062180/2110010/2120488; the test checks geometric growth. It also checks
+exact verifier work admission, one-step-short failure, and zero-byte refusal.
+These are bounded regression/work-accounting checks; paused benchmarks,
+full-corpus peak RSS and aggregate process-memory validation have not resumed.

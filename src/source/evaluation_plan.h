@@ -98,8 +98,9 @@ struct EvaluationPlan {
   // Phi values exclusively owned by native logical or conditional expressions, indexed by
   // ValueId. Each entry points to its original conditional branch operation.
   std::vector<std::optional<analysis::OpId>> logical_values;
-  // Sorted callee occurrences whose reference encloses one checked phased
-  // selection argument. Ordinary cross-phase inline edges are not this form.
+  // Selected arguments sorted by callee and actual argument UseId. A shared
+  // reference encloses their jointly checked phased evaluation; each phi and
+  // prefix retains its own branch owner. Ordinary inline edges differ.
   std::vector<PhaseSelectionCall> phase_calls;
   // Direct and ancestor callee references, indexed by original operation.
   // Entries are separately checked; they never license a .call substitution.

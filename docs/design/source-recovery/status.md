@@ -12,6 +12,56 @@
 
 ## 当前阶段
 
+### 2026-10-04：同一成员调用的选择参数联合恢复
+
+- 规则revision87。删除phase_selection_calls的phi_arguments和
+  root_selections各为1门槛，按实际call/argument UseId联合规划全部选择，
+  分段检查callee Commit、各header/join和最后call。共同ConditionalExpr、
+  MemberCall、ExpressionForest/TreeFlow与printer直接消费这些记录；
+  多记录共用同一真实callee-use，没有新样本/opcode串/寄存器布局或
+  placement白名单。真实receiver/getter、phi edge、transport、prefix
+  ownership、normal copies及catch scope/staging仍逐项验证，整组失败
+  不部分移动callee。普通branch也登记decision ownership。
+- 祖先Reference按真实inline consumer连接，正常corridor的效果归属区间
+  与catch一致性一次索引，每条实际祖先关系只查询/保存一次，不再逐选择
+  重扫共享长前缀或复制祖先链。区间在进入终点前结束，终点多个前驱不
+  新增准入限制；callee/branch/child的物理OpId排序门槛由实际路径替代。
+  共享Reference的记录和独立验证按同一UseId去重，未改SourceContract V3。
+  算法、预算/复杂度及剩余single-entry候选边界见algorithms.md。
+- joint_selection_call_test覆盖三profile的129组解码用例，包含
+  1/2/3/50/100/200/201参数、1/2/200/201/402复制、getter prefix、外层
+  成员调用、反向参数与debugger屏障，以及缺记录/错argument/callee负例。
+  精确verifier工作配额通过，少一步及零字节拒绝。50/100/200/201参数
+  evaluation work为538235/1062180/2110010/2120488，几何增长检查通过。
+  joint_selection_call.mjs另验证44496组完整生成源码的receiver、getter
+  替换、混合truthiness、精确值/身份、任意throw和非callable时机，9项
+  mutation实际失败。此为解码/draft及Node隔离层，非新增真实完整record。
+- 初始双getter arm夹具因旧PhiExpressionProducer的computed Commit
+  outgoing限制发现0候选，未计为单选择门槛RED；交换测试arm后发现2
+  候选，未追加生产tail匹配。联合实现初轮还发现普通branch ownership和
+  前一选择的实际transport被当作后一prefix两个问题，已按共同owner/
+  transport索引修复。confirmed-red-build.log在临时恢复HEAD原生产实现
+  后重新构建，confirmed-red.log确认双选择断言失败；生产已完整恢复并
+  重建。临时诊断已移除，以上失败均未计入通过。
+- final-build.log单构建-j4退出0；final-tests.log 19/19通过59.63秒。
+  核对注册后另重新链接abc_semantic/phased_literal_test，再运行
+  paired-tests.log：7/7通过96.92秒，包含预算新增矩阵、完整selection
+  解码回归及fresh pasteboard/Home/三项phased literal行为。合计20项
+  不同相关检查通过；旧二进制的5项结果不作为新鲜配对验证证据。
+  前置index-tests.log 7/7通过94.35秒，最终证据以后两组为准。日志前缀
+  /tmp/abcd-joint-call-；full-suite、扩展语料、RSS、基准、DFX及代理继续
+  暂停。本次未安排周期审计。最终将catch一致性标记改为零初始化bad
+  状态，省去未单独计费的重复fill；accounting-build.log退出0，重新链接
+  后accounting-tests.log 7/7通过36.42秒，工作数与行为不变。
+- fresh build/stage-one/value-joint-selection-pass-2 固定五输入全部
+  退出0，80 complete/26 incomplete/0 failure/46 no-module，无完整
+  回退或legacy writer。final-batch.log/final-syntax.log核对输入SHA/size与manifest/
+  index一致，106份源码全部解析且与revision86字节相同。shape审计记录
+  已更新：单选择数量门槛关闭，但MemberCall inline-owned表示、single-
+  entry/arm/phi候选、computed arm inert tail、class initializer同块、
+  phased scope/capture/module和legacy模板仍开放。未知算术域与导入super
+  协议缺口保留，阶段一语义/风格双验收尚未完成，Goal active。
+
 ### 2026-10-04：显式派生构造器发布复用共同初始化证明
 
 - 规则 revision86。删除PreparedFamily::Prepare中显式DerivedConstructor
