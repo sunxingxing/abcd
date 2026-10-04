@@ -12,6 +12,51 @@
 
 ## 当前阶段
 
+### 2026-10-04：以共同语法投影恢复自然函数尾部
+
+- 规则revision100。实际HomeModel表示RED复现callback/method末尾的
+  return (void 0)。PureTailCompletion复用原module纯完成规则，检查实际
+  function body末尾直接子语句的bare/typed undefined return；共同printer
+  表示为自然结束，FunctionTree/IR/控制/原指令来源保持。更早/嵌套返回、
+  symbol、call、sequence、await/yield和finally完成覆盖继续打印。
+- 首轮值/iterator队列对照没有发现async-generator有操作数return的
+  implicit Await差异。新增microtask marker RED复现completion提前；按
+  ECMA-262 14.10.1保留所有这种return，即使operand是undefined literal。
+  bare return没有这个等待。不是样本/PC/寄存器/块布局准入分支。
+- 原return及可省略literal在closing block前保留同一零宽事件；family
+  emission核对实际owner/body及prior sibling范围，serializer保留原node
+  ID和tail_completion标记。module_completion旧标签及module末尾边界
+  不变；static fields/implicit constructor沿用自己的映射约定。新检查
+  每函数O(1)，无额外graph walk、依赖或未界定缓存。
+- 新54组native callable fixture覆盖ordinary/arrow/async/generator/
+  async-generator。2592行为场景、27项完成job顺序及queued iterator
+  next/return/throw对照通过。HomeModel配对行为/style通过，保留callback
+  空名称、arity、不可构造、getter/callee和hostile map receiver验证。
+  模块/普通函数/async-generator位置序列化及原source receipt检查通过。
+- /tmp/abcd-tail-completion-style-red.log、job-order-red.log分别记录
+  实际表示及任务顺序RED。final-build.log首次广建发现tool仍引用旧
+  header；同步公共位置serializer后final-build-2.log相关34目标单-j4
+  成功。final-tests.log选择72项，69通过、3失败，148.25秒；不是全量
+  测试通过。失败位于generator返回选择/暂停/循环override的FunctionTree
+  构建，尚未进入printer，具体基线对照见下文记录。
+- /tmp/abcd-tail-completion-baseline用HEAD tree_printer/family_emission/
+  tree_position_json重新编译并替换archive/link对象，复用未变更的实际
+  analysis/fixture，三项原模式均SIGABRT，typed failure分别22/3、5/9、
+  5/9及member1与本轮完全相同。summary.json/build.log及独立stdout/
+  stderr保留证据。该对照隔离本轮输出改动，不表示旧generator缺口已
+  修复，也不把它们排除后改称72项通过。
+- fresh build/stage-one/tail-completion-pass-1固定五输入均退出0，仍
+  80 complete/26 incomplete/0 failure/46 no-module，无新完整项、回退或
+  legacy writer。batch-1.log及syntax-1.log核对原index/manifest SHA和
+  size，106份源码解析通过。48个完整和24个部分记录表示改善，原
+  return (void 0)从1303处降至21处，保留真实控制/异步义务。
+- author self-review检查共同尾部规则、async完成job、body边界、source
+  occurrence及special projection；没有把终值对照代替任务顺序验证。
+  旧未知父类rest/spread构造器的IsJSFunction/private-array协议与原生
+  默认构造器仍不等价，保留缺口；严格VM数值标准没有因解释性问题改变。
+  一般Reference/phase/字段/签名/父作用域及whole-stage验收保持开放，
+  Goal active；代理、全量测试、扩展语料、RSS/基准及DFX继续暂停。
+
 ### 2026-10-04：以共同控制流顺序恢复构造器捕获的倒置布局
 
 - 规则revision99。decoded完整构造器RED复现：super初始化块的地址高于

@@ -1,4 +1,4 @@
-#include "../src/source/module_completion.h"
+#include "../src/source/tail_completion.h"
 #include "tree_position_json.h"
 #include "../src/source/instruction_sources.h"
 #include "../src/source/family_emission.h"
@@ -108,7 +108,9 @@ void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const Pr
     output << entry;
   }
   output << ']';
-  const auto completion = printed.fragment == FunctionFragment::kModuleBody ? PureModuleCompletion(tree) : std::nullopt;
+  const auto completion = printed.fragment == FunctionFragment::kStaticFields ||
+      printed.fragment == FunctionFragment::kImplicitConstructor ? std::nullopt : PureTailCompletion(tree);
+  const auto completion_label = printed.fragment == FunctionFragment::kModuleBody ? "module_completion" : "tail_completion";
   const auto nodes = [&](std::string_view label, const auto& syntax, const auto& spans) {
     output << ",\"" << label << "\":[";
     for (std::size_t i = 0; i < syntax.size(); ++i) {
@@ -117,7 +119,7 @@ void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const Pr
           {"begin", spans[i].begin}, {"end", spans[i].end}};
       if (completion && ((label == "expressions" && completion->value == ExprId{static_cast<std::uint32_t>(i)}) ||
           (label == "statements" && completion->statement == StmtId{static_cast<std::uint32_t>(i)})))
-        item["emission"] = "module_completion";
+        item["emission"] = completion_label;
       output << item;
     }
     output << ']';
@@ -187,7 +189,7 @@ void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const Pr
               if constexpr (std::is_same_v<T, ExprId>) return completion && completion->value == node;
               else return completion && completion->statement == node;
             }();
-            if (omitted) entry["emission"] = "module_completion";
+            if (omitted) entry["emission"] = completion_label;
           }
           entry["node"] = node.value;
           entry["range"] = {{"begin", range.begin}, {"end", range.end}};

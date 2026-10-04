@@ -28,8 +28,9 @@ struct PrintedFamilyDraft {
     EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {},
     const GlobalScope* scope = nullptr);
 // Print an entry body in native module scope, with actual nested functions.
-// Only the root drops its synthetic block/terminal return; descendants preserve
-// receiver, return and coroutine syntax. This does not establish module bindings
+// Only the root drops its synthetic module block. Native callable tails may
+// omit pure undefined completion; other returns/receiver/coroutines remain.
+// This does not establish module bindings
 // or class/capture completeness; callers retain those construction obligations.
 [[nodiscard]] std::variant<PrintedFamilyDraft, TreePrintError> PrintModuleFamilyDraft(
     const ConstructedFamily& family, std::ostream& output,

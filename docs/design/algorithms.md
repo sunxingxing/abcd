@@ -1363,3 +1363,34 @@ modes and 1/200/201/402 repeated reads/member calls. Native source behavior
 tests separately cover receiver/effects/errors. Scaling assertions compare
 charged work across the geometric cases; physical memory and full-corpus
 benchmarks remain paused.
+
+### Native callable tail completion (2026-10-04, rules 100)
+
+The shared syntax projection inspects only the last direct child of the actual
+function body. A bare return or typed undefined literal can complete through
+native fallthrough without changing the verified FunctionTree, control plans or
+instruction ownership. Earlier/nested returns, symbol reads, compound operands,
+calls, suspension expressions and finally returns keep their original syntax.
+This is a language completion rule, not a bytecode sequence or CFG admission
+pattern. Static-field and implicit-constructor projections retain their separate
+position conventions.
+
+Provenance: ECMA-262 2024 [ReturnStatement evaluation](https://tc39.es/ecma262/2024/multipage/ecmascript-language-statements-and-declarations.html#sec-return-statement-runtime-semantics-evaluation),
+[GeneratorStart](https://tc39.es/ecma262/2024/multipage/control-abstraction-objects.html#sec-generatorstart),
+[AsyncGeneratorStart](https://tc39.es/ecma262/2024/multipage/control-abstraction-objects.html#sec-asyncgeneratorstart)
+and [AsyncBlockStart](https://tc39.es/ecma262/2024/multipage/control-abstraction-objects.html#sec-asyncblockstart).
+An async-generator return operand has an implicit Await even when it is
+undefined. That return must remain; its bare return has no such operand.
+Checking only eventual values or iterator request order misses this job boundary.
+Independent microtask markers distinguish completion before/after the marker.
+
+`PureTailCompletion` takes O(1) work/space per callable and reuses existing flat
+tree tables. The printer writes the original return/literal at one zero-width
+byte boundary before its closing block; emission checks that boundary within the
+real owner/body and after the prior sibling. Serialization reports
+`tail_completion`, retaining the existing `module_completion` label for module
+roots. No fabricated expression range or deleted instruction origin is needed.
+No dependency or external implementation is added. Tests cover six native
+callable kinds, retained effects/control/finalizers, asynchronous job order and
+queued iterator requests; actual paired HomeModel verifies source style and
+observable callback behavior independently.

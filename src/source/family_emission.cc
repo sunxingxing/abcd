@@ -1,4 +1,4 @@
-#include "module_completion.h"
+#include "tail_completion.h"
 #include "family_emission.h"
 
 #include <algorithm>
@@ -29,10 +29,11 @@ void CheckPositions(const PreparedFamily& family, const PrintedFamilyDraft& prin
     budget.Step();
     const auto& member = members[i]; const auto& tree = member.tree;
     const auto& positions = printed.members[i]; const auto owner = printed.functions[i];
-    const auto completion = positions.fragment == FunctionFragment::kModuleBody && i == family.Family().root.value
-        ? PureModuleCompletion(tree) : std::nullopt;
+    const bool module = positions.fragment == FunctionFragment::kModuleBody && i == family.Family().root.value;
+    const auto completion = positions.fragment == FunctionFragment::kStaticFields ||
+        positions.fragment == FunctionFragment::kImplicitConstructor ? std::nullopt : PureTailCompletion(tree);
     const auto* body = std::get_if<BlockStmt>(&tree.statements[tree.body.value].statement);
-    const bool empty_completion = completion && body && body->child_count == 1 && owner.begin == owner.end;
+    const bool empty_completion = module && completion && body && body->child_count == 1 && owner.begin == owner.end;
     Require((owner.begin < owner.end || empty_completion) && owner.end <= printed.bytes && member.sources &&
         positions.identity == tree.identity && positions.method == tree.method &&
         positions.value_revision == tree.value_revision && positions.cfg_revision == tree.cfg_revision &&
@@ -66,7 +67,20 @@ void CheckPositions(const PreparedFamily& family, const PrintedFamilyDraft& prin
           bool omitted = false;
           if constexpr (std::is_same_v<T, ExprId>) omitted = completion && completion->value == target;
           else if constexpr (std::is_same_v<T, StmtId>) omitted = completion && completion->statement == target;
-          if (omitted) Require(range.begin == owner.end && range.end == owner.end, Error::kPositions);
+          if (omitted) {
+            Require(range.begin == range.end && range == positions.statements[completion->statement.value] &&
+                (!completion->value || range == positions.expressions[completion->value->value]), Error::kPositions);
+            if (module) Require(range.begin == owner.end, Error::kPositions);
+            else {
+              const auto block = positions.statements[tree.body.value];
+              Require(owner.begin <= block.begin && block.begin <= range.begin && range.end < block.end &&
+                  block.end <= owner.end && body, Error::kPositions);
+              if (body->child_count > 1) {
+                const auto prior = tree.children[body->first_child + body->child_count - 2];
+                Require(positions.statements[prior.value].end <= range.begin, Error::kPositions);
+              }
+            }
+          }
           else Require(owner.begin <= range.begin && range.begin < range.end && range.end <= owner.end, Error::kPositions);
         }
       }, source.target);

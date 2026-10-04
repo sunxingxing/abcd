@@ -82,8 +82,12 @@ try {
     assert.equal(record.source_complete, true, `record ${entity}`);
     assert.equal(record.legacy_writer_used, false);
     actual.set(specifier, readFileSync(join(destination, record.source), 'utf8'));
-    if (entity === 16474) assert.doesNotMatch(actual.get(specifier), /\(\{\[""\]:/,
-      'unnamed call arguments should use native function syntax');
+    if (entity === 16474) {
+      assert.doesNotMatch(actual.get(specifier), /\(\{\[""\]:/,
+        'unnamed call arguments should use native function syntax');
+      assert.doesNotMatch(actual.get(specifier), /return \(void 0\);/,
+        'effect-free terminal undefined returns should use native fallthrough');
+    }
     expected.set(specifier, stripTypeScriptTypes(readFileSync(join(root, 'Immersive_src', paired), 'utf8')));
   }
   assert.deepEqual(await exercise(actual), await exercise(expected));

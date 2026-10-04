@@ -36,6 +36,20 @@ int main() {
   const auto ordinary=std::get<PrintedFunction>(PrintFunctionTree(tree,normal));
   tools::WriteTreePositions(normal_map,tree,ordinary,&sources);
   const auto function=nlohmann::json::parse(normal_map.str());
-  Check(!function["instruction_sources"][0].contains("emission"));
-  Check(function["instruction_sources"][0]["range"]["begin"] < function["instruction_sources"][0]["range"]["end"]);
+  for (const auto& item:function["instruction_sources"]) {
+    Check(item["emission"]=="tail_completion");
+    Check(item["range"]["begin"]==item["range"]["end"]);
+    Check(item["range"]["end"] < function["statements"][0]["end"]);
+  }
+  Check(function["expressions"][0]["emission"]=="tail_completion");
+  Check(function["statements"][1]["emission"]=="tail_completion");
+  tree.callable=CallableKind::kAsyncGenerator;
+  std::ostringstream asynchronous, async_map;
+  const auto retained=std::get<PrintedFunction>(PrintFunctionTree(tree,asynchronous));
+  tools::WriteTreePositions(async_map,tree,retained,&sources);
+  const auto awaited=nlohmann::json::parse(async_map.str());
+  for (const auto& item:awaited["instruction_sources"]) {
+    Check(!item.contains("emission"));
+    Check(item["range"]["begin"] < item["range"]["end"]);
+  }
 }

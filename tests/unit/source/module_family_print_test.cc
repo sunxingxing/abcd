@@ -190,8 +190,86 @@ void NameScale() {
         {"allocated", ranges.allocated_bytes}, {"source", output.str()}} << '\n';
   }
 }
+enum class TailCase { kBare, kLiteral, kValue, kCall, kSequence, kEarly, kNested, kFinallyReturn, kSuspend };
+std::string_view TailLabel(TailCase kind) {
+  switch (kind) {
+    case TailCase::kBare: return "bare";
+    case TailCase::kLiteral: return "literal";
+    case TailCase::kValue: return "value";
+    case TailCase::kCall: return "call";
+    case TailCase::kSequence: return "sequence";
+    case TailCase::kEarly: return "early";
+    case TailCase::kNested: return "nested";
+    case TailCase::kFinallyReturn: return "finally-return";
+    case TailCase::kSuspend: return "suspend";
+  }
+  std::abort();
+}
+void TailCompletions() {
+  for (const auto callable : {CallableKind::kFunction, CallableKind::kArrow, CallableKind::kAsyncFunction,
+      CallableKind::kAsyncArrow, CallableKind::kGenerator, CallableKind::kAsyncGenerator})
+    for (const auto kind : {TailCase::kBare, TailCase::kLiteral, TailCase::kValue, TailCase::kCall,
+        TailCase::kSequence, TailCase::kEarly, TailCase::kNested, TailCase::kFinallyReturn, TailCase::kSuspend}) {
+      auto tree = Base(10); tree.callable = callable;
+      tree.names = {u"event", u"value"};
+      tree.symbols = {{{0}, {0}, BindingKind::kParameter, DeclarationKind::kParameter, NameEvidence::kSynthesized, {}},
+          {{0}, {1}, BindingKind::kParameter, DeclarationKind::kParameter, NameEvidence::kSynthesized, {}}};
+      tree.parameters = {{{0}, {}, false}, {{1}, {}, false}};
+      tree.expressions = {{TreeLiteral{UndefinedLiteral{}}, {0}}};
+      const auto add = [&](TreeExpression expression) {
+        const ExprId id{static_cast<std::uint32_t>(tree.expressions.size())};
+        tree.expressions.push_back({std::move(expression), {0}}); return id;
+      };
+      const auto event = [&] { const auto callee = add(SymbolExpr{{0}}); return add(CallExpr{callee, {0,0}, CallReference::kValue}); };
+      const auto value = [&] { return add(SymbolExpr{{1}}); };
+      bool omitted = kind == TailCase::kBare || kind == TailCase::kLiteral || kind == TailCase::kSuspend;
+      if (callable == CallableKind::kAsyncGenerator && kind != TailCase::kBare) omitted = false;
+      if (kind == TailCase::kBare) { tree.expressions.clear(); tree.statements[1].statement = ReturnStmt{}; }
+      if (kind == TailCase::kValue) { tree.expressions.clear(); tree.statements[1].statement = ReturnStmt{value()}; }
+      if (kind == TailCase::kCall) { tree.expressions.clear(); tree.statements[1].statement = ReturnStmt{event()}; }
+      if (kind == TailCase::kSequence) tree.statements[1].statement = ReturnStmt{add(SequenceExpr{event(), {0}})};
+      if (kind == TailCase::kEarly || kind == TailCase::kNested) {
+        tree.statements.push_back({ExpressionStmt{event()}, {0}});
+        tree.children.push_back({2}); std::get<BlockStmt>(tree.statements[0].statement).child_count = 2;
+        if (kind == TailCase::kNested) {
+          tree.scopes.push_back({ScopeKind::kBlock, tree.body_scope});
+          tree.statements.push_back({BlockStmt{{2}, 2, 1}, {0}});
+          tree.children[0] = {3}; tree.children.push_back({1});
+        }
+      }
+      if (kind == TailCase::kFinallyReturn) {
+        tree.scopes.push_back({ScopeKind::kBlock, tree.body_scope});
+        tree.scopes.push_back({ScopeKind::kBlock, tree.body_scope});
+        tree.statements = {{BlockStmt{{1}, 0, 1}, {0}}, {TryStmt{{2}, {}, StmtId{4}}, {0}},
+            {BlockStmt{{2}, 1, 1}, {0}}, {ReturnStmt{value()}, {0}},
+            {BlockStmt{{3}, 2, 1}, {0}}, {ReturnStmt{ExprId{0}}, {0}}};
+        tree.children = {{1}, {3}, {5}};
+      }
+      if (kind == TailCase::kSuspend) {
+        const auto operand = value();
+        const auto suspended = IsGeneratorCallable(callable) ? add(YieldExpr{operand}) :
+            IsAsyncCallable(callable) ? add(AwaitExpr{operand}) : operand;
+        tree.statements.push_back({ExpressionStmt{suspended}, {0}});
+        tree.children = {{2}, {1}}; std::get<BlockStmt>(tree.statements[0].statement).child_count = 2;
+      }
+      std::ostringstream output;
+      const auto printed = PrintFunctionTree(tree, output);
+      Check(std::holds_alternative<PrintedFunction>(printed));
+      const auto& positions = std::get<PrintedFunction>(printed);
+      if (omitted) {
+        Check(output.str().find("return") == std::string::npos);
+        Check(positions.statements[1].begin == positions.statements[1].end);
+        const auto block = positions.statements[0];
+        Check(block.begin <= positions.statements[1].begin && positions.statements[1].end < block.end);
+        if (kind != TailCase::kBare) Check(positions.expressions[0] == positions.statements[1]);
+      } else Check(output.str().find("return") != std::string::npos);
+      std::cout << nlohmann::json{{"callable", CallableLabel(callable)}, {"case", TailLabel(kind)},
+          {"omitted", omitted}, {"source", output.str()}} << '\n';
+    }
+}
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--tail-completions") { TailCompletions(); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--names") { Names(); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--name-shadow") { NameShadow(); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--name-scale") { NameScale(); return 0; }
@@ -259,7 +337,7 @@ int main(int argc, char** argv) {
     Check(ranges.members[0].expressions[0] == GeneratedRange{0,0});
     std::ostringstream ordinary;
     Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(completion.members[0].tree,ordinary)));
-    Check(ordinary.str().find("return") != std::string::npos);
+    Check(ordinary.str().find("return") == std::string::npos);
   }
   auto invalid = family;
   invalid.members[2].tree.expressions[0].expression = ThisExpr{{10}};

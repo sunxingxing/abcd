@@ -819,3 +819,23 @@ getter/callee替换、noncallable和任意抛出值。
 选择及跨块load仍混用原instruction顺序；`scope_facts.cc::Rebase` 在已
 取得初始化/guard支配区间后仍有跨块PC比较。这些可能拒绝合法布局，
 需要共同初始化快照/实际block身份替代，未在本次宣称清理完成。
+
+## 2026-10-04：尾部语法投影与真实完成义务（规则 100）
+
+共同 PureTailCompletion 将 module 的纯尾部完成规则复用于原生 callable。
+只检查实际 function body 的末尾 direct return 及 typed undefined operand；
+不查看 opcode 序列、PC、寄存器、CFG 布局、样本或源码字符串。更早/嵌套
+return 和 finally 完成覆盖必须保留。这个 AST 所有权边界是语法等价的
+前提，不是拒绝反编译的结构匹配；不满足时继续打印原 return。
+
+async generator 有操作数 return 的隐式 Await 不能省略。原独立值/队列
+检查没有区分该微任务边界；新增对照复现 completion 提前，再按共同
+CallableKind 保留原返回。bare return 没有该 implicit Await。source
+occurrence 仍落在真实结束边界，其他范围验证义务不放宽。
+
+实际旧 unknown-parent 构造器仍走 pinned RuntimeSuperCallSpread：先
+IsJSFunction，再私有 array 参数读取和 JSFunction::Construct。原生默认
+构造器仅要求 IsConstructor，允许 Proxy/bound constructor，语义范围不同；
+打印 super(...args) 又引入用户可观察 iterator。这些是尚未承载的真实 VM
+义务，不能因源码常见写法或未知 SDK 父类名称删除。已有 invocation-frame
+forward-all-args 隐式构造器证明保持。尚无样本运行证明该边界实际触发。

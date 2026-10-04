@@ -86,6 +86,24 @@ work 统计和调用方显式传入有限额度的底层兼容接口保留，但
 整份 record 的最终目标不变。演进任务见
 [C00–C09 计划](../../superpowers/plans/2026-09-28-unified-control-regions.md)。
 
+## 原生函数尾部完成的表示（规则 100）
+
+共同 printer 可将实际 function body 最后一个直接子语句的 bare return 或
+typed undefined literal return 表示为自然结束；FunctionTree、原指令来源和
+控制计划保持完整。更早/嵌套 return、变量读取、复合表达式、call、await/yield
+及 finally 中的 return 不在这个语法投影范围内。
+
+async generator 的有操作数 return 隐含 Await，连 undefined literal 也必须
+保留，避免改变完成通知相对其他微任务的顺序。此区别来自语言语义，不是
+按样本/编译器布局设置的准入条件。见
+[ReturnStatement evaluation](https://tc39.es/ecma262/2024/multipage/ecmascript-language-statements-and-declarations.html#sec-return-statement-runtime-semantics-evaluation)。
+
+省略的原 return/字面量在结束 block 前保留共同零宽位置，序列化标记
+tail_completion；module root 沿用 module_completion，位置在 module owner
+末尾。位置消费方核对实际 body、owner 及前一个 sibling 的范围，不把这些
+事件当作无来源节点或捏造有长度的源码片段。静态字段和隐式构造器原投影
+保持独立位置约定。
+
 ## 类成员的输入证明缺口（规则 64）
 
 `ClassTree` 的 wire-order 成员槽现为有类型的 optional PreparedFamily。

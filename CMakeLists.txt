@@ -1472,6 +1472,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/captured_receiver.mjs $<TARGET_FILE:derived_cells_test> --reversed-initialization --unguarded)
     add_test(NAME unguarded_reversed_initialization_forwarded_receiver_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/captured_receiver.mjs $<TARGET_FILE:derived_cells_test> --reversed-initialization --forwarded --unguarded)
+    add_test(NAME tail_completions_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/tail_completions.mjs $<TARGET_FILE:module_family_print_test>)
     add_test(NAME phased_cells_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_cells.mjs $<TARGET_FILE:class_tree_context_test>)
     add_test(NAME phased_computed_call_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

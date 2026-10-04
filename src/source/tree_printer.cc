@@ -1,4 +1,4 @@
-#include "module_completion.h"
+#include "tail_completion.h"
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/module_enclosure.h"
 
@@ -1153,10 +1153,11 @@ class TreePrinter {
     const bool root = ModuleBody() && at.id == Tree().body;
     if (at.index == block.child_count) { if (!root) { Run(Indent{at.depth}); Append("}"); } return; }
     Push(BlockCursor{at.id, at.index + 1, at.depth});
-    if (root && at.index + 1 == block.child_count) {
-      if (const auto completion = PureModuleCompletion(Tree())) {
-        // An actual zero-width module-end event, not an invented expression
-        // range. Position consumers validate/serialize its omitted meaning.
+    if (at.id == Tree().body && at.index + 1 == block.child_count) {
+      if (const auto completion = PureTailCompletion(Tree())) {
+        // Keep the actual tail event at this byte boundary. Modules end here;
+        // native callables still emit their closing block/function syntax.
+        // Source positions retain both original return and literal identities.
         Result().statements[completion->statement.value] = {written_, written_};
         if (completion->value) Result().expressions[completion->value->value] = {written_, written_};
         return;
