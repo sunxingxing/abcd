@@ -1332,3 +1332,34 @@ invocation、capture和发布证明保持，在线规范草案不替代锁定的
 成功、少一单位拒绝。648组名称/调用行为及可变外部捕获对照保持名称属性
 而不引入内部self；实际配对回调另外检查词法receiver。全流程RSS和性能
 基准继续暂停；计费scratch及work不是进程峰值或吞吐测量。
+## Acyclic local storage order and capture exposure
+
+Local cell SSA now reuses `OrderAcyclicBlocks` (Kahn, O(B+E) time/O(B)
+storage) instead of comparing branch target PCs. This proves single activation
+for this existing normal, handler-free adapter. It is a coverage boundary;
+cyclic/exception environments require a richer transfer model. No dependency
+or license changes: the shared in-repository ordering implementation is retained.
+
+The adapter assigns optional typed ranks to reachable original instruction
+sites and propagates a Boolean exposure fact across each block/edge once.
+Unpreserved callable/class/buffer creation invalidates subsequent reads on
+every path where it occurs. Preserved creation leaves the fact unchanged.
+The additional cost is O(N+B+E) time/O(N+B) storage over existing environment
+binding and sparse SSA costs; capacities are admitted and retained read/rank
+arrays are included in `LocalSsa::AllocatedBytes`. This is not a dense cell by
+site matrix, a per-cell graph walk, or a whole-process RSS result.
+
+Receiver suffix and defined-capture consumers summarize writes by the shared
+rank in one indexed access pass. Lower rank establishes that a store cannot
+execute after a higher-ranked site in this DAG. Candidate receiver stores still
+owe actual capture dominance; rank proves neither dominance nor equivalence of
+incomparable histories. Finer creation-point cell snapshots remain necessary
+for general incomparable writes. Family queries keep typed original block IDs:
+cross-block availability uses dominator intervals, while a same-block query
+uses actual site order. The existing indexed lookups remain logarithmic.
+
+Complete decoded constructor families test two reverse layouts, both guard
+modes and 1/200/201/402 repeated reads/member calls. Native source behavior
+tests separately cover receiver/effects/errors. Scaling assertions compare
+charged work across the geometric cases; physical memory and full-corpus
+benchmarks remain paused.

@@ -1456,6 +1456,22 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/captured_receiver.mjs $<TARGET_FILE:derived_cells_test> --unguarded)
     add_test(NAME unguarded_forwarded_receiver_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/captured_receiver.mjs $<TARGET_FILE:derived_cells_test> --forwarded --unguarded)
+    add_test(NAME reversed_captured_receiver_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/captured_receiver.mjs $<TARGET_FILE:derived_cells_test> --reversed)
+    add_test(NAME reversed_forwarded_receiver_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/captured_receiver.mjs $<TARGET_FILE:derived_cells_test> --reversed --forwarded)
+    add_test(NAME unguarded_reversed_captured_receiver_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/captured_receiver.mjs $<TARGET_FILE:derived_cells_test> --reversed --unguarded)
+    add_test(NAME unguarded_reversed_forwarded_receiver_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/captured_receiver.mjs $<TARGET_FILE:derived_cells_test> --reversed --forwarded --unguarded)
+    add_test(NAME reversed_initialization_captured_receiver_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/captured_receiver.mjs $<TARGET_FILE:derived_cells_test> --reversed-initialization)
+    add_test(NAME reversed_initialization_forwarded_receiver_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/captured_receiver.mjs $<TARGET_FILE:derived_cells_test> --reversed-initialization --forwarded)
+    add_test(NAME unguarded_reversed_initialization_captured_receiver_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/captured_receiver.mjs $<TARGET_FILE:derived_cells_test> --reversed-initialization --unguarded)
+    add_test(NAME unguarded_reversed_initialization_forwarded_receiver_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/captured_receiver.mjs $<TARGET_FILE:derived_cells_test> --reversed-initialization --forwarded --unguarded)
     add_test(NAME phased_cells_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_cells.mjs $<TARGET_FILE:class_tree_context_test>)
     add_test(NAME phased_computed_call_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

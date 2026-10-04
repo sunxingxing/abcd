@@ -1,4 +1,5 @@
 #include "abcd/analysis/local_ssa.h"
+#include "abcd/analysis/block_order.h"
 
 #include <algorithm>
 #include <new>
@@ -22,15 +23,21 @@ std::variant<LocalSsa, LocalSsaError> BuildLocalSsa(
     std::uint64_t work, std::span<const CapturePreservation> preserved) {
   using Error = LocalSsaError;
   if (!body.tries.empty() || !body.handlers.empty()) return Error::kControlFlow;
-  for (const auto& site : body.instructions)
-    if (site.branch_target && site.branch_target->value <= site.offset.value)
-      return Error::kControlFlow;
   try {
     auto remaining_work = work;
     const auto charge = [&](std::uint64_t amount = 1) {
       if (amount > remaining_work) throw Error::kResourceLimit;
       remaining_work -= amount;
     };
+    // Allocation identity needs a single activation. A backwards PC does not
+    // prove repetition; the shared reachable DAG proof owns that obligation.
+    for (const auto& block : graph.blocks) charge(3 * (1 + block.successor_count));
+    auto ordered = OrderAcyclicBlocks(graph, {}, {budget.bytes});
+    if (const auto* error = std::get_if<OrderError>(&ordered))
+      return *error == OrderError::kResourceLimit ? Error::kResourceLimit : Error::kControlFlow;
+    const auto& order = std::get<BlockOrder>(ordered);
+    if (order.work.allocated_bytes > budget.bytes) return Error::kResourceLimit;
+    budget.bytes -= order.work.allocated_bytes;
     const auto environments = AnalyzeEnvironments(body, graph, frame_size, {budget.bytes});
     const auto* bound = std::get_if<EnvironmentFlow>(&environments);
     if (!bound) {
@@ -67,12 +74,20 @@ std::variant<LocalSsa, LocalSsaError> BuildLocalSsa(
     std::vector<RegisterSite> sites(body.instructions.size());
     if (sites.capacity() > budget.bytes / sizeof(RegisterSite)) return Error::kResourceLimit;
     budget.bytes -= sites.capacity() * sizeof(RegisterSite);
+    if (sites.size() > budget.bytes / sizeof(LocalReadState)) return Error::kResourceLimit;
+    std::vector<LocalReadState> read_states(sites.size());
+    if (read_states.capacity() > budget.bytes / sizeof(LocalReadState)) return Error::kResourceLimit;
+    budget.bytes -= read_states.capacity() * sizeof(LocalReadState);
+    if (sites.size() > budget.bytes / sizeof(std::optional<InstructionRank>)) return Error::kResourceLimit;
+    std::vector<std::optional<InstructionRank>> site_order(sites.size());
+    if (site_order.capacity() > budget.bytes / sizeof(std::optional<InstructionRank>)) return Error::kResourceLimit;
+    budget.bytes -= site_order.capacity() * sizeof(std::optional<InstructionRank>);
     if (registers.Values().size() > UINT32_MAX ||
         registers.Values().size() > budget.bytes) return Error::kResourceLimit;
     std::vector<std::uint8_t> environment_values(registers.Values().size());
     if (environment_values.capacity() > budget.bytes) return Error::kResourceLimit;
     budget.bytes -= environment_values.capacity();
-    std::optional<InstructionId> first_capture;
+    std::optional<InstructionId> unpreserved_capture;
     std::size_t preservation = 0;
     for (std::size_t i = 1; i < preserved.size(); ++i)
       if (preserved[i - 1].pc >= preserved[i].pc) return Error::kInstruction;
@@ -112,8 +127,9 @@ std::variant<LocalSsa, LocalSsaError> BuildLocalSsa(
         ++preservation;
         read_only = true;
       }
-      if (!first_capture && capture && !read_only)
-        first_capture = InstructionId{static_cast<std::uint32_t>(i)};
+      if (!unpreserved_capture && capture && !read_only)
+        unpreserved_capture = InstructionId{static_cast<std::uint32_t>(i)};
+      if (capture && !read_only) read_states[i] = LocalReadState::kCapture;
       if (binding >= bound->bindings.size() || bound->bindings[binding].instruction != i)
         continue;
       const auto& site = bound->bindings[binding++];
@@ -134,6 +150,30 @@ std::variant<LocalSsa, LocalSsaError> BuildLocalSsa(
       }
     }
     if (preservation != preserved.size()) return Error::kInstruction;
+    if (graph.blocks.size() > budget.bytes) return Error::kResourceLimit;
+    std::vector<std::uint8_t> exposed(graph.blocks.size());
+    if (exposed.capacity() > budget.bytes) return Error::kResourceLimit;
+    budget.bytes -= exposed.capacity();
+    // A single Boolean transfer per reachable block/site. A creation on any
+    // predecessor invalidates later cell reads, including backwards layouts;
+    // preserved creation sites leave the state unchanged. No per-cell walk.
+    std::uint32_t rank = 0;
+    for (const auto id : order.blocks) {
+      charge(); const auto& block = graph.blocks[id.value];
+      bool captured = exposed[id.value];
+      if (block.first_instruction > sites.size() ||
+          block.instruction_count > sites.size() - block.first_instruction) return Error::kInstruction;
+      for (std::size_t i = block.first_instruction;
+          i < std::size_t(block.first_instruction) + block.instruction_count; ++i) {
+        charge(); const bool capture = read_states[i] == LocalReadState::kCapture;
+        read_states[i] = captured ? LocalReadState::kExposed : LocalReadState::kPreserved;
+        site_order[i] = InstructionRank{rank++};
+        captured |= capture;
+      }
+      for (std::size_t e = 0; e < block.successor_count; ++e) {
+        charge(); exposed[block.successors[e].target.value] |= captured;
+      }
+    }
     // Reject even a private copy of a raw environment identity; admitting
     // copy chains would require a separate escape proof. Phi inputs count as
     // uses even when the phi result is otherwise dead.
@@ -168,7 +208,7 @@ std::variant<LocalSsa, LocalSsaError> BuildLocalSsa(
       return Error::kResourceLimit;  // SsaError has only byte/work exhaustion.
     }
     charge(quota.Consumed());
-    return LocalSsa{std::move(*values), first_capture, work - remaining_work};
+    return LocalSsa{std::move(*values), unpreserved_capture, std::move(read_states), std::move(site_order), work - remaining_work};
   } catch (LocalSsaError error) {
     return error;
   } catch (const std::bad_alloc&) {

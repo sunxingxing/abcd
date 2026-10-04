@@ -44,6 +44,7 @@ std::variant<analysis::DefinedCaptures, SourceFailure> ProveDefinedCaptures(
     return result;
   };
   try {
+    std::vector<std::optional<analysis::InstructionRank>> site_order;
     bool candidate = false;
     for (const auto& access : proof.locals.accesses) {
       charge();
@@ -57,10 +58,10 @@ std::variant<analysis::DefinedCaptures, SourceFailure> ProveDefinedCaptures(
       if (!sites) return std::get<SourceFailure>(preserved);
       charge(sites->work_units);
       if (sites->AllocatedBytes() > budget.bytes) return resource;
-      const auto local = analysis::BuildLocalSsa(body, method.flow, method.ssa,
+      auto local = analysis::BuildLocalSsa(body, method.flow, method.ssa,
           frame_size, constants.header.profile,
           {budget.bytes - sites->AllocatedBytes()}, budget.work, sites->sites);
-      const auto* cells = std::get_if<analysis::LocalSsa>(&local);
+      auto* cells = std::get_if<analysis::LocalSsa>(&local);
       if (!cells) {
         if (std::get<analysis::LocalSsaError>(local) ==
             analysis::LocalSsaError::kResourceLimit) return resource;
@@ -69,20 +70,26 @@ std::variant<analysis::DefinedCaptures, SourceFailure> ProveDefinedCaptures(
       charge(cells->work_units);
       // This also certifies no raw environment escape and no re-entry. All
       // creations must preserve incoming cells, including descendants/buffers.
-      if (cells->first_capture) return empty();
+      if (cells->unpreserved_capture) return empty();
+      site_order = std::move(cells->site_order);
+      if (site_order.capacity() > budget.bytes / sizeof(std::optional<analysis::InstructionRank>)) return resource;
+      budget.bytes -= site_order.capacity() * sizeof(std::optional<analysis::InstructionRank>);
     }
     const auto count = proof.locals.cells.size();
-    if (count > budget.bytes / sizeof(std::optional<analysis::InstructionId>))
+    if (count > budget.bytes / sizeof(std::optional<analysis::InstructionRank>))
       return resource;
-    std::vector<std::optional<analysis::InstructionId>> last_store(count);
+    std::vector<std::optional<analysis::InstructionRank>> last_store(count);
     if (last_store.capacity() >
-        budget.bytes / sizeof(std::optional<analysis::InstructionId>)) return resource;
-    budget.bytes -= last_store.capacity() * sizeof(std::optional<analysis::InstructionId>);
+        budget.bytes / sizeof(std::optional<analysis::InstructionRank>)) return resource;
+    budget.bytes -= last_store.capacity() * sizeof(std::optional<analysis::InstructionRank>);
     for (const auto& access : proof.locals.accesses) {
       charge();
-      if (access.cell.value >= count) return empty();
-      if (access.kind == analysis::LocalAccessKind::kStore)
-        last_store[access.cell.value] = access.instruction;
+      if (access.cell.value >= count || access.instruction.value >= site_order.size()) return empty();
+      if (access.kind == analysis::LocalAccessKind::kStore) {
+        const auto rank = site_order[access.instruction.value];
+        if (rank && (!last_store[access.cell.value] || *last_store[access.cell.value] < *rank))
+          last_store[access.cell.value] = rank;
+      }
     }
     DefinedCaptures result;
     if (proof.locals.accesses.size() > budget.bytes / sizeof(analysis::CaptureGuard))
@@ -122,8 +129,10 @@ std::variant<analysis::DefinedCaptures, SourceFailure> ProveDefinedCaptures(
       }
       const auto& scope = tree->nodes[block];
       const auto store = last_store[access.cell.value];
-      // No post-guard direct write exists anywhere in this forward-only body.
-      if (!store || store->value >= i || !scope.begin ||
+      // DAG rank, not PC, proves no direct write can follow this guard. This
+      // sufficient suffix fact does not equate incomparable execution histories.
+      if (guard.value >= site_order.size() || !site_order[guard.value] ||
+          !store || *store >= *site_order[guard.value] || !scope.begin ||
           method.flow.blocks[block].first_instruction > i) continue;
       result.guards.push_back({access.cell, guard, scope.begin, scope.end});
     }

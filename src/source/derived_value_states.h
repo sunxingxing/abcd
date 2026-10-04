@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_DERIVED_VALUE_STATES_H_
 #include "derived_projection.h"
 #include "abcd/analysis/capture_effect.h"
+#include "abcd/analysis/local_ssa.h"
 namespace abcd::source {
 enum class DerivedValueState : std::uint8_t { kBottom, kUndefined, kSuper, kConstructor, kOther };
 struct DerivedValueStates {
@@ -9,6 +10,7 @@ struct DerivedValueStates {
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
   bool captures_preserved = false;
+  std::vector<std::optional<analysis::InstructionRank>> site_order;
 };
 // Same original input and current work graph. Caller independently inspected
 // every supplied same-body preservation site. Sparse local SSA selects stores;

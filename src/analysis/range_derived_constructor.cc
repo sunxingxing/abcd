@@ -214,10 +214,10 @@ InitializationResult ProveInitialization(
       auto built_locals = BuildLocalSsa(body, graph, ssa, frame.registers, profile,
                                        {budget.bytes}, budget.work, preserved);
       if (auto* local = std::get_if<LocalSsa>(&built_locals)) {
-        if (local->values.AllocatedBytes() > budget.bytes ||
+        if (local->AllocatedBytes() > budget.bytes ||
             local->work_units > budget.work)
           return Error::kResourceLimit;
-        budget.bytes -= local->values.AllocatedBytes();
+        budget.bytes -= local->AllocatedBytes();
         budget.work -= local->work_units;
         locals.emplace(std::move(*local));
       } else if (std::get<LocalSsaError>(built_locals) == LocalSsaError::kResourceLimit) {
@@ -298,7 +298,7 @@ InitializationResult ProveInitialization(
         edges.push_back({OriginId{reads.front().value.value},
                          OriginId{static_cast<std::uint32_t>(i)}});
       } else if (locals &&
-                 (!locals->first_capture || instruction < *locals->first_capture) &&
+                 locals->PreservesRead(instruction) &&
                  std::holds_alternative<LexicalLoad>(LiftLexicalInstruction(
                      body.instructions[instruction.value].decoded, frame.registers))) {
         const auto reads = locals->values.Reads(instruction);

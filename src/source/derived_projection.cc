@@ -127,14 +127,22 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
       // One pass over indexed accesses, not one graph walk per captured cell.
       // Language initialization alone includes undefined. Only actual super
       // operands plus transitive preservation can strengthen that domain.
+      const auto rank = [&](const ValueOp& op) {
+        Require(op.origin.value < graph.origins.size(), Error::kOrigin);
+        const auto site = graph.origins[op.origin.value].site.value;
+        Require(site < states.site_order.size(), Error::kOrigin);
+        return states.site_order[site];
+      };
       for (std::size_t c = 0; c < cells.cells.size(); ++c) {
         step(); const auto& cell = cells.cells[c];
         if (!std::holds_alternative<AllocatedCell>(cell.storage)) continue;
         bool stored = false, receiver = true;
-        std::optional<InstructionId> last_other;
+        std::optional<InstructionRank> last_other;
         for (const auto& access : std::span(cells.accesses).subspan(cell.first, cell.count)) {
           step(); if (access.kind != CellAccessKind::kStore) continue;
           const auto& op = graph.ops[access.operation.value];
+          const auto position = rank(op);
+          if (!position) continue;
           Require(op.use_count == 1 && op.first_use.value < graph.uses.size(), Error::kOperand);
           const auto& use = graph.uses[op.first_use.value];
           Require(use.life == ValueLife::kLive && use.owner == decltype(use.owner){access.operation} &&
@@ -142,24 +150,28 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
           const bool actual_receiver = classify(use.operand) == State::kSuper;
           stored = true; receiver &= actual_receiver;
           if (!actual_receiver) {
-            Require(op.origin.value < graph.origins.size(), Error::kOrigin);
-            const InstructionId site{graph.origins[op.origin.value].site.value};
-            if (!last_other || *last_other < site) last_other = site;
+            if (!last_other || *last_other < *position) last_other = *position;
           }
         }
         if (stored && receiver) result.receiver_cells.push_back({static_cast<std::uint32_t>(c)});
         else if (last_other) {
-          // Original local SSA already rejects backward control/escaping envs.
-          // After the final non-receiver write, every later write is super.
+          // The shared DAG rank proves no non-receiver write can follow this
+          // store, independently of physical PCs. It is a sufficient immutable
+          // suffix proof; incomparable writes may need finer SSA snapshots.
           // Keep the first candidate: dominance at each real creation is a
           // separate obligation; a prior Language/undefined store cannot pass it.
           std::optional<InstructionId> initialized;
+          std::optional<InstructionRank> first_receiver;
           for (const auto& access : std::span(cells.accesses).subspan(cell.first, cell.count)) {
             step(); if (access.kind != CellAccessKind::kStore) continue;
             const auto& op = graph.ops[access.operation.value];
+            const auto position = rank(op);
+            if (!position) continue;
             Require(op.origin.value < graph.origins.size(), Error::kOrigin);
             const InstructionId site{graph.origins[op.origin.value].site.value};
-            if (site > *last_other && (!initialized || site < *initialized)) initialized = site;
+            if (*position > *last_other && (!first_receiver || *position < *first_receiver)) {
+              initialized = site; first_receiver = *position;
+            }
           }
           if (initialized) result.receiver_initializations.push_back({{static_cast<std::uint32_t>(c)}, *initialized});
         }

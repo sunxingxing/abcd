@@ -2,6 +2,7 @@
 #include "../../../src/source/prepared_family.h"
 #include "../../../src/source/family_emission.h"
 #include "abcd/source/capture_preservation.h"
+#include "abcd/analysis/local_ssa.h"
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <unistd.h>
@@ -22,10 +23,11 @@ enum class Child { kReadOnly, kWrite, kEscape };
 enum class CellBranch { kNone, kReceiver, kMixed };
 enum class CaptureScenario { kReceiver, kUndefined, kForwarded, kUninitializedGuard,
   kInitialUndefined, kEarlyCreation, kBranchInitialization };
+enum class Layout { kForward, kReversedCapture, kReversedInitialization };
 std::uint64_t Run(abc::ProfileId profile, std::size_t copies, Child child, bool print,
     CellBranch branch = CellBranch::kNone, bool literal = false, bool reference = false,
     CaptureScenario scenario = CaptureScenario::kReceiver, bool receiver_literal = false,
-    bool guarded = true) {
+    bool guarded = true, Layout layout = Layout::kForward) {
   // Pinned dynamic ISA fixture: actual derived class occurrence and closure,
   // receiver saved into local cell after super, read again after DEFINEFUNC.
   constexpr std::uint32_t kPool = 64, kOwner = 80, kLiteral = 128,
@@ -71,6 +73,8 @@ std::uint64_t Run(abc::ProfileId profile, std::size_t copies, Child child, bool 
         static_cast<std::uint8_t>(abc::Opcode::kJMP_IMM8), to_join});
     constructor.insert(constructor.end(), alternate.begin(), alternate.end());
   }
+  if (layout != Layout::kForward) constructor.insert(constructor.end(), {kLexLoad, 0, kStore, 3});
+  const auto capture_start = constructor.size();
   if (literal) constructor.insert(constructor.end(), {
       static_cast<std::uint8_t>(abc::Opcode::kCREATEOBJECTWITHBUFFER_IMM8_ID16), 0, 4, 0,
       kStore, 2});
@@ -100,6 +104,41 @@ std::uint64_t Run(abc::ProfileId profile, std::size_t copies, Child child, bool 
   constructor.insert(constructor.end(), {kLexLoad, 0});
   if (guarded) constructor.insert(constructor.end(), {kCheckPrefix, kSuperCheck, 0});
   constructor.push_back(kReturn);
+  if (layout != Layout::kForward) {
+    Check((scenario == CaptureScenario::kInitialUndefined || scenario == CaptureScenario::kForwarded) &&
+        branch == CellBranch::kNone && !literal);
+    // Same execution: initialize undefined, invoke super/store its receiver,
+    // create/call the closure. Only the last two blocks exchange physical PCs.
+    constexpr std::size_t kInitialPrefix = 6; // NEWLEXENV and first cell store.
+    constexpr std::size_t kAllocationPrefix = 2; // NEWLEXENV only.
+    const auto prefix = layout == Layout::kReversedCapture ? kInitialPrefix : kAllocationPrefix;
+    std::vector<std::uint8_t> reordered(constructor.begin(), constructor.begin() + prefix);
+    constexpr auto jump = static_cast<std::uint8_t>(abc::Opcode::kJMP_IMM32);
+    constexpr auto kJumpWidth = 1 + sizeof(std::int32_t); // pinned JMP_IMM32 encoding
+    const auto append_jump = [&](std::int32_t displacement) {
+      reordered.push_back(jump);
+      const auto bits = static_cast<std::uint32_t>(displacement);
+      for (std::size_t i = 0; i < sizeof(bits); ++i) reordered.push_back(bits >> (i * 8));
+    };
+    Check(constructor.size() + kJumpWidth <= INT32_MAX);
+    if (layout == Layout::kReversedCapture) {
+      const auto capture_size = constructor.size() - capture_start;
+      append_jump(static_cast<std::int32_t>(capture_size + kJumpWidth));
+      const auto destination = reordered.size();
+      reordered.insert(reordered.end(), constructor.begin() + capture_start, constructor.end());
+      reordered.insert(reordered.end(), constructor.begin() + kInitialPrefix, constructor.begin() + capture_start);
+      append_jump(static_cast<std::int32_t>(static_cast<std::ptrdiff_t>(destination) - reordered.size()));
+    } else {
+      // The initial undefined write is physically after super/closure/return,
+      // yet entry jumps to it and it jumps back to the super block.
+      append_jump(static_cast<std::int32_t>(constructor.size() - kInitialPrefix + kJumpWidth));
+      const auto destination = reordered.size();
+      reordered.insert(reordered.end(), constructor.begin() + kInitialPrefix, constructor.end());
+      reordered.insert(reordered.end(), constructor.begin() + kAllocationPrefix, constructor.begin() + kInitialPrefix);
+      append_jump(static_cast<std::int32_t>(static_cast<std::ptrdiff_t>(destination) - reordered.size()));
+    }
+    constructor = std::move(reordered);
+  }
   std::vector<std::uint8_t> descendant{kLexLoad, 0, kReturn};
   // LD/STLEXVAR_IMM4_IMM4 packs depth in the low nibble and slot in the high
   // nibble (the pinned dynamic ISA). Slot 1 is Language but stores undefined.
@@ -203,6 +242,30 @@ std::uint64_t Run(abc::ProfileId profile, std::size_t copies, Child child, bool 
   FunctionContext context{std::get<ClassTreeContext>(std::move(resolved))};
   auto loaded = ReadFunctionValues(file, header, index, {1}, identity, InputCaptureMode::kConditional, {}, nullptr, &context);
   Check(std::holds_alternative<FileFunction>(loaded)); auto& function = std::get<FileFunction>(loaded);
+  if (layout == Layout::kReversedCapture) {
+    const auto& input = function.input.Input();
+    auto built = BuildLocalSsa(function.body, input.flow, input.ssa, function.frame.registers,
+        profile, {}, SemanticBudget{}.work);
+    Check(std::holds_alternative<LocalSsa>(built));
+    const auto& local = std::get<LocalSsa>(built);
+    Check(local.unpreserved_capture.has_value());
+    const auto super = std::find_if(input.instructions.begin(), input.instructions.end(), [](const auto& site) {
+      return std::holds_alternative<SuperRange>(site.operation);
+    });
+    Check(super != input.instructions.end());
+    const InstructionId super_site{static_cast<std::uint32_t>(super - input.instructions.begin())};
+    std::size_t safe = 0, exposed = 0;
+    for (const auto& read : local.values.AllReads()) {
+      if (read.instruction > super_site) {
+        // Physically higher but executed before creation: still a valid read.
+        Check(local.PreservesRead(read.instruction)); ++safe;
+      } else {
+        Check(!local.PreservesRead(read.instruction)); ++exposed;
+      }
+    }
+    Check(safe == 1 && exposed == copies + 1);
+    Check(!local.PreservesRead({static_cast<std::uint32_t>(input.instructions.size())}));
+  }
   const DerivedCaptureInput captures{file, header, index, lookup};
   const auto projected = ProjectDerivedConstructor(function, context, {}, &captures);
   if (child != Child::kReadOnly || branch == CellBranch::kMixed) {
@@ -214,7 +277,8 @@ std::uint64_t Run(abc::ProfileId profile, std::size_t copies, Child child, bool 
       // real initialized guard cannot be omitted or falsely published.
       Check(!guarded && reference);
       const auto& protocol = std::get<DerivedProjection>(projected);
-      Check(protocol.receiver_cells.empty() && protocol.receiver_initializations.empty());
+      Check(protocol.receiver_cells.empty());
+      if (child != Child::kReadOnly) Check(protocol.receiver_initializations.empty());
       const auto functions = std::get<FunctionCreationSites>(FunctionCreationSites::Build(file, header, index, lookup));
       Check(std::holds_alternative<FamilyPrepareFailure>(PreparedFamily::PrepareConstructor(
           file, header, index, lookup, roles, functions, parent, creation, identity,
@@ -225,6 +289,16 @@ std::uint64_t Run(abc::ProfileId profile, std::size_t copies, Child child, bool 
   if (const auto* error = std::get_if<DerivedProjectionError>(&projected)) std::cerr << "projection error " << static_cast<unsigned>(*error) << '\n';
   Check(std::holds_alternative<DerivedProjection>(projected));
   const auto& protocol = std::get<DerivedProjection>(projected);
+  if (layout == Layout::kReversedInitialization) {
+    Check(protocol.receiver_initializations.size() == 1);
+    const auto& input = function.input.Input();
+    const auto other = std::find_if(input.instructions.rbegin(), input.instructions.rend(), [](const auto& site) {
+      return std::holds_alternative<LexicalStore>(site.operation);
+    });
+    Check(other != input.instructions.rend());
+    const auto other_site = static_cast<std::uint32_t>(input.instructions.rend() - other - 1);
+    Check(protocol.receiver_initializations.front().store.value < other_site);
+  }
   Check(protocol.guards.size() == (guarded ? (receiver_literal ? copies + 2 : 2) : 0));
   Check(protocol.receiver_cells.size() + protocol.receiver_initializations.size() ==
       (scenario == CaptureScenario::kBranchInitialization ? 2 : 1));
@@ -361,27 +435,59 @@ std::uint64_t Run(abc::ProfileId profile, std::size_t copies, Child child, bool 
 }
 }
 int main(int argc, char** argv) {
+  const std::string_view mode = argc == 2 ? argv[1] : "";
+  const bool reversed = mode == "--reversed-reference-source" || mode == "--unguarded-reversed-reference-source" ||
+      mode == "--reversed-forward-reference-source" || mode == "--unguarded-reversed-forward-reference-source";
+  const bool initialization = mode == "--reversed-initialization-reference-source" || mode == "--unguarded-reversed-initialization-reference-source" ||
+      mode == "--reversed-initialization-forward-reference-source" || mode == "--unguarded-reversed-initialization-forward-reference-source";
+  if (reversed || initialization) {
+    const bool forwarded = mode == "--reversed-forward-reference-source" || mode == "--unguarded-reversed-forward-reference-source" ||
+        mode == "--reversed-initialization-forward-reference-source" || mode == "--unguarded-reversed-initialization-forward-reference-source";
+    const bool guarded = mode == "--reversed-reference-source" || mode == "--reversed-forward-reference-source" ||
+        mode == "--reversed-initialization-reference-source" || mode == "--reversed-initialization-forward-reference-source";
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      Run(profile, 1, Child::kReadOnly, true, CellBranch::kNone, false, true,
+          forwarded ? CaptureScenario::kForwarded : CaptureScenario::kInitialUndefined, false, guarded,
+          initialization ? Layout::kReversedInitialization : Layout::kReversedCapture);
+    return 0;
+  }
   Check(argc == 1 || (argc == 2 && (std::string_view(argv[1]) == "--source" ||
       std::string_view(argv[1]) == "--literal-source" || std::string_view(argv[1]) == "--reference-source" ||
       std::string_view(argv[1]) == "--forward-reference-source" || std::string_view(argv[1]) == "--receiver-literal-source" ||
       std::string_view(argv[1]) == "--unguarded-source" || std::string_view(argv[1]) == "--unguarded-literal-source" ||
       std::string_view(argv[1]) == "--unguarded-receiver-literal-source" ||
-      std::string_view(argv[1]) == "--unguarded-reference-source" || std::string_view(argv[1]) == "--unguarded-forward-reference-source")));
+      std::string_view(argv[1]) == "--unguarded-reference-source" || std::string_view(argv[1]) == "--unguarded-forward-reference-source" ||
+      std::string_view(argv[1]) == "--reversed-reference-source")));
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
     if (argc == 2) { Run(profile, 1, Child::kReadOnly, true, CellBranch::kNone,
         (std::string_view(argv[1]) == "--literal-source" || std::string_view(argv[1]) == "--receiver-literal-source" ||
          std::string_view(argv[1]) == "--unguarded-literal-source" ||
          std::string_view(argv[1]) == "--unguarded-receiver-literal-source"), std::string_view(argv[1]) == "--reference-source" ||
         std::string_view(argv[1]) == "--forward-reference-source" || std::string_view(argv[1]) == "--unguarded-reference-source" ||
-        std::string_view(argv[1]) == "--unguarded-forward-reference-source",
+        std::string_view(argv[1]) == "--unguarded-forward-reference-source" || std::string_view(argv[1]) == "--reversed-reference-source",
         std::string_view(argv[1]) == "--forward-reference-source" || std::string_view(argv[1]) == "--unguarded-forward-reference-source" ? CaptureScenario::kForwarded :
-        std::string_view(argv[1]) == "--reference-source" || std::string_view(argv[1]) == "--unguarded-reference-source" ? CaptureScenario::kInitialUndefined : CaptureScenario::kReceiver,
+        std::string_view(argv[1]) == "--reference-source" || std::string_view(argv[1]) == "--unguarded-reference-source" ||
+        std::string_view(argv[1]) == "--reversed-reference-source" ? CaptureScenario::kInitialUndefined : CaptureScenario::kReceiver,
         std::string_view(argv[1]) == "--receiver-literal-source" || std::string_view(argv[1]) == "--unguarded-receiver-literal-source",
         std::string_view(argv[1]) != "--unguarded-source" && std::string_view(argv[1]) != "--unguarded-literal-source" &&
         std::string_view(argv[1]) != "--unguarded-receiver-literal-source" &&
-        std::string_view(argv[1]) != "--unguarded-reference-source" && std::string_view(argv[1]) != "--unguarded-forward-reference-source"); continue; }
+        std::string_view(argv[1]) != "--unguarded-reference-source" && std::string_view(argv[1]) != "--unguarded-forward-reference-source",
+        std::string_view(argv[1]) == "--reversed-reference-source" ? Layout::kReversedCapture : Layout::kForward); continue; }
     // These are real file bodies with the same owner and protocol, not edited
     // cached trees. Guard presence cannot stand in for initialization proof.
+    for (const auto layout : {Layout::kReversedCapture, Layout::kReversedInitialization})
+      for (const auto guarded : {false, true}) {
+      std::uint64_t previous = 0;
+      for (const auto count : {1U, 200U, 201U, 402U}) {
+        const auto work = Run(profile, count, Child::kReadOnly, false, CellBranch::kNone,
+            false, true, CaptureScenario::kInitialUndefined, false, guarded, layout);
+        if (count > 201) Check(work < previous * 3);
+        previous = work;
+      }
+      for (const auto child : {Child::kWrite, Child::kEscape})
+        Run(profile, 1, child, false, CellBranch::kNone, false, true,
+            CaptureScenario::kInitialUndefined, false, guarded, layout);
+    }
     for (const auto count : {1U, 200U, 201U, 402U}) {
       Run(profile, count, Child::kReadOnly, false, CellBranch::kNone, false, false,
           CaptureScenario::kReceiver, false, false);

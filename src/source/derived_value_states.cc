@@ -64,7 +64,7 @@ std::variant<DerivedValueStates, Error> BuildDerivedValueStates(
       auto built = BuildLocalSsa(function.body, input.flow, input.ssa, function.frame.registers,
           function.input.Identity().profile, {budget.bytes}, budget.work, preserved);
       if (auto* local = std::get_if<LocalSsa>(&built)) {
-        admit(local->values.AllocatedBytes(), 1); step(local->work_units);
+        admit(local->AllocatedBytes(), 1); step(local->work_units);
         locals.emplace(std::move(*local));
       } else if (std::get<LocalSsaError>(built) == LocalSsaError::kResourceLimit)
         throw Error::kResourceLimit;
@@ -149,7 +149,7 @@ std::variant<DerivedValueStates, Error> BuildDerivedValueStates(
         const auto* original = std::get_if<LexicalLoad>(&input.instructions[site.value].operation);
         Require(actual == &op && original && original->address.depth.value == load->address.depth.value &&
             original->address.slot.value == load->address.slot.value && op.use_count == 0, Error::kOperand);
-        if ((!locals->first_capture || site < *locals->first_capture) && reads[site.value]) {
+        if (locals->PreservesRead(site) && reads[site.value]) {
           Require(edges.size() < edges.capacity(), Error::kResourceLimit);
           edges.push_back({StateId{values + reads[site.value]->value}, target}); continue;
         }
@@ -209,7 +209,8 @@ std::variant<DerivedValueStates, Error> BuildDerivedValueStates(
     }
     states.resize(values);
     return DerivedValueStates{std::move(states), initial.bytes - budget.bytes, initial.work - budget.work,
-        locals && !locals->first_capture};
+        locals && !locals->unpreserved_capture, locals ? std::move(locals->site_order) :
+            std::vector<std::optional<InstructionRank>>{}};
   } catch (Error error) { return error; }
     catch (const std::bad_alloc&) { return Error::kResourceLimit; }
     catch (const std::length_error&) { return Error::kResourceLimit; }

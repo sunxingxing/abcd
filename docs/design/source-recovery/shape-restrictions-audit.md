@@ -1,6 +1,6 @@
 # 按用户要求进行的恢复条件审计
 
-最新替换状态及补充事项见文末规则97；历史表中的严格比较候选及literal同块条件不再是
+最新替换状态及补充事项见文末规则99；历史表中的严格比较候选及literal同块条件不再是
 当前准入条件。未替换项继续开放，不能将本次局部交付称为全量审计闭合。
 
 2026-10-03，基线 87176c10。此为本次明确请求的审计，不恢复定期审视。
@@ -789,3 +789,33 @@ profile/native合法性检查，不能把任何缓冲区对象无条件称作原
 Reference接口、module_guards邻接、phased selections corridor和单块
 CanRetainPrefix等开放项仍在。此前审计表的共同替换方向保持；这次不是
 全仓每个生产分支逐行审计闭合，不能宣称不存在其他布局边界。
+### 2026-10-04：规则99，构造器捕获按控制流证明存储先后
+
+`LocalSsa` 原先以 branch_target <= PC 拒绝所有向低地址跳转，并以
+first_capture 的指令编号切断读取。`DerivedProjection` 又以原指令编号
+选择最后非receiver写入及首个receiver初始化；`FamilyTrees::ReceiverGuards`
+在已证明支配后仍要求 store < creation。以上地址条件不能定义执行先后。
+
+共同 `OrderAcyclicBlocks` 现在证明可达正常图无环；局部SSA保留每个真实
+site的类型化DAG rank，并沿同一图传播未证明只读的capture暴露状态。
+消费者查询实际读取的PreservesRead，未保留capture见证不再是时间边界。
+初始化候选与DefinedCaptures的最后写入使用这个共同顺序；跨块receiver
+初始化由原支配区间证明，仅同块仍比较真实指令顺序。正常/异常效果、
+原工作图操作和地址身份、环境逃逸及传递捕获写入证明继续成立。
+
+DAG rank仅是充分的不可后执行证明，不是支配证明、执行历史等同或操作
+重排许可。当前receiver suffix接口仍不能表示所有互不支配写入的精确
+创建点cell快照；真实循环/异常环境也需activation-sensitive转移。保持
+显式实现缺口，不能把rank或无环范围描述成语言准入条件。
+
+回归使用两种相同执行、不同地址的完整decoded构造器：closure块放在
+super store之前，以及初始undefined store放在super/closure/return之后。
+普通/转发arrow、有无guard、1/200/201/402规模贯通同一FunctionTree和
+printer。可写/逃逸捕获、同块早创建、分支绕过初始化、错误guard及实际
+store/origin反馈继续有负例；Node独立对照即时setter、Proxy替换receiver、
+getter/callee替换、noncallable和任意抛出值。
+
+本次调用方审查另定位两个未闭合范围：`semantic_locals.cc` 的初始store
+选择及跨块load仍混用原instruction顺序；`scope_facts.cc::Rebase` 在已
+取得初始化/guard支配区间后仍有跨块PC比较。这些可能拒绝合法布局，
+需要共同初始化快照/实际block身份替代，未在本次宣称清理完成。

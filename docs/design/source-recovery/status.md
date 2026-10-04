@@ -12,6 +12,44 @@
 
 ## 当前阶段
 
+### 2026-10-04：以共同控制流顺序恢复构造器捕获的倒置布局
+
+- 规则revision99。decoded完整构造器RED复现：super初始化块的地址高于
+  closure创建块时，旧局部SSA以backward PC拒绝。改用共同Kahn正常图
+  无环证明；原cell身份、实际allocation及无环境逃逸义务保持。类型化
+  site rank表达可达图顺序，不表达支配或允许重排。捕获暴露按实际路径
+  传播，Range/Derived读取查询PreservesRead；旧first_capture改为单纯
+  unpreserved_capture见证，不再用其地址截断所有读取。
+- DerivedProjection及DefinedCaptures复用共同rank，在一次indexed
+  access扫描中证明没有后执行的非receiver/直接写入。FamilyTrees保存
+  实际原block身份，以dominator interval证明跨块初始化；仅同块比较
+  真正的store/creation先后。没有增加样本、opcode序列、固定PC、块布局
+  或producer白名单。候选不等于创建许可，分支绕过store仍不能省略child
+  guard；混合分支的旧断言已改为核对实际family拒绝。
+- 两种相同执行、不同地址的fixture分别把closure放在super store前、
+  把初始undefined store放在super/closure/return后。三profile、直接和
+  转发arrow、有无guard均产生完整共同FunctionTree源码。没有保留证明
+  的raw局部SSA仍承认实际创建前的高PC读取，拒绝实际创建后的低PC读取。
+  1/200/201/402规模及精确derived-value work边界通过；可写/逃逸cell、
+  早创建、绕过初始化、错误guard及store/origin反馈保持负例。
+- /tmp/abcd-receiver-layout-red.log记录原拒绝。final-build.log相关18
+  目标单-j4成功；final-tests.log 41/41通过83.10秒。test-output.log
+  保留完整输出，八项新增native行为测试各2268场景，共18144追加场景，
+  包括即时setter、Proxy替换receiver、getter顺序、callee替换、poisoned
+  call helpers、noncallable及任意抛出值；已有实际配对模块行为检查通过。
+- fresh build/stage-one/receiver-layout-pass-1固定五输入全退出0，
+  80 complete/26 incomplete/0 failure/46 no-module，无新完整项、回退或
+  legacy writer。batch-1.log与syntax-1.log核对原index/manifest SHA和
+  size，106份源码语法通过，源码字节与native-function-name-pass-1相同。
+  本次增加通用布局覆盖，没有宣称实际26个缺口减少或全部独立验收完成。
+- author self-review跟踪全部旧first_capture消费者，并同步替换其潜在
+  PC顺序安全前提。DAG suffix是充分证明；互不支配写入的精确创建点
+  cell快照、循环/异常activation transfer仍开放。审计另定位
+  semantic_locals和scope_facts中的初始化跨块PC比较，见规则99审计。
+  一般数值域、未知父类及此前Reference/phase/字段/签名缺口保持开放。
+  阶段一未完成，Goal active；代理、全量测试、扩展语料、RSS/基准及DFX
+  继续暂停。本次没有调整严格VM数值等价边界。
+
 ### 2026-10-04：按实际源码上下文恢复原生匿名函数表示
 
 - 规则revision98。实际HomeModel配对表示RED复现调用参数被强制打印为

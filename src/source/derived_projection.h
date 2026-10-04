@@ -25,8 +25,9 @@ struct DerivedProjection {
   // result, with all descendant captures independently proved read-only.
   // Capture binding still owes initialization before any child can observe it.
   std::vector<CellId> receiver_cells;
-  // Earlier non-receiver stores are permitted only before this actual super
-  // store. A creation must independently prove this store dominates its site.
+  // The common DAG rank proves no non-receiver store can execute after this
+  // actual super store. A creation independently proves store dominance; an
+  // incomparable write may require a finer cell snapshot than this suffix fact.
   std::vector<ReceiverInitialization> receiver_initializations;
 };
 enum class DerivedProjectionError : std::uint8_t {

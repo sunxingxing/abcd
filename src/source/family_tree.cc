@@ -254,6 +254,7 @@ class FamilyTrees {
  private:
   struct ReceiverScope {
     ReceiverInitialization initialized;
+    analysis::BlockId block;
     std::uint32_t begin, end;
   };
   struct ReceiverScopes {
@@ -290,7 +291,7 @@ class FamilyTrees {
         Require(block != input.flow.blocks.begin(), FamilyTreeError::kContext); --block;
         const auto& node = dom.nodes[block - input.flow.blocks.begin()];
         Require(node.begin != 0, FamilyTreeError::kContext);
-        scopes.cells.push_back({initialized, node.begin, node.end});
+        scopes.cells.push_back({initialized, {static_cast<std::uint32_t>(block - input.flow.blocks.begin())}, node.begin, node.end});
       }
     }
     // Rebind freshly checks original creation initialization and current cell
@@ -304,6 +305,7 @@ class FamilyTrees {
       const auto& parent = receiver_cells_[edge.parent.value];
       const auto& scopes = receiver_scopes_[edge.parent.value];
       std::optional<std::uint32_t> entry;
+      std::optional<analysis::BlockId> creation_block;
       if (!scopes.cells.empty()) {
         const auto& blocks = family.members[edge.parent.value].function.Normal().input.Input().flow.blocks;
         Step(1 + std::bit_width(blocks.size()));
@@ -312,6 +314,7 @@ class FamilyTrees {
         Require(block != blocks.begin(), FamilyTreeError::kContext); --block;
         Require(static_cast<std::size_t>(block - blocks.begin()) < scopes.entries.size(), FamilyTreeError::kContext);
         entry = scopes.entries[block - blocks.begin()];
+        creation_block = analysis::BlockId{static_cast<std::uint32_t>(block - blocks.begin())};
       }
       for (const auto& target : edge.cells.targets) {
         Step(1); Require(target.child.value < receivers.size(), FamilyTreeError::kContext);
@@ -322,7 +325,8 @@ class FamilyTrees {
           const auto scope = std::lower_bound(scopes.cells.begin(), scopes.cells.end(), source->cell,
               [](const auto& scope, auto cell) { return scope.initialized.cell < cell; });
           if (scope != scopes.cells.end() && scope->initialized.cell == source->cell &&
-              scope->initialized.store < edge.site && scope->begin <= *entry && *entry < scope->end)
+              (scope->block != *creation_block || scope->initialized.store < edge.site) &&
+              scope->begin <= *entry && *entry < scope->end)
             receivers[target.child.value] = true;
         }
       }

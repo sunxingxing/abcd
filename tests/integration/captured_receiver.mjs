@@ -4,7 +4,11 @@ import vm from 'node:vm';
 
 const forwarded = process.argv.includes('--forwarded');
 const unguarded = process.argv.includes('--unguarded');
-const mode = unguarded ? (forwarded ? '--unguarded-forward-reference-source' : '--unguarded-reference-source') :
+const reversed = process.argv.includes('--reversed');
+const initialization = process.argv.includes('--reversed-initialization');
+const mode = initialization ? (unguarded ? (forwarded ? '--unguarded-reversed-initialization-forward-reference-source' : '--unguarded-reversed-initialization-reference-source') :
+  (forwarded ? '--reversed-initialization-forward-reference-source' : '--reversed-initialization-reference-source')) : reversed ? (unguarded ? (forwarded ? '--unguarded-reversed-forward-reference-source' : '--unguarded-reversed-reference-source') :
+  (forwarded ? '--reversed-forward-reference-source' : '--reversed-reference-source')) : unguarded ? (forwarded ? '--unguarded-forward-reference-source' : '--unguarded-reference-source') :
   (forwarded ? '--forward-reference-source' : '--reference-source');
 const reports = execFileSync(process.argv[2], [mode], {encoding: 'utf8'})
   .trim().split('\n').map(JSON.parse);
