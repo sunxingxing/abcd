@@ -127,4 +127,51 @@ for (const direct of [false, true]) {
     assert.deepEqual(repeat(repeated.recovered, probe, fail), repeat(repeated.reference, probe, fail)); ++scenarios;
   }
 }
+// Arbitrarily composed pure truth equations share the retained SSA value.
+// Raw VM zero predicates differ for null/undefined/NaN; an externally used
+// Boolean result must remain materialized rather than disappear into &&.
+for (const truth of ['chain', 'negated', 'vm', 'observed', 'repeated']) {
+  const source = execFileSync(process.argv[2], [`--phased-truth-${truth}-source`], {encoding: 'utf8'});
+  const reference = truth === 'observed'
+    ? `(function(value) { try { const probe = value.probe; const boolean = !!probe;
+        value.other = boolean; return value.method(boolean ? imported.option : probe);
+      } catch (error) { return error; } })`
+    : truth === 'vm'
+    ? `(function(value) { try { const method = value.method; const probe = value.probe;
+        return Reflect.apply(method, value, [probe === false || probe === 0 ? probe : imported.option]);
+      } catch (error) { return error; } })`
+    : `(function(value) { try { return value.method(value.probe && imported.option); }
+        catch (error) { return error; } })`;
+  const pair = vm.runInNewContext(`(() => { let imported; return {
+    recovered: ${source}, reference: ${reference}, set(value) { imported = value; }
+  }; })()`);
+  function run(fn, probe, fail, proxy) {
+    const events = [], thrown = {}, token = {}, result = {};
+    let step = 0;
+    const event = name => { events.push(name); if (++step === fail) throw thrown; };
+    pair.set({get option() { event('module'); return token; }});
+    const selected = truth === 'vm' ? probe !== false && probe !== 0 : !!probe;
+    const target = function(argument) {
+      assert.equal(this, value); assert.ok(Object.is(argument, selected ? token : probe));
+      event('call'); return result;
+    };
+    const callable = proxy ? new Proxy(target, {apply(fn, receiver, args) {
+      event('apply'); return Reflect.apply(fn, receiver, args);
+    }}) : target;
+    const value = {
+      get method() { event('member'); return callable; },
+      get probe() { event('probe'); return probe; },
+      set other(value) { assert.equal(value, !!probe); event('observe'); }
+    };
+    const actual = fn(value);
+    if (actual === thrown) events.push('caught');
+    else { assert.equal(actual, result); events.push('return'); }
+    return events;
+  }
+  const object = {[Symbol.toPrimitive]() { throw new Error('truth coerced'); }};
+  for (const probe of [undefined, null, false, true, 0, -0, NaN, '', 'text', 0n, 1n, Symbol(), object])
+    for (const proxy of [false, true]) for (let fail = 0; fail <= 6; ++fail) {
+      assert.deepEqual(run(pair.recovered, probe, fail, proxy), run(pair.reference, probe, fail, proxy)); ++scenarios;
+    }
+}
 console.log(`Selected module reads: ${scenarios} effect/receiver/identity/throw/TDZ scenarios passed.`);

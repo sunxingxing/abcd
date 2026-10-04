@@ -5,6 +5,35 @@
 
 ## 输入规模与成本
 
+### 保留值选择的共同真值投影（2026-10-04）
+
+规则91的ProjectSelectionLogicals在已验证SelectionRegion之后运行，原控制/
+phi/异常模型不变。按原inline consumer森林迭代路径压缩求根；按typed
+ToBoolean、LogicalNot和有Boolean输入证明的VM谓词形成一元方程，单次
+邻接表/worklist求canonical保留值和极性。branch自身predicate和shared-arm
+polarity也参与方程，不能只看Boolean producer。不同观察归属/其他效果或
+不等价VM谓词保留原ConditionalExpr；此为安全代数表示，不是恢复准入模板。
+
+原first input UseId随方程保留，Source Use消费原saving assignment。省略
+的是单次branch-owned纯truth计算，未省略getter、外部Boolean观察或模块
+TDZ。每个原truth/branch来源合入同一logical根；fresh TreeFlow复算事实，
+原边与operand/origin检查确认实际保存、精确值和调用顺序。不存在从输出
+文本反推恢复或根据样本答案替换producer的路径。
+
+来源为既有typed VM/profile语义与ECMA-262 ToBoolean/logical evaluation的
+等价关系；项目自有实现，没有复制外部代码或新增依赖/许可证。令I为操作，
+V为值，U为原使用，B为块，C为已选择的scalar条件；新增时间/空间为
+O(I+V+B+C)，使用查询为O(1)，继承共同SSA/census成本O(I+V+U)。每个
+inline链有唯一consumer根，所选truth链互不共享执行所有者；每个condition
+block的纯度缓存只求一次。不按每个producer/selection重新走整个图，不
+复制每个链后缀；所有数组/队列/来源及输出事实计入现有byte/work预算。
+
+完整解码/draft覆盖三profile的1/2/200/201 truth链、NOT、重复分块测试、
+raw VM谓词和外部观察；50/100/200/201/400重复条件的draft work为
+514547/977270/1902979/1912237/3754389。该工作量检查及源码/native/配对
+回归不是暂停的完整进程RSS/延迟/分配基准。single-entry候选、多真实copy
+RHS及parent scope等既有覆盖缺口不由这项代数投影宣称完成。
+
 ### 布尔选择与 NOT 的共同打印组合（2026-10-04）
 
 规则85在已恢复 FunctionTree 的打印 action 中携带 Value/Truthiness/Discarded

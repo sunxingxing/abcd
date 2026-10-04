@@ -23,6 +23,12 @@ struct TreeEdgeCopies {
   // A native logical/conditional expression selects this value without a copy statement.
   std::optional<ExprId> selected;
 };
+struct TreeSelectionTruth {
+  analysis::OpId branch;
+  analysis::ValueId value;
+  ExprId input;
+  analysis::UseId occurrence;
+};
 struct TreeFlow {
   analysis::IrRevision value_revision;
   analysis::CfgRevision cfg_revision;
@@ -32,6 +38,10 @@ struct TreeFlow {
   std::vector<std::optional<ExprId>> expressions;
   // Original ToBoolean/branch operations composed into one native logical node.
   std::vector<std::optional<TreeLogical>> logical_operations;
+  // Independently proved pure truth equations consumed by a retained-value
+  // logical selection; input retains its original saving assignment, if any,
+  // after ordered prefixes.
+  std::vector<std::optional<TreeSelectionTruth>> selection_truths;
   std::vector<std::uint8_t> conditional_operations;
   // A decision-selection root also produces a complete conditional value.
   // Keep its independently reconstructed scalar predicate separate, so the

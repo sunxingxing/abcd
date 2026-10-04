@@ -243,7 +243,7 @@ target_sources(abcd_source PRIVATE src/source/loop_forest.cc)
 target_sources(abcd_source PRIVATE src/source/loop_control.cc)
 target_sources(abcd_source PRIVATE src/source/loop_exit_corridors.cc)
 target_sources(abcd_source PRIVATE src/source/literal_plan.cc)
-target_sources(abcd_source PRIVATE src/source/phased_selections.cc src/source/phase_selection_calls.cc)
+target_sources(abcd_source PRIVATE src/source/phased_selections.cc src/source/phase_selection_calls.cc src/source/selection_truth.cc)
 target_sources(abcd_source PRIVATE src/source/scope_facts.cc src/source/exception_scope_facts.cc src/source/capture_plan.cc src/source/phased_capture_input.cc)
 target_sources(abcd_source PRIVATE src/source/cell_plan.cc)
 target_sources(abcd_source PRIVATE src/source/cell_lifetime.cc src/source/phased_capture_cells.cc)
@@ -1692,6 +1692,12 @@ if(BUILD_TESTING)
       add_test(NAME pagea_record_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/pagea_record.mjs
         $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
+      if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/detail/src/main/ets/view/DetailPage.ts"
+          AND EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/rank/src/main/ets/view/HotListView.ts")
+        add_test(NAME selection_truth_records_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/selection_truth_records.mjs
+          $<TARGET_FILE:abc_structure> "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication")
+      endif()
       add_test(NAME value_rest_methods_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/value_rest_methods.mjs
         $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")

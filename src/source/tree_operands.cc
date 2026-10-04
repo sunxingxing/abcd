@@ -156,6 +156,21 @@ class OperandCheck {
       RequireMeaning(flow_.expressions[i].has_value(), Error::kOperand);
       const auto predicate = !flow_.branch_predicates.empty() ? flow_.branch_predicates[i] : std::nullopt;
       const auto expression = predicate.value_or(*flow_.expressions[i]);
+      if (!flow_.selection_truths.empty() && flow_.selection_truths[i]) {
+        const auto& truth = *flow_.selection_truths[i];
+        const auto& logical = Node<LogicalExpr>(expression);
+        RequireMeaning(flow_.logical_operations[i] && logical.operation == *flow_.logical_operations[i] &&
+            (std::holds_alternative<analysis::ValueUnary>(op.operation) ||
+             std::holds_alternative<analysis::ValueCopy>(op.operation) ||
+             std::holds_alternative<analysis::ValueBranch>(op.operation)), Error::kOperand);
+        // Fresh flow proved the original pure truth equations and polarity,
+        // not merely an operator shape. Check the retained input identity at
+        // its original saving use; phi-edge inputs are verified below, and
+        // ordered prefixes were consumed by flow.
+        origin_ = {graph_.ops[truth.branch.value].origin.value};
+        Input(truth.value, truth.input, truth.occurrence);
+        continue;
+      }
       if (!predicate && !flow_.conditional_operations.empty() && flow_.conditional_operations[i]) {
         const auto& conditional = Node<ConditionalExpr>(expression);
         RequireMeaning(std::holds_alternative<analysis::ValueBranch>(op.operation) && op.use_count == 1, Error::kOperand);
@@ -603,7 +618,9 @@ class OperandCheck {
               const auto* owner = std::get_if<analysis::OpId>(&graph_.uses[placement.consumer->value].owner);
               if (owner && !flow_.logical_operations.empty() && flow_.logical_operations[owner->value] &&
                   flow_.expressions[owner->value] &&
-                  Node<LogicalExpr>(*flow_.expressions[owner->value]).left == *copies.selected) {
+                  ((!flow_.selection_truths.empty() && flow_.selection_truths[owner->value] &&
+                    flow_.selection_truths[owner->value]->input == *copies.selected) ||
+                   Node<LogicalExpr>(*flow_.expressions[owner->value]).left == *copies.selected)) {
                 const auto previous = edge_input_; edge_input_ = false;
                 Input(operand, *copies.selected, placement.consumer);
                 edge_input_ = previous; retained_left = true;

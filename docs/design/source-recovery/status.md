@@ -12,6 +12,54 @@
 
 ## 当前阶段
 
+### 2026-10-04：保留值选择以共同真值方程恢复 logical 表示
+
+- 规则revision91。SelectionLogical只投影既有已验证SelectionRegion的表示，
+  原consequent/right、phi原输入、control、Reference和exception staging不改写。
+  ProjectSelectionLogicals按typed UnaryOperator/ValueBranch语义组合极性，
+  沿实际inline consumer森林一次索引纯truth方程；与保留分支的canonical
+  SSA身份相等时生成&&/||。不要求指令邻接、同块、固定链深或条件数量；
+  raw VM zero/nonzero谓词只有Boolean输入才具有该truth等价。
+- 原始UseId随方程保留，原first saving use仍执行PredicateSnapshot赋值。
+  有外部观察的Boolean结果、其他效果/异常/环境事件不能随表示投影消失；
+  ordered prefix、receiver、TDZ、原phi输入及来源仍由共同树通路分别校验。
+  ExpressionForest不生成被投影的中间truth树，原操作来源共同归属native
+  logical根；TreeFlow独立复算投影并核对实际输入、保存位置和原边，operand/
+  origin检查继续验证，不以打印文本回推语义。
+- 三profile、1/2/200/201深度共120组新增完整解码/draft/树用例，包括纯
+  truth链、NOT、重复分块测试、非Boolean VM谓词和额外property观察。
+  后两类保留ConditionalExpr/原Boolean计算，不用拒绝冒充完整组合成功。
+  wrong operator/交换输入变造仍拒绝。50/100/200/201/400重复条件的draft
+  work为514547/977270/1902979/1912237/3754389，几何增长通过。
+- /tmp/abcd-logical-truth-red-build.log、abcd-logical-truth-red.log及
+  abcd-selection-truth-日志记录边界：
+  旧实现在native logical表示断言退出134；第一版漏branch自身predicate
+  极性，表示断言又拒绝；修正后native对照通过。首轮fixed-five在DetailPage
+  出现complete回退，查明是丢掉first saving occurrence；保留原UseId并贯通
+  保存赋值后回退消失。测试夹具另修正raw positive predicate缺number文本、
+  重复条件control计数、旧强制conditional断言及临时输出目录已存在的问题。
+  这些失败未计入通过，临时诊断已移除，没有生产样本/图形匹配。
+- final-build.log、saving-build.log、final-build-2.log均单构建-j4退出0；
+  最终重链14个相关target和实际abc_structure/abc_semantic。
+  verified-tests.log最终32/32通过163.99秒，test-output.log保留完整输出。
+  包括joint解码/独立行为、模块/guard/literal/异常/引用、logical/eager
+  snapshot、保留输入、pasteboard callback和既有PageA/ProgressBar/
+  Backup/VoIP/Home配对检查。模块选择native扩至10162组；新增
+  selection_truth_records_source_test完整导出ABC后才读取配对源码，比较
+  DetailPage.isShow与itemHeader的1390组动态getter/精确receiver/闭包标题/
+  延迟callback/任意throw场景；不调用其constructor，不宣称平台验收。
+- fresh build/stage-one/selection-truth-pass-2固定五输入全退出0；80 complete/
+  26 incomplete/0 failure/46 no-module，无complete回退或legacy writer。
+  batch-2.log/syntax.log核对原index/manifest的SHA与size，106份源码全部解析。
+  MultiCommunity的25350、48379两个complete record及24096一个partial
+  record改变表示，前两者相关方法新增独立配对；不据此宣称全部方法或
+  partial record运行通过。完整record数量没有增加，阶段一双验收未完成。
+- shape审计补充当前仍有inline-owned Reference、single-entry candidate/
+  prefix、多份真实copy RHS、class initializer同块、module guard邻接、
+  phased parent scope/capture和legacy模板。沿同一通用模型替换，不再追加
+  局部形状快路径。Goal active；full-suite、扩展语料、RSS、基准、DFX、
+  代理和周期审计继续暂停。
+
 ### 2026-10-04：模块选择参数删除 producer-specific pin
 
 - 规则revision90。直接受TDZ检查的模块值作为conditional参数曾命中

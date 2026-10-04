@@ -17,6 +17,15 @@ struct SelectionCondition {
   analysis::OpId branch;
   bool shared_on_taken;
 };
+// Representation of a proved retained-value truth selection. The original
+// arms/edges remain authoritative; this is not another control recognizer.
+struct SelectionLogical {
+  TreeLogical operation;
+  analysis::ValueId value;
+  analysis::UseId input;
+  bool keep_consequent;
+  std::vector<analysis::OpId> truths;
+};
 using SelectionOperand = std::variant<analysis::ValueId, analysis::SpecialValue,
     analysis::IntegerLiteral, analysis::Float64Bits, SelectionChild, SelectionSnapshot>;
 inline SelectionOperand SelectionLeaf(const analysis::ValueOperand& value) {
@@ -66,6 +75,7 @@ struct SelectionRegion {
   // Original phase blocks on short-circuited scalar-test paths. The control
   // adapter binds these to condition_blocks without conflating the ID spaces.
   std::vector<analysis::WorkBlockId> condition_phases;
+  std::optional<SelectionLogical> logical;
 };
 inline bool IsSelectionConstant(const analysis::ValueProgram& graph, analysis::OpId id) {
   if (id.value >= graph.ops.size()) return false;
@@ -87,6 +97,11 @@ inline bool IsSelectionConstant(const analysis::ValueProgram& graph, analysis::O
 [[nodiscard]] std::vector<SelectionRegion> FindSelectionExpressions(
     const analysis::ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, TreeCheckBudget& budget);
+// Project only branch-owned pure truth equations testing the exact retained
+// SSA value. Copies/aliases, unary composition and predicate polarity share
+// one indexed proof; VM numeric predicates require a Boolean input.
+void ProjectSelectionLogicals(const analysis::ValueProgram& graph, const ControlPlan& control,
+    const EvaluationPlan& evaluation, std::span<SelectionRegion> regions, TreeCheckBudget& budget);
 // Candidate discovery from checked phase/SSA edges before a control tree is
 // available. Endpoints are original block IDs; keep_path/evaluate_path remain
 // empty until FindPhasedSelections binds the actual control owner.

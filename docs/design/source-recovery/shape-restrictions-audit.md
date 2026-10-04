@@ -1,6 +1,6 @@
 # 按用户要求进行的恢复条件审计
 
-最新替换状态及补充事项见文末规则90；历史表中的严格比较候选及literal同块条件不再是
+最新替换状态及补充事项见文末规则91；历史表中的严格比较候选及literal同块条件不再是
 当前准入条件。未替换项继续开放，不能将本次局部交付称为全量审计闭合。
 
 2026-10-03，基线 87176c10。此为本次明确请求的审计，不恢复定期审视。
@@ -625,3 +625,36 @@ completion、TDZ与未取分支。phased and/or目前保留高层ConditionalExpr
 具体新鲜构建和28项相关验证见status.md；这关闭直接模块选择参数的pin
 缺口，没有关闭模块guard邻接、scope/capture、多真实copy安排、单入口
 candidate、initializer同块或legacy模板，也未做全仓逐生产分支审计。
+
+
+## 规则 91：原生 logical 是共同真值/保存使用的表示投影
+
+此次改进不增加CFG识别模式。既有SelectionRegion仍拥有原两臂、phi边及
+异常/control通路；共同真值方程只证明其保留分支返回的正是被测试SSA值。
+inline consumer森林、纯效果、完整predicate极性和canonical身份分别证明
+可省略的Boolean计算，没有opcode串、同块、固定深度或条件数量准入。
+raw VM zero/nonzero对null/undefined/NaN不同于JS truthiness，不能贸然替换。
+有外部观察的Boolean结果仍materialize，不因为&&/||表示而省略其观察。
+
+首次保存也是语义义务。首轮实现从slot取值漏掉saving use，固定五输入
+抓到DetailPage complete回退。现在原UseId沿方程保留，源树消费原保存
+赋值，原phi边读取其已求值结果；scope、Reference、TDZ及异常staging
+没有因表示更简洁而放宽。120组三profile解码、10162组模块行为、1390组
+实际输出相关方法的配对对照与固定五输入支持此交付，具体证据见status.md。
+
+当前再次核对的开放限制如下；不能用其数量/布局条件代替语言不变量：
+
+| 位置 | 当前实现边界 | 后续共同替换 |
+|---|---|---|
+| call_plan.cc:215 | MemberCall的property仍要求inline-owned或已有nested-literal接口 | 真正保存的Reference及有序参数安排，保留callee/base/key/receiver身份，不重读getter |
+| phased_selections.cc:25/63/129 | 唯一实际copy RHS、arm/condition单入口corridor | 同一依赖/控制/效果模型安排全部真实RHS并证明区域归属，不枚举数量或前驱形状 |
+| class_initializers.cc:58/70 | class creation、method及initializer call仍比较同块/order | 创建和调用原occurrence、SSA home/receiver、支配及全路径效果证明 |
+| module_guards.cc:79 | guarded read仍要求block/order/OpId邻接 | 以原guard事实、精确输入及相位/TDZ对应证明所属读取，保留原抛出顺序 |
+| class_tree.cc::CheckClassParentScope | phased parent接口仍排除initializer、defined-member、captures和modules | 贯通真实创建scope/捕获/module/异常对应，不能直接删掉父作用域义务 |
+| legacy rest/super/array/class/module整理 | 既有直线/局部序列模板未全部迁移 | typed CFG/SSA/协议状态和共同FunctionTree通路；不继续扩大模板集合 |
+
+CallPlan同块及CrossPhaseInline/CrossLogicalInline例外没有回归，模块producer
+pin、selection数量及computed Commit邻接门槛已经替换。上表的边界仍开放，
+这不是全仓每个生产分支逐行审计闭合，也不能推断原作者因某个样本加入。
+禁止追加样本/名字/布局匹配的规则继续有效。真实身份、effect、scope、TDZ、
+异常和资源校验继续有效，不能把“避免特例匹配”理解为删除语义证明。

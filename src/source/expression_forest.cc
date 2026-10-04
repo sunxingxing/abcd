@@ -83,6 +83,10 @@ class ForestBuilder {
         selection_indices_[region.branch.value] = static_cast<std::size_t>(&region - logicals_.data());
         if (!region.consequent) predicates[region.boolean.value] = 1;
         if (region.conditions.empty()) predicates[region.branch.value] = 1;
+        if (region.logical) {
+          for (const auto truth : region.logical->truths) { Step(); predicates[truth.value] = 1; }
+          for (const auto& condition : region.conditions) { Step(); predicates[condition.branch.value] = 1; }
+        }
       }
     }
     Require(constants_.operations.size() == graph_.ops.size(), Error::kConstant);
@@ -439,13 +443,14 @@ class ForestBuilder {
     const TreeOriginId boolean_origin{graph_.ops[region.boolean.value].origin.value};
     const TreeOriginId branch_origin{graph_.ops[region.branch.value].origin.value};
     ExprId left;
-    if (region.conditions.empty()) {
+    if (region.logical) left = Use(region.logical->input, branch_origin);
+    else if (region.conditions.empty()) {
       // Logical LHS uses the original predicate input; a conditional retains
       // the predicate's result. Preserve the actual occurrence in either form.
       const auto use = graph_.ops[region.consequent ? region.branch.value : region.boolean.value].first_use;
       left = Use(use, boolean_origin);
     }
-    if (!region.conditions.empty()) {
+    if (!region.logical && !region.conditions.empty()) {
       Require(region.consequent && region.conditions.front().branch == region.branch, Error::kOwnership);
       const auto last = region.conditions.back().branch;
       Require(forest_.operations[last.value].has_value(), Error::kOwnership);
@@ -488,10 +493,21 @@ class ForestBuilder {
         left = Add(SequenceExpr{prefix, left}, branch_origin);
       }
     }
-    const auto right = operand(region.right);
-    const auto expression = region.consequent
-        ? Add(ConditionalExpr{left, operand(*region.consequent), right}, branch_origin)
+    const auto right = operand(region.logical && !region.logical->keep_consequent ? *region.consequent : region.right);
+    const auto expression = region.logical
+        ? Add(LogicalExpr{region.logical->operation, left, right}, branch_origin)
+        : region.consequent ? Add(ConditionalExpr{left, operand(*region.consequent), right}, branch_origin)
         : Combine(Add(LogicalExpr{region.operation, left, right}, boolean_origin), branch_origin);
+    if (region.logical) {
+      for (const auto truth : region.logical->truths) {
+        Step(); Combine(expression, {graph_.ops[truth.value].origin.value}); forest_.operations[truth.value] = expression;
+      }
+      for (const auto& condition : region.conditions) {
+        Step();
+        if (condition.branch != region.branch) Combine(expression, {graph_.ops[condition.branch.value].origin.value});
+        forest_.operations[condition.branch.value] = expression;
+      }
+    }
     if (!region.consequent) forest_.operations[region.boolean.value] = expression;
     if (region.parent || evaluation_.operations[region.branch.value].kind == EvaluationKind::kLogicalValue) {
       forest_.operations[region.branch.value] = expression;
@@ -913,9 +929,11 @@ class ForestBuilder {
       using T = std::decay_t<decltype(operation)>;
       if constexpr (std::is_same_v<T, analysis::ValueCopy>) {
         if (id.value < evaluation_.phase_transports.size() && evaluation_.phase_transports[id.value]) {
-          // The scalar predicate retains the branch site. The transport owns
-          // the conditional value root, so do not merge that branch site into
-          // a second expression and fabricate duplicate execution ownership.
+          // A logical projection owns its pure truth/branch sites at one root.
+          // A conditional retains its separate scalar predicate at the branch
+          // site; only its selected value root receives the transport origin.
+          if (std::holds_alternative<LogicalExpr>(forest_.expressions[operands[0].value].expression))
+            return Combine(operands[0], origin);
           Require(std::holds_alternative<ConditionalExpr>(forest_.expressions[operands[0].value].expression), Error::kOwnership);
           forest_.expressions[operands[0].value].origin = origin;
           return operands[0];

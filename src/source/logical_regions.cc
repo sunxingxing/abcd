@@ -550,8 +550,11 @@ std::vector<SelectionRegion> FindSelectionExpressions(const ValueProgram& graph,
   if (!graph.phases.empty() && control.view == ControlViewKind::kProjection &&
       evaluation.flow == EvaluationFlow::kPhased && control.revision == graph.revision &&
       control.cfg_revision == graph.cfg_revision && evaluation.revision == graph.revision &&
-      evaluation.cfg_revision == graph.cfg_revision && evaluation.operations.size() == graph.ops.size())
-    return FindPhasedSelections(graph, control, evaluation, budget);
+      evaluation.cfg_revision == graph.cfg_revision && evaluation.operations.size() == graph.ops.size()) {
+    auto regions = FindPhasedSelections(graph, control, evaluation, budget);
+    ProjectSelectionLogicals(graph, control, evaluation, regions, budget);
+    return regions;
+  }
   if (!graph.phases.empty() || control.view != ControlViewKind::kNormal ||
       control.revision != graph.revision || control.cfg_revision != graph.cfg_revision ||
       evaluation.flow != EvaluationFlow::kNormal || evaluation.operations.size() != graph.ops.size() ||
@@ -639,6 +642,7 @@ std::vector<SelectionRegion> FindSelectionExpressions(const ValueProgram& graph,
   regions.resize(count);
   budget.Admit(conditional.size(), sizeof(SelectionRegion));
   regions.insert(regions.end(), std::make_move_iterator(conditional.begin()), std::make_move_iterator(conditional.end()));
+  ProjectSelectionLogicals(graph, control, evaluation, regions, budget);
   return regions;
 }
 std::vector<std::optional<UseId>> FindLogicalLeftInputs(const ValueProgram& graph,

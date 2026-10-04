@@ -61,6 +61,7 @@ class FlowCheck {
       if (!logicals_.empty()) {
         budget.Array(logical_branches_, graph.ops.size());
         budget.Array(flow_.logical_operations, graph.ops.size());
+        budget.Array(flow_.selection_truths, graph.ops.size());
         budget.Array(flow_.conditional_operations, graph.ops.size());
         budget.Array(flow_.branch_predicates, graph.ops.size());
         budget.Array(conditional_tasks_, logicals_.size());
@@ -454,6 +455,9 @@ class FlowCheck {
     const auto origin = tree_.expressions[expression.value].origin;
     const TreeOriginId branch{graph_.ops[region.branch.value].origin.value};
     if (origin == branch) return true;
+    // Projected truth equations and their branch have one native logical root.
+    // The independent origin pass proves every original site's membership.
+    if (region.logical && std::holds_alternative<CombinedOrigin>(tree_.origins[origin.value])) return true;
     const auto input = evaluation_.operations[region.branch.value].consumer;
     if (!exceptions_ || !input) return false;
     const auto* owner = std::get_if<analysis::OpId>(&graph_.uses[input->value].owner);
@@ -467,8 +471,10 @@ class FlowCheck {
     while (pending) {
       budget_.Step(); const auto task = conditional_tasks_[--pending]; const auto& current = logicals_[task.region];
       const auto* conditional = std::get_if<ConditionalExpr>(&tree_.expressions[task.expression.value].expression);
-      Require(conditional && SelectionOrigin(current, task.expression), Error::kPlacement);
-      auto selected_condition = conditional->condition;
+      const auto* logical = std::get_if<LogicalExpr>(&tree_.expressions[task.expression.value].expression);
+      Require((current.logical ? logical && logical->operation == current.logical->operation : conditional != nullptr) &&
+          SelectionOrigin(current, task.expression), Error::kPlacement);
+      auto selected_condition = current.logical ? logical->left : conditional->condition;
       if (const auto* call = FindPhaseSelectionCall(graph_, evaluation_, current.branch)) {
         for (const auto prefix : call->prefix) {
           budget_.Step(); const auto& node = tree_.expressions[selected_condition.value];
@@ -478,9 +484,26 @@ class FlowCheck {
           selected_condition = sequence->right;
         }
       }
-      if (current.conditions.empty()) {
-        Require(flow_.expressions[current.boolean.value] == selected_condition, Error::kPlacement);
+      ExprId consequent, alternate;
+      if (current.logical) {
+        consequent = current.logical->keep_consequent ? selected_condition : logical->right;
+        alternate = current.logical->keep_consequent ? logical->right : selected_condition;
+        const TreeSelectionTruth truth{current.branch, current.logical->value, selected_condition, current.logical->input};
+        flow_.expressions[current.branch.value] = task.expression;
+        const auto mark = [&](analysis::OpId id) {
+          Require(flow_.expressions[id.value] == task.expression && !flow_.selection_truths[id.value], Error::kPlacement);
+          flow_.selection_truths[id.value] = truth;
+          flow_.logical_operations[id.value] = current.logical->operation;
+        };
+        for (const auto id : current.logical->truths) { budget_.Step(); mark(id); }
+        if (current.conditions.empty()) mark(current.branch);
+        else for (const auto& scalar : current.conditions) { budget_.Step(); mark(scalar.branch); }
       } else {
+        consequent = conditional->consequent; alternate = conditional->alternate;
+      }
+      if (!current.logical && current.conditions.empty()) {
+        Require(flow_.expressions[current.boolean.value] == selected_condition, Error::kPlacement);
+      } else if (!current.logical) {
         auto condition = selected_condition;
         for (std::size_t i = 0; i < current.conditions.size(); ++i) {
           budget_.Step(); const auto& scalar = current.conditions[i];
@@ -494,6 +517,8 @@ class FlowCheck {
           if (i == 0) flow_.branch_predicates[scalar.branch.value] = expression;
           else Require(flow_.expressions[scalar.branch.value] == expression, Error::kPlacement);
         }
+      }
+      if (!current.conditions.empty()) {
         for (const auto id : current.condition_blocks) {
           budget_.Step(); const auto& block = graph_.blocks[control_.nodes[id.value].block.value];
           for (std::uint32_t i = 0; i < block.op_count; ++i) {
@@ -509,7 +534,19 @@ class FlowCheck {
         }
       }
       const auto arm = [&](const SelectionOperand& input, ExprId actual) {
-        if (std::holds_alternative<SelectionSnapshot>(input)) {
+        if (const auto* snapshot = std::get_if<SelectionSnapshot>(&input)) {
+          if (current.logical && actual == selected_condition &&
+              ResolveEvaluationValue(evaluation_, snapshot->value) == current.logical->value) {
+            const auto* result = std::get_if<analysis::OpResult>(&graph_.values[current.logical->value.value].origin);
+            if (result && evaluation_.operations[result->op.value].kind == EvaluationKind::kPredicateSnapshot &&
+                evaluation_.operations[result->op.value].consumer == current.logical->input) {
+              const auto* save = std::get_if<AssignmentExpr>(&tree_.expressions[actual.value].expression);
+              const auto* target = save ? std::get_if<SymbolTarget>(&save->target) : nullptr;
+              Require(save && target && flow_.snapshots[result->op.value] == target->symbol &&
+                  flow_.expressions[result->op.value] == save->value, Error::kSnapshot);
+              return;
+            }
+          }
           Require(actual.value < tree_.expressions.size() &&
               (std::holds_alternative<SymbolExpr>(tree_.expressions[actual.value].expression) ||
                std::holds_alternative<ThisExpr>(tree_.expressions[actual.value].expression)), Error::kPlacement);
@@ -547,10 +584,10 @@ class FlowCheck {
         conditional_tasks_[pending++] = {index, *flow_.expressions[branch.value], {}};
       }
       Require(current.consequent.has_value(), Error::kPlacement);
-      arm(*current.consequent, conditional->consequent); arm(current.right, conditional->alternate);
+      arm(*current.consequent, consequent); arm(current.right, alternate);
       flow_.expressions[current.branch.value] = task.expression;
-      flow_.conditional_operations[current.branch.value] = 1;
-      LogicalEdges(current, task.target, conditional->consequent, conditional->alternate, parent, child);
+      if (!current.logical) flow_.conditional_operations[current.branch.value] = 1;
+      LogicalEdges(current, task.target, consequent, alternate, parent, child);
     }
   }
 

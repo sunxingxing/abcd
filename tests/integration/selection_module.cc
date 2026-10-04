@@ -21,6 +21,7 @@ using namespace abcd::analysis;
 constexpr unsigned kByteBits = 8;
 enum class CallPrefix { kNone, kGetter, kCall, kNullish, kWrappedNullish, kEscapingNullish, kMemberWrappedNullish, kMemberBarrierNullish, kRetainedInput, kRetainedGetter, kRetainedBarrier, kRetainedPrefix, kRetainedLiteralArgs };
 enum class Selection { kConditional, kAnd, kOr, kDecisionAnd, kDecisionOr };
+enum class TruthInput { kBoolean, kNegated, kVmPredicate, kObserved, kRepeated };
 bool Decision(Selection selection) {
   return selection == Selection::kDecisionAnd || selection == Selection::kDecisionOr;
 }
@@ -69,30 +70,52 @@ abc::MethodBody DecisionBody(unsigned count, bool direct, Selection selection, b
   }
   return body;
 }
-abc::MethodBody Body(unsigned count, bool direct, bool barrier, Selection selection, bool caught = false) {
+abc::MethodBody Body(unsigned count, bool direct, bool barrier, Selection selection, bool caught = false,
+    unsigned truth_depth = 1, TruthInput truth = TruthInput::kBoolean) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   constexpr auto kGuard = abc::Opcode::kTHROW_UNDEFINEDIFHOLEWITHNAME_PREF_ID16;
   std::vector<std::uint8_t> bytes;
   for (unsigned i = 0; i < count; ++i) {
     // Retrieve the member before selecting its argument. One arm owns the
     // original read/guard pair; the other keeps the left value or a constant.
-    bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 3,
-        op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0, op(abc::Opcode::kSTA_V8), 0,
-        op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 1, 0,
+    if (truth != TruthInput::kObserved) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 3,
+        op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0, op(abc::Opcode::kSTA_V8), 0});
+    bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 1, 0,
         op(abc::Opcode::kSTA_V8), 2});
     if (selection == Selection::kConditional)
       bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_STR_ID16), 0, 0,
           op(abc::Opcode::kSTRICTEQ_IMM8_V8), 0, 2});
-    else bytes.push_back(op(abc::Opcode::kISTRUE));
+    else if (truth != TruthInput::kRepeated) {
+      if (truth != TruthInput::kVmPredicate)
+        for (unsigned test = 0; test < truth_depth; ++test) bytes.push_back(op(abc::Opcode::kISTRUE));
+      if (truth == TruthInput::kNegated) bytes.push_back(op(abc::Opcode::kISFALSE));
+      if (truth == TruthInput::kObserved) bytes.insert(bytes.end(), {
+          op(abc::Opcode::kSTA_V8), 1, op(abc::Opcode::kSTOBJBYNAME_IMM8_ID16_V8), 0, 3, 0, 3,
+          op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0, op(abc::Opcode::kSTA_V8), 0,
+          op(abc::Opcode::kLDA_V8), 1});
+    }
     const auto branch = bytes.size();
-    bytes.insert(bytes.end(), {op(selection == Selection::kOr ? abc::Opcode::kJNEZ_IMM8 :
+    std::vector<std::size_t> repeated;
+    if (truth == TruthInput::kRepeated) {
+      for (unsigned test = 0; test < truth_depth; ++test) {
+        bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 2, op(abc::Opcode::kISTRUE)});
+        repeated.push_back(bytes.size());
+        bytes.insert(bytes.end(), {op(selection == Selection::kOr ? abc::Opcode::kJNEZ_IMM32 : abc::Opcode::kJEQZ_IMM32), 0, 0, 0, 0});
+      }
+    } else bytes.insert(bytes.end(), {op((selection == Selection::kOr) != (truth == TruthInput::kNegated) ? abc::Opcode::kJNEZ_IMM8 :
         abc::Opcode::kJEQZ_IMM8), 0});
     bytes.insert(bytes.end(), {op(abc::Opcode::kLDEXTERNALMODULEVAR_IMM8), 0,
         op(kGuard), static_cast<std::uint8_t>(static_cast<std::uint16_t>(kGuard) >> kByteBits), 3, 0});
     if (!direct) bytes.insert(bytes.end(), {op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 2, 0});
     if (barrier) bytes.push_back(op(abc::Opcode::kDEBUGGER));
     const auto jump = bytes.size(); bytes.insert(bytes.end(), {op(abc::Opcode::kJMP_IMM8), 0});
-    bytes[branch + 1] = static_cast<std::uint8_t>(bytes.size() - branch);
+    if (truth == TruthInput::kRepeated) {
+      for (const auto test : repeated) {
+        const auto displacement = static_cast<std::uint32_t>(bytes.size() - test);
+        for (unsigned byte = 0; byte < sizeof(displacement); ++byte)
+          bytes[test + 1 + byte] = static_cast<std::uint8_t>(displacement >> (byte * kByteBits));
+      }
+    } else bytes[branch + 1] = static_cast<std::uint8_t>(bytes.size() - branch);
     if (selection == Selection::kConditional)
       bytes.insert(bytes.end(), {op(abc::Opcode::kLDAI_IMM32), 0xc0, 1, 0, 0}); // 448, the independent fallback.
     else bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 2});
@@ -273,10 +296,11 @@ abc::MethodBody CallSelectionBody(unsigned count, bool computed, CallPrefix pref
   return body;
 }
 
-void RunPhased(unsigned count, bool direct, bool print, Selection selection,
-    abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool one_arm = false, bool call_selection = false, bool computed = false, CallPrefix prefix = CallPrefix::kNone, unsigned guard_count = 2, unsigned depth = 1, bool effect_barrier = false) {
+std::uint64_t RunPhased(unsigned count, bool direct, bool print, Selection selection,
+    abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool one_arm = false, bool call_selection = false, bool computed = false, CallPrefix prefix = CallPrefix::kNone, unsigned guard_count = 2, unsigned depth = 1, bool effect_barrier = false,
+    unsigned truth_depth = 1, TruthInput truth = TruthInput::kBoolean) {
   const auto body = call_selection ? CallSelectionBody(count, computed, prefix, guard_count, depth) : Decision(selection) ? DecisionBody(count, direct, selection, true, one_arm) :
-      Body(count, direct, effect_barrier, selection, true);
+      Body(count, direct, effect_barrier, selection, true, truth_depth, truth);
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout((prefix == CallPrefix::kMemberWrappedNullish || prefix == CallPrefix::kMemberBarrierNullish) ? 3 + depth : 3, call_selection ? ((prefix == CallPrefix::kWrappedNullish || prefix == CallPrefix::kEscapingNullish || prefix == CallPrefix::kMemberWrappedNullish || prefix == CallPrefix::kMemberBarrierNullish) ? 3 : 2) : 1, {}));
   const auto flow = std::get<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers));
   IdfQuota quota{kDefaultSemanticWork};
@@ -307,16 +331,16 @@ void RunPhased(unsigned count, bool direct, bool print, Selection selection,
   if (effect_barrier) {
     test::Check(evaluation.phase_calls.empty());
     test::Check(std::get<CallPlanError>(BuildPhasedCallPlan(graph, evaluation)) == CallPlanError::kReference);
-    return;
+    return 0;
   }
   if (prefix == CallPrefix::kMemberBarrierNullish || prefix == CallPrefix::kRetainedBarrier) {
     test::Check(std::get<CallPlanError>(BuildPhasedCallPlan(graph, evaluation)) == CallPlanError::kReference);
-    return;
+    return 0;
   }
   if (prefix == CallPrefix::kEscapingNullish) {
     test::Check(evaluation.phase_calls.empty());
     test::Check(std::get<CallPlanError>(BuildPhasedCallPlan(graph, evaluation)) == CallPlanError::kReference);
-    return;
+    return 0;
   }
   if (!Decision(selection) && !call_selection) {
     test::Check(std::holds_alternative<CallPlan>(BuildPhasedCallPlan(graph, evaluation)));
@@ -330,11 +354,12 @@ void RunPhased(unsigned count, bool direct, bool print, Selection selection,
   const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
   unsigned decisions = 0;
   for (const auto& node : control.skeleton.nodes) decisions += node.decision.has_value();
-  test::Check(decisions == ((prefix == CallPrefix::kNullish || prefix == CallPrefix::kWrappedNullish || prefix == CallPrefix::kMemberBarrierNullish || prefix == CallPrefix::kMemberWrappedNullish || prefix == CallPrefix::kEscapingNullish) ? count * (guard_count - 1) : one_arm || !Decision(selection) ? 0 : count));
+  test::Check(decisions == (truth == TruthInput::kRepeated ? count * (truth_depth - 1) :
+      (prefix == CallPrefix::kNullish || prefix == CallPrefix::kWrappedNullish || prefix == CallPrefix::kMemberBarrierNullish || prefix == CallPrefix::kMemberWrappedNullish || prefix == CallPrefix::kEscapingNullish) ? count * (guard_count - 1) : one_arm || !Decision(selection) ? 0 : count));
   const ExceptionTreeInput context{body, input, regions, control};
   FunctionSyntax syntax{}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   syntax.names = {u"value", u"method", u"probe", u"option", u"other", u"imported"};
-  syntax.texts = {u"on"};
+  syntax.texts = {u"on", u"number"};
   syntax.parameters = {{NameId{0}, NameEvidence::kDebugRange}};
   if (call_selection) {
     syntax.names.push_back(u"flag");
@@ -374,9 +399,11 @@ void RunPhased(unsigned count, bool direct, bool print, Selection selection,
   std::vector<ExpressionConstant> constants(graph.ops.size());
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     if (const auto* read = std::get_if<ValueNamedRead>(&graph.ops[i].operation)) constants[i] = NameId{read->name.value + 1};
+    if (const auto* write = std::get_if<ValueNamedWrite>(&graph.ops[i].operation)) constants[i] = NameId{write->name.value + 1};
     if (std::holds_alternative<ValueString>(graph.ops[i].operation)) constants[i] = TextId{0};
   }
-  const ExpressionConstants resolved{constants, syntax.names.size(), syntax.texts.size()};
+  ExpressionConstants resolved{constants, syntax.names.size(), syntax.texts.size()};
+  resolved.number_type_text = TextId{1};
   const auto built = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, resolved);
   test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
   const auto& tree = std::get<ExceptionFunctionDraft>(built).tree;
@@ -392,6 +419,26 @@ void RunPhased(unsigned count, bool direct, bool print, Selection selection,
   }
   test::Check(std::holds_alternative<TreeSemantics>(VerifyExceptionTreeSemantics(graph, context, evaluation, tree, resolved)));
   const auto tree_flow = std::get<TreeFlow>(VerifyExceptionTreeFlow(graph, context, evaluation, tree));
+  if (!Decision(selection) && !call_selection && selection != Selection::kConditional) {
+    for (const auto& call : evaluation.phase_calls) {
+      const auto* logical = std::get_if<LogicalExpr>(&tree.expressions[tree_flow.expressions[call.branch.value]->value].expression);
+      if (truth == TruthInput::kVmPredicate || truth == TruthInput::kObserved) {
+        test::Check(!logical && std::holds_alternative<ConditionalExpr>(tree.expressions[tree_flow.expressions[call.branch.value]->value].expression));
+        continue;
+      }
+      test::Check(logical && logical->operation == (selection == Selection::kAnd ? TreeLogical::kAnd : TreeLogical::kOr));
+      if (count == 1) {
+        auto wrong = tree;
+        auto& node = std::get<LogicalExpr>(wrong.expressions[tree_flow.expressions[call.branch.value]->value].expression);
+        node.operation = node.operation == TreeLogical::kAnd ? TreeLogical::kOr : TreeLogical::kAnd;
+        test::Check(std::holds_alternative<TreeSemanticError>(VerifyExceptionTreeSemantics(graph, context, evaluation, wrong, resolved)));
+        wrong = tree;
+        auto& operands = std::get<LogicalExpr>(wrong.expressions[tree_flow.expressions[call.branch.value]->value].expression);
+        std::swap(operands.left, operands.right);
+        test::Check(std::holds_alternative<TreeSemanticError>(VerifyExceptionTreeSemantics(graph, context, evaluation, wrong, resolved)));
+      }
+    }
+  }
   if (call_selection) {
     auto wrong = tree;
     const auto& call = evaluation.phase_calls.front();
@@ -401,9 +448,13 @@ void RunPhased(unsigned count, bool direct, bool print, Selection selection,
     if (count <= 2 && (prefix == CallPrefix::kRetainedInput || prefix == CallPrefix::kRetainedGetter ||
         prefix == CallPrefix::kRetainedPrefix || prefix == CallPrefix::kRetainedLiteralArgs)) {
       wrong = tree;
-      auto* selected = std::get_if<ConditionalExpr>(&wrong.expressions[expression.value].expression);
-      test::Check(selected != nullptr);
-      selected->alternate = selected->consequent;
+      auto& selected = wrong.expressions[expression.value].expression;
+      if (auto* conditional = std::get_if<ConditionalExpr>(&selected))
+        std::swap(conditional->alternate, conditional->consequent);
+      else {
+        auto* logical = std::get_if<LogicalExpr>(&selected); test::Check(logical != nullptr);
+        std::swap(logical->left, logical->right);
+      }
       // The independent original-edge operand checker must reject replacing
       // the retained branch value with the other arm's constant expression.
       test::Check(std::holds_alternative<TreeSemanticError>(VerifyExceptionTreeSemantics(graph, context, evaluation, wrong, resolved)));
@@ -426,6 +477,7 @@ void RunPhased(unsigned count, bool direct, bool print, Selection selection,
     test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, output)));
     std::cout << output.str();
   }
+  return std::get<ExceptionFunctionDraft>(built).work;
 }
 
 }  // namespace
@@ -434,7 +486,15 @@ int main(int argc, char** argv) {
     const std::string_view option{argv[1]};
     test::Check(argc == 2 || std::string_view{argv[2]} == "--twice");
     const auto count = argc == 3 ? 2U : 1U;
-    if (option == "--phased-retained-prefix-source" || option == "--phased-retained-literal-args-source")
+    if (option == "--phased-truth-chain-source" || option == "--phased-truth-repeated-source" || option == "--phased-truth-negated-source" ||
+        option == "--phased-truth-vm-source" || option == "--phased-truth-observed-source")
+      RunPhased(count, false, true, Selection::kAnd, abc::ProfileId::kDynamic1206, false, false, false,
+          CallPrefix::kNone, 2, 1, false, 201,
+          option == "--phased-truth-negated-source" ? TruthInput::kNegated :
+          option == "--phased-truth-vm-source" ? TruthInput::kVmPredicate :
+          option == "--phased-truth-observed-source" ? TruthInput::kObserved :
+          option == "--phased-truth-repeated-source" ? TruthInput::kRepeated : TruthInput::kBoolean);
+    else if (option == "--phased-retained-prefix-source" || option == "--phased-retained-literal-args-source")
       RunPhased(count, false, true, Selection::kConditional, abc::ProfileId::kDynamic1206, false, true, false,
           option == "--phased-retained-prefix-source" ? CallPrefix::kRetainedPrefix : CallPrefix::kRetainedLiteralArgs);
     else if (option == "--phased-retained-input-source" || option == "--phased-retained-getter-source")
@@ -480,6 +540,21 @@ int main(int argc, char** argv) {
     else test::Check(false);
     return 0;
   }
+  std::vector<std::uint64_t> truth_work;
+  for (const auto depth : {50U, 100U, 200U, 201U, 400U}) {
+    const auto work = RunPhased(1, false, false, Selection::kAnd, abc::ProfileId::kDynamic1206,
+        false, false, false, CallPrefix::kNone, 2, 1, false, depth, TruthInput::kRepeated);
+    if (!truth_work.empty()) test::Check(work <= 3 * truth_work.back());
+    truth_work.push_back(work);
+  }
+  std::cout << "Selection truth work:";
+  for (const auto work : truth_work) std::cout << ' ' << work;
+  std::cout << '\n';
+  for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+    for (const auto depth : {1U, 2U, 200U, 201U})
+      for (const auto truth : {TruthInput::kBoolean, TruthInput::kNegated, TruthInput::kVmPredicate, TruthInput::kObserved, TruthInput::kRepeated})
+        for (const auto selection : {Selection::kAnd, Selection::kOr})
+          RunPhased(1, false, false, selection, profile, false, false, false, CallPrefix::kNone, 2, 1, false, depth, truth);
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
     for (const auto count : {1U, 2U, 200U, 201U})
       for (const auto selection : {Selection::kConditional, Selection::kAnd, Selection::kOr})
