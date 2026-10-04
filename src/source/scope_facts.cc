@@ -96,8 +96,10 @@ std::variant<CaptureCell, ScopeError> NormalScopeFacts::Rebase(
   if (!initialized && requirement == analysis::CaptureDomain::kLanguage && writes_ == analysis::ClosureWrites::kLanguage &&
       id < module_prefix_.size() && module_prefix_[id]) {
     const auto& prefix=*module_prefix_[id];
-    initialized=allocation && prefix.allocation==*allocation && prefix.allocation.value>=block->first_instruction &&
-        prefix.allocation.value<instruction && instruction<prefix.store.value;
+    initialized=allocation && prefix.allocation==*allocation &&
+        (prefix.capture ? *prefix.capture==creation :
+         prefix.allocation.value>=block->first_instruction &&
+         prefix.allocation.value<instruction && instruction<prefix.store.value);
   }
   if (!allocation || !initialized) return Error::kInitialization;
   if (writes_ == analysis::ClosureWrites::kUnknown) {

@@ -141,9 +141,9 @@ void Accessors(abc::ProfileId profile, unsigned count, bool prototype, bool sett
   test::Check(std::get<ClassDefinitionError>(FindClassDefinitions(graph, {0})) == ClassDefinitionError::kResourceLimit);
   test::Check(std::get<ClassDefinitionError>(FindClassDefinitions(graph, {UINT32_MAX, 0})) == ClassDefinitionError::kWorkLimit);
 }
-enum class Case { kSingle, kRepeated, kEscape, kUsedResult, kWrongReceiver, kClassEscape, kBarrier, kPrototype, kLaterBlock, kSelfStore, kSelfOverwrite, kSelfExposed, kSplitCreation, kSplitCall, kDiamondCreation, kDiamondCall, kBypassCall, kDivergentCall, kRepeatedCall, kBranchEffects };
+enum class Case { kSingle, kRepeated, kEscape, kUsedResult, kWrongReceiver, kClassEscape, kBarrier, kPrototype, kLaterBlock, kSelfStore, kSelfOverwrite, kSelfExposed, kSplitCreation, kSplitCall, kDiamondCreation, kDiamondCall, kBypassCall, kDivergentCall, kRepeatedCall, kBranchEffects, kSelfSplitAllocation, kSelfSplitStore, kSelfDiamondAllocation, kSelfDiamondStore, kSelfSplitCall, kSelfDiamondCall, kSelfObserved, kSelfLaterRead, kSelfDivergence, kSelfBranchEffects };
 void Run(abc::ProfileId profile, unsigned count, Case kind, std::uint64_t* projection_work = nullptr) {
-  const bool self = kind == Case::kSelfStore || kind == Case::kSelfOverwrite || kind == Case::kSelfExposed;
+  const bool self = kind == Case::kSelfStore || kind == Case::kSelfOverwrite || kind == Case::kSelfExposed || kind >= Case::kSelfSplitAllocation;
   constexpr std::uint8_t kSelfSlot = 2, kSlotShift = 4;
   std::vector<std::uint8_t> bytes;
   const auto op = [&](abc::Opcode code) { bytes.push_back(static_cast<std::uint8_t>(code)); };
@@ -161,13 +161,28 @@ void Run(abc::ProfileId profile, unsigned count, Case kind, std::uint64_t* proje
     if (self) {
       op(abc::Opcode::kNEWLEXENV_IMM8); bytes.push_back(kSelfSlot+1);
       if (kind == Case::kSelfExposed) op(abc::Opcode::kDEBUGGER);
+      if (kind == Case::kSelfSplitAllocation) { op(abc::Opcode::kJMP_IMM8); bytes.push_back(2); }
+      if (kind == Case::kSelfDiamondAllocation || kind == Case::kSelfBranchEffects) corridor(kind == Case::kSelfBranchEffects);
     }
     op(abc::Opcode::kDEFINECLASSWITHBUFFER_IMM8_ID16_ID16_IMM16_V8);
     bytes.push_back(0); word(7); word(9); word(0); bytes.push_back(0);
     op(abc::Opcode::kSTA_V8); bytes.push_back(1);
     if (self) {
+      if (kind == Case::kSelfSplitStore) { op(abc::Opcode::kJMP_IMM8); bytes.push_back(2); }
+      if (kind == Case::kSelfDiamondStore) { corridor(); op(abc::Opcode::kLDA_V8); bytes.push_back(1); }
+      if (kind == Case::kSelfDivergence) {
+        op(abc::Opcode::kLDA_V8); bytes.push_back(3);
+        op(abc::Opcode::kJNEZ_IMM8); bytes.push_back(static_cast<std::uint8_t>(-2));
+        op(abc::Opcode::kLDA_V8); bytes.push_back(1);
+      }
       op(abc::Opcode::kSTLEXVAR_IMM4_IMM4); bytes.push_back(kSelfSlot << kSlotShift);
       if (kind == Case::kSelfOverwrite) { op(abc::Opcode::kSTLEXVAR_IMM4_IMM4); bytes.push_back(kSelfSlot << kSlotShift); }
+      if (kind == Case::kSelfObserved) {
+        op(abc::Opcode::kJMP_IMM8); bytes.push_back(2);
+        op(abc::Opcode::kLDLEXVAR_IMM4_IMM4); bytes.push_back(kSelfSlot << kSlotShift);
+        op(abc::Opcode::kSTMODULEVAR_IMM8); bytes.push_back(0);
+        op(abc::Opcode::kLDA_V8); bytes.push_back(1);
+      }
     }
     if (kind == Case::kClassEscape) { op(abc::Opcode::kSTMODULEVAR_IMM8); bytes.push_back(0); }
     if (kind == Case::kBarrier) op(abc::Opcode::kDEBUGGER);
@@ -180,8 +195,8 @@ void Run(abc::ProfileId profile, unsigned count, Case kind, std::uint64_t* proje
     if (cross) { op(abc::Opcode::kLDA_V8); bytes.push_back(1); }
     op(abc::Opcode::kDEFINEMETHOD_IMM8_ID16_IMM8); bytes.push_back(1); word(11); bytes.push_back(0);
     op(abc::Opcode::kSTA_V8); bytes.push_back(2);
-    if (kind == Case::kSplitCall) { op(abc::Opcode::kJMP_IMM8); bytes.push_back(2); }
-    if (kind == Case::kDiamondCall || kind == Case::kBranchEffects) corridor(kind == Case::kBranchEffects);
+    if (kind == Case::kSplitCall || kind == Case::kSelfSplitCall) { op(abc::Opcode::kJMP_IMM8); bytes.push_back(2); }
+    if (kind == Case::kDiamondCall || kind == Case::kBranchEffects || kind == Case::kSelfDiamondCall) corridor(kind == Case::kBranchEffects);
     if (kind == Case::kDivergentCall) {
       op(abc::Opcode::kLDA_V8); bytes.push_back(3);
       op(abc::Opcode::kJNEZ_IMM8); bytes.push_back(static_cast<std::uint8_t>(-2));
@@ -202,6 +217,10 @@ void Run(abc::ProfileId profile, unsigned count, Case kind, std::uint64_t* proje
       bytes.push_back(static_cast<std::uint8_t>(static_cast<int>(call_pc) - static_cast<int>(branch)));
     }
     if (bypass) bytes[*bypass] = bytes.size() - (*bypass - 1);
+    if (kind == Case::kSelfLaterRead) {
+      op(abc::Opcode::kJMP_IMM8); bytes.push_back(2);
+      op(abc::Opcode::kLDLEXVAR_IMM4_IMM4); bytes.push_back(kSelfSlot << kSlotShift);
+    }
     if (kind == Case::kLaterBlock) {
       constexpr std::uint8_t kJumpSize = 2;
       op(abc::Opcode::kJMP_IMM8); bytes.push_back(kJumpSize);
@@ -216,7 +235,10 @@ void Run(abc::ProfileId profile, unsigned count, Case kind, std::uint64_t* proje
   op(kind == Case::kUsedResult ? abc::Opcode::kRETURN : abc::Opcode::kRETURNUNDEFINED);
   const auto body = test::Body(bytes);
   const auto method = std::get<SemanticMethod>(BuildSemanticMethod(body, profile, 3 + cross));
-  const auto proof = std::get<SemanticProof>(VerifySemanticSource(body, method, 3, cross));
+  const auto proved = VerifySemanticSource(body, method, 3, cross, {}, CapturedValues::kReject, {},
+      self ? ClosureWrites::kLanguage : ClosureWrites::kUnknown);
+  if (const auto* failure = std::get_if<SemanticProofFailure>(&proved)) std::cerr << "self fixture kind " << static_cast<unsigned>(kind) << " count " << count << " proof " << static_cast<unsigned>(failure->kind) << '\n';
+  const auto& proof = std::get<SemanticProof>(proved);
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(3, cross, {false, false, false, false}));
   auto graph = std::get<ValueProgram>(ImportNormalValues(body, method, proof, frame));
   test::Check(!std::holds_alternative<ValueSimplifyError>(SimplifyValues(graph, graph.revision)));
@@ -239,7 +261,9 @@ void Run(abc::ProfileId profile, unsigned count, Case kind, std::uint64_t* proje
     const auto environments = std::get<ValueEnvironments>(BuildValueEnvironments(graph));
     const auto cells = std::get<CellPlan>(BuildCellPlan(graph,environments));
     const auto result = std::get<ClassSelfStores>(FindClassSelfStores(graph,environments,cells,calls.calls));
-    test::Check(result.stores.size() == (kind == Case::kSelfStore ? count : 0));
+    if (projection_work) *projection_work = result.work;
+    const bool private_self = kind == Case::kSelfStore || (kind >= Case::kSelfSplitAllocation && kind <= Case::kSelfDiamondCall) || kind == Case::kSelfLaterRead;
+    test::Check(result.stores.size() == (private_self ? count : 0));
     for (const auto& binding : result.stores) {
       test::Check(std::get<AllocatedCell>(cells.cells[binding.cell.value].storage).slot.value == kSelfSlot);
       test::Check(binding.creation < binding.store && binding.store < binding.initializer);
@@ -297,6 +321,7 @@ int main(int argc, char** argv) {
   }
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
     std::array<std::uint64_t, 4> previous{};
+    std::array<std::uint64_t, 7> self_previous{};
     for (const auto count : {1U, 200U, 201U, 402U}) {
       Accessors(profile, count, false, false); Accessors(profile, count, true, true);
       Accessors(profile, count, false, false, AccessorCase::kValid, true);
@@ -308,6 +333,13 @@ int main(int argc, char** argv) {
       for (const auto kind : {AccessorCase::kSplitInstall, AccessorCase::kPureDiamond, AccessorCase::kPureLoop})
         Accessors(profile, count, true, false, kind);
       Run(profile, count, Case::kSingle); Run(profile, count, Case::kPrototype); Run(profile,count,Case::kLaterBlock); Run(profile,count,Case::kSelfStore); Run(profile,count,Case::kSelfOverwrite); Run(profile,count,Case::kSelfExposed);
+      std::size_t self_index = 0;
+      for (const auto kind : {Case::kSelfSplitAllocation, Case::kSelfSplitStore, Case::kSelfDiamondAllocation, Case::kSelfDiamondStore, Case::kSelfSplitCall, Case::kSelfDiamondCall, Case::kSelfLaterRead}) {
+        std::uint64_t work = 0; Run(profile, count, kind, &work);
+        if (count == 201 || count == 402) test::Check(work < 3 * self_previous[self_index]);
+        self_previous[self_index++] = work;
+        if (profile == abc::ProfileId::kDynamic1206) std::cout << "class self count=" << count << " kind=" << static_cast<unsigned>(kind) << " work=" << work << '\n';
+      }
       std::size_t index = 0;
       for (const auto kind : {Case::kSplitCreation, Case::kSplitCall, Case::kDiamondCreation, Case::kDiamondCall}) {
         std::uint64_t work = 0; Run(profile, count, kind, &work);
@@ -327,5 +359,6 @@ int main(int argc, char** argv) {
     Run(profile, 1, Case::kClassEscape); Run(profile, 1, Case::kBarrier);
     for (const auto kind : {Case::kRepeated, Case::kEscape, Case::kUsedResult, Case::kWrongReceiver}) Run(profile, 1, kind);
     for (const auto kind : {Case::kBypassCall, Case::kDivergentCall, Case::kRepeatedCall, Case::kBranchEffects}) Run(profile, 1, kind);
+    for (const auto kind : {Case::kSelfObserved, Case::kSelfDivergence, Case::kSelfBranchEffects}) Run(profile, 1, kind);
   }
 }

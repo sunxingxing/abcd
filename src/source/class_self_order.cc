@@ -104,11 +104,15 @@ std::variant<ClassSelfOrder, ClassSelfOrderError> ClassSelfOrder::Build(const Fi
       step();
       const auto allocation = graph.origins[graph.ops[store.allocation.value].origin.value].site.value;
       const auto at = graph.origins[graph.ops[store.store.value].origin.value].site.value;
+      const auto capture = graph.origins[graph.ops[store.creation.value].origin.value].site.value;
       require(at < stored.size() && stored[at] && stored[at]->value < locals.cells.size(),Error::kInput);
+      require(capture < input.Input().instructions.size() && capture < graph.input.sites.size() &&
+          graph.input.sites[capture] == store.creation &&
+          std::holds_alternative<ClassCreation>(input.Input().instructions[capture].operation),Error::kInput);
       const auto cell = *stored[at]; const auto& local = locals.cells[cell.value];
       require(local.environment.value < locals.allocations.size() && locals.allocations[local.environment.value] == InstructionId{allocation} &&
           input.Input().instructions[at].pc == graph.origins[graph.ops[store.store.value].origin.value].pc,Error::kInput);
-      result.prefixes_[cell.value] = LocalAccessPlan::UnexposedInitialization{{allocation},{at}};
+      result.prefixes_[cell.value] = LocalAccessPlan::UnexposedInitialization{{allocation},{at},InstructionId{capture}};
     }
     result.instructions_ = input.Input().instructions.data(); result.cells_ = locals.cells.data();
     result.operations_ = graph.ops.data(); result.values_ = graph.values.data();

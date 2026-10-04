@@ -1,4 +1,5 @@
 #include "semantic_locals.h"
+#include "abcd/analysis/block_order.h"
 
 #include <algorithm>
 #include <new>
@@ -94,14 +95,26 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
       allocations[allocation.environment.value] = InstructionId{allocation.instruction};
     }
     remaining -= allocations.capacity() * sizeof(std::optional<InstructionId>);
-    bool forward = true;
-    for (std::size_t i = 0; i < method.flow.blocks.size(); ++i)
-      for (std::size_t edge = 0; edge < method.flow.blocks[i].successor_count; ++edge) {
-        charge();
-        if (method.flow.blocks[i].successors[edge].target.value <= i) forward = false;
+    // Physical backward edges need not repeat an environment activation. Use
+    // the shared CFG order to distinguish actual cycles from block placement.
+    // Cyclic cell lifetimes still require a separate initialization transfer
+    // proof; this existing dominance path must not pretend to establish it.
+    bool acyclic = false;
+    if (!plan.cells.empty()) {
+      // Ordering visits each edge at most three times, including failure on a
+      // cycle. Charge that bound even when the API returns no partial product.
+      for (const auto& region : method.flow.blocks) {
+        charge(); charge(); charge();
+        for (std::size_t edge = 0; edge < region.successor_count; ++edge) {
+          charge(); charge(); charge();
+        }
       }
+      auto ordered = OrderAcyclicBlocks(method.flow, {}, {remaining});
+      acyclic = std::holds_alternative<BlockOrder>(ordered);
+      if (!acyclic && std::get<OrderError>(ordered) != OrderError::kCycle) return resource();
+    }
     std::optional<DominatorTree> dominance;
-    if (forward && !plan.cells.empty()) {
+    if (acyclic && !plan.cells.empty()) {
       if (plan.cells.size() > remaining / sizeof(std::optional<LocalInitialization>))
         return resource();
       plan.initializations.resize(plan.cells.size());
@@ -195,7 +208,7 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
         const auto allocated = allocations[owner->value];
         if (dominance && !plan.initializations[id] && allocated &&
             allocated->value < i) {
-          // In a forward CFG, the same environment allocation may precede a
+          // In an acyclic CFG, the same environment allocation may precede a
           // branch and initialize only after its join. Require dominance of
           // the store, not textual co-location. Store dominance is retained
           // below for each later read; loops still use the strict local path.

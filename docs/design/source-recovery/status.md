@@ -12,6 +12,54 @@
 
 ## 当前阶段
 
+### 2026-10-04：class self 初始化贯通共同效果顺序、原捕获和函数族写入
+
+- 规则revision93。FindClassSelfStores删除allocation/creation/store/call
+  同块与局部order比较，删除首次store前的效果数量比较。共同EffectOrder
+  证明SSA/dominance及allocation→creation→store的原效果身份/全路径必达；
+  call须支配所有原cell读取。早期观察/发布、夹杂效果、divergence仍拒绝。
+  原self cell store保留在父FunctionTree，没有替成immutable named class。
+- ClassSelfOrder仍验证真实同文件初始化器正文及LiteralClassFields，新增
+  原class capture occurrence证书，绑定input/working arena和revision。
+  ScopeFacts仅对这个真实capture消费Language事实；Defined和未知child
+  writes不因此放行。完整构造器捕获真实父cell，BuildRecordFamilyTrees
+  闭合实际原store/后代write前提，再打印共同源树。
+- 完整用例暴露FamilyWrites未登记已准备initializer method的原barrier。
+  现从实际ClassExpr的initializer context/body共用operation-owner索引，
+  核对原method occurrence/identity/目标body，而不是按opcode串或布局猜测。
+  缺initializer_site、错body method和错call method共27个变造拒绝。
+- 逆物理布局暴露ProveLocalAccesses以较小target block编号代表真实cycle。
+  现复用已有OrderAcyclicBlocks判定真实无环图，再使用既有支配初始化路径。
+  Kahn排序O(B+E)、scratch O(B)，失败cycle也charge遍历上界。一般cell
+  PC扫描及循环activation限制尚未全部迁移，已登记为实现缺口；没有加入
+  新的物理布局分支或图形模板。
+- 三profile、1/200/201/402规模：84组新增跨allocation/store/call分块及
+  菱形、晚期cell读取正例，9组早期观察/divergence/分支效果反例。self发现
+  精确work边界及几何增长通过；1206拆块work737/107951/108491/217177，
+  allocation diamond为1109/180361/181263/362711。不是暂停的RSS或基准。
+- 九组完整真实字节/文件/context/capture/FunctionTree/family-write/printer
+  用例含split、diamond及method物理晚于call的布局。新增135组独立native
+  JS对照，验证constructor返回实际外部cell中的class、跨factory身份、
+  static字段描述符、写后实例返回和其他factory独立性。原135组initializer
+  与432组class observer对照继续通过，不用拒绝或INCOMPLETE计成功。
+- /tmp/abcd-self-order-保存验证：早期unit未提供条件closure-write前提，
+  明确拒绝；完整family验证最初报kCoverage，修复实际initializer barrier
+  遗漏后通过。完整逆布局最初被原forward检查拒绝，复用拓扑排序后通过。
+  两次批量build的目标名record_default_tree_test/cleanup_flow_test不存在，
+  退出2；纠正为实际module_default_export_test/environment_cleanup_test。
+  final-build-3.log单构建-j4退出0；final-tests.log最终20/20通过30.61秒，
+  含作用域/capture/store/module guard/alias/default/cleanup相关回归。
+  test-output.log保留work、135组新增native对照和既有输出。
+- fresh build/stage-one/self-effect-order-pass-1固定五输入全退出0，
+  80 complete/26 incomplete/0 failure/46 no-module，无完整记录回退、无
+  legacy writer。batch-1.log和syntax-1.log核对原index/manifest SHA及size，
+  106份源码解析通过，源码与规则92字节一致。本次扩大共同布局覆盖，没有
+  新增真实complete record；阶段一语义与源码风格双验收仍未完成。
+- shape审计继续开放module guard邻接、inline-owned Reference、phased
+  单RHS/入口、父scope/capture、literal字段单块和一般cell生命周期；禁止
+  新增样本/名字/PC布局/数量匹配规则仍生效。Goal active；full-suite、扩展
+  语料、RSS、基准、DFX、代理及周期审计继续暂停。
+
 ### 2026-10-04：类初始化调用以共同 SSA 与效果必达事实替换同块门槛
 
 - 规则revision92。FindClassInitializerCalls删除creation/method/call同块及

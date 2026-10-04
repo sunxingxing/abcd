@@ -195,6 +195,27 @@ class WriteCheck {
           definition.creation.pc == graph.origins[graph.ops[creation.value].origin.value].pc &&
           std::holds_alternative<analysis::ValueClassCreation>(graph.ops[creation.value].operation), Error::kCoverage);
       Require(!owners[creation.value], Error::kCoverage); owners[creation.value] = creation;
+      if (definition.initializer) {
+        Step();
+        const auto& initializer = *definition.initializer;
+        const auto& call = initializer.call;
+        Require(definition.initializer_site == call && call.creation == creation &&
+            call.method.value < owners.size() && !owners[call.method.value], Error::kCoverage);
+        const auto& operation = graph.ops[call.method.value];
+        const auto* method = std::get_if<analysis::ValueFunctionCreation>(&operation.operation);
+        const auto* site = initializer.context.CreationSite();
+        // The prepared same-file initializer owns its original method barrier,
+        // just as a defined member does. Invocation/body projection is proved
+        // by the shared evaluation/tree pipeline, never inferred from layout.
+        Require(method && site && operation.origin.value < graph.origins.size() &&
+            site->creator == target.tree.method && site->pc == graph.origins[operation.origin.value].pc &&
+            site->creation.kind == method->kind && site->creation.method == method->method &&
+            site->creation.length.value == method->length && site->creation.home_object == method->home_object &&
+            site->creation.cache_slot == method->cache_slot &&
+            initializer.context.Identity() == target.tree.identity && initializer.tree.identity == target.tree.identity &&
+            initializer.tree.method == initializer.context.Target(), Error::kCoverage);
+        owners[call.method.value] = creation;
+      }
       for (const auto& member : definition.definitions) {
         Require(member.site.creation == creation, Error::kCoverage);
         const auto methods = member.site.Methods();

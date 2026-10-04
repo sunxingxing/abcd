@@ -85,6 +85,10 @@ struct LocalAccessPlan {
   struct UnexposedInitialization {
     InstructionId allocation;
     InstructionId store;
+    // Optional original capture occurrence certified by a private all-path
+    // initialization owner. This replaces a block-local interval for that one
+    // actual capture, not a raw value/Defined premise or arbitrary PC window.
+    std::optional<InstructionId> capture;
   };
   std::vector<std::optional<UnexposedInitialization>> unexposed_initializations;
   // Descriptive candidate only: the same straight-line grammar also permits

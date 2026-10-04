@@ -3,6 +3,7 @@
 #include "../../../src/source/family_print.h"
 #include "../../../src/source/family_cells.h"
 #include "../../../src/source/tree_structure.h"
+#include "../../../src/source/class_self_order.h"
 #include "abcd/source/global_reference.h"
 #include "abcd/analysis/coroutine.h"
 #include "abcd/analysis/exception_locals.h"
@@ -22,7 +23,7 @@ enum class ObserverFlow { kSameBlock, kSplit, kSelection, kInstallSplit, kInstal
 std::string Recover(bool is_static, bool return_prototype = false, int ordinary_parity = -1,
     bool async_method = false, abc::ProfileId profile = abc::ProfileId::kDynamic1206,
     bool capture_cells = false, bool initialized = true, bool input_gap = false,
-    ObserverFlow observers = ObserverFlow::kSameBlock) {
+    ObserverFlow observers = ObserverFlow::kSameBlock, bool self_initializer = false) {
   constexpr std::uint32_t kPool = 64, kOwner = 128, kLiteral = 160,
       kCreator = 256, kConstructor = 300, kGetter = 340, kSetter = 380,
       kBufferMethod = 420, kBufferCode = 864, kNestedMethod = 460, kNestedCode = 1000,
@@ -56,7 +57,7 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   const auto save = [&](std::uint8_t r) { op(abc::Opcode::kSTA_V8); code.push_back(r); };
   const bool initializer = observers == ObserverFlow::kInitializerSplit || observers == ObserverFlow::kInitializerDiamond || observers == ObserverFlow::kInitializerReverse;
   const auto corridor = [&] {
-    if (observers == ObserverFlow::kInitializerSplit) { op(abc::Opcode::kJMP_IMM8); code.push_back(2); }
+    if (observers == ObserverFlow::kInitializerSplit || observers == ObserverFlow::kInitializerReverse) { op(abc::Opcode::kJMP_IMM8); code.push_back(2); }
     else {
       load(9); op(abc::Opcode::kJEQZ_IMM8); code.push_back(5);
       op(abc::Opcode::kNOP); op(abc::Opcode::kJMP_IMM8); code.push_back(3); op(abc::Opcode::kNOP);
@@ -69,9 +70,11 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
       op(abc::Opcode::kSTLEXVAR_IMM4_IMM4); code.push_back(0);
     }
   }
+  if (self_initializer) { op(abc::Opcode::kNEWLEXENV_IMM8); code.push_back(1); corridor(); }
   op(abc::Opcode::kLDHOLE); save(0);
   op(abc::Opcode::kDEFINECLASSWITHBUFFER_IMM8_ID16_ID16_IMM16_V8);
   code.insert(code.end(), {0, 0, 0, 1, 0, 0, 0, 0}); save(1);
+  if (self_initializer) { corridor(); load(1); op(abc::Opcode::kSTLEXVAR_IMM4_IMM4); code.push_back(0); }
   if (!is_static) { op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16); code.insert(code.end(), {0, 5, 0}); }
   save(2);
   if (observers == ObserverFlow::kInitializerReverse) {
@@ -141,7 +144,11 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
     load(9); op(abc::Opcode::kJEQZ_IMM8); code.push_back(8);
     load(1); save(0); op(abc::Opcode::kJMP_IMM8); code.push_back(6);
     load(2); save(0); load(0); op(abc::Opcode::kRETURN);
-  } else { load(return_prototype ? 2 : 1); op(abc::Opcode::kRETURN); }
+  } else {
+    if (self_initializer) { op(abc::Opcode::kLDLEXVAR_IMM4_IMM4); code.push_back(0); }
+    else load(return_prototype ? 2 : 1);
+    op(abc::Opcode::kRETURN);
+  }
   const auto body = [&](std::uint32_t at, std::uint8_t locals, std::uint8_t args, std::vector<std::uint8_t> data,
       std::uint8_t tries = 0, std::uint8_t try_bytes = 0) {
     constexpr std::uint8_t kPayload = 0x7f, kContinuation = 0x80;
@@ -170,6 +177,8 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   const bool parameter = observers == ObserverFlow::kSelection || observers == ObserverFlow::kInstallDiamond || observers == ObserverFlow::kInitializerDiamond;
   index.methods[0].code = body(kCreatorCode, 6, parameter ? 4 : 3, code);
   index.methods[1].code = body(kConstructorCode, 0, 3, {opcode(abc::Opcode::kRETURNUNDEFINED)});
+  if (self_initializer) index.methods[1].code = body(kConstructorCode, 0, 3,
+      {opcode(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0, opcode(abc::Opcode::kRETURN)});
   index.methods[2].code = body(kGetterCode, 0, 3, {opcode(abc::Opcode::kLDTHIS),
       opcode(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 6, 0, opcode(abc::Opcode::kRETURN)});
   if (initializer) index.methods[2].code = body(kGetterCode, 1, 3, {
@@ -241,14 +250,41 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   const auto functions = std::get<analysis::FunctionCreationSites>(analysis::FunctionCreationSites::Build(file, header, index, lookup));
   const auto classes = std::get<analysis::ClassMethodSites>(analysis::ClassMethodSites::Build(file, header, index, lookup));
   auto loaded = ReadFunctionValues(file, header, index, {0}, identity,
-      capture_cells ? InputCaptureMode::kConditional : InputCaptureMode::kClosed);
-  Check(std::holds_alternative<FileFunction>(loaded)); const auto& creator = std::get<FileFunction>(loaded);
+      capture_cells || self_initializer ? InputCaptureMode::kConditional : InputCaptureMode::kClosed);
+  if (const auto* failure = std::get_if<FunctionFileFailure>(&loaded)) {
+    std::cerr << "self input failure " << failure->index();
+    if (const auto* input = std::get_if<FunctionInputFailure>(failure)) std::cerr << " input " << input->cause.index();
+    std::cerr << '\n';
+  }
+  Check(std::holds_alternative<FileFunction>(loaded));
+  std::optional<FileFamily> self_family;
+  if (self_initializer) self_family.emplace(std::get<FileFamily>(ReadFunctionFamily(file, header, index, lookup,
+      roles, functions, {0}, identity, {}, nullptr, nullptr, {}, FamilyClassMode::kRetainRoot)));
+  const auto& creator = self_family ? self_family->members[0].function.Normal() : std::get<FileFunction>(loaded);
   const auto& graph = creator.values.graph; const auto& definitions = creator.values.definitions.sites;
   if (initializer) {
     Check(definitions.empty() && creator.values.initializers.calls.size() == 1);
     const auto& call = creator.values.initializers.calls.front();
+    std::optional<ClassSelfOrder> self_order;
+    if (self_initializer) {
+      auto child = std::get<ClassInitializerFunction>(ReadClassInitializerFunction(file, header, index, lookup,
+          roles, functions, creator, call));
+      const ClassInitializerWitness witness{call, child};
+      self_order = std::get<ClassSelfOrder>(ClassSelfOrder::Build(creator, {&witness, 1}));
+      const auto prefixes = self_order->Prefixes(creator.input, graph);
+      const analysis::InstructionId site{graph.origins[graph.ops[call.creation.value].origin.value].site.value};
+      Check(prefixes.size() == 1 && prefixes[0] && prefixes[0]->capture == site);
+      const auto rebase = [&](auto facts, auto domain, auto at) {
+        return ScopeFacts(creator.input.Input(), creator.input.Proof(), facts).Rebase(at, {{0}, {0}}, domain);
+      };
+      Check(std::holds_alternative<CaptureCell>(rebase(prefixes, analysis::CaptureDomain::kLanguage, site)));
+      Check(std::get<ScopeError>(rebase(prefixes, analysis::CaptureDomain::kDefined, site)) == ScopeError::kInitialization);
+      auto wrong = std::vector(prefixes.begin(), prefixes.end()); wrong[0]->capture = analysis::InstructionId{site.value + 1};
+      Check(std::get<ScopeError>(rebase(wrong, analysis::CaptureDomain::kLanguage, site)) == ScopeError::kInitialization);
+    }
     const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph, {}, IncomingCells::kReject,
-        {}, {}, {}, creator.values.initializers.calls));
+        {}, {}, {}, creator.values.initializers.calls, self_initializer ? analysis::ClosureWrites::kLanguage : analysis::ClosureWrites::kUnknown,
+        {}, {}, {}, self_order ? &*self_order : nullptr));
     GlobalScope globals{};
     auto layout = std::make_shared<ClassTree>(std::get<ClassTree>(BuildClassLayout(file, header, index,
         lookup, roles, classes, creator, call.creation, identity, {}, &call)));
@@ -259,8 +295,10 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
     syntax.parameters.resize(creator.frame.parameters); syntax.names = constants.names; syntax.texts = constants.texts;
     const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
     auto source = std::get<ConstructedFunction>(BuildFunctionTree(graph, control, evaluation, syntax, constants.View()));
+    const auto parent_flow = std::get<TreeFlow>(VerifyTreeFlow(graph, control, evaluation, source.tree));
+    const CaptureTree parent_capture{source.tree, parent_flow};
     auto prepared = BuildClassTree(file, header, index, lookup, roles, functions, classes, creator,
-        call.creation, identity, &globals, {}, &call, {}, RecoveryMode::kCompleteOnly, {37});
+        call.creation, identity, &globals, {}, &call, {}, RecoveryMode::kCompleteOnly, {37}, self_initializer ? &parent_capture : nullptr);
     if (const auto* failure = std::get_if<ClassTreeFailure>(&prepared)) {
       std::cerr << "initializer tree failure " << failure->index();
       if (const auto* error = std::get_if<EvaluationError>(failure)) std::cerr << " evaluation " << static_cast<unsigned>(*error);
@@ -272,6 +310,35 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
     std::ostringstream output;
     const auto printed = PrintFunctionTree(source.tree, output, {}, {}, &globals);
     Check(std::holds_alternative<PrintedFunction>(printed) && !std::get<PrintedFunction>(printed).incomplete);
+    if (self_initializer) {
+      const auto flow = std::get<TreeFlow>(VerifyTreeFlow(graph, control, evaluation, source.tree));
+      Check(self_family->members.size() == 1);
+      ConstructedFamily probe{{{source.tree, flow, {}, {}, {}, abc::EntityOffset{kOwner}}}, {0}, {std::nullopt}};
+      Check(std::holds_alternative<FamilyWrites>(VerifyFamilyWrites(index, *self_family, probe)));
+      const auto expect_coverage = [&] {
+        const auto checked = VerifyFamilyWrites(index, *self_family, probe);
+        Check(std::holds_alternative<FamilyWriteFailure>(checked) &&
+            std::get<FamilyWriteFailure>(checked).kind == FamilyWriteError::kCoverage);
+      };
+      const auto initializer_site = layout->initializer_site;
+      layout->initializer_site.reset(); expect_coverage(); layout->initializer_site = initializer_site;
+      const auto body_method = layout->initializer->tree.method;
+      ++layout->initializer->tree.method.value; expect_coverage(); layout->initializer->tree.method = body_method;
+      ++layout->initializer->call.method.value; expect_coverage(); --layout->initializer->call.method.value;
+      auto composed = BuildRecordFamilyTrees(file, header, index, std::move(*self_family),
+          {source.tree, flow, {}, {}, {}, abc::EntityOffset{kOwner}});
+      if (const auto* failure = std::get_if<FamilyTreeFailure>(&composed)) {
+        std::cerr << "self class family failure " << failure->cause.index();
+        if (const auto* error = std::get_if<FamilyWriteFailure>(&failure->cause)) std::cerr << " writes " << static_cast<unsigned>(error->kind) << " pc " << (error->pc ? error->pc->value : UINT32_MAX);
+        std::cerr << '\n';
+      }
+      Check(std::holds_alternative<ConstructedFamily>(composed));
+      const auto& family = std::get<ConstructedFamily>(composed);
+      Check(family.writes && family.writes->stores == 1);
+      output.str({}); output.clear();
+      const auto emitted = PrintFunctionTree(family.members[0].tree, output, {}, {}, &globals);
+      Check(std::holds_alternative<PrintedFunction>(emitted) && !std::get<PrintedFunction>(emitted).incomplete);
+    }
     Check(unlink(path) == 0); return output.str();
   }
   Check(definitions.size() == 4);
@@ -668,6 +735,12 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--self-initializers-json") {
+    for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (const auto flow : {ObserverFlow::kInitializerSplit, ObserverFlow::kInitializerDiamond, ObserverFlow::kInitializerReverse})
+        std::cout << nlohmann::json{{"source", Recover(true, false, -1, false, profile, false, true, false, flow, true)}}.dump() << '\n';
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--initializers-json") {
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
       for (const auto flow : {ObserverFlow::kInitializerSplit, ObserverFlow::kInitializerDiamond, ObserverFlow::kInitializerReverse})

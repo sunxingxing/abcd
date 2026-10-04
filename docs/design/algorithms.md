@@ -1198,3 +1198,28 @@ cost bounds. Multiple observations and foreign effects do not become movable.
 Tests exercise three profiles, 72 positive decoded module-selection cases,
 18 debugger barriers and 9252 independently evaluated native scenarios. Full
 process RSS and performance benchmarks remain paused and unmeasured.
+
+### 类 self 私有初始化和原捕获 occurrence（2026-10-04，规则93）
+
+FindClassSelfStores共享BuildEffectOrder的SSA/dominance、效果前驱身份和
+全路径下一效果必达索引，证明实际allocation→creation→store私有区间。
+任意分块、纯diamond及逆物理布局不构成第二准入条件。store保留真实cell
+身份；call支配全部cell读取。早期观察、路径绕过、夹杂效果和divergence
+不能改变初始化时机。候选仍要求原fresh base class和现有初始化器正文
+接口，不宣称任意有继承/调用/多次写入的initializer已恢复。
+
+ClassSelfOrder逐真实初始化器验证同文件/context/ABI及LiteralClassFields，
+建立只对原class创建occurrence有效的Language capture事实。证书绑定原
+input及working arena/revision，ScopeFacts不使用任意PC区间猜测跨块归属。
+FamilyWrites用一个operation-owner索引核对已准备ClassExpr中的真实方法
+context和body，闭合original class/method barriers；不是可转交的打印许可。
+
+现有ProveLocalAccesses的无环初始化路径改用共同OrderAcyclicBlocks判断
+实际cycle。来源为已有自有Kahn O(B+E)实现，无新依赖/许可证。排序scratch
+O(B)，在当前remaining memory内使用并在支配构造前释放；失败cycle也
+保守charge三次block/edge访问上界。真实循环仍需activation-sensitive
+初始化transfer；原一般cell的PC扫描限制尚未全部替换。
+
+共同效果构造复杂度沿用前节；self候选/访问和capture-site索引线性扫描，
+cell查找O(log C)，没有逐class CFG遍历。1/200/201/402定向work检查是
+算法增长回归，不是已暂停的全流程峰值RSS或性能基准。

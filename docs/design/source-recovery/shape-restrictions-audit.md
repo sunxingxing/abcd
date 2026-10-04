@@ -1,6 +1,6 @@
 # 按用户要求进行的恢复条件审计
 
-最新替换状态及补充事项见文末规则91；历史表中的严格比较候选及literal同块条件不再是
+最新替换状态及补充事项见文末规则93；历史表中的严格比较候选及literal同块条件不再是
 当前准入条件。未替换项继续开放，不能将本次局部交付称为全量审计闭合。
 
 2026-10-03，基线 87176c10。此为本次明确请求的审计，不恢复定期审视。
@@ -651,7 +651,8 @@ raw VM zero/nonzero对null/undefined/NaN不同于JS truthiness，不能贸然替
 | class_initializers.cc / class_initializer_projection.cc | 同块/order/OpId门槛与效果数量比较已由规则92替换；当前ClassTree仍只有一个initializer接口 | 多次真实初始化区段须由共同顺序/owner模型表达，不能增加count模板 |
 | module_guards.cc:79 | guarded read仍要求block/order/OpId邻接 | 以原guard事实、精确输入及相位/TDZ对应证明所属读取，保留原抛出顺序 |
 | class_tree.cc::CheckClassParentScope | phased parent接口仍排除initializer、defined-member、captures和modules | 贯通真实创建scope/捕获/module/异常对应，不能直接删掉父作用域义务 |
-| class_self.cc::FindClassSelfStores | allocation/creation/store/call仍同块/order，首次store前用效果数量确认仅creation | 使用共同cell初始化、原效果身份、全路径必达及闭包可观察性证明 |
+| class_self.cc::FindClassSelfStores | 同块/order和效果数量已由规则93的共同EffectOrder身份/支配/必达替换；实际唯一首次store及初始化器正文接口范围仍有限 | 多次写入与一般初始化器须由共同cell/观察/执行顺序模型表达，不能增加数量模板 |
+| semantic_locals.cc / scope_facts.cc | 规则93以真实拓扑排序替换物理forward-edge准入；既有一般cell初始化仍依赖原指令排序，循环保留局部路径 | activation-sensitive初始化数据流证明每次分配到读取的全路径store；不能以PC大小或同块替代 |
 | literal_class_fields.cc::Build | 已有literal-only快速路径要求单块、无边、无参数及局部类型集合 | 统一field依赖/执行顺序/this与cell观察证明；既有路径只作为明确未迁移边界 |
 | literal_plan.h::IsReceiverField | 直接字段接口只消费ReceiverEntry，FrameThis结果尚未进入同一identity证明 | 根据真实ABI/callable/this初始化状态建立身份对应，保留派生TDZ与arrow lexical-this差异 |
 | legacy rest/super/array/class/module整理 | 既有直线/局部序列模板未全部迁移 | typed CFG/SSA/协议状态和共同FunctionTree通路；不继续扩大模板集合 |
@@ -677,3 +678,24 @@ ProjectClassMembers消费共同EffectOrder，原前驱身份加新增after的全
 由独立共同树通路证明；多参数/多initializer应通过相应接口与分析扩展。
 本次额外核查并登记class_self及literal_class_fields的局部限制，未扩大旧
 fast path，也不宣称全仓每个条件已逐行迁移完成。验证及剩余gate见status。
+
+### 2026-10-04：规则93，class self 私有初始化与捕获的跨块证明
+
+FindClassSelfStores复用共同EffectOrder：allocation支配creation，creation
+支配store，store支配initializer call；allocation→creation→store使用实际
+效果前驱身份及全路径下一效果必达，不比较数量、同块或物理OpId。
+所有原cell读取须由call支配。提前读/发布、夹杂效果或不终止路径仍拒绝，
+不是靠删除语义检查扩大覆盖。原self store继续留在父FunctionTree。
+
+ClassSelfOrder以真实同文件初始化器正文验证闭合私有区间，再把实际class
+capture occurrence绑定进arena/revision受约束的证书。ScopeFacts消费这个
+Language-only事实；Defined、未知child writes和一般cell初始化仍有各自
+证明义务，不能把该证书用于别的capture或TDZ豁免。FamilyWrites从实际
+已准备ClassExpr的initializer context/body登记原method barrier，与普通
+定义成员共用owner索引；缺正文、错call或错body owner仍拒绝。
+
+逆物理布局的完整用例发现ProveLocalAccesses把target block编号较小当作
+真实环。现以已有OrderAcyclicBlocks的Kahn顺序区分布局与实际cycle，再
+使用原支配证明。该局部迁移尚未替换一般cell的PC顺序和循环activation
+限制，已列入开放项。没有生产opcode串、样本身份或新图形枚举分支。
+验证与阶段一边界见status.md；不把此项交付称为全仓审计闭合。

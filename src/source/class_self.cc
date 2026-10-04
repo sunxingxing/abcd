@@ -4,7 +4,7 @@
 #include <new>
 #include <stdexcept>
 
-#include "../analysis/value_flow.h"
+#include "effect_order.h"
 
 namespace abcd::source {
 std::variant<ClassSelfStores, ClassSelfError> FindClassSelfStores(
@@ -25,13 +25,14 @@ std::variant<ClassSelfStores, ClassSelfError> FindClassSelfStores(
       step(count); admit(count,sizeof(T)); values.resize(count);
       admit(values.capacity()-count,sizeof(T));
     };
-    const auto flow = VerifyValueFlow(graph,budget);
+    const auto flow = BuildEffectOrder(graph,budget);
     if (const auto* error = std::get_if<ValueAvailabilityError>(&flow)) {
       if (*error == ValueAvailabilityError::kResourceLimit) return Error::kResourceLimit;
       if (*error == ValueAvailabilityError::kWorkLimit) return Error::kWorkLimit;
       return Error::kFlow;
     }
-    step(std::get<ValueFlowProof>(flow).work);
+    const auto& order = std::get<EffectOrder>(flow);
+    admit(order.allocated_bytes,1); step(order.work);
     const auto verified = VerifyCellPlan(graph,environments,cells,budget);
     if (const auto* error = std::get_if<CellError>(&verified)) {
       if (*error == CellError::kResourceLimit) return Error::kResourceLimit;
@@ -56,14 +57,6 @@ std::variant<ClassSelfStores, ClassSelfError> FindClassSelfStores(
       require(known != calls.calls.end() && *known == call && call.creation.value < initializers.size() &&
           !initializers[call.creation.value],Error::kInput);
       initializers[call.creation.value] = call.call;
-    }
-    std::vector<std::size_t> effects;
-    array(effects,graph.ops.size()+1);
-    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
-      step(); const auto& op = graph.ops[i];
-      effects[i+1] = effects[i] + (op.life == ValueLife::kLive &&
-          (op.normal != LanguageEffect::kNone || op.before_throw != LanguageEffect::kNone ||
-           op.exceptional != ExceptionalCompletion::kImpossible));
     }
     ClassSelfStores result; admit(1,sizeof(result));
     admit(cells.cells.size(),sizeof(ClassSelfStore)); result.stores.reserve(cells.cells.size());
@@ -91,13 +84,19 @@ std::variant<ClassSelfStores, ClassSelfError> FindClassSelfStores(
       const auto& creation = graph.ops[source->op.value];
       const auto call = *initializers[source->op.value];
       const auto& invoke = graph.ops[call.value];
-      const auto& allocation = graph.ops[local->allocation.value];
       if (!std::holds_alternative<ValueClassCreation>(creation.operation) ||
-          write.block != creation.block || write.block != invoke.block || allocation.block != creation.block ||
-          allocation.order >= creation.order || creation.order >= write.order || write.order >= invoke.order) continue;
+          !order.Before(graph,local->allocation,creation.block,creation.order) ||
+          !order.Before(graph,source->op,write.block,write.order) ||
+          !order.Before(graph,*store,invoke.block,invoke.order)) continue;
       // Only the fresh base-class creation may intervene before this first
       // store. No call/closure/other effect can expose the new environment.
-      if (creation.use_count != 1 || effects[store->value]-effects[local->allocation.value+1] != 1) continue;
+      // Shared past identity and future must-reach discharge the private
+      // allocation-to-store interval. Equal counts or block layout cannot prove
+      // no observer, bypass, divergence or an earlier allocation activation.
+      if (creation.use_count != 1 || order.before[source->op.value] != EffectPredecessor{local->allocation} ||
+          order.after[local->allocation.value] != source->op ||
+          order.before[store->value] != EffectPredecessor{source->op} ||
+          order.after[source->op.value] != *store) continue;
       const auto* heritage = std::get_if<ValueId>(&graph.uses[creation.first_use.value].operand);
       if (!heritage || graph.values[heritage->value].domain != ValueKinds::Hole()) continue;
       bool observed = false;
@@ -105,7 +104,7 @@ std::variant<ClassSelfStores, ClassSelfError> FindClassSelfStores(
         step(); const auto& access = cells.accesses[cell.first+j];
         if (access.kind != CellAccessKind::kLoad) continue;
         const auto& load = graph.ops[access.operation.value];
-        if (load.block == creation.block && load.order < invoke.order) observed = true;
+        if (!order.Before(graph,call,load.block,load.order)) observed = true;
       }
       if (observed) continue;
       result.stores.push_back({source->op,*store,call,CellId{static_cast<std::uint32_t>(i)},local->allocation});
