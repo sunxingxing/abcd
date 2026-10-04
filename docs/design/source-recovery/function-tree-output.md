@@ -292,3 +292,27 @@ block 所有权和支配区间查询，同块才要求 guard 先于 creation。
 真实循环仍保留 fresh 同块 allocation/store/read 的已有实现限制，异常
 和重复激活需要对应的生命周期转移。已有 deferred/module prefix 接口
 保持，未扩大其局部布局条件，也未改变数值和父级构造语义合同。
+
+## 普通决策中的条件语句前缀（规则 108）
+
+共同 ControlDecision 仍拥有原来的条件路径、共享分支和最终 fallback。
+当普通 EvaluationPlan 将路径内操作保留为语句根时，FunctionTree 以一个
+块内私有条件变量保存原谓词，使用同层的连续 if 执行后续前缀及下一谓词，
+最后按保存条件进入共享分支或 fallback。条件为真后，余下前缀都不执行；
+共享分支只构建一次。纯表达式路径继续使用原来的 native logical 表示。
+
+属性读取、普通根表达式、debugger、原 copy/jump 锚点都通过共同语句构建；
+不根据 debugger、样本名、固定 guard 数量、寄存器分配或块布局选择恢复。
+私有变量具有独立块作用域及 BindingOrigin，不对应输入 ABI/寄存器/cell。
+原始操作、控制边、求值计划及 instruction provenance 不改变。
+
+独立 TreeFlow 从真实 AST 的声明、原谓词赋值、每个条件前缀和分支归属
+重建语义；核对极性、执行顺序、保存身份与私有变量的全部访问。不得将
+私有变量用于其他读写、数值更新或捕获。StatementDecision 的 AST 结构
+检查证明生成代码的语义，不是按输入图形状进行准入。现有边 copy、词法
+作用域及异常归属义务仍保留。异常相位中的 statement-only 前缀尚未接入
+这一表示；原 phased 表达式/逗号路径继续保留，不能删除 catch staging。
+
+语句 staging 为同层 if，避免将长条件链转成深度随输入增长的嵌套语句。
+实际 decoded 用例覆盖三 profile、1/200/201/402、纯副作用前缀、debugger、
+寄存器 copy、纯块拆分及反向比较；输出完整函数后再验证行为。

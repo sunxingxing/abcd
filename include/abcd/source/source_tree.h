@@ -59,7 +59,8 @@ enum class DeclarationKind : std::uint8_t { kParameter, kLet, kConst, kCatchPara
 enum class TemporaryReason : std::uint8_t {
   kMultipleUses, kEffectSnapshot, kPhiJoin, kParallelCopyCycle,
   kCrossRegionValue, kReferenceSnapshot, kUnprovedInline, kPredicateSnapshot,
-  kExceptionSnapshot, kPendingCompletion, kInternalSentinel, kNumericUpdate
+  kExceptionSnapshot, kPendingCompletion, kInternalSentinel, kNumericUpdate,
+  kDecisionPredicate
 };
 struct TreeScope {
   ScopeKind kind;

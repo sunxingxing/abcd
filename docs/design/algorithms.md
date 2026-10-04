@@ -1587,3 +1587,28 @@ remain representation gaps. Original condition source continues to print for
 unprojected cases; this is not an admission limit on complete function recovery.
 Maintenance must preserve execution count, receiver/key order, target checks,
 TDZ, exception identity and original producer/instruction provenance.
+
+
+## Conditional statement roots in shared decisions (rules 108)
+
+The existing ControlDecision ownership determines the original predicate path,
+shared arm and final fallback. Normal evaluation roots select a statement
+representation rather than introducing an opcode or compiler-layout matcher.
+One private block-local cell stores each original oriented predicate. Flat
+conditional blocks execute subsequent prefixes only while that cell is false;
+the shared/fallback arms remain single occurrences. Deep source nesting is not
+proportional to predicate count. Phased statement prefixes still need their
+catch-copy/scope representation; the existing phased comma path is retained.
+
+The construction scan and emission each visit an owned decision path at most
+once. Fresh flow verifies ordered roots, original empty transfers and branch
+polarity, then checks all private-cell accesses in one AST/capture scan. For I
+operations, B owned controls, T syntax nodes and A captures, added work and
+storage are O(I+B+T+A); there is no per-variable CFG walk or repeated tree
+copying. Arrays reserve linear bounds once. Explicit slot bounds count the
+predicate save, guard read/complement and final read, plus statements; these
+are representation capacity bounds, not VM constants or acceptance thresholds.
+
+Decoded 200/201/402 fixtures exercise geometric work through the existing
+counters. They do not constitute process RSS, a timing benchmark, full-corpus
+validation, or completion of the pending fields/signatures/body gate.

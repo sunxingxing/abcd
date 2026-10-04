@@ -289,7 +289,8 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // domains; eager snapshot ownership and original effect/exception sites remain.
 // Rules 107 carry reference formation and ordered reads through nullish syntax;
 // retained assignments become native bases without replaying their RHS effects.
-inline constexpr std::uint32_t kRouteEvidenceRules = 107;
+// Rules 108 retain conditional statement roots through flat predicate staging.
+inline constexpr std::uint32_t kRouteEvidenceRules = 108;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

@@ -35,6 +35,10 @@ constexpr ScopeId kBodyScope{1};
 constexpr ScopeId kCaptureScope{2};
 constexpr std::size_t kFunctionScopes = 2;
 constexpr std::size_t kBranchArms = 2;
+// Staging adds a save, guard read/complement, and final read per predicate;
+// statement storage covers saves/guards and the local declaration once.
+constexpr std::size_t kDecisionExpressionSlots = 4;
+constexpr std::size_t kDecisionStatementSlots = 3;
 
 class TreeBuilder {
  public:
@@ -334,13 +338,19 @@ class TreeBuilder {
     std::size_t decision_expressions = 0;
     if (decisions) {
       Require(graph_.ops.size() <= kMaxId - control_.nodes.size(), Error::kResourceLimit);
-      decision_expressions = graph_.ops.size() + control_.nodes.size();
+      Require(control_.nodes.size() <= (kMaxId - graph_.ops.size()) / kDecisionExpressionSlots, Error::kResourceLimit);
+      decision_expressions = graph_.ops.size() + kDecisionExpressionSlots * control_.nodes.size();
       Require(decision_expressions <= kMaxId - symbols - tree_.expressions.size(), Error::kResourceLimit);
     }
-    Grow(tree_.names, tree_.names.size() + symbols);
-    Grow(tree_.origins, tree_.origins.size() + symbols + synthetic);
+    const auto staging = decisions && !exceptions_ ? control_.nodes.size() : 0;
+    Require(staging <= kMaxId - symbols && tree_.names.size() <= kMaxId - symbols - staging &&
+        tree_.origins.size() <= kMaxId - symbols - synthetic - staging &&
+        staging <= (kMaxId - statements) / kDecisionStatementSlots, Error::kResourceLimit);
+    statements += kDecisionStatementSlots * staging;
+    Grow(tree_.names, tree_.names.size() + symbols + staging);
+    Grow(tree_.origins, tree_.origins.size() + symbols + synthetic + staging);
     Grow(tree_.expressions, tree_.expressions.size() + symbols + decision_expressions);
-    Grow(tree_.symbols, symbols);
+    Grow(tree_.symbols, symbols + staging);
     Grow(tree_.parameters, syntax_.parameters.size());
     Grow(tree_.captures, syntax_.captures.size());
     Grow(tree_.modules, syntax_.modules.size());
@@ -949,8 +959,105 @@ class TreeBuilder {
       }
     }
   }
+  bool DecisionStatements(const ControlNode& root) {
+    // Select a representation from the common evaluation placements. Statement
+    // roots cannot be operands of a native logical. No opcode/layout admission.
+    if (exceptions_) return false;
+    const auto* part = &root;
+    while (part->decision) {
+      Step(); auto next = part->decision->evaluate;
+      const auto predicate = part->decision->predicate.value_or(next);
+      while (true) {
+        const auto& node = control_.nodes[next.value];
+        const auto& block = DecisionBlock(node);
+        for (std::uint32_t i = 0; i < block.op_count; ++i) {
+          Step(); const auto id = block.first_op.value + i;
+          if (graph_.ops[id].life == analysis::ValueLife::kLive &&
+              evaluation_.operations[id].kind == EvaluationKind::kRoot &&
+              !std::holds_alternative<analysis::ValueBranch>(graph_.ops[id].operation) &&
+              !std::holds_alternative<analysis::ValueJump>(graph_.ops[id].operation)) return true;
+        }
+        if (next == predicate) break;
+        Require(!node.arms && !node.decision && node.next, Error::kControl);
+        next = *node.next;
+      }
+      part = &control_.nodes[predicate.value];
+    }
+    return false;
+  }
+  ExprId DecisionExpression(TreeExpression expression, TreeOriginId origin) {
+    Require(tree_.expressions.size() < tree_.expressions.capacity(), Error::kResourceLimit);
+    const ExprId id{static_cast<std::uint32_t>(tree_.expressions.size())};
+    tree_.expressions.push_back({std::move(expression), origin});
+    return id;
+  }
+  void EmitStatementDecision(analysis::OpId op, const ControlNode& root, std::size_t parent) {
+    // Stage only predicates, leaving all original roots in their conditional
+    // statement regions. One local per decision; shared arms are emitted once.
+    const TreeOriginId origin{graph_.ops[op.value].origin.value};
+    const ScopeId scope{static_cast<std::uint32_t>(tree_.scopes.size())};
+    tree_.scopes.push_back({ScopeKind::kBlock, drafts_[parent].scope});
+    const auto wrapper = Block(scope, origin);
+    const SymbolId saved{static_cast<std::uint32_t>(tree_.symbols.size())};
+    tree_.symbols.push_back({scope, SyntheticName(u"$condition", saved.value),
+        BindingKind::kCompilerTemporary, DeclarationKind::kLet,
+        NameEvidence::kSynthesized, TemporaryReason::kDecisionPredicate});
+    const TreeOriginId binding{static_cast<std::uint32_t>(tree_.origins.size())};
+    tree_.origins.emplace_back(BindingOrigin{saved});
+    Append(wrapper, Statement(DeclarationStmt{saved, {}}, binding));
+    auto current = wrapper;
+    const auto* part = &root;
+    auto branch = op;
+    bool selected_taken = root.arms->taken.has_value();
+    while (true) {
+      Step(); const auto& block = DecisionBlock(*part);
+      Require(!HasCopies(block.first_edge) &&
+          !HasCopies(analysis::EdgeId{block.first_edge.value + 1}), Error::kControl);
+      const TreeOriginId here{graph_.ops[branch.value].origin.value};
+      Require(forest_.operations[branch.value].has_value(), Error::kOwnership);
+      const auto save = DecisionExpression(AssignmentExpr{SymbolTarget{saved},
+          *forest_.operations[branch.value]}, here);
+      Append(current, Statement(ExpressionStmt{save}, here));
+      if (!part->decision) break;
+      const auto read = DecisionExpression(SymbolExpr{saved}, here);
+      const auto condition = DecisionExpression(UnaryExpr{TreeUnary::kNot, read}, here);
+      const ScopeId child_scope{static_cast<std::uint32_t>(tree_.scopes.size())};
+      tree_.scopes.push_back({ScopeKind::kBlock, drafts_[wrapper].scope});
+      const auto child = Block(child_scope, here);
+      Append(wrapper, Statement(IfStmt{condition, drafts_[child].statement, {}}, here));
+      current = child;
+      auto next = part->decision->evaluate;
+      const auto predicate = part->decision->predicate.value_or(next);
+      while (next != predicate) {
+        Step(); const auto& linear = control_.nodes[next.value];
+        Require(!linear.arms && !linear.decision && linear.next, Error::kControl);
+        EmitBlock(linear, current);
+        next = *linear.next;
+      }
+      selected_taken = part->decision->shared_on_taken;
+      part = &control_.nodes[predicate.value];
+      branch = DecisionPredicate(*part);
+      EmitBlock(*part, current, true);
+    }
+    const auto& first = DecisionBlock(root);
+    const auto shared = root.arms->taken ? root.arms->taken : root.arms->fallthrough;
+    const auto body = Arm(wrapper, origin, shared,
+        analysis::EdgeId{first.first_edge.value + (root.arms->taken ? 0U : 1U)});
+    std::optional<StmtId> alternate;
+    const auto fallback = selected_taken ? part->arms->fallthrough : part->arms->taken;
+    if (fallback) {
+      const auto& last = DecisionBlock(*part);
+      alternate = drafts_[Arm(wrapper, TreeOriginId{graph_.ops[branch.value].origin.value}, fallback,
+          analysis::EdgeId{last.first_edge.value + (selected_taken ? 1U : 0U)})].statement;
+    }
+    const auto condition = DecisionExpression(SymbolExpr{saved}, origin);
+    Append(wrapper, Statement(IfStmt{condition, drafts_[body].statement, alternate}, origin));
+    Append(parent, drafts_[wrapper].statement);
+    tree_.operations.push_back({op, drafts_[wrapper].statement});
+  }
   void EmitDecision(analysis::OpId op, const ControlNode& node, std::size_t draft) {
     Require(node.decision && node.arms, Error::kControl);
+    if (DecisionStatements(node)) { EmitStatementDecision(op, node, draft); return; }
     decision_path_.clear(); decision_roots_.clear();
     const auto* part = &node;
     bool selected_taken = node.arms->taken.has_value();

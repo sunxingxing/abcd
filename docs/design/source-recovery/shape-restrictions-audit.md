@@ -3,6 +3,17 @@
 最新替换状态及补充事项见文末规则99；历史表中的严格比较候选及literal同块条件不再是
 当前准入条件。未替换项继续开放，不能将本次局部交付称为全量审计闭合。
 
+规则108补充：普通 ControlDecision 路径中的语句根现进入共同 FunctionTree
+语句 staging，以块内私有条件变量及同层 if 保留执行条件和顺序，不再
+把“必须是 inline expression”作为这一表示的要求。选择依据是共同
+EvaluationKind::kRoot，不按 debugger 或其他 opcode 生产名单、样本、
+PC、固定 guard 数量、寄存器或同块。共享/最终 fallback 保持原 owner。
+独立 AST 检查承担保存身份、极性、私有访问及语句顺序的真实义务；
+copy/拆块/反向比较无需新生产分支。原异常相位的 statement-only 前缀、
+catch staging、一般语义输入失败与历史未替换项仍开放。本项不是全量
+审计或阶段一验收闭合，规则106所述普通前缀的12个拒绝用例已替换为
+完整源码及行为验证，不能将原 typed 拒绝记录继续当作完成证据。
+
 规则107补充：既有nullish抽象解释新增AssignmentExpr/SequenceExpr的
 语言转移规则及按路径的有序reference formation。typed SymbolTarget
 写入与赋值结果是同一RHS值；用原ExprId保留整个assignment/RHS，不按

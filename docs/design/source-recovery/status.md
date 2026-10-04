@@ -12,6 +12,48 @@
 
 ## 当前阶段
 
+### 2026-10-05：共同语句树恢复普通共享决策的语句前缀
+
+- 规则revision108，基线7e059c35。上一轮数值说明没有改变验收合同；
+  本轮实际补齐FunctionTree的普通语句前缀，不删除语义输入检查或barrier。
+  原nullish_selection的12个debugger拒绝夹具增加真实属性读取效果，要求
+  完整函数输出；red-tests.log 2/2失败于既有kOwnership树缺口。
+- 原ControlDecision/EvaluationPlan保留全部指令、共享/fallback归属及求值
+  顺序。共同语句构建以一个块内私有条件变量和同层if保留后续前缀及原
+  谓词，共享分支只构建一次。依据typed Root placement选择表示，不按
+  debugger或opcode名单、样本、固定guard数、寄存器、PC或同块匹配。
+  根表达式、debugger、copy/jump锚点沿用共同EmitBlock；纯表达式路径
+  继续使用原native logical。没有第二套writer或原CFG修改。
+- Fresh TreeFlow独立验证每个原条件、极性、前缀语句顺序、原边转移及
+  私有变量所有访问，拒绝外部读写/update/capture及未知作用域归属。
+  原receiver、捕获、异常、操作数和instruction来源校验保持。异常相位
+  statement-only前缀及catch staging仍有表示缺口，不计为已恢复。
+- 三profile分别实际解码，1/200/201/402的144个完整生成函数包括纯
+  副作用前缀、debugger、copy/纯块拆分、反向比较和原nullish反例。
+  独立Node通过225,792个返回身份/异常身份/getter执行次数/顺序场景；
+  201→402既有work比小于2.1。条件极性、保存目标、最终条件及getter/
+  debugger顺序的实际树篡改均被独立校验拒绝，原操作源码区间检查通过。
+  不再把这些普通语句前缀的typed拒绝计为行为成功。
+- 日志前缀/tmp/abcd-statement-decision-*。build-1.log与tests-1.log
+  完整树通过但Node解析深层嵌套if耗尽调用栈，改为同层条件staging；
+  build-2.log及tests-2.log 2/2通过14.35秒（108函数/169,344场景）。
+  扩展反例build-3.log失败于测试BooleanLiteral构造，修正后39个target
+  related-build.log与final-build.log单-j4退出0；tests-3.log 2/2通过
+  21.29秒，最后related-tests.log 89/89通过495.48秒。包含normal/phased
+  选择、callee/receiver、模块、类/构造器/字段、默认值/capture、真实配对
+  记录以及generator return/suspend/loop；未恢复全量套件或暂停项目。
+- fresh build/stage-one/statement-decision-pass-1固定五ABC全部退出0，
+  仍80complete/26incomplete/0failure/46no-module，无新增完整记录、
+  完整回退或legacy writer。原index/manifest SHA与size一致，106份源码
+  全部解析通过且内容逐字节未变化；这是回归证据，不是阶段一完成。
+- 新增构建与fresh flow开销在既有控制owner下为O(I+B+T+A)，存储相同，
+  没有逐变量CFG遍历、逐候选树复制或新依赖。author自检核对private
+  scope/identity、平层guard极性、全路径执行次数、来源及所有新恢复条件。
+  普通数值、未知父类协议、fields/globals/signatures/body integration与
+  整份阶段一独立语义/表示验收仍未完成。下一步仍需直接推进失败函数的
+  输入分析和函数体整合，不能以本组件完成代替Goal。Goal active；代理、
+  全量套件、扩展语料、RSS/基准、调度器/DFX及定期审视继续暂停。
+
 ### 2026-10-05：共同有序保存值恢复带副作用 base 的空值访问
 
 - 规则revision107，基线d848a966。上轮数值边界解释没有改变验收合同；

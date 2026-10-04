@@ -178,6 +178,9 @@ class FlowCheck {
               LogicalBranch(logicals_[*logical_branches_[id.value]], statement, region.block, child - 1);
               continue;
             }
+            if (node.decision && std::holds_alternative<BlockStmt>(syntax)) {
+              StatementDecision(node, statement, pending); continue;
+            }
             const auto* branch = std::get_if<IfStmt>(&syntax);
             Require(branch && node.arms, Error::kControl);
             if (node.decision) {
@@ -250,6 +253,7 @@ class FlowCheck {
     Objects();
     ExpressionScopes();
     NumericUpdates();
+    DecisionBindings();
     for (std::size_t i = 0; i < tree_.symbols.size(); ++i) {
       budget_.Step();
       const auto& symbol = tree_.symbols[i];
@@ -344,6 +348,161 @@ class FlowCheck {
     Require(anchor, Error::kPlacement);
     const auto* boundary = std::get_if<BlockBoundary>(&sequences_.Anchor(*anchor));
     Require(boundary && boundary->block == parent && boundary->index == child, Error::kSequence);
+  }
+  void DecisionRead(ExprId expression, SymbolId saved) {
+    const auto* read = std::get_if<SymbolExpr>(&tree_.expressions[expression.value].expression);
+    Require(read && read->symbol == saved, Error::kSnapshot);
+    decision_expressions_[expression.value] = 1;
+  }
+  void DecisionBindings() {
+    if (decision_expressions_.empty()) return;
+    // Every access to this private staging cell belongs to a checked decision.
+    // A name/reason alone cannot authorize an extra read, write, or capture.
+    for (std::size_t i = 0; i < tree_.expressions.size(); ++i) {
+      budget_.Step(); const auto& expression = tree_.expressions[i].expression;
+      std::optional<SymbolId> symbol;
+      if (const auto* read = std::get_if<SymbolExpr>(&expression)) symbol = read->symbol;
+      if (const auto* assignment = std::get_if<AssignmentExpr>(&expression))
+        if (const auto* target = std::get_if<SymbolTarget>(&assignment->target)) symbol = target->symbol;
+      if (const auto* update = std::get_if<UpdateExpr>(&expression)) symbol = update->symbol;
+      if (symbol && tree_.symbols[symbol->value].temporary == TemporaryReason::kDecisionPredicate)
+        Require(decision_expressions_[i], Error::kSnapshot);
+    }
+    for (const auto symbol : tree_.closure_captures) {
+      budget_.Step(); Require(tree_.symbols[symbol.value].temporary != TemporaryReason::kDecisionPredicate, Error::kSnapshot);
+    }
+  }
+  void DecisionStatements(const ControlNode& node, StmtId parent, std::uint32_t& child,
+      bool predicate) {
+    const auto& source = DecisionBlock(node);
+    const auto& block = sequences_.Block(parent);
+    for (std::uint32_t i = 0; i < source.op_count; ++i) {
+      budget_.Step(); const analysis::OpId id{source.first_op.value + i};
+      const auto& op = graph_.ops[id.value];
+      if (op.life != analysis::ValueLife::kLive) continue;
+      if (predicate && id == DecisionPredicate(node)) continue;
+      const auto kind = evaluation_.operations[id.value].kind;
+      if (kind == EvaluationKind::kInline || kind == EvaluationKind::kPredicateSnapshot ||
+          kind == EvaluationKind::kPhiInput || kind == EvaluationKind::kLogicalLeft ||
+          kind == EvaluationKind::kNestedLiteral || kind == EvaluationKind::kInitializer ||
+          kind == EvaluationKind::kModuleGuard) continue;
+      const auto& placement = tree_.operations[*placements_[id.value]].node;
+      if (IsReceiverGuard(tree_, id) || kind == EvaluationKind::kCellGuard ||
+          kind == EvaluationKind::kClassProjection || IsAbsentHeritageTransport(graph_, evaluation_, op) ||
+          std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation) ||
+          kind == EvaluationKind::kElidedPure || kind == EvaluationKind::kAlias) {
+        const auto* anchor = std::get_if<AnchorId>(&placement);
+        Require(anchor, Error::kPlacement);
+        const auto* boundary = std::get_if<BlockBoundary>(&sequences_.Anchor(*anchor));
+        Require(boundary && boundary->block == parent && boundary->index == child, Error::kSequence);
+        if (IsEnvironmentState(op.operation)) CellDeclarations(id, block, child);
+        continue;
+      }
+      Require(child < block.child_count, Error::kSequence);
+      const auto statement = sequences_.Child(block.first_child + child++);
+      flow_.statements[id.value] = statement;
+      const auto& syntax = tree_.statements[statement.value].statement;
+      if (std::holds_alternative<analysis::ValueDebugger>(op.operation)) {
+        Require(std::get_if<StmtId>(&placement) && std::get<StmtId>(placement) == statement &&
+            std::holds_alternative<DebuggerStmt>(syntax), Error::kPlacement);
+      } else {
+        const auto* expression = std::get_if<ExpressionStmt>(&syntax);
+        Require(expression, Error::kSequence);
+        RootExpression(id, expression->expression);
+      }
+    }
+    if (!predicate) for (std::uint8_t e = 0; e < source.edge_count; ++e) {
+      budget_.Step(); edges_->Consume(analysis::EdgeId{source.first_edge.value + e}, block, child);
+    }
+  }
+  void StatementDecision(const ControlNode& root, StmtId wrapper, std::size_t& pending) {
+    Require(!exceptions_ && root.decision && root.arms, Error::kControl);
+    if (decision_expressions_.empty()) budget_.Array(decision_expressions_, tree_.expressions.size());
+    const auto& top = sequences_.Block(wrapper);
+    Require(top.child_count != 0, Error::kSequence);
+    const auto declaration_id = sequences_.Child(top.first_child);
+    const auto* declaration = std::get_if<DeclarationStmt>(&tree_.statements[declaration_id.value].statement);
+    Require(declaration && !declaration->initializer, Error::kSnapshot);
+    const auto saved = declaration->symbol;
+    const auto& symbol = tree_.symbols[saved.value];
+    Require(symbol.kind == BindingKind::kCompilerTemporary && symbol.scope == top.scope &&
+        symbol.declaration == DeclarationKind::kLet && symbol.temporary == TemporaryReason::kDecisionPredicate &&
+        !declared_[saved.value] && !assigned_[saved.value], Error::kSnapshot);
+    const auto* binding = std::get_if<BindingOrigin>(&tree_.origins[tree_.statements[declaration_id.value].origin.value]);
+    Require(binding && binding->symbol == saved, Error::kSnapshot);
+    declared_[saved.value] = assigned_[saved.value] = 1;
+    const auto root_predicate = DecisionPredicate(root);
+    const TreeOriginId origin{graph_.ops[root_predicate.value].origin.value};
+    Require(tree_.statements[wrapper.value].origin == origin, Error::kPlacement);
+    const auto* part = &root;
+    auto parent = wrapper;
+    std::uint32_t child = 1, top_child = 2;
+    bool selected_taken = root.arms->taken.has_value();
+    while (true) {
+      budget_.Step(); const auto& source = DecisionBlock(*part);
+      Require(!edges_->HasCopies(source.first_edge) &&
+          !edges_->HasCopies(analysis::EdgeId{source.first_edge.value + 1}), Error::kControl);
+      const auto branch = DecisionPredicate(*part);
+      const TreeOriginId here{graph_.ops[branch.value].origin.value};
+      const auto& block = sequences_.Block(parent);
+      Require(child < block.child_count, Error::kSequence);
+      const auto statement = sequences_.Child(block.first_child + child++);
+      const auto* expression = std::get_if<ExpressionStmt>(&tree_.statements[statement.value].statement);
+      Require(expression && tree_.statements[statement.value].origin == here, Error::kPlacement);
+      const auto* assignment = std::get_if<AssignmentExpr>(&tree_.expressions[expression->expression.value].expression);
+      Require(assignment && std::get_if<SymbolTarget>(&assignment->target) &&
+          std::get<SymbolTarget>(assignment->target).symbol == saved &&
+          tree_.expressions[expression->expression.value].origin == here, Error::kSnapshot);
+      decision_expressions_[expression->expression.value] = 1;
+      if (part != &root) Require(flow_.expressions[branch.value] == assignment->value, Error::kPlacement);
+      flow_.expressions[branch.value] = assignment->value;
+      flow_.branch_polarity[branch.value] = selected_taken ? BranchPolarity::kTaken : BranchPolarity::kFallthrough;
+      for (std::uint8_t e = 0; e < source.edge_count; ++e) {
+        budget_.Step();
+        if (part == &root && e == (root.arms->taken ? 0U : 1U)) continue;
+        if (!part->decision && (selected_taken ? part->arms->fallthrough : part->arms->taken) &&
+            e == (selected_taken ? 1U : 0U)) continue;
+        std::uint32_t empty = 0;
+        edges_->Consume(analysis::EdgeId{source.first_edge.value + e}, BlockStmt{}, empty);
+      }
+      if (part != &root) Require(child == block.child_count, Error::kSequence);
+      if (!part->decision) break;
+      Require(top_child < top.child_count, Error::kSequence);
+      const auto guard_id = sequences_.Child(top.first_child + top_child++);
+      const auto* guard = std::get_if<IfStmt>(&tree_.statements[guard_id.value].statement);
+      Require(guard && !guard->alternate && tree_.statements[guard_id.value].origin == here, Error::kSequence);
+      const auto* negated = std::get_if<UnaryExpr>(&tree_.expressions[guard->condition.value].expression);
+      Require(negated && negated->operation == TreeUnary::kNot, Error::kControl);
+      DecisionRead(negated->operand, saved);
+      parent = guard->consequent; child = 0;
+      auto next = part->decision->evaluate;
+      const auto predicate = part->decision->predicate.value_or(next);
+      while (next != predicate) {
+        budget_.Step(); const auto& linear = control_.nodes[next.value];
+        Require(!linear.arms && !linear.decision && linear.next, Error::kControl);
+        DecisionStatements(linear, parent, child, false);
+        next = *linear.next;
+      }
+      selected_taken = part->decision->shared_on_taken;
+      part = &control_.nodes[predicate.value];
+      DecisionStatements(*part, parent, child, true);
+    }
+    Require(top_child + 1 == top.child_count, Error::kSequence);
+    const auto final_id = sequences_.Child(top.first_child + top_child);
+    const auto* final = std::get_if<IfStmt>(&tree_.statements[final_id.value].statement);
+    Require(final && tree_.statements[final_id.value].origin == origin, Error::kControl);
+    DecisionRead(final->condition, saved);
+    const auto& first = DecisionBlock(root);
+    Arm(root.arms->taken ? root.arms->taken : root.arms->fallthrough, final->consequent, origin,
+        analysis::EdgeId{first.first_edge.value + (root.arms->taken ? 0U : 1U)}, pending);
+    const auto fallback = selected_taken ? part->arms->fallthrough : part->arms->taken;
+    Require(fallback.has_value() == final->alternate.has_value(), Error::kControl);
+    if (fallback) {
+      const auto& last = DecisionBlock(*part);
+      const auto predicate = DecisionPredicate(*part);
+      Arm(fallback, *final->alternate, TreeOriginId{graph_.ops[predicate.value].origin.value},
+          analysis::EdgeId{last.first_edge.value + (selected_taken ? 1U : 0U)}, pending);
+    }
   }
   void Decision(const ControlNode& node, const IfStmt& syntax, StmtId parent,
       std::uint32_t child, std::size_t& pending) {
@@ -1227,6 +1386,7 @@ class FlowCheck {
   std::vector<SelectionRegion> logicals_;
   std::vector<std::optional<std::size_t>> logical_branches_;
   std::vector<std::uint8_t> decision_branches_;
+  std::vector<std::uint8_t> decision_expressions_;
   std::vector<std::optional<std::size_t>> placements_;
   std::vector<std::uint8_t> assigned_;
   std::vector<std::uint8_t> declared_;

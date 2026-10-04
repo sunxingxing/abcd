@@ -3,7 +3,7 @@ import {execFileSync} from 'node:child_process';
 import vm from 'node:vm';
 const reports = execFileSync(process.argv[2], [], {encoding: 'utf8', maxBuffer: 16 * 1024 * 1024})
   .trim().split('\n').map(line => JSON.parse(line));
-assert.equal(reports.length, 108);
+assert.equal(reports.length, 144);
 const opaque = {[Symbol.toPrimitive]() { assert.fail('coerced nullish input'); }};
 const callable = function() { assert.fail('called nullish input'); };
 const values = [undefined, null, false, true, 0, -0, NaN, '', 'text', 0n, 1n, Symbol('input'), opaque, callable];
@@ -23,14 +23,18 @@ function observe(fn, payload, fallback, mutate, failAt, invoked) {
 }
 let scenarios = 0;
 for (const report of reports) {
-  if (report.form === 5) {
-    assert.equal(report.source, null); // Existing statement-prefix gap, no behavior credit.
-    continue;
-  }
   assert.equal(report.source.includes('??'), report.form <= 2 || report.form === 6 || report.form === 8);
   const generated = vm.runInNewContext(report.source);
   const oracle = value => {
     const kept = report.form === 8 ? value.probe() : value.probe;
+    if (report.form === 5 || report.form >= 9) {
+      for (let i = 0; i < report.count; ++i) {
+        if (kept === null) return value.fallback;
+        value.other; debugger;
+        if (kept === undefined) return value.fallback;
+      }
+      return kept;
+    }
     if (report.form === 7) return kept;
     if (report.form === 3) return kept === null ? value.fallback : kept;
     if (report.form === 4) return kept === null || kept === undefined ? value.fallback : value.other;
@@ -46,5 +50,11 @@ for (const report of reports) {
       ++scenarios;
     }
 }
-assert.equal(scenarios, 150528);
-console.log(JSON.stringify({generatedFixtures: 96, statementPrefixGaps: 12, scenarios}));
+for (const profile of new Set(reports.map(report => report.profile))) for (let form = 0; form < 12; ++form) {
+  const smaller = reports.find(r => r.profile === profile && r.form === form && r.count === 201);
+  assert.ok(smaller);
+  const larger = reports.find(r => r.profile === profile && r.form === form && r.count === 402);
+  assert.ok(larger.work / smaller.work < 2.1);
+}
+assert.equal(scenarios, 225792);
+console.log(JSON.stringify({generatedFixtures: 144, statementPrefixGaps: 0, scenarios}));
