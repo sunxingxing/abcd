@@ -134,7 +134,20 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     auto* constants = std::get_if<TreeConstants>(&resolved);
     if (!constants) return fail(Error::kValue);
     retain(constants->allocated_bytes);
-    auto projected = ProjectClassMembers(graph, function->values.initializers.calls, {budget.bytes}, function->values.definitions.sites, function->self_order ? &*function->self_order : nullptr);
+    auto found_prototypes = FindClassPrototypeReads(graph, {budget.bytes});
+    auto* prototype_reads = std::get_if<ClassPrototypeReads>(&found_prototypes);
+    if (!prototype_reads) {
+      const auto error = std::get<ClassPrototypeError>(found_prototypes);
+      if (error == ClassPrototypeError::kResourceLimit) return fail(Error::kResourceLimit);
+      if (error == ClassPrototypeError::kWorkLimit)
+        return RouteRefusal{{RouteFailureClass::kWorkLimit, ValueRouteError::kContextStage, {}}};
+      return fail(Error::kValue);
+    }
+    retain(prototype_reads->allocated_bytes);
+    std::erase_if(prototype_reads->reads, [&](const auto& site) {
+      return !HasClassPrototypeKey(site, constants->View(), constants->names, constants->texts);
+    });
+    auto projected = ProjectClassMembers(graph, function->values.initializers.calls, {budget.bytes}, function->values.definitions.sites, function->self_order ? &*function->self_order : nullptr, prototype_reads->reads);
     const auto* projection = std::get_if<ClassProjection>(&projected);
     if (!projection) {
       const auto error = std::get<ClassInitializerError>(projected);
@@ -145,6 +158,9 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     }
     retain(projection->allocated_bytes);
     for (const auto read : projection->prototypes) {
+      const auto site = std::lower_bound(prototype_reads->reads.begin(), prototype_reads->reads.end(), read,
+          [](const auto& entry, auto id) { return entry.read < id; });
+      if (site != prototype_reads->reads.end() && site->read == read) continue;
       const auto* name = std::get_if<NameId>(&constants->operations[read.value]);
       if (!name || name->value >= constants->names.size() || constants->names[name->value] != u"prototype")
         return fail(Error::kInitializer);
@@ -339,7 +355,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     const auto closure_writes = function->values.classes.classes.empty()
         ? analysis::ClosureWrites::kUnknown : analysis::ClosureWrites::kLanguage;
     auto evaluated = BuildEvaluationPlan(graph, {budget.bytes}, IncomingCells::kReject, children, bindings->evaluations, demands,
-        function->values.initializers.calls, closure_writes, function->values.definitions.sites, {}, {}, function->self_order ? &*function->self_order : nullptr);
+        function->values.initializers.calls, closure_writes, function->values.definitions.sites, {}, {}, function->self_order ? &*function->self_order : nullptr, prototype_reads->reads);
     auto* evaluation = std::get_if<EvaluationPlan>(&evaluated);
     if (!evaluation) return fail(Error::kValue);
     retain(evaluation->allocated_bytes);

@@ -1,6 +1,6 @@
 # 按用户要求进行的恢复条件审计
 
-最新替换状态及补充事项见文末规则96；历史表中的严格比较候选及literal同块条件不再是
+最新替换状态及补充事项见文末规则97；历史表中的严格比较候选及literal同块条件不再是
 当前准入条件。未替换项继续开放，不能将本次局部交付称为全量审计闭合。
 
 2026-10-03，基线 87176c10。此为本次明确请求的审计，不恢复定期审视。
@@ -763,3 +763,29 @@ CallPlan的非inline callee引用存储、其他旧rest/派生协议快路径、
 
 验证与固定五输入结果见status.md当前规则96；原生产样本身份文本搜索的
 有限结论不升级为全库不存在特例的证明。AGENTS.md第1a节的禁止规则继续有效。
+
+## 规则97：固定自身属性读取依据语义投影，不再依赖私有类 corridor
+
+实际完整ViewModel模块的丢弃prototype读取此前只能随方法安装或初始化
+corridor投影，否则强制类carrier和computed命名包装。它不是一般成员
+读取的getter/receiver义务：固定runtime的原生class已安装不可写、不可
+配置的自身prototype，读取取得已存在对象。新增共同copy/phi SCC身份
+证明原ClassCreation，常量边界核对真实prototype键，最终ClassTree检查
+对应原创建。因此未使用读取不要求同块、无分支、未逃逸或效果邻接。
+
+具名键与计算键共用typed ClassPrototypeRead事实；计算键记录实际String
+producer及原TextId，不把String域或任意调用结果当作值为prototype。
+混合身份、未知键、普通对象或活跃结果保持原读取，优化精度不足不拒绝
+整个函数。现阶段不同String producer经phi汇合但文本相同的键尚未取得
+共同常量值事实，仍保留原读；不得为此追加phi形状或数量模板。
+
+这项固定自身属性证明不取消实际方法安装、初始化移动、callee Reference、
+scope/TDZ或异常/效果所有权义务。原ClassTree保留字段名/方法名的
+profile/native合法性检查，不能把任何缓冲区对象无条件称作原生class。
+新增源键与ClassTree身份变造反例验证最终条件证明边界。23个完整记录
+及12个仍标记incomplete的输出表示简化；覆盖与局限见status.md规则97。
+
+再次核对CallPlan没有同块及手工cross-inline例外回归，但inline-owned
+Reference接口、module_guards邻接、phased selections corridor和单块
+CanRetainPrefix等开放项仍在。此前审计表的共同替换方向保持；这次不是
+全仓每个生产分支逐行审计闭合，不能宣称不存在其他布局边界。

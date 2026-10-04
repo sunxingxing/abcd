@@ -3,6 +3,7 @@
 #include "abcd/analysis/value_ir.h"
 #include <span>
 #include "class_definitions.h"
+#include "class_prototype.h"
 namespace abcd::source {
 class ClassSelfOrder;
 struct ClassInitializerCall {
@@ -28,7 +29,7 @@ enum class ClassInitializerError : std::uint8_t { kInput, kFlow, kResourceLimit,
 // still needs body/return/field semantics and a class escape/effect corridor.
 [[nodiscard]] std::variant<ClassInitializerCalls, ClassInitializerError> FindClassInitializerCalls(
     const analysis::ValueProgram&, analysis::SemanticBudget = {});
-// Conditional projection: each named read in prototypes must separately be
+// Conditional projection: each property read in prototypes must separately be
 // resolved to the builtin "prototype" data property by the source adapter.
 // Body recovery must bind the same method occurrence into its class tree.
 // Prototype reads with surviving later uses remain ordinary operations; this
@@ -42,6 +43,7 @@ struct ClassProjection {
 };
 [[nodiscard]] std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
     const analysis::ValueProgram&, std::span<const ClassInitializerCall>, analysis::SemanticBudget = {},
-    std::span<const ClassDefinitionSite> = {}, const ClassSelfOrder* = nullptr);
+    std::span<const ClassDefinitionSite> = {}, const ClassSelfOrder* = nullptr,
+    std::span<const ClassPrototypeRead> = {});
 }
 #endif

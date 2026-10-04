@@ -5,6 +5,30 @@
 
 ## 输入规模与成本
 
+### 固定自身 class prototype 读取的 SSA 身份（2026-10-04）
+
+规则97先新鲜验证availability/uses，再复用AnalyzeValueIdentities的
+迭代copy/phi SCC，按实际base、key SSA定义形成ClassPrototypeRead。
+键名属于常量文本边界：NamedRead的NameId或计算String producer的TextId
+须确为prototype。独立投影重建图事实，最终源语义重查键与实际ClassTree。
+固定v7 runtime f04900cf的class_info_extractor.cpp在创建时安装不可写、
+不可配置的自身prototype并设置ProtoOrHClass；JSFunction::PrototypeGetter
+读取已有对象。没有引用身份/逃逸/corridor的额外准入；未使用读取可消除，
+活跃结果和非原生类身份保持。其他getter、scope、初始化效果和异常不放宽。
+
+来源为既有SSA SCC身份算法与固定VM的类属性合同，项目自有实现，无新增
+第三方依赖/复制代码或许可证变化。I/V/U/B/E为操作/值/使用/块/边数；
+在原availability/dominance成本外，分析O(I+V+U)时间/空间，排序后的条件
+事实与候选以一次merge O(I)核对，源边界按原操作索引O(1)查询；prototype
+义务对已排序条件事实的查询O(log I)，整体不超过O(I log I)。不按读取或
+类重走CFG/copy链。发现和独立投影的共同flow/SCC scratch、结果capacity、
+计划保留facts及合并扩容均计预算，暂存与retained成本保守计入。
+
+180组三profile/15情形/1、200、201、402解码用例，精确work和几何增长、
+完整文件原生行为/源常量变造及六个实际配对模块提供证据，见status.md。
+计算键没有共同常量值事实时保留原读取；一般RHS、phased类和保存的callee
+Reference接口仍开放。完整进程RSS/延迟基准继续暂停。
+
 ### 字面量来源与无依赖纯表达式所有权（2026-10-04）
 
 规则96的LiteralClassFields按实际SSA OpResult追溯字符串及透明copy的

@@ -40,9 +40,19 @@ class OperandCheck {
     if (constants_.number_type_text)
       RequireMeaning(constants_.number_type_text->value < constants_.text_count &&
                      tree_.texts[constants_.number_type_text->value] == u"number", Error::kConstant);
+    for (const auto& site : evaluation_.class_prototype_reads) {
+      budget_.Step();
+      RequireMeaning(HasClassPrototypeKey(site, constants_, tree_.names, tree_.texts), Error::kConstant);
+      RequireMeaning(site.creation.value < constants_.operations.size(), Error::kConstant);
+      const auto* definition = std::get_if<std::shared_ptr<const ClassTree>>(&constants_.operations[site.creation.value]);
+      RequireMeaning(definition && *definition && (*definition)->operation == site.creation, Error::kConstant);
+    }
     for (const auto read : evaluation_.class_projection.prototypes) {
       budget_.Step();
       RequireMeaning(read.value < constants_.operations.size(), Error::kConstant);
+      const auto site = std::lower_bound(evaluation_.class_prototype_reads.begin(), evaluation_.class_prototype_reads.end(), read,
+          [&](const auto& entry, auto id) { budget_.Step(); return entry.read < id; });
+      if (site != evaluation_.class_prototype_reads.end() && site->read == read) continue;
       const auto* name = std::get_if<NameId>(&constants_.operations[read.value]);
       RequireMeaning(name && name->value < tree_.names.size() && tree_.names[name->value] == u"prototype", Error::kConstant);
     }

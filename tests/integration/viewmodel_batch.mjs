@@ -47,6 +47,11 @@ async function models(source, name, dependencyName, field, methods) {
   };
   const loaded = await load(source, { [dependencyName]: Model });
   const C = loaded.namespace[name];
+  const prototype = Object.getOwnPropertyDescriptor(C, 'prototype');
+  assert.equal(prototype.writable, false); assert.equal(prototype.configurable, false);
+  assert.equal(prototype.enumerable, false); assert.equal(prototype.value, C.prototype);
+  assert.throws(() => Object.defineProperty(C, 'prototype', {get() {throw new Error('prototype getter');}}),
+    {name: 'TypeError'});
   const instance = new C();
   assert.equal(instance[field].constructor, Model);
   for (const method of methods) {
@@ -158,6 +163,11 @@ try {
     const record = manifests.get(app).records.find(row => row.entity === entity);
     assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, false);
     const source = readFileSync(join(temporary, app, record.source), 'utf8');
+    // Record classes use their module binding's native NamedEvaluation. A
+    // discarded read of their fixed own prototype must not force a carrier
+    // variable/computed-property naming wrapper into source representation.
+    assert.match(source, new RegExp(`\\blet ${name} = class \\{`));
+    assert.doesNotMatch(source, /^\$value\d+\.prototype;$/m);
     const paired = stripTypeScriptTypes(readFileSync(join(root, app, paths.get(entity)), 'utf8'));
     const exercise = entity === 44106 ? tabs : entity === 30839 ? cards : s => models(s, name, dependency, field, methods);
     assert.deepEqual(await exercise(source), await exercise(paired));

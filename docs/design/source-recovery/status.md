@@ -12,6 +12,50 @@
 
 ## 当前阶段
 
+### 2026-10-04：以 SSA 身份消除原生类的丢弃 prototype 读取
+
+- 规则revision97。实际六个配对模块的表示RED显示，未使用的.prototype
+  读取迫使类保留carrier及computed NamedEvaluation包装。共同分析先新鲜
+  验证availability/uses，再复用AnalyzeValueIdentities的copy/phi SCC；
+  记录原read、ClassCreation及计算键的String producer。常量边界单独
+  核对builtin prototype，不以类名、样本、PC、寄存器或同块决定恢复。
+- pinned runtime f04900cf的class_info_extractor安装不可写/不可配置的
+  自身prototype并在发布前设置ProtoOrHClass；JSFunction::PrototypeGetter
+  返回已有对象。实际ClassTree/layout及原创建身份仍须通过最终检查。
+  因此未使用读取不需要escape或效果corridor限制；活跃结果、普通对象、
+  未知键/混合phi和用户getter保持原操作。已有方法安装/初始化效果合同
+  不放宽。计算键来源精度不足时保持读取，不拒绝整个函数。
+- EvaluationPlan保留条件事实，独立验证重新分析实际图并核对原owner；
+  TreeOperands核对原常量键与实际ClassTree.operation。投影后沿用既有
+  表达式所有权及NamedEvaluation，实际模块输出let HomeViewModel = class
+  等原生绑定；不增加内部具名class，以免改变可变模块绑定的解析。
+- 新增三profile、15种情形、1/200/201/402规模的180组解码测试，涵盖
+  split/diamond/loop、copies/phi、逃逸及其他效果、named/computed键、
+  unknown/mixed输入、活跃结果和错误键。伪造创建/key/重复事实及owner
+  拒绝，精确work边界通过。named work557/46128/46357/92386，computed
+  545/43728/43945/87562，phi1163/164958/165781/331204；这些是共同
+  发现及投影合计work，不代替暂停的RSS/基准。
+- 完整file/FunctionTree/printer增加named与computed丢弃读取行为对照，
+  变造源键及ClassTree身份拒绝。实际六个ViewModel/CardItem/TabBar模块
+  通过新增表示断言及原配对行为对照，包含prototype descriptor不可变
+  检查。配对TS stripper的字段枚举/编译策略限制保持，不宣称全类行为
+  验收。原initializer135+135、frame270、body1620、observer432及
+  capture96对照保持。
+- /tmp/abcd-class-prototype-red-test.log复现实际HomeViewModel表示失败；
+  build-1生成引擎后因Make重载时机未执行新目标，build-2顺序补建成功，
+  build-3全部相关30目标单-j4成功。tests-2.log 45/45通过95.33秒，
+  test-output.log保留具体对照及work。author self-review检查SSA、键、
+  ClassTree条件证明与独立验证边界；未使用代理或独立reviewer。
+- fresh build/stage-one/class-prototype-pass-1固定五输入全退出0，80
+  complete/26 incomplete/0 failure/46 no-module，无回退、新完整项或
+  legacy writer。23个完整及12个仍标记incomplete的记录表示简化；
+  batch-1.log与syntax-1.log核对index/manifest原SHA/size，106份源码
+  解析通过。阶段一语义和表示双验收未完成，Goal active。
+- CallPlan的inline-owned Reference接口、module guard邻接、相位选择
+  corridor、一般字段/签名/父作用域及单块CanRetainPrefix边界仍开放。
+  继续禁止追加样本/布局匹配；没有把这些实现边界当作语言不变量。
+  full-suite、扩展语料、RSS/基准、DFX、代理及周期审计继续暂停。
+
 ### 2026-10-04：字面量来源与无依赖纯值脱离物理块顺序
 
 - 规则revision96。LiteralClassFields用SSA OpResult及透明copy的迭代memo

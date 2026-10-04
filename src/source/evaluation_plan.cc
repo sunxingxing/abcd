@@ -23,7 +23,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
     std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules,
     EvaluationFlow flow, std::span<const CellDemand> demands, std::span<const ClassInitializerCall> initializers,
-    analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands = {}, const ClassSelfOrder* self_order = nullptr) {
+    analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands = {}, const ClassSelfOrder* self_order = nullptr, std::span<const ClassPrototypeRead> prototype_reads = {}) {
   try {
     Require(incoming == IncomingCells::kReject || incoming == IncomingCells::kConditional, Error::kUnsupportedOperation);
     auto work = budget.work;
@@ -76,7 +76,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
       Require(!self_order->Stores(graph).empty(),Error::kOwnership);
       admit(self_order->AllocatedBytes(),1); plan.self_order = *self_order;
     }
-    auto projected = ProjectClassMembers(graph, initializers, {bytes, work}, definitions, plan.self_order ? &*plan.self_order : nullptr);
+    auto projected = ProjectClassMembers(graph, initializers, {bytes, work}, definitions, plan.self_order ? &*plan.self_order : nullptr, prototype_reads);
     if (const auto* error = std::get_if<ClassInitializerError>(&projected))
       return *error == ClassInitializerError::kResourceLimit ? Error::kResourceLimit :
           *error == ClassInitializerError::kWorkLimit ? Error::kWorkLimit : Error::kOwnership;
@@ -88,6 +88,9 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     plan.class_definitions.assign(definitions.begin(), definitions.end());
     admit(plan.class_definitions.capacity() - definitions.size(), sizeof(ClassDefinitionSite));
     admit(plan.class_initializers.capacity() - initializers.size(), sizeof(ClassInitializerCall));
+    admit(prototype_reads.size(), sizeof(ClassPrototypeRead));
+    plan.class_prototype_reads.assign(prototype_reads.begin(), prototype_reads.end());
+    admit(plan.class_prototype_reads.capacity() - prototype_reads.size(), sizeof(ClassPrototypeRead));
     const auto projected_op = [&](std::size_t i) {
       return !plan.class_projection.owners.empty() && plan.class_projection.owners[i].has_value();
     };
@@ -451,6 +454,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
         plan.modules.capacity() * sizeof(ModuleEvaluation) +
         plan.class_initializers.capacity() * sizeof(ClassInitializerCall) + plan.class_projection.allocated_bytes +
         plan.class_definitions.capacity() * sizeof(ClassDefinitionSite) +
+        plan.class_prototype_reads.capacity() * sizeof(ClassPrototypeRead) +
         plan.receiver_guards.capacity() * sizeof(analysis::OpId) +
         (plan.phis ? plan.phis->allocated_bytes : 0) +
         (plan.literals ? plan.literals->allocated_bytes : 0);
@@ -473,8 +477,8 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
 std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
     std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules, std::span<const CellDemand> demands,
-    std::span<const ClassInitializerCall> initializers, analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands, const ClassSelfOrder* self_order) {
-  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kNormal, demands, initializers, closure_writes, definitions, receiver_guards, entry_demands, self_order);
+    std::span<const ClassInitializerCall> initializers, analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands, const ClassSelfOrder* self_order, std::span<const ClassPrototypeRead> prototype_reads) {
+  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kNormal, demands, initializers, closure_writes, definitions, receiver_guards, entry_demands, self_order, prototype_reads);
 }
 std::variant<EvaluationPlan, EvaluationError> BuildPhasedEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,

@@ -92,6 +92,7 @@ struct EvaluationPlan {
   std::vector<ClassInitializerCall> class_initializers;
   ClassProjection class_projection;
   std::vector<ClassDefinitionSite> class_definitions;
+  std::vector<ClassPrototypeRead> class_prototype_reads;
   analysis::ClosureWrites closure_writes = analysis::ClosureWrites::kUnknown;
   // Conditional protocol obligation: the same derived owner, or actual capture
   // edges to its preserved receiver cells. The family factory discharges this
@@ -239,7 +240,8 @@ struct EvaluationShape {
     analysis::ClosureWrites closure_writes = analysis::ClosureWrites::kUnknown,
     std::span<const ClassDefinitionSite> definitions = {},
     std::span<const analysis::OpId> receiver_guards = {},
-    std::span<const IncomingCell> entry_demands = {}, const ClassSelfOrder* self_order = nullptr);
+    std::span<const IncomingCell> entry_demands = {}, const ClassSelfOrder* self_order = nullptr,
+    std::span<const ClassPrototypeRead> prototype_reads = {});
 // Iteratively expands the proposed forest in the declared input order, checking
 // exact ordered occurrences and availability. Cross-phase expressions require
 // contiguous effect intervals and equal catch snapshots at their final roots.

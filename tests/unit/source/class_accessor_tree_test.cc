@@ -21,11 +21,12 @@ void Check(bool ok, const std::source_location& at = std::source_location::curre
 }
 enum class ObserverFlow { kSameBlock, kSplit, kSelection, kInstallSplit, kInstallDiamond, kReverseInstall, kInitializerSplit, kInitializerDiamond, kInitializerReverse };
 enum class FieldBody { kSameBlock, kSplit, kReverse, kReverseString };
+enum class PrototypeRead { kNone, kNamed, kComputed };
 std::string Recover(bool is_static, bool return_prototype = false, int ordinary_parity = -1,
     bool async_method = false, abc::ProfileId profile = abc::ProfileId::kDynamic1206,
     bool capture_cells = false, bool initialized = true, bool input_gap = false,
     ObserverFlow observers = ObserverFlow::kSameBlock, bool self_initializer = false, bool frame_this = false,
-    FieldBody field_body = FieldBody::kSameBlock) {
+    FieldBody field_body = FieldBody::kSameBlock, PrototypeRead prototype_read = PrototypeRead::kNone) {
   constexpr std::uint32_t kPool = 64, kOwner = 128, kLiteral = 160,
       kCreator = 256, kConstructor = 300, kGetter = 340, kSetter = 380,
       kBufferMethod = 420, kBufferCode = 864, kNestedMethod = 460, kNestedCode = 1000,
@@ -136,6 +137,15 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
     for (std::size_t i = 0; i < jumps.size(); ++i) patch(jumps[i], i + 1 < starts.size() ? starts[i + 1] : code.size());
   }
   if (observers == ObserverFlow::kSplit) { op(abc::Opcode::kJMP_IMM8); code.push_back(2); }
+  if (prototype_read != PrototypeRead::kNone) {
+    load(1);
+    if (prototype_read == PrototypeRead::kNamed) {
+      op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16); code.insert(code.end(), {0, 5, 0});
+    } else {
+      save(0); op(abc::Opcode::kLDA_STR_ID16); code.insert(code.end(), {5, 0});
+      op(abc::Opcode::kLDOBJBYVALUE_IMM8_V8); code.insert(code.end(), {0, 0});
+    }
+  }
   // A distinct ordinary object literal in the same graph must still be
   // planned; class method installations must not be claimed as its fields.
   if (!initializer) {
@@ -672,7 +682,16 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
     }
     Check(unlink(path) == 0); return captured_source;
   }
-  auto evaluated = BuildEvaluationPlan(graph, {}, IncomingCells::kReject, {}, {}, {}, {}, analysis::ClosureWrites::kUnknown, definitions);
+  auto constants = std::get<TreeConstants>(ResolveTreeConstants(file, header, index, {kCreator}, graph));
+  std::vector<ClassPrototypeRead> prototype_reads;
+  if (prototype_read != PrototypeRead::kNone) {
+    prototype_reads = std::get<ClassPrototypeReads>(FindClassPrototypeReads(graph)).reads;
+    std::erase_if(prototype_reads, [&](const auto& site) {
+      return !HasClassPrototypeKey(site, constants.View(), constants.names, constants.texts);
+    });
+    Check(prototype_reads.size() == 2); // Original method home plus the new discarded read.
+  }
+  auto evaluated = BuildEvaluationPlan(graph, {}, IncomingCells::kReject, {}, {}, {}, {}, analysis::ClosureWrites::kUnknown, definitions, {}, {}, nullptr, prototype_reads);
   if (const auto* error = std::get_if<EvaluationError>(&evaluated)) std::cerr << "evaluation " << static_cast<unsigned>(*error) << '\n';
   Check(std::holds_alternative<EvaluationPlan>(evaluated)); const auto& evaluation = std::get<EvaluationPlan>(evaluated);
   GlobalScope globals{};
@@ -684,7 +703,6 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
       TreePrintError::kUnsupportedContext);
   Check(pending.str().empty());
   auto definition = std::make_shared<ClassTree>(std::get<ClassTree>(std::move(layout)));
-  auto constants = std::get<TreeConstants>(ResolveTreeConstants(file, header, index, {kCreator}, graph));
   constants.operations[definitions.front().creation.value] = definition;
   FunctionSyntax syntax{}; syntax.identity = identity; syntax.method = {kCreator}; syntax.owner = {0};
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
@@ -694,6 +712,19 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   auto tree = BuildFunctionTree(graph, control, evaluation, syntax, constants.View());
   if (const auto* error = std::get_if<FunctionTreeError>(&tree)) std::cerr << "tree failure " << static_cast<unsigned>(*error) << '\n';
   Check(std::holds_alternative<ConstructedFunction>(tree));
+  if (!prototype_reads.empty()) {
+    auto wrong = syntax;
+    const auto& site = prototype_reads.back();
+    if (site.key) {
+      const auto text = std::get<TextId>(constants.operations[site.key->value]); wrong.texts[text.value] = u"getter";
+    } else {
+      const auto name = std::get<NameId>(constants.operations[site.read.value]); wrong.names[name.value] = u"getter";
+    }
+    Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(graph, control, evaluation, wrong, constants.View())));
+    const auto original = definition->operation; definition->operation = site.read;
+    Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(graph, control, evaluation, syntax, constants.View())));
+    definition->operation = original;
+  }
   auto built = BuildClassTree(file, header, index, lookup, roles, functions, classes, creator,
       definitions.front().creation, identity, &globals, {}, nullptr, definitions, RecoveryMode::kCompleteOnly, {37});
   if (async_method && ordinary_parity != 1) {
@@ -800,6 +831,12 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && (std::string_view(argv[1]) == "--prototype-read" || std::string_view(argv[1]) == "--computed-prototype-read")) {
+    const auto kind = std::string_view(argv[1]) == "--prototype-read" ? PrototypeRead::kNamed : PrototypeRead::kComputed;
+    std::cout << Recover(false, false, -1, false, abc::ProfileId::kDynamic1206, false, true, false,
+        ObserverFlow::kSplit, false, false, FieldBody::kSameBlock, kind);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--body-initializers-json") {
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
       for (const auto outer : {ObserverFlow::kInitializerSplit, ObserverFlow::kInitializerDiamond, ObserverFlow::kInitializerReverse})

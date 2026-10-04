@@ -55,9 +55,10 @@ for (const [flag, captured] of [['--initializers-json', false], ['--self-initial
   }
   console.log(`${flag} native comparisons: ${scenarios}`);
 }
-for (const placement of ['prototype', 'static', 'retained', 'method-last', 'accessor-last']) {
+for (const placement of ['prototype', 'static', 'retained', 'method-last', 'accessor-last', 'prototype-read', 'computed-prototype-read']) {
   const run = spawnSync(tool, [`--${placement}`], {encoding: 'utf8', timeout: 60_000});
   assert.equal(run.status, 0, run.stderr);
+  if (placement.endsWith('prototype-read')) assert.doesNotMatch(run.stdout, /^.*\.prototype;$/m);
   if (placement !== 'method-last') assert.match(run.stdout, /set value\(/);
   if (placement !== 'accessor-last') assert.match(run.stdout, /get value\(\)/);
   if (placement.endsWith('-last')) assert.match(run.stdout, /\n\s+value\(/);

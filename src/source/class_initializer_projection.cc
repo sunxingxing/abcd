@@ -7,7 +7,8 @@
 namespace abcd::source {
 std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
     const analysis::ValueProgram& graph, std::span<const ClassInitializerCall> requested,
-    analysis::SemanticBudget budget, std::span<const ClassDefinitionSite> definitions, const ClassSelfOrder* self_order) {
+    analysis::SemanticBudget budget, std::span<const ClassDefinitionSite> definitions, const ClassSelfOrder* self_order,
+    std::span<const ClassPrototypeRead> prototype_reads) {
   using namespace analysis;
   using Error = ClassInitializerError;
   const auto initial = budget;
@@ -33,9 +34,49 @@ std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
     admit(member_projection.allocated_bytes, 1); step(member_projection.work);
     result.owners = std::move(member_projection.owners);
     result.prototypes = std::move(member_projection.prototypes);
-    if (requested.empty()) {
+    const auto finish = [&]() {
+      if (!prototype_reads.empty()) {
+        auto discovered = FindClassPrototypeReads(graph, budget);
+        if (const auto* error = std::get_if<ClassPrototypeError>(&discovered)) {
+          if (*error == ClassPrototypeError::kResourceLimit) throw Error::kResourceLimit;
+          if (*error == ClassPrototypeError::kWorkLimit) throw Error::kWorkLimit;
+          throw Error::kFlow;
+        }
+        const auto& candidates = std::get<ClassPrototypeReads>(discovered);
+        admit(candidates.allocated_bytes, 1); step(candidates.work);
+        if (result.owners.empty()) {
+          admit(graph.ops.size(), sizeof(std::optional<OpId>)); result.owners.resize(graph.ops.size());
+          admit(result.owners.capacity() - result.owners.size(), sizeof(std::optional<OpId>));
+        }
+        // Fixed own class prototype: class_info_extractor.cpp installs the
+        // nonconfigurable readonly internal accessor and ProtoOrHClass before
+        // publishing the class; JSFunction::PrototypeGetter returns that object.
+        // Pinned v7 runtime f04900cf. No escape, block or effect-corridor premise
+        // applies to this unused read. A live result keeps the original read.
+        // Regression: class_prototype_test and paired ViewModel modules.
+        const auto capacity = result.prototypes.size() + prototype_reads.size();
+        if (capacity > result.prototypes.capacity()) {
+          admit(capacity, sizeof(OpId)); result.prototypes.reserve(capacity);
+          admit(result.prototypes.capacity() - capacity, sizeof(OpId));
+        }
+        std::size_t next = 0;
+        std::optional<OpId> previous;
+        for (const auto& site : prototype_reads) {
+          step(); require(!previous || *previous < site.read); previous = site.read;
+          while (next < candidates.reads.size() && candidates.reads[next].read < site.read) { step(); ++next; }
+          require(next < candidates.reads.size() && candidates.reads[next] == site); ++next;
+          const auto& read = graph.ops[site.read.value];
+          if (graph.values[read.result->value].first_use) continue;
+          auto& owner = result.owners[site.read.value];
+          if (owner) { require(*owner == site.creation); continue; }
+          owner = site.creation; result.prototypes.push_back(site.read);
+        }
+      }
       result.allocated_bytes = initial.bytes - budget.bytes; result.work = initial.work - budget.work;
-      return result;
+      return std::move(result);
+    };
+    if (requested.empty()) {
+      return finish();
     }
     const auto available = BuildEffectOrder(graph,budget);
     if (const auto* error = std::get_if<ValueAvailabilityError>(&available)) {
@@ -134,9 +175,7 @@ std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
           !successors[predecessor->value], Error::kFlow);
       successors[predecessor->value] = 1;
     }
-    result.allocated_bytes = initial.bytes - budget.bytes;
-    result.work = initial.work - budget.work;
-    return result;
+    return finish();
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
