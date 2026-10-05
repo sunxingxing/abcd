@@ -12,6 +12,54 @@
 
 ## 当前阶段
 
+### 2026-10-05：共同表达式打印归一化条件极性和等值互补
+
+- 规则revision117，基线50208f29；工作树/分支保持，上一轮为实际进展。
+  当前继续阶段一独立表示验收，不修改默认V3数值合同，不恢复暂缓任务。
+  真实VoIP条件先以独立表示断言RED：反向`!(scene === "video") ? voice
+  : video`。共同printer现消费原ConditionalExpr的NOT极性，奇数交换
+  原分支，偶数保持；条件先执行一次，随后仅执行原应选择的分支。
+- TreeEqualityComplement通过exhaustive typed enum定义==/!=、===/!==
+  的语言互补；这些结果本来就是Boolean，正向多余转换也可省略。关系/
+  membership保留NOT，尤其不把`!(a < b)`变成NaN域不等价的`a >= b`。
+  实际输出运算符交给原grammar/precedence查询，保留指数、一元与嵌套
+  等值的括号。无样本/名称、opcode序列、同块、producer或数量准入。
+- 原FunctionTree/control/evaluation及instruction来源不变。交换分支的
+  ExprId和实际位置保持；被省略NOT的range仅覆盖条件，并在问号/分支
+  前结束。链式处理两次线性遍历，复用原print-action stack，无逐表达式
+  CFG扫描、新证明包装、依赖或来源平台。语言依据及边界见
+  [operator expressions](operator-expressions.md#conditional-polarity-and-equality-complements)。
+- AST/printer隔离fixture覆盖10种比较、6个消费上下文以及1/2/200/201/
+  402/804深度；独立Node通过538,560场景，含getter/Proxy、后续值修改、
+  NaN、signed zero、BigInt/Symbol、转换顺序/异常、选中分支原值/对象身份。
+  错误交换分支和重复条件读取两项有效JS篡改均检测。条件NOT的范围对
+  实际leaf逐项核对；201→402/804 work增长保持线性范围，不冒充RSS。
+  AST fixture不冒充真实ABC导入证据：后者沿用三个profile的150个实际
+  比较/复制/拆块/反向/cell调用函数，134,400独立场景通过，callee修改、
+  receiver及异常身份保留。实际类字段及配对记录也执行共同输出。
+- VoIP真实record11989输出已为`scene === "video" ? video : voice`；
+  原300配对场景、768受控Promise schedule及三项语义篡改继续通过。
+  class_accessor独立风格断言原要求`!(typeof... === typeof...)`，实际
+  新源码为原生!==，class-style-1观察RED后更新表示预期；原独立Boolean
+  初始化oracle及descriptor/identity等行为检查保持，没有修改语义期望。
+- 日志前缀/tmp/abcd-predicate-polarity-*。red-source-1与red-tests-1记录
+  原样本/共同printer失败；red-build-1误拼UnaryOperator::kTypeOf，
+  修正后red-build-2退出0。build-1构建四目标、final-build-1构建十目标，
+  单-j4均退出0。首轮5/5通过31.13秒；最终定向19/19通过45.20秒，含
+  原Boolean观察/选择、优先级/postfix、optional/nullish、来源、类字段、
+  decoded comparison及配对comparison/VoIP。未运行全量套件。
+- fresh predicate-polarity-{default,language}-pass-1各五输入退出0，分别
+  80complete/26incomplete-source/0source-failure/46no-module及
+  95complete/11incomplete-source/0source-failure/46no-module。无legacy、
+  新增complete或complete降级。两模式各106份完整/部分源码解析通过，
+  ABC SHA/size与原index一致；输入ABC/配对源码未改。相对规则116，默认
+  33份源码变化（26份complete）、language 37份变化（35份complete），
+  这是通用表示改进，不表示各record的完整独立语义/风格验收均已完成。
+- staged literal机械写入、跨语句snapshot/条件链、未知父类SuperSpread、
+  WindowUtil NEG输入、实例字段/全局/完整签名/函数体整合与阶段一record
+  独立验收继续开放，Goal保持active。代理、全套、扩展语料、RSS/基准、
+  调度/DFX及定期审视保持暂停。
+
 ### 2026-10-05：普通可用值初始化跨块采用共同全路径效果顺序
 
 - 规则revision116，基线564c2b7d；25aa工作树和分支

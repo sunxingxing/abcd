@@ -42,7 +42,7 @@ class Fixture {
         {OperandRole::kReceiver, base}, {OperandRole::kArgument, argument}});
   }
   std::string Print(ValueId result, bool logical = false, bool awaited = false, bool numeric_base = false,
-      bool predicate = false, bool selected = false, std::optional<ChoiceFixture> choice = {}) {
+      bool predicate = false, bool selected = false, std::optional<ChoiceFixture> choice = {}, bool selected_values = false) {
     Add(ValueReturn{}, {{OperandRole::kReturnValue, result}}, false);
     graph.blocks.push_back({{0}, static_cast<std::uint32_t>(graph.ops.size()), {0}, 0});
     const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
@@ -88,8 +88,9 @@ class Fixture {
     }
     if (selected) {
       // Isolate conditional branch observation as well as predicate observation.
-      // Both branches contain conversions, with getters evaluated only on the
-      // selected branch. These syntax nodes make no imported-IR proof claim.
+      // Branches retain either their exact value or Boolean conversion, with
+      // getters evaluated only on the selected branch. These syntax nodes make
+      // no imported-IR proof claim.
       for (auto& statement : tree.statements) if (auto* returned = std::get_if<ReturnStmt>(&statement.statement); returned && returned->value) {
         const auto condition = *returned->value;
         const auto origin = tree.expressions[condition.value].origin;
@@ -100,7 +101,7 @@ class Fixture {
         const auto branch = [&](unsigned parameter) {
           const auto base = add(SymbolExpr{tree.parameters[parameter].symbol});
           const auto member = add(MemberExpr{base, NameId{5}});
-          return add(UnaryExpr{TreeUnary::kNot, add(UnaryExpr{TreeUnary::kNot, member})});
+          return selected_values ? member : add(UnaryExpr{TreeUnary::kNot, add(UnaryExpr{TreeUnary::kNot, member})});
         };
         const auto yes = branch(1), no = branch(2);
         returned->value = add(ConditionalExpr{condition, yes, no});
@@ -198,6 +199,20 @@ class Fixture {
           literal && std::holds_alternative<BooleanLiteral>(*literal))
         test::Check(range.begin < range.end);
     }
+    if (selected_values) for (const auto& expression : tree.expressions)
+      if (const auto* conditional = std::get_if<ConditionalExpr>(&expression.expression)) {
+        auto leaf = conditional->condition;
+        while (const auto* unary = std::get_if<UnaryExpr>(&tree.expressions[leaf.value].expression)) {
+          if (unary->operation != TreeUnary::kNot) break;
+          leaf = unary->operand;
+        }
+        const auto condition = positions.expressions[leaf.value];
+        for (auto id = conditional->condition; id != leaf;) {
+          const auto omitted = positions.expressions[id.value];
+          test::Check(omitted.begin == condition.begin && omitted.end == condition.end);
+          id = std::get<UnaryExpr>(tree.expressions[id.value].expression).operand;
+        }
+      }
     return text;
   }
   std::uint64_t Work() const { return work_; }
@@ -326,9 +341,34 @@ std::string BooleanChoice(unsigned index, unsigned depth = 1, std::uint64_t* wor
   if (work) *work = fixture.Work();
   return source;
 }
+std::string PredicatePolarity(unsigned index, unsigned depth, std::uint64_t* work = nullptr) {
+  constexpr std::array operations{BinaryOperator::kEqual, BinaryOperator::kNotEqual,
+      BinaryOperator::kStrictEqual, BinaryOperator::kStrictNotEqual, BinaryOperator::kLess,
+      BinaryOperator::kLessEqual, BinaryOperator::kGreater, BinaryOperator::kGreaterEqual,
+      BinaryOperator::kIn, BinaryOperator::kInstanceOf};
+  test::Check(index < operations.size() * 6 && depth);
+  Fixture fixture;
+  const auto left = fixture.Read({0}, 5), right = fixture.Read({1}, 5);
+  auto value = fixture.Binary(operations[index % operations.size()], left, right);
+  for (unsigned i = 0; i < depth; ++i) value = fixture.Unary(UnaryOperator::kLogicalNot, value);
+  const auto context = index / operations.size();
+  switch (context) {
+    case 0: case 1: break;
+    case 2: value = fixture.Binary(BinaryOperator::kExponent, value, fixture.Read({2}, 5)); break;
+    case 3: value = fixture.Unary(UnaryOperator::kTypeOf, value); break;
+    case 4: value = fixture.Unary(UnaryOperator::kBitNot, value); break;
+    case 5: value = fixture.Binary(BinaryOperator::kStrictEqual, value, fixture.Read({2}, 5)); break;
+    default: test::Check(false);
+  }
+  const auto source = fixture.Print(value, false, false, false, false, context == 1, {}, true);
+  if (work) *work = fixture.Work();
+  return source;
+}
 int main(int argc, char** argv) {
   if (argc == 4) {
-    if (std::string_view(argv[1]) == "--boolean-choice")
+    if (std::string_view(argv[1]) == "--predicate-polarity")
+      std::cout << PredicatePolarity(static_cast<unsigned>(std::stoul(argv[2])), static_cast<unsigned>(std::stoul(argv[3])));
+    else if (std::string_view(argv[1]) == "--boolean-choice")
       std::cout << BooleanChoice(static_cast<unsigned>(std::stoul(argv[2])), static_cast<unsigned>(std::stoul(argv[3])));
     else {
       test::Check(std::string_view(argv[1]) == "--boolean-chain");
@@ -342,6 +382,17 @@ int main(int argc, char** argv) {
     else if (std::string_view(argv[1]) == "--boolean-context") std::cout << BooleanContext(count);
     else { test::Check(std::string_view(argv[1]) == "--source"); std::cout << Case(count); }
     return 0;
+  }
+  for (unsigned index = 0; index < 60; ++index) {
+    std::uint64_t previous = 0;
+    for (const unsigned depth : {1U, 2U, 200U, 201U, 402U, 804U}) {
+      std::uint64_t work = 0;
+      const auto text = PredicatePolarity(index, depth, &work);
+      if (index / 10 == 1) test::Check(text.find("return (!") == std::string::npos);
+      if (index < 4) test::Check(text.find("return !") == std::string::npos);
+      if (depth > 201) test::Check(work < 3 * previous);
+      previous = work;
+    }
   }
   constexpr std::array<std::string_view, 14> boolean_contexts{
       "return !!a.value;", "return !!a.value;", "return !!(a.value || b.value);",

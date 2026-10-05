@@ -1,6 +1,7 @@
 #ifndef ABCD_SOURCE_TREE_PRINT_TOKENS_H_
 #define ABCD_SOURCE_TREE_PRINT_TOKENS_H_
 
+#include <optional>
 #include <string_view>
 
 #include "abcd/source/source_tree.h"
@@ -28,6 +29,10 @@ struct TreeOperatorContext {
   OperandSide side = OperandSide::kLeft;
 };
 [[nodiscard]] BinarySyntax TreeBinarySyntax(analysis::BinaryOperator);
+// Equality operators are exact Boolean complements, including conversions and
+// abrupt completion. Relational comparisons are not complements in the NaN
+// domain; absence retains the original NOT. ECMA-262 2024 13.10/13.11.
+[[nodiscard]] std::optional<analysis::BinaryOperator> TreeEqualityComplement(analysis::BinaryOperator);
 [[nodiscard]] bool TreeOperandGrouping(const TreeExpression&, const TreeOperatorContext&);
 // Textual boundary only; semantic decisions remain in the typed tree.
 [[nodiscard]] std::string_view TreeBinaryToken(analysis::BinaryOperator operation);

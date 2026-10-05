@@ -1087,3 +1087,22 @@ reverse-postorder 排序，normal/phased 共用 canonical-use 索引检查真实
 及条件/分阶段初始化恢复为原生对象表达式。保留这些旧 fast path 的明确
 前提，不增加局部模式；不能把当前 available-RHS capability 宣称为所有
 复杂初始化均已恢复。本轮固定五 ABC 源码字节未改变，阶段一尚未完成。
+
+## 2026-10-05：条件极性与等值互补属于语言表达规则（规则 117）
+
+共同 printer 原条件表达式保留 NOT 包装及反向分支，BooleanOperand 又
+在等值结果外保留逻辑取反/双重转换。现以 typed UnaryExpr NOT 的极性
+归一化 conditional，奇数极性交换原 consequent/alternate，偶数极性
+保持原分支；条件及被选分支仍在原次序执行。等值运算符的互补由
+TreeEqualityComplement 的 exhaustive enum 映射定义，不是值 IR producer
+准入名单，更不根据字节码、样本、名称、PC 或源码文本决定恢复。
+
+关系比较因 NaN 没有相同的互补关系，保持 NOT；不以数学直觉把 < 改成
+>=。转换异常、getter 次数/顺序、返回值及对象身份照旧，重排分支的
+原 ExprId 保留实际 source range。被省略 NOT 的 range 仅覆盖条件，
+不会越过问号落到任一分支。优先级查询消费实际输出运算符，保留指数、
+一元及嵌套比较的必要括号；原 FunctionTree 与共同语义/来源验证保持。
+
+这不解决跨语句 snapshot 临时变量、staged literal 机械写入、未恢复
+构造器、完整签名/字段或所有 record 的独立风格验收。源码投影不能被
+当作这些恢复义务已经闭合，也不能授权数值默认合同变化。

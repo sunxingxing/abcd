@@ -15,6 +15,9 @@ assert.equal(recovered.legacy_writer_used, false);
 // Source representation is checked independently from execution. The field
 // still exists as an own undefined data property; an initializer is redundant.
 assert.match(recovered.source, /static callId;/);
+// Native conditional syntax uses the original positive predicate; it must
+// still select the same effectful enum read on each path.
+assert.match(recovered.source, /=== "video" \? voipCall\.VoipCallType\.VOIP_CALL_VIDEO : voipCall\.VoipCallType\.VOIP_CALL_VOICE/);
 const paired = stripTypeScriptTypes(readFileSync(join(root,
   'src/entry/src/main/ets/service/VoipCallService.ts'), 'utf8'));
 async function loadService(source, hosts, context) {

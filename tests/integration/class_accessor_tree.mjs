@@ -14,7 +14,7 @@ for (const [flag, captured] of [['--initializers-json', false], ['--self-initial
     if (compound) {
       assert.match(source, /static _value =/);
       assert.match(source, /typeof "value"/); assert.match(source, /typeof "_value"/);
-      assert.match(source, /===/); assert.match(source, /!\(/);
+      assert.match(source, /static _value = typeof "value" !== typeof "_value";/);
     } else assert.match(source, string_value ? /static _value = "value";/ : /static _value = 42;/);
     if (fields) {
       assert.match(source, /static _other = 17;/);

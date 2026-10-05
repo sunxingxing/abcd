@@ -1590,6 +1590,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/normal_initialization.mjs $<TARGET_FILE:normal_initialization_test>)
     add_test(NAME boolean_choice_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/boolean_choice.mjs $<TARGET_FILE:expression_precedence_test>)
+    add_test(NAME predicate_polarity_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/predicate_polarity.mjs $<TARGET_FILE:expression_precedence_test>)
     add_test(NAME postfix_expression_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/postfix_expression.mjs $<TARGET_FILE:expression_precedence_test>)
     add_test(NAME instanceof_expression_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

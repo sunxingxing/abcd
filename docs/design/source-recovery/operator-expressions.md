@@ -49,6 +49,40 @@ constraints. The common printer now uses typed precedence, associativity and ope
 contexts. Printer-only fixtures do not prove decoded numeric-domain admission
 or the requested complete source-style acceptance.
 
+### Conditional polarity and equality complements
+
+Rule 117 extends the common printer's existing Boolean observation/polarity
+algebra. A conditional observes only ToBoolean of its condition; an outer chain
+of NOTs can therefore be omitted, swapping the original branches for odd parity.
+The condition is still evaluated once before the selected branch. Branch values,
+getter/coercion/receiver effects and abrupt completion retain their original
+occurrences. The FunctionTree, control/evaluation plans and instruction origins
+are unchanged; no sample, producer whitelist or graph-layout admission is added.
+
+TreeEqualityComplement defines the language complements of ==/!= and ===/!==
+with an exhaustive typed operator switch. These operators already return exact
+Booleans, so a positive Boolean conversion is also redundant. Relational and
+membership operators have no native complementary operator here: in particular,
+!(a < b) cannot become a >= b in the NaN domain. They retain the original NOT.
+Discarded results still evaluate the original comparison and its conversions.
+The actual normalized operator is passed to the existing parent-grammar grouping
+query, preserving exponentiation, unary and nested equality parentheses.
+
+Omitted condition NOTs retain the printed condition's span, ending before either
+branch; reordered branches retain their original ExprIds and actual locations.
+The chain has two bounded linear passes and uses the existing print-action stack,
+without a per-expression CFG walk, new proof wrapper or dependency. For the tree's
+unique expression ownership, added work is O(printed expression occurrences).
+Budget/work evidence does not certify process RSS.
+
+Provenance: ECMA-262 2024 [logical NOT](https://tc39.es/ecma262/2024/multipage/ecmascript-language-expressions.html#sec-logical-not-operator),
+[equality](https://tc39.es/ecma262/2024/multipage/ecmascript-language-expressions.html#sec-equality-operators)
+and [conditional evaluation](https://tc39.es/ecma262/2024/multipage/ecmascript-language-expressions.html#sec-conditional-operator).
+The handwritten extension introduces no new licensed dependency. Printer-only
+polarity/grammar fixtures remain separate from actual decoded conditional-call,
+class-field and paired-record behavior evidence. Normalizing syntax does not
+widen numeric/private-value admission, unary VM profiles or constructor protocols.
+
 ## Current gaps and execution order
 
 1. Shared binary literal composition, instanceof and centralized precedence

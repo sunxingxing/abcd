@@ -670,11 +670,27 @@ class TreePrinter {
     if (node.result == UpdateResult::kPrefix) Append(token);
   }
   void Expression(ConditionalExpr node, ExpressionObservation observation) {
+    auto condition = node.condition;
+    bool inverted = false;
+    // ECMA-262 2024 13.14: only the condition's truthiness is observed. Strip
+    // NOT polarity and swap the retained arms, without moving or replaying any
+    // operand. This is language AST algebra, never a bytecode shape admission.
+    while (const auto* unary = std::get_if<UnaryExpr>(&Tree().expressions[condition.value].expression)) {
+      Step(); if (unary->operation != TreeUnary::kNot) break;
+      inverted = !inverted; condition = unary->operand;
+    }
     Append("("); Push(std::string_view(")"));
-    Push(ExpressionOperand{node.alternate, {}, {}, observation});
-    Push(std::string_view(" : ")); Push(ExpressionOperand{node.consequent, {}, {}, observation});
+    Push(ExpressionOperand{inverted ? node.consequent : node.alternate, {}, {}, observation});
+    Push(std::string_view(" : "));
+    Push(ExpressionOperand{inverted ? node.alternate : node.consequent, {}, {}, observation});
     Push(std::string_view(" ? "));
-    Push(ExpressionOperand{node.condition, {}, {}, ExpressionObservation::kTruthiness});
+    // Omitted NOTs retain the actual condition's span. Their end actions run
+    // before either branch; no node is falsely located over a swapped arm.
+    for (auto id = node.condition; id != condition;) {
+      Step(); BeginExpression(id);
+      id = std::get<UnaryExpr>(Tree().expressions[id.value].expression).operand;
+    }
+    Push(ExpressionOperand{condition, {}, {}, ExpressionObservation::kTruthiness});
   }
   void Expression(const FieldDefinitionExpr& node) {
     if (!static_fields_) throw Error::kUnsupportedContext;
@@ -1026,6 +1042,17 @@ class TreePrinter {
       BooleanChoice(*conditional, operand.expression, operand.inverted);
       return;
     }
+    if (const auto* binary = std::get_if<BinaryExpr>(&expression))
+      if (const auto complement = TreeEqualityComplement(binary->operation)) {
+        BeginExpression(id);
+        const auto operation = operand.inverted && operand.expression.observation != ExpressionObservation::kDiscarded ?
+            *complement : binary->operation;
+        const BinaryExpr normalized{operation, binary->left, binary->right};
+        if (TreeOperandGrouping(TreeExpression{normalized}, operand.expression.context)) {
+          Append("("); Push(std::string_view(")"));
+        }
+        Expression(normalized); return;
+      }
     // NOT/Boolean choices compose as a polarity. ToBoolean has no user hook:
     // emit at most one NOT, or two for a positive exact Boolean value. A pure
     // truthiness observation may expose the child with its real parent grammar.

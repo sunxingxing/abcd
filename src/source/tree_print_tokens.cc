@@ -32,6 +32,21 @@ BinarySyntax TreeBinarySyntax(analysis::BinaryOperator operation) {
   }
   throw TreePrintError::kUnsupportedContext;
 }
+std::optional<analysis::BinaryOperator> TreeEqualityComplement(analysis::BinaryOperator operation) {
+  using Op = analysis::BinaryOperator;
+  switch (operation) {
+    case Op::kEqual: return Op::kNotEqual;
+    case Op::kNotEqual: return Op::kEqual;
+    case Op::kStrictEqual: return Op::kStrictNotEqual;
+    case Op::kStrictNotEqual: return Op::kStrictEqual;
+    case Op::kAdd: case Op::kSubtract: case Op::kMultiply: case Op::kDivide:
+    case Op::kRemainder: case Op::kExponent: case Op::kLess: case Op::kLessEqual:
+    case Op::kGreater: case Op::kGreaterEqual: case Op::kShiftLeft:
+    case Op::kShiftRightUnsigned: case Op::kShiftRightSigned: case Op::kBitAnd:
+    case Op::kBitOr: case Op::kBitXor: case Op::kIn: case Op::kInstanceOf: return {};
+  }
+  throw TreePrintError::kUnsupportedContext;
+}
 namespace {
 ExpressionPrecedence LogicalPrecedence(TreeLogical op) {
   switch (op) {
