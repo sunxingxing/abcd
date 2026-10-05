@@ -307,7 +307,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // source effect owners, external leaves and original catch obligations are checked.
 // Rules 123 own phased predicate prefixes by root-use and must-reach equations;
 // pure execution anchors never replace catch, Reference or availability proofs.
-inline constexpr std::uint32_t kRouteEvidenceRules = 123;
+// Rules 124 resolve nested phased operand execution through checked source
+// dependencies; pure syntax consumers retain their own input identity.
+inline constexpr std::uint32_t kRouteEvidenceRules = 124;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

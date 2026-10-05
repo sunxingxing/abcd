@@ -119,26 +119,63 @@ class OperandSelections {
     std::vector<PhaseSelectionOperand> selected;
     budget_.Admit(operands.size(), sizeof(PhaseSelectionOperand)); selected.reserve(operands.size());
     budget_.Admit(selected.capacity() - operands.size(), sizeof(PhaseSelectionOperand));
-    // Jointly own selections in actual operand order. Member consumers also
-    // enclose them in one Reference. Disjoint intervals and an inert final
-    // suffix preserve original execution and avoid one full scan per phi.
+    struct Group {
+      std::size_t first, end;
+      std::optional<std::size_t> parent, child, sibling;
+      std::optional<OpId> execution;
+    };
+    std::vector<Group> groups;
+    std::vector<std::optional<std::size_t>> branches;
+    std::vector<std::size_t> queue;
+    budget_.Array(branches, graph_.ops.size()); budget_.Array(queue, operands.size());
+    budget_.Admit(operands.size(), sizeof(Group)); groups.reserve(operands.size());
+    budget_.Admit(groups.capacity() - operands.size(), sizeof(Group));
     for (std::size_t first = 0; first < operands.size();) {
       auto end = first + 1;
       while (end < operands.size() && operands[end].consumer == operands[first].consumer) { budget_.Step(); ++end; }
+      for (auto i = first; i < end; ++i) {
+        budget_.Step(); const auto branch = regions[operands[i].region].branch;
+        Require(!branches[branch.value]); branches[branch.value] = groups.size();
+      }
+      groups.push_back({first, end}); first = end;
+    }
+    std::size_t begin = 0, finish = 0;
+    for (std::size_t i = 0; i < groups.size(); ++i) {
+      budget_.Step(); auto& group = groups[i];
+      group.parent = branches[roots_[operands[group.first].consumer.value].value];
+      if (group.parent) {
+        group.sibling = groups[*group.parent].child; groups[*group.parent].child = i;
+      } else queue[finish++] = i;
+    }
+    // Resolve actual source dependencies from the outside inward. A child's
+    // pure syntax consumer cannot supply a throw dispatch: only a successfully
+    // checked enclosing selection or the original inline root supplies its
+    // execution scope. Cycles and failed parents remain unowned. Group siblings
+    // retain operand order and the existing joint interval obligations.
+    while (begin < finish) {
+      budget_.Step(); auto& group = groups[queue[begin++]];
+      const auto first = group.first, end = group.end;
+      const auto execution = group.parent ? groups[*group.parent].execution :
+          std::optional{roots_[operands[first].consumer.value]};
       const auto base = selected.size();
       std::optional<WorkBlockId> previous;
-      bool complete = true;
-      for (auto i = first; i < end; ++i) {
+      bool complete = execution.has_value();
+      for (auto i = first; i < end && complete; ++i) {
         budget_.Step(); const auto& region = regions[operands[i].region];
         if (i != first && operands[i - 1].input == operands[i].input) { complete = false; break; }
-        auto entry = Check(region, operands[i], previous);
+        auto entry = Check(region, operands[i], previous, *execution);
         if (!entry) { complete = false; break; }
         previous = region.join; selected.push_back(std::move(*entry));
       }
       if (complete) complete = Inert(*previous, graph_.ops[operands[first].consumer.value].block, true);
       if (!complete) selected.resize(base);
-      else if (std::holds_alternative<PhaseCallReference>(selected[base].owner)) Ancestors(selected[base]);
-      first = end;
+      else {
+        group.execution = execution;
+        if (std::holds_alternative<PhaseCallReference>(selected[base].owner)) Ancestors(selected[base]);
+      }
+      for (auto child = group.child; child; child = groups[*child].sibling) {
+        budget_.Step(); queue[finish++] = *child;
+      }
     }
     std::sort(selected.begin(), selected.end(), [&](const auto& a, const auto& b) {
       budget_.Step(); return a.Consumer() != b.Consumer() ? a.Consumer() < b.Consumer() : a.input < b.input;
@@ -146,7 +183,7 @@ class OperandSelections {
     return selected;
   }
   std::optional<PhaseSelectionOperand> Check(const SelectionRegion& region, const OperandSelection& selected_operand,
-      std::optional<WorkBlockId> previous) {
+      std::optional<WorkBlockId> previous, OpId execution) {
     const auto consumer = selected_operand.consumer;
     const auto input = selected_operand.input;
     const auto transport = selected_operand.transport;
@@ -189,7 +226,7 @@ class OperandSelections {
         const auto& op = graph_.ops[id.value];
         if (!predicates_.order.Before(graph_, id, graph_.ops[region.branch.value].block,
                 graph_.ops[region.branch.value].order) ||
-            (op.exceptional == ExceptionalCompletion::kMayThrow && !corridors_.SameCatch(id, consumer))) return {};
+            (op.exceptional == ExceptionalCompletion::kMayThrow && !corridors_.SameCatch(id, execution))) return {};
         Require(prefix_count < prefix_.size()); prefix_[prefix_count++] = id;
       }
     }
@@ -206,7 +243,7 @@ class OperandSelections {
       owners_[producer->op.value] = region.branch;
       const auto& op = graph_.ops[producer->op.value];
       if (op.exceptional == ExceptionalCompletion::kMayThrow &&
-          !corridors_.SameCatch(producer->op, consumer)) return {};
+          !corridors_.SameCatch(producer->op, execution)) return {};
     }
     // A moved prefix snapshot may be consumed only by this prefix, scalar
     // decision or selected arms. In particular an earlier input of an
@@ -226,7 +263,7 @@ class OperandSelections {
             !edge || (*edge != region.keep_input && *edge != region.evaluate_input)) return {};
       }
     }
-    PhaseSelectionOperand selected{owner, region.branch, region.merged, input, transport};
+    PhaseSelectionOperand selected{owner, region.branch, region.merged, input, transport, execution};
     budget_.Array(selected.prefix, prefix_count);
     std::copy_n(prefix_.begin(), prefix_count, selected.prefix.begin());
     return selected;

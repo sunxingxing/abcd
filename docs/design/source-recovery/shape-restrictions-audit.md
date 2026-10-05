@@ -1,5 +1,18 @@
 # 按用户要求进行的恢复条件审计
 
+规则124补充：嵌套phased selection的实际syntax consumer与execution owner
+分别保留。inner phi经纯comparison进入outer decision时，不再要求纯
+comparison具有throw dispatch；实际catch签名来自共同inline root或已经
+检查成功的外层selection。按实际consumer及operand order分组，以source
+root依赖从外向内检查，各group/依赖只处理一次。未通过的parent、cycle
+不会授予owner；这表示表达式放置证明尚未闭合，不是新的布局不变量。
+原phi/transport、arm执行、receiver、effects/exception staging和最终
+interval义务继续由各共同分析拥有。fresh verifier独立重算execution，
+不从plan字段自行授予成功；对象字面量复用已有forest、对象归属及printer。
+无optional-chain字节码模板、opcode序列、PC/register布局、producer名单
+或固定selection数量条件。原candidate discovery/member prefix/joint suffix
+仍有corridor表示缺口，不因本项移除必要异常检查或宣称全部条件均支持。
+
 规则123补充：direct phased条件的prefix改由真实root-use方程与共同
 EffectOrder证明。reverse-use Kahn求解要求所有外部consumer归属同一
 terminal owner，允许owner内部多次使用；callee仍由Reference拥有。

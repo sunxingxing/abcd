@@ -1547,6 +1547,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_all_path_literal.mjs $<TARGET_FILE:phased_literal_test> --array)
     add_test(NAME phased_object_operands_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_object_operands.mjs $<TARGET_FILE:phased_literal_test>)
+    add_test(NAME phased_selection_predicate_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_selection_predicate.mjs $<TARGET_FILE:phased_literal_test>)
     add_test(NAME phased_predicate_prefix_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_predicate_prefix.mjs $<TARGET_FILE:phased_literal_test>)
     add_test(NAME phased_selection_unary_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

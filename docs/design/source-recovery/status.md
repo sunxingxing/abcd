@@ -12,6 +12,52 @@
 
 ## 当前阶段
 
+### 2026-10-05：嵌套 phased selection 贯通最终执行归属
+
+- 规则revision124，基线bbd9e959；继续25aa原分支，开始时干净。上一轮
+  解释算术边界并核对证据，没有开发交付；本轮实际实现、验证并准备提交。
+  用户未改变默认数值验收，默认V3和显式language-arithmetic二元范围保持。
+  固定五ABC、配对源码独立验收及暂停的全套/RSS/代理等范围不变。
+- PhaseSelectionOperand分别保留真实syntax consumer/input及execution owner。
+  纯comparison没有throw dispatch，不能作为inner getter的最终catch owner。
+  现按实际consumer/operand order分组，由原inline source roots连接外层
+  selection，bounded queue从外向内检查；成功parent才传递执行归属，cycle
+  或失败parent不授予owner。普通inline subtree复用已经检查的source root。
+- selected arms/predicate prefixes使用最终owner的真实catch/staging签名。
+  原phi/transport、canonical use、Reference/receiver、条件执行及interval
+  义务保持。fresh verifier独立重算execution并拒绝篡改；共同forest/
+  ObjectExpr/printer直接组合嵌套条件与对象，无新writer/AST/证明包装。
+  无optional-chain字节码模板、样本/名称分派、PC/register布局、producer
+  名单或固定selection数量条件。旧candidate/member/joint corridor缺口保留。
+- 分组O(S log S)，dependency queue额外O(O+S) work/storage，各group及
+  dependency处理一次，加既有discovery/catch/interval成本；无新逐变量
+  CFG遍历或递归owner求解。三profile真实解码覆盖2/3/200/201/402层依赖、
+  copies/alias及拆块，201→402 scoped work小于3倍；不宣称RSS实测。
+  DEBUGGER阻挡inner移动，不同catch范围保留第一个getter未捕获、第二次
+  getter原catch；execution/input/owner篡改仍拒绝。正例均为完整生成源码。
+- 旧实现新whole-object断言在red-source-1.log退出134，red-build-1退出0。
+  首轮build-1输出完整嵌套表达式；build-2三目标退出0，tests-1定向4/4
+  通过79.21秒。最终final-build-1单-j4十五目标退出0，final-build-2为
+  单元夹具排版后target重建，退出0；新增oracle实际3140个JS组合通过，
+  包括getter次数/receiver、原抛出值、scope、typeof、四层组合和own属性。
+- final-tests-1定向38项中37通过，220.67秒；VoIP新JSON宿主只提供parse，
+  遗漏callback使用的stringify而失败。补齐测试宿主，未改生产/风格断言，
+  voip-repair-1重跑1/1通过0.88秒。其余37项没有重复执行：合并覆盖38项
+  均通过，不能把首次run写成38/38。VoIP独立配对322场景及768受控schedule
+  通过，包含22个getter-backed parse结果及原异常；三种semantic mutation
+  仍检测。行为验收不代表HarmonyOS平台或整个阶段一已完成。
+- fresh selection-predicate-{default,language}-pass-1各五ABC退出0，默认
+  80complete/26incomplete-source/0source-failure/46no-module，language
+  95/11/0/46。均无complete新增/退化或legacy writer。各106份源码解析及
+  input SHA/size与index核验通过；仅push-kit modules entity11989（VoIP）
+  改变，其他源码字节保持。其optional scene phi/比较和enum选择现在全部
+  进入原生对象初始化，机械逐字段写和中转phi消除；配对风格断言升级为
+  完整字面量、原字段顺序及positive predicate，不以可运行代替表示质量。
+- 日志前缀/tmp/abcd-selection-predicate-。下一步继续实际未完成函数及
+  控制组合：nested-arm selections仍受旧discovery表示限制，general staged
+  arrays、实例字段/全局/完整签名/函数体整合、SuperSpread、WindowUtil NEG
+  及所有record的独立语义/风格验收仍开放。阶段一Goal保持active。
+
 ### 2026-10-05：phased 条件前缀采用共同依赖与必达证明
 
 - 规则revision123，基线f489b16a；上一轮为实际提交，本轮继续25aa

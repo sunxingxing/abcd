@@ -66,6 +66,9 @@ struct PhaseSelectionOperand {
   analysis::ValueId value;
   analysis::UseId input;
   std::optional<analysis::OpId> transport;
+  // Syntax still consumes input at Consumer(). Inline pure dependencies and
+  // checked outer selections carry the original execution/exception scope.
+  analysis::OpId execution;
   std::vector<analysis::OpId> prefix;
   std::vector<PhaseCallReference> ancestors;
   [[nodiscard]] analysis::OpId Consumer() const {

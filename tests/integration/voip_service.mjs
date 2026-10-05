@@ -15,12 +15,12 @@ assert.equal(recovered.legacy_writer_used, false);
 // Source representation is checked independently from execution. The field
 // still exists as an own undefined data property; an initializer is redundant.
 assert.match(recovered.source, /static callId;/);
-// Native conditional syntax uses the original positive predicate; it must
-// still select the same effectful enum read on each path.
-assert.match(recovered.source, /\.voipCallType = \([^;]*=== "video" \? voipCall\.VoipCallType\.VOIP_CALL_VIDEO : voipCall\.VoipCallType\.VOIP_CALL_VOICE/);
-// The same shared operand plan now owns this getter directly at the staged
-// field write. Behavior checks below still observe its order and thrown token.
-assert.match(recovered.source, /\.voipCallState = voipCall\.VoipCallState\.VOIP_CALL_STATE_RINGING/);
+// A whole native object owns the optional getter and conditional enum read.
+// Keep the positive predicate and field declaration order; staged assignments
+// or a detached phi do not meet this representation assertion.
+assert.match(recovered.source, /\(\{callId: [^,]+, voipCallType: \(\([^;]*\?\.scene\) === "video" \? voipCall\.VoipCallType\.VOIP_CALL_VIDEO : voipCall\.VoipCallType\.VOIP_CALL_VOICE\)/);
+assert.match(recovered.source, /userName: "push", userProfile: [^,]+, abilityName: "VoIPUIAbility", voipCallState: voipCall\.VoipCallState\.VOIP_CALL_STATE_RINGING/);
+assert.doesNotMatch(recovered.source, /\.voipCallType =|\.voipCallState =/);
 const paired = stripTypeScriptTypes(readFileSync(join(root,
   'src/entry/src/main/ets/service/VoipCallService.ts'), 'utf8'));
 async function loadService(source, hosts, context) {
@@ -96,7 +96,19 @@ async function observe(source, scenario) {
   for (const name of ['info', 'error']) hilog[name] = function(...args) {
     assert.equal(this, hilog); event(name, ...args);
   };
-  const context = vm.createContext({Uint8Array});
+  let parses = 0;
+  const json = {stringify: JSON.stringify, parse(text) {
+    assert.equal(this, json);
+    const value = JSON.parse(text);
+    if (++parses !== 2 || !scenario.sceneGetter) return value;
+    const parsed = new Proxy({}, {get(target, key, receiver) {
+      assert.equal(receiver, parsed); assert.equal(key, 'scene'); event('scene:get');
+      if (scenario.throwScene) throw failure;
+      return scenario.sceneValue;
+    }});
+    return parsed;
+  }};
+  const context = vm.createContext({Uint8Array, JSON: json});
   // Native fields use DefineOwnProperty even when they have no initializer.
   // An assignment to an inherited setter would lose the class's own field.
   vm.runInContext(`Object.defineProperty(Function.prototype, 'callId', {
@@ -216,9 +228,18 @@ async function observeScheduled(source, scenario) {
 }
 let cases = 0;
 const compare = async scenario => {
-  assert.deepEqual(await observe(recovered.source, scenario), await observe(paired, scenario), JSON.stringify(scenario));
+  assert.deepEqual(await observe(recovered.source, scenario), await observe(paired, scenario),
+      JSON.stringify(scenario, (key, value) => typeof value === 'bigint' ? String(value) : value));
   ++cases;
 };
+// The paired source and recovered source receive independent getter-backed
+// parse results. This tests the actual record's nested condition, not a source
+// answer supplied to the engine, and its original unhandled getter exception.
+for (const sceneValue of [undefined, null, 'video', 'voice', false, 0, -0, NaN, 1n,
+    Symbol('scene'), {[Symbol.toPrimitive]() { assert.fail('scene equality must not coerce'); }}])
+  for (const throwScene of [false, true])
+    await compare({mode: 'main', scene: {}, sceneGetter: true, sceneValue, throwScene, failAt: 0});
+
 for (const scene of [null, {scene: 'video'}, {scene: 'voice'}, {}])
   for (const reject of [undefined, 'raw', 'pixel', 'incoming'])
     for (const failAt of [0, 1, 2, 3, 5, 8, 12, 16, 20, 24])

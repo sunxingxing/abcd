@@ -1,5 +1,35 @@
 # Literal Initialization
 
+## Nested phased operands retain their final execution scope
+
+Rule 124 separates a selection's actual syntax consumer from its execution
+owner. A pure comparison may consume an inner selected value while its result
+feeds an outer decision. The comparison has no exceptional dispatch and cannot
+stand in for the original throwing consumer's scope.
+
+Candidate selections are grouped by actual eager consumer and operand order.
+The existing inline source roots connect each group to its enclosing candidate
+selection. A bounded queue checks enclosing groups before their dependencies;
+only a successfully checked parent supplies an execution owner. Cycles and
+failed parents remain at their original placements. An ordinary inline subtree
+uses its already checked source root. Syntax input, transport, merged phi and
+original branch identities remain separate from this execution field.
+
+Selected throwing arms and ordered predicate prefixes compare their original
+catch/staging signature with that final owner. Existing def-use, conditional
+arm, operand-order, Reference and inert-interval obligations remain binding.
+The fresh verifier independently rebuilds groups and execution owners, including
+rejection of a corrupted execution field. There is no optional-chain template,
+opcode sequence, register/PC layout, producer list or selection-count admission.
+The existing forest, object initializer and printer compose native conditional,
+optional-member and object expressions without a new AST or writer.
+
+For S candidate selections, grouping/sorting costs O(S log S); the dependency
+queue adds O(S) work and O(O+S) storage for O operations, plus the existing
+selection/corridor and catch-signature checks. Each group and dependency is
+visited once. This does not remove legacy discovery, member-prefix or final
+suffix corridor limits, and does not claim general nested-arm/array recovery.
+
 ## Phased predicates own their execution prefixes
 
 Rule 123 indexes root-use equations for phased condition dependencies. A
@@ -42,9 +72,9 @@ of changed getter results and first/second-read failures, preserving raw
 predicate behavior, original thrown identity, read count/order, fresh identity
 and own descriptors.
 
-Nested selected values inside predicates still require common selection
-dependency composition; the actual VoIP optional scene prefix is not thereby
-guaranteed to fuse. The member-Reference prefix and joint-selection suffix
+Rule 123 alone did not compose nested selected values inside predicates.
+Rule 124 adds the execution dependency described above; its actual paired VoIP
+output now composes the optional scene and enum selection into the native object. The member-Reference prefix and joint-selection suffix
 paths retain their documented legacy corridor limits. These are implementation
 gaps, not language rules, and no new local patterns extend them here.
 

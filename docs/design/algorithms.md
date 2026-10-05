@@ -1695,3 +1695,25 @@ self-maintained Kahn/effect-order implementation documented in this file.
 Three-profile decoded 1/200/201/402 cases and 769 independent JS observations
 check count/order, aliases, exceptions and descriptors; this is targeted
 semantic/work-growth evidence, not a physical RSS or full-corpus measurement.
+
+
+## Nested phased selection execution owners (source rule 124)
+
+The existing inline roots identify the actual source dependency between
+selection operand groups. Sort S candidates by actual consumer/operand; index
+each branch's group once, then connect the consumer root to its enclosing group.
+A bounded parent-before-child queue checks every group once. Successful enclosing
+checks propagate one final execution owner; cycles and failed parents propagate
+no ownership. Source input and phi identities are not rewritten into that owner.
+The independently reconstructed checker uses original catch/staging signatures
+and the existing arm/Reference/interval obligations. The common forest and
+literal ownership consume the checked source placements.
+
+Grouping costs O(S log S), dependency indexing/queue O(O+S) work/storage for O
+operations, plus the existing candidate discovery, interval and catch checks.
+There is no repeated whole-selection scan, per-variable CFG traversal, recursive
+ownership walk, external dependency or new licence obligation. This uses the
+project's existing adjacency/worklist design (Kahn/topological dependency
+processing); it changes execution scope, not the original CFG or exception arcs.
+200/201/geometric depth and transport tests check scoped work growth; physical
+RSS and full-corpus performance remain unverified and paused.
