@@ -12,6 +12,41 @@
 
 ## 当前阶段
 
+### 2026-10-05：条件对象初始化复用共同执行前缀和复制身份
+
+- 规则revision118，基线60ab1368；25aa工作树和分支保持。上一轮解释
+  数值验收边界，没有实现变化；本轮继续已有RED，不修改默认V3合同。
+- 普通ObjectRoute原额外要求allocation.block等于首个selection header，
+  即使共同Domain已包含其直线执行前缀。现移除此项重复布局准入；
+  原allocation/definition唯一执行、效果顺序、异常和独占消费方程保留。
+  对象使用一次按共同EvaluationAliases身份索引，跳过已证明的纯身份
+  transport，实际间接观察仍计入。Domain producer及forest staged
+  receiver解析同一root，原始指令operands/anchors保持；fresh Verify
+  独立重建统计和效果方程。新增O(U+V)工作/暂存计入原TreeCheckBudget，
+  没有逐对象alias/CFG遍历、样本分派或新证明/发布包装。
+- 三profile实际字节码加入1/2/200/201/402复制与拆块前缀：对象分配
+  在条件块之前仍恢复完整嵌套对象表达式；201→402 work小于3倍。
+  同样前缀的debugger barrier和额外对象消费反例仍拒绝调用引用融合，
+  既有伪造ownership/consumer验证保持。Node新增split layout，与
+  原nested/deep/sibling共同通过5,600独立场景，覆盖getter/callee改写、
+  receiver、对象身份/prototype/descriptor、原始异常和执行顺序。
+- RED /tmp/abcd-object-prefix-red-tests-1.log记录原CallPlan失败；首次
+  构建与两项验证退出0，tests-1为2/2通过9.48秒。最终单-j4构建十目标
+  退出0，/tmp/abcd-object-prefix-final-build-1.log；定向18/18通过170.30秒，
+  /tmp/abcd-object-prefix-final-tests-1.log，包括normal/phased selection、
+  literal、Reference、优先级、来源及normal/comparison配对行为。
+- fresh object-prefix-{default,language}-pass-1各五ABC导出退出0，分别
+  80complete/26incomplete-source/0source-failure/46no-module及
+  95complete/11incomplete-source/0source-failure/46no-module。无新增complete、
+  降级或legacy writer；两模式各106份源码解析通过，全部源码字节与规则117
+  相同，输入SHA/size与原index一致。详见/tmp/abcd-object-prefix-batch-1.log
+  及两份summary-1.json；fixture扩展不冒充真实record新增完成证据。
+- phased staged-to-native、非直线前缀及ObjectRoute物理字段/最终join候选
+  限制继续开放，不能称为语言不变量。实例字段/全局/完整签名/函数体
+  整合、未知父类SuperSpread、WindowUtil NEG及阶段一独立语义/风格验收
+  仍未全部完成，Goal保持active。全套、扩展语料、RSS/基准、代理、
+  调度/DFX及定期审视继续暂停。
+
 ### 2026-10-05：共同表达式打印归一化条件极性和等值互补
 
 - 规则revision117，基线50208f29；工作树/分支保持，上一轮为实际进展。

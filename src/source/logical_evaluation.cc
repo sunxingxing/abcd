@@ -1,4 +1,5 @@
 #include "logical_evaluation.h"
+#include "evaluation_aliases.h"
 #include "logical_regions.h"
 #include "phase_evaluation.h"
 
@@ -112,13 +113,32 @@ struct SelectionIndex {
   std::vector<ObjectRange> groups;
   std::vector<OpId> group_objects, group_fields;
 };
+struct CanonicalUses {
+  std::vector<std::optional<UseId>> heads, next;
+  CanonicalUses(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget) {
+    budget.Array(heads, graph.values.size()); budget.Array(next, graph.uses.size());
+    // Checked identity transports are not observations. Index their eventual
+    // users at the common alias root, so copies cannot hide an early escape or
+    // invent an extra consumer. Each live occurrence is indexed once.
+    for (std::size_t i = 0; i < graph.uses.size(); ++i) {
+      budget.Step(); const auto& use = graph.uses[i];
+      if (use.life != ValueLife::kLive || IsIdentityPhiInput(plan, use)) continue;
+      const auto* owner = std::get_if<OpId>(&use.owner);
+      if (owner && (plan.operations[owner->value].kind == EvaluationKind::kAlias ||
+          plan.operations[owner->value].kind == EvaluationKind::kElidedPure)) continue;
+      const auto operand = ResolveEvaluationOperand(plan, use.operand);
+      const auto* value = std::get_if<ValueId>(&operand); if (!value) continue;
+      next[i] = heads[value->value]; heads[value->value] = UseId{static_cast<std::uint32_t>(i)};
+    }
+  }
+};
 std::optional<UseId> ObjectConsumer(const ValueProgram& graph, const ObjectInit& object,
-    const LiteralPlan& literals, const SelectionIndex& index, TreeCheckBudget& budget) {
+    const LiteralPlan& literals, const SelectionIndex& index, const CanonicalUses& uses, TreeCheckBudget& budget) {
   if (!object.count) return {};
   const auto last = literals.definitions[object.first + object.count - 1];
   std::optional<UseId> external;
-  for (auto at = graph.values[graph.ops[object.allocation.value].result->value].first_use;
-       at; at = graph.uses[at->value].next) {
+  for (auto at = uses.heads[graph.ops[object.allocation.value].result->value];
+       at; at = uses.next[at->value]) {
     budget.Step(); const auto& use = graph.uses[at->value];
     if (use.life != ValueLife::kLive) continue;
     const auto* owner = std::get_if<OpId>(&use.owner);
@@ -134,6 +154,7 @@ std::optional<UseId> ObjectConsumer(const ValueProgram& graph, const ObjectInit&
 void IndexObjectGroups(const ValueProgram& graph, const EvaluationPlan& plan,
     SelectionIndex& index, TreeCheckBudget& budget) {
   if (!plan.literals) return;
+  const CanonicalUses uses(graph, plan, budget);
   budget.Array(index.object_consumers, graph.ops.size()); budget.Array(index.object_roots, graph.ops.size());
   budget.Array(index.groups, graph.ops.size());
   budget.Array(index.group_objects, plan.literals->objects.size());
@@ -144,7 +165,7 @@ void IndexObjectGroups(const ValueProgram& graph, const EvaluationPlan& plan,
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     budget.Step(); if (!index.objects[i]) continue;
     const auto& object = plan.literals->objects[*index.objects[i]];
-    const auto use = ObjectConsumer(graph, object, *plan.literals, index, budget);
+    const auto use = ObjectConsumer(graph, object, *plan.literals, index, uses, budget);
     index.object_consumers[i] = use; index.object_roots[i] = object.allocation;
     if (use) {
       const auto& occurrence = graph.uses[use->value]; const auto owner = std::get<OpId>(occurrence.owner);
@@ -328,8 +349,9 @@ std::optional<SelectedObject> ObjectRoute(const ValueProgram& graph, const Evalu
   const auto& group = index.groups[allocation.value];
   const auto definitions = std::span(index.group_fields).subspan(group.first_field, group.field_count);
   const auto allocations = std::span(index.group_objects).subspan(group.first_object, group.object_count);
-  if (definitions.empty() || index.first_selections[allocation.value] != route.front()->branch ||
-      graph.ops[allocation.value].block != route.front()->header) return {};
+  // Domain owns availability, execution count and effect order, including the
+  // common linear prefix. Allocation/header block identity proves none of them.
+  if (definitions.empty() || index.first_selections[allocation.value] != route.front()->branch) return {};
   const auto* buffer = std::get_if<ValueObjectAllocation>(&graph.ops[allocation.value].operation);
   if (!buffer || !buffer->literal) return {};
   auto block = route.front()->header;
@@ -620,7 +642,8 @@ class Domain {
     return Events(graph_.ops[id.value], plan_.operations[id.value], id, route_.front()->branch);
   }
   std::optional<OpId> Producer(const OperandUse& use) const {
-    const auto* value = std::get_if<ValueId>(&use.operand); if (!value) return {};
+    const auto operand = ResolveEvaluationOperand(plan_, use.operand);
+    const auto* value = std::get_if<ValueId>(&operand); if (!value) return {};
     if (index_.values[value->value]) return index_.values[value->value];
     const auto* result = std::get_if<OpResult>(&graph_.values[value->value].origin);
     return result ? std::optional{result->op} : std::nullopt;

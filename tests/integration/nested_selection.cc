@@ -42,7 +42,7 @@ abc::MethodBody Siblings(unsigned count, bool barrier) {
       op(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, 3, 0, op(abc::Opcode::kRETURN)});
   return test::Body(bytes);
 }
-abc::MethodBody Body(unsigned depth, unsigned count, bool barrier, bool shared) {
+abc::MethodBody Body(unsigned depth, unsigned count, bool barrier, bool shared, unsigned prefixes = 0) {
   // Named property/call operands use V8 registers. Wider scaling is exercised
   // by many independent object trees; depth tests stay within the real ISA.
   test::Check(depth && depth + 1 <= UINT8_MAX);
@@ -55,6 +55,13 @@ abc::MethodBody Body(unsigned depth, unsigned count, bool barrier, bool shared) 
     for (unsigned level = 0; level < depth; ++level)
       bytes.insert(bytes.end(), {op(abc::Opcode::kCREATEOBJECTWITHBUFFER_IMM8_ID16), 0, 0, 0,
           op(abc::Opcode::kSTA_V8), static_cast<std::uint8_t>(level)});
+    // Equivalent pure register transport and arbitrary block splitting between
+    // the allocation and its first conditional initializer. This is real ISA
+    // input, not a rewritten IR or a test-only publication bypass.
+    for (unsigned prefix = 0; prefix < prefixes; ++prefix)
+      bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 0, op(abc::Opcode::kSTA_V8), 0,
+          op(abc::Opcode::kLDA_V8), target, op(abc::Opcode::kSTA_V8), target,
+          op(abc::Opcode::kJMP_IMM8), 2});
     bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), target,
         op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 2, 0, op(abc::Opcode::kISTRUE)});
     const auto branch = bytes.size(); bytes.insert(bytes.end(), {op(abc::Opcode::kJEQZ_IMM8), 0});
@@ -79,9 +86,9 @@ abc::MethodBody Body(unsigned depth, unsigned count, bool barrier, bool shared) 
   return test::Body(bytes);
 }
 std::uint64_t Run(abc::ProfileId profile, unsigned depth, unsigned count, bool print = false, bool barrier = false,
-    bool shared = false, bool siblings = false) {
+    bool shared = false, bool siblings = false, unsigned prefixes = 0) {
   test::Check(!siblings || (depth == 2 && !shared));
-  const auto body = siblings ? Siblings(count, barrier) : Body(depth, count, barrier, shared);
+  const auto body = siblings ? Siblings(count, barrier) : Body(depth, count, barrier, shared, prefixes);
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(depth + 1, 1, {}));
   RouteInputIdentity identity; identity.profile = profile;
   const auto input = std::get<FunctionInput>(FunctionInput::Build(identity, {300}, {100}, body, frame,
@@ -144,11 +151,21 @@ std::uint64_t Run(abc::ProfileId profile, unsigned depth, unsigned count, bool p
 int main(int argc, char** argv) {
   if (argc == 2) {
     const std::string_view option{argv[1]};
-    test::Check(option == "--source" || option == "--deep-source" || option == "--siblings-source");
+    test::Check(option == "--source" || option == "--deep-source" || option == "--siblings-source" || option == "--split-source");
     Run(abc::ProfileId::kDynamic1206, option == "--deep-source" ? 7 : 2, 2, true, false, false,
-        option == "--siblings-source"); return 0;
+        option == "--siblings-source", option == "--split-source" ? 201 : 0); return 0;
   }
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301}) {
+    std::uint64_t prefix_work = 0;
+    for (const unsigned prefixes : {1U,2U,200U,201U,402U}) {
+      const auto work = Run(profile,2,2,false,false,false,false,prefixes);
+      if (prefixes == 402) test::Check(work < 3 * prefix_work);
+      prefix_work = work;
+    }
+    for (const unsigned prefixes : {1U, 201U}) {
+      Run(profile, 2, 1, false, true, false, false, prefixes);
+      Run(profile, 2, 1, false, false, true, false, prefixes);
+    }
     for (const auto depth : {1U, 2U, 7U, 32U, 64U, 128U, 200U, 201U}) Run(profile, depth, 1);
     for (const bool siblings : {false, true}) {
       std::uint64_t previous = 0;

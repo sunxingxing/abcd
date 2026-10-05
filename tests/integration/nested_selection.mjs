@@ -66,6 +66,7 @@ function execute(fn, prototype, layout, flag, leaf, options) {
 }
 let scenarios = 0;
 for (const layout of [{option: '--source', depth: 2, oracle: shallow},
+  {option: '--split-source', depth: 2, oracle: shallow},
   {option: '--deep-source', depth: 7, oracle: deep}, {option: '--siblings-source', siblings: true, oracle: siblings}]) {
   const source = execFileSync(tool, [layout.option], {encoding: 'utf8'});
   assert.ok(!source.includes('if (') && !source.includes('.call(') && !source.includes('$phi'));

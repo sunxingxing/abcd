@@ -306,7 +306,8 @@ class ForestBuilder {
         if (!evaluation_.logical_objects.empty() && evaluation_.logical_objects[i]) continue;
         if (evaluation_.operations[i].kind == EvaluationKind::kInitializer &&
             IsStagedLiteral(evaluation_.literals ? &*evaluation_.literals : nullptr, {static_cast<std::uint32_t>(i)})) {
-          const auto base = std::get<analysis::ValueId>(graph_.uses[op.first_use.value].operand);
+          const auto base = std::get<analysis::ValueId>(
+              ResolveEvaluationOperand(evaluation_, graph_.uses[op.first_use.value].operand));
           const auto allocation = std::get<analysis::OpResult>(graph_.values[base.value].origin).op;
           Require(objects_[allocation.value].has_value(), Error::kOwnership);
           if (evaluation_.logical_objects[allocation.value] != analysis::OpId{static_cast<std::uint32_t>(i)}) continue;

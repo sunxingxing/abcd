@@ -1,5 +1,35 @@
 # Literal Initialization
 
+## Selected object initialization through common identity and prefixes
+
+Rule 118 removes `allocation.block == first_selection.header` from ordinary
+selected-object recovery. The existing logical Domain already includes the
+checked linear execution prefix and independently rebuilds its effect intervals.
+That proof retains allocation execution count, ordered definitions, exclusive
+consumption, intervening effects and exception constraints; a block identity
+condition adds no semantic evidence after those obligations are discharged.
+
+Object consumers are indexed once by the existing EvaluationAliases roots.
+Checked copy/identity-phi transports are equations rather than observations;
+all eventual users, including additional escaped uses, participate in the
+canonical census. Domain dependencies and the forest's staged receiver lookup
+resolve through the same roots. Original instruction operands and source anchors
+remain intact. This introduces O(U+V) scratch and O(U+V) census work, charged
+to TreeCheckBudget, with no per-allocation alias or CFG traversal. Fresh
+evaluation verification recomputes the census and interval equations.
+
+Three-profile decoded bytecode cases insert 1/2/200/201/402 pure copy/block
+prefixes between object allocations and selected initializers. Complete trees
+and instruction sources are checked; independent Node execution adds a split
+layout to the existing nested/sibling scenarios (5,600 total). The same prefixes
+with an intervening debugger effect or a second object consumer still refuse
+fusion. Existing forged ownership and consumer cases remain negative.
+
+This change does not close phased staged-to-native reconstruction, non-linear
+prefix ownership, or the remaining physical-order/field-join candidate limits
+in ObjectRoute. These are implementation gaps, not language requirements, and
+must be replaced through the common analyses rather than extended with shapes.
+
 ## Available-value initialization across ordinary control flow
 
 Rule 116 removes the normal same-block restriction when every RHS is already
