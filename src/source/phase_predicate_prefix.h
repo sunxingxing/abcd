@@ -3,6 +3,10 @@
 #include "logical_evaluation.h"
 #include "effect_order.h"
 namespace abcd::source {
+// Resolve original inline/module ownership as a functional forest. Operation
+// storage order supplies no ownership fact; cycles cannot form source subtrees.
+std::vector<analysis::OpId> IndexPhaseInlineRoots(const analysis::ValueProgram&,
+    const EvaluationPlan&, TreeCheckBudget&);
 struct PhasePredicatePrefixes {
   struct Range { std::size_t first = 0, count = 0; };
   std::vector<Range> ranges;

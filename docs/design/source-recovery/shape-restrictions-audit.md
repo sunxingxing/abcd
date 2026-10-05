@@ -1,5 +1,18 @@
 # 按用户要求进行的恢复条件审计
 
+规则125补充：phased nested-arm不再要求原phi只有两个输入。共同正常
+CFG后序路径索引保留原EdgeId，使用已有SelectionChild/partial SelectionRegion
+表达共享phi的子树；原叶边及child各有唯一表达式父归属，完整root才能
+消费原phi。child没有伪造input或中间phi。共同root-use/EffectOrder/catch
+检查全部子树成功后才发布group执行归属；失败时保留原始语句和异常范围。
+原inline/module roots统一使用functional forest，不再用OpId大小推断父。
+TreeBuilder从control adapter取得真实Commit分支，不用空phase的最后操作。
+identity predicate的combined origin按已经验证的条件节点核对，来源成员
+独立验证保持。没有固定嵌套数量、同块、指令序列或样本分派。
+此路径仍使用现有单表达式phi edge bundle；多次观察的phi materialization、
+共享reconvergent tail、general staged arrays及旧member/joint corridor仍为
+表示缺口，不将这些限制描述成语言不变量或以新局部模板扩大旧fast path。
+
 规则124补充：嵌套phased selection的实际syntax consumer与execution owner
 分别保留。inner phi经纯comparison进入outer decision时，不再要求纯
 comparison具有throw dispatch；实际catch签名来自共同inline root或已经
@@ -82,7 +95,7 @@ header。现删除这项重复布局准入，沿用已有直线前缀及fresh Ve
 phased staged-to-native、非直线前缀，以及ObjectRoute现存物理字段顺序/
 join候选限制仍是开放的实现缺口，不把它们描述为语言不变量。
 
-最新替换状态见本页规则123及各项补充。历史候选不是当前实现的证明；
+最新替换状态见本页规则125及各项补充。历史候选不是当前实现的证明；
 未替换项继续开放，不能将局部交付称为全量审计闭合。
 
 规则114补充：ClassSelfOrder的初始化观察证明原仅扫描String/Copy，

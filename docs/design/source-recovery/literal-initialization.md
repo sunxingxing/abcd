@@ -1,5 +1,41 @@
 # Literal Initialization
 
+## Nested phased control arms share their original phi
+
+Rule 125 indexes normal CFG paths in iterative successor-first order, retaining
+all exceptional edges in the original graph. Original phi input edges seed
+leaves; a branch closes compatible child paths into the existing SelectionChild
+and SelectionRegion representations. Every original leaf edge and child has
+one expression parent. Disjoint leaf counts therefore measure actual coverage,
+not only matching cardinalities. Partial children keep the same merged phi;
+only a complete enclosing family may own its actual eager consumer.
+
+Predicate dependencies use the same inline/module root forest and root-use
+prefix analysis as operand checking. Roots resolve through typed parent edges,
+independently of operation storage order. The operand checker checks every
+child's prefix, leaf identity, execution count and original catch/staging scope
+before granting ownership to the enclosing group or its dependent expressions.
+A control child has a typed parent and no invented eager input or intermediate
+phi. The fresh checker reconstructs the records and child map.
+
+Control binding retains the actual branch/header, selected arms and original
+join. Tree construction obtains child decisions from the existing control
+adapter: a phased Commit has no operation range and cannot supply a physical
+last-operation predicate. Scalar identity predicates may combine origins on
+their checked condition node; independent correspondence still validates all
+origin membership. The same FunctionTree, ObjectExpr and printer emit nested
+conditions and whole objects without an alternate writer.
+
+This path currently composes closed acyclic expression families using existing
+single-expression phi edge bundles and the existing operation-result predicate
+representation. Direct entry/literal predicates need a representation extension;
+this is not a language restriction. Multi-observation phi materialization,
+shared reconvergent expression tails, general staged arrays and legacy
+member-prefix/joint-suffix corridors retain representation gaps. No block
+identity, register/PC layout, opcode sequence or fixed nesting count supplies
+production semantics. A foreign effect or changed catch scope retains original
+statements; it does not disappear to improve output style.
+
 ## Nested phased operands retain their final execution scope
 
 Rule 124 separates a selection's actual syntax consumer from its execution

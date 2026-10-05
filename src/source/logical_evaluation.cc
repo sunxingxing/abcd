@@ -663,24 +663,12 @@ class Domain {
 };
 }  // namespace
 const PhaseSelectionOperand* FindPhaseSelectionOperand(const ValueProgram& graph, const EvaluationPlan& plan, OpId branch) {
-  if (plan.flow != EvaluationFlow::kPhased || plan.phase_selections.empty() || branch.value >= plan.operations.size()) return nullptr;
-  auto input = plan.operations[branch.value].consumer;
-  if (!input || input->value >= graph.uses.size()) return nullptr;
-  auto owner = std::get_if<OpId>(&graph.uses[input->value].owner);
-  if (!owner) return nullptr;
-  if (owner->value < plan.phase_transports.size() && plan.phase_transports[owner->value]) {
-    input = plan.phase_transports[owner->value];
-    if (input->value >= graph.uses.size()) return nullptr;
-    owner = std::get_if<OpId>(&graph.uses[input->value].owner);
-  }
-  if (!owner || owner->value >= graph.ops.size()) return nullptr;
-  const auto found = std::lower_bound(plan.phase_selections.begin(), plan.phase_selections.end(),
-      std::pair{*owner, *input}, [](const auto& entry, const auto& key) {
-        return entry.Consumer() != key.first ? entry.Consumer() < key.first : entry.input < key.second;
-      });
-  return found != plan.phase_selections.end() && found->Consumer() == *owner &&
-      found->input == *input && found->branch == branch ? &*found : nullptr;
+  if (plan.flow != EvaluationFlow::kPhased || branch.value >= graph.ops.size()) return nullptr;
+  const auto found = std::lower_bound(plan.phase_selections.begin(), plan.phase_selections.end(), branch,
+      [](const auto& entry, OpId key) { return entry.branch < key; });
+  return found != plan.phase_selections.end() && found->branch == branch ? &*found : nullptr;
 }
+
 bool CrossLogicalInline(const ValueProgram& graph, const EvaluationPlan& plan, OpId producer) {
   const auto& placement = plan.operations[producer.value];
   if (placement.kind != EvaluationKind::kInline || !placement.consumer ||
@@ -776,7 +764,7 @@ void VerifyLogicalValues(const ValueProgram& graph, const EvaluationPlan& plan, 
     VerifyPhaseSelectionOperands(graph, plan, budget);
     VerifyPhasedObjectOperands(graph, plan, budget); return;
   }
-  Require(plan.phase_selections.empty() && plan.phase_transports.empty() && plan.phase_prefixes.empty() && plan.phase_references.empty());
+  Require(plan.phase_selections.empty() && plan.phase_transports.empty() && plan.phase_prefixes.empty() && plan.phase_references.empty() && plan.phase_children.empty());
   Require(plan.logical_objects.empty() || plan.logical_objects.size() == graph.ops.size());
   Require(plan.logical_values.empty() || (plan.flow == EvaluationFlow::kNormal && plan.logical_values.size() == graph.values.size()));
   if (plan.logical_values.empty()) {

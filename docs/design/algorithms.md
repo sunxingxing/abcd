@@ -1717,3 +1717,24 @@ project's existing adjacency/worklist design (Kahn/topological dependency
 processing); it changes execution scope, not the original CFG or exception arcs.
 200/201/geometric depth and transport tests check scoped work growth; physical
 RSS and full-corpus performance remain unverified and paused.
+
+## Phased nested control-arm paths (source rule 125)
+
+Original normal edges are processed in iterative DFS postorder. Each block has
+one path summary, each branch combines at most its two actual CFG successors,
+and original phi occurrences/child regions acquire unique syntax parents.
+Disjoint bottom-up leaf counts identify complete phi coverage; unresolved
+cycles or competing observations do not form closed expression families.
+The shared functional inline/module forest resolves every parent once and
+rejects cycles independently of operation array order. Predicate ownership and
+execution remain the existing root-use and anchored EffectOrder analyses.
+
+For B blocks, E edges, O operations, V values, U uses and S regions, path
+indexing adds O(B+E+O+V+U+S) work/storage, plus the existing predicate-prefix
+sorting/effect/dominance analysis. Operand grouping remains O(S log S); bounded
+child queues check each region once before publishing its group's execution
+owner. AST construction uses existing iterative selection worklists. No recursive
+source walk, per-phi graph scan, external dependency or copied upstream code is
+introduced. Phi bundles and later control/evaluation/exception checks retain
+their existing cost and representation obligations. Scoped scaling checks do
+not establish physical RSS or full-corpus performance, which remain paused.

@@ -1164,10 +1164,13 @@ class TreeBuilder {
         const auto& part = control_.nodes[path.control->value];
         EmitBlock(part, draft);
         if (part.arms) {
-          const auto& range = graph_.blocks[part.block.value];
-          const auto branch = range.first_op.value + range.op_count - 1;
-          Require(logical_branches_[branch].has_value(), Error::kOwnership);
-          const auto& nested = logicals_[*logical_branches_[branch]];
+          const auto branch = DecisionPredicate(part);
+          // Phased predicates execute at Commit, whose operation range is
+          // empty. Use the actual control adapter and retain one placement;
+          // never infer a branch from the preceding physical operation.
+          if (exceptions_) EmitBranch(branch, part, graph_.blocks[part.block.value].first_edge, draft);
+          Require(logical_branches_[branch.value].has_value(), Error::kOwnership);
+          const auto& nested = logicals_[*logical_branches_[branch.value]];
           Require(nested.parent || nested.prefix_parent, Error::kOwnership); schedule(nested);
           if (part.next) {
             if (nested.forwarded || (nested.prefix_parent && path.include_terminal))

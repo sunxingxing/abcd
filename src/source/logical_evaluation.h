@@ -19,7 +19,8 @@ void BuildPhaseSelectionOperands(const analysis::ValueProgram&, EvaluationPlan&,
 void VerifyPhaseSelectionOperands(const analysis::ValueProgram&, const EvaluationPlan&, TreeCheckBudget&);
 void BuildPhasedObjectOperands(const analysis::ValueProgram&, EvaluationPlan&, TreeCheckBudget&);
 void VerifyPhasedObjectOperands(const analysis::ValueProgram&, const EvaluationPlan&, TreeCheckBudget&);
-// Lookup on a freshly verified plan, following the original phi transport.
+// Lookup by original branch on a freshly verified plan, including partial
+// control children that share their parent's original phi without a fake use.
 const PhaseSelectionOperand* FindPhaseSelectionOperand(const analysis::ValueProgram&, const EvaluationPlan&, analysis::OpId branch);
 // Only after fresh evaluation verification, which checks the contracted
 // diamond's effect intervals and its exclusively owned incoming values.

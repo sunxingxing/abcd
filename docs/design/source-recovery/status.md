@@ -12,6 +12,51 @@
 
 ## 当前阶段
 
+### 2026-10-05：phased 共享 phi 的嵌套控制臂贯通对象初始化
+
+- 规则revision125，基线05a6ee0d；继续25aa原分支和既有实现。上一轮
+  解释数值边界，取得885个nested-arm独立行为证据；本轮完成实现、
+  扩展验证和固定五ABC复核。默认V3与显式language-arithmetic的二元
+  范围保持，用户未授权改变验收。全套/RSS/基准/代理/调度器仍暂停。
+- 新NestedPhaseSelections在原normal CFG后序中索引闭合路径，保留
+  异常图和实际phi输入EdgeId。SelectionChild/partial SelectionRegion
+  复用同一原phi，不伪造中间值；叶边及child的唯一表达式父归属使计数
+  对应不重叠的真实覆盖。完整root才消费原eager use，子臂没有fake input。
+  既有flat/shared-scalar发现保留兼容，不通过新增局部模板扩大其边界。
+- PhaseSelectionOperand增加typed control child，prefix/catch/identity/
+  execution义务共用检查；整个group的child成功后才向依赖授予执行owner。
+  fresh checker独立重建record及phase_children，实际syntax parent、原
+  phi及最终throw owner分别保留。原inline/module roots抽取共享functional
+  forest，移除OpId大小推断，迭代拒绝cycle。公共forest/ObjectExpr/printer
+  组合完整嵌套对象，没有新writer、AST或证明/发布包装。
+- phased Commit操作范围为空，TreeBuilder改用已有control adapter取得
+  真实child分支并保留一次placement。宽跳转变体另外暴露scalar identity
+  来源校验缺口：combined origin可属于共同flow已检查的condition节点，
+  而非整个ConditionalExpr根；来源成员独立核对不变，篡改仍拒绝。
+- 三profile真实解码覆盖1/201复制、寄存器alias/拆块，以及2/3/200/201/402
+  层共享phi控制臂；201→402 scoped work小于3倍。清除child归属、input/
+  execution/owner篡改、交换条件臂及损坏combined origin均拒绝。getter后
+  DEBUGGER保留原if和操作，跨catch保留第一family在try外、第二在try内。
+  正例是完整生成源码；typed refusal和INCOMPLETE不计正例。
+- final-build-1单-j4十五目标退出0；final-tests-1定向41/41通过265.95秒。
+  新Node oracle实际4425场景通过，覆盖普通/alias/四层/DEBUGGER/不同catch，
+  变化getter值、次数/receiver、原异常身份、原型、own descriptors、fresh
+  identity以及不调用coercion hook。包含pasteboard已恢复callback、VoIP及
+  语言算术的独立配对测试；这些局部证据不代替整record或平台验收。
+- fresh arm-selection-{default,language}-pass-1各五ABC退出0，默认80complete/
+  26incomplete-source/0source-failure/46no-module，language95/11/0/46。
+  无complete新增/退化、legacy writer或任何源码字节变化；各106份源码
+  解析、输入SHA/size与corpus index核验通过。本轮因此只扩展通用能力，
+  没有减少实际五ABC的剩余缺口。日志前缀/tmp/abcd-arm-selection-。
+- 路径索引新增O(B+E+O+V+U+S) work/storage，加共同prefix/effect/支配
+  成本；分组O(S log S)，child queue逐region一次。未恢复暂停的RSS/基准，
+  不宣称内存实测达标。现有单表达式phi edge bundle、predicate表示、多次
+  观察的phi materialization、共享reconvergent tails、general staged arrays
+  及旧member/joint corridor仍有缺口，不能当成语言不变量。
+- 下一步回到真实剩余函数及表示：多次观察的合流值、SuperSpread、
+  WindowUtil NEG、实例字段/全局/完整签名/函数体整合，以及全部record的
+  独立语义/风格验收。阶段一Goal保持active，不以本次提交代替完成。
+
 ### 2026-10-05：嵌套 phased selection 贯通最终执行归属
 
 - 规则revision124，基线bbd9e959；继续25aa原分支，开始时干净。上一轮

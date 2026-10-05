@@ -58,13 +58,19 @@ struct PhaseCallReference {
   analysis::OpId callee, call;
   bool operator==(const PhaseCallReference&) const = default;
 };
+struct PhaseSelectionArm {
+  analysis::OpId parent;
+  bool operator==(const PhaseSelectionArm&) const = default;
+};
 struct PhaseSelectionOperand {
   // Direct eager operands and member arguments share control ownership. A
   // member Reference additionally retains its original callee/receiver order.
-  std::variant<analysis::OpId, PhaseCallReference> owner;
+  // Control children have a typed parent and no eager input UseId; they share
+  // original phi inputs and never claim a fabricated intermediate value.
+  std::variant<analysis::OpId, PhaseCallReference, PhaseSelectionArm> owner;
   analysis::OpId branch;
   analysis::ValueId value;
-  analysis::UseId input;
+  std::optional<analysis::UseId> input;
   std::optional<analysis::OpId> transport;
   // Syntax still consumes input at Consumer(). Inline pure dependencies and
   // checked outer selections carry the original execution/exception scope.
@@ -73,6 +79,7 @@ struct PhaseSelectionOperand {
   std::vector<PhaseCallReference> ancestors;
   [[nodiscard]] analysis::OpId Consumer() const {
     if (const auto* reference = std::get_if<PhaseCallReference>(&owner)) return reference->call;
+    if (const auto* arm = std::get_if<PhaseSelectionArm>(&owner)) return arm->parent;
     return std::get<analysis::OpId>(owner);
   }
   bool operator==(const PhaseSelectionOperand&) const = default;
@@ -117,6 +124,7 @@ struct EvaluationPlan {
   // its original control interval; member operands additionally retain the
   // shared Reference and prefix. Ordinary inline edges differ.
   std::vector<PhaseSelectionOperand> phase_selections;
+  std::vector<std::optional<analysis::OpId>> phase_children;
   // Direct and ancestor callee references, indexed by original operation.
   // Entries are separately checked; they never license a .call substitution.
   std::vector<std::optional<analysis::UseId>> phase_references;

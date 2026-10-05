@@ -2,6 +2,8 @@
 #include "evaluation_plan.h"
 #include "evaluation_liveness.h"
 #include "tree_checks.h"
+#include "phased_selection_paths.h"
+#include "phase_predicate_prefix.h"
 
 #include <algorithm>
 
@@ -30,20 +32,9 @@ std::vector<SelectionRegion> FindPhasedPhiSelections(const analysis::ValueProgra
     if (use.life == ValueLife::kLive)
       if (const auto* value = std::get_if<ValueId>(&use.owner)) ++uses[value->value];
   }
-  std::vector<OpId> roots;
   std::vector<std::uint8_t> staged;
-  budget.Array(roots, graph.ops.size()); budget.Array(staged, graph.ops.size());
-  for (std::size_t i = graph.ops.size(); i-- > 0;) {
-    budget.Step(); roots[i] = OpId{static_cast<std::uint32_t>(i)};
-    const auto& placement = evaluation.operations[i];
-    if (placement.kind != EvaluationKind::kInline || !placement.consumer) continue;
-    if (placement.consumer->value >= graph.uses.size()) throw EvaluationError::kOwnership;
-    const auto* owner = std::get_if<OpId>(&graph.uses[placement.consumer->value].owner);
-    if (owner && owner->value > i) roots[i] = roots[owner->value];
-  }
-  for (const auto& module : evaluation.modules) {
-    budget.Step(); if (module.pair.guard) roots[module.pair.guard->value] = roots[module.pair.read.value];
-  }
+  budget.Array(staged, graph.ops.size());
+  const auto roots = IndexPhaseInlineRoots(graph, evaluation, budget);
   if (evaluation.exceptions) for (std::size_t i = 0; i < evaluation.exceptions->placements.size(); ++i) {
     budget.Step();
     const auto* stage = std::get_if<ThrowCopies>(&evaluation.exceptions->placements[i]);
@@ -215,6 +206,19 @@ std::vector<SelectionRegion> FindPhasedPhiSelections(const analysis::ValueProgra
     region.conditions = std::move(conditions); region.condition_phases = std::move(phases);
     result.push_back(std::move(region));
   }
+  auto nested = NestedPhaseSelections(graph, evaluation, budget);
+  if (!nested.empty()) {
+    std::vector<std::uint8_t> claimed; budget.Array(claimed, graph.values.size());
+    for (const auto& region : nested) { budget.Step(); claimed[region.merged.value] = 1; }
+    std::size_t kept = 0;
+    for (std::size_t i = 0; i < result.size(); ++i) {
+      budget.Step(); if (claimed[result[i].merged.value]) continue;
+      if (kept != i) result[kept] = std::move(result[i]);
+      ++kept;
+    }
+    result.resize(kept);
+    for (auto& region : nested) { budget.Step(); result.push_back(std::move(region)); }
+  }
   return result;
 }
 // Bind graph candidates to the actual exception-control owner before emission.
@@ -233,12 +237,13 @@ std::vector<SelectionRegion> FindPhasedSelections(const analysis::ValueProgram& 
     if (counts[node.block.value]) { headers[node.block.value].reset(); continue; }
     counts[node.block.value] = 1; headers[node.block.value] = ControlId{static_cast<std::uint32_t>(i)};
   }
-  const auto path = [&](std::optional<ControlId> first, EdgeId edge, WorkBlockId terminal) {
+  const auto path = [&](std::optional<ControlId> first, EdgeId edge, WorkBlockId terminal, bool child) {
     for (std::size_t visited = 0; first && visited < control.nodes.size(); ++visited) {
       budget.Step(); const auto& node = control.nodes[first->value];
-      if (node.arms || node.decision || !std::holds_alternative<std::monostate>(node.synthetic) ||
+      if (!std::holds_alternative<std::monostate>(node.synthetic) ||
           node.block != graph.edges[edge.value].target) return false;
-      if (node.block == terminal) return !node.next;
+      if (node.block == terminal) return child ? node.arms.has_value() : !node.arms && !node.next;
+      if (node.arms || node.decision) return false;
       const auto& block = graph.blocks[node.block.value];
       std::optional<EdgeId> normal;
       for (std::uint32_t e = 0; e < block.edge_count; ++e) {
@@ -255,8 +260,18 @@ std::vector<SelectionRegion> FindPhasedSelections(const analysis::ValueProgram& 
   std::size_t kept = 0;
   for (auto& region : regions) {
     budget.Step(); if (!headers[region.header.value]) continue;
+    // Nested syntax needs the already checked execution owner. Discovery alone
+    // cannot relocate a condition getter out of its original selected arm.
+    if (region.parent) {
+      if (region.branch.value >= evaluation.phase_children.size() ||
+          evaluation.phase_children[region.branch.value] != region.parent) continue;
+    } else if ((std::holds_alternative<SelectionChild>(region.right) ||
+                std::holds_alternative<SelectionChild>(*region.consequent)) &&
+               evaluation.operations[region.branch.value].kind != EvaluationKind::kLogicalValue) continue;
     const auto& node = control.nodes[headers[region.header.value]->value];
-    if (!node.next || control.nodes[node.next->value].block != region.join) continue;
+    if (region.parent) {
+      if (node.next && control.nodes[node.next->value].block != region.join) continue;
+    } else if (!node.next || control.nodes[node.next->value].block != region.join) continue;
     const auto* last = &node; std::size_t phase = 0; bool bound = true;
     budget.Array(region.condition_blocks, region.condition_phases.size());
     for (std::size_t i = 1; i < region.conditions.size() && bound; ++i) {
@@ -282,8 +297,10 @@ std::vector<SelectionRegion> FindPhasedSelections(const analysis::ValueProgram& 
     const auto end = graph.blocks[last->block.value].first_edge;
     const auto shared = first_taken ? node.arms->taken : node.arms->fallthrough;
     const auto fallback = last_taken ? last->arms->fallthrough : last->arms->taken;
-    if (!path(shared, EdgeId{first.value + (first_taken ? 0U : 1U)}, *region.keep) ||
-        !path(fallback, EdgeId{end.value + (last_taken ? 1U : 0U)}, region.evaluate)) continue;
+    if (!path(shared, EdgeId{first.value + (first_taken ? 0U : 1U)}, *region.keep,
+            std::holds_alternative<SelectionChild>(*region.consequent)) ||
+        !path(fallback, EdgeId{end.value + (last_taken ? 1U : 0U)}, region.evaluate,
+            std::holds_alternative<SelectionChild>(region.right))) continue;
     region.keep_path = shared; region.evaluate_path = fallback;
     if (&regions[kept] != &region) regions[kept] = std::move(region);
     ++kept;

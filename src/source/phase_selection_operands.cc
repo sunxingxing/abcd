@@ -25,20 +25,10 @@ class OperandSelections {
     budget.Array(copied_, graph.edges.size());
     budget.Array(callees_, graph.values.size()); budget.Array(prefix_, graph.ops.size());
     budget.Array(heads_, graph.values.size()); budget.Array(next_, graph.uses.size());
-    budget.Array(roots_, graph.ops.size()); budget.Array(owners_, graph.ops.size());
+    budget.Array(owners_, graph.ops.size());
     budget.Array(transport_owners_, graph.ops.size());
     budget.Array(ancestor_checked_, graph.ops.size());
-    for (std::size_t i = graph.ops.size(); i-- > 0;) {
-      budget.Step(); roots_[i] = OpId{static_cast<std::uint32_t>(i)};
-      const auto placement = BeforeLogicalFusion(graph, plan, i);
-      if (placement.kind != EvaluationKind::kInline || !placement.consumer) continue;
-      if (placement.consumer->value >= graph.uses.size()) throw EvaluationError::kOwnership;
-      if (const auto* owner = std::get_if<OpId>(&graph.uses[placement.consumer->value].owner);
-          owner && owner->value > i) roots_[i] = roots_[owner->value];
-    }
-    for (const auto& module : plan.modules) {
-      budget.Step(); if (module.pair.guard) roots_[module.pair.guard->value] = roots_[module.pair.read.value];
-    }
+    roots_ = IndexPhaseInlineRoots(graph, plan, budget);
     for (const auto& edge : graph.edges) {
       budget.Step(); if (edge.kind != FlowEdgeKind::kException) ++incoming_[edge.target.value];
     }
@@ -77,6 +67,7 @@ class OperandSelections {
     std::optional<OpId> transport;
   };
   std::optional<OperandSelection> Operand(const SelectionRegion& region, std::size_t index) {
+    if (region.parent || !region.complete_phi) return {};
     const auto& users = uses_[region.merged.value];
     if (!users.first || users.multiple) return {};
     auto input = *users.first;
@@ -117,8 +108,8 @@ class OperandSelections {
       budget_.Step(); return a.consumer != b.consumer ? a.consumer < b.consumer : a.input < b.input;
     });
     std::vector<PhaseSelectionOperand> selected;
-    budget_.Admit(operands.size(), sizeof(PhaseSelectionOperand)); selected.reserve(operands.size());
-    budget_.Admit(selected.capacity() - operands.size(), sizeof(PhaseSelectionOperand));
+    budget_.Admit(regions.size(), sizeof(PhaseSelectionOperand)); selected.reserve(regions.size());
+    budget_.Admit(selected.capacity() - regions.size(), sizeof(PhaseSelectionOperand));
     struct Group {
       std::size_t first, end;
       std::optional<std::size_t> parent, child, sibling;
@@ -147,6 +138,10 @@ class OperandSelections {
         group.sibling = groups[*group.parent].child; groups[*group.parent].child = i;
       } else queue[finish++] = i;
     }
+    std::vector<std::optional<std::size_t>> region_indices;
+    std::vector<std::size_t> nested;
+    budget_.Array(region_indices, graph_.ops.size()); budget_.Array(nested, regions.size());
+    for (std::size_t i = 0; i < regions.size(); ++i) { budget_.Step(); region_indices[regions[i].branch.value] = i; }
     // Resolve actual source dependencies from the outside inward. A child's
     // pure syntax consumer cannot supply a throw dispatch: only a successfully
     // checked enclosing selection or the original inline root supplies its
@@ -166,6 +161,19 @@ class OperandSelections {
         auto entry = Check(region, operands[i], previous, *execution);
         if (!entry) { complete = false; break; }
         previous = region.join; selected.push_back(std::move(*entry));
+        std::size_t child_begin = 0, child_end = 1; nested[0] = operands[i].region;
+        while (child_begin < child_end && complete) {
+          budget_.Step(); const auto& parent = regions[nested[child_begin++]];
+          for (const auto* arm : {&parent.right, &*parent.consequent}) {
+            const auto* child = std::get_if<SelectionChild>(arm); if (!child) continue;
+            Require(region_indices[child->branch.value].has_value());
+            const auto index = *region_indices[child->branch.value];
+            Require(regions[index].parent == parent.branch);
+            auto entry = Child(regions[index], *execution);
+            if (!entry) { complete = false; break; }
+            nested[child_end++] = index; selected.push_back(std::move(*entry));
+          }
+        }
       }
       if (complete) complete = Inert(*previous, graph_.ops[operands[first].consumer.value].block, true);
       if (!complete) selected.resize(base);
@@ -178,7 +186,7 @@ class OperandSelections {
       }
     }
     std::sort(selected.begin(), selected.end(), [&](const auto& a, const auto& b) {
-      budget_.Step(); return a.Consumer() != b.Consumer() ? a.Consumer() < b.Consumer() : a.input < b.input;
+      budget_.Step(); return a.branch < b.branch;
     });
     return selected;
   }
@@ -191,7 +199,7 @@ class OperandSelections {
     const auto* operation = std::get_if<ValueInvoke>(&invoke.operation);
     const auto consumer_kind = BeforeLogicalFusion(graph_, plan_, consumer.value).kind;
     if (consumer_kind != EvaluationKind::kRoot && consumer_kind != EvaluationKind::kInline) return {};
-    std::variant<OpId, PhaseCallReference> owner = consumer;
+    std::variant<OpId, PhaseCallReference, PhaseSelectionArm> owner = consumer;
     std::size_t prefix_count = 0;
     if (operation) {
       if (operation->receiver != InvokeReceiver::kExplicit) return {};
@@ -217,33 +225,31 @@ class OperandSelections {
       // and repeated-input obligations were checked by the shared shape.
       if (corridors_.HasCatchCopies(consumer) ||
           (previous && !Inert(*previous, region.header, true))) return {};
-      const auto range = predicates_.ranges[region.branch.value];
-      for (std::size_t p = 0; p < range.count; ++p) {
-        budget_.Step(); const auto id = predicates_.operations[range.first + p];
-        const auto next = p + 1 == range.count ? region.branch : predicates_.operations[range.first + p + 1];
-        if (predicates_.order.after[id.value] != next ||
-            predicates_.order.before[next.value] != EffectPredecessor{id}) return {};
-        const auto& op = graph_.ops[id.value];
-        if (!predicates_.order.Before(graph_, id, graph_.ops[region.branch.value].block,
-                graph_.ops[region.branch.value].order) ||
-            (op.exceptional == ExceptionalCompletion::kMayThrow && !corridors_.SameCatch(id, execution))) return {};
-        Require(prefix_count < prefix_.size()); prefix_[prefix_count++] = id;
-      }
+      const auto count = PredicatePrefix(region, execution);
+      if (!count) return {};
+      prefix_count = *count;
     }
+    if (!Scope(region, execution, prefix_count)) return {};
+    PhaseSelectionOperand selected{owner, region.branch, region.merged, input, transport, execution};
+    budget_.Array(selected.prefix, prefix_count);
+    std::copy_n(prefix_.begin(), prefix_count, selected.prefix.begin());
+    return selected;
+  }
+  bool Scope(const SelectionRegion& region, OpId execution, std::size_t prefix_count) {
     for (std::size_t i = 0; i < prefix_count; ++i) owners_[prefix_[i].value] = region.branch;
     owners_[region.branch.value] = region.branch;
     for (const auto& condition : region.conditions) owners_[condition.branch.value] = region.branch;
     for (const auto* arm : {&region.right, &*region.consequent}) {
       // Snapshot inputs have no producer owned by the selected arm. Discovery
       // preserves their inert path, original edge use and available binding.
-      if (std::holds_alternative<SelectionSnapshot>(*arm)) continue;
+      if (std::holds_alternative<SelectionSnapshot>(*arm) || std::holds_alternative<SelectionChild>(*arm)) continue;
       const auto* input = std::get_if<ValueId>(arm);
       const auto* producer = input ? std::get_if<OpResult>(&graph_.values[input->value].origin) : nullptr;
-      if (!producer) return {};
+      if (!producer) return false;
       owners_[producer->op.value] = region.branch;
       const auto& op = graph_.ops[producer->op.value];
       if (op.exceptional == ExceptionalCompletion::kMayThrow &&
-          !corridors_.SameCatch(producer->op, execution)) return {};
+          !corridors_.SameCatch(producer->op, execution)) return false;
     }
     // A moved prefix snapshot may be consumed only by this prefix, scalar
     // decision or selected arms. In particular an earlier input of an
@@ -260,13 +266,32 @@ class OperandSelections {
         const auto* merged = std::get_if<ValueId>(&use.owner);
         const auto* edge = use.incoming ? std::get_if<EdgeId>(&*use.incoming) : nullptr;
         if (!merged || *merged != region.merged || use.role != OperandRole::kPhiInput ||
-            !edge || (*edge != region.keep_input && *edge != region.evaluate_input)) return {};
+            !edge || (*edge != region.keep_input && *edge != region.evaluate_input)) return false;
       }
     }
-    PhaseSelectionOperand selected{owner, region.branch, region.merged, input, transport, execution};
-    budget_.Array(selected.prefix, prefix_count);
-    std::copy_n(prefix_.begin(), prefix_count, selected.prefix.begin());
-    return selected;
+    return true;
+  }
+  std::optional<std::size_t> PredicatePrefix(const SelectionRegion& region, OpId execution) {
+    const auto range = predicates_.ranges[region.branch.value];
+    std::size_t count = 0;
+    for (std::size_t p = 0; p < range.count; ++p) {
+      budget_.Step(); const auto id = predicates_.operations[range.first + p];
+      const auto next = p + 1 == range.count ? region.branch : predicates_.operations[range.first + p + 1];
+      const auto& op = graph_.ops[id.value];
+      if (predicates_.order.after[id.value] != next || predicates_.order.before[next.value] != EffectPredecessor{id} ||
+          !predicates_.order.Before(graph_, id, graph_.ops[region.branch.value].block, graph_.ops[region.branch.value].order) ||
+          (op.exceptional == ExceptionalCompletion::kMayThrow && !corridors_.SameCatch(id, execution))) return {};
+      Require(count < prefix_.size()); prefix_[count++] = id;
+    }
+    return count;
+  }
+  std::optional<PhaseSelectionOperand> Child(const SelectionRegion& region, OpId execution) {
+    Require(region.parent.has_value());
+    const auto count = PredicatePrefix(region, execution);
+    if (!count || !Scope(region, execution, *count)) return {};
+    PhaseSelectionOperand result{PhaseSelectionArm{*region.parent}, region.branch, region.merged, {}, {}, execution};
+    budget_.Array(result.prefix, *count); std::copy_n(prefix_.begin(), *count, result.prefix.begin());
+    return result;
   }
   void Account() {
     budget_.Step(phase_budget_.Cost().work - accounted_work_);
@@ -467,11 +492,10 @@ void BuildPhaseSelectionOperands(const ValueProgram& graph, EvaluationPlan& plan
   budget.Array(plan.phase_transports, graph.ops.size());
   budget.Array(plan.phase_prefixes, graph.ops.size());
   budget.Array(plan.phase_references, graph.ops.size());
+  budget.Array(plan.phase_children, graph.ops.size());
   for (std::size_t i = 0; i < operands.size(); ++i) {
     budget.Step(); const auto& selected = operands[i];
-    Require(!i || operands[i - 1].Consumer() < selected.Consumer() ||
-        (operands[i - 1].Consumer() == selected.Consumer() && operands[i - 1].input < selected.input));
-    Require(!plan.logical_values[selected.value.value]);
+    Require(!i || operands[i - 1].branch < selected.branch);
     if (const auto* reference = std::get_if<PhaseCallReference>(&selected.owner)) {
       const auto callee = reference->callee.value;
       const auto input = graph.ops[reference->call.value].first_use;
@@ -490,6 +514,12 @@ void BuildPhaseSelectionOperands(const ValueProgram& graph, EvaluationPlan& plan
       budget.Step(); Require(!plan.phase_prefixes[prefix.value] && plan.operations[prefix.value].kind == EvaluationKind::kRoot);
       plan.phase_prefixes[prefix.value] = selected.branch;
     }
+    if (const auto* arm = std::get_if<PhaseSelectionArm>(&selected.owner)) {
+      Require(!selected.input && !selected.transport && !plan.phase_children[selected.branch.value]);
+      plan.phase_children[selected.branch.value] = arm->parent;
+      continue;
+    }
+    Require(selected.input && !plan.logical_values[selected.value.value]);
     plan.logical_values[selected.value.value] = selected.branch;
     const auto input = selected.transport ? graph.ops[selected.transport->value].first_use : selected.input;
     plan.operations[selected.branch.value] = {EvaluationKind::kLogicalValue, input, {}};
@@ -504,17 +534,19 @@ void BuildPhaseSelectionOperands(const ValueProgram& graph, EvaluationPlan& plan
 void VerifyPhaseSelectionOperands(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget) {
   Require(plan.logical_values.empty() || plan.logical_values.size() == graph.values.size());
   if (plan.phase_selections.empty()) {
-    Require(plan.logical_values.empty() && plan.phase_transports.empty() && plan.phase_prefixes.empty() && plan.phase_references.empty());
+    Require(plan.logical_values.empty() && plan.phase_transports.empty() && plan.phase_prefixes.empty() && plan.phase_references.empty() && plan.phase_children.empty());
     for (const auto& op : plan.operations) { budget.Step(); Require(op.kind != EvaluationKind::kLogicalValue); }
     return;
   }
   Require(!plan.logical_values.empty() && plan.phase_transports.size() == graph.ops.size() &&
-      plan.phase_prefixes.size() == graph.ops.size() && plan.phase_references.size() == graph.ops.size());
+      plan.phase_prefixes.size() == graph.ops.size() && plan.phase_references.size() == graph.ops.size() && plan.phase_children.size() == graph.ops.size());
   const auto regions = FindPhasedPhiSelections(graph, plan, budget);
   OperandSelections proof(graph, plan, budget);
   const auto expected_operands = proof.CheckAll(regions);
   Require(plan.phase_selections.size() == expected_operands.size());
-  std::vector<std::uint8_t> values, transports, branches, prefixes;
+  enum class BranchPlacement : std::uint8_t { kNone, kValue, kArm };
+  std::vector<BranchPlacement> branches;
+  std::vector<std::uint8_t> values, transports, prefixes;
   budget.Array(values, graph.values.size());
   budget.Array(transports, graph.ops.size()); budget.Array(branches, graph.ops.size());
   budget.Array(prefixes, graph.ops.size());
@@ -532,11 +564,14 @@ void VerifyPhaseSelectionOperands(const ValueProgram& graph, const EvaluationPla
     };
     if (const auto* binding = std::get_if<PhaseCallReference>(&expected->owner)) reference(*binding);
     for (const auto& ancestor : expected->ancestors) reference(ancestor);
-    Require(!values[expected->value.value]); values[expected->value.value] = 1;
-    Require(plan.logical_values[expected->value.value] == expected->branch);
+    const auto* arm = std::get_if<PhaseSelectionArm>(&expected->owner);
+    if (!arm) {
+      Require(!values[expected->value.value]); values[expected->value.value] = 1;
+      Require(plan.logical_values[expected->value.value] == expected->branch && expected->input);
+    }
     const auto& branch = plan.operations[expected->branch.value];
     const auto input = expected->transport ? graph.ops[expected->transport->value].first_use : expected->input;
-    branches[expected->branch.value] = 1;
+    branches[expected->branch.value] = arm ? BranchPlacement::kArm : BranchPlacement::kValue;
     for (const auto prefix : expected->prefix) {
       budget.Step(); Require(!prefixes[prefix.value] && plan.phase_prefixes[prefix.value] == expected->branch &&
           plan.operations[prefix.value].kind == EvaluationKind::kRoot);
@@ -549,7 +584,10 @@ void VerifyPhaseSelectionOperands(const ValueProgram& graph, const EvaluationPla
           plan.operations[op].consumer == expected->input && !plan.operations[op].temporary);
       transports[op] = 1;
     }
-    Require(branch.kind == EvaluationKind::kLogicalValue && branch.consumer == input && !branch.temporary);
+    if (arm) Require(plan.phase_children[expected->branch.value] == arm->parent &&
+        !expected->input && !expected->transport && branch.kind == EvaluationKind::kRoot && !branch.consumer);
+    else Require(!plan.phase_children[expected->branch.value] &&
+        branch.kind == EvaluationKind::kLogicalValue && branch.consumer == input && !branch.temporary);
   }
   proof.Account();
   for (std::size_t i = 0; i < values.size(); ++i) { budget.Step(); Require(plan.logical_values[i].has_value() == (values[i] != 0)); }
@@ -557,7 +595,8 @@ void VerifyPhaseSelectionOperands(const ValueProgram& graph, const EvaluationPla
     budget.Step(); Require(plan.phase_transports[i].has_value() == (transports[i] != 0));
     Require(plan.phase_prefixes[i].has_value() == (prefixes[i] != 0));
     Require(plan.phase_references[i].has_value() == (references[i] != 0));
-    Require((plan.operations[i].kind == EvaluationKind::kLogicalValue) == (branches[i] != 0));
+    Require((plan.operations[i].kind == EvaluationKind::kLogicalValue) == (branches[i] == BranchPlacement::kValue));
+    Require(plan.phase_children[i].has_value() == (branches[i] == BranchPlacement::kArm));
   }
 }
 }  // namespace abcd::source

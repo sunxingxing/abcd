@@ -243,7 +243,8 @@ target_sources(abcd_source PRIVATE src/source/loop_forest.cc)
 target_sources(abcd_source PRIVATE src/source/loop_control.cc)
 target_sources(abcd_source PRIVATE src/source/loop_exit_corridors.cc)
 target_sources(abcd_source PRIVATE src/source/literal_plan.cc)
-target_sources(abcd_source PRIVATE src/source/phased_selections.cc src/source/phase_selection_operands.cc src/source/phase_predicate_prefix.cc src/source/phased_object_operands.cc src/source/selection_truth.cc)
+target_sources(abcd_source PRIVATE src/source/phased_selections.cc
+    src/source/phased_selection_paths.cc src/source/phase_selection_operands.cc src/source/phase_predicate_prefix.cc src/source/phased_object_operands.cc src/source/selection_truth.cc)
 target_sources(abcd_source PRIVATE src/source/scope_facts.cc src/source/exception_scope_facts.cc src/source/capture_plan.cc src/source/phased_capture_input.cc)
 target_sources(abcd_source PRIVATE src/source/cell_plan.cc)
 target_sources(abcd_source PRIVATE src/source/cell_lifetime.cc src/source/phased_capture_cells.cc)
@@ -1547,6 +1548,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_all_path_literal.mjs $<TARGET_FILE:phased_literal_test> --array)
     add_test(NAME phased_object_operands_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_object_operands.mjs $<TARGET_FILE:phased_literal_test>)
+    add_test(NAME phased_arm_selection_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_arm_selection.mjs $<TARGET_FILE:phased_literal_test>)
     add_test(NAME phased_selection_predicate_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_selection_predicate.mjs $<TARGET_FILE:phased_literal_test>)
     add_test(NAME phased_predicate_prefix_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

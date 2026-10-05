@@ -7,6 +7,37 @@ namespace {
 using namespace analysis;
 void Require(bool value) { if (!value) throw EvaluationError::kOwnership; }
 }
+std::vector<OpId> IndexPhaseInlineRoots(const ValueProgram& graph,
+    const EvaluationPlan& plan, TreeCheckBudget& budget) {
+  std::vector<std::optional<OpId>> parents;
+  std::vector<OpId> roots, stack;
+  enum class Visit : std::uint8_t { kUnseen, kActive, kDone };
+  std::vector<Visit> color;
+  budget.Array(parents, graph.ops.size()); budget.Array(roots, graph.ops.size());
+  budget.Array(stack, graph.ops.size()); budget.Array(color, graph.ops.size());
+  for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+    budget.Step(); const auto placement = BeforeLogicalFusion(graph, plan, i);
+    if (placement.kind != EvaluationKind::kInline || !placement.consumer) continue;
+    Require(placement.consumer->value < graph.uses.size());
+    if (const auto* owner = std::get_if<OpId>(&graph.uses[placement.consumer->value].owner)) parents[i] = *owner;
+  }
+  for (const auto& module : plan.modules) {
+    budget.Step(); if (module.pair.guard) parents[module.pair.guard->value] = module.pair.read;
+  }
+  for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+    budget.Step(); if (color[i] != Visit::kUnseen) continue;
+    std::size_t depth = 0, at = i;
+    while (color[at] == Visit::kUnseen) {
+      budget.Step(); color[at] = Visit::kActive; stack[depth++] = OpId{static_cast<std::uint32_t>(at)};
+      if (!parents[at]) { roots[at] = OpId{static_cast<std::uint32_t>(at)}; break; }
+      Require(parents[at]->value < graph.ops.size()); at = parents[at]->value;
+    }
+    Require(!parents[at] || color[at] == Visit::kDone);
+    const auto root = roots[at];
+    while (depth) { budget.Step(); const auto id = stack[--depth]; roots[id.value] = root; color[id.value] = Visit::kDone; }
+  }
+  return roots;
+}
 PhasePredicatePrefixes IndexPhasePredicatePrefixes(const analysis::ValueProgram& graph,
     const EvaluationPlan& plan, std::span<const OpId> roots, TreeCheckBudget& budget) {
   Require(roots.size() == graph.ops.size());

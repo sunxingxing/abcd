@@ -718,10 +718,12 @@ class OperandCheck {
   }
   void LeafOrigin(ExprId id) const {
     const auto origin = tree_.expressions[id.value].origin;
-    // Identity lowering can combine provenance on its root leaf. The origin
-    // pass independently proves membership of every such retained operation.
+    const auto predicate = !flow_.branch_predicates.empty() ? flow_.branch_predicates[current_.value] : std::nullopt;
+    // Identity lowering combines provenance on its checked execution root,
+    // including a scalar predicate retained inside a conditional expression.
+    // The origin pass independently proves every retained operation's membership.
     RequireMeaning(origin == origin_ ||
-        (!edge_input_ && flow_.expressions[current_.value] == id &&
+        (!edge_input_ && (flow_.expressions[current_.value] == id || predicate == id) &&
          std::holds_alternative<CombinedOrigin>(tree_.origins[origin.value])), Error::kOrigin);
   }
   void InputAt(std::uint32_t ordinal, ExprId expression) {

@@ -309,7 +309,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // pure execution anchors never replace catch, Reference or availability proofs.
 // Rules 124 resolve nested phased operand execution through checked source
 // dependencies; pure syntax consumers retain their own input identity.
-inline constexpr std::uint32_t kRouteEvidenceRules = 124;
+// Rules 125 compose phased control children over original shared phi edges;
+// checked execution/catch owners remain distinct from child syntax parents.
+inline constexpr std::uint32_t kRouteEvidenceRules = 125;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

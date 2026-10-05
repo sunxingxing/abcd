@@ -29,6 +29,7 @@ std::vector<OpId> Owners(const ValueProgram& graph, const EvaluationPlan& plan, 
          placement.kind == EvaluationKind::kPhiInput || placement.kind == EvaluationKind::kLogicalValue) &&
         placement.consumer) parents[i] = consumer(*placement.consumer);
     if (i < plan.phase_prefixes.size() && plan.phase_prefixes[i]) parents[i] = plan.phase_prefixes[i];
+    if (i < plan.phase_children.size() && plan.phase_children[i]) parents[i] = plan.phase_children[i];
   }
   for (const auto& module : plan.modules) {
     budget.Step(); if (module.pair.guard) parents[module.pair.guard->value] = module.pair.read;
