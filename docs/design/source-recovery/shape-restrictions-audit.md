@@ -1,5 +1,21 @@
 # 按用户要求进行的恢复条件审计
 
+规则126补充：未融合的闭合条件族现在在原分支写入phi binding一次，
+后续任意观察保留该绑定，不把single eager use当成所有条件表达式的准入
+规则。单使用点融合的execution/catch检查保持独立。原位置candidate
+共用root-use、EffectOrder、真实phi输入及external observation义务；
+根predicate snapshot原位保留，child prefix留在选中的原控制臂。
+整个族先绑定真实source control，再授予prefix归属；bottom-up及parent
+闭合检查去掉缺失child/root的候选。不会因try边界绑定失败提前吞掉getter。
+独立ExpressionScopes使用原try layout核对ordered phi/prefix的实际AST
+protected/handler范围。原位置带pre-throw copies的prefix仍缺少staged
+表达式表示，不能把这个限制描述成catch语言规则。
+Phi输入索引复用已经检查的flat alias，而不是把STA/MOV当成另一次观察；
+真实UseId、可用性、全路径必达与异常图保持。字符串和其他生产者共用
+同一描述及证明，没有字符串、PC/register、样本或固定深度分派。
+多次观察已覆盖闭合条件族；general bundles/reconvergent tails/constructor
+及其他未完成表示仍开放。新能力没有恢复暂停的周期审计或RSS测试。
+
 规则125补充：phased nested-arm不再要求原phi只有两个输入。共同正常
 CFG后序路径索引保留原EdgeId，使用已有SelectionChild/partial SelectionRegion
 表达共享phi的子树；原叶边及child各有唯一表达式父归属，完整root才能

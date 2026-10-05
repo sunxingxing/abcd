@@ -4,7 +4,10 @@ const values = [undefined, null, false, true, 0, -0, 1, NaN, Infinity, '', '0', 
   Symbol('value'), {}, [], function original() {},
   {[Symbol.toPrimitive]() { assert.fail('truth tests must not coerce'); }}];
 let cases = 0;
-for (const [option, depth, barrier, dispatch] of [
+for (const [option, depth, barrier, dispatch, binding] of [
+  ['--arm-selection-binding-barrier-source', 3, true, false, true],
+  ['--arm-selection-binding-source', 3, false, false, true],
+  ['--arm-selection-binding-alias-source', 3, false, false, true],
   ['--arm-selection-source', 2, false, false],
   ['--arm-selection-alias-source', 2, false, false],
   ['--arm-selection-chain-source', 4, false, false],
@@ -12,16 +15,20 @@ for (const [option, depth, barrier, dispatch] of [
   ['--arm-selection-dispatch-source', 2, false, true],
 ]) {
   const source = execFileSync(process.argv[2], [option], {encoding: 'utf8'});
-  if (!barrier && !dispatch) {
+  if (binding && !barrier) {
+    assert.doesNotMatch(source, /if \(/);
+    assert.equal((source.match(/\(\$phi\d+ = /g) ?? []).length, 2);
+    assert.ok(source.includes('? \"suffix\" : null'));
+  } else if (!barrier && !dispatch) {
     assert.equal((source.match(/\["__proto__"\]:/g) ?? []).length, 2);
     assert.doesNotMatch(source, /\$phi|if \(|\.__proto__ = /);
   }
-  if (barrier) assert.equal((source.match(/debugger;/g) ?? []).length, 2);
+  if (barrier) assert.equal((source.match(/debugger;/g) ?? []).length, (depth - 1) * 2);
   const recovered = Function(`"use strict"; return ${source}`)();
   function selected(input) {
     let truth = input;
     for (let level = 1; level < depth && truth; ++level) truth = input.value;
-    return truth ? 7 : null;
+    return truth ? binding ? "suffix" : 7 : null;
   }
   function reference(input) {
     if (dispatch) {
@@ -50,7 +57,7 @@ for (const [option, depth, barrier, dispatch] of [
         assert.equal(Object.getPrototypeOf(result), Object.prototype);
         assert.deepEqual(Reflect.ownKeys(result), ['__proto__']);
         assert.deepEqual(Object.getOwnPropertyDescriptor(result, '__proto__'), {
-          value: second ? 7 : null, writable: true, enumerable: true, configurable: true});
+          value: second ? binding ? "suffix" : 7 : null, writable: true, enumerable: true, configurable: true});
       }
       return events;
     };

@@ -5,6 +5,7 @@
 #include "tree_checks.h"
 
 namespace abcd::source {
+struct SelectionRegion;
 // Eager expressions can assign their retained private slot at the earliest
 // eligible use. Current interval proofs are local; reference/RHS and repeated
 // input boundaries retain snapshots. No consumer opcode or predicate shape gate.
@@ -22,6 +23,10 @@ void VerifyPhasedObjectOperands(const analysis::ValueProgram&, const EvaluationP
 // Lookup by original branch on a freshly verified plan, including partial
 // control children that share their parent's original phi without a fake use.
 const PhaseSelectionOperand* FindPhaseSelectionOperand(const analysis::ValueProgram&, const EvaluationPlan&, analysis::OpId branch);
+// Candidates for original-site phi assignments. Source control must bind the
+// whole family before owning any prefixes; the AST independently checks scope.
+std::vector<PhaseSelectionOperand> FindPhaseSelectionBindings(const analysis::ValueProgram&,
+    const EvaluationPlan&, std::span<const SelectionRegion>, TreeCheckBudget&);
 // Only after fresh evaluation verification, which checks the contracted
 // diamond's effect intervals and its exclusively owned incoming values.
 bool CrossLogicalInline(const analysis::ValueProgram& graph, const EvaluationPlan& plan, analysis::OpId producer);

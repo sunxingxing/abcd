@@ -204,6 +204,10 @@ class ForestBuilder {
       Step(); Require(call.prefix.size() <= kMaxId - prefixes, Error::kResourceLimit);
       prefixes += call.prefix.size();
     }
+    for (const auto& region : logicals_) if (region.original_prefix) {
+      Step(); Require(region.original_prefix->size() <= kMaxId - prefixes, Error::kResourceLimit);
+      prefixes += region.original_prefix->size();
+    }
     constexpr std::size_t kNodesPerPrefix = 2; // Optional snapshot assignment, then sequence.
     Require(prefixes <= (kMaxId - operation_nodes - copies * kNodesPerCopy) / kNodesPerPrefix, Error::kResourceLimit);
     const auto expression_nodes = operation_nodes + copies * kNodesPerCopy + prefixes * kNodesPerPrefix;
@@ -493,9 +497,11 @@ class ForestBuilder {
       }
       return *forest_.operations[producer.value];
     };
-    if (const auto* call = FindPhaseSelectionOperand(graph_, evaluation_, region.branch)) {
-      for (auto i = call->prefix.size(); i != 0;) {
-        Step(); const auto id = call->prefix[--i]; const auto& op = graph_.ops[id.value];
+    const auto* call = FindPhaseSelectionOperand(graph_, evaluation_, region.branch);
+    const auto* prefixes = region.original_prefix ? &*region.original_prefix : call ? &call->prefix : nullptr;
+    if (prefixes) {
+      for (auto i = prefixes->size(); i != 0;) {
+        Step(); const auto id = (*prefixes)[--i]; const auto& op = graph_.ops[id.value];
         Require(forest_.operations[id.value].has_value(), Error::kOwnership);
         auto prefix = *forest_.operations[id.value];
         const TreeOriginId origin{op.origin.value};

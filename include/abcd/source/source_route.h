@@ -311,7 +311,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // dependencies; pure syntax consumers retain their own input identity.
 // Rules 125 compose phased control children over original shared phi edges;
 // checked execution/catch owners remain distinct from child syntax parents.
-inline constexpr std::uint32_t kRouteEvidenceRules = 125;
+// Rules 126 retain unfused phased selections as one original-site phi binding;
+// multiple observations preserve evaluation count and original catch scope.
+inline constexpr std::uint32_t kRouteEvidenceRules = 126;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

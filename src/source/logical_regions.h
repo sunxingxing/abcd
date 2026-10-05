@@ -76,6 +76,10 @@ struct SelectionRegion {
   // adapter binds these to condition_blocks without conflating the ID spaces.
   std::vector<analysis::WorkBlockId> condition_phases;
   std::optional<SelectionLogical> logical;
+  // Present only after the complete original-site binding family is bound to
+  // source control. Empty on the root; child prefixes stay in selected arms.
+  std::optional<std::vector<analysis::OpId>> original_prefix;
+
 };
 inline bool IsSelectionConstant(const analysis::ValueProgram& graph, analysis::OpId id) {
   if (id.value >= graph.ops.size()) return false;

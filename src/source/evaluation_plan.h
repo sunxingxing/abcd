@@ -62,12 +62,19 @@ struct PhaseSelectionArm {
   analysis::OpId parent;
   bool operator==(const PhaseSelectionArm&) const = default;
 };
+// A source-control candidate, never an eager EvaluationPlan placement.
+// The original branch writes its retained phi once. There is no eager use
+// owner and no permission to move the family into a later consumer. Control
+// binding and the independent AST catch-scope check discharge original scope.
+struct PhaseSelectionBinding {
+  bool operator==(const PhaseSelectionBinding&) const = default;
+};
 struct PhaseSelectionOperand {
   // Direct eager operands and member arguments share control ownership. A
   // member Reference additionally retains its original callee/receiver order.
   // Control children have a typed parent and no eager input UseId; they share
   // original phi inputs and never claim a fabricated intermediate value.
-  std::variant<analysis::OpId, PhaseCallReference, PhaseSelectionArm> owner;
+  std::variant<analysis::OpId, PhaseCallReference, PhaseSelectionArm, PhaseSelectionBinding> owner;
   analysis::OpId branch;
   analysis::ValueId value;
   std::optional<analysis::UseId> input;
@@ -80,6 +87,7 @@ struct PhaseSelectionOperand {
   [[nodiscard]] analysis::OpId Consumer() const {
     if (const auto* reference = std::get_if<PhaseCallReference>(&owner)) return reference->call;
     if (const auto* arm = std::get_if<PhaseSelectionArm>(&owner)) return arm->parent;
+    if (std::holds_alternative<PhaseSelectionBinding>(owner)) return branch;
     return std::get<analysis::OpId>(owner);
   }
   bool operator==(const PhaseSelectionOperand&) const = default;

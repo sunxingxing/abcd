@@ -94,7 +94,13 @@ class TreeBuilder {
         if (!logicals_.empty()) {
           logical_budget.Array(logical_branches_, graph_.ops.size());
           Grow(selection_paths_, control_.nodes.size());
-          for (std::size_t i = 0; i < logicals_.size(); ++i) logical_branches_[logicals_[i].branch.value] = i;
+          logical_budget.Array(original_prefixes_, graph_.ops.size());
+          for (std::size_t i = 0; i < logicals_.size(); ++i) {
+            logical_branches_[logicals_[i].branch.value] = i;
+            if (logicals_[i].original_prefix) for (const auto prefix : *logicals_[i].original_prefix) {
+              logical_budget.Step(); Require(!original_prefixes_[prefix.value], Error::kOwnership); original_prefixes_[prefix.value] = 1;
+            }
+          }
         }
       } catch (TreeStructureError error) {
         throw error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;
@@ -818,7 +824,8 @@ class TreeBuilder {
         tree_.operations.push_back({id, statement});
       } else {
         tree_.operations.push_back({id, *expression});
-        if ((id.value < evaluation_.phase_prefixes.size() && evaluation_.phase_prefixes[id.value]) ||
+        if ((!original_prefixes_.empty() && original_prefixes_[id.value]) ||
+            (id.value < evaluation_.phase_prefixes.size() && evaluation_.phase_prefixes[id.value]) ||
             evaluation.kind == EvaluationKind::kInline || evaluation.kind == EvaluationKind::kPredicateSnapshot || evaluation.kind == EvaluationKind::kNestedLiteral ||
             evaluation.kind == EvaluationKind::kPhiInput || evaluation.kind == EvaluationKind::kLogicalLeft) continue;
         const auto evaluated = RootExpression(id, *expression);
@@ -1175,7 +1182,7 @@ class TreeBuilder {
           if (part.next) {
             if (nested.forwarded || (nested.prefix_parent && path.include_terminal))
               selection_paths_.push_back({part.next, path.terminal, path.include_terminal});
-            else Require(nested.prefix_parent && control_.nodes[part.next->value].block == nested.join, Error::kOwnership);
+            else Require((nested.parent || nested.prefix_parent) && control_.nodes[part.next->value].block == nested.join, Error::kOwnership);
           }
         } else if (part.next) selection_paths_.push_back({part.next, path.terminal});
       }
@@ -1405,6 +1412,7 @@ class TreeBuilder {
   std::vector<DecisionPart> decision_path_;
   std::vector<ExprId> decision_roots_;
   std::vector<std::optional<std::size_t>> logical_branches_;
+  std::vector<std::uint8_t> original_prefixes_;
   const EvaluationPlan& evaluation_;
   FunctionSyntax syntax_;
   ExpressionConstants constants_;

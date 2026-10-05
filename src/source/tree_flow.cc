@@ -65,7 +65,13 @@ class FlowCheck {
         budget.Array(flow_.conditional_operations, graph.ops.size());
         budget.Array(flow_.branch_predicates, graph.ops.size());
         budget.Array(conditional_tasks_, logicals_.size());
-        for (std::size_t i = 0; i < logicals_.size(); ++i) logical_branches_[logicals_[i].branch.value] = i;
+        budget.Array(original_prefixes_, graph.ops.size());
+        for (std::size_t i = 0; i < logicals_.size(); ++i) {
+          logical_branches_[logicals_[i].branch.value] = i;
+          if (logicals_[i].original_prefix) for (const auto prefix : *logicals_[i].original_prefix) {
+            budget.Step(); Require(!original_prefixes_[prefix.value], Error::kPlacement); original_prefixes_[prefix.value] = 1;
+          }
+        }
       }
     }
     edges_.emplace(graph, evaluation, tree, flow_, declared_, assigned_, budget, sequences);
@@ -141,6 +147,7 @@ class FlowCheck {
           if (exceptions_ && op.life == analysis::ValueLife::kLive)
             edges_->Stage(id, block, child);
           if (op.life != analysis::ValueLife::kLive ||
+              (!original_prefixes_.empty() && original_prefixes_[id.value]) ||
               (id.value < evaluation_.phase_prefixes.size() && evaluation_.phase_prefixes[id.value]) ||
               evaluation_.operations[id.value].kind == EvaluationKind::kInline ||
               evaluation_.operations[id.value].kind == EvaluationKind::kPredicateSnapshot ||
@@ -639,8 +646,10 @@ class FlowCheck {
       Require((current.logical ? logical && logical->operation == current.logical->operation : conditional != nullptr) &&
           SelectionOrigin(current, task.expression), Error::kPlacement);
       auto selected_condition = current.logical ? logical->left : conditional->condition;
-      if (const auto* call = FindPhaseSelectionOperand(graph_, evaluation_, current.branch)) {
-        for (const auto prefix : call->prefix) {
+      const auto* call = FindPhaseSelectionOperand(graph_, evaluation_, current.branch);
+      const auto* prefixes = current.original_prefix ? &*current.original_prefix : call ? &call->prefix : nullptr;
+      if (prefixes) {
+        for (const auto prefix : *prefixes) {
           budget_.Step(); const auto& node = tree_.expressions[selected_condition.value];
           const auto* sequence = std::get_if<SequenceExpr>(&node.expression);
           Require(sequence && node.origin.value == graph_.ops[current.branch.value].origin.value, Error::kPlacement);
@@ -914,7 +923,8 @@ class FlowCheck {
     bool needed = false;
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       budget_.Step(); needed |= (evaluation_.operations[i].kind == EvaluationKind::kPhiInput ||
-          (i < evaluation_.phase_prefixes.size() && evaluation_.phase_prefixes[i])) && OrderedEvaluation(graph_.ops[i]);
+          ((!original_prefixes_.empty() && original_prefixes_[i]) ||
+           (i < evaluation_.phase_prefixes.size() && evaluation_.phase_prefixes[i]))) && OrderedEvaluation(graph_.ops[i]);
     }
     if (evaluation_.literals) for (const auto& object : evaluation_.literals->objects) {
       budget_.Step(); needed |= object.form == LiteralForm::kExpression &&
@@ -966,7 +976,8 @@ class FlowCheck {
       budget_.Step();
       const auto kind = evaluation_.operations[i].kind;
       if ((kind == EvaluationKind::kPhiInput || kind == EvaluationKind::kInline ||
-          (i < evaluation_.phase_prefixes.size() && evaluation_.phase_prefixes[i])) && OrderedEvaluation(graph_.ops[i])) {
+          ((!original_prefixes_.empty() && original_prefixes_[i]) ||
+           (i < evaluation_.phase_prefixes.size() && evaluation_.phase_prefixes[i]))) && OrderedEvaluation(graph_.ops[i])) {
         Require(flow_.expressions[i].has_value(), Error::kPlacement);
         check({static_cast<std::uint32_t>(i)}, *flow_.expressions[i]);
       }
@@ -1390,6 +1401,7 @@ class FlowCheck {
   std::vector<ConditionalTask> conditional_tasks_;
   std::vector<SelectionRegion> logicals_;
   std::vector<std::optional<std::size_t>> logical_branches_;
+  std::vector<std::uint8_t> original_prefixes_;
   std::vector<std::uint8_t> decision_branches_;
   std::vector<std::uint8_t> decision_expressions_;
   std::vector<std::optional<std::size_t>> placements_;

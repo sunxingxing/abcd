@@ -12,6 +12,58 @@
 
 ## 当前阶段
 
+### 2026-10-05：多次观察的条件结果采用原位置绑定
+
+- 规则revision126，基线a878d048；继续25aa原分支，开始时干净。
+  上一轮完成125实际提交，本轮针对实际表示缺口实施。默认V3及显式
+  language-arithmetic二元范围保持；全套/RSS/基准/代理/调度器继续暂停。
+- 未融合的闭合条件族复用原SelectionRegion/phi，在原分支生成一次
+  assignment，后续观察读取同一绑定。single eager use只是使用点融合
+  的义务，不再是条件表达式唯一表示；融合仍检查其最终execution/catch。
+  原位置candidate共用root-use、EffectOrder、真实phi叶及external use检查。
+  根predicate snapshot原位保留，child prefix留在原selected arm。
+- 源码控制绑定成功后才授予prefix归属，child闭合及parent pass移除缺失
+  owner的整个族。早期试验把prefix放入EvaluationPlan，跨try-wrapper
+  失败会提前吞掉getter；已改为source-control阶段归属，未绑定时保留原
+  if。builder和fresh flow独立重建regions，已有ExpressionScopes按原
+  try layout核对ordered phi/prefix实际protected/handler范围。
+- Phi输入索引复用已验证flat aliases，排除纯transport观察，保留真实
+  UseId、原availability/全路径必达/异常图。字符串等生产者通过同一
+  DescribeEvaluation和索引；普通phi边赋值也解析同一canonical生产者，
+  精确表达式对应仍核对，没有删除origin、receiver或catch检查。
+  共同conditional/sequence/assignment AST及printer复用；无新writer、
+  样本/名称/PC/register/指令模板/producer名单或固定层数准入。
+- 三profile解码测试覆盖多次观察的字符串、原输入alias、1/201复制及
+  拆块、2/3/200/201/402层；201→402 scoped work小于3倍。交换条件臂
+  fresh semantics拒绝；DEBUGGER后保留原控制和所有操作，getter值变化、
+  次数/receiver、原异常身份、catch差异、prototype/own descriptors/fresh
+  identity由实际生成源码7080场景独立执行，不以refusal/INCOMPLETE计正例。
+- final-build-2单-j4十七目标退出0。首次final-tests-1定向44项为43通过/
+  1失败（VoIP），275.86秒；fixed-five初次default到pasteboard出现两个
+  tree_stage退化。实际定位为普通边赋值仍查看raw alias生产者；共同
+  canonical来源对应修复后，repair-tests-1三项通过7.45秒，Home record
+  恢复complete。最终final-tests-2定向44/44通过272.54秒。
+- 新pasteboard_breakpoint_source_test先生成ABC-only源码，再独立加载
+  配对TypeScript；2896场景核对600/840阈值、密度、数值/类型转换边界、
+  curBp getter/setter、storage/Logger调用receiver、状态及异常顺序。
+  阈值、结果及重复display读取三种mutation被检测。风格要求一个原生
+  条件赋值、两个条件表达式及原最终state if，不以能运行代替表示验收。
+  普通构造函数/整个record/HarmonyOS平台仍未通过独立整体验收。
+- fresh selection-binding-{default,language}-pass-2各五ABC退出0。默认
+  80complete/26incomplete-source/0failure/46no-module，language95/11/0/46；
+  无complete新增/退化或legacy writer，各106份源码解析及输入SHA/size与
+  index核验通过。默认源码变化5521/8383及5980/11989；language另外
+  改变40957/4767。两个实际EntryAbility的阈值臂由三次phi写缩为一次
+  原生conditional绑定；其他四record消除部分phi生产者机械中转。
+  完成数量未增加；这些局部行为/表示证据不代替所有record独立验收。
+- 日志前缀/tmp/abcd-selection-binding-。新增closure/index/child queue
+  O(O+S)，alias census O(U+P)，加既有discovery/prefix/effect/支配/flow
+  成本；无逐phi CFG遍历、递归owner walk或新依赖。不宣称暂停的RSS实测。
+  general phi bundles、带pre-throw staging的原位置表达式、reconvergent
+  tails、general staged arrays、SuperSpread、WindowUtil NEG、实例字段/
+  全局/完整签名/函数体整合及全部record独立语义和风格验收仍开放。
+  阶段一Goal保持active，继续真实未完成记录，不以本次提交代替完成。
+
 ### 2026-10-05：phased 共享 phi 的嵌套控制臂贯通对象初始化
 
 - 规则revision125，基线05a6ee0d；继续25aa原分支和既有实现。上一轮

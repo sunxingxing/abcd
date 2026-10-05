@@ -1283,6 +1283,10 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/pasteboard_partial_callback.mjs $<TARGET_FILE:abc_semantic>
         "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc"
         "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/pasteboard_src/src/main/ets/entryability/EntryAbility.ts")
+      add_test(NAME pasteboard_breakpoint_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/pasteboard_breakpoint.mjs $<TARGET_FILE:abc_semantic>
+        "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc"
+        "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/pasteboard_src/src/main/ets/entryability/EntryAbility.ts")
     endif()
     add_test(NAME retained_selection_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/retained_selection.mjs $<TARGET_FILE:logical_regions_test>)

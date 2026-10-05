@@ -44,7 +44,8 @@ enum class PhiCopyError : std::uint8_t {
 [[nodiscard]] std::variant<std::uint64_t, PhiCopyError> VerifyPhiCopies(
     const analysis::ValueProgram& graph, const PhiCopies& plan,
     analysis::SemanticBudget budget = {});
-// Fresh PhiCopies and checked module/literal indexes are prerequisites.
+// Fresh PhiCopies, checked module/literal indexes and optional verified flat
+// alias identities are prerequisites. Alias transport keeps the original UseId.
 // Sole observations move to their original phi input only when all normal
 // paths from completion reach that edge once through inert evaluation, without
 // another copy, effect, environment change or divergence. No producer whitelist
@@ -54,7 +55,8 @@ enum class PhiCopyError : std::uint8_t {
 [[nodiscard]] std::vector<std::optional<analysis::UseId>> IndexPhiExpressionInputs(
     const analysis::ValueProgram& graph, const PhiCopies& copies,
     std::span<const std::optional<analysis::OpId>> module_guards,
-    std::span<const std::optional<analysis::OpId>> literal_ends, TreeCheckBudget& budget);
+    std::span<const std::optional<analysis::OpId>> literal_ends, TreeCheckBudget& budget,
+    std::span<const analysis::ValueId> aliases = {});
 // O(ops + definitions), no per-phi literal inventory scan. Statements/corridors
 // are excluded: only verified same-block native literal expressions qualify.
 [[nodiscard]] std::vector<std::optional<analysis::OpId>> IndexPhiLiteralEnds(

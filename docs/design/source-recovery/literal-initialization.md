@@ -1,5 +1,39 @@
 # Literal Initialization
 
+## Original-site phased selection bindings
+
+Rule 126 keeps an unfused closed selection as one assignment to its original
+phi binding. Multiple observations read that binding; they do not replay the
+predicate, getters or chosen arm. Eager operand fusion retains its own unique
+input and final execution/catch proof. It is no longer the only representation
+of a nested family.
+
+Original-site candidates reuse the inline-root, predicate-prefix, effect-order,
+leaf-identity and external-observation analyses. Root predicate snapshots stay
+at their original position. A child prefix remains inside its actual selected
+arm. The common source-control adapter binds every branch, arm, edge and join
+before granting any prefix ownership; bottom-up closure and a parent pass
+remove incomplete families. Failure therefore retains the original statements.
+No provisional prefix ownership is published in EvaluationPlan. Tree building
+and fresh flow verification independently reconstruct the same source regions.
+Their existing ExpressionScopes analysis checks each ordered phi/prefix
+expression against its original protected/handler scope. Original-site prefixes
+with pre-throw copies still need a staged-expression representation.
+
+Phi expression input indexing now consumes verified flat aliases. Original
+transport observations are excluded while the real phi UseId is retained;
+primitive strings use the same producer/availability/must-reach proof as other
+expressions. No PC/register pattern or constant producer list defines recovery.
+The common assignment, conditional and sequence AST and printer are reused.
+
+Independent decoded fixtures cover multi-observation strings, aliases, split
+blocks, 200/201/geometric nesting, mutable getter results and original exceptions.
+The paired pasteboard test generates ABC-only source first, then separately
+loads the reference to check updateBreakpoint behavior and conditional style.
+Its record and constructor remain incomplete. Remaining general phi bundles,
+shared reconvergent tails and unsupported control representations are separate
+gaps; this capability does not complete phase one.
+
 ## Nested phased control arms share their original phi
 
 Rule 125 indexes normal CFG paths in iterative successor-first order, retaining
@@ -29,7 +63,7 @@ conditions and whole objects without an alternate writer.
 This path currently composes closed acyclic expression families using existing
 single-expression phi edge bundles and the existing operation-result predicate
 representation. Direct entry/literal predicates need a representation extension;
-this is not a language restriction. Multi-observation phi materialization,
+this is not a language restriction. General phi materialization outside closed families,
 shared reconvergent expression tails, general staged arrays and legacy
 member-prefix/joint-suffix corridors retain representation gaps. No block
 identity, register/PC layout, opcode sequence or fixed nesting count supplies

@@ -168,7 +168,7 @@ std::vector<std::optional<analysis::UseId>> IndexPhiExpressionInputs(
     const analysis::ValueProgram& graph, const PhiCopies& copies,
     std::span<const std::optional<analysis::OpId>> module_guards,
     std::span<const std::optional<analysis::OpId>> literal_ends,
-    TreeCheckBudget& budget) {
+    TreeCheckBudget& budget, std::span<const analysis::ValueId> aliases) {
   using namespace analysis;
   PhiTails tails(graph, copies, budget);
   std::vector<std::uint8_t> identity_inputs;
@@ -180,16 +180,27 @@ std::vector<std::optional<analysis::UseId>> IndexPhiExpressionInputs(
   budget.Array(observations, graph.ops.size());
   std::vector<std::optional<UseId>> inputs;
   budget.Array(inputs, graph.ops.size());
+  const auto canonical = [&](const ValueOperand& operand) -> std::optional<ValueId> {
+    const auto* value = std::get_if<ValueId>(&operand);
+    return value ? std::optional{aliases.empty() ? *value : aliases[value->value]} : std::nullopt;
+  };
   // One census of original observations. Checked module guards and native
   // literal definitions belong to their expression, not additional reads.
   for (std::size_t i = 0; i < graph.uses.size(); ++i) {
     budget.Step();
     const auto& use = graph.uses[i];
     if (use.life != ValueLife::kLive || identity_inputs[i]) continue;
-    const auto* value = std::get_if<ValueId>(&use.operand);
-    const auto* producer =
-        value ? std::get_if<OpResult>(&graph.values[value->value].origin)
-              : nullptr;
+    // Checked flat SSA identities are transport, not another execution or
+    // observation. Keep the original phi UseId while indexing its producer.
+    if (!aliases.empty()) {
+      if (const auto* owner = std::get_if<OpId>(&use.owner)) {
+        const auto& op = graph.ops[owner->value];
+        if (std::holds_alternative<ValueCopy>(op.operation) && op.result &&
+            aliases[op.result->value] != *op.result) continue;
+      }
+    }
+    const auto value = canonical(use.operand);
+    const auto* producer = value ? std::get_if<OpResult>(&graph.values[value->value].origin) : nullptr;
     if (!producer) continue;
     const auto id = producer->op;
     const auto guard =
@@ -222,10 +233,8 @@ std::vector<std::optional<analysis::UseId>> IndexPhiExpressionInputs(
     const auto* edge = std::get_if<EdgeId>(&bundle.incoming);
     if (!edge) continue;
     const auto input = *bundle.expression_input;
-    const auto* value = std::get_if<ValueId>(&graph.uses[input.value].operand);
-    const auto* producer =
-        value ? std::get_if<OpResult>(&graph.values[value->value].origin)
-              : nullptr;
+    const auto value = canonical(graph.uses[input.value].operand);
+    const auto* producer = value ? std::get_if<OpResult>(&graph.values[value->value].origin) : nullptr;
     if (!producer) continue;
     const auto id = producer->op;
     const auto& op = graph.ops[id.value];

@@ -190,6 +190,47 @@ class OperandSelections {
     });
     return selected;
   }
+  std::vector<PhaseSelectionOperand> Bindings(std::span<const SelectionRegion> regions) {
+    std::vector<PhaseSelectionOperand> selected;
+    budget_.Admit(regions.size(), sizeof(PhaseSelectionOperand)); selected.reserve(regions.size());
+    budget_.Admit(selected.capacity() - regions.size(), sizeof(PhaseSelectionOperand));
+    std::vector<std::optional<std::size_t>> region_indices;
+    std::vector<std::size_t> nested;
+    budget_.Array(region_indices, graph_.ops.size()); budget_.Array(nested, regions.size());
+    for (std::size_t i = 0; i < regions.size(); ++i) { budget_.Step(); region_indices[regions[i].branch.value] = i; }
+    // Unfused families retain their original control position and phi slot.
+    // A later observation need not be eager or unique: it reads that slot.
+    // Root predicate snapshots remain before the original branch; only child
+    // prefixes are carried inside their original selected arms. Actual source
+    // control binding and ExpressionScopes independently prove the same catch.
+    std::vector<std::uint8_t> owned; budget_.Array(owned, graph_.ops.size());
+    for (const auto& entry : plan_.phase_selections) { budget_.Step(); owned[entry.branch.value] = 1; }
+    for (std::size_t i = 0; i < regions.size(); ++i) {
+      budget_.Step(); const auto& root = regions[i];
+      if (root.parent || !root.complete_phi || owned[root.branch.value]) continue;
+      const auto base = selected.size();
+      if (!Scope(root, root.branch, 0, Placement::kOriginal)) continue;
+      selected.push_back({PhaseSelectionBinding{}, root.branch, root.merged, {}, {}, root.branch});
+      std::size_t child_begin = 0, child_end = 1; nested[0] = i; bool complete = true;
+      while (child_begin < child_end && complete) {
+        budget_.Step(); const auto& parent = regions[nested[child_begin++]];
+        for (const auto* arm : {&parent.right, &*parent.consequent}) {
+          const auto* child = std::get_if<SelectionChild>(arm); if (!child) continue;
+          Require(region_indices[child->branch.value].has_value());
+          const auto index = *region_indices[child->branch.value];
+          Require(regions[index].parent == parent.branch);
+          auto entry = Child(regions[index], root.branch, Placement::kOriginal);
+          if (!entry) { complete = false; break; }
+          nested[child_end++] = index; selected.push_back(std::move(*entry));
+        }
+      }
+      if (!complete) selected.resize(base);
+      else for (auto at = base; at < selected.size(); ++at) {
+        budget_.Step(); Require(!owned[selected[at].branch.value]); owned[selected[at].branch.value] = 1;
+      }
+    }
+    return selected;
+  }
   std::optional<PhaseSelectionOperand> Check(const SelectionRegion& region, const OperandSelection& selected_operand,
       std::optional<WorkBlockId> previous, OpId execution) {
     const auto consumer = selected_operand.consumer;
@@ -199,7 +240,7 @@ class OperandSelections {
     const auto* operation = std::get_if<ValueInvoke>(&invoke.operation);
     const auto consumer_kind = BeforeLogicalFusion(graph_, plan_, consumer.value).kind;
     if (consumer_kind != EvaluationKind::kRoot && consumer_kind != EvaluationKind::kInline) return {};
-    std::variant<OpId, PhaseCallReference, PhaseSelectionArm> owner = consumer;
+    std::variant<OpId, PhaseCallReference, PhaseSelectionArm, PhaseSelectionBinding> owner = consumer;
     std::size_t prefix_count = 0;
     if (operation) {
       if (operation->receiver != InvokeReceiver::kExplicit) return {};
@@ -235,7 +276,9 @@ class OperandSelections {
     std::copy_n(prefix_.begin(), prefix_count, selected.prefix.begin());
     return selected;
   }
-  bool Scope(const SelectionRegion& region, OpId execution, std::size_t prefix_count) {
+  enum class Placement : std::uint8_t { kConsumer, kOriginal };
+  bool Scope(const SelectionRegion& region, OpId execution, std::size_t prefix_count,
+      Placement placement = Placement::kConsumer) {
     for (std::size_t i = 0; i < prefix_count; ++i) owners_[prefix_[i].value] = region.branch;
     owners_[region.branch.value] = region.branch;
     for (const auto& condition : region.conditions) owners_[condition.branch.value] = region.branch;
@@ -248,8 +291,9 @@ class OperandSelections {
       if (!producer) return false;
       owners_[producer->op.value] = region.branch;
       const auto& op = graph_.ops[producer->op.value];
-      if (op.exceptional == ExceptionalCompletion::kMayThrow &&
-          !corridors_.SameCatch(producer->op, execution)) return false;
+      if ((placement == Placement::kOriginal && corridors_.HasCatchCopies(producer->op)) ||
+          (placement == Placement::kConsumer && op.exceptional == ExceptionalCompletion::kMayThrow &&
+           !corridors_.SameCatch(producer->op, execution))) return false;
     }
     // A moved prefix snapshot may be consumed only by this prefix, scalar
     // decision or selected arms. In particular an earlier input of an
@@ -271,7 +315,7 @@ class OperandSelections {
     }
     return true;
   }
-  std::optional<std::size_t> PredicatePrefix(const SelectionRegion& region, OpId execution) {
+  std::optional<std::size_t> PredicatePrefix(const SelectionRegion& region, OpId execution, Placement placement = Placement::kConsumer) {
     const auto range = predicates_.ranges[region.branch.value];
     std::size_t count = 0;
     for (std::size_t p = 0; p < range.count; ++p) {
@@ -280,15 +324,17 @@ class OperandSelections {
       const auto& op = graph_.ops[id.value];
       if (predicates_.order.after[id.value] != next || predicates_.order.before[next.value] != EffectPredecessor{id} ||
           !predicates_.order.Before(graph_, id, graph_.ops[region.branch.value].block, graph_.ops[region.branch.value].order) ||
-          (op.exceptional == ExceptionalCompletion::kMayThrow && !corridors_.SameCatch(id, execution))) return {};
+          (placement == Placement::kOriginal && corridors_.HasCatchCopies(id)) ||
+          (placement == Placement::kConsumer && op.exceptional == ExceptionalCompletion::kMayThrow &&
+           !corridors_.SameCatch(id, execution))) return {};
       Require(count < prefix_.size()); prefix_[count++] = id;
     }
     return count;
   }
-  std::optional<PhaseSelectionOperand> Child(const SelectionRegion& region, OpId execution) {
+  std::optional<PhaseSelectionOperand> Child(const SelectionRegion& region, OpId execution, Placement placement = Placement::kConsumer) {
     Require(region.parent.has_value());
-    const auto count = PredicatePrefix(region, execution);
-    if (!count || !Scope(region, execution, *count)) return {};
+    const auto count = PredicatePrefix(region, execution, placement);
+    if (!count || !Scope(region, execution, *count, placement)) return {};
     PhaseSelectionOperand result{PhaseSelectionArm{*region.parent}, region.branch, region.merged, {}, {}, execution};
     budget_.Array(result.prefix, *count); std::copy_n(prefix_.begin(), *count, result.prefix.begin());
     return result;
@@ -480,6 +526,17 @@ class OperandSelections {
   std::vector<std::optional<OpId>> owners_, transport_owners_;
   PhasePredicatePrefixes predicates_;
 };
+}
+std::vector<PhaseSelectionOperand> FindPhaseSelectionBindings(const ValueProgram& graph,
+    const EvaluationPlan& plan, std::span<const SelectionRegion> regions, TreeCheckBudget& budget) {
+  bool needed = false;
+  for (const auto& region : regions) {
+    budget.Step(); needed |= !region.parent && region.complete_phi &&
+        plan.operations[region.branch.value].kind != EvaluationKind::kLogicalValue;
+  }
+  if (!needed) return {};
+  OperandSelections proof(graph, plan, budget);
+  auto bindings = proof.Bindings(regions); proof.Account(); return bindings;
 }
 void BuildPhaseSelectionOperands(const ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget) {
   const auto regions = FindPhasedPhiSelections(graph, plan, budget);

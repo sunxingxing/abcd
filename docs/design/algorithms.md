@@ -1738,3 +1738,22 @@ source walk, per-phi graph scan, external dependency or copied upstream code is
 introduced. Phi bundles and later control/evaluation/exception checks retain
 their existing cost and representation obligations. Scoped scaling checks do
 not establish physical RSS or full-corpus performance, which remain paused.
+
+## Original-site phased selections and alias-aware phi inputs (source rule 126)
+
+Original-site bindings reuse the existing root-use, anchored effect-order and
+phi ownership indexes. Each closed family and control child enters one bounded
+queue. Actual control binding is followed by bottom-up child closure and a
+parent-before-child keep pass: O(O+S) additional indexing/work/storage for O
+operations and S selection regions, plus existing scope/interval queries.
+No candidate owns a prefix before complete source-control binding. Existing
+AST scope indexing independently compares original try membership.
+
+The phi input census resolves already verified flat aliases in O(1) per use;
+transport operations are not additional evaluations. The all-path tail index
+and actual phi UseId stay unchanged. This adds O(U+P) work, no graph walk per
+alias, phi, or variable, and no external dependency/licensing change. It follows
+the project's existing SSA identity projection and Kahn/must-reach analyses.
+Scoped 200/201/geometric checks cover original binding families as well as
+fusion. Their existing discovery/prefix/flow costs remain part of total work;
+physical RSS and full-corpus benchmarks remain paused and unverified.

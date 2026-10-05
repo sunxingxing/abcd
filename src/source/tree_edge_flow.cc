@@ -109,8 +109,11 @@ void TreeEdgeFlow::Consume(analysis::IncomingKey incoming, const BlockStmt& bloc
     }
     if (tree_.expressions[assignment.value.value].origin != tree_.expressions[expression.value].origin) {
       const auto* operand = std::get_if<analysis::ValueOperand>(&schedule.steps[i].source);
+      // The schedule retains its original operand identity. Its source
+      // expression may be owned by the already checked canonical producer.
       const auto* value = operand ? std::get_if<analysis::ValueId>(operand) : nullptr;
-      const auto* producer = value ? std::get_if<analysis::OpResult>(&graph_.values[value->value].origin) : nullptr;
+      const auto* producer = value ? std::get_if<analysis::OpResult>(
+          &graph_.values[ResolveEvaluationValue(evaluation_, *value).value].origin) : nullptr;
       Require(producer && evaluation_.operations[producer->op.value].kind == EvaluationKind::kPhiInput &&
           flow_.expressions[producer->op.value] == assignment.value, TreeFlowError::kPlacement);
     }

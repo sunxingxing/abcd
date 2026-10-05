@@ -4,6 +4,7 @@
 #include "tree_checks.h"
 #include "phased_selection_paths.h"
 #include "phase_predicate_prefix.h"
+#include "logical_evaluation.h"
 
 #include <algorithm>
 
@@ -227,6 +228,10 @@ std::vector<SelectionRegion> FindPhasedSelections(const analysis::ValueProgram& 
     const ControlPlan& control, const EvaluationPlan& evaluation, TreeCheckBudget& budget) {
   using namespace analysis;
   auto regions = FindPhasedPhiSelections(graph, evaluation, budget);
+  auto bindings = FindPhaseSelectionBindings(graph, evaluation, regions, budget);
+  std::vector<std::optional<std::size_t>> binding_indices;
+  budget.Array(binding_indices, graph.ops.size());
+  for (std::size_t i = 0; i < bindings.size(); ++i) { budget.Step(); binding_indices[bindings[i].branch.value] = i; }
   std::vector<std::optional<ControlId>> headers;
   std::vector<std::uint8_t> counts;
   budget.Array(headers, graph.blocks.size()); budget.Array(counts, graph.blocks.size());
@@ -260,14 +265,16 @@ std::vector<SelectionRegion> FindPhasedSelections(const analysis::ValueProgram& 
   std::size_t kept = 0;
   for (auto& region : regions) {
     budget.Step(); if (!headers[region.header.value]) continue;
-    // Nested syntax needs the already checked execution owner. Discovery alone
-    // cannot relocate a condition getter out of its original selected arm.
+    // A fused family needs its checked execution owner; a retained binding
+    // needs original control ownership. Discovery grants neither placement.
     if (region.parent) {
-      if (region.branch.value >= evaluation.phase_children.size() ||
-          evaluation.phase_children[region.branch.value] != region.parent) continue;
-    } else if ((std::holds_alternative<SelectionChild>(region.right) ||
-                std::holds_alternative<SelectionChild>(*region.consequent)) &&
-               evaluation.operations[region.branch.value].kind != EvaluationKind::kLogicalValue) continue;
+      if (!binding_indices[region.branch.value] && (region.branch.value >= evaluation.phase_children.size() ||
+          evaluation.phase_children[region.branch.value] != region.parent)) continue;
+    } else if (std::holds_alternative<SelectionChild>(region.right) ||
+               std::holds_alternative<SelectionChild>(*region.consequent)) {
+      const auto* owner = FindPhaseSelectionOperand(graph, evaluation, region.branch);
+      if (!owner && !binding_indices[region.branch.value]) continue;
+    }
     const auto& node = control.nodes[headers[region.header.value]->value];
     if (region.parent) {
       if (node.next && control.nodes[node.next->value].block != region.join) continue;
@@ -302,10 +309,35 @@ std::vector<SelectionRegion> FindPhasedSelections(const analysis::ValueProgram& 
         !path(fallback, EdgeId{end.value + (last_taken ? 1U : 0U)}, region.evaluate,
             std::holds_alternative<SelectionChild>(region.right))) continue;
     region.keep_path = shared; region.evaluate_path = fallback;
+    if (const auto index = binding_indices[region.branch.value])
+      region.original_prefix = std::move(bindings[*index].prefix);
     if (&regions[kept] != &region) regions[kept] = std::move(region);
     ++kept;
   }
   regions.resize(kept);
-  return regions;
+  // No prefix is consumed before all control children have a bound owner.
+  // This also preserves old statement output across a try-wrapper boundary.
+  std::vector<std::optional<std::size_t>> indices; budget.Array(indices, graph.ops.size());
+  std::vector<std::uint8_t> closed; budget.Array(closed, regions.size());
+  for (std::size_t i = 0; i < regions.size(); ++i) { budget.Step(); indices[regions[i].branch.value] = i; }
+  for (std::size_t i = 0; i < regions.size(); ++i) {
+    budget.Step(); bool complete = true;
+    for (const auto* arm : {&regions[i].right, &*regions[i].consequent}) {
+      if (const auto* child = std::get_if<SelectionChild>(arm))
+        complete &= indices[child->branch.value] && closed[*indices[child->branch.value]];
+    }
+    closed[i] = complete;
+  }
+  for (std::size_t i = regions.size(); i-- > 0;) {
+    budget.Step(); if (const auto parent = regions[i].parent)
+      closed[i] &= indices[parent->value] && closed[*indices[parent->value]];
+  }
+  kept = 0;
+  for (std::size_t i = 0; i < regions.size(); ++i) {
+    budget.Step(); if (!closed[i]) continue;
+    if (kept != i) regions[kept] = std::move(regions[i]);
+    ++kept;
+  }
+  regions.resize(kept); return regions;
 }
 }  // namespace abcd::source
