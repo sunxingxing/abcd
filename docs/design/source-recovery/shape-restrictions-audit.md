@@ -1,5 +1,18 @@
 # 按用户要求进行的恢复条件审计
 
+规则122补充：已获得共同表达式/条件归属的phased字段RHS，现在通过
+functional source forest及投影EffectOrder组合整个对象初始化。原
+LiteralPlan仍证明身份、完整own定义和无提前观察；原allocation root/
+snapshot保留。共同全路径前驱/必达链成功后，不增加同块、相邻、局部
+opcode序列、producer名单或selection数量条件。完整CFG支配关系证明
+external leaf在allocation可用，未归属的pure late snapshot仍在原位；
+原始catch签名、执行次数及receiver义务保留。fresh verifier重建融合前
+的消费者并独立重算对象能力，复用共同ObjectExpr/TreeFlow，无新writer。
+三profile、register alias/copy/拆块、200/201/402、barrier/late leaf与
+ownership篡改，以及83个独立重复成员调用行为覆盖正反例。
+effectful predicate prefix、general staged array及旧nested/corridor仍是
+实现缺口，不能描述成语言不变量；固定五ABC输出字节本轮未改变。
+
 规则121补充：phased LiteralPath原未消费共同EffectOrder，已在分配处
 可用的RHS仍受直线fallthrough/corridor限制。现共同分析接受normal/phased
 SSA，效果方程仅沿正常边，成功Commit可用性由原始完整图支配关系证明；
@@ -41,7 +54,7 @@ header。现删除这项重复布局准入，沿用已有直线前缀及fresh Ve
 phased staged-to-native、非直线前缀，以及ObjectRoute现存物理字段顺序/
 join候选限制仍是开放的实现缺口，不把它们描述为语言不变量。
 
-最新替换状态见本页规则121及各项补充。历史候选不是当前实现的证明；
+最新替换状态见本页规则122及各项补充。历史候选不是当前实现的证明；
 未替换项继续开放，不能将局部交付称为全量审计闭合。
 
 规则114补充：ClassSelfOrder的初始化观察证明原仅扫描String/Copy，

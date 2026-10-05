@@ -450,7 +450,6 @@ void BuildPhaseSelectionOperands(const ValueProgram& graph, EvaluationPlan& plan
   plan.phase_selections = std::move(operands);
 }
 void VerifyPhaseSelectionOperands(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget) {
-  Require(plan.logical_objects.empty());
   Require(plan.logical_values.empty() || plan.logical_values.size() == graph.values.size());
   if (plan.phase_selections.empty()) {
     Require(plan.logical_values.empty() && plan.phase_transports.empty() && plan.phase_prefixes.empty() && plan.phase_references.empty());

@@ -10,14 +10,14 @@ const computedCall = process.argv[3] === '--computed-call';
 const computed = process.argv[3] === '--computed' || computedCall;
 const source = execFileSync(process.argv[2], [selectedUnary ? '--selection-unary-source' : selectionBarrier ? '--selection-barrier-source' : directRead ? '--read-source' : earlyPhi ? '--early-phi-source' : computedCall ? '--computed-call-source' : computed ? '--computed-source' : conditional ? '--conditional-source' : '--staged-source'], { encoding: 'utf8' });
 if (conditional || computed) assert.ok(source.includes(' ? ') && !source.includes('if ('));
-if ((conditional || computed) && !earlyPhi && !selectionBarrier && !selectedUnary)
-  assert.match(source, /\.__proto__ = \([^;]* \? /);
-if (selectedUnary) assert.match(source, /\.__proto__ = typeof \([^;]* \? /);
+if ((conditional || computed) && !earlyPhi && !selectionBarrier)
+  assert.match(source, /\["__proto__"\]: [^;]* \? /);
+if (selectedUnary) assert.match(source, /\["__proto__"\]: typeof \([^;]* \? /);
 if (selectionBarrier) {
   assert.ok(source.includes('.after'));
   assert.doesNotMatch(source, /\.__proto__ = \([^;]* \? /);
 }
-if (directRead) assert.match(source, /\.__proto__ = \$arg0\.value/);
+if (directRead) assert.match(source, /\["__proto__"\]: \$arg0\.value/);
 const recovered = Function(`return ${source}`)();
 // Independent bytecode behavior: the scalar fixture uses false/number zero;
 // computed fixtures explicitly apply ToBoolean. Buffered own-field definitions

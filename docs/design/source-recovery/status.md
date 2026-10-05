@@ -12,6 +12,50 @@
 
 ## 当前阶段
 
+### 2026-10-05：phased 已归属操作数组合整个原生对象
+
+- 规则revision122，基线940e62bb；继续25aa工作树及原分支。上一轮
+  已提交实际交付，本轮完成已有phased对象操作数实现。用户要求详细
+  解释算术边界，未授权修改默认验收；默认V3及显式language-arithmetic
+  二元算术模式保持。固定五ABC及独立配对源码边界保持。
+- 复用logical_objects、initializer placement及共同ObjectExpr/TreeFlow，
+  保留原allocation root/snapshot和独立LiteralPlan的身份、完整own定义、
+  无提前观察义务。已通过共同phase expression/selection证明的RHS可
+  组合整个staged对象；无新writer、private final IR或证明/发布包装。
+- source ownership以typed functional forest表示，迭代解析inline/
+  phi arm/native nested/module guard父关系并拒绝cycle。共同EffectOrder
+  按已归属source consumer投影效果，exact predecessor及must-reach
+  successor证明全normal路径完整写链；成功后不追加同块、相邻、PC/
+  opcode序列、producer名单或selection数量条件。
+- 原始完整CFG支配关系及一次canonical use census证明external leaf
+  在allocation可用；pure late snapshot不因纯净或Language就被提前。
+  throw/catch签名及catch copies保留，非throwing allocation的后续catch
+  staging仍是表示缺口。fresh verifier重建融合前consumer、重新计算
+  对象能力并检查原RHS调度，不能仅凭效果投影证明表达式执行正确。
+- forest及census增量O(O+U) work/storage，加原共同EffectOrder/异常
+  签名求解成本；容量及work计入同一budget，无逐对象CFG遍历。三profile
+  解码conditional/getter/member-call/TYPEOF，1/2/200/201/402 copies及
+  definitions、register alias，以及barrier/late snapshot/篡改负例。
+  独立Node83场景检查两次重新读取callee、正确receiver、前序效果和
+  原抛出值，computed __proto__保持own descriptor/fresh identity。
+- 最初旧实现red-source-1.log在新增whole-object断言退出134。新实现
+  首轮8/8通过48.29秒，tests-2.log；追加alias、late leaf、owner篡改及
+  重复call后9/9通过52.79秒，tests-4.log。final-build-1单-j4十五目标
+  退出0；final-tests-1.log定向36/36通过360.08秒，含Reference、
+  normal/phased literal、selection、closed fields、module default与
+  独立VoIP/ProgressBar行为。日志前缀/tmp/abcd-phased-object-operands-。
+- fresh phased-object-operands-{default,language}-pass-1各五ABC退出0；
+  默认80complete/26incomplete-source/0source-failure/46no-module，
+  language95/11/0/46，均无complete退化/新增或legacy writer。两模式
+  各106份源码解析、输入SHA/size与index核验通过，源码字节与规则121
+  完全一致。本轮能力扩展未减少固定五ABC的剩余缺口。
+- effectful predicate prefix尚无完整source ownership：真实VoIP的
+  optional scene读取仍是单独prefix，因此整个对象仍staged。general
+  staged array及旧nested/corridor、实例字段/全局/完整签名/函数体整合、
+  SuperSpread、WindowUtil NEG和所有record独立语义/风格验收仍未闭合。
+  Goal保持active；全套、扩展语料、RSS/基准、代理、调度器/DFX与
+  定期审视仍暂停，组件通过不能替代阶段一完成。
+
 ### 2026-10-05：phased 字面量复用共同必达效果链
 
 - 规则revision121，基线c84048b2；继续25aa工作树及原分支。上一轮只

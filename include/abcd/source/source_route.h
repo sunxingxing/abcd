@@ -303,7 +303,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // arguments; Reference, canonical use, effect and catch obligations remain.
 // Rules 121 share all-path normal effect order with phased literal initialization;
 // successful Commit dominance and original catch observations remain distinct.
-inline constexpr std::uint32_t kRouteEvidenceRules = 121;
+// Rules 122 compose checked phased operands into complete object initialization;
+// source effect owners, external leaves and original catch obligations are checked.
+inline constexpr std::uint32_t kRouteEvidenceRules = 122;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

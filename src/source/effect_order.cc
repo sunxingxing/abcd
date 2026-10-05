@@ -18,7 +18,8 @@ bool EffectOrder::Before(const analysis::ValueProgram& graph, analysis::OpId id,
   return completed && dominators.Dominates({completed->value}, {block.value});
 }
 std::variant<EffectOrder, analysis::ValueAvailabilityError> BuildEffectOrder(
-    const analysis::ValueProgram& graph, analysis::SemanticBudget budget) {
+    const analysis::ValueProgram& graph, analysis::SemanticBudget budget,
+    std::span<const analysis::OpId> execution_owners) {
   using namespace analysis;
   using Error = ValueAvailabilityError;
   const auto initial = budget;
@@ -34,6 +35,14 @@ std::variant<EffectOrder, analysis::ValueAvailabilityError> BuildEffectOrder(
     };
     const auto size = [&]<class T>(std::vector<T>& v, std::size_t n) {
       admit(n, sizeof(T)); v.resize(n); admit(v.capacity() - n, sizeof(T));
+    };
+    require(execution_owners.empty() || execution_owners.size() == graph.ops.size());
+    for (const auto owner : execution_owners) {
+      step(); require(owner.value < graph.ops.size() && execution_owners[owner.value] == owner);
+    }
+    const auto ordered = [&](OpId id) {
+      return HasOrderedEffect(graph.ops[id.value]) &&
+          (execution_owners.empty() || execution_owners[id.value] == id);
     };
     EffectOrder result;
     const bool phased = !graph.phases.empty();
@@ -80,7 +89,7 @@ std::variant<EffectOrder, analysis::ValueAvailabilityError> BuildEffectOrder(
       step(); const auto& block = graph.blocks[b];
       for (std::uint32_t p = 0; p < block.op_count; ++p) {
         step(); const OpId id{block.first_op.value + p};
-        if (HasOrderedEffect(graph.ops[id.value])) tails[b] = id;
+        if (ordered(id)) tails[b] = id;
       }
       for (std::uint32_t e = 0; e < block.edge_count; ++e) {
         step(); const auto& edge = graph.edges[block.first_edge.value + e];
@@ -165,7 +174,7 @@ std::variant<EffectOrder, analysis::ValueAvailabilityError> BuildEffectOrder(
       step(); auto previous = entries[*components[b]]; const auto& block = graph.blocks[b];
       for (std::uint32_t p = 0; p < block.op_count; ++p) {
         step(); const OpId id{block.first_op.value + p}; result.before[id.value] = previous;
-        if (HasOrderedEffect(graph.ops[id.value])) previous = id;
+        if (ordered(id)) previous = id;
       }
     }
     // Backwards must-reach equations stop at each block's first real effect.
@@ -187,7 +196,7 @@ std::variant<EffectOrder, analysis::ValueAvailabilityError> BuildEffectOrder(
       for (std::uint32_t p = 0; p < block.op_count; ++p) {
         step(); const OpId id{block.first_op.value + p};
         const auto& op = graph.ops[id.value];
-        if (HasOrderedEffect(op)) { heads[b] = id; break; }
+        if (ordered(id)) { heads[b] = id; break; }
         // Semantic return ends normal source execution. Phased IR may still
         // retain its valueless Commit; that synthetic successor is not a
         // missing source return or permission to execute another language event.
@@ -238,7 +247,7 @@ std::variant<EffectOrder, analysis::ValueAvailabilityError> BuildEffectOrder(
         if (const auto* next_effect = std::get_if<OpId>(&following)) result.after[id.value] = *next_effect;
         result.normal_return[id.value] = std::holds_alternative<NormalReturn>(following);
         const auto& op = graph.ops[id.value];
-        if (HasOrderedEffect(op)) following = id;
+        if (ordered(id)) following = id;
         else if (op.life == ValueLife::kLive && std::holds_alternative<ValueReturn>(op.operation)) following = NormalReturn{};
       }
     }

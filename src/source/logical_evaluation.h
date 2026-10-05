@@ -17,6 +17,8 @@ void BuildLogicalValues(const analysis::ValueProgram& graph, EvaluationPlan& pla
 void VerifyLogicalValues(const analysis::ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget);
 void BuildPhaseSelectionOperands(const analysis::ValueProgram&, EvaluationPlan&, TreeCheckBudget&);
 void VerifyPhaseSelectionOperands(const analysis::ValueProgram&, const EvaluationPlan&, TreeCheckBudget&);
+void BuildPhasedObjectOperands(const analysis::ValueProgram&, EvaluationPlan&, TreeCheckBudget&);
+void VerifyPhasedObjectOperands(const analysis::ValueProgram&, const EvaluationPlan&, TreeCheckBudget&);
 // Lookup on a freshly verified plan, following the original phi transport.
 const PhaseSelectionOperand* FindPhaseSelectionOperand(const analysis::ValueProgram&, const EvaluationPlan&, analysis::OpId branch);
 // Only after fresh evaluation verification, which checks the contracted

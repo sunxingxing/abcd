@@ -156,7 +156,7 @@ std::variant<PhaseEvaluationCost, EvaluationError> VerifyPhaseExpressions(
       const auto& op = graph.ops[i];
       const auto end = corridors.EffectsBefore(id);
       intervals[i] = corridors.Interval(id);
-      if (!Inputs(op, plan.operations[i])) continue;
+      if (!Inputs(op, BeforeLogicalFusion(graph, plan, i))) continue;
       const auto shape = DescribeEvaluation(op.operation);
       Require(shape && shape->Count() == op.use_count, Error::kInvalidGraph);
       std::optional<EffectInterval> children;

@@ -1,5 +1,53 @@
 # Literal Initialization
 
+## Phased object initialization composes checked source operands
+
+Rule 122 reuses `logical_objects` and the common ObjectExpr forest for staged
+objects whose RHS expressions have already acquired valid phase-expression or
+selection ownership. LiteralPlan remains independently checked: allocation
+identity, complete own-definition coverage and absence of early observation
+are prerequisites. The allocation retains its original root and snapshot.
+
+An iterative functional-forest walk resolves operation parents, selected phi
+arms, checked module guard/read pairs and existing native nested initializers.
+It rejects cycles and resolves each parent once. EffectOrder projects those
+already owned operations into their source consumer event; exact predecessor
+and must-reach successor identities then prove the complete definition chain
+on every normal path. Projection alone cannot authorize folding: original
+expression execution count, leaf identities and catch signatures are still
+checked by their common owners. No block identity, adjacency, producer list,
+selection count or serialization order is an additional admission condition.
+
+One canonical use census checks each external source leaf at the original
+allocation using full-flow dominance. A pure late snapshot remains late unless
+its expression has actual source ownership; language membership alone does
+not move a binding. Ordered throwing operands retain the original catch
+signature, including catch copies. A nonthrowing allocation with later catch
+staging still has the existing representation gap. Promoted definitions use
+the common initializer placement; fresh verification reconstructs pre-fusion
+statement consumers before checking RHS scheduling and recomputes the object
+candidate independently. TreeFlow and operand checks consume the existing AST.
+
+The ownership walk and census add O(O+U) work/storage, plus the existing shared
+EffectOrder and catch-signature analysis costs. Actual capacities and work are
+charged to the same invocation budget. There is no per-object CFG walk, new
+dependency, private final IR or proof/publication wrapper.
+
+Three-profile decoded fixtures compose conditional, getter, member-call and
+TYPEOF operands, including 1/2/200/201/402 copies/definitions and register
+aliases. Barriers, early observation and an unowned late snapshot remain
+negative; forged final-definition ownership and missing object ownership fail
+fresh verification. Independent JS executes 83 repeated member-call cases,
+checking separately read callees, receivers, prior effects, original thrown
+tokens, fresh identity and own descriptors. Computed `__proto__` keys retain
+data-property semantics.
+
+Unowned effectful predicate prefixes, general staged arrays and remaining
+legacy nested/corridor paths are still implementation gaps. In particular,
+the actual VoIP object's optional scene read still occurs as a separate prefix.
+The fixed five ABCs have unchanged source bytes in both contracts; this general
+capability does not close their remaining semantic or source-style acceptance.
+
 ## Phased initialization uses the shared all-path effect order
 
 Rule 121 extends the existing EffectOrder to phased SSA. Its predecessor and

@@ -773,7 +773,8 @@ void BuildLogicalValues(const ValueProgram& graph, EvaluationPlan& plan, TreeChe
 void VerifyLogicalValues(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget) {
   VerifyPredicateSnapshots(graph, plan, budget);
   if (plan.flow == EvaluationFlow::kPhased) {
-    VerifyPhaseSelectionOperands(graph, plan, budget); return;
+    VerifyPhaseSelectionOperands(graph, plan, budget);
+    VerifyPhasedObjectOperands(graph, plan, budget); return;
   }
   Require(plan.phase_selections.empty() && plan.phase_transports.empty() && plan.phase_prefixes.empty() && plan.phase_references.empty());
   Require(plan.logical_objects.empty() || plan.logical_objects.size() == graph.ops.size());

@@ -444,6 +444,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     if (flow == EvaluationFlow::kPhased) {
       TreeCheckBudget selection_budget({bytes, work});
       BuildPhaseSelectionOperands(graph, plan, selection_budget);
+      BuildPhasedObjectOperands(graph, plan, selection_budget);
       admit(selection_budget.Bytes(), 1); step(selection_budget.Work());
     }
     const auto normalized = BuildIntegerNaNs(graph, plan, {bytes, work});

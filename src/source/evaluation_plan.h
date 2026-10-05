@@ -122,9 +122,10 @@ struct EvaluationPlan {
   std::vector<std::optional<analysis::UseId>> closed_expressions;
   std::vector<std::optional<analysis::UseId>> phase_transports;
   std::vector<std::optional<analysis::OpId>> phase_prefixes;
-  // Selected buffered allocations own a chain of staged definitions across selections.
-  // Indexed by allocation, pointing to the last definition. Original local snapshots
-  // remain independently checked.
+  // Buffered allocations own a chain of staged definitions across source operands.
+  // Indexed by allocation, pointing to the last definition. Normal selected
+  // objects and phased operand composition share the native forest/placement.
+  // Original snapshots, external leaves, effects and catches remain checked.
   std::vector<std::optional<analysis::OpId>> logical_objects;
   std::vector<NaNProjection> integer_nans;
   std::optional<ClassSelfOrder> self_order;

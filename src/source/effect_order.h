@@ -39,7 +39,11 @@ struct EffectOrder {
 // Iterative Kosaraju contracts pure dependency SCCs, including pure loops;
 // effects cut dependencies. O((B+E) log B + U log U + O+V), O(B+E+O+U+V)
 // storage, including shared availability/dominance. No per-object graph walks.
+// execution_owners projects already checked operand subtrees into their source
+// consumer event. The caller owns expression, execution-count, leaf availability
+// and catch obligations; this projection alone never authorizes folding effects.
 [[nodiscard]] std::variant<EffectOrder, analysis::ValueAvailabilityError>
-BuildEffectOrder(const analysis::ValueProgram&, analysis::SemanticBudget = {});
+BuildEffectOrder(const analysis::ValueProgram&, analysis::SemanticBudget = {},
+    std::span<const analysis::OpId> execution_owners = {});
 }
 #endif
