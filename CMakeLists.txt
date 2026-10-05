@@ -1541,6 +1541,10 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_staged_literal.mjs $<TARGET_FILE:phased_literal_test> --computed-call)
     add_test(NAME phased_computed_conditional_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_staged_literal.mjs $<TARGET_FILE:phased_literal_test> --computed)
+    add_test(NAME phased_all_path_literal_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_all_path_literal.mjs $<TARGET_FILE:phased_literal_test>)
+    add_test(NAME phased_all_path_array_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_all_path_literal.mjs $<TARGET_FILE:phased_literal_test> --array)
     add_test(NAME phased_selection_unary_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_staged_literal.mjs $<TARGET_FILE:phased_literal_test> --selection-unary)
     add_test(NAME phased_selection_barrier_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

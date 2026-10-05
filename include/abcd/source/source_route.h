@@ -301,7 +301,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // native literal ownership, Reference boundaries, effect order and catch copies.
 // Rules 120 share phased control ownership across eager operands and member
 // arguments; Reference, canonical use, effect and catch obligations remain.
-inline constexpr std::uint32_t kRouteEvidenceRules = 120;
+// Rules 121 share all-path normal effect order with phased literal initialization;
+// successful Commit dominance and original catch observations remain distinct.
+inline constexpr std::uint32_t kRouteEvidenceRules = 121;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

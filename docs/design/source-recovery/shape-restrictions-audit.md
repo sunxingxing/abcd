@@ -1,5 +1,15 @@
 # 按用户要求进行的恢复条件审计
 
+规则121补充：phased LiteralPath原未消费共同EffectOrder，已在分配处
+可用的RHS仍受直线fallthrough/corridor限制。现共同分析接受normal/phased
+SSA，效果方程仅沿正常边，成功Commit可用性由原始完整图支配关系证明；
+catch entry独立开始效果历史，真实Return不被合成Commit末端遮蔽。
+对象/数组共同复用exact predecessor与must-reach链，证明成立后不追加
+同块、邻接或corridor准入。绕过、getter、可能不终止的纯循环及catch读取
+部分对象仍不能获得融合能力；原def-use、异常与catch-copy义务保留。
+late/conditional RHS、nesting corridor及空纯分支打印仍是实现缺口，
+不能将本轮交付称为全部phased对象或源码风格验收完成。
+
 规则120补充：phased selection原限定成员调用argument，普通eager消费方
 即使共同控制/唯一使用/效果/异常义务成立也只保留phi snapshot。现共用
 PhaseSelectionOperand，typed owner区分直接消费及真实成员Reference；
@@ -31,7 +41,7 @@ header。现删除这项重复布局准入，沿用已有直线前缀及fresh Ve
 phased staged-to-native、非直线前缀，以及ObjectRoute现存物理字段顺序/
 join候选限制仍是开放的实现缺口，不把它们描述为语言不变量。
 
-最新替换状态见本页规则120及各项补充。历史候选不是当前实现的证明；
+最新替换状态见本页规则121及各项补充。历史候选不是当前实现的证明；
 未替换项继续开放，不能将局部交付称为全量审计闭合。
 
 规则114补充：ClassSelfOrder的初始化观察证明原仅扫描String/Copy，

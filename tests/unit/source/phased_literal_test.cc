@@ -2,6 +2,7 @@
 #include "../../../src/analysis/value_edits.h"
 #include "../../../src/analysis/value_flow.h"
 #include "../../../src/source/evaluation_plan.h"
+#include "../../../src/source/effect_order.h"
 #include "../../../src/source/exception_tree.h"
 #include "../../../src/source/tree_semantics.h"
 #include "../../../src/source/logical_regions.h"
@@ -19,6 +20,7 @@ using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
 enum class Shape {
+  kAllPath, kAllPathArray, kAllPathBypass, kAllPathBarrier, kAllPathLoop, kAllPathCatchObserve,
   kStagedRead, kStagedReadBarrier, kStagedSelectionBarrier, kStagedSelectionUnary,
   kEarlyPhi, kLatePhi,
   kStagedCall, kStagedComputed, kStagedSelection, kStaged, kStagedObserve, kStagedCatchObserve, kReturn, kCatch, kObserve, kLate, kBranch, kCatchObserve, kNested, kNestedCatch,
@@ -31,6 +33,10 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
                   abc::Opcode unary = abc::Opcode::kNEG_IMM8, bool print = false,
                   bool forward_phi = true) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+  const bool all_path = shape == Shape::kAllPath || shape == Shape::kAllPathArray ||
+      shape == Shape::kAllPathBypass || shape == Shape::kAllPathBarrier || shape == Shape::kAllPathLoop || shape == Shape::kAllPathCatchObserve;
+  const bool array = shape == Shape::kAllPathArray;
+  const bool all_path_negative = shape == Shape::kAllPathBypass || shape == Shape::kAllPathBarrier || shape == Shape::kAllPathLoop || shape == Shape::kAllPathCatchObserve;
   const bool early_phi = shape == Shape::kEarlyPhi;
   const bool late_phi = shape == Shape::kLatePhi;
   const bool phi = early_phi || late_phi;
@@ -39,6 +45,8 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   const bool selection_barrier = shape == Shape::kStagedSelectionBarrier;
   const std::uint8_t kParameter = phi || selection_barrier ? 5 : 4;
   std::vector<std::uint8_t> bytes{op(abc::Opcode::kCREATEEMPTYOBJECT), op(abc::Opcode::kSTA_V8), kObject};
+  if (array) bytes = {op(abc::Opcode::kCREATEEMPTYARRAY_IMM8), 0,
+      op(abc::Opcode::kSTA_V8), kObject};
   const bool read = shape == Shape::kStagedRead || shape == Shape::kStagedReadBarrier;
   const bool staged = read || selection_barrier || selected_unary || shape == Shape::kStagedCall || shape == Shape::kStagedComputed || shape == Shape::kStagedSelection || shape == Shape::kStaged || shape == Shape::kStagedObserve || shape == Shape::kStagedCatchObserve;
   if (staged) bytes = {op(abc::Opcode::kCREATEOBJECTWITHBUFFER_IMM8_ID16), 0, 0, 0,
@@ -61,7 +69,7 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
       shape == Shape::kUnaryShared || shape == Shape::kUnaryUnknown;
   const bool numeric_update = unary == abc::Opcode::kTONUMERIC_IMM8 ||
       unary == abc::Opcode::kINC_IMM8 || unary == abc::Opcode::kDEC_IMM8;
-  const bool caught = phi || staged || shape == Shape::kCatch || shape == Shape::kCatchObserve ||
+  const bool caught = all_path || phi || staged || shape == Shape::kCatch || shape == Shape::kCatchObserve ||
       shape == Shape::kNestedCatch || shape == Shape::kNestedCatchObserve || shape == Shape::kNestedDispatch || shape == Shape::kNestedSnapshot || shape == Shape::kUnaryCatch ||
       dead_copy || global || lexical || binary;
   constexpr std::uint8_t kSaved = 2, kSnapshotInput = 6, kSnapshotPrelude = 4;
@@ -88,6 +96,22 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
         op(abc::Opcode::kLDAI_IMM32), 7, 0, 0, 0,
         op(abc::Opcode::kJMP_IMM8), 3, op(abc::Opcode::kLDNULL)});
   };
+  if (all_path) {
+    selection();
+    for (std::uint32_t c = 0; c < copies; ++c)
+      bytes.insert(bytes.end(), {op(abc::Opcode::kMOV_V8_V8), kObject, kObject,
+          op(abc::Opcode::kJMP_IMM8), 2});
+  }
+  std::optional<std::size_t> bypass;
+  if (shape == Shape::kAllPathBypass) {
+    bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kParameter,
+        op(abc::Opcode::kJEQZ_IMM8), 0});
+    bypass = bytes.size() - 1;
+  }
+  if (shape == Shape::kAllPathBarrier) bytes.insert(bytes.end(), {
+      op(abc::Opcode::kLDA_V8), kParameter, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 1, 0});
+  if (shape == Shape::kAllPathLoop) bytes.insert(bytes.end(), {
+      op(abc::Opcode::kLDA_V8), kParameter, op(abc::Opcode::kJEQZ_IMM8), 0});
   if (phi) {
     if (early_phi) bytes.clear();
     selection();
@@ -159,6 +183,12 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
       bytes.push_back(op(unary));
       if (unary != abc::Opcode::kISTRUE && unary != abc::Opcode::kISFALSE) bytes.push_back(0);
     }
+    if (array) {
+      constexpr unsigned kByteBits = 8;
+      bytes.insert(bytes.end(), {op(abc::Opcode::kSTOWNBYINDEX_IMM8_V8_IMM16), 0, kObject,
+          static_cast<std::uint8_t>(i), static_cast<std::uint8_t>(i >> kByteBits)});
+      continue;
+    }
     bytes.insert(bytes.end(), {op(define), 0});
     if (define == abc::Opcode::kSTOWNBYNAME_IMM16_ID16_V8) bytes.push_back(0);
     bytes.insert(bytes.end(), {0, 0, nested ? kInner : kObject});
@@ -169,14 +199,19 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   }
   if (shape == Shape::kNestedShared) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), 1,
       op(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8), 0, 0, 0, kObject});
+  if (bypass) {
+    const auto displacement = bytes.size() - (*bypass - 1);
+    test::Check(displacement <= INT8_MAX);
+    bytes[*bypass] = static_cast<std::uint8_t>(displacement);
+  }
   bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kObject, op(abc::Opcode::kRETURN)});
   const auto catch_pc = static_cast<std::uint32_t>(bytes.size());
-  if (shape == Shape::kStagedCatchObserve || shape == Shape::kCatchObserve || shape == Shape::kNestedCatchObserve) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kObject});
+  if (shape == Shape::kAllPathCatchObserve || shape == Shape::kStagedCatchObserve || shape == Shape::kCatchObserve || shape == Shape::kNestedCatchObserve) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kObject});
   if (shape == Shape::kNestedSnapshot) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kSaved});
   if (caught) bytes.push_back(op(abc::Opcode::kRETURN));
   auto body = test::Body(bytes);
   if (caught) {
-    abc::TryRegion region; region.offset = {shape == Shape::kStagedCatchObserve || shape == Shape::kCatchObserve || shape == Shape::kNestedCatchObserve || shape == Shape::kNestedDispatch || shape == Shape::kGlobalDispatch ? initialized_pc : 0};
+    abc::TryRegion region; region.offset = {shape == Shape::kAllPathCatchObserve || shape == Shape::kStagedCatchObserve || shape == Shape::kCatchObserve || shape == Shape::kNestedCatchObserve || shape == Shape::kNestedDispatch || shape == Shape::kGlobalDispatch ? initialized_pc : 0};
     if (shape == Shape::kNestedSnapshot) region.offset = {kSnapshotPrelude};
     if (lexical) region.offset = {lexical_try_begin};
     region.length = catch_pc - region.offset.value; region.handler_count = 1;
@@ -235,8 +270,35 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
       if (early_phi && forward_phi) test::Check(!ReplaceUse(graph, stored, value));
     }
   }
+  if (all_path) {
+    const auto effects = std::get<EffectOrder>(BuildEffectOrder(graph));
+    const auto allocation = std::find_if(graph.ops.begin(), graph.ops.end(), [](const auto& op) {
+      return std::holds_alternative<ValueObjectAllocation>(op.operation) ||
+          std::holds_alternative<ValueArrayAllocation>(op.operation);
+    });
+    test::Check(allocation != graph.ops.end());
+    const OpId allocated{static_cast<std::uint32_t>(allocation - graph.ops.begin())};
+    auto previous = allocated;
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      if (!std::holds_alternative<ValueOwnWrite>(graph.ops[i].operation) &&
+          !std::holds_alternative<ValueIndexedWrite>(graph.ops[i].operation)) continue;
+      const OpId id{static_cast<std::uint32_t>(i)};
+      if (shape == Shape::kAllPathBypass || shape == Shape::kAllPathBarrier || shape == Shape::kAllPathLoop)
+        test::Check(effects.after[previous.value] != id);
+      else {
+        test::Check(effects.after[previous.value] == id);
+        test::Check(effects.before[i] == EffectPredecessor{previous});
+      }
+      test::Check(effects.completions[i] && graph.phases[effects.completions[i]->value].phase == ExceptionPhase::kCommit);
+      for (std::size_t b = 0; b < graph.phases.size(); ++b)
+        if (graph.phases[b].phase == ExceptionPhase::kCatch)
+          test::Check(!effects.Before(graph, id, {static_cast<std::uint32_t>(b)}, 0));
+      previous = id;
+    }
+    test::Check(effects.normal_return[previous.value]);
+  }
   const auto result = BuildPhasedEvaluationPlan(graph);
-  if (late_phi || shape == Shape::kStagedObserve || shape == Shape::kStagedCatchObserve || shape == Shape::kObserve || shape == Shape::kBranch || shape == Shape::kCatchObserve ||
+  if (all_path_negative || late_phi || shape == Shape::kStagedObserve || shape == Shape::kStagedCatchObserve || shape == Shape::kObserve || shape == Shape::kBranch || shape == Shape::kCatchObserve ||
       shape == Shape::kNestedCatchObserve || shape == Shape::kNestedDispatch || shape == Shape::kNestedShared || shape == Shape::kNestedSnapshot ||
       shape == Shape::kUnaryShared || shape == Shape::kGlobalDispatch) {
     test::Check(std::get<EvaluationError>(result) == EvaluationError::kUnsupportedOperation);
@@ -286,6 +348,7 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   test::Check(evaluation.literals && evaluation.literals->objects.size() == (nested ? fields + 1 : 1));
   test::Check(std::holds_alternative<std::uint64_t>(VerifyPhasedEvaluationPlan(graph, evaluation)));
   const auto& literal = *evaluation.literals;
+  if (all_path) test::Check(literal.objects.front().form == LiteralForm::kExpression);
   if (selected_unary || shape == Shape::kStagedSelection || shape == Shape::kStagedComputed || shape == Shape::kStagedCall) {
     TreeCheckBudget candidate_budget({});
     const auto candidates = FindPhasedPhiSelections(graph, evaluation, candidate_budget);
@@ -356,7 +419,7 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   // The forwarded candidate tests literal/evaluation proof independence. The
   // encoded-source route retains the original phi materialization: raw import
   // correspondence is still a separate obligation, not granted by ReplaceUse.
-  if ((early_phi && !forward_phi) || staged || shape == Shape::kCatch || shape == Shape::kNestedCatch || shape == Shape::kUnaryCatch || dead_copy || shape == Shape::kGlobalCatch || lexical || binary ||
+  if (all_path || (early_phi && !forward_phi) || staged || shape == Shape::kCatch || shape == Shape::kNestedCatch || shape == Shape::kUnaryCatch || dead_copy || shape == Shape::kGlobalCatch || lexical || binary ||
       (shape == Shape::kUnaryUnknown && (unary == abc::Opcode::kTONUMERIC_IMM8 || unary == abc::Opcode::kTONUMBER_IMM8))) {
     const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
     const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
@@ -377,7 +440,13 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
     syntax.parameters.resize(1); syntax.names = {u"__proto__", u"Lookup", u"value", u"after"};
     syntax.texts = {u"suffix"};
     std::vector<ExpressionConstant> constants(graph.ops.size());
-    for (const auto id : literal.definitions) constants[id.value] = NameId{0};
+    for (const auto id : literal.definitions) {
+      if (!array) { constants[id.value] = NameId{0}; continue; }
+      const auto index = std::get<ValueIndexedWrite>(graph.ops[id.value].operation).index;
+      const auto key = std::to_string(index);
+      constants[id.value] = NameId{static_cast<std::uint32_t>(syntax.names.size())};
+      syntax.names.emplace_back(key.begin(), key.end());
+    }
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       if (std::holds_alternative<ValueString>(graph.ops[i].operation)) constants[i] = TextId{0};
       if (std::holds_alternative<ValueGlobalRead>(graph.ops[i].operation)) constants[i] = NameId{1};
@@ -418,7 +487,7 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
       std::cout << output.str();
     }
   }
-  return selected_unary || shape == Shape::kStagedSelection || shape == Shape::kStagedComputed || shape == Shape::kStagedCall ? evaluation.work : literal.work;
+  return all_path || selected_unary || shape == Shape::kStagedSelection || shape == Shape::kStagedComputed || shape == Shape::kStagedCall ? evaluation.work : literal.work;
 }
 }  // namespace
 int main(int argc, char** argv) {
@@ -430,6 +499,11 @@ int main(int argc, char** argv) {
   if (argc == 2) {
     const auto option = std::string_view(argv[1]);
     const bool update = option == "--increment-source" || option == "--decrement-source" || option == "--numeric-source";
+    if (option == "--all-path-source" || option == "--all-path-array-source") {
+      Run(abc::ProfileId::kDynamic1206, option == "--all-path-array-source" ? Shape::kAllPathArray : Shape::kAllPath,
+          201, 2, abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8, abc::Opcode::kNEG_IMM8, true);
+      return 0;
+    }
     if (option == "--read-source") {
       Run(abc::ProfileId::kDynamic1206, Shape::kStagedRead, 201, 1,
           abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8, abc::Opcode::kNEG_IMM8, true);
@@ -466,6 +540,26 @@ int main(int argc, char** argv) {
   }
   for (const auto profile : {abcd::abc::ProfileId::kDynamic1202, abcd::abc::ProfileId::kDynamic1206,
                             abcd::abc::ProfileId::kDynamic1301}) {
+    for (const auto all : {Shape::kAllPath, Shape::kAllPathArray}) {
+      std::uint64_t previous = 0;
+      for (const auto count : {1U, 2U, 200U, 201U, 402U}) {
+        const auto work = Run(profile, all, count, 2);
+        if (count == 402) test::Check(work < 3 * previous);
+        previous = work;
+      }
+      previous = 0;
+      for (const auto count : {1U, 2U, 200U, 201U, 402U}) {
+        const auto work = Run(profile, all, 1, count);
+        if (count == 402) test::Check(work < 3 * previous);
+        previous = work;
+      }
+    }
+    for (const auto copies : {1U, 201U}) {
+      Run(profile, Shape::kAllPathBypass, copies);
+      Run(profile, Shape::kAllPathBarrier, copies);
+      Run(profile, Shape::kAllPathLoop, copies);
+      Run(profile, Shape::kAllPathCatchObserve, copies);
+    }
     for (const auto count : {0U, 1U, 200U, 201U, 402U}) {
       Run(profile, Shape::kEarlyPhi, count, 2);
       Run(profile, Shape::kEarlyPhi, count, 2, abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8,

@@ -12,6 +12,51 @@
 
 ## 当前阶段
 
+### 2026-10-05：phased 字面量复用共同必达效果链
+
+- 规则revision121，基线c84048b2；继续25aa工作树及原分支。上一轮只
+  解释算术边界、核对现状，没有开发交付；本轮恢复已有未提交实现。
+  用户尚未选择修改默认算术验收标准，默认V3与显式language-arithmetic
+  模式保持。固定五ABC、输入及独立配对源码边界保持。
+- EffectOrder现接受normal/phased SSA；效果历史与下一必达事件仅沿
+  normal edges，成功Commit后的可用性仍由原始完整CFG支配关系证明。
+  method/catch entry独立开始历史，即使有正常回边也不靠入度猜入口；
+  typed ValueReturn终止源码执行，不被其合成无值Commit遮蔽。
+- LiteralPath两种模式共同索引所有字段/数组写入；RHS已在allocation
+  可用时，exact predecessor与must-reach链证明单次完整初始化，允许
+  纯分支/汇合、复制与拆块。共同证明成功后不追加same-block、相邻或
+  fallthrough corridor条件。删除Before/After中的不可达旧布局fallback；
+  原def-use、catch-copy、异常签名与表达式归属义务保留。
+- 原迭代Kosaraju/稀疏必达求解复用，增量O(B+E+O) work/storage，容量
+  计入原budget，没有逐字段CFG遍历或新证明/发布包装。三profile真实
+  解码1/2/200/201/402复制、拆块及对象/数组字段规格，完整exception
+  tree/fresh语义检查通过，201→402 evaluation work小于3倍。
+  绕过写入、getter barrier、可能不终止的纯循环和catch读取部分对象
+  都未获得融合能力；各write的Commit不能支配自身抛出时的catch。
+- 两种生成源码使用原生ObjectExpr/ArrayExpr；独立Node各19个场景
+  检查输入identity、fresh identity、prototype、own keys及descriptors。
+  computed __proto__保持own属性语义；纯控制不读取Proxy属性。
+  数组初轮tree失败来自夹具遗漏数字NameId，按已有constant boundary
+  补齐后通过，没有改变生产forest表示。
+- 最初旧实现red-tests-1.log 1/1退出8，1.03秒；新完整树/Node三项
+  tests-5.log 3/3通过45.43秒。最终final-build-1单-j4十二目标与
+  final-build-2追加三个共同消费者均退出0；final-tests-1.log定向
+  35/35通过356.67秒，含新循环反例、normal/phased literal、Reference、
+  selection、closed class fields、module default与配对VoIP/ProgressBar。
+  日志共同前缀/tmp/abcd-phased-effect-order-。
+- fresh phased-effect-order-{default,language}-pass-1各五ABC退出0；
+  默认80complete/26incomplete-source/0source-failure/46no-module，
+  language95/11/0/46，均无complete退化/新增或legacy writer。两模式
+  各106份源码解析、输入SHA/size与index核验通过，源码字节与规则120
+  完全一致。此实现扩大通用能力，但尚未减少固定五ABC的剩余缺口。
+- phased late/conditional RHS的owned-expression、nested corridor及
+  整个staged-to-native对象仍待贯通；pure空分支仍可保留在literal外，
+  未宣称源码风格全体验收。下一步需将已证明的条件操作数归属与整个
+  initializer效果区间组合，不能为它追加样本或局部图形匹配。
+  实例字段/全局/完整签名/函数体整合、SuperSpread、WindowUtil NEG及
+  所有record独立语义/风格验收仍未闭合，Goal保持active。全套、扩展
+  语料、RSS/基准、代理、调度器/DFX与定期审视仍暂停。
+
 ### 2026-10-05：共同条件操作数贯通字段及标量表达式
 
 - 规则revision120，基线d88a8e34；25aa工作树/分支保持，起始无未提交

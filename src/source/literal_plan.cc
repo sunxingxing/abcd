@@ -140,54 +140,54 @@ class LiteralPath {
       }
       const auto cost = std::get<EvaluationAliasCost>(aliases);
       budget.Admit(cost.bytes, 1); budget.Step(cost.work);
-      auto effects = BuildEffectOrder(graph, budget.Remaining());
-      if (const auto* error = std::get_if<analysis::ValueAvailabilityError>(&effects)) {
-        if (*error == analysis::ValueAvailabilityError::kResourceLimit) throw Error::kResourceLimit;
-        if (*error == analysis::ValueAvailabilityError::kWorkLimit) throw Error::kWorkLimit;
-        throw Error::kFlow;
-      }
-      effects_ = std::get<EffectOrder>(std::move(effects));
-      budget.Admit(effects_->allocated_bytes, 1); budget.Step(effects_->work);
-      // Native initialization with already available RHSs is an all-path
-      // effect chain. Forward must-reach and exact predecessor identities prove
-      // each write executes once per allocation, including arbitrary pure CFG
-      // splits/joins. Counts only bound this walk; they do not prove identity.
-      std::vector<std::optional<analysis::OpId>> owners;
-      std::vector<std::uint32_t> count;
-      budget.Size(owners, graph.ops.size()); budget.Size(count, graph.ops.size());
-      budget.Size(flat_, graph.ops.size());
-      for (std::size_t i = 0; i < graph.ops.size(); ++i) {
-        budget.Step(); const auto& op = graph.ops[i];
-        if (op.life != analysis::ValueLife::kLive || op.use_count != 2 ||
-            !(std::holds_alternative<analysis::ValueOwnWrite>(op.operation) ||
-              std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) continue;
-        const auto base = Resolve(graph.uses[op.first_use.value].operand);
-        const auto* value = std::get_if<analysis::ValueId>(&base);
-        const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
-        if (!result || !AggregateAllocation(graph.ops[result->op.value].operation)) continue;
-        owners[i] = result->op; ++count[result->op.value];
-      }
-      for (std::size_t i = 0; i < graph.ops.size(); ++i) {
-        budget.Step(); if (!count[i]) continue;
-        const auto& allocation = graph.ops[i];
-        analysis::OpId previous{static_cast<std::uint32_t>(i)};
-        bool native = true;
-        for (std::uint32_t n = 0; n < count[i]; ++n) {
-          budget.Step(); const auto next = effects_->after[previous.value];
-          if (!next || owners[next->value] != analysis::OpId{static_cast<std::uint32_t>(i)} ||
-              effects_->before[next->value] != EffectPredecessor{previous}) { native = false; break; }
-          const auto& write = graph.ops[next->value];
-          const auto rhs = Resolve(graph.uses[write.first_use.value+1].operand);
-          if (const auto* value = std::get_if<analysis::ValueId>(&rhs))
-            if (!graph.values[value->value].domain.IsLanguage() || !Available(*value, allocation)) {
-              native = false; break;
-            }
-          previous = *next;
-        }
-        flat_[i] = native;
-      }
-      return;
     }
+    auto effects = BuildEffectOrder(graph, budget.Remaining());
+    if (const auto* error = std::get_if<analysis::ValueAvailabilityError>(&effects)) {
+      if (*error == analysis::ValueAvailabilityError::kResourceLimit) throw Error::kResourceLimit;
+      if (*error == analysis::ValueAvailabilityError::kWorkLimit) throw Error::kWorkLimit;
+      throw Error::kFlow;
+    }
+    effects_ = std::get<EffectOrder>(std::move(effects));
+    budget.Admit(effects_.allocated_bytes, 1); budget.Step(effects_.work);
+    // Native initialization with already available RHSs is an all-path
+    // effect chain. Forward must-reach and exact predecessor identities prove
+    // each write executes once per allocation, including arbitrary pure CFG
+    // splits/joins. Counts only bound this walk; they do not prove identity.
+    std::vector<std::optional<analysis::OpId>> owners;
+    std::vector<std::uint32_t> count;
+    budget.Size(owners, graph.ops.size()); budget.Size(count, graph.ops.size());
+    budget.Size(flat_, graph.ops.size());
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      budget.Step(); const auto& op = graph.ops[i];
+      if (op.life != analysis::ValueLife::kLive || op.use_count != 2 ||
+          !(std::holds_alternative<analysis::ValueOwnWrite>(op.operation) ||
+            std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) continue;
+      const auto base = Resolve(graph.uses[op.first_use.value].operand);
+      const auto* value = std::get_if<analysis::ValueId>(&base);
+      const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
+      if (!result || !AggregateAllocation(graph.ops[result->op.value].operation)) continue;
+      owners[i] = result->op; ++count[result->op.value];
+    }
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      budget.Step(); if (!count[i]) continue;
+      const auto& allocation = graph.ops[i];
+      analysis::OpId previous{static_cast<std::uint32_t>(i)};
+      bool native = true;
+      for (std::uint32_t n = 0; n < count[i]; ++n) {
+        budget.Step(); const auto next = effects_.after[previous.value];
+        if (!next || owners[next->value] != analysis::OpId{static_cast<std::uint32_t>(i)} ||
+            effects_.before[next->value] != EffectPredecessor{previous}) { native = false; break; }
+        const auto& write = graph.ops[next->value];
+        const auto rhs = Resolve(graph.uses[write.first_use.value+1].operand);
+        if (const auto* value = std::get_if<analysis::ValueId>(&rhs))
+          if (!graph.values[value->value].domain.IsLanguage() || !Available(*value, allocation)) {
+            native = false; break;
+          }
+        previous = *next;
+      }
+      flat_[i] = native;
+    }
+    if (!evaluation) return;
     std::vector<std::size_t> incoming;
     std::vector<std::optional<analysis::WorkBlockId>> next;
     std::vector<std::uint8_t> previous;
@@ -230,9 +230,7 @@ class LiteralPath {
     return positions_[a.value].head && positions_[a.value].head == positions_[b.value].head;
   }
   bool Before(const analysis::ValueOp& a, const analysis::ValueOp& b) const {
-    if (effects_) return effects_->Before(graph_, Id(a), b.block, b.order);
-    if (!Same(a.block, b.block)) return false;
-    return a.block == b.block ? a.order < b.order : positions_[a.block.value].order < positions_[b.block.value].order;
+    return effects_.Before(graph_, Id(a), b.block, b.order);
   }
   bool Alias(analysis::OpId id) const {
     return (evaluation_ ? *evaluation_ : normal_aliases_).operations[id.value].kind == EvaluationKind::kAlias;
@@ -240,9 +238,15 @@ class LiteralPath {
   bool IdentityPhi(const analysis::OperandUse& use) const {
     return IsIdentityPhiInput(evaluation_ ? *evaluation_ : normal_aliases_, use);
   }
-  std::uint32_t Position(analysis::OpId id) const { return effects_ ? effects_->position[id.value] : id.value; }
+  std::uint32_t Position(analysis::OpId id) const { return effects_.position[id.value]; }
   bool NativeBefore(analysis::OpId allocation, const analysis::ValueOp& write) const {
-    if (!effects_ || flat_[allocation.value]) return Before(graph_.ops[allocation.value], write);
+    if (flat_[allocation.value]) return Before(graph_.ops[allocation.value], write);
+    if (evaluation_) {
+      const auto& origin = graph_.ops[allocation.value];
+      return Same(origin.block, write.block) &&
+          (origin.block == write.block ? origin.order < write.order :
+           positions_[origin.block.value].order < positions_[write.block.value].order);
+    }
     // Late owned expression trees retain the existing local native interval.
     // This is a representation gap; never add a layout condition after the
     // common available-RHS/all-path proof has discharged initialization.
@@ -261,12 +265,10 @@ class LiteralPath {
     const auto* edge = std::get_if<analysis::EdgeId>(&*use.incoming);
     if (!edge) return false;
     const auto& flow = graph_.edges[edge->value];
-    if (effects_) return flow.kind != analysis::FlowEdgeKind::kException &&
-        effects_->Before(graph_, Id(last), flow.source, graph_.blocks[flow.source.value].op_count);
     // No catch snapshot of a partially initialized object. Even if the only
     // remaining throw is resource exhaustion, keep this boundary conservative.
-    return flow.kind != analysis::FlowEdgeKind::kException && Same(last.block, flow.source) &&
-        positions_[last.block.value].order <= positions_[flow.source.value].order;
+    return flow.kind != analysis::FlowEdgeKind::kException &&
+        effects_.Before(graph_, Id(last), flow.source, graph_.blocks[flow.source.value].op_count);
   }
  private:
   analysis::OpId Id(const analysis::ValueOp& op) const {
@@ -282,7 +284,7 @@ class LiteralPath {
   const analysis::DominatorTree& dominators_;
   std::vector<LiteralPosition> positions_;
   EvaluationPlan normal_aliases_;
-  std::optional<EffectOrder> effects_;
+  EffectOrder effects_;
   std::vector<std::uint8_t> flat_;
 };
 analysis::OpId Allocation(const analysis::ValueProgram& graph, analysis::OpId id, const LiteralPath& path, bool same_path = true) {

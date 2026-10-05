@@ -13,7 +13,9 @@ bool HasOrderedEffect(const analysis::ValueOp& op) {
 bool EffectOrder::Before(const analysis::ValueProgram& graph, analysis::OpId id,
     analysis::WorkBlockId block, std::uint32_t order) const {
   const auto& op = graph.ops[id.value];
-  return op.block == block ? op.order < order : dominators.Dominates({op.block.value}, {block.value});
+  if (op.block == block) return op.order < order;
+  const auto completed = completions.empty() ? std::optional{op.block} : completions[id.value];
+  return completed && dominators.Dominates({completed->value}, {block.value});
 }
 std::variant<EffectOrder, analysis::ValueAvailabilityError> BuildEffectOrder(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget) {
@@ -33,11 +35,36 @@ std::variant<EffectOrder, analysis::ValueAvailabilityError> BuildEffectOrder(
     const auto size = [&]<class T>(std::vector<T>& v, std::size_t n) {
       admit(n, sizeof(T)); v.resize(n); admit(v.capacity() - n, sizeof(T));
     };
-    auto verified = VerifyValueFlow(graph, budget);
-    if (const auto* error = std::get_if<Error>(&verified)) return *error;
-    auto& flow = std::get<ValueFlowProof>(verified);
-    step(flow.work); admit(flow.allocated_bytes, 1);
-    EffectOrder result; result.dominators = std::move(flow.dominators);
+    EffectOrder result;
+    const bool phased = !graph.phases.empty();
+    if (phased) {
+      auto verified = VerifyPhasedValueFlow(graph, budget);
+      if (const auto* error = std::get_if<Error>(&verified)) return *error;
+      auto& flow = std::get<PhasedValueFlowProof>(verified);
+      step(flow.work); admit(flow.allocated_bytes, 1);
+      result.dominators = std::move(flow.dominators);
+      size(result.completions, graph.ops.size());
+      for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+        step(); const auto& op = graph.ops[i]; const auto& phase = graph.phases[op.block.value];
+        if (phase.phase != ExceptionPhase::kBefore || phase.operation != OpId{static_cast<std::uint32_t>(i)}) {
+          result.completions[i] = op.block; continue;
+        }
+        const auto& block = graph.blocks[op.block.value];
+        for (std::uint32_t e = 0; e < block.edge_count; ++e) {
+          step(); const auto& edge = graph.edges[block.first_edge.value + e];
+          if (edge.kind == FlowEdgeKind::kException) continue;
+          const auto& target = graph.phases[edge.target.value];
+          require(!result.completions[i] && target.phase == ExceptionPhase::kCommit && target.operation == phase.operation);
+          result.completions[i] = edge.target;
+        }
+      }
+    } else {
+      auto verified = VerifyValueFlow(graph, budget);
+      if (const auto* error = std::get_if<Error>(&verified)) return *error;
+      auto& flow = std::get<ValueFlowProof>(verified);
+      step(flow.work); admit(flow.allocated_bytes, 1);
+      result.dominators = std::move(flow.dominators);
+    }
     const auto count = graph.blocks.size(); require(count <= UINT32_MAX && graph.ops.size() <= UINT32_MAX);
     std::vector<std::optional<OpId>> tails;
     std::vector<std::size_t> offsets, cursor, incoming, finish, stack, next;
@@ -48,6 +75,7 @@ std::variant<EffectOrder, analysis::ValueAvailabilityError> BuildEffectOrder(
     size(result.before, graph.ops.size()); size(result.position, graph.ops.size());
     size(result.after, graph.ops.size());
     size(result.normal_return, graph.ops.size());
+    std::vector<std::size_t> successors; size(successors, count);
     for (std::size_t b = 0; b < count; ++b) {
       step(); const auto& block = graph.blocks[b];
       for (std::uint32_t p = 0; p < block.op_count; ++p) {
@@ -55,14 +83,18 @@ std::variant<EffectOrder, analysis::ValueAvailabilityError> BuildEffectOrder(
         if (HasOrderedEffect(graph.ops[id.value])) tails[b] = id;
       }
       for (std::uint32_t e = 0; e < block.edge_count; ++e) {
-        step(); const auto& edge = graph.edges[block.first_edge.value + e]; ++offsets[edge.target.value + 1];
+        step(); const auto& edge = graph.edges[block.first_edge.value + e];
+        if (edge.kind == FlowEdgeKind::kException) continue;
+        ++offsets[edge.target.value + 1]; ++successors[b];
       }
     }
     for (std::size_t b = 0; b < count; ++b) { step(); offsets[b + 1] += offsets[b]; cursor[b] = offsets[b]; }
     size(incoming, graph.edges.size());
-    for (const auto& edge : graph.edges) { step(); incoming[cursor[edge.target.value]++] = edge.source.value; }
-    // First DFS also gives a full-CFG reverse postorder for serialization.
-    // This ordering preserves dominance; it does not grant effect movement.
+    for (const auto& edge : graph.edges) {
+      step(); if (edge.kind != FlowEdgeKind::kException) incoming[cursor[edge.target.value]++] = edge.source.value;
+    }
+    // Serialize each normal component in reverse postorder. Catch entries are
+    // separate roots; this ordering never proves cross-phase effect movement.
     const auto traverse = [&](bool pure_dependencies) {
       std::size_t finished = 0;
       std::fill(visited.begin(), visited.end(), 0); step(count);
@@ -73,6 +105,7 @@ std::variant<EffectOrder, analysis::ValueAvailabilityError> BuildEffectOrder(
           step(); const auto b = stack[depth - 1]; const auto& block = graph.blocks[b];
           if ((!pure_dependencies || !tails[b]) && next[depth - 1] < block.edge_count) {
             const auto& edge = graph.edges[block.first_edge.value + next[depth - 1]++];
+            if (edge.kind == FlowEdgeKind::kException) continue;
             const auto target = edge.target.value;
             if (!visited[target]) { visited[target] = 1; stack[depth] = target; next[depth++] = 0; }
           } else { finish[finished++] = b; --depth; }
@@ -111,7 +144,11 @@ std::variant<EffectOrder, analysis::ValueAvailabilityError> BuildEffectOrder(
       step(); std::optional<EffectPredecessor> unique; bool differs = false;
       const auto merge = [&](EffectPredecessor input) { if (!unique) unique = input; else if (*unique != input) differs = true; };
       for (auto m = member_offsets[c]; m < member_offsets[c + 1]; ++m) {
-        step(); const auto b = members[m]; if (!b) merge(EntryEffect{});
+        step(); const auto b = members[m];
+        // Method and catch entries start an effect history even when a normal
+        // backedge also reaches them. Root identity does not come from indegree.
+        if (!b || (phased && graph.phases[b].phase == ExceptionPhase::kCatch) ||
+            offsets[b] == offsets[b + 1]) merge(EntryEffect{});
         for (auto p = offsets[b]; p < offsets[b + 1]; ++p) {
           step(); const auto source = incoming[p];
           if (tails[source]) merge(*tails[source]);
@@ -149,18 +186,25 @@ std::variant<EffectOrder, analysis::ValueAvailabilityError> BuildEffectOrder(
       step(); const auto& block = graph.blocks[b];
       for (std::uint32_t p = 0; p < block.op_count; ++p) {
         step(); const OpId id{block.first_op.value + p};
-        if (HasOrderedEffect(graph.ops[id.value])) { heads[b] = id; break; }
+        const auto& op = graph.ops[id.value];
+        if (HasOrderedEffect(op)) { heads[b] = id; break; }
+        // Semantic return ends normal source execution. Phased IR may still
+        // retain its valueless Commit; that synthetic successor is not a
+        // missing source return or permission to execute another language event.
+        if (op.life == ValueLife::kLive && std::holds_alternative<ValueReturn>(op.operation)) {
+          endpoints[b] = NormalReturn{}; break;
+        }
       }
-      if (heads[b] || !block.edge_count) {
+      if (heads[b] || std::holds_alternative<NormalReturn>(endpoints[b]) || !successors[b]) {
         if (heads[b]) endpoints[b] = *heads[b];
-        else for (auto p = block.op_count; p; --p) {
+        else if (!std::holds_alternative<NormalReturn>(endpoints[b])) for (auto p = block.op_count; p; --p) {
           step(); const auto& op = graph.ops[block.first_op.value+p-1];
           if (op.life != ValueLife::kLive) continue;
           if (std::holds_alternative<ValueReturn>(op.operation)) endpoints[b] = NormalReturn{};
           break;
         }
         queued[b] = 1; stack[queue_size++] = b;
-      } else pending[b] = block.edge_count;
+      } else pending[b] = successors[b];
     }
     for (std::size_t first = 0; first < queue_size; ++first) {
       step(); const auto b = stack[first];
@@ -179,9 +223,11 @@ std::variant<EffectOrder, analysis::ValueAvailabilityError> BuildEffectOrder(
     if (queued[0]) if (const auto* first = std::get_if<OpId>(&endpoints[0])) result.first = *first;
     for (std::size_t b = 0; b < count; ++b) {
       step(); const auto& block = graph.blocks[b];
-      Endpoint following; bool agrees = block.edge_count != 0;
+      Endpoint following; bool agrees = successors[b] != 0;
       for (std::uint32_t e = 0; e < block.edge_count; ++e) {
-        step(); const auto target = graph.edges[block.first_edge.value + e].target.value;
+        step(); const auto& edge = graph.edges[block.first_edge.value + e];
+        if (edge.kind == FlowEdgeKind::kException) continue;
+        const auto target = edge.target.value;
         if (!queued[target] || std::holds_alternative<std::monostate>(endpoints[target]) ||
             (!std::holds_alternative<std::monostate>(following) && following != endpoints[target])) agrees = false;
         else following = endpoints[target];

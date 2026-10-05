@@ -1,5 +1,43 @@
 # Literal Initialization
 
+## Phased initialization uses the shared all-path effect order
+
+Rule 121 extends the existing EffectOrder to phased SSA. Its predecessor and
+must-reach equations follow normal edges; original full-flow dominators prove
+availability after the operation's successful Commit. Catch entries start
+separate effect histories, even if a normal backedge reaches an entry. A typed
+ValueReturn ends normal source execution despite its synthetic valueless Commit.
+Neither a normal-only dominator tree nor a serialization position proves
+availability on an exceptional path.
+
+LiteralPath now uses this analysis for both ordinary and phased objects and
+arrays. If every RHS is a language value already available at allocation,
+exact predecessor identity and the next must-reach effect prove the definition
+chain through pure splits, joins, copies and block subdivision. Once that proof
+succeeds, no same-block, fallthrough corridor or adjacency condition is added.
+The original def-use census still rejects an observation before completion,
+including a catch copy of a partially initialized object. Catch signatures and
+expression ownership remain separate obligations of the existing phased path.
+
+Three-profile decoded regressions build complete exception trees and native
+object/array expressions with 1/2/200/201/402 copies and definitions. Bypass,
+getter barriers, potentially nonterminating pure loops and catch observations
+do not acquire this capability. Independent JS checks preserve fresh identity,
+prototype, input identity and own descriptors, including the computed
+`["__proto__"]` key. Array numeric keys are resolved by the normal constant
+boundary, rather than changing the expression forest's representation.
+
+The existing iterative Kosaraju and sparse must-reach solver are reused; the
+extension adds O(B+E+O) work/storage beyond the existing availability analysis,
+with vector capacity charged to its original budget. There is no new dependency,
+per-definition CFG walk, sample dispatch or proof/publication wrapper.
+
+Late or conditional RHS expressions still use the old owned-expression path.
+Its remaining corridor/nesting restrictions are implementation gaps; this
+extension does not complete phased staged-to-native conditional objects.
+The common printer can still retain an empty pure branch outside the literal.
+That representation gap is not evidence of complete source-style acceptance.
+
 ## Phased conditional operands share control ownership
 
 Rule 120 replaces the member-argument-only selection record with
