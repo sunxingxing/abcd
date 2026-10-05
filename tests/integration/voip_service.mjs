@@ -17,7 +17,7 @@ assert.equal(recovered.legacy_writer_used, false);
 assert.match(recovered.source, /static callId;/);
 // Native conditional syntax uses the original positive predicate; it must
 // still select the same effectful enum read on each path.
-assert.match(recovered.source, /=== "video" \? voipCall\.VoipCallType\.VOIP_CALL_VIDEO : voipCall\.VoipCallType\.VOIP_CALL_VOICE/);
+assert.match(recovered.source, /\.voipCallType = \([^;]*=== "video" \? voipCall\.VoipCallType\.VOIP_CALL_VIDEO : voipCall\.VoipCallType\.VOIP_CALL_VOICE/);
 // The same shared operand plan now owns this getter directly at the staged
 // field write. Behavior checks below still observe its order and thrown token.
 assert.match(recovered.source, /\.voipCallState = voipCall\.VoipCallState\.VOIP_CALL_STATE_RINGING/);

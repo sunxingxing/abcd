@@ -1,5 +1,39 @@
 # Literal Initialization
 
+## Phased conditional operands share control ownership
+
+Rule 120 replaces the member-argument-only selection record with
+PhaseSelectionOperand. Its typed owner distinguishes a direct eager consumer
+from the original member Reference; both use the same selection, canonical
+use census, arm ownership, transport and fresh verification. DescribeEvaluation
+owns input order, repeated-input and reference/key conversion obligations.
+Direct consumers do not invent a callee or bypass those obligations.
+
+The current placement proof covers an original join-to-consumer interval
+with no observable event or edge/catch copy. More general ordered sibling
+operand composition remains an implementation gap, not a language invariant.
+The existing normal-interval index proves this by comparing
+effect positions in O(1), rather than repeating a graph walk for each selected
+value. Throwing arms retain matching original catch signatures. Shared values
+keep snapshots; a getter between the selection and field definition also
+keeps the selected value at its original position before that getter.
+
+The common ConditionalExpr/LogicalExpr forest and tree verifier consume the
+same records. Sorting and lookup use actual consumer OpId and input UseId;
+member callee/receiver and enclosing Reference proofs remain distinct. This
+restores conditional field RHSs in the actual VoIP record, with independent
+style and paired behavior checks. Three-profile decoded fixtures also
+compose the same conditional with a TYPEOF operand, proving that the consumer
+capability is shared with scalar expressions rather than field-only lowering.
+It does not complete reconstruction of an
+entire staged object as a native object literal.
+
+Storage remains O(B+E+V+U+I+S+P+A), where S is selections, P owned prefixes
+and A ancestor references. The existing census/index is linear, selection
+sorting O(S log S), and lookup O(log S); retained vector capacities remain
+charged to the existing evaluation/tree budgets. No new dependency, per-value
+CFG traversal, sample dispatch or publication/proof wrapper is introduced.
+
 ## Staged statement operands use common expression scheduling
 
 Rule 119 distinguishes allocation-owned native literal RHSs from staged

@@ -3,11 +3,20 @@ import { execFileSync } from 'node:child_process';
 
 const earlyPhi = process.argv[3] === '--early-phi';
 const directRead = process.argv[3] === '--read';
-const conditional = earlyPhi || process.argv[3] === '--conditional';
+const selectedUnary = process.argv[3] === '--selection-unary';
+const selectionBarrier = process.argv[3] === "--selection-barrier";
+const conditional = selectedUnary || selectionBarrier || earlyPhi || process.argv[3] === '--conditional';
 const computedCall = process.argv[3] === '--computed-call';
 const computed = process.argv[3] === '--computed' || computedCall;
-const source = execFileSync(process.argv[2], [directRead ? '--read-source' : earlyPhi ? '--early-phi-source' : computedCall ? '--computed-call-source' : computed ? '--computed-source' : conditional ? '--conditional-source' : '--staged-source'], { encoding: 'utf8' });
+const source = execFileSync(process.argv[2], [selectedUnary ? '--selection-unary-source' : selectionBarrier ? '--selection-barrier-source' : directRead ? '--read-source' : earlyPhi ? '--early-phi-source' : computedCall ? '--computed-call-source' : computed ? '--computed-source' : conditional ? '--conditional-source' : '--staged-source'], { encoding: 'utf8' });
 if (conditional || computed) assert.ok(source.includes(' ? ') && !source.includes('if ('));
+if ((conditional || computed) && !earlyPhi && !selectionBarrier && !selectedUnary)
+  assert.match(source, /\.__proto__ = \([^;]* \? /);
+if (selectedUnary) assert.match(source, /\.__proto__ = typeof \([^;]* \? /);
+if (selectionBarrier) {
+  assert.ok(source.includes('.after'));
+  assert.doesNotMatch(source, /\.__proto__ = \([^;]* \? /);
+}
 if (directRead) assert.match(source, /\.__proto__ = \$arg0\.value/);
 const recovered = Function(`return ${source}`)();
 // Independent bytecode behavior: the scalar fixture uses false/number zero;
@@ -20,9 +29,11 @@ function reference(input) {
       value: input === false || input === 0 ? null : 7,
       writable: true, enumerable: true, configurable: true,
     });
-    const value = directRead ? input.value : computed ? (input ? (computedCall ? input.value() : input.value) : null) : input === false || input === 0 ? null : conditional ? 7 : input.value;
+    let value = directRead ? input.value : computed ? (input ? (computedCall ? input.value() : input.value) : null) : input === false || input === 0 ? null : conditional ? 7 : input.value;
+    if (selectedUnary) value = typeof value;
+    if (selectionBarrier) input.after;
     const result = earlyPhi ? {} : buffered;
-    for (let i = 0; i < (directRead || computed ? 1 : 2); ++i) Object.defineProperty(result, '__proto__', {
+    for (let i = 0; i < (selectedUnary || selectionBarrier || directRead || computed ? 1 : 2); ++i) Object.defineProperty(result, '__proto__', {
       value, writable: true, enumerable: true, configurable: true,
     });
     return result;
@@ -50,13 +61,13 @@ for (const payload of values) for (const fail of (computedCall ? [0, 1, 2] : [0,
       },
     });
     const result = fn(input);
-    assert.deepEqual(trace, conditional ? [] : computedCall && fail !== 1 ? [['value', true], ['call', true]] : [['value', true]]);
-    if (throws && !conditional) assert.ok(Object.is(result, payload));
+    assert.deepEqual(trace, selectionBarrier ? [['after', true]] : conditional ? [] : computedCall && fail !== 1 ? [['value', true], ['call', true]] : [['value', true]]);
+    if (throws && (!conditional || selectionBarrier)) assert.ok(Object.is(result, payload));
     else {
       assert.equal(Object.getPrototypeOf(result), Object.prototype);
       assert.deepEqual(Reflect.ownKeys(result), ['__proto__']);
       const property = Object.getOwnPropertyDescriptor(result, '__proto__');
-      assert.ok(Object.is(property.value, conditional ? 7 : payload));
+      assert.ok(Object.is(property.value, selectedUnary ? "number" : conditional ? 7 : payload));
       assert.deepEqual([property.writable, property.enumerable, property.configurable], [true, true, true]);
     }
     return result;
@@ -70,7 +81,10 @@ for (const input of [false, 0, -0, true, 1, '', 'text', 1n, Symbol('input')]) {
   ++cases;
 }
 for (const input of [undefined, null]) {
-  if (conditional || computed) assert.deepEqual(recovered(input), reference(input));
+  if (selectionBarrier) {
+    assert.ok(recovered(input) instanceof TypeError);
+    assert.ok(reference(input) instanceof TypeError);
+  } else if (conditional || computed) assert.deepEqual(recovered(input), reference(input));
   else {
     assert.ok(recovered(input) instanceof TypeError);
     assert.ok(reference(input) instanceof TypeError);

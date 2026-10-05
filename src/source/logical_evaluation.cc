@@ -662,8 +662,8 @@ class Domain {
   DomainIndex& index_; TreeCheckBudget& budget_; std::optional<SelectedObject> object_; OpId last_owner_;
 };
 }  // namespace
-const PhaseSelectionCall* FindPhaseSelectionCall(const ValueProgram& graph, const EvaluationPlan& plan, OpId branch) {
-  if (plan.flow != EvaluationFlow::kPhased || plan.phase_calls.empty() || branch.value >= plan.operations.size()) return nullptr;
+const PhaseSelectionOperand* FindPhaseSelectionOperand(const ValueProgram& graph, const EvaluationPlan& plan, OpId branch) {
+  if (plan.flow != EvaluationFlow::kPhased || plan.phase_selections.empty() || branch.value >= plan.operations.size()) return nullptr;
   auto input = plan.operations[branch.value].consumer;
   if (!input || input->value >= graph.uses.size()) return nullptr;
   auto owner = std::get_if<OpId>(&graph.uses[input->value].owner);
@@ -674,17 +674,12 @@ const PhaseSelectionCall* FindPhaseSelectionCall(const ValueProgram& graph, cons
     owner = std::get_if<OpId>(&graph.uses[input->value].owner);
   }
   if (!owner || owner->value >= graph.ops.size()) return nullptr;
-  const auto& call = graph.ops[owner->value];
-  if (!std::holds_alternative<ValueInvoke>(call.operation)) return nullptr;
-  const auto operand = ResolveEvaluationOperand(plan, graph.uses[call.first_use.value].operand);
-  const auto* value = std::get_if<ValueId>(&operand);
-  const auto* source = value ? std::get_if<OpResult>(&graph.values[value->value].origin) : nullptr;
-  if (!source) return nullptr;
-  const auto found = std::lower_bound(plan.phase_calls.begin(), plan.phase_calls.end(),
-      std::pair{source->op, *input}, [](const auto& entry, const auto& key) {
-        return entry.callee != key.first ? entry.callee < key.first : entry.argument < key.second;
+  const auto found = std::lower_bound(plan.phase_selections.begin(), plan.phase_selections.end(),
+      std::pair{*owner, *input}, [](const auto& entry, const auto& key) {
+        return entry.Consumer() != key.first ? entry.Consumer() < key.first : entry.input < key.second;
       });
-  return found != plan.phase_calls.end() && found->callee == source->op && found->branch == branch ? &*found : nullptr;
+  return found != plan.phase_selections.end() && found->Consumer() == *owner &&
+      found->input == *input && found->branch == branch ? &*found : nullptr;
 }
 bool CrossLogicalInline(const ValueProgram& graph, const EvaluationPlan& plan, OpId producer) {
   const auto& placement = plan.operations[producer.value];
@@ -778,9 +773,9 @@ void BuildLogicalValues(const ValueProgram& graph, EvaluationPlan& plan, TreeChe
 void VerifyLogicalValues(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget) {
   VerifyPredicateSnapshots(graph, plan, budget);
   if (plan.flow == EvaluationFlow::kPhased) {
-    VerifyPhaseSelectionCalls(graph, plan, budget); return;
+    VerifyPhaseSelectionOperands(graph, plan, budget); return;
   }
-  Require(plan.phase_calls.empty() && plan.phase_transports.empty() && plan.phase_prefixes.empty() && plan.phase_references.empty());
+  Require(plan.phase_selections.empty() && plan.phase_transports.empty() && plan.phase_prefixes.empty() && plan.phase_references.empty());
   Require(plan.logical_objects.empty() || plan.logical_objects.size() == graph.ops.size());
   Require(plan.logical_values.empty() || (plan.flow == EvaluationFlow::kNormal && plan.logical_values.size() == graph.values.size()));
   if (plan.logical_values.empty()) {

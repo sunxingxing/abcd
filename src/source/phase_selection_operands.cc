@@ -13,9 +13,9 @@ bool Pure(const ValueOp& op) {
   return op.normal == LanguageEffect::kNone && op.before_throw == LanguageEffect::kNone &&
       op.exceptional == ExceptionalCompletion::kImpossible;
 }
-class CallSelections {
+class OperandSelections {
  public:
-  CallSelections(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget)
+  OperandSelections(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget)
       : graph_(graph), plan_(plan), budget_(budget), phase_budget_(budget.Remaining()),
         corridors_(graph, plan, phase_budget_) {
     budget.Admit(phase_budget_.Cost().bytes, 1);
@@ -68,100 +68,117 @@ class CallSelections {
     IndexReferences();
   }
 
-  struct ArgumentSelection {
+  struct OperandSelection {
     std::size_t region;
-    OpId call;
-    UseId argument;
+    OpId consumer;
+    UseId input;
     std::optional<OpId> transport;
   };
-  std::optional<ArgumentSelection> Argument(const SelectionRegion& region, std::size_t index) {
+  std::optional<OperandSelection> Operand(const SelectionRegion& region, std::size_t index) {
     const auto& users = uses_[region.merged.value];
     if (!users.first || users.multiple) return {};
-    auto argument = *users.first;
+    auto input = *users.first;
     std::optional<OpId> transport;
-    if (const auto* owner = std::get_if<OpId>(&graph_.uses[argument.value].owner)) {
+    if (const auto* owner = std::get_if<OpId>(&graph_.uses[input.value].owner)) {
       const auto& op = graph_.ops[owner->value];
       if (std::holds_alternative<ValueCopy>(op.operation)) {
-        if (!Pure(op) || !op.result || op.use_count != 1 || op.first_use != argument ||
+        if (!Pure(op) || !op.result || op.use_count != 1 || op.first_use != input ||
             BeforeLogicalFusion(graph_, plan_, owner->value).kind != EvaluationKind::kRoot) return {};
         const auto& next = uses_[op.result->value];
         if (!next.first || next.multiple) return {};
-        transport = *owner; argument = *next.first;
+        transport = *owner; input = *next.first;
       }
     }
-    const auto& use = graph_.uses[argument.value];
-    const auto* call = std::get_if<OpId>(&use.owner);
-    if (!call || use.role != OperandRole::kArgument) return {};
-    return ArgumentSelection{index, *call, argument, transport};
+    const auto& use = graph_.uses[input.value];
+    const auto* consumer = std::get_if<OpId>(&use.owner);
+    if (!consumer) return {};
+    const auto& operation = graph_.ops[consumer->value];
+    const auto shape = DescribeEvaluation(operation.operation);
+    if (!shape || shape->inputs != InputEvaluation::kEager || shape->NeedsSnapshot(use.role) ||
+        use.role == OperandRole::kReceiver || PredicateSnapshot(graph_, operation, use.operand)) return {};
+    const bool member_argument = use.role == OperandRole::kArgument &&
+        std::holds_alternative<ValueInvoke>(operation.operation);
+    if (!member_argument && !PhaseCorridors::ConsumesOperands(operation.operation)) return {};
+    return OperandSelection{index, *consumer, input, transport};
   }
-  std::vector<PhaseSelectionCall> CheckAll(std::span<const SelectionRegion> regions) {
-    std::vector<ArgumentSelection> arguments;
-    budget_.Admit(regions.size(), sizeof(ArgumentSelection)); arguments.reserve(regions.size());
-    budget_.Admit(arguments.capacity() - regions.size(), sizeof(ArgumentSelection));
+  std::vector<PhaseSelectionOperand> CheckAll(std::span<const SelectionRegion> regions) {
+    std::vector<OperandSelection> operands;
+    budget_.Admit(regions.size(), sizeof(OperandSelection)); operands.reserve(regions.size());
+    budget_.Admit(operands.capacity() - regions.size(), sizeof(OperandSelection));
     for (std::size_t i = 0; i < regions.size(); ++i) {
-      budget_.Step(); if (auto argument = Argument(regions[i], i)) {
-        arguments.push_back(*argument);
-        if (argument->transport) transport_owners_[argument->transport->value] = argument->call;
+      budget_.Step(); if (auto input = Operand(regions[i], i)) {
+        operands.push_back(*input);
+        if (input->transport) transport_owners_[input->transport->value] = input->consumer;
       }
     }
-    std::sort(arguments.begin(), arguments.end(), [&](const auto& a, const auto& b) {
-      budget_.Step(); return a.call != b.call ? a.call < b.call : a.argument < b.argument;
+    std::sort(operands.begin(), operands.end(), [&](const auto& a, const auto& b) {
+      budget_.Step(); return a.consumer != b.consumer ? a.consumer < b.consumer : a.input < b.input;
     });
-    std::vector<PhaseSelectionCall> selected;
-    budget_.Admit(arguments.size(), sizeof(PhaseSelectionCall)); selected.reserve(arguments.size());
-    budget_.Admit(selected.capacity() - arguments.size(), sizeof(PhaseSelectionCall));
-    // One reference encloses all its selected arguments. Walk disjoint segments
-    // in actual operand order, not one callee-to-call path per phi. The last
-    // join must reach the call without another observable event or copy.
-    for (std::size_t first = 0; first < arguments.size();) {
+    std::vector<PhaseSelectionOperand> selected;
+    budget_.Admit(operands.size(), sizeof(PhaseSelectionOperand)); selected.reserve(operands.size());
+    budget_.Admit(selected.capacity() - operands.size(), sizeof(PhaseSelectionOperand));
+    // Jointly own selections in actual operand order. Member consumers also
+    // enclose them in one Reference. Disjoint intervals and an inert final
+    // suffix preserve original execution and avoid one full scan per phi.
+    for (std::size_t first = 0; first < operands.size();) {
       auto end = first + 1;
-      while (end < arguments.size() && arguments[end].call == arguments[first].call) { budget_.Step(); ++end; }
+      while (end < operands.size() && operands[end].consumer == operands[first].consumer) { budget_.Step(); ++end; }
       const auto base = selected.size();
       std::optional<WorkBlockId> previous;
       bool complete = true;
       for (auto i = first; i < end; ++i) {
-        budget_.Step(); const auto& region = regions[arguments[i].region];
-        if (i != first && arguments[i - 1].argument == arguments[i].argument) { complete = false; break; }
-        auto entry = Check(region, arguments[i], previous);
+        budget_.Step(); const auto& region = regions[operands[i].region];
+        if (i != first && operands[i - 1].input == operands[i].input) { complete = false; break; }
+        auto entry = Check(region, operands[i], previous);
         if (!entry) { complete = false; break; }
         previous = region.join; selected.push_back(std::move(*entry));
       }
-      if (complete) complete = Inert(*previous, graph_.ops[arguments[first].call.value].block, true);
+      if (complete) complete = Inert(*previous, graph_.ops[operands[first].consumer.value].block, true);
       if (!complete) selected.resize(base);
-      else Ancestors(selected[base]);
+      else if (std::holds_alternative<PhaseCallReference>(selected[base].owner)) Ancestors(selected[base]);
       first = end;
     }
     std::sort(selected.begin(), selected.end(), [&](const auto& a, const auto& b) {
-      budget_.Step(); return a.callee != b.callee ? a.callee < b.callee : a.argument < b.argument;
+      budget_.Step(); return a.Consumer() != b.Consumer() ? a.Consumer() < b.Consumer() : a.input < b.input;
     });
     return selected;
   }
-  std::optional<PhaseSelectionCall> Check(const SelectionRegion& region, const ArgumentSelection& selected_argument,
+  std::optional<PhaseSelectionOperand> Check(const SelectionRegion& region, const OperandSelection& selected_operand,
       std::optional<WorkBlockId> previous) {
-    const auto call = selected_argument.call;
-    const auto argument = selected_argument.argument;
-    const auto transport = selected_argument.transport;
-    const auto& invoke = graph_.ops[call.value];
+    const auto consumer = selected_operand.consumer;
+    const auto input = selected_operand.input;
+    const auto transport = selected_operand.transport;
+    const auto& invoke = graph_.ops[consumer.value];
     const auto* operation = std::get_if<ValueInvoke>(&invoke.operation);
-    const auto call_kind = BeforeLogicalFusion(graph_, plan_, call.value).kind;
-    if (!operation || operation->receiver != InvokeReceiver::kExplicit ||
-        (call_kind != EvaluationKind::kRoot && call_kind != EvaluationKind::kInline)) return {};
-    const auto callee_value = ResolveEvaluationOperand(plan_, graph_.uses[invoke.first_use.value].operand);
-    const auto* value = std::get_if<ValueId>(&callee_value);
-    const auto* result = value ? std::get_if<OpResult>(&graph_.values[value->value].origin) : nullptr;
-    if (!result || !result->commit || uses_[value->value].multiple || uses_[value->value].first != invoke.first_use) return {};
-    const auto callee = result->op; const auto& property = graph_.ops[callee.value];
-    if ((!std::holds_alternative<ValueNamedRead>(property.operation) &&
-         !std::holds_alternative<ValuePropertyRead>(property.operation)) ||
-        BeforeLogicalFusion(graph_, plan_, callee.value).kind != EvaluationKind::kRoot ||
-        corridors_.HasCatchCopies(callee) || corridors_.HasCatchCopies(call) ||
-        !corridors_.SameCatch(callee, call)) return {};
-    // Prefix roots retain their snapshots, in original execution order inside
-    // the condition. The callee is evaluated first; normal-path copies and
-    // pre-throw staging remain barriers. A different saved method reference
-    // stops the walk, preventing overlapping ownership and repeated long scans.
+    const auto consumer_kind = BeforeLogicalFusion(graph_, plan_, consumer.value).kind;
+    if (consumer_kind != EvaluationKind::kRoot && consumer_kind != EvaluationKind::kInline) return {};
+    std::variant<OpId, PhaseCallReference> owner = consumer;
     std::size_t prefix_count = 0;
-    if (!Prefix(previous.value_or(*result->commit), region.header, call, region.branch, prefix_count, previous.has_value())) return {};
+    if (operation) {
+      if (operation->receiver != InvokeReceiver::kExplicit) return {};
+      const auto callee_value = ResolveEvaluationOperand(plan_, graph_.uses[invoke.first_use.value].operand);
+      const auto* value = std::get_if<ValueId>(&callee_value);
+      const auto* result = value ? std::get_if<OpResult>(&graph_.values[value->value].origin) : nullptr;
+      if (!result || !result->commit || uses_[value->value].multiple || uses_[value->value].first != invoke.first_use) return {};
+      const auto callee = result->op; const auto& property = graph_.ops[callee.value];
+      if ((!std::holds_alternative<ValueNamedRead>(property.operation) &&
+           !std::holds_alternative<ValuePropertyRead>(property.operation)) ||
+          BeforeLogicalFusion(graph_, plan_, callee.value).kind != EvaluationKind::kRoot ||
+          corridors_.HasCatchCopies(callee) || corridors_.HasCatchCopies(consumer) ||
+          !corridors_.SameCatch(callee, consumer)) return {};
+      // Reference evaluation precedes all operands. Existing prefix ownership
+      // keeps those snapshots in their original order and catch dispatch.
+      if (!Prefix(previous.value_or(*result->commit), region.header, consumer, region.branch,
+          prefix_count, previous.has_value())) return {};
+      owner = PhaseCallReference{callee, consumer};
+    } else {
+      // Eager consumers need no synthetic callee. Canonical single use and
+      // inert intervals keep evaluation count and order; observable operands
+      // outside the selection retain their original snapshots. Reference/key
+      // and repeated-input obligations were checked by the shared shape.
+      if (corridors_.HasCatchCopies(consumer) ||
+          (previous && !Inert(*previous, region.header, true))) return {};
+    }
     for (std::size_t i = 0; i < prefix_count; ++i) owners_[prefix_[i].value] = region.branch;
     owners_[region.branch.value] = region.branch;
     for (const auto& condition : region.conditions) owners_[condition.branch.value] = region.branch;
@@ -175,11 +192,11 @@ class CallSelections {
       owners_[producer->op.value] = region.branch;
       const auto& op = graph_.ops[producer->op.value];
       if (op.exceptional == ExceptionalCompletion::kMayThrow &&
-          !corridors_.SameCatch(producer->op, call)) return {};
+          !corridors_.SameCatch(producer->op, consumer)) return {};
     }
     // A moved prefix snapshot may be consumed only by this prefix, scalar
-    // decision or selected arms. In particular an earlier argument of an
-    // enclosing call must not read it before the inner call evaluates it.
+    // decision or selected arms. In particular an earlier input of an
+    // enclosing consumer must not read it before the inner consumer evaluates it.
     for (std::size_t i = 0; i < prefix_count; ++i) {
       budget_.Step(); const auto value = *graph_.ops[prefix_[i].value].result;
       for (auto at = heads_[value.value]; at; at = next_[at->value]) {
@@ -187,15 +204,15 @@ class CallSelections {
         if (const auto* owner = std::get_if<OpId>(&use.owner);
             owner && owners_[roots_[owner->value].value] == region.branch) continue;
         // A retained selected-arm input is an actual observation on this
-        // region's phi edge. It belongs to the same argument expression, not
-        // to an external phi or an enclosing call's earlier argument.
+        // region's phi edge. It belongs to the same input expression, not
+        // to an external phi or an enclosing consumer's earlier input.
         const auto* merged = std::get_if<ValueId>(&use.owner);
         const auto* edge = use.incoming ? std::get_if<EdgeId>(&*use.incoming) : nullptr;
         if (!merged || *merged != region.merged || use.role != OperandRole::kPhiInput ||
             !edge || (*edge != region.keep_input && *edge != region.evaluate_input)) return {};
       }
     }
-    PhaseSelectionCall selected{callee, call, region.branch, region.merged, argument, transport};
+    PhaseSelectionOperand selected{owner, region.branch, region.merged, input, transport};
     budget_.Array(selected.prefix, prefix_count);
     std::copy_n(prefix_.begin(), prefix_count, selected.prefix.begin());
     return selected;
@@ -286,8 +303,9 @@ class CallSelections {
     return finish.root == callee && finish.run_start <= begin.effects &&
         !reference_bad_catches_[callee.value] && corridors_.SameCatch(callee, call);
   }
-  void Ancestors(PhaseSelectionCall& selected) {
-    auto child_call = selected.call, child_callee = selected.callee;
+  void Ancestors(PhaseSelectionOperand& selected) {
+    const auto reference = std::get<PhaseCallReference>(selected.owner);
+    auto child_call = reference.call, child_callee = reference.callee;
     // The actual consumer chain fixes each ancestor relation. Memoize that
     // relation once; selected records only partition storage of its union,
     // never infer ordering from selection counts or a greedy shared suffix.
@@ -358,26 +376,18 @@ class CallSelections {
     return false;
   }
   bool Inert(WorkBlockId at, WorkBlockId end, bool join_entry = false) {
-    for (std::size_t visited = 0; visited < graph_.blocks.size(); ++visited) {
-      budget_.Step(); if (at == end) return true;
-      if ((incoming_[at.value] != 1 && !(join_entry && visited == 0)) || graph_.phases[at.value].phase == ExceptionPhase::kCatch) return false;
-      const auto& block = graph_.blocks[at.value];
-      for (std::uint32_t i = 0; i < block.op_count; ++i) {
-        budget_.Step(); const OpId id{block.first_op.value + i}; const auto& op = graph_.ops[id.value];
-        if (op.life == ValueLife::kLive && (!Pure(op) || corridors_.HasCatchCopies(id))) return false;
-      }
-      std::optional<EdgeId> normal;
-      for (std::uint32_t i = 0; i < block.edge_count; ++i) {
-        budget_.Step(); const EdgeId edge{block.first_edge.value + i};
-        if (graph_.edges[edge.value].kind == FlowEdgeKind::kException) continue;
-        if (normal || copied_[edge.value]) return false;
-        normal = edge;
-      }
-      if (!normal) return false;
-      at = graph_.edges[normal->value].target;
-    }
-    return false;
+    budget_.Step(); if (at == end) return true;
+    if ((incoming_[at.value] != 1 && !join_entry) || graph_.phases[at.value].phase == ExceptionPhase::kCatch) return false;
+    const auto& begin = reference_positions_[at.value];
+    if (!begin.head) return false;
+    const auto& exit = reference_exits_[begin.head->value];
+    const auto& finish = exit.target == end ? exit.position : reference_positions_[end.value];
+    // The shared normal-interval index excludes edge/catch copies and cycles.
+    // Comparing effect positions proves an inert suffix in O(1), even when
+    // many different consumers share it; no per-selection graph walk.
+    return begin.head == finish.head && begin.order < finish.order && begin.effects == finish.effects;
   }
+
   const ValueProgram& graph_;
   const EvaluationPlan& plan_;
   TreeCheckBudget& budget_;
@@ -394,52 +404,55 @@ class CallSelections {
   std::vector<std::optional<OpId>> owners_, transport_owners_;
 };
 }
-void BuildPhaseSelectionCalls(const ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget) {
+void BuildPhaseSelectionOperands(const ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget) {
   const auto regions = FindPhasedPhiSelections(graph, plan, budget);
   if (regions.empty()) return;
-  CallSelections proof(graph, plan, budget);
-  auto calls = proof.CheckAll(regions);
+  OperandSelections proof(graph, plan, budget);
+  auto operands = proof.CheckAll(regions);
   proof.Account();
-  if (calls.empty()) return;
+  if (operands.empty()) return;
   budget.Array(plan.logical_values, graph.values.size());
   budget.Array(plan.phase_transports, graph.ops.size());
   budget.Array(plan.phase_prefixes, graph.ops.size());
   budget.Array(plan.phase_references, graph.ops.size());
-  for (std::size_t i = 0; i < calls.size(); ++i) {
-    budget.Step(); const auto& call = calls[i];
-    Require(!i || calls[i - 1].callee < call.callee ||
-        (calls[i - 1].callee == call.callee && calls[i - 1].argument < call.argument));
-    Require(!plan.logical_values[call.value.value]);
-    Require(!plan.phase_prefixes[call.callee.value]);
-    Require(!plan.phase_references[call.callee.value] ||
-        plan.phase_references[call.callee.value] == graph.ops[call.call.value].first_use);
-    plan.phase_references[call.callee.value] = graph.ops[call.call.value].first_use;
-    for (const auto& ancestor : call.ancestors) {
+  for (std::size_t i = 0; i < operands.size(); ++i) {
+    budget.Step(); const auto& selected = operands[i];
+    Require(!i || operands[i - 1].Consumer() < selected.Consumer() ||
+        (operands[i - 1].Consumer() == selected.Consumer() && operands[i - 1].input < selected.input));
+    Require(!plan.logical_values[selected.value.value]);
+    if (const auto* reference = std::get_if<PhaseCallReference>(&selected.owner)) {
+      const auto callee = reference->callee.value;
+      const auto input = graph.ops[reference->call.value].first_use;
+      Require(!plan.phase_prefixes[callee]);
+      Require(!plan.phase_references[callee] || plan.phase_references[callee] == input);
+      plan.phase_references[callee] = input;
+      plan.operations[callee] = {EvaluationKind::kInline, input, {}};
+    }
+    for (const auto& ancestor : selected.ancestors) {
       budget.Step(); Require(!plan.phase_references[ancestor.callee.value] ||
           plan.phase_references[ancestor.callee.value] == graph.ops[ancestor.call.value].first_use);
       plan.phase_references[ancestor.callee.value] = graph.ops[ancestor.call.value].first_use;
       plan.operations[ancestor.callee.value] = {EvaluationKind::kInline, graph.ops[ancestor.call.value].first_use, {}};
     }
-    for (const auto prefix : call.prefix) {
+    for (const auto prefix : selected.prefix) {
       budget.Step(); Require(!plan.phase_prefixes[prefix.value] && plan.operations[prefix.value].kind == EvaluationKind::kRoot);
-      plan.phase_prefixes[prefix.value] = call.branch;
+      plan.phase_prefixes[prefix.value] = selected.branch;
     }
-    plan.logical_values[call.value.value] = call.branch;
-    const auto input = call.transport ? graph.ops[call.transport->value].first_use : call.argument;
-    plan.operations[call.branch.value] = {EvaluationKind::kLogicalValue, input, {}};
-    if (call.transport) {
-      Require(!plan.phase_transports[call.transport->value]);
-      plan.phase_transports[call.transport->value] = call.argument;
-      plan.operations[call.transport->value] = {EvaluationKind::kInline, call.argument, {}};
+    plan.logical_values[selected.value.value] = selected.branch;
+    const auto input = selected.transport ? graph.ops[selected.transport->value].first_use : selected.input;
+    plan.operations[selected.branch.value] = {EvaluationKind::kLogicalValue, input, {}};
+    if (selected.transport) {
+      Require(!plan.phase_transports[selected.transport->value]);
+      plan.phase_transports[selected.transport->value] = selected.input;
+      plan.operations[selected.transport->value] = {EvaluationKind::kInline, selected.input, {}};
     }
-    plan.operations[call.callee.value] = {EvaluationKind::kInline, graph.ops[call.call.value].first_use, {}};
   }
-  plan.phase_calls = std::move(calls);
+  plan.phase_selections = std::move(operands);
 }
-void VerifyPhaseSelectionCalls(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget) {
+void VerifyPhaseSelectionOperands(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget) {
   Require(plan.logical_objects.empty());
   Require(plan.logical_values.empty() || plan.logical_values.size() == graph.values.size());
-  if (plan.phase_calls.empty()) {
+  if (plan.phase_selections.empty()) {
     Require(plan.logical_values.empty() && plan.phase_transports.empty() && plan.phase_prefixes.empty() && plan.phase_references.empty());
     for (const auto& op : plan.operations) { budget.Step(); Require(op.kind != EvaluationKind::kLogicalValue); }
     return;
@@ -447,18 +460,18 @@ void VerifyPhaseSelectionCalls(const ValueProgram& graph, const EvaluationPlan& 
   Require(!plan.logical_values.empty() && plan.phase_transports.size() == graph.ops.size() &&
       plan.phase_prefixes.size() == graph.ops.size() && plan.phase_references.size() == graph.ops.size());
   const auto regions = FindPhasedPhiSelections(graph, plan, budget);
-  CallSelections proof(graph, plan, budget);
-  const auto expected_calls = proof.CheckAll(regions);
-  Require(plan.phase_calls.size() == expected_calls.size());
+  OperandSelections proof(graph, plan, budget);
+  const auto expected_operands = proof.CheckAll(regions);
+  Require(plan.phase_selections.size() == expected_operands.size());
   std::vector<std::uint8_t> values, transports, branches, prefixes;
   budget.Array(values, graph.values.size());
   budget.Array(transports, graph.ops.size()); budget.Array(branches, graph.ops.size());
   budget.Array(prefixes, graph.ops.size());
   std::vector<std::uint8_t> references; budget.Array(references, graph.ops.size());
-  for (std::size_t index = 0; index < expected_calls.size(); ++index) {
-    budget.Step(); const auto* expected = &expected_calls[index];
+  for (std::size_t index = 0; index < expected_operands.size(); ++index) {
+    budget.Step(); const auto* expected = &expected_operands[index];
     budget.Step(expected->prefix.size()); budget.Step(expected->ancestors.size());
-    Require(plan.phase_calls[index] == *expected);
+    Require(plan.phase_selections[index] == *expected);
     const auto reference = [&](PhaseCallReference binding) {
       budget.Step(); const auto callee = binding.callee.value;
       Require(plan.phase_references[callee] == graph.ops[binding.call.value].first_use &&
@@ -466,12 +479,12 @@ void VerifyPhaseSelectionCalls(const ValueProgram& graph, const EvaluationPlan& 
           plan.operations[callee].consumer == plan.phase_references[callee] && !plan.operations[callee].temporary);
       references[callee] = 1;
     };
-    reference({expected->callee, expected->call});
+    if (const auto* binding = std::get_if<PhaseCallReference>(&expected->owner)) reference(*binding);
     for (const auto& ancestor : expected->ancestors) reference(ancestor);
     Require(!values[expected->value.value]); values[expected->value.value] = 1;
     Require(plan.logical_values[expected->value.value] == expected->branch);
-    const auto& branch = plan.operations[expected->branch.value]; const auto& callee = plan.operations[expected->callee.value];
-    const auto input = expected->transport ? graph.ops[expected->transport->value].first_use : expected->argument;
+    const auto& branch = plan.operations[expected->branch.value];
+    const auto input = expected->transport ? graph.ops[expected->transport->value].first_use : expected->input;
     branches[expected->branch.value] = 1;
     for (const auto prefix : expected->prefix) {
       budget.Step(); Require(!prefixes[prefix.value] && plan.phase_prefixes[prefix.value] == expected->branch &&
@@ -480,13 +493,12 @@ void VerifyPhaseSelectionCalls(const ValueProgram& graph, const EvaluationPlan& 
     }
     if (expected->transport) {
       const auto op = expected->transport->value;
-      Require(!transports[op] && plan.phase_transports[op] == expected->argument &&
+      Require(!transports[op] && plan.phase_transports[op] == expected->input &&
           plan.operations[op].kind == EvaluationKind::kInline &&
-          plan.operations[op].consumer == expected->argument && !plan.operations[op].temporary);
+          plan.operations[op].consumer == expected->input && !plan.operations[op].temporary);
       transports[op] = 1;
     }
-    Require(branch.kind == EvaluationKind::kLogicalValue && branch.consumer == input && !branch.temporary &&
-        callee.kind == EvaluationKind::kInline && callee.consumer == graph.ops[expected->call.value].first_use && !callee.temporary);
+    Require(branch.kind == EvaluationKind::kLogicalValue && branch.consumer == input && !branch.temporary);
   }
   proof.Account();
   for (std::size_t i = 0; i < values.size(); ++i) { budget.Step(); Require(plan.logical_values[i].has_value() == (values[i] != 0)); }

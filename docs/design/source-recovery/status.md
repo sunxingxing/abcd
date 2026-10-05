@@ -12,6 +12,52 @@
 
 ## 当前阶段
 
+### 2026-10-05：共同条件操作数贯通字段及标量表达式
+
+- 规则revision120，基线d88a8e34；25aa工作树/分支保持，起始无未提交
+  修改。上一轮解释算术边界，没有实施变化；本轮推进现有源码表示缺口，
+  默认V3和显式language-arithmetic合同均保持原义。
+- PhaseSelectionOperand替换成员argument专属记录；typed owner区分直接
+  eager消费方和真实成员Reference，消费能力/输入顺序/重复读取与key转换
+  边界来自DescribeEvaluation。共同canonical use census、条件区域、
+  arm ownership、catch签名及transport/fresh verification继续拥有归属，
+  不新增字段opcode名单、same-block、样本或选择数量匹配。实现文件迁至
+  phase_selection_operands.cc，全部源码/测试消费方同步迁移。
+- 条件结果可直接进入字段RHS、TYPEOF以及其他已支持eager表达式。
+  AST/控制验证仍消费同一ConditionalExpr/LogicalExpr；callee/receiver/
+  ancestor Reference保持原义。join-to-consumer Inert检查复用原normal
+  interval效果索引，O(1)查询，替换逐选择路径遍历；既有census/index为
+  线性，selection排序O(S log S)，容量继续计入原预算，不新增证明/发布包装。
+- 新三profile真实字节码覆盖1/2/200/201/402复制、拆块和字段数量，
+  原条件/getter/member-call arms都能直接恢复字段表达式，TYPEOF组合
+  同样走共用消费能力；201→402 evaluation work小于3倍。共享结果仍
+  snapshot，中间getter仍在已选值之后、字段定义之前执行；其原始抛出值
+  保持。伪造input/owner仍拒绝，完整exception tree与独立Node检查通过。
+- 新LogicalValue质量断言先在旧实现失败：red-tests-1.log 1/1退出8，
+  5.23秒。中间9/9通过47.62秒，tests-2.log；新增TYPEOF 2/2通过
+  36.64秒，tests-3.log。最终build-1发现两份既有integration测试尚使用
+  旧记录字段，迁移后final-build-2单-j4十二目标退出0，无兼容别名。
+  最终定向28/28通过319.62秒，final-tests-1.log，含联合条件参数、
+  selection module、ordinary/phased literal、Reference、优先级及配对行为。
+  日志共同前缀/tmp/abcd-selection-operands-。
+- 真实VoIP voipCallType字段直接承接原条件枚举读，配对300场景、768个
+  Promise schedules和三项语义篡改通过。ProgressBar条件路径直接参与
+  文件名拼接，另单项配对246个引用/效果/异常/async场景通过1.55秒，
+  progressbar-tests-1.log。两项风格断言对规则119输出失败、120通过，
+  style-check-1.json。pasteboard另一个完整record8383也减少predicate
+  临时量；本轮未新增该record的全函数独立行为验收，不能据此宣布record验收。
+- fresh selection-operands-{default,language}-pass-1各五ABC退出0。默认
+  仍80complete/26incomplete-source/0source-failure/46no-module，language
+  仍95complete/11incomplete-source/0source-failure/46no-module；无新增
+  complete、回退或legacy。两模式各三份complete源码变化，language另有
+  一份incomplete-source变化；各106份源码解析通过，输入SHA/size与index
+  一致。输入ABC及sidecar未改，引擎未读取配对源码。
+- 更多有序兄弟操作数组合、phased staged-to-native整体对象、现有producer
+  能力/候选corridor限制仍是实现缺口。实例字段/全局/完整签名/函数体整合、
+  SuperSpread、WindowUtil NEG及所有record独立语义/风格验收尚未完成，
+  Goal保持active。全套、扩展语料、RSS/基准、代理、调度/DFX和定期审视
+  仍暂停，定向通过不能代替这些范围或阶段一完成证明。
+
 ### 2026-10-05：分阶段字段写入复用共同RHS调度
 
 - 规则revision119，基线e72d7eb7；上一轮为已提交的实际进展。普通及

@@ -639,7 +639,7 @@ class FlowCheck {
       Require((current.logical ? logical && logical->operation == current.logical->operation : conditional != nullptr) &&
           SelectionOrigin(current, task.expression), Error::kPlacement);
       auto selected_condition = current.logical ? logical->left : conditional->condition;
-      if (const auto* call = FindPhaseSelectionCall(graph_, evaluation_, current.branch)) {
+      if (const auto* call = FindPhaseSelectionOperand(graph_, evaluation_, current.branch)) {
         for (const auto prefix : call->prefix) {
           budget_.Step(); const auto& node = tree_.expressions[selected_condition.value];
           const auto* sequence = std::get_if<SequenceExpr>(&node.expression);

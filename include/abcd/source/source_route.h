@@ -299,7 +299,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // evaluation; computation ownership and transport anchors remain distinct.
 // Rules 119 share eager operand scheduling with statement consumers, retaining
 // native literal ownership, Reference boundaries, effect order and catch copies.
-inline constexpr std::uint32_t kRouteEvidenceRules = 119;
+// Rules 120 share phased control ownership across eager operands and member
+// arguments; Reference, canonical use, effect and catch obligations remain.
+inline constexpr std::uint32_t kRouteEvidenceRules = 120;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

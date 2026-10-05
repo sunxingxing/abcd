@@ -200,7 +200,7 @@ class ForestBuilder {
             bundles <= kMaxId - graph_.origins.size() - graph_.ops.size(), Error::kResourceLimit);
     Require(commits <= kMaxId - graph_.origins.size() - graph_.ops.size() - bundles, Error::kResourceLimit);
     std::size_t prefixes = 0;
-    for (const auto& call : evaluation_.phase_calls) {
+    for (const auto& call : evaluation_.phase_selections) {
       Step(); Require(call.prefix.size() <= kMaxId - prefixes, Error::kResourceLimit);
       prefixes += call.prefix.size();
     }
@@ -493,7 +493,7 @@ class ForestBuilder {
       }
       return *forest_.operations[producer.value];
     };
-    if (const auto* call = FindPhaseSelectionCall(graph_, evaluation_, region.branch)) {
+    if (const auto* call = FindPhaseSelectionOperand(graph_, evaluation_, region.branch)) {
       for (auto i = call->prefix.size(); i != 0;) {
         Step(); const auto id = call->prefix[--i]; const auto& op = graph_.ops[id.value];
         Require(forest_.operations[id.value].has_value(), Error::kOwnership);

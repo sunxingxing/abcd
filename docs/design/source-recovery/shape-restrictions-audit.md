@@ -1,5 +1,14 @@
 # 按用户要求进行的恢复条件审计
 
+规则120补充：phased selection原限定成员调用argument，普通eager消费方
+即使共同控制/唯一使用/效果/异常义务成立也只保留phi snapshot。现共用
+PhaseSelectionOperand，typed owner区分直接消费及真实成员Reference；
+消费能力来自DescribeEvaluation，保留NeedsSnapshot、receiver及predicate
+边界。原join-to-consumer逐选择Inert遍历改用既有normal-interval效果索引，
+O(1)查询，不按同块、adjacency、样本或选择数量准入。复制/拆块及中间getter
+反例通过实际字节码和独立JS检查；已有candidate/corridor发现限制与producer
+能力名单仍是实现缺口，整个staged-to-native object还未完成。
+
 规则119补充：异常表达式调度原要求消费方有result并属于Expression
 操作子集，普通字段写入因而不能承接共同区间已证明的RHS。现消费能力
 取自DescribeEvaluation的eager输入与source能力；Reference/key边界、
@@ -22,7 +31,7 @@ header。现删除这项重复布局准入，沿用已有直线前缀及fresh Ve
 phased staged-to-native、非直线前缀，以及ObjectRoute现存物理字段顺序/
 join候选限制仍是开放的实现缺口，不把它们描述为语言不变量。
 
-最新替换状态见本页规则119及各项补充。历史候选不是当前实现的证明；
+最新替换状态见本页规则120及各项补充。历史候选不是当前实现的证明；
 未替换项继续开放，不能将局部交付称为全量审计闭合。
 
 规则114补充：ClassSelfOrder的初始化观察证明原仅扫描String/Copy，

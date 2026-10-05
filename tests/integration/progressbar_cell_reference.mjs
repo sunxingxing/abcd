@@ -121,6 +121,9 @@ try {
   const record = JSON.parse(readFileSync(join(output, 'manifest.json'), 'utf8')).records.find(value => value.entity === 9550);
   assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, false);
   const generated = readFileSync(join(output, record.source), 'utf8');
+  // The selected host path is consumed by the native concatenation. This
+  // representation check is separate from the effect/throw/async oracle.
+  assert.match(generated, /\? \(void 0\) : [^;]*\.filesDir\) \+ "\/test1\.txt"/);
   const paired = stripTypeScriptTypes(readFileSync(join(root, 'pasteboard_src/src/main/ets/pages/ProgressBar.ts'), 'utf8'));
   let scenarios = 0;
   for (const mode of ['resolve', 'reject', 'thenable']) for (const replace of [false, true]) {

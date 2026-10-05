@@ -95,16 +95,16 @@ std::uint64_t Run(unsigned arguments, unsigned copies, abc::ProfileId profile, F
   test::Check(std::holds_alternative<EvaluationPlan>(planned));
   const auto& evaluation = std::get<EvaluationPlan>(planned);
   if (form == Form::kBarrier || form == Form::kChangedBase || (form == Form::kReversed && arguments > 1)) {
-    test::Check(evaluation.phase_calls.empty());
+    test::Check(evaluation.phase_selections.empty());
     test::Check(std::get<CallPlanError>(BuildPhasedCallPlan(graph, evaluation)) == CallPlanError::kReference);
     return evaluation.work;
   }
-  test::Check(evaluation.phase_calls.size() == arguments);
+  test::Check(evaluation.phase_selections.size() == arguments);
   test::Check(std::holds_alternative<CallPlan>(BuildPhasedCallPlan(graph, evaluation)));
-  if (Wrapped(form)) test::Check(evaluation.phase_calls.front().ancestors.size() == 1);
+  if (Wrapped(form)) test::Check(evaluation.phase_selections.front().ancestors.size() == 1);
   for (unsigned i = 1; i < arguments; ++i) {
-    test::Check(evaluation.phase_calls[i].callee == evaluation.phase_calls[0].callee);
-    test::Check(evaluation.phase_calls[i - 1].argument < evaluation.phase_calls[i].argument);
+    test::Check(evaluation.phase_selections[i].owner == evaluation.phase_selections[0].owner);
+    test::Check(evaluation.phase_selections[i - 1].input < evaluation.phase_selections[i].input);
   }
   if (arguments <= 3) {
     bool identity_phi = false;
@@ -130,12 +130,12 @@ std::uint64_t Run(unsigned arguments, unsigned copies, abc::ProfileId profile, F
     test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(graph, evaluation, exact)) == EvaluationError::kWorkLimit);
     SemanticBudget no_bytes; no_bytes.bytes = 0;
     test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(graph, evaluation, no_bytes)) == EvaluationError::kResourceLimit);
-    auto forged = evaluation; forged.phase_calls.pop_back();
+    auto forged = evaluation; forged.phase_selections.pop_back();
     test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
     if (arguments > 1) {
-      forged = evaluation; std::swap(forged.phase_calls[0].argument, forged.phase_calls[1].argument);
+      forged = evaluation; std::swap(forged.phase_selections[0].input, forged.phase_selections[1].input);
       test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
-      forged = evaluation; forged.phase_calls[1].callee = forged.phase_calls[1].branch;
+      forged = evaluation; std::get<PhaseCallReference>(forged.phase_selections[1].owner).callee = forged.phase_selections[1].branch;
       test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
     }
   }

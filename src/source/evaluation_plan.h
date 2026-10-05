@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_EVALUATION_PLAN_H_
 
 #include <span>
+#include <variant>
 #include "abcd/source/source_tree.h"
 #include "phi_copies.h"
 #include "exception_copies.h"
@@ -57,14 +58,21 @@ struct PhaseCallReference {
   analysis::OpId callee, call;
   bool operator==(const PhaseCallReference&) const = default;
 };
-struct PhaseSelectionCall {
-  analysis::OpId callee, call, branch;
+struct PhaseSelectionOperand {
+  // Direct eager operands and member arguments share control ownership. A
+  // member Reference additionally retains its original callee/receiver order.
+  std::variant<analysis::OpId, PhaseCallReference> owner;
+  analysis::OpId branch;
   analysis::ValueId value;
-  analysis::UseId argument;
+  analysis::UseId input;
   std::optional<analysis::OpId> transport;
   std::vector<analysis::OpId> prefix;
   std::vector<PhaseCallReference> ancestors;
-  bool operator==(const PhaseSelectionCall&) const = default;
+  [[nodiscard]] analysis::OpId Consumer() const {
+    if (const auto* reference = std::get_if<PhaseCallReference>(&owner)) return reference->call;
+    return std::get<analysis::OpId>(owner);
+  }
+  bool operator==(const PhaseSelectionOperand&) const = default;
 };
 struct EvaluationPlan {
   analysis::IrRevision revision;
@@ -102,10 +110,10 @@ struct EvaluationPlan {
   // Phi values exclusively owned by native logical or conditional expressions, indexed by
   // ValueId. Each entry points to its original conditional branch operation.
   std::vector<std::optional<analysis::OpId>> logical_values;
-  // Selected arguments sorted by callee and actual argument UseId. A shared
-  // reference encloses their jointly checked phased evaluation; each phi and
-  // prefix retains its own branch owner. Ordinary inline edges differ.
-  std::vector<PhaseSelectionCall> phase_calls;
+  // Selected operands sorted by consumer and original UseId. Each phi owns
+  // its original control interval; member operands additionally retain the
+  // shared Reference and prefix. Ordinary inline edges differ.
+  std::vector<PhaseSelectionOperand> phase_selections;
   // Direct and ancestor callee references, indexed by original operation.
   // Entries are separately checked; they never license a .call substitution.
   std::vector<std::optional<analysis::UseId>> phase_references;
