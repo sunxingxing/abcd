@@ -49,8 +49,12 @@ ValueProgram Graph(std::uint32_t fields, Prefix prefix = Prefix::kNone) {
   fixture.graph.ops[0].exceptional = ExceptionalCompletion::kMayThrow;
   if (prefix == Prefix::kLateBinding)
     fixture.graph.values.push_back({EntryDefinition{ParameterEntry{0}}, ValueKinds::Language(), {}});
-  if (prefix != Prefix::kNone)
-    fixture.Add(ValueCopy{}, true, {{OperandRole::kInput, prefix == Prefix::kObserve ? ValueOperand{ValueId{0}} :
+  if (prefix == Prefix::kObserve) {
+    fixture.Add(ValueNamedRead{{0}}, true, {{OperandRole::kBase, ValueId{0}}});
+    fixture.graph.ops.back().normal = fixture.graph.ops.back().before_throw = LanguageEffect::kHeapRead | LanguageEffect::kUserCode;
+    fixture.graph.ops.back().exceptional = ExceptionalCompletion::kMayThrow;
+  } else if (prefix != Prefix::kNone)
+    fixture.Add(ValueCopy{}, true, {{OperandRole::kInput,
         prefix == Prefix::kLateBinding ? ValueOperand{ValueId{1}} : ValueOperand{abcd::analysis::IntegerLiteral{1}}}});
   for (std::uint32_t i = 0; i < fields; ++i) {
     fixture.Add(ValueOwnWrite{OwnWriteKind::kDefineField, {i}, 0}, false,
@@ -161,10 +165,9 @@ void Mutations() {
   Check(std::get<LiteralError>(BuildLiteralPlan(Graph(2, Prefix::kObserve))) == LiteralError::kObserved);
   Check(std::holds_alternative<LiteralPlan>(BuildLiteralPlan(Graph(1, Prefix::kLateValue))));
   Check(std::get<LiteralError>(BuildLiteralPlan(Graph(2, Prefix::kLateValue))) == LiteralError::kObserved);
-  // A pure binding copy is an expression now. Sharing its result across
-  // initializers still refuses duplication through the common use census.
+  // Exact transport identity is not another evaluation of the parameter.
   Check(std::holds_alternative<LiteralPlan>(BuildLiteralPlan(Graph(1, Prefix::kLateBinding))));
-  Check(std::get<LiteralError>(BuildLiteralPlan(Graph(2, Prefix::kLateBinding))) == LiteralError::kObserved);
+  Check(std::holds_alternative<LiteralPlan>(BuildLiteralPlan(Graph(2, Prefix::kLateBinding))));
   auto buffered_observed = Graph(2, Prefix::kObserve);
   std::get<ValueObjectAllocation>(buffered_observed.ops[0].operation).literal = abcd::abc::PoolIndex{0};
   Check(std::get<LiteralError>(BuildLiteralPlan(buffered_observed)) == LiteralError::kObserved);
@@ -178,7 +181,8 @@ void ArrayBoundaries() {
     std::uint32_t index = 0;
     for (auto& op : graph.ops) if (std::holds_alternative<ValueOwnWrite>(op.operation))
       op.operation = ValueIndexedWrite{index++, 0};
-    Check(std::get<LiteralError>(BuildLiteralPlan(graph)) == LiteralError::kObserved);
+    if (prefix == Prefix::kLateBinding) Check(std::holds_alternative<LiteralPlan>(BuildLiteralPlan(graph)));
+    else Check(std::get<LiteralError>(BuildLiteralPlan(graph)) == LiteralError::kObserved);
   }
 }
 void Budgets() {
@@ -194,6 +198,37 @@ void Budgets() {
     Check(std::get<LiteralError>(BuildLiteralPlan(graph, budget)) == LiteralError::kWorkLimit);
     budget = {}; budget.bytes = 0;
     Check(std::get<LiteralError>(BuildLiteralPlan(graph, budget)) == LiteralError::kResourceLimit);
+  }
+}
+void OrderedFields() {
+  for (const auto count : {1U, 200U, 201U, 402U}) for (const bool reverse : {false, true}) {
+    auto graph = Graph(count);
+    const auto operations = static_cast<std::uint32_t>(graph.ops.size());
+    std::vector<OpId> mapped(operations);
+    for (std::uint32_t i = 0; i < operations; ++i) mapped[i] = {reverse && i ? operations-i : i};
+    auto original = graph.ops;
+    for (std::uint32_t i = 0; i < operations; ++i) {
+      const auto target = mapped[i].value;
+      graph.ops[target] = original[i]; graph.ops[target].block = {target}; graph.ops[target].order = 0;
+    }
+    for (auto& use : graph.uses) if (auto* owner = std::get_if<OpId>(&use.owner)) *owner = mapped[owner->value];
+    graph.blocks.clear(); graph.edges.clear();
+    for (std::uint32_t b = 0; b < operations; ++b) {
+      const auto logical = reverse && b ? operations-b : b;
+      const bool returned = logical+1 == operations;
+      graph.blocks.push_back({{b},1,{static_cast<std::uint32_t>(graph.edges.size())},static_cast<std::uint8_t>(returned ? 0 : 1)});
+      if (!returned) graph.edges.push_back({{b},{mapped[logical+1].value},FlowEdgeKind::kFallthrough,0});
+    }
+    const auto planned = BuildLiteralPlan(graph);
+    Check(std::holds_alternative<LiteralPlan>(planned));
+    const auto& literal = std::get<LiteralPlan>(planned);
+    Check(literal.objects.size() == 1 && literal.objects[0].form == LiteralForm::kExpression);
+    for (std::uint32_t i = 0; i < count; ++i) Check(literal.definitions[i] == mapped[i+1]);
+    Check(std::holds_alternative<std::uint64_t>(VerifyLiteralPlan(graph,literal)));
+    if (count > 1) {
+      auto wrong = literal; std::swap(wrong.definitions[0],wrong.definitions[1]);
+      Check(std::holds_alternative<LiteralError>(VerifyLiteralPlan(graph,wrong)));
+    }
   }
 }
 enum class ClosureHazard { kNone, kShared, kEnvironment, kHomeObject };
@@ -744,7 +779,11 @@ void NestedLiterals() {
     Fixture fixture;
     fixture.Add(ValueArrayAllocation{}, true, {});
     fixture.Add(ValueObjectAllocation{}, true, {});
-    if (observe) fixture.Add(ValueCopy{}, true, {{OperandRole::kInput, ValueId{1}}});
+    if (observe) {
+      fixture.Add(ValueNamedRead{{0}}, true, {{OperandRole::kBase, ValueId{1}}});
+      fixture.graph.ops.back().normal = fixture.graph.ops.back().before_throw = LanguageEffect::kHeapRead | LanguageEffect::kUserCode;
+      fixture.graph.ops.back().exceptional = ExceptionalCompletion::kMayThrow;
+    }
     else fixture.Add(ValueDebugger{}, false, {});
     fixture.Add(ValueIndexedWrite{0, 0}, false,
         {{OperandRole::kBase, ValueId{0}}, {OperandRole::kStoredValue, ValueId{1}}});
@@ -949,6 +988,7 @@ void PredicateLiterals(bool print = false) {
 }
 }  // namespace
 int main(int argc, char** argv) {
+  OrderedFields();
   if (argc == 2 && std::string_view(argv[1]) == "--predicate-sources") { PredicateLiterals(true); return 0; }
   PredicateLiterals();
   if (argc == 2 && std::string_view(argv[1]) == "--staged-source") { StagedBuffer(true); return 0; }

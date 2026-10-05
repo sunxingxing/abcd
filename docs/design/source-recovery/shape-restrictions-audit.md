@@ -1063,3 +1063,27 @@ name/length，以及受控Promise中的共享字段重读、请求交错、参�
 仍开放：已有staged buffered literal跨选择时的机械赋值表示，以及普通/
 异常native initializer interval的布局限制。它们不能因字段声明缩短就
 被当作已解决，也不能靠增加更多局部形状或删除效果/异常义务来扩展。
+
+## 2026-10-05：普通可用 RHS 的字面量初始化采用共同效果顺序（规则 116）
+
+普通 LiteralPath 原 Same/Before 仅承认同块，字段按物理 OpId 排序；
+普通 use census 也只检查 allocation 所在块的直接使用。这些不能定义
+所有权、执行次数或未完成对象的观察，且纯复制/同身份 phi 不是真正观察。
+
+现为普通路径一次构建共同 EvaluationAliases 与 EffectOrder。字段 RHS
+调用 actual-allocation ValueAvailableAt；forward must-reach successor 与
+exact predecessor 构成同一 allocation 的全路径单次写链。字段数量只
+约束遍历界限，不能替代身份/执行次数证明。已证明 capability 后不再附加
+同块、PC 顺序、邻接、producer 名单或 selection 数量条件。字段依共同
+reverse-postorder 排序，normal/phased 共用 canonical-use 索引检查真实
+观察和 phi edge use，保留私有值域、own descriptor、数组索引及异常义务。
+
+单元测试原两处把纯 unused ValueCopy 当作观察，现改为真正的 heap read；
+纯参数复制作为合法 transport 正例。实际解码的绕过写入、重复写入、纯
+循环、提前读取及 DEBUGGER barrier 仍拒绝；三 profile 的四种布局、
+1/2/200/201/402 字段和重复复制/分支实际输出完整函数并独立执行。
+
+仍开放：late-owned RHS 的普通 local native interval、phased unique corridor
+及条件/分阶段初始化恢复为原生对象表达式。保留这些旧 fast path 的明确
+前提，不增加局部模式；不能把当前 available-RHS capability 宣称为所有
+复杂初始化均已恢复。本轮固定五 ABC 源码字节未改变，阶段一尚未完成。

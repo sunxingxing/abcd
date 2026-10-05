@@ -63,7 +63,11 @@ enum class LiteralError : std::uint8_t {
 };
 // Initial domain: fresh ordinary object with named definitions, or fresh array
 // with dense indexed definitions 0..N-1, or increasing buffered-array writes,
-// in the same block/corridor. Buffered extent/gaps are checked with constants;
+// with available RHSs across normal CFGs, or late owned trees in a local/phase
+// interval. Shared all-path effect identities prove normal available-RHS
+// execution count/order; exact copy/phi aliases retain identity. The local late
+// interval is an implementation gap, not a language invariant.
+// Buffered extent/gaps are checked with constants;
 // no observation until initialization completes. RHS snapshots precede allocation;
 // owned late reads/calls/constructions/closures preserve operand and property effect order. A member
 // call's duplicate receiver wire use is consumed by its exact callee Reference;

@@ -1,5 +1,53 @@
 # Literal Initialization
 
+## Available-value initialization across ordinary control flow
+
+Rule 116 removes the normal same-block restriction when every RHS is already
+available at the actual object/array allocation. LiteralPath builds the existing
+EvaluationAliases and EffectOrder once, charged to the literal budget. Exact
+copy/identity-phi transport retains the allocation identity. Forward must-reach
+effect successors and exact predecessor identities establish one ordered own
+definition chain per allocation on every path; write counts only bound the walk.
+Dominance and ValueAvailableAt prove RHS availability, independently of physical
+instruction/block order. A bypass, repeated write, intervening observable effect
+or pure nonterminating path cannot acquire that native capability.
+
+The normal and phased routes share one indexed canonical-use census. Pure alias
+operands and identity-phi equations transport the same object; actual observations
+must follow its last definition, including normal phi-edge uses. Exceptional
+snapshots of an unfinished object still refuse. Native normal field ordering uses
+the common reverse-postorder position, not OpId sorting. Existing nesting,
+own-property descriptors, dense array indices, value-domain and origin checks
+remain binding. No source names, opcode sequences or fixed selection counts
+define this capability.
+
+Late owned expression trees retain the existing local normal interval; phased
+initialization retains its checked unique corridor and catch-copy obligations.
+Conditional/late RHS composition and staged-to-native reconstruction remain
+representation gaps. This rule does not widen those paths by adding more shapes.
+The Rule 81 description below records the earlier availability change; its normal
+local-interval restriction now applies only where the shared capability above
+has not discharged the available-value initialization obligations.
+
+Provenance is the existing common copy/phi SCC, dominance and bidirectional
+effect-order implementations; no dependency or licensing change. Additional
+owner/capability construction and the use census are O(I+U) time and O(I+V)
+scratch, plus the existing alias/effect analyses and O(P log P) field sorting.
+Every owned write participates in at most one allocation-chain walk, with at
+most one failing edge per allocation. There is no per-object CFG traversal.
+Independent verification recomputes these common facts. Budget/work checks do
+not establish whole-process RSS compliance.
+
+Three-profile actual bytecode fixtures generate 60 complete functions spanning
+contiguous, split, diamond and reverse physical layouts at 1/2/200/201/402 fields,
+with repeated register copies and decisions. Common instruction/tree validation
+and 720 independent Node scenarios check fresh identity, exact property order,
+descriptors, prototypes and inherited setter/coercion avoidance. Fifteen decoded
+bypass/repeat/pure-cycle/read/barrier negative fixtures refuse. Synthetic IR
+ordering checks separately cover 1/200/201/402 fields and definition-order
+tampering; they are not reported as raw ABC source receipts. The fixed-five
+export has no new complete records or changed source bytes for this component.
+
 ## Allocation-site availability instead of phi block identity
 
 Rule 81 removes the phased `phi.block == allocation.block` admission in

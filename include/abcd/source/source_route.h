@@ -297,9 +297,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // with conditional-call expression ownership; effect/Reference proofs remain.
 // Rules 113 share exact copy/phi identity projection between normal and phased
 // evaluation; computation ownership and transport anchors remain distinct.
-// Rules 115 use native undefined field declarations, retaining own-property
-// definition semantics and a zero-width origin for the omitted inert value.
-inline constexpr std::uint32_t kRouteEvidenceRules = 115;
+// Rules 116 recover available-value literal initialization through shared
+// all-path effect identities and dominance, independent of block/PC layout.
+inline constexpr std::uint32_t kRouteEvidenceRules = 116;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

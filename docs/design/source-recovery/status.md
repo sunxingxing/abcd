@@ -12,6 +12,48 @@
 
 ## 当前阶段
 
+### 2026-10-05：普通可用值初始化跨块采用共同全路径效果顺序
+
+- 规则revision116，基线564c2b7d；25aa工作树和分支
+  codex/resume-generator-post-loop保持。普通 literal 的同块/物理 OpId
+  限制改由共同 EvaluationAliases、EffectOrder 与 ValueAvailableAt 承担。
+  每次规划一次构建别名及效果分析，以 forward must-reach successor 和
+  exact predecessor 身份证明每 allocation 的全路径单次字段写链。
+  数量只限制遍历；值域、receiver/对象身份、own descriptor、效果/异常
+  顺序和未完成对象不可观察义务保持，无样本/名称/局部序列分派。
+- 字段采用共同 reverse-postorder 位置排序。normal/phased 共用 indexed
+  canonical-use census；纯 copy 与同身份 phi 是 transport，真正观察
+  必须在末次 definition 后。跨块 read 与异常 snapshot 不再因普通旧
+  census 只看同块而遗漏。每 owned write 至多参与一个 allocation 链，
+  每 allocation 至多一条失败边；加上既有 alias/effect 分析、字段排序，
+  无逐对象 CFG 遍历。详见[literal initialization](literal-initialization.md)
+  及[形状限制审计](shape-restrictions-audit.md)。
+- 合成 IR 在1/200/201/402字段及反向物理块检查顺序和篡改拒绝；真实
+  字节码另覆盖三profile、四布局、1/2/200/201/402字段，共60个完整
+  函数。复制链与 diamond 数量随字段数增长；共同来源/树检查贯通。
+  独立 Node 新720场景检查两次调用身份、原型、own key 顺序、每字段
+  W/E/C/value及继承getter/setter与条件coercion零执行，原12,584场景
+  保持。另15个实际解码 bypass/repeat/pure-cycle/read/barrier反例拒绝。
+  两处旧测试误以纯unused copy作为观察，改成真实effectful read；纯
+  copy改为合法transport正例，没有删除真正观察/共享效果RHS等负例。
+- 日志前缀/tmp/abcd-ordered-literal-*。red-test实际在跨块BuildLiteralPlan
+  拒绝处失败。早期测试编译的narrowing、ID类型及不存在的GetInfo API
+  修正后成功。final-build-1单-j4构建14目标退出0；final-tests-1定向
+  19/19通过89.20秒，包括literal/callee/construct/类初始化/来源与VoIP。
+  最后的等价if表达及注释整理后final-build-2重新构建五目标完成。
+  final-tests-2重验literal_plan/literal_binary/source_route，3/3通过5.43秒。
+  未运行全量套件、扩展语料、RSS/基准、调度/DFX；未授权默认数值政策变更。
+- fresh ordered-literal-{default,language}-pass-1各五输入退出0，分别
+  80complete/26incomplete-source/0source-failure/46no-module及
+  95complete/11incomplete-source/0source-failure/46no-module。无legacy、
+  新增complete或complete降级。当前组件未改变真实样本源码字节，不把
+  能力扩展冒充样本表示或阶段一验收完成。两模式syntax-1各106份完整/
+  部分源码解析通过，ABC的SHA/size与原index一致；输入ABC/配对源码未改。
+- late-owned RHS 的普通local native interval、phased unique corridor、
+  跨条件/分阶段初始化的原生对象表示仍是覆盖缺口。未知父类SuperSpread、
+  WindowUtil NEG输入、实例字段/全局/完整签名/函数体整合与各record独立
+  语义/风格验收仍开放，Goal保持active。代理和定期审视仍暂停。
+
 ### 2026-10-05：无初始化静态字段的原生声明与 VoIP 受控暂停验收
 
 - 规则revision115，基线9498dcce；25aa工作树和
