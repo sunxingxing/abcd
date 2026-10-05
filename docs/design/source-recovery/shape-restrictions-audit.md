@@ -1,5 +1,20 @@
 # 按用户要求进行的恢复条件审计
 
+规则123补充：direct phased条件的prefix改由真实root-use方程与共同
+EffectOrder证明。reverse-use Kahn求解要求所有外部consumer归属同一
+terminal owner，允许owner内部多次使用；callee仍由Reference拥有。
+pure execution anchor只把执行点交给共同前驱/必达分析，不伪造效果。
+完整原CFG Commit支配关系、真实catch签名和独立重算仍保留；条件前缀
+成功后不追加single-entry corridor、same-block、相邻、opcode序列或
+producer名单。原forest的sequence/snapshot保留getter一次读取及raw
+VM predicate，不通过重复getter改善外观。register aliases/copies/拆块、
+200/201/402和getter后return/纯循环/debugger反例覆盖执行次数及顺序。
+pure-only snapshot保持原绑定位置，不为搬进条件额外生成赋值序列；其
+后续绑定消除仍是缺口。suspension/constructor-frame等协议仍由共同
+DescribeEvaluation的eager expression能力区分，不靠opcode producer名单。
+nested selection predicate、member prefix及joint suffix仍有旧表示缺口，
+不把这些能力限制解释成语言不变量，也不以新的局部匹配扩大旧fast path。
+
 规则122补充：已获得共同表达式/条件归属的phased字段RHS，现在通过
 functional source forest及投影EffectOrder组合整个对象初始化。原
 LiteralPlan仍证明身份、完整own定义和无提前观察；原allocation root/
@@ -54,7 +69,7 @@ header。现删除这项重复布局准入，沿用已有直线前缀及fresh Ve
 phased staged-to-native、非直线前缀，以及ObjectRoute现存物理字段顺序/
 join候选限制仍是开放的实现缺口，不把它们描述为语言不变量。
 
-最新替换状态见本页规则122及各项补充。历史候选不是当前实现的证明；
+最新替换状态见本页规则123及各项补充。历史候选不是当前实现的证明；
 未替换项继续开放，不能将局部交付称为全量审计闭合。
 
 规则114补充：ClassSelfOrder的初始化观察证明原仅扫描String/Copy，

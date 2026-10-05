@@ -1,5 +1,53 @@
 # Literal Initialization
 
+## Phased predicates own their execution prefixes
+
+Rule 123 indexes root-use equations for phased condition dependencies. A
+reverse-use Kahn worklist resolves each source root only after all external
+consumers have resolved to one terminal owner. Multiple uses inside that owner
+are allowed; competing owners, unresolved cycles, phi-edge observations and
+callee acquisitions do not acquire predicate-prefix ownership. Existing inline
+subtrees and module pairs retain their previously checked roots and References.
+
+Pure execution anchors expose each candidate prefix and its decision to the
+same EffectOrder equations. Exact predecessor and must-reach successor
+identities prove one complete ordered prefix on every normal path. Original
+full-flow successful-Commit dominance proves each result available at the
+decision; throwing roots retain the final consumer's original catch signature.
+Anchors never claim a language effect or substitute for those obligations.
+No single-entry corridor, same-block, adjacency, operation sequence or producer
+list is required for this prefix proof. Independent operand checking recomputes
+the index and prefix, while the existing forest emits the prefix within the
+conditional expression and the existing object analysis composes the initializer.
+Necessary snapshots preserve a raw VM predicate that tests a value more than
+once without replaying its getter.
+This placement represents ordered predicate evaluation and its pure dependencies.
+Pure-only materializing snapshots keep their original placement; moving those
+into assignment sequences adds syntax without composing an ordered evaluation.
+Their eventual binding elimination remains a separate recovery gap.
+
+The root-use worklist is O(O+U) work/storage. Grouped prefix sorting costs
+O(P log P), followed by O(P+U) checking across disjoint root/use lists, plus the
+existing EffectOrder/dominance costs. Every edge is indexed/processed once;
+there is no per-condition CFG walk or fixed-point retry. Scratch and retained
+capacity use the existing invocation budget; no dependency or proof/publication
+wrapper is introduced.
+
+Decoded three-profile regressions cover register aliases, copies and block
+subdivision at 1/200/201/402 sizes. A foreign debugger event, an early return
+after the getter and a potentially nonterminating pure loop refuse movement.
+Cleared prefix ownership is rejected independently. Native object output is
+executed against a separate instruction-semantics oracle over 769 combinations
+of changed getter results and first/second-read failures, preserving raw
+predicate behavior, original thrown identity, read count/order, fresh identity
+and own descriptors.
+
+Nested selected values inside predicates still require common selection
+dependency composition; the actual VoIP optional scene prefix is not thereby
+guaranteed to fuse. The member-Reference prefix and joint-selection suffix
+paths retain their documented legacy corridor limits. These are implementation
+gaps, not language rules, and no new local patterns extend them here.
+
 ## Phased object initialization composes checked source operands
 
 Rule 122 reuses `logical_objects` and the common ObjectExpr forest for staged

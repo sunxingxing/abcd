@@ -12,6 +12,58 @@
 
 ## 当前阶段
 
+### 2026-10-05：phased 条件前缀采用共同依赖与必达证明
+
+- 规则revision123，基线f489b16a；上一轮为实际提交，本轮继续25aa
+  工作树及原分支，开始时干净。固定五ABC、独立配对源码和默认V3/
+  显式language-arithmetic范围保持，没有恢复暂停的全套、RSS或代理。
+- 新PhasePredicatePrefixes消费原source roots及真实canonical uses；
+  reverse-use Kahn按所有外部consumer的一致terminal owner求归属，
+  owner内部多次使用不被当作多次执行。竞争owner、未解cycle、phi-edge
+  观察与callee acquisition保留原归属。eager expression能力来自共同
+  DescribeEvaluation，suspension/constructor-frame等协议仍有原owner。
+- 共同EffectOrder接受typed execution anchors，即使目标decision纯净也
+  能证明到达/执行次数。各prefix的exact predecessor与must-reach
+  successor构成全normal路径完整顺序；原完整CFG成功Commit支配关系
+  证明可用性，原catch/Reference/input检查继续拥有异常及receiver。
+  这不是新增语言效果，也不增加same-block、single-entry corridor、
+  相邻、opcode序列、producer名单或选择数量准入条件。
+- 原phase selection、prefix sequence/snapshot、ObjectExpr与TreeFlow
+  共同组合对象条件RHS。raw VM predicate可能重复读取一个值，必要
+  snapshot确保getter仍只执行一次。pure-only materialization保留原
+  绑定位置，避免为搬入条件额外生成赋值序列；该绑定消除仍是缺口。
+- 依赖索引O(O+U)，分组prefix排序O(P log P)，检查O(P+U)，另加
+  原EffectOrder/支配与catch-copy成本；原预算计入容量/work，无逐条件
+  CFG遍历、新依赖、private final IR或证明/发布包装。原有member prefix
+  和joint suffix corridor能力限制仍是明确实现缺口，没有增加局部模式。
+- 旧实现新增getter predicate完整对象断言在red-source-1.log退出134。
+  初轮5/5通过52.91秒；新增独立oracle后tests-2.log 9/9通过62.44秒。
+  第一次扩大37项有两项失败，final-tests-1.log：循环反例被既有literal
+  路径拒绝，纯快照搬入条件使VoIP表示退化。未放宽其风格断言；保留
+  pure-only原位置后配对VoIP恢复，voip-repair-1.log 1/1通过2.70秒。
+  循环反例独立验证decoded图的anchored must-reach确实不承诺到达，
+  并保留既有UnsupportedOperation；它不是完整函数恢复的正例。
+- 三profile真实解码覆盖register aliases/copies/拆块、1/200/201/402，
+  getter后的DEBUGGER、提前return、纯循环和prefix ownership篡改。
+  正例输出完整原生对象；769个独立Node组合检查两次getter重读、变化
+  的返回值、第一/第二次抛出原值、raw predicate、fresh identity及own
+  descriptors。201→402 work小于3倍，不据此声称RSS或性能实测达标。
+- 最终final-build-2单-j4十五目标退出0；final-tests-2.log定向37/37
+  通过393.79秒，包含Reference、operator precedence、normal/phased
+  literal、selection、closed fields、module default与VoIP/ProgressBar
+  配对行为。日志前缀/tmp/abcd-predicate-prefix-；未重启全量测试。
+- fresh predicate-prefix-{default,language}-pass-2各五ABC退出0，默认
+  80complete/26incomplete-source/0source-failure/46no-module，language
+  95/11/0/46。两模式均无complete新增/退化或legacy writer；各106份
+  源码解析、输入SHA/size与index核验通过，字节与规则122完全一致。
+  因此本轮通用能力扩展尚未减少实际五ABC的剩余缺口。
+- 下一步为selection依赖组合：真实VoIP optional scene读取先形成phi，
+  再经纯comparison进入外层条件；不能把没有throw dispatch的中间比较
+  当作最终异常owner。需让共同合流/操作数归属连接最终字段consumer，
+  不能为optional-chain编译序列加模板。general staged arrays、旧nested/
+  corridor、实例字段/全局/完整签名/函数体整合、SuperSpread、WindowUtil
+  NEG及全部record独立语义/风格验收仍开放，Goal保持active。
+
 ### 2026-10-05：phased 已归属操作数组合整个原生对象
 
 - 规则revision122，基线940e62bb；继续25aa工作树及原分支。上一轮

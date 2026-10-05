@@ -1,6 +1,7 @@
 #include "../../../src/analysis/phased_value_import.h"
 #include "../../../src/analysis/value_edits.h"
 #include "../../../src/analysis/value_flow.h"
+#include "../../../src/analysis/value_phi.h"
 #include "../../../src/source/evaluation_plan.h"
 #include "../../../src/source/effect_order.h"
 #include "../../../src/source/exception_tree.h"
@@ -22,6 +23,7 @@ using namespace abcd::source;
 enum class Shape {
   kAllPath, kAllPathArray, kAllPathBypass, kAllPathBarrier, kAllPathLoop, kAllPathCatchObserve,
   kStagedRead, kStagedReadBarrier, kStagedSelectionBarrier, kStagedSelectionUnary, kStagedSelectionAlias, kStagedLateSnapshot,
+  kPredicateRead, kPredicateReadBarrier, kPredicateReadBypass, kPredicateReadAlias, kPredicateReadLoop,
   kEarlyPhi, kLatePhi,
   kStagedCall, kStagedComputed, kStagedSelection, kStaged, kStagedObserve, kStagedCatchObserve, kReturn, kCatch, kObserve, kLate, kBranch, kCatchObserve, kNested, kNestedCatch,
   kNestedCatchObserve, kNestedDispatch, kNestedShared, kNestedSnapshot, kUnary, kUnaryCatch,
@@ -45,12 +47,17 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   const bool selection_barrier = shape == Shape::kStagedSelectionBarrier;
   const bool selected_alias = shape == Shape::kStagedSelectionAlias;
   const bool late_snapshot = shape == Shape::kStagedLateSnapshot;
-  const std::uint8_t kParameter = phi || selection_barrier || selected_alias || late_snapshot ? 5 : 4;
+  const bool predicate_bypass = shape == Shape::kPredicateReadBypass;
+  const bool predicate_alias = shape == Shape::kPredicateReadAlias;
+  const bool predicate_loop = shape == Shape::kPredicateReadLoop;
+  const bool predicate_register = predicate_bypass || predicate_alias || predicate_loop;
+  const bool predicate_read = shape == Shape::kPredicateRead || shape == Shape::kPredicateReadBarrier || predicate_register;
+  const std::uint8_t kParameter = phi || selection_barrier || selected_alias || late_snapshot || predicate_register ? 5 : 4;
   std::vector<std::uint8_t> bytes{op(abc::Opcode::kCREATEEMPTYOBJECT), op(abc::Opcode::kSTA_V8), kObject};
   if (array) bytes = {op(abc::Opcode::kCREATEEMPTYARRAY_IMM8), 0,
       op(abc::Opcode::kSTA_V8), kObject};
   const bool read = shape == Shape::kStagedRead || shape == Shape::kStagedReadBarrier;
-  const bool staged = read || selection_barrier || selected_unary || selected_alias || late_snapshot || shape == Shape::kStagedCall || shape == Shape::kStagedComputed || shape == Shape::kStagedSelection || shape == Shape::kStaged || shape == Shape::kStagedObserve || shape == Shape::kStagedCatchObserve;
+  const bool staged = predicate_read || read || selection_barrier || selected_unary || selected_alias || late_snapshot || shape == Shape::kStagedCall || shape == Shape::kStagedComputed || shape == Shape::kStagedSelection || shape == Shape::kStaged || shape == Shape::kStagedObserve || shape == Shape::kStagedCatchObserve;
   if (staged) bytes = {op(abc::Opcode::kCREATEOBJECTWITHBUFFER_IMM8_ID16), 0, 0, 0,
       op(abc::Opcode::kSTA_V8), kObject};
   const bool binary = shape == Shape::kBinaryCatch;
@@ -88,6 +95,28 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   if (shape == Shape::kObserve || shape == Shape::kStagedObserve) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kObject,
       op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0});
   const auto selection = [&] {
+    if (predicate_read) {
+      bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kParameter,
+          op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 1, 0});
+      for (std::uint32_t copy = 0; copy < copies; ++copy)
+        bytes.insert(bytes.end(), {op(abc::Opcode::kMOV_V8_V8), kObject, kObject,
+            op(abc::Opcode::kJMP_IMM8), 2});
+      if (shape == Shape::kPredicateReadBarrier) bytes.push_back(op(abc::Opcode::kDEBUGGER));
+      if (predicate_alias) bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), kPhi,
+          op(abc::Opcode::kMOV_V8_V8), kPhi, kPhi, op(abc::Opcode::kLDA_V8), kPhi});
+      if (predicate_loop) bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), kPhi,
+          op(abc::Opcode::kLDA_V8), kParameter, op(abc::Opcode::kISTRUE),
+          op(abc::Opcode::kJNEZ_IMM8), 4, op(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(-5),
+          op(abc::Opcode::kLDA_V8), kPhi});
+      if (predicate_bypass) bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), kPhi,
+          op(abc::Opcode::kLDA_V8), kParameter, op(abc::Opcode::kISTRUE),
+          op(abc::Opcode::kJNEZ_IMM8), 4, op(abc::Opcode::kLDNULL), op(abc::Opcode::kRETURN),
+          op(abc::Opcode::kLDA_V8), kPhi});
+      bytes.insert(bytes.end(), {op(abc::Opcode::kJEQZ_IMM8), 9,
+          op(abc::Opcode::kLDAI_IMM32), 7, 0, 0, 0,
+          op(abc::Opcode::kJMP_IMM8), 3, op(abc::Opcode::kLDNULL)});
+      return;
+    }
     if (shape == Shape::kStagedComputed || shape == Shape::kStagedCall) {
       bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kParameter,
           op(abc::Opcode::kISTRUE), op(abc::Opcode::kJNEZ_IMM8), 5,
@@ -138,7 +167,7 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
         op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 1, 0});
     if (shape == Shape::kStagedReadBarrier) bytes.push_back(op(abc::Opcode::kDEBUGGER));
   }
-  if (staged && !read && !selection_barrier && !selected_unary && !selected_alias && !late_snapshot && shape != Shape::kStagedSelection && shape != Shape::kStagedComputed && shape != Shape::kStagedCall) bytes.insert(bytes.end(), {
+  if (staged && !predicate_read && !read && !selection_barrier && !selected_unary && !selected_alias && !late_snapshot && shape != Shape::kStagedSelection && shape != Shape::kStagedComputed && shape != Shape::kStagedCall) bytes.insert(bytes.end(), {
       op(abc::Opcode::kLDA_V8), kParameter, op(abc::Opcode::kJEQZ_IMM8), 10,
       op(abc::Opcode::kLDA_V8), kParameter, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 1, 0,
       op(abc::Opcode::kJMP_IMM8), 3, op(abc::Opcode::kLDNULL)});
@@ -147,7 +176,7 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   if (shape == Shape::kLate) bytes.insert(bytes.end(), {op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0});
   for (std::uint32_t i = 0; i < fields; ++i) {
     if (phi) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kPhi});
-    if (selection_barrier || selected_unary || selected_alias || (late_snapshot && i == 0) || shape == Shape::kStagedSelection || shape == Shape::kStagedComputed || shape == Shape::kStagedCall) {
+    if (predicate_read || selection_barrier || selected_unary || selected_alias || (late_snapshot && i == 0) || shape == Shape::kStagedSelection || shape == Shape::kStagedComputed || shape == Shape::kStagedCall) {
       selection();
       if (selection_barrier) bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), kPhi,
           op(abc::Opcode::kLDA_V8), kParameter, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 2, 0,
@@ -225,7 +254,7 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
     body.tries.push_back(region); body.handlers.push_back(handler);
   }
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(
-      shape == Shape::kNestedSnapshot || dead_copy ? 3 : nested || phi || selection_barrier || selected_alias || late_snapshot ? 2 : 1, 4, {true, true, false, true}));
+      shape == Shape::kNestedSnapshot || dead_copy ? 3 : nested || phi || selection_barrier || selected_alias || late_snapshot || predicate_register ? 2 : 1, 4, {true, true, false, true}));
   const auto flow = std::get<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers));
   IdfQuota ssa_work{kDefaultSemanticWork};
   const auto ssa = std::get<ExceptionSsa>(ExceptionSsa::Build(flow, frame.registers, ssa_work));
@@ -304,6 +333,29 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
     test::Check(effects.normal_return[previous.value]);
   }
   const auto result = BuildPhasedEvaluationPlan(graph);
+  if (predicate_loop) {
+    // The existing literal path refuses this looping body. Independently check
+    // the decoded normal graph: successful getter completion does not guarantee
+    // reaching the later decision. Anchoring a pure decision must not hide it.
+    const auto identities = std::get<ValueIdentities>(AnalyzeValueIdentities(graph));
+    std::optional<OpId> read, decision;
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      const auto& op = graph.ops[i];
+      if (!read && std::holds_alternative<ValueNamedRead>(op.operation)) read = OpId{static_cast<std::uint32_t>(i)};
+      if (!read || !std::holds_alternative<ValueBranch>(op.operation)) continue;
+      const auto* value = std::get_if<ValueId>(&graph.uses[op.first_use.value].operand);
+      if (value && identities.canonical[value->value] == identities.canonical[graph.ops[read->value].result->value]) {
+        decision = OpId{static_cast<std::uint32_t>(i)}; break;
+      }
+    }
+    test::Check(read && decision);
+    std::vector<ExecutionAnchor> anchors(graph.ops.size());
+    anchors[read->value] = anchors[decision->value] = ExecutionAnchor::kRequired;
+    const auto order = std::get<EffectOrder>(BuildEffectOrder(graph, {}, {}, anchors));
+    test::Check(order.after[read->value] != decision);
+    test::Check(std::get<EvaluationError>(result) == EvaluationError::kUnsupportedOperation);
+    return 0;
+  }
   if (all_path_negative || late_phi || shape == Shape::kStagedObserve || shape == Shape::kStagedCatchObserve || shape == Shape::kObserve || shape == Shape::kBranch || shape == Shape::kCatchObserve ||
       shape == Shape::kNestedCatchObserve || shape == Shape::kNestedDispatch || shape == Shape::kNestedShared || shape == Shape::kNestedSnapshot ||
       shape == Shape::kUnaryShared || shape == Shape::kGlobalDispatch) {
@@ -312,11 +364,11 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   }
   test::Check(std::holds_alternative<EvaluationPlan>(result));
   const auto& evaluation = std::get<EvaluationPlan>(result);
-  if (shape == Shape::kStagedSelection || selected_alias) {
+  if (shape == Shape::kStagedSelection || selected_alias || shape == Shape::kPredicateRead || predicate_alias) {
     test::Check(evaluation.logical_objects.size() == graph.ops.size());
     test::Check(evaluation.logical_objects[evaluation.literals->objects.front().allocation.value].has_value());
   }
-  if (late_snapshot || selection_barrier || (shape == Shape::kStaged && fields > 1) || shape == Shape::kStagedReadBarrier)
+  if (late_snapshot || predicate_bypass || predicate_loop || shape == Shape::kPredicateReadBarrier || selection_barrier || (shape == Shape::kStaged && fields > 1) || shape == Shape::kStagedReadBarrier)
     test::Check(evaluation.logical_objects.empty());
   if (selected_unary || shape == Shape::kStagedSelection || shape == Shape::kStagedComputed || shape == Shape::kStagedCall) {
     test::Check(std::count_if(evaluation.operations.begin(), evaluation.operations.end(),
@@ -332,6 +384,13 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
     test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
     forged = evaluation; forged.phase_selections.front().owner = OpId{0};
     test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    if (!evaluation.phase_selections.front().prefix.empty()) {
+      forged = evaluation; forged.phase_selections.front().prefix.clear();
+      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+      forged = evaluation;
+      forged.phase_prefixes[evaluation.phase_selections.front().prefix.front().value].reset();
+      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    }
   }
   if (read) for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     if (!std::holds_alternative<ValueNamedRead>(graph.ops[i].operation)) continue;
@@ -531,6 +590,11 @@ int main(int argc, char** argv) {
           abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8, abc::Opcode::kNEG_IMM8, true);
       return 0;
     }
+    if (option == "--predicate-read-source") {
+      Run(abc::ProfileId::kDynamic1206, Shape::kPredicateRead, 201, 2,
+          abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8, abc::Opcode::kNEG_IMM8, true);
+      return 0;
+    }
     if (option == "--read-source") {
       Run(abc::ProfileId::kDynamic1206, Shape::kStagedRead, 201, 1,
           abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8, abc::Opcode::kNEG_IMM8, true);
@@ -568,8 +632,19 @@ int main(int argc, char** argv) {
   for (const auto profile : {abcd::abc::ProfileId::kDynamic1202, abcd::abc::ProfileId::kDynamic1206,
                             abcd::abc::ProfileId::kDynamic1301}) {
     for (const auto copies : {1U, 201U}) {
+      Run(profile, Shape::kPredicateRead, copies, 2);
+      Run(profile, Shape::kPredicateReadBarrier, copies, 2);
+      Run(profile, Shape::kPredicateReadBypass, copies, 2);
+      Run(profile, Shape::kPredicateReadAlias, copies, 2);
+      Run(profile, Shape::kPredicateReadLoop, copies, 2);
       Run(profile, Shape::kStagedSelectionAlias, copies, 2);
       Run(profile, Shape::kStagedLateSnapshot, copies, 2);
+    }
+    std::uint64_t previous_predicate = 0;
+    for (const auto copies : {200U, 201U, 402U}) {
+      const auto work = Run(profile, Shape::kPredicateRead, copies, 2);
+      if (copies == 402) test::Check(work < previous_predicate * 3);
+      previous_predicate = work;
     }
     for (const auto all : {Shape::kAllPath, Shape::kAllPathArray}) {
       std::uint64_t previous = 0;

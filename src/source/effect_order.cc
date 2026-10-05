@@ -19,7 +19,8 @@ bool EffectOrder::Before(const analysis::ValueProgram& graph, analysis::OpId id,
 }
 std::variant<EffectOrder, analysis::ValueAvailabilityError> BuildEffectOrder(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget,
-    std::span<const analysis::OpId> execution_owners) {
+    std::span<const analysis::OpId> execution_owners,
+    std::span<const ExecutionAnchor> anchors) {
   using namespace analysis;
   using Error = ValueAvailabilityError;
   const auto initial = budget;
@@ -37,11 +38,16 @@ std::variant<EffectOrder, analysis::ValueAvailabilityError> BuildEffectOrder(
       admit(n, sizeof(T)); v.resize(n); admit(v.capacity() - n, sizeof(T));
     };
     require(execution_owners.empty() || execution_owners.size() == graph.ops.size());
+    require(anchors.empty() || anchors.size() == graph.ops.size());
+    for (const auto anchor : anchors) {
+      step(); require(anchor == ExecutionAnchor::kNone || anchor == ExecutionAnchor::kRequired);
+    }
     for (const auto owner : execution_owners) {
       step(); require(owner.value < graph.ops.size() && execution_owners[owner.value] == owner);
     }
     const auto ordered = [&](OpId id) {
-      return HasOrderedEffect(graph.ops[id.value]) &&
+      return (HasOrderedEffect(graph.ops[id.value]) ||
+          (!anchors.empty() && anchors[id.value] == ExecutionAnchor::kRequired)) &&
           (execution_owners.empty() || execution_owners[id.value] == id);
     };
     EffectOrder result;

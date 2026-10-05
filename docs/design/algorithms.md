@@ -1667,3 +1667,31 @@ field initialization and general control/temporary syntax remain coverage gaps;
 coarse instruction effects are not reclassified merely because operands look
 like constants. Existing 200/201/402 scoped work checks are preserved and
 extended to composed expressions, without reviving RSS or timing benchmarks.
+
+## Phased predicate execution prefixes (source rule 123)
+
+The source root-use graph reuses the project's Kahn readiness propagation.
+Only eager expression capabilities from DescribeEvaluation participate;
+suspension, constructor-frame protocols and unsupported source forms retain
+their own owners. Every external use is indexed once. A root resolves after
+all consumers agree on one terminal owner; competing owners and unresolved
+cycles remain snapshots. Multiple uses within one owner are permitted.
+
+Ordered predicate evaluation and its pure dependencies become caller-selected
+execution anchors in the existing EffectOrder. Its sparse predecessor and
+must-reach equations prove prefix/decision count and order, including pure
+branch subdivision, early returns and potentially nonterminating pure loops.
+Original full-flow Commit dominance proves availability, while the existing
+catch/Reference/operand analyses retain exception and receiver obligations.
+Anchors are analysis endpoints, not invented language effects. Pure-only
+materializations retain their binding placement, avoiding gratuitous sequences.
+
+For O operations, U uses and P selected prefix roots, the dependency index is
+O(O+U) work/storage and grouped sorting O(P log P). Checking adds O(P+U) work,
+plus the previously documented EffectOrder/dominance and catch-copy costs.
+Capacities/work share the existing budget. There is no per-decision CFG walk,
+new dependency, external code or licensing change. Provenance is the existing
+self-maintained Kahn/effect-order implementation documented in this file.
+Three-profile decoded 1/200/201/402 cases and 769 independent JS observations
+check count/order, aliases, exceptions and descriptors; this is targeted
+semantic/work-growth evidence, not a physical RSS or full-corpus measurement.

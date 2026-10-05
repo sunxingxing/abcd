@@ -2,6 +2,7 @@
 #include "logical_regions.h"
 #include "phase_corridor.h"
 #include "evaluation_aliases.h"
+#include "phase_predicate_prefix.h"
 
 #include <algorithm>
 
@@ -66,6 +67,7 @@ class OperandSelections {
       }
     }
     IndexReferences();
+    predicates_ = IndexPhasePredicatePrefixes(graph, plan, roots_, budget);
   }
 
   struct OperandSelection {
@@ -178,6 +180,18 @@ class OperandSelections {
       // and repeated-input obligations were checked by the shared shape.
       if (corridors_.HasCatchCopies(consumer) ||
           (previous && !Inert(*previous, region.header, true))) return {};
+      const auto range = predicates_.ranges[region.branch.value];
+      for (std::size_t p = 0; p < range.count; ++p) {
+        budget_.Step(); const auto id = predicates_.operations[range.first + p];
+        const auto next = p + 1 == range.count ? region.branch : predicates_.operations[range.first + p + 1];
+        if (predicates_.order.after[id.value] != next ||
+            predicates_.order.before[next.value] != EffectPredecessor{id}) return {};
+        const auto& op = graph_.ops[id.value];
+        if (!predicates_.order.Before(graph_, id, graph_.ops[region.branch.value].block,
+                graph_.ops[region.branch.value].order) ||
+            (op.exceptional == ExceptionalCompletion::kMayThrow && !corridors_.SameCatch(id, consumer))) return {};
+        Require(prefix_count < prefix_.size()); prefix_[prefix_count++] = id;
+      }
     }
     for (std::size_t i = 0; i < prefix_count; ++i) owners_[prefix_[i].value] = region.branch;
     owners_[region.branch.value] = region.branch;
@@ -402,6 +416,7 @@ class OperandSelections {
   std::vector<ReferenceExit> reference_exits_;
   std::vector<std::optional<UseId>> heads_, next_;
   std::vector<std::optional<OpId>> owners_, transport_owners_;
+  PhasePredicatePrefixes predicates_;
 };
 }
 void BuildPhaseSelectionOperands(const ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget) {

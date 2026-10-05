@@ -8,6 +8,7 @@ struct EffectJoin {
   bool operator==(const EffectJoin&) const = default;
 };
 using EffectPredecessor = std::variant<EntryEffect, EffectJoin, analysis::OpId>;
+enum class ExecutionAnchor : std::uint8_t { kNone, kRequired };
 struct EffectOrder {
   analysis::DominatorTree dominators;
   // Exact first effect reached by all paths from method entry, including empty
@@ -42,8 +43,11 @@ struct EffectOrder {
 // execution_owners projects already checked operand subtrees into their source
 // consumer event. The caller owns expression, execution-count, leaf availability
 // and catch obligations; this projection alone never authorizes folding effects.
+// Required anchors expose caller-selected execution points in the same must-reach
+// equations, even if pure. They prove count/order, never invent language effects.
 [[nodiscard]] std::variant<EffectOrder, analysis::ValueAvailabilityError>
 BuildEffectOrder(const analysis::ValueProgram&, analysis::SemanticBudget = {},
-    std::span<const analysis::OpId> execution_owners = {});
+    std::span<const analysis::OpId> execution_owners = {},
+    std::span<const ExecutionAnchor> anchors = {});
 }
 #endif
