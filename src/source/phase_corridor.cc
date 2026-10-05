@@ -48,6 +48,17 @@ bool PhaseCorridors::Aggregate(const ValueOperation& operation) {
   return std::holds_alternative<ValueObjectAllocation>(operation) ||
       std::holds_alternative<ValueArrayAllocation>(operation);
 }
+bool PhaseCorridors::ConsumesOperands(const ValueOperation& operation) {
+  const auto shape = DescribeEvaluation(operation);
+  if (!shape || shape->inputs != InputEvaluation::kEager) return false;
+  switch (shape->source) {
+    case SourceEvaluation::kDirect: case SourceEvaluation::kPure:
+    case SourceEvaluation::kSnapshotInputs: return true;
+    case SourceEvaluation::kSuspending: case SourceEvaluation::kInvocation:
+    case SourceEvaluation::kUnsupported: return false;
+  }
+  return false;
+}
 bool PhaseCorridors::Event(const ValueOp& op, const OpEvaluation& placement) {
   return op.life == ValueLife::kLive && placement.kind != EvaluationKind::kAlias &&
       placement.kind != EvaluationKind::kElidedPure && placement.kind != EvaluationKind::kCellGuard && OrderedEvaluation(op);
@@ -232,8 +243,8 @@ bool PhaseCorridors::CanFuse(OpId producer, OpId consumer, UseId use) const {
   const auto& child = graph_.ops[producer.value];
   const auto& parent = graph_.ops[consumer.value];
   if (producer.value >= consumer.value || child.life != ValueLife::kLive ||
-      !child.result || (!parent.result && !std::holds_alternative<ValueBranch>(parent.operation)) ||
-      !Expression(child.operation) || !Expression(parent.operation)) return false;
+      !child.result || !Expression(child.operation) ||
+      (!Expression(parent.operation) && !ConsumesOperands(parent.operation))) return false;
   const auto& uses = uses_[child.result->value];
   if (uses.multiple || uses.first != use) return false;
   // A pure language expression with only literal inputs has no binding state,

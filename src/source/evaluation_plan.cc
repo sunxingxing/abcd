@@ -246,6 +246,10 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
       }
       for (const auto id : plan.literals->definitions) {
         step();
+        // Native literal RHSs belong to the allocation's separate interval.
+        // Staged definitions remain statement roots; common operand scheduling
+        // owns their RHS order and snapshots rather than blanket pinning.
+        if (IsStagedLiteral(&*plan.literals, id)) continue;
         const auto rhs = ResolveEvaluationOperand(plan, graph.uses[graph.ops[id.value].first_use.value + 1].operand);
         if (const auto* value = std::get_if<analysis::ValueId>(&rhs))
           if (const auto* result = std::get_if<analysis::OpResult>(&graph.values[value->value].origin))

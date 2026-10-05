@@ -171,6 +171,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
       }
       for (const auto id : plan.literals->definitions) {
         step();
+        if (IsStagedLiteral(&*plan.literals, id)) continue;
         const auto rhs = ResolveEvaluationOperand(plan, graph.uses[graph.ops[id.value].first_use.value + 1].operand);
         if (const auto* value = std::get_if<analysis::ValueId>(&rhs))
           if (const auto* result = std::get_if<analysis::OpResult>(&graph.values[value->value].origin))

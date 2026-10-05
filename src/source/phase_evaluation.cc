@@ -20,7 +20,9 @@ std::optional<OpId> Producer(const ValueProgram& graph, const EvaluationPlan& pl
 }
 bool Inputs(const ValueOp& op, const OpEvaluation& placement) {
   return op.life == ValueLife::kLive && placement.kind != EvaluationKind::kAlias &&
-      placement.kind != EvaluationKind::kElidedPure && PhaseCorridors::Expression(op.operation);
+      placement.kind != EvaluationKind::kElidedPure &&
+      (PhaseCorridors::Expression(op.operation) ||
+       (placement.kind == EvaluationKind::kRoot && PhaseCorridors::ConsumesOperands(op.operation)));
 }
 std::vector<OpId> Roots(const ValueProgram& graph, const EvaluationPlan& plan, PhaseBudget& budget) {
   std::vector<OpId> roots;
@@ -64,6 +66,10 @@ void Schedule(const ValueProgram& graph, EvaluationPlan& plan, PhaseCorridors& c
           occurrence.role == OperandRole::kReceiver || PredicateSnapshot(graph, op, occurrence.operand)) continue;
       if (retry && retry->roots[producer->value] != retry->roots[i]) continue;
       const auto child = intervals[producer->value];
+      // A resultless consumer is the final execution owner. Its catch contract
+      // must already admit an effect subtree; a later ancestor cannot repair
+      // that obligation. Retain the existing snapshot when evidence is absent.
+      if (!op.result && child.count && !corridors.SameCatch(*producer, id)) continue;
       // A branch has no throw dispatch of its own. Only a pure subtree may
       // end there under this contract; effectful conditions retain snapshots
       // until their conditional execution/handler ownership is represented.

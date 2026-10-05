@@ -1,5 +1,35 @@
 # Literal Initialization
 
+## Staged statement operands use common expression scheduling
+
+Rule 119 distinguishes allocation-owned native literal RHSs from staged
+definitions that remain statement roots. Only native RHSs retain the literal
+pin; staged RHSs use the existing local or phased operand scheduler. Independent
+evaluation verification reconstructs the same ownership distinction before
+checking all proposed edges. This is not permission to reorder the staged
+object's allocation or definitions.
+
+Phased consumers use DescribeEvaluation's eager input and source-lowering
+capabilities rather than requiring a result-producing parent. Stored-value
+reference boundaries, predicate snapshots, exclusive canonical uses, ordered
+effect suffixes and actual catch-copy signatures remain binding. A resultless
+consumer is the final execution owner; an effect subtree with no matching catch
+evidence retains its snapshot immediately, preventing a failed outer fusion
+from disturbing already valid inner Reference ownership.
+
+Decoded three-profile tests combine a selected initializer with a later getter
+RHS at 1/2/200/201/402 copies. The later getter becomes the field RHS directly;
+debugger barriers and repeated consumers retain snapshots. Complete exception
+trees and independent verification check original exceptions and ownership.
+The Node oracle separately checks getter count/order, original thrown tokens,
+fresh object identity and own __proto__ descriptors. This is operand fusion,
+not completion of phased staged-to-native object reconstruction. The existing
+producer capability and corridor limits remain implementation gaps.
+
+No additional graph index or retained storage is introduced. Capability checks
+are O(1) per existing operation/edge; the shared linear scheduling, retry and
+catch-copy accounting retain their previous complexity and budgets.
+
 ## Selected object initialization through common identity and prefixes
 
 Rule 118 removes `allocation.block == first_selection.header` from ordinary

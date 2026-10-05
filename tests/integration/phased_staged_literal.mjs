@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 
 const earlyPhi = process.argv[3] === '--early-phi';
+const directRead = process.argv[3] === '--read';
 const conditional = earlyPhi || process.argv[3] === '--conditional';
 const computedCall = process.argv[3] === '--computed-call';
 const computed = process.argv[3] === '--computed' || computedCall;
-const source = execFileSync(process.argv[2], [earlyPhi ? '--early-phi-source' : computedCall ? '--computed-call-source' : computed ? '--computed-source' : conditional ? '--conditional-source' : '--staged-source'], { encoding: 'utf8' });
+const source = execFileSync(process.argv[2], [directRead ? '--read-source' : earlyPhi ? '--early-phi-source' : computedCall ? '--computed-call-source' : computed ? '--computed-source' : conditional ? '--conditional-source' : '--staged-source'], { encoding: 'utf8' });
 if (conditional || computed) assert.ok(source.includes(' ? ') && !source.includes('if ('));
+if (directRead) assert.match(source, /\.__proto__ = \$arg0\.value/);
 const recovered = Function(`return ${source}`)();
 // Independent bytecode behavior: the scalar fixture uses false/number zero;
 // computed fixtures explicitly apply ToBoolean. Buffered own-field definitions
@@ -14,9 +16,13 @@ const recovered = Function(`return ${source}`)();
 function reference(input) {
   try {
     const buffered = earlyPhi ? undefined : { ['__proto__']: null };
-    const value = computed ? (input ? (computedCall ? input.value() : input.value) : null) : input === false || input === 0 ? null : conditional ? 7 : input.value;
+    if (directRead) Object.defineProperty(buffered, '__proto__', {
+      value: input === false || input === 0 ? null : 7,
+      writable: true, enumerable: true, configurable: true,
+    });
+    const value = directRead ? input.value : computed ? (input ? (computedCall ? input.value() : input.value) : null) : input === false || input === 0 ? null : conditional ? 7 : input.value;
     const result = earlyPhi ? {} : buffered;
-    for (let i = 0; i < (computed ? 1 : 2); ++i) Object.defineProperty(result, '__proto__', {
+    for (let i = 0; i < (directRead || computed ? 1 : 2); ++i) Object.defineProperty(result, '__proto__', {
       value, writable: true, enumerable: true, configurable: true,
     });
     return result;

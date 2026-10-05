@@ -19,6 +19,7 @@ using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
 enum class Shape {
+  kStagedRead, kStagedReadBarrier,
   kEarlyPhi, kLatePhi,
   kStagedCall, kStagedComputed, kStagedSelection, kStaged, kStagedObserve, kStagedCatchObserve, kReturn, kCatch, kObserve, kLate, kBranch, kCatchObserve, kNested, kNestedCatch,
   kNestedCatchObserve, kNestedDispatch, kNestedShared, kNestedSnapshot, kUnary, kUnaryCatch,
@@ -36,7 +37,8 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   constexpr std::uint8_t kObject = 0, kPhi = 1;
   const std::uint8_t kParameter = phi ? 5 : 4;
   std::vector<std::uint8_t> bytes{op(abc::Opcode::kCREATEEMPTYOBJECT), op(abc::Opcode::kSTA_V8), kObject};
-  const bool staged = shape == Shape::kStagedCall || shape == Shape::kStagedComputed || shape == Shape::kStagedSelection || shape == Shape::kStaged || shape == Shape::kStagedObserve || shape == Shape::kStagedCatchObserve;
+  const bool read = shape == Shape::kStagedRead || shape == Shape::kStagedReadBarrier;
+  const bool staged = read || shape == Shape::kStagedCall || shape == Shape::kStagedComputed || shape == Shape::kStagedSelection || shape == Shape::kStaged || shape == Shape::kStagedObserve || shape == Shape::kStagedCatchObserve;
   if (staged) bytes = {op(abc::Opcode::kCREATEOBJECTWITHBUFFER_IMM8_ID16), 0, 0, 0,
       op(abc::Opcode::kSTA_V8), kObject};
   const bool binary = shape == Shape::kBinaryCatch;
@@ -96,7 +98,16 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
     if (early_phi) bytes.insert(bytes.end(), {op(abc::Opcode::kCREATEEMPTYOBJECT),
         op(abc::Opcode::kSTA_V8), kObject});
   }
-  if (staged && shape != Shape::kStagedSelection && shape != Shape::kStagedComputed && shape != Shape::kStagedCall) bytes.insert(bytes.end(), {
+  if (read) {
+    // A prior selected initializer keeps this object staged. The later
+    // read/write suffix has its own unchanged effect and catch contract.
+    selection();
+    bytes.insert(bytes.end(), {op(define), 0, 0, 0, kObject,
+        op(abc::Opcode::kLDA_V8), kParameter,
+        op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 1, 0});
+    if (shape == Shape::kStagedReadBarrier) bytes.push_back(op(abc::Opcode::kDEBUGGER));
+  }
+  if (staged && !read && shape != Shape::kStagedSelection && shape != Shape::kStagedComputed && shape != Shape::kStagedCall) bytes.insert(bytes.end(), {
       op(abc::Opcode::kLDA_V8), kParameter, op(abc::Opcode::kJEQZ_IMM8), 10,
       op(abc::Opcode::kLDA_V8), kParameter, op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 1, 0,
       op(abc::Opcode::kJMP_IMM8), 3, op(abc::Opcode::kLDNULL)});
@@ -220,6 +231,17 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   }
   test::Check(std::holds_alternative<EvaluationPlan>(result));
   const auto& evaluation = std::get<EvaluationPlan>(result);
+  if (read) for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+    if (!std::holds_alternative<ValueNamedRead>(graph.ops[i].operation)) continue;
+    const bool fused = fields == 1 && shape != Shape::kStagedReadBarrier;
+    test::Check((evaluation.operations[i].kind == EvaluationKind::kInline) == fused);
+    if (fused) {
+      const auto use = *evaluation.operations[i].consumer;
+      test::Check(graph.uses[use.value].role == OperandRole::kStoredValue);
+      auto forged = evaluation; forged.operations[i].consumer = UseId{0};
+      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    }
+  }
   if (shape == Shape::kStaged) {
     test::Check(std::any_of(evaluation.operations.begin(), evaluation.operations.end(),
         [](const OpEvaluation& op) { return op.kind == EvaluationKind::kPhiInput; }));
@@ -266,7 +288,7 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
     invalid = evaluation; invalid.cells.reset();
     test::Check(std::holds_alternative<LiteralError>(VerifyPhasedLiteralPlan(graph, literal, invalid)));
   }
-  test::Check(literal.definitions.size() == (nested ? fields * 2 : fields));
+  test::Check(literal.definitions.size() == (nested ? fields * 2 : fields + (read ? 1 : 0)));
   test::Check(std::holds_alternative<std::uint64_t>(VerifyPhasedLiteralPlan(graph, literal, evaluation)));
   test::Check(std::holds_alternative<LiteralError>(VerifyLiteralPlan(graph, literal)));
   auto changed = literal; ++changed.revision.value;
@@ -380,6 +402,11 @@ int main(int argc, char** argv) {
   if (argc == 2) {
     const auto option = std::string_view(argv[1]);
     const bool update = option == "--increment-source" || option == "--decrement-source" || option == "--numeric-source";
+    if (option == "--read-source") {
+      Run(abc::ProfileId::kDynamic1206, Shape::kStagedRead, 201, 1,
+          abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8, abc::Opcode::kNEG_IMM8, true);
+      return 0;
+    }
     if (option == "--computed-source" || option == "--computed-call-source") {
       Run(abc::ProfileId::kDynamic1206, option == "--computed-call-source" ? Shape::kStagedCall : Shape::kStagedComputed, 0, 1,
           abc::Opcode::kDEFINEFIELDBYNAME_IMM8_ID16_V8, abc::Opcode::kNEG_IMM8, true);
@@ -451,6 +478,14 @@ int main(int argc, char** argv) {
       Run(profile, Shape::kStagedSelection, 0, count);
       Run(profile, Shape::kStagedComputed, 0, count);
       Run(profile, Shape::kStagedCall, 0, count);
+    }
+    std::uint64_t read_work = 0;
+    for (const auto copies : {1U, 2U, 200U, 201U, 402U}) {
+      const auto work = Run(profile, Shape::kStagedRead, copies);
+      if (copies == 402) test::Check(work < 3 * read_work);
+      read_work = work;
+      Run(profile, Shape::kStagedReadBarrier, copies);
+      Run(profile, Shape::kStagedRead, copies, 2);
     }
     std::uint64_t lexical_work = 0;
     for (const auto count : {1U, 2U, 200U, 201U, 402U}) {

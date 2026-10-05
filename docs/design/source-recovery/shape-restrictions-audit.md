@@ -1,5 +1,16 @@
 # 按用户要求进行的恢复条件审计
 
+规则119补充：异常表达式调度原要求消费方有result并属于Expression
+操作子集，普通字段写入因而不能承接共同区间已证明的RHS。现消费能力
+取自DescribeEvaluation的eager输入与source能力；Reference/key边界、
+predicate snapshot、唯一canonical使用、效果后缀及catch copies仍检查。
+native literal RHS保留其allocation区间归属，staged定义是语句根，
+不再一律固定其RHS。builder/fresh verifier共同重建这一区别。
+resultless consumer是最终执行owner，缺少匹配catch证据时立即保留快照，
+避免一次失败外层融合改变已合法的内部Reference归属。此证据缺口不作为
+语言禁止语句内嵌表达式的理由。现存producer能力名单、phase corridor
+及整个staged-to-native重建仍开放，不靠更多局部布局扩大它们。
+
 规则118补充：普通selected object的ObjectRoute在共同Domain已证明
 分配/字段/消费的效果区间后，仍额外要求allocation.block等于首个条件
 header。现删除这项重复布局准入，沿用已有直线前缀及fresh Verify方程。
@@ -11,7 +22,7 @@ header。现删除这项重复布局准入，沿用已有直线前缀及fresh Ve
 phased staged-to-native、非直线前缀，以及ObjectRoute现存物理字段顺序/
 join候选限制仍是开放的实现缺口，不把它们描述为语言不变量。
 
-最新替换状态见本页规则118及各项补充。历史候选不是当前实现的证明；
+最新替换状态见本页规则119及各项补充。历史候选不是当前实现的证明；
 未替换项继续开放，不能将局部交付称为全量审计闭合。
 
 规则114补充：ClassSelfOrder的初始化观察证明原仅扫描String/Copy，
