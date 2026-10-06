@@ -943,7 +943,7 @@ class ForestBuilder {
       }
       case U::kToNumeric:
         if (NumberEvaluation(graph_, original)) return Combine(input, origin);
-        // General conversion is handled by exclusive postfix scratch above.
+        // General conversion is handled by private postfix storage above.
         // Identity must still follow an input fact, never the later consumer.
         throw Error::kUnsupportedOperation;
       case U::kIncrement: case U::kDecrement:
@@ -995,7 +995,8 @@ class ForestBuilder {
           const auto symbol = *forest_.bindings.updates[id.value];
           // Ark publishes acc only on success and leaves the input register
           // unchanged. The comma owns one input evaluation and a native update
-          // on exclusive scratch; no helper call, user store or x +/- 1.
+          // on this operation's private storage (its own result snapshot or
+          // exclusive scratch); no helper call, user store or x +/- 1.
           const auto save = Add(AssignmentExpr{SymbolTarget{symbol}, operands[0]}, origin);
           // ToNumeric returns the postfix old value; only compiler scratch
           // receives the extra arithmetic result. Publication gates resources.

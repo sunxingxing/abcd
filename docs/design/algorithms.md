@@ -735,22 +735,30 @@ No peak-RSS or performance acceptance is claimed.
 
 ### Native numeric update storage (2026-10-02)
 
-ValueUnary increment/decrement owns an additional exclusive compiler symbol,
-not the input SSA binding. Binding allocation counts updates in the existing
+ValueUnary increment/decrement owns private compiler storage,
+never the input SSA binding. Binding allocation counts updates in the existing
 operation pass, then creates an OpId-indexed symbol table and dense UpdateBinding
-entries in one pass. For O operations and U retained updates, the added work is
+entries in one pass. Rules 152 reuse the exact producer's materialized
+SnapshotBinding when it owns the result ValueId; otherwise an exclusive
+UpdateBinding remains. Alias identity alone does not authorize reuse.
+For O operations and U retained updates, the added work is
 O(O), storage O(O + U); the table is absent when U is zero. Existing byte/ID
 admission includes the table, symbols, names and AST nodes.
 
 The common AST represents one input assignment followed by native prefix
-increment/decrement in a two-child comma expression. TreeFlow derives exclusive
-storage from actual node targets and checks all symbol references in one pass;
-for S symbols and X expression nodes the additional check is O(O + S + X)
+increment/decrement in a two-child comma expression. TreeFlow independently
+reconstructs actual result publication and permits only that producer's
+save/update/publication writes. Shared SSA reads retain the common availability
+and operand proof; captures of shared or exclusive update storage are forbidden.
+Postfix ToNumeric keeps its outer publication of the old numeric value.
+For S symbols, X expression nodes and C capture entries the additional check is
+O(O + S + X + C)
 work and O(S) scratch, or a single O(X) discovery pass when no update exists.
 It never searches the CFG per update or walks all uses per symbol. Existing
 operand/origin checking proves the original input, new result and occurrence.
 Non-NaN Number identity ToNumeric checks are O(1). General conversion/domain
-admission and source-reference update folding are not claimed by this rule.
+admission uses the separate explicit language numeric contract where selected;
+source-reference update folding is not claimed by this storage rule.
 Full draft work scaling is checked at 200/201/400 updates in normal/phased
 three-profile fixtures; RSS and benchmark measurements remain paused.
 

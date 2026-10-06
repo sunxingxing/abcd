@@ -12,6 +12,57 @@
 
 ## 当前阶段
 
+### 2026-10-07：规则152，数值更新复用自身结果存储
+
+- 干净ab0d3a43工作树继续，production/rules151推进152。BindingPlan
+  仅在SnapshotBinding的producer及ValueId均属于当前数值操作时复用
+  它作为私有更新存储；非materialized结果仍使用独占UpdateBinding。
+  不借用输入、formal、cell、phi、catch slot或其他producer的snapshot。
+  原ABC→ValueProgram→EvaluationPlan→FunctionTree→共同printer保持。
+- 新鲜TreeFlow从实际RootExpression重建publication/producer身份，
+  独立核对save/update/publication写入及capture排除；正常SSA读取继续
+  通过原operand/availability证明。前缀INC/DEC与后缀ToNumeric保持，
+  后者外层publication仍恢复旧数值，不能因共享存储而省略。没有新增
+  opcode名字、样本/sidecar、PC/register、同块、邻接或局部图形匹配。
+  分配仍O(operations)，检查O(operations+symbols+expressions+captures)，
+  预算化scratch O(symbols)；200/201/400现有三profile规模检查保持。
+- 旧实现在实际结果存储断言RED；新增断言最初误把嵌套更新的输入保存
+  当publication，按原operation origin区分后修正。任意值phased fixture
+  初次遗漏Arithmetic(identity.contract)，导致输入证明bad_variant；
+  修正测试适配并显式检查typed返回，未放宽生产证明。直接更新的null
+  catch返回暴露oracle的typeof null分支错误，修正后3584独立场景通过。
+- 原108实际解码更新用例保留，新增24任意值语言模式用例（三profile、
+  normal/phased、INC/DEC、直接输入/ToNumeric），全部含201 COPY及split。
+  包含Number/BigInt、NaN/signed zero、Symbol、字符串及对象number-hint
+  转换、原throw、catch旧输入身份、callback receiver/参数、输入未被写入；
+  四独立语法树保留。3有效JS行为mutation及原typed树mutation检出。
+  生产名称匹配未引入；测试旧$update正则改为已有固定Acorn AST定位。
+- abc_structure/abc_semantic、十一相关fixture构建退出0。22项定向实测
+  21通过/1失败，58.23秒，不冒称全部通过：language_constructors_paired
+  在首个push record3444的普通arrow3613生成前失败。198 decoded语言
+  构造器及420函数/353220数值场景通过；实际ProgressBar/富文本受控
+  对照保持，设备SDK语义未验。其他21项没有以INCOMPLETE代替行为验收。
+- 失败定位为未改动call_plan.cc:215：实际callee为kRoot/
+  kCrossRegionValue，而当前MemberCall表示只接受inline/nested callee。
+  是retained Reference表示缺口，不是构造语义或语言不变量。暂时移除
+  本次allocator复用后相同失败，LLDB证实kReference→kUnsupportedOperation
+  →FunctionTreeError::kExpression；恢复原文件并重建两工具后另验仍失败。
+  没有删除Reference/receiver/异常义务或以样本条件绕过；历史十record
+  验收不作当前通过证据。下一步优先完成这个普通函数的共同调用恢复，
+  再继续SSA store投影、native binding/每轮捕获及一般继续程序。
+- fresh ABC-only pasteboard显式numeric+constructors导出
+  build/stage-one/numeric-storage-final，manifest19 records/219 methods，
+  10complete source/0partial/9noModule，contract保持
+  language_numeric_constructors_v1。独立Acorn检查private update符号3→1，
+  $value49/$phi10、三个原生for（均有init、两个有update）、三次++保持。
+  paired正文仅进入独立测试，引擎只收ABC/固定配置，输入未修改。
+- 证据/tmp/abcd-numeric-storage-{build-final,build-arbitrary,
+  build-constructors,build-restored,tests-final,style-final,export-final}.log；
+  exclusive-probe.json及constructor/reference/expression-debug日志保留。
+  git diff --check、修改mjs的node --check通过。原字段/全局/signature/body
+  gate与阶段一Goal保持active；full suite、扩展语料、RSS/benchmark、
+  DFX、scheduler、agents及周期audit暂停保持，不声称全阶段完成。
+
 ### 2026-10-07：规则151，共同进入程序与 for 初始化
 
 - 基线f5cc2b69，干净codex/resume-generator-post-loop工作树继续；上一轮

@@ -21,7 +21,7 @@ constexpr std::array<std::uint64_t, 5> kSeeds{
 struct Fixture {
   Fixture(bool decrement, std::uint32_t count, bool phased = false, std::size_t seed = 0,
           abc::ProfileId profile = abc::ProfileId::kDynamic1206,
-          unsigned copies = 0, bool split = false) {
+          unsigned copies = 0, bool split = false, bool arbitrary = false, bool convert = true) {
     // Pinned dynamic ISA: keep the converted old value distinct from each
     // update result. Mutating the old SSA snapshot corrupts the returned pair.
     std::vector<std::uint8_t> bytes;
@@ -33,10 +33,14 @@ struct Fixture {
     };
     const auto load = [&](std::uint8_t reg) { opcode(abc::Opcode::kLDA_V8); bytes.push_back(reg); };
     const auto store = [&](std::uint8_t reg) { opcode(abc::Opcode::kSTA_V8); bytes.push_back(reg); };
-    opcode(abc::Opcode::kFLDAI_IMM64);
-    for (unsigned shift = 0; shift < sizeof(std::uint64_t) * kByteBits; shift += kByteBits)
-      bytes.push_back(static_cast<std::uint8_t>(kSeeds[seed] >> shift));
-    opcode(abc::Opcode::kTONUMERIC_IMM8); bytes.push_back(0); store(1);
+    if (arbitrary) load(4);
+    else {
+      opcode(abc::Opcode::kFLDAI_IMM64);
+      for (unsigned shift = 0; shift < sizeof(std::uint64_t) * kByteBits; shift += kByteBits)
+        bytes.push_back(static_cast<std::uint8_t>(kSeeds[seed] >> shift));
+    }
+    if (convert) { opcode(abc::Opcode::kTONUMERIC_IMM8); bytes.push_back(0); }
+    store(1);
     for (unsigned i = 0; i < copies; ++i) {
       opcode(abc::Opcode::kMOV_V8_V8); bytes.insert(bytes.end(), {0, 1});
       opcode(abc::Opcode::kMOV_V8_V8); bytes.insert(bytes.end(), {1, 0});
@@ -63,9 +67,10 @@ struct Fixture {
       handler.length = static_cast<std::uint32_t>(bytes.size()) - handler_pc;
       body.handlers.push_back(handler);
     }
-    const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(3, 1, {}));
+    const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(3, arbitrary ? 2 : 1, {}));
     RouteInputIdentity identity;
     identity.profile = profile;
+    if (arbitrary) identity.contract = SourceContract::kLanguageNumericV1;
     switch (profile) {
       case abc::ProfileId::kDynamic1202: identity.abc_version = {12, 0, 2, 0}; break;
       case abc::ProfileId::kDynamic1206: identity.abc_version = {12, 0, 6, 0}; break;
@@ -75,7 +80,7 @@ struct Fixture {
     FunctionSyntax syntax{};
     syntax.identity = identity; syntax.method = {200};
     syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
-    syntax.names = {u"old", u"updated"}; syntax.parameters.resize(1);
+    syntax.names = {u"old", u"updated"}; syntax.parameters.resize(arbitrary ? 2 : 1);
     const auto prepare_constants = [&] {
       constants.resize(graph.ops.size());
       for (std::size_t i = 0; i < graph.ops.size(); ++i)
@@ -83,7 +88,7 @@ struct Fixture {
           constants[i] = NameId{write->name.value};
     };
     if (phased) {
-      const auto flow = std::get<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers));
+      const auto flow = std::get<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers, {}, {}, &frame));
       IdfQuota quota{kDefaultSemanticWork};
       const auto ssa = std::get<ExceptionSsa>(ExceptionSsa::Build(flow, frame.registers, quota));
       std::vector<EntryValueFact> entries;
@@ -96,8 +101,11 @@ struct Fixture {
       const auto env = std::get<EnvironmentFlow>(AnalyzeExceptionEnvironments(flow));
       IdfQuota value_work{kDefaultSemanticWork};
       const auto values = std::get<ExceptionValueFlow>(ExceptionValueFlow::Build(flow, ssa, entries,
-          value_work, {}, PendingExceptionValues::kLanguage));
-      const auto proof = std::get<ExceptionInputProof>(VerifyExceptionInputs(flow, ssa, env, values));
+          value_work, {}, PendingExceptionValues::kLanguage, {}, {}, CallResultValues::kLanguage,
+          FrameReceiver::kUnknown, Arithmetic(identity.contract)));
+      const auto checked = VerifyExceptionInputs(flow, ssa, env, values);
+      test::Check(std::holds_alternative<ExceptionInputProof>(checked));
+      const auto proof = std::get<ExceptionInputProof>(checked);
       const PhasedValueInput input{flow, ssa, env, values, proof, frame};
       graph = std::get<ValueProgram>(ImportPhasedValues(input));
       evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(graph));
@@ -113,7 +121,7 @@ struct Fixture {
         return std::holds_alternative<TreeSemantics>(VerifyExceptionTreeSemantics(
             graph, context, evaluation, candidate, {constants, 2}));
       };
-      test::Check(valid(tree)); Mutations(valid);
+      test::Check(valid(tree)); Mutations(valid); ResultStorage();
       return;
     }
     const auto input = std::get<FunctionInput>(FunctionInput::Build(identity, {200}, {100},
@@ -126,7 +134,21 @@ struct Fixture {
     test::Check(std::holds_alternative<ConstructedFunction>(built));
     work = std::get<ConstructedFunction>(built).work;
     tree = std::get<ConstructedFunction>(std::move(built)).tree;
-    test::Check(Valid(tree)); Mutations([&](const FunctionTree& candidate) { return Valid(candidate); });
+    test::Check(Valid(tree)); Mutations([&](const FunctionTree& candidate) { return Valid(candidate); }); ResultStorage();
+  }
+  void ResultStorage() const {
+    // A materialized numeric result owns its update's private storage. Test
+    // actual tree identity, independently of names or planner allocation.
+    bool shared = false;
+    for (const auto& node : tree.expressions) {
+      const auto* publish = std::get_if<AssignmentExpr>(&node.expression);
+      const auto* target = publish ? std::get_if<SymbolTarget>(&publish->target) : nullptr;
+      const auto* sequence = publish ? std::get_if<SequenceExpr>(&tree.expressions[publish->value.value].expression) : nullptr;
+      const auto* update = sequence ? std::get_if<UpdateExpr>(&tree.expressions[sequence->right.value].expression) : nullptr;
+      if (!target || !update || node.origin != tree.expressions[sequence->right.value].origin) continue;
+      test::Check(target->symbol == update->symbol); shared = true;
+    }
+    test::Check(shared);
   }
   template<class Valid> void Mutations(Valid valid) const {
     std::optional<ExprId> first, second;
@@ -140,7 +162,9 @@ struct Fixture {
     auto& update = std::get<UpdateExpr>(changed.expressions[first->value].expression);
     update.direction = update.direction == UpdateDirection::kIncrement ? UpdateDirection::kDecrement : UpdateDirection::kIncrement;
     test::Check(!valid(changed));
-    changed = tree; std::get<UpdateExpr>(changed.expressions[first->value].expression).result = UpdateResult::kPostfix;
+    changed = tree;
+    auto& result = std::get<UpdateExpr>(changed.expressions[first->value].expression).result;
+    result = result == UpdateResult::kPrefix ? UpdateResult::kPostfix : UpdateResult::kPrefix;
     test::Check(!valid(changed));
     changed = tree; std::get<UpdateExpr>(changed.expressions[first->value].expression).symbol = changed.parameters[0].symbol;
     test::Check(!valid(changed));
@@ -230,6 +254,15 @@ int main(int argc, char** argv) {
                 << ",seed:" << kSeedText[seed] << ",fn:" << fixture.Print() << "},\n";
           }
         }
+      }
+  if (emit) std::cout << "];\n";
+  if (emit) std::cout << "export const arbitrary = [\n";
+  for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+    for (const bool phased : {false, true})
+      for (const bool decrement : {false, true}) for (const bool convert : {false, true}) {
+        const Fixture fixture(decrement, 1, phased, 0, profile, 201, true, true, convert);
+        if (emit) std::cout << "{decrement:" << decrement << ",caught:" << phased << ",convert:" << convert
+            << ",fn:" << fixture.Print() << "},\n";
       }
   if (emit) std::cout << "];\n";
   if (emit) std::cout << "export const syntax = [\n";

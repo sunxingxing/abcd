@@ -54,8 +54,9 @@ struct BindingPlan {
   EvaluationFlow flow = EvaluationFlow::kNormal;
   // CatchSlotId indexed private storage, never a phi/cell/parameter alias.
   std::vector<SymbolId> catch_slots;
-  // OpId indexed, private to this single native update occurrence; not an SSA
-  // value, parameter, cell, phi, catch slot or observable old-value snapshot.
+  // OpId indexed: the same producer's private result snapshot, or exclusive
+  // scratch when that result has no storage. Never borrow input/parameter/
+  // cell/phi/catch/another producer storage. Publication preserves the result.
   std::vector<std::optional<SymbolId>> updates;
 };
 enum class BindingError : std::uint8_t {

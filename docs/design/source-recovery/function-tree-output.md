@@ -357,7 +357,8 @@ TreeFlow 通过一次 source assignment/update census 排除对复用绑定的�
 TreeOperands 再独立验证原操作必须读实际 rest formal 或 self；不能以错误
 parameter、global 或同名 capture 替代。若将来引入可写 source formal，须重新
 规划它与入口 SSA 值的存储关系，不能直接套用这一复用。getter/cell/module
-快照、phi/cycle/exception staging 和 numeric update 仍拥有独立存储。
+快照、phi/cycle/exception staging 仍拥有独立存储。规则152允许numeric
+update复用同一producer自己的私有结果快照；输入及其他producer不合并。
 
 ABI census 的 rest 引用数包括原分配表达式和直接消费者，不再要求它恰好为
 一次。保留原物理参数 operand 为零、一次已证明 rest 分配和 source writes 为

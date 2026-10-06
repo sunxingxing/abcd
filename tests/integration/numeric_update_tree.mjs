@@ -1,10 +1,24 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
+import {parseJavaScript} from './class_reference.mjs';
 
 const source = execFileSync(process.argv[2], ['--emit'], {encoding: 'utf8'});
-const {cases, syntax} = await import(`data:text/javascript,${encodeURIComponent(source)}`);
+const {cases, syntax, arbitrary} = await import(`data:text/javascript,${encodeURIComponent(source)}`);
 assert.equal(cases.length, 108);
 assert.equal(syntax.length, 4);
+assert.equal(arbitrary.length, 24);
+function nodes(text) {
+  const result = [], pending = [parseJavaScript(`(${text})`)];
+  while (pending.length) {
+    const node = pending.pop(); result.push(node);
+    for (const value of Object.values(node)) {
+      if (Array.isArray(value)) {
+        for (const child of value) if (child?.type) pending.push(child);
+      } else if (value?.type) pending.push(value);
+    }
+  }
+  return result;
+}
 let scenarios = 0;
 function verifyDecoded(item, fn = item.fn) {
   let expected = item.seed;
@@ -48,6 +62,70 @@ function verifyDecoded(item, fn = item.fn) {
   }
 }
 for (const item of cases) verifyDecoded(item);
+for (const item of cases.filter(c => c.count === 1)) {
+  const ast = nodes(item.fn.toString());
+  const update = ast.find(n => n.type === 'UpdateExpression');
+  const result = ast.find(n => n.type === 'Property' && n.key.name === 'updated').value;
+  assert.equal(update.argument.name, result.name,
+    'materialized update must use its own result storage');
+}
+
+// Actual decoded language-mode ToNumeric and INC/DEC retain arbitrary inputs.
+// Conversion happens outside the protected update/callback; its exact number
+// hint, throwing identity, old value and callback receiver are observable.
+for (const item of arbitrary) {
+  const reference = (callback, input) => {
+    let converted = input;
+    const old = item.convert ? converted++ : input;
+    try {
+      let updated = old; item.decrement ? --updated : ++updated;
+      (0, callback)(old, updated);
+      return {old, updated};
+    } catch (error) { if (item.caught) return old; throw error; }
+  };
+  const values = [undefined, null, false, true, -0, NaN, Infinity, -Infinity,
+    2147483647, -2147483648, 1e20, 1n, 0n, -9n, '12', 'bad', '', Symbol('input')];
+  for (const converted of values) for (const custom of [false, true])
+    for (const failure of ['none', 'conversion', 'callback']) {
+      if (!custom && failure === 'conversion') continue;
+      const token = {failure}, originalInput = {original: true};
+      const run = fn => {
+        const trace = [];
+        const input = custom ? {[Symbol.toPrimitive](hint) {
+          trace.push(['convert', hint]);
+          if (failure === 'conversion') throw token;
+          return converted;
+        }} : converted;
+        let value, error, failed = false;
+        try {
+          value = fn(function (old, updated) {
+            'use strict'; assert.equal(this, undefined);
+            assert.equal(arguments.length, 2);
+            trace.push(['call', custom && old === input ? originalInput : old, updated]);
+            if (failure === 'callback') throw token;
+          }, input);
+        } catch (e) { failed = true; error = e; }
+        if (custom) {
+          assert.deepEqual(Reflect.ownKeys(input), [Symbol.toPrimitive]);
+          if (value === input) value = originalInput;
+          else if (value && typeof value === 'object' && value.old === input)
+            value = {...value, old: originalInput};
+        }
+        return {value, error, failed, trace};
+      };
+      const want = run(reference), actual = run(item.fn);
+      assert.equal(actual.failed, want.failed);
+      assert.deepEqual(actual.trace, want.trace);
+      if (actual.failed) {
+        if (want.error === token) assert.equal(actual.error, token);
+        else assert.equal(actual.error.constructor, want.error.constructor);
+      } else if (want.value !== null && typeof want.value === 'object') {
+        assert.deepEqual(actual.value, want.value);
+        assert.equal(Object.getPrototypeOf(actual.value), Object.prototype);
+      } else assert.ok(Object.is(actual.value, want.value));
+      ++scenarios;
+    }
+}
 
 // These four hand-built ASTs test native syntax, not arbitrary ABC-domain
 // acceptance. The independent oracle performs one number-hint conversion.
@@ -95,15 +173,13 @@ for (const item of syntax) {
 // update result and an update corrupting the still-observable old snapshot.
 const item = cases.find(c => !c.caught && !c.decrement && c.count === 1 && c.seed === 7);
 const text = item.fn.toString();
-const update = text.match(/\(\+\+(\$update\d+)\)/);
-assert.ok(update);
-const target = update[1];
-const old = text.match(/\(\$update\d+ = (\$value\d+)\)/);
-assert.ok(old);
+const ast = nodes(text);
+const update = ast.find(n => n.type === 'UpdateExpression');
+const target = update.argument.name;
+const old = ast.find(n => n.type === 'Property' && n.key.name === 'old').value.name;
+const replace = value => text.slice(0, update.start - 1) + value + text.slice(update.end - 1);
 const mutations = [
-  text.replace(`(++${target})`, `(${target}++)`),
-  text.replace(`(++${target})`, `(--${target})`),
-  text.replace(`(++${target})`, `(++${old[1]})`),
+  replace(`${target}++`), replace(`--${target}`), replace(`++${old}`),
 ];
 for (const changed of mutations) {
   const fn = Function(`return (${changed})`)();

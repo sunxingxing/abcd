@@ -1,5 +1,15 @@
 # 验收、证据与实施交接
 
+2026-10-07 规则152：numeric update复用同一producer自己的私有结果
+snapshot，输入/phi/cell不合并，ToNumeric旧值publication保留。新增24
+真实解码任意值normal/phased用例、原108解码和四语法树共3584行为
+场景通过。定向22项实测21通过/1失败：构造器paired因普通arrow的
+retained callee缺口生成失败，关闭本次复用仍失败，未忽略该验收。
+198 decoded构造器及其余相关回归通过；完整证据与下一步见status.md。
+fresh pasteboard仍19 records、10complete/0partial/9noModule，私有
+update变量3→1，$value49/$phi10和三个for保持。阶段一/原gate仍active，
+全套/扩展语料/RSS/DFX/agents暂停保持，源码整体风格仍未完成。
+
 2026-10-07 规则151：共同进入程序、normal完成代数与SymbolId写入索引
 恢复for表达式初始化，支持跨透明block且保留所有中间效果、原scope/
 handler/来源，不新增样本/布局/固定数量匹配。144真实三profile解码

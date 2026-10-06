@@ -1306,9 +1306,12 @@ class FlowCheck {
       budget_.Step(); any |= std::holds_alternative<UpdateExpr>(node.expression);
     }
     if (!any) return;
-    std::vector<std::optional<ExprId>> saves, updates;
+    std::vector<std::optional<ExprId>> saves, updates, publications;
+    std::vector<std::uint8_t> published;
     budget_.Array(saves, tree_.symbols.size());
     budget_.Array(updates, tree_.symbols.size());
+    budget_.Array(publications, tree_.symbols.size());
+    budget_.Array(published, tree_.symbols.size());
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       budget_.Step();
       const auto& op = graph_.ops[i];
@@ -1326,28 +1329,51 @@ class FlowCheck {
       Require(target && update && target->symbol == update->symbol, Error::kSnapshot);
       const auto symbol = target->symbol;
       const auto& binding = tree_.symbols[symbol.value];
+      const bool result_owned = flow_.snapshots[i] == symbol;
       Require(binding.kind == BindingKind::kCompilerTemporary && binding.scope == tree_.body_scope &&
-          binding.declaration == DeclarationKind::kLet && binding.temporary == TemporaryReason::kNumericUpdate &&
-          declared_[symbol.value] && !assigned_[symbol.value], Error::kSnapshot);
-      assigned_[symbol.value] = 1;
+          binding.declaration == DeclarationKind::kLet && declared_[symbol.value] &&
+          !updates[symbol.value], Error::kSnapshot);
+      if (result_owned) {
+        // RootExpression reconstructs the actual publication and producer
+        // identity. Original operand/availability checks forbid pre-Commit
+        // reads. No partial conversion state can become a lexical capture.
+        Require(assigned_[symbol.value] && binding.temporary == evaluation_.operations[i].temporary,
+            Error::kSnapshot);
+        publications[symbol.value] = flow_.expressions[i];
+      } else {
+        Require(binding.temporary == TemporaryReason::kNumericUpdate && !assigned_[symbol.value], Error::kSnapshot);
+        assigned_[symbol.value] = 1;
+      }
       saves[symbol.value] = sequence->left; updates[symbol.value] = sequence->right;
     }
-    // Exclusive scratch cannot be read, captured, reused by another update or
-    // exposed as an SSA result/throw snapshot. Check actual AST references in
-    // one pass, independently of the builder's binding allocation decisions.
-    const auto private_symbol = [&](SymbolId symbol) {
-      return tree_.symbols[symbol.value].temporary == TemporaryReason::kNumericUpdate;
+    // Check actual writes/captures, independently of allocation decisions.
+    // Shared storage permits only this operation's save/update/publication;
+    // its later SSA reads remain subject to the common operand proof.
+    const auto numeric_symbol = [&](SymbolId symbol) {
+      return updates[symbol.value].has_value() ||
+          tree_.symbols[symbol.value].temporary == TemporaryReason::kNumericUpdate;
     };
     for (std::size_t i = 0; i < tree_.expressions.size(); ++i) {
       budget_.Step(); const auto id = ExprId{static_cast<std::uint32_t>(i)};
       const auto& expression = tree_.expressions[i].expression;
       if (const auto* read = std::get_if<SymbolExpr>(&expression))
-        Require(!private_symbol(read->symbol), Error::kSnapshot);
+        Require(!numeric_symbol(read->symbol) || publications[read->symbol.value], Error::kSnapshot);
       if (const auto* save = std::get_if<AssignmentExpr>(&expression))
-        if (const auto* target = std::get_if<SymbolTarget>(&save->target); target && private_symbol(target->symbol))
-          Require(saves[target->symbol.value] == id, Error::kSnapshot);
+        if (const auto* target = std::get_if<SymbolTarget>(&save->target); target && numeric_symbol(target->symbol)) {
+          if (saves[target->symbol.value] != id) {
+            Require(publications[target->symbol.value] == save->value &&
+                !published[target->symbol.value], Error::kSnapshot);
+            published[target->symbol.value] = 1;
+          }
+        }
       if (const auto* update = std::get_if<UpdateExpr>(&expression))
-        Require(private_symbol(update->symbol) && updates[update->symbol.value] == id, Error::kSnapshot);
+        Require(numeric_symbol(update->symbol) && updates[update->symbol.value] == id, Error::kSnapshot);
+    }
+    for (std::size_t i = 0; i < publications.size(); ++i) {
+      budget_.Step(); Require(!publications[i] || published[i], Error::kSnapshot);
+    }
+    for (const auto symbol : tree_.closure_captures) {
+      budget_.Step(); Require(!numeric_symbol(symbol), Error::kSnapshot);
     }
   }
   void PredicateSnapshots() {

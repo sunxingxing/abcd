@@ -222,6 +222,20 @@ std::variant<BindingPlan, BindingError> BuildBindings(
       const auto& op = graph.ops[i];
       if (op.life != ValueLife::kLive || evaluation.operations[i].kind == EvaluationKind::kElidedPure ||
           !NeedsNumericScratch(graph, op)) continue;
+      // The producer's private result is unavailable until its Commit. Its
+      // own snapshot can stage conversion without exposing input/phi/cell
+      // storage; the outer publication still stores the exact returned value
+      // (including postfix ToNumeric). TreeFlow checks actual ownership.
+      if (op.result) {
+        if (const auto* symbol = std::get_if<SymbolId>(&plan.values[op.result->value])) {
+          const auto* snapshot = std::get_if<SnapshotBinding>(&plan.symbols[symbol->value]);
+          if (snapshot && snapshot->producer == OpId{static_cast<std::uint32_t>(i)} &&
+              snapshot->value == *op.result) {
+            plan.updates[i] = *symbol;
+            continue;
+          }
+        }
+      }
       plan.updates[i] = SymbolId{static_cast<std::uint32_t>(plan.symbols.size())};
       plan.symbols.emplace_back(UpdateBinding{OpId{static_cast<std::uint32_t>(i)}});
     }

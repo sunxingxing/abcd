@@ -1803,6 +1803,7 @@ if(BUILD_TESTING)
     add_test(NAME phased_module_literal_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_module_literal.mjs $<TARGET_FILE:phased_module_literal_test>)
     add_test(NAME numeric_update_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      --expose-internals
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/numeric_update_tree.mjs $<TARGET_FILE:numeric_update_tree_test>)
     add_test(NAME try_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/try_tree.mjs

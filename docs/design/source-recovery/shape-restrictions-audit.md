@@ -1,5 +1,19 @@
 # 按用户要求进行的恢复条件审计
 
+规则152补充：数值更新只能复用同一producer的实际私有结果snapshot。
+这是存储身份/不可观察暂存义务，按typed producer/ValueId和新鲜树的
+publication重建证明；不按same-block、PC/register、名字、样本、操作
+序列或固定selection数量判断。原input/phi/cell/其他producer保持独立。
+共同operand可用性证明结果不能提前读取，capture census排除转换中观察，
+实际写入census排除额外修改。ToNumeric外层publication仍返回旧数值。
+
+新增构造器配对验收同时暴露call_plan.cc的既有retained Reference缺口：
+MemberCall仅接受inline/nested property，而实际callee是跨region的根。
+关闭本次storage复用仍同样失败，已定位普通arrow函数而非super。
+该表示条件不能声称语言不变量；不能直接删除后打印错误receiver/重复
+getter，后续须以共同Reference/value/effect/exception模型替换。详情及
+21/22实测结果见status.md；没有将失败测试改成忽略或INCOMPLETE成功。
+
 规则151补充：初始化根由共同normal完成代数、statement/expression
 ownership和SymbolId写入索引选择，不增加same-block、opcode序列、
 PC/register、生产名字、样本、邻接或固定根数量的条件。loop条件读取

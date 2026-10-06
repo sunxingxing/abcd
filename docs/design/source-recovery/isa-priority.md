@@ -1,5 +1,14 @@
 # 全 ISA 优先执行顺序
 
+2026-10-07 规则152：numeric update复用自身私有结果snapshot，原输入/
+phi/cell分离和ToNumeric旧值publication保持。24新增任意值解码与
+原108解码/四语法树共3584行为场景通过；22定向实测21通过/1失败。
+构造器paired阻挡在普通arrow的retained callee，关闭本次复用仍失败；
+下一步优先共同Reference/value/effect/exception调用表示，不补样本匹配。
+198 decoded构造器通过，当前十record配对未完成。fresh pasteboard
+update私有变量3→1，19 records/10complete及三个for保持。原结构gate、
+阶段一Goal和暂停范围保持；完整证据见status.md。
+
 2026-10-07 规则151：共同进入程序、normal完成代数与SymbolId写入索引
 恢复for表达式初始化，支持跨透明block且保留所有中间效果、原scope/
 handler/来源，不新增样本/布局/固定数量匹配。144真实三profile解码
