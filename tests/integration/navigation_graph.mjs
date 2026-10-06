@@ -7,9 +7,14 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {verifyNavigationGraph} from './navigation_graph_state.mjs';
 
-const [tool, root, mode] = process.argv.slice(2);
-assert.ok(mode === undefined || mode === '--minigame');
-const connected = mode === '--minigame';
+const [tool, root, mode, shardIndex, shardCount] = process.argv.slice(2);
+assert.ok(mode === undefined || mode === '--minigame' || mode === '--all-views');
+const connected = mode === '--minigame' || mode === '--all-views';
+const allViews = mode === '--all-views';
+const shard = {index: Number(shardIndex ?? 0), count: Number(shardCount ?? 1)};
+assert.ok(Number.isSafeInteger(shard.index) && Number.isSafeInteger(shard.count));
+assert.ok(shard.index >= 0 && shard.count > 0 && shard.index < shard.count);
+assert.ok(allViews || shard.count === 1);
 const abc = join(root, 'modules.abc');
 assert.equal(createHash('sha256').update(readFileSync(abc)).digest('hex'),
   '8de95a4c6579b38133367422d43ffac146cba5e8222a874df4c3d7942380dc6a');
@@ -39,6 +44,8 @@ try {
     {encoding: 'utf8', timeout: 60_000});
   const manifest = JSON.parse(readFileSync(join(output, 'manifest.json')));
   assert.equal(manifest.source_contract, 'language_numeric_constructors_v1');
+  if (allViews) for (const record of manifest.records) if (record.source?.startsWith('sources/shopping/'))
+    records.push([record.entity, record.source.slice('sources/'.length, -'.mjs'.length)]);
   const byEntity = new Map(manifest.records.map(record => [record.entity, record]));
   for (const [entity, name] of records) {
     const record = byEntity.get(entity);
@@ -51,7 +58,7 @@ try {
 } finally {rmSync(directory, {recursive: true});}
 
 // Independent reference preparation starts after the entire ABC-only exporter
-// exits. Erase uninitialized typed declarations; preserve every initializer,
+// exits. Erase uninitialized declarations; preserve every initializer,
 // constructor, method and closure. The decorator is identity in this graph's
 // controlled host, so its reference erasure does not claim decorator semantics.
 const reference = {};
@@ -59,8 +66,8 @@ for (const [, name] of records) {
   let text = readFileSync(join(root, 'Immersive_src', `${name}.ts`), 'utf8');
   // Match declarations only inside classes in these paired fixtures: interface
   // members need no adaptation and may stay for the independent TS parser.
-  text = text.replace(/^([ \t]*)(private|public)\s+([A-Za-z_$][\w$]*)\??:\s*([^;\n=]+);[ \t]*$/gm,
-    '$1declare $2 $3: $4;');
+  text = text.replace(/^([ \t]*)(private|public)\s+([A-Za-z_$][\w$]*)\??(?:\s*:\s*([^;\n=]+))?;[ \t]*$/gm,
+    (_declaration, indent, access, name, type) => `${indent}declare ${access} ${name}${type === undefined ? '' : ': ' + type};`);
   if (name.endsWith('/Breakpoint')) text = text.replace(/^    (sm|md|lg|xl): T;$/gm, '    declare $1: T;');
   if (name.endsWith('/WindowUtil')) {
     assert.equal([...text.matchAll(/^@Observed$/gm)].length, 1);
@@ -79,4 +86,14 @@ if (connected) {
     assert.match(source, /Image\.create\(/);
   }
 }
-console.log(JSON.stringify(await verifyNavigationGraph(sources, reference, {connected})));
+if (allViews) {
+  for (const [, name] of records) if (name.startsWith('shopping/src/main/ets/view/')) {
+    assert.match(sources[name], /class [A-Za-z_$][\w$]* extends/);
+    assert.match(sources[name], /constructor\(parent, params, __localStorage, elmtId =/);
+    assert.match(sources[name], /super\(parent, __localStorage, elmtId, extraInfo\)/);
+    assert.match(sources[name], /\.observeComponentCreation2\(/);
+  }
+  assert.match(sources['shopping/src/main/ets/view/Home'], /TabBarBuilder\(tabBar, index, parent = null\)/);
+  assert.match(sources['shopping/src/main/ets/view/Home'], /this\.activeTabIndex === index/);
+}
+console.log(JSON.stringify(await verifyNavigationGraph(sources, reference, {connected, allViews, shard})));

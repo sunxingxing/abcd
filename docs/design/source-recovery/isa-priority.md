@@ -6,7 +6,9 @@
 不以106/0统计、部分注释包装或?.细节替代完成。Content14411新增实际
 whole-record/closure/字段/signature验收；本轮将真实minigame barrel及三
 child接入十四模块导航图，推进实际跨record constructor/field/capture/body
-整合；其他记录、完整映射与原结构gate仍开放。
+整合；本轮继续接入真实shopping依赖链，三十三模块图验证Home及其
+子类/model/capture/body，沿用户功能优先继续独立验收。来源映射/DFX
+仍不作为功能前置；其他记录与原结构gate仍开放。
 
 2026-10-06 当前用户要求：完成正在进行的 `?.` 调用修复后，优先解决
 阶段一实际输出中的 `INCOMPLETE / UNRECOVERED` 功能缺口，使未完整恢复

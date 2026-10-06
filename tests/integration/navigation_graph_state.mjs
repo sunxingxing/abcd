@@ -11,18 +11,36 @@ const classFields = new Map([
   ['Shopping', []], ['ShoppingAvoid', ['__windowUtil']],
   ['MiniGame', ['__windowUtil', '__mainWindowInfo']], ['ShoppingFullScreen', ['__windowUtil']],
   ['Content', ['__mainWindowInfo']], ['Header', []], ['Footer', []],
+  ['shopping/src/main/ets/view/Home#Home', ['__activeTabIndex', '__windowUtil', '__mainWindowInfo', 'tabBarList']],
+  ['shopping/src/main/ets/view/HomeContent#HomeContent', ['__mainWindowInfo', 'scroller']],
+  ['shopping/src/main/ets/view/Header#Header', ['__navPageInfos', '__mainWindowInfo']],
+  ['shopping/src/main/ets/view/Categories#Categories', ['__mainWindowInfo', '__isNextCategory', 'categoryList']],
+  ['shopping/src/main/ets/view/FlashSale#FlashSale', ['__mainWindowInfo', 'sectionViewModel']],
+  ['shopping/src/main/ets/view/Recommend#Recommend', ['__mainWindowInfo', 'recommendProducts']],
+  ['shopping/src/main/ets/view/Selection#Selection', ['__mainWindowInfo', 'sectionViewModel']],
+  ['shopping/src/main/ets/view/Welfare#Welfare', ['__mainWindowInfo', 'iconInfoViewModel']],
+  ['shopping/src/main/ets/view/CommonView#HomeButton', ['buttonText']],
+  ['shopping/src/main/ets/view/CommonView#TitleView', ['titleText']],
+  ['shopping/src/main/ets/view/CommonView#ProductTitle', ['__isCenter', 'title']],
+  ['shopping/src/main/ets/view/CommonView#ProductInfo', ['info']],
+  ['shopping/src/main/ets/view/CommonView#ProductPrice', ['price', 'originalPrice']],
+  ['shopping/src/main/ets/view/CommonView#ProductFeature', ['feature']],
+  ['shopping/src/main/ets/view/CommonView#ProductComments', ['comments']],
 ]);
 
 // The original ten-module graph controls four leaf classes. The connected
-// variant adds the actual minigame barrel and all three actual leaf records;
-// their constructors, methods, field cells and resource closures stay intact.
-// Only the shopping leaf and platform services remain controlled in that graph.
+// minigame variant adds the real barrel and all three leaf records; the complete
+// variant also links every shopping record. Constructors, methods, field cells
+// and resource closures stay intact; only platform services stay controlled in
+// the complete variant.
 async function exercise(sources, config = {}) {
   const trace = [], sites = [], owners = [], cells = [], leaves = [], pending = [], lifecycle = [], builders = [], clicks = [];
   let itemIdentity = 0;
   const tags = new WeakMap(), modules = new Map(), imports = new Map();
   const connected = Object.hasOwn(sources, 'minigame/Index');
-  const children = new Map(), childCallbacks = [], childTypes = new Map();
+  const allViews = Object.hasOwn(sources, 'shopping/Index');
+  const children = new Map(), childCallbacks = [], childTypes = new Map(), viewTypes = new Map(), provided = new Map();
+  const tabBuilders = [], changes = [], scrollIndices = [], lazyLists = new WeakSet();
   const failure = Object.hasOwn(config, 'failure') ? config.failure : {};
   let context, factory, nextElement = 0, events = 0, failed = false, retainedFault;
   const replayed = [], pageClasses = new Map();
@@ -54,6 +72,7 @@ async function exercise(sources, config = {}) {
       context.SubscriberManager = subscribers[1];
       for (const cell of cells) if (cell.name === 'windowUtil') cell.value = windowSurfaces[1];
       context.ObservedPropertyObjectPU = observedTypes[1];
+      context.ObservedPropertySimplePU = observedTypes[1];
       context.SynchedPropertyNesedObjectPU = syncedTypes[1];
       for (const module of imports.values()) for (const name of libraryNames)
         if (Object.hasOwn(module.namespace, name)) module.setExport(name, leafTypes[1].get(name));
@@ -100,7 +119,14 @@ async function exercise(sources, config = {}) {
     return config.baseObject ? owner : undefined;
   }
   const methods = {
-    addProvidedVar(name, value, flag) {assert.equal(name, 'navPageInfos'); assert.equal(value, this.__navPageInfos); assert.equal(flag, false); return token;},
+    addProvidedVar(name, value, flag) {
+      assert.equal(name, 'navPageInfos'); assert.equal(value, this.__navPageInfos); assert.equal(flag, false);
+      provided.set(name, value); return token;
+    },
+    initializeConsume(name, alias, initial) {
+      assert.equal(name, 'navPageInfos'); assert.equal(alias, name);
+      return cell(this, name, provided.has(name) ? provided.get(name).get() : initial);
+    },
     createStorageLink(name, initial, alias) {
       assert.equal(name, 'windowUtil'); assert.equal(initial, undefined); assert.equal(alias, name);
       return cell(this, name, Object.hasOwn(config, 'window') ? config.window : windowSurfaces[0]);
@@ -108,7 +134,7 @@ async function exercise(sources, config = {}) {
     observeComponentCreation2(callback, component) {
       assert.equal(callback.length, 2); assert.equal(Object.hasOwn(callback, 'prototype'), false);
       const args = [nextElement + 1, config.initial ?? true];
-      if (connected && libraryNames.includes(Object.getOwnPropertyDescriptor(component, 'name')?.value)) childCallbacks.push({callback, args});
+      if (connected && (allViews ? Object.hasOwn(component, 'name') : libraryNames.includes(Object.getOwnPropertyDescriptor(component, 'name')?.value))) childCallbacks.push({callback, args});
       retain('observe', callback, {foreign: true}, args); return token;
     },
     ifElseBranchUpdateFunction(branch, callback) {event('branch', this, branch); assert.equal(Reflect.apply(callback, {foreign: true}, []), undefined); return token;},
@@ -159,7 +185,7 @@ async function exercise(sources, config = {}) {
       if (owners.includes(value)) renderPage(value); return token;
     };
   }});
-  function NavPathStack() {return surface(`path${owners.length}`, {pushPath(value) {assert.deepEqual(Reflect.ownKeys(value), ['name']); return token;}});}
+  function NavPathStack() {return surface(`path${owners.length}`, {pushPath(value) {assert.deepEqual(Reflect.ownKeys(value), ['name']); return token;}, pop() {return token;}});}
   const observedTypes = [0, 1].map(version => function Observed(value, owner, name) {
     assert.ok(owners.includes(owner)); event('observed.new', version, owner, name, value); return cell(owner, name, value);
   });
@@ -170,7 +196,9 @@ async function exercise(sources, config = {}) {
     const system = surface(`system${version}`, {topRect: surface(`top${version}`, {height: 24 + version})});
     const navigation = surface(`navigation${version}`, {bottomRect: surface(`bottom${version}`, {height: 12 + version})});
     const info = surface(`info${version}`, {avoidSystem: system, avoidNavigationIndicator: navigation,
-      avoidAreaPadding: tag({top: 7 + version}, `padding${version}`), widthBp: version ? 'xl' : 'sm'});
+      avoidAreaPadding: tag({top: 7 + version}, `padding${version}`), widthBp: config.width ?? (version ? 'xl' : 'sm'),
+      isImmersive: config.immersive ?? version,
+      titleButtonRect: Object.hasOwn(config, 'titleRect') ? config.titleRect : surface(`title${version}`, {width: 30 + version})});
     return surface(`window${version}`, {mainWindowInfo: info, setImmersiveType: () => token,
       startWindowStatusListener: () => token, release: () => token, setSystemBarEnabled: () => token});
   });
@@ -178,11 +206,24 @@ async function exercise(sources, config = {}) {
     'backgroundColor', 'background', 'borderRadius', 'color', 'strokeWidth', 'onClick', 'layoutWeight',
     'hideToolBar', 'hideTitleBar', 'mode', 'navDestination', 'ignoreLayoutSafeArea', 'backgroundImage',
     'backgroundImageSize', 'onShown', 'onHidden', 'scrollBar', 'columnsTemplate', 'aspectRatio',
-    'borderColor', 'borderWidth', 'alignItems'];
-  components = [0, 1].map(version => new Map(['Navigation', 'NavDestination', 'Column', 'Text', 'ForEach', 'If', 'Divider', 'Row', 'Span', 'Image', 'Grid', 'GridItem', 'Blank'].map(name =>
+    'borderColor', 'borderWidth', 'alignItems', 'justifyContent', 'linearGradient', 'createWithLabel',
+    'border', 'decoration', 'lineHeight', 'maxLines', 'opacity', 'textAlign', 'textOverflow', 'fillColor',
+    'objectFit', 'alignContent', 'alignSelf', 'displayCount', 'indicator', 'itemSpace', 'lanes', 'listDirection',
+    'onScrollIndex', 'lineCap', 'alignListItem', 'enableKeyboardOnFocus', 'placeholderColor', 'placeholderFont',
+    'barHeight', 'barWidth', 'barMode', 'onChange', 'vertical', 'tabBar'];
+  components = [0, 1].map(version => new Map(['Navigation', 'NavDestination', 'Column', 'Text', 'ForEach', 'If', 'Divider', 'Row', 'Span', 'Image', 'Grid', 'GridItem', 'Blank', 'Scroll', 'Button', 'GridRow', 'GridCol', 'Stack', 'Swiper', 'List', 'ListItem', 'TextInput', 'Tabs', 'TabContent', '__Common__'].map(name =>
     [name, surface(`${name}${version}`, Object.fromEntries(keys.map(key => [key, (...args) => {
       if (name === 'GridItem' && key === 'create') assert.equal(Reflect.apply(args[0], {foreign: true}, []), undefined);
       if (name === 'NavDestination' && key === 'create') retain('content', args[0], {foreign: true}, []);
+      if (name === 'TabContent' && key === 'create') retain('tab-content', args[0], {foreign: true}, []);
+      // The host schedules the original lazy renderer once. Its own create
+      // call retains that identity without recursively scheduling another render.
+      if (name === 'ListItem' && key === 'create' && !lazyLists.has(args[0])) {
+        lazyLists.add(args[0]); retain('list-item', args[0], {foreign: true}, [nextElement + 1, config.initial ?? true]);
+      }
+      if (key === 'tabBar') tabBuilders.push(args[0].builder);
+      if (key === 'onChange') changes.push(args[0]);
+      if (key === 'onScrollIndex') scrollIndices.push(args[0]);
       if (key === 'navDestination') builders.push(args[0].builder);
       if (key === 'onClick') clicks.push(args[0]);
       if (key === 'onShown' || key === 'onHidden') lifecycle.push(args[0]);
@@ -204,13 +245,23 @@ async function exercise(sources, config = {}) {
       assert.notEqual(a, b); event('leaf.params', this, a, b);
     }}); return [name, Type];
   })));
-  context = vm.createContext({ViewPU, NavPathStack, ObservedPropertyObjectPU: observedTypes[0],
+  context = vm.createContext({ViewPU, NavPathStack, ObservedPropertyObjectPU: observedTypes[0], ObservedPropertySimplePU: observedTypes[0],
     SynchedPropertyNesedObjectPU: syncedTypes[0],
-    WidthBreakpoint: surface('breakpoint', {WIDTH_SM: 'sm', WIDTH_MD: 'md', WIDTH_LG: 'lg', WIDTH_XL: 'xl'}),
-    BarState: surface('bar', {Off: 'off'}), VerticalAlign: surface('vertical', {Top: 'top', Bottom: 'bottom'}),
+    WidthBreakpoint: surface('breakpoint', {WIDTH_SM: 'sm', WIDTH_MD: 'md', WIDTH_LG: 'lg', WIDTH_XL: 'xl', WIDTH_XS: 'xs'}),
+    BarState: surface('bar', {Off: 'off'}), VerticalAlign: surface('vertical', {Top: 'top', Bottom: 'bottom', Center: 'center'}),
+    FlexAlign: surface('flex', {Start: 'start', Center: 'center', SpaceBetween: 'space-between'}),
+    GradientDirection: surface('gradient', {Right: 'right'}), TextAlign: surface('text-align', {Center: 'center'}),
+    TextOverflow: surface('overflow', {Ellipsis: 'ellipsis'}), TextDecorationType: surface('decoration', {LineThrough: 'line-through'}),
+    BorderStyle: surface('border', {Solid: 'solid'}), HorizontalAlign: surface('horizontal', {Start: 'start'}),
+    ItemAlign: surface('item-align', {Center: 'center', End: 'end'}), Alignment: surface('align', {Start: 'start', TopEnd: 'top-end'}),
+    ImageFit: surface('image-fit', {Contain: 'contain'}), Axis: surface('axis', {Horizontal: 'horizontal'}),
+    LineCapStyle: surface('line-cap', {Round: 'round'}), ListItemAlign: surface('list-align', {Center: 'center'}),
+    BarPosition: surface('bar-position', {Start: 'start', End: 'end'}), BarMode: surface('bar-mode', {Fixed: 'fixed'}),
+    ViewStackProcessor: surface('view-stack', {StartGetAccessRecordingFor: () => token, StopGetAccessRecording: () => token}),
+    Scroller: function Scroller() {tag(this, 'scroller'); event('scroller.new');},
     ...Object.fromEntries(components[0]), SubscriberManager: subscribers[0],
-    NavigationMode: surface('mode', {Stack: 'stack'}), FontWeight: surface('weight', {Bold: 'bold', Medium: 'medium'}),
-    Color: surface('color', {White: 'white'}), LayoutPolicy: surface('layout', {matchParent: 'parent'}),
+    NavigationMode: surface('mode', {Stack: 'stack'}), FontWeight: surface('weight', {Bold: 'bold', Medium: 'medium', Normal: 'normal'}),
+    Color: surface('color', {White: 'white', Black: 'black'}), LayoutPolicy: surface('layout', {matchParent: 'parent'}),
     ImageSize: surface('imageSize', {FILL: 'fill'}), Observed: Type => Type,
     registerNamedRoute(callback, name, metadata) {assert.equal(this, undefined); factory = callback; event('route', name, metadata); return token;},
   });
@@ -236,7 +287,10 @@ async function exercise(sources, config = {}) {
     if (Object.hasOwn(module.namespace, page)) pageClasses.set(page, module.namespace[page]);
   for (const module of modules.values()) if (module.status === 'evaluated') for (const name of ['Content', 'Header', 'Footer'])
     if (Object.hasOwn(module.namespace, name)) childTypes.set(name, module.namespace[name]);
-  if (factory) {
+  if (allViews) for (const [name, module] of modules) if (module.status === 'evaluated')
+    for (const [key, Type] of Object.entries(module.namespace)) if (typeof Type === 'function' && Object.getPrototypeOf(Type) === ViewPU)
+      viewTypes.set(`${name}#${key}`, Type);
+  if (factory && !config.directOnly) {
     try {
       const owner = Reflect.apply(factory, {foreign: true}, []); assert.equal(owner, owners[0]);
       call('index.render', owner.initialRender, owner);
@@ -255,12 +309,18 @@ async function exercise(sources, config = {}) {
   for (const click of clicks) call('click', click, {foreign: true});
   for (const builder of builders) for (const name of pageNames) call('builder', builder, {foreign: true}, [name]);
   drain();
+  if (allViews) {
+    for (const callback of changes) for (const index of [0, 1, 3]) call('tab.change', callback, {foreign: true}, [index]);
+    for (const callback of scrollIndices) for (const args of [[1, 9], [0, 9], [1, 8]]) call('list.scroll', callback, {foreign: true}, args);
+    for (const callback of tabBuilders) call('tab.builder', callback, {foreign: true});
+    drain();
+  }
   if (connected) {
     // Replay the actual parent's update branch and its late parameter closures.
     // Keep child element identity and pass the new parent value into real cells.
     for (const state of cells) if (state.name === 'windowUtil') state.value = windowSurfaces[1];
     for (const {callback, args} of childCallbacks) call('child.update', callback, {foreign: true}, [args[0], false]);
-    for (const owner of owners) if (childTypes.has(owner.constructor.name) && Object.hasOwn(owner, 'paramsGenerator_')) {
+    for (const owner of owners) if ((allViews || childTypes.has(owner.constructor.name)) && Object.hasOwn(owner, 'paramsGenerator_')) {
       try {
         const a = Reflect.apply(owner.paramsGenerator_, {foreign: true}, []);
         const b = Reflect.apply(owner.paramsGenerator_, null, []);
@@ -273,8 +333,9 @@ async function exercise(sources, config = {}) {
   for (const callback of lifecycle) call('page.lifecycle', callback, {foreign: true});
   let assignment;
   if (config.direct) {
-    const Type = pageClasses.get(config.direct) ?? childTypes.get(config.direct); assert.ok(Type);
-    assert.equal(Type.name, config.direct); assert.equal(Type.length, 3);
+    const Type = viewTypes.get(config.direct) ?? pageClasses.get(config.direct) ??
+      (allViews ? viewTypes.get(`minigame/src/main/ets/view/${config.direct}#${config.direct}`) : childTypes.get(config.direct)); assert.ok(Type);
+    assert.equal(Type.name, config.direct.split('#').at(-1)); assert.equal(Type.length, 3);
     assert.equal(Object.getPrototypeOf(Type), ViewPU); assert.equal(Object.getPrototypeOf(Type.prototype), ViewPU.prototype);
     assert.throws(() => Reflect.apply(Type, {}, []), {name: 'TypeError'});
     let writes = 0, receiver, stored;
@@ -307,30 +368,41 @@ async function exercise(sources, config = {}) {
     const descriptor = Object.getOwnPropertyDescriptor(owner, key); assert.ok('value' in descriptor);
     return [key, normalize(descriptor.value), descriptor.writable, descriptor.enumerable, descriptor.configurable];
   }));
-  const metadata = [...pageClasses, ...childTypes].map(([name, Type]) => [name, Type.name, Type.length,
+  const metadata = (allViews ? [...viewTypes] : [...pageClasses, ...childTypes]).map(([name, Type]) => [name, Type.name, Type.length,
     Reflect.ownKeys(Type.prototype).map(key => {
       const d = Object.getOwnPropertyDescriptor(Type.prototype, key);
       return [key, key === 'constructor' ? d.value === Type : normalize(d.value), normalize(d.get), normalize(d.set), d.writable, d.enumerable, d.configurable];
     })]);
+  const viewNames = new Map([...viewTypes].map(([name, Type]) => [Type, name]));
+  const instances = owners.map(owner => viewNames.get(owner.constructor));
   return {trace, sites, state, metadata, assignment, cells: cells.map(value => [tags.get(value.owner), value.name, normalize(value.value), value.purged, value.deleted]),
     events, failed, retainedFault, replayed, pages: owners.map(owner => owner.constructor.name),
+    views: [...viewTypes.keys()], instances,
     modules: [...modules].map(([name, module]) => [name, module.status])};
 }
 
 export async function verifyNavigationBatch(sources, reference, request) {
   const base = {finalize: 'own'};
   const connected = request.connected ?? false;
-  const directClasses = connected ? [...classFields.keys()] : pageNames;
+  const allViews = request.allViews ?? false;
+  const directClasses = allViews ? [...classFields.keys()] : connected ? [...classFields.keys()].filter(name => !name.startsWith('shopping/')) : pageNames;
   const expected = await exercise(reference, base);
   const immediateExpected = await exercise(reference, {...base, immediate: true});
   const counts = {deferred: expected.events, immediate: immediateExpected.events};
   if (connected) for (const value of [expected, immediateExpected]) {
     assert.ok(value.modules.every(([, status]) => status === 'evaluated'));
-    assert.ok(value.trace.every(([name]) => !name.endsWith('.throw')), 'baseline stopped inside a real body');
+    assert.ok(value.trace.every(([name]) => !name.endsWith('.throw')), JSON.stringify(value.trace.filter(([name]) => name.endsWith('.throw'))));
     for (const name of ['Content', 'Header', 'Footer']) assert.ok(value.pages.includes(name), `missing actual ${name}`);
     const images = value.trace.filter(([name, key, item]) => name === 'Image0.call' && key === 'create' && typeof item === 'string' && item.startsWith('item'));
     assert.equal(images.length, value.pages.filter(name => name === 'Content').length * 60);
     for (const cell of value.cells) if (cell[1] === 'mainWindowInfo' && cell[0].startsWith('Content:')) assert.equal(cell[2], 'info1');
+  }
+  if (allViews) {
+    assert.equal(Object.keys(sources).length, 33);
+    for (const value of [expected, immediateExpected]) for (const key of classFields.keys()) if (key.startsWith('shopping/')) {
+      assert.ok(value.views.includes(key), `missing view export ${key}`);
+      assert.ok(value.instances.includes(key), `unexecuted ${key}`);
+    }
   }
   // The original graph and standalone Content already cover every event fault.
   // This integration matrix probes each distinct observable host boundary here;
@@ -348,7 +420,12 @@ export async function verifyNavigationBatch(sources, reference, request) {
   const selected = phase => {const i = inventory[phase]++; return request.phase === phase && i >= request.first && i < request.first + request.count;};
   const compare = async config => {
     const expected = await exercise(reference, config), actual = await exercise(sources, config);
-    assert.deepEqual(actual, expected); return actual;
+    // Compare the entire result, but keep a mismatch from formatting tens of
+    // thousands of trace entries inside the bounded worker. The case range
+    // identifies an exact independent replay, including non-JSON throw values.
+    assert.ok(isDeepStrictEqual(actual, expected),
+      `source/reference mismatch in ${request.phase} batch ${request.first}, case ${inventory[request.phase] - 1}`);
+    return actual;
   };
   for (const immediate of [false, true]) for (const reverse of [false, true]) for (const initial of [false, true])
     for (const baseObject of [false, true]) for (const finalize of ['own', 'absent', 'inherited', 'noncallable', 'frozen']) if (selected('lifecycle')) {
@@ -359,9 +436,17 @@ export async function verifyNavigationBatch(sources, reference, request) {
   for (const changing of [false, true]) for (const immediate of [false, true]) if (selected('lifecycle')) {
     await compare({...base, changing, immediate}); ++result.cases;
   }
+  if (allViews) for (const width of ['xs', 'sm', 'md', 'lg', 'xl']) for (const immersive of [0, 1])
+    for (const immediate of [false, true]) if (selected('lifecycle')) {
+      await compare({...base, width, immersive, immediate}); ++result.cases;
+    }
+  if (allViews) for (const titleRect of [undefined, null, {width: 0}, {width: 7}])
+    for (const immediate of [false, true]) if (selected('lifecycle')) {
+      await compare({...base, titleRect, immediate}); ++result.cases;
+    }
   for (const direct of directClasses) for (const argumentCount of [0, 1, 2, 3, 4, 6, 200, 201])
     for (const alternate of [false, true]) if (selected('lifecycle')) {
-      await compare({...base, direct, argumentCount, alternate}); ++result.cases;
+      await compare({...base, direct, argumentCount, alternate, directOnly: allViews}); ++result.cases;
     }
   for (const immediate of [false, true]) for (const ordinal of ordinals[immediate ? 'immediate' : 'deferred']) {
     for (const failure of [undefined, null, 0, Symbol('failure'), {}]) if (selected('faults')) {
@@ -375,9 +460,9 @@ export async function verifyNavigationBatch(sources, reference, request) {
   for (const direct of directClasses) for (const assignment of ['paramsGenerator_', ...classFields.get(direct)]) for (const alternate of [false, true])
     for (const setterThrows of [false, true]) for (const failure of setterThrows ? [undefined, null, 0, Symbol('setter'), {}] : [undefined])
       if (selected('assignments')) {
-        await compare({...base, direct, assignment, alternate, setterThrows, failure}); ++result.assignments;
+        await compare({...base, direct, assignment, alternate, setterThrows, failure, directOnly: allViews}); ++result.assignments;
       }
-  const recordFor = page => Object.keys(sources).find(name => name.endsWith(`/${page}`));
+  const recordFor = page => Object.keys(sources).find(name => name === `minigame/src/main/ets/view/${page}` || name.endsWith(`/${page}`) && !name.startsWith('shopping/'));
   const constructorRead = expected.sites.findIndex(([, name, argument]) => name === 'super' && argument === 'MiniGame');
   assert.ok(constructorRead >= 0);
   const capturedClassSite = expected.sites.slice(constructorRead).find(([, name, key]) => name === 'window0.get' && key === 'mainWindowInfo');
@@ -413,8 +498,21 @@ export async function verifyNavigationBatch(sources, reference, request) {
     ['minigame/Index', 'export { Content as Content } from "@normalized:N&&&minigame/src/main/ets/view/Content&1.0.0";',
       'export { Footer as Content } from "@normalized:N&&&minigame/src/main/ets/view/Footer&1.0.0";'],
   );
+  if (allViews) mutants.push(
+    ['shopping/src/main/ets/view/Home', 'this.__activeTabIndex.set(newValue);', 'this.__windowUtil.set(newValue);'],
+    ['shopping/src/main/ets/view/Home', 'this.activeTabIndex === index', 'this.activeTabIndex !== index'],
+    ['shopping/src/main/ets/view/Home', '($local0 = this);', '($local0 = globalThis);'],
+    ['shopping/src/main/ets/view/Home', 'TabBarBuilder.call($local0, tabBar, $local2)', 'TabBarBuilder.call(globalThis, tabBar, $local2)'],
+    ['shopping/src/main/ets/view/Home', '$local4.activeIcon : $local4.icon', '$local4.icon : $local4.activeIcon'],
+    ['shopping/src/main/ets/view/HomeContent', 'this.__mainWindowInfo.set(params.mainWindowInfo);', 'this.__mainWindowInfo.set(params.windowUtil);'],
+    ['shopping/src/main/ets/view/Header', '$local1.navPageInfos.pop();', '$local1.navPageInfos.pushPath({name: "wrong"});'],
+    ['shopping/src/main/ets/view/Categories', 'end === HomeConstants.NINE', 'end === HomeConstants.NINE + 1'],
+    ['shopping/src/main/ets/view/Categories', 'Image.create(item.getIcon());', 'Image.create(item.getInfo());'],
+    ['shopping/src/main/ets/view/CommonView', 'this.__isCenter.set(newValue);', 'this.__isCenter.get();'],
+    ['shopping/src/main/ets/viewmodel/HomeViewModel', 'return this.homeModel.getTabBarList();', 'return this.homeModel.getTabBarList().slice(1);'],
+  );
   for (const [page, before, after, config = {}] of mutants) if (selected('mutations')) {
-    const name = page === 'minigame/Index' ? page : recordFor(page), changed = sources[name].replace(before, after); assert.notEqual(changed, sources[name]);
+    const name = Object.hasOwn(sources, page) ? page : recordFor(page), changed = sources[name].replace(before, after); assert.notEqual(changed, sources[name]);
     new vm.SourceTextModule(changed);
     await assert.rejects(async () => {
       const actual = await exercise({...sources, [name]: changed}, {...base, ...config});
@@ -427,21 +525,44 @@ export async function verifyNavigationBatch(sources, reference, request) {
   return {...result, counts, inventory, boundaries: {deferred: ordinals.deferred.length, immediate: ordinals.immediate.length}};
 }
 
-export async function verifyNavigationGraph(sources, reference, {connected = false} = {}) {
+export async function verifyNavigationGraph(sources, reference, {connected = false, allViews = false, shard = {index: 0, count: 1}} = {}) {
   const worker = fileURLToPath(new URL('./navigation_graph_worker.mjs', import.meta.url));
-  const run = request => JSON.parse(execFileSync(process.execPath, ['--experimental-vm-modules', worker], {
-    input: JSON.stringify({sources, reference, request: {...request, connected}}), encoding: 'utf8', timeout: 60_000,
-    maxBuffer: 8 * 1024 * 1024, stdio: 'pipe',
-  }));
+  const run = request => {
+    try {
+      return JSON.parse(execFileSync(process.execPath, ['--experimental-vm-modules', worker], {
+        input: JSON.stringify({sources, reference, request: {...request, connected, allViews}}), encoding: 'utf8', timeout: 60_000,
+        maxBuffer: 8 * 1024 * 1024, stdio: 'pipe',
+      }));
+    } catch (error) {
+      error.message = `${request.phase} batch ${request.first} count ${request.count}: ${error.message}`;
+      throw error;
+    }
+  };
   const {counts, inventory, boundaries} = run({phase: 'inventory', first: 0, count: 0});
   const result = {cases: 0, faults: 0, swaps: 0, assignments: 0, mutations: 0};
-  for (const [phase, count] of Object.entries(inventory)) for (let first = 0; first < count; first += 64) {
-    const row = run({phase, first, count: Math.min(64, count - first)});
-    assert.deepEqual(row.counts, counts); assert.deepEqual(row.inventory, inventory); assert.deepEqual(row.boundaries, boundaries);
-    for (const key of Object.keys(result)) result[key] += row[key];
+  const selectedCounts = {};
+  // A 64-case worker exceeded the existing sixty-second limit while four
+  // graph shards ran together. Bound each job more tightly; retain every case
+  // and the original timeout across all variants.
+  const batchCaseLimit = 32;
+  // Partition the entire independent case inventory, not selected examples.
+  // Adjacent integer ranges cover each phase exactly once across all shards;
+  // each worker still has the original bounded batch and sixty-second limit.
+  for (const [phase, count] of Object.entries(inventory)) {
+    const begin = Math.floor(count * shard.index / shard.count);
+    const end = Math.floor(count * (shard.index + 1) / shard.count);
+    selectedCounts[phase] = end - begin;
+    if (allViews) process.stderr.write(`navigation shard ${shard.index + 1}/${shard.count}: ${phase} ${begin}..${end}\n`);
+    for (let first = begin; first < end; first += batchCaseLimit) {
+      const batchCount = Math.min(batchCaseLimit, end - first);
+      const row = run({phase, first, count: batchCount});
+      assert.deepEqual(row.counts, counts); assert.deepEqual(row.inventory, inventory); assert.deepEqual(row.boundaries, boundaries);
+      for (const key of Object.keys(result)) result[key] += row[key];
+      if (allViews) process.stderr.write(`navigation shard ${shard.index + 1}/${shard.count}: ${phase} completed ${first + batchCount - begin}/${end - begin}\n`);
+    }
   }
-  assert.equal(result.cases, inventory.lifecycle); assert.equal(result.faults + result.swaps, inventory.faults);
-  assert.equal(result.assignments, inventory.assignments); assert.equal(result.mutations, inventory.mutations);
-  return {...result, counts, boundaries, generatedModules: Object.keys(sources).length, wholeGraphBehavior: true, realMinigameViews: connected,
+  assert.equal(result.cases, selectedCounts.lifecycle); assert.equal(result.faults + result.swaps, selectedCounts.faults);
+  assert.equal(result.assignments, selectedCounts.assignments); assert.equal(result.mutations, selectedCounts.mutations);
+  return {...result, counts, boundaries, inventory, shard, generatedModules: Object.keys(sources).length, wholeGraphBehavior: true, realMinigameViews: connected, realShoppingViews: allViews,
     faultScope: connected ? 'distinct-host-boundaries' : 'every-event', platformExecution: false};
 }

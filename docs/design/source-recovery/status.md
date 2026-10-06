@@ -12,6 +12,87 @@
 
 ## 当前阶段
 
+### 2026-10-07：真实 shopping 依赖链／完整视图导航图
+
+- 基线549d7969，production/rules146保持。原计划的全面来源映射/DFX仍
+  暂停，不将method map包装作为功能前置。本轮沿原十四模块图接入实际
+  shopping barrel/Home/HomeContent、六个section/header视图、CommonView
+  七类及四组model/viewmodel、HomeConstants，共新增十九record，三十三
+  个真实ABC-only生成模块共同连接；没有继续用Home或其子类替代正文。
+- 新shopping_navigation_graph_source_test_0..3复用原导航fixture和ABC-only
+  导出/独立paired TS边界；原十/十四模块变体各自保留。实际两个Header
+  名字相同，class inventory/instance identity以真实module/export区分，
+  不把same-name的minigame Header当作shopping Header已执行。
+- Controlled framework新增ObservedPropertySimple、provided/consume
+  cell、Scroller、TabContent create/tabBar、ListItem lazy deep render及
+  相关UI/enum接口。ListItem第一次lazy初始化记录原callback identity，
+  deep render内再次create不递归重复初始化；element/child update沿实际
+  父组件callback执行，更新及late paramsGenerator_继续调用真实body。
+  Tab change、scroll index和tab builder回放实际闭包，不替换model读取、
+  private成员、商品resource构造或render方法。平台仍受控，不推断任意
+  ArkUI协议/设备行为，也没有开启引擎调度器/新增生产样本条件。
+- 两个baseline分别29,711实际event，三十三module须全部evaluated、
+  没有body throw、十五个shopping view export的真实constructor实例均
+  存在。七个原class加十五个shopping class共二十二类，按独立TS原
+  constructor赋值序列验证0/1/2/3/4/6/200/201实参、foreign new.target、
+  继承setter和部分写入；构造矩阵只实例化选定类，module初始化仍真实。
+- 新fixture先失败：reference缺失__Common__宿主组件，明确no-body-throw
+  baseline检出，补齐host。随后生成/参考字段顺序不同：无type注解的
+  private声明没有擦除，Node把它作为constructor前的DefineField。
+  统一仅将无initializer的typed/untyped public/private声明标成declare，
+  原initializer、constructor赋值、方法与closure均保留。修正后首批64
+  生命周期、660构造/setter/partial state以及34有效JS mutation通过。
+  Header mutation起初使用错误局部名称导致replace未发生，按实际生成
+  getter修正fixture；没有把该失败算成semantic mutation已检出。
+- 完整矩阵为482 lifecycle（含xs/sm/md/lg/xl、immersion、nil/zero title
+  rect）、660构造赋值、34 mutation；新变体覆盖错误active setter/icon/
+  comparison、TabBarBuilder receiver、state传值、back path、scroll边界、
+  model方法返回、商品getter，以及此前callee snapshot/资源identity/导出
+  等原mutation。完整故障矩阵通过：按distinct event名/首个string参数的
+  首次host boundary采样，两baseline各2117项，并非every-event注入。
+- 未分片完整测试tests-1到达CTest既有1500.03秒整体上限，退出8，
+  期间没有报告语义差异；不能算通过。确认父/子进程结束后，将每个
+  phase完整inventory分为四个互不重叠的整数区间；不缩减场景，也不
+  提高CTest限额。tests-2四分片3/4通过777.31秒，分片1的单worker
+  到达60秒上限（493.10秒时退出），没有给出semantic mismatch。隔离
+  diagnostic-1为同一ABC-only导出和完整分片，仅添加批次位置/简短完整
+  比较诊断，最终全分片通过121/5292/1059/165/9。无法据此断言原超时
+  的唯一原因；通用worker批次减为32且保留60秒限额，所有variant共用，
+  每批核对完整counts/inventory/boundaries，并记录完成数和失败range。
+  完整比较用isDeepStrictEqual加简短AssertionError，不格式化数万项diff；
+  tests-3四分片再次3/4通过657.59秒，分片2在faults first16798/count32
+  超时（482.60秒时退出）。fault-batch-1只复现这个确定range，26 raw
+  faults/6 swaps全部通过，未复制或改写任何module正文。两次并行超时
+  原因尚未唯一确定；这组大型graph CTest加RUN_SERIAL，不与其他CTest
+  job竞争，生产scheduler/并发不变。tests-4单独完整分片2在514.80秒
+  通过120/5293/1058/165/8，完整运行越过上次超时的确切批次。
+- aggregate-1核对tests-3三个完整成功分片和tests-4完整成功分片的
+  原生JSON：四个unique shard、同一inventory/counts/boundaries、33
+  module、每phase相邻区间从0到完整inventory且各自完成数足额。最终
+  482 lifecycle、21170 raw faults、4234 swaps、660 assignments、34
+  有效JS mutation全部通过；两个baseline各29711宿主事件、2117 distinct
+  边界保持。未完成range/32-case探针均不计入完整分片验收；不是一次
+  四并行CTest全绿，也没有宣称唯一超时原因或解除生产RSS约束。
+- build-1/build-2/build-3单-j4的abc_structure/abc_semantic通过；最终583项已
+  注册且四个新CTest的RUN_SERIAL属性已核对；未执行full suite。
+  final-tests-1原十/十四模块及default partial
+  定向3/3通过190.05秒：166/10990/2198/96/12与214/3960/792/144/23
+  矩阵均保留，default paired486场景通过。两个mjs语法与git diff
+  --check通过；简短诊断改动后final-tests-2同三项3/3通过104.18秒。
+  最终32-case批次下final-tests-3同三项3/3通过104.66秒：原十模块
+  166/10990/2198/96/12、十四模块214/3960/792/144/23及default paired
+  486场景保持。最终七个不同定向CTest均有完整成功结果（四graph分片
+  分两次运行汇总），两个mjs语法及git diff --check通过。test-only，
+  未改生产/rules、输入ABC或重复五ABC六模式30次全量导出。
+  日志/tmp/abcd-shopping-graph-{probe,lifecycle,assignments,mutations,
+  build,tests,final-tests,diagnostic,fault-batch,aggregate}-*.log。
+- 该图推进实际constructor/field/signature/capture/body整合与独立验收；
+  本图不单独证明初始化TS字段的任意prototype拦截或WindowUtil全部方法/
+  真实平台。剩余record行为/表示、结构metadata和原结构gate仍开放；
+  已有组件定向结果保留，不把本次组合验收替代它们。来源映射/DFX、
+  full suite/expanded corpus/RSS/benchmark/scheduler/agents/定期audit
+  保持用户暂停；阶段一Goal仍active。
+
 ### 2026-10-07：真实 minigame barrel／子类接入导航调用图
 
 - 基线12a0805b，production/rules146保持。沿原十模块导航图新增实际

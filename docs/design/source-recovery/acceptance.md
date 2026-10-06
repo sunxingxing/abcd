@@ -1,5 +1,23 @@
 # 验收、证据与实施交接
 
+2026-10-07 shopping依赖链补充：新增独立三十三模块图，实际shopping
+barrel、Home/HomeContent、section/header/CommonView及model/viewmodel
+直接连接原导航和minigame图。所有模块先ABC-only生成再读取paired TS，
+view正文、getter、商品模型读取和资源closure不替换。两个同名Header
+以实际module/export和constructor实例身份区分；平台协议仍为受控宿主。
+
+新的TabContent、ListItem lazy渲染、provided/consume、Scroller、tab change/
+分类scroll回放进入真实闭包。完整482生命周期、二十二view类的660赋值/
+继承setter/new.target/部分状态、21170原throw、4234换绑及34有效JS mutation
+已通过；两个baseline各29711宿主事件按完整trace/状态比较，故障按每个
+baseline的2117 distinct host边界采样，并非every-event注入。四个不重叠
+分片完整成功结果的原生JSON另核对足额inventory；失败运行的部分range和
+独立32-case探针不计入完整矩阵。大型graph CTest受串行调度，worker减为
+32-case且仍60秒；最终三个旧图/default partial回归均通过。失败记录及
+最终七个定向CTest的完整成功结果见status.md。typed/untyped且无initializer的class
+声明统一擦除，保留全部constructor赋值和初始化表达式。实际TS initializer
+任意prototype拦截及平台/WindowUtil方法、其他record和原结构gate另验。
+
 2026-10-07 minigame导航整合补充：原十模块图之外新增独立十四模块图，
 实际minigame barrel、Content、Header、Footer直接连接页面；四个新增
 record的ABC-only生成完成后才读取paired TS，三个类及re-export正文不替换。

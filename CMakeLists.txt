@@ -1468,6 +1468,19 @@ if(BUILD_TESTING)
       add_test(NAME minigame_navigation_graph_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/navigation_graph.mjs $<TARGET_FILE:abc_structure>
         ${ABCD_PAIRED_CORPUS_ROOT}/Immersive --minigame)
+      # Four disjoint case ranges preserve the complete graph matrix while
+      # keeping each directed integration job inside the existing CTest timeout.
+      # The large graph workers must not compete with other CTest jobs: two
+      # parallel replays timed out at different batches, whose isolated replay
+      # passed. This scheduling bound leaves engine concurrency unchanged.
+      foreach(ABCD_SHOPPING_GRAPH_SHARD RANGE 0 3)
+        add_test(NAME shopping_navigation_graph_source_test_${ABCD_SHOPPING_GRAPH_SHARD}
+          COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/navigation_graph.mjs $<TARGET_FILE:abc_structure>
+          ${ABCD_PAIRED_CORPUS_ROOT}/Immersive --all-views ${ABCD_SHOPPING_GRAPH_SHARD} 4)
+        set_tests_properties(shopping_navigation_graph_source_test_${ABCD_SHOPPING_GRAPH_SHARD}
+          PROPERTIES RUN_SERIAL TRUE)
+      endforeach()
       add_test(NAME initial_render_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/initial_render.mjs $<TARGET_FILE:class_initializer_file_test>
         ${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc)
