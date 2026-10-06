@@ -12,6 +12,53 @@
 
 ## 当前阶段
 
+### 2026-10-06：完整 WindowUtil / WindowInfo 记录独立验收
+
+- 基线51141fd0，production/rules133保持。新增window_record_source_test
+  使用授权--language-numeric，由ABC-only实际生成record7618的完整共同
+  tree；CLI进程结束后才读取paired WindowUtil.ts。source_complete=true、
+  route=value_tree、legacy_writer_used=false；executable=false保持。
+  输入SHA/size与现有Immersive index身份一致（8de95a4c6579，293544 bytes）。
+  原17880数值及4536局部optional调用测试保留，未以新whole record验收
+  代替其更细的数值/coercion与短路证据。
+- 实际两个class、enum和ESM export一起执行7442 paired场景，覆盖16个
+  原型方法及4个实例回调。验证class/method name/arity/descriptor、module
+  TDZ/export、WindowInfo八项初始化及字段descriptor、实例新对象/回调
+  freshness、enum/外部global读取、真实receiver、事件注册/解除、输入
+  getter与多次属性读取、部分状态、原异常/code/message getter异常。
+  mainWindow/UI替换及真实window import live-binding更新从既有getter/call
+  的不同时间点触发；不提前重取已获得callee。async windowSize callback
+  另验返回native Promise/rejection与同步throw之别。
+- lifecycle执行实际setUIContext/updateWindowInfo/status/avoid/title/size
+  回调及release，以无关this调用保存的回调。concurrent场景从两个实例
+  启动实际orientation/system-bar/limits Promise链，pending期间替换窗口并
+  新建另一实例，控制正/逆settle和reject；原捕获参数、owner、晚期字段写入
+  及所有owned链的异常/完成都核对。独立host只提供平台API边界，实际
+  recover、setImmersiveType、updateAvoidPadding与getCalDegree仍由恢复body
+  执行，没有用函数double替代这些方法。全部pending链显式等待。
+- Node保留TS type-only字段定义，oracle仅擦除八个无initializer的类型声明；
+  initialized字段和所有方法保持。STOBJBYNAME与native TS DefineField不是
+  同一义务，新增56个独立assignment场景，逐项验证两个class共14个初始化
+  属性的继承setter、原抛出对象及alternate new.target/prototype读取。
+  pinned constructor assignment的callback空name与native TS field的property
+  inferred name分别明确验证，不把后者当成ABC lowering的命名证据。
+  Observed host为identity；不宣称真实平台装饰器/观察协议验收。
+- 五个有效JS mutation检出：丢失windowSize listener、size参数、延迟
+  orientation写入、gravity ID，以及用own definition绕过继承setter。
+  mutation先解析，语法失败不计行为检出。源码表示另验native class/new、
+  async arrow、sensor call、then链、数值表达式与exports；不要求临时名字
+  逐字相同，也未借测试文本匹配添加production规则。
+- configure-1退出0，CMake只新增四行；注册564项，原两项Window测试保持。
+  tests-1独立首轮7131/4通过，tests-2加入async完成和concurrent后7442/4，
+  tests-3增加assignment后7442/4/56通过。最终final-tests-1定向11/11通过
+  16.36秒，含Window三项、parameter origins、family names、语言构造、完整
+  Home/model/Push/VoIP及module initialization。最终新测试7442/5/56。
+  日志/tmp/abcd-window-record-*。test-only，无生产重建/六模式重复导出，
+  无全套、expanded corpus、agents、RSS/benchmark、scheduler或DFX。
+  两个旧legacy baseline失败仍见上轮记录。阶段一及结构gate继续开放：
+  这是一个真实记录的受控完整行为和表示证据，不证明全部记录/平台协议、
+  所有外部scope或缺少metadata的完整签名已经验收。
+
 ### 2026-10-06：共同 tree 接受合法 debug 参数名
 
 - 基线8f2f56cb，规则revision133。RecoverParameterNames新增私有typed
