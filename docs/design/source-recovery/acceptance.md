@@ -7,6 +7,18 @@
 使用 [总体入口](README.md)、[IR 合同](value-ir.md)、[AST 合同](source-tree.md) 与
 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md) 和 [全样本合同](corpus.md)。
 
+2026-10-06 VoIP主流程补充：当前默认ValueTree实际ABC-only生成完整
+record11989后，再读取paired TS；输入SHA/size按既有index核对。新增366组
+受控完整main/callback/close调度，覆盖两来电的raw/pixel/incoming/event
+请求正反释放、共享callId与每请求descriptor身份、暂停时live logger换绑、
+原拒绝及catch getter异常、延迟image-info回调、on保留listener后throw导致
+主流程失败的原callback重放，以及close丢弃其实际启动promise的边界。
+host逐项释放/等待真实操作，禁止参考方法代替原body；4个新增有效JS
+mutation检出错误profile/事件/尺寸/off名。原322直接场景、768 event调度
+及3 mutation保留，最终9项定向回归通过。比较链、private class alias与
+snapshot暂存的整record风格仍需自身验收；这关闭上述并发/回调行为证据
+缺口，不能把完整输出或受控host等同平台/全部表示/原结构gate完成。
+
 2026-10-06备份record补充：新增backup_records_source_test先完成三个实际
 ABC-only --language-constructors记录生成和既有paired SHA/size核对，再读
 配对TS；Immersive9308、pasteboard5246、push6659的完整模块实际初始化、

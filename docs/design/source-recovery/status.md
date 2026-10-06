@@ -12,6 +12,42 @@
 
 ## 当前阶段
 
+### 2026-10-06：VoIP 整体主流程、共享静态状态与延迟回调验收
+
+- 基线c0ffb437，生产规则仍139。voip_service_source_test继续从实际
+  record11989/entry12208以ABC-only默认ValueTree生成完整模块；新增按既有
+  paired index核对输入SHA-256/size及record/route。生成结束后才读取独立
+  paired TS。实际三个static方法、原listener/image-info callback及callId
+  字段都参与执行，没有参考方法替换、fake body或新的生产恢复条件。
+- 新增366组受控完整主流程调度对照；120组检查双请求、正反release、
+  raw/pixel/incoming/change原拒绝、catch中code/message getter异常和暂停
+  期间hilog live export换绑；240组检查null/voice/video scene、五种UI事件、
+  registration/off异常、无pixel、主流程结束后的image-info回调及原width
+  getter异常；另6组重放on已保留listener但随后throw、catch getter致主流程
+  拒绝后的真实callback，并检查close的原启动promise和off异常。
+- Promise由测试host逐项释放；native await前只启动首个resource请求，
+  恢复后incoming descriptor保留原每请求callId/pixel身份，listener和close
+  则读取当次共享静态状态。实际caller/receiver、own key/descriptor、类调用
+  边界、namespace TDZ/重复evaluate及intrinsic async promise身份均核对。
+  close丢弃返回promise时，fixture包装原event method以捕获其实际return，
+  再释放/等待该操作；没有用固定microtask次数冒充操作完成。
+- 4个新增有效JS mutation检出错误userProfile、listener事件参数、image-info
+  height与off事件名。原322组直接行为、768组event受控调度与3 mutation
+  全部保留；新证据补齐跨完整main/callback/close的并发与失败后重放层，
+  不把source_complete或这些场景称为全部源码表示/平台验收完成。
+- 最终9/9相关CTest通过19.43秒，包含原PushAbility实际服务连接、备份
+  record、class root captures/static class batch、record/module family及
+  function tree/partial；日志/tmp/abcd-voip-main-final-tests-1.log记录全部
+  新旧场景结果。首轮360场景执行日志为execution-1.log，最终追加6场景
+  的真实结果以final-tests-1为准。两个JS语法及git diff --check通过。
+- 本次只改两个独立测试及验收文档，没有C++/CMake、没有构建，CTest仍
+  566个；实际服务源码由当前engine重新生成。未重复固定五ABC/六模式
+  批量，module-dominance-pass-1计数仍为前轮证据。源码的比较链、private
+  class alias及较多snapshot临时变量仍需共同表示能力和独立风格验收，
+  不通过替换参考body或移除身份/效果检查改善外观。阶段一Goal继续active；
+  其余record、完整结构gate、平台及暂停的全套/expanded/RSS/benchmark/
+  agents/scheduler/DFX/周期审计均未由此次验证自动完成或恢复。
+
 ### 2026-10-06：三个备份 Ability 的完整 record 独立验收
 
 - 基线b5baaf19，生产规则仍139。新增backup_records_source_test以当前

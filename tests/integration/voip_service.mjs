@@ -4,14 +4,23 @@ import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {stripTypeScriptTypes} from 'node:module';
 import vm from 'node:vm';
+import {createHash} from 'node:crypto';
+import {verifyVoipMainSchedules} from './voip_main_schedule.mjs';
 
 // Independent paired-source tests only. Production receives the ABC alone.
 // Host stubs exercise ordering/identity, not a HarmonyOS telephony service.
 const [tool, root] = process.argv.slice(2);
+const input = readFileSync(join(root,'modules.abc'));
+const index = JSON.parse(readFileSync(new URL('../corpus/abc-index.json',import.meta.url),'utf8'));
+const identity = index.entries.find(row => row.corpus_id === 'paired' && row.relative_path === 'push-kit-sample-code-clientdemo-arkts/modules.abc');
+assert.ok(identity); assert.equal(input.length,identity.size);
+assert.equal(createHash('sha256').update(input).digest('hex'),identity.sha256);
 const recovered = JSON.parse(execFileSync(tool, [join(root, 'modules.abc'), '12208',
   '--record-source', '--value-source'], {encoding: 'utf8'}));
 assert.equal(recovered.source_complete, true);
 assert.equal(recovered.legacy_writer_used, false);
+assert.equal(recovered.record,11989); assert.equal(recovered.route,'value_tree');
+assert.doesNotMatch(recovered.source,/INCOMPLETE|UNRECOVERED/);
 // Source representation is checked independently from execution. The field
 // still exists as an own undefined data property; an initializer is redundant.
 assert.match(recovered.source, /static callId;/);
@@ -283,3 +292,4 @@ assert.notEqual(eager, recovered.source);
 await assert.rejects(() => observeScheduled(eager, scenario), assert.AssertionError);
 console.log(`${cases} paired VoipCallService scenarios and ${scheduledCases} controlled schedules passed; ` +
   'three semantic mutations detected; HarmonyOS runtime and complete source-style acceptance remain separate');
+console.log(JSON.stringify(await verifyVoipMainSchedules(recovered.source,paired)));
