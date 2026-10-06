@@ -12,6 +12,46 @@
 
 ## 当前阶段
 
+### 2026-10-06：三个备份 Ability 的完整 record 独立验收
+
+- 基线b5baaf19，生产规则仍139。新增backup_records_source_test以当前
+  abc_semantic的ABC-only --value-source --language-constructors依次生成
+  Immersive record9308、pasteboard5246、push6659；三个输入SHA-256/size
+  与既有paired index核对。全部生成完成后才读取独立paired TS，完整原生
+  class/constructor/两个async method/import/export和DOMAIN初始化实际执行，
+  无legacy/INCOMPLETE/UNRECOVERED，不提取或替换方法体。
+- 1,224组paired构造场景覆盖参数身份、0/1/200/201项、动态direct/bound/
+  Proxy/非构造父类、父类返回对象/primitive/任意原throw、foreign new.target、
+  两realm的非对象prototype fallback及prototype getter异常。import换绑
+  不反向改变已求值class heritage；类调用边界、method name/arity/descriptor、
+  async非构造性、namespace TDZ/不可写/重复evaluate另验。
+- 4,068组paired完整异步方法场景覆盖原调用receiver、JSON stringify/
+  toJSON/循环对象/BigInt异常、日志callee及JSON/Promise getter中换绑、
+  调用期间live import换绑、borrowed null/拒绝访问的receiver、两个并发
+  请求、intrinsic promise身份及microtask checkpoint顺序。resolve原值/
+  fulfilled/rejected/non-callable then/nested thenable、首次resolve后reject/
+  throw和每个getter/call任意原throw均对照；日志返回then不得被额外await。
+- 13个有效JS mutation全部检出：错误DOMAIN/日志参数、序列化错误实参、
+  添加receiver读取、遗漏super实参、遗漏await及错误返回await值。三个
+  record的受控whole-record语义与高层表示验收由pending转accepted；允许
+  保守let模块绑定、显式等价constructor和局部await暂存，不宣称const/
+  类型信息恢复。paired构造对照使用普通iterator；污染iterator时explicit
+  native spread与paired implicit constructor的不同契约仍由原独立测试负责。
+- 首轮oracle把非对象prototype fallback归错realm；补齐第二realm检查后
+  按实际new.target realm校正，未改生产C++。保留原default partial方法测试
+  及其1,200场景，新complete测试单独注册并按三个ABC/paired文件存在准入，
+  避免增加原push-only测试的文件依赖。CTest当前566个。
+- 单一-j4 abc_semantic构建（含CMake重新配置）退出0，build handle关闭后
+  最终10/10定向CTest通过12.05秒，含原partial/backup片段、forward构造、
+  language构造unit/paired、PushAbility完整测试及function tree。
+  日志/tmp/abcd-backup-records-final-build-1.log、final-tests-2.log，完整场景
+  输出另存execution-final.log；两个新增JS语法和git diff --check通过。
+- 本次只有测试/CMake及验收文档变化，生产规则/六模式完整数沿用已验证
+  module-dominance-pass-1，未重复30次批量导出；该计数不是本轮fresh结果。
+  三个指定record的控制依赖验收不能关闭HarmonyOS平台、其余record或原
+  global/field/signature/body结构gate。阶段一Goal保持active；全套、expanded
+  corpus、RSS/benchmark、agents、scheduler/DFX和周期审计继续暂停。
+
 ### 2026-10-06：模块初始化以共同 dominance 取代入口块限制
 
 - 基线eb612ad3，生产规则139。RecordTree的旧entry_initialized只在物理

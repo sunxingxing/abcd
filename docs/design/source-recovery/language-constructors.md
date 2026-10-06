@@ -102,3 +102,21 @@ original restricted scope. Host doubles implement observable platform boundaries
 only; these tests are neither HarmonyOS deployment nor fixed-Ark equivalence.
 The CLI's executable flag is unchanged. Current evidence and fixture corrections
 are recorded in status.md; stage-one whole-corpus acceptance remains open.
+
+`backup_records_source_test` independently generates the three complete backup
+Ability records before opening paired TypeScript. It constructs actual instances
+and calls both original async methods, including module initialization and the
+push record's Promise await expressions. The 1,224 constructor cases cover
+dynamic parents, parameter identities, original exceptions, foreign new.target,
+prototype-getter failures and fallback in two new.target realms. The 4,068 method
+cases compare live import/callee replacement, JSON serialization, intrinsic async
+promises, nested thenables, arbitrary rejection identities and concurrent
+microtask ordering. Thirteen valid-JS mutations are detected. Native class,
+constructor, async method, import/export and initializer representation is
+accepted with conservative mutable bindings and local await temporaries.
+
+The prior default-mode partial backup test remains independent. These controlled
+whole-record checks use ordinary constructor iterators; they do not expand
+paired implicit-constructor equivalence to contaminated iterators, recover type
+or const metadata, or certify HarmonyOS/platform execution. Production selectors
+and rules are unchanged; current regression evidence is recorded in status.md.

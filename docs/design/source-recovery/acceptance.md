@@ -7,6 +7,20 @@
 使用 [总体入口](README.md)、[IR 合同](value-ir.md)、[AST 合同](source-tree.md) 与
 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md) 和 [全样本合同](corpus.md)。
 
+2026-10-06备份record补充：新增backup_records_source_test先完成三个实际
+ABC-only --language-constructors记录生成和既有paired SHA/size核对，再读
+配对TS；Immersive9308、pasteboard5246、push6659的完整模块实际初始化、
+构造并调用原两个async方法。1,224组构造及4,068组方法场景、13个有效JS
+mutation通过，受控whole-record语义与高层表示由pending转accepted。
+覆盖动态父类/new.target/两realm fallback/原异常与参数身份，namespace/
+class/method元信息，live import/callee替换、JSON/toJSON异常、Promise/
+nested thenable/原拒绝身份和并发microtask顺序；不额外读取borrowed receiver
+或await日志返回值。表示允许保守let、显式等价constructor及await局部暂存。
+原default partial方法测试独立保留；paired普通iterator对照不代表implicit
+constructor与受污染explicit spread普遍等价，原native-super独立契约保持。
+最终10项定向回归和证据见status.md；不能扩为平台、其余record、源级const/
+类型或全部结构gate完成，生产规则仍139。
+
 2026-10-06补充：`paired_model_record_source_test`实际执行ABC-only
 `--value-source`的完整IconInfoModel/SectionModel记录，再读paired TS；
 1476配对场景覆盖module live更新（包括参数求值期间）、列表/receiver、
