@@ -1,4 +1,5 @@
 #include "tail_completion.h"
+#include "discarded_read.h"
 #include "../analysis/register_value_rule.h"
 #include "nullish_syntax.h"
 #include "abcd/source/tree_printer.h"
@@ -1244,6 +1245,12 @@ class TreePrinter {
         if (completion->value) Result().expressions[completion->value->value] = {written_, written_};
         return;
       }
+    }
+    const auto child = Tree().children[block.first_child + at.index];
+    if (const auto read = DiscardedInvocationRead(Tree(), child)) {
+      Result().statements[child.value] = {written_, written_};
+      Result().expressions[read->value] = {written_, written_};
+      return;
     }
     Push(std::string_view("\n"));
     const auto depth = root ? at.depth : at.depth + 1;

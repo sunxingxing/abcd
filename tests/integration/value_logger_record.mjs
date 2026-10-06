@@ -96,8 +96,11 @@ for (const mutate of [
   assert.notEqual(changed, report.source); new vm.SourceTextModule(changed);
   await assert.rejects(observe(changed, 'debug', ['one', 'two'], 'normal', {}));
 }
-for (const method of methods) assert.match(report.source, new RegExp(`${method}\\(\\.\\.\\.args\\)`));
-// Native methods/rest are checked here. The scratch class wrapper and aliases
-// still require a separate whole-record representation acceptance.
+for (const method of methods) {
+  assert.match(report.source, new RegExp(`${method}\\(\\.\\.\\.args\\)`));
+  assert.match(report.source, new RegExp(`hilog\\.${method}\\(this\\.domain, this\\.prefix, this\\.format, args\\);`));
+}
+// Native methods and direct rest bindings are checked here. The scratch class
+// wrapper still requires a separate whole-record representation acceptance.
 const state = await verifyLoggerState(report.source, reference, prefix);
 console.log(JSON.stringify({basicCases: scenarios, basicMutations: 2, ...state, wholeRecordStyle: 'pending'}));

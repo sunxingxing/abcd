@@ -39,6 +39,18 @@ class FlowCheck {
     if (evaluation.cells) budget.Array(flow_.cells, evaluation.cells->cells.cells.size());
     budget.Array(assigned_, tree.symbols.size());
     budget.Array(declared_, tree.symbols.size());
+    budget.Array(written_, tree.symbols.size());
+    // Source parameter writes would invalidate an entry-bound SSA value.
+    // One census covers all assignment/update occurrences, independent of CFG
+    // layout. Rebinding cells is handled by their distinct storage as before.
+    for (const auto& expression : tree.expressions) {
+      budget.Step();
+      if (const auto* assignment = std::get_if<AssignmentExpr>(&expression.expression))
+        if (const auto* target = std::get_if<SymbolTarget>(&assignment->target))
+          written_[target->symbol.value] = 1;
+      if (const auto* update = std::get_if<UpdateExpr>(&expression.expression))
+        written_[update->symbol.value] = 1;
+    }
     budget.Array(tasks_, control.nodes.size());
     budget.Array(loops_, control.loops.size());
     if (exceptions) {
@@ -1343,6 +1355,7 @@ class FlowCheck {
       Require(flow_.expressions[i].has_value(), Error::kSnapshot);
       auto& source = sources[flow_.expressions[i]->value]; Require(!source, Error::kSnapshot);
       source = analysis::OpId{static_cast<std::uint32_t>(i)};
+      if (NativeBinding(*flow_.expressions[i])) RootExpression(*source, *flow_.expressions[i]);
     }
     for (std::size_t i = 0; i < tree_.expressions.size(); ++i) {
       budget_.Step(); const auto& expression = tree_.expressions[i];
@@ -1357,6 +1370,15 @@ class FlowCheck {
         Require(flow_.snapshots[i].has_value(), Error::kSnapshot);
     }
   }
+  std::optional<SymbolId> NativeBinding(ExprId expression) const {
+    const auto* read = std::get_if<SymbolExpr>(&tree_.expressions[expression.value].expression);
+    if (!read) return std::nullopt;
+    const auto& symbol = tree_.symbols[read->symbol.value];
+    if (symbol.kind != BindingKind::kParameter && symbol.kind != BindingKind::kFunctionSelf)
+      return std::nullopt;
+    Require(!written_[read->symbol.value], Error::kSnapshot);
+    return read->symbol;
+  }
   void RootExpression(analysis::OpId id, ExprId expression) {
     Require(flow_.expressions[id.value].has_value(), Error::kPlacement);
     const auto value = *flow_.expressions[id.value];
@@ -1364,6 +1386,14 @@ class FlowCheck {
     if (!evaluation.temporary) {
       Require(expression == value, Error::kPlacement);
       return;
+    }
+    if (expression == value) {
+      if (const auto binding = NativeBinding(expression)) {
+        Require(tree_.expressions[expression.value].origin.value == graph_.ops[id.value].origin.value,
+            Error::kSnapshot);
+        flow_.snapshots[id.value] = *binding;
+        return;
+      }
     }
     const auto* assignment = std::get_if<AssignmentExpr>(&tree_.expressions[expression.value].expression);
     Require(assignment && assignment->value == value &&
@@ -1407,6 +1437,7 @@ class FlowCheck {
   std::vector<std::optional<std::size_t>> placements_;
   std::vector<std::uint8_t> assigned_;
   std::vector<std::uint8_t> declared_;
+  std::vector<std::uint8_t> written_;
   std::vector<TreeRegion> tasks_;
   std::vector<std::optional<StmtId>> loops_;
   std::optional<TreeEdgeFlow> edges_;

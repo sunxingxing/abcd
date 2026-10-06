@@ -812,9 +812,17 @@ class OperandCheck {
         const auto& placement = evaluation_.operations[result->op.value];
         if (placement.kind == EvaluationKind::kPredicateSnapshot && placement.consumer &&
             occurrence == placement.consumer) {
-          // The eager consumer receives the assignment at the exact use
-          // occurrence. All other uses must still read the same private slot.
+          // The eager consumer receives the owned expression at the exact
+          // occurrence. A stable invocation binding needs no extra assignment;
+          // all other uses still read that same independently checked identity.
           RequireMeaning(!edge_input_ && flow_.snapshots[result->op.value], Error::kOperand);
+          if (flow_.expressions[result->op.value] == expression) {
+            const auto symbol = Node<SymbolExpr>(expression).symbol;
+            const auto kind = tree_.symbols[symbol.value].kind;
+            RequireMeaning(symbol == *flow_.snapshots[result->op.value] &&
+                (kind == BindingKind::kParameter || kind == BindingKind::kFunctionSelf), Error::kOperand);
+            return;
+          }
           const auto& assignment = Node<AssignmentExpr>(expression);
           const auto* target = std::get_if<SymbolTarget>(&assignment.target);
           RequireMeaning(target && target->symbol == *flow_.snapshots[result->op.value] &&

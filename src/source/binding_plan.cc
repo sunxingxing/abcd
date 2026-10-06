@@ -186,6 +186,21 @@ std::variant<BindingPlan, BindingError> BuildBindings(
         return Error::kDefinition;
       const auto& placement = evaluation.operations[producer.value];
       if (!placement.temporary || IsAbsentHeritageTransport(graph, evaluation, graph.ops[producer.value])) continue;
+      // Native rest/current-function values already have source storage.
+      // ABI register writes produce new SSA values; they do not write these
+      // formals. Tree correspondence independently checks the native identity
+      // and absence of source binding writes. Do not extend this to cell loads.
+      const auto& operation = graph.ops[producer.value].operation;
+      if (const auto* rest = std::get_if<ValueRestArguments>(&operation)) {
+        if (rest->first_argument >= parameter_count) return Error::kParameter;
+        plan.values[i] = SymbolId{rest->first_argument};
+        continue;
+      }
+      if (std::holds_alternative<ValueFrameFunction>(operation)) {
+        if (!plan.self) return Error::kDefinition;
+        plan.values[i] = *plan.self;
+        continue;
+      }
       const SymbolId symbol{static_cast<std::uint32_t>(plan.symbols.size())};
       plan.symbols.emplace_back(SnapshotBinding{
           ValueId{static_cast<std::uint32_t>(i)}, producer, *placement.temporary});

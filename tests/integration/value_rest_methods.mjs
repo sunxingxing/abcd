@@ -38,12 +38,15 @@ for (const [method, name] of [[4604, 'info'], [4631, 'warn'], [4658, 'debug'], [
   const source = report.draft_source;
   assert.ok(source.startsWith(`${name}(...args)`));
   assert.ok(!source.includes('INCOMPLETE'));
-  // The native rest formal must retain the COPYRESTARGS origin as an actual
-  // reference, while the original physical-frame MOVs remain elided.
+  // The native rest formal retains the COPYRESTARGS event and origin, while
+  // original physical-frame MOVs remain elided.
   const positions = report.draft_positions[0].positions;
   const rest = positions.instruction_sources.find(entry => positions.origins[entry.origin].pc === 8);
   assert.equal(rest.kind, 'expression');
-  assert.equal(Buffer.from(source).subarray(rest.range.begin, rest.range.end).toString(), 'args');
+  // COPYRESTARGS owns a source-native binding. Its discarded read is retained
+  // as a zero-width event; call arguments still carry actual args references.
+  assert.equal(rest.range.begin, rest.range.end);
+  assert.match(source, /this\.domain, this\.prefix, this\.format, args\)/);
   for (const entry of positions.instruction_sources.slice(0, 4)) assert.equal(entry.kind, 'elided_pure');
   const reasons = [undefined, null, Symbol('reason'), {}];
   const values = [[], [undefined], ['text'], [1, {}, Symbol('arg')], Array.from({length: 201}, (_, i) => i)];

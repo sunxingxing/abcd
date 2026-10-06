@@ -145,8 +145,10 @@ class AbiBuilder {
       if (tree_.parameters[i].rest) {
         // The physical parameter entry is the first actual rest argument, not
         // an array. Only the single checked allocation introduces this symbol.
+        // Correspondence also permits its SSA consumers to read that native
+        // binding directly; their count is not an ABI admission condition.
         Require(parameter.reads.operands == 0 && rest_reads == 1 &&
-            parameter.reads.references == rest_reads && parameter.writes == 0, Error::kParameter);
+            parameter.reads.references >= rest_reads && parameter.writes == 0, Error::kParameter);
       } else {
         Require((parameter.reads.operands != 0) == (parameter.reads.references != 0) &&
             parameter.writes == 0, Error::kParameter);

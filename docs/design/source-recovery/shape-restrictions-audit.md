@@ -1,5 +1,19 @@
 # 按用户要求进行的恢复条件审计
 
+规则135补充：ValueRestArguments / ValueFrameFunction 的结果复用真实 native
+rest/self binding，仍保留原 operation/evaluation/origin。指令 adapter 定义
+原生值身份，TreeOperands 独立检查实际 formal/self；没有追加同块、邻接、
+固定 producer/selection 数量、图形或样本条件。TreeFlow 的一次 source
+assignment/update census 证明复用 binding 未被写入；captures 仍由共同
+cell ownership 指向独立可写存储，不把 source spelling 当作存储身份。
+ABI 保留原 rest 物理标量不可读、一次分配、source write 为零；移除恰好
+一次 source reference 的旧表示限制。printer 与来源传输共用 initialized
+parameter/self 纯读取省略：只允许实际 ExpressionStmt 的两个节点处于
+同一 owner 内零宽区间，不放宽 TDZ/cell/module/global/getter/phi/exception
+存储检查。普通根、nested eager snapshot、跨块、分支/COPY/leading formal
+及插入 getter 回归证明布局变化不需新分支；错误 rest/self 和 formal write
+仍拒绝。没有扩大既有 predicate snapshot 等 legacy fast path 的布局限制。
+
 规则134补充：captured参数名仅由真实allocated cell元数据提示及共同
 ValueIdentities的ParameterEntry身份关联；copy/phi/SCC和block split共用
 同一分析，不匹配first-store、immutable、固定寄存器/PC、同块或样本。

@@ -12,6 +12,63 @@
 
 ## 当前阶段
 
+### 2026-10-06：复用原生 rest / 当前函数绑定，移除重复快照
+
+- 基线3c64a46e，规则revision135。生产BindingPlan对原本需要临时存储的
+  ValueRestArguments / ValueFrameFunction复用实际ParameterBinding /
+  FunctionSelfBinding；共同alias/copy身份、EvaluationPlan和原operation
+  保留。普通根与nested eager snapshot使用同一源绑定，不按样本、PC、
+  寄存器、同块或局部producer形状准入。两个实际Logger的四种method现为
+  `hilog.debug(this.domain, this.prefix, this.format, args)`等直接调用，
+  不再产生rest的`let $value1; ($value1 = args)`。
+- TreeFlow新增有预算的线性source assignment/update census，复用绑定
+  不可被实际source write改变；TreeOperands独立核对真实rest formal或
+  self身份及每个consumer。真实可写capture仍由CellPlan指向独立cell，
+  getter/cell/module快照、phi/cycle/exception和numeric update存储保持。
+  ABI移除“rest只能恰好一次source reference”的表示限制，继续要求原
+  物理实参scalar不可读、原生rest一次已证明分配和source writes为零。
+  原ProveRestOwnership的入口迁移、作用域及效果/异常义务均保留。
+- printer和FamilyEmission共用私有DiscardedInvocationRead，省略已初始化
+  parameter/self的直接ExpressionStmt纯读；local/cell/module/global/TDZ
+  读取不受此投影影响。原事件及ExprId/StmtId/origin保留原边界的零宽
+  range，来源传输检查两节点同位置及owner边界；不放行任意空区间。
+  第一次GREEN发现旧record slice来源传输仍要求非空，现已共同修复，
+  旧slice的segment/来源测试也通过，没有绕过或删除旧路径测试。
+- 新增function_tree_test的12种原生绑定组合，覆盖普通/嵌套快照、拆块、
+  分支、COPY、leading rest和getter插入；错误rest/self及formal write
+  mutation仍由fresh structure/correspondence拒绝。真实rest ABC夹具的
+  三profile、宽/窄、寄存器移动、48个完整family及24个拒绝场景保持。
+  两个Logger整record仍执行原240 basic + 848 paired、14 constructor、
+  27 pinned setter/new.target、12 default init与8个有效JS mutation；
+  新增独立直接rest表示断言，ABC-only生成后才读paired TS。
+- 单一构建、-j4，日志build-1/2/3/4/5/6、final-build-1和frame-build-1
+  均退出0，所有build handle在运行测试/再次修改前已关闭。最初表示RED
+  两个Logger失败；整合期间ABI引用数/来源零宽传输及新增fixture的name
+  census缺口已修正。final-tests-2定向32/32通过36.77秒，覆盖common
+  binding/tree/phi/cell/capture/exception、partial output、rest/arguments/
+  async、模块default/init、语言构造Proxy-super及Window/ViewModel记录。
+  额外frame-tests-1的4/4通过4.82秒：真实生成async/generator代码的
+  self/this/private runtime name、暂停/恢复、并发调用及family naming。
+  日志统一/tmp/abcd-invocation-bindings-*；Node --check两个修改脚本及
+  git diff --check通过。注册仍564项。
+- 固定五个ABC、六模式共30次ABC-only导出，输入SHA/size与既有corpus
+  index相符；每模式106份complete/明确partial源码均通过Node语法检查。
+  相对cell-formal-names同模式基线没有complete回退或新增legacy输出；
+  每模式只两个Logger record的source改变，没有新增complete计数。
+  default 80 complete/26 incomplete；language arithmetic 95/11；
+  numeric 96/10；constructors 88/18；arithmetic+constructors 105/1；
+  numeric+constructors 106/0。每模式另46个no-module分类保持。
+  产物build/stage-one/invocation-bindings-<mode>-pass-1，证据
+  /tmp/abcd-invocation-bindings-{batch-1.log,<mode>-summary-1.json}。
+- 自审与设计更新见function-tree-output.md/shape-restrictions-audit.md。
+  新增写入census与来源省略索引是有预算的线性表，没有逐变量重扫或新增
+  依赖。全套、expanded corpus、agents、RSS/benchmark、scheduler/DFX及
+  周期审计继续暂停；既有legacy baseline失败本轮未重跑。此次实现和
+  验证有实际进展。Goal保持active：106/0仅为显式组合模式的输出完整性，
+  不等于全部record独立语义/表示验收；匿名class命名carrier、实例字段/
+  globals/完整签名/body及整阶段结构gate继续开放。两个Logger的rest
+  表示已改善，wholeRecordStyle仍为pending，不将局部质量算为整record完成。
+
 ### 2026-10-06：两个 Logger 的 rest、实例赋值与默认初始化验收
 
 - 基线88fd8fb8，production/rules134保持。扩展既有两个value Logger

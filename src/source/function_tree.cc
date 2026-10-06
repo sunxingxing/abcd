@@ -870,6 +870,11 @@ class TreeBuilder {
     Require(op.result.has_value(), Error::kBinding);
     const auto* symbol = std::get_if<SymbolId>(&forest_.bindings.values[op.result->value]);
     Require(symbol != nullptr, Error::kBinding);
+    if (IsInvocationBinding(forest_.bindings.symbols[symbol->value])) {
+      const auto* read = std::get_if<SymbolExpr>(&tree_.expressions[expression.value].expression);
+      Require(read && read->symbol == *symbol, Error::kBinding);
+      return expression;
+    }
     Require(tree_.expressions.size() < tree_.expressions.capacity(), Error::kResourceLimit);
     const ExprId evaluated{static_cast<std::uint32_t>(tree_.expressions.size())};
     tree_.expressions.push_back({AssignmentExpr{SymbolTarget{*symbol}, expression}, TreeOriginId{op.origin.value}});

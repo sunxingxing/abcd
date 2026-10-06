@@ -21,6 +21,47 @@ Printer 处理节点、名字、括号、转义、标签、注释和已有输出
 模式，不补推 CFG、finally 或闭包，不调用专项 body writer。无原名可用合成名，
 无独立 PC 的结构节点保留结构来源；不补造原名、类型、PC 或可执行占位行为。
 
+## 原生调用绑定的值复用（规则 135）
+
+BindingPlan 对已需要保存的 ValueRestArguments / ValueFrameFunction 结果，
+分别复用实际 rest formal / FunctionSelfBinding。这里是指令语义到已有源
+存储的映射，不是根据 producer 名单、调用布局或样本选择的优化。COPY/MOV
+和已检查的 phi identity 仍由 EvaluationPlan 的共同 alias 表处理；普通根、
+嵌套 eager snapshot、跨块及分支使用同一映射，EvaluationPlan 不变。
+
+rest formal 的分配一次、原实参标量不可读和移到入口不跨可观察效果的前提，
+继续由既有 ProveRestOwnership / ABI 证明。self 的真实创建身份、原生不可变
+self 或已检查 creation binding，继续由 callable/scope/creation 证明。
+这些绑定只保存原对象身份；对象内容/属性仍可改变，getter、调用、异常和
+receiver 仍按原共同流程检查。实际闭包可写存储仍是独立 cell，不合并成 formal。
+
+共同树保留原操作的 SymbolExpr 和 origin，不再构造对该绑定的额外保存赋值。
+TreeFlow 通过一次 source assignment/update census 排除对复用绑定的写入，
+TreeOperands 再独立验证原操作必须读实际 rest formal 或 self；不能以错误
+parameter、global 或同名 capture 替代。若将来引入可写 source formal，须重新
+规划它与入口 SSA 值的存储关系，不能直接套用这一复用。getter/cell/module
+快照、phi/cycle/exception staging 和 numeric update 仍拥有独立存储。
+
+ABI census 的 rest 引用数包括原分配表达式和直接消费者，不再要求它恰好为
+一次。保留原物理参数 operand 为零、一次已证明 rest 分配和 source writes 为
+零；实际每个引用的身份由树对应校验承担，引用数量不是语言约束。
+
+DiscardedInvocationRead 是 printer 与 FamilyEmission 共用的私有语法投影：
+只有函数体中已初始化 parameter/self 的直接 ExpressionStmt 读取可省略。
+local/cell/module/global 读取不受此规则影响，尤其不能省略 TDZ 或用户代码
+效果。原 instruction/event 保持 ExprId/StmtId/origin，在原打印边界记录零宽
+区间；来源传输检查两节点同位置及 owner 内边界，不能把所有空区间放行。
+嵌套 eager 表达式的实际读取仍打印，保留该 occurrence 的原来源。
+
+这是复用现有 SSA、共同绑定和已初始化环境绑定语义的纯读省略；没有新增
+算法依赖或许可/版本前提。写入 census 是 O(X+S)，来源省略索引是 O(X+T)，
+各追加有预算的线性表，不逐符号重扫表达式。X/S/T 是表达式/符号/语句数。
+function_tree_test 覆盖分支、COPY、拆块、插入 getter、两种原生值和错误绑定/
+formal write；file_rest_method_source_test 的真实 ABC 夹具继续覆盖三 profile、
+宽/窄、leading/rest、寄存器移动及拒绝场景。两个实际 Logger record 验证直接
+rest 表示及原数组身份/receiver/效果/异常。全进程 RSS 验证仍暂停，此成本
+说明不替代 RSS 证据。
+
 ## 2. 部分输出是正常能力
 
 允许在整体尚未成熟时输出已恢复片段，不因一个函数或子函数不支持而丢弃整份

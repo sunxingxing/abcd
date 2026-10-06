@@ -24,6 +24,12 @@ struct CatchParameterBinding { analysis::ValueId value; analysis::WorkBlockId bl
 struct CatchSlotBinding { CatchSlotId slot; };
 using BindingSource = std::variant<ParameterBinding, SnapshotBinding, PhiBinding, CycleBinding, CellBinding,
                                    FunctionSelfBinding, CatchParameterBinding, CatchSlotBinding, HoleTokenBinding, UpdateBinding>;
+// These source bindings already hold invocation-owned values. Loaded mutable
+// cells, phi/cycle locations and effect snapshots never qualify.
+inline bool IsInvocationBinding(const BindingSource& source) {
+  return std::holds_alternative<ParameterBinding>(source) ||
+      std::holds_alternative<FunctionSelfBinding>(source);
+}
 struct BindingPlan {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;

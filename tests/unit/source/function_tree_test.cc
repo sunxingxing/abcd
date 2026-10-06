@@ -3,6 +3,8 @@
 #include "../../../src/source/tree_semantics.h"
 #include "../../../src/source/function_abi.h"
 #include "../../../src/source/tree_globals.h"
+#include "abcd/source/tree_printer.h"
+#include <sstream>
 
 #include <cstdlib>
 #include <type_traits>
@@ -851,6 +853,118 @@ void FrameFunctionTree() {
   Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(fixture.graph, control, evaluation,
       syntax, {fixture.constants, 2, 0, {}})));
 }
+// A source-native entry value needs no private save, whether the shared
+// evaluator places it at an eager occurrence or across a split block/effect.
+// Getter snapshots and mutable cells must remain independent (SnapshotTree,
+// capture_tree_test). These tests inspect fresh correspondence, not just text.
+void InvocationBindingTrees() {
+  using namespace analysis;
+  for (const bool rest : {false, true}) for (const bool split : {false, true})
+      for (const bool getter : {false, true}) {
+    Fixture fixture;
+    fixture.Add(0, 0, 10, rest ? ValueOperation{ValueRestArguments{0}}
+        : ValueOperation{ValueFrameFunction{}}, true, {});
+    if (split) fixture.Add(0, 1, 19, ValueJump{}, false, {});
+    const auto block = split ? 1u : 0u;
+    auto order = split ? 0u : 1u;
+    if (getter) fixture.Add(block, order++, 32, ValueNamedRead{{0}}, true,
+        {{OperandRole::kBase, ValueId{rest ? 2u : 0u}}}, kRead);
+    const auto comparison = fixture.Add(block, order++, 47, ValueBinary{BinaryOperator::kStrictEqual}, true,
+        {{OperandRole::kLeft, ValueId{2}}, {OperandRole::kRight, ValueId{2}}});
+    fixture.Add(block, order, 58, ValueReturn{}, false,
+        {{OperandRole::kReturnValue, *fixture.graph.ops[comparison.value].result}});
+    if (split) {
+      fixture.graph.blocks = {{{0}, 2, {0}, 1}, {{2}, order + 1, {1}, 0}};
+      fixture.graph.edges = {{{0}, {1}, FlowEdgeKind::kTaken, 0}};
+    } else fixture.graph.blocks = {{{0}, order + 1, {0}, 0}};
+    auto syntax = fixture.Syntax();
+    syntax.callable = CallableKind::kFunction;
+    if (rest) syntax.parameters[0].rest = true;
+    else syntax.inferred_name = NameId{1};
+    const auto control = std::get<ControlPlan>(BuildControlPlan(fixture.graph));
+    const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(fixture.graph));
+    Check(evaluation.operations[0].temporary.has_value());
+    auto built = BuildFunctionTree(fixture.graph, control, evaluation, syntax, {fixture.constants, 2, 0, {}});
+    Check(std::holds_alternative<ConstructedFunction>(built));
+    const auto& tree = std::get<ConstructedFunction>(built).tree;
+    Check(tree.symbols.size() == (rest ? 1 : 2));
+    Check(std::holds_alternative<TreeSemantics>(fixture.Verify(tree)));
+    const auto source = std::get<ExprId>(tree.operations[0].node);
+    const auto expected = rest ? tree.parameters[0].symbol : *tree.self;
+    Check(std::get<SymbolExpr>(tree.expressions[source.value].expression).symbol == expected);
+    const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 1, {}));
+    const auto abi = BuildFunctionAbi(fixture.graph, tree, frame, rest ? 0 : 1);
+    Check(std::holds_alternative<ConstructedAbi>(abi));
+    if (rest) {
+      const auto& formal = std::get<ConstructedAbi>(abi).abi.parameters[0];
+      Check(formal.reads.operands == 0 && formal.reads.references >= 2 && formal.writes == 0);
+    }
+    std::ostringstream text;
+    const auto printed = PrintFunctionTree(tree, text);
+    Check(std::holds_alternative<PrintedFunction>(printed));
+    Check(text.str().find("$value") == std::string::npos);
+    if (evaluation.operations[0].kind == EvaluationKind::kRoot) {
+      const auto range = std::get<PrintedFunction>(printed).expressions[source.value];
+      Check(range.begin == range.end);
+    }
+    auto wrong = tree;
+    if (rest) wrong.parameters[0].rest = false;
+    else wrong.expressions[source.value].expression = SymbolExpr{tree.parameters[0].symbol};
+    Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(wrong)));
+    if (rest) {
+      wrong = tree;
+      const auto binary = std::get<ExprId>(tree.operations[comparison.value].node);
+      const auto right = std::get<BinaryExpr>(tree.expressions[binary.value].expression).right;
+      const ExprId value{static_cast<std::uint32_t>(wrong.expressions.size())};
+      wrong.expressions.push_back({TreeLiteral{BooleanLiteral{false}}, wrong.expressions[right.value].origin});
+      wrong.expressions[right.value].expression = AssignmentExpr{SymbolTarget{expected}, value};
+      Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(wrong)));
+      Check(std::get<TreeSemanticError>(fixture.Verify(wrong)) == TreeSemanticError::kFlow);
+    }
+  }
+}
+void InvocationBranchBindings() {
+  using namespace analysis;
+  for (const bool rest : {false, true}) for (const bool copy : {false, true}) {
+    Fixture fixture;
+    fixture.Add(0, 0, 8, rest ? ValueOperation{ValueRestArguments{1}}
+        : ValueOperation{ValueFrameFunction{}}, true, {});
+    ValueId value{2}; auto order = 1u;
+    if (copy) {
+      const auto copied = fixture.Add(0, order++, 13, ValueCopy{}, true, {{OperandRole::kInput, value}});
+      value = *fixture.graph.ops[copied.value].result;
+    }
+    const auto test = fixture.Add(0, order++, 29, ValueBinary{BinaryOperator::kStrictEqual}, true,
+        {{OperandRole::kLeft, ValueId{0}}, {OperandRole::kRight, SpecialValue::kNull}});
+    fixture.Add(0, order++, 37, ValueBranch{UnaryOperator::kTrueOrNonzeroNumber}, false,
+        {{OperandRole::kCondition, *fixture.graph.ops[test.value].result}});
+    const auto comparison = fixture.Add(1, 0, 54, ValueBinary{BinaryOperator::kStrictEqual}, true,
+        {{OperandRole::kLeft, value}, {OperandRole::kRight, value}});
+    fixture.Add(1, 1, 61, ValueReturn{}, false,
+        {{OperandRole::kReturnValue, *fixture.graph.ops[comparison.value].result}});
+    fixture.Add(2, 0, 89, ValueReturn{}, false, {{OperandRole::kReturnValue, value}});
+    fixture.graph.blocks = {{{0}, order, {0}, 2}, {{order}, 2, {2}, 0}, {{order + 2}, 1, {2}, 0}};
+    fixture.graph.edges = {{{0}, {2}, FlowEdgeKind::kTaken, 0}, {{0}, {1}, FlowEdgeKind::kFallthrough, 1}};
+    auto syntax = fixture.Syntax(); syntax.callable = CallableKind::kFunction;
+    if (rest) {
+      syntax.names.push_back(u"args");
+      syntax.parameters.push_back({NameId{2}, NameEvidence::kDebugRange});
+      syntax.parameters.back().rest = true;
+    } else syntax.inferred_name = NameId{1};
+    const auto control = std::get<ControlPlan>(BuildControlPlan(fixture.graph));
+    const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(fixture.graph));
+    auto built = BuildFunctionTree(fixture.graph, control, evaluation, syntax, {fixture.constants, static_cast<std::uint32_t>(syntax.names.size()), 0, {}});
+    Check(std::holds_alternative<ConstructedFunction>(built));
+    const auto& tree = std::get<ConstructedFunction>(built).tree;
+    Check(std::holds_alternative<TreeSemantics>(fixture.Verify(tree)));
+    const auto native = rest ? tree.parameters[1].symbol : *tree.self;
+    const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, rest ? 2 : 1, {}));
+    Check(std::holds_alternative<ConstructedAbi>(BuildFunctionAbi(fixture.graph, tree, frame, 1)));
+    const auto expression = std::get<ExprId>(tree.operations[0].node);
+    Check(std::get<SymbolExpr>(tree.expressions[expression.value].expression).symbol == native);
+    Check(tree.symbols[native.value].kind == (rest ? BindingKind::kParameter : BindingKind::kFunctionSelf));
+  }
+}
 void FrameReceiverTree() {
   using namespace analysis;
   Fixture fixture;
@@ -910,6 +1024,8 @@ int main() {
   }
   CreationSelfTree();
   FrameFunctionTree();
+  InvocationBindingTrees();
+  InvocationBranchBindings();
   FrameReceiverTree();
   DebuggerTree();
   ThrowTree();

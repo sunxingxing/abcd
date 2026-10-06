@@ -878,6 +878,8 @@ class ForestBuilder {
         evaluation_.operations[source->op.value].consumer == use) {
       const auto* symbol = std::get_if<SymbolId>(&forest_.bindings.values[value->value]);
       Require(symbol && forest_.operations[source->op.value], Error::kBinding);
+      if (IsInvocationBinding(forest_.bindings.symbols[symbol->value]))
+        return *forest_.operations[source->op.value];
       return Add(AssignmentExpr{SymbolTarget{*symbol}, *forest_.operations[source->op.value]},
           TreeOriginId{graph_.ops[source->op.value].origin.value});
     }

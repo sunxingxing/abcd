@@ -1,4 +1,5 @@
 #include "tail_completion.h"
+#include "discarded_read.h"
 #include "nullish_syntax.h"
 #include "family_emission.h"
 
@@ -55,6 +56,16 @@ void CheckPositions(const PreparedFamily& family, const PrintedFamilyDraft& prin
     Require(tree.modules.empty() ? !positions.module_binding :
         positions.module_binding && member.record && positions.module_binding->record == *member.record,
         Error::kPositions);
+    // Index discarded invocation reads once; source occurrences keep their
+    // original owned node instead of masquerading as elided instructions.
+    std::vector<std::optional<StmtId>> discarded;
+    budget.Admit(tree.expressions.size(), sizeof(discarded[0]));
+    budget.Step(tree.expressions.size()); discarded.resize(tree.expressions.size());
+    budget.Admit(discarded.capacity() - discarded.size(), sizeof(discarded[0]));
+    for (std::size_t j = 0; j < tree.statements.size(); ++j) {
+      budget.Step(); const StmtId statement{static_cast<std::uint32_t>(j)};
+      if (const auto read = DiscardedInvocationRead(tree, statement)) discarded[read->value] = statement;
+    }
     for (const auto& source : member.sources->occurrences) {
       budget.Step();
       // IDs come from the sealed instruction-source pass, not caller tables.
@@ -81,7 +92,17 @@ void CheckPositions(const PreparedFamily& family, const PrintedFamilyDraft& prin
             if (!nullish.omitted_by.empty()) guarded = nullish.omitted_by[target.value];
           if constexpr (std::is_same_v<T, PropertyId>)
             if (!nullish.omitted_properties_by.empty()) guarded = nullish.omitted_properties_by[target.value];
-          if (guarded) {
+          std::optional<StmtId> discarded_statement;
+          if constexpr (std::is_same_v<T, ExprId>) discarded_statement = discarded[target.value];
+          else if constexpr (std::is_same_v<T, StmtId>) {
+            if (DiscardedInvocationRead(tree, target)) discarded_statement = target;
+          }
+          if (discarded_statement) {
+            const auto read = *DiscardedInvocationRead(tree, *discarded_statement);
+            Require(range.begin == range.end && owner.begin <= range.begin && range.end <= owner.end &&
+                range == positions.statements[discarded_statement->value] &&
+                range == positions.expressions[read.value], Error::kPositions);
+          } else if (guarded) {
             const auto base = nullish.Base(tree, *guarded);
             const auto boundary = positions.expressions[base.value].end;
             const auto selection = positions.expressions[guarded->value];
