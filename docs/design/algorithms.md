@@ -5,6 +5,27 @@
 
 ## 输入规模与成本
 
+### 循环进入程序与 for initializer（2026-10-07，规则151）
+
+LoopInitializer按原statement ownership顺序流式遍历，loop进入/退出
+的写入序号与SymbolId最后写入索引共同选定携带状态，不逐loop遍历
+body或匹配opcode/CFG/寄存器/PC。透明block中的进入根按原序组成
+disjoint程序；候选定义索引向左扩展依赖并保留全部中间操作及重复
+写入。每个根/表达式只扫描常数次，loop条件不包含被保留的body。
+N为statement/expression/children/symbol/scope数量：新增O(N)时间、
+O(N)预算化存储，总LoopSyntax仍O(N + R log N)，R为transition依赖读。
+printer另按输出字节及anchor索引计费；深层缩进产生的输出规模不能
+归为输入线性。内存/工作耗尽复用原typed错误，不丢弃语义。
+
+语言来源固定[ECMAScript 2024 ForLoopEvaluation](https://tc39.es/ecma262/2024/multipage/ecmascript-language-statements-and-declarations.html#sec-for-statement-runtime-semantics-forloopevaluation)；
+实现为项目自有ownership/completion/定义索引，遵循项目许可，无新增
+第三方代码或依赖。维护在loop_initializer/loop_syntax/common printer。
+仅表达式initializer，不新建每轮lexical binding；scope/handler/label/
+声明和间接heap写入仍有表示边界。156树的普通prefix、801深块和
+800符号依赖链分别验400→800 work小于3倍，typed字节耗尽、原来源
+范围及独立行为另验；真实144 decoded和actual record证据见status。
+这些是定向work/行为证据，不替代暂停的全语料RSS/benchmark。
+
 ### 循环继续程序与 for update（2026-10-07，规则150）
 
 复用共同LoopCompletionMeaning与原唯一AST ownership，在条件实际读取

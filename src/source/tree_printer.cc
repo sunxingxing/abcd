@@ -59,6 +59,7 @@ struct EndStatement { StmtId id; };
 struct LoopHeader { StmtId id; std::optional<StmtId> retained; bool discarded = false; };
 struct LoopHeaderCursor { StmtId block; std::uint32_t index; std::uint32_t count; std::optional<StmtId> retained; bool discarded = false; };
 struct LoopTransitionEnd { StmtId block; std::uint32_t first; };
+struct LoopInitializerCursor { std::uint32_t index; std::uint32_t end; };
 struct ElideLoopHeader { StmtId id; };
 struct LoopBody { StmtId block; LoopConditionSyntax syntax; std::size_t depth; };
 struct BlockCursor { StmtId id; std::uint32_t index; std::size_t depth; };
@@ -81,7 +82,7 @@ struct ParameterCursor { std::uint32_t index; };
 struct EndParameter { std::uint32_t index; };
 using PrintAction = std::variant<std::string_view, ExprId, EndExpression, ExpressionOperand, BooleanOperand, PostfixSpine,
     Statement, EndStatement, BlockCursor, Indent, PropertyKey, SymbolName, ArgumentCursor,
-    ObjectCursor, EndProperty, BeginFunction, EndFunction, ParameterCursor, EndParameter, SnapshotCursor, DerivedClassBody, ArrayArgumentCursor, LoopHeader, LoopHeaderCursor, ElideLoopHeader, LoopBody, LoopTransitionEnd>;
+    ObjectCursor, EndProperty, BeginFunction, EndFunction, ParameterCursor, EndParameter, SnapshotCursor, DerivedClassBody, ArrayArgumentCursor, LoopHeader, LoopHeaderCursor, ElideLoopHeader, LoopBody, LoopTransitionEnd, LoopInitializerCursor, BlockBoundary>;
 struct OwnedAction { std::size_t owner; std::size_t depth; PrintAction action; };
 struct LocatedAnchor { BlockBoundary boundary; AnchorId id; };
 struct OwnerTree { FunctionOwnerId owner; std::size_t member; };
@@ -1312,14 +1313,22 @@ class TreePrinter {
     if (node.label) { Label(*node.label); Append(": "); }
     if (const auto& syntax = Loops().conditions[at.id.value]) {
       const auto& transition = Loops().transitions[at.id.value];
-      Append(transition ? "for (; " : "while (");
+      const auto& initializer = Loops().initializers[at.id.value];
+      const bool native_for = transition || initializer;
+      Append(native_for ? "for (" : "while (");
       Push(LoopBody{node.body, *syntax, at.depth}); Push(std::string_view(") "));
-      if (transition) {
-        Push(LoopTransitionEnd{transition->block, transition->end});
-        Push(LoopHeaderCursor{transition->block, transition->first, transition->end, {}, true});
+      if (native_for) {
+        if (transition) {
+          Push(LoopTransitionEnd{transition->block, transition->end});
+          Push(LoopHeaderCursor{transition->block, transition->first, transition->end, {}, true});
+        }
         Push(std::string_view("; "));
       }
       Push(LoopHeaderCursor{node.body, 0, syntax->header_count, syntax->body});
+      if (native_for) {
+        Push(std::string_view("; "));
+        if (initializer) Push(LoopInitializerCursor{initializer->first, initializer->end});
+      }
     } else {
       Append("while (true) "); Push(Statement{node.body, at.depth});
     }
@@ -1400,6 +1409,19 @@ class TreePrinter {
       if (i < block.child_count) Push(ElideLoopHeader{Tree().children[block.first_child + i]});
     }
   }
+  void Run(BlockBoundary at) { Boundary(at); }
+  void Run(LoopInitializerCursor at) {
+    if (at.index == at.end) return;
+    const auto& root = Loops().initializer_roots[at.index];
+    Boundary(root.boundary);
+    const BlockBoundary after{root.boundary.block, root.boundary.index + 1};
+    if (at.index + 1 < at.end) {
+      Push(LoopInitializerCursor{at.index + 1, at.end}); Push(std::string_view(", "));
+      const auto& next = Loops().initializer_roots[at.index + 1].boundary;
+      if (next.block != after.block || next.index != after.index) Push(after);
+    } else Push(after);
+    Push(LoopHeader{root.statement, {}, true});
+  }
   void Run(LoopBody at) {
     Result().statements[at.block.value].begin = written_; Push(EndStatement{at.block});
     Append("{\n"); Push(BlockCursor{at.block, at.syntax.header_count, at.depth});
@@ -1447,10 +1469,15 @@ class TreePrinter {
     const auto& block = std::get<BlockStmt>(Tree().statements[at.id.value].statement);
     const auto tail = Loops().tail_starts[at.id.value];
     const auto end = tail.value_or(block.child_count);
-    if (!tail || at.index < end) Boundary({at.id, at.index});
+    const auto moved = [&](std::uint32_t index) {
+      return Loops().initializer_owners[Tree().children[block.first_child + index].value].has_value();
+    };
+    const bool relocated = at.index < end && moved(at.index);
+    if ((!tail || at.index < end) && !relocated && !(at.index && moved(at.index - 1))) Boundary({at.id, at.index});
     const bool root = ModuleBody() && at.id == Tree().body;
     if (at.index == end) { if (!root) { Run(Indent{at.depth}); Append("}"); } return; }
     Push(BlockCursor{at.id, at.index + 1, at.depth});
+    if (relocated) return;
     if (at.id == Tree().body && at.index + 1 == block.child_count) {
       if (const auto completion = ImplicitTailCompletion(Tree())) {
         // Keep the actual tail event at this byte boundary. Modules end here;

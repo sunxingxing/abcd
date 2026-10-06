@@ -31,6 +31,8 @@ std::variant<LoopSyntax, TreeStructureError> PlanLoopSyntax(
     budget.Array(result.conditions, tree.statements.size());
     budget.Array(result.transitions, tree.statements.size());
     budget.Array(result.tail_starts, tree.statements.size());
+    budget.Array(result.initializers, tree.statements.size());
+    budget.Array(result.initializer_owners, tree.statements.size());
     std::vector<std::uint8_t> bound, seen;
     budget.Array(bound, tree.scopes.size()); budget.Array(seen, tree.statements.size());
     for (const auto& symbol : tree.symbols) {
@@ -115,6 +117,7 @@ std::variant<LoopSyntax, TreeStructureError> PlanLoopSyntax(
       }, node);
     }
     PlanLoopTransitions(tree, result, budget, bound);
+    PlanLoopInitializers(tree, result, budget, bound);
     result.allocated_bytes = budget.Bytes(); result.work = budget.Work(); return result;
   } catch (TreeStructureError error) { return error;
   } catch (const std::bad_alloc&) { return TreeStructureError::kResourceLimit;

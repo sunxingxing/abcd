@@ -12,6 +12,71 @@
 
 ## 当前阶段
 
+### 2026-10-07：规则151，共同进入程序与 for 初始化
+
+- 基线f5cc2b69，干净codex/resume-generator-post-loop工作树继续；上一轮
+  已提交for更新恢复，是实际progress。production/rules150推进151。
+  新loop_initializer复用共同normal completion与statement/expression
+  ownership；一次写入census在loop进入/退出时记录SymbolId写入，选择
+  条件读取且loop内可能写入的绑定。进入根按原序组成程序，允许跨任意
+  无binding/label透明块，不要求同块。保守候选定义索引向左扩展完整
+  suffix，重复写入及全部中间操作保留，不冒称精确reaching definition。
+- 共同printer用原LoopHeader/完成代数打印for(initializer;condition;update)，
+  移动的ExprId/StmtId与父block boundary仅在原生初始化位置输出一次；
+  原canonical AST及control/evaluation/scope/source证明保持。条件相关
+  分支、handler、声明、binding、label边界保留；没有opcode/寄存器/PC/
+  名字/样本/sidecar、相邻、same-block或固定根/COPY数匹配。只读外部
+  边界值准备留在原语句；该seed选择用于恢复携带状态，不是语言准入。
+- Ruling：仅恢复表达式initializer，不从private phi推出原let或每轮环境；
+  未恢复的更新仍在body原位。基于固定ECMAScript 2024 ForLoopEvaluation，
+  初始化在首次test前执行一次，即使零迭代也执行，throw/await/yield保持
+  原handler和请求顺序。scope/声明/间接或heap-write seed/一般分离继续
+  程序与phi/numeric-update存储消除仍是表示缺口，后续共同模型继续。
+  原function/ESM completion value边界保持，不新建script eval打印入口。
+- 初次144真实解码表示测试在旧实现RED，initializer应存在时实测false；
+  首轮新fixture未使用label而违反原target校验，补齐原owned break后
+  再验。深块输出超过原8MB测试缓冲、V8编译栈上限，改为有界16MB
+  输出和仅该Node测试4MB栈；没有放宽生产校验。只读gate不应被吸入
+  initializer的独立表示检查另先RED，再改为共同loop-owned写入census。
+  首次新增make target图未刷新，显式configure后构建；失败日志保留。
+- phase_copy_test扩展初始化位于原try内/外两种身份，共三profile、locals
+  2/7、COPY0/1/4、split与两种handler的144 decoded。经原ExceptionFlow/
+  SSA/ValueProgram、共同tree语义校验后打印；独立4176行为比较、504
+  有效JS condition/type/参数identity/initializer mutation全部通过。
+  原受保护区域外的初始化仍留在原位，不跨handler改变异常时机。
+- 新loop_initializer_test/source_test共156树，13种normal/conditional/
+  scope/handler/label/TDZ/只读gate/await/yield/early continue/依赖链场景，
+  0/1/200/201/400/800与正反arena。透明块深度801，链800个独立符号；
+  普通body前缀、深层透明块和initializer定义链分别400→800 work小于
+  3倍，字节耗尽typed错误另验。所有原expression/statement/anchor范围
+  校验；10372独立行为比较、32有效JS省略/重复初始化mutation通过。
+  对照含零迭代、truthy/falsy、Object.is身份、原throw/部分写入、receiver、
+  Promise job/rejection，以及初始化yield时throw/return请求。fault位置
+  有界采样，非every-event；独立树不是ABC解码证明，两层结果分别列出。
+- 最终abc_structure/abc_semantic与十二相关fixture -j4构建退出0；新
+  initializer链fixture随后单独重建退出0。22项定向22/22通过83.49秒，
+  覆盖phase/reference/copies/exception/liveness、loop syntax/初始化/
+  更新/condition/exits/shared exits、closure、generator finally/return-loop、
+  optional statement与实际ProgressBar/富文本。旧108更新树仍2418比较/
+  14 mutation，132 condition树仍4472/14。actual rich仍70配置/1030原throw/
+  206换绑/18 mutation/2等价，ProgressBar仍88配置/570原throw/114换绑/
+  15 mutation/2等价；受控平台不能代替设备SDK。602项仅注册。
+- fresh ABC-only numeric+constructors pasteboard导出路径
+  build/stage-one/loop-initializer-final：manifest19 records/219 methods，
+  10complete source/0partial/9noModule，language_numeric_constructors_v1。
+  独立AST/style确认PasteBoard三个for都有初始化，其中两个有update，
+  第三个update仍在原continue路径；$value49/$phi10保持。外部record/
+  类型列表准备未吸入inner for。paired正文只在独立record测试中读取，
+  引擎只收ABC/固定配置，输入未修改；固定五ABC106/0仍是历史证据。
+- 最终native日志/tmp/abcd-loop-initializer-native-tests-final.log；build-all/
+  build-chain/tests-final/export-final/style-final及旧RED/失败日志同前缀。
+  三份新增/修改mjs node --check、git diff --check通过。新增分析O(N)
+  时间/预算化存储；总LoopSyntax仍O(N + R log N)，打印另计输出字节。
+  无新第三方依赖/代码，维护在loop_initializer/loop_syntax/common printer。
+  下一步仍是native binding/每轮捕获、SSA更新和一般继续程序；阶段一
+  Goal与原fields/globals/signatures/body gate保持active。full suite、expanded
+  corpus、RSS/benchmark、DFX、scheduler、agents和周期audit暂停保持。
+
 ### 2026-10-07：规则150，共同完成路径与 for 更新程序
 
 - 基线b8ae3902，production/rules149推进150。LoopSyntax共用typed

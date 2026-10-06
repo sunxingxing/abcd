@@ -1,5 +1,18 @@
 # 全 ISA 优先执行顺序
 
+2026-10-07 规则151：共同进入程序、normal完成代数与SymbolId写入索引
+恢复for表达式初始化，支持跨透明block且保留所有中间效果、原scope/
+handler/来源，不新增样本/布局/固定数量匹配。144真实三profile解码
+4176独立比较/504有效错误mutation，156独立树10372比较/32 mutation
+通过；包含801深块、800符号定义链、TDZ/handler、只读边界、await拒绝、
+初始化yield的throw/return。最终22项定向22/22，完整证据见status.md。
+
+fresh pasteboard19 records，10complete/0partial/9noModule；三个实际for
+均有initializer，两个有update，第三个更新仍在原continue路径。私有
+$value49/$phi10保留；for let/每轮binding、一般继续程序、SSA更新及完整
+body/style尚未完成。原gate和阶段一Goal保持active；actual受控平台
+对照不代替设备SDK，固定五ABC106/0未重跑，暂停范围保持。
+
 2026-10-07 规则150：共同完成摘要/continue目标覆盖、条件绑定读取与
 唯一statement定义依赖恢复for更新程序，原canonical AST/来源保持。
 不匹配++、opcode/寄存器/PC、样本/名字、固定guard/COPY数量或局部序列。

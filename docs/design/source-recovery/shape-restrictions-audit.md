@@ -1,5 +1,20 @@
 # 按用户要求进行的恢复条件审计
 
+规则151补充：初始化根由共同normal完成代数、statement/expression
+ownership和SymbolId写入索引选择，不增加same-block、opcode序列、
+PC/register、生产名字、样本、邻接或固定根数量的条件。loop条件读取
+且loop内写入的绑定用于表示选择；它不是语言要求，也不把仅读取的
+边界值准备强行放入for。候选定义索引保留重复写入和全部中间效果，
+不假称reaching definition，不合并storage或改变执行次数。
+
+进入程序支持跨任意透明block；原表达式、来源、scope和handler不变。
+控制相关进入、声明/绑定、handler和label边界的保守限制是当前表示
+缺口，不是VM不变量；TDZ反例直接验证不能移到声明初始化之后。
+只新增表达式initializer，不推断for let/每轮环境，未恢复更新保持
+body原位。144真实三profile COPY/register/split/handler变体与156个
+arena/200/201/801深块/800依赖符号、只读gate、scope/handler/TDZ/
+await/yield及请求反例定向验证，事实见status。阶段一完整风格仍开放。
+
 规则150补充：共同completion摘要区分owned break/continue；继续程序由
 条件实际读取的绑定、符号定义依赖和原操作序形成，不依据++/opcode/
 寄存器/PC、生产名字、样本路径、局部序列或固定guard/COPY数量选择。

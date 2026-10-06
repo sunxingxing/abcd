@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {parseJavaScript} from './class_reference.mjs';
 const rows = execFileSync(process.argv[2], ['--emit'], {encoding: 'utf8', timeout: 60_000}).trim().split('\n').map(JSON.parse);
-assert.equal(rows.length, 72);
+assert.equal(rows.length, 144);
 const reference = caught => (initial, step, report) => {
   let value = initial;
   try {while (value) {report(typeof value); value = step(value);}}
@@ -48,6 +48,7 @@ for (const row of rows) {
   assert.equal(loops.length, 1); assert.equal(types.length, 1); assert.equal(steps.length, 1);
   assert.notEqual(loops[0].test.type, 'Literal');
   assert.ok(loops[0].update, 'carried state update remains native');
+  assert.equal(Boolean(loops[0].init), row.initializer, 'native initialization preserves its handler owner');
   for (const [initial, next] of cases) {
     const expected = observe(original, initial, next, Infinity);
     compare(observe(generated, initial, next, Infinity), expected); ++comparisons;
@@ -57,6 +58,13 @@ for (const row of rows) {
   }
   for (const [node, replacement] of [[loops[0].test, 'false'], [types[0], '"wrong type"'], [steps[0].arguments[0], '({})']]) {
     const changed = row.source.slice(0, node.start) + replacement + row.source.slice(node.end);
+    parseJavaScript(changed); const bad = Function('return (' + changed + ')')();
+    assert.throws(() => compare(observe(bad, object, [0], Infinity), observe(original, object, [0], Infinity)),
+      {name: 'AssertionError'}); ++mutations;
+  }
+  if (row.initializer) {
+    const node = loops[0].init;
+    const changed = row.source.slice(0, node.start) + 'false' + row.source.slice(node.end);
     parseJavaScript(changed); const bad = Function('return (' + changed + ')')();
     assert.throws(() => compare(observe(bad, object, [0], Infinity), observe(original, object, [0], Infinity)),
       {name: 'AssertionError'}); ++mutations;

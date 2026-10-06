@@ -12,7 +12,7 @@ using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
 namespace {
-std::string Source(abc::ProfileId profile, unsigned locals, unsigned copies, bool split, bool caught) {
+std::string Source(abc::ProfileId profile, unsigned locals, unsigned copies, bool split, bool caught, bool initializer) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   std::vector<std::uint8_t> bytes;
   const auto emit = [&](abc::Opcode code, unsigned operand) { bytes.push_back(op(code)); bytes.push_back(static_cast<std::uint8_t>(operand)); };
@@ -35,8 +35,9 @@ std::string Source(abc::ProfileId profile, unsigned locals, unsigned copies, boo
   else emit(abc::Opcode::kLDA_V8, 0);
   bytes.push_back(op(abc::Opcode::kRETURN));
   auto body = test::Body(bytes);
-  abc::TryRegion region; region.offset = {static_cast<std::uint32_t>(begin)};
-  region.length = static_cast<std::uint32_t>(end - begin); region.handler_count = 1;
+  const auto protected_begin = initializer ? 0 : begin;
+  abc::TryRegion region; region.offset = {static_cast<std::uint32_t>(protected_begin)};
+  region.length = static_cast<std::uint32_t>(end - protected_begin); region.handler_count = 1;
   abc::CatchHandler handler; handler.offset = {static_cast<std::uint32_t>(handler_pc)}; handler.length = static_cast<std::uint32_t>(bytes.size() - handler_pc);
   body.tries = {region}; body.handlers = {handler};
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(locals, 3, {}));
@@ -93,8 +94,9 @@ std::string Source(abc::ProfileId profile, unsigned locals, unsigned copies, boo
 }
 int main(int argc, char**) {
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
-    for (unsigned locals : {2U, 7U}) for (unsigned copies : {0U, 1U, 4U}) for (bool split : {false, true}) for (bool caught : {false, true}) {
-      const auto source = Source(profile, locals, copies, split, caught);
-      if (argc > 1) std::cout << nlohmann::json{{"source", source}, {"caught", caught}} << '\n';
+    for (unsigned locals : {2U, 7U}) for (unsigned copies : {0U, 1U, 4U}) for (bool split : {false, true})
+      for (bool caught : {false, true}) for (bool initializer : {false, true}) {
+      const auto source = Source(profile, locals, copies, split, caught, initializer);
+      if (argc > 1) std::cout << nlohmann::json{{"source", source}, {"caught", caught}, {"initializer", initializer}} << '\n';
     }
 }

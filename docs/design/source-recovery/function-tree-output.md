@@ -21,6 +21,43 @@ Printer 处理节点、名字、括号、转义、标签、注释和已有输出
 模式，不补推 CFG、finally 或闭包，不调用专项 body writer。无原名可用合成名，
 无独立 PC 的结构节点保留结构来源；不补造原名、类型、PC 或可执行占位行为。
 
+## 循环进入程序与 for 初始化（规则 151）
+
+LoopSyntax继续在已验证的canonical FunctionTree上投影，保持原控制、
+求值、绑定和来源。共同statement/expression ownership遍历记录每个
+loop进入、结束之间的SymbolId写入，选择条件实际读取且loop内可能
+写入的绑定作为初始化种子；这项选择用于恢复循环携带状态的表示，
+不是语言准入规则。仅读取的外部边界值准备留在原语句中。
+
+初始化根形成一个按源码执行顺序排列的进入程序，能够跨任意无绑定/
+label的透明block，不要求根与loop同块。每个根保存原StmtId与父block
+boundary；原normal Expression/Block/If复用同一完成代数。种子前的
+定义索引向左扩展整个程序，所有中间操作及被覆盖的写入仍按原顺序
+执行。定义索引是保守的候选写入索引，不假称精确reaching definition；
+不重排、回放producer、合并存储或推断新变量。控制相关分支/handler/
+label/声明边界保留，TDZ/捕获/异常义务不能靠布局猜测。
+
+共同printer输出`for (initializer; condition; update)`，即使没有恢复
+update也可保留原body中的更新/continue/break。原ExprId/StmtId、作用域
+与anchor事件保持，移动的根只在初始化位置打印一次。表达式初始化
+不创建新的lexical declaration或每轮环境；for let及每轮捕获仍未恢复。
+首次条件失败时也必须执行初始化，throw保持原handler，await/yield
+保持原暂停、拒绝及throw/return请求行为。
+
+语言依据固定[ECMAScript 2024 ForLoopEvaluation](https://tc39.es/ecma262/2024/multipage/ecmascript-language-statements-and-declarations.html#sec-for-statement-runtime-semantics-forloopevaluation)。
+项目自有实现维护在loop_initializer/loop_syntax/common printer，无新
+依赖/第三方代码。N为statements/expressions/children/symbols/scopes，
+新增进入程序分析为O(N)时间和O(N)预算化存储；每个候选程序属于唯一
+进入位置，不逐loop或symbol重复遍历body。含既有transition的总成本
+仍为O(N + R log N)，打印成本另含实际输出字节和anchor索引。
+源码完整性不是语义/风格全部验收，原normal completion value范围同下。
+
+绑定/handler/label边界、声明初始化、间接或heap-location写入的种子、
+一般分离继续程序、phi/numeric-update私有存储消除仍是表示缺口。
+这些情况保持原完整语句，不成为新的整函数拒绝或样本形状匹配。
+真实三profile解码、透明块/依赖链/TDZ/handler/async/generator/来源范围
+及实际record证据见status.md；暂停的full suite/RSS未恢复。
+
 ## 循环继续程序与原生 for 更新（规则 150）
 
 LoopSyntax的共同LoopCompletionMeaning区分normal、owned break与owned

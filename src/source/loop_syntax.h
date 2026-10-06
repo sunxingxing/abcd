@@ -22,11 +22,16 @@ struct LoopConditionSyntax {
   std::optional<StmtId> body;
 };
 struct LoopTransitionSyntax { StmtId block; std::uint32_t first; std::uint32_t end; };
+struct LoopInitializerRoot { StmtId statement; BlockBoundary boundary; };
+struct LoopInitializerSyntax { std::uint32_t first; std::uint32_t end; };
 struct LoopSyntax {
   std::vector<LoopCompletionMeaning> meanings;
   std::vector<std::optional<LoopConditionSyntax>> conditions;
   std::vector<std::optional<LoopTransitionSyntax>> transitions;
   std::vector<std::optional<std::uint32_t>> tail_starts;
+  std::vector<LoopInitializerRoot> initializer_roots;
+  std::vector<std::optional<LoopInitializerSyntax>> initializers;
+  std::vector<std::optional<StmtId>> initializer_owners;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };
@@ -41,11 +46,18 @@ struct LoopSyntax {
 // plus an indexed def-use closure cost O(N + R log N) time and O(N) storage,
 // N = statement/expression/child/symbol/scope counts, R = dependency reads.
 // Independent of arena/CFG/register layout; no per-variable graph walks.
+// Initializer roots form a disjoint entry stream through transparent blocks.
+// A shared write census selects condition-read bindings written inside the loop;
+// prior definitions/intervening effects retain source order and exact ownership.
 [[nodiscard]] std::variant<LoopSyntax, TreeStructureError>
 PlanLoopSyntax(const FunctionTree& tree, analysis::SemanticBudget budget = {});
 // Internal continuation ownership and carried-binding dependency projection.
 // Moves an ordered program, never an opcode or a numeric-update pattern.
 void PlanLoopTransitions(const FunctionTree&, LoopSyntax&, TreeCheckBudget&,
+    std::span<const std::uint8_t> bound);
+// Entry expressions retain their ordered occurrences and scope/handler owner.
+// Transparent blocks can separate roots from the loop; no same-block premise.
+void PlanLoopInitializers(const FunctionTree&, LoopSyntax&, TreeCheckBudget&,
     std::span<const std::uint8_t> bound);
 }
 #endif

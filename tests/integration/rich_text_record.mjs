@@ -34,7 +34,7 @@ for (const name of Object.keys(sources)) {
   assert.deepEqual(classLayouts(sources[name]), classLayouts(reference[name]), 'native class representation ' + name);
 }
 // Separate, bounded representation evidence: preserve all three loop tests.
-// This does not certify native for initialization/update or remove SSA carriers.
+// This checks native clauses independently; SSA carrier removal remains open.
 const loops = [];
 const pending = [parseJavaScript(sources[page])];
 while (pending.length) {
@@ -47,6 +47,7 @@ while (pending.length) {
 }
 assert.equal(loops.length, 3);
 assert.equal(loops.filter(loop => loop.type === 'ForStatement' && loop.update).length, 2, 'native carried-state transitions');
+assert.equal(loops.filter(loop => loop.type === 'ForStatement' && loop.init).length, 3, 'native carried-state initialization');
 assert.ok(loops.every(loop => loop.test.type !== 'Literal' || loop.test.value !== true), 'native loop conditions');
 const worker = fileURLToPath(new URL('./rich_text_record_worker.mjs', import.meta.url));
 const run = (cases, extra = {}, changed = sources) => {
