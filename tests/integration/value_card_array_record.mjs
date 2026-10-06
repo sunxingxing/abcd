@@ -7,6 +7,7 @@ import {stripTypeScriptTypes} from 'node:module';
 import vm from 'node:vm';
 import {verifyCardArrayState} from './card_array_state.mjs';
 import {verifyConnectedCards} from './connected_cards.mjs';
+import {verifyCardItemState, verifyCardItemPeers} from './card_item_state.mjs';
 
 const [tool, abc, paired] = process.argv.slice(2);
 assert.equal(createHash('sha256').update(readFileSync(abc)).digest('hex'),
@@ -27,6 +28,11 @@ assert.equal(peerRun.status, 0, peerRun.stderr + peerRun.stdout);
 const peer = JSON.parse(peerRun.stdout);
 assert.equal(peer.record, 30839); assert.equal(peer.source_complete, true);
 assert.equal(peer.route, 'value_tree'); assert.equal(peer.legacy_writer_used, false);
+const commentRun = spawnSync(tool, [abc, '20678', '--record-source', '--value-source'], {encoding: 'utf8', timeout: 60_000});
+assert.equal(commentRun.status, 0, commentRun.stderr + commentRun.stdout);
+const comment = JSON.parse(commentRun.stdout);
+assert.equal(comment.source_complete, true); assert.equal(comment.route, 'value_tree');
+assert.equal(comment.legacy_writer_used, false);
 const pairedText = readFileSync(paired, 'utf8');
 assert.match(pairedText, /export class CardArray/);
 assert.match(report.source, /let CardArray = class \{/);
@@ -112,5 +118,26 @@ const peerReference = stripTypeScriptTypes(peerText.replace(/^\s*(icon|name|auth
   () => { ++erased; return ''; }));
 assert.equal(erased, 4);
 const connected = await verifyConnectedCards(report.source, peer.source, reference, peerReference);
-console.log(JSON.stringify({basicScenarios: scenarios, basicMutations: 1, ...state, ...connected, wholeRecordStyle: 'accepted',
+// Certify the whole actual CardItem too, beyond its CardArray peer path. Its
+// native constructor, imports, remainder/indexing and retained arrow remain
+// high-level source; an immutable activation receiver alias is permitted.
+assert.match(peerText, /export class CardItem/);
+assert.match(peer.source, /let CardItem = class \{/);
+assert.match(peer.source, /constructor\(card, index\)/);
+assert.match(peer.source, /PICTURE_ARRAY_LIST\[index % PICTURE_ARRAY_LIST\.length\]/);
+assert.match(peer.source, /COMMENT_LIST\.forEach\(\(\(item\) =>/);
+assert.match(peer.source, /\.commentList\.push\(new CommentItem\(item\)\)/);
+assert.match(peer.source, /export \{ CardItem as "CardItem" \}/);
+assert.doesNotMatch(peer.source, /INCOMPLETE|UNRECOVERED|Reflect\.construct|\.call\(|\bswitch\s*\(/);
+const cardItem = await verifyCardItemState(peer.source, peerReference);
+const commentText = readFileSync(join(dirname(paired), '../../../../../base/src/main/ets/viewmodel/CommentViewModel.ts'), 'utf8');
+let commentErased = 0;
+const commentReference = stripTypeScriptTypes(commentText.replace(/^\s*(icon|name|favorCount|content|timePosition|reviewCnt|subContent)\??: (ResourceStr|number);\s*$/gm,
+  () => { ++commentErased; return ''; }));
+// Seven class declarations and seven interface declarations; initialized fields
+// and the entire original conditional constructor body remain untouched.
+assert.equal(commentErased, 14);
+const actualComments = await verifyCardItemPeers(peer.source, comment.source, peerReference, commentReference);
+console.log(JSON.stringify({basicScenarios: scenarios, basicMutations: 1, ...state, ...connected, ...cardItem, ...actualComments,
+  wholeRecordStyle: 'accepted', cardItemRecordStyle: 'accepted',
   localDifferences: ['captured immutable receiver alias', 'pinned assignment initializer', 'equivalent class binding']}));

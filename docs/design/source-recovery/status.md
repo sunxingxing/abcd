@@ -12,6 +12,44 @@
 
 ## 当前阶段
 
+### 2026-10-06：CardItem 整 record 与实际 CommentItem 连接验收
+
+- 基线c49c4503，生产规则仍138；此次补齐独立验收，未改生产恢复条件、
+  ISA/profile、source contracts或输入ABC。value_card_array_record_source_test
+  在读取任何paired TS前，由当前abc_semantic ABC-only生成CardArray、
+  CardItem、CommentItem三个实际完整ValueTree record，全部无legacy。
+- CardItem独立whole-record表示从pending转accepted：检查原生class binding、
+  constructor(card,index)、imports/export、字段赋值、remainder/indexing、
+  forEach/native arrow与new CommentItem。允许既有不可变activation receiver
+  alias和pinned assignment，不要求逐字class声明或把赋值改为DefineField。
+  146组普通/Number/BigInt/Symbol/coercion及11种live import/callee场景，
+  544组undefined/0/Symbol/object原异常身份注入通过；覆盖取得push后替换、
+  retained arrow、非callable/constructible、失败构造后的callback重放、
+  own field顺序/descriptor、共享图片与comment数组身份/部分内容。
+- 另356组固定赋值层检查6个inherited setter、foreign new.target、两realm
+  非对象prototype fallback、index/length coercion顺序、原异常与此前完成的
+  写入、原receiver/return身份及无多余own field。此层使用独立pinned效果
+  序列，不能用Node TS initialized DefineField作setter oracle。6个有效JS
+  mutation拒绝错误字段/索引/参数、普通函数callback、错误constructor返回
+  与DefineField替代assignment。原CardArray及其真实CardItem连接证据保留。
+- 新连接实际CardItem和实际CommentItem两个完整ESM，受控barrel仅reexport
+  实际CommentItem并提供两个输入列表；没有替换任何生成constructor/body。
+  152组连接场景、276组原异常身份/部分数组状态及3 mutation通过，含条件
+  falsy/truthy/BigInt/Symbol/object、重复getter、reverse/deferred callback、
+  200/201项与失败后重放。reference只擦除CardItem四个无initializer的class
+  字段、CommentItem七个class字段及七个interface类型声明；两个完整原始
+  constructor/closure与initialized字段保留，reference不进入engine。
+- 新oracle首轮对中途throw后重复getter计数作了过强假设，随后按实际独立
+  reference保留的input/field值身份比较修正；没有据此改变生产恢复条件。
+  两项JS语法/git diff --check通过，相关最终10/10 CTest通过14.36秒，
+  日志/tmp/abcd-card-item-state-final-tests-1.log；CTest仍565，未改C++/CMake、
+  未启动构建。三个record在本轮真实重新生成和执行，未重复五ABC/六模式
+  批量；上一轮80/26、95/11、96/10、88/18、105/1、106/0仍为既有证据。
+- 这关闭CardItem的所测独立受控表示/行为验收，不扩为完整base barrel或
+  应用/platform、所有字段/types/globals/signatures的结构gate。阶段一Goal
+  保持active；全套、expanded corpus、RSS/benchmark、agents、scheduler/DFX
+  与周期审计继续暂停，下一步推进其余实际record的结构/独立验收缺口。
+
 ### 2026-10-06：共同命名器逐参数保留 debug 事实
 
 - 基线d1b9c5a4，方法规则138。实际输出中的默认参数名缺失源自旧 naming

@@ -66,6 +66,23 @@ family新增24组，独立JS共152 decoded families、3268行为及88有效mutat
 数值模式各14份源码表示改善，完整数量未变。完整source签名/结构gate仍须
 自身全范围证据，逐参数有名不证明类型、const或源级字段。
 
+2026-10-06 CardItem补充：当前规则138实际ABC-only完整record的独立
+whole-record表示验收由pending转accepted。保留原生class binding、参数
+签名、字段赋值、取模索引、forEach/arrow/new及imports/export；允许不可变
+receiver capture alias和pinned assignment。146组普通/数值/live import/
+callee行为与544组原异常身份、356组inherited setter/new.target/两realm
+fallback/部分写入检查、6个有效JS mutation通过。Node initialized TS字段
+与固定Ark赋值不同，setter层仍以独立pinned效果序列验收。
+
+再将实际CardItem与实际CommentItem完整ESM连接；受控barrel仅reexport
+实际类并提供两个输入列表。152组条件字段/重复getter/reverse/deferred/
+200/201项及276组原异常/部分内容/失败后callback重放、3个有效mutation
+通过。两个reference保留完整constructor/closure与initialized字段，只
+擦除明确无initializer的TS字段/interface声明，并在全部ABC-only生成后
+读取；没有把配对来源或host构造器接入engine。这关闭CardItem所测独立
+受控验收，不自动关闭完整base模块图、平台或全部结构gate。实际三个record
+重新生成及相关10/10回归证据见status.md，生产规则/完整数量未改变。
+
 ## 1. 四种状态，不混报完成
 
 | 状态 | 意义 | 可否称 gate 通过 |
