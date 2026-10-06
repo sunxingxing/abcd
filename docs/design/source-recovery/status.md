@@ -12,6 +12,57 @@
 
 ## 当前阶段
 
+### 2026-10-06：CardArray / BreakpointType 独立整 record 验收
+
+- 基线2a707dc0，生产规则仍137；此次增加实际源码的独立行为/表示证据，
+  没有修改生产恢复条件、输入ABC、source contracts、调度器或报告平台。
+  当前abc_semantic从同一固定MultiCommunityApplication ABC实际生成两个
+  完整record及实际CardItem peer；全部生成结束后才读取paired TS。route均为
+  ValueTree、source_complete且无legacy，engine参数只含ABC/实体/正常选项。
+- CardArray wholeRecordStyle由pending转accepted：完整named imports、
+  mutable class binding、constructor、字段初始化、真实forEach/native arrow/
+  new CardItem/getInstance/default export保留。允许已有不可变receiver capture
+  alias和pinned赋值初始化；不要求加入native DefineField或逐字重建class声明。
+  24组原基础场景/1 mutation保留；新增11组live import/callee、push callee取得后
+  替换、reverse/repeat、重入constructor、非callable/constructible及保留arrow，
+  196组undefined/0/Symbol/object异常身份、模块初始化状态及部分数组状态。
+  失败构造留下的closure在恢复host fault后仍实际调用，failed module保持failed。
+- CardArray另84组pinned assignment/setter/new.target检查：class/foreign原型、
+  两个realm的非对象prototype fallback、setter/getter/item处异常、顺序、fresh
+  数组、receiver/返回身份及无多余own field。Node的initialized TS field采用
+  DefineField，此层不拿它当STOBJBYNAME oracle。5个新增有效JS mutation拒绝
+  错误参数、plain function代替arrow、unshift、DefineField和错误return。
+- CardArray直接连接实际反编译CardItem，而非替换CardItem constructor；仅
+  base/Index为控制依赖。7组actual-module连接/336组异常注入核对card getter、
+  图片length/index coercion期间的live export替换、CommentItem换绑、零长度
+  表、延迟comment callback、module TDZ、参数/对象/数组身份、own-field顺序/
+  descriptor与部分状态；真实callback的name/arity/不可构造性也检查。3个peer
+  mutation由独立trace/state对照检出。peer reference仅擦除4项uninitialized
+  type-only field，初始化字段和constructor/closure保留；不扩大为CardItem
+  全部new.target/setter及独立表示验收完成。
+- BreakpointType wholeRecordStyle由pending转accepted：原360组lookup/
+  getter/live import/3 mutation及原setter检查保留，新增24组构造/字段参数
+  身份、240组prototype/setter异常。覆盖NaN/-0/Symbol、禁止coercion对象、
+  foreign new.target、两个realm的fallback、部分写入和原异常身份；3个ctor
+  mutation拒绝错误值、错误返回对象和DefineField替代赋值。允许class binding
+  与等价最终if极性，不改变真实字段存储。reference仍只擦除原3项type-only
+  声明，fields/method/constructor均实际执行。内部测试scenario使用Symbol enums。
+- 实施中修正新oracle的GetPrototypeFromConstructor realm前提：fallback取自
+  new.target的realm；没有据错误预期改生产输出。peer modulo mutation最初仅
+  期待自身断言抛错，现以完整baseline trace/state对照检出；未放宽行为断言。
+  final-tests-3相关10/10通过15.57秒；新增peer callback元数据检查后，修改的
+  两项final-tests-4 2/2通过1.18秒。覆盖partial、Widget、Window、两个Logger、
+  viewmodel batch/实际连接等。5份脚本Node语法、git diff --check通过。CTest仍565。
+  本轮未改C++/CMake、未启动构建；实际运行当前已构建engine。日志前缀
+  /tmp/abcd-record-state-*、/tmp/abcd-card-array-state-*、/tmp/abcd-connected-card-*。
+- production源码与rules未变，未重复五ABC/六模式批量；上一提交的30次导出
+  与80/26、95/11、96/10、88/18、105/1、106/0完整/partial计数仍为既有证据，
+  不是本轮重跑。两个record及peer在本轮实际重新生成并执行。这里只关闭这两
+  项受控独立表示/行为验收，不把partial数组/host边界或peer构造扩大为整阶段。
+  Goal保持active：其余record、instance field/global/完整签名/body结构gate、
+  完整模块图/平台语义仍开放。全套、expanded corpus、RSS/benchmark、agents、
+  scheduler/DFX与周期审计继续暂停。
+
 ### 2026-10-06：共同 receiver 存储复用与实际构造状态验收
 
 - 基线610f5da0，规则revision137。EvaluationShape 的 typed ReceiverValue

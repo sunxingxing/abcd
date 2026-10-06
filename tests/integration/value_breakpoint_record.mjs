@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {stripTypeScriptTypes} from 'node:module';
 import vm from 'node:vm';
+import {verifyBreakpointState} from './breakpoint_state.mjs';
 
 const [tool, abc, paired] = process.argv.slice(2);
 assert.equal(createHash('sha256').update(readFileSync(abc)).digest('hex'),
@@ -20,10 +21,17 @@ const pairedText = readFileSync(paired, 'utf8');
 let erased = 0;
 const reference = stripTypeScriptTypes(pairedText.replace(/^\s*(sm|md|lg): T;\s*$/gm, () => { ++erased; return ''; }));
 assert.equal(erased, 3);
-// A local representation projection; carrier/alias cleanup is still outstanding.
+// Whole-record representation permits an equivalent mutable class binding and
+// two ordered if statements with reversed final predicate polarity. Type-only
+// fields remain erased; pinned writes stay native instance assignments.
 assert.match(report.source, /constructor\(sm, md, lg\)/);
 assert.match(report.source, /getValue\(currentBreakpoint\)/);
-assert.ok(!report.source.includes('INCOMPLETE'));
+assert.doesNotMatch(report.source, /INCOMPLETE|UNRECOVERED|let \$value|\(\{\["BreakpointType"\]/);
+assert.match(pairedText, /export class BreakpointType/);
+assert.match(report.source, /let BreakpointType = class \{/);
+assert.match(report.source, /^import \{ BreakpointConstants \}/);
+for (const field of ['sm', 'md', 'lg']) assert.match(report.source, new RegExp(`this\\.${field} = ${field}`));
+assert.match(report.source, /export \{ BreakpointType as "BreakpointType" \}/);
 const specifier = '@normalized:N&&&base/src/main/ets/constants/BreakpointConstants&1.0.0';
 const values = [Symbol('small'), {size: 'medium'}, Symbol('large')];
 const thrown = Symbol('arbitrary thrown value');
@@ -121,4 +129,6 @@ for (const mutation of mutations) {
   const expected = await observe(reference, 'md', 'normal', '');
   assert.throws(() => assert.deepEqual(actual, expected));
 }
-console.log(`paired BreakpointType: ${scenarios} lookup/receiver/exception scenarios, live imports and constructor setters, 3 valid-syntax mutations; whole-record style pending`);
+const state = await verifyBreakpointState(report.source, reference);
+console.log(JSON.stringify({lookupScenarios: scenarios, lookupMutations: 3, ...state, wholeRecordStyle: 'accepted',
+  localDifferences: ['equivalent class binding', 'equivalent final if polarity', 'erased type-only fields']}));

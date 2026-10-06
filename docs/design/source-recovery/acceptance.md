@@ -17,6 +17,38 @@ Node保留的未初始化TS字段不能充当Ark属性赋值own key的oracle。
 mutation均检出。此证据覆盖两个实际完整记录，不能扩为平台/全部record/
 全部类型与源码风格验收；日志及定向11/11回归见status.md。
 
+2026-10-06补充：CardArray 与 BreakpointType 的独立整record表示验收
+从pending转为accepted；源码均由当前规则137的ABC-only ValueTree实际生成。
+可保留的局部差异是mutable class binding、等价最终if极性、不可变receiver
+capture alias与pinned instance assignment。两项分别验证高层imports/exports、
+class、constructor/signature、字段初始化与真实method/callback表达；不以
+source_complete、Node语法或单个regex代替独立行为测试。
+
+CardArray保留24组基础场景及1 mutation；新增11组live import/callee、push
+取得后替换、reverse/repeat、reentrant constructor、非callable/constructible、
+retained arrow行为与196组任意throw identity/部分数组状态。失败构造留下的
+实际closure在host fault恢复后仍可调用，失败模块不因此重启/修复。84组
+STOBJBYNAME赋值层单独检查inherited setter、foreign new.target、两个realm
+的fallback、求值顺序/原异常/返回身份；不能把Node的initialized DefineField
+当作这一层oracle。5个新增有效JS mutation拒绝，含错误参数、普通函数代替
+arrow、push→unshift、DefineField代替assignment和错误constructor return。
+
+CardArray/实际CardItem两模块直接连接，只有base/Index是控制依赖；7组
+连接场景/336组异常注入比较实际类/receiver、图片length或index coercion
+期间live export替换、CommentItem换绑、空图片表、延迟comment callback、
+module TDZ、own-field顺序/descriptor、fresh array/instance及部分状态。
+peer TS只擦除4个无initializer的type-only field；initialized fields和实际
+constructor/closure保留。3个peer语义mutation被独立trace/state对照检出；
+不能据此自动完成CardItem的全部new.target/setter或独立表示验收。
+
+BreakpointType原360组lookup/getter/live import及constructor setter/3 mutation
+保留；新增24组constructor/参数身份与240组prototype/setter异常，含NaN/-0/
+Symbol、禁止coercion对象、两个realm的new.target fallback与部分写入状态。
+3个constructor mutation拒绝错误值、错误对象return及DefineField替代assignment。
+独立reference只擦除原有3项uninitialized type-only字段，不进入engine。
+这些是两个指定完整record与实际peer连接的受控验收；其余record、结构集成
+门槛、完整应用/平台、RSS与全部阶段一验收仍须对应实际证据。
+
 ## 1. 四种状态，不混报完成
 
 | 状态 | 意义 | 可否称 gate 通过 |
