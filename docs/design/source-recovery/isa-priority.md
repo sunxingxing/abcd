@@ -1,5 +1,13 @@
 # 全 ISA 优先执行顺序
 
+2026-10-07 Push组合续作：沿共同ABC-only source路径补齐十五模块真实
+页面/Ability/VoIP Service/storage/form/image组合独立验收，七种view实际
+render；保留已有单record和Ability+Service验收。SDK父类身份验证盲点
+经错误父类mutation先RED再修复；native Promise/derived链完整结算。
+最终范围见status.md；production/rules147保持，无样本／布局新条件。
+继续原fields/globals/signatures/body gate与其他record语义/表示验收，
+本次受控平台和组合通过不代替阶段一或设备完成。
+
 2026-10-07 规则147：既有显式numeric+constructors恢复后的共同高层表示
 继续推进。旧member chain在中间调用丢失摘要，由同一postfix path沿原
 成员／callee依赖传播取代，支持`x?.f().a`、`fn?.().a`与返回函数继续调用；

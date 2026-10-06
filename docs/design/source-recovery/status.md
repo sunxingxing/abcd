@@ -12,6 +12,50 @@
 
 ## 当前阶段
 
+### 2026-10-07：Push 十五模块真实页面、Ability 与 Service 组合验收
+
+- 基线b6ebc7f5，production/rules147保持。本轮补齐原Push独立Ability／
+  VoIP Service验收与页面、组件、form consumer之间的跨record组合证据；
+  原八个Ability+Service组合已经存在，不能重复描述为首次支持。本次新增
+  push_graph_source_test，十五个模块先从ABC-only显式numeric+constructors
+  生成，完成后才读取paired TS，实际方法、initializer及闭包正文保持。
+- 实际Ability lifecycle、窗口route、Index导航builder、token/AAID注册、
+  通知、form binding、image及VoIP调用连接实际Service与storage/cell。
+  WidgetCard／Index／TestAbilityPage／CalleePage／CallComponent／
+  GetTokenPage／ExamplePage七种view均经真实路由、builder或模块初始化
+  构造并render；双Ability实例与晚期paramsGenerator_/child update另验。
+  未调用的私有CreateFormData分配不计为已执行，native class AST另比较。
+- SDK宿主只提供外部边界，不替换应用正文。原callback用foreign receiver
+  回放，保留事件顺序、字段descriptor、模块/export/reference graph、
+  shared/local storage及真实Service.callId。native Promise/derived链按
+  实际请求与结算的activity追踪，完整settle；不用固定tick或忽略discarded
+  close链。native class/method顺序/kind/static/async/generator/formal/
+  default/rest另比较，不能据此宣布所有body/style或任意字段拦截已验收。
+- 初轮宿主缺少pixel.then的显式不存在语义，并遗漏await的reject参数；
+  后续真实Ability丢弃的catch子Promise未被追踪。修正宿主Promise协议及
+  native then观察后矩阵通过，不弱化原异常比较或修改恢复逻辑。显式null
+  参数与可删除finalize属性的夹具问题、mutation输入别名也各修正。
+- wrong-superclass有效JS mutation的RED揭示四种SDK父类共用一个Base，
+  错误替换父类仍比较相等。现四个独立native subclass复用共同实现，
+  分别保留constructor/prototype身份；snapshot直接比较实际class与实例
+  prototype的继承关系。该mutation最终被检出，production不增加父品牌、
+  名字、同块、序列或图形匹配；等价captured-this→词法this仍允许。
+- 最终新图native CTest1/1通过8.25秒：87普通/调度场景、430原throw、
+  86 live-import换绑、9有效JS mutation及2等价变体。两baseline各43个
+  distinct host boundary采样，不是every-event故障覆盖；正常baseline
+  2249事件、十五module evaluated及七view实际render另核对。首轮六项
+  定向6/6通过19.02秒，含当时八项mutation的新图；其他五项原回归的
+  native证据保留，不把最终九项mutation伪装为同轮六项全部重新运行。
+- cmake configure退出0，592项注册；abc_structure／abc_semantic -j4
+  构建退出0，新四份mjs语法及git diff --check通过。日志/tmp/abcd-push-
+  graph-{configure,build,registration,tests,native-tests,heritage-red}-*留存。
+  没有残留运行进程。本轮只fresh导出Push十五record，不重复固定五ABC
+  全导出；此前106/0统计保持为历史证据，不充当本轮或全阶段重新验收。
+- 阶段一Goal及实例字段／globals／完整signatures／body整合继续active。
+  受控SDK/ArkUI协议不能替代设备和真实平台验收；其他record独立语义/
+  表示及原结构gate仍开放。full suite、expanded corpus、RSS/benchmark、
+  DFX、生产scheduler、agents及周期audit保持暂停。
+
 ### 2026-10-07：共同后缀链贯通成员、调用与返回函数调用
 
 - 基线a33d153b，production/rules147。旧member path在中间CallExpr丢失

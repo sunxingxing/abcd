@@ -1890,6 +1890,10 @@ if(BUILD_TESTING)
           ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/push_ability_record.mjs $<TARGET_FILE:abc_semantic>
           ${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/modules.abc
           ${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/src/entry/src/main/ets/abilities/PushMessageAbility.ts)
+        add_test(NAME push_graph_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals --experimental-vm-modules
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/push_graph.mjs $<TARGET_FILE:abc_structure>
+          ${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts)
+        set_tests_properties(push_graph_source_test PROPERTIES RUN_SERIAL TRUE)
       endif()
       add_test(NAME push_registration_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/push_registration.mjs $<TARGET_FILE:abc_semantic>

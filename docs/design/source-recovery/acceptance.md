@@ -1,5 +1,19 @@
 # 验收、证据与实施交接
 
+2026-10-07 Push图补充：十五实际模块由ABC-only先生成，随后独立paired
+TS执行同一受控SDK/UI协议。七种view实际构造/render，实际Ability callback、
+VoIP Service、navigation、token/notification、form/image与shared/local
+storage相连；此前独立Ability+Service组合验收保留，不重复计为新功能。
+真实native Promise与derived链完整settle，原throw/receiver/effect顺序、
+导出reference graph、字段descriptor和实际class/prototype继承关系另验。
+
+父类替换mutation先暴露SDK宿主共用Base的身份盲点；四个独立native
+subclass复用实现并保留身份后，最终新图1/1通过：87配置、430原throw、
+86换绑、9有效JS mutation及2等价表示。两个baseline各43 host boundary
+采样；七种view全部render，不能以故障采样替代每事件覆盖。首轮原五项
+回归通过，最终新图另验，详情及失败修正见status.md。rules147和production
+保持；受控平台、所有body/style、任意字段拦截及阶段一原结构gate另验。
+
 2026-10-07 共同后缀链补充：规则147沿原MemberExpr.base与CallExpr.callee
 依赖保留同一reference/access，调用不再中断原member摘要。共享printer
 支持`x?.f().a`、`fn?.().a`和返回函数继续调用，首个access后保持mandatory。
