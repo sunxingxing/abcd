@@ -1,5 +1,29 @@
 # 验收、证据与实施交接
 
+2026-10-06 Widget补充：push modules.abc record12347和widgets.abc record564
+的受控whole-record语义与高层表示由pending转accepted。两个ABC-only默认V3
+导出全部结束、既有paired SHA/size核对后再读取独立WidgetCard.ts；真实模块
+prelude/polyfill、storage/class/启动/结束/launch及完整constructor、六个方法、
+三对访问器和static方法执行。没有参考body替换、source fragment或平台receipt。
+
+6,392组完整对照包括4,100组实际可达原异常、820组component/subscriber全局
+换绑；初始化、访问器、purge/delete/rerender与保留callback/click用foreign this
+在删除和注册失败后重放，比较callee/receiver、捕获、字段/cell部分状态、顺序及
+原throw身份。finalize缺失/继承/不可调用/不可扩展、父对象return、正反队列、
+changing getter、image scalar、默认和0/1/200/201等实参边界另验。72组setter/
+new.target/部分写入是独立pinned STOBJBYNAME层；Node TS initialized DefineField
+不能作此层oracle。24个有效JS mutation检测错误defaults/super/capture/字段/
+生命周期/void返回和DefineField。旧176/864/60/6子场景证据继续保留。
+
+表示接受原生class/constructor/super/default/accessor/arrow/member/literal与
+必要的private class/storage creation carrier及receiver alias、等价if极性；
+不要求逐字恢复，也不把语义等价的arrow this替换视作错误。源码type/private/
+const、其他record、完整框架/设备及原结构gate仍须自己的证据。测试曾因累计
+VM context触发Node OOM；改为128项一批顺序子进程后全场景通过，inventory/
+总数核对不允许漏项。这不是生产RSS/benchmark证明或恢复暂停工作的授权。
+最终20/20定向回归与后续Widget复验、失败保留日志及剩余门槛见status.md。
+
+
 2026-10-06补充：规则142的原生class声明复用共同ClassNames词法证明，
 保持可写外层绑定、TDZ、真实runtime name及原创建/heritage求值时机。
 const、同名外层binding引用、未知body和未融合snapshot继续原表达式表示。

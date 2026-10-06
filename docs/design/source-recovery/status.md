@@ -12,6 +12,63 @@
 
 ## 当前阶段
 
+### 2026-10-06：两份 WidgetCard 的完整模块与生命周期验收
+
+- 基线69aa340f，生产规则仍143。扩展widget_global_literal_source_test，
+  先完成push modules.abc record12347及widgets.abc record564的ABC-only
+  默认 --value-source输出，再读独立paired WidgetCard.ts。实际ABC SHA/size
+  与既有paired index、manifest身份一致，ValueTree、V3、complete且非legacy。
+  没有引擎sidecar输入、原body替换、参考fragment拼接或生产样本分派。
+- 两份完整ESM实际执行module prelude/polyfill、LocalStorage、class创建、
+  ViewStackProcessor启动/结束及loadEtsCard；重复evaluate不得重复效果，
+  errored module再次evaluate必须保持原异常身份。实际constructor、六个
+  prototype方法、三对访问器和static getEntryName全部进入真实调用路径；
+  name/arity/descriptor、默认参数/四项super实参、类调用边界另验。
+- 两record合计6,392组独立完整行为对照，其中4,100组真实可达事件的
+  undefined/null/0/Symbol/object原异常注入、820组global component与
+  SubscriberManager换绑。另覆盖缺失/自有/继承/非callable/不可扩展finalize、
+  parent对象return、两实例的正反队列、同步/延迟注册、changing getter、
+  falsy/NaN/BigInt/Symbol image、0/1/2/3/4/6/200/201实参数量与poison params。
+  注册先保留closure再throw，断言原throw后仍执行原retained callback；purge/
+  delete后用foreign this重放真实组件callback及click，原capture/receiver/
+  callee身份、部分字段/cell状态和效果顺序逐项对照。void host结果有poison
+  then getter，不能由真实方法返回或被assimilate。
+- 72组实际生成record的pinned field assignment检查覆盖三项__formId/
+  __text/__image inherited setter、替代new.target、任意原throw及部分字段
+  顺序/新鲜cell身份。Node initialized TS field的DefineField不作此层oracle；
+  单独按原STOBJBYNAME写入义务验收。24个先解析的有效JS mutation检出
+  错误字段/set/purge/delete、重复id读取、void返回泄漏、module终止顺序、
+  router参数、默认elmtId/lambda、super参数、捕获receiver及DefineField替代
+  assignment。原176 globals场景、864 paired constructor、60 throws与6
+  constructor mutation继续保留并通过。
+- 首轮完整对照通过。随后mutation暴露新oracle只记录owner身份、没有记录
+  own fields，补上真实own key/descriptor/value与构造后partial snapshot后
+  错误paramsLambda默认值被检出；null/undefined fault也按真实身份传递。
+  另一个候选mutation把alias换回arrow lexical this，实际语义等价，不能
+  当反编译错误；已改为错误realm receiver。即时branch/observe callback
+  原异常现在正常传播，fault/swap必须断言实际触发，不计未进入的场景。
+- 扩大单进程测试曾在第一份record3,196组通过后发生Node heap OOM，日志
+  /tmp/abcd-widget-record-tests-4.log保留，非通过证据。独立harness改为
+  128项一批的顺序子进程，全部完整ESM/场景仍执行；inventory与每batch
+  census/总数核对，禁止漏项。没有增大heap来掩盖问题，没有改变引擎执行器、
+  语义或规则；这不声称生产进程RSS已经测量或满足1G。
+- 最终单一-j4构建两个engines及12个相关target退出0，所有build handle
+  关闭后20/20定向CTest通过39.23秒；新增callback-retention断言和receiver
+  mutation后Widget单项复验通过10.32秒。主要日志/tmp/abcd-widget-record-
+  final-build-1.log、final-tests-1.log与final-tests-3.log；测试三个mjs语法
+  和git diff --check通过，CTest仍571项。没有恢复旧G2位置切片/全套测试。
+- 两个指定Widget record的受控whole-record语义与高层表示由pending转
+  accepted。允许必要的私有class/storage creation carrier和receiver capture
+  alias、等价if极性；保留原生class/constructor/super/default/访问器/arrow/
+  member/object literal/初始化与生命周期表达，不称源级type/private/const已
+  恢复。没有HarmonyOS框架/设备执行receipt，不能扩为其他UI record或平台。
+- 本轮没有生产变化或重复固定五ABC/六模式30次导出，上一规则143
+  global-scopes-pass-1仍为既有80/26、95/11、96/10、88/18、105/1、106/0
+  完整/partial证据。两份Widget是本轮fresh导出，不把完整数量当独立验收。
+  其余record、instance fields/globals/完整signatures/body结构gate仍开放，
+  不清除structure_only；阶段一Goal继续active。全套、expanded corpus、RSS/
+  benchmark、agents、scheduler/DFX和周期审计继续暂停。
+
 ### 2026-10-06：按实际词法作用域校验全局与宿主能力读取
 
 - 基线7e35a651，生产规则143。移除TreeGlobals把所有局部symbol名称合并

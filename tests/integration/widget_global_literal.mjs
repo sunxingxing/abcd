@@ -6,6 +6,8 @@ import {tmpdir} from 'node:os';
 import {stripTypeScriptTypes} from 'node:module';
 import vm from 'node:vm';
 import {verifyWidgetConstructors} from './widget_constructor_state.mjs';
+import {verifyWidgetRecord} from './widget_record_state.mjs';
+import {createHash} from 'node:crypto';
 
 // Paired oracle is test-only. Run registered callbacks in a controlled host;
 // Actual constructor state is checked separately; platform lifecycle is bounded.
@@ -83,11 +85,19 @@ async function trace(source, image, fail, replace) {
 try {
   let scenarios = 0, constructors = 0, throws = 0, mutations = 0;
   const sources = [];
+  const index = JSON.parse(readFileSync(new URL('../corpus/abc-index.json', import.meta.url), 'utf8')).entries;
   for (const [file, entity] of [['modules.abc', 12347], ['widgets.abc', 564]]) {
     const output = join(temporary, file);
     const run = spawnSync(tool, [join(root, file), output, '--value-source'], {encoding: 'utf8'});
     assert.equal(run.status, 0, run.stderr);
-    const record = JSON.parse(readFileSync(join(output, 'manifest.json'), 'utf8')).records.find(item => item.entity === entity);
+    const manifest = JSON.parse(readFileSync(join(output, 'manifest.json'), 'utf8'));
+    const bytes = readFileSync(join(root, file));
+    const identity = index.find(item => item.corpus_id === 'paired' &&
+      item.relative_path === `push-kit-sample-code-clientdemo-arkts/${file}`);
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), identity.sha256);
+    assert.equal(bytes.length, identity.size); assert.equal(manifest.sha256, identity.sha256);
+    assert.equal(manifest.source_route, 'value_tree'); assert.equal(manifest.source_contract, 'language_and_host_v3');
+    const record = manifest.records.find(item => item.entity === entity);
     assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, false);
     const generated = readFileSync(join(output, record.source), 'utf8');
     // Receiver identity belongs to the initialized invocation, even across
@@ -102,6 +112,7 @@ try {
   for (const {file, generated} of sources) {
     const checked = await verifyWidgetConstructors(generated, paired);
     constructors += checked.pairedCases; throws += checked.throwCases; mutations += checked.mutations;
+    console.log(JSON.stringify({file, ...(await verifyWidgetRecord(generated, paired))}));
     for (const image of ['', 'payload', undefined, Symbol('image')]) for (const replace of [false, true])
       for (const fail of ['', 'global:FlexDirection', 'direction:Column', 'get:Flex.create', 'call:Flex.create',
         'get:Flex.padding', 'call:Flex.padding', 'get:Flex.onClick', 'call:Flex.onClick', 'instance:image', 'postCardAction']) {
