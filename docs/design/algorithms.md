@@ -5,6 +5,28 @@
 
 ## 输入规模与成本
 
+### 精确 Boolean 值域与选择来源归属（2026-10-06）
+
+规则141沿原有限高度格与sparse依赖worklist传播Boolean⊂Boolean/null⊂
+Defined⊂Language；normal-result仍依赖已证明输入。COPY、phi和循环SCC
+沿既有依赖处理，不按值重走CFG或复制链。ValueKinds仅增加原byte enum
+alternative，无新增每值字段/数组；join与BooleanEvaluation均O(1)。格高度
+增加一个常数层级，原工作计费不以VmValueKind四类别数当迭代上限。
+
+TreeFlow复用原conditional/logical ownership；共同origin pass的原每site
+owner表增加typed selection context，实际scalar执行归属仍独立覆盖。
+填表与查询沿原一次operation扫描及CombinedOrigin DAG遍历，不为每个
+conditional重走来源。O(O+R+X+A)附加/既有工作，O(R) owner空间，R为原
+origin数、X为语法expression数、A为origin parts数；实际OriginOwner宽度
+由原TreeCheckBudget::Array计入capacity/内存。DAG unique combined owner
+及backward引用仍验证，不允许context覆盖原predicate或共享执行root。
+
+来源为项目既有typed ISA/profile转换、SSA固定点与FunctionTree来源模型；
+无新依赖、外部代码或许可变更。200/201/402/804 COPY/split值流与三profile
+native源码、复合条件/stateful getter/错误来源检查是功能及有界工作证据，
+不冒充仍暂停的延迟benchmark或完整进程RSS。固定五ABC／六模式fresh
+导出、源码/位置映射比较与实际测试证据见status.md。
+
 ### 直接 callable 默认导出的命名投影（2026-10-06）
 
 规则140复用原module默认候选与完整tree/class inventory；没有增加恢复图

@@ -317,7 +317,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // lack evidence; actual binding, shadow and entry identity checks remain.
 // Rules 140 project direct default callable creation through the common naming
 // context, preserving body ownership, runtime name and module lifetime.
-inline constexpr std::uint32_t kRouteEvidenceRules = 140;
+// Rules 141 preserve exact Boolean through common value-flow copies/joins;
+// source predicate projection keeps effect, ownership and exception proofs.
+inline constexpr std::uint32_t kRouteEvidenceRules = 141;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

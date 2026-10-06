@@ -106,7 +106,9 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment, ArithmeticSema
       return ValueRule{ValueRuleKind::kFixed, integer->value == INT32_MIN ? kinds : kinds.WithoutInt32MinTag()};
     }
     if (const auto* special = std::get_if<SpecialValue>(value)) {
-      if (*special == SpecialValue::kTrue || *special == SpecialValue::kFalse || *special == SpecialValue::kNull)
+      if (*special == SpecialValue::kTrue || *special == SpecialValue::kFalse)
+        return ValueRule{ValueRuleKind::kFixed, ValueKinds::Boolean()};
+      if (*special == SpecialValue::kNull)
         return ValueRule{ValueRuleKind::kFixed, ValueKinds::ZeroOrOnePrimitive()};
       if (*special == SpecialValue::kNaN) return ValueRule{ValueRuleKind::kFixed, ValueKinds::Number()};
       if (*special == SpecialValue::kInfinity)
@@ -149,7 +151,7 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment, ArithmeticSema
       case UnaryOperator::kLogicalNot:
       case UnaryOperator::kFalseOrZero:
       case UnaryOperator::kTrueOrNonzeroNumber:
-        return ValueRule{ValueRuleKind::kLanguageOperation, ValueKinds::ZeroOrOnePrimitive()};
+        return ValueRule{ValueRuleKind::kLanguageOperation, ValueKinds::Boolean()};
       case UnaryOperator::kTypeOf:
         return ValueRule{ValueRuleKind::kLanguageOperation, ValueKinds::String()};
     }
@@ -163,11 +165,11 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment, ArithmeticSema
     // remove coercion/exception effects from the operation.
     if (binary->op == BinaryOperator::kEqual || binary->op == BinaryOperator::kNotEqual ||
         binary->op == BinaryOperator::kStrictEqual || binary->op == BinaryOperator::kStrictNotEqual)
-      return ValueRule{ValueRuleKind::kEquality, ValueKinds::ZeroOrOnePrimitive()};
+      return ValueRule{ValueRuleKind::kEquality, ValueKinds::Boolean()};
     if (binary->op == BinaryOperator::kLess || binary->op == BinaryOperator::kLessEqual ||
         binary->op == BinaryOperator::kGreater || binary->op == BinaryOperator::kGreaterEqual ||
         binary->op == BinaryOperator::kInstanceOf || binary->op == BinaryOperator::kIn)
-      return ValueRule{ValueRuleKind::kLanguageOperation, ValueKinds::ZeroOrOnePrimitive()};
+      return ValueRule{ValueRuleKind::kLanguageOperation, ValueKinds::Boolean()};
     const auto numeric_rule = [&](ValueRuleKind kind) {
       return ValueRule{kind, {}, arithmetic};
     };

@@ -7,6 +7,7 @@
 #include "../../../src/source/family_print.h"
 #include "../../../src/source/tree_checks.h"
 #include <sstream>
+#include <nlohmann/json.hpp>
 #include "../../support/analysis/ssa_fixture.h"
 #include "../../support/instruction_positions.h"
 #include "abcd/analysis/value_import.h"
@@ -452,7 +453,7 @@ analysis::ValueProgram CallDiamond(bool negate, bool method_first, bool barrier 
 }
 
 }
-std::string Source(const analysis::ValueProgram& graph, bool compose = true, const FunctionInput* input = nullptr, bool cloned_sources = true) {
+std::string Source(const analysis::ValueProgram& graph, bool compose = true, const FunctionInput* input = nullptr, bool cloned_sources = true, bool combined_conditional = false, bool decision_context = false) {
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
   const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
   const auto regions = FindLogicalRegions(graph, control);
@@ -488,6 +489,32 @@ std::string Source(const analysis::ValueProgram& graph, bool compose = true, con
   Check(std::holds_alternative<ConstructedFunction>(built));
   const auto& tree = std::get<ConstructedFunction>(built).tree;
   Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(graph, control, evaluation, tree, view)));
+  bool combined_checked = false;
+  for (const auto& node : tree.expressions) {
+    if (!std::holds_alternative<ConditionalExpr>(node.expression)) continue;
+    const auto* origin = std::get_if<CombinedOrigin>(&tree.origins[node.origin.value]);
+    if (!origin) continue;
+    auto wrong = tree;
+    Check(wrong.origin_parts[origin->first_part].value != graph.ops.front().origin.value);
+    wrong.origin_parts[origin->first_part] = TreeOriginId{graph.ops.front().origin.value};
+    Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation, wrong, view)));
+    combined_checked = true; break;
+  }
+  if (combined_conditional) Check(combined_checked);
+  if (decision_context) {
+    const auto flow = std::get<TreeFlow>(VerifyTreeFlow(graph,control,evaluation,tree));
+    bool checked = false;
+    for (std::size_t i = 0; i < flow.branch_predicates.size(); ++i) {
+      if (!flow.branch_predicates[i] || flow.branch_predicates[i] == flow.expressions[i]) continue;
+      auto wrong = tree;
+      // Keeping the contextual selection label cannot cover a missing scalar
+      // predicate site; only its independently mapped execution counts.
+      wrong.expressions[flow.branch_predicates[i]->value].origin = TreeOriginId{graph.ops.front().origin.value};
+      Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph,control,evaluation,wrong,view)));
+      checked = true; break;
+    }
+    Check(checked);
+  }
   TreeCheckBudget decision_budget({});
   bool forwarded_checked = false;
   for (const auto& region : FindSelectionExpressions(graph, control, evaluation, decision_budget)) {
@@ -806,7 +833,69 @@ std::string BooleanConversions(unsigned count, bool comparison) {
   const auto graph = Import(bytes, 1, &input);
   return Source(graph, true, &*input, false);
 }
+std::string BooleanPhi(unsigned count, bool mixed, bool converted, abc::ProfileId profile) {
+  const auto op = [](abc::Opcode value) {return static_cast<std::uint8_t>(value);};
+  // An arbitrary getter selects two independent values. The join's Boolean
+  // fact comes from common value flow, not a branch layout or source spelling.
+  std::vector<std::uint8_t> bytes{op(abc::Opcode::kLDA_V8),1,
+      op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16),0,0,0};
+  if (converted) bytes.push_back(op(abc::Opcode::kISTRUE));
+  bytes.insert(bytes.end(),{op(abc::Opcode::kJEQZ_IMM8),7,op(abc::Opcode::kLDTRUE),op(abc::Opcode::kSTA_V8),0,
+      op(abc::Opcode::kJMP_IMM8),5,op(mixed ? abc::Opcode::kLDNULL : abc::Opcode::kLDFALSE),
+      op(abc::Opcode::kSTA_V8),0,op(abc::Opcode::kLDA_V8),0});
+  for (unsigned i = 0; i < count; ++i) bytes.insert(bytes.end(),{
+      op(abc::Opcode::kSTA_V8),0,op(abc::Opcode::kJMP_IMM8),2,op(abc::Opcode::kLDA_V8),0});
+  bytes.insert(bytes.end(),{op(abc::Opcode::kISTRUE),op(abc::Opcode::kRETURN)});
+  std::optional<FunctionInput> input;
+  const auto graph = Import(bytes,1,&input,profile);
+  bool phi = false;
+  for (const auto& value : graph.values) if (value.life == analysis::ValueLife::kLive &&
+      std::holds_alternative<analysis::PhiDefinition>(value.origin)) {
+    phi = true; Check(value.domain.IsBoolean() == !mixed);
+  }
+  Check(phi);
+  return Source(graph,true,&*input,false,converted && !mixed && count == 0);
+}
+std::string BooleanDecision(unsigned count, abc::ProfileId profile) {
+  const auto op = [](abc::Opcode value) {return static_cast<std::uint8_t>(value);};
+  std::vector<std::uint8_t> bytes;
+  std::vector<std::size_t> branches;
+  for (const auto value : {abc::Opcode::kLDNULL,abc::Opcode::kLDUNDEFINED}) {
+    bytes.insert(bytes.end(),{op(abc::Opcode::kLDA_V8),1,
+        op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16),0,0,0,op(abc::Opcode::kSTA_V8),0,
+        op(value),op(abc::Opcode::kSTRICTEQ_IMM8_V8),0,0});
+    branches.push_back(bytes.size()); bytes.insert(bytes.end(),{op(abc::Opcode::kJNEZ_IMM8),0});
+  }
+  bytes.insert(bytes.end(),{op(abc::Opcode::kLDTRUE),op(abc::Opcode::kSTA_V8),0});
+  const auto jump = bytes.size(); bytes.insert(bytes.end(),{op(abc::Opcode::kJMP_IMM8),0});
+  for (const auto branch : branches) bytes[branch+1] = static_cast<std::uint8_t>(bytes.size()-branch);
+  bytes.insert(bytes.end(),{op(abc::Opcode::kLDFALSE),op(abc::Opcode::kSTA_V8),0});
+  bytes[jump+1] = static_cast<std::uint8_t>(bytes.size()-jump);
+  bytes.insert(bytes.end(),{op(abc::Opcode::kLDA_V8),0});
+  for (unsigned i = 0; i < count; ++i) bytes.insert(bytes.end(),{
+      op(abc::Opcode::kSTA_V8),0,op(abc::Opcode::kJMP_IMM8),2,op(abc::Opcode::kLDA_V8),0});
+  bytes.insert(bytes.end(),{op(abc::Opcode::kISTRUE),op(abc::Opcode::kRETURN)});
+  std::optional<FunctionInput> input;
+  const auto graph = Import(bytes,1,&input,profile);
+  return Source(graph,true,&*input,false,count == 0,count == 0);
+}
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--boolean-phi-sources") {
+    for (const auto profile : {abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301})
+      for (const bool mixed : {false,true}) for (const bool converted : {false,true})
+        for (const auto count : {0U,200U,201U,402U}) {
+        const auto source = BooleanPhi(count,mixed,converted,profile);
+        if (!mixed && !converted) Check(source.find("typeof") == std::string::npos);
+        std::cout << nlohmann::json{{"profile",static_cast<unsigned>(profile)},
+            {"mixed",mixed},{"converted",converted},{"copies",count},{"source",source}} << '\n';
+      }
+    for (const auto profile : {abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301})
+      for (const auto count : {0U,200U,201U,402U})
+        std::cout << nlohmann::json{{"profile",static_cast<unsigned>(profile)},
+            {"mixed",false},{"converted",false},{"compound",true},{"copies",count},
+            {"source",BooleanDecision(count,profile)}} << '\n';
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--retained-selection-source") {
     std::cout << Source(RetainedSelection()) << "\n"; return 0;
   }

@@ -12,6 +12,31 @@ void VerifyValueFlow();
 void VerifyValueScaling();
 }  // namespace abcd::test
 int main() {
+  const auto boolean = ValueKinds::Boolean();
+  Check(boolean.IsBoolean() && boolean.IsDefined() && boolean.IsZeroOrOnePrimitive() && !boolean.IsNumber());
+  Check(boolean.Join(boolean).IsBoolean());
+  Check(!boolean.Join(ValueKinds::ZeroOrOnePrimitive()).IsBoolean());
+  Check(boolean.Join(ValueKinds::ZeroOrOnePrimitive()) == ValueKinds::ZeroOrOnePrimitive());
+  Check(boolean.Join(ValueKinds::String()) == ValueKinds::Defined());
+  Check(!ValueKinds::FiniteNumber().IsBoolean() && !ValueKinds::Language().IsBoolean());
+  Check(!boolean.Join(ValueKinds::Hole()).IsBoolean());
+  const std::array scalar_lattice{boolean,ValueKinds::ZeroOrOnePrimitive(),ValueKinds::String(),
+      ValueKinds::Defined(),ValueKinds::FiniteNumber(),ValueKinds::NonNaNNumber(),ValueKinds::Number(),
+      ValueKinds::Language(),ValueKinds::Hole(),ValueKinds::Environment(),ValueKinds::OtherInternal(),ValueKinds{}};
+  for (const auto a : scalar_lattice) for (const auto b : scalar_lattice) {
+    Check(a.Join(b) == b.Join(a));
+    for (const auto c : scalar_lattice) Check(a.Join(b).Join(c) == a.Join(b.Join(c)));
+  }
+  {
+    const auto op = [](abc::Opcode value) {return static_cast<std::uint8_t>(value);};
+    const auto input = Body({op(abc::Opcode::kLDTRUE),op(abc::Opcode::kSTA_V8),0,
+        op(abc::Opcode::kLDA_V8),0,op(abc::Opcode::kRETURN)});
+    IdfQuota work{UINT64_MAX};
+    const auto named = std::get<RegisterSsa>(RegisterSsa::Build(input,
+        std::get<NormalFlow>(BuildNormalFlow(input)),1,work));
+    const auto facts = std::get<RegisterValueFlow>(RegisterValueFlow::Build(input,named,1,{},work));
+    for (std::uint32_t i = 0; i < 3; ++i) Check(facts.At(*named.Write({i})) == boolean);
+  }
   const auto primitive=ValueKinds::ZeroOrOnePrimitive();
   Check(primitive.IsLanguage() && primitive.IsDefined() && !primitive.IsNumber());
   Check(!primitive.IsIntegralNumber() && !primitive.ExcludesInt32MinTag());
@@ -27,6 +52,47 @@ int main() {
   Check(!detail::DivideNumbers(primitive,primitive).IsLanguage());
   Check(!detail::NegatedNumber(ValueKinds::Language()).IsLanguage());
   Check(!detail::LegacyNegatedNumber(ValueKinds::Number()).IsLanguage());
+  {
+    const auto op = [](abc::Opcode value) {return static_cast<std::uint8_t>(value);};
+    for (const bool mixed : {false,true}) {
+      const auto input = Body({op(abc::Opcode::kLDA_V8),1,op(abc::Opcode::kJEQZ_IMM8),7,
+          op(abc::Opcode::kLDTRUE),op(abc::Opcode::kSTA_V8),0,op(abc::Opcode::kJMP_IMM8),5,
+          op(mixed ? abc::Opcode::kLDNULL : abc::Opcode::kLDFALSE),op(abc::Opcode::kSTA_V8),0,
+          op(abc::Opcode::kLDA_V8),0,op(abc::Opcode::kRETURN)});
+      IdfQuota work{UINT64_MAX};
+      const auto named = std::get<RegisterSsa>(RegisterSsa::Build(input,
+          std::get<NormalFlow>(BuildNormalFlow(input)),2,work));
+      const auto facts = std::get<RegisterValueFlow>(RegisterValueFlow::Build(input,named,2,{},work));
+      Check(facts.At(*named.Write({7})) == (mixed ? primitive : boolean));
+      // A loop-carried SCC has an independent Boolean seed and backedge.
+      // Null on that backedge weakens the common join without poisoning it.
+      const auto loop = Body({op(abc::Opcode::kLDTRUE),op(abc::Opcode::kSTA_V8),0,
+          op(abc::Opcode::kLDA_V8),1,op(abc::Opcode::kJEQZ_IMM8),7,
+          op(mixed ? abc::Opcode::kLDNULL : abc::Opcode::kLDFALSE),op(abc::Opcode::kSTA_V8),0,
+          op(abc::Opcode::kJMP_IMM8),static_cast<std::uint8_t>(-7),
+          op(abc::Opcode::kLDA_V8),0,op(abc::Opcode::kRETURN)});
+      IdfQuota loop_work{UINT64_MAX};
+      const auto loop_ssa = std::get<RegisterSsa>(RegisterSsa::Build(loop,
+          std::get<NormalFlow>(BuildNormalFlow(loop)),2,loop_work));
+      const auto loop_facts = std::get<RegisterValueFlow>(RegisterValueFlow::Build(
+          loop,loop_ssa,2,{},loop_work));
+      Check(loop_facts.At(*loop_ssa.Write({7})) == (mixed ? primitive : boolean));
+    }
+    for (const auto count : {200U,201U,402U,804U}) {
+      std::vector<std::uint8_t> bytes{op(abc::Opcode::kLDFALSE)};
+      for (unsigned i = 0; i < count; ++i) bytes.insert(bytes.end(),{
+          op(abc::Opcode::kSTA_V8),0,op(abc::Opcode::kJMP_IMM8),2,op(abc::Opcode::kLDA_V8),0});
+      bytes.push_back(op(abc::Opcode::kRETURN));
+      const auto input = Body(bytes);
+      IdfQuota work{UINT64_MAX};
+      const auto named = std::get<RegisterSsa>(RegisterSsa::Build(input,
+          std::get<NormalFlow>(BuildNormalFlow(input)),1,work));
+      const auto facts = std::get<RegisterValueFlow>(RegisterValueFlow::Build(input,named,1,{},work));
+      for (std::uint32_t i = 0; i < input.instructions.size(); ++i)
+        if (const auto value = named.Write({i})) Check(facts.At(*value) == boolean);
+      Check(facts.work.edge_visits <= kValueKindCount * facts.work.dependencies);
+    }
+  }
   // Boolean normal-result refinement does not seed an input whose origin is
   // still unproved: typeof/environment and istrue/Hole remain Unknown.
   for (const auto bytes : {std::initializer_list<std::uint8_t>{0x09,1,0x1c,0,0x64},
@@ -78,7 +144,7 @@ int main() {
           input, std::get<NormalFlow>(BuildNormalFlow(input)), 1, work));
       const auto kinds = std::get<RegisterValueFlow>(RegisterValueFlow::Build(input, renamed, 1, {}, work));
       Check(kinds.At(*renamed.Write({0})) == (environment ? ValueKinds::Environment() : ValueKinds::Hole()));
-      Check(kinds.At(*renamed.Write({3})) == (environment ? ValueKinds::Unknown() : ValueKinds::ZeroOrOnePrimitive()));
+      Check(kinds.At(*renamed.Write({3})) == (environment ? ValueKinds::Unknown() : ValueKinds::Boolean()));
     }
   }
   for (const auto bytes :
@@ -147,7 +213,7 @@ int main() {
         std::get<NormalFlow>(BuildNormalFlow(input)),4,work));
     const auto kinds=std::get<RegisterValueFlow>(RegisterValueFlow::Build(input,named,4,{},work));
     Check(kinds.At(*named.Write({0}))==ValueKinds::Language());
-    Check(kinds.At(*named.Write({static_cast<std::uint32_t>(input.instructions.size()-2)}))==ValueKinds::ZeroOrOnePrimitive());
+    Check(kinds.At(*named.Write({static_cast<std::uint32_t>(input.instructions.size()-2)}))==ValueKinds::Boolean());
   }
   const auto cyclic = Body({0x45, 0, 0, 0x4d, 0xfd});
   const auto cyclic_ssa = std::get<RegisterSsa>(RegisterSsa::Build(

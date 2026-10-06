@@ -21,6 +21,26 @@ Printer 处理节点、名字、括号、转义、标签、注释和已有输出
 模式，不补推 CFG、finally 或闭包，不调用专项 body writer。无原名可用合成名，
 无独立 PC 的结构节点保留结构来源；不补造原名、类型、PC 或可执行占位行为。
 
+## Boolean 合流与透明转换（规则 141）
+
+ValueKinds新增精确Boolean refinement，沿原sparse值流传播COPY、phi与循环
+SCC。true/false及typed布尔运算的正常结果提供事实；混入null退回原
+Boolean/null数值转换域，混入其他语言值或内部值继续按共同join弱化。
+正常结果仍依赖真实输入证明，不能用Boolean结果提前认证未证明的输入环。
+BooleanEvaluation复用这个事实，不新增复制链遍历、源码匹配或producer名单。
+
+透明ToBoolean/VM谓词可以复用已有conditional或logical节点；两者都允许
+CombinedOrigin。共同来源校验区分实际scalar predicate的执行表达式与整个
+选择表达式的contextual branch标注。后者只能对应新鲜TreeFlow明确证明的
+那个selection，不能覆盖前者；原predicate仍必须由其自己的表达式完整覆盖。
+CombinedOrigin的成员、唯一语法owner与原始PC/来源继续核对，不能把任意
+合并来源当成执行证明。getter次数、effect/catch边界、receiver和scope不变。
+
+三profile真实解码fixture独立覆盖Boolean/null合流、复制拆块、复合条件、
+getter变化与原throw，以及错误来源、交换arm、重复/合并getter反例。
+这改善通用表达式组合；本轮固定五ABC／六模式源码与位置映射仍逐字相同，
+完整数未增加，不代替其余record或原结构gate验收。证据见status.md。
+
 ## 直接函数／类的默认导出（规则 140）
 
 ModuleDefaultExport的原slot／declaration／scope及完整family/class生命周期

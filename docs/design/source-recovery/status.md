@@ -12,6 +12,54 @@
 
 ## 当前阶段
 
+### 2026-10-06：Boolean 贯通共同值流与选择来源归属
+
+- 基线3125584f，生产规则141。ValueKinds新增精确Boolean refinement，
+  true/false与typed布尔运算正常结果沿既有sparse COPY/phi/SCC传播；
+  null保留原Boolean/null转换域，mixed join与内部值继续弱化。结果事实
+  仍依赖真实输入，不提前认证未证明的环。BooleanEvaluation查询共同事实，
+  不新增copy链遍历、producer名单、同块/邻接或样本名称准入；原effect、
+  catch、execution count、receiver、scope与默认/显式数值合同保持。
+- 首轮固定输入回归发现pasteboard record8383由complete退到tree_stage；
+  定位到共同conditional透明Boolean转换的两处来源表示限制。SelectionOrigin
+  原仅logical允许CombinedOrigin，现conditional共用原来源correspondence。
+  origin owner明确区分实际scalar predicate执行表达式和整个selection的
+  contextual branch标注；context只能属于新鲜TreeFlow证明的那个selection，
+  不能覆盖原predicate，后者仍须单独完整覆盖。原CombinedOrigin成员、
+  unique owner、backward DAG及真实原始site/PC验证保留。未按失败record、
+  函数名或诊断文本分派；所有临时诊断已移除。pass-1/pass-2回退不作成功证据。
+- 新增boolean_phi_source_test：三profile真实ABC解码的60份完整函数，经
+  原value flow/control/evaluation/AST/来源/位置/printer生成后做11,136组
+  独立JS对照，覆盖Boolean/null phi、0/200/201/402 COPY拆块、直接/转换
+  predicate、复合null/undefined条件、两次getter分别变化与第一次/第二次
+  原throw。5个先解析的有效JS mutation检出重复getter、null结果泄漏和
+  错误合并两次getter。C++另验错误CombinedOrigin、保留context但丢失真实
+  scalar来源、交换arm仍拒绝，及格join交换/结合、SCC和200/201/402/804
+  复制拆块。首次扩展fixture的oracle误把ISTRUE当VM false/zero分类；按
+  已有typed scalar adapter的ToBoolean更正后重跑，没有修改生产转换语义。
+- 旧规则下Boolean COPY断言真实失败，red-test-1.log保留；首批8项、后续
+  normal/phased import/value-flow与新增fixture均通过。最终单一-j4构建
+  两个engines及17个相关target退出0，关闭所有build handle后29/29定向
+  CTest通过171.61秒，含原phased literal、predicate prefix、Boolean choice/
+  precedence、部分输出、模块/family、paired truth-selection及两个主Ability
+  完整生命周期。日志/tmp/abcd-boolean-domain-final-build-1.log与
+  final-tests-1.log；新增Node语法与git diff --check通过，CTest当前569项。
+- 最终固定五ABC／六模式30次ABC-only正式导出均退出0；输入SHA-256/size
+  与既有paired index一致，每模式106份完整/明确partial源码语法通过，
+  212份entry/method位置映射及源码与规则140 default-callables-pass-2逐字
+  相同，无complete回退或legacy。完整/partial仍80/26、95/11、96/10、
+  88/18、105/1、106/0，每模式另46个no-module。当前产物
+  build/stage-one/boolean-domain-<mode>-pass-3，日志/summary为
+  /tmp/abcd-boolean-domain-*-3.*；本轮没有样本完整数量或实际源码字节改进。
+- Boolean query/join O(1)，ValueKinds不增宽；原sparse格高度增加一个常数
+  refinement。来源owner表增加typed context，按原Array实际width/capacity
+  计入内存，仍一次扫描及DAG消费，不按选择重走CFG。成本/来源见algorithms.md，
+  不称完整进程RSS/benchmark已验证。本次关闭通用Boolean COPY/phi与
+  conditional透明转换的组合缺口；private class alias、其余record独立
+  whole-record验收及instance fields/globals/signatures/body结构gate仍开放。
+  阶段一Goal继续active；全套、expanded corpus、RSS/benchmark、agents、
+  scheduler/DFX及周期审计继续暂停。
+
 ### 2026-10-06：两个主 EntryAbility 的完整生命周期验收
 
 - 基线131b102c，生产规则仍140。新增entry_ability_records_source_test先以

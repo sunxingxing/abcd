@@ -604,7 +604,7 @@ if(BUILD_TESTING)
   target_link_libraries(module_family_print_test PRIVATE abcd_source abcd_json)
   add_test(NAME module_family_print_test COMMAND module_family_print_test)
   add_executable(logical_regions_test tests/unit/source/logical_regions_test.cc)
-  target_link_libraries(logical_regions_test PRIVATE abcd_source)
+  target_link_libraries(logical_regions_test PRIVATE abcd_source abcd_json)
   add_test(NAME logical_regions_test COMMAND logical_regions_test)
   add_executable(eager_snapshot_test tests/unit/source/eager_snapshot_test.cc)
   target_link_libraries(eager_snapshot_test PRIVATE abcd_source)
@@ -1797,6 +1797,8 @@ if(BUILD_TESTING)
     add_test(NAME boolean_conversion_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/boolean_conversion.mjs
       $<TARGET_FILE:logical_regions_test>)
+    add_test(NAME boolean_phi_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/boolean_phi.mjs $<TARGET_FILE:logical_regions_test>)
     add_test(NAME constant_group_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/constant_group.mjs
       $<TARGET_FILE:constant_group_fixture>)

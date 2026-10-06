@@ -1,5 +1,19 @@
 # 按用户要求进行的恢复条件审计
 
+规则141补充：精确Boolean曾只由当前producer/literal的局部类型识别，原
+Boolean/null refinement不能区分null，COPY与phi后的布尔事实随之丢失。
+现在由共同ValueKinds/sparse值流保留Boolean，混合null/内部值继续弱化；
+源码只查询事实，不增加copy深度、同块、相邻或分支数量准入。结果事实
+不能删除getter/效果/异常/执行次数证明，也不能认证未证明的输入环。
+
+SelectionOrigin曾只允许logical使用CombinedOrigin，透明Boolean转换与
+conditional组合时被拒绝。这是表示限制，不是语言义务；现统一交由原
+来源correspondence核对成员与unique owner。该校验另区分原scalar predicate
+执行表达式和已由新鲜TreeFlow证明的selection contextual branch标注：
+context只能属于那个selection，不能计作原predicate覆盖。三profile的
+复合条件/Boolean-null/COPY/split/SCC与实际错误origin、arm、getter次数
+反例验收；生产不按pasteboard、方法名或错误文本处理这个缺口。
+
 规则140补充：直接FunctionExpr／ClassExpr曾因缺少default NamedEvaluation
 表示而整体拒绝，本次由共同typed命名上下文及expression grammar取代该
 限制。owned函数body与明确runtime-name证据属于身份／可观察名称义务；

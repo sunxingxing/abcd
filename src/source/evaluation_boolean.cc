@@ -36,6 +36,11 @@ bool BooleanEvaluation(const analysis::ValueProgram& graph, const analysis::Valu
   if (IsBooleanLiteral(operand)) return true;
   const auto* value = std::get_if<analysis::ValueId>(&operand);
   if (!value || value->value >= graph.values.size()) return false;
+  // Fresh common value flow carries exact Boolean through copies and unanimous
+  // phi/SCC joins. This is a result fact only: scheduling still owns effects,
+  // catch snapshots and execution count. Null's numeric 0/1 refinement is not
+  // Boolean, so it must keep the original VM predicate semantics.
+  if (graph.values[value->value].domain.IsBoolean()) return true;
   const auto* result = std::get_if<analysis::OpResult>(&graph.values[value->value].origin);
   if (!result || result->op.value >= graph.ops.size()) return false;
   const auto& op = graph.ops[result->op.value];

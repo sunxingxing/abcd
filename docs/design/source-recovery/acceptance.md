@@ -7,6 +7,16 @@
 使用 [总体入口](README.md)、[IR 合同](value-ir.md)、[AST 合同](source-tree.md) 与
 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md) 和 [全样本合同](corpus.md)。
 
+2026-10-06 Boolean贯通补充：规则141的三profile实际解码覆盖Boolean/null
+phi、0/200/201/402 COPY拆块与复合null/undefined条件；原sparse值流另验
+200/201/402/804和循环SCC。完整生成函数对照真实getter返回、原throw和
+状态变化，错误CombinedOrigin/缺失scalar来源/交换arm必须仍拒绝。
+精确Boolean只影响透明转换的表示；contextual selection来源不能代替
+原predicate执行归属，effects/catch/receiver合同不变。固定五ABC／六模式
+30次ABC-only导出与规则140源码/位置映射相同，完整/partial仍80/26、95/11、
+96/10、88/18、105/1、106/0。此通用能力不关闭原结构gate或其余record的
+独立whole-record验收；默认及显式数值/构造语义合同不变。证据见status.md。
+
 2026-10-06主Ability补充：规则140保持，新增完整pasteboard4767与
 MultiCommunity40957 EntryAbility的受控whole-record独立验收，状态由pending
 转accepted。生成前按paired index核对ABC SHA/size，ABC-only显式numeric+

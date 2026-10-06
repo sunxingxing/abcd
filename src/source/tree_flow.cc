@@ -639,9 +639,10 @@ class FlowCheck {
     const auto origin = tree_.expressions[expression.value].origin;
     const TreeOriginId branch{graph_.ops[region.branch.value].origin.value};
     if (origin == branch) return true;
-    // Projected truth equations and their branch have one native logical root.
-    // The independent origin pass proves every original site's membership.
-    if (region.logical && std::holds_alternative<CombinedOrigin>(tree_.origins[origin.value])) return true;
+    // A transparent conversion can share either conditional or logical syntax
+    // with its original branch. The independent correspondence pass proves
+    // every combined site's membership and unique expression ownership.
+    if (std::holds_alternative<CombinedOrigin>(tree_.origins[origin.value])) return true;
     const auto input = evaluation_.operations[region.branch.value].consumer;
     if (!exceptions_ || !input) return false;
     const auto* owner = std::get_if<analysis::OpId>(&graph_.uses[input->value].owner);

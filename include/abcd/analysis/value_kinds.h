@@ -24,13 +24,21 @@ class ValueKinds {
   static constexpr ValueKinds String() {
     return ValueKinds{kLanguage, Refinement::kString};
   }
+  // Exact Boolean survives common SSA copies and all-Boolean joins. It is a
+  // subset of ZeroOrOnePrimitive; null must never acquire Boolean semantics.
+  static constexpr ValueKinds Boolean() {
+    return ValueKinds{kLanguage, Refinement::kBoolean};
+  }
+  [[nodiscard]] constexpr bool IsBoolean() const {
+    return IsLanguage() && refinement_ == Refinement::kBoolean;
+  }
   // Boolean or null: neither is Number, but ToNumber/ToNumeric returns
   // exactly zero or one without invoking user code. Undefined is excluded.
   static constexpr ValueKinds ZeroOrOnePrimitive() {
     return ValueKinds{kLanguage, Refinement::kZeroOrOnePrimitive};
   }
   [[nodiscard]] constexpr bool IsZeroOrOnePrimitive() const {
-    return IsLanguage() && refinement_ == Refinement::kZeroOrOnePrimitive;
+    return IsBoolean() || (IsLanguage() && refinement_ == Refinement::kZeroOrOnePrimitive);
   }
   static constexpr ValueKinds Number() { return ValueKinds{kLanguage, Refinement::kNumber}; }
   static constexpr ValueKinds NonNaNNumber() {
@@ -58,6 +66,7 @@ class ValueKinds {
         : IsNonNaNNumber() && other.IsNonNaNNumber()
             ? Refinement::kNonNaNNumber
         : IsNumber() && other.IsNumber() ? Refinement::kNumber
+        : IsZeroOrOnePrimitive() && other.IsZeroOrOnePrimitive() ? Refinement::kZeroOrOnePrimitive
         : IsDefined() && other.IsDefined() ? Refinement::kDefined
                                           : Refinement::kNone;
     return ValueKinds{static_cast<std::uint8_t>(bits_ | other.bits_), refinement,
@@ -74,6 +83,7 @@ class ValueKinds {
       case Refinement::kNone: return false;
       case Refinement::kDefined:
       case Refinement::kString:
+      case Refinement::kBoolean:
       case Refinement::kZeroOrOnePrimitive:
       case Refinement::kNumber:
       case Refinement::kFiniteNonzeroNumber:
@@ -138,7 +148,7 @@ class ValueKinds {
 
  private:
   enum class Refinement : std::uint8_t {
-    kNone, kString, kNonNaNNumber, kDefined, kFiniteNonzeroNumber, kFiniteNumber, kNumber, kZeroOrOnePrimitive
+    kNone, kString, kNonNaNNumber, kDefined, kFiniteNonzeroNumber, kFiniteNumber, kNumber, kZeroOrOnePrimitive, kBoolean
   };
   static constexpr std::uint8_t kLanguage = 1 << 0;
   static constexpr std::uint8_t kHole = 1 << 1;

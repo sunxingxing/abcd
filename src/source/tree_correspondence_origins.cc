@@ -3,6 +3,12 @@
 namespace abcd::source {
 namespace {
 using Error = TreeSemanticError;
+struct OriginOwner {
+  std::optional<ExprId> expression;
+  // A selected value labels its enclosing decision with the branch site;
+  // the original scalar predicate still has its own execution expression.
+  std::optional<ExprId> selection;
+};
 template <class Origin>
 bool SameSite(const Origin& tree, const analysis::ValueOrigin& input) {
   return tree.site == input.site && tree.pc == input.pc && tree.original == input.original;
@@ -23,7 +29,7 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
       RequireMeaning(site && SameSite(*site, original), Error::kOrigin);
     } else throw Error::kOrigin;
   }
-  std::vector<std::optional<ExprId>> expected;
+  std::vector<OriginOwner> expected;
   std::vector<std::uint8_t> covered;
   std::vector<std::uint8_t> visited;
   std::vector<TreeOriginId> stack;
@@ -124,13 +130,19 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
       if (result && evaluation.literals->nested[result->op.value] == rhs) continue;
     }
     RequireMeaning(flow.expressions[i].has_value(), Error::kOrigin);
-    auto& owner = expected[op.origin.value];
+    auto& owner = expected[op.origin.value].expression;
     // A decision-selection branch owns its original scalar test. The selected
     // value is separately checked by TreeFlow against the conditional syntax.
     const auto expression = !flow.branch_predicates.empty() && flow.branch_predicates[i]
         ? flow.branch_predicates[i] : flow.expressions[i];
     RequireMeaning(!owner || owner == expression, Error::kOrigin);
     owner = expression;
+    if (expression != flow.expressions[i]) {
+      RequireMeaning(std::holds_alternative<analysis::ValueBranch>(op.operation), Error::kOrigin);
+      auto& selection = expected[op.origin.value].selection;
+      RequireMeaning(!selection || selection == flow.expressions[i], Error::kOrigin);
+      selection = flow.expressions[i];
+    }
   }
   for (const auto& placement : tree.operations) {
     budget.Step();
@@ -165,7 +177,7 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
       continue;
     }
     if (origin.value < graph.origins.size()) {
-      if (expected[origin.value] == expression) covered[origin.value] = 1;
+      if (expected[origin.value].expression == expression) covered[origin.value] = 1;
       continue;
     }
     std::size_t pending = 1;
@@ -174,8 +186,14 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
       budget.Step();
       const auto part = stack[--pending];
       if (part.value < graph.origins.size()) {
-        RequireMeaning(expected[part.value] == expression, Error::kOrigin);
-        covered[part.value] = 1;
+        const auto& owner = expected[part.value];
+        if (owner.expression == expression) covered[part.value] = 1;
+        else {
+          // A transparent conversion may combine with the selected value's
+          // contextual branch label. Fresh flow proves that exact selection;
+          // it cannot cover the original predicate's separate execution site.
+          RequireMeaning(owner.selection == expression, Error::kOrigin);
+        }
         continue;
       }
       const auto* combined = std::get_if<CombinedOrigin>(&tree.origins[part.value]);
@@ -193,7 +211,7 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
   }
   for (std::size_t i = 0; i < expected.size(); ++i) {
     budget.Step();
-    RequireMeaning(!expected[i] || covered[i], Error::kOrigin);
+    RequireMeaning(!expected[i].expression || covered[i], Error::kOrigin);
   }
   for (std::size_t i = graph.origins.size(); i < tree.origins.size(); ++i) {
     budget.Step();
