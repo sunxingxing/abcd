@@ -1788,6 +1788,12 @@ if(BUILD_TESTING)
   if(ABCD_NODE_EXECUTABLE AND ABCD_BUILD_TOOLS)
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/modules.abc" AND
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/src/entry/src/main/ets/abilities/PushMessageAbility.ts")
+      if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/src/entry/src/main/ets/service/VoipCallService.ts")
+        add_test(NAME push_ability_record_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/push_ability_record.mjs $<TARGET_FILE:abc_semantic>
+          ${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/modules.abc
+          ${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/src/entry/src/main/ets/abilities/PushMessageAbility.ts)
+      endif()
       add_test(NAME push_registration_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/push_registration.mjs $<TARGET_FILE:abc_semantic>
         ${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/modules.abc

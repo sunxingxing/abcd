@@ -81,3 +81,24 @@ Provenance: pinned OH7 ets_runtime commit
 `runtime_stubs-inl.h::RuntimeSuperCallSpread` / `RuntimeSuperCall`, plus existing
 language native-super rules and independent Node evaluation-order probes.
 Current verification and fixed-five output evidence are recorded in status.md.
+
+
+## Whole-record continuation (2026-10-06)
+
+`push_ability_record_source_test` uses the explicit constructor selector for
+ABC-only complete PushMessageAbility generation. It independently exercises
+322 lifecycle and 1,860 delivery scenarios, including original constructor
+argument identity, four registration kinds, cross-instance lexical receivers,
+module replacement during argument evaluation, original exceptions and native
+Promise settlement order. Three valid-JS mutations are detected. Eight further
+scenarios link the actual recovered Ability and VoipCallService ESM records,
+control concurrent resource requests, and compare raw/pixel/incoming rejection,
+static state, async listener and close behavior against the paired module graph.
+The test captures the actual async operation started by void `close`, then
+awaits it; it never replaces that operation's body with a reference function.
+
+The original default-mode partial-registration test remains registered with its
+original restricted scope. Host doubles implement observable platform boundaries
+only; these tests are neither HarmonyOS deployment nor fixed-Ark equivalence.
+The CLI's executable flag is unchanged. Current evidence and fixture corrections
+are recorded in status.md; stage-one whole-corpus acceptance remains open.

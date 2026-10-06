@@ -13,6 +13,52 @@
 ## 当前阶段
 
 
+### 2026-10-06：完整 Push Ability 与 VoIP 模块图配对验收
+
+- 基线bdb161f7，production/rules132保持。原push_registration_source_test
+  默认模式仍验证明确partial记录中的两个成员，本轮保留其注册和范围。
+  新push_ability_record_source_test以授权的--language-constructors从ABC
+  实际生成record3444完整共同tree，再生成record11989的VoIP service；
+  两个engine进程结束后才读取paired TS。输出source_complete=true、
+  route=value_tree、legacy_writer_used=false；CLI的executable=false标志
+  保持，未因Node成功伪造完整Ark/platform发布证据。输入SHA/size匹配
+  abc-index：b2074425e0e2、113684 bytes，样本与sidecar均未修改。
+- 完整PushMessageAbility运行322 lifecycle及1860 delivery paired场景。
+  覆盖实际构造/原参数身份/继承、模块TDZ/default export、十一方法的
+  name/arity/descriptor、onCreate四类注册、全部其他lifecycle及window
+  callback两路；原异常及其code/message getter异常保持。两个实例的
+  callback在后续注册后仍读取原owner的context，回调以无关this调用。
+  delivery前与参数getter期间更新实际module live binding，acquired
+  service callee保持原receiver；原生Promise正序/逆序settle、成功/拒绝、
+  then/catch getter/call及晚期log副作用对照。owned chains全数等待，
+  包括故意制造的dangling/rejected chain，避免测试自身unhandled rejection。
+- 八组connected场景加载实际恢复的Ability+VoIP service两个ESM记录，
+  依赖边连接原native源码，不用service函数double替代其body。仅平台
+  UIAbility/push/hilog/telephony/image/resource边界由独立host提供。
+  两实例并发启动，控制raw请求正序/逆序release，分别raw/pixel/incoming
+  reject；对照来电属性、static callId、listener async调用及close/off顺序。
+  close未返回其启动promise，fixture包装原processVoipCallEvent以保留
+  实际promise并等待，原方法body照常执行；不以日志尾项猜测异步完成。
+- 原生class/super/receiveMessage/then表示另验；三个有效JS mutation
+  （删除BACKGROUND注册、省略captured context读取、反转window条件）
+  均检出，先解析再运行，语法错误不计语义检出。不添加恢复匹配、
+  样本分派、生产源码字符串规则或引擎sidecar输入。
+- configure-1退出0；tests-1 fixture误用Object.keys读取TDZ namespace而
+  失败，改用GetOwnPropertyNames枚举再独立验证TDZ后tests-2通过。
+  tests-3连接测试错误等待日志尾部state，按close真实void/启动promise
+  语义修复fixture，tests-4通过322/1860/8与三mutation。最终只加强原
+  constructor object参数身份及命名microtask deadlock bound；
+  final-tests-1定向8/8通过10.35秒，包含原partial Push、VoIP、语言构造、
+  module entry initialization、普通construct及上轮paired model回归。
+  日志/tmp/abcd-push-ability-record-*；新测试同时要求两份paired source
+  存在，configure-2退出0且新/旧Push与VoIP三项注册保持。CMake只新增
+  六行，563测试注册。
+- 本轮test-only，无production重建/六模式重复导出；无全套、expanded
+  corpus、agents、RSS/benchmark、调度器或DFX。该记录及两记录连接的
+  独立host语义证据不等于实际平台、所有UI/async方法或全部record验收。
+  阶段一Goal与字段/全局/完整签名/body集成gate继续开放。
+
+
 ### 2026-10-06：两个列表模型记录的共同路径独立验收
 
 - 基线2f8aed4b，production与规则revision132保持。现有
