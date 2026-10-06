@@ -6,6 +6,7 @@
 #include <stdexcept>
 
 #include "parameter_names.h"
+#include "parameter_cell_names.h"
 #include "cell_names.h"
 #include "abcd/analysis/rest_arguments.h"
 #include "abcd/corpus/abc_file.h"
@@ -19,7 +20,8 @@ std::variant<ResolvedSyntax, SyntaxResolutionFailure> ResolveFunctionSyntax(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const FunctionContext& context,
     const abc::MethodBody& body, const analysis::ValueProgram& graph,
-    FunctionOwnerId owner, analysis::SemanticBudget budget, std::span<const SignatureString> signature) {
+    FunctionOwnerId owner, analysis::SemanticBudget budget, std::span<const SignatureString> signature,
+    const CellPlan* cells) {
   try {
     auto bytes = budget.bytes;
     auto work = budget.work;
@@ -135,6 +137,16 @@ std::variant<ResolvedSyntax, SyntaxResolutionFailure> ResolveFunctionSyntax(
     } else if (const auto* error = std::get_if<abc::MetadataError>(&named)) {
       return SyntaxResolutionFailure{*error};
     } else return SyntaxResolutionFailure{std::get<TreeConstantError>(named)};
+    if (cells) {
+      const auto preferred = NameCellParameters(graph, *cells, syntax, {bytes, work});
+      if (const auto* cost = std::get_if<ParameterCellNameCost>(&preferred)) {
+        admit(cost->bytes, 1); step(cost->work);
+      } else switch (std::get<ParameterCellNameError>(preferred)) {
+        case ParameterCellNameError::kInput: throw Error::kParameters;
+        case ParameterCellNameError::kResourceLimit: throw Error::kResourceLimit;
+        case ParameterCellNameError::kWorkLimit: throw Error::kWorkLimit;
+      }
+    }
     if (file.CheckUnchanged()) return SyntaxResolutionFailure{abc::MetadataError::kFileChanged};
     result.allocated_bytes = budget.bytes - bytes;
     result.work = budget.work - work;

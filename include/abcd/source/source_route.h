@@ -313,7 +313,7 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // checked execution/catch owners remain distinct from child syntax parents.
 // Rules 126 retain unfused phased selections as one original-site phi binding;
 // multiple observations preserve evaluation count and original catch scope.
-inline constexpr std::uint32_t kRouteEvidenceRules = 133;
+inline constexpr std::uint32_t kRouteEvidenceRules = 134;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

@@ -14,9 +14,9 @@ assert.equal(report.record, 4767); assert.equal(report.source_complete, named);
 assert.equal(report.executable, false); assert.equal(report.legacy_writer_used, false);
 assert.ok(report.source.includes('onWindowStageCreate('));
 if (named) {
-  // The scope literal in ABC names this actual captured storage. Recover it
-  // through the normal function pipeline, independently of the paired source.
-  assert.match(report.source, /\blet windowStage;/);
+  // The scope literal names storage receiving the entry value. Its spelling
+  // can name the formal while the captured cell keeps a distinct identity.
+  assert.match(report.source, /onWindowStageCreate\(windowStage\)/);
   assert.doesNotMatch(report.source, /INCOMPLETE|UNRECOVERED/);
 } else assert.ok(report.source.includes('INCOMPLETE'));
 const reference = stripTypeScriptTypes(readFileSync(paired, 'utf8'));
@@ -64,8 +64,11 @@ for (const value of values) for (const mutate of [false, true]) for (let failAt 
   assert.deepEqual(await observe(report.source, value, failAt, mutate), await observe(reference, value, failAt, mutate)); ++cases;
 }
 if (named) {
-  const broken = report.source.replace('windowStage = $arg0', 'windowStage = void 0');
+  const transport = report.source.match(/\(([A-Za-z_$][\w$]*) = windowStage\);/);
+  assert.ok(transport);
+  const broken = report.source.replace(transport[0], `(${transport[1]} = void 0);`);
   assert.notEqual(broken, report.source);
+  new vm.SourceTextModule(broken);
   await assert.rejects(async () => assert.deepEqual(await observe(broken, '', 0, false),
     await observe(reference, '', 0, false)), assert.AssertionError);
 }

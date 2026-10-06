@@ -1,6 +1,7 @@
 #include "../../../src/analysis/phased_value_import.h"
 #include "../../../src/source/cell_plan.h"
 #include "../../../src/source/cell_initialization.h"
+#include "../../../src/source/parameter_cell_names.h"
 #include "analysis/ssa_fixture.h"
 
 namespace {
@@ -11,7 +12,7 @@ void Run(abc::ProfileId profile, std::size_t count = 1) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   // Failed allocation reaches a store in the incoming environment; the normal
   // store belongs to the new allocation despite sharing lexical depth/slot.
-  const std::vector<std::uint8_t> sequence{op(abc::Opcode::kNEWLEXENV_IMM8), 1,
+  const std::vector<std::uint8_t> sequence{op(abc::Opcode::kNEWLEXENVWITHNAME_IMM8_ID16), 1, 0, 0,
       op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), 0,
       op(abc::Opcode::kPOPLEXENV)};
   std::vector<std::uint8_t> bytes;
@@ -20,7 +21,7 @@ void Run(abc::ProfileId profile, std::size_t count = 1) {
   const auto catch_pc = static_cast<std::uint32_t>(bytes.size());
   bytes.insert(bytes.end(), {op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), 0, op(abc::Opcode::kRETURN)});
   auto body = test::Body(bytes);
-  abc::TryRegion region; region.length = 2; region.handler_count = 1;
+  abc::TryRegion region; region.length = 4; region.handler_count = 1;
   abc::CatchHandler handler; handler.offset = {catch_pc}; handler.length = 3;
   body.tries.push_back(region); body.handlers.push_back(handler);
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 4, {true, true, false, true}));
@@ -51,6 +52,11 @@ void Run(abc::ProfileId profile, std::size_t count = 1) {
   const auto verify = [&] { return VerifyPhasedCellPlan(graph, environments, cells); };
   const auto checked = verify();
   test::Check(std::holds_alternative<std::uint64_t>(checked));
+  FunctionSyntax syntax; syntax.parameters.resize(1); syntax.names = {u"captured"};
+  for (const auto& cell : cells.cells) if (const auto* local = std::get_if<AllocatedCell>(&cell.storage))
+    syntax.locals.push_back({local->allocation, local->slot, {0}});
+  test::Check(std::holds_alternative<ParameterCellNameCost>(NameCellParameters(graph, cells, syntax)));
+  test::Check(syntax.parameters[0].name == NameId{0} && syntax.parameters[0].evidence == NameEvidence::kMetadata);
   test::Check(std::get<CellError>(BuildCellPlan(graph, environments)) == CellError::kEnvironment);
   test::Check(std::get<CellError>(VerifyCellPlan(graph, environments, cells)) == CellError::kEnvironment);
   test::Check(std::get<CellInitializationError>(BuildCellInitializations(

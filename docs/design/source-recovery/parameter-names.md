@@ -6,6 +6,53 @@ comes from the actual original parameter slot at method entry. The same resolver
 serves normal/phased families, class methods and the older callable adapters.
 It does not recover parameter types from debug strings or read paired source.
 
+## Captured cell name preferences (rules 134)
+
+The private NameCellParameters adapter consumes the verified current ValueProgram,
+its same-revision CellPlan and validated, sorted allocation/slot LocalNameSyntax
+hints. ResolveFunctionSyntax runs it after scope-literal naming, before shared
+reference-name planning, for ordinary/phased families and standalone functions.
+It reuses AnalyzeValueIdentities (the existing iterative Tarjan copy/phi SCC
+analysis) to connect an actual lexical store's stored value to ParameterEntry.
+It has no opcode sequence, first-store, same-block or immutable-cell premise.
+Copies, block splitting and grounded equal-entry phi/cycles use the same identity.
+Mixed/computed identities provide no entry name evidence.
+
+An allocated cell name is a presentation preference for an unnamed formal, not
+proof of the original source formal spelling. Existing debug names have priority.
+Different spellings for one parameter, or a spelling proposed for multiple
+formals, retain generated names without rejecting decompilation. Incoming cells
+belong to a different activation and are not current-formal naming evidence.
+Later stores and capture creation before initialization retain their original
+semantics. This adapter does not infer types/rest/defaults, merge parameter/cell
+storage, prove mutability or authorize moving/removing a store.
+
+Interned NameId is textual identity, not binding identity. When a formal and
+allocated cell receive the same metadata spelling, FunctionTree gives the formal
+that spelling and keeps the cell's independent generated binding, using its
+existing sorted formal index. ReferenceNames still protects real descendant
+module/global references; existing cell ownership, scope/capture/TDZ and effect/
+exception analyses remain authoritative. New quota failures publish no partial
+parameter changes. Sorted hint validation belongs to the existing resolver;
+revision, access bounds and actual stored-value roles are checked here.
+
+Let V/U denote value/use sizes, H sorted local hints, C cells, A accesses in named
+cells and P parameters. Beyond the existing shared identity analysis, traversal
+and ordering cost O(C log(H+1) + A + P log(P+1)), plus actual spelling comparisons.
+The reused identity analysis costs O(V+U); new scratch is O(V+U+P), apart from
+already-admitted inputs. Each named-local/formal collision query costs
+O(log(P+1)), plus text comparisons. There is no per-parameter graph walk.
+Every allocation and comparison is charged to the existing semantic budget.
+No new dependency, license or algorithm is introduced; upstream provenance and
+maintenance remain those of value_phi. Whole-process RSS validation remains
+paused, so budget accounting is not claimed as measured process compliance.
+
+Tests use actual decoded normal/phased instructions, copies/block splitting,
+matching/mixed phi, entry-anchored SCC, multiple formals/cells, duplicate spelling,
+existing debug names, later writes, 200/201/402/804 growth and exact/under quota.
+Native JS executes ordinary/arrow deferred captures and metadata-named complete
+Window/pasteboard output. Independent source stays outside engine inputs.
+
 ## Identifier domains (rules 133)
 
 The private typed ParameterNameDomain separates the legacy writer's reserved

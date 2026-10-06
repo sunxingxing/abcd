@@ -322,7 +322,8 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
       throw Error::kEvaluation;
     if (!phased) { budget.Admit(evaluation->allocated_bytes, 1); budget.Step(evaluation->work); }
     auto syntax_result = ResolveFunctionSyntax(file, header, index, *context, *body,
-        graph, {context->Position().value}, budget.Remaining(), defaults ? defaults->Strings() : std::span<const SignatureString>{});
+        graph, {context->Position().value}, budget.Remaining(), defaults ? defaults->Strings() : std::span<const SignatureString>{},
+        evaluation->cells ? &evaluation->cells->cells : nullptr);
     auto* resolved_syntax = std::get_if<ResolvedSyntax>(&syntax_result);
     if (!resolved_syntax) {
       const auto& failure = std::get<SyntaxResolutionFailure>(syntax_result);

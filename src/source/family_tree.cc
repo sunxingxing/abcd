@@ -56,7 +56,7 @@ class FamilyTrees {
       const auto* phase = function.Phase();
       const auto& graph = function.Graph();
       auto syntax = Take<ResolvedSyntax, SyntaxResolutionFailure>(ResolveFunctionSyntax(
-          file_, header_, index_, context, phase ? phase->OriginalBody() : function.Body(), graph, family.Owner(member_), left_, function.Defaults() ? function.Defaults()->Strings() : std::span<const SignatureString>{}));
+          file_, header_, index_, context, phase ? phase->OriginalBody() : function.Body(), graph, family.Owner(member_), left_, function.Defaults() ? function.Defaults()->Strings() : std::span<const SignatureString>{}, function.Cells()));
       Account(syntax);
       auto& normal_aliases = normal_aliases_[i];
       const ModuleAliases* aliases = phase ? phase->Phases().Modules() : nullptr;

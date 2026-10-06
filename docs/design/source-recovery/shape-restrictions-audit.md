@@ -1,5 +1,15 @@
 # 按用户要求进行的恢复条件审计
 
+规则134补充：captured参数名仅由真实allocated cell元数据提示及共同
+ValueIdentities的ParameterEntry身份关联；copy/phi/SCC和block split共用
+同一分析，不匹配first-store、immutable、固定寄存器/PC、同块或样本。
+名字冲突仅保留合成拼写，不拒绝恢复；cell提示不证明原formal源码名。
+NameId intern只代表文本，formal和cell保持不同binding；共同tree使用
+已有formal排序索引避免同名，原storage/capture/TDZ、reference identity、
+free-name shadow、effect/exception义务保持。incoming cell的另一activation
+归属来自共同CellPlan，不把图布局当作归属证据。ordinary/phased、copy、
+等源/混合phi、copy cycle、later write及200/201增长覆盖这些边界。
+
 规则133补充：真实debug formal的命名adapter显式区分legacy writer与
 共同SourceTree域。已有source identifier规则允许$及旧私有prefix名字，
 不把writer namespace当成语言不变量；reserved/非法名字仍拒绝。真实

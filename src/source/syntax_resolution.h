@@ -40,6 +40,6 @@ using SyntaxResolutionFailure = std::variant<SyntaxResolutionError,
     const abc::MetadataIndex& index, const FunctionContext& context,
     const abc::MethodBody& body, const analysis::ValueProgram& graph,
     FunctionOwnerId owner, analysis::SemanticBudget budget = {},
-    std::span<const SignatureString> signature = {});
+    std::span<const SignatureString> signature = {}, const CellPlan* cells = nullptr);
 }  // namespace abcd::source
 #endif

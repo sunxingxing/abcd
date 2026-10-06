@@ -16,7 +16,7 @@ assert.equal(report.route, 'value_tree'); assert.equal(report.legacy_writer_used
 assert.equal(report.executable, false);
 assert.doesNotMatch(report.source, /INCOMPLETE|UNRECOVERED|Reflect\.|\bswitch\s*\(/);
 for (const pattern of [/new WindowInfo\(/, /async \(windowSize\)/, /sensor\.on\(/,
-  /\.then\(/, /getCalDegree\(x, y, z\)/, /-x/, /export \{ WindowInfo/])
+  /\.then\(/, /setWindowOrientation\(orientation\)/, /getCalDegree\(x, y, z\)/, /-x/, /export \{ WindowInfo/])
   assert.match(report.source, pattern);
 const pairedText = readFileSync(paired, 'utf8');
 assert.equal((pairedText.match(/^@Observed$/gm) ?? []).length, 1);
@@ -340,10 +340,10 @@ let mutationChecks = 0;
 for (const [from, to, scenario] of [
   ['this.mainWindow.on("windowSizeChange", this.onWindowSizeChange);', '', {method: 'lifecycle', input: 1}],
   ['windowSize = windowSize', 'windowSize = void 0', {method: 'onWindowSizeChange'}],
-  ['.mainWindowInfo.orientation = orientation', '.mainWindowInfo.orientation = void 0', {method: 'setWindowOrientation', input: 2}],
+  [/(\.mainWindowInfo.orientation = )[A-Za-z_$][\w$]*/, '$1void 0', {method: 'setWindowOrientation', input: 2}],
   ['sensor.on(sensor.SensorId.GRAVITY', 'sensor.on(void 0', {method: 'queryDegree'}],
 ]) {
-  assert.ok(report.source.includes(from), from);
+  assert.ok(from instanceof RegExp ? from.test(report.source) : report.source.includes(from), String(from));
   const changed = report.source.replace(from, to);
   new vm.SourceTextModule(changed); // Syntax failure is not semantic detection.
   const mutant = await load(changed, true);

@@ -443,6 +443,18 @@ class TreeBuilder {
         });
     if (found == syntax_.locals.end() || found->allocation != cell.allocation || found->slot.value != cell.slot.value)
       return {};
+    // A metadata spelling may be interned once but name distinct formal/cell
+    // bindings. Preserve storage identity; actual parameter ownership wins.
+    const auto& text = tree_.names[found->name.value];
+    const auto parameter = std::lower_bound(name_order_.begin(), name_order_.end(), text,
+        [&](NameId id, std::u16string_view name) {
+          Step(std::min(tree_.names[id.value].size(), name.size()) + 1);
+          return tree_.names[id.value] < name;
+        });
+    if (parameter != name_order_.end()) {
+      Step(std::min(tree_.names[parameter->value].size(), text.size()) + 1);
+      if (tree_.names[parameter->value] == text) return {};
+    }
     return UniqueReservedName(found->name) ? std::optional{found->name} : std::nullopt;
   }
   bool ReservedName(std::u16string_view text) {

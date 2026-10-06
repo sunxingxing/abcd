@@ -12,6 +12,52 @@
 
 ## 当前阶段
 
+### 2026-10-06：通过共同 cell / entry 身份恢复捕获参数名
+
+- 基线21f3eb57，规则revision134。新增私有NameCellParameters，接在共同
+  ResolveFunctionSyntax的scope literal命名之后；普通、分阶段family和
+  standalone路径传入已有同revision CellPlan。复用AnalyzeValueIdentities
+  的copy/phi/SCC身份，从真实ValueLexicalStore的stored-value找到原始
+  ParameterEntry，把allocated cell元数据拼写作为尚未命名formal的偏好。
+  实际输出setWindowOrientation(orientation)、onWindowStageCreate(windowStage)。
+  debug formal已有证据优先，冲突拼写保留合成名；incoming cell属于另一
+  activation，不提供当前formal提示。元数据cell名不证明原源码formal名、
+  类型、const或不可变，也不证明两种存储可合并；later write保持原行为。
+- 发现并修复interned NameId与binding身份混淆：同一个拼写同时给formal
+  和allocated cell时，原tree唯一性检查不能区分两种binding。现使用既有
+  sorted formal name index给参数保留拼写，cell继续独立合成binding。
+  没有删除真实scope/capture/TDZ、receiver、effect/exception校验，没有
+  新增同块、first-store、immutable、opcode序列、PC/register或样本分派。
+  family共同ReferenceNames仍防止实际global/module/descendant shadow。
+- RED：完整Window记录签名断言失败。真实decoded fixture覆盖copy、
+  block split、同源/混合phi、self-copy SCC、多formal、多cell、冲突/同名、
+  debug优先、后续写入、200/201/402/804及work/bytes边界。分阶段异常
+  fixture保留allocation完成与incoming catch存储之别。初轮失败中，测试
+  packed STLEXVAR slot编码错误由LLDB定位修正；production binding冲突
+  修复后，旧测试对let/windowStage及$arg0文本的假设改为实际参数transport。
+  quota失败不发布部分parameter修改；生产未保留调试instrumentation。
+- 最终单-j4构建均退出0，/tmp/abcd-cell-formals-build-3.log、build-4.log及
+  final-build-1.log覆盖修改的生产/fixture和其必要消费者。最终定向26/26
+  通过26.00秒（final-tests-1.log），注册564项保持；含cell/phased/tree/
+  formal/scope、route/record、构造及完整Home/model/Push/VoIP/Window验收。
+  Window7442 paired、56 assignment、5有效JS mutation保持；named pasteboard
+  240及default240保持；普通/arrow延迟capture扩展为168行为检查与2个
+  先解析的有效JS mutation。原2752 naming、17880 numeric、4536 optional、
+  2450 paired/120 native constructors证据保留。
+- 固定五ABC六模式30次导出全部退出0，每模式106份complete/explicit partial
+  source解析通过，SHA/size保持、legacy_writer_used=0、无complete回退。
+  complete/incomplete：default80/26、language95/11、numeric96/10、
+  constructors88/18、arithmetic-constructors105/1、numeric-constructors106/0；
+  另46个no-module记录。与基线计数相同；default/constructors改善15份source，
+  其余模式22份，未新增complete记录。证据/tmp/abcd-cell-formals-batch-1.log、
+  /tmp/abcd-cell-formals-<mode>-summary-1.json及build/stage-one/
+  cell-formal-names-<mode>-pass-1。source_complete不等于阶段一总验收。
+- 自审确认命名偏好与存储身份分离，使用既有稀疏身份分析及排序索引，
+  不逐参数走图；复杂度/前提见parameter-names.md。两个旧legacy baseline
+  失败本轮未重跑，保持开放。全套、expanded corpus、agents、RSS/benchmark、
+  scheduler/DFX及周期审计继续暂停。阶段一Goal和结构gate保持：缺少元数据
+  的完整签名、实例字段/global/body集成、全部记录独立语义和表示验收仍待推进。
+
 ### 2026-10-06：完整 WindowUtil / WindowInfo 记录独立验收
 
 - 基线51141fd0，production/rules133保持。新增window_record_source_test

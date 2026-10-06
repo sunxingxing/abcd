@@ -637,7 +637,11 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
                 return symbol.evidence == NameEvidence::kMetadata &&
                     named_tree.names[symbol.name.value] == u"restoredValue";
               }));
-          if (writer_code) {
+          if (deferred_writer) {
+            const auto& parameter = named_tree.symbols[named_tree.parameters.front().symbol.value];
+            test::Check(parameter.evidence == NameEvidence::kMetadata &&
+                named_tree.names[parameter.name.value] == u"restoredValue");
+          } else if (writer_code) {
             const auto& writer = built.members[1].tree;
             test::Check(std::any_of(writer.names.begin(), writer.names.end(),
                 [](const std::u16string& name) { return name == u"restoredValue"; }));
@@ -840,6 +844,13 @@ int main(int argc, char** argv) {
         CallerObject::kAbsent, SnapshotCase::kRead, &std::cout, true);
     return 0;
   }
+  if (argc == 2 && (std::string_view(argv[1]) == "--named-deferred-source" ||
+      std::string_view(argv[1]) == "--named-deferred-arrow-source")) {
+    Run(1, std::string_view(argv[1]) == "--named-deferred-source" ? abc::FunctionKind::kBaseConstructor :
+        abc::FunctionKind::kArrow, ChildBody::kNestedWriter, false, 1,
+        CallerObject::kAbsent, SnapshotCase::kRead, &std::cout, true, CellNames::kSource);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--snapshot-json") {
     for (const auto parameters : {0U, 1U, 2U, 200U, 201U}) {
       for (const auto variant : {SnapshotCase::kRead, SnapshotCase::kWrite, SnapshotCase::kPair, SnapshotCase::kBranch, SnapshotCase::kLoop, SnapshotCase::kSelf}) {
@@ -875,6 +886,9 @@ int main(int argc, char** argv) {
   Run(1, abc::FunctionKind::kBaseConstructor, ChildBody::kNestedWriter);
   Run(1, abc::FunctionKind::kBaseConstructor, ChildBody::kNestedWriter, false, 1,
       CallerObject::kAbsent, SnapshotCase::kRead, nullptr, true);
+  for (const auto kind : {abc::FunctionKind::kBaseConstructor, abc::FunctionKind::kArrow})
+    Run(1, kind, ChildBody::kNestedWriter, false, 1,
+        CallerObject::kAbsent, SnapshotCase::kRead, nullptr, true, CellNames::kSource);
   for (const auto count : {0U, 1U, 2U, 200U, 201U})
     Run(count, abc::FunctionKind::kBaseConstructor, ChildBody::kEmpty, false, 0, CallerObject::kPrimitive);
   Run(1, abc::FunctionKind::kBaseConstructor, ChildBody::kEmpty, false, 0, CallerObject::kMethod);

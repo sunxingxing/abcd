@@ -136,7 +136,7 @@ target_sources(abcd_analysis PRIVATE src/analysis/accumulator_flow.cc src/analys
 target_link_libraries(abcd_analysis PUBLIC abcd_abc)
 add_library(abcd_source src/source/string_literal.cc src/source/scalar_expression.cc)
 target_sources(abcd_source PRIVATE src/source/global_reference.cc)
-target_sources(abcd_source PRIVATE src/source/parameter_names.cc)
+target_sources(abcd_source PRIVATE src/source/parameter_names.cc src/source/parameter_cell_names.cc)
 target_sources(abcd_source PRIVATE src/source/constructor_fields.cc)
 target_sources(abcd_source PRIVATE src/source/parameter_bindings.cc src/source/parameter_origins.cc)
 target_sources(abcd_source PRIVATE src/source/linear_body.cc)
