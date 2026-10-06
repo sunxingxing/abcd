@@ -51,6 +51,7 @@ struct ExpressionOperand {
 // Composition of language Boolean results, not a bytecode recovery pattern.
 // Keep the original parent grammar until a remaining conversion is emitted.
 struct BooleanOperand { ExpressionOperand expression; bool inverted; };
+struct MemberSpine { ExprId member; ExprId access; ExprId base; };
 struct Statement { StmtId id; std::size_t depth; };
 struct EndStatement { StmtId id; };
 struct BlockCursor { StmtId id; std::uint32_t index; std::size_t depth; };
@@ -71,7 +72,7 @@ struct BeginFunction {};
 struct EndFunction {};
 struct ParameterCursor { std::uint32_t index; };
 struct EndParameter { std::uint32_t index; };
-using PrintAction = std::variant<std::string_view, ExprId, EndExpression, ExpressionOperand, BooleanOperand,
+using PrintAction = std::variant<std::string_view, ExprId, EndExpression, ExpressionOperand, BooleanOperand, MemberSpine,
     Statement, EndStatement, BlockCursor, Indent, PropertyKey, SymbolName, ArgumentCursor,
     ObjectCursor, EndProperty, BeginFunction, EndFunction, ParameterCursor, EndParameter, SnapshotCursor, DerivedClassBody, ArrayArgumentCursor>;
 struct OwnedAction { std::size_t owner; std::size_t depth; PrintAction action; };
@@ -633,14 +634,16 @@ class TreePrinter {
     Push(std::string_view("])"));
     Push(SnapshotCursor{node.slots, 0});
   }
-  void Member(ExprId base, const MemberKey& key, PostfixContext context = PostfixContext::kMemberBase, bool optional = false) {
+  void PrintMemberKey(const MemberKey& key, bool optional) {
     if (const auto* name = std::get_if<NameId>(&key)) Push(PropertyKey{*name, optional});
     else {
       Push(std::string_view("]"));
       Push(std::get<ComputedKey>(key).expression);
       Push(std::string_view(optional ? "?.[" : "["));
     }
-    Push(ExpressionOperand{base, {context}});
+  }
+  void Member(ExprId base, const MemberKey& key, PostfixContext context = PostfixContext::kMemberBase, bool optional = false) {
+    PrintMemberKey(key, optional); Push(ExpressionOperand{base, {context}});
   }
   void Expression(const MemberExpr& node) { Member(node.base, node.key); }
   void Expression(AwaitExpr node) {
@@ -1124,6 +1127,17 @@ class TreePrinter {
       Push(ExpressionOperand{id, {TreeUnary::kNot}, {}, ExpressionObservation::kTruthiness});
     } else Push(operand.expression);
   }
+  void Run(MemberSpine spine) {
+    BeginExpression(spine.member);
+    const auto& member = std::get<MemberExpr>(Tree().expressions[spine.member.value].expression);
+    if (spine.member == spine.access) Member(spine.base, member.key, PostfixContext::kMemberBase, true);
+    else {
+      // Keep later members in this same native chain. Grouping between links
+      // would end short-circuiting; making every link optional would hide the
+      // original exception. Every node retains its own begin/end event.
+      PrintMemberKey(member.key, false); Push(MemberSpine{member.base, spine.access, spine.base});
+    }
+  }
   void Run(ExpressionOperand operand) {
     const auto id = operand.id;
     BeginExpression(id);
@@ -1135,16 +1149,14 @@ class TreePrinter {
       std::visit([&](const auto& syntax) {
         using T = std::decay_t<decltype(syntax)>;
         if constexpr (std::is_same_v<T, OptionalMemberSyntax>) {
-          const auto& read = std::get<MemberExpr>(Tree().expressions[syntax.member.value].expression);
-          BeginExpression(syntax.member); Member(syntax.base, read.key, PostfixContext::kMemberBase, true);
+          Push(MemberSpine{syntax.member, syntax.access, syntax.base});
         } else if constexpr (std::is_same_v<T, OptionalCallSyntax>) {
           const auto& call = std::get<CallExpr>(Tree().expressions[syntax.call.value].expression);
           BeginExpression(syntax.call);
           Push(std::string_view(")")); Push(ArgumentCursor{call.arguments, 0});
           Push(std::string_view(syntax.member ? "(" : "?.("));
           if (syntax.member) {
-            const auto& read = std::get<MemberExpr>(Tree().expressions[syntax.member->value].expression);
-            BeginExpression(*syntax.member); Member(syntax.base, read.key, PostfixContext::kMemberBase, true);
+            Push(MemberSpine{*syntax.member, *syntax.access, syntax.base});
           } else Push(ExpressionOperand{syntax.base, {PostfixContext::kCallCallee}});
         } else {
           static_assert(std::is_same_v<T, NullishFallbackSyntax>);

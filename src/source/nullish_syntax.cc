@@ -40,6 +40,10 @@ struct Meaning {
   std::array<Formation, kDomains> formations;
   bool predicate = false;
 };
+struct MemberPath {
+  std::optional<Reference> reference;
+  std::optional<ExprId> access;
+};
 // Dependency arity is the three fields of ConditionalExpr, not a corpus limit.
 constexpr std::size_t kConditionalArity = 3;
 struct Inputs { std::array<ExprId, kConditionalArity> ids; std::uint8_t count = 0; };
@@ -50,6 +54,8 @@ Inputs Children(const TreeExpression& expression) {
     else if constexpr (std::is_same_v<T, BinaryExpr> || std::is_same_v<T, LogicalExpr> ||
         std::is_same_v<T, SequenceExpr>) return {{{node.left, node.right}}, 2};
     else if constexpr (std::is_same_v<T, UnaryExpr>) return {{{node.operand}}, 1};
+    else if constexpr (std::is_same_v<T, MemberExpr>) return {{{node.base}}, 1};
+    else if constexpr (std::is_same_v<T, CallExpr>) return {{{node.callee}}, 1};
     else return {};
   }, expression);
 }
@@ -232,6 +238,7 @@ std::variant<NullishSyntax, TreeStructureError> PlanNullishSyntax(
   try {
     TreeCheckBudget budget(limit); const auto count = tree.expressions.size();
     NullishSyntax plan; std::vector<Meaning> meanings; std::vector<Inputs> inputs;
+    std::vector<MemberPath> paths;
     bool selection = false, binding = false, nullish = false;
     for (const auto& node : tree.expressions) {
       budget.Step(); selection |= std::holds_alternative<ConditionalExpr>(node.expression);
@@ -261,6 +268,7 @@ std::variant<NullishSyntax, TreeStructureError> PlanNullishSyntax(
     budget.Array(plan.projections, count); budget.Array(plan.omitted_by, count);
     budget.Array(plan.omitted_properties_by, tree.properties.size());
     budget.Array(meanings, count); budget.Array(inputs, count); budget.Array(parent, count);
+    budget.Array(paths, count);
     budget.Array(pending, count); budget.Array(queue, count);
     std::size_t ready = 0;
     for (std::size_t i = 0; i < count; ++i) {
@@ -274,6 +282,14 @@ std::variant<NullishSyntax, TreeStructureError> PlanNullishSyntax(
     }
     for (std::size_t at = 0; at < ready; ++at) {
       const auto id = queue[at]; budget.Step(); meanings[id.value] = Interpret(tree, id, meanings, texts);
+      if (const auto* member = std::get_if<MemberExpr>(&tree.expressions[id.value].expression)) {
+        // An original member spine evaluates each base/key/getter in order.
+        // Summarize its stable starting reference bottom-up once, rather than
+        // replaying every candidate's chain. Arbitrary keys stay opaque/owned;
+        // the guard skips all of them only when its original receiver is nil.
+        if (const auto reference = StableReference(tree, member->base)) paths[id.value] = {reference, id};
+        else paths[id.value] = paths[member->base.value];
+      }
       const auto& meaning = meanings[id.value];
       const auto nil = meaning.results[static_cast<std::size_t>(NullishDomain::kNull)];
       const auto absent = meaning.results[static_cast<std::size_t>(NullishDomain::kUndefined)];
@@ -288,18 +304,24 @@ std::variant<NullishSyntax, TreeStructureError> PlanNullishSyntax(
         const auto* member = std::get_if<MemberExpr>(&tree.expressions[other->value].expression);
         const auto* call = std::get_if<CallExpr>(&tree.expressions[other->value].expression);
         if (literal && std::holds_alternative<UndefinedLiteral>(*literal) && member &&
-            StableReference(tree, member->base) == meaning.reference)
-          plan.projections[id.value] = OptionalMemberSyntax{*other, formed.value_or(member->base)};
+            paths[other->value].access && paths[other->value].reference == meaning.reference) {
+          const auto access = *paths[other->value].access;
+          const auto base = std::get<MemberExpr>(tree.expressions[access.value].expression).base;
+          plan.projections[id.value] = OptionalMemberSyntax{*other, formed.value_or(base), access};
+        }
         else if (literal && std::holds_alternative<UndefinedLiteral>(*literal) && call) {
           // Optional evaluation must skip the entire original call (including
           // arguments) on nullish paths. Reference identity, not callee spelling
           // or a compiler guard layout, determines receiver and indirect eval.
           if (call->reference == CallReference::kValue && StableReference(tree, call->callee) == meaning.reference)
-            plan.projections[id.value] = OptionalCallSyntax{*other, formed.value_or(call->callee), {}};
+            plan.projections[id.value] = OptionalCallSyntax{*other, formed.value_or(call->callee), {}, {}};
           else if (call->reference == CallReference::kMember) {
             const auto* callee = std::get_if<MemberExpr>(&tree.expressions[call->callee.value].expression);
-            if (callee && StableReference(tree, callee->base) == meaning.reference)
-              plan.projections[id.value] = OptionalCallSyntax{*other, formed.value_or(callee->base), call->callee};
+            if (callee && paths[call->callee.value].access && paths[call->callee.value].reference == meaning.reference) {
+              const auto access = *paths[call->callee.value].access;
+              const auto base = std::get<MemberExpr>(tree.expressions[access.value].expression).base;
+              plan.projections[id.value] = OptionalCallSyntax{*other, formed.value_or(base), call->callee, access};
+            }
           }
         }
         else if (StableReference(tree, *other) == meaning.reference && !SameResult(tree, texts, *nil, *other))
@@ -326,10 +348,10 @@ std::variant<NullishSyntax, TreeStructureError> PlanNullishSyntax(
     for (std::size_t i = 0; i < count; ++i) {
       budget.Step(); if (!plan.projections[i]) continue;
       if (const auto* member = std::get_if<OptionalMemberSyntax>(&*plan.projections[i])) {
-        const auto base = std::get<MemberExpr>(tree.expressions[member->member.value].expression).base;
+        const auto base = std::get<MemberExpr>(tree.expressions[member->access.value].expression).base;
         if (base != member->base) plan.omitted_by[base.value] = ExprId{static_cast<std::uint32_t>(i)};
       } else if (const auto* call = std::get_if<OptionalCallSyntax>(&*plan.projections[i])) {
-        const auto base = call->member ? std::get<MemberExpr>(tree.expressions[call->member->value].expression).base :
+        const auto base = call->member ? std::get<MemberExpr>(tree.expressions[call->access->value].expression).base :
             std::get<CallExpr>(tree.expressions[call->call.value].expression).callee;
         if (base != call->base) plan.omitted_by[base.value] = ExprId{static_cast<std::uint32_t>(i)};
       }

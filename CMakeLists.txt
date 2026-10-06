@@ -588,6 +588,9 @@ if(BUILD_TESTING)
   add_executable(optional_access_test tests/unit/source/optional_access_test.cc tools/tree_position_json.cc)
   target_link_libraries(optional_access_test PRIVATE abcd_source abcd_json)
   add_test(NAME optional_access_test COMMAND optional_access_test --plan)
+  add_executable(optional_member_spine_test tests/unit/source/optional_member_spine_test.cc tools/tree_position_json.cc)
+  target_link_libraries(optional_member_spine_test PRIVATE abcd_source abcd_json)
+  add_test(NAME optional_member_spine_test COMMAND optional_member_spine_test)
   add_executable(nullish_fallback_test tests/unit/source/nullish_fallback_test.cc tools/tree_position_json.cc)
   target_link_libraries(nullish_fallback_test PRIVATE abcd_source abcd_json)
   add_test(NAME nullish_fallback_test COMMAND nullish_fallback_test)
@@ -1567,6 +1570,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/tail_completions.mjs $<TARGET_FILE:module_family_print_test>)
     add_test(NAME optional_access_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/optional_access.mjs $<TARGET_FILE:optional_access_test>)
+    add_test(NAME optional_member_spine_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/optional_member_spine.mjs $<TARGET_FILE:optional_member_spine_test>)
     add_test(NAME nullish_fallback_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/nullish_fallback.mjs $<TARGET_FILE:nullish_fallback_test>)
     add_test(NAME snapshot_syntax_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

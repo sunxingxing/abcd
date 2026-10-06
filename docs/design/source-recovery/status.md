@@ -12,6 +12,59 @@
 
 ## 当前阶段
 
+### 2026-10-06：共同 nullish 投影恢复复合成员链与成员调用
+
+- 基线3cd68094，生产规则145。原PlanNullishSyntax只允许terminal member的
+  直接base具有稳定SymbolId／This owner，这是表示限制。现对原MemberExpr
+  依赖自底向上保存一次共同member path摘要，OptionalMember／OptionalCall
+  保留terminal member、首个guarded access及原形成base；CallExpr的callee
+  同样进入依赖调度。没有样本、名称、opcode序列、producer名单、同块、
+  固定寄存器／PC、selection数量或graph shape准入。
+- 共同迭代printer输出x?.a.b、x?.a[key]及x?.a.b(args)。首个access之后的
+  member仍mandatory，保留中途nullish的TypeError；不插入中途括号结束
+  short-circuit。原key转换／getter／参数只在原guard允许时执行，member
+  call保留最后真实receiver。外部member／call仍结束本次chain，value call
+  仍间接；原形成assignment、任意producer效果／异常／TDZ义务保持。
+  每个保留member有真实非零range，省略guard仍在原base.end有零宽event；
+  family emission／位置serializer复用同一计划，未复制或新建AST。
+- 新增96个共同树fixture：深度1/2/3/200/201/402、named／computed key、
+  read／member call、原形成assignment与正逆arena。57,500组独立语言
+  对照核对root／中途nullish、falsy/NaN/BigInt/Symbol、key/getter/argument/
+  producer的顺序、receiver、一次求值与undefined/null/0/Symbol/object原
+  throw；4个先解析的有效JS mutation检出多加?.及中途括号的语义错误。
+  201到402的work几何边界、真实serializer及保留／省略来源range另验。
+- 既有snapshot_optional增加五项实际decoded复合成员／计算键／调用／
+  copy与split组合。三profile×1/200/201/402×23 forms共276函数贯通
+  FunctionInput→ValueIR→Control/Evaluation→FunctionTree→语义／来源／
+  family writer；61,824组独立行为通过。旧optional_access的effectful base
+  正例由RED转native projection，152 fixture／13,376场景保持通过。
+- 失败证据保留：red-tests-1先因旧直接base限制失败；首次新增target需
+  configure；深链fixture曾有unowned多余symbol，修正fixture；逆序arena
+  depth3 member call随后暴露真实callee依赖缺失，修正共同依赖调度，
+  未放宽ownership或加局部shape分支。最终单一-j4十二target构建退出0，
+  26/26定向回归通过200.50秒；包括新深链、既有nullish/来源、实际十模块
+  navigation图、Index／constants／WindowUtil及显式构造回归。新增两项
+  后CTest注册574项，仅运行上述26项。三个mjs语法与git diff --check通过。
+  日志/tmp/abcd-optional-chain-{red,final}-tests-1.log、final-build-1.log、
+  final-details-1.log及tests-2/3/4.log保留真实失败与成功。
+- 固定五ABC六模式30次fresh ABC-only ValueTree导出退出0，SHA／size不变，
+  无legacy；636份源码全部解析，完整record无回退／新增。按default／
+  arithmetic／numeric／constructors／arithmetic+constructors／numeric+
+  constructors，complete/partial仍80/26、95/11、96/10、88/18、105/1、106/0，
+  每模式另46个no-module。每模式仅ShoppingAvoid11877源码变化，实际padding
+  已为?.topRect.height／?.bottomRect.height；外层不同reference形成的
+  conditional仍保留。212个现有entry_only／partial_methods映射文件逐模式
+  不变（该record两项positions为空），不称完整record source mapping；
+  独立fixture的member来源位置另验。日志/tmp/abcd-optional-chains-batch-1.log、
+  各mode-summary-1.json，产物build/stage-one/optional-chains-<mode>-pass-1。
+- 本次交付共同复合member spine，未将全部四页面的whole-record style改为
+  accepted。分离形成／一般alias transport／跨reference整体chain及optional
+  void statement表示仍是实现缺口；原结构gate和阶段一继续active。
+  106 source_complete仅为组合模式引擎输出状态，独立全部record行为与
+  高层表示门槛仍需各自证据。全套／expanded corpus／RSS／benchmark／agents／
+  scheduler/DFX／周期审计保持暂停；未重跑已暂停G2 global-call slice或旧
+  base_constructor_js_test，历史失败不伪装为通过。
+
 ### 2026-10-06：Index 导航十模块图与四个实际页面的组合行为
 
 - 基线e49a93a3，生产规则仍144。新增navigation_graph_source_test，按固定

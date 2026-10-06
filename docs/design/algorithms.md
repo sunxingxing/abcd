@@ -1651,6 +1651,52 @@ unprojected cases; this is not an admission limit on complete function recovery.
 Maintenance must preserve execution count, receiver/key order, target checks,
 TDZ, exception identity and original producer/instruction provenance.
 
+## Original member spines in nullish syntax (rule 145)
+
+The shared finite interpretation proves the same original null/undefined guards
+and ordered formation as above. A bottom-up MemberPath records the stable
+SymbolId/This owner and first guarded MemberExpr. MemberExpr.base and
+CallExpr.callee join the existing Kahn dependency queue; classification must
+wait for the callee's summary even when the expression arena is reversed. No
+sample identity, opcode/register sequence, CFG shape, same-block condition or
+producer whitelist is added. Keys and arguments remain original opaque owned
+expressions. A terminal member's direct stable base was a representation gap,
+not a language requirement.
+
+Typed optional member/call projections retain the original terminal member,
+first access and original forming base. One iterative printer action emits
+each original member in order, putting ?. only on that first access. Later
+mandatory members preserve TypeError; an intermediate group would end the
+chain and an extra optional link would suppress that exception. Original
+member-call receiver, key coercion/getter/argument effects, execution count and
+raw throw identity remain unchanged. Outside members/calls still end the
+projection. All retained member nodes keep nonzero origin ranges; omitted
+guards and reads keep their existing zero-width boundary at retained base.end.
+Printer, family emission and position serializer share one plan, without AST
+copies, recursive chain traversal or a separate source writer.
+
+For N expressions this adds O(N) summary storage, charged by TreeCheckBudget,
+and O(N) dependency/summary work. Including original arguments/properties/text
+interning, planner time remains O(N+A+P+M log(2+M)+C) and storage O(N+A+P+M),
+with C the previously documented UTF-16 comparison work. Printing visits each
+retained spine node once plus its actual source output; pending origin/key
+actions are charged to the existing stack budget. There is no per-candidate
+spine walk. This is the project's ECMA-262 2024 Optional Chains interpretation
+and Kahn implementation; no copied dependency or license change is introduced.
+
+96 common-tree fixtures exercise depth 1/2/3/200/201/402, computed/named keys,
+forming assignments, member calls and reversed arenas. 201-to-402 work checks,
+57,500 independent behavior cases, origin serialization and four valid-JS
+mutations cover the new boundary. Three profiles supply 276 actually decoded
+functions (five new compound/copy/split forms) and 61,824 behavior cases. Actual
+ShoppingAvoid inner padding chains now print natively and the ten-module
+navigation graph passes, but separated formations/general aliases, whole
+chains crossing distinct references and optional void statement projection
+remain representation gaps. These checks are not full-corpus RSS, latency
+benchmarks or all-record behavior/style acceptance. The older remaining-gap
+lists above describe their historical rule boundaries; optional call leaves
+have since been delivered and this rule covers their member spines.
+
 
 ## Conditional statement roots in shared decisions (rules 108)
 

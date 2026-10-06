@@ -2,10 +2,12 @@
 #define ABCD_SOURCE_NULLISH_SYNTAX_H_
 #include "tree_structure.h"
 namespace abcd::source {
-struct OptionalMemberSyntax { ExprId member; ExprId base; };
+// Keep the whole original member spine. Only access begins optional evaluation;
+// later links remain mandatory (x?.a.b must throw when a is nullish).
+struct OptionalMemberSyntax { ExprId member; ExprId base; ExprId access; };
 // Retain the original call/arguments. A member call guards its receiver and
 // keeps its reference; a value call guards the stored callable and stays indirect.
-struct OptionalCallSyntax { ExprId call; ExprId base; std::optional<ExprId> member; };
+struct OptionalCallSyntax { ExprId call; ExprId base; std::optional<ExprId> member; std::optional<ExprId> access; };
 struct NullishFallbackSyntax { ExprId value; ExprId fallback; };
 using NullishProjection = std::variant<OptionalMemberSyntax, OptionalCallSyntax, NullishFallbackSyntax>;
 enum class NullishForm : std::uint8_t { kOptionalMember, kOptionalCall, kFallback };

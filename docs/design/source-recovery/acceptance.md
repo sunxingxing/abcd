@@ -1,5 +1,19 @@
 # 验收、证据与实施交接
 
+2026-10-06复合成员链补充：规则145通过共同nullish解释、member path摘要及
+迭代printer恢复x?.a.b、x?.a[key]、x?.a.b(args)。只有原首个guarded access
+为optional，中间member的TypeError、原key／getter／参数／producer效果、
+receiver及来源范围保留。没有样本、同块、opcode/寄存器序列或shape准入。
+96个深度／arena／形成base组合、57,500组独立行为与4个有效JS mutation，
+276个三profile实际decoded函数／61,824场景，以及最终26/26回归通过。
+
+固定五ABC六模式30次fresh导出与636源码解析通过，完整数量不变。实际
+ShoppingAvoid11877的inner padding已原生?.topRect.height／?.bottomRect.height；
+外层不同reference形成的条件链及optional void statement表示仍开放，四页面
+whole-record style仍pending。现有record位置文件仍entry_only／partial_methods，
+该record两项positions为空，不能以逐字不变推断完整method mapping。构建、
+失败修复、剩余门槛与暂停范围见status.md；阶段一继续active。
+
 2026-10-06导航图补充：新增受控十模块组合行为验收。ABC-only显式
 numeric+constructors导出结束后才读paired TS；Index、ROUTES、四个实际
 页面及commons的真实re-export／定义模块在同一realm初始化。四个页面的

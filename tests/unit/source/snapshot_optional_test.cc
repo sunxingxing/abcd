@@ -19,8 +19,9 @@ using test::Check;
 namespace {
 enum class Form { kDirect, kReversedOperands, kNegated, kMissingUndefined, kDifferentResult, kCopiedSplit, kCallProducer, kComputed,
   kMemberCall, kComputedCall, kValueCall, kDifferentCallBase, kArgumentCall, kOutsideCall,
-  kReversedMemberCall, kCopiedMemberCall, kNegatedValueCall, kValueArgumentCall };
-bool CallForm(Form form) { return form >= Form::kMemberCall; }
+  kReversedMemberCall, kCopiedMemberCall, kNegatedValueCall, kValueArgumentCall,
+  kMemberChain, kComputedChain, kMemberChainCall, kComputedChainCall, kCopiedChainCall };
+bool CallForm(Form form) { return form >= Form::kMemberCall && form != Form::kMemberChain && form != Form::kComputedChain; }
 abc::MethodBody Body(unsigned count, Form form, abc::ProfileId profile) {
   const std::uint8_t parameter = CallForm(form) ? 3 : 2;
   std::vector<std::uint8_t> bytes;
@@ -50,12 +51,12 @@ abc::MethodBody Body(unsigned count, Form form, abc::ProfileId profile) {
   std::vector<std::pair<std::size_t, std::size_t>> exits;
   for (unsigned i = 0; i < count; ++i) for (const bool null : {true, false}) {
     if (!null && form == Form::kMissingUndefined) continue;
-    if (form == Form::kCopiedSplit || form == Form::kCopiedMemberCall) {
+    if (form == Form::kCopiedSplit || form == Form::kCopiedMemberCall || form == Form::kCopiedChainCall) {
       load(0); store(1);
       const auto split = jump(abc::Opcode::kJMP_IMM32); patch(split, bytes.size());
     }
     emit(null ? abc::Opcode::kLDNULL : abc::Opcode::kLDUNDEFINED);
-    std::uint8_t slot = form == Form::kCopiedSplit || form == Form::kCopiedMemberCall ? 1 : 0;
+    std::uint8_t slot = form == Form::kCopiedSplit || form == Form::kCopiedMemberCall || form == Form::kCopiedChainCall ? 1 : 0;
     if (form == Form::kReversedOperands || form == Form::kReversedMemberCall) { store(1); load(0); slot = 1; }
     const bool negated = form == Form::kNegated || form == Form::kNegatedValueCall;
     emit(negated ? abc::Opcode::kSTRICTEQ_IMM8_V8 : abc::Opcode::kSTRICTNOTEQ_IMM8_V8);
@@ -72,6 +73,14 @@ abc::MethodBody Body(unsigned count, Form form, abc::ProfileId profile) {
   } else if (form != Form::kValueCall && form != Form::kNegatedValueCall && form != Form::kValueArgumentCall) {
     emit(abc::Opcode::kLDOBJBYNAME_IMM8_ID16); bytes.insert(bytes.end(), {0, 3, 0});
   }
+  if (form >= Form::kMemberChain) {
+    store(1);
+    if (form == Form::kComputedChain || form == Form::kComputedChainCall) {
+      read(5); emit(abc::Opcode::kLDOBJBYVALUE_IMM8_V8); bytes.insert(bytes.end(), {0, 1});
+    } else {
+      load(1); emit(abc::Opcode::kLDOBJBYNAME_IMM8_ID16); bytes.insert(bytes.end(), {0, 3, 0});
+    }
+  }
   if (CallForm(form) && form != Form::kOutsideCall) {
     if (form == Form::kArgumentCall || form == Form::kValueArgumentCall) {
       store(1); read(4); store(2); load(1);
@@ -81,7 +90,7 @@ abc::MethodBody Body(unsigned count, Form form, abc::ProfileId profile) {
       emit(abc::Opcode::kCALLARG0_IMM8); bytes.push_back(0);
     } else {
       emit(abc::Opcode::kCALLTHIS0_IMM8_V8);
-      bytes.insert(bytes.end(), {0, form == Form::kDifferentCallBase ? parameter : std::uint8_t{0}});
+      bytes.insert(bytes.end(), {0, form == Form::kDifferentCallBase ? parameter : form >= Form::kMemberChain ? std::uint8_t{1} : std::uint8_t{0}});
     }
   }
   const auto skip = jump(abc::Opcode::kJMP_IMM32);
@@ -153,9 +162,9 @@ Generated Source(unsigned count, Form form, abc::ProfileId profile) {
 }
 }
 int main() {
-  std::array<std::uint64_t, unsigned(Form::kValueArgumentCall) + 1> baseline{};
+  std::array<std::uint64_t, unsigned(Form::kCopiedChainCall) + 1> baseline{};
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
-    for (const auto count : {1u, 200u, 201u, 402u}) for (unsigned form = 0; form <= unsigned(Form::kValueArgumentCall); ++form) {
+    for (const auto count : {1u, 200u, 201u, 402u}) for (unsigned form = 0; form <= unsigned(Form::kCopiedChainCall); ++form) {
       const auto source = Source(count, Form(form), profile);
       if (count == 201) baseline[form] = source.work;
       if (count == 402) Check(source.work < 3 * baseline[form]);

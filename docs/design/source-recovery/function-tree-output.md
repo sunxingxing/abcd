@@ -355,7 +355,7 @@ work 统计和调用方显式传入有限额度的底层兼容接口保留，但
 整份 record 的最终目标不变。演进任务见
 [C00–C09 计划](../../superpowers/plans/2026-09-28-unified-control-regions.md)。
 
-## 原生空值语法的表示（规则 104、105、107）
+## 原生空值语法的表示（规则 104、105、107、145）
 
 PlanNullishSyntax在已经检查的FunctionTree上解释null、undefined、other
 三个语言值域，证明nullish路径返回undefined、其他路径恰好执行同一个
@@ -369,6 +369,16 @@ MemberExpr。纯谓词按typed SymbolId/ThisExpr.owner关联稳定读取，支�
 因成员文本改变this/direct-eval语义。nullish路径不计算key、不读取getter；
 非nullish路径仍保留原key转换、receiver和异常。依据
 [ECMA-262 2024 Optional Chains](https://tc39.es/ecma262/2024/multipage/ecmascript-language-expressions.html#sec-optional-chains)。
+
+规则145以原MemberExpr.base及CallExpr.callee的共同依赖调度，逐节点保存
+member path摘要，解除terminal member的直接base必须稳定的表示限制。
+typed投影保留首个guarded access、terminal member及原形成base，迭代
+printer在同一次chain中输出x?.a.b／x?.a[key]／x?.a.b(args)。后续member
+必须保留原TypeError，不能加?.或中途括号；key/getter/参数及callee receiver
+保持原执行次序和次数。所有保留member仍有独立非零range；省略谓词／读
+仍沿共同位置计划落在原base.end。没有逐候选chain重走、额外AST或文本
+匹配。分离形成、一般alias与跨reference整体chain、optional void statement
+仍属表示缺口；未投影时继续输出原完整条件，不能拒绝原已恢复函数。
 
 不改FunctionTree、CFG、operand或原instruction来源。被省略的测试与原
 分支节点在已打印base.end、原生?.之前保留零宽事件，位置序列化标记

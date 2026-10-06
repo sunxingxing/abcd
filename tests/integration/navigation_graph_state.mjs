@@ -314,7 +314,7 @@ export async function verifyNavigationBatch(sources, reference, request) {
   for (const [page, before, after, config = {}] of [
     ['Shopping', 'super(parent, __localStorage, elmtId, extraInfo)', 'super(parent, params, elmtId, extraInfo)'],
     ['Shopping', '($local0 = this);', '($local0 = globalThis);'],
-    ['ShoppingAvoid', '$value5.topRect.height', '($value5.topRect.height + 1)'],
+    ['ShoppingAvoid', '?.topRect.height', '?.topRect.height + 1'],
     ['ShoppingAvoid', 'this.__windowUtil.aboutToBeDeleted();', 'this.__windowUtil.get();'],
     ['MiniGame', '$value0.setSystemBarEnabled(false);', '$value0.setSystemBarEnabled(true);'],
     ['MiniGame', 'new $value7($phi6, this, "mainWindowInfo")', 'new ObservedPropertyObjectPU($phi6, this, "mainWindowInfo")', {swapAt: capturedClassSite[0]}],

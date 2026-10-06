@@ -121,7 +121,7 @@ int main(int argc, char** argv) {
     for (const bool reversed : {false, true}) {
       Syntax syntax; syntax.Build(form, count);
       if (reversed) syntax.ReverseArena();
-      const bool accepted = form <= Form::kOuterMember || form >= Form::kDeadCall;
+      const bool accepted = form <= Form::kOuterMember || form == Form::kEffectfulBase || form >= Form::kDeadCall;
       const auto result = PlanNullishSyntax(syntax.tree);
       Check(std::holds_alternative<NullishSyntax>(result));
       const auto& plan = std::get<NullishSyntax>(result);
@@ -142,7 +142,7 @@ int main(int argc, char** argv) {
       if (accepted) {
         for (std::size_t i = 0; i < plan.omitted_by.size(); ++i)
           if (plan.omitted_by[i]) {
-            const auto base = std::get<MemberExpr>(syntax.tree.expressions[syntax.member.value].expression).base;
+            const auto base = plan.Base(syntax.tree, syntax.selection);
             Check(positions.expressions[i] == GeneratedRange{positions.expressions[base.value].end, positions.expressions[base.value].end});
           } else Check(positions.expressions[i].begin < positions.expressions[i].end);
         for (std::size_t i = 0; i < plan.omitted_properties_by.size(); ++i)

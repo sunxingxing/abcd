@@ -1,5 +1,18 @@
 # 按用户要求进行的恢复条件审计
 
+规则145补充：nullish投影要求terminal member的直接base是稳定reference，
+是复合member spine的表示缺口，不是语言约束。现在共同MemberExpr.base／
+CallExpr.callee依赖调度自底向上保存首个access及SymbolId／This owner，
+一次摘要即可投影任意长度的原member chain。named／computed keys与参数
+保留原ownership，未增加producer名单、操作序列、selection数量、同块、
+邻接、寄存器／PC、graph shape或样本分派。原三域guard／形成次序／TDZ／
+identity／effects／exception证明不变。printer只在首个access加入?.，后续
+member mandatory，并保留真实callee receiver与原节点range；中途加?.或
+括号的错误mutation必须被检出。逆序arena暴露的callee依赖缺失由共同
+工作队列修正，不能按depth或arena顺序特判。分离形成、一般alias transport
+和跨reference整体chain仍是表示缺口，不当作完整函数恢复的拒绝条件；
+详细200/201/402、三profile decoded及实际record证据见status.md。
+
 规则143补充：移除TreeGlobals的整函数局部名称union准入，接入原共同
 structure遍历的实际active lexical scope。global、realm、Symbol和arguments
 工厂读取共用spelling索引；不按兄弟块数量、布局、声明邻接或名字名单
