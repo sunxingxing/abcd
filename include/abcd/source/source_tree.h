@@ -234,8 +234,8 @@ struct TryStmt {
   std::optional<StmtId> finalizer;
 };
 // Canonical verified loop ownership retains its header predicate in the body.
-// LoopSyntax projects expression-only completion prefixes into native while
-// after verification; header effects, copies and transfer identities remain here.
+// LoopSyntax projects owned completion prefixes/transitions into while/for
+// after verification; effects, copies and transfer identities remain here.
 struct LoopStmt { StmtId body; std::optional<LabelId> label; };
 // Targets are enclosing syntax owners, never CFG/region IDs. Outer transfers
 // carry a preassigned label; the printer must not infer or retarget a jump.

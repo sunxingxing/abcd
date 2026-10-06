@@ -325,7 +325,7 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // the common structure walk; sibling declarations are not shadowing evidence.
 // Rules 144 lay out nested literals through typed AST ownership and distinguish
 // aggregate AssignmentExpression values from ambiguous statement beginnings.
-inline constexpr std::uint32_t kRouteEvidenceRules = 149;
+inline constexpr std::uint32_t kRouteEvidenceRules = 150;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

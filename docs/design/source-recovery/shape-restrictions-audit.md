@@ -1,5 +1,20 @@
 # 按用户要求进行的恢复条件审计
 
+规则150补充：共同completion摘要区分owned break/continue；继续程序由
+条件实际读取的绑定、符号定义依赖和原操作序形成，不依据++/opcode/
+寄存器/PC、生产名字、样本路径、局部序列或固定guard/COPY数量选择。
+全部continue目标在所选程序中的覆盖证明执行次数；break/return/throw
+保留body。覆盖计数没有固定阈值，是各个原transfer身份的完整覆盖，
+不在另一份完成路径证明之后新增布局条件。
+
+只跨无绑定/label的语言block，Expr/Block/If按同一完成代数组合；原
+scope/TDZ、handler及每轮环境保护保持。Try/声明、一般分离继续程序和
+member alias状态更新仍是实现表示边界，不能叫VM禁止for。原初始化
+不移动，canonical AST及source identity不改变；不能按当前PasteBoard
+最后一个循环新增branch/update图形匹配。three-profile COPY/register/
+split、arena重排、条件update、部分写入throw、await/yield和scope/handler
+反例的定向证据见status.md。风格仍有初始化、phi及每轮绑定缺口。
+
 规则149补充：首次ValueCopy只因输入是SSA ValueId就保留snapshot，是
 表示限制，不能在共同availability/unique-use/no-write/effect/exception
 事实成立之后另作准入。现在用EvaluationLiveness的typed存储lifetime替代

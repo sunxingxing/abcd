@@ -39,13 +39,14 @@ const loops = [];
 const pending = [parseJavaScript(sources[page])];
 while (pending.length) {
   const node = pending.pop();
-  if (node.type === 'WhileStatement') loops.push(node);
+  if (node.type === 'WhileStatement' || node.type === 'ForStatement') loops.push(node);
   for (const child of Object.values(node)) {
     if (Array.isArray(child)) pending.push(...child.filter(item => item?.type));
     else if (child?.type) pending.push(child);
   }
 }
 assert.equal(loops.length, 3);
+assert.equal(loops.filter(loop => loop.type === 'ForStatement' && loop.update).length, 2, 'native carried-state transitions');
 assert.ok(loops.every(loop => loop.test.type !== 'Literal' || loop.test.value !== true), 'native loop conditions');
 const worker = fileURLToPath(new URL('./rich_text_record_worker.mjs', import.meta.url));
 const run = (cases, extra = {}, changed = sources) => {

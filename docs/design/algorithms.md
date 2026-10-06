@@ -5,6 +5,24 @@
 
 ## 输入规模与成本
 
+### 循环继续程序与 for update（2026-10-07，规则150）
+
+复用共同LoopCompletionMeaning与原唯一AST ownership，在条件实际读取
+的SymbolId上种下更新目标；一次definition census与statement Euler区间
+索引建立依赖，扩展有序程序时保留全部中间操作。继续目标全覆盖、原
+scope/handler/完成义务决定表达式能否移动，不以++、opcode或CFG形状
+猜测for。N为statements/expressions/children/symbols/scopes，R为依赖读：
+O(N + R log N)时间、O(N)存储；所有buffer经共同budget申请，定义区间
+查询二分，不反复逐变量走CFG。源码、原来源与typed耗尽保持。
+
+语言来源固定[ECMAScript 2024 ForBodyEvaluation](https://tc39.es/ecma262/2024/multipage/ecmascript-language-statements-and-declarations.html#sec-forbodyevaluation)
+及LoopContinues；分析代码是本项目实现，遵循项目许可，无新第三方实现/
+依赖。现空initializer不引入每轮lexical binding；member location alias、
+分离继续程序、跨handler/binding和initializer仍有表示缺口，维护责任在
+loop_syntax/loop_transition/common printer。108份独立树/72实际解码与
+400/800 work检查、typed耗尽及实际record定向证据见source-recovery/status。
+该测试work计数不是全语料RSS/benchmark；暂停的测量未恢复。
+
 ### 精确 Boolean 值域与选择来源归属（2026-10-06）
 
 规则141沿原有限高度格与sparse依赖worklist传播Boolean⊂Boolean/null⊂

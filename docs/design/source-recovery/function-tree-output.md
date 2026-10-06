@@ -21,6 +21,38 @@ Printer 处理节点、名字、括号、转义、标签、注释和已有输出
 模式，不补推 CFG、finally 或闭包，不调用专项 body writer。无原名可用合成名，
 无独立 PC 的结构节点保留结构来源；不补造原名、类型、PC 或可执行占位行为。
 
+## 循环继续程序与原生 for 更新（规则 150）
+
+LoopSyntax的共同LoopCompletionMeaning区分normal、owned break与owned
+continue。原LoopStmt/FunctionTree保持不变；在已验证树上按条件读取的
+SymbolId寻找绑定更新，用同一函数的唯一定义索引扩展依赖，并保留两者
+之间的全部操作。所得有序继续程序投影到`for (; condition; update)`，
+不匹配++、opcode、寄存器/PC、样本名或局部编译器序列。
+
+继续程序必须覆盖原loop的全部continue目标；这是共同完成路径覆盖，
+不是固定数量的模式准入。compositional Block/If用comma/AND/conditional
+保持原执行/停止次序，break/return/throw留在body并跳过update。只省略
+无效果的最终constant completion/continue，原ExprId/StmtId和anchor仍
+保留输出事件；body中的其余语句保持原block/scope/handler。原bound-
+name/label检查保护作用域，Try/声明等无法表达的completion保留原位。
+
+语言依据为[ECMAScript 2024 ForBodyEvaluation](https://tc39.es/ecma262/2024/multipage/ecmascript-language-statements-and-declarations.html#sec-forbodyevaluation)
+和LoopContinues。当前初始化项为空，不创建for lexical declaration的每轮
+绑定环境，也不猜测原初始化/变量名。AST ownership census/Euler区间和
+符号定义索引是本项目实现；无新增第三方代码或依赖，维护在loop_syntax/
+loop_transition/common printer。N为statement/expression/child/symbol/scope
+规模，R为依赖读取：O(N + R log N)时间、O(N)空间；disjoint程序只扫描
+固定次数，依赖用二分区间查找，不逐变量重复遍历CFG。原预算耗尽保留
+typed错误，单位测试检查400→800 work增长，不恢复暂停的RSS/benchmark。
+当前输出是function/ESM，函数返回保持原explicit ReturnStmt；这里的
+normal摘要表示完成控制，不把循环语句的内部completion value当作
+script eval结果或用于恢复返回值。没有新增script打印入口。
+
+跨binding/handler、member-location alias更新、一般多入口继续程序、
+native initializer/每轮binding与phi/update临时值消除仍是表示缺口，
+不描述为语言/VM限制。具体解码/独立行为、scope/throw/await/yield反例
+及实际record证据见status.md；两个实际for不能代替阶段一完整body风格。
+
 ## 首次 phi 读取与存储生命周期（规则 149）
 
 EvaluationLiveness的RetainedEvaluationLifetime把既有源码存储描述为typed

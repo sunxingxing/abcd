@@ -12,6 +12,66 @@
 
 ## 当前阶段
 
+### 2026-10-07：规则150，共同完成路径与 for 更新程序
+
+- 基线b8ae3902，production/rules149推进150。LoopSyntax共用typed
+  LoopCompletionMeaning区分normal/owned break/owned continue；canonical
+  LoopStmt、FunctionTree及原control/evaluation/scope/来源校验保持。
+  新loop_transition按条件实际读取的SymbolId选定绑定更新，用唯一
+  statement定义索引和Euler区间扩展依赖，保留中间所有操作及异常部分
+  写入顺序。原owned continue身份的全覆盖证明更新程序执行次数，
+  不是固定次数的匹配。声明/handler/label等未证明可跨越的边界保留。
+- 共同printer输出for(; condition; update)，原body和break/return/throw
+  保留；程序内条件/提前继续按原comma/AND/conditional完成代数表达。
+  省略的最终纯completion/continue仍有零宽StmtId/anchor事件，全部
+  ExprId及来源不复制、不换图。VisitStatementExpressions与既有children
+  接口共用语言ownership，不识别++、opcode序列、PC/register、名字、
+  sample/sidecar、producer名单、same-block或固定COPY/guard数量。
+- 语言依据为ECMAScript 2024 ForBodyEvaluation/LoopContinues，文档固定
+  原文链接；不引入新依赖或第三方代码。N为statement/expression/children/
+  symbols/scopes，R为依赖读：O(N + R log N)时间、O(N)存储，scratch经
+  共同预算，原typed耗尽保留。scope/handler/binding和一般分离继续程序
+  的限制是表示缺口，不称为VM不变量。仅输出空initializer，不擅自
+  恢复变量名、原let或每轮环境；完整原生for/body风格仍未完成。
+- 新表示断言在旧引擎phase_copy_source_test先RED（0个ForStatement）；
+  原三profile72个实际解码register/COPY/split/handler变体后续通过，
+  保留2088独立行为及216有效JS错误mutation。新loop_transition_test/
+  source_test共108树：九种完成/作用域/handler/async/generator场景、
+  0/1/200/201/400/800前缀、0→801透明块、正反arena；共同syntax校验后
+  打印。独立2418次行为比较和14有效JS mutation覆盖原throw/状态身份、
+  部分写入顺序、receiver、job和yield throw请求；fault为有界采样，
+  非every-event。普通前缀与深层block两组400→800 work均小于3倍，
+  字节耗尽及全部expression/statement/anchor范围另验，不恢复RSS测试。
+- 初次构建漏forward-declare TreeCheckBudget已修正；首次新增target的
+  make图刷新后再构建。夹具form4替换mark留下未归属statement而失败，
+  改为创建时选择原AST节点；新增anchor未提供唯一OpPlacement时，首轮
+  20项18/20通过77.03秒，修正测试合法性后再验。没有据这些夹具失败
+  放宽生产校验。首轮失败stdout保留，native日志被随后CTest -N覆盖，
+  不冒充保留了该轮完整native输出。
+- 最终20项20/20通过69.52秒，覆盖phase/reference/copies/exception/
+  liveness、loop syntax/transition/condition、普通/共享loop exit、closure、
+  generator finally/return-loop、optional statement与实际ProgressBar/
+  富文本。最后meaning类型命名和透明块深度扩展后，相关七项另轮7/7
+  通过26.57秒；最后不是假称二十项同轮重跑。actual rich矩阵70配置/
+  1030原throw/206换绑/18 mutation/2等价，ProgressBar 88配置/570原throw/
+  114换绑/15 mutation/2等价保持。受控平台不能代替设备SDK运行。
+- abc_structure/abc_semantic和十一项相关fixture target -j4构建退出0；
+  最后五项重建也退出0。600项仅注册；三个新增/修改mjs的node --check
+  和git diff --check通过。最终native日志/tmp/abcd-loop-transition-native-
+  tests-final-2.log和native-tests-deep-final.log；build/export/style/registration
+  及旧失败日志同/tmp/abcd-loop-transition-*前缀，各轮事实分开。
+- fresh pasteboard ABC-only显式numeric+constructors导出19 records、
+  10complete source/0partial/9noModule，路径build/stage-one/loop-transition-final。
+  最后命名/深块版本fresh再导出，与loop-transition-pass-1的所有source
+  逐字相同，独立AST/style及source-equality日志另存。
+  实际PasteBoard两个嵌套遍历已有原生for/update，第三个loop仍while；
+  私有$value49/$phi10保持，未隐藏SSA搬运。paired source不进引擎，
+  输入未修改，固定五ABC106/0仍是历史证据。record测试另断言两个for。
+  下一步继续initializer/native binding、分离继续程序和SSA更新表示，
+  不按最后一个样本循环形状加分支。阶段一Goal和原fields/globals/
+  signatures/body gate保持active；full suite、expanded corpus、RSS/
+  benchmark、DFX、scheduler、agents及周期audit保持暂停。
+
 ### 2026-10-07：规则149，首次 phi 读取复用共同存储/求值证明
 
 - 基线462e449c，production/rules148推进149。PhaseCorridors原先把首次

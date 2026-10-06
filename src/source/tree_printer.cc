@@ -56,8 +56,9 @@ struct BooleanOperand { ExpressionOperand expression; bool inverted; };
 struct PostfixSpine { ExprId expression; ExprId access; ExprId base; };
 struct Statement { StmtId id; std::size_t depth; };
 struct EndStatement { StmtId id; };
-struct LoopHeader { StmtId id; std::optional<StmtId> retained; };
-struct LoopHeaderCursor { StmtId block; std::uint32_t index; std::uint32_t count; std::optional<StmtId> retained; };
+struct LoopHeader { StmtId id; std::optional<StmtId> retained; bool discarded = false; };
+struct LoopHeaderCursor { StmtId block; std::uint32_t index; std::uint32_t count; std::optional<StmtId> retained; bool discarded = false; };
+struct LoopTransitionEnd { StmtId block; std::uint32_t first; };
 struct ElideLoopHeader { StmtId id; };
 struct LoopBody { StmtId block; LoopConditionSyntax syntax; std::size_t depth; };
 struct BlockCursor { StmtId id; std::uint32_t index; std::size_t depth; };
@@ -80,7 +81,7 @@ struct ParameterCursor { std::uint32_t index; };
 struct EndParameter { std::uint32_t index; };
 using PrintAction = std::variant<std::string_view, ExprId, EndExpression, ExpressionOperand, BooleanOperand, PostfixSpine,
     Statement, EndStatement, BlockCursor, Indent, PropertyKey, SymbolName, ArgumentCursor,
-    ObjectCursor, EndProperty, BeginFunction, EndFunction, ParameterCursor, EndParameter, SnapshotCursor, DerivedClassBody, ArrayArgumentCursor, LoopHeader, LoopHeaderCursor, ElideLoopHeader, LoopBody>;
+    ObjectCursor, EndProperty, BeginFunction, EndFunction, ParameterCursor, EndParameter, SnapshotCursor, DerivedClassBody, ArrayArgumentCursor, LoopHeader, LoopHeaderCursor, ElideLoopHeader, LoopBody, LoopTransitionEnd>;
 struct OwnedAction { std::size_t owner; std::size_t depth; PrintAction action; };
 struct LocatedAnchor { BlockBoundary boundary; AnchorId id; };
 struct OwnerTree { FunctionOwnerId owner; std::size_t member; };
@@ -1310,8 +1311,14 @@ class TreePrinter {
   void StatementNode(LoopStmt node, Statement at) {
     if (node.label) { Label(*node.label); Append(": "); }
     if (const auto& syntax = Loops().conditions[at.id.value]) {
-      Append("while (");
+      const auto& transition = Loops().transitions[at.id.value];
+      Append(transition ? "for (; " : "while (");
       Push(LoopBody{node.body, *syntax, at.depth}); Push(std::string_view(") "));
+      if (transition) {
+        Push(LoopTransitionEnd{transition->block, transition->end});
+        Push(LoopHeaderCursor{transition->block, transition->first, transition->end, {}, true});
+        Push(std::string_view("; "));
+      }
       Push(LoopHeaderCursor{node.body, 0, syntax->header_count, syntax->body});
     } else {
       Append("while (true) "); Push(Statement{node.body, at.depth});
@@ -1332,12 +1339,12 @@ class TreePrinter {
     Result().statements[at.id.value].begin = written_; Push(EndStatement{at.id});
     const auto& node = Tree().statements[at.id.value].statement;
     if (const auto* effect = std::get_if<ExpressionStmt>(&node)) {
-      Append("("); Push(std::string_view(", true)"));
+      Append("("); Push(std::string_view(at.discarded ? ")" : ", true)"));
       Push(ExpressionOperand{effect->expression, {ExpressionGrammar::kAssignmentValue}, {}, ExpressionObservation::kDiscarded});
-    } else if (std::holds_alternative<BreakStmt>(node)) Append("false");
+    } else if (std::holds_alternative<BreakStmt>(node) || std::holds_alternative<ContinueStmt>(node)) Append("false");
     else if (const auto* block = std::get_if<BlockStmt>(&node)) {
       Append("("); Push(std::string_view(")"));
-      Push(LoopHeaderCursor{at.id, 0, block->child_count, at.retained});
+      Push(LoopHeaderCursor{at.id, 0, block->child_count, at.retained, at.discarded});
     } else {
       const auto& branch = std::get<IfStmt>(node);
       const auto literal = [&](std::optional<StmtId> arm) -> std::optional<bool> {
@@ -1375,16 +1382,23 @@ class TreePrinter {
     const bool follows = at.index + 1 < at.count;
     if (follows) {
       if (meaning.exit) Push(std::string_view(")"));
-      Push(LoopHeaderCursor{at.block, at.index + 1, at.count, at.retained});
+      Push(LoopHeaderCursor{at.block, at.index + 1, at.count, at.retained, at.discarded});
       Push(std::string_view(meaning.exit ? " && (" : ", "));
     } else {
       // Keep the boundary after the last header child at the predicate end.
-      Push(LoopHeaderCursor{at.block, at.count, at.count, at.retained});
+      Push(LoopHeaderCursor{at.block, at.count, at.count, at.retained, at.discarded});
     }
     if (const auto* effect = std::get_if<ExpressionStmt>(&Tree().statements[child.value].statement); effect && follows) {
       Result().statements[child.value].begin = written_; Push(EndStatement{child});
       Push(ExpressionOperand{effect->expression, {ExpressionGrammar::kAssignmentValue}, {}, ExpressionObservation::kDiscarded});
-    } else Push(LoopHeader{child, at.retained});
+    } else Push(LoopHeader{child, at.retained, at.discarded && !follows});
+  }
+  void Run(LoopTransitionEnd at) {
+    const auto& block = std::get<BlockStmt>(Tree().statements[at.block.value].statement);
+    for (auto i = at.first; i <= block.child_count; ++i) {
+      Step(); Boundary({at.block, i});
+      if (i < block.child_count) Push(ElideLoopHeader{Tree().children[block.first_child + i]});
+    }
   }
   void Run(LoopBody at) {
     Result().statements[at.block.value].begin = written_; Push(EndStatement{at.block});
@@ -1431,9 +1445,11 @@ class TreePrinter {
   void Run(EndStatement end) { Result().statements[end.id.value].end = written_; }
   void Run(BlockCursor at) {
     const auto& block = std::get<BlockStmt>(Tree().statements[at.id.value].statement);
-    Boundary({at.id, at.index});
+    const auto tail = Loops().tail_starts[at.id.value];
+    const auto end = tail.value_or(block.child_count);
+    if (!tail || at.index < end) Boundary({at.id, at.index});
     const bool root = ModuleBody() && at.id == Tree().body;
-    if (at.index == block.child_count) { if (!root) { Run(Indent{at.depth}); Append("}"); } return; }
+    if (at.index == end) { if (!root) { Run(Indent{at.depth}); Append("}"); } return; }
     Push(BlockCursor{at.id, at.index + 1, at.depth});
     if (at.id == Tree().body && at.index + 1 == block.child_count) {
       if (const auto completion = ImplicitTailCompletion(Tree())) {

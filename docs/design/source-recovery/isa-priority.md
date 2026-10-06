@@ -1,5 +1,19 @@
 # 全 ISA 优先执行顺序
 
+2026-10-07 规则150：共同完成摘要/continue目标覆盖、条件绑定读取与
+唯一statement定义依赖恢复for更新程序，原canonical AST/来源保持。
+不匹配++、opcode/寄存器/PC、样本/名字、固定guard/COPY数量或局部序列。
+108个scope/handler/条件更新/await/yield/arena/200/201/深块树完成2418
+独立行为及14有效错误mutation；三profile72 decoded仍2088比较/216
+mutation通过。20项定向20/20，最后深块/命名扩展相关七项另轮7/7，
+完整失败修正和验证范围见status.md，不以测试范围代替全阶段。
+
+fresh pasteboard仍10complete/0partial/9noModule；两个实际嵌套遍历已有
+for(;condition;update)，第三个保持while。初始化、每轮native binding、
+分离继续程序/SSA更新和完整body/style仍未完成，原结构gate及阶段一
+Goal保持。actual ProgressBar/富文本受控矩阵通过；原五ABC106/0未重跑，
+全套/扩展语料/RSS/DFX/agents暂停保持，paired正文不进引擎。
+
 2026-10-07 规则149：移除首次phi ValueCopy因SSA输入而一律保留snapshot
 的限制。共同EvaluationLiveness提供typed存储lifetime，phase planner/verifier
 复用原availability/unique-use/PhiCopies epoch/effect/catch证明。catch

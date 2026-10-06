@@ -34,7 +34,7 @@ for (const row of rows) {
   const pending = [parsed], loops = [], types = [], steps = [];
   while (pending.length) {
     const node = pending.pop();
-    if (node.type === 'WhileStatement') loops.push(node);
+    if (node.type === 'ForStatement') loops.push(node);
     if (node.type === 'UnaryExpression' && node.operator === 'typeof') types.push(node);
     if (node.type === 'CallExpression') {
       const callee = node.callee.type === 'SequenceExpression' ? node.callee.expressions.at(-1) : node.callee;
@@ -47,6 +47,7 @@ for (const row of rows) {
   }
   assert.equal(loops.length, 1); assert.equal(types.length, 1); assert.equal(steps.length, 1);
   assert.notEqual(loops[0].test.type, 'Literal');
+  assert.ok(loops[0].update, 'carried state update remains native');
   for (const [initial, next] of cases) {
     const expected = observe(original, initial, next, Infinity);
     compare(observe(generated, initial, next, Infinity), expected); ++comparisons;
