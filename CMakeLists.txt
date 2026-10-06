@@ -1451,6 +1451,16 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/progressbar_record.mjs $<TARGET_FILE:abc_structure>
         ${ABCD_PAIRED_CORPUS_ROOT}/pasteboard)
       set_tests_properties(progressbar_record_source_test PROPERTIES RUN_SERIAL TRUE)
+      if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/pasteboard_src/src/main/ets/pages/PasteBoard.ts" AND
+         EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/pasteboard_src/src/main/ets/pages/ShareDitect.ts" AND
+         EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/pasteboard_src/src/main/ets/pages/PageA.ts" AND
+         EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/pasteboard_src/src/main/ets/pages/PageB.ts" AND
+         EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/pasteboard_src/src/main/ets/common/CommonConstants.ts")
+        add_test(NAME rich_text_record_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals --experimental-vm-modules
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/rich_text_record.mjs $<TARGET_FILE:abc_structure>
+          ${ABCD_PAIRED_CORPUS_ROOT}/pasteboard)
+        set_tests_properties(rich_text_record_source_test PROPERTIES RUN_SERIAL TRUE)
+      endif()
     endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
       if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/minigame/src/main/ets/view/Content.ts")

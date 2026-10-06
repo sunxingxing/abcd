@@ -12,6 +12,61 @@
 
 ## 当前阶段
 
+### 2026-10-07：富文本、ShareDirect 与 PageA/PageB 五模块行为对照
+
+- 基线7dea75b4，production/rules147保持。本轮补齐实际PasteBoard完整
+  constructor/initializer、aboutToAppear、render、copy/paste、HTML method
+  与ShareDirect导航正文的独立行为证据。新rich_text_record_source_test
+  从ABC-only显式numeric+constructors先导出，结束后才读五份paired TS；
+  实际CommonConstants、ShareDitect、PageA、PageB ESM直接相连。ShareDirect
+  原push callback调用已注册的实际PageA/B builder，不替换child body。
+- 四种view都实际构造/render，storage/cell、ready新path、late params及
+  purge/delete另执行。图片buffer.slice、MutableStyledString/attachment
+  拼接、HTML/纯文本/pixel按record/type嵌套遍历、跨await getData、copy的
+  html/text/pixel entry、clipboard写入与toast执行实际源码。空record/
+  类型、200/201 record、数量变化、type length/index getter、falsy spans/
+  result、空白/null/number HTML、sync/deferred UI及正反request调度另验。
+- test-only ViewPU边界从ProgressBar提取为共同view_protocol，复用原
+  NativeRequests及GraphTrace，真实应用body保持。typed SDK语义由受控
+  StyledString/controller/record/image/path协议提供，独立记录全部内容、
+  entry/descriptor/alias、pixel与controller身份；不接触系统剪贴板。
+  Native request/then/catch/async链完整settle，原throw identity与platform
+  rejection分开。discarded HTML async的apply Proxy观察精确返回Promise，
+  包括首个await前的拒绝；target body/receiver/signature保持，但Proxy有
+  独立callable身份。export图在代理前保存，本图不证明该代理下method
+  identity的任意观察，也不宣称真实SDK或所有prototype拦截已完成。
+- 初始66配置/990 throw/198换绑/12 mutation通过。新增移除slice(0)的
+  有效JS mutation先RED：宿主只看buffer字节，错误仍比较相等。现原media
+  array/buffer与新image buffer各按身份记录，同时保留字节；该错误及
+  像素被同尺寸对象替换均被检出。explicit null HTML不因默认值操作符
+  被换成有效字符串，原未等待的HTML拒绝也完整记录。没有生产样本、
+  名字、同块、PC/register、序列或图形条件。
+- 首轮正式六项定向6/6通过21.00秒，包含原ProgressBar全记录、copy246、
+  Home、PageA及reference adapter；当时新图68配置、1030原throw、206
+  live-import换绑、13 mutation。扩展后最终新图单独1/1通过12.26秒：
+  70配置、1030原throw、206换绑、18有效JS mutation及2等价captured-this/
+  词法this变体。两baseline各103 distinct host boundary采样，非every-
+  event故障覆盖；正常baseline668事件，五模块evaluated、四view真实
+  render与全部request结算另验。原六项未冒充最终同轮重跑。
+- 表示验收尚未完成：native class/method/kind/async/formal/default/rest
+  及runtime export/signature比较通过，独立AST核对paired有三个ForStatement，
+  生成源码是三个WhileStatement(true)，并保留header条件拆分和phi搬运。
+  共同LoopStmt目前仅有body/label，printer固定while(true)；这个表示缺口
+  必须沿共同控制/求值、loop transition及binding分析继续还原，不能靠
+  PasteBoard名字或局部指令/graph pattern投影for，也不能用行为通过关闭
+  全body/style门槛。原catch里的未调用箭头及未等待HTML按源码保留。
+- configure两次退出0，594项注册；abc_structure／abc_semantic -j4构建
+  退出0。新五份mjs及修改ProgressBar mjs语法、git diff --check通过；
+  最终native输出/tmp/abcd-rich-text-record-native-tests-2.log，首轮六项
+  native-tests-1.log；buffer身份RED及view抽取回归另存。日志前缀
+  /tmp/abcd-{rich-text-record,rich-text-buffer-identity,rich-view-protocol,
+  pasteboard-rich-export}-*。没有残留进程，输入SHA/size核对原index且未修改。
+- 本轮fresh pasteboard导出，不扩大语料；此前固定五ABC106/0仍为历史
+  证据，不声称重新全量验收。阶段一Goal、完整pasteboard图、原instance
+  fields/globals/signatures/body gate及其他record行为/表示继续active。
+  full suite、expanded corpus、RSS/benchmark、DFX、生产scheduler、agents
+  与周期audit保持暂停。本次不会把受控语义矩阵替代循环风格或阶段完成。
+
 ### 2026-10-07：ProgressBar 真实构造、渲染、复制与粘贴进度贯通验收
 
 - 基线7a45327b，production/rules147保持。原progressbar_cell_reference

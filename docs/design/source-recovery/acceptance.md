@@ -1,5 +1,21 @@
 # 验收、证据与实施交接
 
+2026-10-07 富文本图补充：ABC-only先生成后读paired TS，实际PasteBoard/
+CommonConstants/ShareDitect/PageA/PageB五模块连接，四view真实构造/render。
+原图片/富文本拼接、嵌套record/type遍历、copy/paste、discarded HTML async、
+navigation/ready与teardown执行，外部SDK协议受控。ViewPU与ProgressBar
+共用，native请求完整结算；buffer复制/pixel/controller/entry身份、内容和
+异常顺序独立比较。HTML返回观察Proxy保持body/receiver/signature，但有
+不同callable身份，不能据此证明任意method identity观察或真实SDK协议。
+
+最终新图70配置、1030原throw、206换绑、18有效JS mutation、2等价表示
+通过；两baseline各103 host boundary采样，四view均实际render。原五项
+相关回归在首轮通过，最终新图另验；完整范围和buffer身份RED见status.md。
+class/method/signature表示已比较，body循环仍有明确缺口：paired三个for
+对应生成三个while(true)及条件/phi搬运。共同LoopStmt/printer需沿通用
+control/evaluation/binding继续恢复，不能按样本/布局匹配for。本次行为
+通过不关闭body/style、完整pasteboard图或阶段一原结构gate。
+
 2026-10-07 ProgressBar补充：真实CommonConstants与ProgressBar经ABC-only
 生成后独立paired源码比较，模块初始化、原builder/native constructor、
 完整render/ready、copy/paste async、progress/timer和teardown实际执行。

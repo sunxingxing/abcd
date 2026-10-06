@@ -1,5 +1,13 @@
 # 全 ISA 优先执行顺序
 
+2026-10-07 富文本续作：实际PasteBoard与CommonConstants、ShareDirect、
+PageA/B连接，原嵌套遍历、async/图片/controller/clipboard/navigation/body
+独立行为验收通过，view协议与ProgressBar共用。buffer身份盲点经有效
+mutation先RED再修复，生产/rules147保持。具体矩阵见status.md。
+表示仍有三个for对应while(true)/phi搬运的缺口，下一步沿共同loop
+control/evaluation/binding还原高层循环，禁止样本或局部layout投影；
+不以本次行为/计数替代body/style和阶段一原gate。
+
 2026-10-07 ProgressBar续作：沿共同source路径补齐原仅copy callback
 验证的实际constructor/模块初始化/render/progress/async/timer/teardown。
 真实CommonConstants连接，外部文件/clipboard仅受控协议；Push与本记录
