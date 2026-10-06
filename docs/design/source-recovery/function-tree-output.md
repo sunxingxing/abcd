@@ -77,6 +77,11 @@ work 统计和调用方显式传入有限额度的底层兼容接口保留，但
 
 ## 4. 交付顺序与验收
 
+2026-10-06 用户调整：完成当前 `?.` 调用修复后，先支持阶段一实际
+`INCOMPLETE / UNRECOVERED` 中缺失的反编译功能，再做 optional chain 等
+表示细节优化。部分输出仍为正常能力，但完善标记和保留片段不能替代
+将不完整函数、类及 record 恢复为完整源码及其独立语义/表示验收。
+
 先交付共同 FunctionTree/printer 的部分输出，再贯通循环/catch，随后外层跳转和
 异常闭包、finally、await、generator、async generator/yield*。图视图和 RegionPlan
 只建设下一项功能需要的部分，不等待通用框架或全部 DFX 完备。
@@ -125,8 +130,25 @@ OptionalMemberSyntax保留原member/key并显式指定已证明的base；原Symb
 base读取与其他消除的guard继续在保存表达式的end记录零宽来源。赋值本身
 及任意RHS子树保持实际非零范围，nullish路径不计算key/getter。原AST、
 control、operand、instruction origin、scope和exception证明保持不变。
-原生optional call、整条链合并及未打印子函数owner仍未完成；不能因为
-不可达分支伪造family发布或整份阶段一验收。
+后续规则127贯通下述原生optional call；整条链合并及未打印子函数owner
+仍未完成，不能因为不可达分支伪造family发布或整份阶段一验收。
+
+规则127补充：同一 null/undefined/other 抽象解释现在承载原生 optional
+调用。nullish 路径必须返回 undefined，非 nullish 路径保留实际 CallExpr；
+成员调用的真实 MemberExpr.base 必须等于受检 reference，值调用保留
+实际 stored callable 身份和间接 eval。原参数及计算 key 的 occurrence
+在非 nullish 路径按原顺序打印，已有 assignment formation 只保留原
+求值一次；不会从相同拼写取得 receiver，也不会把条件之外的后续调用
+吸收到短路范围。依据
+[ECMA-262 2024 Optional Chains](https://tc39.es/ecma262/2024/multipage/ecmascript-language-expressions.html#sec-optional-chains)。
+
+OptionalCallSyntax 保留原 call、member 和 base；原 AST、CFG、异常范围、
+参数与来源不变。共同 printer/事件输出/序列化使用同一个计划；被省略
+的 guards 和被 formation 替代的纯 base 读取在 base.end 记录零宽事件，
+member、call、计算 key 与参数保留实际区间。每个候选增加常数工作，
+复用既有 O(N) arena 队列及 O(T log T) 文本索引；无逐候选子树回放、
+新依赖或专项 writer。更长链组合、保存的成员 callable 与 receiver 的
+联合 optional 调用等表示缺口仍开放；按当前优先级后移。
 
 规则105将同一计划扩展为typed OptionalMemberSyntax/NullishFallbackSyntax
 投影。两个nullish域返回同一fallback、其他域返回原稳定值时，使用现有

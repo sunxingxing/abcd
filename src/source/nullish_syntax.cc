@@ -286,9 +286,22 @@ std::variant<NullishSyntax, TreeStructureError> PlanNullishSyntax(
           ordered && meaning.reference && nil && absent && other && SameResult(tree, texts, *nil, *absent)) {
         const auto* literal = std::get_if<TreeLiteral>(&tree.expressions[nil->value].expression);
         const auto* member = std::get_if<MemberExpr>(&tree.expressions[other->value].expression);
+        const auto* call = std::get_if<CallExpr>(&tree.expressions[other->value].expression);
         if (literal && std::holds_alternative<UndefinedLiteral>(*literal) && member &&
             StableReference(tree, member->base) == meaning.reference)
           plan.projections[id.value] = OptionalMemberSyntax{*other, formed.value_or(member->base)};
+        else if (literal && std::holds_alternative<UndefinedLiteral>(*literal) && call) {
+          // Optional evaluation must skip the entire original call (including
+          // arguments) on nullish paths. Reference identity, not callee spelling
+          // or a compiler guard layout, determines receiver and indirect eval.
+          if (call->reference == CallReference::kValue && StableReference(tree, call->callee) == meaning.reference)
+            plan.projections[id.value] = OptionalCallSyntax{*other, formed.value_or(call->callee), {}};
+          else if (call->reference == CallReference::kMember) {
+            const auto* callee = std::get_if<MemberExpr>(&tree.expressions[call->callee.value].expression);
+            if (callee && StableReference(tree, callee->base) == meaning.reference)
+              plan.projections[id.value] = OptionalCallSyntax{*other, formed.value_or(callee->base), call->callee};
+          }
+        }
         else if (StableReference(tree, *other) == meaning.reference && !SameResult(tree, texts, *nil, *other))
           plan.projections[id.value] = NullishFallbackSyntax{formed.value_or(*other), *nil};
       }
@@ -315,6 +328,10 @@ std::variant<NullishSyntax, TreeStructureError> PlanNullishSyntax(
       if (const auto* member = std::get_if<OptionalMemberSyntax>(&*plan.projections[i])) {
         const auto base = std::get<MemberExpr>(tree.expressions[member->member.value].expression).base;
         if (base != member->base) plan.omitted_by[base.value] = ExprId{static_cast<std::uint32_t>(i)};
+      } else if (const auto* call = std::get_if<OptionalCallSyntax>(&*plan.projections[i])) {
+        const auto base = call->member ? std::get<MemberExpr>(tree.expressions[call->member->value].expression).base :
+            std::get<CallExpr>(tree.expressions[call->call.value].expression).callee;
+        if (base != call->base) plan.omitted_by[base.value] = ExprId{static_cast<std::uint32_t>(i)};
       }
     }
     // Nullish abstract interpretation can prove an opaque arm unreachable.
@@ -344,17 +361,23 @@ bool NullishSyntax::Retains(ExprId root, ExprId child) const {
   return std::visit([&](const auto& syntax) {
     using T = std::decay_t<decltype(syntax)>;
     if constexpr (std::is_same_v<T, OptionalMemberSyntax>) return syntax.member == child || syntax.base == child;
+    else if constexpr (std::is_same_v<T, OptionalCallSyntax>) return syntax.call == child || syntax.member == child || syntax.base == child;
     else { static_assert(std::is_same_v<T, NullishFallbackSyntax>); return syntax.value == child || syntax.fallback == child; }
   }, *projections[root.value]);
 }
 ExprId NullishSyntax::Base(const FunctionTree&, ExprId root) const {
   return std::visit([&](const auto& syntax) {
     using T = std::decay_t<decltype(syntax)>;
-    if constexpr (std::is_same_v<T, OptionalMemberSyntax>) return syntax.base;
+    if constexpr (std::is_same_v<T, OptionalMemberSyntax> || std::is_same_v<T, OptionalCallSyntax>) return syntax.base;
     else { static_assert(std::is_same_v<T, NullishFallbackSyntax>); return syntax.value; }
   }, *projections[root.value]);
 }
 NullishForm NullishSyntax::Form(ExprId root) const {
-  return std::holds_alternative<OptionalMemberSyntax>(*projections[root.value]) ? NullishForm::kOptionalMember : NullishForm::kFallback;
+  return std::visit([](const auto& syntax) {
+    using T = std::decay_t<decltype(syntax)>;
+    if constexpr (std::is_same_v<T, OptionalMemberSyntax>) return NullishForm::kOptionalMember;
+    else if constexpr (std::is_same_v<T, OptionalCallSyntax>) return NullishForm::kOptionalCall;
+    else { static_assert(std::is_same_v<T, NullishFallbackSyntax>); return NullishForm::kFallback; }
+  }, *projections[root.value]);
 }
 }

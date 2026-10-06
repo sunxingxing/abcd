@@ -1,5 +1,16 @@
 # 按用户要求进行的恢复条件审计
 
+规则127补充：optional call 复用既有 nullish 域解释、reference formation
+及原 CallExpr.reference。成员调用保留实际 receiver，值调用保留存储的
+callable 和间接 eval，参数/key 仍属于原 call。准入说明的是语言短路、
+结果及 reference 身份义务，没有新增 opcode/PC/register、固定 guard
+数量、同块、名字或样本匹配。条件之外的调用继续执行，不被扩大短路
+范围；不同 base、缺少 null/undefined 证明或有 fallback 效果时保留
+原 conditional，不拒绝完整反编译。既有 effect/exception/flow/origin
+验证保留。更长链是表示覆盖缺口，不能作为语言限制。
+用户要求当前修复结束后，先解决实际 INCOMPLETE/UNRECOVERED 的语义
+支持缺口，后续 optional-chain 表示优化后移；不恢复周期审计/RSS。
+
 规则126补充：未融合的闭合条件族现在在原分支写入phi binding一次，
 后续任意观察保留该绑定，不把single eager use当成所有条件表达式的准入
 规则。单使用点融合的execution/catch检查保持独立。原位置candidate

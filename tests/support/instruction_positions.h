@@ -57,6 +57,8 @@ inline void CheckInstructionPositions(const source::FunctionTree& tree,
               auto access = guard;
               if (const auto* member = std::get_if<OptionalMemberSyntax>(&*nullish.projections[root.value]))
                 access = positions.expressions[member->member.value];
+              else if (const auto* call = std::get_if<OptionalCallSyntax>(&*nullish.projections[root.value]))
+                access = positions.expressions[call->call.value];
               else {
                 const auto& coalesce = std::get<NullishFallbackSyntax>(*nullish.projections[root.value]);
                 const auto fallback = positions.expressions[coalesce.fallback.value];

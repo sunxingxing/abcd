@@ -1531,6 +1531,13 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/snapshot_syntax.mjs $<TARGET_FILE:snapshot_syntax_test>)
     add_test(NAME snapshot_optional_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/snapshot_optional.mjs $<TARGET_FILE:snapshot_optional_test>)
+    if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc" AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/commons/src/main/ets/utils/WindowUtil.ts")
+      add_test(NAME window_optional_call_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/window_optional_call.mjs $<TARGET_FILE:abc_semantic>
+        "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"
+        "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/commons/src/main/ets/utils/WindowUtil.ts")
+    endif()
     add_test(NAME nullish_selection_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/nullish_selection.mjs $<TARGET_FILE:nullish_selection_test>)
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc" AND

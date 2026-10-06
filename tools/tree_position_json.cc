@@ -61,6 +61,7 @@ void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const Pr
   const auto emission = [&](ExprId root) -> std::string_view {
     switch (nullish.Form(root)) {
       case NullishForm::kOptionalMember: return "optional_access";
+      case NullishForm::kOptionalCall: return "optional_call";
       case NullishForm::kFallback: return "nullish_fallback";
     }
     throw std::logic_error("invalid nullish form");

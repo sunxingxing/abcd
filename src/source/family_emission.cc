@@ -88,6 +88,8 @@ void CheckPositions(const PreparedFamily& family, const PrintedFamilyDraft& prin
             auto access = selection;
             if (const auto* member = std::get_if<OptionalMemberSyntax>(&*nullish.projections[guarded->value]))
               access = positions.expressions[member->member.value];
+            else if (const auto* call = std::get_if<OptionalCallSyntax>(&*nullish.projections[guarded->value]))
+              access = positions.expressions[call->call.value];
             else {
               const auto& coalesce = std::get<NullishFallbackSyntax>(*nullish.projections[guarded->value]);
               const auto fallback = positions.expressions[coalesce.fallback.value];

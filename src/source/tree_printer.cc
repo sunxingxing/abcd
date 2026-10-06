@@ -1078,6 +1078,15 @@ class TreePrinter {
         if constexpr (std::is_same_v<T, OptionalMemberSyntax>) {
           const auto& read = std::get<MemberExpr>(Tree().expressions[syntax.member.value].expression);
           BeginExpression(syntax.member); Member(syntax.base, read.key, PostfixContext::kMemberBase, true);
+        } else if constexpr (std::is_same_v<T, OptionalCallSyntax>) {
+          const auto& call = std::get<CallExpr>(Tree().expressions[syntax.call.value].expression);
+          BeginExpression(syntax.call);
+          Push(std::string_view(")")); Push(ArgumentCursor{call.arguments, 0});
+          Push(std::string_view(syntax.member ? "(" : "?.("));
+          if (syntax.member) {
+            const auto& read = std::get<MemberExpr>(Tree().expressions[syntax.member->value].expression);
+            BeginExpression(*syntax.member); Member(syntax.base, read.key, PostfixContext::kMemberBase, true);
+          } else Push(ExpressionOperand{syntax.base, {PostfixContext::kCallCallee}});
         } else {
           static_assert(std::is_same_v<T, NullishFallbackSyntax>);
           Expression(LogicalExpr{TreeLogical::kNullish, syntax.value, syntax.fallback}, operand.observation);

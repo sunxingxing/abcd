@@ -3,9 +3,12 @@
 #include "tree_structure.h"
 namespace abcd::source {
 struct OptionalMemberSyntax { ExprId member; ExprId base; };
+// Retain the original call/arguments. A member call guards its receiver and
+// keeps its reference; a value call guards the stored callable and stays indirect.
+struct OptionalCallSyntax { ExprId call; ExprId base; std::optional<ExprId> member; };
 struct NullishFallbackSyntax { ExprId value; ExprId fallback; };
-using NullishProjection = std::variant<OptionalMemberSyntax, NullishFallbackSyntax>;
-enum class NullishForm : std::uint8_t { kOptionalMember, kFallback };
+using NullishProjection = std::variant<OptionalMemberSyntax, OptionalCallSyntax, NullishFallbackSyntax>;
+enum class NullishForm : std::uint8_t { kOptionalMember, kOptionalCall, kFallback };
 // Native nullish syntax over an unchanged verified expression tree.
 // Tests refer to one binding/receiver domain. An ordered reference-forming
 // expression is retained as the base; keys/getters/calls keep their ownership.

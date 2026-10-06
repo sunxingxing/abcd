@@ -1,6 +1,6 @@
 # 项目进展与设计审查
 
-更新时间：2026-10-05。设计基线见 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md)。
+更新时间：2026-10-06。设计基线见 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md)。
 本页是当前状态入口；[progress.md](progress.md) 保留历史证据，不覆盖本页结论。
 
 ## 更新规则
@@ -11,6 +11,55 @@
 - 不按文件数、提交数或接口数量宣布完成；必须以原计划的端到端验收为准。
 
 ## 当前阶段
+
+### 2026-10-06：共同空值解释贯通原生调用；后续优先未恢复功能
+
+- 规则revision127，基线3653283e；25aa原分支起始干净。用户要求本项
+  `?.` 修复完成后，先解决实际 INCOMPLETE/UNRECOVERED 的反编译语义
+  支持缺口，再优化 optional-chain 等细节；执行顺序已同步到 isa-priority
+  和 function-tree-output。默认V3及显式language-arithmetic二元范围保持。
+- 既有 null/undefined/other 抽象解释复用原 reference/assignment formation，
+  识别 nullish 返回 undefined、other 执行原 CallExpr 的语义。原成员
+  base 身份和 CallReference 保留 this；值 callable 保留间接 eval。
+  原参数/计算 key 在原非 nullish 路径按序执行；不同 receiver、缺少
+  guard/fallback 效果及条件外调用不能被错误扩大短路。共同 AST/CFG/
+  effects/exception/semantics 检查未改，无第二writer或样本/形状匹配。
+- OptionalCallSyntax 由共同 printer 发射原生 `base?.method(args)` 或
+  `callee?.(args)`。call/member/key/argument 事件保持实际区间，省略
+  guard/被形成表达式替代的纯 base 在实际 base.end 零宽定位。文件族
+  emission 和 positions serializer 复用同一计划与 typed optional_call。
+- 新真实解码回归先在 count=1 成员调用的源码风格断言 RED。18种形态、
+  三profile、1/200/201/402 guard/copy/拆块组合得到216个完整函数；
+  reversed operands、NOT、计算 key、参数 getter、原 producer snapshot、
+  不同 receiver 和条件外调用均覆盖。原 tree semantics 和 instruction
+  positions 检查通过，201→402 的计划工作比小于3；Node 48,384 场景
+  对照原异常 token、调用/读取次数及 this，另12项 intrinsic eval 检查
+  不暴露生成函数的局部变量。refusal/INCOMPLETE不计为完整正例。
+- 新 window_optional_call_source_test 先完成 ABC-only 生成，再独立
+  读取配对 TypeScript。三个完整方法 updateAvoidPadding/setSplitScreen/
+  cancelSplitScreen 的4,536场景检查条件短路、计算参数、getter/数值
+  转换、宿主调用/receiver、catch/回调、状态、padding描述符及原异常
+  token；取消短路、重复uiContext读取、改this三mutation检测通过。
+  测试宿主提供identity Observed，Node参考转换移除未实例化WindowInfo
+  的ArkTS decorator；不验收该宿主协议、构造器、整个record或真实平台。
+  内置TypeError仅对照类型，不宣称其平台相关消息字串一致。
+- 首次paired测试缺Observed宿主，第二次Node不能解析decorator；明确
+  identity宿主桥后第三次通过。final-build-1含未注册tree_printer_test
+  请求而退出2；核对实际注册后，final-build-2单-j4二十二目标退出0。
+  最终相关定向58/58通过304.84秒；不是暂停的全套测试。
+- fresh optional-call-{default,language}-pass-1各五ABC退出0，各106份
+  源码解析、输入SHA/size与现有corpus index匹配，零legacy/新增failure/
+  complete回退。两模式实际改变WindowUtil(7618)和pasteboard record9550
+  的源码：default共三个、language共七个 native optional 调用；其中
+  WindowUtil为两/六个，record9550一处模块初始化getHostContext。
+  default仍80complete/26incomplete-source/46no-module，language95/11/46；
+  complete数量未增加，不以本项表示改进代替剩余record独立验收。
+- 日志前缀/tmp/abcd-optional-call-。新增候选检查每节点O(1)，复用
+  原arena队列和文本索引，无新逐候选图遍历或依赖；RSS/基准/代理/
+  调度器及周期审计仍暂停。实际普通SuperSpread未知父品牌/私有数组、
+  WindowUtil NEG、实例字段/全局/完整签名/函数体整合等未恢复义务
+  继续开放。下一轮优先这些实际INCOMPLETE/UNRECOVERED，阶段一Goal
+  保持active，未取得用户切换默认数值验收的指示。
 
 ### 2026-10-05：多次观察的条件结果采用原位置绑定
 
