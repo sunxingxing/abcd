@@ -7,6 +7,16 @@
 使用 [总体入口](README.md)、[IR 合同](value-ir.md)、[AST 合同](source-tree.md) 与
 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md) 和 [全样本合同](corpus.md)。
 
+2026-10-06补充：`paired_model_record_source_test`实际执行ABC-only
+`--value-source`的完整IconInfoModel/SectionModel记录，再读paired TS；
+1476配对场景覆盖module live更新（包括参数求值期间）、列表/receiver、
+延迟callback、稀疏输入、效果/原异常/部分状态与新鲜身份。生成记录另验
+8组model/item assignment/setter/new.target及26组原参数身份/字段descriptor；
+Node保留的未初始化TS字段不能充当Ark属性赋值own key的oracle。
+原生constructor/map/arrow/push/new表示与条件属性行为另验，五种有效JS
+mutation均检出。此证据覆盖两个实际完整记录，不能扩为平台/全部record/
+全部类型与源码风格验收；日志及定向11/11回归见status.md。
+
 ## 1. 四种状态，不混报完成
 
 | 状态 | 意义 | 可否称 gate 通过 |

@@ -13,6 +13,44 @@
 ## 当前阶段
 
 
+### 2026-10-06：两个列表模型记录的共同路径独立验收
+
+- 基线2f8aed4b，production与规则revision132保持。现有
+  paired_model_record_source_test由legacy --source迁到--value-source，
+  manifest要求IconInfoModel/SectionModel完整且legacy_writer_used=false。
+  ABC-only生成结束后才读取独立paired TS；输入SHA/size流式校验匹配
+  现有abc-index：Immersive/modules.abc，8de95a4c6579，293544 bytes。
+  不增加样本分派、恢复条件、引擎sidecar输入或第二套报告设施。
+- 两个完整记录（共四个class）执行1476 paired场景：0/1/2/200/201
+  输入长度，普通、input getter更新module、参数索引读取期间更新module、
+  push getter替换list、延迟callback后替换module/list及sparse map。
+  对照完整effect trace、getter/callee receiver、原抛出对象、结果状态、
+  callback lexical this、重复init、每实例新数组、class/method name与arity、
+  模块TDZ/exports。实际第二组已有第一组的effects时抛出，保留部分状态；
+  deferred callback用无关this调用，不靠回调调用方提供receiver。
+- Node strip TS保留未初始化字段的DefineField，不作为pinned属性赋值的
+  own key/setter oracle。paired比较方法值及效果；生成记录另验实例字段
+  顺序、descriptor和SectionProduct未传originalPrice时无own property。
+  8 assignment场景分别覆盖两个model及各自item的继承setter、首写原异常
+  和alternate new.target；26参数取值场景覆盖undefined/null/boolean/
+  ±0/NaN/Infinity/BigInt/string/Symbol/object/array的Object.is及descriptor。
+  普通constructor/map/arrow/push/new表示单独检查，条件属性另验行为，
+  允许必要capture temporary，不以临时编号或逐字一致作验收。
+- 五个有效JS mutation检出：删除init、丢失构造参数身份、交换flash参数、
+  optional属性无条件写入及own definition绕过setter。先独立解析mutation，
+  语法拒绝不计为语义检出。该fixture仍属测试，允许用测试字段/方法名称
+  选择观察点；这些名称和paired内容从不进入production规则。
+- 迁移后旧oracle定向1/1通过；paired oracle tests-1及逐步加强的
+  tests-2/tests-3均通过，tests-3 verbose打印1476/8/26/5计数。
+  final-tests-1定向11/11通过21.19秒，包含local model实际constants/breakpoint
+  依赖集成、viewmodel/static class batch、HomeModel、function/construct、
+  family names与language constructors回归。日志/tmp/abcd-model-record-*。
+  测试注册仍562，无CMake改动；test-only不需重建生产或重跑六模式导出。
+- 这是现有完整输出的更强独立语义与表示证据；不新增ISA支持，不计为
+  全部record/platform/全部类型签名验收。没有全套、expanded corpus、agents、
+  RSS/benchmark、scheduler或DFX工作。结构gate及阶段一Goal保持开放。
+
+
 ### 2026-10-06：按 family 引用索引规划绑定名称
 
 - 基线b14fd6ee，规则revision132。普通/分阶段family先一次解析共同
@@ -97,8 +135,9 @@
   重跑2450 paired constructor cases及120 native iterator cases通过。
   日志/tmp/abcd-record-acceptance-*；Home独立测试报告138+4及3 mutations。
 - 这是三个旧验收缺口与一个实际完整record的补强；companion paired
-  model旧测试仍使用legacy，仅作为行为回归，不计为共同record路由
-  完成。没有修改ABC/paired inputs，没有启动全套、扩大语料、RSS/
+  model旧测试当时仍使用legacy，仅作为行为回归；本页后续“两个列表
+  模型记录”条目完成其共同路由迁移与独立paired验收。没有修改ABC/paired
+  inputs，没有启动全套、扩大语料、RSS/
   benchmark或agents；test-only修改不要求重跑六模式固定五ABC导出。
   结构gate与阶段一仍开放，平台/全部record独立行为与表示质量未完成。
 
