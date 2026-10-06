@@ -21,6 +21,45 @@ Printer 处理节点、名字、括号、转义、标签、注释和已有输出
 模式，不补推 CFG、finally 或闭包，不调用专项 body writer。无原名可用合成名，
 无独立 PC 的结构节点保留结构来源；不补造原名、类型、PC 或可执行占位行为。
 
+## 原生 receiver 存储的共同复用（规则 137）
+
+EvaluationShape 用 typed ReceiverValue 区分当前调用的原生 receiver 与成功
+super 初始化的 receiver。BindingPlan 只在共同求值计划已经要求保存结果时
+复用这一不可变调用存储；原 super 根/eager occurrence、arguments、origin
+和可能抛错的初始化事件全部保留，后续消费者使用当前 owner 的 ThisExpr。
+VM derived entry 的 undefined 保持 ReceiverEntryBinding，不转成可抛错的
+原生 this。COPY/alias 走原共同关系；phi/cycle、cell、exception staging 和
+属性/getter 快照仍是独立存储，不能据 receiver 身份冻结对象内容。
+
+TreeFlow 从真实根的 source capability 与 AST 重建 OpId-indexed receiver
+事实，TreeOperands 独立核对每个原结果/消费者身份、Language 域、owner、
+保存 occurrence、原始操作和实参。现有控制/availability/effect/exception
+证明继续负责执行先后与次数。不能用“某处存在 super”、receiver 引用数、
+同块、固定 PC/register 或 opcode 序列作为 initialized-this 的身份证明。
+ABI 对 derived constructor 的物理入口读取数量不再等同于原生 this 的引用
+数量：super 结果无需读取该入口。ABI census 在已验证树对应关系之上计数，
+仍核对 frame、callable、owner 和原输入；错误入口→this 的 fresh mutation
+继续被共同树语义拒绝。普通 callable 的原 census 检查保持。
+
+DiscardedInvocationRead 的共同投影增加普通、非 arrow 的已初始化 this
+直接语句读取；derived this 可能抛错，保留原语句。printer 与来源传输共享
+零宽来源规则，静态字段输出沿该投影省略纯读，不再比较全 arena field 数与
+body child 数。字段语法、原 provenance 和末尾 return 的义务仍保留。
+
+新增事实数组 O(O) 空间、O(O+U) 检查；O/U 为 operation/operand 数量，沿用
+scratch/work 计量，不逐 receiver 遍历 CFG。无新依赖、许可或公共 API；
+语言依据为 ECMA-262 Function Environment Records/GetThisBinding/
+BindThisValue 与 SuperCall，VM/profile 来源保持 release lock 中的原 adapters。
+full corpus/RSS/benchmark 暂停，线性成本说明不替代峰值证据。
+
+function_tree_test 覆盖 current/initialized、COPY、拆块、分支、成员 getter/
+调用及错误消费者和删除初始化 mutation。真实 WidgetCard 两个 ABC record
+先生成再读取 paired TS，执行实际 constructor/setInitiallyProvidedValue，
+比较 direct/bound/Proxy current parent、foreign parent return、alternate
+new.target、defaults、字段 descriptor 与中途任意 thrown-value 状态；额外
+拒绝 receiver/参数/返回值 mutation。此层不覆盖完整 platform/render/storage
+生命周期，也不证明 instance DefineField 与 pinned assignment 普遍等价。
+
 ## 原生 class 名称的共同作用域规划（规则 136）
 
 ClassNames 是 printer 私有的语法计划，不改变 FunctionTree、原指令、效果/

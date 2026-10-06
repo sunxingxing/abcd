@@ -57,6 +57,9 @@ struct TreeFlow {
   std::vector<std::uint32_t> buffered_properties;
   std::vector<std::uint8_t> defined_properties; // PropertyId indexed, unique own write.
   std::vector<std::optional<SymbolId>> snapshots;
+  // OpId indexed, reconstructed from actual native roots. These values reuse
+  // immutable invocation storage, not a source symbol or a derived VM entry.
+  std::vector<ReceiverValue> receivers;
   // Indexed by CellId; recovered from actual allocation-site declarations.
   // These mutable storage identities are not SSA read snapshots.
   std::vector<std::optional<SymbolId>> cells;

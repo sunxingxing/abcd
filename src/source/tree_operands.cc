@@ -725,7 +725,8 @@ class OperandCheck {
       const auto& definition = graph_.values[id->value];
       if (const auto* producer = std::get_if<analysis::OpResult>(&definition.origin)) {
         const auto& base = evaluation_.operations[producer->op.value];
-        RequireMeaning(((base.kind == EvaluationKind::kRoot || base.kind == EvaluationKind::kPredicateSnapshot) && flow_.snapshots[producer->op.value].has_value()) ||
+        RequireMeaning(((base.kind == EvaluationKind::kRoot || base.kind == EvaluationKind::kPredicateSnapshot) &&
+                (flow_.snapshots[producer->op.value].has_value() || flow_.receivers[producer->op.value] != ReceiverValue::kNone)) ||
             ((base.kind == EvaluationKind::kInline || base.kind == EvaluationKind::kNestedLiteral) && base.consumer == property.first_use), Error::kOperand);
       } else if (std::holds_alternative<analysis::PhiDefinition>(definition.origin))
         // TreeFlow derives this symbol from the actual, exclusively owned edge
@@ -810,6 +811,20 @@ class OperandCheck {
         const auto* result = std::get_if<analysis::OpResult>(&definition.origin);
         RequireMeaning(result != nullptr, Error::kOperand);
         const auto& placement = evaluation_.operations[result->op.value];
+        const auto receiver = flow_.receivers[result->op.value];
+        if (receiver != ReceiverValue::kNone) {
+          const auto shape = DescribeEvaluation(graph_.ops[result->op.value].operation);
+          RequireMeaning(shape && shape->receiver == receiver && definition.domain.IsLanguage() &&
+              (receiver != ReceiverValue::kInitialized || tree_.callable == CallableKind::kDerivedConstructor),
+              Error::kOperand);
+          if (placement.kind == EvaluationKind::kPredicateSnapshot && placement.consumer == occurrence) {
+            RequireMeaning(!edge_input_ && flow_.expressions[result->op.value] == expression, Error::kOperand);
+          } else {
+            LeafOrigin(expression);
+            RequireMeaning(Node<ThisExpr>(expression).owner == tree_.owner, Error::kOperand);
+          }
+          return;
+        }
         if (placement.kind == EvaluationKind::kPredicateSnapshot && placement.consumer &&
             occurrence == placement.consumer) {
           // The eager consumer receives the owned expression at the exact

@@ -111,7 +111,8 @@ class CopyExpressions {
           Require(forest_.operations[producer->op.value].has_value(), Error::kUnavailableValue);
           return *forest_.operations[producer->op.value];
         }
-        Require(std::holds_alternative<ReceiverEntryBinding>(binding), Error::kUnavailableValue);
+        Require(std::holds_alternative<ReceiverEntryBinding>(binding) ||
+            std::holds_alternative<NativeReceiverBinding>(binding), Error::kUnavailableValue);
         return Add(ThisExpr{owner_}, origin);
       } else if constexpr (std::is_same_v<T, analysis::IntegerLiteral>) {
         return Add(TreeLiteral{IntegerLiteral{value.value}}, origin);

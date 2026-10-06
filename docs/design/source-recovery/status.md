@@ -12,6 +12,50 @@
 
 ## 当前阶段
 
+### 2026-10-06：共同 receiver 存储复用与实际构造状态验收
+
+- 基线610f5da0，规则revision137。EvaluationShape 的 typed ReceiverValue
+  标记当前 receiver/成功 super 的 initialized receiver；共同 BindingPlan、
+  expression forest/copies、FunctionTree 与 TreeFlow/TreeOperands 复用实际
+  native invocation storage。原初始化 event、实参、origin、效果及异常保留；
+  后续读取使用 ThisExpr，derived VM entry undefined 仍独立。没有样本/类名/
+  PC/register、局部opcode序列、同块或selection/producer数量准入。
+- 移除 derived ABI 物理入口读数与原生 this 引用数的错误等式；精确值身份
+  仍由独立树对应校验负责，错误 entry→this/consumer/owner 或删除初始化
+  mutation继续拒绝。普通 ABI census保持。DiscardedInvocationRead 共同
+  省略普通非arrow已初始化 this 的直接无效果语句，并保持零宽来源；derived
+  this仍保留。静态字段printer复用该投影，删除 arena字段数==child数检查。
+  新事实数组O(operation)预算内空间，检查沿原共同流程，不逐receiver走CFG。
+- function_tree_test增加16组current/initialized×COPY×拆块×getter/call及4组
+  分支组合，验证无需receiver临时符号并拒绝错误消费者/初始化。两份实际
+  WidgetCard输出改为直接super/this字段；ABC-only导出全部结束后读取paired
+  TS。执行真实constructor及setInitiallyProvidedValue，对照864组current
+  direct/bound/Proxy parent、foreign对象return、替代new.target、参数/default
+  与字段descriptor状态；60组任意throw identity注入、6个有效JS语义mutation
+  拒绝；既有176组callback/effect继续通过。未覆盖完整平台/storage生命周期、
+  inherited setter/DefineField普遍等价，不能扩大这些局部证据。
+- 较广定向回归发现partial_file旧Boolean-neg夹具已被现有primitive数值
+  分析支持；改为unknown receiver coercion的真实未证明域，保留潜在user-code
+  effect与未用结果。partial/source位置/嵌套gap传播重新通过。新JS oracle先
+  修正跨realm参数列表的比较及已省略implicit-this return的mutation位置，
+  未放宽实际参数、receiver、返回对象、异常或字段状态检查。
+- 单一构建-j4、所有build handle关闭后才运行；final-build-2和后续partial
+  repair-build-1退出0。最终final-tests-2定向23/23通过27.86秒；另共同selection
+  组合test在final-tests-1通过118.21秒。含language constructor、class names/
+  accessor/static、module/rest、partial、Logger/Window/ViewModel实际输出。
+  Node脚本语法与git diff --check通过。CTest仍565项。日志/tmp/abcd-native-receiver-*。
+- 固定五ABC/六模式30次导出全部退出0，输入hash/size与index相符，每模式
+  106份complete/明确partial源码Node语法通过。相对class-names pass-2，每模式
+  54份表示改变，无complete回退、新legacy或完整数量变化；default80/26、
+  arithmetic95/11、numeric96/10、constructors88/18、arithmetic+constructors105/1、
+  numeric+constructors106/0，各另46个no-module。产物build/stage-one/
+  native-receiver-<mode>-pass-1；summary-1.json与batch-1.log保留。
+- 显式--language-constructors及独立数值组合沿用户授权继续，默认VM/profile
+  语义不变、不假设父类终生不变。上述106/0仅为完整源码输出计数，阶段一Goal
+  保持active；实例字段/globals/完整签名/body结构gate和逐record独立语义/
+  表示验收仍开放。全套、expanded corpus、agents、RSS/benchmark、scheduler/
+  DFX与周期审计继续暂停，不扩大此次执行范围。
+
 ### 2026-10-06：共同词法分析恢复原生 class 名称
 
 - 基线874c932c，规则revision136。新增printer私有ClassNames规划，从

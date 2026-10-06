@@ -179,13 +179,10 @@ class TreePrinter {
       for (const auto& symbol : Tree().symbols) {
         Step(); if (symbol.kind != BindingKind::kModule) throw Error::kUnsupportedContext;
       }
-      std::size_t field_count = 0;
-      for (const auto& expression : Tree().expressions) {
-        Step(); field_count += std::holds_alternative<FieldDefinitionExpr>(expression.expression);
-      }
-      if (field_count != body->child_count - 1) throw Error::kUnsupportedContext;
       for (std::uint32_t i = 0; i < body->child_count; ++i) {
-        Step(); const auto& node = Tree().statements[Tree().children[body->first_child + i].value].statement;
+        Step(); const auto id = Tree().children[body->first_child + i];
+        if (DiscardedInvocationRead(Tree(), id)) continue;
+        const auto& node = Tree().statements[id.value].statement;
         if (i + 1 == body->child_count) {
           const auto* returned = std::get_if<ReturnStmt>(&node);
           if (!returned) throw Error::kUnsupportedContext;

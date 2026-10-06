@@ -5,12 +5,12 @@ import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {stripTypeScriptTypes} from 'node:module';
 import vm from 'node:vm';
+import {verifyWidgetConstructors} from './widget_constructor_state.mjs';
 
 // Paired oracle is test-only. Run registered callbacks in a controlled host;
-// full constructor/storage lifecycle, rendering and platform are not covered.
+// Actual constructor state is checked separately; platform lifecycle is bounded.
 const [tool, root] = process.argv.slice(2);
 const temporary = mkdtempSync(join(tmpdir(), 'abcd-widget-global-'));
-const paired = stripTypeScriptTypes(readFileSync(join(root, 'src/entry/src/main/ets/widget/pages/WidgetCard.ts'), 'utf8'));
 async function trace(source, image, fail, replace) {
   const events = [], callbacks = [], handlers = [], components = new Map(), failure = {}, constructorStop = {};
   const event = (label, args = []) => { events.push([label, JSON.parse(JSON.stringify(args))]);
@@ -81,7 +81,8 @@ async function trace(source, image, fail, replace) {
   }
 }
 try {
-  let scenarios = 0;
+  let scenarios = 0, constructors = 0, throws = 0, mutations = 0;
+  const sources = [];
   for (const [file, entity] of [['modules.abc', 12347], ['widgets.abc', 564]]) {
     const output = join(temporary, file);
     const run = spawnSync(tool, [join(root, file), output, '--value-source'], {encoding: 'utf8'});
@@ -89,6 +90,18 @@ try {
     const record = JSON.parse(readFileSync(join(output, 'manifest.json'), 'utf8')).records.find(item => item.entity === entity);
     assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, false);
     const generated = readFileSync(join(output, record.source), 'utf8');
+    // Receiver identity belongs to the initialized invocation, even across
+    // copies/branches and arbitrary parent object returns. Avoid a duplicate
+    // register-like snapshot around the native super result.
+    assert.doesNotMatch(generated, /\$[\w$]+\s*=\s*super\(/);
+    assert.match(generated, /this\.__formId = this\.createLocalStorageProp\(/);
+    sources.push({file, generated});
+  }
+  // Finish every ABC-only export before opening the independent source oracle.
+  const paired = stripTypeScriptTypes(readFileSync(join(root, 'src/entry/src/main/ets/widget/pages/WidgetCard.ts'), 'utf8'));
+  for (const {file, generated} of sources) {
+    const checked = await verifyWidgetConstructors(generated, paired);
+    constructors += checked.pairedCases; throws += checked.throwCases; mutations += checked.mutations;
     for (const image of ['', 'payload', undefined, Symbol('image')]) for (const replace of [false, true])
       for (const fail of ['', 'global:FlexDirection', 'direction:Column', 'get:Flex.create', 'call:Flex.create',
         'get:Flex.padding', 'call:Flex.padding', 'get:Flex.onClick', 'call:Flex.onClick', 'instance:image', 'postCardAction']) {
@@ -98,4 +111,5 @@ try {
       }
   }
   console.log(`Paired WidgetCard globals: ${scenarios} bounded callback/effect scenarios passed`);
+  console.log(`Actual WidgetCard constructors: ${constructors} paired, ${throws} injected throws, ${mutations} mutations rejected`);
 } finally { rmSync(temporary, {recursive: true, force: true}); }

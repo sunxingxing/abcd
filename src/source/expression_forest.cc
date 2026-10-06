@@ -852,6 +852,7 @@ class ForestBuilder {
         const auto& binding = forest_.bindings.values[value.value];
         if (const auto* symbol = std::get_if<SymbolId>(&binding))
           return Add(SymbolExpr{*symbol}, origin);
+        if (std::holds_alternative<NativeReceiverBinding>(binding)) return Add(ThisExpr{owner_}, origin);
         if (std::holds_alternative<ReceiverEntryBinding>(binding)) {
           // The VM derived entry slot contains undefined until super assigns
           // a new SSA result. Reading it is not native JS's throwing `this`.
@@ -876,6 +877,10 @@ class ForestBuilder {
     const auto* source = value ? std::get_if<analysis::OpResult>(&graph_.values[value->value].origin) : nullptr;
     if (source && evaluation_.operations[source->op.value].kind == EvaluationKind::kPredicateSnapshot &&
         evaluation_.operations[source->op.value].consumer == use) {
+      if (std::holds_alternative<NativeReceiverBinding>(forest_.bindings.values[value->value])) {
+        Require(forest_.operations[source->op.value].has_value(), Error::kBinding);
+        return *forest_.operations[source->op.value];
+      }
       const auto* symbol = std::get_if<SymbolId>(&forest_.bindings.values[value->value]);
       Require(symbol && forest_.operations[source->op.value], Error::kBinding);
       if (IsInvocationBinding(forest_.bindings.symbols[symbol->value]))

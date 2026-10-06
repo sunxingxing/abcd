@@ -154,11 +154,13 @@ class AbiBuilder {
             parameter.writes == 0, Error::kParameter);
       }
     }
-    // Derived VM entry operands are represented by undefined, not `this`.
-    // Their exact leaves are independently checked by TreeOperands; explicit
-    // initialized frame-this reads still owe native receiver references.
-    Require(((tree_.callable != CallableKind::kDerivedConstructor && result_.receiver.operands != 0) || result_.frame_receiver_reads != 0) ==
-        (result_.receiver.references != 0), Error::kReceiver);
+    // This census follows verified value/tree correspondence. In a derived
+    // constructor the VM entry is undefined, while successful super results
+    // use initialized native this without an ABI-slot read. TreeOperands owns
+    // each actual receiver identity; a read-count equality cannot prove it.
+    if (tree_.callable != CallableKind::kDerivedConstructor)
+      Require((result_.receiver.operands != 0 || result_.frame_receiver_reads != 0) ==
+          (result_.receiver.references != 0), Error::kReceiver);
     Require((result_.frame_function_reads != 0) == (result_.self_references != 0) &&
         tree_.self.has_value() == (result_.frame_function_reads != 0), Error::kEntry);
     // A JS arrow inherits this; a VM receiver entry is dynamic. Captured outer

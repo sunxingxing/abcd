@@ -868,6 +868,8 @@ class TreeBuilder {
     if (!evaluation_.operations[id.value].temporary) return expression;
     const auto& op = graph_.ops[id.value];
     Require(op.result.has_value(), Error::kBinding);
+    if (std::holds_alternative<NativeReceiverBinding>(forest_.bindings.values[op.result->value]))
+      return expression; // Keep the initializing event; only later reads use this.
     const auto* symbol = std::get_if<SymbolId>(&forest_.bindings.values[op.result->value]);
     Require(symbol != nullptr, Error::kBinding);
     if (IsInvocationBinding(forest_.bindings.symbols[symbol->value])) {

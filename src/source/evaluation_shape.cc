@@ -75,7 +75,9 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       EvaluationShape shape{kNoOperands, false}; shape.control = ControlEvaluation::kNormal; return shape;
     }
     else if constexpr (std::is_same_v<T, analysis::ValueDebugger>) return EvaluationShape{kNoOperands, false};
-    else if constexpr (std::is_same_v<T, analysis::ValueFrameThis>) return EvaluationShape{kNoOperands, true};
+    else if constexpr (std::is_same_v<T, analysis::ValueFrameThis>) {
+      EvaluationShape shape{kNoOperands, true}; shape.receiver = ReceiverValue::kCurrent; return shape;
+    }
     else if constexpr (std::is_same_v<T, analysis::ValueFrameFunction>) return EvaluationShape{kNoOperands, true};
     else if constexpr (std::is_same_v<T, analysis::ValueGlobalObject>) return EvaluationShape{kNoOperands, true};
     else if constexpr (std::is_same_v<T, analysis::ValueSymbolConstructor>) return EvaluationShape{kNoOperands, true};
@@ -129,7 +131,8 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
     } else if constexpr (std::is_same_v<T, analysis::ValueSuperCall>) {
       switch (op.source) {
         case analysis::SuperArgumentSource::kExplicit: {
-          EvaluationShape shape{kNoOperands, true, op.arguments}; shape.source = SourceEvaluation::kInvocation; return shape;
+          EvaluationShape shape{kNoOperands, true, op.arguments}; shape.source = SourceEvaluation::kInvocation;
+          shape.receiver = ReceiverValue::kInitialized; return shape;
         }
         case analysis::SuperArgumentSource::kInvocationFrame: {
           if (op.arguments || op.cache_slot) return {};
@@ -137,6 +140,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
           shape.inputs = InputEvaluation::kInvocationConstructor;
           shape.invocation_constructor = true;
           shape.source = SourceEvaluation::kInvocation;
+          shape.receiver = ReceiverValue::kInitialized;
           return shape;
         }
       }
@@ -147,6 +151,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       EvaluationShape shape{kSpreadSuper, true};
       shape.invocation_constructor = true;
       shape.source = SourceEvaluation::kInvocation;
+      shape.receiver = ReceiverValue::kInitialized;
       return shape;
     } else if constexpr (std::is_same_v<T, analysis::ValueSuperCheck>) {
       EvaluationShape shape{kReceiverGuard, false};

@@ -1368,3 +1368,27 @@ UNRECOVERED 输出。算法/复杂度/预算依据见 function-tree-output.md �
 两个 Logger 与 WidgetCard/其余实际record沿 ABC-only 路径恢复后独立验收，
 没有把包装消失当作完整阶段验收。full corpus、RSS/benchmark和周期审计
 仍暂停；其他恢复准入/结构gate缺口继续由status记录。
+
+## 规则 137：native receiver 保存与 ABI census 的共同替换
+
+原 source snapshot 机械保存 super/current-this 结果是表示限制，不是值身份
+要求。EvaluationShape 的 typed receiver capability、BindingPlan 与实际根
+TreeFlow 共同复用 native invocation storage；所有 initializing event、实参、
+原 provenance、作用域、控制、效果和异常义务保留。TreeOperands 对每个
+消费者独立核对 actual producer、owner 与 saving occurrence，错误参数替换
+或删除 super 不能通过 fresh semantic mutation。VM derived entry undefined
+始终独立；不存在“函数有 super 即允许所有 this”的 whitelist。
+
+derived ABI 入口读数与源码 receiver 引用数的等式拒绝了合法 super 结果。
+该实现 admission 已删除，精确身份由原共同树对应校验承担；不是删除真实
+receiver 不变量。普通 ABI census、owner、frame 与 callable 要求继续保留。
+同样，静态字段 printer 不再用全 arena field-count==child-count 准入：共用
+DiscardedInvocationRead 消除已初始化普通 this 的无副作用语句，原字段语法
+及来源仍检查。derived/arrow 的 this 不沿此投影省略。
+
+新增 current/initialized×COPY×拆块×getter 与分支组合；actual ABC Widget
+构造器含 current-parent Proxy、bound target、foreign object return、替代
+new.target、参数默认值、字段状态、任意 throw identity及有效JS mutations。
+原语言构造模式仍独立、显式，默认 VM/profile 语义不变；未用样本路径、
+类名、图形状、固定 producer/selection 数或寄存器布局做 production 分派。
+完整字段表示/implicit ctor/平台生命周期和阶段一独立验收仍是实际缺口。

@@ -192,6 +192,9 @@ enum class SourceEvaluation : std::uint8_t { kDirect, kPure, kSnapshotInputs, kS
 // Normal control observes existing operands and chooses successors. It has no
 // language effect of its own; purity and all-path execution still need proof.
 enum class ControlEvaluation : std::uint8_t { kNone, kNormal };
+// Native invocation storage, separate from a derived VM's undefined entry.
+// Initialization itself remains an owned, potentially throwing super event.
+enum class ReceiverValue : std::uint8_t { kNone, kCurrent, kInitialized };
 struct EvaluationShape {
   // Fixed prefix followed by argument occurrences. No array proportional to
   // range-call arity is allocated merely to describe their roles.
@@ -207,6 +210,7 @@ struct EvaluationShape {
   bool invocation_constructor = false;
   SourceEvaluation source = SourceEvaluation::kDirect;
   ControlEvaluation control = ControlEvaluation::kNone;
+  ReceiverValue receiver = ReceiverValue::kNone;
   [[nodiscard]] bool NeedsArgumentFrame() const {
     return inputs == InputEvaluation::kConditionalArgument || inputs == InputEvaluation::kInvocationConstructor;
   }

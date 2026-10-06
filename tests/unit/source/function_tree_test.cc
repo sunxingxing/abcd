@@ -501,7 +501,12 @@ void DerivedEntryValue() {
     if (std::holds_alternative<UndefinedLiteral>(*literal)) { node.expression = ThisExpr{tree.owner}; changed = true; break; }
   Check(changed && std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
   Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(tree)));
-  Check(std::get<FunctionAbiError>(BuildFunctionAbi(fixture.graph, tree, frame, 1)) == FunctionAbiError::kReceiver);
+  // ABI requires that correspondence check. Its census cannot distinguish an
+  // illegal entry read from a legal initialized-super result by read counts.
+  auto wrong_owner = tree;
+  for (auto& node : wrong_owner.expressions)
+    if (auto* receiver = std::get_if<ThisExpr>(&node.expression)) receiver->owner.value += 1;
+  Check(std::get<FunctionAbiError>(BuildFunctionAbi(fixture.graph, wrong_owner, frame, 1)) == FunctionAbiError::kReceiver);
 }
 void SuperTree() {
   using namespace analysis;
@@ -965,6 +970,47 @@ void InvocationBranchBindings() {
     Check(tree.symbols[native.value].kind == (rest ? BindingKind::kParameter : BindingKind::kFunctionSelf));
   }
 }
+void RetainedReceiverBranches() {
+  using namespace analysis;
+  for (const bool initialized : {false, true}) for (const bool copy : {false, true}) {
+    Fixture fixture;
+    fixture.Add(0, 0, 8, initialized ? ValueOperation{ValueSuperCall{0, {}}}
+        : ValueOperation{ValueFrameThis{}}, true, {}, initialized ? LanguageEffect::kUserCode : LanguageEffect::kNone);
+    ValueId value{2}; auto order = 1u;
+    if (copy) {
+      const auto copied = fixture.Add(0, order++, 13, ValueCopy{}, true, {{OperandRole::kInput, value}});
+      value = *fixture.graph.ops[copied.value].result;
+    }
+    const auto test = fixture.Add(0, order++, 29, ValueBinary{BinaryOperator::kStrictEqual}, true,
+        {{OperandRole::kLeft, ValueId{0}}, {OperandRole::kRight, SpecialValue::kNull}});
+    fixture.Add(0, order++, 37, ValueBranch{UnaryOperator::kTrueOrNonzeroNumber}, false,
+        {{OperandRole::kCondition, *fixture.graph.ops[test.value].result}});
+    const auto comparison = fixture.Add(1, 0, 54, ValueBinary{BinaryOperator::kStrictEqual}, true,
+        {{OperandRole::kLeft, value}, {OperandRole::kRight, value}});
+    fixture.Add(1, 1, 61, ValueReturn{}, false,
+        {{OperandRole::kReturnValue, *fixture.graph.ops[comparison.value].result}});
+    fixture.Add(2, 0, 89, ValueReturn{}, false, {{OperandRole::kReturnValue, value}});
+    fixture.graph.blocks = {{{0}, order, {0}, 2}, {{order}, 2, {2}, 0}, {{order + 2}, 1, {2}, 0}};
+    fixture.graph.edges = {{{0}, {2}, FlowEdgeKind::kTaken, 0}, {{0}, {1}, FlowEdgeKind::kFallthrough, 1}};
+    auto syntax = fixture.Syntax();
+    syntax.callable = initialized ? CallableKind::kDerivedConstructor : CallableKind::kFunction;
+    const auto control = std::get<ControlPlan>(BuildControlPlan(fixture.graph));
+    const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(fixture.graph));
+    auto built = BuildFunctionTree(fixture.graph, control, evaluation, syntax, {fixture.constants, static_cast<std::uint32_t>(syntax.names.size()), 0, {}});
+    Check(std::holds_alternative<ConstructedFunction>(built));
+    const auto& tree = std::get<ConstructedFunction>(built).tree;
+    Check(std::holds_alternative<TreeSemantics>(fixture.Verify(tree)));
+    Check(tree.symbols.size() == 1);
+    const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 1, {}));
+    Check(std::holds_alternative<ConstructedAbi>(BuildFunctionAbi(fixture.graph, tree, frame, 1)));
+    const auto comparison_expr = std::get<ExprId>(tree.operations[comparison.value].node);
+    const auto right = std::get<BinaryExpr>(tree.expressions[comparison_expr.value].expression).right;
+    Check(std::get<ThisExpr>(tree.expressions[right.value].expression).owner == tree.owner);
+    auto wrong = tree;
+    wrong.expressions[right.value].expression = SymbolExpr{tree.parameters[0].symbol};
+    Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(wrong)));
+  }
+}
 void FrameReceiverTree() {
   using namespace analysis;
   Fixture fixture;
@@ -994,8 +1040,66 @@ void FrameReceiverTree() {
         FunctionAbiError::kReceiver);
   }
 }
+void RetainedReceiverTrees() {
+  using namespace analysis;
+  for (const bool initialized : {false, true}) for (const bool split : {false, true})
+      for (const bool copy : {false, true}) for (const bool getter : {false, true}) {
+    Fixture fixture;
+    fixture.Add(0, 0, 8, initialized ? ValueOperation{ValueSuperCall{0, {}}} :
+        ValueOperation{ValueFrameThis{}}, true, {}, initialized ? LanguageEffect::kUserCode : LanguageEffect::kNone);
+    ValueId receiver{2}; auto order = 1u;
+    if (copy) {
+      const auto copied = fixture.Add(0, order++, 13, ValueCopy{}, true, {{OperandRole::kInput, receiver}});
+      receiver = *fixture.graph.ops[copied.value].result;
+    }
+    if (split) fixture.Add(0, order++, 21, ValueJump{}, false, {});
+    const auto prefix = order; const auto block = split ? 1u : 0u;
+    if (split) order = 0;
+    if (getter) {
+      const auto callee = fixture.Add(block, order++, 34, ValueNamedRead{{0}}, true,
+          {{OperandRole::kBase, receiver}}, kRead);
+      fixture.Add(block, order++, 41, ValueInvoke{InvokeReceiver::kExplicit, 0}, true,
+          {{OperandRole::kCallee, *fixture.graph.ops[callee.value].result}, {OperandRole::kReceiver, receiver}},
+          LanguageEffect::kUserCode);
+    }
+    const auto comparison = fixture.Add(block, order++, 49, ValueBinary{BinaryOperator::kStrictEqual}, true,
+        {{OperandRole::kLeft, receiver}, {OperandRole::kRight, receiver}});
+    fixture.Add(block, order++, 61, ValueReturn{}, false,
+        {{OperandRole::kReturnValue, *fixture.graph.ops[comparison.value].result}});
+    if (split) {
+      fixture.graph.blocks = {{{0}, prefix, {0}, 1}, {{prefix}, order, {1}, 0}};
+      fixture.graph.edges = {{{0}, {1}, FlowEdgeKind::kTaken, 0}};
+    } else fixture.graph.blocks = {{{0}, order, {0}, 0}};
+    auto syntax = fixture.Syntax();
+    syntax.callable = initialized ? CallableKind::kDerivedConstructor : CallableKind::kFunction;
+    const auto control = std::get<ControlPlan>(BuildControlPlan(fixture.graph));
+    const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(fixture.graph));
+    Check(evaluation.operations[0].temporary.has_value());
+    const auto built = BuildFunctionTree(fixture.graph, control, evaluation, syntax, {fixture.constants, 2});
+    Check(std::holds_alternative<ConstructedFunction>(built));
+    const auto& tree = std::get<ConstructedFunction>(built).tree;
+    Check(tree.symbols.size() == 1 && std::holds_alternative<TreeSemantics>(fixture.Verify(tree)));
+    const auto binary = std::get<ExprId>(tree.operations[comparison.value].node);
+    const auto right = std::get<BinaryExpr>(tree.expressions[binary.value].expression).right;
+    Check(std::get<ThisExpr>(tree.expressions[right.value].expression).owner == tree.owner);
+    auto wrong = tree; wrong.expressions[right.value].expression = SymbolExpr{tree.parameters[0].symbol};
+    Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(wrong)));
+    Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(wrong)));
+    wrong = tree;
+    const auto original = std::get<ExprId>(tree.operations[0].node);
+    wrong.expressions[original.value].expression = ThisExpr{tree.owner};
+    if (initialized) Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(wrong)));
+    if (!initialized) {
+      std::ostringstream text;
+      Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, text)));
+      Check(text.str().find("$value") == std::string::npos);
+    }
+  }
+}
 }  // namespace
 int main() {
+  RetainedReceiverTrees();
+  RetainedReceiverBranches();
   ReceiverFields();
   SuperTree();
   ConstructorGuardAnchors();

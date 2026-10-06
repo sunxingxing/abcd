@@ -13,7 +13,8 @@ using namespace abcd;
 // DEFINEFUNC occurrence. It is not a full-file metadata parser acceptance test.
 constexpr std::uint32_t kPool = 64, kRecord = 128, kCaller = 256, kTarget = 300, kCodeStart = 400;
 constexpr std::uint32_t kLeaf = 320, kSibling = 340;
-constexpr std::uint8_t kImplicitArguments = 3;
+// Dynamic FrameLayout: function, new.target, receiver precede explicit args.
+constexpr std::uint8_t kImplicitArguments = 3, kReceiverArgument = 2;
 constexpr unsigned kByteBits = 8, kFunctionKindShift = 8;
 std::uint8_t Op(abc::Opcode opcode) { return static_cast<std::uint8_t>(opcode); }
 abc::CodeInfo Append(std::vector<std::uint8_t>& bytes, std::initializer_list<std::uint8_t> code) {
@@ -37,10 +38,12 @@ void FileDraft(bool nested) {
   }
   const auto caller = Append(bytes, {Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 0, 0, 0,
       Op(abc::Opcode::kRETURNUNDEFINED)});
-  // Deprecated NEG lacks the numeric/tag-exclusion proof for this Boolean input.
-  // Keep the family incomplete-propagation test on that actual domain gap.
+  // Boolean NEG is now covered by primitive numeric facts. Use the unknown
+  // invocation receiver instead: its coercion may run user code, and the
+  // pinned numeric contract has no tag-exclusion proof. Its coercion cannot be
+  // discarded even when its result is unused.
   constexpr auto kLegacyNegate = static_cast<std::uint16_t>(abc::Opcode::kDEPRECATED_NEG_PREF_V8);
-  const auto leaf = Append(bytes, {Op(abc::Opcode::kDEBUGGER), Op(abc::Opcode::kLDTRUE),
+  const auto leaf = Append(bytes, {Op(abc::Opcode::kDEBUGGER), Op(abc::Opcode::kLDA_V8), kReceiverArgument,
       Op(abc::Opcode::kSTA_V8), 0, static_cast<std::uint8_t>(kLegacyNegate),
       static_cast<std::uint8_t>(kLegacyNegate >> kByteBits), 0, Op(abc::Opcode::kRETURNUNDEFINED)});
   const auto target = nested ? Append(bytes, {Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 1, 0, 0,
@@ -85,7 +88,7 @@ void FileDraft(bool nested) {
   test::Check(source.find("debugger;") < source.find("UNRECOVERED"));
   if (!nested) test::Check(source.find("return") == std::string::npos);
   else test::Check(source.find("return 7;") != std::string::npos);
-  test::Check(source.find("PC 4") != std::string::npos);
+  test::Check(source.find("PC 5") != std::string::npos);
   test::Check(!report.contains("family_writes"));
   test::Check(positions.str().find("\"incomplete\":true") != std::string::npos);
   const auto located = nlohmann::json::parse("{" + positions.str() + "\"ready\":true}");

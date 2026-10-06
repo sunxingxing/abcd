@@ -36,6 +36,7 @@ class FlowCheck {
     budget.Array(flow_.buffered_properties, graph.ops.size());
     budget.Array(flow_.defined_properties, tree.properties.size());
     budget.Array(flow_.snapshots, graph.ops.size());
+    budget.Array(flow_.receivers, graph.ops.size());
     if (evaluation.cells) budget.Array(flow_.cells, evaluation.cells->cells.cells.size());
     budget.Array(assigned_, tree.symbols.size());
     budget.Array(declared_, tree.symbols.size());
@@ -725,6 +726,10 @@ class FlowCheck {
             const auto* result = std::get_if<analysis::OpResult>(&graph_.values[current.logical->value.value].origin);
             if (result && evaluation_.operations[result->op.value].kind == EvaluationKind::kPredicateSnapshot &&
                 evaluation_.operations[result->op.value].consumer == current.logical->input) {
+              if (flow_.receivers[result->op.value] != ReceiverValue::kNone) {
+                Require(flow_.expressions[result->op.value] == actual, Error::kSnapshot);
+                return;
+              }
               const auto* save = std::get_if<AssignmentExpr>(&tree_.expressions[actual.value].expression);
               const auto* target = save ? std::get_if<SymbolTarget>(&save->target) : nullptr;
               Require(save && target && flow_.snapshots[result->op.value] == target->symbol &&
@@ -1355,7 +1360,9 @@ class FlowCheck {
       Require(flow_.expressions[i].has_value(), Error::kSnapshot);
       auto& source = sources[flow_.expressions[i]->value]; Require(!source, Error::kSnapshot);
       source = analysis::OpId{static_cast<std::uint32_t>(i)};
-      if (NativeBinding(*flow_.expressions[i])) RootExpression(*source, *flow_.expressions[i]);
+      if (NativeBinding(*flow_.expressions[i]) ||
+          ReceiverRoot(*source, *flow_.expressions[i]) != ReceiverValue::kNone)
+        RootExpression(*source, *flow_.expressions[i]);
     }
     for (std::size_t i = 0; i < tree_.expressions.size(); ++i) {
       budget_.Step(); const auto& expression = tree_.expressions[i];
@@ -1367,8 +1374,25 @@ class FlowCheck {
     }
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       budget_.Step(); if (evaluation_.operations[i].kind == EvaluationKind::kPredicateSnapshot)
-        Require(flow_.snapshots[i].has_value(), Error::kSnapshot);
+        Require(flow_.snapshots[i].has_value() || flow_.receivers[i] != ReceiverValue::kNone, Error::kSnapshot);
     }
+  }
+  ReceiverValue ReceiverRoot(analysis::OpId id, ExprId expression) const {
+    const auto shape = DescribeEvaluation(graph_.ops[id.value].operation);
+    if (!shape || shape->receiver == ReceiverValue::kNone) return ReceiverValue::kNone;
+    const auto& node = tree_.expressions[expression.value].expression;
+    switch (shape->receiver) {
+      case ReceiverValue::kCurrent:
+        if (const auto* read = std::get_if<ThisExpr>(&node); read && read->owner == tree_.owner)
+          return ReceiverValue::kCurrent;
+        break;
+      case ReceiverValue::kInitialized:
+        if (tree_.callable == CallableKind::kDerivedConstructor && std::holds_alternative<SuperCallExpr>(node))
+          return ReceiverValue::kInitialized;
+        break;
+      case ReceiverValue::kNone: break;
+    }
+    return ReceiverValue::kNone;
   }
   std::optional<SymbolId> NativeBinding(ExprId expression) const {
     const auto* read = std::get_if<SymbolExpr>(&tree_.expressions[expression.value].expression);
@@ -1388,6 +1412,12 @@ class FlowCheck {
       return;
     }
     if (expression == value) {
+      if (const auto receiver = ReceiverRoot(id, expression); receiver != ReceiverValue::kNone) {
+        Require(tree_.expressions[expression.value].origin.value == graph_.ops[id.value].origin.value,
+            Error::kSnapshot);
+        flow_.receivers[id.value] = receiver;
+        return;
+      }
       if (const auto binding = NativeBinding(expression)) {
         Require(tree_.expressions[expression.value].origin.value == graph_.ops[id.value].origin.value,
             Error::kSnapshot);
