@@ -1,5 +1,28 @@
 # 验收、证据与实施交接
 
+2026-10-06 Index补充：Immersive9572的受控whole-record语义与高层表示
+由pending转accepted。核对固定ABC SHA后，先完成Index及Constants8755的
+ABC-only默认ValueTree导出，再读paired TS。真实生成ROUTES依赖、完整模块、
+constructor、八个prototype方法、两对访问器、static及嵌套callback实际执行；
+child类和平台接口受控。旧36项保留，新增136组生命周期、6,170组原异常、
+1,234组全局／live import换绑、36组setter／new.target／部分写入及10个有效
+JS mutation。同步／延迟两条baseline各617个事件全覆盖，未截断inventory。
+
+ROUTES驱动列表、key、点击、bound builder及child构造，检查捕获／receiver／
+取得callee后的换绑／原throw和部分field／cell状态；失败注册后、purge／delete
+后均重放原retained callback。参数默认／200/201、changing getter、两实例、
+scalar与finalize边界另验。参考的两项未初始化TS private类型声明标为declare
+后由独立parser擦除，避免Node引入ABC没有的DefineField；initializer、构造
+赋值和方法不变。pinned赋值setter／部分顺序仍有独立断言及DefineField mutation。
+
+表示要求native class／super／默认参数／accessor／arrow／member／literal和
+逻辑OR，接受mutable binding、receiver别名、等价if极性及必要的函数名称
+envelope；完整member own-key顺序及name／arity／descriptor另验。不代表四个
+child正文、TS type/private/const、设备运行、全部record或原结构gate完成。
+十四目标构建通过，扩大回归18/19通过；旧base_constructor_js_test在历史
+assignments位置仍失败，明确保留。当前ValueTree派生构造／类访问器补验3/3
+通过。具体日志、test-only oracle修复、限制及暂停范围见status.md。
+
 2026-10-06常量record补充：规则144通过共同AST/迭代printer排版嵌套
 字面量，以typed AssignmentExpression上下文去除对象／数组元素的多余
 对象括号，不更改恢复准入、effects、exception或inferred name。实际

@@ -4,17 +4,34 @@ import {readFileSync} from 'node:fs';
 import {dirname, join} from 'node:path';
 import {stripTypeScriptTypes} from 'node:module';
 import vm from 'node:vm';
+import {createHash} from 'node:crypto';
+import {verifyIndexRecord} from './index_record_state.mjs';
 
 const [tool, abc] = process.argv.slice(2);
+assert.equal(createHash('sha256').update(readFileSync(abc)).digest('hex'),
+  '8de95a4c6579b38133367422d43ffac146cba5e8222a874df4c3d7942380dc6a');
 const report = JSON.parse(execFileSync(tool, [abc, '10009', '--record-source', '--value-source'], {encoding: 'utf8'}));
 assert.equal(report.source_complete, true);
 assert.equal(report.route, 'value_tree');
 assert.equal(report.legacy_writer_used, false);
 assert.match(report.source, /class extends \(ViewPU\)/);
+assert.equal(report.record, 9572);
+const routes = JSON.parse(execFileSync(tool, [abc, '8889', '--record-source', '--value-source'], {encoding: 'utf8'}));
+assert.equal(routes.source_complete, true); assert.equal(routes.record, 8755);
+assert.equal(routes.route, 'value_tree'); assert.equal(routes.legacy_writer_used, false);
 // Full paired module is an independent oracle, read only after the ABC-only
 // engine process has exited. No method fragments are spliced into its output.
-const reference = stripTypeScriptTypes(readFileSync(join(dirname(abc),
-  'Immersive_src/default/src/main/ets/pages/Index.ts'), 'utf8'));
+const paired = readFileSync(join(dirname(abc), 'Immersive_src/default/src/main/ets/pages/Index.ts'), 'utf8');
+// The pinned producer erases type-only instance declarations. Node strip alone
+// materializes them as empty JS fields. Mark only uninitialized typed private
+// declarations as declare before the independent parser erases types; retain
+// every initializer, constructor assignment and method body. This is oracle
+// preparation after BOTH ABC-only exports, never an engine input/answer.
+const typeOnly = /^([ \t]*)private\s+([A-Za-z_$][\w$]*)\s*:\s*([^;\n=]+);/gm;
+assert.equal([...paired.matchAll(typeOnly)].length, 2);
+const reference = stripTypeScriptTypes(paired.replace(typeOnly, '$1declare private $2: $3;'));
+const referenceRoutes = stripTypeScriptTypes(readFileSync(join(dirname(abc),
+  'Immersive_src/default/src/main/ets/constants/Constants.ts'), 'utf8'));
 async function exercise(source, hasFinalize, failure) {
   const trace = [];
   const exception = {};
@@ -107,3 +124,4 @@ for (const finalize of [false, true]) for (const failure of ['', 'register', 'su
   ++scenarios;
 }
 console.log(`Index complete record: ${scenarios} paired module/constructor/member scenarios passed`);
+console.log(JSON.stringify(await verifyIndexRecord(report.source, routes.source, reference, referenceRoutes)));

@@ -133,3 +133,20 @@ JS before testing, so syntax rejection cannot count as detection.
 This is evidence for the tested complete record and the assignment obligation,
 not acceptance of every class, metadata field, platform host or phase-one input.
 The production recovery model and instruction distinctions remain unchanged.
+
+At rules 144, complete Immersive Index (record 9572) executes with its actual
+generated ROUTES dependency after both ABC-only exports finish. Its independent
+reference has two uninitialized private typed declarations. Node's type stripper
+would materialize empty JS fields for these declarations; the pinned producer
+erases them. Reference preparation marks only these type-only declarations as
+`declare` before stripping. Every initializer, constructor assignment and method
+body stays intact. This test-only preparation is never an engine input.
+
+The complete module verifies native constructor/defaults, all methods/accessors,
+member order/descriptors and actual render/navigation closures. Thirty-six
+additional assignment cases cover the three constructor properties, inherited
+setters, alternate new.target, arbitrary original throws, receiver identity and
+partial write order. A valid-JS mutation replacing the observed-cell assignment
+with Object.defineProperty must fail this independent contract. This accepts the
+tested record's constructor/body integration, without turning its setter-capable
+assignments into declarations or closing every class's structural gate.

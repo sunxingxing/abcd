@@ -12,6 +12,56 @@
 
 ## 当前阶段
 
+### 2026-10-06：Index 完整 record、真实 ROUTES 与字段／方法贯通验收
+
+- 基线ae9cd4ab，生产规则仍144；只扩展既有index_record_source_test及
+  test-only oracle。先核对固定Immersive ABC SHA，再完成record9572 Index／
+  record8755 Constants的ABC-only默认ValueTree导出，两项均complete且无
+  legacy，随后才读paired TS。执行完整生成Index和真实ROUTES依赖；child
+  view类和平台接口受控，未替换实际constructor／method／callback正文。
+- 保留旧36组module／constructor检查，新增136组完整生命周期、6,170组
+  实际可达事件的undefined/null/0/Symbol/object原异常、1,234组实时换绑、
+  36组字段赋值和10个先解析为有效JS的mutation。同步／延迟两条baseline
+  各617个实际事件均逐项fault／swap，没有用固定事件上限截断。真实
+  initialRender、NavPageMap、八个prototype方法、两对访问器及static方法
+  执行；ROUTES驱动列表／JSON key／click／builder／child构造，比较callee、
+  receiver、captured identity、参数、原throw及部分字段／cell状态。
+- 注册先保留closure后throw，断言原异常及原callback在失败后成功重放；
+  purge／delete后以foreign this释放实际callback／click／bound builder。
+  覆盖两实例、正反队列、initial/update分支、缺失／继承／不可调用／不可扩展
+  finalize、父构造对象return、changing getter、falsy/NaN/BigInt/Symbol及
+  0/1/2/3/4/6/200/201实参。每个实际事件可替换组件、JSON、SubscriberManager、
+  NavPathStack／Observed构造器和四个live imported child，保留取得的callee
+  身份；void宿主结果不能泄漏或触发poison then。
+- Node strip会把paired TS未初始化private类型声明变成空JS字段，产生ABC
+  没有的DefineField。仅在独立参考准备中将两项未初始化声明标为declare后
+  擦除，所有initializer／constructor赋值／方法保持原样；生产没有文本匹配。
+  三项paramsGenerator_／__navPageInfos／__windowUtil setter、alternate
+  new.target、任意原throw、receiver及部分写入顺序另作pinned assignment
+  断言。把真实赋值替成Object.defineProperty的mutation必须被检出。
+- 表示独立核对原生class／constructor／super／默认参数／accessor／arrow／
+  member／literal／逻辑OR及UI调用；完整own-key顺序、name／arity／descriptor
+  和类调用边界由运行时断言核对。接受mutable Index binding、receiver别名、
+  等价if极性及必要的函数名称envelope，不声称恢复TS type/private/const。
+  该Index record的受控whole-record语义／高层表示由pending转accepted；
+  四个child的完整正文、设备运行、其余record及原结构gate仍须自己的证据。
+- 单一-j4十四目标构建退出0，三个mjs语法及git diff --check通过。扩大
+  回归18/19通过47.54秒，唯一失败为base_constructor_js_test旧writer的
+  assignments检查（base_constructor_test.cc:58），与本页既有基线失败一致，
+  未计入通过或修复。当前ValueTree的class_accessors／derived_constructor／
+  derived_class_heritage三项补验3/3通过。实际Index新验收及NavMap／initialRender、
+  两常量整record、两Widget、signatures／globals／partial与显式构造语义均通过。
+  日志/tmp/abcd-index-record-final-build-1.log、final-tests-1.log、
+  final-ctest-details-1.log、final-tests-2.log；CTest仍571项。
+- 初版oracle失败于未tag的ViewPU.prototype触发getter；修正后tests-2/3/4
+  通过。加入同步fault后tests-5发现builder阶段晚注册的失败callback未重放，
+  将精确retained callback重放放到完整调度末尾后tests-6通过21.10秒；均为
+  test-only修正，失败日志/tmp/abcd-index-complete-tests-{1,5}.log保留。
+  子进程顺序分批64场景并核对inventory／counter；不作生产RSS声明。
+  本轮无生产修改，未重复固定五／六模式30次导出，规则144的literal-layout
+  pass-2仍为现有批量证据。structure_only未清除，阶段一Goal继续active；
+  全套、expanded corpus、RSS/benchmark、agents、scheduler/DFX、周期审计暂停。
+
 ### 2026-10-06：通用嵌套字面量排版与两份常量 record 整模块验收
 
 - 基线20ad0495，生产规则144。共同TreePrinter按真实ObjectExpr的非空
