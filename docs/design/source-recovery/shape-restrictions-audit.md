@@ -1,5 +1,17 @@
 # 按用户要求进行的恢复条件审计
 
+规则138补充：SourceTree 移除“所有 formal 都有 debug 名称才保留任意名称”
+的表示限制。ParameterOffsets / RecoveredParameters 逐 ABI ordinal 使用 typed
+absence，真实原始 SSA/Before/Commit/Catch、copy/phi/SCC 仍证明名字关联；
+不按默认 prologue、寄存器/PC 布局、同块或样本补名字。单 ordinal 的范围
+冲突、非法名字及跨 formal duplicate 只撤销对应候选，不能后续复活；读取/
+file-change/resource 错误保持。legacy 全集合限制仍隔离在它的 text adapter。
+实际 source formal/可写 cell/global/module/capture 身份保持独立，旧共同
+NameReservations/enclosure 避免新增名字遮住真实 descendant callee。24 个
+新增 decoded family case 加不利 shadow mutation、ordinal 缺失/拆块/混合
+phi/200/201/402/804及真实 NavPageMap 方法行为覆盖这些边界；不扩大为
+所有 source signature/type 或 UI/platform 语义完成。
+
 2026-10-06 文件名边界补充（结构输出，非新增方法恢复规则）：contextual
 source-path planner移除entry==package、entry不得含slash及ASCII-only三项
 表示限制。现由既有ABC SourceIdentity/PackageSource adapter、全文件排序

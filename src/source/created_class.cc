@@ -466,7 +466,7 @@ class ClassWriter {
         AdmitClassBytes(parameter_views.capacity() - parameter_names->names.size(),
                         sizeof(std::string_view), budget.bytes);
       for (const auto& name : parameter_names->names)
-        parameter_views.push_back(name);
+        parameter_views.push_back(name.value());
     } else if (const auto* error =
                    std::get_if<abc::MetadataError>(&recovered)) {
       throw ClassFailure{*error};

@@ -55,6 +55,17 @@ package不同的descriptor fallback缺口。所有正文及位置映射按entity
 native-receiver输出逐一不变；16项定向回归通过。此证据验证输出路径与无
 正文回退，不扩为未初始化TS字段、global/签名或其余record的独立行为完成。
 
+2026-10-06逐formal命名补充：规则138的真实稀疏/非法/重复 sibling三参数
+family新增24组，独立JS共152 decoded families、3268行为及88有效mutation；
+实际global/module callee不能被新formal/cell提示遮住。实际完整Index record
+通过host注册取得真实factory，创建原class后调用真实NavPageMap，配对方法
+的756组同步/延迟callback、receiver、arity、效果/异常对照通过。Content原
+176组检查及legacy NavPageMap的另756组保留。依赖host/framework为控制
+对象，不以该方法的通过宣称整record、构造生命周期或平台验收完成。
+最终18项定向与五ABC六模式导出通过；default/constructor各7份、四种语言
+数值模式各14份源码表示改善，完整数量未变。完整source签名/结构gate仍须
+自身全范围证据，逐参数有名不证明类型、const或源级字段。
+
 ## 1. 四种状态，不混报完成
 
 | 状态 | 意义 | 可否称 gate 通过 |

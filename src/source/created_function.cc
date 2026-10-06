@@ -101,7 +101,7 @@ CreatedFunctionResult WriteCreation(
         return CreatedFunctionError::kResourceLimit;
       budget.bytes -= extra * sizeof(std::string_view);
     }
-    for (const auto& name : recovered->names) parameters.push_back(name);
+    for (const auto& name : recovered->names) parameters.push_back(name.value());
   } else if (const auto* error =
                  std::get_if<abc::MetadataError>(&source_names)) {
     return *error;

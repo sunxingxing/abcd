@@ -1,14 +1,15 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {mkdtempSync, readFileSync, rmSync} from 'node:fs';
-import {join} from 'node:path';
+import {join, dirname} from 'node:path';
 import {tmpdir} from 'node:os';
 import {stripTypeScriptTypes} from 'node:module';
 import vm from 'node:vm';
+import {verifyNavMap} from './navmap_state.mjs';
 
 const [tool, abc, paired] = process.argv.slice(2);
 const temporary = mkdtempSync(join(tmpdir(), 'abcd-parameter-origins-'));
-let generated;
+let generated, generatedIndex;
 try {
   const output = join(temporary, 'output');
   execFileSync(tool, [abc, output, '--value-source', '--language-numeric', '--language-constructors'],
@@ -18,6 +19,9 @@ try {
   assert.equal(record.source_complete, true);
   assert.equal(record.legacy_writer_used, false);
   generated = readFileSync(join(output, record.source), 'utf8');
+  const index = manifest.records.find(record => record.entity === 9572);
+  assert.equal(index.source_complete, true); assert.equal(index.legacy_writer_used, false);
+  generatedIndex = readFileSync(join(output, index.source), 'utf8');
 } finally { rmSync(temporary, {recursive: true}); }
 // The paired source is evaluation input only, read after ABC-only generation.
 // This executes a recovered method; platform UI/constructor behavior is separate.
@@ -62,3 +66,48 @@ assert.notEqual(broken, generated);
 const mutated = await load(broken);
 assert.notDeepEqual(observe(mutated, 7), observe(expected, 7));
 console.log(`${cases} paired named-signature length/coercion/exception/object-identity scenarios passed; dropped count mutation detected`);
+
+// Export first, then read the independent reference. Exercise the real class
+// method from the complete generated ESM record, including its import bindings.
+const pairedIndex = readFileSync(join(dirname(abc),
+  'Immersive_src/default/src/main/ets/pages/Index.ts'), 'utf8');
+const begin = pairedIndex.indexOf('    NavPageMap(name: string, parent = null) {');
+const end = pairedIndex.indexOf('    initialRender()', begin);
+assert.ok(begin >= 0 && end > begin);
+const referenceNavMap = pairedIndex.slice(begin, end).replace('name: string', 'name');
+assert.match(generatedIndex, /NavPageMap\(name, parent = null\)/);
+const routeCases = await verifyNavMap(async (context, globals) => {
+  const factories = [];
+  context.registerNamedRoute = function(factory, name, metadata) {
+    assert.equal(typeof factory, 'function'); assert.equal(name, '');
+    assert.equal(metadata.pagePath, 'pages/Index'); factories.push(factory);
+  };
+  context.NavPathStack = class {};
+  context.ObservedPropertyObjectPU = class {
+    constructor(value, owner, name) { this.value = value; assert.ok(owner instanceof globals.ViewPU); assert.equal(name, 'navPageInfos'); }
+    get() { return this.value; }
+    set(value) { this.value = value; }
+  };
+  globals.ViewPU.prototype.addProvidedVar = function(name, cell, mutable) {
+    assert.equal(name, 'navPageInfos'); assert.equal(cell, this.__navPageInfos); assert.equal(mutable, false);
+  };
+  globals.ViewPU.prototype.createStorageLink = function(name, value, alias) {
+    assert.equal(name, 'windowUtil'); assert.equal(value, undefined); assert.equal(alias, name);
+    return {get() {return undefined;}};
+  };
+  const module = new vm.SourceTextModule(generatedIndex, {context});
+  await module.link(specifier => {
+    const binding = specifier.includes('/Constants&') ? 'ROUTES' :
+      ['ShoppingFullScreen', 'ShoppingAvoid', 'MiniGame', 'Shopping'].find(name => specifier.endsWith('/' + name + '&'));
+    assert.ok(binding, specifier);
+    return new vm.SyntheticModule([binding], function() {
+      this.setExport(binding, binding === 'ROUTES' ? [] : globals[binding]);
+    }, {context});
+  });
+  await module.evaluate();
+  assert.equal(factories.length, 1);
+  const instance = factories[0]();
+  assert.ok(instance instanceof globals.ViewPU);
+  return Object.getPrototypeOf(instance).NavPageMap;
+}, referenceNavMap);
+console.log(`${routeCases} actual-record named/default-signature route scenarios passed`);

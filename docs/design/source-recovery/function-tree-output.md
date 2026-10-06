@@ -21,6 +21,44 @@ Printer 处理节点、名字、括号、转义、标签、注释和已有输出
 模式，不补推 CFG、finally 或闭包，不调用专项 body writer。无原名可用合成名，
 无独立 PC 的结构节点保留结构来源；不补造原名、类型、PC 或可执行占位行为。
 
+## 逐参数保留真实 debug 名称（规则 138）
+
+共同 ParameterOrigins 仍在原始 Before/Commit/Catch 图上观察 debug range 的
+寄存器，经 SSA copy/phi agreement 与 SCC 上游命名优先级关联实际 ABI ordinal。
+名字不证明存储、初始化、const、参数类型或默认值；默认签名仍由原来的独立
+投影证明。新变化是 ParameterOffsets / RecoveredParameters 对每个 ordinal
+使用 typed absence，不再因为另一个参数缺少证据而丢弃整个集合。
+
+SourceTree 保留每个唯一、合法的 debug 名字；某 ordinal 的范围相互冲突后
+不会被后面的范围复活；相同 spelling 的不同 formal 候选同时放弃，非法或
+不完整字符串提示不污染其他名字。真实读取/file-change/resource 错误仍失败。
+没有可观察范围时直接返回全 absent，避免重建无用途的 SSA。LegacyWriter
+的完整集合及私有名字约定保持在它自己的 adapter；两个旧文本调用者只在
+该完整结果上取得 string views。共同 syntax resolution 保持所有 formal 的
+原 ordinal，并只为已恢复名字生成 NameId；其余沿现有 cell-name/合成命名。
+
+NameReservations、family/module/global enclosure 和树的实际参数/capture/
+绑定校验继续决定最终可用 spelling。不能用一个已恢复名字遮蔽 descendant
+global/module，或把同名 cell 与可写 formal 合并；真实值/receiver、default
+initializer、控制、效果、异常及 origin 对应保持。没有新的 opcode/PC/register
+布局、同块、固定数量或样本匹配。源树来源是旧共同 SSA/SCC/命名算法，项目
+自有实现，无新增依赖或第三方代码。
+
+令 P 为 formal 数、D 为 debug observations、I 为指令数、V/E 为共同观察 SSA
+节点/依赖、L 为最大名字长度。观察沿旧 indexed SSA/SCC 成本；新增逐 ordinal
+合并 O(P+D)，名字去重 O(P log P * L)，额外空间 O(P+名字字符)。debug range
+查询 O(D log I)，字符串读取仍逐项，vector/string 实际容量及终止字节计预算。
+200/201/402/804 的缺失 ordinal 用例不需要按每个参数重新扫描 CFG；这不是
+恢复完整进程 RSS/benchmark 的证据。
+
+真实编码 fixture 覆盖稀疏、非法、重复 sibling、直线/拆块、named/plain cell、
+global/module callee、延迟 closure、任意参数身份和错误 shadow mutation。
+实际 ABC-only record 输出再读取 paired reference：NavPageMap 恢复
+`(name, parent = null)`，通过注册的真实 factory 创建实际类后取得真实 method，
+受控 framework/import dependencies 下验证同步/延迟 callback、receiver、
+默认 arity、分支、getter/effect 和异常。这个方法验收不关闭整个 UI/platform
+或全部 record gate。具体构建、18 项回归及六模式固定五输入证据见 status.md。
+
 ## 原生 receiver 存储的共同复用（规则 137）
 
 EvaluationShape 用 typed ReceiverValue 区分当前调用的原生 receiver 与成功

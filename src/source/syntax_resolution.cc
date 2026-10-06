@@ -88,13 +88,14 @@ std::variant<ResolvedSyntax, SyntaxResolutionFailure> ResolveFunctionSyntax(
       } else {
         const auto& parameters = std::get<RecoveredParameters>(recovered);
         Require(parameters.names.size() == frame.parameters, Error::kParameters);
-        admit(parameters.names.capacity(), sizeof(std::string));
-        for (const auto& name : parameters.names) { step(1); admit(name.capacity(), 1); admit(1, 1); }
+        admit(parameters.names.capacity(), sizeof(std::optional<std::string>));
+        for (const auto& name : parameters.names) { step(1); if (name) { admit(name->capacity(), 1); admit(1, 1); } }
         constexpr auto kMaxId = std::numeric_limits<std::uint32_t>::max();
         Require(syntax.names.size() <= kMaxId - frame.parameters, Error::kResourceLimit);
         reserve(syntax.names, syntax.names.size() + frame.parameters);
         for (std::size_t i = 0; i < parameters.names.size(); ++i) {
-          const auto& name = parameters.names[i];
+          if (!parameters.names[i]) continue;
+          const auto& name = *parameters.names[i];
           step(name.size()); admit(name.size(), sizeof(char16_t)); admit(1, sizeof(char16_t));
           const NameId id{static_cast<std::uint32_t>(syntax.names.size())};
           auto& owned = syntax.names.emplace_back(name.begin(), name.end());

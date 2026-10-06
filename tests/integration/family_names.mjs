@@ -22,7 +22,15 @@ for (const formal of ['$arg0', '$value0', '$local1', 'ClassValue', 'MethodSelfVa
       assert.equal(result.status, 0, result.stderr);
       formalRows.push({name: 'restoredValue', formal, space, source: result.stdout});
     }
-async function load({name, space, source, formal}) {
+const partialRows = [];
+for (const debugSet of ['sparse', 'invalid', 'duplicate'])
+  for (const space of ['global', 'module']) for (const hint of ['plain', 'named'])
+    for (const layout of ['straight', 'split']) {
+      const result = spawnSync(fixture, ['restoredValue', space, hint, layout, 'ordinary', debugSet], {encoding: 'utf8', timeout: 60000});
+      assert.equal(result.status, 0, result.stderr);
+      partialRows.push({name: 'restoredValue', formal: 'ordinary', space, source: result.stdout, debugSet});
+    }
+async function load({name, space, source, formal, debugSet}) {
   const trace = [], sentinel = {};
   let stop = null;
   const event = kind => {trace.push(kind); if (stop === kind) throw sentinel;};
@@ -44,11 +52,17 @@ export default (${source});`;
   await module.evaluate();
   assert.deepEqual(trace, []);
   const outer = module.namespace.default;
-  assert.equal(outer.name, 'outer'); assert.equal(outer.length, 1);
+  assert.equal(outer.name, 'outer'); assert.equal(outer.length, debugSet ? 3 : 1);
   if (formal) {
     const header = outer.toString().split('{', 1)[0];
     const parameter = header.slice(header.indexOf('(') + 1, header.lastIndexOf(')'));
-    if (['eval', 'await', 'bad-name', name].includes(formal)) assert.notEqual(parameter, formal);
+    const names = parameter.split(',').map(name => name.trim());
+    if (debugSet) {
+      assert.equal(names.length, 3);
+      if (debugSet === 'duplicate') assert.notEqual(names[0], formal);
+      else assert.equal(names[0], formal);
+      assert.notEqual(names[1], name); assert.notEqual(names[1], 'bad-name'); assert.notEqual(names[1], formal);
+    } else if (['eval', 'await', 'bad-name', name].includes(formal)) assert.notEqual(parameter, formal);
     else assert.equal(parameter, formal);
   }
   return {outer, reference: module.namespace.reference, trace, sentinel, setStop(value) {stop = value;}, replace(value) {
@@ -60,7 +74,7 @@ let behaviorCases = 0;
 async function exercise(row) {
   const loaded = await load(row);
   const values = [undefined, null, false, 0, -0, NaN, 1n, Symbol('value'), {}, []];
-  const children = values.map(value => loaded.outer(value));
+  const children = values.map((value, i) => loaded.outer(value, values[(i + 1) % values.length], values[(i + 2) % values.length]));
   assert.equal(new Set(children).size, values.length);
   assert.deepEqual(loaded.trace, []); // Creating a closure must not read its callee.
   for (let i = 0; i < values.length; ++i) {
@@ -88,7 +102,7 @@ async function exercise(row) {
   loaded.replace(changed);
   for (let i = 0; i < values.length; ++i) {assert.ok(Object.is(children[i]().value, values[i])); ++behaviorCases;}
 }
-for (const row of [...rows, ...formalRows]) await exercise(row);
+for (const row of [...rows, ...formalRows, ...partialRows]) await exercise(row);
 const verifiedBehaviorCases = behaviorCases;
 
 let mutationChecks = 0;
@@ -105,4 +119,24 @@ for (const row of rows.filter((_, index) => index % 2 === 0)) {
     assert.equal(detected, true); ++mutationChecks;
   }
 }
-console.log(JSON.stringify({decodedFamilies: rows.length + formalRows.length, formalFixtures: formalRows.length, behaviorCases: verifiedBehaviorCases, mutationChecks, wholeRecordBehavior: false}));
+// A valid source mutation deliberately shadows the child's actual global or
+// module callee with an otherwise unused sibling formal. Also test the restored
+// first formal when it is unique. Independent traces/identity must detect both.
+for (const row of partialRows) {
+  const header = row.source.match(/function(?:\s+[A-Za-z_$][\w$]*)?\(([^)]*)\)/);
+  assert.ok(header);
+  const parameters = header[1].split(',').map(name => name.trim());
+  assert.equal(parameters.length, 3);
+  parameters[1] = row.name;
+  const changes = [row.source.replace(header[1], parameters.join(', '))];
+  if (row.debugSet !== 'duplicate') changes.push(row.source.replaceAll('ordinary', row.name));
+  for (const source of changes) {
+    assert.notEqual(source, row.source);
+    new vm.SourceTextModule(`export default (${source});`);
+    let detected = false;
+    try {await exercise({...row, source});}
+    catch (error) {if (!(error instanceof assert.AssertionError)) throw error; detected = true;}
+    assert.equal(detected, true); ++mutationChecks;
+  }
+}
+console.log(JSON.stringify({decodedFamilies: rows.length + formalRows.length + partialRows.length, formalFixtures: formalRows.length, partialFixtures: partialRows.length, behaviorCases: verifiedBehaviorCases, mutationChecks, wholeRecordBehavior: false}));

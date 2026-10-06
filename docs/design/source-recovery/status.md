@@ -12,6 +12,57 @@
 
 ## 当前阶段
 
+### 2026-10-06：共同命名器逐参数保留 debug 事实
+
+- 基线d1b9c5a4，方法规则138。实际输出中的默认参数名缺失源自旧 naming
+  adapter 的整组准入：某个 formal 无 debug 证明，就丢弃所有 debug 名字。
+  ParameterOffsets / RecoveredParameters 现逐 ABI ordinal 使用 optional；
+  SourceTree保留每项unique合法提示，范围冲突不会后续复活，非法/重复名字
+  只撤销对应候选。legacy 完整集合/私有namespace约定保持隔离；旧文本
+  调用者只消费其完整结果。没有 sample/opcode/layout/同块或数量匹配。
+- 原始ParameterOrigins的Before/Commit/Catch、SSA copy/phi/SCC、上游
+  named-storage过滤保持；名字不授予存储身份、类型、const或default证明。
+  名字进入共同syntax后继续经过NameReservations、module/global/family
+  enclosure及实际formal/capture/绑定校验。真实读取/file-change/resource
+  失败保持，typed absence不伪装为输入undefined。没有observations时不重建
+  无用途SSA；可选名字及string容量/终止字节计预算，排序去重及逐ordinal
+  合并不按参数反复扫描CFG。复杂度/边界见function-tree-output.md。
+- parameter_bindings_test扩展稀疏/冲突后重复、非法range、empty范围、
+  copy/拆块、mixed phi及200/201/402/804缺失ordinal；原legacy拒绝仍检查。
+  family_names_test新增24组真实编码三formal族：稀疏/非法/重复 sibling、
+  named/plain、直线/拆块、global/module callee。JS独立执行共152个decoded
+  families（80原formal/24新partial），3268组参数/closure/effect/原异常/
+  live callee行为；88个有效JS mutation拒绝，其中40项新增partial formal
+  或其unused sibling遮住真实callee。C++还检查NameEvidence、arity及
+  不同enclosure下draft拒绝，没有测试专用production API。
+- parameter_origins_source_test在ABC-only完整导出之后才读paired reference，
+  保留Content.getBirdImages的176组identity/coercion/throw及count mutation；
+  新增实际Index record NavPageMap(name, parent = null)。完整ESM实际执行
+  原registerNamedRoute，受控host取得真实factory并创建实际class，再调用
+  原prototype method；没有抽取/替换生成函数正文。756组配对route/默认
+  arity、同步/延迟callback、receiver、constructor/update、效果及throw对照
+  通过。原legacy navmap_source_test复用同一独立oracle，另756组保留。
+  framework/import/state对象是控制依赖，此证据不关闭整UI/platform gate。
+- 首轮build-1/六项回归通过；扩大构建时final-build-1把CTest名称误当target
+  而停止，后续按实际CMake target修正。最终单一-j4 final-build-2退出0，
+  handle关闭后final-tests-1 18/18通过23.98秒，含default/captured/string/
+  implicit相关、class names、captures/partial、normal/phased命名及真实方法。
+  新record oracle先补齐缺失的host registerNamedRoute和实际factory控制依赖，
+  没有因这个测试初始化失败改生产语义。日志/tmp/abcd-partial-formals-*。
+  四项JS脚本语法/git diff --check通过，CTest注册仍565项。
+- 最终固定五ABC/六模式30次导出退出0，输入hash/size与index一致，每模式
+  106份完整/明确partial源码Node语法通过，无完整回退/新增legacy；default和
+  constructor各7份、四种语言数值模式各14份源码表示改变，实际包括
+  NavPageMap、CustomButton、PagesMap、TabBarBuilder等parent/param参数，
+  及部分callback的真实debug formal/独立cell名。按同模式两pass核对，所有
+  manifest及源码bytes逐一相同。完整/partial仍80/26、95/11、96/10、88/18、
+  105/1、106/0，另46个no-module；源码路径保持上一提交结果。产物
+  build/stage-one/partial-formals-<mode>-pass-2，summary-2/batch-2日志在/tmp。
+- 这关闭所测逐formal命名缺口，不把debug编译绑定当作逐字paired源码名字。
+  Goal保持active：instance fields/globals/完整签名/body结构gate、其余record
+  独立行为/表示与全模块图/platform仍开放。全套、expanded corpus、RSS/
+  benchmark、agents、scheduler/DFX与周期审计继续暂停。
+
 ### 2026-10-06：共同包身份规划恢复源码路径
 
 - 基线60c2a64c，方法恢复规则仍137。源码路径改由既有ABC-only

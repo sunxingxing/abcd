@@ -19,7 +19,11 @@ constexpr std::uint32_t kType = 350, kModuleName = 370, kModuleField = 480;
 constexpr std::uint32_t kCode = 500, kWord = sizeof(std::uint32_t), kByteBits = 8;
 constexpr std::uint32_t kImplicitArguments = 3, kFunctionKindShift = 8;
 
-std::string Source(std::string_view free_name, bool module_read, bool named, bool split = false, std::string_view formal = {}) {
+enum class DebugSet { kComplete, kSparse, kInvalid, kDuplicate };
+std::string Source(std::string_view free_name, bool module_read, bool named, bool split = false,
+    std::string_view formal = {}, DebugSet debug_set = DebugSet::kComplete) {
+  const bool partial = debug_set != DebugSet::kComplete;
+  const std::uint8_t parameters = partial ? 3 : 1;
   std::vector<std::uint8_t> bytes(kCode);
   auto word = [&](std::uint32_t at, std::uint32_t value) {
     for (unsigned i = 0; i < kWord; ++i) bytes[at + i] = static_cast<std::uint8_t>(value >> (kByteBits * i));
@@ -39,8 +43,10 @@ std::string Source(std::string_view free_name, bool module_read, bool named, boo
   bytes[kScope + 3 * kWord + 2] = static_cast<std::uint8_t>(abc::LiteralTag::kInteger);
   word(kScope + 3 * kWord + 3, 0);
   text(kName, free_name);
-  constexpr std::uint32_t kFormal = 70, kLineTable = 64;
+  constexpr std::uint32_t kFormal = 70, kLineTable = 64, kOtherFormal = 330;
   if (!formal.empty()) text(kFormal, formal);
+  if (partial) text(kOtherFormal, debug_set == DebugSet::kInvalid ? "bad-name" :
+      debug_set == DebugSet::kDuplicate ? formal : free_name);
   if (module_read) {
     constexpr std::uint32_t kRequest = 225, kImported = 235;
     text(kRequest, "dep"); text(kImported, "fn"); text(kModuleName, "moduleRecordIdx");
@@ -57,7 +63,7 @@ std::string Source(std::string_view free_name, bool module_read, bool named, boo
     bytes.insert(bytes.end(), body.begin(), body.end());
     return abc::CodeInfo{{start}, {start + kWord}, registers, arguments, static_cast<std::uint32_t>(body.size()), 0};
   };
-  const auto caller = code({0x33, 0, 0, 0, 1, 0x65}, 0, kImplicitArguments);
+  const auto caller = code({0x33, 0, 0, 0, parameters, 0x65}, 0, kImplicitArguments);
   std::vector<std::uint8_t> outer = named ?
       std::vector<std::uint8_t>{static_cast<std::uint8_t>(abc::Opcode::kNEWLEXENVWITHNAME_IMM8_ID16), 1, 2, 0} :
       std::vector<std::uint8_t>{0x09, 1};
@@ -65,7 +71,7 @@ std::string Source(std::string_view free_name, bool module_read, bool named, boo
   if (split) outer.insert(outer.end(), {0x60, 5, 0x61, 1, 0x4d, 3,
       static_cast<std::uint8_t>(abc::Opcode::kNOP)});
   outer.insert(outer.end(), {0x60, static_cast<std::uint8_t>(split ? 1 : 4), 0x3d, 0, 0x33, 0, 1, 0, 0, 0x61, 0, 0x60, 0, 0x69, 0x64});
-  const auto outer_code = code(outer, outer_registers, kImplicitArguments + 1);
+  const auto outer_code = code(outer, outer_registers, kImplicitArguments + parameters);
   // Original lexical value remains a call argument; callee is an independent
   // global or module binding with the same spelling as an ancestor name hint.
   std::vector<std::uint8_t> child{0x3c, 0, 0x61, 1};
@@ -79,12 +85,22 @@ std::string Source(std::string_view free_name, bool module_read, bool named, boo
   if (!formal.empty()) {
     debug = abc::EntityOffset{static_cast<std::uint32_t>(bytes.size())};
     // Pinned DebugInfo wire: line, parameter entities, pool bytes, program index.
-    bytes.insert(bytes.end(), {1, 1, kFormal, 2, kFormal, kFormal, 0});
+    bytes.insert(bytes.end(), {1, 1, kFormal, static_cast<std::uint8_t>(partial ? 6 : 2), kFormal, kFormal});
+    if (partial) {
+      constexpr unsigned kLebBits = 7;
+      constexpr std::uint32_t kLebMask = 0x7f;
+      for (const auto value : {kOtherFormal, kOtherFormal}) {
+        bytes.push_back((value & kLebMask) | 0x80); bytes.push_back(value >> kLebBits);
+      }
+    }
+    bytes.push_back(0);
     word(kLineTable, static_cast<std::uint32_t>(bytes.size()));
     // START_LOCAL(reg) reads name/type entities from the separate pool. Observe
     // the real ABI parameter at entry; its later copies/blocks remain in code.
     constexpr std::uint8_t kStartLocal = 3, kEndSequence = 0;
-    bytes.insert(bytes.end(), {kStartLocal, static_cast<std::uint8_t>(outer_registers + kImplicitArguments), kEndSequence});
+    bytes.insert(bytes.end(), {kStartLocal, static_cast<std::uint8_t>(outer_registers + kImplicitArguments)});
+    if (partial) bytes.insert(bytes.end(), {kStartLocal, static_cast<std::uint8_t>(outer_registers + kImplicitArguments + 1)});
+    bytes.push_back(kEndSequence);
   }
   char path[] = "/tmp/abcd-family-names-XXXXXX";
   const auto fd = mkstemp(path); test::Check(fd >= 0);
@@ -125,11 +141,11 @@ std::string Source(std::string_view free_name, bool module_read, bool named, boo
   }
   if (debug) {
     const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(outer_registers,
-        kImplicitArguments + 1, abc::DecodeCallFlags({})));
+        kImplicitArguments + parameters, abc::DecodeCallFlags({})));
     const auto body = std::get<abc::MethodBody>(abc::DecodeMethodBody(*file, header.profile, outer_code));
     const auto legacy = RecoverParameterNames(*file, header, index.methods[1], frame, body, analysis::SemanticBudget{}.bytes);
-    if (formal == "ordinary" || formal == "restoredValue")
-      test::Check(std::get<RecoveredParameters>(legacy).names == std::vector<std::string>{std::string(formal)});
+    if (!partial && (formal == "ordinary" || formal == "restoredValue"))
+      test::Check(std::get<RecoveredParameters>(legacy).names == std::vector<std::optional<std::string>>{std::string(formal)});
     else test::Check(std::get<ParameterNameError>(legacy) == ParameterNameError::kUnproven);
   }
   const auto range = sites.Find({kOuter});
@@ -148,13 +164,15 @@ std::string Source(std::string_view free_name, bool module_read, bool named, boo
   test::Check(family.Family().members.size() == 2);
   if (!formal.empty()) {
     const auto& tree = family.Family().members.front().tree;
-    test::Check(tree.parameters.size() == 1);
+    test::Check(tree.parameters.size() == parameters);
     const auto& parameter = tree.symbols[tree.parameters.front().symbol.value];
-    const bool admitted = formal != "eval" && formal != "await" && formal != "bad-name" && formal != free_name;
+    const bool admitted = debug_set != DebugSet::kDuplicate && formal != "eval" && formal != "await" && formal != "bad-name" && formal != free_name;
     if (admitted) {
       test::Check(parameter.evidence == NameEvidence::kDebugRange);
       test::Check(tree.names[parameter.name.value] == std::u16string(formal.begin(), formal.end()));
     } else test::Check(parameter.evidence == NameEvidence::kSynthesized);
+    if (partial) for (std::size_t i = 1; i < tree.parameters.size(); ++i)
+      test::Check(tree.symbols[tree.parameters[i].symbol.value].evidence == NameEvidence::kSynthesized);
   }
   // Print the checked family with its actual destination, not a raw tree.
   std::ostringstream output;
@@ -203,6 +221,13 @@ void QueryIndex() {
 
 }
 int main(int argc, char** argv) {
+  if (argc == 7) {
+    const std::string_view option = argv[6];
+    const auto debug_set = option == "sparse" ? DebugSet::kSparse :
+        option == "invalid" ? DebugSet::kInvalid : DebugSet::kDuplicate;
+    std::cout << Source(argv[1], std::string_view(argv[2]) == "module", std::string_view(argv[3]) == "named",
+        std::string_view(argv[4]) == "split", argv[5], debug_set); return 0;
+  }
   if (argc == 6) {
     std::cout << Source(argv[1], std::string_view(argv[2]) == "module", std::string_view(argv[3]) == "named", std::string_view(argv[4]) == "split", argv[5]); return 0;
   }
@@ -210,6 +235,9 @@ int main(int argc, char** argv) {
     std::cout << Source(argv[1], std::string_view(argv[2]) == "module", std::string_view(argv[3]) == "named", std::string_view(argv[4]) == "split"); return 0;
   }
   QueryIndex();
+  for (const auto debug_set : {DebugSet::kSparse, DebugSet::kInvalid, DebugSet::kDuplicate})
+    for (const auto named : {false, true}) for (const auto module : {false, true})
+      for (const auto split : {false, true}) Source("restoredValue", module, named, split, "ordinary", debug_set);
   for (const auto formal : {"$arg0", "$value0", "$local1", "ClassValue", "MethodSelfValue", "ordinary", "eval", "await", "bad-name", "restoredValue"})
     for (const auto named : {false, true}) for (const auto module : {false, true})
       for (const auto split : {false, true}) Source("restoredValue", module, named, split, formal);
