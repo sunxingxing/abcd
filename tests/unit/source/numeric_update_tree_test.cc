@@ -20,7 +20,8 @@ constexpr std::array<std::uint64_t, 5> kSeeds{
     UINT64_C(0x41dfffffffc00000), UINT64_C(0x7ff0000000000000), UINT64_C(0xfff0000000000000)};
 struct Fixture {
   Fixture(bool decrement, std::uint32_t count, bool phased = false, std::size_t seed = 0,
-          abc::ProfileId profile = abc::ProfileId::kDynamic1206) {
+          abc::ProfileId profile = abc::ProfileId::kDynamic1206,
+          unsigned copies = 0, bool split = false) {
     // Pinned dynamic ISA: keep the converted old value distinct from each
     // update result. Mutating the old SSA snapshot corrupts the returned pair.
     std::vector<std::uint8_t> bytes;
@@ -36,6 +37,11 @@ struct Fixture {
     for (unsigned shift = 0; shift < sizeof(std::uint64_t) * kByteBits; shift += kByteBits)
       bytes.push_back(static_cast<std::uint8_t>(kSeeds[seed] >> shift));
     opcode(abc::Opcode::kTONUMERIC_IMM8); bytes.push_back(0); store(1);
+    for (unsigned i = 0; i < copies; ++i) {
+      opcode(abc::Opcode::kMOV_V8_V8); bytes.insert(bytes.end(), {0, 1});
+      opcode(abc::Opcode::kMOV_V8_V8); bytes.insert(bytes.end(), {1, 0});
+    }
+    if (split) { opcode(abc::Opcode::kJMP_IMM8); bytes.push_back(2); }
     const auto protected_pc = static_cast<std::uint32_t>(bytes.size());
     for (std::uint32_t i = 0; i < count; ++i) {
       opcode(decrement ? abc::Opcode::kDEC_IMM8 : abc::Opcode::kINC_IMM8); bytes.push_back(0);
@@ -210,6 +216,11 @@ int main(int argc, char** argv) {
           previous = fixture.work;
           if (emit && count <= 2) std::cout << "{count:" << count << ",decrement:" << decrement
               << ",caught:" << phased << ",seed:7,fn:" << fixture.Print() << "},\n";
+        }
+        for (const auto [copies, split] : {std::pair{1U, false}, std::pair{201U, false}, std::pair{201U, true}}) {
+          const Fixture fixture(decrement, 1, phased, 0, profile, copies, split);
+          if (emit) std::cout << "{count:1,decrement:" << decrement << ",caught:" << phased
+              << ",seed:7,fn:" << fixture.Print() << "},\n";
         }
         for (std::size_t seed = 1; seed < kSeeds.size(); ++seed) {
           const Fixture fixture(decrement, 1, phased, seed, profile);

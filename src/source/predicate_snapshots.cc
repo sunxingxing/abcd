@@ -6,30 +6,70 @@ namespace {
 using namespace analysis;
 void Require(bool value) { if (!value) throw EvaluationError::kOwnership; }
 struct Interval { std::size_t count = 0, end = 0; };
+// Enumerate original eager occurrences in the actual inline expression forest.
+// Instruction order alone is insufficient: a later call argument can contain
+// an earlier instruction, while an earlier argument reads its retained input.
+// Each operation/use is visited once. The same index is rebuilt by verification.
+std::vector<UseId> OrderedUses(const ValueProgram& graph, const EvaluationPlan& plan,
+    TreeCheckBudget& budget, bool projected = false) {
+  struct Frame { OpId operation; std::uint32_t next = 0; };
+  enum class Visit : std::uint8_t { kUnseen, kActive, kDone };
+  std::vector<Frame> stack; std::vector<Visit> visits; std::vector<UseId> ordered;
+  budget.Array(stack, graph.ops.size()); budget.Array(visits, graph.ops.size());
+  budget.Array(ordered, graph.uses.size());
+  const auto placement_at = [&](std::size_t i) {
+    return projected ? plan.operations[i] : BeforeLogicalFusion(graph, plan, i);
+  };
+  const auto owned = [](EvaluationKind kind) {
+    return kind == EvaluationKind::kInline || kind == EvaluationKind::kPredicateSnapshot;
+  };
+  std::size_t used = 0;
+  for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+    budget.Step();
+    if (graph.ops[i].life != ValueLife::kLive ||
+        owned(placement_at(i).kind)) continue;
+    Require(visits[i] == Visit::kUnseen);
+    std::size_t depth = 1; stack[0] = {OpId{static_cast<std::uint32_t>(i)}, 0}; visits[i] = Visit::kActive;
+    while (depth) {
+      budget.Step(); auto& frame = stack[depth - 1]; const auto& op = graph.ops[frame.operation.value];
+      if (frame.next == op.use_count) { visits[frame.operation.value] = Visit::kDone; --depth; continue; }
+      const UseId use{op.first_use.value + frame.next}; Require(use.value < graph.uses.size());
+      const auto& occurrence = graph.uses[use.value];
+      const auto* value = std::get_if<ValueId>(&occurrence.operand);
+      const auto* source = value ? std::get_if<OpResult>(&graph.values[ResolveEvaluationValue(plan, *value).value].origin) : nullptr;
+      if (source) {
+        const auto placement = placement_at(source->op.value);
+        if (owned(placement.kind) && placement.consumer == use && visits[source->op.value] != Visit::kDone) {
+          Require(visits[source->op.value] == Visit::kUnseen && depth < stack.size());
+          visits[source->op.value] = Visit::kActive; stack[depth++] = {source->op, 0}; continue;
+        }
+      }
+      Require(used < ordered.size()); ordered[used++] = use; ++frame.next;
+    }
+  }
+  ordered.resize(used); return ordered;
+}
 std::vector<std::optional<UseId>> Candidates(const ValueProgram& graph,
     const EvaluationPlan& plan, TreeCheckBudget& budget) {
   std::vector<std::optional<UseId>> first;
   budget.Array(first, graph.ops.size());
-  // Only the earliest same-block occurrence may acquire the assignment. Other
-  // uses keep their private snapshot, including uses in later conditional arms.
-  for (std::size_t i = 0; i < graph.uses.size(); ++i) {
-    budget.Step(); const auto& use = graph.uses[i];
+  // The first actual eager occurrence acquires initialization; later reads
+  // retain its binding. Cross-block ownership remains the documented legacy
+  // fast-path gap; this change does not expand that admission condition.
+  const auto ordered = OrderedUses(graph, plan, budget);
+  for (const auto occurrence : ordered) {
+    budget.Step(); const auto& use = graph.uses[occurrence.value];
     if (use.life != ValueLife::kLive) continue;
     const auto* owner = std::get_if<OpId>(&use.owner);
     const auto* value = std::get_if<ValueId>(&use.operand);
     const auto* source = value ? std::get_if<OpResult>(&graph.values[ResolveEvaluationValue(plan, *value).value].origin) : nullptr;
     if (!owner || !source || graph.ops[source->op.value].block != graph.ops[owner->value].block) continue;
-    // Initialization owns this guard's dependency and original anchor. It is
-    // not a language read occurrence and cannot claim the snapshot assignment;
-    // the next real eager use still must pass the common effect interval proof.
     if (plan.operations[owner->value].kind == EvaluationKind::kAlias ||
         (plan.cells && IsInitializedCellGuard(graph, *plan.cells, *owner))) continue;
     const auto placement = BeforeLogicalFusion(graph, plan, source->op.value);
     if (placement.kind != EvaluationKind::kRoot || placement.temporary != TemporaryReason::kMultipleUses) continue;
     auto& previous = first[source->op.value];
-    const auto prior = previous ? std::get<OpId>(graph.uses[previous->value].owner) : *owner;
-    if (!previous || graph.ops[owner->value].order < graph.ops[prior.value].order ||
-        (*owner == prior && i < previous->value)) previous = UseId{static_cast<std::uint32_t>(i)};
+    if (!previous) previous = occurrence;
   }
   for (std::size_t i = 0; i < first.size(); ++i) {
     budget.Step(); if (!first[i]) continue;
@@ -53,6 +93,56 @@ std::vector<std::optional<UseId>> Candidates(const ValueProgram& graph,
     if (!eligible) first[i].reset();
   }
   return first;
+}
+std::vector<OpId> UninitializedSnapshots(const ValueProgram& graph,
+    const EvaluationPlan& plan, TreeCheckBudget& budget) {
+  std::vector<std::optional<UseId>> first; budget.Array(first, graph.ops.size());
+  const auto ordered = OrderedUses(graph, plan, budget, true);
+  for (const auto use : ordered) {
+    budget.Step(); const auto& occurrence = graph.uses[use.value];
+    const auto* owner = std::get_if<OpId>(&occurrence.owner);
+    if (occurrence.life != ValueLife::kLive || !owner ||
+        plan.operations[owner->value].kind == EvaluationKind::kAlias ||
+        (plan.cells && IsInitializedCellGuard(graph, *plan.cells, *owner))) continue;
+    const auto* value = std::get_if<ValueId>(&occurrence.operand);
+    const auto* source = value ? std::get_if<OpResult>(&graph.values[ResolveEvaluationValue(plan, *value).value].origin) : nullptr;
+    if (source && plan.operations[source->op.value].kind == EvaluationKind::kPredicateSnapshot && !first[source->op.value])
+      first[source->op.value] = use;
+  }
+  std::vector<OpId> rejected; budget.Array(rejected, graph.ops.size()); std::size_t count = 0;
+  for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+    budget.Step(); const auto placement = plan.operations[i];
+    if (placement.kind == EvaluationKind::kPredicateSnapshot && first[i] != placement.consumer)
+      rejected[count++] = OpId{static_cast<std::uint32_t>(i)};
+  }
+  rejected.resize(count); return rejected;
+}
+void RetainSnapshotInputs(const ValueProgram& graph, EvaluationPlan& plan,
+    std::span<const OpId> rejected, TreeCheckBudget& budget) {
+  // Restoring a definition can execute its inputs earlier. Retain every
+  // affected assignment dependency at its original point as well, using one
+  // bounded reverse ownership walk rather than repeated whole-forest retries.
+  std::vector<OpId> queue; std::vector<std::uint8_t> queued;
+  budget.Array(queue, graph.ops.size()); budget.Array(queued, graph.ops.size()); std::size_t size = 0;
+  const auto enqueue = [&](OpId id) {
+    if (queued[id.value]) return;
+    Require(size < queue.size()); queued[id.value] = 1; queue[size++] = id;
+  };
+  for (const auto id : rejected) {
+    budget.Step(); plan.operations[id.value] = {EvaluationKind::kRoot, {}, TemporaryReason::kMultipleUses}; enqueue(id);
+  }
+  for (std::size_t head = 0; head < size; ++head) {
+    budget.Step(); const auto& op = graph.ops[queue[head].value];
+    for (std::uint32_t i = 0; i < op.use_count; ++i) {
+      budget.Step(); const UseId use{op.first_use.value + i};
+      const auto* value = std::get_if<ValueId>(&graph.uses[use.value].operand);
+      const auto* source = value ? std::get_if<OpResult>(&graph.values[ResolveEvaluationValue(plan, *value).value].origin) : nullptr;
+      if (!source) continue; auto& placement = plan.operations[source->op.value];
+      if (placement.kind == EvaluationKind::kPredicateSnapshot) {
+        placement = {EvaluationKind::kRoot, {}, TemporaryReason::kMultipleUses}; enqueue(source->op);
+      } else if (placement.kind == EvaluationKind::kInline && placement.consumer == use) enqueue(source->op);
+    }
+  }
 }
 std::size_t Events(const ValueOp& op, OpEvaluation placement) {
   // Domain proofs discharge guards and fold literal/class operations before
@@ -94,12 +184,15 @@ void BuildPredicateSnapshots(const ValueProgram& graph, EvaluationPlan& plan, Tr
       serial += count;
     }
   }
+  const auto rejected = UninitializedSnapshots(graph, plan, budget);
+  if (!rejected.empty()) RetainSnapshotInputs(graph, plan, rejected, budget);
 }
 void VerifyPredicateSnapshots(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget) {
   bool any = false;
   for (const auto& placement : plan.operations) { budget.Step(); any |= placement.kind == EvaluationKind::kPredicateSnapshot; }
   if (!any) return;
   Require(plan.flow == EvaluationFlow::kNormal);
+  Require(UninitializedSnapshots(graph, plan, budget).empty());
   std::vector<std::uint8_t> blocks; budget.Array(blocks, graph.blocks.size());
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     budget.Step(); if (plan.operations[i].kind == EvaluationKind::kPredicateSnapshot) blocks[graph.ops[i].block.value] = 1;

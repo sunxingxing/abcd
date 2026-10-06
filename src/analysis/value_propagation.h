@@ -142,7 +142,7 @@ void PropagateValues(std::span<const ValueNode> nodes,
           propagated = nodes[target].normal_result;
         }
       }
-      if (nodes[target].arithmetic == ArithmeticSemantics::kSourceLanguage &&
+      if (LanguageBinaryArithmetic(nodes[target].arithmetic) &&
           nodes[target].input_count == kScalarInputs) {
         const auto left = facts[nodes[target].inputs[0].value];
         const auto right = facts[nodes[target].inputs[1].value];
@@ -150,6 +150,13 @@ void PropagateValues(std::span<const ValueNode> nodes,
         // unproved cycle or upgrade internal markers to language values.
         if (!left.IsEmpty() && !right.IsEmpty())
           propagated = SourceBinaryValue(nodes[target].kind, left, right, propagated);
+      }
+      if (nodes[target].arithmetic == ArithmeticSemantics::kSourceNumeric &&
+          nodes[target].input_count == 1 &&
+          (nodes[target].kind == Kind::kNegate || nodes[target].kind == Kind::kLegacyNegate ||
+           nodes[target].kind == Kind::kNumericUpdate)) {
+        const auto input = facts[nodes[target].inputs[0].value];
+        if (!input.IsEmpty()) propagated = SourceUnaryValue(input, propagated);
       }
       const auto joined = facts[target].Join(propagated);
       if (joined == facts[target]) continue;

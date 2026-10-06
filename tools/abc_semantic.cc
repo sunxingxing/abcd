@@ -590,7 +590,8 @@ int main(int argc, char** argv) {
                  "  and any combination of a detail mode with --value-source are rejected\n"
                  "  regardless of option order\n"
                  "  --value-source requires the unified value-tree route\n"
-                 "  --language-arithmetic explicitly selects language numeric semantics on that route\n"
+                 "  --language-arithmetic selects binary language arithmetic on that route\n"
+                 "  --language-numeric selects unary and binary language numeric semantics\n"
                  "  ordinary function expressions require a strict enclosing destination;\n"
                  "  method/closure fragments do not certify a complete executable record\n"
                  "  unimplemented stages return a typed route receipt with no source text and\n"
@@ -616,6 +617,7 @@ int main(int argc, char** argv) {
   unsigned details = 0;
   unsigned value_routes = 0;
   unsigned language_arithmetic = 0;
+  unsigned language_numeric = 0;
   unsigned record_slices = 0;
   unsigned conditional_values = 0;
   unsigned conditional_families = 0;
@@ -624,6 +626,8 @@ int main(int argc, char** argv) {
     const std::string_view option{argv[i]};
     if (option == "--language-arithmetic") {
       ++language_arithmetic;
+    } else if (option == "--language-numeric") {
+      ++language_numeric;
     } else if (option == "--family-source-draft") {
       ++family_drafts;
     } else if (option == "--conditional-family") {
@@ -655,7 +659,7 @@ int main(int argc, char** argv) {
     }
   }
   // Numeric opt-in is limited to the common source route, in every order.
-  if (language_arithmetic > 1 || (language_arithmetic &&
+  if (language_arithmetic + language_numeric > 1 || ((language_arithmetic || language_numeric) &&
       (value_routes != 1 || details || record_slices || conditional_values || conditional_families || family_drafts)))
     return Fail(InspectError::kArguments);
   // Duplicate or conflicting selectors are rejected in every order.
@@ -691,5 +695,5 @@ int main(int argc, char** argv) {
                           ? source::RoutePolicy::kRequireValueTree
                           : source::RoutePolicy::kLegacyAllowed;
   return Inspect(argv[1], entity, form, false, InspectDetail::kSummary, policy,
-      ValueSourceScope::kMember, language_arithmetic ? source::SourceContract::kLanguageArithmeticV1 : source::kSourceContract);
+      ValueSourceScope::kMember, language_numeric ? source::SourceContract::kLanguageNumericV1 : language_arithmetic ? source::SourceContract::kLanguageArithmeticV1 : source::kSourceContract);
 }

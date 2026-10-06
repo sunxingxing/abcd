@@ -1,4 +1,5 @@
 #include "tree_structure.h"
+#include "../analysis/register_value_rule.h"
 
 #include <algorithm>
 #include <array>
@@ -253,7 +254,9 @@ class StructureCheck {
         if (const auto* number = std::get_if<NumberLiteral>(&expression)) {
           const auto value = std::bit_cast<double>(number->bits);
           const auto canonical = std::bit_cast<std::uint64_t>(std::numeric_limits<double>::quiet_NaN());
-          RequireTree(!std::isnan(value) || number->bits == canonical, Error::kUnsupportedSyntax);
+          RequireTree(!std::isnan(value) || number->bits == canonical ||
+              (Arithmetic(tree_.identity.contract) == analysis::ArithmeticSemantics::kSourceNumeric &&
+               analysis::detail::FloatNumberKinds({number->bits}).IsNumber()), Error::kUnsupportedSyntax);
         }
       } else if constexpr (std::is_same_v<T, SymbolExpr>) {
         scopes_.Reference(expression.symbol);

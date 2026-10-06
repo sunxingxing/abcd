@@ -243,7 +243,8 @@ struct EvaluationShape {
 // Identity conversion requires an existing domain proof, never a source name
 // or apparent loop-counter shape. Arbitrary Language includes BigInt/coercion.
 [[nodiscard]] bool LegacyNegationEvaluation(const analysis::ValueProgram& graph,
-                                          const analysis::ValueOperand& operand);
+                                          const analysis::ValueOperand& operand,
+    analysis::ArithmeticSemantics arithmetic = analysis::ArithmeticSemantics::kPinnedRuntime);
 [[nodiscard]] bool NumberEvaluation(const analysis::ValueProgram& graph, const analysis::ValueOperand& operand);
 [[nodiscard]] bool NonNaNNumberEvaluation(const analysis::ValueProgram& graph,
                                         const analysis::ValueOperand& operand);

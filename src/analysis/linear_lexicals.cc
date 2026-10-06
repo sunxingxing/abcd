@@ -375,6 +375,7 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
         }
       }
       if (access.write) {
+        const auto numeric_input = access.read_count == 1 ? state(access.reads[0]) : ValueKinds{};
         const auto numeric_left = access.read_count == detail::kScalarInputs ? state(access.reads[0]) : ValueKinds{};
         const auto numeric_right = access.read_count == detail::kScalarInputs ? state(access.reads[1]) : ValueKinds{};
         const auto described =
@@ -442,7 +443,11 @@ std::variant<LinearLexicals, LinearLexicalFailure> LinearLexicals::Build(
                 state(access.reads[0]), state(access.reads[1]));
             break;
         }
-        if (rule.arithmetic == ArithmeticSemantics::kSourceLanguage && access.read_count == detail::kScalarInputs)
+        if (rule.arithmetic == ArithmeticSemantics::kSourceNumeric && access.read_count == 1 &&
+            (rule.kind == detail::ValueRuleKind::kNegate || rule.kind == detail::ValueRuleKind::kLegacyNegate ||
+             rule.kind == detail::ValueRuleKind::kNumericUpdate))
+          state(*access.write) = detail::SourceUnaryValue(numeric_input, state(*access.write));
+        if (LanguageBinaryArithmetic(rule.arithmetic) && access.read_count == detail::kScalarInputs)
           state(*access.write) = detail::SourceBinaryValue(rule.kind, numeric_left, numeric_right, state(*access.write));
       }
     }

@@ -1228,3 +1228,31 @@ TreeEqualityComplement 的 exhaustive enum 映射定义，不是值 IR producer
 这不解决跨语句 snapshot 临时变量、staged literal 机械写入、未恢复
 构造器、完整签名/字段或所有 record 的独立风格验收。源码投影不能被
 当作这些恢复义务已经闭合，也不能授权数值默认合同变化。
+
+
+### 2026-10-06：显式语言数值语义恢复普通 NEG（规则128）
+
+实际WindowUtil getCalDegree在显式二元模式下因raw parameter NEG结果无法
+证明而UNRECOVERED。用户授权新增独立language_numeric_v1；默认V3及旧
+二元模式含义不变。共同scalar adapter/normal/phased sparse solver/linear
+lexicals按原输入事实授予Number/BigInt正常结果，不以先前乘法、TS注解、
+参数拼写或样本作为原参数后续转换的依据。legacy NEG的forest与fresh
+operand checker消费同一typed premise，旧模式仍检查minimum-tag witness。
+既有Unary/Binary/Update AST及printer负责嵌套/优先级；NaN原AST位模式
+保留，只有该显式契约下的文本边界忽略payload，private编码继续拒绝。
+没有新增same-block、adjacency、固定选项数量、producer名单或局部字节码
+模板；arity=1/2是原typed操作语义。复制/拆块、普通/异常、负例与200/201/
+402覆盖属于新功能检查。未知super父品牌及私有数组义务没有被数值模式
+放宽；整体record与平台验收仍须独立完成。
+
+
+定向numeric_update_tree_source_test另暴露普通临时初始化实际语义错误：
+后一参数内部更新承载原producer赋值，前一参数先读其尚未初始化的binding。
+共同snapshot planner现在按inline forest的真实eager use顺序挑选occurrence，
+并在全部provisional parent assignment形成后重建实际读取/初始化顺序。
+失败时保留原Root语句，bounded dependency queue同时保留被提前执行的输入
+赋值；每operation/use最多访问常数次，不反复全图retry。fresh checker核对
+相同availability义务，并拒绝把赋值移到第二次读取的篡改。旧snapshot同块
+准入仍是明确实现缺口，未新增或扩大；没有INC/call名单、参数数量模板或
+样本分派。三个profile、普通/异常、201copies/拆块及旧值/更新值/callback/
+原异常对照覆盖该语义。没有把INCOMPLETE/refusal算为这项正例。

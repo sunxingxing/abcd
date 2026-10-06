@@ -169,6 +169,14 @@ constexpr ValueKinds SourceBinaryValue(ValueRuleKind kind, ValueKinds left,
   left = ArithmeticNumber(left); right = ArithmeticNumber(right);
   return left.IsNumber() && right.IsNumber() ? ValueKinds::Number() : ValueKinds::Defined();
 }
+// Under the explicit numeric-language premise, NEG and INC/DEC have a
+// Number/BigInt normal result. Reuse pinned refinements when available; never
+// seed a missing operand or classify private markers as language values.
+constexpr ValueKinds SourceUnaryValue(ValueKinds input, ValueKinds pinned) {
+  if (!input.IsLanguage()) return ValueKinds::Unknown();
+  if (pinned.IsLanguage()) return pinned;
+  return ArithmeticNumber(input).IsNumber() ? ValueKinds::Number() : ValueKinds::Defined();
+}
 // Shared literal classification, including the pinned private-tag boundary.
 [[nodiscard]] ValueKinds FloatNumberKinds(Float64Bits number);
 // Classifies a definite normal-path register definition. Join is one copy;

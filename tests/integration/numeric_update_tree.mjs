@@ -3,7 +3,7 @@ import {execFileSync} from 'node:child_process';
 
 const source = execFileSync(process.argv[2], ['--emit'], {encoding: 'utf8'});
 const {cases, syntax} = await import(`data:text/javascript,${encodeURIComponent(source)}`);
-assert.equal(cases.length, 72);
+assert.equal(cases.length, 108);
 assert.equal(syntax.length, 4);
 let scenarios = 0;
 function verifyDecoded(item, fn = item.fn) {

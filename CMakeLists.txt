@@ -721,6 +721,10 @@ if(BUILD_TESTING)
   target_include_directories(numeric_identity_test PRIVATE tests/support)
   target_link_libraries(numeric_identity_test PRIVATE abcd_source)
   add_test(NAME numeric_identity_test COMMAND numeric_identity_test)
+  add_executable(language_numeric_test tests/integration/language_numeric.cc)
+  target_include_directories(language_numeric_test PRIVATE tests/support)
+  target_link_libraries(language_numeric_test PRIVATE abcd_source)
+  add_test(NAME language_numeric_test COMMAND language_numeric_test)
   add_executable(language_arithmetic_test tests/integration/language_arithmetic.cc)
   target_include_directories(language_arithmetic_test PRIVATE tests/support)
   target_link_libraries(language_arithmetic_test PRIVATE abcd_source)
@@ -1533,6 +1537,10 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/snapshot_optional.mjs $<TARGET_FILE:snapshot_optional_test>)
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc" AND
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/commons/src/main/ets/utils/WindowUtil.ts")
+      add_test(NAME window_numeric_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/window_numeric.mjs $<TARGET_FILE:abc_semantic>
+        "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"
+        "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/commons/src/main/ets/utils/WindowUtil.ts")
       add_test(NAME window_optional_call_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/window_optional_call.mjs $<TARGET_FILE:abc_semantic>
         "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"
@@ -1595,6 +1603,8 @@ if(BUILD_TESTING)
         --experimental-vm-modules ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/normal_literal_cells_paired.mjs
         $<TARGET_FILE:abc_structure> ${ABCD_PAIRED_CORPUS_ROOT})
     endif()
+    add_test(NAME language_numeric_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/language_numeric.mjs $<TARGET_FILE:language_numeric_test>)
     add_test(NAME language_arithmetic_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/language_arithmetic.mjs $<TARGET_FILE:language_arithmetic_test>)
     add_test(NAME decision_cells_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

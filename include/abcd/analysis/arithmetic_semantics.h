@@ -6,8 +6,13 @@
 namespace abcd::analysis {
 // Explicit source equivalence premise, never inferred from a sample or a
 // numeric value. Source-language binary arithmetic follows ECMAScript;
-// pinned-runtime arithmetic retains the representation proofs. Neither mode
+// SourceNumeric additionally covers unary numeric operations. Pinned-runtime
+// arithmetic retains the representation proofs. No mode
 // grants language identity to input markers or changes effects/exceptions.
-enum class ArithmeticSemantics : std::uint8_t { kPinnedRuntime, kSourceLanguage };
+enum class ArithmeticSemantics : std::uint8_t { kPinnedRuntime, kSourceLanguage, kSourceNumeric };
+constexpr bool LanguageBinaryArithmetic(ArithmeticSemantics semantics) {
+  return semantics == ArithmeticSemantics::kSourceLanguage ||
+         semantics == ArithmeticSemantics::kSourceNumeric;
+}
 }  // namespace abcd::analysis
 #endif

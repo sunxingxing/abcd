@@ -116,7 +116,7 @@ class TreeBuilder {
         static_cast<std::uint32_t>(syntax_.parameters.size()), syntax_.owner,
         constants_, {bytes_, work_}, modules,
         (incoming_ && !incoming_->cells.targets.empty()) || exceptions_ || !syntax_.captures.empty()
-            ? RecoveryMode::kCompleteOnly : recovery_, syntax_.names, logicals_, branch_polarity_, syntax_.callable);
+            ? RecoveryMode::kCompleteOnly : recovery_, syntax_.names, logicals_, branch_polarity_, syntax_.callable, Arithmetic(syntax_.identity.contract));
     if (const auto* error = std::get_if<ExpressionError>(&expressions)) {
       if (*error == ExpressionError::kResourceLimit) throw Error::kResourceLimit;
       if (*error == ExpressionError::kWorkLimit) throw Error::kWorkLimit;

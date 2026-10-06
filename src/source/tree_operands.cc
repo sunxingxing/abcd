@@ -869,7 +869,7 @@ class OperandCheck {
     using U = analysis::UnaryOperator;
     switch (operation) {
       case U::kLegacyNegate:
-        RequireMeaning(LegacyNegationEvaluation(graph_, operand), Error::kOperator);
+        RequireMeaning(LegacyNegationEvaluation(graph_, operand, Arithmetic(tree_.identity.contract)), Error::kOperator);
         Input(operand, UnaryInput(expression, TreeUnary::kNegate), occurrence); return;
       case U::kNegate: Input(operand, UnaryInput(expression, TreeUnary::kNegate), occurrence); return;
       case U::kBitNot: IntegerInput(operand, UnaryInput(expression, TreeUnary::kBitNot), occurrence); return;

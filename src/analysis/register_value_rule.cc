@@ -133,14 +133,14 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment, ArithmeticSema
     // inputs, whose coercions or NaN payloads need separate proofs.
     switch (unary->op) {
       case UnaryOperator::kNegate:
-        return ValueRule{ValueRuleKind::kNegate, {}};
+        return ValueRule{ValueRuleKind::kNegate, {}, arithmetic};
       case UnaryOperator::kLegacyNegate:
-        return ValueRule{ValueRuleKind::kLegacyNegate, {}};
+        return ValueRule{ValueRuleKind::kLegacyNegate, {}, arithmetic};
       case UnaryOperator::kBitNot:
         return ValueRule{ValueRuleKind::kBitNot, {}};
       case UnaryOperator::kIncrement:
       case UnaryOperator::kDecrement:
-        return ValueRule{ValueRuleKind::kNumericUpdate, {}};
+        return ValueRule{ValueRuleKind::kNumericUpdate, {}, arithmetic};
       case UnaryOperator::kToNumber:
         return ValueRule{ValueRuleKind::kToNumber, {}};
       case UnaryOperator::kToNumeric:
@@ -171,7 +171,7 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment, ArithmeticSema
     const auto numeric_rule = [&](ValueRuleKind kind) {
       return ValueRule{kind, {}, arithmetic};
     };
-    if (binary->op == BinaryOperator::kRemainder && arithmetic == ArithmeticSemantics::kSourceLanguage)
+    if (binary->op == BinaryOperator::kRemainder && LanguageBinaryArithmetic(arithmetic))
       return ValueRule{ValueRuleKind::kLanguageOperation, ValueKinds::Defined()};
     if (binary->op == BinaryOperator::kAdd)
       return numeric_rule(ValueRuleKind::kAdd);

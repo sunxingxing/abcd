@@ -78,6 +78,8 @@ int main() {
   Check(kSourceContract == SourceContract::kLanguageAndHostV3);
   Check(Arithmetic(kSourceContract) == analysis::ArithmeticSemantics::kPinnedRuntime);
   Check(Arithmetic(SourceContract::kLanguageArithmeticV1) == analysis::ArithmeticSemantics::kSourceLanguage);
+  Check(Arithmetic(SourceContract::kLanguageNumericV1) == analysis::ArithmeticSemantics::kSourceNumeric);
+  Check(CallableText(SourceContract::kLanguageNumericV1) == CallableText(kSourceContract));
   Check(CallableText(SourceContract::kLanguageArithmeticV1) == CallableText(kSourceContract));
   Check(ResourceFailures(SourceContract::kLanguageArithmeticV1) == ResourceFailures(kSourceContract));
   Check(CallableText(SourceContract::kLanguageAndHostV1) == CallableTextPolicy::kUnspecified);
@@ -201,7 +203,7 @@ int main() {
   }
   for (const auto contract : {SourceContract::kLanguageAndHostV1,
                               SourceContract::kLanguageAndHostV2,
-                              SourceContract::kLanguageAndHostV3, SourceContract::kLanguageArithmeticV1}) {
+                              SourceContract::kLanguageAndHostV3, SourceContract::kLanguageArithmeticV1, SourceContract::kLanguageNumericV1}) {
     auto receipt = RefusedReceipt();
     receipt.identity.contract = contract;
     Check(!ValidateRouteReceipt(receipt));

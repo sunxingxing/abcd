@@ -51,6 +51,11 @@ conversion and update-created tagged minima. Independent native JS compares
 actual generated results with Object.is. These component checks do not replace
 full record, platform or source-style acceptance.
 
+The explicitly approved [LanguageNumericV1](language-numeric.md) additionally
+provides language normal-result bounds for NEG/INC/DEC. Pinned and binary-only
+rules remain unchanged; effects, private inputs and constructor protocols
+retain their separate obligations.
+
 ## Modern and deprecated negation
 
 The semantic model retains `kLegacyNegate` separately from `kNegate`. Pinned

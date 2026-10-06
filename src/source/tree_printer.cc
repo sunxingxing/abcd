@@ -1,4 +1,5 @@
 #include "tail_completion.h"
+#include "../analysis/register_value_rule.h"
 #include "nullish_syntax.h"
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/module_enclosure.h"
@@ -573,7 +574,12 @@ class TreePrinter {
   void Literal(NumberLiteral value) {
     const double number = std::bit_cast<double>(value.bits);
     if (std::isnan(number)) {
-      if (value.bits != std::bit_cast<std::uint64_t>(std::numeric_limits<double>::quiet_NaN()))
+      // The explicit numeric contract excludes payload observation. Keep the
+      // original AST bits for origin checks; only this textual boundary uses
+      // native NaN. Private-tag encodings never acquire a Number premise.
+      if (value.bits != std::bit_cast<std::uint64_t>(std::numeric_limits<double>::quiet_NaN()) &&
+          !(Arithmetic(Tree().identity.contract) == analysis::ArithmeticSemantics::kSourceNumeric &&
+            analysis::detail::FloatNumberKinds({value.bits}).IsNumber()))
         throw Error::kInvalidLiteral;
       Append("(0 / 0)");
     } else if (std::isinf(number)) {

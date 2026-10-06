@@ -6,6 +6,11 @@
 chain 等表示细节优化排在这些缺口之后。不得仅改善缺口注释、输出外壳
 或增加接口来代替支持缺失语义；通用贯通、无样本定制和语义约束保持。
 
+2026-10-06 本轮授权：新增显式language_numeric_v1，按JS/ArkTS语言数值
+语义验收一元及二元运算；默认V3和既有二元模式保持。WindowUtil NEG
+缺口已贯通，证据见status及language-numeric.md；剩余普通SuperSpread
+构造器继续优先。这个数值前提不授权新的父品牌/host lifetime假设。
+
 2026-10-03 用户要求：先补 `object creaters` 的全部 26 个编码格式，
 使用既有通用贯通路径及公共接口。完整清单、现有条件与缺口见
 [对象创建指令](object-creators.md)。这调整立即执行的优先级，不缩减阶段一 Goal。

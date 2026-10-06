@@ -12,6 +12,65 @@
 
 ## 当前阶段
 
+
+### 2026-10-06：显式语言数值语义补齐 WindowUtil 未恢复方法
+
+- 规则revision128，基线f699c84e；25aa原分支开始干净。遵循用户新优先级，
+  本项处理实际INCOMPLETE/UNRECOVERED。用户本轮明确允许新增显式语言
+  数值模式；`--value-source --language-numeric`选择language_numeric_v1。
+  默认V3与旧language-arithmetic的二元范围保持原义，两selector互斥。
+  详见[语言数值语义](language-numeric.md)。
+- NEG/legacy NEG/INC/DEC复用共同scalar adapter、normal/phased sparse
+  solver及linear lexicals，按真实Language输入提供Number/BigInt正常
+  结果。既有更强事实继续保留，未解循环/private markers不获语言事实。
+  linear pass先保存原输入，避免写acc后把新结果当原输入。旧版ToNumber/
+  ToNumeric仍有分别的typed语义，前者拒绝BigInt、后者保留BigInt。
+- 原Unary/Binary/Update AST、exclusive scratch与printer负责复合表达式
+  和优先级，没有新writer、样本/源码/名称分派、opcode sequence或布局
+  匹配。legacy forest与fresh operand checker消费同一typed数值前提，
+  两旧模式的minimum-tag义务保留。已接受NaN literal的原AST bits与来源
+  不改，显式numeric模式下tree结构/打印边界允许native NaN；private
+  编码仍拒绝。该契约排除payload/tag/C++ UB观察，不是Ark二进制测量证明。
+- 新三profile十种modern/deprecated numeric编码、七形态、普通/异常
+  形成420个完整函数，Node独立353,220场景检查NaN、signed zero、
+  BigInt/Symbol、coercion getter/receiver、求值顺序及原异常。额外三
+  profile十编码两flow的200/201/402共180个完整组合检查增长小于3倍。
+  copies/拆块、operand/result composition、两NaN literal及旧契约/
+  private输入/legacy witness篡改覆盖；INCOMPLETE/refusal不算正例。
+- window_numeric_source_test先完成ABC-only生成，再读取配对TypeScript。
+  record7618 WindowUtil现source_complete=true，getCalDegree原PC130 NEG
+  缺口得到完整native -x、atan2、乘除及条件取模。17,880场景覆盖边界、
+  反复变化的转换、Math/Number读取和调用/receiver/原异常；三个numeric
+  mutation被检测。测试不构造类，仅隔离完整方法；identity Observed和
+  Node decorator适配不验收宿主协议、整个record行为或HarmonyOS平台。
+- 扩展numeric回归暴露原临时初始化可随后一参数更新下沉，导致前一参数
+  读取undefined。共同snapshot planner按inline forest真实eager use索引，
+  在provisional父赋值形成后核对原绑定初始化。失败的赋值和其受影响
+  输入依赖用bounded queue保留原Root；fresh checker独立重建availability。
+  原值/更新值/callback/异常回归扩为108个三profile普通/异常/copy201/
+  拆块函数，Node1,424场景与三个mutation通过；晚赋值篡改拒绝。没有
+  INC/call名单、固定参数数或新same-block条件；既有跨块snapshot准入
+  仍是明确实现缺口，未把它定义为语言不变量。
+- 首轮未注册target请求退出2，configure后正常构建；测试途中修正旧版
+  ToNumeric oracle、两次运行对象引用的对照、receipt新label映射与NaN
+  tree结构边界。numeric_update行为失败推动上述通用初始化修复。
+  final-build-1因测试变量重命名漏项退出2；修正后final-build-2单-j4
+  三十五目标退出0。最终相关定向80/80通过632.41秒；不是暂停的全套。
+- fresh language-numeric-{default,language,numeric}-pass-1各五ABC退出0，
+  各106份源码解析、输入SHA/size与现有corpus index匹配，零legacy/
+  source failure/complete回退。default80complete/26incomplete-source/
+  46no-module；language95/11/46，二者全部源码字节与rules127保持。
+  numeric96/10/46，相对旧language仅record7618新增complete/源码变化。
+  这些是引擎输出状态，不是整record独立验收结果。
+- 日志前缀/tmp/abcd-language-numeric-；final-build-2、final-tests-1和
+  final-batch-1保存最终证据，mode summary-1.json保存五ABC差异。
+  数值transfer每nodeO(1)；snapshot索引/依赖保留O(O+U) work/storage，
+  无逐变量CFG walk、全图循环retry或新依赖。RSS/基准/代理/调度器与
+  周期审计仍暂停，不宣称1GB实测。剩余十个普通SuperSpread构造器
+  的未知父品牌/私有数组义务未放宽；实例字段/全局/完整签名/函数体整合
+  及所有record独立语义/风格验收继续开放。Goal保持active；后续先这些
+  实际未恢复功能，再做?.等细节。
+
 ### 2026-10-06：共同空值解释贯通原生调用；后续优先未恢复功能
 
 - 规则revision127，基线3653283e；25aa原分支起始干净。用户要求本项

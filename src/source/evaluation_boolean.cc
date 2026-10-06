@@ -71,7 +71,17 @@ bool NumberEvaluation(const analysis::ValueProgram& graph, const analysis::Value
   const auto* value = std::get_if<analysis::ValueId>(&operand);
   return value && value->value < graph.values.size() && graph.values[value->value].domain.IsNumber();
 }
-bool LegacyNegationEvaluation(const analysis::ValueProgram& graph, const analysis::ValueOperand& operand) {
+bool LegacyNegationEvaluation(const analysis::ValueProgram& graph, const analysis::ValueOperand& operand,
+    analysis::ArithmeticSemantics arithmetic) {
+  if (arithmetic == analysis::ArithmeticSemantics::kSourceNumeric) {
+    if (std::holds_alternative<analysis::IntegerLiteral>(operand)) return true;
+    if (const auto* number = std::get_if<analysis::Float64Bits>(&operand))
+      return analysis::detail::FloatNumberKinds(*number).IsLanguage();
+    if (const auto* special = std::get_if<analysis::SpecialValue>(&operand))
+      return analysis::detail::DescribeScalarValue({analysis::Accumulator{}, analysis::ScalarValue{*special}}).seed.IsLanguage();
+    const auto* value = std::get_if<analysis::ValueId>(&operand);
+    return value && value->value < graph.values.size() && graph.values[value->value].domain.IsLanguage();
+  }
   if (const auto* integer = std::get_if<analysis::IntegerLiteral>(&operand)) return integer->value != INT32_MIN;
   if (std::holds_alternative<analysis::Float64Bits>(operand)) return NonNaNNumberEvaluation(graph, operand);
   if (const auto* special = std::get_if<analysis::SpecialValue>(&operand))

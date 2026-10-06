@@ -35,9 +35,9 @@ class ForestBuilder {
                 ExpressionConstants constants, analysis::SemanticBudget budget,
                 BindingPlan bindings, std::span<const ModuleSymbol> modules, RecoveryMode recovery,
                 std::span<const std::u16string> names, std::span<const SelectionRegion> logicals, std::span<const BranchPolarity> polarity,
-                CallableKind callable)
+                CallableKind callable, analysis::ArithmeticSemantics arithmetic)
       : graph_(graph), evaluation_(evaluation), owner_(owner), constants_(constants),
-        budget_(budget), bytes_(budget.bytes), work_(budget.work), modules_(modules), recovery_(recovery), names_(names), logicals_(logicals), polarity_(polarity), callable_(callable) {
+        budget_(budget), bytes_(budget.bytes), work_(budget.work), modules_(modules), recovery_(recovery), names_(names), logicals_(logicals), polarity_(polarity), callable_(callable), arithmetic_(arithmetic) {
     Require(polarity.empty() || polarity.size() == graph.ops.size(), Error::kOwnership);
     Require(bindings.allocated_bytes <= bytes_, Error::kResourceLimit);
     bytes_ -= bindings.allocated_bytes;
@@ -894,7 +894,7 @@ class ForestBuilder {
     };
     switch (operation) {
       case U::kLegacyNegate:
-        Require(LegacyNegationEvaluation(graph_, original), Error::kUnsupportedOperation);
+        Require(LegacyNegationEvaluation(graph_, original, arithmetic_), Error::kUnsupportedOperation);
         return unary(TreeUnary::kNegate, input);
       case U::kNegate: return unary(TreeUnary::kNegate, input);
       case U::kBitNot: return unary(TreeUnary::kBitNot, IntegerOperand(input, original));
@@ -1144,13 +1144,14 @@ class ForestBuilder {
   std::vector<std::uint8_t> selection_built_;
   std::span<const BranchPolarity> polarity_;
   CallableKind callable_;
+  analysis::ArithmeticSemantics arithmetic_;
 };
 std::variant<ExpressionForest, ExpressionError> BuildForest(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, FunctionOwnerId owner,
     ExpressionConstants constants, analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules,
     EvaluationFlow flow, RecoveryMode recovery, std::span<const std::u16string> names, std::span<const SelectionRegion> logicals, std::span<const BranchPolarity> polarity,
-    CallableKind callable) {
+    CallableKind callable, analysis::ArithmeticSemantics arithmetic) {
   auto bindings = flow == EvaluationFlow::kNormal ? BuildBindingPlan(graph, evaluation, parameter_count, budget)
       : BuildPhasedBindingPlan(graph, evaluation, parameter_count, budget);
   if (const auto* error = std::get_if<BindingError>(&bindings)) {
@@ -1160,7 +1161,7 @@ std::variant<ExpressionForest, ExpressionError> BuildForest(
   }
   try {
     return ForestBuilder(graph, evaluation, owner, constants, budget,
-                         std::get<BindingPlan>(std::move(bindings)), modules, recovery, names, logicals, polarity, callable).Build();
+                         std::get<BindingPlan>(std::move(bindings)), modules, recovery, names, logicals, polarity, callable, arithmetic).Build();
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
@@ -1170,14 +1171,14 @@ std::variant<ExpressionForest, ExpressionError> BuildExpressionForest(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, FunctionOwnerId owner, ExpressionConstants constants,
     analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules, RecoveryMode recovery,
-    std::span<const std::u16string> names, std::span<const SelectionRegion> logicals, std::span<const BranchPolarity> polarity, CallableKind callable) {
-  return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kNormal, recovery, names, logicals, polarity, callable);
+    std::span<const std::u16string> names, std::span<const SelectionRegion> logicals, std::span<const BranchPolarity> polarity, CallableKind callable, analysis::ArithmeticSemantics arithmetic) {
+  return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kNormal, recovery, names, logicals, polarity, callable, arithmetic);
 }
 std::variant<ExpressionForest, ExpressionError> BuildPhasedExpressionForest(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, FunctionOwnerId owner, ExpressionConstants constants,
     analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules, RecoveryMode recovery,
-    std::span<const std::u16string> names, std::span<const SelectionRegion> logicals, std::span<const BranchPolarity> polarity, CallableKind callable) {
-  return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kPhased, recovery, names, logicals, polarity, callable);
+    std::span<const std::u16string> names, std::span<const SelectionRegion> logicals, std::span<const BranchPolarity> polarity, CallableKind callable, analysis::ArithmeticSemantics arithmetic) {
+  return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kPhased, recovery, names, logicals, polarity, callable, arithmetic);
 }
 }  // namespace abcd::source

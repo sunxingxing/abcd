@@ -139,6 +139,9 @@ void SharedValue() {
   Check(plan.operations[0].kind == EvaluationKind::kPredicateSnapshot);
   Check(plan.operations[0].temporary == TemporaryReason::kMultipleUses);
   Check(plan.operations[0].consumer == fixture.graph.ops[1].first_use);
+  auto late = plan;
+  late.operations[0].consumer = analysis::UseId{fixture.graph.ops[1].first_use.value + 1};
+  Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph, late)));
   analysis::SemanticBudget budget;
   budget.work = plan.work - 1;
   Check(std::get<EvaluationError>(BuildEvaluationPlan(fixture.graph, budget)) == EvaluationError::kWorkLimit);

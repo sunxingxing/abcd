@@ -40,6 +40,8 @@ Unary conversion/negation/update profiles and constructor protocols retain
 existing rules. In particular, legacy ToNumber behavior is not replaced by
 modern BigInt-aware unary syntax just because binary arithmetic is enabled.
 Unknown parent constructors are not admitted by this numeric premise.
+The separately approved [LanguageNumericV1](language-numeric.md) adds unary
+numeric recovery through a distinct selector; it does not reinterpret V1.
 
 ## Tools and evidence
 
