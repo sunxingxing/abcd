@@ -12,6 +12,44 @@
 
 ## 当前阶段
 
+### 2026-10-06：共同包身份规划恢复源码路径
+
+- 基线60c2a64c，方法恢复规则仍137。源码路径改由既有ABC-only
+  SourceIdentity/PackageSource adapter与全文件namespace规划生成；删除
+  entry==package、entry不得含slash、ASCII-only的表示限制。入口、包名、
+  版本是独立身份，排序后一次分组；多个入口/版本用目录区分，Unicode
+  scalar经标准UTF-8及共同percent encoder可逆转义。没有sample/name/path
+  语义分派、sidecar或source-map读取，也没有改函数恢复准入/默认语义。
+- unique filename证据与真实member range/owner、读取/资源失败、输出
+  长度及大小写碰撞检查保持。unsupported/conflicting/incomplete身份回退
+  descriptor；同stem/跨namespace碰撞以typed PathError拒绝，不能静默选
+  winner。archive/declaration/metadata实体路径保持；实际向量/字符串容量
+  和固定转换scratch计入原16MiB planner预算。复杂度/来源/表示缺口见
+  record-structure.md与shape-restrictions-audit.md，不声称完整进程RSS通过。
+- record_path_test以真实file-backed Panda ULEB/MUTF-8字符串贯通现有
+  reader/gatherer，新增不同entry/package、scoped package、多入口/版本、
+  record反转、BMP/supplementary Unicode、literal percent、无效/缺失身份、
+  owner失败、同路径/大小写/extension/namespace碰撞、组件/总路径/内存
+  边界及200/201/400/800增长。不存在测试专用production接口/新增依赖。
+- 单一-j4构建record_path_test/abc_structure/abc_semantic最终退出0；全部
+  build handle关闭后执行。final-tests-1相关16/16通过13.41秒，覆盖
+  partial、module/class/constants/barrel、实际Window/Logger/CardArray/
+  Breakpoint/ViewModel及结构CLI。git diff --check通过，CTest仍565项。
+  日志/tmp/abcd-package-paths-final-build-1.log、final-tests-1.log。
+- 固定五ABC/六模式30次导出全部退出0，输入hash/size与index一致，每模式
+  106份完整/明确partial源码Node语法通过，全部source_path_origin为包身份。
+  每模式67份原descriptor fallback恢复package路径，另39份保持；按entity
+  对照native-receiver pass-1，所有源码正文、entry/method位置映射JSON逐一
+  相同，source status/complete/contract/route及archive artifact路径不变，
+  无legacy。default80/26、arithmetic95/11、numeric96/10、constructors88/18、
+  arithmetic+constructors105/1、numeric+constructors106/0，另各46个no-module。
+  产物build/stage-one/package-paths-<mode>-pass-1；summary-1.json/batch-1.log
+  与各导出日志在/tmp/abcd-package-paths-*。此次仅关闭所测文件名缺口。
+- Goal保持active：instance fields/globals/完整签名/body结构gate、其余record
+  独立语义/表示验收与完整模块图/平台语义仍开放。显式语言数值/构造模式
+  沿用户授权保留，106/0不等于阶段一完成。全套、expanded corpus、RSS/
+  benchmark、agents、scheduler/DFX及周期审计继续暂停。
+
 ### 2026-10-06：CardArray / BreakpointType 独立整 record 验收
 
 - 基线2a707dc0，生产规则仍137；此次增加实际源码的独立行为/表示证据，

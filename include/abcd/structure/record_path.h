@@ -1,8 +1,8 @@
 #ifndef ABCD_STRUCTURE_RECORD_PATH_H_
 #define ABCD_STRUCTURE_RECORD_PATH_H_
 
-#include <string>
 #include <span>
+#include <string>
 #include <variant>
 #include <vector>
 
@@ -15,7 +15,11 @@ struct RecordPath {
   SourcePathOrigin origin = SourcePathOrigin::kRecordDescriptor;
 };
 enum class PathError {
-  kDescriptor, kComponentLimit, kPathLimit, kCollision, kResourceLimit,
+  kDescriptor,
+  kComponentLimit,
+  kPathLimit,
+  kCollision,
+  kResourceLimit,
   kSourceEvidence
 };
 // Deterministic relative ASCII path. Descriptor bytes are textual data, not
@@ -28,9 +32,11 @@ enum class PathError {
 [[nodiscard]] std::variant<std::vector<RecordPath>, PathError>
 PlanRecordSourcePaths(std::span<const abc::RecordInfo> records,
                       std::size_t budget_bytes = 16 * 1024 * 1024);
-// Prefers unique ABC-embedded same-entry-package filename identities under
-// the pinned build-tool format. Unsupported identities retain descriptor paths;
-// conflicting names never become path authority. No sidecar input is read.
+// Prefers unique ABC-embedded package filename identities under the pinned
+// build-tool format. Multiple entry/version namespaces stay distinct; Unicode
+// scalar filenames use reversible UTF-8 percent encoding. Unsupported
+// identities retain descriptor paths; conflicting names never become path
+// authority. No sidecar input is read.
 [[nodiscard]] std::variant<std::vector<RecordPath>, PathError>
 PlanRecordSourcePaths(const corpus::AbcFile& file, const abc::Header& header,
                       const abc::MetadataIndex& index,

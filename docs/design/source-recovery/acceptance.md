@@ -49,6 +49,12 @@ Symbol、禁止coercion对象、两个realm的new.target fallback与部分写入
 这些是两个指定完整record与实际peer连接的受控验收；其余record、结构集成
 门槛、完整应用/平台、RSS与全部阶段一验收仍须对应实际证据。
 
+2026-10-06文件名补充：实际固定五ABC/六模式30次ABC-only导出通过，
+每模式106份源码的filename均来自unique内嵌包身份，关闭所测67份entry与
+package不同的descriptor fallback缺口。所有正文及位置映射按entity与规则137
+native-receiver输出逐一不变；16项定向回归通过。此证据验证输出路径与无
+正文回退，不扩为未初始化TS字段、global/签名或其余record的独立行为完成。
+
 ## 1. 四种状态，不混报完成
 
 | 状态 | 意义 | 可否称 gate 通过 |

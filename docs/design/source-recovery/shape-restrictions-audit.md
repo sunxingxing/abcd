@@ -1,5 +1,18 @@
 # 按用户要求进行的恢复条件审计
 
+2026-10-06 文件名边界补充（结构输出，非新增方法恢复规则）：contextual
+source-path planner移除entry==package、entry不得含slash及ASCII-only三项
+表示限制。现由既有ABC SourceIdentity/PackageSource adapter、全文件排序
+namespace规划和共同路径编码负责；入口、包名和版本分别保持文本身份，
+Unicode scalar按UTF-8可逆转义。多入口/版本数量只决定输出目录区分，不
+参与方法语义准入、producer/selection匹配或样本分派。实际文件名证据
+唯一性、成员范围/owner、read/resource失败、路径长度和碰撞义务保留。
+不支持的filename wire format/suffix/relative spelling继续descriptor fallback，
+明确属于表示缺口；不把source identity当作字段、类型或函数正文的证据。
+record顺序反转、真实字符串读取、Unicode/percent、200/201/400/800及不利
+namespace碰撞覆盖这些边界；固定五ABC六模式的所有源码/位置映射内容
+按entity逐一不变。细节和复杂度见[record-structure.md](../record-structure.md)。
+
 规则135补充：ValueRestArguments / ValueFrameFunction 的结果复用真实 native
 rest/self binding，仍保留原 operation/evaluation/origin。指令 adapter 定义
 原生值身份，TreeOperands 独立检查实际 formal/self；没有追加同块、邻接、

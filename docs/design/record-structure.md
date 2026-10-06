@@ -46,6 +46,65 @@ and publish atomically only after all records and the input identity validate.
 - Bundle module selection requires an explicit runtime descriptor when special
   module records depend on it. Host input path is not that descriptor.
 
+## Executable Source Paths (2026-10-06)
+
+The contextual `PlanRecordSourcePaths` consumes only unique ABC-embedded
+filenames gathered by `ReadSourceIdentity`. The existing private `PackageSource`
+adapter interprets `entry|package|version|relative-file`, from pinned v7
+ace_ets2bundle `SourceMapGenerator::genKey` / `module_mode.ts` (commit
+`bfbbe397cd50e552ceadcbed3ef2a26a216afad8`, identities in the reference lock).
+Entry and package are different producer fields: equality is not a prerequisite.
+There is no sidecar, source map, embedded source-code or named-file read.
+
+Plan the producer namespaces once for the whole index. A single entry and
+package version emits `package/relative-stem`; multiple entries add the entry
+prefix, and multiple versions within one entry/package add the version between
+package and relative stem. Sort the full entry/package/version key, then scan
+each group once. Record order, entity IDs and sample names cannot select a
+filename. Forward-slash package components (including scoped packages) use the
+same component encoder. The output language remains `.mjs`; the original
+filename/extension remains evidence, not proof of original source types.
+
+Valid UTF-16 scalar filenames convert to canonical UTF-8, then use the common
+reversible ASCII percent encoder. Scalar conversion follows
+[RFC 3629 sections 3–4](https://www.rfc-editor.org/rfc/rfc3629); unpaired
+surrogates never become replacement characters. Literal percent bytes are
+escaped separately. Diagnostic/archive stems remain descriptor-based and
+entity-qualified. The public descriptor-only overload retains its behavior.
+Source AST semantics and method rules revision 137 are unchanged: this is a
+fresh export path plan, outside method recovery/caching.
+
+Missing, conflicting, incomplete or unsupported filename identities fall back
+to the descriptor. Current filename adapter coverage is nonempty relative
+components, valid scalars, and the existing `.ts/.ets/.js/.mjs/.cjs` suffix set;
+absolute/traversal/empty components, C0 controls, backslashes, colons and other
+wire formats remain explicit representation gaps. These are not language or
+function recovery invariants. The existing path/component length limits and
+ASCII case-folded collision rejection apply before publication. Equal stems,
+extensions that map to the same stem, and qualified namespace/literal-path
+collisions fail with typed `PathError`; do not silently pick or rename a record.
+
+Let R be records, D the total filename/debug payload decoded, T retained UTF-16
+filename storage, P encoded path bytes, and L the maximum compared name/path
+length. Time is O(D + P + R log R * L), space O(R + T + P) plus the existing
+one-method debug/string decoder scratch. Both sorting passes use indexes, not
+per-record scans. Charge actual vector/string capacities, including conservative
+qualification scratch, against the existing 16 MiB path-plan budget. Unsupported
+names are discarded before retained-pool admission. Fixed conversion scratch is
+bounded by the existing 2048-byte output path limit. This does not claim whole
+process RSS validation. The implementation is project-owned, adds no dependency
+or third-party code, and keeps format support in the private adapter.
+
+`record_path_test` uses real file-backed Panda ULEB/MUTF-8 strings through the
+production evidence reader. It covers different entry/package names, scoped
+packages, entry/version namespaces, record reversal, BMP/supplementary scalars,
+literal percent identity, unsupported and malformed names, ownership failure,
+collisions, length/budget failure and 200/201/400/800 records. Current fixed-five
+ABC/six-mode exports recover all 106 source-bearing filenames, including the 67
+previous descriptor fallbacks; each source body and position-map JSON remains
+identical by entity. This closes this measured filename gap, not the remaining
+class/global/signature/body integration or independent acceptance gates.
+
 ## Executable Module Export Boundary
 
 Pinned v7 `STMODULEVAR` writes an accumulator value to a numeric local-export
