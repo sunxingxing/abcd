@@ -7,6 +7,17 @@
 使用 [总体入口](README.md)、[IR 合同](value-ir.md)、[AST 合同](source-tree.md) 与
 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md) 和 [全样本合同](corpus.md)。
 
+2026-10-06默认callable补充：规则140的真实三profile解码函数／类，加共同
+树的6种callable／4种原名称，独立210组ESM行为及4个有效JS mutation通过。
+对照实际生成源码的TDZ／求值阶段创建、重复evaluate身份、运行时name／arity、
+构造边界、async／generator／原throw、live import及具名class外层scope；
+不能以export文本或解析通过证明hoisting／name正确。owned／missing-name／
+partial／capture反例和200/201/400族规模、25项相关回归保持；此前直接
+FunctionExpr／ClassExpr的表示限制由共同命名上下文替代，其他原生命周期
+义务不放宽。当前固定五ABC／六模式30次输出／位置映射均与规则139基线
+相同，完整数量未增加；这是通用能力的独立fixture验收，不能替代其余
+实际record的whole-record表示／语义及原结构gate。具体证据见status.md。
+
 2026-10-06 VoIP主流程补充：当前默认ValueTree实际ABC-only生成完整
 record11989后，再读取paired TS；输入SHA/size按既有index核对。新增366组
 受控完整main/callback/close调度，覆盖两来电的raw/pixel/incoming/event

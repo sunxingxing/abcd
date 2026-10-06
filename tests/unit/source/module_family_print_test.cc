@@ -132,6 +132,35 @@ void Names() {
           else { Check(std::get<TreePrintError>(strict) == TreePrintError::kUnsupportedContext); Check(constrained.str().empty()); }
         }
 }
+void DefaultNames() {
+  for (const auto kind : {CallableKind::kFunction,CallableKind::kArrow,CallableKind::kAsyncFunction,
+      CallableKind::kAsyncArrow,CallableKind::kGenerator,CallableKind::kAsyncGenerator})
+    for (const auto wanted : {"default","","chosen","other name"}) {
+      auto family = Naming(kind,NamingPlace::kDeclaration,wanted,"key");
+      auto& root = family.members[family.root.value].tree;
+      root.names[0] = u"$default$0";
+      root.module_scope = ScopeId{2}; root.scopes.push_back({ScopeKind::kModule,{}});
+      root.scopes[0].parent = ScopeId{2};
+      root.modules.push_back({{0},{{9},{7}},ModuleAccess::kMutable,true});
+      root.expressions[1].expression = TreeLiteral{UndefinedLiteral{}};
+      const ModuleDefaultExport default_export{{2},{{9},{7}}};
+      std::ostringstream output;
+      const auto printed = PrintModuleFamilyDraft(family,output,{}, {},nullptr,default_export);
+      Check(std::holds_alternative<PrintedFamilyDraft>(printed));
+      Check(output.str().starts_with("export default ("));
+      Check(output.str().find("let $default") == std::string::npos);
+      const auto& ranges = std::get<PrintedFamilyDraft>(printed);
+      const auto child = ranges.functions[0];
+      Check((output.str().substr(child.begin,child.end-child.begin).find("({[") == std::string::npos) ==
+          (std::string_view(wanted) == "default"));
+      for (auto& member : family.members) member.tree.identity.contract = SourceContract::kLanguageAndHostV1;
+      std::ostringstream strict_output;
+      const auto strict = PrintModuleFamilyDraft(family,strict_output,{}, {},nullptr,default_export);
+      if (std::string_view(wanted) == "default") Check(std::holds_alternative<PrintedFamilyDraft>(strict));
+      else {Check(std::get<TreePrintError>(strict) == TreePrintError::kUnsupportedContext); Check(strict_output.str().empty());}
+      std::cout << nlohmann::json{{"callable",CallableLabel(kind)},{"wanted",wanted},{"source",output.str()}} << '\n';
+    }
+}
 void NameShadow() {
   auto family = Naming(CallableKind::kFunction, NamingPlace::kDeclaration, "chosen", "key");
   auto& root = family.members[1].tree;
@@ -271,6 +300,7 @@ void TailCompletions() {
 int main(int argc, char** argv) {
   if (argc == 2 && std::string_view(argv[1]) == "--tail-completions") { TailCompletions(); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--names") { Names(); return 0; }
+  if (argc == 2 && std::string_view(argv[1]) == "--default-names") { DefaultNames(); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--name-shadow") { NameShadow(); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--name-scale") { NameScale(); return 0; }
   auto family = Fixture();

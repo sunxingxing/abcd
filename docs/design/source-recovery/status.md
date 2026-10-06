@@ -12,6 +12,51 @@
 
 ## 当前阶段
 
+### 2026-10-06：直接函数／类默认导出的共同命名上下文
+
+- 基线e3d46ccd，生产规则140。移除ModuleDefaultExport对直接FunctionExpr／
+  ClassExpr的整体表示拒绝；沿用原sole default slot、真实首次声明、source
+  scope及整family/class生命周期检查。函数必须有实际owned child body和
+  creation-proven runtime name；缺失名称证据不能当空名称。缺失／foreign
+  body、partial descendant、默认绑定的读取／写入／捕获继续拒绝投影。
+- 共同printer新增typed DefaultInferredName，复用原NativeName／ClassNames
+  和表达式打印。实际函数名等于default时使用原生匿名表达；不相等或确为
+  空名时保留原命名envelope，严格V1的额外分配拒绝保持。function表达式
+  由原printer括号分组，class默认导出也用expression grammar；不提前
+  hoist函数、不新增module class-name binding、不移动原创建或改变AST。
+  来源位置仍由同一action stack输出，未增加专用body writer或样本条件。
+- 旧生产代码下先构建真实编码fixture，输出仍为let默认哨兵及export alias，
+  函数另有computed命名包装；证据/tmp/abcd-default-callables-red-function.mjs
+  和red-class.mjs。没有把该输出观察称为已运行失败的RED行为测试。新独立
+  ESM对照共210场景／4个有效JS mutation，包含三profile实际ABC解码的
+  函数／类，以及6种callable、4种原名称的共同树打印。检查namespace TDZ、
+  重复evaluate身份、name/arity、构造边界、async/generator行为、live import、
+  snapshot和具名class的外层scope。错误function声明hoisting／class外层
+  binding变体均被检出；初轮重复函数括号使mutation未改变文本，已去掉
+  冗余分组后重跑。owned/missing-name/partial/capture反例及200/201/400
+  family增长验证补齐；原split/register/loop模块回归继续通过。
+- 最终单一-j4构建两个actual engines及11个相关target退出0；关闭build
+  handle后25/25定向CTest通过40.44秒。日志
+  /tmp/abcd-default-callables-final-build-2.log、final-tests-2.log，新增测试
+  default_callable_exports_source_test，CTest共567个。测试只消费真实生成
+  源码；独立reference不进入engine，未改样本输入。
+- 最终固定五ABC／六模式30次ABC-only正式导出均退出0；输入SHA-256／size
+  与既有index一致，各模式106份完整／明确partial源码语法通过、212份
+  entry/method位置JSON与module-dominance-pass-1逐字相同，无完整回退或
+  legacy。完整／partial依次仍80/26、95/11、96/10、88/18、105/1、106/0，
+  每种另46个no-module。当前产物build/stage-one/default-callables-<mode>-pass-2，
+  日志及summary为/tmp/abcd-default-callables-*-2.*；pass-1是加强缺失
+  函数名称证据检查之前的中间输出，不作为最终代码的证据。
+- 每record最多一个默认候选；新增owned函数查询一次O(F)扫描，无逐变量
+  CFG/tree walk。原distinct tree/class inventory、work/scratch及preflight
+  保持，命名上下文是固定大小variant；算法来源、成本见algorithms.md。
+  未新增依赖／默认resource准入，未宣称完整进程RSS／benchmark达标。
+- 本次关闭通用直接callable默认导出表示缺口，固定样本完整数未增加。
+  private class alias、const／完整写入证明、其余record独立表示／语义及
+  原字段／global／signature／body结构gate仍开放。阶段一Goal继续active；
+  全套、expanded corpus、RSS／benchmark、agents、scheduler／DFX及周期
+  审计继续暂停。默认与各显式数值／构造模式的语义合同没有改变。
+
 ### 2026-10-06：VoIP 整体主流程、共享静态状态与延迟回调验收
 
 - 基线c0ffb437，生产规则仍139。voip_service_source_test继续从实际

@@ -12,8 +12,10 @@ struct DefaultExportCheck {
 };
 // Only syntax/lifetime eligibility. The record adapter separately proves the
 // wire sentinel, sole default alias and original first-store declaration.
-// Refuse partial descendants, references/updates/captures and direct anonymous
-// function/class initializers (default NamedEvaluation needs its own proof).
+// Refuse partial descendants and references/updates/captures of this binding.
+// Direct function/class initializers keep expression creation timing and use
+// the common printer's native default NamedEvaluation context. Functions need
+// an owned body and creation-name evidence; missing evidence is not empty name.
 [[nodiscard]] std::variant<DefaultExportCheck, TreePrintError> CheckModuleDefaultExport(
     const FunctionTree& root, const ConstructedFamily* family,
     ModuleDefaultExport candidate, analysis::SemanticBudget budget = {});

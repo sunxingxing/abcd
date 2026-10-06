@@ -60,8 +60,19 @@ std::variant<DefaultExportCheck, TreePrintError> CheckModuleDefaultExport(
     }
     if (!direct) return result(false);
     const auto& initializer = root.expressions[declaration->initializer->value].expression;
-    if (std::holds_alternative<FunctionExpr>(initializer) || std::holds_alternative<ClassExpr>(initializer))
-      return result(false);
+    if (const auto* function = std::get_if<FunctionExpr>(&initializer)) {
+      // A function initializer needs its actual owned body and creation-proven
+      // runtime name; absent evidence is not the empty name. Native default
+      // NamedEvaluation is handled by the common printer, without hoisting
+      // this creation or adding a source binding for the wire-only sentinel.
+      if (!family) return result(false);
+      bool owned = false;
+      for (const auto& member : family->members) {
+        step(); owned |= member.tree.owner == function->child && member.tree.owner != root.owner &&
+            member.tree.inferred_name && member.tree.inferred_name->value < member.tree.names.size();
+      }
+      if (!owned) return result(false);
+    }
     std::size_t local_aliases = 0;
     for (const auto& alias : root.modules) {
       step();

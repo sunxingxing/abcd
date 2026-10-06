@@ -21,6 +21,26 @@ Printer 处理节点、名字、括号、转义、标签、注释和已有输出
 模式，不补推 CFG、finally 或闭包，不调用专项 body writer。无原名可用合成名，
 无独立 PC 的结构节点保留结构来源；不补造原名、类型、PC 或可执行占位行为。
 
+## 直接函数／类的默认导出（规则 140）
+
+ModuleDefaultExport的原slot／declaration／scope及完整family/class生命周期
+证明继续负责移除wire-only默认哨兵的可观察绑定；直接FunctionExpr／ClassExpr
+本身不再作为拒绝理由。FunctionExpr需要真实owned body和明确runtime name，
+ClassExpr需要已有prepared bodies；partial、默认绑定后续读写及捕获仍不投影。
+
+共同printer以typed DefaultInferredName表达目的名称default。原NativeName
+根据实际函数名及self/arguments合同选择原生表达或原命名envelope；没有
+名称证据不能推断default／空名称。ClassNames沿原class scope证明选择表示。
+保持export default的expression grammar：function复用原表达式分组，class
+加表达式括号，保留求值阶段创建和named class的内部scope，不变成hoisted
+function declaration或增加外层class binding。AST及原创建／效果／来源不动。
+
+实际name不等于default时保持原可观察名称及严格V1额外分配拒绝；不能为
+输出简洁盲目合并class alias或删掉生命周期检查。三profile真实解码、6种
+callable／4种名称／任意参数身份的独立ESM对照及hoisting／scope mutation、
+缺失body／name／partial／capture和200/201/400族规模回归见status.md。
+此表示能力不等同固定全部record的独立验收或源级const／type恢复。
+
 ## 模块声明后的分支／循环赋值（规则 139）
 
 RecordTree仍由共同ControlPlan的根source序列决定native模块声明位置；

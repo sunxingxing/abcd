@@ -5,6 +5,26 @@
 
 ## 输入规模与成本
 
+### 直接 callable 默认导出的命名投影（2026-10-06）
+
+规则140复用原module默认候选与完整tree/class inventory；没有增加恢复图
+匹配、CFG遍历、专用writer或第三方依赖。直接函数先一次扫描F个family
+member，证明实际owned body及明确creation-name证据，成本O(F)、O(1)
+新增空间；每record只有一个候选，不按binding反复扫family。原inventory
+成本O(N+E+(T+C)log(T+C+1))及O(T+C)计费scratch保持，下文同算法维度。
+每个member查询计work，旧PMR allocation、tree/class去重及资源异常保持。
+
+printer新增固定大小typed名称alternative，现有直接语法ownership扫描
+把候选目的名称设为default。实际runtime-name／self／class-scope proof、
+原native syntax／envelope选择和preflight复用原算法；表达式括号仅增加
+常数输出动作，不重新解析文本或移动创建。来源为项目已有命名／生命周期
+实现与ESM表达式NamedEvaluation合同，没有新依赖或许可变化。
+
+200/201/400个wide-family的新增owned查询相对原inventory保持线性附加
+工作；三profile实际解码及独立210 ESM场景／4 mutation检查名称、TDZ与
+外层scope，原相关模块split/register回归通过。完整测试和固定五ABC／六
+模式当前导出见status.md；功能work计数不代替仍暂停的RSS／延迟benchmark。
+
 ### Native 模块声明的后续写入可用性（2026-10-06）
 
 规则139的RecordTree按共同ControlPlan的根source序列记录每个module slot

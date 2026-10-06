@@ -1505,6 +1505,9 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/module_family_print.mjs $<TARGET_FILE:module_family_print_test>)
     add_test(NAME native_function_names_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/native_function_names.mjs $<TARGET_FILE:module_family_print_test>)
+    add_test(NAME default_callable_exports_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/default_callable_exports.mjs
+      $<TARGET_FILE:record_import_tree_test> $<TARGET_FILE:module_family_print_test>)
     add_test(NAME record_import_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_import_tree.mjs $<TARGET_FILE:record_import_tree_test>)
     add_test(NAME module_writer_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules

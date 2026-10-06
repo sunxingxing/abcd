@@ -39,7 +39,8 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
 struct DerivedClassBody { std::shared_ptr<const ClassTree> definition; ExprId expression; bool inferred = false; bool named = false; };
 struct EndExpression { ExprId id; };
 struct NoInferredName {};
-using NameContext = std::variant<NoInferredName, NameId>;
+struct DefaultInferredName {};
+using NameContext = std::variant<NoInferredName, NameId, DefaultInferredName>;
 enum class ExpressionObservation : std::uint8_t { kValue, kTruthiness, kDiscarded };
 struct ExpressionOperand {
   ExprId id;
@@ -313,6 +314,7 @@ class TreePrinter {
  private:
   std::u16string_view ContextName(NameContext context) const {
     if (const auto* name = std::get_if<NameId>(&context)) return Tree().names[name->value];
+    if (std::holds_alternative<DefaultInferredName>(context)) return u"default";
     return u"";
   }
   void PrepareClassNames() {
@@ -376,7 +378,10 @@ class TreePrinter {
       for (std::size_t at = 0; at < Tree().statements.size(); ++at) {
         Step(); const auto* declaration = std::get_if<DeclarationStmt>(&Tree().statements[at].statement);
         if (!declaration || !declaration->initializer) continue;
-        set(*declaration->initializer, Tree().symbols[declaration->symbol.value].name);
+        const bool default_value = ModuleBody() && default_export_ &&
+            default_export_->declaration == StmtId{static_cast<std::uint32_t>(at)};
+        set(*declaration->initializer, default_value ? NameContext{DefaultInferredName{}} :
+            NameContext{Tree().symbols[declaration->symbol.value].name});
       }
     }
     // Extra allocation is conditional on the final syntax, not merely metadata
@@ -1157,7 +1162,17 @@ class TreePrinter {
   }
   void StatementNode(const DeclarationStmt& node, Statement at) {
     if (ModuleBody() && default_export_ && at.id == default_export_->declaration) {
-      Append("export default "); Push(std::string_view(";")); Push(*node.initializer);
+      Append("export default ");
+      const auto& value = Tree().expressions[node.initializer->value].expression;
+      const bool creation = std::holds_alternative<ClassExpr>(value);
+      // Keep AssignmentExpression grammar. A bare function declaration would
+      // initialize its export during linking; a named class declaration would
+      // add an outer lexical binding. Parentheses preserve default naming and
+      // original creation time without either extra binding or hoisting. The
+      // common function-expression printer already supplies its own grouping.
+      if (creation) Append("(");
+      Push(std::string_view(creation ? ");" : ";"));
+      Push(ExpressionOperand{*node.initializer, {}, DefaultInferredName{}});
       return;
     }
     switch (Tree().symbols[node.symbol.value].declaration) {

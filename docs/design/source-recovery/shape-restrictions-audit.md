@@ -1,5 +1,17 @@
 # 按用户要求进行的恢复条件审计
 
+规则140补充：直接FunctionExpr／ClassExpr曾因缺少default NamedEvaluation
+表示而整体拒绝，本次由共同typed命名上下文及expression grammar取代该
+限制。owned函数body与明确runtime-name证据属于身份／可观察名称义务；
+缺失证据不是空name。已有slot／scope／lifetime／partial／捕获检查和class
+bodies／名称作用域证明保留。与default名称相等是必要文本语义边界，不是
+函数名选择恢复算法；其他名称使用原envelope，严格V1额外分配合同不放宽。
+不增加opcode序列、PC/register、同块、图形、producer或固定selection准入。
+括号保留原创建时机及class内部scope，错误hoisting／外层binding变体独立
+检出。三profile直接解码及原模块split/register/loop回归、200/201/400
+family规模和语义反例见status.md；private class alias与一般绑定写入／TDZ
+投影仍需共同证明，不能按元数据类名或一次store盲目替换。
+
 规则139补充：RecordTree移除后续arm/loop module assignment要求初次声明
 位于物理block 0的限制。共同ControlPlan仍拥有native声明位置；每slot保存
 其真实首次声明OpId，需要时只运行一次当前ValueProgram的VerifyValueFlow。

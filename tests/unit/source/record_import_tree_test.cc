@@ -25,7 +25,9 @@ void Check(bool value, std::source_location at = std::source_location::current()
   if (!value) { std::cerr << "check failed at " << at.line() << '\n'; std::abort(); }
 }
 enum class FixtureCase { kValid, kCleanupEntry, kCleanupOverwrite, kBindingCollision, kExportCollision, kBranch, kArmStore, kFunction, kCapture, kCapturedDefault, kCapturedUnusedDefault, kStringDefault, kPublishedCapture, kReentrantCapture, kPublishedCaptureV1, kPublishedBadSlot, kLocalFunction, kClassFunction, kClassCapture, kGlobal, kGlobalShadow, kGlobalLocalShadow, kAnonymous, kAnonymousFunction, kAnonymousSingleClass, kAnonymousClassRead, kClassCell, kClassNamedCell, kClassNamedShadow, kClassCellHole, kClassCellUninitialized, kUnknownName, kClassBinding, kClassBindingMismatch, kClassBindingAssignment, kModuleWriter, kModuleWriterBranch, kModuleWriterEarly, kModuleWriterLiteral, kModuleWriterCatch, kModuleWriterParentBranch, kModuleWriterParentBranchCatch, kModuleWriterParentBranchRaw, kModuleWriterParentBranchRawCatch };
-std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool inspect_prefix = false) {
+enum class DirectDefault { kAbsent, kFunction, kClass };
+std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool inspect_prefix = false,
+    DirectDefault direct = DirectDefault::kAbsent) {
   constexpr std::uint32_t kTypes = 256, kPool = 272, kRecord = 512,
       kMethod = 600, kChild = 640, kConstructor = 680, kLiteral = 3000, kModule = 1024, kCode = 4096, kChildCode = 5000, kConstructorCode = 6000, kFileBytes = 8192;
   const bool parent_raw = mode == FixtureCase::kModuleWriterParentBranchRaw || mode == FixtureCase::kModuleWriterParentBranchRawCatch;
@@ -44,8 +46,8 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
   const bool unused_default = mode == FixtureCase::kCapturedUnusedDefault;
   const bool captured_default = unused_default || mode == FixtureCase::kCapturedDefault;
   const bool published_capture = mode == FixtureCase::kPublishedCapture || mode == FixtureCase::kReentrantCapture || mode == FixtureCase::kPublishedCaptureV1 || mode == FixtureCase::kPublishedBadSlot;
-  const bool family = module_writer || class_binding || string_default || captured_default || published_capture || single_class || mode == FixtureCase::kFunction || mode == FixtureCase::kCapture || mode == FixtureCase::kLocalFunction || mode == FixtureCase::kClassFunction || mode == FixtureCase::kClassCapture || mode == FixtureCase::kAnonymousFunction;
-  const bool mixed = class_binding || single_class || mode == FixtureCase::kClassFunction || mode == FixtureCase::kClassCapture;
+  const bool family = direct != DirectDefault::kAbsent || module_writer || class_binding || string_default || captured_default || published_capture || single_class || mode == FixtureCase::kFunction || mode == FixtureCase::kCapture || mode == FixtureCase::kLocalFunction || mode == FixtureCase::kClassFunction || mode == FixtureCase::kClassCapture || mode == FixtureCase::kAnonymousFunction;
+  const bool mixed = direct == DirectDefault::kClass || class_binding || single_class || mode == FixtureCase::kClassFunction || mode == FixtureCase::kClassCapture;
   const bool captured = captured_default || published_capture || mode == FixtureCase::kCapture || mode == FixtureCase::kClassCapture;
   constexpr unsigned kByteBits = 8;
   std::array<std::string_view, 12> texts{"input", "value", "mutate", "ns", "answer",
@@ -117,9 +119,10 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
   emit(name(Name::kMutate)); emit(name(Name::kMutate)); request(1);
   emit(name(Name::kUnused)); emit(name(Name::kDefault)); request(1);
   emit(1); emit(name(Name::kNamespace)); request(1);
-  emit(single_class ? 2 : 3); // Adjacent local export aliases share local slot 0.
+  const bool sole_default = single_class || direct != DirectDefault::kAbsent;
+  emit(sole_default ? 2 : 3); // Adjacent local export aliases share local slot 0.
   emit(name(Name::kAnswer)); emit(name(anonymous ? Name::kDefault : Name::kAnswer));
-  if (!single_class) { emit(name(Name::kAnswer)); emit(name(Name::kAnswerAlias)); }
+  if (!sole_default) { emit(name(Name::kAnswer)); emit(name(Name::kAnswerAlias)); }
   emit(name(Name::kSnapshot)); emit(anonymous ? snapshot_export : name(Name::kSnapshot));
   emit(2);
   emit(name(mode == FixtureCase::kExportCollision ? Name::kAnswer : Name::kLive)); emit(name(Name::kValue)); request(1);
@@ -137,68 +140,81 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
     body.push_back(static_cast<std::uint8_t>(guard)); body.push_back(static_cast<std::uint8_t>(guard >> kByteBits));
   };
   const auto store = [&](std::uint8_t slot) { op(abc::Opcode::kSTMODULEVAR_IMM8); body.push_back(slot); };
-  if (global) {
-    op(abc::Opcode::kTRYLDGLOBALBYNAME_IMM8_ID16);
-    body.insert(body.end(), {0, static_cast<std::uint8_t>(guards.size()), 0});
-  }
-  if (mode == FixtureCase::kBranch || mode == FixtureCase::kArmStore || parent_branch) {
-    load(false, 0, 0);
-    op(abc::Opcode::kJEQZ_IMM8); const auto branch = body.size(); body.push_back(0);
-    if (mode == FixtureCase::kArmStore) store(0);
-    else { load(false, 1, 3); op(abc::Opcode::kCALLARG0_IMM8); body.push_back(0); }
-    body[branch] = static_cast<std::uint8_t>(body.size() - branch + 1);
-  }
-  load(false, 0, 0); store(0);
-  if ((!class_binding || mode == FixtureCase::kClassBindingAssignment) && mode != FixtureCase::kModuleWriterEarly) { load(false, 3, 1); store(1); } // Namespace follows ordinary imports.
-  if (!single_class) {
-    if (parent_raw) { op(abc::Opcode::kLDLOCALMODULEVAR_IMM8); body.push_back(0); }
-    else load(true, 0, 2);
-    store(0);
-    load(false, 1, 3); op(abc::Opcode::kCALLARG0_IMM8); body.push_back(0);
-    load(false, 0, 0); store(0); // Fresh live read after the dependency mutates it.
-  }
-  if (family) {
-    if (class_cell) {
-      if (named_cell) {
-        op(abc::Opcode::kNEWLEXENVWITHNAME_IMM8_ID16); body.insert(body.end(), {1, 7, 0});
-      } else { op(abc::Opcode::kNEWLEXENV_IMM8); body.push_back(1); }
-      if (mode != FixtureCase::kClassCellUninitialized) {
-        load(false, 0, 0);
-        op(abc::Opcode::kSTLEXVAR_IMM4_IMM4); body.push_back(0);
-      }
-    }
-    if (mixed) {
+  if (direct != DirectDefault::kAbsent) {
+    load(false,3,1); store(1);
+    if (direct == DirectDefault::kClass) {
       op(abc::Opcode::kLDHOLE); op(abc::Opcode::kSTA_V8); body.push_back(0);
       op(abc::Opcode::kDEFINECLASSWITHBUFFER_IMM8_ID16_ID16_IMM16_V8);
-      body.insert(body.end(), {0, 5, 0, 6, 0, 0, 0, 0}); store(1);
-      op(abc::Opcode::kSTA_V8); body.push_back(0);
-    }
-    if (captured) {
-      op(abc::Opcode::kNEWLEXENV_IMM8); body.push_back(1);
-      if (!published_capture) {
-        if (mixed) { op(abc::Opcode::kLDA_V8); body.push_back(0); }
-        else { op(abc::Opcode::kLDAI_IMM32); body.insert(body.end(), {1, 0, 0, 0}); }
-        op(abc::Opcode::kSTLEXVAR_IMM4_IMM4); body.push_back(0);
-      }
-    }
-    if (class_binding) {
-      load(true, 1, 8); store(0);
-      load(false, 0, 0); store(1);
-    }
-    if (!single_class && !class_binding) {
+      body.insert(body.end(),{0,5,0,6,0,0,0,0});
+    } else {
       op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8);
-      body.insert(body.end(), {0, static_cast<std::uint8_t>(guards.size()), 0, static_cast<std::uint8_t>(module_writer ? 1 : 0)});
-      store(mode == FixtureCase::kPublishedBadSlot ? 99 : 0);
-      if (mode == FixtureCase::kReentrantCapture) {
-        load(false, 1, 3); op(abc::Opcode::kCALLARG0_IMM8); body.push_back(0);
+      body.insert(body.end(),{0,static_cast<std::uint8_t>(guards.size()),0,0});
+    }
+    store(0);
+  } else {
+    if (global) {
+      op(abc::Opcode::kTRYLDGLOBALBYNAME_IMM8_ID16);
+      body.insert(body.end(), {0, static_cast<std::uint8_t>(guards.size()), 0});
+    }
+    if (mode == FixtureCase::kBranch || mode == FixtureCase::kArmStore || parent_branch) {
+      load(false, 0, 0);
+      op(abc::Opcode::kJEQZ_IMM8); const auto branch = body.size(); body.push_back(0);
+      if (mode == FixtureCase::kArmStore) store(0);
+      else { load(false, 1, 3); op(abc::Opcode::kCALLARG0_IMM8); body.push_back(0); }
+      body[branch] = static_cast<std::uint8_t>(body.size() - branch + 1);
+    }
+    load(false, 0, 0); store(0);
+    if ((!class_binding || mode == FixtureCase::kClassBindingAssignment) && mode != FixtureCase::kModuleWriterEarly) { load(false, 3, 1); store(1); } // Namespace follows ordinary imports.
+    if (!single_class) {
+      if (parent_raw) { op(abc::Opcode::kLDLOCALMODULEVAR_IMM8); body.push_back(0); }
+      else load(true, 0, 2);
+      store(0);
+      load(false, 1, 3); op(abc::Opcode::kCALLARG0_IMM8); body.push_back(0);
+      load(false, 0, 0); store(0); // Fresh live read after the dependency mutates it.
+    }
+    if (family) {
+      if (class_cell) {
+        if (named_cell) {
+          op(abc::Opcode::kNEWLEXENVWITHNAME_IMM8_ID16); body.insert(body.end(), {1, 7, 0});
+        } else { op(abc::Opcode::kNEWLEXENV_IMM8); body.push_back(1); }
+        if (mode != FixtureCase::kClassCellUninitialized) {
+          load(false, 0, 0);
+          op(abc::Opcode::kSTLEXVAR_IMM4_IMM4); body.push_back(0);
+        }
       }
-      if (captured_default || mode == FixtureCase::kCapture || published_capture) {
-        op(abc::Opcode::kLDAI_IMM32); body.insert(body.end(), {42, 0, 0, 0});
-        op(abc::Opcode::kSTLEXVAR_IMM4_IMM4); body.push_back(0);
+      if (mixed) {
+        op(abc::Opcode::kLDHOLE); op(abc::Opcode::kSTA_V8); body.push_back(0);
+        op(abc::Opcode::kDEFINECLASSWITHBUFFER_IMM8_ID16_ID16_IMM16_V8);
+        body.insert(body.end(), {0, 5, 0, 6, 0, 0, 0, 0}); store(1);
+        op(abc::Opcode::kSTA_V8); body.push_back(0);
+      }
+      if (captured) {
+        op(abc::Opcode::kNEWLEXENV_IMM8); body.push_back(1);
+        if (!published_capture) {
+          if (mixed) { op(abc::Opcode::kLDA_V8); body.push_back(0); }
+          else { op(abc::Opcode::kLDAI_IMM32); body.insert(body.end(), {1, 0, 0, 0}); }
+          op(abc::Opcode::kSTLEXVAR_IMM4_IMM4); body.push_back(0);
+        }
+      }
+      if (class_binding) {
+        load(true, 1, 8); store(0);
+        load(false, 0, 0); store(1);
+      }
+      if (!single_class && !class_binding) {
+        op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8);
+        body.insert(body.end(), {0, static_cast<std::uint8_t>(guards.size()), 0, static_cast<std::uint8_t>(module_writer ? 1 : 0)});
+        store(mode == FixtureCase::kPublishedBadSlot ? 99 : 0);
+        if (mode == FixtureCase::kReentrantCapture) {
+          load(false, 1, 3); op(abc::Opcode::kCALLARG0_IMM8); body.push_back(0);
+        }
+        if (captured_default || mode == FixtureCase::kCapture || published_capture) {
+          op(abc::Opcode::kLDAI_IMM32); body.insert(body.end(), {42, 0, 0, 0});
+          op(abc::Opcode::kSTLEXVAR_IMM4_IMM4); body.push_back(0);
+        }
       }
     }
+    if (mode == FixtureCase::kModuleWriterEarly) { load(false, 3, 1); store(1); }
   }
-  if (mode == FixtureCase::kModuleWriterEarly) { load(false, 3, 1); store(1); }
   std::uint32_t cleanup_end = 0, cleanup_handler = 0;
   constexpr std::uint8_t kPushBytes = 2;
   if (cleanup_entry) {
@@ -325,7 +341,7 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
   entry.code = abc::CodeInfo{{kCode - 4}, {kCode}, mixed ? 1U : 0U, 3, static_cast<std::uint32_t>(body.size()), cleanup_entry ? 1U : 0U};
   index.methods.push_back(entry);
   if (family) {
-    auto child = entry; child.offset = {kChild}; child.name = "reader"; child.name_utf16_length = child.name.size();
+    auto child = entry; child.offset = {kChild}; child.name = direct == DirectDefault::kFunction ? "default" : "reader"; child.name_utf16_length = child.name.size();
     constexpr unsigned kFunctionKindShift = 8; // Pinned dynamic method access flags.
     child.access_flags = static_cast<std::uint32_t>(abc::FunctionKind::kBaseConstructor) << kFunctionKindShift;
     child.code = abc::CodeInfo{{kChildCode - 4}, {kChildCode}, child_parameter ? 1U : 0U, child_parameter ? 4U : 3U, static_cast<std::uint32_t>(child_body.size()), writer_catch ? 1U : 0U};
@@ -467,6 +483,13 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
 }
 int main(int argc, char** argv) {
   const std::string_view mode = argc > 1 ? argv[1] : "";
+  if (mode == "--direct-default-function" || mode == "--direct-default-class") {
+    const auto profile = argc > 2 && std::string_view(argv[2]) == "1202" ? abc::ProfileId::kDynamic1202 :
+        argc > 2 && std::string_view(argv[2]) == "1301" ? abc::ProfileId::kDynamic1301 : abc::ProfileId::kDynamic1206;
+    std::cout << Recover(FixtureCase::kAnonymous,profile,false,
+        mode == "--direct-default-class" ? DirectDefault::kClass : DirectDefault::kFunction);
+    return 0;
+  }
   const bool anonymous = mode.starts_with("--anonymous");
   if (mode == "--class-binding" || mode == "--class-binding-mismatch" || mode == "--class-binding-assignment") {
     const auto fixture = mode == "--class-binding" ? FixtureCase::kClassBinding : mode == "--class-binding-assignment" ? FixtureCase::kClassBindingAssignment : FixtureCase::kClassBindingMismatch;

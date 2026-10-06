@@ -315,7 +315,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // multiple observations preserve evaluation count and original catch scope.
 // Rules 138 preserve individual proven debug formal names when other ordinals
 // lack evidence; actual binding, shadow and entry identity checks remain.
-inline constexpr std::uint32_t kRouteEvidenceRules = 139;
+// Rules 140 project direct default callable creation through the common naming
+// context, preserving body ownership, runtime name and module lifetime.
+inline constexpr std::uint32_t kRouteEvidenceRules = 140;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

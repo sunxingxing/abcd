@@ -91,6 +91,23 @@ int main() {
   family.members[0].tree.recovery_issues.push_back({RecoveryReason::kUnsupportedOperation, {}, {}});
   Check(!eligible()); family.members[0].tree.recovery_issues.clear();
   Check(!std::get<DefaultExportCheck>(CheckModuleDefaultExport(root, &family, kDefault)).eligible);
+  // Creation syntax does not waive body ownership or lifetime obligations.
+  // A complete owned function may use the native default expression context;
+  // a missing/foreign body or a descendant reading this slot cannot.
+  auto created = family;
+  auto& creator = created.members[created.root.value].tree;
+  creator.expressions[0].expression = FunctionExpr{{20},{0,0}};
+  const auto created_eligible = [&] {return std::get<DefaultExportCheck>(CheckModuleDefaultExport(
+      creator,&created,kDefault)).eligible;};
+  Check(!created_eligible()); // No creation-name evidence is available yet.
+  created.members[0].tree.inferred_name = NameId{0}; Check(created_eligible());
+  std::get<FunctionExpr>(creator.expressions[0].expression).child = {999}; Check(!created_eligible());
+  std::get<FunctionExpr>(creator.expressions[0].expression).child = {20};
+  created.members[0].tree.recovery_issues.push_back({RecoveryReason::kIncompleteChild,{},{}});
+  Check(!created_eligible()); created.members[0].tree.recovery_issues.clear();
+  created.members[0].tree.modules = {{{0},kDefault.binding,ModuleAccess::kMutable,false}};
+  Check(!created_eligible()); created.members[0].tree.modules.clear();
+  created.members[0].tree.captures = {{{0},{creator.owner,{0}}}}; Check(!created_eligible());
   std::uint64_t previous = 0;
   for (const auto count : {200U, 201U, 400U}) {
     const auto tree = Fixture(count);
@@ -107,6 +124,10 @@ int main() {
     const auto family_check = std::get<DefaultExportCheck>(CheckModuleDefaultExport(wide.members[count].tree, &wide, kDefault));
     Check(family_check.eligible);
     Check(family_check.work < checked.work * (count + 1) * 3);
+    wide.members[count].tree.expressions[0].expression = FunctionExpr{{100},{0,0}};
+    wide.members[0].tree.inferred_name = NameId{0};
+    const auto creation_check = std::get<DefaultExportCheck>(CheckModuleDefaultExport(wide.members[count].tree,&wide,kDefault));
+    Check(creation_check.eligible && creation_check.work < family_check.work * 2);
     std::cout << count << ": " << checked.work << " family: " << family_check.work << '\n';
   }
 }
