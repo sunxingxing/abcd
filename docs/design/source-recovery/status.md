@@ -12,6 +12,60 @@
 
 ## 当前阶段
 
+### 2026-10-07：真实 WindowUtil／WindowInfo 与三十三模块导航图
+
+- 基线7eb21287，production/rules146保持。现有Window记录已独立验收；
+  本轮补齐原导航图只初始化WindowUtil、页面却读取controlled window对象
+  的组合缺口。新window_navigation_graph_source_test沿共同ABC-only exporter，
+  导出退出后才读paired TS；三十三实际模块、全部shopping/minigame正文
+  连接真实WindowUtil／WindowInfo，未替换类、方法或闭包实现。
+- 新navigation_window仅控制平台window/UI/display/hilog。两个真实实例
+  执行setUIContext、updateWindowInfo、status注册及orientation异步链，
+  实际页面调用system-bar／immersive／recover／release。原window-size、
+  avoid-area、title/status闭包用foreign receiver回放；真实WindowInfo进入
+  storage cell、child update和晚期paramsGenerator_。全部native Promise及
+  derived链受owned列表追踪与allSettled结算，不以固定tick或fire-and-forget
+  代替完成。原平台拒绝对象按identity核对，其他原throw与native Error
+  brand/category分开；诊断文本不作为恢复或异常身份条件。
+- reuse原导航trace/字段/cell/prototype/signature oracle，并提取已有
+  classLayouts到test-only class_reference，Community图使用同一实现。
+  新图按AST所属class擦除普通无initializer的声明；initializer、method、
+  computed/static/private语义保持。native class、method顺序/kind及
+  async/generator/formal/default/rest与行为分别核对；不证明所有body表示。
+- 实际构造器identity去重barrel/re-export，完整viewAliases仍比较；导出
+  类型必须实际构造并render，不能由计数或direct construct代替。private
+  route root正文仍实际执行并保留完整trace，只不计入导出类型inventory。
+  最终native CTest1/1通过224.46秒，22个实际导出view均构造并render；
+  原四项相关回归通过，分别保留其native结果，不伪装为同轮5/5通过。
+- 首批两个同步/延迟基线各29415事件通过。扩展阶段的失败分别来自
+  错误的固定listener数量（页面会再注册）、把controlled Promise rejection
+  当native Error、对非initial分支错误要求child cell，以及按导出名字重复
+  统计barrel alias；均修正测试协议／coverage，未新增生产特例或删校验。
+  八十八普通组合对照完成后，首轮注册CTest4/5通过391.09秒；新增窗口
+  图在一个有效JS wrong-field mutation上失败：所有avoid-kind共用一个
+  host对象，使avoidCutout错写avoidSystem没有变化。改为各kind独立结果
+  和独立事件payload，保留对象身份与字段归属的完整比较。
+- 区域修正后的native CTest1/1通过223.59秒（tests-2），完成90场景、
+  1400原throw、280换绑、16有效JS mutation及2等价arrow-this变体。
+  两schedule各140个distinct平台boundary，五原throw值含undefined/null/
+  0/Symbol/object；并非every UI event。事件853至47587、baseline29433。
+  自审发现报告把无export label的private root经JSON null计入rendered
+  Set（22类型报告23rendered）；修正输出及相等断言后，最终tests-3再次
+  完整通过，22类型／22构造／22render，90/1400/280/16/2保持。错误receiver
+  使用globalThis反例，词法this允许等价；不存在未完成测试进程。
+- 单-j4 abc_structure/abc_semantic构建和configure退出0；587项注册，新增
+  test的RUN_SERIAL及实际command核对。原class_reference_adapter0.06秒、
+  Community图89.48秒、minigame导航83.68秒、Window记录0.59秒均在首轮
+  通过；不因test-only平台修正重复它们。日志/tmp/abcd-window-navigation-
+  {red,baseline,matrix,configure,build,registration,tests}-*保留失败与通过层次。
+  最终原生JSON另存/tmp/abcd-window-navigation-verified-1.json。七个相关
+  mjs语法及git diff --check通过；未重复五ABC六模式三十次导出。
+- 本轮推进真实实例字段/global/闭包/signature/body跨record消费，不增加
+  production恢复条件。窗口/UI协议仍为controlled host，不宣称设备、任意
+  TS initializer prototype拦截、全部body/style或原结构gate完成。full suite、
+  expanded corpus、RSS/benchmark、DFX、scheduler、agents与周期audit仍暂停；
+  Goal继续active，下一步仍是阶段一尚未完成的恢复和独立验收。
+
 ### 2026-10-07：Ability／Breakpoint／storage／实际视图组合
 
 - 基线a7c619b8，production/rules146保持；上一轮实际模块图已提交并

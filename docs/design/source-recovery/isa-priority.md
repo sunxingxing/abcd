@@ -1,5 +1,11 @@
 # 全 ISA 优先执行顺序
 
+2026-10-07 Window组合续作：真实WindowUtil／WindowInfo接入三十三模块
+导航图与实际storage/child更新，不再只执行模块初始化及controlled window
+替身。实际listener/Promise/body及高层class/signature独立验收，原单record
+验收保留；alias按真实identity处理。测试区域identity盲点与coverage报告
+修正、最终定向结果见status.md；未增加production特例或更改默认合同。
+
 2026-10-07 当前核对：规则146的固定五ABC在显式numeric+constructors组合
 已无INCOMPLETE/UNRECOVERED源码标记，默认模式的数值/构造合同保持。
 继续优先这些原缺口的完整函数、类、初始化及record独立语义/表示验收，

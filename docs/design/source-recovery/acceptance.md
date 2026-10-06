@@ -1,5 +1,22 @@
 # 验收、证据与实施交接
 
+2026-10-07 Window图补充：三十三实际模块连接真实WindowUtil／WindowInfo
+与页面storage/child/capture/body，新增test-only平台只控制窗口/UI/display/
+hilog边界。ABC-only导出结束后才读paired TS，保留原独立Window记录验收。
+两个实例的原四类listener、异步orientation/system-bar/recover链全部实际
+执行，owned native Promise及derived链完整结算。字段descriptor/顺序、
+receiver、原throw、platform rejection identity、live import和UI consumer
+共同比较；高层native class/method/default/rest形式另用共享AST核对。
+
+首轮wrong-field mutation暴露host给五kind共用area对象的盲点；独立kind
+结果及独立事件payload恢复可观察身份，不能通过弱化字段比较验收。
+最终native CTest1/1通过224.46秒，90普通/调度场景、1400原throw、280换绑、
+16有效JS mutation与2等价表示通过；两baseline各140个平台boundary，
+完整事件853至47587。22导出view按实际constructor identity去重alias，
+全部构造并render；private route root另执行，不经JSON null虚增导出覆盖。
+相关四项native回归通过，未伪装为同轮5/5。完整范围和失败修正见status.md。
+源码恢复条件/rules未改，不代表任意平台/所有body/style或原结构gate完成。
+
 2026-10-07 MultiCommunity平台组合补充：已有独立EntryAbility/Logger
 验收保留；新变体沿完整四十五模块图执行实际Ability窗口/lifecycle/listener
 正文、真实BreakpointConstants、共享storage及Root/子视图body。Logger

@@ -1482,6 +1482,11 @@ if(BUILD_TESTING)
       add_test(NAME minigame_navigation_graph_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/navigation_graph.mjs $<TARGET_FILE:abc_structure>
         ${ABCD_PAIRED_CORPUS_ROOT}/Immersive --minigame)
+      add_test(NAME window_navigation_graph_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        --expose-internals --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/navigation_graph.mjs $<TARGET_FILE:abc_structure>
+        ${ABCD_PAIRED_CORPUS_ROOT}/Immersive --window)
+      set_tests_properties(window_navigation_graph_source_test PROPERTIES RUN_SERIAL TRUE)
       # Four disjoint case ranges preserve the complete graph matrix while
       # keeping each directed integration job inside the existing CTest timeout.
       # The large graph workers must not compete with other CTest jobs: two

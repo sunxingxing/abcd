@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {readFileSync, mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {classReference, parseJavaScript} from './class_reference.mjs';
+import {classReference, parseJavaScript, classLayouts} from './class_reference.mjs';
 import {communityCases, communityAbilityCases} from './community_graph_state.mjs';
 import {fileURLToPath} from 'node:url';
 
@@ -42,24 +42,8 @@ for (const name of Object.keys(sources)) {
 // getter/setter kinds and parameter/default/rest forms. Field initializers may
 // live in native class fields or equivalent constructor assignments. Runtime
 // graph snapshots independently compare descriptors, aliases and signatures.
-const layouts = source => {
-  const work = [parseJavaScript(source)], classes = [];
-  while (work.length) {
-    const node = work.pop();
-    if (node.type === 'ClassDeclaration' || node.type === 'ClassExpression') classes.push(node);
-    for (const value of Object.values(node)) {
-      if (Array.isArray(value)) for (const child of value)
-        if (child && typeof child.type === 'string') work.push(child);
-      if (value && typeof value.type === 'string') work.push(value);
-    }
-  }
-  return classes.sort((a, b) => a.start - b.start).map(node => [node.superClass !== null,
-    node.body.body.filter(method => method.type === 'MethodDefinition' && method.kind !== 'constructor')
-      .map(method => [method.kind, method.static, method.computed, method.key.name ?? method.key.value,
-        method.value.async, method.value.generator, method.value.params.map(param => param.type)])]);
-};
 for (const name of Object.keys(sources)) {
-  assert.deepEqual(layouts(sources[name]), layouts(reference[name]), 'native class representation ' + name);
+  assert.deepEqual(classLayouts(sources[name]), classLayouts(reference[name]), 'native class representation ' + name);
   assert.doesNotMatch(sources[name], /\b(?:goto|switchPc|UNRECOVERED|INCOMPLETE)\b/);
 }
 

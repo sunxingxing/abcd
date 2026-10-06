@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import vm from 'node:vm';
-import {isDeepStrictEqual} from 'node:util';
+import {isDeepStrictEqual, types} from 'node:util';
+import {navigationWindow} from './navigation_window.mjs';
 
 const indexName = 'default/src/main/ets/pages/Index';
 const pageNames = ['Shopping', 'ShoppingAvoid', 'MiniGame', 'ShoppingFullScreen'];
@@ -33,7 +34,7 @@ const classFields = new Map([
 // variant also links every shopping record. Constructors, methods, field cells
 // and resource closures stay intact; only platform services stay controlled in
 // the complete variant.
-async function exercise(sources, config = {}) {
+export async function exerciseNavigation(sources, config = {}) {
   const trace = [], sites = [], owners = [], cells = [], leaves = [], pending = [], lifecycle = [], builders = [], clicks = [];
   let itemIdentity = 0;
   const tags = new WeakMap(), modules = new Map(), imports = new Map();
@@ -41,6 +42,7 @@ async function exercise(sources, config = {}) {
   const allViews = Object.hasOwn(sources, 'shopping/Index');
   const children = new Map(), childCallbacks = [], childTypes = new Map(), viewTypes = new Map(), provided = new Map();
   const tabBuilders = [], changes = [], scrollIndices = [], lazyLists = new WeakSet();
+  const renderedOwners = new Set();
   const failure = Object.hasOwn(config, 'failure') ? config.failure : {};
   let context, factory, nextElement = 0, events = 0, failed = false, retainedFault;
   const replayed = [], pageClasses = new Map();
@@ -58,7 +60,7 @@ async function exercise(sources, config = {}) {
   const outcome = error => {
     if (Object.is(error, failure)) return 'original-throw';
     if (error instanceof assert.AssertionError) throw error;
-    assert.ok(['TypeError', 'ReferenceError'].includes(error?.name), String(error)); return error.name;
+    assert.ok(types.isNativeError(error) && ['TypeError', 'ReferenceError'].includes(error.name), String(error)); return error.name;
   };
   const call = (label, callback, receiver, args = []) => {
     try {assert.equal(Reflect.apply(callback, receiver, args), undefined); trace.push([`${label}.return`]); return true;}
@@ -76,6 +78,7 @@ async function exercise(sources, config = {}) {
       context.SynchedPropertyNesedObjectPU = syncedTypes[1];
       for (const module of imports.values()) for (const name of libraryNames)
         if (Object.hasOwn(module.namespace, name)) module.setExport(name, leafTypes[1].get(name));
+      platform?.swap(imports);
       trace.push(['live-swap']);
     }
     if (events === config.failAt) {failed = true; throw failure;}
@@ -172,7 +175,7 @@ async function exercise(sources, config = {}) {
   tag(ViewPU.prototype, 'ViewPU.prototype');
   const renderPage = owner => {
     assert.ok(owners.includes(owner));
-    call('page.render', owner.initialRender, owner);
+    if (call('page.render', owner.initialRender, owner)) renderedOwners.add(owner);
     const state = cells.find(value => value.owner === owner && value.name === 'mainWindowInfo');
     const params = state && connected ? {mainWindowInfo: state.value} : new Proxy({}, {get() {assert.fail('empty update read params');}});
     call('page.update', owner.updateStateVars, owner, [params]);
@@ -202,6 +205,7 @@ async function exercise(sources, config = {}) {
     return surface(`window${version}`, {mainWindowInfo: info, setImmersiveType: () => token,
       startWindowStatusListener: () => token, release: () => token, setSystemBarEnabled: () => token});
   });
+  const platform = config.realWindow ? navigationWindow({config, event, surface, tag, token, call, normalize, outcome}) : undefined;
   const keys = ['create', 'pop', 'width', 'height', 'padding', 'fontWeight', 'fontSize', 'fontColor', 'margin',
     'backgroundColor', 'background', 'borderRadius', 'color', 'strokeWidth', 'onClick', 'layoutWeight',
     'hideToolBar', 'hideTitleBar', 'mode', 'navDestination', 'ignoreLayoutSafeArea', 'backgroundImage',
@@ -263,6 +267,7 @@ async function exercise(sources, config = {}) {
     NavigationMode: surface('mode', {Stack: 'stack'}), FontWeight: surface('weight', {Bold: 'bold', Medium: 'medium', Normal: 'normal'}),
     Color: surface('color', {White: 'white', Black: 'black'}), LayoutPolicy: surface('layout', {matchParent: 'parent'}),
     ImageSize: surface('imageSize', {FILL: 'fill'}), Observed: Type => Type,
+    ...(platform ? {HeightBreakpoint: surface('height-breakpoint', {HEIGHT_SM: 'small'})} : {}),
     registerNamedRoute(callback, name, metadata) {assert.equal(this, undefined); factory = callback; event('route', name, metadata); return token;},
   });
   for (const [name, source] of Object.entries(sources)) modules.set(name, new vm.SourceTextModule(source, {context, identifier: name}));
@@ -274,7 +279,7 @@ async function exercise(sources, config = {}) {
     assert.ok(['shopping/Index', 'minigame/Index'].includes(name) || name.startsWith('@ohos:'), specifier);
     const names = name === 'shopping/Index' ? ['Home'] : name === 'minigame/Index' ? ['Content', 'Footer', 'Header'] : ['default'];
     const module = new vm.SyntheticModule(names, function() {
-      for (const key of names) this.setExport(key, key === 'default' ? tag({}, name) : leafTypes[0].get(key));
+      for (const key of names) this.setExport(key, key === 'default' ? platform?.load(name) ?? tag({}, name) : leafTypes[0].get(key));
     }, {context}); imports.set(name, module); return module;
   });
   let error, moduleFailed = false;
@@ -283,6 +288,7 @@ async function exercise(sources, config = {}) {
   const before = events;
   if (moduleFailed) await assert.rejects(root.evaluate(), value => Object.is(value, error)); else await root.evaluate();
   assert.equal(events, before);
+  if (platform && !moduleFailed) windowSurfaces = platform.initialize(modules);
   for (const [name, module] of modules) if (module.status === 'evaluated') for (const page of pageNames)
     if (Object.hasOwn(module.namespace, page)) pageClasses.set(page, module.namespace[page]);
   for (const module of modules.values()) if (module.status === 'evaluated') for (const name of ['Content', 'Header', 'Footer'])
@@ -293,7 +299,7 @@ async function exercise(sources, config = {}) {
   if (factory && !config.directOnly) {
     try {
       const owner = Reflect.apply(factory, {foreign: true}, []); assert.equal(owner, owners[0]);
-      call('index.render', owner.initialRender, owner);
+      if (call('index.render', owner.initialRender, owner)) renderedOwners.add(owner);
       for (const name of pageNames) call('index.navmap', owner.NavPageMap, owner, [name]);
       call('index.purge', owner.purgeVariableDependenciesOnElmtId, owner, [17]);
       call('index.rerender', owner.rerender, owner); call('index.delete', owner.aboutToBeDeleted, owner);
@@ -318,6 +324,7 @@ async function exercise(sources, config = {}) {
   if (connected) {
     // Replay the actual parent's update branch and its late parameter closures.
     // Keep child element identity and pass the new parent value into real cells.
+    if (platform) await platform.update();
     for (const state of cells) if (state.name === 'windowUtil') state.value = windowSurfaces[1];
     for (const {callback, args} of childCallbacks) call('child.update', callback, {foreign: true}, [args[0], false]);
     for (const owner of owners) if ((allViews || childTypes.has(owner.constructor.name)) && Object.hasOwn(owner, 'paramsGenerator_')) {
@@ -331,6 +338,7 @@ async function exercise(sources, config = {}) {
     }
   }
   for (const callback of lifecycle) call('page.lifecycle', callback, {foreign: true});
+  if (platform) await platform.finish();
   let assignment;
   if (config.direct) {
     const Type = viewTypes.get(config.direct) ?? pageClasses.get(config.direct) ??
@@ -377,9 +385,13 @@ async function exercise(sources, config = {}) {
   const instances = owners.map(owner => viewNames.get(owner.constructor));
   return {trace, sites, state, metadata, assignment, cells: cells.map(value => [tags.get(value.owner), value.name, normalize(value.value), value.purged, value.deleted]),
     events, failed, retainedFault, replayed, pages: owners.map(owner => owner.constructor.name),
-    views: [...viewTypes.keys()], instances,
-    modules: [...modules].map(([name, module]) => [name, module.status])};
+    views: platform ? [...viewNames.values()] : [...viewTypes.keys()], instances,
+    modules: [...modules].map(([name, module]) => [name, module.status]),
+    ...(platform ? {platform: platform.snapshot(), renderedViews: [...renderedOwners].map(owner => viewNames.get(owner.constructor)),
+      viewAliases: [...viewTypes].map(([name, Type]) => [name, viewNames.get(Type)])} : {})};
 }
+
+const exercise = exerciseNavigation;
 
 export async function verifyNavigationBatch(sources, reference, request) {
   const base = {finalize: 'own'};

@@ -12,6 +12,26 @@ assert.equal(acorn.version, '8.15.0');
 
 export const parseJavaScript = source => acorn.parse(source, {ecmaVersion: 'latest', sourceType: 'module'});
 
+// Compare high-level native class representation separately from execution.
+// Constructor assignment lowering is allowed; methods keep order, kind,
+// async/generator and formal/default/rest structure without spelling locals.
+export function classLayouts(source) {
+  const work = [parseJavaScript(source)], classes = [];
+  while (work.length) {
+    const node = work.pop();
+    if (node.type === 'ClassDeclaration' || node.type === 'ClassExpression') classes.push(node);
+    for (const value of Object.values(node)) {
+      if (Array.isArray(value)) {
+        for (const child of value) if (child && typeof child.type === 'string') work.push(child);
+      } else if (value && typeof value.type === 'string') work.push(value);
+    }
+  }
+  return classes.sort((a, b) => a.start - b.start).map(node => [node.superClass !== null,
+    node.body.body.filter(method => method.type === 'MethodDefinition' && method.kind !== 'constructor')
+      .map(method => [method.kind, method.static, method.computed, method.key.name ?? method.key.value,
+        method.value.async, method.value.generator, method.value.params.map(param => param.type)])]);
+}
+
 export function classReference(text) {
   const source = stripTypeScriptTypes(text, {mode: 'transform'});
   const root = parseJavaScript(source);
