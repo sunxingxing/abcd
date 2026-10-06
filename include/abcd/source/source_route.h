@@ -323,7 +323,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // self-scope proof, preserving outer mutability, creation timing and origins.
 // Rules 143 resolve global/capability reads in their actual lexical scope using
 // the common structure walk; sibling declarations are not shadowing evidence.
-inline constexpr std::uint32_t kRouteEvidenceRules = 143;
+// Rules 144 lay out nested literals through typed AST ownership and distinguish
+// aggregate AssignmentExpression values from ambiguous statement beginnings.
+inline constexpr std::uint32_t kRouteEvidenceRules = 144;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

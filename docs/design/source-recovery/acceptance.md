@@ -1,5 +1,24 @@
 # 验收、证据与实施交接
 
+2026-10-06常量record补充：规则144通过共同AST/迭代printer排版嵌套
+字面量，以typed AssignmentExpression上下文去除对象／数组元素的多余
+对象括号，不更改恢复准入、effects、exception或inferred name。实际
+Immersive8755 ROUTES和7167 CommonConstants的ABC-only默认ValueTree
+导出结束、固定SHA/record身份核对后才读取paired TS；完整ESM与真实import
+consumer在普通／hostile prototype环境执行。两个指定record的whole-record
+语义／高层表示由pending转accepted；源级const/readonly/type仍无恢复证明。
+
+ROUTES完整29节点的descriptor/prototype/identity图、新鲜module、hole/
+共享差异、修改／删除／extensibility与重复求值通过。CommonConstants完整
+class/三static字段、name/arity/descriptor、空constructor／20项实参与
+new.target／两realm fallback、20项任意原throw、静态替换／删除／-0/NaN
+及consumer读取通过；全局Object/Array/Function/Reflect被替换不改变原生
+初始化。16个先解析的有效JS mutation均被独立oracle检出。三profile原
+nested fixture558场景及200/201/402 buffer、几何规模unit、原span继续通过。
+最终29/29定向回归、固定五ABC六模式30次fresh导出均通过；每模式106份
+源码解析，完整数量无回退／增加。其他record、原结构gate与阶段一仍开放，
+全套/RSS/benchmark/expanded corpus/agents/DFX继续暂停；具体证据见status.md。
+
 2026-10-06 Widget补充：push modules.abc record12347和widgets.abc record564
 的受控whole-record语义与高层表示由pending转accepted。两个ABC-only默认V3
 导出全部结束、既有paired SHA/size核对后再读取独立WidgetCard.ts；真实模块

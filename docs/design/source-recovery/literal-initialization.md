@@ -1,5 +1,40 @@
 # Literal Initialization
 
+## Nested literal layout and grammar
+
+Rule 144 prints a literal over multiple lines when one of its own values is a
+nonempty object/array literal. Scalar fields and empty literals remain compact.
+This is presentation of the existing typed AST, not a recovery admission rule:
+it neither selects source ownership nor changes allocations, references, effect
+order, exception scope or inferred function names.
+
+Object/array elements carry an explicit AssignmentExpression grammar context.
+An object literal can start in these positions without the leading-brace
+ambiguity of an ExpressionStatement. The common printer therefore omits its
+extra object grouping there; other expression destinations retain their existing
+grouping. Computed `__proto__` definitions and operator grouping remain unchanged.
+Provenance: ECMA-262 Object Initializer, Array Initializer and Expression Statement
+grammar; implementation uses the existing printer and introduces no dependency.
+
+Each emitted aggregate scans its owned properties once to choose layout, then
+the existing iterative action stack emits them. Owned actions retain their tree,
+depth and original expression/property spans. For P emitted properties and L
+output bytes, the additional work is O(P+L); the layout flag and grammar context
+add constant-sized action state, without a copied subtree, recursive host stack
+or width-measuring pass. Indentation contributes actual output bytes, so deeply
+nested output may grow faster than depth; it is still charged to the existing
+output/work budget and fails with typed limits rather than dropping semantics.
+
+Decoded nested-literal fixtures compare getters, Proxy receivers, object
+identity, exceptions and original spans across three profiles. Existing buffer
+fixtures exercise 200/201/402 properties, nested arrays, `__proto__`, repeated
+allocation and overwritten definitions. Two actual whole-record oracles now
+execute the ROUTES and CommonConstants ESM and a live importing consumer, after
+ABC-only generation finishes. They compare complete descriptor/identity graphs,
+hostile prototypes, fresh module activation, repeated evaluation, mutations and
+empty-class constructor/new.target behavior. Source const/readonly/types are
+not inferred by this printer change, nor does it complete other record gates.
+
 ## Original-site phased selection bindings
 
 Rule 126 keeps an unfused closed selection as one assignment to its original

@@ -60,7 +60,12 @@ struct SymbolName { SymbolId id; };
 struct ArgumentCursor { ArgumentRange range; std::uint32_t index; };
 struct ArrayArgumentCursor { ExprId array; };
 struct SnapshotCursor { ArgumentRange range; std::uint32_t index; };
-struct ObjectCursor { PropertyRange range; std::uint32_t index; AggregateKind kind = AggregateKind::kObject; };
+struct ObjectCursor {
+  PropertyRange range;
+  std::uint32_t index;
+  AggregateKind kind = AggregateKind::kObject;
+  bool multiline = false;
+};
 struct EndProperty { PropertyId id; };
 struct BeginFunction {};
 struct EndFunction {};
@@ -785,7 +790,7 @@ class TreePrinter {
     }
   }
   void Expression(EmptyArrayExpr) { Append("[]"); }
-  void Expression(EmptyObjectExpr) { Append("({})"); }
+  void Expression(EmptyObjectExpr, bool grouped = true) { Append(grouped ? "({})" : "{}"); }
   void Expression(const ClassExpr& node, ExprId expression, NameContext inferred_name = {}) {
     if (!node.definition) throw Error::kUnsupportedContext;
     // Identifier initialization/assignment performs NamedEvaluation without
@@ -973,14 +978,30 @@ class TreePrinter {
     }
   }
   void Run(EndParameter end) { Result().parameters[end.index].end = written_; }
-  void Expression(ObjectExpr node) {
+  void Expression(ObjectExpr node, bool grouped = true) {
     const bool array = node.kind == AggregateKind::kArray;
-    Append(array ? "[" : "({"); Push(std::string_view(array ? "]" : "})"));
-    Push(ObjectCursor{node.properties, 0, node.kind});
+    bool multiline = false;
+    // Layout follows typed literal nesting, never sample names or printed text.
+    // Scan each owned property once; the existing iterative action stack keeps
+    // child ownership, origins, indentation and output/work budgets intact.
+    for (std::uint32_t i = 0; i < node.properties.count; ++i) {
+      Step();
+      const auto value = Tree().properties[node.properties.first + i].value;
+      const auto* child = std::get_if<ObjectExpr>(&Tree().expressions[value.value].expression);
+      multiline |= child && child->properties.count != 0;
+    }
+    Append(array ? "[" : grouped ? "({" : "{");
+    Push(std::string_view(array ? "]" : grouped ? "})" : "}"));
+    if (multiline) {
+      Push(Indent{depth_}); Push(std::string_view("\n"));
+      Append("\n"); ++depth_;
+    }
+    Push(ObjectCursor{node.properties, 0, node.kind, multiline});
   }
   void Run(ObjectCursor cursor) {
     if (cursor.index == cursor.range.count) return;
-    if (cursor.index != 0) Append(", ");
+    if (cursor.index != 0) Append(cursor.multiline ? ",\n" : ", ");
+    if (cursor.multiline) Run(Indent{depth_});
     const PropertyId id{cursor.range.first + cursor.index};
     const auto& property = Tree().properties[id.value];
     Result().properties[id.value].begin = written_;
@@ -995,8 +1016,8 @@ class TreePrinter {
         Append("["); Quoted(name); Append("]: ");
       }
     }
-    Push(ObjectCursor{cursor.range, cursor.index + 1, cursor.kind});
-    Push(EndProperty{id}); Push(ExpressionOperand{property.value, {},
+    Push(ObjectCursor{cursor.range, cursor.index + 1, cursor.kind, cursor.multiline});
+    Push(EndProperty{id}); Push(ExpressionOperand{property.value, {ExpressionGrammar::kAssignmentValue},
         cursor.kind == AggregateKind::kObject ? NameContext{property.key} : NameContext{}});
   }
   void Run(EndProperty property) { Result().properties[property.id.value].end = written_; }
@@ -1146,6 +1167,11 @@ class TreePrinter {
       if constexpr (std::is_same_v<std::decay_t<decltype(node)>, ClassExpr>) Expression(node, id, operand.inferred_name);
       else if constexpr (std::is_same_v<std::decay_t<decltype(node)>, LogicalExpr> ||
           std::is_same_v<std::decay_t<decltype(node)>, ConditionalExpr>) Expression(node, operand.observation);
+      else if constexpr (std::is_same_v<std::decay_t<decltype(node)>, ObjectExpr> ||
+          std::is_same_v<std::decay_t<decltype(node)>, EmptyObjectExpr>) {
+        const auto* grammar = std::get_if<ExpressionGrammar>(&operand.context.parent);
+        Expression(node, !grammar || *grammar != ExpressionGrammar::kAssignmentValue);
+      }
       else if constexpr (std::is_same_v<std::decay_t<decltype(node)>, MemberExpr>) {
         const auto* context = std::get_if<PostfixContext>(&operand.context.parent);
         Member(node.base, node.key, context && *context == PostfixContext::kConstructor ?

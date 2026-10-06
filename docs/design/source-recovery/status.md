@@ -12,6 +12,68 @@
 
 ## 当前阶段
 
+### 2026-10-06：通用嵌套字面量排版与两份常量 record 整模块验收
+
+- 基线20ad0495，生产规则144。共同TreePrinter按真实ObjectExpr的非空
+  aggregate子值选择分行，标量字段／空字面量保持紧凑；ObjectCursor沿既有
+  OwnedAction保留tree/depth/origin。对象／数组元素明确使用typed
+  AssignmentExpression语法上下文，去除该位置多余对象括号；其他目的地
+  的原分组、computed __proto__、函数推断名和operator优先级不变。没有
+  recovery准入、SSA/value/reference/effect/exception证明变化、样本分派、
+  源文本生产匹配或第二套writer。来源／复杂度见literal-initialization与
+  algorithms：每literal多一次owned property扫描，O(P+实际输出字节)，
+  既有迭代action stack／work／output限制继续计费，未作RSS或性能改善声称。
+- value_constants_record_test和value_static_class_record_test先完成实际
+  Immersive ABC-only默认ValueTree导出，再读paired TS。固定SHA与record
+  身份8755/7167、complete且无legacy均核对；新共同test oracle实际运行
+  全部生成ESM及真实import consumer，不拼接参考body或代替初始化。
+- ROUTES的29个literal对象／数组按完整身份图、own keys／descriptor、
+  realm prototype、空洞、共享／独立identity及extensibility比较。普通／
+  hostile prototype两种整模块场景均通过；Object/Array/Function/Reflect
+  可替换global全部undefined时仍创建正确字面量，inherited setter不得执行。
+  同realm独立module各节点不共享；consumer读取、nested mutation、删除、
+  preventExtensions及重复evaluate保留同一graph，另一module保持原状态。
+- CommonConstants原生class、三项static字段、constructor/prototype、
+  runtime name/arity/descriptor和不可普通调用边界通过。普通／hostile两种
+  整模块场景、20项构造场景覆盖0/1/2/3/4/6/200/201实参、ignored poison
+  argument、new.target的class／foreign／realm fallback身份；20项原异常
+  检查undefined/null/0/Symbol/object，不调用new.target本体。静态数组
+  fresh identity、-0/NaN修改、字段替换／删除、live consumer及重复evaluate
+  保持修改。两record合计16个有效JS mutation检出错值／目标／export、共享
+  params、hole／undefined差异、错误prototype／freeze、错误constructor
+  arity／own field及把static own definition改成inherited-setter赋值。
+- 旧打印器在新ROUTES排版断言真实RED，/tmp/abcd-constants-layout-red-1.log。
+  首轮8/8定向回归通过；新oracle的freeze mutation先触发TypeError而非
+  期待AssertionError，tests-2 1/2通过；将独立初始graph比较置于mutation
+  操作之前，错误extensibility由真实graph检出，tests-3 2/2通过，未改生产。
+  首个扩大构建误用了不存在native_function_names_test target退出2；按
+  已注册的module_family_print_test／record_import_tree_test修正，最终单一
+  -j4十六目标构建退出0，build handle关闭后29/29定向CTest通过150.11秒。
+  其中phased_literal三profile的200/201及几何规模unit通过100.68秒，
+  literal buffer含200/201/402，nested独立558个getter/Proxy/identity/
+  原异常场景及原span核对通过。新增四个mjs语法、git diff --check通过；
+  census-1三项复验通过。主要日志/tmp/abcd-constants-layout-final-build-2.log、
+  final-tests-1.log和census-1.log；CTest仍571项，无暂停的旧G2位置切片。
+  最终补齐ExpressionGrammar variant/enum的穷尽处理后，final-build-3六目标
+  单-j4构建退出0，final-tests-2相关8/8复验通过11.89秒。
+- 当前规则固定五ABC／六模式30次fresh导出退出0，实际SHA/size匹配paired
+  index、contract／ValueTree正确且无legacy；每模式106份源码解析通过。
+  相比rule143 global-scopes-pass-1，各模式35/43/43/35/43/43份源码排版
+  改善，complete/partial仍80/26、95/11、96/10、88/18、105/1、106/0，各
+  另46份no-module，无完整回退／新增完整。212份既有position maps每模式
+  逐字不变；这些仍是entry_only/partial_methods/complete:false，不称完整
+  mapping。产物build/stage-one/literal-layout-<mode>-pass-1，日志
+  /tmp/abcd-literal-layout-batch-1.log与各模式-summary-1.json。
+  同最终穷尽处理代码再导出30次pass-2，全退出0／636份解析通过，与pass-1
+  每份源码及既有位置文件逐字一致；日志/tmp/abcd-literal-layout-batch-2.log
+  和各模式-summary-2.json，当前产物可用literal-layout-<mode>-pass-2。
+- 两份指定常量record的whole-record语义与高层表示由pending转accepted；
+  接受保守let、显式空constructor及资源标量紧凑表示，不宣称源级const/
+  readonly/type恢复。其他record与instance fields/globals/完整signatures/
+  body结构gate仍开放，不清除structure_only；阶段一Goal继续active。
+  全套、expanded corpus、RSS/benchmark、agents、scheduler/DFX和周期审计
+  继续暂停。
+
 ### 2026-10-06：两份 WidgetCard 的完整模块与生命周期验收
 
 - 基线69aa340f，生产规则仍143。扩展widget_global_literal_source_test，

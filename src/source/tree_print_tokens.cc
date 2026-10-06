@@ -99,7 +99,15 @@ bool TreeOperandGrouping(const TreeExpression& child, const TreeOperatorContext&
           literal && (std::holds_alternative<IntegerLiteral>(*literal) || std::holds_alternative<NumberLiteral>(*literal))) return true;
       return child_precedence < ExpressionPrecedence::kPostfix;
     } else if constexpr (std::is_same_v<T, ExpressionPrecedence>) return child_precedence < parent;
-    else return false;
+    else if constexpr (std::is_same_v<T, ExpressionGrammar>) {
+      switch (parent) {
+        case ExpressionGrammar::kAssignmentValue: return false;
+      }
+      throw TreePrintError::kUnsupportedContext;
+    } else {
+      static_assert(std::is_same_v<T, std::monostate>);
+      return false;
+    }
   }, context.parent);
 }
 std::string_view TreeBinaryToken(analysis::BinaryOperator operation) { return TreeBinarySyntax(operation).token; }

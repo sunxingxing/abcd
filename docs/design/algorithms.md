@@ -1868,3 +1868,23 @@ is a conservative admission cost, not measured process RSS. Scope-bearing
 0/1/200/201/402/804 tests verify geometric work growth. Full-corpus RSS and
 benchmarks remain paused; fixed paired exports prove no output regression,
 not a latency or peak-memory improvement.
+
+## Nested literal presentation (rule 144)
+
+The common TreePrinter scans each emitted aggregate's owned properties once to
+choose compact or nested layout, then uses its existing iterative action stack.
+Typed AssignmentExpression grammar permits ungrouped object/array elements;
+other destinations retain their previous grouping. No recovery admission, IR
+ownership, allocation, effect or exception proof changes. ECMA-262 Object/Array
+Initializer and Expression Statement grammar supplies the prerequisites; this
+local extension adds no dependency or license change.
+
+For P emitted properties and L output bytes the extra work is O(P+L), with
+constant-sized additions to existing action state. There is no repeated width
+measurement, copied subtree or recursive host stack. Deep indentation can make
+L grow faster than tree depth; every byte remains charged to existing output
+and work limits. Existing 200/201/402 literal-buffer/array fixtures, original
+span checks and independent decoded/paired JS compare semantics and resource
+failure behavior. Full-corpus RSS/benchmarks remain paused; bounded exports and
+test counters do not establish process memory or latency improvement. Details:
+[literal initialization](source-recovery/literal-initialization.md).
