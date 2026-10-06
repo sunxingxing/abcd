@@ -1,4 +1,5 @@
 #include "phase_corridor.h"
+#include "evaluation_liveness.h"
 #include "evaluation_aliases.h"
 
 #include <type_traits>
@@ -262,14 +263,23 @@ bool PhaseCorridors::CanFuse(OpId producer, OpId consumer, UseId use) const {
     }
     if (invariant) return true;
   }
-  // First phi/catch snapshots must remain stored. Their raw bindings are not
-  // interchangeable with a later read, even when a copy has no language effect.
-  if (std::holds_alternative<ValueCopy>(child.operation) &&
-      std::holds_alternative<ValueId>(graph_.uses[child.first_use.value].operand)) return false;
   const auto& start = positions_[child.block.value];
   const auto& end = positions_[parent.block.value];
   if (!start.head || start.head != end.head || start.order >= end.order || start.copies != end.copies ||
       graph_.blocks[child.block.value].op_count != 1 || graph_.blocks[parent.block.value].op_count != 1) return false;
+  // A transported read of retained storage needs its original value and scope,
+  // not a second private slot. This same no-copy interval proves no phi slot
+  // changes before the use; unique def-use/availability and effect suffixes are
+  // checked by the caller/verifier. Do not restore an unconditional SSA-copy
+  // ban. Catch-parameter relocation still lacks handler-scope evidence here;
+  // keep that materializer until common scope ownership supplies it.
+  if (std::holds_alternative<ValueCopy>(child.operation)) {
+    const auto input = ResolveEvaluationOperand(plan_, graph_.uses[child.first_use.value].operand);
+    if (const auto* value = std::get_if<ValueId>(&input)) {
+      const auto lifetime = RetainedEvaluationLifetime(graph_, plan_, *value);
+      if (!lifetime || *lifetime == EvaluationStorageLifetime::kHandler) return false;
+    }
+  }
   return true;
 }
 }  // namespace abcd::source

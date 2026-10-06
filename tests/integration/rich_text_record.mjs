@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {classReference, classLayouts, parseJavaScript} from './class_reference.mjs';
+import {editExpression, editAwait, callsMember, memberName} from './expression_edits.mjs';
 
 const [tool, root, option] = process.argv.slice(2), sources = {}, reference = {};
 const identity = JSON.parse(readFileSync(new URL('../corpus/abc-index.json', import.meta.url))).entries
@@ -82,36 +83,49 @@ if (option !== '--mutations') {
       swaps += run(baseline.anchors.slice(first, first + 8).map(swapAt => ({immediate, swapAt}))).length;
   }
 }
+const controller = (source, name) => editExpression(source,
+  node => callsMember(node, 'setStyledString') && memberName(node.callee.object) === 'pasteTextController',
+  (node, text) => text(node.callee.object.object) + '.' + name + '.setStyledString(' + node.arguments.map(text).join(', ') + ')');
+const entryAwait = (source, kind, edit) => editAwait(source,
+  node => callsMember(node, 'getData') && memberName(node.arguments[0]) === kind, edit);
 const mutations = [
   [page, 'new MutableStyledString("012345")', 'new MutableStyledString("wrong")', 'editor initial text changed'],
   [page, 'imageArray.buffer.slice(0)', 'imageArray.buffer', 'media buffer copy identity lost'],
   [page, 'mutableStyledString1.appendStyledString($value1)', 'void $value1', 'initial image attachment omitted'],
   [page, 'size: {width: "57px", height: "57px"}', 'size: {width: "58px", height: "57px"}', 'attachment dimensions changed'],
   [page, 'this.pasteController.setStyledString($value4)', 'this.pasteTextController.setStyledString($value4)', 'html applied to wrong controller'],
-  [page, '$local0.pasteTextController.setStyledString($value38)', '$local0.pasteController.setStyledString($value38)', 'text applied to wrong controller'],
+  [page, source => controller(source, 'pasteController'), null, 'text applied to wrong controller'],
   [page, '$local0.pastePixelMapController.deleteSpans()', 'void 0', 'old pixel spans retained'],
-  [page, '($value31 = (await $value30))', '($value31 = "ignored")', 'html entry value lost'],
+  [page, source => entryAwait(source, 'MIMETYPE_TEXT_HTML', () => '"ignored"'), null, 'html entry value lost'],
   [page, '$value4.addEntry(pasteboard.MIMETYPE_TEXT_PLAIN, $value5.getString())', '$value4.addEntry(pasteboard.MIMETYPE_TEXT_PLAIN, "wrong")', 'copied plain text changed'],
-  [page, '(await $value12)', '$value12', 'copy no longer waits for setData'],
-  [page, '($value37 = (await $value36))', '($value37 = $value36)', 'text entry not awaited'],
-  [page, '($value15 = $value14 < $value10.getRecordCount())', '($value15 = $value14 < 1)', 'later records omitted'],
-  [page, '($value27 = $value20[$value26])', '($value27 = $value20[0])', 'type iteration index lost'],
+  [page, source => editAwait(source, node => callsMember(node, 'setData'), (node, text) => text(node.argument)), null, 'copy no longer waits for setData'],
+  [page, source => entryAwait(source, 'MIMETYPE_TEXT_PLAIN', (node, text) => text(node.argument)), null, 'text entry not awaited'],
+  [page, source => editExpression(source,
+    (node, dependsOn) => node.type === 'BinaryExpression' && node.operator === '<' && dependsOn(node.right, value => callsMember(value, 'getRecordCount')),
+    (node, text) => '(' + text(node.left) + ' < 1)'), null, 'later records omitted'],
+  [page, source => editExpression(source,
+    (node, dependsOn) => node.type === 'MemberExpression' && node.computed && dependsOn(node.object, value => callsMember(value, 'getValidTypes')),
+    (node, text) => text(node.object) + '[0]'), null, 'type iteration index lost'],
   [page, 'if (!$value2) {', 'if ($value2) {', 'html empty predicate reversed'],
-  [page, 'addImageSpan($value42,', 'addImageSpan(({width: 57, height: 57}),', 'pixel identity replaced by equal dimensions'],
+  [page, source => editExpression(source, node => callsMember(node, 'addImageSpan') && node.arguments.length === 2,
+    (node, text) => text(node.callee) + '(({width: 57, height: 57}), ' + text(node.arguments[1]) + ')'), null, 'pixel identity replaced by equal dimensions'],
   [page, '($local0.pathStack = context.pathStack)', '($local0.pathStack = $local0.pathStack)', 'ready path identity ignored'],
   [prefix + 'pages/ShareDitect', '"PageBBuilder"', '"PageABuilder"', 'share route changed'],
   [prefix + 'pages/PageB', '"PageBBuilder"', '"PageABuilder"', 'page uri changed'],
 ];
 let changedCount = 0;
 for (const [name, from, to, label] of mutations) {
-  assert.ok(sources[name].includes(from), label);
-  const changed = {...sources, [name]: sources[name].replace(from, to)};
+  if (typeof from !== 'function') assert.ok(sources[name].includes(from), label);
+  const changed = {...sources, [name]: typeof from === 'function' ? from(sources[name]) : sources[name].replace(from, to)};
   classLayouts(changed[name]); run([{}], {mutation: label}, changed); ++changedCount;
 }
 let equivalents = 0;
-for (const [from, to] of [['$local0.pasteTextController.setStyledString($value38)', 'this.pasteTextController.setStyledString($value38)'],
+for (const [from, to] of [[source => editExpression(source,
+  node => callsMember(node, 'setStyledString') && memberName(node.callee.object) === 'pasteTextController',
+  (node, text) => 'this.pasteTextController.setStyledString(' + node.arguments.map(text).join(', ') + ')'), null],
   ['$local0.pathStack = context.pathStack', 'this.pathStack = context.pathStack']]) {
-  assert.ok(sources[page].includes(from)); const changed = {...sources, [page]: sources[page].replace(from, to)};
+  if (typeof from !== 'function') assert.ok(sources[page].includes(from));
+  const changed = {...sources, [page]: typeof from === 'function' ? from(sources[page]) : sources[page].replace(from, to)};
   run([{}], {}, changed); ++equivalents;
 }
 console.log(JSON.stringify({records: names.length, views: 4, cases: count, faults, swaps, boundaries, mutations: changedCount, equivalents, platformExecution: false}));

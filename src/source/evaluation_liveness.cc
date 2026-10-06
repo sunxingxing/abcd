@@ -7,25 +7,31 @@
 namespace abcd::source {
 bool HasRetainedEvaluationValue(const analysis::ValueProgram& graph,
     const EvaluationPlan& plan, analysis::ValueId id) {
+  return RetainedEvaluationLifetime(graph, plan, id).has_value();
+}
+std::optional<EvaluationStorageLifetime> RetainedEvaluationLifetime(const analysis::ValueProgram& graph,
+    const EvaluationPlan& plan, analysis::ValueId id) {
   using namespace analysis;
-  if (id.value >= graph.values.size()) return false;
+  if (id.value >= graph.values.size()) return {};
   const auto& value = graph.values[id.value];
-  if (value.life != ValueLife::kLive || !value.domain.IsLanguage()) return false;
-  return std::visit([&](const auto& origin) {
+  if (value.life != ValueLife::kLive || !value.domain.IsLanguage()) return {};
+  return std::visit([&](const auto& origin) -> std::optional<EvaluationStorageLifetime> {
     using T = std::decay_t<decltype(origin)>;
     if constexpr (std::is_same_v<T, EntryDefinition>) {
-      return std::holds_alternative<ParameterEntry>(origin) || std::holds_alternative<ReceiverEntry>(origin);
+      if (std::holds_alternative<ParameterEntry>(origin) || std::holds_alternative<ReceiverEntry>(origin))
+        return EvaluationStorageLifetime::kInvocation;
     } else if constexpr (std::is_same_v<T, PhiDefinition>) {
-      return plan.phis.has_value();
+      if (plan.phis) return EvaluationStorageLifetime::kInvocation;
     } else if constexpr (std::is_same_v<T, CatchDefinition>) {
-      return plan.exceptions.has_value();
+      if (plan.exceptions) return EvaluationStorageLifetime::kHandler;
     } else {
       static_assert(std::is_same_v<T, OpResult>);
-      if (origin.op.value >= plan.operations.size()) return false;
+      if (origin.op.value >= plan.operations.size()) return {};
       const auto& placement = plan.operations[origin.op.value];
-      return (placement.kind == EvaluationKind::kRoot || placement.kind == EvaluationKind::kPredicateSnapshot) &&
-          placement.temporary.has_value();
+      if ((placement.kind == EvaluationKind::kRoot || placement.kind == EvaluationKind::kPredicateSnapshot) &&
+          placement.temporary) return EvaluationStorageLifetime::kInvocation;
     }
+    return {};
   }, value.origin);
 }
 std::variant<std::uint64_t, EvaluationError> VerifyElidedPureEvaluations(

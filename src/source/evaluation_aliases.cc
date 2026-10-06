@@ -36,8 +36,9 @@ std::optional<ValueId> AliasInput(const ValueProgram& graph, const ValueOp& op) 
   if (!source || use.role != OperandRole::kInput || use.purpose != ReadPurpose::kOperand) return {};
   const auto& value = graph.values[source->value];
   // Phi targets are mutable during parallel edge copies; catch symbols have
-  // handler-local scope. Preserve their first materializing copy. Later copies
-  // can refer to that immutable SSA result without changing these contracts.
+  // handler-local scope. Keep their first read in the exact alias graph; the
+  // phase planner may fuse that occurrence after proving scope and the no-write
+  // interval. Later copies refer to its immutable SSA result without replay.
   if (const auto* entry = std::get_if<EntryDefinition>(&value.origin)) {
     if (!std::holds_alternative<ParameterEntry>(*entry) && !std::holds_alternative<ReceiverEntry>(*entry)) return {};
   } else if (!std::holds_alternative<OpResult>(value.origin)) return {};

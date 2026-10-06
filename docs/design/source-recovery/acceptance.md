@@ -1,5 +1,20 @@
 # 验收、证据与实施交接
 
+2026-10-07 规则149：移除首次phi ValueCopy因SSA输入而一律保留snapshot
+的限制。共同EvaluationLiveness提供typed存储lifetime，phase planner/verifier
+复用原availability/unique-use/PhiCopies epoch/effect/catch证明。catch
+参数移读与旧corridor的限制仍是表示缺口，没有新增样本或布局匹配。
+72个真实三profile locals/copy/split/handler变体、2088独立行为比较通过，
+最后216个condition/type/参数identity错误mutation通过。专用lifetime接口
+最终18项定向76.80秒通过，包含该216 mutation版本；首轮及独立加强
+验收、失败修正分别保留，完整证据见status.md。
+
+fresh pasteboard ABC-only仍10complete/0partial/9noModule；PasteBoard私有
+求值声明60→49、phi仍10个，三个有条件while保持。实际ProgressBar/
+富文本的完整受控行为矩阵保持通过，默认数值/构造合同保持。native for
+初始化/更新、每轮binding、全body/style和阶段一原gate仍开放；固定五
+ABC106/0未重跑，暂停的全套/扩展语料/RSS/DFX/agents未恢复。
+
 2026-10-07 规则148：共同LoopSyntax从已验证FunctionTree的正常完成/
 owned break目标恢复原生while条件，原表达式/phi/效果/异常、scope与
 continue/finally目标保持。36个三profile真实解码copy/register/split与

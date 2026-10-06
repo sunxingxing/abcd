@@ -1,5 +1,19 @@
 # 按用户要求进行的恢复条件审计
 
+规则149补充：首次ValueCopy只因输入是SSA ValueId就保留snapshot，是
+表示限制，不能在共同availability/unique-use/no-write/effect/exception
+事实成立之后另作准入。现在用EvaluationLiveness的typed存储lifetime替代
+这一律限制，phase planner/verifier共享原PhiCopies epoch与效果/handler
+证明；首次读取在exact alias图保留，不以alias搬运回放producer。
+
+raw CatchDefinition只具有handler scope，当前phase层的移读scope证据
+未齐，继续materialize并明确为保守表示缺口。旧unique-fallthrough
+corridor/one-op phase block限制未扩展，也不能宣称语言禁止跨该布局。
+不存在新样本名、PC/register、opcode序列、same-block、相邻、producer
+名单或固定COPY数条件。72个真实三profile register/copy/split/handler
+变体与独立原throw/参数返回identity反例验证本次边界；native for和
+一般跨branch/scope的读取仍沿共同模型推进，不盲删语义校验。
+
 
 规则148补充：loop一直输出while(true)是共同syntax表示限制。新增
 LoopSyntax依据已验证树的正常完成/owned break目标作组合摘要，不按

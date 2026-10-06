@@ -9,6 +9,12 @@ namespace abcd::source {
 // its producer. This is not dominance or permission to move its definition.
 [[nodiscard]] bool HasRetainedEvaluationValue(const analysis::ValueProgram&,
     const EvaluationPlan&, analysis::ValueId);
+// Lifetime of retained storage, not the exact lexical owner: private slots,
+// native formals/receiver/self and phi storage survive the invocation. A native
+// catch parameter survives only its handler; Value IR cannot widen that scope.
+enum class EvaluationStorageLifetime : std::uint8_t { kInvocation, kHandler };
+[[nodiscard]] std::optional<EvaluationStorageLifetime> RetainedEvaluationLifetime(
+    const analysis::ValueProgram&, const EvaluationPlan&, analysis::ValueId);
 struct EvaluationLivenessCost {
   std::size_t bytes;
   std::uint64_t work;

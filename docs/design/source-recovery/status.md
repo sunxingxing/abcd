@@ -12,6 +12,66 @@
 
 ## 当前阶段
 
+### 2026-10-07：规则149，首次 phi 读取复用共同存储/求值证明
+
+- 基线462e449c，production/rules148推进149。PhaseCorridors原先把首次
+  ValueCopy的SSA输入一律保留为snapshot，甚至共同唯一使用、原始可用性、
+  no-copy interval及效果/异常顺序已成立时也拒绝融合。现在移除该一律
+  限制；EvaluationLiveness给出既有存储的typed lifetime，共同phase
+  planner和独立verifier复用它。function/parameter存储可按原no-write
+  interval读取，不另生成第二个私有slot；原alias图仍保留首次读取的
+  exact occurrence，后续COPY只传递不可变结果，不重复producer。最终
+  复查将代表性scope改为专用EvaluationStorageLifetime，避免将native
+  self/formal错误称为private body声明；实际lexical owner仍归Binding/
+  FunctionTree，共同调用不因lifetime获得跨写入或扩展作用域许可。
+- PhiCopies的epoch、单一有效使用、原SSA availability、effect suffix、
+  catch dispatch/staging和原scope/tree来源检查保持。raw CatchDefinition
+  的参数只属于handler，当前phase层尚不能证明移读后的handler scope，
+  保留该materializer并明确为表示缺口。既有unique-fallthrough corridor/
+  one-operation phase block也是旧表示边界，本轮没有扩展其形状匹配。
+  没有新增样本/函数名、PC/register、opcode序列、same-block、producer
+  名单或固定COPY数量的生产准入；不能因无language effect盲删真实存储/
+  作用域、写入、身份和异常义务。
+- 新phase_copy_test实际解码三profile，locals2/7、COPY0/1/4、拆块与否、
+  保留当前值/返回原exception两种handler，共72函数；按原ExceptionFlow/
+  SSA/ValueProgram、evaluation/control、FunctionTree语义检查后打印实际
+  函数。Node独立循环参考覆盖truthy/falsy、NaN/-0、Symbol/BigInt/object/
+  function，每个report/step throw位置及receiver，比较2088次。返回值/
+  原throw与step参数另外按Object.is验证身份；最后216个有效JS错误
+  condition/typeof/参数身份mutation全部被检出，不以同内容对象替代身份。
+- 首次semantic RED在旧校验下因首次phi读取不能inline而退出134；前几次
+  fixture编译错误不计为semantic RED。初始fixture遗漏ISTRUE，把VM零值
+  分支当JS truthiness，独立对照在NaN失败；补齐测试指令后重验，没有
+  据此修改生产branch语义。首次记录级两项失败来自旧mutation写死的
+  $value编号；改用test-only固定Acorn AST范围和同函数唯一定义关系
+  选择受影响表达式，原行为oracle不弱化。别名/改名/函数归属及重复写/
+  nested-body/cycle拒绝另有五项手工定向检查，非新增生产分析。
+- abc_structure/abc_semantic及十个相关fixture target -j4最终构建退出0；
+  既有literal_plan的kNoop switch warning保留，没有修改无关代码。
+  首轮18项定向18/18通过77.14秒，含phase/reference/exception/copies/
+  liveness、control、普通/共享loop exit、loop syntax/condition、closure、
+  generator finally/return-loop、optional statement、ProgressBar及富文本。
+  该轮新source有144 mutation；加强身份的216 mutation版本先单独1/1
+  再验0.30秒。最后专用lifetime接口重新构建后，完整上述18项另轮全部
+  通过76.80秒，该最终同轮包含216 mutation。实际富文本保持70配置/
+  1030原throw/206换绑/18 mutation/2等价，ProgressBar保持88配置/570原
+  throw/114换绑/15 mutation/2等价；均为受控平台，非设备SDK运行。
+- fresh pasteboard ABC-only显式numeric+constructors导出保留19 records、
+  10complete source/0partial/9noModule。独立AST核对PasteBoard的$value
+  声明60→49，$phi仍10个，三个原生有条件while保持；路径
+  build/stage-one/phase-copy-lifetime-final。最终lifetime接口版本fresh导出
+  与phase-copy-pass-1的全部source逐字相同。没有修改输入或让paired正文进入引擎，
+  固定五ABC106/0仍是历史证据。本轮不是阶段一完成，也没有完成native
+  for初始化/更新、每轮binding或全部body风格。
+- 598项仅注册；四份新增/修改mjs的node --check与git diff --check通过。
+  最终日志/tmp/abcd-phase-copy-{build-lifetime-final,tests-lifetime-final,
+  native-tests-lifetime-final,selector-tests-final,export-lifetime-final,
+  source-equality-final,registration-final}.log；首轮build/tests/identity及
+  旧失败日志保留，各轮事实分开，不把失败计为通过。
+  阶段一Goal和原fields/globals/signatures/body gate保持active；下一步
+  沿共同loop transition/binding继续高层循环表示。full suite、expanded
+  corpus、RSS/benchmark、DFX、scheduler、agents及周期audit保持暂停。
+
 ### 2026-10-07：规则148，共同循环完成摘要与原生 while 条件
 
 - 基线9f47f047，生产/rules从147推进148。原LoopStmt保持共同control/

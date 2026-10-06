@@ -21,6 +21,31 @@ Printer 处理节点、名字、括号、转义、标签、注释和已有输出
 模式，不补推 CFG、finally 或闭包，不调用专项 body writer。无原名可用合成名，
 无独立 PC 的结构节点保留结构来源；不补造原名、类型、PC 或可执行占位行为。
 
+## 首次 phi 读取与存储生命周期（规则 149）
+
+EvaluationLiveness的RetainedEvaluationLifetime把既有源码存储描述为typed
+EvaluationStorageLifetime；HasRetainedEvaluationValue复用同一事实。
+参数/receiver/self及phi/private snapshot的存储具有invocation lifetime，
+raw catch parameter只具有handler lifetime。这不是准确的symbol lexical
+owner查询，不能把native self/formal说成private body slot；实际scope
+仍由BindingPlan/FunctionTree拥有。这个事实不替代SSA可用性、dominance、
+写入时点或作用域证明，也不允许回放producer。
+
+原phase表达式共同分析已经索引PhiCopies epoch，并验证唯一有效使用、
+原始availability、no-write interval、效果区间与catch dispatch/staging。
+首次ValueCopy读取若复用具有足够生命周期的原存储，现在可按这些事实
+融合到consumer，不再因SSA输入一律增加私有snapshot。exact alias图
+仍保存首次读取，后续COPY只传递其不可变结果；共同verifier独立检查
+提议的inline owner，FunctionTree/scope/来源校验保持。
+
+raw catch parameter的移读尚缺实际handler scope证据，继续materialize；
+既有unique-fallthrough corridor及one-op phase block仍是旧表示边界，
+本次不扩展这些fast path，也不把限制描述为语言/VM不变量。一般分支、
+跨写入区间及native for binding仍需共同分析，而非新增布局匹配。
+72个三profile解码变体、2088次独立行为及216个错误JS mutation覆盖
+原throw、参数/返回身份与receiver；定向记录输出的snapshot实际减少，
+不以该组件或complete统计代替阶段一body风格验收。
+
 ## 实际词法作用域中的全局读取（规则 143）
 
 TreeGlobals不再把整函数所有局部名称合并为遮蔽证据。包含free global或

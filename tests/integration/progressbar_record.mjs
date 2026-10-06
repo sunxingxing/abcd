@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {classReference, classLayouts} from './class_reference.mjs';
+import {editExpression, editAwait, callsMember} from './expression_edits.mjs';
 
 const [tool, root, option] = process.argv.slice(2), sources = {}, reference = {};
 const identity = JSON.parse(readFileSync(new URL('../corpus/abc-index.json', import.meta.url))).entries
@@ -73,9 +74,9 @@ const mutations = [
   ['$local0.progressInfo = progress.progress', '$local0.progressInfo = 99', 'progress state lost'],
   ['}), 300)', '}), 301)', 'timer delay changed'],
   ['fileIo.unlink(dstUri)', 'void dstUri', 'destination not removed'],
-  ['fileIo.closeSync($value2)', 'void $value2', 'file handle leaked'],
+  [source => editExpression(source, node => callsMember(node, 'closeSync'), () => '(void 0)', {first: true}), null, 'file handle leaked'],
   ['($local0.pathStack = context.pathStack)', '($local0.pathStack = null)', 'navigation ready state lost'],
-  ['(await $value5)', '$value5', 'copy completion not awaited'],
+  [source => editAwait(source, node => callsMember(node, 'setData'), (node, text) => text(node.argument)), null, 'copy completion not awaited'],
   ['value: $local0.progressInfo', 'value: 99', 'progress UI value changed'],
   ['"getDataWithProgress success"', '"wrong completion"', 'completion log changed'],
   ['($local0.pathStack = context.pathStack)', '($local0.pathStack = $local0.pathStack)', 'new ready path identity discarded'],
@@ -87,8 +88,8 @@ const mutations = [
 ];
 let changedCount = 0;
 for (const [from, to, label, config = {}] of mutations) {
-  assert.ok(sources[page].includes(from), label);
-  const changed = {...sources, [page]: sources[page].replace(from, to)};
+  if (typeof from !== 'function') assert.ok(sources[page].includes(from), label);
+  const changed = {...sources, [page]: typeof from === 'function' ? from(sources[page]) : sources[page].replace(from, to)};
   classLayouts(changed[page]); run([config], {mutation: label}, changed); ++changedCount;
 }
 let equivalents = 0;

@@ -603,6 +603,9 @@ if(BUILD_TESTING)
   add_executable(nullish_fallback_test tests/unit/source/nullish_fallback_test.cc tools/tree_position_json.cc)
   target_link_libraries(nullish_fallback_test PRIVATE abcd_source abcd_json)
   add_test(NAME nullish_fallback_test COMMAND nullish_fallback_test)
+  add_executable(phase_copy_test tests/unit/source/phase_copy_test.cc)
+  target_link_libraries(phase_copy_test PRIVATE abcd_source abcd_json)
+  add_test(NAME phase_copy_test COMMAND phase_copy_test)
   add_executable(loop_syntax_test tests/unit/source/loop_syntax_test.cc)
   target_link_libraries(loop_syntax_test PRIVATE abcd_source abcd_json)
   add_test(NAME loop_syntax_test COMMAND loop_syntax_test)
@@ -1809,6 +1812,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/completion_baseline.mjs $<TARGET_FILE:control_composition_test>)
     add_test(NAME shared_await_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_await.mjs $<TARGET_FILE:control_composition_test>)
+    add_test(NAME phase_copy_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phase_copy.mjs $<TARGET_FILE:phase_copy_test>)
     add_test(NAME loop_condition_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/loop_condition.mjs $<TARGET_FILE:loop_syntax_test>)
     add_test(NAME loop_exit_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
