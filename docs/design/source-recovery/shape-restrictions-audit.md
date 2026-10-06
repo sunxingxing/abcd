@@ -1,5 +1,20 @@
 # 按用户要求进行的恢复条件审计
 
+
+规则148补充：loop一直输出while(true)是共同syntax表示限制。新增
+LoopSyntax依据已验证树的正常完成/owned break目标作组合摘要，不按
+opcode、register/PC、名字、same-block、相邻、producer或固定guard数量
+分派。Block/If是所有源码的语言所有权结构，不是某个编译器CFG形状；
+任意表达式前缀/嵌套decision和透明块复用同一完成代数。continuing arm
+保留原block/scope，不新增body图匹配或copy深度分支。
+
+绑定/label的检查保护真实scope、TDZ、每轮环境及transfer目标。现guard
+表达式不能表示声明或try/return/continue完成，是明确的保守表示边界；
+不把它描述成语言/VM不变量，也不直接删除原identity、effect/exception/
+value-flow证明。退出前effect同样保留，不能用纯break外观丢弃它。36个
+三profile实际解码copy/register/split变体、arena重排、复杂退出、raw throw、
+finally、await/yield及TDZ反例有独立定向证据；for/SSA binding仍未完成。
+
 规则147补充：旧member path在中间CallExpr处不传播，是后缀链的表示限制。
 共同postfix path现在沿原MemberExpr.base／CallExpr.callee依赖自底向上
 保留同一首个reference/access，成员／值调用与调用返回值可继续组合。

@@ -233,8 +233,9 @@ struct TryStmt {
   std::optional<CatchClause> handler;
   std::optional<StmtId> finalizer;
 };
-// Canonical loop syntax: while (true), with the original header predicate in
-// the body. This keeps header effects and edge copies at their actual sites.
+// Canonical verified loop ownership retains its header predicate in the body.
+// LoopSyntax projects expression-only completion prefixes into native while
+// after verification; header effects, copies and transfer identities remain here.
 struct LoopStmt { StmtId body; std::optional<LabelId> label; };
 // Targets are enclosing syntax owners, never CFG/region IDs. Outer transfers
 // carry a preassigned label; the printer must not infer or retarget a jump.

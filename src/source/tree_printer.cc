@@ -3,6 +3,8 @@
 #include "class_names.h"
 #include "../analysis/register_value_rule.h"
 #include "nullish_syntax.h"
+#include "loop_syntax.h"
+#include "statement_children.h"
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/module_enclosure.h"
 
@@ -54,6 +56,10 @@ struct BooleanOperand { ExpressionOperand expression; bool inverted; };
 struct PostfixSpine { ExprId expression; ExprId access; ExprId base; };
 struct Statement { StmtId id; std::size_t depth; };
 struct EndStatement { StmtId id; };
+struct LoopHeader { StmtId id; std::optional<StmtId> retained; };
+struct LoopHeaderCursor { StmtId block; std::uint32_t index; std::uint32_t count; std::optional<StmtId> retained; };
+struct ElideLoopHeader { StmtId id; };
+struct LoopBody { StmtId block; LoopConditionSyntax syntax; std::size_t depth; };
 struct BlockCursor { StmtId id; std::uint32_t index; std::size_t depth; };
 struct Indent { std::size_t depth; };
 struct PropertyKey { NameId id; bool optional = false; };
@@ -74,7 +80,7 @@ struct ParameterCursor { std::uint32_t index; };
 struct EndParameter { std::uint32_t index; };
 using PrintAction = std::variant<std::string_view, ExprId, EndExpression, ExpressionOperand, BooleanOperand, PostfixSpine,
     Statement, EndStatement, BlockCursor, Indent, PropertyKey, SymbolName, ArgumentCursor,
-    ObjectCursor, EndProperty, BeginFunction, EndFunction, ParameterCursor, EndParameter, SnapshotCursor, DerivedClassBody, ArrayArgumentCursor>;
+    ObjectCursor, EndProperty, BeginFunction, EndFunction, ParameterCursor, EndParameter, SnapshotCursor, DerivedClassBody, ArrayArgumentCursor, LoopHeader, LoopHeaderCursor, ElideLoopHeader, LoopBody>;
 struct OwnedAction { std::size_t owner; std::size_t depth; PrintAction action; };
 struct LocatedAnchor { BlockBoundary boundary; AnchorId id; };
 struct OwnerTree { FunctionOwnerId owner; std::size_t member; };
@@ -1303,8 +1309,89 @@ class TreePrinter {
   }
   void StatementNode(LoopStmt node, Statement at) {
     if (node.label) { Label(*node.label); Append(": "); }
-    Append("while (true) ");
-    Push(Statement{node.body, at.depth});
+    if (const auto& syntax = Loops().conditions[at.id.value]) {
+      Append("while (");
+      Push(LoopBody{node.body, *syntax, at.depth}); Push(std::string_view(") "));
+      Push(LoopHeaderCursor{node.body, 0, syntax->header_count, syntax->body});
+    } else {
+      Append("while (true) "); Push(Statement{node.body, at.depth});
+    }
+  }
+  const LoopSyntax& Loops() const { return family_ ? loops_[current_] : loop_; }
+  void Run(ElideLoopHeader at) {
+    // Only effect-free constant completions are elided. Preserve their original
+    // statement/anchor identities at the end of the actual predicate occurrence.
+    Result().statements[at.id.value] = {written_, written_};
+    const auto& node = Tree().statements[at.id.value].statement;
+    if (const auto* block = std::get_if<BlockStmt>(&node))
+      for (std::uint32_t i = 0; i <= block->child_count; ++i) { Step(); Boundary({at.id, i}); }
+    StatementChildren(Tree(), at.id, [&](StmtId child) { Step(); Push(ElideLoopHeader{child}); });
+  }
+  void Run(LoopHeader at) {
+    if (at.retained == at.id) { Append("true"); return; }
+    Result().statements[at.id.value].begin = written_; Push(EndStatement{at.id});
+    const auto& node = Tree().statements[at.id.value].statement;
+    if (const auto* effect = std::get_if<ExpressionStmt>(&node)) {
+      Append("("); Push(std::string_view(", true)"));
+      Push(ExpressionOperand{effect->expression, {ExpressionGrammar::kAssignmentValue}, {}, ExpressionObservation::kDiscarded});
+    } else if (std::holds_alternative<BreakStmt>(node)) Append("false");
+    else if (const auto* block = std::get_if<BlockStmt>(&node)) {
+      Append("("); Push(std::string_view(")"));
+      Push(LoopHeaderCursor{at.id, 0, block->child_count, at.retained});
+    } else {
+      const auto& branch = std::get<IfStmt>(node);
+      const auto literal = [&](std::optional<StmtId> arm) -> std::optional<bool> {
+        if (!arm || arm == at.retained) return true;
+        return Loops().meanings[arm->value].literal;
+      };
+      const auto yes = literal(branch.consequent), no = literal(branch.alternate);
+      if (yes && no) {
+        if (branch.consequent != at.retained) Push(ElideLoopHeader{branch.consequent});
+        if (branch.alternate && branch.alternate != at.retained) Push(ElideLoopHeader{*branch.alternate});
+        if (*yes != *no) {
+          Append("("); Push(std::string_view(")"));
+          Push(BooleanOperand{{branch.condition, {}, {}, ExpressionObservation::kTruthiness}, !*yes});
+        }
+        else {
+          Append("("); Push(std::string_view(*yes ? ", true)" : ", false)"));
+          Push(ExpressionOperand{branch.condition, {ExpressionGrammar::kAssignmentValue}, {}, ExpressionObservation::kDiscarded});
+        }
+      } else {
+        Append("("); Push(std::string_view(")"));
+        if (branch.alternate) Push(LoopHeader{*branch.alternate, at.retained});
+        else Push(std::string_view("true"));
+        Push(std::string_view(" : ")); Push(LoopHeader{branch.consequent, at.retained});
+        Push(std::string_view(") ? ")); Append("(");
+        Push(ExpressionOperand{branch.condition, {}, {}, ExpressionObservation::kTruthiness});
+      }
+    }
+  }
+  void Run(LoopHeaderCursor at) {
+    Boundary({at.block, at.index});
+    if (at.index == at.count) { if (!at.count) Append("true"); return; }
+    const auto& block = std::get<BlockStmt>(Tree().statements[at.block.value].statement);
+    const auto child = Tree().children[block.first_child + at.index];
+    const auto& meaning = Loops().meanings[child.value];
+    const bool follows = at.index + 1 < at.count;
+    if (follows) {
+      if (meaning.exit) Push(std::string_view(")"));
+      Push(LoopHeaderCursor{at.block, at.index + 1, at.count, at.retained});
+      Push(std::string_view(meaning.exit ? " && (" : ", "));
+    } else {
+      // Keep the boundary after the last header child at the predicate end.
+      Push(LoopHeaderCursor{at.block, at.count, at.count, at.retained});
+    }
+    if (const auto* effect = std::get_if<ExpressionStmt>(&Tree().statements[child.value].statement); effect && follows) {
+      Result().statements[child.value].begin = written_; Push(EndStatement{child});
+      Push(ExpressionOperand{effect->expression, {ExpressionGrammar::kAssignmentValue}, {}, ExpressionObservation::kDiscarded});
+    } else Push(LoopHeader{child, at.retained});
+  }
+  void Run(LoopBody at) {
+    Result().statements[at.block.value].begin = written_; Push(EndStatement{at.block});
+    Append("{\n"); Push(BlockCursor{at.block, at.syntax.header_count, at.depth});
+    if (at.syntax.body) {
+      Push(std::string_view("\n")); Push(Statement{*at.syntax.body, at.depth + 1}); Push(Indent{at.depth + 1});
+    }
   }
   void Label(LabelId label) {
     const auto target = Tree().labels[label.value];
@@ -1380,6 +1467,16 @@ class TreePrinter {
     auto& syntax = family_ ? nullishes_[current_] : nullish_;
     syntax = std::get<NullishSyntax>(std::move(planned));
     Admit(syntax.allocated_bytes, 1); Step(syntax.work);
+    auto planned_loops = PlanLoopSyntax(Tree(), remaining_);
+    if (const auto* error = std::get_if<TreeStructureError>(&planned_loops)) {
+      if (*error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
+      if (*error == TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
+      throw Error::kUnsupportedContext;
+    }
+    if (family_ && loops_.empty()) Array(loops_, family_->members.size());
+    auto& loops = family_ ? loops_[current_] : loop_;
+    loops = std::get<LoopSyntax>(std::move(planned_loops));
+    Admit(loops.allocated_bytes, 1); Step(loops.work);
     Array(Located(), Tree().anchors.size());
     std::size_t count = 0;
     for (std::size_t i = 0; i < Tree().anchors.size(); ++i) {
@@ -1457,6 +1554,8 @@ class TreePrinter {
   std::vector<std::uint8_t> printed_;
   std::vector<std::uint8_t> native_names_;
   ClassNames class_names_;
+  LoopSyntax loop_;
+  std::vector<LoopSyntax> loops_;
   NullishSyntax nullish_;
   std::vector<NullishSyntax> nullishes_;
 };

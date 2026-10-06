@@ -1,5 +1,6 @@
 #include "nullish_syntax.h"
 #include "tree_checks.h"
+#include "statement_children.h"
 #include "expression_children.h"
 #include <array>
 #include <algorithm>
@@ -64,21 +65,6 @@ bool DependsOnDomain(const StatementMeaning& meaning) {
     return result.expression!=first.expression || result.formation.expression!=first.formation.expression ||
       result.valid!=first.valid || result.formation.valid!=first.formation.valid;
   });
-}
-template<class Visit>
-void StatementChildren(const FunctionTree& tree, StmtId id, Visit visit) {
-  RequireTree(id.value < tree.statements.size(), TreeStructureError::kRange);
-  const auto& node = tree.statements[id.value].statement;
-  if (const auto* block = std::get_if<BlockStmt>(&node)) {
-    RequireTree(block->first_child <= tree.children.size() && block->child_count <= tree.children.size()-block->first_child, TreeStructureError::kRange);
-    for (std::uint32_t i=0; i<block->child_count; ++i) visit(tree.children[block->first_child+i]);
-  } else if (const auto* branch = std::get_if<IfStmt>(&node)) {
-    visit(branch->consequent); if(branch->alternate) visit(*branch->alternate);
-  } else if (const auto* loop = std::get_if<LoopStmt>(&node)) visit(loop->body);
-  else if (const auto* protected_body = std::get_if<TryStmt>(&node)) {
-    visit(protected_body->body); if(protected_body->handler) visit(protected_body->handler->body);
-    if(protected_body->finalizer) visit(*protected_body->finalizer);
-  }
 }
 // Dependency arity is the three fields of ConditionalExpr, not a corpus limit.
 constexpr std::size_t kConditionalArity = 3;

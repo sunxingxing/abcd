@@ -1,5 +1,19 @@
 # 验收、证据与实施交接
 
+2026-10-07 规则148：共同LoopSyntax从已验证FunctionTree的正常完成/
+owned break目标恢复原生while条件，原表达式/phi/效果/异常、scope与
+continue/finally目标保持。36个三profile真实解码copy/register/split与
+96个arena/规模/复杂退出/TDZ/finally/await/yield树，独立4472次行为比较
+及14错误条件mutation通过；最终15项定向回归70.18秒全部通过。
+
+fresh pasteboard ABC-only导出10complete/0partial/9noModule；实际三个
+循环均有原生while条件，富文本与ProgressBar完整受控矩阵保持通过。
+原五ABC106/0没有重跑。SSA carrier、for初始化/更新、每轮native binding
+及全部body/style未完成；原字段/全局/signature/body与阶段一gate保持。
+作用域声明/try等guard表达式的保守边界详见function-tree-output.md及
+shape audit；不按opcode、同块、名字、PC/register或固定selection分派。
+全部构建、失败修正、原throw/receiver/job/request和暂停项证据见status.md。
+
 2026-10-07 富文本图补充：ABC-only先生成后读paired TS，实际PasteBoard/
 CommonConstants/ShareDitect/PageA/PageB五模块连接，四view真实构造/render。
 原图片/富文本拼接、嵌套record/type遍历、copy/paste、discarded HTML async、

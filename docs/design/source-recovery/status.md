@@ -12,6 +12,58 @@
 
 ## 当前阶段
 
+### 2026-10-07：规则148，共同循环完成摘要与原生 while 条件
+
+- 基线9f47f047，生产/rules从147推进148。原LoopStmt保持共同control/
+  evaluation/scope与指令来源的规范树，新LoopSyntax在已验证树上做正常
+  完成/owned-break组合摘要；共同printer输出原生while条件。Expression
+  保留原ExprId，Block原序串联、If按原predicate选择，当前loop的break
+  映射false、正常完成true。没有名字、样本、opcode序列、same-block、
+  PC/register、邻接、producer名单或固定guard/copy数量的生产匹配。
+- header效果/phi复制按原序执行，comma/AND/conditional保持throw与短路。
+  body仍是原block，continue/outer transfer/finally ownership不重定向。
+  原TreeSemantics、操作/引用/来源校验保留；只省略无效果的常量完成，
+  stmt/anchor保存零宽事件，表达式仍保存原ID和输出区间。statement
+  children复用既有StatementChild，nullish与loop共享遍历。
+- crossed block binding/label仍是当前guard表达式的保守表示边界，保护
+  scope/TDZ/每轮环境/target；不宣称语言/VM不允许这样的loop。稍后声明
+  的local在条件前仍触发ReferenceError，不能移出作用域消除TDZ。声明/
+  try/return/continue/gap前缀没有强制变为表达式；while body中的原try/
+  finally与yield/await表达式可以保持执行。原source contract不扩大。
+- 新loop_syntax_test与loop_condition_source_test共132项source：36个三
+  profile真实解码register重分配/COPY/split变体，加96个独立树的0/1/
+  200/201/400/800前缀、arena正逆序、嵌套退出、退出前效果、TDZ、finally/
+  await/yield。共同IR/tree校验后直接打印实际decoded函数；Node独立
+  参考比较4472次，包含原throw identity、接收者、正常/停止/继续、
+  Promise job、generator request及truthy/falsy域；14项有效JS错误条件
+  mutation另被检出。这里的fault位置是有界边界采样，不是every-event。
+  工作计数400→800小于3倍，byte/work预算耗尽另验；未恢复RSS/benchmark。
+- 最终15项定向全部通过70.18秒，包含上述两项、普通/共享/exception
+  loop exits、composition、loop closure、generator finally/return、原
+  optional statement与snapshot语法/行为，以及实际ProgressBar与五模块
+  rich-text。最终rich图70配置/1030原throw/206换绑/18 mutation/2等价，
+  ProgressBar图88配置/570原throw/114换绑/15 mutation/2等价保持通过。
+  新增async/try fixture的初始arena倒序漏改TryStmt子ID、decoded AST首项
+  被private声明占据的测试假设已修正后再验；没有用这些测试失败改生产
+  admission。首次共享遍历编辑漏保留旧StatementChild导致构建失败，已
+  恢复旧API并令两个计划复用；最终构建和原相关回归通过。
+- 最终abc_structure/abc_semantic及六项fixture target -j4构建退出0；
+  596项仅注册，不执行full suite。node --check与git diff --check通过。
+  最终native输出/tmp/abcd-loop-syntax-native-tests-final.log，构建/tests/
+  export/style/registration日志同前缀；旧失败日志保留，不计为通过。
+- fresh ABC-only显式numeric+constructors导出pasteboard后独立AST核对：
+  manifest19条record，10个complete source、0partial、9noModule；三个
+  actual PasteBoard循环均为有条件while、0个while(true)。实际record测试
+  也新增该有界表示断言。导出路径build/stage-one/loop-condition-pass-final，
+  输入ABC及paired source未修改、paired正文不进入引擎。没有重新导出固定
+  五ABC，106/0仍为历史证据；受控平台矩阵不等同设备SDK运行。
+- 循环风格仅有进展：条件内仍有SSA snapshots/phi carrier，for initializer/
+  update、native binding/每轮捕获、整体body风格未完成。下一步沿共同
+  evaluation/lifetime与loop transition还原，不能按当前样本for形状实现。
+  阶段一Goal和原fields/globals/signatures/body gate保持active，完整
+  pasteboard图及其他record语义/表示仍需证据；full suite、expanded
+  corpus、RSS/benchmark、DFX、scheduler、agents与周期audit保持暂停。
+
 ### 2026-10-07：富文本、ShareDirect 与 PageA/PageB 五模块行为对照
 
 - 基线7dea75b4，production/rules147保持。本轮补齐实际PasteBoard完整

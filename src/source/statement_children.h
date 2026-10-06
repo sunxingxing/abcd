@@ -3,7 +3,7 @@
 
 #include <type_traits>
 
-#include "abcd/source/source_tree.h"
+#include "tree_checks.h"
 
 namespace abcd::source {
 // Enumerate language-owned statement children; block storage is supplied by
@@ -29,6 +29,20 @@ std::optional<StmtId> StatementChild(const TreeStatement& statement, std::size_t
         std::is_same_v<T, DebuggerStmt> || std::is_same_v<T, ThrowStmt> || std::is_same_v<T, UnrecoveredStmt>);
     return {};
   }, statement);
+}
+template<class Visit>
+void StatementChildren(const FunctionTree& tree, StmtId id, Visit visit) {
+  RequireTree(id.value < tree.statements.size(), TreeStructureError::kRange);
+  const auto blocks = [&](const BlockStmt& block) {
+    RequireTree(block.first_child <= tree.children.size() &&
+        block.child_count <= tree.children.size() - block.first_child, TreeStructureError::kRange);
+    return std::span<const StmtId>(tree.children).subspan(block.first_child, block.child_count);
+  };
+  for (std::size_t index = 0; ; ++index) {
+    const auto child = StatementChild(tree.statements[id.value].statement, index, blocks);
+    if (!child) break;
+    visit(*child);
+  }
 }
 }  // namespace abcd::source
 #endif

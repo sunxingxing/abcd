@@ -5,7 +5,7 @@ import {mkdtempSync, readFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {classReference, classLayouts} from './class_reference.mjs';
+import {classReference, classLayouts, parseJavaScript} from './class_reference.mjs';
 
 const [tool, root, option] = process.argv.slice(2), sources = {}, reference = {};
 const identity = JSON.parse(readFileSync(new URL('../corpus/abc-index.json', import.meta.url))).entries
@@ -32,6 +32,20 @@ for (const name of Object.keys(sources)) {
   reference[name] = classReference(readFileSync(join(root, 'pasteboard_src/src/main/ets', name.slice('entry/src/main/ets/'.length) + '.ts'), 'utf8')).source;
   assert.deepEqual(classLayouts(sources[name]), classLayouts(reference[name]), 'native class representation ' + name);
 }
+// Separate, bounded representation evidence: preserve all three loop tests.
+// This does not certify native for initialization/update or remove SSA carriers.
+const loops = [];
+const pending = [parseJavaScript(sources[page])];
+while (pending.length) {
+  const node = pending.pop();
+  if (node.type === 'WhileStatement') loops.push(node);
+  for (const child of Object.values(node)) {
+    if (Array.isArray(child)) pending.push(...child.filter(item => item?.type));
+    else if (child?.type) pending.push(child);
+  }
+}
+assert.equal(loops.length, 3);
+assert.ok(loops.every(loop => loop.test.type !== 'Literal' || loop.test.value !== true), 'native loop conditions');
 const worker = fileURLToPath(new URL('./rich_text_record_worker.mjs', import.meta.url));
 const run = (cases, extra = {}, changed = sources) => {
   try {

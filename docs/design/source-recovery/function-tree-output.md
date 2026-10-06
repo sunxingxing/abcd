@@ -643,3 +643,38 @@ block 所有权和支配区间查询，同块才要求 guard 先于 creation。
 语句 staging 为同层 if，避免将长条件链转成深度随输入增长的嵌套语句。
 实际 decoded 用例覆盖三 profile、1/200/201/402、纯副作用前缀、debugger、
 寄存器 copy、纯块拆分及反向比较；输出完整函数后再验证行为。
+
+
+## 规则148：已验证循环的原生条件投影
+
+共同LoopStmt仍是控制/求值/作用域/原始指令校验的规范树。新增内部
+LoopSyntax在该树上做一次statement postorder完成摘要；printer查询摘要，
+不读取CFG、opcode、样本名或printed text。ExpressionStmt保留完整ExprId，
+Block按正常完成串联，If保留原predicate并按实际分支选择，Break的目标
+沿用原StmtId。只有当前loop的退出被投影成false，正常完成投影成true；
+保留原callee/reference、参数、phi复制、await/yield、原效果和异常发生点。
+不同退出owner、return/continue/try/declaration/gap等不能混作Boolean结果。
+
+表示使用comma的原序求值、AND的短路和conditional的分支选择，原条件的
+Boolean polarity由既有BooleanOperand统一打印，不能把关系比较盲目取补。
+纯break/空块省略只在无效果literal摘要成立时进行；其stmt/anchor保留零宽
+位置。实际expression及branch仍有原来源ID和生成区间。支持嵌套判断、
+任意表达式前缀和透明块，arena倒序不改变结果，没有固定guard/copy数量。
+一个continuing arm若需要语句表示，仍作为原block在while body中执行，
+scope和finally/continue目标保持；不复制body或跨保护区域重新放置效果。
+
+当前guard表达式不能携带lexical declaration/label/try/return/continue。
+跨过的block必须没有binding且不拥有label，这保护名称解析、TDZ、每轮
+环境和target，并是当前表示能力的保守边界，不是JS/VM禁止这种循环。
+block内有稍后声明时也保持原canonical loop，不能仅看prefix没有声明。
+for initializer/update、loop-carried SSA合并和每轮捕获的native binding
+还需共同evaluation/lifetime/loop transition分析；不能以本投影关闭风格gate。
+
+依据是固定[ECMA-262 2024 WhileLoopEvaluation 14.7.3.2](https://tc39.es/ecma262/2024/multipage/ecmascript-language-statements-and-declarations.html#sec-while-statement-runtime-semantics-whileloopevaluation)
+及[comma 13.16.1、logical/conditional的syntax-directed evaluation](https://tc39.es/ecma262/2024/multipage/ecmascript-language-expressions.html#sec-comma-operator-runtime-semantics-evaluation)。
+这里实现的是原语义的组合摘要，没有引入外部代码/依赖或新许可要求。
+statement children复用原StatementChild入口，nullish与loop计划共享遍历。
+时间/存储为O(statements + children + symbols + scopes)，循环prefix属于不同
+body，不重复扫描子树；scratch/output计入原SemanticBudget，资源/工作耗尽
+保持typed error。200/201/400/800规模与arena重排只作定向算法证据，未恢复
+全语料RSS/benchmark，也不声称完整1G峰值验收。
