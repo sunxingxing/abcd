@@ -12,6 +12,45 @@
 
 ## 当前阶段
 
+### 2026-10-06：TabBar 全局字面量与实例字段的真实模块链验收
+
+- 基线0729996f，生产规则仍138。viewmodel_batch_source_test先以当前
+  abc_structure对固定Immersive/Multi两个ABC完成ABC-only正式导出，再读取
+  任何paired TS；新增核对输入及manifest SHA-256与ValueTree route。
+  从同一实际manifest取得record41409 TabBarModel与44106 TabBarViewModel，
+  两份完整源码均无legacy，并在同一VM module graph中实际连接和执行。
+- 两个record的受控独立whole-record表示/行为验收从pending转accepted：
+  原生导出数组、嵌套Resource对象、imports/export、class、constructor、
+  原tabList赋值/getTabList语法保留。允许原有mutable class/global绑定和
+  显式等价空constructor，不宣称恢复了paired TS的const/private/type事实。
+  模块槽读写权限不是源级const证明；跨family/class的完整绑定写入分析
+  仍需自身实现，不能按样本或仅初始化次数更改DeclarationKind。
+- 两次实际完整模块连接分别检查29个对象/数组节点的值、own key顺序、
+  descriptor、extensibility、realm prototype和完整identity graph；初始化
+  同时面对Object/Array inherited setter及被替换的全局helpers。所有Resource
+  params数组保持独立，两个真实实例共享同一导出数组；实例字段替换不改变
+  模块绑定/其他实例。另验module TDZ、namespace不可写、重复evaluate、
+  原constructor/method的name/arity/prototype、不可普通调用/构造的对应边界、
+  borrowed getter receiver及null/primitive receiver行为。
+- 新增196组受控live import原值/新值配对，覆盖undefined/null/NaN/-0/
+  BigInt/Symbol/object及禁止coercion值；旧实例保留初始化值，新实例读取live
+  binding，getter原异常身份和getter内改绑保留。52组独立pinned赋值层验
+  inherited setter、foreign new.target、两realm非对象prototype fallback、
+  部分存储/原throw身份及无多余own field；此层不以Node initialized TS
+  DefineField作oracle。6个有效JS mutation检出错误字段、getter改读import、
+  constructor错误返回、DefineField、资源id和共享params身份。
+- 新oracle首轮在屏蔽全局Object后又通过它取得prototype，随后改用屏蔽前
+  保存的intrinsic；未据测试host错误改变生产恢复。两个JS语法及
+  git diff --check通过，最终相关10/10 CTest通过26.14秒，含原六个viewmodel、
+  static class batch、两个真实购物model/viewmodel、HomeModel、barrel、
+  constants、CardArray/实际CardItem/CommentItem与partial；CTest仍565。
+  日志/tmp/abcd-tabbar-records-final-tests-1.log。未改C++/CMake、未构建、
+  未重复固定五ABC/六模式批量，上一轮完整计数仍为既有证据。
+- 这关闭所测两个真实record与其直接模块链的独立验收，不扩为整个应用/
+  UI/platform或所有global/field/signature的结构gate。阶段一Goal继续active；
+  全套、expanded corpus、RSS/benchmark、agents、scheduler/DFX与周期审计
+  保持暂停，继续其余实际record及结构集成缺口。
+
 ### 2026-10-06：CardItem 整 record 与实际 CommentItem 连接验收
 
 - 基线c49c4503，生产规则仍138；此次补齐独立验收，未改生产恢复条件、

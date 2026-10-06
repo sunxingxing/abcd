@@ -4,7 +4,9 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { stripTypeScriptTypes } from 'node:module';
+import {createHash} from 'node:crypto';
 import vm from 'node:vm';
+import {verifyTabBarRecords} from './tabbar_records.mjs';
 const [tool, root] = process.argv.slice(2);
 const cases = [
   ['Immersive', 28887, 'HomeViewModel', 'HomeModel', 'homeModel', ['getTabBarList']],
@@ -21,6 +23,10 @@ const paths = new Map([
   [29619, 'Immersive_src/shopping/src/main/ets/viewmodel/SectionViewModel.ts'],
   [44106, 'src/phone/src/main/ets/viewmodel/TabBarViewModel.ts'],
   [30839, 'src/detail/src/main/ets/viewmodel/CardViewModel.ts'],
+]);
+const hashes = new Map([
+  ['Immersive', '8de95a4c6579b38133367422d43ffac146cba5e8222a874df4c3d7942380dc6a'],
+  ['MultiCommunityApplication', '45ffdc7d5075b4de3f1c6860dcbc929bae048097af4478d09136afbec1b6c5a8'],
 ]);
 async function load(source, exports) {
   const context = vm.createContext({});
@@ -154,14 +160,20 @@ try {
   const manifests = new Map();
   for (const app of new Set(cases.map(item => item[0]))) {
     const destination = join(temporary, app);
-    const run = spawnSync(tool, [join(root, app, 'modules.abc'), destination, '--value-source'],
+    const abc = join(root, app, 'modules.abc');
+    const hash = createHash('sha256').update(readFileSync(abc)).digest('hex');
+    assert.equal(hash, hashes.get(app));
+    const run = spawnSync(tool, [abc, destination, '--value-source'],
       { encoding: 'utf8', timeout: 60_000 });
     assert.equal(run.status, 0, run.stderr + run.stdout);
-    manifests.set(app, JSON.parse(readFileSync(join(destination, 'manifest.json'), 'utf8')));
+    const manifest = JSON.parse(readFileSync(join(destination, 'manifest.json'), 'utf8'));
+    assert.equal(manifest.sha256, hash); assert.equal(manifest.source_route, 'value_tree');
+    manifests.set(app, manifest);
   }
   for (const [app, entity, name, dependency, field, methods] of cases) {
     const record = manifests.get(app).records.find(row => row.entity === entity);
     assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, false);
+    assert.equal(record.source_route, 'value_tree');
     const source = readFileSync(join(temporary, app, record.source), 'utf8');
     // Record classes use their module binding's native NamedEvaluation. A
     // discarded read of their fixed own prototype must not force a carrier
@@ -173,4 +185,14 @@ try {
     assert.deepEqual(await exercise(source), await exercise(paired));
     console.log(`${app} record=${entity} paired viewmodel behavior passed`);
   }
+  const app = 'MultiCommunityApplication';
+  const sources = [44106, 41409].map(entity => {
+    const record = manifests.get(app).records.find(row => row.entity === entity);
+    assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, false);
+    assert.equal(record.source_route, 'value_tree');
+    return readFileSync(join(temporary, app, record.source), 'utf8');
+  });
+  const references = ['viewmodel/TabBarViewModel.ts', 'model/TabBarModel.ts'].map(path =>
+    stripTypeScriptTypes(readFileSync(join(root, app, 'src/phone/src/main/ets', path), 'utf8')));
+  console.log(JSON.stringify(await verifyTabBarRecords(...sources, ...references)));
 } finally { rmSync(temporary, { recursive: true, force: true }); }

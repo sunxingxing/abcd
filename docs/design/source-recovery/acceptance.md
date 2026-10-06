@@ -83,6 +83,23 @@ fallback/部分写入检查、6个有效JS mutation通过。Node initialized TS�
 受控验收，不自动关闭完整base模块图、平台或全部结构gate。实际三个record
 重新生成及相关10/10回归证据见status.md，生产规则/完整数量未改变。
 
+2026-10-06 TabBar补充：实际record41409 TabBarModel和44106
+TabBarViewModel的受控whole-record独立验收由pending转accepted。两固定
+ABC导出在任何paired TS读取前结束，输入/manifest hash及ValueTree核对；
+同一module graph实际执行两个完整生成记录。两次连接验29个字面量节点的
+值、identity graph、own key/descriptor/extensibility/realm prototype，
+inherited setter与被替换的全局helper不能影响原生字面量初始化。实际两个
+ViewModel实例共享导出数组，独立field替换、borrowed receiver、module
+TDZ/namespace/重复evaluate等保留；196组live import及52组pinned字段赋值/
+new.target/任意异常、6个有效JS mutation通过，原六个viewmodel证据保留。
+
+该表示接受原生array/object/class/import/export/getter与等价空constructor，
+允许当前保守let绑定；不能据此称已恢复源级const/private/type信息。Module
+slot access与完整嵌套绑定写入证明是不同事实；Node initialized TS field
+DefineField仍不作为固定Ark setter语义oracle。这是两个实际record及其
+直接模块链的受控验收，不能关闭整个应用或原完整结构gate。相关10/10
+定向回归与剩余边界见status.md。
+
 ## 1. 四种状态，不混报完成
 
 | 状态 | 意义 | 可否称 gate 通过 |
