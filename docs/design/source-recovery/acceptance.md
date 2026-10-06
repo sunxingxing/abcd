@@ -1,5 +1,22 @@
 # 验收、证据与实施交接
 
+2026-10-07 minigame导航整合补充：原十模块图之外新增独立十四模块图，
+实际minigame barrel、Content、Header、Footer直接连接页面；四个新增
+record的ABC-only生成完成后才读取paired TS，三个类及re-export正文不替换。
+父页面构造传值、真实element/child update、late paramsGenerator_与换值后
+Synched cell、全部60项原Image资源identity，以及真实peer CommonConstants/
+Breakpoint调用进入组合验收。Header/Footer完整render/delete/空state方法
+与原生class/defaults/new.target/赋值setter均实际执行和独立比较。
+
+新baseline要求全部module evaluated、无body throw、真实child和全部资源
+执行、更新后的Content cell保存新parent值。214 lifecycle、3960原throw、
+792换绑、144构造/字段/partial state及23有效JS mutation通过；同步/延迟
+各5163事件完整trace/状态/prototype另验。新故障矩阵按distinct event name/
+first string argument首次host边界采样，两baseline各396项，不声明
+每个event都注入故障。最终定向6/6通过。原十模块与独立Content的every-event测试
+保留。更大调用图、shopping实际库、设备/平台、结构metadata/完整映射与
+其他record验收仍开放；本次最终定向验证证据及失败修正见status.md。
+
 2026-10-07 Content补充：原record14411的受控whole-record语义与高层表示
 由pending转accepted。既有资源数组/key测试不代表完整类执行；本次先完成
 ABC-only显式numeric+constructors的真实Content、Breakpoint、CommonConstants

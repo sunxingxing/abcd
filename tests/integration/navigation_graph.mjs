@@ -7,7 +7,9 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {verifyNavigationGraph} from './navigation_graph_state.mjs';
 
-const [tool, root] = process.argv.slice(2);
+const [tool, root, mode] = process.argv.slice(2);
+assert.ok(mode === undefined || mode === '--minigame');
+const connected = mode === '--minigame';
 const abc = join(root, 'modules.abc');
 assert.equal(createHash('sha256').update(readFileSync(abc)).digest('hex'),
   '8de95a4c6579b38133367422d43ffac146cba5e8222a874df4c3d7942380dc6a');
@@ -23,6 +25,12 @@ const records = [
   [7395, 'commons/src/main/ets/utils/Breakpoint'],
   [7618, 'commons/src/main/ets/utils/WindowUtil'],
 ];
+if (connected) records.push(
+  [14270, 'minigame/Index'],
+  [14411, 'minigame/src/main/ets/view/Content'],
+  [15128, 'minigame/src/main/ets/view/Footer'],
+  [15617, 'minigame/src/main/ets/view/Header'],
+);
 const directory = mkdtempSync(join(tmpdir(), 'abcd-navigation-graph-'));
 const sources = {};
 try {
@@ -30,6 +38,7 @@ try {
   execFileSync(tool, [abc, output, '--value-source', '--language-numeric', '--language-constructors'],
     {encoding: 'utf8', timeout: 60_000});
   const manifest = JSON.parse(readFileSync(join(output, 'manifest.json')));
+  assert.equal(manifest.source_contract, 'language_numeric_constructors_v1');
   const byEntity = new Map(manifest.records.map(record => [record.entity, record]));
   for (const [entity, name] of records) {
     const record = byEntity.get(entity);
@@ -37,6 +46,7 @@ try {
     assert.equal(record.source_route, 'value_tree');
     assert.equal(record.source, `sources/${name}.mjs`);
     sources[name] = readFileSync(join(output, record.source), 'utf8');
+    assert.doesNotMatch(sources[name], /INCOMPLETE|UNRECOVERED/);
   }
 } finally {rmSync(directory, {recursive: true});}
 
@@ -58,4 +68,15 @@ for (const [, name] of records) {
   }
   reference[name] = stripTypeScriptTypes(text, {mode: 'transform'});
 }
-console.log(JSON.stringify(await verifyNavigationGraph(sources, reference)));
+if (connected) {
+  assert.match(sources['minigame/Index'], /export \{ Content as Content \} from/);
+  for (const name of ['Content', 'Header', 'Footer']) {
+    const source = sources[`minigame/src/main/ets/view/${name}`];
+    assert.match(source, new RegExp(`class ${name} extends`));
+    assert.match(source, /constructor\(parent, params, __localStorage, elmtId =/);
+    assert.match(source, /super\(parent, __localStorage, elmtId, extraInfo\)/);
+    assert.match(source, /\.observeComponentCreation2\(/);
+    assert.match(source, /Image\.create\(/);
+  }
+}
+console.log(JSON.stringify(await verifyNavigationGraph(sources, reference, {connected})));

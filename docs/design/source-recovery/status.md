@@ -12,6 +12,58 @@
 
 ## 当前阶段
 
+### 2026-10-07：真实 minigame barrel／子类接入导航调用图
+
+- 基线12a0805b，production/rules146保持。沿原十模块导航图新增实际
+  minigame/Index14270、Content14411、Footer15128、Header15617，共十四
+  个真实ABC生成ESM在同一realm连接。原十模块测试及其四个controlled leaf
+  独立保留；新图只保留shopping Home及平台服务受控，不再替换三个
+  minigame类或barrel exports。先完成ABC-only显式numeric+constructors
+  导出并核对SHA/contract/complete/nonlegacy/path，再读独立paired TS。
+- Framework fixture按实际indexed/keyIndexed接口调用generator/key，真实
+  Content的key收到index；原值对象在进入item closure前赋予identity，
+  Image参数必须仍是同一原item。元素ID连接parent到真实child，回放实际
+  parent update分支并执行child.updateStateVars；父window cell换值后，再
+  调用真实paramsGenerator_两次，将新mainWindowInfo传入真实Synched cell。
+  Header/Footer的渲染、删除、空update/purge及参数闭包也完整执行。
+- 新baseline明确要求十四模块均evaluated、没有body中的throw，三个真实
+  child都存在；每个Content必须实际传递全部60项原资源到Image，更新后
+  其cell必须保存新info1，避免reference和generated一起在缺失host处
+  停止却误报整图通过。完整trace、状态/descriptor、七个class的prototype
+  name/arity/成员顺序及默认参数、module重复evaluate仍分别比较。
+- 第一版实际组合通过166 lifecycle、3960 raw faults、792全局换绑、96
+  setter/new.target及12旧mutation；同步/延迟baseline各5163真实事件。
+  新版本扩为214 lifecycle、144赋值/部分写入及23 mutation，另加入三真实
+  child的0/1/2/3/4/6/200/201实参、foreign new.target及继承setter。
+  新增错误child/re-export、陈旧parent参数捕获、state传值、closure owner、
+  Image资源复制、JSON key、width成员、Header对齐及Footer删除参数变体。
+- 新图异常/换绑范围为每种event名与首个string参数对应的首次observable
+  host boundary，两baseline各396项；没有把它描述为全部5163 event覆盖。
+  原十模块和独立Content保留原every-event矩阵，全部重复资源/索引位置仍
+  在新图完整生命周期trace中比较；本次不能替代任意平台协议或设备运行。
+- 失败证据：首次fixture读取UI proxy不存在的name，改为只读取plain
+  component descriptor；下一次WidthBreakpoint宿主用了错误enum键，按
+  实际peer的WIDTH_*边界修正，未改生产语义或扩大恢复准入。补强版
+  tests-3在mutation worker触发60秒限额，总139.14秒失败；deliberate
+  mismatch的assert.deepEqual生成庞大diff占用预算。改用isDeepStrictEqual
+  加简短AssertionError，比较契约不变且不提高限额；同一fresh ABC-only
+  mutation batch的23项全部通过，诊断控制器未改任何generated/reference正文。
+- 验证：build-1单-j4的abc_structure/abc_semantic通过；final-tests-1
+  定向4/4通过246.25秒（Content85.50、default partial0.48、十模块78.34、
+  十四模块81.93）。最后完整十四模块结果为214 lifecycle、3960 raw faults、
+  792换绑、144赋值/partial state及23有效JS mutation全部通过。原十模块
+  166/10990/2198/96/12、Content40/19250/3850/64/9逐event矩阵无回退。
+  final-tests-2按实际注册名补验language_constructors_paired_test与
+  language_arithmetic_paired_test，2/2通过8.73秒；最终六项定向检查通过。
+  579注册不等于运行full suite；两个mjs语法及git diff --check通过。
+  test-only，没有生产/rules修改或重复五ABC六模式全量导出。
+  日志/tmp/abcd-minigame-graph-{red,build,tests,mutations,final-tests}-*.log，
+  原生成功矩阵另存/tmp/abcd-minigame-graph-final-details-1.log。
+- 这是实际跨record constructor/field/capture/body整合证据；结构metadata、
+  完整method映射、剩余record独立行为/表示、shopping真实库以及原结构gate
+  仍开放。全阶段Goal保持active；full suite、expanded corpus、RSS/benchmark、
+  DFX/scheduler、agents和定期audit仍维持用户暂停。
+
 ### 2026-10-07：原缺口 Content 的完整 record／真实资源闭包验收
 
 - 基线ddfd8749，production/rules146保持。核对实际五ABC输出：授权numeric+
