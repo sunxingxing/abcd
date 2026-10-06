@@ -1,5 +1,20 @@
 # 验收、证据与实施交接
 
+2026-10-07 MultiCommunity平台组合补充：已有独立EntryAbility/Logger
+验收保留；新变体沿完整四十五模块图执行实际Ability窗口/lifecycle/listener
+正文、真实BreakpointConstants、共享storage及Root/子视图body。Logger
+singleton的四个原rest method也执行，平台与其hilog import共同换绑。
+实例成员getter返回实际prototype method，使capture实例与成员取得时点
+可观察，不替换方法实现；原callee/receiver/异常与retained queue仍比较。
+
+箭头中的captured-this别名改成词法this属于允许的等价表示，必须通过双
+实例整图对照，不能作为mutation要求拒绝。真正错误的data receiver、
+阈值/除法/断点写入、json/void结果及Logger domain/rest参数另验。
+最终相关5/5定向通过：新图104场景、330原throw、66换绑、22有效JS
+mutation和2等价变体，二十view实际render；两schedule各三十三明确host
+boundary采样，不是every-event覆盖。原96场景图和独立Ability/Logger
+验收也重新通过。窗口协议/设备、所有body/style及原结构gate另验。
+
 2026-10-07 MultiCommunity图补充：四十五个实际ABC-only生成ESM连接真实
 MainPage与hot/detail/picture/rank、barrel和model。配对TS只在导出完成后
 进入独立realm。二十个view的构造、实际render、watch/cell/storage改变、

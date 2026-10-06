@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {isDeepStrictEqual, inspect} from 'node:util';
 import {GraphTrace} from './graph_trace.mjs';
+import {communityPlatform} from './community_platform.mjs';
 
 const rootName = 'phone/src/main/ets/pages/MainPage';
 const destinations = ['mainPage', 'rankPage', 'detailPage', 'pictureDetail', 'unknown'];
@@ -18,7 +19,7 @@ const enumNames = ['Alignment', 'Axis', 'BarMode', 'BarPosition', 'BarState', 'C
 // Only ArkUI/storage/platform services are controlled; each real exported view,
 // model, barrel, getter and retained callback remains the actual module body.
 export async function exerciseCommunity(sources, config = {}) {
-  let context, factory, nextElement = 0, activeElement, activeObserver, retainedFault, replayedFault = false;
+  let context, factory, platform, nextElement = 0, activeElement, activeObserver, retainedFault, replayedFault = false;
   const owners = [], rendered = [], cells = [], retained = [], updates = [], callbacks = [], builders = [], tabBuilders = [];
   const modules = new Map(), imports = new Map(), children = new Map(), storage = new Map(Object.entries(config.storage ?? {}));
   const viewTypes = new Map(), itemIds = new WeakMap(), initializedLists = new WeakSet();
@@ -34,7 +35,7 @@ export async function exerciseCommunity(sources, config = {}) {
       for (const [name, value] of components[1]) context[name] = value;
       context.SubscriberManager = subscribers[1];
       context.ObservedPropertySimplePU = observed[1]; context.ObservedPropertyObjectPU = observed[1];
-      trace.trace.push(['globals.swap']);
+      platform.swap(imports); trace.trace.push(['globals.swap']);
     }
   });
   const token = trace.tag({get then() {assert.fail('void host result assimilated');}}, 'void');
@@ -242,16 +243,14 @@ export async function exerciseCommunity(sources, config = {}) {
   });
   for (const [name, source] of Object.entries(sources))
     modules.set(name, new vm.SourceTextModule(source, {context, identifier: name}));
+  platform = communityPlatform(trace, config, token, enqueue);
   const link = specifier => {
     const name = specifier.startsWith('@normalized:N&&&') ? specifier.slice('@normalized:N&&&'.length).split('&')[0] : specifier;
     if (modules.has(name)) return modules.get(name);
     if (imports.has(name)) return imports.get(name);
     assert.ok(['@native:system.app', '@ohos:app.ability.UIAbility', '@ohos:deviceInfo', '@ohos:display', '@ohos:hilog'].includes(name), name);
-    const platform = name === '@ohos:app.ability.UIAbility' ? class UIAbility {} :
-      name === '@ohos:deviceInfo' ? trace.surface('device', {deviceType: config.deviceType ?? 'phone'}) :
-      trace.surface(name, {info() {return undefined;}, debug() {return undefined;}, error() {return undefined;}, warn() {return undefined;},
-        exit() {return undefined;}, setImageRawDataCacheSize() {return undefined;}, setImageCacheCount() {return undefined;}, getDefaultDisplaySync() {return {width: 960, height: 720};}});
-    const module = new vm.SyntheticModule(['default'], function() {this.setExport('default', platform);}, {context});
+    const value = platform.load(name);
+    const module = new vm.SyntheticModule(['default'], function() {this.setExport('default', value);}, {context});
     imports.set(name, module); return module;
   };
   const root = modules.get(rootName); await root.link(link);
@@ -281,6 +280,7 @@ export async function exerciseCommunity(sources, config = {}) {
       for (const entry of entries) invoke(entry);
     }
   };
+  platform.run(modules, drain);
   if (factory) {
     const owner = trace.call('factory', factory, {foreign: true});
     if (owner) {
@@ -303,7 +303,7 @@ export async function exerciseCommunity(sources, config = {}) {
       trace.call('direct.construct', () => Reflect.construct(Type, args, config.alternate ? Alternate : Type), undefined);
     }
   } else {
-    drain();
+    drain(); platform.resize(drain);
     for (const builder of builders) for (const name of destinations)
       trace.call('destination', builder, {foreign: true}, [name, 0]);
     drain();
@@ -341,7 +341,7 @@ export async function exerciseCommunity(sources, config = {}) {
     }
   }
   const names = new Map([...viewTypes].map(([key, Type]) => [Type, key]));
-  return {exportGraph, retainedFault, replayedFault, diagnostics: trace.errors, trace: trace.trace, sites: trace.sites, events: trace.events, failed: trace.failed,
+  return {exportGraph, platform: platform.snapshot(modules), retainedFault, replayedFault, diagnostics: trace.errors, trace: trace.trace, sites: trace.sites, events: trace.events, failed: trace.failed,
     modules: [...modules].map(([name, module]) => [name, module.status]),
     views: [...names.values()], rendered: rendered.map(owner => names.get(owner.constructor)), instances: owners.map(owner => names.get(owner.constructor)),
     state: owners.map(owner => trace.normalize(Reflect.ownKeys(owner).map(key => [key, Object.getOwnPropertyDescriptor(owner, key)]))),
@@ -376,6 +376,9 @@ export async function verifyCommunityBatch(sources, reference, cases, inventory 
   let count = 0; const counts = [], anchors = []; const views = new Set(), rendered = new Set(), instances = new Set();
   for (const request of cases) {
     const config = {...request};
+    const numbers = [undefined, null, false, 0, -0, NaN, Infinity, -Infinity, 1n, Symbol('numeric input')];
+    if (Object.hasOwn(config, 'widthIndex')) config.width = numbers[config.widthIndex];
+    if (Object.hasOwn(config, 'densityIndex')) config.density = numbers[config.densityIndex];
     if (Object.hasOwn(config, 'failureIndex')) config.failure = [undefined, null, 0, Symbol('raw failure'), {}][config.failureIndex];
     const expected = await exerciseCommunity(reference, config);
     const baseline = !Object.hasOwn(config, 'failAt') && !config.allowThrows;
@@ -383,9 +386,14 @@ export async function verifyCommunityBatch(sources, reference, cases, inventory 
     const throws = expected.trace.filter(([name]) => name.endsWith('.throw'));
     if (baseline) assert.equal(throws.length, 0, JSON.stringify([...new Map(expected.diagnostics.map(entry => [JSON.stringify(entry), entry])).values()]));
     assert.equal(Object.keys(sources).length, 45);
+    if (baseline && config.ability) {
+      assert.deepEqual(expected.platform.loggerCalls, ['debug', 'info', 'warn', 'error']);
+      assert.ok(expected.platform.methods.includes('onWindowStageCreate'));
+      assert.equal(expected.platform.listeners, config.mainCode ? 0 : config.concurrent ? 2 : 1);
+    }
     if (baseline) for (const key of new Set(expected.instances)) assert.ok(key, 'unidentified actual view');
     counts.push(expected.events);
-    if (inventory) anchors.push(communityAnchors(expected.sites));
+    if (inventory) anchors.push(communityAnchors(expected.sites, config.ability));
     for (const key of expected.views) views.add(key);
     for (const key of expected.instances) instances.add(key);
     if (!config.constructOnly) for (const key of expected.rendered) rendered.add(key);
@@ -420,7 +428,7 @@ export async function verifyCommunityBatch(sources, reference, cases, inventory 
 // Directed semantic boundary probes, not every event or every UI method. They
 // cover module publication, construction, value reads/writes, retained work,
 // branch/iteration, child updates and cleanup in both callback schedules.
-function communityAnchors(sites) {
+function communityAnchors(sites, ability = false) {
   const entries = [
     ['route'], ['super'], ['host.get', 'createStorageLink'], ['host.call', 'createStorageLink'],
     ['observed.new'], ['retained', 'observe'], ['retained', 'content'], ['retained', 'list.item'],
@@ -429,6 +437,12 @@ function communityAnchors(sites) {
     ['focus.call', 'requestFocus'], ['subscriber0.call', 'Get'],
     ['host.call', 'aboutToBeDeletedInternal'],
   ];
+  if (ability) entries.push(
+    ['ability.super'], ['ability.breakpoint.get'], ['stage0.get', 'getMainWindow'], ['stage0.call', 'getMainWindow'],
+    ['retained', 'ability.window'], ['retained', 'ability.content'], ['stage.error.code'],
+    ['window0.call', 'getWindowProperties'], ['window.width'], ['display.density'],
+    ['window.listener'], ['resize.width'], ['platform.coerce'], ['stage.data.json'],
+    ['@ohos:hilog.get', 'info'], ['@ohos:hilog.call', 'info'], ['@ohos:hilog.call', 'debug']);
   const anchors = entries.map(([name, key]) => {
     const site = sites.find(([, event, argument]) => event === name && (key === undefined || argument === key));
     assert.ok(site, 'unexecuted boundary ' + name + '.' + key); return site[0];
@@ -436,4 +450,27 @@ function communityAnchors(sites) {
   const purge = sites.find(([, name, key]) => name.endsWith('.call') && key === 'purgeDependencyOnElmtId');
   assert.ok(purge); anchors.push(purge[0]);
   return anchors;
+}
+
+export function communityAbilityCases() {
+  const cases = [];
+  for (const immediate of [false, true]) for (const width of [0, 599, 600, 839, 840, 1200])
+    for (const density of [1, 2]) cases.push({ability: true, immediate, width, density, resizeWidths: [],
+      storage: {isShowInput: true, isFoldHorizontal: true}});
+  for (const immediate of [false, true]) for (const reverse of [false, true]) for (const concurrent of [false, true])
+    for (const deviceType of ['phone', '2in1']) cases.push({ability: true, immediate, reverse, concurrent, deviceType,
+      width: 700, density: 1, resizeWidths: [840], storage: {isShowInput: true, isFoldHorizontal: true}});
+  for (const immediate of [false, true]) for (const coerce of [false, true])
+    for (const loggerArgumentCount of [0, 1, 200, 201]) cases.push({ability: true, immediate, coerce, loggerArgumentCount,
+      width: 599, density: 1, resizeWidths: [600], storage: {isShowInput: true, isFoldHorizontal: false}});
+  for (const immediate of [false, true]) for (const mainCode of [0, 1]) for (const contentCode of [0, 1])
+    cases.push({ability: true, immediate, mainCode, contentCode, resizeWidths: [],
+      storage: {isShowInput: true, isFoldHorizontal: true}});
+  for (const immediate of [false, true]) for (let index = 0; index < 10; ++index) {
+    cases.push({ability: true, immediate, widthIndex: index, density: 1, resizeWidths: [],
+      storage: {isShowInput: true, isFoldHorizontal: true}});
+    cases.push({ability: true, immediate, width: 700, densityIndex: index, resizeWidths: [],
+      storage: {isShowInput: true, isFoldHorizontal: true}});
+  }
+  return cases;
 }

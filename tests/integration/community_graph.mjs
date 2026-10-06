@@ -5,10 +5,12 @@ import {readFileSync, mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {classReference, parseJavaScript} from './class_reference.mjs';
-import {communityCases} from './community_graph_state.mjs';
+import {communityCases, communityAbilityCases} from './community_graph_state.mjs';
 import {fileURLToPath} from 'node:url';
 
-const [tool, root] = process.argv.slice(2);
+const [tool, root, option] = process.argv.slice(2);
+assert.ok(option === undefined || option === '--ability');
+const ability = option === '--ability';
 const abc = join(root, 'modules.abc');
 assert.equal(createHash('sha256').update(readFileSync(abc)).digest('hex'),
   '45ffdc7d5075b4de3f1c6860dcbc929bae048097af4478d09136afbec1b6c5a8');
@@ -76,7 +78,7 @@ const run = request => {
 // One graph pair per bounded worker: even two large md/fold scenarios exceeded
 // 512 MiB in a worker; a single long-lived run exhausted the default V8 heap.
 // Retain the full trace comparison and release each independent VM afterwards.
-const cases = communityCases(), views = new Set(), rendered = new Set(), instances = new Set(), events = [];
+const cases = ability ? communityAbilityCases() : communityCases(), views = new Set(), rendered = new Set(), instances = new Set(), events = [];
 let completed = 0;
 for (const config of cases) {
   const result = run({cases: [config]});
@@ -95,7 +97,7 @@ assert.equal(completed, cases.length);
 let faults = 0, swaps = 0;
 const boundaryCounts = [];
 for (const immediate of [false, true]) {
-  const config = {immediate, breakpoint: 'sm', storage: {isShowInput: true, isFoldHorizontal: true}};
+  const config = {immediate, breakpoint: 'sm', ...(ability ? {ability: true, coerce: true, width: 700, density: 1, resizeWidths: [840]} : {}), storage: {isShowInput: true, isFoldHorizontal: true}};
   const baseline = run({cases: [config], inventory: true});
   assert.equal(baseline.anchors.length, 1);
   const anchors = baseline.anchors[0]; boundaryCounts.push(anchors.length);
@@ -109,7 +111,7 @@ for (const immediate of [false, true]) {
 }
 
 const mutants = [
-  ['base/src/main/ets/constants/BreakpointType', 'return this.md;', 'return this.sm;', {breakpoint: 'md'}],
+  ['base/src/main/ets/constants/BreakpointType', 'return this.md;', 'return this.sm;', {breakpoint: 'md', width: 700}],
   ['detail/src/main/ets/viewmodel/CardViewModel', '$local2.name = card.name', '$local2.name = card.icon'],
   ['detail/src/main/ets/viewmodel/CardViewModel', 'index % PICTURE_ARRAY_LIST.length', 'index + PICTURE_ARRAY_LIST.length'],
   ['base/src/main/ets/viewmodel/CommentViewModel', 'this.favorCount = item.favorCount', 'this.favorCount = 0'],
@@ -122,15 +124,47 @@ const mutants = [
   ['detail/src/main/ets/view/CommentInputView', 'focusControl.requestFocus(TEXTAREA_KEY)', 'focusControl.requestFocus(BUTTON_KEY)'],
   ['hot/Index', 'HotPointPage as HotPointPage', 'HotPointPage as WrongPage'],
 ];
+if (ability) mutants.push(
+  ['phone/src/main/ets/entryability/EntryAbility', 'windowWidth / display.getDefaultDisplaySync().densityPixels',
+    'windowWidth * display.getDefaultDisplaySync().densityPixels', {width: 700, density: 2}],
+  ['phone/src/main/ets/entryability/EntryAbility', '$value2 < BreakpointConstants.BREAKPOINT_RANGES[1]',
+    '$value2 <= BreakpointConstants.BREAKPOINT_RANGES[1]', {width: 600}],
+  ['phone/src/main/ets/entryability/EntryAbility', '$local1.updateBreakpoint(data.getWindowProperties().windowRect.width)',
+    'data.updateBreakpoint(data.getWindowProperties().windowRect.width)'],
+  ['phone/src/main/ets/entryability/EntryAbility', 'windowSize.width', '840', {resizeWidths: [599]}],
+  ['phone/src/main/ets/entryability/EntryAbility', '"currentBreakpoint", $value5', '"currentBreakpoint", "lg"'],
+  ['phone/src/main/ets/entryability/EntryAbility', 'data.setWindowLayoutFullScreen(true)',
+    'data.setWindowLayoutFullScreen(false)'],
+  ['phone/src/main/ets/entryability/EntryAbility', 'JSON.stringify(data)', 'JSON.stringify(err)'],
+  ['phone/src/main/ets/entryability/EntryAbility', 'windowStage.loadContent("pages/MainPage",',
+    'return windowStage.loadContent("pages/MainPage",'],
+  ['base/src/main/ets/utils/Logger', 'this.domain = 65280', 'this.domain = 0'],
+  ['base/src/main/ets/utils/Logger', 'hilog.debug(this.domain, this.prefix, this.format, args)',
+    'hilog.debug(this.domain, this.prefix, this.format, ...args)'],
+);
 let mutations = 0;
 for (const [name, before, after, extra] of mutants) {
   assert.ok(sources[name].includes(before), 'absent mutation anchor ' + name + ':' + before);
   const changed = sources[name].replace(before, after);
   assert.notEqual(changed, sources[name]); parseJavaScript(changed);
   const result = run({sources: {...sources, [name]: changed}, mutation: name + ':' + before,
-    cases: [{breakpoint: 'sm', storage: {isShowInput: true, isFoldHorizontal: true}, ...extra}]});
+    cases: [{breakpoint: 'sm', ...(ability ? {ability: true, width: 599, density: 1, resizeWidths: []} : {}), storage: {isShowInput: true, isFoldHorizontal: true}, ...extra}]});
   assert.equal(result.mutations, 1); mutations += result.mutations;
 }
-console.log(JSON.stringify({cases: completed, faults, swaps, mutations, boundaryCounts,
+let equivalents = 0;
+if (ability) {
+  const name = 'phone/src/main/ets/entryability/EntryAbility';
+  const before = '$local1.updateBreakpoint(data.getWindowProperties().windowRect.width)';
+  const after = 'this.updateBreakpoint(data.getWindowProperties().windowRect.width)';
+  assert.ok(sources[name].includes(before));
+  const changed = sources[name].replace(before, after); parseJavaScript(changed);
+  for (const immediate of [false, true]) {
+    assert.equal(run({sources: {...sources, [name]: changed}, cases: [{ability: true, immediate,
+      concurrent: true, width: 599, density: 1, resizeWidths: [840],
+      storage: {isShowInput: true, isFoldHorizontal: true}}]}).cases, 1);
+    ++equivalents;
+  }
+}
+console.log(JSON.stringify({cases: completed, faults, swaps, mutations, equivalents, boundaryCounts,
   events: {min: Math.min(...events), max: Math.max(...events)}, viewClasses: views.size, renderedViewClasses: rendered.size,
-  generatedModules: 45, platformExecution: false}));
+  generatedModules: 45, ability, platformExecution: false}));

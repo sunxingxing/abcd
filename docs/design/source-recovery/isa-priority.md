@@ -15,6 +15,11 @@ constructor/field/watch/storage/closure/body组合验收，未新增生产样本
 同块或图形条件。实际render coverage和完整导出alias/descriptor另验；
 受控宿主与完整平台/所有body表示仍区分，最终证据见status.md。
 
+2026-10-07 组合续作：同一四十五模块图中真实Ability callback调用原
+BreakpointConstants、写共享storage并驱动视图，Logger原rest body也执行。
+保留已有单record验收，补齐跨record组合证据；等价captured-this/词法this
+表示必须允许，不能通过源码匹配定义恢复。最终范围与证据见status.md。
+
 2026-10-06 当前用户要求：完成正在进行的 `?.` 调用修复后，优先解决
 阶段一实际输出中的 `INCOMPLETE / UNRECOVERED` 功能缺口，使未完整恢复
 的函数、类、初始化和 record 获得完整反编译及独立验收。后续 optional

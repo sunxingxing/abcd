@@ -1375,7 +1375,12 @@ if(BUILD_TESTING)
         --expose-internals --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/community_graph.mjs $<TARGET_FILE:abc_structure>
         ${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication)
-      set_tests_properties(community_graph_source_test PROPERTIES RUN_SERIAL TRUE)
+      add_test(NAME community_ability_graph_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        --expose-internals --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/community_graph.mjs $<TARGET_FILE:abc_structure>
+        ${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication --ability)
+      set_tests_properties(community_graph_source_test community_ability_graph_source_test
+        PROPERTIES RUN_SERIAL TRUE)
     endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc" AND
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/detail/src/main/ets/view/CommentItemView.ts")

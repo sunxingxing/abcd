@@ -12,6 +12,57 @@
 
 ## 当前阶段
 
+### 2026-10-07：Ability／Breakpoint／storage／实际视图组合
+
+- 基线a7c619b8，production/rules146保持；上一轮实际模块图已提交并
+  定向通过，属于progress。本轮核对发现两个EntryAbility和Logger已有
+  独立whole-record验收，不重复宣称它们尚未恢复；补齐的是四十五模块
+  图中原本只执行初始化的Ability/Logger正文与实际UI状态组合。
+- 新community_platform是test-only controlled平台，复用原GraphTrace/
+  retained queue、真实模块link、共同source exporter及独立TS参考边界。
+  实际MultiCommunity EntryAbility的生命周期方法、getMainWindow和
+  loadContent箭头、windowSizeChange listener、updateBreakpoint调用真实
+  BreakpointConstants并写原AppStorage；真正的Root storage cell和渲染
+  callback读取这个值。Logger四方法另调用真实singleton、原rest body及
+  同一hilog import。EntryAbility直接调用hilog，不伪造它通过Logger调用。
+- 新平台控制window/display/device/hilog及void结果，不替换任何原method
+  body。Ability实例上的caller-owned updateBreakpoint accessor返回原
+  prototype method，记录实际实例与callback时点的成员读取，以使捕获
+  身份可观察；方法实现仍原样执行。存活import在明确event处setExport，
+  不把类的heritage误当成每次构造都重读import，也不新增host品牌前提。
+- resize回放在Root首次render/drain后、目的地子图展开前执行，真实
+  Root cell依赖重放已发生；不宣称完整设备window/布局/导航协议。模型、
+  child body及完整事件/字段/prototype/alias比较保持；二十个实际view
+  仍必须render，直接构造不能替代。同步/延迟、逆序及两Ability实例的
+  listener均用foreign this回放。void token的then getter仍拒绝被assimilate。
+- 原基线图96/160/32/12在平台提取后完整通过；两个初始平台组合基线
+  通过，均实际渲染二十类。首轮扩展64生命周期、320原throw、64换绑、
+  12有效JS mutation通过，事件164324至302529。后续新增40个Number/
+  BigInt/Symbol输入及十个反例，CTest首轮4/5通过277.71秒，失败位于一个
+  错误定义的mutation：箭头中$local1 alias改为词法this仍是原receiver。
+  Ruling：该变体按语义等价验收，不要求拒绝——符合原Goal允许等价局部
+  表示的要求。改用data receiver作真正反例，另增加两种schedule、双
+  实例的等价整图比较；不是生产bug或新增源码匹配/拒绝条件。
+- 最终定向5/5通过286.99秒：新community_ability_graph193.83秒、原
+  community_graph89.89秒、entry_ability_records2.55秒、Logger0.67秒、
+  class_reference_adapter0.05秒。新图104 lifecycle/input场景、330原throw、
+  66换绑、22有效JS mutation及2等价变体；二十view实际render。两个
+  fault baseline各明确三十三语义boundary、五种原throw值；并非every
+  event/every UI API覆盖。新增普通输入含undefined/null/false/零/负零/
+  NaN/正负Infinity/BigInt/Symbol以及原对象coercion，生命周期事件数
+  164325至302533，完整trace/字段/alias/方法状态比较保持。
+- 原96/160/32/12矩阵完整保持；独立Ability2710场景/16 assignment/
+  13 mutation及Logger240 basic/848 paired/14 constructor/27 assignment/
+  12初始化/6 mutation等原证据重新通过。单-j4的abc_structure/abc_semantic
+  构建成功；586项CTest注册且两个graph RUN_SERIAL核对。四个本轮mjs
+  语法与git diff --check通过；没有恢复full suite/RSS/benchmark或重复
+  五ABC六模式三十次导出。日志/tmp/abcd-community-platform-{red,matrix,
+  configure,build,tests}-*.log，原生成功JSON另存verified-1.json。
+- 本图推进实际跨record body/捕获/实例字段/global/signature整合；仍不
+  关闭全部样本/所有body表示、任意prototype字段拦截、真实设备及原结构
+  gate。全面映射/DFX、full suite、扩展语料、RSS/benchmark、生产scheduler、
+  agents和周期audit保持暂停；阶段一Goal仍active。
+
 ### 2026-10-07：真实 MultiCommunity 四十五模块图
 
 - 基线6b9d5c02，production/rules146保持。本轮继续实际record的独立
