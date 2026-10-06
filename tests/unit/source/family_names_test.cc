@@ -1,4 +1,5 @@
 #include "prepared_family.h"
+#include "parameter_names.h"
 #include "abcd/source/module_enclosure.h"
 #include "analysis/ssa_fixture.h"
 
@@ -18,7 +19,7 @@ constexpr std::uint32_t kType = 350, kModuleName = 370, kModuleField = 480;
 constexpr std::uint32_t kCode = 500, kWord = sizeof(std::uint32_t), kByteBits = 8;
 constexpr std::uint32_t kImplicitArguments = 3, kFunctionKindShift = 8;
 
-std::string Source(std::string_view free_name, bool module_read, bool named, bool split = false) {
+std::string Source(std::string_view free_name, bool module_read, bool named, bool split = false, std::string_view formal = {}) {
   std::vector<std::uint8_t> bytes(kCode);
   auto word = [&](std::uint32_t at, std::uint32_t value) {
     for (unsigned i = 0; i < kWord; ++i) bytes[at + i] = static_cast<std::uint8_t>(value >> (kByteBits * i));
@@ -38,6 +39,8 @@ std::string Source(std::string_view free_name, bool module_read, bool named, boo
   bytes[kScope + 3 * kWord + 2] = static_cast<std::uint8_t>(abc::LiteralTag::kInteger);
   word(kScope + 3 * kWord + 3, 0);
   text(kName, free_name);
+  constexpr std::uint32_t kFormal = 70, kLineTable = 64;
+  if (!formal.empty()) text(kFormal, formal);
   if (module_read) {
     constexpr std::uint32_t kRequest = 225, kImported = 235;
     text(kRequest, "dep"); text(kImported, "fn"); text(kModuleName, "moduleRecordIdx");
@@ -72,13 +75,26 @@ std::string Source(std::string_view free_name, bool module_read, bool named, boo
   else child.insert(child.end(), {static_cast<std::uint8_t>(abc::Opcode::kTRYLDGLOBALBYNAME_IMM8_ID16), 0, 3, 0});
   child.insert(child.end(), {static_cast<std::uint8_t>(abc::Opcode::kCALLARG1_IMM8_V8), 0, 1, 0x64});
   const auto child_code = code(child, 2, kImplicitArguments);
+  std::optional<abc::EntityOffset> debug;
+  if (!formal.empty()) {
+    debug = abc::EntityOffset{static_cast<std::uint32_t>(bytes.size())};
+    // Pinned DebugInfo wire: line, parameter entities, pool bytes, program index.
+    bytes.insert(bytes.end(), {1, 1, kFormal, 2, kFormal, kFormal, 0});
+    word(kLineTable, static_cast<std::uint32_t>(bytes.size()));
+    // START_LOCAL(reg) reads name/type entities from the separate pool. Observe
+    // the real ABI parameter at entry; its later copies/blocks remain in code.
+    constexpr std::uint8_t kStartLocal = 3, kEndSequence = 0;
+    bytes.insert(bytes.end(), {kStartLocal, static_cast<std::uint8_t>(outer_registers + kImplicitArguments), kEndSequence});
+  }
   char path[] = "/tmp/abcd-family-names-XXXXXX";
   const auto fd = mkstemp(path); test::Check(fd >= 0);
   test::Check(write(fd, bytes.data(), bytes.size()) == static_cast<ssize_t>(bytes.size()));
   test::Check(close(fd) == 0);
   auto file = std::get<std::unique_ptr<corpus::AbcFile>>(corpus::AbcFile::Open(path));
   abc::Header header; header.kind = abc::AbcKind::kDynamic; header.profile = abc::ProfileId::kDynamic1206;
-  header.version = {12, 0, 6, 0}; header.layout = abc::DynamicLayout{}; header.file_size = bytes.size();
+  header.version = {12, 0, 6, 0};
+  abc::DynamicLayout layout; if (debug) layout.line_number_programs = {1, kLineTable};
+  header.layout = layout; header.file_size = bytes.size();
   abc::MetadataIndex index;
   index.regions.push_back({kRecord, kCode, {module_read ? 1U : 0U, kType}, {4, kPool}, {}, {}});
   abc::RecordInfo record; record.offset = {kRecord}; record.method_count = 3;
@@ -91,6 +107,7 @@ std::string Source(std::string_view free_name, bool module_read, bool named, boo
   for (const auto [entity, body, name] : std::array{
       std::tuple{kCaller, caller, "caller"}, std::tuple{kOuter, outer_code, "outer"}, std::tuple{kChild, child_code, "child"}}) {
     abc::MethodInfo method; method.offset = {entity}; method.owner_offset = record.offset; method.code = body;
+    if (entity == kOuter) method.debug_info = debug;
     method.name = name; method.name_utf16_length = method.name.size();
     method.access_flags = static_cast<std::uint32_t>(abc::FunctionKind::kBaseConstructor) << kFunctionKindShift;
     index.methods.push_back(method);
@@ -106,6 +123,15 @@ std::string Source(std::string_view free_name, bool module_read, bool named, boo
     enclosure.emplace(std::get<ModuleEnclosure>(ModuleEnclosure::Build(*file, header, context, identity, {})));
     globals.module_enclosure = &*enclosure;
   }
+  if (debug) {
+    const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(outer_registers,
+        kImplicitArguments + 1, abc::DecodeCallFlags({})));
+    const auto body = std::get<abc::MethodBody>(abc::DecodeMethodBody(*file, header.profile, outer_code));
+    const auto legacy = RecoverParameterNames(*file, header, index.methods[1], frame, body, analysis::SemanticBudget{}.bytes);
+    if (formal == "ordinary" || formal == "restoredValue")
+      test::Check(std::get<RecoveredParameters>(legacy).names == std::vector<std::string>{std::string(formal)});
+    else test::Check(std::get<ParameterNameError>(legacy) == ParameterNameError::kUnproven);
+  }
   const auto range = sites.Find({kOuter});
   auto prepared = PreparedFamily::PrepareCreated(*file, header, index, lookup, roles, sites, range.first, identity,
       {Strictness::kStrict, &globals});
@@ -120,6 +146,16 @@ std::string Source(std::string_view free_name, bool module_read, bool named, boo
   test::Check(std::holds_alternative<PreparedFamily>(prepared));
   auto family = std::get<PreparedFamily>(std::move(prepared));
   test::Check(family.Family().members.size() == 2);
+  if (!formal.empty()) {
+    const auto& tree = family.Family().members.front().tree;
+    test::Check(tree.parameters.size() == 1);
+    const auto& parameter = tree.symbols[tree.parameters.front().symbol.value];
+    const bool admitted = formal != "eval" && formal != "await" && formal != "bad-name" && formal != free_name;
+    if (admitted) {
+      test::Check(parameter.evidence == NameEvidence::kDebugRange);
+      test::Check(tree.names[parameter.name.value] == std::u16string(formal.begin(), formal.end()));
+    } else test::Check(parameter.evidence == NameEvidence::kSynthesized);
+  }
   // Print the checked family with its actual destination, not a raw tree.
   std::ostringstream output;
   test::Check(std::holds_alternative<PrintedFamilyDraft>(family.PrintDraft({Strictness::kStrict, &globals}, output)));
@@ -167,10 +203,16 @@ void QueryIndex() {
 
 }
 int main(int argc, char** argv) {
+  if (argc == 6) {
+    std::cout << Source(argv[1], std::string_view(argv[2]) == "module", std::string_view(argv[3]) == "named", std::string_view(argv[4]) == "split", argv[5]); return 0;
+  }
   if (argc == 5) {
     std::cout << Source(argv[1], std::string_view(argv[2]) == "module", std::string_view(argv[3]) == "named", std::string_view(argv[4]) == "split"); return 0;
   }
   QueryIndex();
+  for (const auto formal : {"$arg0", "$value0", "$local1", "ClassValue", "MethodSelfValue", "ordinary", "eval", "await", "bad-name", "restoredValue"})
+    for (const auto named : {false, true}) for (const auto module : {false, true})
+      for (const auto split : {false, true}) Source("restoredValue", module, named, split, formal);
   for (const auto name : {"restoredValue", "$arg0", "$local0", "$binding0", "ClassValue", "MethodSelfValue"})
     for (const auto named : {false, true}) for (const auto module : {false, true})
       for (const auto split : {false, true}) Source(name, module, named, split);

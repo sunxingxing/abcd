@@ -70,7 +70,7 @@ std::variant<ResolvedSyntax, SyntaxResolutionFailure> ResolveFunctionSyntax(
     reserve(syntax.parameters, frame.parameters);
     step(frame.parameters); syntax.parameters.resize(frame.parameters);
     if (frame.parameters != 0) {
-      const auto recovered = RecoverParameterNames(file, header, method, frame, body, bytes);
+      const auto recovered = RecoverParameterNames(file, header, method, frame, body, bytes, {}, {}, ParameterNameDomain::kSourceTree);
       if (const auto* error = std::get_if<abc::MetadataError>(&recovered)) {
         if (*error == abc::MetadataError::kResourceLimit || *error == abc::MetadataError::kFileChanged)
           return SyntaxResolutionFailure{*error};

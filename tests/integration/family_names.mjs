@@ -14,7 +14,15 @@ for (const name of ['restoredValue', '$arg0', '$local0', '$binding0', 'ClassValu
       rows.push({name, space, source});
     }
 
-async function load({name, space, source}) {
+const formalRows = [];
+for (const formal of ['$arg0', '$value0', '$local1', 'ClassValue', 'MethodSelfValue', 'ordinary', 'eval', 'await', 'bad-name', 'restoredValue'])
+  for (const space of ['global', 'module']) for (const hint of ['plain', 'named'])
+    for (const layout of ['straight', 'split']) {
+      const result = spawnSync(fixture, ['restoredValue', space, hint, layout, formal], {encoding: 'utf8', timeout: 60000});
+      assert.equal(result.status, 0, result.stderr);
+      formalRows.push({name: 'restoredValue', formal, space, source: result.stdout});
+    }
+async function load({name, space, source, formal}) {
   const trace = [], sentinel = {};
   let stop = null;
   const event = kind => {trace.push(kind); if (stop === kind) throw sentinel;};
@@ -37,6 +45,12 @@ export default (${source});`;
   assert.deepEqual(trace, []);
   const outer = module.namespace.default;
   assert.equal(outer.name, 'outer'); assert.equal(outer.length, 1);
+  if (formal) {
+    const header = outer.toString().split('{', 1)[0];
+    const parameter = header.slice(header.indexOf('(') + 1, header.lastIndexOf(')'));
+    if (['eval', 'await', 'bad-name', name].includes(formal)) assert.notEqual(parameter, formal);
+    else assert.equal(parameter, formal);
+  }
   return {outer, reference: module.namespace.reference, trace, sentinel, setStop(value) {stop = value;}, replace(value) {
     if (space === 'module') dependency.setExport('fn', value);
     else current = value;
@@ -74,7 +88,7 @@ async function exercise(row) {
   loaded.replace(changed);
   for (let i = 0; i < values.length; ++i) {assert.ok(Object.is(children[i]().value, values[i])); ++behaviorCases;}
 }
-for (const row of rows) await exercise(row);
+for (const row of [...rows, ...formalRows]) await exercise(row);
 const verifiedBehaviorCases = behaviorCases;
 
 let mutationChecks = 0;
@@ -91,4 +105,4 @@ for (const row of rows.filter((_, index) => index % 2 === 0)) {
     assert.equal(detected, true); ++mutationChecks;
   }
 }
-console.log(JSON.stringify({decodedFamilies: rows.length, behaviorCases: verifiedBehaviorCases, mutationChecks, wholeRecordBehavior: false}));
+console.log(JSON.stringify({decodedFamilies: rows.length + formalRows.length, formalFixtures: formalRows.length, behaviorCases: verifiedBehaviorCases, mutationChecks, wholeRecordBehavior: false}));

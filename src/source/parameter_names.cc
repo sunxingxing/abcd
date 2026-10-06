@@ -7,6 +7,7 @@
 
 #include "abcd/abc/string_entity.h"
 #include "abcd/source/global_reference.h"
+#include "abcd/source/scalar_expression.h"
 
 namespace abcd::source {
 namespace {
@@ -19,8 +20,12 @@ bool Fatal(abc::MetadataError error) {
          error == abc::MetadataError::kFileChanged ||
          error == abc::MetadataError::kResourceLimit;
 }
-bool ValidName(std::u16string_view name, std::string_view self_binding) {
-  return AllowsGlobalReference(name, {{}, self_binding, {}});
+bool ValidName(std::u16string_view name, std::string_view self_binding, ParameterNameDomain domain) {
+  switch (domain) {
+    case ParameterNameDomain::kLegacyWriter: return AllowsGlobalReference(name, {{}, self_binding, {}});
+    case ParameterNameDomain::kSourceTree: return IsSourceIdentifier(name);
+  }
+  return false;
 }
 }  // namespace
 
@@ -34,7 +39,7 @@ ParameterNameResult RecoverParameterNames(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MethodInfo& method, const abc::FrameLayout& frame,
     const abc::MethodBody& body, std::size_t bytes,
-    abc::StringBudget strings, std::string_view self_binding) {
+    abc::StringBudget strings, std::string_view self_binding, ParameterNameDomain domain) {
   using Error = ParameterNameError;
   try {
     if (!method.debug_info || !method.code || frame.parameters == 0)
@@ -88,7 +93,7 @@ ParameterNameResult RecoverParameterNames(
         return Fatal(*error) ? ParameterNameResult{*error}
                              : ParameterNameResult{Error::kUnproven};
       const auto& name = std::get<std::u16string>(parsed);
-      if (!ValidName(name, self_binding)) return Error::kUnproven;
+      if (!ValidName(name, self_binding, domain)) return Error::kUnproven;
       const auto transient = name.capacity() * sizeof(char16_t);
       if (transient > bytes || name.size() > bytes - transient)
         return Error::kResourceLimit;

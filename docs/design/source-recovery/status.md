@@ -12,6 +12,44 @@
 
 ## 当前阶段
 
+### 2026-10-06：共同 tree 接受合法 debug 参数名
+
+- 基线8f2f56cb，规则revision133。RecoverParameterNames新增私有typed
+  ParameterNameDomain；共同ResolveFunctionSyntax选择SourceTree域，使用
+  已有IsSourceIdentifier。legacy默认仍保留其私有namespace限制。
+  已证明entry身份的$arg0/$value0/$local1/ClassValue/MethodSelfValue等
+  合法formal不再因旧writer命名约定丢失。原debug boundary、稀疏SSA
+  copy/phi来源、duplicates、预算及真实scope/ABI/effect校验保持；真实
+  descendant global/module冲突仍由共同NameReservations规划合成名。
+  reserved/非法identifier保持合成名，不新增同块/指令序列/样本准入。
+- family_names真实编码DebugInfo/DebugScopes新增80个formal fixture，
+  覆盖十种hint、global/module、named/plain和straight/split组合；共
+  128 decoded families通过2752行为检查与原48个有效JS mutation。
+  检查debug evidence及实际输出formal、identity/name/arity、live callee、
+  receiver、getter/原异常，并在同一实际metadata/frame上另验legacy域。
+  RED在debug evidence断言失败，production修复后GREEN。ABC-only生成
+  及独立native oracle边界保持；这不是全record/platform验收。
+- final-build-1单次-j4重建14 targets退出0；final-tests-1定向22/22
+  通过32.48秒，包含名字/来源、family/class/record、语言构造、完整模型、
+  Push Ability/VoIP及module init。首次tests-1中两个legacy测试失败：
+  created_function_test.cc:183、created_class_test.cc:132。保存本轮四个
+  production文件，临时使用精确HEAD8f2f56cb内容重建并复测，二者同位置
+  失败；恢复本轮内容后完成最终重建。这是已核实baseline失败，不能计为
+  本轮通过，也不将22项定向通过描述为全套通过。日志
+  /tmp/abcd-tree-formal-names-{red,baseline,final}-{build,tests}-1.log。
+- 固定五ABC/六模式30次导出全数退出0，每模式106份完整/明确partial
+  source可解析，输入SHA/size匹配index，legacy_writer_used=0；相对
+  family-names-pass-1无source字节变化、无完整性回退或新增完整记录。
+  complete/incomplete依次为default80/26、language95/11、numeric96/10、
+  constructors88/18、arithmetic-constructors105/1、numeric-constructors106/0；
+  每模式另有46项无module source。本轮扩展通用合法命名接受范围，
+  不声称现有paired corpus覆盖增加。输出build/stage-one/tree-formal-names-*，
+  日志/tmp/abcd-tree-formal-names-batch-1.log。测试注册保持563。
+- 无新算法/dependency、全套、expanded corpus、agents、RSS/benchmark或
+  scheduler/DFX。ASCII identifier范围、未证实完整formal metadata、类型/
+  rest/default签名及真实外部scope义务仍有边界；结构gate与阶段一Goal
+  继续开放。详见[参数命名](parameter-names.md)与恢复条件审计。
+
 
 ### 2026-10-06：完整 Push Ability 与 VoIP 模块图配对验收
 

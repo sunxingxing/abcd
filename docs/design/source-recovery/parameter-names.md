@@ -6,6 +6,28 @@ comes from the actual original parameter slot at method entry. The same resolver
 serves normal/phased families, class methods and the older callable adapters.
 It does not recover parameter types from debug strings or read paired source.
 
+## Identifier domains (rules 133)
+
+The private typed ParameterNameDomain separates the legacy writer's reserved
+textual namespace from the common tree's source identifier domain. The shared
+ResolveFunctionSyntax selects the existing IsSourceIdentifier predicate; older
+callers retain the legacy default. Legal dollar names and ClassValue/MethodSelf
+prefixes can therefore retain actual debug-backed formal names. These prefixes
+are writer conventions, not language restrictions. Reserved words and invalid
+identifiers remain rejected by the source predicate. The common family reference
+planner still avoids real descendant global/module shadowing, and original
+scope, enclosure, ABI, entry identity and duplicate-name obligations remain.
+
+Eighty additional encoded DebugInfo/DebugScopes fixtures vary ten formal hints,
+global/module reads, named/plain creation and straight/split control. The total
+128 families pass 2752 independent behavior checks and the existing 48 valid-JS
+mutations. Tests verify original metadata evidence, generated formal spelling,
+real free-reference conflicts and the legacy default on the same decoded input.
+The domain switch adds no algorithm, dependency or new asymptotic cost. The
+existing restricted ASCII identifier set remains; Unicode expansion, missing
+formal evidence, types, rest/default syntax and whole-record acceptance are
+separate open work. No paired source supplies production naming facts.
+
 Every valid register debug-range start becomes an analysis-only observation
 before that original instruction. Normal CFG validation, pinned semantic lifting
 and exception dispatch supply the Before/Commit/Catch topology. Queries have no

@@ -1,5 +1,14 @@
 # 按用户要求进行的恢复条件审计
 
+规则133补充：真实debug formal的命名adapter显式区分legacy writer与
+共同SourceTree域。已有source identifier规则允许$及旧私有prefix名字，
+不把writer namespace当成语言不变量；reserved/非法名字仍拒绝。真实
+entry来源、scope/ABI、duplicates与资源义务保持，descendant global/module
+冲突使用既有共同引用命名规划。80个新增真实metadata fixture覆盖
+straight/split等价变化及不利名字/真实shadow；不增加opcode、PC/register、
+body producer、同块或样本匹配。legacy默认限制保留在隔离adapter，
+完整签名及Unicode等表示边界仍是工程覆盖缺口。
+
 规则132补充：family在命名前一次准备共同syntax/module aliases，以live
 ValueGlobalRead和实际module alias建立name/owner排序索引。真实incoming
 父子边与preorder occurrence区间限定查询；metadata局部/formal偏好及

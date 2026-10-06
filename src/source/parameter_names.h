@@ -14,6 +14,9 @@ struct RecoveredParameters {
   std::vector<std::string> names;
   [[nodiscard]] std::size_t AllocatedBytes() const;
 };
+// Legacy writers reserve private textual namespaces. SourceTree owns generated
+// bindings and proves actual shadowing; those exclusions are not JS syntax.
+enum class ParameterNameDomain { kLegacyWriter, kSourceTree };
 enum class ParameterNameError { kUnproven, kResourceLimit };
 using ParameterOffsets = std::vector<abc::EntityOffset>;
 using ParameterOffsetResult =
@@ -32,6 +35,7 @@ using ParameterNameResult =
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MethodInfo& method, const abc::FrameLayout& frame,
     const abc::MethodBody& body, std::size_t bytes,
-    abc::StringBudget strings = {}, std::string_view self_binding = {});
+    abc::StringBudget strings = {}, std::string_view self_binding = {},
+    ParameterNameDomain domain = ParameterNameDomain::kLegacyWriter);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_PARAMETER_NAMES_H_
