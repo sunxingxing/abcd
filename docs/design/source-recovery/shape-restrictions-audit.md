@@ -1,5 +1,17 @@
 # 按用户要求进行的恢复条件审计
 
+规则139补充：RecordTree移除后续arm/loop module assignment要求初次声明
+位于物理block 0的限制。共同ControlPlan仍拥有native声明位置；每slot保存
+其真实首次声明OpId，需要时只运行一次当前ValueProgram的VerifyValueFlow。
+同块operation order／跨块dominator证明原声明已完成，source tree-flow仍核对
+具体scope、module target和store来源。没有额外入口块、邻接、opcode序列、
+固定register/PC、producer/count或样本条件；也不通过移除scope/TDZ、身份、
+effects/exception证明来扩大覆盖。条件首次初始化和此前write仍属于未贯通
+的native declaration/lifetime表示，不能误称语言不允许；catch需要自己的
+successful-Commit证明。本次三profile实际汇合、loop、register重分配及
+1/200/201/400/800 split的54 ESM/57 mutation/6 refusal覆盖边界，完整record
+独立验收与阶段一仍需各自证据，详见status.md。
+
 规则138补充：SourceTree 移除“所有 formal 都有 debug 名称才保留任意名称”
 的表示限制。ParameterOffsets / RecoveredParameters 逐 ABI ordinal 使用 typed
 absence，真实原始 SSA/Before/Commit/Catch、copy/phi/SCC 仍证明名字关联；

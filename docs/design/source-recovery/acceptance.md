@@ -100,6 +100,19 @@ DefineField仍不作为固定Ark setter语义oracle。这是两个实际record�
 直接模块链的受控验收，不能关闭整个应用或原完整结构gate。相关10/10
 定向回归与剩余边界见status.md。
 
+2026-10-06规则139模块lifetime补充：native声明后的arm/loop assignment
+改用共同VerifyValueFlow的fresh dominator与operation order证明已初始化，
+移除物理入口块限制，原root declaration ownership/scope/module/capture/
+TDZ/origin保持。三profile真实join/loop/register重分配和1/200/201/400/
+800 pure split共54独立ESM场景、57 valid-syntax mutation通过，6个提前
+write/条件首次初始化refusal保留。这些后两类仍是native declaration表示
+缺口，不是语言禁止条件初始化的结论；catch不由normal flow授权。
+
+最终21/21定向回归通过，当前固定五ABC六模式30次导出/hash/106份语法
+检查通过；各模式source bytes及212份位置JSON与此前partial-formals输出
+完全相同，完整数量不变，无legacy/完整回退。本次证明通用布局变化不需
+新恢复匹配，不证明任何剩余整record或阶段一已完成，细节见status.md。
+
 ## 1. 四种状态，不混报完成
 
 | 状态 | 意义 | 可否称 gate 通过 |

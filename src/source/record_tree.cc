@@ -14,6 +14,7 @@
 #include "module_aliases.h"
 #include "module_default_export.h"
 #include "module_binding_name.h"
+#include "../analysis/value_flow.h"
 #include "abcd/source/module_enclosure.h"
 #include "tree_constants.h"
 #include "tree_globals.h"
@@ -297,18 +298,18 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
           alias.name.value >= bindings->names.size() ||
           names[slot] != bindings->names[alias.name.value]) return fail(Error::kModule);
     }
-    retain(slots->slot_count());
-    std::vector<bool> initialized(slots->slot_count());
-    retain(slots->slot_count());
-    std::vector<std::uint8_t> entry_initialized(slots->slot_count());
-    retain(entry_initialized.capacity() - entry_initialized.size());
+    if (slots->slot_count() > budget.bytes / sizeof(std::optional<analysis::OpId>))
+      return fail(Error::kResourceLimit);
+    retain(slots->slot_count() * sizeof(std::optional<analysis::OpId>));
+    std::vector<std::optional<analysis::OpId>> initializers(slots->slot_count());
+    retain((initializers.capacity() - initializers.size()) * sizeof(initializers.front()));
     std::size_t stores = 0, placed = 0;
     for (const auto& op : graph.ops)
       if (op.life == analysis::ValueLife::kLive &&
           std::holds_alternative<analysis::ValueModuleWrite>(op.operation)) ++stores;
     // Only the root control sequence owns native record declarations. Branch
-    // joins may precede them. Arm/loop writes of a binding initialized on
-    // entry remain assignments, never new declarations or hoisted stores.
+    // joins may precede them. Subsequent arm/loop writes remain assignments,
+    // never new declarations or hoisted stores.
     // Traverse source order, not physical SSA block numbering, for first-store
     // identity. Existing tree-flow checks revalidate root declaration placement.
     for (std::optional<ControlId> at = control->entry; at; at = control->nodes[at->value].next) {
@@ -319,31 +320,49 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
         const auto& op = graph.ops[i];
         if (op.life != analysis::ValueLife::kLive) continue;
         if (const auto* store = std::get_if<analysis::ValueModuleWrite>(&op.operation)) {
-          if (store->slot.value >= initialized.size()) return fail(Error::kExport);
+          if (store->slot.value >= initializers.size()) return fail(Error::kExport);
           constants->operations[i] = ModuleStoreConstant{store->slot,
-              {owner, {static_cast<std::uint32_t>(external + store->slot.value)}}, !initialized[store->slot.value]};
-          if (!initialized[store->slot.value] && node.block.value == 0)
-            entry_initialized[store->slot.value] = 1;
-          initialized[store->slot.value] = true; ++placed;
+              {owner, {static_cast<std::uint32_t>(external + store->slot.value)}}, !initializers[store->slot.value]};
+          if (!initializers[store->slot.value]) initializers[store->slot.value] = analysis::OpId{static_cast<std::uint32_t>(i)};
+          ++placed;
         }
       }
     }
-    // Reuse the root's native module binding only after its completed entry
-    // declaration. This avoids a per-write dominance traversal and retains
-    // conservative refusal for conditional first initialization / future lets.
+    // A native declaration must have completed on every normal path to an
+    // assignment. Use one fresh shared dominance proof, then O(1) queries per
+    // write; physical entry/same-block placement is not an admission rule.
+    // This normal-only route does not authorize catch or conditional first
+    // initialization. Root declaration placement is checked by tree flow.
+    std::optional<analysis::ValueFlowProof> initialization_flow;
+    if (placed != stores) {
+      auto checked = analysis::VerifyValueFlow(graph, {budget.bytes});
+      if (const auto* error = std::get_if<analysis::ValueAvailabilityError>(&checked)) {
+        if (*error == analysis::ValueAvailabilityError::kResourceLimit) return fail(Error::kResourceLimit);
+        if (*error == analysis::ValueAvailabilityError::kWorkLimit)
+          return RouteRefusal{{RouteFailureClass::kWorkLimit, ValueRouteError::kContextStage, {}}};
+        return fail(Error::kValue);
+      }
+      initialization_flow.emplace(std::get<analysis::ValueFlowProof>(std::move(checked)));
+      retain(initialization_flow->allocated_bytes);
+    }
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       const auto& op = graph.ops[i];
       if (op.life != analysis::ValueLife::kLive) continue;
       const auto* store = std::get_if<analysis::ValueModuleWrite>(&op.operation);
       if (!store || std::holds_alternative<ModuleStoreConstant>(constants->operations[i])) continue;
-      if (store->slot.value >= initialized.size()) return fail(Error::kExport);
-      if (!entry_initialized[store->slot.value]) return fail(Error::kInitializer);
+      if (store->slot.value >= initializers.size()) return fail(Error::kExport);
+      const auto initialized = initializers[store->slot.value];
+      if (!initialized || !initialization_flow) return fail(Error::kInitializer);
+      const auto& declaration = graph.ops[initialized->value];
+      if (declaration.block == op.block ? declaration.order >= op.order :
+          !initialization_flow->dominators.Dominates({declaration.block.value}, {op.block.value}))
+        return fail(Error::kInitializer);
       constants->operations[i] = ModuleStoreConstant{store->slot,
           {owner, {static_cast<std::uint32_t>(external + store->slot.value)}}, false};
       ++placed;
     }
     if (placed != stores) return fail(Error::kInitializer);
-    if (std::find(initialized.begin(), initialized.end(), false) != initialized.end())
+    if (std::find(initializers.begin(), initializers.end(), std::nullopt) != initializers.end())
       return fail(Error::kInitializer);
     const auto children = family ? std::span<const FunctionBinding>(family->members.front().children) : std::span<const FunctionBinding>{};
     const auto* cells = family ? family->members.front().function.Cells() : nullptr;

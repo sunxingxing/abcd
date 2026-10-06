@@ -27,6 +27,13 @@ void String(std::vector<std::uint8_t>& bytes, std::size_t offset,
   bytes[offset++] = static_cast<std::uint8_t>(value.size() * 2 + 1);
   std::copy(value.begin(), value.end(), bytes.begin() + offset);
 }
+void Uleb(std::vector<std::uint8_t>& bytes, std::uint32_t value) {
+  do {
+    auto byte = static_cast<std::uint8_t>(value & 0x7f);
+    value >>= 7;
+    bytes.push_back(byte | (value ? 0x80 : 0));
+  } while (value);
+}
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -40,6 +47,11 @@ int main(int argc, char** argv) {
   String(bytes, 90, "isCommonjs");
   const std::string_view mode = argc > 1 ? argv[1] : "";
   const bool stored_branch = mode.starts_with("stored-branch");
+  const bool joined = mode.starts_with("joined-");
+  const bool joined_loop = mode.starts_with("joined-loop");
+  const bool joined_copy = mode.starts_with("joined-copy");
+  const bool split = mode.starts_with("split-");
+  const std::uint8_t initial = mode.ends_with("zero") ? 0 : 1;
   const bool anonymous = mode.starts_with("anonymous");
   const bool named_default = mode == "named-default";
   String(bytes, kRequest, anonymous || named_default ? "default" : "answer");
@@ -81,9 +93,38 @@ int main(int argc, char** argv) {
     if (mode == "branch-before-root") body.insert(body.end(), {0x62, 42, 0, 0, 0, 0x7c, 0});
     body.push_back(0x65);
   }
-  bytes[596] = static_cast<std::uint8_t>(registers);
-  bytes[597] = 3; bytes[598] = static_cast<std::uint8_t>(body.size());
-  std::copy(body.begin(), body.end(), bytes.begin() + 600);
+  if (joined || split) {
+    // Pinned dynamic ISA: LD(A)I, JEQZ/JMP, STA/LDA, STM/LDLOCALMODULEVAR.
+    // The first native declaration follows a real join or pure block splits;
+    // these layouts have the same initialized-module lifetime as entry stores.
+    body = {0x62, initial, 0, 0, 0, 0x7c, 0};
+    if (joined) {
+      const std::uint8_t reg = joined_copy ? 5 : 0;
+      std::vector<std::uint8_t> prefix{0x62, 1, 0, 0, 0, 0x4f, 11,
+          0x62, initial, 0, 0, 0, 0x61, reg, 0x4d, 9,
+          0x62, initial, 0, 0, 0, 0x61, reg, 0x60, reg, 0x7c, 0};
+      body = std::move(prefix); registers = reg + 1;
+    } else {
+      const auto count = argc > 3 ? std::stoul(argv[3]) : 1;
+      Check(count <= 800);
+      std::vector<std::uint8_t> prefix;
+      for (std::size_t i = 0; i < count; ++i) prefix.insert(prefix.end(), {0x4d, 2});
+      body.insert(body.begin(), prefix.begin(), prefix.end());
+    }
+    if (joined_loop) body.insert(body.end(), {0x7d, 0, 0x4f, 11,
+        0x62, 0, 0, 0, 0, 0x7c, 0, 0x4d, 245, 0x65});
+    else body.insert(body.end(), {0x7d, 0, 0x4f, 11,
+        0x62, 7, 0, 0, 0, 0x7c, 0, 0x4d, 9,
+        0x62, 9, 0, 0, 0, 0x7c, 0, 0x65});
+  }
+  constexpr std::uint32_t kCode = 596;
+  std::vector<std::uint8_t> code;
+  Uleb(code, registers); Uleb(code, 3); Uleb(code, static_cast<std::uint32_t>(body.size()));
+  Uleb(code, 0); // No try blocks in this ordinary module-entry fixture.
+  const auto body_offset = kCode + static_cast<std::uint32_t>(code.size());
+  bytes.resize(std::max<std::size_t>(bytes.size(), body_offset + body.size()));
+  std::copy(code.begin(), code.end(), bytes.begin() + kCode);
+  std::copy(body.begin(), body.end(), bytes.begin() + body_offset);
   char path[] = "/tmp/abcd-record-module-XXXXXX";
   const int fd = mkstemp(path);
   Check(fd >= 0);
@@ -118,7 +159,7 @@ int main(int argc, char** argv) {
   abc::MethodInfo entry;
   entry.offset = {320}; entry.owner_offset = record.offset;
   entry.name = "func_main_0"; entry.name_utf16_length = entry.name.size();
-  entry.code = abc::CodeInfo{{596}, {600}, registers, 3, static_cast<std::uint32_t>(body.size()), 0};
+  entry.code = abc::CodeInfo{{kCode}, {body_offset}, registers, 3, static_cast<std::uint32_t>(body.size()), 0};
   index.methods.push_back(entry); index.records.push_back(record);
   const auto context = std::get<source::RecordModuleContext>(read());
   const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
@@ -137,7 +178,12 @@ int main(int argc, char** argv) {
     std::cerr << "variant " << result.index() << '\n'; return 1;
   }
   const auto& source = std::get<source::PrintedSource>(result).text;
-  if (stored_branch) {
+  if (joined || split) {
+    Check(source.find("let answer = ") != std::string::npos);
+    Check(source.find(joined_loop ? "while (" : "if (") != std::string::npos);
+    if (!joined_loop) Check(source.find("(answer = 7)") != std::string::npos &&
+        source.find("(answer = 9)") != std::string::npos);
+  } else if (stored_branch) {
     Check(source.find(mode == "stored-branch-zero" ? "let answer = 0;" : "let answer = 1;") != std::string::npos);
     Check(source.find("if (") != std::string::npos);
     Check(source.find("(answer = 7)") != std::string::npos && source.find("(answer = 9)") != std::string::npos);

@@ -21,6 +21,28 @@ Printer 处理节点、名字、括号、转义、标签、注释和已有输出
 模式，不补推 CFG、finally 或闭包，不调用专项 body writer。无原名可用合成名，
 无独立 PC 的结构节点保留结构来源；不补造原名、类型、PC 或可执行占位行为。
 
+## 模块声明后的分支／循环赋值（规则 139）
+
+RecordTree仍由共同ControlPlan的根source序列决定native模块声明位置；
+实际ModuleStoreConstant、module owner/slot、作用域、初始化和origin义务保持。
+删除“声明必须在物理block 0才允许后续arm/loop写入”的表示限制。
+每个模块槽保留实际首次声明OpId；需要处理根序列以外的写入时，对当前
+正常ValueProgram运行一次共同VerifyValueFlow，复用其新鲜dominator索引。
+同一块用真实operation order证明先完成声明，不同块用dominance证明所有
+正常路径已完成声明；这两者是事件可用性查询，不是同块准入条件。
+
+不移动初次store、RHS、后续assignment或效果，不改变ModuleAccess、binding
+身份、名字、class/capture/TDZ证明。条件首次初始化、声明前写入与当前源树
+不能表示的module lifetime仍明确拒绝完整输出；root-only native declaration
+placement是实现边界，不是“语言禁止条件初始化”。这个normal-only桥不授权
+exception/catch可用性。已有tree-flow/source scope检查重新核对具体声明
+位置、操作数及原store来源，不能以该dominator结果代替它们。
+
+每槽typed absence/OpId数组按实际capacity计入内存，共同availability scratch
+及dominator peak保守计入原budget；不按槽或写入重走CFG。三profile的汇合/
+loop、寄存器重分配及1/200/201/400/800纯split用实际解码、ESM结果、valid
+JS mutations与提前初始化反例验收。此能力不恢复源级const/private/type。
+
 ## 逐参数保留真实 debug 名称（规则 138）
 
 共同 ParameterOrigins 仍在原始 Before/Commit/Catch 图上观察 debug range 的

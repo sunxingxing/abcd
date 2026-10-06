@@ -12,6 +12,45 @@
 
 ## 当前阶段
 
+### 2026-10-06：模块初始化以共同 dominance 取代入口块限制
+
+- 基线eb612ad3，生产规则139。RecordTree的旧entry_initialized只在物理
+  block 0首次store时置位，因而把汇合后的native声明及纯split后的同等
+  声明拒绝在后续arm/loop使用。本次用每slot实际首次声明OpId取代该bitmap；
+  需要处理额外write时，只运行一次当前ValueProgram的共同VerifyValueFlow。
+  同块真实operation order／跨块dominator证明声明已在所有正常路径完成，
+  后续write继续使用同一module owner/slot和native source binding。
+- 没有移动初次store、RHS或后续assignment，没有新opcode/name/sample/
+  PC/register/图形匹配。原ControlPlan根source序列仍决定声明的语法位置，
+  common tree-flow/scope/module/capture/TDZ及origin检查保持。条件首次
+  初始化、声明前write和catch均未凭normal dominance放宽；root-only
+  declaration placement是尚未贯通的表示边界，不称语言不变量。
+- 可用性索引只构建一次，每额外write O(1)查询，不按slot/write重走CFG；
+  typed absence/OpId向量的实际capacity、共同availability scratch和dominator
+  peak计入原budget，分配前检查乘法/容量边界。算法来源与复杂度见
+  algorithms.md；没有新依赖/公开API、默认work准入或RSS/benchmark声明。
+- record_tree_test新增真实编码join、loop、register重分配及1/200/201/
+  400/800 pure split；CodeItem header改为真实ULEB字段，避免较长body截断。
+  先在旧生产代码下构建fixture，四类red case均为kInitializer，记录于
+  /tmp/abcd-module-dominance-red-cases-1.log。当前三profile独立实际ESM
+  共54场景/57 valid-syntax mutation通过，6个提前write/conditional-first
+  refusal保留；module namespace TDZ、完整exports和实际结果均核对。
+- 单一-j4最终构建actual engine及相关10个unit/input targets退出0，所有
+  build handle关闭后最终21/21 CTest通过21.29秒；包括module initialized
+  read/aliases/enclosure、default/anonymous/family、function tree/partial和
+  实际ViewModel、CardArray/真实CardItem/CommentItem、barrel/constants。
+  日志/tmp/abcd-module-dominance-final-build-1.log、final-tests-1.log。
+- 当前固定五ABC/六模式30次正式ABC-only导出退出0；输入hash/size与index
+  一致，各模式106份完整/明确partial源码语法通过，无完整回退、新legacy
+  或source bytes变化。每模式212份entry/method位置JSON也逐字不变。
+  完整/partial仍80/26、95/11、96/10、88/18、105/1、106/0，各另46个
+  no-module。产物build/stage-one/module-dominance-<mode>-pass-1，summary/
+  export/batch日志在/tmp/abcd-module-dominance-*；CTest仍565。
+- 本次交付通用module lifetime能力，实际固定样本完整数量未增加；不以
+  fixture或106/0替代整record独立语义/表示和原结构gate。阶段一Goal继续
+  active，const/完整绑定写入、其余record及结构集成仍开放；全套、expanded
+  corpus、RSS/benchmark、agents、scheduler/DFX与周期审计继续暂停。
+
 ### 2026-10-06：TabBar 全局字面量与实例字段的真实模块链验收
 
 - 基线0729996f，生产规则仍138。viewmodel_batch_source_test先以当前

@@ -5,6 +5,27 @@
 
 ## 输入规模与成本
 
+### Native 模块声明的后续写入可用性（2026-10-06）
+
+规则139的RecordTree按共同ControlPlan的根source序列记录每个module slot
+实际首次声明OpId；后续非根序列write由新鲜VerifyValueFlow的正常dominator
+和operation order证明声明已完成。删除physical block 0准入，不移动store/
+RHS或扩大scope；tree flow、module/capture身份、TDZ及原来源验证仍独立。
+conditional first initialization/native declaration placement和catch保持其
+明确表示边界，不能借normal dominance输出错误的初始化时机。
+
+来源是已有值流校验及simple Lengauer-Tarjan dominator实现；没有新第三方
+代码、依赖或许可变化。S/B/E/O/V/U/P分别为module槽、块、边、操作、值、
+用途、phi输入数；本次新增索引/遍历O(S+B+O)，每个额外write查询O(1)。
+只在有额外write时运行一次共同availability，成本O(O+V+U+P log(P+1)+
+(B+E) log(B+1))，不按槽/write反复遍历CFG。typed absence/OpId向量实际
+capacity、availability临时数组和dominator保守peak沿原budget计入。
+
+三profile的join/loop/register重分配、1/200/201/400/800 split已以真实
+ABC解码及独立ESM结果/变造/拒绝验证；本次不引入200项阈值，也不新增
+默认work准入。完整进程RSS与独立性能benchmark仍暂停，不据这些功能
+fixtures宣称实测1GB/延迟达标。实际固定五输入回归证据见status.md。
+
 ### 固定自身 class prototype 读取的 SSA 身份（2026-10-04）
 
 规则97先新鲜验证availability/uses，再复用AnalyzeValueIdentities的
