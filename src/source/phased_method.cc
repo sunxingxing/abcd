@@ -125,6 +125,9 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure> PhasedBody::Buil
       case SourceContract::kLanguageAndHostV1: return Error::kContract;
       case SourceContract::kLanguageAndHostV2:
       case SourceContract::kLanguageAndHostV3:
+      case SourceContract::kLanguageConstructorsV1:
+      case SourceContract::kLanguageArithmeticConstructorsV1:
+      case SourceContract::kLanguageNumericConstructorsV1:
       case SourceContract::kLanguageNumericV1:
       case SourceContract::kLanguageArithmeticV1: break;
       default: return Error::kContract;

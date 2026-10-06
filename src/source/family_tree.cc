@@ -162,6 +162,7 @@ class FamilyTrees {
       }
       auto constants = syntax.View();
       constants.receiver_guards = guards;
+      if (derived) constants.derived_constructor = &function.Normal();
       if (derived && derived->implicit) constants.implicit_constructor = &function.Normal();
       auto constructed = [&]() -> ConstructedFunction {
         if (phase) {

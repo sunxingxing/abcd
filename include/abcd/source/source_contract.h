@@ -9,8 +9,10 @@
 
 namespace abcd::source {
 enum class SourceContract : std::uint8_t {
-  kLanguageAndHostV1, kLanguageAndHostV2, kLanguageAndHostV3, kLanguageArithmeticV1, kLanguageNumericV1
+  kLanguageAndHostV1, kLanguageAndHostV2, kLanguageAndHostV3, kLanguageArithmeticV1, kLanguageNumericV1,
+  kLanguageConstructorsV1, kLanguageArithmeticConstructorsV1, kLanguageNumericConstructorsV1
 };
+enum class ConstructorSemantics : std::uint8_t { kPinnedRuntime, kSourceLanguage };
 enum class RealmBindingPolicy : std::uint8_t { kExplicitHost, kStableGlobalThis };
 enum class ResourceFailureScope : std::uint8_t { kObservable, kExcluded };
 enum class CallableTextPolicy : std::uint8_t { kUnspecified, kRecovered };
@@ -35,11 +37,42 @@ constexpr analysis::ArithmeticSemantics Arithmetic(SourceContract contract) {
     case SourceContract::kLanguageAndHostV1:
     case SourceContract::kLanguageAndHostV2:
     case SourceContract::kLanguageAndHostV3:
+    case SourceContract::kLanguageConstructorsV1:
       return analysis::ArithmeticSemantics::kPinnedRuntime;
     case SourceContract::kLanguageNumericV1:
+    case SourceContract::kLanguageNumericConstructorsV1:
       return analysis::ArithmeticSemantics::kSourceNumeric;
     case SourceContract::kLanguageArithmeticV1:
+    case SourceContract::kLanguageArithmeticConstructorsV1:
       return analysis::ArithmeticSemantics::kSourceLanguage;
+  }
+  std::terminate();
+}
+// Explicit user-approved language super semantics, independent of arithmetic.
+// No assumption about lifetime parent brand; current parent/newTarget are native.
+constexpr ConstructorSemantics Constructors(SourceContract contract) {
+  switch (contract) {
+    case SourceContract::kLanguageAndHostV1:
+    case SourceContract::kLanguageAndHostV2:
+    case SourceContract::kLanguageAndHostV3:
+    case SourceContract::kLanguageArithmeticV1:
+    case SourceContract::kLanguageNumericV1: return ConstructorSemantics::kPinnedRuntime;
+    case SourceContract::kLanguageConstructorsV1:
+    case SourceContract::kLanguageArithmeticConstructorsV1:
+    case SourceContract::kLanguageNumericConstructorsV1: return ConstructorSemantics::kSourceLanguage;
+  }
+  std::terminate();
+}
+constexpr SourceContract WithLanguageConstructors(SourceContract contract) {
+  switch (contract) {
+    case SourceContract::kLanguageAndHostV3: return SourceContract::kLanguageConstructorsV1;
+    case SourceContract::kLanguageArithmeticV1: return SourceContract::kLanguageArithmeticConstructorsV1;
+    case SourceContract::kLanguageNumericV1: return SourceContract::kLanguageNumericConstructorsV1;
+    case SourceContract::kLanguageConstructorsV1:
+    case SourceContract::kLanguageArithmeticConstructorsV1:
+    case SourceContract::kLanguageNumericConstructorsV1: return contract;
+    case SourceContract::kLanguageAndHostV1:
+    case SourceContract::kLanguageAndHostV2: std::terminate(); // Historical host profiles cannot opt in.
   }
   std::terminate();
 }
@@ -47,6 +80,9 @@ constexpr analysis::PendingExceptionValues PendingExceptions(SourceContract cont
   switch (contract) {
     case SourceContract::kLanguageAndHostV1:
     case SourceContract::kLanguageAndHostV2:
+    case SourceContract::kLanguageConstructorsV1:
+    case SourceContract::kLanguageArithmeticConstructorsV1:
+    case SourceContract::kLanguageNumericConstructorsV1:
     case SourceContract::kLanguageNumericV1:
     case SourceContract::kLanguageArithmeticV1:
     case SourceContract::kLanguageAndHostV3:
@@ -58,6 +94,9 @@ constexpr analysis::CallResultValues NormalCallResults(SourceContract contract) 
   switch (contract) {
     case SourceContract::kLanguageAndHostV1: return analysis::CallResultValues::kUnknown;
     case SourceContract::kLanguageAndHostV2: return analysis::CallResultValues::kLanguage;
+    case SourceContract::kLanguageConstructorsV1:
+    case SourceContract::kLanguageArithmeticConstructorsV1:
+    case SourceContract::kLanguageNumericConstructorsV1:
     case SourceContract::kLanguageNumericV1:
     case SourceContract::kLanguageArithmeticV1:
     case SourceContract::kLanguageAndHostV3: return analysis::CallResultValues::kLanguage;
@@ -68,6 +107,9 @@ constexpr RealmBindingPolicy RealmBinding(SourceContract contract) {
   switch (contract) {
     case SourceContract::kLanguageAndHostV1: return RealmBindingPolicy::kExplicitHost;
     case SourceContract::kLanguageAndHostV2: return RealmBindingPolicy::kStableGlobalThis;
+    case SourceContract::kLanguageConstructorsV1:
+    case SourceContract::kLanguageArithmeticConstructorsV1:
+    case SourceContract::kLanguageNumericConstructorsV1:
     case SourceContract::kLanguageNumericV1:
     case SourceContract::kLanguageArithmeticV1:
     case SourceContract::kLanguageAndHostV3: return RealmBindingPolicy::kStableGlobalThis;
@@ -78,6 +120,9 @@ constexpr ResourceFailureScope ResourceFailures(SourceContract contract) {
   switch (contract) {
     case SourceContract::kLanguageAndHostV1: return ResourceFailureScope::kObservable;
     case SourceContract::kLanguageAndHostV2: return ResourceFailureScope::kExcluded;
+    case SourceContract::kLanguageConstructorsV1:
+    case SourceContract::kLanguageArithmeticConstructorsV1:
+    case SourceContract::kLanguageNumericConstructorsV1:
     case SourceContract::kLanguageNumericV1:
     case SourceContract::kLanguageArithmeticV1:
     case SourceContract::kLanguageAndHostV3: return ResourceFailureScope::kExcluded;
@@ -89,6 +134,9 @@ constexpr CallableTextPolicy CallableText(SourceContract contract) {
     case SourceContract::kLanguageAndHostV1:
     case SourceContract::kLanguageAndHostV2:
       return CallableTextPolicy::kUnspecified;
+    case SourceContract::kLanguageConstructorsV1:
+    case SourceContract::kLanguageArithmeticConstructorsV1:
+    case SourceContract::kLanguageNumericConstructorsV1:
     case SourceContract::kLanguageNumericV1:
     case SourceContract::kLanguageArithmeticV1:
     case SourceContract::kLanguageAndHostV3:
@@ -102,6 +150,9 @@ constexpr std::string_view SourceContractName(SourceContract contract) {
     case SourceContract::kLanguageAndHostV1: return "language_and_host_v1";
     case SourceContract::kLanguageAndHostV2: return "language_and_host_v2";
     case SourceContract::kLanguageNumericV1: return "language_numeric_v1";
+    case SourceContract::kLanguageConstructorsV1: return "language_constructors_v1";
+    case SourceContract::kLanguageArithmeticConstructorsV1: return "language_arithmetic_constructors_v1";
+    case SourceContract::kLanguageNumericConstructorsV1: return "language_numeric_constructors_v1";
     case SourceContract::kLanguageArithmeticV1: return "language_arithmetic_v1";
     case SourceContract::kLanguageAndHostV3: return "language_and_host_v3";
   }

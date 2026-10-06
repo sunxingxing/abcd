@@ -575,7 +575,7 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc < 3 || argc > 6) {
+  if (argc < 3 || argc > 7) {
     std::cerr << "usage: abc_semantic INPUT.abc METHOD_ENTITY [--class-source|--function-source|--record-source] [--value-source]\n"
                  "       abc_semantic INPUT.abc METHOD_ENTITY --instructions|--exception-flow|--exception-template\n"
                  "       abc_semantic INPUT.abc --all-records\n"
@@ -592,6 +592,7 @@ int main(int argc, char** argv) {
                  "  --value-source requires the unified value-tree route\n"
                  "  --language-arithmetic selects binary language arithmetic on that route\n"
                  "  --language-numeric selects unary and binary language numeric semantics\n"
+                 "  --language-constructors selects native language super semantics independently\n"
                  "  ordinary function expressions require a strict enclosing destination;\n"
                  "  method/closure fragments do not certify a complete executable record\n"
                  "  unimplemented stages return a typed route receipt with no source text and\n"
@@ -618,6 +619,7 @@ int main(int argc, char** argv) {
   unsigned value_routes = 0;
   unsigned language_arithmetic = 0;
   unsigned language_numeric = 0;
+  unsigned language_constructors = 0;
   unsigned record_slices = 0;
   unsigned conditional_values = 0;
   unsigned conditional_families = 0;
@@ -626,6 +628,8 @@ int main(int argc, char** argv) {
     const std::string_view option{argv[i]};
     if (option == "--language-arithmetic") {
       ++language_arithmetic;
+    } else if (option == "--language-constructors") {
+      ++language_constructors;
     } else if (option == "--language-numeric") {
       ++language_numeric;
     } else if (option == "--family-source-draft") {
@@ -659,7 +663,7 @@ int main(int argc, char** argv) {
     }
   }
   // Numeric opt-in is limited to the common source route, in every order.
-  if (language_arithmetic + language_numeric > 1 || ((language_arithmetic || language_numeric) &&
+  if (language_constructors > 1 || language_arithmetic + language_numeric > 1 || ((language_constructors || language_arithmetic || language_numeric) &&
       (value_routes != 1 || details || record_slices || conditional_values || conditional_families || family_drafts)))
     return Fail(InspectError::kArguments);
   // Duplicate or conflicting selectors are rejected in every order.
@@ -694,6 +698,7 @@ int main(int argc, char** argv) {
   const auto policy = value_routes
                           ? source::RoutePolicy::kRequireValueTree
                           : source::RoutePolicy::kLegacyAllowed;
+  const auto numeric_contract = language_numeric ? source::SourceContract::kLanguageNumericV1 : language_arithmetic ? source::SourceContract::kLanguageArithmeticV1 : source::kSourceContract;
   return Inspect(argv[1], entity, form, false, InspectDetail::kSummary, policy,
-      ValueSourceScope::kMember, language_numeric ? source::SourceContract::kLanguageNumericV1 : language_arithmetic ? source::SourceContract::kLanguageArithmeticV1 : source::kSourceContract);
+      ValueSourceScope::kMember, language_constructors ? source::WithLanguageConstructors(numeric_contract) : numeric_contract);
 }

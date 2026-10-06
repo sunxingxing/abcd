@@ -77,7 +77,7 @@ void ConstructorTailSyntax(const ClassTreeContext& context) {
     std::vector<StmtId> children;
     if (derived && kind != TailCase::kMissingSuper && kind != TailCase::kCatchBeforeSuper) {
       tree.arguments.push_back(syntax.Value());
-      children.push_back(syntax.Stmt(ExpressionStmt{syntax.Expr(SuperCallExpr{{0, 1}})}));
+      children.push_back(syntax.Stmt(ExpressionStmt{syntax.Expr(SuperCallExpr{ArgumentRange{0, 1}})}));
     }
     if (kind == TailCase::kEvent) children.push_back(syntax.Stmt(ExpressionStmt{syntax.Event()}));
     ExprId result;

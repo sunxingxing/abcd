@@ -46,6 +46,9 @@ struct ExpressionConstants {
   // Only retained during construction; semantic verification reproves this
   // exact owner/input/work pair before any immutable family is published.
   const FileFunction* implicit_constructor = nullptr;
+  // Exact original invocation and work graph; the common derived-state solver
+  // independently proves constructor identity through aliases, cells and phis.
+  const FileFunction* derived_constructor = nullptr;
 };
 }  // namespace abcd::source
 #endif

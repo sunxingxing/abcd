@@ -1256,3 +1256,28 @@ operand checker消费同一typed premise，旧模式仍检查minimum-tag witness
 准入仍是明确实现缺口，未新增或扩大；没有INC/call名单、参数数量模板或
 样本分派。三个profile、普通/异常、201copies/拆块及旧值/更新值/callback/
 原异常对照覆盖该语义。没有把INCOMPLETE/refusal算为这项正例。
+
+
+### 2026-10-06：显式语言构造模式恢复普通 SuperSpread（规则129）
+
+用户独立允许native super语义，包括动态Proxy/bound父类、new.target、
+iterator及原异常；默认和既有两个数值契约保留。未知父品牌是原pinned
+语义义务，新模式是显式验收选择，不能由语言数值授权推导或由样本假定。
+
+新增条件分别证明：当前源契约允许native spread；位置属于derived
+constructor语法；输入/结果数和角色符合typed SuperSpread；original
+FileFunction/work graph、方法和完整route identity一致；原constructor
+输入通过既有稀疏DerivedValueStates的copies/cells/phis确为当前调用身份；
+原第二输入对应spread child。没有同块、邻接、固定PC/register、producer
+名单、参数数或样本名字准入。class context、receiver初始化/guards、
+闭包保留及效果/异常顺序仍由原family/evaluation/projection负责。
+
+开发途中对native super父类读取时机作了错误判断，曾增加提前读取要求。
+独立Node probe证明range/spread都在参数求值后读取父类，已完整撤销这项
+额外snapshot条件和对应拒绝断言；原已提交的共同初始化顺序修复保留。
+getter参数现在是正常组合正例，不要求机械提取临时变量。复制/拆块、
+200/201/402增长与foreign constructor、缺失owner、stale契约负例共同检查。
+
+实例字段表示、implicit constructor、继承setter、配对implicit构造器的
+iterator污染及全record验收尚开放。不得把完整函数树或局部constructor
+对照扩大成这些行为的证明，也不得增补布局匹配来掩盖其表示缺口。

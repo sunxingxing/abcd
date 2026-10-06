@@ -79,6 +79,14 @@ int main() {
   Check(Arithmetic(kSourceContract) == analysis::ArithmeticSemantics::kPinnedRuntime);
   Check(Arithmetic(SourceContract::kLanguageArithmeticV1) == analysis::ArithmeticSemantics::kSourceLanguage);
   Check(Arithmetic(SourceContract::kLanguageNumericV1) == analysis::ArithmeticSemantics::kSourceNumeric);
+  for (const auto base : {kSourceContract, SourceContract::kLanguageArithmeticV1, SourceContract::kLanguageNumericV1}) {
+    const auto combined = WithLanguageConstructors(base);
+    Check(Arithmetic(combined) == Arithmetic(base));
+    Check(Constructors(base) == ConstructorSemantics::kPinnedRuntime);
+    Check(Constructors(combined) == ConstructorSemantics::kSourceLanguage);
+    Check(CallableText(combined) == CallableText(base));
+    Check(ResourceFailures(combined) == ResourceFailures(base));
+  }
   Check(CallableText(SourceContract::kLanguageNumericV1) == CallableText(kSourceContract));
   Check(CallableText(SourceContract::kLanguageArithmeticV1) == CallableText(kSourceContract));
   Check(ResourceFailures(SourceContract::kLanguageArithmeticV1) == ResourceFailures(kSourceContract));
@@ -203,7 +211,8 @@ int main() {
   }
   for (const auto contract : {SourceContract::kLanguageAndHostV1,
                               SourceContract::kLanguageAndHostV2,
-                              SourceContract::kLanguageAndHostV3, SourceContract::kLanguageArithmeticV1, SourceContract::kLanguageNumericV1}) {
+                              SourceContract::kLanguageAndHostV3, SourceContract::kLanguageArithmeticV1, SourceContract::kLanguageNumericV1, SourceContract::kLanguageConstructorsV1,
+                              SourceContract::kLanguageArithmeticConstructorsV1, SourceContract::kLanguageNumericConstructorsV1}) {
     auto receipt = RefusedReceipt();
     receipt.identity.contract = contract;
     Check(!ValidateRouteReceipt(receipt));

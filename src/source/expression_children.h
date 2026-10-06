@@ -30,7 +30,10 @@ void VisitExpressionChildren(const FunctionTree& tree, const TreeExpression& exp
       visit(node.constructor);
       if (const auto* range = std::get_if<ArgumentRange>(&node.arguments)) arguments(*range);
       else visit(std::get<ArrayArguments>(node.arguments).array);
-    } else if constexpr (std::is_same_v<T, SuperCallExpr>) arguments(node.arguments);
+    } else if constexpr (std::is_same_v<T, SuperCallExpr>) {
+      if (const auto* range = std::get_if<ArgumentRange>(&node.arguments)) arguments(*range);
+      else visit(std::get<SpreadArguments>(node.arguments).iterable);
+    }
     else if constexpr (std::is_same_v<T, ArgumentSnapshotExpr>) arguments(node.slots);
     else if constexpr (std::is_same_v<T, ObjectExpr>) {
       for (std::uint32_t i = 0; i < node.properties.count; ++i) visit(tree.properties[node.properties.first + i].value);

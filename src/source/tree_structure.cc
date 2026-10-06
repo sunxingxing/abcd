@@ -338,22 +338,27 @@ class StructureCheck {
           RequireTree(std::holds_alternative<EmptyArrayExpr>(child) ||
               (aggregate && aggregate->kind == AggregateKind::kArray), Error::kUnsupportedSyntax);
         }
-      } else if constexpr (std::is_same_v<T, CallExpr> || std::is_same_v<T, SuperCallExpr>) {
+      } else if constexpr (std::is_same_v<T, SuperCallExpr>) {
+        RequireTree(tree_.callable == CallableKind::kDerivedConstructor, Error::kUnsupportedSyntax);
+        if (const auto* range = std::get_if<ArgumentRange>(&expression.arguments)) {
+          RequireTree(range->first <= tree_.arguments.size() &&
+              range->count <= tree_.arguments.size() - range->first, Error::kRange);
+          RequireTree(expression.source == analysis::SuperArgumentSource::kExplicit ||
+              (expression.source == analysis::SuperArgumentSource::kInvocationFrame &&
+               tree_.ImplicitConstructor() && range->count == 0), Error::kUnsupportedSyntax);
+        } else {
+          RequireTree(Constructors(tree_.identity.contract) == ConstructorSemantics::kSourceLanguage &&
+              expression.source == analysis::SuperArgumentSource::kExplicit &&
+              std::get<SpreadArguments>(expression.arguments).iterable.value < tree_.expressions.size(), Error::kUnsupportedSyntax);
+        }
+      } else if constexpr (std::is_same_v<T, CallExpr>) {
         RequireTree(expression.arguments.first <= tree_.arguments.size() &&
             expression.arguments.count <= tree_.arguments.size() - expression.arguments.first, Error::kRange);
-        if constexpr (std::is_same_v<T, SuperCallExpr>) {
-          RequireTree(tree_.callable == CallableKind::kDerivedConstructor &&
-              (expression.source == analysis::SuperArgumentSource::kExplicit ||
-               (expression.source == analysis::SuperArgumentSource::kInvocationFrame &&
-                tree_.ImplicitConstructor() && expression.arguments.count == 0)), Error::kUnsupportedSyntax);
-        }
-        if constexpr (std::is_same_v<T, CallExpr>) {
-          RequireTree(expression.reference == CallReference::kValue ||
-              expression.reference == CallReference::kMember, Error::kUnsupportedSyntax);
-          if (expression.reference == CallReference::kMember)
-            RequireTree(expression.callee.value < tree_.expressions.size() &&
-                std::holds_alternative<MemberExpr>(tree_.expressions[expression.callee.value].expression), Error::kUnsupportedSyntax);
-        }
+        RequireTree(expression.reference == CallReference::kValue ||
+            expression.reference == CallReference::kMember, Error::kUnsupportedSyntax);
+        if (expression.reference == CallReference::kMember)
+          RequireTree(expression.callee.value < tree_.expressions.size() &&
+              std::holds_alternative<MemberExpr>(tree_.expressions[expression.callee.value].expression), Error::kUnsupportedSyntax);
       } else if constexpr (std::is_same_v<T, ObjectExpr>) {
         RequireTree(expression.kind == AggregateKind::kObject || expression.kind == AggregateKind::kArray,
             Error::kUnsupportedSyntax);
@@ -475,10 +480,14 @@ class StructureCheck {
         return {};
       }
       if (const auto* super = std::get_if<SuperCallExpr>(&syntax)) {
-        if (frame.next_child == super->arguments.count) return {};
-        const auto slot = super->arguments.first + frame.next_child++;
-        RequireTree(!arguments_[slot], Error::kOwnership); arguments_[slot] = 1;
-        return tree_.arguments[slot];
+        if (const auto* range = std::get_if<ArgumentRange>(&super->arguments)) {
+          if (frame.next_child == range->count) return {};
+          const auto slot = range->first + frame.next_child++;
+          RequireTree(!arguments_[slot], Error::kOwnership); arguments_[slot] = 1;
+          return tree_.arguments[slot];
+        }
+        if (frame.next_child++) return {};
+        return std::get<SpreadArguments>(super->arguments).iterable;
       }
       if (const auto* snapshot = std::get_if<ArgumentSnapshotExpr>(&syntax)) {
         if (frame.next_child == snapshot->slots.count) return {};

@@ -14,6 +14,14 @@ ECMAScript 隐式派生构造器使用原调用参数列表构造当前父类，
 不可作为原 frame 转发的默认打印方案。默认构造器的 source length 为0，
 不能把 VM 预留的物理参数槽数当作源码形参数量。
 
+## 显式语言构造模式（规则129）
+
+用户允许`--value-source --language-constructors`，按原生super语义恢复普通
+SuperSpread，可独立组合语言数值selector。父类可随调用改变，不需要终生
+JSFunction假设；这不是原frame转发的隐式构造器证明。默认模式仍保留
+SuperSpread的品牌/数组语义差异，apply也保持独立义务。实现、独立对照及
+未验收边界见[语言构造语义](language-constructors.md)。
+
 ## 共同证明与表示
 
 SuperArgumentSource 区分 explicit 和 invocation-frame 输入。共同 frame

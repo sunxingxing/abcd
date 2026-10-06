@@ -90,6 +90,13 @@ class AbiBuilder {
         Require(call && call->source == analysis::SuperArgumentSource::kInvocationFrame, Error::kEntry);
         continue; // TreeOperands reproved the native constructor and raw frame.
       }
+      if (tree_.callable == CallableKind::kDerivedConstructor &&
+          Constructors(tree_.identity.contract) == ConstructorSemantics::kSourceLanguage &&
+          use.role == analysis::OperandRole::kConstructor) {
+        const auto* owner = std::get_if<analysis::OpId>(&use.owner);
+        if (owner && std::holds_alternative<analysis::ValueSuperSpread>(graph_.ops[owner->value].operation))
+          continue; // Original invocation identity is owned by derived projection.
+      }
       const auto* id = std::get_if<analysis::ValueId>(&use.operand);
       if (!id) continue;
       Require(id->value < graph_.values.size(), Error::kEntry);

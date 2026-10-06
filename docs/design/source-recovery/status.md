@@ -13,6 +13,66 @@
 ## 当前阶段
 
 
+### 2026-10-06：显式语言构造语义贯通普通 SuperSpread
+
+- 规则revision129，基线d9b6d25e；延续25aa原分支。用户明确允许独立
+  显式语言构造模式：`--value-source --language-constructors`按JS/ArkTS
+  native super验收，分别组合默认、language-arithmetic和language-numeric。
+  三个新route contract保留数值前提与V3宿主政策，既有三个当前模式含义
+  保持；CLI冲突/重复/非value-route在读文件前拒绝，receipt/manifest及
+  phased route完整保留各自identity。详见[语言构造语义](language-constructors.md)。
+- ConstructorSemantics复用共同ExpressionForest、SuperCallExpr、tree
+  child/structure/operand检查及printer；参数是原第二输入的owned
+  SpreadArguments，不用第二writer/Reflect.construct或把数组当单参数。
+  VM-only当前构造器仍不打印为源码变量。family提供原FileFunction，
+  fresh checker对同input/work graph/method/route identity调用一次既有
+  sparse DerivedValueStates，证明constructor经copy/cell/phi仍是当前调用。
+  原class context、receiver initialization/guards/capture、求值与异常
+  顺序保持共同pipeline。未知父类的终生JSFunction假设未新增；默认
+  SuperSpread和apply的独立差异未被数值或构造selector默默放宽。
+- 新定向构造树覆盖三个动态profile、三新契约、rest/普通数组/getter输入、
+  复制/拆块及0/1/200/201/402增长，共198个完整函数树通过fresh semantics和instruction
+  origins；旧契约/foreign constructor/缺失FileFunction/stale contract拒绝。
+  这是解码到完整函数树的证据，独立执行另由实际ABC构造器测试提供。
+- 独立构造对照先完成十份ABC-only record生成，再读配对TS。普通iterator
+  与普通own descriptors下检查十个构造器的参数身份、Proxy/bound/arrow
+  当前父类、alternate newTarget、返回对象/primitive及原异常；LocalStorage
+  是显式最小测试宿主。2,450个paired构造场景通过，另120个explicit
+  native super oracle检查iterator getter/call/next异常及替换值通过；
+  与paired implicit constructor验收分开。dropping args/单数组参数/
+  错误curBp初始化三项有效JS mutation均检出。
+- 开发途中对native super父类读取时机判断错误。Node独立probe证明range/
+  spread都在参数求值后读父类，撤销额外snapshot限制和错误拒绝断言，
+  相关evaluation文件全部回到已提交HEAD；rules128真实初始化修复保留。
+  getter现是普通正例。初次paired测试缺LocalStorage宿主，补显式shim后
+  通过。一次final-build因错误target名退出2，改为实际注册目标后正常。
+  final-tests-1已人为中断以撤销上述错误限制，不作最终通过证据。
+- 最终build-5单-j4四十四目标退出0。final-tests-2定向92/92通过664.91秒，
+  不是暂停的全套。fresh language-constructors-{default,language,numeric,
+  constructors,arithmetic-constructors,numeric-constructors}-pass-1的30次
+  固定五ABC导出全部退出0；各模式106份源码解析，输入SHA/size与既有
+  corpus index匹配，零legacy/source failure/complete回退。前三模式分别
+  80complete/26incomplete-source、95/11、96/10，全部源码字节与rules128
+  一致；constructor-only88/18，arithmetic+constructors105/1，numeric+
+  constructors106/0，各新模式只有十个原构造器record源码变化。单构造
+  模式只有八份record新增complete：Multi record40957和pasteboard4767
+  的构造器恢复后仍有原pinned数值模式下的其他方法缺口；数值组合分别
+  解决这些义务，不能把“十构造器恢复”误报为各模式十record完整。
+- 六模式均另有46no-module记录。只读其结构产物核对为11个_ES注解和
+  35个@ohos/@system引用、零methods；record metadata fields不视作源码
+  class fields。这些与106份模块源码分开统计，不伪造函数体或静态分类。
+  numeric+constructors的106source_complete是引擎产物状态，不是阶段一
+  整record独立语义、字段/签名及源表示验收已经闭合。
+- 日志前缀/tmp/abcd-language-constructors-；结果以本节最终更新及各mode
+  summary为准。新增结构步进O(operations+uses)，复用原bounded sparse
+  solver/预算，无逐变量CFG walk、样本/名字/sidecar/layout/producer名单
+  准入或新依赖。RSS/基准、全套、扩展语料、调度器及周期审计继续暂停。
+- source_complete只表示引擎无已知缺口。paired implicit ctor的iterator
+  污染、继承field setters、整record方法/宿主平台尚未验收；显式spread
+  构造器和receiver snapshots仍有源表示/实例字段整合工作。全局变量、
+  完整签名、函数体整合及全部record独立语义/风格门槛仍开放。Goal active，
+  本组件完成不替代阶段一；后续优先这些实际功能和验收缺口。
+
 ### 2026-10-06：显式语言数值语义补齐 WindowUtil 未恢复方法
 
 - 规则revision128，基线f699c84e；25aa原分支开始干净。遵循用户新优先级，

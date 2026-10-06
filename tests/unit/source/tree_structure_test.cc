@@ -38,14 +38,14 @@ void SuperContext() {
       tree.expressions.push_back({TreeLiteral{IntegerLiteral{static_cast<std::int32_t>(i)}}, {0}});
       tree.arguments.push_back({i});
     }
-    tree.expressions.push_back({SuperCallExpr{{0, count}}, {0}});
+    tree.expressions.push_back({SuperCallExpr{ArgumentRange{0, count}}, {0}});
     tree.statements[1].statement = ReturnStmt{ExprId{count}};
     for (const auto callable : {CallableKind::kFunction, CallableKind::kBaseConstructor, CallableKind::kMethod}) {
       tree.callable = callable; Expect(tree, TreeStructureError::kUnsupportedSyntax);
     }
     tree.callable = CallableKind::kDerivedConstructor;
     Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
-    std::get<SuperCallExpr>(tree.expressions.back().expression).arguments.count++;
+    std::get<ArgumentRange>(std::get<SuperCallExpr>(tree.expressions.back().expression).arguments).count++;
     Expect(tree, TreeStructureError::kRange);
   }
 }

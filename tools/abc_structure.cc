@@ -475,11 +475,12 @@ int Export(const std::filesystem::path& input,
 }  // namespace
 int main(int argc, char** argv) {
   SourceMode mode = SourceMode::kNone;
-  unsigned modes = 0, language = 0, numeric = 0;
-  bool valid = argc >= 3 && argc <= 5;
+  unsigned modes = 0, language = 0, numeric = 0, constructors = 0;
+  bool valid = argc >= 3 && argc <= 6;
   for (int i = 3; valid && i < argc; ++i) {
     const std::string_view option{argv[i]};
     if (option == "--language-arithmetic") { ++language; continue; }
+    if (option == "--language-constructors") { ++constructors; continue; }
     if (option == "--language-numeric") { ++numeric; continue; }
     ++modes;
     if (option == "--value-source") mode = SourceMode::kValueTree;
@@ -487,13 +488,15 @@ int main(int argc, char** argv) {
     else if (option == "--source") mode = SourceMode::kLegacy;
     else valid = false;
   }
-  if (!valid || modes > 1 || language + numeric > 1 || ((language || numeric) && mode != SourceMode::kValueTree)) {
-    std::cerr << "usage: abc_structure INPUT.abc OUTPUT_DIR [--source|--shared-source|--value-source] [--language-arithmetic|--language-numeric]\n"
+  if (!valid || modes > 1 || constructors > 1 || language + numeric > 1 || ((constructors || language || numeric) && mode != SourceMode::kValueTree)) {
+    std::cerr << "usage: abc_structure INPUT.abc OUTPUT_DIR [--source|--shared-source|--value-source] [--language-arithmetic|--language-numeric] [--language-constructors]\n"
                  "  --language-arithmetic requires --value-source and selects binary language arithmetic\n"
-                 "  --language-numeric requires --value-source and selects unary and binary numeric semantics\n";
+                 "  --language-numeric requires --value-source and selects unary and binary numeric semantics\n"
+                 "  --language-constructors requires --value-source and selects native super semantics\n";
     return EXIT_FAILURE;
   }
-  const auto contract = numeric ? source::SourceContract::kLanguageNumericV1 : language ? source::SourceContract::kLanguageArithmeticV1 : source::kSourceContract;
+  const auto numeric_contract = numeric ? source::SourceContract::kLanguageNumericV1 : language ? source::SourceContract::kLanguageArithmeticV1 : source::kSourceContract;
+  const auto contract = constructors ? source::WithLanguageConstructors(numeric_contract) : numeric_contract;
 #if !defined(__APPLE__)
   // Darwin rejects this Linux virtual-address-space limit; it also cannot
   // establish the process RSS contract. Existing bounded stage allocations

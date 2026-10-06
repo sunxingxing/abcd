@@ -35,9 +35,9 @@ class ForestBuilder {
                 ExpressionConstants constants, analysis::SemanticBudget budget,
                 BindingPlan bindings, std::span<const ModuleSymbol> modules, RecoveryMode recovery,
                 std::span<const std::u16string> names, std::span<const SelectionRegion> logicals, std::span<const BranchPolarity> polarity,
-                CallableKind callable, analysis::ArithmeticSemantics arithmetic)
+                CallableKind callable, analysis::ArithmeticSemantics arithmetic, ConstructorSemantics constructors)
       : graph_(graph), evaluation_(evaluation), owner_(owner), constants_(constants),
-        budget_(budget), bytes_(budget.bytes), work_(budget.work), modules_(modules), recovery_(recovery), names_(names), logicals_(logicals), polarity_(polarity), callable_(callable), arithmetic_(arithmetic) {
+        budget_(budget), bytes_(budget.bytes), work_(budget.work), modules_(modules), recovery_(recovery), names_(names), logicals_(logicals), polarity_(polarity), callable_(callable), arithmetic_(arithmetic), constructors_(constructors) {
     Require(polarity.empty() || polarity.size() == graph.ops.size(), Error::kOwnership);
     Require(bindings.allocated_bytes <= bytes_, Error::kResourceLimit);
     bytes_ -= bindings.allocated_bytes;
@@ -395,11 +395,17 @@ class ForestBuilder {
               std::optional{Operand(graph_.uses[op.first_use.value].operand, origin)}}, origin);
           continue;
         }
-        // A native spread still lacks its array/parent-brand contract. Refuse
-        // before reading the VM-only callable input; partial recovery retains
-        // an omission at the whole expression's original boundary.
-        if (std::holds_alternative<analysis::ValueSuperSpread>(op.operation))
-          throw Error::kUnsupportedOperation;
+        if (std::holds_alternative<analysis::ValueSuperSpread>(op.operation)) {
+          // Explicit language equivalence selects native parent and iterator
+          // behavior. It never supplies a lifetime brand proof under pinned mode.
+          if (constructors_ != ConstructorSemantics::kSourceLanguage)
+            throw Error::kUnsupportedOperation;
+          Require(callable_ == CallableKind::kDerivedConstructor && op.result && op.use_count == 2,
+              Error::kOwnership);
+          const auto iterable = Use(analysis::UseId{op.first_use.value + 1}, origin);
+          forest_.operations[i] = Add(SuperCallExpr{SpreadArguments{iterable}}, origin);
+          continue;
+        }
         std::array<ExprId, kFixedExpressionOperands> operands{};
         Require(op.use_count <= operands.size(), Error::kUnsupportedOperation);
         for (std::uint32_t j = 0; j < op.use_count; ++j) {
@@ -1145,13 +1151,14 @@ class ForestBuilder {
   std::span<const BranchPolarity> polarity_;
   CallableKind callable_;
   analysis::ArithmeticSemantics arithmetic_;
+  ConstructorSemantics constructors_;
 };
 std::variant<ExpressionForest, ExpressionError> BuildForest(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, FunctionOwnerId owner,
     ExpressionConstants constants, analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules,
     EvaluationFlow flow, RecoveryMode recovery, std::span<const std::u16string> names, std::span<const SelectionRegion> logicals, std::span<const BranchPolarity> polarity,
-    CallableKind callable, analysis::ArithmeticSemantics arithmetic) {
+    CallableKind callable, analysis::ArithmeticSemantics arithmetic, ConstructorSemantics constructors) {
   auto bindings = flow == EvaluationFlow::kNormal ? BuildBindingPlan(graph, evaluation, parameter_count, budget)
       : BuildPhasedBindingPlan(graph, evaluation, parameter_count, budget);
   if (const auto* error = std::get_if<BindingError>(&bindings)) {
@@ -1161,7 +1168,7 @@ std::variant<ExpressionForest, ExpressionError> BuildForest(
   }
   try {
     return ForestBuilder(graph, evaluation, owner, constants, budget,
-                         std::get<BindingPlan>(std::move(bindings)), modules, recovery, names, logicals, polarity, callable, arithmetic).Build();
+                         std::get<BindingPlan>(std::move(bindings)), modules, recovery, names, logicals, polarity, callable, arithmetic, constructors).Build();
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
@@ -1171,14 +1178,14 @@ std::variant<ExpressionForest, ExpressionError> BuildExpressionForest(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, FunctionOwnerId owner, ExpressionConstants constants,
     analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules, RecoveryMode recovery,
-    std::span<const std::u16string> names, std::span<const SelectionRegion> logicals, std::span<const BranchPolarity> polarity, CallableKind callable, analysis::ArithmeticSemantics arithmetic) {
-  return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kNormal, recovery, names, logicals, polarity, callable, arithmetic);
+    std::span<const std::u16string> names, std::span<const SelectionRegion> logicals, std::span<const BranchPolarity> polarity, CallableKind callable, analysis::ArithmeticSemantics arithmetic, ConstructorSemantics constructors) {
+  return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kNormal, recovery, names, logicals, polarity, callable, arithmetic, constructors);
 }
 std::variant<ExpressionForest, ExpressionError> BuildPhasedExpressionForest(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, FunctionOwnerId owner, ExpressionConstants constants,
     analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules, RecoveryMode recovery,
-    std::span<const std::u16string> names, std::span<const SelectionRegion> logicals, std::span<const BranchPolarity> polarity, CallableKind callable, analysis::ArithmeticSemantics arithmetic) {
-  return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kPhased, recovery, names, logicals, polarity, callable, arithmetic);
+    std::span<const std::u16string> names, std::span<const SelectionRegion> logicals, std::span<const BranchPolarity> polarity, CallableKind callable, analysis::ArithmeticSemantics arithmetic, ConstructorSemantics constructors) {
+  return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kPhased, recovery, names, logicals, polarity, callable, arithmetic, constructors);
 }
 }  // namespace abcd::source

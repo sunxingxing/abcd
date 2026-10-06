@@ -147,7 +147,10 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
       Require(identity.contract == SourceContract::kLanguageAndHostV2 ||
           identity.contract == SourceContract::kLanguageAndHostV3 ||
           identity.contract == SourceContract::kLanguageArithmeticV1 ||
-          identity.contract == SourceContract::kLanguageNumericV1, Error::kIdentity);
+          identity.contract == SourceContract::kLanguageNumericV1 ||
+          identity.contract == SourceContract::kLanguageConstructorsV1 ||
+          identity.contract == SourceContract::kLanguageArithmeticConstructorsV1 ||
+          identity.contract == SourceContract::kLanguageNumericConstructorsV1, Error::kIdentity);
       auto normalized = Take<abc::MethodBody>(ProveAsyncCompletion(body, frame,
           left.bytes, &source_pcs, &awaits, header.profile, ResourceFailureScope::kExcluded));
       arena(normalized.instructions); arena(normalized.tries); arena(normalized.handlers);

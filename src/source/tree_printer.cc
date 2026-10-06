@@ -762,7 +762,11 @@ class TreePrinter {
       throw Error::kUnsupportedContext;
     Append("super(");
     Push(std::string_view(")"));
-    Push(ArgumentCursor{node.arguments, 0});
+    if (const auto* range = std::get_if<ArgumentRange>(&node.arguments)) Push(ArgumentCursor{*range, 0});
+    else {
+      Append("...");
+      Push(ExpressionOperand{std::get<SpreadArguments>(node.arguments).iterable, {}});
+    }
   }
   void Expression(EmptyArrayExpr) { Append("[]"); }
   void Expression(EmptyObjectExpr) { Append("({})"); }

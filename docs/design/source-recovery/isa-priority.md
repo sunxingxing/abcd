@@ -11,6 +11,13 @@ chain 等表示细节优化排在这些缺口之后。不得仅改善缺口注�
 缺口已贯通，证据见status及language-numeric.md；剩余普通SuperSpread
 构造器继续优先。这个数值前提不授权新的父品牌/host lifetime假设。
 
+2026-10-06 追加授权：独立显式语言构造模式，原生JS/ArkTS super规则
+验收。`--value-source --language-constructors`与两个数值selector分别组合；
+默认模式不变，不引入父类终生保持JSFunction的host假设。普通SuperSpread
+进入同一AST和身份分析，详见[语言构造语义](language-constructors.md)。
+构造器组件恢复后继续实例字段/全局/完整签名/函数体整合和整record独立
+语义、风格验收；不能把source_complete统计替代这些阶段一门槛。
+
 2026-10-03 用户要求：先补 `object creaters` 的全部 26 个编码格式，
 使用既有通用贯通路径及公共接口。完整清单、现有条件与缺口见
 [对象创建指令](object-creators.md)。这调整立即执行的优先级，不缩减阶段一 Goal。

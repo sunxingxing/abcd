@@ -159,8 +159,10 @@ struct ArrayArguments { ExprId array; };
 using ConstructArguments = std::variant<ArgumentRange, ArrayArguments>;
 struct ConstructExpr { ExprId constructor; ConstructArguments arguments; };
 // The parent constructor and newTarget are supplied by the derived invocation.
+struct SpreadArguments { ExprId iterable; };
+using SuperArguments = std::variant<ArgumentRange, SpreadArguments>;
 struct SuperCallExpr {
-  ArgumentRange arguments;
+  SuperArguments arguments;
   analysis::SuperArgumentSource source = analysis::SuperArgumentSource::kExplicit;
 };
 // Fresh pinned arguments object. Slots are conditional current-value leaves;

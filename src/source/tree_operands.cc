@@ -1,4 +1,5 @@
 #include "implicit_constructor.h"
+#include "derived_value_states.h"
 #include "integer_nan.h"
 #include "function_object.h"
 #include "staged_literal_names.h"
@@ -133,6 +134,28 @@ class OperandCheck {
       const auto proof = ProveImplicitConstructor(*constants_.implicit_constructor, budget_.Remaining());
       RequireMeaning(std::holds_alternative<ImplicitConstructorProof>(proof), Error::kOperand);
       budget_.Step(std::get<ImplicitConstructorProof>(proof).work);
+    }
+    std::optional<DerivedValueStates> derived_states;
+    for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
+      budget_.Step();
+      if (graph_.ops[i].life != analysis::ValueLife::kLive ||
+          evaluation_.operations[i].kind == EvaluationKind::kClassProjection ||
+          !std::holds_alternative<analysis::ValueSuperSpread>(graph_.ops[i].operation)) continue;
+      RequireMeaning(constants_.derived_constructor &&
+          &constants_.derived_constructor->values.graph == &graph_ &&
+          tree_.identity == constants_.derived_constructor->input.Identity() &&
+          tree_.method == constants_.derived_constructor->input.Method(), Error::kOperand);
+      auto states = BuildDerivedValueStates(*constants_.derived_constructor,
+          analysis::OpId{static_cast<std::uint32_t>(i)}, {}, budget_.Remaining());
+      if (const auto* error = std::get_if<DerivedProjectionError>(&states)) {
+        if (*error == DerivedProjectionError::kResourceLimit) throw Error::kResourceLimit;
+        if (*error == DerivedProjectionError::kWorkLimit) throw Error::kWorkLimit;
+        throw Error::kOperand;
+      }
+      derived_states.emplace(std::get<DerivedValueStates>(std::move(states)));
+      budget_.Step(derived_states->work);
+      budget_.Admit(derived_states->allocated_bytes, 1);
+      break; // One shared identity index for every original super occurrence.
     }
     RequireMeaning(tree_.receiver_guards == evaluation_.receiver_guards, Error::kOperand);
     RequireMeaning(tree_.receiver_guards.size() == constants_.receiver_guards.size() &&
@@ -390,8 +413,25 @@ class OperandCheck {
           const auto& call = Node<SuperCallExpr>(expression);
           RequireMeaning(call.source == operation.source, Error::kOperand);
           if (operation.source == analysis::SuperArgumentSource::kInvocationFrame) {
-            RequireMeaning(tree_.ImplicitConstructor() && op.use_count == 1 && !call.arguments.count && !operation.arguments, Error::kOperand);
-          } else Arguments(op, call.arguments, 0, operation.arguments);
+            RequireMeaning(tree_.ImplicitConstructor() && op.use_count == 1 && std::holds_alternative<ArgumentRange>(call.arguments) && !std::get<ArgumentRange>(call.arguments).count && !operation.arguments, Error::kOperand);
+          } else {
+            const auto* range = std::get_if<ArgumentRange>(&call.arguments);
+            RequireMeaning(range, Error::kOperand);
+            Arguments(op, *range, 0, operation.arguments);
+          }
+        } else if constexpr (std::is_same_v<T, analysis::ValueSuperSpread>) {
+          RequireMeaning(tree_.callable == CallableKind::kDerivedConstructor &&
+              Constructors(tree_.identity.contract) == ConstructorSemantics::kSourceLanguage &&
+              op.use_count == 2 && op.result, Error::kOperand);
+          const auto& call = Node<SuperCallExpr>(expression);
+          RequireMeaning(call.source == analysis::SuperArgumentSource::kExplicit, Error::kOperand);
+          const auto* spread = std::get_if<SpreadArguments>(&call.arguments);
+          RequireMeaning(spread, Error::kOperand);
+          const auto* constructor = std::get_if<analysis::ValueId>(&input(0));
+          RequireMeaning(derived_states && constructor &&
+              constructor->value < derived_states->values.size() &&
+              derived_states->values[constructor->value] == DerivedValueState::kConstructor, Error::kOperand);
+          InputAt(1, spread->iterable);
         } else if constexpr (std::is_same_v<T, analysis::ValueConstruct>) {
           const auto& construct = Node<ConstructExpr>(expression);
           InputAt(0, construct.constructor);
@@ -549,7 +589,7 @@ class OperandCheck {
           if (created.heritage) InputAt(0, *created.heritage);
         } else {
           static_assert(
-                        std::is_same_v<T, analysis::ValueSuperCall> || std::is_same_v<T, analysis::ValueSuperSpread> || std::is_same_v<T, analysis::ValueSuperCheck> || std::is_same_v<T, analysis::ValueDefineAccessor> || std::is_same_v<T, analysis::ValueHole> ||
+                        std::is_same_v<T, analysis::ValueSuperCall> || std::is_same_v<T, analysis::ValueSuperCheck> || std::is_same_v<T, analysis::ValueDefineAccessor> || std::is_same_v<T, analysis::ValueHole> ||
                         std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                         std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
                         std::is_same_v<T, analysis::ValueNop> || std::is_same_v<T, analysis::ValueDebugger> ||

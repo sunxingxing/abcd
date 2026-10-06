@@ -721,6 +721,10 @@ if(BUILD_TESTING)
   target_include_directories(numeric_identity_test PRIVATE tests/support)
   target_link_libraries(numeric_identity_test PRIVATE abcd_source)
   add_test(NAME numeric_identity_test COMMAND numeric_identity_test)
+  add_executable(language_constructors_test tests/integration/language_constructors.cc)
+  target_include_directories(language_constructors_test PRIVATE tests/support)
+  target_link_libraries(language_constructors_test PRIVATE abcd_source)
+  add_test(NAME language_constructors_test COMMAND language_constructors_test)
   add_executable(language_numeric_test tests/integration/language_numeric.cc)
   target_include_directories(language_numeric_test PRIVATE tests/support)
   target_link_libraries(language_numeric_test PRIVATE abcd_source)
@@ -1593,6 +1597,9 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/number_conversion.mjs $<TARGET_FILE:numeric_identity_test>)
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc" AND
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc")
+      add_test(NAME language_constructors_paired_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        --experimental-vm-modules ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/language_constructors.mjs
+        $<TARGET_FILE:abc_semantic> ${ABCD_PAIRED_CORPUS_ROOT})
       add_test(NAME language_arithmetic_paired_test COMMAND ${ABCD_NODE_EXECUTABLE}
         --experimental-vm-modules ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/language_arithmetic_paired.mjs
         $<TARGET_FILE:abc_structure> ${ABCD_PAIRED_CORPUS_ROOT})

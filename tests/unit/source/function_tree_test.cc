@@ -517,8 +517,8 @@ void SuperTree() {
     bool found = false;
     for (auto& node : tree.expressions) {
       if (auto* call = std::get_if<SuperCallExpr>(&node.expression)) {
-        Check(call->arguments.count == count); found = true;
-        ++call->arguments.count;
+        Check(std::get<ArgumentRange>(call->arguments).count == count); found = true;
+        ++std::get<ArgumentRange>(call->arguments).count;
       }
     }
     Check(found && std::holds_alternative<TreeStructureError>(VerifyTreeStructure(tree)));
