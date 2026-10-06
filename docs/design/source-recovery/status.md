@@ -12,6 +12,69 @@
 
 ## 当前阶段
 
+### 2026-10-07：真实 MultiCommunity 四十五模块图
+
+- 基线6b9d5c02，production/rules146保持。本轮继续实际record的独立
+  行为/表示验收：MainPage、hot/detail/picture/rank、barrel、常量和模型
+  共四十五个ABC-only生成ESM在同一realm连接；导出器结束后才读取配对
+  TS。真实view/model正文、getter、builder、watch和closure均不替换。
+  EntryAbility也参与模块初始化，本图不宣称它的设备生命周期已执行。
+- Controlled host补齐共享storage link/prop通知、cell读依赖、原observer
+  的dirty回放、分支编号缓存、导航/惰性content/ListItem、builder参数、
+  indicator、focus及图片缓存接口。状态改变后执行原callback；隐藏或
+  disabled按钮不作为点击输入。晚注册builder另给空route输入，已存在
+  导航builder给四个实际目的地及unknown输入。这是受控协议场景，不能
+  推断任意ArkUI分支销毁/祖先可见性、导航栈或真实设备行为。
+- 初始六场景的完整图比较通过，但新增coverage gate先检出CommentInput
+  未执行，再检出关注页CardItem未执行。补齐可见性/fold输入、共享通知、
+  observer及晚注册builder回放后，二十四正常场景全部比较通过，二十个
+  实际view constructor身份均出现。新gate另要求各类真实render执行；
+  直接构造只能验证构造行为，不能代替render coverage。
+- 字段顺序差异来自参考准备：Node会给普通无initializer的class声明
+  加DefineField，既有public/private正则未覆盖bare声明。本轮新增test-only
+  class_reference，使用Node vendored Acorn8.15.0（MIT、版本断言、需要
+  --expose-internals）按AST所属class和UTF-16区间擦除这种普通instance
+  声明，保留初始化、方法、computed-key效果、static及private brand。
+  不是通用TS编译器或生产依赖；其他既有fixture没有顺带改写。
+  解析/遍历O(T)，F个擦除区间排序O(F log F)，输出O(T)。独立adapter
+  测试执行setter/初始化顺序、嵌套类、computed key、static和private
+  brand，含非BMP文字与字符串中的假class；本机Node25.7.0身份已核对。
+- 新GraphTrace先保存所有evaluated module export的descriptor/reference
+  图，再分配identity tag，避免错误常量或alias被标签掩盖。完整事件、
+  模块状态、字段own-key顺序/descriptor、storage/cell、prototype与签名
+  比较保持。AST另比native class、方法顺序、get/set、async/generator及
+  参数/default/rest形式；此定向表示检查不等于所有body的表示已验收。
+- 单长生命周期Node探针达到V8默认堆上限退出，两个场景worker也在部分
+  md/fold输入达到512MiB上限，均不计成功。本图改成每worker一对图、
+  512MiB堆及60秒限额，完整比较不缩为hash；realm之间主动释放可回收
+  状态，CTest受RUN_SERIAL约束。生产调度/RSS工作仍暂停，不以这个测试
+  heap限额证明整个生产进程RSS合规。
+- 首轮矩阵的super mutation交换两个undefined参数，未检出，属于场景
+  不足；新增不同值的parent/localStorage实参与外部new.target/base返回
+  对象构造对照。CTest首轮4/5通过，最后一个有效JS export mutation的
+  VM link SyntaxError跨realm，instanceof没有识别；test boundary现核对
+  native Error brand和SyntaxError类型。基线错误仍失败，intentional
+  mutant可被已解析JS的link失败或严格host contract拒绝。原异常对象
+  identity与类别比较保持，诊断message只供失败定位，不要求临时变量
+  拼写一致。注册throw的原retained callback还须成功回放。
+- 最终定向5/5通过104.41秒：class_reference_adapter、community_graph、
+  原ui_conditional_literals/viewmodel_batch/static_class_batch。整图完成96
+  场景（64生命周期/宿主状态、32构造配置，每配置实际二十类，共640次
+  direct construct）、160原throw、32全局换绑及12有效JS mutation；二十
+  类均实际render。两个故障baseline各选十六个明确语义host boundary，
+  五种raw值含undefined/null/0/Symbol/object；不是每event或每UI接口
+  故障覆盖。完整trace/状态比较保留；生命周期/构造场景事件数24至
+  302433，异常/partial状态场景也按实际行为对照，未把它们当正常成功。
+- 单-j4 abc_structure/abc_semantic构建通过；CMake585项注册且新图
+  RUN_SERIAL属性已核对。六个新mjs语法与git diff --check通过；未跑
+  full suite，未重复五ABC六模式三十次导出。日志
+  /tmp/abcd-community-graph-{inspect,red,matrix,configure,build,tests}-*.log，
+  最终原生JSON另存/tmp/abcd-community-graph-verified-1.json。
+- 本图不关闭EntryAbility/Logger全部方法、任意prototype对初始化字段的
+  拦截、所有body/style与原结构gate。全面来源映射/DFX、full suite、扩展
+  语料/RSS/benchmark、生产scheduler、agents和周期audit仍暂停；阶段一
+  Goal保持active，下一步继续尚缺完整独立验收的record/body。
+
 ### 2026-10-07：真实 shopping 依赖链／完整视图导航图
 
 - 基线549d7969，production/rules146保持。原计划的全面来源映射/DFX仍

@@ -1,5 +1,23 @@
 # 验收、证据与实施交接
 
+2026-10-07 MultiCommunity图补充：四十五个实际ABC-only生成ESM连接真实
+MainPage与hot/detail/picture/rank、barrel和model。配对TS只在导出完成后
+进入独立realm。二十个view的构造、实际render、watch/cell/storage改变、
+晚注册导航builder、paramsGenerator_与purge/delete继续调用真实正文。
+导出常量/alias先按完整descriptor/reference图保存再分配标签，状态、
+字段顺序、prototype/签名、事件与异常顺序独立比较。
+
+参考class声明擦除改用固定Acorn8.15.0 AST ownership，仅普通无initializer
+instance声明；initializer、computed/static/private语义保留且另有执行测试。
+原生class/method/get/set/default/rest形式与runtime签名分别核对；完整body
+表示、EntryAbility设备生命周期、Logger全部方法和任意字段prototype拦截
+另验。受控ArkUI/storage协议不是设备验收。最终5/5定向通过：96生命周期/
+构造配置、160原throw、32换绑、12有效JS mutation，二十类实际render。
+32构造配置各执行二十类，共640次direct construct；正常render coverage
+不接受这些直接构造替代。故障按两baseline各十六个语义boundary采样，
+不是every-event覆盖；受控场景完整事件/状态比较保留。
+失败及最终定向counts、worker资源边界见status.md；阶段一原gate保持开放。
+
 2026-10-07 shopping依赖链补充：新增独立三十三模块图，实际shopping
 barrel、Home/HomeContent、section/header/CommonView及model/viewmodel
 直接连接原导航和minigame图。所有模块先ABC-only生成再读取paired TS，
