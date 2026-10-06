@@ -12,6 +12,53 @@
 
 ## 当前阶段
 
+### 2026-10-06：两个 Logger 的 rest、实例赋值与默认初始化验收
+
+- 基线88fd8fb8，production/rules134保持。扩展既有两个value Logger
+  测试，新增test-only logger_record_state.mjs；仍由ABC-only实际生成
+  complete/non-legacy/value_tree整record，生成完成后才读取独立paired TS。
+  原每record240 hilog场景、2个有效JS mutation保留；没有修改样本/ISA/
+  生产恢复，没有新增CTest注册。两个未初始化private类型声明仍只在
+  独立参考中擦除，initialized format字段保留。
+- 每个record新增848 paired场景，实际四个原型method和native rest一起
+  执行；核对name/arity/descriptor、非constructible方法、借用receiver、
+  getter/call/field顺序、live imported hilog在调用前/callee取得/字段读取
+  时变化、字段后续状态及任意原抛出身份（undefined/0/object）。原生
+  rest数组覆盖0/1/8/200/201实参、稀疏输入的dense副本、元素身份/descriptor、
+  原callee receiver与宿主返回值丢弃；getter重入另验每activation数组独立。
+  正常完成显式检查，不把提前异常算作等价。
+- 两份实际class与参考各验证14种constructor prefix值，含Symbol、BigInt、
+  对象和禁止coercion的对象；保留原值、字段顺序/descriptor、constructor
+  name/length及prototype关系，实例保持fresh。default模块namespace TDZ、
+  单例身份及重复evaluate不重复构造也检查。
+- 每record27个独立pinned assignment场景验证format/prefix/domain继承
+  setter、new.target/prototype getter及原抛出对象，含prototype getter先
+  失败不执行body。每record12个实际默认导出初始化场景在module evaluate
+  前安装Object.prototype setters，验证先后写入及暴露的部分receiver。
+  构造中止保留errored module、default TDZ和原失败的重复evaluate缓存，
+  不重新执行已完成setter。Node initialized TS format采用DefineField，
+  因而上述两项义务仅按pinned STOBJBYNAME独立断言，不误用native字段
+  定义作其oracle。
+- 新增每record6个先解析的有效JS mutation检出：rest内容丢失、跨activation
+  数组共享、宿主返回值泄漏、callee receiver丢失、format setter绕过、
+  default prefix身份丢失。原2个mutation另保留。tests-1/2两个Logger均通过；
+  final-tests-1定向10/10通过3.84秒，包含rest methods/argument snapshot/
+  async arguments、module default export/init及Breakpoint/CardArray。
+  两个Node文件--check及git diff --check通过；注册仍564项。
+  日志/tmp/abcd-logger-state-{tests-1,tests-2,final-tests-1}.log。
+- 当前ABC SHA/size与corpus index相符：pasteboard854fb0d9bbc1/112024，
+  dynamic_12_0_6_0；MultiCommunity45ffdc7d5075/514872，dynamic_12_0_2_0。
+  自审保持ABI/原数组/任意throw与参考边界，test-only无需生产重建或六模式
+  重跑。全套、expanded corpus、agents、RSS/benchmark、scheduler/DFX及周期
+  审计继续暂停；旧legacy baseline失败本轮未重跑。
+- 本轮没有关闭Logger整record表示质量：当前默认构造仍含匿名class的
+  computed-property name inference carrier，rest也保留一个snapshot别名。
+  printer现有注释明确carrier不增加immutable inner class binding；直接
+  改named class会改变self/scope，不能只按样本或外观替换。继续由共同
+  binding/命名上下文规划证明实际声明位置、free/captured名字及effects，
+  不新增局部匹配或盲删语义检查。测试输出显式wholeRecordStyle=pending。
+  阶段一Goal/实例字段/global/完整签名/body与全部record语义及表示gate保持。
+
 ### 2026-10-06：两个 ViewModel 与真实模型记录连接验收
 
 - 基线6bcb3600，production/rules134保持。本轮迁移现有

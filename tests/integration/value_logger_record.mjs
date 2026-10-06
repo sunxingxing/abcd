@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {stripTypeScriptTypes} from 'node:module';
 import vm from 'node:vm';
+import {verifyLoggerState} from './logger_record_state.mjs';
 
 const [tool, abc, paired, entry = '4712', hash =
   '854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e', prefix = 'Pasteboard'] = process.argv.slice(2);
@@ -98,4 +99,5 @@ for (const mutate of [
 for (const method of methods) assert.match(report.source, new RegExp(`${method}\\(\\.\\.\\.args\\)`));
 // Native methods/rest are checked here. The scratch class wrapper and aliases
 // still require a separate whole-record representation acceptance.
-console.log(`paired Logger: ${scenarios} mock-host semantic scenarios, 2 valid-syntax mutations; whole-record style pending`);
+const state = await verifyLoggerState(report.source, reference, prefix);
+console.log(JSON.stringify({basicCases: scenarios, basicMutations: 2, ...state, wholeRecordStyle: 'pending'}));
