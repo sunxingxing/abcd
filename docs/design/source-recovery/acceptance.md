@@ -1,5 +1,20 @@
 # 验收、证据与实施交接
 
+2026-10-07 ProgressBar补充：真实CommonConstants与ProgressBar经ABC-only
+生成后独立paired源码比较，模块初始化、原builder/native constructor、
+完整render/ready、copy/paste async、progress/timer和teardown实际执行。
+文件内容/句柄/close/unlink、clipboard、storage/cell和controller/options
+身份与事件/exception/Promise结算独立比较；不访问真实磁盘/剪贴板。
+
+Push与本记录共同复用test-only NativeRequests；父类Proxy、new.target、
+返回替代对象及constructor default/given/getter/lambda另验，默认合同不变。
+path身份盲点先由有效JS mutation检出再修正；最终88配置、570原throw、
+114换绑、15有效mutation和2等价表示通过，两baseline各57 host boundary
+采样，不是every-event覆盖。新图及reference adapter最终2/2通过；旧copy
+文本断言更新为native chain AST后，246行为场景另行通过。其余三个相关
+回归首轮通过，完整失败/验证层次见status.md。production/rules147保持；
+完整pasteboard图、其他record、任意字段拦截/所有body风格及原gate仍开放。
+
 2026-10-07 Push图补充：十五实际模块由ABC-only先生成，随后独立paired
 TS执行同一受控SDK/UI协议。七种view实际构造/render，实际Ability callback、
 VoIP Service、navigation、token/notification、form/image与shared/local

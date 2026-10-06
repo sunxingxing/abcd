@@ -12,6 +12,59 @@
 
 ## 当前阶段
 
+### 2026-10-07：ProgressBar 真实构造、渲染、复制与粘贴进度贯通验收
+
+- 基线7a45327b，production/rules147保持。原progressbar_cell_reference
+  只执行copy callback，没有真实constructor、storage、paste progress、
+  timer或完整render证据。本轮新增progressbar_record_source_test：先从
+  ABC-only显式numeric+constructors导出，结束后才读paired TS；实际
+  ProgressBar与真实CommonConstants ESM连接，body／builder不替换。
+- 原模块AppStorage/context读取、两MB string初始化、dstDir形成、原导出
+  builder/native class、完整render及ready、copy/paste async callback、
+  progress listener、300ms timer和teardown全部实际执行。外部协议控制
+  文件/clipboard/UI，不写真实文件或系统剪贴板；文件内容以长度/SHA、
+  fd/close状态、传输目的地/删除、clipboard与controller/options身份另验。
+  这不证明CommonConstants每个方法、整个pasteboard图或设备协议完成。
+- 原Promise tracker提取为test-only NativeRequests，Push与本记录复用。
+  native请求与then/catch/async derived返回受owned追踪，以实际活动驱动
+  release和完整settle，不用固定ticks。source内callback始终用真实body，
+  foreign receiver回放，原throw与platform rejection identity分别比较；
+  source realm的then观察保持native receiver/arguments/result及name/length。
+- class/method/signature结构与完整runtime export/descriptor另比较；真实
+  constructor的default/given、getter参数、id默认/null/0/17与参数lambda
+  覆盖，实际super参数及field赋值顺序保留。显式语言构造模式下动态
+  Proxy父类、不同new.target和父类返回替代对象另验，不追加父类品牌或
+  永久不变假设。没有生产样本、同块、PC/register、序列或图形条件。
+- 首轮54配置/570 throw/114换绑/9 mutation通过。新增保持旧pathStack的
+  有效JS mutation先RED：宿主以view数量标识多个path，错误仍比较相等。
+  改按真实allocation身份编号后，该错误被检出；原path与ready新path，
+  以及controller/options alias现在可区分。显式null result/breakpoint在
+  fixture中保留，不因默认值操作符变成成功值或sm。
+- 最终native新增图与reference adapter两项2/2通过7.31秒；图本身7.25秒，
+  88配置、570原throw、114 live-import换绑、15有效JS mutation及2等价
+  captured-this/词法this变体。两baseline各57 distinct host boundary采样，
+  不是every-event故障覆盖；正常baseline295事件、两模块evaluated、
+  真实ProgressBar构造/render、两个button callback及所有request结算另验。
+  ctor默认id/lambda、super参数、file内容/close、progress/UI/indicator、
+  timer、await、unlink及新path/controller身份错误均被检出。
+- 首轮五项定向4/5通过16.80秒：Push图、Home、PageA和新增图通过；旧
+  copy test仍匹配共同postfix改动前的三元文本而失败。现用固定Acorn AST
+  验证native chain：optional context member、mandatory host call/filesDir
+  再拼接/test1.txt，保留全部246 reference/effect/async对照。该旧测试最终
+  单独1/1通过1.60秒；未冒充同轮五项全通过。Push提取后另1/1通过8.17秒。
+- configure两次退出0，593项注册；abc_structure／abc_semantic -j4退出0。
+  新五份mjs及修改mjs语法、git diff --check通过；最终原生输出保存到
+  /tmp/abcd-progressbar-record-native-tests-3.log，copy原生输出为native-
+  tests-2.log。首轮CTest结果另留tests-1.log，其native-tests-1仅空注册记录，
+  不用它证明测试输出；完整旧源失败与identity RED均保留。相关日志前缀
+  /tmp/abcd-progressbar-{record,path-identity,push-regression}-*，无残留进程。
+- 本轮fresh pasteboard导出，输入SHA/size核对既有corpus index；没有修改
+  输入、分类或扩大语料。固定五ABC此前106/0仍是历史证据，不声称本轮
+  全量重验。阶段一Goal、其余record独立行为/表示和实例字段/globals/
+  完整signatures/body原结构gate继续active；任意字段prototype拦截、
+  所有body风格及完整pasteboard/平台图仍待对应证明。full suite、expanded
+  corpus、RSS/benchmark、DFX、生产scheduler、agents/周期audit保持暂停。
+
 ### 2026-10-07：Push 十五模块真实页面、Ability 与 Service 组合验收
 
 - 基线b6ebc7f5，production/rules147保持。本轮补齐原Push独立Ability／

@@ -148,12 +148,7 @@ export async function exercisePush(sources, config = {}) {
   // Observe each exact native reaction result, including a throwing .catch on
   // a real service promise discarded by its caller. Keep native receiver,
   // arguments and returned Promise; never substitute an application body.
-  const nativeThen = vm.runInContext('Promise.prototype.then', context);
-  const then = {then(onFulfilled, onRejected) {
-    return platform.track(Reflect.apply(nativeThen, this, [onFulfilled, onRejected]));
-  }}.then;
-  Object.defineProperty(vm.runInContext('Promise.prototype', context), 'then',
-    {value: then, configurable: true, writable: true});
+  platform.observeReactions(vm.runInContext('Promise.prototype', context));
   for (const [name, source] of Object.entries(sources)) modules.set(name, new vm.SourceTextModule(source, {context, identifier: name}));
   const dependency = name => {
     if (name.startsWith('@normalized:N&&&')) {

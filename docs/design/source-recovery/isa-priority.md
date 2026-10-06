@@ -1,5 +1,13 @@
 # 全 ISA 优先执行顺序
 
+2026-10-07 ProgressBar续作：沿共同source路径补齐原仅copy callback
+验证的实际constructor/模块初始化/render/progress/async/timer/teardown。
+真实CommonConstants连接，外部文件/clipboard仅受控协议；Push与本记录
+复用native请求追踪，原body不替换。身份/默认参数/动态Proxy父类的独立
+证据与旧copy style断言修正见status.md；production/rules147保持。
+继续实际record和原fields/globals/signatures/body gate，组件测试通过不
+代替完整pasteboard图、平台或阶段一验收；暂停项保持。
+
 2026-10-07 Push组合续作：沿共同ABC-only source路径补齐十五模块真实
 页面/Ability/VoIP Service/storage/form/image组合独立验收，七种view实际
 render；保留已有单record和Ability+Service验收。SDK父类身份验证盲点

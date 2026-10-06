@@ -5,6 +5,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {stripTypeScriptTypes} from 'node:module';
 import vm from 'node:vm';
+import {parseJavaScript} from './class_reference.mjs';
 
 // Execute only the registered copy-button callback. Construction, storage,
 // paste progress, real files, clipboard and platform rendering are not exercised.
@@ -123,7 +124,26 @@ try {
   const generated = readFileSync(join(output, record.source), 'utf8');
   // The selected host path is consumed by the native concatenation. This
   // representation check is separate from the effect/throw/async oracle.
-  assert.match(generated, /\? \(void 0\) : [^;]*\.filesDir\) \+ "\/test1\.txt"/);
+  // The common postfix printer now preserves the native optional chain.
+  // Inspect language structure independently of synthetic local spellings:
+  // optional context access, mandatory host call/files read, then concatenation.
+  const work = [parseJavaScript(generated)], paths = [];
+  while (work.length) {
+    const node = work.pop();
+    if (node.type === 'BinaryExpression' && node.operator === '+' && node.right.value === '/test1.txt') paths.push(node);
+    for (const value of Object.values(node)) {
+      if (Array.isArray(value)) {
+        for (const child of value) if (child && typeof child.type === 'string') work.push(child);
+      } else if (value && typeof value.type === 'string') work.push(value);
+    }
+  }
+  assert.equal(paths.length, 1);
+  assert.equal(paths[0].left.type, 'ChainExpression');
+  const files = paths[0].left.expression;
+  assert.equal(files.type, 'MemberExpression'); assert.equal(files.property.name, 'filesDir'); assert.equal(files.optional, false);
+  assert.equal(files.object.type, 'CallExpression'); assert.equal(files.object.optional, false);
+  const host = files.object.callee;
+  assert.equal(host.type, 'MemberExpression'); assert.equal(host.property.name, 'getHostContext'); assert.equal(host.optional, true);
   const paired = stripTypeScriptTypes(readFileSync(join(root, 'pasteboard_src/src/main/ets/pages/ProgressBar.ts'), 'utf8'));
   let scenarios = 0;
   for (const mode of ['resolve', 'reject', 'thenable']) for (const replace of [false, true]) {

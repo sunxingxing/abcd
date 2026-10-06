@@ -1444,9 +1444,13 @@ if(BUILD_TESTING)
     endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc" AND
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/pasteboard_src/src/main/ets/pages/ProgressBar.ts")
-      add_test(NAME progressbar_cell_reference_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+      add_test(NAME progressbar_cell_reference_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/progressbar_cell_reference.mjs $<TARGET_FILE:abc_structure>
         ${ABCD_PAIRED_CORPUS_ROOT}/pasteboard)
+      add_test(NAME progressbar_record_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/progressbar_record.mjs $<TARGET_FILE:abc_structure>
+        ${ABCD_PAIRED_CORPUS_ROOT}/pasteboard)
+      set_tests_properties(progressbar_record_source_test PROPERTIES RUN_SERIAL TRUE)
     endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
       if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/minigame/src/main/ets/view/Content.ts")

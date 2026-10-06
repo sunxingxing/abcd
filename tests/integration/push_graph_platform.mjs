@@ -1,52 +1,17 @@
 import assert from 'node:assert/strict';
-import {types} from 'node:util';
+import {NativeRequests} from './native_requests.mjs';
 
 // Controlled platform boundaries only. Every application method and callback
 // remains the real ESM body. Own native requests and derived then/catch chains;
 // settle them explicitly rather than declaring completion after a tick count.
 export function pushGraphPlatform(trace, config, token) {
-  const requests = [], owned = [], completions = [], listeners = [], deliveries = [], windows = [], images = [];
-  const hosts = new Map(), buffers = new Map(), bases = [], bindings = [], tracked = new WeakSet();
-  let pulse;
-  const changed = () => {const notify = pulse; pulse = undefined; if (notify) notify();};
+  const listeners = [], deliveries = [], windows = [], images = [];
+  const hosts = new Map(), buffers = new Map(), bases = [], bindings = [];
   const rejection = trace.tag({code: config.code ?? 1600004, message: 'platform rejection'}, 'platform.rejection');
   const outcome = error => Object.is(error, rejection) ? 'platform rejection' : trace.outcome(error);
-  const track = promise => {
-    if (promise === undefined) return promise;
-    assert.ok(types.isPromise(promise));
-    if (tracked.has(promise)) return promise;
-    tracked.add(promise); const entry = {promise, state: 'pending'}; owned.push(entry);
-    Promise.prototype.then.call(promise, value => {entry.state = 'fulfilled'; entry.value = value; changed();},
-      error => {entry.state = 'rejected'; entry.value = error; changed();});
-    return promise;
-  };
-  const monitor = (promise, id) => {
-    track(promise);
-    return trace.surface('promise' + id, Object.fromEntries(['then', 'catch'].map(name => [name,
-      (...callbacks) => monitor(Reflect.apply(Promise.prototype[name], promise, callbacks), id)])));
-  };
-  const request = (kind, result) => {
-    const entry = {kind, id: requests.length, released: false}; requests.push(entry);
-    const promise = new Promise((resolve, reject) => {entry.resolve = resolve; entry.reject = reject;});
-    entry.result = result; const wrapper = monitor(promise, entry.id); changed();
-    trace.event('platform.request', kind, entry.id); return wrapper;
-  };
-  const finish = async () => {
-    while (owned.some(entry => entry.state === 'pending') || requests.some(entry => !entry.released)) {
-      const available = requests.filter(entry => !entry.released);
-      for (const entry of config.reverse ? available.reverse() : available) {
-        entry.released = true; trace.trace.push(['platform.release', entry.kind, entry.id]);
-        if (entry.kind === config.reject) entry.reject(rejection); else entry.resolve(entry.result);
-      }
-      // Observe actual request/settlement activity. An async parent may create
-      // its next request after any number of native reactions, so neither ticks
-      // nor an allSettled barrier on that pending parent can drive this queue.
-      if (owned.some(entry => entry.state === 'pending')) await new Promise(resolve => {pulse = resolve;});
-    }
-    await Promise.allSettled(owned.map(entry => entry.promise));
-    completions.splice(0, completions.length, ...owned.map(entry => entry.state === 'fulfilled'
-      ? ['fulfilled', trace.normalize(entry.value)] : ['rejected', outcome(entry.value)]));
-  };
+  const queue = new NativeRequests(trace, config, rejection, outcome);
+  const track = promise => queue.track(promise);
+  const request = (kind, result) => queue.request(kind, result);
   const resource = number => trace.surface('resource' + number, {
     getRawFileContent(name) {
       assert.equal(name, 'example.png'); const raw = new Uint8Array([number, 7]);
@@ -148,8 +113,9 @@ export function pushGraphPlatform(trace, config, token) {
       [null, config.noInfo ? null : {size: {width: 13 + number, height: 7}}]);
     for (const callback of listeners) track(trace.call('voip.callback', callback, {foreign: true}, [{voipCallUiEvent: config.input ?? 2}]));
   };
-  return {load, finish, track, window, replayWindows, replay, bindings, requests,
-    snapshot: () => ({completions, requests: requests.map(({kind, released}) => [kind, released]),
+  return {load, finish: () => queue.finish(), track, window, replayWindows, replay, bindings,
+    observeReactions: prototype => queue.observeReactions(prototype),
+    snapshot: () => ({...queue.snapshot(),
       deliveries: deliveries.map(({kind, owner}) => [kind, trace.normalize(owner)]),
       listeners: listeners.length, images: images.length, windows: windows.map(({path}) => path)})};
 }
