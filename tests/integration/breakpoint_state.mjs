@@ -8,20 +8,27 @@ const PrototypeKind = Object.freeze({
   foreignFallback: Symbol('foreign-fallback'),
 });
 
-const keys = ['sm', 'md', 'lg'];
-async function construct(source, prototypeKind, setters, values, failureAt = null, failure) {
-  const context = vm.createContext({}), trace = [], saved = new Map();
+const defaults = {
+  fields: ['sm', 'md', 'lg'], globals: {},
+  dependency: {specifier: '@normalized:N&&&base/src/main/ets/constants/BreakpointConstants&1.0.0',
+    name: 'BreakpointConstants', value: {BREAKPOINT_MD: 'md', BREAKPOINT_LG: 'lg'}},
+  lookups: [['md', 1], ['lg', 2], ['other', 0]],
+};
+async function construct(source, prototypeKind, setters, values, failureAt, failure, specification) {
+  const keys = specification.fields;
+  const context = vm.createContext({...specification.globals}), trace = [], saved = new Map();
   const root = new vm.SourceTextModule(source, {context});
-  const dependency = new vm.SyntheticModule(['BreakpointConstants'], function() {
-    this.setExport('BreakpointConstants', {BREAKPOINT_MD: 'md', BREAKPOINT_LG: 'lg'});
+  const entry = specification.dependency;
+  const dependency = entry && new vm.SyntheticModule([entry.name], function() {
+    this.setExport(entry.name, entry.value);
   }, {context});
   await root.link(name => {
-    assert.equal(name, '@normalized:N&&&base/src/main/ets/constants/BreakpointConstants&1.0.0');
+    assert.ok(entry); assert.equal(name, entry.specifier);
     return dependency;
   });
   await root.evaluate();
   const C = root.namespace.BreakpointType;
-  assert.equal(C.name, 'BreakpointType'); assert.equal(C.length, 3);
+  assert.equal(C.name, 'BreakpointType'); assert.equal(C.length, keys.length);
   assert.throws(() => Reflect.apply(C, {}, values), {name: 'TypeError'});
   const targetContext = prototypeKind === PrototypeKind.foreignFallback ? vm.createContext({}) : context;
   const fallback = prototypeKind === PrototypeKind.fallback || prototypeKind === PrototypeKind.foreignFallback;
@@ -53,7 +60,7 @@ async function construct(source, prototypeKind, setters, values, failureAt = nul
         assert.ok(Object.is(field.value, values[i]));
         assert.deepEqual([field.writable, field.enumerable, field.configurable], [true, true, true]);
       }
-      for (const [key, index] of [['md', 1], ['lg', 2], ['other', 0]])
+      for (const [key, index] of specification.lookups)
         assert.equal(Reflect.apply(C.prototype.getValue, result, [key]), values[index]);
     }
     assert.throws(() => Reflect.construct(C.prototype.getValue, []), {name: 'TypeError'});
@@ -70,29 +77,33 @@ async function construct(source, prototypeKind, setters, values, failureAt = nul
   return {trace, raised, states};
 }
 
-export async function verifyBreakpointState(source, reference) {
+export async function verifyBreakpointState(source, reference, options = {}) {
+  const specification = {...defaults, ...options};
+  const keys = specification.fields;
   const prohibited = {[Symbol.toPrimitive]() { assert.fail('constructor must retain values without coercion'); }};
-  const argumentsList = [[undefined, null, false], [-0, NaN, Infinity], [Symbol('sm'), {}, prohibited]];
+  const argumentsList = options.argumentsList ?? [[undefined, null, false], [-0, NaN, Infinity], [Symbol('sm'), {}, prohibited]];
+  const run = (text, kind, setters, values, point = null, failure) =>
+    construct(text, kind, setters, values, point, failure, specification);
   let constructorCases = 0, throwCases = 0;
   for (const kind of [PrototypeKind.class, PrototypeKind.foreign, PrototypeKind.fallback, PrototypeKind.foreignFallback])
     for (const setters of [false, true]) for (const values of argumentsList) {
-      assert.deepEqual(await construct(source, kind, setters, values), await construct(reference, kind, setters, values));
+      assert.deepEqual(await run(source, kind, setters, values), await run(reference, kind, setters, values));
       ++constructorCases;
       for (const point of setters ? ['prototype', ...keys] : ['prototype'])
         for (const failure of [undefined, 0, Symbol('failure'), {}]) {
-          assert.deepEqual(await construct(source, kind, setters, values, point, failure),
-            await construct(reference, kind, setters, values, point, failure));
+          assert.deepEqual(await run(source, kind, setters, values, point, failure),
+            await run(reference, kind, setters, values, point, failure));
           ++throwCases;
         }
     }
   let mutations = 0;
   for (const changed of [
-    source.replace('(this.md = md);', '(this.md = lg);'),
-    source.replace('(this.sm = sm);', '(this.sm = sm); return ({});'),
-    source.replace('(this.sm = sm);', 'Object.defineProperty(this, "sm", {value: sm, writable: true, enumerable: true, configurable: true});'),
+    source.replace(`(this.${keys[1]} = ${keys[1]});`, `(this.${keys[1]} = ${keys[2]});`),
+    source.replace(`(this.${keys[0]} = ${keys[0]});`, `(this.${keys[0]} = ${keys[0]}); return ({});`),
+    source.replace(`(this.${keys[0]} = ${keys[0]});`, `Object.defineProperty(this, "${keys[0]}", {value: ${keys[0]}, writable: true, enumerable: true, configurable: true});`),
   ]) {
     assert.notEqual(changed, source); new vm.SourceTextModule(changed);
-    await assert.rejects(construct(changed, PrototypeKind.foreign, true, argumentsList[2]), {name: 'AssertionError'});
+    await assert.rejects(run(changed, PrototypeKind.foreign, true, argumentsList[2]), {name: 'AssertionError'});
     ++mutations;
   }
   return {constructorCases, throwCases, constructorMutations: mutations};

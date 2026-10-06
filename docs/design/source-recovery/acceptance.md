@@ -1,5 +1,22 @@
 # 验收、证据与实施交接
 
+2026-10-06 Immersive Breakpoint补充：record7395的受控whole-record行为与
+高层表示由pending转accepted。固定SHA核对、entry7531的ABC-only默认V3
+完整ValueTree生成全部结束后才读取paired TS。真实四字段constructor、
+getValue和模块执行；无initializer的四项type-only声明仅在参考中擦除。
+1,496组输入／receiver／动态enum对照、25,800次原throw及5,160次逐event
+全局换绑核对严格比较、取得值后的变化、getter顺序、返回身份及部分状态。
+
+原生class/export/signature/member/ordered if、0/1/200/201等实参、字段
+own-key与descriptor另验；等价最后if极性允许。共同构造oracle复用为四
+字段，24 prototype/setter/new.target及288原throw／部分写入场景通过，
+包括两realm fallback。11个有效JS mutation必须检出错误第四字段、原值
+return、strict→loose、缓存全局、wrong receiver和DefineField代替赋值。
+Node外部context全局getter会改写原异常，test host改为realm内原生getter，
+未放宽raw identity检查。旧Community oracle仍通过，最终6/6相关回归成功。
+WidthBreakpoint为显式controlled host，不扩为该平台定义、TS generic/type、
+设备运行、全部record或原结构gate完成；具体日志、失败修正与范围见status.md。
+
 2026-10-06复合成员链补充：规则145通过共同nullish解释、member path摘要及
 迭代printer恢复x?.a.b、x?.a[key]、x?.a.b(args)。只有原首个guarded access
 为optional，中间member的TypeError、原key／getter／参数／producer效果、

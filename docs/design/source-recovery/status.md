@@ -12,6 +12,53 @@
 
 ## 当前阶段
 
+### 2026-10-06：Immersive Breakpoint 四字段／全局读取／完整 record 验收
+
+- 基线977cbbe0，生产规则仍145。新增immersive_breakpoint_record_source_test，
+  核对固定Immersive ABC SHA后，ABC-only默认V3的--value-source从entry7531
+  生成record7395完整源码；route／complete／无legacy／executable:false核对后，
+  才读取独立paired Breakpoint.ts。真实module/class/constructor/getValue正文
+  全部执行，没有参考body拼接或sample/name分派。此前HomeConstants连接只
+  有较窄行为证据，本次补齐该record受控whole-record行为及高层表示验收。
+- 1,496组输入、动态enum及receiver对照通过：undefined/null/falsy/-0/NaN/
+  Infinity/BigInt/Symbol、禁止coercion对象，正常／全部alias／各分支alias／
+  严格Boolean比较、changing字段、nullish/scalar/missing全局enum，真实
+  instance、foreign proxy和primitive/nullish receiver。每次原全局读取／
+  WIDTH_MD、WIDTH_SM、WIDTH_LG getter及实际返回字段顺序、身份与状态核对。
+  5,160个实际event逐点替换全局enum，证明getter取得后保留原值、后续读取
+  观察新binding；25,800次undefined/null/0/Symbol/object原throw逐事件验收，
+  无固定event上限或把内部TypeError／ReferenceError当作原throw成功。
+- sm/md/lg/xl四项真实assignment、constructor四formal与getValue一formal、
+  export／class／method name/arity/descriptor、native new-only及方法不可构造
+  检查通过。0/1/2/3/4/6/200/201实参数量保留missing／extra／原值身份，字段
+  own-key顺序与descriptor另验。复用test-only breakpoint_state构造oracle，
+  参数化field/global/import/lookup输入：24组prototype/setter/new.target场景、
+  288次原异常与部分字段写入通过，包含两realm fallback。旧Community三字段
+  360 lookup／24 constructor／240 throw与六mutation仍通过，未删除其检查。
+- 11个先解析为有效JS的mutation检出错误返回／receiver、strict→loose、
+  额外enum读取、缓存全局enum、错误第四字段值、错误构造return及DefineField
+  代替assignment。独立TS只擦除四项无initializer类型声明；constructor所有
+  写入／method／module保持，不能把Node retained DefineField当作Ark赋值oracle。
+  该recordwholeRecordBehavior与wholeRecordStyle由pending转accepted；native
+  class/signature/member/ordered if及等价最后if极性允许，TS generic/type与
+  平台WidthBreakpoint定义本身无恢复证明，controlled host不冒充设备运行。
+- 首轮原throw断言失败，最小独立探针确认Node Contextify把外部安装的global
+  accessor异常改成ReferenceError。修正test host为realm内部原生getter，再
+  执行原host callback，任意throw身份检查保持；同时修正state snapshot必须
+  在method调用后取得。tests-1/2失败保留，不当作生产恢复bug或盲放宽验收。
+  单一-j4 abc_structure／abc_semantic构建及configure退出0，两mjs语法／diff
+  检查通过；首个修正后2/2通过0.98秒，最终六项相关class／constants／
+  Community／ViewModel record回归6/6通过7.54秒。575项注册，仅运行上述
+  定向范围；日志/tmp/abcd-immersive-breakpoint-{build,configure}-1.log、
+  tests-1/2/3.log、details-3.log、final-tests-1.log、final-details-1.log。
+- Immersive及Community输入SHA/size与既有paired index逐项一致。没有生产
+  source规则变化，未重复六模式三十次导出；上一轮106/0等统计是977cbbe0
+  的证据，本轮fresh完整record为上述默认V3输入。按当前status继续T08/T11
+  的剩余record字段／global／签名／body独立验收，不能重跑旧计划已交付任务
+  或以新增覆盖代替全部阶段一。自检核对actual body、参考隔离、原throw／
+  state／mutant断言与共同oracle旧覆盖；agents／全套／expanded corpus／RSS／
+  benchmark／scheduler/DFX／周期审计保持暂停，原结构gate及Goal仍active。
+
 ### 2026-10-06：共同 nullish 投影恢复复合成员链与成员调用
 
 - 基线3cd68094，生产规则145。原PlanNullishSyntax只允许terminal member的
