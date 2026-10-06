@@ -1,5 +1,13 @@
 # 全 ISA 优先执行顺序
 
+2026-10-07 规则147：既有显式numeric+constructors恢复后的共同高层表示
+继续推进。旧member chain在中间调用丢失摘要，由同一postfix path沿原
+成员／callee依赖传播取代，支持`x?.f().a`、`fn?.().a`与返回函数继续调用；
+首个guard之后保持mandatory及原receiver／参数／异常／来源。detached
+member值调用保留原conditional，不能为了外观重绑receiver；不同reference
+和未融合alias仍是表示缺口。三profile真实解码及独立行为、定向实际
+Window／导航验证范围见status.md；不将本组件或106/0统计代替阶段一。
+
 2026-10-07 Window组合续作：真实WindowUtil／WindowInfo接入三十三模块
 导航图与实际storage/child更新，不再只执行模块初始化及controlled window
 替身。实际listener/Promise/body及高层class/signature独立验收，原单record

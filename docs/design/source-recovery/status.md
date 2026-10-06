@@ -12,6 +12,62 @@
 
 ## 当前阶段
 
+### 2026-10-07：共同后缀链贯通成员、调用与返回函数调用
+
+- 基线a33d153b，production/rules147。旧member path在中间CallExpr丢失
+  摘要，无法把`x?.f().a`或`fn?.().a`保留为原生chain。现沿原共同
+  MemberExpr.base／CallExpr.callee依赖自底向上传播首个稳定reference与
+  guarded access，复用原nullish三域、formation及control/evaluation证明。
+  不新建AST／专项body writer，不增加样本、同块、序列、PC/register、
+  producer名单或selection数量条件；引用／effect／exception／TDZ保持。
+- 共同迭代PostfixSpine仅在首个access加入?.，后续member/call mandatory；
+  key转换、getter、callee取得、参数及receiver按原顺序和次数执行。
+  CallExpr返回值是非Reference，可以继续值调用；成员的detached value
+  invocation不能错误重绑receiver，继续原conditional／`(0, member)(args)`。
+  路径摘要一次O(V+E)，没有逐候选走链；任意arena顺序保持。member/call
+  原节点正范围、省略guard的base.end事件及真实instruction sources另验。
+- 最终203份owned树覆盖深度1/2/3/200/201/402、named/computed、成员/
+  首个值调用、尾调用、形成assignment与反向arena。新增返回函数调用、
+  两种detached成员及传入原生eval的实际生成函数。135928独立行为场景、
+  九个有效JS mutation通过：中途增加?.、括号结束链与错误direct eval
+  均被检出。falsy／负零／NaN／BigInt／Symbol、原undefined/null/0/Symbol/
+  object throw、getter replay／argument／receiver／原source次数另比较。
+  201→402 work几何边界不是RSS／性能benchmark验收。
+- 最终960份三profile真实解码fixture，经FunctionInput→ValueProgram→
+  Control/Evaluation→FunctionTree→语义／来源→family printer贯通。
+  768份深度1/3/200/201，另192份CALLARG消费CALLTHIS返回值；独立组合
+  0/201 copies／块拆分、有无副作用参数、named/computed及形成表达式。
+  596850独立行为场景通过，原instruction position checks保持；这批不
+  把树级九项mutation算作decoded mutation证据。此前768/476550单独
+  通过保留，但不计作最终足额960矩阵。
+- 首轮19项定向CTest16/19通过303.66秒；两个新增失败来自eval夹具使用
+  既有标识符规则不接受的名字，另一项来自扩展夹具时脚本计数先于二进制
+  更新。改为原生eval作为原值参数输入，并同步960数量，未修改生产命名
+  或弱化校验。最终新增四项CTest4/4通过63.48秒；原十五项均已在首轮
+  通过，分别保留native证据，不伪装为同轮19/19。实际33模块Window图
+  224.23秒通过，90场景／1400原throw／280换绑／16mutation／2等价变体
+  保持，22导出view全部实际构造并render。
+- 实际WindowUtil的queryOrientationByResourceManager已输出
+  `?.resourceManager.getConfigurationSync().direction`；新增该高层表示
+  断言后Window whole-record CTest再次1/1通过0.58秒。不同reference形成
+  的外层guard仍明确保留，不宣称整个方法已有单一原生链。其他optional/
+  nullish／statement／snapshot／logical及Window旧partial回归均通过。
+- configure退出0，591项注册；单-j4 production/CLI及相应测试构建通过。
+  build-2的test-only profile/API名称错误修正后build-3/4/5退出0；初始RED
+  证明原member path缺口。日志/tmp/abcd-optional-postfix-{red,configure,
+  build,registration,tests,native-tests,decode-source}-*留存；新mjs及修改
+  Window mjs语法、git diff --check通过，没有残留运行进程。
+- fresh固定五ABC仅重跑显式numeric+constructors组合，五导出退出0，
+  106 complete／0 partial／46 kNoModule保持，106份mjs全部解析；输入
+  SHA/size与原index一致。产物build/stage-one/optional-postfix-numeric-
+  constructors-pass-1，batch-summary-1.json在/tmp；不重复六模式三十导出，
+  不将这些统计代替所有record独立语义／表示或原结构gate。
+- 不同reference、分离formation、一般未融合alias和detached member的
+  原生chain仍是表示缺口；未投影时保留已恢复源码，不能新拒绝函数。
+  实例字段／globals／完整signatures／body整合与阶段一继续active。full
+  suite、expanded corpus、RSS/benchmark、DFX、生产scheduler、agents和
+  周期audit保持暂停。本次不是全阶段或任意平台／设备验收完成。
+
 ### 2026-10-07：真实 WindowUtil／WindowInfo 与三十三模块导航图
 
 - 基线7eb21287，production/rules146保持。现有Window记录已独立验收；

@@ -355,7 +355,7 @@ work 统计和调用方显式传入有限额度的底层兼容接口保留，但
 整份 record 的最终目标不变。演进任务见
 [C00–C09 计划](../../superpowers/plans/2026-09-28-unified-control-regions.md)。
 
-## 原生空值语法的表示（规则 104、105、107、145、146）
+## 原生空值语法的表示（规则 104、105、107、145、146、147）
 
 PlanNullishSyntax在已经检查的FunctionTree上解释null、undefined、other
 三个语言值域，证明nullish路径返回undefined、其他路径恰好执行同一个
@@ -379,6 +379,23 @@ printer在同一次chain中输出x?.a.b／x?.a[key]／x?.a.b(args)。后续membe
 仍沿共同位置计划落在原base.end。没有逐候选chain重走、额外AST或文本
 匹配。分离形成、一般alias与跨reference整体chain
 仍属表示缺口；未投影时继续输出原完整条件，不能拒绝原已恢复函数。
+
+规则147将同一摘要扩展为postfix path：MemberExpr.base与CallExpr.callee
+自底向上传播首个稳定reference和guarded access，支持成员与调用交替的
+`x?.f().a`、`fn?.().a`、`x?.f()().g()`。首个access可以是成员或值调用；
+后续所有链接仍mandatory。原CallExpr.arguments与computed key不重建、
+不移动、不重复，callee先于参数，原member receiver保持。调用返回值是
+非Reference，继续值调用保留undefined receiver；传入原生eval也必须保持
+间接eval。原值调用若以MemberExpr为callee，必须保留原detached receiver；
+本次没有相应native chain表示，继续原conditional与`(0, member)(args)`。
+这是Reference语义义务及表示缺口，不能增加same-block等第二准入条件。
+
+共同迭代PostfixSpine打印原节点，每个member/call仍有正范围；省略guard
+沿原base.end标注。AST、ValueProgram、control/evaluation/exception证明
+均不变。路径摘要O(V+E)，辅助空间O(V+E)，没有逐候选重新走链；printer
+按实际输出迭代。任意arena顺序、200/201/402及三profile复制/拆块贯通
+和独立行为证据见status.md。不同reference、分离形成或未融合alias仍保留
+原语法；本项不宣称这些整体chain或所有record高层表示已验收。
 
 规则146增加丢弃结果的语句观察：ExpressionStmt保留原效果，Block按原
 执行顺序组合，If用相同三域predicate/formation选择摘要；独立Kahn队列

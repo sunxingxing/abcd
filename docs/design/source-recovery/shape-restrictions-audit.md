@@ -1,5 +1,19 @@
 # 按用户要求进行的恢复条件审计
 
+规则147补充：旧member path在中间CallExpr处不传播，是后缀链的表示限制。
+共同postfix path现在沿原MemberExpr.base／CallExpr.callee依赖自底向上
+保留同一首个reference/access，成员／值调用与调用返回值可继续组合。
+不新增操作名单、同块、邻接、序列、producer集合、寄存器／PC、selection
+数量或样本分派；原三域guard／形成／TDZ／identity／effect／异常义务保持。
+
+CallReference仍区分member receiver与detached value invocation。把成员
+值调用改成native member chain会错误恢复receiver，故该表示继续原条件，
+不是盲目删校验；调用返回值的值调用则没有Reference，可原生继续。首个
+optional eval必须间接；后续链接不得加?.掩盖异常或加括号结束短路。
+任意节点顺序、200/201/402、三profile真实解码／201复制拆块及独立
+getter/参数/receiver/异常/eval反例证据见status.md。不同reference及未融合
+formation/alias仍是表示缺口，不作为完整函数的新拒绝条件。
+
 规则145补充：nullish投影要求terminal member的直接base是稳定reference，
 是复合member spine的表示缺口，不是语言约束。现在共同MemberExpr.base／
 CallExpr.callee依赖调度自底向上保存首个access及SymbolId／This owner，

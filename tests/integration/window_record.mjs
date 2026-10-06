@@ -18,6 +18,9 @@ assert.doesNotMatch(report.source, /INCOMPLETE|UNRECOVERED|Reflect\.|\bswitch\s*
 for (const pattern of [/new WindowInfo\(/, /async \(windowSize\)/, /sensor\.on\(/,
   /\.then\(/, /setWindowOrientation\(orientation\)/, /getCalDegree\(x, y, z\)/, /-x/, /export \{ WindowInfo/])
   assert.match(report.source, pattern);
+// The same common postfix projection must continue through the original call;
+// later direction access stays mandatory. Behavior below uses independent TS.
+assert.match(report.source, /\?\.resourceManager\.getConfigurationSync\(\)\.direction/);
 const pairedText = readFileSync(paired, 'utf8');
 assert.equal((pairedText.match(/^@Observed$/gm) ?? []).length, 1);
 // Uninitialized TS type declarations have no pinned assignment effect. Node

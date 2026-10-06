@@ -1,5 +1,25 @@
 # 验收、证据与实施交接
 
+2026-10-07 共同后缀链补充：规则147沿原MemberExpr.base与CallExpr.callee
+依赖保留同一reference/access，调用不再中断原member摘要。共享printer
+支持`x?.f().a`、`fn?.().a`和返回函数继续调用，首个access后保持mandatory。
+receiver／callee-before-arguments／key转换／getter／原throw／间接eval
+分别验收；detached member值调用保留原条件，不能为native外观重绑receiver。
+AST和原control/evaluation/来源证明保持，无样本／同块／序列准入。
+
+203份owned树／135928行为／9有效JS mutation，以及960份三profile真实
+解码／596850行为通过；逆序arena、200/201/402、201 copies/拆块和
+有无副作用参数覆盖，保留节点range及原instruction sources另验。
+首轮新增夹具名字／计数失败修正后，最终新增四项4/4通过；原十五项在
+首轮通过，未冒充同轮19/19。实际Window记录和33模块导航也通过，22导出
+view全部render；实际queryOrientationByResourceManager的中间调用继续
+为?.resourceManager.getConfigurationSync().direction，高层断言另验。
+
+固定五ABC显式numeric+constructors输出106/0及46 no-module保持，106份
+源码解析、SHA/size不变。其余record、不同reference／未融合alias的整体
+chain及原fields/globals/signatures/body gate仍开放。完整日志、失败修正
+与验证层次见status.md；不恢复暂停的全套／语料扩展／RSS／DFX／agents。
+
 2026-10-07 Window图补充：三十三实际模块连接真实WindowUtil／WindowInfo
 与页面storage/child/capture/body，新增test-only平台只控制窗口/UI/display/
 hilog边界。ABC-only导出结束后才读paired TS，保留原独立Window记录验收。

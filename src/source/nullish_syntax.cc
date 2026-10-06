@@ -40,10 +40,15 @@ struct Meaning {
   std::array<Formation, kDomains> formations;
   bool predicate = false;
 };
-struct MemberPath {
+struct PostfixPath {
   std::optional<Reference> reference;
   std::optional<ExprId> access;
 };
+ExprId PostfixBase(const FunctionTree& tree, ExprId access) {
+  const auto& expression = tree.expressions[access.value].expression;
+  if (const auto* member = std::get_if<MemberExpr>(&expression)) return member->base;
+  return std::get<CallExpr>(expression).callee;
+}
 struct StatementResult {
   std::optional<ExprId> expression;
   Formation formation;
@@ -317,22 +322,15 @@ StatementMeaning InterpretStatement(const FunctionTree& tree, StmtId id,
   return result;
 }
 std::optional<NullishProjection> ProjectOptional(const FunctionTree& tree, ExprId result,
-    const Reference& reference, std::optional<ExprId> formed, const std::vector<MemberPath>& paths) {
+    const Reference& reference, std::optional<ExprId> formed, const std::vector<PostfixPath>& paths) {
   const auto& expression=tree.expressions[result.value].expression;
-  const auto project_member=[&](ExprId member) -> std::optional<OptionalMemberSyntax> {
-    const auto& path=paths[member.value];
-    if(!path.access || path.reference!=std::optional{reference}) return {};
-    const auto base=std::get<MemberExpr>(tree.expressions[path.access->value].expression).base;
-    return OptionalMemberSyntax{member,formed.value_or(base),*path.access};
-  };
-  if(std::holds_alternative<MemberExpr>(expression)) {
-    if(const auto member=project_member(result)) return *member;
-  } else if(const auto* call=std::get_if<CallExpr>(&expression)) {
-    if(call->reference==CallReference::kValue && StableReference(tree,call->callee)==std::optional{reference})
-      return OptionalCallSyntax{result,formed.value_or(call->callee),{}, {}};
-    if(call->reference==CallReference::kMember) if(const auto member=project_member(call->callee))
-      return OptionalCallSyntax{result,member->base,call->callee,member->access};
-  }
+  const auto& path=paths[result.value];
+  if (!path.access || path.reference != std::optional{reference}) return {};
+  const auto base=formed.value_or(PostfixBase(tree,*path.access));
+  if (std::holds_alternative<MemberExpr>(expression)) return OptionalMemberSyntax{result,base,*path.access};
+  if (const auto* call=std::get_if<CallExpr>(&expression))
+    return OptionalCallSyntax{result,base,result==*path.access ? std::nullopt : std::optional{call->callee},
+      result==*path.access ? std::nullopt : path.access};
   return {};
 }
 }
@@ -341,7 +339,7 @@ std::variant<NullishSyntax, TreeStructureError> PlanNullishSyntax(
   try {
     TreeCheckBudget budget(limit); const auto count = tree.expressions.size();
     NullishSyntax plan; std::vector<Meaning> meanings; std::vector<Inputs> inputs;
-    std::vector<MemberPath> paths;
+    std::vector<PostfixPath> paths;
     bool selection = false, binding = false, nullish = false;
     for (const auto& node : tree.expressions) {
       budget.Step(); selection |= std::holds_alternative<ConditionalExpr>(node.expression);
@@ -388,12 +386,23 @@ std::variant<NullishSyntax, TreeStructureError> PlanNullishSyntax(
     for (std::size_t at = 0; at < ready; ++at) {
       const auto id = queue[at]; budget.Step(); meanings[id.value] = Interpret(tree, id, meanings, texts);
       if (const auto* member = std::get_if<MemberExpr>(&tree.expressions[id.value].expression)) {
-        // An original member spine evaluates each base/key/getter in order.
+        // An original postfix spine evaluates each base/key/getter in order.
         // Summarize its stable starting reference bottom-up once, rather than
         // replaying every candidate's chain. Arbitrary keys stay opaque/owned;
         // the guard skips all of them only when its original receiver is nil.
         if (const auto reference = StableReference(tree, member->base)) paths[id.value] = {reference, id};
         else paths[id.value] = paths[member->base.value];
+      } else if (const auto* call = std::get_if<CallExpr>(&tree.expressions[id.value].expression)) {
+        if (call->reference == CallReference::kValue && StableReference(tree,call->callee))
+          paths[id.value] = {StableReference(tree,call->callee),id};
+        else if (call->reference == CallReference::kMember ||
+            !std::holds_alternative<MemberExpr>(tree.expressions[call->callee.value].expression)) {
+          // Calls returning values have no receiver Reference; member calls
+          // retain theirs. A value invocation on a member must stay detached:
+          // native chaining would bind a receiver that the original discarded.
+          // This is a Reference obligation, not an opcode or layout whitelist.
+          paths[id.value] = paths[call->callee.value];
+        }
       }
       const auto& meaning = meanings[id.value];
       const auto nil = meaning.results[static_cast<std::size_t>(NullishDomain::kNull)];
@@ -432,10 +441,10 @@ std::variant<NullishSyntax, TreeStructureError> PlanNullishSyntax(
     for (std::size_t i = 0; i < count; ++i) {
       budget.Step(); if (!plan.projections[i]) continue;
       if (const auto* member = std::get_if<OptionalMemberSyntax>(&*plan.projections[i])) {
-        const auto base = std::get<MemberExpr>(tree.expressions[member->access.value].expression).base;
+        const auto base = PostfixBase(tree,member->access);
         if (base != member->base) plan.omitted_by[base.value] = ExprId{static_cast<std::uint32_t>(i)};
       } else if (const auto* call = std::get_if<OptionalCallSyntax>(&*plan.projections[i])) {
-        const auto base = call->member ? std::get<MemberExpr>(tree.expressions[call->access->value].expression).base :
+        const auto base = call->prefix ? PostfixBase(tree,*call->access) :
             std::get<CallExpr>(tree.expressions[call->call.value].expression).callee;
         if (base != call->base) plan.omitted_by[base.value] = ExprId{static_cast<std::uint32_t>(i)};
       }
@@ -521,9 +530,9 @@ std::variant<NullishSyntax, TreeStructureError> PlanNullishSyntax(
         std::visit([&](const auto& projection) {
           using T=std::decay_t<decltype(projection)>;
           if constexpr(std::is_same_v<T,OptionalMemberSyntax>)
-            omit(root,std::get<MemberExpr>(tree.expressions[projection.access.value].expression).base);
+            omit(root,PostfixBase(tree,projection.access));
           else if constexpr(std::is_same_v<T,OptionalCallSyntax>) {
-            const auto base=projection.member ? std::get<MemberExpr>(tree.expressions[projection.access->value].expression).base :
+            const auto base=projection.prefix ? PostfixBase(tree,*projection.access) :
               std::get<CallExpr>(tree.expressions[projection.call.value].expression).callee;
             omit(root,base);
           }
@@ -561,7 +570,7 @@ bool NullishSyntax::Retains(NullishRoot root, ExprId child) const {
   return std::visit([&](const auto& syntax) {
     using T = std::decay_t<decltype(syntax)>;
     if constexpr (std::is_same_v<T, OptionalMemberSyntax>) return syntax.member == child || syntax.base == child;
-    else if constexpr (std::is_same_v<T, OptionalCallSyntax>) return syntax.call == child || syntax.member == child || syntax.base == child;
+    else if constexpr (std::is_same_v<T, OptionalCallSyntax>) return syntax.call == child || syntax.prefix == child || syntax.base == child;
     else { static_assert(std::is_same_v<T, NullishFallbackSyntax>); return syntax.value == child || syntax.fallback == child; }
   }, Projection(root));
 }

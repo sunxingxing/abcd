@@ -591,6 +591,12 @@ if(BUILD_TESTING)
   add_executable(optional_member_spine_test tests/unit/source/optional_member_spine_test.cc tools/tree_position_json.cc)
   target_link_libraries(optional_member_spine_test PRIVATE abcd_source abcd_json)
   add_test(NAME optional_member_spine_test COMMAND optional_member_spine_test)
+  add_executable(optional_postfix_test tests/unit/source/optional_postfix_test.cc)
+  target_link_libraries(optional_postfix_test PRIVATE abcd_source abcd_json)
+  add_test(NAME optional_postfix_test COMMAND optional_postfix_test)
+  add_executable(optional_postfix_decode_test tests/integration/optional_postfix_decode.cc)
+  target_link_libraries(optional_postfix_decode_test PRIVATE abcd_source abcd_json)
+  add_test(NAME optional_postfix_decode_test COMMAND optional_postfix_decode_test)
   add_executable(optional_statement_test tests/unit/source/optional_statement_test.cc tools/tree_position_json.cc)
   target_link_libraries(optional_statement_test PRIVATE abcd_source abcd_json)
   add_test(NAME optional_statement_test COMMAND optional_statement_test)
@@ -1620,6 +1626,10 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/optional_access.mjs $<TARGET_FILE:optional_access_test>)
     add_test(NAME optional_member_spine_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/optional_member_spine.mjs $<TARGET_FILE:optional_member_spine_test>)
+    add_test(NAME optional_postfix_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/optional_postfix.mjs $<TARGET_FILE:optional_postfix_test>)
+    add_test(NAME optional_postfix_decode_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/optional_postfix.mjs $<TARGET_FILE:optional_postfix_decode_test> --decoded)
     add_test(NAME optional_statement_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/optional_statement.mjs $<TARGET_FILE:optional_statement_test>)
     add_test(NAME nullish_fallback_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
