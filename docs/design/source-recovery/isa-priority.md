@@ -18,6 +18,12 @@ chain 等表示细节优化排在这些缺口之后。不得仅改善缺口注�
 构造器组件恢复后继续实例字段/全局/完整签名/函数体整合和整record独立
 语义、风格验收；不能把source_complete统计替代这些阶段一门槛。
 
+2026-10-06 规则132：普通/分阶段family命名先查询真实子树的global/module
+引用索引，冲突提示与合成名均避让；不以名字/布局定义恢复语义。scope/
+捕获/异常/副作用校验保持。共享tree标识符不再受legacy私有namespace
+限制，详见[cell命名](cell-names.md)。固定五ABC六模式结果无回退且源码
+不变；48 decoded family独立行为/mutation证据不能代替整record验收。
+
 2026-10-06 规则130：普通方法/闭包的命名提示已接入共用syntax resolver，
 复用record cell命名与实际allocation/capture分析。完整模式29份源码表示
 改善，source_complete数量保持。签名中的真实formal证据、setter-capable

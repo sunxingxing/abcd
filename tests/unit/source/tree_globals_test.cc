@@ -38,6 +38,11 @@ void Contexts() {
   const HostSymbolBinding symbol{u"SubscriberManager"};
   scope = {}; scope.symbol_binding = &symbol; shadowed(scope);
   tree.symbols[0].name = {0}; shadowed(empty);
+  for (const auto name : {u"$arg0", u"$local0", u"ClassValue", u"MethodSelfValue"}) {
+    tree = Tree(); tree.names[0] = name;
+    Check(std::holds_alternative<TreeGlobals>(VerifyTreeGlobals(tree, &empty)));
+    tree.symbols[0].name = {0}; shadowed(empty);
+  }
   tree = Tree(); tree.names[0] = u"eval";
   Check(std::get<TreeGlobalError>(VerifyTreeGlobals(tree, &empty)) == TreeGlobalError::kName);
   tree = Tree();

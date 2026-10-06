@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include "abcd/abc/literal_array.h"
 #include "abcd/source/global_reference.h"
+#include "abcd/source/scalar_expression.h"
 #include "abcd/corpus/abc_file.h"
 namespace abcd::source {
 namespace {
@@ -81,7 +82,7 @@ std::variant<CellNameStorage, TreeConstantError, abc::MetadataError> ResolveCell
         const auto& name = std::get<std::u16string>(text);
         const auto text_bytes = (name.capacity() + 1) * sizeof(char16_t); quota.Admit(text_bytes, 1);
         quota.Step(name.size());
-        if (name != u"globalThis" && AllowsGlobalReference(name, {})) for (auto site = first; site < end; ++site) {
+        if (name != u"globalThis" && IsSourceIdentifier(std::u16string_view{name})) for (auto site = first; site < end; ++site) {
           quota.Step(name.size() + 1);
           if (names.size() >= UINT32_MAX) return Error::kResourceLimit;
           quota.Grow(names, names.size() + 1); quota.Grow(hints, hints.size() + 1);

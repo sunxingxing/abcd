@@ -13,6 +13,53 @@
 ## 当前阶段
 
 
+### 2026-10-06：按 family 引用索引规划绑定名称
+
+- 基线b14fd6ee，规则revision132。普通/分阶段family先一次解析共同
+  syntax/constants/module aliases，再从live ValueGlobalRead及实际module
+  aliases建立owned name/owner索引。原incoming父子边与preorder subtree
+  区间提供查询范围；局部/formal metadata偏好和合成名都避开真实引用，
+  不靠反复猜名或整族retry。实际capture/scope/TDZ/write/effect/exception
+  校验保持。指令含义、receiver、执行次数及原资源前提没有因命名改变。
+  详见[cell命名](cell-names.md)。
+- RED真实编码fixture复现父词法hint遮蔽子global：PreparedFamily的
+  FamilyEnclosureFailure=kShadowedGlobal，CTest退出8。GREEN发现旧
+  tree标识符检查复用legacy私有namespace策略，额外拒绝合法的$名字、
+  ClassValue和MethodSelf前缀。tree/module enclosure/cell hint使用既有
+  IsSourceIdentifier并保留真实shadow检查；legacy/旧metadata adapter
+  仍隔离原限制。没有把私有标签限制描述为语言规则，也没有盲删校验。
+- 新family_names_test 48 decoded fixture覆盖global/module、named/unnamed
+  scope、参数copy/拆块、普通名字与旧私有前缀；正向prepared family打印，
+  实际external shadow拒绝且无输出。索引200/201/402/804 sparse owner、
+  空区间、UINT32_MAX endpoint、work callback耗尽通过。cached syntax、
+  owned strings/vector capacity/查询work计入同一预算；O(F+N+G log G+
+  Q log G)另计字符比较，不造F×G矩阵或每变量图遍历。callable子树粒度
+  可保守省略更窄block里的安全提示，只改变命名选择、不拒绝body。
+- family_names_source_test执行实际生成JS，1032 identity/arity/name/
+  fresh closure/live binding/getter/call/原异常场景通过；48种初始化值
+  与绑定shadow的有效JS mutation检出，先解析再执行。Node sandbox对象
+  getter会把原异常转成ReferenceError，改在realm内部定义getter；throwing
+  global lookup还可重复访问，最终与同realm独立native函数比较完整trace，
+  不硬编码host访问次数。此证据是普通family，不是record/platform验收。
+- red-build-1新target尚未configure，build-2有fixture API拼写/参数错误，
+  configure及按实际API修复后red-build-3通过。final-tests-1 26/27通过，
+  function_tree旧测试仍要求拒绝$参数；debug定位后改为合法$参数、独立
+  临时名字及原semantics验证，eval负例保留。最终production十六目标
+  单-j4 build-6退出0，最后fixture加强build-7退出0；final-tests-3
+  27/27通过24.12秒。其后只加强Node异常trace oracle，source-final-2
+  1/1通过0.72秒。562个测试注册，CMake仅新增六行，无删除旧注册。
+- family-names六模式pass-1共30次固定五ABC导出全部退出0，每模式106份
+  完整或明确partial源码解析，SHA/size匹配index；无legacy、完整回退、
+  新complete或源码字节变化。complete/incomplete-source仍80/26、95/11、
+  96/10、88/18、105/1、106/0，各46份no-module source保持。该批次与
+  最终production相同，后续只有fixture/oracle与文档改变。日志前缀
+  /tmp/abcd-family-names-，输出build/stage-one/family-names-<mode>-pass-1。
+- 无样本/sidecar生产输入，无新ISA扩展、agents、全套、expanded corpus、
+  RSS/benchmark或DFX前置。普通命名冲突覆盖补齐不等于阶段一完成；
+  metadata formal集合、保守block命名、外部host绑定及seeded record
+  名称仍各有边界，继续实例/全局/签名/body整合与整record独立语义/风格。
+
+
 ### 2026-10-06：函数与实例初始化记录验收迁到共同通路
 
 - 基线1277e970，production及规则revision131保持。本轮补齐独立验收，

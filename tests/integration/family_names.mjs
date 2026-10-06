@@ -1,0 +1,94 @@
+import assert from 'node:assert/strict';
+import {spawnSync} from 'node:child_process';
+import vm from 'node:vm';
+
+const [fixture] = process.argv.slice(2);
+const rows = [];
+for (const name of ['restoredValue', '$arg0', '$local0', '$binding0', 'ClassValue', 'MethodSelfValue'])
+  for (const space of ['global', 'module']) for (const hint of ['plain', 'named'])
+    for (const layout of ['straight', 'split']) {
+      const result = spawnSync(fixture, [name, space, hint, layout], {encoding: 'utf8', timeout: 60000});
+      assert.equal(result.status, 0, result.stderr);
+      const source = result.stdout;
+      assert.doesNotMatch(source, /INCOMPLETE|UNRECOVERED|\.call\(/);
+      rows.push({name, space, source});
+    }
+
+async function load({name, space, source}) {
+  const trace = [], sentinel = {};
+  let stop = null;
+  const event = kind => {trace.push(kind); if (stop === kind) throw sentinel;};
+  const fn = function(value) {assert.equal(this, undefined); event('call'); return value;};
+  Object.defineProperty(fn, 'call', {get() {throw new Error('callee.call');}});
+  const context = vm.createContext({});
+  let current = fn;
+  if (space === 'global') {
+    // Define the getter inside the realm. A getter on Node's sandbox object
+    // can turn its thrown value into ReferenceError during context lookup.
+    context.readBinding = () => {event('get'); return current;};
+    vm.runInContext(`Object.defineProperty(globalThis, ${JSON.stringify(name)}, {configurable: true, get() {return readBinding();}})`, context);
+  }
+  const code = (space === 'module' ? `import {fn as ${name}} from 'dep';\n` : '') + `export function reference(value) {return (0, ${name})(value);}
+export default (${source});`;
+  const module = new vm.SourceTextModule(code, {context});
+  const dependency = new vm.SyntheticModule(['fn'], function() {this.setExport('fn', fn);}, {context});
+  await module.link(specifier => {assert.equal(specifier, 'dep'); return dependency;});
+  await module.evaluate();
+  assert.deepEqual(trace, []);
+  const outer = module.namespace.default;
+  assert.equal(outer.name, 'outer'); assert.equal(outer.length, 1);
+  return {outer, reference: module.namespace.reference, trace, sentinel, setStop(value) {stop = value;}, replace(value) {
+    if (space === 'module') dependency.setExport('fn', value);
+    else current = value;
+  }};
+}
+let behaviorCases = 0;
+async function exercise(row) {
+  const loaded = await load(row);
+  const values = [undefined, null, false, 0, -0, NaN, 1n, Symbol('value'), {}, []];
+  const children = values.map(value => loaded.outer(value));
+  assert.equal(new Set(children).size, values.length);
+  assert.deepEqual(loaded.trace, []); // Creating a closure must not read its callee.
+  for (let i = 0; i < values.length; ++i) {
+    assert.equal(children[i].name, 'child'); assert.equal(children[i].length, 0);
+    const before = loaded.trace.length;
+    let actual; assert.doesNotThrow(() => {actual = children[i]();});
+    assert.deepEqual(loaded.trace.slice(before), row.space === 'global' ? ['get', 'call'] : ['call']);
+    assert.ok(Object.is(actual, values[i])); ++behaviorCases;
+  }
+  for (const point of row.space === 'global' ? ['get', 'call'] : ['call']) {
+    loaded.setStop(point);
+    const nativeStart = loaded.trace.length;
+    assert.throws(() => loaded.reference(values[0]), error => error === loaded.sentinel);
+    const expected = loaded.trace.slice(nativeStart);
+    const before = loaded.trace.length;
+    assert.throws(() => children[0](), error => error === loaded.sentinel);
+    // Contextified global lookup may revisit a throwing getter. Compare with
+    // the independent native function in the same realm; never hardcode its
+    // embedding behavior or blame repeated host lookup on generated source.
+    assert.deepEqual(loaded.trace.slice(before), expected);
+    ++behaviorCases;
+  }
+  loaded.setStop(null);
+  const changed = function(value) {assert.equal(this, undefined); return {value};};
+  loaded.replace(changed);
+  for (let i = 0; i < values.length; ++i) {assert.ok(Object.is(children[i]().value, values[i])); ++behaviorCases;}
+}
+for (const row of rows) await exercise(row);
+const verifiedBehaviorCases = behaviorCases;
+
+let mutationChecks = 0;
+for (const row of rows.filter((_, index) => index % 2 === 0)) {
+  const assignment = row.source.match(/\((\$local\d+|\$binding\d+) = (\$arg\d+|\$binding\d+)\);/);
+  assert.ok(assignment);
+  for (const changed of [row.source.replace(assignment[0], `(${assignment[1]} = null);`),
+    row.source.replaceAll(assignment[1], row.name)]) {
+    assert.notEqual(changed, row.source);
+    new vm.SourceTextModule(`export default (${changed});`);
+    let detected = false;
+    try {await exercise({...row, source: changed});}
+    catch (error) {if (!(error instanceof assert.AssertionError)) throw error; detected = true;}
+    assert.equal(detected, true); ++mutationChecks;
+  }
+}
+console.log(JSON.stringify({decodedFamilies: rows.length, behaviorCases: verifiedBehaviorCases, mutationChecks, wholeRecordBehavior: false}));

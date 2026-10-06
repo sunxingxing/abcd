@@ -49,10 +49,10 @@ Rules 130 connects the same resolver to `ResolveFunctionSyntax`, after formal
 and rest ownership resolution. Class methods, created functions and their
 children therefore receive allocation/slot hints through their existing family
 adapters. The metadata is included in the same name arena, byte/work budget and
-file identity checks. The record-root adapter keeps its existing bounded retry;
-ordinary families retain the existing rejection on ancestor metadata shadowing
-a descendant free global/module name. An automatic generated-name retry for
-those ordinary families remains an implementation gap, not a language rule.
+file identity checks. Rules 132 adds the naming plan below before any ordinary
+family member is constructed. The record-root adapter keeps its existing bounded
+retry for its separately seeded root; an ordinary family no longer needs a
+retry to avoid ancestor naming hints shadowing descendant global/module names.
 
 Decoded normal/arrow family fixtures cover local storage and nested writes,
 reserved identifiers and collisions with the actual callable name, including
@@ -62,7 +62,64 @@ retained family printing after file closure. Existing resolver tests cover
 detects a valid-JS mutation that replaces the captured parameter initialization.
 This tests the recovered method; it is not a whole-platform behavior claim.
 
-A captured storage name does not establish a source formal name. Debug-range
-parameter recovery, const reconstruction and complete platform/source-style
-acceptance remain unfinished. Setter-capable constructor assignments remain
+A captured storage name does not establish a source formal name. Missing debug/formal evidence, const reconstruction and complete
+platform/source-style acceptance remain unfinished. Setter-capable constructor assignments remain
 assignments; naming a captured receiver cannot prove native class fields.
+
+
+## Family reference reservations (rules 132)
+
+Shared syntax/constants and native module aliases are prepared once for every
+normal or phased family occurrence after the existing default projection and
+rebinding. Live typed ValueGlobalRead operations and actual ModuleSyntax aliases
+supply textual reference names. No sample, source fragment, opcode sequence,
+register layout or producer whitelist supplies a naming decision.
+
+An owned name/owner-sorted index records those references. Explicit incoming
+family edges and the reader's preorder occurrence contract define each subtree;
+reverse subtree maxima take linear work. Each tree builder borrows the index
+only during synchronous construction. It queries the current occurrence range
+for preferred lexical hints, metadata formal hints and generated binding names.
+Conflicting preferences keep an independently generated name; generated names
+use their existing monotone fallback namespace while querying the same index.
+No index pointer survives in a constructed or published tree. Incoming captures
+retain the actual parent spelling and binding identity.
+
+This is a conservative naming policy at callable-subtree granularity: it may
+omit a hint that would be safe in a narrower block. It never rejects output for
+that choice. Sibling occurrence ranges remain separate. The existing actual
+creation-scope Euler analysis independently verifies globals, modules, captures,
+TDZ and writes; it is not replaced by the naming index. External destination
+bindings and seeded record roots still need their existing independent checks.
+
+The tree route validates source identifier syntax through IsSourceIdentifier,
+including legal dollar names and ClassValue/MethodSelf-prefixed names. These are
+textual boundaries, not semantic tags. Legacy AllowsGlobalReference private
+namespace exclusions remain in legacy writers and older naming adapters; they
+are not tree-language invariants. ASCII/restricted-identifier coverage remains
+explicit. A recovered debug formal is still only evidence for its ordinal name;
+a naming preference proves none of its value/storage/default ownership.
+
+For F occurrences, G reference sites and Q naming queries, additional work is
+O(F + N + G log G + Q log G) excluding string comparison lengths; N is the live
+operation census. Syntax/module preparation reuses the original adapters rather
+than re-resolving every reference per ancestor. Additional storage is cached
+syntax/aliases plus O(F + G) indexed references and their owned text. Arena
+replacement, strings, vector capacity and sorting/query work are charged to the
+existing conservative family byte/work budget. There is no F-by-G matrix or
+per-variable graph walk. Standard sorting/binary search and preorder subtree
+indexing add no dependency. Unit lookups cover 200/201/402/804 sites, sparse
+owners, empty ranges, UINT32_MAX endpoints and callback work exhaustion; this
+is operation-count evidence, not a resumed benchmark/RSS certification.
+
+Forty-eight real encoded fixtures cover global/module references, metadata and
+unnamed allocations, split blocks/register copies, and legal former private
+names. The checked PreparedFamily prints with its actual destination; an external
+shadow still refuses without output. Independent generated-JS execution checks
+1032 identity/live-binding/getter/call/exception scenarios, fresh closures and
+native arity/runtime names, and detects 48 valid-JS mutations to initialization
+or binding shadowing. The Node global getter is installed in the realm, not on
+the sandbox object; throwing-getter traces compare to an independent native
+function in the same realm rather than hardcoding contextified lookup behavior.
+This does not certify platform global-object implementation details or an entire
+record. Fixed five-input/six-mode output is unchanged from rules 131.

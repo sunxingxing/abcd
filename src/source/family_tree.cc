@@ -44,6 +44,58 @@ class FamilyTrees {
           external->creator, family.members.front().function.Capture(), *root, cells, left_)));
       family.root_capture = std::move(cells);
     }
+    Reserve(syntaxes_, family.members.size()); syntaxes_.resize(family.members.size());
+    Reserve(normal_aliases_, family.members.size()); normal_aliases_.resize(family.members.size());
+    for (std::size_t i = entry ? 1 : 0; i < family.members.size(); ++i) {
+      member_ = FamilyId{static_cast<std::uint32_t>(i)};
+      auto& member = family.members[i];
+      Require(i ? member.context.has_value() && member.incoming.has_value() :
+          root && !member.incoming && !member.context, FamilyTreeError::kContext);
+      const auto& context = i ? *member.context : *root;
+      const auto& function = member.function;
+      const auto* phase = function.Phase();
+      const auto& graph = function.Graph();
+      auto syntax = Take<ResolvedSyntax, SyntaxResolutionFailure>(ResolveFunctionSyntax(
+          file_, header_, index_, context, phase ? phase->OriginalBody() : function.Body(), graph, family.Owner(member_), left_, function.Defaults() ? function.Defaults()->Strings() : std::span<const SignatureString>{}));
+      Account(syntax);
+      auto& normal_aliases = normal_aliases_[i];
+      const ModuleAliases* aliases = phase ? phase->Phases().Modules() : nullptr;
+      if (aliases || (!phase && (!function.Normal().values.modules.pairs.empty() || std::any_of(graph.ops.begin(), graph.ops.end(),
+          [&](const auto& op) { Step(1); return op.life == analysis::ValueLife::kLive &&
+              std::holds_alternative<analysis::ValueModuleWrite>(op.operation); })))) {
+        Require(modules_ != nullptr, FamilyTreeError::kModules);
+        Require(syntax.syntax.names.size() < std::numeric_limits<std::uint32_t>::max(), FamilyTreeError::kResourceLimit);
+        const auto first_name = static_cast<std::uint32_t>(syntax.syntax.names.size());
+        if (!phase) {
+          normal_aliases = Take<ModuleAliases, ModuleAliasFailure>(BindModuleAliases(file_, header_, index_,
+              function.Normal().input, function.Normal().values, *modules_, module_owner_, {first_name}, left_, ModuleAccess::kMutable));
+          Account(*normal_aliases); aliases = &*normal_aliases;
+        }
+        Require(aliases && aliases->record == modules_->record() && aliases->owner == module_owner_ &&
+            aliases->first_name.value <= first_name, FamilyTreeError::kModules);
+        Require(aliases->names.size() <= std::numeric_limits<std::uint32_t>::max() - syntax.syntax.names.size(),
+            FamilyTreeError::kResourceLimit);
+        Reserve(syntax.syntax.names, syntax.syntax.names.size() + aliases->names.size());
+        // Keep aliases unchanged for independent actual-tree verification.
+        for (const auto& name : aliases->names) {
+          Step(name.size()); Admit(name.size() + 1, sizeof(char16_t));
+          syntax.syntax.names.push_back(name);
+          Admit(syntax.syntax.names.back().capacity() - name.size(), sizeof(char16_t));
+        }
+        Reserve(syntax.syntax.modules, aliases->aliases.size());
+        for (auto alias : aliases->aliases) {
+          Step(1); alias.name.value += first_name - aliases->first_name.value;
+          syntax.syntax.modules.push_back(alias);
+        }
+      }
+      if (aliases) for (const auto& write : aliases->writes) {
+        Step(1); Require(write.operation.value < syntax.operations.size() && !write.binding.initialize,
+            FamilyTreeError::kModules);
+        syntax.operations[write.operation.value] = write.binding;
+      }
+      syntaxes_[i] = std::move(syntax);
+    }
+    ReferenceNames(family, entry.has_value());
     Reserve(receiver_cells_, family.members.size()); receiver_cells_.resize(family.members.size());
     Reserve(receiver_scopes_, family.members.size()); receiver_scopes_.resize(family.members.size());
     std::vector<FamilyMember> trees;
@@ -80,44 +132,9 @@ class FamilyTrees {
       } else Require(lookup_ && phase->MatchesOwner(context), FamilyTreeError::kContext);
       const auto& graph = function.Graph();
       Require(context.Identity() == function.Identity() && context.Target() == function.Method(), FamilyTreeError::kContext);
-      auto syntax = Take<ResolvedSyntax, SyntaxResolutionFailure>(ResolveFunctionSyntax(
-          file_, header_, index_, context, phase ? phase->OriginalBody() : function.Body(), graph, family.Owner(member_), left_, function.Defaults() ? function.Defaults()->Strings() : std::span<const SignatureString>{}));
-      Account(syntax);
-      std::optional<ModuleAliases> normal_aliases;
-      const ModuleAliases* aliases = phase ? phase->Phases().Modules() : nullptr;
-      if (aliases || (!phase && (!function.Normal().values.modules.pairs.empty() || std::any_of(graph.ops.begin(), graph.ops.end(),
-          [&](const auto& op) { Step(1); return op.life == analysis::ValueLife::kLive &&
-              std::holds_alternative<analysis::ValueModuleWrite>(op.operation); })))) {
-        Require(modules_ != nullptr, FamilyTreeError::kModules);
-        Require(syntax.syntax.names.size() < std::numeric_limits<std::uint32_t>::max(), FamilyTreeError::kResourceLimit);
-        const auto first_name = static_cast<std::uint32_t>(syntax.syntax.names.size());
-        if (!phase) {
-          normal_aliases = Take<ModuleAliases, ModuleAliasFailure>(BindModuleAliases(file_, header_, index_,
-              function.Normal().input, function.Normal().values, *modules_, module_owner_, {first_name}, left_, ModuleAccess::kMutable));
-          Account(*normal_aliases); aliases = &*normal_aliases;
-        }
-        Require(aliases && aliases->record == modules_->record() && aliases->owner == module_owner_ &&
-            aliases->first_name.value <= first_name, FamilyTreeError::kModules);
-        Require(aliases->names.size() <= std::numeric_limits<std::uint32_t>::max() - syntax.syntax.names.size(),
-            FamilyTreeError::kResourceLimit);
-        Reserve(syntax.syntax.names, syntax.syntax.names.size() + aliases->names.size());
-        // Keep aliases unchanged for independent actual-tree verification.
-        for (const auto& name : aliases->names) {
-          Step(name.size()); Admit(name.size() + 1, sizeof(char16_t));
-          syntax.syntax.names.push_back(name);
-          Admit(syntax.syntax.names.back().capacity() - name.size(), sizeof(char16_t));
-        }
-        Reserve(syntax.syntax.modules, aliases->aliases.size());
-        for (auto alias : aliases->aliases) {
-          Step(1); alias.name.value += first_name - aliases->first_name.value;
-          syntax.syntax.modules.push_back(alias);
-        }
-      }
-      if (aliases) for (const auto& write : aliases->writes) {
-        Step(1); Require(write.operation.value < syntax.operations.size() && !write.binding.initialize,
-            FamilyTreeError::kModules);
-        syntax.operations[write.operation.value] = write.binding;
-      }
+      auto syntax = std::move(syntaxes_[i]);
+      const ModuleAliases* aliases = phase ? phase->Phases().Modules() :
+          (normal_aliases_[i] ? &*normal_aliases_[i] : nullptr);
       std::optional<DerivedProjection> derived;
       if (context.Callable() == CallableKind::kDerivedConstructor) {
         Require(!phase, FamilyTreeError::kContext);
@@ -161,6 +178,8 @@ class FamilyTrees {
             ClassCaptureAnchor{external->source.creation, *root}});
       }
       auto constants = syntax.View();
+      const NameReservations reserved{references_, family.Owner(member_), subtree_end_[i] - i};
+      constants.name_reservations = &reserved;
       constants.receiver_guards = guards;
       if (derived) constants.derived_constructor = &function.Normal();
       if (derived && derived->implicit) constants.implicit_constructor = &function.Normal();
@@ -253,6 +272,60 @@ class FamilyTrees {
     return result;
   }
  private:
+  void ReferenceNames(const FileFamily& family, bool entry) {
+    Reserve(subtree_end_, family.members.size()); subtree_end_.resize(family.members.size());
+    for (std::size_t i = 0; i < family.members.size(); ++i) { Step(1); subtree_end_[i] = i + 1; }
+    // FileFamily owns preorder occurrences and explicit incoming parent edges.
+    // Reverse subtree maxima use those identities, never PCs or CFG edge order.
+    for (std::size_t i = family.members.size(); i-- > 1;) {
+      Step(1); Require(family.members[i].incoming.has_value(), FamilyTreeError::kParent);
+      const auto parent = family.members[i].incoming->parent.value;
+      Require(parent < i, FamilyTreeError::kParent);
+      subtree_end_[parent] = std::max(subtree_end_[parent], subtree_end_[i]);
+    }
+    std::size_t count = 0;
+    for (std::size_t i = entry ? 1 : 0; i < family.members.size(); ++i) {
+      for (const auto& op : family.members[i].function.Graph().ops) {
+        Step(1); if (op.life == analysis::ValueLife::kLive &&
+            std::holds_alternative<analysis::ValueGlobalRead>(op.operation)) ++count;
+      }
+      Step(syntaxes_[i].syntax.modules.size());
+      Require(syntaxes_[i].syntax.modules.size() <= std::numeric_limits<std::size_t>::max() - count,
+          FamilyTreeError::kResourceLimit); count += syntaxes_[i].syntax.modules.size();
+    }
+    Reserve(references_, count);
+    for (std::size_t i = entry ? 1 : 0; i < family.members.size(); ++i) {
+      member_ = FamilyId{static_cast<std::uint32_t>(i)};
+      const auto& syntax = syntaxes_[i];
+      const auto& graph = family.members[i].function.Graph();
+      const auto append = [&](NameId id) {
+        Require(id.value < syntax.syntax.names.size(), FamilyTreeError::kContext);
+        const auto& name = syntax.syntax.names[id.value]; Step(name.size());
+        Admit(name.size() + 1, sizeof(char16_t));
+        references_.push_back({name, family.Owner(member_)});
+        Admit(references_.back().name.capacity() - name.size(), sizeof(char16_t));
+      };
+      for (std::size_t op = 0; op < graph.ops.size(); ++op) {
+        Step(1); if (graph.ops[op].life != analysis::ValueLife::kLive ||
+            !std::holds_alternative<analysis::ValueGlobalRead>(graph.ops[op].operation)) continue;
+        Require(op < syntax.operations.size() && std::holds_alternative<NameId>(syntax.operations[op]),
+            FamilyTreeError::kContext); append(std::get<NameId>(syntax.operations[op]));
+      }
+      for (const auto& alias : syntax.syntax.modules) { Step(1); append(alias.name); }
+    }
+    std::sort(references_.begin(), references_.end(), [&](const auto& a, const auto& b) {
+      Step(std::min(a.name.size(), b.name.size()) + 1);
+      return a.name < b.name || (a.name == b.name && a.owner < b.owner);
+    });
+    const auto end = std::unique(references_.begin(), references_.end(), [&](const auto& a, const auto& b) {
+      Step(std::min(a.name.size(), b.name.size()) + 1); return a.owner == b.owner && a.name == b.name;
+    });
+    references_.erase(end, references_.end());
+  }
+  std::vector<ResolvedSyntax> syntaxes_;
+  std::vector<std::optional<ModuleAliases>> normal_aliases_;
+  std::vector<NameReference> references_;
+  std::vector<std::size_t> subtree_end_;
   struct ReceiverScope {
     ReceiverInitialization initialized;
     analysis::BlockId block;

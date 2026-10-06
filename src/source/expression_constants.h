@@ -4,6 +4,7 @@
 #include <span>
 
 #include "abcd/source/source_tree.h"
+#include "name_reservations.h"
 
 namespace abcd::source {
 struct FileFunction;
@@ -49,6 +50,8 @@ struct ExpressionConstants {
   // Exact original invocation and work graph; the common derived-state solver
   // independently proves constructor identity through aliases, cells and phis.
   const FileFunction* derived_constructor = nullptr;
+  // Borrowed naming-only index; actual scope/capture checks remain independent.
+  const NameReservations* name_reservations = nullptr;
 };
 }  // namespace abcd::source
 #endif

@@ -1,5 +1,17 @@
 # 按用户要求进行的恢复条件审计
 
+规则132补充：family在命名前一次准备共同syntax/module aliases，以live
+ValueGlobalRead和实际module alias建立name/owner排序索引。真实incoming
+父子边与preorder occurrence区间限定查询；metadata局部/formal偏好及
+合成名字都避开当前子树的引用，不能用同名提示遮蔽原global/module。
+这个callable子树粒度是保守命名选择，不是输出准入；实际block/creation
+scope、capture、TDZ、effect/exception与write校验仍由原共同分析证明。
+不增加retry次数、同块、producer、寄存器/PC或样本形状条件。tree的
+标识符校验不再套用legacy `$`/ClassValue/MethodSelf私有namespace拒绝；
+语法与真实shadow继续检查。legacy限制仍隔离在旧writer/旧命名adapter，
+不宣称整个工程已移除。外部wrapper/seeded record root保留独立scope义务。
+
+
 规则131补充：参数debug名不再要求entry MOV prefix或固定五条captured-this
 前导。实际range start观察复用original CFG/dispatch、typed语义和RegisterSsa；
 entry来源经透明copy/phi一致性建立，Before/Commit/Catch异常时间保留。

@@ -6,6 +6,7 @@
 #include <type_traits>
 
 #include "abcd/source/global_reference.h"
+#include "abcd/source/scalar_expression.h"
 
 namespace abcd::source {
 namespace {
@@ -70,7 +71,7 @@ std::variant<ModuleEnclosure, ModuleEnclosureError> ModuleEnclosure::Build(
       // Charge decoded scratch while the narrowed owned ASCII string coexists.
       const auto scratch = (name->capacity() + 1) * sizeof(char16_t);
       budget.Admit(scratch, 1); budget.Step(name->size());
-      Require(AllowsGlobalReference(*name, {}), Error::kName);
+      Require(IsSourceIdentifier(std::u16string_view{*name}), Error::kName);
       budget.Admit(name->size() + 1, 1);
       result.names_.emplace_back(name->begin(), name->end());
       budget.Admit(result.names_.back().capacity() - name->size(), 1);

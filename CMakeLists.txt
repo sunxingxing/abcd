@@ -870,6 +870,10 @@ if(BUILD_TESTING)
   target_include_directories(cell_tree_test PRIVATE tests/support)
   target_link_libraries(cell_tree_test PRIVATE abcd_source)
   add_test(NAME cell_tree_test COMMAND cell_tree_test)
+  add_executable(family_names_test tests/unit/source/family_names_test.cc)
+  target_include_directories(family_names_test PRIVATE src/source tests/support)
+  target_link_libraries(family_names_test PRIVATE abcd_source)
+  add_test(NAME family_names_test COMMAND family_names_test)
   add_executable(creation_tree_context_test tests/unit/source/creation_tree_context_test.cc
     tools/tree_position_json.cc)
   target_include_directories(creation_tree_context_test PRIVATE tests/support)
@@ -1762,6 +1766,8 @@ if(BUILD_TESTING)
     add_test(NAME argument_snapshot_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/argument_snapshot.mjs
       $<TARGET_FILE:creation_tree_context_test> $<TARGET_FILE:class_tree_context_test>)
+    add_test(NAME family_names_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/family_names.mjs $<TARGET_FILE:family_names_test>)
     add_test(NAME deferred_capture_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/deferred_capture.mjs
       $<TARGET_FILE:creation_tree_context_test>)

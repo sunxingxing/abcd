@@ -422,8 +422,12 @@ class TreeBuilder {
       return left < right;
     });
   }
+  bool EnclosingName(std::u16string_view text) {
+    return constants_.name_reservations && constants_.name_reservations->Contains(text, [&](std::uint64_t count) { Step(count); });
+  }
   bool UniqueReservedName(NameId candidate) {
     const auto& text = tree_.names[candidate.value];
+    if (EnclosingName(text)) return false;
     const auto first = std::lower_bound(reserved_names_.begin(), reserved_names_.end(), text,
         [&](NameId id, std::u16string_view name) { Step(std::min(tree_.names[id.value].size(), name.size()) + 1); return tree_.names[id.value] < name; });
     if (first == reserved_names_.end() || *first != candidate) return false;
@@ -442,6 +446,7 @@ class TreeBuilder {
     return UniqueReservedName(found->name) ? std::optional{found->name} : std::nullopt;
   }
   bool ReservedName(std::u16string_view text) {
+    if (EnclosingName(text)) return true;
     const auto found = std::lower_bound(reserved_names_.begin(), reserved_names_.end(), text,
         [&](NameId id, std::u16string_view candidate) {
           const auto& name = tree_.names[id.value];
@@ -518,7 +523,7 @@ class TreeBuilder {
       Step(tree_.names[hint.name.value].size());
       const auto* allocation = std::get_if<analysis::ValueEnvironmentPush>(&graph_.ops[hint.allocation.value].operation);
       Require(allocation && allocation->scope && hint.slot.value < allocation->slots &&
-          AllowsGlobalReference(tree_.names[hint.name.value], {}), Error::kName);
+          IsSourceIdentifier(std::u16string_view{tree_.names[hint.name.value]}), Error::kName);
       if (i) Require(std::pair{syntax_.locals[i - 1].allocation.value, syntax_.locals[i - 1].slot.value} <
           std::pair{hint.allocation.value, hint.slot.value}, Error::kName);
     }
@@ -547,12 +552,15 @@ class TreeBuilder {
       Step();
       const auto& input = syntax_.parameters[i];
       NameId name;
+      auto evidence = input.evidence;
       if (input.name) {
         Require(input.name->value < constants_.name_count, Error::kName);
         const auto& text = tree_.names[input.name->value];
         Step(text.size());
-        Require(input.evidence != NameEvidence::kSynthesized && AllowsGlobalReference(text, {}), Error::kName);
-        name = *input.name;
+        Require(input.evidence != NameEvidence::kSynthesized && IsSourceIdentifier(std::u16string_view{text}), Error::kName);
+        if (EnclosingName(text)) {
+          name = SyntheticName(u"$arg", i); evidence = NameEvidence::kSynthesized;
+        } else name = *input.name;
       } else {
         Require(input.evidence == NameEvidence::kSynthesized, Error::kName);
         name = SyntheticName(u"$arg", i);
@@ -560,7 +568,7 @@ class TreeBuilder {
       name_order_.push_back(name);
       const SymbolId symbol{static_cast<std::uint32_t>(i)};
       tree_.symbols.push_back({kParameterScope, name, BindingKind::kParameter,
-          DeclarationKind::kParameter, input.evidence, {}});
+          DeclarationKind::kParameter, evidence, {}});
       tree_.parameters.push_back({symbol, {}, input.rest});
     }
     const auto less = [&](NameId left, NameId right) {

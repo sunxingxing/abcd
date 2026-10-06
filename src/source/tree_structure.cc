@@ -262,10 +262,11 @@ class StructureCheck {
         scopes_.Reference(expression.symbol);
       } else if constexpr (std::is_same_v<T, GlobalNameExpr>) {
         RequireTree(expression.name.value < tree_.names.size(), Error::kRange);
-        // Identifier syntax only. The publication owner separately verifies
-        // local and enclosing bindings; an empty scope is not that proof.
+        // Source identifier syntax only, including legal dollar names. Legacy
+        // private-name exclusions are not language rules. The publication
+        // owner separately verifies actual local and enclosing bindings.
         budget_.Step(tree_.names[expression.name.value].size());
-        RequireTree(AllowsGlobalReference(tree_.names[expression.name.value], {}), Error::kBinding);
+        RequireTree(IsSourceIdentifier(std::u16string_view{tree_.names[expression.name.value]}), Error::kBinding);
       } else if constexpr (std::is_same_v<T, RealmObjectExpr> || std::is_same_v<T, SymbolConstructorExpr>) {
         // Binding selection belongs to the actual publication destination.
       } else if constexpr (std::is_same_v<T, ThisExpr>) {

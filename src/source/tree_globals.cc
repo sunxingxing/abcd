@@ -1,4 +1,5 @@
 #include "tree_globals.h"
+#include "abcd/source/scalar_expression.h"
 #include "abcd/source/module_enclosure.h"
 
 #include <algorithm>
@@ -60,7 +61,7 @@ class GlobalCheck {
         name = tree.names[global->name.value];
       }
       Step(name.size());
-      Require(realm || symbol || snapshot || AllowsGlobalReference(name, {}), Error::kName);
+      Require(realm || symbol || snapshot || IsSourceIdentifier(name), Error::kName);
       Require(!Contains(std::span<const std::u16string_view>{locals}, name) &&
           !Contains(scope->enclosing_bindings, name) && !Contains(scope->record_bindings, name) && !Contains(scope->import_names, name) &&
           (!scope->module_enclosure || !Contains(scope->module_enclosure->SortedNames(), name)) &&

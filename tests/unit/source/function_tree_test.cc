@@ -321,6 +321,17 @@ void NameAndConstantRefusals() {
   syntax.names[0] = u"$value0";
   auto built = BuildFunctionTree(f.graph, std::get<ControlPlan>(control),
       std::get<EvaluationPlan>(evaluation), std::move(syntax), {f.constants, 2, 0, {}});
+  Check(std::holds_alternative<ConstructedFunction>(built));
+  const auto& tree = std::get<ConstructedFunction>(built).tree;
+  Check(std::holds_alternative<TreeSemantics>(f.Verify(tree)));
+  Check(tree.names[tree.symbols[tree.parameters[0].symbol.value].name.value] == u"$value0");
+  std::vector<std::u16string_view> bindings;
+  for (const auto& symbol : tree.symbols) bindings.push_back(tree.names[symbol.name.value]);
+  std::sort(bindings.begin(), bindings.end());
+  Check(std::adjacent_find(bindings.begin(), bindings.end()) == bindings.end());
+  syntax = f.Syntax(); syntax.names[0] = u"eval";
+  built = BuildFunctionTree(f.graph, std::get<ControlPlan>(control),
+      std::get<EvaluationPlan>(evaluation), std::move(syntax), {f.constants, 2, 0, {}});
   Check(std::get<FunctionTreeError>(built) == FunctionTreeError::kName);
 }
 void PredicateSnapshot() {
