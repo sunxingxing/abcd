@@ -839,6 +839,8 @@ if(BUILD_TESTING)
       $<TARGET_FILE:literal_intrinsic_test> $<TARGET_FILE:literal_plan_test>)
     add_test(NAME literal_argument_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/literal_argument.mjs $<TARGET_FILE:literal_construct_test>)
+    add_test(NAME tree_global_scopes_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/tree_global_scopes.mjs $<TARGET_FILE:tree_globals_test>)
     add_test(NAME literal_global_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/literal_global.mjs
       $<TARGET_FILE:literal_global_test> $<TARGET_FILE:phased_literal_test>)

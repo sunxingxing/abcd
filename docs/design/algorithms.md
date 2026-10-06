@@ -1842,3 +1842,29 @@ printer action stack; it adds no class/variable-sized inventory. Existing
 allocation, output and work accounting remains in the shared printer. Tests
 cover decoded copies/splits and the existing 200/201/400/800 lexical-plan
 scaling; these are correctness/work-growth evidence, not measured process RSS.
+
+### Lexical publication of globals (2026-10-06, rules 143)
+
+TreeGlobals reuses the existing iterative TreeStructure traversal and
+TreeScopeCheck active spelling index at the actual expression scope. It no
+longer sorts a union of all local spellings and treats every matching local as
+an ancestor. The same indexed lookup serves class-family outer references,
+ordinary globals and selected host capability bindings. Scope entry activates
+all bindings, so TDZ is preserved; leaving a sibling scope restores the prior
+active binding. Complete outer destination indexes remain independently checked.
+Invalid syntax ownership/scopes return typed structure failure, rather than
+being admitted by a name-only check. This is the project's existing lexical
+scope-stack and sorted-name algorithm, implemented locally with no new external
+dependency or copied implementation; existing provenance/licensing is unchanged.
+
+For N tree arena entries, B local bindings, R free reads, E outer destination
+bindings and compared spelling length L, this adds one constant-factor common
+publication traversal: O(N + B log(B+1) + R log(B+1) + R log(E+1) + L) work with
+O(N+B) scratch. Character comparisons and actual vector capacities retain the
+existing work/byte accounting. There is no graph/ancestor walk per variable;
+publication checks are fresh, rather than cached transferable certificates.
+The full structure report includes existing tree storage accounting, so this
+is a conservative admission cost, not measured process RSS. Scope-bearing
+0/1/200/201/402/804 tests verify geometric work growth. Full-corpus RSS and
+benchmarks remain paused; fixed paired exports prove no output regression,
+not a latency or peak-memory improvement.

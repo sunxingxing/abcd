@@ -21,6 +21,21 @@ Printer 处理节点、名字、括号、转义、标签、注释和已有输出
 模式，不补推 CFG、finally 或闭包，不调用专项 body writer。无原名可用合成名，
 无独立 PC 的结构节点保留结构来源；不补造原名、类型、PC 或可执行占位行为。
 
+## 实际词法作用域中的全局读取（规则 143）
+
+TreeGlobals不再把整函数所有局部名称合并为遮蔽证据。包含free global或
+host capability的发布沿共同TreeStructure遍历，在真实表达式的active
+scope查询原TreeScopeCheck spelling索引：兄弟块声明不能遮蔽当前读取，
+当前/祖先scope声明即使尚未初始化也必须遮蔽。realm、Symbol与arguments
+工厂用实际destination选定的名称走相同解析；外层record/import/parameter/
+class/self/host检查保持。共同结构复验同时保证表达式ownership与scope
+有效，不接受陈旧或跨destination的证明，也不删语义/来源/effect校验。
+
+纯语法输出和发布义务仍有区别：未提供destination的结构检查不能证明
+外部宿主绑定；有global的TreeGlobals调用必须有完整destination。48份
+语法树行为与mutation证据验证本地解析，既有三profile解码global测试另验
+ABC贯通。固定五ABC当前输出逐字不变，不能据此宣布更多record已验收。
+
 ## 原生 class 声明（规则 142）
 
 共同printer可以把可写绑定的直接class初始化打印为`class C { ... }`，

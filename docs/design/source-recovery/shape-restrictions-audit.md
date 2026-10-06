@@ -1,5 +1,15 @@
 # 按用户要求进行的恢复条件审计
 
+规则143补充：移除TreeGlobals的整函数局部名称union准入，接入原共同
+structure遍历的实际active lexical scope。global、realm、Symbol和arguments
+工厂读取共用spelling索引；不按兄弟块数量、布局、声明邻接或名字名单
+选择恢复。全局不被真实destination/local binding遮蔽仍是语义义务；当前
+scope的TDZ声明仍拒绝。损坏scope/ownership不能通过无冲突名字取得许可。
+0/1/200/201/402/804个兄弟块与前后读取、有效body遮蔽和损坏AST已有独立
+测试，实际decoded global/family回归保留。固定语料未新增complete；旧G2
+来源映射切片的括号oracle失败与暂缓状态见status，不伪装为通过。
+
+
 规则142补充：原可写class初始化一律打印let/class表达式是表示限制。现在
 原共同ClassNames通过lexical scope、实际symbol/module/capture target与
 heritage遍历证明新增self scope不会改变真实引用后，printer支持原生class

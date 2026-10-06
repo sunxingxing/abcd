@@ -321,7 +321,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // source predicate projection keeps effect, ownership and exception proofs.
 // Rules 142 project native class declarations only through the common lexical
 // self-scope proof, preserving outer mutability, creation timing and origins.
-inline constexpr std::uint32_t kRouteEvidenceRules = 142;
+// Rules 143 resolve global/capability reads in their actual lexical scope using
+// the common structure walk; sibling declarations are not shadowing evidence.
+inline constexpr std::uint32_t kRouteEvidenceRules = 143;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

@@ -7,7 +7,7 @@ namespace abcd::source {
 struct GlobalScope;
 enum class TreeStructureError : std::uint8_t {
   kRange, kOwnership, kScope, kBinding, kName, kTarget, kOrigin,
-  kUnsupportedSyntax, kResourceLimit, kWorkLimit
+  kUnsupportedSyntax, kResourceLimit, kWorkLimit, kGlobalShadowed
 };
 struct TreeStructure {
   analysis::IrRevision value_revision;

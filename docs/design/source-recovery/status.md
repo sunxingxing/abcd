@@ -12,6 +12,52 @@
 
 ## 当前阶段
 
+### 2026-10-06：按实际词法作用域校验全局与宿主能力读取
+
+- 基线7e35a651，生产规则143。移除TreeGlobals把所有局部symbol名称合并
+  作为全局遮蔽证据的准入；复用原TreeStructure迭代遍历和TreeScopeCheck
+  的active spelling索引，每个真实GlobalName/realm/Symbol/arguments工厂
+  表达式在实际激活词法scope查询。兄弟块同名局部不再误拒绝；当前/祖先
+  scope、参数、module/capture/self与声明前TDZ仍遮蔽。外层完整destination
+  的record/import/host/parameter索引检查继续保留，无按变量重走CFG。
+- TreeGlobals在真实发布边界重新执行共同structure证明，不接受可转移的
+  scope certificate。未知或损坏的AST返回新增typed kStructure；真实本地
+  遮蔽由typed kGlobalShadowed精确转为kShadowed，资源/work限制仍区分。
+  原AST、来源、receiver、作用域及效果/异常校验保持，没有opcode/PC/
+  register/同块/邻接/producer数量、样本或源文本生产匹配。
+- 新tree_global_scopes_source_test实际打印48份scope-bearing语法树并做
+  1,728组独立JS对照及5个有效JS mutation；覆盖全局/realm/Symbol/工厂，
+  0/1/200/201/402/804兄弟作用域、读取前后不同遍历顺序、对象身份、全局
+  getter/missing/原throw、声明前后TDZ及factory实参。C++另验实际body
+  declaration遮蔽、原节点打印范围、损坏ownership拒绝和几何work增长。
+  这是作用域/发布/printer证据，不称这些48份输入来自ABC解码；既有
+  literal_global_test/source_test的三profile实际解码及effect对照也通过。
+- 旧生产规则在新的兄弟块测试真实RED，日志/tmp/abcd-global-scopes-red-
+  test-1.log。初次扩大构建误选不存在function_family_test target，改为
+  实际module_family_print_test后单一-j4构建两个engines及16个相关target
+  退出0；build handle关闭后测试。最初20项19/20，新mutation oracle未
+  区分两个空host对象身份且snapshot文本期待错误；修正测试后单项通过，
+  未因此改生产语义。最终扩大22项21/22，实际global/family/class/partial/
+  module/WindowUtil/Widget独立行为均通过，含新48/1728/5和class54/468/6。
+- 此次扩大列表误含暂缓DFX的value_tree_global_call_slice_test，实际失败于
+  旧位置文本期待`(this.id__())`而输出`this.id__()`，未进入后续行为验收。
+  保留失败证据，不将它算成功、不更新旧G2位置oracle、不继续该暂停工作。
+  主要日志/tmp/abcd-global-scopes-final-build-2.log、final-tests-1.log、
+  final-tests-3.log、final-tests-4.log；新增Node语法及git diff --check通过。
+  CTest当前571项，未运行全套。
+- 固定五ABC／六模式30次当前规则ABC-only导出退出0，输入SHA-256/size
+  与既有paired index一致、ValueTree且无legacy，每模式106份源码语法通过。
+  对比规则142 class-declarations-pass-1，实际源码与212份既有位置文件
+  每模式逐字一致；完整/partial仍80/26、95/11、96/10、88/18、105/1、106/0，
+  各另46个no-module。当前产物build/stage-one/global-scopes-<mode>-pass-1，
+  日志/tmp/abcd-global-scopes-batch-1.log与*-summary-1.json。位置文件仍是
+  entry_only/partial_methods/complete:false，非完整mapping证明。
+- 本次关闭函数级名称union的过度拒绝，固定阶段一语料没有新增complete。
+  公共结构遍历新增一次常数倍发布复验，成本/内存和已有算法来源见algorithms。
+  instance fields/globals/完整signatures/body结构gate、其他整record独立
+  验收仍开放；阶段一Goal继续active。全套、expanded corpus、RSS/benchmark、
+  agents、scheduler/DFX和周期审计继续暂停，旧G2失败不作为这些工作的恢复授权。
+
 ### 2026-10-06：共同词法证明驱动的原生 class 声明
 
 - 基线f0eda36b，生产规则142。TreePrinter对真实可写声明的直接ClassExpr

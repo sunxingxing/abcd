@@ -1,6 +1,7 @@
 #include "tree_globals.h"
 #include "abcd/source/scalar_expression.h"
 #include "abcd/source/module_enclosure.h"
+#include "tree_structure.h"
 
 #include <algorithm>
 #include <new>
@@ -24,13 +25,6 @@ class GlobalCheck {
     }
     if (!globals) return Result();
     Require(scope != nullptr, Error::kMissingContext);
-    std::vector<std::u16string_view> locals;
-    Reserve(locals, tree.symbols.size());
-    for (const auto& symbol : tree.symbols) {
-      Step(); Require(symbol.name.value < tree.names.size(), Error::kName);
-      locals.push_back(tree.names[symbol.name.value]);
-    }
-    std::sort(locals.begin(), locals.end(), [&](auto a, auto b) { return Less(a, b); });
     // The record-owned GlobalScope already guarantees complete sorted outer
     // indexes. Never copy/sort those indexes once per method or global read.
     for (const auto& node : tree.expressions) {
@@ -62,8 +56,7 @@ class GlobalCheck {
       }
       Step(name.size());
       Require(realm || symbol || snapshot || IsSourceIdentifier(name), Error::kName);
-      Require(!Contains(std::span<const std::u16string_view>{locals}, name) &&
-          !Contains(scope->enclosing_bindings, name) && !Contains(scope->record_bindings, name) && !Contains(scope->import_names, name) &&
+      Require(!Contains(scope->enclosing_bindings, name) && !Contains(scope->record_bindings, name) && !Contains(scope->import_names, name) &&
           (!scope->module_enclosure || !Contains(scope->module_enclosure->SortedNames(), name)) &&
           !Contains(scope->parameter_bindings, name) &&
           !Equal(name, scope->class_binding) && !Equal(name, scope->self_binding) &&
@@ -71,19 +64,28 @@ class GlobalCheck {
           (symbol || !scope->symbol_binding || !Equal(name, scope->symbol_binding->name)) &&
           (snapshot || !scope->argument_snapshot_binding || !Equal(name, scope->argument_snapshot_binding->name)), Error::kShadowed);
     }
+    // The shared iterative traversal owns syntax occurrences and active lexical
+    // scope. Recheck at publication rather than trusting a stale scope report.
+    const auto structure = VerifyTreeStructure(tree, remaining_, scope);
+    const auto* checked = std::get_if<TreeStructure>(&structure);
+    if (!checked) {
+      switch (std::get<TreeStructureError>(structure)) {
+        case TreeStructureError::kGlobalShadowed: throw Error::kShadowed;
+        case TreeStructureError::kResourceLimit: throw Error::kResourceLimit;
+        case TreeStructureError::kWorkLimit: throw Error::kWorkLimit;
+        case TreeStructureError::kRange: case TreeStructureError::kOwnership:
+        case TreeStructureError::kScope: case TreeStructureError::kBinding:
+        case TreeStructureError::kName: case TreeStructureError::kTarget:
+        case TreeStructureError::kOrigin: case TreeStructureError::kUnsupportedSyntax:
+          throw Error::kStructure;
+      }
+    }
+    Step(checked->work); remaining_.bytes -= checked->allocated_bytes;
     return Result();
   }
  private:
   void Step(std::uint64_t count = 1) {
     Require(count <= remaining_.work, Error::kWorkLimit); remaining_.work -= count;
-  }
-  template <class T> void Reserve(std::vector<T>& values, std::size_t count) {
-    Require(count <= remaining_.bytes / sizeof(T), Error::kResourceLimit);
-    remaining_.bytes -= count * sizeof(T);
-    values.reserve(count);
-    const auto extra = values.capacity() - count;
-    Require(extra <= remaining_.bytes / sizeof(T), Error::kResourceLimit);
-    remaining_.bytes -= extra * sizeof(T);
   }
   template <class A, class B> bool Less(A a, B b) {
     Step(std::min(a.size(), b.size()) + 1);

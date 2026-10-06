@@ -200,20 +200,26 @@ void TreeScopeCheck::Declare(SymbolId symbol, ScopeId scope, bool initializer) {
   RequireTree(tree_.symbols[symbol.value].declaration != DeclarationKind::kConst || initializer, Error::kBinding);
   declared_[symbol.value] = 1;
 }
-void TreeScopeCheck::EnclosingReference(std::u16string_view name, const ModuleSymbol* module) {
-  // The parent traversal already activated the exact creation scope. Binary
-  // search the shared spelling index, never walk ancestors per child read.
+std::optional<SymbolId> TreeScopeCheck::ActiveBinding(std::u16string_view name) {
+  // The traversal activated the exact expression or child-creation scope.
+  // Search the shared spelling index, never walk ancestors per free read.
   const auto found = std::lower_bound(ordered_.begin(), ordered_.end(), name, [&](SymbolId id, auto wanted) {
     const auto& actual = tree_.names[tree_.symbols[id.value].name.value];
     budget_.Step(std::min(actual.size(), wanted.size()) + 1); return actual < wanted;
   });
-  if (found == ordered_.end()) return;
+  if (found == ordered_.end()) return {};
   const auto& actual = tree_.names[tree_.symbols[found->value].name.value];
   budget_.Step(std::min(actual.size(), name.size()) + 1);
-  if (actual != name) return;
-  const auto active = active_[groups_[found->value]];
+  if (actual != name) return {};
+  return active_[groups_[found->value]];
+}
+void TreeScopeCheck::EnclosingReference(std::u16string_view name, const ModuleSymbol* module) {
+  const auto active = ActiveBinding(name);
   RequireTree(!active || (module && modules_[active->value] && *modules_[active->value] == *module),
       TreeStructureError::kBinding);
+}
+void TreeScopeCheck::FreeReference(std::u16string_view name) {
+  RequireTree(!ActiveBinding(name), TreeStructureError::kGlobalShadowed);
 }
 void TreeScopeCheck::CatchParameter(SymbolId symbol, ScopeId scope) {
   RequireTree(symbol.value < tree_.symbols.size(), Error::kRange);

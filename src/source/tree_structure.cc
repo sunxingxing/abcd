@@ -262,13 +262,22 @@ class StructureCheck {
         scopes_.Reference(expression.symbol);
       } else if constexpr (std::is_same_v<T, GlobalNameExpr>) {
         RequireTree(expression.name.value < tree_.names.size(), Error::kRange);
-        // Source identifier syntax only, including legal dollar names. Legacy
-        // private-name exclusions are not language rules. The publication
-        // owner separately verifies actual local and enclosing bindings.
+        // Publication resolves the actual active lexical scopes, including
+        // TDZ. Sibling/body-only names cannot shadow this occurrence. Outer
+        // destination bindings remain the responsibility of TreeGlobals.
         budget_.Step(tree_.names[expression.name.value].size());
         RequireTree(IsSourceIdentifier(std::u16string_view{tree_.names[expression.name.value]}), Error::kBinding);
+        if (destination_) scopes_.FreeReference(tree_.names[expression.name.value]);
       } else if constexpr (std::is_same_v<T, RealmObjectExpr> || std::is_same_v<T, SymbolConstructorExpr>) {
-        // Binding selection belongs to the actual publication destination.
+        if (destination_) {
+          if constexpr (std::is_same_v<T, RealmObjectExpr>) {
+            const auto binding = ResolveRealmBinding(tree_.identity.contract, destination_);
+            RequireTree(binding.has_value(), Error::kBinding); scopes_.FreeReference(binding->name);
+          } else {
+            const auto binding = ResolveSymbolBinding(destination_);
+            RequireTree(binding.has_value(), Error::kBinding); scopes_.FreeReference(*binding);
+          }
+        }
       } else if constexpr (std::is_same_v<T, ThisExpr>) {
         RequireTree(expression.owner == tree_.owner && tree_.invocation != InvocationForm::kArrowMethod,
             Error::kBinding);
@@ -320,6 +329,10 @@ class StructureCheck {
                     expression.operation == TreeLogical::kNullish,
                     Error::kUnsupportedSyntax);
       } else if constexpr (std::is_same_v<T, ArgumentSnapshotExpr>) {
+        if (destination_) {
+          const auto binding = ResolveArgumentSnapshotBinding(destination_);
+          RequireTree(binding.has_value(), Error::kBinding); scopes_.FreeReference(*binding);
+        }
         RequireTree(expression.owner == tree_.owner && tree_.strictness == Strictness::kStrict &&
             (!IsArrowCallable(tree_.callable) || tree_.invocation == InvocationForm::kArrowMethod) &&
             ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded, Error::kBinding);

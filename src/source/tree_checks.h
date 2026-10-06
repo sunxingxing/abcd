@@ -32,8 +32,8 @@ class TreeCheckBudget {
   analysis::SemanticBudget remaining_;
 };
 
-// Scope activation uses one slot per distinct spelling. It resolves the exact
-// lexical symbol in O(1), including shadowing, without per-use parent walks.
+// Scope activation uses one slot per distinct spelling. SymbolId references
+// resolve in O(1), free spellings in O(log B), without per-use parent walks.
 class TreeScopeCheck {
  public:
   TreeScopeCheck(const FunctionTree& tree, TreeCheckBudget& budget);
@@ -41,10 +41,12 @@ class TreeScopeCheck {
   void Leave(ScopeId scope);
   void Reference(SymbolId symbol, bool assignment = false);
   void EnclosingReference(std::u16string_view name, const ModuleSymbol* module = nullptr);
+  void FreeReference(std::u16string_view name);
   void Declare(SymbolId symbol, ScopeId scope, bool initializer);
   void CatchParameter(SymbolId symbol, ScopeId scope);
   void Finish();
  private:
+  [[nodiscard]] std::optional<SymbolId> ActiveBinding(std::u16string_view name);
   const FunctionTree& tree_;
   TreeCheckBudget& budget_;
   std::vector<SymbolId> ordered_;
