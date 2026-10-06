@@ -12,6 +12,53 @@
 
 ## 当前阶段
 
+### 2026-10-06：两个 ViewModel 与真实模型记录连接验收
+
+- 基线6bcb3600，production/rules134保持。本轮迁移现有
+  paired_viewmodel_record_source_test：原--source旧writer输出缺少
+  source_complete，新增共同路径完整性检查后RED退出8；改为ABC-only
+  --value-source，实际records29119/29619及依赖16752/17544必须均为
+  source_status=0、source_complete=true、legacy_writer_used=false。
+  CLI结束后独立Node oracle才读取四份paired TS。没有替换生产恢复逻辑，
+  没有借paired source填充输出或修改样本。原测试注册保持，仍564项。
+- 实际IconInfoViewModel/SectionViewModel完整body执行1603 paired边界
+  场景，覆盖四个方法及name/arity/descriptor、模块TDZ/export、实例字段
+  descriptor与存储身份、构造前/中及后续构造的live imported constructor、
+  字段/方法/slice getter替换后的已获得callee及receiver、无参模型构造。
+  原生Array.prototype.slice覆盖0/1/4/200/201、holes、原元素身份、17种
+  count（含BigInt/Symbol拒绝、valueOf状态变化/原异常）、length/index/has、
+  constructor/Symbol.species及其构造length/结果身份和异常次序。
+  正常场景显式拒绝意外TypeError，未把双方提前失败计为成功。
+- 四份真实恢复record在同一个ESM graph一起执行1199 paired场景；两个
+  ViewModel各建两个真实model实例，实际initData/map/new item/push和
+  getter/slice方法都运行。只HomeConstants是受控资源边界。ordinary、
+  sparse、getter-time live、第二次init的late-live、reverse deferred回调
+  覆盖原捕获receiver和多实例列表归属。第一/第二/第三次观察抛出原对象
+  时核对trace、部分已写入state及返回结果。WeakMap确认原资源对象
+  身份，实际Item实例与getter/field descriptor及切片原item身份都检查。
+- 八个独立pinned assignment场景覆盖两种ViewModel的继承setter、原抛出
+  对象及alternate new.target/prototype getter；setter接收实际new model结果，
+  模型先构造再写入字段，实例/model保持fresh。与Node initialized TS字段
+  DefineField的不同义务分开，不用native字段定义掩盖STOBJBYNAME。
+  表示验收另核对class/constructor、字段初始化、真实count签名、原生
+  get…().slice(0,count)及exports；不要求逐字或机械临时变量编号一致。
+- 五个先解析的有效JS mutation检出：slice参数丢失、callee receiver丢失、
+  own definition绕过setter、真实model初始化删除、真实item参数交换。
+  tests-1通过1339/1033；tests-2扩展live与较晚异常为1603/1199；最后再加
+  元素/资源identity、species length及正常完成检查。final-tests-2定向12/12
+  通过17.46秒，含ViewModel/Model/Home完整记录、module init/import/tree、
+  function/family naming、cell names、language constructors及Window记录。
+  证据/tmp/abcd-viewmodel-record-{red-tests-1,tests-1,tests-2,final-tests-1,
+  final-tests-2}.log；最终1603 boundary/1199 connected/8 assignment/5 mutation。
+- 输入SHA/size与现有Immersive corpus index一致（8de95a4c6579，293544 bytes，
+  dynamic_13_0_1_0）。test-only，不需要生产重建/重新配置，也未重复六模式
+  batch；上轮产出计数不作为本轮新增完整记录。自审确认独立source边界、
+  原对象身份、原异常/部分状态、真实方法和Node字段差异。旧legacy baseline
+  失败本轮未重跑。全套、expanded corpus、agents、RSS/benchmark、scheduler/
+  DFX和周期审计继续暂停。阶段一Goal/结构gate仍开放：新增两个真实记录
+  及其连接图的受控独立验收，不证明全部UI/platform、缺失元数据完整签名、
+  所有实例字段/global/body与所有record表示质量已经验收。
+
 ### 2026-10-06：通过共同 cell / entry 身份恢复捕获参数名
 
 - 基线21f3eb57，规则revision134。新增私有NameCellParameters，接在共同
