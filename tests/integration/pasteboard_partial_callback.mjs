@@ -4,13 +4,21 @@ import {readFileSync} from 'node:fs';
 import {stripTypeScriptTypes} from 'node:module';
 import vm from 'node:vm';
 
-const [tool, abc, paired] = process.argv.slice(2);
-const run = spawnSync(tool, [abc, '5001', '--record-source', '--value-source'], {encoding: 'utf8', timeout: 60_000});
+const [tool, abc, paired, presentation] = process.argv.slice(2);
+const named = presentation === 'local-names';
+const selectors = named ? ['--language-numeric', '--language-constructors'] : [];
+const run = spawnSync(tool, [abc, '5001', '--record-source', '--value-source', ...selectors], {encoding: 'utf8', timeout: 60_000});
 assert.equal(run.status, 0, run.stderr);
 const report = JSON.parse(run.stdout.trim());
-assert.equal(report.record, 4767); assert.equal(report.source_complete, false);
+assert.equal(report.record, 4767); assert.equal(report.source_complete, named);
 assert.equal(report.executable, false); assert.equal(report.legacy_writer_used, false);
-assert.ok(report.source.includes('onWindowStageCreate(') && report.source.includes('INCOMPLETE'));
+assert.ok(report.source.includes('onWindowStageCreate('));
+if (named) {
+  // The scope literal in ABC names this actual captured storage. Recover it
+  // through the normal function pipeline, independently of the paired source.
+  assert.match(report.source, /\blet windowStage;/);
+  assert.doesNotMatch(report.source, /INCOMPLETE|UNRECOVERED/);
+} else assert.ok(report.source.includes('INCOMPLETE'));
 const reference = stripTypeScriptTypes(readFileSync(paired, 'utf8'));
 const values = [undefined, null, false, 0, -0, NaN, '', 'text', 1n, Symbol('value'), {}, []];
 async function observe(source, serialized, failAt, mutate) {
@@ -55,4 +63,10 @@ let cases = 0;
 for (const value of values) for (const mutate of [false, true]) for (let failAt = 0; failAt <= 9; ++failAt) {
   assert.deepEqual(await observe(report.source, value, failAt, mutate), await observe(reference, value, failAt, mutate)); ++cases;
 }
-console.log(`${cases} paired pasteboard recovered callback, nullish value, callee mutation and exception-order scenarios passed; incomplete record retained`);
+if (named) {
+  const broken = report.source.replace('windowStage = $arg0', 'windowStage = void 0');
+  assert.notEqual(broken, report.source);
+  await assert.rejects(async () => assert.deepEqual(await observe(broken, '', 0, false),
+    await observe(reference, '', 0, false)), assert.AssertionError);
+}
+console.log(`${cases} paired pasteboard callback, nullish value, callee mutation and exception-order scenarios passed; ${named ? 'complete named method storage; capture mutation detected' : 'incomplete record retained'}`);

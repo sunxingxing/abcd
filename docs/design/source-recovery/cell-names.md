@@ -1,6 +1,6 @@
-# Named record cells
+# Named lexical cells
 
-Record roots recover identifier hints from the pinned dynamic
+Record roots and every ordinary/phased callable recover identifier hints from the pinned dynamic
 NEWLEXENVWITHNAME scope literal format, already validated by `named_scope.cc`:
 a leading integer followed by string/slot pairs. This is ABC metadata only;
 paired source never supplies names to the engine. Record fields and register
@@ -45,6 +45,24 @@ checks recover DOMAIN, KEY_TEXTAREA, DATA_KEY and other metadata names. Token
 comparison verifies presentation changes only; it is not itself semantic proof.
 Scope verification and independent paired behavior checks remain separate.
 
-Current integration is record-root naming. Ordinary function-local metadata
-naming, const reconstruction, constructor gaps, general arithmetic domains and
-complete platform/source-style acceptance remain separate unfinished work.
+Rules 130 connects the same resolver to `ResolveFunctionSyntax`, after formal
+and rest ownership resolution. Class methods, created functions and their
+children therefore receive allocation/slot hints through their existing family
+adapters. The metadata is included in the same name arena, byte/work budget and
+file identity checks. The record-root adapter keeps its existing bounded retry;
+ordinary families retain the existing rejection on ancestor metadata shadowing
+a descendant free global/module name. An automatic generated-name retry for
+those ordinary families remains an implementation gap, not a language rule.
+
+Decoded normal/arrow family fixtures cover local storage and nested writes,
+reserved identifiers and collisions with the actual callable name, including
+retained family printing after file closure. Existing resolver tests cover
+200/201 and geometric growth. Independent pasteboard method behavior compares
+240 value/callee-mutation/exception scenarios after ABC-only generation, and
+detects a valid-JS mutation that replaces the captured parameter initialization.
+This tests the recovered method; it is not a whole-platform behavior claim.
+
+A captured storage name does not establish a source formal name. Debug-range
+parameter recovery, const reconstruction and complete platform/source-style
+acceptance remain unfinished. Setter-capable constructor assignments remain
+assignments; naming a captured receiver cannot prove native class fields.

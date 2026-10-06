@@ -6,6 +6,7 @@
 #include <stdexcept>
 
 #include "parameter_names.h"
+#include "cell_names.h"
 #include "abcd/analysis/rest_arguments.h"
 #include "abcd/corpus/abc_file.h"
 
@@ -124,6 +125,16 @@ std::variant<ResolvedSyntax, SyntaxResolutionFailure> ResolveFunctionSyntax(
       const auto& proof = std::get<RestOwnership>(ownership); admit(proof.allocated_bytes, 1); step(proof.work);
       syntax.parameters[*rest_argument].rest = true;
     }
+    // Scope literals name proven storage, never infer storage from spelling.
+    // Every callable shares this adapter; record-only naming loses captures in
+    // methods/children. Binding scopes and collisions remain tree obligations.
+    auto named = ResolveCellNames(file, header, index, method.offset, graph,
+        syntax.names, syntax.locals, {bytes, work});
+    if (const auto* storage = std::get_if<CellNameStorage>(&named)) {
+      admit(storage->bytes, 1); step(storage->work);
+    } else if (const auto* error = std::get_if<abc::MetadataError>(&named)) {
+      return SyntaxResolutionFailure{*error};
+    } else return SyntaxResolutionFailure{std::get<TreeConstantError>(named)};
     if (file.CheckUnchanged()) return SyntaxResolutionFailure{abc::MetadataError::kFileChanged};
     result.allocated_bytes = budget.bytes - bytes;
     result.work = budget.work - work;

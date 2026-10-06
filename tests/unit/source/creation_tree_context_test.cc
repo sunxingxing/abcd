@@ -28,6 +28,7 @@ using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
 enum class ChildBody { kEmpty, kReceiver, kCapture, kCell, kRecursive, kNestedWriter, kSnapshot, kDeferredCapture };
+enum class CellNames { kAbsent, kSource, kCollision, kReserved };
 enum class CallerObject { kAbsent, kPrimitive, kMethod };
 enum class SnapshotCase { kRead, kWrite, kPair, kBranch, kLoop, kSelf, kReceiver };
 constexpr std::uint32_t kPool = 64, kCaller = 256, kTarget = 300, kWriter = 320,
@@ -61,7 +62,7 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
          bool all_formats = false, std::uint8_t parameters = 0,
          CallerObject object = CallerObject::kAbsent,
          SnapshotCase snapshot_case = SnapshotCase::kRead, std::ostream* evidence = nullptr,
-         bool deferred_writer = false) {
+         bool deferred_writer = false, CellNames cell_names = CellNames::kAbsent) {
   std::vector<std::uint8_t> bytes(kCallerCode);
   constexpr unsigned kByteBits = 8;
   for (unsigned i = 0; i < sizeof(kTarget); ++i)
@@ -167,6 +168,35 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
         kLoad, static_cast<std::uint8_t>(kImplicitArguments),
         kStoreCell, 0, kLoad, 0, kPop, kReturn};
   }
+  if (cell_names != CellNames::kAbsent) {
+    test::Check(object == CallerObject::kAbsent &&
+        (child == ChildBody::kCell || child == ChildBody::kNestedWriter));
+    // Genuine named allocation metadata; the same decoded family owns storage
+    // and captures. Reserved/colliding hints must not change binding identity.
+    constexpr std::uint32_t kScopeLiteral = 80, kScopeName = 112;
+    constexpr std::uint32_t kTaggedScopeEntries = 6, kOneSlot = 1;
+    const std::uint8_t pool_slot = child == ChildBody::kNestedWriter ? 2 : 1;
+    const auto word = [&](std::size_t at, std::uint32_t value) {
+      for (unsigned i = 0; i < sizeof(value); ++i)
+        bytes[at + i] = static_cast<std::uint8_t>(value >> (kByteBits * i));
+    };
+    word(kPool + pool_slot * sizeof(std::uint32_t), kScopeLiteral);
+    word(kScopeLiteral, kTaggedScopeEntries);
+    auto at = kScopeLiteral + sizeof(std::uint32_t);
+    bytes[at++] = static_cast<std::uint8_t>(abc::LiteralTag::kInteger);
+    word(at, kOneSlot); at += sizeof(std::uint32_t);
+    bytes[at++] = static_cast<std::uint8_t>(abc::LiteralTag::kString);
+    word(at, kScopeName); at += sizeof(std::uint32_t);
+    bytes[at++] = static_cast<std::uint8_t>(abc::LiteralTag::kInteger);
+    word(at, 0);
+    const std::string name = cell_names == CellNames::kSource ? "restoredValue" :
+        cell_names == CellNames::kCollision ? "child" : "eval";
+    bytes[kScopeName] = static_cast<std::uint8_t>(name.size() * 2 + 1);
+    std::copy(name.begin(), name.end(), bytes.begin() + kScopeName + 1);
+    target.erase(target.begin(), target.begin() + 2);
+    target.insert(target.begin(), {static_cast<std::uint8_t>(
+        abc::Opcode::kNEWLEXENVWITHNAME_IMM8_ID16), 1, pool_slot, 0});
+  }
   const auto target_code = AppendCode(bytes, target, kImplicitArguments + parameters);
   std::optional<abc::CodeInfo> writer_code;
   if (child == ChildBody::kNestedWriter)
@@ -183,7 +213,8 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
   header.profile = abc::ProfileId::kDynamic1206; header.version = {12, 0, 6, 0}; header.file_size = bytes.size();
   abc::MetadataIndex index;
   index.regions.push_back({kCaller, kCallerCode, {},
-      {object == CallerObject::kAbsent && !writer_code ? 1U : 2U, kPool}, {}, {}});
+      {cell_names != CellNames::kAbsent ? (writer_code ? 3U : 2U) :
+          object == CallerObject::kAbsent && !writer_code ? 1U : 2U, kPool}, {}, {}});
   index.methods.resize(writer_code ? 3 : 2);
   index.methods[0].offset = {kCaller}; index.methods[0].code = caller_code;
   index.methods[1].offset = {kTarget}; index.methods[1].code = target_code;
@@ -596,6 +627,23 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
       const auto& named_tree = built.members[0].tree;
       test::Check(named_tree.inferred_name && !named_tree.self &&
           named_tree.names[named_tree.inferred_name->value] == context.Name());
+      if (cell_names != CellNames::kAbsent) {
+        const auto metadata = std::count_if(named_tree.symbols.begin(), named_tree.symbols.end(),
+            [](const TreeSymbol& symbol) { return symbol.evidence == NameEvidence::kMetadata; });
+        test::Check(metadata == (cell_names == CellNames::kSource ? 1 : 0));
+        if (cell_names == CellNames::kSource) {
+          test::Check(std::any_of(named_tree.symbols.begin(), named_tree.symbols.end(),
+              [&](const TreeSymbol& symbol) {
+                return symbol.evidence == NameEvidence::kMetadata &&
+                    named_tree.names[symbol.name.value] == u"restoredValue";
+              }));
+          if (writer_code) {
+            const auto& writer = built.members[1].tree;
+            test::Check(std::any_of(writer.names.begin(), writer.names.end(),
+                [](const std::u16string& name) { return name == u"restoredValue"; }));
+          }
+        }
+      }
       std::ostringstream named_output;
       test::Check(std::holds_alternative<PrintedFamilyDraft>(PrintFamilyDraft(built, named_output)));
       test::Check(named_output.str().starts_with("({["));
@@ -698,6 +746,8 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
     test::Check(syntax.syntax.owner == kSyntaxOwner && syntax.syntax.method == context.Target() &&
         syntax.syntax.identity == identity && syntax.syntax.callable == context.Callable() &&
         syntax.syntax.strictness == context.Mode() && syntax.syntax.parameters.size() == parameters);
+    if (cell_names != CellNames::kAbsent)
+      test::Check(syntax.syntax.locals.size() == (cell_names == CellNames::kReserved ? 0U : 1U));
     test::Check(syntax.syntax.inferred_name &&
         syntax.syntax.names[syntax.syntax.inferred_name->value] == context.Name());
     test::Check(syntax.operations.size() == opened_child.values.graph.ops.size() &&
@@ -817,6 +867,10 @@ int main(int argc, char** argv) {
     for (const auto child : {ChildBody::kEmpty, ChildBody::kReceiver, ChildBody::kCapture, ChildBody::kCell}) Run(1, kind, child);
   for (const auto count : {1U, 2U, 200U, 201U})
     Run(1, abc::FunctionKind::kBaseConstructor, ChildBody::kEmpty, false, static_cast<std::uint8_t>(count));
+  for (const auto kind : {abc::FunctionKind::kBaseConstructor, abc::FunctionKind::kArrow})
+    for (const auto child : {ChildBody::kCell, ChildBody::kNestedWriter})
+      for (const auto names : {CellNames::kSource, CellNames::kCollision, CellNames::kReserved})
+        Run(1, kind, child, false, 0, CallerObject::kAbsent, SnapshotCase::kRead, nullptr, false, names);
   Run(1, abc::FunctionKind::kBaseConstructor, ChildBody::kRecursive);
   Run(1, abc::FunctionKind::kBaseConstructor, ChildBody::kNestedWriter);
   Run(1, abc::FunctionKind::kBaseConstructor, ChildBody::kNestedWriter, false, 1,

@@ -1,5 +1,13 @@
 # 按用户要求进行的恢复条件审计
 
+规则130补充：普通/分阶段callable的syntax adapter接入既有scope literal
+命名器，提示始终按真实allocation/slot绑定；cell ownership、capture lifetime、
+初始化、family free-name visibility由原共同分析证明。没有新增opcode序列、
+同块、register/PC、producer名单或样本分派。reserved或当前name arena冲突
+保留合成名；普通family的跨代free-name shadow仍由原enclosure拒绝，其
+generated-name retry尚未接入，是表示缺口，不能描述成语言不变量。
+元数据局部存储名不证明formal名，也不证明const或own class field语义。
+
 规则127补充：optional call 复用既有 nullish 域解释、reference formation
 及原 CallExpr.reference。成员调用保留实际 receiver，值调用保留存储的
 callable 和间接 eval，参数/key 仍属于原 call。准入说明的是语言短路、

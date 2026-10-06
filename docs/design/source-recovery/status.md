@@ -13,6 +13,45 @@
 ## 当前阶段
 
 
+### 2026-10-06：普通 callable 复用词法存储命名
+
+- 规则revision130，基线f5c4c770；普通及phased方法、创建函数和其子闭包
+  的ResolveFunctionSyntax接入既有ResolveCellNames。scope literal仅提供
+  allocation/slot/NameId提示，原CellPlan、binding scope、capture lifetime、
+  instruction origins、family writes/enclosure及文件identity继续独立检查。
+  无新增样本分派、opcode序列、同块或producer准入。工作/字节开销纳入
+  同一syntax budget。详见[词法存储命名](cell-names.md)。
+- 新method_cell_names_source_test先观察到windowStage仍为合成名的预期
+  断言失败，再接通共同adapter。ABC-only生成后才读paired源码；完整模式
+  onWindowStageCreate及其闭包恢复windowStage，240个nullish/成员callee
+  mutation/异常顺序对照通过，替换捕获参数初始化的有效JS mutation检出。
+  原默认模式partial callback另240场景保持。十二个新增decoded normal/
+  arrow local/nested-writer fixture验证名字、真实捕获、reserved/当前name
+  arena冲突和文件关闭后的retained family打印；既有cell_names的200/201/
+  几何增长与资源边界继续通过。行为范围是实际方法，不是平台整record。
+- build-1/2/3通过；扩大final-tests-1为28项，25通过、3失败。临时恢复
+  两个production文件到基线HEAD并完成baseline-build-1/三项重跑，三个
+  同样失败：record_function_js_test、record_function_construct_js_test的
+  fixture提前失败，paired_home_model_record_source_test仍要求旧$acc文本。
+  没有放宽旧断言或把失败计为通过；这些是已确认的基线验证缺口。
+  恢复本轮production内容并逐字核对backup后，最终单-j4十目标build-4
+  退出0；final-tests-2相关25/25通过19.73秒，包括上述命名/捕获/作用域、
+  phased/rest/async、argument snapshots、模块与配对model/viewmodel行为。
+  没有启动暂停的全套、RSS/benchmark或扩大语料。
+- fresh method-cell-names六模式pass-1共30次固定五ABC导出全部退出0，
+  各106份完整或明确partial源码解析通过；SHA/size匹配既有corpus index，
+  无legacy或complete回退。相对rules129，default/constructors各16份
+  源码命名改变，其余模式各29份；计数保持default80/26、language95/11、
+  numeric96/10、constructors88/18、arithmetic-constructors105/1、
+  numeric-constructors106/0（complete/incomplete-source）。各46份无module
+  source分类保持。最终production内容与导出时一致；fixture补充不改engine。
+- 仍未关闭结构gate或阶段一：captured storage名不足以证明formal名，
+  $arg0等缺少真实debug/formal证据的参数保持合成名；setter-capable构造
+  赋值不能冒充own class fields。普通family的ancestor metadata shadow
+  descendant free-name仍由原enclosure拒绝，generated-name retry尚未接入，
+  明确为表示缺口。继续完整签名、实例初始化及整record独立行为/源码风格
+  验收；source_complete、语法解析和方法对照不能替代这些完成条件。
+
 ### 2026-10-06：显式语言构造语义贯通普通 SuperSpread
 
 - 规则revision129，基线d9b6d25e；延续25aa原分支。用户明确允许独立

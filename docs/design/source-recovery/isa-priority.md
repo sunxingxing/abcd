@@ -18,6 +18,11 @@ chain 等表示细节优化排在这些缺口之后。不得仅改善缺口注�
 构造器组件恢复后继续实例字段/全局/完整签名/函数体整合和整record独立
 语义、风格验收；不能把source_complete统计替代这些阶段一门槛。
 
+2026-10-06 规则130：普通方法/闭包的命名提示已接入共用syntax resolver，
+复用record cell命名与实际allocation/capture分析。完整模式29份源码表示
+改善，source_complete数量保持。签名中的真实formal证据、setter-capable
+实例赋值与整record独立语义/风格验收仍按原结构gate继续，不先扩展语料。
+
 2026-10-03 用户要求：先补 `object creaters` 的全部 26 个编码格式，
 使用既有通用贯通路径及公共接口。完整清单、现有条件与缺口见
 [对象创建指令](object-creators.md)。这调整立即执行的优先级，不缩减阶段一 Goal。
