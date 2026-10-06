@@ -44,6 +44,37 @@ struct MemberPath {
   std::optional<Reference> reference;
   std::optional<ExprId> access;
 };
+struct StatementResult {
+  std::optional<ExprId> expression;
+  Formation formation;
+  bool valid = false;
+};
+struct StatementMeaning {
+  std::optional<Reference> reference;
+  std::array<StatementResult, kDomains> results;
+};
+bool DependsOnDomain(const StatementMeaning& meaning) {
+  const auto& first=meaning.results[0];
+  return std::any_of(meaning.results.begin()+1,meaning.results.end(),[&](const auto& result) {
+    return result.expression!=first.expression || result.formation.expression!=first.formation.expression ||
+      result.valid!=first.valid || result.formation.valid!=first.formation.valid;
+  });
+}
+template<class Visit>
+void StatementChildren(const FunctionTree& tree, StmtId id, Visit visit) {
+  RequireTree(id.value < tree.statements.size(), TreeStructureError::kRange);
+  const auto& node = tree.statements[id.value].statement;
+  if (const auto* block = std::get_if<BlockStmt>(&node)) {
+    RequireTree(block->first_child <= tree.children.size() && block->child_count <= tree.children.size()-block->first_child, TreeStructureError::kRange);
+    for (std::uint32_t i=0; i<block->child_count; ++i) visit(tree.children[block->first_child+i]);
+  } else if (const auto* branch = std::get_if<IfStmt>(&node)) {
+    visit(branch->consequent); if(branch->alternate) visit(*branch->alternate);
+  } else if (const auto* loop = std::get_if<LoopStmt>(&node)) visit(loop->body);
+  else if (const auto* protected_body = std::get_if<TryStmt>(&node)) {
+    visit(protected_body->body); if(protected_body->handler) visit(protected_body->handler->body);
+    if(protected_body->finalizer) visit(*protected_body->finalizer);
+  }
+}
 // Dependency arity is the three fields of ConditionalExpr, not a corpus limit.
 constexpr std::size_t kConditionalArity = 3;
 struct Inputs { std::array<ExprId, kConditionalArity> ids; std::uint8_t count = 0; };
@@ -232,6 +263,78 @@ Meaning Interpret(const FunctionTree& tree, ExprId id, const std::vector<Meaning
   }
   return result;
 }
+StatementMeaning InterpretStatement(const FunctionTree& tree, StmtId id,
+    const std::vector<Meaning>& expressions, const std::vector<StatementMeaning>& statements) {
+  StatementMeaning result;
+  const auto& node = tree.statements[id.value].statement;
+  if (const auto* expression = std::get_if<ExpressionStmt>(&node)) {
+    const auto& meaning = expressions[expression->expression.value];
+    if (meaning.predicate) result.reference = meaning.reference;
+    for (std::size_t domain=0; domain<kDomains; ++domain)
+      result.results[domain] = {meaning.predicate ? std::nullopt : std::optional{expression->expression},
+        meaning.predicate ? meaning.formations[domain] : Formation{}, true};
+  } else if (const auto* block = std::get_if<BlockStmt>(&node)) {
+    for (auto& value:result.results) value.valid=true;
+    for (std::uint32_t i=0; i<block->child_count; ++i) {
+      const auto& next = statements[tree.children[block->first_child+i].value];
+      const bool compatible = !result.reference || !next.reference || result.reference==next.reference;
+      if(!result.reference) result.reference=next.reference;
+      for (std::size_t domain=0; domain<kDomains; ++domain) {
+        auto& current = result.results[domain]; const auto& value=next.results[domain];
+        // An opaque effect can mutate the reference before a later guard. Its
+        // old abstract domain must not survive that effect without value-flow
+        // evidence. One native optional expression also cannot erase a second
+        // independently executed effect occurrence.
+        current.valid &= compatible && value.valid && !(current.expression &&
+          (value.expression || (next.reference && DependsOnDomain(next))));
+        current.formation=Follow(current.formation,value.formation);
+        if(!current.expression) current.expression=value.expression;
+      }
+    }
+  } else if (const auto* branch = std::get_if<IfStmt>(&node)) {
+    const auto& condition=expressions[branch->condition.value];
+    if(!condition.predicate) return result;
+    const auto& yes=statements[branch->consequent.value]; StatementMeaning empty;
+    for(auto& value:empty.results) value.valid=true;
+    const auto& no=branch->alternate ? statements[branch->alternate->value] : empty;
+    result.reference=condition.reference;
+    if(!result.reference) result.reference=condition.truths[0]==Truth::kTrue ? yes.reference :
+      condition.truths[0]==Truth::kFalse ? no.reference : yes.reference==no.reference ? yes.reference : std::nullopt;
+    const auto compatible=[&](const StatementMeaning& value) {return !value.reference || value.reference==result.reference;};
+    for (std::size_t domain=0; domain<kDomains; ++domain) {
+      const auto truth=condition.truths[domain]; const auto& a=yes.results[domain]; const auto& b=no.results[domain];
+      auto& value=result.results[domain];
+      if(truth==Truth::kTrue) {value=a;value.valid &= compatible(yes);}
+      else if(truth==Truth::kFalse) {value=b;value.valid &= compatible(no);}
+      else {value={a.expression,Join(a.formation,b.formation),
+        a.valid && b.valid && compatible(yes) && compatible(no) && a.expression==b.expression};}
+      value.formation=Follow(condition.formations[domain],value.formation);
+      value.valid &= a.valid && b.valid;
+    }
+  }
+  // Declarations, abrupt completions, loops, handlers, debugger and gaps have
+  // no discarded-expression summary; their verified original syntax remains.
+  return result;
+}
+std::optional<NullishProjection> ProjectOptional(const FunctionTree& tree, ExprId result,
+    const Reference& reference, std::optional<ExprId> formed, const std::vector<MemberPath>& paths) {
+  const auto& expression=tree.expressions[result.value].expression;
+  const auto project_member=[&](ExprId member) -> std::optional<OptionalMemberSyntax> {
+    const auto& path=paths[member.value];
+    if(!path.access || path.reference!=std::optional{reference}) return {};
+    const auto base=std::get<MemberExpr>(tree.expressions[path.access->value].expression).base;
+    return OptionalMemberSyntax{member,formed.value_or(base),*path.access};
+  };
+  if(std::holds_alternative<MemberExpr>(expression)) {
+    if(const auto member=project_member(result)) return *member;
+  } else if(const auto* call=std::get_if<CallExpr>(&expression)) {
+    if(call->reference==CallReference::kValue && StableReference(tree,call->callee)==std::optional{reference})
+      return OptionalCallSyntax{result,formed.value_or(call->callee),{}, {}};
+    if(call->reference==CallReference::kMember) if(const auto member=project_member(call->callee))
+      return OptionalCallSyntax{result,member->base,call->callee,member->access};
+  }
+  return {};
+}
 }
 std::variant<NullishSyntax, TreeStructureError> PlanNullishSyntax(
     const FunctionTree& tree, analysis::SemanticBudget limit) {
@@ -246,7 +349,9 @@ std::variant<NullishSyntax, TreeStructureError> PlanNullishSyntax(
       if (const auto* literal = std::get_if<TreeLiteral>(&node.expression))
         nullish |= std::holds_alternative<NullLiteral>(*literal) || std::holds_alternative<UndefinedLiteral>(*literal);
     }
-    if (!selection || !binding || !nullish) { plan.work = budget.Work(); return plan; }
+    bool statement_selection=false;
+    for(const auto& node:tree.statements) {budget.Step();statement_selection |= std::holds_alternative<IfStmt>(node.statement);}
+    if ((!selection && !statement_selection) || !binding || !nullish) { plan.work = budget.Work(); return plan; }
     // Intern UTF-16 values once. Repeated selection joins compare strong IDs,
     // not long shared strings per expression or a literal-pool layout premise.
     std::vector<TextId> texts, ordered;
@@ -301,30 +406,9 @@ std::variant<NullishSyntax, TreeStructureError> PlanNullishSyntax(
       if (std::holds_alternative<ConditionalExpr>(tree.expressions[id.value].expression) &&
           ordered && meaning.reference && nil && absent && other && SameResult(tree, texts, *nil, *absent)) {
         const auto* literal = std::get_if<TreeLiteral>(&tree.expressions[nil->value].expression);
-        const auto* member = std::get_if<MemberExpr>(&tree.expressions[other->value].expression);
-        const auto* call = std::get_if<CallExpr>(&tree.expressions[other->value].expression);
-        if (literal && std::holds_alternative<UndefinedLiteral>(*literal) && member &&
-            paths[other->value].access && paths[other->value].reference == meaning.reference) {
-          const auto access = *paths[other->value].access;
-          const auto base = std::get<MemberExpr>(tree.expressions[access.value].expression).base;
-          plan.projections[id.value] = OptionalMemberSyntax{*other, formed.value_or(base), access};
-        }
-        else if (literal && std::holds_alternative<UndefinedLiteral>(*literal) && call) {
-          // Optional evaluation must skip the entire original call (including
-          // arguments) on nullish paths. Reference identity, not callee spelling
-          // or a compiler guard layout, determines receiver and indirect eval.
-          if (call->reference == CallReference::kValue && StableReference(tree, call->callee) == meaning.reference)
-            plan.projections[id.value] = OptionalCallSyntax{*other, formed.value_or(call->callee), {}, {}};
-          else if (call->reference == CallReference::kMember) {
-            const auto* callee = std::get_if<MemberExpr>(&tree.expressions[call->callee.value].expression);
-            if (callee && paths[call->callee.value].access && paths[call->callee.value].reference == meaning.reference) {
-              const auto access = *paths[call->callee.value].access;
-              const auto base = std::get<MemberExpr>(tree.expressions[access.value].expression).base;
-              plan.projections[id.value] = OptionalCallSyntax{*other, formed.value_or(base), call->callee, access};
-            }
-          }
-        }
-        else if (StableReference(tree, *other) == meaning.reference && !SameResult(tree, texts, *nil, *other))
+        if (literal && std::holds_alternative<UndefinedLiteral>(*literal))
+          plan.projections[id.value] = ProjectOptional(tree,*other,*meaning.reference,formed,paths);
+        if (!plan.projections[id.value] && StableReference(tree, *other) == meaning.reference && !SameResult(tree, texts, *nil, *other))
           plan.projections[id.value] = NullishFallbackSyntax{formed.value_or(*other), *nil};
       }
       if (parent[id.value] && !--pending[parent[id.value]->value]) queue[ready++] = *parent[id.value];
@@ -376,30 +460,140 @@ std::variant<NullishSyntax, TreeStructureError> PlanNullishSyntax(
           budget.Step(); plan.omitted_properties_by[object->properties.first + i] = root;
         }
     }
+    if(statement_selection) {
+      const auto total=tree.statements.size();
+      std::vector<StatementMeaning> statements;
+      std::vector<std::optional<StmtId>> owners;
+      std::vector<std::uint32_t> waits;
+      std::vector<StmtId> order;
+      budget.Array(statements,total);budget.Array(owners,total);budget.Array(waits,total);budget.Array(order,total);
+      budget.Array(plan.statement_projections,total);budget.Array(plan.statement_omitted_by,total);
+      budget.Array(plan.statement_expressions_by,count);budget.Array(plan.statement_properties_by,tree.properties.size());
+      ready=0;
+      for(std::size_t i=0;i<total;++i) {
+        budget.Step();const StmtId id{static_cast<std::uint32_t>(i)};
+        StatementChildren(tree,id,[&](StmtId child) {
+          budget.Step();RequireTree(child.value<total && !owners[child.value],TreeStructureError::kOwnership);
+          owners[child.value]=id;++waits[i];
+        });
+        if(!waits[i]) order[ready++]=id;
+      }
+      for(std::size_t at=0;at<ready;++at) {
+        budget.Step();const auto id=order[at];
+        statements[id.value]=InterpretStatement(tree,id,meanings,statements);
+        if(const auto* block=std::get_if<BlockStmt>(&tree.statements[id.value].statement)) budget.Step(block->child_count);
+        const auto& meaning=statements[id.value];
+        const auto& nil=meaning.results[static_cast<std::size_t>(NullishDomain::kNull)];
+        const auto& absent=meaning.results[static_cast<std::size_t>(NullishDomain::kUndefined)];
+        const auto& other=meaning.results[static_cast<std::size_t>(NullishDomain::kOther)];
+        const auto formed=nil.formation.expression;
+        bool ordered=true;for(const auto& result:meaning.results)
+          ordered &= result.valid && result.formation.valid && result.formation.expression==formed;
+        if(std::holds_alternative<IfStmt>(tree.statements[id.value].statement) && ordered && meaning.reference &&
+            !nil.expression && !absent.expression && other.expression)
+          plan.statement_projections[id.value]=ProjectOptional(tree,*other.expression,*meaning.reference,formed,paths);
+        if(owners[id.value] && !--waits[owners[id.value]->value]) order[ready++]=*owners[id.value];
+      }
+      RequireTree(ready==total,TreeStructureError::kOwnership);
+      ready=0;for(std::size_t i=0;i<total;++i) if(!owners[i]) order[ready++]={static_cast<std::uint32_t>(i)};
+      const auto omit=[&](StmtId root,ExprId expression) {
+        if(plan.Retains(NullishRoot{root},expression) || plan.statement_expressions_by[expression.value]) return;
+        plan.statement_expressions_by[expression.value]=root;plan.projections[expression.value].reset();
+        plan.omitted_by[expression.value].reset();
+      };
+      for(std::size_t at=0;at<ready;++at) {
+        budget.Step();const auto id=order[at];
+        const auto selected=plan.statement_omitted_by[id.value] ? plan.statement_omitted_by[id.value] :
+          plan.statement_projections[id.value] ? std::optional{id} : std::nullopt;
+        if(plan.statement_omitted_by[id.value]) plan.statement_projections[id.value].reset();
+        if(selected) {
+          const auto& node=tree.statements[id.value].statement;
+          if(const auto* branch=std::get_if<IfStmt>(&node)) omit(*selected,branch->condition);
+          else if(const auto* expression=std::get_if<ExpressionStmt>(&node)) omit(*selected,expression->expression);
+        }
+        StatementChildren(tree,id,[&](StmtId child) {
+          budget.Step();if(selected) plan.statement_omitted_by[child.value]=selected;order[ready++]=child;
+        });
+      }
+      for(std::size_t i=0;i<total;++i) {
+        budget.Step();if(!plan.statement_projections[i]) continue;
+        const StmtId root{static_cast<std::uint32_t>(i)};
+        std::visit([&](const auto& projection) {
+          using T=std::decay_t<decltype(projection)>;
+          if constexpr(std::is_same_v<T,OptionalMemberSyntax>)
+            omit(root,std::get<MemberExpr>(tree.expressions[projection.access.value].expression).base);
+          else if constexpr(std::is_same_v<T,OptionalCallSyntax>) {
+            const auto base=projection.member ? std::get<MemberExpr>(tree.expressions[projection.access->value].expression).base :
+              std::get<CallExpr>(tree.expressions[projection.call.value].expression).callee;
+            omit(root,base);
+          }
+        },*plan.statement_projections[i]);
+      }
+      ready=0;for(std::size_t i=0;i<count;++i) {
+        budget.Step();if(plan.statement_expressions_by[i]) queue[ready++]={static_cast<std::uint32_t>(i)};
+      }
+      for(std::size_t at=0;at<ready;++at) {
+        budget.Step();const auto id=queue[at];const auto root=*plan.statement_expressions_by[id.value];
+        const auto& expression=tree.expressions[id.value].expression;
+        VisitExpressionChildren(tree,expression,[&](ExprId child) {
+          budget.Step();if(plan.Retains(NullishRoot{root},child) || plan.statement_expressions_by[child.value]) return;
+          omit(root,child);queue[ready++]=child;
+        });
+        if(const auto* object=std::get_if<ObjectExpr>(&expression)) for(std::uint32_t i=0;i<object->properties.count;++i) {
+          budget.Step();plan.statement_properties_by[object->properties.first+i]=root;
+          plan.omitted_properties_by[object->properties.first+i].reset();
+        }
+      }
+    }
     plan.allocated_bytes = budget.Bytes(); plan.work = budget.Work(); return plan;
   } catch (TreeStructureError error) { return error; }
 }
 bool NullishSyntax::Retains(ExprId root, ExprId child) const {
+  return Retains(NullishRoot{root},child);
+}
+const NullishProjection& NullishSyntax::Projection(NullishRoot root) const {
+  return std::visit([&](auto id)->const NullishProjection& {
+    if constexpr(std::is_same_v<decltype(id),ExprId>) return *projections[id.value];
+    else return *statement_projections[id.value];
+  },root);
+}
+bool NullishSyntax::Retains(NullishRoot root, ExprId child) const {
   return std::visit([&](const auto& syntax) {
     using T = std::decay_t<decltype(syntax)>;
     if constexpr (std::is_same_v<T, OptionalMemberSyntax>) return syntax.member == child || syntax.base == child;
     else if constexpr (std::is_same_v<T, OptionalCallSyntax>) return syntax.call == child || syntax.member == child || syntax.base == child;
     else { static_assert(std::is_same_v<T, NullishFallbackSyntax>); return syntax.value == child || syntax.fallback == child; }
-  }, *projections[root.value]);
+  }, Projection(root));
 }
-ExprId NullishSyntax::Base(const FunctionTree&, ExprId root) const {
+ExprId NullishSyntax::Base(const FunctionTree& tree, ExprId root) const {return Base(tree,NullishRoot{root});}
+ExprId NullishSyntax::Base(const FunctionTree&, NullishRoot root) const {
   return std::visit([&](const auto& syntax) {
     using T = std::decay_t<decltype(syntax)>;
     if constexpr (std::is_same_v<T, OptionalMemberSyntax> || std::is_same_v<T, OptionalCallSyntax>) return syntax.base;
     else { static_assert(std::is_same_v<T, NullishFallbackSyntax>); return syntax.value; }
-  }, *projections[root.value]);
+  }, Projection(root));
 }
-NullishForm NullishSyntax::Form(ExprId root) const {
+NullishForm NullishSyntax::Form(ExprId root) const {return Form(NullishRoot{root});}
+NullishForm NullishSyntax::Form(NullishRoot root) const {
   return std::visit([](const auto& syntax) {
     using T = std::decay_t<decltype(syntax)>;
     if constexpr (std::is_same_v<T, OptionalMemberSyntax>) return NullishForm::kOptionalMember;
     else if constexpr (std::is_same_v<T, OptionalCallSyntax>) return NullishForm::kOptionalCall;
     else { static_assert(std::is_same_v<T, NullishFallbackSyntax>); return NullishForm::kFallback; }
-  }, *projections[root.value]);
+  }, Projection(root));
+}
+std::optional<NullishRoot> NullishSyntax::Omission(ExprId id) const {
+  if(!statement_expressions_by.empty() && statement_expressions_by[id.value]) return *statement_expressions_by[id.value];
+  if(!omitted_by.empty() && omitted_by[id.value]) return *omitted_by[id.value];
+  return {};
+}
+std::optional<NullishRoot> NullishSyntax::Omission(StmtId id) const {
+  if(!statement_omitted_by.empty() && statement_omitted_by[id.value]) return *statement_omitted_by[id.value];
+  return {};
+}
+std::optional<NullishRoot> NullishSyntax::Omission(PropertyId id) const {
+  if(!statement_properties_by.empty() && statement_properties_by[id.value]) return *statement_properties_by[id.value];
+  if(!omitted_properties_by.empty() && omitted_properties_by[id.value]) return *omitted_properties_by[id.value];
+  return {};
 }
 }

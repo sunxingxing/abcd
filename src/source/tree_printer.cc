@@ -1141,11 +1141,16 @@ class TreePrinter {
   void Run(ExpressionOperand operand) {
     const auto id = operand.id;
     BeginExpression(id);
-    const auto& expression = Tree().expressions[id.value].expression;
     if (!Nullish().projections.empty() && Nullish().projections[id.value]) {
       // Parentheses end this chain: a following call/member must still execute
       // on undefined. Value calls keep their existing indirect-call projection.
       Append("("); Push(std::string_view(")"));
+      PrintNullish(*Nullish().projections[id.value],operand.observation);
+      return;
+    }
+    PrintOriginalExpression(operand);
+  }
+  void PrintNullish(const NullishProjection& projection,ExpressionObservation observation) {
       std::visit([&](const auto& syntax) {
         using T = std::decay_t<decltype(syntax)>;
         if constexpr (std::is_same_v<T, OptionalMemberSyntax>) {
@@ -1160,11 +1165,13 @@ class TreePrinter {
           } else Push(ExpressionOperand{syntax.base, {PostfixContext::kCallCallee}});
         } else {
           static_assert(std::is_same_v<T, NullishFallbackSyntax>);
-          Expression(LogicalExpr{TreeLogical::kNullish, syntax.value, syntax.fallback}, operand.observation);
+          Expression(LogicalExpr{TreeLogical::kNullish, syntax.value, syntax.fallback}, observation);
         }
-      }, *Nullish().projections[id.value]);
-      return;
-    }
+      }, projection);
+  }
+  void PrintOriginalExpression(ExpressionOperand operand) {
+    const auto id=operand.id;
+    const auto& expression=Tree().expressions[id.value].expression;
     if (const auto* unary = std::get_if<UnaryExpr>(&expression);
         unary && unary->operation == TreeUnary::kNot) {
       operand.id = unary->operand; operand.inferred_name = {};
@@ -1246,6 +1253,9 @@ class TreePrinter {
     Push(std::string_view(";")); Push(node.expression);
   }
   void StatementNode(const IfStmt& node, Statement at) {
+    if(!Nullish().statement_projections.empty() && Nullish().statement_projections[at.id.value]) {
+      Push(std::string_view(";"));PrintNullish(*Nullish().statement_projections[at.id.value],ExpressionObservation::kDiscarded);return;
+    }
     Append("if (");
     if (node.alternate) {
       Push(Statement{*node.alternate, at.depth}); Push(std::string_view(" else "));
@@ -1387,6 +1397,21 @@ class TreePrinter {
     };
     finalize(syntax.omitted_by, Result().expressions);
     finalize(syntax.omitted_properties_by, Result().properties);
+    const auto statements=[&](const auto& omitted,auto& ranges) {
+      for(std::size_t i=0;i<omitted.size();++i) {
+        Step();if(!omitted[i]) continue;
+        const auto base=syntax.Base(Tree(),NullishRoot{*omitted[i]});
+        const auto boundary=Result().expressions[base.value].end;ranges[i]={boundary,boundary};
+      }
+    };
+    statements(syntax.statement_expressions_by,Result().expressions);
+    statements(syntax.statement_properties_by,Result().properties);
+    statements(syntax.statement_omitted_by,Result().statements);
+    if(!syntax.statement_omitted_by.empty()) for(std::size_t i=0;i<Tree().anchors.size();++i) {
+      Step();if(const auto* boundary=std::get_if<BlockBoundary>(&Tree().anchors[i].position))
+        if(const auto root=syntax.statement_omitted_by[boundary->block.value])
+          Result().anchors[i]=Result().expressions[syntax.Base(Tree(),NullishRoot{*root}).value].end;
+    }
   }
   void Boundary(BlockBoundary position) {
     // Binary lookup per structural boundary, not a scan of every method anchor.

@@ -355,7 +355,7 @@ work 统计和调用方显式传入有限额度的底层兼容接口保留，但
 整份 record 的最终目标不变。演进任务见
 [C00–C09 计划](../../superpowers/plans/2026-09-28-unified-control-regions.md)。
 
-## 原生空值语法的表示（规则 104、105、107、145）
+## 原生空值语法的表示（规则 104、105、107、145、146）
 
 PlanNullishSyntax在已经检查的FunctionTree上解释null、undefined、other
 三个语言值域，证明nullish路径返回undefined、其他路径恰好执行同一个
@@ -377,8 +377,22 @@ printer在同一次chain中输出x?.a.b／x?.a[key]／x?.a.b(args)。后续membe
 必须保留原TypeError，不能加?.或中途括号；key/getter/参数及callee receiver
 保持原执行次序和次数。所有保留member仍有独立非零range；省略谓词／读
 仍沿共同位置计划落在原base.end。没有逐候选chain重走、额外AST或文本
-匹配。分离形成、一般alias与跨reference整体chain、optional void statement
+匹配。分离形成、一般alias与跨reference整体chain
 仍属表示缺口；未投影时继续输出原完整条件，不能拒绝原已恢复函数。
+
+规则146增加丢弃结果的语句观察：ExpressionStmt保留原效果，Block按原
+执行顺序组合，If用相同三域predicate/formation选择摘要；独立Kahn队列
+处理任意语句arena顺序。nil/undefined无效果、other保留同一原member/call
+且形成顺序一致，复用原OptionalMemberSyntax/OptionalCallSyntax输出?.语句。
+值调用仍是间接调用；void观察不读取返回对象或then，不把返回值传到调用者。
+
+声明、abrupt completion、loop、handler、debugger/gap及独立额外效果没有
+此摘要，保留原语句。opaque effect之后的reference域依赖guard不沿用旧值；
+foreign binding不能抹去scope/TDZ读取。多效果和live结果汇合写入需要共同
+sequence/value-flow扩展，是表示缺口而非语言约束。原If根保留native语句
+range，省略statement/expression/property及block anchor落在原base.end；
+serializer的statement投影显式标记projection_kind:statement。所有原instruction
+和retained expression identity继续核对，不造新源码owner或虚假非零range。
 
 不改FunctionTree、CFG、operand或原instruction来源。被省略的测试与原
 分支节点在已打印base.end、原生?.之前保留零宽事件，位置序列化标记

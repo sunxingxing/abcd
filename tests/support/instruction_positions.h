@@ -88,19 +88,23 @@ inline void CheckInstructionPositions(const source::FunctionTree& tree,
             }
             return;
           }
-          if constexpr (std::is_same_v<T, ExprId>) {
-            if (!nullish.omitted_by.empty() && nullish.omitted_by[target.value]) {
-              const auto root = *nullish.omitted_by[target.value];
+          if constexpr (std::is_same_v<T, ExprId> || std::is_same_v<T, StmtId> || std::is_same_v<T, PropertyId>) {
+            if (const auto omitted = nullish.Omission(target)) {
+              const auto root = *omitted;
               const auto base = nullish.Base(tree, root);
-              const auto guard = positions.expressions[root.value];
+              const auto guard = std::visit([&](auto id) {
+                if constexpr(std::is_same_v<decltype(id),ExprId>) return positions.expressions[id.value];
+                else return positions.statements[id.value];
+              },root);
               const auto receiver = positions.expressions[base.value];
+              const auto& projection=nullish.Projection(root);
               auto access = guard;
-              if (const auto* member = std::get_if<OptionalMemberSyntax>(&*nullish.projections[root.value]))
+              if (const auto* member = std::get_if<OptionalMemberSyntax>(&projection))
                 access = positions.expressions[member->member.value];
-              else if (const auto* call = std::get_if<OptionalCallSyntax>(&*nullish.projections[root.value]))
+              else if (const auto* call = std::get_if<OptionalCallSyntax>(&projection))
                 access = positions.expressions[call->call.value];
               else {
-                const auto& coalesce = std::get<NullishFallbackSyntax>(*nullish.projections[root.value]);
+                const auto& coalesce = std::get<NullishFallbackSyntax>(projection);
                 const auto fallback = positions.expressions[coalesce.fallback.value];
                 check(receiver.end <= fallback.begin && fallback.begin < fallback.end && fallback.end <= guard.end);
               }

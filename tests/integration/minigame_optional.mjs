@@ -14,12 +14,14 @@ try {
   const record = JSON.parse(readFileSync(join(output, 'manifest.json'))).records.find(record => record.entity === 12527);
   assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, false);
   generated = readFileSync(join(output, record.source), 'utf8');
-  assert.equal(generated.match(/\?\./g)?.length, 5);
 } finally { rmSync(temporary, {recursive: true}); }
 // Paired text is read only after ABC-only generation. These host protocols
 // cover constructor/registered callbacks; no actual OpenHarmony UI claim.
 const reference = stripTypeScriptTypes(readFileSync(join(root,
   'Immersive_src/default/src/main/ets/pages/fullScreenImmersive/componentPageImmersive/MiniGame.ts'), 'utf8'));
+// Both void lifecycle calls now share the same native optional projection as
+// the existing value-producing accesses. Compare style after generation only.
+assert.equal(generated.match(/\?\./g)?.length, reference.match(/\?\./g)?.length);
 async function observe(source, phase, kind, mutate, failAt) {
   const events = [], callbacks = [], failure = Symbol('failure'), marker = {};
   let active = false, owner, child, reads = 0;

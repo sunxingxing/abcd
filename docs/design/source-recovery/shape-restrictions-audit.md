@@ -1494,3 +1494,25 @@ new.target、参数默认值、字段状态、任意 throw identity及有效JS m
 原语言构造模式仍独立、显式，默认 VM/profile 语义不变；未用样本路径、
 类名、图形状、固定 producer/selection 数或寄存器布局做 production 分派。
 完整字段表示/implicit ctor/平台生命周期和阶段一独立验收仍是实际缺口。
+
+## 规则146：丢弃结果的空值语句观察
+
+原三域有限解释和reference formation复用到ExpressionStmt/Block/If，按原
+控制语义合成无效果或同一原效果occurrence。typed ExprId/StmtId投影复用
+member/call分类、printer及来源计划。null和undefined域不能丢失原效果，
+other域必须保持原receiver、key/argument/callee、形成次序和执行次数；
+opaque效果后的域相关guard必须有新的值流证据，不能沿用旧reference事实。
+这些检查证明身份/效果/异常/完成，不是两个guard、同块、邻接、producer
+名单或固定selection数的附加条件；逆序arena与decoded COPY/块拆分共用。
+
+当前投影保留一个原效果表达式，可包含任意已有复合表达式；不能删除第二个
+独立效果或把live phi写入当作无效果。声明、abrupt、loop、handler、debugger
+和gap尚无丢弃表达式摘要，原完整或显式部分语句继续输出。这些是实现能力
+范围，不是语言不变量，也不能扩成新局部pattern。一般多效果sequence、
+分离形成和跨reference链需要共同模型扩展；完整phase gate仍开放。
+
+80共同树/32,000行为、六语义反例/typed预算边界和336 actual decoded函数/
+75,264行为验证此边界。初始live结果join正例失败后保留作表示反例，并另验
+实际void观察，未删除真实写入或来源检查。fixed-five/six-mode导出只改变
+MiniGame和ShoppingFullScreen原void guard的共同投影，样本只作独立测试；
+具体范围、失败/成功和暂停事项见status.md。

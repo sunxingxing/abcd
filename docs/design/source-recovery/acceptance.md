@@ -1,5 +1,18 @@
 # 验收、证据与实施交接
 
+2026-10-06丢弃结果的可选调用补充：规则146将原共同空值解释接入语句
+观察；nil路径无效果、其他路径保留原成员/值调用及同一有序形成表达式时，
+共享printer输出原生?.语句。原receiver、key/argument、callee、执行次数、
+异常和来源保留。80个深度/arena/base组合、32,000独立场景及两有效JS
+mutation，336个三profile实际decoded函数／75,264场景通过。live结果
+汇合仍保留真实写入，不以void为由删除；新增反例/资源与范围核对见status。
+
+固定五ABC六模式30次导出、636语法解析及完整数量无回退。实际MiniGame和
+ShoppingFullScreen的void方法调用恢复原生?.，该表示边界得到组件验收；
+ShoppingAvoid外层跨reference形成链、一般多效果/形成序列仍开放，四页面
+whole-record style继续pending。212份现有record映射不变且仍有method
+空缺，不能把本次组件/语法成功当作完整映射、设备或阶段一完成。
+
 2026-10-06 Immersive Breakpoint补充：record7395的受控whole-record行为与
 高层表示由pending转accepted。固定SHA核对、entry7531的ABC-only默认V3
 完整ValueTree生成全部结束后才读取paired TS。真实四字段constructor、

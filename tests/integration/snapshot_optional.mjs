@@ -3,7 +3,7 @@ import {execFileSync} from 'node:child_process';
 import vm from 'node:vm';
 const reports = execFileSync(process.argv[2], [], {encoding: 'utf8', maxBuffer: 16 * 1024 * 1024})
   .trim().split('\n').map(line => JSON.parse(line));
-assert.equal(reports.length, 276);
+assert.equal(reports.length, 336);
 const values = [undefined, null, false, true, 0, -0, NaN, Infinity, -Infinity, '', 'text', 0n, 1n, Symbol('input'), 'object', 'function'];
 const marker = {}, failure = Symbol('failure');
 function observe(fn, inputKind, mutate, failAt, form) {
@@ -18,7 +18,7 @@ function observe(fn, inputKind, mutate, failAt, form) {
   if (typeof payload === 'function' || (payload !== null && typeof payload === 'object'))
     Object.defineProperty(payload, 'field', {get() {
       assert.equal(this, payload); event('field');
-      if (form >= 18) {
+      if (form >= 18 && form !== 26) {
         const next = {get field() {
           assert.equal(this, next); event('next-field');
           if (form >= 20) return function() {assert.equal(this, next); assert.equal(arguments.length, 0); event('chain-call'); return marker;};
@@ -26,7 +26,7 @@ function observe(fn, inputKind, mutate, failAt, form) {
         }};
         return next;
       }
-      if (form >= 8 && form !== 10 && form !== 16 && form !== 17)
+      if (form >= 8 && form !== 10 && form !== 16 && form !== 17 && form !== 26)
         return function(...args) {
           assert.equal(this, form === 13 ? undefined : payload); event('member-call');
           assert.equal(args.length, form === 12 || form === 13 ? 1 : 0);
@@ -57,7 +57,7 @@ function observe(fn, inputKind, mutate, failAt, form) {
 }
 let scenarios = 0;
 for (const report of reports) {
-  assert.equal(report.source.includes('?.'), ![3, 4, 11].includes(report.form));
+  assert.equal(report.source.includes('?.'), ![3, 4, 11, 27].includes(report.form));
   const generated = vm.runInNewContext(report.source);
   const oracle = value => {
     const kept = report.form === 6 ? value.probe() : value.probe;
@@ -74,6 +74,9 @@ for (const report of reports) {
     if (report.form === 19) return kept?.field[value.key];
     if (report.form === 20 || report.form === 22) return kept?.field.field();
     if (report.form === 21) return kept?.field[value.key]();
+    if (report.form === 23 || report.form === 25 || report.form === 27) {kept?.field.field();return undefined;}
+    if (report.form === 24) {kept?.field[value.key]();return undefined;}
+    if (report.form === 26) {kept?.();return undefined;}
     return kept?.field;
   };
   for (const input of values) for (const mutate of [false, true]) for (const failAt of [0, 1, 2, 3, 4, 5, 6]) {
@@ -85,7 +88,7 @@ for (const report of reports) {
     ++scenarios;
   }
 }
-assert.equal(scenarios, 61824);
+assert.equal(scenarios, 75264);
 // Optional value calls retain indirect eval even when their saved callable is
 // the intrinsic eval. A direct eval would expose the generated local binding.
 for (const report of reports.filter(report => report.form === 17)) {

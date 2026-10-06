@@ -87,11 +87,9 @@ void CheckPositions(const PreparedFamily& family, const PrintedFamilyDraft& prin
           bool omitted = false;
           if constexpr (std::is_same_v<T, ExprId>) omitted = completion && completion->value == target;
           else if constexpr (std::is_same_v<T, StmtId>) omitted = completion && completion->statement == target;
-          std::optional<ExprId> guarded;
-          if constexpr (std::is_same_v<T, ExprId>)
-            if (!nullish.omitted_by.empty()) guarded = nullish.omitted_by[target.value];
-          if constexpr (std::is_same_v<T, PropertyId>)
-            if (!nullish.omitted_properties_by.empty()) guarded = nullish.omitted_properties_by[target.value];
+          std::optional<NullishRoot> guarded;
+          if constexpr (std::is_same_v<T, ExprId> || std::is_same_v<T, PropertyId> || std::is_same_v<T, StmtId>)
+            guarded = nullish.Omission(target);
           std::optional<StmtId> discarded_statement;
           if constexpr (std::is_same_v<T, ExprId>) discarded_statement = discarded[target.value];
           else if constexpr (std::is_same_v<T, StmtId>) {
@@ -105,14 +103,18 @@ void CheckPositions(const PreparedFamily& family, const PrintedFamilyDraft& prin
           } else if (guarded) {
             const auto base = nullish.Base(tree, *guarded);
             const auto boundary = positions.expressions[base.value].end;
-            const auto selection = positions.expressions[guarded->value];
+            const auto selection = std::visit([&](auto id) {
+              if constexpr(std::is_same_v<decltype(id),ExprId>) return positions.expressions[id.value];
+              else return positions.statements[id.value];
+            },*guarded);
+            const auto& projection=nullish.Projection(*guarded);
             auto access = selection;
-            if (const auto* member = std::get_if<OptionalMemberSyntax>(&*nullish.projections[guarded->value]))
+            if (const auto* member = std::get_if<OptionalMemberSyntax>(&projection))
               access = positions.expressions[member->member.value];
-            else if (const auto* call = std::get_if<OptionalCallSyntax>(&*nullish.projections[guarded->value]))
+            else if (const auto* call = std::get_if<OptionalCallSyntax>(&projection))
               access = positions.expressions[call->call.value];
             else {
-              const auto& coalesce = std::get<NullishFallbackSyntax>(*nullish.projections[guarded->value]);
+              const auto& coalesce = std::get<NullishFallbackSyntax>(projection);
               const auto fallback = positions.expressions[coalesce.fallback.value];
               Require(boundary <= fallback.begin && fallback.begin < fallback.end && fallback.end <= selection.end, Error::kPositions);
             }

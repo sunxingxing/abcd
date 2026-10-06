@@ -12,6 +12,56 @@
 
 ## 当前阶段
 
+### 2026-10-06：丢弃结果的原生可选调用（规则146）
+
+- 基线b4c4191d。沿原共同null/undefined/other解释新增语句的有序效果摘要，
+  ExpressionStmt／Block／If共享reference与formation；表达式／语句typed
+  projection root复用同一ProjectOptional、member path、printer和来源计划。
+  nil两域无保留效果、其他域保留同一原调用/成员且形成顺序相同时，输出
+  原生optional statement。原callee、receiver、key、参数、RHS、执行次数和
+  raw异常保留，不修改CFG/AST/ISA，未加sample/name、同块、数量或局部序列准入。
+- opaque效果之后的域依赖条件不能继续使用旧reference摘要；不同binding、
+  缺失nil域、第二个独立效果继续保留原语句。declaration、return/throw、
+  loop、handler、debugger和gap没有丢弃表达式摘要，继续输出原恢复语法；
+  这是表示范围，不能描述成语言禁止或整函数拒绝。保留实际语句完成与scope。
+  一般多效果sequence、分离形成、跨reference整个chain仍开放。
+- 新共同树80组正例覆盖1/200/201/402 guard、逆序语句arena、形成base、
+  成员链/计算key/value call；32,000独立行为及两项有效JS mutation通过。
+  原callee/member/参数保留非零range，省略expression/property/statement和
+  原block anchor统一落在保留base.end；family和serializer使用同一typed根。
+  六项额外效果／abrupt／debugger／效果后guard／foreign／缺失nil反例及
+  工作/内存不足的typed错误另验；201→402 work边界不冒充benchmark或RSS。
+- 实际decoded矩阵增加void调用与live结果汇合，三个profile×四深度×28 forms
+  共336函数／75,264独立场景。初始新增用例在tests-3失败：LDUNDEFINED后
+  RETURN产生真实phi写入，不能被void投影一起删除；该用例保留作表示反例。
+  真正RETURNUNDEFINED观察另验，不弱化写入/来源义务。最终两类行为均通过。
+  新测试先RED证明缺少native statement；重构曾遗漏?? undefined fallback，
+  已修正独立fallback分支并复验。失败和成功日志均保留。
+- 固定五ABC／六模式30次fresh ABC-only导出通过SHA/size、route/contract和
+  636 Node语法解析，complete无新增/回退、无legacy。complete/partial依次
+  80/26、95/11、96/10、88/18、105/1、106/0，每模式另46 no-module。
+  每模式仅MiniGame12527和ShoppingFullScreen13504源码变化：原两项
+  setSystemBarEnabled及setImmersiveType/startWindowStatusListener/release
+  void guard输出?.。212个现有entry_only/partial_methods位置文件均不变；
+  两record相关method映射仍有空缺，组件位置证明不能替代完整record映射。
+  产物build/stage-one/optional-statements-*-pass-1，日志/tmp/abcd-optional-statements-*。
+- 构建/验证：final-build-1的已存在消费者构建通过，最后误列不存在的
+  language_constructor_file_test导致退出2；确认真实目标后，单一-j4的
+  final-build-2（snapshot_syntax/language_constructors/abc_semantic/abc_structure）
+  退出0。final-tests-1运行28项，27项通过，MiniGame旧固定5个?.断言失败；
+  ABC-only实际输出与独立参考均7个（新增两void调用），将style断言放到生成
+  后读参考并比较，final-tests-2该项1/1通过2.49秒。前27项包含真实十模块
+  导航图、Index、既有空值/位置/模块族及显式构造；无生产修改或放宽行为。
+  28项定向检查全部获通过证据；577注册不等于运行full suite。四个mjs语法
+  与git diff --check通过。日志/tmp/abcd-optional-statement-{red,build,tests,
+  final-build,final-tests}-*.log保留失败与修正，tests-4为早期4/4通过52.40秒。
+- 下一优先级遵循用户要求：优先推进INCOMPLETE/UNRECOVERED的共同恢复与
+  诚实部分输出路径，剩余?.表示细节随后处理；不因局部风格完成取代功能gate。
+- 四页面whole-record style仍pending：ShoppingAvoid外层跨reference形成链
+  等表示缺口仍开放。全阶段的结构gate、其余独立record/平台/whole-program
+  验收未完成，Goal保持active；用户暂停的full suite、扩大corpus、RSS、
+  benchmark、DFX、agents、定期audit未恢复。
+
 ### 2026-10-06：Immersive Breakpoint 四字段／全局读取／完整 record 验收
 
 - 基线977cbbe0，生产规则仍145。新增immersive_breakpoint_record_source_test，

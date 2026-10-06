@@ -58,13 +58,20 @@ void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const Pr
     output.setstate(std::ios::failbit); return;
   }
   const auto& nullish = std::get<source::NullishSyntax>(nullish_result);
-  const auto emission = [&](ExprId root) -> std::string_view {
+  const auto emission = [&](NullishRoot root) -> std::string_view {
     switch (nullish.Form(root)) {
       case NullishForm::kOptionalMember: return "optional_access";
       case NullishForm::kOptionalCall: return "optional_call";
       case NullishForm::kFallback: return "nullish_fallback";
     }
     throw std::logic_error("invalid nullish form");
+  };
+  const auto projection_metadata=[&](nlohmann::json& item,NullishRoot root) {
+    item["emission"]=emission(root);
+    std::visit([&](auto id) {
+      item["projection"]=id.value;
+      if constexpr(std::is_same_v<decltype(id),StmtId>) item["projection_kind"]="statement";
+    },root);
   };
   // Stream tables independently: do not expand each node's transitive PC set,
   // or hold an unbounded JSON DOM duplicating the complete source tree.
@@ -136,12 +143,12 @@ void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const Pr
       if (completion && ((label == "expressions" && completion->value == ExprId{static_cast<std::uint32_t>(i)}) ||
           (label == "statements" && completion->statement == StmtId{static_cast<std::uint32_t>(i)})))
         item["emission"] = completion_label;
-      if (label == "expressions" && !nullish.omitted_by.empty() && nullish.omitted_by[i]) {
-        item["emission"] = emission(*nullish.omitted_by[i]); item["projection"] = nullish.omitted_by[i]->value;
-      }
-      if (label == "properties" && !nullish.omitted_properties_by.empty() && nullish.omitted_properties_by[i]) {
-        item["emission"] = emission(*nullish.omitted_properties_by[i]); item["projection"] = nullish.omitted_properties_by[i]->value;
-      }
+      std::optional<NullishRoot> omitted;
+      const auto index=static_cast<std::uint32_t>(i);
+      if(label=="expressions") omitted=nullish.Omission(ExprId{index});
+      else if(label=="properties") omitted=nullish.Omission(PropertyId{index});
+      else if(label=="statements") omitted=nullish.Omission(StmtId{index});
+      if(omitted) projection_metadata(item,*omitted);
       output << item;
     }
     output << ']';
@@ -212,15 +219,9 @@ void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const Pr
               else return completion && completion->statement == node;
             }();
             if (omitted) entry["emission"] = completion_label;
-            if constexpr (std::is_same_v<T, ExprId>)
-              if (!nullish.omitted_by.empty() && nullish.omitted_by[node.value]) {
-                entry["emission"] = emission(*nullish.omitted_by[node.value]); entry["projection"] = nullish.omitted_by[node.value]->value;
-              }
-            if constexpr (std::is_same_v<T, PropertyId>)
-              if (!nullish.omitted_properties_by.empty() && nullish.omitted_properties_by[node.value]) {
-                entry["emission"] = emission(*nullish.omitted_properties_by[node.value]); entry["projection"] = nullish.omitted_properties_by[node.value]->value;
-              }
           }
+          if constexpr(std::is_same_v<T,ExprId> || std::is_same_v<T,StmtId> || std::is_same_v<T,PropertyId>)
+            if(const auto root=nullish.Omission(node)) projection_metadata(entry,*root);
           entry["node"] = node.value;
           entry["range"] = {{"begin", range.begin}, {"end", range.end}};
         }

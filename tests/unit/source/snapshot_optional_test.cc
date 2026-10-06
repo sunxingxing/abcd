@@ -20,7 +20,9 @@ namespace {
 enum class Form { kDirect, kReversedOperands, kNegated, kMissingUndefined, kDifferentResult, kCopiedSplit, kCallProducer, kComputed,
   kMemberCall, kComputedCall, kValueCall, kDifferentCallBase, kArgumentCall, kOutsideCall,
   kReversedMemberCall, kCopiedMemberCall, kNegatedValueCall, kValueArgumentCall,
-  kMemberChain, kComputedChain, kMemberChainCall, kComputedChainCall, kCopiedChainCall };
+  kMemberChain, kComputedChain, kMemberChainCall, kComputedChainCall, kCopiedChainCall,
+  kDiscardedChainCall, kDiscardedComputedChainCall, kDiscardedCopiedChainCall, kDiscardedValueCall, kVoidViaResultJoin };
+bool ChainForm(Form form) {return form>=Form::kMemberChain && form!=Form::kDiscardedValueCall;}
 bool CallForm(Form form) { return form >= Form::kMemberCall && form != Form::kMemberChain && form != Form::kComputedChain; }
 abc::MethodBody Body(unsigned count, Form form, abc::ProfileId profile) {
   const std::uint8_t parameter = CallForm(form) ? 3 : 2;
@@ -51,12 +53,12 @@ abc::MethodBody Body(unsigned count, Form form, abc::ProfileId profile) {
   std::vector<std::pair<std::size_t, std::size_t>> exits;
   for (unsigned i = 0; i < count; ++i) for (const bool null : {true, false}) {
     if (!null && form == Form::kMissingUndefined) continue;
-    if (form == Form::kCopiedSplit || form == Form::kCopiedMemberCall || form == Form::kCopiedChainCall) {
+    if (form == Form::kCopiedSplit || form == Form::kCopiedMemberCall || form == Form::kCopiedChainCall || form == Form::kDiscardedCopiedChainCall) {
       load(0); store(1);
       const auto split = jump(abc::Opcode::kJMP_IMM32); patch(split, bytes.size());
     }
     emit(null ? abc::Opcode::kLDNULL : abc::Opcode::kLDUNDEFINED);
-    std::uint8_t slot = form == Form::kCopiedSplit || form == Form::kCopiedMemberCall || form == Form::kCopiedChainCall ? 1 : 0;
+    std::uint8_t slot = form == Form::kCopiedSplit || form == Form::kCopiedMemberCall || form == Form::kCopiedChainCall || form == Form::kDiscardedCopiedChainCall ? 1 : 0;
     if (form == Form::kReversedOperands || form == Form::kReversedMemberCall) { store(1); load(0); slot = 1; }
     const bool negated = form == Form::kNegated || form == Form::kNegatedValueCall;
     emit(negated ? abc::Opcode::kSTRICTEQ_IMM8_V8 : abc::Opcode::kSTRICTNOTEQ_IMM8_V8);
@@ -70,12 +72,12 @@ abc::MethodBody Body(unsigned count, Form form, abc::ProfileId profile) {
     if (form == Form::kComputedCall) read(5);
     else { emit(abc::Opcode::kLDA_STR_ID16); bytes.insert(bytes.end(), {3, 0}); }
     emit(abc::Opcode::kLDOBJBYVALUE_IMM8_V8); bytes.insert(bytes.end(), {0, 1});
-  } else if (form != Form::kValueCall && form != Form::kNegatedValueCall && form != Form::kValueArgumentCall) {
+  } else if (form != Form::kValueCall && form != Form::kNegatedValueCall && form != Form::kValueArgumentCall && form != Form::kDiscardedValueCall) {
     emit(abc::Opcode::kLDOBJBYNAME_IMM8_ID16); bytes.insert(bytes.end(), {0, 3, 0});
   }
-  if (form >= Form::kMemberChain) {
+  if (ChainForm(form)) {
     store(1);
-    if (form == Form::kComputedChain || form == Form::kComputedChainCall) {
+    if (form == Form::kComputedChain || form == Form::kComputedChainCall || form == Form::kDiscardedComputedChainCall) {
       read(5); emit(abc::Opcode::kLDOBJBYVALUE_IMM8_V8); bytes.insert(bytes.end(), {0, 1});
     } else {
       load(1); emit(abc::Opcode::kLDOBJBYNAME_IMM8_ID16); bytes.insert(bytes.end(), {0, 3, 0});
@@ -86,13 +88,14 @@ abc::MethodBody Body(unsigned count, Form form, abc::ProfileId profile) {
       store(1); read(4); store(2); load(1);
       if (form == Form::kValueArgumentCall) { emit(abc::Opcode::kCALLARG1_IMM8_V8); bytes.insert(bytes.end(), {0, 2}); }
       else { emit(abc::Opcode::kCALLTHIS1_IMM8_V8_V8); bytes.insert(bytes.end(), {0, 0, 2}); }
-    } else if (form == Form::kValueCall || form == Form::kNegatedValueCall) {
+    } else if (form == Form::kValueCall || form == Form::kNegatedValueCall || form == Form::kDiscardedValueCall) {
       emit(abc::Opcode::kCALLARG0_IMM8); bytes.push_back(0);
     } else {
       emit(abc::Opcode::kCALLTHIS0_IMM8_V8);
-      bytes.insert(bytes.end(), {0, form == Form::kDifferentCallBase ? parameter : form >= Form::kMemberChain ? std::uint8_t{1} : std::uint8_t{0}});
+      bytes.insert(bytes.end(), {0, form == Form::kDifferentCallBase ? parameter : ChainForm(form) ? std::uint8_t{1} : std::uint8_t{0}});
     }
   }
+  if(form==Form::kVoidViaResultJoin) emit(abc::Opcode::kLDUNDEFINED);
   const auto skip = jump(abc::Opcode::kJMP_IMM32);
   const auto fallback = bytes.size(); emit(abc::Opcode::kLDUNDEFINED);
   for (const auto exit : exits) patch(exit, fallback);
@@ -101,7 +104,8 @@ abc::MethodBody Body(unsigned count, Form form, abc::ProfileId profile) {
     store(1); read(4); store(2); load(1);
     emit(abc::Opcode::kCALLARG1_IMM8_V8); bytes.insert(bytes.end(), {0, 2});
   }
-  emit(abc::Opcode::kRETURN);
+  const bool discarded = form>=Form::kDiscardedChainCall && form!=Form::kVoidViaResultJoin;
+  emit(discarded ? abc::Opcode::kRETURNUNDEFINED : abc::Opcode::kRETURN);
   abc::MethodBody body;
   for (std::uint32_t pc = 0; pc < bytes.size();) {
     const auto decoded = std::get<abc::DecodedInstruction>(abc::DecodeInstruction(std::span(bytes).subspan(pc), profile));
@@ -150,21 +154,28 @@ Generated Source(unsigned count, Form form, abc::ProfileId profile) {
   std::ostringstream source; const auto printed = PrintFamilyDraft(family, source);
   Check(std::holds_alternative<PrintedFamilyDraft>(printed)); const auto& positions = std::get<PrintedFamilyDraft>(printed);
   test::CheckInstructionPositions(tree, sources, positions.members.front(), positions.functions.front());
-  const bool expected = form != Form::kMissingUndefined && form != Form::kDifferentResult && form != Form::kDifferentCallBase;
+  // Live join storage still has actual branch-owned assignments. Discarded
+  // observation does not authorize removing those unrelated writes.
+  const bool expected = form != Form::kMissingUndefined && form != Form::kDifferentResult &&
+    form != Form::kDifferentCallBase && form != Form::kVoidViaResultJoin;
   Check((source.str().find("?.") != std::string::npos) == expected);
   const auto plan = std::get<NullishSyntax>(PlanNullishSyntax(tree));
-  Check(std::count_if(plan.projections.begin(), plan.projections.end(), [](const auto& projection) {return bool(projection);}) == (expected ? 1 : 0));
+  const auto projections=std::count_if(plan.projections.begin(), plan.projections.end(), [](const auto& projection) {return bool(projection);})+
+    std::count_if(plan.statement_projections.begin(),plan.statement_projections.end(),[](const auto& projection) {return bool(projection);});
+  Check(projections == (expected ? 1 : 0));
   if (expected && CallForm(form) && form != Form::kOutsideCall)
     Check(std::any_of(plan.projections.begin(), plan.projections.end(), [](const auto& projection) {
+      return projection && std::holds_alternative<OptionalCallSyntax>(*projection);
+    }) || std::any_of(plan.statement_projections.begin(),plan.statement_projections.end(),[](const auto& projection) {
       return projection && std::holds_alternative<OptionalCallSyntax>(*projection);
     }));
   return {source.str(), plan.work};
 }
 }
 int main() {
-  std::array<std::uint64_t, unsigned(Form::kCopiedChainCall) + 1> baseline{};
+  std::array<std::uint64_t, unsigned(Form::kVoidViaResultJoin) + 1> baseline{};
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
-    for (const auto count : {1u, 200u, 201u, 402u}) for (unsigned form = 0; form <= unsigned(Form::kCopiedChainCall); ++form) {
+    for (const auto count : {1u, 200u, 201u, 402u}) for (unsigned form = 0; form <= unsigned(Form::kVoidViaResultJoin); ++form) {
       const auto source = Source(count, Form(form), profile);
       if (count == 201) baseline[form] = source.work;
       if (count == 402) Check(source.work < 3 * baseline[form]);

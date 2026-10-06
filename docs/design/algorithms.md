@@ -1934,3 +1934,42 @@ span checks and independent decoded/paired JS compare semantics and resource
 failure behavior. Full-corpus RSS/benchmarks remain paused; bounded exports and
 test counters do not establish process memory or latency improvement. Details:
 [literal initialization](source-recovery/literal-initialization.md).
+
+## Discarded nullish statement observations (rule 146)
+
+The existing null/undefined/other abstract meanings and ordered Formation feed
+ExpressionStmt, Block and If summaries. A statement result retains an original
+effect ExprId or absence; incompatible references, additional effects and abrupt
+completions retain original syntax. An opaque effect invalidates later
+domain-dependent reference facts. Native syntax never moves a formation ahead
+of a preceding read or erases another write. Live result-join assignments need
+a general sequence/value-flow representation and are not removed as void.
+
+One Kahn owner/pending queue evaluates statement summaries independently of
+arena order. One top-down ownership pass selects outer projections and marks
+omitted statements; one expression queue marks their original owned subtrees,
+stopping at retained base/call/member roots. The existing ProjectOptional,
+MemberPath and iterative printer serve both typed ExprId and StmtId roots.
+No per-candidate subtree traversal, graph-shape matcher, second writer or AST
+copy is introduced. The existing source-event boundary includes original block
+anchors and statement/property ranges; all new arrays/capacities are charged.
+
+For N expressions, S statements, H statement-child slots, A argument slots,
+P properties and M text entries, planner time is O(N+S+H+A+P+M log(2+M)+C),
+where C is the existing UTF-16 comparison cost; storage is O(N+S+P+M). Each
+summary has the same constant three domains. Statements and opaque expression
+subtrees are visited a bounded number of times. Printing follows actual output
+and original owned nodes; original stack/buffer admission remains. This uses
+the project's existing finite interpretation/Kahn implementation and pinned
+ECMA-262 2024 statement-completion/Optional Chains semantics; no new external
+code, dependency or license change. Declarations/abrupt/loop/handler/debugger/gap
+absence of summaries is a documented representation limit, not a language rule.
+
+80 common-tree fixtures cover 1/200/201/402 guards, reversed statement arenas,
+forming assignments, member spines, computed keys and value calls. 201-to-402
+work growth, exact memory/work exhaustion, six adverse cases and original
+source-range serialization are checked. Independent JS covers 32,000 cases
+and two valid mutations. Three ISA profiles supply 336 actually decoded
+functions and 75,264 behavior cases, including preserved live join storage.
+These are bounded correctness/work checks; paused full-process RSS and latency
+benchmarks remain unverified. Fresh fixed-five/six-mode evidence is in status.md.
