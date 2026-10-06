@@ -1,5 +1,6 @@
 #include "tail_completion.h"
 #include "discarded_read.h"
+#include "class_names.h"
 #include "../analysis/register_value_rule.h"
 #include "nullish_syntax.h"
 #include "abcd/source/tree_printer.h"
@@ -31,11 +32,11 @@
 namespace abcd::source {
 namespace {
 using Error = TreePrintError;
-enum class ClassPrintForm { kExpression, kInferredExpression, kDerivedBody };
+enum class ClassPrintForm { kExpression, kInferredExpression, kNamedExpression, kDerivedBody };
 std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassPart(
     const ClassTree&, std::ostream&, EmitBudget, analysis::SemanticBudget,
     const GlobalScope*, std::size_t, ClassPrintForm, const ClassCaptureDestination* = nullptr);
-struct DerivedClassBody { std::shared_ptr<const ClassTree> definition; ExprId expression; bool inferred = false; };
+struct DerivedClassBody { std::shared_ptr<const ClassTree> definition; ExprId expression; bool inferred = false; bool named = false; };
 struct EndExpression { ExprId id; };
 struct NoInferredName {};
 using NameContext = std::variant<NoInferredName, NameId>;
@@ -164,6 +165,7 @@ class TreePrinter {
     }
     const auto& structure = std::get<TreeStructure>(checked);
     Admit(structure.allocated_bytes, 1); Step(structure.work);
+    PrepareClassNames();
     if (Tree().callable != CallableKind::kFunction && !IsArrowCallable(Tree().callable) &&
         Tree().callable != CallableKind::kAsyncFunction && Tree().callable != CallableKind::kGenerator &&
         Tree().callable != CallableKind::kAsyncGenerator && !(fields && Tree().callable == CallableKind::kMethod))
@@ -301,6 +303,7 @@ class TreePrinter {
     }
     PrepareFamilyStatus();
     PrepareNativeNames();
+    PrepareClassNames();
     current_ = family_->root.value; depth_ = indent;
     Push(BeginFunction{}); Drain();
     for (std::size_t i = 0; i < family_->members.size(); ++i) { current_ = i; FinalizeNullishRanges(); }
@@ -314,6 +317,16 @@ class TreePrinter {
   std::u16string_view ContextName(NameContext context) const {
     if (const auto* name = std::get_if<NameId>(&context)) return Tree().names[name->value];
     return u"";
+  }
+  void PrepareClassNames() {
+    auto planned = family_ ? PlanClassNames(*family_, scope_, remaining_) : PlanClassNames(Tree(), scope_, remaining_);
+    if (const auto* error = std::get_if<TreeStructureError>(&planned)) {
+      if (*error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
+      if (*error == TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
+      throw Error::kUnsupportedContext;
+    }
+    class_names_ = std::get<ClassNames>(std::move(planned));
+    Admit(class_names_.allocated_bytes, 1); Step(class_names_.work);
   }
   bool NativeName() const { return family_ && native_names_[current_]; }
   void PrepareNativeNames() {
@@ -781,20 +794,28 @@ class TreePrinter {
     // Identifier initialization/assignment performs NamedEvaluation without
     // adding an immutable inner class binding. Reuse that language context
     // only when its actual printed spelling gives the original runtime name.
-    // Mismatches and other destinations retain computed-property inference.
+    // Other destinations can use an explicit name only after the common
+    // lexical plan proves that its added self scope shadows no actual use.
     const bool inferred = ContextName(inferred_name) == node.definition->name;
+    const auto name = class_names_.Lookup(*node.definition); Step(name.work);
+    const bool named = !inferred && name.named;
     if (node.heritage) {
       if (!node.definition->DraftPrepared() || node.definition->callable != CallableKind::kDerivedConstructor)
         throw Error::kUnsupportedContext;
-      if (!inferred) { Append("({["); Quoted(node.definition->name); Append("]: "); }
-      Append("class extends (");
-      Push(DerivedClassBody{node.definition, expression, inferred}); Push(*node.heritage);
-    } else ClassPart(*node.definition, inferred ? ClassPrintForm::kInferredExpression : ClassPrintForm::kExpression, expression);
+      if (named) { Append("(class "); Identifier(node.definition->name); Append(" extends ("); }
+      else {
+        if (!inferred) { Append("({["); Quoted(node.definition->name); Append("]: "); }
+        Append("class extends (");
+      }
+      Push(DerivedClassBody{node.definition, expression, inferred, named}); Push(*node.heritage);
+    } else ClassPart(*node.definition, inferred ? ClassPrintForm::kInferredExpression :
+        named ? ClassPrintForm::kNamedExpression : ClassPrintForm::kExpression, expression);
   }
   void Run(const DerivedClassBody& body) {
     Append(")");
     ClassPart(*body.definition, ClassPrintForm::kDerivedBody, body.expression);
-    if (!body.inferred) { Append("})["); Quoted(body.definition->name); Append("]"); }
+    if (body.named) Append(")");
+    else if (!body.inferred) { Append("})["); Quoted(body.definition->name); Append("]"); }
   }
   void ClassPart(const ClassTree& definition, ClassPrintForm form, ExprId expression) {
     const ClassCaptureDestination parent{Tree(), expression};
@@ -1329,6 +1350,7 @@ class TreePrinter {
   std::vector<OwnerTree> owners_;
   std::vector<std::uint8_t> printed_;
   std::vector<std::uint8_t> native_names_;
+  ClassNames class_names_;
   NullishSyntax nullish_;
   std::vector<NullishSyntax> nullishes_;
 };
@@ -1523,6 +1545,13 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
     // export read inside a method. The wrapper is never exposed to user code.
     if (member_gaps) append("/* INCOMPLETE class: unrecovered members */\n");
     if (form == ClassPrintForm::kExpression) { append("({["); name(); append("]: class {\n"); }
+    else if (form == ClassPrintForm::kNamedExpression) {
+      append("(class ");
+      for (const auto unit : tree.name) {
+        const char byte = static_cast<char>(unit); append(std::string_view(&byte,1));
+      }
+      append(" {\n");
+    }
     else if (form == ClassPrintForm::kInferredExpression) append("class {\n");
     else append(" {\n");
     member(*tree.constructor);
@@ -1605,6 +1634,7 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
     for (std::size_t i = 0; i < indent; ++i) append("  ");
     append("}");
     if (form == ClassPrintForm::kExpression) { append("})["); name(); append("]"); }
+    else if (form == ClassPrintForm::kNamedExpression) append(")");
     result.allocated_bytes = initial.bytes - budget.bytes;
     result.work = initial.work - budget.work;
     return result;
@@ -1618,6 +1648,23 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
 std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassTree(
     const ClassTree& tree, std::ostream& output, EmitBudget limit,
     analysis::SemanticBudget budget, const GlobalScope* globals, std::size_t indent) {
-  return PrintClassPart(tree, output, limit, budget, globals, indent, ClassPrintForm::kExpression);
+  auto planned = PlanClassNames(tree, globals, budget);
+  if (const auto* error = std::get_if<TreeStructureError>(&planned)) {
+    if (*error == TreeStructureError::kResourceLimit) return TreePrintError::kResourceLimit;
+    if (*error == TreeStructureError::kWorkLimit) return TreePrintError::kWorkLimit;
+    return TreePrintError::kUnsupportedContext;
+  }
+  const auto& names = std::get<ClassNames>(planned);
+  const auto name = names.Lookup(tree);
+  if (names.allocated_bytes > budget.bytes) return TreePrintError::kResourceLimit;
+  if (names.work > budget.work || name.work > budget.work - names.work) return TreePrintError::kWorkLimit;
+  budget.bytes -= names.allocated_bytes; budget.work -= names.work + name.work;
+  auto result = PrintClassPart(tree, output, limit, budget, globals, indent,
+      name.named ? ClassPrintForm::kNamedExpression : ClassPrintForm::kExpression);
+  if (auto* printed = std::get_if<PrintedClassTree>(&result)) {
+    printed->allocated_bytes += names.allocated_bytes;
+    printed->work += names.work + name.work;
+  }
+  return result;
 }
 }  // namespace abcd::source

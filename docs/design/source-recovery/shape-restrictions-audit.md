@@ -1344,3 +1344,27 @@ getter参数现在是正常组合正例，不要求机械提取临时变量。�
 实例字段表示、implicit constructor、继承setter、配对implicit构造器的
 iterator污染及全record验收尚开放。不得把完整函数树或局部constructor
 对照扩大成这些行为的证明，也不得增补布局匹配来掩盖其表示缺口。
+
+
+## 规则 136：class 命名 carrier 的通用替换
+
+规则76保留的“非同名 identifier 上下文一律计算属性包装”是表示限制。
+ClassNames 现通过一次 typed lexical traversal 判定新增 class-self 环境是否
+遮住实际存储。安全 class 使用原生名称；同名可写 module/capture、heritage
+TDZ、未知正文及不可表达标识符保留原表示，不使 AST 新增拒绝。没有以类名/
+record/sample、固定 producer/selection 数、同块、邻接或字节码序列选择恢复。
+名字比较仅是必要的语言词法边界，不按名字分派语义。
+
+普通 source ownership、owner/symbol identity 与范围检查继续存在；它们防止
+读取错误存储或非法数组索引，非图形状准入条件。共同 visitor 进入 heritage、
+每个 prepared family、accessor/static initializer 与 FunctionExpr 所在位置，
+capture alias 跟随真实 target。未知正文只撤回原生命名许可，保留 INCOMPLETE/
+UNRECOVERED 输出。算法/复杂度/预算依据见 function-tree-output.md 规则136。
+
+新增测试包括倒置 expression arena、闭包 capture、同名局部与模块别名、
+实际 capture 写入、保留字/非ASCII、未知正文、限额和200/201/400/800规模。
+既有63组 class binding/module reassignment 对照及 named-self mutation继续
+通过；新增无名称冲突的 Box 改用原生名，原外部绑定重赋值行为检查保留。
+两个 Logger 与 WidgetCard/其余实际record沿 ABC-only 路径恢复后独立验收，
+没有把包装消失当作完整阶段验收。full corpus、RSS/benchmark和周期审计
+仍暂停；其他恢复准入/结构gate缺口继续由status记录。

@@ -23,9 +23,17 @@ assert.equal(report.route, 'value_tree');
 const pairedText = readFileSync(paired, 'utf8');
 const erased = pairedText.replace(/^\s*private\s+[A-Za-z_$][\w$]*\s*:\s*[^;=\n]+;\s*$/gm, '');
 assert.equal((pairedText.match(/^\s*private\s+[A-Za-z_$][\w$]*\s*:\s*[^;=\n]+;\s*$/gm) ?? []).length, 2);
-// A separately checked representation projection, not whole-record style acceptance.
-assert.match(report.source, /export default new /);
+// Whole-record representation permits equivalent local composition: inline the
+// named class in its default construction, and retain bytecode-proven instance
+// assignments instead of introducing native DefineField behavior.
+assert.match(pairedText, /class\s+Logger\s*\{/);
+assert.match(report.source, /export default new \(class Logger \{/);
+assert.doesNotMatch(report.source, /\(\{\["Logger"\]: class/);
 assert.ok(!report.source.includes('let $default'));
+assert.match(report.source, /^import hilog from "@ohos:hilog";/);
+assert.match(report.source, /constructor\(prefix\)\s*\{/);
+for (const field of ['format', 'prefix', 'domain']) assert.match(report.source, new RegExp(`this\\.${field} =`));
+assert.doesNotMatch(report.source, /INCOMPLETE|UNRECOVERED|let \$value/);
 const reference = stripTypeScriptTypes(erased);
 const methods = ['debug', 'info', 'warn', 'error'];
 async function observe(source, method, args, mode, failure) {
@@ -100,7 +108,6 @@ for (const method of methods) {
   assert.match(report.source, new RegExp(`${method}\\(\\.\\.\\.args\\)`));
   assert.match(report.source, new RegExp(`hilog\\.${method}\\(this\\.domain, this\\.prefix, this\\.format, args\\);`));
 }
-// Native methods and direct rest bindings are checked here. The scratch class
-// wrapper still requires a separate whole-record representation acceptance.
 const state = await verifyLoggerState(report.source, reference, prefix);
-console.log(JSON.stringify({basicCases: scenarios, basicMutations: 2, ...state, wholeRecordStyle: 'pending'}));
+console.log(JSON.stringify({basicCases: scenarios, basicMutations: 2, ...state, wholeRecordStyle: 'accepted',
+  localComposition: 'named class expression in default construction; pinned instance assignments'}));

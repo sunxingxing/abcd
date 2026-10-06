@@ -473,7 +473,7 @@ int main(int argc, char** argv) {
     const auto profile = argc > 2 && std::string_view(argv[2]) == "1202" ? abc::ProfileId::kDynamic1202 :
         argc > 2 && std::string_view(argv[2]) == "1301" ? abc::ProfileId::kDynamic1301 : abc::ProfileId::kDynamic1206;
     const auto generated = Recover(fixture, profile);
-    Check(generated.find(mode == "--class-binding" ? "let snapshot = class {" : mode == "--class-binding-assignment" ? "(snapshot = class {" : "let snapshot = ({[\"Box\"]: class {") != std::string::npos);
+    Check(generated.find(mode == "--class-binding" ? "let snapshot = class {" : mode == "--class-binding-assignment" ? "(snapshot = class {" : "let snapshot = (class Box {") != std::string::npos);
     std::cout << generated; return 0;
   }
   if (mode == "--module-writer" || mode == "--module-writer-branch" || mode == "--module-writer-early" || mode == "--module-writer-literal" || mode == "--module-writer-catch" || mode == "--module-writer-parent-branch" || mode == "--module-writer-parent-branch-catch" || mode == "--module-writer-parent-branch-raw" || mode == "--module-writer-parent-branch-raw-catch") {

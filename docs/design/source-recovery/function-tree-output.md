@@ -21,6 +21,51 @@ Printer 处理节点、名字、括号、转义、标签、注释和已有输出
 模式，不补推 CFG、finally 或闭包，不调用专项 body writer。无原名可用合成名，
 无独立 PC 的结构节点保留结构来源；不补造原名、类型、PC 或可执行占位行为。
 
+## 原生 class 名称的共同作用域规划（规则 136）
+
+ClassNames 是 printer 私有的语法计划，不改变 FunctionTree、原指令、效果/
+异常位置、capture identity 或发布接口。先保留直接 identifier declaration/
+assignment 已有的 NamedEvaluation；其他目的地只有在新增 class-self 环境
+不会遮蔽任何实际 reference 时，才输出 `(class Name { ... })` 或相应 extends。
+命名不安全、标识符不可表达或正文未知时，保留现有计算属性命名表示；这些
+情况不额外拒绝已经可输出的 complete/partial AST。
+
+语言依据是 ECMAScript ClassDefinitionEvaluation 的内部名称环境：它在
+heritage 求值之前进入，heritage 中该名称尚处于 TDZ，方法/闭包则继承此
+环境。因此不能只查看方法正文、只比较 runtime name，或将同名可写 module/
+capture 替换为 immutable class self。AST 仍由既有值、作用域、捕获和来源
+分析产生；此计划仅检查新增输出作用域的影响。实际 ValueCall 继续打印间接
+调用，不能为了命名把间接 eval 改成直接 eval。
+
+计划一次建立 owner/ClassTree 索引、类名 spelling 分组、expression incoming
+表和 symbol storage depth。复用 exhaustive VisitExpressionChildren 遍历真实
+表达式所有权；从根进入 class、heritage、constructor、native members、defined
+accessors、静态 initializer 和实际 FunctionExpr 位置进入 descendants。ExprId
+arena 顺序不决定词法范围。局部 parameter/self/catch/local 的真实声明可以
+遮住新增名称；capture 沿 typed owner/symbol alias 找到实际存储，module alias/
+global/显式 host capability 属于外部环境。读、赋值和 update 都参与检查。
+
+每个 spelling 有 active class 栈，另有全部安全 candidate 的可删除链。
+冲突 reference 或未知正文最多退役每个 candidate 一次；不逐 class 重扫
+正文，也不复制每层的自由名称集合。设 F 为 function trees，C 为 class
+creations，X 为 expression nodes，S 为 symbols，R 为 references：除实际
+字符串比较字符成本外，O(X + (F+S)log(F+1) + (C+R)log(C+1)) 时间、
+O(X+S+F+C) 空间。capture alias 记忆化，vector 按容量计费、几何增长，
+临时与返回表均纳入 scratch/work；打印 lookup 和公开 PrintClassTree 的
+规划成本也计入返回统计。全部遍历使用显式有界 worklist，沿用项目预算，
+没有新依赖、授权标记或测试 API。标识符仍限于现有 ASCII 输出边界；这是
+表示覆盖缺口，非语言不变量。
+
+class_names_test 使用真实解码/准备的 constructor 与 accessor families，
+额外词法 scope 夹具只验算法、不伪造 publication receipt。覆盖继承 TDZ、
+反转 arena 顺序、外部/global/module/read/write、内部局部遮蔽、heritage
+closure 的真实 capture、缺失正文、严格保留字、资源与工作限额，以及
+200/201/400/800 密集同名嵌套的安全与冲突情况。实际 record_import_tree
+继续检验外部可写同名绑定及 class-cell；两个 Logger 的完整行为、源码表示
+和 WidgetCard extends 回归由独立 JS/paired TS 测试检查。父作用域/capture/
+TDZ/effect/exception 义务均保留；descendant function 内 class 的组合缺口
+仍由既有打印路径报告，不新增编译器布局匹配。
+
 ## 原生调用绑定的值复用（规则 135）
 
 BindingPlan 对已需要保存的 ValueRestArguments / ValueFrameFunction 结果，

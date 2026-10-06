@@ -12,6 +12,57 @@
 
 ## 当前阶段
 
+### 2026-10-06：共同词法分析恢复原生 class 名称
+
+- 基线874c932c，规则revision136。新增printer私有ClassNames规划，从
+  共同FunctionTree的typed owner/symbol/capture/module/expression所有权
+  判定新增class-self环境是否遮住真实reference。heritage、constructor、
+  方法/访问器、静态initializer、descendant closure都参与；实际读/写及
+  host binding保持身份。匹配identifier上下文仍复用NamedEvaluation；
+  其他安全目的地改为原生`(class Name { ... })`/extends。冲突、未知正文、
+  不可表达名称保留原命名carrier，不额外拒绝已恢复partial AST。没有
+  sample/name/path/局部opcode形状/同块/selection数准入或删除真实语义检查。
+- 每个新增词法class范围进入/退出一次；同名active栈和可删除链使每个
+  冲突candidate最多退役一次。索引/排序、capture memo、显式worklist、
+  数组实际容量和lookup均计入现有scratch/work；公开PrintClassTree返回
+  统计包括名称规划成本。无新增依赖、许可token或测试专用production API。
+  复杂度/语言依据/覆盖缺口见function-tree-output.md/shape-restrictions-audit.md。
+- 新增class_names_test使用实际ABC准备的constructor/accessor families，
+  独立词法夹具不伪造source receipt；覆盖heritage TDZ/closure、反转arena、
+  同名内部local/外部module/capture读写、未知正文、严格保留字与非ASCII、
+  malformed capture范围、work/memory边界及200/201/400/800同名嵌套。
+  冲突场景work分别65909/66058/143242/293335；安全场景全部保留原生名。
+  这是算法计数回归，不是RSS或全流程benchmark证据。CTest注册565项。
+- 两个Logger整record新增表示验收：原生class Logger、实际constructor/
+  rest formal、字段赋值、hilog import和直接方法调用、无scratch命名carrier。
+  wholeRecordStyle现accepted；允许把命名class内联于default构造、保留
+  pinned instance assignment，不要求恢复字面相同的独立声明或DefineField。
+  原每record240 basic、848 paired、14 constructor、27 setter/new.target、
+  12 default initialization和8个有效JS mutation继续通过。独立paired TS
+  在ABC-only生成完成后才读取。其他record不会因这两项验收自动完成。
+- 单一构建-j4，最终final-build-1退出0，所有build handle在后续运行前
+  关闭；早期DerivedClassBody字段及测试夹具类型/不可复制context编译问题
+  已修正。最初两Logger表示RED失败，tests-2 11/11、tests-3 12/12通过；
+  最终final-tests-1定向24/24通过28.01秒，包含实际类scope/cell可写绑定、
+  accessor/static/partial、module/rest、language constructor Proxy-super、
+  WidgetCard callbacks、Window、Logger与ViewModel。Widget测试未覆盖完整
+  platform/storage/constructor生命周期；不把此局部测试宣称为全产品验收。
+  Node检查修改脚本及git diff --check通过。日志/tmp/abcd-class-names-*。
+- 最终固定五ABC/六模式30次导出全部退出0，内容hash/size与corpus index
+  相符；每模式106份complete/明确partial源码通过Node语法检查。相对
+  invocation-bindings同模式无complete回退、新增legacy或完整数量变化；
+  每模式6个record表示改变：两个Logger、push modules的6921/11989/12347
+  和widgets的564。两轮导出summary/source逐项相同。最终产物
+  build/stage-one/class-names-<mode>-pass-2与对应summary-2.json/batch-2.log。
+  default80/26，arithmetic95/11，numeric96/10，constructors88/18，
+  arithmetic+constructors105/1，numeric+constructors106/0；每模式另46个
+  no-module分类保持。106/0仍是显式组合模式的输出完整性，不是整阶段验收。
+- 全套、expanded corpus、agents、RSS/benchmark、scheduler/DFX、周期审计
+  继续暂停。旧legacy baseline失败未重跑。此次生产实现及验证有实际进展，
+  Goal保持active：实例字段/globals/完整签名/body结构gate与所有record的
+  独立语义/表示验收继续开放。既有descendant function内class组合缺口和
+  非ASCII native binding表示边界仍记录为实现缺口，不能追加局部模式放行。
+
 ### 2026-10-06：复用原生 rest / 当前函数绑定，移除重复快照
 
 - 基线3c64a46e，规则revision135。生产BindingPlan对原本需要临时存储的

@@ -1,4 +1,5 @@
 #include "../../../src/source/class_tree.h"
+#include "class_names_checks.h"
 #include "../../../src/source/tree_constants.h"
 #include "../../../src/source/family_print.h"
 #include "../../../src/source/family_cells.h"
@@ -26,7 +27,7 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
     bool async_method = false, abc::ProfileId profile = abc::ProfileId::kDynamic1206,
     bool capture_cells = false, bool initialized = true, bool input_gap = false,
     ObserverFlow observers = ObserverFlow::kSameBlock, bool self_initializer = false, bool frame_this = false,
-    FieldBody field_body = FieldBody::kSameBlock, PrototypeRead prototype_read = PrototypeRead::kNone) {
+    FieldBody field_body = FieldBody::kSameBlock, PrototypeRead prototype_read = PrototypeRead::kNone, bool name_checks = false) {
   constexpr std::uint32_t kPool = 64, kOwner = 128, kLiteral = 160,
       kCreator = 256, kConstructor = 300, kGetter = 340, kSetter = 380,
       kBufferMethod = 420, kBufferCode = 864, kNestedMethod = 460, kNestedCode = 1000,
@@ -756,6 +757,26 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   Check(std::holds_alternative<ClassTree>(built));
   *definition = std::get<ClassTree>(std::move(built));
   Check(definition->DraftPrepared() && definition->BodiesPrepared() != input_gap);
+  if (name_checks) {
+    const auto context = [&] { return FunctionContext{std::get<ClassTreeContext>(ClassTreeContext::ResolveConstructor(
+        file, header, index, lookup, roles, creator, definitions.front().creation, identity))}; };
+    FunctionOwnerId next{37};
+    CheckClassNames([&] {
+      auto value = std::make_shared<ClassTree>(std::get<ClassTree>(BuildClassTree(file, header, index,
+          lookup, roles, functions, classes, creator, definitions.front().creation, identity, &globals,
+          {}, nullptr, definitions, RecoveryMode::kCompleteOnly, next)));
+      const auto owners = [&](const PreparedFamily& family) {
+        for (const auto& member : family.Family().members)
+          next.value = std::max(next.value, member.tree.owner.value + 1);
+      };
+      owners(*value->constructor);
+      for (const auto& member : value->members) if (member) owners(*member);
+      for (const auto& member : value->definitions)
+        for (const auto& body : member.bodies) if (body) owners(*body);
+      return value;
+    }, context);
+  }
+
   if (input_gap) {
     Check(definition->definitions[0].omissions[0] && definition->definitions[2].omissions[0]);
     Check(!definition->definitions[0].bodies[0] && !definition->definitions[2].bodies[0]);
@@ -844,6 +865,11 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--class-names") {
+    Recover(false, false, -1, false, abc::ProfileId::kDynamic1206, false, true, false,
+        ObserverFlow::kSameBlock, false, false, FieldBody::kSameBlock, PrototypeRead::kNone, true);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--closed-initializers-json") {
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
       for (const auto outer : {ObserverFlow::kInitializerSplit, ObserverFlow::kInitializerDiamond, ObserverFlow::kInitializerReverse})
