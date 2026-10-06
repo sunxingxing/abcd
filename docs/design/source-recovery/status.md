@@ -13,6 +13,49 @@
 ## 当前阶段
 
 
+### 2026-10-06：函数与实例初始化记录验收迁到共同通路
+
+- 基线1277e970，production及规则revision131保持。本轮补齐独立验收，
+  不增加样本分派或恢复准入条件。先重跑上轮三个已确认基线失败：
+  record_function_js_test、record_function_construct_js_test和
+  paired_home_model_record_source_test均复现；debug定位函数fixture的
+  旧export临时名断言，HomeModel仍要求旧$acc文本与legacy --source。
+- record_function fixture改为真实merged-module wire metadata、同文件
+  context与FunctionCreationSites，调用BuildRecordSource的required
+  value-tree route，要求完整artifact。取消legacy writer临时变量文本
+  断言；保留modern/historical profile、未初始化构造参数拒绝。Node
+  验证12种值的Object.is/返回身份、name/length属性、普通构造的对象
+  返回替换、async不可构造及thenable/原异常。没有把method kind当作
+  函数行为验收。尝试增加provenance断言时误以为record PrintedSource
+  保留member span与module初始化字段，实际该API未提供；撤回该假定，
+  不因验收修复扩大暂停的DFX工作。
+- HomeModel测试先ABC-only --value-source导出，manifest要求完整且
+  legacy_writer_used=false，再读取paired TS。138场景覆盖空/1/2/200/
+  201项、import live更新、获取push callee期间替换list、初始化getter/
+  调用、map/getter/字段/push各点原异常、重复初始化、每实例新数组及
+  方法返回同一list；对象own key顺序和值/descriptor保留undefined。
+  constructor/map/push native表示单独检查，不再依赖$acc或$local编号。
+- setter-capable实例赋值保留在构造体。Node strip TS保留native field，
+  其继承setter规则不等于pinned STOBJBYNAME；四个独立assignment场景
+  以可观察预期验证setter先于init、setter抛出阻断init、alternate
+  new.target receiver/prototype及新数组身份，不把strip结果作为这项
+  义务的oracle。改own definition、删除init、改object属性三种有效JS
+  mutation均检出；先独立解析mutation，语法失败不算检出。
+- Home测试第一次新增host oracle误用已被instrument的texts.map来
+  构造常量数组，导致测试自身失败；改独立Array.from后通过。fixture
+  build-1误用不存在的receipt成员退出2，之后按实际PrintedSource API
+  修复。final单-j4 record_function_test build-5退出0；final-tests-3
+  定向9/9通过17.35秒，包含现有viewmodel/static class batch、module
+  tree、paired model以及language_constructors_paired_test。后者当前
+  重跑2450 paired constructor cases及120 native iterator cases通过。
+  日志/tmp/abcd-record-acceptance-*；Home独立测试报告138+4及3 mutations。
+- 这是三个旧验收缺口与一个实际完整record的补强；companion paired
+  model旧测试仍使用legacy，仅作为行为回归，不计为共同record路由
+  完成。没有修改ABC/paired inputs，没有启动全套、扩大语料、RSS/
+  benchmark或agents；test-only修改不要求重跑六模式固定五ABC导出。
+  结构gate与阶段一仍开放，平台/全部record独立行为与表示质量未完成。
+
+
 ### 2026-10-06：参数名按入口来源贯通，移除前导布局匹配
 
 - 规则revision131，基线fc67ddfb；MapParameterDebugNames正式移除连续MOV

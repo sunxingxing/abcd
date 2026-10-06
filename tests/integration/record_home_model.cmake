@@ -1,6 +1,6 @@
 string(RANDOM LENGTH 12 token)
 set(root "${CMAKE_CURRENT_BINARY_DIR}/record-home-model-${token}")
-execute_process(COMMAND "${ABCD_STRUCTURE}" "${ABCD_SAMPLE}" "${root}" --source
+execute_process(COMMAND "${ABCD_STRUCTURE}" "${ABCD_SAMPLE}" "${root}" --value-source
   RESULT_VARIABLE status ERROR_VARIABLE error)
 if(NOT status EQUAL 0)
   message(FATAL_ERROR "record source export failed: ${error}")
@@ -20,7 +20,14 @@ foreach(i RANGE 0 ${last})
   if(missing OR NOT source_status EQUAL 0)
     message(FATAL_ERROR "HomeModel source unavailable")
   endif()
-  execute_process(COMMAND "${ABCD_NODE}" "${ABCD_ORACLE}" "${root}/${source}" "${root}"
+  string(JSON complete GET "${manifest}" records ${i} source_complete)
+  string(JSON legacy GET "${manifest}" records ${i} legacy_writer_used)
+  if(NOT complete OR legacy)
+    message(FATAL_ERROR "HomeModel requires a complete value-tree record")
+  endif()
+  get_filename_component(sample_root "${ABCD_SAMPLE}" DIRECTORY)
+  set(paired "${sample_root}/Immersive_src/shopping/src/main/ets/model/HomeModel.ts")
+  execute_process(COMMAND "${ABCD_NODE}" --experimental-vm-modules "${ABCD_ORACLE}" "${root}/${source}" "${paired}"
     RESULT_VARIABLE oracle_status ERROR_VARIABLE oracle_error)
   if(NOT oracle_status EQUAL 0)
     message(FATAL_ERROR "HomeModel source behavior changed: ${oracle_error}")

@@ -1,18 +1,22 @@
-#include "abcd/source/record_program.h"
+#include "abcd/source/record_source.h"
 
 #include <unistd.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
-#include <sstream>
+#include <source_location>
 
 #include "abcd/analysis/method_roles.h"
 
 namespace {
-void Check(bool condition) {
-  if (!condition) std::abort();
+void Check(bool condition, std::source_location at = std::source_location::current()) {
+  if (!condition) {
+    std::cerr << at.file_name() << ":" << at.line() << " check failed\n";
+    std::abort();
+  }
 }
 }  // namespace
 
@@ -28,6 +32,14 @@ int main(int argc, char** argv) {
   constexpr std::uint32_t kUnknownArgumentCode = 700;
   constexpr std::uint32_t kName = 500;
   constexpr std::size_t kFixtureBytes = 1024;
+  constexpr std::uint32_t kTypes = 800;
+  constexpr std::uint32_t kModule = 860;
+  constexpr std::uint32_t kModuleName = 920;
+  constexpr std::uint32_t kModuleField = 950;
+  constexpr std::uint32_t kI32FieldEncoding = 5; // types.yaml: i32 code 7 minus u1 code 2.
+  constexpr std::size_t kWordBytes = sizeof(std::uint32_t);
+  // Pinned encoded-count, request/import/namespace counts precede local exports.
+  constexpr std::size_t kLocalExportCount = 4 * kWordBytes;
   constexpr std::size_t kCodeHeaderBytes = 4;
   constexpr std::uint8_t kEntryArguments = 3;
   constexpr std::uint8_t kTargetArguments = 4;
@@ -73,6 +85,19 @@ int main(int argc, char** argv) {
   constexpr std::string_view kNameText = "identity";
   bytes[kName] = (kNameText.size() << kStringLengthShift) | kAsciiFlag;
   std::copy(kNameText.begin(), kNameText.end(), bytes.begin() + kName + 1);
+  // Merged-module wire metadata, not a fabricated context: requests/imports/
+  // namespace counts precede the local/export pair (pinned module format).
+  const auto word = [&](std::size_t offset, std::uint32_t value) {
+    for (unsigned i = 0; i < sizeof(value); ++i)
+      bytes[offset + i] = static_cast<std::uint8_t>(value >> (8 * i));
+  };
+  constexpr std::string_view kModuleNameText = "moduleRecordIdx";
+  bytes[kModuleName] = (kModuleNameText.size() << kStringLengthShift) | kAsciiFlag;
+  std::copy(kModuleNameText.begin(), kModuleNameText.end(), bytes.begin() + kModuleName + 1);
+  word(kTypes, kI32FieldEncoding);
+  word(kModule + kLocalExportCount, 1);
+  word(kModule + kLocalExportCount + kWordBytes, kName);
+  word(kModule + kLocalExportCount + 2 * kWordBytes, kName);
   char path[] = "/tmp/abcd-record-function-XXXXXX";
   const auto fd = mkstemp(path);
   Check(fd >= 0);
@@ -86,12 +111,16 @@ int main(int argc, char** argv) {
   header.kind = abc::AbcKind::kDynamic;
   header.profile = abc::ProfileId::kDynamic1301;
   header.file_size = bytes.size();
+  header.version = {13, 0, 1, 0};
   header.layout = abc::DynamicLayout{};
   abc::MetadataIndex index;
-  index.regions.push_back({kRecord, bytes.size(), {}, {1, kPool}, {}, {}});
+  index.regions.push_back({kRecord, bytes.size(), {1, kTypes}, {1, kPool}, {}, {}});
   abc::RecordInfo record;
   record.offset = {kRecord};
   record.method_count = 2;
+  record.field_count = 1;
+  index.fields.push_back({{kModuleField}, record.offset, {kModuleName}, {}, 0,
+      abc::FieldValue{abc::FieldValueEncoding::kSignedLeb, kModule}});
   index.records.push_back(record);
   abc::MethodInfo entry;
   entry.offset = {kEntry};
@@ -114,102 +143,65 @@ int main(int argc, char** argv) {
                               0, kTargetArguments,
                               kTargetInstructionBytes, 0};
   index.methods.push_back(target);
-  const auto lookup = std::get<abc::MethodLookup>(
-      abc::MethodLookup::Build(index.methods));
-  const auto roles = std::get<analysis::MethodRoleIndex>(
-      analysis::MethodRoleIndex::Build(file, header, index, lookup));
-  abc::ModuleInfo module;
-  module.local_exports.push_back({{kName}, {kName}});
-  std::ostringstream source_text;
-  const auto result = source::WriteRecordProgram(
-      file, header, index, lookup, record, module, roles, source_text);
-  if (const auto* failure =
-          std::get_if<source::RecordProgramFailure>(&result)) {
-    std::cerr << "failure=" << static_cast<unsigned>(failure->kind)
-              << " pc=" << failure->pc.value << '\n';
-    return EXIT_FAILURE;
-  }
-  Check(source_text.str().find("function identity($p0)") !=
-        std::string::npos);
-  Check(source_text.str().find("export { $local0 as \"identity\" };") !=
-        std::string::npos);
-  Check(std::get<std::size_t>(result) == source_text.str().size());
+  // All published fixtures use the production value-tree record route. A
+  // legacy writer pass cannot certify family expansion or route identity.
+  const auto build = [&](const abc::Header& current_header,
+                         const abc::MetadataIndex& current_index) {
+    const auto lookup = std::get<abc::MethodLookup>(
+        abc::MethodLookup::Build(current_index.methods));
+    const auto roles = std::get<analysis::MethodRoleIndex>(
+        analysis::MethodRoleIndex::Build(file, current_header, current_index, lookup));
+    const auto functions = std::get<analysis::FunctionCreationSites>(
+        analysis::FunctionCreationSites::Build(file, current_header, current_index, lookup));
+    const auto context = std::get<source::RecordModuleContext>(
+        source::ReadRecordModuleContext(file, current_header, current_index, record,
+                                       abc::FilePackaging::kMerged));
+    source::RouteInputIdentity identity;
+    identity.profile = current_header.profile;
+    identity.abc_version = current_header.version;
+    identity.file_size = current_header.file_size;
+    return source::BuildRecordSource(file, current_header, current_index, lookup, record,
+        context, roles, {}, nullptr, source::RoutePolicy::kRequireValueTree,
+        nullptr, nullptr, &identity, &functions);
+  };
+  const auto printed = [](const source::RecordSourceResult& result) {
+    if (!std::holds_alternative<source::PrintedSource>(result)) {
+      std::cerr << "record variant=" << result.index() << '\n';
+      if (const auto* failure = std::get_if<source::RecordProgramFailure>(&result))
+        std::cerr << "failure=" << static_cast<unsigned>(failure->kind)
+                  << " pc=" << failure->pc.value << '\n';
+    }
+    Check(std::holds_alternative<source::PrintedSource>(result));
+    const auto& text = std::get<source::PrintedSource>(result);
+    Check(!text.incomplete);
+    return text.text;
+  };
+  const auto source_text = printed(build(header, index));
   auto async_index = index;
   async_index.methods[1].access_flags =
       static_cast<std::uint32_t>(abc::FunctionKind::kAsync)
       << kFunctionKindShift;
-  const auto async_lookup = std::get<abc::MethodLookup>(
-      abc::MethodLookup::Build(async_index.methods));
-  const auto async_roles = std::get<analysis::MethodRoleIndex>(
-      analysis::MethodRoleIndex::Build(file, header, async_index,
-                                       async_lookup));
-  std::ostringstream async_text;
-  const auto async_result = source::WriteRecordProgram(
-      file, header, async_index, async_lookup, record, module, async_roles,
-      async_text);
-  if (const auto* failure =
-          std::get_if<source::RecordProgramFailure>(&async_result))
-    std::cerr << "async_failure=" << static_cast<unsigned>(failure->kind)
-              << " pc=" << failure->pc.value << '\n';
-  Check(std::holds_alternative<std::size_t>(async_result));
-  Check(async_text.str().find("async function identity($p0)") !=
-        std::string::npos);
+  const auto async_text = printed(build(header, async_index));
   auto constructed_index = index;
   constructed_index.methods[0].code = abc::CodeInfo{
       {kConstructCode}, {kConstructCode + kCodeHeaderBytes}, 1,
       kEntryArguments, kConstructInstructionBytes, 0};
-  const auto constructed_lookup = std::get<abc::MethodLookup>(
-      abc::MethodLookup::Build(constructed_index.methods));
-  const auto constructed_roles = std::get<analysis::MethodRoleIndex>(
-      analysis::MethodRoleIndex::Build(file, header, constructed_index,
-                                       constructed_lookup));
-  std::ostringstream constructed_text;
-  const auto constructed_result = source::WriteRecordProgram(
-      file, header, constructed_index, constructed_lookup, record, module,
-      constructed_roles, constructed_text);
-  Check(std::holds_alternative<std::size_t>(constructed_result));
-  Check(constructed_text.str().find("new ($function0)()") !=
-        std::string::npos);
-  Check(constructed_text.str().find("$acc = $instance0;") !=
-        std::string::npos);
+  const auto constructed_text = printed(build(header, constructed_index));
   auto historical_header = header;
   historical_header.profile = abc::ProfileId::kDynamic1206;
-  const auto historical_roles = std::get<analysis::MethodRoleIndex>(
-      analysis::MethodRoleIndex::Build(file, historical_header,
-                                       constructed_index, constructed_lookup));
-  std::ostringstream historical_text;
-  Check(std::holds_alternative<std::size_t>(source::WriteRecordProgram(
-      file, historical_header, constructed_index, constructed_lookup,
-      record, module, historical_roles, historical_text)));
-  Check(historical_text.str().find("new ($function0)()") !=
-        std::string::npos);
-  const auto reject_construct = [&](std::uint32_t offset,
-                                    source::RecordProgramError expected) {
-    auto invalid_index = constructed_index;
-    invalid_index.methods[0].code->offset = {offset};
-    invalid_index.methods[0].code->instruction_offset = {
-        offset + static_cast<std::uint32_t>(kCodeHeaderBytes)};
-    invalid_index.methods[0].code->registers =
-        offset == kUnknownArgumentCode ? 2 : 1;
-    const auto invalid_lookup = std::get<abc::MethodLookup>(
-        abc::MethodLookup::Build(invalid_index.methods));
-    const auto invalid_roles = std::get<analysis::MethodRoleIndex>(
-        analysis::MethodRoleIndex::Build(file, header, invalid_index,
-                                         invalid_lookup));
-    std::ostringstream rejected;
-    const auto result = source::WriteRecordProgram(
-        file, header, invalid_index, invalid_lookup, record, module,
-        invalid_roles, rejected);
-    Check(std::get<source::RecordProgramFailure>(result).kind == expected);
-    Check(rejected.str().empty());
-  };
-  reject_construct(kUnknownArgumentCode,
-                   source::RecordProgramError::kValue);
+  historical_header.version = {12, 0, 6, 0};
+  printed(build(historical_header, constructed_index));
+  auto invalid_index = constructed_index;
+  invalid_index.methods[0].code = abc::CodeInfo{
+      {kUnknownArgumentCode}, {kUnknownArgumentCode + kCodeHeaderBytes}, 2,
+      kEntryArguments, kConstructInstructionBytes, 0};
+  // An uninitialized caller register is not silently omitted from new(...).
+  Check(!std::holds_alternative<source::PrintedSource>(build(header, invalid_index)));
   if (argc == 2 && std::string_view(argv[1]) == "--emit")
-    std::cout << source_text.str();
+    std::cout << source_text;
   if (argc == 2 && std::string_view(argv[1]) == "--emit-async")
-    std::cout << async_text.str();
+    std::cout << async_text;
   if (argc == 2 && std::string_view(argv[1]) == "--emit-constructed")
-    std::cout << constructed_text.str();
+    std::cout << constructed_text;
   Check(unlink(path) == 0);
 }

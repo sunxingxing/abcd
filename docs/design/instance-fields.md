@@ -108,3 +108,28 @@ typed scan error at the serialization boundary.
 This proof discharges only the inheritance premise of constructor source
 integration. Binding identity, member descriptors, constructor target/ABI,
 captures, full signature shape and body admission remain separate obligations.
+
+
+## Current independent initialization acceptance
+
+At rules 131, the HomeModel record test exports ABC-only with `--value-source`,
+requires complete value-tree coverage and no legacy writer, then reads its paired
+TS. It executes the actual record, constructor, methods, closure and imported
+constants in isolated Node module contexts. The 138 paired cases cover retained
+callee/receiver identity across list replacement, live imports, original abrupt
+completion, repeated initialization, fresh arrays and own property descriptors.
+Native constructor/map/push representation is checked separately from behavior.
+
+Node's TS stripper retains native field declarations. Those declarations bypass
+inherited setters, unlike the pinned STOBJBYNAME assignment. Therefore paired
+checks alone do not certify that instruction's field rules. Four additional
+cases assert explicit assignment behavior: inherited setter invocation before
+initializer calls, throwing setters preventing calls, alternate new.target
+receiver/prototype, and fresh initializer values. A mutation to own-definition
+syntax must fail these expectations; deletion of initialization and an altered
+object property must fail independent behavior checks. Mutations parse as valid
+JS before testing, so syntax rejection cannot count as detection.
+
+This is evidence for the tested complete record and the assignment obligation,
+not acceptance of every class, metadata field, platform host or phase-one input.
+The production recovery model and instruction distinctions remain unchanged.
