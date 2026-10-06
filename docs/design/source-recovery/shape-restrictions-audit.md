@@ -1,5 +1,15 @@
 # 按用户要求进行的恢复条件审计
 
+规则131补充：参数debug名不再要求entry MOV prefix或固定五条captured-this
+前导。实际range start观察复用original CFG/dispatch、typed语义和RegisterSsa；
+entry来源经透明copy/phi一致性建立，Before/Commit/Catch异常时间保留。
+未知语义/原始suspension只沿可达控制/handler边传播未知frame事实，不能
+给下游值授予身份；不把后段未知当成入口name的全函数布局限制。
+命名提示的上游优先级由实际def-use SCC建立，不用PC/register/copy距离；
+独立root冲突仍保留合成名，单一copy cycle不会成为自己的冲突ancestor。
+没有样本分派、producer名单、同块或局部指令序列；未知后的观察与不完整
+formal debug集合仍是表示覆盖缺口，不能作为语言不变量。
+
 规则130补充：普通/分阶段callable的syntax adapter接入既有scope literal
 命名器，提示始终按真实allocation/slot绑定；cell ownership、capture lifetime、
 初始化、family free-name visibility由原共同分析证明。没有新增opcode序列、

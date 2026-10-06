@@ -23,6 +23,11 @@ chain 等表示细节优化排在这些缺口之后。不得仅改善缺口注�
 改善，source_complete数量保持。签名中的真实formal证据、setter-capable
 实例赋值与整record独立语义/风格验收仍按原结构gate继续，不先扩展语料。
 
+2026-10-06 规则131：正式移除参数命名的MOV-prefix/固定captured-this序列，
+改用debug boundary的真实entry copy/phi与异常路径事实；详见
+[参数命名](parameter-names.md)。完整签名仍需真实formal/default/rest证据与
+独立验收，实例赋值、全局/闭包及整个record的结构gate不由此单项关闭。
+
 2026-10-03 用户要求：先补 `object creaters` 的全部 26 个编码格式，
 使用既有通用贯通路径及公共接口。完整清单、现有条件与缺口见
 [对象创建指令](object-creators.md)。这调整立即执行的优先级，不缩减阶段一 Goal。

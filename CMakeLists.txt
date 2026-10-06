@@ -138,7 +138,7 @@ add_library(abcd_source src/source/string_literal.cc src/source/scalar_expressio
 target_sources(abcd_source PRIVATE src/source/global_reference.cc)
 target_sources(abcd_source PRIVATE src/source/parameter_names.cc)
 target_sources(abcd_source PRIVATE src/source/constructor_fields.cc)
-target_sources(abcd_source PRIVATE src/source/parameter_bindings.cc)
+target_sources(abcd_source PRIVATE src/source/parameter_bindings.cc src/source/parameter_origins.cc)
 target_sources(abcd_source PRIVATE src/source/linear_body.cc)
 target_sources(abcd_source PRIVATE src/source/fresh_object_fields.cc)
 target_sources(abcd_source PRIVATE src/source/object_buffer.cc)
@@ -1543,6 +1543,13 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/snapshot_syntax.mjs $<TARGET_FILE:snapshot_syntax_test>)
     add_test(NAME snapshot_optional_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/snapshot_optional.mjs $<TARGET_FILE:snapshot_optional_test>)
+    if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc" AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/minigame/src/main/ets/view/Content.ts")
+      add_test(NAME parameter_origins_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/parameter_origins.mjs $<TARGET_FILE:abc_structure>
+        "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"
+        "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/minigame/src/main/ets/view/Content.ts")
+    endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc" AND
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/commons/src/main/ets/utils/WindowUtil.ts")
       add_test(NAME window_numeric_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules

@@ -13,6 +13,53 @@
 ## 当前阶段
 
 
+### 2026-10-06：参数名按入口来源贯通，移除前导布局匹配
+
+- 规则revision131，基线fc67ddfb；MapParameterDebugNames正式移除连续MOV
+  prefix、固定五条captured-this和分支进入prefix的布局条件。有效debug
+  range start通过只读观察进入既有RegisterSsa；原normal CFG、pinned
+  semantic lift和selected exception dispatch提供Before/Commit/Catch拓扑。
+  入口参数经真实透明copy/phi一致性建立名称提示，当前callable/ABI、
+  标识符、重复及enclosing visibility义务保留。不擦除body指令，不新增
+  writer、样本/名字分派或producer/same-block规则。详见
+  [参数命名](parameter-names.md)。
+- 先添加等价MOV→LDA/STA、NOP与拆块fixture；RED旧resolver发生预期
+  bad_variant_access，CTest退出8。共同参数来源版本通过后，增加直接ABI
+  range、same/mixed phi、循环及self-copy SCC、异常保留与catch覆盖、
+  raw suspension前后/回边、dead opaque tail、上游命名/独立冲突、重复
+  range、边界与200/201/402/804 observations。原copy增长用例继续通过。
+  称谓提示不建立const、storage identity、源码类型或initializer移动许可。
+- 第一版整段语义提升使async及两个callback丢失旧名字，pass-1不作最终
+  交付。现在显式opaque边界只沿真实可达控制/handler后继传播未知frame；
+  不能让尾段未知阻断更早的入口证据，也不能忽略能回到入口的未知状态。
+  后续debug local可能在初始化前暂存参数copy：def-use SCC中的上游
+  命名存储优先于下游提示，独立root冲突保留合成名。单一copy环不会
+  成为自己的ancestor冲突，不按PC/register/复制距离选择。最终恢复
+  count、groupTitle、parent、_item、imageArray等，原有async/callback名
+  保留。前期两处窄化转换导致build-3退出2，已显式类型化并修复。
+- 新parameter_origins_source_test先ABC-only导出完整Content record，再读
+  paired TS；隔离实际getBirdImages(count)验证176个长度、ToPrimitive、
+  原异常与对象新鲜身份场景，丢弃count的有效JS mutation检出。用最小
+  import/ViewPU宿主只访问prototype方法，不调用UI或构造器，不计为
+  整record/platform行为验收。原pasteboard 240+240对照保持。
+- 提交前发现CMake新增注册编辑误删旧注册，全部从HEAD恢复再仅增加新
+  source/测试；最终diff为8插入/1删除，560个测试注册且抽查原class/
+  constructor/record项存在。没有提交误删或启动全套。final单-j4十一
+  目标build-8退出0；恢复注册后的final-tests-2定向27/27通过13.74秒。
+  新建流程的临时诊断已移除。三个上轮已确认的基线旧测试失败保持记录，
+  本轮没有将它们计为通过。RSS/benchmark/expanded corpus/agents未启动。
+- final parameter-origins六模式pass-4共30次固定五ABC导出全部退出0，
+  各106份完整或明确partial源码解析；SHA/size匹配index，无legacy及
+  complete回退。各record合成参数token数未增加（表示回归检查，不是
+  独立语义证明）。default/constructors各5份、其余模式各13份源码
+  签名与使用表示改善。complete/incomplete-source仍80/26、95/11、
+  96/10、88/18、105/1、106/0；46份无module source分类保持。最终
+  production与该导出一致；后续CMake修复不改变engine。
+- 结构gate及阶段一仍开放：没有完整debug formal集合时继续合成名；
+  opaque之后的观察没有来源证明。原default/rest独立所有权与长度义务
+  不因命名放宽。setter-capable实例赋值、全局/closure、完整签名及整
+  record独立语义/源码风格继续验收；106 source_complete不是Goal完成。
+
 ### 2026-10-06：普通 callable 复用词法存储命名
 
 - 规则revision130，基线f5c4c770；普通及phased方法、创建函数和其子闭包

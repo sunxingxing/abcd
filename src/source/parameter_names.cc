@@ -64,7 +64,7 @@ ParameterNameResult RecoverParameterNames(
     const auto scope_bytes = ScopeBytes(scopes);
     if (scope_bytes > bytes) return Error::kResourceLimit;
     bytes -= scope_bytes;
-    const auto mapped = MapParameterDebugNames(frame, body, scopes, bytes);
+    const auto mapped = MapParameterDebugNames(frame, body, scopes, header.profile, bytes);
     if (const auto* error = std::get_if<Error>(&mapped)) return *error;
     const auto& names = std::get<ParameterOffsets>(mapped);
     if (names.capacity() > bytes / sizeof(abc::EntityOffset))
