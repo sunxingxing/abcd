@@ -7,6 +7,20 @@
 使用 [总体入口](README.md)、[IR 合同](value-ir.md)、[AST 合同](source-tree.md) 与
 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md) 和 [全样本合同](corpus.md)。
 
+2026-10-06主Ability补充：规则140保持，新增完整pasteboard4767与
+MultiCommunity40957 EntryAbility的受控whole-record独立验收，状态由pending
+转accepted。生成前按paired index核对ABC SHA/size，ABC-only显式numeric+
+constructors完成全部输出后才读paired TS；七个实际prototype method和所有
+嵌套callback参与执行。2,710组对照覆盖阈值／coercion、两个实例的正反队列、
+注册失败后保留callback、完整事件逐项fault/live import换绑、JSON返回／
+原throw及真实catch error accessor的第二次异常；void宿主结果不得返回或
+await，callback的foreign this不能改变捕获receiver。16项pinned assignment
+另验0/1/200/201参数身份、inherited curBp setter/throw，明确区分Native TS
+DefineField oracle边界。13个有效JS mutation与最终16项相关回归通过。
+表示允许保守mutable class binding、显式等价constructor、conditional及局部
+snapshot；这关闭两个指定record的完整生命周期证据缺口，不能扩为完整
+base/platform模块图、其余record、源码type/const或全部结构gate。见status.md。
+
 2026-10-06默认callable补充：规则140的真实三profile解码函数／类，加共同
 树的6种callable／4种原名称，独立210组ESM行为及4个有效JS mutation通过。
 对照实际生成源码的TDZ／求值阶段创建、重复evaluate身份、运行时name／arity、

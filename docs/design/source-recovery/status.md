@@ -12,6 +12,58 @@
 
 ## 当前阶段
 
+### 2026-10-06：两个主 EntryAbility 的完整生命周期验收
+
+- 基线131b102c，生产规则仍140。新增entry_ability_records_source_test先以
+  ABC-only --value-source --language-numeric --language-constructors生成
+  pasteboard record4767/entry4917与MultiCommunity record40957/entry41080，
+  核对既有paired index的SHA-256/size、ValueTree route、complete及非legacy。
+  两份生成均结束后才读取独立paired TS；实际完整class、constructor、七个
+  prototype method与所有load/main-window/size callback参与执行，没有参考
+  body替换、片段提取或新增生产样本条件。此前单回调／构造片段证据保留。
+- 新增2,710组完整受控生命周期对照，覆盖宽度／density阈值与NaN/-0/
+  BigInt/Symbol/coercion、load/main-window错误真假值、JSON正常／null／
+  undefined／原throw、phone/2in1/缺失device，以及两个实例的正反回调队列。
+  每个正常完整调度的全部可观察事件逐一注入原错误；live imported logger/
+  display/window/device/constants也逐事件换绑。所有真实retained callback
+  在原方法返回或注册失败后执行，listener用外部this重放两次，检查捕获
+  receiver、每activation字段状态、原callee receiver、effects和AppStorage。
+- 专项故障明确进入真实updateBreakpoint catch，确认读取原error.code/
+  message再注入第二个异常；不把提前终止的等价trace计为catch覆盖。全部
+  void宿主调用返回带poison then getter的对象，实际方法／callback必须返回
+  undefined，禁止泄漏或assimilate宿主返回值。namespace TDZ/不可写/重复
+  evaluate、runtime class/method name/arity、method descriptor和构造边界
+  另验；换绑父类import不能改变已求值heritage。窗口回调由host显式逐项
+  释放，不依赖microtask次数，也不宣称HarmonyOS平台执行通过。
+- 16组独立pinned实例赋值检查覆盖0/1/200/201实参的原对象身份和curBp
+  inherited setter／原throw；setter处理后不伪造own field。正常paired构造
+  验字段值与descriptor；有inherited setter时Native TS DefineField不作为
+  STOBJBYNAME oracle。13个先解析的有效JS mutation检出错误事件／页面／
+  width／storage key、宿主return泄漏、普通callback的动态this和DefineField。
+  两个指定record的受控whole-record语义／高层表示由pending转accepted；
+  允许mutable class binding、等价显式constructor、conditional与必要快照，
+  不宣称恢复源码type/const或消除全部局部暂存。
+- 初轮1,454/4/9检查通过；扩大完整事件注入和参数边界后，另一次测试把
+  arrow内原生this误当错误变体，且一次预定fault尚未进入目标catch。已把
+  mutation改为实际动态this的普通函数，并把故障放到实际display调用／
+  density getter；这些是测试校正，未修改生产恢复逻辑或配对样本。最终
+  execution-4及final-tests-1均记录2,710/16/13真实通过结果。
+- 单一-j4 abc_semantic构建及CMake重新配置退出0，所有build handle关闭后
+  16/16定向CTest通过24.49秒：含原pasteboard partial/cell/breakpoint、
+  language constructor/numeric unit及JS、forward constructor、备份、Push、
+  VoIP、record/module family/function tree/partial。日志
+  /tmp/abcd-entry-abilities-final-build-1.log、final-tests-1.log；两个新增
+  Node语法及git diff --check通过。最后新增不触发getter的每实例最终curBp
+  状态对照，防止异常后的部分状态仅凭trace判定；new test单项再次通过
+  2.51秒，final-tests-2.log保留2,710/16/13结果。CTest当前568个，无C++
+  生产语义变化。
+- 本次测试／CMake／验收文档有实际进展，未重复固定五ABC／六模式的30次
+  批量；完整/partial计数仍是上一轮default-callables-pass-2证据，不称本轮
+  fresh批量结果。其余record、实际完整base/platform模块图及原instance
+  fields/globals/signatures/body结构gate仍需对应验收。阶段一Goal继续
+  active；全套、expanded corpus、RSS/benchmark、agents、scheduler/DFX及
+  周期审计保持暂停。
+
 ### 2026-10-06：直接函数／类默认导出的共同命名上下文
 
 - 基线e3d46ccd，生产规则140。移除ModuleDefaultExport对直接FunctionExpr／

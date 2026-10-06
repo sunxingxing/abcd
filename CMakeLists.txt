@@ -1305,6 +1305,12 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/pasteboard_breakpoint.mjs $<TARGET_FILE:abc_semantic>
         "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc"
         "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/pasteboard_src/src/main/ets/entryability/EntryAbility.ts")
+      if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc" AND
+         EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/phone/src/main/ets/entryability/EntryAbility.ts")
+        add_test(NAME entry_ability_records_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/entry_ability_records.mjs $<TARGET_FILE:abc_semantic>
+          ${ABCD_PAIRED_CORPUS_ROOT})
+      endif()
     endif()
     add_test(NAME retained_selection_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/retained_selection.mjs $<TARGET_FILE:logical_regions_test>)
