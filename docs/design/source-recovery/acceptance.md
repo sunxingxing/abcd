@@ -1,5 +1,23 @@
 # 验收、证据与实施交接
 
+2026-10-07 Content补充：原record14411的受控whole-record语义与高层表示
+由pending转accepted。既有资源数组/key测试不代表完整类执行；本次先完成
+ABC-only显式numeric+constructors的真实Content、Breakpoint、CommonConstants
+生成，再读取paired TS。真实constructor、七方法、getter及所有嵌套闭包执行。
+
+40组生命周期涵盖60项资源、同步/延迟/逆序及两实例交错、更新/purge/delete/
+回放，核对资源及params数组独立性、原Image参数身份和closure receiver。
+两个baseline各1919事件与继承setter/foreign new.target构造12事件全覆盖，
+19250原throw、3850换绑、64构造/字段场景、九个有效JS mutation通过。
+prototype inventory/signatures/defaults/arity/descriptor/module TDZ/export和
+native class/new/arrow/Array.from/remainder/key另验；仅擦除无initializer的
+type-only声明。最终6/6相关回归通过，保留旧default partial与局部数值测试。
+
+三个peer body真实执行，barrel两export及framework/UI/storage仍受控，不能
+视为真实设备、完整commons module图、任意装饰器/平台协议或所有record
+验收。源码complete/模式中无缺口标记不替代这些独立证据；全阶段结构gate
+及其他record/完整method mapping仍开放。失败修正、日志与范围见status.md。
+
 2026-10-06丢弃结果的可选调用补充：规则146将原共同空值解释接入语句
 观察；nil路径无效果、其他路径保留原成员/值调用及同一有序形成表达式时，
 共享printer输出原生?.语句。原receiver、key/argument、callee、执行次数、

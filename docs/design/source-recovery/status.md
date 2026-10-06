@@ -1,6 +1,6 @@
 # 项目进展与设计审查
 
-更新时间：2026-10-06。设计基线见 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md)。
+更新时间：2026-10-07。设计基线见 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md)。
 本页是当前状态入口；[progress.md](progress.md) 保留历史证据，不覆盖本页结论。
 
 ## 更新规则
@@ -11,6 +11,56 @@
 - 不按文件数、提交数或接口数量宣布完成；必须以原计划的端到端验收为准。
 
 ## 当前阶段
+
+### 2026-10-07：原缺口 Content 的完整 record／真实资源闭包验收
+
+- 基线ddfd8749，production/rules146保持。核对实际五ABC输出：授权numeric+
+  constructors组合的源码没有INCOMPLETE/UNRECOVERED，默认剩余标记来自
+  保留的数值/构造契约。因此继续这些原缺口的完整功能与独立验收，未新增
+  omission包装、扩展样本匹配或再优化?.细节。旧Content两项仅验收资源数组/
+  key callback，没有完整constructor、state、delete或渲染闭包执行证明。
+- 新content_record_source_test核对Immersive SHA/size，先ABC-only完整导出
+  Content14411、Breakpoint7395、CommonConstants7167，退出后才读取独立TS。
+  route/contract/complete/nonlegacy/executable:false与真实源路径核对。
+  三个生成模块在同一realm执行；barrel的两个export受控地连接真实peer，
+  没有替代Content constructor/方法、getBirdImages、嵌套item/deep-render/
+  Image callback或Breakpoint.getValue body。平台ViewPU/UI/storage仍受控。
+- 40组完整生命周期对照，覆盖sm/md/lg/xl、同步/延迟、正/逆callback及item
+  调度、两实例交错、更新/清依赖/删除后回放、fallback初始化和paramsLambda。
+  实际60项资源及每个params数组独立性、key内容、Image原资源身份、closure
+  owner/receiver、注册后失败保存同一callback、事件顺序和部分cell状态核对。
+  两种渲染baseline各1,919真实事件全部覆盖，没有固定事件上限；19,250次
+  undefined/null/0/Symbol/object原throw、3,850逐event全局/import换绑通过。
+  其中第三baseline为继承setter及foreign new.target/返还替代对象构造12事件。
+- 原生class/export/prototype完整inventory、父类/constructor身份、七方法与
+  getter的name/arity/descriptor/不可构造、module TDZ/export不可写与重复
+  evaluate检查通过。constructor六formal、elmtId/paramsLambda默认、JS length3；
+  0/1/2/3/4/6/200/201实参、paramsGenerator_/__mainWindowInfo两个真实赋值，
+  own-key/descriptor、继承setter、Proxy new.target的prototype读取及baseObject
+  路径共64组通过。setter保存原值后的原throw和部分写入在第三baseline另验。
+- 九个先解析为有效JS的mutation检出错误super实参、state值、width字段、
+  GridItem比例、Image资源、CommonConstants读取、JSON key、fallback guard
+  和DefineField绕过继承setter。reference只擦除一个无initializer私有字段和
+  peer四个type-only字段；其余constructor/方法/closure/module正文保留。
+  new/arrow/Array.from/remainder/string/key/native method等高层表示另验，
+  允许必要临时值及名称保留表达式，不要求逐字相同。
+- 失败证据：tests-1的fixture误把first-default前参数数写为2，实际源码与
+  生成constructor均length3；修正fixture。tests-3最后fallback mutation使
+  descriptor缺失，host先读value而抛TypeError，不能计作mutation检出；改为
+  明确断言descriptor存在，未放宽对有效JS/AssertionError的要求。tests-2
+  早期40/19190/3838/32/8通过；tests-4补强40/19250/3850/64/9通过83.69秒。
+- final-build-1两个现有消费者单-j4退出0；final-tests-1定向6/6通过95.33秒，
+  包含新Content、旧default partial、parameter origins、完整Breakpoint/
+  CommonConstants和独立语言算术。578注册不等于执行full suite，三个mjs
+  语法和git diff --check通过。test-only，没有生产更改或无理由重复六模式
+  输出。日志/tmp/abcd-content-record-{inspect,build,tests,final-build,
+  final-tests,details}-*.log；fresh观察产物build/stage-one/content-record-inspect-1。
+- Content14411的受控whole-record行为与表示由pending转accepted，不把
+  controlled framework/barrel当作设备、完整commons图或任意平台协议验证。
+  未清除metadata结构pending、完整method映射缺口、其他record独立验收
+  或原实例字段/globals/signatures/body结构gate；阶段一Goal仍active。
+  full suite、expanded corpus、RSS、benchmark、DFX、scheduler、agents及
+  定期audit维持用户暂停。
 
 ### 2026-10-06：丢弃结果的原生可选调用（规则146）
 

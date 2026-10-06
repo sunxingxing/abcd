@@ -1430,6 +1430,9 @@ if(BUILD_TESTING)
     endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc")
       if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/minigame/src/main/ets/view/Content.ts")
+        add_test(NAME content_record_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/content_record.mjs $<TARGET_FILE:abc_structure>
+          ${ABCD_PAIRED_CORPUS_ROOT}/Immersive)
         add_test(NAME class_family_gap_paired_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
           ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/class_family_gap_paired.mjs $<TARGET_FILE:abc_semantic>
           ${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc
