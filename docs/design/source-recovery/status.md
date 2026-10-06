@@ -12,6 +12,56 @@
 
 ## 当前阶段
 
+### 2026-10-06：Index 导航十模块图与四个实际页面的组合行为
+
+- 基线e49a93a3，生产规则仍144。新增navigation_graph_source_test，按固定
+  Immersive ABC SHA核对输入，ABC-only显式numeric+constructors导出整个
+  record tree后，才读取独立paired TS。十个实际生成ESM在同一realm链接：
+  Index9572、ROUTES8755、Shopping11285、ShoppingAvoid11877、MiniGame12527、
+  ShoppingFullScreen13504及commons6888／7167／7395／7618。实际路径、
+  record身份、complete／ValueTree／无legacy逐项核对，无参考正文拼接。
+- 相比上一轮，Index构造的四个页面不再用测试class代替。实际class进入
+  super、字段、accessor、initialRender及NavDestination内容closure；真实
+  commons re-export链提供CommonConstants／ImmersiveType。只有平台接口和
+  shopping Home、minigame Content／Footer／Header四个库叶子受控。WindowUtil／
+  Breakpoint的模块初始化和export参与本图，不宣称本图执行其所有方法。
+- 166组完整图／生命周期／构造场景、10,990组undefined/null/0/Symbol/object
+  原异常、2,198组全局／storage／live imported leaf换绑通过。同步／延迟
+  两条baseline各1,099个实际事件全覆盖，inventory／实际counter核对。
+  page渲染后立即purge／delete，再释放实际内容、组件、shown／hidden和click／
+  bound builder回调；两种队列顺序、initial/update、changing storage读取、
+  nullish及falsy/NaN/BigInt/Symbol window、finalize、父对象return另验。
+  注册先retain后throw，断言精确原callback随后成功重放；方法void结果不得
+  泄漏或assimilate宿主poison then。各页面的0/1/2/3/4/6/200/201实参、默认
+  elmtId／paramsLambda、native new-only／heritage和替代new.target进入真实构造。
+- 96组四页面全部实际构造属性的pinned assignment检查覆盖inherited setter、
+  alternate prototype、任意原throw、receiver及部分own-key写入顺序。独立TS
+  parser前仅把未初始化类型声明标为declare；initializer／构造／方法保持。
+  WindowInfo的Observed在本图是恒等host，参考仅擦除这个decorator；不把本图
+  当作decorator替换／异常验收，也不将Node initialized DefineField当赋值oracle。
+- 12个先解析为有效JS的mutation全部被真实图检出：wrong super／receiver、
+  padding值、cell删除、shown/hidden参数／调用、live Content参数、setter目标、
+  void返回及赋值替成DefineField。MiniGame把取得callee从参数效果前延后到
+  参数之后的mutation，在真实window getter期间换绑Observed构造器时检出；
+  对照原生成代码保留captured constructor identity。仅测试中使用文字mutant，
+  生产没有路径／名字／文本／graph shape／same-block条件。
+- 单一-j4 abc_structure／abc_semantic构建退出0，三个mjs语法与git diff
+  --check通过，CTest新增一项后572项。首轮整图1/1通过59.93秒；增加直接
+  构造、setter、精确retained重放及mutation后1/1通过74.27秒。相关Index／
+  NavMap／initialRender、两常量整record、WindowUtil、显式构造和MiniGame
+  回归8/8通过27.63秒。日志/tmp/abcd-navigation-graph-build-1.log、
+  tests-1.log、tests-2.log、details-1.log、details-2.log、regression-1.log。
+  每worker顺序64项，核对全inventory，不作生产RSS／性能改善声称。
+- 这补齐四页面与Index实际组合的受控行为证据，不将wholeGraphBehavior扩成
+  所有模块／库叶子／平台／源码风格验收。ShoppingAvoid复合可选成员访问仍有
+  长conditional链；MiniGame／ShoppingFullScreen的optional void调用仍有
+  显式guards。共同nullish planner目前以单个稳定reference域及直接member
+  为native投影，复合成员链的整体表示仍是实现缺口，下一步沿共同AST、身份、
+  效果和异常次序完善，不能再加入样本shape匹配。原结构gate及阶段一继续
+  active，structure_only不清除；全套／expanded corpus／RSS／benchmark／
+  agents／scheduler/DFX／周期审计保持暂停。无生产修改，未重复固定六模式
+  三十次批量导出；本轮的fresh单ABC组合模式输出仅服务上述整图验收。
+
 ### 2026-10-06：Index 完整 record、真实 ROUTES 与字段／方法贯通验收
 
 - 基线ae9cd4ab，生产规则仍144；只扩展既有index_record_source_test及

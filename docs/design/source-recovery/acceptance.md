@@ -1,5 +1,23 @@
 # 验收、证据与实施交接
 
+2026-10-06导航图补充：新增受控十模块组合行为验收。ABC-only显式
+numeric+constructors导出结束后才读paired TS；Index、ROUTES、四个实际
+页面及commons的真实re-export／定义模块在同一realm初始化。四个页面的
+真实constructor、状态字段、accessor、render、shown/hidden与嵌套callback
+通过Index导航执行，页面正文不再由测试class替代。平台及四个库叶子受控；
+WindowUtil／Breakpoint仅模块初始化进入本图，另有方法验收不能由此取代。
+
+166组图／生命周期／构造对照、10,990组原异常、2,198组换绑、96组setter／
+new.target／部分写入与12个有效JS mutation通过。同步／延迟各1,099个实际
+事件全覆盖，purge／delete后释放真实回调，失败注册后重放精确保留callback；
+callee取得后window getter期间替换Observed构造器的错误变体被检出。各页面
+默认值及0/1/200/201等实参另验。reference仅作type-only声明擦除及恒等Observed
+host下的decorator擦除，不把此图当作任意decorator行为或TS DefineField证明。
+
+十模块组合行为通过不能转写成所有模块和源码风格均accepted。复合可选成员链
+及void调用的conditional／guard表示仍须共同nullish模型完善；四个库叶子、
+设备和原结构gate仍开放。构建、1/1新验收与8/8相关回归、范围及日志见status.md。
+
 2026-10-06 Index补充：Immersive9572的受控whole-record语义与高层表示
 由pending转accepted。核对固定ABC SHA后，先完成Index及Constants8755的
 ABC-only默认ValueTree导出，再读paired TS。真实生成ROUTES依赖、完整模块、
