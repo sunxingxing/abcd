@@ -69,14 +69,20 @@ constructor与受污染explicit spread普遍等价，原native-super独立契约
 类型或全部结构gate完成，生产规则仍139。
 
 2026-10-06补充：`paired_model_record_source_test`实际执行ABC-only
-`--value-source`的完整IconInfoModel/SectionModel记录，再读paired TS；
-1476配对场景覆盖module live更新（包括参数求值期间）、列表/receiver、
-延迟callback、稀疏输入、效果/原异常/部分状态与新鲜身份。生成记录另验
-8组model/item assignment/setter/new.target及26组原参数身份/字段descriptor；
+`--value-source`的完整IconInfoModel/SectionModel/RecommendModel记录，按
+既有paired index验证ABC hash/size及ValueTree身份，生成结束后再读paired TS。
+2481配对场景覆盖module live更新（包括参数求值期间）、构造callee在参数
+效果之前取得、列表/receiver、延迟callback及构造失败后保留的原callback、
+稀疏输入、第二/最后一次callback原异常、部分状态与新鲜身份。生成记录另验
+12组model/item assignment/setter/new.target、112组0/1/200/201实参及各
+字段setter异常/部分写入，39组原参数身份/字段descriptor；
 Node保留的未初始化TS字段不能充当Ark属性赋值own key的oracle。
-原生constructor/map/arrow/push/new表示与条件属性行为另验，五种有效JS
-mutation均检出。此证据覆盖两个实际完整记录，不能扩为平台/全部record/
-全部类型与源码风格验收；日志及定向11/11回归见status.md。
+原生constructor/map/arrow/push/new、参数列表与条件属性行为另验，九种
+先解析的有效JS mutation均检出。三个指定record的受控whole-record语义
+与高层表示验收accepted，保留必要receiver alias及mutable class binding；
+不能扩为平台/全部record/全部类型或原结构gate完成。共享位置测试另补齐
+既有discarded invocation read和implicit tail completion的精确零宽边界
+契约；无生产语义变化，最终27/27定向回归和日志见status.md。
 
 2026-10-06补充：CardArray 与 BreakpointType 的独立整record表示验收
 从pending转为accepted；源码均由当前规则137的ABC-only ValueTree实际生成。

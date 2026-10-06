@@ -5,7 +5,9 @@
 #include <type_traits>
 
 #include "../../src/source/instruction_sources.h"
+#include "../../src/source/discarded_read.h"
 #include "../../src/source/nullish_syntax.h"
+#include "../../src/source/tail_completion.h"
 #include "abcd/source/tree_printer.h"
 
 namespace abcd::test {
@@ -19,6 +21,13 @@ inline void CheckInstructionPositions(const source::FunctionTree& tree,
   const auto nullish_result = PlanNullishSyntax(tree);
   check(std::holds_alternative<NullishSyntax>(nullish_result));
   const auto& nullish = std::get<NullishSyntax>(nullish_result);
+  const auto completion = positions.fragment == FunctionFragment::kStaticFields ||
+      positions.fragment == FunctionFragment::kImplicitConstructor ? std::nullopt : ImplicitTailCompletion(tree);
+  std::vector<std::optional<StmtId>> discarded(tree.expressions.size());
+  for (std::size_t i = 0; i < tree.statements.size(); ++i) {
+    const StmtId statement{static_cast<std::uint32_t>(i)};
+    if (const auto read = DiscardedInvocationRead(tree, statement)) discarded[read->value] = statement;
+  }
   check(positions.identity == tree.identity && positions.method == tree.method &&
       positions.value_revision == tree.value_revision && positions.cfg_revision == tree.cfg_revision &&
       owner.begin < owner.end && positions.bytes == owner.end - owner.begin);
@@ -48,6 +57,37 @@ inline void CheckInstructionPositions(const source::FunctionTree& tree,
           }();
           check(target.value < ranges.size());
           const auto range = ranges[target.value];
+          std::optional<StmtId> omitted_read;
+          bool tail = false;
+          if constexpr (std::is_same_v<T, ExprId>) {
+            omitted_read = discarded[target.value];
+            tail = completion && completion->value == target;
+          } else if constexpr (std::is_same_v<T, StmtId>) {
+            if (DiscardedInvocationRead(tree, target)) omitted_read = target;
+            tail = completion && completion->statement == target;
+          }
+          if (omitted_read) {
+            // Omitted native invocation reads retain both original event IDs
+            // at one owned boundary; arbitrary empty expression ranges fail.
+            const auto read = *DiscardedInvocationRead(tree, *omitted_read);
+            check(owner.begin <= range.begin && range.begin == range.end && range.end <= owner.end &&
+                range == positions.statements[omitted_read->value] && range == positions.expressions[read.value]);
+            return;
+          }
+          if (tail) {
+            check(range.begin == range.end && range == positions.statements[completion->statement.value] &&
+                (!completion->value || range == positions.expressions[completion->value->value]));
+            if (positions.fragment == FunctionFragment::kModuleBody) check(range.end == owner.end);
+            else {
+              const auto block = positions.statements[tree.body.value];
+              check(owner.begin <= block.begin && block.begin <= range.begin &&
+                  range.end < block.end && block.end <= owner.end);
+              const auto& body = std::get<BlockStmt>(tree.statements[tree.body.value].statement);
+              if (body.child_count > 1)
+                check(positions.statements[tree.children[body.first_child + body.child_count - 2].value].end <= range.begin);
+            }
+            return;
+          }
           if constexpr (std::is_same_v<T, ExprId>) {
             if (!nullish.omitted_by.empty() && nullish.omitted_by[target.value]) {
               const auto root = *nullish.omitted_by[target.value];

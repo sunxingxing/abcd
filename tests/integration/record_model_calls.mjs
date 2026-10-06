@@ -3,10 +3,10 @@ import {readFile} from 'node:fs/promises';
 import {stripTypeScriptTypes} from 'node:module';
 import vm from 'node:vm';
 
-const [iconPath, sectionPath, iconPairedPath, sectionPairedPath] = process.argv.slice(2);
+const [iconPath, sectionPath, recommendPath, iconPairedPath, sectionPairedPath, recommendPairedPath] = process.argv.slice(2);
 // Only the independent test reads paired TS, after ABC-only generation finishes.
-const sources = await Promise.all([iconPath, sectionPath].map(path => readFile(path, 'utf8')));
-const paired = await Promise.all([iconPairedPath, sectionPairedPath].map(async path =>
+const sources = await Promise.all([iconPath, sectionPath, recommendPath].map(path => readFile(path, 'utf8')));
+const paired = await Promise.all([iconPairedPath, sectionPairedPath, recommendPairedPath].map(async path =>
   stripTypeScriptTypes(await readFile(path, 'utf8'))));
 const specifier = '@normalized:N&&&shopping/src/main/ets/constants/HomeConstants&1.0.0';
 const models = [
@@ -28,23 +28,33 @@ const models = [
      args: ['FLASH_SALE_PRODUCT_TITLES', 'FLASH_SALE_PRODUCT_PRICES', 'FLASH_SALE_PRODUCT_FEATURES',
       'FLASH_SALE_PRODUCT_INFO', 'FLASH_SALE_PRODUCT_ORIGINAL_PRICES']},
    ]},
+  {name: 'RecommendModel', item: 'RecommendProduct', fields: ['image', 'isLive'],
+   getters: ['getImage', 'getIsLive'], groups: [
+    {field: 'recommendProductList', getter: 'getRecommendProductList', input: 'RECOMMENDED_PRODUCTS',
+     args: ['RECOMMENDED_PRODUCT_LIVING']},
+   ]},
 ];
 const scalar = 'SECTION_PRODUCTS_COMMENTS';
-async function load(text, config, constants) {
+async function load(text, config, constants, mutable = false) {
   const context = vm.createContext({});
   const dependency = new vm.SyntheticModule(['HomeConstants'], function() {
     this.setExport('HomeConstants', constants);
   }, {context});
-  const module = new vm.SourceTextModule(text, {context});
+  // Test-only mutation of the actual module binding, never an engine input or
+  // substitute body. Native new must retain its callee across argument effects.
+  const hook = mutable ? `\nexport function __replaceItem(next) { ${config.item} = next; }` : '';
+  const module = new vm.SourceTextModule(text + hook, {context});
   await module.link(name => { assert.equal(name, specifier); return dependency; });
   assert.throws(() => module.namespace[config.name], {name: 'ReferenceError'});
   assert.throws(() => module.namespace[config.item], {name: 'ReferenceError'});
   await module.evaluate();
-  assert.deepEqual(Object.keys(module.namespace).sort(), [config.name, config.item].sort());
-  return {C: module.namespace[config.name], Item: module.namespace[config.item], dependency};
+  assert.deepEqual(Object.keys(module.namespace).sort(), [config.name, config.item, ...(mutable ? ['__replaceItem'] : [])].sort());
+  return {C: module.namespace[config.name], Item: module.namespace[config.item], dependency,
+    replaceItem: mutable ? module.namespace.__replaceItem : null};
 }
 function style(text, config) {
   assert.match(text, /constructor\(\)/);
+  assert.ok(text.includes(`constructor(${config.fields.join(', ')})`));
   assert.match(text, /\.map\(/);
   assert.match(text, /\.push\(new /);
   assert.match(text, /=>/);
@@ -57,10 +67,12 @@ function style(text, config) {
 
 async function observe(text, config, count, mode, throwAt = null, assignmentFields = false) {
   const trace = [], points = new Set(), sentinel = {}, retained = [], pending = [];
-  let captured, dependency;
+  const fault = typeof throwAt === 'string' ? {point:throwAt,visit:1} : throwAt;
+  let faultVisits = 0;
+  let captured, dependency, replaceItem, replacedItem = false;
   function event(name, detail = '') {
     points.add(name); trace.push(detail ? `${name}:${detail}` : name);
-    if (name === throwAt) throw sentinel;
+    if (name === fault?.point && ++faultVisits === fault.visit) throw sentinel;
   }
   function constants(tag, switchBinding) {
     const result = {};
@@ -75,6 +87,9 @@ async function observe(text, config, count, mode, throwAt = null, assignmentFiel
             event(`index:${key}`, keyName);
             if (mode === 'argument-live' && key === group.args[0] && tag === 'original')
               dependency.setExport('HomeConstants', constants('argument-live', false));
+            if (mode === 'constructor-live' && key === group.args[0] && !replacedItem) {
+              replacedItem = true; replaceItem();
+            }
           }
           return Reflect.get(target, keyName, receiver);
         }});
@@ -82,8 +97,13 @@ async function observe(text, config, count, mode, throwAt = null, assignmentFiel
           event(`map-get:${key}`);
           const fn = function(callback) {
             assert.equal(this, array); event(`map-call:${key}`);
+            assert.equal(callback.length,2);
             return Array.prototype.map.call(array, (item, index) => {
               if (mode === 'deferred') { pending.push({callback, item, index, key}); return undefined; }
+              if (mode === 'retained-throw') {
+                pending.push({callback, item, index, key});
+                event(`registered:${key}`, String(index)); throw sentinel;
+              }
               event(`callback:${key}`, String(index));
               const value = Reflect.apply(callback, {unrelated: true}, [item, index, array]);
               assert.equal(value, undefined); return value;
@@ -101,8 +121,17 @@ async function observe(text, config, count, mode, throwAt = null, assignmentFiel
     }
     return result;
   }
-  const loaded = await load(text, config, constants('original', mode === 'live'));
+  const loaded = await load(text, config, constants('original', mode === 'live'),mode === 'constructor-live');
   const {C, Item} = loaded; dependency = loaded.dependency;
+  replaceItem = () => {
+    event('constructor-binding-replaced');
+    function Replacement(...args) {
+      event('replacement-constructor');
+      return Reflect.construct(Item,args,new.target);
+    }
+    Replacement.prototype = Item.prototype;
+    loaded.replaceItem(Replacement);
+  };
   assert.equal(C.name, config.name); assert.equal(C.length, 0);
   assert.equal(Item.name, config.item); assert.equal(Item.length, config.fields.length);
   assert.throws(() => C(), {name: 'TypeError'});
@@ -111,6 +140,8 @@ async function observe(text, config, count, mode, throwAt = null, assignmentFiel
   for (const getter of [...config.groups.map(group => group.getter), ...config.getters]) {
     const prototype = config.getters.includes(getter) ? Item.prototype : C.prototype;
     assert.equal(prototype[getter].length, 0); assert.equal(prototype[getter].name, getter);
+    const descriptor = Object.getOwnPropertyDescriptor(prototype,getter);
+    assert.deepEqual([descriptor.writable,descriptor.enumerable,descriptor.configurable],[true,false,true]);
   }
   function track(list, field) {
     retained.push(list);
@@ -141,19 +172,24 @@ async function observe(text, config, count, mode, throwAt = null, assignmentFiel
   let thrown = false;
   try {
     new C();
-    if (mode === 'deferred') {
-      assert.ok(retained.every(list => list.length === 0));
-      dependency.setExport('HomeConstants', constants('deferred-live', false));
-      // Callbacks must retain their original receiver, then read its current
-      // list when invoked; neither binding nor list is a lifetime snapshot.
-      for (const group of config.groups) captured[group.field] = track([], group.field);
-      for (const {callback, item, index, key} of pending) {
+  } catch (error) { assert.equal(error, sentinel); thrown = true; }
+  const callbackFailures = [];
+  if (mode === 'deferred' || mode === 'retained-throw') {
+    assert.ok(retained.every(list => list.length === 0));
+    dependency.setExport('HomeConstants', constants('deferred-live', false));
+    // Host retention outlives even a failed activation. Replay each original
+    // callback with foreign this; live imports and the current list remain live.
+    for (const group of config.groups) captured[group.field] = track([], group.field);
+    for (const {callback, item, index, key} of pending) {
+      try {
         event(`callback:${key}`, String(index));
         assert.equal(Reflect.apply(callback, {wrongReceiver: true}, [item, index]), undefined);
-      }
+        callbackFailures.push(false);
+      } catch (error) {assert.equal(error,sentinel); callbackFailures.push(true);}
     }
-  } catch (error) { assert.equal(error, sentinel); thrown = true; }
-  assert.equal(thrown, throwAt !== null);
+  }
+  assert.equal(thrown || callbackFailures.some(Boolean),
+    throwAt !== null || mode === 'retained-throw' && count !== 0);
   assert.ok(captured);
   for (const group of config.groups) {
     assert.equal(captured[group.getter](), captured[group.field]);
@@ -164,7 +200,7 @@ async function observe(text, config, count, mode, throwAt = null, assignmentFiel
   const first = captured;
   if (!thrown && mode === 'ordinary') {
     const lists = config.groups.map(group => first[group.field]);
-    Reflect.apply(init, first, []);
+    assert.equal(Reflect.apply(init, first, []),undefined);
     for (const [i, group] of config.groups.entries()) {
       assert.equal(first[group.field], lists[i]); assert.equal(lists[i].length, count * 2);
     }
@@ -186,7 +222,7 @@ async function observe(text, config, count, mode, throwAt = null, assignmentFiel
   // Node retains uninitialized TS fields as DefineField. Those declaration-only
   // own keys are not an oracle for pinned STOBJBYNAME; test assignment below.
   return {trace, points: [...points], lists: retained.map(snapshot),
-    first: config.groups.map(group => snapshot(first[group.field])), thrown};
+    first: config.groups.map(group => snapshot(first[group.field])), thrown,callbackFailures};
 }
 
 async function assignment(text, config, abrupt, alternate) {
@@ -211,7 +247,8 @@ async function assignment(text, config, abrupt, alternate) {
     assert.equal(Object.getPrototypeOf(first), prototype); assert.equal(receiver, second);
     assert.notEqual(first, second);
     for (const group of config.groups) assert.equal(Object.hasOwn(first, group.field), false);
-    assert.notEqual(values[0], values[1]); assert.notEqual(values[0], values[2]);
+    assert.equal(values.length, config.groups.length * 2);
+    assert.equal(new Set(values).size, values.length);
   }
   const sequence = [...config.groups.map(group => group.field), 'init-get', 'init-call'];
   assert.deepEqual(trace, abrupt ? [config.groups[0].field] : [...sequence, ...sequence]);
@@ -252,10 +289,52 @@ async function itemValues(text, config) {
   }
   return values.length;
 }
-let pairedCases = 0, valueCases = 0;
+async function itemArguments(text, config) {
+  const {Item} = await load(text,config,{});
+  const originals = new Map(config.fields.map(field => [field,Object.getOwnPropertyDescriptor(Item.prototype,field)]));
+  let cases = 0;
+  for (const count of [0,1,200,201]) {
+    const args = Array.from({length:count},(_,index) => Object.freeze({index}));
+    const item = Reflect.construct(Item,args);
+    for (const [index,field] of config.fields.entries()) {
+      assert.equal(item[config.getters[index]](),args[index]);
+      assert.equal(Object.hasOwn(item,field),field !== 'originalPrice' || args[index] !== undefined);
+    }
+    for (const alternate of [false,true]) for (let failAt = 0; failAt <= config.fields.length; ++failAt) {
+      const prototype = alternate ? {} : Item.prototype;
+      const original = Symbol('field setter error'), writes = [];
+      let receiver;
+      for (const field of config.fields) Object.defineProperty(prototype,field,{configurable:true,set(value) {
+        receiver = this; writes.push([field,value]);
+        if (writes.length === failAt) throw original;
+      }});
+      function Target() {} Target.prototype = prototype;
+      let answer,caught = false;
+      try {answer = Reflect.construct(Item,args,alternate ? Target : Item);}
+      catch (error) {assert.equal(error,original); caught = true;}
+      const expected = config.fields.flatMap((field,index) =>
+        field === 'originalPrice' && args[index] === undefined ? [] : [[field,args[index]]]);
+      assert.equal(caught,failAt !== 0 && failAt <= expected.length);
+      assert.deepEqual(writes,caught ? expected.slice(0,failAt) : expected);
+      if (receiver) {
+        assert.equal(Object.getPrototypeOf(receiver),prototype);
+        assert.deepEqual(Object.keys(receiver),[]);
+      }
+      if (!caught) {assert.equal(Object.getPrototypeOf(answer),prototype); if (receiver) assert.equal(answer,receiver);}
+      for (const field of config.fields) {
+        const descriptor = originals.get(field);
+        if (!alternate && descriptor) Object.defineProperty(prototype,field,descriptor);
+        else delete prototype[field];
+      }
+      ++cases;
+    }
+  }
+  return cases;
+}
+let pairedCases = 0, valueCases = 0, argumentCases = 0;
 for (const [index, config] of models.entries()) {
   style(sources[index], config);
-  for (const count of [0, 1, 2, 200, 201]) for (const mode of ['ordinary', 'live', 'argument-live', 'replace-list', 'deferred', 'sparse']) {
+  for (const count of [0, 1, 2, 200, 201]) for (const mode of ['ordinary', 'live', 'argument-live', 'constructor-live', 'replace-list', 'deferred', 'sparse', 'retained-throw']) {
     const baseline = await observe(paired[index], config, count, mode);
     assert.deepEqual(await observe(sources[index], config, count, mode, null, true), baseline); ++pairedCases;
     for (const point of baseline.points) {
@@ -263,10 +342,19 @@ for (const [index, config] of models.entries()) {
         await observe(paired[index], config, count, mode, point));
       ++pairedCases;
     }
+    if (count >= 2 && (mode === 'ordinary' || mode === 'deferred'))
+      for (const group of config.groups) for (const point of [
+        `push-get:${group.field}`,`push-call:${group.field}`,`index:${group.args[0]}`])
+        for (const visit of new Set([2,count])) {
+          const fault = {point,visit};
+          assert.deepEqual(await observe(sources[index],config,count,mode,fault,true),
+            await observe(paired[index],config,count,mode,fault)); ++pairedCases;
+        }
   }
   for (const abrupt of [false, true]) for (const alternate of [false, true])
     await assignment(sources[index], config, abrupt, alternate);
   valueCases += await itemValues(sources[index], config);
+  argumentCases += await itemArguments(sources[index], config);
 }
 const mutations = [
   {index: 0, name: 'initialization removed',
@@ -286,6 +374,20 @@ const mutations = [
    change: text => text.replace('this.categoryList = []',
      'Object.defineProperty(this, "categoryList", {value: [], writable: true, enumerable: true, configurable: true})'),
    check: text => assignment(text, models[0], false, false)},
+  {index: 2, name: 'retained callback loses receiver',
+   change: text => text.replace('((item, index) => {', '(function(item, index) {').replace(
+     '$local0.recommendProductList.push', 'this.recommendProductList.push'),
+   check: text => observe(text,models[2],1,'retained-throw')},
+  {index: 2, name: 'parameter positions swapped',
+   change: text => text.replace('this.image = image','this.image = isLive'),
+   check: text => itemArguments(text,models[2])},
+  {index: 2, name: 'void initializer leaks map result',
+   change: text => text.replace('HomeConstants.RECOMMENDED_PRODUCTS.map','return HomeConstants.RECOMMENDED_PRODUCTS.map'),
+   check: text => observe(text,models[2],1,'ordinary')},
+  {index: 2, name: 'constructor callee loaded after argument effect',
+   change: text => text.replace('new RecommendProduct(item, HomeConstants.RECOMMENDED_PRODUCT_LIVING[index])',
+     '((argument) => new RecommendProduct(item, argument))(HomeConstants.RECOMMENDED_PRODUCT_LIVING[index])'),
+   check: text => observe(text,models[2],1,'constructor-live')},
 ];
 for (const {index, name, change, check} of mutations) {
   const changed = change(sources[index]); assert.notEqual(changed, sources[index]);
@@ -295,4 +397,5 @@ for (const {index, name, change, check} of mutations) {
   catch (error) { if (!(error instanceof assert.AssertionError)) throw error; detected = true; }
   assert.equal(detected, true, name);
 }
-console.log(JSON.stringify({wholeRecords: 2, pairedCases, assignmentCases: 8, valueCases, mutations: mutations.length}));
+console.log(JSON.stringify({wholeRecords: models.length, pairedCases, assignmentCases: models.length * 4,
+  argumentCases,valueCases, mutations: mutations.length,wholeRecordStyle:'accepted',platformExecution:false}));

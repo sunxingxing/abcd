@@ -2047,6 +2047,7 @@ if(BUILD_TESTING)
       add_test(NAME paired_model_record_source_test COMMAND ${CMAKE_COMMAND}
         "-DABCD_STRUCTURE=$<TARGET_FILE:abc_structure>"
         "-DABCD_SAMPLE=${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"
+        "-DABCD_INDEX=${CMAKE_CURRENT_SOURCE_DIR}/tests/corpus/abc-index.json"
         "-DABCD_NODE=${ABCD_NODE_EXECUTABLE}"
         "-DABCD_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_model_calls.mjs"
         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_model_calls.cmake)

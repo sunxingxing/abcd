@@ -12,6 +12,52 @@
 
 ## 当前阶段
 
+### 2026-10-06：三个模型的完整构造、字段及保留回调验收
+
+- 基线baca6e0b，生产规则仍141。扩展既有paired_model_record_source_test，
+  以ABC-only默认 --value-source生成Immersive record16752 IconInfoModel、
+  record17544 SectionModel及record17175 RecommendModel。按既有paired
+  corpus index核对实际ABC SHA-256/size、manifest身份、V3合同、ValueTree、
+  complete和非legacy；全部生成结束后才读取三个独立paired TS。完整原生
+  class、constructor、initData、getter及实际map arrow均参与执行；没有
+  参考body替换、生产样本分派或输入样本修改。
+- 2,481组完整行为对照覆盖0/1/2/200/201输入、稀疏map、module live换绑、
+  参数求值中import变化、列表替换、重复init与新activation。宿主保留真实
+  callback后注册失败也重放，使用foreign this、当次live import及当前列表；
+  每callback异常独立记录并继续后续调度。原错误按实际事件及第二/最后一次
+  callback注入，比较callee receiver、原throw、部分列表/字段状态和身份。
+- 在参数getter中通过test-only hook换绑实际item lexical binding，覆盖原构造callee在参数
+  getter之前已取得、后续callback才读取新绑定；没有替换任何原函数body。
+  另验12组model/item assignment/setter/new.target、112组item的0/1/200/201
+  实参及各字段setter原异常/部分写入、39组Number/BigInt/Symbol/object等
+  原参数身份/字段descriptor。每次setter测试恢复prototype，避免早期测试
+  污染后续基线；Node未初始化TS字段的DefineField不作为Ark属性赋值oracle。
+- 原生constructor/map/arrow/push/new、参数列表、getter及runtime name/arity/
+  descriptor、namespace TDZ和void完成另验；9个先解析的有效JS mutation
+  检出错误字段/参数、DefineField、callback动态this、map结果泄漏及把构造
+  callee读取推迟到参数副作用之后。三个指定record的受控whole-record语义
+  与高层表示验收accepted；允许必要receiver alias与mutable class binding，
+  不宣称恢复type/private/const或完成HarmonyOS平台执行。
+- 首次14项最终回归13/14通过，class_tree_context_test中止。调试器定位
+  到旧共享instruction position oracle仍要求已省略的普通this读取有非零
+  范围；生产printer/emission早已保留原ExprId/StmtId的共同零宽边界。测试
+  现精确验证discarded invocation read及implicit tail completion的原节点、
+  owner/body边界和相互一致范围，其余事件仍要求正常非零范围；单项复验
+  通过。未放宽生产来源证明或新增同块/邻接/shape准入，临时诊断已移除。
+- 最终单一-j4构建两个engines及11个相关target退出0，随后关闭诊断的
+  class target重新构建退出0；全部build handle关闭后27/27定向CTest通过
+  72.09秒，含原位置、partial、module/family、default/参数、async/generator/
+  rest、phased literal/lexical、Home/Model/ViewModel实际生成行为。
+  日志/tmp/abcd-model-structure-final-build-2.log、context-build-3.log及
+  final-tests-2.log，LastTest.log保留2,481/12/112/39/9结果；Node语法与
+  git diff --check通过。CTest仍569项，无C++生产语义变化。
+- 本轮未重复固定五ABC/六模式30次导出；上一规则141 boolean-domain-pass-3
+  的80/26、95/11、96/10、88/18、105/1、106/0完整/partial数量仍是既有
+  证据，不称本轮fresh批量。其余record独立验收、instance fields/globals/
+  完整signatures/body结构gate及完整平台模块图仍开放，不能用这三个record
+  清除structure_only标记。阶段一Goal继续active；全套、expanded corpus、
+  RSS/benchmark、agents、scheduler/DFX及周期审计保持暂停。
+
 ### 2026-10-06：Boolean 贯通共同值流与选择来源归属
 
 - 基线3125584f，生产规则141。ValueKinds新增精确Boolean refinement，
