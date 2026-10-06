@@ -21,6 +21,30 @@ Printer 处理节点、名字、括号、转义、标签、注释和已有输出
 模式，不补推 CFG、finally 或闭包，不调用专项 body writer。无原名可用合成名，
 无独立 PC 的结构节点保留结构来源；不补造原名、类型、PC 或可执行占位行为。
 
+## 原生 class 声明（规则 142）
+
+共同printer可以把可写绑定的直接class初始化打印为`class C { ... }`，
+前提是实际runtime name等于该绑定的打印名称，并且原ClassNames词法遍历
+证明新增的immutable class-self环境不遮蔽任何真实引用。沿用
+[ECMAScript 2024 ClassDefinitionEvaluation](https://tc39.es/ecma262/2024/multipage/ecmascript-language-functions-and-classes.html#sec-runtime-semantics-classdefinitionevaluation)
+与BindingClassDeclarationEvaluation；外层绑定仍可写，原创建/heritage/字段/
+方法求值和TDZ时机不移动。const目的继续使用const initializer；同名可写
+module/capture引用、heritage冲突、未知body和名称不匹配沿原表达式表示。
+
+这只是既有AST的语法投影：使用原ClassExpr/DeclarationStmt及ExprId/StmtId，
+类body、成员位置、捕获destination、derived super均走同一ClassCreation/
+ClassPart。default export仍是原AssignmentExpression，不改为hoisted声明
+或新增外层名称。不会基于opcode序列、PC/register、同块/邻接或样本选择。
+复制/拆块产生的创建时点临时存储仍按原共同值流保存；未融合的alias是表示
+缺口，不是语言禁止原生class，也不使源码新增拒绝。
+
+三profile的54份实际解码模块、468组ESM行为与6个有效JS mutation覆盖
+模块TDZ/初始化、可写外层绑定、同名constructor引用、Proxy/bound/null父类、
+替代new.target、原throw/对象return及动态更换父类。const与原始表达式位置
+另有树打印检查；名称分析的200/201/400/800规模和capture/heritage反例保留。
+固定五ABC/六模式中54/68/68/62/78/78份源码表示改善，完整数量不变；
+原结构gate、其余record独立验收及source spans的未完成范围仍需各自证明。
+
 ## Boolean 合流与透明转换（规则 141）
 
 ValueKinds新增精确Boolean refinement，沿原sparse值流传播COPY、phi与循环

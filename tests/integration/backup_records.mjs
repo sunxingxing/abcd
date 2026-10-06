@@ -178,7 +178,7 @@ export async function verifyBackupRecords(records) {
   let constructorCases = 0, methodCases = 0, mutations = 0;
   const payloads = [undefined,null,false,0,-0,NaN,1n,Symbol('argument'),{},[]];
   for (const {app,source,reference} of records) {
-    assert.match(source,/class extends/);
+    assert.match(source,/class EntryBackupAbility extends/);
     assert.match(source,/async onBackup\(\)/); assert.match(source,/async onRestore\(bundleVersion\)/);
     assert.match(source,/hilog\.info\(/); assert.match(source,/JSON\.stringify\(bundleVersion\)/);
     assert.doesNotMatch(source,/INCOMPLETE|UNRECOVERED|Reflect\.construct|\.call\(|\bswitch\s*\(|\$acc|\$reg/);

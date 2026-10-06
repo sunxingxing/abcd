@@ -35,7 +35,7 @@ assert.equal(comment.source_complete, true); assert.equal(comment.route, 'value_
 assert.equal(comment.legacy_writer_used, false);
 const pairedText = readFileSync(paired, 'utf8');
 assert.match(pairedText, /export class CardArray/);
-assert.match(report.source, /let CardArray = class \{/);
+assert.match(report.source, /class CardArray \{/);
 assert.match(report.source, /constructor\(\)\s*\{/);
 assert.match(report.source, /CARD_LIST\.forEach\(/);
 assert.match(report.source, /getInstance\(\)\s*\{\s*return this;/);
@@ -122,7 +122,7 @@ const connected = await verifyConnectedCards(report.source, peer.source, referen
 // native constructor, imports, remainder/indexing and retained arrow remain
 // high-level source; an immutable activation receiver alias is permitted.
 assert.match(peerText, /export class CardItem/);
-assert.match(peer.source, /let CardItem = class \{/);
+assert.match(peer.source, /class CardItem \{/);
 assert.match(peer.source, /constructor\(card, index\)/);
 assert.match(peer.source, /PICTURE_ARRAY_LIST\[index % PICTURE_ARRAY_LIST\.length\]/);
 assert.match(peer.source, /COMMENT_LIST\.forEach\(\(\(item\) =>/);

@@ -1,5 +1,21 @@
 # 按用户要求进行的恢复条件审计
 
+规则142补充：原可写class初始化一律打印let/class表达式是表示限制。现在
+原共同ClassNames通过lexical scope、实际symbol/module/capture target与
+heritage遍历证明新增self scope不会改变真实引用后，printer支持原生class
+声明。runtime name与目的绑定一致是必要的命名语义边界；kLet/kConst区分
+防止扩大外层写入许可，不是按类名或源码匹配恢复。constructor/member/
+initializer完整性仍由原分析负责，未知body继续采用表达式和明确partial。
+没有新增同块、邻接、producer名单、固定数量、PC/register或图形状条件。
+直接initializer是声明语法的适用上下文；未融合的创建时点snapshot/alias
+仍是共同值流的表示限制，复制/拆块变体继续恢复并通过独立行为对照。
+
+原ClassExpr/DeclarationStmt和来源ID保持，class body/super/accessor等复用
+同一printer；default expression、const binding和真实可写外层类引用保留。
+实际解码的base/derived、复制/拆块、TDZ/namespace、mutable outer storage、
+动态父类、原异常及错误self scope/hoisting/名称/参数变体的证据见status。
+未把消除let carrier等同完整fields/globals/signatures/body结构gate。
+
 规则141补充：精确Boolean曾只由当前producer/literal的局部类型识别，原
 Boolean/null refinement不能区分null，COPY与phi后的布尔事实随之丢失。
 现在由共同ValueKinds/sparse值流保留Boolean，混合null/内部值继续弱化；

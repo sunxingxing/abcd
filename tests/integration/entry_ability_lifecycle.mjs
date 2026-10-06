@@ -219,7 +219,7 @@ async function assignments(source,app,fail,count = 201) {
 export async function verifyEntryAbilities(records) {
   let pairedCases = 0, assignmentCases = 0, mutations = 0;
   for (const {app,source,reference} of records) {
-    assert.match(source,/class extends/); assert.match(source,/super\(\.\.\./);
+    assert.match(source,/class EntryAbility extends/); assert.match(source,/super\(\.\.\./);
     for (const [name] of methods) assert.match(source,new RegExp(`\\b${name}\\(`));
     assert.match(source,/\.getMainWindow\(/); assert.match(source,/\.loadContent\(/);
     assert.match(source,/\.on\("windowSizeChange"/); assert.match(source,/AppStorage\.setOrCreate\(/);

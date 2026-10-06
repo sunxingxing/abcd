@@ -26,8 +26,10 @@ void Check(bool value, std::source_location at = std::source_location::current()
 }
 enum class FixtureCase { kValid, kCleanupEntry, kCleanupOverwrite, kBindingCollision, kExportCollision, kBranch, kArmStore, kFunction, kCapture, kCapturedDefault, kCapturedUnusedDefault, kStringDefault, kPublishedCapture, kReentrantCapture, kPublishedCaptureV1, kPublishedBadSlot, kLocalFunction, kClassFunction, kClassCapture, kGlobal, kGlobalShadow, kGlobalLocalShadow, kAnonymous, kAnonymousFunction, kAnonymousSingleClass, kAnonymousClassRead, kClassCell, kClassNamedCell, kClassNamedShadow, kClassCellHole, kClassCellUninitialized, kUnknownName, kClassBinding, kClassBindingMismatch, kClassBindingAssignment, kModuleWriter, kModuleWriterBranch, kModuleWriterEarly, kModuleWriterLiteral, kModuleWriterCatch, kModuleWriterParentBranch, kModuleWriterParentBranchCatch, kModuleWriterParentBranchRaw, kModuleWriterParentBranchRawCatch };
 enum class DirectDefault { kAbsent, kFunction, kClass };
+enum class ClassDeclarationCase { kAbsent, kSafe, kOuterRead, kDerived };
 std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool inspect_prefix = false,
-    DirectDefault direct = DirectDefault::kAbsent) {
+    DirectDefault direct = DirectDefault::kAbsent, ClassDeclarationCase class_declaration = ClassDeclarationCase::kAbsent,
+    unsigned class_copies = 0, bool class_split = false) {
   constexpr std::uint32_t kTypes = 256, kPool = 272, kRecord = 512,
       kMethod = 600, kChild = 640, kConstructor = 680, kLiteral = 3000, kModule = 1024, kCode = 4096, kChildCode = 5000, kConstructorCode = 6000, kFileBytes = 8192;
   const bool parent_raw = mode == FixtureCase::kModuleWriterParentBranchRaw || mode == FixtureCase::kModuleWriterParentBranchRawCatch;
@@ -35,7 +37,8 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
   const bool writer_catch = mode == FixtureCase::kModuleWriterCatch || mode == FixtureCase::kModuleWriterParentBranchCatch || mode == FixtureCase::kModuleWriterParentBranchRawCatch;
   const bool module_writer = mode == FixtureCase::kModuleWriter || mode == FixtureCase::kModuleWriterBranch || mode == FixtureCase::kModuleWriterEarly || mode == FixtureCase::kModuleWriterLiteral || writer_catch || parent_branch;
   const bool child_parameter = module_writer || mode == FixtureCase::kCapturedDefault || mode == FixtureCase::kCapturedUnusedDefault || mode == FixtureCase::kStringDefault;
-  const bool class_binding = mode == FixtureCase::kClassBinding || mode == FixtureCase::kClassBindingMismatch || mode == FixtureCase::kClassBindingAssignment;
+  const bool class_binding = class_declaration != ClassDeclarationCase::kAbsent || mode == FixtureCase::kClassBinding || mode == FixtureCase::kClassBindingMismatch || mode == FixtureCase::kClassBindingAssignment;
+  const bool derived_declaration = class_declaration == ClassDeclarationCase::kDerived;
   const bool named_cell = mode == FixtureCase::kClassNamedCell || mode == FixtureCase::kClassNamedShadow;
   const bool class_cell = named_cell || mode == FixtureCase::kClassCell || mode == FixtureCase::kClassCellHole || mode == FixtureCase::kClassCellUninitialized;
   const bool single_class = class_cell || mode == FixtureCase::kAnonymousSingleClass || mode == FixtureCase::kAnonymousClassRead;
@@ -183,9 +186,16 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
         }
       }
       if (mixed) {
-        op(abc::Opcode::kLDHOLE); op(abc::Opcode::kSTA_V8); body.push_back(0);
+        if (derived_declaration) load(false, 0, 0);
+        else op(abc::Opcode::kLDHOLE);
+        op(abc::Opcode::kSTA_V8); body.push_back(0);
         op(abc::Opcode::kDEFINECLASSWITHBUFFER_IMM8_ID16_ID16_IMM16_V8);
-        body.insert(body.end(), {0, 5, 0, 6, 0, 0, 0, 0}); store(1);
+        body.insert(body.end(), {0, 5, 0, 6, 0, 0, 0, 0});
+        for (unsigned i = 0; i < class_copies; ++i)
+          body.insert(body.end(), {static_cast<std::uint8_t>(abc::Opcode::kSTA_V8), 0,
+              static_cast<std::uint8_t>(abc::Opcode::kLDA_V8), 0});
+        if (class_split) body.insert(body.end(), {static_cast<std::uint8_t>(abc::Opcode::kJMP_IMM8), 2});
+        store(1);
         op(abc::Opcode::kSTA_V8); body.push_back(0);
       }
       if (captured) {
@@ -296,11 +306,19 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
   }
   std::vector<std::uint8_t> constructor_body{static_cast<std::uint8_t>(abc::Opcode::kRETURNUNDEFINED)};
   if (mixed) {
-    if (class_binding) {
+    if (class_binding && class_declaration != ClassDeclarationCase::kSafe && !derived_declaration) {
       const auto guard = static_cast<std::uint16_t>(abc::Opcode::kTHROW_UNDEFINEDIFHOLEWITHNAME_PREF_ID16);
       constructor_body = {static_cast<std::uint8_t>(abc::Opcode::kLDLOCALMODULEVAR_IMM8), 1,
           static_cast<std::uint8_t>(guard), static_cast<std::uint8_t>(guard >> kByteBits),
           8, 0, static_cast<std::uint8_t>(abc::Opcode::kRETURN)};
+    }
+    if (derived_declaration) {
+      constructor_body = {static_cast<std::uint8_t>(abc::Opcode::kCREATEEMPTYARRAY_IMM8), 0,
+          static_cast<std::uint8_t>(abc::Opcode::kSTA_V8), 0,
+          static_cast<std::uint8_t>(abc::Opcode::kLDA_V8), 1,
+          static_cast<std::uint8_t>(abc::Opcode::kSUPERCALLSPREAD_IMM8_V8), 0, 0,
+          static_cast<std::uint8_t>(abc::Opcode::kRETURN)};
+      bytes[kConstructorCode - 4] = 1;
     }
     if (class_cell) {
       constructor_body = {static_cast<std::uint8_t>(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0,
@@ -349,7 +367,7 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
   }
   if (mixed) {
     auto constructor = entry; constructor.offset = {kConstructor}; constructor.name = class_binding && mode != FixtureCase::kClassBindingMismatch ? "snapshot" : "Box"; constructor.name_utf16_length = constructor.name.size();
-    constructor.code = abc::CodeInfo{{kConstructorCode - 4}, {kConstructorCode}, 0, 3, static_cast<std::uint32_t>(constructor_body.size()), 0};
+    constructor.code = abc::CodeInfo{{kConstructorCode - 4}, {kConstructorCode}, derived_declaration ? 1U : 0U, 3, static_cast<std::uint32_t>(constructor_body.size()), 0};
     index.methods.push_back(constructor);
   }
   index.records.push_back(record);
@@ -361,6 +379,7 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
   const auto classes = std::get<analysis::ClassMethodSites>(analysis::ClassMethodSites::Build(*file, header, index, lookup));
   source::RouteInputIdentity identity; identity.profile = header.profile;
   identity.abc_version = header.version; identity.file_size = header.file_size;
+  if (derived_declaration) identity.contract = source::SourceContract::kLanguageConstructorsV1;
   if (mode == FixtureCase::kPublishedCaptureV1) identity.contract = source::SourceContract::kLanguageAndHostV1;
   if (inspect_prefix) {
     const auto loaded = source::ReadFunctionValues(*file,header,index,{0},identity,
@@ -483,6 +502,17 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
 }
 int main(int argc, char** argv) {
   const std::string_view mode = argc > 1 ? argv[1] : "";
+  if (mode == "--class-declaration" || mode == "--class-declaration-outer-read" || mode == "--class-declaration-derived") {
+    const auto profile = argc > 2 && std::string_view(argv[2]) == "1202" ? abc::ProfileId::kDynamic1202 :
+        argc > 2 && std::string_view(argv[2]) == "1301" ? abc::ProfileId::kDynamic1301 : abc::ProfileId::kDynamic1206;
+    const auto copies = argc > 3 ? static_cast<unsigned>(std::stoul(argv[3])) : 0;
+    Check(copies <= 3);
+    std::cout << Recover(FixtureCase::kClassBinding, profile, false, DirectDefault::kAbsent,
+        mode == "--class-declaration" ? ClassDeclarationCase::kSafe :
+            mode == "--class-declaration-derived" ? ClassDeclarationCase::kDerived : ClassDeclarationCase::kOuterRead,
+        copies, argc > 4 && std::string_view(argv[4]) == "split");
+    return 0;
+  }
   if (mode == "--direct-default-function" || mode == "--direct-default-class") {
     const auto profile = argc > 2 && std::string_view(argv[2]) == "1202" ? abc::ProfileId::kDynamic1202 :
         argc > 2 && std::string_view(argv[2]) == "1301" ? abc::ProfileId::kDynamic1301 : abc::ProfileId::kDynamic1206;

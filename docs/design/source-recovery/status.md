@@ -12,6 +12,61 @@
 
 ## 当前阶段
 
+### 2026-10-06：共同词法证明驱动的原生 class 声明
+
+- 基线f0eda36b，生产规则142。TreePrinter对真实可写声明的直接ClassExpr
+  initializer复用原ClassNames词法计划，名称与真实runtime name一致且新增
+  class-self scope不遮蔽任何真实引用时输出原生class声明。外层仍可写，
+  创建/heritage/字段/方法求值及TDZ时机保持；const目的、同名可写module/
+  capture引用、heritage冲突、未知body和不匹配的名称仍采用原表达式。
+  default export不变成hoisted声明，不删除父类品牌、receiver或异常证明。
+- 类body/derived header共用ClassCreation/ClassPart及原action stack，保留
+  原ClassExpr/DeclarationStmt、initializer ExprId和descendant printer位置。
+  未新增opcode序列、PC/register、同块/邻接、固定producer/count/图形或样本
+  准入。复制/拆块后仍需保存原创建时点的temp/alias继续由原共同值流输出；
+  尚未融合的alias是表示缺口，不是语言不允许原生class。名称比较是必要
+  语法/可观察name边界；语义义务/成本与规范来源已更新对应设计文档。
+- 新class_declarations_source_test实际通过三profile的54份base/derived
+  ABC解码模块及468组独立ESM对照。覆盖0/1/3 COPY与纯拆块、namespace/
+  entry TDZ、重复evaluate、外层类binding写入和旧class身份；constructor
+  同名外层引用反例保留匿名class，不能被immutable self替换。派生模块
+  使用显式语言构造合同，验证普通/bound/Proxy/null/非法父类、prototype
+  getter原throw、原constructor throw/对象return、替代new.target及创建后
+  更换父类为Proxy；super仍取当前父类且丢弃原未转发实参。
+- 6个先解析的有效JS mutation检出错误self scope、hoisting/调用边界、
+  名称/绑定值、冻结super父类及错误转发额外实参；const目的和initializer/
+  statement真实范围另验。旧规则下实际RED表示断言失败，red-test-1.log
+  与red-source-2.mjs保留。派生oracle初把extends-null constructor原型误当
+  null，按ECMAScript 2024的Function.prototype规则修正后通过，未改变生产
+  语义；原ClassNames的heritage/capture/unknown-body与200/201/400/800规模
+  检查也继续通过。CTest当前570项。
+- 单一-j4构建两个engines及12个相关target退出0，build handle均关闭后
+  测试。首批6/6通过；较广final-tests-1为28/31，final-tests-2为34/36，
+  失败均是要求旧匿名/let-class表示的断言。更新原高层class表示期待后，
+  EntryAbility生命周期、ViewModel、CardArray/Breakpoint及Backup等独立
+  行为通过。更新两个旧测试时曾误写EntryAbility名称，分别改为实际
+  EntryBackupAbility/PushMessageAbility；最终两项final-tests-4为2/2，
+  2.46秒通过。36项定向回归现均有当前生产代码的成功证据，非单次36/36。
+  日志/tmp/abcd-class-declaration-final-build-1.log、final-tests-2.log及
+  final-tests-4.log；源码语法与git diff --check检查通过。
+- 固定五ABC/六模式30次ABC-only正式导出退出0，实际SHA-256/size与既有
+  paired index一致、ValueTree且非legacy，每模式106份源码语法通过；对比
+  规则141 boolean-domain-pass-3，54/68/68/62/78/78份实际源码改为更自然
+  class表示，无complete回退。完整/partial仍80/26、95/11、96/10、88/18、
+  105/1、106/0，每模式另46个no-module。当前产物
+  build/stage-one/class-declarations-<mode>-pass-1；日志/summary为
+  /tmp/abcd-class-declaration-batch-1.log及*-summary-1.json。
+- 各模式212份既有位置JSON文件逐字不变；这些文件仍声明entry_only或
+  partial_methods/complete:false，若干完整record的位置列表为空，不能把
+  文件计数当作完整来源映射证明。原节点在printer的位置另由定向树检查
+  验证；DFX与完整mapping工作继续按原约定暂缓。新增决策复用一次名称
+  计划，每声明至多常数次O(log C)查询及实际字符串比较，没有按变量重扫
+  CFG或class body，没有新增依赖或全局数据表，不称RSS/benchmark已实测。
+- 本次实际改善类/模块源码表示；没有关闭instance fields/globals/完整
+  signatures/body结构gate或其余record独立验收，不清除structure_only。
+  阶段一Goal继续active。全套、expanded corpus、RSS/benchmark、agents、
+  scheduler/DFX和周期审计保持暂停。
+
 ### 2026-10-06：三个模型的完整构造、字段及保留回调验收
 
 - 基线baca6e0b，生产规则仍141。扩展既有paired_model_record_source_test，

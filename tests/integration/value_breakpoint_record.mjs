@@ -28,7 +28,7 @@ assert.match(report.source, /constructor\(sm, md, lg\)/);
 assert.match(report.source, /getValue\(currentBreakpoint\)/);
 assert.doesNotMatch(report.source, /INCOMPLETE|UNRECOVERED|let \$value|\(\{\["BreakpointType"\]/);
 assert.match(pairedText, /export class BreakpointType/);
-assert.match(report.source, /let BreakpointType = class \{/);
+assert.match(report.source, /class BreakpointType \{/);
 assert.match(report.source, /^import \{ BreakpointConstants \}/);
 for (const field of ['sm', 'md', 'lg']) assert.match(report.source, new RegExp(`this\\.${field} = ${field}`));
 assert.match(report.source, /export \{ BreakpointType as "BreakpointType" \}/);

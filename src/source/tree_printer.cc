@@ -32,11 +32,11 @@
 namespace abcd::source {
 namespace {
 using Error = TreePrintError;
-enum class ClassPrintForm { kExpression, kInferredExpression, kNamedExpression, kDerivedBody };
+enum class ClassPrintForm { kExpression, kInferredExpression, kNamedExpression, kDeclaration, kDerivedBody };
 std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassPart(
     const ClassTree&, std::ostream&, EmitBudget, analysis::SemanticBudget,
     const GlobalScope*, std::size_t, ClassPrintForm, const ClassCaptureDestination* = nullptr);
-struct DerivedClassBody { std::shared_ptr<const ClassTree> definition; ExprId expression; bool inferred = false; bool named = false; };
+struct DerivedClassBody { std::shared_ptr<const ClassTree> definition; ExprId expression; ClassPrintForm form; };
 struct EndExpression { ExprId id; };
 struct NoInferredName {};
 struct DefaultInferredName {};
@@ -787,37 +787,41 @@ class TreePrinter {
   void Expression(EmptyArrayExpr) { Append("[]"); }
   void Expression(EmptyObjectExpr) { Append("({})"); }
   void Expression(const ClassExpr& node, ExprId expression, NameContext inferred_name = {}) {
+    if (!node.definition) throw Error::kUnsupportedContext;
+    // Identifier initialization/assignment performs NamedEvaluation without
+    // adding an immutable inner class binding. Other naming contexts use the
+    // common lexical plan, which proves no actual reference is shadowed.
+    const bool inferred = ContextName(inferred_name) == node.definition->name;
+    const auto name = class_names_.Lookup(*node.definition); Step(name.work);
+    ClassCreation(node, expression, inferred ? ClassPrintForm::kInferredExpression :
+        name.named ? ClassPrintForm::kNamedExpression : ClassPrintForm::kExpression);
+  }
+  void ClassCreation(const ClassExpr& node, ExprId expression, ClassPrintForm form) {
     // Only the already composed module root admits class definitions here.
     // Member families own their external root evidence. The already checked
     // parent syntax is passed explicitly, without recovering scope/CFG here.
     // Classes inside descendant functions still need their own composition.
     if ((family_ && !ModuleBody()) || !node.definition || node.definition->identity != Tree().identity ||
         node.definition->creation.creator != Tree().method) throw Error::kUnsupportedContext;
-    // Identifier initialization/assignment performs NamedEvaluation without
-    // adding an immutable inner class binding. Reuse that language context
-    // only when its actual printed spelling gives the original runtime name.
-    // Other destinations can use an explicit name only after the common
-    // lexical plan proves that its added self scope shadows no actual use.
-    const bool inferred = ContextName(inferred_name) == node.definition->name;
-    const auto name = class_names_.Lookup(*node.definition); Step(name.work);
-    const bool named = !inferred && name.named;
     if (node.heritage) {
       if (!node.definition->DraftPrepared() || node.definition->callable != CallableKind::kDerivedConstructor)
         throw Error::kUnsupportedContext;
-      if (named) { Append("(class "); Identifier(node.definition->name); Append(" extends ("); }
+      if (form == ClassPrintForm::kNamedExpression || form == ClassPrintForm::kDeclaration) {
+        Append(form == ClassPrintForm::kDeclaration ? "class " : "(class ");
+        Identifier(node.definition->name); Append(" extends (");
+      }
       else {
-        if (!inferred) { Append("({["); Quoted(node.definition->name); Append("]: "); }
+        if (form == ClassPrintForm::kExpression) { Append("({["); Quoted(node.definition->name); Append("]: "); }
         Append("class extends (");
       }
-      Push(DerivedClassBody{node.definition, expression, inferred, named}); Push(*node.heritage);
-    } else ClassPart(*node.definition, inferred ? ClassPrintForm::kInferredExpression :
-        named ? ClassPrintForm::kNamedExpression : ClassPrintForm::kExpression, expression);
+      Push(DerivedClassBody{node.definition, expression, form}); Push(*node.heritage);
+    } else ClassPart(*node.definition, form, expression);
   }
   void Run(const DerivedClassBody& body) {
     Append(")");
     ClassPart(*body.definition, ClassPrintForm::kDerivedBody, body.expression);
-    if (body.named) Append(")");
-    else if (!body.inferred) { Append("})["); Quoted(body.definition->name); Append("]"); }
+    if (body.form == ClassPrintForm::kNamedExpression) Append(")");
+    else if (body.form == ClassPrintForm::kExpression) { Append("})["); Quoted(body.definition->name); Append("]"); }
   }
   void ClassPart(const ClassTree& definition, ClassPrintForm form, ExprId expression) {
     const ClassCaptureDestination parent{Tree(), expression};
@@ -1174,6 +1178,22 @@ class TreePrinter {
       Push(std::string_view(creation ? ");" : ";"));
       Push(ExpressionOperand{*node.initializer, {}, DefaultInferredName{}});
       return;
+    }
+    const auto& binding = Tree().symbols[node.symbol.value];
+    if (node.initializer && binding.declaration == DeclarationKind::kLet) {
+      const auto* created = std::get_if<ClassExpr>(&Tree().expressions[node.initializer->value].expression);
+      if (created && created->definition && Tree().names[binding.name.value] == created->definition->name) {
+        const auto name = class_names_.Lookup(*created->definition); Step(name.work);
+        if (name.named) {
+          // ECMA-262 class declarations keep the writable outer let binding
+          // and creation/TDZ timing. Their added immutable self scope is safe
+          // only after the common lexical plan; const destinations stay const.
+          // Preserve the original initializer ID and descendant source maps.
+          BeginExpression(*node.initializer);
+          ClassCreation(*created, *node.initializer, ClassPrintForm::kDeclaration);
+          return;
+        }
+      }
     }
     switch (Tree().symbols[node.symbol.value].declaration) {
       case DeclarationKind::kLet: Append("let "); break;
@@ -1557,8 +1577,8 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
     // export read inside a method. The wrapper is never exposed to user code.
     if (member_gaps) append("/* INCOMPLETE class: unrecovered members */\n");
     if (form == ClassPrintForm::kExpression) { append("({["); name(); append("]: class {\n"); }
-    else if (form == ClassPrintForm::kNamedExpression) {
-      append("(class ");
+    else if (form == ClassPrintForm::kNamedExpression || form == ClassPrintForm::kDeclaration) {
+      append(form == ClassPrintForm::kDeclaration ? "class " : "(class ");
       for (const auto unit : tree.name) {
         const char byte = static_cast<char>(unit); append(std::string_view(&byte,1));
       }

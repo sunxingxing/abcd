@@ -1,5 +1,13 @@
 # 验收、证据与实施交接
 
+2026-10-06补充：规则142的原生class声明复用共同ClassNames词法证明，
+保持可写外层绑定、TDZ、真实runtime name及原创建/heritage求值时机。
+const、同名外层binding引用、未知body和未融合snapshot继续原表达式表示。
+三profile实际解码的54份完整模块有468组独立行为对照及6个有效JS mutation；
+两个主Ability、Backup/Push、三个模型、ViewModel、CardArray/Breakpoint等
+原整record受控验收继续通过。固定六模式各54/68/68/62/78/78份源码表示
+改善，不增加完整record数量，不替代其余记录或原结构gate。证据见status.md。
+
 状态：历史完整验收规格。2026-09-28 按 [部分输出设计](function-tree-output.md) 调整：
 相关定向单元/集成和受控完整生成 JS 行为测试已恢复；全量测试、基准和 RSS 仍暂停。
 部分源码允许带标记输出，不要求先取得 Validated/Published 状态；新增预算与发布审计

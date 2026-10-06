@@ -1820,3 +1820,25 @@ the project's existing SSA identity projection and Kahn/must-reach analyses.
 Scoped 200/201/geometric checks cover original binding families as well as
 fusion. Their existing discovery/prefix/flow costs remain part of total work;
 physical RSS and full-corpus benchmarks remain paused and unverified.
+
+### Native class declarations (2026-10-06, rules 142)
+
+TreePrinter reuses the existing ClassNames lexical-scope proof for a direct
+class initializer in writable declaration storage. The printed destination
+must preserve the actual runtime name; the added immutable self scope must
+shadow no real module/capture/global/heritage reference. Const destinations,
+unknown bodies and unsafe names retain their original expression form. The
+original AST, initializer ID, evaluation time, captures and descendant printer
+remain the owners of semantics and source events. This uses ECMAScript 2024
+[ClassDefinitionEvaluation](https://tc39.es/ecma262/2024/multipage/ecmascript-language-functions-and-classes.html#sec-runtime-semantics-classdefinitionevaluation)
+and BindingClassDeclarationEvaluation, implemented locally with no new library
+or copied third-party implementation; existing project licensing is unchanged.
+
+For D declarations, C class candidates and total compared spelling length L,
+the additional syntax decision costs O(D log(C+1) + L). ClassNames is planned
+once, its existing ordered lookup is reused, and no declaration walks a CFG or
+member body again. The new form is a fixed enum alternative in the existing
+printer action stack; it adds no class/variable-sized inventory. Existing
+allocation, output and work accounting remains in the shared printer. Tests
+cover decoded copies/splits and the existing 200/201/400/800 lexical-plan
+scaling; these are correctness/work-growth evidence, not measured process RSS.

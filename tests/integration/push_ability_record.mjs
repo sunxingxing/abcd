@@ -17,7 +17,7 @@ assert.equal(serviceReport.source_complete, true); assert.equal(serviceReport.le
 assert.equal(serviceReport.route, 'value_tree');
 const reference = stripTypeScriptTypes(readFileSync(pairedPath, 'utf8'));
 const serviceReference = stripTypeScriptTypes(readFileSync(join(dirname(pairedPath), '../service/VoipCallService.ts'), 'utf8'));
-assert.match(report.source, /class extends \(UIAbility\)/);
+assert.match(report.source, /class PushMessageAbility extends \(UIAbility\)/);
 assert.match(report.source, /super\(\.\.\./);
 assert.match(report.source, /receiveMessage\(/);
 assert.match(report.source, /\.then\(/);

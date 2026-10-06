@@ -175,10 +175,9 @@ try {
     assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, false);
     assert.equal(record.source_route, 'value_tree');
     const source = readFileSync(join(temporary, app, record.source), 'utf8');
-    // Record classes use their module binding's native NamedEvaluation. A
-    // discarded read of their fixed own prototype must not force a carrier
-    // variable/computed-property naming wrapper into source representation.
-    assert.match(source, new RegExp(`\\blet ${name} = class \\{`));
+    // Safe class-self scopes use native declarations. A discarded own
+    // prototype read must not force a carrier or naming wrapper.
+    assert.match(source, new RegExp(`\\bclass ${name} \\{`));
     assert.doesNotMatch(source, /^\$value\d+\.prototype;$/m);
     const paired = stripTypeScriptTypes(readFileSync(join(root, app, paths.get(entity)), 'utf8'));
     const exercise = entity === 44106 ? tabs : entity === 30839 ? cards : s => models(s, name, dependency, field, methods);

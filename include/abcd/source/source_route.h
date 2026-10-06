@@ -319,7 +319,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // context, preserving body ownership, runtime name and module lifetime.
 // Rules 141 preserve exact Boolean through common value-flow copies/joins;
 // source predicate projection keeps effect, ownership and exception proofs.
-inline constexpr std::uint32_t kRouteEvidenceRules = 141;
+// Rules 142 project native class declarations only through the common lexical
+// self-scope proof, preserving outer mutability, creation timing and origins.
+inline constexpr std::uint32_t kRouteEvidenceRules = 142;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,
