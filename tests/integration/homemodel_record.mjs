@@ -1,11 +1,18 @@
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { stripTypeScriptTypes } from 'node:module';
 import vm from 'node:vm';
+import {verifyHomeModel} from './homemodel_observation.mjs';
 const [tool, root] = process.argv.slice(2);
+const identity = JSON.parse(readFileSync(new URL('../corpus/abc-index.json', import.meta.url))).entries.find(row =>
+  row.corpus_id === 'paired' && row.relative_path === 'Immersive/modules.abc');
+const input = readFileSync(join(root, 'modules.abc'));
+assert.ok(identity);assert.equal(input.length,identity.size);
+assert.equal(createHash('sha256').update(input).digest('hex'),identity.sha256);
 const prefix = '@normalized:N&&&';
 const records = [
   [7395, `${prefix}commons/Index&1.0.0`, 'commons/src/main/ets/utils/Breakpoint.ts'],
@@ -76,6 +83,7 @@ try {
   const run = spawnSync(tool, [join(root, 'modules.abc'), destination, '--value-source'], {encoding: 'utf8', timeout: 60_000});
   assert.equal(run.status, 0, run.stderr + run.stdout);
   const manifest = JSON.parse(readFileSync(join(destination, 'manifest.json'), 'utf8'));
+  assert.equal(manifest.sha256,identity.sha256);assert.equal(manifest.source_route,'value_tree');
   const actual = new Map(), expected = new Map();
   for (const [entity, specifier, paired] of records) {
     const record = manifest.records.find(row => row.entity === entity);
@@ -93,5 +101,6 @@ try {
     expected.set(specifier, stripTypeScriptTypes(readFileSync(join(root, 'Immersive_src', paired), 'utf8')));
   }
   assert.deepEqual(await exercise(actual), await exercise(expected));
+  console.log(JSON.stringify(await verifyHomeModel(actual.get(records[2][1]), expected.get(records[2][1]))));
   console.log('Generated Breakpoint/HomeConstants/HomeModel/HomeViewModel chain passed paired execution');
 } finally { rmSync(temporary, {recursive: true, force: true}); }

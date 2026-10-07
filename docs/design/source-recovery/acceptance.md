@@ -1,5 +1,17 @@
 # 验收、证据与实施交接
 
+2026-10-07 HomeModel补充：当前rules164默认ValueTree，固定ABC与manifest
+内容身份核对，原四record实际连接保留。record16474增加20组同步/延迟/
+重复/稀疏/200及201项独立行为；icon getter期间更换模块导出与push，
+旧callee/后续新callee、live import及lexical receiver符合配对源码。
+46个实际观察逐点五种任意原异常共230组，保留partial item状态和对象
+身份。25组独立pinned构造赋值/原异常检查覆盖foreign new.target、字段
+setter及init getter/call；Node initialized field的DefineField不作为
+Ark assignment oracle。AST检查native高层表示，四有效JS错误变异检出。
+相关3/3定向回归与最终新增变异1/1通过；这扩充指定record证据，仍不代表
+所有record、平台或原结构集成门槛已完成。详见status.md当前小节。
+
+
 2026-10-07规则164：源级Local与私有存储共用首次完成/全部观察/词法
 包含证明，恢复原赋值发生处的let initializer。真实let不推const或删
 存储；capture在创建处观察且逃逸cell保留原activation，模块alias保留。

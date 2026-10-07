@@ -12,6 +12,41 @@
 
 ## 当前阶段
 
+### 2026-10-07：HomeModel 回调、成员调用及构造赋值独立验收
+
+- 从干净7e61f9b4继续。上一轮仅复核已有构造模式，按无进展处理；本轮
+  补齐真实record16474的回调观察缺口，未改变生产恢复或rules164。原
+  HomeModel测试覆盖正常四record连接，但未覆盖延迟重复callback与资源
+  getter期间的callee/live import变化。复用该测试和独立配对源码，不建
+  新报告层；ABC SHA/size与manifest身份核对，生成进程结束后才读参考。
+- 新homemodel_observation实际执行完整生成initTabBarList、getTabBarList
+  与arrow。20组0/1/3/200/201、稀疏、同步/逆序延迟/重复回调检查；borrowed
+  receiver与错误callback receiver保留lexical this。icon getter期间换绑
+  HomeConstants并更换push，验证已取得callee不重读、随后调用读新callee，
+  activeIcon读取新的live import。逐项保留对象/资源身份、fresh item、
+  属性顺序/descriptor、方法name/arity与结果；不靠空对象deepEqual判身份。
+- 延迟重复场景46个实际观察逐点注入undefined/null/0/Symbol/object，
+  共230组原异常/partial item状态对照；断言指定fault确实到达。另25组
+  构造检查以独立pinned PutValue顺序验证new.target prototype读取、字段
+  setter、init getter/call及各点原异常；不拿Node DefineField作为该边界
+  oracle。构造里的动态方法查找在这个子测试为受控边界，真实方法正文由
+  前述配对执行及原四record测试覆盖。
+- AST单独验证native class/method、map/arrow/push/object/array表示；复用
+  已固定Acorn8.15.0的class_reference，CTest增加--expose-internals。
+  三个callback/resource有效JS错误变异及一个DefineField替代assignment
+  变异均检出。仅测试内用AST选择变异点；生产无样本、名称、图形或同块匹配。
+- abc_structure构建通过，HomeModel、shopping十record及record import
+  三项3/3通过26.51秒；最后新增constructor mutation后HomeModel1/1通过
+  2.33秒。node --check与git diff --check通过。日志
+  /tmp/abcd-homemodel-{build,targeted,observation-first,observation-final,
+  mutation-final}.log。默认ValueTree当前生成，输入未改动。
+- 这是HomeModel独立行为/表示证据扩充，不增加源码覆盖数量，不以受控
+  依赖测试宣布完整平台或阶段一完成。其余record全正文/表示、一般SSA
+  存储及原fields/globals/signature/body gate仍开放。Goal active；full
+  suite、expanded corpus、RSS/benchmark、DFX、scheduler、agents及周期
+  audit继续暂停。源码位置映射缺口已确认但不作为本轮功能前置工作。
+
+
 ### 2026-10-07：规则164，源级局部变量及捕获 cell 的初始化声明
 
 - 从干净5d39ca87继续；上一轮完成四ViewModel验收，属于实际进展。
