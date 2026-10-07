@@ -68,13 +68,16 @@ class FlowBuilder {
     RequireTree(definitions_.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
     const auto point=New({FlowEventKind::kDefinition,{},FlowDefinitionId{static_cast<std::uint32_t>(definitions_.size())}});
     events_[point.value].discarded=discarded;
-    definitions_.push_back({point,binding,kind,copy,value,declaration,write,effect});return point;
+    definitions_.push_back({point,Resolve(binding),kind,copy,value,declaration,write,effect});return point;
   }
   void Link(Point from,Point to,FlowCompletion completion=FlowCompletion::kNormal) {
     budget_.Step();edges_.push_back({from,to,completion,events_[to.value].incoming,events_[from.value].outgoing});
     events_[to.value].incoming=events_[from.value].outgoing=edges_.size()-1;
   }
-  SymbolId Resolve(SymbolId symbol) const {return projection_.aliases[symbol.value].value_or(symbol);}
+  SymbolId Resolve(SymbolId symbol) const {
+    const auto value=projection_.aliases[symbol.value].value_or(symbol);
+    return projection_.storage.empty()?value:projection_.storage[value.value].value_or(value);
+  }
   void ProjectedReads() {
     reads_.resize(tree_.expressions.size());read_states_.resize(tree_.expressions.size());
     std::pmr::vector<ExprId> path(&memory_);
@@ -131,7 +134,7 @@ class FlowBuilder {
         const auto declaration=initializers_[at.id.value];
         const auto kind=declaration?FlowDefinitionKind::kInitializer:FlowDefinitionKind::kAssignment;
         const bool inert=!projection_.private_bindings.empty() &&
-            projection_.private_bindings[target->symbol.value] && projection_.normal_stores[at.id.value];
+            projection_.private_bindings[Resolve(target->symbol).value] && projection_.normal_stores[at.id.value];
         normal=Define(target->symbol,kind,copied,assignment->value,declaration,at.id,
             inert?FlowWriteEffect::kInert:FlowWriteEffect::kObservable,context.discarded);Link(normal,context.next);
         required=!inert || kind==FlowDefinitionKind::kInitializer;
@@ -157,7 +160,7 @@ class FlowBuilder {
     VisitExpressionChildren(tree_,node,[&](ExprId child){budget_.Step();children.push_back(child);});
     auto next=effect;
     if(const auto* update=std::get_if<UpdateExpr>(&node)) {
-      const auto read=New({FlowEventKind::kRead,update->symbol,{},at.id});events_[read.value].discarded=context.discarded;Link(read,effect);
+      const auto read=New({FlowEventKind::kRead,Resolve(update->symbol),{},at.id});events_[read.value].discarded=context.discarded;Link(read,effect);
       Link(read,context.thrown,FlowCompletion::kThrow);next=read;
     }
     for(auto i=children.rbegin();i!=children.rend();++i)next=Expr(*i,{next,context.thrown,context.finalizer,context.discarded});

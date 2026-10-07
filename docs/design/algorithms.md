@@ -2500,3 +2500,17 @@ including zero-filled indexes and output capacity. There is no per-binding graph
 walk, repeated demand closure or extra graph construction. The two immutable
 proposal stages commit together; the subsequent storage consumer rebuilds its
 facts. Allocation and work accounting include all simultaneously live proposals.
+
+### Committed storage projection and dependent cleanup (rules183)
+
+The existing disjoint storage plan is applied in O(1) per semantic occurrence,
+after immutable alias resolution, just as in the source consumer. No new graph
+solver, dependency or external code is introduced. Each producing pass reports
+whether it changed the projection; declaration projection contributes its actual
+changes too. The final cleanup only runs when these producers changed its input.
+It rebuilds the flow and reuses the shared demand solver and separate elision
+planners. Its costs are the existing N/E/reached-fact bounds, paid once at this
+stage, rather than a graph traversal per binding or per mutation. This finite
+dependency schedule does not establish a global fixed point for repeated storage
+coalescing; that remains an explicit milestone gap. Mutable state is still local
+to a function and no analysis cache survives a projection mutation.

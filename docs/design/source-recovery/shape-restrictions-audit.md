@@ -1894,3 +1894,14 @@ undefined value is therefore not permission to remove its still-used lifetime.
 Both proposals are prepared before the shared projection changes. CompletedStore
 is unchanged; general lifetime movement and live-undefined storage sharing remain
 explicitly unconverted obligations.
+
+## Rules183: all flow occurrences consume the committed storage map
+
+Storage identity is an explicit projection input, separate from immutable aliases.
+The semantic adapter applies it uniformly to reads, assignments and both update
+halves; it never dispatches on sample, block or neighboring operation shape.
+The dependent cleanup stage is triggered by actual producer changes, not counts,
+function names or layout. Old initialization, name and lifetime proofs remain
+unchanged. The adverse test is an ordinary write through an eliminated binding
+followed by a read through its retained slot; pre-storage analysis loses that
+dependency. Both flow facts and independently executed source exercise it.

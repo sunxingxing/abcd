@@ -215,6 +215,44 @@ void SourceEvents() {
     Check(definition.kind==FlowDefinitionKind::kInitializer&&definition.declaration==StmtId{3});initialized=true;
   }
   Check(initialized);
+  // Storage is a current semantic identity, not an immutable value copy.
+  // Updating the removed slot must read and commit the retained binding.
+  std::vector<std::optional<SymbolId>> storage(tree.symbols.size());storage[2]=SymbolId{1};
+  omitted[2]=1;
+  const auto shared=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,
+      {aliases,literals,replacements,omitted,evaluations,normal,native,private_bindings,storage}));
+  unsigned shared_updates=0,shared_reads=0;
+  for(const auto& definition:shared.definitions) {
+    Check(definition.binding!=SymbolId{2});
+    if(definition.kind==FlowDefinitionKind::kUpdate){Check(definition.binding==SymbolId{1});++shared_updates;}
+  }
+  for(const auto& event:shared.events) {
+    Check(event.read!=SymbolId{2});
+    if(event.expression==ExprId{4}&&event.read){Check(event.read==SymbolId{1});++shared_reads;}
+  }
+  Check(shared_updates==1&&shared_reads==1);
+  // A later read through the retained name demands a write through the removed
+  // name. Using the pre-storage graph would falsely classify that write dead.
+  const auto original_update=tree.expressions[4],original_return=tree.expressions[5];
+  tree.expressions.push_back({TreeLiteral{IntegerLiteral{42}},{0}});
+  tree.expressions[4].expression=AssignmentExpr{SymbolTarget{{2}},{6}};
+  tree.expressions[5].expression=SymbolExpr{{1}};
+  replacements.resize(tree.expressions.size());normal.resize(tree.expressions.size());normal[4]=1;
+  evaluations.resize(tree.expressions.size(),ExpressionEvaluation::kRequired);
+  const auto check_storage=[&](bool applied) {
+    const auto current=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,
+        {aliases,literals,replacements,omitted,evaluations,normal,native,private_bindings,
+         applied?std::span<const std::optional<SymbolId>>(storage):std::span<const std::optional<SymbolId>>{}}));
+    const auto demand=std::get<FlowDemand>(AnalyzeFlowDemand(current));bool found=false;
+    for(unsigned i=0;i<current.definitions.size();++i)if(current.definitions[i].write==ExprId{4}) {
+      Check(bool(demand.definitions[i])==applied);found=true;
+    }
+    Check(found);
+  };
+  check_storage(false);check_storage(true);
+  tree.expressions.pop_back();tree.expressions[4]=original_update;tree.expressions[5]=original_return;
+  replacements.resize(tree.expressions.size());normal.assign(tree.expressions.size(),0);
+  evaluations.resize(tree.expressions.size());omitted[2]=0;
   const auto rebuild=[&]() {
     replacements.resize(tree.expressions.size());normal.resize(tree.expressions.size());
     evaluations.resize(tree.expressions.size(),ExpressionEvaluation::kRequired);

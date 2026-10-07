@@ -160,3 +160,11 @@ are omitted. Both proposals commit after analysis; storage then rebuilds its
 facts. No lifetime decision is added to Coalesce, and no extra graph construction
 is required for this dependent proposal. General initializer/lifetime recovery,
 CompletedStore retirement and full pass coordination are still open.
+
+Rules183 prerequisite: the shared flow now projects committed storage identities
+for reads and successful definitions, including both update halves. Producer
+passes report changes; after storage/expression/loop-declaration changes the
+coordinator rebuilds that mapped flow for dependent demand/declaration cleanup.
+Final counts/effects follow this commit. Tests include a write whose later use is
+visible only through the shared identity, plus the erroneous stale-graph deletion.
+This does not complete initialization/lifetime proof or global pass convergence.

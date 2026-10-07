@@ -57,6 +57,9 @@ struct LegacyFlowProjection {
   std::span<const std::uint8_t> normal_stores;
   std::span<const std::optional<BindingInitializer>> initializers;
   std::span<const std::uint8_t> private_bindings;
+  // Applied storage plan, distinct from immutable value aliases. All reads,
+  // successful definitions and update read/write halves use this identity.
+  std::span<const std::optional<SymbolId>> storage;
 };
 struct RecoveryFlow {
   RouteInputIdentity identity;

@@ -230,3 +230,28 @@ bindings that were never written. It does not remove effectful/native initialize
 declarations, implement live-undefined storage sharing, or retire CompletedStore.
 The full revision/invalidation coordinator and post-storage convergence remain
 open; this bounded group provides explicit proposal dependencies and one commit.
+
+## Storage projection and dependent cleanup (rules183)
+
+CurrentFlow now consumes the committed storage map as well as immutable aliases.
+The flow adapter uses the same alias-then-storage identity as printed reads:
+assignments, update reads, successful update commits, copied values and ordinary
+reads all denote the retained slot. Declaration omissions and native initializer
+plans are supplied from the same current projection. Reusing pre-storage facts
+would allow a write through the removed name to be deleted even though a later
+read through the retained name observes it; tests explicitly distinguish this.
+
+Storage merging, stored-result deletion and inert-statement deletion report actual
+changes. The coordinator accumulates those changes with loop declaration changes,
+then reruns demand/definition/binding cleanup after those producers have finished.
+An unchanged projection skips the extra analysis. A changed projection builds a
+fresh mapped flow; no old liveness, demand, effects or write facts cross the commit.
+Final loop entry counts and published evaluation summaries are produced afterwards.
+This is a dependency-driven second stage, not an arbitrary fixed round count or
+a claim that the complete storage/declaration pipeline reaches a global fixed point.
+
+Shared initialization, preserving live undefined at its original occurrence during
+storage sharing, scope activation and CompletedStore retirement remain required.
+The new stage deliberately relies on the existing valid storage plan and does not
+expand its admission conditions. This mapping was a prerequisite for safely
+consuming common facts after storage changes, including future initialization work.

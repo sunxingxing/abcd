@@ -221,9 +221,9 @@ class Initializers {
     ElideStoredResults();
     ForwardSnapshots();
     ElideDeadDefinitions();
-    Coalesce();
-    ElideStoredResults();
-    OmitInertStores();
+    bool cleanup_needed=Coalesce();
+    cleanup_needed |= ElideStoredResults();
+    cleanup_needed |= OmitInertStores();
     for (std::size_t i = 0; i < loops_.initializer_roots.size(); ++i) {
       budget_.Step(); plan_.entry_counts[i + 1] = plan_.entry_counts[i] +
           (plan_.omitted[loops_.initializer_roots[i].statement.value] ? 0 : 1);
@@ -246,16 +246,25 @@ class Initializers {
       if (declaration) plan_.loop_declarations[i] = first;
       for (auto at = entry->first; at < entry->end; ++at) {
         budget_.Step(); const auto root = loops_.initializer_roots[at].statement;
-        if (at < first) plan_.statements[root.value].reset();
+        if (at < first) {
+          cleanup_needed |= plan_.statements[root.value].has_value();
+          plan_.statements[root.value].reset();
+        }
         else if (!plan_.omitted[root.value]) {
           const auto symbol = plan_.statements[root.value]->symbol;
+          cleanup_needed |= plan_.statements[root.value]->declaration != DeclarationKind::kLet;
           plan_.statements[root.value]->declaration = DeclarationKind::kLet;
+          cleanup_needed |= !plan_.omitted[uses_[symbol.value].declaration->value];
           plan_.omitted[uses_[symbol.value].declaration->value] = 1;
         }
       }
     }
-    ElideStoredResults();
-    OmitInertStores();
+    cleanup_needed |= ElideStoredResults();
+    cleanup_needed |= OmitInertStores();
+    // Storage and loop declaration projection are now final. Rebuild the
+    // semantic identities before the dependent demand/declaration cleanup;
+    // pre-coalescing facts cannot authorize deletion of a shared-slot write.
+    if(cleanup_needed)ElideDeadDefinitions();
     for (std::size_t i = 0; i < loops_.initializer_roots.size(); ++i) {
       budget_.Step(); plan_.entry_counts[i + 1] = plan_.entry_counts[i] +
           !plan_.omitted[loops_.initializer_roots[i].statement.value];
@@ -265,15 +274,19 @@ class Initializers {
     return Finish();
   }
  private:
-  void OmitInertStores() {
+  bool OmitInertStores() {
     const auto evaluations = AnalyzeEvaluations();
+    bool changed=false;
     // A projected store whose remaining result is inert needs no discarded
     // statement. Keep value-observed occurrences and every remaining effect.
     for (std::size_t i = 0; i < tree_.statements.size(); ++i) {
       budget_.Step(); const auto* effect = std::get_if<ExpressionStmt>(&tree_.statements[i].statement);
       if (effect && plan_.replacements[effect->expression.value] &&
-          evaluations[effect->expression.value] == ExpressionEvaluation::kInert) plan_.omitted[i] = 1;
+          evaluations[effect->expression.value] == ExpressionEvaluation::kInert && !plan_.omitted[i]) {
+        plan_.omitted[i] = 1;changed=true;
+      }
     }
+    return changed;
   }
   std::size_t ProjectionCapacity() {
     // Each expression has at most one direct binding observation. Capture
@@ -402,7 +415,7 @@ class Initializers {
       budget_.Step();private_bindings[i]=tree_.symbols[i].kind==BindingKind::kCompilerTemporary && !uses_[i].escaped;
     }
     const LegacyFlowProjection projection{plan_.aliases,plan_.literals,plan_.replacements,
-        plan_.omitted,evaluations,stores.normal_stores,plan_.statements,private_bindings};
+        plan_.omitted,evaluations,stores.normal_stores,plan_.statements,private_bindings,plan_.storage};
     auto built=BuildRecoveryFlow(tree_,projection,budget_.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&built))throw *error;
     auto flow=std::get<RecoveryFlow>(std::move(built));
@@ -444,7 +457,7 @@ class Initializers {
           std::get<AssignmentExpr>(tree_.expressions[write.value].expression).value;
     }
   }
-  void Coalesce() {
+  bool Coalesce() {
     const auto eligible = [&](SymbolId symbol) {
       const auto& use = uses_[symbol.value];
       return use.private_storage && use.declaration && !use.escaped && !use.outside_body &&
@@ -460,7 +473,7 @@ class Initializers {
       // projected expression model, never from its original local syntax.
       candidate |= target && eligible(target->symbol);
     }
-    if (!candidate) return;
+    if (!candidate) return false;
     auto flow=CurrentFlow();
     auto live=AnalyzeFlowLiveness(flow,budget_.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&live))throw *error;
@@ -516,14 +529,16 @@ class Initializers {
           (use.store && completion_order_[use.store->value] < completion_order_[occurrence.value]);
       if (!visible[i] || !RootLifetime(root, occurrence) || !initialized || !native_ready) blocked[targets[i].value] = 1;
     }
+    bool changed=false;
     for (std::size_t i = 0; i < proposed.size(); ++i) {
       budget_.Step(); if (!proposed[i] || blocked[i]) continue;
       const auto root = *proposed[i]; const auto& use = uses_[i];
-      plan_.storage[i] = root; plan_.omitted[use.declaration->value] = 1;
+      plan_.storage[i] = root; plan_.omitted[use.declaration->value] = 1;changed=true;
       if (use.initializer) plan_.statements[use.initializer->value].reset();
       if (const auto initializer = uses_[root.value].initializer; initializer && plan_.statements[initializer->value])
         plan_.statements[initializer->value]->declaration = DeclarationKind::kLet;
     }
+    return changed;
   }
   bool MutableBinding(SymbolId symbol) const {
     // Only a native writable declarative binding has an unobservable PutValue.
@@ -539,12 +554,12 @@ class Initializers {
     }
     throw TreeStructureError::kBinding;
   }
-  void ElideStoredResults() {
+  bool ElideStoredResults() {
     // Analysis and proposals observe one immutable projection. Only this
     // commit changes replacements; consumers derive their own current facts.
     const auto facts = AnalyzeStoredResults();
     const auto replacements = PlanStoredResultElisions(facts);
-    ApplyStoredResultElisions(replacements);
+    return ApplyStoredResultElisions(replacements);
   }
   struct StoredResults {
     std::vector<std::optional<SymbolId>> bindings;
@@ -605,16 +620,18 @@ class Initializers {
     }
     return replacements;
   }
-  void ApplyStoredResultElisions(const std::vector<std::optional<ExprId>>& replacements) {
+  bool ApplyStoredResultElisions(const std::vector<std::optional<ExprId>>& replacements) {
     // A proposed outer elision uses the RHS normal-result identity, which is
     // preserved by every inner elision. Thus the batch does not depend on
     // proposal application order; no newly rewritten syntax is re-matched.
+    bool changed=false;
     for (std::size_t i = 0; i < replacements.size(); ++i) {
       budget_.Step();
       if (replacements[i]) {
-        plan_.replacements[i] = replacements[i];
+        plan_.replacements[i] = replacements[i];changed=true;
       }
     }
+    return changed;
   }
   std::vector<ExpressionEvaluation> AnalyzeEvaluations() const {
     std::vector<ExpressionEvaluation> evaluations;

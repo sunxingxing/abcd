@@ -24,6 +24,33 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-07：规则183，共同流图接入存储映射与依赖驱动的后续清理
+
+- 核对CompletedStore后续迁移时发现前提缺口：CurrentFlow尚未消费已提交
+  storage map。若直接开启合并后死定义删除，通过旧绑定写入、通过保留
+  绑定读取的同一存储会被误作两个身份。因此先补齐这条实际状态依赖。
+- LegacyFlowProjection显式携带storage；共同adapter在值别名之后解析
+  存储身份，统一普通读取、定义、copy及update读取/成功写回。写入可观察性
+  同样查询实际目标。没有新增样本、opcode、同块、邻接或图形状分支。
+- Coalesce、stored-result和inert-statement pass报告实际修改，协调器汇总
+  它们及loop声明投影变化。生产者完成且输入改变后，重建映射后的流图，
+  再运行共同需求/定义/声明清理；无修改跳过额外分析。最后更新loop计数、
+  normal-store和效果摘要。无旧分析跨提交复用，也未宣称全局固定点已实现。
+- 流图测试明确验证update两半共用目标，并对照未映射旧图与当前图对
+  必需写入的需求结论。新增完整源码场景：共享存储的后续调用结果写回；
+  独立错误变换保留调用但删除写回，必须发现返回值不同。
+- 完成相关重建，日志/tmp/abcd-rule183-build.log。最终54项相关定向回归
+  全部通过333.65秒，日志/tmp/abcd-rule183-tests.log；详细输出
+  /tmp/abcd-rule183-test-detail.log。存储恢复161份源码/24,980行为/9反例，
+  定义恢复184份源码/2,080行为/3反例，175,616/98,304小图对照，以及
+  200/201/几何增长、arena重排、exact/short预算继续通过。
+- ABC-only导出build/stage-one/storage-projection-rule183仍为
+  10complete/0partial/9noModule；十份源码node --check通过，正文与规则182
+  一致。日志/tmp/abcd-rule183-export.log；没有新增真实record覆盖声明。
+- CompletedStore、共同初始化与绑定activation、活跃undefined共享、完整
+  版本失效协调器及全局收敛仍未完成。本轮仅闭合使用合并后共同事实的
+  必要前提；阶段一Goal、结构gate和既定暂停范围保持。
+
 ### 2026-10-07：规则182，独立声明删除提案消费同一流图与写入delta
 
 - RecoveryFlow增加typed FlowBinding exposure，沿现有adapter接入未逃逸

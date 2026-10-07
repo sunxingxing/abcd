@@ -3,7 +3,7 @@ import {execFileSync} from 'node:child_process';
 import vm from 'node:vm';
 import {parseJavaScript} from './class_reference.mjs';
 const records=execFileSync(process.argv[2],['--emit'],{encoding:'utf8',timeout:60_000,maxBuffer:16*1024*1024}).trim().split('\n').map(JSON.parse);
-assert.equal(records.length,144);
+assert.equal(records.length,156);
 // Oracles describe the original storage semantics, never enter the engine.
 const references=[
   function(input,report,flag){let current=input,scratch=current;++scratch;current=scratch;return current;},
@@ -18,6 +18,7 @@ const references=[
   function(input,report,flag){let current=input,scratch=current;++scratch;report(function(){return current;});current=scratch;return current;},
   function(input,report,flag){let current=input,scratch=current;{let current=100;++scratch;}current=scratch;return current;},
   function(input,report,flag){let current=input,scratch;report(scratch);scratch=current;++scratch;current=scratch;return current;},
+  function(input,report,flag){let current=input,scratch=current;++scratch;scratch=report(scratch);current=scratch;return current;},
 ];
 const primitives=[undefined,null,false,true,0,-0,1,-2,0n,2n,NaN,Infinity,'','7','bad',Symbol('input')];
 let cases=0,mutations=0;
@@ -65,6 +66,11 @@ for(const record of records){
   }
 }
 const scaled=execFileSync(process.argv[2],['--scale'],{encoding:'utf8',timeout:60_000,maxBuffer:16*1024*1024}).trim().split('\n').map(JSON.parse);
+// A stale pre-storage graph would drop this successful write but keep its RHS
+// call. The retained-name read must observe the callback result, not old storage.
+const stale=function(input,report){let current=input;++current;report(current);return current;};
+assert.notDeepEqual(await observe(stale,12,6,'normal',true,'next'),
+    await observe(references[12],12,6,'normal',true,'next'));++mutations;
 assert.deepEqual(scaled.map(test=>test.count),[1,200,201,400,800]);
 assert(scaled.at(-1).work<3*scaled.at(-2).work);
 for(const test of scaled){parseJavaScript(test.source);const fn=vm.runInNewContext(test.source);
