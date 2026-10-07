@@ -24,6 +24,28 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：Home 整 record 行为与表示独立验收
+
+- 将 PageA 的 AST 规范化、模块接口、原生表达式统计和构造参数变体工具
+  提取为 tests/integration/record_style.mjs；新增 Home 表示验收，核对
+  imports、类布局、继承、完整签名、普通方法和原生回调/Promise 调用。
+  复杂方法的调用/构造/属性写入统计仅为表示约束，不能代替行为或顺序证明。
+- Home 原始输出和两种等价表示（构造参数改名、原生 class 声明）分别
+  运行完整 362 情景，共 1,086 次配对行为执行。额外插入不可达循环，
+  362 情景行为保持等价，但表示检查拒绝；原有权限语义错误反例继续拒绝。
+  配对源码只进入测试，生产引擎仍仅接收 ABC，没有样本准入条件。
+- 初次运行缺失 Node --expose-internals，补齐 CTest 参数；随后独立行为
+  对照发现测试重命名工具误改对象属性 params，已区分属性键与绑定引用。
+  首次日志 /tmp/abcd-home-style-tests.log 和
+  /tmp/abcd-home-style-final-tests.log 保留为失败证据。
+- CMake 配置成功，最终 Home/PageA 2/2 通过，3.59 秒：
+  /tmp/abcd-home-style-verified-tests.log、
+  /tmp/abcd-home-style-test-detail.log。PageA 保持 1,422 次配对执行、
+  两种等价表示、三个语义及两个表示反例。git diff --check 通过。
+- 本次仅测试与注册调整，生产规则仍为203；上述收据为模拟宿主下的
+  有界独立行为/表示验收，不是平台执行或全部语料验收。统一变量恢复、
+  全局固定点和完整绑定生命期仍开放，结构 gate 与既定暂停范围不变。
+
 ### 2026-10-08：规则203，共享表达式根身份与显式 RHS 来源运输
 
 - ExpressionFacts 在既有 postorder 计算当前 replacement 链的最终 ExprId；

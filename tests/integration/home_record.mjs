@@ -5,6 +5,7 @@ import {createHash} from 'node:crypto';
 import {dirname, join} from 'node:path';
 import {stripTypeScriptTypes} from 'node:module';
 import vm from 'node:vm';
+import {homeStyle,homeEquivalents} from './home_record_style.mjs';
 const [tool, abc] = process.argv.slice(2);
 assert.equal(createHash('sha256').update(readFileSync(abc)).digest('hex'),
   '854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e');
@@ -17,7 +18,8 @@ const paired = readFileSync(join(dirname(abc),'pasteboard_src/src/main/ets/pages
 const declarations = paired.match(/^    private [A-Za-z_$][\w$]*: [^;=\n]+;$/gm);
 assert.equal(declarations?.length,7);
 const reference = stripTypeScriptTypes(paired.replace(/^    private [A-Za-z_$][\w$]*: [^;=\n]+;\n/gm,''));
-let scenarios = 0;
+homeStyle(report.source,reference);
+let scenarios = 0;const cases=[];
 async function exercise(source, options) {
   const {finalize, granted, auth, uri, deferred, failure, promiseFailure, provided, breakpoint, promises, hasData} = options;
   const trace=[], pending=[], settlers=[], clicks=[], dialogs=[], tags=new WeakMap();
@@ -162,6 +164,7 @@ async function exercise(source, options) {
 }
 const defaults={finalize:true,granted:true,auth:'0',uri:'PageABuilder',deferred:false,failure:'',promiseFailure:'',provided:false,breakpoint:'sm',promises:'thenable',hasData:true};
 async function compare(options,source=report.source) {
+  if(source===report.source)cases.push(options);
   assert.deepEqual(await exercise(source,{...defaults,...options}),await exercise(reference,{...defaults,...options}),JSON.stringify(options));++scenarios;
 }
 for(const finalize of [false,true])for(const granted of [false,true])for(const auth of ['0','1'])
@@ -182,4 +185,23 @@ for(const failure of ['register','super','link','prop','observed','scroller','st
 const changed=report.source.replace('"ohos.permission.READ_PASTEBOARD"','"wrong.permission"');assert.notEqual(changed,report.source);
 assert.doesNotThrow(()=>new vm.SourceTextModule(changed,{context:vm.createContext({})}));
 await assert.rejects(compare({granted:false},changed));
-console.log(`Home complete record: ${scenarios} paired initialization/permission/dialog/UI/capture scenarios passed.`);
+let equivalents=0;
+const baselineCases=[...cases];
+for(const equivalent of homeEquivalents(report.source)) {
+  assert.notEqual(equivalent,report.source);homeStyle(equivalent,reference);
+  for(const options of baselineCases)await compare(options,equivalent);
+  ++equivalents;
+}
+const definition=homeStyle(report.source,reference);
+const render=definition.body.body.find(method=>method.key.name==='initialRender');
+const at=render.value.body.start+1;
+const dispatcher=report.source.slice(0,at)+'while(false){}'+report.source.slice(at);
+new vm.SourceTextModule(dispatcher,{context:vm.createContext({})});
+let styleNeutralCases=0;
+for(const options of baselineCases) {
+  assert.deepEqual(await exercise(dispatcher,{...defaults,...options}),await exercise(reference,{...defaults,...options}));++styleNeutralCases;
+}
+assert.throws(()=>homeStyle(dispatcher,reference),assert.AssertionError);
+console.log(JSON.stringify({record:5521,pairedScenarios:scenarios,equivalentRepresentations:equivalents,
+  styleNeutralCases,semanticMutations:1,representationMutations:1,
+  wholeRecordBehavior:'accepted',wholeRecordStyle:'accepted',platformExecution:false}));
