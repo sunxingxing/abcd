@@ -1224,17 +1224,13 @@ class TreePrinter {
   }
   void PrintOriginalExpression(ExpressionOperand operand) {
     const auto id=operand.id;
-    if(const auto replacement=Initializers().replacements[id.value]) {
-      operand.id=*replacement;operand.value_result=true;Push(operand);return;
-    }
     const auto& expression=Tree().expressions[id.value].expression;
-    if (const auto* sequence = std::get_if<SequenceExpr>(&expression);
-        sequence && Initializers().evaluations[sequence->left.value] == ExpressionEvaluation::kInert) {
-      // Comma obtains a value and suppresses NamedEvaluation. Propagate that
-      // category through projection instead of treating the right as a newly
-      // direct function/class initializer or a typeof unresolved Reference.
-      Push(ProjectSequenceLeft{id}); operand.id = sequence->right;
-      operand.value_result = true; Push(operand); return;
+    if(const auto replacement=Initializers().replacements[id.value]) {
+      // The planner owns elision. Here only associate the removed left's
+      // original range with its value projection; no effect test in printing.
+      if(const auto* sequence=std::get_if<SequenceExpr>(&expression);sequence && *replacement==sequence->right)
+        Push(ProjectSequenceLeft{id});
+      operand.id=*replacement;operand.value_result=true;Push(operand);return;
     }
     if(const auto* read=std::get_if<SymbolExpr>(&expression))if(const auto source=Initializers().aliases[read->symbol.value]) {
       Name(*source);return;

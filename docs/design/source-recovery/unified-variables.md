@@ -584,3 +584,40 @@ changed bookkeeping. Plan fields are still ordinary private C++ members: compile
 time enforcement of every future write, externally persistent analysis handles,
 and a global fixed-point pass dependency graph are not claimed. Original IR,
 activation, motion and declaration-proof migrations remain required.
+
+
+## Discarded operands belong to recovery passes (rules193, 2026-10-08)
+
+ElideInertOperands replaces a comma expression by its right value when the
+shared completion summary proves its left inert. It computes a batch against
+one projection, then commits through the revision/invalidation boundary. It
+retains positive initialization facts: discarded inert evaluation neither writes
+nor throws nor changes activation. GetValue and suppressed NamedEvaluation are
+part of the replacement contract, not inferred from emitted text.
+
+The pass runs after stored-result elimination and before dependent demand,
+snapshot or post-storage/declaration cleanup. Final demand can expose newly
+inert operands, so a final normalization precedes publication. These are explicit
+dependencies in the existing pipeline, not arbitrary repeated rounds or a claim
+of global convergence. Proposal storage is bounded by unprojected sequences;
+traversals are linear in expression count per scheduled invocation.
+
+Previously the printer alone removed these operands, while liveness still saw
+their reads. A private state write feeding only discarded comma operands could
+therefore survive as an unnecessary assignment. Now those references leave the
+same projected RecoveryFlow used by dead-definition analysis. Required RHS
+calls remain at their original position when the resulting dead write is elided.
+
+The printer's effect-based sequence decision is removed. It consumes the shared
+replacement and only maps the removed left subtree's original ranges to the
+normalized value span. The existing value-result path retains receiver, typeof
+GetValue and function/class naming behavior. Class-name ownership also follows
+the same replacement. Original expression identities remain available for source
+mapping; this does not recreate discarded execution.
+
+The new regression combines discarded reads with later dead-write removal,
+nested comma operands, reversed arenas and 0/200/201/400/800 scale. A coercing
+unary operand is the adverse semantic case: Number conversion, object hooks and
+BigInt/Symbol failures must remain. Independent execution compares traces,
+returns and throws; mutants remove required RHS work or coercion. Existing
+sequence/TDZ/receiver/naming/suspension tests remain acceptance evidence.

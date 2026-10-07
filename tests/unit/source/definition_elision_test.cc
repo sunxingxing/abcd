@@ -35,6 +35,8 @@ struct Fixture {
     for(auto& expression:tree.expressions)std::visit([&](auto& node){using T=std::decay_t<decltype(node)>;
       if constexpr(std::is_same_v<T,AssignmentExpr>)node.value=remap(node.value);
       else if constexpr(std::is_same_v<T,CallExpr>)node.callee=remap(node.callee);
+      else if constexpr(std::is_same_v<T,SequenceExpr>){node.left=remap(node.left);node.right=remap(node.right);}
+      else if constexpr(std::is_same_v<T,UnaryExpr>)node.operand=remap(node.operand);
     },expression.expression);
     for(auto& statement:tree.statements)std::visit([&](auto& node){using T=std::decay_t<decltype(node)>;
       if constexpr(std::is_same_v<T,DeclarationStmt>){if(node.initializer)node.initializer=remap(*node.initializer);}
@@ -166,6 +168,31 @@ std::uint64_t EmptyBinding(unsigned form,unsigned count,bool reverse,bool emit) 
   return plan.work;
 }
 
+std::uint64_t DiscardedOperands(unsigned form,unsigned count,bool reverse,bool emit) {
+  Fixture f;auto& tree=f.tree;
+  const auto declaration=f.Stmt(DeclarationStmt{{2},f.Read(1)});
+  const auto store=f.Store(1);auto result=f.Read(1);
+  std::vector<ExprId> sequences;
+  for(unsigned i=0;i<=count;++i) {
+    auto left=f.Read(2);
+    if(form)left=f.Expr(UnaryExpr{TreeUnary::kPlus,left});
+    result=f.Expr(SequenceExpr{left,result});sequences.push_back(result);
+  }
+  f.Finish({declaration,f.Stmt(ExpressionStmt{store}),f.Stmt(ReturnStmt{result})},reverse);
+  test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
+  const auto planned=PlanBindingInitializers(tree,loops,nullish);test::Check(std::holds_alternative<BindingInitializers>(planned));
+  const auto& plan=std::get<BindingInitializers>(planned);
+  const auto id=[&](ExprId value){return reverse?tree.expressions.size()-1-value.value:value.value;};
+  test::Check(bool(plan.replacements[id(store)])==!form);
+  for(const auto sequence:sequences)test::Check(bool(plan.replacements[id(sequence)])==!form);
+  std::ostringstream out;const auto printed=PrintFunctionTree(tree,out);
+  test::Check(std::holds_alternative<PrintedFunction>(printed));
+  for(const auto range:std::get<PrintedFunction>(printed).expressions)test::Check(range.begin<range.end && range.end<=out.str().size());
+  if(emit)std::cout<<nlohmann::json{{"source",out.str()},{"operands",true},{"form",form},{"count",count}}<<'\n';
+  return plan.work;
+}
+
 std::uint64_t InitializationReads(unsigned form,unsigned count,bool reverse,bool emit) {
   Fixture f;auto& tree=f.tree;
   const auto early=f.Stmt(ExpressionStmt{form?f.Store(2):f.Read(2)});
@@ -215,6 +242,13 @@ void BindingObligations() {
 }
 int main(int argc,char**) {
   BindingObligations();
+  for(unsigned form=0;form<2;++form)for(bool reverse:{false,true}) {
+    std::uint64_t previous=0;
+    for(unsigned count:{0U,200U,201U,400U,800U}) {
+      const auto work=DiscardedOperands(form,count,reverse,argc>1);
+      if(count>=400)test::Check(work<previous*3);previous=work;
+    }
+  }
   for(unsigned form=0;form<2;++form)for(bool reverse:{false,true}) {
     std::uint64_t previous=0;
     for(unsigned count:{0U,200U,201U,400U,800U}) {

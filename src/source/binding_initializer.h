@@ -35,6 +35,8 @@ struct BindingInitializers {
   }
   // ExprId indexed: a redundant store projects to its RHS; a unique private
   // snapshot read can consume the original RHS after ordered lifetime proof.
+  // A sequence with an inert discarded left projects to its right value; all
+  // downstream analyses and the printer consume that same replacement.
   std::vector<std::optional<ExprId>> replacements;
   // Original ExprId indexed completion summary after proven store/copy
   // projection. Inert means normal, no hook/write/allocation/throw/suspension.

@@ -257,3 +257,15 @@ and global convergence remain unfinished.
   actual revision changes, including loop declaration syntax metadata.
 - This is integrated lifecycle control, not global convergence or compile-time
   ownership of all legacy plan fields. Remaining motion/activation work stays open.
+
+
+### Rules193 continuation: shared discarded operand projection
+
+- Moved inert comma-left elimination out of the printer into a separate pass.
+- Schedule after stored-result elision and before dependent demand/snapshot
+  cleanup; final normalization consumes newly exposed inert operands.
+- All consumers follow the shared replacement; printing only transports source
+  ranges and the value-result category. No parallel semantic inference remains
+  for this optimization in the printer.
+- Added a red/green composition case where dropping an inert read enables dead
+  write removal while preserving the RHS, plus required coercion counterexamples.

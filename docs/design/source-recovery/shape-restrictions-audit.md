@@ -2037,3 +2037,15 @@ revision instead of trusting pass-returned changed flags. Analysis access during
 commit is an ownership failure, never a same-block/adjacency/opcode/name test.
 It prevents consumption of a partially mutated projection. No semantic recovery
 predicate was added. Existing value, exception and lifetime obligations remain.
+
+
+### Rules193: remove printer-owned discarded-operand optimization
+
+Comma-left elision now consumes shared completion facts in a dedicated pass.
+Its read occurrences leave the projected flow before dependent dead-definition
+and snapshot decisions. The old printer test of ExpressionEvaluation is removed;
+printing only consumes replacements and transports omitted source ranges.
+Sequence grammar defines a discarded value in the language. No opcode sequence,
+block adjacency, register layout or sample identity is used. Required coercion,
+TDZ, calls and suspension are excluded by shared effects, not by a whitelist of
+recognized left operand syntax. Global pass convergence remains open.

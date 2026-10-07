@@ -22,6 +22,28 @@ function observe(fn,flag,fail) {
 let executions=0,mutations=3;
 for(const row of rows) {
   parseJavaScript(row.source);
+  if(row.operands) {
+    const actual=Function('return ('+row.source+');')();
+    const left=row.form?'+state':'state';
+    const expected=Function('produce','flag','"use strict";let state=flag;state=produce(1);return ('+
+      (left+',').repeat(row.count+1)+'flag);');
+    const run=(fn,flag,input,fault)=>{
+      const trace=[];let value,thrown;
+      try {value=fn(i=>{trace.push(['produce',i]);if(fault==='produce')throw failure;
+        return input==='object'?{valueOf(){trace.push(['coerce']);if(fault==='coerce')throw failure;return 7;}}:input;},flag);}
+      catch(error){thrown=error instanceof TypeError?'type':error;}
+      return {trace,value,thrown};
+    };
+    for(const flag of [false,true])for(const input of [7,-0,1n,Symbol.for('operand'),'object'])
+      for(const fault of ['none','produce','coerce']) {
+        assert.deepEqual(run(actual,flag,input,fault),run(expected,flag,input,fault));++executions;
+      }
+    if(!row.count) {
+      const bad=Function('produce','flag','"use strict";'+(row.form?'produce(1);':'')+'return flag;');
+      assert.notDeepEqual(run(bad,true,'object','none'),run(expected,true,'object','none'));++mutations;
+    }
+    continue;
+  }
   if(row.initialization) {
     const early=row.form?'state=produce(2);':'state;';
     const tail='produce(0);'.repeat(row.count)+'let state=produce(1);state;return state;';

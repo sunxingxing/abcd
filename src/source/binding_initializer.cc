@@ -214,6 +214,7 @@ class Initializers {
     RunPass(Pass::kConstants);
     RunPass(Pass::kAliases);
     RunPass(Pass::kStoredResults);
+    RunPass(Pass::kInertOperands);
     // Dead reads/stores must leave the projection before snapshot coverage is
     // analyzed. Forwarding preserves every RHS occurrence and removes its own
     // single read/store/declaration; it cannot make another definition dead.
@@ -223,13 +224,16 @@ class Initializers {
     RunPass(Pass::kSnapshots);
     bool cleanup_needed=RunPass(Pass::kStorage);
     cleanup_needed |= RunPass(Pass::kStoredResults);
+    cleanup_needed |= RunPass(Pass::kInertOperands);
     cleanup_needed |= RunPass(Pass::kInertStatements);
     cleanup_needed |= RunPass(Pass::kLoopDeclarations);
     cleanup_needed |= RunPass(Pass::kStoredResults);
+    cleanup_needed |= RunPass(Pass::kInertOperands);
     cleanup_needed |= RunPass(Pass::kInertStatements);
     // Storage and loop declaration projection are now final. Their commits
     // invalidate facts before dependent demand/declaration cleanup.
     if(cleanup_needed)RunPass(Pass::kDeadDefinitions);
+    RunPass(Pass::kInertOperands);
     for (std::size_t i = 0; i < loops_.initializer_roots.size(); ++i) {
       budget_.Step(); plan_.entry_counts[i + 1] = plan_.entry_counts[i] +
           !plan_.omitted[loops_.initializer_roots[i].statement.value];
@@ -241,7 +245,7 @@ class Initializers {
   }
  private:
   enum class Pass { kConstants,kAliases,kStoredResults,kDeadDefinitions,kSnapshots,
-      kStorage,kInertStatements,kLoopDeclarations };
+      kStorage,kInertStatements,kInertOperands,kLoopDeclarations };
   enum class PassPhase { kIdle,kAnalysis,kCommit };
   struct ProjectionRevision { std::uint64_t value=0; };
   // The first write enters a one-way commit phase. Analysis cannot observe a
@@ -259,6 +263,7 @@ class Initializers {
       case Pass::kStoredResults:ElideStoredResults();break;
       case Pass::kDeadDefinitions:ElideDeadDefinitions();break;
       case Pass::kInertStatements:OmitInertStores();break;
+      case Pass::kInertOperands:ElideInertOperands();break;
       case Pass::kStorage:Coalesce();break;
     }
     pass_phase_=PassPhase::kIdle;
@@ -274,7 +279,7 @@ class Initializers {
       // These passes retain initialization at each retained occurrence.
       // Storage merging proves the new root initialized before every remap.
       case Pass::kStoredResults:case Pass::kDeadDefinitions:
-      case Pass::kInertStatements:case Pass::kStorage:preserve=true;break;
+      case Pass::kInertStatements:case Pass::kInertOperands:case Pass::kStorage:preserve=true;break;
     }
     RequireTree(projection_revision_.value<std::numeric_limits<std::uint64_t>::max(),TreeStructureError::kResourceLimit);
     ++projection_revision_.value;pass_phase_=PassPhase::kCommit;
@@ -322,6 +327,30 @@ class Initializers {
           }
         }
       }
+    }
+  }
+  void ElideInertOperands() {
+    // Comma discards its left value. Shared completion/effect facts, including
+    // TDZ, coercion and suspension, decide elision before downstream liveness.
+    // Replacement preserves GetValue and suppresses NamedEvaluation. Printer
+    // consumes this decision and only projects the removed origin ranges.
+    std::size_t capacity=0;
+    for(std::size_t i=0;i<tree_.expressions.size();++i) {
+      budget_.Step();if(!plan_.replacements[i] &&
+          std::holds_alternative<SequenceExpr>(tree_.expressions[i].expression))++capacity;
+    }
+    if(!capacity)return;
+    const auto& facts=AnalyzeExpressions();
+    std::vector<ExprId> proposed;budget_.Array(proposed,capacity);std::size_t count=0;
+    for(std::size_t i=0;i<tree_.expressions.size();++i) {
+      budget_.Step();if(plan_.replacements[i])continue;
+      const auto* sequence=std::get_if<SequenceExpr>(&tree_.expressions[i].expression);
+      if(sequence && facts.evaluations[sequence->left.value]==ExpressionEvaluation::kInert)
+        proposed[count++]={static_cast<std::uint32_t>(i)};
+    }
+    for(std::size_t i=0;i<count;++i) {
+      budget_.Step();const auto id=proposed[i];BeginCommit();
+      plan_.replacements[id.value]=std::get<SequenceExpr>(tree_.expressions[id.value].expression).right;
     }
   }
   void OmitInertStores() {

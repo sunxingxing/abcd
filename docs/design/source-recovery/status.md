@@ -24,6 +24,37 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则193，无效操作数消除迁出打印器
+
+- 新增独立 ElideInertOperands pass：逗号左值是否可消除由共同完成/效果
+  摘要决定，先批量提案，再通过 BeginCommit 更新投影。替换保留 GetValue
+  与禁止隐式 NamedEvaluation 的值类别；仅保留已证明不受无效读取消除
+  影响的初始化事实。调用、转换、TDZ、暂停仍由共同效果模型保留。
+- 打印器原先独立查询 evaluations 并删除 comma-left 的判断实际移除。
+  现在只消费 replacements 并运输被省略左子树的来源范围。共同流图、
+  活跃性、死定义、快照和 class-name ownership 看到相同的读取集合。
+  写回消除后、依赖的需求/快照清理前显式调度；最终需求消除后规范化
+  新暴露的无效操作数，不宣称固定次数重复已经构成全局固定点算法。
+- 新用例旧实现先在 dead-store 断言失败（/tmp/abcd-rule193-red-test.log）。
+  原因是打印器消除 state 读取后，分析仍保留它，使只供逗号左值使用的
+  写入留下。迁移后删除无效写入，保留 produce(1) 的原始执行位置和异常。
+  新增嵌套逗号、反序 arena、200/201/几何增长，以及 +state 的对象转换、
+  BigInt/Symbol 错误对照；独立 mutant 删除必要 RHS 或转换必须被检出。
+- 最终 54 项定向全部通过，392.73 秒，日志 /tmp/abcd-rule193-tests.log
+  与 /tmp/abcd-rule193-test-detail.log。定义消除 224 份源码、2,880 次独立
+  行为比较、11 个反例；变量/别名 1,752/461,776/284，存储 221/33,620/12，
+  快照 252/9,636/10，冗余写回 528/18,192/12。相关目标构建通过，日志
+  /tmp/abcd-rule193-final-build.log；最初 definition_elision 单元及独立
+  源码执行 2/2 通过，11.32 秒，日志 /tmp/abcd-rule193-focused-tests.log。
+- ABC-only 导出 build/stage-one/discarded-operands-rule193 为
+  10complete/0partial/9noModule，十份源码 node --check 通过，正文与
+  规则192一致，固定输入身份保持。日志 /tmp/abcd-rule193-export.log。
+- 新 pass 每次按 E 个表达式线性扫描，提案空间 O(C)，C 为未投影逗号
+  节点数；无每变量遍历图、局部 opcode/块形状或样本准入。旧快照 motion
+  census、绑定 activation、默认参数/复杂 unwind、canonical IR 对应与
+  全局依赖固定点仍开放。结构 gate、统一变量里程碑、阶段一未完成；
+  Goal active，全量语料/RSS/DFX/代理等暂停事项保持。
+
 ### 2026-10-08：规则192，写前提交边界与投影版本
 
 - 八个变量恢复 pass 不再返回手工维护的 changed。首次语义写入前统一
