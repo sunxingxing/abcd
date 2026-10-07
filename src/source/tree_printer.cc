@@ -4,6 +4,7 @@
 #include "../analysis/register_value_rule.h"
 #include "nullish_syntax.h"
 #include "loop_syntax.h"
+#include "binding_initializer.h"
 #include "statement_children.h"
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/module_enclosure.h"
@@ -1268,7 +1269,17 @@ class TreePrinter {
     Name(node.symbol); Push(std::string_view(";"));
     if (node.initializer) { Append(" = "); Push(ExpressionOperand{*node.initializer, {}, Tree().symbols[node.symbol.value].name}); }
   }
-  void StatementNode(ExpressionStmt node, Statement) {
+  void StatementNode(ExpressionStmt node, Statement at) {
+    if (const auto& initializer = Initializers().statements[at.id.value]) {
+      const auto& assignment = std::get<AssignmentExpr>(Tree().expressions[node.expression.value].expression);
+      BeginExpression(node.expression);
+      Append(initializer->declaration == DeclarationKind::kConst ? "const " : "let ");
+      Name(initializer->symbol); Append(" = ");
+      Push(std::string_view(";"));
+      Push(ExpressionOperand{assignment.value, {ExpressionGrammar::kAssignmentValue},
+          Tree().symbols[initializer->symbol.value].name});
+      return;
+    }
     Push(std::string_view(";")); Push(node.expression);
   }
   void StatementNode(const IfStmt& node, Statement at) {
@@ -1494,6 +1505,9 @@ class TreePrinter {
       Result().expressions[read->value] = {written_, written_};
       return;
     }
+    if (Initializers().omitted[child.value]) {
+      Result().statements[child.value] = {written_, written_}; return;
+    }
     Push(std::string_view("\n"));
     const auto depth = root ? at.depth : at.depth + 1;
     Push(Statement{Tree().children[block.first_child + at.index], depth});
@@ -1520,6 +1534,16 @@ class TreePrinter {
     auto& loops = family_ ? loops_[current_] : loop_;
     loops = std::get<LoopSyntax>(std::move(planned_loops));
     Admit(loops.allocated_bytes, 1); Step(loops.work);
+    auto planned_bindings = PlanBindingInitializers(Tree(), loops, syntax, remaining_);
+    if (const auto* error = std::get_if<TreeStructureError>(&planned_bindings)) {
+      if (*error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
+      if (*error == TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
+      throw Error::kUnsupportedContext;
+    }
+    if (family_ && initializers_.empty()) Array(initializers_, family_->members.size());
+    auto& bindings = family_ ? initializers_[current_] : initializer_;
+    bindings = std::get<BindingInitializers>(std::move(planned_bindings));
+    Admit(bindings.allocated_bytes, 1); Step(bindings.work);
     Array(Located(), Tree().anchors.size());
     std::size_t count = 0;
     for (std::size_t i = 0; i < Tree().anchors.size(); ++i) {
@@ -1536,6 +1560,7 @@ class TreePrinter {
     return left.block != right.block ? left.block < right.block : left.index < right.index;
   }
   const NullishSyntax& Nullish() const { return family_ ? nullishes_[current_] : nullish_; }
+  const BindingInitializers& Initializers() const { return family_ ? initializers_[current_] : initializer_; }
   void FinalizeNullishRanges() {
     const auto& syntax = Nullish();
     const auto finalize = [&](const auto& omitted, auto& ranges) {
@@ -1599,6 +1624,8 @@ class TreePrinter {
   ClassNames class_names_;
   LoopSyntax loop_;
   std::vector<LoopSyntax> loops_;
+  BindingInitializers initializer_;
+  std::vector<BindingInitializers> initializers_;
   NullishSyntax nullish_;
   std::vector<NullishSyntax> nullishes_;
 };

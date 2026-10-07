@@ -329,7 +329,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // staging; actual publication, SSA availability and capture checks remain.
 // Rules 153 transport selected values through already-owned pure copies;
 // root placement is not an extra Reference admission condition.
-inline constexpr std::uint32_t kRouteEvidenceRules = 153;
+// Rules 154 initialize private result declarations at their owned first store,
+// preserving actual scope, observations, captures and original expressions.
+inline constexpr std::uint32_t kRouteEvidenceRules = 154;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

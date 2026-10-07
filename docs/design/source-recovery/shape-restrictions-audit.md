@@ -1,5 +1,15 @@
 # 按用户要求进行的恢复条件审计
 
+规则154补充：私有结果初始化声明由canonical AST词法归属、直接语句的
+顺序支配、全ownership读写census和真实capture/module escape决定。
+目标的首次观察为赋值完成；RHS/提前读取、嵌套先写和后续update分别
+保留原表示或mutable let。只改声明语法，不移动操作/合并SSA存储。
+同一native声明容器是可见性义务，不是CFG同块/编译器布局限制；
+真实三profile decoded COPY/split和相反AST arena编号均通过。
+嵌套调用保存、loop/nullish表达式程序、cell/formal、capture/per-iteration
+环境与未知区域是保留的表示缺口，不能通过更多局部模式扩展。本次没有
+source/sample/名字、PC/register、数量、邻接或producer/opcode白名单。
+
 规则153补充：规则152记录的retained callee失败已追到条件参数transport
 的额外root条件。普通phase evaluator已按storage lifetime内联首次phi
 读取，OperandSelections仍拒绝非root ValueCopy，导致PhaseCallReference

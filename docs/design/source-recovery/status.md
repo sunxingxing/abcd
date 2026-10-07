@@ -12,6 +12,66 @@
 
 ## 当前阶段
 
+### 2026-10-07：规则154，私有结果的原位置初始化声明
+
+- 干净ae1cb83a继续，production/rules153推进154。共同
+  BindingInitializers从canonical FunctionTree的词法容器/statement顺序
+  支配和ownership census恢复let/const初始化；只处理已有私有结果
+  CompilerTemporary，不合并SSA、formal、cell、phi/cycle等存储身份。
+  每个目标的首次观察必须是独立赋值完成，RHS自读/提前读取/嵌套先写
+  不提供初始化证明；真实class/closure capture及module escape保留。
+  有后续写入保留let，否则用私有const，不冒称源码原const metadata。
+- 原expression/assignment/StmtId、scope、catch、执行顺序、NamedEvaluation
+  和全部anchor保持；旧空声明在原boundary有空生成范围，赋值位置
+  打印初始化声明。原ABC→ValueProgram→control/evaluation/scope→
+  FunctionTree→共同printer保持。没有样本/名字、PC/register、CFG同块、
+  邻接、固定COPY/selection数量、producer/opcode白名单或IIFE。
+  同一native词法容器用于可见性/顺序支配，不把字节码块布局当语义。
+- Ruling：先恢复已证明的私有结果初始化，不能从SSA carrier推测用户
+  let/const或每轮环境。嵌在调用参数中的保存、条件/其他声明容器、
+  loop/nullish表达式程序、未知区域继续用原表示，不新增整函数拒绝。
+  每轮capture、实际原变量归属和一般SSA干涉/存储投影仍需共同模型。
+  O(statements+expressions+children+symbols+owned class capture references)
+  时间、O(statements+expressions+symbols)预算化scratch，迭代栈无递归。
+  不逐symbol/loop重扫；400→800 work小于三倍，200/201保持。
+- 首轮fixture遗漏anchor→operation归属及正式参数name evidence，修正
+  测试后完整结构/语义检查通过，未放宽生产检查。旧printer替换回HEAD
+  另构建退出0，同一有效fixture在空声明范围断言134行RED；finally已
+  恢复本次printer并重新构建。最初纯直线decoded保存嵌在首个调用参数
+  中，测试不再要求错误的提前const；独立branch和split证明原位置声明。
+- 八类独立树×六规模×正反arena共96树；三ISA profile×0/1/200/201 COPY
+  ×straight/split×直线/条件使用共48实际解码函数，经FunctionInput、
+  ValueProgram、原control/evaluation、共同AST与新鲜TreeSemantics。
+  总144完整源码，首轮20772独立行为比较/16有效JS mutation通过，包含
+  任意primitive/object身份、原throw、后续写入、RHS旧undefined、
+  提前读取、条件路径、await拒绝/microtask、yield next/throw/return。
+  JS oracle最初误比较抛出后残留的独立Promise/generator对象，现只比较
+  实际返回或原throw，保留完整trace及请求；未以失败/INCOMPLETE代替成功。
+- 自查后补强条件未执行的原undefined读取与mutable let→const有效错误
+  mutation；新增unit/源码行为最后另轮2/2通过2.77秒，最终20820比较/
+  18 mutation，仍144完整源码。主运行23项与补强后两项分别留证。
+- 最终两工具、九相关fixture及两个name/export fixture构建退出0。
+  23项定向23/23通过61.00秒：含新增unit/源码行为、loop初始化/更新/
+  条件、numeric update、snapshot、native function names/default export、
+  class/control，以及actual十record构造配对、Push、ProgressBar和富文本。
+  原实际十record2450 paired/120 native super、Push322 lifecycle/1860
+  delivery/八connected、ProgressBar两record及富文本五record受控矩阵
+  本轮重新通过，不将受控平台/构造子集冒充所有record body或设备SDK。
+- fresh ABC-only pasteboard导出build/stage-one/binding-initializer-pasteboard-final，
+  manifest19 records/219 methods，10complete source/0partial/9noModule，
+  顶层requested contract为language_numeric_constructors_v1。十份生成JS
+  独立Acorn解析通过，无legacy writer或complete源码中的INCOMPLETE/
+  UNRECOVERED。实际PasteBoard空声明65→50，带初始化声明1→16、
+  私有const 0→15；总声明数保持66、三个原生for保持。不声称这些变化
+  已消除SSA私有变量、恢复用户原名/const、native for let或全body风格。
+- 证据/tmp/abcd-binding-initializer-{configure,baseline-build,baseline-test,
+  expanded-build,expanded-behavior,final-build,name-build,tests-final,
+  export-final,style,reviewed-build,reviewed-tests}.log，baseline恢复源及诊断另留。修改mjs的node
+  --check与git diff --check通过。输入未修改，paired source仍仅供独立
+  oracle；固定五ABC106/0未重跑。阶段一Goal和原字段/全局/signature/
+  body gate继续active，full suite、expanded corpus、RSS/benchmark、
+  DFX、scheduler、agents、周期audit暂停保持。
+
 ### 2026-10-07：规则153，条件参数沿已归属的纯复制恢复调用
 
 - 从干净0e4e695b继续，production/rules152推进153。上一轮普通arrow

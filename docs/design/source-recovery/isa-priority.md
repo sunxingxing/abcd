@@ -1,5 +1,14 @@
 # 全 ISA 优先执行顺序
 
+2026-10-07 规则154：私有结果的初始化声明进入共同printer，按native
+词法归属/顺序支配、全ownership读写和capture census保留原位置语义，
+不按opcode/CFG同块/样本或复制数量选择，不合并SSA/cell/formal。
+144源码最终20820行为/18 mutation、主运行23/23及补强后2/2通过；actual record对照
+保持。fresh pasteboard空声明65→50、初始化1→16、三个for及10complete
+保持。后续继续普通INCOMPLETE/UNRECOVERED、一般SSA存储投影、实际
+变量归属及native binding/每轮capture；此次不完成原结构/全style gate。
+阶段一Goal和暂停范围保持，完整证据见status.md。
+
 2026-10-07 规则153：普通调用的条件参数复制已按共同owner证明恢复，
 去掉root-placement额外限制，值/Reference/receiver、效果及异常义务
 保持，不扩展局部形状或样本匹配。十个实际构造record完整输出且

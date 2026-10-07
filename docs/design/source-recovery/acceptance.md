@@ -1,5 +1,16 @@
 # 验收、证据与实施交接
 
+2026-10-07 规则154：已有私有结果按同一native词法归属、顺序支配及
+ownership读写/capture census恢复原位置let/const初始化，表达式/来源/
+异常/暂停保持，不合并SSA或推测用户const。96独立树/48三profile实际
+解码共144源码、最终20820行为比较/18 mutation通过；旧printer有效用例
+先RED后恢复。主运行23项23/23通过61.00秒，含actual record矩阵；
+条件未执行/mutable const错误变异补强后新增两项另轮2/2通过2.77秒。
+fresh pasteboard保持10complete/0partial/9noModule，十源码解析通过；
+PasteBoard空声明65→50、初始化1→16、私有const0→15、三个for保持。
+参数内保存、原cell/capture/每轮环境和一般存储投影仍是表示缺口；
+原结构gate、全body/style及阶段一Goal保持active，暂停范围保持。
+
 2026-10-07 规则153：共同phase selection沿已归属的纯ValueCopy取得
 参数owner，不再用root/inline表示否定已证明的值身份/执行次数。
 Prefix/Scope、receiver、效果/异常及原FunctionTree证明保持；没有新增

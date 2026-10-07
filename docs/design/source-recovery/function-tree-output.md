@@ -90,6 +90,33 @@ native initializer/每轮binding与phi/update临时值消除仍是表示缺口�
 不描述为语言/VM限制。具体解码/独立行为、scope/throw/await/yield反例
 及实际record证据见status.md；两个实际for不能代替阶段一完整body风格。
 
+## 私有结果的初始化声明（规则 154）
+
+共同BindingInitializers在已检查的canonical FunctionTree上恢复原位置的
+`let/const value = expression`，只投影已有CompilerTemporary的空声明及
+独立SymbolTarget赋值。它不合并SSA位置，不推断源码原来的const，不更名，
+不移动或重复表达式，也不把原cell/formal/模块绑定改成私有不可变存储。
+实际声明容器提供词法归属和顺序支配；共同ownership census记录参数
+默认值及全部statement/expression中的读取、赋值、update和class/closure
+capture。目标的首次观察必须是该赋值完成，RHS自读或此前读取/写入不行；
+有后续写入时保留let，否则使用私有const。异常、await/yield仍在原位置。
+
+原DeclarationStmt以其原boundary上的空生成范围保留；原assignment
+ExprId、RHS和StmtId的生成范围、所有anchor事件保持。NameContext仍为
+同一SymbolId的实际名称，函数/class NamedEvaluation不因声明投影改变。
+没有样本/名字、PC/register、CFG同块、邻接或固定复制/selection数匹配。
+词法容器要求来自native声明的可见性，不把字节码块布局当语言条件。
+
+Ruling：此次仅恢复私有结果声明，不把SSA carrier猜成用户let/const，
+不改变capture/每轮环境。嵌在调用参数中的保存、条件/其他词法容器、
+已有loop/nullish表达式程序、部分未知区域保持canonical表示；这些是
+初始化语法/生命周期尚未表示的缺口，不新增整函数拒绝。逐symbol CFG
+活跃期/干涉与原变量归属仍需共同分析，不能以此关闭完整binding/style gate。
+迭代ownership遍历和索引为O(statements+expressions+children+symbols+
+class capture references)时间/预算化空间，无逐symbol或逐loop重扫。
+项目自有实现，不添加运行时依赖；23项定向、独立行为与实际record证据
+见status.md，不代替设备SDK、全套或RSS验收。
+
 ## 条件值的纯复制与引用归属（规则 153）
 
 普通phase求值可按共同availability/storage lifetime证明，将首次phi读取

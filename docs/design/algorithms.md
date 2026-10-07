@@ -1853,6 +1853,29 @@ check count/order, aliases, exceptions and descriptors; this is targeted
 semantic/work-growth evidence, not a physical RSS or full-corpus measurement.
 
 
+## Private binding initialization syntax (source rule 154)
+
+The already structurally checked FunctionTree supplies ownership and lexical
+containers. An iterative statement walk streams expression ownership, recording
+the first potential observation and total writes in SymbolId-indexed slots.
+An empty private declaration can initialize at a direct assignment in that
+same lexical container only if its completed store is the first observation;
+all earlier/RHS/nested accesses are conservatively included. Captured/module
+locations retain their declarations, and one static write permits private
+const syntax. This does not infer original const metadata, move expressions,
+coalesce SSA storage or require a bytecode block layout. Existing loop/nullish
+expression programs remain in their original grammar.
+
+For S statements, E expressions, K owned child/argument/property slots, B symbols
+and C owned class-member capture occurrences, cost is O(S+E+K+B+C), with
+O(S+E+B) scratch/output indexes. Dense class capture occurrences are counted
+explicitly; there is no per-binding CFG or per-loop ownership traversal.
+The bounded iterative stacks avoid recursive depth limits. Project-owned code
+adds no runtime dependency; existing AST/NamedEvaluation/loop grammar remains
+the semantic basis. Tests cover 200/201 and 400/800 growth, reversed arenas,
+three ISA profiles, COPY/split variants, effects/exceptions/await/yield and
+source ranges. Work counters do not certify physical RSS; that gate stays paused.
+
 ## Nested phased selection execution owners (source rule 124)
 
 Source rule 153 removes a root-placement admission condition on pure SSA
