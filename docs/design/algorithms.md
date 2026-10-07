@@ -2723,3 +2723,23 @@ graphs with all eight observation subsets (4,096 configurations), including
 mixed normal/throw/resume edges. Separate chain and cycle families check
 200/201/400/800/1600 scaling, exact budget and one-unit-short behavior. The
 production solver is iterative; the deliberately small oracle is test-only.
+
+
+### Bidirectional observation pairing (rules196)
+
+The rules195 solver now runs over both adjacency directions using the same
+implementation and scratch arrays. A forward reachability pass identifies
+invocation-reachable predecessors for backward history; entry is its explicit
+history seed. Disconnected structural exits cannot invent an earlier activation.
+The forward result keeps its previous meaning for all graph points. Backward
+results are absent for unreachable points. Both directions include all completion
+kinds and preserve unresolved transparent-cycle conservatism.
+
+For a source write S and read R, next[S]=R proves every successful write reaches
+that read before another observation. previous[R]=S separately excludes a later
+iteration reading again without another source write. These are execution-count
+and ordering obligations, not a region-shape assumption. Reachability plus two
+bounded propagation passes remain O(N+E) work/O(N) space; scratch is reused and
+the second output vector is explicitly charged. The independent 4,096 graph
+oracle now enumerates reverse reachable histories too, with entry as the boundary.
+Linear/cyclic geometric families and exact/short budgets cover both results.

@@ -685,3 +685,35 @@ required conditions/effects, bypassing returns, debugger, catch and loop cases
 remain adverse checks. Reversed arenas and transparent block variants use the
 same production path. The graph-level exhaustive oracle and geometric tests are
 documented in algorithms.md; no sample/operation-layout branch was added.
+
+
+## Snapshot region identity replaced by shared obligations (rules196)
+
+Forward next-observation alone does not prove equal execution counts: a read
+inside a loop can execute repeatedly after one source write. Snapshot recovery
+now requires both next[write]=read and previous[read]=write. The latter uses
+invocation-reachable predecessor histories and an explicit entry boundary;
+unreachable structural loop exits cannot fabricate predecessors for an actual
+read. The bidirectional solver shares one implementation and bounded scratch.
+
+FlowReference now carries an optional FlowExceptionContext containing the actual
+throw destination and pending finalizer route. The semantic builder attaches
+this context to reads and writes even when initialization refinement proves the
+reference itself nonthrowing. The moved producer may throw or resume abruptly,
+so recovery compares these shared contexts separately from observation pairing.
+They are graph-local semantic identities, not region numbers or PC layouts.
+Refinement and buffer reuse retain the reference context.
+
+The expression_regions_ table, region counters, OpenRegion and guarded/parent-
+region tracking in both syntax walks are removed. No same-region admission
+remains in snapshot recovery. Lexical environment/name/lifetime and resource-
+observable creation obligations are still separate. This does not claim complete
+closure activation/default-parameter/finally reconstruction or original-IR
+correspondence, and does not establish global pass convergence.
+
+New tests distinguish a loop that immediately returns its snapshot from a loop
+that observes it in multiple iterations. Only the former can move a once-only
+producer inside. Removing backward pairing deliberately fails the repeated-loop
+case; removing exception-context equality deliberately fails the existing
+outside-catch case. Independent execution also checks duplicate evaluation.
+These are separate semantic counterexamples, not new production shape branches.

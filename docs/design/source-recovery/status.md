@@ -24,6 +24,42 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则196，共同执行次数与异常上下文替换区域匹配
+
+- AnalyzeFlowMotion 复用同一方向化求解器，提供 next/previous 必经观察。
+  正向检查写回后必达目标读取；反向检查读取的上一个观察必为该写回，
+  排除一次写回对应多次循环读取。反向只消费调用入口可达的前驱，入口
+  本身作为历史锚；不可达结构退出不制造虚假执行。全部完成边参与，
+  透明环保持未知；O(N+E) 时间/O(N) 空间，复用 scratch，保持原资源预算。
+- FlowReference 新增 typed FlowExceptionContext，统一保存 thrown/finalizer
+  身份；初始化细化把读取变成 nonthrowing 时仍保留上下文，移动一个可抛
+  异常或暂停的生产者不能因此丢失处理器义务。快照消费共同引用与两向
+  观察事实，先形成方案再 BeginCommit；不在提交期消费失效的图引用。
+- 删除 expression_regions_、OpenRegion、region counters 与扫描 guarded
+  状态，same-region 准入真正退出决策路径。词法环境/名字解析/生命期与
+  资源可观察创建义务仍保留；不把区域删除表述为完整 activation/unwind
+  模型已完成，不增加同块、邻接或特定循环形状分支。
+- 新一次执行循环用例在旧实现 form25/count0 失败，日志
+  /tmp/abcd-rule196-red-test.log；新重复读取循环必须保持快照。分别故意
+  删除反向执行关系和异常上下文检查，在 form26/count0、form15/count0
+  被检出，日志 /tmp/abcd-rule196-repeat-mutant-test.log 与
+  /tmp/abcd-rule196-handler-mutant-test.log；最终构建已恢复正确实现。
+  4,096 个小图/观察配置的前后向结果与独立枚举对照；200/201 与几何
+  增长、exact/short 预算、反序 arena、异常/循环组合纳入定向验证。
+- 最终 54/54 项定向测试通过，396.10 秒，日志
+  /tmp/abcd-rule196-tests.log 与 /tmp/abcd-rule196-test-detail.log。
+  快照 324 份源码/12,372 次行为/18 个反例；变量/别名
+  1,752/461,776/284；存储 221/33,620/12；定义消除 224/2,880/11；
+  冗余写回 528/18,192/12。相关目标最终构建通过，日志
+  /tmp/abcd-rule196-final-build.log。独立源码行为对照不等同于平台执行，
+  不以这些定向证据替代全阶段验收。
+- ABC-only 导出 build/stage-one/flow-contexts-rule196 保持
+  10complete/0partial/9noModule；十份源码 node --check 通过，正文与
+  规则195一致，固定输入身份保持，日志 /tmp/abcd-rule196-export.log。
+- 共同绑定 activation、默认参数/复杂 unwind、canonical IR 对应及
+  全局依赖固定点仍开放。统一变量里程碑、结构 gate 和阶段一未完成，
+  原 Goal active；全量语料/RSS/DFX/代理等暂停范围保持。
+
 ### 2026-10-08：规则195，共同必经观察分析替换线性移动计数
 
 - 实现并贯通 AnalyzeFlowMotion：对当前 RecoveryFlow 的全部完成边执行

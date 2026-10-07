@@ -291,3 +291,15 @@ and global convergence remain unfinished.
   adversaries, 4,096 small-graph configurations and geometric budgets verify it.
 - Handler/activation region identity and lexical lifetime remain explicit pending
   migrations; this step does not claim full expression motion or global convergence.
+
+
+### Rules196 continuation: execution count and handler identity
+
+- Integrated reverse must-observation history, sharing the forward solver.
+- Reference events retain explicit throw/finalizer contexts through refinement.
+- Replaced same-region matching with bidirectional write/read pairing and context
+  identity. Removed all associated region/guard census fields and traversal state.
+- Added once-only/repeated-loop composition and independently demonstrated that
+  dropping either new obligation admits a semantic counterexample.
+- Lexical lifetime, fuller activation/unwind, original IR and global convergence
+  remain pending; this completes the snapshot region restriction replacement.

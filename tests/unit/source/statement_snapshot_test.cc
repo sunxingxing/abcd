@@ -10,7 +10,7 @@ using namespace abcd::source;
 namespace {
 enum class Form { kReturn, kIf, kLoop, kMultiple, kEffect, kArgument, kLocal, kBranchExit,
   kAwait, kYield, kTypeof, kAlias, kShadow, kGuarded, kCatch, kOutsideCatch, kCatchReads, kProjectedLocal, kInterleavedAlias,
-  kDeadInitialRead, kObservedInitialRead, kDiscardedOperand, kEffectOperand, kTransparentControl, kDebugger };
+  kDeadInitialRead, kObservedInitialRead, kDiscardedOperand, kEffectOperand, kTransparentControl, kDebugger, kOnceLoop, kRepeatedLoop };
 struct Fixture {
   FunctionTree tree{};
   Fixture(Form form) {
@@ -89,6 +89,21 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
     for(unsigned i=0;i<=count;++i)result=f.Expr(SequenceExpr{form==Form::kDiscardedOperand?f.Read(2):f.Call(5),result});
   if(form==Form::kTypeof)result=f.Expr(UnaryExpr{TreeUnary::kTypeof,read});
   if(form==Form::kIf)body.push_back(f.Stmt(IfStmt{read,f.Block({f.Stmt(ReturnStmt{f.Literal(true)})}),f.Block({f.Stmt(ReturnStmt{f.Literal(false)})})}));
+  else if(form==Form::kOnceLoop || form==Form::kRepeatedLoop) {
+    const auto loop=f.Stmt(LoopStmt{});std::vector<StmtId> inside;
+    if(form==Form::kOnceLoop)inside.push_back(f.Stmt(ReturnStmt{read}));
+    else {
+      const auto exit=f.Block({f.Stmt(BreakStmt{loop})});
+      const auto stop=f.Block({f.Stmt(BreakStmt{loop})});
+      inside={f.Stmt(IfStmt{read,exit,{}}),f.Report({}),f.Stmt(IfStmt{f.Read(2),stop,{}}),
+        f.Stmt(ExpressionStmt{f.Expr(AssignmentExpr{SymbolTarget{{2}},f.Literal(true)})})};
+      const auto owned=f.Block(inside);const auto scope=std::get<BlockStmt>(tree.statements[owned.value].statement).scope;
+      for(const auto branch:{exit,stop})tree.scopes[std::get<BlockStmt>(tree.statements[branch.value].statement).scope.value].parent=scope;
+      std::get<LoopStmt>(tree.statements[loop.value].statement).body=owned;
+    }
+    if(form==Form::kOnceLoop)std::get<LoopStmt>(tree.statements[loop.value].statement).body=f.Block(inside);
+    body.push_back(loop);body.push_back(f.Stmt(ReturnStmt{f.Literal(false)}));
+  }
   else if(form==Form::kLoop) {
     const auto loop=f.Stmt(LoopStmt{});const auto exit=f.Block({f.Stmt(BreakStmt{loop})});
     const auto guard=f.Stmt(IfStmt{f.Expr(UnaryExpr{TreeUnary::kNot,read}),exit,{}});
@@ -130,7 +145,7 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
       test::Check(plan.evaluations[i]==ExpressionEvaluation::kRequired);
   }
 
-  const bool folded=form==Form::kReturn||form==Form::kIf||form==Form::kLoop||form==Form::kAwait||form==Form::kYield||form==Form::kTypeof||form==Form::kAlias||form==Form::kCatch||form==Form::kInterleavedAlias||form==Form::kDeadInitialRead||form==Form::kDiscardedOperand||form==Form::kTransparentControl;
+  const bool folded=form==Form::kReturn||form==Form::kIf||form==Form::kLoop||form==Form::kAwait||form==Form::kYield||form==Form::kTypeof||form==Form::kAlias||form==Form::kCatch||form==Form::kInterleavedAlias||form==Form::kDeadInitialRead||form==Form::kDiscardedOperand||form==Form::kTransparentControl||form==Form::kOnceLoop;
   if(plan.replacements[read.value].has_value()!=folded)std::cerr<<"form="<<static_cast<unsigned>(form)<<" count="<<count<<" reverse="<<reverse<<'\n';
   test::Check(plan.replacements[read.value].has_value()==folded);
   std::ostringstream output;const auto printed=PrintFunctionTree(tree,output);test::Check(std::holds_alternative<PrintedFunction>(printed));
@@ -150,7 +165,7 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
 }
 }
 int main(int argc,char**) {
-  for(unsigned form=0;form<=static_cast<unsigned>(Form::kDebugger);++form){std::uint64_t small=0,large=0;
+  for(unsigned form=0;form<=static_cast<unsigned>(Form::kRepeatedLoop);++form){std::uint64_t small=0,large=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}){const auto work=Check(static_cast<Form>(form),count,reverse,argc>1);if(count==400&&!reverse)small=work;if(count==800&&!reverse)large=work;}
     test::Check(large<small*3);
   }

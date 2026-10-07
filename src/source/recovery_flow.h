@@ -24,6 +24,11 @@ struct FlowBinding {
 };
 enum class FlowReferenceKind : std::uint8_t { kRead, kWrite };
 using FlowReferenceSite=std::variant<ExprId,StmtId>;
+struct FlowExceptionContext {
+  FlowPoint thrown;
+  std::optional<FlowPoint> finalizer;
+  auto operator<=>(const FlowExceptionContext&) const = default;
+};
 struct FlowReference {
   FlowPoint point;
   SymbolId binding;
@@ -31,6 +36,9 @@ struct FlowReference {
   // Statement sites denote preserved empty-declaration writes. Expression
   // sites retain source identity even when forwarded to a new flow position.
   FlowReferenceSite site;
+  // Retain the handler/cleanup route even if the reference itself is proved
+  // nonthrowing. Moving a producer here must preserve its exceptional route.
+  std::optional<FlowExceptionContext> exceptions;
 };
 struct BindingInitializer;
 struct FlowDefinition {

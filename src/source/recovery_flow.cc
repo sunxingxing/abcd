@@ -103,17 +103,17 @@ class FlowBuilder {
   Point Define(SymbolId binding,FlowDefinitionKind kind,std::optional<SymbolId> copy={},
       std::optional<ExprId> value={},std::optional<StmtId> declaration={},
       std::optional<ExprId> write={},FlowWriteEffect effect=FlowWriteEffect::kObservable,
-      std::optional<DiscardedId> discarded={}) {
+      std::optional<DiscardedId> discarded={},std::optional<FlowExceptionContext> exceptions={}) {
     RequireTree(definitions_.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
     const auto point=New({FlowEventKind::kDefinition,{},FlowDefinitionId{static_cast<std::uint32_t>(definitions_.size())}});
     events_[point.value].discarded=discarded;
     Append(definitions_,{point,Resolve(binding),kind,copy,value,declaration,write,effect});
-    if(write)Reference(point,Resolve(binding),FlowReferenceKind::kWrite,*write);
-    else if(kind==FlowDefinitionKind::kUndefinedStore)Reference(point,Resolve(binding),FlowReferenceKind::kWrite,*declaration);
+    if(write)Reference(point,Resolve(binding),FlowReferenceKind::kWrite,*write,exceptions);
+    else if(kind==FlowDefinitionKind::kUndefinedStore)Reference(point,Resolve(binding),FlowReferenceKind::kWrite,*declaration,exceptions);
     return point;
   }
-  void Reference(FlowPoint point,SymbolId binding,FlowReferenceKind kind,FlowReferenceSite site) {
-    budget_.Step();Append(references_,{point,binding,kind,site});
+  void Reference(FlowPoint point,SymbolId binding,FlowReferenceKind kind,FlowReferenceSite site,std::optional<FlowExceptionContext> exceptions={}) {
+    budget_.Step();Append(references_,{point,binding,kind,site,exceptions});
   }
   void Link(Point from,Point to,FlowCompletion completion=FlowCompletion::kNormal) {
     budget_.Step();Append(edges_,{from,to,completion,events_[to.value].incoming,events_[from.value].outgoing});
@@ -171,7 +171,7 @@ class FlowBuilder {
     if(const auto* read=std::get_if<SymbolExpr>(&node)) {
       if(!projection_.literals[read->symbol.value]) {
         events_[effect.value].read=Resolve(read->symbol);events_[effect.value].kind=FlowEventKind::kRead;
-        Reference(effect,Resolve(read->symbol),FlowReferenceKind::kRead,at.id);
+        Reference(effect,Resolve(read->symbol),FlowReferenceKind::kRead,at.id,FlowExceptionContext{context.thrown,context.finalizer});
       }
     }
     if(const auto* assignment=std::get_if<AssignmentExpr>(&node)) {
@@ -184,12 +184,12 @@ class FlowBuilder {
         const bool inert=!projection_.private_bindings.empty() &&
             projection_.private_bindings[Resolve(target->symbol).value] && projection_.normal_stores[at.id.value];
         normal=Define(target->symbol,kind,copied,assignment->value,declaration,at.id,
-            inert?FlowWriteEffect::kInert:FlowWriteEffect::kObservable,context.discarded);Link(normal,context.next);
+            inert?FlowWriteEffect::kInert:FlowWriteEffect::kObservable,context.discarded,FlowExceptionContext{context.thrown,context.finalizer});Link(normal,context.next);
         required=!inert || kind==FlowDefinitionKind::kInitializer;
       }
     }
     if(const auto* update=std::get_if<UpdateExpr>(&node)) {
-      normal=Define(update->symbol,FlowDefinitionKind::kUpdate,{},at.id,{},at.id,FlowWriteEffect::kObservable,context.discarded);Link(normal,context.next);
+      normal=Define(update->symbol,FlowDefinitionKind::kUpdate,{},at.id,{},at.id,FlowWriteEffect::kObservable,context.discarded,FlowExceptionContext{context.thrown,context.finalizer});Link(normal,context.next);
     }
     // Region effects are composed from semantic operations, independently of
     // whether their result is later used. Inert private writes can be dropped;
@@ -211,7 +211,7 @@ class FlowBuilder {
     if(const auto* update=std::get_if<UpdateExpr>(&node)) {
       const auto read=New({FlowEventKind::kRead,Resolve(update->symbol),{},at.id});events_[read.value].discarded=context.discarded;Link(read,effect);
       events_[read.value].effect=ExpressionEvaluation::kRequired;
-      Reference(read,Resolve(update->symbol),FlowReferenceKind::kRead,at.id);
+      Reference(read,Resolve(update->symbol),FlowReferenceKind::kRead,at.id,FlowExceptionContext{context.thrown,context.finalizer});
       Link(read,context.thrown,FlowCompletion::kThrow);next=read;
     }
     for(auto i=children.rbegin();i!=children.rend();++i)next=Expr(*i,{next,context.thrown,context.finalizer,context.discarded});
@@ -236,7 +236,7 @@ class FlowBuilder {
       }
       else if constexpr(std::is_same_v<T,DeclarationStmt>) {
         if(!projection_.undefined_stores.empty())if(const auto target=projection_.undefined_stores[at.id.value]) {
-          const auto commit=Define(*target,FlowDefinitionKind::kUndefinedStore,{},{},at.id,{},FlowWriteEffect::kInert);
+          const auto commit=Define(*target,FlowDefinitionKind::kUndefinedStore,{},{},at.id,{},FlowWriteEffect::kInert,{},FlowExceptionContext{context.thrown,context.finalizer});
           Link(start,commit);Link(commit,context.next);return;
         }
         auto commit=Define(node.symbol,node.initializer?FlowDefinitionKind::kInitializer:FlowDefinitionKind::kUndefined,{},node.initializer,at.id);Link(commit,context.next);

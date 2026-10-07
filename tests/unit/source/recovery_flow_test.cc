@@ -34,6 +34,9 @@ void UniversalObservations() {
       Link(flow,i/3,i%3);flow.edges.back().completion=i%2?FlowCompletion::kThrow:FlowCompletion::kResumeNext;
     }
     const auto result=std::get<FlowMotion>(AnalyzeFlowMotion(flow));
+    std::array<bool,3> reachable{};reachable[0]=true;
+    for(unsigned round=0;round<3;++round)for(const auto& edge:flow.edges)
+      if(reachable[edge.from.value])reachable[edge.to.value]=true;
     // Independent path enumeration stops at the first observation/sink.
     // Repeating an unobserved node is an infinite-path counterexample.
     std::function<std::optional<unsigned>(unsigned,unsigned)> walk;
@@ -54,6 +57,23 @@ void UniversalObservations() {
       const auto expected=successors(i,0);
       Check(result.next[i]==(expected?std::optional{FlowPoint{*expected}}:std::nullopt));
     }
+    const auto predecessors=[&](unsigned node,unsigned path)->std::optional<unsigned> {
+      std::optional<unsigned> answer;bool seen=false;
+      for(const auto& edge:flow.edges)if(edge.to.value==node && reachable[edge.from.value]) {
+        const auto next=walk(edge.from.value,path);if(!next)return {};
+        if(seen&&answer!=next)return {};answer=next;seen=true;
+      }
+      return answer;
+    };
+    walk=[&](unsigned node,unsigned path)->std::optional<unsigned> {
+      if(node==0 || (observed&(1U<<node)))return node;
+      if(path&(1U<<node))return {};
+      return predecessors(node,path|(1U<<node));
+    };
+    for(unsigned i=0;i<3;++i) {
+      const auto expected=reachable[i]?predecessors(i,0):std::nullopt;
+      Check(result.previous[i]==(expected?std::optional{FlowPoint{*expected}}:std::nullopt));
+    }
   }
   std::uint64_t previous=0;
   for(unsigned size:{200U,201U,400U,800U,1600U}) {
@@ -62,6 +82,8 @@ void UniversalObservations() {
     flow.events.back().effect=ExpressionEvaluation::kRequired;
     const auto result=std::get<FlowMotion>(AnalyzeFlowMotion(flow));
     for(unsigned i=0;i+1<size;++i)Check(result.next[i]==FlowPoint{size-1});
+    for(unsigned i=1;i<size;++i)Check(result.previous[i]==FlowPoint{0});
+    Check(!result.previous[0]);
     Check(!result.next.back());if(size>=400)Check(result.work<previous*3);previous=result.work;
     if(size==200) {
       Check(std::holds_alternative<FlowMotion>(AnalyzeFlowMotion(flow,{result.allocated_bytes,result.work})));
@@ -303,6 +325,7 @@ void SourceEvents() {
   const LegacyFlowProjection projection{aliases,literals,replacements,omitted,evaluations,normal};
   const auto built=BuildRecoveryFlow(tree,projection);Check(std::holds_alternative<RecoveryFlow>(built));
   const auto& flow=std::get<RecoveryFlow>(built);unsigned parameters=0,undefined=0,assignments=0,updates=0,scopes=0;
+  for(const auto& reference:flow.references) {Check(reference.exceptions.has_value());Check(reference.exceptions->thrown==flow.terminal);}
   std::optional<FlowPoint> read,convert,write;
   for(const auto& definition:flow.definitions) {
     parameters+=definition.kind==FlowDefinitionKind::kParameter;
@@ -332,6 +355,7 @@ void SourceEvents() {
   auto refined=flow;
   const auto refinement=std::get<FlowRefinement>(RefineRecoveryFlowEffects(refined,tree,refined_evaluations,refined_normal));
   Check(refined.events.size()==flow.events.size()&&refined.references.size()==flow.references.size());
+  for(std::size_t i=0;i<flow.references.size();++i)Check(refined.references[i].exceptions==flow.references[i].exceptions);
   Check(refined.edges.size()<flow.edges.size());
   const auto refined_initializations=std::get<FlowInitializations>(AnalyzeFlowInitializations(refined));
   bool coercion_throw=false;
@@ -417,7 +441,7 @@ void SourceEvents() {
   }
   for(std::size_t i=0;i<shared.references.size();++i) {
     const auto& a=reused.references[i];const auto& b=shared.references[i];
-    Check(std::tie(a.point,a.binding,a.kind,a.site)==std::tie(b.point,b.binding,b.kind,b.site));
+    Check(std::tie(a.point,a.binding,a.kind,a.site,a.exceptions)==std::tie(b.point,b.binding,b.kind,b.site,b.exceptions));
   }
   unsigned read_references=0,write_references=0;
   for(const auto& reference:shared.references) {

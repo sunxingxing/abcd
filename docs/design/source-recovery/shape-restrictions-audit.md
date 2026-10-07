@@ -2073,3 +2073,15 @@ observations and possible nonterminating transparent paths fail that semantic
 obligation. There is no path walk per candidate or recognized control shape.
 Region identity remains a documented implementation restriction for matching
 handlers/activations until shared context facts replace it, not a language rule.
+
+
+### Rules196: remove snapshot same-region admission
+
+Expression-region equality and its syntax-census state are deleted. Common
+bidirectional observation pairing proves successful-write/read correspondence
+without replay or bypass; common reference exception contexts preserve handler
+and cleanup destinations even for a nonthrowing destination read. A once-only
+loop-entry case now succeeds without a loop-pattern branch, while repeated-read
+and changed-handler mutants are independently rejected. Lexical identity and
+lifetime proofs remain in their documented owners. Full unwind/activation and
+canonical-IR precision remain gaps, not new local admission conditions.
