@@ -1,3 +1,4 @@
+#include "source_variables.h"
 #include "tail_completion.h"
 #include "discarded_read.h"
 #include "class_names.h"
@@ -191,7 +192,6 @@ class TreePrinter {
     }
     const auto& structure = std::get<TreeStructure>(checked);
     Admit(structure.allocated_bytes, 1); Step(structure.work);
-    PrepareClassNames();
     if (Tree().callable != CallableKind::kFunction && !IsArrowCallable(Tree().callable) &&
         Tree().callable != CallableKind::kAsyncFunction && Tree().callable != CallableKind::kGenerator &&
         Tree().callable != CallableKind::kAsyncGenerator && !(fields && Tree().callable == CallableKind::kMethod))
@@ -242,6 +242,7 @@ class TreePrinter {
     Array(Result().property_extents, Tree().properties.size());
     Array(Result().statement_extents, Tree().statements.size());
     Array(Result().anchors, Tree().anchors.size()); PrepareAnchors();
+    PrepareClassNames();
     if (module || fields) Push(Statement{Tree().body, indent}); else Push(BeginFunction{});
     Drain(); FinalizeNullishRanges(); Append("\n");
     Result().bytes = written_;
@@ -349,7 +350,10 @@ class TreePrinter {
     return u"";
   }
   void PrepareClassNames() {
-    auto planned = family_ ? PlanPrintedClassNames(*family_, scope_, remaining_) : PlanPrintedClassNames(Tree(), scope_, remaining_);
+    const auto prepared = family_ ? std::span<const SourceVariables>(family_variables_) :
+        std::span<const SourceVariables>(&variables_, 1);
+    auto planned = family_ ? PlanPrintedClassNames(*family_, scope_, remaining_, prepared) :
+        PlanPrintedClassNames(Tree(), scope_, remaining_, prepared);
     if (const auto* error = std::get_if<TreeStructureError>(&planned)) {
       if (*error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
       if (*error == TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
@@ -1439,7 +1443,7 @@ class TreePrinter {
       Append("while (true) "); Push(Statement{node.body, at.depth});
     }
   }
-  const LoopSyntax& Loops() const { return family_ ? loops_[current_] : loop_; }
+  const LoopSyntax& Loops() const { return Variables().loops; }
   void Run(ElideLoopHeader at) {
     // Only effect-free constant completions are elided. Preserve their original
     // statement/anchor identities at the end of the actual predicate occurrence.
@@ -1655,36 +1659,16 @@ class TreePrinter {
     Push(Indent{depth});
   }
   void PrepareAnchors() {
-    auto planned = PlanNullishSyntax(Tree(), remaining_);
+    auto planned = PrepareSourceVariables(Tree(), remaining_);
     if (const auto* error = std::get_if<TreeStructureError>(&planned)) {
       if (*error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
       if (*error == TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
       throw Error::kUnsupportedContext;
     }
-    if (family_ && nullishes_.empty()) Array(nullishes_, family_->members.size());
-    auto& syntax = family_ ? nullishes_[current_] : nullish_;
-    syntax = std::get<NullishSyntax>(std::move(planned));
-    Admit(syntax.allocated_bytes, 1); Step(syntax.work);
-    auto planned_loops = PlanLoopSyntax(Tree(), remaining_);
-    if (const auto* error = std::get_if<TreeStructureError>(&planned_loops)) {
-      if (*error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
-      if (*error == TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
-      throw Error::kUnsupportedContext;
-    }
-    if (family_ && loops_.empty()) Array(loops_, family_->members.size());
-    auto& loops = family_ ? loops_[current_] : loop_;
-    loops = std::get<LoopSyntax>(std::move(planned_loops));
-    Admit(loops.allocated_bytes, 1); Step(loops.work);
-    auto planned_bindings = PlanBindingInitializers(Tree(), loops, syntax, remaining_);
-    if (const auto* error = std::get_if<TreeStructureError>(&planned_bindings)) {
-      if (*error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
-      if (*error == TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
-      throw Error::kUnsupportedContext;
-    }
-    if (family_ && initializers_.empty()) Array(initializers_, family_->members.size());
-    auto& bindings = family_ ? initializers_[current_] : initializer_;
-    bindings = std::get<BindingInitializers>(std::move(planned_bindings));
-    Admit(bindings.allocated_bytes, 1); Step(bindings.work);
+    if (family_ && family_variables_.empty()) Array(family_variables_, family_->members.size());
+    auto& variables = family_ ? family_variables_[current_] : variables_;
+    variables = std::get<SourceVariables>(std::move(planned));
+    Admit(variables.allocated_bytes, 1); Step(variables.work);
     Array(Located(), Tree().anchors.size());
     std::size_t count = 0;
     for (std::size_t i = 0; i < Tree().anchors.size(); ++i) {
@@ -1700,8 +1684,9 @@ class TreePrinter {
   static bool Less(BlockBoundary left, BlockBoundary right) {
     return left.block != right.block ? left.block < right.block : left.index < right.index;
   }
-  const NullishSyntax& Nullish() const { return family_ ? nullishes_[current_] : nullish_; }
-  const BindingInitializers& Initializers() const { return family_ ? initializers_[current_] : initializer_; }
+  const SourceVariables& Variables() const { return family_ ? family_variables_[current_] : variables_; }
+  const NullishSyntax& Nullish() const { return Variables().nullish; }
+  const BindingInitializers& Initializers() const { return Variables().bindings; }
   void FinalizeNullishRanges() {
     const auto& syntax = Nullish();
     const auto finalize = [&](const auto& omitted, auto& ranges, auto& extents) {
@@ -1764,12 +1749,8 @@ class TreePrinter {
   std::vector<std::uint8_t> printed_;
   std::vector<std::uint8_t> native_names_;
   ClassNames class_names_;
-  LoopSyntax loop_;
-  std::vector<LoopSyntax> loops_;
-  BindingInitializers initializer_;
-  std::vector<BindingInitializers> initializers_;
-  NullishSyntax nullish_;
-  std::vector<NullishSyntax> nullishes_;
+  SourceVariables variables_;
+  std::vector<SourceVariables> family_variables_;
 };
 }  // namespace
 

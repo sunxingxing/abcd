@@ -1,6 +1,6 @@
 #include "class_names_checks.h"
 #include "../../../src/source/class_names.h"
-#include "../../../src/source/binding_initializer.h"
+#include "../../../src/source/source_variables.h"
 #include "../../../src/source/loop_syntax.h"
 #include "../../../src/source/nullish_syntax.h"
 #include <iostream>
@@ -131,15 +131,28 @@ void CheckClassNames(const std::function<std::shared_ptr<abcd::source::ClassTree
       for (auto& child : projected.children) child = remap(child);
       projected.body = remap(projected.body); std::reverse(projected.statements.begin(), projected.statements.end());
     }
-    const auto loops = std::get<LoopSyntax>(PlanLoopSyntax(projected));
-    const auto nullish = std::get<NullishSyntax>(PlanNullishSyntax(projected));
-    const auto bindings = std::get<BindingInitializers>(PlanBindingInitializers(projected, loops, nullish));
+    const auto prepared = std::get<SourceVariables>(PrepareSourceVariables(projected));
+    const auto& bindings = prepared.bindings;
     Check(parameter ? bindings.aliases[saved.value] == SymbolId{1} : bindings.replacements[read.value] == source);
     Check(Names(projected).Lookup(*definition).named);
     auto actual = PlanPrintedClassNames(projected, nullptr);
     Check(std::holds_alternative<ClassNames>(actual));
     const auto& names = std::get<ClassNames>(actual);
     Check(names.Lookup(*definition).named == !conflict);
+    const auto shared=std::get<ClassNames>(PlanPrintedClassNames(projected,nullptr,{},
+        std::span<const SourceVariables>(&prepared,1)));
+    Check(shared.Lookup(*definition).named==!conflict);
+    // Shared preparation must actually avoid recomputation, not just reproduce
+    // the same source through another planner invocation.
+    Check(shared.work<names.work);
+    if(copies==0&&!reverse&&!parameter) {
+      Check(std::get<TreeStructureError>(PrepareSourceVariables(projected,
+          {prepared.allocated_bytes-1,prepared.work}))==TreeStructureError::kResourceLimit);
+      Check(std::get<TreeStructureError>(PrepareSourceVariables(projected,
+          {prepared.allocated_bytes,prepared.work-1}))==TreeStructureError::kWorkLimit);
+      const auto exact=PrepareSourceVariables(projected,{prepared.allocated_bytes,prepared.work});
+      Check(std::holds_alternative<SourceVariables>(exact));
+    }
     Check(std::get<TreeStructureError>(PlanPrintedClassNames(projected, nullptr, {names.allocated_bytes - 1, names.work})) == TreeStructureError::kResourceLimit);
     Check(std::get<TreeStructureError>(PlanPrintedClassNames(projected, nullptr, {names.allocated_bytes, names.work - 1})) == TreeStructureError::kWorkLimit);
     if (!reverse && !parameter && !conflict) {

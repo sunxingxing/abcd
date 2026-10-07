@@ -2388,3 +2388,16 @@ and two valid mutations. Three ISA profiles supply 336 actually decoded
 functions and 75,264 behavior cases, including preserved live join storage.
 These are bounded correctness/work checks; paused full-process RSS and latency
 benchmarks remain unverified. Fresh fixed-five/six-mode evidence is in status.md.
+
+### SourceVariables shared preparation (rules178)
+
+The preparation coordinator runs existing nullish, loop and binding recovery once
+for each current printing owner. Printed class-name analysis borrows those exact
+immutable results. For M supplied owners and T inventoried trees, the lookup adds
+O(M log(M+1) + T log(M+1)) comparisons and O(M+T) descriptors, charged to the
+existing budget. Tree-object identity selects associated facts, never recovery
+behavior; semantic traversal does not follow pointer sort order. Unsupplied nested
+class bodies use the same coordinator once within the name-analysis invocation.
+Cross-printer-instance reuse remains open. No dependency or external code added.
+Tests cover projected class-name semantics and reduced shared-consumer work at
+0/1/200/201/400/800 copies with reversed statement arenas and exact/short budgets.

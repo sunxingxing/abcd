@@ -1,7 +1,5 @@
+#include "source_variables.h"
 #include "class_names.h"
-#include "binding_initializer.h"
-#include "loop_syntax.h"
-#include "nullish_syntax.h"
 #include "statement_expressions.h"
 #include "expression_children.h"
 #include "tree_checks.h"
@@ -31,8 +29,8 @@ struct LeaveClass { std::size_t candidate; };
 using Task = std::variant<EnterTree, Expression, EnterClass, LeaveClass>;
 class NamePlan {
  public:
-  NamePlan(const GlobalScope* scope, analysis::SemanticBudget budget, Ownership ownership)
-      : scope_(scope), budget_(budget), ownership_(ownership) {}
+  NamePlan(const GlobalScope* scope, analysis::SemanticBudget budget, Ownership ownership, std::span<const SourceVariables> prepared)
+      : scope_(scope), budget_(budget), ownership_(ownership), supplied_(prepared) {}
   ClassNames Run(const ConstructedFamily* family, const ClassTree* root_class, const FunctionTree* raw = nullptr) {
     if (family) AddFamily(*family);
     else if (raw) Grow(trees_, TreeView{raw});
@@ -51,15 +49,25 @@ class NamePlan {
     }
     if (candidates_.empty()) return {{}, budget_.Bytes(), budget_.Work()};
     if (ownership_ == Ownership::kPrinted) {
-      // Reuse the deterministic printer projection, including prepared class
-      // bodies outside the enclosing family. Charge every planning pass and
-      // retain one table per owner; no subtree replay per candidate class.
+      // Borrow the printing owner's immutable projection. Nested class bodies
+      // not in that preparation use the same coordinator and remain owned here;
+      // never recompute a supplied plan or replay a subtree per candidate.
       budget_.Array(projections_, trees_.size());
+      budget_.Array(prepared_, trees_.size());
+      std::vector<const SourceVariables*> supplied;
+      budget_.Array(supplied, supplied_.size());
+      for (std::size_t i=0;i<supplied_.size();++i) { budget_.Step(); supplied[i]=&supplied_[i]; }
+      const auto less=[&](const FunctionTree* a,const FunctionTree* b){budget_.Step();return std::less<const FunctionTree*>{}(a,b);};
+      std::sort(supplied.begin(),supplied.end(),[&](auto a,auto b){return less(a->tree,b->tree);});
       for (std::size_t i = 0; i < trees_.size(); ++i) {
         budget_.Step(); const auto& tree = *trees_[i].tree;
-        const auto nullish = Consume(PlanNullishSyntax(tree, budget_.Remaining()));
-        const auto loops = Consume(PlanLoopSyntax(tree, budget_.Remaining()));
-        projections_[i] = Consume(PlanBindingInitializers(tree, loops, nullish, budget_.Remaining()));
+        const auto found=std::lower_bound(supplied.begin(),supplied.end(),&tree,
+            [&](auto entry,auto key){return less(entry->tree,key);});
+        if(found!=supplied.end()&&(*found)->tree==&tree) projections_[i]=&(*found)->bindings;
+        else {
+          prepared_[i]=Consume(PrepareSourceVariables(tree,budget_.Remaining()));
+          projections_[i]=&prepared_[i].bindings;
+        }
       }
     }
     std::size_t symbols = 0, expressions = 0;
@@ -112,7 +120,7 @@ class NamePlan {
       for (std::size_t i = 0; i < trees_.size(); ++i) {
         const auto& view = trees_[i]; const auto& tree = *view.tree;
         for (std::size_t j = 0; j < tree.statements.size(); ++j) {
-          budget_.Step(); if (!projections_[i].omitted[j]) continue;
+          budget_.Step(); if (!projections_[i]->omitted[j]) continue;
           VisitStatementExpressions(tree.statements[j].statement, [&](ExprId root) {
             budget_.Step(); incoming_[view.expressions + root.value] = 1;
           });
@@ -258,7 +266,7 @@ class NamePlan {
   }
   void Walk(Expression at) {
     if (ownership_ == Ownership::kPrinted) {
-      const auto replacement = projections_[at.tree].replacements[at.expression.value];
+      const auto replacement = projections_[at.tree]->replacements[at.expression.value];
       if (replacement) { Push(Expression{at.tree, *replacement}); return; }
     }
     const auto& tree = *trees_[at.tree].tree; const auto& expression = tree.expressions[at.expression.value].expression;
@@ -269,14 +277,14 @@ class NamePlan {
     if (const auto* read = std::get_if<SymbolExpr>(&expression)) {
       if (ownership_ == Ownership::kCanonical) Symbol(at.tree, read->symbol);
       else {
-        const auto& projection = projections_[at.tree];
+        const auto& projection = *projections_[at.tree];
         if (!projection.literals[read->symbol.value])
           Symbol(at.tree, projection.Storage(read->symbol));
       }
     }
-    if (const auto* update = std::get_if<UpdateExpr>(&expression)) Symbol(at.tree, ownership_ == Ownership::kPrinted ? projections_[at.tree].Storage(update->symbol) : update->symbol);
+    if (const auto* update = std::get_if<UpdateExpr>(&expression)) Symbol(at.tree, ownership_ == Ownership::kPrinted ? projections_[at.tree]->Storage(update->symbol) : update->symbol);
     if (const auto* assignment = std::get_if<AssignmentExpr>(&expression))
-      if (const auto* target = std::get_if<SymbolTarget>(&assignment->target)) Symbol(at.tree, ownership_ == Ownership::kPrinted ? projections_[at.tree].Storage(target->symbol) : target->symbol);
+      if (const auto* target = std::get_if<SymbolTarget>(&assignment->target)) Symbol(at.tree, ownership_ == Ownership::kPrinted ? projections_[at.tree]->Storage(target->symbol) : target->symbol);
     if (const auto* global = std::get_if<GlobalNameExpr>(&expression)) {
       RequireTree(global->name.value < tree.names.size(), Error::kRange);
       Reference(tree.names[global->name.value], 0);
@@ -312,7 +320,9 @@ class NamePlan {
   const GlobalScope* scope_;
   TreeCheckBudget budget_;
   Ownership ownership_;
-  std::vector<BindingInitializers> projections_;
+  std::span<const SourceVariables> supplied_;
+  std::vector<SourceVariables> prepared_;
+  std::vector<const BindingInitializers*> projections_;
   std::vector<TreeView> trees_;
   std::vector<Owner> owners_;
   std::vector<Candidate> candidates_;
@@ -326,11 +336,11 @@ class NamePlan {
   std::optional<std::size_t> tail_;
   std::size_t pending_ = 0, depth_ = 0;
 };
-template<class Input> std::variant<ClassNames, Error> Plan(const Input& input, const GlobalScope* scope, analysis::SemanticBudget budget, Ownership ownership = Ownership::kCanonical) {
+template<class Input> std::variant<ClassNames, Error> Plan(const Input& input, const GlobalScope* scope, analysis::SemanticBudget budget, Ownership ownership = Ownership::kCanonical, std::span<const SourceVariables> prepared = {}) {
   try {
-    if constexpr (std::is_same_v<Input, ConstructedFamily>) return NamePlan(scope,budget,ownership).Run(&input,nullptr);
-    else if constexpr (std::is_same_v<Input, FunctionTree>) return NamePlan(scope,budget,ownership).Run(nullptr,nullptr,&input);
-    else return NamePlan(scope,budget,ownership).Run(nullptr,&input);
+    if constexpr (std::is_same_v<Input, ConstructedFamily>) return NamePlan(scope,budget,ownership,prepared).Run(&input,nullptr);
+    else if constexpr (std::is_same_v<Input, FunctionTree>) return NamePlan(scope,budget,ownership,prepared).Run(nullptr,nullptr,&input);
+    else return NamePlan(scope,budget,ownership,prepared).Run(nullptr,&input);
   } catch (Error error) { return error; }
   catch (const std::bad_alloc&) { return Error::kResourceLimit; }
   catch (const std::length_error&) { return Error::kResourceLimit; }
@@ -347,8 +357,8 @@ ClassNames::Use ClassNames::Lookup(const ClassTree& tree) const {
 std::variant<ClassNames, TreeStructureError> PlanClassNames(const ConstructedFamily& input, const GlobalScope* scope, analysis::SemanticBudget budget) { return Plan(input,scope,budget); }
 std::variant<ClassNames, TreeStructureError> PlanClassNames(const FunctionTree& input, const GlobalScope* scope, analysis::SemanticBudget budget) { return Plan(input,scope,budget); }
 std::variant<ClassNames, TreeStructureError> PlanClassNames(const ClassTree& input, const GlobalScope* scope, analysis::SemanticBudget budget) { return Plan(input,scope,budget); }
-std::variant<ClassNames, TreeStructureError> PlanPrintedClassNames(const ConstructedFamily& input, const GlobalScope* scope, analysis::SemanticBudget budget) { return Plan(input,scope,budget,Ownership::kPrinted); }
-std::variant<ClassNames, TreeStructureError> PlanPrintedClassNames(const FunctionTree& input, const GlobalScope* scope, analysis::SemanticBudget budget) { return Plan(input,scope,budget,Ownership::kPrinted); }
-std::variant<ClassNames, TreeStructureError> PlanPrintedClassNames(const ClassTree& input, const GlobalScope* scope, analysis::SemanticBudget budget) { return Plan(input,scope,budget,Ownership::kPrinted); }
+std::variant<ClassNames, TreeStructureError> PlanPrintedClassNames(const ConstructedFamily& input, const GlobalScope* scope, analysis::SemanticBudget budget, std::span<const SourceVariables> prepared) { return Plan(input,scope,budget,Ownership::kPrinted,prepared); }
+std::variant<ClassNames, TreeStructureError> PlanPrintedClassNames(const FunctionTree& input, const GlobalScope* scope, analysis::SemanticBudget budget, std::span<const SourceVariables> prepared) { return Plan(input,scope,budget,Ownership::kPrinted,prepared); }
+std::variant<ClassNames, TreeStructureError> PlanPrintedClassNames(const ClassTree& input, const GlobalScope* scope, analysis::SemanticBudget budget, std::span<const SourceVariables> prepared) { return Plan(input,scope,budget,Ownership::kPrinted,prepared); }
 
 }

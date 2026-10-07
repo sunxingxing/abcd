@@ -115,6 +115,13 @@ Printer and class-name analysis receive the same prepared plan per function owne
 - [ ] Keep legacy adapter only for explicitly unconverted domains; list its obligations.
 - [ ] Run loop/local/binding/snapshot/class-name/record-contract tests and commit.
 
+Task 4 implemented substep (rules178): SourceVariables owns nullish/loop/binding
+preparation in dependency order. TreePrinter prepares once for its current owner
+set and passes const plans to printed class-name analysis. Supplied owners no
+longer repeat these passes. External nested class bodies use the same coordinator
+but are not yet shared across printer instances. Legacy initialization, version
+invalidation and canonical flow integration remain open; task 4 is not complete.
+
 ### Task 5: End-to-end milestone acceptance and old-rule retirement
 
 Files: tests/unit/source existing decoded fixtures; tests/integration existing

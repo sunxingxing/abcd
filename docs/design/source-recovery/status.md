@@ -24,6 +24,28 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-07：规则178，类名与打印共享 SourceVariables 准备结果
+
+- 新增PrepareSourceVariables，以nullish → loop → binding的明确依赖顺序
+  产生一个当前树的准备结果。TreePrinter不再自行调用三套pass；只消费
+  同一结果中的语法/绑定事实。Direct先准备变量后分析类名，family先准备
+  全部当前成员，再进行类名分析。结果在本次准备内只读，不作跨修改缓存。
+- PlanPrintedClassNames借用当前打印单元的SourceVariables，不重算已提供
+  owner的计划。按真实FunctionTree对象身份排序/二分匹配，不按名字、PC
+  或图形状选择。借用事实预算由拥有者支付一次，消费者只计自身工作。
+- 外部嵌套class body通过同一协调器临时准备；跨打印实例共享仍待完成。
+  BindingInitializers内部初始化/多轮刷新仍未迁移，不能宣称完整pass管理器。
+- class-name性质测试比较独立准备与共享准备的命名决定，并断言共享路径
+  工作量减少，证明没有暗中重算。覆盖复制0/1/200/201/400/800、语句arena
+  反转、参数/全局来源、遮蔽与不遮蔽；新增协调器exact/short预算验证。
+- 最终50项相关定向回归全部通过261.93秒，日志/tmp/abcd-rule178-tests.log；
+  含类名共享性质/独立源码行为、预算边界、捕获与默认参数、既定真实record。
+- 单pasteboard重新导出到build/stage-one/shared-variables-rule178，
+  10complete/0partial/9noModule；十份源码node --check通过，正文与规则177
+  一致。相关CLI/fixture已重建，无新增实际record覆盖声明。
+- 初步5项回归通过8.28秒，新增共享准备性质测试通过3.85秒。阶段一与
+  架构里程碑继续进行；暂停事项和固定输入范围保持。
+
 ### 2026-10-07：规则177，发布消费者复用省略事实
 
 - PrintedFunction增加typed GeneratedExtent，区分必须有正文的范围与已决定

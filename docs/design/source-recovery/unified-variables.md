@@ -75,6 +75,14 @@ normal_stores每轮新建，提交时清除本轮已移除写入的事实。仍�
 本次共享活跃性在冻结的局部RecoveryFlow上先算，干涉随后只消费它；
 二者计算期间不修改flow或plan，分析不跨存储映射应用继续复用。
 
+规则178增加SourceVariables准备结果：按nullish → loop → binding顺序产生
+只读消费的同一份投影，当前打印单元的class-name与printer共享它。Direct
+入口先准备变量再分析类名，family在所有成员准备完毕后分析类名；借用的
+结果绑定同一未修改FunctionTree对象，禁止跨修改缓存。外部嵌套class body
+仍由类名消费者通过同一协调器临时准备，跨打印实例共享尚未完成。
+这消除了两个消费者各自调用三套准备函数的路径，但未替代BindingInitializers
+内部旧初始化分析，也没有完成版本失效/多轮pass协调器。
+
 ## 路线取舍
 
 1. 采用现有已验证流的source overlay，保留原SSA/效果/异常身份并显式
