@@ -12,6 +12,62 @@
 
 ## 当前阶段
 
+### 2026-10-07：规则155，私有初始化的共同作用域包含证明
+
+- 从干净2886cc9b继续，production/rules154推进155。BindingInitializers
+  去掉空声明与直接赋值必须同一native容器的表示限制；共同迭代DFS
+  给词法容器记录子树区间，SymbolId索引记录全部观察容器的上下界。
+  首次观察仍必须是直接赋值完成，全部读取/写入必须留在初始化的
+  词法生命周期内；祖先空声明可省略，表达式、原store及anchor不动。
+  外层/兄弟catch/finally旧值读取、RHS自读、capture/module escape、
+  用户local/cell/formal与未知区域仍保留，单次写用私有const，后续写用let。
+- 作用域census复用既有LoopSyntax进入/条件/更新及statement-nullish
+  的打印owner，投影观察在遍历后解析，owner可晚于原根。外层owner
+  传播到子树，native loop程序优先于内嵌nullish，arena编号不决定归属。
+  自查发现只按canonical body包含关系会错把for更新读取当成体内读取；
+  普通多写私有绑定的有效scope-only probe在233行RED，finally恢复
+  生产映射后通过。没有用新root/same-block或样本条件封堵。
+- 原ABC→ValueProgram→control/evaluation/scope→canonical FunctionTree→
+  common printer保持，没有样本/名称、PC/register、邻接、复制/selection
+  数量、producer/opcode白名单或IIFE。O(statements+expressions+owned
+  children+symbols+owned class capture references)时间及预算化scratch。
+  每个expression至多一条投影context观察，update同时记读和一次写；
+  无逐symbol或loop重扫。200/201与400→800 work小于三倍、相反arena、
+  深层block及exact/under工作预算保持。不把计数当物理RSS证明。
+- 新嵌套分支/try用例先在旧规则154有效打印后的空声明断言159行RED。
+  十二原/新增普通树族随后扩展十三族，六规模、正反arena共156树，
+  加12深度树和48真实三profile COPY/split decoded，共216被检查树。
+  其中深度400/800的四树仅分析，其他212完整源码由独立JS oracle运行，
+  25940行为比较/56有效JS mutation通过；包含未执行分支、finally原throw/
+  undefined、零/多轮循环、mutable私有值被for更新读取、await/yield请求。
+  原decoded经FunctionInput/ValueProgram/common tree及新鲜TreeSemantics。
+  扩展fixture最初把bool直接装入typed TreeLiteral而编译失败，改为
+  BooleanLiteral；另修正构造loop时删除旧return表达式的时机，未改生产证明。
+- 最终两工具、十个主体fixture及两个name/export fixture构建退出0。
+  最终25项定向25/25通过66.62秒，含新增unit/源码、loop条件/进入/
+  更新、snapshot、tree scope/structure、numeric update、class/control、
+  family names/default export及实际构造十record/Push/ProgressBar/富文本。
+  projected nullish观察另构建并验证两项snapshot_optional，2/2通过
+  48.06秒。早期scope-only模型的25/25为62.80秒，不作最终模型证据。
+  受控平台和构造子集不代替设备SDK、十record全部body或全阶段验收。
+- fresh ABC-only输出build/stage-one/binding-scope-pasteboard-reviewed：
+  19 records/219 methods，10complete source/0partial/9noModule，顶层
+  requested contract language_numeric_constructors_v1。十份源Acorn独立
+  解析通过，无legacy或complete输出中的INCOMPLETE/UNRECOVERED。
+  PasteBoard空声明50→39、初始化16→27、私有const15→26，总声明数
+  66及三个for保持；实际HTML处理的fromHtml、await和catch值现在在
+  各自try/catch中原位置初始化。配对源码未进入引擎，输入未修改。
+- 证据/tmp/abcd-binding-scope-{red,red-build,build,tests,loop-build,
+  loop-tests,final-build,names-build,tests-final,projection-red-build,
+  projection-red,projection-build,projection-tests,reviewed-build,
+  reviewed-tests,optional-build,optional-tests,behavior-reviewed,
+  export-reviewed,style-reviewed}.log。修改mjs的node --check及git diff
+  --check通过。原header投影仍保守包含retained continuing arm，体内
+  初始化尚未细分；参数内保存、一般SSA存储投影、真实变量归属、native
+  for let/每轮capture、一般继续程序与全body/style继续未完成。阶段一
+  Goal和原字段/全局/signature/body gate保持active；full suite、expanded
+  corpus、RSS/benchmark、DFX、scheduler、agents和周期audit暂停保持。
+
 ### 2026-10-07：规则154，私有结果的原位置初始化声明
 
 - 干净ae1cb83a继续，production/rules153推进154。共同

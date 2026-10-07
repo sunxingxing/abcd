@@ -1,5 +1,15 @@
 # 验收、证据与实施交接
 
+2026-10-07 规则155：共同DFS词法区间/全部观察census恢复祖先空声明到
+嵌套原赋值的初始化，实际loop/nullish打印owner保持可见性和旧值。
+新增普通分支/try/多轮循环与for更新读取反例，两个有效模型先RED。
+最终212完整源码25940独立行为/56 mutation通过；25项定向25/25
+（66.62秒），另两项snapshot_optional 2/2（48.06秒）。fresh ABC-only
+pasteboard仍10complete/0partial/9noModule，十份源独立解析通过；
+空声明50→39、初始化16→27、私有const15→26、三个for保持。
+真实变量归属、一般SSA投影、for let/每轮capture和全部body/style
+仍开放，阶段一及原结构gate保持active，暂停范围保持，证据见status.md。
+
 2026-10-07 规则154：已有私有结果按同一native词法归属、顺序支配及
 ownership读写/capture census恢复原位置let/const初始化，表达式/来源/
 异常/暂停保持，不合并SSA或推测用户const。96独立树/48三profile实际

@@ -90,13 +90,13 @@ native initializer/每轮binding与phi/update临时值消除仍是表示缺口�
 不描述为语言/VM限制。具体解码/独立行为、scope/throw/await/yield反例
 及实际record证据见status.md；两个实际for不能代替阶段一完整body风格。
 
-## 私有结果的初始化声明（规则 154）
+## 私有结果的初始化声明（规则 154/155）
 
 共同BindingInitializers在已检查的canonical FunctionTree上恢复原位置的
 `let/const value = expression`，只投影已有CompilerTemporary的空声明及
 独立SymbolTarget赋值。它不合并SSA位置，不推断源码原来的const，不更名，
 不移动或重复表达式，也不把原cell/formal/模块绑定改成私有不可变存储。
-实际声明容器提供词法归属和顺序支配；共同ownership census记录参数
+实际初始化容器提供词法归属和顺序支配；共同ownership census记录参数
 默认值及全部statement/expression中的读取、赋值、update和class/closure
 capture。目标的首次观察必须是该赋值完成，RHS自读或此前读取/写入不行；
 有后续写入时保留let，否则使用私有const。异常、await/yield仍在原位置。
@@ -105,10 +105,22 @@ capture。目标的首次观察必须是该赋值完成，RHS自读或此前读�
 ExprId、RHS和StmtId的生成范围、所有anchor事件保持。NameContext仍为
 同一SymbolId的实际名称，函数/class NamedEvaluation不因声明投影改变。
 没有样本/名字、PC/register、CFG同块、邻接或固定复制/selection数匹配。
-词法容器要求来自native声明的可见性，不把字节码块布局当语言条件。
+规则155用native block的DFS子树区间及每个SymbolId的观察位置上下界
+证明全部读写留在初始化容器内，去掉空声明和赋值必须同容器的表示限制。
+原空声明可以位于任意祖先容器；私有语法生命周期缩短，不移动表达式。
+外层/兄弟catch或finally读写继续保留原undefined/旧值存储。每次循环
+进入都先完成该直接赋值，且没有可观察capture，才有相同的私有语义。
+这项作用域证明不依赖CFG同块、距离或树深度，不恢复用户每轮capture。
+观察位置使用已有LoopSyntax/nullish投影的真实打印owner，而非仅使用
+canonical AST容器；循环进入/条件/更新表达式及optional程序的读取在
+共同owner作用域中计入。否则体内声明可能对for更新表达式不可见。
+owner晚于原根也在遍历结束后解析，外层投影传播到其全部子节点；
+native loop表达式内的nullish程序保持外层scope，arena重编号不改变结果。
+既有header投影的保守footprint仍包含其保留的continuing arm；这些体内
+初始化尚未进一步细分，继续保留原声明，不把保守包含当成语言不变量。
 
 Ruling：此次仅恢复私有结果声明，不把SSA carrier猜成用户let/const，
-不改变capture/每轮环境。嵌在调用参数中的保存、条件/其他词法容器、
+不改变可观察capture环境。嵌在调用参数中的保存、不能证明作用域包含的观察、
 已有loop/nullish表达式程序、部分未知区域保持canonical表示；这些是
 初始化语法/生命周期尚未表示的缺口，不新增整函数拒绝。逐symbol CFG
 活跃期/干涉与原变量归属仍需共同分析，不能以此关闭完整binding/style gate。

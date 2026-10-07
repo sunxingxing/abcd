@@ -1853,14 +1853,29 @@ check count/order, aliases, exceptions and descriptors; this is targeted
 semantic/work-growth evidence, not a physical RSS or full-corpus measurement.
 
 
-## Private binding initialization syntax (source rule 154)
+## Private binding initialization syntax (source rules 154/155)
 
 The already structurally checked FunctionTree supplies ownership and lexical
 containers. An iterative statement walk streams expression ownership, recording
 the first potential observation and total writes in SymbolId-indexed slots.
-An empty private declaration can initialize at a direct assignment in that
-same lexical container only if its completed store is the first observation;
-all earlier/RHS/nested accesses are conservatively included. Captured/module
+An empty private declaration can initialize at a direct assignment only if its
+completed store is the first observation. Rules 155 replaces the same-container
+representation restriction with scope confinement: iterative DFS numbers native
+block entries and subtree ends; every binding records the minimum and maximum
+container entry of its observations. Two interval comparisons prove all reads
+and writes belong to the initializer's subtree, even when the original empty
+declaration belongs to an ancestor. Sibling handler/finalizer and outer reads
+retain original storage. Existing loop initializer/condition/transition and
+statement-nullish projection owners supply their printed lexical context;
+projected references are resolved after the walk, including owners occurring
+after the original roots. Outermost ownership propagates to descendants; loop
+expression ownership takes precedence over its nested nullish syntax independent
+of arena numbering. Canonical-body containment alone is insufficient when a
+read is printed in a for update outside that body. One bounded sparse reference
+array stores at most one context observation per expression (an update has one
+context and one write). The existing header envelope conservatively includes
+its retained continuing arm; native initialization there remains a documented
+syntax coverage gap. All earlier/RHS/nested accesses are included. Captured/module
 locations retain their declarations, and one static write permits private
 const syntax. This does not infer original const metadata, move expressions,
 coalesce SSA storage or require a bytecode block layout. Existing loop/nullish
@@ -1875,6 +1890,13 @@ adds no runtime dependency; existing AST/NamedEvaluation/loop grammar remains
 the semantic basis. Tests cover 200/201 and 400/800 growth, reversed arenas,
 three ISA profiles, COPY/split variants, effects/exceptions/await/yield and
 source ranges. Work counters do not certify physical RSS; that gate stays paused.
+Additional tests exercise nested lexical containers, protected bodies and old
+values observed in finally, zero/multiple loop entries, 200/201/400/800 nested
+blocks, arena renumbering and exact/under work budgets. Only uncaptured private
+lifetimes shrink; the adverse mutable-private/for-update fixture and valid-JS
+scope-shortening mutations keep projected reads in their actual visible storage.
+This is not original user binding or per-iteration capture
+recovery. Standard DFS subtree intervals introduce no dependency or license.
 
 ## Nested phased selection execution owners (source rule 124)
 

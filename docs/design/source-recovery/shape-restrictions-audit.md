@@ -1,5 +1,20 @@
 # 按用户要求进行的恢复条件审计
 
+规则155补充：规则154的“空声明和初始化必须同一native容器”是保守的
+表示范围，现由共同作用域证明替代，不再作为额外条件。一次迭代DFS
+记录每个词法容器的子树区间，一次ownership census记录SymbolId全部
+读取/写入容器的上下界；初始化的直接赋值完成是首次观察，且所有观察
+均在该子树内，才缩短不可捕获私有存储的语法生命周期。RHS旧值读取、
+外层/兄弟handler或finally观察、module/class/closure escape及未知区域
+继续保留，不将它们当成布局条件。没有新恢复拒绝、局部CFG模式、固定
+深度/读写数量或sample/name匹配。嵌套初始化/loop重复进入和反例用
+同一实现；一般SSA投影、用户原变量和每轮capture仍未完成。
+scope census还使用既有loop初始化/条件/更新和statement-nullish的打印
+归属。被投影到for更新表达式的读取属于loop owner的scope；不能用
+canonical体内包含关系证明其可见性。普通多写绑定的反例在禁用打印
+scope映射的有效probe中RED，正常实现保留外层存储；这是词法可见性
+义务，经共同投影owner证明，不是新root/same-block/序列准入条件。
+
 规则154补充：私有结果初始化声明由canonical AST词法归属、直接语句的
 顺序支配、全ownership读写census和真实capture/module escape决定。
 目标的首次观察为赋值完成；RHS/提前读取、嵌套先写和后续update分别

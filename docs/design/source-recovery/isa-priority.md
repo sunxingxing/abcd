@@ -1,5 +1,12 @@
 # 全 ISA 优先执行顺序
 
+2026-10-07 规则155：私有初始化以共同词法子树区间和全部观察位置证明
+作用域包含，去掉空声明/赋值同容器限制，复用loop/nullish打印owner
+保护for更新读取。212源码25940独立行为/56 mutation、最终25/25及
+optional另轮2/2通过；fresh pasteboard空声明50→39，10complete/0partial
+及三个for保持。一般SSA存储、真实变量及每轮capture、全部body/style
+仍未完成，原结构gate、阶段一Goal和暂停范围保持，证据见status.md。
+
 2026-10-07 规则154：私有结果的初始化声明进入共同printer，按native
 词法归属/顺序支配、全ownership读写和capture census保留原位置语义，
 不按opcode/CFG同块/样本或复制数量选择，不合并SSA/cell/formal。

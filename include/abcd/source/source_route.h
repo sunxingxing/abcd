@@ -331,7 +331,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // root placement is not an extra Reference admission condition.
 // Rules 154 initialize private result declarations at their owned first store,
 // preserving actual scope, observations, captures and original expressions.
-inline constexpr std::uint32_t kRouteEvidenceRules = 154;
+// Rules 155 prove all private observations stay in the initializer's lexical
+// subtree using actual projection scopes; outer declarations need not share it.
+inline constexpr std::uint32_t kRouteEvidenceRules = 155;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

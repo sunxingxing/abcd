@@ -17,9 +17,11 @@ struct BindingInitializers {
 };
 // Requires a structurally checked tree and its current loop/nullish projections.
 // Native declarations at the original assignment occurrence. Empty private
-// declarations may move only within their lexical container when its direct
-// statement dominates all observations and no capture/module alias escapes.
-// The canonical AST, expressions, scope and execution order remain unchanged.
+// declarations can initialize in the same or a nested lexical container only
+// when the first completed direct store dominates every confined observation
+// and no capture/module alias escapes. DFS intervals prove lexical containment.
+// The canonical AST, expressions and execution order remain unchanged; private
+// syntax lifetimes may shrink. This does not recover user or captured bindings.
 // Loop/nullish expression programs retain their existing representation.
 // O(statements + expressions + owned children + symbols + capture references),
 // bounded iterative ownership walks; no per-symbol CFG traversal or SSA merge.
