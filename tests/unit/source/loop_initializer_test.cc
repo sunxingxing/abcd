@@ -1,5 +1,6 @@
 #include "../../../src/source/loop_syntax.h"
 #include "../../../src/source/binding_initializer.h"
+#include "../../../src/source/expression_children.h"
 #include "../../../src/source/nullish_syntax.h"
 #include "../../../src/source/tail_completion.h"
 #include "../../../src/source/discarded_read.h"
@@ -237,15 +238,26 @@ std::uint64_t Native(unsigned form, unsigned count, bool reverse, bool emit) {
   const auto completion = ImplicitTailCompletion(tree);
   std::vector<bool> elided(tree.expressions.size());
   if (completion && completion->value) elided[completion->value->value] = true;
-  for(unsigned i=0;i<tree.statements.size();++i)if(bindings.omitted[i])if(const auto* effect=std::get_if<ExpressionStmt>(&tree.statements[i].statement)) {
-    const auto& assignment=std::get<AssignmentExpr>(tree.expressions[effect->expression.value].expression);
-    elided[effect->expression.value]=true;elided[assignment.value.value]=true;
+  std::vector<ExprId> pending;
+  for(unsigned i=0;i<tree.statements.size();++i)if(bindings.omitted[i])
+    if(const auto* effect=std::get_if<ExpressionStmt>(&tree.statements[i].statement)) {
+      if(bindings.forwarded_statements[i])elided[effect->expression.value]=true;
+      else pending.push_back(effect->expression);
+    }
+  while(!pending.empty()) {
+    const auto id=pending.back();pending.pop_back();if(elided[id.value])continue;
+    elided[id.value]=true;VisitExpressionChildren(tree,tree.expressions[id.value].expression,
+        [&](ExprId child){pending.push_back(child);});
+    if(const auto replacement=bindings.replacements[id.value])pending.push_back(*replacement);
   }
   for (unsigned i = 0; i < tree.statements.size(); ++i) if (const auto read = DiscardedInvocationRead(tree, StmtId{i})) elided[read->value] = true;
   for (unsigned i = 0; i < ranges.expressions.size(); ++i) {
     const auto range = ranges.expressions[i];
     test::Check(range.begin <= range.end && range.end <= source.str().size());
-    if (range.begin == range.end) test::Check(elided[i] && range.begin > 0);
+    if (range.begin == range.end) {
+      if(!elided[i]||!range.begin)std::cerr<<"binding="<<form<<" count="<<count<<" reverse="<<reverse<<" expr="<<i<<" kind="<<tree.expressions[i].expression.index()<<" replacement="<<bindings.replacements[i].has_value()<<" at="<<range.begin<<'\n';
+      test::Check(elided[i] && range.begin > 0);
+    }
   }
   for (const auto anchor : ranges.anchors) test::Check(anchor > 0 && anchor <= source.str().size());
   if (emit) std::cout << nlohmann::json{{"source", source.str()}, {"lexical", lexical}, {"binding", form}, {"count", count}} << '\n';

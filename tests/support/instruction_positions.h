@@ -41,6 +41,7 @@ inline void CheckInstructionPositions(const source::FunctionTree& tree,
     if (omitted_expressions[id.value]) continue;
     omitted_expressions[id.value]=true;
     VisitExpressionChildren(tree,tree.expressions[id.value].expression,[&](ExprId child){pending.push_back(child);});
+    if (const auto replacement=bindings.replacements[id.value]) pending.push_back(*replacement);
   }
   const auto completion = positions.fragment == FunctionFragment::kStaticFields ||
       positions.fragment == FunctionFragment::kImplicitConstructor ? std::nullopt : ImplicitTailCompletion(tree);

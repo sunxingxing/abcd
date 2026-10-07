@@ -183,3 +183,25 @@ Partial trees retain the existing no-simplification path. That terminal path als
 publishes expression-indexed conservative evaluation/write summaries; empty
 vectors cannot represent unknown facts to printer consumers. The partial-tree
 regression combines private writes, comma evaluation and an UnrecoveredStmt.
+
+## Demand closure (rules181)
+
+The delete-write/delete-inert-RHS interaction no longer needs repeated graph
+reconstruction for cascading dead copies. RecoveryFlow records typed discarded
+regions and effects. AnalyzeFlowDemand shares the backward liveness solver's
+completion traversal and definition kills; observable roots activate reads, and a
+needed definition activates reads in its producing region. The monotone worklist
+finds def-use dependencies on demand and closes them before one batch commit.
+
+FlowDemand is deliberately distinct from all-read FlowLiveness: storage consumers
+cannot accidentally receive a pruned demand result. No full read/definition product
+is required. Materializing that product exceeded the existing 402-selection budget;
+the on-demand solver addresses the cost without relaxing the budget or adding a
+size/shape admission. FlowDefinitions itself remains tested for future consumers.
+
+An unobserved copy cycle has no seed and can disappear; an observed result or
+effect retains its dependency chain. Control conditions, initializations, returns,
+throws and suspension stay. Subsequent storage analysis starts on a rebuilt flow.
+This closes only the dead-write/inert-evaluation interaction. Shared initialization,
+storage identities in the flow, declaration removal, CompletedStore retirement and
+post-storage convergence remain open.

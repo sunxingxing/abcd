@@ -14,6 +14,15 @@ struct FlowLiveness {
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };
+// Demand uses a different result type: its selected roots must not be mistaken
+// for all-read liveness by storage interference or reaching-definition clients.
+struct FlowDemand {
+  std::vector<std::uint8_t> definitions, retained;
+  std::size_t allocated_bytes = 0;
+  std::uint64_t work = 0;
+};
+[[nodiscard]] std::variant<FlowDemand,TreeStructureError> AnalyzeFlowDemand(
+    const RecoveryFlow&,analysis::SemanticBudget = {});
 // One shared sparse worklist; no per-binding graph reconstruction. A live
 // definition is not permission to move storage, and a dead definition is not
 // permission to remove its RHS effects or its lexical initialization.

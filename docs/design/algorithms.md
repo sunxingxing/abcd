@@ -2436,3 +2436,48 @@ sets; source execution tests compose overwrites, branch joins, catch observation
 returned assignment values, native declarations and live undefined initialization.
 Reversed expression arenas, 200/201/400/800 effect sequences and exact/short budgets
 exercise layout independence and bounded work. This is not a process RSS claim.
+
+### Demand closure for discarded evaluations (rules181)
+
+Provenance: the standard mark-from-observable-roots dead-code elimination family,
+using the dead-until-demanded approach described by
+[LLVM ADCE](https://llvm.org/docs/Passes.html#adce-aggressive-dead-code-elimination).
+This is independent project-owned code, not copied LLVM code or an LLVM dependency;
+no external licensing or versioned runtime is introduced. All control transfers and
+condition reads remain. Maintenance belongs to the existing source adapter, shared
+liveness solver and definition-elision consumer.
+
+RecoveryFlow records typed discarded-value regions and composes their operation
+effects once. Private successful writes can be inert; initialization, observable
+writes, getters/coercion, calls, throws and suspension force retention. Existing
+initialization/escape facts remain an explicit migration prerequisite and gap.
+
+AnalyzeFlowLiveness and AnalyzeFlowDemand share one sparse backward gen/kill and
+exception-edge solver. The former seeds every read for storage interference; the
+latter seeds observable effects and reads outside discarded regions. On reaching
+a definition it retains that definition's producing region, activating its reads.
+Each region activates once. The monotone worklist closes chains and cycles before
+one write-and-statement delta is committed. Separate result types prevent passing
+demand-only facts to a consumer that needs all-read liveness.
+
+For N events, E edges, D definitions, G discarded regions and F reached
+(point,binding) facts, demand adds O(N+G+D) indexes/output to the existing sparse
+backward worklist. Each unique fact is processed once; ordered-set operations cost
+O(log(F+1)), and incoming edges are visited per reached fact. F is bounded by the
+all-read solver's fact set on this same graph. No read/definition cross product,
+per-variable graph walk or repeated whole-flow deletion rounds are introduced.
+Dense liveness remains possible and is budgeted, not hidden by a size threshold.
+
+Measured design choice: explicitly materializing all reaching-definition read
+edges for this consumer exceeded the existing resource budget on the 402-selection
+nullish regression. On-demand discovery through the shared solver preserves the
+same demand semantics without that product. FlowDefinitions remains available and
+independently verified; it is not a production prerequisite of this transformation.
+
+Tests add 98,304 tiny demand graphs checked against an independent dense fixed
+point, including effects, external reads, cycles and multiple definitions per
+region. Source chains/cycles at 2/200/201/400/800 retain demanded copies and remove
+undemanded ones, with reversed arenas, an independent array-transport execution
+oracle, exact/short budgets and geometric work assertions. This is not process RSS
+or full-corpus evidence. Whole-pipeline convergence and binding lifetime recovery
+remain open.

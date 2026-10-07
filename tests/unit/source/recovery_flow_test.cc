@@ -73,13 +73,61 @@ void SmallGraphs() {
         if(reaching[point][d]&&graph.events[point].read==graph.definitions[d].binding){expected_reads.push_back({{point},{d}});expected_live[d]=1;}
       const auto definitions=std::get<FlowDefinitions>(AnalyzeFlowDefinitions(graph,live));
       Check(definitions.reads==expected_reads);Check(live.live_definitions==expected_live);
-      const auto elisions=std::get<DefinitionElisions>(PlanDefinitionElisions(graph,live));
+      const auto demand=std::get<FlowDemand>(AnalyzeFlowDemand(graph));
+      const auto elisions=std::get<DefinitionElisions>(PlanDefinitionElisions(graph,demand));
       std::vector<ExprId> expected_elisions;
       for(unsigned d=0;d<graph.definitions.size();++d)if(!expected_live[d])expected_elisions.push_back(*graph.definitions[d].write);
       Check(elisions.writes==expected_elisions);++cases;
     }
   }
   std::cout<<"independent small graphs "<<cases<<'\n';
+}
+void DemandGraphs() {
+  std::size_t cases=0;
+  for(unsigned layout=0;layout<3;++layout)for(unsigned edges=0;edges<512;++edges)
+    for(unsigned effects=0;effects<8;++effects)for(unsigned external=0;external<8;++external) {
+      RecoveryFlow graph{};graph.events.resize(15);
+      std::array<unsigned,3> owner{};std::array<bool,3> needed{},retained{};
+      for(unsigned i=0;i<3;++i) {
+        owner[i]=layout==0?i:layout==1?0:i%2;
+        graph.events[i].discarded=DiscardedId{owner[i]};graph.events[i].definition=FlowDefinitionId{i};
+
+        graph.definitions.push_back({{i},{i},FlowDefinitionKind::kAssignment,{},{},{},ExprId{i},FlowWriteEffect::kInert});
+        retained[i]=effects&(1U<<i);needed[i]=external&(1U<<i);
+        graph.discarded.push_back({{i},retained[i]?ExpressionEvaluation::kRequired:ExpressionEvaluation::kInert});
+        if(needed[i]){graph.events[i+12].read=SymbolId{i};Link(graph,i,i+12);}
+        for(unsigned j=0;j<3;++j) {
+          const auto point=3+i*3+j;graph.events[point].discarded=DiscardedId{i};
+          if(edges&(1U<<(i*3+j))){graph.events[point].read=SymbolId{j};Link(graph,j,point);}
+        }
+      }
+      // Independent dense fixed point, intentionally unlike the production
+      // adjacency/work queue. Includes cycles and many definitions per region.
+      bool changed=true;
+      while(changed) {
+        const auto old_needed=needed,old_retained=retained;
+        for(unsigned i=0;i<3;++i)if(needed[i])retained[owner[i]]=true;
+        for(unsigned i=0;i<3;++i)if(retained[i])for(unsigned j=0;j<3;++j)
+          if(edges&(1U<<(i*3+j)))needed[j]=true;
+        changed=old_needed!=needed||old_retained!=retained;
+      }
+      const auto demand=std::get<FlowDemand>(AnalyzeFlowDemand(graph));
+      for(unsigned i=0;i<3;++i)Check(bool(demand.definitions[i])==needed[i]&&bool(demand.retained[i])==retained[i]);
+      const auto plan=std::get<DefinitionElisions>(PlanDefinitionElisions(graph,demand));
+      std::vector<ExprId> writes;std::vector<StmtId> statements;
+      for(unsigned i=0;i<3;++i){if(!needed[i])writes.push_back({i});if(!retained[i])statements.push_back({i});}
+      Check(plan.writes==writes&&plan.statements==statements);
+      if(edges==511&&effects==7&&external==7) {
+        Check(std::holds_alternative<FlowDemand>(AnalyzeFlowDemand(graph,{demand.allocated_bytes,demand.work})));
+        Check(std::get<TreeStructureError>(AnalyzeFlowDemand(graph,{demand.allocated_bytes-1,demand.work}))==TreeStructureError::kResourceLimit);
+        Check(std::get<TreeStructureError>(AnalyzeFlowDemand(graph,{demand.allocated_bytes,demand.work-1}))==TreeStructureError::kWorkLimit);
+        Check(std::holds_alternative<DefinitionElisions>(PlanDefinitionElisions(graph,demand,{plan.allocated_bytes,plan.work})));
+        Check(std::get<TreeStructureError>(PlanDefinitionElisions(graph,demand,{plan.allocated_bytes-1,plan.work}))==TreeStructureError::kResourceLimit);
+        Check(std::get<TreeStructureError>(PlanDefinitionElisions(graph,demand,{plan.allocated_bytes,plan.work-1}))==TreeStructureError::kWorkLimit);
+      }
+      ++cases;
+    }
+  std::cout<<"independent demand graphs "<<cases<<'\n';
 }
 void Scaling() {
   std::uint64_t previous=0;
@@ -212,4 +260,4 @@ void SourceEvents() {
 
 }
 }
-int main(){SourceEvents();SmallGraphs();Scaling();}
+int main(){SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

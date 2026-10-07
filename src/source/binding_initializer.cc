@@ -421,16 +421,17 @@ class Initializers {
     }
     if (!candidate) return;
     const auto flow=CurrentFlow();
-    auto analyzed=AnalyzeFlowLiveness(flow,budget_.Remaining());
+    auto analyzed=AnalyzeFlowDemand(flow,budget_.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
-    const auto& live=std::get<FlowLiveness>(analyzed);
-    budget_.Admit(live.allocated_bytes,1);budget_.Step(live.work);
-    auto proposed=PlanDefinitionElisions(flow,live,budget_.Remaining());
+    const auto& demand=std::get<FlowDemand>(analyzed);
+    budget_.Admit(demand.allocated_bytes,1);budget_.Step(demand.work);
+    auto proposed=PlanDefinitionElisions(flow,demand,budget_.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&proposed))throw *error;
     const auto& delta=std::get<DefinitionElisions>(proposed);
     budget_.Admit(delta.allocated_bytes,1);budget_.Step(delta.work);
-    // Commit only the write deletion. RHS evaluation and its result stay at
-    // the same occurrence, including throws, calls, allocation and suspension.
+    // Commit after demand closure. Only wholly inert discarded evaluations
+    // disappear; every required RHS retains its occurrence and completion.
+    for (const auto statement:delta.statements) {budget_.Step();plan_.omitted[statement.value]=1;}
     for (const auto write:delta.writes) {
       budget_.Step();plan_.replacements[write.value]=
           std::get<AssignmentExpr>(tree_.expressions[write.value].expression).value;

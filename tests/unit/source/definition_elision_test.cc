@@ -85,8 +85,54 @@ std::uint64_t Check(unsigned form,unsigned count,bool reverse,bool emit,bool res
   if(emit)std::cout<<nlohmann::json{{"source",out.str()},{"form",form},{"count",count}}<<'\n';
   return plan.work;
 }
+std::uint64_t Chain(unsigned size,bool cycle,bool observed,bool reverse,bool emit) {
+  Fixture f;auto& tree=f.tree;
+  for(unsigned i=1;i<size;++i) {
+    const auto suffix=std::to_string(i);const auto name=static_cast<std::uint32_t>(tree.names.size());
+    tree.names.push_back(u"slot"+std::u16string(suffix.begin(),suffix.end()));
+    tree.symbols.push_back({{1},{name},BindingKind::kCompilerTemporary,DeclarationKind::kLet,
+        NameEvidence::kSynthesized,TemporaryReason::kMultipleUses});
+  }
+  std::vector<StmtId> body,writes;
+  for(unsigned i=0;i<size;++i)body.push_back(f.Stmt(DeclarationStmt{{i+2},
+      i+1==size?f.Read(0):f.Expr(TreeLiteral{IntegerLiteral{static_cast<std::int32_t>(i)}})}));
+  for(unsigned i=0;i<size;++i)writes.push_back(f.Stmt(ExpressionStmt{f.Expr(AssignmentExpr{
+      SymbolTarget{{i+2}},f.Read(i?i+1:cycle?size+1:0)})}));
+  if(cycle) {
+    const auto loop=f.Stmt(LoopStmt{});const auto scope=f.Scope(),branch=f.Scope();tree.scopes[branch.value].parent=scope;
+    auto inside=writes;
+    inside.push_back(f.Stmt(IfStmt{f.Read(1),f.Block({f.Stmt(BreakStmt{loop})},branch),{}}));
+    inside.push_back(f.Stmt(ExpressionStmt{f.Expr(AssignmentExpr{SymbolTarget{{1}},f.Expr(TreeLiteral{BooleanLiteral{true}})})}));
+    std::get<LoopStmt>(tree.statements[loop.value].statement).body=f.Block(inside,scope);body.push_back(loop);
+  } else body.insert(body.end(),writes.begin(),writes.end());
+  const auto discarded=f.Stmt(ExpressionStmt{f.Read(size+1)});body.push_back(discarded);
+  body.push_back(f.Stmt(ReturnStmt{observed?f.Read(size+1):f.Expr(TreeLiteral{IntegerLiteral{0}})}));
+  f.Finish(body,reverse);test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
+  const auto result=PlanBindingInitializers(tree,loops,nullish);test::Check(std::holds_alternative<BindingInitializers>(result));
+  const auto& plan=std::get<BindingInitializers>(result);
+  for(const auto statement:writes)test::Check(bool(plan.omitted[statement.value])==!observed);
+  test::Check(plan.omitted[discarded.value]);
+  if(size==2) {
+    test::Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes,plan.work})));
+    test::Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes-1,plan.work}))==TreeStructureError::kResourceLimit);
+    test::Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes,plan.work-1}))==TreeStructureError::kWorkLimit);
+  }
+  std::ostringstream out;test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,out)));
+  if(emit)std::cout<<nlohmann::json{{"source",out.str()},{"chain",true},{"size",size},{"cycle",cycle},{"observed",observed}}<<'\n';
+  return plan.work;
+}
+
 }
 int main(int argc,char**) {
+  for(bool cycle:{false,true})for(bool observed:{false,true})for(bool reverse:{false,true}) {
+    std::uint64_t previous=0;
+    for(unsigned size:{2U,200U,201U,400U,800U}) {
+      const auto work=Chain(size,cycle,observed,reverse,argc>1);
+      if(size>=400)test::Check(work<previous*3);
+      previous=work;
+    }
+  }
   for(unsigned form=0;form<7;++form)for(bool reverse:{false,true}) {
     std::uint64_t previous=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U}) {

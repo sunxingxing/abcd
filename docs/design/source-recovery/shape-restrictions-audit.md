@@ -1870,3 +1870,14 @@ failure equivalence is not established. This is an explicit capability limit,
 not a language property; no RHS shape matching was added to narrow that check.
 Coalesce::CompletedStore remains unchanged and still requires replacement by
 shared initialization/lifetime analysis. No new exception was added to it.
+
+## Rules181: discarded-value demand is semantic, not statement adjacency
+
+A discarded region denotes an ExpressionStmt's ignored result, not a recognized
+copy sequence or basic-block shape. Its effect fact is composed by RecoveryFlow
+from the existing intrinsic/initialization/write semantics. The elimination pass
+consumes typed regions and demand facts from the shared backward solver. It
+does not inspect expression syntax or materialize every reaching-definition edge. Control statements and their condition reads stay outside the
+removable regions; source declaration initialization forces retention. Both an
+entirely unused cycle and a demanded chain use the same worklist rules. Storage
+and scope admissions are unchanged; no CompletedStore exception was added.

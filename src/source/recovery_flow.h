@@ -5,6 +5,13 @@
 namespace abcd::source {
 struct FlowPoint { std::uint32_t value = 0; auto operator<=>(const FlowPoint&) const = default; };
 struct FlowDefinitionId { std::uint32_t value = 0; auto operator<=>(const FlowDefinitionId&) const = default; };
+struct DiscardedId { std::uint32_t value = 0; auto operator<=>(const DiscardedId&) const = default; };
+// An ignored expression result, with effects composed by the semantic adapter.
+// Membership does not authorize changing control or binding lifetime.
+struct DiscardedEvaluation {
+  StmtId statement;
+  ExpressionEvaluation effect = ExpressionEvaluation::kInert;
+};
 enum class FlowCompletion : std::uint8_t { kNormal, kThrow, kReturn, kJump, kTaken, kNotTaken, kResumeNext, kResumeThrow, kResumeReturn, kConservativeCleanup };
 enum class FlowDefinitionKind : std::uint8_t { kParameter, kUndefined, kInitializer, kAssignment, kUpdate, kCatch };
 enum class FlowEventKind : std::uint8_t { kControl, kTruthBranch, kNullishBranch, kRead, kEvaluation, kEnterScope, kLeaveScope, kDefinition, kSuspend };
@@ -27,6 +34,7 @@ struct FlowEvent {
   std::optional<ExprId> expression;
   std::optional<ScopeId> scope;
   std::optional<std::size_t> incoming, outgoing;
+  std::optional<DiscardedId> discarded;
 };
 struct FlowEdge {
   FlowPoint from, to;
@@ -52,6 +60,7 @@ struct RecoveryFlow {
   std::vector<FlowEvent> events;
   std::vector<FlowEdge> edges;
   std::vector<FlowDefinition> definitions;
+  std::vector<DiscardedEvaluation> discarded;
   std::vector<FlowPoint> statements, expressions;
   std::vector<BindingKind> bindings;
   FlowPoint entry, terminal;

@@ -144,3 +144,11 @@ facts, and its production delta removes only dead private assignment writes.
 RHS evaluation stays. Storage analysis rebuilds afterwards. This is partial task3
 progress; common initialization, live-undefined preservation during storage
 sharing, removal of CompletedStore and convergence scheduling remain open.
+
+Rules181 substep: a shared backward solver now offers distinct all-read liveness
+and observable-root demand results. It discovers def-use dependencies on demand,
+closes discarded-region/definition demand before one batch commit, and avoids
+materializing the full read/definition relation (which exceeded the existing
+402-selection budget). This closes the dead-write / inert-RHS interaction only;
+shared initialization, live-undefined storage mapping, declaration recovery and
+the overall pass coordinator remain incomplete.

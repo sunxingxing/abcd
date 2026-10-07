@@ -9,7 +9,7 @@ namespace abcd::source {
 namespace {
 using Error=TreeStructureError;
 using Point=FlowPoint;
-struct Context {Point next,thrown;std::optional<Point> finalizer;};
+struct Context {Point next,thrown;std::optional<Point> finalizer;std::optional<DiscardedId> discarded;};
 struct Statement {StmtId id;Context context;};
 struct Expression {ExprId id;Context context;};
 using Task=std::variant<Statement,Expression>;
@@ -18,7 +18,7 @@ class FlowBuilder {
  public:
   FlowBuilder(const FunctionTree& tree,LegacyFlowProjection projection,analysis::SemanticBudget budget)
       : tree_(tree), projection_(projection), budget_(budget), memory_(budget_), events_(&memory_), edges_(&memory_),
-        statements_(&memory_), expressions_(&memory_), exits_(&memory_), tasks_(&memory_), seen_(&memory_), definitions_(&memory_), reads_(&memory_), read_states_(&memory_), initializers_(&memory_) {}
+        statements_(&memory_), expressions_(&memory_), exits_(&memory_), tasks_(&memory_), seen_(&memory_), definitions_(&memory_), reads_(&memory_), read_states_(&memory_), initializers_(&memory_), discarded_(&memory_) {}
   RecoveryFlow Run() {
     ProjectedReads();
     initializers_.resize(tree_.expressions.size());
@@ -46,6 +46,7 @@ class FlowBuilder {
     result.entry=entry_;result.terminal=terminal_;
     const auto copy=[&](auto& destination,const auto& source){budget_.Array(destination,source.size());std::copy(source.begin(),source.end(),destination.begin());};
     copy(result.events,events_);copy(result.edges,edges_);copy(result.definitions,definitions_);
+    copy(result.discarded,discarded_);
     copy(result.statements,statements_);copy(result.expressions,expressions_);
     budget_.Array(result.bindings,tree_.symbols.size());
     for(std::size_t i=0;i<tree_.symbols.size();++i){budget_.Step();result.bindings[i]=tree_.symbols[i].kind;}
@@ -58,9 +59,11 @@ class FlowBuilder {
   }
   Point Define(SymbolId binding,FlowDefinitionKind kind,std::optional<SymbolId> copy={},
       std::optional<ExprId> value={},std::optional<StmtId> declaration={},
-      std::optional<ExprId> write={},FlowWriteEffect effect=FlowWriteEffect::kObservable) {
+      std::optional<ExprId> write={},FlowWriteEffect effect=FlowWriteEffect::kObservable,
+      std::optional<DiscardedId> discarded={}) {
     RequireTree(definitions_.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
     const auto point=New({FlowEventKind::kDefinition,{},FlowDefinitionId{static_cast<std::uint32_t>(definitions_.size())}});
+    events_[point.value].discarded=discarded;
     definitions_.push_back({point,binding,kind,copy,value,declaration,write,effect});return point;
   }
   void Link(Point from,Point to,FlowCompletion completion=FlowCompletion::kNormal) {
@@ -99,17 +102,20 @@ class FlowBuilder {
     if(auto replacement=projection_.replacements[at.id.value]){Link(start,Expr(*replacement,context));return;}
     const auto& node=tree_.expressions[at.id.value].expression;
     if(const auto* choice=std::get_if<ConditionalExpr>(&node)) {
-      const auto branch=New({FlowEventKind::kTruthBranch,{},{},choice->condition});Link(start,Expr(choice->condition,{branch,context.thrown,context.finalizer}));
+      const auto branch=New({FlowEventKind::kTruthBranch,{},{},choice->condition});Link(start,Expr(choice->condition,{branch,context.thrown,context.finalizer,context.discarded}));
       Link(branch,Expr(choice->consequent,context),FlowCompletion::kTaken);Link(branch,Expr(choice->alternate,context),FlowCompletion::kNotTaken);return;
     }
     if(const auto* logical=std::get_if<LogicalExpr>(&node)) {
       const auto branch=New({logical->operation==TreeLogical::kNullish?FlowEventKind::kNullishBranch:FlowEventKind::kTruthBranch,{},{},logical->left});
-      Link(start,Expr(logical->left,{branch,context.thrown,context.finalizer}));
+      Link(start,Expr(logical->left,{branch,context.thrown,context.finalizer,context.discarded}));
       const auto right=logical->operation==TreeLogical::kOr?FlowCompletion::kNotTaken:FlowCompletion::kTaken;
       Link(branch,context.next,right==FlowCompletion::kTaken?FlowCompletion::kNotTaken:FlowCompletion::kTaken);
       Link(branch,Expr(logical->right,context),right);return;
     }
     const auto effect=New({FlowEventKind::kEvaluation,{},{},at.id});auto normal=context.next;
+    events_[effect.value].discarded=context.discarded;
+    bool required=IntrinsicEvaluation(node)==ExpressionEvaluation::kRequired &&
+        projection_.evaluations[at.id.value]!=ExpressionEvaluation::kInert;
     if(const auto* read=std::get_if<SymbolExpr>(&node)) {
       if(!projection_.literals[read->symbol.value]){events_[effect.value].read=Resolve(read->symbol);events_[effect.value].kind=FlowEventKind::kRead;}
     }
@@ -123,12 +129,17 @@ class FlowBuilder {
         const bool inert=!projection_.private_bindings.empty() &&
             projection_.private_bindings[target->symbol.value] && projection_.normal_stores[at.id.value];
         normal=Define(target->symbol,kind,copied,assignment->value,declaration,at.id,
-            inert?FlowWriteEffect::kInert:FlowWriteEffect::kObservable);Link(normal,context.next);
+            inert?FlowWriteEffect::kInert:FlowWriteEffect::kObservable,context.discarded);Link(normal,context.next);
+        required=!inert || kind==FlowDefinitionKind::kInitializer;
       }
     }
     if(const auto* update=std::get_if<UpdateExpr>(&node)) {
-      normal=Define(update->symbol,FlowDefinitionKind::kUpdate,{},at.id);Link(normal,context.next);
+      normal=Define(update->symbol,FlowDefinitionKind::kUpdate,{},at.id,{},{},FlowWriteEffect::kObservable,context.discarded);Link(normal,context.next);
     }
+    // Region effects are composed from semantic operations, independently of
+    // whether their result is later used. Inert private writes can be dropped;
+    // initialization, getters, coercion, calls, throws and suspension remain.
+    if(context.discarded && required)discarded_[context.discarded->value].effect=ExpressionEvaluation::kRequired;
     const bool suspension=std::holds_alternative<AwaitExpr>(node)||std::holds_alternative<YieldExpr>(node);
     Link(effect,normal,suspension?FlowCompletion::kResumeNext:FlowCompletion::kNormal);
     if(IntrinsicEvaluation(node)==ExpressionEvaluation::kRequired &&
@@ -142,10 +153,10 @@ class FlowBuilder {
     VisitExpressionChildren(tree_,node,[&](ExprId child){budget_.Step();children.push_back(child);});
     auto next=effect;
     if(const auto* update=std::get_if<UpdateExpr>(&node)) {
-      const auto read=New({FlowEventKind::kRead,update->symbol,{},at.id});Link(read,effect);
+      const auto read=New({FlowEventKind::kRead,update->symbol,{},at.id});events_[read.value].discarded=context.discarded;Link(read,effect);
       Link(read,context.thrown,FlowCompletion::kThrow);next=read;
     }
-    for(auto i=children.rbegin();i!=children.rend();++i)next=Expr(*i,{next,context.thrown,context.finalizer});
+    for(auto i=children.rbegin();i!=children.rend();++i)next=Expr(*i,{next,context.thrown,context.finalizer,context.discarded});
     Link(start,next);
   }
   void Build(Statement at) {
@@ -159,12 +170,17 @@ class FlowBuilder {
         auto next=New({FlowEventKind::kLeaveScope,{},{},{},node.scope});Link(next,context.next);
         for(std::size_t i=node.child_count;i;--i)next=Stmt(tree_.children[node.first_child+i-1],{next,context.thrown,context.finalizer});
         Link(entered,next);Link(start,entered);
-      } else if constexpr(std::is_same_v<T,ExpressionStmt>)Link(start,Expr(node.expression,context));
+      } else if constexpr(std::is_same_v<T,ExpressionStmt>) {
+        RequireTree(discarded_.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
+        const DiscardedId id{static_cast<std::uint32_t>(discarded_.size())};
+        discarded_.push_back({at.id});
+        auto evaluation=context;evaluation.discarded=id;Link(start,Expr(node.expression,evaluation));
+      }
       else if constexpr(std::is_same_v<T,DeclarationStmt>) {
         auto commit=Define(node.symbol,node.initializer?FlowDefinitionKind::kInitializer:FlowDefinitionKind::kUndefined,{},node.initializer,at.id);Link(commit,context.next);
         Link(start,node.initializer?Expr(*node.initializer,{commit,context.thrown,context.finalizer}):commit);
       } else if constexpr(std::is_same_v<T,IfStmt>) {
-        auto branch=New({FlowEventKind::kTruthBranch,{},{},node.condition});Link(start,Expr(node.condition,{branch,context.thrown,context.finalizer}));
+        auto branch=New({FlowEventKind::kTruthBranch,{},{},node.condition});Link(start,Expr(node.condition,{branch,context.thrown,context.finalizer,context.discarded}));
         Link(branch,Stmt(node.consequent,context),FlowCompletion::kTaken);Link(branch,node.alternate?Stmt(*node.alternate,context):context.next,FlowCompletion::kNotTaken);
       } else if constexpr(std::is_same_v<T,LoopStmt>)Link(start,Stmt(node.body,{start,context.thrown,context.finalizer}));
       else if constexpr(std::is_same_v<T,BreakStmt>)Abrupt(start,exits_[node.target.value],context,FlowCompletion::kJump);
@@ -198,6 +214,7 @@ class FlowBuilder {
   std::pmr::vector<std::uint8_t> seen_;std::pmr::vector<FlowDefinition> definitions_;
   std::pmr::vector<std::optional<SymbolId>> reads_;std::pmr::vector<ReadState> read_states_;
   std::pmr::vector<std::optional<StmtId>> initializers_;
+  std::pmr::vector<DiscardedEvaluation> discarded_;
   Point entry_{},terminal_{},dispatch_{};
 };
 }
