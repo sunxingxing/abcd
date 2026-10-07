@@ -13,8 +13,9 @@ struct BindingInitializer {
 struct BindingInitializers {
   std::vector<std::optional<BindingInitializer>> statements;
   std::vector<std::uint8_t> omitted;
-  // A removed statement whose RHS now has its one occurrence at a real read.
-  std::vector<std::uint8_t> forwarded_statements;
+  // Statement indexed: the RHS moved to a real read. Its origin span belongs
+  // to that destination; other omitted subtree origins stay at the boundary.
+  std::vector<std::optional<ExprId>> forwarded_values;
   // LoopStmt indexed: first declarator in its existing ordered entry program.
   // Earlier effects remain before the loop, in their original handler/scope.
   std::vector<std::optional<std::uint32_t>> loop_declarations;

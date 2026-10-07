@@ -10,7 +10,7 @@ using namespace abcd::source;
 namespace {
 enum class Form { kReturn, kIf, kLoop, kMultiple, kEffect, kArgument, kLocal, kBranchExit,
   kAwait, kYield, kTypeof, kAlias, kShadow, kGuarded, kCatch, kOutsideCatch, kCatchReads, kProjectedLocal, kInterleavedAlias,
-  kDeadInitialRead, kObservedInitialRead, kDiscardedOperand, kEffectOperand, kTransparentControl, kDebugger, kOnceLoop, kRepeatedLoop, kRedundantWrites, kEffectWrites, kDeadPrefix, kEffectPrefix, kObservedPrefix };
+  kDeadInitialRead, kObservedInitialRead, kDiscardedOperand, kEffectOperand, kTransparentControl, kDebugger, kOnceLoop, kRepeatedLoop, kRedundantWrites, kEffectWrites, kDeadPrefix, kEffectPrefix, kObservedPrefix, kProjectedPrefix, kProjectedSuffix, kRequiredPrefix, kTdzStore };
 struct Fixture {
   FunctionTree tree{};
   Fixture(Form form) {
@@ -69,7 +69,13 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
   }
   if(form==Form::kArgument)rhs=f.Expr(AssignmentExpr{SymbolTarget{{2}},rhs});
   if(form==Form::kAwait)rhs=f.Expr(AwaitExpr{rhs});if(form==Form::kYield)rhs=f.Expr(YieldExpr{rhs});
-  const auto store=f.Stmt(ExpressionStmt{f.Expr(AssignmentExpr{SymbolTarget{{3}},rhs})});
+  auto stored=f.Expr(AssignmentExpr{SymbolTarget{{3}},rhs});
+  if(form==Form::kProjectedPrefix||form==Form::kProjectedSuffix||form==Form::kRequiredPrefix)
+    for(unsigned i=0;i<=count;++i) {
+      const auto operand=form==Form::kRequiredPrefix?f.Call(5):f.Literal(false);
+      stored=f.Expr(form==Form::kProjectedSuffix?SequenceExpr{stored,operand}:SequenceExpr{operand,stored});
+    }
+  const auto store=f.Stmt(ExpressionStmt{stored});
   std::vector<StmtId> body{declaration,f.Wrap(store,count)};unsigned symbol=3;
   if(form==Form::kDeadPrefix||form==Form::kEffectPrefix||form==Form::kObservedPrefix) {
     std::vector<StmtId> prefix{f.Stmt(ExpressionStmt{f.Read(3)})};
@@ -130,6 +136,7 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
     const auto shadow=static_cast<unsigned>(tree.symbols.size());tree.symbols.push_back({scope,{0},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
     auto& block=std::get<BlockStmt>(tree.statements[inner.value].statement);block.first_child=tree.children.size();block.child_count=2;tree.children.push_back(f.Stmt(ReturnStmt{read}));tree.children.push_back(f.Stmt(DeclarationStmt{{shadow},f.Literal(false)}));body.push_back(inner);
   } else body.push_back(f.Stmt(ReturnStmt{result}));
+  if(form==Form::kTdzStore) {body.erase(body.begin());body.push_back(declaration);}
   if(form==Form::kProjectedLocal) {
     const auto initialize=f.Stmt(ExpressionStmt{f.Expr(AssignmentExpr{SymbolTarget{{4}},f.Call(4)})});
     const auto inside=f.Block({initialize,body[1]});
@@ -157,12 +164,15 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
       test::Check(plan.evaluations[i]==ExpressionEvaluation::kRequired);
   }
 
-  const bool folded=form==Form::kReturn||form==Form::kIf||form==Form::kLoop||form==Form::kAwait||form==Form::kYield||form==Form::kTypeof||form==Form::kAlias||form==Form::kCatch||form==Form::kInterleavedAlias||form==Form::kDeadInitialRead||form==Form::kDiscardedOperand||form==Form::kTransparentControl||form==Form::kOnceLoop||form==Form::kRedundantWrites||form==Form::kDeadPrefix||form==Form::kEffectPrefix;
+  const bool folded=form==Form::kReturn||form==Form::kIf||form==Form::kLoop||form==Form::kAwait||form==Form::kYield||form==Form::kTypeof||form==Form::kAlias||form==Form::kCatch||form==Form::kInterleavedAlias||form==Form::kDeadInitialRead||form==Form::kDiscardedOperand||form==Form::kTransparentControl||form==Form::kOnceLoop||form==Form::kRedundantWrites||form==Form::kDeadPrefix||form==Form::kEffectPrefix||form==Form::kProjectedPrefix||form==Form::kProjectedSuffix;
   if(plan.replacements[read.value].has_value()!=folded)std::cerr<<"form="<<static_cast<unsigned>(form)<<" count="<<count<<" reverse="<<reverse<<'\n';
   test::Check(plan.replacements[read.value].has_value()==folded);
   std::ostringstream output;const auto printed=PrintFunctionTree(tree,output);test::Check(std::holds_alternative<PrintedFunction>(printed));
   const auto& ranges=std::get<PrintedFunction>(printed).expressions;
-  for(const auto range:ranges)test::Check(range.begin<=range.end&&range.end<=output.str().size());
+  for(const auto range:ranges) {
+    test::Check(range.begin<=range.end&&range.end<=output.str().size());
+    if(form==Form::kProjectedPrefix||form==Form::kProjectedSuffix||form==Form::kRequiredPrefix)test::Check(range.begin>0);
+  }
   const auto& positions=std::get<PrintedFunction>(printed);
   test::Check(positions.expression_extents.size()==ranges.size());
   for(std::size_t i=0;i<ranges.size();++i) {
@@ -177,7 +187,7 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
 }
 }
 int main(int argc,char**) {
-  for(unsigned form=0;form<=static_cast<unsigned>(Form::kObservedPrefix);++form){std::uint64_t small=0,large=0;
+  for(unsigned form=0;form<=static_cast<unsigned>(Form::kTdzStore);++form){std::uint64_t small=0,large=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}){const auto work=Check(static_cast<Form>(form),count,reverse,argc>1);if(count==400&&!reverse)small=work;if(count==800&&!reverse)large=work;}
     test::Check(large<small*3);
   }

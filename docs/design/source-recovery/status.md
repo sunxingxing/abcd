@@ -24,6 +24,41 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则203，共享表达式根身份与显式 RHS 来源运输
+
+- ExpressionFacts 在既有 postorder 计算当前 replacement 链的最终 ExprId；
+  快照的整语句归属比较消费此根身份，不再比较原始语法根。这里表示实际
+  保留 occurrence 的身份，不把相同值当成同一次求值；没有增加 comma
+  或操作序列识别。根表 O(E) 工作/存储，避免逐候选重走替换链。
+- 将 forwarded_statements 布尔数组替换为 forwarded_values：每条省略
+  语句明确记录已移动的 RHS ExprId。打印器将其余省略子树来源运输到
+  边界，仅跳过该 RHS，保留其新位置范围；不作新的效果或语义判断。
+  指令位置及表达式范围测试相应核验明确运输身份，不跳过整棵来源树。
+- 新增两侧 inert 包装与必要效果包装组合，检查原始/反序 statement
+  arena、0/1/200/201/400/800、工作增长、独立执行、错误重复 producer
+  与丢失/重排效果。每个新增来源必须有有效非零位置，移动 RHS 保持 span。
+  必要外围效果不能通过整句删除处理，任意嵌套 occurrence 删除仍是能力缺口。
+- 旧实现 form32/count0 恢复失败，/tmp/abcd-rule203-red-tests.log。
+  实现后定向 2/2 通过，12.96秒，/tmp/abcd-rule203-focused-tests.log。
+  新增声明位于 return 之后的 TDZ 反例另发现规则202迁移后的证明缺口：
+  读取覆盖与 RHS 移动不能证明 PutValue 可删除。修复要求普通赋值消费
+  FlowWriteEffect::kInert，词法初始化按独立 definition kind 处理；没有
+  新增声明顺序/同块条件。反例旧实现失败，/tmp/abcd-rule203-tdz-test.log；
+  修复后单元与独立执行 2/2 通过，13.15秒，
+  /tmp/abcd-rule203-tdz-fixed-tests.log。发现问题后主动停止修复前回归，
+  /tmp/abcd-rule203-regression-tests.log 不作为最终收据。
+  最终相关回归 56/56 全部通过，410.39秒，日志
+  /tmp/abcd-rule203-final-build.log、/tmp/abcd-rule203-final-tests.log 和
+  /tmp/abcd-rule203-final-test-detail.log。快照 432 份生成函数、16,476 个
+  行为情景、42 个错误变换；变量恢复 1,752/461,776/284，定义清理
+  586/14,488/61。Home 362 个情景及 PageA 1,422 次配对执行通过。
+- ABC-only 导出 build/stage-one/snapshot-roots-rule203：19 records，
+  10 complete / 0 partial / 9 noModule；十份源码语法检查通过，正文与
+  规则202一致，输入 SHA-256 不变。证据为 /tmp/abcd-rule203-export.log
+  与 /tmp/abcd-rule203-export-check.json，不报告语料覆盖率提升或平台收据。
+- 统一变量、完整声明生命期、全局固定点及阶段一仍开放；结构 gate、
+  全量语料/RSS/DFX 暂停范围保持。
+
 ### 2026-10-08：规则202，快照从当前覆盖定义选择 producer
 
 - ForwardSnapshots 直接消费 AnalyzeFlowReadCoverage 的定义结果，从

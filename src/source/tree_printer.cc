@@ -44,7 +44,7 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
     const GlobalScope*, std::size_t, ClassPrintForm, const ClassCaptureDestination* = nullptr);
 struct DerivedClassBody { std::shared_ptr<const ClassTree> definition; ExprId expression; ClassPrintForm form; };
 struct EndExpression { ExprId id; };
-struct ProjectedExpression { ExprId id; std::uint64_t begin, end; GeneratedExtent extent = GeneratedExtent::kSpan; };
+struct ProjectedExpression { ExprId id; std::uint64_t begin, end; GeneratedExtent extent = GeneratedExtent::kSpan; std::optional<ExprId> retained; };
 struct ProjectSequenceOperand { ExprId sequence, omitted; };
 struct NoInferredName {};
 struct DefaultInferredName {};
@@ -1283,23 +1283,23 @@ class TreePrinter {
     Push(ProjectedExpression{projection.omitted, Result().expressions[projection.sequence.value].begin, written_});
   }
   void Run(ProjectedExpression projection) {
-    Step();
-    // The omitted inert occurrence belongs to this normalized result span,
-    // like omitted Boolean conversions. Keep original identities/origins and
-    // nonzero transport ranges; never fabricate a PC or execute the subtree.
+    Step();if(projection.retained==projection.id)return;
+    // Transport omitted origins to a normalized span or explicit boundary.
+    // A moved subtree belongs to its retained destination. Keep identities
+    // and extent tags; never fabricate a PC or execute the omitted subtree.
     Result().expressions[projection.id.value] = {projection.begin, projection.end};
     Result().expression_extents[projection.id.value] = projection.extent;
     const auto replacement = Initializers().replacements[projection.id.value];
     bool owned_replacement = false;
     VisitExpressionChildren(Tree(), Tree().expressions[projection.id.value].expression, [&](ExprId child) {
       owned_replacement |= replacement == child;
-      Push(ProjectedExpression{child, projection.begin, projection.end, projection.extent});
+      Push(ProjectedExpression{child, projection.begin, projection.end, projection.extent, projection.retained});
     });
     // A forwarded RHS has left its original omitted statement. If its final
     // destination is itself omitted, retain its origin at this boundary too.
     // Direct RHS replacements are already owned children; do not visit twice.
     if (replacement && !owned_replacement)
-      Push(ProjectedExpression{*replacement, projection.begin, projection.end, projection.extent});
+      Push(ProjectedExpression{*replacement, projection.begin, projection.end, projection.extent, projection.retained});
   }
   void Run(Indent indent) {
     constexpr std::string_view kIndent = "  ";
@@ -1533,13 +1533,13 @@ class TreePrinter {
     Result().statements[id.value] = {written_,written_};
     Result().statement_extents[id.value] = GeneratedExtent::kBoundary;
     if (const auto* effect = std::get_if<ExpressionStmt>(&Tree().statements[id.value].statement)) {
-      // Projected, discarded stores can have arbitrary owned RHS trees. Mark
-      // those original occurrences at the omission point, except a forwarded
-      // RHS whose real range belongs to its retained destination.
+      // Mark every omitted owned occurrence, excluding exactly the moved
+      // RHS. Skipping the whole original tree would lose wrapper origins;
+      // projecting the RHS would overwrite its retained destination span.
       Result().expressions[effect->expression.value] = {written_,written_};
       Result().expression_extents[effect->expression.value] = GeneratedExtent::kBoundary;
-      if (!Initializers().forwarded_statements[id.value])
-        Push(ProjectedExpression{effect->expression,written_,written_,GeneratedExtent::kBoundary});
+      Push(ProjectedExpression{effect->expression,written_,written_,GeneratedExtent::kBoundary,
+          Initializers().forwarded_values[id.value]});
     }
   }
   void Run(LoopInitializerCursor at) {

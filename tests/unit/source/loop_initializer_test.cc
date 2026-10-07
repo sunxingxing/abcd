@@ -239,17 +239,17 @@ std::uint64_t Native(unsigned form, unsigned count, bool reverse, bool emit) {
   const auto completion = ImplicitTailCompletion(tree);
   std::vector<bool> elided(tree.expressions.size());
   if (completion && completion->value) elided[completion->value->value] = true;
-  std::vector<ExprId> pending;
-  for(unsigned i=0;i<tree.statements.size();++i)if(bindings.omitted[i])
-    if(const auto* effect=std::get_if<ExpressionStmt>(&tree.statements[i].statement)) {
-      if(bindings.forwarded_statements[i])elided[effect->expression.value]=true;
-      else pending.push_back(effect->expression);
+  for(unsigned i=0;i<tree.statements.size();++i)if(bindings.omitted[i]) {
+    const auto* effect=std::get_if<ExpressionStmt>(&tree.statements[i].statement);
+    if(!effect)continue;
+    std::vector<ExprId> pending{effect->expression};
+    while(!pending.empty()) {
+      const auto id=pending.back();pending.pop_back();
+      if(bindings.forwarded_values[i]==id||elided[id.value])continue;
+      elided[id.value]=true;VisitExpressionChildren(tree,tree.expressions[id.value].expression,
+          [&](ExprId child){pending.push_back(child);});
+      if(const auto replacement=bindings.replacements[id.value])pending.push_back(*replacement);
     }
-  while(!pending.empty()) {
-    const auto id=pending.back();pending.pop_back();if(elided[id.value])continue;
-    elided[id.value]=true;VisitExpressionChildren(tree,tree.expressions[id.value].expression,
-        [&](ExprId child){pending.push_back(child);});
-    if(const auto replacement=bindings.replacements[id.value])pending.push_back(*replacement);
   }
   for (unsigned i = 0; i < tree.statements.size(); ++i) if (const auto read = DiscardedInvocationRead(tree, StmtId{i})) elided[read->value] = true;
   for (unsigned i = 0; i < ranges.expressions.size(); ++i) {

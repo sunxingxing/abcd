@@ -631,11 +631,13 @@ int main(int argc, char**) {
     if (forwarded) omitted[store_expression.value] = true;
     const auto& projection = std::get<BindingInitializers>(planned);
     for (std::size_t statement = 0; statement < fixture.tree.statements.size(); ++statement) {
-      if (!projection.omitted[statement] || projection.forwarded_statements[statement]) continue;
+      if (!projection.omitted[statement]) continue;
       const auto* effect = std::get_if<ExpressionStmt>(&fixture.tree.statements[statement].statement);
       if (!effect) continue;
       std::vector<ExprId> pending{effect->expression};
-      while (!pending.empty()) {const auto id=pending.back();pending.pop_back();omitted[id.value]=true;
+      while (!pending.empty()) {const auto id=pending.back();pending.pop_back();
+        if(projection.forwarded_values[statement]==id)continue;
+        omitted[id.value]=true;
         VisitExpressionChildren(fixture.tree,fixture.tree.expressions[id.value].expression,[&](ExprId child){pending.push_back(child);});}
     }
     for (std::size_t i = 0; i < ranges.expressions.size(); ++i) {

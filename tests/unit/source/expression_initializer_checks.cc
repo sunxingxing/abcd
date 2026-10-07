@@ -15,10 +15,11 @@ void CheckExpressionRanges(const FunctionTree& tree,const BindingInitializers& p
   std::vector<std::optional<std::uint64_t>> omitted(tree.expressions.size());
   for(std::size_t i=0;i<tree.statements.size();++i) {
     const auto* expression=std::get_if<ExpressionStmt>(&tree.statements[i].statement);
-    if(!expression||!plan.omitted[i]||plan.forwarded_statements[i])continue;
+    if(!expression||!plan.omitted[i])continue;
     std::vector<ExprId> pending{expression->expression};
     while(!pending.empty()) {
       const auto id=pending.back();pending.pop_back();
+      if(plan.forwarded_values[i]==id)continue;
       omitted[id.value]=printed.statements[i].begin;
       VisitExpressionChildren(tree,tree.expressions[id.value].expression,[&](ExprId child){pending.push_back(child);});
     }

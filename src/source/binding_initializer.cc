@@ -48,7 +48,7 @@ class Initializers {
       TreeCheckBudget& budget) : tree_(tree), loops_(loops), nullish_(nullish), budget_(budget) {
     budget.Array(plan_.statements, tree.statements.size()); budget.Array(plan_.omitted, tree.statements.size());
     budget.Array(plan_.loop_declarations, tree.statements.size());
-    budget.Array(plan_.forwarded_statements, tree.statements.size());
+    budget.Array(plan_.forwarded_values, tree.statements.size());
     budget.Array(plan_.literals, tree.symbols.size());
     budget.Array(plan_.aliases, tree.symbols.size());
     budget.Array(plan_.storage, tree.symbols.size());
@@ -377,6 +377,7 @@ class Initializers {
     const auto covered=AnalyzeFlowReadCoverage(flow,CurrentLiveness(),budget_.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&covered))throw *error;
     const auto& coverage=std::get<FlowReadCoverage>(covered);
+    const auto& expressions=AnalyzeExpressions();
     budget_.Admit(coverage.allocated_bytes,1);budget_.Step(coverage.work);
     std::vector<const FlowDefinition*> definitions;
     budget_.Array(definitions,uses_.size());
@@ -444,6 +445,10 @@ class Initializers {
       // passes; they cannot decide single-definition snapshot recovery.
       if(!eligible(i) || counts[i]!=1 || write_counts[i]!=1 || !definitions[i])continue;
       const auto& definition=*definitions[i];
+      // Removing PutValue must preserve its own completion, not just the
+      // moved RHS. Shared write effects prove initialized writable storage;
+      // lexical initialization is a separate, non-PutValue definition kind.
+      if(definition.kind==FlowDefinitionKind::kAssignment && definition.effect!=FlowWriteEffect::kInert)continue;
       const auto read=std::get<ExprId>(reads[i]->site),store=*definition.write;
       const auto discarded=flow.events[definition.point.value].discarded;
       if(!discarded)continue;
@@ -452,7 +457,7 @@ class Initializers {
       // definition needs occurrence removal that preserves its enclosing
       // effects; its lack of that projection is not a language restriction.
       const auto* expression=std::get_if<ExpressionStmt>(&tree_.statements[statement.value].statement);
-      if(!expression||expression->expression!=store)continue;
+      if(!expression||expressions.roots[expression->expression.value]!=store)continue;
       if(!stores[i] || motion.next[stores[i]->point.value]!=reads[i]->point ||
           motion.previous[reads[i]->point.value]!=stores[i]->point)continue;
       // Bidirectional observation pairing proves execution count. The shared
@@ -475,7 +480,7 @@ class Initializers {
     for(std::size_t i=0;i<count;++i) {
       budget_.Step();const auto& action=proposed[i];const auto& use=uses_[action.binding.value];
       BeginCommit();plan_.replacements[action.read.value]=action.value;
-      plan_.forwarded_statements[action.statement.value]=1;
+      plan_.forwarded_values[action.statement.value]=action.value;
       plan_.omitted[use.declaration->value]=plan_.omitted[action.statement.value]=1;
       plan_.statements[action.statement.value].reset();
     }
@@ -705,6 +710,9 @@ class Initializers {
   }
   struct ExpressionFacts {
     std::vector<std::optional<SymbolId>> bindings;
+    // Effective expression identity after the current replacement plan. Each
+    // consumer uses this shared normalization instead of chasing old syntax.
+    std::vector<ExprId> roots;
     std::vector<std::uint8_t> normal_stores;
     std::vector<ExpressionEvaluation> evaluations;
   };
@@ -720,6 +728,7 @@ class Initializers {
     RequireAnalysis();
     ExpressionFacts facts;
     budget_.Array(facts.bindings, tree_.expressions.size());
+    budget_.Array(facts.roots, tree_.expressions.size());
     budget_.Array(facts.normal_stores, tree_.expressions.size());
     budget_.Array(facts.evaluations, tree_.expressions.size());
     auto& stored = facts.bindings;
@@ -736,11 +745,12 @@ class Initializers {
       // Unknown calls/coercions/suspensions produce no fact. No effect moves,
       // and a throwing/TDZ RHS still executes before any projected outer store.
       // Use the existing finish order, not arena order or a local syntax match.
-      auto& result = stored[id.value];
+      auto& result = stored[id.value];facts.roots[id.value]=id;
       const auto join = [&](ExprId left, ExprId right) -> std::optional<SymbolId> {
         return stored[left.value] == stored[right.value] ? stored[left.value] : std::nullopt;
       };
       if (const auto replacement = plan_.replacements[id.value]) {
+        facts.roots[id.value]=facts.roots[replacement->value];
         result = stored[replacement->value];
         facts.evaluations[id.value] = facts.evaluations[replacement->value];
         continue;

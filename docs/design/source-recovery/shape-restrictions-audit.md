@@ -2166,3 +2166,30 @@ global pass convergence. Tests compose discarded initial reads and overwritten
 values, effectful dead writes and observable earlier values with reverse arenas
 and geometric sizes. Selection scans B bindings, D definitions and R references
 in O(B+D+R) work with O(B) additional storage.
+
+
+### Rules203: statement ownership consumes normalized expression identity
+
+ExpressionFacts now publishes the terminal identity of each current replacement
+chain in the existing postorder analysis. Snapshot transport compares this
+identity with its covered definition, rather than comparing the original syntax
+root. No comma/operation-sequence special case was added to snapshot recovery;
+all consumers see the same current expression normalization. Required enclosing
+effects still prevent whole-statement deletion. Arbitrary nested occurrence
+removal remains an explicit transport gap, not a semantic invariant.
+The transfer plan now records the moved RHS identity instead of a boolean. The
+printer maps all other omitted origins to the statement boundary and preserves
+the RHS destination span. This is origin transport, not printer-owned semantic
+optimization. Tests cover both inert sides, retained effects, reverse statement
+arenas, 200/201 and geometric chains, independently executed sources and mutants.
+The shared root table costs O(E) work/storage for E original expressions; it
+avoids a replacement-chain walk for each candidate.
+
+The new TDZ adversary also exposed a missing write-completion obligation after
+Rules202 removed original first-store admission: read coverage and RHS motion
+alone do not authorize deleting PutValue. Assignment forwarding now requires
+the shared FlowWriteEffect::kInert proof. Native lexical initialization remains
+a distinct definition kind. This is an exception/initialization proof, not a
+declaration-order, same-block or layout test. The independently executed
+`store; return read; let binding;` case must retain its ReferenceError after RHS
+effects, and must propagate an earlier RHS failure unchanged.

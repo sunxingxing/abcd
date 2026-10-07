@@ -29,19 +29,17 @@ inline void CheckInstructionPositions(const source::FunctionTree& tree,
   const auto loops = std::get<LoopSyntax>(PlanLoopSyntax(tree));
   const auto bindings = std::get<BindingInitializers>(PlanBindingInitializers(tree, loops, nullish));
   std::vector<bool> omitted_expressions(tree.expressions.size());
-  std::vector<ExprId> pending;
   for (std::size_t i=0;i<tree.statements.size();++i) if (bindings.omitted[i]) {
-    if (const auto* effect=std::get_if<ExpressionStmt>(&tree.statements[i].statement)) {
-      if (bindings.forwarded_statements[i]) omitted_expressions[effect->expression.value]=true;
-      else pending.push_back(effect->expression);
+    const auto* effect=std::get_if<ExpressionStmt>(&tree.statements[i].statement);
+    if(!effect)continue;
+    std::vector<ExprId> pending{effect->expression};
+    while (!pending.empty()) {
+      const auto id=pending.back();pending.pop_back();
+      if (bindings.forwarded_values[i]==id || omitted_expressions[id.value]) continue;
+      omitted_expressions[id.value]=true;
+      VisitExpressionChildren(tree,tree.expressions[id.value].expression,[&](ExprId child){pending.push_back(child);});
+      if (const auto replacement=bindings.replacements[id.value]) pending.push_back(*replacement);
     }
-  }
-  while (!pending.empty()) {
-    const auto id=pending.back();pending.pop_back();
-    if (omitted_expressions[id.value]) continue;
-    omitted_expressions[id.value]=true;
-    VisitExpressionChildren(tree,tree.expressions[id.value].expression,[&](ExprId child){pending.push_back(child);});
-    if (const auto replacement=bindings.replacements[id.value]) pending.push_back(*replacement);
   }
   const auto completion = positions.fragment == FunctionFragment::kStaticFields ||
       positions.fragment == FunctionFragment::kImplicitConstructor ? std::nullopt : ImplicitTailCompletion(tree);
