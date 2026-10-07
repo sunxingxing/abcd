@@ -6,6 +6,7 @@ import {dirname, join} from 'node:path';
 import {stripTypeScriptTypes} from 'node:module';
 import vm from 'node:vm';
 import {editAwait, callsMember} from './expression_edits.mjs';
+import {pageAStyle, pageAEquivalents} from './pagea_record_style.mjs';
 
 const [tool, abc] = process.argv.slice(2);
 assert.equal(createHash('sha256').update(readFileSync(abc)).digest('hex'),
@@ -28,7 +29,9 @@ assert.equal(declarations?.length, 2);
 const erased = paired.replace(/^    private [A-Za-z_$][\w$]*: [^;=\n]+;\n/gm, '');
 assert.ok(!/\bprivate\b/.test(erased));
 const reference = stripTypeScriptTypes(erased);
+pageAStyle(report.source, reference);
 let scenarios = 0;
+const cases = [];
 
 async function exercise(source, options) {
   const {finalize, registration, initial, deferred, breakpoint, failure, asyncMode, paramsMode} = options;
@@ -253,8 +256,9 @@ async function exercise(source, options) {
 
 const defaults = {finalize: true, registration: 'function', initial: true, deferred: false,
   breakpoint: 'sm', failure: '', asyncMode: 'value', paramsMode: 'provided'};
-async function compare(options) {
-  assert.deepEqual(await exercise(report.source, {...defaults, ...options}),
+async function compare(options, source = report.source) {
+  if(source===report.source)cases.push(options);
+  assert.deepEqual(await exercise(source, {...defaults, ...options}),
     await exercise(reference, {...defaults, ...options}), JSON.stringify(options));
   ++scenarios;
 }
@@ -280,6 +284,7 @@ for (const failure of ['wrap', 'register', 'super', 'storage.create', 'path.crea
 // altered resource values independently of source text resemblance.
 const noAwait = editAwait(report.source, node => callsMember(node, 'setData'), (node, text) => text(node.argument));
 assert.notEqual(noAwait, report.source);
+assert.throws(() => pageAStyle(noAwait, reference), assert.AssertionError);
 new vm.SourceTextModule(noAwait); // Behavior mutations must remain valid syntax.
 await assert.rejects(() => exercise(noAwait, defaults));
 const wrongReceiver = report.source.replace('.getUIContext()', '.getUIContext.call(globalThis)');
@@ -290,4 +295,21 @@ const wrongOffset = report.source.replace('dx: 0, dy: -140', 'dx: 0, dy: -139');
 assert.notEqual(wrongOffset, report.source);
 new vm.SourceTextModule(wrongOffset);
 assert.notDeepEqual(await exercise(wrongOffset, defaults), await exercise(reference, defaults));
-console.log(`PageA complete record: ${scenarios} independent paired lifecycle/render/async scenarios passed; representation/platform acceptance remains separate.`);
+let equivalents=0;
+const baselineCases=[...cases];
+for(const equivalent of pageAEquivalents(report.source)) {
+  assert.notEqual(equivalent,report.source);pageAStyle(equivalent,reference);
+  for(const options of baselineCases)await compare(options,equivalent);
+  ++equivalents;
+}
+// Behavior alone accepts unreachable dispatcher scaffolding. The independent
+// representation gate must reject it even though every runtime trace agrees.
+const page=pageAStyle(report.source,reference);
+const render=page.body.body.find(method=>method.key.name==='initialRender');
+const at=render.value.body.start+1;
+const dispatcher=report.source.slice(0,at)+'while(false){}'+report.source.slice(at);
+new vm.SourceTextModule(dispatcher);
+assert.deepEqual(await exercise(dispatcher,defaults),await exercise(reference,defaults));
+assert.throws(()=>pageAStyle(dispatcher,reference),assert.AssertionError);
+console.log(JSON.stringify({record:6897,pairedScenarios:scenarios,equivalentRepresentations:equivalents,
+  semanticMutations:3,representationMutations:2,wholeRecordBehavior:'accepted',wholeRecordStyle:'accepted',platformExecution:false}));
