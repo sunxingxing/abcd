@@ -10,7 +10,7 @@ using namespace abcd::source;
 namespace {
 enum class Form { kReturn, kIf, kLoop, kMultiple, kEffect, kArgument, kLocal, kBranchExit,
   kAwait, kYield, kTypeof, kAlias, kShadow, kGuarded, kCatch, kOutsideCatch, kCatchReads, kProjectedLocal, kInterleavedAlias,
-  kDeadInitialRead, kObservedInitialRead, kDiscardedOperand, kEffectOperand };
+  kDeadInitialRead, kObservedInitialRead, kDiscardedOperand, kEffectOperand, kTransparentControl, kDebugger };
 struct Fixture {
   FunctionTree tree{};
   Fixture(Form form) {
@@ -82,6 +82,8 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
   if(form==Form::kMultiple)body.push_back(f.Report({f.Read(3)}));
   if(form==Form::kEffect)body.push_back(f.Stmt(ExpressionStmt{f.Call(5)}));
   if(form==Form::kBranchExit)body.push_back(f.Stmt(IfStmt{f.Literal(true),f.Block({f.Stmt(ReturnStmt{f.Literal(false)})}),{}}));
+  if(form==Form::kTransparentControl)body.push_back(f.Stmt(IfStmt{f.Literal(false),f.Block({}),f.Block({})}));
+  if(form==Form::kDebugger)body.push_back(f.Stmt(DebuggerStmt{}));
   const auto read=f.Read(symbol);auto result=read;
   if(form==Form::kDiscardedOperand||form==Form::kEffectOperand)
     for(unsigned i=0;i<=count;++i)result=f.Expr(SequenceExpr{form==Form::kDiscardedOperand?f.Read(2):f.Call(5),result});
@@ -128,7 +130,7 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
       test::Check(plan.evaluations[i]==ExpressionEvaluation::kRequired);
   }
 
-  const bool folded=form==Form::kReturn||form==Form::kIf||form==Form::kLoop||form==Form::kAwait||form==Form::kYield||form==Form::kTypeof||form==Form::kAlias||form==Form::kCatch||form==Form::kInterleavedAlias||form==Form::kDeadInitialRead||form==Form::kDiscardedOperand;
+  const bool folded=form==Form::kReturn||form==Form::kIf||form==Form::kLoop||form==Form::kAwait||form==Form::kYield||form==Form::kTypeof||form==Form::kAlias||form==Form::kCatch||form==Form::kInterleavedAlias||form==Form::kDeadInitialRead||form==Form::kDiscardedOperand||form==Form::kTransparentControl;
   if(plan.replacements[read.value].has_value()!=folded)std::cerr<<"form="<<static_cast<unsigned>(form)<<" count="<<count<<" reverse="<<reverse<<'\n';
   test::Check(plan.replacements[read.value].has_value()==folded);
   std::ostringstream output;const auto printed=PrintFunctionTree(tree,output);test::Check(std::holds_alternative<PrintedFunction>(printed));
@@ -148,7 +150,7 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
 }
 }
 int main(int argc,char**) {
-  for(unsigned form=0;form<=static_cast<unsigned>(Form::kEffectOperand);++form){std::uint64_t small=0,large=0;
+  for(unsigned form=0;form<=static_cast<unsigned>(Form::kDebugger);++form){std::uint64_t small=0,large=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}){const auto work=Check(static_cast<Form>(form),count,reverse,argc>1);if(count==400&&!reverse)small=work;if(count==800&&!reverse)large=work;}
     test::Check(large<small*3);
   }

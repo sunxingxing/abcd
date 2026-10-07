@@ -280,3 +280,14 @@ and global convergence remain unfinished.
 - Red/green discarded-operand composition and required-effect counterexamples
   validate actual forwarding and execution. Legacy control/activation/lifetime
   motion proofs still need migration; no new local shape admission was added.
+
+
+### Rules195 continuation: common must-execute motion order
+
+- Added and integrated linear universal next-observation analysis on RecoveryFlow.
+- Removed effect epochs, control-prefix comparisons and their legacy metadata.
+- Source completion/read identities drive constant-time candidate queries.
+- Transparent split/join red/green case, debugger and prior exception/loop
+  adversaries, 4,096 small-graph configurations and geometric budgets verify it.
+- Handler/activation region identity and lexical lifetime remain explicit pending
+  migrations; this step does not claim full expression motion or global convergence.

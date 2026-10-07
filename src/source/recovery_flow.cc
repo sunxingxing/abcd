@@ -266,7 +266,9 @@ class FlowBuilder {
           const auto binding=Define(node.handler->parameter,FlowDefinitionKind::kCatch);Link(binding,handler);thrown=binding;
         }
         Link(start,Stmt(node.body,{normal,thrown,cleanup}));
-      } else if constexpr(std::is_same_v<T,DebuggerStmt>)Link(start,context.next);
+      } else if constexpr(std::is_same_v<T,DebuggerStmt>) {
+        events_[start.value].effect=ExpressionEvaluation::kRequired;Link(start,context.next);
+      }
       else {static_assert(std::is_same_v<T,UnrecoveredStmt>);throw Error::kUnsupportedSyntax;}
     },tree_.statements[at.id.value].statement);
   }

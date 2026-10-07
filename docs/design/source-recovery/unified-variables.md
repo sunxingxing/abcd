@@ -654,3 +654,34 @@ remain. Coverage includes reversed statement arenas, transparent block splitting
 0/1/200/201/400/800 nesting, independent execution and duplicate-evaluation mutants.
 Flow tests assert that initialized reads can be intrinsically inert while still
 being reads, coercion remains required, and reused graphs preserve effect facts.
+
+
+## Universal observation order replaces linear motion counters (rules195)
+
+Snapshot motion now consumes AnalyzeFlowMotion. From the successful source
+write's event, every completion path must encounter the same destination read
+before any other semantic observation or terminal sink. The solver stops at
+reads, definitions and required intrinsic effects. It includes every completion
+edge and cannot turn may-reach into must-execute: a transparent cycle stays
+unresolved, even if it also has an exit to the destination.
+
+The old expression effect epochs and control-statement prefix counts are removed,
+including ObservationSite, control_events_ and their construction. Definition and
+read FlowPoints come from the same current graph used by coverage. Candidate
+queries do not walk paths, depend on arena order or match a statement sequence.
+Shared semantics now mark debugger as a required event; no source-level special
+case is introduced in the motion consumer.
+
+The remaining expression region identity and lexical-environment/lifetime proof
+are explicitly transitional obligations for handler/activation correspondence.
+The new order proof does not license changing the handler of a moved throwing
+producer. Region equality is still a conservative implementation restriction,
+not a language invariant; retiring it needs explicit shared handler/unwind facts.
+Global pass convergence and original IR correspondence also remain open.
+
+A new source case crosses a transparent control split and join, which the old
+control prefix check rejected. Both outcomes converge before the same read;
+required conditions/effects, bypassing returns, debugger, catch and loop cases
+remain adverse checks. Reversed arenas and transparent block variants use the
+same production path. The graph-level exhaustive oracle and geometric tests are
+documented in algorithms.md; no sample/operation-layout branch was added.

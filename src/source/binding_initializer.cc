@@ -3,6 +3,7 @@
 #include "definition_elision.h"
 #include "flow_dominance.h"
 #include "flow_definitions.h"
+#include "flow_motion.h"
 #include "class_tree.h"
 #include "expression_children.h"
 #include "loop_syntax.h"
@@ -25,7 +26,6 @@ struct BindingUses {
   bool private_storage = false, module_alias = false, named_creation = false;
 };
 struct ContainerRange { std::size_t begin = 0, end = 0; };
-struct ObservationSite { std::size_t control = 0, region = 0, before = 0, after = 0; };
 struct ProjectionObservation { SymbolId symbol; StmtId owner; };
 struct ExpressionVisit {
   ExprId expression;
@@ -59,10 +59,9 @@ class Initializers {
     budget.Array(completions_, tree.expressions.size());
     budget.Array(plan_.entry_counts, loops.initializer_roots.size() + 1);
     budget.Array(plan_.child_counts, tree.children.size() + 1);
-    budget.Array(observations_, tree.expressions.size());
+    budget.Array(expression_regions_, tree.expressions.size());
     budget.Array(container_parents_, tree.statements.size());
     budget.Array(container_order_, tree.statements.size());
-    budget.Array(control_events_, tree.statements.size());
     budget.Array(constant_heads_, tree.symbols.size());budget.Array(constant_next_, tree.symbols.size());
     budget.Array(constant_queue_, tree.symbols.size());
     budget.Array(uses_, tree.symbols.size()); budget.Array(projected_, tree.statements.size());
@@ -398,18 +397,18 @@ class Initializers {
     if(!candidate)return;
     const auto coverage=AnalyzeBindingReadCoverage();
     std::vector<std::optional<ExprId>> reads;
-    std::vector<std::size_t> counts, controls;
+    std::vector<std::size_t> counts;
+    std::vector<FlowPoint> read_points;
+    std::vector<std::optional<FlowPoint>> stores;
     std::vector<std::uint8_t> bound;
     std::vector<std::optional<StmtId>> scope_containers, environments;
     budget_.Array(reads, uses_.size()); budget_.Array(counts, uses_.size());
+    budget_.Array(read_points,uses_.size());budget_.Array(stores,uses_.size());
     for(const auto& reference:coverage.references) {
       budget_.Step();if(reference.kind!=FlowReferenceKind::kRead)continue;
       ++counts[reference.binding.value];
       reads[reference.binding.value]=std::get<ExprId>(reference.site);
-    }
-    budget_.Array(controls, control_ + 1);
-    for (std::size_t i = 0; i < control_; ++i) {
-      budget_.Step(); controls[i + 1] = controls[i] + !plan_.omitted[control_events_[i].value];
+      read_points[reference.binding.value]=reference.point;
     }
     budget_.Array(bound, tree_.statements.size());
     budget_.Array(scope_containers, tree_.scopes.size());
@@ -436,24 +435,17 @@ class Initializers {
       budget_.Step(); const auto id = container_order_[i]; const auto parent = container_parents_[id.value];
       environments[id.value] = bound[id.value] || !parent ? id : environments[parent->value];
     }
-    // The shared flow owns retained state observations and intrinsic effects.
-    // Inert reads still observe a value and cannot be crossed by an effectful
-    // producer. Removed operands/definitions have no events, so old syntax
-    // cannot create a second admission condition. The legacy execution-order
-    // census remains until effect/activation motion analysis replaces it.
+    // Must execute the same next observation on every completion path. The
+    // shared solver accounts for effects, state, exits and transparent cycles;
+    // original statement counts/linear epochs no longer decide motion.
     const auto& flow=CurrentFlow();
-    std::vector<std::uint8_t> observed;budget_.Array(observed,tree_.expressions.size());
-    for(const auto& event:flow.events) {
-      budget_.Step();
-      if(event.expression && (event.read || event.effect==ExpressionEvaluation::kRequired))
-        observed[event.expression->value]=1;
-      if(event.definition)if(const auto write=flow.definitions[event.definition->value].write)
-        observed[write->value]=1;
-    }
-    std::size_t epoch=0;
-    for(std::size_t i=0;i<completion_count_;++i) {
-      budget_.Step();const auto id=completions_[i];auto& site=observations_[id.value];
-      site.before=epoch;epoch+=observed[id.value];site.after=epoch;
+    auto analyzed=AnalyzeFlowMotion(flow,budget_.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
+    const auto& motion=std::get<FlowMotion>(analyzed);
+    budget_.Admit(motion.allocated_bytes,1);budget_.Step(motion.work);
+    for(const auto& definition:flow.definitions) {
+      budget_.Step();if(definition.write && definition.write==uses_[definition.binding.value].store)
+        stores[definition.binding.value]=definition.point;
     }
     struct ForwardedSnapshot { SymbolId binding; ExprId read, value; };
     std::vector<ForwardedSnapshot> proposed;
@@ -462,8 +454,9 @@ class Initializers {
       budget_.Step(); const auto& use = uses_[i];
       if(!eligible(i) || counts[i]!=1 || !coverage.stores[i])continue;
       const auto read = *reads[i], store = *use.store;
-      const auto& from = observations_[store.value]; const auto& to = observations_[read.value];
-      if (from.after != to.before || controls[from.control] != controls[to.control] || from.region != to.region) continue;
+      if(!stores[i] || motion.next[stores[i]->value]!=read_points[i])continue;
+      // Handler/activation correspondence remains a separate legacy obligation.
+      if(expression_regions_[store.value]!=expression_regions_[read.value])continue;
       const auto old_owner = expression_owners_[store.value], new_owner = expression_owners_[read.value];
       if (!old_owner || !new_owner || environments[old_owner->value] != environments[new_owner->value]) continue;
       const auto rhs = std::get<AssignmentExpr>(tree_.expressions[store.value].expression).value;
@@ -1100,8 +1093,7 @@ class Initializers {
         const auto parent_region=current_region_;
         if(visit.guarded)current_region_=OpenRegion();
         expression_scopes_[visit.expression.value]=scope;
-        observations_[visit.expression.value].control = control_;
-        observations_[visit.expression.value].region = current_region_;
+        expression_regions_[visit.expression.value]=current_region_;
         expression_owners_[visit.expression.value]=projector?projector:container;
         expression_projections_[visit.expression.value]=projector.has_value();
         expressions_[pending++] = {visit.expression, true,visit.guarded,parent_region};
@@ -1185,10 +1177,7 @@ class Initializers {
       else static_assert(std::is_same_v<T, BlockStmt> || std::is_same_v<T, TryStmt> || std::is_same_v<T, LoopStmt> ||
           std::is_same_v<T, BreakStmt> || std::is_same_v<T, ContinueStmt> || std::is_same_v<T, DebuggerStmt> || std::is_same_v<T, UnrecoveredStmt>);
     }, node);
-    // A condition is evaluated before its control split; a return operand before
-    // its transfer. Subsequent statements cannot forward effects across either.
-    if (!std::holds_alternative<BlockStmt>(node) && !std::holds_alternative<ExpressionStmt>(node))
-      control_events_[control_++] = visit.statement;
+
   }
   const FunctionTree& tree_;
   const LoopSyntax& loops_;
@@ -1198,10 +1187,9 @@ class Initializers {
   std::vector<BindingUses> uses_;
   std::vector<std::uint8_t> projected_;
   std::vector<ContainerRange> containers_;
-  std::vector<ObservationSite> observations_;
+  std::vector<std::size_t> expression_regions_;
   std::vector<std::optional<StmtId>> container_parents_;
-  std::vector<StmtId> container_order_, control_events_;
-  std::size_t control_ = 0;
+  std::vector<StmtId> container_order_;
   std::vector<std::optional<StmtId>> lexical_, projectors_;
   std::vector<std::optional<StmtId>> retained_bodies_;
   std::vector<ProjectionObservation> projection_observations_;

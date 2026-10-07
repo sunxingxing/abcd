@@ -2696,3 +2696,30 @@ survives invalidation; arrays are cleared/repopulated and metadata is overwritte
 Scratch still uses RecoveryScratch. No budget is increased or refunded. Fresh
 and reused graph equivalence plus existing exact/short quotas check the contract;
 no net latency or process-RSS improvement is claimed.
+
+
+### Universal next observation for source motion (rules195)
+
+AnalyzeFlowMotion is an original repository implementation of backward universal
+terminal propagation using a Kahn-style dependency countdown. No external code,
+package or runtime dependency is introduced. Its input is the current RecoveryFlow
+with all completion edges, semantic reads, definitions and intrinsic effects.
+Observations and terminal sinks seed their own identity. A transparent predecessor
+resolves only after every outgoing edge has delivered a resolved successor; equal
+identities join, disagreement propagates a resolved unknown. Transparent cycles
+never resolve, preserving the possibility of an infinite execution before a read.
+An output query joins successor summaries, excluding the queried point itself.
+
+For N events and E edges, three bounded edge traversals and a queue admitting each
+event at most once cost O(N+E) work and O(N) storage. Every allocation and traversal
+is charged through the existing budget. Snapshot candidates query the result in
+O(1), with one linear map from definitions/references to candidate occurrences.
+The result proves must-execute order, not handler or lexical-activation equivalence.
+It deliberately loses precision on loops whose termination would need a value
+proof; it does not impose an arbitrary loop size or graph-shape admission limit.
+
+An independent recursive path enumerator checks all 512 directed three-node
+graphs with all eight observation subsets (4,096 configurations), including
+mixed normal/throw/resume edges. Separate chain and cycle families check
+200/201/400/800/1600 scaling, exact budget and one-unit-short behavior. The
+production solver is iterative; the deliberately small oracle is test-only.

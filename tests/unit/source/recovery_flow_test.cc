@@ -3,6 +3,8 @@
 #include "../../../src/source/flow_definitions.h"
 #include "../../../src/source/definition_elision.h"
 #include "../../../src/source/flow_dominance.h"
+#include "../../../src/source/flow_motion.h"
+#include <functional>
 #include "../../../src/source/binding_initializer.h"
 #include <array>
 #include <algorithm>
@@ -19,6 +21,56 @@ void Check(bool condition,std::source_location at=std::source_location::current(
 void Link(RecoveryFlow& flow,unsigned from,unsigned to) {
   flow.edges.push_back({{from},{to},FlowCompletion::kNormal,flow.events[to].incoming,flow.events[from].outgoing});
   flow.events[to].incoming=flow.events[from].outgoing=flow.edges.size()-1;
+}
+void UniversalObservations() {
+  for(unsigned edges=0;edges<512;++edges)for(unsigned observed=0;observed<8;++observed) {
+    RecoveryFlow flow{};flow.events.resize(3);
+    for(unsigned i=0;i<3;++i)if(observed&(1U<<i)) {
+      if(i==0)flow.events[i].read=SymbolId{0};
+      else if(i==1)flow.events[i].definition=FlowDefinitionId{0};
+      else flow.events[i].effect=ExpressionEvaluation::kRequired;
+    }
+    for(unsigned i=0;i<9;++i)if(edges&(1U<<i)) {
+      Link(flow,i/3,i%3);flow.edges.back().completion=i%2?FlowCompletion::kThrow:FlowCompletion::kResumeNext;
+    }
+    const auto result=std::get<FlowMotion>(AnalyzeFlowMotion(flow));
+    // Independent path enumeration stops at the first observation/sink.
+    // Repeating an unobserved node is an infinite-path counterexample.
+    std::function<std::optional<unsigned>(unsigned,unsigned)> walk;
+    const auto successors=[&](unsigned node,unsigned path)->std::optional<unsigned> {
+      std::optional<unsigned> answer;bool seen=false;
+      for(const auto& edge:flow.edges)if(edge.from.value==node) {
+        const auto next=walk(edge.to.value,path);if(!next)return {};
+        if(seen&&answer!=next)return {};answer=next;seen=true;
+      }
+      return answer;
+    };
+    walk=[&](unsigned node,unsigned path)->std::optional<unsigned> {
+      if((observed&(1U<<node)) || !flow.events[node].outgoing)return node;
+      if(path&(1U<<node))return {};
+      return successors(node,path|(1U<<node));
+    };
+    for(unsigned i=0;i<3;++i) {
+      const auto expected=successors(i,0);
+      Check(result.next[i]==(expected?std::optional{FlowPoint{*expected}}:std::nullopt));
+    }
+  }
+  std::uint64_t previous=0;
+  for(unsigned size:{200U,201U,400U,800U,1600U}) {
+    RecoveryFlow flow{};flow.events.resize(size);
+    for(unsigned i=1;i<size;++i)Link(flow,i-1,i);
+    flow.events.back().effect=ExpressionEvaluation::kRequired;
+    const auto result=std::get<FlowMotion>(AnalyzeFlowMotion(flow));
+    for(unsigned i=0;i+1<size;++i)Check(result.next[i]==FlowPoint{size-1});
+    Check(!result.next.back());if(size>=400)Check(result.work<previous*3);previous=result.work;
+    if(size==200) {
+      Check(std::holds_alternative<FlowMotion>(AnalyzeFlowMotion(flow,{result.allocated_bytes,result.work})));
+      Check(std::get<TreeStructureError>(AnalyzeFlowMotion(flow,{result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
+      Check(std::get<TreeStructureError>(AnalyzeFlowMotion(flow,{result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);
+    }
+    Link(flow,size/2,0);
+    Check(!std::get<FlowMotion>(AnalyzeFlowMotion(flow)).next[0]);
+  }
 }
 void CompletionDominance() {
   for(unsigned mask=0;mask<512;++mask) {
@@ -451,4 +503,4 @@ void SourceEvents() {
 
 }
 }
-int main(){CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+int main(){UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

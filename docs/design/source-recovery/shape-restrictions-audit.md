@@ -2061,3 +2061,15 @@ operands have no events and cannot block forwarding merely because their syntax
 remains in the canonical arena. No sample, adjacency or opcode rule is added.
 Legacy order/control/region/environment motion obligations remain; this bounded
 migration does not claim that common activation analysis has replaced them.
+
+
+### Rules195: remove snapshot epoch and control-prefix admission
+
+Snapshot execution order now uses universal next-observation propagation on all
+RecoveryFlow completion edges. The prior equal-epoch and equal-control-prefix
+checks and counters actually leave the decision path. A transparent split/join
+can be crossed because all paths prove the same next read; exits, intervening
+observations and possible nonterminating transparent paths fail that semantic
+obligation. There is no path walk per candidate or recognized control shape.
+Region identity remains a documented implementation restriction for matching
+handlers/activations until shared context facts replace it, not a language rule.

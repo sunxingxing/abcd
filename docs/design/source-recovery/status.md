@@ -24,6 +24,38 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则195，共同必经观察分析替换线性移动计数
+
+- 实现并贯通 AnalyzeFlowMotion：对当前 RecoveryFlow 的全部完成边执行
+  反向全路径传播。读取、定义、必要效果及终止点为锚；透明节点仅在
+  所有后继都已解析且首个锚一致时取得证明。可无限停留的透明环保持
+  未知，不把 may-reach 当成 must-execute。复杂度 O(N+E) 时间/O(N) 空间，
+  每个快照候选通过成功写回/目标读取 FlowPoint 常数时间查询。
+- 删除快照 equal-epoch、equal-control-prefix 两项准入及 ObservationSite、
+  control_events_、control_ 和构建逻辑；不再用原语句计数/线性位置证明
+  移动。共同语义层显式标记 debugger 的必要效果。保留 region equality
+  作为 handler/activation 对应的实现限制，并保留词法环境/生命期义务；
+  尚无完整共享 unwind/context 事实，不能将此限制描述为语言规则。
+- 新透明分支合流用例在旧实现 form23/count0 的转发断言失败，日志
+  /tmp/abcd-rule195-red-test.log；新算法允许所有路径先到同一读取的
+  无观察控制变化，实际效果、返回绕过、debugger 和旧异常/循环反例保持。
+  4,096 个三节点图/观察集合配置与独立路径枚举对照通过；200/201/
+  400/800/1600 链与循环、exact/short 预算通过。定向初验 3/3，11.26 秒，
+  日志 /tmp/abcd-rule195-focused-tests.log。
+- 最终 CTest 批次 53/53 通过，396.54 秒，日志 /tmp/abcd-rule195-tests.log
+  与 /tmp/abcd-rule195-test-detail.log。快照 300 份源码/11,460 次行为/
+  14 个反例；变量/别名 1,752/461,776/284；存储 221/33,620/12；定义
+  消除 224/2,880/11；冗余写回 528/18,192/12。相关目标构建通过，日志
+  /tmp/abcd-rule195-final-build.log。本次 CTest 过滤式漏选 capture_tree_test，
+  已用同一构建的 build/capture_tree_test 单独补跑退出0，日志
+  /tmp/abcd-rule195-capture-test.log；不将分次验证表述为一次54项CTest。
+- ABC-only 导出 build/stage-one/flow-motion-rule195 保持
+  10complete/0partial/9noModule；十份源码 node --check 通过，正文与
+  规则194一致，固定输入身份保持，日志 /tmp/abcd-rule195-export.log。
+- 剩余 handler/activation、默认参数/复杂 unwind、canonical IR 对应及
+  全局依赖固定点仍开放。统一变量里程碑、结构 gate 和阶段一未完成，
+  原 Goal active；全量语料/RSS/DFX/代理等暂停范围保持。
+
 ### 2026-10-08：规则194，快照观察集合消费共同流图
 
 - RecoveryFlow 事件提供 intrinsic effect，构造与初始化细化同时维护，
