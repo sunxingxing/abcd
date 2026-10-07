@@ -12,6 +12,56 @@
 
 ## 当前阶段
 
+### 2026-10-07：四个 shopping ViewModel 与十个真实 record 的完整连接验收
+
+- 从干净e2f0f6b5继续，上一轮属于实际进展。本轮生产/rules163保持，
+  完成尚缺的独立整record验收，未添加恢复准入或样本生产分派。现有
+  paired index的阶段一分母确为五ABC，实际目录没有额外ABC；只读校验
+  五文件SHA/size均匹配既有dynamic/profile身份。106/0是历史显式
+  数值+构造模式的导出证据，不冒充当前完整paired语义/表示通过。
+- 新shopping_viewmodels_source_test先以ABC-only显式numeric+
+  constructors完成Immersive导出并核对manifest SHA/ValueTree/合同/
+  十record complete及无legacy，进程结束后才读取paired TS。共用
+  classReference只擦除type-only无initializer字段，保留全部初始化和
+  方法正文。真实Home/IconInfo/Recommend/Section四ViewModel，四Model、
+  HomeConstants与Breakpoint共十record同ESM图执行；commons barrel
+  为受控forwarding边界，WidthBreakpoint仍为外部受控定义，不计整个
+  commons或真实平台验收。四ViewModel及本图可达的ctor/initData/map/
+  new item/push/getter/slice正文实际执行，未用host替换方法正文。
+- 四ViewModel的module TDZ/重复evaluate/export图、class/方法name/arity/
+  descriptor、实例/模型/列表fresh与持有身份、原资源/字段完整graph和
+  partial模型状态独立比较。22 ordinary/sparse与count边界场景；一个
+  baseline的512实际观察逐项注入undefined/null/0/Symbol/object原异常，
+  共2560 paired fault场景通过。每次保留原异常身份，错误结果不能靠
+  双方提前throw算成功。-0/NaN/Infinity、201、BigInt/Symbol拒绝、count
+  coercion及多实例回调/列表持有均覆盖。
+- 416独立pinned PutValue检查覆盖class/foreign/两realm fallback、201
+  ignored实参、constructor trap/prototype/field setter的顺序与原异常，
+  prototype getter期间换绑保留已取得callee，后续构造读新导入。它们
+  不拿Node原生class字段DefineField当Ark assignment的oracle。八个
+  有效JS mutation检出错误callee/field/count/receiver/list与字段定义
+  替代赋值。Source AST另核对原生class、完整公开方法及构造初始化；
+  alpha-normalize参数/import，四份等价参数/Peer alias/let-class表示
+  同时通过同一style与完整graph行为，未把逐字一致作为验收标准。
+- records28887/29119/29382/29619四ViewModel的受控whole-record语义与
+  高层表示由pending转accepted；旧两ViewModel 1603 boundary/1199
+  connected和三个Model的2481行为/九mutation继续保留。本轮新增
+  Home/Recommend真实peer连接、十record literal/export状态与四ViewModel
+  表示验收；不宣称十个peer全部方法、设备或阶段一整体完成。
+- abc_structure/abc_semantic构建退出0，九项相关定向9/9通过54.35秒，
+  包括旧model/viewmodel/Home graph、classReference与显式构造验收。
+  Alpha-normalized style补强后新注册项1/1通过23.15秒，最后四份等价
+  表示的独立命令也通过；最终注册项1/1通过22.76秒，node --check与
+  git diff --check通过。证据
+  /tmp/abcd-shopping-viewmodels-{build,first,final-behavior,targeted,
+  style-final,equivalence-final,final-test}.log。fresh保留产物
+  build/stage-one/shopping-models-rule163，生产源码覆盖/完整数量不变。
+- 下一步继续其他尚缺独立whole-record语义/表示的record与原实例字段/
+  globals/完整signature/body结构gate；精确SSA/原变量/每轮capture、
+  其余body/style仍开放。Goal active；full suite、expanded corpus、
+  RSS/benchmark、DFX、scheduler、agents及周期audit继续暂停，未重复
+  固定五ABC的六模式导出，输入未改动。
+
 ### 2026-10-07：规则163，共同表达式观察省略纯逗号左值
 
 - 从干净3331b471继续，Goal active；已获准且已实现的显式数值/

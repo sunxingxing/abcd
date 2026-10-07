@@ -1,5 +1,13 @@
 # 全 ISA 优先执行顺序
 
+2026-10-07 rules163保持：四个shopping ViewModel的真实十record连接
+及独立公开方法/构造表示验收完成，records28887/29119/29382/29619
+受控whole-record语义/style由pending转accepted。22正常/2560原异常/
+416构造assignment/八mutation/四等价表示通过，旧model/ViewModel证据
+保留，生产覆盖数量无变化。当前显式语言模式的历史106/0不是全阶段
+验收；继续其余record、fields/globals/signature/body原gate与通用SSA/
+每轮capture，Goal active及暂停范围保持。范围与证据见status.md。
+
 2026-10-07规则163：同一postorder完成/初始化分析消除pure comma left，
 typed operator语义穷尽解释，GetValue/typeof/receiver/NamedEvaluation
 保持，无样本/布局条件。1706完整源/457128独立行为/270 mutation及

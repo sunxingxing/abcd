@@ -1,5 +1,21 @@
 # 验收、证据与实施交接
 
+2026-10-07 shopping ViewModel补充：当前rules163的ABC-only输出，
+records28887 HomeViewModel、29119 IconInfoViewModel、29382
+RecommendProductViewModel与29619 SectionViewModel的受控整record
+语义/高层表示由pending转accepted。十个真实record一起执行，真实
+HomeConstants/四Model/Breakpoint body进入连接，barrel/WidthBreakpoint
+为显式受控边界。共享classReference在生成后准备paired参考；未替换
+方法正文，也未将参考数据传入引擎。
+
+22正常/count/sparse、512实际观察逐项五种原异常共2560 paired fault、
+416独立pinned assignment/new.target/换绑检查、八有效JS mutation及
+四等价alpha/import alias/let-class表示通过。完整export/资源/字段图与
+partial模型状态、fresh/持有身份、public name/arity/descriptor和公开
+方法/构造初始化表示分开验收。原两个ViewModel边界/连接与三个Model
+证据保留；九项相关定向通过。平台与十个peer所有方法、其余record及
+阶段一原结构gate不能由这四个record代替；Goal active，证据见status.md。
+
 2026-10-07规则163：原完成census按typed expression/operator汇总观察
 义务，用共同初始化/作用域/执行证明省略纯comma left。原right发生点、
 GetValue、receiver、typeof和NamedEvaluation保持，normalized result
