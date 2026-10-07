@@ -1,5 +1,8 @@
 #include "class_names_checks.h"
 #include "../../../src/source/class_names.h"
+#include "../../../src/source/binding_initializer.h"
+#include "../../../src/source/loop_syntax.h"
+#include "../../../src/source/nullish_syntax.h"
 #include <iostream>
 #include <source_location>
 #include <sstream>
@@ -77,6 +80,72 @@ void CheckClassNames(const std::function<std::shared_ptr<abcd::source::ClassTree
   family.members[0].tree.captures.clear(); family.members[0].tree.symbols[0].kind = BindingKind::kParameter;
   result = PlanClassNames(family, nullptr);
   Check(std::holds_alternative<ClassNames>(result) && std::get<ClassNames>(result).Lookup(*definition).named);
+  // A saved outer constructor can move into heritage. Class-self naming must
+  // follow that actual occurrence, otherwise `class C extends C` adds a TDZ.
+  std::uint64_t previous_projected_work = 0;
+  for (const unsigned copies : {0U, 1U, 200U, 201U, 400U, 800U})
+    for (const bool reverse : {false, true}) for (const bool parameter : {false, true})
+      for (const bool conflict : {false, true}) {
+    auto projected = Scope(kScopeOwnerBase + 3);
+    projected.callable = CallableKind::kFunction;
+    projected.strictness = Strictness::kStrict;
+    projected.names = {u"saved", conflict ? u"C" : u"Other"};
+    projected.symbols = {{{1}, {0}, BindingKind::kCompilerTemporary,
+        DeclarationKind::kLet, NameEvidence::kSynthesized, TemporaryReason::kMultipleUses}};
+    if (parameter) {
+      projected.symbols.push_back({{0}, {1}, BindingKind::kParameter,
+          DeclarationKind::kParameter, NameEvidence::kMetadata, {}});
+      projected.parameters = {{{1}, {}, false}};
+    }
+    projected.origins = {OriginalSite{{0}, {0}}}; projected.body = {0};
+    const auto expression = [&](TreeExpression value) {
+      ExprId id{static_cast<std::uint32_t>(projected.expressions.size())};
+      projected.expressions.push_back({std::move(value), {0}}); return id;
+    };
+    const auto statement = [&](TreeStatement value) {
+      StmtId id{static_cast<std::uint32_t>(projected.statements.size())};
+      projected.statements.push_back({std::move(value), {0}}); return id;
+    };
+    statement(BlockStmt{{1}, 0, 0});
+    std::vector<StmtId> body{statement(DeclarationStmt{{0}, {}})};
+    const auto source = parameter ? expression(SymbolExpr{{1}}) : expression(GlobalNameExpr{{1}});
+    body.push_back(statement(ExpressionStmt{expression(AssignmentExpr{SymbolTarget{{0}}, source})}));
+    SymbolId saved{0};
+    for (unsigned i = 0; i < copies; ++i) {
+      SymbolId next{static_cast<std::uint32_t>(projected.symbols.size())};
+      NameId name{static_cast<std::uint32_t>(projected.names.size())};
+      const auto text = "copy" + std::to_string(i); projected.names.emplace_back(text.begin(), text.end());
+      projected.symbols.push_back({{1}, name, BindingKind::kCompilerTemporary,
+          DeclarationKind::kLet, NameEvidence::kSynthesized, TemporaryReason::kMultipleUses});
+      body.push_back(statement(DeclarationStmt{next, {}}));
+      body.push_back(statement(ExpressionStmt{expression(AssignmentExpr{SymbolTarget{next}, expression(SymbolExpr{saved})})}));
+      saved = next;
+    }
+    const auto read = expression(SymbolExpr{saved});
+    body.push_back(statement(ReturnStmt{expression(ClassExpr{definition, read})}));
+    projected.children = body;
+    std::get<BlockStmt>(projected.statements[0].statement).child_count = body.size();
+    if (reverse) {
+      const auto remap = [&](StmtId id) {return StmtId{static_cast<std::uint32_t>(projected.statements.size() - 1 - id.value)};};
+      for (auto& child : projected.children) child = remap(child);
+      projected.body = remap(projected.body); std::reverse(projected.statements.begin(), projected.statements.end());
+    }
+    const auto loops = std::get<LoopSyntax>(PlanLoopSyntax(projected));
+    const auto nullish = std::get<NullishSyntax>(PlanNullishSyntax(projected));
+    const auto bindings = std::get<BindingInitializers>(PlanBindingInitializers(projected, loops, nullish));
+    Check(parameter ? bindings.aliases[saved.value] == SymbolId{1} : bindings.replacements[read.value] == source);
+    Check(Names(projected).Lookup(*definition).named);
+    auto actual = PlanPrintedClassNames(projected, nullptr);
+    Check(std::holds_alternative<ClassNames>(actual));
+    const auto& names = std::get<ClassNames>(actual);
+    Check(names.Lookup(*definition).named == !conflict);
+    Check(std::get<TreeStructureError>(PlanPrintedClassNames(projected, nullptr, {names.allocated_bytes - 1, names.work})) == TreeStructureError::kResourceLimit);
+    Check(std::get<TreeStructureError>(PlanPrintedClassNames(projected, nullptr, {names.allocated_bytes, names.work - 1})) == TreeStructureError::kWorkLimit);
+    if (!reverse && !parameter && !conflict) {
+      if (copies == 800) Check(names.work < previous_projected_work * 3);
+      previous_projected_work = names.work;
+    }
+  }
   // Missing body cannot justify any added self scope.
   auto constructor = std::move(definition->constructor); definition->constructor.reset();
   root.expressions = {{ClassExpr{definition, {}}, {}}};

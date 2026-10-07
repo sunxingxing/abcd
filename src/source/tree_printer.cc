@@ -339,7 +339,7 @@ class TreePrinter {
     return u"";
   }
   void PrepareClassNames() {
-    auto planned = family_ ? PlanClassNames(*family_, scope_, remaining_) : PlanClassNames(Tree(), scope_, remaining_);
+    auto planned = family_ ? PlanPrintedClassNames(*family_, scope_, remaining_) : PlanPrintedClassNames(Tree(), scope_, remaining_);
     if (const auto* error = std::get_if<TreeStructureError>(&planned)) {
       if (*error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
       if (*error == TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
@@ -2027,7 +2027,7 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
 std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassTree(
     const ClassTree& tree, std::ostream& output, EmitBudget limit,
     analysis::SemanticBudget budget, const GlobalScope* globals, std::size_t indent) {
-  auto planned = PlanClassNames(tree, globals, budget);
+  auto planned = PlanPrintedClassNames(tree, globals, budget);
   if (const auto* error = std::get_if<TreeStructureError>(&planned)) {
     if (*error == TreeStructureError::kResourceLimit) return TreePrintError::kResourceLimit;
     if (*error == TreeStructureError::kWorkLimit) return TreePrintError::kWorkLimit;

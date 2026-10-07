@@ -13,6 +13,45 @@
 ## 当前阶段
 
 
+### 2026-10-07：规则170，按打印投影证明类名作用域
+
+- 从干净0f71ae79继续。检查规则169后的命名边界，复现私有`saved = C`
+  在唯一heritage读取处转发后，canonical class-name分析仍允许新增
+  `class C extends C`的问题；新增self会让原外部父类读取触发TDZ。
+  成功构建旧实现后，新回归在该期望处RED退出134；没有删除转发能力。
+- 新PlanPrintedClassNames复用共同nullish/loop/binding投影，遍历省略
+  statement之后的实际根及replacement边；alias读检查最终SymbolId，
+  literal替换不再当成绑定引用。完整family、class成员及静态初始化
+  都按每个owner建立投影；同一词法作用域/capture算法检查新增self。
+  不能安全命名时沿原computed-property NamedEvaluation打印，保留
+  runtime name且不新增遮蔽。canonical分析仍供原词法分析使用。
+- 无样本/名称常量/操作码序列/同块/邻接准入。规划scratch、结果和work
+  全部计入原budget；每个owner一次规划，没有逐class子树重放。新增
+  遍历线性，沿用各共同planner的原索引复杂度；复制规模400→800 work
+  小于3倍。未开启直接function/class快照转发，它仍缺完整命名目的证明。
+- class_names_test新增48组：global快照/parameter别名、冲突/非冲突、
+  正反statement arena、复制0/1/200/201/400/800；验证真实replacement/
+  alias与命名结论，每组检验work/bytes少一预算失败。原dense类嵌套、
+  capture/heritage/partial body检查保留。
+- 完整decoded record独立验收增加同名import父类：三个profile×三种
+  copy数量×两种分块，共18条新增完整record。含原有场景的最终计数
+  为72 records、612行为、7个错误变异；覆盖父类Proxy、bound、null、
+  无效父类、构造返回对象、原异常身份、动态替换父类、prototype及
+  new.target。强加同名class-self的合法语法变异被检出。
+- 首批三个相关测试通过；规模测试通过；新增record脚本第一次因参数
+  替换误改另一函数断言而失败，修正后class_declarations_source_test
+  通过1.88秒。最终相关目标全部重建，13/13定向测试通过41.09秒，含
+  class命名/成员/partial omissions、record import/合同、native function
+  names、statement snapshot，以及真实ProgressBar、rich-text和显式语言
+  构造paired验收。未运行full suite或新一轮固定五输入多模式导出。
+- 证据/tmp/abcd-projected-class-names-{red-build,red,build,tests,scale-build,
+  scale}.log、/tmp/abcd-projected-class-record-{build,tests}.log及
+  /tmp/abcd-projected-class-final-{build,tests}.log。Goal仍active；fields/
+  globals/signatures/body整合、一般SSA coalescing、完整record语义/style
+  gate未完成。full suite、expanded corpus、RSS/benchmark、DFX、scheduler、
+  agents及周期audit继续暂停，输入未修改。
+
+
 ### 2026-10-07：规则169，共同语法树的有序快照转发
 
 - 从干净b251e26a继续，规则168已提交且属实际进展。本轮检查真实三个

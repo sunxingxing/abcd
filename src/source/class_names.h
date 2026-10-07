@@ -21,5 +21,14 @@ struct ClassNames {
     const FunctionTree&, const GlobalScope*, analysis::SemanticBudget = {});
 [[nodiscard]] std::variant<ClassNames, TreeStructureError> PlanClassNames(
     const ClassTree&, const GlobalScope*, analysis::SemanticBudget = {});
+// Printing changes expression ownership through proven snapshot/store
+// projections. Analyze those destinations before introducing class-self scopes.
+// Canonical overloads above remain available for lexical ownership analysis.
+[[nodiscard]] std::variant<ClassNames, TreeStructureError> PlanPrintedClassNames(
+    const ConstructedFamily&, const GlobalScope*, analysis::SemanticBudget = {});
+[[nodiscard]] std::variant<ClassNames, TreeStructureError> PlanPrintedClassNames(
+    const FunctionTree&, const GlobalScope*, analysis::SemanticBudget = {});
+[[nodiscard]] std::variant<ClassNames, TreeStructureError> PlanPrintedClassNames(
+    const ClassTree&, const GlobalScope*, analysis::SemanticBudget = {});
 }
 #endif

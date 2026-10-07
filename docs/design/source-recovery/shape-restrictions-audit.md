@@ -1,5 +1,14 @@
 # 按用户要求进行的恢复条件审计
 
+规则170补充：消除“canonical表达式归属就是最终打印归属”的隐含假设。
+class-self作用域证明消费共同快照/store/alias/literal投影：被移走的RHS
+在实际读取目的下检查，省略store不再重复遍历，alias检查最终绑定。
+这是一般词法遮蔽义务，不限制global、参数、copy数量或heritage形状；
+没有新增同块/邻接/固定序列条件，也不关闭快照转发。独立canonical
+词法分析仍可用，printer统一选择projected分析。每个owner规划一次、
+索引与遍历受共同预算约束；不按class候选逐次重放子树。完整函数/类
+NamedEvaluation的转发仍待实际目的建模，本次只修复新增class-self环境。
+
 规则169补充：statement快照转发依据首次完成、唯一实际读取、控制/
 异常/迭代activation、读取及效果观察序和词法环境签名。相同环境允许
 跨空块，已消失的交错copy声明不构成虚假屏障；新native declaration

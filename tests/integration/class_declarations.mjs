@@ -93,7 +93,7 @@ for (const {source,change,outerRead} of mutations) {
   await assert.rejects(observe(changed,outerRead,{}),assert.AssertionError);
 }
 
-async function observeDerived(source, mode) {
+async function observeDerived(source, mode, expectedName = 'snapshot') {
   const events = [], original = Symbol('parent throw'), returned = Object.freeze({returned:true});
   let active;
   function Base(...args) {
@@ -132,7 +132,7 @@ async function observeDerived(source, mode) {
   }
   assert.notEqual(mode,'prototype-throw'); assert.notEqual(mode,'invalid-parent');
   const C = module.namespace.answer; active = C;
-  assert.equal(C.name,'snapshot'); assert.equal(C.length,0);
+  assert.equal(C.name,expectedName); assert.equal(C.length,0);
   assert.equal(Object.getPrototypeOf(C),parent === null ? vm.runInContext('Function.prototype',context) : parent);
   assert.equal(Object.getPrototypeOf(C.prototype),parent === null ? null : parent.prototype);
   assert.equal(module.namespace.read(),parent);
@@ -180,9 +180,29 @@ for (const profile of ['1202','1206','1301']) for (const copies of [0,1,3]) for 
     assert.deepEqual(await observeDerived(source,mode),await observeDerived(derivedReference,mode)); ++cases;
   }
 }
+// An inferred runtime name can equal the imported parent spelling. Naming the
+// class itself would shadow heritage with its uninitialized inner binding.
+const conflictingReference = `${imports} mutate();
+  let snapshot = ({input: class extends (input) {constructor() {return super(...[]);}}}).input;
+  const answer = snapshot; snapshot = input; export {answer,answer as answerAlias,snapshot};`;
+for (const profile of ['1202','1206','1301']) for (const copies of [0,1,3]) for (const split of [false,true]) {
+  const source = execFileSync(tool,['--class-derived-name-conflict',profile,String(copies),...(split ? ['split'] : [])],
+    {encoding:'utf8'});
+  assert.doesNotMatch(source,/INCOMPLETE|UNRECOVERED/);
+  assert.doesNotMatch(source,/class input extends/);
+  ++derivedRecords;
+  for (const mode of ['ordinary','bound','proxy','object-return','throw','prototype-throw','null-parent','invalid-parent']) {
+    assert.deepEqual(await observeDerived(source,mode,'input'),await observeDerived(conflictingReference,mode,'input')); ++cases;
+  }
+  if (profile === '1206' && copies === 0 && !split) {
+    const changed = source.replace('class extends', 'class input extends');
+    assert.notEqual(changed,source); new vm.SourceTextModule(changed);
+    await assert.rejects(observeDerived(changed,'ordinary','input'),assert.AssertionError);
+  }
+}
 for (const replacement of ['Reflect.construct(input, [], new.target)','super(...arguments)']) {
   const changed = derivedSample.replace('super(...[])',replacement);
   assert.notEqual(changed,derivedSample); new vm.SourceTextModule(changed);
   await assert.rejects(observeDerived(changed,'ordinary'),assert.AssertionError);
 }
-console.log(JSON.stringify({decodedRecords:fixtures.length + derivedRecords,cases,mutations:mutations.length + 2}));
+console.log(JSON.stringify({decodedRecords:fixtures.length + derivedRecords,cases,mutations:mutations.length + 3}));

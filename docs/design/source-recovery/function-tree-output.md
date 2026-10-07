@@ -4,6 +4,13 @@
 这是设计变更，不代表相关接口已经实现。旧文档中“验证/发布义务全部闭合才允许
 输出”、新增 budget/receipt 设施作为功能前置的要求，由本文替代。
 
+规则170实现补充：class-self命名分析跟随实际binding投影的表达式归属。
+私有快照RHS移入heritage时，在新增类名环境内检查它的真实自由引用；
+别名读取检查最终保留的SymbolId，常量替换不再产生虚假的绑定引用。
+共同planner移除已省略statement根、沿replacement边遍历，不还原字节码
+形状；覆盖完整family及类成员/静态初始化。仍使用原name wrapper保留
+runtime name并避免新增遮蔽，直接function/class快照命名目的缺口未放开。
+
 规则165实现补充：共同分阶段EvaluationPlan允许await/yield root消费
 暂停前已经证明的eager operand子树。暂停节点留在原root，沿用effect
 interval、单次使用、availability及最终catch snapshot校验；原FunctionTree
