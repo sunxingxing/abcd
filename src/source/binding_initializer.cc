@@ -18,7 +18,6 @@ namespace abcd::source {
 namespace {
 struct BindingUses {
   std::optional<StmtId> declaration, initializer, initializer_container;
-  std::optional<StmtId> definition;
   std::optional<ExprId> first;
   std::optional<std::size_t> first_container, last_container;
   bool escaped = false, outside_body = false;
@@ -907,7 +906,7 @@ class Initializers {
     std::optional<StmtId> statement;
   };
   struct BindingReadCoverage {
-    std::vector<std::uint8_t> declarations;
+    std::vector<std::optional<StmtId>> declarations;
     std::vector<std::optional<CoveredWrite>> covered_writes;
     // Retained semantic writes, including projected undefined stores. The
     // original census still locates declaration candidates, not stability.
@@ -926,7 +925,7 @@ class Initializers {
     budget_.Array(result.declarations,uses_.size());
     budget_.Array(result.covered_writes,uses_.size());
     for(std::size_t i=0;i<flow.definitions.size();++i) {
-      budget_.Step();const auto& definition=flow.definitions[i];const auto& use=uses_[definition.binding.value];
+      budget_.Step();const auto& definition=flow.definitions[i];
       if(coverage.definitions[i] && definition.write &&
           (definition.kind==FlowDefinitionKind::kAssignment||definition.kind==FlowDefinitionKind::kInitializer)) {
         CoveredWrite selected{*definition.write,definition.kind,definition.effect,{}};
@@ -941,8 +940,11 @@ class Initializers {
         }
         result.covered_writes[definition.binding.value]=selected;
       }
-      if(definition.declaration && definition.declaration==use.definition)
-        result.declarations[definition.binding.value]=coverage.definitions[i];
+      // Keep the retained initialization identity supplied by this projection.
+      // Original traversal order is not evidence that a declaration still
+      // exists, initializes this storage, or covers its current reads.
+      if(coverage.definitions[i] && definition.declaration)
+        result.declarations[definition.binding.value]=definition.declaration;
     }
     budget_.Array(result.writes,uses_.size());
     for(const auto& reference:flow.references) {
@@ -1056,8 +1058,8 @@ class Initializers {
       // or producer shape. Retain its original value/effects/NamedEvaluation;
       // only later private copies disappear. The same observation lifetime
       // prevents stale copies across activation/TDZ/catch/loop boundaries.
-      if(use.definition&&!coverage.writes[i]&&!use.escaped&&coverage.declarations[i]&&
-          Confined(use,lexical_[use.definition->value])) {
+      if(!coverage.writes[i]&&!use.escaped&&coverage.declarations[i]&&
+          Confined(use,lexical_[coverage.declarations[i]->value])) {
         roots[i]=symbol;constant_queue_[ready++]=symbol;continue;
       }
       if(coverage.writes[i]!=1||use.escaped||!coverage.covered_writes[i]||plan_.literals[i])continue;
@@ -1254,7 +1256,6 @@ class Initializers {
       if constexpr (std::is_same_v<T, DeclarationStmt>) {
         if (syntax.initializer) Scan(*syntax.initializer, visit.lexical, visit.projector,visit.scope);
         const auto& symbol = tree_.symbols[syntax.symbol.value]; auto& use = uses_[syntax.symbol.value];
-        use.definition=visit.statement;
         if (!syntax.initializer && (symbol.kind == BindingKind::kCompilerTemporary || symbol.kind == BindingKind::kLocal) &&
             symbol.declaration == DeclarationKind::kLet && visit.container && !visit.projected) {
           use.declaration = visit.statement;
@@ -1266,7 +1267,7 @@ class Initializers {
           if (const auto* target = std::get_if<SymbolTarget>(&assignment->target)) {
             auto& use = uses_[target->symbol.value];
             const auto entry = loops_.initializer_owners[visit.statement.value];
-            if (use.definition && ((!visit.projected && visit.container) || entry) && !use.initializer) {
+            if (use.declaration && ((!visit.projected && visit.container) || entry) && !use.initializer) {
               use.initializer = visit.statement; use.initializer_container = entry ? entry : visit.container;
             }
           }

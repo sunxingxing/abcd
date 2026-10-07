@@ -24,6 +24,30 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则209，声明覆盖消费当前定义身份
+
+- BindingReadCoverage 保存当前覆盖声明的 StmtId；Aliases 直接以此
+  查询声明的词法所有者，不再与原始扫描 use.definition 重复匹配。
+  移除 BindingUses::definition 与原始声明记录赋值，初始声明候选
+  只登记已有可迁移空声明的绑定。生命周期与逃逸约束仍独立保留。
+- 当前图/覆盖/写入事实保持同一分析版本，未新增 pass、固定轮次或
+  同块准入。原定义扫描维持 O(definitions)，声明身份表为 O(bindings)，
+  没有新增逐变量图遍历。Confined/RootLifetime 和初始声明定位仍待
+  完整共同生命期迁移，不以本次删除字段声称架构里程碑完成。
+- 最终相关目标构建成功，/tmp/abcd-rule209-build.log；56/56项相关
+  回归全部通过435.02秒，/tmp/abcd-rule209-tests.log 与
+  /tmp/abcd-rule209-detail.log。变量恢复1,884份生成函数、465,472次
+  独立行为比较、306个错误变换检测，既有反序编号、200/201与几何
+  增长验证保持。Home/PageA行为及表示验收通过；git diff --check通过。
+  本次复用已有语义测试，不将内部职责迁移描述为新增样本恢复能力。
+  第一轮定向结果早于原始字段删除，仅作为中间证据。
+- ABC-only 导出 build/stage-one/declaration-coverage-rule209：19 records，
+  10 complete / 0 partial / 9 noModule，十份源码语法通过，正文与规则208
+  一致，输入SHA-256不变。证据 /tmp/abcd-rule209-export.log 与
+  /tmp/abcd-rule209-export-check.json。全阶段独立验收、完整生命周期
+  与全局固定点仍开放；完整套件/RSS及既定暂停范围未恢复，模拟宿主
+  对照不代表真实平台执行。
+
 ### 2026-10-08：规则208，独立最终声明种类恢复
 
 - 初始声明定位先保留 let；DeclarationKinds 在存储、循环声明、
