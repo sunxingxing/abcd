@@ -24,6 +24,45 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-07：规则189，快照接入共同覆盖并统一局部pass失效边界
+
+- ForwardSnapshots消费共同定义覆盖及当前FlowReference读取事件，不再从
+  原始表达式形状重新统计读取。CompletedStore/PrivateCopy的最后消费者
+  已迁移，两个函数及无用store_region、declaration_controls、
+  completion_order元数据实际删除；旧局部条件不再决定值可用性。
+- 先完成死读取/定义/空绑定清理，再分析快照提案，最后批量提交。新增
+  discarded initial read与observed initial read的正反例；前者可恢复
+  直接return，后者保留初始undefined观察。快照保留RHS的单次求值，
+  删除自身read/store/declaration，不因此产生另一绑定的死定义；后续
+  存储/声明变化才重新触发需求清理，最终效果/正常写入摘要最后发布。
+- RunPass统一管理局部流图/全部读取活跃性的失效。常量、别名、死定义、
+  快照、存储合并、冗余写回、惰性语句和循环声明投影报告实际变化；变化
+  后由同一边界销毁两项分析，无变化则借用同一份const事实。覆盖适配器
+  的引用span仅在单个pass内借用，不跨提交边界。每个pass内部仍须先
+  分析/提案后写入，尚未做到所有旧计划字段的类型级只读隔离或全局调度。
+- 初版额外清理和重复分析使既定类/record门槛触发累计scratch预算不足；
+  LLDB定位到Coalesce的初始化支配分析，单独删掉重复清理仍不够。
+  通过统一失效边界复用未变化分析后修复，未扩大预算、退回局部判断或
+  增加样本分支。故意关闭RunPass失效的开发mutant被别名/快照组合
+  （form11，零包装）断言检出；正式构建前已恢复，日志
+  /tmp/abcd-rule189-stale-mutant.log。
+- 最终相关目标构建通过，日志/tmp/abcd-rule189-final-build.log。
+  54项相关回归全部通过372.11秒，日志/tmp/abcd-rule189-final-tests.log，
+  详细输出/tmp/abcd-rule189-test-detail.log。快照252份源码/9,636行为/
+  10反例；初始化/别名1,730份源码/461,160行为/280反例；存储221份源码/
+  33,620行为/12反例；定义消除184份源码/2,080行为/3反例；冗余写回
+  528份源码/18,192行为/12反例。512支配图、175,616活跃性/定义/覆盖图、
+  98,304需求图、200/201/400/800、布局变化及exact/short预算继续通过。
+- ABC-only导出build/stage-one/snapshot-coverage-rule189为
+  10complete/0partial/9noModule，十份源码node --check通过，正文与规则188
+  一致；日志/tmp/abcd-rule189-final-export.log。最终既定真实record回归
+  通过，不将源码完整标记扩张为全阶段语义/风格验收。
+- 旧motion epoch/control region与词法环境检查仍是待迁移的效果顺序、
+  执行次数和activation义务，不扩展形状准入。别名原始引用枚举、
+  InitializedRead、canonical IR/完整activation、全局版本与收敛继续
+  开放；统一变量里程碑、结构gate和阶段一未完成。原Goal active及全量
+  语料/RSS/DFX/代理暂停范围保持。
+
 ### 2026-10-07：规则188，别名复制接入共同定义覆盖
 
 - Aliases不再调用CompletedStore/PrivateCopy，声明源的可用性也不再依赖

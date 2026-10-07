@@ -215,3 +215,14 @@ remain separate obligations. A copy-or-return branch now restores common later
 reads to retained source storage. Existing loop/exception/capture and object
 identity gates remain. Snapshot motion still owns the last CompletedStore use;
 full activation, alias reference-event migration and pass convergence remain open.
+
+
+Rules189: snapshot availability and single-use counting consume shared coverage
+and actual flow references. CompletedStore/PrivateCopy and unused metadata are
+removed. Demand cleanup now precedes snapshots; snapshot proposals are batched.
+RunPass centrally invalidates graph/liveness after actual changes and shares const
+facts through no-op passes. Forwarding preserves other RHS reads, so dependent
+demand cleanup repeats only after later storage/declaration changes. A discarded
+initial undefined read no longer prevents direct-return recovery; observed initial
+values remain. Motion epochs/control regions and lexical environment signatures
+still require common effect/activation migration; global convergence is not done.

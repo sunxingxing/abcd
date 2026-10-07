@@ -2627,3 +2627,27 @@ exclusions. No producer is replayed. No dependency or external implementation is
 added. Geometric copy chains, arena/symbol/scope remapping, independent behavior
 and existing exact/short budgets remain gates; extra analysis costs are charged,
 and no latency/RSS improvement is claimed.
+
+
+### Snapshot read coverage and batch application (rules189)
+
+The binding coverage adapter borrows a const span of RecoveryFlow references
+within one pass; it does not copy them or rebuild references from syntax.
+Snapshot reads are counted in O(R+B) work/storage from those current events. The existing bounded motion
+census and environment indexing remain O(X+S+B). Proposals occupy O(B) storage
+and apply in O(K) work for K actual forwards. All allocations/work use the current
+semantic budget, including the fresh graph/liveness/coverage analysis.
+
+Demand cleanup precedes snapshot analysis. Forwarding preserves RHS read counts
+and removes its own single read/store/declaration, so demand cleanup need not
+repeat until a later storage/declaration change. RunPass owns invalidation of
+the cached graph and liveness after any changing pass; no-op passes reuse const
+facts. Allocations/work are charged when built, never refunded or charged again
+for borrowing. At most one graph and one all-read liveness result are retained,
+with storage O(N+E+B+D+R+L), where L is the number of sparse live facts. Other
+pass scratch remains charged as before; unchanged graph reuse removes duplicate
+builds, not semantic events. There is no per-variable graph walk. Old
+unused declaration-control/completion-order/store-region metadata is removed.
+No dependency/external algorithm is added and no net speed or RSS improvement is
+claimed. Independent source execution, repeated-work mutants, exact/short quotas
+and 200/201/geometric cases remain validation obligations.

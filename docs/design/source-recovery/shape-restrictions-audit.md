@@ -1976,3 +1976,26 @@ condition. No same-block, adjacency, fixed shape or sample rule is added.
 Confined/RootLifetime and original alias reference enumeration remain documented
 migration gaps. CompletedStore now remains only in ForwardSnapshots and must not
 be expanded as a replacement for common value/effect/lifetime analysis.
+
+
+## Rules189: final CompletedStore consumer removed
+
+Snapshot value coverage now uses the same shared definition analysis as constants
+and aliases, with read counts from current FlowReference events. CompletedStore
+and PrivateCopy are deleted rather than renamed or moved. Their dead store-region,
+declaration-control and expression-completion-order metadata is removed too.
+Dead-read cleanup precedes snapshot planning; proposal computation and application
+are separate. No old arena occurrence survives as a second value-availability
+admission after it has been removed from the current flow.
+
+The existing motion epoch/control-region and lexical environment checks remain
+explicit migration gaps. They still prove/bound effect order, execution count and
+name activation and are not broadened with new cases. No sample, same-block,
+adjacency or new graph-shape condition replaces CompletedStore.
+
+RunPass now owns invalidation of the local graph/liveness pair after any changing
+pass; unchanged passes share immutable facts. This is projection dependency
+management, not a new recovery admission. Pre-snapshot dead-read cleanup and
+post-storage cleanup have explicit fact dependencies. No extra pass is scheduled
+merely because snapshot syntax changed: its RHS occurrences remain single and
+its own read/store/declaration are removed together.

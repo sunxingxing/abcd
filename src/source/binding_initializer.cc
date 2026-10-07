@@ -20,7 +20,6 @@ struct BindingUses {
   std::size_t definition_region = 0;
   std::optional<ExprId> first;
   std::optional<ExprId> store;
-  std::size_t store_region = 0;
   std::optional<std::size_t> first_region, last_region;
   std::optional<std::size_t> first_container, last_container;
   std::size_t writes = 0;
@@ -58,8 +57,6 @@ class Initializers {
     budget.Array(plan_.aliases, tree.symbols.size());
     budget.Array(plan_.storage, tree.symbols.size());
     budget.Array(plan_.undefined_stores, tree.statements.size());
-    budget.Array(declaration_controls_, tree.symbols.size());
-    budget.Array(completion_order_, tree.expressions.size());
     budget.Array(plan_.replacements, tree.expressions.size());
     budget.Array(completions_, tree.expressions.size());
     budget.Array(plan_.entry_counts, loops.initializer_roots.size() + 1);
@@ -219,14 +216,46 @@ class Initializers {
           effect.expression, use.private_storage && use.writes == 1 ? DeclarationKind::kConst : DeclarationKind::kLet};
       if (!loops_.initializer_owners[use.initializer->value]) plan_.omitted[use.declaration->value] = 1;
     }
-    Constants();
-    Aliases();
-    ElideStoredResults();
-    ForwardSnapshots();
-    ElideDeadDefinitions();
-    bool cleanup_needed=Coalesce();
-    cleanup_needed |= ElideStoredResults();
-    cleanup_needed |= OmitInertStores();
+    RunPass(&Initializers::Constants);
+    RunPass(&Initializers::Aliases);
+    RunPass(&Initializers::ElideStoredResults);
+    // Dead reads/stores must leave the projection before snapshot coverage is
+    // analyzed. Forwarding preserves every RHS occurrence and removes its own
+    // single read/store/declaration; it cannot make another definition dead.
+    // Coalesce builds fresh ownership facts after that commit. Demand cleanup
+    // is scheduled again only by later storage/declaration changes.
+    RunPass(&Initializers::ElideDeadDefinitions);
+    RunPass(&Initializers::ForwardSnapshots);
+    bool cleanup_needed=RunPass(&Initializers::Coalesce);
+    cleanup_needed |= RunPass(&Initializers::ElideStoredResults);
+    cleanup_needed |= RunPass(&Initializers::OmitInertStores);
+    cleanup_needed |= RunPass(&Initializers::ProjectLoopDeclarations);
+    cleanup_needed |= RunPass(&Initializers::ElideStoredResults);
+    cleanup_needed |= RunPass(&Initializers::OmitInertStores);
+    // Storage and loop declaration projection are now final. Their commits
+    // invalidate facts before dependent demand/declaration cleanup.
+    if(cleanup_needed)RunPass(&Initializers::ElideDeadDefinitions);
+    for (std::size_t i = 0; i < loops_.initializer_roots.size(); ++i) {
+      budget_.Step(); plan_.entry_counts[i + 1] = plan_.entry_counts[i] +
+          !plan_.omitted[loops_.initializer_roots[i].statement.value];
+    }
+    auto final_facts = AnalyzeExpressions();
+    plan_.normal_stores = std::move(final_facts.normal_stores);
+    plan_.evaluations = std::move(final_facts.evaluations);
+    return Finish();
+  }
+ private:
+  // Each pass analyzes/proposes before its commit and returns whether the
+  // projection changed. This single boundary owns invalidation; callers cannot
+  // forget to discard one dependent fact. No-op passes share the same immutable
+  // flow/liveness. Facts never escape this function's preparation lifetime.
+  bool RunPass(bool (Initializers::*pass)()) {
+    const bool changed=(this->*pass)();
+    if(changed){liveness_.reset();flow_.reset();}
+    return changed;
+  }
+  bool ProjectLoopDeclarations() {
+    bool changed=false;
     for (std::size_t i = 0; i < loops_.initializer_roots.size(); ++i) {
       budget_.Step(); plan_.entry_counts[i + 1] = plan_.entry_counts[i] +
           (plan_.omitted[loops_.initializer_roots[i].statement.value] ? 0 : 1);
@@ -250,34 +279,20 @@ class Initializers {
       for (auto at = entry->first; at < entry->end; ++at) {
         budget_.Step(); const auto root = loops_.initializer_roots[at].statement;
         if (at < first) {
-          cleanup_needed |= plan_.statements[root.value].has_value();
+          changed |= plan_.statements[root.value].has_value();
           plan_.statements[root.value].reset();
         }
         else if (!plan_.omitted[root.value]) {
           const auto symbol = plan_.statements[root.value]->symbol;
-          cleanup_needed |= plan_.statements[root.value]->declaration != DeclarationKind::kLet;
+          changed |= plan_.statements[root.value]->declaration != DeclarationKind::kLet;
           plan_.statements[root.value]->declaration = DeclarationKind::kLet;
-          cleanup_needed |= !plan_.omitted[uses_[symbol.value].declaration->value];
+          changed |= !plan_.omitted[uses_[symbol.value].declaration->value];
           plan_.omitted[uses_[symbol.value].declaration->value] = 1;
         }
       }
     }
-    cleanup_needed |= ElideStoredResults();
-    cleanup_needed |= OmitInertStores();
-    // Storage and loop declaration projection are now final. Rebuild the
-    // semantic identities before the dependent demand/declaration cleanup;
-    // pre-coalescing facts cannot authorize deletion of a shared-slot write.
-    if(cleanup_needed)ElideDeadDefinitions();
-    for (std::size_t i = 0; i < loops_.initializer_roots.size(); ++i) {
-      budget_.Step(); plan_.entry_counts[i + 1] = plan_.entry_counts[i] +
-          !plan_.omitted[loops_.initializer_roots[i].statement.value];
-    }
-    auto final_facts = AnalyzeExpressions();
-    plan_.normal_stores = std::move(final_facts.normal_stores);
-    plan_.evaluations = std::move(final_facts.evaluations);
-    return Finish();
+    return changed;
   }
- private:
   bool OmitInertStores() {
     const auto facts = AnalyzeExpressions();
     const auto omitted = PlanInertStatements(facts);
@@ -329,12 +344,27 @@ class Initializers {
     const auto region = regions_[use.definition_region];
     return *use.first_region >= region.begin && *use.last_region < region.end;
   }
-  void ForwardSnapshots() {
+  bool ForwardSnapshots() {
+    const auto eligible=[&](std::size_t i) {
+      const auto& use=uses_[i];
+      return use.private_storage && use.declaration && use.writes==1 && use.store &&
+          !use.escaped && use.root_store &&
+          !plan_.omitted[use.root_store->value] && !plan_.aliases[i] && !plan_.literals[i];
+    };
+    bool candidate=false;
+    for(std::size_t i=0;i<uses_.size();++i){budget_.Step();candidate |= eligible(i);}
+    if(!candidate)return false;
+    const auto coverage=AnalyzeBindingReadCoverage();
     std::vector<std::optional<ExprId>> reads;
     std::vector<std::size_t> counts, controls;
     std::vector<std::uint8_t> bound;
     std::vector<std::optional<StmtId>> scope_containers, environments;
     budget_.Array(reads, uses_.size()); budget_.Array(counts, uses_.size());
+    for(const auto& reference:coverage.references) {
+      budget_.Step();if(reference.kind!=FlowReferenceKind::kRead)continue;
+      ++counts[reference.binding.value];
+      reads[reference.binding.value]=std::get<ExprId>(reference.site);
+    }
     budget_.Array(controls, control_ + 1);
     for (std::size_t i = 0; i < control_; ++i) {
       budget_.Step(); controls[i + 1] = controls[i] + !plan_.omitted[control_events_[i].value];
@@ -365,7 +395,8 @@ class Initializers {
       environments[id.value] = bound[id.value] || !parent ? id : environments[parent->value];
     }
     // The census retains execution order independently of arena/block layout.
-    // Count actual retained binding observations after copy/literal projection.
+    // Reference counts above come from the current flow. This remaining legacy
+    // census only bounds motion until shared effect/activation proofs replace it.
     // A read is a state observation even when GetBindingValue has no hook: an
     // effectful producer must not move past an earlier argument's value read.
     std::size_t epoch = 0;
@@ -375,18 +406,16 @@ class Initializers {
       const auto owner = expression_statements_[id.value];
       if (owner && plan_.omitted[owner->value]) { site.after = epoch; continue; }
       const auto& node = tree_.expressions[id.value].expression;
-      if (const auto* read = std::get_if<SymbolExpr>(&node); read && !plan_.literals[read->symbol.value]) {
-        const auto symbol = plan_.aliases[read->symbol.value].value_or(read->symbol);
-        ++counts[symbol.value]; reads[symbol.value] = id;
-      }
       if (!plan_.replacements[id.value] && IntrinsicEvaluation(node) == ExpressionEvaluation::kRequired &&
           !(std::holds_alternative<SymbolExpr>(node) && plan_.literals[std::get<SymbolExpr>(node).symbol.value])) ++epoch;
       site.after = epoch;
     }
+    struct ForwardedSnapshot { SymbolId binding; ExprId read, value; };
+    std::vector<ForwardedSnapshot> proposed;
+    budget_.Array(proposed,uses_.size());std::size_t count=0;
     for (std::size_t i = 0; i < uses_.size(); ++i) {
       budget_.Step(); const auto& use = uses_[i];
-      if (!PrivateCopy(use) || !use.root_store || counts[i] != 1 ||
-          plan_.omitted[use.root_store->value] || plan_.aliases[i] || plan_.literals[i]) continue;
+      if(!eligible(i) || counts[i]!=1 || !coverage.stores[i])continue;
       const auto read = *reads[i], store = *use.store;
       const auto& from = observations_[store.value]; const auto& to = observations_[read.value];
       if (from.after != to.before || controls[from.control] != controls[to.control] || from.region != to.region) continue;
@@ -399,14 +428,23 @@ class Initializers {
       if (ResourceFailures(tree_.identity.contract) != ResourceFailureScope::kExcluded &&
           (std::holds_alternative<FunctionExpr>(tree_.expressions[rhs.value].expression) ||
            std::holds_alternative<ClassExpr>(tree_.expressions[rhs.value].expression))) continue;
-      plan_.replacements[read.value] = rhs;
-      plan_.forwarded_statements[use.root_store->value] = 1;
-      plan_.omitted[use.declaration->value] = plan_.omitted[use.root_store->value] = 1;
+      proposed[count++]={SymbolId{static_cast<std::uint32_t>(i)},read,rhs};
+    }
+    // Value availability, motion and lexical proofs all observe the same
+    // projection. Apply only after all proposals are complete; later passes
+    // must reconstruct facts for the forwarded expression ownership.
+    for(std::size_t i=0;i<count;++i) {
+      budget_.Step();const auto& action=proposed[i];const auto& use=uses_[action.binding.value];
+      plan_.replacements[action.read.value]=action.value;
+      plan_.forwarded_statements[use.root_store->value]=1;
+      plan_.omitted[use.declaration->value]=plan_.omitted[use.root_store->value]=1;
       plan_.statements[use.root_store->value].reset();
     }
+    return count!=0;
   }
-  RecoveryFlow CurrentFlow() const {
-    // Facts belong to this exact projection. No analysis survives a commit.
+  const RecoveryFlow& CurrentFlow() const {
+    if(flow_)return *flow_;
+    // Facts belong to this exact projection. RunPass discards them on commit.
     const auto facts=AnalyzeExpressions();
     std::vector<std::uint8_t> private_bindings;
     budget_.Array(private_bindings,uses_.size());
@@ -417,22 +455,30 @@ class Initializers {
         plan_.omitted,facts.evaluations,facts.normal_stores,plan_.statements,private_bindings,plan_.storage,plan_.undefined_stores};
     auto built=BuildRecoveryFlow(tree_,projection,budget_.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&built))throw *error;
-    auto flow=std::get<RecoveryFlow>(std::move(built));
-    budget_.Admit(flow.allocated_bytes,1);budget_.Step(flow.work);return flow;
+    flow_=std::get<RecoveryFlow>(std::move(built));
+    budget_.Admit(flow_->allocated_bytes,1);budget_.Step(flow_->work);return *flow_;
   }
-  void ElideDeadDefinitions() {
+  const FlowLiveness& CurrentLiveness() const {
+    if(liveness_)return *liveness_;
+    const auto& flow=CurrentFlow();
+    auto analyzed=AnalyzeFlowLiveness(flow,budget_.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
+    liveness_=std::get<FlowLiveness>(std::move(analyzed));
+    budget_.Admit(liveness_->allocated_bytes,1);budget_.Step(liveness_->work);return *liveness_;
+  }
+  bool ElideDeadDefinitions() {
     // Source naming recovery preserves NamedEvaluation after an assignment is
     // projected to its RHS, but can require a naming envelope. Its allocation
     // equivalence is not proved under the legacy resource-observable contract.
     // Retain that contract's representation without inspecting producer shapes.
-    if (ResourceFailures(tree_.identity.contract)!=ResourceFailureScope::kExcluded) return;
+    if (ResourceFailures(tree_.identity.contract)!=ResourceFailureScope::kExcluded) return false;
     bool candidate=false;
     for (std::size_t i=0;i<uses_.size();++i) {
       budget_.Step();candidate |= tree_.symbols[i].kind==BindingKind::kCompilerTemporary &&
           !uses_[i].escaped;
     }
-    if (!candidate) return;
-    const auto flow=CurrentFlow();
+    if (!candidate) return false;
+    const auto& flow=CurrentFlow();
     auto analyzed=AnalyzeFlowDemand(flow,budget_.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
     const auto& demand=std::get<FlowDemand>(analyzed);
@@ -455,6 +501,7 @@ class Initializers {
       budget_.Step();plan_.replacements[write.value]=
           std::get<AssignmentExpr>(tree_.expressions[write.value].expression).value;
     }
+    return !binding_delta.declarations.empty() || !delta.statements.empty() || !delta.writes.empty();
   }
   bool Coalesce() {
     const auto eligible = [&](SymbolId symbol) {
@@ -473,11 +520,8 @@ class Initializers {
       candidate |= target && eligible(target->symbol);
     }
     if (!candidate) return false;
-    auto flow=CurrentFlow();
-    auto live=AnalyzeFlowLiveness(flow,budget_.Remaining());
-    if(const auto* error=std::get_if<TreeStructureError>(&live))throw *error;
-    const auto& liveness=std::get<FlowLiveness>(live);
-    budget_.Admit(liveness.allocated_bytes,1);budget_.Step(liveness.work);
+    const auto& flow=CurrentFlow();
+    const auto& liveness=CurrentLiveness();
     auto analyzed = FindBindingInterference(flow,liveness,budget_.Remaining());
     if (const auto* error = std::get_if<TreeStructureError>(&analyzed)) throw *error;
     auto facts = std::get<BindingInterference>(std::move(analyzed));
@@ -696,16 +740,6 @@ class Initializers {
     RequireTree(next_region_<regions_.size(),TreeStructureError::kOwnership);
     const auto region=next_region_++;regions_[region].begin=region;return region;
   }
-  bool CompletedStore(const BindingUses& use) const {
-    // Legacy snapshot-motion prerequisite only. Literal and alias recovery
-    // consume shared read coverage; do not extend this census for new cases.
-    if(!use.store||use.first!=use.store||use.escaped||!use.first_region)return false;
-    const auto range=regions_[use.store_region];
-    return *use.first_region>=range.begin&&*use.last_region<range.end;
-  }
-  bool PrivateCopy(const BindingUses& use) const {
-    return use.private_storage&&use.declaration&&use.writes==1&&CompletedStore(use);
-  }
   // Transitional for-let lifetime proof; SourceVariables will consume the
   // shared binding activation/initialization facts, not another scope census.
   bool RootLifetime(SymbolId root,ExprId occurrence) const {
@@ -740,13 +774,11 @@ class Initializers {
   }
   struct BindingReadCoverage {
     std::vector<std::uint8_t> stores, declarations;
+    std::span<const FlowReference> references;
   };
   BindingReadCoverage AnalyzeBindingReadCoverage() const {
-    const auto flow=CurrentFlow();
-    auto analyzed_live=AnalyzeFlowLiveness(flow,budget_.Remaining());
-    if(const auto* error=std::get_if<TreeStructureError>(&analyzed_live))throw *error;
-    const auto& live=std::get<FlowLiveness>(analyzed_live);
-    budget_.Admit(live.allocated_bytes,1);budget_.Step(live.work);
+    const auto& flow=CurrentFlow();
+    const auto& live=CurrentLiveness();
     auto analyzed=AnalyzeFlowReadCoverage(flow,live,budget_.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
     const auto& coverage=std::get<FlowReadCoverage>(analyzed);
@@ -760,9 +792,10 @@ class Initializers {
       if(definition.declaration && definition.declaration==use.definition)
         result.declarations[definition.binding.value]=coverage.definitions[i];
     }
+    result.references=flow.references;
     return result;
   }
-  void Constants() {
+  bool Constants() {
     const auto eligible=[&](const BindingUses& use) {
       return use.private_storage && use.declaration && use.writes==1 && use.store && !use.escaped;
     };
@@ -772,7 +805,7 @@ class Initializers {
       const auto value=std::get<AssignmentExpr>(tree_.expressions[use.store->value].expression).value;
       seed |= std::holds_alternative<TreeLiteral>(tree_.expressions[value.value].expression);
     }
-    if(!seed)return;
+    if(!seed)return false;
     const auto coverage=AnalyzeBindingReadCoverage();
     std::vector<std::optional<ExprId>> literals;
     budget_.Array(literals,uses_.size());
@@ -806,8 +839,9 @@ class Initializers {
       plan_.literals[i]=literals[i];
       Elide(uses_[i]);
     }
+    return ready!=0;
   }
-  void Aliases() {
+  bool Aliases() {
     // A single retained definition must cover all source reads, including each
     // copy RHS; each copy definition must in turn cover its destination reads.
     // A source re-execution reaching a destination read without re-executing
@@ -821,9 +855,9 @@ class Initializers {
       const auto rhs=std::get<AssignmentExpr>(tree_.expressions[use.store->value].expression).value;
       candidate |= std::holds_alternative<SymbolExpr>(tree_.expressions[rhs.value].expression);
     }
-    if(!candidate)return;
-    // Constants has committed its proposal. Rebuild from that exact projection;
-    // neither its flow nor its coverage facts may be reused here.
+    if(!candidate)return false;
+    // RunPass invalidates facts if Constants committed a change. A no-op may
+    // share its immutable flow/liveness; coverage always uses the current plan.
     const auto coverage=AnalyzeBindingReadCoverage();
     std::vector<std::optional<SymbolId>> roots;
     budget_.Array(roots,uses_.size());std::size_t ready=0;
@@ -883,7 +917,7 @@ class Initializers {
         roots[target->value]=roots[source.value];constant_queue_[ready++]=*target;++candidates;
       }
     }
-    if(!candidates)return;
+    if(!candidates)return false;
     std::vector<std::optional<SymbolId>> copy_targets,blocked_sources;
     std::vector<std::uint8_t> blocked;
     std::vector<TreeScopedReference> references;
@@ -925,10 +959,12 @@ class Initializers {
     for(std::size_t at=0;at<ready;++at) {
       budget_.Step();if(const auto source=blocked_sources[constant_queue_[at].value])retain(*source);
     }
+    bool changed=false;
     for(std::size_t i=0;i<roots.size();++i) {
       budget_.Step();if(!roots[i]||roots[i]->value==i||blocked[i])continue;
-      plan_.aliases[i]=roots[i];Elide(uses_[i]);
+      plan_.aliases[i]=roots[i];Elide(uses_[i]);changed=true;
     }
+    return changed;
   }
   BindingInitializers Finish() {
     for (std::size_t i = 0; i < tree_.children.size(); ++i) {
@@ -1021,7 +1057,6 @@ class Initializers {
         }
       } else {
         RequireTree(completion_count_ < completions_.size(), TreeStructureError::kOwnership);
-        completion_order_[visit.expression.value] = completion_count_;
         completions_[completion_count_++] = visit.expression;
         if (const auto* assignment = std::get_if<AssignmentExpr>(&node)) {
           if (const auto* target = std::get_if<SymbolTarget>(&assignment->target)) {
@@ -1029,7 +1064,7 @@ class Initializers {
             auto& use=uses_[target->symbol.value];
             const auto& rhs = tree_.expressions[assignment->value.value].expression;
             use.named_creation |= std::holds_alternative<FunctionExpr>(rhs) || std::holds_alternative<ClassExpr>(rhs);
-            if(use.definition&&!use.store){use.store=visit.expression;use.store_region=current_region_;}
+            if(use.definition&&!use.store)use.store=visit.expression;
           }
         }
         if(visit.guarded)regions_[current_region_].end=next_region_;
@@ -1045,7 +1080,6 @@ class Initializers {
       if constexpr (std::is_same_v<T, DeclarationStmt>) {
         if (syntax.initializer) Scan(*syntax.initializer, visit.lexical, visit.projector,visit.scope);
         const auto& symbol = tree_.symbols[syntax.symbol.value]; auto& use = uses_[syntax.symbol.value];
-        declaration_controls_[syntax.symbol.value] = control_;
         use.definition=visit.statement;use.initialized_first=!use.first;use.definition_region=current_region_;
         if (!syntax.initializer && (symbol.kind == BindingKind::kCompilerTemporary || symbol.kind == BindingKind::kLocal) &&
             symbol.declaration == DeclarationKind::kLet && visit.container && !visit.projected) {
@@ -1074,7 +1108,6 @@ class Initializers {
     if (!std::holds_alternative<BlockStmt>(node) && !std::holds_alternative<ExpressionStmt>(node))
       control_events_[control_++] = visit.statement;
   }
-  std::vector<std::size_t> declaration_controls_, completion_order_;
   const FunctionTree& tree_;
   const LoopSyntax& loops_;
   const NullishSyntax& nullish_;
@@ -1104,6 +1137,8 @@ class Initializers {
   std::vector<std::optional<SymbolId>> constant_heads_, constant_next_;
   std::vector<SymbolId> constant_queue_;
   std::vector<StatementVisit> statements_;
+  mutable std::optional<RecoveryFlow> flow_;
+  mutable std::optional<FlowLiveness> liveness_;
 };
 }
 std::variant<BindingInitializers, TreeStructureError> PlanBindingInitializers(

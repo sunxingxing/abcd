@@ -20,6 +20,7 @@ function reference({form}) {
   else if(form===15)body='let saved;try{saved=input.read();}catch(error){return error;}return saved;';
   else if(form===16)body='let saved;try{saved=input.read();return saved;}catch(error){report(saved);return error;}';
   else if(form===17)body='let local,saved;{local=input.read();saved=!local.value;}return saved;';
+  else if(form===19||form===20)body='let saved;'+(form===19?'saved;':'report(saved);')+'saved=input.read();return saved;';
   else body+='return saved;';
   return Function('"use strict";return ('+kind+'(input,report,flag){'+body+'});')();
 }
@@ -65,9 +66,9 @@ for(const row of rows) {
   if(row.form===8)scenarios.push({thenable:true},{thenable:true,reject:true},{thenable:true,failAt:3});
   if(row.form===9)scenarios.push({request:'throw'},{request:'return'});
   for(const scenario of scenarios){assert.deepStrictEqual(await observe(actual,row,scenario),await observe(expected,row,scenario),`form=${row.form} count=${row.count}`);++cases;}
-  if(!row.count&&[0,2,5,10].includes(row.form)) {
+  if(!row.count&&[0,2,5,10,19].includes(row.form)) {
     let wrong;
-    if(row.form===0)wrong=row.source.replace('input.read()','(input.read(), input.read())');
+    if(row.form===0||row.form===19)wrong=row.source.replace('input.read()','(input.read(), input.read())');
     if(row.form===2)wrong=row.source.replace('input.read()','false');
     if(row.form===5)wrong=row.source.replace(/\(flag = input\.read\(\)\)/,'false').replace(/\(0, report\)\(flag, saved\)/,'(0, report)(flag, (flag = input.read()))');
     if(row.form===10)wrong=row.source.replace(/\(0, __snapshotMissing\)/,'__snapshotMissing');

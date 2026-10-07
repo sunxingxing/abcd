@@ -416,3 +416,65 @@ loop/zero-iteration, capture, shadowing, await/yield and object-identity cases
 remain acceptance gates. CompletedStore survives only in ForwardSnapshots;
 InitializedRead, canonical activation, revisions and global convergence remain
 open, as does migration of alias reference enumeration to the shared event list.
+
+
+## Snapshot coverage and dependency order (rules189)
+
+ForwardSnapshots now consumes AnalyzeBindingReadCoverage and the current flow's
+typed read references. It no longer rediscovers binding reads in the original
+expression census. CompletedStore and PrivateCopy have no remaining consumers
+and are removed, together with unused declaration_controls, completion_order and
+store_region records. Value availability comes from the common definition model;
+single-use ownership comes from actual current read occurrences.
+
+The coordinator runs demand/definition/binding cleanup before snapshot analysis.
+A discarded initial read must disappear from that projection before coverage can
+prove its later store. Snapshot proposals read one unchanged projection and are
+applied in a separate batch. ForwardSnapshots reports actual changes; only such a
+commit invalidates flow and liveness before Coalesce. Forwarding preserves each
+RHS occurrence and removes its own single read/store/declaration, so it creates
+no additional dead definition in another binding. Demand cleanup runs again only
+for later storage/declaration changes. This is an explicit producer/consumer
+dependency, not a fixed arbitrary pass count or a claim of global convergence.
+Effects/store summaries are still published last.
+
+An inert initial `saved;` before an effectful single-use assignment no longer
+prevents restoring a direct return of the RHS. An observed initial value retains
+its binding. Source tests exercise both with transparent scopes, arena reversal,
+geometric sizes and independent receiver/effect/throw/identity checks; duplicate
+execution mutants must still fail.
+
+Motion itself still has the documented legacy effect-epoch/control-region and
+lexical-environment proofs. They are not expanded and have not been replaced by
+common effect/activation analysis. InitializedRead, canonical IR/activation,
+canonical revision coordination, alias reference enumeration and whole-pipeline
+convergence remain open. Removing CompletedStore does not retire these separate
+obligations.
+
+
+The local RunPass boundary now owns invalidation of all cached flow-dependent
+facts. Constants, Aliases, dead definitions, snapshots, storage coalescing,
+redundant stored results, inert statements and loop declaration projection each
+report actual changes. On a change, RunPass destroys both flow and all-read
+liveness after the pass returns; the next consumer obtains fresh facts. No-op
+passes share const references to the same graph/liveness. Coverage borrows its
+read-reference span only inside the pass, never across the commit boundary.
+Every pass must finish analysis/proposals before writing; cache reuse within a
+partially applied pass is forbidden. This remains a local scheduling contract,
+not type-level immutability of every legacy plan member or a global pass graph.
+
+A first version rebuilt analysis for every consumer and repeated demand cleanup
+after forwarding. The existing record/class gates caught cumulative scratch
+budget exhaustion. Removing the redundant cleanup alone did not fix it. Sharing
+unchanged flow/liveness through the central commit boundary fixes that regression
+without changing resource quotas, accounting, sample handling or recovery rules.
+The dead-initial-read positive case also requires invalidation: stale pre-cleanup
+reads would prevent forwarding. Existing storage projection tests continue to
+exercise invalidation after storage identity changes.
+
+A deliberate development mutant disabled RunPass invalidation. The existing
+alias/snapshot composition (form 11, zero wrappers) rejected its stale references
+at the forwarding assertion. The mutant was restored before the final build;
+its log is /tmp/abcd-rule189-stale-mutant.log. This complements the independent
+execution mutants for repeated effects and the positive/negative initial-read
+cases; an unchanged real record alone would not prove the invalidation contract.
