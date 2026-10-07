@@ -719,7 +719,7 @@ class Initializers {
       if (const auto* read = std::get_if<SymbolExpr>(&node)) {
         if (!plan_.literals[read->symbol.value]) {
           const auto source = plan_.Storage(read->symbol);
-          if (MutableBinding(source)) result = source;
+          result = source;
         }
         if (plan_.literals[read->symbol.value] || (!initialized.empty() && initialized[id.value]))
           evaluation = ExpressionEvaluation::kInert;
@@ -800,11 +800,13 @@ class Initializers {
     const auto at=containers_[owner->value].begin;const auto range=containers_[use.initializer_container->value];
     return at>=range.begin&&at<range.end;
   }
-  void Elide(const BindingUses& use) {
+  void Elide(const BindingUses& use,bool discard_rhs=true) {
     plan_.omitted[use.declaration->value]=1;
     const auto rhs=std::get<AssignmentExpr>(tree_.expressions[use.store->value].expression).value;
     if(use.initializer) {
-      plan_.omitted[use.initializer->value]=1;plan_.statements[use.initializer->value].reset();
+      plan_.statements[use.initializer->value].reset();
+      if(discard_rhs)plan_.omitted[use.initializer->value]=1;
+      else plan_.replacements[use.store->value]=rhs;
     } else plan_.replacements[use.store->value]=rhs;
   }
   bool Confined(const BindingUses& use, std::optional<StmtId> owner) const {
@@ -896,14 +898,25 @@ class Initializers {
     for(std::size_t i=0;i<uses_.size();++i) {
       budget_.Step();const auto& use=uses_[i];
       if(!use.private_storage || !use.declaration || use.writes!=1 || !use.store || use.escaped || plan_.literals[i])continue;
+      candidate=true;
+    }
+    if(!candidate)return;
+    const auto& expressions=AnalyzeExpressions();
+    candidate=false;
+    for(std::size_t i=0;i<uses_.size();++i) {
+      budget_.Step();const auto& use=uses_[i];
+      if(!use.private_storage || !use.declaration || use.writes!=1 || !use.store || use.escaped || plan_.literals[i])continue;
       const auto rhs=std::get<AssignmentExpr>(tree_.expressions[use.store->value].expression).value;
-      candidate |= std::holds_alternative<SymbolExpr>(tree_.expressions[rhs.value].expression);
+      candidate |= expressions.bindings[rhs.value].has_value();
     }
     if(!candidate)return;
     // BeginCommit invalidates facts before Constants changes the plan. A no-op may
     // share its immutable flow/liveness; coverage always uses the current plan.
     const auto coverage=AnalyzeBindingReadCoverage();
+    const auto& flow=CurrentFlow();
     std::vector<std::optional<SymbolId>> roots;
+    std::vector<std::uint8_t> discard_rhs;
+    budget_.Array(discard_rhs,uses_.size());
     budget_.Array(roots,uses_.size());std::size_t ready=0;
     // ECMA-262 2024 FunctionDeclarationInstantiation: only a non-strict,
     // non-arrow simple parameter list may couple formals to mapped arguments.
@@ -949,8 +962,11 @@ class Initializers {
       }
       const auto assignment=*use.store;
       const auto rhs=std::get<AssignmentExpr>(tree_.expressions[assignment.value].expression).value;
-      if(const auto* copy=std::get_if<SymbolExpr>(&tree_.expressions[rhs.value].expression)) {
-        constant_next_[i]=constant_heads_[copy->symbol.value];constant_heads_[copy->symbol.value]=symbol;
+      discard_rhs[i]=expressions.evaluations[rhs.value]==ExpressionEvaluation::kInert;
+      // Normal-result identity is shared across sequence, choice and assignment
+      // composition. Eliminating storage never authorizes dropping RHS effects.
+      if(const auto copy=expressions.bindings[rhs.value]) {
+        constant_next_[i]=constant_heads_[copy->value];constant_heads_[copy->value]=symbol;
       } else {roots[i]=symbol;constant_queue_[ready++]=symbol;}
     }
     std::size_t candidates=0;
@@ -962,21 +978,24 @@ class Initializers {
       }
     }
     if(!candidates)return;
-    std::vector<std::optional<SymbolId>> copy_targets,blocked_sources;
+    std::vector<std::optional<SymbolId>> copy_targets;
+    std::vector<std::optional<std::size_t>> blocked_heads;
+    struct Dependency { SymbolId source; std::optional<std::size_t> next; };
+    std::vector<Dependency> dependencies;std::size_t dependency_count=0;
     std::vector<std::uint8_t> blocked;
     std::vector<TreeScopedReference> references;
-    struct AliasRead { ExprId expression; SymbolId binding; };
+    struct AliasRead { ExprId expression; SymbolId binding; std::optional<SymbolId> removed_by; };
     std::vector<AliasRead> occurrences;
-    budget_.Array(copy_targets,tree_.expressions.size());budget_.Array(blocked_sources,uses_.size());
+    budget_.Array(copy_targets,tree_.statements.size());budget_.Array(blocked_heads,uses_.size());
+    budget_.Array(dependencies,coverage.references.size());
     budget_.Array(blocked,uses_.size());budget_.Array(references,coverage.references.size());
     budget_.Array(occurrences,coverage.references.size());
     for(std::size_t i=0;i<roots.size();++i) {
       budget_.Step();if(!roots[i]||roots[i]->value==i)continue;
       // A statement store disappears entirely. An embedded store still yields
       // its RHS at that occurrence; lexical resolution remains required there.
-      if(!uses_[i].initializer)continue;
-      const auto assignment=*uses_[i].store;
-      copy_targets[std::get<AssignmentExpr>(tree_.expressions[assignment.value].expression).value.value]=SymbolId{static_cast<std::uint32_t>(i)};
+      if(!uses_[i].initializer || !discard_rhs[i])continue;
+      copy_targets[uses_[i].initializer->value]=SymbolId{static_cast<std::uint32_t>(i)};
     }
     std::size_t count=0;
     // Name/lifetime obligations belong to retained semantic reads, including
@@ -987,7 +1006,9 @@ class Initializers {
       if(!roots[read.binding.value]||roots[read.binding.value]==read.binding)continue;
       const auto expression=std::get<ExprId>(read.site);
       references[count]={*roots[read.binding.value],expression_scopes_[expression.value]};
-      occurrences[count++]={expression,read.binding};
+      const auto discarded=flow.events[read.point.value].discarded;
+      const auto target=discarded?copy_targets[flow.discarded[discarded->value].statement.value]:std::nullopt;
+      occurrences[count++]={expression,read.binding,target};
     }
     references.resize(count);const auto visible=ResolveTreeReferences(tree_,references,budget_);
     ready=0;
@@ -999,18 +1020,23 @@ class Initializers {
     };
     for(std::size_t i=0;i<count;++i) {
       budget_.Step();if(visible[i]&&RootLifetime(references[i].symbol,occurrences[i].expression))continue;
-      const auto occurrence=occurrences[i].expression;const auto source=occurrences[i].binding;
+      const auto source=occurrences[i].binding;
       // A copy RHS ceases to be a read when its store is elided. Only if the
       // destination must remain does its unavailable root force source storage.
-      if(const auto target=copy_targets[occurrence.value])blocked_sources[target->value]=source;
-      else retain(source);
+      if(const auto target=occurrences[i].removed_by) {
+        dependencies[dependency_count]={source,blocked_heads[target->value]};
+        blocked_heads[target->value]=dependency_count++;
+      } else retain(source);
     }
     for(std::size_t at=0;at<ready;++at) {
-      budget_.Step();if(const auto source=blocked_sources[constant_queue_[at].value])retain(*source);
+      budget_.Step();
+      for(auto edge=blocked_heads[constant_queue_[at].value];edge;edge=dependencies[*edge].next) {
+        budget_.Step();retain(dependencies[*edge].source);
+      }
     }
     for(std::size_t i=0;i<roots.size();++i) {
       budget_.Step();if(!roots[i]||roots[i]->value==i||blocked[i])continue;
-      BeginCommit();plan_.aliases[i]=roots[i];Elide(uses_[i]);
+      BeginCommit();plan_.aliases[i]=roots[i];Elide(uses_[i],discard_rhs[i]);
     }
   }
   BindingInitializers Finish() {

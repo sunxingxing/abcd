@@ -2095,3 +2095,13 @@ rule comes from ForDeclaration grammar, not a recognized bytecode sequence.
 Initialization, binding identity and lifetime remain upstream obligations. No
 new loop-count, adjacency, name, same-block or sample restriction was introduced.
 The old interleaved decision/publication traversal has been removed.
+
+
+### Rules198: remove direct-SymbolExpr copy admission
+
+Aliases consumes common normal-result binding facts instead of testing its RHS
+for SymbolExpr. Effects are not discarded with the eliminated storage: only a
+shared inert proof permits removing the whole statement. Retention dependencies
+use semantic discarded ownership and a sparse many-edge graph instead of one
+direct RHS occurrence/one blocked source. Existing coverage, escape, mapped
+arguments, lexical identity and lifetime checks stay in their documented owners.

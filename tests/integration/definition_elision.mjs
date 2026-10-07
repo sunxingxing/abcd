@@ -22,6 +22,40 @@ function observe(fn,flag,fail) {
 let executions=0,mutations=3;
 for(const row of rows) {
   parseJavaScript(row.source);
+  if(row.scoped_copy) {
+    const actual=Function('return ('+row.source+');')();
+    const expected=Function('produce','flag','"use strict";let state=produce,second=flag;{let selected=state?second:second;let produce=1;let flag=2;return selected;}');
+    const run=(fn,flag)=>{const result=observe(fn,flag,-1);if(result.thrown instanceof ReferenceError)result.thrown='tdz';return result;};
+    for(const flag of [undefined,null,false,true,-0,7n,Symbol.for('scope'),values[0]]) {
+      assert.deepEqual(run(actual,flag),run(expected,flag));++executions;
+    }
+    for(const expression of ['produce?second:second','state?flag:flag']) {
+      const bad=Function('produce','flag','"use strict";let state=produce,second=flag;{let selected='+expression+';let produce=1;let flag=2;return selected;}');
+      assert.notDeepEqual(run(bad,values[0]),run(expected,values[0]));++mutations;
+    }
+    continue;
+  }
+  if(row.copy) {
+    let rhs='(produce(1),'+(row.form===7?'origin':'flag')+')';
+    if(row.form===1||row.form===5)rhs='flag?'+rhs+':'+(row.form===5?'produce(2)':'(produce(2),flag)');
+    if(row.form===2)rhs='flag||'+rhs;
+    rhs='('+('produce(0),'.repeat(row.count))+rhs+')';
+    const assignment='state='+rhs+';';
+    const body='let state;'+(row.form===7?'const origin=flag;':'')+(row.form===4?'produce(state);':'')+
+      (row.form===6?'try{'+assignment+'}catch(error){return state;}':assignment)+
+      (row.form===3?'flag=produce(3);':'')+'produce(state);return state;';
+    const actual=Function('return ('+row.source+');')();
+    const expected=Function('produce','flag','"use strict";'+body);
+    for(const flag of [undefined,null,false,true,0,-0,7n,Symbol.for('copy'),values[0]])
+      for(const fail of [-1,0,1,2,3]) {
+        assert.deepEqual(observe(actual,flag,fail),observe(expected,flag,fail));++executions;
+      }
+    if(!row.count) {
+      const bad=Function('produce','flag','"use strict";return flag;');
+      assert.notDeepEqual(observe(bad,false,-1),observe(expected,false,-1));++mutations;
+    }
+    continue;
+  }
   if(row.operands) {
     const actual=Function('return ('+row.source+');')();
     const left=row.form?'+state':'state';

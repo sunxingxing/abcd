@@ -24,6 +24,46 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则198，复制传播消费共同正常结果身份
+
+- Aliases 删除直接 SymbolExpr RHS 准入，改用共同 ExpressionFacts 的
+  正常结果绑定身份，复用序列/赋值/分支/逻辑表达式的语义组合。只读
+  绑定读取也提供身份，PutValue 消除仍独立要求可写目标；原定义覆盖、
+  mapped arguments、escape、名字解析与生命期证明保持。
+- 删除临时存储与删除 RHS 分别决定：共同效果分析仍判 required 的 RHS
+  在原位置保留 assignment-to-RHS 投影，不能因 alias 消失而丢调用或
+  异常。所有方案在 BeginCommit 前计算，提交阶段不再消费分析引用。
+- 词法保留依赖改用共同 FlowEvent 的 discarded owner，覆盖一个复合
+  RHS 的所有读取；旧 direct-RHS ExprId 查找和单 blocked-source 槽
+  实际删除。稀疏邻接表/有界工作表传播所有依赖，新增 O(B+R) 工作与
+  存储，不逐候选遍历子树、不重复全 pass 扫描。
+- 旧实现先在 compound-copy form0/count0 失败，证据
+  /tmp/abcd-rule198-red-test.log。新增副作用序列/分支/逻辑及 const
+  来源，源变量改写、初始 undefined 观察、catch 在成功写回前读取、
+  分支结果不一致的反例；反序 arena、0/1/200/201/400/800、exact/short
+  预算通过。扩展初验 2/2 通过，15.99 秒，日志
+  /tmp/abcd-rule198-expanded-tests.log。
+- 另补两个上游复制同时被目标作用域名字遮蔽的组合：保留下游必须
+  保留两条依赖，删任意一个会引入 TDZ。补充 C++ 单元退出0；源码
+  322 份/7,216 次比较/31 个反例通过，日志 /tmp/abcd-rule198-scope-unit.log
+  与 /tmp/abcd-rule198-scope-source.log。手动源码补测首次漏加
+  --expose-internals，解析器未启动；已按 CTest 注册命令重跑成功，
+  原启动失败日志 /tmp/abcd-rule198-scope-source-launch.log 保留。
+- 最终相关 CTest 批次 54/54 通过，398.16 秒，日志
+  /tmp/abcd-rule198-tests.log 与 /tmp/abcd-rule198-test-detail.log；源码
+  对照包含补充 scope 用例，追加 scope 的 C++ 单元已另行补验退出0。
+  变量/别名 1,752/461,776/284；存储 221/33,620/12；快照
+  324/12,372/18；定义/复合复制 322/7,216/31；冗余写回
+  528/18,192/12。构建日志 /tmp/abcd-rule198-final-build.log 及
+  /tmp/abcd-rule198-scope-build.log。独立源码执行不是平台执行。
+- ABC-only 导出 build/stage-one/compound-copies-rule198 保持
+  10complete/0partial/9noModule；十份源码 node --check 通过，正文与
+  规则197一致，日志 /tmp/abcd-rule198-export.log。此次增加通用表达式
+  组合能力，无新增该真实输入覆盖，不替代全阶段语义/style 验收。
+- 全局 pass 固定点、共同 activation/unwind 与 canonical IR 对应仍未
+  完成；结构 gate、统一变量里程碑和阶段一保持开放。Goal active，
+  全量语料/RSS/DFX/代理等暂停范围保持。
+
 ### 2026-10-08：规则197，循环声明规划与提交分离
 
 - 原 ProjectLoopDeclarations 在同一遍历中判断和修改共享计划，后续循环

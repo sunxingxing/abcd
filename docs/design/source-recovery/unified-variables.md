@@ -740,3 +740,41 @@ application order, idempotence, exact/short budgets and 200/201/geometric growth
 Existing generated-source tests retain nested loops, catch/finally, await/yield,
 copy/storage cleanup and initialization fault comparisons. This closes this
 pass's partial-plan decision path, not global dependency fixed-point scheduling.
+
+
+## Copy propagation consumes normal-result identity (rules198)
+
+Aliases no longer admits only an original SymbolExpr RHS. It consumes the
+shared expression normal-result binding fact already composed through sequence,
+assignment, choice and logical results. Reads identify their binding even when
+it is readonly; mutability remains a separate prerequisite for eliminating a
+PutValue. The existing root/definition coverage, mapped-arguments, escape,
+lexical visibility and activation obligations still apply. Unknown results
+remain unknown; no producer list or sample condition replaces these proofs.
+
+Removing a copy storage and dropping its RHS are separate decisions. A required
+RHS remains at the original occurrence via assignment-to-RHS projection, with
+its evaluation, exceptions and observed value preserved. Only a RHS proved inert
+by shared effect/completion analysis permits removal of the whole native
+initializer statement. Both decisions are proposed before BeginCommit; no
+expression facts or flow references are consumed after that boundary.
+
+For lexical retention, an eliminated inert statement can contain several
+references. The current FlowEvent discarded owner identifies those references;
+we no longer recognize only the original direct RHS ExprId. A sparse adjacency
+list records every destination-to-required-source dependency and a bounded
+worklist propagates retained storage. The previous one-source slot is removed.
+This handles composition without repeated whole-pass sweeps. It is not a global
+fixed-point scheduler, and later effect simplifications can still expose further
+copy opportunities; that precision gap must not be filled with local patterns.
+
+Tests cover effectful sequence/choice/logical copies, immutable const sources,
+changed source values, observed initial undefined, catch reads before successful
+write, and disagreeing branch results. They compare generated code independently
+with side effects, identity and injected exceptions, including reversed arenas
+and 0/1/200/201/400/800 composition sizes.
+
+A combined scope test keeps a conditional copy with two upstream sources whose
+original names resolve to TDZ shadows at the retained occurrence. Both source
+storages must survive; independently dropping either introduces a ReferenceError.
+This checks the multiple retention edges rather than only separate name cases.

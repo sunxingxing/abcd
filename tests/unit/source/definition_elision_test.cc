@@ -35,7 +35,8 @@ struct Fixture {
     for(auto& expression:tree.expressions)std::visit([&](auto& node){using T=std::decay_t<decltype(node)>;
       if constexpr(std::is_same_v<T,AssignmentExpr>)node.value=remap(node.value);
       else if constexpr(std::is_same_v<T,CallExpr>)node.callee=remap(node.callee);
-      else if constexpr(std::is_same_v<T,SequenceExpr>){node.left=remap(node.left);node.right=remap(node.right);}
+      else if constexpr(std::is_same_v<T,ConditionalExpr>){node.condition=remap(node.condition);node.consequent=remap(node.consequent);node.alternate=remap(node.alternate);}
+      else if constexpr(std::is_same_v<T,SequenceExpr>||std::is_same_v<T,LogicalExpr>){node.left=remap(node.left);node.right=remap(node.right);}
       else if constexpr(std::is_same_v<T,UnaryExpr>)node.operand=remap(node.operand);
     },expression.expression);
     for(auto& statement:tree.statements)std::visit([&](auto& node){using T=std::decay_t<decltype(node)>;
@@ -212,6 +213,74 @@ std::uint64_t InitializationReads(unsigned form,unsigned count,bool reverse,bool
   if(emit)std::cout<<nlohmann::json{{"source",out.str()},{"initialization",true},{"form",form},{"count",count}}<<'\n';
   return plan.work;
 }
+std::uint64_t CompoundCopies(unsigned form,unsigned count,bool reverse,bool emit) {
+  Fixture f;auto& tree=f.tree;
+  std::vector<StmtId> body{f.Stmt(DeclarationStmt{{2},{}})};
+  unsigned source=1;
+  if(form==7) {
+    tree.names.push_back(u"origin");
+    tree.symbols.push_back({{1},{4},BindingKind::kLocal,DeclarationKind::kConst,NameEvidence::kMetadata,{}});
+    body.push_back(f.Stmt(DeclarationStmt{{3},f.Read(1)}));source=3;
+  }
+  const auto observe=[&](ExprId value) {
+    const auto first=static_cast<std::uint32_t>(tree.arguments.size());tree.arguments.push_back(value);
+    return f.Stmt(ExpressionStmt{f.Expr(CallExpr{f.Read(0),{first,1},CallReference::kValue})});
+  };
+  if(form==4)body.push_back(observe(f.Read(2)));
+  auto rhs=f.Expr(SequenceExpr{f.Call(1),f.Read(source)});
+  if(form==1||form==5)rhs=f.Expr(ConditionalExpr{f.Read(1),rhs,form==5?f.Call(2):f.Expr(SequenceExpr{f.Call(2),f.Read(1)})});
+  if(form==2)rhs=f.Expr(LogicalExpr{TreeLogical::kOr,f.Read(1),rhs});
+  for(unsigned i=0;i<count;++i)rhs=f.Expr(SequenceExpr{f.Call(0),rhs});
+  const auto store=f.Stmt(ExpressionStmt{f.Expr(AssignmentExpr{SymbolTarget{{2}},rhs})});
+  if(form==6) {
+    const auto scope=f.Scope(ScopeKind::kCatch);
+    tree.symbols.push_back({scope,{3},BindingKind::kCatchParameter,DeclarationKind::kCatchParameter,NameEvidence::kMetadata,{}});
+    body.push_back(f.Stmt(TryStmt{f.Block({store},f.Scope()),CatchClause{{3},f.Block({f.Stmt(ReturnStmt{f.Read(2)})},scope)},{}}));
+  } else body.push_back(store);
+  if(form==3)body.push_back(f.Stmt(ExpressionStmt{f.Expr(AssignmentExpr{SymbolTarget{{1}},f.Call(3)})}));
+  body.push_back(observe(f.Read(2)));body.push_back(f.Stmt(ReturnStmt{f.Read(2)}));f.Finish(body,reverse);
+  test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
+  const auto planned=PlanBindingInitializers(tree,loops,nullish);test::Check(std::holds_alternative<BindingInitializers>(planned));
+  const auto& plan=std::get<BindingInitializers>(planned);
+  const bool expected=form<3 || form==7;
+  if(plan.aliases[2].has_value()!=expected)std::cerr<<"compound copy form="<<form<<" count="<<count<<" reverse="<<reverse<<'\n';
+  test::Check(plan.aliases[2].has_value()==expected);
+  if(expected)test::Check(plan.aliases[2]==SymbolId{source});
+  if(!count) {
+    test::Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes,plan.work})));
+    test::Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes-1,plan.work}))==TreeStructureError::kResourceLimit);
+    test::Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes,plan.work-1}))==TreeStructureError::kWorkLimit);
+  }
+  std::ostringstream out;test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,out)));
+  if(emit)std::cout<<nlohmann::json{{"source",out.str()},{"copy",true},{"form",form},{"count",count}}<<'\n';
+  return plan.work;
+}
+
+void ScopedCopies(bool reverse,bool emit) {
+  Fixture f;auto& tree=f.tree;const auto scope=f.Scope();
+  tree.names.push_back(u"second");tree.names.push_back(u"selected");
+  tree.symbols.push_back({{1},{4},BindingKind::kCompilerTemporary,DeclarationKind::kLet,NameEvidence::kSynthesized,TemporaryReason::kMultipleUses});
+  tree.symbols.push_back({scope,{5},BindingKind::kCompilerTemporary,DeclarationKind::kLet,NameEvidence::kSynthesized,TemporaryReason::kMultipleUses});
+  tree.symbols.push_back({scope,{0},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
+  tree.symbols.push_back({scope,{1},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
+  const auto store=[&](unsigned target,ExprId rhs){return f.Stmt(ExpressionStmt{f.Expr(AssignmentExpr{SymbolTarget{{target}},rhs})});};
+  const auto choice=f.Expr(ConditionalExpr{f.Read(2),f.Read(3),f.Read(3)});
+  const auto inner=f.Block({f.Stmt(DeclarationStmt{{4},{}}),store(4,choice),
+      f.Stmt(DeclarationStmt{{5},f.Expr(TreeLiteral{IntegerLiteral{1}})}),
+      f.Stmt(DeclarationStmt{{6},f.Expr(TreeLiteral{IntegerLiteral{2}})}),f.Stmt(ReturnStmt{f.Read(4)})},scope);
+  f.Finish({f.Stmt(DeclarationStmt{{2},{}}),store(2,f.Read(0)),
+      f.Stmt(DeclarationStmt{{3},{}}),store(3,f.Read(1)),inner},reverse);
+  test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
+  const auto plan=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
+  // Keeping selected also keeps BOTH upstream copies: their original parameter
+  // names resolve to TDZ shadows at the conditional's retained occurrence.
+  for(unsigned i:{2U,3U,4U})test::Check(!plan.aliases[i]);
+  std::ostringstream out;test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,out)));
+  if(emit)std::cout<<nlohmann::json{{"source",out.str()},{"scoped_copy",true}}<<'\n';
+}
+
 void BindingObligations() {
   // Cartesian semantic facts, independent of CFG reachability and arena order.
   // A reference in retained syntax requires a binding even if its value is dead.
@@ -242,6 +311,14 @@ void BindingObligations() {
 }
 int main(int argc,char**) {
   BindingObligations();
+  for(bool reverse:{false,true})ScopedCopies(reverse,argc>1);
+  for(unsigned form=0;form<8;++form)for(bool reverse:{false,true}) {
+    std::uint64_t previous=0;
+    for(unsigned count:{0U,1U,200U,201U,400U,800U}) {
+      const auto work=CompoundCopies(form,count,reverse,argc>1);
+      if(count>=400)test::Check(work<previous*3);previous=work;
+    }
+  }
   for(unsigned form=0;form<2;++form)for(bool reverse:{false,true}) {
     std::uint64_t previous=0;
     for(unsigned count:{0U,200U,201U,400U,800U}) {

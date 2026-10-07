@@ -2759,3 +2759,21 @@ Planning takes const references and commit consumes only the completed delta.
 A second plan on the applied state is empty. Multi-loop/reversed-order tests
 cover 1/200/201/400/800 loops with exact and short resource/work budgets. This
 is a grammar projection split, not a convergence proof for the whole pipeline.
+
+
+### Compound copy results and retention dependencies (rules198)
+
+Copy affinity consumes shared normal-completion result identities, rather than
+matching the original RHS syntax. The sparse binding-copy graph still has at
+most one value source per candidate. Visibility retention is a distinct graph:
+each discarded reference may require another source if its containing copy must
+remain. FlowEvent discarded ownership supplies the destination; adjacency lists
+store all such edges and a once-enqueued worklist propagates retention. With B
+bindings and R references, added work/storage are O(B+R); source reference
+resolution and common flow analyses retain their separately documented costs.
+No per-candidate subtree walk or repeated whole-plan fixed-point scan is added.
+
+Copy elimination preserves required RHS evaluation at its occurrence. Readonly
+source identity is independent of writable destination identity. This follows
+the language's normal completion and declarative-binding semantics; calls,
+throw paths and capture activation remain represented in existing shared facts.

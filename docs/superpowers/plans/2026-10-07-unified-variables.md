@@ -313,3 +313,14 @@ and global convergence remain unfinished.
   partially changed plan. Final prefix counts remain derived after all passes.
 - Multi-loop order invariance and idempotence tests supplement existing source
   execution tests. Whole-pipeline dependency convergence remains pending.
+
+
+### Rules198 continuation: compound values through copy propagation
+
+- Copy sources now come from shared expression normal-result binding facts.
+- Storage removal separately preserves required RHS evaluations and completions.
+- Discarded-owner references feed a sparse multi-source retention worklist,
+  replacing direct-RHS lookup and the single blocked-source slot.
+- Added positive compositions and source mutation/undefined/catch/branch
+  counterexamples with independent execution. Whole-pass convergence and fuller
+  canonical activation remain open.
