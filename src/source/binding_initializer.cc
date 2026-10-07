@@ -171,6 +171,16 @@ class Initializers {
       budget_.Step(); const auto& observation = projection_observations_[i];
       ObserveContainer(uses_[observation.symbol.value], lexical_[observation.owner.value]);
     }
+    // Normalize redundant writes before dead-definition analysis chooses the
+    // retained producer; both passes preserve the original RHS evaluation.
+    RunPass(Pass::kStoredResults);
+    // Remove discarded inert observations before declaration availability is
+    // proved on retained references. Observable reads and RHS effects remain.
+    RunPass(Pass::kInertOperands);
+    RunPass(Pass::kInertStatements);
+    // Remove dead value definitions before turning a store into a lexical
+    // initializer whose binding completion must subsequently be preserved.
+    RunPass(Pass::kDeadDefinitions);
     RunPass(Pass::kDeclarations);
     // Literal stability also depends on retained writes. Clear identity stores
     // before coverage, then clear new identities exposed by literal projection.
@@ -265,6 +275,40 @@ class Initializers {
   void RequireAnalysis() const {
     RequireTree(pass_phase_!=PassPhase::kCommit,TreeStructureError::kOwnership);
   }
+  std::vector<std::uint8_t> DeclarationAvailability() const {
+    std::vector<std::uint8_t> available;budget_.Array(available,uses_.size());
+    bool candidate=false;
+    for(const auto& use:uses_) {
+      budget_.Step();candidate |= use.declaration && use.initializer && !use.escaped;
+    }
+    if(!candidate)return available;
+    const auto& flow=CurrentFlow();const auto& expressions=AnalyzeExpressions();
+    auto analyzed=AnalyzeFlowDominance(flow,budget_.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
+    const auto& order=std::get<FlowDominance>(analyzed);
+    budget_.Admit(order.allocated_bytes,1);budget_.Step(order.work);
+    std::vector<std::optional<FlowPoint>> completed;budget_.Array(completed,uses_.size());
+    for(const auto& definition:flow.definitions) {
+      budget_.Step();const auto& use=uses_[definition.binding.value];
+      if(!use.declaration || !use.initializer || use.escaped || !definition.write)continue;
+      const auto expression=std::get<ExpressionStmt>(tree_.statements[use.initializer->value].statement).expression;
+      // Replacing PutValue with lexical initialization must not remove a
+      // possible TDZ/immutable-binding failure. Its completion must precede
+      // every retained read AND write, including RHS and exception paths.
+      // The value write is retained as an initializer, so this needs normal
+      // PutValue completion, not permission to delete observable source storage.
+      if(definition.write==expression && expressions.normal_stores[expression.value]) {
+        completed[definition.binding.value]=definition.point;
+        available[definition.binding.value]=1;
+      }
+    }
+    for(const auto& reference:flow.references) {
+      budget_.Step();const auto point=completed[reference.binding.value];
+      if(point && order.tree.nodes[reference.point.value].begin &&
+          !order.Dominates(*point,reference.point))available[reference.binding.value]=0;
+    }
+    return available;
+  }
   void Declarations() {
     RequireAnalysis();
     struct DeclarationEdit {
@@ -272,12 +316,18 @@ class Initializers {
       BindingInitializer initializer;
       std::optional<StmtId> omitted;
     };
+    const auto available=DeclarationAvailability();
     std::vector<DeclarationEdit> proposed;
     budget_.Array(proposed,uses_.size());std::size_t count=0;
     for (std::size_t i = 0; i < uses_.size(); ++i) {
       budget_.Step(); const auto& use = uses_[i];
-      if (!use.declaration || !InitializerAvailable(use)) continue;
+      if (!use.declaration || !use.initializer || !Confined(use,use.initializer_container)) continue;
+      const auto& effect = std::get<ExpressionStmt>(tree_.statements[use.initializer->value].statement);
+      if(!use.escaped && !available[i])continue;
       if (use.escaped) {
+        // Transitional capture observation proof: shared flow does not yet
+        // model child-cell observations. Keep its existing admission unchanged.
+        if(use.first!=effect.expression)continue;
         // A capture observes its cell from creation onward, even when invoked
         // only after this activation exits. Keep the original environment for
         // escaping locals: narrowing an outer cell into a loop body would give
@@ -288,11 +338,10 @@ class Initializers {
         const auto* owner = std::get_if<BlockStmt>(&tree_.statements[use.initializer_container->value].statement);
         if (!owner || owner->scope != tree_.symbols[i].scope) continue;
       }
-      const auto& effect = std::get<ExpressionStmt>(tree_.statements[use.initializer->value].statement);
       // DFS intervals prove that every observation stays in the new lexical
-      // lifetime. A first completed direct store dominates later reads there,
-      // including on each loop entry; RHS/earlier reads and sibling catch or
-      // finally observations preserve the original undefined/old-value slot.
+      // lifetime; shared completion dominance proves initialization before
+      // retained references. RHS/earlier reads and sibling catch or finally
+      // observations preserve the original undefined/old-value slot.
       // This is scope confinement, never a same-block admission. No SSA merge,
       // expression motion, source const inference or new capture environment.
       // Declaration placement preserves a mutable binding until the final
@@ -913,11 +962,6 @@ class Initializers {
     if (use.outside_body || !owner || !use.first_container) return false;
     const auto range = containers_[owner->value];
     return *use.first_container >= range.begin && *use.last_container < range.end;
-  }
-  bool InitializerAvailable(const BindingUses& use) const {
-    if (!use.initializer) return false;
-    const auto& effect=std::get<ExpressionStmt>(tree_.statements[use.initializer->value].statement);
-    return use.first==effect.expression && Confined(use,use.initializer_container);
   }
   struct CoveredWrite {
     ExprId expression;

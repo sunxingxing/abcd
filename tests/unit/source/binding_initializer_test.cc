@@ -85,6 +85,9 @@ struct Fixture {
     tree.statements.push_back({BlockStmt{{1}, 0, 0}, {0}});
     declaration = Stmt(DeclarationStmt{{2}, {}});
     std::vector<StmtId> body{declaration};
+    if (form == 15) body.push_back(Stmt(ExpressionStmt{Read(2)}));
+    if (form == 16) body.push_back(Stmt(ExpressionStmt{Expr(SequenceExpr{Read(2),Call(1)})}));
+    if (form == 17) body.push_back(Stmt(ExpressionStmt{Expr(SequenceExpr{Call(1,2),Expr(TreeLiteral{IntegerLiteral{0}})})}));
     if (form == 2) body.push_back(Stmt(ExpressionStmt{Call(1, 2)}));
     ExprId value = form == 3 ? Read(2) : Call(0);
     if (form == 5) value = Expr(AwaitExpr{value}); if (form == 6) value = Expr(YieldExpr{value});
@@ -145,7 +148,7 @@ struct Fixture {
       if (carried) body.insert(body.begin() + 1, *carried);
       // No observation after the loop: each iteration's private lifetime can
       // shrink, while source cells/captures remain outside this projection.
-    } else if (form >= 8) {
+    } else if (form >= 8 && form <= 10) {
       // Scope confinement is independent of the outer declaration location.
       // Finally's old-value read must prevent sinking into the protected body.
       tree.scopes.push_back({ScopeKind::kBlock, ScopeId{1}});
@@ -258,8 +261,9 @@ std::uint64_t Constant(unsigned form, unsigned count, unsigned literal, bool rev
   const auto nullish = std::get<NullishSyntax>(PlanNullishSyntax(tree));
   const auto result = PlanBindingInitializers(tree,loops,nullish);test::Check(std::holds_alternative<BindingInitializers>(result));
   const auto& plan = std::get<BindingInitializers>(result);
-  const bool folded = form < 2 || (form >= 9 && form < 14) || ((form == 14 || form == 15) && count == 0) || form == 16 || form == 17 || form == 18 || form == 20;
+  const bool folded = form < 2 || (form == 3 && count == 0) || (form >= 9 && form < 14) || ((form == 14 || form == 15) && count == 0) || form == 16 || form == 17 || form == 18 || form == 20;
   std::ostringstream output;const auto printed = PrintFunctionTree(tree,output);test::Check(std::holds_alternative<PrintedFunction>(printed));
+  if((output.str().find("saved")==std::string::npos)!=folded)std::cerr<<"constant form="<<form<<" count="<<count<<" reverse="<<reverse<<'\n'<<output.str()<<'\n';
   test::Check((output.str().find("saved") == std::string::npos) == folded);
   for (const auto range : std::get<PrintedFunction>(printed).expressions) test::Check(range.begin<=range.end && range.end<=output.str().size());
   for (const auto anchor : std::get<PrintedFunction>(printed).anchors) test::Check(anchor>0 && anchor<=output.str().size());
@@ -411,8 +415,14 @@ std::uint64_t Alias(unsigned form,unsigned count,bool reverse,bool emit) {
     test::Check(plan.statements[fixture.store.value].has_value());
     test::Check(plan.statements[fixture.store.value]->declaration==DeclarationKind::kConst);
   }
-  const bool folded=count&&form!=1&&form!=2&&form!=3&&form!=5&&form!=11&&form!=14&&form!=16&&form!=17&&form!=19&&form!=23&&form!=29;
-  test::Check(plan.aliases[reverse?tree.symbols.size()-1-last:last].has_value()==folded);test::Check(!plan.aliases[reverse?tree.symbols.size()-3:2]);
+  const bool folded=count&&form!=2&&form!=3&&form!=5&&form!=11&&form!=14&&form!=16&&form!=17&&form!=19&&form!=23&&form!=29;
+  // Completely unused copies are removed by dead-definition cleanup before
+  // alias propagation; surviving copies still require the selected alias root.
+  const bool aliased=folded&&form!=15;
+  if(form==15)for(const auto declaration:declarations)
+    test::Check(plan.omitted[reverse?tree.statements.size()-1-declaration.value:declaration.value]);
+  if(plan.aliases[reverse?tree.symbols.size()-1-last:last].has_value()!=aliased)std::cerr<<"alias form="<<form<<" count="<<count<<" reverse="<<reverse<<'\n';
+  test::Check(plan.aliases[reverse?tree.symbols.size()-1-last:last].has_value()==aliased);test::Check(!plan.aliases[reverse?tree.symbols.size()-3:2]);
   std::ostringstream output;const auto printed=PrintFunctionTree(tree,output);test::Check(std::holds_alternative<PrintedFunction>(printed));
   for(const auto range:std::get<PrintedFunction>(printed).expressions)test::Check(range.begin<=range.end&&range.end<=output.str().size());
   for(const auto anchor:std::get<PrintedFunction>(printed).anchors)test::Check(anchor>0&&anchor<=output.str().size());
@@ -630,13 +640,13 @@ int main(int argc, char**) {
     test::Check(large<small*3);
   }
   for (unsigned literal=0;literal<10;++literal) for (bool reverse : {false,true}) Constant(0,1,literal,reverse,argc>1);
-  std::array<std::uint64_t, 15> small{}, large{};
-  for (unsigned form = 0; form < 15; ++form) for (unsigned count : {0U, 1U, 200U, 201U, 400U, 800U}) for (bool reverse : {false,true}) {
+  std::array<std::uint64_t, 18> small{}, large{};
+  for (unsigned form = 0; form < 18; ++form) for (unsigned count : {0U, 1U, 200U, 201U, 400U, 800U}) for (bool reverse : {false,true}) {
     Fixture fixture(form, count); std::ostringstream output;
     if (reverse) fixture.Reverse();
     const auto loops = std::get<LoopSyntax>(PlanLoopSyntax(fixture.tree));
     if (form == 12) test::Check(std::any_of(loops.transitions.begin(), loops.transitions.end(), [](const auto& transition) { return bool(transition); }));
-    if (form >= 13) test::Check(std::any_of(loops.conditions.begin(), loops.conditions.end(), [](const auto& condition) { return condition && condition->body; }));
+    if (form == 13 || form == 14) test::Check(std::any_of(loops.conditions.begin(), loops.conditions.end(), [](const auto& condition) { return condition && condition->body; }));
     const auto nullish = std::get<NullishSyntax>(PlanNullishSyntax(fixture.tree));
     const auto planned = PlanBindingInitializers(fixture.tree, loops, nullish);
     test::Check(std::holds_alternative<BindingInitializers>(planned));
@@ -646,14 +656,15 @@ int main(int argc, char**) {
     const auto printed = PrintFunctionTree(fixture.tree, output);
     test::Check(std::holds_alternative<PrintedFunction>(printed));
     const auto& ranges = std::get<PrintedFunction>(printed);
-    const bool fold = form == 0 || form == 1 || form == 5 || form == 6 || form == 7 || form == 8 || form == 9 || form == 11 || form == 13;
-    test::Check((ranges.statements[fixture.declaration.value].begin == ranges.statements[fixture.declaration.value].end) == fold);
-    const bool forwarded = count == 0 && (form == 0 || form == 5 || form == 6 || form == 8 || form == 9);
-    if (forwarded) test::Check(output.str().find("saved") == std::string::npos);
+    const bool fold = form == 0 || form == 1 || form == 5 || form == 6 || form == 7 || form == 8 || form == 9 || form == 11 || form == 13 || form == 15 || form == 16;
+    const bool folded_declaration=ranges.statements[fixture.declaration.value].begin == ranges.statements[fixture.declaration.value].end;
+    if(folded_declaration!=fold)std::cerr<<"declaration form="<<form<<" count="<<count<<" reverse="<<reverse<<'\n'<<output.str()<<'\n';
+    test::Check(folded_declaration == fold);
+    const bool forwarded = count == 0 && (form == 0 || form == 1 || form == 5 || form == 6 || form == 8 || form == 9 || form == 15 || form == 16);
+    const bool dead = count == 0 && (form == 11 || form == 13);
+    if (forwarded || dead) test::Check(output.str().find("saved") == std::string::npos);
     else if (fold) test::Check(output.str().find(form == 1 || form == 7 ? "let saved = " : "const saved = ") != std::string::npos);
-    const auto store_expression = std::get<ExpressionStmt>(fixture.tree.statements[fixture.store.value].statement).expression;
     std::vector<bool> omitted(fixture.tree.expressions.size());
-    if (forwarded) omitted[store_expression.value] = true;
     const auto& projection = std::get<BindingInitializers>(planned);
     for (std::size_t statement = 0; statement < fixture.tree.statements.size(); ++statement) {
       if (!projection.omitted[statement]) continue;
@@ -671,7 +682,7 @@ int main(int argc, char**) {
       test::Check(at.end <= output.str().size());
     }
     for (auto at : ranges.anchors) test::Check(at > 0 && at <= output.str().size());
-    if (argc > 1) std::cout << nlohmann::json{{"source", output.str()}, {"form", form}, {"count", count}, {"fold", fold}, {"forwarded", forwarded}, {"decoded", false}} << '\n';
+    if (argc > 1) std::cout << nlohmann::json{{"source", output.str()}, {"form", form}, {"count", count}, {"fold", fold}, {"forwarded", forwarded}, {"elided", dead}, {"decoded", false}} << '\n';
   }
   for (unsigned i = 0; i < small.size(); ++i) test::Check(large[i] < small[i] * 3);
   std::uint64_t deep_small = 0, deep_large = 0;

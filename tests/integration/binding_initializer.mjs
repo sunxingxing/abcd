@@ -19,7 +19,7 @@ function original(row) {
     'saved=seed();if(report){saved=seed();}' + 'report(saved);'.repeat(row.count) + 'carried=again(saved);}return;};')();
   if (row.form === 13 || row.form === 14) return Function('return function(seed,report,again){let saved;while(again()){' +
     'let fence;saved=seed();' + 'report(saved);'.repeat(row.count) + '}return' + (row.form === 14 ? ' saved' : '') + ';};')();
-  if (row.form >= 8) {
+  if (row.form >= 8 && row.form <= 10) {
     const body = 'saved=seed();' + 'report(saved);'.repeat(row.count) + 'return saved;';
     return Function('return function(seed,report){let saved;' +
       (row.form === 8 ? 'if(seed){' + body + '}return;' :
@@ -27,7 +27,7 @@ function original(row) {
   }
   const value = row.form === 3 ? 'saved' : row.form === 5 ? 'await seed()' : row.form === 6 ? 'yield seed()' : 'seed()';
   return Function('return (' + (row.form === 5 ? 'async ' : '') + 'function' + (row.form === 6 ? '*' : '') + '(seed,report){let saved;' +
-    (row.form === 2 ? 'report(saved);' : '') + (row.form === 4 ? 'if(seed){saved=seed();}' : 'saved='+value+';') +
+    (row.form === 2 ? 'report(saved);' : row.form === 15 ? 'saved;' : row.form === 16 ? '(saved,report());' : row.form === 17 ? '(report(saved),0);' : '') + (row.form === 4 ? 'if(seed){saved=seed();}' : 'saved='+value+';') +
     'report(saved);'.repeat(row.count) + (row.form === 1 ? 'saved=seed();' : '') + 'return saved;})')();
 }
 async function observe(fn, row, value, failAt, reject = false, request = 'next', flag = true, iterations = 2, stop = false) {
@@ -411,9 +411,10 @@ for (const row of rows) {
       assert.throws(()=>compare(actual,expected),assert.AssertionError);++mutations;
     }
     if(row.folded&&row.count===1) {
-      const pending=[ast];let returned;
-      while(pending.length){const node=pending.pop();if(node.type==='ReturnStatement')returned=node;for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)pending.push(child);}else if(value?.type)pending.push(value);}}
-      const operand=returned?.argument??initialized.find(item=>item.id.name==='saved'&&item.init?.type==='CallExpression')?.init;
+      const pending=[ast];let returned,call;
+      while(pending.length){const node=pending.pop();if(node.type==='ReturnStatement')returned=node;if(node.type==='CallExpression')call??=node;for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)pending.push(child);}else if(value?.type)pending.push(value);}}
+      // Dead copies may leave only the required call, with no value to mutate.
+      const operand=returned?.argument??initialized.find(item=>item.id.name==='saved'&&item.init?.type==='CallExpression')?.init??call;
       assert.ok(operand);const changed=row.source.slice(0,operand.start)+'123'+row.source.slice(operand.end);parseJavaScript(changed);
       const bad=Function('return '+changed)(),actual=await run(bad,token,Infinity),expected=await run(reference,token,Infinity);
       assert.throws(()=>compare(actual,expected),assert.AssertionError);++mutations;
@@ -459,7 +460,7 @@ for (const row of rows) {
     continue;
   }
   if(row.decoded_cell){const name=String.fromCharCode(...row.cell_name),declaration=declarations.find(node=>node.declarations.some(item=>item.id.name===name));assert.equal(declaration.kind,'let');assert.ok(declaration.declarations.find(item=>item.id.name===name).init);assert.equal(stores.filter(node=>node.expression.left.name===name).length,0);}
-  if(row.forwarded) {assert.ok(!declarations.some(node=>node.declarations.some(item=>item.id.name==='saved')));++folded;}
+  if(row.forwarded||row.elided) {assert.ok(!declarations.some(node=>node.declarations.some(item=>item.id.name==='saved')));++folded;}
   else if(row.fold || row.branch&&!row.decoded_cell) {assert.ok(initialized.length); ++folded;}
   const generated=Function('return '+row.source)(), reference=original(row);
   if(row.decoded_cell&&row.field) {
@@ -519,7 +520,7 @@ for (const row of rows) {
       await assert.rejects(async()=>compare(await observe(bad,row,token,Infinity),await observe(reference,row,token,Infinity)),assert.AssertionError);++mutations;
     }
   }
-  if((row.form===4 || row.form===10 || row.form===12 || row.form===14) && row.count===1) {
+  if((row.form===4 || row.form===10 || row.form===12 || row.form===14 || row.form===17) && row.count===1) {
     const declaration=declarations.find(node=>node.declarations.some(item=>item.id.name==='saved'));
     const store=stores.filter(node=>node.expression.left.name==='saved').sort((a,b)=>a.start-b.start)[0]; assert.ok(declaration && store);
     // Valid JS with an incorrectly shortened lifetime must be detected when

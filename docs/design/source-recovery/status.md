@@ -24,6 +24,51 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则211，当前完成顺序替代非逃逸绑定的首次观察匹配
+
+- 非逃逸绑定的声明恢复消费当前 RecoveryFlow 的共同支配关系，要求
+  候选写入正常完成支配所有保留读取/写入。正常 PutValue 事实来自
+  ExpressionFacts.normal_stores，RHS、异常路径及提前写入均纳入；
+  不以私有写入可删除性代替正常完成。移除 InitializerAvailable；
+  首次语法观察检查只为尚未迁移的捕获单元保留，不扩展其接受域。
+- 独立无效果观察及死定义清理先于 Declarations，避免无用旧值过早
+  变成必须保留的词法初始化。后续值传播、存储、效果与最终声明种类
+  pass 保持独立提交/统一失效。候选位置扫描及 Confined/RootLifetime
+  的完整生命期迁移仍开放，不宣称一般声明选择或全局固定点完成。
+- 新增普通丢弃读取、带前置调用的序列表达式，以及观察初始undefined
+  的反例和错误提前初始化变体；正反编号及0/1/200/201/400/800验证。
+  旧实现在新增场景失败65.72秒，/tmp/abcd-rule211-red-tests.log。
+  首轮实现误用可删除写入事实，普通Local声明表示退化；改用正常
+  写入事实后定向2/2通过159.97秒。中间证据
+  /tmp/abcd-rule211-focused-tests.log、/tmp/abcd-rule211-focused2-tests.log。
+- 随后54项相关回归52通过、快照unit/source两项失败304.11秒，暴露
+  初始声明恢复先于死定义清理的顺序问题。修复顺序后快照2/2通过
+  15.97秒，原行为oracle与快照预期不改。证据
+  /tmp/abcd-rule211-regression-tests.log、/tmp/abcd-rule211-order-snapshot-tests.log。
+  早期DCE还允许稳定来源的复制消除、无用初始常量和循环存储消除；
+  测试分别核验死声明与别名，保留原独立参考与调用/异常轨迹。
+  移除源码位置测试“转发的一定是第一次赋值”的旧假设。
+- 下一轮56项中52通过、死定义/重复写入unit与source四项失败483.41秒，
+  /tmp/abcd-rule211-final-tests.log。死定义用例仍期待新建初始化保护死
+  赋值；修正该表示预期。重复写入归一化移到早期DCE之前，先消除
+  已知值的冗余PutValue，避免两项pass选择不同的等价保留写入。
+  修复后四项全部通过50.78秒，/tmp/abcd-rule211-order2-tests.log、
+  /tmp/abcd-rule211-order2-detail.log。原独立行为参考保持不变。
+- 最终相关目标构建成功，/tmp/abcd-rule211-final2-build.log；同一生产
+  版本其余52/52项通过460.08秒，连同前述四项共56项当前通过证据。
+  最终日志 /tmp/abcd-rule211-final2-tests.log、
+  /tmp/abcd-rule211-final2-detail.log。变量恢复1,920份源码、470,656次
+  独立行为比较、318错误变换检测；Home/PageA行为及表示验收通过。
+  初次失败与中间结果保留，不以旧版本通过替代最终结果。git diff --check通过。
+- 最终ABC-only导出 build/stage-one/declaration-normalization-rule211：
+  19 records，10 complete / 0 partial / 9 noModule；十份源码语法通过，
+  正文与规则210一致，输入SHA-256不变。证据
+  /tmp/abcd-rule211-final2-export.log、/tmp/abcd-rule211-final2-export-check.json。
+  通用组合恢复能力有提升，但该真实输入覆盖数量没有增加。
+- 完整生命期、捕获观察、候选声明位置选择、全局固定点及阶段一独立
+  验收仍开放；未恢复完整套件/RSS及其他既定暂停范围。上述受控
+  独立执行不代表真实平台执行。
+
 ### 2026-10-08：规则210，初始声明恢复进入统一 pass 提交边界
 
 - 将 Run 内直接修改声明/省略计划的循环迁入独立 Declarations pass。

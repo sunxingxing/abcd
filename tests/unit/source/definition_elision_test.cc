@@ -75,10 +75,10 @@ std::uint64_t Check(unsigned form,unsigned count,bool reverse,bool emit,bool res
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
   const auto planned=PlanBindingInitializers(tree,loops,nullish);test::Check(std::holds_alternative<BindingInitializers>(planned));const auto& plan=std::get<BindingInitializers>(planned);
   const auto id=reverse?tree.expressions.size()-1-first.value:first.value;
-  test::Check(plan.replacements[id].has_value()==(!resources&&(form==0||form==3||form==4||form==6)));
-  // Lexical initialization stays even when its first value is dead, or when
-  // an initial undefined read prevents replacing it with the first assignment.
-  if(form==5) {test::Check(plan.omitted[body[0].value]);test::Check(plan.statements[body[count+1].value].has_value());}
+  test::Check(plan.replacements[id].has_value()==(!resources&&(form==0||form==3||form==4||form==5||form==6)));
+  // Existing lexical initialization stays when its value or binding is needed.
+  // A dead assignment must not be promoted into a protected initializer first.
+  if(form==5) {test::Check(plan.omitted[body[0].value]);test::Check(plan.statements[body[count+1].value].has_value()==resources);}
   else test::Check(!plan.omitted[body[0].value]);
   if(count<=1) {
     test::Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes,plan.work})));
