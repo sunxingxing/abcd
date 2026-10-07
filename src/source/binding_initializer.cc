@@ -334,6 +334,7 @@ class Initializers {
       std::optional<StmtId> omitted;
     };
     const auto candidates=DeclarationCandidates();
+    const auto extents=RetainedExtents();
     std::vector<DeclarationEdit> proposed;
     budget_.Array(proposed,uses_.size());std::size_t count=0;
     for (std::size_t i = 0; i < uses_.size(); ++i) {
@@ -355,7 +356,8 @@ class Initializers {
       } else if(const auto& selected=candidates[i]) {
         site=selected->site;assignment=selected->assignment;
       }
-      if(!site || !Confined(use,site->container))continue;
+      if(!site || (use.escaped ? !LegacyConfined(use,site->container) :
+          !Confined(extents[i],site->container)))continue;
       // Completion and lexical extent are independent obligations. Retain a
       // mutable binding here; final declaration spelling consumes later writes.
       proposed[count++] = {*site,
@@ -970,10 +972,45 @@ class Initializers {
     const auto at=containers_[owner->value].begin;const auto range=containers_[site->container.value];
     return at>=range.begin&&at<range.end;
   }
-  bool Confined(const BindingUses& use, std::optional<StmtId> owner) const {
+  bool LegacyConfined(const BindingUses& use, std::optional<StmtId> owner) const {
     if (use.outside_body || !owner || !use.first_container) return false;
     const auto range = containers_[owner->value];
     return *use.first_container >= range.begin && *use.last_container < range.end;
+  }
+  struct BindingExtent {
+    std::optional<std::size_t> first,last;
+    bool outside=false;
+  };
+  std::vector<BindingExtent> RetainedExtents() const {
+    RequireAnalysis();
+    std::vector<BindingExtent> extents;budget_.Array(extents,uses_.size());
+    // Signature observations are not modeled by body flow. Keep that explicit
+    // gap; absence from the graph is never proof that a signature use vanished.
+    for(std::size_t i=0;i<uses_.size();++i) {
+      budget_.Step();extents[i].outside=uses_[i].outside_body;
+    }
+    // Declaration placement and alias roots run before snapshot motion. These
+    // shared reference identities therefore still have their owned lexical
+    // occurrence; projections already resolve native loop destinations above.
+    // Inspect all retained references, including unreachable printed syntax:
+    // control reachability does not excuse a dangling lexical name.
+    for(const auto& reference:CurrentFlow().references) {
+      budget_.Step();auto& extent=extents[reference.binding.value];
+      const auto owner=std::visit([&](auto site)->std::optional<StmtId> {
+        if constexpr(std::is_same_v<decltype(site),ExprId>)return expression_owners_[site.value];
+        else return lexical_[site.value];
+      },reference.site);
+      if(!owner){extent.outside=true;continue;}
+      const auto position=containers_[owner->value].begin;
+      extent.first=extent.first?std::min(*extent.first,position):position;
+      extent.last=extent.last?std::max(*extent.last,position):position;
+    }
+    return extents;
+  }
+  bool Confined(const BindingExtent& extent,std::optional<StmtId> owner) const {
+    if(extent.outside || !owner || !extent.first)return false;
+    const auto range=containers_[owner->value];
+    return *extent.first>=range.begin && *extent.last<range.end;
   }
   struct CoveredWrite {
     ExprId expression;
@@ -1098,6 +1135,7 @@ class Initializers {
     // Every earlier commit invalidates these facts. No-op passes can share
     // immutable flow/liveness; coverage and producer identity use one projection.
     const auto coverage=AnalyzeBindingReadCoverage();
+    const auto extents=RetainedExtents();
     const auto& flow=CurrentFlow();
     std::vector<std::optional<SymbolId>> roots;
     std::vector<std::uint8_t> discard_rhs;
@@ -1135,7 +1173,7 @@ class Initializers {
       // only later private copies disappear. The same observation lifetime
       // prevents stale copies across activation/TDZ/catch/loop boundaries.
       if(!coverage.writes[i]&&!use.escaped&&coverage.declarations[i]&&
-          Confined(use,lexical_[coverage.declarations[i]->value])) {
+          Confined(extents[i],lexical_[coverage.declarations[i]->value])) {
         roots[i]=symbol;constant_queue_[ready++]=symbol;continue;
       }
       if(coverage.writes[i]!=1||use.escaped||!coverage.covered_writes[i]||plan_.literals[i])continue;

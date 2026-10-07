@@ -85,6 +85,9 @@ struct Fixture {
     tree.statements.push_back({BlockStmt{{1}, 0, 0}, {0}});
     declaration = Stmt(DeclarationStmt{{2}, {}});
     std::vector<StmtId> body{declaration};
+    if(form==22)body.push_back(Stmt(ExpressionStmt{Read(2)}));
+    if(form==23)body.push_back(Store(Expr(TreeLiteral{IntegerLiteral{0}})));
+    if(form==24)body.push_back(Stmt(ExpressionStmt{Call(1,2)}));
     if (form == 15) body.push_back(Stmt(ExpressionStmt{Read(2)}));
     if (form == 16) body.push_back(Stmt(ExpressionStmt{Expr(SequenceExpr{Read(2),Call(1)})}));
     if (form == 17) body.push_back(Stmt(ExpressionStmt{Expr(SequenceExpr{Call(1,2),Expr(TreeLiteral{IntegerLiteral{0}})})}));
@@ -183,6 +186,13 @@ struct Fixture {
         const auto finalizer = Stmt(BlockStmt{{3}, final_first, 1});
         body.push_back(Stmt(TryStmt{nested, {}, finalizer}));
       }
+    }
+    if(form>=22 && form<=24) {
+      tree.scopes.push_back({ScopeKind::kBlock,ScopeId{1}});
+      const auto first=static_cast<std::uint32_t>(tree.children.size());
+      tree.children.insert(tree.children.end(),body.begin()+2,body.end());
+      const auto nested=Stmt(BlockStmt{{2},first,static_cast<std::uint32_t>(body.size()-2)});
+      body.resize(2);body.push_back(nested);
     }
     const auto first = static_cast<std::uint32_t>(tree.children.size()); tree.children.insert(tree.children.end(), body.begin(), body.end());
     std::get<BlockStmt>(tree.statements[0].statement) = {{1}, first, static_cast<std::uint32_t>(body.size()), {}};
@@ -657,8 +667,8 @@ int main(int argc, char**) {
     test::Check(large<small*3);
   }
   for (unsigned literal=0;literal<10;++literal) for (bool reverse : {false,true}) Constant(0,1,literal,reverse,argc>1);
-  std::array<std::uint64_t, 22> small{}, large{};
-  for (unsigned form = 0; form < 22; ++form) for (unsigned count : {0U, 1U, 200U, 201U, 400U, 800U}) for (bool reverse : {false,true}) {
+  std::array<std::uint64_t, 25> small{}, large{};
+  for (unsigned form = 0; form < 25; ++form) for (unsigned count : {0U, 1U, 200U, 201U, 400U, 800U}) for (bool reverse : {false,true}) {
     Fixture fixture(form, count); std::ostringstream output;
     if (reverse) fixture.Reverse();
     const auto loops = std::get<LoopSyntax>(PlanLoopSyntax(fixture.tree));
@@ -674,11 +684,11 @@ int main(int argc, char**) {
     test::Check(std::holds_alternative<PrintedFunction>(printed));
     const auto& ranges = std::get<PrintedFunction>(printed);
     if(form==21)test::Check(output.str().find("unused")==std::string::npos);
-    const bool fold = form == 0 || form == 1 || form == 5 || form == 6 || form == 7 || form == 8 || form == 9 || form == 11 || form == 13 || form == 15 || form == 16 || form >= 18;
+    const bool fold = form == 0 || form == 1 || form == 5 || form == 6 || form == 7 || form == 8 || form == 9 || form == 11 || form == 13 || form == 15 || form == 16 || (form >= 18 && form <= 23);
     const bool folded_declaration=ranges.statements[fixture.declaration.value].begin == ranges.statements[fixture.declaration.value].end;
     if(folded_declaration!=fold)std::cerr<<"declaration form="<<form<<" count="<<count<<" reverse="<<reverse<<'\n'<<output.str()<<'\n';
     test::Check(folded_declaration == fold);
-    const bool forwarded = count == 0 && (form == 0 || form == 1 || form == 5 || form == 6 || form == 8 || form == 9 || form == 15 || form == 16 || form >= 18);
+    const bool forwarded = count == 0 && (form == 0 || form == 1 || form == 5 || form == 6 || form == 8 || form == 9 || form == 15 || form == 16 || (form >= 18 && form <= 23));
     const bool dead = count == 0 && (form == 11 || form == 13);
     if (forwarded || dead) test::Check(output.str().find("saved") == std::string::npos);
     else if (fold) test::Check(output.str().find(form == 1 || form == 7 ? "let saved = " : "const saved = ") != std::string::npos);

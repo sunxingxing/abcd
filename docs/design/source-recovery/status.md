@@ -24,6 +24,28 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则213，以保留引用替代普通绑定的原始范围统计
+
+- Declarations 与 Aliases 共用 RetainedExtents，逐次从当前 RecoveryFlow
+  引用和已有词法目的计算范围；不让已删除读取/死写入继续阻断声明或
+  别名根恢复。独立的正常初始化、支配、名字解析和效果证明保持。
+- 当前两个消费者均排在快照移动之前；表达式身份仍对应其已解析的
+  词法目的。分析只读，提交后按既有机制失效；不保存跨pass范围缓存。
+  捕获绑定保留 LegacyConfined，未建模签名观察仍保留约束。
+  这是保留引用范围迁移，不是完整异常退出/捕获单元生命期模型。
+- 新增作用域外无效果读取、死赋值及真实初始undefined读取反例，覆盖
+  正反编号和0/1/200/201/400/800。旧版本在form22/count1失败91.28秒，
+  /tmp/abcd-rule213-red-tests.log；前序清理已删除读取但仍遗留外层声明。
+- 定向2/2通过196.59秒，/tmp/abcd-rule213-focused-tests.log；
+  2,004份源码、482,752次独立行为比较、342个错误变体。其余54/54项
+  相关回归通过330.94秒，/tmp/abcd-rule213-regression-tests.log；
+  最终共56项不同定向测试通过，包含Home/PageA实际record对照。
+  新鲜ABC-only导出
+  build/stage-one/retained-binding-extents-rule213：19 records，
+  10 complete / 0 partial / 9 noModule；10份语法检查通过，正文相对
+  规则212不变，输入SHA256不变，/tmp/abcd-rule213-export-check.json。
+  不代表完整corpus或平台执行通过；阶段一Goal保持active。
+
 ### 2026-10-08：规则212，从当前定义选择声明位置并分离位置状态
 
 - DeclarationCandidates 遍历当前 RecoveryFlow 定义，使用共同 discarded

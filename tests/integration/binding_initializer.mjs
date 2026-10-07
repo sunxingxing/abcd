@@ -25,6 +25,7 @@ function original(row) {
       (row.form === 8 ? 'if(seed){' + body + '}return;' :
         'try{' + body + '}finally{report(' + (row.form === 10 ? 'saved' : '') + ');}') + '};')();
   }
+  if(row.form>=22 && row.form<=24)return Function('return function(seed,report){let saved;'+(row.form===22?'saved;':row.form===23?'saved=0;':'report(saved);')+'{saved=seed();'+'report(saved);'.repeat(row.count)+'return saved;}}')();
   const value = row.form === 3 ? 'saved' : row.form === 5 ? 'await seed()' : row.form === 6 ? 'yield seed()' : 'seed()';
   return Function('return (' + (row.form === 5 ? 'async ' : '') + 'function' + (row.form === 6 ? '*' : '') + '(seed,report){let saved;' +
     (row.form === 2 ? 'report(saved);' : row.form === 15 ? 'saved;' : row.form === 16 ? '(saved,report());' : row.form === 17 ? '(report(saved),0);' : row.form === 18 ? 'saved=0;' : row.form === 19 ? 'saved=report();' : row.form === 20 ? '{saved=0;}' : '') + (row.form === 4 ? 'if(seed){saved=seed();}' : row.form === 21 ? 'let unused;unused=(saved='+value+');' : 'saved='+value+';') +
