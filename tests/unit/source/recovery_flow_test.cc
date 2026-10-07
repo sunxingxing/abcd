@@ -69,6 +69,11 @@ void PreservedInitializations() {
     flow.events[1].definition=FlowDefinitionId{0};flow.events[2].definition=FlowDefinitionId{1};flow.events[3].read=SymbolId{1};
     Link(flow,0,1);Link(flow,1,2);Link(flow,2,3);if(bypass){Link(flow,0,2);flow.edges.back().completion=FlowCompletion::kThrow;}
     const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));
+    const auto coverage=std::get<FlowReadCoverage>(AnalyzeFlowReadCoverage(flow,live));
+    Check(coverage.definitions[1]);
+    Check(std::holds_alternative<FlowReadCoverage>(AnalyzeFlowReadCoverage(flow,live,{coverage.allocated_bytes,coverage.work})));
+    Check(std::get<TreeStructureError>(AnalyzeFlowReadCoverage(flow,live,{coverage.allocated_bytes-1,coverage.work}))==TreeStructureError::kResourceLimit);
+    Check(std::get<TreeStructureError>(AnalyzeFlowReadCoverage(flow,live,{coverage.allocated_bytes,coverage.work-1}))==TreeStructureError::kWorkLimit);
     const auto initialized=std::get<FlowInitializations>(AnalyzeFlowInitializations(flow));
     const std::array<std::optional<SymbolId>,2> storage={std::nullopt,SymbolId{0}};
     const auto result=std::get<StorageInitializations>(PlanStorageInitializations(flow,live,initialized,storage));
@@ -133,6 +138,13 @@ void SmallGraphs() {
         if(reaching[point][d]&&graph.events[point].read==graph.definitions[d].binding){expected_reads.push_back({{point},{d}});expected_live[d]=1;}
       const auto definitions=std::get<FlowDefinitions>(AnalyzeFlowDefinitions(graph,live));
       Check(definitions.reads==expected_reads);Check(live.live_definitions==expected_live);
+      const auto coverage=std::get<FlowReadCoverage>(AnalyzeFlowReadCoverage(graph,live));
+      for(unsigned d=0;d<graph.definitions.size();++d) {
+        const auto binding=graph.definitions[d].binding;bool covered=!expected.live[graph.entry.value][binding.value];
+        for(unsigned other=0;other<graph.definitions.size();++other)
+          if(other!=d && graph.definitions[other].binding==binding && expected_live[other])covered=false;
+        Check(bool(coverage.definitions[d])==covered);
+      }
       const auto demand=std::get<FlowDemand>(AnalyzeFlowDemand(graph));
       const auto elisions=std::get<DefinitionElisions>(PlanDefinitionElisions(graph,demand));
       std::vector<ExprId> expected_elisions;

@@ -2,6 +2,7 @@
 #include "binding_interference.h"
 #include "definition_elision.h"
 #include "flow_dominance.h"
+#include "flow_definitions.h"
 #include "class_tree.h"
 #include "expression_children.h"
 #include "loop_syntax.h"
@@ -736,22 +737,47 @@ class Initializers {
     return use.first==effect.expression && Confined(use,use.initializer_container);
   }
   void Constants() {
-    // Sparse constant lattice on the common first-store/scope proof. A single
-    // static store may execute repeatedly only within its confined lifetime;
-    // primitive literals have no identity/allocation/getter/call to replay.
-    // Unknown/mutable/captured values remain storage. One source per copy lets
-    // an indexed dependency worklist propagate every edge once, independent
-    // of symbol/arena/register numbering; never rescan a chain per variable.
+    const auto eligible=[&](const BindingUses& use) {
+      return use.private_storage && use.declaration && use.writes==1 && use.store && !use.escaped;
+    };
+    bool seed=false;
+    for(const auto& use:uses_) {
+      budget_.Step();if(!eligible(use))continue;
+      const auto value=std::get<AssignmentExpr>(tree_.expressions[use.store->value].expression).value;
+      seed |= std::holds_alternative<TreeLiteral>(tree_.expressions[value.value].expression);
+    }
+    if(!seed)return;
+    const auto flow=CurrentFlow();
+    auto analyzed_live=AnalyzeFlowLiveness(flow,budget_.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&analyzed_live))throw *error;
+    const auto& live=std::get<FlowLiveness>(analyzed_live);
+    budget_.Admit(live.allocated_bytes,1);budget_.Step(live.work);
+    auto analyzed=AnalyzeFlowReadCoverage(flow,live,budget_.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
+    const auto& coverage=std::get<FlowReadCoverage>(analyzed);
+    budget_.Admit(coverage.allocated_bytes,1);budget_.Step(coverage.work);
+    std::vector<std::uint8_t> available;
+    std::vector<std::optional<ExprId>> literals;
+    budget_.Array(available,uses_.size());budget_.Array(literals,uses_.size());
+    for(std::size_t i=0;i<flow.definitions.size();++i) {
+      budget_.Step();const auto& definition=flow.definitions[i];
+      if(definition.write && definition.write==uses_[definition.binding.value].store)
+        available[definition.binding.value]=coverage.definitions[i];
+    }
+    // A primitive literal has the same value on every execution of its store.
+    // Shared coverage excludes reads of undefined or any other definition;
+    // unlike effectful copies this needs no dynamic occurrence identity.
+    // Propagate proposals once per dependency edge, then commit as a batch.
     std::size_t ready = 0;
     for (std::size_t i = 0; i < uses_.size(); ++i) {
       budget_.Step();const auto& use = uses_[i];
-      if (!PrivateCopy(use)) continue;
+      if (!eligible(use) || !available[i]) continue;
       const auto symbol = SymbolId{static_cast<std::uint32_t>(i)};
       const auto assignment = *use.store;
       const auto value = std::get<AssignmentExpr>(tree_.expressions[assignment.value].expression).value;
       const auto& expression = tree_.expressions[value.value].expression;
       if (std::holds_alternative<TreeLiteral>(expression)) {
-        plan_.literals[i] = value;constant_queue_[ready++] = symbol;
+        literals[i] = value;constant_queue_[ready++] = symbol;
       } else if (const auto* read = std::get_if<SymbolExpr>(&expression)) {
         constant_next_[i] = constant_heads_[read->symbol.value];constant_heads_[read->symbol.value] = symbol;
       }
@@ -759,12 +785,13 @@ class Initializers {
     for (std::size_t at = 0; at < ready; ++at) {
       budget_.Step();const auto source = constant_queue_[at];
       for (auto target = constant_heads_[source.value]; target; target = constant_next_[target->value]) {
-        budget_.Step();RequireTree(!plan_.literals[target->value] && ready < constant_queue_.size(),TreeStructureError::kOwnership);
-        plan_.literals[target->value] = plan_.literals[source.value];constant_queue_[ready++] = *target;
+        budget_.Step();RequireTree(!literals[target->value] && ready < constant_queue_.size(),TreeStructureError::kOwnership);
+        literals[target->value] = literals[source.value];constant_queue_[ready++] = *target;
       }
     }
     for (std::size_t i = 0; i < uses_.size(); ++i) {
-      budget_.Step();if (!plan_.literals[i]) continue;
+      budget_.Step();if (!literals[i]) continue;
+      plan_.literals[i]=literals[i];
       Elide(uses_[i]);
     }
   }

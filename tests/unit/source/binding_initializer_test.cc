@@ -232,6 +232,11 @@ std::uint64_t Constant(unsigned form, unsigned count, unsigned literal, bool rev
       const auto member = fixture.Expr(MemberExpr{base,name});
       tree.expressions[returned.value].expression = CallExpr{member,{0,0},CallReference::kMember};
     } else tree.expressions[returned.value].expression = BinaryExpr{analysis::BinaryOperator::kExponent,base,fixture.Expr(TreeLiteral{IntegerLiteral{2}})};
+  } else if (form == 16) {
+    // A branch may leave before the common uses. Every reaching read observes
+    // the literal store even though its syntactic region ends at the join.
+    const auto exited=block({fixture.Stmt(ReturnStmt{})},{1});
+    roots[1]=fixture.Stmt(IfStmt{fixture.Read(0),block({fixture.store},{1}),exited});
   }
   const auto first = static_cast<std::uint32_t>(tree.children.size());tree.children.insert(tree.children.end(),roots.begin(),roots.end());
   std::get<BlockStmt>(tree.statements[tree.body.value].statement) = {{1},first,static_cast<std::uint32_t>(roots.size())};
@@ -245,7 +250,7 @@ std::uint64_t Constant(unsigned form, unsigned count, unsigned literal, bool rev
   const auto nullish = std::get<NullishSyntax>(PlanNullishSyntax(tree));
   const auto result = PlanBindingInitializers(tree,loops,nullish);test::Check(std::holds_alternative<BindingInitializers>(result));
   const auto& plan = std::get<BindingInitializers>(result);
-  const bool folded = form < 2 || (form >= 9 && form < 14) || (form >= 14 && count == 0);
+  const bool folded = form < 2 || (form >= 9 && form < 14) || (form >= 14 && count == 0) || form == 16;
   std::ostringstream output;const auto printed = PrintFunctionTree(tree,output);test::Check(std::holds_alternative<PrintedFunction>(printed));
   test::Check((output.str().find("saved") == std::string::npos) == folded);
   for (const auto range : std::get<PrintedFunction>(printed).expressions) test::Check(range.begin<=range.end && range.end<=output.str().size());
@@ -583,7 +588,7 @@ int main(int argc, char**) {
     }
     test::Check(large<small*3);
   }
-  for (unsigned form = 0;form<16;++form) {
+  for (unsigned form = 0;form<17;++form) {
     std::uint64_t small=0,large=0;
     for (unsigned count : {0U,1U,200U,201U,400U,800U}) for (bool reverse : {false,true}) {
       const auto work = Constant(form,count,4,reverse,argc>1);

@@ -4,6 +4,33 @@
 #include <set>
 #include <stdexcept>
 namespace abcd::source {
+std::variant<FlowReadCoverage,TreeStructureError> AnalyzeFlowReadCoverage(
+    const RecoveryFlow& flow,const FlowLiveness& live,analysis::SemanticBudget allowance) {
+  try {
+    TreeCheckBudget budget(allowance);FlowReadCoverage result;
+    std::vector<std::optional<FlowDefinitionId>> observed;
+    std::vector<std::uint8_t> conflicting;
+    budget.Array(observed,flow.bindings.size());budget.Array(conflicting,flow.bindings.size());
+    budget.Array(result.definitions,flow.definitions.size());
+    for(std::size_t i=0;i<flow.definitions.size();++i) {
+      budget.Step();if(!live.live_definitions[i])continue;
+      const auto binding=flow.definitions[i].binding;
+      if(observed[binding.value])conflicting[binding.value]=1;
+      else observed[binding.value]=FlowDefinitionId{static_cast<std::uint32_t>(i)};
+    }
+    for(const auto& fact:live.live_in) {
+      budget.Step();if(fact.point==flow.entry)conflicting[fact.binding.value]=1;
+    }
+    for(std::size_t i=0;i<flow.definitions.size();++i) {
+      budget.Step();const auto binding=flow.definitions[i].binding;
+      result.definitions[i]=!conflicting[binding.value] &&
+          (!observed[binding.value] || observed[binding.value]->value==i);
+    }
+    result.allocated_bytes=budget.Bytes();result.work=budget.Work();return result;
+  } catch(TreeStructureError error){return error;}
+  catch(const std::bad_alloc&){return TreeStructureError::kResourceLimit;}
+  catch(const std::length_error&){return TreeStructureError::kResourceLimit;}
+}
 std::variant<FlowDefinitions,TreeStructureError> AnalyzeFlowDefinitions(
     const RecoveryFlow& flow,const FlowLiveness& live,analysis::SemanticBudget allowance) {
   using Error=TreeStructureError;

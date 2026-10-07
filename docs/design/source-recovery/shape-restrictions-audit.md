@@ -1941,3 +1941,21 @@ returns a proposal before any omitted flag changes. Consumers do not reuse eithe
 result after committing changes. No new recovery admission or opcode/shape/sample
 condition is added. The existing InitializedRead scope/census obligation remains
 explicitly legacy; this refactor does not claim to replace it with dominance.
+
+
+## Rules187: Constants retires CompletedStore
+
+Constant propagation no longer requires the stored occurrence to be the first
+census observation or all observations to fit its original expression region.
+Shared all-read liveness and read-origin coverage prove that the proposed static
+definition supplies every reachable read, with no live undefined/other definition
+or missing entry value. Primitive literal identity across repeated executions is
+separate from this coverage proof. Abrupt exits before a join therefore compose
+without a branch-specific production path. The existing conditional-missing-store,
+throwing/finally and loop tests continue to preserve competing values.
+
+No new same-block, adjacency, producer-list or sample test is added. Constants
+keeps its typed primitive-literal lattice and private single-write representation;
+Aliases/ForwardSnapshots still carry the old CompletedStore obligation pending
+separate value/lifetime migration. Literal proposals are committed only after the
+shared-analysis and sparse-propagation read phase finishes.

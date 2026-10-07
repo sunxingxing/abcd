@@ -196,3 +196,12 @@ computed after mutations; projection revision management and global convergence
 are not delivered by this change. InitializedRead and activation migration remain
 open. Nested redundant writes/read choices exercise final summary consistency and
 independent source behavior with original/reversed arenas and geometric sizes.
+
+
+Rules187: Constants replaces PrivateCopy/CompletedStore with shared all-read
+liveness and AnalyzeFlowReadCoverage, without an eager read/definition product.
+A separate literal proposal table is solved before committing any plan edits.
+An assigning branch with an abrupt alternative now permits constant recovery at
+common later reads, while omitted writes/undefined and exception paths remain
+protected by the same semantic facts. Dynamic occurrence identity, other legacy
+copy/snapshot consumers, InitializedRead and activation migration remain open.

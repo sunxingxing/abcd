@@ -348,3 +348,36 @@ summary is checked independently of whether the outer store was folded; generate
 source still undergoes independent execution. This removes duplicate expression
 fact production and one mixed proposal/application path, not the legacy
 InitializedRead census, global convergence or the planned revision coordinator.
+
+
+## Constant propagation consumes shared read coverage (rules187)
+
+Constants no longer calls PrivateCopy/CompletedStore. Its current RecoveryFlow and
+all-read FlowLiveness feed AnalyzeFlowReadCoverage: for each binding, collect the
+static definitions observed by reads and reject entry values without a reaching
+definition. A proposed literal store must be the only observed definition; live
+undefined initialization and other writes therefore block substitution through the
+same facts. No original region, first-observation, same-block or branch-shape test
+is used for this decision. Unreachable competing origins can conservatively block
+coverage; this is a precision limit, not a language invariant.
+
+The result summarizes static definitions, not dynamic execution identity. Constants
+can use it because a primitive literal is the same value on each execution; copies
+propagate only from those proved literals. Mutable/captured identities, effectful
+producers and general snapshot forwarding do not gain this permission. The current
+single-write candidate/lifetime representation remains explicit, and the analysis
+does not authorize erasing observable initializers or binding cells.
+
+Literal and copy propagation now fills a local proposal table and sparse worklist.
+The recovery plan is unchanged until all proposals are resolved; a final batch
+publishes literals and elides the corresponding private stores/empty declarations.
+Later alias analysis consumes the newly committed projection. A branch that exits
+before common uses can now fold a literal store using the same definition facts;
+a branch that merely skips the store still preserves its undefined value.
+
+The 175,616 small-graph independent forward oracle additionally checks coverage;
+source execution covers abrupt branch completion, retained undefined/exception
+paths, loops, copies, arena remapping and geometric sizes. CompletedStore remains
+in Aliases and ForwardSnapshots; InitializedRead and canonical activation/IR
+integration remain open. This is one actual migrated decision path, not retirement
+of all legacy copy or initialization rules.

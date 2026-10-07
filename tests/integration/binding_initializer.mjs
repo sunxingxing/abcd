@@ -69,6 +69,7 @@ function constantReference(row) {
   const reports='report(saved);'.repeat(row.count);
   let body=(row.constant===2?'report(saved);':'')+(row.constant===4?'if(seed){saved='+value+';}':'saved='+(row.constant===6?'saved':value)+';')+reports;
   if(row.constant===3)body+='saved=seed();';
+  if(row.constant===16)body='if(seed){saved='+value+';}else{return;}'+reports;
   if(row.constant===7)body='try{seed();saved='+value+';'+reports+'}finally{report(saved);}';
   if(row.constant===8 || row.constant===9)body='while(seed()){saved='+value+';'+reports+'}';
   if(row.constant===10 || row.constant===11)body='saved='+value+';'+(row.constant===10?'await':'yield')+' seed();'+reports;
@@ -81,15 +82,15 @@ async function observeConstant(fn,row,value,fault,flag,iterations,request='next'
   const seed=function(){assert.equal(this,undefined);const result=row.constant===8 || row.constant===9?checks++<iterations:value;event('seed',result);
     if(row.constant===10){queueMicrotask(()=>trace.push(['job']));return reject?Promise.reject(failure):Promise.resolve(result);}return result;};
   const report=function(value){assert.equal(this,undefined);
-    if(row.constant>=14){allocation??=value;assert.equal(value,allocation);value.visits=(value.visits??0)+1;event('report',value.visits);}
+    if([14,15].includes(row.constant)){allocation??=value;assert.equal(value,allocation);value.visits=(value.visits??0)+1;event('report',value.visits);}
     else event('report',value);};
   const descriptor=Object.getOwnPropertyDescriptor(Number.prototype,'toString');
   if(row.constant===12)Object.defineProperty(Number.prototype,'toString',{configurable:true,get(){event('get',this);return function(){event('member',this);return typeof this+':'+String(this);};}});
   try {
-    returned=fn(row.constant===4?flag:seed,report);
+    returned=fn([4,16].includes(row.constant)?flag:seed,report);
     if(row.constant===11){const generator=returned,first=generator.next();requests.push(first.value);const end=request==='throw'?generator.throw(failure):request==='return'?generator.return(second):generator.next(value);assert.equal(end.done,true);returned=end.value;}
     if(row.constant===10)returned=await returned;
-    if(row.constant>=14){assert.equal(returned,allocation??returned);assert.equal(Array.isArray(returned),row.constant===15);assert.equal(returned.visits??0,row.count);returned=token;}
+    if([14,15].includes(row.constant)){assert.equal(returned,allocation??returned);assert.equal(Array.isArray(returned),row.constant===15);assert.equal(returned.visits??0,row.count);returned=token;}
   }catch(error){thrown=error;returned=undefined;}
   finally{if(row.constant===12)Object.defineProperty(Number.prototype,'toString',descriptor);}
   return {trace,requests,returned,thrown};
@@ -388,15 +389,25 @@ for (const row of rows) {
     const generated=Function('return '+row.source)(),reference=constantReference(row);
     assert.equal(declarations.some(node=>node.declarations.some(item=>item.id.name==='saved')),!row.folded);
     if(row.folded)++folded;
-    if(row.constant>=14){const objects=[generated(()=>{},()=>{}),generated(()=>{},()=>{})];assert.notEqual(objects[0],objects[1]);}
+    if([14,15].includes(row.constant)){const objects=[generated(()=>{},()=>{}),generated(()=>{},()=>{})];assert.notEqual(objects[0],objects[1]);}
     const run=(fn,value,fault,flag=true,iterations=2,request='next',reject=false)=>observeConstant(fn,row,value,fault,flag,iterations,request,reject);
-    for(const value of [undefined,null,-0,NaN,1n,Symbol('input'),token])for(const flag of row.constant===4?[false,true,undefined,0,1n,token]:[true])
+    for(const value of [undefined,null,-0,NaN,1n,Symbol('input'),token])for(const flag of [4,16].includes(row.constant)?[false,true,undefined,0,1n,token]:[true])
       for(const iterations of row.constant===8 || row.constant===9?[0,1,2,3]:[2])for(const fault of [Infinity,1,2,row.count+1]) {
         try{compare(await run(generated,value,fault,flag,iterations),await run(reference,value,fault,flag,iterations));}
         catch(error){error.message+=`; constant=${row.constant}, literal=${row.literal}, count=${row.count}, fault=${fault}`;throw error;}++comparisons;
       }
     if(row.constant===10){compare(await run(generated,token,Infinity,true,2,'next',true),await run(reference,token,Infinity,true,2,'next',true));++comparisons;}
     if(row.constant===11)for(const request of ['throw','return']){compare(await run(generated,token,Infinity,true,2,request),await run(reference,token,Infinity,true,2,request));++comparisons;}
+    if(row.constant===16 && row.count===0) {
+      // A successful constant proof does not authorize removing the other
+      // branch's abrupt completion. A valid-JS mutant must expose that error.
+      const branch=ast.body[0].expression.body.body.find(node=>node.type==='IfStatement');
+      assert.ok(branch?.alternate);
+      const changed=row.source.slice(0,branch.alternate.start)+'{}'+row.source.slice(branch.alternate.end);
+      parseJavaScript(changed);const bad=Function('return '+changed)();
+      const actual=await run(bad,token,Infinity,false),expected=await run(reference,token,Infinity,false);
+      assert.throws(()=>compare(actual,expected),assert.AssertionError);++mutations;
+    }
     if(row.folded && row.count===1) {
       const returned=ast.body[0].expression.body.body.findLast(node=>node.type==='ReturnStatement');
       if(returned?.argument && row.constant!==12){

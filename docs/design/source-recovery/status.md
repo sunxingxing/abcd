@@ -24,6 +24,38 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-07：规则187，常量传播退出CompletedStore并消费共同定义覆盖
+
+- Constants不再调用PrivateCopy/CompletedStore，原始first observation与
+  store region范围不再决定常量准入。AnalyzeFlowReadCoverage消费当前
+  RecoveryFlow的全部读取活跃性：目标定义是唯一被观察的来源，且没有
+  活跃入口未知值，才允许覆盖读取；活跃undefined或其他定义统一阻止替换。
+  不构造完整read×definition关系，不按绑定重新遍历图。
+- 这项证明只描述静态定义覆盖，不等同动态执行身份。生产消费者仅传播
+  每次执行均相同的原始值literal及已证明常量的复制；对象/调用/捕获值
+  不因此获得移动或复制权限。未被读取的纯常量写入也可省略。
+- 常量稀疏工作队列现在更新局部literal提案，全部求解后才批量发布并
+  删除对应私有空声明/存储。后续Aliases消费提交后的投影；没有旧分析
+  跨提交复用，也没有增加同块、邻接或分支形状准入。
+- 新增“赋值分支与提前返回分支汇合后读取”的完整源码恢复：旧区域条件
+  拒绝，通用定义覆盖现在可以删除临时变量。条件漏写、初始undefined、
+  异常/finally及循环路径仍由现有反例覆盖。新增删掉另一分支return的
+  合法JS错误变换；175,616小图独立前向定义oracle同时核对覆盖结果。
+- 相关目标构建通过，日志/tmp/abcd-rule187-build.log。最终54项相关回归
+  全部通过354.41秒，日志/tmp/abcd-rule187-tests.log、详细输出
+  /tmp/abcd-rule187-test-detail.log。初始化恢复1,718份源码/459,144行为/
+  278反例；存储合并221份源码/33,620行为/12反例、定义消除184份源码/
+  2,080行为/3反例、冗余写回528份源码/18,192行为/12反例全部通过。
+  512支配图、175,616活跃性/定义/覆盖图、98,304需求图，以及200/201/
+  400/800、arena重排和exact/short预算继续通过。
+- ABC-only导出build/stage-one/constant-coverage-rule187为
+  10complete/0partial/9noModule，十份源码node --check通过，正文与规则186
+  一致；日志/tmp/abcd-rule187-export.log，不新增真实record验收声明。
+- CompletedStore仍在Aliases/ForwardSnapshots中；InitializedRead、统一
+  activation/canonical IR接入、版本协调与全局收敛继续迁移。本轮没有
+  宣称这些义务已退出。统一变量里程碑、结构gate和阶段一仍未完成，
+  原Goal active及全量语料/RSS/DFX/代理暂停范围保持。
+
 ### 2026-10-07：规则186，统一表达式事实与无用语句批量提交
 
 - AnalyzeExpressions替代AnalyzeStoredResults与AnalyzeEvaluations：在一次

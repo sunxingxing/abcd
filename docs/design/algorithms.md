@@ -2587,3 +2587,24 @@ one fact still computes the combined result: this is a consistency tradeoff, not
 a claimed overall latency or memory improvement. Existing exact/short quota and
 200/201/geometric tests cover the changed accounting. No new algorithm dependency,
 external implementation or license is introduced; full-process RSS remains paused.
+
+
+### Read-origin coverage for constant propagation (rules187)
+
+AnalyzeFlowReadCoverage consumes shared all-read liveness, avoiding the eager
+read-to-definition relation. It scans D definitions to index each binding's sole
+observed origin/conflict, L live facts for missing entry definitions, then D
+candidate definitions: O(B+D+L) work and O(B+D) memory. It does not walk the graph
+per binding or materialize a dense read/definition product. The preceding sparse
+liveness cost is unchanged and charged explicitly; no quadratic threshold is
+introduced. No reachable read may observe another definition or missing entry
+value. Unreachable competing definitions are conservatively retained.
+
+Constants builds the current graph only when a primitive literal seed exists,
+then proposes literal/copy substitutions on the existing indexed dependency
+worklist before one commit. The seed scan is O(B); there is no result without a
+seed in this lattice. Coverage alone does not equate dynamic executions: only
+identical primitive literals propagate here. No new dependency or external code
+is used. Independent tiny forward-dataflow tests check coverage, and source tests
+retain 200/201/geometric and arena-remapping checks. Whole-process RSS is not
+claimed by these bounded checks.
