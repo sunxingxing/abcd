@@ -24,6 +24,36 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则201，快照写入计数消费当前语义流图
+
+- ForwardSnapshots 的候选筛选不再使用最初 Scan 的 use.writes==1。
+  当前 FlowReference 的读/写计数与读取覆盖、执行次数、异常上下文
+  共同决定是否移动；计数包括 typed statement-site 写入，不能只数
+  ExprId 写入。前序 pass 已删除的冗余写入不再阻挡快照恢复。
+- 当前流程仍先完成 stored-result/inert/dead-definition 清理，再执行
+  快照分析；分析与方案生成先于 BeginCommit。此步未更改源位置运输
+  和声明生命期策略，也未迁移所有 BindingUses 消费者或实现全局固定点。
+  任意后继定义的候选选择仍待后续共同定义模型迁移。
+- 新增纯自赋值与携带副作用的自赋值组合，覆盖反序 statement arena、
+  0/1/200/201/400/800 和工作增长。纯复制消除后可恢复 producer；效果
+  保留时仍由共同 motion 分析阻止跨越调用。独立执行检查值身份、receiver、
+  异常和事件序列；反例验证重复 producer、删除效果、提前效果均被发现。
+- 旧实现 form27/count0 的恢复断言失败，/tmp/abcd-rule201-red-test.log。
+  实现后两项定向测试通过，9.07秒，/tmp/abcd-rule201-focused-tests.log。
+  最终相关回归 56/56 全部通过，406.68秒，日志
+  /tmp/abcd-rule201-regression-build.log、/tmp/abcd-rule201-regression-tests.log
+  与 /tmp/abcd-rule201-test-detail.log。快照 348 份生成函数、13,284 个
+  行为情景、24 个错误变换；变量恢复 1,752/461,776/284，定义清理
+  586/14,488/61；Home 362 个情景和 PageA 1,422 次配对执行通过。
+- ABC-only 导出 build/stage-one/snapshot-writes-rule201：19 records，
+  10 complete / 0 partial / 9 noModule；十份源码 node --check 通过，
+  正文与规则200一致，输入 SHA-256 不变。证据为
+  /tmp/abcd-rule201-export.log、/tmp/abcd-rule201-export-check.json。
+  此步不报告真实语料覆盖率上升，也不授予平台 executable 收据。
+- 新增写入计数复用已有 reference 遍历，附加存储 O(B)、工作 O(B+R)，
+  B 为绑定数、R 为当前引用数；无逐绑定图遍历或样本/同块/邻接匹配。
+  统一变量、结构 gate 和阶段一目标仍开放；全量语料/RSS/DFX 暂停范围保持。
+
 ### 2026-10-08：规则200，惰性语句清理退出上游改写准入
 
 - PlanInertStatements 删除“表达式根已经被其他 pass 替换”的前提。

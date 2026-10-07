@@ -2131,3 +2131,18 @@ added. Tests include ordinary locals without any compiler-temporary candidate,
 reverse arenas, retained exceptions/effects, independent execution and geometric
 work scaling. Global pass convergence and original BindingUses migration remain
 open; this change removes one concrete dependence on prior rewrite history.
+
+
+### Rules201: snapshot write cardinality follows the current projection
+
+ForwardSnapshots no longer requires the original BindingUses write count to be
+one. It counts current FlowReference writes alongside reads, including typed
+statement-site writes, and checks cardinality with current definition coverage,
+execution pairing and exception context. Eliminated redundant writes therefore
+stop blocking forwarding; retained evaluations still constrain motion. Original
+store/declaration identities remain transport and lifetime inputs: this change
+does not yet select arbitrary successor definitions or claim all BindingUses
+consumers have migrated. No new sequence, adjacency or same-block admission is
+introduced. Redundant self-assignments with and without effects, reversed statement
+arenas and geometric input sizes exercise this pass interaction. Counting adds
+O(B) storage and O(B + R) work for bindings B and current references R.

@@ -367,7 +367,7 @@ class Initializers {
   void ForwardSnapshots() {
     const auto eligible=[&](std::size_t i) {
       const auto& use=uses_[i];
-      return use.private_storage && use.declaration && use.writes==1 && use.store &&
+      return use.private_storage && use.declaration && use.store &&
           !use.escaped && use.root_store &&
           !plan_.omitted[use.root_store->value] && !plan_.aliases[i] && !plan_.literals[i];
     };
@@ -376,16 +376,17 @@ class Initializers {
     if(!candidate)return;
     const auto coverage=AnalyzeBindingReadCoverage();
     std::vector<const FlowReference*> reads,stores;
-    std::vector<std::size_t> counts;
+    std::vector<std::size_t> counts, write_counts;
     std::vector<std::uint8_t> bound;
     std::vector<std::optional<StmtId>> scope_containers, environments;
     budget_.Array(reads, uses_.size()); budget_.Array(counts, uses_.size());
-    budget_.Array(stores,uses_.size());
+    budget_.Array(stores,uses_.size());budget_.Array(write_counts,uses_.size());
     for(const auto& reference:coverage.references) {
       budget_.Step();switch(reference.kind) {
         case FlowReferenceKind::kRead:
           ++counts[reference.binding.value];reads[reference.binding.value]=&reference;break;
         case FlowReferenceKind::kWrite:
+          ++write_counts[reference.binding.value];
           if(const auto* expression=std::get_if<ExprId>(&reference.site);
               expression && *expression==uses_[reference.binding.value].store)
             stores[reference.binding.value]=&reference;
@@ -430,7 +431,10 @@ class Initializers {
     budget_.Array(proposed,uses_.size());std::size_t count=0;
     for (std::size_t i = 0; i < uses_.size(); ++i) {
       budget_.Step(); const auto& use = uses_[i];
-      if(!eligible(i) || counts[i]!=1 || !coverage.stores[i])continue;
+      // Count retained writes in the same projection as read coverage and
+      // motion. Original Scan counts include stores eliminated by earlier
+      // passes; they cannot decide single-definition snapshot recovery.
+      if(!eligible(i) || counts[i]!=1 || write_counts[i]!=1 || !coverage.stores[i])continue;
       const auto read=std::get<ExprId>(reads[i]->site),store=*use.store;
       if(!stores[i] || motion.next[stores[i]->point.value]!=reads[i]->point ||
           motion.previous[reads[i]->point.value]!=stores[i]->point)continue;
