@@ -3,6 +3,7 @@ import {spawnSync} from 'node:child_process';
 import {readFileSync} from 'node:fs';
 import {stripTypeScriptTypes} from 'node:module';
 import vm from 'node:vm';
+import {editExpression} from './expression_edits.mjs';
 
 const [tool, abc, paired, presentation] = process.argv.slice(2);
 const named = presentation === 'local-names';
@@ -11,6 +12,7 @@ const run = spawnSync(tool, [abc, '5001', '--record-source', '--value-source', .
 assert.equal(run.status, 0, run.stderr);
 const report = JSON.parse(run.stdout.trim());
 assert.equal(report.record, 4767); assert.equal(report.source_complete, named);
+assert.equal(report.source_contract, named ? 'language_numeric_constructors_v1' : 'language_and_host_v3');
 assert.equal(report.executable, false); assert.equal(report.legacy_writer_used, false);
 assert.ok(report.source.includes('onWindowStageCreate('));
 if (named) {
@@ -64,9 +66,12 @@ for (const value of values) for (const mutate of [false, true]) for (let failAt 
   assert.deepEqual(await observe(report.source, value, failAt, mutate), await observe(reference, value, failAt, mutate)); ++cases;
 }
 if (named) {
-  const transport = report.source.match(/\(([A-Za-z_$][\w$]*) = windowStage\);/);
-  assert.ok(transport);
-  const broken = report.source.replace(transport[0], `(${transport[1]} = void 0);`);
+  // Mutate the captured formal's initialization whether represented as a
+  // declaration or a store. Native let initializers must not defeat the oracle.
+  const broken = editExpression(report.source, node =>
+    node.type === 'VariableDeclarator' && node.init?.type === 'Identifier' && node.init.name === 'windowStage' ||
+    node.type === 'AssignmentExpression' && node.right.type === 'Identifier' && node.right.name === 'windowStage',
+    (node, text) => node.type === 'VariableDeclarator' ? text(node.id) + ' = void 0' : '(' + text(node.left) + ' = void 0)');
   assert.notEqual(broken, report.source);
   new vm.SourceTextModule(broken);
   await assert.rejects(async () => assert.deepEqual(await observe(broken, '', 0, false),

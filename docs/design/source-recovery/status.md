@@ -12,6 +12,45 @@
 
 ## 当前阶段
 
+### 2026-10-07：规则167，record 输出保留实际语义合同
+
+- 从干净3ac417ca继续；上一轮规则166实际条件表示改进属于进展。本轮
+  查实共同record输出的合同传递缺陷：BuildRecordTree按identity.contract
+  构建完整family后，PrintedSource仍默认kSourceContract，导致显式语言
+  模式的record manifest被标为language_and_host_v3。顶层manifest选择
+  正确，不能替代artifact本身正确。这会误导后续消费者的语义验收边界。
+- 输出现在直接携带实际identity.contract，完整及incomplete共用一个
+  返回路径；abc_semantic的ValueTree record JSON也返回source_contract，
+  采用现有typed enum边界映射。未从flags/诊断文本猜标签，没有改变默认
+  数值/构造规则、函数正文、恢复准入或executable状态。rules166升167。
+- record_import_tree_test新增--contracts：三profile、四种入口/函数族/
+  class/capture结构、六种CLI语义组合共72个结果逐一核对typed contract。
+  不涉数值/构造差异的中性fixture正文还需与该profile默认正文完全一致。
+  所有既有成功返回也增加identity对应断言；旧实现构建成功后断言RED
+  退出134，修复后通过。
+- 实际language_constructors_paired_test除原十构造器独立行为外，新增同
+  一真实record的六模式：无constructors为明确partial、有为complete；
+  artifact合同、标记和JS语法逐一验证，参考TS仍只在全部ABC-only生成
+  结束后读取。rich-text核对导出manifest中每份源码的record合同与顶层
+  所选合同一致；partial callback与named complete两种结果也独立核对。
+- record_import_tree/abc_structure/abc_semantic构建通过，首批实际8项
+  8/8通过22.11秒。补跑method_cell_names发现旧mutation仅匹配独立store，
+  规则164后的let initializer未命中；改用已有AST选择器同时覆盖两种
+  初始化表示，保留原capture错误行为检测，相关两项2/2通过0.56秒。
+  新六模式的language_constructors_paired_test另通过3.09秒。最终9个
+  不同定向项有通过证据，包括默认CLI拒绝、class declarations和record
+  imports；不存在的旧selector未计为已运行项。
+- fresh ABC-only build/stage-one/record-contract-rule167：十份源码正文
+  与规则166逐字一致，输入SHA相同，十份artifact合同均为实际选择的
+  language_numeric_constructors_v1；仍10complete/0partial/9noModule。
+  这是语义合同集成修复，不增加源码覆盖或表示改善数量。证据
+  /tmp/abcd-record-contract-{red-build,red,build,targeted,final,callback-final,
+  export}.log，git diff --check及修改JS的node --check通过，输入未改。
+- Goal active。其余record独立语义/表示、一般SSA及原fields/globals/
+  signature/body门槛仍未完成；full suite、expanded corpus、RSS/benchmark、
+  DFX、scheduler、agents及周期audit继续暂停。未扩展来源位置映射。
+
+
 ### 2026-10-07：规则166，条件表达式的共同效果分区
 
 - 从干净b37cbeb5继续；规则165实际await表示改善已提交，属于进展。

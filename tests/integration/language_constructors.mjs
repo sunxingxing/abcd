@@ -27,6 +27,7 @@ for (const row of fixtures) {
   assert.equal(run.status, 0, run.stderr);
   const report = JSON.parse(run.stdout);
   assert.equal(report.record, entity);
+  assert.equal(report.source_contract, 'language_numeric_constructors_v1');
   assert.equal(report.source_complete, true);
   assert.equal(report.legacy_writer_used, false);
   assert.doesNotMatch(report.source, /INCOMPLETE|UNRECOVERED/);
@@ -34,6 +35,24 @@ for (const row of fixtures) {
   assert.match(report.source, /super\(\.\.\./);
   assert.doesNotMatch(report.source, /Reflect\.construct|Function\(/);
   row.push(report.source);
+}
+// The same real record is partial without the explicit constructor premise.
+// Check the artifact contract in every exposed policy combination; top-level
+// option parsing alone cannot detect a lost contract at the record boundary.
+let contractCases = 0;
+for (const [numeric, label] of [[[], 'language_and_host_v3'], [['--language-arithmetic'], 'language_arithmetic_v1'],
+  [['--language-numeric'], 'language_numeric_v1']]) for (const constructors of [false, true]) {
+  const [app, entity, method] = fixtures[0];
+  const options = [...numeric, ...(constructors ? ['--language-constructors'] : [])];
+  const run = spawnSync(tool, [path.join(root, app, 'modules.abc'), String(method),
+    '--record-source', '--value-source', ...options], {encoding: 'utf8', timeout: 60000, maxBuffer: 8 * 1024 * 1024});
+  assert.equal(run.status, 0, run.stderr);
+  const report = JSON.parse(run.stdout);
+  const expected = constructors ? (numeric.length ? label.replace('_v1', '_constructors_v1') : 'language_constructors_v1') : label;
+  assert.equal(report.record, entity);assert.equal(report.source_contract, expected);
+  assert.equal(report.source_complete, constructors);
+  assert.equal(/INCOMPLETE|UNRECOVERED/.test(report.source), !constructors);
+  new vm.SourceTextModule(report.source);++contractCases;
 }
 const payloads = [undefined, null, false, 0, -0, NaN, 1n, Symbol('arg'), {}, []];
 const thrown = Symbol('original exception');
@@ -138,6 +157,6 @@ for (const [index, from, to] of [[0, 'super(...args)', 'super()'], [0, 'super(..
   catch (error) {if (!(error instanceof assert.AssertionError)) throw error; detected = true;}
   assert.equal(detected, true, from);
 }
-console.log(JSON.stringify({completeRecords: 10, pairedConstructorCases: pairedCases, nativeSuperCases: nativeCases,
+console.log(JSON.stringify({completeRecords: 10, contractCases, pairedConstructorCases: pairedCases, nativeSuperCases: nativeCases,
   mutationChecks: 3, pairedIteratorContamination: false, inheritedFieldSetters: false,
   wholeRecordBehavior: false, platformExecution: false}));

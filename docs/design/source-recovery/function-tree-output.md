@@ -17,6 +17,12 @@ interval、单次使用、availability及最终catch snapshot校验；原Functio
 独立验证不允许branch承接effectful child。没有新writer或源码文本
 优化，字节码来源/变量身份和原操作数顺序沿共同流程保留。
 
+规则167合同边界：共同record输出保留原RouteInputIdentity的实际
+SourceContract，包括显式语言数值/构造模式和标记为incomplete的结果。
+PrintedSource的默认合同不能覆盖已经选定的family语义；工具应序列化
+artifact携带的typed合同，不能仅依赖顶层选项标签。此字段不授予平台
+可执行或完整语义验收资格。
+
 ## 1. 最终表示和职责
 
 最终表示就是现有 `FunctionTree`：语句/表达式 AST，加符号、作用域、捕获和来源

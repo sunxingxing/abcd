@@ -649,6 +649,10 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     }
     if (file.CheckUnchanged()) return fail(Error::kFileChanged);
     PrintedSource source;
+    // The selected contract owns the entire recovered family, including partial
+    // output. Do not relabel language-mode code with PrintedSource's legacy
+    // default when transferring it across the common record boundary.
+    source.contract = identity.contract;
     source.text = std::move(output).str();
     source.incomplete = incomplete;
     source.environment_cleanup = std::move(cleanup_sites);

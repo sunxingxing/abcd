@@ -971,6 +971,7 @@ if(BUILD_TESTING)
   add_executable(record_import_tree_test tests/unit/source/record_import_tree_test.cc)
   target_link_libraries(record_import_tree_test PRIVATE abcd_source)
   add_test(NAME record_import_tree_test COMMAND record_import_tree_test)
+  add_test(NAME record_source_contract_test COMMAND record_import_tree_test --contracts)
   add_test(NAME record_cleanup_entry_test COMMAND record_import_tree_test --cleanup-entry)
   add_test(NAME record_named_cell_test COMMAND record_import_tree_test --class-named-cell)
   add_test(NAME record_published_capture_test COMMAND record_import_tree_test --published-capture)
@@ -1335,11 +1336,11 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/branch_polarity.mjs $<TARGET_FILE:logical_regions_test>)
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc" AND
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/pasteboard_src/src/main/ets/entryability/EntryAbility.ts")
-      add_test(NAME pasteboard_partial_callback_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+      add_test(NAME pasteboard_partial_callback_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/pasteboard_partial_callback.mjs $<TARGET_FILE:abc_semantic>
         "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc"
         "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/pasteboard_src/src/main/ets/entryability/EntryAbility.ts")
-      add_test(NAME method_cell_names_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+      add_test(NAME method_cell_names_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/pasteboard_partial_callback.mjs $<TARGET_FILE:abc_semantic>
         "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc"
         "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/pasteboard_src/src/main/ets/entryability/EntryAbility.ts" local-names)

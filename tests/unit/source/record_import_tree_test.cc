@@ -29,7 +29,8 @@ enum class DirectDefault { kAbsent, kFunction, kClass };
 enum class ClassDeclarationCase { kAbsent, kSafe, kOuterRead, kDerived };
 std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool inspect_prefix = false,
     DirectDefault direct = DirectDefault::kAbsent, ClassDeclarationCase class_declaration = ClassDeclarationCase::kAbsent,
-    unsigned class_copies = 0, bool class_split = false) {
+    unsigned class_copies = 0, bool class_split = false,
+    std::optional<source::SourceContract> contract = {}) {
   constexpr std::uint32_t kTypes = 256, kPool = 272, kRecord = 512,
       kMethod = 600, kChild = 640, kConstructor = 680, kLiteral = 3000, kModule = 1024, kCode = 4096, kChildCode = 5000, kConstructorCode = 6000, kFileBytes = 8192;
   const bool parent_raw = mode == FixtureCase::kModuleWriterParentBranchRaw || mode == FixtureCase::kModuleWriterParentBranchRawCatch;
@@ -381,6 +382,7 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
   identity.abc_version = header.version; identity.file_size = header.file_size;
   if (derived_declaration) identity.contract = source::SourceContract::kLanguageConstructorsV1;
   if (mode == FixtureCase::kPublishedCaptureV1) identity.contract = source::SourceContract::kLanguageAndHostV1;
+  if (contract) identity.contract = *contract;
   if (inspect_prefix) {
     const auto loaded = source::ReadFunctionValues(*file,header,index,{0},identity,
         source::InputCaptureMode::kConditional,{},&context);
@@ -486,6 +488,7 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
   if (const auto* error = std::get_if<source::RouteRefusal>(&result))
     std::cerr << "route refusal " << unsigned(error->failure.reason) << '\n';
   Check(std::holds_alternative<source::PrintedSource>(result));
+  Check(std::get<source::PrintedSource>(result).contract == identity.contract);
   if (cleanup_entry) {
     const auto& sites = std::get<source::PrintedSource>(result).environment_cleanup;
     Check(sites.size() == 2 && sites[0].pc.value == cleanup_handler &&
@@ -502,6 +505,22 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
 }
 int main(int argc, char** argv) {
   const std::string_view mode = argc > 1 ? argv[1] : "";
+  if (mode == "--contracts") {
+    unsigned cases = 0;
+    for (auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+      for (auto fixture : {FixtureCase::kValid, FixtureCase::kFunction, FixtureCase::kClassFunction, FixtureCase::kCapture}) {
+        const auto baseline = Recover(fixture, profile);
+        for (auto numeric : {source::kSourceContract, source::SourceContract::kLanguageArithmeticV1, source::SourceContract::kLanguageNumericV1})
+          for (bool constructors : {false, true}) {
+            const auto contract = constructors ? source::WithLanguageConstructors(numeric) : numeric;
+            Check(Recover(fixture, profile, false, DirectDefault::kAbsent, ClassDeclarationCase::kAbsent, 0, false, contract) == baseline);
+            ++cases;
+          }
+      }
+    std::cout << cases << " typed record contracts; neutral source unchanged\n";
+    return 0;
+  }
+
   if (mode == "--class-declaration" || mode == "--class-declaration-outer-read" || mode == "--class-declaration-derived") {
     const auto profile = argc > 2 && std::string_view(argv[2]) == "1202" ? abc::ProfileId::kDynamic1202 :
         argc > 2 && std::string_view(argv[2]) == "1301" ? abc::ProfileId::kDynamic1301 : abc::ProfileId::kDynamic1206;

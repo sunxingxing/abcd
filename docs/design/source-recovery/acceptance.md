@@ -1,5 +1,15 @@
 # 验收、证据与实施交接
 
+2026-10-07规则167：修复ValueTree record artifact丢失所选语义合同，
+PrintedSource携带实际identity.contract；完整/部分结果共用该路径，
+abc_semantic JSON与abc_structure record manifest均明确输出实际合同。
+旧版顶层选择正确但record被默认V3误标的问题已以新断言RED验证。
+72 typed fixture、实际同record六模式/partial与complete、九个不同
+定向项通过。fresh pasteboard十份正文与规则166逐字一致，合同均匹配
+显式numeric+constructors；覆盖数量和默认模式不变。不把合同修复当作
+剩余正文、结构gate或阶段一整体完成，细节见status.md。
+
+
 2026-10-07规则166：phase候选forest现在将normal branch纳入原一次
 拒绝/重分区流程，让throwing producer保留原异常点而纯比较后缀进入
 if条件；最终branch仍无effectful child，独立校验保持。三profile/两

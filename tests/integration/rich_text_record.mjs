@@ -22,6 +22,8 @@ try {
     {encoding: 'utf8', timeout: 60_000});
   const manifest = JSON.parse(readFileSync(join(output, 'manifest.json')));
   assert.equal(manifest.source_contract, 'language_numeric_constructors_v1');
+  for (const record of manifest.records) if (record.source || record.incomplete_source)
+    assert.equal(record.source_contract, manifest.source_contract);
   for (const name of names) {
     const record = manifest.records.find(record => record.source === 'sources/' + name + '.mjs');
     assert.equal(record.source_complete, true); assert.equal(record.source_route, 'value_tree'); assert.equal(record.legacy_writer_used, false);

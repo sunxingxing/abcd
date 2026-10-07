@@ -307,6 +307,7 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
         {}, nullptr, RoutePolicy::kRequireValueTree, nullptr, nullptr, &identity, function_sites, class_sites);
     if (const auto* source = std::get_if<PrintedSource>(&built)) {
       output << nlohmann::json{{"route", "value_tree"}, {"source", source->text},
+          {"source_contract", SourceContractName(source->contract)},
           {"record", owner->offset.value}, {"source_complete", !source->incomplete}, {"executable", false},
           {"legacy_writer_used", false}} << '\n';
       return EXIT_SUCCESS;
