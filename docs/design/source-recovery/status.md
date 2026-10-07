@@ -24,6 +24,34 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则206，常量传播选择当前覆盖定义
+
+- 共同 BindingReadCoverage 保存当前 CoveredWrite 的表达式身份、
+  定义种类与写入效果；Constants 退出原始第一个 use.store 的筛选及
+  producer 定位。旧 store 映射仍供 Aliases 使用，迁移边界明确保留。
+- 清理无效旧写入/无效果观察先于常量覆盖分析。常量替换将当前写入
+  投影成原 RHS，再由效果 pass 删除无效果语句，退出旧 Elide 整句
+  删除路径。普通 PutValue 的删除独立消费 FlowWriteEffect::kInert；
+  词法初始化是独立 definition kind，不新增声明顺序或同块准入。
+- 新增前置 self-copy 的等价组合，以及声明在 return 后的 TDZ 反例，
+  覆盖正反序编号、0/1/200/201/400/800 与工作增长。旧实现前置组合
+  失败56.68秒，/tmp/abcd-rule206-red-tests.log。前置 inert 清理也允许
+  旧 expression7 的复制链恢复，因此更新表示预期，保留独立执行 oracle。
+  首轮旧预期失败证据 /tmp/abcd-rule206-focused-tests.log。
+- 最终定向2/2通过，133.05秒；1,836份生成函数、464,128行为情景、
+  298错误变换，TDZ对照分别要求抛 ReferenceError。证据
+  /tmp/abcd-rule206-focused2-tests.log、/tmp/abcd-rule206-focused-detail.log。
+  其余54/54项相关回归全部通过，297.57秒；连同定向两项共56项通过。
+  Home、PageA整record行为与表示验收保持通过。构建与最终回归证据
+  /tmp/abcd-rule206-regression-build.log、/tmp/abcd-rule206-regression-tests.log、
+  /tmp/abcd-rule206-regression-detail.log。git diff --check通过。
+- ABC-only 导出 build/stage-one/constants-current-definitions-rule206：
+  19 records，10 complete / 0 partial / 9 noModule；十份源码语法
+  检查通过，正文与规则205一致，输入 SHA-256 不变。证据
+  /tmp/abcd-rule206-export.log 与 /tmp/abcd-rule206-export-check.json。
+- Alias producer/声明生命期/全局固定点及阶段一仍开放；保持既定
+  暂停范围。上述模拟宿主行为验证不代表真实平台执行或全语料验收。
+
 ### 2026-10-08：规则205，常量传播消费当前写入事实
 
 - Constants 复用读取覆盖分析的当前写入计数，不再按原始

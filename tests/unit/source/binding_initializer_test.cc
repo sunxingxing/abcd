@@ -189,6 +189,8 @@ std::uint64_t Constant(unsigned form, unsigned count, unsigned literal, bool rev
     const auto first = static_cast<std::uint32_t>(tree.children.size());tree.children.insert(tree.children.end(),children.begin(),children.end());
     return fixture.Stmt(BlockStmt{scope,first,static_cast<std::uint32_t>(children.size())});
   };
+  if(form==21) { roots.erase(roots.begin());roots.push_back(fixture.declaration); }
+  if(form==20)roots.insert(roots.begin()+1,fixture.Store(fixture.Read(2)));
   if(form>=17&&form<=19) {
     auto value=fixture.Read(2);
     if(form==18)value=fixture.Expr(SequenceExpr{fixture.Call(1,2),value});
@@ -256,7 +258,7 @@ std::uint64_t Constant(unsigned form, unsigned count, unsigned literal, bool rev
   const auto nullish = std::get<NullishSyntax>(PlanNullishSyntax(tree));
   const auto result = PlanBindingInitializers(tree,loops,nullish);test::Check(std::holds_alternative<BindingInitializers>(result));
   const auto& plan = std::get<BindingInitializers>(result);
-  const bool folded = form < 2 || (form >= 9 && form < 14) || ((form == 14 || form == 15) && count == 0) || form == 16 || form == 17 || form == 18;
+  const bool folded = form < 2 || (form >= 9 && form < 14) || ((form == 14 || form == 15) && count == 0) || form == 16 || form == 17 || form == 18 || form == 20;
   std::ostringstream output;const auto printed = PrintFunctionTree(tree,output);test::Check(std::holds_alternative<PrintedFunction>(printed));
   test::Check((output.str().find("saved") == std::string::npos) == folded);
   for (const auto range : std::get<PrintedFunction>(printed).expressions) test::Check(range.begin<=range.end && range.end<=output.str().size());
@@ -607,7 +609,7 @@ int main(int argc, char**) {
     }
     test::Check(large<small*3);
   }
-  for (unsigned form = 0;form<20;++form) {
+  for (unsigned form = 0;form<22;++form) {
     std::uint64_t small=0,large=0;
     for (unsigned count : {0U,1U,200U,201U,400U,800U}) for (bool reverse : {false,true}) {
       const auto work = Constant(form,count,4,reverse,argc>1);

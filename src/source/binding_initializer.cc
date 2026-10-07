@@ -205,6 +205,8 @@ class Initializers {
     // Literal stability also depends on retained writes. Clear identity stores
     // before coverage, then clear new identities exposed by literal projection.
     RunPass(Pass::kStoredResults);
+    RunPass(Pass::kInertOperands);
+    RunPass(Pass::kInertStatements);
     RunPass(Pass::kConstants);
     // Copy stability consumes the retained writes, after identity-store
     // cleanup. BeginCommit invalidates the flow before alias coverage reads it;
@@ -871,8 +873,14 @@ class Initializers {
     const auto& effect=std::get<ExpressionStmt>(tree_.statements[use.initializer->value].statement);
     return use.first==effect.expression && Confined(use,use.initializer_container);
   }
+  struct CoveredWrite {
+    ExprId expression;
+    FlowDefinitionKind kind;
+    FlowWriteEffect effect;
+  };
   struct BindingReadCoverage {
     std::vector<std::uint8_t> stores, declarations;
+    std::vector<std::optional<CoveredWrite>> covered_writes;
     // Retained semantic writes, including projected undefined stores. The
     // original census still locates declaration candidates, not stability.
     std::vector<std::size_t> writes;
@@ -887,10 +895,14 @@ class Initializers {
     budget_.Admit(coverage.allocated_bytes,1);budget_.Step(coverage.work);
     BindingReadCoverage result;
     budget_.Array(result.stores,uses_.size());budget_.Array(result.declarations,uses_.size());
+    budget_.Array(result.covered_writes,uses_.size());
     for(std::size_t i=0;i<flow.definitions.size();++i) {
       budget_.Step();const auto& definition=flow.definitions[i];const auto& use=uses_[definition.binding.value];
       if(definition.write && definition.write==use.store)
         result.stores[definition.binding.value]=coverage.definitions[i];
+      if(coverage.definitions[i] && definition.write &&
+          (definition.kind==FlowDefinitionKind::kAssignment||definition.kind==FlowDefinitionKind::kInitializer))
+        result.covered_writes[definition.binding.value]=CoveredWrite{*definition.write,definition.kind,definition.effect};
       if(definition.declaration && definition.declaration==use.definition)
         result.declarations[definition.binding.value]=coverage.definitions[i];
     }
@@ -903,15 +915,11 @@ class Initializers {
   }
   void Constants() {
     const auto eligible=[&](const BindingUses& use) {
-      return use.private_storage && use.declaration && use.store && !use.escaped;
+      return use.private_storage && use.declaration && !use.escaped;
     };
-    bool seed=false;
-    for(const auto& use:uses_) {
-      budget_.Step();if(!eligible(use))continue;
-      const auto value=std::get<AssignmentExpr>(tree_.expressions[use.store->value].expression).value;
-      seed |= std::holds_alternative<TreeLiteral>(tree_.expressions[value.value].expression);
-    }
-    if(!seed)return;
+    bool candidate=false;
+    for(const auto& use:uses_) {budget_.Step();candidate |= eligible(use);}
+    if(!candidate)return;
     const auto coverage=AnalyzeBindingReadCoverage();
     std::vector<std::optional<ExprId>> literals;
     budget_.Array(literals,uses_.size());
@@ -922,9 +930,13 @@ class Initializers {
     std::size_t ready = 0;
     for (std::size_t i = 0; i < uses_.size(); ++i) {
       budget_.Step();const auto& use = uses_[i];
-      if (!eligible(use) || coverage.writes[i]!=1 || !coverage.stores[i]) continue;
+      if (!eligible(use) || coverage.writes[i]!=1 || !coverage.covered_writes[i]) continue;
       const auto symbol = SymbolId{static_cast<std::uint32_t>(i)};
-      const auto assignment = *use.store;
+      const auto& selected=*coverage.covered_writes[i];
+      // Coverage proves value availability, not successful PutValue. Retain
+      // throwing writes; lexical initialization is a distinct definition kind.
+      if(selected.kind==FlowDefinitionKind::kAssignment && selected.effect!=FlowWriteEffect::kInert)continue;
+      const auto assignment = selected.expression;
       const auto value = std::get<AssignmentExpr>(tree_.expressions[assignment.value].expression).value;
       const auto& expression = tree_.expressions[value.value].expression;
       if (std::holds_alternative<TreeLiteral>(expression)) {
@@ -943,7 +955,13 @@ class Initializers {
     for (std::size_t i = 0; i < uses_.size(); ++i) {
       budget_.Step();if (!literals[i]) continue;
       BeginCommit();plan_.literals[i]=literals[i];
-      Elide(uses_[i]);
+      // Value substitution and write removal are separate from statement
+      // cleanup. Remove the selected current write, retaining its RHS at the
+      // original occurrence; the effect pass decides whether that is inert.
+      const auto write=coverage.covered_writes[i]->expression;
+      plan_.replacements[write.value]=std::get<AssignmentExpr>(tree_.expressions[write.value].expression).value;
+      plan_.omitted[uses_[i].declaration->value]=1;
+      if(uses_[i].initializer)plan_.statements[uses_[i].initializer->value].reset();
     }
   }
   void Aliases() {

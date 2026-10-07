@@ -65,6 +65,15 @@ read/definition与完成边，可先求解，再用于裁剪前向到达定义�
 资源耗尽仍返回typed错误，不能把未完成轮次声称为稳定结果。
 声明恢复引入的初始化同样进入模型，不能被打印器私自省略。
 
+规则206补充：Constants 从共同读取覆盖结果取得当前 CoveredWrite
+（表达式身份、定义种类、写入效果），退出原始首个 use.store 定位。
+普通赋值删除须证明 FlowWriteEffect::kInert，词法初始化按独立种类处理；
+读取覆盖不能替代写入完成证明。常量替换仅将选中写入投影为其原 RHS，
+随后无效果语句清理决定是否省略语句，不再调用旧 Elide 的整语句删除。
+前置 StoredResults/InertOperands/InertStatements 先移除无效旧观察，
+每次提交仍统一失效分析。Aliases 仍使用旧首个 store 的覆盖映射和删除
+运输，声明恢复/activation 与全局固定点尚未完成；不宣称全部消费者迁移。
+
 规则205补充：常量传播也消费当前写入计数，原始写入次数不再承担值传播
 稳定性证明。StoredResults 先于 Constants，之后保留 Constants →
 StoredResults → Aliases 的依赖，因为常量投影可产生新的同值写入。

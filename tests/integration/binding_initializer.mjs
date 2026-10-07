@@ -70,13 +70,14 @@ function constantReference(row) {
   const reports='report(saved);'.repeat(row.count);
   let body=(row.constant===2?'report(saved);':'')+(row.constant===4?'if(seed){saved='+value+';}':'saved='+(row.constant===6?'saved':value)+';')+reports;
   if(row.constant>=17&&row.constant<=19)body=(row.constant===19?'report(saved);':'')+'saved='+value+';saved='+(row.constant===18?'(report(saved),saved)':'saved')+';'+reports;
+  if(row.constant===20)body='saved=saved;'+body;
   if(row.constant===3)body+='saved=seed();';
   if(row.constant===16)body='if(seed){saved='+value+';}else{return;}'+reports;
   if(row.constant===7)body='try{seed();saved='+value+';'+reports+'}finally{report(saved);}';
   if(row.constant===8 || row.constant===9)body='while(seed()){saved='+value+';'+reports+'}';
   if(row.constant===10 || row.constant===11)body='saved='+value+';'+(row.constant===10?'await':'yield')+' seed();'+reports;
   body+='return'+(row.constant===9?'':row.constant===12?' saved.toString()':row.constant===13?' saved ** 2':' saved')+';';
-  return Function('return ('+(row.constant===10?'async function':row.constant===11?'function*':'function')+'(seed,report){let saved;'+body+'})')();
+  return Function('return ('+(row.constant===10?'async function':row.constant===11?'function*':'function')+'(seed,report){'+(row.constant===21?'':'let saved;')+body+(row.constant===21?'let saved;':'')+'})')();
 }
 async function observeConstant(fn,row,value,fault,flag,iterations,request='next',reject=false) {
   const trace=[],requests=[];let at=0,checks=0,returned,thrown,allocation;
@@ -95,6 +96,7 @@ async function observeConstant(fn,row,value,fault,flag,iterations,request='next'
     if([14,15].includes(row.constant)){assert.equal(returned,allocation??returned);assert.equal(Array.isArray(returned),row.constant===15);assert.equal(returned.visits??0,row.count);returned=token;}
   }catch(error){thrown=error;returned=undefined;}
   finally{if(row.constant===12)Object.defineProperty(Number.prototype,'toString',descriptor);}
+  if(row.constant===21){assert.ok(thrown instanceof ReferenceError);thrown=failure;}
   return {trace,requests,returned,thrown};
 }
 let comparisons=0, mutations=0, folded=0;
