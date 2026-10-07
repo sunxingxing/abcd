@@ -2,6 +2,7 @@
 #include "../../../src/source/binding_interference.h"
 #include "../../../src/source/flow_definitions.h"
 #include "../../../src/source/definition_elision.h"
+#include "../../../src/source/flow_dominance.h"
 #include "../../../src/source/binding_initializer.h"
 #include <array>
 #include <algorithm>
@@ -17,6 +18,52 @@ void Check(bool condition,std::source_location at=std::source_location::current(
 void Link(RecoveryFlow& flow,unsigned from,unsigned to) {
   flow.edges.push_back({{from},{to},FlowCompletion::kNormal,flow.events[to].incoming,flow.events[from].outgoing});
   flow.events[to].incoming=flow.events[from].outgoing=flow.edges.size()-1;
+}
+void CompletionDominance() {
+  for(unsigned mask=0;mask<512;++mask) {
+    RecoveryFlow flow{};flow.events.resize(3);flow.entry={0};
+    for(unsigned i=0;i<9;++i)if(mask&(1U<<i)) {
+      Link(flow,i/3,i%3);flow.edges.back().completion=i%2?FlowCompletion::kThrow:FlowCompletion::kResumeNext;
+    }
+    const auto reachable=[&](std::optional<unsigned> removed) {
+      std::array<bool,3> seen{};std::vector<unsigned> pending;
+      if(removed!=0){seen[0]=true;pending.push_back(0);}
+      while(!pending.empty()) {
+        const auto from=pending.back();pending.pop_back();
+        for(const auto& edge:flow.edges)if(edge.from.value==from&&edge.to.value!=removed&&!seen[edge.to.value]) {
+          seen[edge.to.value]=true;pending.push_back(edge.to.value);
+        }
+      }
+      return seen;
+    };
+    const auto all=reachable({});const auto result=std::get<FlowDominance>(AnalyzeFlowDominance(flow));
+    for(unsigned a=0;a<3;++a) {
+      const auto without=reachable(a);
+      for(unsigned b=0;b<3;++b)Check(result.Dominates({a},{b})==(all[b]&&!without[b]));
+    }
+    Check(std::holds_alternative<FlowDominance>(AnalyzeFlowDominance(flow,{result.allocated_bytes,result.work})));
+    Check(std::get<TreeStructureError>(AnalyzeFlowDominance(flow,{result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
+    Check(std::get<TreeStructureError>(AnalyzeFlowDominance(flow,{result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);
+  }
+  std::cout<<"independent completion dominance graphs 512\n";
+}
+void PreservedInitializations() {
+  for(bool bypass:{false,true}) {
+    RecoveryFlow flow{};flow.entry={0};flow.events.resize(4);flow.statements.resize(2);
+    flow.bindings={{BindingKind::kCompilerTemporary,FlowBindingExposure::kPrivate,StmtId{0}},
+      {BindingKind::kCompilerTemporary,FlowBindingExposure::kPrivate,StmtId{1}}};
+    flow.definitions={{{1},{0},FlowDefinitionKind::kUndefined,{},{},StmtId{0}},
+      {{2},{1},FlowDefinitionKind::kUndefined,{},{},StmtId{1}}};
+    flow.events[1].definition=FlowDefinitionId{0};flow.events[2].definition=FlowDefinitionId{1};flow.events[3].read=SymbolId{1};
+    Link(flow,0,1);Link(flow,1,2);Link(flow,2,3);if(bypass){Link(flow,0,2);flow.edges.back().completion=FlowCompletion::kThrow;}
+    const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));
+    const std::array<std::optional<SymbolId>,2> storage={std::nullopt,SymbolId{0}};
+    const auto result=std::get<StorageInitializations>(PlanStorageInitializations(flow,live,storage));
+    Check(bool(result.blocked[1])==bypass);Check(result.stores[1].has_value()==!bypass);
+    Check(std::holds_alternative<StorageInitializations>(PlanStorageInitializations(flow,live,storage,{result.allocated_bytes,result.work})));
+    Check(std::get<TreeStructureError>(PlanStorageInitializations(flow,live,storage,{result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
+    Check(std::get<TreeStructureError>(PlanStorageInitializations(flow,live,storage,{result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);
+  }
 }
 // Independent small fixed-point oracle. Deliberately scans all edges and uses
 // a tiny dense set; production uses sparse backward propagation and pair lookup.
@@ -231,6 +278,15 @@ void SourceEvents() {
     if(event.expression==ExprId{4}&&event.read){Check(event.read==SymbolId{1});++shared_reads;}
   }
   Check(shared_updates==1&&shared_reads==1);
+  std::vector<std::optional<SymbolId>> undefined_stores(tree.statements.size());undefined_stores[2]=SymbolId{1};
+  omitted[2]=0;
+  const auto preserved=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,
+      {aliases,literals,replacements,omitted,evaluations,normal,native,private_bindings,storage,undefined_stores}));
+  unsigned resets=0;
+  for(const auto& definition:preserved.definitions)if(definition.kind==FlowDefinitionKind::kUndefinedStore) {
+    Check(definition.binding==SymbolId{1}&&definition.declaration==StmtId{2});++resets;
+  }
+  Check(resets==1&&preserved.bindings[1].declaration==StmtId{3});omitted[2]=1;
   // A later read through the retained name demands a write through the removed
   // name. Using the pre-storage graph would falsely classify that write dead.
   const auto original_update=tree.expressions[4],original_return=tree.expressions[5];
@@ -298,4 +354,4 @@ void SourceEvents() {
 
 }
 }
-int main(){SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+int main(){CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

@@ -25,5 +25,18 @@ struct BindingElisions {
 // lifetime, or dropping native/explicit initializer evaluation.
 [[nodiscard]] std::variant<BindingElisions,TreeStructureError> PlanBindingElisions(
     const RecoveryFlow&,const DefinitionElisions&,analysis::SemanticBudget = {});
+struct StorageInitializations {
+  std::vector<std::optional<SymbolId>> stores;
+  std::vector<std::uint8_t> blocked;
+  std::size_t allocated_bytes=0;
+  std::uint64_t work=0;
+};
+// Separately preserve live undefined values after proposed storage sharing.
+// Shared liveness decides value retention; completion dominance proves that
+// the retained declaration has completed before the preserved write. Source
+// scope/name availability remains the source binding planner's obligation.
+[[nodiscard]] std::variant<StorageInitializations,TreeStructureError> PlanStorageInitializations(
+    const RecoveryFlow&,const FlowLiveness&,std::span<const std::optional<SymbolId>>,
+    analysis::SemanticBudget = {});
 }
 #endif

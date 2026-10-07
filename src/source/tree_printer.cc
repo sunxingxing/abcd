@@ -1314,6 +1314,9 @@ class TreePrinter {
     Push(BlockCursor{at.id, 0, at.depth});
   }
   void StatementNode(const DeclarationStmt& node, Statement at) {
+    if(const auto target=Initializers().undefined_stores[at.id.value]) {
+      Name(*target);Append(" = void 0;");return;
+    }
     if (ModuleBody() && default_export_ && at.id == default_export_->declaration) {
       Append("export default ");
       const auto& value = Tree().expressions[node.initializer->value].expression;

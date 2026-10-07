@@ -54,6 +54,14 @@ class FlowBuilder {
           !projection_.private_bindings.empty() && projection_.private_bindings[i]
               ? FlowBindingExposure::kPrivate : FlowBindingExposure::kObservable};
     }
+    // Native source declarations supersede their original empty placeholders.
+    // This is the supplied declaration plan, not inferred first-use syntax.
+    for(const auto& definition:result.definitions) {
+      budget_.Step();auto& binding=result.bindings[definition.binding.value];
+      if(definition.kind==FlowDefinitionKind::kInitializer ||
+          (definition.kind==FlowDefinitionKind::kUndefined && !binding.declaration))
+        binding.declaration=definition.declaration;
+    }
     result.allocated_bytes=budget_.Bytes();result.work=budget_.Work();return result;
   }
  private:
@@ -184,6 +192,10 @@ class FlowBuilder {
         auto evaluation=context;evaluation.discarded=id;Link(start,Expr(node.expression,evaluation));
       }
       else if constexpr(std::is_same_v<T,DeclarationStmt>) {
+        if(!projection_.undefined_stores.empty())if(const auto target=projection_.undefined_stores[at.id.value]) {
+          const auto commit=Define(*target,FlowDefinitionKind::kUndefinedStore,{},{},at.id,{},FlowWriteEffect::kInert);
+          Link(start,commit);Link(commit,context.next);return;
+        }
         auto commit=Define(node.symbol,node.initializer?FlowDefinitionKind::kInitializer:FlowDefinitionKind::kUndefined,{},node.initializer,at.id);Link(commit,context.next);
         Link(start,node.initializer?Expr(*node.initializer,{commit,context.thrown,context.finalizer}):commit);
       } else if constexpr(std::is_same_v<T,IfStmt>) {

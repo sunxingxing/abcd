@@ -24,6 +24,37 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-07：规则184，保留活跃undefined并退出Coalesce的CompletedStore
+
+- Coalesce中的CompletedStore调用已移除，没有改名或移到另一个准入函数。
+  存储提案后的独立PlanStorageInitializations消费共同活跃性：已死的初始
+  undefined可省略，仍活跃的值在原声明位置写入共享存储。共同干涉分析
+  已计入这次写入，若会覆盖另一活跃值则不共享。
+- RecoveryFlow记录当前选定的源码声明；显式native初始化优先于其原空声明
+  占位。复用既有Lengauer–Tarjan实现的AnalyzeFlowDominance，在包含全部
+  exception/resume/conservative-cleanup边的图上证明目标声明先完成。
+  二叉fanout仅适配既有图存储，保留真实事件间全部路径，不是恢复准入形状。
+- 源码计划新增undefined_stores；printer只在原语句输出binding = void 0，
+  不自行判断初始化死活。重建图以UndefinedStore区分赋值与词法初始化。
+  既有ResolveTreeReferences/RootLifetime同时覆盖这次显式写入的词法身份，
+  不增加样本、首条操作、邻接或同块规则。两份提案验证后共同提交。
+- 新增直线活跃undefined、循环中重复初始化、目标native声明尚未完成等
+  完整源码场景；保留原有干涉反例。漏掉reset的合法JS错误变换必须被独立
+  执行发现。512个completion图通过独立删点可达性oracle验证支配关系，
+  包含异常/恢复边和超过两个后继；另测初始化异常绕过及exact/short预算。
+- 完成相关目标重建，日志/tmp/abcd-rule184-build.log。最终54项相关回归
+  全部通过343.64秒，日志/tmp/abcd-rule184-tests.log、详细输出
+  /tmp/abcd-rule184-test-detail.log。存储恢复197份源码/30,164行为/11反例，
+  定义恢复184份源码/2,080行为/3反例；200/201/400/800、arena重排、预算
+  边界及既有175,616/98,304小图对照继续通过。
+- ABC-only导出build/stage-one/preserved-initialization-rule184仍为
+  10complete/0partial/9noModule，十份源码node --check通过，正文与规则183
+  一致；日志/tmp/abcd-rule184-export.log。没有新增真实record验收声明。
+- CompletedStore在常量/不可变复制恢复中仍存在；InitializedRead、native
+  readiness、RootLifetime及完整activation模型继续迁移。这里只证明存储
+  合并这一决策路径已退出旧条件，不代表统一变量里程碑或阶段一完成。
+  结构gate、Goal active及全量语料/RSS/DFX/代理暂停范围保持。
+
 ### 2026-10-07：规则183，共同流图接入存储映射与依赖驱动的后续清理
 
 - 核对CompletedStore后续迁移时发现前提缺口：CurrentFlow尚未消费已提交

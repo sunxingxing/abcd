@@ -13,13 +13,14 @@ struct DiscardedEvaluation {
   ExpressionEvaluation effect = ExpressionEvaluation::kInert;
 };
 enum class FlowCompletion : std::uint8_t { kNormal, kThrow, kReturn, kJump, kTaken, kNotTaken, kResumeNext, kResumeThrow, kResumeReturn, kConservativeCleanup };
-enum class FlowDefinitionKind : std::uint8_t { kParameter, kUndefined, kInitializer, kAssignment, kUpdate, kCatch };
+enum class FlowDefinitionKind : std::uint8_t { kParameter, kUndefined, kInitializer, kAssignment, kUpdate, kCatch, kUndefinedStore };
 enum class FlowEventKind : std::uint8_t { kControl, kTruthBranch, kNullishBranch, kRead, kEvaluation, kEnterScope, kLeaveScope, kDefinition, kSuspend };
 enum class FlowWriteEffect : std::uint8_t { kObservable, kInert };
 enum class FlowBindingExposure : std::uint8_t { kObservable, kPrivate };
 struct FlowBinding {
   BindingKind kind;
   FlowBindingExposure exposure = FlowBindingExposure::kObservable;
+  std::optional<StmtId> declaration;
 };
 struct BindingInitializer;
 struct FlowDefinition {
@@ -60,6 +61,7 @@ struct LegacyFlowProjection {
   // Applied storage plan, distinct from immutable value aliases. All reads,
   // successful definitions and update read/write halves use this identity.
   std::span<const std::optional<SymbolId>> storage;
+  std::span<const std::optional<SymbolId>> undefined_stores;
 };
 struct RecoveryFlow {
   RouteInputIdentity identity;

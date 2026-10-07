@@ -97,7 +97,7 @@ const分析、const提案、批量提交。AnalyzeEvaluations为const，返回�
 
 | 当前决策 | 当前证明义务 | 替代方/退出标准 |
 | --- | --- | --- |
-| Coalesce::CompletedStore | 删除empty声明不会丢live undefined | DefinitionElision按定义live/use决定，Coalesce删除该条件 |
+| Coalesce::CompletedStore（规则184已退出） | 删除empty声明不会丢live undefined | PlanStorageInitializations消费共享live事实；死值省略，活跃值在原点写回，共同completion dominance证明目标初始化已完成 |
 | InitializedRead/normal_stores | TDZ/GetBindingValue/PutValue成功 | FlowBinding初始化与完成边；优化器不得重算 |
 | completion_order/native_ready/declaration_controls | 初始化先于改名引用 | FlowDefinitions与SourceVariables生命期证明 |
 | RootLifetime/Confined/region区间 | 原生for-let不改变环境与可见性 | 统一scope索引与binding lifetime计划 |
@@ -255,3 +255,40 @@ storage sharing, scope activation and CompletedStore retirement remain required.
 The new stage deliberately relies on the existing valid storage plan and does not
 expand its admission conditions. This mapping was a prerequisite for safely
 consuming common facts after storage changes, including future initialization work.
+
+## Live undefined across storage sharing (rules184)
+
+Coalesce no longer calls CompletedStore. It proposes noninterfering storage pairs,
+then a separate PlanStorageInitializations decides what happens to their empty
+declaration values. Shared all-read liveness identifies live undefined definitions;
+these become explicit stores at the original statement, while dead values can be
+omitted. The interference analysis already includes those initialization writes:
+a retained value clobbered by the reset prevents sharing, without a new shape rule.
+
+RecoveryFlow records the currently selected declaration per binding, with native
+declaration plans taking precedence over original empty placeholders. The existing
+Lengauer–Tarjan implementation is reused over ALL completion edges to prove that
+the retained declaration completed before each preserved write. A binary fanout
+adapter preserves all paths between real events, including exceptions, resume and
+conservative cleanup; it does not discard high-outdegree paths. Source name and
+activation availability still use ResolveTreeReferences and the grandfathered
+RootLifetime proof, now also for the explicit statement occurrence.
+
+The output plan has a distinct undefined_stores action. The printer emits the
+planned `binding = void 0` at that statement and makes no liveness decision. The
+rebuilt flow represents this as UndefinedStore, separate from lexical Undefined
+initialization, so later cleanup cannot mistake a store for a new declaration.
+Storage and initialization proposals commit together after all obligations pass.
+
+Tests cover a live initial undefined read after the retained binding's old value
+dies, repeated initialization inside a loop, an interfering retained old value,
+and a target whose native declaration is still in TDZ. Independent execution and
+missing-reset mutants distinguish preservation from merely suppressing the old
+CompletedStore guard. Dominance is checked by independently removing each vertex
+and recomputing reachability on 512 small completion graphs.
+
+CompletedStore remains in immutable copy/constant recovery, outside Coalesce.
+InitializedRead, native readiness and RootLifetime have not been replaced by a
+complete shared initialization/activation analysis. Initializer motion, closure
+cell reconstruction and whole-pipeline convergence remain open; this is a real
+retirement of one decision path, not completion of the entire architecture.

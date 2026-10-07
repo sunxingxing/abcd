@@ -55,6 +55,7 @@ class Initializers {
     budget.Array(plan_.literals, tree.symbols.size());
     budget.Array(plan_.aliases, tree.symbols.size());
     budget.Array(plan_.storage, tree.symbols.size());
+    budget.Array(plan_.undefined_stores, tree.statements.size());
     budget.Array(declaration_controls_, tree.symbols.size());
     budget.Array(completion_order_, tree.expressions.size());
     budget.Array(plan_.replacements, tree.expressions.size());
@@ -415,7 +416,7 @@ class Initializers {
       budget_.Step();private_bindings[i]=tree_.symbols[i].kind==BindingKind::kCompilerTemporary && !uses_[i].escaped;
     }
     const LegacyFlowProjection projection{plan_.aliases,plan_.literals,plan_.replacements,
-        plan_.omitted,evaluations,stores.normal_stores,plan_.statements,private_bindings,plan_.storage};
+        plan_.omitted,evaluations,stores.normal_stores,plan_.statements,private_bindings,plan_.storage,plan_.undefined_stores};
     auto built=BuildRecoveryFlow(tree_,projection,budget_.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&built))throw *error;
     auto flow=std::get<RecoveryFlow>(std::move(built));
@@ -494,11 +495,6 @@ class Initializers {
       const auto native = [&](SymbolId symbol) { const auto at = uses_[symbol.value].initializer;
         return at && plan_.statements[at->value].has_value(); };
       if (!native(pair.first) && native(pair.second)) std::swap(pair.first, pair.second);
-      // Removing the empty declaration must also remove only a dead initial
-      // undefined value. Transitional obligation: DefinitionElision must own
-      // keep/delete decisions, including a live undefined initialization after
-      // storage sharing. Do not expand CompletedStore; see unified-variables.md.
-      if (!CompletedStore(uses_[pair.second.value])) continue;
       paired[pair.first.value] = paired[pair.second.value] = 1;
       proposed[pair.second.value] = pair.first;
     }
@@ -529,11 +525,39 @@ class Initializers {
           (use.store && completion_order_[use.store->value] < completion_order_[occurrence.value]);
       if (!visible[i] || !RootLifetime(root, occurrence) || !initialized || !native_ready) blocked[targets[i].value] = 1;
     }
+    for(std::size_t i=0;i<proposed.size();++i){budget_.Step();if(blocked[i])proposed[i].reset();}
+    auto initialized=PlanStorageInitializations(flow,liveness,proposed,budget_.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&initialized))throw *error;
+    const auto& initialization=std::get<StorageInitializations>(initialized);
+    budget_.Admit(initialization.allocated_bytes,1);budget_.Step(initialization.work);
+    // The independent initialization plan owns value preservation. Reuse the
+    // source planner's lexical proof for its newly explicit write occurrences.
+    std::vector<TreeScopedReference> initialization_references;
+    std::vector<SymbolId> initialization_targets;
+    budget_.Array(initialization_references,uses_.size());budget_.Array(initialization_targets,uses_.size());count=0;
+    for(std::size_t i=0;i<proposed.size();++i) {
+      budget_.Step();blocked[i] |= initialization.blocked[i];
+      if(!proposed[i] || blocked[i] || !initialization.stores[uses_[i].declaration->value])continue;
+      initialization_references[count]={*proposed[i],tree_.symbols[i].scope};
+      initialization_targets[count++]={static_cast<std::uint32_t>(i)};
+    }
+    initialization_references.resize(count);initialization_targets.resize(count);
+    if(count) {
+      const auto resolved=ResolveTreeReferences(tree_,initialization_references,budget_);
+      for(std::size_t i=0;i<count;++i) {
+        budget_.Step();const auto target=initialization_targets[i];const auto root=*proposed[target.value];
+        const auto declaration=*uses_[target.value].declaration;
+        if(!resolved[i] || !RootLifetime(root,lexical_[declaration.value]))blocked[target.value]=1;
+      }
+    }
     bool changed=false;
     for (std::size_t i = 0; i < proposed.size(); ++i) {
       budget_.Step(); if (!proposed[i] || blocked[i]) continue;
       const auto root = *proposed[i]; const auto& use = uses_[i];
-      plan_.storage[i] = root; plan_.omitted[use.declaration->value] = 1;changed=true;
+      plan_.storage[i] = root;changed=true;
+      // Lifetime removal and value preservation are separate plan actions.
+      if(initialization.stores[use.declaration->value])plan_.undefined_stores[use.declaration->value]=root;
+      else plan_.omitted[use.declaration->value]=1;
       if (use.initializer) plan_.statements[use.initializer->value].reset();
       if (const auto initializer = uses_[root.value].initializer; initializer && plan_.statements[initializer->value])
         plan_.statements[initializer->value]->declaration = DeclarationKind::kLet;
@@ -672,12 +696,14 @@ class Initializers {
   // Transitional for-let lifetime proof; SourceVariables will consume the
   // shared binding activation/initialization facts, not another scope census.
   bool RootLifetime(SymbolId root,ExprId occurrence) const {
+    return RootLifetime(root,expression_owners_[occurrence.value]);
+  }
+  bool RootLifetime(SymbolId root,std::optional<StmtId> owner) const {
     const auto& use=uses_[root.value];
     if(!use.initializer||!plan_.statements[use.initializer->value])return true;
     // A prospective native declaration may narrow its original lifetime (for
     // let includes test/body/update). Availability must cover substituted reads
     // in the printed owner, not only the canonical symbol's original scope.
-    const auto owner=expression_owners_[occurrence.value];
     if(!owner||!use.initializer_container)return false;
     const auto at=containers_[owner->value].begin;const auto range=containers_[use.initializer_container->value];
     return at>=range.begin&&at<range.end;

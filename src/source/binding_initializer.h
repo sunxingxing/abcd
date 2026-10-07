@@ -26,6 +26,9 @@ struct BindingInitializers {
   // Mutable storage coalescing is separate from immutable value aliases.
   // Disjoint pairs share a retained lexical binding after interference proof.
   std::vector<std::optional<SymbolId>> storage;
+  // Statement indexed: a live empty-declaration value retained as a write to
+  // shared initialized storage at the original occurrence, not a new binding.
+  std::vector<std::optional<SymbolId>> undefined_stores;
   [[nodiscard]] SymbolId Storage(SymbolId symbol) const {
     const auto root = aliases[symbol.value].value_or(symbol);
     return storage[root.value].value_or(root);

@@ -88,10 +88,10 @@ Interfaces: `PlanStorage` consumes flow/definitions/liveness and returns only st
 mapping. `PlanDefinitionElision` consumes that map and the same facts; returns typed
 keep/omit/preserve-RHS actions, including live declaration initialization.
 
-- [ ] Add a safe shared-slot example whose undefined initialization is live, and an
+- [x] Add a safe shared-slot example whose undefined initialization is live, and an
       interfering counterpart; source execution/mutations must distinguish both.
-- [ ] Remove Coalesce::CompletedStore; do not move it under another helper name.
-- [ ] Preserve live undefined as an explicit initialization at its original point;
+- [x] Remove Coalesce::CompletedStore; do not move it under another helper name.
+- [x] Preserve live undefined as an explicit initialization at its original point;
       eliminate dead definitions independently and retain RHS effects/throw behavior.
 - [ ] Run initializer/interference/stored-result tests plus independent JS behavior.
 - [ ] Commit with old-condition removal evidence.
@@ -168,3 +168,13 @@ coordinator rebuilds that mapped flow for dependent demand/declaration cleanup.
 Final counts/effects follow this commit. Tests include a write whose later use is
 visible only through the shared identity, plus the erroneous stale-graph deletion.
 This does not complete initialization/lifetime proof or global pass convergence.
+
+Rules184: Coalesce's CompletedStore call is removed. The independent
+PlanStorageInitializations consumes shared liveness and mapping proposals, retains
+live undefined as a store at its original statement and checks destination
+initialization with common completion dominance. Existing source visibility and
+activation proofs still apply. The printer consumes an explicit undefined_stores
+action; the rebuilt graph distinguishes this write from lexical initialization.
+Straight and repeated-loop cases, interfering old values, target TDZ and independent
+missing-reset mutants cover the new behavior. Shared general initialization,
+copy/constant CompletedStore uses and broader lifetime recovery remain incomplete.

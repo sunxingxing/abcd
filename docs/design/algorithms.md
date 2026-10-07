@@ -2514,3 +2514,32 @@ stage, rather than a graph traversal per binding or per mutation. This finite
 dependency schedule does not establish a global fixed point for repeated storage
 coalescing; that remains an explicit milestone gap. Mutable state is still local
 to a function and no analysis cache survives a projection mutation.
+
+### Preserving initialization values during storage sharing (rules184)
+
+PlanStorageInitializations independently consumes the current RecoveryFlow,
+all-read liveness and proposed storage map. For B bindings, D definitions and S
+statements it indexes active declaration points and proposes preserved undefined
+writes in O(B+D+S) work/storage. A dead initial value is omitted; a live value stays
+at its occurrence. Shared interference already accounts for these writes, rather
+than relying on a first-read/store pattern. Source name/activation constraints
+remain the documented source planner obligation. The printer only renders actions.
+
+When preserved writes need initialization-order proof, AnalyzeFlowDominance reuses
+the project's existing simple Lengauer–Tarjan implementation (provenance above;
+src/analysis/dominators.cc). The adapter includes every RecoveryFlow completion
+edge. For N events/E edges it builds N+E vertices: each original event points into
+a binary fanout chain over its outgoing edges. Paths between original events are
+unchanged, so original-event dominance is preserved. It costs O(N+E) adapter work
+and memory, followed by O((N+E) log(N+E)) dominance work and O(N+E) memory. No
+per-binding traversal, quadratic threshold or external dependency is introduced.
+The byte quota includes graph storage and the upstream solver's simultaneous
+scratch; work includes its reported steps. Empty/no-proof-needed proposals avoid
+the solver by semantic demand, not input size or graph shape.
+
+Independent remove-vertex reachability checks all dominance pairs on 512 small
+graphs including exception/resume edges and fanouts above two. Tests exercise
+preserved initialization, bypassing its destination declaration, loop reactivation,
+200/201/geometric layouts, arena permutations, and exact/short quotas. Execution
+oracles and missing-reset mutants distinguish correct sharing from lost undefined.
+These are bounded algorithm/correctness checks, not full-corpus RSS measurements.

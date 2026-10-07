@@ -3,7 +3,7 @@ import {execFileSync} from 'node:child_process';
 import vm from 'node:vm';
 import {parseJavaScript} from './class_reference.mjs';
 const records=execFileSync(process.argv[2],['--emit'],{encoding:'utf8',timeout:60_000,maxBuffer:16*1024*1024}).trim().split('\n').map(JSON.parse);
-assert.equal(records.length,156);
+assert.equal(records.length,192);
 // Oracles describe the original storage semantics, never enter the engine.
 const references=[
   function(input,report,flag){let current=input,scratch=current;++scratch;current=scratch;return current;},
@@ -19,6 +19,9 @@ const references=[
   function(input,report,flag){let current=input,scratch=current;{let current=100;++scratch;}current=scratch;return current;},
   function(input,report,flag){let current=input,scratch;report(scratch);scratch=current;++scratch;current=scratch;return current;},
   function(input,report,flag){let current=input,scratch=current;++scratch;scratch=report(scratch);current=scratch;return current;},
+  function(input,report,flag){let current=0;report(current);let scratch;report(scratch);current=input;scratch=current;++scratch;current=scratch;return current;},
+  function(input,report,flag){let current=0;report(current);for(;;){let scratch;report(scratch);current=input;scratch=current;++scratch;current=scratch;if(flag)break;flag=true;}return current;},
+  function(input,report,flag){let current,scratch;report(scratch);current=input;scratch=current;++scratch;current=scratch;return current;},
 ];
 const primitives=[undefined,null,false,true,0,-0,1,-2,0n,2n,NaN,Infinity,'','7','bad',Symbol('input')];
 let cases=0,mutations=0;
@@ -63,6 +66,12 @@ for(const record of records){
     parseJavaScript(mutant);const wrong=vm.runInNewContext(mutant);
     const mode=record.form===3?'report-throw':record.form===4?'reject':'normal';const request=record.form===5?'return':'next';
     assert.notDeepEqual(await observe(wrong,record.form,6,mode,true,request),await observe(references[record.form],record.form,6,mode,true,request));++mutations;
+  }
+  if(record.count===0&&!record.reverse&&[13,14].includes(record.form)) {
+    const missing=record.source.replaceAll('current = void 0;','');assert.notEqual(missing,record.source);
+    const wrong=vm.runInNewContext(missing);
+    assert.notDeepEqual(await observe(wrong,record.form,6,'normal',false,'next'),
+        await observe(references[record.form],record.form,6,'normal',false,'next'));++mutations;
   }
 }
 const scaled=execFileSync(process.argv[2],['--scale'],{encoding:'utf8',timeout:60_000,maxBuffer:16*1024*1024}).trim().split('\n').map(JSON.parse);

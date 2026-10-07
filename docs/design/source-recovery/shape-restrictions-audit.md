@@ -1905,3 +1905,16 @@ function names or layout. Old initialization, name and lifetime proofs remain
 unchanged. The adverse test is an ordinary write through an eliminated binding
 followed by a read through its retained slot; pre-storage analysis loses that
 dependency. Both flow facts and independently executed source exercise it.
+
+## Rules184: live undefined no longer bars storage sharing
+
+The Coalesce CompletedStore admission is removed, not renamed or moved to a new
+helper. An independent initialization plan consumes shared liveness and the
+proposed map: preserve each live undefined at its original site, omit dead ones.
+Shared interference checks whether that write clobbers another live value, and
+completion dominance proves the destination initialization precedes the reset.
+The existing lexical visibility/activation proof is reused for the explicit write.
+No same-block, adjacency, first-use/store, operation-sequence or sample test is
+introduced. Both repeated-loop initialization and straight execution use the same
+semantic plan. Original copy/constant CompletedStore and initialization/scope census
+are still explicit migration gaps, not claimed as retired by this change.
