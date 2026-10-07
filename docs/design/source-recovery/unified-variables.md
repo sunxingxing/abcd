@@ -65,13 +65,14 @@ read/definition与完成边，可先求解，再用于裁剪前向到达定义�
 资源耗尽仍返回typed错误，不能把未完成轮次声称为稳定结果。
 声明恢复引入的初始化同样进入模型，不能被打印器私自省略。
 
-当前尚无完整pass协调器：BindingInitializers::Run串行修改同一plan，
-通过手工重复RefreshProjection/OmitInertStores刷新部分事实。规则174已将
-原Evaluations拆为批量写入消除和随后只产出求值事实的AnalyzeEvaluations；
-存储结果分析不消费本轮新替换。规则175进一步将AnalyzeStoredResults、
-PlanStoredResultElisions与ApplyStoredResultElisions分开；前两者为const阶段，
-normal_stores每轮新建，提交时清除本轮已移除写入的事实。仍需统一版本
-失效与协调器，移除手工重跑。
+当前尚无完整pass协调器：BindingInitializers::Run串行修改同一plan。
+规则179移除RefreshProjection这一混合入口：ElideStoredResults仅执行
+const分析、const提案、批量提交。AnalyzeEvaluations为const，返回独立
+结果，不更新plan。Coalesce与OmitInertStores在消费处取得当前投影的
+局部事实，因此ForwardSnapshots之后不会复用之前的效果/写入事实。
+最终normal_stores/evaluations仅在Finish前发布，内部pass不再读取这两份
+输出缓存。局部分析随调用结束释放，不跨修改缓存；将来若缓存，必须引入
+完整投影版本及失效依赖。尚需多轮简化协调器与共同初始化模型。
 本次共享活跃性在冻结的局部RecoveryFlow上先算，干涉随后只消费它；
 二者计算期间不修改flow或plan，分析不跨存储映射应用继续复用。
 

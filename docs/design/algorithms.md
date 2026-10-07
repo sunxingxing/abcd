@@ -2401,3 +2401,17 @@ class bodies use the same coordinator once within the name-analysis invocation.
 Cross-printer-instance reuse remains open. No dependency or external code added.
 Tests cover projected class-name semantics and reduced shared-consumer work at
 0/1/200/201/400/800 copies with reversed statement arenas and exact/short budgets.
+
+### Projection-local effect facts (rules179)
+
+Stored-result elision observes a fixed plan, then commits its replacement delta.
+Effect analysis is const and returns an owned vector. Storage interference and
+inert-statement deletion derive facts at consumption; final public summaries are
+published only after all plan edits. No consumer depends on a manually refreshed
+output cache. This removes the stale-effect interval after snapshot forwarding.
+For E expressions, each analysis costs O(E + child edges) time and O(E) storage;
+the current finite sequence adds a constant number of analyses, not per-variable
+walks. Every fresh allocation and traversal is budgeted, including overlap with
+proposal vectors. A future cache must carry full projection invalidation; this
+change deliberately has no cross-mutation cache. Initialization still uses the
+legacy census and simplification scheduling is not yet a fixed-point solver.

@@ -114,6 +114,14 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
   }
   f.Finish(body,reverse);test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));const auto plan=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
+  // Snapshot forwarding precedes storage analysis. Final facts must describe
+  // the forwarded expression, including effects newly present at a read site.
+  for (std::size_t i=0;i<tree.expressions.size();++i) if (const auto replacement=plan.replacements[i]) {
+    test::Check(!plan.normal_stores[i]);
+    if (plan.evaluations[replacement->value]==ExpressionEvaluation::kRequired)
+      test::Check(plan.evaluations[i]==ExpressionEvaluation::kRequired);
+  }
+
   const bool folded=form==Form::kReturn||form==Form::kIf||form==Form::kLoop||form==Form::kAwait||form==Form::kYield||form==Form::kTypeof||form==Form::kAlias||form==Form::kCatch||form==Form::kInterleavedAlias;
   if(plan.replacements[read.value].has_value()!=folded)std::cerr<<"form="<<static_cast<unsigned>(form)<<" count="<<count<<" reverse="<<reverse<<'\n';
   test::Check(plan.replacements[read.value].has_value()==folded);

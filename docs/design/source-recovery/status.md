@@ -24,6 +24,25 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-07：规则179，效果与成功写入事实不再跨pass修改复用
+
+- 定位并移除旧事实消费窗口：ForwardSnapshots改写替换后，Coalesce此前
+  仍读取前一次RefreshProjection的evaluations/normal_stores。现在消费者
+  对当前投影生成局部只读事实，存储方案提交后不再复用它们。
+- RefreshProjection退出调用路径，替换为只负责分析→提案→批量提交的
+  ElideStoredResults。AnalyzeEvaluations改为const并返回独立结果；
+  OmitInertStores自行取得当前效果事实，最终摘要只在Finish前发布。
+  内部pass不再读取plan的两份输出缓存，不靠手工刷新保证其新鲜度。
+- 快照测试增加最终替换效果与成功写入事实性质，保留arena反转、
+  200/201/几何规模与独立执行验证。构建日志/tmp/abcd-rule179-build.log；
+  最终17项相关定向回归全部通过，日志/tmp/abcd-rule179-tests.log。
+- pasteboard重新导出到build/stage-one/current-facts-rule179：
+  10complete/0partial/9noModule，十份源码node --check通过，正文与规则178
+  相同。没有新增实际record覆盖声明，暂停的全量测试/RSS未启动。
+- 这解决一处实际顺序依赖，不是完整协调器。仍需共同初始化、独立死定义
+  消除、存储与声明职责分离、基于delta的收敛调度；CompletedStore等过渡
+  义务尚未被共同模型替代。阶段一Goal与结构gate均保持未完成。
+
 ### 2026-10-07：规则178，类名与打印共享 SourceVariables 准备结果
 
 - 新增PrepareSourceVariables，以nullish → loop → binding的明确依赖顺序
