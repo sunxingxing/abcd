@@ -77,8 +77,9 @@ struct BindingInitializers {
 // execution count, effect/throw order and name resolution. Transparent scopes
 // collapse; prospective native declarations remain part of the environment.
 // Elided copy declarations are absent from the control/init event stream.
-// Direct function/class NamedEvaluation still needs projected destinations;
-// those snapshots stay. This is a representation gap, not a language invariant.
+// Function/class naming follows the projected destination and retains GetValue.
+// Strict resource contracts keep direct creations until a possible additional
+// name-wrapper allocation is excluded; other contracts may forward them.
 // RHS occurrences keep GetValue (not a member receiver or bare typeof lookup)
 // and their original ownership/ranges, including when for syntax prints earlier.
 // Ownership/copy walks are linear; spelling-index construction adds bounded

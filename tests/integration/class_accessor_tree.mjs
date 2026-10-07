@@ -270,3 +270,20 @@ for (const line of captured.stdout.trim().split('\n')) {
   }
 }
 console.log(`class capture scenarios: ${captureScenarios}`);
+
+// Class snapshot forwarding must preserve name without retaining private storage.
+const names = spawnSync(tool,['--class-names'],{encoding:'utf8',timeout:60_000});
+assert.equal(names.status,0,names.stderr);
+const snapshots = names.stdout.split('\n').filter(line=>line.startsWith('{')).map(JSON.parse);
+assert.equal(snapshots.length,2);
+for(const test of snapshots) {
+  assert.equal(test.snapshot_class,true);
+  const factory=vm.runInNewContext(test.source), C=factory(), D=factory();
+  assert.equal(C.name,test.name);assert.equal(C.length,0);
+  assert.notEqual(C,D);assert.notEqual(C.prototype,D.prototype);
+  const instance=new C();assert.equal(Object.getPrototypeOf(instance),C.prototype);
+  for(const value of [undefined,null,0,-0,NaN,{},[]]) {instance.value=value;assert.equal(instance.value,value);}
+  const descriptor=Object.getOwnPropertyDescriptor(C,'name');
+  assert.equal(descriptor.writable,false);assert.equal(descriptor.configurable,true);
+  assert.throws(()=>Reflect.apply(C,null,[]),error=>error.name==='TypeError');
+}

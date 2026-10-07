@@ -7,6 +7,7 @@
 #include "binding_initializer.h"
 #include "expression_children.h"
 #include "statement_children.h"
+#include "statement_expressions.h"
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/module_enclosure.h"
 
@@ -371,38 +372,49 @@ class TreePrinter {
     // No inner self binding is introduced. Retain creation-self envelopes and
     // arrow-method argument carriers. Standalone fragments have no destination
     // proof and retain their naming wrapper. Regression: native_function_names.
-    // First seed destinations without inference, then override the direct
-    // function operands of naming constructs; never walk a subtree per binding.
+    // Walk retained destinations once. A forwarded value suppresses name
+    // inference exactly as PrintOriginalExpression's GetValue envelope does.
+    // Omitted stores must never override the name at the surviving occurrence.
     for (std::size_t i = 0; i < family_->members.size(); ++i) {
       current_ = i;
-      for (std::size_t e = 0; e < Tree().expressions.size(); ++e) {
-        Step(); set(ExprId{static_cast<std::uint32_t>(e)}, {});
-      }
-    }
-    for (std::size_t i = 0; i < family_->members.size(); ++i) {
-      current_ = i;
-      for (const auto& expression : Tree().expressions) {
-        Step();
-        if (const auto* assignment = std::get_if<AssignmentExpr>(&expression.expression)) {
-          if (const auto* symbol = std::get_if<SymbolTarget>(&assignment->target))
-            set(assignment->value, Tree().symbols[symbol->symbol.value].name);
-        } else if (const auto* object = std::get_if<ObjectExpr>(&expression.expression);
-            object && object->kind == AggregateKind::kObject) {
-          for (std::uint32_t p = 0; p < object->properties.count; ++p) {
-            Step(); const auto& property = Tree().properties[object->properties.first + p];
-            set(property.value, property.key);
-          }
-        } else if (const auto* field = std::get_if<FieldDefinitionExpr>(&expression.expression)) {
-          set(field->value, field->name);
-        }
+      struct Destination { ExprId expression; NameContext name; };
+      std::vector<Destination> pending; Array(pending, Tree().expressions.size());
+      std::size_t count = 0;
+      const auto push = [&](ExprId expression, NameContext name = {}) {
+        Step(); if (count >= pending.size()) throw Error::kUnsupportedContext;
+        pending[count++] = {expression, name};
+      };
+      for (const auto& parameter : Tree().parameters) {
+        Step(); if (parameter.initializer) push(*parameter.initializer, Tree().symbols[parameter.symbol.value].name);
       }
       for (std::size_t at = 0; at < Tree().statements.size(); ++at) {
-        Step(); const auto* declaration = std::get_if<DeclarationStmt>(&Tree().statements[at].statement);
-        if (!declaration || !declaration->initializer) continue;
-        const bool default_value = ModuleBody() && default_export_ &&
-            default_export_->declaration == StmtId{static_cast<std::uint32_t>(at)};
-        set(*declaration->initializer, default_value ? NameContext{DefaultInferredName{}} :
-            NameContext{Tree().symbols[declaration->symbol.value].name});
+        Step(); if (Initializers().omitted[at]) continue;
+        const auto& statement = Tree().statements[at].statement;
+        if (const auto* declaration = std::get_if<DeclarationStmt>(&statement)) {
+          const bool default_value = ModuleBody() && default_export_ &&
+              default_export_->declaration == StmtId{static_cast<std::uint32_t>(at)};
+          if (declaration->initializer) push(*declaration->initializer, default_value ? NameContext{DefaultInferredName{}} :
+              NameContext{Tree().symbols[declaration->symbol.value].name});
+        } else VisitStatementExpressions(statement, [&](ExprId expression) {push(expression);});
+      }
+      while (count) {
+        Step(); const auto destination = pending[--count];
+        const auto id = destination.expression;
+        if (const auto replacement = Initializers().replacements[id.value]) {push(*replacement); continue;}
+        const auto& expression = Tree().expressions[id.value].expression;
+        set(id, destination.name);
+        if (const auto* object = std::get_if<ObjectExpr>(&expression)) {
+          for (std::uint32_t p = 0; p < object->properties.count; ++p) {
+            const auto& property = Tree().properties[object->properties.first + p];
+            push(property.value, object->kind == AggregateKind::kObject ? NameContext{property.key} : NameContext{});
+          }
+        } else VisitExpressionChildren(Tree(), expression, [&](ExprId child) {
+          NameContext name;
+          if (const auto* assignment = std::get_if<AssignmentExpr>(&expression); assignment && child == assignment->value) {
+            if (const auto* target = std::get_if<SymbolTarget>(&assignment->target)) name = Tree().symbols[target->symbol.value].name;
+          } else if (const auto* field = std::get_if<FieldDefinitionExpr>(&expression); field && child == field->value) name = field->name;
+          push(child, name);
+        });
       }
     }
     // Extra allocation is conditional on the final syntax, not merely metadata

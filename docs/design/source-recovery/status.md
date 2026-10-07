@@ -13,6 +13,46 @@
 ## 当前阶段
 
 
+### 2026-10-07：规则171，函数/类快照与实际命名目的贯通
+
+- 从干净c887c4fb继续。先核对结构gate与默认参数路径：一般默认表达式
+  受candidate、DefaultBody、signature独立验证及parameter scope共同约束，
+  不能只删除printer检查；尚无证据表明它阻塞固定五输入，未扩大这个域。
+- family命名预检从未省略的statement/parameter根开始，沿共同replacement
+  一次遍历实际表达式归属。replacement清除隐式命名目的，和printer的
+  GetValue envelope一致；assignment/property/field内部的原生目的仍
+  保留。省略的旧store不再覆盖最终name决策，不引入function self binding。
+- 直接FunctionExpr/ClassExpr快照复用原单次读取、执行/异常activation、
+  观察顺序和词法环境证明，不再一律保留。可能增加computed-name wrapper
+  分配时，严格计入resource failure的合同仍保留原快照；这是尚未证明
+  无新增分配的实现边界。class-self沿规则170投影证明，无新的样本/
+  opcode/同块/邻接/名称条件。每个family member有界工作栈，语法节点/
+  槽位线性访问，child owner查找沿既有排序索引，内存/work计入原budget。
+- 150个新函数快照组合覆盖六callable、五目的、五种runtime name；独立
+  执行验证name descriptor、length、fresh identity、constructibility、
+  async拒绝及generator next/throw。原1296命名组合、mutable capture、
+  1/200/201/402 owner/work预算检查保留。新增六个合法错误命名mutation，
+  合计60个命名变异。V1直接name为saved的原生初始化仍成功且保留存储，
+  其他需要wrapper的V1结果在输出前拒绝；没有因优化新增严格合同失败。
+- 两份真实decoded class定义进入共同FunctionTree的private snapshot，
+  分别用合法/需包装的类名。独立执行检查类名、length、新class/prototype
+  身份、constructor、accessor值、name descriptor和不可普通调用；没有
+  从配对源码生成正文。此前class naming/heritage冲突回归均保持。
+- 最终相关目标重建，11/11定向测试通过43.06秒：native names、class
+  names/accessors/omissions/declarations、record合同、statement snapshot，
+  以及实际ProgressBar、rich-text和语言构造paired。新function fixture
+  初次单项通过3.14秒。修改JS语法检查及git diff --check通过。
+- fresh build/stage-one/function-snapshot-rule171与规则169输入SHA一致，
+  19records仍10complete/0partial/9noModule，十份mjs解析通过且正文全部
+  逐字不变。本轮是共同恢复能力扩展，不计新增实际record或完整style验收。
+  证据/tmp/abcd-projected-function-{build,test-build,test}.log、
+  /tmp/abcd-function-snapshot-final-{build,tests}.log及export.log。
+- Goal active；下一步仍须从固定输入的实际结构/正文/style缺口推进，不能
+  用这个组件通过关闭fields/globals/signatures/body或阶段一gate。full
+  suite、expanded corpus、RSS/benchmark、DFX、scheduler、agents与周期
+  audit保持暂停；输入未修改。
+
+
 ### 2026-10-07：规则170，按打印投影证明类名作用域
 
 - 从干净0f71ae79继续。检查规则169后的命名边界，复现私有`saved = C`

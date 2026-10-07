@@ -100,6 +100,46 @@ ConstructedFamily Naming(CallableKind kind, NamingPlace place, std::string_view 
   ConstructedFamily family; family.root = {1};
   family.members = {{std::move(child), {}, {}}, {std::move(root), {}, {}}}; return family;
 }
+void Snapshot(ConstructedFamily& family) {
+  auto& root = family.members[family.root.value].tree;
+  const NameId name{static_cast<std::uint32_t>(root.names.size())}; root.names.push_back(u"saved");
+  const SymbolId symbol{static_cast<std::uint32_t>(root.symbols.size())};
+  root.symbols.push_back({{1},name,BindingKind::kCompilerTemporary,DeclarationKind::kLet,
+      NameEvidence::kSynthesized,TemporaryReason::kMultipleUses});
+  const ExprId created{static_cast<std::uint32_t>(root.expressions.size())};
+  root.expressions.push_back(root.expressions[0]); root.expressions[0].expression=SymbolExpr{symbol};
+  const ExprId store{static_cast<std::uint32_t>(root.expressions.size())};
+  root.expressions.push_back({AssignmentExpr{SymbolTarget{symbol},created},{0}});
+  const StmtId declaration{static_cast<std::uint32_t>(root.statements.size())};
+  root.statements.push_back({DeclarationStmt{symbol,{}},{0}});
+  const StmtId assignment{static_cast<std::uint32_t>(root.statements.size())};
+  root.statements.push_back({ExpressionStmt{store},{0}});
+  root.children.insert(root.children.end()-1,{declaration,assignment});
+  std::get<BlockStmt>(root.statements[0].statement).child_count+=2;
+}
+void SnapshotNames() {
+  for (const auto kind : {CallableKind::kFunction,CallableKind::kArrow,CallableKind::kAsyncFunction,
+      CallableKind::kAsyncArrow,CallableKind::kGenerator,CallableKind::kAsyncGenerator})
+    for (const auto place : {NamingPlace::kReturn,NamingPlace::kAssignment,NamingPlace::kProperty,
+        NamingPlace::kArray,NamingPlace::kSequence})
+      for (const auto wanted : {"","saved","chosen","key","other name"}) {
+    auto family=Naming(kind,place,wanted,"key"); Snapshot(family);
+    std::ostringstream output;
+    const auto printed=PrintFamilyDraft(family,output);
+    Check(std::holds_alternative<PrintedFamilyDraft>(printed));
+    Check(output.str().find("const saved") == std::string::npos);
+    Check(output.str().find("let saved") == std::string::npos);
+    std::cout << nlohmann::json{{"callable",CallableLabel(kind)},{"place",static_cast<unsigned>(place)},
+        {"wanted",wanted},{"source",output.str()}} << '\n';
+    for(auto& member:family.members)member.tree.identity.contract=SourceContract::kLanguageAndHostV1;
+    std::ostringstream strict;
+    const auto constrained=PrintFamilyDraft(family,strict);
+    if(std::string_view(wanted)=="saved") {
+      Check(std::holds_alternative<PrintedFamilyDraft>(constrained));
+      Check(strict.str().find("const saved") != std::string::npos);
+    } else {Check(std::get<TreePrintError>(constrained)==TreePrintError::kUnsupportedContext);Check(strict.str().empty());}
+  }
+}
 void Names() {
   for (const auto kind : {CallableKind::kFunction, CallableKind::kArrow, CallableKind::kAsyncFunction,
       CallableKind::kAsyncArrow, CallableKind::kGenerator, CallableKind::kAsyncGenerator})
@@ -300,6 +340,7 @@ void TailCompletions() {
 }
 int main(int argc, char** argv) {
   if (argc == 2 && std::string_view(argv[1]) == "--tail-completions") { TailCompletions(); return 0; }
+  if (argc == 2 && std::string_view(argv[1]) == "--snapshot-names") { SnapshotNames(); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--names") { Names(); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--default-names") { DefaultNames(); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--name-shadow") { NameShadow(); return 0; }

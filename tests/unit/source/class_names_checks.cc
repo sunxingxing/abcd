@@ -4,6 +4,7 @@
 #include "../../../src/source/loop_syntax.h"
 #include "../../../src/source/nullish_syntax.h"
 #include <iostream>
+#include <nlohmann/json.hpp>
 #include <source_location>
 #include <sstream>
 namespace {
@@ -178,6 +179,27 @@ void CheckClassNames(const std::function<std::shared_ptr<abcd::source::ClassTree
     const auto statement = ranges.statements[1], expression = ranges.expressions[0];
     Check(statement.begin <= expression.begin && expression.begin < expression.end && expression.end <= statement.end);
   }
+  for (const auto name : {u"C", u"other name"}) {
+    definition->name = name;
+    auto syntax = Scope(); syntax.identity = definition->identity; syntax.method = definition->creation.creator;
+    syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict; syntax.body = {0};
+    syntax.names = {u"saved"};
+    syntax.symbols = {{{1},{0},BindingKind::kCompilerTemporary,DeclarationKind::kLet,
+        NameEvidence::kSynthesized,TemporaryReason::kMultipleUses}};
+    syntax.origins = {OriginalSite{{0},{0}}};
+    syntax.expressions = {{ClassExpr{definition,{}},{0}},
+        {AssignmentExpr{SymbolTarget{{0}},{0}},{0}}, {SymbolExpr{{0}},{0}}};
+    syntax.statements = {{BlockStmt{{1},0,3},{0}}, {DeclarationStmt{{0},{}},{0}},
+        {ExpressionStmt{{1}},{0}}, {ReturnStmt{ExprId{2}},{0}}};
+    syntax.children = {{1},{2},{3}};
+    std::ostringstream output;
+    Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(syntax,output)));
+    Check(output.str().find("saved") == std::string::npos);
+    const std::u16string_view wanted{name};
+    std::cout << nlohmann::json{{"snapshot_class",true},{"name",std::string(wanted.begin(),wanted.end())},
+        {"source",output.str()}} << '\n';
+  }
+  definition->name = u"C";
   const auto measured = Names(root);
   Check(std::get<TreeStructureError>(PlanClassNames(root, nullptr, {measured.allocated_bytes - 1, measured.work})) ==
       TreeStructureError::kResourceLimit);

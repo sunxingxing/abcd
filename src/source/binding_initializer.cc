@@ -346,11 +346,12 @@ class Initializers {
       const auto old_owner = expression_owners_[store.value], new_owner = expression_owners_[read.value];
       if (!old_owner || !new_owner || environments[old_owner->value] != environments[new_owner->value]) continue;
       const auto rhs = std::get<AssignmentExpr>(tree_.expressions[store.value].expression).value;
-      // Direct function/class definitions obtain a name from this destination.
-      // Forwarding those needs a projected NamedEvaluation context in the
-      // family printer. Retain that binding until that obligation is represented.
-      if (std::holds_alternative<FunctionExpr>(tree_.expressions[rhs.value].expression) ||
-          std::holds_alternative<ClassExpr>(tree_.expressions[rhs.value].expression)) continue;
+      // Native naming follows the projected destination. Moving a direct
+      // creation can require a computed-name wrapper; retain strict resource
+      // contracts until no additional allocation is proved for that destination.
+      if (ResourceFailures(tree_.identity.contract) != ResourceFailureScope::kExcluded &&
+          (std::holds_alternative<FunctionExpr>(tree_.expressions[rhs.value].expression) ||
+           std::holds_alternative<ClassExpr>(tree_.expressions[rhs.value].expression))) continue;
       plan_.replacements[read.value] = rhs;
       plan_.forwarded_statements[use.root_store->value] = 1;
       plan_.omitted[use.declaration->value] = plan_.omitted[use.root_store->value] = 1;

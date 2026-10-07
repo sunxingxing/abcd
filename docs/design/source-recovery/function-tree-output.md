@@ -4,6 +4,13 @@
 这是设计变更，不代表相关接口已经实现。旧文档中“验证/发布义务全部闭合才允许
 输出”、新增 budget/receipt 设施作为功能前置的要求，由本文替代。
 
+规则171实现补充：family原生命名预检从保留的statement/parameter根沿
+共同replacement遍历实际目的，省略store不再用旧目的覆盖结果。
+GetValue投影抑制新的隐式name，assignment/property/field的真实子目的
+仍按语言NamedEvaluation处理。因此有唯一有序读取的直接function/class
+快照可共用转发；严格资源合同暂保留可能新增name-wrapper分配的快照。
+原求值/异常/作用域证明保持，不放开一般默认参数的正文分离和作用域义务。
+
 规则170实现补充：class-self命名分析跟随实际binding投影的表达式归属。
 私有快照RHS移入heritage时，在新增类名环境内检查它的真实自由引用；
 别名读取检查最终保留的SymbolId，常量替换不再产生虚假的绑定引用。

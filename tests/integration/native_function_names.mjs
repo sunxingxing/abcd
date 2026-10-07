@@ -15,7 +15,14 @@ const kinds = new Map([
   ['generator', {generator: true}], ['async-generator', {async: true, generator: true}],
 ]);
 let mutations=0;
-for (const test of cases) {
+const snapshots = emit('--snapshot-names').trim().split('\n').map(JSON.parse);
+assert.equal(snapshots.length, 150);
+for(const test of snapshots.filter(test=>test.place===0&&test.wanted==='saved')) {
+  const changed=test.source.replaceAll('"saved"','"wrong"');
+  assert.notEqual(changed,test.source);parseJavaScript(changed);
+  assert.notEqual(vm.runInNewContext(changed)().name,test.wanted);++mutations;
+}
+for (const test of [...cases,...snapshots]) {
   const context = vm.createContext({});
   const factory = vm.runInContext(test.source, context);
   const fn = factory();
@@ -93,4 +100,4 @@ for (const test of scaled) {
   }
   console.log(`native-name family count=${test.count} work=${test.work} allocated=${test.allocated}`);
 }
-console.log(`${cases.length} native-name contexts, ${mutations} valid mutations and mutable capture verified`);
+console.log(`${cases.length} native-name contexts, ${snapshots.length} forwarded snapshots, ${mutations} valid mutations and mutable capture verified`);

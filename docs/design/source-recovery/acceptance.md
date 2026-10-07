@@ -1,5 +1,13 @@
 # 验收、证据与实施交接
 
+2026-10-07规则170/171：class-self分析和family原生命名预检沿实际
+binding replacement/alias目的证明作用域与name。修复外部父类被新增
+类名遮蔽，并允许普通资源合同内的有序直接function/class快照转发。
+规则170最终13项通过；规则171最终11项通过，新增150函数/两类快照
+独立执行及六命名变异。fresh pasteboard十份源码与规则169逐字不变，
+仍10complete/0partial/9noModule，不计新增实际record覆盖或整体风格
+完成。严格resource合同、一般默认参数和其余gate边界详见status.md。
+
 2026-10-07规则169：共同FunctionTree快照转发恢复真实三个for条件的直接
 比较，七份pasteboard record共少21个私有value/phi声明，另三份正文不变。
 同一activation、保留观察顺序和词法环境等价由共同census证明，phase

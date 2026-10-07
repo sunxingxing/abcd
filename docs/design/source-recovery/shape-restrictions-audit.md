@@ -1,5 +1,12 @@
 # 按用户要求进行的恢复条件审计
 
+规则171补充：移除直接FunctionExpr/ClassExpr快照的一律保留；普通
+有序转发证明不变，命名预检改为实际目的ownership的一次遍历。replacement
+代表GetValue，不能凭目的变量/属性拼写给移来的函数新增name；原assignment
+等内部命名目的仍保留。严格资源合同暂保留直接creation，是尚未证明新增
+命名包装分配可忽略的覆盖限制，不是function/class不能跨块的语言不变量。
+无额外名字/同块/指令/样本条件，class-self证明沿规则170的实际投影继续。
+
 规则170补充：消除“canonical表达式归属就是最终打印归属”的隐含假设。
 class-self作用域证明消费共同快照/store/alias/literal投影：被移走的RHS
 在实际读取目的下检查，省略store不再重复遍历，alias检查最终绑定。
