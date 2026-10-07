@@ -52,10 +52,11 @@ Files: create src/source/flow_definitions.h/.cc, flow_liveness.h/.cc,
  tests/unit/source/flow_definitions_test.cc and flow_liveness_test.cc;
 modify binding_interference.cc and binding_initializer.cc.
 
-Interfaces: `AnalyzeFlowDefinitions(const RecoveryFlow&, SemanticBudget)` returns
-immutable reaching-definition/def-use/initialization facts with typed source origins.
-`AnalyzeFlowLiveness(const RecoveryFlow&, const FlowDefinitions&, SemanticBudget)`
-returns sparse live facts, dead definitions and interference queries.
+Interfaces: `AnalyzeFlowLiveness(const RecoveryFlow&, SemanticBudget)` returns
+sparse incoming live facts and live definitions. `AnalyzeFlowDefinitions` consumes
+that same immutable graph and its liveness to prune forward reaching-definition
+propagation. Initialization proof remains a separate obligation; empty def-use is
+not evidence of initialization. Interference consumes shared live facts.
 
 - [ ] Add independent small-graph fixed-point oracle for reaching definitions/liveness;
       cover early reads, success/failure writes, diamond/loop and repeated scope entry.
@@ -64,6 +65,12 @@ returns sparse live facts, dead definitions and interference queries.
       remove their local semantic decision branches from the migrated path.
 - [ ] Verify oracle equality, 200/201/geometric cases and exact/short budgets.
 - [ ] Commit and enumerate retired branches.
+
+Implemented substep: shared backward liveness now drives production interference;
+forward def-use is tested against an independent oracle but has no transformation
+consumer yet. Tests live in recovery_flow_test.cc to share only graph fixtures,
+not production solver logic. Original SSA/phi retention and initialization migration
+remain open; task 2 is not complete.
 
 ### Task 3: Separate storage sharing from definition elision
 
@@ -94,6 +101,9 @@ Printer and class-name analysis receive the same prepared plan per function owne
 - [ ] Test renamed storage across nested shadows, original locals, native for-let,
       reassignment/const and omitted forwarded origins.
 - [ ] Replace duplicated scope/initialization census with common lifetime/name queries.
+- [ ] Declare pass fact dependencies and projection revisions; apply deltas atomically,
+      invalidate/recompute before consumers, and separate Evaluations analysis from
+      replacement mutation. Iterate only simplifying groups with a convergence measure.
 - [ ] Move migrated inert/definition decisions out of printer; retain syntax/precedence.
 - [ ] Keep legacy adapter only for explicitly unconverted domains; list its obligations.
 - [ ] Run loop/local/binding/snapshot/class-name/record-contract tests and commit.

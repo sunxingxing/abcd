@@ -212,10 +212,10 @@ class Initializers {
     }
     Constants();
     Aliases();
-    Evaluations();
+    RefreshProjection();
     ForwardSnapshots();
     Coalesce();
-    Evaluations();
+    RefreshProjection();
     OmitInertStores();
     for (std::size_t i = 0; i < loops_.initializer_roots.size(); ++i) {
       budget_.Step(); plan_.entry_counts[i + 1] = plan_.entry_counts[i] +
@@ -247,7 +247,7 @@ class Initializers {
         }
       }
     }
-    Evaluations();
+    RefreshProjection();
     OmitInertStores();
     for (std::size_t i = 0; i < loops_.initializer_roots.size(); ++i) {
       budget_.Step(); plan_.entry_counts[i + 1] = plan_.entry_counts[i] +
@@ -405,7 +405,11 @@ class Initializers {
     if(const auto* error=std::get_if<TreeStructureError>(&built))throw *error;
     auto flow=std::get<RecoveryFlow>(std::move(built));
     budget_.Admit(flow.allocated_bytes,1);budget_.Step(flow.work);
-    auto analyzed = FindBindingInterference(flow, budget_.Remaining());
+    auto live=AnalyzeFlowLiveness(flow,budget_.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&live))throw *error;
+    const auto& liveness=std::get<FlowLiveness>(live);
+    budget_.Admit(liveness.allocated_bytes,1);budget_.Step(liveness.work);
+    auto analyzed = FindBindingInterference(flow,liveness,budget_.Remaining());
     if (const auto* error = std::get_if<TreeStructureError>(&analyzed)) throw *error;
     auto facts = std::get<BindingInterference>(std::move(analyzed));
     budget_.Admit(facts.allocated_bytes, 1); budget_.Step(facts.work);
@@ -478,7 +482,16 @@ class Initializers {
     }
     throw TreeStructureError::kBinding;
   }
-  void Evaluations() {
+  void RefreshProjection() {
+    // Dependency boundary: propose against one immutable projection, commit
+    // all elisions, then compute effects for the resulting projection. No
+    // consumer may observe effects from before the replacement commit.
+    ApplyStoredResultElisions();
+    AnalyzeEvaluations();
+  }
+  void ApplyStoredResultElisions() {
+    std::vector<std::optional<ExprId>> replacements;
+    budget_.Array(replacements, tree_.expressions.size());
     std::vector<std::optional<SymbolId>> stored;
     budget_.Array(stored, tree_.expressions.size());
     // Scan's finish order is postorder even when expression IDs are reversed.
@@ -508,13 +521,28 @@ class Initializers {
           result = plan_.Storage(target->symbol);
           plan_.normal_stores[id.value] = InitializedRead(*result, id);
           if (stored[assignment->value.value] == result)
-            plan_.replacements[id.value] = assignment->value;
+            replacements[id.value] = assignment->value;
         }
       } else if (const auto* update = std::get_if<UpdateExpr>(&node)) {
         if (update->result == UpdateResult::kPrefix && MutableBinding(update->symbol)) result = plan_.Storage(update->symbol);
       } else if (const auto* sequence = std::get_if<SequenceExpr>(&node)) result = stored[sequence->right.value];
       else if (const auto* choice = std::get_if<ConditionalExpr>(&node)) result = join(choice->consequent, choice->alternate);
       else if (const auto* logical = std::get_if<LogicalExpr>(&node)) result = join(logical->left, logical->right);
+    }
+    // A proposed outer elision uses the RHS normal-result identity, which is
+    // preserved by every inner elision. Thus the batch does not depend on
+    // proposal application order; no newly rewritten syntax is re-matched.
+    for (std::size_t i = 0; i < replacements.size(); ++i) {
+      budget_.Step();
+      if (replacements[i]) plan_.replacements[i] = replacements[i];
+    }
+  }
+  void AnalyzeEvaluations() {
+    // This pass only produces evaluation facts; it cannot rewrite expressions.
+    // Completion order is semantic postorder, independent of arena numbering.
+    for (std::size_t at = 0; at < completion_count_; ++at) {
+      budget_.Step(); const auto id = completions_[at];
+      const auto& node = tree_.expressions[id.value].expression;
       auto evaluation = IntrinsicEvaluation(node);
       if (const auto replacement = plan_.replacements[id.value]) evaluation = plan_.evaluations[replacement->value];
       else if (const auto* read = std::get_if<SymbolExpr>(&node)) {

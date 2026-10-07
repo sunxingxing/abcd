@@ -1,6 +1,8 @@
 #include "../../../src/source/recovery_flow.h"
 #include "../../../src/source/binding_interference.h"
+#include "../../../src/source/flow_definitions.h"
 #include <array>
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <source_location>
@@ -16,7 +18,8 @@ void Link(RecoveryFlow& flow,unsigned from,unsigned to) {
 }
 // Independent small fixed-point oracle. Deliberately scans all edges and uses
 // a tiny dense set; production uses sparse backward propagation and pair lookup.
-bool Oracle(const RecoveryFlow& graph) {
+struct OracleFacts {bool interference=false;std::array<std::array<bool,2>,3> live{};};
+OracleFacts Oracle(const RecoveryFlow& graph) {
   std::array<std::array<bool,2>,3> in{},out{};bool changed=true;
   while(changed){changed=false;
     for(unsigned point=0;point<3;++point) {
@@ -31,8 +34,8 @@ bool Oracle(const RecoveryFlow& graph) {
     }
   }
   for(const auto& definition:graph.definitions)for(unsigned binding=0;binding<2;++binding)
-    if(binding!=definition.binding.value&&definition.copy!=SymbolId{binding}&&out[definition.point.value][binding])return true;
-  return false;
+    if(binding!=definition.binding.value&&definition.copy!=SymbolId{binding}&&out[definition.point.value][binding])return {true,in};
+  return {false,in};
 }
 void SmallGraphs() {
   constexpr unsigned actions=7,vertices=3,edge_bits=vertices*vertices;
@@ -49,12 +52,51 @@ void SmallGraphs() {
     }
     for(unsigned mask=0;mask<(1U<<edge_bits);++mask){auto graph=base;
       for(unsigned bit=0;bit<edge_bits;++bit)if(mask&(1U<<bit))Link(graph,bit/vertices,bit%vertices);
-      const auto result=FindBindingInterference(graph);Check(std::holds_alternative<BindingInterference>(result));
+      const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(graph));
+      const auto result=FindBindingInterference(graph,live);Check(std::holds_alternative<BindingInterference>(result));
       const auto& pairs=std::get<BindingInterference>(result).affinities;
-      Check(pairs.size()==std::size_t(affinity));if(affinity)Check(pairs[0].interference==Oracle(graph));++cases;
+      Check(pairs.size()==std::size_t(affinity));const auto expected=Oracle(graph);if(affinity)Check(pairs[0].interference==expected.interference);
+      for(unsigned point=0;point<vertices;++point)for(unsigned binding=0;binding<2;++binding)
+        Check(std::binary_search(live.live_in.begin(),live.live_in.end(),LiveBinding{{point},{binding}})==expected.live[point][binding]);
+      // Independent forward fixed point without production liveness pruning.
+      std::array<std::array<bool,3>,3> reaching{};bool changed=true;
+      while(changed){changed=false;for(const auto& edge:graph.edges){
+        auto outgoing=reaching[edge.from.value];const auto own=graph.events[edge.from.value].definition;
+        if(own){for(unsigned d=0;d<graph.definitions.size();++d)
+          if(graph.definitions[d].binding==graph.definitions[own->value].binding)outgoing[d]=false;outgoing[own->value]=true;}
+        for(unsigned d=0;d<graph.definitions.size();++d)if(outgoing[d]&&!reaching[edge.to.value][d]){reaching[edge.to.value][d]=true;changed=true;}}}
+      std::vector<ReachingDefinition> expected_reads;
+      std::vector<std::uint8_t> expected_live(graph.definitions.size());
+      for(unsigned point=0;point<vertices;++point)for(unsigned d=0;d<graph.definitions.size();++d)
+        if(reaching[point][d]&&graph.events[point].read==graph.definitions[d].binding){expected_reads.push_back({{point},{d}});expected_live[d]=1;}
+      const auto definitions=std::get<FlowDefinitions>(AnalyzeFlowDefinitions(graph,live));
+      Check(definitions.reads==expected_reads);Check(live.live_definitions==expected_live);++cases;
     }
   }
   std::cout<<"independent small graphs "<<cases<<'\n';
+}
+void Scaling() {
+  std::uint64_t previous=0;
+  for(unsigned size:{200U,201U,400U,800U,1600U})for(bool reverse:{false,true}) {
+    RecoveryFlow graph{};graph.events.resize(size);graph.bindings={BindingKind::kCompilerTemporary};
+    const auto point=[&](unsigned i){return reverse?size-1-i:i;};
+    std::vector<ReachingDefinition> expected;
+    for(unsigned i=0;i<size;++i) {
+      const auto at=point(i);
+      if(i%2==0){graph.events[at].definition=FlowDefinitionId{static_cast<std::uint32_t>(graph.definitions.size())};
+        graph.definitions.push_back({{at},{0},FlowDefinitionKind::kAssignment,{},{},{}});}
+      else {graph.events[at].read=SymbolId{0};expected.push_back({{at},{i/2}});}
+      if(i)Link(graph,point(i-1),at);
+    }
+    std::sort(expected.begin(),expected.end());
+    const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(graph));
+    const auto definitions=std::get<FlowDefinitions>(AnalyzeFlowDefinitions(graph,live));
+    Check(definitions.reads==expected);
+    Check(std::count(live.live_definitions.begin(),live.live_definitions.end(),1)==size/2);
+    if(!reverse){const auto work=live.work+definitions.work;
+      if(size>=800)Check(work<previous*3);previous=work;
+      std::cout<<"flow facts size "<<size<<" work "<<work<<'\n';}
+  }
 }
 void SourceEvents() {
   FunctionTree tree{};tree.callable=CallableKind::kFunction;tree.strictness=Strictness::kStrict;
@@ -98,6 +140,15 @@ void SourceEvents() {
   Check(has(*convert,flow.terminal,FlowCompletion::kThrow));Check(!has(*convert,*write,FlowCompletion::kThrow));
   Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,projection,{flow.allocated_bytes-1,flow.work}))==TreeStructureError::kResourceLimit);
   Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,projection,{flow.allocated_bytes,flow.work-1}))==TreeStructureError::kWorkLimit);
+  const auto liveness=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));
+  const auto definitions=std::get<FlowDefinitions>(AnalyzeFlowDefinitions(flow,liveness));
+  for(unsigned i=0;i<flow.definitions.size();++i)
+    Check(bool(liveness.live_definitions[i])==(flow.definitions[i].kind!=FlowDefinitionKind::kUndefined));
+  Check(!definitions.reads.empty());
+  Check(std::get<TreeStructureError>(AnalyzeFlowLiveness(flow,{liveness.allocated_bytes-1,liveness.work}))==TreeStructureError::kResourceLimit);
+  Check(std::get<TreeStructureError>(AnalyzeFlowLiveness(flow,{liveness.allocated_bytes,liveness.work-1}))==TreeStructureError::kWorkLimit);
+  Check(std::get<TreeStructureError>(AnalyzeFlowDefinitions(flow,liveness,{definitions.allocated_bytes-1,definitions.work}))==TreeStructureError::kResourceLimit);
+  Check(std::get<TreeStructureError>(AnalyzeFlowDefinitions(flow,liveness,{definitions.allocated_bytes,definitions.work-1}))==TreeStructureError::kWorkLimit);
   const auto rebuild=[&]() {
     replacements.resize(tree.expressions.size());normal.resize(tree.expressions.size());
     evaluations.resize(tree.expressions.size(),ExpressionEvaluation::kRequired);
@@ -143,4 +194,4 @@ void SourceEvents() {
 
 }
 }
-int main(){SourceEvents();SmallGraphs();}
+int main(){SourceEvents();SmallGraphs();Scaling();}

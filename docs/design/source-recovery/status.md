@@ -24,6 +24,30 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-07：规则174，共享活跃性与分离的求值 pass
+
+- FlowLiveness统一求解incoming活跃事实和live definitions；生产干涉消费者
+  删除原有后向工作队列，只消费共同事实。FlowDefinitions提供按活跃性
+  裁剪的前向到达定义/def-use；当前尚无变换消费者，不宣称初始化迁移完成。
+- 原Evaluations拆分为固定投影上的存储结果分析/候选收集、批量替换提交、
+  随后的AnalyzeEvaluations。分析求值不再修改replacements；内外冗余写入
+  的批量动作保持RHS正常结果身份，不依赖候选应用顺序。未添加样本/同块/
+  邻接准入。完整projection revision/失效协调器仍待实现，手工刷新仍存在。
+- 独立小图oracle同时对照活跃性、到达定义、live definitions和干涉；包含
+  环、自环、不可达节点、同点读后写。预算边界和200/201/400/800/1600
+  几何规模及arena反转均在recovery_flow_test内。生产仍受既有预算约束。
+- 拆分后的7项定向测试通过28.63秒，日志/tmp/abcd-pass-order-tests.log。
+  覆盖stored-result/loop/interference的单元和独立源码行为，以及共同图。
+- 最终规则174相关28项定向回归全部通过135.15秒，日志
+  /tmp/abcd-rule174-final-tests.log；完整测试套件与扩大语料仍暂停。
+- 相关CLI/fixture已按规则174重建；单pasteboard重新导出到
+  build/stage-one/shared-facts-rule174，10complete/0partial/9noModule。
+  十份源码均通过node --check，正文与规则173逐字相同；这是保持现有输出
+  的证据，不是新增覆盖或阶段一独立验收。输入SHA与既定身份一致。
+- 未退出Coalesce::CompletedStore、InitializedRead等旧决策。下一步继续
+  共同初始化/原SSA对应、独立DefinitionElision、SourceVariables协调器；
+  存储映射不得自行删除live undefined。阶段一与架构里程碑均未完成。
+
 ### 2026-10-07：规则173，统一变量恢复的首个图消费者迁移
 
 - 架构契约：[unified-variables.md](unified-variables.md)；分步实施：

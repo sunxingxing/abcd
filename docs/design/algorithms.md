@@ -62,6 +62,18 @@ O(N+E+A+L)。稠密活跃时 L/P 本身可大，不能称整体线性。PMR allo
 1225674，400→800 为 2.11 倍；empty-block 与逆序 arena 另验。
 这是定向 work 计数，非暂停的全语料 RSS 或 benchmark 验收。
 
+规则174将后向求解移至FlowLiveness，干涉仅消费其事实，不再拥有第二个
+工作队列。FlowDefinitions使用经典前向gen/kill到达定义，在同一不可变
+图上按live-in裁剪；每个定义从成功写回点的后继出发，读发生在同点写入
+之前，新的同绑定定义杀死旧传播。空def-use不证明已初始化。实现自有，
+无新增依赖或复制外部代码。维护点为flow_liveness/flow_definitions。
+设D为定义数，R为唯一(point,definition)事实，Q为传播边访问，U为输出
+def-use边，额外时间O(N+D+(R+Q) log(L+1)+(R+Q) log(R+1)+U log(U+1))，
+额外空间O(R+U+D)，不隐藏稠密定义传播成本；所有容器和传播受共同预算。
+175616个三点图用独立稠密固定点同时核对live-in、live definitions、
+def-use和干涉。200/201/400/800/1600定向work分别6485/6495/15248/
+35155/79750，正反arena均验证。尚未用此分析替代初始化/死定义决策。
+
 ### 循环进入程序与 for initializer（2026-10-07，规则151）
 
 LoopInitializer按原statement ownership顺序流式遍历，loop进入/退出
