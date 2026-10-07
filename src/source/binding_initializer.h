@@ -13,6 +13,8 @@ struct BindingInitializer {
 struct BindingInitializers {
   std::vector<std::optional<BindingInitializer>> statements;
   std::vector<std::uint8_t> omitted;
+  // A removed statement whose RHS now has its one occurrence at a real read.
+  std::vector<std::uint8_t> forwarded_statements;
   // LoopStmt indexed: first declarator in its existing ordered entry program.
   // Earlier effects remain before the loop, in their original handler/scope.
   std::vector<std::optional<std::uint32_t>> loop_declarations;
@@ -21,14 +23,16 @@ struct BindingInitializers {
   std::vector<std::optional<ExprId>> literals;
   // SymbolId indexed: retained immutable producer storage for an elided copy.
   std::vector<std::optional<SymbolId>> aliases;
-  // ExprId indexed: a proven redundant binding store projects to its original RHS
-  // at the same evaluation occurrence, retaining its expression result.
+  // ExprId indexed: a redundant store projects to its RHS; a unique private
+  // snapshot read can consume the original RHS after ordered lifetime proof.
   std::vector<std::optional<ExprId>> replacements;
   // Original ExprId indexed completion summary after proven store/copy
   // projection. Inert means normal, no hook/write/allocation/throw/suspension.
   std::vector<ExpressionEvaluation> evaluations;
   // Prefix counts of non-elided initializer roots, for constant-time ranges.
   std::vector<std::uint32_t> entry_counts;
+  // Prefix counts over the canonical block child arena after statement elision.
+  std::vector<std::uint32_t> child_counts;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };
@@ -67,6 +71,16 @@ struct BindingInitializers {
 // binding already holding that exact result needs no second PutValue. Its RHS
 // stays at the same occurrence, including hooks, throws, and suspension; member
 // setters, postfix old values and unknown result identities retain their stores.
+// Private single-use statement snapshots forward to the actual retained read
+// after alias projection. The same control/exception/iteration activation, no
+// intervening state observation, and equal lexical environment signatures prove
+// execution count, effect/throw order and name resolution. Transparent scopes
+// collapse; prospective native declarations remain part of the environment.
+// Elided copy declarations are absent from the control/init event stream.
+// Direct function/class NamedEvaluation still needs projected destinations;
+// those snapshots stay. This is a representation gap, not a language invariant.
+// RHS occurrences keep GetValue (not a member receiver or bare typeof lookup)
+// and their original ownership/ranges, including when for syntax prints earlier.
 // Ownership/copy walks are linear; spelling-index construction adds bounded
 // O(B log(B+1)) name comparisons, plus module sorting and compared text units.
 // No per-symbol CFG or per-read ancestor walk, recursive walk or SSA merge.

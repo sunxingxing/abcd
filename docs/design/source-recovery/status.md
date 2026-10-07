@@ -13,6 +13,63 @@
 ## 当前阶段
 
 
+### 2026-10-07：规则169，共同语法树的有序快照转发
+
+- 从干净b251e26a继续，规则168已提交且属实际进展。本轮检查真实三个
+  loop条件快照，确认coercing比较有throw义务，normal ValueBranch没有
+  对应exception dispatch；未删除phase verifier/SameCatch检查。
+- 在已验证FunctionTree的BindingInitializers中复用首次完成、捕获、
+  词法容器及表达式完成序，转发仅有一次实际读取的私有statement快照。
+  先处理原alias/literal投影，再索引保留的读取/效果、控制/初始化事件
+  和执行region。生产者与读取须有同一控制/异常/迭代activation，无
+  中间状态观察，且词法环境签名相同。绑定读取也算观察，不能把会改
+  状态的RHS搬过先求值的参数。无opcode/PC/register/同块/样本匹配。
+- 空作用域折叠到最近有绑定的环境；原声明与可能生成的native initializer
+  作用域均计入，保护TDZ遮蔽和初始化后缩窄的local。已证明消失的copy
+  声明不再形成初始化屏障，交错声明/copy链与集中声明用同一流程。
+  这是保守环境等价证明，未证明不相干绑定可交换时仍可能保留快照。
+- 原RHS只在实际读取处出现一次，保留GetValue、receiver、typeof未解析
+  名称异常、原转换/抛出/暂停顺序。直接function/class definition的
+  NamedEvaluation尚缺投影后的命名目的证明，保留这些绑定；这是表示
+  覆盖缺口。canonical树、phase异常模型、默认及显式语言合同不变。
+- 同一replacement表串联转发；printer用child prefix counts跳过loop
+  expression program中已消失的根。部分输出的未优化路径也初始化
+  counts，不生成空逗号操作数。移走RHS保留实际表达式范围，避免for
+  update先打印时被随后body的省略点覆盖。新增索引/两次有界完成扫描
+  为O(E+S+B)时间和空间，按原budget计入；无fixed point/逐变量图遍历。
+  rules168升169，无新writer、DFX或发布准入设施。
+- statement_snapshot_test现有19种组合×六规模0/1/200/201/400/800×
+  正反statement arena，共228份完整源码；覆盖空块拆分、复制链及交错
+  声明、循环/条件、源Local、早期return、guarded读取、catch内外/旧值、
+  TDZ遮蔽、native local缩窄、await/yield与typeof。400→800 census work
+  小于3倍；旧实现成功构建后正例RED退出134。独立JS按这些维度执行
+  8724组行为，8个有效错误变异检出；对象/原异常值显式身份比较，AST
+  单独检查私有snapshot是否移除，RHS实际范围保持非空。
+- 首批20项17通过，binding fixture仍要求单用allocation保留saved，
+  main fixture仍要求单用return保留const，loop init仍要求每个copy有
+  声明，导致3个目标的旧表示断言失败。按新合法表示更新这些断言，
+  仍检查allocation每次新身份、每次求值、loop carried binding及所有
+  原行为/负变异。省略assignment才允许零范围，未放宽其他表达式范围。
+- 最终相关目标重建，20/20定向通过95.79秒：新snapshot、规则168、
+  binding/local、loop entry/transition/syntax、native function names、
+  partial callback，以及实际rich-text/ProgressBar/Home/PageA/EntryAbility。
+  另language_constructors_paired_test通过3.20秒，共21个不同通过目标。
+  中间针对修复的5项5/5通过45.22秒。未启动full suite或扩大语料。
+- fresh ABC-only build/stage-one/statement-snapshot-rule169-final与规则168
+  输入SHA一致，仍19records/219methods、10complete/0partial/9noModule，
+  十份mjs均通过语法检查。七份正文变化：EntryAbility私有value/phi声明
+  8→5，Home9→8，PageA4→2，PageB4→2，PasteBoard43→35，ProgressBar
+  15→12，ShareDitect3→1，共少21项；另外三份正文逐字不变。三个真实
+  for条件由保存/读取序列恢复为直接BinaryExpression `<`，富文本测试
+  明确验证这个独立表示要求。计数不是整体语义/风格完成的替代证据。
+- 证据/tmp/abcd-statement-snapshot-{red-build,red,final-build,repairs,
+  final,constructors,final-export}.log；git diff --check、修改JS语法检查
+  通过，输入未改。Goal active：一般SSA coalescing、loop update搬运、
+  更广的命名目的/环境交换、其余record语义/style和原fields/globals/
+  signature/body整合gate仍开放。full suite、expanded corpus、RSS/
+  benchmark、DFX、scheduler、agents及周期audit继续暂停。
+
+
 ### 2026-10-07：规则168，消除已保存表达式结果的重复写入
 
 - 从干净e0834016继续。上一轮只复核已有语言构造模式，没有推进功能；

@@ -1199,7 +1199,7 @@ class TreePrinter {
   void PrintOriginalExpression(ExpressionOperand operand) {
     const auto id=operand.id;
     if(const auto replacement=Initializers().replacements[id.value]) {
-      operand.id=*replacement;Push(operand);return;
+      operand.id=*replacement;operand.value_result=true;Push(operand);return;
     }
     const auto& expression=Tree().expressions[id.value].expression;
     if (const auto* sequence = std::get_if<SequenceExpr>(&expression);
@@ -1459,11 +1459,19 @@ class TreePrinter {
   }
   void Run(LoopHeaderCursor at) {
     Boundary({at.block, at.index});
-    if (at.index == at.count) { if (!at.count) Append("true"); return; }
     const auto& block = std::get<BlockStmt>(Tree().statements[at.block.value].statement);
+    const auto& counts = Initializers().child_counts;
+    if (at.index == at.count) {
+      if (counts[block.first_child] == counts[block.first_child + at.count]) Append("true");
+      return;
+    }
     const auto child = Tree().children[block.first_child + at.index];
+    if (Initializers().omitted[child.value]) {
+      OmitBindingStatement(child);
+      Push(LoopHeaderCursor{at.block, at.index + 1, at.count, at.retained, at.discarded}); return;
+    }
     const auto& meaning = Loops().meanings[child.value];
-    const bool follows = at.index + 1 < at.count;
+    const bool follows = counts[block.first_child + at.index + 1] != counts[block.first_child + at.count];
     if (follows) {
       if (meaning.exit) Push(std::string_view(")"));
       Push(LoopHeaderCursor{at.block, at.index + 1, at.count, at.retained, at.discarded});
@@ -1493,7 +1501,10 @@ class TreePrinter {
       // substituted into a read uses that read's own ExprId and parent grammar.
       const auto& assignment = std::get<AssignmentExpr>(Tree().expressions[effect->expression.value].expression);
       Result().expressions[effect->expression.value] = {written_,written_};
-      Result().expressions[assignment.value.value] = {written_,written_};
+      // A for update is printed before its body. Do not overwrite a forwarded
+      // RHS range if its destination has already been emitted textually.
+      if (!Initializers().forwarded_statements[id.value])
+        Result().expressions[assignment.value.value] = {written_,written_};
     }
   }
   void Run(LoopInitializerCursor at) {

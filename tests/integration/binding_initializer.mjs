@@ -413,7 +413,8 @@ for (const row of rows) {
     continue;
   }
   if(row.decoded_cell){const name=String.fromCharCode(...row.cell_name),declaration=declarations.find(node=>node.declarations.some(item=>item.id.name===name));assert.equal(declaration.kind,'let');assert.ok(declaration.declarations.find(item=>item.id.name===name).init);assert.equal(stores.filter(node=>node.expression.left.name===name).length,0);}
-  if(row.fold || row.branch&&!row.decoded_cell) {assert.ok(initialized.length); ++folded;}
+  if(row.forwarded) {assert.ok(!declarations.some(node=>node.declarations.some(item=>item.id.name==='saved')));++folded;}
+  else if(row.fold || row.branch&&!row.decoded_cell) {assert.ok(initialized.length); ++folded;}
   const generated=Function('return '+row.source)(), reference=original(row);
   if(row.decoded_cell&&row.field) {
     assert.equal(row.shared_cell,true);

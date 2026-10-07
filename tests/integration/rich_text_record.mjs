@@ -73,7 +73,7 @@ while (pending.length) {
 assert.equal(loops.length, 3);assert.ok(prefixUpdates>=2, 'real loop prefix updates exercised');
 assert.equal(loops.filter(loop => loop.type === 'ForStatement' && loop.update).length, 2, 'native carried-state transitions');
 assert.equal(loops.filter(loop => loop.type === 'ForStatement' && loop.init).length, 3, 'native carried-state initialization');
-assert.ok(loops.every(loop => loop.test.type !== 'Literal' || loop.test.value !== true), 'native loop conditions');
+assert.ok(loops.every(loop => loop.test.type === 'BinaryExpression' && loop.test.operator === '<'), 'direct native loop comparisons without private condition snapshots');
 const worker = fileURLToPath(new URL('./rich_text_record_worker.mjs', import.meta.url));
 const run = (cases, extra = {}, changed = sources) => {
   try {

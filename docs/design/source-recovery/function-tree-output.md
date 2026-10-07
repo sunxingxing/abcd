@@ -17,6 +17,13 @@ interval、单次使用、availability及最终catch snapshot校验；原Functio
 独立验证不允许branch承接effectful child。没有新writer或源码文本
 优化，字节码来源/变量身份和原操作数顺序沿共同流程保留。
 
+规则169实现补充：在已验证树内按同一执行activation、保留观察序和
+词法环境等价转发唯一使用的私有statement快照。使用原RHS/ExprId与
+共同replacement投影；loop语法按保留child prefix counts打印，不匹配
+保存/分支序列。GetValue、catch、先求值的状态读取与暂停均保留，直接
+function/class NamedEvaluation仍须补投影后的目的证明；不盲删phase
+分支的异常约束。已有部分源码仍可输出，不因这一优化增加发布门槛。
+
 规则168实现补充：同一完成后序分析传播“表达式正常完成的结果仍保存
 在哪个可写声明式绑定”事实。赋值/prefix/sequence/路径join共用该规则，
 目标已持有同一结果时仅投影掉重复PutValue，原RHS仍在原位置执行。

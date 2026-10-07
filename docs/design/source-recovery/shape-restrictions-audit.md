@@ -1,5 +1,15 @@
 # 按用户要求进行的恢复条件审计
 
+规则169补充：statement快照转发依据首次完成、唯一实际读取、控制/
+异常/迭代activation、读取及效果观察序和词法环境签名。相同环境允许
+跨空块，已消失的交错copy声明不构成虚假屏障；新native declaration
+的作用域仍纳入签名。源Local/捕获、额外读取、控制转移、TDZ遮蔽和
+catch旧值按同一语义分析保留，不以same-block或固定编译布局判定。
+直接function/class RHS保留是NamedEvaluation目的尚未投影的覆盖缺口，
+不是操作码准入名单；不宣称一般非干扰环境交换已证明。phase branch
+的throw义务未删除。正反arena/200/201/复制/空块及真实源码验证见status。
+
+
 规则168补充：重复写入消除证明的是结果身份与无hook的可写PutValue，
 不是`store/update/store`模式。共同表达式后序事实通过sequence和路径
 join组合，原RHS的TDZ/异常/转换/暂停仍执行；无同块、相邻、opcode、

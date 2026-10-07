@@ -244,7 +244,7 @@ std::uint64_t Constant(unsigned form, unsigned count, unsigned literal, bool rev
   const auto nullish = std::get<NullishSyntax>(PlanNullishSyntax(tree));
   const auto result = PlanBindingInitializers(tree,loops,nullish);test::Check(std::holds_alternative<BindingInitializers>(result));
   const auto& plan = std::get<BindingInitializers>(result);
-  const bool folded = form < 2 || (form >= 9 && form < 14);
+  const bool folded = form < 2 || (form >= 9 && form < 14) || (form >= 14 && count == 0);
   std::ostringstream output;const auto printed = PrintFunctionTree(tree,output);test::Check(std::holds_alternative<PrintedFunction>(printed));
   test::Check((output.str().find("saved") == std::string::npos) == folded);
   for (const auto range : std::get<PrintedFunction>(printed).expressions) test::Check(range.begin<=range.end && range.end<=output.str().size());
@@ -609,10 +609,17 @@ int main(int argc, char**) {
     const auto& ranges = std::get<PrintedFunction>(printed);
     const bool fold = form == 0 || form == 1 || form == 5 || form == 6 || form == 7 || form == 8 || form == 9 || form == 11 || form == 13;
     test::Check((ranges.statements[fixture.declaration.value].begin == ranges.statements[fixture.declaration.value].end) == fold);
-    if (fold) test::Check(output.str().find(form == 1 || form == 7 ? "let saved = " : "const saved = ") != std::string::npos);
-    for (const auto& at : ranges.expressions) test::Check(at.begin < at.end && at.end <= output.str().size());
+    const bool forwarded = count == 0 && (form == 0 || form == 5 || form == 6 || form == 8 || form == 9);
+    if (forwarded) test::Check(output.str().find("saved") == std::string::npos);
+    else if (fold) test::Check(output.str().find(form == 1 || form == 7 ? "let saved = " : "const saved = ") != std::string::npos);
+    const auto store_expression = std::get<ExpressionStmt>(fixture.tree.statements[fixture.store.value].statement).expression;
+    for (std::size_t i = 0; i < ranges.expressions.size(); ++i) {
+      const auto at = ranges.expressions[i];
+      test::Check((at.begin == at.end) == (forwarded && i == store_expression.value));
+      test::Check(at.end <= output.str().size());
+    }
     for (auto at : ranges.anchors) test::Check(at > 0 && at <= output.str().size());
-    if (argc > 1) std::cout << nlohmann::json{{"source", output.str()}, {"form", form}, {"count", count}, {"fold", fold}, {"decoded", false}} << '\n';
+    if (argc > 1) std::cout << nlohmann::json{{"source", output.str()}, {"form", form}, {"count", count}, {"fold", fold}, {"forwarded", forwarded}, {"decoded", false}} << '\n';
   }
   for (unsigned i = 0; i < small.size(); ++i) test::Check(large[i] < small[i] * 3);
   std::uint64_t deep_small = 0, deep_large = 0;
