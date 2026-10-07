@@ -1,5 +1,13 @@
 # 按用户要求进行的恢复条件审计
 
+规则168补充：重复写入消除证明的是结果身份与无hook的可写PutValue，
+不是`store/update/store`模式。共同表达式后序事实通过sequence和路径
+join组合，原RHS的TDZ/异常/转换/暂停仍执行；无同块、相邻、opcode、
+固定层数或样本条件。capture/module/self缺少此处可写性证明时保留，
+明确属于实现覆盖缺口。20种组合/两种绑定/反向arena/六规模与独立
+行为及真实循环表示已验证；一般跨语句值搬移与SSA合并不在本次范围。
+
+
 规则166补充：normal branch缺少throw dispatch是语义义务，但不能因此
 保留已经证明纯的比较后缀。第一遍只提出forest；包含effect的控制root
 由共同拒绝分区整体重排一次，throwing producer恢复快照，pure suffix

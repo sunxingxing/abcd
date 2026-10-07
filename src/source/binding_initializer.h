@@ -21,7 +21,7 @@ struct BindingInitializers {
   std::vector<std::optional<ExprId>> literals;
   // SymbolId indexed: retained immutable producer storage for an elided copy.
   std::vector<std::optional<SymbolId>> aliases;
-  // ExprId indexed: a redundant private store projects to its original RHS
+  // ExprId indexed: a proven redundant binding store projects to its original RHS
   // at the same evaluation occurrence, retaining its expression result.
   std::vector<std::optional<ExprId>> replacements;
   // Original ExprId indexed completion summary after proven store/copy
@@ -62,6 +62,11 @@ struct BindingInitializers {
 // Initialized binding reads and pure value operators can disappear from the
 // discarded left of comma without changing the right's GetValue category.
 // Unknown coercions/global/member reads and allocation/suspension stay owned.
+// Normal-completion result identities compose through assignment, prefix update,
+// sequence and agreeing branch/short-circuit outcomes. A writable declarative
+// binding already holding that exact result needs no second PutValue. Its RHS
+// stays at the same occurrence, including hooks, throws, and suspension; member
+// setters, postfix old values and unknown result identities retain their stores.
 // Ownership/copy walks are linear; spelling-index construction adds bounded
 // O(B log(B+1)) name comparisons, plus module sorting and compared text units.
 // No per-symbol CFG or per-read ancestor walk, recursive walk or SSA merge.

@@ -270,12 +270,56 @@ class Initializers {
     const auto region = regions_[use.definition_region];
     return *use.first_region >= region.begin && *use.last_region < region.end;
   }
+  bool MutableBinding(SymbolId symbol) const {
+    // Only a native writable declarative binding has an unobservable PutValue.
+    // Import/capture/self bindings need their own mutability/environment proof;
+    // a property target can invoke a setter even when the value is unchanged.
+    const auto& binding = tree_.symbols[symbol.value];
+    if (binding.declaration == DeclarationKind::kConst) return false;
+    switch (binding.kind) {
+      case BindingKind::kLocal: case BindingKind::kCompilerTemporary:
+      case BindingKind::kParameter: case BindingKind::kCatchParameter: return true;
+      case BindingKind::kCapture: case BindingKind::kModule:
+      case BindingKind::kFunctionSelf: return false;
+    }
+    throw TreeStructureError::kBinding;
+  }
   void Evaluations() {
+    std::vector<std::optional<SymbolId>> stored;
+    budget_.Array(stored, tree_.expressions.size());
     // Scan's finish order is postorder even when expression IDs are reversed.
     // Each owned child is consumed once. No repeated subtree/type/CFG walk.
     for (std::size_t at = 0; at < completion_count_; ++at) {
       budget_.Step(); const auto id = completions_[at];
       const auto& node = tree_.expressions[id.value].expression;
+      // Normal-completion fact: the result is still the value of this binding.
+      // ECMA-262 assignment/prefix update write before returning that value;
+      // comma forwards its right completion, and choice joins must agree.
+      // Unknown calls/coercions/suspensions produce no fact. No effect moves,
+      // and a throwing/TDZ RHS still executes before any projected outer store.
+      // Use the existing finish order, not arena order or a local syntax match.
+      auto& result = stored[id.value];
+      const auto join = [&](ExprId left, ExprId right) -> std::optional<SymbolId> {
+        return stored[left.value] == stored[right.value] ? stored[left.value] : std::nullopt;
+      };
+      if (const auto replacement = plan_.replacements[id.value]) result = stored[replacement->value];
+      else if (const auto* read = std::get_if<SymbolExpr>(&node)) {
+        if (!plan_.literals[read->symbol.value]) {
+          const auto source = plan_.aliases[read->symbol.value].value_or(read->symbol);
+          if (MutableBinding(source)) result = source;
+        }
+      } else if (const auto* assignment = std::get_if<AssignmentExpr>(&node)) {
+        if (const auto* target = std::get_if<SymbolTarget>(&assignment->target);
+            target && MutableBinding(target->symbol)) {
+          result = target->symbol;
+          if (stored[assignment->value.value] == result)
+            plan_.replacements[id.value] = assignment->value;
+        }
+      } else if (const auto* update = std::get_if<UpdateExpr>(&node)) {
+        if (update->result == UpdateResult::kPrefix && MutableBinding(update->symbol)) result = update->symbol;
+      } else if (const auto* sequence = std::get_if<SequenceExpr>(&node)) result = stored[sequence->right.value];
+      else if (const auto* choice = std::get_if<ConditionalExpr>(&node)) result = join(choice->consequent, choice->alternate);
+      else if (const auto* logical = std::get_if<LogicalExpr>(&node)) result = join(logical->left, logical->right);
       auto evaluation = IntrinsicEvaluation(node);
       if (const auto replacement = plan_.replacements[id.value]) evaluation = plan_.evaluations[replacement->value];
       else if (const auto* read = std::get_if<SymbolExpr>(&node)) {

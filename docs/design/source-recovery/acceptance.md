@@ -1,5 +1,13 @@
 # 验收、证据与实施交接
 
+2026-10-07规则168：共同表达式完成事实消除已保存同一结果的可写绑定
+重复PutValue，RHS及原异常/副作用发生点保持。480份生成函数、16560组
+独立行为、12个有效错误变异通过；AST表示与对象身份分别检查。15项
+定向全部通过，新增暂停边界及身份检查补跑通过。fresh pasteboard只有
+两个loop update各少一次外层赋值，另九份正文不变，仍10complete/
+0partial/9noModule。条件快照、phi及原结构gate保持开放；见status.md。
+
+
 2026-10-07规则167：修复ValueTree record artifact丢失所选语义合同，
 PrintedSource携带实际identity.contract；完整/部分结果共用该路径，
 abc_semantic JSON与abc_structure record manifest均明确输出实际合同。

@@ -52,17 +52,25 @@ for (const name of [page, prefix+'pages/PageA', prefix+'pages/PageB']) {
 }
 // Separate, bounded representation evidence: preserve all three loop tests.
 // This checks native clauses independently; SSA carrier removal remains open.
-const loops = [];
+const loops = [];let prefixUpdates=0;
 const pending = [parseJavaScript(sources[page])];
 while (pending.length) {
   const node = pending.pop();
   if (node.type === 'WhileStatement' || node.type === 'ForStatement') loops.push(node);
+  if (node.type === 'UpdateExpression' && node.prefix) ++prefixUpdates;
+  if (node.type === 'AssignmentExpression' && node.left.type === 'Identifier') {
+    let result=node.right;
+    while (result.type === 'SequenceExpression') result=result.expressions.at(-1);
+    assert.ok(!(result.type === 'UpdateExpression' && result.prefix &&
+      result.argument.type === 'Identifier' && result.argument.name === node.left.name),
+      'prefix result already retained in its writable binding');
+  }
   for (const child of Object.values(node)) {
     if (Array.isArray(child)) pending.push(...child.filter(item => item?.type));
     else if (child?.type) pending.push(child);
   }
 }
-assert.equal(loops.length, 3);
+assert.equal(loops.length, 3);assert.ok(prefixUpdates>=2, 'real loop prefix updates exercised');
 assert.equal(loops.filter(loop => loop.type === 'ForStatement' && loop.update).length, 2, 'native carried-state transitions');
 assert.equal(loops.filter(loop => loop.type === 'ForStatement' && loop.init).length, 3, 'native carried-state initialization');
 assert.ok(loops.every(loop => loop.test.type !== 'Literal' || loop.test.value !== true), 'native loop conditions');

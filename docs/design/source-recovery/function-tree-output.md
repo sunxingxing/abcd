@@ -17,6 +17,12 @@ interval、单次使用、availability及最终catch snapshot校验；原Functio
 独立验证不允许branch承接effectful child。没有新writer或源码文本
 优化，字节码来源/变量身份和原操作数顺序沿共同流程保留。
 
+规则168实现补充：同一完成后序分析传播“表达式正常完成的结果仍保存
+在哪个可写声明式绑定”事实。赋值/prefix/sequence/路径join共用该规则，
+目标已持有同一结果时仅投影掉重复PutValue，原RHS仍在原位置执行。
+不消除member setter，不将postfix旧值或await/yield恢复结果当成已保存值；
+暂停之后的内层赋值可重新建立事实。不改变canonical树或新建writer。
+
 规则167合同边界：共同record输出保留原RouteInputIdentity的实际
 SourceContract，包括显式语言数值/构造模式和标记为incomplete的结果。
 PrintedSource的默认合同不能覆盖已经选定的family语义；工具应序列化

@@ -12,6 +12,49 @@
 
 ## 当前阶段
 
+
+### 2026-10-07：规则168，消除已保存表达式结果的重复写入
+
+- 从干净e0834016继续。上一轮只复核已有语言构造模式，没有推进功能；
+  本轮实际检查规则167 PasteBoard输出，确认循环更新含
+  `t = ((t = i), ++t)`，其外层写入重复保存右侧已经写入的同一结果。
+- 在既有BindingInitializers完成序中增加normal-completion结果身份：
+  可写声明式绑定的读取/赋值、prefix update、sequence右侧，以及结果
+  身份一致的conditional/logical路径，共同传播“结果仍存于此绑定”。
+  只有目标已保存同一结果且PutValue无外部hook时，原赋值投影到原RHS。
+  RHS不移动/复制；TDZ、原异常、转换、求值次数与暂停保持。成员setter、
+  postfix旧值、未知调用/await/yield结果仍保留写入；暂停后内层赋值
+  可以重新建立事实。未按opcode序列、同块、样本、临时变量名或图形准入。
+- 使用既有ExprId replacement与后序遍历；增加O(E)可选SymbolId存储，
+  由原TreeCheckBudget计入。无逐变量图扫描/fixed point/新writer；
+  canonical AST、默认合同及显式数值/构造模式不变。rules167升168。
+  import/capture/self的可写性尚无此处证明，保守保留是实现覆盖缺口，
+  不是语言禁止重复写入消除的规则。
+- 新stored_result_test覆盖20种组合、源Local/CompilerTemporary、正反
+  表达式arena及0/1/200/201/400/800效果前缀，共480份完整生成函数；
+  400→800 work小于3倍。含声明前读取、member getter/setter、分支不同
+  身份、postfix、暂停前后赋值。旧生产实现先成功构建，正例断言RED
+  退出134；最初fixture的MemberKey拼写编译错误未计为RED。
+- 独立JS程序对照16560组行为，分别检查AST赋值数量、返回/原对象身份、
+  Number/BigInt/NaN/-0/Symbol/coercion、任意throw值、thenable/rejection、
+  generator next/throw/return。对象显式按身份编码，不能靠空对象deepEqual
+  混过。12个有效JS错误变异（漏调用、prefix变postfix、错setter值）检出。
+- abc_structure/abc_semantic及相关fixture构建通过。15项定向15/15通过
+  105.14秒，包括binding/local初始化、loop syntax/entry/transition、
+  predicate partition和实际ProgressBar/rich-text行为。新增暂停组合后
+  两项2/2通过7.97秒；加强身份/任意异常值后source项再通过4.36秒。
+  实际rich-text另加AST表示断言，确认prefix更新不被冗余赋值包裹。
+- fresh ABC-only build/stage-one/stored-result-rule168：与规则167输入SHA
+  一致，仍19records/219methods，10complete/0partial/9noModule。
+  只有PasteBoard正文变化，两个loop update分别少一次冗余赋值，另外
+  九份逐字一致。循环条件快照、phi搬运仍在；本次不是SSA整体消除。
+  证据/tmp/abcd-stored-result-{red-build,red,rule168-build,targeted,final,
+  identity,export}.log。git diff --check与修改JS语法检查通过，输入未改。
+- Goal active。继续共同SSA存储/循环条件表示、其余record独立语义/风格
+  和原fields/globals/signature/body整合门槛；不以本次局部表示改善宣布
+  阶段一完成。full suite、expanded corpus、RSS/benchmark、DFX、scheduler、
+  agents及周期audit继续暂停。
+
 ### 2026-10-07：规则167，record 输出保留实际语义合同
 
 - 从干净3ac417ca继续；上一轮规则166实际条件表示改进属于进展。本轮
