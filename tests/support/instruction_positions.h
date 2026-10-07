@@ -8,6 +8,9 @@
 #include "../../src/source/discarded_read.h"
 #include "../../src/source/nullish_syntax.h"
 #include "../../src/source/tail_completion.h"
+#include "../../src/source/binding_initializer.h"
+#include "../../src/source/loop_syntax.h"
+#include "../../src/source/expression_children.h"
 #include "abcd/source/tree_printer.h"
 
 namespace abcd::test {
@@ -21,6 +24,24 @@ inline void CheckInstructionPositions(const source::FunctionTree& tree,
   const auto nullish_result = PlanNullishSyntax(tree);
   check(std::holds_alternative<NullishSyntax>(nullish_result));
   const auto& nullish = std::get<NullishSyntax>(nullish_result);
+  // Independently recompute the recovery plan in this test oracle. Production
+  // publication consumes emitted extents instead of running recovery again.
+  const auto loops = std::get<LoopSyntax>(PlanLoopSyntax(tree));
+  const auto bindings = std::get<BindingInitializers>(PlanBindingInitializers(tree, loops, nullish));
+  std::vector<bool> omitted_expressions(tree.expressions.size());
+  std::vector<ExprId> pending;
+  for (std::size_t i=0;i<tree.statements.size();++i) if (bindings.omitted[i]) {
+    if (const auto* effect=std::get_if<ExpressionStmt>(&tree.statements[i].statement)) {
+      if (bindings.forwarded_statements[i]) omitted_expressions[effect->expression.value]=true;
+      else pending.push_back(effect->expression);
+    }
+  }
+  while (!pending.empty()) {
+    const auto id=pending.back();pending.pop_back();
+    if (omitted_expressions[id.value]) continue;
+    omitted_expressions[id.value]=true;
+    VisitExpressionChildren(tree,tree.expressions[id.value].expression,[&](ExprId child){pending.push_back(child);});
+  }
   const auto completion = positions.fragment == FunctionFragment::kStaticFields ||
       positions.fragment == FunctionFragment::kImplicitConstructor ? std::nullopt : ImplicitTailCompletion(tree);
   std::vector<std::optional<StmtId>> discarded(tree.expressions.size());
@@ -57,6 +78,19 @@ inline void CheckInstructionPositions(const source::FunctionTree& tree,
           }();
           check(target.value < ranges.size());
           const auto range = ranges[target.value];
+          GeneratedExtent extent=GeneratedExtent::kSpan;
+          if constexpr(std::is_same_v<T,ExprId>) extent=positions.expression_extents[target.value];
+          else if constexpr(std::is_same_v<T,StmtId>) extent=positions.statement_extents[target.value];
+          else if constexpr(std::is_same_v<T,PropertyId>) extent=positions.property_extents[target.value];
+          check((extent==GeneratedExtent::kBoundary)==(range.begin==range.end));
+          bool binding_omission=false;
+          if constexpr(std::is_same_v<T,StmtId>) binding_omission=bindings.omitted[target.value];
+          else if constexpr(std::is_same_v<T,ExprId>) binding_omission=omitted_expressions[target.value];
+          if (binding_omission) {
+            check(extent==GeneratedExtent::kBoundary && owner.begin<=range.begin && range.end<=owner.end);
+            return;
+          }
+
           std::optional<StmtId> omitted_read;
           bool tail = false;
           if constexpr (std::is_same_v<T, ExprId>) {

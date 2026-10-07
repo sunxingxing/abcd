@@ -18,6 +18,10 @@ enum class TreePrintError : std::uint8_t {
   kUnsupportedContext, kOutputLimit, kWrite, kResourceLimit, kWorkLimit,
   kInvalidLiteral
 };
+// Source recovery decides whether an occurrence is represented by text or by
+// an omission boundary. Publication validates that decision's coordinates; it
+// must not independently re-run syntax recovery to rediscover omissions.
+enum class GeneratedExtent : std::uint8_t { kSpan, kBoundary };
 struct PrintedFunction {
   struct RealmBinding {
     RealmBindingPolicy policy;
@@ -49,6 +53,7 @@ struct PrintedFunction {
   std::vector<GeneratedRange> expressions;
   std::vector<GeneratedRange> properties;
   std::vector<GeneratedRange> statements;
+  std::vector<GeneratedExtent> expression_extents, property_extents, statement_extents;
   std::vector<std::size_t> anchors;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;

@@ -24,6 +24,28 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-07：规则177，发布消费者复用省略事实
+
+- PrintedFunction增加typed GeneratedExtent，区分必须有正文的范围与已决定
+  省略的边界；来自原恢复计划的打印事件，不由零长度反推许可。转发RHS在
+  实际输出点重置为正文范围，新增数组计入打印和持久占用预算。
+- FamilyEmission删除独立PlanNullishSyntax、DiscardedInvocationRead与
+  ImplicitTailCompletion推断，只消费同一打印产物的范围种类并校验身份/
+  来源索引/归属/跨度或边界。未标记空范围仍拒绝。原恢复义务未移除。
+- 规则176记录的forwarder发布失败已修复，class_tree_context_test主入口
+  定向运行通过。测试端保留独立恢复计划及尾部/可选链位置关系验证。
+- 新增快照范围种类一致性检查发现循环头最后有正文节点后跳到结束，漏记
+  后续省略根。现继续原顺序遍历并记录边界，不新增源码或准入条件；正反
+  arena、200/201/400/800以及转发RHS的实际非空范围一并检验。
+- 最终50项相关定向回归全部通过263.21秒，日志/tmp/abcd-rule177-tests.log；
+  包括此前失败的class_tree_context主入口、可选链/空值回退独立源码执行、
+  快照范围一致性、捕获/默认参数和既定真实record。未运行全套或扩大语料。
+- 规则177相关CLI/fixture重建，单pasteboard导出到
+  build/stage-one/projection-extents-rule177，10complete/0partial/9noModule；
+  十份源码node --check通过，正文与规则176一致，无新增record覆盖声明。
+- 尚未完成共同初始化、DefinitionElision、SourceVariables协调器或阶段一
+  验收；这次是移除一个重复消费者决策，暂停事项与固定输入范围保持。
+
 ### 2026-10-07：规则176，保留最终语义验证的 TreeFlow 对应证据
 
 - TreeSemantics把已完成flow/operand/origin检查的TreeFlow移交给构造结果；

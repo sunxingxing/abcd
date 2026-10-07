@@ -43,7 +43,7 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
     const GlobalScope*, std::size_t, ClassPrintForm, const ClassCaptureDestination* = nullptr);
 struct DerivedClassBody { std::shared_ptr<const ClassTree> definition; ExprId expression; ClassPrintForm form; };
 struct EndExpression { ExprId id; };
-struct ProjectedExpression { ExprId id; std::uint64_t begin, end; };
+struct ProjectedExpression { ExprId id; std::uint64_t begin, end; GeneratedExtent extent = GeneratedExtent::kSpan; };
 struct ProjectSequenceLeft { ExprId sequence; };
 struct NoInferredName {};
 struct DefaultInferredName {};
@@ -133,6 +133,9 @@ class TreePrinter {
     Array(Result().expressions, Tree().expressions.size());
     Array(Result().properties, Tree().properties.size());
     Array(Result().statements, Tree().statements.size());
+    Array(Result().expression_extents, Tree().expressions.size());
+    Array(Result().property_extents, Tree().properties.size());
+    Array(Result().statement_extents, Tree().statements.size());
     Array(Result().anchors, Tree().anchors.size());
     PrepareAnchors();
     switch (function_->ClassCreation()->placement) {
@@ -235,6 +238,9 @@ class TreePrinter {
     Result().incomplete = !Tree().recovery_issues.empty();
     Array(Result().parameters, Tree().parameters.size()); Array(Result().expressions, Tree().expressions.size());
     Array(Result().properties, Tree().properties.size()); Array(Result().statements, Tree().statements.size());
+    Array(Result().expression_extents, Tree().expressions.size());
+    Array(Result().property_extents, Tree().properties.size());
+    Array(Result().statement_extents, Tree().statements.size());
     Array(Result().anchors, Tree().anchors.size()); PrepareAnchors();
     if (module || fields) Push(Statement{Tree().body, indent}); else Push(BeginFunction{});
     Drain(); FinalizeNullishRanges(); Append("\n");
@@ -296,6 +302,9 @@ class TreePrinter {
       }
       Array(Result().parameters, Tree().parameters.size()); Array(Result().expressions, Tree().expressions.size());
       Array(Result().properties, Tree().properties.size()); Array(Result().statements, Tree().statements.size());
+      Array(Result().expression_extents, Tree().expressions.size());
+      Array(Result().property_extents, Tree().properties.size());
+      Array(Result().statement_extents, Tree().statements.size());
       Array(Result().anchors, Tree().anchors.size()); PrepareAnchors();
       for (const auto& node : Tree().expressions) {
         Step();
@@ -1089,6 +1098,7 @@ class TreePrinter {
   void Run(ExprId id) { Run(ExpressionOperand{id, {}}); }
   void BeginExpression(ExprId id) {
     Result().expressions[id.value].begin = written_;
+    Result().expression_extents[id.value] = GeneratedExtent::kSpan;
     Push(EndExpression{id});
   }
   std::optional<bool> BooleanLiteralValue(ExprId id) const {
@@ -1277,17 +1287,18 @@ class TreePrinter {
     // like omitted Boolean conversions. Keep original identities/origins and
     // nonzero transport ranges; never fabricate a PC or execute the subtree.
     Result().expressions[projection.id.value] = {projection.begin, projection.end};
+    Result().expression_extents[projection.id.value] = projection.extent;
     const auto replacement = Initializers().replacements[projection.id.value];
     bool owned_replacement = false;
     VisitExpressionChildren(Tree(), Tree().expressions[projection.id.value].expression, [&](ExprId child) {
       owned_replacement |= replacement == child;
-      Push(ProjectedExpression{child, projection.begin, projection.end});
+      Push(ProjectedExpression{child, projection.begin, projection.end, projection.extent});
     });
     // A forwarded RHS has left its original omitted statement. If its final
     // destination is itself omitted, retain its origin at this boundary too.
     // Direct RHS replacements are already owned children; do not visit twice.
     if (replacement && !owned_replacement)
-      Push(ProjectedExpression{*replacement, projection.begin, projection.end});
+      Push(ProjectedExpression{*replacement, projection.begin, projection.end, projection.extent});
   }
   void Run(Indent indent) {
     constexpr std::string_view kIndent = "  ";
@@ -1432,7 +1443,7 @@ class TreePrinter {
   void Run(ElideLoopHeader at) {
     // Only effect-free constant completions are elided. Preserve their original
     // statement/anchor identities at the end of the actual predicate occurrence.
-    Result().statements[at.id.value] = {written_, written_};
+    OmitBindingStatement(at.id);
     const auto& node = Tree().statements[at.id.value].statement;
     if (const auto* block = std::get_if<BlockStmt>(&node))
       for (std::uint32_t i = 0; i <= block->child_count; ++i) { Step(); Boundary({at.id, i}); }
@@ -1497,8 +1508,9 @@ class TreePrinter {
       Push(LoopHeaderCursor{at.block, at.index + 1, at.count, at.retained, at.discarded});
       Push(std::string_view(meaning.exit ? " && (" : ", "));
     } else {
-      // Keep the boundary after the last header child at the predicate end.
-      Push(LoopHeaderCursor{at.block, at.count, at.count, at.retained, at.discarded});
+      // Walk remaining elided roots as well: they emit no separator, but their
+      // source identities still need omission events at the predicate boundary.
+      Push(LoopHeaderCursor{at.block, at.index + 1, at.count, at.retained, at.discarded});
     }
     if (const auto* effect = std::get_if<ExpressionStmt>(&Tree().statements[child.value].statement); effect && follows) {
       Result().statements[child.value].begin = written_; Push(EndStatement{child});
@@ -1515,13 +1527,15 @@ class TreePrinter {
   void Run(BlockBoundary at) { Boundary(at); }
   void OmitBindingStatement(StmtId id) {
     Result().statements[id.value] = {written_,written_};
+    Result().statement_extents[id.value] = GeneratedExtent::kBoundary;
     if (const auto* effect = std::get_if<ExpressionStmt>(&Tree().statements[id.value].statement)) {
       // Projected, discarded stores can have arbitrary owned RHS trees. Mark
       // those original occurrences at the omission point, except a forwarded
       // RHS whose real range belongs to its retained destination.
       Result().expressions[effect->expression.value] = {written_,written_};
+      Result().expression_extents[effect->expression.value] = GeneratedExtent::kBoundary;
       if (!Initializers().forwarded_statements[id.value])
-        Push(ProjectedExpression{effect->expression,written_,written_});
+        Push(ProjectedExpression{effect->expression,written_,written_,GeneratedExtent::kBoundary});
     }
   }
   void Run(LoopInitializerCursor at) {
@@ -1616,14 +1630,20 @@ class TreePrinter {
         // native callables still emit their closing block/function syntax.
         // Retain the original return and literal/receiver operand identities.
         Result().statements[completion->statement.value] = {written_, written_};
-        if (completion->value) Result().expressions[completion->value->value] = {written_, written_};
+        Result().statement_extents[completion->statement.value] = GeneratedExtent::kBoundary;
+        if (completion->value) {
+          Result().expressions[completion->value->value] = {written_, written_};
+          Result().expression_extents[completion->value->value] = GeneratedExtent::kBoundary;
+        }
         return;
       }
     }
     const auto child = Tree().children[block.first_child + at.index];
     if (const auto read = DiscardedInvocationRead(Tree(), child)) {
       Result().statements[child.value] = {written_, written_};
+      Result().statement_extents[child.value] = GeneratedExtent::kBoundary;
       Result().expressions[read->value] = {written_, written_};
+      Result().expression_extents[read->value] = GeneratedExtent::kBoundary;
       return;
     }
     if (Initializers().omitted[child.value]) {
@@ -1684,26 +1704,27 @@ class TreePrinter {
   const BindingInitializers& Initializers() const { return family_ ? initializers_[current_] : initializer_; }
   void FinalizeNullishRanges() {
     const auto& syntax = Nullish();
-    const auto finalize = [&](const auto& omitted, auto& ranges) {
+    const auto finalize = [&](const auto& omitted, auto& ranges, auto& extents) {
       for (std::size_t i = 0; i < omitted.size(); ++i) {
         Step(); if (!omitted[i]) continue;
         const auto base = syntax.Base(Tree(), *omitted[i]);
         const auto boundary = Result().expressions[base.value].end;
         ranges[i] = {boundary, boundary};
+        extents[i] = GeneratedExtent::kBoundary;
       }
     };
-    finalize(syntax.omitted_by, Result().expressions);
-    finalize(syntax.omitted_properties_by, Result().properties);
-    const auto statements=[&](const auto& omitted,auto& ranges) {
+    finalize(syntax.omitted_by, Result().expressions, Result().expression_extents);
+    finalize(syntax.omitted_properties_by, Result().properties, Result().property_extents);
+    const auto statements=[&](const auto& omitted,auto& ranges,auto& extents) {
       for(std::size_t i=0;i<omitted.size();++i) {
         Step();if(!omitted[i]) continue;
         const auto base=syntax.Base(Tree(),NullishRoot{*omitted[i]});
-        const auto boundary=Result().expressions[base.value].end;ranges[i]={boundary,boundary};
+        const auto boundary=Result().expressions[base.value].end;ranges[i]={boundary,boundary};extents[i]=GeneratedExtent::kBoundary;
       }
     };
-    statements(syntax.statement_expressions_by,Result().expressions);
-    statements(syntax.statement_properties_by,Result().properties);
-    statements(syntax.statement_omitted_by,Result().statements);
+    statements(syntax.statement_expressions_by,Result().expressions,Result().expression_extents);
+    statements(syntax.statement_properties_by,Result().properties,Result().property_extents);
+    statements(syntax.statement_omitted_by,Result().statements,Result().statement_extents);
     if(!syntax.statement_omitted_by.empty()) for(std::size_t i=0;i<Tree().anchors.size();++i) {
       Step();if(const auto* boundary=std::get_if<BlockBoundary>(&Tree().anchors[i].position))
         if(const auto root=syntax.statement_omitted_by[boundary->block.value])

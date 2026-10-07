@@ -1,6 +1,3 @@
-#include "tail_completion.h"
-#include "discarded_read.h"
-#include "nullish_syntax.h"
 #include "family_emission.h"
 
 #include <algorithm>
@@ -32,18 +29,7 @@ void CheckPositions(const PreparedFamily& family, const PrintedFamilyDraft& prin
     const auto& member = members[i]; const auto& tree = member.tree;
     const auto& positions = printed.members[i]; const auto owner = printed.functions[i];
     const bool module = positions.fragment == FunctionFragment::kModuleBody && i == family.Family().root.value;
-    const auto completion = positions.fragment == FunctionFragment::kStaticFields ||
-        positions.fragment == FunctionFragment::kImplicitConstructor ? std::nullopt : ImplicitTailCompletion(tree);
-    const auto* body = std::get_if<BlockStmt>(&tree.statements[tree.body.value].statement);
-    const auto nullish_result = PlanNullishSyntax(tree, budget.Left());
-    if (const auto* error = std::get_if<TreeStructureError>(&nullish_result)) {
-      if (*error == TreeStructureError::kResourceLimit) throw FamilyEmitFailure{Error::kResourceLimit};
-      if (*error == TreeStructureError::kWorkLimit) throw FamilyEmitFailure{Error::kWorkLimit};
-    }
-    Require(std::holds_alternative<NullishSyntax>(nullish_result), Error::kPositions);
-    const auto& nullish = std::get<NullishSyntax>(nullish_result);
-    budget.Admit(nullish.allocated_bytes, 1); budget.Step(nullish.work);
-    const bool empty_completion = module && completion && body && body->child_count == 1 && owner.begin == owner.end;
+    const bool empty_completion = module && owner.begin == owner.end;
     Require((owner.begin < owner.end || empty_completion) && owner.end <= printed.bytes && member.sources &&
         positions.identity == tree.identity && positions.method == tree.method &&
         positions.value_revision == tree.value_revision && positions.cfg_revision == tree.cfg_revision &&
@@ -52,20 +38,13 @@ void CheckPositions(const PreparedFamily& family, const PrintedFamilyDraft& prin
         positions.expressions.size() == tree.expressions.size() &&
         positions.properties.size() == tree.properties.size() &&
         positions.statements.size() == tree.statements.size() &&
-        positions.anchors.size() == tree.anchors.size(), Error::kPositions);
+        positions.anchors.size() == tree.anchors.size() &&
+        positions.expression_extents.size() == tree.expressions.size() &&
+        positions.property_extents.size() == tree.properties.size() &&
+        positions.statement_extents.size() == tree.statements.size(), Error::kPositions);
     Require(tree.modules.empty() ? !positions.module_binding :
         positions.module_binding && member.record && positions.module_binding->record == *member.record,
         Error::kPositions);
-    // Index discarded invocation reads once; source occurrences keep their
-    // original owned node instead of masquerading as elided instructions.
-    std::vector<std::optional<StmtId>> discarded;
-    budget.Admit(tree.expressions.size(), sizeof(discarded[0]));
-    budget.Step(tree.expressions.size()); discarded.resize(tree.expressions.size());
-    budget.Admit(discarded.capacity() - discarded.size(), sizeof(discarded[0]));
-    for (std::size_t j = 0; j < tree.statements.size(); ++j) {
-      budget.Step(); const StmtId statement{static_cast<std::uint32_t>(j)};
-      if (const auto read = DiscardedInvocationRead(tree, statement)) discarded[read->value] = statement;
-    }
     for (const auto& source : member.sources->occurrences) {
       budget.Step();
       // IDs come from the sealed instruction-source pass, not caller tables.
@@ -84,59 +63,18 @@ void CheckPositions(const PreparedFamily& family, const PrintedFamilyDraft& prin
           else if constexpr (std::is_same_v<T, StmtId>) range = positions.statements[target.value];
           else if constexpr (std::is_same_v<T, PropertyId>) range = positions.properties[target.value];
           else { static_assert(std::is_same_v<T, ParameterId>); range = positions.parameters[target.value]; }
-          bool omitted = false;
-          if constexpr (std::is_same_v<T, ExprId>) omitted = completion && completion->value == target;
-          else if constexpr (std::is_same_v<T, StmtId>) omitted = completion && completion->statement == target;
-          std::optional<NullishRoot> guarded;
-          if constexpr (std::is_same_v<T, ExprId> || std::is_same_v<T, PropertyId> || std::is_same_v<T, StmtId>)
-            guarded = nullish.Omission(target);
-          std::optional<StmtId> discarded_statement;
-          if constexpr (std::is_same_v<T, ExprId>) discarded_statement = discarded[target.value];
-          else if constexpr (std::is_same_v<T, StmtId>) {
-            if (DiscardedInvocationRead(tree, target)) discarded_statement = target;
+          GeneratedExtent extent = GeneratedExtent::kSpan;
+          if constexpr (std::is_same_v<T, ExprId>) extent = positions.expression_extents[target.value];
+          else if constexpr (std::is_same_v<T, StmtId>) extent = positions.statement_extents[target.value];
+          else if constexpr (std::is_same_v<T, PropertyId>) extent = positions.property_extents[target.value];
+          // Consume the same recovery decision that emitted this occurrence.
+          // Unmarked empty ranges remain invalid; no opcode, shape, spelling or
+          // second optimization pass decides which source nodes may disappear.
+          Require(owner.begin <= range.begin && range.end <= owner.end, Error::kPositions);
+          switch (extent) {
+            case GeneratedExtent::kSpan: Require(range.begin < range.end, Error::kPositions); break;
+            case GeneratedExtent::kBoundary: Require(range.begin == range.end, Error::kPositions); break;
           }
-          if (discarded_statement) {
-            const auto read = *DiscardedInvocationRead(tree, *discarded_statement);
-            Require(range.begin == range.end && owner.begin <= range.begin && range.end <= owner.end &&
-                range == positions.statements[discarded_statement->value] &&
-                range == positions.expressions[read.value], Error::kPositions);
-          } else if (guarded) {
-            const auto base = nullish.Base(tree, *guarded);
-            const auto boundary = positions.expressions[base.value].end;
-            const auto selection = std::visit([&](auto id) {
-              if constexpr(std::is_same_v<decltype(id),ExprId>) return positions.expressions[id.value];
-              else return positions.statements[id.value];
-            },*guarded);
-            const auto& projection=nullish.Projection(*guarded);
-            auto access = selection;
-            if (const auto* member = std::get_if<OptionalMemberSyntax>(&projection))
-              access = positions.expressions[member->member.value];
-            else if (const auto* call = std::get_if<OptionalCallSyntax>(&projection))
-              access = positions.expressions[call->call.value];
-            else {
-              const auto& coalesce = std::get<NullishFallbackSyntax>(projection);
-              const auto fallback = positions.expressions[coalesce.fallback.value];
-              Require(boundary <= fallback.begin && fallback.begin < fallback.end && fallback.end <= selection.end, Error::kPositions);
-            }
-            Require(range == GeneratedRange{boundary, boundary} &&
-                owner.begin <= selection.begin && selection.begin <= access.begin &&
-                access.begin <= positions.expressions[base.value].begin && boundary < access.end &&
-                access.end <= selection.end && selection.end <= owner.end, Error::kPositions);
-          } else if (omitted) {
-            Require(range.begin == range.end && range == positions.statements[completion->statement.value] &&
-                (!completion->value || range == positions.expressions[completion->value->value]), Error::kPositions);
-            if (module) Require(range.begin == owner.end, Error::kPositions);
-            else {
-              const auto block = positions.statements[tree.body.value];
-              Require(owner.begin <= block.begin && block.begin <= range.begin && range.end < block.end &&
-                  block.end <= owner.end && body, Error::kPositions);
-              if (body->child_count > 1) {
-                const auto prior = tree.children[body->first_child + body->child_count - 2];
-                Require(positions.statements[prior.value].end <= range.begin, Error::kPositions);
-              }
-            }
-          }
-          else Require(owner.begin <= range.begin && range.begin < range.end && range.end <= owner.end, Error::kPositions);
         }
       }, source.target);
     }

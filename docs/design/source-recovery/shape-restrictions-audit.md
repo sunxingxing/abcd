@@ -1842,3 +1842,14 @@ RecoveryFlow承担typed定义/读取/完成模型适配。小图独立oracle通�
 LegacyFlowProjection携带旧事实是明确过渡缺口，不是新semantic premise。
 后续只允许扩充共同模型/分析精度并替换旧决策，不扩展初始化/快照/循环
 各自的局部条件。复杂finally保守图不授予binding lifetime变化权限。
+
+### 规则177：发布范围不再独立匹配省略语法
+
+FamilyEmission删除PlanNullishSyntax、DiscardedInvocationRead、
+ImplicitTailCompletion的第二次恢复判断。省略合法性仍属于原恢复分析；
+打印事件显式记录GeneratedExtent，发布只验证同一产物的坐标类别和
+函数归属。默认跨度要求非空，显式边界要求相等；这证明来源传输完整性，
+不以空范围反推语义省略，也不增加同块/邻接/图形状准入。
+循环头跳过尾部省略根的遍历漏洞通过继续消费原节点修复，未新增恢复模式。
+测试端仍独立重算恢复计划、检查尾部/可选链范围关系并执行生成源码；
+消费者信任恢复事实不代表语义验收已经完成。具体证据见status规则177。

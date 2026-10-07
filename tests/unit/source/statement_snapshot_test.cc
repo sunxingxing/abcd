@@ -120,7 +120,16 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
   std::ostringstream output;const auto printed=PrintFunctionTree(tree,output);test::Check(std::holds_alternative<PrintedFunction>(printed));
   const auto& ranges=std::get<PrintedFunction>(printed).expressions;
   for(const auto range:ranges)test::Check(range.begin<=range.end&&range.end<=output.str().size());
+  const auto& positions=std::get<PrintedFunction>(printed);
+  test::Check(positions.expression_extents.size()==ranges.size());
+  for(std::size_t i=0;i<ranges.size();++i) {
+    if ((positions.expression_extents[i]==GeneratedExtent::kBoundary)!=(ranges[i].begin==ranges[i].end))
+      std::cerr << "extent form=" << static_cast<unsigned>(form) << " count=" << count << " reverse=" << reverse << " expression=" << i
+                << " range=" << ranges[i].begin << ',' << ranges[i].end << '\n';
+    test::Check((positions.expression_extents[i]==GeneratedExtent::kBoundary)==(ranges[i].begin==ranges[i].end));
+  }
   if(folded)test::Check(ranges[rhs.value].begin<ranges[rhs.value].end);
+  if(folded)test::Check(positions.expression_extents[rhs.value]==GeneratedExtent::kSpan);
   if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"form",form},{"count",count},{"folded",folded}}<<'\n';return plan.work;
 }
 }

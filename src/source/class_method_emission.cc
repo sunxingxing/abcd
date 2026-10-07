@@ -75,7 +75,10 @@ std::variant<FunctionEmission, TreePrintError> FunctionEmission::Write(
       !add(positions->expressions.capacity(), sizeof(GeneratedRange)) ||
       !add(positions->properties.capacity(), sizeof(GeneratedRange)) ||
       !add(positions->statements.capacity(), sizeof(GeneratedRange)) ||
-      !add(positions->anchors.capacity(), sizeof(std::size_t)))
+      !add(positions->anchors.capacity(), sizeof(std::size_t)) ||
+      !add(positions->expression_extents.capacity(), sizeof(GeneratedExtent)) ||
+      !add(positions->property_extents.capacity(), sizeof(GeneratedExtent)) ||
+      !add(positions->statement_extents.capacity(), sizeof(GeneratedExtent)))
     return TreePrintError::kResourceLimit;
   return FunctionEmission{std::move(function), std::move(*positions), range, receipt, owned};
 }
