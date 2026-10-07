@@ -231,7 +231,7 @@ std::uint64_t Native(unsigned form, unsigned count, bool reverse, bool emit) {
   const auto planned = PlanBindingInitializers(tree, loops, nullish);test::Check(std::holds_alternative<BindingInitializers>(planned));
   const auto& bindings = std::get<BindingInitializers>(planned);
   std::ostringstream source; const auto printed = PrintFunctionTree(tree, source); test::Check(std::holds_alternative<PrintedFunction>(printed));
-  const bool lexical = form < 3 || form >= 7;
+  const bool lexical = form < 3 || form >= 6;
   test::Check((source.str().find("for (let state = ") != std::string::npos) == lexical);
   const auto& ranges = std::get<PrintedFunction>(printed);
   const auto completion = ImplicitTailCompletion(tree);

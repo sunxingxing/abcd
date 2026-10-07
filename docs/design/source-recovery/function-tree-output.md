@@ -21,6 +21,35 @@ Printer 处理节点、名字、括号、转义、标签、注释和已有输出
 模式，不补推 CFG、finally 或闭包，不调用专项 body writer。无原名可用合成名，
 无独立 PC 的结构节点保留结构来源；不补造原名、类型、PC 或可执行占位行为。
 
+## 源级局部变量与捕获 cell 初始化（规则 164）
+
+空let的Local与CompilerTemporary消费同一first-completion/全部观察/
+lexical confinement结果，在原赋值处投影初始化声明。Local保持原名、
+let和存储，不参与私有常量/复制删除。RHS的调用、分配、异常、暂停和
+NamedEvaluation仍在原发生点，AST/SymbolId/origin不改变。
+
+FunctionExpr及class成员/静态初始化的capture边在创建处进入共同
+观察census；创建不读取cell的值，却是它开始能被外部调用观察的时点。
+创建早于赋值或在RHS内时，首次完成证明不成立，保留原声明和赋值。
+capture后可以修改cell，不能从父函数无写推断const。module alias
+仍可能在重入中被读取，不因局部first-store证明而改动其初始化。
+
+逃逸cell的声明还需保留动态环境身份。目前用原ScopeId与打印声明
+owner的scope相同证明activation相同；外层循环共享cell不得下沉为
+每轮cell，原循环体自己的每轮cell可以就地初始化。这是当前保守的
+环境等价证明域，不是语言禁止跨scope恢复；一般不同scope的activation
+等价及每轮cell重建仍开放。nonescaping Local复用原词法包含证明，
+可以跨嵌套block初始化，不引入CFG同块、邻接或编译器形状条件。
+
+算法复用本项目既有初始化census、DFS scope区间与common printer，
+没有外部实现或新依赖。语言依据为固定ECMAScript 2024的Lexical
+BindingEvaluation、InitializeBinding与CreatePerIterationEnvironment。
+新增容量统计按E个expression及C条closure/class capture边计O(E+C)
+时间/空间；原观察遍历按节点及capture边线性进行，名字解析的原排序
+成本另计。一个creation的capture数不受expression数量限制。0/1/
+200/201/400/800、正反arena、旧值/共享身份/异常/暂停、实际三profile
+解码及ABC-only证据见status.md；阶段一完整gate和暂停范围保持。
+
 ## 共同表达式观察与逗号值投影（规则 163）
 
 BindingInitializers的原完成census记录postorder，按typed expression/

@@ -33,13 +33,14 @@ struct BindingInitializers {
   std::uint64_t work = 0;
 };
 // Requires a structurally checked tree and its current loop/nullish projections.
-// Native declarations at the original assignment occurrence. Empty private
-// declarations can initialize in the same or a nested lexical container only
-// when the first completed direct store dominates every confined observation
-// and no capture/module alias escapes. DFS intervals prove lexical containment.
-// The canonical AST, expressions and execution order remain unchanged; private
-// syntax lifetimes may shrink. This does not recover user or captured bindings.
-// Uncaptured private loop-entry bindings may use native for let. The same
+// Native declarations at the original assignment occurrence. Empty let locals
+// and private declarations use the same first-completion/confinement proof.
+// Capture creation is an observation; escaping locals additionally retain the
+// original scope activation (including cells shared across loop iterations).
+// Source let stays let and retains storage; module aliases remain unchanged.
+// The canonical AST, expressions and execution order remain unchanged;
+// nonescaping syntax lifetimes may shrink through DFS lexical containment.
+// Uncaptured loop-entry bindings may use native for let. The same
 // first-store and confinement proof covers initializer/test/body/update and
 // rejects observations after exit. Source/cell captures never change lifetime.
 // Single-store eligible bindings form a sparse constant lattice: primitive

@@ -12,6 +12,57 @@
 
 ## 当前阶段
 
+### 2026-10-07：规则164，源级局部变量及捕获 cell 的初始化声明
+
+- 从干净5d39ca87继续；上一轮完成四ViewModel验收，属于实际进展。
+  BindingInitializers将空let的Local接入原first-completion/全部观察/
+  lexical confinement证明，在原赋值发生处输出初始化声明。真实let
+  保持let、名字与存储，不进入私有constant/copy删除域；没有移动RHS、
+  回放效果或按样本/名字/opcode/register/PC/同块/邻接选择恢复。
+- FunctionExpr与class constructor/member/defined-member/static initializer
+  的实际capture边在创建处进入同一观察census。创建早于首次store或在
+  RHS内的capture保留旧声明；子函数可写，不能从父函数零写推断const。
+  逃逸cell还必须保留原ScopeId的activation：外层loop共享cell不移成
+  每轮cell，原loop体本来每轮创建的cell可就地初始化。此检查证明实际
+  环境身份，不是CFG同块条件；nonescaping Local复用原跨嵌套scope证明。
+  module aliases继续保留原可观察初始化，未知外部读不能局部消除。
+- 原共同printer与origin/anchor路径直接消费已有BindingInitializer，
+  未新增writer或最终IR。投影观察容量按expressions与closure/class
+  capture边计，不能用expression数量限制一个creation的捕获数。增加
+  O(E+C)计数/预算化空间，原census整体仍按输入节点与capture边线性扫描；
+  C为实际capture边，不逐变量遍历图。来源范围和资源边界保持。
+- 新local_initializer_test先在旧规则163有效树的源Local初始化断言RED。
+  十六语义族、0/1/200/201/400/800与正反arena共192完整生成源，通过
+  7596独立JS行为比较及16有效JS错误变异。包括旧值/自读/捕获创建、
+  child写入、共享与每轮loop环境、嵌套scope、finally、await job/reject、
+  yield next/throw/return；原对象身份逐叶比较。另五个1/200/201/400/800
+  多cell捕获的实际loop条件投影验证容量、exact budget与线性work增长。
+  原三profile72实际cell解码继续通过，source Local已用let initializer。
+- abc_structure/abc_semantic及相关fixture最终构建通过。新注册target首
+  次需重新configure；容量计数lambda的optional类型修正后构建通过。
+  首批5项4通过，binding JS旧独立store位置假设失败，改为在原生声明
+  initializer上执行原副作用变异后binding/local三项3/3通过25.82秒。
+  相关17项15通过75.91秒；失败为loop Local准入旧断言及class named
+  cell空声明旧断言。修正后loop/local source两项2/2通过5.39秒，module
+  unit/source两项2/2通过3.37秒。最终23个不同定向项均有当前通过证据，
+  包括shopping十record、rich-text/ProgressBar、class captures/names、
+  module live binding、loop/await capture和snapshot。误写的不存在
+  class_declaration_test构建目标未当成功；实际class_declarations_source_test
+  依赖record_import_tree_test，已正确构建并通过。全套未运行。
+- fresh ABC-only build/stage-one/local-initializers-rule164：pasteboard仍
+  19 records/219 methods，10complete/0partial/9noModule，显式numeric+
+  constructors、ValueTree且无legacy。十份mjs独立解析且无缺口标记；
+  七份有表示改善，声明总数140保持，空声明45→18、初始化95→122。
+  mutableStyledString1、captured this/formal、ProgressBar内部模块变量
+  与Home类绑定在原初始化点恢复let，不宣称所有名称/SSA或style已完成。
+- 证据/tmp/abcd-local-initializer-{red,red-build,build-fixed,focused,
+  final-binding,regressions,final-local,final-module,behavior,export,artifacts}.log；
+  node --check与git diff --check通过。初版独立oracle深比较把两个空对象
+  当相同，已由共享loop错误变异暴露并修正为身份比较；最终16变异全检出。
+  下一步继续其余record独立语义/style、一般SSA存储与原fields/globals/
+  signature/body gate。Goal active；full suite、expanded corpus、RSS/
+  benchmark、DFX、scheduler、agents和周期audit继续暂停，输入未改动。
+
 ### 2026-10-07：四个 shopping ViewModel 与十个真实 record 的完整连接验收
 
 - 从干净e2f0f6b5继续，上一轮属于实际进展。本轮生产/rules163保持，

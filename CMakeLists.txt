@@ -620,6 +620,9 @@ if(BUILD_TESTING)
     tests/unit/source/entry_initializer_checks.cc tests/unit/source/expression_initializer_checks.cc)
   target_link_libraries(binding_initializer_test PRIVATE abcd_source abcd_json)
   add_test(NAME binding_initializer_test COMMAND binding_initializer_test)
+  add_executable(local_initializer_test tests/unit/source/local_initializer_test.cc)
+  target_link_libraries(local_initializer_test PRIVATE abcd_source abcd_json)
+  add_test(NAME local_initializer_test COMMAND local_initializer_test)
   add_executable(snapshot_syntax_test tests/unit/source/snapshot_syntax_test.cc tools/tree_position_json.cc)
   target_link_libraries(snapshot_syntax_test PRIVATE abcd_source abcd_json)
   add_test(NAME snapshot_syntax_test COMMAND snapshot_syntax_test)
@@ -1837,6 +1840,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/loop_initializer.mjs $<TARGET_FILE:loop_initializer_test>)
     add_test(NAME binding_initializer_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals --stack-size=4096
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/binding_initializer.mjs $<TARGET_FILE:binding_initializer_test>)
+    add_test(NAME local_initializer_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/local_initializer.mjs $<TARGET_FILE:local_initializer_test>)
     add_test(NAME loop_exit_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/loop_exits.mjs $<TARGET_FILE:loop_exit_test>)
     add_test(NAME shared_loop_exit_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

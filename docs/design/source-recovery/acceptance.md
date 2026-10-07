@@ -1,5 +1,16 @@
 # 验收、证据与实施交接
 
+2026-10-07规则164：源级Local与私有存储共用首次完成/全部观察/词法
+包含证明，恢复原赋值发生处的let initializer。真实let不推const或删
+存储；capture在创建处观察且逃逸cell保留原activation，模块alias保留。
+192完整生成源/7596独立行为/16有效mutation及五规模多cell投影通过；
+原三profile72解码cell和23个不同相关定向项最终通过。旧store/空声明
+源码断言已改为初始化声明，原行为/副作用变异继续验证，修复日志见status。
+fresh ABC-only pasteboard仍10complete/0partial/9noModule，十mjs解析且
+无缺口；七份源码改善，空声明45→18，初始化95→122，总声明140保持。
+这是实际表示改善，不增加完整record数量；其余record、一般SSA/每轮
+capture及原结构gate仍未完成。Goal active，暂停范围保持。
+
 2026-10-07 shopping ViewModel补充：当前rules163的ABC-only输出，
 records28887 HomeViewModel、29119 IconInfoViewModel、29382
 RecommendProductViewModel与29619 SectionViewModel的受控整record

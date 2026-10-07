@@ -607,9 +607,9 @@ int main(int argc, char**) {
     const auto printed = PrintFunctionTree(fixture.tree, output);
     test::Check(std::holds_alternative<PrintedFunction>(printed));
     const auto& ranges = std::get<PrintedFunction>(printed);
-    const bool fold = form == 0 || form == 1 || form == 5 || form == 6 || form == 8 || form == 9 || form == 11 || form == 13;
+    const bool fold = form == 0 || form == 1 || form == 5 || form == 6 || form == 7 || form == 8 || form == 9 || form == 11 || form == 13;
     test::Check((ranges.statements[fixture.declaration.value].begin == ranges.statements[fixture.declaration.value].end) == fold);
-    if (fold) test::Check(output.str().find(form == 1 ? "let saved = " : "const saved = ") != std::string::npos);
+    if (fold) test::Check(output.str().find(form == 1 || form == 7 ? "let saved = " : "const saved = ") != std::string::npos);
     for (const auto& at : ranges.expressions) test::Check(at.begin < at.end && at.end <= output.str().size());
     for (auto at : ranges.anchors) test::Check(at > 0 && at <= output.str().size());
     if (argc > 1) std::cout << nlohmann::json{{"source", output.str()}, {"form", form}, {"count", count}, {"fold", fold}, {"decoded", false}} << '\n';

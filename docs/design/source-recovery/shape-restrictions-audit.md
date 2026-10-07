@@ -1,5 +1,17 @@
 # 按用户要求进行的恢复条件审计
 
+规则164补充：源Local不再仅因非CompilerTemporary而保留空声明。
+共同首次完成/全部观察/词法包含证明恢复let initializer，真实let/名字/
+存储保留，capture创建计入观察且不推断子函数只读。逃逸cell额外需要
+动态环境身份；原ScopeId相同是当前共同模型的充分证明，保护外层循环
+共享cell与本来每轮创建的cell。不同scope的activation等价尚缺证明，
+登记为实现覆盖域，不描述为语言不变量或CFG同块约束。nonescaping
+Local可跨嵌套scope恢复，不加邻接/PC/register/opcode/样本选择。
+module alias保留外部重入观察；私有常量/复制删除仍只处理私有存储。
+一个creation可有任意受资源预算约束的capture边，观察容量按实际边计。
+早期/RHS capture、child mutation、loop共享/每轮cell、finally旧值、
+async/generator、正反arena及200/201规模与实际record证据见status.md。
+
 规则163补充：原完成census的postorder与typed expression/operator
 穷尽解释汇总无hook/throw/write/allocation/suspension的完成证明。
 已初始化读取用共同声明先后、lexical/execution包含或入口body语义；

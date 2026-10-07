@@ -1,5 +1,13 @@
 # 全 ISA 优先执行顺序
 
+2026-10-07规则164：共同首次完成/观察模型恢复源Local及保持activation
+的捕获cell初始化声明，真实let/名字/存储和原RHS发生点保持。192完整源/
+7596行为/16mutation及多cell五规模投影通过，23项相关定向最终通过。
+fresh pasteboard仍10complete，七份表示改善，空声明45→18、初始化
+95→122；未添加生产样本/布局条件。继续其余record语义/style、一般
+SSA存储与fields/globals/signature/body原gate，Goal active及暂停范围
+保持。source let并未被推断成const；具体边界及修复证据见status.md。
+
 2026-10-07 rules163保持：四个shopping ViewModel的真实十record连接
 及独立公开方法/构造表示验收完成，records28887/29119/29382/29619
 受控whole-record语义/style由pending转accepted。22正常/2560原异常/

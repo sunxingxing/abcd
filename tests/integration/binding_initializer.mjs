@@ -354,7 +354,7 @@ for (const row of rows) {
     if(row.entry===29){const values=[generated(token,()=>{},second,true),generated(token,()=>{},second,true)];assert.notEqual(values[0],values[1]);}
     if(row.folded&&row.count===1) {
       const work=[ast];let returned;while(work.length){const node=work.pop();if(node.type==='ReturnStatement')returned=node;for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)work.push(child);}else if(value?.type)work.push(value);}}
-      const initializer=row.entry===33?stores.find(node=>node.expression.left.name==='state').expression.right:row.entry===25?declarations.find(node=>node.declarations.some(item=>item.id.name==='state')).declarations[0].init:null;
+      const initializer=row.entry===33||row.entry===25?declarations.find(node=>node.declarations.some(item=>item.id.name==='state')).declarations[0].init:null;
       const operand=initializer??returned.argument,replacement=initializer?'('+row.source.slice(operand.start,operand.end)+', '+row.source.slice(operand.start,operand.end)+')':'123';
       const changed=row.source.slice(0,operand.start)+replacement+row.source.slice(operand.end);parseJavaScript(changed);
       const bad=Function((row.strict?'"use strict";':'')+'return '+changed)(),actual=await run(bad,token,Infinity),expected=await run(reference,token,Infinity);
@@ -364,7 +364,7 @@ for (const row of rows) {
   }
   if(row.alias!==undefined) {
     const generated=Function('return '+row.source)(),reference=aliasReference(row);
-    if(row.alias===12){assert.equal(declarations.find(node=>node.declarations.some(item=>item.id.name==='saved')).kind,'let');assert.equal(stores.filter(node=>node.expression.left.name==='saved').length,1);}
+    if(row.alias===12){const declaration=declarations.find(node=>node.declarations.some(item=>item.id.name==='saved'));assert.equal(declaration.kind,'let');assert.ok(declaration.declarations.find(item=>item.id.name==='saved').init);assert.equal(stores.filter(node=>node.expression.left.name==='saved').length,0);}
     if(row.folded){assert.ok(!declarations.some(node=>node.declarations.some(item=>item.id.name.startsWith('copy'))));++folded;}
     if(row.alias===9||row.alias===10)assert.notEqual(generated(()=>{},()=>{}),generated(()=>{},()=>{}));
     const run=(fn,value,fault,flag=true,request='next',reject=false,iterations=2)=>observeAlias(fn,row,value,fault,flag,request,reject,iterations);
@@ -412,7 +412,7 @@ for (const row of rows) {
     }
     continue;
   }
-  if(row.decoded_cell){const name=String.fromCharCode(...row.cell_name);assert.equal(declarations.find(node=>node.declarations.some(item=>item.id.name===name)).kind,'let');assert.equal(stores.filter(node=>node.expression.left.name===name).length,1);}
+  if(row.decoded_cell){const name=String.fromCharCode(...row.cell_name),declaration=declarations.find(node=>node.declarations.some(item=>item.id.name===name));assert.equal(declaration.kind,'let');assert.ok(declaration.declarations.find(item=>item.id.name===name).init);assert.equal(stores.filter(node=>node.expression.left.name===name).length,0);}
   if(row.fold || row.branch&&!row.decoded_cell) {assert.ok(initialized.length); ++folded;}
   const generated=Function('return '+row.source)(), reference=original(row);
   if(row.decoded_cell&&row.field) {

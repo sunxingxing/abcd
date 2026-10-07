@@ -570,13 +570,13 @@ int main(int argc, char** argv) {
   if (mode == "--class-cell") { std::cout << Recover(FixtureCase::kClassCell); return 0; }
   if (mode == "--class-shadow-cell") {
     const auto source = Recover(FixtureCase::kClassNamedShadow);
-    Check(source.find("let capturedValue;") == std::string::npos);
+    Check(source.find("let capturedValue") == std::string::npos);
     std::cout << source; return 0;
   }
   if (mode == "--class-named-cell") {
     const auto source = Recover(FixtureCase::kClassNamedCell);
     std::cout << source << std::flush;
-    Check(source.find("let capturedValue;") != std::string::npos);
+    Check(source.find("let capturedValue = input;") != std::string::npos);
     Check(source.find("return capturedValue;") != std::string::npos);
     return 0;
   }

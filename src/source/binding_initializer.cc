@@ -21,6 +21,7 @@ struct BindingUses {
   std::optional<std::size_t> first_container, last_container;
   std::size_t writes = 0;
   bool escaped = false, outside_body = false, initialized_first = false;
+  bool private_storage = false, module_alias = false;
 };
 struct ContainerRange { std::size_t begin = 0, end = 0; };
 struct ProjectionObservation { SymbolId symbol; StmtId owner; };
@@ -59,7 +60,7 @@ class Initializers {
     budget.Array(containers_, tree.statements.size());
     budget.Array(lexical_, tree.statements.size()); budget.Array(projectors_, tree.statements.size());
     budget.Array(retained_bodies_, tree.statements.size());
-    budget.Array(projection_observations_, tree.expressions.size());
+    budget.Array(projection_observations_, ProjectionCapacity());
     budget.Array(expressions_, tree.expressions.size()); budget.Array(statements_, tree.statements.size());
     budget.Array(expression_scopes_, tree.expressions.size());
     budget.Array(expression_owners_,tree.expressions.size());budget.Array(expression_projections_,tree.expressions.size());
@@ -70,7 +71,9 @@ class Initializers {
   BindingInitializers Run() {
     if (!tree_.recovery_issues.empty()) return Finish();
     for (auto symbol : tree_.closure_captures) { budget_.Step(); uses_[symbol.value].escaped = true; }
-    for (const auto& alias : tree_.modules) { budget_.Step(); uses_[alias.symbol.value].escaped = true; }
+    for (const auto& alias : tree_.modules) {
+      budget_.Step(); uses_[alias.symbol.value].escaped = true; uses_[alias.symbol.value].module_alias = true;
+    }
     for (const auto& parameter : tree_.parameters) {
       budget_.Step(); if (parameter.initializer) Scan(*parameter.initializer, {}, {}, tree_.parameter_scope);
     }
@@ -169,7 +172,18 @@ class Initializers {
     }
     for (std::size_t i = 0; i < uses_.size(); ++i) {
       budget_.Step(); const auto& use = uses_[i];
-      if (!use.declaration || !FirstStored(use)) continue;
+      if (!use.declaration || !InitializerAvailable(use)) continue;
+      if (use.escaped) {
+        // A capture observes its cell from creation onward, even when invoked
+        // only after this activation exits. Keep the original environment for
+        // escaping locals: narrowing an outer cell into a loop body would give
+        // each closure a different cell. Scope identity proves activation, not
+        // a CFG block/adjacency/compiler-layout premise. Module readers can
+        // observe the earlier undefined value and are not locally confined.
+        if (use.module_alias || !use.initializer_container) continue;
+        const auto* owner = std::get_if<BlockStmt>(&tree_.statements[use.initializer_container->value].statement);
+        if (!owner || owner->scope != tree_.symbols[i].scope) continue;
+      }
       const auto& effect = std::get<ExpressionStmt>(tree_.statements[use.initializer->value].statement);
       // DFS intervals prove that every observation stays in the new lexical
       // lifetime. A first completed direct store dominates later reads there,
@@ -178,7 +192,7 @@ class Initializers {
       // This is scope confinement, never a same-block admission. No SSA merge,
       // expression motion, source const inference or new capture environment.
       plan_.statements[use.initializer->value] = BindingInitializer{SymbolId{static_cast<std::uint32_t>(i)},
-          effect.expression, use.writes == 1 ? DeclarationKind::kConst : DeclarationKind::kLet};
+          effect.expression, use.private_storage && use.writes == 1 ? DeclarationKind::kConst : DeclarationKind::kLet};
       if (!loops_.initializer_owners[use.initializer->value]) plan_.omitted[use.declaration->value] = 1;
     }
     Constants();
@@ -217,6 +231,31 @@ class Initializers {
     return Finish();
   }
  private:
+  std::size_t ProjectionCapacity() {
+    // Each expression has at most one direct binding observation. Capture
+    // edges are separate owned inputs: one creation can expose many cells.
+    // Count those edges once; do not cap them by expression count or rescan
+    // captures for each binding. The same bound covers class member families.
+    auto count = tree_.expressions.size();
+    const auto add = [&](std::size_t edges) {
+      RequireTree(edges <= std::numeric_limits<std::size_t>::max() - count, TreeStructureError::kResourceLimit);
+      count += edges;
+    };
+    const auto family = [&](const std::optional<PreparedFamily>& prepared) {
+      if (prepared) {
+        const auto& members = prepared->Family(); add(members.members[members.root.value].tree.captures.size());
+      }
+    };
+    add(tree_.closure_captures.size());
+    for (const auto& expression : tree_.expressions) {
+      budget_.Step(); const auto* created = std::get_if<ClassExpr>(&expression.expression); if (!created) continue;
+      const auto& definition = *created->definition; family(definition.constructor);
+      for (const auto& member : definition.members) { budget_.Step(); family(member); }
+      for (const auto& site : definition.definitions) for (const auto& body : site.bodies) { budget_.Step(); family(body); }
+      if (definition.initializer) add(definition.initializer->tree.captures.size());
+    }
+    return count;
+  }
   bool InitializedRead(SymbolId symbol, ExprId occurrence) const {
     if (plan_.aliases[symbol.value] || plan_.literals[symbol.value]) return true;
     const auto kind = tree_.symbols[symbol.value].kind;
@@ -262,7 +301,7 @@ class Initializers {
     return *use.first_region>=range.begin&&*use.last_region<range.end;
   }
   bool PrivateCopy(const BindingUses& use) const {
-    return use.declaration&&use.writes==1&&CompletedStore(use);
+    return use.private_storage&&use.declaration&&use.writes==1&&CompletedStore(use);
   }
   bool RootLifetime(SymbolId root,ExprId occurrence) const {
     const auto& use=uses_[root.value];
@@ -287,8 +326,8 @@ class Initializers {
     const auto range = containers_[owner->value];
     return *use.first_container >= range.begin && *use.last_container < range.end;
   }
-  bool FirstStored(const BindingUses& use) const {
-    if (!use.initializer || use.escaped) return false;
+  bool InitializerAvailable(const BindingUses& use) const {
+    if (!use.initializer) return false;
     const auto& effect=std::get<ExpressionStmt>(tree_.statements[use.initializer->value].statement);
     return use.first==effect.expression && Confined(use,use.initializer_container);
   }
@@ -456,10 +495,19 @@ class Initializers {
     else ObserveContainer(use, container);
     if (write) ++use.writes;
   }
-  void Captures(const PreparedFamily& prepared) {
+  void Capture(SymbolId symbol, ExprId occurrence, std::optional<StmtId> container,
+      std::optional<StmtId> projector) {
+    uses_[symbol.value].escaped = true;
+    // Creation is the earliest possible observation through this live cell.
+    // Never infer read-only from the parent's lack of writes; child calls may
+    // mutate it. Counting creation before RHS completion protects TDZ/throws.
+    Observe(symbol, occurrence, container, false, projector);
+  }
+  void Captures(const PreparedFamily& prepared, ExprId occurrence,
+      std::optional<StmtId> container, std::optional<StmtId> projector) {
     const auto& family = prepared.Family(); const auto& root = family.members[family.root.value].tree;
     for (const auto& alias : root.captures) {
-      budget_.Step(); if (alias.target.owner == tree_.owner) uses_[alias.target.symbol.value].escaped = true;
+      budget_.Step(); if (alias.target.owner == tree_.owner) Capture(alias.target.symbol, occurrence, container, projector);
     }
   }
   void Scan(ExprId root, std::optional<StmtId> container, std::optional<StmtId> projector, ScopeId scope) {
@@ -489,18 +537,23 @@ class Initializers {
         // completion precedes identifier PutValue, including await/yield failure.
         std::reverse(expressions_.begin()+first_child,expressions_.begin()+pending);
         if (const auto* read = std::get_if<SymbolExpr>(&node)) Observe(read->symbol, visit.expression, container, false, projector);
+        if (const auto* created = std::get_if<FunctionExpr>(&node)) {
+          for (auto symbol : std::span<const SymbolId>(tree_.closure_captures).subspan(created->captures.first, created->captures.count)) {
+            budget_.Step(); Capture(symbol, visit.expression, container, projector);
+          }
+        }
         if (const auto* update = std::get_if<UpdateExpr>(&node)) {
           Observe(update->symbol, visit.expression, container, true, projector);
         }
         if (const auto* created = std::get_if<ClassExpr>(&node)) {
           const auto& definition = *created->definition;
-          if (definition.constructor) Captures(*definition.constructor);
-          for (const auto& member : definition.members) { budget_.Step(); if (member) Captures(*member); }
+          if (definition.constructor) Captures(*definition.constructor, visit.expression, container, projector);
+          for (const auto& member : definition.members) { budget_.Step(); if (member) Captures(*member, visit.expression, container, projector); }
           for (const auto& site : definition.definitions) for (const auto& body : site.bodies) {
-            budget_.Step(); if (body) Captures(*body);
+            budget_.Step(); if (body) Captures(*body, visit.expression, container, projector);
           }
           if (definition.initializer) for (const auto& alias : definition.initializer->tree.captures) {
-            budget_.Step(); if (alias.target.owner == tree_.owner) uses_[alias.target.symbol.value].escaped = true;
+            budget_.Step(); if (alias.target.owner == tree_.owner) Capture(alias.target.symbol, visit.expression, container, projector);
           }
         }
       } else {
@@ -526,9 +579,10 @@ class Initializers {
         if (syntax.initializer) Scan(*syntax.initializer, visit.lexical, visit.projector,visit.scope);
         const auto& symbol = tree_.symbols[syntax.symbol.value]; auto& use = uses_[syntax.symbol.value];
         use.definition=visit.statement;use.initialized_first=!use.first;use.definition_region=current_region_;
-        if (!syntax.initializer && symbol.kind == BindingKind::kCompilerTemporary &&
+        if (!syntax.initializer && (symbol.kind == BindingKind::kCompilerTemporary || symbol.kind == BindingKind::kLocal) &&
             symbol.declaration == DeclarationKind::kLet && visit.container && !visit.projected) {
           use.declaration = visit.statement;
+          use.private_storage = symbol.kind == BindingKind::kCompilerTemporary;
         }
       } else if constexpr (std::is_same_v<T, ExpressionStmt>) {
         Scan(syntax.expression, visit.lexical, visit.projector,visit.scope);
