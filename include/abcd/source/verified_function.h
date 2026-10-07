@@ -14,6 +14,7 @@
 
 namespace abcd::source {
 struct GlobalScope;
+struct TreeFlow;
 enum class FunctionPrepareError : std::uint8_t {
   kContext, kBody, kValues, kControl, kEvaluation, kConstants, kParameters,
   kTree, kFileChanged, kResourceLimit, kWorkLimit, kAbi
@@ -55,6 +56,7 @@ class VerifiedFunction {
       analysis::FunctionSiteId site, RouteInputIdentity identity,
       analysis::SemanticBudget budget = {}, const GlobalScope* scope = nullptr);
   [[nodiscard]] const FunctionTree& Tree() const;
+  [[nodiscard]] const TreeFlow& Flow() const;
   [[nodiscard]] std::u16string_view Name() const;
   [[nodiscard]] const analysis::ClassMethodSite* ClassCreation() const;
   [[nodiscard]] const analysis::FunctionCreationSite* FunctionCreation() const;

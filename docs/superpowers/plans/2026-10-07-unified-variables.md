@@ -46,6 +46,13 @@ references, completion edges, scope/capture events and source/IR identity maps.
 - [ ] Run recovery_flow_test, binding_interference_test/source and existing tree-flow tests.
 - [ ] Commit with actual implementation/remaining-gap evidence.
 
+Retained-correspondence substep (rules176): TreeSemantics transfers its checked
+TreeFlow through ConstructedFunction/ExceptionFunctionDraft. VerifiedFunction owns
+that final flow; family and capture verification reuse it. Default-signature tree
+mutation replaces the correspondence after revalidation; partial trees have none.
+Original SSA/effect facts are not yet connected to canonical RecoveryFlow, so task
+1 remains incomplete. No new copy of family correspondence is introduced.
+
 ### Task 2: Shared definitions, initialization and liveness
 
 Files: create src/source/flow_definitions.h/.cc, flow_liveness.h/.cc,

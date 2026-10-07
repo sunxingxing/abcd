@@ -10,8 +10,8 @@
 CheckTreeCorrespondenceOrigins 的同一次函数准备内：保留 ValueProgram、
 ControlPlan、EvaluationPlan 与 TreeFlow 已证明的对应事实，构成不可变
 RecoveryFlow。不能由优化器重新匹配原始 opcode、图形状或 printed text。
-family 已保留 TreeFlow；普通 VerifiedFunction 需补齐交接，不能重复保存
-family已有数据。TreeFlow 是对应证据，不是另一个待替代的 CFG；复用 snapshots、phis、
+规则176中普通 VerifiedFunction 与 family 均保留最终语义验证产生的
+TreeFlow；family移动既有证据，不重复保存或重新计算。TreeFlow 是对应证据，不是另一个待替代的 CFG；复用 snapshots、phis、
 cells、copies、catch commits、原操作表达式和 origin 身份。源语法引入的
 binding allocation/初始化/离开另建显式事件，不能冒充原 SSA operation。
 独立 FunctionTree 测试走同一源码事件适配器，但不得伪造原 IR 证明。

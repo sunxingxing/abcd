@@ -27,6 +27,7 @@
 #include <iostream>
 #include <limits>
 #include <sstream>
+#include <source_location>
 #include <type_traits>
 
 namespace {
@@ -40,7 +41,9 @@ static_assert(!std::is_constructible_v<FunctionEmission, VerifiedFunction,
 static_assert(!std::is_constructible_v<VerifiedFunction, FunctionTree>);
 static_assert(std::is_same_v<decltype(std::declval<VerifiedFunction&>().Tree()),
                              const FunctionTree&>);
-void Check(bool condition) { if (!condition) std::abort(); }
+void Check(bool condition, std::source_location at = std::source_location::current()) {
+  if (!condition) { std::cerr << "class tree context check " << at.line() << '\n'; std::abort(); }
+}
 enum class RestEncoding { kNone, kNarrow, kWide, kLeading, kUnused, kReassigned, kPhysicalRead, kRepeated, kSnapshot, kWrongIndex, kReordered, kGap, kRelocated };
 enum class DefaultEncoding { kNone, kInteger, kNegation };
 enum class GeneratorEncoding { kTagged, kExplicitTagged, kExplicitOrdinary };
@@ -723,6 +726,9 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
           range.first, identity, {}, &module_scope);
       Check(std::holds_alternative<VerifiedFunction>(published));
       const auto& verified = std::get<VerifiedFunction>(published);
+      Check(verified.Flow().value_revision == verified.Tree().value_revision);
+      Check(verified.Flow().cfg_revision == verified.Tree().cfg_revision);
+      Check(!verified.Flow().expressions.empty());
       std::ostringstream denied;
       Check(std::get<TreePrintError>(PrintFunctionTree(verified, denied)) == TreePrintError::kUnsupportedContext);
       GlobalScope names_only{};

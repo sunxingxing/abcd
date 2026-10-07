@@ -27,6 +27,7 @@ struct VerifiedFunction::Storage {
   FunctionTree tree;
   MethodRouteReceipt receipt;
   FunctionAbi abi;
+  TreeFlow flow;
   std::size_t allocated_bytes = 0;
 };
 VerifiedFunction::VerifiedFunction(std::unique_ptr<const Storage> storage) : storage_(std::move(storage)) {}
@@ -34,6 +35,7 @@ VerifiedFunction::VerifiedFunction(VerifiedFunction&&) noexcept = default;
 VerifiedFunction& VerifiedFunction::operator=(VerifiedFunction&&) noexcept = default;
 VerifiedFunction::~VerifiedFunction() = default;
 const FunctionTree& VerifiedFunction::Tree() const { return storage_->tree; }
+const TreeFlow& VerifiedFunction::Flow() const { return storage_->flow; }
 std::u16string_view VerifiedFunction::Name() const { return storage_->context.Name(); }
 const analysis::ClassMethodSite* VerifiedFunction::ClassCreation() const { return storage_->context.ClassSite(); }
 const analysis::FunctionCreationSite* VerifiedFunction::FunctionCreation() const { return storage_->context.CreationSite(); }
@@ -383,7 +385,7 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
       auto drafted = BuildExceptionFunctionDraft(graph, phased->TreeInput(*body), *evaluation,
           std::move(syntax), constant_view, tree_budget);
       if (auto* result = std::get_if<ExceptionFunctionDraft>(&drafted))
-        return ConstructedFunction{std::move(result->tree), result->allocated_bytes, result->work};
+        return ConstructedFunction{std::move(result->tree), result->allocated_bytes, result->work, std::move(result->flow)};
       return std::get<FunctionTreeError>(drafted);
     }();
     auto* function = std::get_if<ConstructedFunction>(&constructed);
@@ -434,9 +436,9 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
         throw Error::kParameters;
       }
       budget.Admit(proof->allocated_bytes, 1); budget.Step(proof->work);
-      const auto semantics = VerifyTreeSemantics(graph, *control, *evaluation,
+      auto semantics = VerifyTreeSemantics(graph, *control, *evaluation,
           function->tree, constant_view, budget.Remaining());
-      const auto* verified = std::get_if<TreeSemantics>(&semantics);
+      auto* verified = std::get_if<TreeSemantics>(&semantics);
       if (!verified) {
         const auto error = std::get<TreeSemanticError>(semantics);
         if (error == TreeSemanticError::kResourceLimit) throw Error::kResourceLimit;
@@ -444,6 +446,7 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
         throw Error::kTree;
       }
       budget.Admit(verified->allocated_bytes, 1); budget.Step(verified->work);
+      function->flow = std::move(verified->flow);
     }
     const auto globals = VerifyTreeGlobals(function->tree, scope, budget.Remaining());
     const auto* checked_globals = std::get_if<TreeGlobals>(&globals);
@@ -476,13 +479,18 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
     PreparationBudget retained(allowance);
     retained.Admit(1, sizeof(Storage));
     retained.Admit(context->AllocatedBytes(), 1);
-    retained.Admit(tree_storage->bytes, 1);
+    if (!function->flow || function->flow->allocated_bytes < tree_storage->bytes) throw Error::kTree;
+    // Flow verification charged this same tree plus its owned correspondence
+    // and scratch. Retain that conservative bound without counting the tree
+    // twice; no mutable graph or evaluation plan survives preparation.
+    retained.Admit(function->flow->allocated_bytes, 1);
     retained.Arena(abi->abi.parameters);
     const auto retained_bytes = allowance.bytes - retained.Remaining().bytes;
     if (file.CheckUnchanged()) throw Error::kFileChanged;
     receipt->stage = SourceStage::kTreeVerified;
     receipt->coverage = Coverage::kIncomplete;  // No printer/publication ran.
     storage->tree = std::move(function->tree); storage->receipt = *receipt;
+    storage->flow = std::move(*function->flow);
     storage->abi = std::move(abi->abi); storage->allocated_bytes = retained_bytes;
     return VerifiedFunction(std::move(storage));
   } catch (Error error) { return FunctionPrepareFailure{error, receipt, {}};

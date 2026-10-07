@@ -45,6 +45,7 @@ struct ExceptionFunctionDraft {
   FunctionTree tree;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
+  std::optional<TreeFlow> flow;
 };
 [[nodiscard]] std::variant<ExceptionFunctionDraft, FunctionTreeError>
 BuildExceptionFunctionDraft(const analysis::ValueProgram& graph,

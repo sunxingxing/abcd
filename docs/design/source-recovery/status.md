@@ -24,6 +24,33 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-07：规则176，保留最终语义验证的 TreeFlow 对应证据
+
+- TreeSemantics把已完成flow/operand/origin检查的TreeFlow移交给构造结果；
+  完整普通/异常树保留证据，明确partial树不伪造完整对应关系。
+  VerifiedFunction拥有最终flow；默认参数改写树后重新验证并替换旧flow。
+- family不再另跑VerifyTreeFlow/VerifyExceptionTreeFlow取得同一映射；
+  CheckCaptures同样消费刚完成语义检查的flow，不重复构造。实际捕获、
+  operand/origin、ABI与位置检查保持。保留容量以flow验证的树+scratch+
+  对应证据预算作保守上界，没有重复把同一树计入持久预算。
+- 新测试比较保留与新鲜重算的表达式/语句/snapshot/phi/cell映射，核对
+  revision与partial缺证据边界；普通VerifiedFunction增加flow交接断言。
+- 新发现既有失败：class_tree_context_test的异常forwarder用例正文正确，
+  FamilyEmission::CheckPositions拒绝StmtId9的省略范围。本次版本和
+  提交前75b93a59均在相同phased_family_emission.h:105中止；基线回溯
+  /tmp/abcd-flow-baseline-backtrace.log，本次定位/源码正文日志分别为
+  /tmp/abcd-flow-position-backtrace.log与/tmp/abcd-retained-flow-diagnostic.log。
+  不取消位置校验、不作样本特例；后续需共享源码省略事实来处理。
+- 35项相关定向回归全部通过138.92秒，日志/tmp/abcd-rule176-tests.log；
+  上述已确认的class_tree_context_test主入口失败单独保留，未算作通过。
+- 规则176相关CLI/fixture已重建，class_tree_context_test的snapshot与
+  receiver-catch定向入口通过。单pasteboard导出到
+  build/stage-one/retained-flow-rule176，10complete/0partial/9noModule；
+  十份源码node --check通过，正文与规则175一致，无新增覆盖声明。
+- 这只完成原对应证据的所有权交接；canonical RecoveryFlow仍未接入
+  原SSA/效果与绑定初始化。CompletedStore、初始化和pass失效协调器仍待
+  迁移，架构里程碑/阶段一未完成，暂停事项和固定输入范围保持。
+
 ### 2026-10-07：规则175，存储结果事实与删除计划分离
 
 - 在规则174之上继续拆分：AnalyzeStoredResults为const事实生产者，

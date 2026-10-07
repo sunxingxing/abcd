@@ -225,7 +225,7 @@ class TreeBuilder {
       RecoverCompletions();
       CheckSemantics();
     }
-    return {std::move(tree_), budget_.bytes - bytes_, budget_.work - work_};
+    return {std::move(tree_), budget_.bytes - bytes_, budget_.work - work_, std::move(flow_)};
   }
 
  private:
@@ -1363,12 +1363,12 @@ class TreeBuilder {
           ? Error::kWorkLimit : Error::kResourceLimit;
     Step(storage->work);
     Require(storage->bytes <= budget_.bytes - bytes_, Error::kResourceLimit);
-    const auto checked = exceptions_
+    auto checked = exceptions_
         ? VerifyExceptionTreeSemantics(graph_, *exceptions_, evaluation_, tree_, constants_,
                                        {bytes_ + storage->bytes, work_}, TreeControlCheck::kReuseInBuild)
         : VerifyTreeSemantics(graph_, control_, evaluation_, tree_, constants_,
                               {bytes_ + storage->bytes, work_});
-    const auto* semantics = std::get_if<TreeSemantics>(&checked);
+    auto* semantics = std::get_if<TreeSemantics>(&checked);
     if (!semantics) {
       const auto error = std::get<TreeSemanticError>(checked);
       if (error == TreeSemanticError::kWorkLimit) throw Error::kWorkLimit;
@@ -1378,7 +1378,8 @@ class TreeBuilder {
     Require(semantics->allocated_bytes >= storage->bytes, Error::kSemantics);
     Admit(semantics->allocated_bytes - storage->bytes, 1);
     Step(semantics->work);
-    CheckCaptures(*storage);
+    CheckCaptures(semantics->flow);
+    flow_ = std::move(semantics->flow);
   }
 
   void CaptureNames() {
@@ -1405,21 +1406,11 @@ class TreeBuilder {
     constants_.name_count = syntax_.names.size();
   }
 
-  void CheckCaptures(const TreeStorage& storage) {
+  void CheckCaptures(const TreeFlow& flow) {
     if (!incoming_) return;
-    const auto checked = exceptions_ ? VerifyExceptionTreeFlow(graph_, *exceptions_, evaluation_, tree_,
-        {bytes_ + storage.bytes, work_}) : VerifyTreeFlow(graph_, control_, evaluation_, tree_,
-        {bytes_ + storage.bytes, work_});
-    const auto* flow = std::get_if<TreeFlow>(&checked);
-    if (!flow) {
-      const auto error = std::get<TreeFlowError>(checked);
-      if (error == TreeFlowError::kResourceLimit) throw Error::kResourceLimit;
-      if (error == TreeFlowError::kWorkLimit) throw Error::kWorkLimit;
-      throw Error::kCapture;
-    }
-    Require(flow->allocated_bytes >= storage.bytes, Error::kCapture);
-    Admit(flow->allocated_bytes - storage.bytes, 1); Step(flow->work);
-    const auto verified = VerifyCaptureTree(incoming_->cells, incoming_->parent, {tree_, *flow}, {bytes_, work_},
+    // Consume the same correspondence just checked for operands and origins.
+    // Neither the tree nor evaluation input changes between these consumers.
+    const auto verified = VerifyCaptureTree(incoming_->cells, incoming_->parent, {tree_, flow}, {bytes_, work_},
         incoming_->class_anchor ? &*incoming_->class_anchor : nullptr);
     if (const auto* error = std::get_if<CaptureTreeError>(&verified)) {
       if (*error == CaptureTreeError::kResourceLimit) throw Error::kResourceLimit;
@@ -1448,6 +1439,7 @@ class TreeBuilder {
   std::uint64_t work_;
   ExpressionForest forest_;
   FunctionTree tree_;
+  std::optional<TreeFlow> flow_;
   std::vector<BlockDraft> drafts_;
   std::vector<ChildLink> links_;
   std::vector<RegionTask> tasks_;
@@ -1484,7 +1476,7 @@ std::variant<ExceptionFunctionDraft, FunctionTreeError> BuildExceptionFunctionDr
   try {
     auto built = TreeBuilder(graph, exceptions.control.skeleton, evaluation,
         std::move(syntax), constants, budget, incoming, &exceptions).Build();
-    return ExceptionFunctionDraft{std::move(built.tree), built.allocated_bytes, built.work};
+    return ExceptionFunctionDraft{std::move(built.tree), built.allocated_bytes, built.work, std::move(built.flow)};
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }

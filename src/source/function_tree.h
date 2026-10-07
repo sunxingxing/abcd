@@ -5,12 +5,15 @@
 #include "expression_forest.h"
 #include "function_syntax.h"
 #include "capture_tree.h"
+#include "tree_flow.h"
 
 namespace abcd::source {
 struct ConstructedFunction {
   FunctionTree tree;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
+  // Absent only for explicitly partial trees; never fabricate correspondence.
+  std::optional<TreeFlow> flow;
 };
 enum class FunctionTreeError : std::uint8_t {
   kControl, kExpression, kBinding, kName, kOrigin, kOwnership,

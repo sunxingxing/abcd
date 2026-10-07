@@ -14,6 +14,8 @@ struct TreeSemantics {
   analysis::CfgRevision cfg_revision;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
+  // Same checked correspondence, retained without a second flow verification.
+  TreeFlow flow;
 };
 // Conditional correspondence proof against already-verified input IR and the
 // adapter's same-file resolved constants. Does not certify the supplied callable

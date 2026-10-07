@@ -81,8 +81,24 @@ class Fixture {
     auto evaluation = BuildEvaluationPlan(graph);
     Check(std::holds_alternative<ControlPlan>(control));
     Check(std::holds_alternative<EvaluationPlan>(evaluation));
-    return BuildFunctionTree(graph, std::get<ControlPlan>(control),
+    auto built = BuildFunctionTree(graph, std::get<ControlPlan>(control),
         std::get<EvaluationPlan>(evaluation), Syntax(), {constants, 2, 0, {}}, budget);
+    if (const auto* result = std::get_if<ConstructedFunction>(&built)) {
+      Check(result->flow.has_value());
+      Check(result->flow->value_revision == result->tree.value_revision);
+      Check(result->flow->cfg_revision == result->tree.cfg_revision);
+      Check(result->flow->expressions.size() == graph.ops.size());
+      // Retention must preserve the actual correspondence, not just revisions.
+      // Fresh recomputation is a test oracle only; production reuses the proof.
+      const auto fresh = std::get<TreeFlow>(VerifyTreeFlow(graph,
+          std::get<ControlPlan>(control), std::get<EvaluationPlan>(evaluation), result->tree));
+      Check(result->flow->expressions == fresh.expressions);
+      Check(result->flow->statements == fresh.statements);
+      Check(result->flow->snapshots == fresh.snapshots);
+      Check(result->flow->phis == fresh.phis);
+      Check(result->flow->cells == fresh.cells);
+    }
+    return built;
   }
   std::variant<TreeSemantics, TreeSemanticError> Verify(
       const FunctionTree& tree, analysis::SemanticBudget budget = {}) const {

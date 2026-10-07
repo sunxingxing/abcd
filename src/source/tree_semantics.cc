@@ -19,7 +19,7 @@ std::variant<TreeSemantics, TreeSemanticError> VerifySemantics(
     auto checked_flow = exceptions
         ? VerifyExceptionTreeFlow(graph, *exceptions, evaluation, tree, budget, control_check)
         : VerifyTreeFlow(graph, control, evaluation, tree, budget);
-    const auto* flow = std::get_if<TreeFlow>(&checked_flow);
+    auto* flow = std::get_if<TreeFlow>(&checked_flow);
     if (!flow) {
       const auto error = std::get<TreeFlowError>(checked_flow);
       if (error == TreeFlowError::kResourceLimit) return Error::kResourceLimit;
@@ -31,7 +31,7 @@ std::variant<TreeSemantics, TreeSemanticError> VerifySemantics(
     checked.Step(flow->work);
     CheckTreeOperands(graph, evaluation, tree, *flow, constants, checked);
     CheckTreeCorrespondenceOrigins(graph, evaluation, tree, *flow, checked);
-    return TreeSemantics{graph.revision, graph.cfg_revision, checked.Bytes(), checked.Work()};
+    return TreeSemantics{graph.revision, graph.cfg_revision, checked.Bytes(), checked.Work(), std::move(*flow)};
   } catch (Error error) { return error;
   } catch (TreeStructureError error) {
     return error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;

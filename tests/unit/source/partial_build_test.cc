@@ -63,6 +63,7 @@ void DecodedPrefix() {
   test::Check(std::get<FunctionTreeError>(complete) == FunctionTreeError::kExpression);
   const auto recovered = Build(bytes, RecoveryMode::kAllowPartial);
   test::Check(std::holds_alternative<ConstructedFunction>(recovered));
+  test::Check(!std::get<ConstructedFunction>(recovered).flow);
   const auto& tree = std::get<ConstructedFunction>(recovered).tree;
   std::ostringstream output;
   const auto printed = PrintFunctionTree(tree, output);
@@ -80,6 +81,7 @@ void InlineBoundary() {
   const auto recovered = Build({kDebugger, kLoad, 0, kTypeof, 0, kStore, 0,
       kNegate, kNegateHigh, 0, kReturnUndefined}, RecoveryMode::kAllowPartial);
   test::Check(std::holds_alternative<ConstructedFunction>(recovered));
+  test::Check(!std::get<ConstructedFunction>(recovered).flow);
   const auto& tree = std::get<ConstructedFunction>(recovered).tree;
   const auto source = Print(tree);
   test::Check(source.find("debugger;") < source.find("UNRECOVERED"));
@@ -93,6 +95,7 @@ void RetainedCall() {
   const auto recovered = Build({kLoad, 0, kCall, 0, kDebugger, kLoad, 0,
       kNegate, kNegateHigh, 0, kReturnUndefined}, RecoveryMode::kAllowPartial);
   test::Check(std::holds_alternative<ConstructedFunction>(recovered));
+  test::Check(!std::get<ConstructedFunction>(recovered).flow);
   const auto& tree = std::get<ConstructedFunction>(recovered).tree;
   const auto source = Print(tree);
   test::Check(source.find("(0, ") < source.find("debugger;"));
@@ -101,6 +104,7 @@ void RetainedCall() {
 void CompleteAndBranched() {
   const auto complete = Build({kDebugger, kInteger, 7, 0, 0, 0, kReturn}, RecoveryMode::kAllowPartial);
   test::Check(std::holds_alternative<ConstructedFunction>(complete));
+  test::Check(std::get<ConstructedFunction>(complete).flow.has_value());
   const auto& tree = std::get<ConstructedFunction>(complete).tree;
   test::Check(tree.recovery_issues.empty());
   test::Check(Print(tree).find("return 7;") != std::string::npos);

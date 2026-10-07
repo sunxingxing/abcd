@@ -188,7 +188,7 @@ class FamilyTrees {
           auto draft = Take<ExceptionFunctionDraft, FunctionTreeError>(BuildExceptionFunctionDraft(graph,
               phase->Phases().TreeInput(phase->Body()), evaluation, std::move(syntax.syntax), constants, left_,
               incoming ? &*incoming : nullptr));
-          return {std::move(draft.tree), draft.allocated_bytes, draft.work};
+          return {std::move(draft.tree), draft.allocated_bytes, draft.work, std::move(draft.flow)};
         }
         return Take<ConstructedFunction, FunctionTreeError>(BuildFunctionTree(graph, control,
             evaluation, std::move(syntax.syntax), constants, left_, incoming ? &*incoming : nullptr,
@@ -224,11 +224,12 @@ class FamilyTrees {
         auto semantics = Take<TreeSemantics, TreeSemanticError>(VerifyTreeSemantics(
             graph, control, evaluation, constructed.tree, constants, left_));
         Account(semantics);
+        constructed.flow = std::move(semantics.flow);
       }
-      auto flow = Take<TreeFlow, TreeFlowError>(phase ? VerifyExceptionTreeFlow(graph,
-          phase->Phases().TreeInput(phase->Body()), evaluation, constructed.tree, left_) :
-          VerifyTreeFlow(graph, control, evaluation, constructed.tree, left_));
-      Account(flow);
+      // No tree mutation follows the final semantic check. Reuse its actual
+      // correspondence; a default-signature rewrite above replaces the proof.
+      Require(constructed.flow.has_value(), FamilyTreeError::kContext);
+      auto flow = std::move(*constructed.flow);
       if (aliases) Step(Take<std::uint64_t, ModuleAliasTreeError>(
           VerifyModuleAliasTree(*aliases, evaluation, constructed.tree, left_)));
       auto abi = Take<ConstructedAbi, FunctionAbiError>(phase ? BuildPhasedFunctionAbi(graph, evaluation, constructed.tree,
