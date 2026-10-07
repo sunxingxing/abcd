@@ -24,6 +24,33 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-07：规则186，统一表达式事实与无用语句批量提交
+
+- AnalyzeExpressions替代AnalyzeStoredResults与AnalyzeEvaluations：在一次
+  const后序遍历中产生result-binding、normal-store和evaluation事实。
+  替换节点只转发当前替代表达式事实，不重新引入原有子节点的效果。
+  CurrentFlow与最终发布都消费同一次分析的相关数组；分析不修改plan，
+  局部结果不跨投影修改缓存。最终数组仅在全部变换后一次发布。
+- OmitInertStores拆成共同事实→const PlanInertStatements提案→批量提交，
+  不再在扫描语句时修改omitted。冗余写回、死定义/声明和存储合并各自的
+  提案与提交边界保留，生产pass顺序及映射后的依赖清理没有改变。
+  没有增加样本、序列、同块或图形状准入条件。
+- 新增嵌套同值写回、条件两臂读取同一绑定的源码组合，同时独立检查
+  最终效果摘要：删除外层写回不代表调用、转换、暂停或TDZ读取可删除。
+  原始/反转arena、200/201/400/800及既有不安全变换反例继续覆盖。
+- 相关目标构建通过，日志/tmp/abcd-rule186-build.log。最终54项相关回归
+  全部通过357.78秒，日志/tmp/abcd-rule186-tests.log、详细输出
+  /tmp/abcd-rule186-test-detail.log。冗余写回528份源码/18,192行为/12反例，
+  存储合并221份源码/33,620行为/12反例，定义消除184份源码/2,080行为/
+  3反例；512支配图、175,616活跃性图、98,304需求图及预算边界通过。
+- ABC-only导出build/stage-one/expression-facts-rule186为
+  10complete/0partial/9noModule，十份源码node --check通过，正文与规则185
+  一致；日志/tmp/abcd-rule186-export.log，不新增真实record验收声明。
+- 这是共同事实生产与提交边界的迁移；InitializedRead、绑定activation、
+  完整projection revision协调器和全局收敛仍开放。增加的O(S)语句提案
+  数组受现有预算计费，未宣称整体性能提升。统一变量里程碑、结构gate
+  与阶段一仍未完成；原Goal active及全量语料/RSS/DFX/代理暂停范围保持。
+
 ### 2026-10-07：规则185，存储合并共享当前引用与初始化完成事实
 
 - RecoveryFlow一次产生typed绑定读写引用，自增的读取和成功写回分别记录，

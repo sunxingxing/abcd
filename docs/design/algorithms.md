@@ -2568,3 +2568,22 @@ activation checks remain. This is not general TDZ/lifetime reconstruction:
 effects still use the documented legacy initialization adapter. Layout/scaling,
 shared-analysis budget and independent source behavior tests cover the migrated
 reference-order decisions without claiming process RSS or whole-phase completion.
+
+
+### Shared projected expression facts (rules186)
+
+AnalyzeExpressions computes result-binding, normal-store and composed evaluation
+facts in one semantic postorder, O(X+C) work and O(X) storage for X expressions
+and C owned child incidences. Replacement occurrences forward all applicable
+facts; no per-expression subtree scan is added. CurrentFlow and final publication
+no longer independently build stored-result and evaluation snapshots. Consumers
+request a fresh local result after preceding mutations; no cached dependency or
+invalidation claim is introduced.
+
+Inert-statement proposals require O(S) work/storage, followed by O(K) application
+for K actual omissions. This extra bounded proposal array buys an immutable read
+phase; it is accounted by the existing semantic budget. A consumer needing only
+one fact still computes the combined result: this is a consistency tradeoff, not
+a claimed overall latency or memory improvement. Existing exact/short quota and
+200/201/geometric tests cover the changed accounting. No new algorithm dependency,
+external implementation or license is introduced; full-process RSS remains paused.

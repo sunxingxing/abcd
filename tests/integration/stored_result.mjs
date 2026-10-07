@@ -12,6 +12,7 @@ const rhs=[
   '(state&&(state=other()))','(state||(state=other()))','(state??(state=other()))',
   '(++state,other(state))','input.value','state','await (state=other())',
   'yield (state=other())','state','(state=(state=input))','(state=await other())','(state=yield other())',
+  '(state=state)','(flag?state:state)',
 ];
 function reference({form,count}) {
   const expression='('+('report(flag),'.repeat(count))+rhs[form]+')';
@@ -68,7 +69,7 @@ for(const row of rows) {
   // In state = await/yield (state = value), the private inner write is dead:
   // normal resume overwrites it, abrupt resume cannot expose this uncaptured
   // binding. The suspension and its value remain and are executed below.
-  const count=[0,1,0,0,1,1,1,1,1,1,1,1,1,1,2,2,0,1,1,1][row.form];
+  const count=[0,1,0,0,1,1,1,1,1,1,1,1,1,1,2,2,0,1,1,1,0,0][row.form];
   const deadInner=row.temporary&&[14,15].includes(row.form);
   assert.equal(assignments,count-Number(deadInner),`stored-result syntax form=${row.form}`);
   const actual=Function('"use strict";return '+row.source)(),expected=reference(row);

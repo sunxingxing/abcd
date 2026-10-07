@@ -1931,3 +1931,13 @@ position preceded a native declaration. A still-executed reference before that
 declaration fails the common proof. Name resolution and binding activation remain
 independent requirements, including for unreachable retained syntax. No producer
 list, sequence, adjacency, same-block or sample admission replaces the old checks.
+
+
+## Rules186: expression facts and inert-statement proposals
+
+The separate stored-result/evaluation traversals are replaced by one const
+AnalyzeExpressions pass on the current projection. Inert-statement scanning now
+returns a proposal before any omitted flag changes. Consumers do not reuse either
+result after committing changes. No new recovery admission or opcode/shape/sample
+condition is added. The existing InitializedRead scope/census obligation remains
+explicitly legacy; this refactor does not claim to replace it with dominance.

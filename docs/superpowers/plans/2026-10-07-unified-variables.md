@@ -186,3 +186,13 @@ undefined planning. Its declaration-control/region and native-ready completion
 checks are removed. Eliminated versus retained early-write source cases prove the
 distinction. Other InitializedRead/effect and lexical activation consumers remain
 legacy; the complete task2/task4 initialization/lifetime migration is still open.
+
+
+Rules186: one const AnalyzeExpressions pass now supplies result-binding,
+normal-store and evaluation facts to projection consumers and final publication.
+The old two analysis entry points are removed. Inert-statement deletion has a
+separate const proposal and batch commit. Analyses remain local and freshly
+computed after mutations; projection revision management and global convergence
+are not delivered by this change. InitializedRead and activation migration remain
+open. Nested redundant writes/read choices exercise final summary consistency and
+independent source behavior with original/reversed arenas and geometric sizes.

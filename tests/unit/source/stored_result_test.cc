@@ -10,7 +10,8 @@ using namespace abcd::source;
 namespace {
 enum class Form { kRead, kStore, kPrefix, kDecrement, kPostfix, kSequence,
   kChoice, kDifferentChoice, kAnd, kOr, kNullish, kCall, kMember, kMemberStore,
-  kAwait, kYield, kBeforeDeclaration, kNestedStore, kStoreAwait, kStoreYield };
+  kAwait, kYield, kBeforeDeclaration, kNestedStore, kStoreAwait, kStoreYield,
+  kNestedRead, kSameReadChoice };
 struct Fixture {
   FunctionTree tree{};
   Fixture(Form form, bool temporary) {
@@ -80,6 +81,8 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool temporary,bool em
     case Form::kNestedStore:rhs=f.Store(f.Store(f.Read(0)));break;
     case Form::kStoreAwait:rhs=f.Store(f.Expr(AwaitExpr{f.Call(2,{})}));break;
     case Form::kStoreYield:rhs=f.Store(f.Expr(YieldExpr{f.Call(2,{})}));break;
+    case Form::kNestedRead:rhs=f.Store(f.Read(4));break;
+    case Form::kSameReadChoice:rhs=f.Expr(ConditionalExpr{f.Read(3),f.Read(4),f.Read(4)});break;
   }
   // Independent effects compose through comma without moving or duplicating.
   for(unsigned i=0;i<count;++i)rhs=f.Expr(SequenceExpr{f.Call(1,{f.Read(3)}),rhs});
@@ -94,6 +97,11 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool temporary,bool em
   const auto id=reverse?tree.expressions.size()-1-assignment.value:assignment.value;
   if(plan.replacements[id].has_value()!=folded)std::cerr<<"form="<<static_cast<unsigned>(form)<<" count="<<count<<" reverse="<<reverse<<'\n';
   test::Check(plan.replacements[id].has_value()==folded);
+  // Independent semantic expectation: reading an initialized local (including
+  // an agreeing choice or nested redundant write) has no observable effect.
+  // Coercion, calls, suspension, retained writes and TDZ reads still do.
+  const bool inert=count==0 && (form==Form::kRead || form==Form::kNestedRead || form==Form::kSameReadChoice);
+  test::Check((plan.evaluations[id]==ExpressionEvaluation::kInert)==inert);
   // Every final analysis describes the current projection. An assignment
   // removed by an earlier pass must not retain its old PutValue summary.
   for (std::size_t i=0;i<tree.expressions.size();++i)
@@ -105,7 +113,7 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool temporary,bool em
 }
 }
 int main(int argc,char**) {
-  for(unsigned form=0;form<=static_cast<unsigned>(Form::kStoreYield);++form)for(bool temporary:{false,true}) {
+  for(unsigned form=0;form<=static_cast<unsigned>(Form::kSameReadChoice);++form)for(bool temporary:{false,true}) {
     std::uint64_t small=0,large=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}) {
       const auto work=Check(static_cast<Form>(form),count,reverse,temporary,argc>1);

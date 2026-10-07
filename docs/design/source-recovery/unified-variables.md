@@ -323,3 +323,28 @@ graph remove-vertex oracle also checks conditional initialization completion and
 exact/short budgets. InitializedRead/effect production and non-Coalesce census
 consumers still need migration, as do canonical IR/lifetime integration and global
 pass convergence; this retires specific production branches, not all old analyses.
+
+
+## One immutable expression-fact pass (rules186)
+
+AnalyzeExpressions replaces both AnalyzeStoredResults and AnalyzeEvaluations.
+One semantic postorder over the unchanged projection produces result-binding,
+normal-store and evaluation facts together. Replaced occurrences forward the
+replacement facts and do not reintroduce effects from original children. This
+analysis is const and returns owned arrays; it never publishes or mutates the
+recovery plan. CurrentFlow consumes both relevant arrays from this one result,
+and final publication moves both arrays from one result after all mutations.
+
+Stored-result elimination and inert-statement elimination each obtain fresh local
+facts, produce a const proposal, then commit that batch. PlanInertStatements no
+longer changes omitted flags while scanning statements. No borrowed facts escape
+these calls and no analysis cache crosses a projection change. Existing dead
+value/binding and storage/initialization proposal boundaries remain independent.
+The production order and final dependent cleanup are unchanged.
+
+Tests combine nested redundant writes and agreeing read choices with required
+calls, coercions, suspension, TDZ reads and arena permutations. The final effect
+summary is checked independently of whether the outer store was folded; generated
+source still undergoes independent execution. This removes duplicate expression
+fact production and one mixed proposal/application path, not the legacy
+InitializedRead census, global convergence or the planned revision coordinator.

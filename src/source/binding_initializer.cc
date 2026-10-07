@@ -271,24 +271,21 @@ class Initializers {
       budget_.Step(); plan_.entry_counts[i + 1] = plan_.entry_counts[i] +
           !plan_.omitted[loops_.initializer_roots[i].statement.value];
     }
-    plan_.normal_stores = AnalyzeStoredResults().normal_stores;
-    plan_.evaluations = AnalyzeEvaluations();
+    auto final_facts = AnalyzeExpressions();
+    plan_.normal_stores = std::move(final_facts.normal_stores);
+    plan_.evaluations = std::move(final_facts.evaluations);
     return Finish();
   }
  private:
   bool OmitInertStores() {
-    const auto evaluations = AnalyzeEvaluations();
-    bool changed=false;
-    // A projected store whose remaining result is inert needs no discarded
-    // statement. Keep value-observed occurrences and every remaining effect.
-    for (std::size_t i = 0; i < tree_.statements.size(); ++i) {
-      budget_.Step(); const auto* effect = std::get_if<ExpressionStmt>(&tree_.statements[i].statement);
-      if (effect && plan_.replacements[effect->expression.value] &&
-          evaluations[effect->expression.value] == ExpressionEvaluation::kInert && !plan_.omitted[i]) {
-        plan_.omitted[i] = 1;changed=true;
-      }
+    const auto facts = AnalyzeExpressions();
+    const auto omitted = PlanInertStatements(facts);
+    // The pass publishes a complete proposal before changing the projection.
+    // No subsequent statement observes a partly applied omission batch.
+    for (const auto statement : omitted) {
+      budget_.Step(); plan_.omitted[statement.value] = 1;
     }
-    return changed;
+    return !omitted.empty();
   }
   std::size_t ProjectionCapacity() {
     // Each expression has at most one direct binding observation. Capture
@@ -409,15 +406,14 @@ class Initializers {
   }
   RecoveryFlow CurrentFlow() const {
     // Facts belong to this exact projection. No analysis survives a commit.
-    const auto stores=AnalyzeStoredResults();
-    const auto evaluations=AnalyzeEvaluations();
+    const auto facts=AnalyzeExpressions();
     std::vector<std::uint8_t> private_bindings;
     budget_.Array(private_bindings,uses_.size());
     for (std::size_t i=0;i<uses_.size();++i) {
       budget_.Step();private_bindings[i]=tree_.symbols[i].kind==BindingKind::kCompilerTemporary && !uses_[i].escaped;
     }
     const LegacyFlowProjection projection{plan_.aliases,plan_.literals,plan_.replacements,
-        plan_.omitted,evaluations,stores.normal_stores,plan_.statements,private_bindings,plan_.storage,plan_.undefined_stores};
+        plan_.omitted,facts.evaluations,facts.normal_stores,plan_.statements,private_bindings,plan_.storage,plan_.undefined_stores};
     auto built=BuildRecoveryFlow(tree_,projection,budget_.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&built))throw *error;
     auto flow=std::get<RecoveryFlow>(std::move(built));
@@ -587,19 +583,23 @@ class Initializers {
   bool ElideStoredResults() {
     // Analysis and proposals observe one immutable projection. Only this
     // commit changes replacements; consumers derive their own current facts.
-    const auto facts = AnalyzeStoredResults();
+    const auto facts = AnalyzeExpressions();
     const auto replacements = PlanStoredResultElisions(facts);
     return ApplyStoredResultElisions(replacements);
   }
-  struct StoredResults {
+  struct ExpressionFacts {
     std::vector<std::optional<SymbolId>> bindings;
     std::vector<std::uint8_t> normal_stores;
+    std::vector<ExpressionEvaluation> evaluations;
   };
-  StoredResults AnalyzeStoredResults() const {
-    StoredResults facts;
+  ExpressionFacts AnalyzeExpressions() const {
+    ExpressionFacts facts;
     budget_.Array(facts.bindings, tree_.expressions.size());
     budget_.Array(facts.normal_stores, tree_.expressions.size());
+    budget_.Array(facts.evaluations, tree_.expressions.size());
     auto& stored = facts.bindings;
+    // All facts describe one unchanged projection. The analysis is const and
+    // publishes no plan state; proposal/commit consumers own all mutations.
     // Scan's finish order is postorder even when expression IDs are reversed.
     // Each owned child is consumed once. No repeated subtree/type/CFG walk.
     for (std::size_t at = 0; at < completion_count_; ++at) {
@@ -615,12 +615,18 @@ class Initializers {
       const auto join = [&](ExprId left, ExprId right) -> std::optional<SymbolId> {
         return stored[left.value] == stored[right.value] ? stored[left.value] : std::nullopt;
       };
-      if (const auto replacement = plan_.replacements[id.value]) result = stored[replacement->value];
-      else if (const auto* read = std::get_if<SymbolExpr>(&node)) {
+      if (const auto replacement = plan_.replacements[id.value]) {
+        result = stored[replacement->value];
+        facts.evaluations[id.value] = facts.evaluations[replacement->value];
+        continue;
+      }
+      auto evaluation = IntrinsicEvaluation(node);
+      if (const auto* read = std::get_if<SymbolExpr>(&node)) {
         if (!plan_.literals[read->symbol.value]) {
           const auto source = plan_.Storage(read->symbol);
           if (MutableBinding(source)) result = source;
         }
+        if (InitializedRead(plan_.Storage(read->symbol), id)) evaluation = ExpressionEvaluation::kInert;
       } else if (const auto* assignment = std::get_if<AssignmentExpr>(&node)) {
         if (const auto* target = std::get_if<SymbolTarget>(&assignment->target);
             target && MutableBinding(target->symbol)) {
@@ -632,10 +638,19 @@ class Initializers {
       } else if (const auto* sequence = std::get_if<SequenceExpr>(&node)) result = stored[sequence->right.value];
       else if (const auto* choice = std::get_if<ConditionalExpr>(&node)) result = join(choice->consequent, choice->alternate);
       else if (const auto* logical = std::get_if<LogicalExpr>(&node)) result = join(logical->left, logical->right);
+      else if (const auto* receiver = std::get_if<ThisExpr>(&node)) {
+        if (receiver->owner == tree_.owner && tree_.callable != CallableKind::kDerivedConstructor &&
+            !IsArrowCallable(tree_.callable)) evaluation = ExpressionEvaluation::kInert;
+      }
+      VisitExpressionChildren(tree_, node, [&](ExprId child) {
+        budget_.Step(); if (facts.evaluations[child.value] == ExpressionEvaluation::kRequired)
+          evaluation = ExpressionEvaluation::kRequired;
+      });
+      facts.evaluations[id.value] = evaluation;
     }
     return facts;
   }
-  std::vector<std::optional<ExprId>> PlanStoredResultElisions(const StoredResults& facts) const {
+  std::vector<std::optional<ExprId>> PlanStoredResultElisions(const ExpressionFacts& facts) const {
     std::vector<std::optional<ExprId>> replacements;
     budget_.Array(replacements, tree_.expressions.size());
     for (std::size_t at = 0; at < completion_count_; ++at) {
@@ -663,29 +678,18 @@ class Initializers {
     }
     return changed;
   }
-  std::vector<ExpressionEvaluation> AnalyzeEvaluations() const {
-    std::vector<ExpressionEvaluation> evaluations;
-    budget_.Array(evaluations, tree_.expressions.size());
-    // This pass only produces evaluation facts; it cannot rewrite expressions.
-    // Completion order is semantic postorder, independent of arena numbering.
-    for (std::size_t at = 0; at < completion_count_; ++at) {
-      budget_.Step(); const auto id = completions_[at];
-      const auto& node = tree_.expressions[id.value].expression;
-      auto evaluation = IntrinsicEvaluation(node);
-      if (const auto replacement = plan_.replacements[id.value]) evaluation = evaluations[replacement->value];
-      else if (const auto* read = std::get_if<SymbolExpr>(&node)) {
-        if (InitializedRead(plan_.Storage(read->symbol), id)) evaluation = ExpressionEvaluation::kInert;
-      } else if (const auto* receiver = std::get_if<ThisExpr>(&node)) {
-        if (receiver->owner == tree_.owner && tree_.callable != CallableKind::kDerivedConstructor &&
-            !IsArrowCallable(tree_.callable)) evaluation = ExpressionEvaluation::kInert;
-      }
-      VisitExpressionChildren(tree_, node, [&](ExprId child) {
-        budget_.Step(); if (evaluations[child.value] == ExpressionEvaluation::kRequired)
-          evaluation = ExpressionEvaluation::kRequired;
-      });
-      evaluations[id.value] = evaluation;
+  std::vector<StmtId> PlanInertStatements(const ExpressionFacts& facts) const {
+    std::vector<StmtId> omitted;
+    budget_.Array(omitted, tree_.statements.size()); std::size_t count = 0;
+    // Only discard a projected store statement whose remaining evaluation is
+    // inert. Value-observed occurrences and all required effects stay owned.
+    for (std::size_t i = 0; i < tree_.statements.size(); ++i) {
+      budget_.Step(); const auto* effect = std::get_if<ExpressionStmt>(&tree_.statements[i].statement);
+      if (effect && plan_.replacements[effect->expression.value] &&
+          facts.evaluations[effect->expression.value] == ExpressionEvaluation::kInert && !plan_.omitted[i])
+        omitted[count++] = StmtId{static_cast<std::uint32_t>(i)};
     }
-    return evaluations;
+    omitted.resize(count); return omitted;
   }
   std::size_t OpenRegion() {
     RequireTree(next_region_<regions_.size(),TreeStructureError::kOwnership);
