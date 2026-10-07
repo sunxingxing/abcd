@@ -1,5 +1,19 @@
 # 验收、证据与实施交接
 
+2026-10-07 规则161：原局部声明完成和保留首次赋值进入同一不可变
+复制图，共用Confined/FirstStored及词法根解析。原let/const、scope/
+store/RHS、身份和效果/异常/暂停保持，无样本/布局/producer名单条件。
+188新增有效树、72三profile实际lexical cell解码，加旧966，共1226
+checked/1214完整源；376758独立行为、224有效JS mutation通过。36
+实际成员写入用例消除Local复制，key/Proxy setter顺序、状态和异常
+另验。首次30项29通过/1旧const源码断言失败140.29秒，修复后binding
+2/2通过27.50秒，其余29项已验最终生产。fresh ABC-only pasteboard
+10complete/0partial/9noModule，十mjs与规则160完全相同，总声明140、
+PasteBoard62和三个for let保持，无新增actual coverage/style计数改善。
+实参中AssignmentExpr首次store投影、一般SSA干涉/原变量/每轮capture、
+未知capture/module、全body/style及原结构gate仍开放；Goal active和
+暂停范围保持。修复/清理及最终验证日志见status.md。
+
 2026-10-07 规则160：参数/catch/self隐式初始化进入共同不可变复制图，
 原目标first-store/完整观察/词法包含和共同根解析证明保持。mapped
 arguments、source写入、捕获cell、遮蔽及catch/条件/finally旧值不合并；

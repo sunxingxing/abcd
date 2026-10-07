@@ -11,10 +11,11 @@ namespace abcd::source {
 namespace {
 struct BindingUses {
   std::optional<StmtId> declaration, initializer, initializer_container;
+  std::optional<StmtId> definition;
   std::optional<ExprId> first;
   std::optional<std::size_t> first_container, last_container;
   std::size_t writes = 0;
-  bool escaped = false, outside_body = false;
+  bool escaped = false, outside_body = false, initialized_first = false;
 };
 struct ContainerRange { std::size_t begin = 0, end = 0; };
 struct ProjectionObservation { SymbolId symbol; StmtId owner; };
@@ -140,7 +141,7 @@ class Initializers {
     }
     for (std::size_t i = 0; i < uses_.size(); ++i) {
       budget_.Step(); const auto& use = uses_[i];
-      if (!use.declaration || !use.initializer || use.escaped || use.outside_body) continue;
+      if (!use.declaration || !FirstStored(use)) continue;
       const auto& effect = std::get<ExpressionStmt>(tree_.statements[use.initializer->value].statement);
       // DFS intervals prove that every observation stays in the new lexical
       // lifetime. A first completed direct store dominates later reads there,
@@ -148,9 +149,6 @@ class Initializers {
       // finally observations preserve the original undefined/old-value slot.
       // This is scope confinement, never a same-block admission. No SSA merge,
       // expression motion, source const inference or new capture environment.
-      if (use.first != effect.expression) continue;
-      const auto range = containers_[use.initializer_container->value];
-      if (*use.first_container < range.begin || *use.last_container >= range.end) continue;
       plan_.statements[use.initializer->value] = BindingInitializer{SymbolId{static_cast<std::uint32_t>(i)},
           effect.expression, use.writes == 1 ? DeclarationKind::kConst : DeclarationKind::kLet};
       if (!loops_.initializer_owners[use.initializer->value]) plan_.omitted[use.declaration->value] = 1;
@@ -190,6 +188,16 @@ class Initializers {
     return Finish();
   }
  private:
+  bool Confined(const BindingUses& use, std::optional<StmtId> owner) const {
+    if (use.outside_body || !owner || !use.first_container) return false;
+    const auto range = containers_[owner->value];
+    return *use.first_container >= range.begin && *use.last_container < range.end;
+  }
+  bool FirstStored(const BindingUses& use) const {
+    if (!use.initializer || use.escaped) return false;
+    const auto& effect=std::get<ExpressionStmt>(tree_.statements[use.initializer->value].statement);
+    return use.first==effect.expression && Confined(use,use.initializer_container);
+  }
   void Constants() {
     // Sparse constant lattice on the common first-store/scope proof. A single
     // static store may execute repeatedly only within its confined lifetime;
@@ -257,7 +265,23 @@ class Initializers {
       if(!use.writes&&!use.escaped&&implicit(tree_.symbols[i].kind)) {
         roots[i]=symbol;constant_queue_[ready++]=symbol;continue;
       }
-      if(!use.initializer||use.writes!=1||!plan_.statements[use.initializer->value])continue;
+      // Declaration completion is another initialization event, not an opcode
+      // or producer shape. Retain its original value/effects/NamedEvaluation;
+      // only later private copies disappear. The same observation lifetime
+      // prevents stale copies across activation/TDZ/catch/loop boundaries.
+      if(use.definition&&!use.writes&&!use.escaped&&use.initialized_first&&
+          Confined(use,lexical_[use.definition->value])) {
+        roots[i]=symbol;constant_queue_[ready++]=symbol;continue;
+      }
+      if(!use.initializer||use.writes!=1)continue;
+      if(!plan_.statements[use.initializer->value]) {
+        // A retained source/cell first store uses the identical availability
+        // proof. A deleted constant store cannot provide retained storage.
+        if(!plan_.omitted[use.initializer->value]&&FirstStored(use)) {
+          roots[i]=symbol;constant_queue_[ready++]=symbol;
+        }
+        continue;
+      }
       const auto assignment=plan_.statements[use.initializer->value]->assignment;
       const auto rhs=std::get<AssignmentExpr>(tree_.expressions[assignment.value].expression).value;
       if(const auto* copy=std::get_if<SymbolExpr>(&tree_.expressions[rhs.value].expression)) {
@@ -382,6 +406,7 @@ class Initializers {
       if constexpr (std::is_same_v<T, DeclarationStmt>) {
         if (syntax.initializer) Scan(*syntax.initializer, visit.lexical, visit.projector,visit.scope);
         const auto& symbol = tree_.symbols[syntax.symbol.value]; auto& use = uses_[syntax.symbol.value];
+        use.definition=visit.statement;use.initialized_first=!use.first;
         if (!syntax.initializer && symbol.kind == BindingKind::kCompilerTemporary &&
             symbol.declaration == DeclarationKind::kLet && visit.container && !visit.projected) {
           use.declaration = visit.statement;
@@ -392,7 +417,7 @@ class Initializers {
           if (const auto* target = std::get_if<SymbolTarget>(&assignment->target)) {
             auto& use = uses_[target->symbol.value];
             const auto entry = loops_.initializer_owners[visit.statement.value];
-            if (use.declaration && ((!visit.projected && visit.container) || entry) && !use.initializer) {
+            if (use.definition && ((!visit.projected && visit.container) || entry) && !use.initializer) {
               use.initializer = visit.statement; use.initializer_container = entry ? entry : visit.container;
             }
           }

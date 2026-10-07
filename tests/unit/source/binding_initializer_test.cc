@@ -371,7 +371,7 @@ std::uint64_t Alias(unsigned form,unsigned count,bool reverse,bool emit) {
   test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
   const auto plan=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
-  const bool folded=count&&form!=1&&form!=2&&form!=3&&form!=5&&form!=11&&form!=12&&form!=14&&form!=16&&form!=17&&form!=19;
+  const bool folded=count&&form!=1&&form!=2&&form!=3&&form!=5&&form!=11&&form!=14&&form!=16&&form!=17&&form!=19;
   test::Check(plan.aliases[reverse?tree.symbols.size()-1-last:last].has_value()==folded);test::Check(!plan.aliases[reverse?tree.symbols.size()-3:2]);
   std::ostringstream output;const auto printed=PrintFunctionTree(tree,output);test::Check(std::holds_alternative<PrintedFunction>(printed));
   for(const auto range:std::get<PrintedFunction>(printed).expressions)test::Check(range.begin<=range.end&&range.end<=output.str().size());
@@ -407,6 +407,33 @@ void Decoded(abc::ProfileId profile, unsigned copies, bool split, bool branch, b
   std::ostringstream output; test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, output)));
   if (branch) test::Check(output.str().find("const ") != std::string::npos);
   if (emit) std::cout << nlohmann::json{{"source", output.str()}, {"decoded", true}, {"branch", branch}} << '\n';
+}
+void DecodedCell(abc::ProfileId profile,unsigned locals,unsigned copies,bool split,bool branch,bool field,bool emit) {
+  using namespace analysis;const auto op=[](abc::Opcode code){return static_cast<std::uint8_t>(code);};
+  std::vector<std::uint8_t> bytes{op(abc::Opcode::kNEWLEXENV_IMM8),1,op(abc::Opcode::kLDA_V8),static_cast<std::uint8_t>(locals),op(abc::Opcode::kCALLARG0_IMM8),0,
+    op(abc::Opcode::kSTLEXVAR_IMM4_IMM4),0,op(abc::Opcode::kLDLEXVAR_IMM4_IMM4),0,op(abc::Opcode::kSTA_V8),0};
+  for(unsigned i=0;i<copies;++i)bytes.insert(bytes.end(),{op(abc::Opcode::kMOV_V8_V8),1,0,op(abc::Opcode::kMOV_V8_V8),0,1});
+  if(split)bytes.insert(bytes.end(),{op(abc::Opcode::kJMP_IMM8),2});
+  if(field)bytes.insert(bytes.end(),{op(abc::Opcode::kLDA_V8),0,op(abc::Opcode::kSTOBJBYVALUE_IMM8_V8_V8),0,static_cast<std::uint8_t>(locals+3),static_cast<std::uint8_t>(locals+4)});
+  if(branch)bytes.insert(bytes.end(),{op(abc::Opcode::kLDA_V8),static_cast<std::uint8_t>(locals+2),op(abc::Opcode::kJEQZ_IMM8),7});
+  for(unsigned i=0;i<2;++i)bytes.insert(bytes.end(),{op(abc::Opcode::kLDA_V8),static_cast<std::uint8_t>(locals+1),op(abc::Opcode::kCALLARG1_IMM8_V8),0,0});
+  bytes.insert(bytes.end(),{op(abc::Opcode::kLDA_V8),0,op(abc::Opcode::kRETURN)});
+  const auto body=test::Body(bytes);const auto frame=std::get<abc::FrameLayout>(abc::BuildFrameLayout(locals,field?5:branch?3:2,{}));RouteInputIdentity identity;identity.profile=profile;
+  const auto input=std::get<FunctionInput>(FunctionInput::Build(identity,{202},{100},body,frame,InputCaptureMode::kConditional));const auto values=std::get<FunctionValues>(BuildFunctionValues(input,body,frame));
+  const auto control=std::get<ControlPlan>(BuildControlPlan(values.graph));const auto evaluation=std::get<EvaluationPlan>(BuildEvaluationPlan(values.graph));
+  FunctionSyntax syntax{};syntax.identity=identity;syntax.method={202};syntax.callable=CallableKind::kFunction;syntax.strictness=Strictness::kStrict;
+  syntax.names={u"seed",u"report"};syntax.parameters={{NameId{0},NameEvidence::kDebugRange},{NameId{1},NameEvidence::kDebugRange}};
+  if(branch||field){syntax.names.push_back(u"flag");syntax.parameters.push_back({NameId{2},NameEvidence::kDebugRange});}
+  if(field)for(const auto name:{u"target",u"key"}){const NameId id{static_cast<std::uint32_t>(syntax.names.size())};syntax.names.push_back(name);syntax.parameters.push_back({id,NameEvidence::kDebugRange});}
+  std::vector<ExpressionConstant> constants(values.graph.ops.size());const ExpressionConstants resolved{constants,syntax.names.size()};
+  const auto built=BuildFunctionTree(values.graph,control,evaluation,syntax,resolved);test::Check(std::holds_alternative<ConstructedFunction>(built));const auto& tree=std::get<ConstructedFunction>(built).tree;
+  test::Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(values.graph,control,evaluation,tree,resolved)));
+  const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));const auto plan=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
+  std::ostringstream output;test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
+  const auto shared=std::any_of(plan.aliases.begin(),plan.aliases.end(),[&](auto root){return root&&tree.symbols[root->value].kind==BindingKind::kLocal;});
+  if(field&&!shared)std::cerr<<output.str()<<'\n';if(field)test::Check(shared);
+  const auto local=std::find_if(tree.symbols.begin(),tree.symbols.end(),[](const auto& symbol){return symbol.kind==BindingKind::kLocal;});test::Check(local!=tree.symbols.end());
+  if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"decoded",true},{"branch",branch},{"decoded_cell",true},{"field",field},{"shared_cell",shared},{"cell_name",tree.names[local->name.value]}}<<'\n';
 }
 void DecodedLoop(abc::ProfileId profile, unsigned locals, unsigned copies, bool split, bool emit) {
   using namespace analysis;
@@ -540,6 +567,11 @@ std::uint64_t NativeDeep(unsigned form, unsigned depth, bool reverse, bool emit)
 }
 int main(int argc, char**) {
   CheckEntryInitializers(argc>1);
+  for(const auto profile:{abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301})
+    for(unsigned locals:{1U,2U})for(unsigned copies:{0U,2U})for(bool split:{false,true})for(bool branch:{false,true})for(bool field:{false,true}) {
+      if(locals==1&&copies)continue;
+      DecodedCell(profile,locals,copies,split,branch,field,argc>1);
+    }
   for(unsigned form=0;form<21;++form) {
     std::uint64_t small=0,large=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}) {

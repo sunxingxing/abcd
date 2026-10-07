@@ -1,5 +1,23 @@
 # 按用户要求进行的恢复条件审计
 
+规则161补充：声明RHS完成（或无initializer let初始化undefined）成为
+共同初始化事件；原生声明先于全部观察、无owned或未知外部写且观察
+位于声明activation时，可供私有复制共用。共用Confined词法包含证明
+和TreeScopeCheck身份解析，目标继续用原first-store/观察分析；没有
+同块/邻接、producer名单、固定寄存器/PC或复制数匹配。真实let/const/
+scope/RHS不更改，不扩大live module或未知capture域；初始化的效果、
+NamedEvaluation、分配与异常/await/yield位置次数保持。声明前/自读
+TDZ、后续写、capture、退出观察和循环每次进入均走相同生产模型。
+先于全部观察是现有保守可用性证明范围，不称为语言必要条件；更精细
+支配/SSA活跃期仍有缺口，不能靠图形匹配扩大，原函数和复制继续输出。
+空声明后实际单写的source存储也复用FirstStored及Confined；保留原声明/
+store而共享其初始化后的观察生命周期。拒绝把已省略constant store当
+作存储根是在保护存储存在性，不追加layout准入。条件store未支配外部
+观察时保留复制，是当前共同可用性证明的保守域；不会拒绝整个函数。
+直接ExpressionStmt投影尚未贯通嵌在实参中的AssignmentExpr，是表示
+缺口；不得用成员写入/调用等producer名单扩展准入。实际成员写入
+解码用例消费共同evaluator产生的早期快照，生产没有新增field特例。
+
 规则160补充：入口参数、handler catch、函数self以typed BindingKind
 初始化语义进入既有不可变复制图；scope/first-store/完整观察及共同
 词法解析继续证明目标可用性、身份、次数和生命周期，不追加同块、

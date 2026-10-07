@@ -12,6 +12,63 @@
 
 ## 当前阶段
 
+### 2026-10-07：规则161，原局部声明与保留首次赋值接入共同复制根
+
+- 从干净ee18cec4继续，上一轮属于实际进展。BindingInitializers在
+  同一观察census中记录DeclarationStmt完成，RHS先观察、空let在原
+  位置初始化undefined。无owned写或未知capture/module逃逸且声明
+  先于全部观察时，经共同词法包含证明供私有复制共享。空声明后保留的
+  单写source store复用原FirstStored；Confined/FirstStored同时服务
+  私有声明投影。原let/const、scope、RHS、NamedEvaluation、分配身份、
+  effect/exception/await/yield完成位置保持，不推测用户const或移动
+  原赋值。不增加样本/名字、opcode/producer名单、PC/register、同块/
+  邻接或复制数量匹配。常量已删除的store不能作为保留存储根。
+- 新增O(S+B)扫描、每binding一个optional声明ID和完成标志，现有
+  sizeof(BindingUses)预算已计入；复制图/name index成本沿规则159。
+  无逐root CFG/祖先遍历。0/1/200/201/400/800链及400→800 work小于
+  三倍通过，正反SymbolId/ScopeId/ExprId/StmtId保持语义；没有physical
+  RSS/benchmark达标声明。
+- 新增16树族六规模正反arena共188有效树/完整源；三profile实际
+  NEWLEXENV/STLEXVAR/LDLEXVAR及register copy/block split/条件调用共
+  72解码树/完整源，其中36成员写入用例验证复制共用原Local根。全部
+  经过共同graph/control/evaluation/FunctionTree、语义检查与实际打印。
+  旧966 checked/954源保留，总1226 checked/1214完整生成源。独立
+  Acorn/原生JS oracle累计376758行为比较、224有效JS mutation，folded
+  源560；覆盖TDZ、自读、后续写、activation退出、逐轮初始化/存储、
+  await拒绝/job、yield throw/return、分配身份、computed key和Proxy
+  setter顺序/异常/receiver。平台执行仍为false，不扩展为设备SDK验收。
+- 有效旧规则160树先通过结构/打印后alias断言RED，退出134，证据
+  /tmp/abcd-source-binding-red.log。loop fixture子range错误及无scope
+  证据的LocalNameSyntax被生产检查拒绝后修正fixture，不弱化检查。
+  旧未capture真实Local单写反例改为合法共享，独立检查原let和原store
+  保留。自然调用路径的复制嵌在实参AssignmentExpr中，当前first-store
+  投影只收集直接ExpressionStmt，仍是表示缺口；成员写入的早期快照
+  由原共同evaluator生成并消费，无新增field/opcode生产准入条件。
+- abc_structure/abc_semantic及十四fixture最终构建退出0，既有
+  literal_plan.cc:59 kNoop switch warning保留。首次30项定向29通过/
+  1失败，140.29秒；唯一失败是binding源码oracle仍要求旧临时const，
+  改为验证原Local let/store保留并保留独立行为对照。修复后binding两项
+  CTest 2/2通过27.50秒；其余29项已验证最终生产代码，包括loop/
+  snapshot/structure/numeric/class/control/module/family、实际构造十
+  record、Push、ProgressBar和富文本。日志/tmp/abcd-source-binding-
+  {final-build-final,behavior-final,tests-final,tests-repaired,export-store-final,
+  style-final}.log；清理oracle两个不可达分支后源码CTest 1/1再通过
+  14.60秒，/tmp/abcd-source-binding-tests-cleanup.log；node --check和
+  git diff --check通过。
+- fresh ABC-only build/stage-one/source-store-binding-pasteboard-final：
+  19 records/219 methods，10complete/0partial/9noModule、value_tree，
+  无legacy，顶层contract language_numeric_constructors_v1。十份完整
+  源解析且无INCOMPLETE/UNRECOVERED；与规则160十份mjs逐字节相同。
+  总声明140、空声明45、初始化95、const87；PasteBoard62/16/46/42，
+  三个native for let保持。本轮无新增actual record coverage或声明数
+  改善。数值/构造模式保持，record contract序列化既有缺口仍属暂停DFX。
+- 下一步嵌套表达式赋值的共同完成/观察投影；条件store的更精细支配/
+  活跃期、未知capture/module、canonical同名保守保留、一般SSA干涉、
+  原变量/每轮capture、compound声明、全body/style及原结构/signature/
+  body gate仍开放。Goal active；full suite、expanded corpus、RSS/
+  benchmark、DFX、scheduler、agents和周期audit继续暂停，固定五ABC
+  106/0未重跑。输入未修改、无新依赖。
+
 ### 2026-10-07：规则160，隐式入口绑定接入共同复制传播
 
 - 从干净77be831e继续，上一轮属于实际进展。共同BindingInitializers

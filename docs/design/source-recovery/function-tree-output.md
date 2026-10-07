@@ -90,7 +90,31 @@ native initializer/每轮binding与phi/update临时值消除仍是表示缺口�
 不描述为语言/VM限制。具体解码/独立行为、scope/throw/await/yield反例
 及实际record证据见status.md；两个实际for不能代替阶段一完整body风格。
 
-## 私有结果的初始化声明（规则 154/155/156/157/158/159/160）
+## 私有结果的初始化声明（规则 154/155/156/157/158/159/160/161）
+
+规则161将声明完成作为同一初始化模型中的事件。DeclarationStmt的RHS
+先扫描，在无更早绑定观察时记录完成；无initializer的let在该位置
+初始化undefined。无owned写或未知capture/module逃逸，且共同观察包含
+证明覆盖声明activation的读取时，原声明成为不可变复制根。target仍
+消费既有首次store/生命周期与共同词法解析，不新增同块/邻接/生产者
+名单、寄存器/PC或复制数量限制。共同Confined接口同时服务原私有
+store和原生声明，避免两套包含语义。真实局部的“空声明＋第一次赋值”
+也使用同一个FirstStored接口；初始化后在观察activation内单写稳定的
+保留存储可供复制共享。原声明和赋值不合并或移动。被常量传播删除的
+store不提供保留根，这是存储存在性义务，不是第二个编译器形状准入。
+
+保留原DeclarationKind、scope和RHS，真实let不改成const；原function/
+class的NamedEvaluation、分配/getter/call效果与await/yield初始化的
+次数、抛出和完成位置不变。声明前/自身RHS的TDZ读取、后续写、被
+捕获cell以及跨activation/作用域退出的私有快照继续保留。不会从
+没有本地写或相同SymbolId推断外部module/capture稳定，也不回放RHS。
+当前要求声明先于全部绑定观察，是共同first-completion证明的保守域；
+已有更早读取不导致整个函数拒绝，继续打印原声明和复制。更精细的
+独立观察支配/活跃期证明仍是一般SSA分析的缺口。
+当前first-store投影只收集直接ExpressionStmt赋值；实参内嵌套
+AssignmentExpr仍保留复制，下一步需要共同表达式完成/观察投影。72
+三profile实际lexical cell解码中，36成员写入的原共同早期快照已可
+共用Local，独立key/Proxy setter行为另验；没有field/opcode生产特例。
 
 规则160在同一复制图中加入隐式初始化根：无本地写入且无未知capture/
 escape的Parameter、CatchParameter和FunctionSelf。body进入、handler
@@ -129,9 +153,10 @@ canonical ScopeId；既有初始化/投影owner证明提供打印后的生命周
 mutable目标仍遵循原证明，不以更多局部匹配扩展。所有省略store/RHS
 保留原boundary零range，原读取和anchor继续有独立生成位置。
 
-当前私有存储和上述隐式入口绑定使用共同初始化/不可变证明。真实
-const/source绑定、外部capture/module的不可变证明仍待贯通，不能只以
-本函数写入数为零推断它们不可变或已初始化。名称解析保守保留canonical
+当前私有存储、原生声明和上述隐式入口绑定使用共同初始化/不可变证明。
+没有显式声明完成证明的source/cell、外部capture/module不可变性仍待
+贯通，不能只以本函数写入数为零推断它们不可变或已初始化。
+名称解析保守保留canonical
 绑定；被删除同名声明可能还造成
 冗余存储，是表示缺口，不是语言不变量或整函数拒绝。一般SSA干涉、
 捕获每轮环境与全body/style仍开放。

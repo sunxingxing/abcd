@@ -42,6 +42,10 @@ struct BindingInitializers {
 // Other immutable copies may share a retained producer after common lexical
 // resolution at each remaining read; a required copy propagates upstream only
 // where its RHS cannot resolve the root. No allocation/effect is replayed.
+// A declaration completing before its confined observations may supply the
+// same immutable root when no owned or unknown external write can alter it.
+// Its original declaration kind, initializer, scope and NamedEvaluation stay;
+// copies preceding completion/escaping activation or capturing mutation stay.
 // Ownership/copy walks are linear; spelling-index construction adds bounded
 // O(B log(B+1)) name comparisons, plus module sorting and compared text units.
 // No per-symbol CFG or per-read ancestor walk, recursive walk or SSA merge.

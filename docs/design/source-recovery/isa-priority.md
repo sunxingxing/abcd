@@ -1,5 +1,15 @@
 # 全 ISA 优先执行顺序
 
+2026-10-07 规则161：声明完成及保留source首次store复用共同不可变
+复制证明，原let/const/初始化/赋值位置不动，不回放RHS。1226有效树/
+1214完整源、376758独立行为/224 mutation通过，包括72三profile实际
+lexical cell解码，36成员写入验证共享Local。首次定向30项29通过/1
+旧源码const断言失败，修复后binding 2/2通过，其余29项最终生产通过。
+fresh pasteboard仍10complete/0partial，十mjs/声明数与规则160一致，
+无新增actual coverage。下一步实参嵌套赋值的共同完成/观察投影、一般
+SSA干涉/原变量/每轮capture，优先普通INCOMPLETE/UNRECOVERED；未知
+capture/module、全body/style、原gate及暂停范围保持。证据见status.md。
+
 2026-10-07 规则160：共同复制图加入无写/无escape的隐式入口Parameter、
 CatchParameter和FunctionSelf根；typed语言调用语义保护mapped
 arguments，target沿共同首次store/生命周期及词法解析恢复，无布局/

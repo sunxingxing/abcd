@@ -1993,6 +1993,45 @@ JS only in the test layer; it is not bytecode-domain recovery evidence. Captured
 mutation uses the currently canonical Local/Capture cell domain in a valid
 printed family; raw Parameter capture admission remains a representation gap.
 
+Rules 161 records native declaration completion in the same binding-use census:
+evaluate the original initializer before recording completion, or initialize an
+uninitialized let to undefined at its original statement. A declaration preceding
+all observations, with no owned write or unknown capture/module escape, becomes
+an immutable retained copy root after the same lexical-interval confinement
+proof. Empty declaration plus a later direct source store uses FirstStored, the
+identical first-completed-store proof as private projections. A single retained
+store can be stable within its observation activation without changing the
+original source declaration or store; constant-elided stores cannot provide
+retained storage. Confined and FirstStored are shared with private first-store
+projection. Target availability
+and execution count still come from that first-store/observation proof, while the
+existing scope index preserves actual root identity. Source declaration kind,
+scope, NamedEvaluation and the initializer's allocation/effects/exception and
+await/yield completion remain unchanged. Source lets are never inferred const,
+and initializers are neither copied nor evaluated at each substituted read.
+
+The initialization model is ECMA-262 2024 lexical binding evaluation, implemented
+in project-owned code without an additional dependency or copied external code.
+An optional declaration ID and one completion flag extend each existing binding
+record; sizeof(BindingUses) is already charged by its bounded array admission.
+The added census/root work is O(S+B), with O(B) metadata and the existing copy and
+scope-index costs. No per-binding CFG or ancestor traversal is introduced. Tests
+exercise 0/1/200/201/400/800 chains, reversed IDs, stable let/const/undefined,
+declaration-before-TDZ observations, later writes, caught/captured old values,
+activation exits, per-iteration effectful initialization, suspension in declaration
+RHS, original failures and fresh allocation identity. A declaration with any
+earlier observation retains all storage under this conservative first-completion
+proof; narrowing to independently dominated observations is a general liveness
+gap, not a language invariant or a reason to reject the complete function.
+The current first-store census projects direct ExpressionStmt assignments;
+assignments embedded in call arguments retain their copies until a shared
+expression-completion projection is implemented. Seventy-two actual lexical-cell
+decoder variants across the three profiles verify the complete pipeline; 36
+member-write cases share the retained Local root and independently verify key
+conversion, Proxy setter receiver, state, exception and effect order. Those
+members exercise the existing evaluator's early snapshots; no member-specific
+production admission was added.
+
 For S statements, E expressions, K owned child/argument/property slots, B symbols
 and C owned class-member capture occurrences, ownership/initialization cost is
 O(S+E+K+B+C), with
