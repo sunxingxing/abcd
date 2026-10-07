@@ -1,6 +1,7 @@
 #include "../../../src/source/binding_initializer.h"
 #include "../../../src/source/loop_syntax.h"
 #include "../../../src/source/nullish_syntax.h"
+#include "../../../src/source/definition_elision.h"
 #include "abcd/source/tree_printer.h"
 #include "../../support/analysis/ssa_fixture.h"
 #include <nlohmann/json.hpp>
@@ -123,8 +124,85 @@ std::uint64_t Chain(unsigned size,bool cycle,bool observed,bool reverse,bool emi
   return plan.work;
 }
 
+std::uint64_t EmptyBinding(unsigned form,unsigned count,bool reverse,bool emit) {
+  Fixture f;auto& tree=f.tree;
+  if(form==5) {
+    tree.symbols[2].kind=BindingKind::kLocal;tree.symbols[2].evidence=NameEvidence::kMetadata;
+    tree.symbols[2].temporary.reset();
+  }
+  const auto declaration=f.Stmt(DeclarationStmt{{2},{}});
+  std::vector<StmtId> body{declaration};
+  if(form==2) {
+    tree.arguments.push_back(f.Read(2));
+    body.push_back(f.Stmt(ExpressionStmt{f.Expr(CallExpr{f.Read(0),{0,1},CallReference::kValue})}));
+  }
+  for(unsigned i=0;i<count;++i)body.push_back(f.Stmt(ExpressionStmt{f.Call(0)}));
+  if(form==1||form==2) {
+    const auto value=f.Store(1);const auto first=static_cast<std::uint32_t>(tree.arguments.size());
+    tree.arguments.push_back(value);
+    body.push_back(f.Stmt(ExpressionStmt{f.Expr(CallExpr{f.Read(0),{first,1},CallReference::kValue})}));
+  }
+  if(form==3)body.push_back(f.Stmt(ExpressionStmt{f.Expr(UpdateExpr{{2},UpdateDirection::kIncrement,UpdateResult::kPrefix})}));
+  std::optional<StmtId> inner;
+  if(form==4) {
+    const auto scope=f.Scope();tree.symbols.push_back({scope,{2},BindingKind::kCompilerTemporary,
+        DeclarationKind::kLet,NameEvidence::kSynthesized,TemporaryReason::kMultipleUses});
+    inner=f.Stmt(DeclarationStmt{{3},{}});body.push_back(f.Block({*inner,f.Stmt(ExpressionStmt{f.Call(1)})},scope));
+  }
+  body.push_back(f.Stmt(ReturnStmt{form==3||form==4?f.Read(2):f.Read(1)}));
+  f.Finish(body,reverse);test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
+  const auto result=PlanBindingInitializers(tree,loops,nullish);test::Check(std::holds_alternative<BindingInitializers>(result));
+  const auto& plan=std::get<BindingInitializers>(result);
+  test::Check(bool(plan.omitted[declaration.value])==(form==0||form==1));
+  if(inner)test::Check(plan.omitted[inner->value]);
+  if(count==0) {
+    test::Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes,plan.work})));
+    test::Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes-1,plan.work}))==TreeStructureError::kResourceLimit);
+    test::Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes,plan.work-1}))==TreeStructureError::kWorkLimit);
+  }
+  std::ostringstream out;test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,out)));
+  if(emit)std::cout<<nlohmann::json{{"source",out.str()},{"binding",true},{"form",form},{"count",count}}<<'\n';
+  return plan.work;
+}
+
+void BindingObligations() {
+  // Cartesian semantic facts, independent of CFG reachability and arena order.
+  // A reference in retained syntax requires a binding even if its value is dead.
+  for(bool observable:{false,true})for(bool read:{false,true})for(bool write:{false,true})
+    for(bool drop_region:{false,true})for(bool drop_write:{false,true})for(bool reverse:{false,true}) {
+      RecoveryFlow flow{};flow.bindings={{BindingKind::kCompilerTemporary,
+          observable?FlowBindingExposure::kObservable:FlowBindingExposure::kPrivate}};
+      flow.statements.resize(2);flow.expressions.resize(1);flow.events.resize(3);
+      flow.discarded.push_back({{1}});
+      flow.definitions.push_back({{0},{0},FlowDefinitionKind::kUndefined,{},{},StmtId{0}});
+      flow.events[0].definition=FlowDefinitionId{0};
+      if(read){flow.events[1].read=SymbolId{0};flow.events[1].discarded=DiscardedId{0};}
+      if(write) {
+        flow.definitions.push_back({{2},{0},FlowDefinitionKind::kAssignment,{},{},{},ExprId{0}});
+        flow.events[2].definition=FlowDefinitionId{1};flow.events[2].discarded=DiscardedId{0};
+      }
+      DefinitionElisions delta;if(drop_region)delta.statements.push_back({1});if(drop_write)delta.writes.push_back({0});
+      if(reverse)std::reverse(flow.events.begin(),flow.events.end());
+      const auto result=std::get<BindingElisions>(PlanBindingElisions(flow,delta));
+      const bool expected=!observable && (drop_region || (!read && (!write||drop_write)));
+      test::Check(result.declarations.size()==std::size_t(expected));
+      test::Check(std::holds_alternative<BindingElisions>(PlanBindingElisions(flow,delta,{result.allocated_bytes,result.work})));
+      test::Check(std::get<TreeStructureError>(PlanBindingElisions(flow,delta,{result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
+      test::Check(std::get<TreeStructureError>(PlanBindingElisions(flow,delta,{result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);
+  }
+}
+
 }
 int main(int argc,char**) {
+  BindingObligations();
+  for(unsigned form=0;form<6;++form)for(bool reverse:{false,true}) {
+    std::uint64_t previous=0;
+    for(unsigned count:{0U,200U,201U,400U,800U}) {
+      const auto work=EmptyBinding(form,count,reverse,argc>1);
+      if(count>=400)test::Check(work<previous*3);previous=work;
+    }
+  }
   for(bool cycle:{false,true})for(bool observed:{false,true})for(bool reverse:{false,true}) {
     std::uint64_t previous=0;
     for(unsigned size:{2U,200U,201U,400U,800U}) {

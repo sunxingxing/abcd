@@ -14,5 +14,16 @@ struct DefinitionElisions {
 // Initialization and binding lifetime are never removed here.
 [[nodiscard]] std::variant<DefinitionElisions,TreeStructureError> PlanDefinitionElisions(
     const RecoveryFlow&,const FlowDemand&,analysis::SemanticBudget = {});
+struct BindingElisions {
+  std::vector<StmtId> declarations;
+  std::size_t allocated_bytes = 0;
+  std::uint64_t work = 0;
+};
+// Separate lifetime decision against the SAME immutable flow and proposed delta.
+// Remove an undefined initialization only if its private binding has no remaining
+// reference or other definition. This does not authorize moving/sharing a live
+// lifetime, or dropping native/explicit initializer evaluation.
+[[nodiscard]] std::variant<BindingElisions,TreeStructureError> PlanBindingElisions(
+    const RecoveryFlow&,const DefinitionElisions&,analysis::SemanticBudget = {});
 }
 #endif

@@ -16,6 +16,11 @@ enum class FlowCompletion : std::uint8_t { kNormal, kThrow, kReturn, kJump, kTak
 enum class FlowDefinitionKind : std::uint8_t { kParameter, kUndefined, kInitializer, kAssignment, kUpdate, kCatch };
 enum class FlowEventKind : std::uint8_t { kControl, kTruthBranch, kNullishBranch, kRead, kEvaluation, kEnterScope, kLeaveScope, kDefinition, kSuspend };
 enum class FlowWriteEffect : std::uint8_t { kObservable, kInert };
+enum class FlowBindingExposure : std::uint8_t { kObservable, kPrivate };
+struct FlowBinding {
+  BindingKind kind;
+  FlowBindingExposure exposure = FlowBindingExposure::kObservable;
+};
 struct BindingInitializer;
 struct FlowDefinition {
   FlowPoint point;
@@ -62,7 +67,7 @@ struct RecoveryFlow {
   std::vector<FlowDefinition> definitions;
   std::vector<DiscardedEvaluation> discarded;
   std::vector<FlowPoint> statements, expressions;
-  std::vector<BindingKind> bindings;
+  std::vector<FlowBinding> bindings;
   FlowPoint entry, terminal;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;

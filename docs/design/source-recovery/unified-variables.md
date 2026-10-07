@@ -205,3 +205,28 @@ throws and suspension stay. Subsequent storage analysis starts on a rebuilt flow
 This closes only the dead-write/inert-evaluation interaction. Shared initialization,
 storage identities in the flow, declaration removal, CompletedStore retirement and
 post-storage convergence remain open.
+
+## Independent unused-binding pass (rules182)
+
+RecoveryFlow now retains a typed binding exposure fact. The migration adapter
+supplies nonescaping compiler-private identity; it does not claim to replace the
+legacy capture/initialization analysis. PlanBindingElisions consumes the immutable
+flow and the proposed DefinitionElisions, before either delta is applied. It
+indexes removed occurrences and checks all remaining semantic reads/definitions.
+An unused private undefined declaration can disappear only when no retained
+reference or other definition needs that binding. A dead initial value alone is
+insufficient. Explicit/native initializers, retained assignments/updates and
+observable/captured identities remain. Unreachable but retained syntax also counts.
+
+The concrete dependency order is flow -> demand closure -> definition delta ->
+binding delta -> batch commit -> fresh flow/liveness/interference for storage.
+The binding pass owns declaration removal; the definition pass still owns only
+write/evaluation removal. No post-mutation demand or effect fact is reused, and no
+additional graph rebuild is needed between these two proposal passes. The new
+scan is over typed semantic occurrences, not another syntax/first-store census.
+
+This removes unused empty declarations left by dead-write elimination, including
+bindings that were never written. It does not remove effectful/native initializer
+declarations, implement live-undefined storage sharing, or retire CompletedStore.
+The full revision/invalidation coordinator and post-storage convergence remain
+open; this bounded group provides explicit proposal dependencies and one commit.

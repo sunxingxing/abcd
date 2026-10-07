@@ -13,8 +13,8 @@ class Interference {
     for(const auto& definition:flow_.definitions) {
       budget_.Step();const auto copied=definition.copy;
       if(copied&&*copied!=definition.binding&&
-          flow_.bindings[copied->value]==BindingKind::kCompilerTemporary&&
-          flow_.bindings[definition.binding.value]==BindingKind::kCompilerTemporary)
+          flow_.bindings[copied->value].kind==BindingKind::kCompilerTemporary&&
+          flow_.bindings[definition.binding.value].kind==BindingKind::kCompilerTemporary)
         proposals_.push_back(Pair(*copied,definition.binding));
     }
     const auto less=[&](const BindingAffinity& a,const BindingAffinity& b){budget_.Step();return Key(a)<Key(b);};

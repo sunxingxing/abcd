@@ -24,6 +24,34 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-07：规则182，独立声明删除提案消费同一流图与写入delta
+
+- RecoveryFlow增加typed FlowBinding exposure，沿现有adapter接入未逃逸
+  compiler-private身份。新增PlanBindingElisions，独立判断写入/语句删除
+  提案之后还有哪些语义读取或定义需要绑定；仅删除没有保留引用的私有
+  undefined声明。不把“初始值已死”等同于“绑定生命期可删除”。
+- 固定顺序为共同流图→需求闭包→定义删除提案→声明删除提案→批量提交
+  →重新建立存储分析。两份提案都在原plan未修改时完成，无旧分析跨提交
+  复用，也不为声明pass额外建图。消费typed事件，不重建语法/名字census。
+  去掉入口必须存在写入的筛选，未曾写入的无用私有声明也进入共同分析。
+- 保留活跃undefined、更新/赋值仍需的绑定、显式/native初始化、外部或
+  捕获身份；不可达但仍保留的源码引用同样要求声明。没有新增样本、同块、
+  邻接或图形状准入。CompletedStore及通用初始化/作用域证明未被替代。
+- 新增64组绑定保留事实组合与exact/short预算测试；源码覆盖无用声明、
+  保留调用RHS的死写入、活跃undefined、自增、嵌套同名作用域和非私有local。
+  定义消除套件现在184份源码/2,080执行比较/3错误变换反例；arena反转、
+  200/201/400/800及几何工作量通过，既有175,616/98,304小图对照继续通过。
+- 完成相关目标重建，日志/tmp/abcd-rule182-build.log。54项相关定向回归
+  全部通过325.30秒，日志/tmp/abcd-rule182-tests.log，详细输出
+  /tmp/abcd-rule182-test-detail.log。包括部分输出、闭包捕获、循环/异常/暂停、
+  命名、语言构造模式、既定真实record及54组EntryAbility独立配对路径。
+- ABC-only导出build/stage-one/unused-bindings-rule182：
+  10complete/0partial/9noModule，十份源码node --check通过。相对规则181
+  仅EntryAbility正文删除了先前死写入遗留的let $value2;，其余九份正文不变。
+  导出日志/tmp/abcd-rule182-export.log；这不代表整个record/阶段一语义验收完成。
+- 完整投影版本/失效协调器、存储后的收敛、活跃undefined共享与旧判断退出
+  仍开放。阶段一Goal和结构gate未完成；全量语料/RSS/DFX及代理保持暂停。
+
 ### 2026-10-07：规则181，共享反向求解器完成死复制需求收敛
 
 - RecoveryFlow为结果被丢弃的表达式语句记录typed区域，并一次组合其

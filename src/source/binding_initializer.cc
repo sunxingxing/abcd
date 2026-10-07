@@ -417,7 +417,7 @@ class Initializers {
     bool candidate=false;
     for (std::size_t i=0;i<uses_.size();++i) {
       budget_.Step();candidate |= tree_.symbols[i].kind==BindingKind::kCompilerTemporary &&
-          !uses_[i].escaped && uses_[i].writes!=0;
+          !uses_[i].escaped;
     }
     if (!candidate) return;
     const auto flow=CurrentFlow();
@@ -429,8 +429,15 @@ class Initializers {
     if(const auto* error=std::get_if<TreeStructureError>(&proposed))throw *error;
     const auto& delta=std::get<DefinitionElisions>(proposed);
     budget_.Admit(delta.allocated_bytes,1);budget_.Step(delta.work);
+    auto bindings=PlanBindingElisions(flow,delta,budget_.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&bindings))throw *error;
+    const auto& binding_delta=std::get<BindingElisions>(bindings);
+    budget_.Admit(binding_delta.allocated_bytes,1);budget_.Step(binding_delta.work);
     // Commit after demand closure. Only wholly inert discarded evaluations
     // disappear; every required RHS retains its occurrence and completion.
+    // Binding removal consumes the proposed delta before either pass mutates
+    // the projection. Storage analysis rebuilds after this batch commits.
+    for (const auto statement:binding_delta.declarations) {budget_.Step();plan_.omitted[statement.value]=1;}
     for (const auto statement:delta.statements) {budget_.Step();plan_.omitted[statement.value]=1;}
     for (const auto write:delta.writes) {
       budget_.Step();plan_.replacements[write.value]=

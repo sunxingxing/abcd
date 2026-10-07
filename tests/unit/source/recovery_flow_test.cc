@@ -43,7 +43,7 @@ void SmallGraphs() {
   constexpr unsigned actions=7,vertices=3,edge_bits=vertices*vertices;
   std::size_t cases=0;
   for(unsigned action_mask=0;action_mask<actions*actions*actions;++action_mask) {
-    RecoveryFlow base{};base.events.resize(vertices);base.bindings.assign(2,BindingKind::kCompilerTemporary);
+    RecoveryFlow base{};base.events.resize(vertices);base.bindings.assign(2,FlowBinding{BindingKind::kCompilerTemporary});
     unsigned encoded=action_mask;bool affinity=false;
     for(unsigned point=0;point<vertices;++point){const auto action=encoded%actions;encoded/=actions;
       if(action==1||action==2)base.events[point].read=SymbolId{action-1};
@@ -132,7 +132,7 @@ void DemandGraphs() {
 void Scaling() {
   std::uint64_t previous=0;
   for(unsigned size:{200U,201U,400U,800U,1600U})for(bool reverse:{false,true}) {
-    RecoveryFlow graph{};graph.events.resize(size);graph.bindings={BindingKind::kCompilerTemporary};
+    RecoveryFlow graph{};graph.events.resize(size);graph.bindings={{BindingKind::kCompilerTemporary}};
     const auto point=[&](unsigned i){return reverse?size-1-i:i;};
     std::vector<ReachingDefinition> expected;
     for(unsigned i=0;i<size;++i) {

@@ -2481,3 +2481,22 @@ undemanded ones, with reversed arenas, an independent array-transport execution
 oracle, exact/short budgets and geometric work assertions. This is not process RSS
 or full-corpus evidence. Whole-pipeline convergence and binding lifetime recovery
 remain open.
+
+### Unused private binding retention (rules182)
+
+Project-owned occurrence indexing applies the standard unused-binding rule:
+an unobservable empty lexical binding with no remaining references may be removed.
+No external implementation, dependency or license is added. RecoveryFlow owns
+binding exposure, reads and definitions; the new planner consumes the proposed
+write/evaluation deletions against that same immutable graph. Removed statements
+and writes are indexed once; retained events mark required bindings, then unused
+private undefined declarations are proposed separately. Capture/escape facts are
+still supplied by the explicit legacy adapter; initialized declarations and
+general lifetime movement remain outside this pass's proof.
+
+For N flow events, D definitions, B bindings, X expression slots, S statement
+slots and K proposed elisions, work is O(N+D+B+X+S+K), storage O(B+X+S+D),
+including zero-filled indexes and output capacity. There is no per-binding graph
+walk, repeated demand closure or extra graph construction. The two immutable
+proposal stages commit together; the subsequent storage consumer rebuilds its
+facts. Allocation and work accounting include all simultaneously live proposals.

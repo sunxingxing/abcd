@@ -49,7 +49,11 @@ class FlowBuilder {
     copy(result.discarded,discarded_);
     copy(result.statements,statements_);copy(result.expressions,expressions_);
     budget_.Array(result.bindings,tree_.symbols.size());
-    for(std::size_t i=0;i<tree_.symbols.size();++i){budget_.Step();result.bindings[i]=tree_.symbols[i].kind;}
+    for(std::size_t i=0;i<tree_.symbols.size();++i) {
+      budget_.Step();result.bindings[i]={tree_.symbols[i].kind,
+          !projection_.private_bindings.empty() && projection_.private_bindings[i]
+              ? FlowBindingExposure::kPrivate : FlowBindingExposure::kObservable};
+    }
     result.allocated_bytes=budget_.Bytes();result.work=budget_.Work();return result;
   }
  private:

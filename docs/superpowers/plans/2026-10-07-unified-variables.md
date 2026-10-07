@@ -152,3 +152,11 @@ materializing the full read/definition relation (which exceeded the existing
 402-selection budget). This closes the dead-write / inert-RHS interaction only;
 shared initialization, live-undefined storage mapping, declaration recovery and
 the overall pass coordinator remain incomplete.
+
+Rules182 substep: a separate binding-elision proposal consumes FlowBinding
+exposure and the definition-elision delta on the same immutable flow. Only
+private undefined declarations without any retained reference/other definition
+are omitted. Both proposals commit after analysis; storage then rebuilds its
+facts. No lifetime decision is added to Coalesce, and no extra graph construction
+is required for this dependent proposal. General initializer/lifetime recovery,
+CompletedStore retirement and full pass coordination are still open.

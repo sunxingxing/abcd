@@ -22,6 +22,18 @@ function observe(fn,flag,fail) {
 let executions=0;
 for(const row of rows) {
   parseJavaScript(row.source);
+  if(row.binding) {
+    const actual=Function('return ('+row.source+');')();
+    const tails=['return flag;','produce(state=produce(1));return flag;',
+      'produce(state=produce(1));return flag;','++state;return state;',
+      '{let state;produce(1);}return state;','return flag;'];
+    const expected=Function('produce','flag','"use strict";let state;'+
+      (row.form===2?'produce(state);':'')+'produce(0);'.repeat(row.count)+tails[row.form]);
+    for(const flag of [false,true])for(const fail of [-1,0,1,2,3]) {
+      assert.deepEqual(observe(actual,flag,fail),observe(expected,flag,fail));++executions;
+    }
+    continue;
+  }
   if(row.chain) {
     for(const input of [undefined,null,false,0,-0,7n,Symbol('input'),values[0]])for(const flag of [false,true]) {
       const got=vm.runInNewContext('('+row.source+')(input,flag)',{input,flag},{timeout:1000});
@@ -53,4 +65,6 @@ assert.notDeepEqual(observe(Function('produce','flag','return produce(2);'),true
     observe(Function('produce','flag',programs[0].replace('state=produce(1);','let state=produce(1);')),true,-1));
 assert.notDeepEqual(observe(Function('produce','flag','let state;try{state=produce(2);}catch(e){return state;}'),true,2),
     observe(Function('produce','flag','let state;'+programs[1]),true,2));
-console.log(`${rows.length} sources, ${executions} execution comparisons, 2 adverse mutants`);
+assert.notDeepEqual(observe(Function('produce','flag','"use strict";return ++state;'),false,-1),
+    observe(Function('produce','flag','"use strict";let state;return ++state;'),false,-1));
+console.log(`${rows.length} sources, ${executions} execution comparisons, 3 adverse mutants`);

@@ -1881,3 +1881,16 @@ does not inspect expression syntax or materialize every reaching-definition edge
 removable regions; source declaration initialization forces retention. Both an
 entirely unused cycle and a demanded chain use the same worklist rules. Storage
 and scope admissions are unchanged; no CompletedStore exception was added.
+
+## Rules182: declaration retention is independent of value demand
+
+PlanBindingElisions uses FlowBinding exposure plus retained semantic occurrences
+after a definition-elision proposal. It never uses variable spelling, first use,
+adjacency, block identity or a producer pattern. The kUndefined definition denotes
+the existing language initialization event, not a pattern of source statements.
+Any retained read, assignment, update or other definition requires the binding;
+capture/external exposure preserves identity even without a local read. A dead
+undefined value is therefore not permission to remove its still-used lifetime.
+Both proposals are prepared before the shared projection changes. CompletedStore
+is unchanged; general lifetime movement and live-undefined storage sharing remain
+explicitly unconverted obligations.
