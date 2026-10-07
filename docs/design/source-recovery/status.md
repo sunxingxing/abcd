@@ -12,6 +12,61 @@
 
 ## 当前阶段
 
+### 2026-10-07：规则163，共同表达式观察省略纯逗号左值
+
+- 从干净3331b471继续，Goal active；已获准且已实现的显式数值/
+  构造模式保持。BindingInitializers在原完成census记录postorder，
+  以typed expression/operator穷尽语义和child完成汇总ExpressionEvaluation。
+  初始化binding读取复用原声明先后/lexical与execution包含以及copy
+  证明；body-entry参数/self/catch和own ordinary this按语言初始化。
+  mutation不使已初始化读取成为hook；global/member/未知coercion、
+  TDZ、写、分配及await/yield保持，不增加样本/名字/opcode/producer
+  名单、同块/邻接、PC/register或数量匹配。
+- printer把纯comma left投影到原right，保留原发生点、parent grammar
+  和value-result类别；typeof unresolved global仍GetValue，原value
+  call保留indirect/receiverless语义。function/class命名目的保留必要
+  comma envelope，不引入新name/self；原AST/ID/origin/anchor不改。
+  纯省略子树通过迭代事件映射到非零normalized result span，不新增
+  transport准入或zero-range豁免。摘要/postorder新增预算化O(E)空间、
+  O(E+owned slots)工作，省略子树disjoint ownership保证打印线性。
+- 十九组0/1/200/201/400/800正反arena新增228完整树/源，原1478源
+  保持，共1706完整生成源、457128独立原生JS行为比较和270有效JS
+  mutation通过。覆盖pure operators/choice、mutable入口读取、local
+  完成/TDZ、getter/coercion、unresolved/global accessor、await job/
+  rejection和yield next/throw/return；原72三profile实际cell解码及
+  全binding oracle保持。一般默认表达式仍被既有kUnsupportedSyntax
+  拒绝，新增负例记录此表示缺口，未放宽规则。命名fixture扩展至
+  1296场景，54有效mutation证明去除必要comma会改变name；class
+  let/const也覆盖value projection。platformExecution:false。
+- 有效旧规则162的源码style断言RED：仍有SequenceExpression实参，
+  /tmp/abcd-sequence-red.log。新增default fixture曾错误要求成功，
+  改为明确拒绝断言；mutation曾误选callee comma和未捕获generator
+  提前完成断言，修正测试选择/异步mutation检测，生产检查未弱化。
+  abc_structure/abc_semantic及十四fixture最终构建退出0；新增测试
+  使用原已锁Acorn解析器，首次30项定向29通过/1因新增import缺少
+  --expose-internals失败，总154.50秒。修复CMake测试启动参数后
+  native names和binding两项共3/3补验通过40.38秒；其余29项最终
+  生产语义代码已通过，包括loop/snapshot/module/structure/numeric/
+  class/control/family、语言构造实际十record、Push/ProgressBar/富文本。
+- fresh ABC-only build/stage-one/sequence-pasteboard-verified-final仍19 records/
+  219 methods，10complete/0partial/9noModule、value_tree/无legacy，
+  顶层contract language_numeric_constructors_v1。十mjs独立解析且无
+  INCOMPLETE/UNRECOVERED，与规则162逐字节一致；总声明140/空45/
+  初始化95/const87/sequence28，PasteBoard62/16/46/42/sequence13，
+  三个native for let保持。本轮无新增actual record coverage或style
+  数量改善；受控新树的纯复制实参已去掉机械comma。全body/style与
+  阶段一验收不能用这些局部通过代替。
+  最后重导出曾被已有destination保护拒绝，退出1/error10；使用新的
+  输出目录复验，不覆盖此前产物、不修改输入。
+- 证据/tmp/abcd-sequence-{final-build-final,final-registration-build,
+  fixture-final,behavior-final,names-final,targeted,repaired,export-final,
+  style-final}.log；node --check与git diff --check通过。接下来继续
+  剩余普通INCOMPLETE/UNRECOVERED与结构/signature/body gate；共同
+  更精确reaching definitions/SSA干涉、原变量/每轮capture、unknown
+  capture/module和一般dead statement/right pruning仍开放。full suite、
+  expanded corpus、RSS/benchmark、DFX、scheduler、agents及周期audit
+  继续暂停，固定五ABC106/0未重跑。输入未改动。
+
 ### 2026-10-07：规则162，表达式内赋值接入共同完成与复制传播
 
 - 从干净9db586fd继续，上一轮属于实际进展。BindingInitializers的

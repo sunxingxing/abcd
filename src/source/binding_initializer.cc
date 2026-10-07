@@ -13,6 +13,7 @@ namespace {
 struct BindingUses {
   std::optional<StmtId> declaration, initializer, initializer_container;
   std::optional<StmtId> definition;
+  std::size_t definition_region = 0;
   std::optional<ExprId> first;
   std::optional<ExprId> store;
   std::size_t store_region = 0;
@@ -49,6 +50,8 @@ class Initializers {
     budget.Array(plan_.literals, tree.symbols.size());
     budget.Array(plan_.aliases, tree.symbols.size());
     budget.Array(plan_.replacements, tree.expressions.size());
+    budget.Array(plan_.evaluations, tree.expressions.size());
+    budget.Array(completions_, tree.expressions.size());
     budget.Array(plan_.entry_counts, loops.initializer_roots.size() + 1);
     budget.Array(constant_heads_, tree.symbols.size());budget.Array(constant_next_, tree.symbols.size());
     budget.Array(constant_queue_, tree.symbols.size());
@@ -210,9 +213,45 @@ class Initializers {
         }
       }
     }
+    Evaluations();
     return Finish();
   }
  private:
+  bool InitializedRead(SymbolId symbol, ExprId occurrence) const {
+    if (plan_.aliases[symbol.value] || plan_.literals[symbol.value]) return true;
+    const auto kind = tree_.symbols[symbol.value].kind;
+    // A parameter read in its own/default parameter program can still be TDZ.
+    // Invocation bindings are initialized on body entry; reads need no value
+    // immutability proof, since mutation does not make GetBindingValue a hook.
+    if (kind == BindingKind::kFunctionSelf || kind == BindingKind::kCatchParameter) return true;
+    if (kind == BindingKind::kParameter) return expression_owners_[occurrence.value].has_value();
+    const auto& use = uses_[symbol.value];
+    if (!use.definition || !use.initialized_first ||
+        !Confined(use, lexical_[use.definition->value]) || !use.first_region) return false;
+    const auto region = regions_[use.definition_region];
+    return *use.first_region >= region.begin && *use.last_region < region.end;
+  }
+  void Evaluations() {
+    // Scan's finish order is postorder even when expression IDs are reversed.
+    // Each owned child is consumed once. No repeated subtree/type/CFG walk.
+    for (std::size_t at = 0; at < completion_count_; ++at) {
+      budget_.Step(); const auto id = completions_[at];
+      const auto& node = tree_.expressions[id.value].expression;
+      auto evaluation = IntrinsicEvaluation(node);
+      if (const auto replacement = plan_.replacements[id.value]) evaluation = plan_.evaluations[replacement->value];
+      else if (const auto* read = std::get_if<SymbolExpr>(&node)) {
+        if (InitializedRead(read->symbol, id)) evaluation = ExpressionEvaluation::kInert;
+      } else if (const auto* receiver = std::get_if<ThisExpr>(&node)) {
+        if (receiver->owner == tree_.owner && tree_.callable != CallableKind::kDerivedConstructor &&
+            !IsArrowCallable(tree_.callable)) evaluation = ExpressionEvaluation::kInert;
+      }
+      VisitExpressionChildren(tree_, node, [&](ExprId child) {
+        budget_.Step(); if (plan_.evaluations[child.value] == ExpressionEvaluation::kRequired)
+          evaluation = ExpressionEvaluation::kRequired;
+      });
+      plan_.evaluations[id.value] = evaluation;
+    }
+  }
   std::size_t OpenRegion() {
     RequireTree(next_region_<regions_.size(),TreeStructureError::kOwnership);
     const auto region=next_region_++;regions_[region].begin=region;return region;
@@ -465,6 +504,8 @@ class Initializers {
           }
         }
       } else {
+        RequireTree(completion_count_ < completions_.size(), TreeStructureError::kOwnership);
+        completions_[completion_count_++] = visit.expression;
         if (const auto* assignment = std::get_if<AssignmentExpr>(&node)) {
           if (const auto* target = std::get_if<SymbolTarget>(&assignment->target)) {
             Observe(target->symbol, visit.expression, container, true, projector);
@@ -484,7 +525,7 @@ class Initializers {
       if constexpr (std::is_same_v<T, DeclarationStmt>) {
         if (syntax.initializer) Scan(*syntax.initializer, visit.lexical, visit.projector,visit.scope);
         const auto& symbol = tree_.symbols[syntax.symbol.value]; auto& use = uses_[syntax.symbol.value];
-        use.definition=visit.statement;use.initialized_first=!use.first;
+        use.definition=visit.statement;use.initialized_first=!use.first;use.definition_region=current_region_;
         if (!syntax.initializer && symbol.kind == BindingKind::kCompilerTemporary &&
             symbol.declaration == DeclarationKind::kLet && visit.container && !visit.projected) {
           use.declaration = visit.statement;
@@ -520,6 +561,8 @@ class Initializers {
   std::size_t projection_count_ = 0;
   std::size_t next_container_ = 0;
   std::vector<ExpressionVisit> expressions_;
+  std::vector<ExprId> completions_;
+  std::size_t completion_count_ = 0;
   std::vector<ScopeId> expression_scopes_;
   std::vector<std::optional<StmtId>> expression_owners_;
   std::vector<std::uint8_t> expression_projections_;

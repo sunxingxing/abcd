@@ -27,10 +27,11 @@ struct Expressions {
       if constexpr(std::is_same_v<T,SymbolExpr>)value.symbol=symbol(value.symbol);
       else if constexpr(std::is_same_v<T,AssignmentExpr>){std::get<SymbolTarget>(value.target).symbol=symbol(std::get<SymbolTarget>(value.target).symbol);value.value=expression(value.value);}
       else if constexpr(std::is_same_v<T,CallExpr>)value.callee=expression(value.callee);
-      else if constexpr(std::is_same_v<T,SequenceExpr>||std::is_same_v<T,LogicalExpr>){value.left=expression(value.left);value.right=expression(value.right);}
+      else if constexpr(std::is_same_v<T,SequenceExpr>||std::is_same_v<T,LogicalExpr>||std::is_same_v<T,BinaryExpr>){value.left=expression(value.left);value.right=expression(value.right);}
+      else if constexpr(std::is_same_v<T,MemberExpr>){value.base=expression(value.base);if(auto* key=std::get_if<ComputedKey>(&value.key))key->expression=expression(key->expression);}
       else if constexpr(std::is_same_v<T,ConditionalExpr>){value.condition=expression(value.condition);value.consequent=expression(value.consequent);value.alternate=expression(value.alternate);}
       else if constexpr(std::is_same_v<T,AwaitExpr>||std::is_same_v<T,YieldExpr>||std::is_same_v<T,UnaryExpr>)value.operand=expression(value.operand);
-      else test::Check(std::holds_alternative<TreeLiteral>(node.expression)||std::holds_alternative<EmptyObjectExpr>(node.expression));
+      else test::Check(std::holds_alternative<TreeLiteral>(node.expression)||std::holds_alternative<EmptyObjectExpr>(node.expression)||std::holds_alternative<GlobalNameExpr>(node.expression)||std::holds_alternative<ThisExpr>(node.expression));
     },node.expression);
     for(auto& node:tree.statements)std::visit([&](auto& value){using T=std::decay_t<decltype(value)>;
       if constexpr(std::is_same_v<T,BlockStmt>)value.scope=scope(value.scope);
@@ -43,7 +44,7 @@ struct Expressions {
       else test::Check(false);
     },node.statement);
     for(auto& argument:tree.arguments)argument=expression(argument);for(auto& child:tree.children)child=statement(child);
-    for(auto& parameter:tree.parameters)parameter.symbol=symbol(parameter.symbol);
+    for(auto& parameter:tree.parameters){parameter.symbol=symbol(parameter.symbol);if(parameter.initializer)parameter.initializer=expression(*parameter.initializer);}
     for(auto& binding:tree.symbols)binding.scope=scope(binding.scope);
     for(auto& owned:tree.scopes)if(owned.parent)owned.parent=scope(*owned.parent);
     for(auto& anchor:tree.anchors)std::get<BlockBoundary>(anchor.position).block=statement(std::get<BlockBoundary>(anchor.position).block);
@@ -117,6 +118,59 @@ std::uint64_t Check(unsigned form,unsigned count,bool reverse,bool emit) {
   for(const auto anchor:std::get<PrintedFunction>(result).anchors)test::Check(anchor>0&&anchor<=output.str().size());
   if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"expression",form},{"count",count},{"folded",folded}}<<'\n';return plan.work;
 }
+std::uint64_t Sequence(unsigned form,unsigned count,bool reverse,bool emit) {
+  Expressions f;auto& tree=f.tree;tree.callable=form==14?CallableKind::kAsyncFunction:form==15?CallableKind::kGenerator:CallableKind::kFunction;
+  tree.strictness=Strictness::kStrict;tree.parameter_scope={0};tree.body_scope={1};tree.body={0};
+  tree.scopes={{ScopeKind::kParameters,{}},{ScopeKind::kFunctionBody,ScopeId{0}}};
+  tree.names={u"input",u"report",u"other",u"flag",u"state",u"value",u"__sequenceMissing"};tree.origins={OriginalSite{{0},{0}}};
+  for(unsigned i=0;i<4;++i){tree.symbols.push_back({{0},{i},BindingKind::kParameter,DeclarationKind::kParameter,NameEvidence::kMetadata,{}});tree.parameters.push_back({{i},{},false});}
+  tree.statements.push_back({BlockStmt{{1},0,0},{0}});std::vector<StmtId> body;
+  if(form==12||form==13)tree.symbols.push_back({{1},{4},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
+  if(form==12)body.push_back(f.Stmt(DeclarationStmt{{4},f.Read({0})}));
+  if(form==19)tree.parameters[0].initializer=f.Expr(SequenceExpr{f.Read({0}),f.Expr(TreeLiteral{IntegerLiteral{1}})});
+  auto nested=f.Read({0});std::optional<ExprId> probe;
+  for(unsigned i=0;i<count;++i) {
+    ExprId left;
+    switch(form) {
+      case 0:case 8:case 19:left=f.Expr(TreeLiteral{IntegerLiteral{0}});break;
+      case 1:left=f.Read({0});break;
+      case 2:case 3:case 6:left=f.Expr(UnaryExpr{form==2?TreeUnary::kNot:form==3?TreeUnary::kTypeof:TreeUnary::kNegate,f.Read({0})});break;
+      case 4:case 5:left=f.Expr(BinaryExpr{form==4?analysis::BinaryOperator::kStrictEqual:analysis::BinaryOperator::kEqual,f.Read({0}),f.Read({3})});break;
+      case 7:left=f.Expr(MemberExpr{f.Read({0}),NameId{5}});break;
+      case 9:left=f.Expr(ThisExpr{tree.owner});break;
+      case 10:left=f.Expr(LogicalExpr{TreeLogical::kAnd,f.Read({0}),f.Read({3})});break;
+      case 11:left=f.Expr(ConditionalExpr{f.Read({3}),f.Read({0}),f.Read({2})});break;
+      case 12:case 13:left=f.Read({4});break;
+      case 14:left=f.Expr(AwaitExpr{f.Call({2},{})});break;
+      case 15:left=f.Expr(YieldExpr{f.Call({2},{})});break;
+      case 16:left=f.Expr(EmptyObjectExpr{});break;
+      case 17:left=f.Call({2},{});break;
+      case 18:left=f.Expr(GlobalNameExpr{{6}});break;
+      default:test::Check(false);
+    }
+    if(!probe)probe=left;
+    nested=f.Expr(SequenceExpr{left,nested});
+  }
+  if(form==8)nested=f.Expr(UnaryExpr{TreeUnary::kTypeof,f.Expr(SequenceExpr{nested,f.Expr(GlobalNameExpr{{6}})})});
+  body.push_back(f.Stmt(ExpressionStmt{f.Call({1},{nested})}));
+  if(form==13)body.push_back(f.Stmt(DeclarationStmt{{4},f.Read({0})}));
+  body.push_back(f.Stmt(ReturnStmt{f.Read({0})}));
+  std::get<BlockStmt>(tree.statements[0].statement)={{1},0,static_cast<std::uint32_t>(body.size())};tree.children=body;
+  for(unsigned i=0;i<=body.size();++i){tree.anchors.push_back({BlockBoundary{{0},i},{0}});tree.operations.push_back({{i},AnchorId{i}});}
+  if(probe&&reverse)probe=ExprId{static_cast<std::uint32_t>(tree.expressions.size()-1-probe->value)};
+  if(reverse)f.Reverse();const auto checked=VerifyTreeStructure(tree);
+  if(form==19){test::Check(std::get<TreeStructureError>(checked)==TreeStructureError::kUnsupportedSyntax);return 0;}
+  if(!std::holds_alternative<TreeStructure>(checked))std::cerr<<"sequence="<<form<<" count="<<count<<" reverse="<<reverse<<" structure="<<static_cast<unsigned>(std::get<TreeStructureError>(checked))<<'\n';
+  test::Check(std::holds_alternative<TreeStructure>(checked));
+  const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
+  const auto plan=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
+  const bool inert=form<=4||form==8||form==9||form==10||form==11||form==12||form==19;
+  if(probe)test::Check((plan.evaluations[probe->value]==ExpressionEvaluation::kInert)==inert);
+  std::ostringstream output;const auto printed=PrintFunctionTree(tree,output);test::Check(std::holds_alternative<PrintedFunction>(printed));
+  for(const auto range:std::get<PrintedFunction>(printed).expressions)test::Check(range.begin<range.end&&range.end<=output.str().size());
+  if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"sequence",form},{"count",count},{"inert",inert}}<<'\n';
+  return plan.work;
+}
 void LoopProjection(bool reverse,bool emit) {
   Expressions f;auto& tree=f.tree;tree.callable=CallableKind::kFunction;tree.strictness=Strictness::kStrict;
   tree.parameter_scope={0};tree.body_scope={1};tree.body={0};tree.scopes={{ScopeKind::kParameters,{}},{ScopeKind::kFunctionBody,ScopeId{0}},
@@ -143,6 +197,13 @@ void LoopProjection(bool reverse,bool emit) {
 }
 }
 void CheckExpressionInitializers(bool emit) {
+  Sequence(19,0,false,false);
+  for(unsigned form=0;form<19;++form) {
+    std::uint64_t small=0,large=0;for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}) {
+      const auto work=Sequence(form,count,reverse,emit);if(count==400&&!reverse)small=work;if(count==800&&!reverse)large=work;
+    }
+    test::Check(large<small*3);
+  }
   for(unsigned form=0;form<18;++form) {
     std::uint64_t small=0,large=0;for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}) {
       const auto work=Check(form,count,reverse,emit);if(count==400&&!reverse)small=work;if(count==800&&!reverse)large=work;

@@ -1,24 +1,36 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import vm from 'node:vm';
+import {parseJavaScript} from './class_reference.mjs';
 
 const executable = process.argv[2];
 const emit = mode => execFileSync(executable, [mode], {
   encoding: 'utf8', timeout: 30_000, maxBuffer: 4 * 1024 * 1024,
 });
 const cases = emit('--names').trim().split('\n').map(line => JSON.parse(line));
-assert.equal(cases.length, 648);
+assert.equal(cases.length, 1296);
 const kinds = new Map([
   ['function', {constructable: true}], ['arrow', {}],
   ['async-function', {async: true}], ['async-arrow', {async: true}],
   ['generator', {generator: true}], ['async-generator', {async: true, generator: true}],
 ]);
+let mutations=0;
 for (const test of cases) {
   const context = vm.createContext({});
   const factory = vm.runInContext(test.source, context);
   const fn = factory();
   assert.equal(typeof fn, 'function');
   assert.equal(fn.name, test.wanted, JSON.stringify(test));
+  if(test.sequence&&test.wanted===''&&[1,2,4].includes(test.place)) {
+    const pending=[parseJavaScript(test.source)];let sequence;
+    while(pending.length){const node=pending.pop();if(node.type==='SequenceExpression'&&
+      ['FunctionExpression','ArrowFunctionExpression'].includes(node.expressions.at(-1).type))sequence=node;
+      for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)pending.push(child);}else if(value?.type)pending.push(value);}}
+    assert.ok(sequence);const value=sequence.expressions.at(-1);
+    const changed=test.source.slice(0,sequence.start)+'('+test.source.slice(value.start,value.end)+')'+test.source.slice(sequence.end);
+    parseJavaScript(changed);const bad=vm.runInNewContext(changed)();
+    assert.notEqual(bad.name,test.wanted,'removing GetValue envelope must change NamedEvaluation');++mutations;
+  }
   assert.deepEqual(Object.getOwnPropertyDescriptor(fn, 'name'), {
     value: test.wanted, writable: false, enumerable: false, configurable: true,
   });
@@ -81,4 +93,4 @@ for (const test of scaled) {
   }
   console.log(`native-name family count=${test.count} work=${test.work} allocated=${test.allocated}`);
 }
-console.log(`${cases.length} native-name contexts and mutable capture verified`);
+console.log(`${cases.length} native-name contexts, ${mutations} valid mutations and mutable capture verified`);

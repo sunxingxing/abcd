@@ -228,6 +228,42 @@ async function observeExpression(fn,row,value,fault,flag,request='next',reject=f
   }catch(error){returned=undefined;thrown=error;}
   return {trace,requests,returned,thrown};
 }
+function sequenceReference(row) {
+  const left=['0','input','!input','typeof input','input===flag','input==flag','-input','input.value',
+    '0','this','input&&flag','flag?input:other','state','state','await other()','yield other()','{}','other()','__sequenceMissing'][row.sequence];
+  let expression='input';
+  for(let i=0;i<row.count;++i)expression='('+left+','+expression+')';
+  if(row.sequence===8)expression='typeof ('+expression+',__sequenceMissing)';
+  const before=row.sequence===12?'let state=input;':'',after=row.sequence===13?'let state=input;':'';
+  return Function('"use strict";return ('+(row.sequence===14?'async function':row.sequence===15?'function*':'function')+
+    '(input,report,other,flag){'+before+'report('+expression+');'+after+'return input;})')();
+}
+async function observeSequence(fn,row,value,flag,fault,resolved,request='next',reject=false) {
+  const trace=[],requests=[];let at=0,returned,thrown;
+  const event=(kind,...values)=>{trace.push([kind,...values]);if(++at===fault)throw failure;};
+  const input=value==='object'?Object.defineProperties({}, {
+    value:{get(){event('getter');return 3;}},
+    [Symbol.toPrimitive]:{value(hint){event('coerce',hint);return 1;}},
+  }):value;
+  const normalized=value=>value===input?'input':value;
+  const report=function(value){assert.equal(this,undefined);event('report',normalized(value));};
+  const other=function(){assert.equal(this,undefined);event('other');
+    if(row.sequence===14){queueMicrotask(()=>trace.push(['job']));return reject?Promise.reject(failure):Promise.resolve(input);}return input;};
+  const prior=Object.getOwnPropertyDescriptor(globalThis,'__sequenceMissing');
+  if(resolved)Object.defineProperty(globalThis,'__sequenceMissing',{configurable:true,get(){event('global');return input;}});
+  else delete globalThis.__sequenceMissing;
+  try {
+    returned=fn(input,report,other,flag);
+    if(row.sequence===14)returned=await returned;
+    if(row.sequence===15){const generator=returned;let result;
+      for(let i=0;i<row.count;++i){result=generator.next(input);requests.push(normalized(result.value));assert.equal(result.done,false);if(request!=='next')break;}
+      result=request==='throw'?generator.throw(failure):request==='return'?generator.return(second):generator.next(input);
+      assert.equal(result.done,true);returned=result.value;}
+    returned=normalized(returned);
+  }catch(error){if(error instanceof assert.AssertionError)throw error;thrown=error===failure?failure:error.name;returned=undefined;}
+  finally{if(prior)Object.defineProperty(globalThis,'__sequenceMissing',prior);else delete globalThis.__sequenceMissing;}
+  return {trace,requests,returned,thrown};
+}
 for (const row of rows) {
   const ast = parseJavaScript(row.source), pending=[ast], initialized=[], declarations=[], stores=[], loops=[];
   while (pending.length) {
@@ -241,9 +277,47 @@ for (const row of rows) {
         node.expression.left.type==='Identifier') stores.push(node);
     if(node.type==='WhileStatement' || node.type==='ForStatement') loops.push(node);
   }
+  if(row.sequence!==undefined) {
+    const generated=Function('"use strict";return '+row.source)(),reference=sequenceReference(row);
+    const run=(fn,value,flag,fault,resolved,request='next',reject=false)=>observeSequence(fn,row,value,flag,fault,resolved,request,reject);
+    for(const value of [undefined,null,-0,NaN,1n,Symbol.for('sequence-input'),'object'])for(const flag of [false,true,1,null])
+      for(const fault of [Infinity,1,2])for(const resolved of row.sequence===8||row.sequence===18?[false,true]:[false]) {
+        const actual=await run(generated,value,flag,fault,resolved),expected=await run(reference,value,flag,fault,resolved);
+        try{assert.deepEqual(actual,expected);}catch(error){error.message+=`; sequence=${row.sequence}, count=${row.count}`;throw error;}++comparisons;
+      }
+    if(row.sequence===14&&row.count){assert.deepEqual(await run(generated,'object',true,Infinity,false,'next',true),await run(reference,'object',true,Infinity,false,'next',true));++comparisons;}
+    if(row.sequence===15&&row.count)for(const request of ['throw','return']){assert.deepEqual(await run(generated,'object',true,Infinity,false,request),await run(reference,'object',true,Infinity,false,request));++comparisons;}
+    if(row.inert&&row.sequence!==8) {
+      const pending=[ast];while(pending.length){const node=pending.pop();if(node.type==='CallExpression')for(const argument of node.arguments)assert.notEqual(argument.type,'SequenceExpression');
+        for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)pending.push(child);}else if(value?.type)pending.push(value);}}
+    }
+    if(row.count===1&&(!row.inert&&row.sequence!==16||row.sequence===8)) {
+      const pending=[ast];let sequence;while(pending.length){const node=pending.pop();if(!sequence&&node.type==='SequenceExpression')sequence=node;
+        for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)pending.push(child);}else if(value?.type)pending.push(value);}}
+      assert.ok(sequence);const right=sequence.expressions.at(-1),changed=row.source.slice(0,sequence.start)+'('+row.source.slice(right.start,right.end)+')'+row.source.slice(sequence.end);
+      parseJavaScript(changed);const bad=Function('"use strict";return '+changed)();
+      await assert.rejects(async()=>{
+        const actual=await run(bad,'object',true,Infinity,false),expected=await run(reference,'object',true,Infinity,false);
+        assert.deepEqual(actual,expected);
+      },assert.AssertionError,`sequence mutation=${row.sequence}`);++mutations;
+    }
+    continue;
+  }
   if(row.expression!==undefined) {
     const generated=Function('"use strict";return '+row.source)(),reference=expressionReference(row);
     if(row.folded){assert.ok(!declarations.some(node=>node.declarations.some(item=>item.id.name.startsWith('copy'))));++folded;}
+    if(row.folded) {
+      const pending=[ast];
+      while(pending.length) {
+        const node=pending.pop();
+        if(node.type==='CallExpression')for(const argument of node.arguments)
+          assert.notEqual(argument.type,'SequenceExpression','completed pure copies must project to their value');
+        for(const value of Object.values(node)) {
+          if(Array.isArray(value)){for(const child of value)if(child?.type)pending.push(child);}
+          else if(value?.type)pending.push(value);
+        }
+      }
+    }
     const run=(fn,value,fault,flag,request='next',reject=false)=>observeExpression(fn,row,value,fault,flag,request,reject);
     for(const value of [undefined,null,-0,NaN,1n,Symbol('input'),token])for(const flag of [false,true,0,NaN,undefined,null,1n,token])for(const fault of [Infinity,1,2,3]) {
       const actual=await run(generated,value,fault,flag),expected=await run(reference,value,fault,flag);

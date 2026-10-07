@@ -1,6 +1,7 @@
 #ifndef ABCD_SOURCE_BINDING_INITIALIZER_H_
 #define ABCD_SOURCE_BINDING_INITIALIZER_H_
 #include "tree_structure.h"
+#include "expression_observation.h"
 namespace abcd::source {
 struct LoopSyntax;
 struct NullishSyntax;
@@ -23,6 +24,9 @@ struct BindingInitializers {
   // ExprId indexed: a redundant private store projects to its original RHS
   // at the same evaluation occurrence, retaining its expression result.
   std::vector<std::optional<ExprId>> replacements;
+  // Original ExprId indexed completion summary after proven store/copy
+  // projection. Inert means normal, no hook/write/allocation/throw/suspension.
+  std::vector<ExpressionEvaluation> evaluations;
   // Prefix counts of non-elided initializer roots, for constant-time ranges.
   std::vector<std::uint32_t> entry_counts;
   std::size_t allocated_bytes = 0;
@@ -53,6 +57,10 @@ struct BindingInitializers {
 // regions for short-circuit/choice/handler/loop activations. Embedded private
 // stores project to their original pure RHS, preserving the observed result;
 // that RHS remains a real read for the common root visibility proof.
+// The same postorder census summarizes normal/no-hook/no-throw completion.
+// Initialized binding reads and pure value operators can disappear from the
+// discarded left of comma without changing the right's GetValue category.
+// Unknown coercions/global/member reads and allocation/suspension stay owned.
 // Ownership/copy walks are linear; spelling-index construction adds bounded
 // O(B log(B+1)) name comparisons, plus module sorting and compared text units.
 // No per-symbol CFG or per-read ancestor walk, recursive walk or SSA merge.

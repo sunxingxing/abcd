@@ -5,6 +5,7 @@
 #include "nullish_syntax.h"
 #include "loop_syntax.h"
 #include "binding_initializer.h"
+#include "expression_children.h"
 #include "statement_children.h"
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/module_enclosure.h"
@@ -41,6 +42,8 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
     const GlobalScope*, std::size_t, ClassPrintForm, const ClassCaptureDestination* = nullptr);
 struct DerivedClassBody { std::shared_ptr<const ClassTree> definition; ExprId expression; ClassPrintForm form; };
 struct EndExpression { ExprId id; };
+struct ProjectedExpression { ExprId id; std::uint64_t begin, end; };
+struct ProjectSequenceLeft { ExprId sequence; };
 struct NoInferredName {};
 struct DefaultInferredName {};
 using NameContext = std::variant<NoInferredName, NameId, DefaultInferredName>;
@@ -50,6 +53,7 @@ struct ExpressionOperand {
   TreeOperatorContext context;
   NameContext inferred_name = {};
   ExpressionObservation observation = ExpressionObservation::kValue;
+  bool value_result = false;
 };
 // Composition of language Boolean results, not a bytecode recovery pattern.
 // Keep the original parent grammar until a remaining conversion is emitted.
@@ -83,7 +87,7 @@ struct BeginFunction {};
 struct EndFunction {};
 struct ParameterCursor { std::uint32_t index; };
 struct EndParameter { std::uint32_t index; };
-using PrintAction = std::variant<std::string_view, ExprId, EndExpression, ExpressionOperand, BooleanOperand, PostfixSpine,
+using PrintAction = std::variant<std::string_view, ExprId, EndExpression, ProjectedExpression, ProjectSequenceLeft, ExpressionOperand, BooleanOperand, PostfixSpine,
     Statement, EndStatement, BlockCursor, Indent, PropertyKey, SymbolName, ArgumentCursor,
     ObjectCursor, EndProperty, BeginFunction, EndFunction, ParameterCursor, EndParameter, SnapshotCursor, DerivedClassBody, ArrayArgumentCursor, LoopHeader, LoopHeaderCursor, ElideLoopHeader, LoopBody, LoopTransitionEnd, LoopInitializerCursor, LoopDeclarationCursor, LoopKeyword, BlockBoundary>;
 struct OwnedAction { std::size_t owner; std::size_t depth; PrintAction action; };
@@ -698,8 +702,9 @@ class TreePrinter {
     Push(TreeLogicalToken(node.operation));
     Push(ExpressionOperand{node.left, {node.operation, OperandSide::kLeft}, {}, left});
   }
-  void Expression(SequenceExpr node) {
-    Append("("); Push(std::string_view(")")); Push(node.right);
+  void Expression(SequenceExpr node, ExpressionObservation observation) {
+    Append("("); Push(std::string_view(")"));
+    Push(ExpressionOperand{node.right, {}, {}, observation});
     Push(std::string_view(", "));
     Push(ExpressionOperand{node.left, {}, {}, ExpressionObservation::kDiscarded});
   }
@@ -1197,6 +1202,14 @@ class TreePrinter {
       operand.id=*replacement;Push(operand);return;
     }
     const auto& expression=Tree().expressions[id.value].expression;
+    if (const auto* sequence = std::get_if<SequenceExpr>(&expression);
+        sequence && Initializers().evaluations[sequence->left.value] == ExpressionEvaluation::kInert) {
+      // Comma obtains a value and suppresses NamedEvaluation. Propagate that
+      // category through projection instead of treating the right as a newly
+      // direct function/class initializer or a typeof unresolved Reference.
+      Push(ProjectSequenceLeft{id}); operand.id = sequence->right;
+      operand.value_result = true; Push(operand); return;
+    }
     if(const auto* read=std::get_if<SymbolExpr>(&expression))if(const auto source=Initializers().aliases[read->symbol.value]) {
       Name(*source);return;
     }
@@ -1204,6 +1217,14 @@ class TreePrinter {
       const auto& literal = Tree().expressions[value->value].expression;
       if (TreeOperandGrouping(literal,operand.context)) { Append("(");Push(std::string_view(")")); }
       Expression(std::get<TreeLiteral>(literal));return;
+    }
+    const auto* unary_parent = std::get_if<TreeUnary>(&operand.context.parent);
+    if (operand.value_result &&
+        ((!std::holds_alternative<NoInferredName>(operand.inferred_name) &&
+          (std::holds_alternative<FunctionExpr>(expression) || std::holds_alternative<ClassExpr>(expression))) ||
+         (unary_parent && *unary_parent == TreeUnary::kTypeof && std::holds_alternative<GlobalNameExpr>(expression)))) {
+      Append("(0, "); Push(std::string_view(")"));
+      operand.context = {}; operand.inferred_name = {};
     }
     if (const auto* unary = std::get_if<UnaryExpr>(&expression);
         unary && unary->operation == TreeUnary::kNot) {
@@ -1218,7 +1239,8 @@ class TreePrinter {
     std::visit([&](const auto& node) {
       if constexpr (std::is_same_v<std::decay_t<decltype(node)>, ClassExpr>) Expression(node, id, operand.inferred_name);
       else if constexpr (std::is_same_v<std::decay_t<decltype(node)>, LogicalExpr> ||
-          std::is_same_v<std::decay_t<decltype(node)>, ConditionalExpr>) Expression(node, operand.observation);
+          std::is_same_v<std::decay_t<decltype(node)>, ConditionalExpr> ||
+          std::is_same_v<std::decay_t<decltype(node)>, SequenceExpr>) Expression(node, operand.observation);
       else if constexpr (std::is_same_v<std::decay_t<decltype(node)>, ObjectExpr> ||
           std::is_same_v<std::decay_t<decltype(node)>, EmptyObjectExpr>) {
         const auto* grammar = std::get_if<ExpressionGrammar>(&operand.context.parent);
@@ -1233,6 +1255,20 @@ class TreePrinter {
     }, Tree().expressions[id.value].expression);
   }
   void Run(EndExpression end) { Result().expressions[end.id.value].end = written_; }
+  void Run(ProjectSequenceLeft projection) {
+    const auto& sequence = std::get<SequenceExpr>(Tree().expressions[projection.sequence.value].expression);
+    Push(ProjectedExpression{sequence.left, Result().expressions[projection.sequence.value].begin, written_});
+  }
+  void Run(ProjectedExpression projection) {
+    Step();
+    // The omitted inert occurrence belongs to this normalized result span,
+    // like omitted Boolean conversions. Keep original identities/origins and
+    // nonzero transport ranges; never fabricate a PC or execute the subtree.
+    Result().expressions[projection.id.value] = {projection.begin, projection.end};
+    VisitExpressionChildren(Tree(), Tree().expressions[projection.id.value].expression, [&](ExprId child) {
+      Push(ProjectedExpression{child, projection.begin, projection.end});
+    });
+  }
   void Run(Indent indent) {
     constexpr std::string_view kIndent = "  ";
     for (std::size_t i = 0; i < indent.depth; ++i) Append(kIndent);

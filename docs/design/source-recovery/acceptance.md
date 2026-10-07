@@ -1,5 +1,17 @@
 # 验收、证据与实施交接
 
+2026-10-07规则163：原完成census按typed expression/operator汇总观察
+义务，用共同初始化/作用域/执行证明省略纯comma left。原right发生点、
+GetValue、receiver、typeof和NamedEvaluation保持，normalized result
+range不修改transport准入。228新增完整树加原1478，共1706完整生成
+源/457128独立行为/270有效JS mutation；1296命名场景及54有效name
+mutation另验。一般default expression明确拒绝，不计恢复成功。定向
+30项29通过/1缺少新解析器启动flag，修复后names/binding共3/3补验。
+fresh pasteboard仍10complete/0partial/9noModule，十mjs与规则162相同，
+无新增actual coverage或style数量改善。普通INCOMPLETE/UNRECOVERED、
+原结构/signature/body gate、完整paired语义/style仍未完成，Goal active。
+暂停范围及完整证据见status.md。
+
 2026-10-07 规则162：表达式内identifier store按共同语言求值/完成次序
 进入原constant/copy图，短路/choice/handler/loop执行区间保护可用性，
 普通block不设屏障。嵌入copy保留原RHS结果和实际读取；RootLifetime

@@ -347,7 +347,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // common observation containment preserves TDZ and activation lifetimes.
 // Rules 162 extend the common completion census to embedded stores; ordered
 // execution regions preserve conditional availability and expression results.
-inline constexpr std::uint32_t kRouteEvidenceRules = 162;
+// Rules 163 summarize expression completion and project inert comma operands;
+// value categories, binding initialization and creation names remain faithful.
+inline constexpr std::uint32_t kRouteEvidenceRules = 163;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

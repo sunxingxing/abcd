@@ -87,18 +87,24 @@ void CheckClassNames(const std::function<std::shared_ptr<abcd::source::ClassTree
   definition->name = u"C";
   // A native class declaration has writable outer storage. The same checked
   // class body in a const destination must retain the const initializer form.
-  for (const auto kind : {DeclarationKind::kLet, DeclarationKind::kConst}) {
+  for (const auto kind : {DeclarationKind::kLet, DeclarationKind::kConst}) for (bool sequence : {false,true}) {
     auto syntax = Scope(); syntax.identity = definition->identity; syntax.method = definition->creation.creator;
     syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict; syntax.body = {0};
     Local(syntax); syntax.symbols[0].declaration = kind;
     syntax.origins.emplace_back(OriginalSite{{0},{0}});
     syntax.expressions = {{ClassExpr{definition,{}},{0}}, {SymbolExpr{{0}},{0}}};
     syntax.statements = {{BlockStmt{{1},0,2},{0}}, {DeclarationStmt{{0},ExprId{0}},{0}}, {ReturnStmt{ExprId{1}},{0}}};
+    if(sequence) {
+      syntax.expressions.push_back({TreeLiteral{IntegerLiteral{0}},{0}});
+      syntax.expressions.push_back({SequenceExpr{ExprId{2},ExprId{0}},{0}});
+      std::get<DeclarationStmt>(syntax.statements[1].statement).initializer=ExprId{3};
+    }
     syntax.children = {{1},{2}};
     std::ostringstream output;
     const auto printed = PrintFunctionTree(syntax,output);
     Check(std::holds_alternative<PrintedFunction>(printed));
-    Check(output.str().find(kind == DeclarationKind::kLet ? "class C {" : "const C = class {") != std::string::npos);
+    Check(output.str().find(sequence ? kind == DeclarationKind::kLet ? "let C = (0, " : "const C = (0, " :
+      kind == DeclarationKind::kLet ? "class C {" : "const C = class {") != std::string::npos);
     const auto& ranges = std::get<PrintedFunction>(printed);
     const auto statement = ranges.statements[1], expression = ranges.expressions[0];
     Check(statement.begin <= expression.begin && expression.begin < expression.end && expression.end <= statement.end);

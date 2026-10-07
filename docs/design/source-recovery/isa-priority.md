@@ -1,5 +1,15 @@
 # 全 ISA 优先执行顺序
 
+2026-10-07规则163：同一postorder完成/初始化分析消除pure comma left，
+typed operator语义穷尽解释，GetValue/typeof/receiver/NamedEvaluation
+保持，无样本/布局条件。1706完整源/457128独立行为/270 mutation及
+1296命名场景/54 name mutation通过；定向29/30后修复测试解析启动
+flag，3/3补验。fresh pasteboard仍10complete，十mjs/声明/comma数与
+规则162一致，无新增actual coverage。继续优先剩余普通INCOMPLETE/
+UNRECOVERED、结构/signature/body及全paired语义/style；一般default、
+精确reaching definitions/SSA/每轮capture与unknown capture/module
+仍有缺口，Goal active及暂停范围保持。证据见status.md。
+
 2026-10-07 规则162：共同表达式完成census消除嵌在实参等位置的纯
 复制存储，保留原结果/效果和读取；执行区间/词法名字/原生声明打印
 生命周期由共同证明覆盖，不添加独立语句或样本形状准入。1490有效

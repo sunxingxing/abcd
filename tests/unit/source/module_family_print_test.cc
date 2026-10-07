@@ -57,7 +57,7 @@ std::string_view CallableLabel(CallableKind kind) {
     default: std::abort();
   }
 }
-ConstructedFamily Naming(CallableKind kind, NamingPlace place, std::string_view wanted, std::string_view key) {
+ConstructedFamily Naming(CallableKind kind, NamingPlace place, std::string_view wanted, std::string_view key, bool sequence = false) {
   auto root = Base(10), child = Base(20);
   root.names = {u"chosen", std::u16string(key.begin(), key.end())};
   if (place == NamingPlace::kDeclaration || place == NamingPlace::kAssignment)
@@ -66,26 +66,27 @@ ConstructedFamily Naming(CallableKind kind, NamingPlace place, std::string_view 
   const auto add = [&](TreeExpression node) {
     const ExprId id{static_cast<std::uint32_t>(root.expressions.size())}; root.expressions.push_back({std::move(node), {0}}); return id;
   };
-  ExprId result{0};
+  const ExprId created = sequence ? add(SequenceExpr{add(TreeLiteral{IntegerLiteral{0}}), ExprId{0}}) : ExprId{0};
+  ExprId result=created;
   if (place == NamingPlace::kDeclaration || place == NamingPlace::kAssignment) {
-    const auto initial = place == NamingPlace::kDeclaration ? ExprId{0} : add(TreeLiteral{UndefinedLiteral{}});
+    const auto initial = place == NamingPlace::kDeclaration ? created : add(TreeLiteral{UndefinedLiteral{}});
     root.statements.push_back({DeclarationStmt{{0}, initial}, {0}});
     root.children.insert(root.children.begin(), {2}); std::get<BlockStmt>(root.statements[0].statement).child_count = 2;
-    result = place == NamingPlace::kDeclaration ? add(SymbolExpr{{0}}) : add(AssignmentExpr{SymbolTarget{{0}}, {0}});
+    result = place == NamingPlace::kDeclaration ? add(SymbolExpr{{0}}) : add(AssignmentExpr{SymbolTarget{{0}}, created});
   } else if (place == NamingPlace::kMember) {
-    const auto object = add(EmptyObjectExpr{}); result = add(AssignmentExpr{MemberTarget{object, NameId{1}}, {0}});
+    const auto object = add(EmptyObjectExpr{}); result = add(AssignmentExpr{MemberTarget{object, NameId{1}}, created});
   } else if (place == NamingPlace::kProperty || place == NamingPlace::kArray) {
     root.names.push_back(u"0");
-    root.properties.push_back({place == NamingPlace::kArray ? NameId{2} : NameId{1}, {0}});
+    root.properties.push_back({place == NamingPlace::kArray ? NameId{2} : NameId{1}, created});
     const auto object = add(ObjectExpr{{0,1}, place == NamingPlace::kProperty ? AggregateKind::kObject : AggregateKind::kArray});
     result = add(MemberExpr{object, place == NamingPlace::kProperty ? MemberKey{NameId{1}} : MemberKey{ComputedKey{add(TreeLiteral{IntegerLiteral{0}})}}});
   } else if (place == NamingPlace::kConditional) {
     const auto condition = add(TreeLiteral{BooleanLiteral{true}});
-    const auto alternate = add(TreeLiteral{UndefinedLiteral{}}); result = add(ConditionalExpr{condition, {0}, alternate});
+    const auto alternate = add(TreeLiteral{UndefinedLiteral{}}); result = add(ConditionalExpr{condition, created, alternate});
   } else if (place == NamingPlace::kLogical) {
-    const auto condition = add(TreeLiteral{BooleanLiteral{true}}); result = add(LogicalExpr{TreeLogical::kAnd, condition, {0}});
+    const auto condition = add(TreeLiteral{BooleanLiteral{true}}); result = add(LogicalExpr{TreeLogical::kAnd, condition, created});
   } else if (place == NamingPlace::kSequence) {
-    const auto first = add(TreeLiteral{IntegerLiteral{1}}); result = add(SequenceExpr{first, {0}});
+    const auto first = add(TreeLiteral{IntegerLiteral{1}}); result = add(SequenceExpr{first, created});
   }
   root.statements[1].statement = ReturnStmt{result};
   child.callable = kind; child.names = {u"arg", std::u16string(wanted.begin(), wanted.end())}; child.inferred_name = NameId{1};
@@ -106,15 +107,15 @@ void Names() {
         NamingPlace::kMember, NamingPlace::kProperty, NamingPlace::kArray, NamingPlace::kConditional,
         NamingPlace::kLogical, NamingPlace::kSequence})
       for (const auto key : {"key", "__proto__", "line\nname"})
-        for (const auto wanted : {"", "chosen", key, "other name"}) {
-          auto family = Naming(kind, place, wanted, key);
+        for (const auto wanted : {"", "chosen", key, "other name"}) for (bool sequence : {false,true}) {
+          auto family = Naming(kind, place, wanted, key, sequence);
           std::ostringstream output;
           const auto printed = PrintFamilyDraft(family, output);
           if (const auto* error = std::get_if<TreePrintError>(&printed))
             std::cerr << "name print error " << unsigned(*error) << " kind " << unsigned(kind)
                       << " place " << unsigned(place) << " name " << wanted << '\n';
           Check(std::holds_alternative<PrintedFamilyDraft>(printed));
-          const std::string_view context = place == NamingPlace::kDeclaration || place == NamingPlace::kAssignment ? "chosen" :
+          const std::string_view context = sequence ? "" : place == NamingPlace::kDeclaration || place == NamingPlace::kAssignment ? "chosen" :
               place == NamingPlace::kProperty ? key : "";
           const bool native = context == wanted;
           const auto& ranges = std::get<PrintedFamilyDraft>(printed);
@@ -122,7 +123,7 @@ void Names() {
           const auto child = output.str().substr(at.begin, at.end - at.begin);
           Check((child.find("({[") == std::string::npos) == native);
           std::cout << nlohmann::json{{"callable", CallableLabel(kind)}, {"place", static_cast<unsigned>(place)},
-              {"wanted", wanted}, {"key", key}, {"native", native}, {"source", output.str()}} << '\n';
+              {"wanted", wanted}, {"key", key}, {"native", native}, {"sequence",sequence}, {"source", output.str()}} << '\n';
           // The resource gate depends on actual wrapper syntax. It must fail
           // before emitting even a parent prefix when a wrapper is required.
           for (auto& member : family.members) member.tree.identity.contract = SourceContract::kLanguageAndHostV1;

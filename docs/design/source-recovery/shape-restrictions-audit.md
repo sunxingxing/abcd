@@ -1,5 +1,19 @@
 # 按用户要求进行的恢复条件审计
 
+规则163补充：原完成census的postorder与typed expression/operator
+穷尽解释汇总无hook/throw/write/allocation/suspension的完成证明。
+已初始化读取用共同声明先后、lexical/execution包含或入口body语义；
+mutable并不阻止无hook读取。未知global/member/coercion和TDZ保持，
+不增加same-block、opcode/producer名单、寄存器/PC、copy数量或样本
+条件。保守first-observation包含仍是精确支配证明的实现缺口，不称
+为语言必要条件，不拒绝整函数。comma纯left投影后保留right原发生点、
+parent grammar和GetValue类别，typeof/receiver/NamedEvaluation保持。
+匿名function/class在命名目的下保留值包裹是语法语义义务，不是字节码
+形状准入；原range映射到normalized result，transport原检查不改。
+一般默认表达式被既有结构检查拒绝，测试记录为负例，不以删除准入
+取得覆盖。十九组规模/arena变体、独立behavior/mutation和原decoder
+共同验证。一般dead statement/right pruning及更多初始化精度仍开放。
+
 规则162补充：表达式child ownership以语言求值顺序扫描，RHS完成后
 记录identifier store；typed statement/short-circuit/choice程序的执行
 区间和first-completion/全部观察证明供共同constant/copy图使用。不以

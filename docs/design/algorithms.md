@@ -2061,8 +2061,10 @@ the conditional-retention exemption for deleted statement-copy RHSs. Source
 stores, effectful producers and NamedEvaluation remain in their original place.
 Original expression ranges cover replacement results and their original RHS;
 deleted declarations/direct stores retain existing zero ranges and anchors.
-Sequences of redundant pure value reads may remain; dead expression/sequence
-projection is a separate representation gap, never a whole-function rejection.
+Rules 163 also project redundant inert left operands of comma through the
+completion summary below. General dead statement elimination and more precise
+per-occurrence initialization remain representation gaps, never whole-function
+rejections.
 
 This project-owned extension follows ECMA-262 2024 expression evaluation,
 assignment, short-circuit and conditional completion rules, with no new runtime
@@ -2073,6 +2075,46 @@ number of times; no per-symbol graph or ancestor walk is added. Tests exercise
 0/1/200/201/400/800 chains, reversed symbol/scope/expression/statement arenas,
 argument order, conditional execution, old values, async/generator completion,
 fresh identity, constant results, callee receiver and embedded-RHS shadowing.
+
+Rules 163 add a postorder ExpressionEvaluation summary to this same census.
+IntrinsicEvaluation exhaustively interprets the typed language AST and its
+unary/binary enums: no bytecode name, producer list, sample or graph shape is
+consulted. Literals, ToBoolean/typeof on values, strict equality and value
+selection have no intrinsic hook; child completion still contributes its throw,
+effect and suspension. Unknown coercions, binding/global/member lookup, writes,
+allocation, calls and suspension retain evaluation. Invocation body bindings
+and own ordinary this are initialized; derived/lexical this remain unproved.
+Original declarations completing before all observations need both the existing
+lexical confinement and declaration execution interval. Reads need initialization,
+not immutability: reading a later-mutated initialized binding invokes no user
+hook. A parameter initializer does not receive the body-entry proof. General
+default expressions remain explicitly unsupported by existing structural checks.
+Store/literal/alias projections consume their existing completed-copy proofs.
+
+The printer removes an inert comma left operand and retains the original right
+occurrence and parent grammar. Its value-result category survives replacement
+chains: typeof unresolved globals still obtains GetValue, value calls remain
+indirect/receiverless, and function/class creation in name-sensitive destinations
+keeps a comma envelope rather than introducing NamedEvaluation or self scope.
+Discarded/truthiness observation propagates through an unprojected sequence's
+right. This is expression algebra after general availability/completion proofs,
+not a recognized compiler sequence. No new transport admission or zero-width
+exception is added: omitted inert subtrees map to the nonzero normalized result
+span, retaining original IDs/origins/ownership and all existing position checks.
+They are disjoint owned subtrees, visited once by iterative printer events.
+
+The project-owned implementation follows ECMA-262 2024 expression evaluation,
+GetValue, comma, unary/binary and NamedEvaluation rules. No new dependency or
+copied third-party algorithm is introduced; existing pinned profiles and source
+contracts remain intact. Postorder completion IDs and summaries add budgeted
+O(E) space and O(E+K) work; each child is visited a constant number of times,
+independent of arena numbering. Allocation/resource and unknown initialization
+are conservative representation gaps, not language invariants. Tests use
+0/1/200/201/400/800 chains, reversed arenas, getters/coercions, unresolved/global
+accessors, TDZ, mutable invocation reads, await jobs/rejection, yield requests,
+value calls, named creation, valid-JS adverse mutations and original ranges.
+General dead statements/right-operand pruning and more precise dominated-read
+proofs are still open. Work scaling is not a physical RSS/latency measurement.
 
 For S statements, E expressions, K owned child/argument/property slots, B symbols
 and C owned class-member capture occurrences, ownership/initialization cost is

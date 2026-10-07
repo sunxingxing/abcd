@@ -21,6 +21,23 @@ Printer 处理节点、名字、括号、转义、标签、注释和已有输出
 模式，不补推 CFG、finally 或闭包，不调用专项 body writer。无原名可用合成名，
 无独立 PC 的结构节点保留结构来源；不补造原名、类型、PC 或可执行占位行为。
 
+## 共同表达式观察与逗号值投影（规则 163）
+
+BindingInitializers的原完成census记录postorder，按typed expression/
+operator和全部child完成汇总ExpressionEvaluation。参数body-entry、
+原声明完成/词法与执行包含以及已证明的copy投影供binding读取证明；
+不凭可变/不可变、同块、opcode、名字、样本或固定序列猜测可省略性。
+纯左操作数可从comma投影到原right，unknown global/member/coercion、
+TDZ、写、分配和await/yield保持。一般默认参数表达式仍是既有表示缺口。
+
+printer保留value-result类别、实际parent grammar和调用receiver；
+typeof unresolved global仍先GetValue。命名目的中的function/class
+保留必要comma envelope，不能引入新name或self binding。被省略的
+纯子树用迭代事件映射到非零normalized result span，原ID/origin/
+ownership/anchor保持，不新增transport拒绝条件或zero-range豁免。
+原AST不修改；一般dead statement/right pruning和更精确的read可用性
+仍开放。构建、独立行为、实际ABC-only证据及暂停范围见status.md。
+
 ## 循环进入程序与 for 初始化（规则 151）
 
 LoopSyntax继续在已验证的canonical FunctionTree上投影，保持原控制、
