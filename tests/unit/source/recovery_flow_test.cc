@@ -288,6 +288,12 @@ void SourceEvents() {
     if(edge.completion==FlowCompletion::kThrow && refined.events[edge.from.value].expression==ExprId{0})Check(false);
   }
   Check(coercion_throw);
+  Check(refined.events[convert->value].effect==ExpressionEvaluation::kRequired);
+  bool inert_read=false;
+  for(const auto& event:refined.events)if(event.expression==ExprId{0} && event.read) {
+    Check(event.effect==ExpressionEvaluation::kInert);inert_read=true;
+  }
+  Check(inert_read);
   for(const auto& reference:refined.references)if(initialized_reads.Completed(reference.binding,reference.point))
     Check(refined_initializations.Completed(reference.binding,reference.point));
   for(unsigned boundary=0;boundary<3;++boundary) {
@@ -345,8 +351,8 @@ void SourceEvents() {
   Check(reused.definitions.size()==shared.definitions.size()&&reused.references.size()==shared.references.size());
   for(std::size_t i=0;i<shared.events.size();++i) {
     const auto& a=reused.events[i];const auto& b=shared.events[i];
-    Check(std::tie(a.kind,a.read,a.definition,a.expression,a.scope,a.incoming,a.outgoing,a.discarded)==
-        std::tie(b.kind,b.read,b.definition,b.expression,b.scope,b.incoming,b.outgoing,b.discarded));
+    Check(std::tie(a.kind,a.read,a.definition,a.expression,a.scope,a.incoming,a.outgoing,a.discarded,a.effect)==
+        std::tie(b.kind,b.read,b.definition,b.expression,b.scope,b.incoming,b.outgoing,b.discarded,b.effect));
   }
   for(std::size_t i=0;i<shared.edges.size();++i) {
     const auto& a=reused.edges[i];const auto& b=shared.edges[i];

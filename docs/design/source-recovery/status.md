@@ -24,6 +24,36 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则194，快照观察集合消费共同流图
+
+- RecoveryFlow 事件提供 intrinsic effect，构造与初始化细化同时维护，
+  不限于 discarded statement 区域。读取和成功写回身份仍独立表示；
+  初始化读取即使 effect inert，也仍是状态观察，update 读取/转换/
+  成功写回及转换异常继续分离。
+- ForwardSnapshots 从当前流图的读取、表达式写回和必要效果收集观察。
+  原先再次查询 IntrinsicEvaluation、原语句省略和 literal 特例的条件
+  实际删除；expression_statements_ 表与 current_statement_ 也删除。
+  已消除逗号左值不再凭原始语法阻挡移动。执行顺序、control/region、
+  environment 和 lifetime 的旧证明仍保留，未扩大任何局部形状准入。
+- 新增嵌套 return 操作数组合：已丢弃 flag 读取允许转发，input.effect()
+  必须保留原先求值和异常顺序；覆盖反序 arena、透明块拆分、0/1/200/
+  201/400/800 规模。旧实现先在 form21/count0 的转发断言失败，证据
+  /tmp/abcd-rule194-red-test.log。共同图、快照单元、独立源码执行初验
+  3/3 通过，11.12 秒，日志 /tmp/abcd-rule194-focused-tests.log。
+  图测试检查 inert 读取仍有 read 身份、转换 effect required，以及
+  复用缓冲重建与新建图的 effect 一致。
+- 最终 54 项定向全部通过，394.92 秒，日志 /tmp/abcd-rule194-tests.log
+  与 /tmp/abcd-rule194-test-detail.log。快照 276 份源码/10,548 次行为/
+  12 个反例；变量/别名 1,752/461,776/284；存储 221/33,620/12；定义
+  消除 224/2,880/11；冗余写回 528/18,192/12。相关目标构建通过，日志
+  /tmp/abcd-rule194-final-build.log。
+- ABC-only 导出 build/stage-one/flow-observations-rule194 保持
+  10complete/0partial/9noModule；十份源码 node --check 通过，正文与
+  规则193一致，固定输入身份保持。日志 /tmp/abcd-rule194-export.log。
+- 剩余共同 motion/activation、默认参数与复杂 unwind、canonical IR
+  对应、全局依赖固定点仍开放。统一变量里程碑、结构 gate 和阶段一
+  未完成；原 Goal active，全量语料/RSS/DFX/代理等暂停范围保持。
+
 ### 2026-10-08：规则193，无效操作数消除迁出打印器
 
 - 新增独立 ElideInertOperands pass：逗号左值是否可消除由共同完成/效果

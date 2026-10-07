@@ -2049,3 +2049,15 @@ Sequence grammar defines a discarded value in the language. No opcode sequence,
 block adjacency, register layout or sample identity is used. Required coercion,
 TDZ, calls and suspension are excluded by shared effects, not by a whitelist of
 recognized left operand syntax. Global pass convergence remains open.
+
+
+### Rules194: retire original-syntax snapshot observations
+
+The snapshot epoch counter now consumes reads, expression writes and intrinsic
+effects from the current RecoveryFlow. Original IntrinsicEvaluation queries,
+statement-omission lookups and literal exceptions leave that consumer. The old
+expression-statement census and current-statement field are deleted. Discarded
+operands have no events and cannot block forwarding merely because their syntax
+remains in the canonical arena. No sample, adjacency or opcode rule is added.
+Legacy order/control/region/environment motion obligations remain; this bounded
+migration does not claim that common activation analysis has replaced them.

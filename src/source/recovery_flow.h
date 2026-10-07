@@ -51,6 +51,9 @@ struct FlowEvent {
   std::optional<ScopeId> scope;
   std::optional<std::size_t> incoming, outgoing;
   std::optional<DiscardedId> discarded;
+  // Intrinsic effect at this event, refined with binding completion. State
+  // reads and successful writes remain observations even when this is inert.
+  ExpressionEvaluation effect = ExpressionEvaluation::kInert;
 };
 struct FlowEdge {
   FlowPoint from, to;

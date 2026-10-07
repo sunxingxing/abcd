@@ -269,3 +269,14 @@ and global convergence remain unfinished.
   for this optimization in the printer.
 - Added a red/green composition case where dropping an inert read enables dead
   write removal while preserving the RHS, plus required coercion counterexamples.
+
+
+### Rules194 continuation: shared observations for snapshot motion
+
+- RecoveryFlow publishes intrinsic event effects and refines them alongside
+  completion facts; semantic reads and definitions retain their own identities.
+- Snapshot epochs consume current events instead of a separate syntax census.
+- Deleted expression-statement tracking and the associated local predicate.
+- Red/green discarded-operand composition and required-effect counterexamples
+  validate actual forwarding and execution. Legacy control/activation/lifetime
+  motion proofs still need migration; no new local shape admission was added.

@@ -621,3 +621,36 @@ unary operand is the adverse semantic case: Number conversion, object hooks and
 BigInt/Symbol failures must remain. Independent execution compares traces,
 returns and throws; mutants remove required RHS work or coercion. Existing
 sequence/TDZ/receiver/naming/suspension tests remain acceptance evidence.
+
+
+## Snapshot observations consume flow events (rules194, 2026-10-08)
+
+RecoveryFlow events now publish their intrinsic ExpressionEvaluation. The
+semantic adapter assigns it while building operations and refines it after
+initialization proofs, including events outside discarded statement regions.
+Binding reads and successful writes retain their separate identity and completion;
+an inert GetBindingValue still observes state and is not interchangeable with
+an absence of reads. Update read, coercion and successful write stay distinct.
+
+Snapshot recovery collects expression observations from current flow reads,
+expression-write definitions and required intrinsic events. The legacy completion
+order assigns epochs to this set. The original syntax/statement-omission/literal
+query is deleted, as are its expression-to-statement table and current-statement
+field. Eliminated comma operands cannot create ghost observations after their
+reads have left the common graph. There is no second original-expression
+admission filter for the retained observation set.
+
+This replaces the observation producer, not the whole motion proof. Control
+prefixes, region identity, lexical-environment signatures and source lifetime
+obligations remain documented transitional checks. Flow scope events do not yet
+model all abrupt activation/unwind, so this change does not authorize removing
+those obligations or moving across unrelated handlers/loop activations.
+
+The new composition cases put discarded parameter reads or required member calls
+inside nested return operands after a snapshot store. Only the discarded-read
+case forwards; member effects and exceptions keep their order. Existing argument
+value observations, catch reads, shadowing, async/generator and receiver tests
+remain. Coverage includes reversed statement arenas, transparent block splitting,
+0/1/200/201/400/800 nesting, independent execution and duplicate-evaluation mutants.
+Flow tests assert that initialized reads can be intrinsically inert while still
+being reads, coercion remains required, and reused graphs preserve effect facts.

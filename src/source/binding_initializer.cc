@@ -60,7 +60,6 @@ class Initializers {
     budget.Array(plan_.entry_counts, loops.initializer_roots.size() + 1);
     budget.Array(plan_.child_counts, tree.children.size() + 1);
     budget.Array(observations_, tree.expressions.size());
-    budget.Array(expression_statements_, tree.expressions.size());
     budget.Array(container_parents_, tree.statements.size());
     budget.Array(container_order_, tree.statements.size());
     budget.Array(control_events_, tree.statements.size());
@@ -437,21 +436,24 @@ class Initializers {
       budget_.Step(); const auto id = container_order_[i]; const auto parent = container_parents_[id.value];
       environments[id.value] = bound[id.value] || !parent ? id : environments[parent->value];
     }
-    // The census retains execution order independently of arena/block layout.
-    // Reference counts above come from the current flow. This remaining legacy
-    // census only bounds motion until shared effect/activation proofs replace it.
-    // A read is a state observation even when GetBindingValue has no hook: an
-    // effectful producer must not move past an earlier argument's value read.
-    std::size_t epoch = 0;
-    for (std::size_t i = 0; i < completion_count_; ++i) {
-      budget_.Step(); const auto id = completions_[i]; auto& site = observations_[id.value];
-      site.before = epoch;
-      const auto owner = expression_statements_[id.value];
-      if (owner && plan_.omitted[owner->value]) { site.after = epoch; continue; }
-      const auto& node = tree_.expressions[id.value].expression;
-      if (!plan_.replacements[id.value] && IntrinsicEvaluation(node) == ExpressionEvaluation::kRequired &&
-          !(std::holds_alternative<SymbolExpr>(node) && plan_.literals[std::get<SymbolExpr>(node).symbol.value])) ++epoch;
-      site.after = epoch;
+    // The shared flow owns retained state observations and intrinsic effects.
+    // Inert reads still observe a value and cannot be crossed by an effectful
+    // producer. Removed operands/definitions have no events, so old syntax
+    // cannot create a second admission condition. The legacy execution-order
+    // census remains until effect/activation motion analysis replaces it.
+    const auto& flow=CurrentFlow();
+    std::vector<std::uint8_t> observed;budget_.Array(observed,tree_.expressions.size());
+    for(const auto& event:flow.events) {
+      budget_.Step();
+      if(event.expression && (event.read || event.effect==ExpressionEvaluation::kRequired))
+        observed[event.expression->value]=1;
+      if(event.definition)if(const auto write=flow.definitions[event.definition->value].write)
+        observed[write->value]=1;
+    }
+    std::size_t epoch=0;
+    for(std::size_t i=0;i<completion_count_;++i) {
+      budget_.Step();const auto id=completions_[i];auto& site=observations_[id.value];
+      site.before=epoch;epoch+=observed[id.value];site.after=epoch;
     }
     struct ForwardedSnapshot { SymbolId binding; ExprId read, value; };
     std::vector<ForwardedSnapshot> proposed;
@@ -1098,7 +1100,6 @@ class Initializers {
         const auto parent_region=current_region_;
         if(visit.guarded)current_region_=OpenRegion();
         expression_scopes_[visit.expression.value]=scope;
-        expression_statements_[visit.expression.value] = current_statement_;
         observations_[visit.expression.value].control = control_;
         observations_[visit.expression.value].region = current_region_;
         expression_owners_[visit.expression.value]=projector?projector:container;
@@ -1155,7 +1156,6 @@ class Initializers {
     }
   }
   void Enter(const StatementVisit& visit) {
-    current_statement_ = visit.statement;
     const auto& node = tree_.statements[visit.statement.value].statement;
     std::visit([&](const auto& syntax) {
       using T = std::decay_t<decltype(syntax)>;
@@ -1199,9 +1199,8 @@ class Initializers {
   std::vector<std::uint8_t> projected_;
   std::vector<ContainerRange> containers_;
   std::vector<ObservationSite> observations_;
-  std::vector<std::optional<StmtId>> expression_statements_, container_parents_;
+  std::vector<std::optional<StmtId>> container_parents_;
   std::vector<StmtId> container_order_, control_events_;
-  std::optional<StmtId> current_statement_;
   std::size_t control_ = 0;
   std::vector<std::optional<StmtId>> lexical_, projectors_;
   std::vector<std::optional<StmtId>> retained_bodies_;

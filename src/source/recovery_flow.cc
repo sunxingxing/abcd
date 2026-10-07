@@ -194,6 +194,7 @@ class FlowBuilder {
     // Region effects are composed from semantic operations, independently of
     // whether their result is later used. Inert private writes can be dropped;
     // initialization, getters, coercion, calls, throws and suspension remain.
+    events_[effect.value].effect=required?ExpressionEvaluation::kRequired:ExpressionEvaluation::kInert;
     if(context.discarded && required)discarded_[context.discarded->value].effect=ExpressionEvaluation::kRequired;
     const bool suspension=std::holds_alternative<AwaitExpr>(node)||std::holds_alternative<YieldExpr>(node);
     Link(effect,normal,suspension?FlowCompletion::kResumeNext:FlowCompletion::kNormal);
@@ -209,6 +210,7 @@ class FlowBuilder {
     auto next=effect;
     if(const auto* update=std::get_if<UpdateExpr>(&node)) {
       const auto read=New({FlowEventKind::kRead,Resolve(update->symbol),{},at.id});events_[read.value].discarded=context.discarded;Link(read,effect);
+      events_[read.value].effect=ExpressionEvaluation::kRequired;
       Reference(read,Resolve(update->symbol),FlowReferenceKind::kRead,at.id);
       Link(read,context.thrown,FlowCompletion::kThrow);next=read;
     }
@@ -306,12 +308,13 @@ std::variant<FlowRefinement,TreeStructureError> RefineRecoveryFlowEffects(
     for(auto& discarded:flow.discarded){budget.Step();discarded.effect=ExpressionEvaluation::kInert;}
     for(auto& event:flow.events) {
       budget.Step();event.incoming.reset();event.outgoing.reset();
-      if(!event.expression || !event.discarded)continue;
+      if(!event.expression || event.kind==FlowEventKind::kTruthBranch || event.kind==FlowEventKind::kNullishBranch)continue;
       const auto id=*event.expression;const auto& node=tree.expressions[id.value].expression;
       bool required=IntrinsicEvaluation(node)==ExpressionEvaluation::kRequired &&
           evaluations[id.value]!=ExpressionEvaluation::kInert;
       if(std::holds_alternative<AssignmentExpr>(node))required=assignments[id.value]==ExpressionEvaluation::kRequired;
-      if(required)flow.discarded[event.discarded->value].effect=ExpressionEvaluation::kRequired;
+      event.effect=required?ExpressionEvaluation::kRequired:ExpressionEvaluation::kInert;
+      if(event.discarded && required)flow.discarded[event.discarded->value].effect=ExpressionEvaluation::kRequired;
     }
     std::size_t retained=0;
     for(std::size_t i=0;i<flow.edges.size();++i) {
