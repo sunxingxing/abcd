@@ -2114,3 +2114,20 @@ facts. The consumer does not require a top-level expression statement, a fixed
 wrapper depth or an adjacent producer. The semantic builder owns value transport
 through sequences, choices, logical control and replacements. Observed results,
 branch values, coercion/throw effects and unmodeled signature uses remain.
+
+
+### Rules200: inert statements do not require an upstream replacement
+
+Statement omission now consumes current ExpressionFacts for every expression
+statement. The previous requirement that its root already appear in the
+replacement plan is removed: that was pass-history admission, not a semantic
+obligation. The statement discards its result; initialization and effect facts
+prove absence of required evaluation. Declarations remain separate, including
+undefined initialization, and TDZ reads/coercion/calls remain required.
+The pass runs before demand and snapshot analysis and after later projection
+changes, with centralized invalidation at commit. No printer optimization,
+sample dispatch, same-block condition, or expression-operation whitelist was
+added. Tests include ordinary locals without any compiler-temporary candidate,
+reverse arenas, retained exceptions/effects, independent execution and geometric
+work scaling. Global pass convergence and original BindingUses migration remain
+open; this change removes one concrete dependence on prior rewrite history.

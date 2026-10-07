@@ -24,6 +24,43 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则200，惰性语句清理退出上游改写准入
+
+- PlanInertStatements 删除“表达式根已经被其他 pass 替换”的前提。
+  表达式语句丢弃结果，共同初始化/效果事实证明 inert 即可省略；
+  声明仍由独立职责处理，TDZ、强制转换、调用与暂停仍由效果模型保护。
+  OmitInertStores 更名 OmitInertStatements，不在打印器中增加语义优化。
+- 惰性语句清理在死定义与快照分析前执行，提交沿用 BeginCommit 的中央
+  失效；存储/循环声明恢复之后保留依赖清理。此步删除具体顺序耦合，
+  不代表全局固定点完成；部分 pass 的原始 BindingUses 统计尚未迁移，
+  不能直接放进不受约束的重复执行循环。
+- 新用例无 compiler temporary 候选，覆盖参数、普通局部初始化、初始
+  undefined、TDZ、coercion、调用、literal、conditional，并核对反序
+  arena、0/1/200/201/400/800 工作增长；等价 comma 包装显式比较有无
+  上游替换。独立源码执行观察返回值、异常和副作用，错误删除反例必拒绝。
+- 原实现新用例失败，/tmp/abcd-rule200-red-test.log。新增 fixture 曾构造
+  未拥有的表达式，结构验证拒绝；修正测试构造后定向 2/2 通过，17.30秒，
+  /tmp/abcd-rule200-focused-tests2.log。相关回归发现旧来源映射断言要求
+  所有表达式非空；整句省略按已有 GeneratedExtent::kBoundary 契约输出。
+  测试现明确检查省略子树的准确语句边界，保留表达式仍必须非空，未放宽
+  行为和来源身份要求。
+- 相关回归首轮 54/56 通过，285.55秒，两项失败均为上述来源范围断言，
+  日志 /tmp/abcd-rule200-regression-tests.log；构建日志为
+  /tmp/abcd-rule200-regression-build.log。修正测试契约并补齐等价 comma
+  用例后，重建受影响目标，四项定向复验全部通过，141.74秒，日志
+  /tmp/abcd-rule200-final-build.log、/tmp/abcd-rule200-final-tests.log 与
+  /tmp/abcd-rule200-final-test-detail.log。未把首轮失败改写为整批全绿。
+  最终定义/效果清理 586 份源码、14,488 次独立执行、61 个反例；变量
+  恢复 1,752 份源码、461,776 次对照、284 个反例。Home 的 362 个配对
+  情景与 PageA 的 1,422 次配对执行在首轮通过。
+- ABC-only 导出 build/stage-one/inert-statements-rule200：19 records，
+  10 complete / 0 partial / 9 noModule；十份源码 node --check 通过。
+  对比规则199仅 Home 正文变化，删除构造函数中已初始化临时变量的独立
+  无用读取；声明、super、后续 this 写入保留。输入 SHA-256 不变，
+  /tmp/abcd-rule200-export.log。此处不是全阶段覆盖提升或平台执行收据。
+- 全量语料/RSS/DFX 暂停范围保持；统一变量里程碑、结构 gate 和阶段一
+  仍开放，Goal active。
+
 ### 2026-10-08：PageA 整个 record 的配对表示验证
 
 - 在既有 ABC-only PageA record6897 独立行为测试上增加测试侧表示检查：

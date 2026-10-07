@@ -257,6 +257,40 @@ std::uint64_t CompoundCopies(unsigned form,unsigned count,bool reverse,bool emit
   return plan.work;
 }
 
+std::uint64_t InertStatements(unsigned form,unsigned count,bool reverse,bool wrapped,bool emit) {
+  Fixture f;auto& tree=f.tree;
+  // No compiler temporary participates: omission cannot depend on another
+  // pass first replacing a store, nor on private-storage demand cleanup.
+  tree.symbols[2].kind=BindingKind::kLocal;tree.symbols[2].temporary.reset();
+  std::vector<StmtId> body,observations;
+  const auto declaration=f.Stmt(DeclarationStmt{{2},form==7?std::nullopt:std::optional{f.Read(1)}});
+  if(form!=2)body.push_back(declaration);
+  for(unsigned i=0;i<=count;++i) {
+    auto value=form==4?f.Call(1):form==5?f.Expr(TreeLiteral{IntegerLiteral{0}}):
+        f.Read(form==1||form==2||form==7?2:1);
+    if(form==3)value=f.Expr(UnaryExpr{TreeUnary::kPlus,value});
+    if(form==6)value=f.Expr(ConditionalExpr{value,f.Read(0),f.Read(1)});
+    // The equivalent comma forces an upstream replacement; direct and wrapped
+    // expressions must receive the same effect-based omission decision.
+    if(wrapped)value=f.Expr(SequenceExpr{f.Expr(TreeLiteral{IntegerLiteral{0}}),value});
+    const auto statement=f.Stmt(ExpressionStmt{value});
+    body.push_back(statement);observations.push_back(statement);
+  }
+  if(form==2)body.push_back(declaration);
+  body.push_back(f.Stmt(ReturnStmt{f.Read(1)}));f.Finish(body,reverse);
+  test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));
+  const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
+  const auto planned=PlanBindingInitializers(tree,loops,nullish);
+  test::Check(std::holds_alternative<BindingInitializers>(planned));
+  const auto& plan=std::get<BindingInitializers>(planned);
+  for(const auto statement:observations)test::Check(bool(plan.omitted[statement.value])==(form!=2&&form!=3&&form!=4));
+  test::Check(!plan.omitted[declaration.value]);
+  std::ostringstream out;test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,out)));
+  if(emit)std::cout<<nlohmann::json{{"source",out.str()},{"inert_statement",true},{"form",form},{"count",count}}<<'\n';
+  return plan.work;
+}
+
 std::uint64_t DiscardedResults(unsigned form,unsigned count,bool reverse,bool emit) {
   Fixture f;auto& tree=f.tree;std::vector<ExprId> sequences;
   auto value=f.Call(1);
@@ -342,6 +376,13 @@ void BindingObligations() {
 }
 int main(int argc,char**) {
   BindingObligations();
+  for(unsigned form=0;form<8;++form)for(bool reverse:{false,true})for(bool wrapped:{false,true}) {
+    std::uint64_t previous=0;
+    for(unsigned count:{0U,1U,200U,201U,400U,800U}) {
+      const auto work=InertStatements(form,count,reverse,wrapped,argc>1);
+      if(count>=400)test::Check(work<previous*3);previous=work;
+    }
+  }
   for(unsigned form=0;form<6;++form)for(bool reverse:{false,true}) {
     std::uint64_t previous=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U}) {

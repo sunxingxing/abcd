@@ -1,5 +1,6 @@
 #include "expression_initializer_checks.h"
 #include "../../../src/source/binding_initializer.h"
+#include "../../../src/source/expression_children.h"
 #include "../../../src/source/loop_syntax.h"
 #include "../../../src/source/nullish_syntax.h"
 #include "abcd/source/tree_printer.h"
@@ -9,6 +10,28 @@
 using namespace abcd;
 using namespace abcd::source;
 namespace {
+void CheckExpressionRanges(const FunctionTree& tree,const BindingInitializers& plan,
+    const PrintedFunction& printed,std::size_t size) {
+  std::vector<std::optional<std::uint64_t>> omitted(tree.expressions.size());
+  for(std::size_t i=0;i<tree.statements.size();++i) {
+    const auto* expression=std::get_if<ExpressionStmt>(&tree.statements[i].statement);
+    if(!expression||!plan.omitted[i]||plan.forwarded_statements[i])continue;
+    std::vector<ExprId> pending{expression->expression};
+    while(!pending.empty()) {
+      const auto id=pending.back();pending.pop_back();
+      omitted[id.value]=printed.statements[i].begin;
+      VisitExpressionChildren(tree,tree.expressions[id.value].expression,[&](ExprId child){pending.push_back(child);});
+    }
+  }
+  for(std::size_t i=0;i<printed.expressions.size();++i) {
+    const auto range=printed.expressions[i];test::Check(range.begin>0&&range.end<=size);
+    if(printed.expression_extents[i]==GeneratedExtent::kBoundary) {
+      // A deleted whole statement has no replacement text. Its owned origins
+      // must map to that exact omission boundary, not an arbitrary empty span.
+      test::Check(omitted[i]&&range.begin==*omitted[i]&&range.begin==range.end);
+    } else test::Check(range.begin<range.end);
+  }
+}
 struct Expressions {
   FunctionTree tree{};
   ExprId Expr(TreeExpression value) {const ExprId id{static_cast<std::uint32_t>(tree.expressions.size())};tree.expressions.push_back({std::move(value),{0}});return id;}
@@ -114,7 +137,7 @@ std::uint64_t Check(unsigned form,unsigned count,bool reverse,bool emit) {
   if((plan.aliases[symbol(last).value].has_value()||plan.literals[symbol(last).value].has_value())!=folded)std::cerr<<"expression="<<form<<" count="<<count<<" reverse="<<reverse<<'\n';
   test::Check((plan.aliases[symbol(last).value].has_value()||plan.literals[symbol(last).value].has_value())==folded);
   if(form==18)test::Check(!plan.aliases[symbol(copies.front()).value]);
-  for(const auto range:std::get<PrintedFunction>(result).expressions)test::Check(range.begin<range.end&&range.end<=output.str().size());
+  CheckExpressionRanges(tree,plan,std::get<PrintedFunction>(result),output.str().size());
   for(const auto anchor:std::get<PrintedFunction>(result).anchors)test::Check(anchor>0&&anchor<=output.str().size());
   if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"expression",form},{"count",count},{"folded",folded}}<<'\n';return plan.work;
 }
@@ -167,7 +190,7 @@ std::uint64_t Sequence(unsigned form,unsigned count,bool reverse,bool emit) {
   const bool inert=form<=4||form==8||form==9||form==10||form==11||form==12||form==19;
   if(probe)test::Check((plan.evaluations[probe->value]==ExpressionEvaluation::kInert)==inert);
   std::ostringstream output;const auto printed=PrintFunctionTree(tree,output);test::Check(std::holds_alternative<PrintedFunction>(printed));
-  for(const auto range:std::get<PrintedFunction>(printed).expressions)test::Check(range.begin<range.end&&range.end<=output.str().size());
+  CheckExpressionRanges(tree,plan,std::get<PrintedFunction>(printed),output.str().size());
   if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"sequence",form},{"count",count},{"inert",inert}}<<'\n';
   return plan.work;
 }

@@ -203,6 +203,7 @@ class Initializers {
     RunPass(Pass::kAliases);
     RunPass(Pass::kStoredResults);
     RunPass(Pass::kInertOperands);
+    RunPass(Pass::kInertStatements);
     // Dead reads/stores must leave the projection before snapshot coverage is
     // analyzed. Forwarding preserves every RHS occurrence and removes its own
     // single read/store/declaration; it cannot make another definition dead.
@@ -250,7 +251,7 @@ class Initializers {
       case Pass::kLoopDeclarations:ProjectLoopDeclarations();break;
       case Pass::kStoredResults:ElideStoredResults();break;
       case Pass::kDeadDefinitions:ElideDeadDefinitions();break;
-      case Pass::kInertStatements:OmitInertStores();break;
+      case Pass::kInertStatements:OmitInertStatements();break;
       case Pass::kInertOperands:ElideInertOperands();break;
       case Pass::kStorage:Coalesce();break;
     }
@@ -329,7 +330,7 @@ class Initializers {
       plan_.replacements[edit.expression.value]=edit.value;
     }
   }
-  void OmitInertStores() {
+  void OmitInertStatements() {
     const auto& facts = AnalyzeExpressions();
     const auto omitted = PlanInertStatements(facts);
     // The pass publishes a complete proposal before changing the projection.
@@ -783,11 +784,13 @@ class Initializers {
   std::vector<StmtId> PlanInertStatements(const ExpressionFacts& facts) const {
     std::vector<StmtId> omitted;
     budget_.Array(omitted, tree_.statements.size()); std::size_t count = 0;
-    // Only discard a projected store statement whose remaining evaluation is
-    // inert. Value-observed occurrences and all required effects stay owned.
+    // Expression statements discard their value. Shared initialization and
+    // effect facts prove omission, independently of whether an earlier pass
+    // replaced their root. Keep declarations and all required evaluations;
+    // TDZ, coercion, calls and suspension are not inert merely because unused.
     for (std::size_t i = 0; i < tree_.statements.size(); ++i) {
       budget_.Step(); const auto* effect = std::get_if<ExpressionStmt>(&tree_.statements[i].statement);
-      if (effect && plan_.replacements[effect->expression.value] &&
+      if (effect &&
           facts.evaluations[effect->expression.value] == ExpressionEvaluation::kInert && !plan_.omitted[i])
         omitted[count++] = StmtId{static_cast<std::uint32_t>(i)};
     }

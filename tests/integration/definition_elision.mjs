@@ -22,6 +22,30 @@ function observe(fn,flag,fail) {
 let executions=0,mutations=3;
 for(const row of rows) {
   parseJavaScript(row.source);
+  if(row.inert_statement) {
+    const expressions=['flag','state','state','+flag','produce(1)','0','flag?produce:flag','state'];
+    const declaration=row.form===7?'let state;':'let state=flag;';
+    const statements=(expressions[row.form]+';').repeat(row.count+1);
+    const expected=Function('produce','flag','"use strict";'+
+      (row.form===2?statements+declaration:declaration+statements)+'return flag;');
+    const actual=Function('return ('+row.source+');')();
+    const run=(fn,input,fault)=>{
+      const trace=[];const flag=input==='object'?{valueOf(){trace.push('coerce');if(fault==='coerce')throw failure;return 7;}}:input;
+      let value,thrown;
+      try{value=fn(i=>{trace.push(i);if(fault==='call')throw failure;return values[i];},flag);if(value===flag&&input==='object')value='object';}
+      catch(error){thrown=error instanceof ReferenceError?'tdz':error instanceof TypeError?'type':error;}
+      return {trace,value,thrown};
+    };
+    for(const input of [undefined,null,false,true,0,-0,7n,Symbol.for('inert'),'object'])
+      for(const fault of ['none','call','coerce']) {
+        assert.deepEqual(run(actual,input,fault),run(expected,input,fault));++executions;
+      }
+    if(!row.count&&[2,3,4].includes(row.form)) {
+      const bad=Function('produce','flag','"use strict";'+declaration+'return flag;');
+      assert.notDeepEqual(run(bad,'object','none'),run(expected,'object','none'));++mutations;
+    }
+    continue;
+  }
   if(row.discarded_result) {
     let expression='(produce(1)'+(','+(row.form===2?'+state':'state')).repeat(row.count+1)+')';
     if(row.form===3)expression='flag?'+expression+':produce(2)';
