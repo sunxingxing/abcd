@@ -190,6 +190,44 @@ async function observeAlias(fn,row,value,fault,flag=true,request='next',reject=f
   }catch(error){returned=undefined;thrown=error;}
   return {trace,requests,returned,thrown};
 }
+function expressionReference(row) {
+  if(row.expression===20)return function(input,report,other){const saved=other(),transport=saved;let carried=saved;while(carried)carried=false;report(transport);return transport;};
+  const root=row.expression===17?'other':row.expression>=10&&row.expression<=13?'state':'input';
+  const last=row.count?'copy'+(row.count-1):root;
+  const declarations=Array.from({length:row.count},(_,i)=>'let copy'+i+';').join('');
+  const assignments=Array.from({length:row.count},(_,i)=>'copy'+i+'='+(!i&&row.expression===16?'0':!i&&row.expression===8?'copy0':i?'copy'+(i-1):root));
+  const nested='('+[...assignments,last].join(',')+')';let effect='report('+nested+')';
+  if(row.expression===1)effect='report('+last+','+nested+')';
+  if(row.expression===2)effect='report('+nested+','+last+')';
+  if(row.expression===3)effect='flag&&'+nested;
+  if(row.expression===4)effect='flag&&report('+nested+','+last+')';
+  if(row.expression===21||row.expression===22)effect='flag'+(row.expression===21?'||':'??')+'report('+nested+','+last+')';
+  if(row.expression===5)effect='flag?'+nested+':undefined';
+  if(row.expression===6)effect='flag?report('+nested+','+last+'):undefined';
+  if(row.expression===7)effect='report(('+last+','+nested+'))';
+  if(row.expression===14)effect='if(flag){'+effect+';}';
+  if(row.expression===19)effect='{'+effect+';}';
+  if(row.expression===15)effect='return '+nested;
+  if(row.expression===17)effect='report((0,'+nested+')())';
+  const initial=row.expression>=10&&row.expression<=13?'let state='+(row.expression===11?'await ':row.expression===12?'yield ':'')+(row.expression===13?'{}':'other()')+';':'';
+  const tail=row.expression===15?'':(row.expression===9?last+'=other;':'')+([4,6,17,21,22].includes(row.expression)?'return;':'report('+last+');return '+last+';');
+  if(row.expression===18)return Function('"use strict";return function(input,report,other,flag){'+declarations+'copy0=input;{let input=123;report(('+[...assignments.slice(1),last].join(',')+'));report('+last+');return '+last+';}}')();
+  return Function('"use strict";return ('+(row.expression===11?'async function':row.expression===12?'function*':'function')+'(input,report,other,flag){'+initial+declarations+effect+';'+tail+'})')();
+}
+async function observeExpression(fn,row,value,fault,flag,request='next',reject=false) {
+  const trace=[],requests=[];let at=0,returned,thrown,allocation;
+  const event=(kind,...values)=>{trace.push([kind,...values]);if(++at===fault)throw failure;};
+  const other=function(){assert.equal(this,undefined);event('other',value);if(row.expression===11){queueMicrotask(()=>trace.push(['job']));return reject?Promise.reject(failure):Promise.resolve(value);}return value;};
+  const report=function(...values){assert.equal(this,undefined);if(row.expression===13)values=values.map(value=>{allocation??=value;assert.equal(value,allocation);return 'allocation';});if(row.expression===9)values=values.map(value=>value===other?'other':value);event('report',...values);};
+  try {
+    returned=fn(value,report,other,flag);
+    if(row.expression===11)returned=await returned;
+    if(row.expression===12){const first=returned.next();requests.push(first.value);const end=request==='throw'?returned.throw(failure):request==='return'?returned.return(second):returned.next(value);assert.equal(end.done,true);returned=end.value;}
+    if(row.expression===13){allocation??=returned;assert.equal(returned,allocation);assert.equal(Object.getPrototypeOf(returned),Object.prototype);returned='allocation';}
+    if(row.expression===9){assert.equal(returned,other);returned='other';}
+  }catch(error){returned=undefined;thrown=error;}
+  return {trace,requests,returned,thrown};
+}
 for (const row of rows) {
   const ast = parseJavaScript(row.source), pending=[ast], initialized=[], declarations=[], stores=[], loops=[];
   while (pending.length) {
@@ -202,6 +240,27 @@ for (const row of rows) {
     if(node.type==='ExpressionStatement' && node.expression.type==='AssignmentExpression' &&
         node.expression.left.type==='Identifier') stores.push(node);
     if(node.type==='WhileStatement' || node.type==='ForStatement') loops.push(node);
+  }
+  if(row.expression!==undefined) {
+    const generated=Function('"use strict";return '+row.source)(),reference=expressionReference(row);
+    if(row.folded){assert.ok(!declarations.some(node=>node.declarations.some(item=>item.id.name.startsWith('copy'))));++folded;}
+    const run=(fn,value,fault,flag,request='next',reject=false)=>observeExpression(fn,row,value,fault,flag,request,reject);
+    for(const value of [undefined,null,-0,NaN,1n,Symbol('input'),token])for(const flag of [false,true,0,NaN,undefined,null,1n,token])for(const fault of [Infinity,1,2,3]) {
+      const actual=await run(generated,value,fault,flag),expected=await run(reference,value,fault,flag);
+      try{assert.deepEqual(actual.trace,expected.trace);compare(actual,expected);}catch(error){error.message+=`; expression=${row.expression}, count=${row.count}, flag=${String(flag)}, fault=${fault}`;throw error;}++comparisons;
+    }
+    if(row.expression===11){compare(await run(generated,token,Infinity,true,'next',true),await run(reference,token,Infinity,true,'next',true));++comparisons;}
+    if(row.expression===12)for(const request of ['throw','return']){compare(await run(generated,token,Infinity,true,request),await run(reference,token,Infinity,true,request));++comparisons;}
+    if(row.expression===13)assert.notEqual(generated(token,()=>{},()=>token,true),generated(token,()=>{},()=>token,true));
+    if(row.folded&&row.count===1) {
+      const pending=[ast];let operand;
+      while(pending.length){const node=pending.pop();if(node.type==='ReturnStatement'&&node.argument)operand=node.argument;if(node.type==='CallExpression'&&node.arguments.length)operand=node.arguments[0];for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)pending.push(child);}else if(value?.type)pending.push(value);}}
+      assert.ok(operand);const changed=row.source.slice(0,operand.start)+'123'+row.source.slice(operand.end);parseJavaScript(changed);
+      const bad=Function('"use strict";return '+changed)(),flag=row.expression===21||row.expression===22?undefined:true;
+      const actual=await run(bad,token,Infinity,flag),expected=await run(reference,token,Infinity,flag);
+      assert.throws(()=>compare(actual,expected),assert.AssertionError);++mutations;
+    }
+    continue;
   }
   if(row.entry!==undefined) {
     const generated=Function((row.strict?'"use strict";':'')+'return '+row.source)(),reference=entryReference(row);

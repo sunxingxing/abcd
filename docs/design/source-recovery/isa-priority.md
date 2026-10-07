@@ -1,5 +1,16 @@
 # 全 ISA 优先执行顺序
 
+2026-10-07 规则162：共同表达式完成census消除嵌在实参等位置的纯
+复制存储，保留原结果/效果和读取；执行区间/词法名字/原生声明打印
+生命周期由共同证明覆盖，不添加独立语句或样本形状准入。1490有效
+树/1478完整源、435930独立行为/252 mutation，72三profile实际cell
+解码全部共享Local。最终生产30/30定向147.90秒，||/??绑定2/2补测
+35.71秒，证据见status.md。
+fresh pasteboard仍10complete/0partial，十mjs/声明数与规则161一致，
+无新增actual coverage。下一步共同pure sequence投影、精确定义/一般
+SSA及原变量/每轮capture，继续优先普通INCOMPLETE/UNRECOVERED；未知
+capture/module、全body/style、原gate和暂停范围保持。
+
 2026-10-07 规则161：声明完成及保留source首次store复用共同不可变
 复制证明，原let/const/初始化/赋值位置不动，不回放RHS。1226有效树/
 1214完整源、376758独立行为/224 mutation通过，包括72三profile实际

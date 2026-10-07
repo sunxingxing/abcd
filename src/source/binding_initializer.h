@@ -20,6 +20,9 @@ struct BindingInitializers {
   std::vector<std::optional<ExprId>> literals;
   // SymbolId indexed: retained immutable producer storage for an elided copy.
   std::vector<std::optional<SymbolId>> aliases;
+  // ExprId indexed: a redundant private store projects to its original RHS
+  // at the same evaluation occurrence, retaining its expression result.
+  std::vector<std::optional<ExprId>> replacements;
   // Prefix counts of non-elided initializer roots, for constant-time ranges.
   std::vector<std::uint32_t> entry_counts;
   std::size_t allocated_bytes = 0;
@@ -46,6 +49,10 @@ struct BindingInitializers {
 // same immutable root when no owned or unknown external write can alter it.
 // Its original declaration kind, initializer, scope and NamedEvaluation stay;
 // copies preceding completion/escaping activation or capturing mutation stay.
+// Ordered expression completion uses shared child ownership and execution
+// regions for short-circuit/choice/handler/loop activations. Embedded private
+// stores project to their original pure RHS, preserving the observed result;
+// that RHS remains a real read for the common root visibility proof.
 // Ownership/copy walks are linear; spelling-index construction adds bounded
 // O(B log(B+1)) name comparisons, plus module sorting and compared text units.
 // No per-symbol CFG or per-read ancestor walk, recursive walk or SSA merge.

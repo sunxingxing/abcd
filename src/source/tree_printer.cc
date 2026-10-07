@@ -1193,6 +1193,9 @@ class TreePrinter {
   }
   void PrintOriginalExpression(ExpressionOperand operand) {
     const auto id=operand.id;
+    if(const auto replacement=Initializers().replacements[id.value]) {
+      operand.id=*replacement;Push(operand);return;
+    }
     const auto& expression=Tree().expressions[id.value].expression;
     if(const auto* read=std::get_if<SymbolExpr>(&expression))if(const auto source=Initializers().aliases[read->symbol.value]) {
       Name(*source);return;

@@ -2023,14 +2023,56 @@ RHS, original failures and fresh allocation identity. A declaration with any
 earlier observation retains all storage under this conservative first-completion
 proof; narrowing to independently dominated observations is a general liveness
 gap, not a language invariant or a reason to reject the complete function.
-The current first-store census projects direct ExpressionStmt assignments;
-assignments embedded in call arguments retain their copies until a shared
-expression-completion projection is implemented. Seventy-two actual lexical-cell
-decoder variants across the three profiles verify the complete pipeline; 36
-member-write cases share the retained Local root and independently verify key
+Rules 161 projected direct ExpressionStmt assignments; rules 162 extend the
+same census to completed identifier stores in all owned expressions. Seventy-two
+actual lexical-cell decoder variants across the three profiles verify the
+complete pipeline; both call arguments and member-write cases share the retained
+Local root and independently verify key
 conversion, Proxy setter receiver, state, exception and effect order. Those
 members exercise the existing evaluator's early snapshots; no member-specific
 production admission was added.
+
+Rules 162 visits the shared immediate-child ownership in source evaluation order
+(reverse pushed children for the existing iterative LIFO stack). Identifier
+PutValue is observed only after its RHS completes. Statement control children,
+logical RHS and conditional arms have nested execution intervals;
+first completed store plus observation confinement proves availability within
+that activation, including repeated loop entries. Earlier reads/self reads,
+conditional stores observed outside their arm, writes, unknown escapes and
+handler exits preserve snapshots. These are semantic execution regions, not CFG
+layout/adjacency/opcode matches. The conservative proof does not merge multiple
+definitions or establish availability beyond the containing execution region;
+more precise reaching definitions remain an implementation gap.
+An ordinary lexical block does not create an execution boundary: it runs in
+sequence, while common scope resolution still protects its bindings. Each actual
+read also records its original lexical/projection owner. RootLifetime checks the
+same native-declaration interval at substituted reads, including a prospective
+for-let owner, because its printed lifetime may be narrower than the canonical
+SymbolId's scope. Removing a copy must not make an outside-loop read reference a
+new loop-scoped root. Owner resolution is a single post-census indexed pass;
+there are no ancestor scans or declaration-layout admission matches.
+
+The same constant/copy worklists consume completed-store ExprIds. A redundant
+direct statement store disappears; an embedded store projects to its original
+pure TreeLiteral/SymbolExpr RHS at the original expression occurrence, preserving
+the assignment result and parent grammar. The embedded RHS remains an actual
+read and therefore participates in common scoped root resolution. It cannot use
+the conditional-retention exemption for deleted statement-copy RHSs. Source
+stores, effectful producers and NamedEvaluation remain in their original place.
+Original expression ranges cover replacement results and their original RHS;
+deleted declarations/direct stores retain existing zero ranges and anchors.
+Sequences of redundant pure value reads may remain; dead expression/sequence
+projection is a separate representation gap, never a whole-function rejection.
+
+This project-owned extension follows ECMA-262 2024 expression evaluation,
+assignment, short-circuit and conditional completion rules, with no new runtime
+dependency or copied implementation. Added region metadata and replacement slots
+are bounded O(S+E+B); the shared census costs O(S+E+K+B+C), and existing copy/scope
+index costs remain as documented. Each child slot is visited/reversed a constant
+number of times; no per-symbol graph or ancestor walk is added. Tests exercise
+0/1/200/201/400/800 chains, reversed symbol/scope/expression/statement arenas,
+argument order, conditional execution, old values, async/generator completion,
+fresh identity, constant results, callee receiver and embedded-RHS shadowing.
 
 For S statements, E expressions, K owned child/argument/property slots, B symbols
 and C owned class-member capture occurrences, ownership/initialization cost is

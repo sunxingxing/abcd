@@ -12,6 +12,65 @@
 
 ## 当前阶段
 
+### 2026-10-07：规则162，表达式内赋值接入共同完成与复制传播
+
+- 从干净9db586fd继续，上一轮属于实际进展。BindingInitializers的
+  同一census按shared expression child ownership的语言次序观察，
+  LIFO入栈children反转保证callee/argument/RHS从左到右，RHS完成后
+  才记identifier PutValue。表达式内store的ExprId进入原constant/
+  copy worklists，不再以独立ExpressionStmt作为存储共享准入。
+  单写/first completion、执行区间全部观察、escape和共同词法根解析
+  保护可用性、身份、次数及原效果/异常/暂停。无opcode/producer名单、
+  样本/名字、PC/register、同块/邻接或复制数量匹配。
+- statement控制子程序、logical RHS、conditional arm划分execution
+  区间；普通block按顺序执行，不创建人为屏障，原binding scope由
+  共同scope解析保护。原生声明可能缩短生命周期，特别是prospective
+  for let；RootLifetime用共同声明区间及读取的lexical/projection
+  owner保护替换后的实际打印可用性，不能只看canonical SymbolId scope。
+  独立copy语句整体省略；嵌入copy投影到原pure RHS保留表达式结果，
+  RHS仍是实际读取，不能套用已删除语句RHS的conditional-retention
+  豁免。原AST/ID/source kind/store/NamedEvaluation及effectful root保持。
+- region/owner/replacement元数据是预算化O(S+E+B)空间；shared census
+  O(S+E+owned slots+B+class captures)，原copy/name index成本保持。
+  每child只访问/反转常数次，owner单次索引pass，无逐symbol CFG或
+  ancestor扫描。0/1/200/201/400/800、400→800 work小于三倍及正反
+  SymbolId/ScopeId/ExprId/StmtId通过，不声明physical RSS/benchmark达标。
+- 新增264有效树/完整源码，含实参先后顺序、短路&&/||/??、conditional
+  arm、赋值前/自读、后续写、普通嵌套block、await/yield、分配身份、
+  callee receiver、嵌入RHS遮蔽和for-let生命周期。旧1226 checked/1214
+  源保留，总1490 checked/1478完整生成源；435930独立Acorn/原生JS
+  行为比较、252有效JS mutation通过，folded源700。原72三profile
+  实际NEWLEXENV/STLEXVAR/LDLEXVAR的copy/register/split/branch变体
+  均完整解码、语义检查及打印并共享Local；普通实参36用例的复制缺口
+  已恢复，原36成员写入的key/Proxy setter顺序/状态/异常检查保持。
+  platformExecution:false，不扩大为Ark设备SDK验收。
+- 旧规则161在有效实际解码树已通过语义/打印后alias断言RED，退出134，
+  /tmp/abcd-expression-binding-red.log。新增If fixture缺少canonical
+  Block而被结构检查拒绝，修正fixture不放宽生产规则。初次构建计数
+  接口/auto声明及目标名错误已修正并重建，无新依赖。abc_structure/
+  abc_semantic及十四fixture最终构建退出0，原literal_plan.cc:59
+  kNoop switch warning保持。生命周期补强前30/30通过148.89秒；最终
+  生产代码30/30定向通过147.90秒，包括binding/loop/snapshot/structure/
+  numeric/class/control/module/family、实际构造十record、Push、
+  ProgressBar及富文本。最后||/??只新增fixture/oracle，独立1478源
+  对照已通过，绑定两项CTest 2/2补测通过35.71秒；node --check及
+  git diff --check通过。
+- fresh ABC-only build/stage-one/expression-binding-lifetime-pasteboard-final：
+  19 records/219 methods，10complete/0partial/9noModule、value_tree，
+  无legacy，顶层contract language_numeric_constructors_v1。十源独立
+  解析，无INCOMPLETE/UNRECOVERED；与规则161十份mjs逐字节一致。
+  总声明140/空45/初始化95/const87；PasteBoard62/16/46/42、三个
+  native for let保持。本轮无新增actual record coverage或声明数改善。
+  数值/构造模式保持，record contract序列化既有缺口仍属暂停DFX。
+- 最终证据/tmp/abcd-expression-binding-lifetime-{final-build,tests-final,
+  export-final,style-final}.log及/tmp/abcd-expression-binding-logical-
+  {build,behavior-final,tests-final}.log。下一步共同dead-expression/
+  sequence投影：已消除存储的连续pure读可能仍输出comma；跨execution
+  区间的精确reaching definitions、一般SSA干涉、未知capture/module、
+  原变量/每轮capture、全body/style及原结构/signature/body gate仍开放。
+  Goal active；full suite、expanded corpus、RSS/benchmark、DFX、scheduler、
+  agents及周期audit继续暂停，固定五ABC106/0未重跑。输入未改动。
+
 ### 2026-10-07：规则161，原局部声明与保留首次赋值接入共同复制根
 
 - 从干净ee18cec4继续，上一轮属于实际进展。BindingInitializers在

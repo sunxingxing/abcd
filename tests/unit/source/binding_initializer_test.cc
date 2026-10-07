@@ -7,6 +7,7 @@
 #include "abcd/source/tree_printer.h"
 #include "../../support/analysis/ssa_fixture.h"
 #include "entry_initializer_checks.h"
+#include "expression_initializer_checks.h"
 #include <array>
 #include <bit>
 #include <limits>
@@ -431,7 +432,7 @@ void DecodedCell(abc::ProfileId profile,unsigned locals,unsigned copies,bool spl
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));const auto plan=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
   std::ostringstream output;test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
   const auto shared=std::any_of(plan.aliases.begin(),plan.aliases.end(),[&](auto root){return root&&tree.symbols[root->value].kind==BindingKind::kLocal;});
-  if(field&&!shared)std::cerr<<output.str()<<'\n';if(field)test::Check(shared);
+  if(!shared)std::cerr<<output.str()<<'\n';test::Check(shared);
   const auto local=std::find_if(tree.symbols.begin(),tree.symbols.end(),[](const auto& symbol){return symbol.kind==BindingKind::kLocal;});test::Check(local!=tree.symbols.end());
   if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"decoded",true},{"branch",branch},{"decoded_cell",true},{"field",field},{"shared_cell",shared},{"cell_name",tree.names[local->name.value]}}<<'\n';
 }
@@ -566,6 +567,7 @@ std::uint64_t NativeDeep(unsigned form, unsigned depth, bool reverse, bool emit)
 }
 }
 int main(int argc, char**) {
+  CheckExpressionInitializers(argc>1);
   CheckEntryInitializers(argc>1);
   for(const auto profile:{abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301})
     for(unsigned locals:{1U,2U})for(unsigned copies:{0U,2U})for(bool split:{false,true})for(bool branch:{false,true})for(bool field:{false,true}) {

@@ -5,6 +5,7 @@
 #include "nullish_syntax.h"
 #include "statement_children.h"
 #include <algorithm>
+#include <limits>
 #include <new>
 #include <stdexcept>
 namespace abcd::source {
@@ -13,13 +14,20 @@ struct BindingUses {
   std::optional<StmtId> declaration, initializer, initializer_container;
   std::optional<StmtId> definition;
   std::optional<ExprId> first;
+  std::optional<ExprId> store;
+  std::size_t store_region = 0;
+  std::optional<std::size_t> first_region, last_region;
   std::optional<std::size_t> first_container, last_container;
   std::size_t writes = 0;
   bool escaped = false, outside_body = false, initialized_first = false;
 };
 struct ContainerRange { std::size_t begin = 0, end = 0; };
 struct ProjectionObservation { SymbolId symbol; StmtId owner; };
-struct ExpressionVisit { ExprId expression; bool finish = false; };
+struct ExpressionVisit {
+  ExprId expression;
+  bool finish = false, guarded = false;
+  std::size_t parent_region = 0;
+};
 struct StatementVisit {
   StmtId statement;
   std::optional<StmtId> container;
@@ -29,6 +37,8 @@ struct StatementVisit {
   bool projected = false;
   bool entered = false;
   ScopeId scope;
+  bool guarded = false;
+  std::size_t parent_region = 0;
 };
 class Initializers {
  public:
@@ -38,6 +48,7 @@ class Initializers {
     budget.Array(plan_.loop_declarations, tree.statements.size());
     budget.Array(plan_.literals, tree.symbols.size());
     budget.Array(plan_.aliases, tree.symbols.size());
+    budget.Array(plan_.replacements, tree.expressions.size());
     budget.Array(plan_.entry_counts, loops.initializer_roots.size() + 1);
     budget.Array(constant_heads_, tree.symbols.size());budget.Array(constant_next_, tree.symbols.size());
     budget.Array(constant_queue_, tree.symbols.size());
@@ -48,6 +59,10 @@ class Initializers {
     budget.Array(projection_observations_, tree.expressions.size());
     budget.Array(expressions_, tree.expressions.size()); budget.Array(statements_, tree.statements.size());
     budget.Array(expression_scopes_, tree.expressions.size());
+    budget.Array(expression_owners_,tree.expressions.size());budget.Array(expression_projections_,tree.expressions.size());
+    RequireTree(tree.statements.size()<std::numeric_limits<std::size_t>::max()-tree.expressions.size(),TreeStructureError::kResourceLimit);
+    budget.Array(regions_,tree.statements.size()+tree.expressions.size()+1);
+    regions_[0].begin=0;
   }
   BindingInitializers Run() {
     if (!tree_.recovery_issues.empty()) return Finish();
@@ -98,6 +113,8 @@ class Initializers {
       budget_.Step(); auto& visit = statements_[pending - 1];
       const auto& node = tree_.statements[visit.statement.value].statement;
       if (!visit.entered) {
+        visit.parent_region=current_region_;
+        if(visit.guarded)current_region_=OpenRegion();
         if(const auto* block=std::get_if<BlockStmt>(&node))visit.scope=block->scope;
         // LoopBody prints this owned continuing occurrence as a native
         // statement, outside its condition expression. Restore that lifetime
@@ -123,13 +140,21 @@ class Initializers {
       if (!child) {
         if (std::holds_alternative<BlockStmt>(node) || loops_.initializers[visit.statement.value])
           containers_[visit.statement.value].end = next_container_;
+        if(visit.guarded)regions_[current_region_].end=next_region_;
+        current_region_=visit.parent_region;
         --pending; continue;
       }
       const auto container = std::holds_alternative<BlockStmt>(node) ? std::optional{visit.statement} : std::nullopt;
       const auto projected = visit.projected; const auto lexical = visit.lexical; const auto projector = visit.projector;
       const auto scope=visit.scope;
+      const bool guarded=std::holds_alternative<IfStmt>(node)||std::holds_alternative<LoopStmt>(node)||std::holds_alternative<TryStmt>(node);
       statements_[pending++] = {*child, container, lexical, projector, 0, projected};
       statements_[pending-1].scope=scope;
+      statements_[pending-1].guarded=guarded;
+    }
+    regions_[0].end=next_region_;
+    for(std::size_t i=0;i<expression_owners_.size();++i) {
+      budget_.Step();if(expression_projections_[i]&&expression_owners_[i])expression_owners_[i]=lexical_[expression_owners_[i]->value];
     }
     // Native expression programs execute in their existing projection owner's
     // scope (for headers/updates or optional expressions), not the canonical
@@ -188,6 +213,36 @@ class Initializers {
     return Finish();
   }
  private:
+  std::size_t OpenRegion() {
+    RequireTree(next_region_<regions_.size(),TreeStructureError::kOwnership);
+    const auto region=next_region_++;regions_[region].begin=region;return region;
+  }
+  bool CompletedStore(const BindingUses& use) const {
+    if(!use.store||use.first!=use.store||use.escaped||!use.first_region)return false;
+    const auto range=regions_[use.store_region];
+    return *use.first_region>=range.begin&&*use.last_region<range.end;
+  }
+  bool PrivateCopy(const BindingUses& use) const {
+    return use.declaration&&use.writes==1&&CompletedStore(use);
+  }
+  bool RootLifetime(SymbolId root,ExprId occurrence) const {
+    const auto& use=uses_[root.value];
+    if(!use.initializer||!plan_.statements[use.initializer->value])return true;
+    // A prospective native declaration may narrow its original lifetime (for
+    // let includes test/body/update). Availability must cover substituted reads
+    // in the printed owner, not only the canonical symbol's original scope.
+    const auto owner=expression_owners_[occurrence.value];
+    if(!owner||!use.initializer_container)return false;
+    const auto at=containers_[owner->value].begin;const auto range=containers_[use.initializer_container->value];
+    return at>=range.begin&&at<range.end;
+  }
+  void Elide(const BindingUses& use) {
+    plan_.omitted[use.declaration->value]=1;
+    const auto rhs=std::get<AssignmentExpr>(tree_.expressions[use.store->value].expression).value;
+    if(use.initializer) {
+      plan_.omitted[use.initializer->value]=1;plan_.statements[use.initializer->value].reset();
+    } else plan_.replacements[use.store->value]=rhs;
+  }
   bool Confined(const BindingUses& use, std::optional<StmtId> owner) const {
     if (use.outside_body || !owner || !use.first_container) return false;
     const auto range = containers_[owner->value];
@@ -208,9 +263,9 @@ class Initializers {
     std::size_t ready = 0;
     for (std::size_t i = 0; i < uses_.size(); ++i) {
       budget_.Step();const auto& use = uses_[i];
-      if (!use.initializer || use.writes != 1 || !plan_.statements[use.initializer->value]) continue;
+      if (!PrivateCopy(use)) continue;
       const auto symbol = SymbolId{static_cast<std::uint32_t>(i)};
-      const auto assignment = plan_.statements[use.initializer->value]->assignment;
+      const auto assignment = *use.store;
       const auto value = std::get<AssignmentExpr>(tree_.expressions[assignment.value].expression).value;
       const auto& expression = tree_.expressions[value.value].expression;
       if (std::holds_alternative<TreeLiteral>(expression)) {
@@ -228,8 +283,7 @@ class Initializers {
     }
     for (std::size_t i = 0; i < uses_.size(); ++i) {
       budget_.Step();if (!plan_.literals[i]) continue;
-      plan_.omitted[uses_[i].declaration->value] = 1;plan_.omitted[uses_[i].initializer->value] = 1;
-      plan_.statements[uses_[i].initializer->value].reset();
+      Elide(uses_[i]);
     }
   }
   void Aliases() {
@@ -273,16 +327,14 @@ class Initializers {
           Confined(use,lexical_[use.definition->value])) {
         roots[i]=symbol;constant_queue_[ready++]=symbol;continue;
       }
-      if(!use.initializer||use.writes!=1)continue;
-      if(!plan_.statements[use.initializer->value]) {
+      if(use.writes!=1||!CompletedStore(use)||plan_.literals[i])continue;
+      if(!PrivateCopy(use)) {
         // A retained source/cell first store uses the identical availability
         // proof. A deleted constant store cannot provide retained storage.
-        if(!plan_.omitted[use.initializer->value]&&FirstStored(use)) {
-          roots[i]=symbol;constant_queue_[ready++]=symbol;
-        }
+        roots[i]=symbol;constant_queue_[ready++]=symbol;
         continue;
       }
-      const auto assignment=plan_.statements[use.initializer->value]->assignment;
+      const auto assignment=*use.store;
       const auto rhs=std::get<AssignmentExpr>(tree_.expressions[assignment.value].expression).value;
       if(const auto* copy=std::get_if<SymbolExpr>(&tree_.expressions[rhs.value].expression)) {
         constant_next_[i]=constant_heads_[copy->symbol.value];constant_heads_[copy->symbol.value]=symbol;
@@ -306,7 +358,10 @@ class Initializers {
     budget_.Array(occurrences,tree_.expressions.size());
     for(std::size_t i=0;i<roots.size();++i) {
       budget_.Step();if(!roots[i]||roots[i]->value==i)continue;
-      const auto assignment=plan_.statements[uses_[i].initializer->value]->assignment;
+      // A statement store disappears entirely. An embedded store still yields
+      // its RHS at that occurrence; lexical resolution remains required there.
+      if(!uses_[i].initializer)continue;
+      const auto assignment=*uses_[i].store;
       copy_targets[std::get<AssignmentExpr>(tree_.expressions[assignment.value].expression).value.value]=SymbolId{static_cast<std::uint32_t>(i)};
     }
     std::size_t count=0;
@@ -325,7 +380,7 @@ class Initializers {
       }
     };
     for(std::size_t i=0;i<count;++i) {
-      budget_.Step();if(visible[i])continue;
+      budget_.Step();if(visible[i]&&RootLifetime(references[i].symbol,occurrences[i]))continue;
       const auto occurrence=occurrences[i];const auto source=std::get<SymbolExpr>(tree_.expressions[occurrence.value].expression).symbol;
       // A copy RHS ceases to be a read when its store is elided. Only if the
       // destination must remain does its unavailable root force source storage.
@@ -337,8 +392,7 @@ class Initializers {
     }
     for(std::size_t i=0;i<roots.size();++i) {
       budget_.Step();if(!roots[i]||roots[i]->value==i||blocked[i])continue;
-      plan_.aliases[i]=roots[i];plan_.omitted[uses_[i].declaration->value]=1;
-      plan_.omitted[uses_[i].initializer->value]=1;plan_.statements[uses_[i].initializer->value].reset();
+      plan_.aliases[i]=roots[i];Elide(uses_[i]);
     }
   }
   BindingInitializers Finish() {
@@ -354,6 +408,8 @@ class Initializers {
   void Observe(SymbolId symbol, ExprId expression, std::optional<StmtId> container,
       bool write, std::optional<StmtId> projector) {
     auto& use = uses_[symbol.value]; if (!use.first) use.first = expression;
+    use.first_region=use.first_region?std::min(*use.first_region,current_region_):current_region_;
+    use.last_region=use.last_region?std::max(*use.last_region,current_region_):current_region_;
     if (projector) {
       RequireTree(projection_count_ < projection_observations_.size(), TreeStructureError::kOwnership);
       projection_observations_[projection_count_++] = {symbol, *projector};
@@ -373,12 +429,26 @@ class Initializers {
       budget_.Step(); const auto visit = expressions_[--pending];
       const auto& node = tree_.expressions[visit.expression.value].expression;
       if (!visit.finish) {
+        const auto parent_region=current_region_;
+        if(visit.guarded)current_region_=OpenRegion();
         expression_scopes_[visit.expression.value]=scope;
-        expressions_[pending++] = {visit.expression, true};
+        expression_owners_[visit.expression.value]=projector?projector:container;
+        expression_projections_[visit.expression.value]=projector.has_value();
+        expressions_[pending++] = {visit.expression, true,visit.guarded,parent_region};
+        const auto first_child=pending;
         VisitExpressionChildren(tree_, node, [&](ExprId child) {
           budget_.Step(); RequireTree(pending < expressions_.size(), TreeStructureError::kOwnership);
-          expressions_[pending++] = {child};
+          const auto* logical=std::get_if<LogicalExpr>(&node);
+          const auto* conditional=std::get_if<ConditionalExpr>(&node);
+          const bool guarded=(logical&&child==logical->right)||(conditional&&child!=conditional->condition);
+          expressions_[pending++] = {child,false,guarded};
         });
+        // VisitExpressionChildren owns source evaluation order. A LIFO worklist
+        // must reverse its pushed children, never evaluate arguments backwards.
+        // Short-circuit/choice arms have distinct execution regions; a completed
+        // store cannot initialize observations outside its activation. RHS
+        // completion precedes identifier PutValue, including await/yield failure.
+        std::reverse(expressions_.begin()+first_child,expressions_.begin()+pending);
         if (const auto* read = std::get_if<SymbolExpr>(&node)) Observe(read->symbol, visit.expression, container, false, projector);
         if (const auto* update = std::get_if<UpdateExpr>(&node)) {
           Observe(update->symbol, visit.expression, container, true, projector);
@@ -394,8 +464,16 @@ class Initializers {
             budget_.Step(); if (alias.target.owner == tree_.owner) uses_[alias.target.symbol.value].escaped = true;
           }
         }
-      } else if (const auto* assignment = std::get_if<AssignmentExpr>(&node)) {
-        if (const auto* target = std::get_if<SymbolTarget>(&assignment->target)) Observe(target->symbol, visit.expression, container, true, projector);
+      } else {
+        if (const auto* assignment = std::get_if<AssignmentExpr>(&node)) {
+          if (const auto* target = std::get_if<SymbolTarget>(&assignment->target)) {
+            Observe(target->symbol, visit.expression, container, true, projector);
+            auto& use=uses_[target->symbol.value];
+            if(use.definition&&!use.store){use.store=visit.expression;use.store_region=current_region_;}
+          }
+        }
+        if(visit.guarded)regions_[current_region_].end=next_region_;
+        current_region_=visit.parent_region;
       }
     }
   }
@@ -443,6 +521,10 @@ class Initializers {
   std::size_t next_container_ = 0;
   std::vector<ExpressionVisit> expressions_;
   std::vector<ScopeId> expression_scopes_;
+  std::vector<std::optional<StmtId>> expression_owners_;
+  std::vector<std::uint8_t> expression_projections_;
+  std::vector<ContainerRange> regions_;
+  std::size_t current_region_=0,next_region_=1;
   std::vector<std::optional<SymbolId>> constant_heads_, constant_next_;
   std::vector<SymbolId> constant_queue_;
   std::vector<StatementVisit> statements_;

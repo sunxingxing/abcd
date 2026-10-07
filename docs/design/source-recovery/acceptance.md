@@ -1,5 +1,19 @@
 # 验收、证据与实施交接
 
+2026-10-07 规则162：表达式内identifier store按共同语言求值/完成次序
+进入原constant/copy图，短路/choice/handler/loop执行区间保护可用性，
+普通block不设屏障。嵌入copy保留原RHS结果和实际读取；RootLifetime
+保护原生声明及prospective for-let的打印后scope，原绑定/效果/异常/
+暂停保持，无样本/布局条件。264新增树加旧1226，总1490 checked/
+1478完整源；435930独立行为、252有效JS mutation通过。72三profile
+实际lexical cell解码全部共享Local，含36新增恢复的普通实参用例。
+最终生产30/30定向147.90秒；最后逻辑||/?? fixture绑定2/2补测35.71秒。
+fresh ABC-only pasteboard10complete/0partial/9noModule，十mjs与规则161
+相同，总声明140、PasteBoard62及三个for let保持，无新增actual coverage。
+dead-expression/comma、跨执行区间精确定义/一般SSA/每轮capture、未知
+capture/module、全body/style和原结构gate仍开放，Goal active及暂停
+范围保持，证据见status.md。
+
 2026-10-07 规则161：原局部声明完成和保留首次赋值进入同一不可变
 复制图，共用Confined/FirstStored及词法根解析。原let/const、scope/
 store/RHS、身份和效果/异常/暂停保持，无样本/布局/producer名单条件。

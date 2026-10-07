@@ -1,5 +1,21 @@
 # 按用户要求进行的恢复条件审计
 
+规则162补充：表达式child ownership以语言求值顺序扫描，RHS完成后
+记录identifier store；typed statement/short-circuit/choice程序的执行
+区间和first-completion/全部观察证明供共同constant/copy图使用。不以
+独立ExpressionStmt、生产者/opcode名单、同块/邻接、PC/register或
+copy数量作为恢复准入。原声明/效果/RHS完成/NamedEvaluation保持。
+嵌入纯copy替换为原RHS结果，该RHS仍是实际读取，必须参与同一root
+名称解析；被完全省略语句的RHS才可消费原conditional-retention豁免。
+条件store后的区间外读取、earlier/self读取、未知capture/module写、
+handler/loop退出保留原snapshot。执行区间的保守包含不称为语言必要
+条件；跨区间更精细reaching definitions和纯comma省略是实现缺口。
+普通lexical block不创建执行屏障。RootLifetime使用共同原生声明区间
+和读取的lexical/projection owner，证明替换后仍处于实际打印scope。
+特别是prospective for let比canonical symbol scope短，loop外复制
+必须保留；这是打印后可用性义务，不是同块/声明邻接的额外准入。
+旧规则161直接store表示缺口已由共同完成分析替代，没有扩展局部模式。
+
 规则161补充：声明RHS完成（或无initializer let初始化undefined）成为
 共同初始化事件；原生声明先于全部观察、无owned或未知外部写且观察
 位于声明activation时，可供私有复制共用。共用Confined词法包含证明

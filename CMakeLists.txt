@@ -617,7 +617,7 @@ if(BUILD_TESTING)
   target_link_libraries(loop_initializer_test PRIVATE abcd_source abcd_json)
   add_test(NAME loop_initializer_test COMMAND loop_initializer_test)
   add_executable(binding_initializer_test tests/unit/source/binding_initializer_test.cc
-    tests/unit/source/entry_initializer_checks.cc)
+    tests/unit/source/entry_initializer_checks.cc tests/unit/source/expression_initializer_checks.cc)
   target_link_libraries(binding_initializer_test PRIVATE abcd_source abcd_json)
   add_test(NAME binding_initializer_test COMMAND binding_initializer_test)
   add_executable(snapshot_syntax_test tests/unit/source/snapshot_syntax_test.cc tools/tree_position_json.cc)

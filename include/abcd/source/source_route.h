@@ -345,7 +345,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // mapped arguments, writes and unknown captures retain distinct snapshots.
 // Rules 161 retain completed source declarations as immutable copy roots;
 // common observation containment preserves TDZ and activation lifetimes.
-inline constexpr std::uint32_t kRouteEvidenceRules = 161;
+// Rules 162 extend the common completion census to embedded stores; ordered
+// execution regions preserve conditional availability and expression results.
+inline constexpr std::uint32_t kRouteEvidenceRules = 162;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

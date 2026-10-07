@@ -90,7 +90,32 @@ native initializer/每轮binding与phi/update临时值消除仍是表示缺口�
 不描述为语言/VM限制。具体解码/独立行为、scope/throw/await/yield反例
 及实际record证据见status.md；两个实际for不能代替阶段一完整body风格。
 
-## 私有结果的初始化声明（规则 154/155/156/157/158/159/160/161）
+## 私有结果的初始化声明（规则 154/155/156/157/158/159/160/161/162）
+
+规则162将任意owned表达式中的identifier store完成纳入同一census，
+共享child ownership按语言从左到右观察，RHS完成后才记PutValue。
+语句控制子程序、logical RHS与conditional arm提供执行区间，
+首次完成store及全部观察包含证明可用性和activation生命周期；同一
+constant/copy图消费ExprId，不再要求赋值独立成为ExpressionStmt。
+声明投影仍复用原词法包含证明，源变量的声明/赋值位置和命名语义保持。
+普通block按顺序执行，不人为切断可用性；词法名字仍由共同scope解析
+保护。各读取的原lexical/projection owner在一次索引pass中解析，
+RootLifetime同时检查原生声明的打印区间，包含prospective for let，
+防止复制消除后使loop外读取引用已缩短为loop内的原存储。canonical
+SymbolId scope可见不能替代这项实际打印生命周期义务。
+
+独立语句copy可整体省略；嵌入copy在原位置投影到原pure RHS，保留
+赋值表达式的结果、括号/receiver语义及原表达式/RHS来源范围。该RHS
+仍是实际读取，共同词法解析必须验证；不能沿用已删除语句RHS的
+conditional-retention豁免。短路未执行、另一条件arm、赋值前/自读、
+后续写、捕获、loop退出和handler旧值保持必要存储。未新增producer/
+opcode/样本名单、同块/邻接、PC/register或copy数量条件。
+
+执行区间包含是当前保守可用性证明域，不以它定义语言限制；跨区间
+精确reaching definitions、一般SSA干涉仍待贯通。连续纯值读取的comma
+表达式可能保留，后续需要共同dead-expression投影，不拒绝完整函数。
+72三profile实际lexical cell解码的普通实参和成员写入都验证共享Local；
+独立参数顺序、分支、暂停、身份和嵌入RHS遮蔽证据见status.md。
 
 规则161将声明完成作为同一初始化模型中的事件。DeclarationStmt的RHS
 先扫描，在无更早绑定观察时记录完成；无initializer的let在该位置
@@ -111,8 +136,8 @@ class的NamedEvaluation、分配/getter/call效果与await/yield初始化的
 当前要求声明先于全部绑定观察，是共同first-completion证明的保守域；
 已有更早读取不导致整个函数拒绝，继续打印原声明和复制。更精细的
 独立观察支配/活跃期证明仍是一般SSA分析的缺口。
-当前first-store投影只收集直接ExpressionStmt赋值；实参内嵌套
-AssignmentExpr仍保留复制，下一步需要共同表达式完成/观察投影。72
+规则161当时first-store投影只收集直接ExpressionStmt赋值；规则162已
+贯通实参内AssignmentExpr的共同表达式完成/观察投影。72
 三profile实际lexical cell解码中，36成员写入的原共同早期快照已可
 共用Local，独立key/Proxy setter行为另验；没有field/opcode生产特例。
 
