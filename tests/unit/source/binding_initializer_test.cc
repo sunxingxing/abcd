@@ -88,10 +88,27 @@ struct Fixture {
     if (form == 15) body.push_back(Stmt(ExpressionStmt{Read(2)}));
     if (form == 16) body.push_back(Stmt(ExpressionStmt{Expr(SequenceExpr{Read(2),Call(1)})}));
     if (form == 17) body.push_back(Stmt(ExpressionStmt{Expr(SequenceExpr{Call(1,2),Expr(TreeLiteral{IntegerLiteral{0}})})}));
+    if (form >= 18 && form <= 20) {
+      const auto prefix=Store(form==19?Call(1):Expr(TreeLiteral{IntegerLiteral{0}}));
+      if(form==20) {
+        const ScopeId scope{static_cast<std::uint32_t>(tree.scopes.size())};
+        tree.scopes.push_back({ScopeKind::kBlock,ScopeId{1}});
+        const auto first=static_cast<std::uint32_t>(tree.children.size());tree.children.push_back(prefix);
+        body.push_back(Stmt(BlockStmt{scope,first,1}));
+      } else body.push_back(prefix);
+    }
     if (form == 2) body.push_back(Stmt(ExpressionStmt{Call(1, 2)}));
     ExprId value = form == 3 ? Read(2) : Call(0);
     if (form == 5) value = Expr(AwaitExpr{value}); if (form == 6) value = Expr(YieldExpr{value});
     store = Store(value);
+    if(form==21) {
+      const auto symbol=static_cast<std::uint32_t>(tree.symbols.size());
+      const auto name=static_cast<std::uint32_t>(tree.names.size());tree.names.push_back(u"unused");
+      tree.symbols.push_back({{1},{name},BindingKind::kCompilerTemporary,DeclarationKind::kLet,NameEvidence::kSynthesized,TemporaryReason::kMultipleUses});
+      body.push_back(Stmt(DeclarationStmt{{symbol},{}}));
+      const auto inner=std::get<ExpressionStmt>(tree.statements[store.value].statement).expression;
+      tree.statements[store.value].statement=ExpressionStmt{Expr(AssignmentExpr{SymbolTarget{{symbol}},inner})};
+    }
     if (form == 4) {
       tree.scopes.push_back({ScopeKind::kBlock, ScopeId{1}});
       const auto first = static_cast<std::uint32_t>(tree.children.size()); tree.children.push_back(store);
@@ -640,8 +657,8 @@ int main(int argc, char**) {
     test::Check(large<small*3);
   }
   for (unsigned literal=0;literal<10;++literal) for (bool reverse : {false,true}) Constant(0,1,literal,reverse,argc>1);
-  std::array<std::uint64_t, 18> small{}, large{};
-  for (unsigned form = 0; form < 18; ++form) for (unsigned count : {0U, 1U, 200U, 201U, 400U, 800U}) for (bool reverse : {false,true}) {
+  std::array<std::uint64_t, 22> small{}, large{};
+  for (unsigned form = 0; form < 22; ++form) for (unsigned count : {0U, 1U, 200U, 201U, 400U, 800U}) for (bool reverse : {false,true}) {
     Fixture fixture(form, count); std::ostringstream output;
     if (reverse) fixture.Reverse();
     const auto loops = std::get<LoopSyntax>(PlanLoopSyntax(fixture.tree));
@@ -656,11 +673,12 @@ int main(int argc, char**) {
     const auto printed = PrintFunctionTree(fixture.tree, output);
     test::Check(std::holds_alternative<PrintedFunction>(printed));
     const auto& ranges = std::get<PrintedFunction>(printed);
-    const bool fold = form == 0 || form == 1 || form == 5 || form == 6 || form == 7 || form == 8 || form == 9 || form == 11 || form == 13 || form == 15 || form == 16;
+    if(form==21)test::Check(output.str().find("unused")==std::string::npos);
+    const bool fold = form == 0 || form == 1 || form == 5 || form == 6 || form == 7 || form == 8 || form == 9 || form == 11 || form == 13 || form == 15 || form == 16 || form >= 18;
     const bool folded_declaration=ranges.statements[fixture.declaration.value].begin == ranges.statements[fixture.declaration.value].end;
     if(folded_declaration!=fold)std::cerr<<"declaration form="<<form<<" count="<<count<<" reverse="<<reverse<<'\n'<<output.str()<<'\n';
     test::Check(folded_declaration == fold);
-    const bool forwarded = count == 0 && (form == 0 || form == 1 || form == 5 || form == 6 || form == 8 || form == 9 || form == 15 || form == 16);
+    const bool forwarded = count == 0 && (form == 0 || form == 1 || form == 5 || form == 6 || form == 8 || form == 9 || form == 15 || form == 16 || form >= 18);
     const bool dead = count == 0 && (form == 11 || form == 13);
     if (forwarded || dead) test::Check(output.str().find("saved") == std::string::npos);
     else if (fold) test::Check(output.str().find(form == 1 || form == 7 ? "let saved = " : "const saved = ") != std::string::npos);

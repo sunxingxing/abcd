@@ -24,6 +24,41 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则212，从当前定义选择声明位置并分离位置状态
+
+- DeclarationCandidates 遍历当前 RecoveryFlow 定义，使用共同 discarded
+  ownership、归一化表达式根及已有声明语法容器。按支配前序选候选，
+  再核验全部保留读写；候选自身也是写入引用，故无需逐候选重走图。
+  正常写回与词法范围证明保持，不使用原始首次赋值或节点编号选位置。
+- DeclarationSite 在声明pass提交时发布，与原始BindingUses分离。
+  快照环境、RootLifetime、存储合并、常量/别名的声明重置均使用实际
+  位置。移除 initializer_container，legacy_initializer 只供尚未
+  迁移的捕获检查使用。任意嵌套写入拆成新语句仍未支持，整语句及
+  已支持for声明位置是表示能力边界，不是CFG布局或语言不变性。
+- 新增死赋值前缀、副作用前缀、拆分块，以及外层无用写入消除后
+  内层赋值成为当前语句根四类组合；覆盖正反编号、0/1/200/201/400/800。
+  旧实现在form18/count1仍输出空声明加赋值，失败88.50秒，证据
+  /tmp/abcd-rule212-red-tests.log。没有新增生产样本或序列匹配。
+- 第一批6/6定向通过228.42秒，/tmp/abcd-rule212-focused-tests.log。
+  后补嵌套语句根测试时该目标已完成编译，时间戳和1,956份输出确认
+  此轮只覆盖前三类新增场景；不把它当作第四类的通过证据。打印器
+  随后修改，快照与死定义四项也纳入修复后的重新验证。
+- 首轮重新构建52项，51项通过、变量恢复独立执行失败，474.04秒，
+  /tmp/abcd-rule212-final-tests.log。嵌套场景暴露普通声明打印仍读取
+  原始外层赋值，生成重复写入并触发TDZ。改为消费计划assignment，
+  普通/for声明共用已提交替换链的范围映射；不修改行为对照。
+- 修复后变量恢复2/2通过188.02秒，
+  /tmp/abcd-rule212-repair-tests.log；1,968份源码、477,568次行为比较、
+  334个错误变体。其余54/54共享打印器相关回归通过330.07秒，
+  /tmp/abcd-rule212-regression-tests.log。修复后共56项不同测试通过，
+  包含循环、快照、死定义、名称、可选访问及Home/PageA实际record对照；
+  未运行暂停的全套、扩展corpus或RSS测试。
+- 新鲜ABC-only导出 build/stage-one/declaration-sites-printer-rule212：
+  19 records，10 complete / 0 partial / 9 noModule，10份源码语法检查
+  通过，正文相对规则211不变，输入SHA256不变；
+  /tmp/abcd-rule212-repair-export-check.json。不是完整corpus或平台执行验收。
+  完整生命期、捕获观察及全局固定点仍开放，阶段一目标保持active。
+
 ### 2026-10-08：规则211，当前完成顺序替代非逃逸绑定的首次观察匹配
 
 - 非逃逸绑定的声明恢复消费当前 RecoveryFlow 的共同支配关系，要求

@@ -27,7 +27,7 @@ function original(row) {
   }
   const value = row.form === 3 ? 'saved' : row.form === 5 ? 'await seed()' : row.form === 6 ? 'yield seed()' : 'seed()';
   return Function('return (' + (row.form === 5 ? 'async ' : '') + 'function' + (row.form === 6 ? '*' : '') + '(seed,report){let saved;' +
-    (row.form === 2 ? 'report(saved);' : row.form === 15 ? 'saved;' : row.form === 16 ? '(saved,report());' : row.form === 17 ? '(report(saved),0);' : '') + (row.form === 4 ? 'if(seed){saved=seed();}' : 'saved='+value+';') +
+    (row.form === 2 ? 'report(saved);' : row.form === 15 ? 'saved;' : row.form === 16 ? '(saved,report());' : row.form === 17 ? '(report(saved),0);' : row.form === 18 ? 'saved=0;' : row.form === 19 ? 'saved=report();' : row.form === 20 ? '{saved=0;}' : '') + (row.form === 4 ? 'if(seed){saved=seed();}' : row.form === 21 ? 'let unused;unused=(saved='+value+');' : 'saved='+value+';') +
     'report(saved);'.repeat(row.count) + (row.form === 1 ? 'saved=seed();' : '') + 'return saved;})')();
 }
 async function observe(fn, row, value, failAt, reject = false, request = 'next', flag = true, iterations = 2, stop = false) {
@@ -460,6 +460,7 @@ for (const row of rows) {
     continue;
   }
   if(row.decoded_cell){const name=String.fromCharCode(...row.cell_name),declaration=declarations.find(node=>node.declarations.some(item=>item.id.name===name));assert.equal(declaration.kind,'let');assert.ok(declaration.declarations.find(item=>item.id.name===name).init);assert.equal(stores.filter(node=>node.expression.left.name===name).length,0);}
+  if(row.form===21)assert.ok(!declarations.some(node=>node.declarations.some(item=>item.id.name==='unused')));
   if(row.forwarded||row.elided) {assert.ok(!declarations.some(node=>node.declarations.some(item=>item.id.name==='saved')));++folded;}
   else if(row.fold || row.branch&&!row.decoded_cell) {assert.ok(initialized.length); ++folded;}
   const generated=Function('return '+row.source)(), reference=original(row);

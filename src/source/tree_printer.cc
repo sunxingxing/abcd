@@ -1355,8 +1355,8 @@ class TreePrinter {
   }
   void StatementNode(ExpressionStmt node, Statement at) {
     if (const auto& initializer = Initializers().statements[at.id.value]) {
-      const auto& assignment = std::get<AssignmentExpr>(Tree().expressions[node.expression.value].expression);
-      BeginExpression(node.expression);
+      const auto& assignment = std::get<AssignmentExpr>(Tree().expressions[initializer->assignment.value].expression);
+      BeginDeclarationExpression(node.expression, initializer->assignment);
       Append(initializer->declaration == DeclarationKind::kConst ? "const " : "let ");
       Name(initializer->symbol); Append(" = ");
       Push(std::string_view(";"));
@@ -1365,6 +1365,22 @@ class TreePrinter {
       return;
     }
     Push(std::string_view(";")); Push(node.expression);
+  }
+  void BeginDeclarationExpression(ExprId original, ExprId retained) {
+    // The declaration pass owns the retained assignment identity. Follow only
+    // its committed projections to transport origins; never reselect a store
+    // from the original syntax (nested dead stores exercise this boundary).
+    while (original != retained) {
+      Step(); BeginExpression(original);
+      const auto replacement = Initializers().replacements[original.value];
+      if (!replacement) throw Error::kUnsupportedContext;
+      if (const auto* sequence = std::get_if<SequenceExpr>(&Tree().expressions[original.value].expression)) {
+        if (*replacement == sequence->right) Push(ProjectSequenceOperand{original, sequence->left});
+        else if (*replacement == sequence->left) Push(ProjectSequenceOperand{original, sequence->right});
+      }
+      original = *replacement;
+    }
+    BeginExpression(retained);
   }
   void StatementNode(const IfStmt& node, Statement at) {
     if(!Nullish().statement_projections.empty() && Nullish().statement_projections[at.id.value]) {
@@ -1569,7 +1585,9 @@ class TreePrinter {
     const auto& binding = *Initializers().statements[root.statement.value];
     const auto& assignment = std::get<AssignmentExpr>(Tree().expressions[binding.assignment.value].expression);
     Push(EndStatement{root.statement});
-    BeginExpression(binding.assignment); Name(binding.symbol); Append(" = ");
+    BeginDeclarationExpression(std::get<ExpressionStmt>(Tree().statements[root.statement.value].statement).expression,
+        binding.assignment);
+    Name(binding.symbol); Append(" = ");
     Push(ExpressionOperand{assignment.value, {ExpressionGrammar::kAssignmentValue}, Tree().symbols[Initializers().Storage(binding.symbol).value].name});
   }
   void Run(LoopBody at) {
