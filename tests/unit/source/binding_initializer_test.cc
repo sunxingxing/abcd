@@ -250,6 +250,134 @@ std::uint64_t Constant(unsigned form, unsigned count, unsigned literal, bool rev
   if (emit) std::cout<<nlohmann::json{{"source",output.str()},{"constant",form},{"count",count},{"literal",literal},{"folded",folded}}<<'\n';
   return plan.work;
 }
+std::uint64_t Alias(unsigned form,unsigned count,bool reverse,bool emit) {
+  Fixture fixture(form==9||form==10?3:0,form==15?0:count);auto& tree=fixture.tree;
+  const auto original=tree.children;tree.children.clear();
+  const auto last=count?static_cast<std::uint32_t>(tree.symbols.size()+count-1):2;
+  for(auto& expression:tree.expressions)if(auto* read=std::get_if<SymbolExpr>(&expression.expression);read&&read->symbol==SymbolId{2})read->symbol={last};
+  std::vector<StmtId> declarations,stores;
+  unsigned previous=2;
+  for(unsigned i=0;i<count;++i) {
+    const auto symbol=static_cast<std::uint32_t>(tree.symbols.size()),name=static_cast<std::uint32_t>(tree.names.size());
+    const auto digits=std::to_string(i);tree.names.push_back(u"copy"+std::u16string(digits.begin(),digits.end()));
+    tree.symbols.push_back({{1},{name},BindingKind::kCompilerTemporary,DeclarationKind::kLet,NameEvidence::kSynthesized,TemporaryReason::kMultipleUses});
+    declarations.push_back(fixture.Stmt(DeclarationStmt{{symbol},{}}));
+    stores.push_back(fixture.Stmt(ExpressionStmt{fixture.Expr(AssignmentExpr{SymbolTarget{{symbol}},fixture.Read(previous)})}));previous=symbol;
+  }
+  std::vector<StmtId> body=declarations;body.push_back(fixture.declaration);body.push_back(fixture.store);
+  body.insert(body.end(),stores.begin(),stores.end());body.insert(body.end(),original.begin()+2,original.end());
+  const auto block=[&](const std::vector<StmtId>& children) {
+    const ScopeId scope{static_cast<std::uint32_t>(tree.scopes.size())};tree.scopes.push_back({ScopeKind::kBlock,ScopeId{1}});
+    const auto first=static_cast<std::uint32_t>(tree.children.size());tree.children.insert(tree.children.end(),children.begin(),children.end());
+    return fixture.Stmt(BlockStmt{scope,first,static_cast<std::uint32_t>(children.size())});
+  };
+  const auto shadow=[&](StmtId owned) {
+    const auto scope=std::get<BlockStmt>(tree.statements[owned.value].statement).scope;
+    const auto symbol=static_cast<std::uint32_t>(tree.symbols.size());tree.symbols.push_back({scope,{2},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
+    const auto declared=fixture.Stmt(DeclarationStmt{{symbol},fixture.Expr(TreeLiteral{IntegerLiteral{123}})});
+    auto& sequence=std::get<BlockStmt>(tree.statements[owned.value].statement);
+    tree.children.insert(tree.children.begin()+sequence.first_child,declared);++sequence.child_count;
+  };
+  if(form==1)body.insert(body.end()-1,fixture.Store(fixture.Call(0)));
+  if(form==2&&count)body.insert(body.begin()+declarations.size()+1,fixture.Stmt(ExpressionStmt{fixture.Call(1,last)}));
+  if(form==3&&count) {
+    const auto at=body.begin()+declarations.size()+2;
+    const auto symbol=static_cast<std::uint32_t>(tree.symbols.size()),name=static_cast<std::uint32_t>(tree.names.size());tree.names.push_back(u"flag");
+    tree.symbols.push_back({{0},{name},BindingKind::kParameter,DeclarationKind::kParameter,NameEvidence::kSynthesized,{}});tree.parameters.push_back({{symbol},{},false});
+    const auto branch=fixture.Stmt(IfStmt{fixture.Read(symbol),block(stores),{}});
+    body.erase(at,at+stores.size());body.insert(body.begin()+declarations.size()+2,branch);
+  }
+  if(form==4||form==5) {
+    const auto first=declarations.size()+2+stores.size();std::vector<StmtId> nested(body.begin()+first,body.end());body.erase(body.begin()+first,body.end());
+    const auto owned=block(nested);
+    if(form==5)shadow(owned);
+    body.push_back(owned);
+  }
+  if(form==14||form==15||form==16) {
+    const auto first=declarations.size()+2+(count?1:0);
+    const auto returned=body.back();if(form==15)tree.expressions[std::get<ReturnStmt>(tree.statements[returned.value].statement).value->value].expression=TreeLiteral{UndefinedLiteral{}};
+    std::vector<StmtId> nested(body.begin()+first,form==15?body.end()-1:body.end());body.erase(body.begin()+first,body.end());
+    if(form==16&&count)nested.insert(nested.end()-1,fixture.Stmt(ExpressionStmt{fixture.Expr(AssignmentExpr{SymbolTarget{{last}},fixture.Call(0)})}));
+    const auto owned=block(nested);shadow(owned);body.push_back(owned);if(form==15)body.push_back(returned);
+  }
+  if(form==6) {
+    const auto owned=block({});const auto scope=std::get<BlockStmt>(tree.statements[owned.value].statement).scope;
+    const auto symbol=static_cast<std::uint32_t>(tree.symbols.size());tree.symbols.push_back({scope,{2},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
+    const auto first=static_cast<std::uint32_t>(tree.children.size());tree.children.push_back(fixture.Stmt(DeclarationStmt{{symbol},fixture.Expr(TreeLiteral{IntegerLiteral{123}})}));
+    std::get<BlockStmt>(tree.statements[owned.value].statement)={scope,first,1};body.insert(body.end()-1,owned);
+  }
+  if(form==7||form==8) {
+    tree.callable=form==7?CallableKind::kAsyncFunction:CallableKind::kGenerator;
+    const auto call=fixture.Call(0);const auto suspended=form==7?fixture.Expr(AwaitExpr{call}):fixture.Expr(YieldExpr{call});
+    body.insert(body.begin()+declarations.size()+2+stores.size(),fixture.Stmt(ExpressionStmt{suspended}));
+  }
+  if(form==9||form==10) {
+    const auto assignment=std::get<ExpressionStmt>(tree.statements[fixture.store.value].statement).expression;
+    const auto rhs=std::get<AssignmentExpr>(tree.expressions[assignment.value].expression).value;
+    tree.expressions[rhs.value].expression=form==9?TreeExpression{EmptyObjectExpr{}}:TreeExpression{EmptyArrayExpr{}};
+  }
+  if(form==11&&count)body.insert(body.end()-1,fixture.Stmt(ExpressionStmt{fixture.Expr(AssignmentExpr{SymbolTarget{{last}},fixture.Call(0)})}));
+  if(form==12){tree.symbols[2].kind=BindingKind::kLocal;tree.symbols[2].temporary.reset();}
+  if(form==13) {
+    const auto returned=*std::get<ReturnStmt>(tree.statements[body.back().value].statement).value;
+    tree.expressions[returned.value].expression=CallExpr{fixture.Read(last),{0,0},CallReference::kValue};
+  }
+  if(form==17) {
+    const auto returned=body.back();const auto begin=declarations.size()+1;
+    const auto protected_body=block(std::vector<StmtId>(body.begin()+begin,body.end()-1));
+    const auto finalizer=block({fixture.Stmt(ExpressionStmt{fixture.Call(1,last)})});
+    body.resize(begin);body.push_back(fixture.Stmt(TryStmt{protected_body,{},finalizer}));body.push_back(returned);
+  }
+  if(form==18||form==19) {
+    const auto symbol=static_cast<std::uint32_t>(tree.symbols.size()),name=static_cast<std::uint32_t>(tree.names.size());tree.names.push_back(u"again");
+    tree.symbols.push_back({{0},{name},BindingKind::kParameter,DeclarationKind::kParameter,NameEvidence::kSynthesized,{}});tree.parameters.push_back({{symbol},{},false});
+    const auto returned=body.back();if(form==18)tree.expressions[std::get<ReturnStmt>(tree.statements[returned.value].statement).value->value].expression=TreeLiteral{UndefinedLiteral{}};
+    const auto loop=fixture.Stmt(LoopStmt{{0},{}}),stops=block({fixture.Stmt(BreakStmt{loop,{}})});
+    const auto begin=declarations.size()+1;std::vector<StmtId> nested{fixture.Stmt(IfStmt{fixture.Expr(UnaryExpr{TreeUnary::kNot,fixture.Call(symbol)}),stops,{}})};
+    nested.insert(nested.end(),body.begin()+begin,body.end()-1);const auto owned=block(nested);
+    tree.scopes[std::get<BlockStmt>(tree.statements[stops.value].statement).scope.value].parent=std::get<BlockStmt>(tree.statements[owned.value].statement).scope;
+    std::get<LoopStmt>(tree.statements[loop.value].statement).body=owned;
+    body.resize(begin);body.push_back(loop);body.push_back(returned);
+  }
+  if(form==20) {
+    const auto first=declarations.size()+2+stores.size();std::vector<StmtId> nested(body.begin()+first,body.end());body.resize(first);
+    auto owned=block(nested);
+    for(unsigned i=0;i<count;++i) {
+      const auto outer=block({owned});tree.scopes[std::get<BlockStmt>(tree.statements[owned.value].statement).scope.value].parent=std::get<BlockStmt>(tree.statements[outer.value].statement).scope;owned=outer;
+    }
+    body.push_back(owned);
+  }
+  const auto first=static_cast<std::uint32_t>(tree.children.size());tree.children.insert(tree.children.end(),body.begin(),body.end());
+  std::get<BlockStmt>(tree.statements[tree.body.value].statement)={{1},first,static_cast<std::uint32_t>(body.size())};
+  tree.anchors.clear();tree.operations.clear();for(unsigned i=0;i<tree.statements.size();++i)if(const auto* sequence=std::get_if<BlockStmt>(&tree.statements[i].statement))for(unsigned at=0;at<=sequence->child_count;++at){const auto anchor=static_cast<std::uint32_t>(tree.anchors.size());tree.anchors.push_back({BlockBoundary{{i},at},{0}});tree.operations.push_back({{anchor},AnchorId{anchor}});}
+  if(reverse) {
+    fixture.Reverse();
+    const auto symbol=[&](SymbolId id){return SymbolId{static_cast<std::uint32_t>(tree.symbols.size()-1-id.value)};};
+    const auto scope=[&](ScopeId id){return ScopeId{static_cast<std::uint32_t>(tree.scopes.size()-1-id.value)};};
+    for(auto& parameter:tree.parameters)parameter.symbol=symbol(parameter.symbol);
+    for(auto& node:tree.expressions) {
+      if(auto* read=std::get_if<SymbolExpr>(&node.expression))read->symbol=symbol(read->symbol);
+      if(auto* assignment=std::get_if<AssignmentExpr>(&node.expression))std::get<SymbolTarget>(assignment->target).symbol=symbol(std::get<SymbolTarget>(assignment->target).symbol);
+    }
+    for(auto& node:tree.statements) {
+      if(auto* declaration=std::get_if<DeclarationStmt>(&node.statement))declaration->symbol=symbol(declaration->symbol);
+      if(auto* block=std::get_if<BlockStmt>(&node.statement))block->scope=scope(block->scope);
+    }
+    for(auto& node:tree.symbols)node.scope=scope(node.scope);std::reverse(tree.symbols.begin(),tree.symbols.end());
+    for(auto& node:tree.scopes)if(node.parent)node.parent=scope(*node.parent);std::reverse(tree.scopes.begin(),tree.scopes.end());
+    tree.parameter_scope=scope(tree.parameter_scope);tree.body_scope=scope(tree.body_scope);
+  }
+  test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
+  const auto plan=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
+  const bool folded=count&&form!=1&&form!=2&&form!=3&&form!=5&&form!=11&&form!=12&&form!=14&&form!=16&&form!=17&&form!=19;
+  test::Check(plan.aliases[reverse?tree.symbols.size()-1-last:last].has_value()==folded);test::Check(!plan.aliases[reverse?tree.symbols.size()-3:2]);
+  std::ostringstream output;const auto printed=PrintFunctionTree(tree,output);test::Check(std::holds_alternative<PrintedFunction>(printed));
+  for(const auto range:std::get<PrintedFunction>(printed).expressions)test::Check(range.begin<=range.end&&range.end<=output.str().size());
+  for(const auto anchor:std::get<PrintedFunction>(printed).anchors)test::Check(anchor>0&&anchor<=output.str().size());
+  if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"alias",form},{"count",count},{"folded",folded}}<<'\n';
+  return plan.work;
+}
 void Decoded(abc::ProfileId profile, unsigned copies, bool split, bool branch, bool emit) {
   using namespace analysis;
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
@@ -410,6 +538,14 @@ std::uint64_t NativeDeep(unsigned form, unsigned depth, bool reverse, bool emit)
 }
 }
 int main(int argc, char**) {
+  for(unsigned form=0;form<21;++form) {
+    std::uint64_t small=0,large=0;
+    for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}) {
+      if(!count&&(form==3||form==5||form==14||form==16))continue;
+      const auto work=Alias(form,count,reverse,argc>1);if(count==400&&!reverse)small=work;if(count==800&&!reverse)large=work;
+    }
+    test::Check(large<small*3);
+  }
   for (unsigned form = 0;form<16;++form) {
     std::uint64_t small=0,large=0;
     for (unsigned count : {0U,1U,200U,201U,400U,800U}) for (bool reverse : {false,true}) {

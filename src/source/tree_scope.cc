@@ -182,11 +182,14 @@ void TreeScopeCheck::Leave(ScopeId scope) {
   }
 }
 void TreeScopeCheck::Reference(SymbolId symbol, bool assignment) {
-  budget_.Step();
-  RequireTree(symbol.value < tree_.symbols.size(), Error::kRange);
-  RequireTree(active_[groups_[symbol.value]] == symbol, Error::kScope);
+  RequireTree(Resolves(symbol), Error::kScope);
   if (assignment)
     RequireTree(tree_.symbols[symbol.value].declaration != DeclarationKind::kConst, Error::kTarget);
+}
+bool TreeScopeCheck::Resolves(SymbolId symbol) {
+  budget_.Step();
+  RequireTree(symbol.value < tree_.symbols.size(), Error::kRange);
+  return active_[groups_[symbol.value]] == symbol;
 }
 void TreeScopeCheck::Declare(SymbolId symbol, ScopeId scope, bool initializer) {
   Reference(symbol);
@@ -233,5 +236,46 @@ void TreeScopeCheck::Finish() {
   for (const auto declaration : declared_) { budget_.Step(); RequireTree(declaration, Error::kBinding); }
   for (const auto scope : entered_) { budget_.Step(); RequireTree(scope, Error::kScope); }
   for (const auto active : active_) { budget_.Step(); RequireTree(!active, Error::kScope); }
+}
+std::vector<std::uint8_t> ResolveTreeReferences(const FunctionTree& tree,
+    std::span<const TreeScopedReference> references, TreeCheckBudget& budget) {
+  TreeScopeCheck scopes(tree,budget);
+  std::vector<std::uint8_t> resolved;
+  std::vector<std::optional<ScopeId>> heads,next;
+  std::vector<std::optional<std::size_t>> queries,following;
+  struct Visit { ScopeId scope; std::optional<ScopeId> child; bool entered = false; };
+  std::vector<Visit> stack;
+  budget.Array(resolved,references.size());budget.Array(heads,tree.scopes.size());
+  budget.Array(next,tree.scopes.size());budget.Array(queries,tree.scopes.size());
+  budget.Array(following,references.size());budget.Array(stack,tree.scopes.size());
+  for (std::size_t i=0;i<tree.scopes.size();++i) {
+    budget.Step();if(const auto parent=tree.scopes[i].parent) {
+      RequireTree(parent->value<tree.scopes.size(),Error::kScope);
+      next[i]=heads[parent->value];heads[parent->value]=ScopeId{static_cast<std::uint32_t>(i)};
+    }
+  }
+  for (std::size_t i=0;i<references.size();++i) {
+    budget.Step();const auto scope=references[i].scope;
+    RequireTree(scope.value<tree.scopes.size(),Error::kScope);
+    following[i]=queries[scope.value];queries[scope.value]=i;
+  }
+  for (std::size_t i=0;i<tree.scopes.size();++i) {
+    budget.Step();if(tree.scopes[i].parent)continue;
+    std::size_t pending=1;stack[0]={ScopeId{static_cast<std::uint32_t>(i)},{}};
+    while(pending) {
+      budget.Step();auto& visit=stack[pending-1];
+      if(!visit.entered) {
+        scopes.Enter(visit.scope);visit.entered=true;visit.child=heads[visit.scope.value];
+        for(auto query=queries[visit.scope.value];query;query=following[*query]) {
+          budget.Step();resolved[*query]=scopes.Resolves(references[*query].symbol);
+        }
+      }
+      if(const auto child=visit.child) {
+        visit.child=next[child->value];RequireTree(pending<stack.size(),Error::kScope);
+        stack[pending++]={*child,{}};
+      } else {scopes.Leave(visit.scope);--pending;}
+    }
+  }
+  return resolved;
 }
 }  // namespace abcd::source

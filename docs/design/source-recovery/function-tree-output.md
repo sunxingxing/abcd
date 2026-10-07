@@ -90,7 +90,33 @@ native initializer/每轮binding与phi/update临时值消除仍是表示缺口�
 不描述为语言/VM限制。具体解码/独立行为、scope/throw/await/yield反例
 及实际record证据见status.md；两个实际for不能代替阶段一完整body风格。
 
-## 私有结果的初始化声明（规则 154/155/156/157/158）
+## 私有结果的初始化声明（规则 154/155/156/157/158/159）
+
+规则159将同一不可变存储证明用于非literal复制。单写、未capture/escape、
+首次store支配全部观察且生命周期包含的私有producer保留原存储；其
+SymbolExpr复制链可共享该存储，原分配/call/getter/await/yield只在原处
+执行。读取使用原ExprId和parent context，名称来自保留的SymbolId，
+不重命名原变量、不重算producer，不合并可变phi/cell或恢复原用户绑定。
+
+共享存储还必须保证读取的词法名字仍解析到该producer。共同
+TreeScopeCheck的spelling group/activation接口批量解析实际发生点的
+canonical ScopeId；既有初始化/投影owner证明提供打印后的生命周期，
+源copy处的availability沿同一包含关系传递。每个scope/query只遍历一次，
+没有逐引用祖先扫描。真实内层遮蔽保留复制，兄弟作用域同名不阻止传播。
+这项检查证明绑定身份，不是同块/寄存器布局准入。
+
+被删除copy的RHS不再是实际读取，不能因此要求额外根名称可见性。若
+该copy必须保留且RHS位置被遮蔽，则通过一次有界依赖worklist保留必要
+上游存储；其他分支可继续共用根。循环零轮/退出读取、finally旧值和
+mutable目标仍遵循原证明，不以更多局部匹配扩展。所有省略store/RHS
+保留原boundary零range，原读取和anchor继续有独立生成位置。
+
+当前仅对共同初始化分析已证明不可变的私有存储建立根。参数/catch/
+函数self的隐式初始化，以及真实const/source绑定、外部capture/module
+的不可变证明仍待贯通，不能只以本函数写入数为零推断它们不可变或已
+初始化。名称解析保守保留canonical绑定；被删除同名声明可能还造成
+冗余存储，是表示缺口，不是语言不变量或整函数拒绝。一般SSA干涉、
+捕获每轮环境与全body/style仍开放。
 
 规则158在同一初始化证明上建立原始值常量格。只有已经证明首次完成
 store支配全部观察、生命周期包含且无capture/escape的私有单写绑定，

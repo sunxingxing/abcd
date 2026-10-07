@@ -1,5 +1,16 @@
 # 验收、证据与实施交接
 
+2026-10-07 规则159：不可变私有复制沿共同首次store/观察scope/capture
+证明共用一个保留producer；TreeScopeCheck批量解析实际根引用，真实
+遮蔽保留复制。删除copy的RHS不再读取，保留需求沿条件依赖有界传播。
+244新有效树加旧524，总768树/756完整生成源，328132行为比较、146
+有效JS mutation，最终30/30定向132.26秒。200/201/400/800深度和链长、
+正反symbol/scope/AST、旧值/异常/暂停/receiver/分配身份已验证。
+fresh ABC-only pasteboard仍10complete/0partial/9noModule，十源解析；
+实际源码与规则158相同，无新增coverage或声明数改善。隐式参数/catch/
+self与外部/source不可变证明、一般SSA干涉、真实变量及每轮capture、
+全部body/style及原结构gate仍开放，Goal active、暂停范围保持。
+
 2026-10-07 规则158：共同首次store/观察scope/capture证明上，单写私有
 TreeLiteral及SymbolExpr复制形成常量格，任意链经有界worklist传播；
 旧值/可变/真实local/capture及分配/call/getter仍保留。有效旧实现RED；

@@ -18,6 +18,8 @@ struct BindingInitializers {
   // SymbolId indexed: original TreeLiteral occurrence for a proven immutable
   // primitive value. Stores and reads keep their own original source ranges.
   std::vector<std::optional<ExprId>> literals;
+  // SymbolId indexed: retained immutable producer storage for an elided copy.
+  std::vector<std::optional<SymbolId>> aliases;
   // Prefix counts of non-elided initializer roots, for constant-time ranges.
   std::vector<std::uint32_t> entry_counts;
   std::size_t allocated_bytes = 0;
@@ -37,8 +39,12 @@ struct BindingInitializers {
 // TreeLiteral definitions propagate through immutable copies. Allocations,
 // calls/getters, mutable values and captured/source bindings retain storage.
 // Literal substitution keeps each read's origin and its actual parent grammar.
-// O(statements + expressions + owned children + symbols + capture references),
-// bounded iterative ownership walks; no per-symbol CFG traversal or SSA merge.
+// Other immutable copies may share a retained producer after common lexical
+// resolution at each remaining read; a required copy propagates upstream only
+// where its RHS cannot resolve the root. No allocation/effect is replayed.
+// Ownership/copy walks are linear; spelling-index construction adds bounded
+// O(B log(B+1)) name comparisons, plus module sorting and compared text units.
+// No per-symbol CFG or per-read ancestor walk, recursive walk or SSA merge.
 [[nodiscard]] std::variant<BindingInitializers, TreeStructureError>
 PlanBindingInitializers(const FunctionTree&, const LoopSyntax&, const NullishSyntax&,
     analysis::SemanticBudget budget = {});

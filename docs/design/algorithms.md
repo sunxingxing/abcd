@@ -1929,9 +1929,49 @@ Tests cover chains and every typed primitive variant, 200/201/400/800 growth,
 arena renumbering, mutable/old-value/exception/suspension cases, number-member
 receiver identity and retained object/array allocation identity.
 
+Rules 159 adds immutable copy propagation for unknown runtime values while
+retaining their one producer. The same first-store, observation-containment and
+capture proof admits private single-write roots and copies. Reusing the indexed
+copy adjacency and bounded queue resolves each chain once; mutable/captured/
+external or unavailable roots remain storage. Allocation, call, getter and
+suspension producers are never moved, cloned or evaluated at a later read.
+
+Name resolution is shared with TreeScopeCheck: ResolveTreeReferences buckets
+queries by canonical ScopeId and traverses indexed scope adjacency iteratively.
+Its same spelling-group/activation index tests root SymbolId identity in O(1)
+per query, without ancestor walks. Existing projection-owner/lifetime containment
+establishes visibility of the shortened printed root lifetime transitively along
+copies; canonical activation protects the remaining root spelling. A query on a
+candidate copy RHS is conditional: only retaining that destination makes its
+RHS a real read. Unavailable ordinary reads seed a second bounded queue; each
+required copy propagates retention to its source only when that RHS cannot
+resolve the root. Each binding is retained once, each dependency visited once.
+Branches still permitted to share storage are not disabled by an unrelated
+required copy. Original read IDs/ranges and every omitted store/RHS boundary
+remain separate, with no canonical AST mutation or renamed source variable.
+
+For N lexical scopes, Q queried reads, B symbols, M module aliases and total
+compared spelling units T, shared name indexing adds O(B log(B+1) +
+M log(M+1) + N + Q + T) work and O(B+M+N+Q) bounded storage. The ownership,
+dependency and retention walks remain O(S+E+K+B+C). T includes validation and
+actual UTF-16 comparison units; this cost is not described as constant-time
+string comparison or purely linear analysis. Printing includes output bytes.
+Standard copy propagation and the existing scoped activation index are
+project-owned implementations with no new dependency or external code/license.
+Tests cover 200/201/400/800 chains/depth, reverse symbol/scope/expression/statement
+IDs, sibling/inner shadowing, conditional RHS disappearance and retention
+cascades, zero/multiple iterations, finally/old values, suspension, function
+receiver and fresh object/array identity. The Node oracle uses the same bounded
+4MB stack as adjacent deep-loop tests, rather than treating a reference compiler
+stack failure as successful engine/source validation. Physical RSS stays paused.
+Implicit entry initialization and external/source immutability remain gaps;
+retained canonical same-name declarations can conservatively prevent elision.
+
 For S statements, E expressions, K owned child/argument/property slots, B symbols
-and C owned class-member capture occurrences, cost is O(S+E+K+B+C), with
-O(S+E+B) scratch/output indexes. Dense class capture occurrences are counted
+and C owned class-member capture occurrences, ownership/initialization cost is
+O(S+E+K+B+C), with
+O(S+E+B) scratch/output indexes before the separately accounted rules 159 scope
+index above. Dense class capture occurrences are counted
 explicitly; there is no per-binding CFG or per-loop ownership traversal.
 The bounded iterative stacks avoid recursive depth limits. Project-owned code
 adds no runtime dependency; existing AST/NamedEvaluation/loop grammar remains

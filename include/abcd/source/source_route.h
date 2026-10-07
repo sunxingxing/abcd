@@ -339,7 +339,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // with the same first-store/observation proof; prior effects stay before it.
 // Rules 158 propagate proven immutable primitive bindings and copies through
 // an indexed constant lattice; unknown/mutable/captured storage stays distinct.
-inline constexpr std::uint32_t kRouteEvidenceRules = 158;
+// Rules 159 share retained immutable producer storage across private copies;
+// common lexical resolution protects every remaining read from shadowing.
+inline constexpr std::uint32_t kRouteEvidenceRules = 159;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

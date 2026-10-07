@@ -1831,7 +1831,7 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/loop_transition.mjs $<TARGET_FILE:loop_transition_test>)
     add_test(NAME loop_initializer_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals --stack-size=4096
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/loop_initializer.mjs $<TARGET_FILE:loop_initializer_test>)
-    add_test(NAME binding_initializer_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
+    add_test(NAME binding_initializer_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals --stack-size=4096
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/binding_initializer.mjs $<TARGET_FILE:binding_initializer_test>)
     add_test(NAME loop_exit_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/loop_exits.mjs $<TARGET_FILE:loop_exit_test>)

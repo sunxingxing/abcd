@@ -1194,6 +1194,9 @@ class TreePrinter {
   void PrintOriginalExpression(ExpressionOperand operand) {
     const auto id=operand.id;
     const auto& expression=Tree().expressions[id.value].expression;
+    if(const auto* read=std::get_if<SymbolExpr>(&expression))if(const auto source=Initializers().aliases[read->symbol.value]) {
+      Name(*source);return;
+    }
     if (const auto* read = std::get_if<SymbolExpr>(&expression)) if (const auto value = Initializers().literals[read->symbol.value]) {
       const auto& literal = Tree().expressions[value->value].expression;
       if (TreeOperandGrouping(literal,operand.context)) { Append("(");Push(std::string_view(")")); }
@@ -1446,7 +1449,7 @@ class TreePrinter {
   void OmitBindingStatement(StmtId id) {
     Result().statements[id.value] = {written_,written_};
     if (const auto* effect = std::get_if<ExpressionStmt>(&Tree().statements[id.value].statement)) {
-      // Only the common constant lattice elides a private assignment. Both
+      // Only the common immutable value plan elides a private assignment. Both
       // original leaves retain zero ranges at the original boundary; a literal
       // substituted into a read uses that read's own ExprId and parent grammar.
       const auto& assignment = std::get<AssignmentExpr>(Tree().expressions[effect->expression.value].expression);

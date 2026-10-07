@@ -12,6 +12,61 @@
 
 ## 当前阶段
 
+### 2026-10-07：规则159，不可变私有复制共用保留存储
+
+- 干净a50c65c7继续，上一轮属于实际进展。BindingInitializers将共同
+  单写/首次完成store/全部观察包含/capture逃逸证明沿任意SymbolExpr
+  复制链组合，读取可共用一个保留producer的存储。原allocation/
+  call/getter/await/yield位置、次数与身份不变；不合并mutable phi/cell，
+  不推测或更名原变量，不按producer/opcode、样本、PC/register、同块/
+  邻接或复制数量准入。原constant传播继续保留。
+- 共同TreeScopeCheck新增Resolves/ResolveTreeReferences，消费原读取
+  的canonical ScopeId，使用同一spelling group/activation及scope/query
+  adjacency，批量证明根SymbolId可见。既有投影owner及包含关系证明
+  打印后的生命周期。内层遮蔽保留存储，兄弟同名不影响合法读取；
+  不新增全函数唯一名或固定深度限制。被删除copy的RHS不再是读取；
+  若目标必须保留且该位置不能解析根，第二个有界worklist沿条件依赖
+  保留必要上游，其他合法分支仍可共用根。原树/ID/read range、被省略
+  store/RHS的原boundary零range及全部anchor保持。
+- 复制/保留队列和ownership仍线性；新增共同name index成本为
+  O(B log(B+1)+M log(M+1)+scopes+queries+比较文本单位)，空间
+  O(B+M+scopes+queries)。不会逐symbol重走CFG或逐引用扫描祖先；
+  实际输出字节另计。没有physical RSS/benchmark达标声明。
+- 新增21树族×六规模×正反arena，四种不适用的零copy变体各跳过
+  正反，共244有效树/完整源；旧524 checked/512源码保留，总768
+  checked/756完整源码。正反同时翻转SymbolId/ScopeId/ExprId/StmtId，
+  200/201/400/800复制链和深作用域、400→800 work小于三倍通过。
+  新有效树先通过结构检查，在旧实现alias断言RED（退出134，0.70秒），
+  证据/tmp/abcd-alias-binding-red.log；不以无效树或拒绝替代成功。
+- 独立Acorn/原生JS oracle累计328132行为比较、146有效JS mutation，
+  folded源350。覆盖任意输入/原异常、提前/条件/后续写、真实Local、
+  sibling/inner shadow、死copy RHS不额外检查、必须保留的复制级联、
+  零/多轮及退出读取、finally旧值、await拒绝/job、yield throw/return、
+  value-call receiver、单次对象/数组alias mutation及不同调用新分配。
+  harness初次await位置错误和隐式undefined return的mutation定位已
+  修正，失败保留；800层生成源触发Node默认编译栈，沿用相邻deep-loop
+  oracle的4MB stack并完成执行，不把reference stack拒绝当作通过。
+- abc_structure/abc_semantic及十四fixture最终构建退出0，既有
+  literal_plan.cc:59 kNoop switch warning保留。早期四项4/4通过17.10秒；
+  最终30项定向30/30通过132.26秒，覆盖binding/loop/snapshot/scope/
+  structure/numeric/class/control/module/family、实际构造十record、Push、
+  ProgressBar、富文本、native名字及loop闭包。最终oracle/build/test/
+  export/style日志为/tmp/abcd-alias-binding-{behavior-final,final-build,
+  tests-final,export-final,style}.log；node --check及git diff --check通过。
+- fresh ABC-only build/stage-one/alias-binding-pasteboard-final：19
+  records/219 methods，10complete/0partial/9noModule、value_tree，无legacy；
+  顶层contract language_numeric_constructors_v1。十份完整源解析，无
+  INCOMPLETE/UNRECOVERED；源码内容与规则158十份相同，实际PasteBoard
+  空声明16、初始化47、const43、总声明63、三个native for let保持。
+  本轮没有新增实际record coverage或声明数减少，不扩大验证结论。
+- 后续继续参数/catch/function-self隐式初始化及source/capture/module
+  不可变证明，不能由本地零写推断已初始化或无外部写。canonical同名
+  绑定的保守额外保留、一般SSA活跃期/干涉、真实变量及每轮capture、
+  compound进入声明、全body/style与原结构/signature/body gate仍开放。
+  阶段一Goal active；full suite、expanded corpus、RSS/benchmark、DFX、
+  scheduler、agents及周期audit继续暂停，固定五ABC106/0未重跑；受控
+  平台不代替设备SDK验收。输入未修改、无新依赖。
+
 ### 2026-10-07：规则158，共同私有原始值常量与复制链传播
 
 - 干净af212204继续。BindingInitializers在既有首次完成store/全部观察

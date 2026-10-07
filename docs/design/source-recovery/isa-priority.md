@@ -1,5 +1,13 @@
 # 全 ISA 优先执行顺序
 
+2026-10-07 规则159：共同不可变/生命周期证明和TreeScopeCheck批量词法
+解析使私有复制共用保留producer存储，分配/效果/暂停不回放。768有效
+树/756完整源，328132独立行为/146 mutation，最终30/30定向132.26秒。
+任意复制链、正反symbol/scope/AST、深作用域及保留级联/旧值保持；
+fresh pasteboard10complete/0partial及十源解析保持，实际源码/声明数
+与规则158相同，无新增actual coverage。下一步隐式入口绑定及一般
+SSA干涉/真实变量/每轮capture；全body/style、原gate及暂停范围保持。
+
 2026-10-07 规则158：已证明不变的私有原始值和任意复制链由共同绑定
 证明/有界依赖worklist传播，不添加样本/布局/opcode列表条件。512完整
 源码317848独立行为/124 mutation，mutable/captured/旧值和对象分配身份
