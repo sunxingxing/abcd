@@ -411,7 +411,7 @@ class TreePrinter {
         } else VisitExpressionChildren(Tree(), expression, [&](ExprId child) {
           NameContext name;
           if (const auto* assignment = std::get_if<AssignmentExpr>(&expression); assignment && child == assignment->value) {
-            if (const auto* target = std::get_if<SymbolTarget>(&assignment->target)) name = Tree().symbols[target->symbol.value].name;
+            if (const auto* target = std::get_if<SymbolTarget>(&assignment->target)) name = Tree().symbols[Initializers().Storage(target->symbol).value].name;
           } else if (const auto* field = std::get_if<FieldDefinitionExpr>(&expression); field && child == field->value) name = field->name;
           push(child, name);
         });
@@ -601,7 +601,7 @@ class TreePrinter {
     if (IsSourceIdentifier(name)) Identifier(name);
     else Quoted(name);
   }
-  void Name(SymbolId id) { Identifier(Tree().names[Tree().symbols[id.value].name.value]); }
+  void Name(SymbolId id) { Identifier(Tree().names[Tree().symbols[Initializers().Storage(id).value].name.value]); }
   template <class T> void Numeric(T value) {
     // General to_chars uses a shortest round-tripping representation. The fixed
     // scratch covers sign, max_digits10, exponent marker/sign and decimal exponent.
@@ -776,7 +776,7 @@ class TreePrinter {
   void Expression(const AssignmentExpr& node) {
     Append("("); Push(std::string_view(")"));
     const auto* symbol = std::get_if<SymbolTarget>(&node.target);
-    Push(ExpressionOperand{node.value, {}, symbol ? NameContext{Tree().symbols[symbol->symbol.value].name} : NameContext{}});
+    Push(ExpressionOperand{node.value, {}, symbol ? NameContext{Tree().symbols[Initializers().Storage(symbol->symbol).value].name} : NameContext{}});
     Push(std::string_view(" = "));
     if (symbol) Push(SymbolName{symbol->symbol});
     else {
@@ -1277,9 +1277,17 @@ class TreePrinter {
     // like omitted Boolean conversions. Keep original identities/origins and
     // nonzero transport ranges; never fabricate a PC or execute the subtree.
     Result().expressions[projection.id.value] = {projection.begin, projection.end};
+    const auto replacement = Initializers().replacements[projection.id.value];
+    bool owned_replacement = false;
     VisitExpressionChildren(Tree(), Tree().expressions[projection.id.value].expression, [&](ExprId child) {
+      owned_replacement |= replacement == child;
       Push(ProjectedExpression{child, projection.begin, projection.end});
     });
+    // A forwarded RHS has left its original omitted statement. If its final
+    // destination is itself omitted, retain its origin at this boundary too.
+    // Direct RHS replacements are already owned children; do not visit twice.
+    if (replacement && !owned_replacement)
+      Push(ProjectedExpression{*replacement, projection.begin, projection.end});
   }
   void Run(Indent indent) {
     constexpr std::string_view kIndent = "  ";
@@ -1338,7 +1346,7 @@ class TreePrinter {
       Name(initializer->symbol); Append(" = ");
       Push(std::string_view(";"));
       Push(ExpressionOperand{assignment.value, {ExpressionGrammar::kAssignmentValue},
-          Tree().symbols[initializer->symbol.value].name});
+          Tree().symbols[Initializers().Storage(initializer->symbol).value].name});
       return;
     }
     Push(std::string_view(";")); Push(node.expression);
@@ -1508,15 +1516,12 @@ class TreePrinter {
   void OmitBindingStatement(StmtId id) {
     Result().statements[id.value] = {written_,written_};
     if (const auto* effect = std::get_if<ExpressionStmt>(&Tree().statements[id.value].statement)) {
-      // Only the common immutable value plan elides a private assignment. Both
-      // original leaves retain zero ranges at the original boundary; a literal
-      // substituted into a read uses that read's own ExprId and parent grammar.
-      const auto& assignment = std::get<AssignmentExpr>(Tree().expressions[effect->expression.value].expression);
+      // Projected, discarded stores can have arbitrary owned RHS trees. Mark
+      // those original occurrences at the omission point, except a forwarded
+      // RHS whose real range belongs to its retained destination.
       Result().expressions[effect->expression.value] = {written_,written_};
-      // A for update is printed before its body. Do not overwrite a forwarded
-      // RHS range if its destination has already been emitted textually.
       if (!Initializers().forwarded_statements[id.value])
-        Result().expressions[assignment.value.value] = {written_,written_};
+        Push(ProjectedExpression{effect->expression,written_,written_});
     }
   }
   void Run(LoopInitializerCursor at) {
@@ -1547,7 +1552,7 @@ class TreePrinter {
     const auto& assignment = std::get<AssignmentExpr>(Tree().expressions[binding.assignment.value].expression);
     Push(EndStatement{root.statement});
     BeginExpression(binding.assignment); Name(binding.symbol); Append(" = ");
-    Push(ExpressionOperand{assignment.value, {ExpressionGrammar::kAssignmentValue}, Tree().symbols[binding.symbol.value].name});
+    Push(ExpressionOperand{assignment.value, {ExpressionGrammar::kAssignmentValue}, Tree().symbols[Initializers().Storage(binding.symbol).value].name});
   }
   void Run(LoopBody at) {
     Result().statements[at.block.value].begin = written_; Push(EndStatement{at.block});

@@ -2,6 +2,7 @@
 #include "../../../src/source/function_tree.h"
 #include "../../../src/source/tree_semantics.h"
 #include "../../../src/source/binding_initializer.h"
+#include "../../../src/source/expression_children.h"
 #include "../../../src/source/loop_syntax.h"
 #include "../../../src/source/nullish_syntax.h"
 #include "abcd/source/tree_printer.h"
@@ -613,9 +614,20 @@ int main(int argc, char**) {
     if (forwarded) test::Check(output.str().find("saved") == std::string::npos);
     else if (fold) test::Check(output.str().find(form == 1 || form == 7 ? "let saved = " : "const saved = ") != std::string::npos);
     const auto store_expression = std::get<ExpressionStmt>(fixture.tree.statements[fixture.store.value].statement).expression;
+    std::vector<bool> omitted(fixture.tree.expressions.size());
+    if (forwarded) omitted[store_expression.value] = true;
+    const auto& projection = std::get<BindingInitializers>(planned);
+    for (std::size_t statement = 0; statement < fixture.tree.statements.size(); ++statement) {
+      if (!projection.omitted[statement] || projection.forwarded_statements[statement]) continue;
+      const auto* effect = std::get_if<ExpressionStmt>(&fixture.tree.statements[statement].statement);
+      if (!effect) continue;
+      std::vector<ExprId> pending{effect->expression};
+      while (!pending.empty()) {const auto id=pending.back();pending.pop_back();omitted[id.value]=true;
+        VisitExpressionChildren(fixture.tree,fixture.tree.expressions[id.value].expression,[&](ExprId child){pending.push_back(child);});}
+    }
     for (std::size_t i = 0; i < ranges.expressions.size(); ++i) {
       const auto at = ranges.expressions[i];
-      test::Check((at.begin == at.end) == (forwarded && i == store_expression.value));
+      test::Check((at.begin == at.end) == omitted[i]);
       test::Check(at.end <= output.str().size());
     }
     for (auto at : ranges.anchors) test::Check(at > 0 && at <= output.str().size());

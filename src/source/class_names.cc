@@ -271,12 +271,12 @@ class NamePlan {
       else {
         const auto& projection = projections_[at.tree];
         if (!projection.literals[read->symbol.value])
-          Symbol(at.tree, projection.aliases[read->symbol.value].value_or(read->symbol));
+          Symbol(at.tree, projection.Storage(read->symbol));
       }
     }
-    if (const auto* update = std::get_if<UpdateExpr>(&expression)) Symbol(at.tree, update->symbol);
+    if (const auto* update = std::get_if<UpdateExpr>(&expression)) Symbol(at.tree, ownership_ == Ownership::kPrinted ? projections_[at.tree].Storage(update->symbol) : update->symbol);
     if (const auto* assignment = std::get_if<AssignmentExpr>(&expression))
-      if (const auto* target = std::get_if<SymbolTarget>(&assignment->target)) Symbol(at.tree, target->symbol);
+      if (const auto* target = std::get_if<SymbolTarget>(&assignment->target)) Symbol(at.tree, ownership_ == Ownership::kPrinted ? projections_[at.tree].Storage(target->symbol) : target->symbol);
     if (const auto* global = std::get_if<GlobalNameExpr>(&expression)) {
       RequireTree(global->name.value < tree.names.size(), Error::kRange);
       Reference(tree.names[global->name.value], 0);

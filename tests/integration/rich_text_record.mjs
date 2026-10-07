@@ -51,7 +51,7 @@ for (const name of [page, prefix+'pages/PageA', prefix+'pages/PageB']) {
   assert.ok(nativeOperands>0, 'native pre-suspension call operand '+name);
 }
 // Separate, bounded representation evidence: preserve all three loop tests.
-// This checks native clauses independently; SSA carrier removal remains open.
+// Check native clauses and update storage independently of private spellings.
 const loops = [];let prefixUpdates=0;
 const pending = [parseJavaScript(sources[page])];
 while (pending.length) {
@@ -73,6 +73,15 @@ while (pending.length) {
 assert.equal(loops.length, 3);assert.ok(prefixUpdates>=2, 'real loop prefix updates exercised');
 assert.equal(loops.filter(loop => loop.type === 'ForStatement' && loop.update).length, 2, 'native carried-state transitions');
 assert.equal(loops.filter(loop => loop.type === 'ForStatement' && loop.init).length, 3, 'native carried-state initialization');
+for (const loop of loops.filter(loop => loop.type === 'ForStatement' && loop.update)) {
+  const updates=[],work=[loop.update];
+  while(work.length){const node=work.pop();if(node.type==='UpdateExpression')updates.push(node);
+    for(const value of Object.values(node)){if(Array.isArray(value))work.push(...value.filter(item=>item?.type));else if(value?.type)work.push(value);}}
+  assert.equal(updates.length,1,'one native induction update');
+  assert.equal(updates[0].argument.type,'Identifier');
+  assert.ok(loop.init.declarations.some(declaration=>declaration.id.name===updates[0].argument.name),
+    'induction update reuses its initialized loop binding');
+}
 assert.ok(loops.every(loop => loop.test.type === 'BinaryExpression' && loop.test.operator === '<'), 'direct native loop comparisons without private condition snapshots');
 const worker = fileURLToPath(new URL('./rich_text_record_worker.mjs', import.meta.url));
 const run = (cases, extra = {}, changed = sources) => {

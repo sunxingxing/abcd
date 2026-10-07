@@ -4,6 +4,14 @@
 这是设计变更，不代表相关接口已经实现。旧文档中“验证/发布义务全部闭合才允许
 输出”、新增 budget/receipt 设施作为功能前置的要求，由本文替代。
 
+规则172实现补充：共同语法图的后向 may-liveness 为私有 copy 存储建立
+干涉事实，成功写入与可抛求值分点；保留异常、循环、await/yield 与 cleanup。
+无干涉的一对存储还须通过初始 undefined 死值、初始化先后、词法解析和
+原生 for-let lifetime 证明。typed storage map 同时贯通 printer、结果存储
+投影和 class-self 引用；不修改 canonical IR 或按循环自增形状匹配。
+冗余 store 的 inert 剩余结果可省略，来源覆盖全部原 owned descendants；
+已转发 RHS 保留实际目的范围。finally/多变量组合仍有保守精度边界。
+
 规则171实现补充：family原生命名预检从保留的statement/parameter根沿
 共同replacement遍历实际目的，省略store不再用旧目的覆盖结果。
 GetValue投影抑制新的隐式name，assignment/property/field的真实子目的

@@ -13,6 +13,53 @@
 ## 当前阶段
 
 
+### 2026-10-07：当前优先里程碑——统一变量恢复架构迁移
+
+用户最新指令优先：停止为初始化、快照、循环、自增分别扩展准入条件。
+规则172存储合并仅为迁移基线，不能宣称共同语义模型已完成。
+下一闭环限定普通函数临时变量与循环携带值：复用已验证 CFG/SSA、效果、
+异常与 TreeFlow 对应，源声明初始化显式接入；定义—使用/复制传播、
+活跃性/干涉、死定义/效果消除、源码绑定/作用域恢复分别消费共同事实。
+打印器只消费计划。必须退出对应旧局部判断的决策路径，不能仅新增接口。
+复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
+既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
+
+### 2026-10-07：规则172迁移基线，私有存储的共同干涉分析
+
+- 从5f1c9865继续，新增 FunctionTree 后向 may-liveness/copy-affinity 图；
+  可抛求值和成功写回分点，含分支/loop/catch/await/yield/保守finally。
+  替换链缓存解析最终读取；不按++、opcode、链长、同块或样本选择。
+  storage map贯通printer/class-self/normal-result投影；冗余inert语句
+  的原来源范围跟随owned children和转发目的，避免失去来源。
+- 暂存的局部义务必须迁移：Coalesce内CompletedStore证明被删empty
+  declaration初始undefined已死，应由共同定义—使用/死定义分析替代；
+  InitializedRead/normal_stores证明TDZ与成功PutValue，由共同绑定生命期/
+  完成模型替代；RootLifetime、declaration_controls/region/native_ready
+  证明改名后作用域与初始化，由共同scope/lifetime计划替代。disjoint
+  matching只是当前组干涉精度限制，不能当语言约束。
+- 新144树变化+5规模源码、23252独立行为对照、8可解析错误合并变异通过。
+  涵盖初始undefined、旧值观察、转换失败、更新后异常、await拒绝、
+  generator throw/return与finally、capture/local/shadow、arena逆序和
+  0/1/200/201/400/800空block。独立多copy对1/200/201/400/800 work
+  为1157/278362/278469/582106/1225674；短byte/work预算返回typed错误。
+  现有循环链回归覆盖1至800复制，最终一个原生loop声明，无新长度分支。
+- CMake -j4重建两个CLI和相关fixture。最终27项定向全部通过114.97秒：
+  新unit/source、binding/local/stored/snapshot/loop系列、class命名/声明/
+  accessor、record合同、语言构造paired、progressbar/rich_text真实record。
+  不是全套或扩大语料。日志/tmp/abcd-binding-final27-tests.log。
+- 最终单input导出build/stage-one/binding-coalesce-rule172-verified，
+  SHA256 854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e；
+  10complete/0partial/9noModule，十份node --check通过。对规则171仅
+  PasteBoard正文改变，两个for直接++自己的初始化变量，移除三个私有
+  中转变量；独立rich_text行为和新增AST性质通过，其余九份正文不变。
+- 过程中真实失败已修复：无返回型推断/测试枚举编译错误、初始化读与
+  PutValue虚假异常边、非法temporary capture夹具、NaN无限循环测试输入、
+  inert省略与for声明计划次序、旧范围/声明数量断言、转发复制链缺失的
+  affinity与来源零位置。未把拒绝/INCOMPLETE当行为通过。
+- 这是局部迁移基线。共同模型、独立小图oracle、一般定义恢复、旧判断
+  退出以及阶段一结构/语义/风格独立验收未完成。全套、扩大语料、RSS/
+  benchmark、DFX、调度与agents仍暂停；没有push、改输入或恢复这些事项。
+
 ### 2026-10-07：规则171，函数/类快照与实际命名目的贯通
 
 - 从干净c887c4fb继续。先核对结构gate与默认参数路径：一般默认表达式

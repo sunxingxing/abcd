@@ -61,9 +61,9 @@ for(const row of rows){
   if(binding) {
     assert.ok(loops[0].init);assert.equal(loops[0].init.type==='VariableDeclaration',row.lexical);
     if(row.lexical)assert.equal(loops[0].init.kind,'let');
-    // Single-use intermediate copies forward into the final retained binding;
-    // loop-carried storage and the original initializer evaluation still remain.
-    if(row.binding===7)assert.equal(loops[0].init.declarations.length,row.count?2:1);
+    // Forward intermediate copies and coalesce the non-interfering final copy;
+    // the original initializer evaluation remains in one loop binding.
+    if(row.binding===7)assert.equal(loops[0].init.declarations.length,1);
     const form=row.binding===1?3:row.binding===2?4:0;
     const run=(fn,initial,next,fault,interrupt=false,reject=false)=>observe(fn,form,initial,next,fault,true,interrupt,initial,reject,
       row.binding===4 || row.binding===5 ? undefined : initial);

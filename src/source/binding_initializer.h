@@ -23,12 +23,22 @@ struct BindingInitializers {
   std::vector<std::optional<ExprId>> literals;
   // SymbolId indexed: retained immutable producer storage for an elided copy.
   std::vector<std::optional<SymbolId>> aliases;
+  // Mutable storage coalescing is separate from immutable value aliases.
+  // Disjoint pairs share a retained lexical binding after interference proof.
+  std::vector<std::optional<SymbolId>> storage;
+  [[nodiscard]] SymbolId Storage(SymbolId symbol) const {
+    const auto root = aliases[symbol.value].value_or(symbol);
+    return storage[root.value].value_or(root);
+  }
   // ExprId indexed: a redundant store projects to its RHS; a unique private
   // snapshot read can consume the original RHS after ordered lifetime proof.
   std::vector<std::optional<ExprId>> replacements;
   // Original ExprId indexed completion summary after proven store/copy
   // projection. Inert means normal, no hook/write/allocation/throw/suspension.
   std::vector<ExpressionEvaluation> evaluations;
+  // Assignment PutValue is normal after RHS completion: writable initialized
+  // declarative storage, with no property setter or unresolved binding lookup.
+  std::vector<std::uint8_t> normal_stores;
   // Prefix counts of non-elided initializer roots, for constant-time ranges.
   std::vector<std::uint32_t> entry_counts;
   // Prefix counts over the canonical block child arena after statement elision.

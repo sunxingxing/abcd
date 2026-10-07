@@ -1809,3 +1809,25 @@ opaque效果后的域相关guard必须有新的值流证据，不能沿用旧ref
 实际void观察，未删除真实写入或来源检查。fixed-five/six-mode导出只改变
 MiniGame和ShoppingFullScreen原void guard的共同投影，样本只作独立测试；
 具体范围、失败/成功和暂停事项见status.md。
+
+
+## 规则172：以共同活跃性证明私有存储合并
+
+binding_interference 从已检查 FunctionTree 的求值/控制完成意义建立图，
+copy 只提出待证变量对；最终读取经替换链缓存解析，不限于原直接叶。
+干涉由真实 read/write、异常及暂停恢复路径决定；
+没有 ++ 模板、同块、邻接、PC/寄存器布局、样本名或固定 selection 数。
+转换抛出在写入前，故 catch 只读转换前旧值时可安全合并；更新后另有可抛
+调用/await，catch 观察旧值时必须保留。yield RETURN 的 finally 读取也保留。
+
+活跃性不能证明词法身份：每个改名后的 occurrence 由共同作用域解析检查，
+原声明与原生 for-let 初始化/生命周期分别证明。删 empty declaration 必须
+证明初始 undefined 不被读取；source local、capture、outside-body 不参与。
+输出 Name 与 class-self 自由引用使用同一 typed storage map，原 IR/证书不改。
+最终惯性 store 的省略按既有完成事实，先更新 loop-entry 投影再生成声明。
+
+保守 finally continuation 并集、一次 disjoint pair 合并、跨捕获/参数环境及
+严格资源合同的命名包装仍是明确实现缺口，不是语言不变量。测试包含逆序
+arena、0/1/200/201/400/800 empty blocks、独立多 copy 对、shadow/capture/
+初始 undefined、catch/await/generator return/throw；独立错误合并 mutations
+必须是可解析 JS 且行为不同。实际 pasteboard 两个循环直接更新原循环变量。

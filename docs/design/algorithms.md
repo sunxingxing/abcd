@@ -5,6 +5,42 @@
 
 ## 输入规模与成本
 
+### 私有存储干涉与 copy coalescing（2026-10-07，规则172）
+
+来源为经典后向 may-liveness 与 copy-affinity coalescing；行业参照
+[LLVM Code Generator 的 register allocation/coalescing](https://llvm.org/docs/CodeGenerator.html#register-allocation)。
+这里是自有 FunctionTree 实现，未复制 LLVM 代码、未引入第三方依赖；
+项目许可适用，维护在 binding_interference/binding_initializer 与共同 printer。
+前提是已检查的 typed FunctionTree 和当前 immutable binding projection。
+
+按唯一语法 ownership 迭代构造原求值次序图。普通结果、抛出、循环回边、
+分支及 break/continue/return 分开；可抛求值与成功后的写入分别建点。
+已初始化声明式读取和可写 PutValue 复用共同 normal-completion 事实。
+await 拒绝和 yield throw/return 保留；finally 当前采用 pending continuation
+的保守并集，可能多拒绝合并，不删真实 cleanup 路径。参数默认值不在此
+body 图内；候选排除 outside-body/capture，不能据此改写参数环境。
+
+读点种下 (point, symbol) 活跃事实，共享一个反向工作表。写点杀死本
+symbol 的活跃传播；对另一活跃 symbol 的写入形成干涉，直接 copy 的
+同值源例外。仅查原 copy-affinity 对，排序/二分，不构造全变量对矩阵。
+替换链缓存解析最终读取，逐边一次，不按链长匹配。
+图 N 点/E 边，A 个 affinity，L 个唯一活跃事实，P 个实际传播的事实-边
+关联：时间 O(N+E+A log A+(L+P) log(L+1)+P log(A+1))，空间
+O(N+E+A+L)。稠密活跃时 L/P 本身可大，不能称整体线性。PMR allocation
+和比较/传播计入既有 byte/work budget；累积 allocation 保守计费，耗尽
+返回 typed 错误。无逐变量全 CFG 重走、无 200/201 算法切换。
+
+一次 disjoint matching 只合并已证明的变量对，避免未经证明的传递干涉；
+一般多变量组仍是精度缺口。还必须证明被删声明的初始 undefined 已死、
+保留声明已初始化、每个映射引用词法解析一致、原生 for-let lifetime
+不变。严格 resource 合同保留可能改变直接 function/class 命名包装分配
+的存储。这些独立语言/资源义务不由活跃性代替。
+
+144 份树变化与 5 个规模函数执行通过；独立行为/反例见 status。
+1/200/201/400/800 对独立存储的 work 为 1157/278362/278469/582106/
+1225674，400→800 为 2.11 倍；empty-block 与逆序 arena 另验。
+这是定向 work 计数，非暂停的全语料 RSS 或 benchmark 验收。
+
 ### 循环进入程序与 for initializer（2026-10-07，规则151）
 
 LoopInitializer按原statement ownership顺序流式遍历，loop进入/退出

@@ -1,4 +1,5 @@
 #include "binding_initializer.h"
+#include "binding_interference.h"
 #include "class_tree.h"
 #include "expression_children.h"
 #include "loop_syntax.h"
@@ -21,7 +22,7 @@ struct BindingUses {
   std::optional<std::size_t> first_container, last_container;
   std::size_t writes = 0;
   bool escaped = false, outside_body = false, initialized_first = false;
-  bool private_storage = false, module_alias = false;
+  bool private_storage = false, module_alias = false, named_creation = false;
 };
 struct ContainerRange { std::size_t begin = 0, end = 0; };
 struct ObservationSite { std::size_t control = 0, region = 0, before = 0, after = 0; };
@@ -52,8 +53,12 @@ class Initializers {
     budget.Array(plan_.forwarded_statements, tree.statements.size());
     budget.Array(plan_.literals, tree.symbols.size());
     budget.Array(plan_.aliases, tree.symbols.size());
+    budget.Array(plan_.storage, tree.symbols.size());
+    budget.Array(declaration_controls_, tree.symbols.size());
+    budget.Array(completion_order_, tree.expressions.size());
     budget.Array(plan_.replacements, tree.expressions.size());
     budget.Array(plan_.evaluations, tree.expressions.size());
+    budget.Array(plan_.normal_stores, tree.expressions.size());
     budget.Array(completions_, tree.expressions.size());
     budget.Array(plan_.entry_counts, loops.initializer_roots.size() + 1);
     budget.Array(plan_.child_counts, tree.children.size() + 1);
@@ -209,6 +214,9 @@ class Initializers {
     Aliases();
     Evaluations();
     ForwardSnapshots();
+    Coalesce();
+    Evaluations();
+    OmitInertStores();
     for (std::size_t i = 0; i < loops_.initializer_roots.size(); ++i) {
       budget_.Step(); plan_.entry_counts[i + 1] = plan_.entry_counts[i] +
           (plan_.omitted[loops_.initializer_roots[i].statement.value] ? 0 : 1);
@@ -240,9 +248,23 @@ class Initializers {
       }
     }
     Evaluations();
+    OmitInertStores();
+    for (std::size_t i = 0; i < loops_.initializer_roots.size(); ++i) {
+      budget_.Step(); plan_.entry_counts[i + 1] = plan_.entry_counts[i] +
+          !plan_.omitted[loops_.initializer_roots[i].statement.value];
+    }
     return Finish();
   }
  private:
+  void OmitInertStores() {
+    // A projected store whose remaining result is inert needs no discarded
+    // statement. Keep value-observed occurrences and every remaining effect.
+    for (std::size_t i = 0; i < tree_.statements.size(); ++i) {
+      budget_.Step(); const auto* effect = std::get_if<ExpressionStmt>(&tree_.statements[i].statement);
+      if (effect && plan_.replacements[effect->expression.value] &&
+          plan_.evaluations[effect->expression.value] == ExpressionEvaluation::kInert) plan_.omitted[i] = 1;
+    }
+  }
   std::size_t ProjectionCapacity() {
     // Each expression has at most one direct binding observation. Capture
     // edges are separate owned inputs: one creation can expose many cells.
@@ -358,6 +380,81 @@ class Initializers {
       plan_.statements[use.root_store->value].reset();
     }
   }
+  void Coalesce() {
+    const auto eligible = [&](SymbolId symbol) {
+      const auto& use = uses_[symbol.value];
+      return use.private_storage && use.declaration && !use.escaped && !use.outside_body &&
+          !plan_.aliases[symbol.value] && !plan_.literals[symbol.value] &&
+          (ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded || !use.named_creation);
+    };
+    bool candidate = false;
+    for (const auto& expression : tree_.expressions) {
+      budget_.Step(); const auto* assignment = std::get_if<AssignmentExpr>(&expression.expression);
+      if (!assignment) continue;
+      const auto* target = std::get_if<SymbolTarget>(&assignment->target);
+      // The RHS may be a forwarded copy chain. Affinity comes from the common
+      // projected expression model, never from its original local syntax.
+      candidate |= target && eligible(target->symbol);
+    }
+    if (!candidate) return;
+    auto analyzed = FindBindingInterference(tree_, plan_, budget_.Remaining());
+    if (const auto* error = std::get_if<TreeStructureError>(&analyzed)) throw *error;
+    auto facts = std::get<BindingInterference>(std::move(analyzed));
+    budget_.Admit(facts.allocated_bytes, 1); budget_.Step(facts.work);
+    std::vector<std::optional<SymbolId>> proposed;
+    std::vector<std::uint8_t> paired, blocked;
+    budget_.Array(proposed, uses_.size()); budget_.Array(paired, uses_.size()); budget_.Array(blocked, uses_.size());
+    // A disjoint matching avoids transitive interference: every accepted group
+    // has the exact pair proved below, never an unchecked union of affinities.
+    for (auto pair : facts.affinities) {
+      budget_.Step(); if (pair.interference || paired[pair.first.value] || paired[pair.second.value] ||
+          !eligible(pair.first) || !eligible(pair.second)) continue;
+      const auto native = [&](SymbolId symbol) { const auto at = uses_[symbol.value].initializer;
+        return at && plan_.statements[at->value].has_value(); };
+      if (!native(pair.first) && native(pair.second)) std::swap(pair.first, pair.second);
+      // Removing the empty declaration must also remove only a dead initial
+      // undefined value. Shared first-completion proof covers every activation;
+      // liveness alone would allow a live undefined initialization to disappear.
+      if (!CompletedStore(uses_[pair.second.value])) continue;
+      paired[pair.first.value] = paired[pair.second.value] = 1;
+      proposed[pair.second.value] = pair.first;
+    }
+    std::vector<TreeScopedReference> references;
+    std::vector<ExprId> occurrences;
+    std::vector<SymbolId> targets;
+    budget_.Array(references, tree_.expressions.size()); budget_.Array(occurrences, tree_.expressions.size());
+    budget_.Array(targets, tree_.expressions.size()); std::size_t count = 0;
+    for (std::size_t i = 0; i < tree_.expressions.size(); ++i) {
+      budget_.Step(); const auto& expression = tree_.expressions[i].expression;
+      std::optional<SymbolId> symbol;
+      if (const auto* read = std::get_if<SymbolExpr>(&expression)) symbol = plan_.aliases[read->symbol.value].value_or(read->symbol);
+      else if (const auto* update = std::get_if<UpdateExpr>(&expression)) symbol = update->symbol;
+      else if (const auto* assignment = std::get_if<AssignmentExpr>(&expression))
+        if (const auto* target = std::get_if<SymbolTarget>(&assignment->target)) symbol = target->symbol;
+      if (!symbol || !proposed[symbol->value]) continue;
+      references[count] = {*proposed[symbol->value], expression_scopes_[i]};
+      occurrences[count] = {static_cast<std::uint32_t>(i)}; targets[count++] = *symbol;
+    }
+    references.resize(count); const auto visible = ResolveTreeReferences(tree_, references, budget_);
+    for (std::size_t i = 0; i < count; ++i) {
+      budget_.Step(); const auto root = references[i].symbol; const auto occurrence = occurrences[i];
+      const auto& use = uses_[root.value]; const auto& site = observations_[occurrence.value];
+      const auto region = regions_[use.definition_region];
+      const bool initialized = site.control > declaration_controls_[root.value] &&
+          site.region >= region.begin && site.region < region.end;
+      const bool native_ready = !use.initializer || !plan_.statements[use.initializer->value] ||
+          (use.store && completion_order_[use.store->value] < completion_order_[occurrence.value]);
+      if (!visible[i] || !RootLifetime(root, occurrence) || !initialized || !native_ready) blocked[targets[i].value] = 1;
+    }
+    for (std::size_t i = 0; i < proposed.size(); ++i) {
+      budget_.Step(); if (!proposed[i] || blocked[i]) continue;
+      const auto root = *proposed[i]; const auto& use = uses_[i];
+      plan_.storage[i] = root; plan_.omitted[use.declaration->value] = 1;
+      if (use.initializer) plan_.statements[use.initializer->value].reset();
+      if (const auto initializer = uses_[root.value].initializer; initializer && plan_.statements[initializer->value])
+        plan_.statements[initializer->value]->declaration = DeclarationKind::kLet;
+    }
+  }
   bool MutableBinding(SymbolId symbol) const {
     // Only a native writable declarative binding has an unobservable PutValue.
     // Import/capture/self bindings need their own mutability/environment proof;
@@ -393,25 +490,26 @@ class Initializers {
       if (const auto replacement = plan_.replacements[id.value]) result = stored[replacement->value];
       else if (const auto* read = std::get_if<SymbolExpr>(&node)) {
         if (!plan_.literals[read->symbol.value]) {
-          const auto source = plan_.aliases[read->symbol.value].value_or(read->symbol);
+          const auto source = plan_.Storage(read->symbol);
           if (MutableBinding(source)) result = source;
         }
       } else if (const auto* assignment = std::get_if<AssignmentExpr>(&node)) {
         if (const auto* target = std::get_if<SymbolTarget>(&assignment->target);
             target && MutableBinding(target->symbol)) {
-          result = target->symbol;
+          result = plan_.Storage(target->symbol);
+          plan_.normal_stores[id.value] = InitializedRead(*result, id);
           if (stored[assignment->value.value] == result)
             plan_.replacements[id.value] = assignment->value;
         }
       } else if (const auto* update = std::get_if<UpdateExpr>(&node)) {
-        if (update->result == UpdateResult::kPrefix && MutableBinding(update->symbol)) result = update->symbol;
+        if (update->result == UpdateResult::kPrefix && MutableBinding(update->symbol)) result = plan_.Storage(update->symbol);
       } else if (const auto* sequence = std::get_if<SequenceExpr>(&node)) result = stored[sequence->right.value];
       else if (const auto* choice = std::get_if<ConditionalExpr>(&node)) result = join(choice->consequent, choice->alternate);
       else if (const auto* logical = std::get_if<LogicalExpr>(&node)) result = join(logical->left, logical->right);
       auto evaluation = IntrinsicEvaluation(node);
       if (const auto replacement = plan_.replacements[id.value]) evaluation = plan_.evaluations[replacement->value];
       else if (const auto* read = std::get_if<SymbolExpr>(&node)) {
-        if (InitializedRead(read->symbol, id)) evaluation = ExpressionEvaluation::kInert;
+        if (InitializedRead(plan_.Storage(read->symbol), id)) evaluation = ExpressionEvaluation::kInert;
       } else if (const auto* receiver = std::get_if<ThisExpr>(&node)) {
         if (receiver->owner == tree_.owner && tree_.callable != CallableKind::kDerivedConstructor &&
             !IsArrowCallable(tree_.callable)) evaluation = ExpressionEvaluation::kInert;
@@ -696,11 +794,14 @@ class Initializers {
         }
       } else {
         RequireTree(completion_count_ < completions_.size(), TreeStructureError::kOwnership);
+        completion_order_[visit.expression.value] = completion_count_;
         completions_[completion_count_++] = visit.expression;
         if (const auto* assignment = std::get_if<AssignmentExpr>(&node)) {
           if (const auto* target = std::get_if<SymbolTarget>(&assignment->target)) {
             Observe(target->symbol, visit.expression, container, true, projector);
             auto& use=uses_[target->symbol.value];
+            const auto& rhs = tree_.expressions[assignment->value.value].expression;
+            use.named_creation |= std::holds_alternative<FunctionExpr>(rhs) || std::holds_alternative<ClassExpr>(rhs);
             if(use.definition&&!use.store){use.store=visit.expression;use.store_region=current_region_;}
           }
         }
@@ -717,6 +818,7 @@ class Initializers {
       if constexpr (std::is_same_v<T, DeclarationStmt>) {
         if (syntax.initializer) Scan(*syntax.initializer, visit.lexical, visit.projector,visit.scope);
         const auto& symbol = tree_.symbols[syntax.symbol.value]; auto& use = uses_[syntax.symbol.value];
+        declaration_controls_[syntax.symbol.value] = control_;
         use.definition=visit.statement;use.initialized_first=!use.first;use.definition_region=current_region_;
         if (!syntax.initializer && (symbol.kind == BindingKind::kCompilerTemporary || symbol.kind == BindingKind::kLocal) &&
             symbol.declaration == DeclarationKind::kLet && visit.container && !visit.projected) {
@@ -745,6 +847,7 @@ class Initializers {
     if (!std::holds_alternative<BlockStmt>(node) && !std::holds_alternative<ExpressionStmt>(node))
       control_events_[control_++] = visit.statement;
   }
+  std::vector<std::size_t> declaration_controls_, completion_order_;
   const FunctionTree& tree_;
   const LoopSyntax& loops_;
   const NullishSyntax& nullish_;
