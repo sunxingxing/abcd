@@ -69,6 +69,7 @@ function constantReference(row) {
   const value=row.constant===14?'{}':row.constant===15?'[]':row.constant===13?'-2':['void 0','null','false','true','42','-0','NaN','Infinity','-Infinity',JSON.stringify('Ā\n𝒳')][row.literal];
   const reports='report(saved);'.repeat(row.count);
   let body=(row.constant===2?'report(saved);':'')+(row.constant===4?'if(seed){saved='+value+';}':'saved='+(row.constant===6?'saved':value)+';')+reports;
+  if(row.constant>=17&&row.constant<=19)body=(row.constant===19?'report(saved);':'')+'saved='+value+';saved='+(row.constant===18?'(report(saved),saved)':'saved')+';'+reports;
   if(row.constant===3)body+='saved=seed();';
   if(row.constant===16)body='if(seed){saved='+value+';}else{return;}'+reports;
   if(row.constant===7)body='try{seed();saved='+value+';'+reports+'}finally{report(saved);}';

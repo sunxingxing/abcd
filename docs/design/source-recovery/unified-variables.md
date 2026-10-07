@@ -65,6 +65,14 @@ read/definition与完成边，可先求解，再用于裁剪前向到达定义�
 资源耗尽仍返回typed错误，不能把未完成轮次声称为稳定结果。
 声明恢复引入的初始化同样进入模型，不能被打印器私自省略。
 
+规则205补充：常量传播也消费当前写入计数，原始写入次数不再承担值传播
+稳定性证明。StoredResults 先于 Constants，之后保留 Constants →
+StoredResults → Aliases 的依赖，因为常量投影可产生新的同值写入。
+每次实际提交统一失效当前分析，后继读取覆盖重新取得当前图；没有固定
+重复轮数或局部 self-copy 匹配。BindingUses::writes 仅余初始 const/let
+拼写选择，已注明由简化后的定义/activation 分析替代。首个候选 store
+定位与完整生命期迁移仍未完成，不能把写入计数迁移当作整个架构闭环。
+
 规则204补充：别名稳定性改为消费当前 RecoveryFlow 的写入引用计数，
 不再用原始 BindingUses::writes 判定零次/唯一写入。冗余同值存储清理
 先于别名恢复；其提交失效 flow/liveness/expression facts，后继通过现有

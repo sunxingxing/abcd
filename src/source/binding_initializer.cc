@@ -195,10 +195,16 @@ class Initializers {
       // finally observations preserve the original undefined/old-value slot.
       // This is scope confinement, never a same-block admission. No SSA merge,
       // expression motion, source const inference or new capture environment.
+      // Transitional const spelling uses the original write census solely to
+      // avoid declaring retained writes immutable. SourceVariables must replace
+      // it with current definition/activation facts after simplification.
       plan_.statements[use.initializer->value] = BindingInitializer{SymbolId{static_cast<std::uint32_t>(i)},
           effect.expression, use.private_storage && use.writes == 1 ? DeclarationKind::kConst : DeclarationKind::kLet};
       if (!loops_.initializer_owners[use.initializer->value]) plan_.omitted[use.declaration->value] = 1;
     }
+    // Literal stability also depends on retained writes. Clear identity stores
+    // before coverage, then clear new identities exposed by literal projection.
+    RunPass(Pass::kStoredResults);
     RunPass(Pass::kConstants);
     // Copy stability consumes the retained writes, after identity-store
     // cleanup. BeginCommit invalidates the flow before alias coverage reads it;
@@ -897,7 +903,7 @@ class Initializers {
   }
   void Constants() {
     const auto eligible=[&](const BindingUses& use) {
-      return use.private_storage && use.declaration && use.writes==1 && use.store && !use.escaped;
+      return use.private_storage && use.declaration && use.store && !use.escaped;
     };
     bool seed=false;
     for(const auto& use:uses_) {
@@ -916,7 +922,7 @@ class Initializers {
     std::size_t ready = 0;
     for (std::size_t i = 0; i < uses_.size(); ++i) {
       budget_.Step();const auto& use = uses_[i];
-      if (!eligible(use) || !coverage.stores[i]) continue;
+      if (!eligible(use) || coverage.writes[i]!=1 || !coverage.stores[i]) continue;
       const auto symbol = SymbolId{static_cast<std::uint32_t>(i)};
       const auto assignment = *use.store;
       const auto value = std::get<AssignmentExpr>(tree_.expressions[assignment.value].expression).value;

@@ -24,6 +24,32 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则205，常量传播消费当前写入事实
+
+- Constants 复用读取覆盖分析的当前写入计数，不再按原始
+  BindingUses::writes 过滤候选或证明唯一写入。原始计数仅余初始
+  const/let 选择；代码注明其不变性义务及未来 SourceVariables 的
+  definition/activation 替代分析，不能再扩展到值传播决策。
+- 冗余同值存储清理先于常量传播，保留常量投影后的清理及别名依赖。
+  沿用统一 BeginCommit 失效与只读分析/批量提交，没有新增自赋值、
+  opcode 序列、同块或样本准入；原始候选 store 定位仍是待迁移项。
+- 新增普通自赋值、带 report 效果自赋值及提前读取初始 undefined 的
+  三类组合，覆盖正反序编号、0/1/200/201/400/800 与工作增长。
+  原始实现失败，55.50秒，/tmp/abcd-rule205-red-tests.log。
+  修复后相关56/56项全部通过，421.74秒。变量恢复1,812份生成函数、
+  463,456个独立行为情景、294个错误变换；Home 1,086次配对执行及
+  362个表示反例情景、PageA 1,422次执行通过。最终证据
+  /tmp/abcd-rule205-tests.log、/tmp/abcd-rule205-test-detail.log。
+  git diff --check 通过。
+- 所有相关目标构建成功，/tmp/abcd-rule205-build.log。
+  ABC-only 导出 build/stage-one/constants-current-writes-rule205：
+  19 records，10 complete / 0 partial / 9 noModule；十份源码语法
+  检查通过，正文与规则204一致，输入 SHA-256 不变。证据
+  /tmp/abcd-rule205-export.log 与 /tmp/abcd-rule205-export-check.json。
+  不将共同算法等价变换覆盖计为真实语料 complete 数量提升。
+- 全局固定点、候选定义定位、完整绑定生命期及阶段一仍开放；
+  保持既定暂停范围，模拟宿主验证不代表真实平台执行。
+
 ### 2026-10-08：规则204，别名稳定性消费当前写入事实
 
 - Aliases 的零次/唯一写入判断改用当前 RecoveryFlow 引用计数，删除
