@@ -577,6 +577,10 @@ if(BUILD_TESTING)
   target_include_directories(suspension_operands_test PRIVATE tests/support)
   target_link_libraries(suspension_operands_test PRIVATE abcd_source)
   add_test(NAME suspension_operands_test COMMAND suspension_operands_test)
+  add_executable(predicate_partition_test tests/unit/source/predicate_partition_test.cc)
+  target_include_directories(predicate_partition_test PRIVATE tests/support)
+  target_link_libraries(predicate_partition_test PRIVATE abcd_source abcd_json)
+  add_test(NAME predicate_partition_test COMMAND predicate_partition_test)
   add_executable(phase_reference_test tests/unit/source/phase_reference_test.cc)
   target_include_directories(phase_reference_test PRIVATE tests/support)
   target_link_libraries(phase_reference_test PRIVATE abcd_source)
@@ -1834,6 +1838,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/completion_baseline.mjs $<TARGET_FILE:control_composition_test>)
     add_test(NAME shared_await_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_await.mjs $<TARGET_FILE:control_composition_test>)
+    add_test(NAME predicate_partition_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/predicate_partition.mjs $<TARGET_FILE:predicate_partition_test>)
     add_test(NAME phase_copy_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phase_copy.mjs $<TARGET_FILE:phase_copy_test>)
     add_test(NAME loop_condition_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals

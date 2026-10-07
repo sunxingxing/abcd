@@ -11,6 +11,12 @@ interval、单次使用、availability及最终catch snapshot校验；原Functio
 这改善实际PasteBoard/PageA/PageB的await表示，不改暂停/恢复协议或默认
 合同；一般SSA消除、更多控制路径与其他结构门槛仍须独立实现和验收。
 
+规则166实现补充：phase调度将控制consumer加入候选forest的现有
+拒绝分区，避免先前getter融合选择阻塞纯比较。结果使用同一FunctionTree
+条件表达式：getter/调用保留原效果与异常root，纯后缀进入if；最终
+独立验证不允许branch承接effectful child。没有新writer或源码文本
+优化，字节码来源/变量身份和原操作数顺序沿共同流程保留。
+
 ## 1. 最终表示和职责
 
 最终表示就是现有 `FunctionTree`：语句/表达式 AST，加符号、作用域、捕获和来源

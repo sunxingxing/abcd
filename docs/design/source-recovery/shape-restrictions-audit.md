@@ -1,5 +1,14 @@
 # 按用户要求进行的恢复条件审计
 
+规则166补充：normal branch缺少throw dispatch是语义义务，但不能因此
+保留已经证明纯的比较后缀。第一遍只提出forest；包含effect的控制root
+由共同拒绝分区整体重排一次，throwing producer恢复快照，pure suffix
+重入条件。最终独立验证仍检查branch child无effect、效果顺序、唯一
+use与catch副本，未将一个compiler序列作为准入。既有PhaseCorridors
+路径覆盖保持；不宣称一般effectful condition可跨控制搬移。三profile/
+复制/寄存器布局/长纯wrapper及handler/effect/coercion/multiple-use
+对照与实际源码行为见status.md。生产不读取任何测试中的AST变异规则。
+
 规则165补充：取消分阶段表达式消费者对SourceEvaluation::kSuspending的
 一律拒绝。await/yield的operand在暂停前求值，可消费共同effect suffix；
 暂停本身仍不是可搬移的Expression。仍由共同唯一def-use、availability、

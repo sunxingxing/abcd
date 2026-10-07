@@ -12,6 +12,51 @@
 
 ## 当前阶段
 
+### 2026-10-07：规则166，条件表达式的共同效果分区
+
+- 从干净b37cbeb5继续；规则165实际await表示改善已提交，属于进展。
+  本轮定位phase planner的贪心边界：getter先合入纯比较，branch因无
+  异常dispatch不能承接整个effect subtree，导致纯比较也物化。第一遍
+  现允许branch进入临时候选forest，随后标记包含effect的控制root，并
+  复用原有一次有界retry分区。throwing producer留在原位置，纯比较/
+  布尔后缀重新合入条件；最终forest仍禁止branch的effectful child。
+- 只修改共同BuildPhaseExpressions候选及拒绝分区，不删除验证约束。
+  单次def-use、availability、effect suffix、SameCatch/exception copies
+  和独立VerifyPhaseExpressions保持；无源文本、样本、指令序列、数量、
+  PC/register/新同块准入。原两遍调度/线性root替换与分区沿用，无fixed
+  point、额外逐变量图遍历或新IR。rules165升166；numeric/constructor
+  合同保持；一般跨分支effect/控制覆盖不在本次宣称范围。
+- predicate_partition_test使用三profile、两register layout、六规模
+  0/1/200/201/400/800 copy与纯wrapper、五种语义情况，共180真实解码/
+  phased import/树语义校验/打印源码。覆盖原catch、仅getter被catch、
+  中间effect、可coerce比较和multiple-use。纯后缀可合成，coercing原
+  effect及多用条件仍保留；每个适用输入都显式检出一次伪造getter融合，
+  无空mutation循环。400/800的planner work小于前一规模3倍。
+- 独立JS reference从语言行为构造，不输入引擎。4140组返回/任意原异常/
+  getter次数/顺序/valueOf与原对象身份对照；66个有效JS错误变异（遗漏/
+  重复getter、错误strict coercion）检出。测试接线的JSON依赖与导入
+  fixture截取已修正；有效旧HEAD构建后新正例RED退出-6，恢复生产修复
+  后通过，不能把编译错误算RED。初次2/2定向21.29秒通过。
+- rule166重建abc_structure/abc_semantic及相关fixture；13项定向13/13
+  通过62.17秒，包括新decoded/source、phase references/copies、规则165
+  suspension、真实富文本/ProgressBar/PageA、await/finally、generator/
+  finally。rich-text原先残留的临时编号mutation改用既有AST选择器，原
+  错误行为仍必须检出；未降低运行时比较。额外变化record另跑Home与
+  EntryAbility独立回归，2/2通过3.22秒；共15个不同定向项通过。
+- fresh ABC-only build/stage-one/predicate-partition-rule166仍19records/
+  219methods，10complete/0partial/9noModule，十份mjs解析且无缺口；
+  EntryAbility私有const $value声明7→5、Home7→6、PasteBoard32→27、
+  ProgressBar12→11，共少9项。恢复if(result===value)、MIME比较和原生
+  truthiness条件，throwing getter/调用保留自己的原执行点；其他六份
+  正文不变。不以字符减少或complete数量替代整体表示/语义验收。
+- 日志/tmp/abcd-predicate-partition-{red,unit-build,focused,behavior,
+  rule166-build,targeted,remaining-records,rule166-export}.log；输入未改，
+  git diff --check通过。阶段一Goal active；一般SSA存储、剩余record
+  独立验收及原fields/globals/signature/body gate仍开放。full suite、
+  expanded corpus、RSS/benchmark、DFX、scheduler、agents与周期audit
+  继续暂停。
+
+
 ### 2026-10-07：规则165，暂停前操作数的共同表达式合成
 
 - 从干净96df5688继续；上一轮HomeModel独立验收已提交，属于实际进展。

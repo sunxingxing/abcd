@@ -1,5 +1,16 @@
 # 验收、证据与实施交接
 
+2026-10-07规则166：phase候选forest现在将normal branch纳入原一次
+拒绝/重分区流程，让throwing producer保留原异常点而纯比较后缀进入
+if条件；最终branch仍无effectful child，独立校验保持。三profile/两
+寄存器布局/六规模/五种语义共180完整生成源码，4140独立行为和66个
+有效错误变异通过；13项相关回归13/13通过，新增实际变化的Home/
+EntryAbility两项2/2通过，共15项。
+fresh pasteboard仍10complete/0partial/9noModule，EntryAbility/Home/
+PasteBoard/ProgressBar共少9项私有快照，其余六份正文不变。尚不代表
+其余record、高层表示或原结构集成gate完成；证据见status.md规则166。
+
+
 2026-10-07规则165：分阶段await/yield root可消费暂停前eager operand，
 暂停不搬移，原单次使用/效果顺序/异常快照证明保持。48个forest与反例
 变异通过；实际解码/生成源的11个定向回归最终通过（两旧mutation编号

@@ -69,11 +69,15 @@ void Schedule(const ValueProgram& graph, EvaluationPlan& plan, PhaseCorridors& c
       // A resultless consumer is the final execution owner. Its catch contract
       // must already admit an effect subtree; a later ancestor cannot repair
       // that obligation. Retain the existing snapshot when evidence is absent.
-      if (!op.result && child.count && !corridors.SameCatch(*producer, id)) continue;
-      // A branch has no throw dispatch of its own. Only a pure subtree may
-      // end there under this contract; effectful conditions retain snapshots
-      // until their conditional execution/handler ownership is represented.
-      if (std::holds_alternative<ValueBranch>(op.operation) && child.count) continue;
+      const bool branch = std::holds_alternative<ValueBranch>(op.operation);
+      // The first pass proposes a forest, not a publishable schedule. Include
+      // a control consumer so rejection can partition the entire owned tree:
+      // retain throwing producers, then compose its pure comparison suffix.
+      // Otherwise an early getter/comparison choice hides that legal suffix.
+      if (!op.result && child.count && (retry || !branch) && !corridors.SameCatch(*producer, id)) continue;
+      // Normal control has no throw dispatch. The partitioned final forest
+      // still admits only pure children; provisional effects are rejected below.
+      if (retry && branch && child.count) continue;
       if (plan.operations[producer->value].kind != EvaluationKind::kRoot ||
           (child.count && child.end != expected) ||
           !corridors.CanFuse(*producer, id, use)) continue;
@@ -122,8 +126,9 @@ std::variant<PhaseEvaluationCost, EvaluationError> BuildPhaseExpressions(
       budget.Step(); const OpId id{static_cast<std::uint32_t>(i)};
       if (plan.operations[i].kind == EvaluationKind::kInline &&
           PhaseCorridors::Event(graph.ops[i], plan.operations[i]) &&
-          graph.ops[i].exceptional == ExceptionalCompletion::kMayThrow &&
-          !corridors.SameCatch(id, roots[i])) rejected[roots[i].value] = 1;
+          (std::holds_alternative<ValueBranch>(graph.ops[roots[i].value].operation) ||
+           (graph.ops[i].exceptional == ExceptionalCompletion::kMayThrow &&
+            !corridors.SameCatch(id, roots[i])))) rejected[roots[i].value] = 1;
     }
     // Restore only rejected trees, then partition them in one constrained pass.
     // Accepted trees remain untouched. No fixed-point retry or ancestor walks;
