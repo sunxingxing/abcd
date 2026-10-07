@@ -65,6 +65,15 @@ read/definition与完成边，可先求解，再用于裁剪前向到达定义�
 资源耗尽仍返回typed错误，不能把未完成轮次声称为稳定结果。
 声明恢复引入的初始化同样进入模型，不能被打印器私自省略。
 
+规则208补充：初始声明定位只产生 let；独立 DeclarationKinds pass 在
+存储/循环声明/死定义/表达式清理之后消费当前初始化定义与写入引用，
+为非逃逸私有临时量选择 const。它只提交声明种类，不删除初始化、
+更换存储或移动作用域；实际提交统一失效分析，最终效果摘要随后发布。
+BindingUses::writes 及 Observe 的原始写入计数已移除。源码 let、
+捕获单元和共用一个 let 关键字的原生 for 声明组保持既有表示，整组
+const 恢复不在本次独立声明种类迁移内。完整 declaration placement/
+activation 模型及全局固定点仍待完成。
+
 规则207补充：Aliases 已消费共同 CoveredWrite，BindingUses::store、
 旧 stores 覆盖映射和 Elide 删除函数退出生产决策路径。共同结果记录
 当前 discarded ownership 与归一化表达式根；只有确实拥有整个根的语句

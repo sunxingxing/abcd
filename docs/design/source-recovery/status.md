@@ -24,6 +24,33 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则208，独立最终声明种类恢复
+
+- 初始声明定位先保留 let；DeclarationKinds 在存储、循环声明、
+  死定义与表达式清理后，以当前初始化定义/写入引用及实际存储根
+  决定私有非逃逸临时量的 const。只改变声明种类，不删除初始化、
+  求值或改变作用域；提交统一失效分析，最后再发布表达式摘要。
+- 移除 BindingUses::writes 和 Observe 的原始读写标志/计数。源码
+  let 与未知捕获写入不作 const 推断；原生 for 共享 let 关键字的
+  声明组由既有 LoopDeclarations 处理，未把语法组限制当语言不变性。
+  新分析按引用/定义/声明各线性扫描，额外存储为 O(bindings+statements)。
+- 已有 self-copy 与带副作用 self-copy 场景增加声明种类的独立断言，
+  旧实现失败48.58秒，/tmp/abcd-rule208-red-tests.log。反序编号和
+  0/1/200/201/400/800、工作增长及原始行为oracle保留。定向2/2通过
+  141.00秒；证据 /tmp/abcd-rule208-focused-tests.log、
+  /tmp/abcd-rule208-focused-detail.log。
+- 相关目标构建成功，/tmp/abcd-rule208-regression-build.log；其余54/54项
+  回归全部通过295.87秒。连同定向两项共56项通过，Home/PageA的独立
+  行为及表示验收保持通过。最终证据 /tmp/abcd-rule208-regression-tests.log、
+  /tmp/abcd-rule208-regression-detail.log。变量恢复1,884份函数、465,472个
+  行为情景、306个错误变换通过；git diff --check通过。
+- ABC-only 导出 build/stage-one/declaration-kinds-rule208：19 records，
+  10 complete / 0 partial / 9 noModule；十份源码语法检查通过，正文
+  与规则207一致，输入 SHA-256 不变。证据 /tmp/abcd-rule208-export.log、
+  /tmp/abcd-rule208-export-check.json。不计作实际语料覆盖数量提升。
+- 声明位置/完整生命期、全局固定点及阶段一仍开放；保持既定暂停
+  范围。上述独立执行属于模拟宿主，不代表真实平台验收。
+
 ### 2026-10-08：规则207，别名传播选择当前定义并移除旧 store 字段
 
 - Aliases 复用当前 CoveredWrite，不再从原始第一次赋值寻找 RHS。

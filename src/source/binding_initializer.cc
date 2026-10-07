@@ -21,7 +21,6 @@ struct BindingUses {
   std::optional<StmtId> definition;
   std::optional<ExprId> first;
   std::optional<std::size_t> first_container, last_container;
-  std::size_t writes = 0;
   bool escaped = false, outside_body = false;
   bool private_storage = false, module_alias = false, named_creation = false;
 };
@@ -194,11 +193,10 @@ class Initializers {
       // finally observations preserve the original undefined/old-value slot.
       // This is scope confinement, never a same-block admission. No SSA merge,
       // expression motion, source const inference or new capture environment.
-      // Transitional const spelling uses the original write census solely to
-      // avoid declaring retained writes immutable. SourceVariables must replace
-      // it with current definition/activation facts after simplification.
+      // Declaration placement preserves a mutable binding until the final
+      // declaration-kind pass can inspect all retained writes after cleanup.
       plan_.statements[use.initializer->value] = BindingInitializer{SymbolId{static_cast<std::uint32_t>(i)},
-          effect.expression, use.private_storage && use.writes == 1 ? DeclarationKind::kConst : DeclarationKind::kLet};
+          effect.expression, DeclarationKind::kLet};
       if (!loops_.initializer_owners[use.initializer->value]) plan_.omitted[use.declaration->value] = 1;
     }
     // Literal stability also depends on retained writes. Clear identity stores
@@ -234,6 +232,7 @@ class Initializers {
     // invalidate facts before dependent demand/declaration cleanup.
     if(cleanup_needed)RunPass(Pass::kDeadDefinitions);
     RunPass(Pass::kInertOperands);
+    RunPass(Pass::kDeclarationKinds);
     for (std::size_t i = 0; i < loops_.initializer_roots.size(); ++i) {
       budget_.Step(); plan_.entry_counts[i + 1] = plan_.entry_counts[i] +
           !plan_.omitted[loops_.initializer_roots[i].statement.value];
@@ -245,7 +244,7 @@ class Initializers {
   }
  private:
   enum class Pass { kConstants,kAliases,kStoredResults,kDeadDefinitions,kSnapshots,
-      kStorage,kInertStatements,kInertOperands,kLoopDeclarations };
+      kStorage,kInertStatements,kInertOperands,kLoopDeclarations,kDeclarationKinds };
   enum class PassPhase { kIdle,kAnalysis,kCommit };
   struct ProjectionRevision { std::uint64_t value=0; };
   // The first write enters a one-way commit phase. Analysis cannot observe a
@@ -256,6 +255,7 @@ class Initializers {
     const auto before=projection_revision_.value;
     active_pass_=pass;pass_phase_=PassPhase::kAnalysis;
     switch(pass) {
+      case Pass::kDeclarationKinds:DeclarationKinds();break;
       case Pass::kConstants:Constants();break;
       case Pass::kAliases:Aliases();break;
       case Pass::kSnapshots:ForwardSnapshots();break;
@@ -279,7 +279,8 @@ class Initializers {
       // These passes retain initialization at each retained occurrence.
       // Storage merging proves the new root initialized before every remap.
       case Pass::kStoredResults:case Pass::kDeadDefinitions:
-      case Pass::kInertStatements:case Pass::kInertOperands:case Pass::kStorage:preserve=true;break;
+      case Pass::kInertStatements:case Pass::kInertOperands:case Pass::kStorage:
+      case Pass::kDeclarationKinds:preserve=true;break;
     }
     RequireTree(projection_revision_.value<std::numeric_limits<std::uint64_t>::max(),TreeStructureError::kResourceLimit);
     ++projection_revision_.value;pass_phase_=PassPhase::kCommit;
@@ -289,6 +290,42 @@ class Initializers {
   }
   void RequireAnalysis() const {
     RequireTree(pass_phase_!=PassPhase::kCommit,TreeStructureError::kOwnership);
+  }
+  void DeclarationKinds() {
+    const auto eligible=[&](std::size_t statement) {
+      if(!plan_.statements[statement] || plan_.omitted[statement])return false;
+      if(plan_.statements[statement]->declaration==DeclarationKind::kConst)return false;
+      // Native for declarators share one grammar-level let keyword. Leave that
+      // group to LoopDeclarations; this pass finalizes standalone declarations.
+      if(loops_.initializer_owners[statement])return false;
+      const auto root=plan_.Storage(plan_.statements[statement]->symbol);
+      return uses_[root.value].private_storage && !uses_[root.value].escaped;
+    };
+    bool candidate=false;
+    for(std::size_t i=0;i<plan_.statements.size();++i){budget_.Step();candidate |= eligible(i);}
+    if(!candidate)return;
+    const auto& flow=CurrentFlow();const auto& expressions=AnalyzeExpressions();
+    std::vector<std::size_t> writes;std::vector<std::optional<ExprId>> initializers;
+    budget_.Array(writes,uses_.size());budget_.Array(initializers,uses_.size());
+    for(const auto& reference:flow.references) {
+      budget_.Step();if(reference.kind==FlowReferenceKind::kWrite)++writes[reference.binding.value];
+    }
+    for(const auto& definition:flow.definitions) {
+      budget_.Step();if(definition.kind==FlowDefinitionKind::kInitializer)
+        initializers[definition.binding.value]=definition.write;
+    }
+    std::vector<StmtId> proposed;budget_.Array(proposed,plan_.statements.size());std::size_t count=0;
+    for(std::size_t i=0;i<plan_.statements.size();++i) {
+      budget_.Step();if(!eligible(i))continue;
+      const auto& declaration=*plan_.statements[i];const auto root=plan_.Storage(declaration.symbol);
+      if(writes[root.value]==1 && initializers[root.value]==expressions.roots[declaration.assignment.value])
+        proposed[count++]={static_cast<std::uint32_t>(i)};
+    }
+    // This changes only declaration spelling after the storage/lifetime plan
+    // is final. No initializer, write, scope or evaluation is removed here.
+    for(std::size_t i=0;i<count;++i) {
+      budget_.Step();BeginCommit();plan_.statements[proposed[i].value]->declaration=DeclarationKind::kConst;
+    }
   }
   void ProjectLoopDeclarations() {
     RequireAnalysis();
@@ -1133,14 +1170,13 @@ class Initializers {
     } else use.outside_body = true;
   }
   void Observe(SymbolId symbol, ExprId expression, std::optional<StmtId> container,
-      bool write, std::optional<StmtId> projector) {
+      std::optional<StmtId> projector) {
     auto& use = uses_[symbol.value]; if (!use.first) use.first = expression;
     if (projector) {
       RequireTree(projection_count_ < projection_observations_.size(), TreeStructureError::kOwnership);
       projection_observations_[projection_count_++] = {symbol, *projector};
     }
     else ObserveContainer(use, container);
-    if (write) ++use.writes;
   }
   void Capture(SymbolId symbol, ExprId occurrence, std::optional<StmtId> container,
       std::optional<StmtId> projector) {
@@ -1148,7 +1184,7 @@ class Initializers {
     // Creation is the earliest possible observation through this live cell.
     // Never infer read-only from the parent's lack of writes; child calls may
     // mutate it. Counting creation before RHS completion protects TDZ/throws.
-    Observe(symbol, occurrence, container, false, projector);
+    Observe(symbol, occurrence, container, projector);
   }
   void Captures(const PreparedFamily& prepared, ExprId occurrence,
       std::optional<StmtId> container, std::optional<StmtId> projector) {
@@ -1177,14 +1213,14 @@ class Initializers {
         // Shared flow owns branch/activation and initialization facts. Here
         // RHS completion still precedes the original identifier PutValue.
         std::reverse(expressions_.begin()+first_child,expressions_.begin()+pending);
-        if (const auto* read = std::get_if<SymbolExpr>(&node)) Observe(read->symbol, visit.expression, container, false, projector);
+        if (const auto* read = std::get_if<SymbolExpr>(&node)) Observe(read->symbol, visit.expression, container, projector);
         if (const auto* created = std::get_if<FunctionExpr>(&node)) {
           for (auto symbol : std::span<const SymbolId>(tree_.closure_captures).subspan(created->captures.first, created->captures.count)) {
             budget_.Step(); Capture(symbol, visit.expression, container, projector);
           }
         }
         if (const auto* update = std::get_if<UpdateExpr>(&node)) {
-          Observe(update->symbol, visit.expression, container, true, projector);
+          Observe(update->symbol, visit.expression, container, projector);
         }
         if (const auto* created = std::get_if<ClassExpr>(&node)) {
           const auto& definition = *created->definition;
@@ -1202,7 +1238,7 @@ class Initializers {
         completions_[completion_count_++] = visit.expression;
         if (const auto* assignment = std::get_if<AssignmentExpr>(&node)) {
           if (const auto* target = std::get_if<SymbolTarget>(&assignment->target)) {
-            Observe(target->symbol, visit.expression, container, true, projector);
+            Observe(target->symbol, visit.expression, container, projector);
             auto& use=uses_[target->symbol.value];
             const auto& rhs = tree_.expressions[assignment->value.value].expression;
             use.named_creation |= std::holds_alternative<FunctionExpr>(rhs) || std::holds_alternative<ClassExpr>(rhs);

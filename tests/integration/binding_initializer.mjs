@@ -377,6 +377,10 @@ for (const row of rows) {
   }
   if(row.alias!==undefined) {
     const generated=Function('return '+row.source)(),reference=aliasReference(row);
+    if((row.alias===24&&row.count)||row.alias===25) {
+      const declaration=declarations.find(node=>node.declarations.some(item=>item.id.name==='saved'));
+      assert.equal(declaration?.kind,'const');
+    }
     if(row.alias===12){const declaration=declarations.find(node=>node.declarations.some(item=>item.id.name==='saved'));assert.equal(declaration.kind,'let');assert.ok(declaration.declarations.find(item=>item.id.name==='saved').init);assert.equal(stores.filter(node=>node.expression.left.name==='saved').length,0);}
     if(row.folded){assert.ok(!declarations.some(node=>node.declarations.some(item=>item.id.name.startsWith('copy'))));++folded;}
     if(row.alias===9||row.alias===10)assert.notEqual(generated(()=>{},()=>{}),generated(()=>{},()=>{}));

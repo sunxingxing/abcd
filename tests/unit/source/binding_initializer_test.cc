@@ -407,6 +407,10 @@ std::uint64_t Alias(unsigned form,unsigned count,bool reverse,bool emit) {
   test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
   const auto plan=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
+  if((form==24&&count)||form==25) {
+    test::Check(plan.statements[fixture.store.value].has_value());
+    test::Check(plan.statements[fixture.store.value]->declaration==DeclarationKind::kConst);
+  }
   const bool folded=count&&form!=1&&form!=2&&form!=3&&form!=5&&form!=11&&form!=14&&form!=16&&form!=17&&form!=19&&form!=23&&form!=29;
   test::Check(plan.aliases[reverse?tree.symbols.size()-1-last:last].has_value()==folded);test::Check(!plan.aliases[reverse?tree.symbols.size()-3:2]);
   std::ostringstream output;const auto printed=PrintFunctionTree(tree,output);test::Check(std::holds_alternative<PrintedFunction>(printed));
