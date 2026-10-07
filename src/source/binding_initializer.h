@@ -92,7 +92,9 @@ struct BindingInitializers {
 // name-wrapper allocation is excluded; other contracts may forward them.
 // RHS occurrences keep GetValue (not a member receiver or bare typeof lookup)
 // and their original ownership/ranges, including when for syntax prints earlier.
-// Ownership/copy walks are linear; spelling-index construction adds bounded
+// Ownership/copy census walks are linear; shared flow liveness additionally
+// depends on sparse live facts and traversed fact-edge incidences (algorithms.md).
+// Spelling-index construction adds bounded
 // O(B log(B+1)) name comparisons, plus module sorting and compared text units.
 // No per-symbol CFG or per-read ancestor walk, recursive walk or SSA merge.
 [[nodiscard]] std::variant<BindingInitializers, TreeStructureError>

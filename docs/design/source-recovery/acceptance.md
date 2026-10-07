@@ -1,5 +1,11 @@
 # 验收、证据与实施交接
 
+2026-10-07规则173：按用户统一变量架构任务开始迁移，干涉消费者已退出
+AST解释，改用独立RecoveryFlow；175616小图独立oracle和28项定向通过。
+实际十份pasteboard正文与规则172不变。LegacyFlowProjection、旧初始化/
+生命期/CompletedStore仍在，原IR交接与def-use/死定义/声明计划尚未闭合；
+本次仅为首个消费者迁移，不是架构验收完成。具体退出清单见unified-variables。
+
 2026-10-07规则172迁移基线：27项定向通过，149份新源码/23252行为/
 8错误合并变异，真实PasteBoard两个循环直接更新原loop变量、少三个
 中转变量；其余九份正文不变，10complete/0partial/9noModule。

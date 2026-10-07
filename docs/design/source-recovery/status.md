@@ -24,6 +24,46 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-07：规则173，统一变量恢复的首个图消费者迁移
+
+- 架构契约：[unified-variables.md](unified-variables.md)；分步实施：
+  [2026-10-07-unified-variables.md](../../superpowers/plans/2026-10-07-unified-variables.md)。
+  用户设计直接授权实施，不重新请求方案/agent审批。当前Goal仍active。
+  早期source-variable-recovery.md已标为历史路径，禁止扩大其同块/邻接规则。
+- f656e763为规则172已验证迁移基线。本次提取RecoveryFlow与预算化scratch：
+  source-side定义/事件/双向完成边/源码点映射有独立产物。参数body-entry、
+  let undefined、普通initializer/assignment、catch、update成功写回显式定义；
+  ++读取与求值及写回分点，truth/nullish的分支方向、throw/return/jump、
+  await/yield恢复完成有typed边。normal scope enter/leave显式，非完整生命期。
+- BindingInterference不再有Statement/Expression Build、syntax visitor、
+  IntrinsicEvaluation或FunctionTree参数；它只消费RecoveryFlow。真正退出
+  该消费者的是重复语法解释；尚未退出Coalesce::CompletedStore、
+  InitializedRead、RootLifetime、native_ready等局部决策，已在代码/契约
+  明确其义务和替代方，未追加新的准入条件。
+- LegacyFlowProjection明确标记过渡：现有aliases/replacements/omitted/
+  evaluations/normal_stores仍来自BindingInitializers。当前构造发生在旧
+  printer preparation链中，尚未实现唯一canonical入口或跨consumer共享
+  的完整变量计划。不能把此适配器包装成最终共同模型。
+- 核对发现family已有保留TreeFlow（function_family.h）；普通VerifiedFunction
+  没有同等保留。后续直接复用family证据并补齐普通入口，不能重复保存。
+  原CFG/SSA/效果对应交接、property reference/capture事件、abrupt scope
+  unwind、共同def-use/初始化/死定义、源码声明计划仍待完成。
+- 独立三点/两绑定固定点oracle核对全部175616图的干涉，含自环、不可达
+  和copy；未复用生产稀疏算法。事件测试核对undefined/参数/赋值/update、
+  conditional/and/or/nullish分支、显式throw、await/yield恢复及预算边界。
+  原149源码/23252行为/8变异和200/201/400/800规模沿新消费者通过。
+  新work为1313/298418/298625/622162/1305730（1/200/201/400/800）。
+- 最终相关CLI/fixture重建，28项定向全部通过117.01秒，日志
+  /tmp/abcd-recovery-flow-final28-tests.log。单pasteboard导出
+  build/stage-one/recovery-flow-rule173，10complete/0partial/9noModule；
+  十份node --check通过，全部正文与规则172逐字相同，真实rich_text/
+  progressbar及record合同/语言构造回归通过。无新增实际record覆盖声明。
+- 下一工作从模型到共同分析继续：先完成原证据交接和binding/引用事件，
+  建立定义—使用/初始化事实，再独立处理存储共享与活跃初始化保留，实际
+  移除CompletedStore等已被覆盖判断。任务1仅source adapter/首消费者
+  子步骤完成，不宣布架构或阶段一完成。全套/扩大语料/RSS/benchmark/
+  DFX/调度/agents继续暂停；未push、未改输入。
+
 ### 2026-10-07：规则172迁移基线，私有存储的共同干涉分析
 
 - 从5f1c9865继续，新增 FunctionTree 后向 may-liveness/copy-affinity 图；

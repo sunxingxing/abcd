@@ -290,6 +290,8 @@ class Initializers {
     }
     return count;
   }
+  // Legacy initialization owner until canonical RecoveryFlow definitions replace
+  // this census. New recovery passes must not grow separate TDZ predicates.
   bool InitializedRead(SymbolId symbol, ExprId occurrence) const {
     if (plan_.aliases[symbol.value] || plan_.literals[symbol.value]) return true;
     const auto kind = tree_.symbols[symbol.value].kind;
@@ -397,7 +399,13 @@ class Initializers {
       candidate |= target && eligible(target->symbol);
     }
     if (!candidate) return;
-    auto analyzed = FindBindingInterference(tree_, plan_, budget_.Remaining());
+    const LegacyFlowProjection projection{plan_.aliases,plan_.literals,plan_.replacements,
+        plan_.omitted,plan_.evaluations,plan_.normal_stores};
+    auto built=BuildRecoveryFlow(tree_,projection,budget_.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&built))throw *error;
+    auto flow=std::get<RecoveryFlow>(std::move(built));
+    budget_.Admit(flow.allocated_bytes,1);budget_.Step(flow.work);
+    auto analyzed = FindBindingInterference(flow, budget_.Remaining());
     if (const auto* error = std::get_if<TreeStructureError>(&analyzed)) throw *error;
     auto facts = std::get<BindingInterference>(std::move(analyzed));
     budget_.Admit(facts.allocated_bytes, 1); budget_.Step(facts.work);
@@ -413,8 +421,9 @@ class Initializers {
         return at && plan_.statements[at->value].has_value(); };
       if (!native(pair.first) && native(pair.second)) std::swap(pair.first, pair.second);
       // Removing the empty declaration must also remove only a dead initial
-      // undefined value. Shared first-completion proof covers every activation;
-      // liveness alone would allow a live undefined initialization to disappear.
+      // undefined value. Transitional obligation: DefinitionElision must own
+      // keep/delete decisions, including a live undefined initialization after
+      // storage sharing. Do not expand CompletedStore; see unified-variables.md.
       if (!CompletedStore(uses_[pair.second.value])) continue;
       paired[pair.first.value] = paired[pair.second.value] = 1;
       proposed[pair.second.value] = pair.first;
@@ -533,6 +542,8 @@ class Initializers {
   bool PrivateCopy(const BindingUses& use) const {
     return use.private_storage&&use.declaration&&use.writes==1&&CompletedStore(use);
   }
+  // Transitional for-let lifetime proof; SourceVariables will consume the
+  // shared binding activation/initialization facts, not another scope census.
   bool RootLifetime(SymbolId root,ExprId occurrence) const {
     const auto& use=uses_[root.value];
     if(!use.initializer||!plan_.statements[use.initializer->value])return true;

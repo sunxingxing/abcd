@@ -1831,3 +1831,14 @@ copy 只提出待证变量对；最终读取经替换链缓存解析，不限于
 arena、0/1/200/201/400/800 empty blocks、独立多 copy 对、shadow/capture/
 初始 undefined、catch/await/generator return/throw；独立错误合并 mutations
 必须是可解析 JS 且行为不同。实际 pasteboard 两个循环直接更新原循环变量。
+
+
+## 规则173：共同流模型的过渡责任边界
+
+干涉消费者已删除整个FunctionTree/statement/expression构造分支，新的
+RecoveryFlow承担typed定义/读取/完成模型适配。小图独立oracle通过，
+真实输出保持。不是把Coalesce重命名：该函数仍保留的CompletedStore/
+初始化/生命周期准入逐项列于unified-variables.md，尚未宣称退出。
+LegacyFlowProjection携带旧事实是明确过渡缺口，不是新semantic premise。
+后续只允许扩充共同模型/分析精度并替换旧决策，不扩展初始化/快照/循环
+各自的局部条件。复杂finally保守图不授予binding lifetime变化权限。

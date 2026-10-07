@@ -5,6 +5,27 @@
 
 ## 输入规模与成本
 
+### 共同变量恢复流的首个消费者（2026-10-07，规则173）
+
+规则172的source-side图构造抽出为RecoveryFlow，独立BindingInterference
+只读取图的read/definition/copy/edge，不解释源码AST。参数、empty声明和
+成功赋值是typed定义；update按读取→求值→成功写回分点，完成边区分
+truth/nullish分支、throw/return/jump和暂停恢复。LegacyFlowProjection
+仍为过渡输入，不能用其normal_stores反向宣称canonical初始化已证明。
+
+图构造和替换链缓存O(N+E)，显式definitions/双向edge索引/来源点表增加
+O(N+E)保留存储；整个liveness成本仍按下节A/L/P，不声称整体线性。
+参数定义表示默认值程序之后的body entry。normal scope enter/leave
+已显式，abrupt scope unwind、capture identity、原IR证据复用与def-use
+共同分析仍未闭合；不能据当前scope点表移动绑定生命周期。
+
+独立三点/两绑定oracle用小型稠密固定点扫描，不复用生产稀疏工作表；
+7种read/write/copy action的全部三点组合×512有向图（含自环/不可达）
+共175616图，对照copy-affinity干涉。模型事件测试另验初始化、分支、
+显式throw、await/yield resume与成功写回，原800规模案例沿新消费者。
+1/200/201/400/800对独立存储work为1313/298418/298625/622162/1305730，
+400→800为2.10倍。实际RSS和全套仍暂停；此处不是完整架构验收。
+
 ### 私有存储干涉与 copy coalescing（2026-10-07，规则172）
 
 来源为经典后向 may-liveness 与 copy-affinity coalescing；行业参照

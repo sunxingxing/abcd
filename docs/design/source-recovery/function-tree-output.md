@@ -4,6 +4,14 @@
 这是设计变更，不代表相关接口已经实现。旧文档中“验证/发布义务全部闭合才允许
 输出”、新增 budget/receipt 设施作为功能前置的要求，由本文替代。
 
+规则173迁移起点：RecoveryFlow承担现有source-side事件图构造，干涉分析
+只消费定义/读取/完成边，不再访问FunctionTree。参数body-entry、empty
+声明undefined、赋值、catch和update成功写回有typed定义，truth/nullish
+分支及throw/return/jump/resume有typed完成边。LegacyFlowProjection仍从
+旧planner提供初始化/省略事实；原IR事实交接、异常scope退出/捕获单元
+及共同def-use尚未迁移。不能把这次抽取称为统一变量恢复已完成；明确
+职责、旧判断退出与验收见unified-variables.md。
+
 规则172实现补充：共同语法图的后向 may-liveness 为私有 copy 存储建立
 干涉事实，成功写入与可抛求值分点；保留异常、循环、await/yield 与 cleanup。
 无干涉的一对存储还须通过初始 undefined 死值、初始化先后、词法解析和

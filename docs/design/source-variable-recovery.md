@@ -1,5 +1,9 @@
 # Unified Source Variable Recovery
 
+> Historical legacy-path notes below. Current authoritative architecture and retirement
+> contract: [unified variables](source-recovery/unified-variables.md), adopted 2026-10-07.
+> Old same-block/adjacent/single-slot limitations below must not be expanded.
+
 ## Priority And Boundaries
 
 Recover source bindings on the common function pipeline before expanding ISA

@@ -1,4 +1,5 @@
 #include "../../../src/source/binding_interference.h"
+#include "../../../src/source/binding_initializer.h"
 #include "../../../src/source/loop_syntax.h"
 #include "../../../src/source/nullish_syntax.h"
 #include "../../../src/source/family_print.h"
