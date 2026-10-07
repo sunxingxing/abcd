@@ -33,6 +33,21 @@ for (const name of Object.keys(sources)) {
   reference[name] = classReference(readFileSync(join(root, 'pasteboard_src/src/main/ets', name.slice('entry/src/main/ets/'.length) + '.ts'), 'utf8')).source;
   assert.deepEqual(classLayouts(sources[name]), classLayouts(reference[name]), 'native class representation ' + name);
 }
+// Each recovered async operand may consume its pre-suspension effect subtree.
+// Check syntax independently of runtime outcomes; no temporary spelling or
+// statement adjacency requirement. The paired graph still checks job/throw order.
+for (const name of [page, prefix+'pages/PageA', prefix+'pages/PageB']) {
+  const pending=[parseJavaScript(sources[name])];let nativeOperands=0;
+  while(pending.length) {
+    const node=pending.pop();
+    if(node.type==='AwaitExpression'&&node.argument.type==='CallExpression')++nativeOperands;
+    for(const value of Object.values(node)) {
+      if(Array.isArray(value)){for(const child of value)if(child?.type)pending.push(child);}
+      else if(value?.type)pending.push(value);
+    }
+  }
+  assert.ok(nativeOperands>0, 'native pre-suspension call operand '+name);
+}
 // Separate, bounded representation evidence: preserve all three loop tests.
 // This checks native clauses independently; SSA carrier removal remains open.
 const loops = [];
@@ -95,7 +110,10 @@ const mutations = [
   [page, 'imageArray.buffer.slice(0)', 'imageArray.buffer', 'media buffer copy identity lost'],
   [page, 'mutableStyledString1.appendStyledString($value1)', 'void $value1', 'initial image attachment omitted'],
   [page, 'size: {width: "57px", height: "57px"}', 'size: {width: "58px", height: "57px"}', 'attachment dimensions changed'],
-  [page, 'this.pasteController.setStyledString($value4)', 'this.pasteTextController.setStyledString($value4)', 'html applied to wrong controller'],
+  [page, source => editExpression(source,
+    (node, dependsOn) => callsMember(node, 'setStyledString') && dependsOn(node.arguments[0], value => callsMember(value, 'fromHtml')),
+    (node, text) => text(node.callee.object.object) + '.pasteTextController.setStyledString(' + node.arguments.map(text).join(', ') + ')'),
+    null, 'html applied to wrong controller'],
   [page, source => controller(source, 'pasteController'), null, 'text applied to wrong controller'],
   [page, '$local0.pastePixelMapController.deleteSpans()', 'void 0', 'old pixel spans retained'],
   [page, source => entryAwait(source, 'MIMETYPE_TEXT_HTML', () => '"ignored"'), null, 'html entry value lost'],

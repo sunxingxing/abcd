@@ -1,5 +1,15 @@
 # 按用户要求进行的恢复条件审计
 
+规则165补充：取消分阶段表达式消费者对SourceEvaluation::kSuspending的
+一律拒绝。await/yield的operand在暂停前求值，可消费共同effect suffix；
+暂停本身仍不是可搬移的Expression。仍由共同唯一def-use、availability、
+效果区间拼接、最终root catch/异常快照证明准入，不加样本/同块/邻接条件。
+该变更不扩大既有PhaseCorridors路径覆盖，也不声称一般跨分支/循环暂停
+搬移已支持；分支、额外观察、效果间隔和catch差异继续保留实际快照。
+48个两种暂停/六规模/四边界forest覆盖200/201及线性work；独立verifier
+拒绝伪造跨effect/catch/multiple-use融合和移动暂停节点。真实ABC输出
+与暂停/恢复行为证据见status.md规则165。
+
 规则164补充：源Local不再仅因非CompilerTemporary而保留空声明。
 共同首次完成/全部观察/词法包含证明恢复let initializer，真实let/名字/
 存储保留，capture创建计入观察且不推断子函数只读。逃逸cell额外需要

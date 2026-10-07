@@ -12,6 +12,49 @@
 
 ## 当前阶段
 
+### 2026-10-07：规则165，暂停前操作数的共同表达式合成
+
+- 从干净96df5688继续；上一轮HomeModel独立验收已提交，属于实际进展。
+  本轮定位真实PageA/PageB/PasteBoard await调用前私有快照：共同
+  PhaseCorridors::ConsumesOperands一律拒绝SourceEvaluation::kSuspending。
+  依据语言求值顺序，await/yield先求operand再暂停，故允许eager operand
+  消费既有effect suffix。暂停本身不进入Expression可搬移域，仍在原root。
+  单次def-use、availability、effect interval与最终root SameCatch/异常
+  快照校验保持；没有样本、opcode序列、PC、寄存器或新同块/邻接选择。
+- 完全复用原EvaluationPlan/FunctionTree/printer与独立verifier，不增加
+  IR、writer或额外图遍历，既有复杂度/预算不变。原PhaseCorridors覆盖
+  边界仍存在，本次没有宣称一般跨分支/循环或跨暂停搬移支持。rules164
+  升165，默认数值/构造合同保持。
+- 新suspension_operands_test以await/yield、0/1/200/201/400/800空块
+  split及相同环境/中间effect/handler变化/multiple-use共48个forest验证。
+  正例可合成，后三类保留快照；每例再伪造移动暂停节点，独立verifier
+  均拒绝。后三区域伪造融合也拒绝，400/800的work小于前一规模3倍。
+  测试先修正kTypeOf枚举拼写；随后旧HEAD生产代码构建成功，正例断言
+  RED退出-6，恢复新实现后通过。该单元验证forest，实际解码/源码执行
+  由下面既有file/corpus回归覆盖，不把合成graph冒充ABC完整验收。
+- rich-text测试增加AST独立检查三个record的原生await调用operand。
+  第一轮11项9通过41.29秒；两失败均为旧mutation依赖临时变量编号。
+  PageA移除await与PasteBoard错误HTML controller变异改用现有AST
+  def-use选择器，保留原错误行为检测，不放宽运行时比较。修复后两项
+  2/2通过12.89秒，原11项均有当前通过证据，覆盖phase references、
+  async capture/arrow/finally/suspending-finally、generator/finally及
+  async-generator await。另实际ProgressBar表示变化触发其独立回归，
+  1/1通过7.32秒；共12个不同定向项最终通过。
+- fresh ABC-only build/stage-one/suspension-operands-rule165仍19records/
+  219methods，10complete/0partial/9noModule，ValueTree且无legacy；十份
+  mjs均解析、无INCOMPLETE/UNRECOVERED。四份正文表示改善，const $value
+  声明PageA3→2、PageB3→2、PasteBoard38→32、ProgressBar14→12，共少
+  10项私有快照；如await getSystemPasteboard().setData(data)直接恢复。
+  其余正文不变，不以字符减少或完整数量替代语义/表示验收。
+- abc_structure/abc_semantic及新单元/phase_reference/loop_closure_file
+  构建通过；证据/tmp/abcd-suspension-operands-{red,unit-build,rule165-build,
+  targeted,final-paired,progressbar,rule165-export}.log。全套与更大语料
+  未运行，输入未改动；git diff --check通过。Goal active，原fields/
+  globals/signature/body gate、其余record和一般SSA表示仍开放；full
+  suite、expanded corpus、RSS/benchmark、DFX、scheduler、agents及周期
+  audit继续暂停。
+
+
 ### 2026-10-07：HomeModel 回调、成员调用及构造赋值独立验收
 
 - 从干净7e61f9b4继续。上一轮仅复核已有构造模式，按无进展处理；本轮

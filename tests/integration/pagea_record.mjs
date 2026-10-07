@@ -5,6 +5,7 @@ import {createHash} from 'node:crypto';
 import {dirname, join} from 'node:path';
 import {stripTypeScriptTypes} from 'node:module';
 import vm from 'node:vm';
+import {editAwait, callsMember} from './expression_edits.mjs';
 
 const [tool, abc] = process.argv.slice(2);
 assert.equal(createHash('sha256').update(readFileSync(abc)).digest('hex'),
@@ -277,7 +278,7 @@ for (const failure of ['wrap', 'register', 'super', 'storage.create', 'path.crea
 // These mutations operate only on test output, never in recovery. The oracle
 // must reject loss of suspension and the captured PageA receiver, and observe
 // altered resource values independently of source text resemblance.
-const noAwait = report.source.replace('(await $value1)', '$value1');
+const noAwait = editAwait(report.source, node => callsMember(node, 'setData'), (node, text) => text(node.argument));
 assert.notEqual(noAwait, report.source);
 new vm.SourceTextModule(noAwait); // Behavior mutations must remain valid syntax.
 await assert.rejects(() => exercise(noAwait, defaults));

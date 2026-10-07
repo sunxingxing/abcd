@@ -573,6 +573,10 @@ if(BUILD_TESTING)
   target_link_libraries(tree_constants_test PRIVATE abcd_source)
   add_test(NAME tree_constants_test COMMAND tree_constants_test)
   add_executable(class_tree_context_test tests/unit/source/class_tree_context_test.cc tools/tree_position_json.cc)
+  add_executable(suspension_operands_test tests/unit/source/suspension_operands_test.cc)
+  target_include_directories(suspension_operands_test PRIVATE tests/support)
+  target_link_libraries(suspension_operands_test PRIVATE abcd_source)
+  add_test(NAME suspension_operands_test COMMAND suspension_operands_test)
   add_executable(phase_reference_test tests/unit/source/phase_reference_test.cc)
   target_include_directories(phase_reference_test PRIVATE tests/support)
   target_link_libraries(phase_reference_test PRIVATE abcd_source)
@@ -2030,7 +2034,7 @@ if(BUILD_TESTING)
       add_test(NAME home_record_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/home_record.mjs
         $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
-      add_test(NAME pagea_record_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+      add_test(NAME pagea_record_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/pagea_record.mjs
         $<TARGET_FILE:abc_semantic> "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc")
       if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/detail/src/main/ets/view/DetailPage.ts"

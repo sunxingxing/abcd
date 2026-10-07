@@ -1,5 +1,14 @@
 # 验收、证据与实施交接
 
+2026-10-07规则165：分阶段await/yield root可消费暂停前eager operand，
+暂停不搬移，原单次使用/效果顺序/异常快照证明保持。48个forest与反例
+变异通过；实际解码/生成源的11个定向回归最终通过（两旧mutation编号
+定位改为现有AST选择器）。fresh pasteboard四份记录去除共10项私有快照，
+PageA/PageB/PasteBoard/ProgressBar恢复直接await调用；仍10complete/
+0partial/9noModule，十mjs解析通过。生产没有样本/图形/同块定制；该
+表示改善不代表全部record、高层表示及原结构gate完成，详见status.md。
+
+
 2026-10-07 HomeModel补充：当前rules164默认ValueTree，固定ABC与manifest
 内容身份核对，原四record实际连接保留。record16474增加20组同步/延迟/
 重复/稀疏/200及201项独立行为；icon getter期间更换模块导出与push，

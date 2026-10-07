@@ -41,8 +41,9 @@ class PhaseCorridors {
   PhaseEffectInterval Interval(analysis::OpId op) const;
   static bool Aggregate(const analysis::ValueOperation& operation);
   static bool Expression(const analysis::ValueOperation& operation);
-  // A statement can own an eager operand expression without producing a value.
-  // Reference/conversion boundaries remain DescribeEvaluation obligations.
+  // A statement or suspension root can own an eager operand expression.
+  // This does not authorize moving the root itself; reference/conversion and
+  // suspension boundaries remain DescribeEvaluation obligations.
   static bool ConsumesOperands(const analysis::ValueOperation& operation);
   static bool Event(const analysis::ValueOp& op, const OpEvaluation& placement);
  private:

@@ -4,6 +4,13 @@
 这是设计变更，不代表相关接口已经实现。旧文档中“验证/发布义务全部闭合才允许
 输出”、新增 budget/receipt 设施作为功能前置的要求，由本文替代。
 
+规则165实现补充：共同分阶段EvaluationPlan允许await/yield root消费
+暂停前已经证明的eager operand子树。暂停节点留在原root，沿用effect
+interval、单次使用、availability及最终catch snapshot校验；原FunctionTree
+直接承载AwaitExpr/YieldExpr的复合operand，printer无需新分支或文本替换。
+这改善实际PasteBoard/PageA/PageB的await表示，不改暂停/恢复协议或默认
+合同；一般SSA消除、更多控制路径与其他结构门槛仍须独立实现和验收。
+
 ## 1. 最终表示和职责
 
 最终表示就是现有 `FunctionTree`：语句/表达式 AST，加符号、作用域、捕获和来源

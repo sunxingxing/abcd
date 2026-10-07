@@ -54,8 +54,13 @@ bool PhaseCorridors::ConsumesOperands(const ValueOperation& operation) {
   if (!shape || shape->inputs != InputEvaluation::kEager) return false;
   switch (shape->source) {
     case SourceEvaluation::kDirect: case SourceEvaluation::kPure:
-    case SourceEvaluation::kSnapshotInputs: return true;
-    case SourceEvaluation::kSuspending: case SourceEvaluation::kInvocation:
+    case SourceEvaluation::kSnapshotInputs:
+    // Await/yield evaluate their operand before suspension. They may own the
+    // preceding effect suffix but remain roots: Expression() does not admit
+    // transporting the suspension itself. CanFuse and final-root SameCatch
+    // still prove availability, execution count, order and abrupt completion.
+    case SourceEvaluation::kSuspending: return true;
+    case SourceEvaluation::kInvocation:
     case SourceEvaluation::kUnsupported: return false;
   }
   return false;
