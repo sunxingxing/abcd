@@ -1,0 +1,4 @@
+#ifndef ABCD_TEST_ENTRY_INITIALIZER_CHECKS_H_
+#define ABCD_TEST_ENTRY_INITIALIZER_CHECKS_H_
+void CheckEntryInitializers(bool emit);
+#endif

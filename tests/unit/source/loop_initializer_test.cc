@@ -237,6 +237,10 @@ std::uint64_t Native(unsigned form, unsigned count, bool reverse, bool emit) {
   const auto completion = ImplicitTailCompletion(tree);
   std::vector<bool> elided(tree.expressions.size());
   if (completion && completion->value) elided[completion->value->value] = true;
+  for(unsigned i=0;i<tree.statements.size();++i)if(bindings.omitted[i])if(const auto* effect=std::get_if<ExpressionStmt>(&tree.statements[i].statement)) {
+    const auto& assignment=std::get<AssignmentExpr>(tree.expressions[effect->expression.value].expression);
+    elided[effect->expression.value]=true;elided[assignment.value.value]=true;
+  }
   for (unsigned i = 0; i < tree.statements.size(); ++i) if (const auto read = DiscardedInvocationRead(tree, StmtId{i})) elided[read->value] = true;
   for (unsigned i = 0; i < ranges.expressions.size(); ++i) {
     const auto range = ranges.expressions[i];

@@ -1,5 +1,17 @@
 # 按用户要求进行的恢复条件审计
 
+规则160补充：入口参数、handler catch、函数self以typed BindingKind
+初始化语义进入既有不可变复制图；scope/first-store/完整观察及共同
+词法解析继续证明目标可用性、身份、次数和生命周期，不追加同块、
+producer名单、PC/register或链长准入。Strictness/CallableKind/参数
+默认值和rest共同判定mapped arguments的语言写通道，非严格simple
+普通函数保留旧值。这是语言义务，不能以编译器布局或零本地写替代。
+Local/Capture/Module不从零写获得隐式初始化。canonical capture目前
+只表示Local/Capture cell，原调用槽Parameter不是已支持capture域；
+有效family测试使用提升的cell，不放宽绑定规则让无效树通过。native
+arguments源码写探针仅属测试层，不声称字节码恢复完成。source重写、
+真实遮蔽、catch退出/finally、条件首写和子函数修改cell保持旧值存储。
+
 规则159补充：不可变复制共享一个保留producer的存储，消费共同首次
 store/完整观察/词法包含/capture证明，不按producer/opcode、PC/register、
 同块/邻接或链长准入。所有分配、效果与暂停保留原执行点和执行次数。

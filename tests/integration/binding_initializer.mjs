@@ -115,6 +115,46 @@ function aliasReference(row) {
   if(row.alias===18||row.alias===19){body=declarations+'let saved;while(flag()){saved='+root+';'+copies+reports+'}';tail='return'+(row.alias===18?'':' '+last)+';';}
   return Function('return ('+(row.alias===7?'async function':row.alias===8?'function*':'function')+'(seed,report,flag){'+body+tail+'})')();
 }
+function entryReference(row) {
+  const caught=[2,3,7,11].includes(row.entry),source=caught?'caught':row.entry===4?'owner':row.entry===16?'state':'input';
+  const last=row.count?'copy'+(row.count-1):source;
+  const declarations=Array.from({length:row.count},(_,i)=>'let copy'+i+';').join('');
+  const copies=Array.from({length:row.count},(_,i)=>'copy'+i+'='+(i?'copy'+(i-1):source)+';').join('');
+  const reports=('report('+last+');').repeat(row.count);
+  let body=(row.entry===11?'if(flag){'+copies+'}':copies)+
+    (row.entry===13?'await other();':row.entry===14?'yield other();':row.entry===16?'(()=>{state=replacement;})();':'')+reports+
+    (row.entry===1||row.entry===3?source+'=other;':'')+'return '+last+(row.entry===15?'()':'')+';';
+  if(row.entry===10)body=copies+'{let input=123;'+reports+'return '+last+';}';
+  if(caught)body='try{throw input;}catch(caught){'+(row.entry===7?copies+reports:body)+'}'+(row.entry===7?'finally{report('+last+');}return '+last+';':'');
+  const parameters=(row.entry===8?'input=42':'input')+',report,other,'+(row.entry===17?'...flag':'flag');
+  const head=row.entry===9?'('+parameters+')=>':(row.entry===13?'async function':row.entry===14?'function*':'function')+(row.entry===4?' owner':'')+'('+parameters+')';
+  return Function((row.strict?'"use strict";':'')+'return ('+head+'{'+declarations+(row.entry===16?'let state=input;let replacement=other;':'')+body+'})')();
+}
+async function observeEntry(fn,row,value,fault,flag=true,request='next',reject=false) {
+  const trace=[],requests=[];let at=0,returned,thrown,didThrow=false;
+  const event=(kind,value)=>{trace.push([kind,value]);if(++at===fault)throw failure;};
+  const callable=function(){assert.equal(this,undefined);event('callee',value);return value;};
+  const report=function(value){assert.equal(this,undefined);if(row.entry===4){assert.equal(value,fn);value=token;}if(row.entry===15)value='callable';event('report',value);};
+  const pause=function(){assert.equal(this,undefined);event('pause',second);if(row.entry===13){queueMicrotask(()=>trace.push(['job']));return reject?Promise.reject(failure):Promise.resolve(second);}return second;};
+  try {
+    returned=fn(row.entry===15?callable:value,report,row.entry===13||row.entry===14?pause:second,flag);
+    if(row.entry===14){const generator=returned,first=generator.next();requests.push(first.value);const end=request==='throw'?generator.throw(failure):request==='return'?generator.return(second):generator.next(value);assert.equal(end.done,true);returned=end.value;}
+    if(row.entry===13)returned=await returned;
+    if(row.entry===4){assert.equal(returned,fn);returned=token;}
+  }catch(error){returned=undefined;thrown=error;didThrow=true;}
+  return {trace,requests,returned,thrown,didThrow};
+}
+function entryCompare(actual,expected) {compare(actual,expected);assert.equal(actual.didThrow,expected.didThrow);}
+function argumentMutation(source,row) {
+  const ast=parseJavaScript('('+source+')'),body=ast.body[0].expression.body;
+  // Test-only coupled-view probe. The native arguments spelling is outside the
+  // current Tree AST's snapshot domain; neither this probe nor reference text
+  // enters the engine. Insert the same action after copies in both programs.
+  const returned=body.body.findLast(node=>node.type==='ReturnStatement');assert.ok(returned);
+  const position=returned.start-1;
+  const changed=source.slice(0,position)+'arguments[0]=other;'+source.slice(position);parseJavaScript('('+changed+')');
+  return Function((row.strict?'"use strict";':'')+'return ('+changed+')')();
+}
 async function observeAlias(fn,row,value,fault,flag=true,request='next',reject=false,iterations=2) {
   const trace=[],requests=[];let at=0,seeds=0,allocation,returned,thrown,checks=0;
   const event=(kind,value)=>{trace.push([kind,value]);if(++at===fault)throw failure;};
@@ -145,6 +185,28 @@ for (const row of rows) {
     if(node.type==='ExpressionStatement' && node.expression.type==='AssignmentExpression' &&
         node.expression.left.type==='Identifier') stores.push(node);
     if(node.type==='WhileStatement' || node.type==='ForStatement') loops.push(node);
+  }
+  if(row.entry!==undefined) {
+    const generated=Function((row.strict?'"use strict";':'')+'return '+row.source)(),reference=entryReference(row);
+    if(row.folded){assert.ok(!declarations.some(node=>node.declarations.some(item=>item.id.name.startsWith('copy'))));++folded;}
+    const run=(fn,value,fault,flag=true,request='next',reject=false)=>observeEntry(fn,row,value,fault,flag,request,reject);
+    for(const value of [undefined,null,-0,NaN,1n,Symbol('input'),token])for(const flag of row.entry===11?[false,true,undefined,0,1n,token]:[true])for(const fault of [Infinity,1,2,row.count+1]) {
+      try{entryCompare(await run(generated,value,fault,flag),await run(reference,value,fault,flag));}
+      catch(error){error.message+=`; entry=${row.entry}, count=${row.count}, fault=${fault}, flag=${String(flag)}`;throw error;}++comparisons;
+    }
+    if(row.entry===13){entryCompare(await run(generated,token,Infinity,true,'next',true),await run(reference,token,Infinity,true,'next',true));++comparisons;}
+    if(row.entry===14)for(const request of ['throw','return']){entryCompare(await run(generated,token,Infinity,true,request),await run(reference,token,Infinity,true,request));++comparisons;}
+    if([5,6,8,9,17].includes(row.entry)&&row.count) {
+      const actual=argumentMutation(generated.toString(),row),expected=argumentMutation(reference.toString(),row);
+      for(const value of [undefined,-0,NaN,1n,token]){entryCompare(await run(actual,value,Infinity),await run(expected,value,Infinity));++comparisons;}
+    }
+    if(row.folded&&row.count===1) {
+      const work=[ast];let returned;while(work.length){const node=work.pop();if(node.type==='ReturnStatement')returned=node;for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)work.push(child);}else if(value?.type)work.push(value);}}
+      const operand=returned.argument,changed=row.source.slice(0,operand.start)+'123'+row.source.slice(operand.end);parseJavaScript(changed);
+      const bad=Function((row.strict?'"use strict";':'')+'return '+changed)(),actual=await run(bad,token,Infinity),expected=await run(reference,token,Infinity);
+      assert.throws(()=>entryCompare(actual,expected),assert.AssertionError);++mutations;
+    }
+    continue;
   }
   if(row.alias!==undefined) {
     const generated=Function('return '+row.source)(),reference=aliasReference(row);

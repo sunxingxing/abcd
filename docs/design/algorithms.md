@@ -1964,8 +1964,34 @@ cascades, zero/multiple iterations, finally/old values, suspension, function
 receiver and fresh object/array identity. The Node oracle uses the same bounded
 4MB stack as adjacent deep-loop tests, rather than treating a reference compiler
 stack failure as successful engine/source validation. Physical RSS stays paused.
-Implicit entry initialization and external/source immutability remain gaps;
+External/source immutability remains a gap;
 retained canonical same-name declarations can conservatively prevent elision.
+
+Rules 160 seeds this same copy graph with implicitly initialized bindings:
+parameters on body entry, a catch binding on handler activation, and the named
+function's self binding at function creation. No owned write or unknown capture
+escape may alter the root; default-initializer writes count. Mapped arguments
+add an implicit formal write channel only for a non-strict, non-arrow function
+with a simple parameter list. These language facts follow ECMA-262 2024
+FunctionDeclarationInstantiation and are represented by the existing typed
+Strictness, CallableKind and Parameter fields. The pinned primary definition is
+[ECMA-262 2024, 10.2.11 steps 16-22](https://tc39.es/ecma262/2024/multipage/ordinary-and-exotic-objects-behaviours.html#sec-functiondeclarationinstantiation);
+the current Parameter domain contains identifiers, optional defaults and rest,
+not destructuring patterns. Sloppy mapped formals preserve
+their copied old values. Local/Capture/Module zero-write counts alone establish
+neither initialization nor external immutability, so they are not new roots.
+
+This bootstrap scans parameters and symbols once, O(P+B) additional work,
+without new arrays, per-root CFG walks or a second admission/layout condition.
+The existing scoped visibility, first-store and observation confinement prove
+target availability, identity, activation lifetime and execution count. Tests
+include catch/finally escape, conditional first stores, source rewrite, shadowing,
+async/generator suspension, self identity, mapped/unmapped formals and value
+receiver, using reversed arenas and 0/1/200/201/400/800 chains. The arguments
+coupling probe inserts the same write into generated and independent reference
+JS only in the test layer; it is not bytecode-domain recovery evidence. Captured
+mutation uses the currently canonical Local/Capture cell domain in a valid
+printed family; raw Parameter capture admission remains a representation gap.
 
 For S statements, E expressions, K owned child/argument/property slots, B symbols
 and C owned class-member capture occurrences, ownership/initialization cost is

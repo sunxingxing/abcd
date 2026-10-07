@@ -230,15 +230,36 @@ class Initializers {
     // Name resolution at each real read is a separate semantic obligation.
     std::vector<std::optional<SymbolId>> roots;
     budget_.Array(roots,uses_.size());std::size_t ready=0;
+    // ECMA-262 2024 FunctionDeclarationInstantiation: only a non-strict,
+    // non-arrow simple parameter list may couple formals to mapped arguments.
+    // Scope activation initializes catch/self and all body-entry parameters;
+    // local/module/capture absence of writes is not an initialization proof.
+    bool simple=true;
+    for(const auto& parameter:tree_.parameters) {
+      budget_.Step();simple &= !parameter.initializer && !parameter.rest;
+    }
+    const bool mapped=tree_.strictness==Strictness::kSloppy&&!IsArrowCallable(tree_.callable)&&simple;
+    const auto implicit=[&](BindingKind kind) {
+      switch(kind) {
+        case BindingKind::kParameter:return !mapped;
+        case BindingKind::kCatchParameter:case BindingKind::kFunctionSelf:return true;
+        case BindingKind::kLocal:case BindingKind::kCompilerTemporary:
+        case BindingKind::kCapture:case BindingKind::kModule:return false;
+      }
+      throw TreeStructureError::kBinding;
+    };
     for(std::size_t i=0;i<uses_.size();++i) {
       budget_.Step();constant_heads_[i].reset();constant_next_[i].reset();
     }
     for(std::size_t i=0;i<uses_.size();++i) {
       budget_.Step();const auto& use=uses_[i];
+      const auto symbol=SymbolId{static_cast<std::uint32_t>(i)};
+      if(!use.writes&&!use.escaped&&implicit(tree_.symbols[i].kind)) {
+        roots[i]=symbol;constant_queue_[ready++]=symbol;continue;
+      }
       if(!use.initializer||use.writes!=1||!plan_.statements[use.initializer->value])continue;
       const auto assignment=plan_.statements[use.initializer->value]->assignment;
       const auto rhs=std::get<AssignmentExpr>(tree_.expressions[assignment.value].expression).value;
-      const auto symbol=SymbolId{static_cast<std::uint32_t>(i)};
       if(const auto* copy=std::get_if<SymbolExpr>(&tree_.expressions[rhs.value].expression)) {
         constant_next_[i]=constant_heads_[copy->symbol.value];constant_heads_[copy->symbol.value]=symbol;
       } else {roots[i]=symbol;constant_queue_[ready++]=symbol;}

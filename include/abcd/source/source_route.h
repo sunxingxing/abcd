@@ -341,7 +341,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // an indexed constant lattice; unknown/mutable/captured storage stays distinct.
 // Rules 159 share retained immutable producer storage across private copies;
 // common lexical resolution protects every remaining read from shadowing.
-inline constexpr std::uint32_t kRouteEvidenceRules = 159;
+// Rules 160 seed immutable implicit entry bindings in the same copy graph;
+// mapped arguments, writes and unknown captures retain distinct snapshots.
+inline constexpr std::uint32_t kRouteEvidenceRules = 160;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

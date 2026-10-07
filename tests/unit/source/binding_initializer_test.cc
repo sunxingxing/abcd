@@ -6,6 +6,7 @@
 #include "../../../src/source/nullish_syntax.h"
 #include "abcd/source/tree_printer.h"
 #include "../../support/analysis/ssa_fixture.h"
+#include "entry_initializer_checks.h"
 #include <array>
 #include <bit>
 #include <limits>
@@ -538,6 +539,7 @@ std::uint64_t NativeDeep(unsigned form, unsigned depth, bool reverse, bool emit)
 }
 }
 int main(int argc, char**) {
+  CheckEntryInitializers(argc>1);
   for(unsigned form=0;form<21;++form) {
     std::uint64_t small=0,large=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}) {

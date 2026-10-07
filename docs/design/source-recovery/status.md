@@ -12,6 +12,61 @@
 
 ## 当前阶段
 
+### 2026-10-07：规则160，隐式入口绑定接入共同复制传播
+
+- 从干净77be831e继续，上一轮属于实际进展。共同BindingInitializers
+  的不可变复制图以Parameter/CatchParameter/FunctionSelf的typed
+  初始化语义建立根，无本地写且无未知capture/escape才可共享。body
+  进入、handler activation和函数创建分别提供初始化事实；复制目标仍
+  使用原first-store/完整观察/词法包含和共同TreeScopeCheck解析证明。
+  不增加样本/名字、opcode名单、PC/register、同块/邻接或复制数量条件。
+- ECMA-262 2024 FunctionDeclarationInstantiation的mapped arguments
+  规则通过Strictness/CallableKind/Parameter表达：非严格非箭头simple
+  参数保留旧值复制；strict/arrow/default/rest没有此隐式写通道。默认
+  参数中的写也计入。Local/Capture/Module零写不能提供初始化或外部
+  不可变性。本轮bootstrap仅新增O(P+B)扫描、无新数组或逐root图遍历，
+  后续graph/scope/retention成本沿用规则159，不声明physical RSS达标。
+- 新增17树族×六规模×正反arena，三个不适用零copy各跳过正反，共
+  198有效树/完整源；旧768 checked/756源码保留，总966 checked/954
+  完整源码。0/1/200/201/400/800链及400→800 work小于三倍通过，正反
+  同时翻转SymbolId/ScopeId/ExprId/StmtId。有效树先通过结构/打印，在
+  旧实现alias断言RED（退出134，0.98秒），/tmp/abcd-entry-binding-red.log。
+- 独立Acorn/原生JS oracle累计335362行为比较、166有效JS mutation，
+  folded源450。覆盖参数和catch重写、self身份、inner shadow、条件
+  首store、catch/finally退出旧值、await拒绝/job、yield throw/return、
+  任意Number/BigInt/Symbol/object输入及value-call receiver。mapped/
+  unmapped写探针在生成源/reference同位置插入arguments写，仅属测试
+  层；不声称当前native arguments字节码恢复完成。
+- canonical capture只接受Local/Capture lexical cell，原调用槽Parameter
+  直接capture仍是表示缺口。初次form16 fixture违反此域而拒绝，改为
+  有效提升Local cell及owned child修改，并由共同PrintFamilyDraft输出；
+  不放宽生产结构规则让无效fixture通过。早期form11 handler子scope
+  及loop range测试未识别合法省略store/RHS也已修正，失败保留。loop
+  range仍要求所有未省略读取/anchor有效。standalone binding和loop通过，
+  早期三项3/3通过6.78秒。
+- abc_structure/abc_semantic及十四fixture最终构建退出0；既有
+  literal_plan.cc:59 kNoop switch warning保留。最终30项定向30/30通过
+  137.87秒，覆盖binding/loop/snapshot/structure/
+  numeric/class/control/module/family、实际构造十record、Push、ProgressBar、
+  富文本、native名字及loop闭包。
+  最终954源oracle结果再次一致。最终日志/tmp/abcd-entry-binding-
+  {final-build,behavior-final,tests-final,export-final,style}.log；node
+  --check及git diff --check通过。
+- fresh ABC-only build/stage-one/entry-binding-pasteboard-final：19
+  records/219 methods，10complete/0partial/9noModule、value_tree，无legacy，
+  顶层contract language_numeric_constructors_v1。十份完整源码解析，无
+  INCOMPLETE/UNRECOVERED。相对规则159四份源码改变，共七个catch复制
+  消除，总声明147→140、初始化102→95、const94→87、空声明45保持。
+  PasteBoard单份总声明63→62、初始化47→46、const43→42、空声明16
+  保持，三个native for let保持。新增表示改善，无新增record coverage；
+  数值/构造模式不变。record contract序列化既有缺口仍属暂停DFX。
+- 后续真实source const初始化/不可变证明、外部capture/module、canonical
+  同名额外保留、一般SSA活跃期/干涉、原变量及每轮capture、compound
+  进入声明、全部body/style和原结构/signature/body gate仍开放。阶段一
+  Goal active；full suite、expanded corpus、RSS/benchmark、DFX、scheduler、
+  agents及周期audit继续暂停，固定五ABC106/0未重跑；受控平台不代替
+  设备SDK验收。输入未修改、无新依赖。
+
 ### 2026-10-07：规则159，不可变私有复制共用保留存储
 
 - 干净a50c65c7继续，上一轮属于实际进展。BindingInitializers将共同

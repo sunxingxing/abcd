@@ -1,5 +1,15 @@
 # 全 ISA 优先执行顺序
 
+2026-10-07 规则160：共同复制图加入无写/无escape的隐式入口Parameter、
+CatchParameter和FunctionSelf根；typed语言调用语义保护mapped
+arguments，target沿共同首次store/生命周期及词法解析恢复，无布局/
+样本匹配。966有效树/954完整源、335362独立行为/166 mutation，最终
+30/30定向137.87秒；0/1/200/201/400/800与正反arena、旧值/暂停/cell/
+receiver通过。fresh pasteboard仍10complete/0partial，四源七个catch
+复制消除，总声明147→140；无新增record coverage。下一步真实source
+初始化/不可变性、capture/module及一般SSA干涉/原变量/每轮capture，
+全body/style、原gate及暂停范围保持；实际证据见status.md。
+
 2026-10-07 规则159：共同不可变/生命周期证明和TreeScopeCheck批量词法
 解析使私有复制共用保留producer存储，分配/效果/暂停不回放。768有效
 树/756完整源，328132独立行为/146 mutation，最终30/30定向132.26秒。

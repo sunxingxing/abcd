@@ -90,7 +90,25 @@ native initializer/每轮binding与phi/update临时值消除仍是表示缺口�
 不描述为语言/VM限制。具体解码/独立行为、scope/throw/await/yield反例
 及实际record证据见status.md；两个实际for不能代替阶段一完整body风格。
 
-## 私有结果的初始化声明（规则 154/155/156/157/158/159）
+## 私有结果的初始化声明（规则 154/155/156/157/158/159/160）
+
+规则160在同一复制图中加入隐式初始化根：无本地写入且无未知capture/
+escape的Parameter、CatchParameter和FunctionSelf。body进入、handler
+activation及函数创建分别提供初始化事实；既有first-store/观察包含和
+共同词法解析仍证明每个目标的可用性、生命周期及绑定身份。默认参数
+表达式中的写入同样计入，不把零写的Local/Capture/Module当作已初始化。
+
+参数还必须没有mapped arguments联动：非严格、非箭头、simple参数列表
+可通过arguments改变formal，保留旧值复制；strict、arrow、默认或rest
+参数列表没有这种隐式写通道。CallableKind/Strictness/Parameter提供
+语言事实，不根据样本名字、opcode序列、PC/register、同块或复制数匹配。
+catch退出/finally和条件首次store、source重写或遮蔽仍保留必要存储。
+
+canonical capture目前接受Local/Capture lexical cell，不接受原调用槽
+Parameter；本轮通过有效family的Local cell及子函数修改验证旧值，未
+扩展capture域或声称原formal直接捕获完成。独立JS oracle另对生成源和
+reference同位置插入arguments写入，验证mapped/unmapped参数的旧值；
+这是测试层耦合视图探针，不是native arguments字节码恢复的验收证据。
 
 规则159将同一不可变存储证明用于非literal复制。单写、未capture/escape、
 首次store支配全部观察且生命周期包含的私有producer保留原存储；其
@@ -111,10 +129,10 @@ canonical ScopeId；既有初始化/投影owner证明提供打印后的生命周
 mutable目标仍遵循原证明，不以更多局部匹配扩展。所有省略store/RHS
 保留原boundary零range，原读取和anchor继续有独立生成位置。
 
-当前仅对共同初始化分析已证明不可变的私有存储建立根。参数/catch/
-函数self的隐式初始化，以及真实const/source绑定、外部capture/module
-的不可变证明仍待贯通，不能只以本函数写入数为零推断它们不可变或已
-初始化。名称解析保守保留canonical绑定；被删除同名声明可能还造成
+当前私有存储和上述隐式入口绑定使用共同初始化/不可变证明。真实
+const/source绑定、外部capture/module的不可变证明仍待贯通，不能只以
+本函数写入数为零推断它们不可变或已初始化。名称解析保守保留canonical
+绑定；被删除同名声明可能还造成
 冗余存储，是表示缺口，不是语言不变量或整函数拒绝。一般SSA干涉、
 捕获每轮环境与全body/style仍开放。
 

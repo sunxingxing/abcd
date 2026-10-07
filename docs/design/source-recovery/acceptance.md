@@ -1,5 +1,17 @@
 # 验收、证据与实施交接
 
+2026-10-07 规则160：参数/catch/self隐式初始化进入共同不可变复制图，
+原目标first-store/完整观察/词法包含和共同根解析证明保持。mapped
+arguments、source写入、捕获cell、遮蔽及catch/条件/finally旧值不合并；
+未新增样本/布局/opcode名单条件。198新有效树加旧768，总966 checked/
+954完整源；335362独立行为、166有效JS mutation，最终30/30定向
+137.87秒。mapped参数写探针仅属测试层，raw Parameter capture仍未支持。
+fresh ABC-only pasteboard10complete/0partial/9noModule，十源解析；
+四份源码七个catch复制消除，总声明147→140。PasteBoard63→62，三个
+native for let保持。无新增record coverage，数值/构造模式不变。真实
+source/capture/module不可变性、一般SSA干涉/原变量/每轮capture、全
+body/style及原结构gate仍开放，Goal active及暂停范围保持。
+
 2026-10-07 规则159：不可变私有复制沿共同首次store/观察scope/capture
 证明共用一个保留producer；TreeScopeCheck批量解析实际根引用，真实
 遮蔽保留复制。删除copy的RHS不再读取，保留需求沿条件依赖有界传播。
