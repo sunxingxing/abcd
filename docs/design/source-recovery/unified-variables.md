@@ -778,3 +778,37 @@ A combined scope test keeps a conditional copy with two upstream sources whose
 original names resolve to TDZ shadows at the retained occurrence. Both source
 storages must survive; independently dropping either introduces a ReferenceError.
 This checks the multiple retention edges rather than only separate name cases.
+
+
+## Value use is a shared flow fact (rules199)
+
+RecoveryFlow now records FlowValueUse for each current expression occurrence:
+observed, discarded or unmodeled. The semantic builder transports parent use
+through replacement, conditional arms and logical RHS; branch predicates and
+actual operation operands observe their values. Sequence discards its left
+result and transports parent use to its right. Expression statements discard
+their result; return and declaration values remain observed. Signature roots
+not modeled by this body graph stay unmodeled, never implicitly discarded.
+
+ElideInertOperands consumes this fact plus the shared completion/effect summary
+to remove an inert right operand when a sequence's result is discarded. This
+cleans up required RHS evaluation left after compound copy elimination without
+dropping calls or changing observed results. Its complete proposal stores both
+source and replacement identities before BeginCommit; the printer only consumes
+the plan. Flow acquisition is lazy when a right-elision candidate exists.
+
+The flow-owned value-use buffer is reset for every reconstruction and retained
+by effect refinement. It shares normal cache invalidation; consumers do not
+infer value use from their own parent syntax walks. This extends the common
+semantic adapter, not the original IR correspondence or whole-pass convergence
+claim. Tests include discarded and returned sequences, conditional arms, both
+logical operand roles, coercion/throw effects, reversed arenas and geometric
+composition. Inner comma-left values are discarded even when the outer result
+is observed; no fixed nesting-depth rule is used.
+
+Source-range transport also follows the selected replacement. The printer's
+former left-only sequence-origin action is replaced by an operand-origin action
+carrying the omitted ExprId. It only transports ranges after emission; it does
+not decide value demand or effects. Existing initializer range assertions caught
+the missing right-side mapping, and new discarded-result tests now check every
+original expression's nonempty in-bounds range too.

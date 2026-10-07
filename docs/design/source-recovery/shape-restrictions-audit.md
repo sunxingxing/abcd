@@ -2105,3 +2105,12 @@ shared inert proof permits removing the whole statement. Retention dependencies
 use semantic discarded ownership and a sparse many-edge graph instead of one
 direct RHS occurrence/one blocked source. Existing coverage, escape, mapped
 arguments, lexical identity and lifetime checks stay in their documented owners.
+
+
+### Rules199: ignored result recovery follows shared value use
+
+Discarded sequence results are recovered from FlowValueUse and inert completion
+facts. The consumer does not require a top-level expression statement, a fixed
+wrapper depth or an adjacent producer. The semantic builder owns value transport
+through sequences, choices, logical control and replacements. Observed results,
+branch values, coercion/throw effects and unmodeled signature uses remain.

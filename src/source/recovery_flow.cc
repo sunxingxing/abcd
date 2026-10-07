@@ -9,7 +9,7 @@ namespace abcd::source {
 namespace {
 using Error=TreeStructureError;
 using Point=FlowPoint;
-struct Context {Point next,thrown;std::optional<Point> finalizer;std::optional<DiscardedId> discarded;};
+struct Context {Point next,thrown;std::optional<Point> finalizer;std::optional<DiscardedId> discarded;FlowValueUse value_use=FlowValueUse::kObserved;};
 struct Statement {StmtId id;Context context;};
 struct Expression {ExprId id;Context context;};
 using Task=std::variant<Statement,Expression>;
@@ -34,6 +34,8 @@ class FlowBuilder {
     terminal_=New(); dispatch_=New();
     statements_.resize(tree_.statements.size()); exits_.resize(tree_.statements.size());
     expressions_.resize(tree_.expressions.size()); seen_.resize(tree_.expressions.size());
+    Resize(result_.value_uses,tree_.expressions.size());
+    for(auto& use:result_.value_uses){budget_.Step();use=FlowValueUse::kUnmodeled;}
     for(auto& point:statements_){budget_.Step();point=New();}
     for(auto& point:expressions_){budget_.Step();point=New();}
     Link(dispatch_,terminal_,FlowCompletion::kConservativeCleanup);
@@ -151,6 +153,7 @@ class FlowBuilder {
   void Build(Expression at) {
     RequireTree(!seen_[at.id.value],Error::kOwnership);seen_[at.id.value]=1;
     const auto start=expressions_[at.id.value];const auto& context=at.context;
+    result_.value_uses[at.id.value]=context.value_use;
     if(auto replacement=projection_.replacements[at.id.value]){Link(start,Expr(*replacement,context));return;}
     const auto& node=tree_.expressions[at.id.value].expression;
     if(const auto* choice=std::get_if<ConditionalExpr>(&node)) {
@@ -214,7 +217,14 @@ class FlowBuilder {
       Reference(read,Resolve(update->symbol),FlowReferenceKind::kRead,at.id,FlowExceptionContext{context.thrown,context.finalizer});
       Link(read,context.thrown,FlowCompletion::kThrow);next=read;
     }
-    for(auto i=children.rbegin();i!=children.rend();++i)next=Expr(*i,{next,context.thrown,context.finalizer,context.discarded});
+    for(auto i=children.rbegin();i!=children.rend();++i) {
+      // Comma does not observe its left result; only its right transports the
+      // parent's value use. All other operands here feed an actual operation.
+      auto use=FlowValueUse::kObserved;
+      if(const auto* sequence=std::get_if<SequenceExpr>(&node))
+        use=*i==sequence->left?FlowValueUse::kDiscarded:context.value_use;
+      next=Expr(*i,{next,context.thrown,context.finalizer,context.discarded,use});
+    }
     Link(start,next);
   }
   void Build(Statement at) {
@@ -232,7 +242,7 @@ class FlowBuilder {
         RequireTree(discarded_.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
         const DiscardedId id{static_cast<std::uint32_t>(discarded_.size())};
         Append(discarded_,{at.id});
-        auto evaluation=context;evaluation.discarded=id;Link(start,Expr(node.expression,evaluation));
+        auto evaluation=context;evaluation.discarded=id;evaluation.value_use=FlowValueUse::kDiscarded;Link(start,Expr(node.expression,evaluation));
       }
       else if constexpr(std::is_same_v<T,DeclarationStmt>) {
         if(!projection_.undefined_stores.empty())if(const auto target=projection_.undefined_stores[at.id.value]) {

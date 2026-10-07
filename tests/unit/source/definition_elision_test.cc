@@ -257,6 +257,37 @@ std::uint64_t CompoundCopies(unsigned form,unsigned count,bool reverse,bool emit
   return plan.work;
 }
 
+std::uint64_t DiscardedResults(unsigned form,unsigned count,bool reverse,bool emit) {
+  Fixture f;auto& tree=f.tree;std::vector<ExprId> sequences;
+  auto value=f.Call(1);
+  for(unsigned i=0;i<=count;++i) {
+    auto right=f.Read(2);if(form==2)right=f.Expr(UnaryExpr{TreeUnary::kPlus,right});
+    value=f.Expr(SequenceExpr{value,right});sequences.push_back(value);
+  }
+  auto result=value;
+  if(form==3)result=f.Expr(ConditionalExpr{f.Read(1),value,f.Call(2)});
+  if(form==4)result=f.Expr(LogicalExpr{TreeLogical::kOr,value,f.Call(2)});
+  if(form==5)result=f.Expr(LogicalExpr{TreeLogical::kOr,f.Read(1),value});
+  std::vector<StmtId> body{f.Stmt(DeclarationStmt{{2},f.Read(1)}),
+      f.Stmt(form==1?TreeStatement{ReturnStmt{result}}:TreeStatement{ExpressionStmt{result}})};
+  if(form!=1)body.push_back(f.Stmt(ReturnStmt{f.Read(1)}));
+  f.Finish(body,reverse);test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
+  const auto plan=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
+  for(const auto sequence:sequences) {
+    const auto id=reverse?tree.expressions.size()-1-sequence.value:sequence.value;
+    const bool expected=form!=2 && (form==0||form==3||form==5||sequence!=sequences.back());
+    if(plan.replacements[id].has_value()!=expected)std::cerr<<"discarded result form="<<form<<" count="<<count<<'\n';
+    test::Check(plan.replacements[id].has_value()==expected);
+  }
+  std::ostringstream out;const auto printed=PrintFunctionTree(tree,out);
+  test::Check(std::holds_alternative<PrintedFunction>(printed));
+  for(const auto range:std::get<PrintedFunction>(printed).expressions)
+    test::Check(range.begin<range.end && range.end<=out.str().size());
+  if(emit)std::cout<<nlohmann::json{{"source",out.str()},{"discarded_result",true},{"form",form},{"count",count}}<<'\n';
+  return plan.work;
+}
+
 void ScopedCopies(bool reverse,bool emit) {
   Fixture f;auto& tree=f.tree;const auto scope=f.Scope();
   tree.names.push_back(u"second");tree.names.push_back(u"selected");
@@ -311,6 +342,13 @@ void BindingObligations() {
 }
 int main(int argc,char**) {
   BindingObligations();
+  for(unsigned form=0;form<6;++form)for(bool reverse:{false,true}) {
+    std::uint64_t previous=0;
+    for(unsigned count:{0U,1U,200U,201U,400U,800U}) {
+      const auto work=DiscardedResults(form,count,reverse,argc>1);
+      if(count>=400)test::Check(work<previous*3);previous=work;
+    }
+  }
   for(bool reverse:{false,true})ScopedCopies(reverse,argc>1);
   for(unsigned form=0;form<8;++form)for(bool reverse:{false,true}) {
     std::uint64_t previous=0;

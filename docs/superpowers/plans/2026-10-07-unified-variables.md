@@ -324,3 +324,13 @@ and global convergence remain unfinished.
 - Added positive compositions and source mutation/undefined/catch/branch
   counterexamples with independent execution. Whole-pass convergence and fuller
   canonical activation remain open.
+
+
+### Rules199 continuation: shared expression value use
+
+- FlowValueUse records observed/discarded/unmodeled occurrences in RecoveryFlow.
+- The existing inert-operand pass now consumes it to clean unused sequence
+  results after copy elimination while preserving required evaluations.
+- Replacement edits are fully proposed before commit; final printer remains a
+  consumer. Nested composition and counterexamples verify value/effect separation.
+- Global pass convergence, activation/unwind and original IR migration stay open.

@@ -2777,3 +2777,15 @@ Copy elimination preserves required RHS evaluation at its occurrence. Readonly
 source identity is independent of writable destination identity. This follows
 the language's normal completion and declarative-binding semantics; calls,
 throw paths and capture activation remain represented in existing shared facts.
+
+
+### Expression value-use transport (rules199)
+
+The existing source-side flow builder transports a typed value-use fact along
+its owned expression occurrences. It records O(X) expression-indexed storage
+and O(X) additional work, X the expression count; existing ownership prevents
+replaying an occurrence through different contexts. Unvisited signature roots
+remain unmodeled. Buffer reuse resets all facts, and effect refinement leaves
+value use unchanged. Sequence-right elision queries this fact in constant time
+per candidate and batches edits. No new ancestor scans or iterative whole-tree
+fixed-point rounds are added.

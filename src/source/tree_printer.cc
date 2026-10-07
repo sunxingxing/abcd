@@ -45,7 +45,7 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
 struct DerivedClassBody { std::shared_ptr<const ClassTree> definition; ExprId expression; ClassPrintForm form; };
 struct EndExpression { ExprId id; };
 struct ProjectedExpression { ExprId id; std::uint64_t begin, end; GeneratedExtent extent = GeneratedExtent::kSpan; };
-struct ProjectSequenceLeft { ExprId sequence; };
+struct ProjectSequenceOperand { ExprId sequence, omitted; };
 struct NoInferredName {};
 struct DefaultInferredName {};
 using NameContext = std::variant<NoInferredName, NameId, DefaultInferredName>;
@@ -89,7 +89,7 @@ struct BeginFunction {};
 struct EndFunction {};
 struct ParameterCursor { std::uint32_t index; };
 struct EndParameter { std::uint32_t index; };
-using PrintAction = std::variant<std::string_view, ExprId, EndExpression, ProjectedExpression, ProjectSequenceLeft, ExpressionOperand, BooleanOperand, PostfixSpine,
+using PrintAction = std::variant<std::string_view, ExprId, EndExpression, ProjectedExpression, ProjectSequenceOperand, ExpressionOperand, BooleanOperand, PostfixSpine,
     Statement, EndStatement, BlockCursor, Indent, PropertyKey, SymbolName, ArgumentCursor,
     ObjectCursor, EndProperty, BeginFunction, EndFunction, ParameterCursor, EndParameter, SnapshotCursor, DerivedClassBody, ArrayArgumentCursor, LoopHeader, LoopHeaderCursor, ElideLoopHeader, LoopBody, LoopTransitionEnd, LoopInitializerCursor, LoopDeclarationCursor, LoopKeyword, BlockBoundary>;
 struct OwnedAction { std::size_t owner; std::size_t depth; PrintAction action; };
@@ -1226,10 +1226,12 @@ class TreePrinter {
     const auto id=operand.id;
     const auto& expression=Tree().expressions[id.value].expression;
     if(const auto replacement=Initializers().replacements[id.value]) {
-      // The planner owns elision. Here only associate the removed left's
-      // original range with its value projection; no effect test in printing.
-      if(const auto* sequence=std::get_if<SequenceExpr>(&expression);sequence && *replacement==sequence->right)
-        Push(ProjectSequenceLeft{id});
+      // The planner owns elision. Transport the omitted operand's origin to
+      // the projected span, regardless of side; no effect/value-use decision.
+      if(const auto* sequence=std::get_if<SequenceExpr>(&expression)) {
+        if(*replacement==sequence->right)Push(ProjectSequenceOperand{id,sequence->left});
+        else if(*replacement==sequence->left)Push(ProjectSequenceOperand{id,sequence->right});
+      }
       operand.id=*replacement;operand.value_result=true;Push(operand);return;
     }
     if(const auto* read=std::get_if<SymbolExpr>(&expression))if(const auto source=Initializers().aliases[read->symbol.value]) {
@@ -1277,9 +1279,8 @@ class TreePrinter {
     }, Tree().expressions[id.value].expression);
   }
   void Run(EndExpression end) { Result().expressions[end.id.value].end = written_; }
-  void Run(ProjectSequenceLeft projection) {
-    const auto& sequence = std::get<SequenceExpr>(Tree().expressions[projection.sequence.value].expression);
-    Push(ProjectedExpression{sequence.left, Result().expressions[projection.sequence.value].begin, written_});
+  void Run(ProjectSequenceOperand projection) {
+    Push(ProjectedExpression{projection.omitted, Result().expressions[projection.sequence.value].begin, written_});
   }
   void Run(ProjectedExpression projection) {
     Step();

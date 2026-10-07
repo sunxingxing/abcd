@@ -24,6 +24,45 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则199，共同流图记录表达式值用途
+
+- RecoveryFlow 新增 typed FlowValueUse：observed/discarded/unmodeled。
+  共同语义构造器通过 replacement、条件分支和 logical RHS 传递用途；
+  判定条件及实际操作数观察值，sequence 左侧丢弃值、右侧继承用途，
+  表达式语句丢弃结果，return/声明初值保留结果。正文图未处理的签名
+  根保持 unmodeled，不能作为值无用证明。
+- ElideInertOperands 消费共同用途与效果事实，允许删除结果被丢弃的
+  sequence 的 inert 右操作数，保留左侧调用/异常/顺序；observed 值、
+  logical 左侧判定、强制转换与抛异常操作仍保留。完整 ExprId 替换方案
+  在 BeginCommit 前形成，打印器不再次作语义判断。只有出现右侧消除
+  候选才懒取得流图，沿用中央缓存失效。
+- 原实现在 discarded-result form0/count0 断言失败，日志
+  /tmp/abcd-rule199-red-test.log。新用例覆盖丢弃/返回、条件两臂用途、
+  logical 左右角色、coercion/异常，反序 arena 和 0/1/200/201/400/800。
+  初验 3/3 通过，19.81 秒，日志 /tmp/abcd-rule199-focused-tests.log。
+  流图测试核验赋值 RHS 与语句结果用途不同、refinement 保持用途及
+  复用缓冲重建与新建一致。存储 O(X)、附加工作 O(X)，X 为表达式数。
+- 首次相关批次 52/54 通过，281.39 秒；binding_initializer 的单元及
+  源码测试在原表达式来源范围非空断言失败，日志 /tmp/abcd-rule199-tests.log
+  与 /tmp/abcd-rule199-initial-test-detail.log。根因是 printer 的旧
+  ProjectSequenceLeft 只运输左侧来源，未覆盖新右侧消除；已改为纯
+  ProjectSequenceOperand 范围运输，明确传入被消除的 ExprId，不加入
+  打印器语义优化。新增用例现在也校验所有表达式范围非空且位于输出内。
+- 修复后 54/54 项定向测试全部通过，397.56 秒，日志
+  /tmp/abcd-rule199-repaired-tests.log 与 /tmp/abcd-rule199-test-detail.log。
+  定义/表达式清理 394 份源码/9,304 次执行/49 个反例；变量/别名
+  1,752/461,776/284；存储 221/33,620/12；快照 324/12,372/18；
+  冗余写回 528/18,192/12。最终目标构建通过，日志
+  /tmp/abcd-rule199-repaired-build.log。首次构建与失败日志保持，未将
+  原批次的两项失败隐去。
+- ABC-only 最终导出 build/stage-one/value-uses-rule199-verified 保持
+  10complete/0partial/9noModule；十份源码 node --check 通过，正文与
+  规则198一致，输入身份保持，日志 /tmp/abcd-rule199-verified-export.log。
+- 此步扩展统一值/效果模型与实际清理通路，不代表全局 pass 固定点、
+  canonical IR/完整 activation/unwind 已完成；统一变量里程碑、结构
+  gate 和阶段一继续开放，Goal active。全量语料/RSS/DFX/代理等暂停
+  范围保持，定向独立源码执行不等同于平台和全阶段语义/style 验收。
+
 ### 2026-10-08：规则198，复制传播消费共同正常结果身份
 
 - Aliases 删除直接 SymbolExpr RHS 准入，改用共同 ExpressionFacts 的

@@ -325,6 +325,8 @@ void SourceEvents() {
   const LegacyFlowProjection projection{aliases,literals,replacements,omitted,evaluations,normal};
   const auto built=BuildRecoveryFlow(tree,projection);Check(std::holds_alternative<RecoveryFlow>(built));
   const auto& flow=std::get<RecoveryFlow>(built);unsigned parameters=0,undefined=0,assignments=0,updates=0,scopes=0;
+  Check(flow.value_uses==std::vector<FlowValueUse>{FlowValueUse::kObserved,FlowValueUse::kDiscarded,
+      FlowValueUse::kObserved,FlowValueUse::kDiscarded,FlowValueUse::kDiscarded,FlowValueUse::kObserved});
   for(const auto& reference:flow.references) {Check(reference.exceptions.has_value());Check(reference.exceptions->thrown==flow.terminal);}
   std::optional<FlowPoint> read,convert,write;
   for(const auto& definition:flow.definitions) {
@@ -355,6 +357,7 @@ void SourceEvents() {
   auto refined=flow;
   const auto refinement=std::get<FlowRefinement>(RefineRecoveryFlowEffects(refined,tree,refined_evaluations,refined_normal));
   Check(refined.events.size()==flow.events.size()&&refined.references.size()==flow.references.size());
+  Check(refined.value_uses==flow.value_uses);
   for(std::size_t i=0;i<flow.references.size();++i)Check(refined.references[i].exceptions==flow.references[i].exceptions);
   Check(refined.edges.size()<flow.edges.size());
   const auto refined_initializations=std::get<FlowInitializations>(AnalyzeFlowInitializations(refined));
@@ -443,6 +446,7 @@ void SourceEvents() {
     const auto& a=reused.references[i];const auto& b=shared.references[i];
     Check(std::tie(a.point,a.binding,a.kind,a.site,a.exceptions)==std::tie(b.point,b.binding,b.kind,b.site,b.exceptions));
   }
+  Check(reused.value_uses==shared.value_uses);
   unsigned read_references=0,write_references=0;
   for(const auto& reference:shared.references) {
     Check(reference.binding!=SymbolId{2});

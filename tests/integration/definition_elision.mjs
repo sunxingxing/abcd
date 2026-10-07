@@ -22,6 +22,32 @@ function observe(fn,flag,fail) {
 let executions=0,mutations=3;
 for(const row of rows) {
   parseJavaScript(row.source);
+  if(row.discarded_result) {
+    let expression='(produce(1)'+(','+(row.form===2?'+state':'state')).repeat(row.count+1)+')';
+    if(row.form===3)expression='flag?'+expression+':produce(2)';
+    if(row.form===4)expression=expression+'||produce(2)';
+    if(row.form===5)expression='flag||'+expression;
+    const expected=Function('produce','flag','"use strict";let state=flag;'+
+      (row.form===1?'return '+expression+';':expression+';return flag;'));
+    const actual=Function('return ('+row.source+');')();
+    const run=(fn,flag,fail)=>{const result=observe(fn,flag,fail);if(result.thrown instanceof TypeError)result.thrown='type';return result;};
+    for(const flag of [undefined,null,false,true,0,-0,7n,Symbol.for('result'),values[0]])for(const fail of [-1,1,2]) {
+      assert.deepEqual(run(actual,flag,fail),run(expected,flag,fail));++executions;
+    }
+    const coercion=(fn,fault)=>{
+      const trace=[];const flag={valueOf(){trace.push('coerce');if(fault)throw failure;return 3;}};
+      let value,thrown;try {value=fn(i=>{trace.push(i);return values[i];},flag);if(value===flag)value='flag';}catch(error){thrown=error;}
+      return {trace,value,thrown};
+    };
+    for(const fault of [false,true]){assert.deepEqual(coercion(actual,fault),coercion(expected,fault));++executions;}
+    if(!row.count) {
+      assert.notDeepEqual(run(Function('produce','flag','return flag;'),false,-1),run(expected,false,-1));++mutations;
+      if(row.form===1){assert.notDeepEqual(run(Function('produce','flag','return produce(1);'),false,-1),run(expected,false,-1));++mutations;}
+      if(row.form===2){assert.notDeepEqual(coercion(Function('produce','flag','produce(1);return flag;'),false),coercion(expected,false));++mutations;}
+      if(row.form===4){assert.notDeepEqual(run(Function('produce','flag','produce(1)||produce(2);return flag;'),false,-1),run(expected,false,-1));++mutations;}
+    }
+    continue;
+  }
   if(row.scoped_copy) {
     const actual=Function('return ('+row.source+');')();
     const expected=Function('produce','flag','"use strict";let state=produce,second=flag;{let selected=state?second:second;let produce=1;let flag=2;return selected;}');

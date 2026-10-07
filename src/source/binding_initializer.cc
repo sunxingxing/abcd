@@ -309,16 +309,24 @@ class Initializers {
     }
     if(!capacity)return;
     const auto& facts=AnalyzeExpressions();
-    std::vector<ExprId> proposed;budget_.Array(proposed,capacity);std::size_t count=0;
+    const RecoveryFlow* flow=nullptr;
+    struct OperandElision { ExprId expression,value; };
+    std::vector<OperandElision> proposed;budget_.Array(proposed,capacity);std::size_t count=0;
     for(std::size_t i=0;i<tree_.expressions.size();++i) {
       budget_.Step();if(plan_.replacements[i])continue;
       const auto* sequence=std::get_if<SequenceExpr>(&tree_.expressions[i].expression);
-      if(sequence && facts.evaluations[sequence->left.value]==ExpressionEvaluation::kInert)
-        proposed[count++]={static_cast<std::uint32_t>(i)};
+      if(!sequence)continue;
+      const ExprId id{static_cast<std::uint32_t>(i)};
+      if(facts.evaluations[sequence->left.value]==ExpressionEvaluation::kInert)
+        proposed[count++]={id,sequence->right};
+      else if(facts.evaluations[sequence->right.value]==ExpressionEvaluation::kInert) {
+        if(!flow)flow=&CurrentFlow();
+        if(flow->value_uses[i]==FlowValueUse::kDiscarded)proposed[count++]={id,sequence->left};
+      }
     }
     for(std::size_t i=0;i<count;++i) {
-      budget_.Step();const auto id=proposed[i];BeginCommit();
-      plan_.replacements[id.value]=std::get<SequenceExpr>(tree_.expressions[id.value].expression).right;
+      budget_.Step();const auto& edit=proposed[i];BeginCommit();
+      plan_.replacements[edit.expression.value]=edit.value;
     }
   }
   void OmitInertStores() {
