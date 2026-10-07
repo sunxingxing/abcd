@@ -2009,3 +2009,21 @@ syntax cast are removed. RootLifetime and indexed lexical lookup remain distinct
 activation/name obligations. Compound typeof and inner-name shadow tests do not
 introduce operator-specific production branches. Canonical activation and the
 remaining legacy initialization/motion conditions are still migration gaps.
+
+
+## Rules191: initialized-first/region admission removed from effects
+
+InitializedRead no longer decides whether a binding read or write completes
+normally. The shared completion graph supplies per-occurrence initialization
+proofs, so an earlier TDZ observation does not force all later reads to remain
+effectful. The old initialized_first, definition_region and per-binding read
+region fields, and unused region interval storage, are deleted. Region identities
+remain only for the existing snapshot-motion limitation; no new shape is added.
+
+A conservative graph precedes effect refinement; absent signature-program events
+retain evaluation. Function-self body initialization is explicit. Typed pass
+contracts preserve only proved positive occurrence facts through supported
+transformations; event-indexed analyses always invalidate after plan changes.
+Canonical activation, default-parameter program modeling and legacy declaration/
+motion lifetime proofs remain distinct gaps. CSR graph input and prepaid buffer
+reuse change representation/ownership, not semantic admission.

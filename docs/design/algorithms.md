@@ -2665,3 +2665,34 @@ only until the local pass returns; RunPass invalidates its owner on commit.
 Costs remain charged to the existing budget. Composition and name-shadow
 counterexamples, layout permutations and 200/201/400/800 remain validation gates;
 this is a shared-fact migration, not a claim of whole-corpus speed or completion.
+
+
+### Initialization bootstrap and completion adjacency (rules191)
+
+The existing simple Lengauer-Tarjan implementation now accepts both NormalFlow
+and general CSR adjacency through small typed views. The LT algorithm, iterative
+path compression, predecessor indexing and budgets are shared. Source completion
+graphs no longer copy NormalBlock records or introduce one synthetic node per
+edge: CSR costs O(N+E) storage and LT costs O((N+E) log N) work/O(N+E) storage.
+All completion edges are supplied; no fanout or exception pattern is filtered.
+Independent removal/reachability oracles exercise both views, including arbitrary
+fanout for the source graph, malformed CSR boundaries, and geometric sizes.
+No dependency, external code or licensing change is introduced.
+
+Initialization bootstrap composes conservative effects in O(X), builds one
+completion graph, derives shared initialization proofs, then composes refined
+effects in O(X). An O(X+N+E+D) refinement removes only impossible throw edges
+and updates effects in place. Its event identities are stable, so positive
+dominance facts survive this edge-removal refinement; demand/liveness are later
+products. Unknown occurrences and negative initialization results remain unknown.
+Typed pass contracts distinguish preserved occurrence proofs from invalidated
+event-indexed analyses. This does not claim a whole-pipeline fixed point.
+
+Published graph vectors transfer ownership rather than copying PMR buffers.
+Their geometric capacity growth charges the new allocation and any excess,
+including old/new overlap. A later pass may transfer those already-charged
+buffers back for rebuilding under the same preparation budget. Only capacity
+survives invalidation; arrays are cleared/repopulated and metadata is overwritten.
+Scratch still uses RecoveryScratch. No budget is increased or refunded. Fresh
+and reused graph equivalence plus existing exact/short quotas check the contract;
+no net latency or process-RSS improvement is claimed.

@@ -40,6 +40,12 @@ std::vector<bool> Reach(const NormalFlow& graph, std::uint32_t entry,
 void CompareOracle(const NormalFlow& graph, std::uint32_t entry) {
   const auto tree =
       std::get<DominatorTree>(BuildNormalDominators(graph, {entry}));
+  std::vector<std::uint32_t> offsets{0};std::vector<BlockId> successors;
+  for(const auto& block:graph.blocks) {
+    for(unsigned i=0;i<block.successor_count;++i)successors.push_back(block.successors[i].target);
+    offsets.push_back(static_cast<std::uint32_t>(successors.size()));
+  }
+  const auto direct=std::get<DominatorTree>(BuildDominators({offsets,successors},{entry}));
   const auto reachable = Reach(graph, entry);
   const auto count = graph.blocks.size();
   std::vector<std::vector<bool>> dominates(count, std::vector<bool>(count));
@@ -48,6 +54,7 @@ void CompareOracle(const NormalFlow& graph, std::uint32_t entry) {
     for (std::uint32_t b = 0; b < count; ++b) {
       dominates[a][b] = reachable[a] && reachable[b] && !without[b];
       Check(tree.Dominates({a}, {b}) == dominates[a][b]);
+      Check(direct.Dominates({a},{b})==dominates[a][b]);
     }
   }
   for (std::uint32_t b = 0; b < count; ++b) {
@@ -60,12 +67,18 @@ void CompareOracle(const NormalFlow& graph, std::uint32_t entry) {
       if (deepest) expected = BlockId{a};
     }
     Check(tree.nodes[b].parent == expected);
+    Check(direct.nodes[b].parent==expected);
   }
 }
 }  // namespace
 
 int main() {
   using namespace abcd::analysis;
+  std::vector<std::uint32_t> offsets{0,2,1};std::vector<BlockId> successors{{0}};
+  Check(std::get<DominatorError>(BuildDominators({offsets,successors}))==DominatorError::kInvalidEdge);
+  offsets={1,1};Check(std::get<DominatorError>(BuildDominators({offsets,successors}))==DominatorError::kInvalidEdge);
+  offsets={0,1};successors[0]={1};
+  Check(std::get<DominatorError>(BuildDominators({offsets,successors}))==DominatorError::kInvalidEdge);
   // All three-node directed graphs allowed by the normal graph's degree bound.
   constexpr std::uint32_t kNodes = 3;
   for (std::uint32_t mask = 0; mask < (1U << (kNodes * kNodes)); ++mask) {

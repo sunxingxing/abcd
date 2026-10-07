@@ -234,3 +234,15 @@ SymbolExpr census is gone. Copy propagation, lexical resolution and activation
 remain separate obligations. Compound-expression/name-shadow combinations test
 this shared path without new production shapes. InitializedRead and canonical
 activation, effect-motion migration and global pass convergence remain open.
+
+
+Rules191 (2026-10-08): completion-graph initialization now precedes expression
+effect refinement. InitializedRead and its whole-binding first-read/region
+metadata are removed. Typed pass contracts centrally distinguish preserved
+positive occurrence proofs from invalidated graph-indexed analyses. One graph
+is refined in place; direct CSR reuses the existing LT implementation, and
+prepaid graph buffers are rebuilt without retaining semantic contents. New
+TDZ-before/dead-read-after declaration cases close the model-to-source path.
+Default-parameter programs still retain conservative effects because the flow
+models body entry only. Canonical activation/IR, declaration/motion obligations
+and global convergence remain unfinished.

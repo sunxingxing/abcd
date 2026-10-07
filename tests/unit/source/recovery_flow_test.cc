@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <source_location>
+#include <tuple>
 using namespace abcd;
 using namespace abcd::source;
 namespace {
@@ -37,6 +38,7 @@ void CompletionDominance() {
       return seen;
     };
     const auto all=reachable({});const auto result=std::get<FlowDominance>(AnalyzeFlowDominance(flow));
+    Check(result.tree.nodes.size()==flow.events.size());
     flow.statements.resize(3);
     for(unsigned a=0;a<3;++a) {
       flow.bindings.push_back({BindingKind::kCompilerTemporary,FlowBindingExposure::kPrivate,StmtId{a}});
@@ -219,7 +221,9 @@ void Scaling() {
     const auto definitions=std::get<FlowDefinitions>(AnalyzeFlowDefinitions(graph,live));
     Check(definitions.reads==expected);
     Check(std::count(live.live_definitions.begin(),live.live_definitions.end(),1)==size/2);
-    if(!reverse){const auto work=live.work+definitions.work;
+    const auto dominance=std::get<FlowDominance>(AnalyzeFlowDominance(graph));
+    Check(dominance.tree.nodes.size()==size);
+    if(!reverse){const auto work=live.work+definitions.work+dominance.work;
       if(size>=800)Check(work<previous*3);previous=work;
       std::cout<<"flow facts size "<<size<<" work "<<work<<'\n';}
   }
@@ -264,6 +268,34 @@ void SourceEvents() {
     for(const auto& edge:flow.edges)if(edge.from==from&&edge.to==to&&edge.completion==completion)return true;return false;};
   Check(has(*read,*convert,FlowCompletion::kNormal));Check(has(*convert,*write,FlowCompletion::kNormal));
   Check(has(*convert,flow.terminal,FlowCompletion::kThrow));Check(!has(*convert,*write,FlowCompletion::kThrow));
+  // Initialization proofs are obtained before removing impossible binding
+  // throws. Refinement preserves semantic occurrences and coercion exceptions.
+  const auto initialized_reads=std::get<FlowInitializations>(AnalyzeFlowInitializations(flow));
+  auto refined_evaluations=evaluations;auto refined_normal=normal;
+  for(const auto& reference:flow.references)if(const auto* expression=std::get_if<ExprId>(&reference.site)) {
+    if(!initialized_reads.Completed(reference.binding,reference.point))continue;
+    if(std::holds_alternative<SymbolExpr>(tree.expressions[expression->value].expression))refined_evaluations[expression->value]=ExpressionEvaluation::kInert;
+    if(std::holds_alternative<AssignmentExpr>(tree.expressions[expression->value].expression))refined_normal[expression->value]=1;
+  }
+  auto refined=flow;
+  const auto refinement=std::get<FlowRefinement>(RefineRecoveryFlowEffects(refined,tree,refined_evaluations,refined_normal));
+  Check(refined.events.size()==flow.events.size()&&refined.references.size()==flow.references.size());
+  Check(refined.edges.size()<flow.edges.size());
+  const auto refined_initializations=std::get<FlowInitializations>(AnalyzeFlowInitializations(refined));
+  bool coercion_throw=false;
+  for(const auto& edge:refined.edges) {
+    if(edge.from==*convert&&edge.completion==FlowCompletion::kThrow)coercion_throw=true;
+    if(edge.completion==FlowCompletion::kThrow && refined.events[edge.from.value].expression==ExprId{0})Check(false);
+  }
+  Check(coercion_throw);
+  for(const auto& reference:refined.references)if(initialized_reads.Completed(reference.binding,reference.point))
+    Check(refined_initializations.Completed(reference.binding,reference.point));
+  for(unsigned boundary=0;boundary<3;++boundary) {
+    auto copy=flow;const auto result=RefineRecoveryFlowEffects(copy,tree,refined_evaluations,refined_normal,
+        {refinement.allocated_bytes-(boundary==1),refinement.work-(boundary==2)});
+    if(!boundary)Check(std::holds_alternative<FlowRefinement>(result));
+    else Check(std::get<TreeStructureError>(result)==(boundary==1?TreeStructureError::kResourceLimit:TreeStructureError::kWorkLimit));
+  }
   Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,projection,{flow.allocated_bytes-1,flow.work}))==TreeStructureError::kResourceLimit);
   Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,projection,{flow.allocated_bytes,flow.work-1}))==TreeStructureError::kWorkLimit);
   const auto liveness=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));
@@ -303,6 +335,32 @@ void SourceEvents() {
     if(event.expression==ExprId{4}&&event.read){Check(event.read==SymbolId{1});++shared_reads;}
   }
   Check(shared_updates==1&&shared_reads==1);
+  // Rebuilding from prepaid buffers must retain no prior semantic identity.
+  // Compare against a fresh graph after storage/declaration projection changes.
+  const auto reused=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,
+      {aliases,literals,replacements,omitted,evaluations,normal,native,private_bindings,storage},
+      {},flow));
+  Check(reused.allocated_bytes<shared.allocated_bytes);
+  Check(reused.events.size()==shared.events.size()&&reused.edges.size()==shared.edges.size());
+  Check(reused.definitions.size()==shared.definitions.size()&&reused.references.size()==shared.references.size());
+  for(std::size_t i=0;i<shared.events.size();++i) {
+    const auto& a=reused.events[i];const auto& b=shared.events[i];
+    Check(std::tie(a.kind,a.read,a.definition,a.expression,a.scope,a.incoming,a.outgoing,a.discarded)==
+        std::tie(b.kind,b.read,b.definition,b.expression,b.scope,b.incoming,b.outgoing,b.discarded));
+  }
+  for(std::size_t i=0;i<shared.edges.size();++i) {
+    const auto& a=reused.edges[i];const auto& b=shared.edges[i];
+    Check(std::tie(a.from,a.to,a.completion,a.incoming,a.outgoing)==std::tie(b.from,b.to,b.completion,b.incoming,b.outgoing));
+  }
+  for(std::size_t i=0;i<shared.definitions.size();++i) {
+    const auto& a=reused.definitions[i];const auto& b=shared.definitions[i];
+    Check(std::tie(a.point,a.binding,a.kind,a.copy,a.value,a.declaration,a.write,a.effect)==
+        std::tie(b.point,b.binding,b.kind,b.copy,b.value,b.declaration,b.write,b.effect));
+  }
+  for(std::size_t i=0;i<shared.references.size();++i) {
+    const auto& a=reused.references[i];const auto& b=shared.references[i];
+    Check(std::tie(a.point,a.binding,a.kind,a.site)==std::tie(b.point,b.binding,b.kind,b.site));
+  }
   unsigned read_references=0,write_references=0;
   for(const auto& reference:shared.references) {
     Check(reference.binding!=SymbolId{2});

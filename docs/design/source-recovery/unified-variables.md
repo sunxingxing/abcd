@@ -506,3 +506,56 @@ InitializedRead cannot start querying CurrentFlow without creating recursion.
 A shared initialization producer must first separate semantic completion/TDZ
 facts from effect-summary refinement; another local predicate or an unchecked
 recursive cache lookup would not satisfy the common-model contract.
+
+
+## Initialization facts before effect refinement (rules191, 2026-10-08)
+
+InitializedRead and initialized_first/definition-region/read-region metadata are
+removed. Expression completion summaries consume occurrence-indexed initialization
+facts from the shared flow. The preparation owner first computes conservative
+binding effects, builds the completion graph, and proves initialization through
+AnalyzeFlowInitializations. It then recomputes expression summaries and refines
+the same graph's binding effects. There is no AnalyzeExpressions/CurrentFlow
+recursion and no semantic mutation during analysis. Function-self bindings now
+have explicit body-entry definition events, alongside parameters and catch.
+
+RefineRecoveryFlowEffects only removes proved-impossible throw edges and updates
+write/discarded-effect annotations; events, definitions and reference identities
+remain fixed. Positive completion-dominance proofs from the conservative graph
+stay sound after edge removal. Negative results remain conservative, not evidence
+of a real throwing path. Update read/coercion/write events remain separate and
+coercion throws are retained. Demand and all-read liveness run after refinement.
+
+RunPass now uses typed pass identities with preservation contracts declared once
+at the dispatcher. Every changed pass discards event-indexed flow, dominance,
+liveness and expression summaries. Dead/redundant write removal and inert-statement
+omission preserve initialization of retained occurrences; they do not remove a
+retained lexical initialization. Storage coalescing proves the retained root
+initialized at every remapped reference, including preserved undefined writes,
+before committing. These passes may retain positive ExprId initialization facts;
+expression value/effect summaries are recomputed against the current storage map.
+Constants, aliases, expression motion and loop-declaration projection invalidate
+those facts too. Scheduling sites cannot independently select preservation.
+
+The graph remains body-oriented: default-parameter programs are not represented.
+Such absent occurrences receive no body-entry proof and retain their evaluation.
+This is an explicit precision gap, not a new signature/function rejection. Full
+activation/capture/unwind modeling and original IR correspondence remain open.
+Native declaration selection and snapshot motion retain their documented legacy
+lifetime/order obligations; common completion facts do not replace those proofs.
+
+New source cases distinguish an early TDZ read/write from a later discarded read
+after declaration. The early write still evaluates its RHS before failing; only
+the later inert read disappears. Independent execution and deletion mutants cover
+branch outcomes, injected throws, arena reversal and geometric statement counts.
+The graph tests check effect-refinement identity, coercion throws, preservation
+of positive initialization proofs, exact/short budgets, and fresh-versus-reused
+graph equivalence after storage/declaration changes.
+
+Initial implementations exhausted existing cumulative scratch quotas in the
+record/class gates. The final design refines one graph, feeds CSR adjacency to
+the existing LT algorithm without synthetic events, moves published graph buffers
+instead of copying them, and reuses prepaid capacity after pass invalidation.
+All semantic contents are rebuilt. Allocation growth/overlap stays charged and
+no allowance is increased or refunded. These changes remove duplicate work and
+storage; they do not establish a whole-process RSS claim.

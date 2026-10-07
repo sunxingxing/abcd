@@ -13,7 +13,7 @@ struct DiscardedEvaluation {
   ExpressionEvaluation effect = ExpressionEvaluation::kInert;
 };
 enum class FlowCompletion : std::uint8_t { kNormal, kThrow, kReturn, kJump, kTaken, kNotTaken, kResumeNext, kResumeThrow, kResumeReturn, kConservativeCleanup };
-enum class FlowDefinitionKind : std::uint8_t { kParameter, kUndefined, kInitializer, kAssignment, kUpdate, kCatch, kUndefinedStore };
+enum class FlowDefinitionKind : std::uint8_t { kParameter, kUndefined, kInitializer, kAssignment, kUpdate, kCatch, kUndefinedStore, kFunctionSelf };
 enum class FlowEventKind : std::uint8_t { kControl, kTruthBranch, kNullishBranch, kRead, kEvaluation, kEnterScope, kLeaveScope, kDefinition, kSuspend };
 enum class FlowWriteEffect : std::uint8_t { kObservable, kInert };
 enum class FlowBindingExposure : std::uint8_t { kObservable, kPrivate };
@@ -58,7 +58,8 @@ struct FlowEdge {
   std::optional<std::size_t> incoming, outgoing;
 };
 // Temporary migration adapter, explicitly not the canonical semantic input.
-// Task 2 replaces evaluations/normal_stores with flow initialization facts;
+// Effect summaries bootstrap conservatively and refine from shared flow
+// initialization facts. Original-IR correspondence remains a migration gap;
 // this view must not become a second source of truth for new optimizations.
 struct LegacyFlowProjection {
   std::span<const std::optional<SymbolId>> aliases;
@@ -96,7 +97,18 @@ struct RecoveryFlow {
 // may analyze these facts; this routine neither selects storage nor elides code.
 // Original IR correspondence retention and canonical binding lifetime analysis
 // remain separate required steps of unified-variables.md, not implied here.
+// Optional storage transfers already-charged buffers from an invalidated graph
+// owned by the same preparation budget. No facts survive; only capacity does.
 [[nodiscard]] std::variant<RecoveryFlow, TreeStructureError> BuildRecoveryFlow(
-    const FunctionTree&, LegacyFlowProjection, analysis::SemanticBudget = {});
+    const FunctionTree&, LegacyFlowProjection, analysis::SemanticBudget = {},RecoveryFlow storage = {});
+struct FlowRefinement { std::size_t allocated_bytes=0; std::uint64_t work=0; };
+// Refine a conservative graph's binding effects after initialization proof.
+// Event/definition/reference identities are preserved; only exception edges
+// may disappear. Positive completion-dominance facts therefore remain sound.
+// The supplied summaries must describe this unchanged projection, not a plan
+// mutation. Demand/liveness must be computed after this refinement.
+[[nodiscard]] std::variant<FlowRefinement,TreeStructureError> RefineRecoveryFlowEffects(
+    RecoveryFlow&,const FunctionTree&,std::span<const ExpressionEvaluation>,
+    std::span<const std::uint8_t> normal_stores,analysis::SemanticBudget = {});
 }
 #endif

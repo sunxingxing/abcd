@@ -16,9 +16,13 @@ using Task=std::variant<Statement,Expression>;
 enum class ReadState : std::uint8_t {kUnseen,kPending,kDone};
 class FlowBuilder {
  public:
-  FlowBuilder(const FunctionTree& tree,LegacyFlowProjection projection,analysis::SemanticBudget budget)
-      : tree_(tree), projection_(projection), budget_(budget), memory_(budget_), events_(&memory_), edges_(&memory_),
-        statements_(&memory_), expressions_(&memory_), exits_(&memory_), tasks_(&memory_), seen_(&memory_), definitions_(&memory_), reads_(&memory_), read_states_(&memory_), initializers_(&memory_), discarded_(&memory_), references_(&memory_) {}
+  FlowBuilder(const FunctionTree& tree,LegacyFlowProjection projection,analysis::SemanticBudget budget,RecoveryFlow storage)
+      : tree_(tree), projection_(projection), budget_(budget), memory_(budget_),
+        statements_(&memory_), expressions_(&memory_), exits_(&memory_), tasks_(&memory_), seen_(&memory_), reads_(&memory_), read_states_(&memory_), initializers_(&memory_), result_(std::move(storage)) {
+    events_=std::move(result_.events);events_.clear();edges_=std::move(result_.edges);edges_.clear();
+    definitions_=std::move(result_.definitions);definitions_.clear();references_=std::move(result_.references);references_.clear();
+    discarded_=std::move(result_.discarded);discarded_.clear();
+  }
   RecoveryFlow Run() {
     ProjectedReads();
     initializers_.resize(tree_.expressions.size());
@@ -34,6 +38,11 @@ class FlowBuilder {
     for(auto& point:expressions_){budget_.Step();point=New();}
     Link(dispatch_,terminal_,FlowCompletion::kConservativeCleanup);
     entry_=New();auto previous=entry_;
+    for(std::size_t i=0;i<tree_.symbols.size();++i) {
+      budget_.Step();if(tree_.symbols[i].kind!=BindingKind::kFunctionSelf)continue;
+      const auto initialized=Define(SymbolId{static_cast<std::uint32_t>(i)},FlowDefinitionKind::kFunctionSelf);
+      Link(previous,initialized);previous=initialized;
+    }
     for(const auto& parameter:tree_.parameters) {
       budget_.Step();const auto initialized=Define(parameter.symbol,FlowDefinitionKind::kParameter);
       Link(previous,initialized);previous=initialized;
@@ -41,15 +50,15 @@ class FlowBuilder {
     Link(previous,statements_[tree_.body.value]);
     tasks_.push_back(Statement{tree_.body,{terminal_,terminal_,{}}});
     while(!tasks_.empty()) {budget_.Step();const auto task=tasks_.back();tasks_.pop_back();std::visit([&](auto at){Build(at);},task);}
-    RecoveryFlow result;
+    auto& result=result_;
     result.identity=tree_.identity;result.value_revision=tree_.value_revision;result.cfg_revision=tree_.cfg_revision;
     result.entry=entry_;result.terminal=terminal_;
-    const auto copy=[&](auto& destination,const auto& source){budget_.Array(destination,source.size());std::copy(source.begin(),source.end(),destination.begin());};
-    copy(result.events,events_);copy(result.edges,edges_);copy(result.definitions,definitions_);
-    copy(result.references,references_);
-    copy(result.discarded,discarded_);
+    const auto copy=[&](auto& destination,const auto& source){Resize(destination,source.size());std::copy(source.begin(),source.end(),destination.begin());};
+    result.events=std::move(events_);result.edges=std::move(edges_);
+    result.definitions=std::move(definitions_);result.references=std::move(references_);
+    result.discarded=std::move(discarded_);
     copy(result.statements,statements_);copy(result.expressions,expressions_);
-    budget_.Array(result.bindings,tree_.symbols.size());
+    Resize(result.bindings,tree_.symbols.size());
     for(std::size_t i=0;i<tree_.symbols.size();++i) {
       budget_.Step();result.bindings[i]={tree_.symbols[i].kind,
           !projection_.private_bindings.empty() && projection_.private_bindings[i]
@@ -63,12 +72,33 @@ class FlowBuilder {
           (definition.kind==FlowDefinitionKind::kUndefined && !binding.declaration))
         binding.declaration=definition.declaration;
     }
-    result.allocated_bytes=budget_.Bytes();result.work=budget_.Work();return result;
+    result.allocated_bytes=budget_.Bytes();result.work=budget_.Work();return std::move(result);
   }
  private:
+  template<class T> void Resize(std::vector<T>& values,std::size_t count) {
+    if(count>values.capacity()) {
+      budget_.Admit(count,sizeof(T));values.reserve(count);
+      budget_.Admit(values.capacity()-count,sizeof(T));
+    }
+    budget_.Step(count);values.resize(count);
+  }
+  template<class T> void Append(std::vector<T>& values,T value) {
+    // The published graph owns these buffers directly. Charge geometric growth
+    // including old/new overlap, then move ownership instead of allocating a
+    // second copy at publication. Scratch still uses the scoped PMR resource.
+    if(values.size()==values.capacity()) {
+      constexpr std::size_t growth=2;
+      RequireTree(values.size()<values.max_size(),Error::kResourceLimit);
+      const auto capacity=values.capacity()?values.capacity()>values.max_size()/growth?
+          values.max_size():values.capacity()*growth:1;
+      budget_.Admit(capacity,sizeof(T));values.reserve(capacity);
+      budget_.Admit(values.capacity()-capacity,sizeof(T));
+    }
+    budget_.Step();values.push_back(std::move(value));
+  }
   Point New(FlowEvent event={}) {
     RequireTree(events_.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
-    budget_.Step();Point result{static_cast<std::uint32_t>(events_.size())};events_.push_back(event);return result;
+    budget_.Step();Point result{static_cast<std::uint32_t>(events_.size())};Append(events_,event);return result;
   }
   Point Define(SymbolId binding,FlowDefinitionKind kind,std::optional<SymbolId> copy={},
       std::optional<ExprId> value={},std::optional<StmtId> declaration={},
@@ -77,16 +107,16 @@ class FlowBuilder {
     RequireTree(definitions_.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
     const auto point=New({FlowEventKind::kDefinition,{},FlowDefinitionId{static_cast<std::uint32_t>(definitions_.size())}});
     events_[point.value].discarded=discarded;
-    definitions_.push_back({point,Resolve(binding),kind,copy,value,declaration,write,effect});
+    Append(definitions_,{point,Resolve(binding),kind,copy,value,declaration,write,effect});
     if(write)Reference(point,Resolve(binding),FlowReferenceKind::kWrite,*write);
     else if(kind==FlowDefinitionKind::kUndefinedStore)Reference(point,Resolve(binding),FlowReferenceKind::kWrite,*declaration);
     return point;
   }
   void Reference(FlowPoint point,SymbolId binding,FlowReferenceKind kind,FlowReferenceSite site) {
-    budget_.Step();references_.push_back({point,binding,kind,site});
+    budget_.Step();Append(references_,{point,binding,kind,site});
   }
   void Link(Point from,Point to,FlowCompletion completion=FlowCompletion::kNormal) {
-    budget_.Step();edges_.push_back({from,to,completion,events_[to.value].incoming,events_[from.value].outgoing});
+    budget_.Step();Append(edges_,{from,to,completion,events_[to.value].incoming,events_[from.value].outgoing});
     events_[to.value].incoming=events_[from.value].outgoing=edges_.size()-1;
   }
   SymbolId Resolve(SymbolId symbol) const {
@@ -199,7 +229,7 @@ class FlowBuilder {
       } else if constexpr(std::is_same_v<T,ExpressionStmt>) {
         RequireTree(discarded_.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
         const DiscardedId id{static_cast<std::uint32_t>(discarded_.size())};
-        discarded_.push_back({at.id});
+        Append(discarded_,{at.id});
         auto evaluation=context;evaluation.discarded=id;Link(start,Expr(node.expression,evaluation));
       }
       else if constexpr(std::is_same_v<T,DeclarationStmt>) {
@@ -239,20 +269,66 @@ class FlowBuilder {
     },tree_.statements[at.id.value].statement);
   }
   const FunctionTree& tree_;LegacyFlowProjection projection_;TreeCheckBudget budget_;RecoveryScratch memory_;
-  std::pmr::vector<FlowEvent> events_;std::pmr::vector<FlowEdge> edges_;
+  std::vector<FlowEvent> events_;std::vector<FlowEdge> edges_;
   std::pmr::vector<Point> statements_,expressions_,exits_;std::pmr::vector<Task> tasks_;
-  std::pmr::vector<std::uint8_t> seen_;std::pmr::vector<FlowDefinition> definitions_;
+  std::pmr::vector<std::uint8_t> seen_;std::vector<FlowDefinition> definitions_;
   std::pmr::vector<std::optional<SymbolId>> reads_;std::pmr::vector<ReadState> read_states_;
   std::pmr::vector<std::optional<StmtId>> initializers_;
-  std::pmr::vector<DiscardedEvaluation> discarded_;
-  std::pmr::vector<FlowReference> references_;
+  std::vector<DiscardedEvaluation> discarded_;
+  std::vector<FlowReference> references_;
   Point entry_{},terminal_{},dispatch_{};
+  RecoveryFlow result_;
 };
 }
 std::variant<RecoveryFlow,TreeStructureError> BuildRecoveryFlow(
-    const FunctionTree& tree,LegacyFlowProjection projection,analysis::SemanticBudget budget) {
-  try{return FlowBuilder(tree,projection,budget).Run();}
+    const FunctionTree& tree,LegacyFlowProjection projection,analysis::SemanticBudget budget,RecoveryFlow storage) {
+  try{return FlowBuilder(tree,projection,budget,std::move(storage)).Run();}
   catch(Error error){return error;}catch(const std::bad_alloc&){return Error::kResourceLimit;}
+  catch(const std::length_error&){return Error::kResourceLimit;}
+}
+std::variant<FlowRefinement,TreeStructureError> RefineRecoveryFlowEffects(
+    RecoveryFlow& flow,const FunctionTree& tree,std::span<const ExpressionEvaluation> evaluations,
+    std::span<const std::uint8_t> normal_stores,analysis::SemanticBudget allowance) {
+  try {
+    TreeCheckBudget budget(allowance);
+    std::vector<ExpressionEvaluation> assignments;
+    budget.Array(assignments,tree.expressions.size());
+    for(auto& effect:assignments){budget.Step();effect=ExpressionEvaluation::kRequired;}
+    for(auto& definition:flow.definitions) {
+      budget.Step();if(!definition.write || (definition.kind!=FlowDefinitionKind::kAssignment &&
+          definition.kind!=FlowDefinitionKind::kInitializer))continue;
+      const bool inert=flow.bindings[definition.binding.value].exposure==FlowBindingExposure::kPrivate &&
+          normal_stores[definition.write->value];
+      definition.effect=inert?FlowWriteEffect::kInert:FlowWriteEffect::kObservable;
+      assignments[definition.write->value]=inert && definition.kind!=FlowDefinitionKind::kInitializer?
+          ExpressionEvaluation::kInert:ExpressionEvaluation::kRequired;
+    }
+    for(auto& discarded:flow.discarded){budget.Step();discarded.effect=ExpressionEvaluation::kInert;}
+    for(auto& event:flow.events) {
+      budget.Step();event.incoming.reset();event.outgoing.reset();
+      if(!event.expression || !event.discarded)continue;
+      const auto id=*event.expression;const auto& node=tree.expressions[id.value].expression;
+      bool required=IntrinsicEvaluation(node)==ExpressionEvaluation::kRequired &&
+          evaluations[id.value]!=ExpressionEvaluation::kInert;
+      if(std::holds_alternative<AssignmentExpr>(node))required=assignments[id.value]==ExpressionEvaluation::kRequired;
+      if(required)flow.discarded[event.discarded->value].effect=ExpressionEvaluation::kRequired;
+    }
+    std::size_t retained=0;
+    for(std::size_t i=0;i<flow.edges.size();++i) {
+      budget.Step();auto edge=flow.edges[i];const auto& event=flow.events[edge.from.value];
+      if(edge.completion==FlowCompletion::kThrow && event.expression) {
+        const auto id=*event.expression;const auto& node=tree.expressions[id.value].expression;
+        // Update's binding read and coercion are separate events. A normal
+        // write summary never licenses deleting a coercion's throwing path.
+        const bool update_read=event.kind==FlowEventKind::kRead && std::holds_alternative<UpdateExpr>(node);
+        if(!update_read && (evaluations[id.value]==ExpressionEvaluation::kInert || normal_stores[id.value]))continue;
+      }
+      edge.incoming=flow.events[edge.to.value].incoming;edge.outgoing=flow.events[edge.from.value].outgoing;
+      flow.edges[retained]=edge;flow.events[edge.to.value].incoming=retained;
+      flow.events[edge.from.value].outgoing=retained;++retained;
+    }
+    flow.edges.resize(retained);return FlowRefinement{budget.Bytes(),budget.Work()};
+  }catch(Error error){return error;}catch(const std::bad_alloc&){return Error::kResourceLimit;}
   catch(const std::length_error&){return Error::kResourceLimit;}
 }
 }

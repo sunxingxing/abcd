@@ -166,6 +166,25 @@ std::uint64_t EmptyBinding(unsigned form,unsigned count,bool reverse,bool emit) 
   return plan.work;
 }
 
+std::uint64_t InitializationReads(unsigned form,unsigned count,bool reverse,bool emit) {
+  Fixture f;auto& tree=f.tree;
+  const auto early=f.Stmt(ExpressionStmt{form?f.Store(2):f.Read(2)});
+  std::vector<StmtId> body{f.Stmt(IfStmt{f.Read(1),f.Block({early},f.Scope()),{}})};
+  for(unsigned i=0;i<count;++i)body.push_back(f.Stmt(ExpressionStmt{f.Call(0)}));
+  body.push_back(f.Stmt(DeclarationStmt{{2},f.Call(1)}));
+  const auto late=f.Stmt(ExpressionStmt{f.Read(2)});body.push_back(late);
+  body.push_back(f.Stmt(ReturnStmt{f.Read(2)}));f.Finish(body,reverse);
+  test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
+  const auto result=PlanBindingInitializers(tree,loops,nullish);test::Check(std::holds_alternative<BindingInitializers>(result));
+  const auto& plan=std::get<BindingInitializers>(result);
+  // TDZ before the declaration does not make every later read effectful.
+  // An early write must retain RHS evaluation before the failing PutValue.
+  test::Check(!plan.omitted[early.value]);test::Check(plan.omitted[late.value]);
+  std::ostringstream out;test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,out)));
+  if(emit)std::cout<<nlohmann::json{{"source",out.str()},{"initialization",true},{"form",form},{"count",count}}<<'\n';
+  return plan.work;
+}
 void BindingObligations() {
   // Cartesian semantic facts, independent of CFG reachability and arena order.
   // A reference in retained syntax requires a binding even if its value is dead.
@@ -196,6 +215,13 @@ void BindingObligations() {
 }
 int main(int argc,char**) {
   BindingObligations();
+  for(unsigned form=0;form<2;++form)for(bool reverse:{false,true}) {
+    std::uint64_t previous=0;
+    for(unsigned count:{0U,200U,201U,400U,800U}) {
+      const auto work=InitializationReads(form,count,reverse,argc>1);
+      if(count>=400)test::Check(work<previous*3);previous=work;
+    }
+  }
   for(unsigned form=0;form<6;++form)for(bool reverse:{false,true}) {
     std::uint64_t previous=0;
     for(unsigned count:{0U,200U,201U,400U,800U}) {

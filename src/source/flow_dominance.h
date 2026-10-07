@@ -12,8 +12,8 @@ struct FlowDominance {
   }
 };
 // Include EVERY completion edge, including exceptions and conservative cleanup.
-// Binary fanout is only an adapter for the existing LT implementation; it must
-// not change paths between real events or become a recovery admission pattern.
+// CSR adjacency feeds the existing LT implementation directly. Arbitrary
+// fanout needs no synthetic events and never becomes a recovery admission.
 [[nodiscard]] std::variant<FlowDominance,TreeStructureError> AnalyzeFlowDominance(
     const RecoveryFlow&,analysis::SemanticBudget = {});
 struct FlowInitializations {

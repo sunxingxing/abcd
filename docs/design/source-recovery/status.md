@@ -1,6 +1,6 @@
 # 项目进展与设计审查
 
-更新时间：2026-10-07。设计基线见 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md)。
+更新时间：2026-10-08。设计基线见 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md)。
 本页是当前状态入口；[progress.md](progress.md) 保留历史证据，不覆盖本页结论。
 
 ## 更新规则
@@ -23,6 +23,46 @@
 打印器只消费计划。必须退出对应旧局部判断的决策路径，不能仅新增接口。
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
+
+### 2026-10-08：规则191，初始化事实与 pass 失效契约贯通
+
+- 删除 InitializedRead 及 initialized_first/定义区域/读取区域元数据。
+  先以保守效果建立完成流，由共同初始化支配分析产生事实，再细化表达式
+  效果和同一图的异常边；避免 CurrentFlow/AnalyzeExpressions 递归依赖。
+  FunctionSelf 增加显式函数体入口定义；默认参数程序尚未建模，其读取
+  不借用函数体入口证明。自增读取、转换、成功写回及转换异常继续分离。
+- RunPass 使用类型化 pass 身份，保留契约集中声明一次。发生修改时统一
+  丢弃事件索引的图、支配、活跃性及表达式摘要；仅已证明保留初始化的
+  消除/存储合并保留正向 occurrence 事实，仍按当前存储映射重算效果。
+  常量、别名、快照移动、循环声明投影同时丢弃该事实。无修改 pass 共享
+  只读分析；调度点不再手选失效集合。需求消除先于快照，存储与声明
+  修改之后按依赖运行清理，最终发布当前表达式摘要。
+- 初版反复建图/分析触及既有累计预算。通过同图细化、共享 LT 的直接 CSR
+  输入、移动发布图缓冲及复用同一预算所有者已支付容量消除重复成本；
+  每次重建全部语义内容，新增容量及增长重叠继续收费，未提高或退还额度。
+  复用/新建等价、异常边细化、正向初始化证明保持及 exact/short 预算
+  验证通过；这不构成进程 RSS 验收。
+- 相关目标构建通过，日志 /tmp/abcd-rule191-final-build.log。
+  56 项定向测试首次 55 通过（393.82 秒），日志
+  /tmp/abcd-rule191-final-tests.log，完整输出保存在
+  /tmp/abcd-rule191-test-detail.log。唯一未通过 dominators_cli_test
+  首次缺 abc_scan/abc_dominators；补建依赖通过后单独重跑仍在 abc_scan
+  设置 RLIMIT_AS 阶段失败，报 cannot establish process memory limit，
+  未进入支配分析。日志 /tmp/abcd-rule191-cli-build.log 与
+  /tmp/abcd-rule191-cli-tests.log。扫描器本轮未修改，不绕过资源门槛，
+  不宣称 56 项全绿；原 54 项源码恢复回归和 dominators_test 均通过。
+- 定义消除新增 TDZ 读取/赋值、RHS 抛异常及初始化后无效读取用例，覆盖
+  arena 反序、200/201 与几何增长：204 份生成源码、2,280 次独立执行、
+  7 个反例。变量/别名 1,752 份源码/461,776 行为/284 反例；存储
+  221/33,620/12；快照 252/9,636/10；冗余写回 528/18,192/12。
+- ABC-only 导出 build/stage-one/initialization-facts-rule191：
+  10complete/0partial/9noModule，10 份源码 node --check 通过，正文与
+  规则190一致；日志 /tmp/abcd-rule191-final-export.log。输入 SHA256
+  854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e。
+- 全局投影版本/固定点收敛、canonical IR 对应、绑定 activation/default
+  parameter/复杂 unwind、旧 motion/声明生命期证明仍待迁移。统一变量
+  里程碑、结构 gate 和阶段一均未完成，原 Goal active；全量语料、
+  RSS/DFX、代理等暂停范围保持。
 
 ### 2026-10-07：规则190，别名名称义务消费共同引用事件
 

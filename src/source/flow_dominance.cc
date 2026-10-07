@@ -11,7 +11,8 @@ std::variant<FlowInitializations,TreeStructureError> AnalyzeFlowInitializations(
     for(const auto& definition:flow.definitions) {
       budget.Step();bool selected=false;
       switch(definition.kind) {
-        case FlowDefinitionKind::kParameter: case FlowDefinitionKind::kCatch:selected=true;break;
+        case FlowDefinitionKind::kParameter: case FlowDefinitionKind::kCatch:
+        case FlowDefinitionKind::kFunctionSelf:selected=true;break;
         case FlowDefinitionKind::kUndefined: case FlowDefinitionKind::kInitializer:
           selected=definition.declaration && definition.declaration==flow.bindings[definition.binding.value].declaration;break;
         case FlowDefinitionKind::kAssignment: case FlowDefinitionKind::kUpdate:
@@ -31,23 +32,23 @@ std::variant<FlowInitializations,TreeStructureError> AnalyzeFlowInitializations(
 std::variant<FlowDominance,TreeStructureError> AnalyzeFlowDominance(
     const RecoveryFlow& flow,analysis::SemanticBudget allowance) {
   try {
-    TreeCheckBudget budget(allowance);analysis::NormalFlow graph;
+    TreeCheckBudget budget(allowance);
     constexpr auto limit=std::numeric_limits<std::uint32_t>::max();
-    RequireTree(flow.events.size()<limit && flow.edges.size()<limit-flow.events.size(),TreeStructureError::kResourceLimit);
-    budget.Array(graph.blocks,flow.events.size()+flow.edges.size());
-    const auto edge_point=[&](std::size_t edge){return analysis::BlockId{static_cast<std::uint32_t>(flow.events.size()+edge)};};
+    RequireTree(flow.events.size()<limit && flow.edges.size()<limit,TreeStructureError::kResourceLimit);
+    std::vector<std::uint32_t> offsets;
+    std::vector<analysis::BlockId> successors;
+    budget.Array(offsets,flow.events.size()+1);budget.Array(successors,flow.edges.size());
+    std::size_t count=0;
     for(std::size_t i=0;i<flow.events.size();++i) {
-      budget.Step();if(const auto edge=flow.events[i].outgoing) {
-        graph.blocks[i].successor_count=1;graph.blocks[i].successors[0].target=edge_point(*edge);
+      budget.Step();offsets[i]=static_cast<std::uint32_t>(count);
+      for(auto edge=flow.events[i].outgoing;edge;edge=flow.edges[*edge].outgoing) {
+        budget.Step();RequireTree(count<successors.size(),TreeStructureError::kTarget);
+        successors[count++]={flow.edges[*edge].to.value};
       }
     }
-    for(std::size_t i=0;i<flow.edges.size();++i) {
-      budget.Step();const auto& edge=flow.edges[i];auto& block=graph.blocks[edge_point(i).value];
-      block.successor_count=1;block.successors[0].target={edge.to.value};
-      if(edge.outgoing){block.successor_count=analysis::kMaxNormalSuccessors;block.successors[1].target=edge_point(*edge.outgoing);}
-    }
+    offsets.back()=static_cast<std::uint32_t>(count);successors.resize(count);
     const auto remaining=budget.Remaining();
-    auto analyzed=analysis::BuildNormalDominators(graph,{flow.entry.value},{remaining.bytes,remaining.work});
+    auto analyzed=analysis::BuildDominators({offsets,successors},{flow.entry.value},{remaining.bytes,remaining.work});
     if(const auto* error=std::get_if<analysis::DominatorError>(&analyzed)) {
       switch(*error) {
         case analysis::DominatorError::kEmptyGraph: case analysis::DominatorError::kInvalidEntry:

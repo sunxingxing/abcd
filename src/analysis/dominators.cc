@@ -26,32 +26,50 @@ struct DfsFrame {
   std::uint32_t next = 0;
 };
 
+struct NormalAdjacency {
+  const NormalFlow& graph;
+  std::size_t Size() const {return graph.blocks.size();}
+  bool Valid(std::size_t node) const {return graph.blocks[node].successor_count<=graph.blocks[node].successors.size();}
+  std::size_t Count(std::size_t node) const {return graph.blocks[node].successor_count;}
+  BlockId Target(std::size_t node,std::size_t edge) const {return graph.blocks[node].successors[edge].target;}
+};
+struct CompletionAdjacency {
+  DominatorAdjacency graph;
+  std::size_t Size() const {return graph.offsets.empty()?0:graph.offsets.size()-1;}
+  bool Valid(std::size_t node) const {
+    return graph.offsets.front()==0 && graph.offsets.back()==graph.successors.size() &&
+        graph.offsets[node]<=graph.offsets[node+1] && graph.offsets[node+1]<=graph.successors.size();
+  }
+  std::size_t Count(std::size_t node) const {return graph.offsets[node+1]-graph.offsets[node];}
+  BlockId Target(std::size_t node,std::size_t edge) const {return graph.successors[graph.offsets[node]+edge];}
+};
+template<class Adjacency>
 class DominatorBuilder {
  public:
-  DominatorBuilder(const NormalFlow& graph, BlockId entry,
+  DominatorBuilder(Adjacency graph, BlockId entry,
                    DominatorBudget budget)
       : graph_(graph), entry_(entry.value), budget_(budget.bytes),
         remaining_work_(budget.work) {}
 
   DominatorResult Build() {
-    const auto count = graph_.blocks.size();
+    const auto count = graph_.Size();
     if (count == 0) return DominatorError::kEmptyGraph;
     if (entry_ >= count) return DominatorError::kInvalidEntry;
     if (count >= kAbsent) return DominatorError::kResourceLimit;
     std::size_t edges = 0;
-    for (const auto& block : graph_.blocks) {
+    for (std::size_t from=0;from<graph_.Size();++from) {
       Step();
-      if (block.successor_count > block.successors.size())
+      if (!graph_.Valid(from))
         return DominatorError::kInvalidEdge;
-      for (std::size_t i = 0; i < block.successor_count; ++i) {
+      for (std::size_t i = 0; i < graph_.Count(from); ++i) {
         Step();
         ++tree_.work.edge_visits;
-        if (block.successors[i].target.value >= count)
+        if (graph_.Target(from,i).value >= count)
           return DominatorError::kInvalidEdge;
       }
-      if (edges >= kAbsent - block.successor_count)
+      if (edges >= kAbsent - graph_.Count(from))
         return DominatorError::kResourceLimit;
-      edges += block.successor_count;
+      edges += graph_.Count(from);
     }
     if (edges >= kAbsent || !Allocate(tree_.nodes, count) ||
         !Allocate(nodes_, count) || !Allocate(order_, count) ||
@@ -99,12 +117,11 @@ class DominatorBuilder {
     while (depth != 0) {
       Step();
       auto& frame = stack_[depth - 1];
-      const auto& block = graph_.blocks[frame.node];
-      if (frame.next == block.successor_count) {
+      if (frame.next == graph_.Count(frame.node)) {
         --depth;
         continue;
       }
-      const auto target = block.successors[frame.next++].target.value;
+      const auto target = graph_.Target(frame.node,frame.next++).value;
       ++tree_.work.edge_visits;
       if (nodes_[target].number != 0) continue;
       nodes_[target].parent = frame.node;
@@ -114,11 +131,11 @@ class DominatorBuilder {
   }
 
   void IndexPredecessors() {
-    for (const auto& block : graph_.blocks) {
+    for (std::size_t from=0;from<graph_.Size();++from) {
       Step();
-      for (std::size_t i = 0; i < block.successor_count; ++i) {
+      for (std::size_t i = 0; i < graph_.Count(from); ++i) {
         Step();
-        ++nodes_[block.successors[i].target.value].pred_count;
+        ++nodes_[graph_.Target(from,i).value].pred_count;
         ++tree_.work.edge_visits;
       }
     }
@@ -129,12 +146,11 @@ class DominatorBuilder {
       offset += node.pred_count;
       node.pred_count = 0;
     }
-    for (std::uint32_t from = 0; from < graph_.blocks.size(); ++from) {
+    for (std::uint32_t from = 0; from < graph_.Size(); ++from) {
       Step();
-      const auto& block = graph_.blocks[from];
-      for (std::size_t i = 0; i < block.successor_count; ++i) {
+      for (std::size_t i = 0; i < graph_.Count(from); ++i) {
         Step();
-        auto& target = nodes_[block.successors[i].target.value];
+        auto& target = nodes_[graph_.Target(from,i).value];
         predecessors_[target.pred_begin + target.pred_count++] = from;
         ++tree_.work.edge_visits;
       }
@@ -229,7 +245,7 @@ class DominatorBuilder {
     }
   }
 
-  const NormalFlow& graph_;
+  Adjacency graph_;
   std::uint32_t entry_;
   std::size_t budget_;
   std::optional<std::uint64_t> remaining_work_;
@@ -252,11 +268,16 @@ bool DominatorTree::Dominates(BlockId ancestor, BlockId descendant) const {
 DominatorResult BuildNormalDominators(const NormalFlow& graph, BlockId entry,
                                       DominatorBudget budget) {
   try {
-    return DominatorBuilder(graph, entry, budget).Build();
+    return DominatorBuilder(NormalAdjacency{graph}, entry, budget).Build();
   } catch (DominatorError error) {
     return error;
   } catch (const std::bad_alloc&) {
     return DominatorError::kResourceLimit;
   }
+}
+DominatorResult BuildDominators(DominatorAdjacency graph,BlockId entry,DominatorBudget budget) {
+  try {return DominatorBuilder(CompletionAdjacency{graph},entry,budget).Build();}
+  catch(DominatorError error){return error;}
+  catch(const std::bad_alloc&){return DominatorError::kResourceLimit;}
 }
 }  // namespace abcd::analysis

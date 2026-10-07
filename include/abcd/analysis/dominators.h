@@ -2,6 +2,7 @@
 #define ABCD_ANALYSIS_DOMINATORS_H_
 
 #include <optional>
+#include <span>
 
 #include "abcd/analysis/normal_flow.h"
 
@@ -45,5 +46,13 @@ using DominatorResult = std::variant<DominatorTree, DominatorError>;
 // Do not use this normal-only result as dominance over exceptional execution.
 [[nodiscard]] DominatorResult BuildNormalDominators(
     const NormalFlow& graph, BlockId entry = {}, DominatorBudget budget = {});
+// General completion graphs use CSR adjacency without synthetic binary-fanout
+// nodes. The same LT implementation and budgets apply to every supplied edge.
+struct DominatorAdjacency {
+  std::span<const std::uint32_t> offsets;
+  std::span<const BlockId> successors;
+};
+[[nodiscard]] DominatorResult BuildDominators(
+    DominatorAdjacency graph,BlockId entry = {},DominatorBudget budget = {});
 }  // namespace abcd::analysis
 #endif
