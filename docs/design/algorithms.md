@@ -1904,6 +1904,31 @@ O(S) bounded storage; the interval/census and disjoint entry scan remain linear.
 Language provenance is the pinned ECMA-262 2024 ForLoopEvaluation and
 ForBodyEvaluation documented in function-tree-output.md; no new dependency.
 
+Rules 158 adds standard immutable constant propagation on the same eligibility
+proof, not a separate layout recognizer. A single-write eligible private binding
+has either a typed primitive TreeLiteral definition, a SymbolExpr dependency or
+an unknown value. Source literals seed a bounded SymbolId queue; indexed head/next
+adjacency visits each copy edge once. There is at most one incoming copy per
+eligible target, and each known target is queued once. Cycles without a literal
+seed remain unknown. Mutable/captured/source storage, allocations and effects
+retain their original producer. No arithmetic folding or expression replay is
+introduced. This is a project-owned sparse worklist implementation of ordinary
+constant propagation; it introduces no external code, license or dependency.
+
+For B symbols and D eligible copy edges (D <= B), propagation is O(B+D) time and
+O(B) bounded storage. The plan stores original literal ExprIds, not copied text.
+One O(I) prefix count over disjoint loop-entry roots supports constant-time
+nonempty range queries; ordered printer cursors omit pure stores without empty
+commas/declaration lists and retain every original boundary. Real read ExprIds
+retain their own ranges, and substituted literals use the existing parent grammar
+grouping. Each omitted store/RHS has a zero range at its original boundary.
+Printing cost includes actual output bytes; repeated long literals can grow output
+and remain subject to the existing output budget, not a hidden constant cost.
+Unknown alias coalescing, interference and source-name recovery are still open.
+Tests cover chains and every typed primitive variant, 200/201/400/800 growth,
+arena renumbering, mutable/old-value/exception/suspension cases, number-member
+receiver identity and retained object/array allocation identity.
+
 For S statements, E expressions, K owned child/argument/property slots, B symbols
 and C owned class-member capture occurrences, cost is O(S+E+K+B+C), with
 O(S+E+B) scratch/output indexes. Dense class capture occurrences are counted

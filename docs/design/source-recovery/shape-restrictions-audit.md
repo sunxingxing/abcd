@@ -1,5 +1,17 @@
 # 按用户要求进行的恢复条件审计
 
+规则158补充：原始值常量传播消费共同首次完成store、全部观察词法包含
+和capture/escape证明，不在证明后追加同块/邻接/寄存器/PC/producer列表
+或复制链长度条件。单写是值不可变义务；TreeLiteral是已检查的类型化
+原始值域，SymbolExpr是复制依赖，不按指令名字白名单承认表达式。
+有界SymbolId依赖worklist支持任意数量和arena顺序；真实Local、可变/
+捕获/未知值、对象分配和调用/getter保持存储与身份，不盲目删除检查。
+字面量使用实际读取的parent grammar和ExprId，loop逗号/空前缀由实际
+非省略项决定，原boundary/anchor保持。数值/构造契约不改变。长原始
+字符串的输出增长、一般alias/SSA干涉和原变量归属仍是表示/质量缺口；
+不能用新样本布局匹配填补。有效旧实现先RED，独立JS旧值、handler、
+await/yield、member receiver及分配身份反例均用同一生产方案验证。
+
 规则157补充：私有loop进入绑定复用首次完成store和全部观察包含证明，
 候选for生命周期由已有LoopStmt/进入程序owner记录，退出后/handler/
 finally旧值和capture保持。ForDeclaration的可声明后缀是语言语法投影，

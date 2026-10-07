@@ -1,5 +1,17 @@
 # 验收、证据与实施交接
 
+2026-10-07 规则158：共同首次store/观察scope/capture证明上，单写私有
+TreeLiteral及SymbolExpr复制形成常量格，任意链经有界worklist传播；
+旧值/可变/真实local/capture及分配/call/getter仍保留。有效旧实现RED；
+新增212树与旧312树保留，总512完整源码独立Acorn/JS验收，317848行为/
+124 mutation通过，涵盖异常/await/yield、numeric member receiver与
+新对象/数组身份；最终30/30定向通过122.88秒。fresh ABC-only
+pasteboard10complete/0partial/9noModule，
+十源解析，空声明19→16、总声明66→63，初始化47/const43及三个for let
+保持；循环phi/update、一般alias/SSA干涉、原变量和每轮capture、全body/
+style与结构gate仍开放。阶段一Goal active，暂停范围保持。打印费用
+包括实际输出字节，不声称长字符串展开减少体积；证据见status.md。
+
 2026-10-07 规则157：未capture的私有进入绑定复用首次完成store及
 全部观察scope包含证明，输出native for let。旧值/外层/handler/cell/
 用户capture保持，前序效果仍在原进入位置运行一次。十新树族/六规模/

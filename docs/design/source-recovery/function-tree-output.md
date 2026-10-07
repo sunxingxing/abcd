@@ -90,7 +90,30 @@ native initializer/每轮binding与phi/update临时值消除仍是表示缺口�
 不描述为语言/VM限制。具体解码/独立行为、scope/throw/await/yield反例
 及实际record证据见status.md；两个实际for不能代替阶段一完整body风格。
 
-## 私有结果的初始化声明（规则 154/155/156/157）
+## 私有结果的初始化声明（规则 154/155/156/157/158）
+
+规则158在同一初始化证明上建立原始值常量格。只有已经证明首次完成
+store支配全部观察、生命周期包含且无capture/escape的私有单写绑定，
+才参与传播；TreeLiteral定义提供原始值，SymbolExpr复制提供依赖边。
+这是已有类型化原始值域，不匹配opcode、producer列表、寄存器、PC、
+同块或复制数量。对象/数组/function/class分配、getter和调用保持原存储；
+真实local/cell/formal、可变绑定、提前/RHS读取及外层/handler旧值保持。
+不进行算术求值、SSA合并或原变量名推断，数值/构造契约不改变。
+
+SymbolId索引依赖链与有界worklist将原TreeLiteral的ExprId沿每条复制边
+传播一次，不重复扫描复制链。移除对应私有声明和纯store；每个实际
+读取继续使用自己的ExprId/生成范围，字面量按真实parent context进入
+共同TreeOperandGrouping（例如数字member base及负数指数base）。原store
+及其RHS在原boundary保留零范围，所有anchor继续有位置。canonical AST
+不变，不通过多次打印定义ExprId覆盖读取来源，也不回放分配或效果。
+
+loop进入程序使用一次非省略root前缀计数，空区间不生成前置表达式；
+两个有序cursor只为实际项打印逗号，省略root仍处理原boundary。可声明
+后缀必须包含实际声明，避免空`let`。这延续共同ForDeclaration语法投影，
+不是新布局条件。分析线性、有界，打印按实际输出字节计费；重复的较长
+原始字符串仍可能扩大输出，不宣称源码体积或全body/style验收完成。
+新测试覆盖长复制链、正反arena、200/201/400/800、提前/条件/后续写、
+异常、零轮/多轮、await/yield、数字member receiver及新分配身份。
 
 规则157把同一首次完成store/全部观察包含证明用于已有loop进入程序。
 有进入程序的LoopStmt在共同DFS中记录一个候选for词法生命周期，

@@ -15,6 +15,11 @@ struct BindingInitializers {
   // LoopStmt indexed: first declarator in its existing ordered entry program.
   // Earlier effects remain before the loop, in their original handler/scope.
   std::vector<std::optional<std::uint32_t>> loop_declarations;
+  // SymbolId indexed: original TreeLiteral occurrence for a proven immutable
+  // primitive value. Stores and reads keep their own original source ranges.
+  std::vector<std::optional<ExprId>> literals;
+  // Prefix counts of non-elided initializer roots, for constant-time ranges.
+  std::vector<std::uint32_t> entry_counts;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };
@@ -28,6 +33,10 @@ struct BindingInitializers {
 // Uncaptured private loop-entry bindings may use native for let. The same
 // first-store and confinement proof covers initializer/test/body/update and
 // rejects observations after exit. Source/cell captures never change lifetime.
+// Single-store eligible bindings form a sparse constant lattice: primitive
+// TreeLiteral definitions propagate through immutable copies. Allocations,
+// calls/getters, mutable values and captured/source bindings retain storage.
+// Literal substitution keeps each read's origin and its actual parent grammar.
 // O(statements + expressions + owned children + symbols + capture references),
 // bounded iterative ownership walks; no per-symbol CFG traversal or SSA merge.
 [[nodiscard]] std::variant<BindingInitializers, TreeStructureError>

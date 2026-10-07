@@ -60,8 +60,8 @@ struct EndStatement { StmtId id; };
 struct LoopHeader { StmtId id; std::optional<StmtId> retained; bool discarded = false; };
 struct LoopHeaderCursor { StmtId block; std::uint32_t index; std::uint32_t count; std::optional<StmtId> retained; bool discarded = false; };
 struct LoopTransitionEnd { StmtId block; std::uint32_t first; };
-struct LoopInitializerCursor { std::uint32_t index; std::uint32_t end; };
-struct LoopDeclarationCursor { std::uint32_t index; std::uint32_t end; };
+struct LoopInitializerCursor { std::uint32_t index; std::uint32_t end; bool emitted = false; };
+struct LoopDeclarationCursor { std::uint32_t index; std::uint32_t end; bool emitted = false; };
 struct LoopKeyword { std::optional<LabelId> label; };
 struct ElideLoopHeader { StmtId id; };
 struct LoopBody { StmtId block; LoopConditionSyntax syntax; std::size_t depth; };
@@ -1194,6 +1194,11 @@ class TreePrinter {
   void PrintOriginalExpression(ExpressionOperand operand) {
     const auto id=operand.id;
     const auto& expression=Tree().expressions[id.value].expression;
+    if (const auto* read = std::get_if<SymbolExpr>(&expression)) if (const auto value = Initializers().literals[read->symbol.value]) {
+      const auto& literal = Tree().expressions[value->value].expression;
+      if (TreeOperandGrouping(literal,operand.context)) { Append("(");Push(std::string_view(")")); }
+      Expression(std::get<TreeLiteral>(literal));return;
+    }
     if (const auto* unary = std::get_if<UnaryExpr>(&expression);
         unary && unary->operation == TreeUnary::kNot) {
       operand.id = unary->operand; operand.inferred_name = {};
@@ -1347,7 +1352,7 @@ class TreePrinter {
           if (declarations) {
             Push(LoopDeclarationCursor{*declarations, initializer->end}); Push(std::string_view("let "));
             Push(LoopKeyword{node.label});
-            if (initializer->first < *declarations) {
+            if (Initializers().entry_counts[initializer->first] != Initializers().entry_counts[*declarations]) {
               // Prefix effects execute once, before the new lexical loop scope.
               // Keeping them outside the RHS also preserves NamedEvaluation.
               Push(Indent{at.depth}); Push(std::string_view(");\n"));
@@ -1438,16 +1443,26 @@ class TreePrinter {
     }
   }
   void Run(BlockBoundary at) { Boundary(at); }
+  void OmitBindingStatement(StmtId id) {
+    Result().statements[id.value] = {written_,written_};
+    if (const auto* effect = std::get_if<ExpressionStmt>(&Tree().statements[id.value].statement)) {
+      // Only the common constant lattice elides a private assignment. Both
+      // original leaves retain zero ranges at the original boundary; a literal
+      // substituted into a read uses that read's own ExprId and parent grammar.
+      const auto& assignment = std::get<AssignmentExpr>(Tree().expressions[effect->expression.value].expression);
+      Result().expressions[effect->expression.value] = {written_,written_};
+      Result().expressions[assignment.value.value] = {written_,written_};
+    }
+  }
   void Run(LoopInitializerCursor at) {
     if (at.index == at.end) return;
     const auto& root = Loops().initializer_roots[at.index];
     Boundary(root.boundary);
     const BlockBoundary after{root.boundary.block, root.boundary.index + 1};
-    if (at.index + 1 < at.end) {
-      Push(LoopInitializerCursor{at.index + 1, at.end}); Push(std::string_view(", "));
-      const auto& next = Loops().initializer_roots[at.index + 1].boundary;
-      if (next.block != after.block || next.index != after.index) Push(after);
-    } else Push(after);
+    const bool omitted = Initializers().omitted[root.statement.value];
+    Push(LoopInitializerCursor{at.index + 1,at.end,at.emitted || !omitted});Push(after);
+    if (omitted) { OmitBindingStatement(root.statement);return; }
+    if (at.emitted) Append(", ");
     Push(LoopHeader{root.statement, {}, true});
   }
   void Run(LoopKeyword at) {
@@ -1455,14 +1470,14 @@ class TreePrinter {
     Append("for (");
   }
   void Run(LoopDeclarationCursor at) {
+    if (at.index == at.end) return;
     const auto& root = Loops().initializer_roots[at.index]; Boundary(root.boundary);
     const BlockBoundary after{root.boundary.block, root.boundary.index + 1};
+    const bool omitted = Initializers().omitted[root.statement.value];
+    Push(LoopDeclarationCursor{at.index + 1,at.end,at.emitted || !omitted});Push(after);
+    if (omitted) { OmitBindingStatement(root.statement);return; }
+    if (at.emitted) Append(", ");
     Result().statements[root.statement.value].begin = written_;
-    if (at.index + 1 < at.end) {
-      Push(LoopDeclarationCursor{at.index + 1, at.end}); Push(std::string_view(", "));
-      const auto& next = Loops().initializer_roots[at.index + 1].boundary;
-      if (next.block != after.block || next.index != after.index) Push(after);
-    } else Push(after);
     const auto& binding = *Initializers().statements[root.statement.value];
     const auto& assignment = std::get<AssignmentExpr>(Tree().expressions[binding.assignment.value].expression);
     Push(EndStatement{root.statement});
@@ -1542,7 +1557,7 @@ class TreePrinter {
       return;
     }
     if (Initializers().omitted[child.value]) {
-      Result().statements[child.value] = {written_, written_}; return;
+      OmitBindingStatement(child); return;
     }
     Push(std::string_view("\n"));
     const auto depth = root ? at.depth : at.depth + 1;

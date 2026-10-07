@@ -1,5 +1,14 @@
 # 全 ISA 优先执行顺序
 
+2026-10-07 规则158：已证明不变的私有原始值和任意复制链由共同绑定
+证明/有界依赖worklist传播，不添加样本/布局/opcode列表条件。512完整
+源码317848独立行为/124 mutation，mutable/captured/旧值和对象分配身份
+保持，最终30/30定向通过122.88秒；fresh pasteboard常量种子直接false/0，
+空声明19→16、总声明66→63，
+三个for let与10complete/0partial保持。一般alias/SSA干涉、原变量与
+每轮capture、全部body/style及结构gate仍开放，Goal active、暂停范围
+保持，构建/定向及实际证据见status.md。
+
 2026-10-07 规则157：私有loop进入绑定按共同首次store/全部观察包含
 证明恢复native for let，前序效果/handler/label和真实capture保持。
 276完整源码13892独立行为/56 mutation、最终30/30定向109.71秒，

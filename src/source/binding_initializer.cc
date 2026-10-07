@@ -34,6 +34,10 @@ class Initializers {
       TreeCheckBudget& budget) : tree_(tree), loops_(loops), nullish_(nullish), budget_(budget) {
     budget.Array(plan_.statements, tree.statements.size()); budget.Array(plan_.omitted, tree.statements.size());
     budget.Array(plan_.loop_declarations, tree.statements.size());
+    budget.Array(plan_.literals, tree.symbols.size());
+    budget.Array(plan_.entry_counts, loops.initializer_roots.size() + 1);
+    budget.Array(constant_heads_, tree.symbols.size());budget.Array(constant_next_, tree.symbols.size());
+    budget.Array(constant_queue_, tree.symbols.size());
     budget.Array(uses_, tree.symbols.size()); budget.Array(projected_, tree.statements.size());
     budget.Array(containers_, tree.statements.size());
     budget.Array(lexical_, tree.statements.size()); budget.Array(projectors_, tree.statements.size());
@@ -145,6 +149,11 @@ class Initializers {
           effect.expression, use.writes == 1 ? DeclarationKind::kConst : DeclarationKind::kLet};
       if (!loops_.initializer_owners[use.initializer->value]) plan_.omitted[use.declaration->value] = 1;
     }
+    Constants();
+    for (std::size_t i = 0; i < loops_.initializer_roots.size(); ++i) {
+      budget_.Step(); plan_.entry_counts[i + 1] = plan_.entry_counts[i] +
+          (plan_.omitted[loops_.initializer_roots[i].statement.value] ? 0 : 1);
+    }
     // ForDeclaration has one ordered declarator list. Keep the preceding
     // expression program at its original entry, then emit the representable
     // suffix as let declarations. This is a grammar projection, not a compiler
@@ -153,16 +162,18 @@ class Initializers {
     for (std::size_t i = 0; i < loops_.initializers.size(); ++i) {
       budget_.Step(); const auto& entry = loops_.initializers[i]; if (!entry) continue;
       auto first = entry->end;
+      bool declaration = false;
       while (first > entry->first) {
         budget_.Step(); const auto root = loops_.initializer_roots[first - 1].statement;
-        if (!plan_.statements[root.value]) break;
+        if (!plan_.statements[root.value] && !plan_.omitted[root.value]) break;
+        declaration |= plan_.statements[root.value].has_value();
         --first;
       }
-      if (first < entry->end) plan_.loop_declarations[i] = first;
+      if (declaration) plan_.loop_declarations[i] = first;
       for (auto at = entry->first; at < entry->end; ++at) {
         budget_.Step(); const auto root = loops_.initializer_roots[at].statement;
         if (at < first) plan_.statements[root.value].reset();
-        else {
+        else if (!plan_.omitted[root.value]) {
           const auto symbol = plan_.statements[root.value]->symbol;
           plan_.statements[root.value]->declaration = DeclarationKind::kLet;
           plan_.omitted[uses_[symbol.value].declaration->value] = 1;
@@ -172,6 +183,40 @@ class Initializers {
     return Finish();
   }
  private:
+  void Constants() {
+    // Sparse constant lattice on the common first-store/scope proof. A single
+    // static store may execute repeatedly only within its confined lifetime;
+    // primitive literals have no identity/allocation/getter/call to replay.
+    // Unknown/mutable/captured values remain storage. One source per copy lets
+    // an indexed dependency worklist propagate every edge once, independent
+    // of symbol/arena/register numbering; never rescan a chain per variable.
+    std::size_t ready = 0;
+    for (std::size_t i = 0; i < uses_.size(); ++i) {
+      budget_.Step();const auto& use = uses_[i];
+      if (!use.initializer || use.writes != 1 || !plan_.statements[use.initializer->value]) continue;
+      const auto symbol = SymbolId{static_cast<std::uint32_t>(i)};
+      const auto assignment = plan_.statements[use.initializer->value]->assignment;
+      const auto value = std::get<AssignmentExpr>(tree_.expressions[assignment.value].expression).value;
+      const auto& expression = tree_.expressions[value.value].expression;
+      if (std::holds_alternative<TreeLiteral>(expression)) {
+        plan_.literals[i] = value;constant_queue_[ready++] = symbol;
+      } else if (const auto* read = std::get_if<SymbolExpr>(&expression)) {
+        constant_next_[i] = constant_heads_[read->symbol.value];constant_heads_[read->symbol.value] = symbol;
+      }
+    }
+    for (std::size_t at = 0; at < ready; ++at) {
+      budget_.Step();const auto source = constant_queue_[at];
+      for (auto target = constant_heads_[source.value]; target; target = constant_next_[target->value]) {
+        budget_.Step();RequireTree(!plan_.literals[target->value] && ready < constant_queue_.size(),TreeStructureError::kOwnership);
+        plan_.literals[target->value] = plan_.literals[source.value];constant_queue_[ready++] = *target;
+      }
+    }
+    for (std::size_t i = 0; i < uses_.size(); ++i) {
+      budget_.Step();if (!plan_.literals[i]) continue;
+      plan_.omitted[uses_[i].declaration->value] = 1;plan_.omitted[uses_[i].initializer->value] = 1;
+      plan_.statements[uses_[i].initializer->value].reset();
+    }
+  }
   BindingInitializers Finish() {
     plan_.allocated_bytes = budget_.Bytes(); plan_.work = budget_.Work(); return std::move(plan_);
   }
@@ -271,6 +316,8 @@ class Initializers {
   std::size_t projection_count_ = 0;
   std::size_t next_container_ = 0;
   std::vector<ExpressionVisit> expressions_;
+  std::vector<std::optional<SymbolId>> constant_heads_, constant_next_;
+  std::vector<SymbolId> constant_queue_;
   std::vector<StatementVisit> statements_;
 };
 }

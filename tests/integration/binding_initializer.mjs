@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {parseJavaScript} from './class_reference.mjs';
-const rows = execFileSync(process.argv[2], ['--emit'], {encoding:'utf8', maxBuffer:16_000_000}).trim().split('\n').map(JSON.parse);
+const rows = execFileSync(process.argv[2], ['--emit'], {encoding:'utf8', maxBuffer:32_000_000}).trim().split('\n').map(JSON.parse);
 const token = {}, second = {}, failure = Symbol('original throw');
 function original(row) {
   if (row.decoded_loop) return function(again,seed,report,choice,stop) {
@@ -59,6 +59,36 @@ function compare(actual, expected) {
     assert.equal(actual.trace[i][0], expected.trace[i][0]); assert.ok(Object.is(actual.trace[i][1], expected.trace[i][1]));
   }
 }
+function constantReference(row) {
+  const value=row.constant===14?'{}':row.constant===15?'[]':row.constant===13?'-2':['void 0','null','false','true','42','-0','NaN','Infinity','-Infinity',JSON.stringify('Ā\n𝒳')][row.literal];
+  const reports='report(saved);'.repeat(row.count);
+  let body=(row.constant===2?'report(saved);':'')+(row.constant===4?'if(seed){saved='+value+';}':'saved='+(row.constant===6?'saved':value)+';')+reports;
+  if(row.constant===3)body+='saved=seed();';
+  if(row.constant===7)body='try{seed();saved='+value+';'+reports+'}finally{report(saved);}';
+  if(row.constant===8 || row.constant===9)body='while(seed()){saved='+value+';'+reports+'}';
+  if(row.constant===10 || row.constant===11)body='saved='+value+';'+(row.constant===10?'await':'yield')+' seed();'+reports;
+  body+='return'+(row.constant===9?'':row.constant===12?' saved.toString()':row.constant===13?' saved ** 2':' saved')+';';
+  return Function('return ('+(row.constant===10?'async function':row.constant===11?'function*':'function')+'(seed,report){let saved;'+body+'})')();
+}
+async function observeConstant(fn,row,value,fault,flag,iterations,request='next',reject=false) {
+  const trace=[],requests=[];let at=0,checks=0,returned,thrown,allocation;
+  const event=(kind,value)=>{trace.push([kind,value]);if(++at===fault)throw failure;};
+  const seed=function(){assert.equal(this,undefined);const result=row.constant===8 || row.constant===9?checks++<iterations:value;event('seed',result);
+    if(row.constant===10){queueMicrotask(()=>trace.push(['job']));return reject?Promise.reject(failure):Promise.resolve(result);}return result;};
+  const report=function(value){assert.equal(this,undefined);
+    if(row.constant>=14){allocation??=value;assert.equal(value,allocation);value.visits=(value.visits??0)+1;event('report',value.visits);}
+    else event('report',value);};
+  const descriptor=Object.getOwnPropertyDescriptor(Number.prototype,'toString');
+  if(row.constant===12)Object.defineProperty(Number.prototype,'toString',{configurable:true,get(){event('get',this);return function(){event('member',this);return typeof this+':'+String(this);};}});
+  try {
+    returned=fn(row.constant===4?flag:seed,report);
+    if(row.constant===11){const generator=returned,first=generator.next();requests.push(first.value);const end=request==='throw'?generator.throw(failure):request==='return'?generator.return(second):generator.next(value);assert.equal(end.done,true);returned=end.value;}
+    if(row.constant===10)returned=await returned;
+    if(row.constant>=14){assert.equal(returned,allocation??returned);assert.equal(Array.isArray(returned),row.constant===15);assert.equal(returned.visits??0,row.count);returned=token;}
+  }catch(error){thrown=error;returned=undefined;}
+  finally{if(row.constant===12)Object.defineProperty(Number.prototype,'toString',descriptor);}
+  return {trace,requests,returned,thrown};
+}
 let comparisons=0, mutations=0, folded=0;
 for (const row of rows) {
   const ast = parseJavaScript(row.source), pending=[ast], initialized=[], declarations=[], stores=[], loops=[];
@@ -72,6 +102,34 @@ for (const row of rows) {
     if(node.type==='ExpressionStatement' && node.expression.type==='AssignmentExpression' &&
         node.expression.left.type==='Identifier') stores.push(node);
     if(node.type==='WhileStatement' || node.type==='ForStatement') loops.push(node);
+  }
+  if(row.constant!==undefined) {
+    const generated=Function('return '+row.source)(),reference=constantReference(row);
+    assert.equal(declarations.some(node=>node.declarations.some(item=>item.id.name==='saved')),!row.folded);
+    if(row.folded)++folded;
+    if(row.constant>=14){const objects=[generated(()=>{},()=>{}),generated(()=>{},()=>{})];assert.notEqual(objects[0],objects[1]);}
+    const run=(fn,value,fault,flag=true,iterations=2,request='next',reject=false)=>observeConstant(fn,row,value,fault,flag,iterations,request,reject);
+    for(const value of [undefined,null,-0,NaN,1n,Symbol('input'),token])for(const flag of row.constant===4?[false,true,undefined,0,1n,token]:[true])
+      for(const iterations of row.constant===8 || row.constant===9?[0,1,2,3]:[2])for(const fault of [Infinity,1,2,row.count+1]) {
+        try{compare(await run(generated,value,fault,flag,iterations),await run(reference,value,fault,flag,iterations));}
+        catch(error){error.message+=`; constant=${row.constant}, literal=${row.literal}, count=${row.count}, fault=${fault}`;throw error;}++comparisons;
+      }
+    if(row.constant===10){compare(await run(generated,token,Infinity,true,2,'next',true),await run(reference,token,Infinity,true,2,'next',true));++comparisons;}
+    if(row.constant===11)for(const request of ['throw','return']){compare(await run(generated,token,Infinity,true,2,request),await run(reference,token,Infinity,true,2,request));++comparisons;}
+    if(row.folded && row.count===1) {
+      const returned=ast.body[0].expression.body.body.findLast(node=>node.type==='ReturnStatement');
+      if(returned?.argument && row.constant!==12){
+        const operand=returned.argument,changed=row.source.slice(0,operand.start)+'123'+row.source.slice(operand.end);parseJavaScript(changed);
+        const bad=Function('return '+changed)();const actual=await run(bad,token,Infinity),expected=await run(reference,token,Infinity);
+        assert.throws(()=>compare(actual,expected),assert.AssertionError);++mutations;
+      }
+      if(row.constant===12){
+        const callee=returned.argument.callee,changed=row.source.slice(0,callee.start)+'(0, '+row.source.slice(callee.start,callee.end)+')'+row.source.slice(callee.end);parseJavaScript(changed);
+        const bad=Function('return '+changed)();const actual=await run(bad,token,Infinity),expected=await run(reference,token,Infinity);
+        assert.throws(()=>compare(actual,expected),assert.AssertionError);++mutations;
+      }
+    }
+    continue;
   }
   if(row.fold || row.branch) {assert.ok(initialized.length); ++folded;}
   const generated=Function('return '+row.source)(), reference=original(row);

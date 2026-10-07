@@ -12,6 +12,54 @@
 
 ## 当前阶段
 
+### 2026-10-07：规则158，共同私有原始值常量与复制链传播
+
+- 干净af212204继续。BindingInitializers在既有首次完成store/全部观察
+  包含/capture逃逸证明上建立常量格：已证明单写的CompilerTemporary
+  TreeLiteral定义沿SymbolExpr复制边传播，移除对应空声明和纯store。
+  原始值域是既有typed AST，不匹配opcode/producer名单、样本/名字、
+  register/PC、CFG同块/邻接或复制数量；不进行算术折叠/未知alias或SSA
+  合并。真实local/cell/formal、mutable/captured和未知值继续保持存储。
+- SymbolId索引head/next依赖和有界queue每边一次，新增O(B+D)时间/
+  O(B)空间（D≤B），全分析继续O(S+E+owned slots+B+class captures)。
+  loop进入root前缀计数与有序cursor避免省略项的空逗号/空let/空前缀。
+  原AST/ExprId/StmtId/SymbolId不变；实际读取保留自己的生成range，并
+  按共同TreeOperandGrouping处理数字member/负数指数base。被省略
+  assignment/RHS和声明在原boundary保留零range，所有anchor保留。
+  按实际输出字节计费，长字符串重复展开可能增加输出；不声称源码体积
+  改善或全style完成，也没有physical RSS达标声明。
+- 在旧规则157上，有效树先通过结构验证/打印后于省略存储断言RED，
+  /tmp/abcd-constant-binding-red.log退出134。初次build的混合auto类型
+  声明错误已修正，不计作语义RED。新增16树族×六规模×正反arena，
+  加10原始literal种类×正反arena；旧312 checked/300完整源码保留，
+  总524 checked/512完整生成源码。200/201/400/800与work增长通过。
+- 独立Acorn/原生JS oracle累计317848行为比较、124有效JS mutation，
+  folded源240份。覆盖任意Number/BigInt/Symbol/object输入、长复制链、
+  提前读取/自读/条件首次赋值/后续写、真实local、零/多轮退出读取、
+  原异常、await拒绝与job顺序、yield throw/return、Number.prototype
+  member getter/receiver和负数指数。对象/数组分配不传播：单调用内
+  alias/mutation身份保持，不同调用仍新分配；没有回放call/getter。
+- abc_structure/abc_semantic及十四fixture最终构建退出0，既有
+  literal_plan.cc:59 kNoop switch warning保留。对象反例补强后四项
+  定向4/4通过14.05秒；最终30项定向30/30通过122.88秒，覆盖共同
+  binding/loop/snapshot/scope/structure/numeric/class/control/module/family、
+  native函数名及实际构造十record、Push、ProgressBar、富文本和loop闭包。
+  oracle /tmp/abcd-constant-binding-behavior-final.log；最终build/test/
+  export/style日志为/tmp/abcd-constant-binding-{final-build,tests-final,
+  export-final,style}.log。node --check、git diff --check通过。
+- fresh ABC-only build/stage-one/constant-binding-pasteboard-final：19
+  records/219 methods，10complete/0partial/9noModule、value_tree，无
+  legacy；顶层contract language_numeric_constructors_v1。十源独立
+  解析，complete无INCOMPLETE/UNRECOVERED。实际PasteBoard常量种子
+  直接为false/0，空声明19→16，总声明66→63，初始化47/const43和
+  三个native for let保持。phi/update搬运与未知alias仍存在。
+- 原结构/signature/body gate、一般SSA活跃期/干涉与存储投影、真实
+  变量归属/每轮capture、compound进入声明及全body/style仍开放。
+  阶段一Goal active；full suite、expanded corpus、RSS/benchmark、DFX、
+  scheduler、agents及周期audit继续暂停，固定五ABC106/0未重跑；
+  受控平台/构造子集不代替设备SDK和全record body/style验收。
+  输入未修改、无新依赖。
+
 ### 2026-10-07：规则157，私有循环进入绑定的原生 for let
 
 - 从干净f72c545b继续，当前隔离branch codex/resume-generator-post-loop。

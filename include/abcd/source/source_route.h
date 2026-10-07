@@ -337,7 +337,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // context; private initialization there uses the same observation proof.
 // Rules 157 project uncaptured, loop-confined entry bindings to native for let
 // with the same first-store/observation proof; prior effects stay before it.
-inline constexpr std::uint32_t kRouteEvidenceRules = 157;
+// Rules 158 propagate proven immutable primitive bindings and copies through
+// an indexed constant lattice; unknown/mutable/captured storage stays distinct.
+inline constexpr std::uint32_t kRouteEvidenceRules = 158;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

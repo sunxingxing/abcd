@@ -7,6 +7,8 @@
 #include "abcd/source/tree_printer.h"
 #include "../../support/analysis/ssa_fixture.h"
 #include <array>
+#include <bit>
+#include <limits>
 #include <sstream>
 #include <nlohmann/json.hpp>
 using namespace abcd;
@@ -34,7 +36,10 @@ struct Fixture {
       else if constexpr (std::is_same_v<T, CallExpr>) syntax.callee = expression(syntax.callee);
       else if constexpr (std::is_same_v<T, AwaitExpr> || std::is_same_v<T, YieldExpr>) syntax.operand = expression(syntax.operand);
       else if constexpr (std::is_same_v<T, UnaryExpr>) syntax.operand = expression(syntax.operand);
-      else test::Check(std::holds_alternative<SymbolExpr>(node.expression) || std::holds_alternative<TreeLiteral>(node.expression));
+      else if constexpr (std::is_same_v<T, MemberExpr>) syntax.base = expression(syntax.base);
+      else if constexpr (std::is_same_v<T, BinaryExpr>) { syntax.left = expression(syntax.left); syntax.right = expression(syntax.right); }
+      else test::Check(std::holds_alternative<SymbolExpr>(node.expression) || std::holds_alternative<TreeLiteral>(node.expression) ||
+          std::holds_alternative<EmptyObjectExpr>(node.expression) || std::holds_alternative<EmptyArrayExpr>(node.expression));
     }, node.expression);
     for (auto& argument : tree.arguments) argument = expression(argument);
     for (auto& node : tree.statements) std::visit([&](auto& syntax) {
@@ -164,6 +169,87 @@ struct Fixture {
     }
   }
 };
+std::uint64_t Constant(unsigned form, unsigned count, unsigned literal, bool reverse, bool emit) {
+  Fixture fixture(3, count); auto& tree = fixture.tree;
+  const auto rhs = std::get<AssignmentExpr>(tree.expressions[std::get<ExpressionStmt>(tree.statements[fixture.store.value].statement).expression.value].expression).value;
+  const auto bits = [](double value) { return NumberLiteral{std::bit_cast<std::uint64_t>(value)}; };
+  tree.texts.push_back(u"\u0100\n\U0001d4b3");
+  const std::array<TreeLiteral, 10> literals{UndefinedLiteral{}, NullLiteral{}, BooleanLiteral{false}, BooleanLiteral{true},
+      IntegerLiteral{42}, bits(-0.0), bits(std::numeric_limits<double>::quiet_NaN()),
+      bits(std::numeric_limits<double>::infinity()), bits(-std::numeric_limits<double>::infinity()), TextId{0}};
+  if (form != 6) tree.expressions[rhs.value].expression = form == 13 ? TreeLiteral{IntegerLiteral{-2}} : literals[literal];
+  if (form == 14) tree.expressions[rhs.value].expression = EmptyObjectExpr{};
+  if (form == 15) tree.expressions[rhs.value].expression = EmptyArrayExpr{};
+  auto roots = tree.children; tree.children.clear();
+  const auto block = [&](const std::vector<StmtId>& children, ScopeId parent) {
+    const ScopeId scope{static_cast<std::uint32_t>(tree.scopes.size())};tree.scopes.push_back({ScopeKind::kBlock,parent});
+    const auto first = static_cast<std::uint32_t>(tree.children.size());tree.children.insert(tree.children.end(),children.begin(),children.end());
+    return fixture.Stmt(BlockStmt{scope,first,static_cast<std::uint32_t>(children.size())});
+  };
+  if (form == 1) {
+    unsigned previous = 2; const auto last = count ? static_cast<unsigned>(tree.symbols.size()) + count - 1 : previous;
+    for (auto& expression : tree.expressions) if (auto* read = std::get_if<SymbolExpr>(&expression.expression);read && read->symbol == SymbolId{2}) read->symbol = {last};
+    std::vector<StmtId> declarations, stores;
+    for (unsigned i = 0; i < count; ++i) {
+      const auto symbol = static_cast<std::uint32_t>(tree.symbols.size()), name = static_cast<std::uint32_t>(tree.names.size());
+      const auto digits = std::to_string(i);tree.names.push_back(u"copy"+std::u16string(digits.begin(),digits.end()));
+      tree.symbols.push_back({{1},{name},BindingKind::kCompilerTemporary,DeclarationKind::kLet,NameEvidence::kSynthesized,TemporaryReason::kMultipleUses});
+      declarations.push_back(fixture.Stmt(DeclarationStmt{{symbol},{}}));
+      stores.push_back(fixture.Stmt(ExpressionStmt{fixture.Expr(AssignmentExpr{SymbolTarget{{symbol}},fixture.Read(previous)})}));previous = symbol;
+    }
+    roots.insert(roots.begin()+2,stores.begin(),stores.end());roots.insert(roots.begin(),declarations.begin(),declarations.end());
+  } else if (form == 2) roots.insert(roots.begin()+1,fixture.Stmt(ExpressionStmt{fixture.Call(1,2)}));
+  else if (form == 3) roots.insert(roots.end()-1,fixture.Store(fixture.Call(0)));
+  else if (form == 4) roots[1] = fixture.Stmt(IfStmt{fixture.Read(0),block({fixture.store},{1}),{}});
+  else if (form == 5) {tree.symbols[2].kind = BindingKind::kLocal;tree.symbols[2].temporary.reset();}
+  else if (form == 7) {
+    std::vector<StmtId> body(roots.begin()+1,roots.end()-1);body.insert(body.begin(),fixture.Stmt(ExpressionStmt{fixture.Call(0)}));
+    const auto protected_body = block(body,{1}), finalizer = block({fixture.Stmt(ExpressionStmt{fixture.Call(1,2)})},{1});
+    roots = {roots.front(),fixture.Stmt(TryStmt{protected_body,{},finalizer}),roots.back()};
+  } else if (form == 8 || form == 9) {
+    const auto loop = fixture.Stmt(LoopStmt{{0},{}});
+    const ScopeId scope{static_cast<std::uint32_t>(tree.scopes.size())};tree.scopes.push_back({ScopeKind::kBlock,ScopeId{1}});
+    const auto stops = block({fixture.Stmt(BreakStmt{loop,{}})},scope);
+    std::vector<StmtId> body{fixture.Stmt(IfStmt{fixture.Expr(UnaryExpr{TreeUnary::kNot,fixture.Call(0)}),stops,{}})};
+    body.insert(body.end(),roots.begin()+1,roots.end()-1);
+    const auto first = static_cast<std::uint32_t>(tree.children.size());tree.children.insert(tree.children.end(),body.begin(),body.end());
+    const auto owned = fixture.Stmt(BlockStmt{scope,first,static_cast<std::uint32_t>(body.size())});
+    std::get<LoopStmt>(tree.statements[loop.value].statement).body = owned;
+    if (form == 9) tree.expressions[std::get<ReturnStmt>(tree.statements[roots.back().value].statement).value->value].expression = TreeLiteral{UndefinedLiteral{}};
+    roots = {roots.front(),loop,roots.back()};
+  } else if (form == 10 || form == 11) {
+    tree.callable = form == 10 ? CallableKind::kAsyncFunction : CallableKind::kGenerator;
+    const auto call = fixture.Call(0);const auto suspended = form == 10 ? fixture.Expr(AwaitExpr{call}) : fixture.Expr(YieldExpr{call});
+    roots.insert(roots.begin()+2,fixture.Stmt(ExpressionStmt{suspended}));
+  } else if (form == 12 || form == 13) {
+    const auto returned = *std::get<ReturnStmt>(tree.statements[roots.back().value].statement).value;
+    const auto base = fixture.Read(2);
+    if (form == 12) {
+      const NameId name{static_cast<std::uint32_t>(tree.names.size())};tree.names.push_back(u"toString");
+      const auto member = fixture.Expr(MemberExpr{base,name});
+      tree.expressions[returned.value].expression = CallExpr{member,{0,0},CallReference::kMember};
+    } else tree.expressions[returned.value].expression = BinaryExpr{analysis::BinaryOperator::kExponent,base,fixture.Expr(TreeLiteral{IntegerLiteral{2}})};
+  }
+  const auto first = static_cast<std::uint32_t>(tree.children.size());tree.children.insert(tree.children.end(),roots.begin(),roots.end());
+  std::get<BlockStmt>(tree.statements[tree.body.value].statement) = {{1},first,static_cast<std::uint32_t>(roots.size())};
+  tree.anchors.clear();tree.operations.clear();
+  for (unsigned i = 0;i<tree.statements.size();++i) if (const auto* body = std::get_if<BlockStmt>(&tree.statements[i].statement))
+    for (unsigned child = 0;child<=body->child_count;++child) {
+      const auto anchor = static_cast<std::uint32_t>(tree.anchors.size());tree.anchors.push_back({BlockBoundary{{i},child},{0}});tree.operations.push_back({{anchor},AnchorId{anchor}});
+    }
+  if (reverse) fixture.Reverse();test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  const auto loops = std::get<LoopSyntax>(PlanLoopSyntax(tree));
+  const auto nullish = std::get<NullishSyntax>(PlanNullishSyntax(tree));
+  const auto result = PlanBindingInitializers(tree,loops,nullish);test::Check(std::holds_alternative<BindingInitializers>(result));
+  const auto& plan = std::get<BindingInitializers>(result);
+  const bool folded = form < 2 || (form >= 9 && form < 14);
+  std::ostringstream output;const auto printed = PrintFunctionTree(tree,output);test::Check(std::holds_alternative<PrintedFunction>(printed));
+  test::Check((output.str().find("saved") == std::string::npos) == folded);
+  for (const auto range : std::get<PrintedFunction>(printed).expressions) test::Check(range.begin<=range.end && range.end<=output.str().size());
+  for (const auto anchor : std::get<PrintedFunction>(printed).anchors) test::Check(anchor>0 && anchor<=output.str().size());
+  if (emit) std::cout<<nlohmann::json{{"source",output.str()},{"constant",form},{"count",count},{"literal",literal},{"folded",folded}}<<'\n';
+  return plan.work;
+}
 void Decoded(abc::ProfileId profile, unsigned copies, bool split, bool branch, bool emit) {
   using namespace analysis;
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
@@ -324,6 +410,15 @@ std::uint64_t NativeDeep(unsigned form, unsigned depth, bool reverse, bool emit)
 }
 }
 int main(int argc, char**) {
+  for (unsigned form = 0;form<16;++form) {
+    std::uint64_t small=0,large=0;
+    for (unsigned count : {0U,1U,200U,201U,400U,800U}) for (bool reverse : {false,true}) {
+      const auto work = Constant(form,count,4,reverse,argc>1);
+      if (count==400 && !reverse) small=work;if (count==800 && !reverse) large=work;
+    }
+    test::Check(large<small*3);
+  }
+  for (unsigned literal=0;literal<10;++literal) for (bool reverse : {false,true}) Constant(0,1,literal,reverse,argc>1);
   std::array<std::uint64_t, 15> small{}, large{};
   for (unsigned form = 0; form < 15; ++form) for (unsigned count : {0U, 1U, 200U, 201U, 400U, 800U}) for (bool reverse : {false,true}) {
     Fixture fixture(form, count); std::ostringstream output;
