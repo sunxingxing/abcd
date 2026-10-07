@@ -171,33 +171,7 @@ class Initializers {
       budget_.Step(); const auto& observation = projection_observations_[i];
       ObserveContainer(uses_[observation.symbol.value], lexical_[observation.owner.value]);
     }
-    for (std::size_t i = 0; i < uses_.size(); ++i) {
-      budget_.Step(); const auto& use = uses_[i];
-      if (!use.declaration || !InitializerAvailable(use)) continue;
-      if (use.escaped) {
-        // A capture observes its cell from creation onward, even when invoked
-        // only after this activation exits. Keep the original environment for
-        // escaping locals: narrowing an outer cell into a loop body would give
-        // each closure a different cell. Scope identity proves activation, not
-        // a CFG block/adjacency/compiler-layout premise. Module readers can
-        // observe the earlier undefined value and are not locally confined.
-        if (use.module_alias || !use.initializer_container) continue;
-        const auto* owner = std::get_if<BlockStmt>(&tree_.statements[use.initializer_container->value].statement);
-        if (!owner || owner->scope != tree_.symbols[i].scope) continue;
-      }
-      const auto& effect = std::get<ExpressionStmt>(tree_.statements[use.initializer->value].statement);
-      // DFS intervals prove that every observation stays in the new lexical
-      // lifetime. A first completed direct store dominates later reads there,
-      // including on each loop entry; RHS/earlier reads and sibling catch or
-      // finally observations preserve the original undefined/old-value slot.
-      // This is scope confinement, never a same-block admission. No SSA merge,
-      // expression motion, source const inference or new capture environment.
-      // Declaration placement preserves a mutable binding until the final
-      // declaration-kind pass can inspect all retained writes after cleanup.
-      plan_.statements[use.initializer->value] = BindingInitializer{SymbolId{static_cast<std::uint32_t>(i)},
-          effect.expression, DeclarationKind::kLet};
-      if (!loops_.initializer_owners[use.initializer->value]) plan_.omitted[use.declaration->value] = 1;
-    }
+    RunPass(Pass::kDeclarations);
     // Literal stability also depends on retained writes. Clear identity stores
     // before coverage, then clear new identities exposed by literal projection.
     RunPass(Pass::kStoredResults);
@@ -242,7 +216,7 @@ class Initializers {
     return Finish();
   }
  private:
-  enum class Pass { kConstants,kAliases,kStoredResults,kDeadDefinitions,kSnapshots,
+  enum class Pass { kDeclarations,kConstants,kAliases,kStoredResults,kDeadDefinitions,kSnapshots,
       kStorage,kInertStatements,kInertOperands,kLoopDeclarations,kDeclarationKinds };
   enum class PassPhase { kIdle,kAnalysis,kCommit };
   struct ProjectionRevision { std::uint64_t value=0; };
@@ -254,6 +228,7 @@ class Initializers {
     const auto before=projection_revision_.value;
     active_pass_=pass;pass_phase_=PassPhase::kAnalysis;
     switch(pass) {
+      case Pass::kDeclarations:Declarations();break;
       case Pass::kDeclarationKinds:DeclarationKinds();break;
       case Pass::kConstants:Constants();break;
       case Pass::kAliases:Aliases();break;
@@ -273,7 +248,7 @@ class Initializers {
     RequireTree(pass_phase_==PassPhase::kAnalysis,TreeStructureError::kOwnership);
     bool preserve=false;
     switch(active_pass_) {
-      case Pass::kConstants:case Pass::kAliases:case Pass::kSnapshots:
+      case Pass::kDeclarations:case Pass::kConstants:case Pass::kAliases:case Pass::kSnapshots:
       case Pass::kLoopDeclarations:break;
       // These passes retain initialization at each retained occurrence.
       // Storage merging proves the new root initialized before every remap.
@@ -289,6 +264,51 @@ class Initializers {
   }
   void RequireAnalysis() const {
     RequireTree(pass_phase_!=PassPhase::kCommit,TreeStructureError::kOwnership);
+  }
+  void Declarations() {
+    RequireAnalysis();
+    struct DeclarationEdit {
+      StmtId statement;
+      BindingInitializer initializer;
+      std::optional<StmtId> omitted;
+    };
+    std::vector<DeclarationEdit> proposed;
+    budget_.Array(proposed,uses_.size());std::size_t count=0;
+    for (std::size_t i = 0; i < uses_.size(); ++i) {
+      budget_.Step(); const auto& use = uses_[i];
+      if (!use.declaration || !InitializerAvailable(use)) continue;
+      if (use.escaped) {
+        // A capture observes its cell from creation onward, even when invoked
+        // only after this activation exits. Keep the original environment for
+        // escaping locals: narrowing an outer cell into a loop body would give
+        // each closure a different cell. Scope identity proves activation, not
+        // a CFG block/adjacency/compiler-layout premise. Module readers can
+        // observe the earlier undefined value and are not locally confined.
+        if (use.module_alias || !use.initializer_container) continue;
+        const auto* owner = std::get_if<BlockStmt>(&tree_.statements[use.initializer_container->value].statement);
+        if (!owner || owner->scope != tree_.symbols[i].scope) continue;
+      }
+      const auto& effect = std::get<ExpressionStmt>(tree_.statements[use.initializer->value].statement);
+      // DFS intervals prove that every observation stays in the new lexical
+      // lifetime. A first completed direct store dominates later reads there,
+      // including on each loop entry; RHS/earlier reads and sibling catch or
+      // finally observations preserve the original undefined/old-value slot.
+      // This is scope confinement, never a same-block admission. No SSA merge,
+      // expression motion, source const inference or new capture environment.
+      // Declaration placement preserves a mutable binding until the final
+      // declaration-kind pass can inspect all retained writes after cleanup.
+      proposed[count++] = {*use.initializer,
+          {SymbolId{static_cast<std::uint32_t>(i)}, effect.expression, DeclarationKind::kLet},
+          loops_.initializer_owners[use.initializer->value] ? std::nullopt : use.declaration};
+    }
+    // Placement changes binding initialization and lifetime. Publish the whole
+    // proposal through the same revision/invalidation boundary as later passes;
+    // no consumer may analyze an incrementally constructed declaration plan.
+    for(std::size_t i=0;i<count;++i) {
+      budget_.Step();const auto& edit=proposed[i];BeginCommit();
+      plan_.statements[edit.statement.value]=edit.initializer;
+      if(edit.omitted)plan_.omitted[edit.omitted->value]=1;
+    }
   }
   void DeclarationKinds() {
     const auto eligible=[&](std::size_t statement) {

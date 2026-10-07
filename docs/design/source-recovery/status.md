@@ -24,6 +24,30 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则210，初始声明恢复进入统一 pass 提交边界
+
+- 将 Run 内直接修改声明/省略计划的循环迁入独立 Declarations pass。
+  先收集拥有自身数据的 DeclarationEdit，再统一提交；有修改才推进
+  projection revision，初始化、表达式、流与活跃性分析统一失效。
+  顺序仍在值传播/存储合并之前。没有新增准入条件或固定迭代轮数。
+- 原算法的捕获单元、首次观察及词法范围约束保持。此轮消除一个绕过
+  协调器的修改入口，未声称原固定顺序存在已复现的行为错误；也没有
+  将职责迁移当作 InitializerAvailable/RootLifetime 共同模型替代。
+  方案数组及额外提交工作 O(bindings)，无逐变量图遍历。
+- 相关目标构建成功，/tmp/abcd-rule210-build.log。声明、循环、共同流、
+  捕获、Home/PageA 共12/12项定向测试通过176.29秒；证据
+  /tmp/abcd-rule210-tests.log、/tmp/abcd-rule210-detail.log。
+  变量恢复1,884份源码、465,472次独立行为比较、306错误变换检测，
+  既有反序编号及200/201/几何增长检查通过。git diff --check通过。
+  本轮没有重跑其余44项，不沿用规则209结果充作本轮通过证据。
+- ABC-only 导出 build/stage-one/declaration-pass-rule210：19 records，
+  10 complete / 0 partial / 9 noModule；十份源码语法通过，正文与规则209
+  一致，输入SHA-256不变。证据 /tmp/abcd-rule210-export.log、
+  /tmp/abcd-rule210-export-check.json。真实样本覆盖数量没有提升。
+- 下一步仍是用共同完成/定义使用事实替代首次观察条件及完整生命期
+  迁移；全局固定点与阶段一验收开放。完整套件/RSS及其他既定暂停
+  范围保持，模拟宿主测试不代表真实平台执行。
+
 ### 2026-10-08：规则209，声明覆盖消费当前定义身份
 
 - BindingReadCoverage 保存当前覆盖声明的 StmtId；Aliases 直接以此
