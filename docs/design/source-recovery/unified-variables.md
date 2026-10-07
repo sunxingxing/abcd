@@ -148,3 +148,38 @@ record继续验证；配对源码仅在测试端。按N/E/活跃事实L/传播P�
 
 完成标准不是“新增模型”：共同事实真正驱动五类恢复职责，重复决策退出，
 性质与独立执行以及真实record通过，并说明仍保守的分析精度范围。
+
+## Dead-write consumer (rules180)
+
+`CurrentFlow` is the single source-projection analysis entry for the independent
+write-elision and storage passes. `RecoveryFlow` now distinguishes a native source
+declaration commit from an ordinary assignment, retains the write occurrence,
+and records whether its successful PutValue is inert. The transitional adapter
+supplies declaration plans, initialized writable-store facts, and nonescaping
+compiler-temporary identity. These are not a new SSA/TDZ proof: the existing
+initialization and escape census still owns them until the shared model replaces it.
+
+`PlanDefinitionElisions` consumes that unchanged flow plus shared liveness and
+returns write occurrences. Only dead, inert ordinary assignment definitions are
+proposed. Applying the batch replaces each write by its original RHS, preserving
+its evaluation, result and completion. Initialization, updates, externally visible
+bindings and capture cells remain. Storage coalescing runs afterwards on a newly
+built flow; no analysis spans the delta commit. Later inert-expression omission
+remains separate. This is an actual production consumer, not an unused analysis.
+
+The resource-observable legacy contract retains its representation: existing
+source naming restoration after elision can require an allocation envelope, and
+allocation equivalence is not proved for this new transformation. This is an
+explicit capability gap, not a language invariant. Selection uses the contract,
+not a local producer whitelist. Current phase-one language contracts exclude
+resource exhaustion differences and use the new pass.
+
+This substep does not yet separate live undefined initialization from storage
+sharing, eliminate dead declarations, retire Coalesce's CompletedStore, or supply
+full initialization/lifetime facts from the canonical CFG/SSA. The simplification
+schedule is still finite and explicit, not a fixed-point coordinator.
+
+Partial trees retain the existing no-simplification path. That terminal path also
+publishes expression-indexed conservative evaluation/write summaries; empty
+vectors cannot represent unknown facts to printer consumers. The partial-tree
+regression combines private writes, comma evaluation and an UnrecoveredStmt.

@@ -65,7 +65,12 @@ for(const row of rows) {
       else if(value&&typeof value.type==='string')pending.push(value);
     }
   }
-  assert.equal(assignments,[0,1,0,0,1,1,1,1,1,1,1,1,1,1,2,2,0,1,1,1][row.form],`stored-result syntax form=${row.form}`);
+  // In state = await/yield (state = value), the private inner write is dead:
+  // normal resume overwrites it, abrupt resume cannot expose this uncaptured
+  // binding. The suspension and its value remain and are executed below.
+  const count=[0,1,0,0,1,1,1,1,1,1,1,1,1,1,2,2,0,1,1,1][row.form];
+  const deadInner=row.temporary&&[14,15].includes(row.form);
+  assert.equal(assignments,count-Number(deadInner),`stored-result syntax form=${row.form}`);
   const actual=Function('"use strict";return '+row.source)(),expected=reference(row);
   const scenarios=[];
   for(const kind of ['number','bigint','zero','negativeZero','nan','null','undefined','string','symbol','coerceNumber','coerceBigint'])

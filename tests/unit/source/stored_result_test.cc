@@ -100,7 +100,7 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool temporary,bool em
     if (plan.replacements[i]) test::Check(!plan.normal_stores[i]);
   std::ostringstream out;const auto printed=PrintFunctionTree(tree,out);test::Check(std::holds_alternative<PrintedFunction>(printed));
   for(const auto range:std::get<PrintedFunction>(printed).expressions)test::Check(range.begin<range.end&&range.end<=out.str().size());
-  if(emit)std::cout<<nlohmann::json{{"source",out.str()},{"form",form},{"count",count},{"folded",folded}}<<'\n';
+  if(emit)std::cout<<nlohmann::json{{"source",out.str()},{"form",form},{"count",count},{"folded",folded},{"temporary",temporary}}<<'\n';
   return plan.work;
 }
 }

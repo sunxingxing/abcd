@@ -24,6 +24,38 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-07：规则180，共享活跃性驱动独立死写入消除
+
+- RecoveryFlow新增写入occurrence与成功写入效果，native源码声明提交明确
+  标为Initializer。CurrentFlow统一准备两类消费者的当前投影事实；
+  PlanDefinitionElisions实际接入快照转发之后、存储合并之前，仅删除共享
+  活跃性证明已死、且写入不可观察的普通赋值。RHS、返回值、异常和暂停
+  仍在原位置执行，初始化与存储生命周期不随之删除。合并消费重建后的图。
+- 私有性来自compiler-temporary身份和未逃逸事实，不检查名字/样本/同块/
+  邻接/操作序列。成功写入仍经旧初始化分析供给；未声称新TDZ证明已完成。
+  旧资源可观察契约保留表示：现有命名恢复可能需要分配包装，其分配等价
+  尚未证明；按契约保留，不新增局部producer名单。当前语言模式运行新pass。
+- 独立小图oracle覆盖175,616图的活跃性、定义—使用、干涉和死写入集合。
+  新增84份源码/840组独立执行比较/2个错误变换反例，覆盖覆盖写入、分支
+  合流、catch旧值、赋值返回值、native初始化与活跃undefined；含arena反转、
+  200/201/400/800及exact/short预算、旧资源契约保留测试。
+- 52项相关回归中51项初次通过，1项旧语法计数断言期望暂停内外都保留写入。
+  核对私有内部写入确实已死后更新断言；stored-result两项重跑通过16.29秒，
+  含480份源码、16,560行为比较、12错误变换反例。日志分别为
+  /tmp/abcd-rule180-tests.log、/tmp/abcd-rule180-stored-tests.log。
+- 复核并修复规则179的部分输出缺陷：早退未分配最终效果摘要，逗号表达式
+  打印越界。新增partial/private-write/sequence反例复现退出139；现于早退
+  发布完整的保守摘要，保留已知语句及UNRECOVERED。最终7项补充回归全部
+  通过11.29秒，日志/tmp/abcd-rule180-final-tests.log；构建及重链接完成。
+- pasteboard导出build/stage-one/dead-definitions-rule180为
+  10complete/0partial/9noModule，十份源码node --check通过；仅EntryAbility
+  正文变化：删除JSON.stringify(err)日志参数中的死$value2写入，求值与??
+  回退保留。新增注册entryability_load_error_source_test，ABC-only生成后独立
+  读取配对TS，54组receiver/调用顺序/nullish/异常比较通过。仅为该路径证据。
+- 共同初始化、活跃undefined在存储合并后的保留、死声明删除、CompletedStore
+  退出及delta收敛调度仍未完成。原结构gate和阶段一Goal保持开放；没有启动
+  暂停的全量语料、RSS或DFX。
+
 ### 2026-10-07：规则179，效果与成功写入事实不再跨pass修改复用
 
 - 定位并移除旧事实消费窗口：ForwardSnapshots改写替换后，Coalesce此前

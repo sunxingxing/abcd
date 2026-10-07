@@ -1,5 +1,6 @@
 #include "binding_initializer.h"
 #include "binding_interference.h"
+#include "definition_elision.h"
 #include "class_tree.h"
 #include "expression_children.h"
 #include "loop_syntax.h"
@@ -80,7 +81,14 @@ class Initializers {
     regions_[0].begin=0;
   }
   BindingInitializers Run() {
-    if (!tree_.recovery_issues.empty()) return Finish();
+    if (!tree_.recovery_issues.empty()) {
+      // Unknown control prevents semantic simplification, but printer clients
+      // still require occurrence-indexed summaries. Publish conservative facts
+      // on this terminal path too; an absent array is not an unknown effect.
+      budget_.Array(plan_.evaluations,tree_.expressions.size());
+      budget_.Array(plan_.normal_stores,tree_.expressions.size());
+      return Finish();
+    }
     for (auto symbol : tree_.closure_captures) { budget_.Step(); uses_[symbol.value].escaped = true; }
     for (const auto& alias : tree_.modules) {
       budget_.Step(); uses_[alias.symbol.value].escaped = true; uses_[alias.symbol.value].module_alias = true;
@@ -212,6 +220,7 @@ class Initializers {
     Aliases();
     ElideStoredResults();
     ForwardSnapshots();
+    ElideDeadDefinitions();
     Coalesce();
     ElideStoredResults();
     OmitInertStores();
@@ -383,6 +392,50 @@ class Initializers {
       plan_.statements[use.root_store->value].reset();
     }
   }
+  RecoveryFlow CurrentFlow() const {
+    // Facts belong to this exact projection. No analysis survives a commit.
+    const auto stores=AnalyzeStoredResults();
+    const auto evaluations=AnalyzeEvaluations();
+    std::vector<std::uint8_t> private_bindings;
+    budget_.Array(private_bindings,uses_.size());
+    for (std::size_t i=0;i<uses_.size();++i) {
+      budget_.Step();private_bindings[i]=tree_.symbols[i].kind==BindingKind::kCompilerTemporary && !uses_[i].escaped;
+    }
+    const LegacyFlowProjection projection{plan_.aliases,plan_.literals,plan_.replacements,
+        plan_.omitted,evaluations,stores.normal_stores,plan_.statements,private_bindings};
+    auto built=BuildRecoveryFlow(tree_,projection,budget_.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&built))throw *error;
+    auto flow=std::get<RecoveryFlow>(std::move(built));
+    budget_.Admit(flow.allocated_bytes,1);budget_.Step(flow.work);return flow;
+  }
+  void ElideDeadDefinitions() {
+    // Source naming recovery preserves NamedEvaluation after an assignment is
+    // projected to its RHS, but can require a naming envelope. Its allocation
+    // equivalence is not proved under the legacy resource-observable contract.
+    // Retain that contract's representation without inspecting producer shapes.
+    if (ResourceFailures(tree_.identity.contract)!=ResourceFailureScope::kExcluded) return;
+    bool candidate=false;
+    for (std::size_t i=0;i<uses_.size();++i) {
+      budget_.Step();candidate |= tree_.symbols[i].kind==BindingKind::kCompilerTemporary &&
+          !uses_[i].escaped && uses_[i].writes!=0;
+    }
+    if (!candidate) return;
+    const auto flow=CurrentFlow();
+    auto analyzed=AnalyzeFlowLiveness(flow,budget_.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
+    const auto& live=std::get<FlowLiveness>(analyzed);
+    budget_.Admit(live.allocated_bytes,1);budget_.Step(live.work);
+    auto proposed=PlanDefinitionElisions(flow,live,budget_.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&proposed))throw *error;
+    const auto& delta=std::get<DefinitionElisions>(proposed);
+    budget_.Admit(delta.allocated_bytes,1);budget_.Step(delta.work);
+    // Commit only the write deletion. RHS evaluation and its result stay at
+    // the same occurrence, including throws, calls, allocation and suspension.
+    for (const auto write:delta.writes) {
+      budget_.Step();plan_.replacements[write.value]=
+          std::get<AssignmentExpr>(tree_.expressions[write.value].expression).value;
+    }
+  }
   void Coalesce() {
     const auto eligible = [&](SymbolId symbol) {
       const auto& use = uses_[symbol.value];
@@ -400,17 +453,7 @@ class Initializers {
       candidate |= target && eligible(target->symbol);
     }
     if (!candidate) return;
-    // Facts belong to this exact projection, after snapshot forwarding. They
-    // stay local until the storage delta commits; no preceding pass can leave
-    // cached effects or successful-write facts for this consumer to reuse.
-    const auto stores = AnalyzeStoredResults();
-    const auto evaluations = AnalyzeEvaluations();
-    const LegacyFlowProjection projection{plan_.aliases,plan_.literals,plan_.replacements,
-        plan_.omitted,evaluations,stores.normal_stores};
-    auto built=BuildRecoveryFlow(tree_,projection,budget_.Remaining());
-    if(const auto* error=std::get_if<TreeStructureError>(&built))throw *error;
-    auto flow=std::get<RecoveryFlow>(std::move(built));
-    budget_.Admit(flow.allocated_bytes,1);budget_.Step(flow.work);
+    auto flow=CurrentFlow();
     auto live=AnalyzeFlowLiveness(flow,budget_.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&live))throw *error;
     const auto& liveness=std::get<FlowLiveness>(live);

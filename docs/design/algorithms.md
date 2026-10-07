@@ -2415,3 +2415,24 @@ walks. Every fresh allocation and traversal is budgeted, including overlap with
 proposal vectors. A future cache must carry full projection invalidation; this
 change deliberately has no cross-mutation cache. Initialization still uses the
 legacy census and simplification scheduling is not yet a fixed-point solver.
+
+### Independent definition elision (rules180)
+
+Project-owned dead-store elimination follows the standard backward-liveness rule:
+a successful scalar write can be removed only if its value is dead and the write
+itself is unobservable. It consumes the existing sparse FlowLiveness facts; it
+does not solve another dataflow problem or infer liveness from syntax. For D
+flow definitions the proposal scan is O(D) work and O(D) maximum output capacity.
+The source adapter adds O(E + S) initialization/observability descriptors for E
+expressions and S symbols. Graph construction and shared liveness retain their
+existing N/E/L bounds and budgets. The following storage pass rebuilds after the
+delta; no per-variable graph walk, quadratic threshold, dependency or external
+implementation is introduced. RHS computations, normal-result identity and
+exception order remain at their original occurrence. Native initialization and
+observable writes are not ordinary dead stores.
+
+Verification extends the 175,616 tiny-graph independent oracle to deleted-write
+sets; source execution tests compose overwrites, branch joins, catch observations,
+returned assignment values, native declarations and live undefined initialization.
+Reversed expression arenas, 200/201/400/800 effect sequences and exact/short budgets
+exercise layout independence and bounded work. This is not a process RSS claim.

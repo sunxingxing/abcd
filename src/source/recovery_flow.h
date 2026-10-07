@@ -8,6 +8,8 @@ struct FlowDefinitionId { std::uint32_t value = 0; auto operator<=>(const FlowDe
 enum class FlowCompletion : std::uint8_t { kNormal, kThrow, kReturn, kJump, kTaken, kNotTaken, kResumeNext, kResumeThrow, kResumeReturn, kConservativeCleanup };
 enum class FlowDefinitionKind : std::uint8_t { kParameter, kUndefined, kInitializer, kAssignment, kUpdate, kCatch };
 enum class FlowEventKind : std::uint8_t { kControl, kTruthBranch, kNullishBranch, kRead, kEvaluation, kEnterScope, kLeaveScope, kDefinition, kSuspend };
+enum class FlowWriteEffect : std::uint8_t { kObservable, kInert };
+struct BindingInitializer;
 struct FlowDefinition {
   FlowPoint point;
   SymbolId binding;
@@ -15,6 +17,8 @@ struct FlowDefinition {
   std::optional<SymbolId> copy;
   std::optional<ExprId> value;
   std::optional<StmtId> declaration;
+  std::optional<ExprId> write;
+  FlowWriteEffect effect = FlowWriteEffect::kObservable;
 };
 struct FlowEvent {
   FlowEventKind kind = FlowEventKind::kControl;
@@ -38,6 +42,8 @@ struct LegacyFlowProjection {
   std::span<const std::uint8_t> omitted;
   std::span<const ExpressionEvaluation> evaluations;
   std::span<const std::uint8_t> normal_stores;
+  std::span<const std::optional<BindingInitializer>> initializers;
+  std::span<const std::uint8_t> private_bindings;
 };
 struct RecoveryFlow {
   RouteInputIdentity identity;

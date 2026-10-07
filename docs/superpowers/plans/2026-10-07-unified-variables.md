@@ -137,3 +137,10 @@ shape-restrictions-audit.md, unified-variables.md; docs/design/algorithms.md.
       no longer decide migrated cases. Document complexity and remaining precision gaps.
 - [ ] Commit. Mark this milestone complete only when all tasks and retirement pass;
       do not mark the overall phase-one Goal complete on this component evidence.
+
+Rules180 implementation substep: native declaration commits are explicit in
+RecoveryFlow; PlanDefinitionElisions consumes shared liveness and inert-write
+facts, and its production delta removes only dead private assignment writes.
+RHS evaluation stays. Storage analysis rebuilds afterwards. This is partial task3
+progress; common initialization, live-undefined preservation during storage
+sharing, removal of CompletedStore and convergence scheduling remain open.

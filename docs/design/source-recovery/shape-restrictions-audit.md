@@ -1853,3 +1853,20 @@ ImplicitTailCompletion的第二次恢复判断。省略合法性仍属于原恢�
 循环头跳过尾部省略根的遍历漏洞通过继续消费原节点修复，未新增恢复模式。
 测试端仍独立重算恢复计划、检查尾部/可选链范围关系并执行生成源码；
 消费者信任恢复事实不代表语义验收已经完成。具体证据见status规则177。
+
+## Rules180: dead-write decisions use shared liveness
+
+The new definition-elision consumer does not use statement adjacency, same-block
+availability, first-read syntax, sample identity or producer operation lists.
+RecoveryFlow records native declaration initialization and successful write effects;
+FlowLiveness supplies whether each definition reaches an observation. The proposal
+pass only selects dead inert assignments and preserves their RHS. Compiler-private
+nonescaping identity is an observability premise, not a spelling heuristic.
+Initialization/escape facts remain the documented legacy adapter gap.
+
+Legacy resource-observable contracts do not run this new source transformation:
+existing naming preservation may need an allocation envelope, whose resource
+failure equivalence is not established. This is an explicit capability limit,
+not a language property; no RHS shape matching was added to narrow that check.
+Coalesce::CompletedStore remains unchanged and still requires replacement by
+shared initialization/lifetime analysis. No new exception was added to it.

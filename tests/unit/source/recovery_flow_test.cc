@@ -1,6 +1,8 @@
 #include "../../../src/source/recovery_flow.h"
 #include "../../../src/source/binding_interference.h"
 #include "../../../src/source/flow_definitions.h"
+#include "../../../src/source/definition_elision.h"
+#include "../../../src/source/binding_initializer.h"
 #include <array>
 #include <algorithm>
 #include <cstdlib>
@@ -48,7 +50,7 @@ void SmallGraphs() {
       if(action>=3){const unsigned target=(action-3)%2;std::optional<SymbolId> copy;
         if(action>=5){copy=SymbolId{1-target};base.events[point].read=copy;affinity=true;}
         base.events[point].definition=FlowDefinitionId{static_cast<std::uint32_t>(base.definitions.size())};
-        base.definitions.push_back({{point},{target},FlowDefinitionKind::kAssignment,copy,{},{}});}
+        base.definitions.push_back({{point},{target},FlowDefinitionKind::kAssignment,copy,{},{},ExprId{point},FlowWriteEffect::kInert});}
     }
     for(unsigned mask=0;mask<(1U<<edge_bits);++mask){auto graph=base;
       for(unsigned bit=0;bit<edge_bits;++bit)if(mask&(1U<<bit))Link(graph,bit/vertices,bit%vertices);
@@ -70,7 +72,11 @@ void SmallGraphs() {
       for(unsigned point=0;point<vertices;++point)for(unsigned d=0;d<graph.definitions.size();++d)
         if(reaching[point][d]&&graph.events[point].read==graph.definitions[d].binding){expected_reads.push_back({{point},{d}});expected_live[d]=1;}
       const auto definitions=std::get<FlowDefinitions>(AnalyzeFlowDefinitions(graph,live));
-      Check(definitions.reads==expected_reads);Check(live.live_definitions==expected_live);++cases;
+      Check(definitions.reads==expected_reads);Check(live.live_definitions==expected_live);
+      const auto elisions=std::get<DefinitionElisions>(PlanDefinitionElisions(graph,live));
+      std::vector<ExprId> expected_elisions;
+      for(unsigned d=0;d<graph.definitions.size();++d)if(!expected_live[d])expected_elisions.push_back(*graph.definitions[d].write);
+      Check(elisions.writes==expected_elisions);++cases;
     }
   }
   std::cout<<"independent small graphs "<<cases<<'\n';
@@ -149,6 +155,18 @@ void SourceEvents() {
   Check(std::get<TreeStructureError>(AnalyzeFlowLiveness(flow,{liveness.allocated_bytes,liveness.work-1}))==TreeStructureError::kWorkLimit);
   Check(std::get<TreeStructureError>(AnalyzeFlowDefinitions(flow,liveness,{definitions.allocated_bytes-1,definitions.work}))==TreeStructureError::kResourceLimit);
   Check(std::get<TreeStructureError>(AnalyzeFlowDefinitions(flow,liveness,{definitions.allocated_bytes,definitions.work-1}))==TreeStructureError::kWorkLimit);
+  // Projection declarations are initialization definitions, not assignments
+  // that may disappear merely because their resulting value is dead.
+  std::vector<std::optional<BindingInitializer>> native(tree.statements.size());
+  native[3]=BindingInitializer{{1},{1},DeclarationKind::kLet};
+  std::vector<std::uint8_t> private_bindings(tree.symbols.size(),1);
+  const auto projected=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,
+      {aliases,literals,replacements,omitted,evaluations,normal,native,private_bindings}));
+  bool initialized=false;
+  for(const auto& definition:projected.definitions)if(definition.write==ExprId{1}) {
+    Check(definition.kind==FlowDefinitionKind::kInitializer&&definition.declaration==StmtId{3});initialized=true;
+  }
+  Check(initialized);
   const auto rebuild=[&]() {
     replacements.resize(tree.expressions.size());normal.resize(tree.expressions.size());
     evaluations.resize(tree.expressions.size(),ExpressionEvaluation::kRequired);

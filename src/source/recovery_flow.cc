@@ -1,4 +1,5 @@
 #include "recovery_flow.h"
+#include "binding_initializer.h"
 #include "recovery_scratch.h"
 #include "expression_children.h"
 #include <algorithm>
@@ -17,9 +18,15 @@ class FlowBuilder {
  public:
   FlowBuilder(const FunctionTree& tree,LegacyFlowProjection projection,analysis::SemanticBudget budget)
       : tree_(tree), projection_(projection), budget_(budget), memory_(budget_), events_(&memory_), edges_(&memory_),
-        statements_(&memory_), expressions_(&memory_), exits_(&memory_), tasks_(&memory_), seen_(&memory_), definitions_(&memory_), reads_(&memory_), read_states_(&memory_) {}
+        statements_(&memory_), expressions_(&memory_), exits_(&memory_), tasks_(&memory_), seen_(&memory_), definitions_(&memory_), reads_(&memory_), read_states_(&memory_), initializers_(&memory_) {}
   RecoveryFlow Run() {
     ProjectedReads();
+    initializers_.resize(tree_.expressions.size());
+    for (std::size_t i=0;i<projection_.initializers.size();++i) {
+      budget_.Step();
+      if (const auto& initializer=projection_.initializers[i])
+        initializers_[initializer->assignment.value]=StmtId{static_cast<std::uint32_t>(i)};
+    }
     terminal_=New(); dispatch_=New();
     statements_.resize(tree_.statements.size()); exits_.resize(tree_.statements.size());
     expressions_.resize(tree_.expressions.size()); seen_.resize(tree_.expressions.size());
@@ -50,10 +57,11 @@ class FlowBuilder {
     budget_.Step();Point result{static_cast<std::uint32_t>(events_.size())};events_.push_back(event);return result;
   }
   Point Define(SymbolId binding,FlowDefinitionKind kind,std::optional<SymbolId> copy={},
-      std::optional<ExprId> value={},std::optional<StmtId> declaration={}) {
+      std::optional<ExprId> value={},std::optional<StmtId> declaration={},
+      std::optional<ExprId> write={},FlowWriteEffect effect=FlowWriteEffect::kObservable) {
     RequireTree(definitions_.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
     const auto point=New({FlowEventKind::kDefinition,{},FlowDefinitionId{static_cast<std::uint32_t>(definitions_.size())}});
-    definitions_.push_back({point,binding,kind,copy,value,declaration});return point;
+    definitions_.push_back({point,binding,kind,copy,value,declaration,write,effect});return point;
   }
   void Link(Point from,Point to,FlowCompletion completion=FlowCompletion::kNormal) {
     budget_.Step();edges_.push_back({from,to,completion,events_[to.value].incoming,events_[from.value].outgoing});
@@ -108,7 +116,14 @@ class FlowBuilder {
     if(const auto* assignment=std::get_if<AssignmentExpr>(&node)) {
       if(const auto* target=std::get_if<SymbolTarget>(&assignment->target)) {
         const auto copied=Read(assignment->value);
-        normal=Define(target->symbol,FlowDefinitionKind::kAssignment,copied,assignment->value);Link(normal,context.next);
+        // A native source declaration initializes a binding at this commit;
+        // dead-value elimination must not erase the lexical initialization.
+        const auto declaration=initializers_[at.id.value];
+        const auto kind=declaration?FlowDefinitionKind::kInitializer:FlowDefinitionKind::kAssignment;
+        const bool inert=!projection_.private_bindings.empty() &&
+            projection_.private_bindings[target->symbol.value] && projection_.normal_stores[at.id.value];
+        normal=Define(target->symbol,kind,copied,assignment->value,declaration,at.id,
+            inert?FlowWriteEffect::kInert:FlowWriteEffect::kObservable);Link(normal,context.next);
       }
     }
     if(const auto* update=std::get_if<UpdateExpr>(&node)) {
@@ -182,6 +197,7 @@ class FlowBuilder {
   std::pmr::vector<Point> statements_,expressions_,exits_;std::pmr::vector<Task> tasks_;
   std::pmr::vector<std::uint8_t> seen_;std::pmr::vector<FlowDefinition> definitions_;
   std::pmr::vector<std::optional<SymbolId>> reads_;std::pmr::vector<ReadState> read_states_;
+  std::pmr::vector<std::optional<StmtId>> initializers_;
   Point entry_{},terminal_{},dispatch_{};
 };
 }

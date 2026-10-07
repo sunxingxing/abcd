@@ -54,6 +54,26 @@ void PartialTree() {
       printed.statements[1].end - printed.statements[1].begin) == "debugger;",
       "comment prefix must not break statement positions");
 }
+void PartialWithPrivateWrites() {
+  auto tree=Tree();
+  tree.names={u"state"};
+  tree.symbols={{{1},{0},BindingKind::kCompilerTemporary,DeclarationKind::kLet,
+      NameEvidence::kSynthesized,TemporaryReason::kMultipleUses}};
+  tree.expressions={{TreeLiteral{IntegerLiteral{0}},{0}},
+      {TreeLiteral{IntegerLiteral{1}},{0}},{AssignmentExpr{SymbolTarget{{0}},{4}},{0}},
+      {TreeLiteral{IntegerLiteral{2}},{0}},{SequenceExpr{{1},{3}},{0}}};
+  tree.recovery_issues.push_back({RecoveryReason::kUnsupportedControl,abc::CodeOffset{36},abc::CodeOffset{72}});
+  tree.statements.push_back({DeclarationStmt{{0},ExprId{0}},{0}});
+  tree.statements.push_back({ExpressionStmt{{2}},{0}});
+  tree.statements.push_back({UnrecoveredStmt{{0}},{0}});
+  tree.children={{2},{3},{1},{4}};
+  std::get<BlockStmt>(tree.statements[0].statement).child_count=tree.children.size();
+  std::ostringstream out;const auto result=PrintFunctionTree(tree,out);
+  Check(std::holds_alternative<PrintedFunction>(result),"unknown flow must retain private writes and partial output");
+  Check(out.str().find("state = ")!=std::string::npos && out.str().find("1, 2")!=std::string::npos,
+      "unknown flow cannot prove a write or sequence evaluation dead");
+  Check(std::get<PrintedFunction>(result).incomplete,"private writes do not erase the gap");
+}
 void InvalidTree() {
   auto tree = Tree(); tree.children[0] = {900};
   std::ostringstream out;
@@ -101,4 +121,4 @@ void PartialFamily() {
         "child annotation must not introduce automatic semicolon insertion after return");
 }
 }  // namespace
-int main() { DirectTree(); PartialTree(); InvalidTree(); PartialFamily(); }
+int main() { DirectTree(); PartialTree(); PartialWithPrivateWrites(); InvalidTree(); PartialFamily(); }

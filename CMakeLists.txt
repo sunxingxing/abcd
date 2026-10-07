@@ -301,7 +301,7 @@ target_sources(abcd_source PRIVATE src/source/default_body.cc)
 target_sources(abcd_source PRIVATE src/source/call_plan.cc)
 target_sources(abcd_source PRIVATE src/source/default_signature.cc src/source/default_signature_verify.cc)
 target_sources(abcd_source PRIVATE src/source/tree_printer.cc src/source/tree_print_tokens.cc src/source/nullish_syntax.cc src/source/loop_syntax.cc src/source/loop_transition.cc src/source/loop_initializer.cc)
-target_sources(abcd_source PRIVATE src/source/binding_initializer.cc src/source/source_variables.cc src/source/binding_interference.cc src/source/recovery_flow.cc src/source/flow_liveness.cc src/source/flow_definitions.cc)
+target_sources(abcd_source PRIVATE src/source/binding_initializer.cc src/source/source_variables.cc src/source/binding_interference.cc src/source/recovery_flow.cc src/source/flow_liveness.cc src/source/flow_definitions.cc src/source/definition_elision.cc)
 target_sources(abcd_source PRIVATE src/source/evaluation_boolean.cc)
 target_link_libraries(abcd_source PUBLIC abcd_analysis PRIVATE abcd_json)
 target_compile_features(abcd_source PUBLIC cxx_std_20)
@@ -637,6 +637,9 @@ if(BUILD_TESTING)
   add_executable(statement_snapshot_test tests/unit/source/statement_snapshot_test.cc)
   target_link_libraries(statement_snapshot_test PRIVATE abcd_source abcd_json)
   add_test(NAME statement_snapshot_test COMMAND statement_snapshot_test)
+  add_executable(definition_elision_test tests/unit/source/definition_elision_test.cc)
+  target_link_libraries(definition_elision_test PRIVATE abcd_source abcd_json)
+  add_test(NAME definition_elision_test COMMAND definition_elision_test)
   add_executable(stored_result_test tests/unit/source/stored_result_test.cc)
   target_link_libraries(stored_result_test PRIVATE abcd_source abcd_json)
   add_test(NAME stored_result_test COMMAND stored_result_test)
@@ -1492,6 +1495,12 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/progressbar_record.mjs $<TARGET_FILE:abc_structure>
         ${ABCD_PAIRED_CORPUS_ROOT}/pasteboard)
       set_tests_properties(progressbar_record_source_test PROPERTIES RUN_SERIAL TRUE)
+      if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/pasteboard_src/src/main/ets/entryability/EntryAbility.ts")
+        add_test(NAME entryability_load_error_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals --experimental-vm-modules
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/entryability_load_error.mjs $<TARGET_FILE:abc_structure>
+          ${ABCD_PAIRED_CORPUS_ROOT}/pasteboard)
+        set_tests_properties(entryability_load_error_source_test PROPERTIES RUN_SERIAL TRUE)
+      endif()
       if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/pasteboard_src/src/main/ets/pages/PasteBoard.ts" AND
          EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/pasteboard_src/src/main/ets/pages/ShareDitect.ts" AND
          EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/pasteboard_src/src/main/ets/pages/PageA.ts" AND
@@ -1867,6 +1876,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/binding_interference.mjs $<TARGET_FILE:binding_interference_test>)
     add_test(NAME statement_snapshot_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals --stack-size=4096
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/statement_snapshot.mjs $<TARGET_FILE:statement_snapshot_test>)
+    add_test(NAME definition_elision_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/definition_elision.mjs $<TARGET_FILE:definition_elision_test>)
     add_test(NAME stored_result_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals --stack-size=4096
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/stored_result.mjs $<TARGET_FILE:stored_result_test>)
     add_test(NAME local_initializer_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
