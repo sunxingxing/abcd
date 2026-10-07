@@ -24,6 +24,27 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-07：规则175，存储结果事实与删除计划分离
+
+- 在规则174之上继续拆分：AnalyzeStoredResults为const事实生产者，
+  PlanStoredResultElisions为const计划生产者，ApplyStoredResultElisions
+  是唯一批量提交点，随后求值分析消费提交后的投影。计划阶段不能通过
+  修改plan影响后续候选；空结果身份不作为等值证明。
+- 修复跨轮normal_stores残留：每轮新建写入事实，已替换节点没有PutValue
+  事实，提交新替换时也清除对应标记。stored_result_test新增最终投影
+  约束，覆盖已有全部语义形式、正反arena和200/201/几何规模。
+- 共同初始化仍是前置缺口：LegacyFlowProjection跳过已省略声明，且
+  normal_stores仍由InitializedRead提供；不能直接删除CompletedStore，
+  也不能拿空def-use证明初始undefined已死。后续需补齐canonical生命期/
+  初始化定义，再由独立DefinitionElision决定保留原点写入。
+- 最终28项相关回归全部通过136.07秒，日志/tmp/abcd-rule175-tests.log；
+  包含新增旧事实失效断言及独立源码行为验证。
+- 最终相关CLI/fixture已重建；单pasteboard导出到
+  build/stage-one/stored-facts-rule175，10complete/0partial/9noModule。
+  十份源码node --check通过，正文与规则174一致；不代表新增record覆盖。
+- 当前没有完整版本化pass协调器，手工刷新和旧初始化决策仍未退出。
+  本次不宣称架构里程碑或阶段一完成；暂停事项与固定输入范围保持。
+
 ### 2026-10-07：规则174，共享活跃性与分离的求值 pass
 
 - FlowLiveness统一求解incoming活跃事实和live definitions；生产干涉消费者

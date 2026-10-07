@@ -486,14 +486,20 @@ class Initializers {
     // Dependency boundary: propose against one immutable projection, commit
     // all elisions, then compute effects for the resulting projection. No
     // consumer may observe effects from before the replacement commit.
-    ApplyStoredResultElisions();
+    auto facts = AnalyzeStoredResults();
+    auto replacements = PlanStoredResultElisions(facts);
+    ApplyStoredResultElisions(std::move(facts), replacements);
     AnalyzeEvaluations();
   }
-  void ApplyStoredResultElisions() {
-    std::vector<std::optional<ExprId>> replacements;
-    budget_.Array(replacements, tree_.expressions.size());
-    std::vector<std::optional<SymbolId>> stored;
-    budget_.Array(stored, tree_.expressions.size());
+  struct StoredResults {
+    std::vector<std::optional<SymbolId>> bindings;
+    std::vector<std::uint8_t> normal_stores;
+  };
+  StoredResults AnalyzeStoredResults() const {
+    StoredResults facts;
+    budget_.Array(facts.bindings, tree_.expressions.size());
+    budget_.Array(facts.normal_stores, tree_.expressions.size());
+    auto& stored = facts.bindings;
     // Scan's finish order is postorder even when expression IDs are reversed.
     // Each owned child is consumed once. No repeated subtree/type/CFG walk.
     for (std::size_t at = 0; at < completion_count_; ++at) {
@@ -519,9 +525,7 @@ class Initializers {
         if (const auto* target = std::get_if<SymbolTarget>(&assignment->target);
             target && MutableBinding(target->symbol)) {
           result = plan_.Storage(target->symbol);
-          plan_.normal_stores[id.value] = InitializedRead(*result, id);
-          if (stored[assignment->value.value] == result)
-            replacements[id.value] = assignment->value;
+          facts.normal_stores[id.value] = InitializedRead(*result, id);
         }
       } else if (const auto* update = std::get_if<UpdateExpr>(&node)) {
         if (update->result == UpdateResult::kPrefix && MutableBinding(update->symbol)) result = plan_.Storage(update->symbol);
@@ -529,12 +533,35 @@ class Initializers {
       else if (const auto* choice = std::get_if<ConditionalExpr>(&node)) result = join(choice->consequent, choice->alternate);
       else if (const auto* logical = std::get_if<LogicalExpr>(&node)) result = join(logical->left, logical->right);
     }
+    return facts;
+  }
+  std::vector<std::optional<ExprId>> PlanStoredResultElisions(const StoredResults& facts) const {
+    std::vector<std::optional<ExprId>> replacements;
+    budget_.Array(replacements, tree_.expressions.size());
+    for (std::size_t at = 0; at < completion_count_; ++at) {
+      budget_.Step(); const auto id = completions_[at];
+      if (plan_.replacements[id.value]) continue;
+      const auto* assignment = std::get_if<AssignmentExpr>(&tree_.expressions[id.value].expression);
+      // The result-binding fact is produced only for writable declarative
+      // assignment targets. Missing identity is not evidence of equality.
+      if (assignment && facts.bindings[id.value] &&
+          facts.bindings[id.value] == facts.bindings[assignment->value.value])
+        replacements[id.value] = assignment->value;
+    }
+    return replacements;
+  }
+  void ApplyStoredResultElisions(StoredResults facts,
+      const std::vector<std::optional<ExprId>>& replacements) {
+    plan_.normal_stores = std::move(facts.normal_stores);
     // A proposed outer elision uses the RHS normal-result identity, which is
     // preserved by every inner elision. Thus the batch does not depend on
     // proposal application order; no newly rewritten syntax is re-matched.
     for (std::size_t i = 0; i < replacements.size(); ++i) {
       budget_.Step();
-      if (replacements[i]) plan_.replacements[i] = replacements[i];
+      if (replacements[i]) {
+        plan_.replacements[i] = replacements[i];
+        plan_.normal_stores[i] = 0;
+      }
     }
   }
   void AnalyzeEvaluations() {

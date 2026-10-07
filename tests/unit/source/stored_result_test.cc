@@ -94,6 +94,10 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool temporary,bool em
   const auto id=reverse?tree.expressions.size()-1-assignment.value:assignment.value;
   if(plan.replacements[id].has_value()!=folded)std::cerr<<"form="<<static_cast<unsigned>(form)<<" count="<<count<<" reverse="<<reverse<<'\n';
   test::Check(plan.replacements[id].has_value()==folded);
+  // Every final analysis describes the current projection. An assignment
+  // removed by an earlier pass must not retain its old PutValue summary.
+  for (std::size_t i=0;i<tree.expressions.size();++i)
+    if (plan.replacements[i]) test::Check(!plan.normal_stores[i]);
   std::ostringstream out;const auto printed=PrintFunctionTree(tree,out);test::Check(std::holds_alternative<PrintedFunction>(printed));
   for(const auto range:std::get<PrintedFunction>(printed).expressions)test::Check(range.begin<range.end&&range.end<=out.str().size());
   if(emit)std::cout<<nlohmann::json{{"source",out.str()},{"form",form},{"count",count},{"folded",folded}}<<'\n';

@@ -38,6 +38,8 @@ struct BindingInitializers {
   std::vector<ExpressionEvaluation> evaluations;
   // Assignment PutValue is normal after RHS completion: writable initialized
   // declarative storage, with no property setter or unresolved binding lookup.
+  // Describes retained assignments in the current projection; replaced nodes
+  // have no PutValue fact. Recompute rather than accumulating earlier facts.
   std::vector<std::uint8_t> normal_stores;
   // Prefix counts of non-elided initializer roots, for constant-time ranges.
   std::vector<std::uint32_t> entry_counts;

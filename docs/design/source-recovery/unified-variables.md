@@ -68,7 +68,10 @@ read/definition与完成边，可先求解，再用于裁剪前向到达定义�
 当前尚无完整pass协调器：BindingInitializers::Run串行修改同一plan，
 通过手工重复RefreshProjection/OmitInertStores刷新部分事实。规则174已将
 原Evaluations拆为批量写入消除和随后只产出求值事实的AnalyzeEvaluations；
-存储结果分析不消费本轮新替换。仍需统一版本失效与协调器，移除手工重跑。
+存储结果分析不消费本轮新替换。规则175进一步将AnalyzeStoredResults、
+PlanStoredResultElisions与ApplyStoredResultElisions分开；前两者为const阶段，
+normal_stores每轮新建，提交时清除本轮已移除写入的事实。仍需统一版本
+失效与协调器，移除手工重跑。
 本次共享活跃性在冻结的局部RecoveryFlow上先算，干涉随后只消费它；
 二者计算期间不修改flow或plan，分析不跨存储映射应用继续复用。
 
