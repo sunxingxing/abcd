@@ -65,6 +65,16 @@ read/definition与完成边，可先求解，再用于裁剪前向到达定义�
 资源耗尽仍返回typed错误，不能把未完成轮次声称为稳定结果。
 声明恢复引入的初始化同样进入模型，不能被打印器私自省略。
 
+规则204补充：别名稳定性改为消费当前 RecoveryFlow 的写入引用计数，
+不再用原始 BindingUses::writes 判定零次/唯一写入。冗余同值存储清理
+先于别名恢复；其提交失效 flow/liveness/expression facts，后继通过现有
+CurrentFlow/CurrentLiveness 取得当前投影。别名提交后仍需结果存储清理，
+因为别名替换可产生新的同值写入。此处是有方向的两项依赖，不是全局固定点。
+计数按绑定建表，O(bindings + references) 工作和 O(bindings) 额外存储。
+原始声明/候选写入定位与生命周期判断仍待共同模型迁移，不能把迁移计数
+称为完整 def-use 或 SourceVariables 迁移。活跃 undefined 初始化保留；
+RHS 副作用/异常由既有独立存储消除证明负责，别名计数不授权删除它们。
+
 当前尚无完整pass协调器：BindingInitializers::Run串行修改同一plan。
 规则179移除RefreshProjection这一混合入口：ElideStoredResults仅执行
 const分析、const提案、批量提交。AnalyzeEvaluations为const，返回独立

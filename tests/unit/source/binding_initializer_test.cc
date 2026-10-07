@@ -40,7 +40,7 @@ struct Fixture {
       else if constexpr (std::is_same_v<T, AwaitExpr> || std::is_same_v<T, YieldExpr>) syntax.operand = expression(syntax.operand);
       else if constexpr (std::is_same_v<T, UnaryExpr>) syntax.operand = expression(syntax.operand);
       else if constexpr (std::is_same_v<T, MemberExpr>) syntax.base = expression(syntax.base);
-      else if constexpr (std::is_same_v<T, BinaryExpr>) { syntax.left = expression(syntax.left); syntax.right = expression(syntax.right); }
+      else if constexpr (std::is_same_v<T, BinaryExpr> || std::is_same_v<T, SequenceExpr>) { syntax.left = expression(syntax.left); syntax.right = expression(syntax.right); }
       else test::Check(std::holds_alternative<SymbolExpr>(node.expression) || std::holds_alternative<TreeLiteral>(node.expression) ||
           std::holds_alternative<EmptyObjectExpr>(node.expression) || std::holds_alternative<EmptyArrayExpr>(node.expression));
     }, node.expression);
@@ -286,6 +286,11 @@ std::uint64_t Alias(unsigned form,unsigned count,bool reverse,bool emit) {
     auto& sequence=std::get<BlockStmt>(tree.statements[owned.value].statement);
     tree.children.insert(tree.children.begin()+sequence.first_child,declared);++sequence.child_count;
   };
+  if(form==24||form==25) {
+    auto rhs=fixture.Read(2);
+    if(form==25)rhs=fixture.Expr(SequenceExpr{fixture.Call(1,2),rhs});
+    body.insert(body.begin()+declarations.size()+2,fixture.Store(rhs));
+  }
   if(form==1)body.insert(body.end()-1,fixture.Store(fixture.Call(0)));
   if(form==2&&count)body.insert(body.begin()+declarations.size()+1,fixture.Stmt(ExpressionStmt{fixture.Call(1,last)}));
   if((form==3||form==21)&&count) {
@@ -588,7 +593,7 @@ int main(int argc, char**) {
       if(locals==1&&copies)continue;
       DecodedCell(profile,locals,copies,split,branch,field,argc>1);
     }
-  for(unsigned form=0;form<24;++form) {
+  for(unsigned form=0;form<26;++form) {
     std::uint64_t small=0,large=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}) {
       if(!count&&(form==3||form==5||form==14||form==16||form==23))continue;

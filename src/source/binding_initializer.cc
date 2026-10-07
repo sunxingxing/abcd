@@ -200,6 +200,10 @@ class Initializers {
       if (!loops_.initializer_owners[use.initializer->value]) plan_.omitted[use.declaration->value] = 1;
     }
     RunPass(Pass::kConstants);
+    // Copy stability consumes the retained writes, after identity-store
+    // cleanup. BeginCommit invalidates the flow before alias coverage reads it;
+    // RHS effects remain at their original occurrence.
+    RunPass(Pass::kStoredResults);
     RunPass(Pass::kAliases);
     RunPass(Pass::kStoredResults);
     RunPass(Pass::kInertOperands);
@@ -863,6 +867,9 @@ class Initializers {
   }
   struct BindingReadCoverage {
     std::vector<std::uint8_t> stores, declarations;
+    // Retained semantic writes, including projected undefined stores. The
+    // original census still locates declaration candidates, not stability.
+    std::vector<std::size_t> writes;
     std::span<const FlowReference> references;
   };
   BindingReadCoverage AnalyzeBindingReadCoverage() const {
@@ -880,6 +887,10 @@ class Initializers {
         result.stores[definition.binding.value]=coverage.definitions[i];
       if(definition.declaration && definition.declaration==use.definition)
         result.declarations[definition.binding.value]=coverage.definitions[i];
+    }
+    budget_.Array(result.writes,uses_.size());
+    for(const auto& reference:flow.references) {
+      budget_.Step();if(reference.kind==FlowReferenceKind::kWrite)++result.writes[reference.binding.value];
     }
     result.references=flow.references;
     return result;
@@ -939,7 +950,7 @@ class Initializers {
     bool candidate=false;
     for(std::size_t i=0;i<uses_.size();++i) {
       budget_.Step();const auto& use=uses_[i];
-      if(!use.private_storage || !use.declaration || use.writes!=1 || !use.store || use.escaped || plan_.literals[i])continue;
+      if(!use.private_storage || !use.declaration || !use.store || use.escaped || plan_.literals[i])continue;
       candidate=true;
     }
     if(!candidate)return;
@@ -947,7 +958,7 @@ class Initializers {
     candidate=false;
     for(std::size_t i=0;i<uses_.size();++i) {
       budget_.Step();const auto& use=uses_[i];
-      if(!use.private_storage || !use.declaration || use.writes!=1 || !use.store || use.escaped || plan_.literals[i])continue;
+      if(!use.private_storage || !use.declaration || !use.store || use.escaped || plan_.literals[i])continue;
       const auto rhs=std::get<AssignmentExpr>(tree_.expressions[use.store->value].expression).value;
       candidate |= expressions.bindings[rhs.value].has_value();
     }
@@ -984,18 +995,18 @@ class Initializers {
     for(std::size_t i=0;i<uses_.size();++i) {
       budget_.Step();const auto& use=uses_[i];
       const auto symbol=SymbolId{static_cast<std::uint32_t>(i)};
-      if(!use.writes&&!use.escaped&&implicit(tree_.symbols[i].kind)) {
+      if(!coverage.writes[i]&&!use.escaped&&implicit(tree_.symbols[i].kind)) {
         roots[i]=symbol;constant_queue_[ready++]=symbol;continue;
       }
       // Declaration completion is another initialization event, not an opcode
       // or producer shape. Retain its original value/effects/NamedEvaluation;
       // only later private copies disappear. The same observation lifetime
       // prevents stale copies across activation/TDZ/catch/loop boundaries.
-      if(use.definition&&!use.writes&&!use.escaped&&coverage.declarations[i]&&
+      if(use.definition&&!coverage.writes[i]&&!use.escaped&&coverage.declarations[i]&&
           Confined(use,lexical_[use.definition->value])) {
         roots[i]=symbol;constant_queue_[ready++]=symbol;continue;
       }
-      if(use.writes!=1||use.escaped||!coverage.stores[i]||plan_.literals[i])continue;
+      if(coverage.writes[i]!=1||use.escaped||!coverage.stores[i]||plan_.literals[i])continue;
       if(!use.private_storage || !use.declaration) {
         // A retained source/cell first store uses the identical availability
         // proof. A deleted constant store cannot provide retained storage.

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {parseJavaScript} from './class_reference.mjs';
+import {editExpression} from './expression_edits.mjs';
 const rows = execFileSync(process.argv[2], ['--emit'], {encoding:'utf8', maxBuffer:32_000_000}).trim().split('\n').map(JSON.parse);
 const token = {}, second = {}, failure = Symbol('original throw');
 function original(row) {
@@ -103,6 +104,7 @@ function aliasReference(row) {
   const last=row.count?'copy'+(row.count-1):'saved';
   const reports=('report('+last+');').repeat(row.alias===15?0:row.count);
   let body=declarations+'let saved;'+(row.alias===2&&row.count?'report('+last+');':'')+'saved='+root+';'+
+    (row.alias===24?'saved=saved;':row.alias===25?'saved=(report(saved),saved);':'')+
     (row.alias===3?'if(flag){'+copies+'}':row.alias===21&&row.count?'if(flag){'+copies+'}else{return;}':copies)+
     (row.alias===7?'await seed();':row.alias===8?'yield seed();':'');
   let tail=reports+(row.alias===1?'saved=seed();':row.alias===11&&row.count?last+'=seed();':'')+'return '+last+(row.alias===13?'()':'')+';';
@@ -307,6 +309,7 @@ for (const row of rows) {
   }
   if(row.expression!==undefined) {
     const generated=Function('"use strict";return '+row.source)(),reference=expressionReference(row);
+    if(row.expression===8&&row.count)assert.deepEqual(declarations.flatMap(node=>node.declarations.map(item=>item.id.name)).filter(name=>name.startsWith('copy')),['copy0']);
     if(row.folded){assert.ok(!declarations.some(node=>node.declarations.some(item=>item.id.name.startsWith('copy'))));++folded;}
     if(row.folded) {
       const pending=[ast];
@@ -376,6 +379,14 @@ for (const row of rows) {
     }
     if(row.alias===7){compare(await run(generated,token,Infinity,true,'next',true),await run(reference,token,Infinity,true,'next',true));++comparisons;}
     if(row.alias===8)for(const request of ['throw','return']){compare(await run(generated,token,Infinity,true,request),await run(reference,token,Infinity,true,request));++comparisons;}
+    if(row.alias===25&&row.count===1) {
+      // Removing an identity store must retain its RHS observation and throw.
+      const changed=editExpression(row.source,(node,dependsOn)=>node.type==='CallExpression'&&
+        dependsOn(node.callee,value=>value.type==='Identifier'&&value.name==='report'),()=> '0',{first:true});
+      parseJavaScript(changed);const bad=Function('return '+changed)();
+      const actual=await run(bad,token,Infinity),expected=await run(reference,token,Infinity);
+      assert.throws(()=>compare(actual,expected),assert.AssertionError);++mutations;
+    }
     if(row.alias===23&&row.count===1) {
       const pending=[ast];let returned;
       while(pending.length){const node=pending.pop();if(node.type==='ReturnStatement')returned=node;for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)pending.push(child);}else if(value?.type)pending.push(value);}}

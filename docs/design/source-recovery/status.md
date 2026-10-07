@@ -24,6 +24,39 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则204，别名稳定性消费当前写入事实
+
+- Aliases 的零次/唯一写入判断改用当前 RecoveryFlow 引用计数，删除
+  原始 BindingUses::writes 的候选过滤与稳定性判断。计数统一随读取
+  覆盖分析取得，O(bindings + references) 工作、O(bindings) 额外存储。
+  原始声明与首个候选 store 定位仍保留，未声称全 def-use 迁移完成。
+- 调度明确 Constants → StoredResults → Aliases → StoredResults：
+  前一次消除不改变值的写入，使复制传播看到当前稳定来源；后一次处理
+  别名替换新产生的同值写入。沿用 BeginCommit 统一失效与只读分析、
+  提案后提交，不让别名 pass 顺带猜测或删除 RHS 效果，不加新形状准入。
+- 新增普通 self-copy 与包含 report 副作用的 self-copy，覆盖正反序
+  expression/statement/symbol/scope 编号、0/1/200/201/400/800 和工作增长。
+  旧实现新测试失败，/tmp/abcd-rule204-red-tests.log。已有初始 undefined
+  复制链现在能共享首个声明，因此将“部分共享”和“整个临时根消除”分开
+  验证；独立源码检查明确保留 copy0 的活跃初始化。
+- 构建成功，定向单元通过60.67秒；独立行为最终通过64.79秒，生成函数
+  1,776、行为情景462,448、错误变换290。反例定位首次漏掉 value-call
+  callee，已复用 expression_edits 的 AST 定位，没有改生产条件。
+  最终行为证据 /tmp/abcd-rule204-behavior-tests.log、
+  /tmp/abcd-rule204-behavior-detail.log；前置失败证据保留在
+  /tmp/abcd-rule204-focused-tests.log 与 /tmp/abcd-rule204-focused2-tests.log。
+- 其余相关54/54回归全部通过，292.62秒；连同定向两项共56项通过。
+  Home 1,086次配对行为/362个表示反例情景及PageA 1,422次执行通过。
+  构建与回归证据 /tmp/abcd-rule204-regression-build.log、
+  /tmp/abcd-rule204-regression-tests.log、/tmp/abcd-rule204-regression-detail.log。
+  git diff --check 通过。
+- ABC-only 导出 build/stage-one/alias-current-writes-rule204：19 records，
+  10 complete / 0 partial / 9 noModule；十份源码语法检查通过，正文与
+  规则203一致，输入 SHA-256 不变。证据 /tmp/abcd-rule204-export.log
+  与 /tmp/abcd-rule204-export-check.json。不计作实际语料覆盖率提升。
+- 全局固定点、完整声明生命期、统一变量剩余迁移与阶段一仍开放；
+  不恢复全量语料/RSS/DFX，以上执行验证不是平台验收。
+
 ### 2026-10-08：Home 整 record 行为与表示独立验收
 
 - 将 PageA 的 AST 规范化、模块接口、原生表达式统计和构造参数变体工具
