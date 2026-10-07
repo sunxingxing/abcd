@@ -356,6 +356,13 @@ std::uint64_t Alias(unsigned form,unsigned count,bool reverse,bool emit) {
     }
     body.push_back(owned);
   }
+  if(form==22||form==23) {
+    // Expression composition preserves the same binding/name obligation. An
+    // inner source-name shadow must still prevent aliasing a retained read.
+    auto& returned=std::get<ReturnStmt>(tree.statements[body.back().value].statement);
+    returned.value=fixture.Expr(UnaryExpr{TreeUnary::kTypeof,*returned.value});
+    if(form==23){const auto owned=block({body.back()});shadow(owned);body.back()=owned;}
+  }
   const auto first=static_cast<std::uint32_t>(tree.children.size());tree.children.insert(tree.children.end(),body.begin(),body.end());
   std::get<BlockStmt>(tree.statements[tree.body.value].statement)={{1},first,static_cast<std::uint32_t>(body.size())};
   tree.anchors.clear();tree.operations.clear();for(unsigned i=0;i<tree.statements.size();++i)if(const auto* sequence=std::get_if<BlockStmt>(&tree.statements[i].statement))for(unsigned at=0;at<=sequence->child_count;++at){const auto anchor=static_cast<std::uint32_t>(tree.anchors.size());tree.anchors.push_back({BlockBoundary{{i},at},{0}});tree.operations.push_back({{anchor},AnchorId{anchor}});}
@@ -379,7 +386,7 @@ std::uint64_t Alias(unsigned form,unsigned count,bool reverse,bool emit) {
   test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
   const auto plan=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
-  const bool folded=count&&form!=1&&form!=2&&form!=3&&form!=5&&form!=11&&form!=14&&form!=16&&form!=17&&form!=19;
+  const bool folded=count&&form!=1&&form!=2&&form!=3&&form!=5&&form!=11&&form!=14&&form!=16&&form!=17&&form!=19&&form!=23;
   test::Check(plan.aliases[reverse?tree.symbols.size()-1-last:last].has_value()==folded);test::Check(!plan.aliases[reverse?tree.symbols.size()-3:2]);
   std::ostringstream output;const auto printed=PrintFunctionTree(tree,output);test::Check(std::holds_alternative<PrintedFunction>(printed));
   for(const auto range:std::get<PrintedFunction>(printed).expressions)test::Check(range.begin<=range.end&&range.end<=output.str().size());
@@ -581,10 +588,10 @@ int main(int argc, char**) {
       if(locals==1&&copies)continue;
       DecodedCell(profile,locals,copies,split,branch,field,argc>1);
     }
-  for(unsigned form=0;form<22;++form) {
+  for(unsigned form=0;form<24;++form) {
     std::uint64_t small=0,large=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}) {
-      if(!count&&(form==3||form==5||form==14||form==16))continue;
+      if(!count&&(form==3||form==5||form==14||form==16||form==23))continue;
       const auto work=Alias(form,count,reverse,argc>1);if(count==400&&!reverse)small=work;if(count==800&&!reverse)large=work;
     }
     test::Check(large<small*3);

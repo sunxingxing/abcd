@@ -921,10 +921,11 @@ class Initializers {
     std::vector<std::optional<SymbolId>> copy_targets,blocked_sources;
     std::vector<std::uint8_t> blocked;
     std::vector<TreeScopedReference> references;
-    std::vector<ExprId> occurrences;
+    struct AliasRead { ExprId expression; SymbolId binding; };
+    std::vector<AliasRead> occurrences;
     budget_.Array(copy_targets,tree_.expressions.size());budget_.Array(blocked_sources,uses_.size());
-    budget_.Array(blocked,uses_.size());budget_.Array(references,tree_.expressions.size());
-    budget_.Array(occurrences,tree_.expressions.size());
+    budget_.Array(blocked,uses_.size());budget_.Array(references,coverage.references.size());
+    budget_.Array(occurrences,coverage.references.size());
     for(std::size_t i=0;i<roots.size();++i) {
       budget_.Step();if(!roots[i]||roots[i]->value==i)continue;
       // A statement store disappears entirely. An embedded store still yields
@@ -934,11 +935,15 @@ class Initializers {
       copy_targets[std::get<AssignmentExpr>(tree_.expressions[assignment.value].expression).value.value]=SymbolId{static_cast<std::uint32_t>(i)};
     }
     std::size_t count=0;
-    for(std::size_t i=0;i<tree_.expressions.size();++i) {
-      budget_.Step();const auto* read=std::get_if<SymbolExpr>(&tree_.expressions[i].expression);
-      if(!read||!roots[read->symbol.value]||roots[read->symbol.value]==read->symbol)continue;
-      references[count]={*roots[read->symbol.value],expression_scopes_[i]};
-      occurrences[count++]={static_cast<std::uint32_t>(i)};
+    // Name/lifetime obligations belong to retained semantic reads, including
+    // compound operations. Their binding identity comes from the same flow as
+    // coverage, never a second census of original SymbolExpr nodes.
+    for(const auto& read:coverage.references) {
+      budget_.Step();if(read.kind!=FlowReferenceKind::kRead)continue;
+      if(!roots[read.binding.value]||roots[read.binding.value]==read.binding)continue;
+      const auto expression=std::get<ExprId>(read.site);
+      references[count]={*roots[read.binding.value],expression_scopes_[expression.value]};
+      occurrences[count++]={expression,read.binding};
     }
     references.resize(count);const auto visible=ResolveTreeReferences(tree_,references,budget_);
     ready=0;
@@ -949,8 +954,8 @@ class Initializers {
       }
     };
     for(std::size_t i=0;i<count;++i) {
-      budget_.Step();if(visible[i]&&RootLifetime(references[i].symbol,occurrences[i]))continue;
-      const auto occurrence=occurrences[i];const auto source=std::get<SymbolExpr>(tree_.expressions[occurrence.value].expression).symbol;
+      budget_.Step();if(visible[i]&&RootLifetime(references[i].symbol,occurrences[i].expression))continue;
+      const auto occurrence=occurrences[i].expression;const auto source=occurrences[i].binding;
       // A copy RHS ceases to be a read when its store is elided. Only if the
       // destination must remain does its unavailable root force source storage.
       if(const auto target=copy_targets[occurrence.value])blocked_sources[target->value]=source;

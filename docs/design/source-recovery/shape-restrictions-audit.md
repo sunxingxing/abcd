@@ -1999,3 +1999,13 @@ management, not a new recovery admission. Pre-snapshot dead-read cleanup and
 post-storage cleanup have explicit fact dependencies. No extra pass is scheduled
 merely because snapshot syntax changed: its RHS occurrences remain single and
 its own read/store/declaration are removed together.
+
+
+## Rules190: alias name checks stop recounting syntax reads
+
+Alias reference queries use FlowReference binding/site identities from the same
+current flow as definition coverage. The original SymbolExpr scan and post-query
+syntax cast are removed. RootLifetime and indexed lexical lookup remain distinct
+activation/name obligations. Compound typeof and inner-name shadow tests do not
+introduce operator-specific production branches. Canonical activation and the
+remaining legacy initialization/motion conditions are still migration gaps.

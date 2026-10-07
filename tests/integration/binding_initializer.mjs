@@ -110,6 +110,7 @@ function aliasReference(row) {
   if(row.alias===5)tail='{let saved=123;'+tail+'}';
   if(row.alias===6)tail=reports+'{let saved=123;}return '+last+';';
   if(row.alias===20)tail='{'.repeat(row.count+1)+tail+'}'.repeat(row.count+1);
+  if(row.alias===22||row.alias===23)tail=reports+(row.alias===23?'{let saved=123;':'')+'return typeof '+last+';'+(row.alias===23?'}':'');
   if(row.alias>=14&&row.alias<=16) {
     const first=row.count?'copy0=saved;':'';
     const rest=Array.from({length:Math.max(0,row.count-1)},(_,i)=>'copy'+(i+1)+'=copy'+i+';').join('');
@@ -375,6 +376,17 @@ for (const row of rows) {
     }
     if(row.alias===7){compare(await run(generated,token,Infinity,true,'next',true),await run(reference,token,Infinity,true,'next',true));++comparisons;}
     if(row.alias===8)for(const request of ['throw','return']){compare(await run(generated,token,Infinity,true,request),await run(reference,token,Infinity,true,request));++comparisons;}
+    if(row.alias===23&&row.count===1) {
+      const pending=[ast];let returned;
+      while(pending.length){const node=pending.pop();if(node.type==='ReturnStatement')returned=node;for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)pending.push(child);}else if(value?.type)pending.push(value);}}
+      assert.ok(returned?.argument);const operand=returned.argument;
+      // Force an otherwise value-compatible alias through a different lexical
+      // binding. Execution must distinguish the inner number from the object.
+      const changed=row.source.slice(0,operand.start)+'typeof saved'+row.source.slice(operand.end);
+      parseJavaScript(changed);const bad=Function('return '+changed)();
+      const actual=await run(bad,token,Infinity),expected=await run(reference,token,Infinity);
+      assert.throws(()=>compare(actual,expected),assert.AssertionError);++mutations;
+    }
     if(row.folded&&row.count===1) {
       const pending=[ast];let returned;
       while(pending.length){const node=pending.pop();if(node.type==='ReturnStatement')returned=node;for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)pending.push(child);}else if(value?.type)pending.push(value);}}

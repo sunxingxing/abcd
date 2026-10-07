@@ -24,6 +24,36 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-07：规则190，别名名称义务消费共同引用事件
+
+- Aliases的名称/生命期查询改用共同覆盖分析所属流图的FlowReference，
+  保留类型化binding与expression身份。原始SymbolExpr引用枚举及名称
+  查询后重新从语法提取源绑定的cast实际删除；覆盖、引用和替换提案
+  消费同一当前投影，在RunPass提交边界之前完成。
+- 单一定义/动态值身份、批量词法名称解析、RootLifetime仍分别承担义务；
+  copy-RHS索引仅关联已知复制写入与源读取，不再独立决定引用集合。
+  查询按R个当前引用分配有界空间，继续计入原预算，无按绑定遍历图。
+- 新增typeof表达式组合及内层同名绑定的正反例，覆盖arena/symbol/scope
+  重排和0/1/200/201/400/800复制规模。独立执行还故意把保留的读取改成
+  内层同名绑定，区分对象和数字，检出错误替换；生产代码没有新增
+  typeof、样本、同块、邻接或固定图形状准入分支。
+- 相关目标构建通过，日志/tmp/abcd-rule190-build.log。最终54项相关回归
+  全部通过380.67秒，日志/tmp/abcd-rule190-tests.log，详细输出
+  /tmp/abcd-rule190-test-detail.log。变量/别名1,752份源码/461,776行为/
+  284反例；存储221份源码/33,620行为/12反例；快照252份源码/9,636行为/
+  10反例；定义消除184份源码/2,080行为/3反例；冗余写回528份源码/
+  18,192行为/12反例。512支配图、175,616活跃性/定义/覆盖图、98,304需求图
+  及既定布局变换、规模和exact/short预算门槛继续通过。
+- ABC-only导出build/stage-one/alias-references-rule190为
+  10complete/0partial/9noModule，十份源码node --check通过，正文与规则189
+  一致；日志/tmp/abcd-rule190-export.log。本轮交付是共同事实迁移及组合
+  验证，不新增全阶段语义/风格完成声明。
+- 下一步初始化迁移须处理CurrentFlow→AnalyzeExpressions→InitializedRead
+  的实际依赖；不能直接在InitializedRead里反查CurrentFlow形成递归。
+  完成/TDZ事实生产须与效果摘要细化分离。canonical IR/activation、旧
+  motion条件、全局版本与收敛仍开放；统一变量里程碑、结构gate和阶段一
+  未完成，原Goal active及全量语料/RSS/DFX/代理暂停范围保持。
+
 ### 2026-10-07：规则189，快照接入共同覆盖并统一局部pass失效边界
 
 - ForwardSnapshots消费共同定义覆盖及当前FlowReference读取事件，不再从

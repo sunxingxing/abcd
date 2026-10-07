@@ -2651,3 +2651,17 @@ unused declaration-control/completion-order/store-region metadata is removed.
 No dependency/external algorithm is added and no net speed or RSS improvement is
 claimed. Independent source execution, repeated-work mutants, exact/short quotas
 and 200/201/geometric cases remain validation obligations.
+
+
+### Alias reference queries from semantic events (rules190)
+
+Alias name/lifetime queries now iterate R current FlowReference events rather
+than X original expressions. O(R) bounded query/occurrence storage retains typed
+binding and expression identities; the O(X) copy-RHS index and O(B) blocked-source
+queue are unchanged. Existing batched lexical resolution and lifetime lookup are
+reused. No graph traversal per alias, read/definition Cartesian product, new
+dependency or recovery pattern is introduced. The reference span is borrowed
+only until the local pass returns; RunPass invalidates its owner on commit.
+Costs remain charged to the existing budget. Composition and name-shadow
+counterexamples, layout permutations and 200/201/400/800 remain validation gates;
+this is a shared-fact migration, not a claim of whole-corpus speed or completion.

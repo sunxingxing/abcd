@@ -226,3 +226,11 @@ demand cleanup repeats only after later storage/declaration changes. A discarded
 initial undefined read no longer prevents direct-return recovery; observed initial
 values remain. Motion epochs/control regions and lexical environment signatures
 still require common effect/activation migration; global convergence is not done.
+
+
+Rules190: alias reference enumeration joins the common flow. Name/lifetime queries
+retain typed binding and occurrence identities from FlowReference; the redundant
+SymbolExpr census is gone. Copy propagation, lexical resolution and activation
+remain separate obligations. Compound-expression/name-shadow combinations test
+this shared path without new production shapes. InitializedRead and canonical
+activation, effect-motion migration and global pass convergence remain open.

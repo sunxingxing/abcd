@@ -478,3 +478,31 @@ at the forwarding assertion. The mutant was restored before the final build;
 its log is /tmp/abcd-rule189-stale-mutant.log. This complements the independent
 execution mutants for repeated effects and the positive/negative initial-read
 cases; an unchanged real record alone would not prove the invalidation contract.
+
+
+## Alias reference obligations use current flow (rules190)
+
+Aliases now enumerates the shared coverage flow's typed read references for its
+name/lifetime obligations. Each query retains the event's binding identity and
+expression occurrence; it no longer scans original SymbolExpr syntax or recovers
+the source identity from that syntax after name resolution. Name lookup still
+uses the occurrence's lexical scope and RootLifetime still owns the documented
+activation gap. Copy-chain blocking propagates through the same indexed queue.
+This changes the owner of reference facts, not the single-definition requirement
+or the independent name/lifetime proof. No new expression/operator admission is
+added. Current flow/coverage/reference spans remain inside the same RunPass
+analysis/proposal phase, before the alias batch is committed.
+
+Independent source cases compose copies with typeof, both with ordinary scope
+and an inner source-name shadow. Arena/symbol/scope remapping and geometric copy
+chains exercise the same production path. Existing implicit/mapped arguments,
+conditional/loop copies, captures, suspension and finally cases remain gates.
+The remaining copy-RHS index maps a known elided write to its source occurrence;
+it is not a second enumeration of reads or a value-availability proof.
+
+The next initialization migration has a concrete dependency boundary:
+CurrentFlow currently calls AnalyzeExpressions, which calls InitializedRead.
+InitializedRead cannot start querying CurrentFlow without creating recursion.
+A shared initialization producer must first separate semantic completion/TDZ
+facts from effect-summary refinement; another local predicate or an unchecked
+recursive cache lookup would not satisfy the common-model contract.
