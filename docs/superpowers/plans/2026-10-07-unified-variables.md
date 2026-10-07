@@ -303,3 +303,13 @@ and global convergence remain unfinished.
   dropping either new obligation admits a semantic counterexample.
 - Lexical lifetime, fuller activation/unwind, original IR and global convergence
   remain pending; this completes the snapshot region restriction replacement.
+
+
+### Rules197 continuation: complete loop grammar proposals before commit
+
+- Extracted const PlanLoopDeclarations from the mutating loop traversal.
+- Typed deltas fully describe suffix starts, demotions and native declarators.
+- BeginCommit precedes only delta application; no later decisions read the
+  partially changed plan. Final prefix counts remain derived after all passes.
+- Multi-loop order invariance and idempotence tests supplement existing source
+  execution tests. Whole-pipeline dependency convergence remains pending.

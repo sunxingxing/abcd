@@ -2085,3 +2085,13 @@ loop-entry case now succeeds without a loop-pattern branch, while repeated-read
 and changed-handler mutants are independently rejected. Lexical identity and
 lifetime proofs remain in their documented owners. Full unwind/activation and
 canonical-IR precision remain gaps, not new local admission conditions.
+
+
+### Rules197: separate loop grammar planning from publication
+
+Loop declaration recovery now consumes immutable projection facts and emits a
+complete typed delta before any mutation. Its expression-prefix/declarator-suffix
+rule comes from ForDeclaration grammar, not a recognized bytecode sequence.
+Initialization, binding identity and lifetime remain upstream obligations. No
+new loop-count, adjacency, name, same-block or sample restriction was introduced.
+The old interleaved decision/publication traversal has been removed.

@@ -1,4 +1,5 @@
 #include "../../../src/source/loop_syntax.h"
+#include "../../../src/source/loop_declarations.h"
 #include "../../../src/source/binding_initializer.h"
 #include "../../../src/source/expression_children.h"
 #include "../../../src/source/nullish_syntax.h"
@@ -263,8 +264,59 @@ std::uint64_t Native(unsigned form, unsigned count, bool reverse, bool emit) {
   if (emit) std::cout << nlohmann::json{{"source", source.str()}, {"lexical", lexical}, {"binding", form}, {"count", count}} << '\n';
   return bindings.work;
 }
+void DeclarationBatches() {
+  // Independent loops must use the same input revision, regardless of arena
+  // order or application order. Grammar forces every retained expression
+  // before every native declarator; omitted roots impose no ordering fence.
+  std::uint64_t previous=0;
+  for(unsigned count:{1U,200U,201U,400U,800U})for(bool reverse:{false,true}) {
+    LoopSyntax loops;BindingInitializers input;
+    loops.initializers.resize(count);input.loop_declarations.resize(count);
+    input.statements.resize(count*6);input.omitted.resize(count*6);
+    std::vector<std::optional<StmtId>> declarations(count*2);
+    for(unsigned i=0;i<count;++i) {
+      const auto owner=reverse?count-1-i:i,first=static_cast<unsigned>(loops.initializer_roots.size());
+      for(unsigned j=0;j<4;++j)loops.initializer_roots.push_back({StmtId{i*6+j},{}});
+      loops.initializers[owner]=LoopInitializerSyntax{first,first+4};
+      declarations[i*2]=StmtId{i*6+4};declarations[i*2+1]=StmtId{i*6+5};
+      input.statements[i*6]=BindingInitializer{SymbolId{i*2},ExprId{i*2},DeclarationKind::kConst};
+      input.statements[i*6+3]=BindingInitializer{SymbolId{i*2+1},ExprId{i*2+1},DeclarationKind::kConst};
+      input.omitted[i*6+2]=1;
+    }
+    const auto result=std::get<LoopDeclarations>(PlanLoopDeclarations(loops,input,declarations));
+    test::Check(result.starts.size()==count && result.demoted.size()==count && result.declarators.size()==count);
+    // Planning must not alter declarations or omission facts.
+    for(unsigned i=0;i<count;++i) {
+      test::Check(!input.loop_declarations[i]);test::Check(input.statements[i*6].has_value());
+      test::Check(input.statements[i*6+3]->declaration==DeclarationKind::kConst);
+      test::Check(!input.omitted[i*6+4] && !input.omitted[i*6+5]);
+    }
+    auto applied=input;
+    // Apply categories in reverse order to ensure the delta is self-contained.
+    for(auto it=result.declarators.rbegin();it!=result.declarators.rend();++it) {
+      applied.statements[it->initializer.value]->declaration=DeclarationKind::kLet;
+      applied.omitted[it->declaration.value]=1;
+    }
+    for(const auto root:result.demoted)applied.statements[root.value].reset();
+    for(const auto& start:result.starts)applied.loop_declarations[start.loop.value]=start.first;
+    for(unsigned i=0;i<count;++i) {
+      const auto owner=reverse?count-1-i:i;
+      test::Check(applied.loop_declarations[owner]==i*4+2);
+      test::Check(!applied.statements[i*6] && !applied.omitted[i*6+4]);
+      test::Check(applied.statements[i*6+3]->declaration==DeclarationKind::kLet && applied.omitted[i*6+5]);
+    }
+    const auto again=std::get<LoopDeclarations>(PlanLoopDeclarations(loops,applied,declarations));
+    test::Check(again.starts.empty() && again.demoted.empty() && again.declarators.empty());
+    test::Check(std::holds_alternative<LoopDeclarations>(PlanLoopDeclarations(loops,input,declarations,{result.allocated_bytes,result.work})));
+    test::Check(std::get<TreeStructureError>(PlanLoopDeclarations(loops,input,declarations,{result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
+    test::Check(std::get<TreeStructureError>(PlanLoopDeclarations(loops,input,declarations,{result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);
+    if(!reverse){if(count>=400)test::Check(result.work<previous*3);previous=result.work;}
+  }
+}
+
 }
 int main(int argc, char**) {
+  DeclarationBatches();
   std::array<std::uint64_t, 3> small{}, large{};
   for (unsigned form = 0; form < 13; ++form) for (unsigned count : {0U, 1U, 200U, 201U, 400U, 800U}) for (bool reverse : {false, true}) {
     Fixture fixture(form, count, reverse); const auto planned = PlanLoopSyntax(fixture.tree);

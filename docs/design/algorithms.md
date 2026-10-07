@@ -2743,3 +2743,19 @@ bounded propagation passes remain O(N+E) work/O(N) space; scratch is reused and
 the second output vector is explicitly charged. The independent 4,096 graph
 oracle now enumerates reverse reachable histories too, with entry as the boundary.
 Linear/cyclic geometric families and exact/short budgets cover both results.
+
+
+### Immutable loop declaration proposals (rules197)
+
+PlanLoopDeclarations applies the ECMAScript ForDeclaration grammar to already
+proven disjoint loop entry streams. It consumes existing declaration identities
+and omission/projection facts; it does not infer binding lifetimes. One reverse
+scan finds each representable suffix; one forward scan emits typed edits. With
+S statement-indexed loop slots and R disjoint initializer roots, time is O(S+R),
+proposal storage O(L+R) for L loops. The caller's declaration identity view costs
+O(B) for B bindings. There is no per-loop tree or per-binding graph walk.
+
+Planning takes const references and commit consumes only the completed delta.
+A second plan on the applied state is empty. Multi-loop/reversed-order tests
+cover 1/200/201/400/800 loops with exact and short resource/work budgets. This
+is a grammar projection split, not a convergence proof for the whole pipeline.

@@ -24,6 +24,38 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则197，循环声明规划与提交分离
+
+- 原 ProjectLoopDeclarations 在同一遍历中判断和修改共享计划，后续循环
+  继续读取已经部分更新的状态。现抽取 const PlanLoopDeclarations，只读
+  当前 LoopSyntax/BindingInitializers 和已知声明身份，返回 typed 起点、
+  降回表达式和原生 declarator 修改。调用者完成全部规划和预算接纳后，
+  只进入一次 BeginCommit，后续只应用 delta，不再分析半更新计划。
+- 保留 ForDeclaration 的表达式前缀/声明后缀语法合同，初始化/生命期/
+  名字解析证明仍归原共同分析，不重新推断。删除无消费者的中途 entry
+  前缀计数重算，只在所有 pass 后从最终投影生成。O(S+R+B) 工作，
+  S 为 statement-indexed loop slots，R 为互斥 entry roots，B 为绑定数。
+- 新增 1/200/201/400/800 个独立循环的批量测试：规划不修改输入，反向
+  loop arena 与 delta 应用顺序不影响结果，已应用投影的重复规划为空，
+  exact/short 资源与工作预算通过。既有源码测试保留嵌套循环、异常、
+  await/yield 和存储合并/清理组合。初验 2/2 通过，23.03 秒，日志
+  /tmp/abcd-rule197-focused-tests.log。
+- 最终 37/37 项定向组合测试通过，243.23 秒，日志
+  /tmp/abcd-rule197-tests.log 与 /tmp/abcd-rule197-test-detail.log。
+  循环初始化 276 份源码/13,892 次行为对照/60 个反例；变量/别名
+  1,752/461,776/284；快照 324/12,372/18；定义消除 224/2,880/11；
+  冗余写回 528/18,192/12；局部初始化 192/7,596/16。独立执行对照不是
+  平台执行。相关目标构建通过，日志 /tmp/abcd-rule197-focused-build.log
+  与 /tmp/abcd-rule197-final-build.log。
+- ABC-only 导出 build/stage-one/loop-declarations-rule197 保持
+  10complete/0partial/9noModule，十份源码 node --check 通过，正文与
+  规则196一致；固定输入 SHA256 保持，日志 /tmp/abcd-rule197-export.log。
+  这是 pass 职责分离的交付，无新增真实 record 覆盖，不替代独立全阶段
+  源码语义/style 验收。
+- 全局 pass 依赖固定点调度、共同 activation/unwind、canonical IR 对应
+  及结构 gate 仍开放。阶段一 Goal active；全量语料/RSS/DFX/代理等暂停
+  范围保持。
+
 ### 2026-10-08：规则196，共同执行次数与异常上下文替换区域匹配
 
 - AnalyzeFlowMotion 复用同一方向化求解器，提供 next/previous 必经观察。

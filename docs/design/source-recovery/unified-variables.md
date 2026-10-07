@@ -717,3 +717,26 @@ producer inside. Removing backward pairing deliberately fails the repeated-loop
 case; removing exception-context equality deliberately fails the existing
 outside-catch case. Independent execution also checks duplicate evaluation.
 These are separate semantic counterexamples, not new production shape branches.
+
+
+## Loop declaration projection has a read-only proposal boundary (rules197)
+
+ProjectLoopDeclarations previously selected a loop's grammar suffix and updated
+the shared projection before examining later loops. It made no flow queries
+after committing, but still read and wrote the same plan during decision making.
+PlanLoopDeclarations now receives const LoopSyntax/BindingInitializers and the
+existing declaration identities, and returns typed start/demotion/declarator
+edits. It cannot mutate the projection. The caller completes all planning and
+budget accounting, enters BeginCommit once, and applies only these edits.
+
+Disjoint initializer ownership makes the edits independent of loop arena and
+application order. A retained expression prefix remains at its occurrence; the
+representable suffix becomes for-let. No liveness, initialization, name lookup
+or lifetime is re-inferred by this grammar pass. Prefix counts are derived only
+from the final projection, removing the unused mid-pass recomputation.
+
+The isolated batch tests cover multiple loops, reversed ownership order,
+application order, idempotence, exact/short budgets and 200/201/geometric growth.
+Existing generated-source tests retain nested loops, catch/finally, await/yield,
+copy/storage cleanup and initialization fault comparisons. This closes this
+pass's partial-plan decision path, not global dependency fixed-point scheduling.

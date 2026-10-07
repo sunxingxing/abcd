@@ -7,6 +7,7 @@
 #include "class_tree.h"
 #include "expression_children.h"
 #include "loop_syntax.h"
+#include "loop_declarations.h"
 #include "nullish_syntax.h"
 #include "statement_children.h"
 #include <algorithm>
@@ -278,42 +279,22 @@ class Initializers {
     RequireTree(pass_phase_!=PassPhase::kCommit,TreeStructureError::kOwnership);
   }
   void ProjectLoopDeclarations() {
-    for (std::size_t i = 0; i < loops_.initializer_roots.size(); ++i) {
-      budget_.Step(); plan_.entry_counts[i + 1] = plan_.entry_counts[i] +
-          (plan_.omitted[loops_.initializer_roots[i].statement.value] ? 0 : 1);
-    }
-    // ForDeclaration has one ordered declarator list. Keep the preceding
-    // expression program at its original entry, then emit the representable
-    // suffix as let declarations. This is a grammar projection, not a compiler
-    // layout premise: compound completion roots retain their expression form.
-    // Every initializer root belongs to exactly one loop; no per-symbol walk.
-    for (std::size_t i = 0; i < loops_.initializers.size(); ++i) {
-      budget_.Step(); const auto& entry = loops_.initializers[i]; if (!entry) continue;
-      auto first = entry->end;
-      bool declaration = false;
-      while (first > entry->first) {
-        budget_.Step(); const auto root = loops_.initializer_roots[first - 1].statement;
-        if (!plan_.statements[root.value] && !plan_.omitted[root.value]) break;
-        declaration |= plan_.statements[root.value].has_value();
-        --first;
-      }
-      if (declaration && plan_.loop_declarations[i]!=first) {
-        BeginCommit();plan_.loop_declarations[i]=first;
-      }
-      for (auto at = entry->first; at < entry->end; ++at) {
-        budget_.Step(); const auto root = loops_.initializer_roots[at].statement;
-        if (at < first) {
-          if(plan_.statements[root.value]) {BeginCommit();plan_.statements[root.value].reset();}
-        }
-        else if (!plan_.omitted[root.value]) {
-          const auto symbol = plan_.statements[root.value]->symbol;
-          if(plan_.statements[root.value]->declaration!=DeclarationKind::kLet ||
-              !plan_.omitted[uses_[symbol.value].declaration->value]) {
-            BeginCommit();plan_.statements[root.value]->declaration=DeclarationKind::kLet;
-            plan_.omitted[uses_[symbol.value].declaration->value]=1;
-          }
-        }
-      }
+    RequireAnalysis();
+    if(loops_.initializer_roots.empty())return;
+    std::vector<std::optional<StmtId>> declarations;
+    budget_.Array(declarations,uses_.size());
+    for(std::size_t i=0;i<uses_.size();++i){budget_.Step();declarations[i]=uses_[i].declaration;}
+    const auto planned=PlanLoopDeclarations(loops_,plan_,declarations,budget_.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&planned))throw *error;
+    const auto& delta=std::get<LoopDeclarations>(planned);
+    budget_.Admit(delta.allocated_bytes,1);budget_.Step(delta.work);
+    if(delta.starts.empty() && delta.demoted.empty() && delta.declarators.empty())return;
+    BeginCommit();
+    for(const auto& start:delta.starts){budget_.Step();plan_.loop_declarations[start.loop.value]=start.first;}
+    for(const auto root:delta.demoted){budget_.Step();plan_.statements[root.value].reset();}
+    for(const auto& declarator:delta.declarators) {
+      budget_.Step();plan_.statements[declarator.initializer.value]->declaration=DeclarationKind::kLet;
+      plan_.omitted[declarator.declaration.value]=1;
     }
   }
   void ElideInertOperands() {
