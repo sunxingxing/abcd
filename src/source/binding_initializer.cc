@@ -697,6 +697,8 @@ class Initializers {
     const auto region=next_region_++;regions_[region].begin=region;return region;
   }
   bool CompletedStore(const BindingUses& use) const {
+    // Legacy snapshot-motion prerequisite only. Literal and alias recovery
+    // consume shared read coverage; do not extend this census for new cases.
     if(!use.store||use.first!=use.store||use.escaped||!use.first_region)return false;
     const auto range=regions_[use.store_region];
     return *use.first_region>=range.begin&&*use.last_region<range.end;
@@ -736,6 +738,30 @@ class Initializers {
     const auto& effect=std::get<ExpressionStmt>(tree_.statements[use.initializer->value].statement);
     return use.first==effect.expression && Confined(use,use.initializer_container);
   }
+  struct BindingReadCoverage {
+    std::vector<std::uint8_t> stores, declarations;
+  };
+  BindingReadCoverage AnalyzeBindingReadCoverage() const {
+    const auto flow=CurrentFlow();
+    auto analyzed_live=AnalyzeFlowLiveness(flow,budget_.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&analyzed_live))throw *error;
+    const auto& live=std::get<FlowLiveness>(analyzed_live);
+    budget_.Admit(live.allocated_bytes,1);budget_.Step(live.work);
+    auto analyzed=AnalyzeFlowReadCoverage(flow,live,budget_.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
+    const auto& coverage=std::get<FlowReadCoverage>(analyzed);
+    budget_.Admit(coverage.allocated_bytes,1);budget_.Step(coverage.work);
+    BindingReadCoverage result;
+    budget_.Array(result.stores,uses_.size());budget_.Array(result.declarations,uses_.size());
+    for(std::size_t i=0;i<flow.definitions.size();++i) {
+      budget_.Step();const auto& definition=flow.definitions[i];const auto& use=uses_[definition.binding.value];
+      if(definition.write && definition.write==use.store)
+        result.stores[definition.binding.value]=coverage.definitions[i];
+      if(definition.declaration && definition.declaration==use.definition)
+        result.declarations[definition.binding.value]=coverage.definitions[i];
+    }
+    return result;
+  }
   void Constants() {
     const auto eligible=[&](const BindingUses& use) {
       return use.private_storage && use.declaration && use.writes==1 && use.store && !use.escaped;
@@ -747,23 +773,9 @@ class Initializers {
       seed |= std::holds_alternative<TreeLiteral>(tree_.expressions[value.value].expression);
     }
     if(!seed)return;
-    const auto flow=CurrentFlow();
-    auto analyzed_live=AnalyzeFlowLiveness(flow,budget_.Remaining());
-    if(const auto* error=std::get_if<TreeStructureError>(&analyzed_live))throw *error;
-    const auto& live=std::get<FlowLiveness>(analyzed_live);
-    budget_.Admit(live.allocated_bytes,1);budget_.Step(live.work);
-    auto analyzed=AnalyzeFlowReadCoverage(flow,live,budget_.Remaining());
-    if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
-    const auto& coverage=std::get<FlowReadCoverage>(analyzed);
-    budget_.Admit(coverage.allocated_bytes,1);budget_.Step(coverage.work);
-    std::vector<std::uint8_t> available;
+    const auto coverage=AnalyzeBindingReadCoverage();
     std::vector<std::optional<ExprId>> literals;
-    budget_.Array(available,uses_.size());budget_.Array(literals,uses_.size());
-    for(std::size_t i=0;i<flow.definitions.size();++i) {
-      budget_.Step();const auto& definition=flow.definitions[i];
-      if(definition.write && definition.write==uses_[definition.binding.value].store)
-        available[definition.binding.value]=coverage.definitions[i];
-    }
+    budget_.Array(literals,uses_.size());
     // A primitive literal has the same value on every execution of its store.
     // Shared coverage excludes reads of undefined or any other definition;
     // unlike effectful copies this needs no dynamic occurrence identity.
@@ -771,7 +783,7 @@ class Initializers {
     std::size_t ready = 0;
     for (std::size_t i = 0; i < uses_.size(); ++i) {
       budget_.Step();const auto& use = uses_[i];
-      if (!eligible(use) || !available[i]) continue;
+      if (!eligible(use) || !coverage.stores[i]) continue;
       const auto symbol = SymbolId{static_cast<std::uint32_t>(i)};
       const auto assignment = *use.store;
       const auto value = std::get<AssignmentExpr>(tree_.expressions[assignment.value].expression).value;
@@ -796,9 +808,23 @@ class Initializers {
     }
   }
   void Aliases() {
-    // Retain one immutable producer; only storage copies disappear. The common
-    // lifetime proof composes along copy edges, with no allocation/effect replay.
-    // Name resolution at each real read is a separate semantic obligation.
+    // A single retained definition must cover all source reads, including each
+    // copy RHS; each copy definition must in turn cover its destination reads.
+    // A source re-execution reaching a destination read without re-executing
+    // its copy would also admit a path bypassing that copy from function entry,
+    // contradicting coverage. This is the SSA copy-propagation obligation;
+    // name resolution, escaping cells and activation remain separate below.
+    bool candidate=false;
+    for(std::size_t i=0;i<uses_.size();++i) {
+      budget_.Step();const auto& use=uses_[i];
+      if(!use.private_storage || !use.declaration || use.writes!=1 || !use.store || use.escaped || plan_.literals[i])continue;
+      const auto rhs=std::get<AssignmentExpr>(tree_.expressions[use.store->value].expression).value;
+      candidate |= std::holds_alternative<SymbolExpr>(tree_.expressions[rhs.value].expression);
+    }
+    if(!candidate)return;
+    // Constants has committed its proposal. Rebuild from that exact projection;
+    // neither its flow nor its coverage facts may be reused here.
+    const auto coverage=AnalyzeBindingReadCoverage();
     std::vector<std::optional<SymbolId>> roots;
     budget_.Array(roots,uses_.size());std::size_t ready=0;
     // ECMA-262 2024 FunctionDeclarationInstantiation: only a non-strict,
@@ -832,12 +858,12 @@ class Initializers {
       // or producer shape. Retain its original value/effects/NamedEvaluation;
       // only later private copies disappear. The same observation lifetime
       // prevents stale copies across activation/TDZ/catch/loop boundaries.
-      if(use.definition&&!use.writes&&!use.escaped&&use.initialized_first&&
+      if(use.definition&&!use.writes&&!use.escaped&&coverage.declarations[i]&&
           Confined(use,lexical_[use.definition->value])) {
         roots[i]=symbol;constant_queue_[ready++]=symbol;continue;
       }
-      if(use.writes!=1||!CompletedStore(use)||plan_.literals[i])continue;
-      if(!PrivateCopy(use)) {
+      if(use.writes!=1||use.escaped||!coverage.stores[i]||plan_.literals[i])continue;
+      if(!use.private_storage || !use.declaration) {
         // A retained source/cell first store uses the identical availability
         // proof. A deleted constant store cannot provide retained storage.
         roots[i]=symbol;constant_queue_[ready++]=symbol;

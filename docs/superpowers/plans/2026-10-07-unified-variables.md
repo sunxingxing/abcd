@@ -205,3 +205,13 @@ An assigning branch with an abrupt alternative now permits constant recovery at
 common later reads, while omitted writes/undefined and exception paths remain
 protected by the same semantic facts. Dynamic occurrence identity, other legacy
 copy/snapshot consumers, InitializedRead and activation migration remain open.
+
+
+Rules188: Aliases shares AnalyzeBindingReadCoverage with Constants and obtains
+fresh facts after literal commit. CompletedStore/PrivateCopy and declaration
+initialized_first no longer decide alias availability. Both source and copy
+coverage preserve the dynamic producer value; name/activation and escaping state
+remain separate obligations. A copy-or-return branch now restores common later
+reads to retained source storage. Existing loop/exception/capture and object
+identity gates remain. Snapshot motion still owns the last CompletedStore use;
+full activation, alias reference-event migration and pass convergence remain open.

@@ -288,11 +288,12 @@ std::uint64_t Alias(unsigned form,unsigned count,bool reverse,bool emit) {
   };
   if(form==1)body.insert(body.end()-1,fixture.Store(fixture.Call(0)));
   if(form==2&&count)body.insert(body.begin()+declarations.size()+1,fixture.Stmt(ExpressionStmt{fixture.Call(1,last)}));
-  if(form==3&&count) {
+  if((form==3||form==21)&&count) {
     const auto at=body.begin()+declarations.size()+2;
     const auto symbol=static_cast<std::uint32_t>(tree.symbols.size()),name=static_cast<std::uint32_t>(tree.names.size());tree.names.push_back(u"flag");
     tree.symbols.push_back({{0},{name},BindingKind::kParameter,DeclarationKind::kParameter,NameEvidence::kSynthesized,{}});tree.parameters.push_back({{symbol},{},false});
-    const auto branch=fixture.Stmt(IfStmt{fixture.Read(symbol),block(stores),{}});
+    const auto branch=fixture.Stmt(IfStmt{fixture.Read(symbol),block(stores),
+        form==21?std::optional{block({fixture.Stmt(ReturnStmt{})})}:std::nullopt});
     body.erase(at,at+stores.size());body.insert(body.begin()+declarations.size()+2,branch);
   }
   if(form==4||form==5) {
@@ -580,7 +581,7 @@ int main(int argc, char**) {
       if(locals==1&&copies)continue;
       DecodedCell(profile,locals,copies,split,branch,field,argc>1);
     }
-  for(unsigned form=0;form<21;++form) {
+  for(unsigned form=0;form<22;++form) {
     std::uint64_t small=0,large=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}) {
       if(!count&&(form==3||form==5||form==14||form==16))continue;

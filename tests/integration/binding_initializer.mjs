@@ -103,7 +103,7 @@ function aliasReference(row) {
   const last=row.count?'copy'+(row.count-1):'saved';
   const reports=('report('+last+');').repeat(row.alias===15?0:row.count);
   let body=declarations+'let saved;'+(row.alias===2&&row.count?'report('+last+');':'')+'saved='+root+';'+
-    (row.alias===3?'if(flag){'+copies+'}':copies)+
+    (row.alias===3?'if(flag){'+copies+'}':row.alias===21&&row.count?'if(flag){'+copies+'}else{return;}':copies)+
     (row.alias===7?'await seed();':row.alias===8?'yield seed();':'');
   let tail=reports+(row.alias===1?'saved=seed();':row.alias===11&&row.count?last+'=seed();':'')+'return '+last+(row.alias===13?'()':'')+';';
   if(row.alias===4)tail='{'+tail+'}';
@@ -369,7 +369,7 @@ for (const row of rows) {
     if(row.folded){assert.ok(!declarations.some(node=>node.declarations.some(item=>item.id.name.startsWith('copy'))));++folded;}
     if(row.alias===9||row.alias===10)assert.notEqual(generated(()=>{},()=>{}),generated(()=>{},()=>{}));
     const run=(fn,value,fault,flag=true,request='next',reject=false,iterations=2)=>observeAlias(fn,row,value,fault,flag,request,reject,iterations);
-    for(const value of [undefined,null,-0,NaN,1n,Symbol('input'),token])for(const flag of row.alias===3?[false,true,undefined,0,1n,token]:[true])for(const iterations of row.alias===18||row.alias===19?[0,1,2,3]:[2])for(const fault of [Infinity,1,2,row.count+1]) {
+    for(const value of [undefined,null,-0,NaN,1n,Symbol('input'),token])for(const flag of [3,21].includes(row.alias)?[false,true,undefined,0,1n,token]:[true])for(const iterations of row.alias===18||row.alias===19?[0,1,2,3]:[2])for(const fault of [Infinity,1,2,row.count+1]) {
       try{compare(await run(generated,value,fault,flag,'next',false,iterations),await run(reference,value,fault,flag,'next',false,iterations));}
       catch(error){error.message+=`; alias=${row.alias}, count=${row.count}, fault=${fault}, flag=${String(flag)}`;throw error;}++comparisons;
     }

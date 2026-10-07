@@ -2608,3 +2608,22 @@ identical primitive literals propagate here. No new dependency or external code
 is used. Independent tiny forward-dataflow tests check coverage, and source tests
 retain 200/201/geometric and arena-remapping checks. Whole-process RSS is not
 claimed by these bounded checks.
+
+
+### Shared coverage adapter for aliases (rules188)
+
+Constants and Aliases use one AnalyzeBindingReadCoverage implementation. Besides
+rules187's graph/liveness/coverage costs, mapping definition IDs to the planner's
+store/declaration IDs takes O(B+D) work and O(B) storage. The alias consumer runs
+on the projection after literal commit; this intentionally rebuilds rather than
+caching potentially stale facts. Its O(B) candidate scan skips analysis only when
+no private single-write symbol-copy consumer exists. Existing indexed copy
+propagation and batched lexical lookup costs are unchanged; there is no per-copy
+graph walk or full read/definition relation.
+
+This applies the ordinary single-definition copy-propagation obligation to the
+common flow, with separate binding lifetime/name checks and escaping/mapped-args
+exclusions. No producer is replayed. No dependency or external implementation is
+added. Geometric copy chains, arena/symbol/scope remapping, independent behavior
+and existing exact/short budgets remain gates; extra analysis costs are charged,
+and no latency/RSS improvement is claimed.

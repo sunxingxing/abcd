@@ -1959,3 +1959,20 @@ keeps its typed primitive-literal lattice and private single-write representatio
 Aliases/ForwardSnapshots still carry the old CompletedStore obligation pending
 separate value/lifetime migration. Literal proposals are committed only after the
 shared-analysis and sparse-propagation read phase finishes.
+
+
+## Rules188: Aliases retires CompletedStore and initialized_first
+
+Alias recovery uses the same common definition coverage as constant propagation,
+freshly computed after constants commit. Its availability decisions no longer
+call CompletedStore/PrivateCopy or declaration initialized_first. Both retained
+source and destination copy must cover their own reads; missing entry/undefined
+and competing definitions remain semantic failures. Dynamic producer re-execution
+cannot bypass a covered copy on a path to its read. Source spelling and activation
+are still checked separately, and captured/mapped-argument state stays observable.
+An abrupt alternative and common use therefore need no branch-specific recovery
+condition. No same-block, adjacency, fixed shape or sample rule is added.
+
+Confined/RootLifetime and original alias reference enumeration remain documented
+migration gaps. CompletedStore now remains only in ForwardSnapshots and must not
+be expanded as a replacement for common value/effect/lifetime analysis.

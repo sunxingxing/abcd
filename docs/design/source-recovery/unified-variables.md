@@ -381,3 +381,38 @@ paths, loops, copies, arena remapping and geometric sizes. CompletedStore remain
 in Aliases and ForwardSnapshots; InitializedRead and canonical activation/IR
 integration remain open. This is one actual migrated decision path, not retirement
 of all legacy copy or initialization rules.
+
+
+## Alias copies consume the same definition coverage (rules188)
+
+AnalyzeBindingReadCoverage is the shared source-planning adapter for Constants
+and Aliases. It associates common definition coverage with explicit store and
+declaration identities; it does not infer them from statement position. Each
+consumer obtains fresh facts for its current projection. Constants commits before
+Aliases analyzes, so literal-elided reads/declarations cannot leave stale facts.
+
+Aliases no longer calls CompletedStore/PrivateCopy, and declaration roots no
+longer use initialized_first as their availability proof. A retained source must
+have a single unescaped definition covering all its reads, including copy RHSs;
+each removed copy must in turn cover every destination read. The existing
+single-write representation and private-storage eligibility remain. A source
+re-execution reaching a destination read without another copy would imply a path
+from that source definition to the read bypassing the copy; joining it to the
+entry path to the source contradicts the copy's coverage. Thus copy propagation
+retains dynamic value identity without replaying allocations/calls. Missing entry
+values, undefined initialization and competing writes prevent that proof.
+
+Implicit parameter/catch/self initialization and mapped-arguments exclusions keep
+their language contracts. Confined/RootLifetime and batched name resolution remain
+independent legacy lifetime/name proofs; escaping cells are not scalarized. The
+analysis neither moves a producer nor deletes its effects. Original declaration
+values, NamedEvaluation and binding identity remain owned by their retained root.
+
+A copy branch with an abrupt alternative now folds through a common later use;
+a branch that can skip the copy and reach the use keeps its initial undefined.
+Independent execution covers both outcomes, arbitrary primitive/object values,
+throwing callbacks, copy chains and arena/symbol/scope permutations. Existing
+loop/zero-iteration, capture, shadowing, await/yield and object-identity cases
+remain acceptance gates. CompletedStore survives only in ForwardSnapshots;
+InitializedRead, canonical activation, revisions and global convergence remain
+open, as does migration of alias reference enumeration to the shared event list.

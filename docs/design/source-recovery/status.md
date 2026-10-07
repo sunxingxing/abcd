@@ -24,6 +24,35 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-07：规则188，别名复制接入共同定义覆盖
+
+- Aliases不再调用CompletedStore/PrivateCopy，声明源的可用性也不再依赖
+  initialized_first。Constants与Aliases共用AnalyzeBindingReadCoverage，
+  由当前流图的定义身份关联store/declaration；常量提交后别名重新分析，
+  不复用提交前的流图或覆盖事实。
+- 保留源定义须覆盖所有源读取（包括copy RHS），复制定义须覆盖所有
+  目标读取；另一源执行若能绕过copy到达目标读取，将与copy覆盖矛盾。
+  这证明替换读取保留动态值，不重放调用/分配。入口未知值、undefined
+  与其他定义继续阻止证明；原单写入表示及未逃逸约束保持。
+- 参数/catch/self初始化及mapped arguments遵循原语言契约，名称解析、
+  Confined/RootLifetime仍承担独立的名称和activation义务。新增copy或
+  提前返回后汇合读取的源码组合，原条件漏写、循环零次/多次执行、对象
+  身份、捕获、shadowing与await/yield用例继续作为验收门槛。
+- 相关目标构建通过，日志/tmp/abcd-rule188-build.log。最终54项相关回归
+  全部通过394.10秒，日志/tmp/abcd-rule188-tests.log、详细输出
+  /tmp/abcd-rule188-test-detail.log。初始化/别名恢复1,730份源码/461,160
+  行为/280反例；存储合并221份源码/33,620行为/12反例、定义消除184份
+  源码/2,080行为/3反例、冗余写回528份源码/18,192行为/12反例通过。
+  512支配图、175,616活跃性/定义/覆盖图、98,304需求图，以及200/201/
+  400/800、arena/symbol/scope重排和exact/short预算继续通过。
+- ABC-only导出build/stage-one/alias-coverage-rule188为
+  10complete/0partial/9noModule，十份源码node --check通过，正文与规则187
+  一致；日志/tmp/abcd-rule188-export.log，不新增真实record验收声明。
+- CompletedStore现在仅在ForwardSnapshots路径保留，已标明不得继续扩展。
+  别名原始引用枚举、InitializedRead、完整activation/canonical IR接入、
+  版本协调与全局收敛继续开放；统一变量里程碑、结构gate与阶段一未完成。
+  原Goal active及全量语料/RSS/DFX/代理暂停范围保持。
+
 ### 2026-10-07：规则187，常量传播退出CompletedStore并消费共同定义覆盖
 
 - Constants不再调用PrivateCopy/CompletedStore，原始first observation与
