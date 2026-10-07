@@ -559,3 +559,28 @@ instead of copying them, and reuses prepaid capacity after pass invalidation.
 All semantic contents are rebuilt. Allocation growth/overlap stays charged and
 no allowance is increased or refunded. These changes remove duplicate work and
 storage; they do not establish a whole-process RSS claim.
+
+## Revisioned commit boundary (rules192, 2026-10-08)
+
+The variable-recovery passes no longer return manually maintained changed flags.
+RunPass observes a preparation-local ProjectionRevision. Before the first semantic
+plan write, BeginCommit advances that revision, applies the central preservation
+contract, and invalidates dependent analyses. Later writes in the same batch do
+not advance it again. A no-op retains both revision and cached analyses. The
+scheduler uses the revision difference to request dependent cleanup.
+
+A pass has separate analysis and commit phases. CurrentFlow, CurrentLiveness,
+AnalyzeExpressions and ComputeExpressions reject analysis requests during commit,
+before inspecting a cache. This is an internal ownership invariant, independent
+of sample/opcode/block layout. Proposals and lexical obligations are computed
+before the first write; applying the delta cannot ask for facts about a partially
+modified projection. Loop declaration syntax metadata now participates in the
+same change boundary. Derived output prefix counts remain publication metadata.
+
+The boundary is integrated into constants, aliases, snapshot forwarding, dead
+definitions, storage merging, stored-result elimination, inert statements and
+loop declaration projection. It retires after-the-fact invalidation and per-pass
+changed bookkeeping. Plan fields are still ordinary private C++ members: compile-
+time enforcement of every future write, externally persistent analysis handles,
+and a global fixed-point pass dependency graph are not claimed. Original IR,
+activation, motion and declaration-proof migrations remain required.

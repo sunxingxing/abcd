@@ -246,3 +246,14 @@ TDZ-before/dead-read-after declaration cases close the model-to-source path.
 Default-parameter programs still retain conservative effects because the flow
 models body entry only. Canonical activation/IR, declaration/motion obligations
 and global convergence remain unfinished.
+
+
+### Rules192 continuation: move invalidation before mutation
+
+- Implemented preparation-local projection revisions and analysis/commit phases.
+- All eight variable passes enter the common boundary before their first write;
+  no-op passes preserve facts and version. Deleted pass-returned changed flags.
+- Analysis entry points forbid requests during commit. Scheduler cleanup follows
+  actual revision changes, including loop declaration syntax metadata.
+- This is integrated lifecycle control, not global convergence or compile-time
+  ownership of all legacy plan fields. Remaining motion/activation work stays open.

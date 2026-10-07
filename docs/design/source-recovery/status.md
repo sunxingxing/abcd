@@ -24,6 +24,35 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则192，写前提交边界与投影版本
+
+- 八个变量恢复 pass 不再返回手工维护的 changed。首次语义写入前统一
+  BeginCommit，推进 preparation-local ProjectionRevision，并按中央保留
+  契约丢弃依赖分析；同批后续写入不重复推进版本，no-op 保留缓存。
+  RunPass 根据实际版本差触发后续清理，循环声明语法投影也计入修改。
+- 分析/提交阶段分离。CurrentFlow、CurrentLiveness、AnalyzeExpressions、
+  ComputeExpressions 在读取缓存前禁止提交阶段请求，防止分析半修改
+  投影。既有提案、词法和初始化证明在首次写入前完成，缓存失效从
+  pass 返回后前移到写入前；这是内部所有权义务，不是恢复形状准入。
+- 故意在冗余写回首次 BeginCommit 后调用 AnalyzeExpressions，现有
+  stored_result_test 检出错误；LLDB 首个抛出栈确认 RequireAnalysis
+  抛 kOwnership，尚未重新分析。日志 /tmp/abcd-rule192-mutant-test.log、
+  /tmp/abcd-rule192-mutant-debug.log。故意改动已撤销并重新构建全部
+  定向目标，日志 /tmp/abcd-rule192-restored-build.log。
+- 最终 54 项定向回归全部通过，393.07 秒，日志
+  /tmp/abcd-rule192-tests.log 与 /tmp/abcd-rule192-test-detail.log。
+  变量/别名 1,752 份源码/461,776 行为/284 反例；存储 221/33,620/12；
+  快照 252/9,636/10；定义消除 204/2,280/7；冗余写回 528/18,192/12。
+  既有布局变换、200/201/几何增长、独立执行和预算边界保持通过。
+- ABC-only 导出 build/stage-one/pass-commit-rule192 保持
+  10complete/0partial/9noModule；十份源码 node --check 通过，正文与
+  规则191一致。日志 /tmp/abcd-rule192-export.log，固定输入身份保持。
+- 计划成员尚非编译期不可变，未来新写入仍须经过共同提交边界；本轮
+  不宣称外部持久分析句柄或全局固定点 pass 图已完成。原 IR 对应、
+  activation/默认参数/复杂 unwind、旧 motion/声明生命期仍待迁移。
+  统一变量里程碑、结构 gate、阶段一未完成，Goal active；全量语料、
+  RSS/DFX/代理等暂停事项保持。规则191的扫描 CLI 环境失败未改未重跑。
+
 ### 2026-10-08：规则191，初始化事实与 pass 失效契约贯通
 
 - 删除 InitializedRead 及 initialized_first/定义区域/读取区域元数据。

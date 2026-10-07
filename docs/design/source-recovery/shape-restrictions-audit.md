@@ -2027,3 +2027,13 @@ transformations; event-indexed analyses always invalidate after plan changes.
 Canonical activation, default-parameter program modeling and legacy declaration/
 motion lifetime proofs remain distinct gaps. CSR graph input and prepaid buffer
 reuse change representation/ownership, not semantic admission.
+
+
+### Rules192: commit lifecycle, not a recovery admission pattern
+
+Variable pass changes now enter a shared commit phase before the first write.
+Dependent facts are invalidated there; the scheduler observes the projection
+revision instead of trusting pass-returned changed flags. Analysis access during
+commit is an ownership failure, never a same-block/adjacency/opcode/name test.
+It prevents consumption of a partially mutated projection. No semantic recovery
+predicate was added. Existing value, exception and lifetime obligations remain.
