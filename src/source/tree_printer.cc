@@ -61,6 +61,8 @@ struct LoopHeader { StmtId id; std::optional<StmtId> retained; bool discarded = 
 struct LoopHeaderCursor { StmtId block; std::uint32_t index; std::uint32_t count; std::optional<StmtId> retained; bool discarded = false; };
 struct LoopTransitionEnd { StmtId block; std::uint32_t first; };
 struct LoopInitializerCursor { std::uint32_t index; std::uint32_t end; };
+struct LoopDeclarationCursor { std::uint32_t index; std::uint32_t end; };
+struct LoopKeyword { std::optional<LabelId> label; };
 struct ElideLoopHeader { StmtId id; };
 struct LoopBody { StmtId block; LoopConditionSyntax syntax; std::size_t depth; };
 struct BlockCursor { StmtId id; std::uint32_t index; std::size_t depth; };
@@ -83,7 +85,7 @@ struct ParameterCursor { std::uint32_t index; };
 struct EndParameter { std::uint32_t index; };
 using PrintAction = std::variant<std::string_view, ExprId, EndExpression, ExpressionOperand, BooleanOperand, PostfixSpine,
     Statement, EndStatement, BlockCursor, Indent, PropertyKey, SymbolName, ArgumentCursor,
-    ObjectCursor, EndProperty, BeginFunction, EndFunction, ParameterCursor, EndParameter, SnapshotCursor, DerivedClassBody, ArrayArgumentCursor, LoopHeader, LoopHeaderCursor, ElideLoopHeader, LoopBody, LoopTransitionEnd, LoopInitializerCursor, BlockBoundary>;
+    ObjectCursor, EndProperty, BeginFunction, EndFunction, ParameterCursor, EndParameter, SnapshotCursor, DerivedClassBody, ArrayArgumentCursor, LoopHeader, LoopHeaderCursor, ElideLoopHeader, LoopBody, LoopTransitionEnd, LoopInitializerCursor, LoopDeclarationCursor, LoopKeyword, BlockBoundary>;
 struct OwnedAction { std::size_t owner; std::size_t depth; PrintAction action; };
 struct LocatedAnchor { BlockBoundary boundary; AnchorId id; };
 struct OwnerTree { FunctionOwnerId owner; std::size_t member; };
@@ -1321,12 +1323,15 @@ class TreePrinter {
     Push(Statement{node.body, at.depth});
   }
   void StatementNode(LoopStmt node, Statement at) {
-    if (node.label) { Label(*node.label); Append(": "); }
     if (const auto& syntax = Loops().conditions[at.id.value]) {
       const auto& transition = Loops().transitions[at.id.value];
       const auto& initializer = Loops().initializers[at.id.value];
       const bool native_for = transition || initializer;
-      Append(native_for ? "for (" : "while (");
+      const auto declarations = Initializers().loop_declarations[at.id.value];
+      if (!declarations) {
+        if (node.label) { Label(*node.label); Append(": "); }
+        Append(native_for ? "for (" : "while (");
+      }
       Push(LoopBody{node.body, *syntax, at.depth}); Push(std::string_view(") "));
       if (native_for) {
         if (transition) {
@@ -1338,9 +1343,21 @@ class TreePrinter {
       Push(LoopHeaderCursor{node.body, 0, syntax->header_count, syntax->body});
       if (native_for) {
         Push(std::string_view("; "));
-        if (initializer) Push(LoopInitializerCursor{initializer->first, initializer->end});
+        if (initializer) {
+          if (declarations) {
+            Push(LoopDeclarationCursor{*declarations, initializer->end}); Push(std::string_view("let "));
+            Push(LoopKeyword{node.label});
+            if (initializer->first < *declarations) {
+              // Prefix effects execute once, before the new lexical loop scope.
+              // Keeping them outside the RHS also preserves NamedEvaluation.
+              Push(Indent{at.depth}); Push(std::string_view(");\n"));
+              Push(LoopInitializerCursor{initializer->first, *declarations}); Append("(");
+            }
+          } else Push(LoopInitializerCursor{initializer->first, initializer->end});
+        }
       }
     } else {
+      if (node.label) { Label(*node.label); Append(": "); }
       Append("while (true) "); Push(Statement{node.body, at.depth});
     }
   }
@@ -1432,6 +1449,25 @@ class TreePrinter {
       if (next.block != after.block || next.index != after.index) Push(after);
     } else Push(after);
     Push(LoopHeader{root.statement, {}, true});
+  }
+  void Run(LoopKeyword at) {
+    if (at.label) { Label(*at.label); Append(": "); }
+    Append("for (");
+  }
+  void Run(LoopDeclarationCursor at) {
+    const auto& root = Loops().initializer_roots[at.index]; Boundary(root.boundary);
+    const BlockBoundary after{root.boundary.block, root.boundary.index + 1};
+    Result().statements[root.statement.value].begin = written_;
+    if (at.index + 1 < at.end) {
+      Push(LoopDeclarationCursor{at.index + 1, at.end}); Push(std::string_view(", "));
+      const auto& next = Loops().initializer_roots[at.index + 1].boundary;
+      if (next.block != after.block || next.index != after.index) Push(after);
+    } else Push(after);
+    const auto& binding = *Initializers().statements[root.statement.value];
+    const auto& assignment = std::get<AssignmentExpr>(Tree().expressions[binding.assignment.value].expression);
+    Push(EndStatement{root.statement});
+    BeginExpression(binding.assignment); Name(binding.symbol); Append(" = ");
+    Push(ExpressionOperand{assignment.value, {ExpressionGrammar::kAssignmentValue}, Tree().symbols[binding.symbol.value].name});
   }
   void Run(LoopBody at) {
     Result().statements[at.block.value].begin = written_; Push(EndStatement{at.block});

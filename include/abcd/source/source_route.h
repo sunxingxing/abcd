@@ -335,7 +335,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // subtree using actual projection scopes; outer declarations need not share it.
 // Rules 156 keep the condition's owned continuing body in its native lexical
 // context; private initialization there uses the same observation proof.
-inline constexpr std::uint32_t kRouteEvidenceRules = 156;
+// Rules 157 project uncaptured, loop-confined entry bindings to native for let
+// with the same first-store/observation proof; prior effects stay before it.
+inline constexpr std::uint32_t kRouteEvidenceRules = 157;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

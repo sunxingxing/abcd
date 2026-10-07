@@ -90,7 +90,25 @@ native initializer/每轮binding与phi/update临时值消除仍是表示缺口�
 不描述为语言/VM限制。具体解码/独立行为、scope/throw/await/yield反例
 及实际record证据见status.md；两个实际for不能代替阶段一完整body风格。
 
-## 私有结果的初始化声明（规则 154/155/156）
+## 私有结果的初始化声明（规则 154/155/156/157）
+
+规则157把同一首次完成store/全部观察包含证明用于已有loop进入程序。
+有进入程序的LoopStmt在共同DFS中记录一个候选for词法生命周期，
+初始化/condition/update投影观察解析到该owner，body保留实际子作用域。
+只有未capture/escape的CompilerTemporary空绑定、首次直接赋值完成、
+全部读写留在这个loop子树内，才可恢复`for (let binding = value; ...)`。
+循环外/handler/finally旧值、RHS自读、真实local/cell/formal和capture保持。
+这只缩短不可观察的私有存储语法生命周期，未恢复用户每轮capture。
+
+共同ForDeclaration语法投影取进入程序可声明的后缀，支持任意数量的
+不同绑定，全部保留mutable let；前序有序效果仍在原进入位置、原handler
+内运行一次，随后打印带原label的for。不把前序效果包进首个RHS，以保持
+原函数/class NamedEvaluation；所有原表达式、StmtId、SymbolId与anchor
+均保留，canonical AST不变，不按样本/名字/PC/register/同块/距离识别。
+进入程序中compound completion root、非声明效果交错与存储合并仍有
+表示缺口，保留原表达式/存储，不是语言不变量或整函数拒绝。跨透明
+block的进入程序继续复用原ownership，不增加固定block布局条件。
+规则157没有合并SSA/phi存储或推测原变量名；完整风格验收仍开放。
 
 共同BindingInitializers在已检查的canonical FunctionTree上恢复原位置的
 `let/const value = expression`，只投影已有CompilerTemporary的空声明及
@@ -126,7 +144,7 @@ context，再应用体内自己的投影。原native词法作用域继续生效�
 
 Ruling：此次仅恢复私有结果声明，不把SSA carrier猜成用户let/const，
 不改变可观察capture环境。嵌在调用参数中的保存、不能证明作用域包含的观察、
-已有loop/nullish表达式程序、部分未知区域保持canonical表示；这些是
+尚不可声明的loop/nullish表达式程序、部分未知区域保持canonical表示；这些是
 初始化语法/生命周期尚未表示的缺口，不新增整函数拒绝。逐symbol CFG
 活跃期/干涉与原变量归属仍需共同分析，不能以此关闭完整binding/style gate。
 迭代ownership遍历和索引为O(statements+expressions+children+symbols+

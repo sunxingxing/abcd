@@ -1,5 +1,14 @@
 # 按用户要求进行的恢复条件审计
 
+规则157补充：私有loop进入绑定复用首次完成store和全部观察包含证明，
+候选for生命周期由已有LoopStmt/进入程序owner记录，退出后/handler/
+finally旧值和capture保持。ForDeclaration的可声明后缀是语言语法投影，
+不是固定数量、same-block、producer/opcode或编译器布局准入；多声明、
+跨透明block、arena重编号和outer labeled continue均使用共同分析。
+前序效果保留原进入顺序/handler，原label仍归loop，不把效果塞进RHS
+改变NamedEvaluation。compound root/非声明交错尚未投影到声明列表，
+明确保持表达式表示，不称为语言不变量或为此拒绝整个函数。
+
 规则156补充：共同LoopConditionSyntax.body已明确继续执行而保持语句的
 原发生点，printer的LoopBody按此打印。规则155错误把它保守包含在条件
 表达式程序中，现结束该外层投影context并恢复native词法归属，再应用

@@ -33,6 +33,7 @@ class Initializers {
   Initializers(const FunctionTree& tree, const LoopSyntax& loops, const NullishSyntax& nullish,
       TreeCheckBudget& budget) : tree_(tree), loops_(loops), nullish_(nullish), budget_(budget) {
     budget.Array(plan_.statements, tree.statements.size()); budget.Array(plan_.omitted, tree.statements.size());
+    budget.Array(plan_.loop_declarations, tree.statements.size());
     budget.Array(uses_, tree.symbols.size()); budget.Array(projected_, tree.statements.size());
     budget.Array(containers_, tree.statements.size());
     budget.Array(lexical_, tree.statements.size()); budget.Array(projectors_, tree.statements.size());
@@ -47,8 +48,8 @@ class Initializers {
     for (const auto& parameter : tree_.parameters) {
       budget_.Step(); if (parameter.initializer) Scan(*parameter.initializer, {});
     }
-    // Expressions already projected to loop/nullish programs cannot host a
-    // statement declaration. This is a grammar gap, not a recovery admission.
+    // Expression programs cannot host statement declarations. Loop entry may
+    // instead use ForDeclaration after the same first-store/scope proof.
     // A loop expression owns a nested nullish statement's destination scope;
     // retain that outer owner regardless of statement arena numbering.
     for (std::size_t i = 0; i < tree_.statements.size(); ++i) {
@@ -97,7 +98,10 @@ class Initializers {
         }
         visit.entered = true; visit.projected |= projected_[visit.statement.value] != 0;
         if (!visit.projector) visit.projector = projectors_[visit.statement.value];
-        if (std::holds_alternative<BlockStmt>(node)) {
+        // A prospective ForDeclaration owns test/body/update as one lexical
+        // lifetime. Entry observations resolve to this owner after traversal;
+        // outside/catch/finally reads remain outside its subtree interval.
+        if (std::holds_alternative<BlockStmt>(node) || loops_.initializers[visit.statement.value]) {
           containers_[visit.statement.value].begin = next_container_++;
           visit.lexical = visit.statement;
         }
@@ -108,7 +112,8 @@ class Initializers {
         return std::span<const StmtId>(tree_.children).subspan(block.first_child, block.child_count);
       });
       if (!child) {
-        if (std::holds_alternative<BlockStmt>(node)) containers_[visit.statement.value].end = next_container_;
+        if (std::holds_alternative<BlockStmt>(node) || loops_.initializers[visit.statement.value])
+          containers_[visit.statement.value].end = next_container_;
         --pending; continue;
       }
       const auto container = std::holds_alternative<BlockStmt>(node) ? std::optional{visit.statement} : std::nullopt;
@@ -138,7 +143,31 @@ class Initializers {
       if (*use.first_container < range.begin || *use.last_container >= range.end) continue;
       plan_.statements[use.initializer->value] = BindingInitializer{SymbolId{static_cast<std::uint32_t>(i)},
           effect.expression, use.writes == 1 ? DeclarationKind::kConst : DeclarationKind::kLet};
-      plan_.omitted[use.declaration->value] = 1;
+      if (!loops_.initializer_owners[use.initializer->value]) plan_.omitted[use.declaration->value] = 1;
+    }
+    // ForDeclaration has one ordered declarator list. Keep the preceding
+    // expression program at its original entry, then emit the representable
+    // suffix as let declarations. This is a grammar projection, not a compiler
+    // layout premise: compound completion roots retain their expression form.
+    // Every initializer root belongs to exactly one loop; no per-symbol walk.
+    for (std::size_t i = 0; i < loops_.initializers.size(); ++i) {
+      budget_.Step(); const auto& entry = loops_.initializers[i]; if (!entry) continue;
+      auto first = entry->end;
+      while (first > entry->first) {
+        budget_.Step(); const auto root = loops_.initializer_roots[first - 1].statement;
+        if (!plan_.statements[root.value]) break;
+        --first;
+      }
+      if (first < entry->end) plan_.loop_declarations[i] = first;
+      for (auto at = entry->first; at < entry->end; ++at) {
+        budget_.Step(); const auto root = loops_.initializer_roots[at].statement;
+        if (at < first) plan_.statements[root.value].reset();
+        else {
+          const auto symbol = plan_.statements[root.value]->symbol;
+          plan_.statements[root.value]->declaration = DeclarationKind::kLet;
+          plan_.omitted[uses_[symbol.value].declaration->value] = 1;
+        }
+      }
     }
     return Finish();
   }
@@ -216,8 +245,9 @@ class Initializers {
         if (const auto* assignment = std::get_if<AssignmentExpr>(&tree_.expressions[syntax.expression.value].expression))
           if (const auto* target = std::get_if<SymbolTarget>(&assignment->target)) {
             auto& use = uses_[target->symbol.value];
-            if (use.declaration && visit.container && !visit.projected && !use.initializer) {
-              use.initializer = visit.statement; use.initializer_container = visit.container;
+            const auto entry = loops_.initializer_owners[visit.statement.value];
+            if (use.declaration && ((!visit.projected && visit.container) || entry) && !use.initializer) {
+              use.initializer = visit.statement; use.initializer_container = entry ? entry : visit.container;
             }
           }
       } else if constexpr (std::is_same_v<T, IfStmt>) Scan(syntax.condition, visit.lexical, visit.projector);

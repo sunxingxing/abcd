@@ -1,5 +1,13 @@
 # 全 ISA 优先执行顺序
 
+2026-10-07 规则157：私有loop进入绑定按共同首次store/全部观察包含
+证明恢复native for let，前序效果/handler/label和真实capture保持。
+276完整源码13892独立行为/56 mutation、最终30/30定向109.71秒，
+新结构检查顺序另轮2/2通过；fresh pasteboard三个for均有let，空声明
+22→19，初始化44→47，10complete/0partial保持。未合并SSA/phi/cell、
+猜原变量或恢复用户每轮capture，全body/style及阶段一仍开放。
+原结构gate和暂停范围保持，具体gap/probe/actual证据见status.md。
+
 2026-10-07 规则156：按共同condition/body打印归属恢复原生循环体的私有
 初始化，取消继承的条件表达式context，全部旧值/更新/capture义务保持。
 300完整源码308180行为/92 mutation、最终27/27定向通过；fresh实际

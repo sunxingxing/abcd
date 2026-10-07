@@ -1,4 +1,8 @@
 #include "../../../src/source/loop_syntax.h"
+#include "../../../src/source/binding_initializer.h"
+#include "../../../src/source/nullish_syntax.h"
+#include "../../../src/source/tail_completion.h"
+#include "../../../src/source/discarded_read.h"
 #include "abcd/source/tree_printer.h"
 #include "../../support/analysis/ssa_fixture.h"
 #include <algorithm>
@@ -136,6 +140,113 @@ struct Fixture {
     tree.body = remap(tree.body); loop = remap(loop); if (outside) outside = remap(*outside); std::reverse(tree.statements.begin(), tree.statements.end());
   }
 };
+std::uint64_t Native(unsigned form, unsigned count, bool reverse, bool emit) {
+  Fixture fixture(form == 8 ? 1 : 0, count, false); auto& tree = fixture.tree;
+  tree.symbols[6].kind = form == 6 ? BindingKind::kLocal : BindingKind::kCompilerTemporary;
+  tree.symbols[7].kind = BindingKind::kCompilerTemporary;
+  if (form != 6) tree.symbols[6].temporary = TemporaryReason::kPhiJoin;
+  tree.symbols[7].temporary = TemporaryReason::kEffectSnapshot;
+  // Preserve all expression ownership while replacing the initial source-local
+  // value with private undefined storage. The old parameter read is discarded.
+  const auto root = std::get<BlockStmt>(tree.statements[tree.body.value].statement);
+  const auto old = tree.children[root.first_child];
+  const auto initial = *std::get<DeclarationStmt>(tree.statements[old.value].statement).initializer;
+  tree.statements[old.value].statement = ExpressionStmt{initial};
+  const auto declaration = fixture.Stmt(DeclarationStmt{{6}, {}});
+  tree.children.insert(tree.children.begin() + root.first_child, declaration);
+  // Stmt() can relocate the statement arena.
+  ++std::get<BlockStmt>(tree.statements[tree.body.value].statement).child_count;
+  for (auto& statement : tree.statements) if (const auto* returned = std::get_if<ReturnStmt>(&statement.statement); returned && returned->value) {
+    if (form == 3 && returned->value == std::get<ReturnStmt>(tree.statements[tree.children.back().value].statement).value) continue;
+    tree.expressions[returned->value->value].expression = TreeLiteral{UndefinedLiteral{}};
+  }
+  for (auto& expression : tree.expressions) if (const auto* call = std::get_if<CallExpr>(&expression.expression)) {
+    const auto* callee = std::get_if<SymbolExpr>(&tree.expressions[call->callee.value].expression);
+    if (callee && callee->symbol == SymbolId{1} && form == 4)
+      std::get<SymbolExpr>(tree.expressions[tree.arguments[call->arguments.first].value].expression).symbol = {6};
+  }
+  if (form == 1 || form == 2) {
+    tree.callable = form == 1 ? CallableKind::kAsyncFunction : CallableKind::kGenerator;
+    std::optional<ExprId> store;
+    for (unsigned i = 0; i < tree.expressions.size(); ++i) if (const auto* assignment = std::get_if<AssignmentExpr>(&tree.expressions[i].expression))
+      if (const auto* target = std::get_if<SymbolTarget>(&assignment->target); target && target->symbol == SymbolId{6}) {
+        const auto* call = std::get_if<CallExpr>(&tree.expressions[assignment->value.value].expression);
+        if (call && std::get<SymbolExpr>(tree.expressions[call->callee.value].expression).symbol == SymbolId{1}) store = ExprId{i};
+      }
+    test::Check(store.has_value()); const auto value = std::get<AssignmentExpr>(tree.expressions[store->value].expression).value;
+    const auto suspended = form == 1 ? fixture.Expr(AwaitExpr{value}) : fixture.Expr(YieldExpr{value});
+    std::get<AssignmentExpr>(tree.expressions[store->value].expression).value = suspended;
+  }
+  if (form == 5) {
+    // A real observation in the entry prefix must retain undefined storage.
+    for (auto& expression : tree.expressions) if (auto* assignment = std::get_if<AssignmentExpr>(&expression.expression))
+      if (const auto* target = std::get_if<SymbolTarget>(&assignment->target); target && target->symbol == SymbolId{7})
+        std::get<SymbolExpr>(tree.expressions[assignment->value.value].expression).symbol = {6};
+  }
+  if (form == 7) {
+    // A declarator list is not limited to a fixed number of SSA copies.
+    const auto insert = [&](StmtId owner, unsigned index, const std::vector<StmtId>& items) {
+      const auto at = std::get<BlockStmt>(tree.statements[owner.value].statement).first_child + index;
+      tree.children.insert(tree.children.begin() + at, items.begin(), items.end());
+      for (unsigned i = 0; i < tree.statements.size(); ++i) if (auto* block = std::get_if<BlockStmt>(&tree.statements[i].statement)) {
+        if (i == owner.value) block->child_count += items.size();
+        else if (block->first_child >= at) block->first_child += items.size();
+      }
+    };
+    std::optional<StmtId> entry;
+    unsigned index = 0;
+    for (unsigned i = 0; i < tree.statements.size(); ++i) if (const auto* block = std::get_if<BlockStmt>(&tree.statements[i].statement))
+      for (unsigned child = 0; child < block->child_count; ++child) if (tree.children[block->first_child + child] == fixture.loop) {entry = StmtId{i}; index = child;}
+    test::Check(entry.has_value()); std::vector<StmtId> declarations, stores;
+    unsigned previous = 6;
+    for (unsigned i = 0; i < count; ++i) {
+      const auto symbol = static_cast<std::uint32_t>(tree.symbols.size()), name = static_cast<std::uint32_t>(tree.names.size());
+      const auto digits = std::to_string(i); tree.names.push_back(u"copy" + std::u16string(digits.begin(), digits.end()));
+      tree.symbols.push_back({{1}, {name}, BindingKind::kCompilerTemporary, DeclarationKind::kLet, NameEvidence::kSynthesized, TemporaryReason::kPhiJoin});
+      declarations.push_back(fixture.Stmt(DeclarationStmt{{symbol}, {}})); stores.push_back(fixture.Store(symbol, fixture.Read(previous))); previous = symbol;
+    }
+    insert(*entry, index, stores);
+    insert(tree.body, 0, declarations);
+  }
+  if (form == 9) {
+    tree.labels.push_back(fixture.loop); std::get<LoopStmt>(tree.statements[fixture.loop.value].statement).label = LabelId{0};
+    std::optional<StmtId> next;
+    for (unsigned i = 0; i < tree.statements.size(); ++i) if (std::holds_alternative<ContinueStmt>(tree.statements[i].statement)) next = StmtId{i};
+    test::Check(next.has_value());
+    const auto body = std::get<LoopStmt>(tree.statements[fixture.loop.value].statement).body;
+    const auto parent = std::get<BlockStmt>(tree.statements[body.value].statement).scope;
+    const auto nested = fixture.Block(fixture.Scope(parent), {fixture.Stmt(ContinueStmt{fixture.loop, LabelId{0}})});
+    tree.statements[next->value].statement = LoopStmt{nested, {}};
+  }
+  tree.anchors.clear(); tree.operations.clear(); if (reverse) fixture.Reverse();
+  for (unsigned i = 0; i < tree.statements.size(); ++i) if (const auto* block = std::get_if<BlockStmt>(&tree.statements[i].statement))
+    for (unsigned child = 0; child <= block->child_count; ++child) {
+      const auto anchor = static_cast<std::uint32_t>(tree.anchors.size());
+      tree.anchors.push_back({BlockBoundary{{i}, child}, {0}}); tree.operations.push_back({{anchor}, AnchorId{anchor}});
+    }
+  const auto structure = VerifyTreeStructure(tree);
+  test::Check(std::holds_alternative<TreeStructure>(structure));
+  const auto loops = std::get<LoopSyntax>(PlanLoopSyntax(tree));
+  const auto nullish = std::get<NullishSyntax>(PlanNullishSyntax(tree));
+  const auto planned = PlanBindingInitializers(tree, loops, nullish);test::Check(std::holds_alternative<BindingInitializers>(planned));
+  const auto& bindings = std::get<BindingInitializers>(planned);
+  std::ostringstream source; const auto printed = PrintFunctionTree(tree, source); test::Check(std::holds_alternative<PrintedFunction>(printed));
+  const bool lexical = form < 3 || form >= 7;
+  test::Check((source.str().find("for (let state = ") != std::string::npos) == lexical);
+  const auto& ranges = std::get<PrintedFunction>(printed);
+  const auto completion = ImplicitTailCompletion(tree);
+  std::vector<bool> elided(tree.expressions.size());
+  if (completion && completion->value) elided[completion->value->value] = true;
+  for (unsigned i = 0; i < tree.statements.size(); ++i) if (const auto read = DiscardedInvocationRead(tree, StmtId{i})) elided[read->value] = true;
+  for (unsigned i = 0; i < ranges.expressions.size(); ++i) {
+    const auto range = ranges.expressions[i];
+    test::Check(range.begin <= range.end && range.end <= source.str().size());
+    if (range.begin == range.end) test::Check(elided[i] && range.begin > 0);
+  }
+  for (const auto anchor : ranges.anchors) test::Check(anchor > 0 && anchor <= source.str().size());
+  if (emit) std::cout << nlohmann::json{{"source", source.str()}, {"lexical", lexical}, {"binding", form}, {"count", count}} << '\n';
+  return bindings.work;
+}
 }
 int main(int argc, char**) {
   std::array<std::uint64_t, 3> small{}, large{};
@@ -157,4 +268,12 @@ int main(int argc, char**) {
     if (argc > 1) std::cout << nlohmann::json{{"source", code}, {"form", form}, {"count", count}, {"native", native}} << '\n';
   }
   for (unsigned i = 0; i < small.size(); ++i) test::Check(large[i] < small[i] * 3);
+  for (unsigned form = 0; form < 10; ++form) {
+    std::uint64_t small = 0, large = 0;
+    for (unsigned count : {0U,1U,200U,201U,400U,800U}) for (bool reverse : {false,true}) {
+      const auto work = Native(form, count, reverse, argc > 1);
+      if (count == 400 && !reverse) small = work;if (count == 800 && !reverse) large = work;
+    }
+    test::Check(large < small * 3);
+  }
 }

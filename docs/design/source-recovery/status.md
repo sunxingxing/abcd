@@ -12,6 +12,57 @@
 
 ## 当前阶段
 
+### 2026-10-07：规则157，私有循环进入绑定的原生 for let
+
+- 从干净f72c545b继续，当前隔离branch codex/resume-generator-post-loop。
+  共同BindingInitializers给有进入程序的LoopStmt记录候选词法区间，
+  entry/test/update观察解析到该owner，body继续保留native子作用域。
+  复用首次完成直接store、全部读写包含、capture/module escape证明，
+  将未逃逸的CompilerTemporary进入绑定投影为原生for let；循环外/
+  catch/finally旧值、RHS自读、先读旧值、真实local/cell/formal仍保留。
+- ForDeclaration使用进入程序可声明后缀，任意数量声明保持mutable let；
+  前序有序效果在原进入位置/原handler内运行一次，然后带原label打印
+  for。不将前序塞入第一个RHS改变函数/class NamedEvaluation。原树/
+  ExprId/StmtId/SymbolId、作用域proof及anchor保留，不合并SSA/phi/cell，
+  不更名或猜原变量。无样本/名字、PC/register、同块/邻接、数量或
+  opcode/producer列表匹配。compound root/非声明交错仍有语法表示缺口，
+  保留完整表达式，不成为整函数拒绝或被描述成语言不变量。
+- 新一份StmtId可选进入offset，共同迭代DFS/观察census和disjoint
+  进入扫描仍O(statements+expressions+owned slots+symbols+class captures)。
+  无逐symbol/loop图遍历；200/201/400/800、多声明链、透明块深度、正反
+  arena及400→800 work小于三倍通过。没有物理RSS/benchmark达标声明。
+- 增加十类native/private树族×六规模×正反arena共120树，既有156树保持，
+  全部276完整生成源进入独立Acorn/JS oracle：13892行为比较与56有效JS
+  mutation通过。覆盖零/多轮、任意Number/BigInt/Symbol/object身份、
+  callback receiver/order、原throw、await拒绝、yield throw/return、
+  退出后读取、先读旧值、真实local及nested outer labeled continue。
+  新fixture起初遗漏origin所需operation记录，且未区分既有tail/discard
+  零范围，已修正fixture；有效禁用loop-entry候选probe在打印后的native
+  for let断言RED，恢复后通过。label用例起初给最近loop冗余label，违反
+  现有canonical契约；改为nested outer transfer，未放宽生产检查。
+- abc_structure/abc_semantic及十四相关fixture构建退出0；既有
+  literal_plan.cc:59 kNoop switch warning保留。最终30项定向30/30通过
+  109.71秒，覆盖共同binding/loop/snapshot/scope/structure/numeric/
+  class/control/module/family及实际构造十record、Push、ProgressBar、
+  富文本、native函数命名和loop闭包。新fixture把结构检查移到分析前，
+  最终另外两项2/2通过7.85秒；原invalid label主运行29/30保留为历史。
+  受控平台/构造子集不代替设备SDK或全record body/style验收。
+  原结构/signature/body gate、一般SSA干涉/存储投影、真实变量归属、
+  用户每轮capture、compound进入声明及全body/style仍开放。阶段一
+  Goal active；full suite、expanded corpus、RSS/benchmark、DFX、scheduler、
+  agents及周期audit继续暂停，固定五ABC106/0未重跑。
+- fresh ABC-only build/stage-one/for-binding-pasteboard-final：19 records/
+  219 methods，10complete/0partial/9noModule，顶层requested contract
+  language_numeric_constructors_v1，无legacy。十份源码独立解析通过，
+  无complete INCOMPLETE/UNRECOVERED。实际PasteBoard三个for均有let
+  初始化（此前0），空声明22→19，初始化44→47，私有const43保持，
+  总声明66及三个for保持；机械更新/phi载体仍存在，未宣称阶段一完成。
+- 证据/tmp/abcd-for-binding-{valid-red-build,valid-red,expanded-build,
+  expanded-tests,final-build,label-build,label-tests,main-before-label,
+  tests-final,precondition-build,precondition-tests,behavior-final,
+  export-final,style}.log，node --check及git diff --check通过，
+  输入未修改、无新依赖。
+
 ### 2026-10-07：规则156，条件投影保留的原生循环体初始化
 
 - 干净10b62dd8继续，production/rules155推进156。共同初始化分析

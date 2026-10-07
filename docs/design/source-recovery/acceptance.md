@@ -1,5 +1,15 @@
 # 验收、证据与实施交接
 
+2026-10-07 规则157：未capture的私有进入绑定复用首次完成store及
+全部观察scope包含证明，输出native for let。旧值/外层/handler/cell/
+用户capture保持，前序效果仍在原进入位置运行一次。十新树族/六规模/
+正反arena加原156树，共276完整源码13892行为/56有效JS mutation通过；
+最终30/30定向109.71秒，新检查顺序另轮2/2通过7.85秒。fresh ABC-only
+pasteboard10complete/0partial/9noModule及十源解析保持，三个for有let，
+空声明22→19、初始化44→47、const43和总声明66保持。一般SSA干涉/
+存储投影、真实变量和每轮capture、compound声明与全body/style仍未
+完成；受控平台不等同设备SDK验收。阶段一Goal active，暂停范围保持。
+
 2026-10-07 规则156：原生continuing body由已有condition/body归属恢复
 自己的声明context，复用共同作用域/全部观察证明。原规则155有效用例
 先RED；外层/for更新/退出后旧值及capture保持。48新三profile实际解码

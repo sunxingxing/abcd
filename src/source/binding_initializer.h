@@ -12,6 +12,9 @@ struct BindingInitializer {
 struct BindingInitializers {
   std::vector<std::optional<BindingInitializer>> statements;
   std::vector<std::uint8_t> omitted;
+  // LoopStmt indexed: first declarator in its existing ordered entry program.
+  // Earlier effects remain before the loop, in their original handler/scope.
+  std::vector<std::optional<std::uint32_t>> loop_declarations;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };
@@ -22,7 +25,9 @@ struct BindingInitializers {
 // and no capture/module alias escapes. DFS intervals prove lexical containment.
 // The canonical AST, expressions and execution order remain unchanged; private
 // syntax lifetimes may shrink. This does not recover user or captured bindings.
-// Loop/nullish expression programs retain their existing representation.
+// Uncaptured private loop-entry bindings may use native for let. The same
+// first-store and confinement proof covers initializer/test/body/update and
+// rejects observations after exit. Source/cell captures never change lifetime.
 // O(statements + expressions + owned children + symbols + capture references),
 // bounded iterative ownership walks; no per-symbol CFG traversal or SSA merge.
 [[nodiscard]] std::variant<BindingInitializers, TreeStructureError>

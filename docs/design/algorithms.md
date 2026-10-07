@@ -1853,7 +1853,7 @@ check count/order, aliases, exceptions and descriptors; this is targeted
 semantic/work-growth evidence, not a physical RSS or full-corpus measurement.
 
 
-## Private binding initialization syntax (source rules 154/155/156)
+## Private binding initialization syntax (source rules 154/155/156/157)
 
 The already structurally checked FunctionTree supplies ownership and lexical
 containers. An iterative statement walk streams expression ownership, recording
@@ -1884,7 +1884,25 @@ reuse the same DFS intervals. All earlier/RHS/nested accesses are included. Capt
 locations retain their declarations, and one static write permits private
 const syntax. This does not infer original const metadata, move expressions,
 coalesce SSA storage or require a bytecode block layout. Existing loop/nullish
-expression programs remain in their original grammar.
+expression programs remain in their original grammar, except the separately
+proven loop-entry ForDeclaration projection in rules 157.
+
+Rules 157 records an entry-bearing LoopStmt as a prospective lexical interval
+for native `for (let ...)`. Entry/test/update references resolve to that owner;
+body references retain native scopes. The existing first completed direct store,
+complete observation containment and capture/escape census prove private entry
+initialization, including repeated outer-loop entry. Outside/catch/finally reads,
+RHS old-value reads and real source/cell/formal bindings keep original storage.
+One disjoint scan per entry program selects a representable declarator suffix;
+earlier ordered effects execute once before the loop in their existing handler,
+so NamedEvaluation and the loop label retain their original destinations.
+Arbitrary declarator counts and transparent block distances use the same proof.
+Compound completion roots/interleaved non-declarators remain representation gaps,
+not compiler-layout admission conditions. SSA storage and captured per-iteration
+environments are not coalesced. One StmtId-indexed optional entry offset adds
+O(S) bounded storage; the interval/census and disjoint entry scan remain linear.
+Language provenance is the pinned ECMA-262 2024 ForLoopEvaluation and
+ForBodyEvaluation documented in function-tree-output.md; no new dependency.
 
 For S statements, E expressions, K owned child/argument/property slots, B symbols
 and C owned class-member capture occurrences, cost is O(S+E+K+B+C), with
