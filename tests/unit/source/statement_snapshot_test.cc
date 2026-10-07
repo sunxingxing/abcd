@@ -167,6 +167,8 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
   const bool folded=form==Form::kReturn||form==Form::kIf||form==Form::kLoop||form==Form::kAwait||form==Form::kYield||form==Form::kTypeof||form==Form::kAlias||form==Form::kCatch||form==Form::kInterleavedAlias||form==Form::kDeadInitialRead||form==Form::kDiscardedOperand||form==Form::kTransparentControl||form==Form::kOnceLoop||form==Form::kRedundantWrites||form==Form::kDeadPrefix||form==Form::kEffectPrefix||form==Form::kProjectedPrefix||form==Form::kProjectedSuffix;
   if(plan.replacements[read.value].has_value()!=folded)std::cerr<<"form="<<static_cast<unsigned>(form)<<" count="<<count<<" reverse="<<reverse<<'\n';
   test::Check(plan.replacements[read.value].has_value()==folded);
+  const bool aliased=form==Form::kArgument;
+  if(aliased)test::Check(plan.aliases[3]==SymbolId{2});
   std::ostringstream output;const auto printed=PrintFunctionTree(tree,output);test::Check(std::holds_alternative<PrintedFunction>(printed));
   const auto& ranges=std::get<PrintedFunction>(printed).expressions;
   for(const auto range:ranges) {
@@ -183,7 +185,7 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
   }
   if(folded)test::Check(ranges[rhs.value].begin<ranges[rhs.value].end);
   if(folded)test::Check(positions.expression_extents[rhs.value]==GeneratedExtent::kSpan);
-  if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"form",form},{"count",count},{"folded",folded}}<<'\n';return plan.work;
+  if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"form",form},{"count",count},{"folded",folded},{"aliased",aliased}}<<'\n';return plan.work;
 }
 }
 int main(int argc,char**) {

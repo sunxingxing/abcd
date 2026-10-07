@@ -278,7 +278,10 @@ std::uint64_t Alias(unsigned form,unsigned count,bool reverse,bool emit) {
     const auto digits=std::to_string(i);tree.names.push_back(u"copy"+std::u16string(digits.begin(),digits.end()));
     tree.symbols.push_back({{1},{name},BindingKind::kCompilerTemporary,DeclarationKind::kLet,NameEvidence::kSynthesized,TemporaryReason::kMultipleUses});
     declarations.push_back(fixture.Stmt(DeclarationStmt{{symbol},{}}));
-    stores.push_back(fixture.Stmt(ExpressionStmt{fixture.Expr(AssignmentExpr{SymbolTarget{{symbol}},fixture.Read(previous)})}));previous=symbol;
+    if(form==27||form==28)stores.push_back(fixture.Stmt(ExpressionStmt{fixture.Expr(AssignmentExpr{SymbolTarget{{symbol}},fixture.Read(symbol)})}));
+    auto value=fixture.Read(previous);
+    if(form==28)value=fixture.Expr(SequenceExpr{fixture.Call(1,previous),value});
+    stores.push_back(fixture.Stmt(ExpressionStmt{fixture.Expr(AssignmentExpr{SymbolTarget{{symbol}},value})}));previous=symbol;
   }
   std::vector<StmtId> body=declarations;body.push_back(fixture.declaration);body.push_back(fixture.store);
   body.insert(body.end(),stores.begin(),stores.end());body.insert(body.end(),original.begin()+2,original.end());
@@ -294,6 +297,11 @@ std::uint64_t Alias(unsigned form,unsigned count,bool reverse,bool emit) {
     auto& sequence=std::get<BlockStmt>(tree.statements[owned.value].statement);
     tree.children.insert(tree.children.begin()+sequence.first_child,declared);++sequence.child_count;
   };
+  if(form==29) {
+    body.erase(body.begin(),body.begin()+declarations.size());
+    body.insert(body.end(),declarations.begin(),declarations.end());
+  }
+  if(form==26)body.insert(body.begin()+declarations.size()+1,fixture.Store(fixture.Read(2)));
   if(form==24||form==25) {
     auto rhs=fixture.Read(2);
     if(form==25)rhs=fixture.Expr(SequenceExpr{fixture.Call(1,2),rhs});
@@ -399,7 +407,7 @@ std::uint64_t Alias(unsigned form,unsigned count,bool reverse,bool emit) {
   test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
   const auto plan=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
-  const bool folded=count&&form!=1&&form!=2&&form!=3&&form!=5&&form!=11&&form!=14&&form!=16&&form!=17&&form!=19&&form!=23;
+  const bool folded=count&&form!=1&&form!=2&&form!=3&&form!=5&&form!=11&&form!=14&&form!=16&&form!=17&&form!=19&&form!=23&&form!=29;
   test::Check(plan.aliases[reverse?tree.symbols.size()-1-last:last].has_value()==folded);test::Check(!plan.aliases[reverse?tree.symbols.size()-3:2]);
   std::ostringstream output;const auto printed=PrintFunctionTree(tree,output);test::Check(std::holds_alternative<PrintedFunction>(printed));
   for(const auto range:std::get<PrintedFunction>(printed).expressions)test::Check(range.begin<=range.end&&range.end<=output.str().size());
@@ -601,7 +609,7 @@ int main(int argc, char**) {
       if(locals==1&&copies)continue;
       DecodedCell(profile,locals,copies,split,branch,field,argc>1);
     }
-  for(unsigned form=0;form<26;++form) {
+  for(unsigned form=0;form<30;++form) {
     std::uint64_t small=0,large=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}) {
       if(!count&&(form==3||form==5||form==14||form==16||form==23))continue;

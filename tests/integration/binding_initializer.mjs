@@ -3,7 +3,7 @@ import {execFileSync} from 'node:child_process';
 import {parseJavaScript} from './class_reference.mjs';
 import {editExpression} from './expression_edits.mjs';
 const rows = execFileSync(process.argv[2], ['--emit'], {encoding:'utf8', maxBuffer:32_000_000}).trim().split('\n').map(JSON.parse);
-const token = {}, second = {}, failure = Symbol('original throw');
+const token = {}, second = {}, failure = Symbol('original throw'), tdzFailure=Symbol('TDZ');
 function original(row) {
   if(row.decoded_cell&&row.field)return function(seed,report,flag,target,key){const saved=seed();target[key]=saved;if(!row.branch||flag!==false&&flag!==0)report(saved);report(saved);return saved;};
   if (row.decoded_loop) return function(again,seed,report,choice,stop) {
@@ -103,10 +103,13 @@ let comparisons=0, mutations=0, folded=0;
 function aliasReference(row) {
   const root=row.alias===9?'{}':row.alias===10?'[]':'seed()';
   const declarations=Array.from({length:row.count},(_,i)=>'let copy'+i+';').join('');
-  const copies=Array.from({length:row.count},(_,i)=>'copy'+i+'='+(i?'copy'+(i-1):'saved')+';').join('');
+  const copies=Array.from({length:row.count},(_,i)=>{
+    const name='copy'+i,source=i?'copy'+(i-1):'saved';
+    return ([27,28].includes(row.alias)?name+'='+name+';':'')+name+'='+(row.alias===28?'(report('+source+'),'+source+')':source)+';';
+  }).join('');
   const last=row.count?'copy'+(row.count-1):'saved';
   const reports=('report('+last+');').repeat(row.alias===15?0:row.count);
-  let body=declarations+'let saved;'+(row.alias===2&&row.count?'report('+last+');':'')+'saved='+root+';'+
+  let body=declarations+'let saved;'+(row.alias===26?'saved=saved;':'')+(row.alias===2&&row.count?'report('+last+');':'')+'saved='+root+';'+
     (row.alias===24?'saved=saved;':row.alias===25?'saved=(report(saved),saved);':'')+
     (row.alias===3?'if(flag){'+copies+'}':row.alias===21&&row.count?'if(flag){'+copies+'}else{return;}':copies)+
     (row.alias===7?'await seed();':row.alias===8?'yield seed();':'');
@@ -125,6 +128,7 @@ function aliasReference(row) {
   }
   if(row.alias===17){body=declarations+'let saved;try{saved='+root+';'+copies+reports+'}finally{report('+last+');}';tail='return '+last+';';}
   if(row.alias===18||row.alias===19){body=declarations+'let saved;while(flag()){saved='+root+';'+copies+reports+'}';tail='return'+(row.alias===18?'':' '+last)+';';}
+  if(row.alias===29){body=body.slice(declarations.length);tail+=declarations;}
   return Function('return ('+(row.alias===7?'async function':row.alias===8?'function*':'function')+'(seed,report,flag){'+body+tail+'})')();
 }
 function entryReference(row) {
@@ -195,6 +199,7 @@ async function observeAlias(fn,row,value,fault,flag=true,request='next',reject=f
     if(row.alias===7)returned=await returned;
     if(row.alias===9||row.alias===10){assert.equal(returned,allocation??returned);assert.equal(Array.isArray(returned),row.alias===10);assert.equal(returned.visits??0,row.count);returned=token;}
   }catch(error){returned=undefined;thrown=error;}
+  if(row.alias===29&&thrown instanceof ReferenceError)thrown=tdzFailure;
   return {trace,requests,returned,thrown};
 }
 function expressionReference(row) {
@@ -382,7 +387,7 @@ for (const row of rows) {
     }
     if(row.alias===7){compare(await run(generated,token,Infinity,true,'next',true),await run(reference,token,Infinity,true,'next',true));++comparisons;}
     if(row.alias===8)for(const request of ['throw','return']){compare(await run(generated,token,Infinity,true,request),await run(reference,token,Infinity,true,request));++comparisons;}
-    if(row.alias===25&&row.count===1) {
+    if((row.alias===25||row.alias===28)&&row.count===1) {
       // Removing an identity store must retain its RHS observation and throw.
       const changed=editExpression(row.source,(node,dependsOn)=>node.type==='CallExpression'&&
         dependsOn(node.callee,value=>value.type==='Identifier'&&value.name==='report'),()=> '0',{first:true});

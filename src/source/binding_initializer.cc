@@ -20,7 +20,6 @@ struct BindingUses {
   std::optional<StmtId> declaration, initializer, initializer_container;
   std::optional<StmtId> definition;
   std::optional<ExprId> first;
-  std::optional<ExprId> store;
   std::optional<std::size_t> first_container, last_container;
   std::size_t writes = 0;
   bool escaped = false, outside_body = false;
@@ -854,15 +853,6 @@ class Initializers {
     const auto at=containers_[owner->value].begin;const auto range=containers_[use.initializer_container->value];
     return at>=range.begin&&at<range.end;
   }
-  void Elide(const BindingUses& use,bool discard_rhs=true) {
-    plan_.omitted[use.declaration->value]=1;
-    const auto rhs=std::get<AssignmentExpr>(tree_.expressions[use.store->value].expression).value;
-    if(use.initializer) {
-      plan_.statements[use.initializer->value].reset();
-      if(discard_rhs)plan_.omitted[use.initializer->value]=1;
-      else plan_.replacements[use.store->value]=rhs;
-    } else plan_.replacements[use.store->value]=rhs;
-  }
   bool Confined(const BindingUses& use, std::optional<StmtId> owner) const {
     if (use.outside_body || !owner || !use.first_container) return false;
     const auto range = containers_[owner->value];
@@ -877,9 +867,10 @@ class Initializers {
     ExprId expression;
     FlowDefinitionKind kind;
     FlowWriteEffect effect;
+    std::optional<StmtId> statement;
   };
   struct BindingReadCoverage {
-    std::vector<std::uint8_t> stores, declarations;
+    std::vector<std::uint8_t> declarations;
     std::vector<std::optional<CoveredWrite>> covered_writes;
     // Retained semantic writes, including projected undefined stores. The
     // original census still locates declaration candidates, not stability.
@@ -888,21 +879,31 @@ class Initializers {
   };
   BindingReadCoverage AnalyzeBindingReadCoverage() const {
     const auto& flow=CurrentFlow();
+    const auto& expressions=AnalyzeExpressions();
     const auto& live=CurrentLiveness();
     auto analyzed=AnalyzeFlowReadCoverage(flow,live,budget_.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
     const auto& coverage=std::get<FlowReadCoverage>(analyzed);
     budget_.Admit(coverage.allocated_bytes,1);budget_.Step(coverage.work);
     BindingReadCoverage result;
-    budget_.Array(result.stores,uses_.size());budget_.Array(result.declarations,uses_.size());
+    budget_.Array(result.declarations,uses_.size());
     budget_.Array(result.covered_writes,uses_.size());
     for(std::size_t i=0;i<flow.definitions.size();++i) {
       budget_.Step();const auto& definition=flow.definitions[i];const auto& use=uses_[definition.binding.value];
-      if(definition.write && definition.write==use.store)
-        result.stores[definition.binding.value]=coverage.definitions[i];
       if(coverage.definitions[i] && definition.write &&
-          (definition.kind==FlowDefinitionKind::kAssignment||definition.kind==FlowDefinitionKind::kInitializer))
-        result.covered_writes[definition.binding.value]=CoveredWrite{*definition.write,definition.kind,definition.effect};
+          (definition.kind==FlowDefinitionKind::kAssignment||definition.kind==FlowDefinitionKind::kInitializer)) {
+        CoveredWrite selected{*definition.write,definition.kind,definition.effect,{}};
+        // Ownership identifies what a whole-statement deletion would remove.
+        // Other occurrences still support write-to-RHS projection; this is not
+        // an admission condition on their control-flow layout.
+        const auto discarded=flow.events[definition.point.value].discarded;
+        if(discarded) {
+          const auto statement=flow.discarded[discarded->value].statement;
+          const auto* effect=std::get_if<ExpressionStmt>(&tree_.statements[statement.value].statement);
+          if(effect && expressions.roots[effect->expression.value]==*definition.write)selected.statement=statement;
+        }
+        result.covered_writes[definition.binding.value]=selected;
+      }
       if(definition.declaration && definition.declaration==use.definition)
         result.declarations[definition.binding.value]=coverage.definitions[i];
     }
@@ -974,21 +975,13 @@ class Initializers {
     bool candidate=false;
     for(std::size_t i=0;i<uses_.size();++i) {
       budget_.Step();const auto& use=uses_[i];
-      if(!use.private_storage || !use.declaration || !use.store || use.escaped || plan_.literals[i])continue;
+      if(!use.private_storage || !use.declaration || use.escaped || plan_.literals[i])continue;
       candidate=true;
     }
     if(!candidate)return;
     const auto& expressions=AnalyzeExpressions();
-    candidate=false;
-    for(std::size_t i=0;i<uses_.size();++i) {
-      budget_.Step();const auto& use=uses_[i];
-      if(!use.private_storage || !use.declaration || !use.store || use.escaped || plan_.literals[i])continue;
-      const auto rhs=std::get<AssignmentExpr>(tree_.expressions[use.store->value].expression).value;
-      candidate |= expressions.bindings[rhs.value].has_value();
-    }
-    if(!candidate)return;
-    // BeginCommit invalidates facts before Constants changes the plan. A no-op may
-    // share its immutable flow/liveness; coverage always uses the current plan.
+    // Every earlier commit invalidates these facts. No-op passes can share
+    // immutable flow/liveness; coverage and producer identity use one projection.
     const auto coverage=AnalyzeBindingReadCoverage();
     const auto& flow=CurrentFlow();
     std::vector<std::optional<SymbolId>> roots;
@@ -1030,14 +1023,17 @@ class Initializers {
           Confined(use,lexical_[use.definition->value])) {
         roots[i]=symbol;constant_queue_[ready++]=symbol;continue;
       }
-      if(coverage.writes[i]!=1||use.escaped||!coverage.stores[i]||plan_.literals[i])continue;
-      if(!use.private_storage || !use.declaration) {
-        // A retained source/cell first store uses the identical availability
-        // proof. A deleted constant store cannot provide retained storage.
+      if(coverage.writes[i]!=1||use.escaped||!coverage.covered_writes[i]||plan_.literals[i])continue;
+      const auto& selected=*coverage.covered_writes[i];
+      if(!use.private_storage || !use.declaration ||
+          (selected.kind==FlowDefinitionKind::kAssignment && selected.effect!=FlowWriteEffect::kInert)) {
+        // Keep observable writes and source/cell storage as roots. Coverage
+        // permits copying their successful value, not deleting their completion.
+        // A deleted constant store cannot provide retained storage.
         roots[i]=symbol;constant_queue_[ready++]=symbol;
         continue;
       }
-      const auto assignment=*use.store;
+      const auto assignment=selected.expression;
       const auto rhs=std::get<AssignmentExpr>(tree_.expressions[assignment.value].expression).value;
       discard_rhs[i]=expressions.evaluations[rhs.value]==ExpressionEvaluation::kInert;
       // Normal-result identity is shared across sequence, choice and assignment
@@ -1071,8 +1067,9 @@ class Initializers {
       budget_.Step();if(!roots[i]||roots[i]->value==i)continue;
       // A statement store disappears entirely. An embedded store still yields
       // its RHS at that occurrence; lexical resolution remains required there.
-      if(!uses_[i].initializer || !discard_rhs[i])continue;
-      copy_targets[uses_[i].initializer->value]=SymbolId{static_cast<std::uint32_t>(i)};
+      const auto statement=coverage.covered_writes[i]->statement;
+      if(!statement || !discard_rhs[i])continue;
+      copy_targets[statement->value]=SymbolId{static_cast<std::uint32_t>(i)};
     }
     std::size_t count=0;
     // Name/lifetime obligations belong to retained semantic reads, including
@@ -1113,7 +1110,13 @@ class Initializers {
     }
     for(std::size_t i=0;i<roots.size();++i) {
       budget_.Step();if(!roots[i]||roots[i]->value==i||blocked[i])continue;
-      BeginCommit();plan_.aliases[i]=roots[i];Elide(uses_[i],discard_rhs[i]);
+      const auto& selected=*coverage.covered_writes[i];const auto& use=uses_[i];
+      BeginCommit();plan_.aliases[i]=roots[i];plan_.omitted[use.declaration->value]=1;
+      if(use.initializer)plan_.statements[use.initializer->value].reset();
+      if(selected.statement && discard_rhs[i]) {
+        plan_.omitted[selected.statement->value]=1;plan_.statements[selected.statement->value].reset();
+      } else plan_.replacements[selected.expression.value]=
+          std::get<AssignmentExpr>(tree_.expressions[selected.expression.value].expression).value;
     }
   }
   BindingInitializers Finish() {
@@ -1203,7 +1206,6 @@ class Initializers {
             auto& use=uses_[target->symbol.value];
             const auto& rhs = tree_.expressions[assignment->value.value].expression;
             use.named_creation |= std::holds_alternative<FunctionExpr>(rhs) || std::holds_alternative<ClassExpr>(rhs);
-            if(use.definition&&!use.store)use.store=visit.expression;
           }
         }
       }

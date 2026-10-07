@@ -24,6 +24,38 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则207，别名传播选择当前定义并移除旧 store 字段
+
+- Aliases 复用当前 CoveredWrite，不再从原始第一次赋值寻找 RHS。
+  删除 BindingUses::store、旧 stores 覆盖映射、Scan 的首次 store
+  记录及 Elide。当前定义/写入计数/覆盖保持同一不可变投影，提交后
+  沿用统一失效。Observable PutValue 保留为来源根，不删除其完成。
+- CoveredWrite 同时记录共享 discarded ownership 与归一化表达式根
+  对应的整句归属。该信息只决定整句删除范围；嵌套赋值可保留 RHS
+  消除写入，不新增同块或固定图形状准入。副作用 RHS 保留实际发生点，
+  名字可见性及原生声明生命周期仍分别证明；不宣称完整作用域模型完成。
+- 新增根/复制前置 self-copy、含 report 副作用的复制链，以及目标
+  声明在 return 之后的 TDZ 反例。正反序编号与0/1/200/201/400/800
+  及工作增长覆盖保持。旧实现失败50.82秒，/tmp/abcd-rule207-red-tests.log。
+  定向2/2通过137.84秒，1,884份函数、465,472行为情景、306错误变换。
+  ReferenceError 使用独立类型标记对照，未将它和注入的用户异常混同。
+  证据 /tmp/abcd-rule207-focused-tests.log、/tmp/abcd-rule207-focused-detail.log。
+- 相关目标构建成功，/tmp/abcd-rule207-regression-build.log；首轮54项
+  53通过、1个statement_snapshot表示断言失败，293.96秒。当前定义恢复
+  使 saved=(flag=value) 可以别名为flag，旧测试只统计快照内联。现分别
+  核验目标SymbolId和别名/内联表示，原独立执行oracle不变。补测2/2
+  通过13.68秒，/tmp/abcd-rule207-snapshot-build.log、
+  /tmp/abcd-rule207-snapshot-tests.log、/tmp/abcd-rule207-snapshot-detail.log。
+  连同定向两项，56个不同相关测试均有当前通过证据；git diff --check通过。
+  首轮证据 /tmp/abcd-rule207-regression-tests.log、
+  /tmp/abcd-rule207-regression-detail.log 保留，不当作整批通过收据。
+- ABC-only 导出 build/stage-one/aliases-current-definitions-rule207：
+  19 records，10 complete / 0 partial / 9 noModule；十份源码语法
+  检查通过，正文与规则206一致，输入 SHA-256 不变。证据
+  /tmp/abcd-rule207-export.log 与 /tmp/abcd-rule207-export-check.json。
+- 原始声明/activation、全局固定点及阶段一仍开放；保持既定暂停
+  范围。上述模拟宿主验证不代表真实平台执行或全语料验收。
+
 ### 2026-10-08：规则206，常量传播选择当前覆盖定义
 
 - 共同 BindingReadCoverage 保存当前 CoveredWrite 的表达式身份、

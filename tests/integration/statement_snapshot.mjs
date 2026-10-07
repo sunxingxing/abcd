@@ -68,7 +68,7 @@ for(const row of rows) {
   const pending=[parseJavaScript(row.source)];let snapshots=0;
   while(pending.length){const node=pending.pop();if(node.type==='Identifier'&&node.name==='saved')++snapshots;
     for(const child of Object.values(node)){if(Array.isArray(child)){for(const item of child)if(item?.type)pending.push(item);}else if(child?.type)pending.push(child);}}
-  assert.equal(snapshots===0,row.folded,`snapshot representation form=${row.form}`);
+  assert.equal(snapshots===0,row.folded||row.aliased,`snapshot representation form=${row.form}`);
   const actual=Function('"use strict";return '+row.source)(),expected=reference(row);
   const scenarios=[...([undefined,null,false,0,-0,NaN,1n,Symbol.for('value'),token,'ok'].map(value=>({value})))];
   for(const failureValue of [undefined,null,false,0,NaN,failure,token])for(const failAt of [1,2,3,4])scenarios.push({failureValue,failAt});

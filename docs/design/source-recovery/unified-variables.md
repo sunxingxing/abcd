@@ -65,6 +65,14 @@ read/definition与完成边，可先求解，再用于裁剪前向到达定义�
 资源耗尽仍返回typed错误，不能把未完成轮次声称为稳定结果。
 声明恢复引入的初始化同样进入模型，不能被打印器私自省略。
 
+规则207补充：Aliases 已消费共同 CoveredWrite，BindingUses::store、
+旧 stores 覆盖映射和 Elide 删除函数退出生产决策路径。共同结果记录
+当前 discarded ownership 与归一化表达式根；只有确实拥有整个根的语句
+才进入整句删除提案，其他 occurrence 仍可按写入→RHS 保留求值，不以
+整句形状作为别名准入。Observable PutValue 保留为来源存储，不能因为
+值覆盖成立就删除其完成。词法名字/捕获/activation 继续独立证明，
+原始声明生命周期 census 与全局固定点仍未迁移完成。
+
 规则206补充：Constants 从共同读取覆盖结果取得当前 CoveredWrite
 （表达式身份、定义种类、写入效果），退出原始首个 use.store 定位。
 普通赋值删除须证明 FlowWriteEffect::kInert，词法初始化按独立种类处理；
