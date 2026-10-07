@@ -75,8 +75,11 @@ class OperandSelections {
     if (const auto* owner = std::get_if<OpId>(&graph_.uses[input.value].owner)) {
       const auto& op = graph_.ops[owner->value];
       if (std::holds_alternative<ValueCopy>(op.operation)) {
-        if (!Pure(op) || !op.result || op.use_count != 1 || op.first_use != input ||
-            BeforeLogicalFusion(graph_, plan_, owner->value).kind != EvaluationKind::kRoot) return {};
+        // A transparent SSA copy transports the selected value even when the
+        // common evaluator already owns it inside its consumer. Root/inline
+        // is representation, not identity or an execution-count obligation.
+        // Canonical uses and the shared prefix/scope proof remain authoritative.
+        if (!Pure(op) || !op.result || op.use_count != 1 || op.first_use != input) return {};
         const auto& next = uses_[op.result->value];
         if (!next.first || next.multiple) return {};
         transport = *owner; input = *next.first;

@@ -12,6 +12,58 @@
 
 ## 当前阶段
 
+### 2026-10-07：规则153，条件参数沿已归属的纯复制恢复调用
+
+- 从干净0e4e695b继续，production/rules152推进153。上一轮普通arrow
+  的retained callee失败，根因是规则149已按共同storage lifetime将phi
+  首读复制内联，而OperandSelections仍另要求该ValueCopy为kRoot。
+  移除此表示准入条件；纯复制、真实input/result、canonical单次消费、
+  Prefix/Scope、receiver/identity、效果及handler/catch-copy义务保持。
+  原ABC→ValueProgram→control/evaluation/scope→FunctionTree→printer
+  保持，不增加样本/名字、PC/register、同块、邻接、固定COPY/selection
+  数量或局部图形匹配。每候选复用原索引O(1)，原分组复杂度及预算保持。
+- 三个已有通用调用测试先实测0/3 RED，修复后初轮4/4通过195.72秒。
+  最终fixture在规则153重新构建，两工具及九fixture退出0。共同调用
+  覆盖三profile及不同formal/register、1/2/3/200/201参数；源码行为
+  另增加0/1/200/201复制变体，实际getter/receiver、callee替换、不可调用
+  值、原throw及.call属性毒化继续检验。没有通过IIFE或宿主Reflect补洞。
+- 扩展回归发现旧writer named_call_test:555误取AccumulatorFailure，
+  实际BodyEmitFailure为kUnsupportedInstruction、PC10、
+  ScalarError::kUnsupportedOpcode。历史状态也已记录同一基线失败。
+  两个跳转用例现在独立证明AccumulatorFlow有效，再核对确切typed
+  writer拒绝与空输出，不接纳任意failure、不更改生产旧writer。这是
+  retained Reference表示缺口，不是未初始化值或语言限制；修正后
+  named_call_test和实际生成JS oracle 2/2通过5.04秒。
+- 最终25项运行24通过/1旧断言失败，453.55秒；上述断言修正后2/2
+  另验通过，覆盖原25项及新增旧writer生成JS oracle共26个测试。
+  两次运行分别保留，不冒称单轮26/26。435真实解码joint场景、
+  286848 joint源码对照、78624 phased调用、10162 module读取场景
+  通过，receiver/identity/TDZ/effect/throw及有效错误mutation均保留。
+  ProgressBar两record和富文本五record受控对照也通过。git diff --check
+  及修改mjs的node --check退出0；全套及暂停的物理RSS未重跑。
+- actual语言构造模式十个record均完整生成，2450 paired构造场景、
+  120 native super场景及三mutation通过，包含可构造Proxy父类和
+  动态父类变化；默认模式保持。实际Push record3444完整源码的
+  322 lifecycle、1860 delivery、三mutation及八connected场景通过。
+  构造器对照不代替十record全部行为；Push对照使用受控平台服务，
+  不代替设备SDK或实际平台执行。
+- fresh ABC-only Push导出build/stage-one/call-transport-push-final：
+  24 records/281 methods，15complete source/0partial/9noModule，
+  contract language_constructors_v1。Pasteboard导出
+  build/stage-one/call-transport-pasteboard-final：19 records/219 methods，
+  10complete/0partial/9noModule，contract language_numeric_constructors_v1。
+  独立Acorn解析全部生成文件，分别139/87 MethodDefinition；没有legacy
+  writer或complete输出中的INCOMPLETE/UNRECOVERED。解析成功不代替
+  全部解码method的行为验收；paired正文只进入独立测试，输入未修改。
+- 证据/tmp/abcd-call-transport-{red-build,red,build-final,
+  tests-final,named-build,named-tests,constructors-pass-1,
+  push-ability-pass-1,push-export-final,pasteboard-export-final,
+  export-check-final}.log及named/reference诊断保留。一般无法取得owned
+  参数表达式的retained Reference、SSA存储投影、native binding/每轮
+  捕获、一般继续程序及完整body/style仍待完成。原字段/全局/signature/
+  body gate与阶段一Goal保持active；full suite、扩展语料、RSS/benchmark、
+  DFX、scheduler、agents及周期audit暂停保持。
+
 ### 2026-10-07：规则152，数值更新复用自身结果存储
 
 - 干净ab0d3a43工作树继续，production/rules151推进152。BindingPlan

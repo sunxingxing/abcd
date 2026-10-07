@@ -162,9 +162,10 @@ std::uint64_t Run(unsigned arguments, unsigned copies, abc::ProfileId profile, F
 }
 }  // namespace
 int main(int argc, char** argv) {
-  if (argc == 3) {
+  if (argc == 3 || argc == 4) {
     const unsigned arguments = std::stoul(argv[2]);
-    Run(arguments, 1, abc::ProfileId::kDynamic1206,
+    const unsigned copies = argc == 4 ? std::stoul(argv[3]) : 1;
+    Run(arguments, copies, abc::ProfileId::kDynamic1206,
         std::string_view{argv[1]} == "--prefix-source" ? Form::kPrefix :
         std::string_view{argv[1]} == "--wrapped-source" ? Form::kWrapped :
         std::string_view{argv[1]} == "--dual-reference-copies-source" ? Form::kDualReferenceCopies :

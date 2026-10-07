@@ -1,5 +1,19 @@
 # 验收、证据与实施交接
 
+2026-10-07 规则153：共同phase selection沿已归属的纯ValueCopy取得
+参数owner，不再用root/inline表示否定已证明的值身份/执行次数。
+Prefix/Scope、receiver、效果/异常及原FunctionTree证明保持；没有新增
+布局/样本匹配。actual语言构造模式十record均完整生成，2450 paired、
+120 native super及三mutation通过；Push完整record的322 lifecycle、
+1860 delivery、三mutation及八connected场景通过。fresh Push24 records，
+15complete/0partial/9noModule；pasteboard19 records，10complete/0partial/
+9noModule，所有生成JS独立解析通过。旧named_call的错误variant断言
+改为独立有效值流及精确writer拒绝，2/2 unit/生成JS oracle通过。
+25项主运行24/25（453.55秒），唯一旧断言修正后上述2/2通过；其余
+24项保持通过，joint源码286848/解码435场景及phased调用78624通过。
+这是普通调用覆盖恢复；十record全行为、设备SDK、完整body/style及
+原结构gate仍未完成，阶段一Goal和暂停范围保持。最终回归证据见status.md。
+
 2026-10-07 规则152：numeric update复用同一producer自己的私有结果
 snapshot，输入/phi/cell不合并，ToNumeric旧值publication保留。新增24
 真实解码任意值normal/phased用例、原108解码和四语法树共3584行为

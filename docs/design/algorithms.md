@@ -1855,6 +1855,16 @@ semantic/work-growth evidence, not a physical RSS or full-corpus measurement.
 
 ## Nested phased selection execution owners (source rule 124)
 
+Source rule 153 removes a root-placement admission condition on pure SSA
+transport copies. A copy already owned by the common evaluator still carries
+the same selected input/result to its canonical consumer; the original
+identity, unique use, prefix/scope, effect and catch checks remain. Root versus
+inline is not an additional semantic proof. Each candidate uses the existing
+indexed canonical-use facts in O(1); no traversal, allocation or retry loop is
+added, and the grouping/ownership bounds below are unchanged. Regression
+evidence includes three-profile register variations and 0/1/200/201 source
+copy variants; this is not a physical RSS or performance acceptance claim.
+
 The existing inline roots identify the actual source dependency between
 selection operand groups. Sort S candidates by actual consumer/operand; index
 each branch's group once, then connect the consumer root to its enclosing group.

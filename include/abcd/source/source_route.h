@@ -327,7 +327,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // aggregate AssignmentExpression values from ambiguous statement beginnings.
 // Rules 152 reuse only a numeric producer's own private result snapshot for
 // staging; actual publication, SSA availability and capture checks remain.
-inline constexpr std::uint32_t kRouteEvidenceRules = 152;
+// Rules 153 transport selected values through already-owned pure copies;
+// root placement is not an extra Reference admission condition.
+inline constexpr std::uint32_t kRouteEvidenceRules = 153;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

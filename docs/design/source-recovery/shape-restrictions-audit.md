@@ -1,5 +1,18 @@
 # 按用户要求进行的恢复条件审计
 
+规则153补充：规则152记录的retained callee失败已追到条件参数transport
+的额外root条件。普通phase evaluator已按storage lifetime内联首次phi
+读取，OperandSelections仍拒绝非root ValueCopy，导致PhaseCallReference
+不能取得归属。现移除root/inline准入限制；纯语义、原输入/result/
+canonical使用及共同Prefix/Scope、receiver和异常义务保持，不增加
+sample/name、PC/register、局部序列、same-block或复制数量匹配。
+
+既有三个通用调用测试先RED，实际10构造器record和Push普通callback
+再通过，证明不限于最初暴露问题的应用。CallPlan仍要求实际AST拥有
+成员Reference，未把暂存裸callee错误打印成成员或新增.call/Reflect
+前提。其他不能取得owned表达式的retained Reference限制仍登记为
+表示缺口；不因本次修复声称全部SSA transport/引用恢复已完成。
+
 规则152补充：数值更新只能复用同一producer的实际私有结果snapshot。
 这是存储身份/不可观察暂存义务，按typed producer/ValueId和新鲜树的
 publication重建证明；不按same-block、PC/register、名字、样本、操作

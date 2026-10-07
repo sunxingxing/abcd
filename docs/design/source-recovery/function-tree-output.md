@@ -90,6 +90,26 @@ native initializer/每轮binding与phi/update临时值消除仍是表示缺口�
 不描述为语言/VM限制。具体解码/独立行为、scope/throw/await/yield反例
 及实际record证据见status.md；两个实际for不能代替阶段一完整body风格。
 
+## 条件值的纯复制与引用归属（规则 153）
+
+普通phase求值可按共同availability/storage lifetime证明，将首次phi读取
+的ValueCopy归属给后续消费者。PhaseSelectionOperand不再另要求这次纯
+transport是语句根；root/inline是表示，不能否定已经证明的相同输入及
+执行次数。复制的纯语义、真实first UseId/result、canonical单次消费、
+共同Prefix/Scope及handler/catch-copy义务继续保持。既有alias/copy链复用，
+不按复制数量、寄存器、PC、块形状或样本选择恢复。
+
+构建和新鲜校验共用该语义义务，保留原PhaseCallReference的callee/base
+获取、所有条件参数的原顺序和独立TreeFlow/TreeOperands/来源证明。
+callee在参数之前只求值一次，捕获其原函数与receiver；没有.call查找、
+getter重放、合成IIFE或新宿主前提。普通/异常完整输出及原控制树保持。
+一般无法表达为owned参数的retained Reference仍是表示缺口，未盲删
+CallPlan的真实member/reference检查；条件值多观察等需原绑定表示。
+
+三profile真实解码joint-call、不同formal/register分配、0/1/200/201
+复制与1/2/3/200/201条件参数，以及实际Push callback/构造器配对另验。
+这恢复普通函数覆盖；不能代替完整阶段一或真实平台SDK验收。
+
 ## 首次 phi 读取与存储生命周期（规则 149）
 
 EvaluationLiveness的RetainedEvaluationLifetime把既有源码存储描述为typed

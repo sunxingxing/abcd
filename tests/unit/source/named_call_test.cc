@@ -552,14 +552,32 @@ int main(int argc, char** argv) {
   std::ostringstream rejected;
   const auto middle = source::WriteAcyclicBody(middle_entry, {"acc", registers},
                                                rejected, {}, &constants);
-  test::Check(std::get<analysis::AccumulatorFailure>(middle).offset.value ==
-              10);
+  // The jump preserves an initialized accumulator, but bypasses acquisition
+  // of the member Reference. Keep the writer's typed rejection and no output.
+  const auto* middle_failure = std::get_if<source::BodyEmitFailure>(&middle);
+  test::Check(middle_failure &&
+              middle_failure->kind == source::BodyEmitError::kUnsupportedInstruction &&
+              middle_failure->offset.value == 10 &&
+              middle_failure->scalar_error == analysis::ScalarError::kUnsupportedOpcode);
   test::Check(rejected.str().empty());
   const auto property_entry =
       test::Body({0x60, 0, 0x4f, 4, 0x60, 0, 0x42, 0, 0, 0, 0x2d, 0, 0, 0x64});
-  test::Check(std::holds_alternative<analysis::AccumulatorFailure>(
-      source::WriteAcyclicBody(property_entry, {"acc", registers}, rejected, {},
-                               &constants)));
+  const auto property = source::WriteAcyclicBody(
+      property_entry, {"acc", registers}, rejected, {}, &constants);
+  // Entering at the property is valid value flow. This legacy writer still
+  // cannot own that cross-block Reference; rejection is a representation gap.
+  const auto* property_failure = std::get_if<source::BodyEmitFailure>(&property);
+  test::Check(property_failure &&
+              property_failure->kind == source::BodyEmitError::kUnsupportedInstruction &&
+              property_failure->offset.value == 10 &&
+              property_failure->scalar_error == analysis::ScalarError::kUnsupportedOpcode);
+  for (const auto* candidate : {&middle_entry, &property_entry}) {
+    const auto built = analysis::BuildNormalFlow(*candidate);
+    test::Check(std::holds_alternative<analysis::NormalFlow>(built));
+    const auto analyzed = analysis::AnalyzeAcyclicAccumulator(
+        *candidate, std::get<analysis::NormalFlow>(built), registers.size());
+    test::Check(std::holds_alternative<analysis::AccumulatorFlow>(analyzed));
+  }
   test::Check(rejected.str().empty());
   const auto loop =
       test::Body({0x60, 0, 0x42, 0, 0, 0, 0x2d, 0, 0, 0x51, 0xf7, 0x64});

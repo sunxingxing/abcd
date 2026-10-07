@@ -7,9 +7,9 @@ const hostile = {[Symbol.toPrimitive]() { assert.fail('condition coerced'); }};
 const flags = [undefined, null, false, 0, -0, NaN, '', true, 1, 1n, symbol, hostile];
 const options = [undefined, null, false, 0, -0, NaN, 'argument', symbol, token];
 let cases = 0;
-for (const form of ['plain', 'prefix', 'wrapped', 'dual', 'dual-prefix', 'dual-wrapped', 'dual-copies', 'dual-copies-prefix', 'dual-copies-wrapped', 'dual-reference-copies', 'dual-reference-copies-prefix', 'dual-reference-copies-wrapped']) for (const count of [1, 2, 3, 200, 201]) {
+for (const form of ['plain', 'prefix', 'wrapped', 'dual', 'dual-prefix', 'dual-wrapped', 'dual-copies', 'dual-copies-prefix', 'dual-copies-wrapped', 'dual-reference-copies', 'dual-reference-copies-prefix', 'dual-reference-copies-wrapped']) for (const count of [1, 2, 3, 200, 201]) for (const copies of count === 1 ? [0, 1, 200, 201] : [1]) {
   const prefix = form.endsWith('prefix'), wrapped = form.endsWith('wrapped'), dual = form.startsWith('dual');
-  const source = execFileSync(tool, [form === 'plain' ? '--source' : `--${form}-source`, String(count)], {encoding: 'utf8'});
+  const source = execFileSync(tool, [form === 'plain' ? '--source' : `--${form}-source`, String(count), String(copies)], {encoding: 'utf8'});
   assert.ok(source.includes('value.method(') && source.includes(' ? '));
   assert.ok(!source.includes('.call(') && !source.includes('INCOMPLETE'));
   const recovered = Function(`"use strict"; return ${source}`)();

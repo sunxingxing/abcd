@@ -1,5 +1,17 @@
 # 全 ISA 优先执行顺序
 
+2026-10-07 规则153：普通调用的条件参数复制已按共同owner证明恢复，
+去掉root-placement额外限制，值/Reference/receiver、效果及异常义务
+保持，不扩展局部形状或样本匹配。十个实际构造record完整输出且
+2450 paired/120 native super/三mutation通过；Push322 lifecycle、
+1860 delivery和八connected场景另验通过。fresh Push15complete、
+pasteboard10complete，均0partial；旧writer variant断言修正另验2/2。
+主运行25项24通过/1旧断言失败，453.55秒，其余24通过及修正后2/2
+分别保留；joint源码286848/解码435和phased调用78624场景通过。
+下一步继续SSA存储投影、native binding/每轮捕获和一般继续程序，
+优先普通INCOMPLETE/UNRECOVERED覆盖。默认模式、阶段一Goal、原结构
+gate及暂停范围保持；全body/style仍未完成，完整证据见status.md。
+
 2026-10-07 规则152：numeric update复用自身私有结果snapshot，原输入/
 phi/cell分离和ToNumeric旧值publication保持。24新增任意值解码与
 原108解码/四语法树共3584行为场景通过；22定向实测21通过/1失败。
