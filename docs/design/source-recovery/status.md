@@ -24,6 +24,34 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-07：规则185，存储合并共享当前引用与初始化完成事实
+
+- RecoveryFlow一次产生typed绑定读写引用，自增的读取和成功写回分别记录，
+  转发表达式使用当前执行位置；被前序pass删除的表达式不再留下决策引用。
+  Coalesce不再扫描原始expression arena重新猜测引用，也移除了该路径的
+  declaration_controls/definition_region及completion_order/native_ready判断。
+- AnalyzeFlowInitializations索引当前选定的声明、参数和catch初始化，基于
+  全部completion边计算一次支配关系。普通引用检查与独立的
+  PlanStorageInitializations共同借用这份不可变事实，后者不再重复建索引
+  或计算支配。两份提案完成后统一提交，无分析结果跨storage修改复用。
+  不可达但保留的引用没有执行顺序义务，仍接受词法名称与生命期检查。
+- 新增完整源码正反例：早期嵌入写入已被删除时允许后续共享；该写入仍被
+  report读取时保留独立存储，错误共享导致的TDZ由独立执行反例发现。
+  512个小图的独立删点可达性oracle同时核对初始化完成关系及预算边界。
+  不增加样本、同块、邻接、操作序列或固定图形状条件。
+- 相关目标构建通过，日志/tmp/abcd-rule185-build.log。最终54项相关回归
+  全部通过334.30秒，日志/tmp/abcd-rule185-tests.log、详细输出
+  /tmp/abcd-rule185-test-detail.log。存储恢复221份源码/33,620行为/12反例，
+  定义恢复184份源码/2,080行为/3反例；175,616活跃性图、98,304需求图、
+  200/201/400/800、arena重排和exact/short预算继续通过。
+- ABC-only导出build/stage-one/reference-initialization-rule185为
+  10complete/0partial/9noModule，十份源码node --check通过，正文与规则184
+  一致；日志/tmp/abcd-rule185-export.log。这不是新增真实record语义验收。
+- InitializedRead/效果生产、RootLifetime/activation和常量/复制路径中的
+  CompletedStore仍待迁移；canonical CFG/SSA接入、完整版本失效协调器及
+  全局收敛仍开放。统一变量里程碑、结构gate与阶段一未完成；原Goal active，
+  全量语料/RSS/DFX/代理暂停范围保持。
+
 ### 2026-10-07：规则184，保留活跃undefined并退出Coalesce的CompletedStore
 
 - Coalesce中的CompletedStore调用已移除，没有改名或移到另一个准入函数。

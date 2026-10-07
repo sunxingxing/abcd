@@ -1918,3 +1918,16 @@ No same-block, adjacency, first-use/store, operation-sequence or sample test is
 introduced. Both repeated-loop initialization and straight execution use the same
 semantic plan. Original copy/constant CompletedStore and initialization/scope census
 are still explicit migration gaps, not claimed as retired by this change.
+
+## Rules185: reference order comes from the projected flow
+
+Coalesce no longer checks statement traversal controls/region intervals or the
+original expression completion order to infer initialization. It also no longer
+walks all original expression syntax to rediscover reference kinds. RecoveryFlow
+emits actual binding read/write occurrences once, and shared FlowInitializations
+answers their completion-order obligation using all completion edges. A reference
+removed by an earlier pass cannot block recovery merely because its old arena
+position preceded a native declaration. A still-executed reference before that
+declaration fails the common proof. Name resolution and binding activation remain
+independent requirements, including for unreachable retained syntax. No producer
+list, sequence, adjacency, same-block or sample admission replaces the old checks.

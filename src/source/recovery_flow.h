@@ -22,6 +22,16 @@ struct FlowBinding {
   FlowBindingExposure exposure = FlowBindingExposure::kObservable;
   std::optional<StmtId> declaration;
 };
+enum class FlowReferenceKind : std::uint8_t { kRead, kWrite };
+using FlowReferenceSite=std::variant<ExprId,StmtId>;
+struct FlowReference {
+  FlowPoint point;
+  SymbolId binding;
+  FlowReferenceKind kind;
+  // Statement sites denote preserved empty-declaration writes. Expression
+  // sites retain source identity even when forwarded to a new flow position.
+  FlowReferenceSite site;
+};
 struct BindingInitializer;
 struct FlowDefinition {
   FlowPoint point;
@@ -70,6 +80,7 @@ struct RecoveryFlow {
   std::vector<FlowEvent> events;
   std::vector<FlowEdge> edges;
   std::vector<FlowDefinition> definitions;
+  std::vector<FlowReference> references;
   std::vector<DiscardedEvaluation> discarded;
   std::vector<FlowPoint> statements, expressions;
   std::vector<FlowBinding> bindings;

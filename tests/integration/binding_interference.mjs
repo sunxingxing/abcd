@@ -3,7 +3,7 @@ import {execFileSync} from 'node:child_process';
 import vm from 'node:vm';
 import {parseJavaScript} from './class_reference.mjs';
 const records=execFileSync(process.argv[2],['--emit'],{encoding:'utf8',timeout:60_000,maxBuffer:16*1024*1024}).trim().split('\n').map(JSON.parse);
-assert.equal(records.length,192);
+assert.equal(records.length,216);
 // Oracles describe the original storage semantics, never enter the engine.
 const references=[
   function(input,report,flag){let current=input,scratch=current;++scratch;current=scratch;return current;},
@@ -22,6 +22,8 @@ const references=[
   function(input,report,flag){let current=0;report(current);let scratch;report(scratch);current=input;scratch=current;++scratch;current=scratch;return current;},
   function(input,report,flag){let current=0;report(current);for(;;){let scratch;report(scratch);current=input;scratch=current;++scratch;current=scratch;if(flag)break;flag=true;}return current;},
   function(input,report,flag){let current,scratch;report(scratch);current=input;scratch=current;++scratch;current=scratch;return current;},
+  function(input,report,flag){let current,scratch;(scratch=0,report());current=input;scratch=current;++scratch;current=scratch;return current;},
+  function(input,report,flag){let current,scratch;(scratch=0,report(scratch));current=input;scratch=current;++scratch;current=scratch;return current;},
 ];
 const primitives=[undefined,null,false,true,0,-0,1,-2,0n,2n,NaN,Infinity,'','7','bad',Symbol('input')];
 let cases=0,mutations=0;
@@ -54,7 +56,7 @@ for(const record of records){
     if(record.form===7&&primitives[index]===Infinity)continue;
     assert.deepEqual(await observe(recovered,record.form,index,mode,flag,request),await observe(references[record.form],record.form,index,mode,flag,request),JSON.stringify({form:record.form,index,mode,flag,request}));++cases;
   }
-  if(record.count===0&&!record.reverse&&[1,3,4,5,6,9,10,11].includes(record.form)){
+  if(record.count===0&&!record.reverse&&[1,3,4,5,6,9,10,11,17].includes(record.form)){
     // A semantically wrong coalescing remains valid JS: reuse current for every
     // scratch access while retaining the now-unused scratch declaration.
     const changed=record.source.replaceAll('scratch','currentAlias');

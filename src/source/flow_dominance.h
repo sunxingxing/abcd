@@ -16,5 +16,21 @@ struct FlowDominance {
 // not change paths between real events or become a recovery admission pattern.
 [[nodiscard]] std::variant<FlowDominance,TreeStructureError> AnalyzeFlowDominance(
     const RecoveryFlow&,analysis::SemanticBudget = {});
+struct FlowInitializations {
+  FlowDominance order;
+  std::vector<std::optional<FlowPoint>> declarations;
+  std::size_t allocated_bytes=0;
+  std::uint64_t work=0;
+  // Completion order only. Source binding identity and activation scope remain
+  // separate obligations; this query cannot authorize lifetime movement alone.
+  // Unreachable retained syntax has no execution-order demand; lexical name
+  // resolution is still checked independently for that occurrence.
+  [[nodiscard]] bool Completed(SymbolId binding,FlowPoint occurrence) const {
+    return !order.tree.nodes[occurrence.value].begin ||
+        (declarations[binding.value] && order.Dominates(*declarations[binding.value],occurrence));
+  }
+};
+[[nodiscard]] std::variant<FlowInitializations,TreeStructureError> AnalyzeFlowInitializations(
+    const RecoveryFlow&,analysis::SemanticBudget = {});
 }
 #endif

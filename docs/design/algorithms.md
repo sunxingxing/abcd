@@ -2543,3 +2543,28 @@ preserved initialization, bypassing its destination declaration, loop reactivati
 200/201/geometric layouts, arena permutations, and exact/short quotas. Execution
 oracles and missing-reset mutants distinguish correct sharing from lost undefined.
 These are bounded algorithm/correctness checks, not full-corpus RSS measurements.
+
+### Shared binding-reference initialization facts (rules185)
+
+The source adapter emits one typed reference per binding read/write occurrence,
+including both update halves, in O(R) additional work/storage. Source locations
+are metadata for name resolution; execution order comes from FlowPoint. No
+consumer reconstructs those facts from expression arena ordering. Coalesce's
+original syntax scan and control/region/completion-order initialization decisions
+are removed from this path.
+
+AnalyzeFlowInitializations indexes active initialization definitions in O(B+D)
+work/storage and computes completion dominance once for actual storage proposals.
+It shares that immutable result between ordinary reference checks and preserved
+undefined planning. Each order query is O(1); lexical resolution retains its
+existing batched indexing. Overall dominance costs remain the rules184 N/E bounds,
+not a graph traversal per reference or binding. A function without a proposed
+sharing action skips this analysis by lack of consumers, not a size threshold.
+No new dependency/algorithm implementation is introduced; provenance remains the
+existing LT implementation and remove-vertex reachability oracle described above.
+
+Unreachable references impose no runtime order condition, while source name and
+activation checks remain. This is not general TDZ/lifetime reconstruction:
+effects still use the documented legacy initialization adapter. Layout/scaling,
+shared-analysis budget and independent source behavior tests cover the migrated
+reference-order decisions without claiming process RSS or whole-phase completion.

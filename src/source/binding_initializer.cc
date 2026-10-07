@@ -1,6 +1,7 @@
 #include "binding_initializer.h"
 #include "binding_interference.h"
 #include "definition_elision.h"
+#include "flow_dominance.h"
 #include "class_tree.h"
 #include "expression_children.h"
 #include "loop_syntax.h"
@@ -489,6 +490,7 @@ class Initializers {
     budget_.Array(proposed, uses_.size()); budget_.Array(paired, uses_.size()); budget_.Array(blocked, uses_.size());
     // A disjoint matching avoids transitive interference: every accepted group
     // has the exact pair proved below, never an unchecked union of affinities.
+    bool sharing=false;
     for (auto pair : facts.affinities) {
       budget_.Step(); if (pair.interference || paired[pair.first.value] || paired[pair.second.value] ||
           !eligible(pair.first) || !eligible(pair.second)) continue;
@@ -496,37 +498,41 @@ class Initializers {
         return at && plan_.statements[at->value].has_value(); };
       if (!native(pair.first) && native(pair.second)) std::swap(pair.first, pair.second);
       paired[pair.first.value] = paired[pair.second.value] = 1;
-      proposed[pair.second.value] = pair.first;
+      proposed[pair.second.value] = pair.first;sharing=true;
     }
+    if(!sharing)return false;
+    auto analyzed_initialization=AnalyzeFlowInitializations(flow,budget_.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&analyzed_initialization))throw *error;
+    const auto& initialization_order=std::get<FlowInitializations>(analyzed_initialization);
+    budget_.Admit(initialization_order.allocated_bytes,1);budget_.Step(initialization_order.work);
     std::vector<TreeScopedReference> references;
-    std::vector<ExprId> occurrences;
+    std::vector<FlowReferenceSite> occurrences;
     std::vector<SymbolId> targets;
-    budget_.Array(references, tree_.expressions.size()); budget_.Array(occurrences, tree_.expressions.size());
-    budget_.Array(targets, tree_.expressions.size()); std::size_t count = 0;
-    for (std::size_t i = 0; i < tree_.expressions.size(); ++i) {
-      budget_.Step(); const auto& expression = tree_.expressions[i].expression;
-      std::optional<SymbolId> symbol;
-      if (const auto* read = std::get_if<SymbolExpr>(&expression)) symbol = plan_.aliases[read->symbol.value].value_or(read->symbol);
-      else if (const auto* update = std::get_if<UpdateExpr>(&expression)) symbol = update->symbol;
-      else if (const auto* assignment = std::get_if<AssignmentExpr>(&expression))
-        if (const auto* target = std::get_if<SymbolTarget>(&assignment->target)) symbol = target->symbol;
-      if (!symbol || !proposed[symbol->value]) continue;
-      references[count] = {*proposed[symbol->value], expression_scopes_[i]};
-      occurrences[count] = {static_cast<std::uint32_t>(i)}; targets[count++] = *symbol;
+    budget_.Array(references,flow.references.size());budget_.Array(occurrences,flow.references.size());
+    budget_.Array(targets,flow.references.size());std::size_t count=0;
+    // Reference occurrences and execution order come from the same current
+    // flow, including forwarded RHSs and update read/write halves. Original
+    // arena order and expressions removed by earlier passes are not evidence.
+    for(const auto& reference:flow.references) {
+      budget_.Step();const auto root=proposed[reference.binding.value];if(!root)continue;
+      if(!initialization_order.Completed(*root,reference.point))blocked[reference.binding.value]=1;
+      const auto scope=std::visit([&](auto site) {
+        if constexpr(std::is_same_v<decltype(site),ExprId>)return expression_scopes_[site.value];
+        else return tree_.symbols[std::get<DeclarationStmt>(tree_.statements[site.value].statement).symbol.value].scope;
+      },reference.site);
+      references[count]={*root,scope};occurrences[count]=reference.site;targets[count++]=reference.binding;
     }
     references.resize(count); const auto visible = ResolveTreeReferences(tree_, references, budget_);
     for (std::size_t i = 0; i < count; ++i) {
       budget_.Step(); const auto root = references[i].symbol; const auto occurrence = occurrences[i];
-      const auto& use = uses_[root.value]; const auto& site = observations_[occurrence.value];
-      const auto region = regions_[use.definition_region];
-      const bool initialized = site.control > declaration_controls_[root.value] &&
-          site.region >= region.begin && site.region < region.end;
-      const bool native_ready = !use.initializer || !plan_.statements[use.initializer->value] ||
-          (use.store && completion_order_[use.store->value] < completion_order_[occurrence.value]);
-      if (!visible[i] || !RootLifetime(root, occurrence) || !initialized || !native_ready) blocked[targets[i].value] = 1;
+      const auto lifetime=std::visit([&](auto site) {
+        if constexpr(std::is_same_v<decltype(site),ExprId>)return RootLifetime(root,site);
+        else return RootLifetime(root,lexical_[site.value]);
+      },occurrence);
+      if(!visible[i] || !lifetime)blocked[targets[i].value]=1;
     }
     for(std::size_t i=0;i<proposed.size();++i){budget_.Step();if(blocked[i])proposed[i].reset();}
-    auto initialized=PlanStorageInitializations(flow,liveness,proposed,budget_.Remaining());
+    auto initialized=PlanStorageInitializations(flow,liveness,initialization_order,proposed,budget_.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&initialized))throw *error;
     const auto& initialization=std::get<StorageInitializations>(initialized);
     budget_.Admit(initialization.allocated_bytes,1);budget_.Step(initialization.work);

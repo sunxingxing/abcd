@@ -37,10 +37,22 @@ void CompletionDominance() {
       return seen;
     };
     const auto all=reachable({});const auto result=std::get<FlowDominance>(AnalyzeFlowDominance(flow));
+    flow.statements.resize(3);
+    for(unsigned a=0;a<3;++a) {
+      flow.bindings.push_back({BindingKind::kCompilerTemporary,FlowBindingExposure::kPrivate,StmtId{a}});
+      flow.definitions.push_back({{a},{a},FlowDefinitionKind::kInitializer,{},{},StmtId{a}});
+    }
+    const auto initialized=std::get<FlowInitializations>(AnalyzeFlowInitializations(flow));
     for(unsigned a=0;a<3;++a) {
       const auto without=reachable(a);
-      for(unsigned b=0;b<3;++b)Check(result.Dominates({a},{b})==(all[b]&&!without[b]));
+      for(unsigned b=0;b<3;++b) {
+        Check(result.Dominates({a},{b})==(all[b]&&!without[b]));
+        Check(initialized.Completed({a},{b})==(!all[b]||!without[b]));
+      }
     }
+    Check(std::holds_alternative<FlowInitializations>(AnalyzeFlowInitializations(flow,{initialized.allocated_bytes,initialized.work})));
+    Check(std::get<TreeStructureError>(AnalyzeFlowInitializations(flow,{initialized.allocated_bytes-1,initialized.work}))==TreeStructureError::kResourceLimit);
+    Check(std::get<TreeStructureError>(AnalyzeFlowInitializations(flow,{initialized.allocated_bytes,initialized.work-1}))==TreeStructureError::kWorkLimit);
     Check(std::holds_alternative<FlowDominance>(AnalyzeFlowDominance(flow,{result.allocated_bytes,result.work})));
     Check(std::get<TreeStructureError>(AnalyzeFlowDominance(flow,{result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
     Check(std::get<TreeStructureError>(AnalyzeFlowDominance(flow,{result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);
@@ -57,12 +69,13 @@ void PreservedInitializations() {
     flow.events[1].definition=FlowDefinitionId{0};flow.events[2].definition=FlowDefinitionId{1};flow.events[3].read=SymbolId{1};
     Link(flow,0,1);Link(flow,1,2);Link(flow,2,3);if(bypass){Link(flow,0,2);flow.edges.back().completion=FlowCompletion::kThrow;}
     const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));
+    const auto initialized=std::get<FlowInitializations>(AnalyzeFlowInitializations(flow));
     const std::array<std::optional<SymbolId>,2> storage={std::nullopt,SymbolId{0}};
-    const auto result=std::get<StorageInitializations>(PlanStorageInitializations(flow,live,storage));
+    const auto result=std::get<StorageInitializations>(PlanStorageInitializations(flow,live,initialized,storage));
     Check(bool(result.blocked[1])==bypass);Check(result.stores[1].has_value()==!bypass);
-    Check(std::holds_alternative<StorageInitializations>(PlanStorageInitializations(flow,live,storage,{result.allocated_bytes,result.work})));
-    Check(std::get<TreeStructureError>(PlanStorageInitializations(flow,live,storage,{result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
-    Check(std::get<TreeStructureError>(PlanStorageInitializations(flow,live,storage,{result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);
+    Check(std::holds_alternative<StorageInitializations>(PlanStorageInitializations(flow,live,initialized,storage,{result.allocated_bytes,result.work})));
+    Check(std::get<TreeStructureError>(PlanStorageInitializations(flow,live,initialized,storage,{result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
+    Check(std::get<TreeStructureError>(PlanStorageInitializations(flow,live,initialized,storage,{result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);
   }
 }
 // Independent small fixed-point oracle. Deliberately scans all edges and uses
@@ -278,6 +291,14 @@ void SourceEvents() {
     if(event.expression==ExprId{4}&&event.read){Check(event.read==SymbolId{1});++shared_reads;}
   }
   Check(shared_updates==1&&shared_reads==1);
+  unsigned read_references=0,write_references=0;
+  for(const auto& reference:shared.references) {
+    Check(reference.binding!=SymbolId{2});
+    if(reference.site==FlowReferenceSite{ExprId{4}}) {
+      if(reference.kind==FlowReferenceKind::kRead)++read_references;else ++write_references;
+    }
+  }
+  Check(read_references==1&&write_references==1);
   std::vector<std::optional<SymbolId>> undefined_stores(tree.statements.size());undefined_stores[2]=SymbolId{1};
   omitted[2]=0;
   const auto preserved=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,

@@ -4,34 +4,17 @@
 #include <stdexcept>
 namespace abcd::source {
 std::variant<StorageInitializations,TreeStructureError> PlanStorageInitializations(
-    const RecoveryFlow& flow,const FlowLiveness& live,std::span<const std::optional<SymbolId>> storage,
+    const RecoveryFlow& flow,const FlowLiveness& live,const FlowInitializations& initialized,
+    std::span<const std::optional<SymbolId>> storage,
     analysis::SemanticBudget allowance) {
   try {
     TreeCheckBudget budget(allowance);StorageInitializations result;
     budget.Array(result.stores,flow.statements.size());budget.Array(result.blocked,flow.bindings.size());
-    std::vector<std::optional<FlowPoint>> initialized_at;
-    budget.Array(initialized_at,flow.bindings.size());bool needed=false;
     for(std::size_t i=0;i<flow.definitions.size();++i) {
-      budget.Step();const auto& definition=flow.definitions[i];
-      if((definition.kind==FlowDefinitionKind::kUndefined || definition.kind==FlowDefinitionKind::kInitializer) &&
-          definition.declaration &&
-          definition.declaration==flow.bindings[definition.binding.value].declaration)
-        initialized_at[definition.binding.value]=definition.point;
-      needed |= definition.kind==FlowDefinitionKind::kUndefined && live.live_definitions[i] &&
-          storage[definition.binding.value].has_value();
-    }
-    if(needed) {
-      auto analyzed=AnalyzeFlowDominance(flow,budget.Remaining());
-      if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
-      const auto& order=std::get<FlowDominance>(analyzed);
-      budget.Admit(order.allocated_bytes,1);budget.Step(order.work);
-      for(std::size_t i=0;i<flow.definitions.size();++i) {
-        budget.Step();const auto& definition=flow.definitions[i];const auto target=storage[definition.binding.value];
-        if(definition.kind!=FlowDefinitionKind::kUndefined || !live.live_definitions[i] || !target)continue;
-        if(!definition.declaration || !initialized_at[target->value] ||
-            !order.Dominates(*initialized_at[target->value],definition.point))result.blocked[definition.binding.value]=1;
-        else result.stores[definition.declaration->value]=*target;
-      }
+      budget.Step();const auto& definition=flow.definitions[i];const auto target=storage[definition.binding.value];
+      if(definition.kind!=FlowDefinitionKind::kUndefined || !live.live_definitions[i] || !target)continue;
+      if(!definition.declaration || !initialized.Completed(*target,definition.point))result.blocked[definition.binding.value]=1;
+      else result.stores[definition.declaration->value]=*target;
     }
     result.allocated_bytes=budget.Bytes();result.work=budget.Work();return result;
   } catch(TreeStructureError error){return error;}

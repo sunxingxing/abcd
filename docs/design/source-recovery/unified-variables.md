@@ -99,7 +99,7 @@ const分析、const提案、批量提交。AnalyzeEvaluations为const，返回�
 | --- | --- | --- |
 | Coalesce::CompletedStore（规则184已退出） | 删除empty声明不会丢live undefined | PlanStorageInitializations消费共享live事实；死值省略，活跃值在原点写回，共同completion dominance证明目标初始化已完成 |
 | InitializedRead/normal_stores | TDZ/GetBindingValue/PutValue成功 | FlowBinding初始化与完成边；优化器不得重算 |
-| completion_order/native_ready/declaration_controls | 初始化先于改名引用 | FlowDefinitions与SourceVariables生命期证明 |
+| completion_order/native_ready/declaration_controls（Coalesce路径规则185已退出） | 初始化先于改名引用 | FlowInitializations和当前FlowReference证明完成关系；其他消费者及activation证明仍待迁移 |
 | RootLifetime/Confined/region区间 | 原生for-let不改变环境与可见性 | 统一scope索引与binding lifetime计划 |
 | Constants/Aliases/PrivateCopy | immutable值传播与复制等值 | FlowDefinitions复制/到达定义；名字不参与值判断 |
 | Evaluations的stored-result推断 | 同值已写回，不重复PutValue | 同一定义/正常完成事实和DefinitionElision |
@@ -292,3 +292,34 @@ InitializedRead, native readiness and RootLifetime have not been replaced by a
 complete shared initialization/activation analysis. Initializer motion, closure
 cell reconstruction and whole-pipeline convergence remain open; this is a real
 retirement of one decision path, not completion of the entire architecture.
+
+## Shared reference initialization order (rules185)
+
+RecoveryFlow emits typed binding references at actual read and successful-write
+events. Update read/write halves are distinct, preserved undefined writes retain
+statement identity, and forwarded expressions use their current flow position.
+Removed expressions do not emit references. Coalesce now consumes this list instead
+of scanning the original arena and guessing reads/targets from syntax.
+
+AnalyzeFlowInitializations indexes selected lexical declarations, parameter entry
+and catch initialization, and owns one completion-dominance result for the current
+flow. Ordinary assignments, updates and preserved undefined stores do not create
+lexical initialization. Coalesce reference checking and PlanStorageInitializations
+borrow this same immutable result; the latter no longer constructs a second
+initialization index or dominance analysis. No facts survive the mapping commit.
+
+The Coalesce checks based on declaration_controls, definition_region and
+completion_order/native_ready are removed. Each actual reference instead asks
+whether its retained binding's initialization completed on every reaching path.
+Unreachable retained syntax has no execution-order obligation, but still goes
+through lexical name/lifetime checking. RootLifetime remains an explicit legacy
+activation proof; completion dominance does not substitute for cell identity.
+
+Source tests distinguish an eliminated early embedded write from an observed early
+write before the retained native declaration. The former no longer blocks sharing
+because of a stale arena occurrence; the latter must retain separate storage to
+avoid TDZ. Independent execution and wrong-sharing mutants check both. The 512
+graph remove-vertex oracle also checks conditional initialization completion and
+exact/short budgets. InitializedRead/effect production and non-Coalesce census
+consumers still need migration, as do canonical IR/lifetime integration and global
+pass convergence; this retires specific production branches, not all old analyses.

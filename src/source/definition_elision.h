@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_DEFINITION_ELISION_H_
 #include "flow_liveness.h"
 namespace abcd::source {
+struct FlowInitializations;
 struct DefinitionElisions {
   std::vector<ExprId> writes;
   std::vector<StmtId> statements;
@@ -35,8 +36,10 @@ struct StorageInitializations {
 // Shared liveness decides value retention; completion dominance proves that
 // the retained declaration has completed before the preserved write. Source
 // scope/name availability remains the source binding planner's obligation.
+// The initialization facts are shared with reference checking on this same
+// unchanged flow; this planner neither rebuilds them nor applies the mapping.
 [[nodiscard]] std::variant<StorageInitializations,TreeStructureError> PlanStorageInitializations(
-    const RecoveryFlow&,const FlowLiveness&,std::span<const std::optional<SymbolId>>,
+    const RecoveryFlow&,const FlowLiveness&,const FlowInitializations&,std::span<const std::optional<SymbolId>>,
     analysis::SemanticBudget = {});
 }
 #endif

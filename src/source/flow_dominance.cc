@@ -3,6 +3,31 @@
 #include <limits>
 #include <stdexcept>
 namespace abcd::source {
+std::variant<FlowInitializations,TreeStructureError> AnalyzeFlowInitializations(
+    const RecoveryFlow& flow,analysis::SemanticBudget allowance) {
+  try {
+    TreeCheckBudget budget(allowance);FlowInitializations result;
+    budget.Array(result.declarations,flow.bindings.size());
+    for(const auto& definition:flow.definitions) {
+      budget.Step();bool selected=false;
+      switch(definition.kind) {
+        case FlowDefinitionKind::kParameter: case FlowDefinitionKind::kCatch:selected=true;break;
+        case FlowDefinitionKind::kUndefined: case FlowDefinitionKind::kInitializer:
+          selected=definition.declaration && definition.declaration==flow.bindings[definition.binding.value].declaration;break;
+        case FlowDefinitionKind::kAssignment: case FlowDefinitionKind::kUpdate:
+        case FlowDefinitionKind::kUndefinedStore:break;
+      }
+      if(selected)result.declarations[definition.binding.value]=definition.point;
+    }
+    auto analyzed=AnalyzeFlowDominance(flow,budget.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
+    result.order=std::get<FlowDominance>(std::move(analyzed));
+    budget.Admit(result.order.allocated_bytes,1);budget.Step(result.order.work);
+    result.allocated_bytes=budget.Bytes();result.work=budget.Work();return result;
+  } catch(TreeStructureError error){return error;}
+  catch(const std::bad_alloc&){return TreeStructureError::kResourceLimit;}
+  catch(const std::length_error&){return TreeStructureError::kResourceLimit;}
+}
 std::variant<FlowDominance,TreeStructureError> AnalyzeFlowDominance(
     const RecoveryFlow& flow,analysis::SemanticBudget allowance) {
   try {

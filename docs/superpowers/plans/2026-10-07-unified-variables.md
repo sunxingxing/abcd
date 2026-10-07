@@ -178,3 +178,11 @@ action; the rebuilt graph distinguishes this write from lexical initialization.
 Straight and repeated-loop cases, interfering old values, target TDZ and independent
 missing-reset mutants cover the new behavior. Shared general initialization,
 copy/constant CompletedStore uses and broader lifetime recovery remain incomplete.
+
+Rules185: RecoveryFlow now emits typed binding references. Coalesce consumes the
+current occurrences instead of reconstructing references from the original arena,
+and uses one shared FlowInitializations result for reference order and preserved
+undefined planning. Its declaration-control/region and native-ready completion
+checks are removed. Eliminated versus retained early-write source cases prove the
+distinction. Other InitializedRead/effect and lexical activation consumers remain
+legacy; the complete task2/task4 initialization/lifetime migration is still open.
