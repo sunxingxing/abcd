@@ -10,7 +10,7 @@ using namespace abcd::source;
 namespace {
 enum class Form { kReturn, kIf, kLoop, kMultiple, kEffect, kArgument, kLocal, kBranchExit,
   kAwait, kYield, kTypeof, kAlias, kShadow, kGuarded, kCatch, kOutsideCatch, kCatchReads, kProjectedLocal, kInterleavedAlias,
-  kDeadInitialRead, kObservedInitialRead, kDiscardedOperand, kEffectOperand, kTransparentControl, kDebugger, kOnceLoop, kRepeatedLoop, kRedundantWrites, kEffectWrites };
+  kDeadInitialRead, kObservedInitialRead, kDiscardedOperand, kEffectOperand, kTransparentControl, kDebugger, kOnceLoop, kRepeatedLoop, kRedundantWrites, kEffectWrites, kDeadPrefix, kEffectPrefix, kObservedPrefix };
 struct Fixture {
   FunctionTree tree{};
   Fixture(Form form) {
@@ -71,6 +71,13 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
   if(form==Form::kAwait)rhs=f.Expr(AwaitExpr{rhs});if(form==Form::kYield)rhs=f.Expr(YieldExpr{rhs});
   const auto store=f.Stmt(ExpressionStmt{f.Expr(AssignmentExpr{SymbolTarget{{3}},rhs})});
   std::vector<StmtId> body{declaration,f.Wrap(store,count)};unsigned symbol=3;
+  if(form==Form::kDeadPrefix||form==Form::kEffectPrefix||form==Form::kObservedPrefix) {
+    std::vector<StmtId> prefix{f.Stmt(ExpressionStmt{f.Read(3)})};
+    for(unsigned i=0;i<=count;++i)prefix.push_back(f.Stmt(ExpressionStmt{f.Expr(AssignmentExpr{
+        SymbolTarget{{3}},form==Form::kEffectPrefix?f.Call(5):f.Read(2)})}));
+    if(form==Form::kObservedPrefix)prefix.push_back(f.Report({f.Read(3)}));
+    body.insert(body.begin()+1,prefix.begin(),prefix.end());
+  }
   if(form==Form::kDeadInitialRead || form==Form::kObservedInitialRead)
     body.insert(body.begin()+1,form==Form::kDeadInitialRead?
         f.Stmt(ExpressionStmt{f.Read(3)}):f.Report({f.Read(3)}));
@@ -150,7 +157,7 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
       test::Check(plan.evaluations[i]==ExpressionEvaluation::kRequired);
   }
 
-  const bool folded=form==Form::kReturn||form==Form::kIf||form==Form::kLoop||form==Form::kAwait||form==Form::kYield||form==Form::kTypeof||form==Form::kAlias||form==Form::kCatch||form==Form::kInterleavedAlias||form==Form::kDeadInitialRead||form==Form::kDiscardedOperand||form==Form::kTransparentControl||form==Form::kOnceLoop||form==Form::kRedundantWrites;
+  const bool folded=form==Form::kReturn||form==Form::kIf||form==Form::kLoop||form==Form::kAwait||form==Form::kYield||form==Form::kTypeof||form==Form::kAlias||form==Form::kCatch||form==Form::kInterleavedAlias||form==Form::kDeadInitialRead||form==Form::kDiscardedOperand||form==Form::kTransparentControl||form==Form::kOnceLoop||form==Form::kRedundantWrites||form==Form::kDeadPrefix||form==Form::kEffectPrefix;
   if(plan.replacements[read.value].has_value()!=folded)std::cerr<<"form="<<static_cast<unsigned>(form)<<" count="<<count<<" reverse="<<reverse<<'\n';
   test::Check(plan.replacements[read.value].has_value()==folded);
   std::ostringstream output;const auto printed=PrintFunctionTree(tree,output);test::Check(std::holds_alternative<PrintedFunction>(printed));
@@ -170,7 +177,7 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
 }
 }
 int main(int argc,char**) {
-  for(unsigned form=0;form<=static_cast<unsigned>(Form::kEffectWrites);++form){std::uint64_t small=0,large=0;
+  for(unsigned form=0;form<=static_cast<unsigned>(Form::kObservedPrefix);++form){std::uint64_t small=0,large=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}){const auto work=Check(static_cast<Form>(form),count,reverse,argc>1);if(count==400&&!reverse)small=work;if(count==800&&!reverse)large=work;}
     test::Check(large<small*3);
   }

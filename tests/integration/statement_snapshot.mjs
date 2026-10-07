@@ -27,6 +27,7 @@ function reference({form,count}) {
   else if(form===25)body+='while(true){return saved;}return false;';
   else if(form===26)body+='while(true){if(saved)break;report();if(flag)break;flag=true;}return false;';
   else if(form===27||form===28)body+=(form===27?'saved=saved;':'saved=(input.effect(),saved);').repeat(count+1)+'return saved;';
+  else if(form>=29&&form<=31)body='let saved;saved;'+(form===30?'saved=input.effect();':'saved=flag;').repeat(count+1)+(form===31?'report(saved);':'')+'saved=input.read();return saved;';
   else body+='return saved;';
   return Function('"use strict";return ('+kind+'(input,report,flag){'+body+'});')();
 }
@@ -72,6 +73,14 @@ for(const row of rows) {
   if(row.form===8)scenarios.push({thenable:true},{thenable:true,reject:true},{thenable:true,failAt:3});
   if(row.form===9)scenarios.push({request:'throw'},{request:'return'});
   for(const scenario of scenarios){assert.deepStrictEqual(await observe(actual,row,scenario),await observe(expected,row,scenario),`form=${row.form} count=${row.count}`);++cases;}
+  if(!row.count&&(row.form===30||row.form===31)) {
+    const bodies=['return input.read();'];
+    if(row.form===30)bodies.push('const value=input.read();input.effect();return value;');
+    for(const body of bodies) {
+      const wrong=Function('input','report','flag','"use strict";'+body);
+      assert.notDeepStrictEqual(await observe(wrong,row),await observe(expected,row));++mutations;
+    }
+  }
   if(!row.count&&row.form===28) {
     for(const body of ['return input.read();','input.effect();return input.read();']) {
       const wrong=Function('input','report','flag','"use strict";'+body);
@@ -82,9 +91,9 @@ for(const row of rows) {
     const wrong=Function('input','report','flag','"use strict";input.read();while(true){if(input.read())break;report();if(flag)break;flag=true;}return false;');
     assert.notDeepStrictEqual(await observe(wrong,row,{value:false}),await observe(expected,row,{value:false}));++mutations;
   }
-  if(!row.count&&[0,2,5,10,19,21,23,25,27].includes(row.form)) {
+  if(!row.count&&[0,2,5,10,19,21,23,25,27,29].includes(row.form)) {
     let wrong;
-    if(row.form===0||row.form===19||row.form===21||row.form===23||row.form===25||row.form===27)wrong=row.source.replace('input.read()','(input.read(), input.read())');
+    if(row.form===0||row.form===19||row.form===21||row.form===23||row.form===25||row.form===27||row.form===29)wrong=row.source.replace('input.read()','(input.read(), input.read())');
     if(row.form===2)wrong=row.source.replace('input.read()','false');
     if(row.form===5)wrong=row.source.replace(/\(flag = input\.read\(\)\)/,'false').replace(/\(0, report\)\(flag, saved\)/,'(0, report)(flag, (flag = input.read()))');
     if(row.form===10)wrong=row.source.replace(/\(0, __snapshotMissing\)/,'__snapshotMissing');

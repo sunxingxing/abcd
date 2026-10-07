@@ -2146,3 +2146,23 @@ consumers have migrated. No new sequence, adjacency or same-block admission is
 introduced. Redundant self-assignments with and without effects, reversed statement
 arenas and geometric input sizes exercise this pass interaction. Counting adds
 O(B) storage and O(B + R) work for bindings B and current references R.
+
+
+### Rules202: snapshot producers come from current covered definitions
+
+ForwardSnapshots selects the covered FlowDefinition and its RHS from the current
+graph, instead of selecting BindingUses.store and mapping coverage back onto
+that original first write. The old BindingUses.root_store index and its Scan
+update are deleted. The owning discarded evaluation supplies the commit target.
+Current read/write counts, bidirectional motion, exception and environment proofs
+remain independent obligations. Original first-store history no longer excludes
+a retained successor after dead-definition cleanup.
+The existing whole-assignment-statement projection boundary remains explicit: a
+nested write needs occurrence-level removal that preserves its enclosing effects.
+This is a transport limitation, not a language invariant, and no new local
+sequence/layout admission was added. Declaration and environment recovery still
+use legacy provenance; this does not complete binding-lifetime migration or
+global pass convergence. Tests compose discarded initial reads and overwritten
+values, effectful dead writes and observable earlier values with reverse arenas
+and geometric sizes. Selection scans B bindings, D definitions and R references
+in O(B+D+R) work with O(B) additional storage.

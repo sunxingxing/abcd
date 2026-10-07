@@ -24,6 +24,37 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则202，快照从当前覆盖定义选择 producer
+
+- ForwardSnapshots 直接消费 AnalyzeFlowReadCoverage 的定义结果，从
+  当前 FlowDefinition 取得写入与 RHS，并通过 FlowEvent.discarded 取得
+  所属语句。删除 BindingUses.root_store 及其 Scan 更新；本 pass 不再
+  使用原始 use.store，也不再把覆盖证明映射回最初写入。其他 pass 的
+  原始统计迁移仍未完成，不能据此宣称全局固定点已实现。
+- 当前读/写计数、双向执行配对、异常上下文和环境证明保持。仍限定已有
+  整赋值语句的源投影；嵌套写入需要保持周边效果的 occurrence 删除，
+  该表示能力缺口明确记录，不作为语言或图形状不变量。声明与环境来源
+  信息仍沿原实现运输，不增加局部序列、同块、邻接或样本条件。
+- 新增早期死写入、效果型早期死写入及早期值被观察的组合；前两组允许
+  从后继保留定义恢复，后一组保持可观察值。覆盖反序 statement arena、
+  0/1/200/201/400/800 和工作增长。独立执行核验 receiver、值身份、
+  抛异常与调用顺序；错误重复 producer、删除效果/读取及提前 producer
+  的变换由对照识别。
+- 旧实现 form29/count0 恢复失败，/tmp/abcd-rule202-red-tests.log。
+  实现后快照单元与源码测试 2/2 通过，11.33秒，
+  /tmp/abcd-rule202-focused-tests.log。最终相关回归 56/56 全部通过，
+  411.64秒，构建/测试日志为 /tmp/abcd-rule202-regression-build.log、
+  /tmp/abcd-rule202-regression-tests.log、/tmp/abcd-rule202-test-detail.log。
+  快照 384 份生成函数、14,652 个行为情景、32 个错误变换；Home 362 个
+  情景与 PageA 1,422 次配对执行通过。
+- ABC-only 导出 build/stage-one/snapshot-definitions-rule202：19 records，
+  10 complete / 0 partial / 9 noModule；十份源码语法检查通过，正文与
+  规则201一致，输入 SHA-256 不变。证据为 /tmp/abcd-rule202-export.log
+  和 /tmp/abcd-rule202-export-check.json；不报告覆盖率提升或平台执行收据。
+- 定义选择 O(B+D+R) 工作、O(B) 附加存储，B/D/R 为绑定/定义/引用数；
+  没有逐绑定遍历整个图。统一变量、结构 gate 和阶段一目标仍开放，
+  全量语料/RSS/DFX 暂停范围保持。
+
 ### 2026-10-08：规则201，快照写入计数消费当前语义流图
 
 - ForwardSnapshots 的候选筛选不再使用最初 Scan 的 use.writes==1。

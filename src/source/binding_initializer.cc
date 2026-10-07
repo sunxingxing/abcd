@@ -18,7 +18,7 @@ namespace abcd::source {
 namespace {
 struct BindingUses {
   std::optional<StmtId> declaration, initializer, initializer_container;
-  std::optional<StmtId> definition, root_store;
+  std::optional<StmtId> definition;
   std::optional<ExprId> first;
   std::optional<ExprId> store;
   std::optional<std::size_t> first_container, last_container;
@@ -367,29 +367,38 @@ class Initializers {
   void ForwardSnapshots() {
     const auto eligible=[&](std::size_t i) {
       const auto& use=uses_[i];
-      return use.private_storage && use.declaration && use.store &&
-          !use.escaped && use.root_store &&
-          !plan_.omitted[use.root_store->value] && !plan_.aliases[i] && !plan_.literals[i];
+      return use.private_storage && use.declaration &&
+          !use.escaped && !plan_.aliases[i] && !plan_.literals[i];
     };
     bool candidate=false;
     for(std::size_t i=0;i<uses_.size();++i){budget_.Step();candidate |= eligible(i);}
     if(!candidate)return;
-    const auto coverage=AnalyzeBindingReadCoverage();
+    const auto& flow=CurrentFlow();
+    const auto covered=AnalyzeFlowReadCoverage(flow,CurrentLiveness(),budget_.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&covered))throw *error;
+    const auto& coverage=std::get<FlowReadCoverage>(covered);
+    budget_.Admit(coverage.allocated_bytes,1);budget_.Step(coverage.work);
+    std::vector<const FlowDefinition*> definitions;
+    budget_.Array(definitions,uses_.size());
+    for(std::size_t i=0;i<flow.definitions.size();++i) {
+      budget_.Step();const auto& definition=flow.definitions[i];
+      if(coverage.definitions[i] && definition.write &&
+          (definition.kind==FlowDefinitionKind::kAssignment||definition.kind==FlowDefinitionKind::kInitializer))
+        definitions[definition.binding.value]=&definition;
+    }
     std::vector<const FlowReference*> reads,stores;
     std::vector<std::size_t> counts, write_counts;
     std::vector<std::uint8_t> bound;
     std::vector<std::optional<StmtId>> scope_containers, environments;
     budget_.Array(reads, uses_.size()); budget_.Array(counts, uses_.size());
     budget_.Array(stores,uses_.size());budget_.Array(write_counts,uses_.size());
-    for(const auto& reference:coverage.references) {
+    for(const auto& reference:flow.references) {
       budget_.Step();switch(reference.kind) {
         case FlowReferenceKind::kRead:
           ++counts[reference.binding.value];reads[reference.binding.value]=&reference;break;
         case FlowReferenceKind::kWrite:
           ++write_counts[reference.binding.value];
-          if(const auto* expression=std::get_if<ExprId>(&reference.site);
-              expression && *expression==uses_[reference.binding.value].store)
-            stores[reference.binding.value]=&reference;
+          stores[reference.binding.value]=&reference;
           break;
       }
     }
@@ -421,21 +430,29 @@ class Initializers {
     // Must execute the same next observation on every completion path. The
     // shared solver accounts for effects, state, exits and transparent cycles;
     // original statement counts/linear epochs no longer decide motion.
-    const auto& flow=CurrentFlow();
     auto analyzed=AnalyzeFlowMotion(flow,budget_.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
     const auto& motion=std::get<FlowMotion>(analyzed);
     budget_.Admit(motion.allocated_bytes,1);budget_.Step(motion.work);
-    struct ForwardedSnapshot { SymbolId binding; ExprId read, value; };
+    struct ForwardedSnapshot { SymbolId binding; ExprId read, value; StmtId statement; };
     std::vector<ForwardedSnapshot> proposed;
     budget_.Array(proposed,uses_.size());std::size_t count=0;
     for (std::size_t i = 0; i < uses_.size(); ++i) {
-      budget_.Step(); const auto& use = uses_[i];
+      budget_.Step();
       // Count retained writes in the same projection as read coverage and
       // motion. Original Scan counts include stores eliminated by earlier
       // passes; they cannot decide single-definition snapshot recovery.
-      if(!eligible(i) || counts[i]!=1 || write_counts[i]!=1 || !coverage.stores[i])continue;
-      const auto read=std::get<ExprId>(reads[i]->site),store=*use.store;
+      if(!eligible(i) || counts[i]!=1 || write_counts[i]!=1 || !definitions[i])continue;
+      const auto& definition=*definitions[i];
+      const auto read=std::get<ExprId>(reads[i]->site),store=*definition.write;
+      const auto discarded=flow.events[definition.point.value].discarded;
+      if(!discarded)continue;
+      const auto statement=flow.discarded[discarded->value].statement;
+      // Retain the existing whole-statement transport boundary. A nested
+      // definition needs occurrence removal that preserves its enclosing
+      // effects; its lack of that projection is not a language restriction.
+      const auto* expression=std::get_if<ExpressionStmt>(&tree_.statements[statement.value].statement);
+      if(!expression||expression->expression!=store)continue;
       if(!stores[i] || motion.next[stores[i]->point.value]!=reads[i]->point ||
           motion.previous[reads[i]->point.value]!=stores[i]->point)continue;
       // Bidirectional observation pairing proves execution count. The shared
@@ -443,14 +460,14 @@ class Initializers {
       if(!stores[i]->exceptions || stores[i]->exceptions!=reads[i]->exceptions)continue;
       const auto old_owner = expression_owners_[store.value], new_owner = expression_owners_[read.value];
       if (!old_owner || !new_owner || environments[old_owner->value] != environments[new_owner->value]) continue;
-      const auto rhs = std::get<AssignmentExpr>(tree_.expressions[store.value].expression).value;
+      const auto rhs = *definition.value;
       // Native naming follows the projected destination. Moving a direct
       // creation can require a computed-name wrapper; retain strict resource
       // contracts until no additional allocation is proved for that destination.
       if (ResourceFailures(tree_.identity.contract) != ResourceFailureScope::kExcluded &&
           (std::holds_alternative<FunctionExpr>(tree_.expressions[rhs.value].expression) ||
            std::holds_alternative<ClassExpr>(tree_.expressions[rhs.value].expression))) continue;
-      proposed[count++]={SymbolId{static_cast<std::uint32_t>(i)},read,rhs};
+      proposed[count++]={SymbolId{static_cast<std::uint32_t>(i)},read,rhs,statement};
     }
     // Value availability, motion and lexical proofs all observe the same
     // projection. Apply only after all proposals are complete; later passes
@@ -458,9 +475,9 @@ class Initializers {
     for(std::size_t i=0;i<count;++i) {
       budget_.Step();const auto& action=proposed[i];const auto& use=uses_[action.binding.value];
       BeginCommit();plan_.replacements[action.read.value]=action.value;
-      plan_.forwarded_statements[use.root_store->value]=1;
-      plan_.omitted[use.declaration->value]=plan_.omitted[use.root_store->value]=1;
-      plan_.statements[use.root_store->value].reset();
+      plan_.forwarded_statements[action.statement.value]=1;
+      plan_.omitted[use.declaration->value]=plan_.omitted[action.statement.value]=1;
+      plan_.statements[action.statement.value].reset();
     }
   }
   const RecoveryFlow& CurrentFlow() const {
@@ -1165,7 +1182,6 @@ class Initializers {
         if (const auto* assignment = std::get_if<AssignmentExpr>(&tree_.expressions[syntax.expression.value].expression))
           if (const auto* target = std::get_if<SymbolTarget>(&assignment->target)) {
             auto& use = uses_[target->symbol.value];
-            if (use.store == syntax.expression) use.root_store = visit.statement;
             const auto entry = loops_.initializer_owners[visit.statement.value];
             if (use.definition && ((!visit.projected && visit.container) || entry) && !use.initializer) {
               use.initializer = visit.statement; use.initializer_container = entry ? entry : visit.container;
