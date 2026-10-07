@@ -1,5 +1,15 @@
 # 验收、证据与实施交接
 
+2026-10-07 规则156：原生continuing body由已有condition/body归属恢复
+自己的声明context，复用共同作用域/全部观察证明。原规则155有效用例
+先RED；外层/for更新/退出后旧值及capture保持。48新三profile实际解码
+循环和原48 decoded、正反arena/深度变化参与312树检查，其中300完整
+源码308180独立行为比较/92有效JS mutation通过。最终27/27定向通过
+110.28秒，actual record受控矩阵保持；fresh pasteboard仍10complete/
+0partial/9noModule，十份源独立解析，空声明39→22、初始化27→44、
+私有const26→43及三个for保持。一般SSA/真实绑定、每轮capture、全部
+body/style和原结构gate未完成，阶段一Goal active、暂停范围保持。
+
 2026-10-07 规则155：共同DFS词法区间/全部观察census恢复祖先空声明到
 嵌套原赋值的初始化，实际loop/nullish打印owner保持可见性和旧值。
 新增普通分支/try/多轮循环与for更新读取反例，两个有效模型先RED。

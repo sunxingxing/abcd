@@ -36,6 +36,7 @@ class Initializers {
     budget.Array(uses_, tree.symbols.size()); budget.Array(projected_, tree.statements.size());
     budget.Array(containers_, tree.statements.size());
     budget.Array(lexical_, tree.statements.size()); budget.Array(projectors_, tree.statements.size());
+    budget.Array(retained_bodies_, tree.statements.size());
     budget.Array(projection_observations_, tree.expressions.size());
     budget.Array(expressions_, tree.expressions.size()); budget.Array(statements_, tree.statements.size());
   }
@@ -61,6 +62,7 @@ class Initializers {
       }
       if (const auto* loop = std::get_if<LoopStmt>(&tree_.statements[i].statement)) {
         if (const auto& condition = loops_.conditions[i]) {
+          if (condition->body) retained_bodies_[condition->body->value] = StmtId{static_cast<std::uint32_t>(i)};
           const auto& block = std::get<BlockStmt>(tree_.statements[loop->body.value].statement);
           for (unsigned child = 0; child < condition->header_count; ++child) {
             budget_.Step(); const auto root = tree_.children[block.first_child + child];
@@ -87,6 +89,12 @@ class Initializers {
       budget_.Step(); auto& visit = statements_[pending - 1];
       const auto& node = tree_.statements[visit.statement.value].statement;
       if (!visit.entered) {
+        // LoopBody prints this owned continuing occurrence as a native
+        // statement, outside its condition expression. Restore that lifetime
+        // before applying its own nested projections; no arm/layout matching.
+        if (retained_bodies_[visit.statement.value] == visit.projector && visit.projector) {
+          visit.projector.reset(); visit.projected = false;
+        }
         visit.entered = true; visit.projected |= projected_[visit.statement.value] != 0;
         if (!visit.projector) visit.projector = projectors_[visit.statement.value];
         if (std::holds_alternative<BlockStmt>(node)) {
@@ -228,6 +236,7 @@ class Initializers {
   std::vector<std::uint8_t> projected_;
   std::vector<ContainerRange> containers_;
   std::vector<std::optional<StmtId>> lexical_, projectors_;
+  std::vector<std::optional<StmtId>> retained_bodies_;
   std::vector<ProjectionObservation> projection_observations_;
   std::size_t projection_count_ = 0;
   std::size_t next_container_ = 0;

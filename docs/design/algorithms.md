@@ -1853,7 +1853,7 @@ check count/order, aliases, exceptions and descriptors; this is targeted
 semantic/work-growth evidence, not a physical RSS or full-corpus measurement.
 
 
-## Private binding initialization syntax (source rules 154/155)
+## Private binding initialization syntax (source rules 154/155/156)
 
 The already structurally checked FunctionTree supplies ownership and lexical
 containers. An iterative statement walk streams expression ownership, recording
@@ -1873,9 +1873,14 @@ expression ownership takes precedence over its nested nullish syntax independent
 of arena numbering. Canonical-body containment alone is insufficient when a
 read is printed in a for update outside that body. One bounded sparse reference
 array stores at most one context observation per expression (an update has one
-context and one write). The existing header envelope conservatively includes
-its retained continuing arm; native initialization there remains a documented
-syntax coverage gap. All earlier/RHS/nested accesses are included. Captured/module
+context and one write). Rules 156 indexes the existing condition's owned
+continuing-body occurrence: that statement is printed by LoopBody outside the
+condition expression. On entering it, the enclosing loop-expression context ends
+and native lexical ownership resumes before applying any projections within it.
+This uses the actual LoopConditionSyntax.body/LoopBody ownership, not an arm
+number, declaration count, graph shape or compiler pattern. One additional
+StmtId-indexed optional owner array costs O(S) work/storage; nested native scopes
+reuse the same DFS intervals. All earlier/RHS/nested accesses are included. Captured/module
 locations retain their declarations, and one static write permits private
 const syntax. This does not infer original const metadata, move expressions,
 coalesce SSA storage or require a bytecode block layout. Existing loop/nullish
@@ -1897,6 +1902,13 @@ lifetimes shrink; the adverse mutable-private/for-update fixture and valid-JS
 scope-shortening mutations keep projected reads in their actual visible storage.
 This is not original user binding or per-iteration capture
 recovery. Standard DFS subtree intervals introduce no dependency or license.
+Retained-body tests cover native locals, outside-loop old-value reads, 0/1/2/3
+entries, 200/201/400/800 nested blocks and reversed arenas. Three-profile actual
+decoded loops vary local-register allocation, 0/1/200/201 copies and block splits;
+their native representation and arbitrary-value behavior are checked independently.
+Decoded control may use a retained arm or a following native body; tests do not
+require one implementation layout. Real paired-record evidence remains separate
+from these conditional fixtures and from full-corpus/device acceptance.
 
 ## Nested phased selection execution owners (source rule 124)
 

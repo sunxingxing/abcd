@@ -48,7 +48,10 @@ struct Fixture {
     const auto statement = [&](StmtId id) { return StmtId{static_cast<std::uint32_t>(tree.statements.size()-1-id.value)}; };
     for (auto& child : tree.children) child = statement(child);
     for (auto& node : tree.statements) {
-      if (auto* syntax = std::get_if<IfStmt>(&node.statement)) syntax->consequent = statement(syntax->consequent);
+      if (auto* syntax = std::get_if<IfStmt>(&node.statement)) {
+        syntax->consequent = statement(syntax->consequent);
+        if (syntax->alternate) syntax->alternate = statement(*syntax->alternate);
+      }
       if (auto* syntax = std::get_if<TryStmt>(&node.statement)) {
         syntax->body = statement(syntax->body);
         if (syntax->finalizer) syntax->finalizer = statement(*syntax->finalizer);
@@ -87,9 +90,11 @@ struct Fixture {
     for (unsigned i = 0; i < count; ++i) body.push_back(Stmt(ExpressionStmt{Call(1, 2)}));
     if (form == 1) body.push_back(Store(Call(0)));
     body.push_back(Stmt(ReturnStmt{Read(2)}));
-    if (form == 11 || form == 12) {
-      std::get<ReturnStmt>(tree.statements[body.back().value].statement).value.reset();
-      tree.expressions.pop_back();
+    if (form >= 11 && form <= 14) {
+      if (form != 14) {
+        std::get<ReturnStmt>(tree.statements[body.back().value].statement).value.reset();
+        tree.expressions.pop_back();
+      }
       tree.names.push_back(u"again");
       tree.symbols.push_back({{0}, {3}, BindingKind::kParameter, DeclarationKind::kParameter, NameEvidence::kSynthesized, {}});
       tree.parameters.push_back({{3}, {}, false});
@@ -113,10 +118,20 @@ struct Fixture {
         second_store = Stmt(IfStmt{Read(1), Stmt(BlockStmt{{4}, first, 1}), {}});
       }
       const auto loop_first = static_cast<std::uint32_t>(tree.children.size()); tree.children.push_back(guard);
-      tree.children.insert(tree.children.end(), body.begin() + 1, body.end() - 1);
+      if (form >= 13) {
+        tree.scopes.push_back({ScopeKind::kBlock, ScopeId{2}});
+        tree.names.push_back(u"fence");
+        tree.symbols.push_back({{4}, {4}, BindingKind::kLocal, DeclarationKind::kLet, NameEvidence::kSynthesized, {}});
+        const auto first = static_cast<std::uint32_t>(tree.children.size());
+        tree.children.push_back(Stmt(DeclarationStmt{{4}, {}}));
+        tree.children.insert(tree.children.end(), body.begin() + 1, body.end() - 1);
+        const auto arm = Stmt(BlockStmt{{4}, first, static_cast<std::uint32_t>(body.size() - 1)});
+        std::get<IfStmt>(tree.statements[guard.value].statement).alternate = arm;
+      } else tree.children.insert(tree.children.end(), body.begin() + 1, body.end() - 1);
       if (second_store) tree.children.insert(tree.children.begin() + loop_first + 2, *second_store);
       if (form == 12) tree.children.push_back(Stmt(ExpressionStmt{Expr(AssignmentExpr{SymbolTarget{{4}}, Call(3, 2)})}));
-      const auto nested = Stmt(BlockStmt{{2}, loop_first, static_cast<std::uint32_t>(body.size() - 1 + (form == 12 ? 2 : 0))});
+      const auto nested = Stmt(BlockStmt{{2}, loop_first,
+          form >= 13 ? 1U : static_cast<std::uint32_t>(body.size() - 1 + (form == 12 ? 2 : 0))});
       std::get<LoopStmt>(tree.statements[loop.value].statement).body = nested;
       body = {declaration, loop, body.back()};
       if (carried) body.insert(body.begin() + 1, *carried);
@@ -178,6 +193,67 @@ void Decoded(abc::ProfileId profile, unsigned copies, bool split, bool branch, b
   if (branch) test::Check(output.str().find("const ") != std::string::npos);
   if (emit) std::cout << nlohmann::json{{"source", output.str()}, {"decoded", true}, {"branch", branch}} << '\n';
 }
+void DecodedLoop(abc::ProfileId profile, unsigned locals, unsigned copies, bool split, bool emit) {
+  using namespace analysis;
+  const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+  std::vector<std::uint8_t> bytes;
+  const auto byte = [&](abc::Opcode code, unsigned operand) { bytes.insert(bytes.end(), {op(code), static_cast<std::uint8_t>(operand)}); };
+  constexpr unsigned kBranchBytes = sizeof(std::int32_t);
+  const auto jump = [&](abc::Opcode code) {
+    const auto at = bytes.size(); bytes.push_back(op(code)); bytes.insert(bytes.end(), kBranchBytes, 0); return at;
+  };
+  const auto patch = [&](std::size_t from, std::size_t to) {
+    const auto delta = static_cast<std::uint32_t>(static_cast<std::int32_t>(to) - static_cast<std::int32_t>(from));
+    for (unsigned i = 0; i < kBranchBytes; ++i) bytes[from + 1 + i] = static_cast<std::uint8_t>(delta >> (i * 8));
+  };
+  const auto boundary = [&] { if (split) { const auto at = jump(abc::Opcode::kJMP_IMM32); patch(at, bytes.size()); } };
+  byte(abc::Opcode::kLDA_V8, locals); byte(abc::Opcode::kCALLARG0_IMM8, 0);
+  const auto exit = jump(abc::Opcode::kJEQZ_IMM32);
+  byte(abc::Opcode::kLDA_V8, locals + 1); byte(abc::Opcode::kCALLARG0_IMM8, 0); byte(abc::Opcode::kSTA_V8, 0);
+  for (unsigned i = 0; i < copies; ++i) {
+    byte(abc::Opcode::kMOV_V8_V8, 1); bytes.push_back(0);
+    byte(abc::Opcode::kMOV_V8_V8, 0); bytes.push_back(1); boundary();
+  }
+  boundary(); byte(abc::Opcode::kLDA_V8, locals + 3);
+  const auto skip = jump(abc::Opcode::kJEQZ_IMM32);
+  byte(abc::Opcode::kLDA_V8, locals + 2); byte(abc::Opcode::kCALLARG1_IMM8_V8, 0); bytes.push_back(0);
+  patch(skip, bytes.size()); byte(abc::Opcode::kLDA_V8, locals + 2);
+  byte(abc::Opcode::kCALLARG1_IMM8_V8, 0); bytes.push_back(0);
+  byte(abc::Opcode::kLDA_V8, locals + 4); const auto back = jump(abc::Opcode::kJEQZ_IMM32);
+  byte(abc::Opcode::kLDA_V8, 0); bytes.push_back(op(abc::Opcode::kRETURN));
+  patch(back, bytes.size()); const auto repeat = jump(abc::Opcode::kJMP_IMM32); patch(repeat, 0);
+  patch(exit, bytes.size()); bytes.push_back(op(abc::Opcode::kRETURNUNDEFINED));
+  abc::MethodBody body;
+  for (std::uint32_t pc = 0; pc < bytes.size();) {
+    const auto decoded = std::get<abc::DecodedInstruction>(abc::DecodeInstruction(std::span<const std::uint8_t>(bytes).subspan(pc), profile));
+    abc::BodyInstruction instruction{{pc}, decoded, {}};
+    if (decoded.branch_delta) instruction.branch_target = abc::CodeOffset{static_cast<std::uint32_t>(pc + *decoded.branch_delta)};
+    body.instructions.push_back(instruction); pc += decoded.size;
+  }
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(locals, 5, {}));
+  RouteInputIdentity identity; identity.profile = profile;
+  const auto input = std::get<FunctionInput>(FunctionInput::Build(identity, {201}, {100}, body, frame, InputCaptureMode::kConditional));
+  const auto values = BuildFunctionValues(input, body, frame); test::Check(std::holds_alternative<FunctionValues>(values));
+  const auto& graph = std::get<FunctionValues>(values).graph;
+  const auto control = BuildControlPlan(graph); test::Check(std::holds_alternative<ControlPlan>(control));
+  const auto evaluation = BuildEvaluationPlan(graph); test::Check(std::holds_alternative<EvaluationPlan>(evaluation));
+  FunctionSyntax syntax{}; syntax.identity = identity; syntax.method = {201};
+  syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+  syntax.names = {u"again", u"seed", u"report", u"choice", u"stop"};
+  for (unsigned i = 0; i < frame.parameters; ++i) syntax.parameters.push_back({NameId{i}, NameEvidence::kDebugRange});
+  std::vector<ExpressionConstant> constants(graph.ops.size()); const ExpressionConstants resolved{constants, syntax.names.size()};
+  const auto built = BuildFunctionTree(graph, std::get<ControlPlan>(control), std::get<EvaluationPlan>(evaluation), syntax, resolved);
+  test::Check(std::holds_alternative<ConstructedFunction>(built)); const auto& tree = std::get<ConstructedFunction>(built).tree;
+  test::Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(graph, std::get<ControlPlan>(control), std::get<EvaluationPlan>(evaluation), tree, resolved)));
+  const auto loops = std::get<LoopSyntax>(PlanLoopSyntax(tree));
+  // The decoded CFG may yield a retained arm or a following native body.
+  // Both source ownership forms require a real loop condition, not a shape.
+  test::Check(std::any_of(loops.conditions.begin(), loops.conditions.end(), [](const auto& condition) { return bool(condition); }));
+  std::ostringstream output; test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, output)));
+  test::Check(output.str().find("const ") != std::string::npos);
+  if (emit) std::cout << nlohmann::json{{"source", output.str()}, {"decoded", false}, {"decoded_loop", true},
+      {"mutate", locals == 2 && copies == 0 && !split}} << '\n';
+}
 std::uint64_t Deep(unsigned depth, bool reverse, bool emit) {
   Fixture fixture(8, 1); auto& tree = fixture.tree;
   auto& branch = std::get<IfStmt>(tree.statements[tree.children[std::get<BlockStmt>(tree.statements[tree.body.value].statement).first_child + 1].value].statement);
@@ -212,14 +288,49 @@ std::uint64_t Deep(unsigned depth, bool reverse, bool emit) {
   }
   return plan.work;
 }
+std::uint64_t NativeDeep(unsigned form, unsigned depth, bool reverse, bool emit) {
+  Fixture fixture(form, 1); auto& tree = fixture.tree;
+  const auto initial = std::get<LoopSyntax>(PlanLoopSyntax(tree));
+  std::optional<StmtId> arm;
+  for (const auto& condition : initial.conditions) if (condition && condition->body) arm = condition->body;
+  test::Check(arm.has_value());
+  const auto block = std::get<BlockStmt>(tree.statements[arm->value].statement);
+  const auto first = static_cast<std::uint32_t>(tree.children.size());
+  const std::array program{tree.children[block.first_child + 1], tree.children[block.first_child + 2]};
+  tree.children.insert(tree.children.end(), program.begin(), program.end());
+  const ScopeId scope{static_cast<std::uint32_t>(tree.scopes.size())}; tree.scopes.push_back({ScopeKind::kBlock, block.scope});
+  auto child = fixture.Stmt(BlockStmt{scope, first, 2});
+  for (unsigned i = 0; i < depth; ++i) {
+    const ScopeId outer{static_cast<std::uint32_t>(tree.scopes.size())}; tree.scopes.push_back({ScopeKind::kBlock, block.scope});
+    tree.scopes[std::get<BlockStmt>(tree.statements[child.value].statement).scope.value].parent = outer;
+    const auto at = static_cast<std::uint32_t>(tree.children.size()); tree.children.push_back(child);
+    child = fixture.Stmt(BlockStmt{outer, at, 1});
+  }
+  tree.children[block.first_child + 1] = child;
+  const ScopeId empty{static_cast<std::uint32_t>(tree.scopes.size())}; tree.scopes.push_back({ScopeKind::kBlock, block.scope});
+  tree.children[block.first_child + 2] = fixture.Stmt(BlockStmt{empty, static_cast<std::uint32_t>(tree.children.size()), 0});
+  if (reverse) fixture.Reverse();
+  test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  const auto loops = std::get<LoopSyntax>(PlanLoopSyntax(tree)); const auto nullish = std::get<NullishSyntax>(PlanNullishSyntax(tree));
+  const auto result = PlanBindingInitializers(tree, loops, nullish); test::Check(std::holds_alternative<BindingInitializers>(result));
+  const auto& plan = std::get<BindingInitializers>(result);
+  test::Check(bool(plan.omitted[fixture.declaration.value]) == (form == 13));
+  if (depth <= 201) {
+    std::ostringstream output; test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, output)));
+    if (emit) std::cout << nlohmann::json{{"source", output.str()}, {"form", form}, {"count", 1},
+        {"fold", form == 13}, {"decoded", false}, {"depth", depth}} << '\n';
+  }
+  return plan.work;
+}
 }
 int main(int argc, char**) {
-  std::array<std::uint64_t, 13> small{}, large{};
-  for (unsigned form = 0; form < 13; ++form) for (unsigned count : {0U, 1U, 200U, 201U, 400U, 800U}) for (bool reverse : {false,true}) {
+  std::array<std::uint64_t, 15> small{}, large{};
+  for (unsigned form = 0; form < 15; ++form) for (unsigned count : {0U, 1U, 200U, 201U, 400U, 800U}) for (bool reverse : {false,true}) {
     Fixture fixture(form, count); std::ostringstream output;
     if (reverse) fixture.Reverse();
     const auto loops = std::get<LoopSyntax>(PlanLoopSyntax(fixture.tree));
     if (form == 12) test::Check(std::any_of(loops.transitions.begin(), loops.transitions.end(), [](const auto& transition) { return bool(transition); }));
+    if (form >= 13) test::Check(std::any_of(loops.conditions.begin(), loops.conditions.end(), [](const auto& condition) { return condition && condition->body; }));
     const auto nullish = std::get<NullishSyntax>(PlanNullishSyntax(fixture.tree));
     const auto planned = PlanBindingInitializers(fixture.tree, loops, nullish);
     test::Check(std::holds_alternative<BindingInitializers>(planned));
@@ -229,7 +340,7 @@ int main(int argc, char**) {
     const auto printed = PrintFunctionTree(fixture.tree, output);
     test::Check(std::holds_alternative<PrintedFunction>(printed));
     const auto& ranges = std::get<PrintedFunction>(printed);
-    const bool fold = form == 0 || form == 1 || form == 5 || form == 6 || form == 8 || form == 9 || form == 11;
+    const bool fold = form == 0 || form == 1 || form == 5 || form == 6 || form == 8 || form == 9 || form == 11 || form == 13;
     test::Check((ranges.statements[fixture.declaration.value].begin == ranges.statements[fixture.declaration.value].end) == fold);
     if (fold) test::Check(output.str().find(form == 1 ? "let saved = " : "const saved = ") != std::string::npos);
     for (const auto& at : ranges.expressions) test::Check(at.begin < at.end && at.end <= output.str().size());
@@ -244,7 +355,19 @@ int main(int argc, char**) {
     if (depth == 800 && !reverse) deep_large = work;
   }
   test::Check(deep_large < deep_small * 3);
+  for (unsigned form : {13U, 14U}) {
+    std::uint64_t small_work = 0, large_work = 0;
+    for (unsigned depth : {1U, 2U, 200U, 201U, 400U, 800U}) for (bool reverse : {false,true}) {
+      const auto work = NativeDeep(form, depth, reverse, argc > 1);
+      if (depth == 400 && !reverse) small_work = work;
+      if (depth == 800 && !reverse) large_work = work;
+    }
+    test::Check(large_work < small_work * 3);
+  }
   for (auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
     for (unsigned copies : {0U, 1U, 200U, 201U}) for (bool split : {false, true}) for (bool branch : {false, true})
       Decoded(profile, copies, split, branch, argc > 1);
+  for (auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
+    for (unsigned locals : {2U, 7U}) for (unsigned copies : {0U, 1U, 200U, 201U}) for (bool split : {false, true})
+      DecodedLoop(profile, locals, copies, split, argc > 1);
 }

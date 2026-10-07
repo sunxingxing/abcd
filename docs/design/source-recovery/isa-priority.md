@@ -1,5 +1,12 @@
 # 全 ISA 优先执行顺序
 
+2026-10-07 规则156：按共同condition/body打印归属恢复原生循环体的私有
+初始化，取消继承的条件表达式context，全部旧值/更新/capture义务保持。
+300完整源码308180行为/92 mutation、最终27/27定向通过；fresh实际
+pasteboard空声明39→22、初始化27→44，10complete/0partial及三个for保持。
+继续一般SSA存储与实际变量绑定、for let/每轮capture和全body/style；
+原结构gate、阶段一Goal与暂停范围保持，证据见status.md。
+
 2026-10-07 规则155：私有初始化以共同词法子树区间和全部观察位置证明
 作用域包含，去掉空声明/赋值同容器限制，复用loop/nullish打印owner
 保护for更新读取。212源码25940独立行为/56 mutation、最终25/25及

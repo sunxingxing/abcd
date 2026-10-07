@@ -90,7 +90,7 @@ native initializer/每轮binding与phi/update临时值消除仍是表示缺口�
 不描述为语言/VM限制。具体解码/独立行为、scope/throw/await/yield反例
 及实际record证据见status.md；两个实际for不能代替阶段一完整body风格。
 
-## 私有结果的初始化声明（规则 154/155）
+## 私有结果的初始化声明（规则 154/155/156）
 
 共同BindingInitializers在已检查的canonical FunctionTree上恢复原位置的
 `let/const value = expression`，只投影已有CompilerTemporary的空声明及
@@ -116,8 +116,13 @@ canonical AST容器；循环进入/条件/更新表达式及optional程序的读
 共同owner作用域中计入。否则体内声明可能对for更新表达式不可见。
 owner晚于原根也在遍历结束后解析，外层投影传播到其全部子节点；
 native loop表达式内的nullish程序保持外层scope，arena重编号不改变结果。
-既有header投影的保守footprint仍包含其保留的continuing arm；这些体内
-初始化尚未进一步细分，继续保留原声明，不把保守包含当成语言不变量。
+规则156补齐保留的continuing body归属：LoopConditionSyntax.body指定
+仍由LoopBody打印为语句的原发生点，进入该发生点时结束外层loop表达式
+context，再应用体内自己的投影。原native词法作用域继续生效，所以体内
+和后续分支中的私有初始化能由同一census证明。不按第几个arm、某种
+声明/handler/操作组合或编译器布局选择；原条件、循环体、执行及来源不变。
+循环退出后或for更新表达式仍要读取的原存储保持外层，class/cell/closure
+捕获仍排除。未恢复实际用户for let、每轮capture或一般SSA变量合并。
 
 Ruling：此次仅恢复私有结果声明，不把SSA carrier猜成用户let/const，
 不改变可观察capture环境。嵌在调用参数中的保存、不能证明作用域包含的观察、

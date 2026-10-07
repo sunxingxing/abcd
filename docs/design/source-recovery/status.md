@@ -12,6 +12,55 @@
 
 ## 当前阶段
 
+### 2026-10-07：规则156，条件投影保留的原生循环体初始化
+
+- 干净10b62dd8继续，production/rules155推进156。共同初始化分析
+  使用已有LoopConditionSyntax.body及LoopBody打印归属，将保持语句的
+  continuing body从外层条件表达式context中排除；进入原发生点时恢复
+  native词法归属，再处理体内自己的loop/nullish投影。只增加一份
+  StmtId索引，原子树区间、首次直接store支配及全部观察census继续共用。
+- 不识别哪个arm、声明/handler数、opcode/producer列表、样本/名字、
+  PC/register、同块、邻接或COPY/selection数量。原条件/body、表达式/
+  副作用、异常/暂停、SymbolId及来源不动。外层、for更新及退出后旧值
+  读取与真实capture/module escape保持原存储；单次写私有const，后续
+  写let。没有推断源码原const、合并SSA/cell/formal或改变每轮capture。
+  O(statements+expressions+owned children+symbols+owned class captures)
+  时间/预算化scratch保持，一次DFS无逐symbol/loop重扫，新索引O(statements)。
+- 有效native local循环体用例先在原规则155的已打印范围断言249行RED。
+  修复后新增退出后读取反例继续保持外层，零/一/二/三轮行为、原throw、
+  任意Number/BigInt/Symbol/object身份和callback receiver/order另验。
+  NativeDeep以相同逻辑覆盖200/201/400/800内层block及相反arena；
+  400→800 work均小于三倍，既有exact/under预算保持，不声称物理RSS。
+- 新实际decoded loop起初测试错误要求固定retained-body布局，在249行
+  失败；其共同Control实际上恢复following native body。测试改为核对
+  真正loop condition及体内seed原生const，未修改生产控制/语义证明。
+  三profile×两register分配×0/1/200/201 COPY×straight/split共48新循环，
+  逐profile DecodeInstruction，经FunctionInput/ValueProgram、共同control/
+  evaluation/tree及新鲜TreeSemantics。既有48 decoded保留；十五树族
+  六规模/正反arena共180树，加36深度树与96 decoded，共312检查树。
+  深度400/800十二树只分析，300完整源码进入独立JS oracle，最终308180
+  行为比较/92有效JS mutation通过；原async/yield及for更新反例仍覆盖。
+- abc_structure/abc_semantic及十三相关fixture最终构建退出0。27项定向
+  27/27通过110.28秒：共同body/binding、loop条件/进入/更新、snapshot/
+  optional、scope/structure、numeric update、class/control、module/family
+  names/default export，以及实际构造十record、Push、ProgressBar、富文本。
+  受控平台矩阵/构造子集不代替设备SDK或所有record body的独立验收。
+  修改mjs的node --check、git diff --check通过，输入未修改，无新依赖。
+- fresh ABC-only build/stage-one/loop-binding-pasteboard-final：19 records/
+  219 methods，10complete source/0partial/9noModule，顶层requested
+  contract language_numeric_constructors_v1。十份源Acorn独立解析通过，
+  无legacy或complete输出INCOMPLETE/UNRECOVERED。实际PasteBoard空声明
+  39→22、初始化27→44、私有const26→43，总声明66及三个for保持；
+  取record/type及各MIME分支的getData/await等现在按原发生点在循环体
+  内初始化。仍有phi/更新/参数内保存与真实cell，未冒称SSA carrier消除。
+- 证据/tmp/abcd-loop-binding-{red-build,red,build,tests,decoded-build,
+  decoded,decoded-tests,expanded-build,expanded-tests,final-build,
+  tests-final,behavior-final,export-final,style}.log。原字段/全局/signature/
+  body gate和阶段一Goal继续active；下一步一般SSA存储/干涉投影、真实
+  变量归属、native for let/每轮capture、一般继续程序及全body/style验收。
+  full suite、expanded corpus、RSS/benchmark、DFX、scheduler、agents及
+  周期audit继续暂停，固定五ABC106/0未重跑。
+
 ### 2026-10-07：规则155，私有初始化的共同作用域包含证明
 
 - 从干净2886cc9b继续，production/rules154推进155。BindingInitializers

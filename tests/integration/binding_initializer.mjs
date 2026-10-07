@@ -4,6 +4,10 @@ import {parseJavaScript} from './class_reference.mjs';
 const rows = execFileSync(process.argv[2], ['--emit'], {encoding:'utf8', maxBuffer:16_000_000}).trim().split('\n').map(JSON.parse);
 const token = {}, second = {}, failure = Symbol('original throw');
 function original(row) {
+  if (row.decoded_loop) return function(again,seed,report,choice,stop) {
+    while(again()) {const saved=seed();if(choice!==false && choice!==0) report(saved);report(saved);if(stop!==false && stop!==0)return saved;}
+    return;
+  };
   if (row.decoded) return function(seed, report, flag) {
     const saved = seed(); if (!row.branch || flag !== false && flag !== 0) report(saved); report(saved); return saved;
   };
@@ -11,6 +15,8 @@ function original(row) {
     'saved=seed();' + 'report(saved);'.repeat(row.count) + '}return;};')();
   if (row.form === 12) return Function('return function(seed,report,again){let saved;let carried=true;while(carried){' +
     'saved=seed();if(report){saved=seed();}' + 'report(saved);'.repeat(row.count) + 'carried=again(saved);}return;};')();
+  if (row.form === 13 || row.form === 14) return Function('return function(seed,report,again){let saved;while(again()){' +
+    'let fence;saved=seed();' + 'report(saved);'.repeat(row.count) + '}return' + (row.form === 14 ? ' saved' : '') + ';};')();
   if (row.form >= 8) {
     const body = 'saved=seed();' + 'report(saved);'.repeat(row.count) + 'return saved;';
     return Function('return function(seed,report){let saved;' +
@@ -22,7 +28,7 @@ function original(row) {
     (row.form === 2 ? 'report(saved);' : '') + (row.form === 4 ? 'if(seed){saved=seed();}' : 'saved='+value+';') +
     'report(saved);'.repeat(row.count) + (row.form === 1 ? 'saved=seed();' : '') + 'return saved;})')();
 }
-async function observe(fn, row, value, failAt, reject = false, request = 'next', flag = true, iterations = 2) {
+async function observe(fn, row, value, failAt, reject = false, request = 'next', flag = true, iterations = 2, stop = false) {
   const trace = [], requests = []; let at = 0, seeds = 0, returned, thrown;
   const event = (kind, value) => {trace.push([kind, value]); if (++at === failAt) throw failure;};
   const seed = function() {
@@ -36,7 +42,7 @@ async function observe(fn, row, value, failAt, reject = false, request = 'next',
   let checks = 0;
   const again = function(value) {assert.equal(this, undefined); event('again', row.form === 12 ? value : checks); return checks++ < iterations;};
   try {
-    returned = fn(seed, report, row.form === 11 || row.form === 12 ? again : flag);
+    returned = row.decoded_loop ? fn(again,seed,report,flag,stop) : fn(seed, report, row.form >= 11 ? again : flag);
     if (row.form === 6) {
       const generator = returned; const first = generator.next(); requests.push(first.value);
       const end = request === 'throw' ? generator.throw(failure) : request === 'return' ? generator.return(second) : generator.next(value);
@@ -55,7 +61,7 @@ function compare(actual, expected) {
 }
 let comparisons=0, mutations=0, folded=0;
 for (const row of rows) {
-  const ast = parseJavaScript(row.source), pending=[ast], initialized=[], declarations=[], stores=[];
+  const ast = parseJavaScript(row.source), pending=[ast], initialized=[], declarations=[], stores=[], loops=[];
   while (pending.length) {
     const node=pending.pop(); if(node.type==='VariableDeclaration') {
       declarations.push(node); for(const item of node.declarations) if(item.init) initialized.push(item);
@@ -65,14 +71,33 @@ for (const row of rows) {
     }
     if(node.type==='ExpressionStatement' && node.expression.type==='AssignmentExpression' &&
         node.expression.left.type==='Identifier') stores.push(node);
+    if(node.type==='WhileStatement' || node.type==='ForStatement') loops.push(node);
   }
   if(row.fold || row.branch) {assert.ok(initialized.length); ++folded;}
   const generated=Function('return '+row.source)(), reference=original(row);
+  let seedInitializer;
+  if(row.decoded_loop) {
+    assert.equal(loops.length,1); assert.notEqual(loops[0].test.type,'Literal');
+    const body=[loops[0].body];
+    while(body.length) {
+      const node=body.pop();
+      if(node.type==='VariableDeclaration' && node.kind==='const') for(const item of node.declarations) {
+        const callee=item.init?.type==='CallExpression' ? item.init.callee : null;
+        const identifier=callee?.type==='SequenceExpression' ? callee.expressions.at(-1) : callee;
+        if(identifier?.type==='Identifier' && identifier.name==='seed') seedInitializer=item.init;
+      }
+      for(const child of Object.values(node)) {
+        if(Array.isArray(child)) body.push(...child.filter(value=>value?.type)); else if(child?.type) body.push(child);
+      }
+    }
+    assert.ok(seedInitializer,'native private seed initialization in the decoded loop body');
+  }
   for(const value of [undefined,null,false,0,-0,NaN,1n,Symbol('value'),token])
-    for(const flag of row.decoded ? [false,true,0,-0,NaN,undefined,null,1n,Symbol('flag'),{}] : [true])
-      for(const iterations of row.form === 11 || row.form === 12 ? [0,1,2,3] : [2])
+    for(const flag of row.decoded || row.decoded_loop ? [false,true,0,-0,NaN,undefined,null,1n,Symbol('flag'),{}] : [true])
+      for(const stop of row.decoded_loop ? [false,true,0,undefined] : [false])
+      for(const iterations of row.form >= 11 || row.decoded_loop ? [0,1,2,3] : [2])
       for(const fault of [Infinity,1,2,(row.count ?? 2)+1]) {
-        try {compare(await observe(generated,row,value,fault,false,'next',flag,iterations),await observe(reference,row,value,fault,false,'next',flag,iterations));}
+        try {compare(await observe(generated,row,value,fault,false,'next',flag,iterations,stop),await observe(reference,row,value,fault,false,'next',flag,iterations,stop));}
         catch(error) {error.message += `; form=${row.form}, count=${row.count}, decoded=${row.decoded}, flag=${flag}, fault=${fault}, value=${String(value)}`; throw error;}
         ++comparisons;
       }
@@ -100,7 +125,7 @@ for (const row of rows) {
       await assert.rejects(async()=>compare(await observe(bad,row,token,Infinity),await observe(reference,row,token,Infinity)),assert.AssertionError);++mutations;
     }
   }
-  if((row.form===4 || row.form===10 || row.form===12) && row.count===1) {
+  if((row.form===4 || row.form===10 || row.form===12 || row.form===14) && row.count===1) {
     const declaration=declarations.find(node=>node.declarations.some(item=>item.id.name==='saved'));
     const store=stores.filter(node=>node.expression.left.name==='saved').sort((a,b)=>a.start-b.start)[0]; assert.ok(declaration && store);
     // Valid JS with an incorrectly shortened lifetime must be detected when
@@ -111,6 +136,14 @@ for (const row of rows) {
     parseJavaScript(changed); const bad=Function('return '+changed)();
     await assert.rejects(async()=>compare(await observe(bad,row,token,row.form===10 ? 1 : Infinity),
       await observe(reference,row,token,row.form===10 ? 1 : Infinity)),assert.AssertionError); ++mutations;
+  }
+  if(row.decoded_loop && row.mutate) {
+    const call=row.source.slice(seedInitializer.start,seedInitializer.end);
+    for(const replacement of ['void 0','('+call+','+call+')']) {
+      const changed=row.source.slice(0,seedInitializer.start)+replacement+row.source.slice(seedInitializer.end);
+      parseJavaScript(changed); const bad=Function('return '+changed)();
+      await assert.rejects(async()=>compare(await observe(bad,row,token,Infinity),await observe(reference,row,token,Infinity)),assert.AssertionError);++mutations;
+    }
   }
 }
 console.log(JSON.stringify({sources:rows.length,folded,comparisons,mutations,platformExecution:false}));

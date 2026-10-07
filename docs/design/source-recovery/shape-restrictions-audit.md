@@ -1,5 +1,14 @@
 # 按用户要求进行的恢复条件审计
 
+规则156补充：共同LoopConditionSyntax.body已明确继续执行而保持语句的
+原发生点，printer的LoopBody按此打印。规则155错误把它保守包含在条件
+表达式程序中，现结束该外层投影context并恢复native词法归属，再应用
+体内自己的loop/nullish投影。该LoopStmt/StmtId身份是语法发生点的归属
+义务，不是新增block/arm/PC/register布局条件，不重新识别compiler图形。
+全部旧值/RHS/外层/for更新观察及capture/module义务保持，不消除SSA。
+有效树先在初始化范围断言RED，实际解码循环不要求固定retained/following
+body形状；三profile、分配/COPY/split、正反AST及实际record另验。
+
 规则155补充：规则154的“空声明和初始化必须同一native容器”是保守的
 表示范围，现由共同作用域证明替代，不再作为额外条件。一次迭代DFS
 记录每个词法容器的子树区间，一次ownership census记录SymbolId全部

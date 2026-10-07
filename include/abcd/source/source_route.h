@@ -333,7 +333,9 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // preserving actual scope, observations, captures and original expressions.
 // Rules 155 prove all private observations stay in the initializer's lexical
 // subtree using actual projection scopes; outer declarations need not share it.
-inline constexpr std::uint32_t kRouteEvidenceRules = 155;
+// Rules 156 keep the condition's owned continuing body in its native lexical
+// context; private initialization there uses the same observation proof.
+inline constexpr std::uint32_t kRouteEvidenceRules = 156;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,
