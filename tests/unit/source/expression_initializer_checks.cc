@@ -21,7 +21,10 @@ void CheckExpressionRanges(const FunctionTree& tree,const BindingInitializers& p
       const auto id=pending.back();pending.pop_back();
       if(plan.forwarded_values[i]==id)continue;
       omitted[id.value]=printed.statements[i].begin;
-      VisitExpressionChildren(tree,tree.expressions[id.value].expression,[&](ExprId child){pending.push_back(child);});
+      VisitExpressionChildren(tree,tree.expressions[id.value].expression,[&](ExprId child){
+        if(const auto transport=plan.transports[id.value];transport&&transport->value==child)return;
+        pending.push_back(child);
+      });
     }
   }
   for(std::size_t i=0;i<printed.expressions.size();++i) {

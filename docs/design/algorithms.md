@@ -3241,3 +3241,32 @@ against original observations, rather than production DSU/interval summaries.
 Tests cover 45,056 oracle cases, 3/200/201/400/800 reordered groups, exact/short
 budgets and actual native initializer/producer source execution. Current selected
 timings and fixed-record evidence belong in status.md; paused scope is unchanged.
+
+### Expression-occurrence snapshot projection (2026-10-08, rules234)
+
+Provenance remains the shared completion-flow/value-use and bidirectional universal
+observation algorithms, plus the existing batched lexical-name index. No dependency
+or library is added. Typed source occurrence transport is distinct from read value
+replacement, preserving arbitrary surrounding effects. A single trial graph uses
+the production RecoveryFlow adapter; it does not infer bytecode semantics again.
+
+Let E be expressions, S statements, B bindings, K proposals and R actual reference
+plus free-name occurrences. Trial plan buffers cost O(E+S), expression owner/root
+arrays O(E), proposal/failure arrays O(B+K) and query buffers O(R). Adapter work
+remains its existing graph/event/edge cost plus O(E) root propagation. Candidate
+filtering is O(K), reference classification O(R); name resolution retains its
+indexed/sort costs. A root propagates through each actually projected expression
+once; no candidate-by-subtree relation, same-statement grouping or per-candidate
+rebuild is introduced. Current graphs retain only owner arrays; root metadata is
+trial-only and clears when recycled. All arrays, graph buffers, scans and proposals
+are charged to the original byte/work budget, including simultaneous current and
+trial graph storage. These charges are not process RSS evidence.
+
+A failed root conservatively retains its dependent component without a retry
+loop. Independent roots sharing a statement remain separately selectable. The
+commit phase invalidates facts before writing; subsequent passes lazily rebuild
+for the new revision. Store/operand/statement normalization and dead-definition/
+initial-value/binding cleanup remain independent ordered passes. Printed names and
+origin spans consume the same projection. Tests exercise 200/201/geometric and
+reverse arenas, unique RHS evaluation, independent execution and semantic mutants;
+actual selected timings are in status.md. Broader corpus/RSS/benchmarks remain paused.

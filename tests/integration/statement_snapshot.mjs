@@ -32,6 +32,14 @@ function reference({form,count}) {
   else if(form===27||form===28)body+=(form===27?'saved=saved;':'saved=(input.effect(),saved);').repeat(count+1)+'return saved;';
   else if(form>=29&&form<=31)body='let saved;saved;'+(form===30?'saved=input.effect();':'saved=flag;').repeat(count+1)+(form===31?'report(saved);':'')+'saved=input.read();return saved;';
   else if(form>=32&&form<=34)body='let saved;('+ (form===33?'saved=input.read()'+',false'.repeat(count+1):(form===34?'input.effect(),':'false,').repeat(count+1)+'saved=input.read()')+');return saved;';
+  else if(form===45)body='let saved;return (saved=input.read(),saved);';
+  else if(form===46)body='let saved;return (saved=input.read())===saved;';
+  else if(form===47)body='let saved;return ('+'input.effect(),'.repeat(count+1)+'saved=input.read(),saved);';
+  else if(form===48)body='let saved,second;return (saved=input.read(),saved)===(second=input.effect(),second);';
+  else if(form===49||form===50)body='let saved;('+ (form===49?'report(flag),':'input.effect(),').repeat(count+1)+'saved=input.read());{return saved;let '+(form===49?'flag':'input')+'=false;}';
+  else if(form===51)body='let saved,second;second=input.read();while(true){saved=-second;break;let input=false;}return saved;';
+  else if(form===52)body='let saved,second;second=(saved=input.read(),+saved);report(second);return second;';
+  else if(form===53)body='let saved,second;saved=input.read();{return saved===(second=report(),second);let input=false;}';
   else if(form===35)body='saved=input.read();return saved;let saved;';
   else body+='return saved;';
   return Function('"use strict";return ('+kind+'(input,report,flag){'+body+'});')();
@@ -81,10 +89,12 @@ async function observe(fn,row,options={}) {
 }
 let cases=0,mutations=0;
 for(const row of rows) {
-  const pending=[parseJavaScript(row.source)];let snapshots=0;
+  const pending=[parseJavaScript(row.source)];let snapshots=0,seconds=0;
   while(pending.length){const node=pending.pop();if(node.type==='Identifier'&&node.name==='saved')++snapshots;
+    if(node.type==='Identifier'&&node.name==='second')++seconds;
     for(const child of Object.values(node)){if(Array.isArray(child)){for(const item of child)if(item?.type)pending.push(item);}else if(child?.type)pending.push(child);}}
   assert.equal(snapshots===0,row.folded||row.aliased,`snapshot representation form=${row.form}`);
+  if(row.form===53)assert.equal(seconds,0,'independent transport shares a statement, not a rejected dependency');
   const actual=Function('"use strict";return '+row.source)(),expected=reference(row);
   const scenarios=[...([undefined,null,false,0,-0,NaN,1n,Symbol.for('value'),token,'ok'].map(value=>({value})))];
   for(const failureValue of [undefined,null,false,0,NaN,failure,token])for(const failAt of [1,2,3,4])scenarios.push({failureValue,failAt});
@@ -92,6 +102,26 @@ for(const row of rows) {
   if(row.form===8)scenarios.push({thenable:true},{thenable:true,reject:true},{thenable:true,failAt:3});
   if(row.form===9)scenarios.push({request:'throw'},{request:'return'});
   for(const scenario of scenarios){assert.deepStrictEqual(await observe(actual,row,scenario),await observe(expected,row,scenario),`form=${row.form} count=${row.count}`);++cases;}
+  if(!row.count&&row.form===53) {
+    const wrong=Function('input','report','flag','"use strict";{return input.read()===report();let input=false;}');
+    assert.notDeepStrictEqual(await observe(wrong,row),await observe(expected,row));++mutations;
+  }
+  if(!row.count&&row.form===52) {
+    const wrong=Function('input','report','flag','"use strict";second=+input.read();report(second);return second;');
+    assert.notDeepStrictEqual(await observe(wrong,row),await observe(expected,row));++mutations;
+  }
+  if(!row.count&&row.form===51) {
+    const wrong=Function('input','report','flag','"use strict";let saved;while(true){saved=-input.read();break;let input=false;}return saved;');
+    assert.notDeepStrictEqual(await observe(wrong,row),await observe(expected,row));++mutations;
+  }
+  if(!row.count&&row.form===46) {
+    const wrong=Function('input','report','flag','"use strict";return (void 0)===input.read();');
+    assert.notDeepStrictEqual(await observe(wrong,row),await observe(expected,row));++mutations;
+  }
+  if(!row.count&&[47,48,49,50].includes(row.form)) {
+    const wrong=Function('input','report','flag','"use strict";return input.read();');
+    assert.notDeepStrictEqual(await observe(wrong,row),await observe(expected,row));++mutations;
+  }
   if(!row.count&&row.form===35) {
     const wrong=Function('input','report','flag','"use strict";return input.read();');
     assert.notDeepStrictEqual(await observe(wrong,row),await observe(expected,row));++mutations;

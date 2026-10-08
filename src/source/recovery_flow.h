@@ -1,5 +1,6 @@
 #ifndef ABCD_SOURCE_RECOVERY_FLOW_H_
 #define ABCD_SOURCE_RECOVERY_FLOW_H_
+#include "expression_transport.h"
 #include "tree_structure.h"
 #include "expression_observation.h"
 #include "primitive_value.h"
@@ -134,6 +135,10 @@ struct LegacyFlowProjection {
   std::span<const std::optional<DeclarationCompletion>> declaration_completions;
   SourceScopeProjection source_scopes;
   std::span<const std::optional<PrimitiveId>> read_literals;
+  std::span<const std::optional<ExpressionTransport>> transports;
+  // Trial proposal identity at replacement reads. Nested transported RHSs
+  // inherit the outer proposal; independent occurrences keep distinct roots.
+  std::span<const std::optional<SymbolId>> transported_reads;
   [[nodiscard]] std::optional<PrimitiveId> ReadLiteral(ExprId expression,SymbolId binding) const {
     if(!read_literals.empty()&&read_literals[expression.value])return read_literals[expression.value];
     return literals[binding.value];
@@ -150,6 +155,12 @@ struct RecoveryFlow {
   std::vector<FlowNameReference> names;
   std::vector<DiscardedEvaluation> discarded;
   std::vector<FlowPoint> statements, expressions;
+  // Actual owners after all expression projections, including transported
+  // RHSs. Unmodeled occurrences remain absent; old AST owners are not proof.
+  std::vector<std::optional<StmtId>> expression_owners;
+  // Optional trial-only provenance. This records transformation dependence,
+  // not binding equivalence or original SSA identity; empty outside a trial.
+  std::vector<std::optional<SymbolId>> expression_transports;
   // Current expression occurrences, including replacements. Unmodeled signature
   // roots are not evidence of an ignored value. Effects remain independent.
   std::vector<FlowValueUse> value_uses;

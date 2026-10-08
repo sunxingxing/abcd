@@ -2,6 +2,8 @@
 #define ABCD_TESTS_INSTRUCTION_POSITIONS_H_
 
 #include <cstdlib>
+#include <iostream>
+#include <source_location>
 #include <type_traits>
 
 #include "../../src/source/instruction_sources.h"
@@ -20,7 +22,9 @@ inline void CheckInstructionPositions(const source::FunctionTree& tree,
     const source::InstructionSources& sources, const source::PrintedFunction& positions,
     source::GeneratedRange owner) {
   using namespace source;
-  const auto check = [](bool ok) { if (!ok) std::abort(); };
+  const auto check = [](bool ok,const std::source_location where=std::source_location::current()) {
+    if (!ok) {std::cerr<<where.file_name()<<':'<<where.line()<<'\n';std::abort();}
+  };
   const auto nullish_result = PlanNullishSyntax(tree);
   check(std::holds_alternative<NullishSyntax>(nullish_result));
   const auto& nullish = std::get<NullishSyntax>(nullish_result);
@@ -37,7 +41,10 @@ inline void CheckInstructionPositions(const source::FunctionTree& tree,
       const auto id=pending.back();pending.pop_back();
       if (bindings.forwarded_values[i]==id || omitted_expressions[id.value]) continue;
       omitted_expressions[id.value]=true;
-      VisitExpressionChildren(tree,tree.expressions[id.value].expression,[&](ExprId child){pending.push_back(child);});
+      VisitExpressionChildren(tree,tree.expressions[id.value].expression,[&](ExprId child){
+        if(const auto transport=bindings.transports[id.value];transport&&transport->value==child)return;
+        pending.push_back(child);
+      });
       if (const auto replacement=bindings.replacements[id.value]) pending.push_back(*replacement);
     }
   }

@@ -7,6 +7,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import vm from 'node:vm';
 import {classReference} from './class_reference.mjs';
+import {verifyEntryAbilities} from './entry_ability_lifecycle.mjs';
 const [tool,root]=process.argv.slice(2);
 const identity=JSON.parse(readFileSync(new URL('../corpus/abc-index.json',import.meta.url))).entries
     .find(row=>row.corpus_id==='paired'&&row.relative_path==='pasteboard/modules.abc');
@@ -56,3 +57,7 @@ for(const result of [undefined,null,'',false,0,'error text'])
     const options={result,fail};assert.deepEqual(await observe(actual,options),await observe(reference,options));++comparisons;
   }
 console.log(`${comparisons} paired load-error comparisons: receiver, order, nullish fallback and throws`);
+// A shared expression transport now also removes the nested breakpoint
+// snapshot. Reuse the independent complete-class harness for thresholds,
+// coercion/failure ordering, live imports and callbacks; source stays test-only.
+console.log(JSON.stringify(await verifyEntryAbilities([{app:'pasteboard',source:actual,reference}])));

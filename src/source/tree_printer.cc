@@ -427,6 +427,7 @@ class TreePrinter {
       while (count) {
         Step(); const auto destination = pending[--count];
         const auto id = destination.expression;
+        if(Initializers().transports[id.value])continue;
         if (const auto replacement = Initializers().replacements[id.value]) {push(*replacement); continue;}
         const auto& expression = Tree().expressions[id.value].expression;
         set(id, destination.name);
@@ -1239,6 +1240,11 @@ class TreePrinter {
   void PrintOriginalExpression(ExpressionOperand operand) {
     const auto id=operand.id;
     const auto& expression=Tree().expressions[id.value].expression;
+    if(const auto transport=Initializers().transports[id.value]) {
+      const auto& literal=Initializers().primitives[transport->replacement.value];
+      if(TreeOperandGrouping(TreeExpression{literal},operand.context)){Append("(");Push(std::string_view(")"));}
+      Expression(literal);return;
+    }
     if(const auto replacement=Initializers().replacements[id.value]) {
       // The planner owns elision. Transport the omitted operand's origin to
       // the projected span, regardless of side; no effect/value-use decision.
@@ -1307,6 +1313,9 @@ class TreePrinter {
     bool owned_replacement = false;
     VisitExpressionChildren(Tree(), Tree().expressions[projection.id.value].expression, [&](ExprId child) {
       owned_replacement |= replacement == child;
+      // Its RHS was moved to a retained read. The omitted source wrapper must
+      // not overwrite that destination span, including omitted parent sequences.
+      if(const auto transport=Initializers().transports[projection.id.value];transport&&transport->value==child)return;
       Push(ProjectedExpression{child, projection.begin, projection.end, projection.extent, projection.retained});
     });
     // A forwarded RHS has left its original omitted statement. If its final

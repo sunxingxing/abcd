@@ -59,6 +59,7 @@ class Initializers {
     budget.Array(plan_.declaration_values, tree.statements.size());
     budget.Array(plan_.declaration_completions, tree.statements.size());
     budget.Array(plan_.replacements, tree.expressions.size());
+    budget.Array(plan_.transports, tree.expressions.size());
     budget.Array(completions_, tree.expressions.size());
     budget.Array(plan_.entry_counts, loops.initializer_roots.size() + 1);
     budget.Array(plan_.child_counts, tree.children.size() + 1);
@@ -623,7 +624,7 @@ class Initializers {
     if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
     const auto& motion=std::get<FlowMotion>(analyzed);
     budget_.Admit(motion.allocated_bytes,1);budget_.Step(motion.work);
-    struct ForwardedSnapshot { SymbolId binding; ExprId read, value; FlowReferenceSite store; StmtId statement; std::optional<StmtId> destination,initialization; };
+    struct ForwardedSnapshot {SymbolId binding;ExprId read,value;std::optional<ExprId> expression;StmtId statement,owner;std::optional<StmtId> initialization;};
     std::vector<ForwardedSnapshot> proposed;
     budget_.Array(proposed,uses_.size());std::size_t count=0;
     for (std::size_t i = 0; i < uses_.size(); ++i) {
@@ -638,17 +639,16 @@ class Initializers {
       // lexical initialization is a separate, non-PutValue definition kind.
       if(definition.kind==FlowDefinitionKind::kAssignment && definition.effect!=FlowWriteEffect::kInert)continue;
       const auto read=std::get<ExprId>(reads[i]->site);
-      const auto discarded=flow.events[definition.point.value].discarded;
-      const auto owner=definition.write?(discarded?std::optional{flow.discarded[discarded->value].statement}:std::nullopt):definition.declaration;
-      if(!owner || !stores[i])continue;
+      if(!stores[i])continue;
+      const auto owner=definition.write?stores[i]->owner:definition.declaration;
+      if(!owner)continue;
       const auto statement=*owner;
-      const auto store=stores[i]->site;
-      // Retain the existing whole-statement transport boundary. A nested
-      // definition needs occurrence removal that preserves its enclosing
-      // effects; its lack of that projection is not a language restriction.
-      const auto* expression=std::get_if<ExpressionStmt>(&tree_.statements[statement.value].statement);
-      if(definition.write && (!expression||expressions.roots[expression->expression.value]!=*definition.write))continue;
-      if(!stores[i] || motion.next[stores[i]->point.value]!=reads[i]->point ||
+      // Source occurrence removal must preserve its enclosing value. The
+      // common adapter, not whole-statement syntax, proves a discarded result.
+      // A lexical initializer has no separately observed assignment result.
+      if(definition.write && definition.kind==FlowDefinitionKind::kAssignment &&
+          flow.value_uses[definition.write->value]!=FlowValueUse::kDiscarded)continue;
+      if(motion.next[stores[i]->point.value]!=reads[i]->point ||
           motion.previous[reads[i]->point.value]!=stores[i]->point)continue;
       // Bidirectional observation pairing proves execution count. The shared
       // handler/cleanup identity separately preserves throws and abrupt resume.
@@ -656,61 +656,81 @@ class Initializers {
       const auto old_owner=ReferenceOwner(*stores[i]),new_owner=ReferenceOwner(*reads[i]);
       if(!old_owner || !new_owner)continue;
       const auto rhs=*definition.value;
-      const bool changed_environment=environments[old_owner->value]!=environments[new_owner->value];
-      // Callable-owner dependencies are already proved by the checked tree;
-      // forwarding within this preparation cannot enter another callable.
-      // Legacy resource-observable contracts also need activation-allocation
-      // ordering, which body flow does not yet model. Preserve their original
-      // environment boundary until that effect has a common representation.
-      if(changed_environment && (ResourceFailures(tree_.identity.contract)==ResourceFailureScope::kObservable ||
-          expressions.lexical[rhs.value]==LexicalDependency::kEnclosingEnvironment))continue;
       // Native naming follows the projected destination. Moving a direct
       // creation can require a computed-name wrapper; retain strict resource
       // contracts until no additional allocation is proved for that destination.
       if (ResourceFailures(tree_.identity.contract) != ResourceFailureScope::kExcluded &&
           (std::holds_alternative<FunctionExpr>(tree_.expressions[rhs.value].expression) ||
            std::holds_alternative<ClassExpr>(tree_.expressions[rhs.value].expression))) continue;
-      proposed[count++]={SymbolId{static_cast<std::uint32_t>(i)},read,rhs,store,statement,
-          changed_environment?reads[i]->owner:std::nullopt,flow.bindings[i].declaration};
+      proposed[count++]={SymbolId{static_cast<std::uint32_t>(i)},read,rhs,definition.write,statement,
+          *old_owner,flow.bindings[i].declaration};
     }
+    if(!count)return;
+    // Evaluate the whole proposed projection WITHOUT mutating the plan. Shared
+    // flow assigns actual owners after composed/nested transports; checking old
+    // statement owners would move siblings or miss final destination scopes.
+    std::vector<std::optional<ExprId>> replacements;
+    std::vector<std::optional<ExpressionTransport>> transports;
+    std::vector<std::optional<SymbolId>> transported_reads;
+    std::vector<std::uint8_t> omitted;
+    budget_.Array(replacements,plan_.replacements.size());budget_.Array(transports,plan_.transports.size());
+    budget_.Array(omitted,plan_.omitted.size());
+    budget_.Array(transported_reads,tree_.expressions.size());
+    budget_.Step(replacements.size()+transports.size()+omitted.size());
+    std::copy(plan_.replacements.begin(),plan_.replacements.end(),replacements.begin());
+    std::copy(plan_.transports.begin(),plan_.transports.end(),transports.begin());
+    std::copy(plan_.omitted.begin(),plan_.omitted.end(),omitted.begin());
+    for(std::size_t i=0;i<count;++i) {
+      budget_.Step();const auto& action=proposed[i];replacements[action.read.value]=action.value;
+      transported_reads[action.read.value]=action.binding;
+      if(action.expression)transports[action.expression->value]=ExpressionTransport{action.value,undefined_value_};
+      else omitted[action.statement.value]=1;
+    }
+    const auto projected=BuildProjectedFlow(expressions,replacements,transports,omitted,{},transported_reads);
+    std::vector<std::uint8_t> invalid;budget_.Array(invalid,uses_.size());
+    std::vector<TreeScopedReference> queries;std::vector<SymbolId> roots;
+    budget_.Array(queries,projected.references.size());budget_.Array(roots,projected.references.size());
+    std::size_t size=0;
+    for(const auto& reference:projected.references) {
+      budget_.Step();const auto* expression=std::get_if<ExprId>(&reference.site);
+      if(!expression)continue;const auto root=projected.expression_transports[expression->value];
+      if(!root)continue;
+      if(!reference.owner){invalid[root->value]=1;continue;}const auto owner=*reference.owner;
+      if(!flow.BindingInScope(reference.binding,owner))invalid[root->value]=1;
+      queries[size]={reference.binding,statement_scopes_[owner.value]};roots[size++]=*root;
+    }
+    queries.resize(size);roots.resize(size);
+    const auto resolved=ResolveTreeReferences(tree_,queries,budget_);
+    for(std::size_t i=0;i<size;++i){budget_.Step();if(!resolved[i])invalid[roots[i].value]=1;}
+    std::vector<TreeScopedName> names;std::vector<SymbolId> name_roots;
+    budget_.Array(names,projected.names.size());budget_.Array(name_roots,projected.names.size());size=0;
+    for(const auto& reference:projected.names) {
+      budget_.Step();const auto root=projected.expression_transports[reference.site.value];
+      if(!root)continue;
+      if(!reference.owner){invalid[root->value]=1;continue;}const auto owner=*reference.owner;
+      names[size]={reference.name,statement_scopes_[owner.value]};name_roots[size++]=*root;
+    }
+    names.resize(size);name_roots.resize(size);
+    const auto resolved_names=ResolveTreeNames(tree_,names,budget_);
+    for(std::size_t i=0;i<size;++i){budget_.Step();if(!resolved_names[i])invalid[name_roots[i].value]=1;}
     std::vector<std::uint8_t> blocked;budget_.Array(blocked,count);
-    bool needs_scope=false;
-    for(std::size_t i=0;i<count;++i){budget_.Step();needs_scope |= proposed[i].destination.has_value();}
-    if(needs_scope) {
-      // Whole-statement candidates have disjoint current reference ownership.
-      // Batch their destination queries once; never walk a subtree per symbol.
-      std::vector<std::optional<std::size_t>> candidates;
-      std::vector<TreeScopedReference> queries;std::vector<std::size_t> owners;
-      budget_.Array(candidates,tree_.statements.size());
-      budget_.Array(queries,flow.references.size());budget_.Array(owners,flow.references.size());
-      for(std::size_t i=0;i<count;++i){budget_.Step();if(proposed[i].destination)candidates[proposed[i].statement.value]=i;}
-      std::size_t size=0;
-      for(const auto& reference:flow.references) {
-        budget_.Step();if(!reference.owner)continue;
-        const auto candidate=candidates[reference.owner->value];if(!candidate)continue;
-        const auto& edit=proposed[*candidate];
-        // The removed snapshot PutValue is not part of the transported RHS.
-        if(reference.site==edit.store)continue;
-        const auto destination=*edit.destination;
-        if(!flow.BindingInScope(reference.binding,destination))blocked[*candidate]=1;
-        queries[size]={reference.binding,statement_scopes_[destination.value]};owners[size++]=*candidate;
-      }
-      queries.resize(size);owners.resize(size);
-      const auto resolved=ResolveTreeReferences(tree_,queries,budget_);
-      for(std::size_t i=0;i<size;++i){budget_.Step();if(!resolved[i])blocked[owners[i]]=1;}
-      std::vector<TreeScopedName> names;std::vector<std::size_t> name_owners;
-      budget_.Array(names,flow.names.size());budget_.Array(name_owners,flow.names.size());size=0;
-      for(const auto& reference:flow.names) {
-        budget_.Step();if(!reference.owner)continue;
-        const auto candidate=candidates[reference.owner->value];if(!candidate)continue;
-        const auto destination=*proposed[*candidate].destination;
-        names[size]={reference.name,statement_scopes_[destination.value]};name_owners[size++]=*candidate;
-      }
-      names.resize(size);name_owners.resize(size);
-      if(!names.empty()) {
-        const auto resolved_names=ResolveTreeNames(tree_,names,budget_);
-        for(std::size_t i=0;i<size;++i){budget_.Step();if(!resolved_names[i])blocked[name_owners[i]]=1;}
-      }
+    for(std::size_t i=0;i<count;++i) {
+      budget_.Step();const auto& action=proposed[i];const auto owner=projected.expression_owners[action.value.value];
+      const auto root=projected.expression_transports[action.value.value];
+      if(!root){blocked[i]=1;continue;}
+      if(!owner||!statement_owners_[owner->value]){invalid[root->value]=1;continue;}
+      const auto environment=statement_owners_[owner->value];
+      if(environments[action.owner.value]!=environments[environment->value] &&
+          (ResourceFailures(tree_.identity.contract)==ResourceFailureScope::kObservable ||
+           expressions.lexical[action.value.value]==LexicalDependency::kEnclosingEnvironment))invalid[root->value]=1;
+    }
+    // A nested transport can rely on an outer transport's final environment.
+    // The common adapter records that dependency, independently of statement
+    // layout. Retain the affected component; unrelated moves in the same
+    // statement must not inherit its failure or a hypothetical owner as proof.
+    for(std::size_t i=0;i<count;++i) {
+      budget_.Step();const auto root=projected.expression_transports[proposed[i].value.value];
+      if(root)blocked[i]|=invalid[root->value];
     }
     // Value availability, motion and lexical proofs all observe the same
     // projection. Apply only after all proposals are complete; later passes
@@ -718,22 +738,26 @@ class Initializers {
     for(std::size_t i=0;i<count;++i) {
       budget_.Step();if(blocked[i])continue;const auto& action=proposed[i];const auto& use=uses_[action.binding.value];
       BeginCommit();plan_.replacements[action.read.value]=action.value;
-      plan_.forwarded_values[action.statement.value]=action.value;
+      if(action.expression)plan_.transports[action.expression->value]=ExpressionTransport{action.value,undefined_value_};
+      else plan_.forwarded_values[action.statement.value]=action.value;
       DiscardDeclaration(*use.declaration);
       if(action.initialization && *action.initialization!=action.statement &&
           plan_.declaration_completions[action.initialization->value])DiscardDeclaration(*action.initialization);
-      plan_.omitted[action.statement.value]=1;
-      plan_.statements[action.statement.value].reset();
-      plan_.declaration_completions[action.statement.value].reset();
+      if(!action.expression)plan_.omitted[action.statement.value]=1;
+      // An occurrence can sit inside another binding's initializer. Remove
+      // only completion/declaration actions owned by this elided binding.
+      if(auto& declaration=plan_.statements[action.statement.value];declaration&&declaration->symbol==action.binding)
+        declaration.reset();
+      if(auto& completion=plan_.declaration_completions[action.statement.value];completion&&completion->binding==action.binding)
+        completion.reset();
     }
   }
-  const RecoveryFlow& CurrentFlow() const {
-    schedule_.RequireFact(RecoveryFact::kFlow);
-    auto& facts=CurrentFacts();
-    if(facts.flow)return *facts.flow;
-    // Bootstrap without initialization assumptions. Completion dominance on
-    // this conservative graph proves facts before effect summaries are refined.
-    // Unmodeled signature-program occurrences receive no body-entry proof.
+  RecoveryFlow BuildProjectedFlow(const ExpressionFacts& expressions,
+      std::span<const std::optional<ExprId>> replacements,
+      std::span<const std::optional<ExpressionTransport>> transports,
+      std::span<const std::uint8_t> omitted,RecoveryFlow storage={},
+      std::span<const std::optional<SymbolId>> transported_reads={}) const {
+    RequireAnalysis();
     std::vector<std::uint8_t> private_bindings;
     std::vector<SourceBindingScope> source_bindings;
     budget_.Array(private_bindings,uses_.size());
@@ -743,14 +767,24 @@ class Initializers {
       const auto& site=declaration_sites_[i];
       if(site&&plan_.statements[site->statement.value])source_bindings[i]=ProjectedBindingScope{SourceRegionId{site->container.value}};
     }
-    const auto build=[&](const auto& facts) {
-      const LegacyFlowProjection projection{plan_.aliases,plan_.literals,plan_.replacements,
-          plan_.omitted,facts.evaluations,facts.normal_stores,plan_.statements,private_bindings,plan_.storage,plan_.undefined_stores,plan_.declaration_values,plan_.declaration_completions,
-          {source_regions_,source_occurrences_,source_bindings},plan_.read_literals};
-      auto built=BuildRecoveryFlow(tree_,projection,budget_.Remaining(),std::move(flow_storage_));
-      if(const auto* error=std::get_if<TreeStructureError>(&built))throw *error;
-      auto flow=std::get<RecoveryFlow>(std::move(built));
-      budget_.Admit(flow.allocated_bytes,1);budget_.Step(flow.work);return flow;
+    const LegacyFlowProjection projection{plan_.aliases,plan_.literals,replacements,
+        omitted,expressions.evaluations,expressions.normal_stores,plan_.statements,private_bindings,
+        plan_.storage,plan_.undefined_stores,plan_.declaration_values,plan_.declaration_completions,
+        {source_regions_,source_occurrences_,source_bindings},plan_.read_literals,transports,transported_reads};
+    auto built=BuildRecoveryFlow(tree_,projection,budget_.Remaining(),std::move(storage));
+    if(const auto* error=std::get_if<TreeStructureError>(&built))throw *error;
+    auto flow=std::get<RecoveryFlow>(std::move(built));
+    budget_.Admit(flow.allocated_bytes,1);budget_.Step(flow.work);return flow;
+  }
+  const RecoveryFlow& CurrentFlow() const {
+    schedule_.RequireFact(RecoveryFact::kFlow);
+    auto& facts=CurrentFacts();
+    if(facts.flow)return *facts.flow;
+    // Bootstrap without initialization assumptions. Completion dominance on
+    // this conservative graph proves facts before effect summaries are refined.
+    // Unmodeled signature-program occurrences receive no body-entry proof.
+    const auto build=[&](const ExpressionFacts& expressions) {
+      return BuildProjectedFlow(expressions,plan_.replacements,plan_.transports,plan_.omitted,std::move(flow_storage_));
     };
     if(initialized_) {
       if(!facts.expressions)facts.expressions=ComputeExpressions(*initialized_);
@@ -1162,6 +1196,7 @@ class Initializers {
   }
   FlowValueEquation ProjectedValueEquation(ExprId id) const {
     RequireAnalysis();
+    if(const auto transport=plan_.transports[id.value])return FlowPrimitiveReference{transport->replacement};
     if(const auto replacement=plan_.replacements[id.value])return FlowExpressionValue{*replacement};
     if(const auto primitive=plan_.read_literals[id.value])return FlowPrimitiveReference{*primitive};
     auto equation=value_equations_[id.value];
@@ -1202,6 +1237,11 @@ class Initializers {
       const auto join = [&](ExprId left, ExprId right) -> std::optional<SymbolId> {
         return stored[left.value] == stored[right.value] ? stored[left.value] : std::nullopt;
       };
+      if(const auto transport=plan_.transports[id.value]) {
+        literal=transport->replacement;facts.evaluations[id.value]=ExpressionEvaluation::kInert;
+        facts.lexical[id.value]=LexicalDependency::kReferences;
+        continue;
+      }
       if (const auto replacement = plan_.replacements[id.value]) {
         facts.roots[id.value]=facts.roots[replacement->value];
         result = stored[replacement->value];
@@ -1285,7 +1325,7 @@ class Initializers {
     budget_.Array(replacements, tree_.expressions.size());
     for (std::size_t at = 0; at < completion_count_; ++at) {
       budget_.Step(); const auto id = completions_[at];
-      if (plan_.replacements[id.value]) continue;
+      if (plan_.replacements[id.value]||plan_.transports[id.value]) continue;
       const auto* assignment = std::get_if<AssignmentExpr>(&tree_.expressions[id.value].expression);
       // The result-binding fact is produced only for writable declarative
       // assignment targets. Missing identity is not evidence of equality.
@@ -1444,7 +1484,7 @@ class Initializers {
       const auto& flow=CurrentFlow();
       std::vector<FlowValueEquation> bindings;budget_.Array(bindings,tree_.symbols.size());
       for(std::size_t i=0;i<bindings.size();++i){budget_.Step();bindings[i]=ProjectedBindingValue({static_cast<std::uint32_t>(i)});}
-      const FlowValueEquations expressions{value_equations_,plan_.replacements,bindings,*initialized_,plan_.read_literals};
+      const FlowValueEquations expressions{value_equations_,plan_.replacements,bindings,*initialized_,plan_.read_literals,{},plan_.transports};
       std::vector<FlowDefinitionValue> values;budget_.Array(values,flow.definitions.size());
       for(std::size_t i=0;i<values.size();++i) {
         budget_.Step();const auto& definition=flow.definitions[i];

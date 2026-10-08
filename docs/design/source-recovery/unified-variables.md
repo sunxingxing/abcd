@@ -1808,3 +1808,44 @@ Number/BigInt/coercion failures and producer exceptions; adverse update deletion
 remain detectable. Existing completion, TDZ, shadowing, capture and loop negatives
 remain. Selected current verification belongs in status.md. Original IR/SSA,
 complete activation/capture/finally and global pass convergence remain open.
+
+## Occurrence snapshot transport and proposal dependence (rules234)
+
+Snapshot recovery now represents source occurrence removal as typed
+ExpressionTransport, separately from the read-to-RHS value replacement. The
+common adapter proves the assignment result discarded; declaration initialization
+has no separately observed assignment value. Removing the source evaluation
+retains enclosing values and sibling effects. Whole-expression-statement equality
+and discarded-expression-statement ownership no longer decide snapshot admission.
+Shared retained definitions/reads, inert successful PutValue, bidirectional motion,
+exception identity and initialization/name/lifetime obligations remain mandatory.
+
+All proposals finish on the current immutable revision before any commit. One
+trial projection uses the same BuildRecoveryFlow adapter as current analysis.
+Actual expression owners determine destination scopes; optional typed transport
+roots track dependence through nested read replacements. Explicit name/reference
+queries apply only to transported RHSs. Closure and implicit-helper dependencies retain
+the existing enclosing-environment obligation until they join that reference
+model. A rejected outer hypothetical environment rejects its dependent component.
+Independent proposals sharing a statement remain independent. This provenance is transformation
+dependence, not a new canonical SSA identity or a statement-layout admission.
+No incremental partial-rejection retry is introduced.
+
+Commit consumes owned IDs only, invalidates the projection before writes, and
+removes declaration/completion actions only for their owning elided binding. A
+nested snapshot cannot delete another binding's native initialization. The next
+Storage consumer requests fresh common facts; independent store/operand/statement
+normalization and definition/initial-value/binding cleanup keep their existing
+ordered owners. No new optimization round or manual analysis refresh is needed.
+The printer and printed name walkers consume the transport projection; moved RHS
+source ranges belong to the destination occurrence, not its omitted source wrapper.
+
+Source tests compose prefixes, nested return expressions, observed assignment
+results, independent and dependent snapshots, nested native initialization,
+shadow/TDZ names, loops, exceptions and existing suspension cases. Reversed arenas
+and 0/1/200/201/400/800 sizes remain; independent execution and mutations reject
+dropped/reordered effects, observed-value loss, invalid partial forwarding and
+missing declarations. Scope/resource precision still retains entire dependent
+components when a proposal fails. Direct creation/resource-environment limitations
+remain explicit existing gaps. Original IR/SSA, complete activation/capture/finally
+and global pass convergence remain open; selected evidence belongs in status.md.

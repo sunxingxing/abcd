@@ -718,7 +718,10 @@ int main(int argc, char**) {
       while (!pending.empty()) {const auto id=pending.back();pending.pop_back();
         if(projection.forwarded_values[statement]==id)continue;
         omitted[id.value]=true;
-        VisitExpressionChildren(fixture.tree,fixture.tree.expressions[id.value].expression,[&](ExprId child){pending.push_back(child);});}
+        VisitExpressionChildren(fixture.tree,fixture.tree.expressions[id.value].expression,[&](ExprId child){
+          if(const auto transport=projection.transports[id.value];transport&&transport->value==child)return;
+          pending.push_back(child);
+        });}
     }
     for (std::size_t i = 0; i < ranges.expressions.size(); ++i) {
       const auto at = ranges.expressions[i];

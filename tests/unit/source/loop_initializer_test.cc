@@ -250,7 +250,10 @@ std::uint64_t Native(unsigned form, unsigned count, bool reverse, bool emit) {
       const auto id=pending.back();pending.pop_back();
       if(bindings.forwarded_values[i]==id||elided[id.value])continue;
       elided[id.value]=true;VisitExpressionChildren(tree,tree.expressions[id.value].expression,
-          [&](ExprId child){pending.push_back(child);});
+          [&](ExprId child){
+            if(const auto transport=bindings.transports[id.value];transport&&transport->value==child)return;
+            pending.push_back(child);
+          });
       if(const auto replacement=bindings.replacements[id.value])pending.push_back(*replacement);
     }
   }

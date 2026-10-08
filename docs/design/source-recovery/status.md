@@ -24,6 +24,64 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则234，表达式 occurrence 运输与共同提案依赖
+
+- 快照源移除与读值替换分别表示：ExpressionTransport只移除已证明
+  discarded的源赋值求值，任意前缀/兄弟效果继续原位执行。旧的
+  whole-expression-statement相等、必须属于discarded表达式语句及
+  按源整语句收集名字引用的判断已退出快照路径。成功写入、唯一
+  保留定义/读取、双向motion、异常身份和初始化/名字/lifetime证明
+  继续由共同事实负责；没有新样本/同块/邻接/固定图形状准入。
+- 先在当前不可变revision生成全部提案，再用同一个RecoveryFlow
+  adapter构造一次只读试投影。共同图发布真实expression owner和
+  typed运输依赖root，批量核验移动RHS的名字、绑定范围和环境。
+  嵌套提案依赖外层假设作用域时共同拒绝；同一return中的独立
+  提案仍可单独成功。临时的按目的语句拒绝分组已删除，不再作为
+  精度限制。一次O(E+S)试投影缓冲/O(E)owner/root数组和批量引用
+  查询计入原预算，没有per-candidate图重建或新增pass轮次。
+- 首次commit先失效版本事实；提交只消费自有ID，禁止读取分析。
+  只删除该binding拥有的声明/完成动作，保留嵌套快照所在的另一
+  变量初始化。后续Storage请求fresh共同图；独立store/operand/
+  statement归一化、dead-definition/initial-value/binding清理仍按
+  契约执行。打印与名字遍历只消费同一计划，移动RHS范围属于目的
+  occurrence，不能被源wrapper的省略范围覆盖。
+- 新增return前缀/嵌套赋值、已观察赋值结果、双快照、独立与嵌套
+  提案作用域、loop/resource/TDZ、另一binding原生初始化组合。
+  reversed arenas和0/1/200/201/400/800保持。真实RED包括旧前缀
+  8.45秒、嵌套return11.11秒、依赖错误13.60秒、初始化误删13.94秒、
+  独立提案过度拒绝13.91秒。最终聚焦3/3在19.20秒通过：648源码、
+  24,864行为比较、76错误变体；单/嵌套root及复用图清空均核验。
+- 首轮29目标build169.80秒/固定导出2.71秒成功；选定59中48通过、
+  11失败，313.85秒。更新测试的旧整语句转发/range契约后受影响9
+  中8通过，126.98秒；剩余class-context经LLDB定位为200/201批量
+  固定64MiB不足。保持生产每保留occurrence计payload成本/零预算
+  拒绝；测试批量按count乘真实payload配置，加原transport slack。
+  真实导出和常规child预算均未改动。最终当前重验见下项。
+- 真实固定19records仍10完整/0部分/9无module，10源码语法通过。
+  EntryAbility.updateBreakpoint第二阈值和PasteBoard回调长度判断各
+  移除一个嵌套临时变量；两源码与233不同，其余8逐字节一致。
+  既定EntryAbility测试复用独立完整class harness：1,520行为/8构造
+  赋值/7错误变体通过；rich-text5records/4views/70cases/1,030faults/
+  206swaps/18mutants及既定callback对照通过，不代表平台运行验收。
+- 最终当前29目标build24.12秒成功；单独class-context1/1在1.58秒
+  通过，完整选定59/59在420.89秒全部通过。声明2568源码/513600
+  比较/100mutants，初始化2004/482752/368，干涉329/48308/21、
+  循环276/13976/68，model32,768逐读/45,056全组及原schedule/graph
+  oracle通过。测试范围/range断言更新保持全部独立语义/表示检查。
+  这是既定相关集合，不是full suite、paired corpus或平台执行验收。
+- 最终fresh导出1.34秒，build/stage-one/expression-transport-final-rule234，
+  10源码语法通过，原预算及language_numeric_constructors_v1保持；
+  输入SHA-256前后均
+  854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e。
+  build/stage-one/expression-transport-verification保留初始RED、各轮
+  聚焦/失败/最终日志、final-detail及combined-coverage.json，独立
+  核对最终59个名称与既定selection完全一致。作者自审已完成，
+  agents继续按用户指令暂停；没有新布局准入或commit期间读分析。
+- 运输组件拒绝仍保守，direct creation/resource环境等现有能力缺口
+  保留并记录。原IR/SSA、完整activation/capture/finally、全可行存储
+  代表及全局pass收敛未完成。统一变量里程碑/阶段一Goal继续active；
+  agents、新工作树、full suite、扩展corpus、RSS/DFX/benchmarks仍暂停。
+
 ### 2026-10-08：规则233，分组完成后选择全部候选与共享初始化可用性
 
 - 存储合并先独立完成干涉组及引用extent，再一次扫描全部原始成员

@@ -3,6 +3,7 @@
 #include "tree_structure.h"
 #include "expression_observation.h"
 #include "primitive_value.h"
+#include "expression_transport.h"
 namespace abcd::source {
 struct LoopSyntax;
 struct NullishSyntax;
@@ -70,6 +71,9 @@ struct BindingInitializers {
   // A sequence with an inert discarded left projects to its right value; all
   // downstream analyses and the printer consume that same replacement.
   std::vector<std::optional<ExprId>> replacements;
+  // ExprId indexed source occurrences removed by ordered snapshot transport.
+  // Siblings remain; moved RHS origins belong to the retained read destination.
+  std::vector<std::optional<ExpressionTransport>> transports;
   // Original ExprId indexed completion summary after proven store/copy
   // projection. Inert means normal, no hook/write/allocation/throw/suspension.
   std::vector<ExpressionEvaluation> evaluations;

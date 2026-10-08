@@ -158,7 +158,8 @@ std::uint64_t Run(Form form,unsigned count,bool reverse,bool emit){
   if(form==Form::kForwardedAliasShadow){Check(!bindings.aliases[3]);Check(bindings.Storage({4})==SymbolId{3});}
   if(forwarded) {
     const auto at=reverse?tree.statements.size()-1-update.value:update.value;
-    Check(bindings.forwarded_values[at]==value);
+    const auto occurrence=std::get<ExpressionStmt>(tree.statements[at].statement).expression;
+    Check(bindings.transports[occurrence.value]&&bindings.transports[occurrence.value]->value==value);
   }
   const auto empty_index=reverse?tree.statements.size()-1-empty.value:empty.value;
   // Completed private reads now consume the initial undefined primitive.

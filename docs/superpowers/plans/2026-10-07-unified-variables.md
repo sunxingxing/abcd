@@ -390,3 +390,19 @@ source compositions verify the change with layout/budget/adverse cases. Full
 feasible name/cell/value choice, original IR/SSA, activation/capture/finally and
 global pass convergence stay open. status.md records current selected evidence;
 the unified-variable milestone and stage-one Goal remain active.
+
+Task 2/4 implementation substep (rules234): typed expression-occurrence transport
+replaces the whole-expression-statement snapshot limitation. Shared discarded
+value-use, successful write/read pairing, motion/exception and scope/lifetime facts
+prove removal of the source evaluation while preserving sibling effects. One
+common trial adapter provides actual owners and nested transport-dependency roots;
+independent moves sharing a statement do not share rejection. Proposal validation
+is read-only; commit uses owned IDs, invalidates the revision and removes only
+binding-owned declarations/completions. Storage receives fresh facts and later
+normalization/cleanup retain their separate order and contracts. Printer ownership
+and moved RHS spans consume the same projection. Independent source cases and
+mutants cover observed results, prefixes, nested native initialization and dependent
+versus unrelated scope failures, with reversed arenas and geometric sizes. No
+extra round or source-shape admission is added. Original IR/SSA, full activation/
+capture/finally, feasible storage and global convergence remain open. status.md
+records selected verification; unified-variable milestone and stage-one Goal active.

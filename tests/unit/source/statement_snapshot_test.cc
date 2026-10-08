@@ -10,11 +10,11 @@ using namespace abcd::source;
 namespace {
 enum class Form { kReturn, kIf, kLoop, kMultiple, kEffect, kArgument, kLocal, kBranchExit,
   kAwait, kYield, kTypeof, kAlias, kShadow, kGuarded, kCatch, kOutsideCatch, kCatchReads, kProjectedLocal, kInterleavedAlias,
-  kDeadInitialRead, kObservedInitialRead, kDiscardedOperand, kEffectOperand, kTransparentControl, kDebugger, kOnceLoop, kRepeatedLoop, kRedundantWrites, kEffectWrites, kDeadPrefix, kEffectPrefix, kObservedPrefix, kProjectedPrefix, kProjectedSuffix, kRequiredPrefix, kTdzStore, kUnrelatedBinding, kWrittenShadow, kResourceEnvironment, kFreeNameShadow, kFreeNameUnrelated, kFreeGetter, kThisUnrelated, kThisInputShadow, kThisValue };
+  kDeadInitialRead, kObservedInitialRead, kDiscardedOperand, kEffectOperand, kTransparentControl, kDebugger, kOnceLoop, kRepeatedLoop, kRedundantWrites, kEffectWrites, kDeadPrefix, kEffectPrefix, kObservedPrefix, kProjectedPrefix, kProjectedSuffix, kRequiredPrefix, kTdzStore, kUnrelatedBinding, kWrittenShadow, kResourceEnvironment, kFreeNameShadow, kFreeNameUnrelated, kFreeGetter, kThisUnrelated, kThisInputShadow, kThisValue, kNestedReturn, kObservedResult, kReturnPrefix, kTwoSnapshots, kPrefixUnrelated, kPrefixShadow, kComposedEnvironment, kNestedInitializer, kIndependentDestination };
 struct Fixture {
   FunctionTree tree{};
   Fixture(Form form) {
-    if(form==Form::kResourceEnvironment)tree.identity.contract=SourceContract::kLanguageAndHostV1;
+    if(form==Form::kResourceEnvironment||form==Form::kComposedEnvironment)tree.identity.contract=SourceContract::kLanguageAndHostV1;
     tree.callable=form==Form::kAwait?CallableKind::kAsyncFunction:form==Form::kYield?CallableKind::kGenerator:CallableKind::kFunction;
     tree.strictness=Strictness::kStrict;tree.parameter_scope={0};tree.body_scope={1};tree.body={0};
     tree.scopes={{ScopeKind::kParameters,{}},{ScopeKind::kFunctionBody,ScopeId{0}}};
@@ -90,9 +90,13 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
   if(form==Form::kArgument||form==Form::kWrittenShadow)rhs=f.Expr(AssignmentExpr{SymbolTarget{{2}},rhs});
   if(form==Form::kAwait)rhs=f.Expr(AwaitExpr{rhs});if(form==Form::kYield)rhs=f.Expr(YieldExpr{rhs});
   auto stored=f.Expr(AssignmentExpr{SymbolTarget{{3}},rhs});
-  if(form==Form::kProjectedPrefix||form==Form::kProjectedSuffix||form==Form::kRequiredPrefix)
+  if(form==Form::kProjectedPrefix||form==Form::kProjectedSuffix||form==Form::kRequiredPrefix||form==Form::kReturnPrefix||form==Form::kPrefixUnrelated||form==Form::kPrefixShadow)
     for(unsigned i=0;i<=count;++i) {
-      const auto operand=form==Form::kRequiredPrefix?f.Call(5):f.Literal(false);
+      ExprId operand;
+      if(form==Form::kPrefixUnrelated) {
+        const auto first=static_cast<std::uint32_t>(tree.arguments.size());tree.arguments.push_back(f.Read(2));
+        operand=f.Expr(CallExpr{f.Read(1),{first,1},CallReference::kValue});
+      } else operand=form==Form::kRequiredPrefix||form==Form::kReturnPrefix||form==Form::kPrefixShadow?f.Call(5):f.Literal(false);
       stored=f.Expr(form==Form::kProjectedSuffix?SequenceExpr{stored,operand}:SequenceExpr{operand,stored});
     }
   const auto store=f.Stmt(ExpressionStmt{stored});
@@ -126,7 +130,19 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
   if(form==Form::kDiscardedOperand||form==Form::kEffectOperand)
     for(unsigned i=0;i<=count;++i)result=f.Expr(SequenceExpr{form==Form::kDiscardedOperand?f.Read(2):f.Call(5),result});
   if(form==Form::kTypeof)result=f.Expr(UnaryExpr{TreeUnary::kTypeof,read});
-  if(form==Form::kIf)body.push_back(f.Stmt(IfStmt{read,f.Block({f.Stmt(ReturnStmt{f.Literal(true)})}),f.Block({f.Stmt(ReturnStmt{f.Literal(false)})})}));
+  std::optional<ExprId> second_read,second_rhs;std::optional<StmtId> second_declaration;
+  if(form==Form::kNestedReturn||form==Form::kReturnPrefix||form==Form::kObservedResult||form==Form::kTwoSnapshots) {
+    auto combined=form==Form::kObservedResult?f.Expr(BinaryExpr{analysis::BinaryOperator::kStrictEqual,stored,read}):f.Expr(SequenceExpr{stored,read});
+    if(form==Form::kTwoSnapshots) {
+      const auto name=static_cast<std::uint32_t>(tree.names.size());tree.names.push_back(u"second");
+      const auto second=static_cast<std::uint32_t>(tree.symbols.size());
+      tree.symbols.push_back({{1},{name},BindingKind::kCompilerTemporary,DeclarationKind::kLet,NameEvidence::kSynthesized,TemporaryReason::kPredicateSnapshot});
+      body.insert(body.begin(),f.Stmt(DeclarationStmt{{second},{}}));
+      second_rhs=f.Call(5);const auto write=f.Expr(AssignmentExpr{SymbolTarget{{second}},*second_rhs});second_read=f.Read(second);
+      combined=f.Expr(BinaryExpr{analysis::BinaryOperator::kStrictEqual,combined,f.Expr(SequenceExpr{write,*second_read})});
+    }
+    tree.statements[store.value].statement=ReturnStmt{combined};
+  } else if(form==Form::kIf)body.push_back(f.Stmt(IfStmt{read,f.Block({f.Stmt(ReturnStmt{f.Literal(true)})}),f.Block({f.Stmt(ReturnStmt{f.Literal(false)})})}));
   else if(form==Form::kOnceLoop || form==Form::kRepeatedLoop) {
     const auto loop=f.Stmt(LoopStmt{});std::vector<StmtId> inside;
     if(form==Form::kOnceLoop)inside.push_back(f.Stmt(ReturnStmt{read}));
@@ -151,11 +167,57 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
     std::get<LoopStmt>(tree.statements[loop.value].statement).body=loop_body;body.back()=loop;body.push_back(f.Stmt(ReturnStmt{f.Literal(false)}));
   } else if(form==Form::kArgument) {body.push_back(f.Report({f.Read(2),read}));body.push_back(f.Stmt(ReturnStmt{f.Literal(false)}));}
   else if(form==Form::kGuarded)body.push_back(f.Stmt(IfStmt{f.Literal(false),f.Block({f.Stmt(ReturnStmt{read})}),{}}));
-  else if(form==Form::kShadow||form==Form::kUnrelatedBinding||form==Form::kWrittenShadow||form==Form::kResourceEnvironment||form==Form::kFreeNameShadow||form==Form::kFreeNameUnrelated||form==Form::kFreeGetter||form==Form::kThisUnrelated||form==Form::kThisInputShadow||form==Form::kThisValue) {
+  else if(form==Form::kShadow||form==Form::kUnrelatedBinding||form==Form::kWrittenShadow||form==Form::kResourceEnvironment||form==Form::kFreeNameShadow||form==Form::kFreeNameUnrelated||form==Form::kFreeGetter||form==Form::kThisUnrelated||form==Form::kThisInputShadow||form==Form::kThisValue||form==Form::kPrefixUnrelated||form==Form::kPrefixShadow) {
     const auto inner=f.Block({});const auto scope=std::get<BlockStmt>(tree.statements[inner.value].statement).scope;
-    const auto shadow=static_cast<unsigned>(tree.symbols.size());tree.symbols.push_back({scope,{(form==Form::kShadow||form==Form::kThisInputShadow)?0U:form==Form::kFreeNameShadow?7U:2U},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
+    const auto shadow=static_cast<unsigned>(tree.symbols.size());tree.symbols.push_back({scope,{(form==Form::kShadow||form==Form::kThisInputShadow||form==Form::kPrefixShadow)?0U:form==Form::kFreeNameShadow?7U:2U},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
     auto& block=std::get<BlockStmt>(tree.statements[inner.value].statement);block.first_child=tree.children.size();block.child_count=2;tree.children.push_back(f.Stmt(ReturnStmt{read}));tree.children.push_back(f.Stmt(DeclarationStmt{{shadow},f.Literal(false)}));body.push_back(inner);
   } else body.push_back(f.Stmt(ReturnStmt{result}));
+  if(form==Form::kIndependentDestination) {
+    const auto name=static_cast<std::uint32_t>(tree.names.size());tree.names.push_back(u"second");
+    const auto second=static_cast<std::uint32_t>(tree.symbols.size());
+    tree.symbols.push_back({{1},{name},BindingKind::kCompilerTemporary,DeclarationKind::kLet,NameEvidence::kSynthesized,TemporaryReason::kPredicateSnapshot});
+    body.insert(body.begin(),f.Stmt(DeclarationStmt{{second},{}}));
+    second_rhs=f.Expr(CallExpr{f.Read(1),{0,0},CallReference::kValue});second_read=f.Read(second);
+    const auto written=f.Expr(AssignmentExpr{SymbolTarget{{second}},*second_rhs});
+    std::get<ReturnStmt>(tree.statements[body.back().value].statement).value=f.Expr(BinaryExpr{
+        analysis::BinaryOperator::kStrictEqual,read,f.Expr(SequenceExpr{written,*second_read})});
+    const auto inner=f.Block({});const auto scope=std::get<BlockStmt>(tree.statements[inner.value].statement).scope;
+    const auto shadow=static_cast<std::uint32_t>(tree.symbols.size());
+    tree.symbols.push_back({scope,{0},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
+    auto& block=std::get<BlockStmt>(tree.statements[inner.value].statement);
+    block.first_child=tree.children.size();block.child_count=2;
+    tree.children.push_back(body.back());tree.children.push_back(f.Stmt(DeclarationStmt{{shadow},f.Literal(false)}));body.back()=inner;
+  }
+  if(form==Form::kNestedInitializer) {
+    const auto name=static_cast<std::uint32_t>(tree.names.size());tree.names.push_back(u"second");
+    const auto second=static_cast<std::uint32_t>(tree.symbols.size());
+    tree.symbols.push_back({{1},{name},BindingKind::kCompilerTemporary,DeclarationKind::kLet,NameEvidence::kSynthesized,TemporaryReason::kMultipleUses});
+    second_declaration=f.Stmt(DeclarationStmt{{second},{}});body.insert(body.begin(),*second_declaration);
+    const auto value=f.Expr(SequenceExpr{stored,f.Expr(UnaryExpr{TreeUnary::kPlus,read})});
+    std::get<ExpressionStmt>(tree.statements[store.value].statement).expression=f.Expr(AssignmentExpr{SymbolTarget{{second}},value});
+    second_read=f.Read(second);std::get<ReturnStmt>(tree.statements[body.back().value].statement).value=*second_read;
+    body.insert(body.end()-1,f.Report({f.Read(second)}));
+  }
+  if(form==Form::kComposedEnvironment) {
+    const auto name=static_cast<std::uint32_t>(tree.names.size());tree.names.push_back(u"second");
+    const auto second=static_cast<std::uint32_t>(tree.symbols.size());
+    tree.symbols.push_back({{1},{name},BindingKind::kCompilerTemporary,DeclarationKind::kLet,NameEvidence::kSynthesized,TemporaryReason::kPredicateSnapshot});
+    second_read=f.Read(second);second_rhs=rhs;
+    const auto transformed=f.Expr(UnaryExpr{TreeUnary::kNegate,*second_read});
+    std::get<AssignmentExpr>(tree.expressions[stored.value].expression).value=transformed;
+    const auto loop=f.Stmt(LoopStmt{}),inner=f.Block({});
+    const auto scope=std::get<BlockStmt>(tree.statements[inner.value].statement).scope;
+    const auto shadow=static_cast<std::uint32_t>(tree.symbols.size());
+    tree.symbols.push_back({scope,{0},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
+    const auto wrapped=body[1];
+    if(auto* block=std::get_if<BlockStmt>(&tree.statements[wrapped.value].statement))tree.scopes[block->scope.value].parent=scope;
+    auto& block=std::get<BlockStmt>(tree.statements[inner.value].statement);
+    block.first_child=tree.children.size();block.child_count=3;
+    tree.children.push_back(wrapped);tree.children.push_back(f.Stmt(BreakStmt{loop}));
+    tree.children.push_back(f.Stmt(DeclarationStmt{{shadow},f.Literal(false)}));
+    std::get<LoopStmt>(tree.statements[loop.value].statement).body=inner;
+    body={declaration,f.Stmt(DeclarationStmt{{second},{}}),f.Stmt(ExpressionStmt{f.Expr(AssignmentExpr{SymbolTarget{{second}},rhs})}),loop,body.back()};
+  }
   if(form==Form::kTdzStore) {body.erase(body.begin());body.push_back(declaration);}
   if(form==Form::kProjectedLocal) {
     const auto initialize=f.Stmt(ExpressionStmt{f.Expr(AssignmentExpr{SymbolTarget{{4}},f.Call(4)})});
@@ -184,9 +246,15 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
       test::Check(plan.evaluations[i]==ExpressionEvaluation::kRequired);
   }
 
-  const bool folded=form==Form::kReturn||form==Form::kIf||form==Form::kLoop||form==Form::kAwait||form==Form::kYield||form==Form::kTypeof||form==Form::kAlias||form==Form::kCatch||form==Form::kCatchReads||form==Form::kObservedInitialRead||form==Form::kInterleavedAlias||form==Form::kDeadInitialRead||form==Form::kDiscardedOperand||form==Form::kTransparentControl||form==Form::kOnceLoop||form==Form::kRedundantWrites||form==Form::kDeadPrefix||form==Form::kEffectPrefix||form==Form::kProjectedPrefix||form==Form::kProjectedSuffix||form==Form::kUnrelatedBinding||form==Form::kFreeNameUnrelated||form==Form::kFreeGetter||form==Form::kThisUnrelated||form==Form::kThisInputShadow||form==Form::kThisValue;
+  const bool folded=form==Form::kReturn||form==Form::kIf||form==Form::kLoop||form==Form::kAwait||form==Form::kYield||form==Form::kTypeof||form==Form::kAlias||form==Form::kCatch||form==Form::kCatchReads||form==Form::kObservedInitialRead||form==Form::kInterleavedAlias||form==Form::kDeadInitialRead||form==Form::kDiscardedOperand||form==Form::kTransparentControl||form==Form::kOnceLoop||form==Form::kRedundantWrites||form==Form::kDeadPrefix||form==Form::kEffectPrefix||form==Form::kProjectedPrefix||form==Form::kProjectedSuffix||form==Form::kRequiredPrefix||form==Form::kUnrelatedBinding||form==Form::kFreeNameUnrelated||form==Form::kFreeGetter||form==Form::kThisUnrelated||form==Form::kThisInputShadow||form==Form::kThisValue||form==Form::kNestedReturn||form==Form::kReturnPrefix||form==Form::kTwoSnapshots||form==Form::kPrefixUnrelated||form==Form::kNestedInitializer;
   if(plan.replacements[read.value].has_value()!=folded)std::cerr<<"form="<<static_cast<unsigned>(form)<<" count="<<count<<" reverse="<<reverse<<'\n';
   test::Check(plan.replacements[read.value].has_value()==folded);
+  if(second_read)test::Check(plan.replacements[second_read->value].has_value()==(form==Form::kTwoSnapshots||form==Form::kIndependentDestination));
+  if(second_declaration) {
+    const auto placed=reverse?StmtId{static_cast<std::uint32_t>(tree.statements.size()-1-store.value)}:store;
+    const auto original=reverse?StmtId{static_cast<std::uint32_t>(tree.statements.size()-1-second_declaration->value)}:*second_declaration;
+    test::Check(plan.statements[placed.value].has_value()||!plan.omitted[original.value]);
+  }
   const bool aliased=form==Form::kArgument;
   if(aliased)test::Check(plan.aliases[3]==SymbolId{2});
   std::ostringstream output;const auto printed=PrintFunctionTree(tree,output);test::Check(std::holds_alternative<PrintedFunction>(printed));
@@ -205,11 +273,12 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
   }
   if(folded)test::Check(ranges[rhs.value].begin<ranges[rhs.value].end);
   if(folded)test::Check(positions.expression_extents[rhs.value]==GeneratedExtent::kSpan);
+  if(second_rhs)test::Check(positions.expression_extents[second_rhs->value]==GeneratedExtent::kSpan);
   if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"form",form},{"count",count},{"folded",folded},{"aliased",aliased}}<<'\n';return plan.work;
 }
 }
 int main(int argc,char**) {
-  for(unsigned form=0;form<=static_cast<unsigned>(Form::kThisValue);++form){std::uint64_t small=0,large=0;
+  for(unsigned form=0;form<=static_cast<unsigned>(Form::kIndependentDestination);++form){std::uint64_t small=0,large=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}){const auto work=Check(static_cast<Form>(form),count,reverse,argc>1);if(count==400&&!reverse)small=work;if(count==800&&!reverse)large=work;}
     test::Check(large<small*3);
   }

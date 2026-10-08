@@ -25,7 +25,12 @@ inline void CheckProjectedRanges(const source::FunctionTree& tree,
       const auto id=pending.back();pending.pop_back();
       if(retained==id)continue;
       removed[id.value]=1;
-      source::VisitExpressionChildren(tree,tree.expressions[id.value].expression,[&](auto child){pending.push_back(child);});
+      source::VisitExpressionChildren(tree,tree.expressions[id.value].expression,[&](auto child){
+        // A transported RHS remains at its read destination. Removing its
+        // original wrapper cannot turn that retained subtree into a boundary.
+        if(const auto transport=plan.transports[id.value];transport&&transport->value==child)return;
+        pending.push_back(child);
+      });
     }
   }
   Check(printed.expressions.size()==tree.expressions.size());

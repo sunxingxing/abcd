@@ -15,6 +15,7 @@ struct Context {
   std::optional<DiscardedId> discarded;
   FlowValueUse value_use=FlowValueUse::kObserved;
   std::optional<StmtId> owner;
+  std::optional<SymbolId> transport;
   Context Operand(Point continuation,FlowValueUse use=FlowValueUse::kObserved) const {
     auto result=*this;result.next=continuation;result.value_use=use;return result;
   }
@@ -45,6 +46,10 @@ class FlowBuilder {
     statements_.resize(tree_.statements.size()); exits_.resize(tree_.statements.size());
     expressions_.resize(tree_.expressions.size()); seen_.resize(tree_.expressions.size());
     Resize(result_.value_uses,tree_.expressions.size());
+    Resize(result_.expression_owners,tree_.expressions.size());
+    for(auto& owner:result_.expression_owners){budget_.Step();owner.reset();}
+    Resize(result_.expression_transports,projection_.transported_reads.empty()?0:tree_.expressions.size());
+    for(auto& root:result_.expression_transports){budget_.Step();root.reset();}
     for(auto& use:result_.value_uses){budget_.Step();use=FlowValueUse::kUnmodeled;}
     for(auto& point:statements_){budget_.Step();point=New();}
     for(auto& point:expressions_){budget_.Step();point=New();}
@@ -177,6 +182,9 @@ class FlowBuilder {
       budget_.Step();ExprId id{static_cast<std::uint32_t>(i)};path.clear();
       while (read_states_[id.value]==ReadState::kUnseen) {
         budget_.Step();read_states_[id.value]=ReadState::kPending;path.push_back(id);
+        if(!projection_.transports.empty()&&projection_.transports[id.value]) {
+          read_states_[id.value]=ReadState::kDone;break;
+        }
         if (const auto replacement=projection_.replacements[id.value]) {id=*replacement;continue;}
         if (const auto* read=std::get_if<SymbolExpr>(&tree_.expressions[id.value].expression);
             read&&!projection_.ReadLiteral(id,read->symbol))reads_[id.value]=Resolve(read->symbol);
@@ -197,7 +205,17 @@ class FlowBuilder {
     RequireTree(!seen_[at.id.value],Error::kOwnership);seen_[at.id.value]=1;
     const auto start=expressions_[at.id.value];const auto& context=at.context;
     result_.value_uses[at.id.value]=context.value_use;
-    if(auto replacement=projection_.replacements[at.id.value]){Link(start,Expr(*replacement,context));return;}
+    result_.expression_owners[at.id.value]=context.owner;
+    if(!result_.expression_transports.empty())result_.expression_transports[at.id.value]=context.transport;
+    if(!projection_.transports.empty()&&projection_.transports[at.id.value]) {
+      Link(start,context.next);return;
+    }
+    if(auto replacement=projection_.replacements[at.id.value]) {
+      auto destination=context;
+      if(!destination.transport&&!projection_.transported_reads.empty())
+        destination.transport=projection_.transported_reads[at.id.value];
+      Link(start,Expr(*replacement,destination));return;
+    }
     const auto& node=tree_.expressions[at.id.value].expression;
     if(const auto* choice=std::get_if<ConditionalExpr>(&node)) {
       const auto branch=New({FlowEventKind::kTruthBranch,{},{},choice->condition});Link(start,Expr(choice->condition,context.Operand(branch)));

@@ -2566,3 +2566,30 @@ exercise generated source with independent execution and adverse mutations.
 No sample, operation sequence, same-block, adjacency or fixed graph admission is
 added. Exhaustive feasibility across name/cell/value obligations, original IR/SSA,
 full activation/capture/finally and global convergence remain explicit gaps.
+
+### 2026-10-08: rules234, occurrence transport replaces statement admission
+
+Snapshot forwarding no longer requires the source write to equal the root of a
+whole ExpressionStmt or to belong to a discarded expression statement. Common
+FlowValueUse supplies discarded assignment-result proof; a typed transport removes
+only that source occurrence. Sibling effects and enclosing observed results retain
+independent ownership. Common successful-definition/read coverage, motion pairing,
+exception identity, initialized inert PutValue and name/lifetime proofs remain.
+
+The old source-statement-to-candidate scope table and whole-statement reference
+queries retire. One common trial graph supplies actual destination expression
+owners and optional typed transport roots. Nested replacements share their outer
+proposal's dependence; unrelated moves can share a statement without sharing a
+rejection. Batch name/reference proofs cover only transported RHSs. Rejecting an
+outer resource environment cannot leave an inner move validated in its hypothetical
+scope. There is no destination-statement grouping admission or per-variable graph
+walk. Commit only removes initialization/declaration actions with the elided
+binding identity; enclosing native initialization remains.
+
+Tests include independent-positive/same-return rejection precision, dependent
+loop/resource/TDZ negatives, return prefixes, observed assignment values and
+nested native initialization, with independent execution and adverse mutations.
+Arena reversal, sibling composition and 200/201/geometric cases remain. Current
+resource/creation and whole-native-declaration printer limits are not language
+invariants and are not expanded here. Original IR/SSA/lifetime/capture/finally,
+full feasible storage selection and global convergence remain open.

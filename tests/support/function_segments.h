@@ -120,7 +120,10 @@ inline void CheckFunctionTransport(Emission emission,
   CheckSegment(refused && denied.empty());
   for (const std::size_t count : {200, 201}) {
     std::vector<FunctionSegment> many;
-    remaining = kBudget;
+    // Every retained occurrence charges its immutable payload. Scaling must
+    // provision that measured dimension as well as vector/transport slack;
+    // a fixed batch allowance is not evidence of an uncharged shared payload.
+    remaining = kBudget + count * ViewFunctionSegment(mapped).allocated_bytes;
     for (std::size_t i = 0; i < count; ++i) {
       auto shifted = mapped;
       const auto byte_shift = i * method_text.size();

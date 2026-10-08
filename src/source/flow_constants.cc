@@ -12,6 +12,7 @@ std::variant<FlowConstants,TreeStructureError> SolveConstants(
 }
 FlowValueEquation FlowValueEquations::operator[](std::size_t i) const {
   RequireTree(i<base.size(),TreeStructureError::kOwnership);
+  if(!transports.empty()&&transports[i])return FlowPrimitiveReference{transports[i]->replacement};
   if(!replacements.empty()&&replacements[i])return FlowExpressionValue{*replacements[i]};
   if(!read_values.empty()&&read_values[i])return FlowPrimitiveReference{*read_values[i]};
   auto equation=base[i];
@@ -48,12 +49,12 @@ std::variant<FlowConstants,TreeStructureError> AnalyzeFlowConstants(
     // incoming facts. A provisional contextual value must never erase that
     // independent stronger proof. Both domains consume the same equations.
     auto initial=SolveConstants(flow,live,values,
-        {expressions.base,expressions.replacements,expressions.bindings,{},expressions.read_values},primitives,texts,budget.Remaining());
+        {expressions.base,expressions.replacements,expressions.bindings,{},expressions.read_values,{},expressions.transports},primitives,texts,budget.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&initial))throw *error;
     auto invariant=std::get<FlowConstants>(std::move(initial));
     budget.Admit(invariant.allocated_bytes,1);budget.Step(invariant.work);
     const FlowValueEquations refined{expressions.base,expressions.replacements,expressions.bindings,
-        expressions.completed_reads,expressions.read_values,invariant.values};
+        expressions.completed_reads,expressions.read_values,invariant.values,expressions.transports};
     bool candidate=false;
     for(const auto& reference:flow.references) {
       budget.Step();const auto* id=std::get_if<ExprId>(&reference.site);
@@ -84,6 +85,7 @@ std::variant<FlowConstants,TreeStructureError> SolveConstants(
     RequireTree(expressions.replacements.empty()||expressions.replacements.size()==expressions.size(),TreeStructureError::kOwnership);
     RequireTree(expressions.completed_reads.empty()||expressions.completed_reads.size()==expressions.size(),TreeStructureError::kOwnership);
     RequireTree(expressions.read_values.empty()||expressions.read_values.size()==expressions.size(),TreeStructureError::kOwnership);
+    RequireTree(expressions.transports.empty()||expressions.transports.size()==expressions.size(),TreeStructureError::kOwnership);
     struct ValueId {std::uint32_t value;};
     struct DependencyId {std::uint32_t value;};
     struct Dependency {ValueId target;std::optional<DependencyId> next;};

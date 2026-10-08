@@ -276,6 +276,7 @@ class NamePlan {
   }
   void Walk(Expression at) {
     if (ownership_ == Ownership::kPrinted) {
+      if(projections_[at.tree]->transports[at.expression.value])return;
       const auto replacement = projections_[at.tree]->replacements[at.expression.value];
       if (replacement) { Push(Expression{at.tree, *replacement}); return; }
     }

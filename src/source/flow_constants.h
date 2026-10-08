@@ -26,6 +26,7 @@ struct FlowValueEquations {
   std::span<const std::uint8_t> completed_reads;
   std::span<const std::optional<PrimitiveId>> read_values;
   std::span<const std::optional<FlowPrimitiveValue>> invariants;
+  std::span<const std::optional<ExpressionTransport>> transports;
   [[nodiscard]] std::size_t size() const {return base.size();}
   [[nodiscard]] FlowValueEquation operator[](std::size_t) const;
 };

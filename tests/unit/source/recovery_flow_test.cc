@@ -458,6 +458,7 @@ void SourceEvents() {
   const std::array<StmtId,6> owners{{{3},{3},{4},{4},{5},{6}}};
   for(const auto& reference:flow.references)
     Check(reference.owner==owners[std::get<ExprId>(reference.site).value]);
+  for(std::size_t i=0;i<owners.size();++i)Check(flow.expression_owners[i]==owners[i]);
   // The same original read now executes in the return, not in its omitted
   // source store. Rebuilding must publish the destination, without mutating
   // the previous immutable result or confusing the read with its replacement.
@@ -467,7 +468,34 @@ void SourceEvents() {
   for(const auto& reference:moved.references)if(reference.site==FlowReferenceSite{ExprId{0}}) {
     Check(reference.owner==StmtId{6});++forwarded;
   }
-  Check(forwarded==1);omitted[3]=0;replacements[5].reset();
+  Check(forwarded==1);Check(moved.expression_owners[0]==StmtId{6});Check(!moved.expression_owners[1]);
+  omitted[3]=0;
+  std::vector<std::optional<ExpressionTransport>> transports(tree.expressions.size());
+  std::vector<std::optional<SymbolId>> transported_reads(tree.expressions.size());
+  transports[1]=ExpressionTransport{{0},{0}};
+  transported_reads[5]=SymbolId{1};
+  auto transport_projection=projection;transport_projection.transports=transports;transport_projection.transported_reads=transported_reads;
+  const auto transported=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,transport_projection));
+  Check(transported.expression_owners[1]==StmtId{3});Check(transported.expression_owners[0]==StmtId{6});
+  Check(!transported.expression_transports[1]);Check(transported.expression_transports[0]==SymbolId{1});
+  forwarded=0;
+  for(const auto& reference:transported.references) {
+    Check(reference.site!=FlowReferenceSite{ExprId{1}});
+    if(reference.site==FlowReferenceSite{ExprId{0}}){Check(reference.owner==StmtId{6});++forwarded;}
+  }
+  Check(forwarded==1);
+  // Nested RHSs inherit the outer transport identity. This is the dependency
+  // on its projected environment, not a grouping by destination statement.
+  transports[3]=ExpressionTransport{{2},{0}};replacements[5]=ExprId{2};replacements[2]=ExprId{0};
+  transported_reads[5]=SymbolId{2};transported_reads[2]=SymbolId{1};
+  auto nested=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,transport_projection));
+  Check(nested.expression_transports[0]==SymbolId{2});Check(nested.expression_transports[2]==SymbolId{2});
+  Check(nested.expression_owners[0]==StmtId{6});Check(nested.expression_owners[2]==StmtId{6});
+  Check(!nested.expression_transports[1]);Check(!nested.expression_transports[3]);
+  auto committed_transport=transport_projection;committed_transport.transported_reads={};
+  const auto reset=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,committed_transport,{},std::move(nested)));
+  Check(reset.expression_transports.empty());
+  replacements[5].reset();replacements[2].reset();
   // Explicit free names retain their identity and follow the current owner,
   // independently of local binding references and reusable graph capacity.
   tree.names.push_back(u"free");tree.expressions[0].expression=GlobalNameExpr{{3}};
@@ -480,7 +508,7 @@ void SourceEvents() {
   Check(named.names.size()==1&&named.names[0].owner==StmtId{3});
   omitted[3]=0;replacements[5].reset();tree.expressions[0].expression=SymbolExpr{{0}};tree.names.pop_back();
   const auto cleared=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,{aliases,literals,replacements,omitted,evaluations,normal},{},std::move(named)));
-  Check(cleared.names.empty());
+  Check(cleared.names.empty());Check(cleared.expression_owners[0]==StmtId{3});
 
   std::optional<FlowPoint> read,convert,write;
   for(const auto& definition:flow.definitions) {
