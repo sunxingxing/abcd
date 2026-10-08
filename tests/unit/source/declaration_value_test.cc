@@ -64,14 +64,14 @@ struct Fixture {
       body.push_back(Stmt(DeclarationStmt{{5},{}}));
     } else {
       auto value=form==0?Expr(TreeLiteral{IntegerLiteral{42}}):
-          form==3||form==4||form==5||form==7||form==12||(form>=17&&form!=20)?Call(1):
+          form==3||form==4||form==5||form==7||form==12||(form>=17&&form<22&&form!=20)?Call(1):
           form==11?Expr(EmptyObjectExpr{}):form==20?Call(1,4):Read(0);
       if(form==2)value=Expr(SequenceExpr{Call(2,0),value});
       initialize(4,value);
       if(form==7)body.push_back(Stmt(ExpressionStmt{Call(2,5)}));
       if(form==15)body.push_back(Write(5,Call(1)));
       if(form==3||form==4||form==11||form==12)body.push_back(Stmt(DeclarationStmt{{5},{}}));
-      else initialize(5,form==16?Expr(SequenceExpr{Call(2,0),Expr(TreeLiteral{IntegerLiteral{42}})}):Read(4));
+      else initialize(5,form>=22?Call(1):form==16?Expr(SequenceExpr{Call(2,0),Expr(TreeLiteral{IntegerLiteral{42}})}):Read(4));
     }
     for(unsigned i=0;i<count;++i) {
       const ScopeId scope{static_cast<std::uint32_t>(tree.scopes.size())};
@@ -108,6 +108,19 @@ struct Fixture {
       tree.scopes.push_back({ScopeKind::kBlock,scope});
       const auto guard=Stmt(IfStmt{Call(3),Block({Write(5,Call(1))},arm),Block({Stmt(BreakStmt{loop,{}})},exit)});
       std::get<LoopStmt>(tree.statements[loop.value].statement).body=Block({guard},scope);body.push_back(loop);
+    }
+    if(form>=22) {
+      std::vector<StmtId> writes{Write(5,Call(1)),Stmt(ExpressionStmt{Call(2,5)}),Write(4,Read(5))};
+      if(form==22)body.insert(body.end(),writes.begin(),writes.end());
+      else {
+        const ScopeId protected_scope{static_cast<std::uint32_t>(tree.scopes.size())};
+        tree.scopes.push_back({ScopeKind::kBlock,ScopeId{1}});
+        const ScopeId catch_scope{static_cast<std::uint32_t>(tree.scopes.size())};
+        tree.scopes.push_back({ScopeKind::kCatch,ScopeId{1}});
+        tree.symbols.push_back({catch_scope,{6},BindingKind::kCatchParameter,DeclarationKind::kCatchParameter,NameEvidence::kSynthesized,{}});
+        const auto handler=Block({Stmt(ExpressionStmt{Call(2,4)})},catch_scope);
+        body.push_back(Stmt(TryStmt{Block(writes,protected_scope),CatchClause{{6},handler},{}}));
+      }
     }
     if(form==16) {body.push_back(Stmt(ExpressionStmt{Call(2,5)}));body.push_back(Write(4,Read(5)));}
     if(form==10) {
@@ -168,7 +181,7 @@ struct Fixture {
 };
 }
 int main(int argc,char**) {
-  for(unsigned form=0;form<22;++form)for(bool native:{false,true}) {
+  for(unsigned form=0;form<24;++form)for(bool native:{false,true}) {
     std::uint64_t small=0,large=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}) {
       Fixture fixture(form,count,native,reverse);std::ostringstream output;
@@ -185,6 +198,16 @@ int main(int argc,char**) {
       const auto printed=PrintFunctionTree(fixture.tree,output);
       test::Check(std::holds_alternative<PrintedFunction>(printed));
       test::CheckProjectedRanges(fixture.tree,std::get<BindingInitializers>(planned),std::get<PrintedFunction>(printed),output.str().size());
+      if(form==22&&native) {
+        const auto& plan=std::get<BindingInitializers>(planned);
+        bool projected=false;
+        for(const auto& value:plan.declaration_values)if(value) {
+          projected=true;
+          if(value->target)std::cerr<<"dead projected store form="<<form<<" reverse="<<reverse<<'\n'<<output.str()<<'\n';
+          test::Check(!value->target);
+        }
+        test::Check(projected);
+      }
       if(form<=3||form==17||form==21) {
         if(output.str().find("current")!=std::string::npos||output.str().find("scratch")!=std::string::npos)
           std::cerr<<"form="<<form<<" native="<<native<<" reverse="<<reverse<<'\n'<<output.str()<<'\n';

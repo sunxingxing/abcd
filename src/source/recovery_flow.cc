@@ -121,10 +121,10 @@ class FlowBuilder {
     const auto point=New({FlowEventKind::kDefinition,{},FlowDefinitionId{static_cast<std::uint32_t>(definitions_.size())}});
     events_[point.value].discarded=discarded;
     Append(definitions_,{point,Resolve(binding),kind,copy,value,declaration,write,effect});
-    if(write)Reference(point,Resolve(binding),FlowReferenceKind::kWrite,*write,exceptions,owner);
-    else if(declaration && (kind==FlowDefinitionKind::kUndefinedStore ||
-        kind==FlowDefinitionKind::kInitializer || kind==FlowDefinitionKind::kAssignment))
-      Reference(point,Resolve(binding),FlowReferenceKind::kWrite,*declaration,exceptions,owner);
+    if(write || kind==FlowDefinitionKind::kUndefinedStore ||
+        kind==FlowDefinitionKind::kInitializer || kind==FlowDefinitionKind::kAssignment)
+      if(const auto site=definitions_.back().WriteSite())
+        Reference(point,Resolve(binding),FlowReferenceKind::kWrite,*site,exceptions,owner);
     return point;
   }
   void Reference(FlowPoint point,SymbolId binding,FlowReferenceKind kind,FlowReferenceSite site,std::optional<FlowExceptionContext> exceptions={},std::optional<StmtId> owner={}) {

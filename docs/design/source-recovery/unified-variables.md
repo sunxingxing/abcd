@@ -1236,3 +1236,39 @@ initialization dependencies, pre-initialization self reads, overwrites and loop
 writes with two initializer encodings and reversed arenas. Independent execution
 and intentionally removed calls/providers/TDZ effects check the semantic contract;
 final selected regression and actual record evidence are recorded in status.md.
+
+
+## Statement and expression writes share dead-definition projection (rules223)
+
+FlowDefinition::WriteSite exposes a typed FlowReferenceSite from the semantic
+adapter's expression/statement positions. Flow references and dead-definition
+proposals consume this common site; the dead-write commit no longer extracts an
+AssignmentExpr from the original tree. Each owned proposal carries its original
+RHS value, or absence for a valueless shared-slot write. No source syntax or opcode
+sequence is re-matched after another pass has committed storage projection.
+
+After coalescing, a native initialized declaration can become DeclarationValue
+with a successful assignment to an already initialized slot. That write may be
+dead even though its RHS call is required. Previously only ExprId writes entered
+PlanDefinitionElisions, so this statement assignment retained unnecessary storage.
+The shared demand/effect rule now covers assignment and UndefinedStore regardless
+of site representation. Native lexical initialization, updates and observable
+writes retain their independent obligations. Required RHS GetValue stays at the
+same occurrence, in the same handler; a dead undefined slot write has no RHS and
+can disappear. Binding retention remains a separate pass over the resulting
+committed flow. There is no new sweep, layout admission or naming heuristic.
+
+Fixtures compare split stores and native declarations, arena reversal, long
+transparent block programs, repeated calls and a handler that observes the old
+slot if a later call/report throws. Dropping the first call and prematurely
+sharing an exception-live old value are detected independently. Observation
+normalizes the identities of two distinct object tokens instead of treating
+empty objects as interchangeable under deep equality. Existing dense demand
+oracles retain their independent result checks, and Cartesian site/kind/effect/
+demand tests protect lexical completion and update obligations.
+
+This closes dead assignment projection after shared native initialization, not
+pruning the initializer value of a still-live lexical binding. That precision
+gap, full binding lifetime/capture/unwind, original-IR correspondence and global
+pass convergence remain explicit. Final selected verification and actual record
+scope are recorded in status.md.

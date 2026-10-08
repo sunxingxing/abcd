@@ -28,9 +28,17 @@ std::variant<DefinitionElisions,TreeStructureError> PlanDefinitionElisions(
     budget.Array(result.writes,flow.definitions.size());std::size_t count=0;
     for(std::size_t i=0;i<flow.definitions.size();++i) {
       budget.Step();const auto& definition=flow.definitions[i];
-      if(!demand.definitions[i] && definition.kind==FlowDefinitionKind::kAssignment &&
-          definition.effect==FlowWriteEffect::kInert && definition.write)
-        result.writes[count++]=*definition.write;
+      if(demand.definitions[i] || definition.effect!=FlowWriteEffect::kInert)continue;
+      switch(definition.kind) {
+        case FlowDefinitionKind::kAssignment:case FlowDefinitionKind::kUndefinedStore:
+          if(const auto site=definition.WriteSite())result.writes[count++]={*site,definition.value};
+          break;
+        // Lexical completion is a binding obligation, independently of value
+        // demand. Updates retain their conversion/read/successful writeback.
+        case FlowDefinitionKind::kParameter:case FlowDefinitionKind::kUndefined:
+        case FlowDefinitionKind::kInitializer:case FlowDefinitionKind::kUpdate:
+        case FlowDefinitionKind::kCatch:case FlowDefinitionKind::kFunctionSelf:break;
+      }
     }
     result.writes.resize(count);count=0;
     budget.Array(result.statements,flow.discarded.size());

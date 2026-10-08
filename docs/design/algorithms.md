@@ -2880,3 +2880,25 @@ never selects a quadratic fallback at 200. Chain tests exercise 200/201/400/800
 bindings, growth and exact/short budgets, with source execution covering retained
 RHS effects, TDZ failures, overwrites and repeated loop effects. See status.md for
 measured verification and record acceptance scope.
+
+
+### Typed write-site dead-definition deltas (rules223)
+
+The existing project-owned observable-root demand solver and dead-definition
+planner now carry a FlowReferenceSite plus optional RHS in each proposal.
+FlowDefinition::WriteSite is a constant-time query over the adapter's typed
+expression/statement positions, reused for publishing references. No new solver,
+dependency, external implementation or licensing requirement is introduced.
+Maintenance remains with RecoveryFlow, PlanDefinitionElisions and its source
+projection consumer. Required demand, inert successful writes and the supplied
+validated storage projection are prerequisites; lexical initialization and
+updates retain separate completion/conversion obligations.
+
+For D definitions and G evaluation regions, delta construction still costs
+O(D+G) work/storage, and commit O(number of elisions). The larger typed proposal
+records are charged, including optional RHS and valueless undefined slot writes.
+There is no per-binding scan, tree re-matching, additional graph traversal or
+fixed-count sweep. The existing sparse demand fact cost and revision invalidation
+remain unchanged. Tests cover both site kinds, all semantic definition kinds,
+effects and live/dead facts, with exact/short budgets; source tests extend existing
+0/1/200/201/400/800 and reversed arenas. This is no RSS or corpus claim.

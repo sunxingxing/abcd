@@ -253,8 +253,8 @@ void SmallGraphs() {
       }
       const auto demand=std::get<FlowDemand>(AnalyzeFlowDemand(graph));
       const auto elisions=std::get<DefinitionElisions>(PlanDefinitionElisions(graph,demand));
-      std::vector<ExprId> expected_elisions;
-      for(unsigned d=0;d<graph.definitions.size();++d)if(!expected_live[d])expected_elisions.push_back(*graph.definitions[d].write);
+      std::vector<DefinitionWrite> expected_elisions;
+      for(unsigned d=0;d<graph.definitions.size();++d)if(!expected_live[d])expected_elisions.push_back({FlowReferenceSite{*graph.definitions[d].write},{}});
       Check(elisions.writes==expected_elisions);++cases;
     }
   }
@@ -292,8 +292,8 @@ void DemandGraphs() {
       const auto demand=std::get<FlowDemand>(AnalyzeFlowDemand(graph));
       for(unsigned i=0;i<3;++i)Check(bool(demand.definitions[i])==needed[i]&&bool(demand.retained[i])==retained[i]);
       const auto plan=std::get<DefinitionElisions>(PlanDefinitionElisions(graph,demand));
-      std::vector<ExprId> writes;std::vector<StmtId> statements;
-      for(unsigned i=0;i<3;++i){if(!needed[i])writes.push_back({i});if(!retained[i])statements.push_back({i});}
+      std::vector<DefinitionWrite> writes;std::vector<StmtId> statements;
+      for(unsigned i=0;i<3;++i){if(!needed[i])writes.push_back({FlowReferenceSite{ExprId{i}},{}});if(!retained[i])statements.push_back({i});}
       Check(plan.writes==writes&&plan.statements==statements);
       if(edges==511&&effects==7&&external==7) {
         Check(std::holds_alternative<FlowDemand>(AnalyzeFlowDemand(graph,{demand.allocated_bytes,demand.work})));
@@ -306,6 +306,31 @@ void DemandGraphs() {
       ++cases;
     }
   std::cout<<"independent demand graphs "<<cases<<'\n';
+}
+void DefinitionSites() {
+  // Cartesian semantic obligations: site representation cannot decide whether
+  // a value write is removable. Completion/updates and observable writes stay.
+  for(const auto kind:{FlowDefinitionKind::kParameter,FlowDefinitionKind::kUndefined,
+      FlowDefinitionKind::kInitializer,FlowDefinitionKind::kAssignment,FlowDefinitionKind::kUpdate,
+      FlowDefinitionKind::kCatch,FlowDefinitionKind::kUndefinedStore,FlowDefinitionKind::kFunctionSelf})
+    for(bool statement:{false,true})for(bool needed:{false,true})for(bool inert:{false,true}) {
+      RecoveryFlow flow{};FlowDemand demand;
+      flow.definitions.push_back({{0},{0},kind,{},kind==FlowDefinitionKind::kUndefinedStore?std::nullopt:std::optional{ExprId{9}},
+          statement?std::optional{StmtId{4}}:std::nullopt,
+          statement?std::nullopt:std::optional{ExprId{3}},
+          inert?FlowWriteEffect::kInert:FlowWriteEffect::kObservable});
+      demand.definitions.push_back(needed);
+      const auto result=std::get<DefinitionElisions>(PlanDefinitionElisions(flow,demand));
+      const bool remove=!needed&&inert&&(kind==FlowDefinitionKind::kAssignment||kind==FlowDefinitionKind::kUndefinedStore);
+      Check(result.writes.size()==std::size_t(remove));
+      if(remove) {
+        Check(result.writes[0].site==(statement?FlowReferenceSite{StmtId{4}}:FlowReferenceSite{ExprId{3}}));
+        Check(result.writes[0].value==flow.definitions[0].value);
+      }
+      Check(std::holds_alternative<DefinitionElisions>(PlanDefinitionElisions(flow,demand,{result.allocated_bytes,result.work})));
+      Check(std::get<TreeStructureError>(PlanDefinitionElisions(flow,demand,{result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
+      Check(std::get<TreeStructureError>(PlanDefinitionElisions(flow,demand,{result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);
+    }
 }
 void Scaling() {
   std::uint64_t previous=0;
@@ -684,6 +709,7 @@ void DeclarationValues() {
   for(const auto& definition:projected.definitions)if(definition.kind==FlowDefinitionKind::kAssignment) {
     ++assignments;Check(definition.binding==SymbolId{1}&&definition.copy==SymbolId{1});
     Check(definition.effect==FlowWriteEffect::kInert&&definition.value==ExprId{1});
+    Check(definition.WriteSite()==FlowReferenceSite{StmtId{2}});
   }
   Check(assignments==1);
   values[2]->target.reset();projected=build(std::move(projected));
@@ -700,4 +726,4 @@ void DeclarationValues() {
   }
   Check(checked);
 }
-int main(){DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+int main(){DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

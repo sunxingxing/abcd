@@ -818,9 +818,18 @@ class Initializers {
     if(delta.statements.empty() && delta.writes.empty())return;
     BeginCommit();
     for (const auto statement:delta.statements) {budget_.Step();plan_.omitted[statement.value]=1;}
-    for (const auto write:delta.writes) {
-      budget_.Step();plan_.replacements[write.value]=
-          std::get<AssignmentExpr>(tree_.expressions[write.value].expression).value;
+    for(const auto& write:delta.writes) {
+      budget_.Step();std::visit([&](auto site) {
+        using T=decltype(site);
+        if constexpr(std::is_same_v<T,ExprId>) {
+          RequireTree(write.value.has_value(),TreeStructureError::kOwnership);
+          plan_.replacements[site.value]=*write.value;
+        } else {
+          if(write.value)plan_.declaration_values[site.value]=DeclarationValue{*write.value,{}};
+          else plan_.omitted[site.value]=1;
+          plan_.undefined_stores[site.value].reset();plan_.statements[site.value].reset();
+        }
+      },write.site);
     }
   }
   void ElideUnusedBindings() {

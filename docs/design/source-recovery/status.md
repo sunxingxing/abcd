@@ -24,6 +24,40 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则223，死定义统一处理语句/表达式写入
+
+- 共同FlowDefinition::WriteSite供reference发布及死写入提案使用；
+  DefinitionWrite拥有typed ExprId/StmtId位置与原RHS。旧提交从
+  canonical tree提取AssignmentExpr的路径移除，消费提案后统一
+  失效当前分析；无新pass、扫描轮次或布局匹配。
+- 存储合并后的原生声明投影为已初始化slot赋值，其死值写入现与
+  普通表达式赋值共享demand/inert证明。必要RHS GetValue保持
+  原位置、次数和异常路由；死UndefinedStore没有RHS可省略。
+  词法初始化完成、update转换/写回及observable写入仍保留。
+  独立Bindings随后消费已提交flow；活跃词法初始化值裁剪仍开放。
+- 旧实现新增form22复现合并后的current第一次seed写回冗余，
+  red-tests.log在8.08秒失败；新版C++/flow/死定义聚焦4项均通过。
+  新源码错误变体测试暴露了seed返回同值及两个空对象deepEqual
+  不区分身份的问题，修正为独立对象身份观察；不修改生产语义或
+  降低对照。identity-recheck.log独立源码测试通过8.02秒，所有
+  初始诊断保存在build/stage-one/statement-write-verification。
+- 两种初始化编码、正反arena、0/1/200/201/400/800组合增加死共享
+  写入和handler读取异常旧值；576份引擎源码/115,200独立行为/
+  15错误变体。64种site/kind/demand/effect组合保护初始化与update
+  边界；原小图独立demand/live oracle和typed预算继续覆盖。
+- 最终29目标构建成功，59/59定向回归578.15秒全部通过，构建+
+  测试712.41秒。selection.json、final-result.json及final-{build,
+  tests,detail}.log保存于同一验证目录；包含既定变量/干涉/快照/
+  循环、表达式组合、函数/类命名及真实record行为。
+- 固定pasteboard ABC导出至build/stage-one/statement-write-rule223，
+  19 records，10完整/0部分/9无module，10源码语法全部通过，
+  源码与规则222导出逐字节相同。输入SHA-256前后均为
+  854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e，
+  record-{export.log,result.json}保留；这不代替整个paired corpus/
+  PasteBoard/platform验收。阶段一Goal保持active。
+  原IR对应、完整生命期/finally/capture及全局pass收敛未完成；
+  全量suite、广语料、RSS/DFX及benchmarks保持暂停。
+
 ### 2026-10-08：规则222，初始化值需求与绑定保留分离
 
 - 原生词法初始化region发布typed initializer owner，私有成功完成与

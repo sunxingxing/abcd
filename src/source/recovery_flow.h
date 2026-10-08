@@ -66,6 +66,14 @@ struct FlowDefinition {
   std::optional<StmtId> declaration;
   std::optional<ExprId> write;
   FlowWriteEffect effect = FlowWriteEffect::kObservable;
+  // The semantic adapter owns both expression and statement write positions.
+  // Kind still distinguishes lexical completion from assignment/slot writes;
+  // a site alone never authorizes deleting initialization or binding lifetime.
+  [[nodiscard]] std::optional<FlowReferenceSite> WriteSite() const {
+    if(write)return FlowReferenceSite{*write};
+    if(declaration)return FlowReferenceSite{*declaration};
+    return std::nullopt;
+  }
 };
 struct FlowEvent {
   FlowEventKind kind = FlowEventKind::kControl;

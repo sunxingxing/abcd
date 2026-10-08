@@ -2336,3 +2336,18 @@ opcode序列、固定链长、样本名称或图形状准入规则。
 及已提交词法初始化消费同一义务。原始IR对应、完整生命期/finally/
 capture及全局pass收敛继续开放。独立小图闭包、200/201几何增长、
 复制/arena变换、异常/循环组合及实际record证据见status。
+
+
+### 2026-10-08：规则223，死写入不依赖表达式节点表示
+
+旧死定义提交从原tree提取AssignmentExpr，提案也只接受ExprId。
+存储合并后的原生声明已成为语句级slot赋值，因表示差异而保留死写入。
+现在共同FlowDefinition::WriteSite发布ExprId/StmtId位置，提案拥有RHS，
+提交只消费typed site/value；原AssignmentExpr提取与ExprId-only路径移除。
+
+共同需求和效果同时决定assignment/UndefinedStore的值删除；词法
+初始化、update转换/写回和可观察写入义务保留。必要RHS GetValue保持
+原位置、次数及异常路由。未加名字、样本、同块、邻接、固定图或操作
+序列判断；semantic definition kind是初始化/赋值的语言语义区分。
+当前活跃初始化值裁剪、完整生命期/finally/capture、原IR对应及全局
+pass收敛仍有缺口。布局变换、异常旧值及错误写入/调用反例见status。

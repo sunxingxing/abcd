@@ -3,8 +3,15 @@
 #include "flow_liveness.h"
 namespace abcd::source {
 struct FlowInitializations;
+struct DefinitionWrite {
+  FlowReferenceSite site;
+  // GetValue remains at its original occurrence. A valueless shared-slot write
+  // has no RHS evaluation; this does not denote lexical initialization.
+  std::optional<ExprId> value;
+  auto operator<=>(const DefinitionWrite&) const = default;
+};
 struct DefinitionElisions {
-  std::vector<ExprId> writes;
+  std::vector<DefinitionWrite> writes;
   std::vector<StmtId> statements;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
