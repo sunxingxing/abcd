@@ -2734,3 +2734,28 @@ reversed statement arenas and block composition cover both. No sample/name/opcod
 sequence, same-block, adjacency or fixed CFG shape condition is added. Lazy proof
 construction changes cost only. Arbitrary incremental convergence, full activation/
 capture/finally and original IR/SSA remain explicit gaps.
+
+
+### 2026-10-09 rules242: definition-independent stable read values
+
+Obligation: each substituted read has the same normal value under every retained
+successful definition and resolves to the intended stable entry binding at its
+actual destination. The common flat solver joins typed opaque identities alongside
+primitives. Mapped arguments, unknown captures/signature observations and retained
+writes defeat grounding; unknown/conflicting/unseeded/live-undefined inputs defeat
+agreement. These are identity/value/capability facts, not producer shapes.
+
+BindingValues only rewrites reads. Independent definition/initial-value/binding
+cleanup owns deletion and preserves RHS effects, throws and lexical completion.
+Common name and lifetime resolution validates all destination reads. Single-write
+alias storage retirement remains its own contract; repeated-copy read recovery no
+longer depends on that representation. No sample/name/opcode sequence, same-block,
+adjacency or fixed CFG shape matcher is added. The explicit ReadValues stage prevents
+later alias/storage/snapshot mutation of established destinations; it is scheduling,
+not bytecode admission. The original shadowed-snapshot style test remains unchanged.
+
+Source branch/loop/effect positives, initial-undefined observation, different/written
+root and source-local/shadow/mapped-argument negatives, independent execution/mutants,
+origin/expression oracles and layout/budget/scaling tests cover the path. Opaque roots
+for arbitrary local/catch/captured values, per-occurrence symbolic precision, final
+namespace allocation and global convergence remain documented implementation gaps.

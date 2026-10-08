@@ -2118,3 +2118,47 @@ fixed-point convergence. Cleanup can expose further opportunities, and arbitrary
 pass cycles still require a common incremental dependency/worklist design with a
 measured complexity bound. Original IR/SSA correspondence, full activation/capture/
 finally, arbitrary namespace relocation and the overall milestone remain open.
+
+
+### Stable normal values across definitions (2026-10-09, rules242)
+
+The shared flat value solver now joins both typed primitives and opaque immutable
+body-entry binding identities. The source adapter establishes mapped-argument,
+capture and unmodeled-signature premises once; the same mapped-argument premise
+serves existing aliases. Retained definitions/writes independently defeat stable
+entry grounding. Ordinary observable cells stay unknown. A grounded copy cycle
+can preserve one value, but conflicting identities, unknown leaves, live initial
+undefined and unseeded cycles cannot invent a value. Choice/logical/sequence normal
+values consume the same equations; effects and executable edges remain independent.
+Contextual primitive refinement never manufactures an all-definition binding fact.
+
+An independent BindingValues pass substitutes only private reads. It validates
+current lexical containment and common name resolution for every destination,
+then commits an owned read_bindings delta after first-commit invalidation. Storage
+and successful writes keep their own identities. The shared flow, expression facts,
+printed-name analysis and printer all consume this read projection; no AST replay
+or symbol merge supplies its meaning. DeadDefinitions/InitialValues/Bindings alone
+remove writes/initializers/names, preserving each required RHS and completion.
+
+The source pipeline now has Values -> Storage -> ReadValues -> Grammar stages.
+Stable binding substitution runs after storage/aliases/snapshot destinations settle:
+early substitution erased a useful outer spelling and blocked a later snapshot
+under parameter-name shadowing. That existing style regression retains its original
+expectations. ReadValues cannot schedule aliases, contraction or snapshot motion
+backwards; completed value substitution and ordered clean demand are required before
+Grammar. Normalization owners remain independently legal in ReadValues. This closes
+an actual order dependency without a whole-function optimization retry.
+
+Repeated copies in branches/loops and effectful RHS composition now recover direct
+values without a singleton-definition admission. An initial undefined observation
+first becomes its independently proved literal; later stable copies can then retire
+without losing that observation. Different roots, written parameters, source locals,
+lexical shadows and mapped arguments retain their necessary representation. Tiny
+independent origin-closure and expression-join oracles, source execution/mutants,
+reversed layouts and 200/201/geometric/exact-short budgets test these contracts.
+
+Grounding currently covers proved immutable formal/self entry values. New roots for
+arbitrary local SSA values, catch activation/capture cells, per-occurrence symbolic
+values, final source namespace allocation and incremental global convergence remain
+precision gaps. All-definition agreement is a value fact, never deletion authority.
+Original IR/SSA/full activation/finally and the overall milestone remain open.

@@ -24,6 +24,46 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-09：规则242，多定义稳定值与独立读取替换阶段
+
+- 共同稀疏flat正常值域加入typed、不可变的函数入口绑定身份；参数/
+  self的capture、签名与mapped-arguments前提由源适配一次产生，原Alias
+  复用该事实并移除重复参数列表扫描。共同定义/写入分析阻止不稳定入口
+  grounding；分支、循环复制可以共同证明同一个值，无单定义准入。
+  unknown、不同root、活跃undefined和无种子环不能创造已知值。
+- 独立BindingValues只提交自有read_bindings；共同当前flow、表达式事实、
+  名字分析与打印器消费读取投影，写入继续使用Storage。每个实际读取
+  目的地经共同scope/name查询；first-commit先使聚合事实失效，再提交
+  自有delta。DeadDefinitions/InitialValues/Bindings独立决定写入、初始化
+  与声明删除，RHS效果、正常/异常完成没有因值相同而被自动删除。
+- 顺序显式为Values→Storage→ReadValues→Grammar。稳定读取替换在存储/
+  alias/快照目的地确定后运行，避免提前丢掉可用外层名字、阻断后续
+  snapshot恢复。原shadow快照回归期望保持；进入ReadValues后禁止
+  alias/存储/快照回退，完成值pass和有序清理后才允许Grammar。
+  调度完成状态不是分析缓存有效性，没有新增整函数重试。
+- 有效旧实现RED exit134（458）；早先fixture声明缺失导致的结构失败
+  不计作功能证据。新9种源码语义覆盖分支/循环/effect/初始undefined、
+  不同root/写参数/source-local/shadow/mapped反例；反向arena及
+  0/1/200/201/400/800组合。32768独立copy-origin闭包、表达式值join、
+  live/dead undefined、无种子环、exact/short预算及非法入口对照通过。
+  聚焦3/3在25.14秒通过；最终32768独立值对照、调度反例及原共同名字/
+  retirement/storage/subset对照均通过。
+- 当前29目标构建168.64秒通过；最终59/59选定回归456.22秒通过，
+  combined-coverage.json核对通过名称集合与原选择完全一致。存储
+  665源码/96692行为比较/60错误变体；声明2568/513600/100、初始化
+  2004/482752/368、循环276/13976/68；真实callback/rich-text/
+  progressbar/EntryAbility回归通过。既有literal_plan.cc的kNoop
+  switch警告保持，无本次新增编译警告。
+- fresh固定pasteboard导出2.72秒，19records、10完整/0部分/9无module，
+  10语法检查通过；源码字节等于241，language_numeric_constructors_v1
+  与原预算保持。输入SHA256前后均为
+  854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e。
+  证据在build/stage-one/stable-value-verification。
+- grounding目前限定已证明不可变的formal/self入口；任意local SSA值、
+  catch/capture、每次读取symbolic值、完整activation/finally、原IR/SSA
+  与共同增量全局收敛仍开放。统一变量里程碑、结构gate、阶段一Goal
+  active；全suite/广语料/RSS/benchmarks/DFX/代理暂停保持。
+
 ### 2026-10-09：规则241，按版本复查存储阶段的快照消费者
 
 - 保留存储合并前的快照规范化；存储/alias及独立清理结束后，调度器

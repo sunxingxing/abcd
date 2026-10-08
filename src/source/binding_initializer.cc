@@ -55,6 +55,7 @@ class Initializers {
     budget.Array(plan_.forwarded_values, tree.statements.size());
     budget.Array(plan_.literals, tree.symbols.size());
     budget.Array(plan_.read_literals, tree.expressions.size());
+    budget.Array(plan_.read_bindings,tree.symbols.size());
     budget.Array(plan_.aliases, tree.symbols.size());
     budget.Array(plan_.storage, tree.symbols.size());
     budget.Array(plan_.undefined_stores, tree.statements.size());
@@ -214,6 +215,15 @@ class Initializers {
       budget_.Step();if(shadowed[i])source_shadows_[shadow_count++]={*shadowed[i],source_scope_regions_[tree_.symbols[i].scope.value],SymbolId{static_cast<std::uint32_t>(i)}};
     }
     source_shadows_.resize(shadow_count);
+    // Source entry identity is adapted once after capture/signature census.
+    // Mapped arguments and unmodeled signature observations cannot ground a
+    // stable value. Retained body writes are checked by the common value solver.
+    bool simple=true;for(const auto& parameter:tree_.parameters){budget_.Step();simple&=!parameter.initializer&&!parameter.rest;}
+    mapped_arguments_=tree_.strictness==Strictness::kSloppy&&!IsArrowCallable(tree_.callable)&&simple;
+    budget_.Array(stable_entries_,uses_.size());
+    for(std::size_t i=0;i<uses_.size();++i){budget_.Step();const auto kind=tree_.symbols[i].kind;
+      stable_entries_[i]=!uses_[i].escaped&&!uses_[i].outside_body&&
+          ((kind==BindingKind::kParameter&&!mapped_arguments_)||kind==BindingKind::kFunctionSelf);}
     // Normalize redundant writes before dead-definition analysis chooses the
     // retained producer; both passes preserve the original RHS evaluation.
     RunPass(Pass::kStoredResults);
@@ -271,6 +281,11 @@ class Initializers {
       RunPass(Pass::kInertStatements);
       EnsureDemandCleanup();
     }
+    // Stable binding values consume final storage/snapshot read destinations.
+    // Doing this before motion can choose a name unavailable at that destination.
+    schedule_.EnterReadValues();
+    RunPass(Pass::kBindingValues);
+    EnsureDemandCleanup();
     RunPass(Pass::kInertOperands);
     EnsureDemandCleanup();
     // Final source grammar consumes the final bindings/evaluations. It can
@@ -329,6 +344,7 @@ class Initializers {
       case Pass::kDeclarations:Declarations();break;
       case Pass::kDeclarationKinds:DeclarationKinds();break;
       case Pass::kConstants:Constants();break;
+      case Pass::kBindingValues:BindingValues();break;
       case Pass::kAliases:Aliases();break;
       case Pass::kSnapshots:ForwardSnapshots();break;
       case Pass::kLoopDeclarations:ProjectLoopDeclarations();break;
@@ -825,7 +841,7 @@ class Initializers {
     const LegacyFlowProjection projection{plan_.aliases,plan_.literals,replacements,
         omitted,expressions.evaluations,expressions.normal_stores,plan_.statements,private_bindings,
         plan_.storage,plan_.undefined_stores,plan_.declaration_values,plan_.declaration_completions,
-        {source_regions_,source_occurrences_,source_bindings,source_shadows_,unique_spellings_,spellings_,name_spellings_},plan_.read_literals,transports,transported_reads};
+        {source_regions_,source_occurrences_,source_bindings,source_shadows_,unique_spellings_,spellings_,name_spellings_},plan_.read_literals,transports,transported_reads,plan_.read_bindings,stable_entries_};
     auto built=BuildRecoveryFlow(tree_,projection,budget_.Remaining(),std::move(storage));
     if(const auto* error=std::get_if<TreeStructureError>(&built))throw *error;
     auto flow=std::get<RecoveryFlow>(std::move(built));
@@ -1245,7 +1261,7 @@ class Initializers {
   FlowValueEquation ProjectedBindingValue(SymbolId id) const {
     RequireAnalysis();
     if(const auto primitive=plan_.literals[id.value])return FlowPrimitiveReference{*primitive};
-    return FlowBindingValue{plan_.Storage(id)};
+    return FlowBindingValue{plan_.ReadBinding(id)};
   }
   FlowValueEquation ProjectedValueEquation(ExprId id) const {
     RequireAnalysis();
@@ -1309,7 +1325,7 @@ class Initializers {
       if (const auto* read = std::get_if<SymbolExpr>(&node)) {
         literal=plan_.ReadLiteral(id,read->symbol);
         if (!literal) {
-          const auto source = plan_.Storage(read->symbol);
+          const auto source = plan_.ReadBinding(read->symbol);
           result = source;
         }
         if (literal || (!initialized.empty() && initialized[id.value]))
@@ -1587,6 +1603,30 @@ class Initializers {
     }
     for(std::size_t i=0;i<read_count;++i){budget_.Step();const auto& edit=read_proposals[i];BeginCommit();plan_.read_literals[edit.expression.value]=edit.primitive;}
   }
+  void BindingValues() {
+    bool candidate=false;
+    for(const auto& use:uses_){budget_.Step();candidate|=use.private_storage&&use.declaration&&!use.escaped&&!use.outside_body;}
+    if(!candidate)return;
+    const auto& values=CurrentConstants();
+    std::vector<std::optional<SymbolId>> bindings;budget_.Array(bindings,uses_.size());
+    for(std::size_t i=0;i<uses_.size();++i){budget_.Step();const auto& use=uses_[i];
+      if(use.private_storage&&use.declaration&&!use.escaped&&!use.outside_body&&values.bindings[i]&&
+          values.bindings[i]->value!=i&&plan_.read_bindings[i]!=values.bindings[i])bindings[i]=values.bindings[i];}
+    const auto& flow=CurrentFlow();
+    std::vector<SourceNameQuery> queries;std::vector<SymbolId> owners;std::vector<std::uint8_t> blocked;
+    budget_.Array(queries,flow.references.size());budget_.Array(owners,flow.references.size());budget_.Array(blocked,uses_.size());
+    std::size_t query_count=0;
+    for(const auto& reference:flow.references){budget_.Step();if(reference.kind!=FlowReferenceKind::kRead)continue;
+      const auto target=bindings[reference.binding.value];if(!target)continue;
+      if(!reference.owner||!flow.BindingInScope(*target,reference.owner)){blocked[reference.binding.value]=1;continue;}
+      queries[query_count]={*target,reference.owner};owners[query_count++]=reference.binding;}
+    queries.resize(query_count);owners.resize(query_count);
+    const auto resolved=ResolveNames(flow,queries);
+    for(std::size_t i=0;i<query_count;++i){budget_.Step();if(resolved[i]!=SourceNameResolution::kResolved)blocked[owners[i].value]=1;}
+    // Read substitution only, after storage/snapshot destination ownership is
+    // established. Keep every write/RHS/completion until independent cleanup.
+    for(std::size_t i=0;i<bindings.size();++i){budget_.Step();if(bindings[i]&&!blocked[i]){BeginCommit();plan_.read_bindings[i]=bindings[i];}}
+  }
   void Aliases() {
     // A single retained definition must cover all source reads, including each
     // copy RHS; each copy definition must in turn cover its destination reads.
@@ -1615,14 +1655,9 @@ class Initializers {
     // non-arrow simple parameter list may couple formals to mapped arguments.
     // Scope activation initializes catch/self and all body-entry parameters;
     // local/module/capture absence of writes is not an initialization proof.
-    bool simple=true;
-    for(const auto& parameter:tree_.parameters) {
-      budget_.Step();simple &= !parameter.initializer && !parameter.rest;
-    }
-    const bool mapped=tree_.strictness==Strictness::kSloppy&&!IsArrowCallable(tree_.callable)&&simple;
     const auto implicit=[&](BindingKind kind) {
       switch(kind) {
-        case BindingKind::kParameter:return !mapped;
+        case BindingKind::kParameter:return !mapped_arguments_;
         case BindingKind::kCatchParameter:case BindingKind::kFunctionSelf:return true;
         case BindingKind::kLocal:case BindingKind::kCompilerTemporary:
         case BindingKind::kCapture:case BindingKind::kModule:return false;
@@ -1873,6 +1908,8 @@ class Initializers {
   std::vector<std::optional<PrimitiveId>> expression_primitives_;
   PrimitiveId undefined_value_;
   std::vector<FlowValueEquation> value_equations_;
+  std::vector<std::uint8_t> stable_entries_;
+  bool mapped_arguments_=false;
   std::vector<std::optional<StmtId>> expression_owners_;
   std::vector<std::uint8_t> expression_projections_;
   std::vector<std::optional<SymbolId>> constant_heads_, constant_next_;

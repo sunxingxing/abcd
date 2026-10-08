@@ -497,3 +497,17 @@ positives and local/interference TDZ negatives are independently executed, mutat
 and tested under reversed arenas/200-201/geometric composition. Actual acceptance is
 in status.md; this bounded stage dependency repair does not complete global pass
 convergence, original IR/SSA/full activation/capture/finally or the overall milestone.
+
+
+Task 2/4 implementation substep (rules242): extend the shared flat normal-value
+solver with proved opaque entry identities and all-definition joins. An independent
+BindingValues read-substitution pass runs in explicit ReadValues after storage and
+snapshot destinations, before Grammar; backward alias/storage/motion scheduling is
+forbidden. This order preserves the existing shadowed snapshot representation.
+Mapped-argument metadata is adapted once; effects/completion/storage/deletion stay
+independent. Current flow, expression/name analysis and printing consume the same
+read projection. Repeated branch/loop copies, initial undefined and effectful RHSs,
+root/local/shadow/mapped negatives, independent origin/expression oracles and source
+execution/mutants/layout/scaling/budgets verify the substep. Actual acceptance is
+recorded in status.md. General SSA/catch/capture grounding, per-read symbolic values,
+final namespace allocation/full activation/finally/global convergence remain open.

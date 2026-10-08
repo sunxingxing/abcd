@@ -35,6 +35,8 @@ class FlowBuilder {
     discarded_=std::move(result_.discarded);discarded_.clear();
   }
   RecoveryFlow Run() {
+    RequireTree(projection_.stable_entries.empty()||projection_.stable_entries.size()==tree_.symbols.size(),Error::kOwnership);
+    RequireTree(projection_.read_bindings.empty()||projection_.read_bindings.size()==tree_.symbols.size(),Error::kOwnership);
     ProjectedReads();
     initializers_.resize(tree_.expressions.size());
     for (std::size_t i=0;i<projection_.initializers.size();++i) {
@@ -89,6 +91,7 @@ class FlowBuilder {
       budget_.Step();result.bindings[i]={tree_.symbols[i].kind,
           !projection_.private_bindings.empty() && projection_.private_bindings[i]
               ? FlowBindingExposure::kPrivate : FlowBindingExposure::kObservable};
+      if(!projection_.stable_entries.empty())result.bindings[i].stable_entry=projection_.stable_entries[i]!=0;
       if(!scopes.unique_spellings.empty())result.bindings[i].unique_spelling=scopes.unique_spellings[i]!=0;
       if(!scopes.bindings.empty()) {
         result.bindings[i].scope=scopes.bindings[i];
@@ -198,12 +201,19 @@ class FlowBuilder {
         }
         if (const auto replacement=projection_.replacements[id.value]) {id=*replacement;continue;}
         if (const auto* read=std::get_if<SymbolExpr>(&tree_.expressions[id.value].expression);
-            read&&!projection_.ReadLiteral(id,read->symbol))reads_[id.value]=Resolve(read->symbol);
+            read&&!projection_.ReadLiteral(id,read->symbol))reads_[id.value]=ResolveRead(read->symbol);
         read_states_[id.value]=ReadState::kDone;break;
       }
       RequireTree(read_states_[id.value]==ReadState::kDone,Error::kOwnership);
       for (const auto at:path) {budget_.Step();reads_[at.value]=reads_[id.value];read_states_[at.value]=ReadState::kDone;}
     }
+  }
+  SymbolId ResolveRead(SymbolId symbol) const {
+    if(!projection_.read_bindings.empty()&&projection_.read_bindings[symbol.value]) {
+      const auto target=*projection_.read_bindings[symbol.value];
+      RequireTree(target.value<tree_.symbols.size(),Error::kBinding);return target;
+    }
+    return Resolve(symbol);
   }
   std::optional<SymbolId> Read(ExprId id) const {return reads_[id.value];}
   Point Expr(ExprId id,Context context){tasks_.push_back(Expression{id,context});return expressions_[id.value];}
@@ -245,8 +255,8 @@ class FlowBuilder {
         projection_.evaluations[at.id.value]!=ExpressionEvaluation::kInert;
     if(const auto* read=std::get_if<SymbolExpr>(&node)) {
       if(!projection_.ReadLiteral(at.id,read->symbol)) {
-        events_[effect.value].read=Resolve(read->symbol);events_[effect.value].kind=FlowEventKind::kRead;
-        Reference(effect,Resolve(read->symbol),FlowReferenceKind::kRead,at.id,FlowExceptionContext{context.thrown,context.finalizer},context.owner);
+        events_[effect.value].read=ResolveRead(read->symbol);events_[effect.value].kind=FlowEventKind::kRead;
+        Reference(effect,ResolveRead(read->symbol),FlowReferenceKind::kRead,at.id,FlowExceptionContext{context.thrown,context.finalizer},context.owner);
       }
     }
     if(const auto* name=std::get_if<GlobalNameExpr>(&node))

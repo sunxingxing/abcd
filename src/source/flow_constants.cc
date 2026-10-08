@@ -69,6 +69,9 @@ std::variant<FlowConstants,TreeStructureError> AnalyzeFlowConstants(
     auto result=std::get<FlowConstants>(std::move(analyzed));
     budget.Admit(result.allocated_bytes,1);budget.Step(result.work);
     for(std::size_t i=0;i<result.values.size();++i){budget.Step();if(invariant.values[i])result.values[i]=invariant.values[i];}
+    // Symbolic binding substitution requires the all-definition invariant;
+    // contextual primitive reads cannot manufacture global storage identity.
+    result.bindings=std::move(invariant.bindings);
     result.allocated_bytes=budget.Bytes();result.work=budget.Work();return result;
   }catch(TreeStructureError error){return error;}
   catch(const std::bad_alloc&){return TreeStructureError::kResourceLimit;}
@@ -89,11 +92,23 @@ std::variant<FlowConstants,TreeStructureError> SolveConstants(
     struct ValueId {std::uint32_t value;};
     struct DependencyId {std::uint32_t value;};
     struct Dependency {ValueId target;std::optional<DependencyId> next;};
-    enum class ValueKind : std::uint8_t {kUnresolved,kPrimitive,kUnknown};
+    enum class ValueKind : std::uint8_t {kUnresolved,kPrimitive,kBinding,kUnknown};
     // Terminal values need no mutable node, and binding reads use their binding
     // node directly. This contracts identities without discarding any operand.
-    struct Value {ValueKind kind=ValueKind::kUnresolved;const TreeLiteral* primitive=nullptr;std::optional<PrimitiveId> literal;};
+    struct Value {ValueKind kind=ValueKind::kUnresolved;const TreeLiteral* primitive=nullptr;std::optional<PrimitiveId> literal;std::optional<SymbolId> root;};
     const auto bindings=flow.bindings.size();
+    std::vector<std::uint8_t> stable;budget.Array(stable,bindings);
+    for(std::size_t i=0;i<bindings;++i){budget.Step();const auto& source=flow.bindings[i];
+      if(source.stable_entry)RequireTree(source.kind==BindingKind::kParameter||source.kind==BindingKind::kFunctionSelf,TreeStructureError::kBinding);
+      stable[i]=source.stable_entry;}
+    // A stable entry identity is grounded only while every retained definition
+    // is its entry initialization. A body write, even dead or unreachable, may
+    // change a binding-valued result and defeats this all-definition invariant.
+    for(const auto& definition:flow.definitions){budget.Step();RequireTree(definition.binding.value<bindings,TreeStructureError::kBinding);
+      if(definition.kind!=FlowDefinitionKind::kParameter&&definition.kind!=FlowDefinitionKind::kFunctionSelf)stable[definition.binding.value]=0;}
+    for(const auto& reference:flow.references){budget.Step();RequireTree(reference.binding.value<bindings,TreeStructureError::kBinding);
+      if(reference.kind==FlowReferenceKind::kWrite)stable[reference.binding.value]=0;}
+
     RequireTree(expressions.size()<=std::numeric_limits<std::uint32_t>::max(),TreeStructureError::kResourceLimit);
     const auto transfer=[](const FlowValueEquation& equation){return !std::holds_alternative<UnknownFlowValue>(equation)&&!std::holds_alternative<FlowPrimitiveReference>(equation)&&!std::holds_alternative<FlowBindingValue>(equation);};
     std::size_t active=0;
@@ -202,13 +217,16 @@ std::variant<FlowConstants,TreeStructureError> SolveConstants(
       if(a.kind==ValueKind::kUnknown||b.kind==ValueKind::kUnresolved)return a;
       if(b.kind==ValueKind::kUnknown)return unknown;
       if(a.kind==ValueKind::kUnresolved)return b;
+      if(a.kind!=b.kind)return unknown;
+      if(a.kind==ValueKind::kBinding)return a.root==b.root?a:unknown;
       if(!SamePrimitiveValue(*a.primitive,*b.primitive))return unknown;
       if(!a.literal)a.literal=b.literal;
       return a;
     };
     const auto update=[&](ValueId id,const Value& value) {
       budget.Step();auto& current=states[id.value];const auto merged=join(current,value);
-      if(merged.kind==current.kind&&(merged.kind!=ValueKind::kPrimitive||merged.literal==current.literal))return;
+      if(merged.kind==current.kind&&(merged.kind!=ValueKind::kPrimitive||merged.literal==current.literal)&&
+          (merged.kind!=ValueKind::kBinding||merged.root==current.root))return;
       current=merged;if(!queued[id.value]){queued[id.value]=1;pending[ready++]=id;}
     };
     const auto connect_value=[&](const FlowDefinitionValue& value,ValueId target) {
@@ -220,7 +238,8 @@ std::variant<FlowConstants,TreeStructureError> SolveConstants(
         else {static_assert(std::is_same_v<T,UnknownFlowValue>);update(target,unknown);}
       },value);
     };
-    for(std::size_t i=0;i<values.size();++i){budget.Step();if(retained(i))connect_value(values[i],binding(flow.definitions[i].binding));}
+    for(std::size_t i=0;i<bindings;++i){budget.Step();if(stable[i])update(binding({static_cast<std::uint32_t>(i)}),{ValueKind::kBinding,nullptr,{},SymbolId{static_cast<std::uint32_t>(i)}});}
+    for(std::size_t i=0;i<values.size();++i){budget.Step();if(retained(i)&&!stable[flow.definitions[i].binding.value])connect_value(values[i],binding(flow.definitions[i].binding));}
     for(std::size_t i=0;i<fact_ids.size();++i) {
       budget.Step();const ValueId target{static_cast<std::uint32_t>(fact_begin+i)};
       fact_inputs(fact_ids[i],[&](std::optional<ValueId> source){if(source)depend(*source,target);else update(target,unknown);},
@@ -236,8 +255,8 @@ std::variant<FlowConstants,TreeStructureError> SolveConstants(
       budget.Step();const auto target=*expression(id);
       inputs(expressions[id.value],[&](std::optional<ValueId> source){if(source)depend(*source,target);});
     }
-    for(std::size_t i=0;i<bindings;++i){budget.Step();if(flow.bindings[i].exposure!=FlowBindingExposure::kPrivate)update(binding({static_cast<std::uint32_t>(i)}),unknown);}
-    for(const auto& fact:live.live_in){budget.Step();if(fact.point==flow.entry)update(binding(fact.binding),unknown);}
+    for(std::size_t i=0;i<bindings;++i){budget.Step();if(flow.bindings[i].exposure!=FlowBindingExposure::kPrivate&&!stable[i])update(binding({static_cast<std::uint32_t>(i)}),unknown);}
+    for(const auto& fact:live.live_in){budget.Step();if(fact.point==flow.entry&&!stable[fact.binding.value])update(binding(fact.binding),unknown);}
     const auto truth=[&](const TreeLiteral& value){if(const auto* text=std::get_if<TextId>(&value))RequireTree(text->value<texts.size(),TreeStructureError::kOwnership);return PrimitiveTruth(value,texts);};
     const auto evaluate=[&](ValueId id) {
       return std::visit([&](const auto& value)->Value {
@@ -250,12 +269,14 @@ std::variant<FlowConstants,TreeStructureError> SolveConstants(
           if(condition.kind==ValueKind::kPrimitive)return truth(*condition.primitive)?a:b;
           // Equal known arms ground the result independently of the predicate.
           if(condition.kind==ValueKind::kUnresolved) {
-            if(a.kind==ValueKind::kPrimitive&&b.kind==ValueKind::kPrimitive&&SamePrimitiveValue(*a.primitive,*b.primitive))return join(a,b);
+            if(a.kind!=ValueKind::kUnresolved&&a.kind!=ValueKind::kUnknown&&a.kind==b.kind&&join(a,b).kind!=ValueKind::kUnknown)return join(a,b);
             return {};
           }
           return join(a,b);
         }else if constexpr(std::is_same_v<T,FlowLogicalValue>) {
-          const auto left=read_expression(value.left);if(left.kind!=ValueKind::kPrimitive)return left;
+          const auto left=read_expression(value.left);
+          if(left.kind==ValueKind::kBinding)return join(left,read_expression(value.right));
+          if(left.kind!=ValueKind::kPrimitive)return left;
           bool right=false;
           switch(value.operation) {
             case TreeLogical::kAnd:right=truth(*left.primitive);break;
@@ -271,7 +292,7 @@ std::variant<FlowConstants,TreeStructureError> SolveConstants(
     // A selected known arm still supplies its value despite an unknown sibling.
     for(std::size_t i=bindings;i<fact_begin;++i){budget.Step();const ValueId id{static_cast<std::uint32_t>(i)};update(id,evaluate(id));}
     // Flat constant lattice (Wegman/Zadeck value propagation), without changing
-    // executable edges. Each node advances bottom->primitive->unknown at most;
+    // executable edges. Each node advances bottom->known->unknown at most;
     // a printable identity adds at most one notification. Incremental joins
     // avoid rescanning all definitions when one dependency changes.
     const auto solve=[&] {
@@ -290,7 +311,7 @@ std::variant<FlowConstants,TreeStructureError> SolveConstants(
     solve();
     for(std::size_t i=bindings;i<size;++i){budget.Step();if(states[i].kind==ValueKind::kUnresolved)update({static_cast<std::uint32_t>(i)},unknown);}
     solve();
-    FlowConstants result;budget.Array(result.values,bindings);
+    FlowConstants result;budget.Array(result.values,bindings);budget.Array(result.bindings,bindings);
     std::size_t read_count=0;
     for(const auto node:expression_nodes){budget.Step();if(node&&node->value>=read_begin&&states[node->value].kind==ValueKind::kPrimitive&&states[node->value].literal)++read_count;}
     budget.Array(result.reads,read_count);std::size_t read_next=0;
@@ -299,7 +320,8 @@ std::variant<FlowConstants,TreeStructureError> SolveConstants(
       if(node&&node->value>=read_begin&&states[node->value].kind==ValueKind::kPrimitive&&states[node->value].literal)
         result.reads[read_next++]={{static_cast<std::uint32_t>(i)},*states[node->value].literal};
     }
-    for(std::size_t i=0;i<bindings;++i){budget.Step();if(states[i].kind==ValueKind::kPrimitive)result.values[i]=FlowPrimitiveValue{*states[i].primitive,states[i].literal};}
+    for(std::size_t i=0;i<bindings;++i){budget.Step();if(states[i].kind==ValueKind::kPrimitive)result.values[i]=FlowPrimitiveValue{*states[i].primitive,states[i].literal};
+      else if(states[i].kind==ValueKind::kBinding)result.bindings[i]=states[i].root;}
     result.allocated_bytes=budget.Bytes();result.work=budget.Work();return result;
   }catch(TreeStructureError error){return error;}
   catch(const std::bad_alloc&){return TreeStructureError::kResourceLimit;}

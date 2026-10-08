@@ -44,6 +44,13 @@ struct BindingInitializers {
   // Successful definitions and lexical availability are proved in common flow;
   // this projection never authorizes deleting the producer or its effects.
   std::vector<std::optional<PrimitiveId>> read_literals;
+  // SymbolId indexed all-read value substitution. Writes still use Storage;
+  // independent cleanup owns their evaluation, completion and binding removal.
+  std::vector<std::optional<SymbolId>> read_bindings;
+  [[nodiscard]] SymbolId ReadBinding(SymbolId binding) const {
+    if(!read_bindings.empty()&&read_bindings[binding.value])return *read_bindings[binding.value];
+    return Storage(binding);
+  }
   [[nodiscard]] std::optional<PrimitiveId> ReadLiteral(ExprId expression,SymbolId binding) const {
     if(!read_literals.empty()&&read_literals[expression.value])return read_literals[expression.value];
     return literals[binding.value];

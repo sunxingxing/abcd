@@ -290,7 +290,7 @@ class NamePlan {
       else {
         const auto& projection = *projections_[at.tree];
         if (!projection.ReadLiteral(at.expression,read->symbol))
-          Symbol(at.tree, projection.Storage(read->symbol));
+          Symbol(at.tree, projection.ReadBinding(read->symbol));
       }
     }
     if (const auto* update = std::get_if<UpdateExpr>(&expression)) Symbol(at.tree, ownership_ == Ownership::kPrinted ? projections_[at.tree]->Storage(update->symbol) : update->symbol);

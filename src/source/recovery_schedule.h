@@ -6,7 +6,7 @@
 
 namespace abcd::source {
 enum class RecoveryPass {
-  kDeclarations,kConstants,kAliases,kStoredResults,kDeadDefinitions,kInitialValues,
+  kDeclarations,kConstants,kBindingValues,kAliases,kStoredResults,kDeadDefinitions,kInitialValues,
   kBindings,kSnapshots,kStorage,kInertStatements,kInertOperands,kLoopDeclarations,kDeclarationKinds
 };
 enum class RecoveryFact : std::uint8_t {kExpressions,kFlow,kLiveness,kDemand,kInitializations,kConstants};
@@ -22,7 +22,7 @@ class RecoveryFactSet {
  private:
   std::uint32_t bits_=0;
 };
-enum class RecoveryPassScope {kValues,kValueOrStorage,kStorage,kGrammar};
+enum class RecoveryPassScope {kValues,kValueOrStorage,kStorage,kReadValues,kNormalization,kGrammar};
 struct RecoveryPassContract {
   RecoveryFactSet inputs;
   RecoveryPassScope scope;
@@ -37,13 +37,14 @@ struct RecoveryPassContract {
   switch(pass) {
     case RecoveryPass::kDeclarations:return {{Fact::kFlow},Scope::kValues,false};
     case RecoveryPass::kConstants:return {{Fact::kConstants},Scope::kValues,false};
+    case RecoveryPass::kBindingValues:return {{Fact::kConstants},Scope::kReadValues,false};
     case RecoveryPass::kAliases:return {{Fact::kLiveness},Scope::kValueOrStorage,false};
     // Store identity elision retains RHS completion at its occurrence.
-    case RecoveryPass::kStoredResults:return {{Fact::kExpressions},Scope::kValueOrStorage,true};
+    case RecoveryPass::kStoredResults:return {{Fact::kExpressions},Scope::kNormalization,true};
     // Removed definitions/initial values/bindings leave no retained reference
     // to the removed completion; other occurrence initialization is unchanged.
     case RecoveryPass::kDeadDefinitions:case RecoveryPass::kInitialValues:case RecoveryPass::kBindings:
-      return {{Fact::kDemand},Scope::kValueOrStorage,true};
+      return {{Fact::kDemand},Scope::kNormalization,true};
     // A snapshot removes its own single definition/read while preserving the
     // RHS at the destination. It cannot make another producer newly dead.
     // Transport only an already established checkpoint, never create one.
@@ -52,7 +53,7 @@ struct RecoveryPassContract {
     case RecoveryPass::kStorage:return {{Fact::kLiveness,Fact::kInitializations},Scope::kStorage,true};
     // Only proven inert occurrences disappear; no retained initialization moves.
     case RecoveryPass::kInertStatements:case RecoveryPass::kInertOperands:
-      return {{Fact::kExpressions},Scope::kValueOrStorage,true};
+      return {{Fact::kExpressions},Scope::kNormalization,true};
     case RecoveryPass::kLoopDeclarations:return {{},Scope::kGrammar,false};
     // Grammar-only const spelling changes neither values nor completion.
     case RecoveryPass::kDeclarationKinds:return {{Fact::kFlow},Scope::kGrammar,true};
@@ -94,7 +95,10 @@ class RecoverySchedule {
     if(pass==RecoveryPass::kBindings)RequireTree(cleanup_==Cleanup::kBindings,TreeStructureError::kOwnership);
     const bool allowed=scope==RecoveryPassScope::kValues?stage_==Stage::kValues:
         scope==RecoveryPassScope::kStorage?stage_==Stage::kStorage:
-        scope==RecoveryPassScope::kGrammar?stage_==Stage::kGrammar:stage_!=Stage::kGrammar;
+        scope==RecoveryPassScope::kReadValues?stage_==Stage::kReadValues:
+        scope==RecoveryPassScope::kGrammar?stage_==Stage::kGrammar:
+        scope==RecoveryPassScope::kNormalization?stage_!=Stage::kGrammar:
+        stage_==Stage::kValues||stage_==Stage::kStorage;
     RequireTree(allowed,TreeStructureError::kOwnership);
     // Binding placement and producer coverage both require all independent
     // value/initialization/binding cleanup owners at the current projection.
@@ -130,14 +134,21 @@ class RecoverySchedule {
     // analysis result. Its own edits do not create a scheduling self-loop;
     // later projection commits make the downstream boundary reconsider it.
     if(*active_==RecoveryPass::kSnapshots)snapshot_checkpoint_=revision_;
+    if(*active_==RecoveryPass::kBindingValues)binding_values_complete_=true;
     const bool changed=revision_.value!=before_.value;active_.reset();phase_=Phase::kIdle;return changed;
   }
   void EnterStorage() {
     RequireIdle();RequireTree(cleanup_==Cleanup::kIdle&&stage_==Stage::kValues&&!DemandCleanupNeeded(),TreeStructureError::kOwnership);
     stage_=Stage::kStorage;
   }
+  // Read-only value substitution waits for storage/snapshot destinations.
+  // Once entered, aliases, storage and motion cannot rewrite those choices.
+  void EnterReadValues() {
+    RequireIdle();RequireTree(cleanup_==Cleanup::kIdle&&stage_==Stage::kStorage&&snapshot_checkpoint_&&!DemandCleanupNeeded(),TreeStructureError::kOwnership);
+    stage_=Stage::kReadValues;
+  }
   void EnterGrammar() {
-    RequireIdle();RequireTree(cleanup_==Cleanup::kIdle&&stage_==Stage::kStorage&&!DemandCleanupNeeded(),TreeStructureError::kOwnership);
+    RequireIdle();RequireTree(cleanup_==Cleanup::kIdle&&stage_==Stage::kReadValues&&binding_values_complete_&&!DemandCleanupNeeded(),TreeStructureError::kOwnership);
     stage_=Stage::kGrammar;
   }
   [[nodiscard]] bool DemandCleanupNeeded() const {
@@ -149,12 +160,13 @@ class RecoverySchedule {
   }
  private:
   enum class Phase {kIdle,kAnalysis,kCommit};
-  enum class Stage {kValues,kStorage,kGrammar};
+  enum class Stage {kValues,kStorage,kReadValues,kGrammar};
   enum class Cleanup {kIdle,kInitialValues,kBindings};
   void RequireIdle() const {RequireTree(phase_==Phase::kIdle,TreeStructureError::kOwnership);}
   Phase phase_=Phase::kIdle;
   Stage stage_=Stage::kValues;
   Cleanup cleanup_=Cleanup::kIdle;
+  bool binding_values_complete_=false;
   std::optional<RecoveryPass> active_;
   ProjectionRevision revision_,before_;
   std::optional<ProjectionRevision> demand_checkpoint_,snapshot_checkpoint_;

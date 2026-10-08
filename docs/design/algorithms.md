@@ -3445,3 +3445,32 @@ All graph/index/proposal buffers and nested analysis work remain under the origi
 semantic budgets. State/stage/partial-cleanup negatives, independent generated-source
 execution and 200/201/400/800 composition verify contracts and bounded work. This is
 not a new whole-process RSS claim; full RSS and expanded-corpus runs remain paused.
+
+
+### Symbolic entry identities in the flat value domain (2026-10-09, rules242)
+
+Provenance: extend the existing Wegman/Zadeck-style sparse flat value propagation
+with typed opaque entry identities; local implementation, no dependency/license/
+profile change. The domain is bottom, one primitive or stable binding value, and
+unknown. A node advances to a known value then unknown at most, with the existing
+printable primitive notification. Grounding needs explicit adapter entry premises
+and no retained write; observable/captured/mapped/unmodeled values stay unknown.
+All-definition symbolic invariants remain separate from contextual primitive facts.
+
+For B bindings, D definitions and R references, grounding adds O(B+D+R) work and
+O(B) buffers. Symbolic joins compare typed IDs in O(1), sharing the existing sparse
+expression/dependency/liveness graph and its worklist rather than introducing a
+second solver or per-binding graph traversal. Flat state storage increases by a
+constant-sized identity field. Q destination name queries use the existing common
+index in O(Q log(B+1)) work and O(B+Q) proposal buffers. All buffers, nested analysis,
+sorts and visits retain existing byte/work accounting and finite-budget behavior.
+
+The new ReadValues stage runs one independent read-only consumer after storage and
+snapshot choices. There is no input-sized pass round count. Read substitutions are
+owned deltas; common current flow/effects and independent cleanup rebuild by revision.
+A source adapter computes the mapped-argument premise once, removing its duplicate
+alias census. Empty consumers avoid value analysis when there is no eligible binding.
+32768 tiny independent copy-origin closures, equal/conflicting expression joins,
+live/dead undefined, missing/written entry roots, reversed IDs, 200/201/400/800 and
+exact/short/invalid-input tests verify results and cost. Generated source checks
+return/error/event/object identity and syntax; full process RSS stays paused.

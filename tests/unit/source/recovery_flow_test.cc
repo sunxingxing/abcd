@@ -1366,6 +1366,61 @@ void DeclarationValues() {
   }
   Check(checked);
 }
+void StableValues() {
+  // Independent backwards origin closure: two opaque entry values, three
+  // copy nodes, arbitrary cycles/conflicts/unknown leaves and reversed IDs.
+  for(unsigned mask=0;mask<512;++mask)for(unsigned encoded=0;encoded<64;++encoded) {
+    RecoveryFlow flow{};flow.bindings.resize(5);FlowLiveness live{};std::vector<FlowDefinitionValue> values;
+    const auto id=[&](unsigned i){return SymbolId{mask%2?4-i:i};};
+    const auto add=[&](unsigned target,FlowDefinitionKind kind,FlowDefinitionValue value){flow.definitions.push_back({{},id(target),kind});values.push_back(value);live.live_definitions.push_back(1);};
+    for(unsigned i=0;i<5;++i){auto& binding=flow.bindings[id(i).value];binding.kind=i<2?BindingKind::kParameter:BindingKind::kCompilerTemporary;binding.exposure=i<2?FlowBindingExposure::kObservable:FlowBindingExposure::kPrivate;binding.stable_entry=i<2;}
+    add(0,FlowDefinitionKind::kParameter,UnknownFlowValue{});add(1,FlowDefinitionKind::kParameter,UnknownFlowValue{});
+    std::array<unsigned,3> seeds{};auto code=encoded;
+    for(unsigned i=0;i<3;++i){seeds[i]=code%4;code/=4;if(seeds[i])add(i+2,FlowDefinitionKind::kAssignment,seeds[i]==3?FlowDefinitionValue{UnknownFlowValue{}}:FlowDefinitionValue{FlowBindingValue{id(seeds[i]-1)}});}
+    for(unsigned source=0;source<3;++source)for(unsigned target=0;target<3;++target)if(mask&(1U<<(source*3+target)))add(target+2,FlowDefinitionKind::kAssignment,FlowBindingValue{id(source+2)});
+    const auto result=std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,values));
+    std::array<bool,3> grounded{};
+    for(unsigned root=0;root<3;++root){std::array<bool,3> seen{};std::vector<unsigned> pending{root};seen[root]=true;
+      while(!pending.empty()){const auto at=pending.back();pending.pop_back();grounded[root]|=seeds[at]==1||seeds[at]==2;for(unsigned source=0;source<3;++source)if((mask&(1U<<(source*3+at)))&&!seen[source]){seen[source]=true;pending.push_back(source);}}}
+    for(unsigned root=0;root<3;++root){std::array<bool,3> seen{};std::vector<unsigned> pending{root};seen[root]=true;bool unknown=false;std::optional<SymbolId> expected;
+      while(!pending.empty()){const auto at=pending.back();pending.pop_back();if(seeds[at]==3||!grounded[at])unknown=true;
+        else if(seeds[at]){const auto source=id(seeds[at]-1);if(expected&&*expected!=source)unknown=true;else expected=source;}
+        for(unsigned source=0;source<3;++source)if((mask&(1U<<(source*3+at)))&&!seen[source]){seen[source]=true;pending.push_back(source);}}
+      Check(result.bindings[id(root+2).value]==(unknown?std::nullopt:expected));Check(!result.values[id(root+2).value]);}
+  }
+  std::uint64_t previous=0;
+  for(unsigned count:{200U,201U,400U,800U}){
+    RecoveryFlow flow{};flow.bindings.resize(count);FlowLiveness live{};std::vector<FlowDefinitionValue> values;
+    for(unsigned i=0;i<count;++i){flow.bindings[i].kind=i?BindingKind::kCompilerTemporary:BindingKind::kParameter;flow.bindings[i].exposure=i?FlowBindingExposure::kPrivate:FlowBindingExposure::kObservable;flow.bindings[i].stable_entry=!i;
+      flow.definitions.push_back({{},SymbolId{i},i?FlowDefinitionKind::kAssignment:FlowDefinitionKind::kParameter});values.push_back(i?FlowDefinitionValue{FlowBindingValue{{i-1}}}:FlowDefinitionValue{UnknownFlowValue{}});live.live_definitions.push_back(1);}
+    flow.definitions.push_back({{},SymbolId{1},FlowDefinitionKind::kAssignment});values.push_back(FlowBindingValue{{count-1}});live.live_definitions.push_back(1);
+    const auto result=std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,values));for(const auto& value:result.bindings)Check(value==SymbolId{0});
+    if(count==800)Check(result.work<previous*3);previous=result.work;
+    Check(std::holds_alternative<FlowConstants>(AnalyzeFlowConstants(flow,live,values,{result.allocated_bytes,result.work})));
+    Check(std::get<TreeStructureError>(AnalyzeFlowConstants(flow,live,values,{result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
+    Check(std::get<TreeStructureError>(AnalyzeFlowConstants(flow,live,values,{result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);
+    flow.definitions.push_back({{},SymbolId{1},FlowDefinitionKind::kUndefined});values.push_back(FlowPrimitiveValue{UndefinedLiteral{},{}});live.live_definitions.push_back(0);
+    const auto dead_initial=std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,values));for(const auto& value:dead_initial.bindings)Check(value==SymbolId{0});
+    live.live_definitions.back()=1;const auto initialized=std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,values));
+    Check(initialized.bindings[0]==SymbolId{0});for(unsigned i=1;i<count;++i)Check(!initialized.bindings[i]);live.live_definitions.back()=0;
+    flow.bindings[0].stable_entry=false;const auto unavailable=std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,values));for(const auto& value:unavailable.bindings)Check(!value);
+    flow.bindings[0].stable_entry=true;flow.definitions.push_back({{},SymbolId{0},FlowDefinitionKind::kAssignment});values.push_back(UnknownFlowValue{});live.live_definitions.push_back(1);
+    const auto written=std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,values));for(const auto& value:written.bindings)Check(!value);
+    flow.bindings[0].kind=BindingKind::kLocal;Check(std::get<TreeStructureError>(AnalyzeFlowConstants(flow,live,values))==TreeStructureError::kBinding);
+  }
+  for(bool equal:{false,true})for(unsigned operation=0;operation<4;++operation)for(bool reverse:{false,true}) {
+    RecoveryFlow flow{};flow.bindings.resize(3);FlowLiveness live{};live.live_definitions={1,1,1};
+    for(unsigned i=0;i<3;++i){flow.bindings[i].kind=i<2?BindingKind::kParameter:BindingKind::kCompilerTemporary;flow.bindings[i].exposure=i<2?FlowBindingExposure::kObservable:FlowBindingExposure::kPrivate;flow.bindings[i].stable_entry=i<2;}
+    const auto id=[&](unsigned i){return ExprId{reverse?3-i:i};};std::vector<FlowValueEquation> equations(4);
+    equations[id(0).value]=UnknownFlowValue{};equations[id(1).value]=FlowBindingValue{{0}};equations[id(2).value]=FlowBindingValue{{equal?0U:1U}};
+    if(!operation)equations[id(3).value]=FlowChoiceValue{id(0),id(1),id(2)};
+    else equations[id(3).value]=FlowLogicalValue{operation==1?TreeLogical::kAnd:operation==2?TreeLogical::kOr:TreeLogical::kNullish,id(1),id(2)};
+    flow.definitions={{{},{0},FlowDefinitionKind::kParameter},{{},{1},FlowDefinitionKind::kParameter},{{},{2},FlowDefinitionKind::kInitializer}};
+    const std::vector<FlowDefinitionValue> values{UnknownFlowValue{},UnknownFlowValue{},FlowExpressionValue{id(3)}};
+    const auto result=std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,values,equations,{},{}));Check(result.bindings[2]==(equal?std::optional{SymbolId{0}}:std::nullopt));
+  }
+  std::cout<<"independent stable binding value cases 32768\n";
+}
 void ConstantEquations() {
   // Independent backwards origin closure, deliberately slow and test-only.
   // It knows no SCC order and compares semantic integer seeds, not source IDs.
@@ -1674,7 +1729,7 @@ void SnapshotCheckpoints() {
         Check(rejects([&]{schedule.RequireCurrent(previous);}));Check(!schedule.DemandCleanupNeeded());Check(!schedule.SnapshotRefreshNeeded());
       }
     }
-    Check(schedule.Revision().value==(changes?count*2:0));schedule.EnterGrammar();Check(rejects([&]{(void)schedule.SnapshotRefreshNeeded();}));
+    Check(schedule.Revision().value==(changes?count*2:0));schedule.EnterReadValues();schedule.Start(RecoveryPass::kBindingValues);Check(!schedule.Finish());schedule.EnterGrammar();Check(rejects([&]{(void)schedule.SnapshotRefreshNeeded();}));
   }
   RecoverySchedule dirty;cleanup(dirty);dirty.EnterStorage();dirty.Start(RecoveryPass::kInertOperands);Check(dirty.Commit());Check(dirty.Finish());
   Check(rejects([&]{(void)dirty.SnapshotRefreshNeeded();}));dirty.Start(RecoveryPass::kDeadDefinitions);Check(!dirty.Finish());
@@ -1723,16 +1778,22 @@ void PassContracts() {
   schedule.Start(RecoveryPass::kAliases);Check(!schedule.Finish());
   Check(!schedule.DemandCleanupNeeded());
   Check(rejects([&]{schedule.Start(RecoveryPass::kLoopDeclarations);}));
+  Check(rejects([&]{schedule.Start(RecoveryPass::kBindingValues);}));
   schedule.EnterStorage();
-  Check(rejects([&]{schedule.Start(RecoveryPass::kConstants);}));
+  Check(rejects([&]{schedule.EnterReadValues();}));
+  Check(rejects([&]{schedule.Start(RecoveryPass::kConstants);}));Check(rejects([&]{schedule.Start(RecoveryPass::kBindingValues);}));
   // Snapshot motion preserves the demand checkpoint only when one exists.
   schedule.Start(RecoveryPass::kSnapshots);Check(schedule.Commit());Check(schedule.Finish());
   Check(!schedule.DemandCleanupNeeded());
   schedule.Start(RecoveryPass::kStorage);Check(schedule.Commit());Check(schedule.Finish());
-  Check(schedule.DemandCleanupNeeded());
+  Check(schedule.DemandCleanupNeeded());Check(rejects([&]{schedule.EnterReadValues();}));
   schedule.Start(RecoveryPass::kSnapshots);Check(schedule.Commit());Check(schedule.Finish());
   Check(schedule.DemandCleanupNeeded());
   Check(rejects([&]{schedule.EnterGrammar();}));cleanup(schedule);
+  schedule.EnterReadValues();Check(rejects([&]{schedule.EnterGrammar();}));
+  for(const auto pass:{RecoveryPass::kAliases,RecoveryPass::kStorage,RecoveryPass::kSnapshots})Check(rejects([&]{schedule.Start(pass);}));
+  schedule.Start(RecoveryPass::kBindingValues);schedule.RequireFact(RecoveryFact::kConstants);schedule.RequireFact(RecoveryFact::kLiveness);
+  Check(schedule.Commit());Check(schedule.Finish());Check(rejects([&]{schedule.EnterGrammar();}));cleanup(schedule);
   schedule.EnterGrammar();
   Check(rejects([&]{schedule.Start(RecoveryPass::kAliases);}));
   Check(rejects([&]{schedule.EnterStorage();}));
@@ -1770,4 +1831,4 @@ void PassContracts() {
   Check(!unfinished.DemandCleanupNeeded());
   std::cout<<"pass ownership, dependency and cleanup counterexamples passed\n";
 }
-int main(){InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();PassContracts();SnapshotCheckpoints();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+int main(){InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();PassContracts();SnapshotCheckpoints();StableValues();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

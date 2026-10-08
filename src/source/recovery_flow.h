@@ -74,6 +74,10 @@ struct FlowBinding {
   std::optional<FlowDefinitionKind> initialization;
   SourceBindingScope scope=OriginalBindingScope{};
   bool unique_spelling=true;
+  // Semantic adapter proof: body-entry identity cannot be changed by mapped
+  // arguments, unknown captures or unmodeled signature evaluation. The value
+  // solver independently rejects retained writes before grounding this root.
+  bool stable_entry=false;
 };
 enum class FlowReferenceKind : std::uint8_t { kRead, kWrite };
 using FlowReferenceSite=std::variant<ExprId,StmtId>;
@@ -167,6 +171,8 @@ struct LegacyFlowProjection {
   // Trial proposal identity at replacement reads. Nested transported RHSs
   // inherit the outer proposal; independent occurrences keep distinct roots.
   std::span<const std::optional<SymbolId>> transported_reads;
+  std::span<const std::optional<SymbolId>> read_bindings;
+  std::span<const std::uint8_t> stable_entries;
   [[nodiscard]] std::optional<PrimitiveId> ReadLiteral(ExprId expression,SymbolId binding) const {
     if(!read_literals.empty()&&read_literals[expression.value])return read_literals[expression.value];
     return literals[binding.value];

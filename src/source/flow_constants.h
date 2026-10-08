@@ -34,6 +34,9 @@ using FlowDefinitionValue=std::variant<UnknownFlowValue,FlowPrimitiveValue,FlowB
 struct FlowReadConstant {ExprId expression;PrimitiveId primitive;};
 struct FlowConstants {
   std::vector<std::optional<FlowPrimitiveValue>> values;
+  // All-definition invariants grounded in a proven immutable body-entry value.
+  // These are read values, never storage mappings or deletion permissions.
+  std::vector<std::optional<SymbolId>> bindings;
   std::vector<FlowReadConstant> reads;
   std::size_t allocated_bytes=0;
   std::uint64_t work=0;
