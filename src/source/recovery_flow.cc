@@ -181,11 +181,7 @@ class FlowBuilder {
     events_[to.value].incoming=events_[from.value].outgoing=edges_.size()-1;
   }
   SymbolId Resolve(SymbolId symbol) const {
-    const auto value=projection_.aliases[symbol.value].value_or(symbol);
-    // Same stage contract as BindingInitializers::Storage: direct early root,
-    // direct slot, then the late immutable root of that retained slot.
-    const auto slot=projection_.storage.empty()?value:projection_.storage[value.value].value_or(value);
-    return projection_.aliases[slot.value].value_or(slot);
+    return BindingProjection{projection_.aliases,projection_.storage,projection_.read_bindings}.Storage(symbol);
   }
   void ProjectedReads() {
     reads_.resize(tree_.expressions.size());read_states_.resize(tree_.expressions.size());
@@ -209,11 +205,8 @@ class FlowBuilder {
     }
   }
   SymbolId ResolveRead(SymbolId symbol) const {
-    if(!projection_.read_bindings.empty()&&projection_.read_bindings[symbol.value]) {
-      const auto target=*projection_.read_bindings[symbol.value];
-      RequireTree(target.value<tree_.symbols.size(),Error::kBinding);return target;
-    }
-    return Resolve(symbol);
+    const auto target=BindingProjection{projection_.aliases,projection_.storage,projection_.read_bindings}.Read(symbol);
+    RequireTree(target.value<tree_.symbols.size(),Error::kBinding);return target;
   }
   std::optional<SymbolId> Read(ExprId id) const {return reads_[id.value];}
   Point Expr(ExprId id,Context context){tasks_.push_back(Expression{id,context});return expressions_[id.value];}

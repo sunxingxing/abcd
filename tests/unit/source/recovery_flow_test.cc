@@ -888,6 +888,24 @@ void SourceEvents() {
   for(const auto& reference:flow.references)
     Check(reference.owner==owners[std::get<ExprId>(reference.site).value]);
   for(std::size_t i=0;i<owners.size();++i)Check(flow.expression_owners[i]==owners[i]);
+  // ReadValues follows the actual slot; assignment/update still use that
+  // slot, including both update halves. Old immutable facts stay unchanged.
+  for(bool alias:{false,true})for(bool shared:{false,true})for(bool value:{false,true}){
+    auto projected=projection;auto copy_aliases=aliases;
+    std::vector<std::optional<SymbolId>> storage(tree.symbols.size()),read_values(tree.symbols.size());
+    if(alias)copy_aliases[2]=SymbolId{1};if(shared)storage[2]=SymbolId{1};if(value)read_values[1]=SymbolId{0};
+    projected.aliases=copy_aliases;projected.storage=storage;projected.read_bindings=read_values;
+    const auto composed=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,projected));
+    unsigned writes=0,update_reads=0,returns=0;
+    for(const auto& reference:composed.references){const auto expression=std::get<ExprId>(reference.site);
+      if(expression==ExprId{3}&&reference.kind==FlowReferenceKind::kWrite){Check(reference.binding==SymbolId{alias||shared?1U:2U});++writes;}
+      if(expression==ExprId{4}){Check(reference.binding==SymbolId{alias||shared?1U:2U});if(reference.kind==FlowReferenceKind::kRead)++update_reads;else ++writes;}
+      if(expression==ExprId{5}){Check(reference.binding==SymbolId{alias||shared?(value?0U:1U):2U});Check(reference.owner==StmtId{6});++returns;}}
+    Check(writes==2&&update_reads==1&&returns==1);
+    Check(std::holds_alternative<RecoveryFlow>(BuildRecoveryFlow(tree,projected,{composed.allocated_bytes,composed.work})));
+    Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,projected,{composed.allocated_bytes-1,composed.work}))==TreeStructureError::kResourceLimit);
+    Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,projected,{composed.allocated_bytes,composed.work-1}))==TreeStructureError::kWorkLimit);
+  }
   // The same original read now executes in the return, not in its omitted
   // source store. Rebuilding must publish the destination, without mutating
   // the previous immutable result or confusing the read with its replacement.

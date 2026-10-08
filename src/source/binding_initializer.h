@@ -4,6 +4,7 @@
 #include "expression_observation.h"
 #include "primitive_value.h"
 #include "expression_transport.h"
+#include "binding_projection.h"
 namespace abcd::source {
 struct LoopSyntax;
 struct NullishSyntax;
@@ -44,12 +45,11 @@ struct BindingInitializers {
   // Successful definitions and lexical availability are proved in common flow;
   // this projection never authorizes deleting the producer or its effects.
   std::vector<std::optional<PrimitiveId>> read_literals;
-  // SymbolId indexed all-read value substitution. Writes still use Storage;
+  // Final storage SymbolId indexed all-read substitution. Writes use Storage;
   // independent cleanup owns their evaluation, completion and binding removal.
   std::vector<std::optional<SymbolId>> read_bindings;
   [[nodiscard]] SymbolId ReadBinding(SymbolId binding) const {
-    if(!read_bindings.empty()&&read_bindings[binding.value])return *read_bindings[binding.value];
-    return Storage(binding);
+    return BindingProjection{aliases,storage,read_bindings}.Read(binding);
   }
   [[nodiscard]] std::optional<PrimitiveId> ReadLiteral(ExprId expression,SymbolId binding) const {
     if(!read_literals.empty()&&read_literals[expression.value])return read_literals[expression.value];
@@ -66,12 +66,7 @@ struct BindingInitializers {
   std::vector<std::optional<DeclarationValue>> declaration_values;
   std::vector<std::optional<DeclarationCompletion>> declaration_completions;
   [[nodiscard]] SymbolId Storage(SymbolId symbol) const {
-    const auto root = aliases[symbol.value].value_or(symbol);
-    // Both alias stages publish direct value roots; coalescing publishes direct
-    // slots. The final alias stage consumes those slots and precedes all later
-    // consumers; no further coalescing may introduce another storage hop.
-    const auto slot = storage[root.value].value_or(root);
-    return aliases[slot.value].value_or(slot);
+    return BindingProjection{aliases,storage,read_bindings}.Storage(symbol);
   }
   // ExprId indexed: a redundant store projects to its RHS; a unique private
   // snapshot read can consume the original RHS after ordered lifetime proof.

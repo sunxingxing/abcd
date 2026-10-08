@@ -24,6 +24,40 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-09：规则243，读取值与存储投影按共同阶段组合
+
+- ReadValues提案按当前flow的最终slot索引，原符号先查read_bindings
+  会漏掉同组其他成员。新typed BindingProjection集中解释早alias、
+  storage与晚alias，读取随后消费该slot上的稳定值；写入和update两半
+  保持Storage。共同flow与源码消费者复用同一实现，旧重复解释退出。
+- 每次查询O(1)、无分配；阶段所发布的direct roots是计划契约，不是
+  字节码/图形状准入。现有共同scope/name、完成/effect/初始化/value
+  证明及first-commit失效保持；ReadValues之后禁止alias/storage/motion
+  修改，独立清理完成才进入Grammar，无额外pass轮次或整函数重试。
+- 真实复制关系下，旧实现通过共享slot断言后在声明消除处RED exit134
+  （497）。新4种源码组合覆盖多分支复制、写入口参数、内层同名遮蔽与
+  RHS效果；反向arena、0/1/200/201/400/800、exact/short预算和独立
+  执行/错误变体覆盖。共同flow八种alias/storage/read组合验证实际
+  读取、赋值目标、update读写两半、原结果不变与预算反例。
+  聚焦3/3在25.97秒通过；最终共同值、名字、retirement、storage、
+  初始化subset及调度反例通过，原回归期望保持。
+- 当前29目标构建171.29秒通过；最终59/59选定回归459.05秒通过，
+  combined-coverage.json核对通过名称集合与原选择完全一致。存储
+  713源码/103604行为比较/64错误变体；声明2568/513600/100、初始化
+  2004/482752/368、循环276/13976/68；真实callback/rich-text/
+  progressbar/EntryAbility回归通过。既有literal_plan.cc的kNoop
+  switch警告保持，无本次新增编译警告。
+- fresh固定pasteboard导出2.77秒，19records、10完整/0部分/9无module，
+  10语法检查通过；源码字节等于242，language_numeric_constructors_v1
+  与原预算保持。输入SHA256前后均为
+  854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e。
+  证据在build/stage-one/binding-projection-verification。
+- 共同normal-result copy尚未全部接入interference affinity，是适配
+  精度缺口，不能用Sequence等producer形状分支补齐。任意local/catch/
+  capture符号值、完整activation/finally、原IR/SSA及共同增量全局收敛
+  仍开放；统一变量里程碑/结构gate/阶段一Goal active。全suite/广语料/
+  RSS/benchmarks/DFX/代理暂停保持。
+
 ### 2026-10-09：规则242，多定义稳定值与独立读取替换阶段
 
 - 共同稀疏flat正常值域加入typed、不可变的函数入口绑定身份；参数/

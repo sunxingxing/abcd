@@ -2162,3 +2162,43 @@ arbitrary local SSA values, catch activation/capture cells, per-occurrence symbo
 values, final source namespace allocation and incremental global convergence remain
 precision gaps. All-definition agreement is a value fact, never deletion authority.
 Original IR/SSA/full activation/finally and the overall milestone remain open.
+
+
+### Compose reads after storage identity (2026-10-09, rules243)
+
+A completed ReadValues proposal is indexed by current flow bindings, which have
+already consumed early aliases, coalesced storage and final aliases. Looking up a
+read substitution by the original symbol loses a proved slot value for other
+members of that storage group. Independent dead-definition cleanup then correctly
+keeps the slot demanded by those unprojected reads, leaving mechanical variables.
+
+BindingProjection now owns both Storage and Read interpretation. Storage preserves
+the existing published direct-root stage composition. Read first obtains that
+final slot, then consumes its read-only value. BindingInitializers and RecoveryFlow
+share this implementation; expression facts, printed-name analysis and printing
+already consume BindingInitializers. The two duplicated storage interpreters and
+original-symbol-first read lookup leave the production path. No graph/AST reanalysis
+or recursive binding chase supplies meaning at print time.
+
+ReadValues still validates all current references, including remapped members, at
+their actual destination scopes/names before publishing an owned delta. Writes and
+update read/write halves use Storage, never the read-value substitution. Initial
+undefined, successful assignment and effects remain independently demanded. The
+existing first-commit invalidation and Values -> Storage -> ReadValues -> Grammar
+contract prevent a later storage mutation from making the slot-indexed proposal
+stale. Value analysis, interference, lifetime and deletion prerequisites are intact.
+
+Repeated branch copies now compose with prior storage sharing and disappear when
+all reads have one stable value. Written-entry and parameter-shadow negatives retain
+one appropriate slot; representative spelling may vary with a legal layout, while
+semantics and the number of necessary variables remain invariant. Effectful copies
+keep their original calls. Reverse arenas, block splitting, 200/201/geometric cases,
+independent source execution/mutants and common flow assignment/update contracts
+exercise the whole composition. This closes a projection-consumer gap; arbitrary
+local symbolic roots and incremental global convergence remain open.
+
+The current source event adapter does not publish every composed normal-result
+copy as an interference affinity. Effectful first-group definitions plus direct
+second-group copies exercise the existing sharing contract here. Extending affinity
+precision must consume common normal-value equations; it must not add Sequence or
+other producer-shape matches to storage recovery.

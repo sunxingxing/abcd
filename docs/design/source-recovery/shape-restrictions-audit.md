@@ -2759,3 +2759,23 @@ root and source-local/shadow/mapped-argument negatives, independent execution/mu
 origin/expression oracles and layout/budget/scaling tests cover the path. Opaque roots
 for arbitrary local/catch/captured values, per-occurrence symbolic precision, final
 namespace allocation and global convergence remain documented implementation gaps.
+
+
+### rules243: read values consume canonical storage slots
+
+- Removed duplicate Storage interpretation and original-symbol-first read lookup
+  from RecoveryFlow/BindingInitializers. One typed BindingProjection composes
+  committed stages; the number of stages is a planner contract, not a bytecode or
+  graph-shape admission. No new recovery candidate condition is introduced.
+- Common current slot references, including every original member destination,
+  retain the existing scope/name proof. A read substitution does not change
+  assignment or update identity, delete RHS effects, or prove initialization.
+- Shared repeated branch values and effectful copies recover direct reads; written
+  parameter and inner shadow counterexamples retain necessary storage. Reversed
+  arenas may choose a different valid retained representative; tests require
+  equivalent behavior and the same necessary variable count. Existing regression
+  expectations remain unchanged. Independent execution/mutants and 200/201/
+  geometric/exact-short cases exercise production composition.
+- The existing ReadValues stage excludes later alias/storage/motion mutation;
+  first-commit fact invalidation and owned proposals are unchanged. Arbitrary
+  symbolic local/catch/capture values and common global convergence remain gaps.

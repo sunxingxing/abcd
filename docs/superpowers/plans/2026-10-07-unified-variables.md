@@ -511,3 +511,14 @@ root/local/shadow/mapped negatives, independent origin/expression oracles and so
 execution/mutants/layout/scaling/budgets verify the substep. Actual acceptance is
 recorded in status.md. General SSA/catch/capture grounding, per-read symbolic values,
 final namespace allocation/full activation/finally/global convergence remain open.
+
+
+rules243 implemented substep: BindingProjection centralizes committed storage and
+read interpretation. ReadValues is indexed by the canonical slot published by the
+preceding alias/storage owners; common flow and source consumers compose it in that
+order. Writes/update halves keep Storage. Shared repeated branches and effectful
+copy output migrate through independent demand cleanup; current name/scope facts,
+revision invalidation and owned proposals remain prerequisites. New layout variants
+permit a different legal representative spelling while preserving required variable
+count and independent behavior. No new sample/shape condition or pass retry. Final
+selected verification is recorded in status.md; the overall milestone stays open.

@@ -3474,3 +3474,25 @@ alias census. Empty consumers avoid value analysis when there is no eligible bin
 live/dead undefined, missing/written entry roots, reversed IDs, 200/201/400/800 and
 exact/short/invalid-input tests verify results and cost. Generated source checks
 return/error/event/object identity and syntax; full process RSS stays paused.
+
+
+### Constant-cost binding projection composition (2026-10-09, rules243)
+
+Provenance: local typed view over existing committed source alias/storage/read-value
+plans; no new dependency or licensing change. Stage-owned direct roots determine
+composition order: early alias, storage slot, final alias, then a read-only stable
+value indexed by that slot. BindingProjection centralizes the operation for common
+flow and source consumers. Writes and update halves stop at Storage.
+
+Each read/storage query is O(1) work, O(1) stack and allocation-free. Existing spans
+are borrowed only during the immutable consumer phase; no new arrays, graph walks,
+recursive lookup, round count or 200-item admission threshold is introduced. The
+ReadValues stage prohibition on later alias/storage/motion changes is essential:
+it establishes the canonical slot identity used by the proposal. Revision-owned
+fact invalidation and independently charged cleanup remain unchanged.
+
+Tests combine actual shared-slot branch copies, effectful RHS, written-entry and
+lexical-shadow counterexamples with reversed arenas and 0/1/200/201/400/800 block
+composition. Eight common-flow alias/storage/read projections separately verify
+actual read identity, assignment targets and both update halves, immutable earlier
+results and exact/short budgets. Full process RSS remains paused.

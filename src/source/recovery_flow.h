@@ -171,6 +171,7 @@ struct LegacyFlowProjection {
   // Trial proposal identity at replacement reads. Nested transported RHSs
   // inherit the outer proposal; independent occurrences keep distinct roots.
   std::span<const std::optional<SymbolId>> transported_reads;
+  // ReadValues addresses canonical slots after alias/storage publication.
   std::span<const std::optional<SymbolId>> read_bindings;
   std::span<const std::uint8_t> stable_entries;
   [[nodiscard]] std::optional<PrimitiveId> ReadLiteral(ExprId expression,SymbolId binding) const {
