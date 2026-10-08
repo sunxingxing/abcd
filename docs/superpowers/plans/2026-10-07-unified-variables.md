@@ -472,3 +472,15 @@ recovery; independent tiny ancestry/projection/copy-demand oracles test the clos
 rather than require a particular intermediate plan. Actual acceptance belongs in
 status.md. Prospective storage-group renaming/retirement, original IR/SSA/full
 activation/capture/finally/global convergence and the overall milestone remain open.
+
+Task 3/4 implementation substep (rules240): complete fixed-root storage proposals
+consume the same common namespace-retirement closure as copies. All mapped reads,
+writes and live-undefined writes are unconditional queries; completion/lifetime and
+initialization failures are separate retention demands. Member-local initialization
+actions remain valid under subset rejection and are computed once on unchanged
+facts. Semantic representative feasibility precedes the potentially obsolete current
+shadow preference. Old local namespace/blocked-mask/preserved-write filters exit.
+Source two-group mutable positives/local/interference negatives and tiny prerequisite/
+subset/throw/resume oracles verify the boundary. Actual acceptance is in status.md;
+arbitrary rename/relocation/new-root selection after rejection, original IR/SSA/full
+activation/capture/finally/global convergence and the overall milestone remain open.

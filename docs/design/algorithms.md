@@ -3393,3 +3393,27 @@ indexed. All owned buffers, nested analysis costs, sorts, binary searches, workl
 visits and successor traversals consume the existing semantic budget. Small slow
 repeated-resolution oracles exist only in tests. 200/201/geometric and exact/short
 checks measure work/accounting; process RSS and broad corpus validation stay paused.
+
+### Joint storage namespace and subset initialization (2026-10-09, rules240)
+
+Provenance: reuse the shared monotone retirement closure, existing ALL-completion
+dominance/liveness and interference-graph contraction; no dependency/profile change.
+Prerequisites: interference-safe direct fixed-root mappings and unchanged flow,
+liveness and initialization facts. Original binding completion/TDZ, root completion,
+lexical lifetime and live-undefined preservation remain independent obligations.
+
+Coalesce scans B proposed bindings, R retained semantic references and D definitions
+to form unconditional name queries and independent retention demands. Initialization
+planning is one O(D) scan. Each live-undefined action depends on its own original
+liveness and fixed-root completion; discarding another mapping cannot change it.
+No full-graph reconstruction or per-member reanalysis is required after rejection.
+
+Q<=R+D queries and at most B+R+D demands feed the common sorted root/position index
+and bounded activation worklist. Additional cost, beyond unchanged interference and
+contraction, is O((B+R+D) log(B+R+D+1)+N+H), memory O(B+R+D+N+H). Buffer sums use checked
+arithmetic; allocations, visits and nested analysis costs consume original budgets.
+Completion/lifetime feasibility outranks current-shadow preference in representative
+selection. That preference adds no admission; only the final proposal namespace
+establishes occurrence resolution. Independent small rank/subset oracles and generated
+source composition/mutants/layout/geometric/exact-short tests verify these contracts.
+Full process RSS and expanded-corpus benchmarking remain paused.

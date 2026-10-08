@@ -24,6 +24,48 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-09：规则240，存储组整批名字闭包与初始化子集契约
+
+- Coalesce把完整interference-safe、direct fixed-root存储提案接入共同
+  AnalyzeSourceNameRetirement。映射后的read/write/update两半及live
+  undefined新增写入均用当前语义owner查询最终namespace。存储共享不
+  删除RHS，因此这些查询全部无条件；与copy的条件读取职责明确区分。
+- root/original完成与TDZ、词法lifetime及PlanStorageInitializations失败
+  是独立保留需求，共同队列再传播跨组遮蔽。旧Coalesce的两批变更前
+  ResolveNames查询、local blocked过滤及单独旧namespace初始化写入
+  拒绝退出；独立值/效果/cell/干涉/初始化义务没有弱化。
+- 代表选择先比较完整组的共同完成/lifetime可行性，再比较当前名字
+  遮蔽偏好及style。另一组可能删除遮蔽绑定，因此旧名字偏好不能压过
+  已证明的初始化可用性。仍先构造纯干涉组，结束后考虑所有原成员；
+  不在union时过滤候选，也不添加图形状准入。
+- PlanStorageInitializations在同一未修改flow/liveness/completion上运行
+  一次，固定root下每个动作只依赖其原live undefined与root完成事实。
+  保留某个成员不会使其他成员的动作失效。闭包完成后只提交获准成员
+  的自有动作；first-commit聚合失效、阶段/cleanup顺序及原预算保持。
+- 两组可写变量共同消除内层shadow正例在旧实现RED（exit134，419）；
+  source-local及真实interference反例仍保留内层与外层必要存储。
+  三种语义、反向arena、0/1/200/201/400/800块组合、源码独立执行及
+  错合并/旧值/更新变体覆盖。聚焦3/3在20.80秒通过；新增512独立
+  prerequisite代表排序、64初始化subset/throw/resume对照通过。
+- 增量适配扫描B绑定、R引用、D定义；共同名字求解新增
+  O((B+R+D) log(B+R+D+1)+N+H)工作及O(B+R+D+N+H)内存。
+  无逐成员重建、pass重跑或200阈值；缓冲和子分析仍计入原预算。
+- 当前29目标构建170.22秒通过；fresh固定pasteboard导出2.81秒保持
+  19records、10完整/0部分/9无module、10语法检查，源码字节等于239。
+  input哈希检查保持，language_numeric_constructors_v1与预算保持。
+  最终59/59选定回归440.59秒通过，combined-coverage.json核对名称
+  与原选择完全一致。存储521源码/75956行为比较/46错误变体；声明
+  2568/513600/100、初始化2004/482752/368、循环276/13976/68；
+  原3968名字闭包、12304当前namespace、7696 retention、9360存储
+  名字对照、调度反例及真实callback/rich-text/progressbar/EntryAbility
+  验证通过。SHA256前后均为
+  854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e。
+  证据在build/stage-one/storage-retirement-verification。
+- 完成固定root、不移动作用域或创造名字的跨storage-group绑定消除。
+  任意renaming/relocation、子集拒绝后新root选择、完整activation/capture/
+  finally、原IR/SSA及全局增量收敛仍开放；里程碑、结构gate及阶段一
+  Goal active。全量suite/广语料/RSS/benchmarks/DFX/代理暂停保持。
+
 ### 2026-10-09：规则239，复制绑定整批退休的名字需求闭包
 
 - Aliases把值/覆盖/cell/效果已证明的全部复制候选交给纯分析

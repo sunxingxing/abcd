@@ -62,6 +62,8 @@ struct StorageInitializations {
 // scope/name availability remains the source binding planner's obligation.
 // The initialization facts are shared with reference checking on this same
 // unchanged flow; this planner neither rebuilds them nor applies the mapping.
+// With fixed retained roots, removing a mapping leaves every other member's
+// action valid: original liveness and completion proofs are member-local.
 [[nodiscard]] std::variant<StorageInitializations,TreeStructureError> PlanStorageInitializations(
     const RecoveryFlow&,const FlowLiveness&,const FlowInitializations&,std::span<const std::optional<SymbolId>>,
     analysis::SemanticBudget = {});

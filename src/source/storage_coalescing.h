@@ -40,8 +40,9 @@ struct StorageCoalescing {
 // adjacency. Each accepted group has no internal conflict; output slots are
 // direct representatives. Rank ALL original members against completed group
 // extents after contraction; do not choose/discard candidates during unions.
-// Semantic scope/initialization checks follow this pure storage proposal and
-// may retain any subset of its members independently.
+// Completion/lifetime feasibility precedes current-shadow/style preferences;
+// a different group may retire a shadow. Common prospective name closure and
+// independent initialization/lifetime proofs retain a subset with fixed roots.
 [[nodiscard]] std::variant<StorageCoalescing,TreeStructureError> PlanStorageCoalescing(
     const BindingInterference&,std::span<const StorageBinding>,analysis::SemanticBudget = {},StorageNames = {});
 }

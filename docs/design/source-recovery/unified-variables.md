@@ -2045,3 +2045,42 @@ fixed-root contract. Simultaneous storage-group retirement/renaming or scope
 relocation still needs its own proposal model; full activation/capture/finally,
 original IR/SSA correspondence and global incremental pass convergence remain open.
 The unified-variable milestone and stage-one Goal remain active.
+
+### Joint storage-retirement namespace (2026-10-09, rules240)
+
+Coalesce now consumes AnalyzeSourceNameRetirement for the complete interference-safe
+storage proposal, using direct fixed retained representatives. Every mapped read,
+write, update half and preserved live-undefined write supplies its actual current
+owner. These reads are unconditional: changing storage never authorizes dropping
+an RHS. Completion/TDZ and lexical-lifetime failures enter as independent retention
+demands, alongside PlanStorageInitializations failures. The common closure handles
+retained members casting shadows across other groups in the same proposal.
+
+Representative ranking first compares common completion/lifetime feasibility over
+the final group's observations. Current namespace visibility then remains a
+preference, followed by spelling/native/order style. It cannot outrank a feasible
+candidate just because another group currently shadows it; that shadow may retire
+in the joint proposal. Contraction still owns only interference, ranks all original
+members and rejects no member during union. Final occurrence proofs remain.
+
+PlanStorageInitializations runs once against the unchanged flow/liveness/completion
+facts and fixed roots. Its actions are member-local: rejecting one mapping does not
+invalidate another member's original live-undefined/root-completion proof. Common
+name/lifetime closure may retain any subset; commit consumes only accepted members'
+owned actions. Coalesce's old pre-proposal ResolveNames batches, local blocked-mask
+filtering and separate original-namespace preserved-write rejection exit. Analysis
+finishes before first-commit invalidation; no shared fact is read during commit.
+
+Source positives compose two writable groups: the inner same-name binding retires
+to another slot, allowing the outer temporary to share its available root. Source
+locals and actual interference keep that shadow and preserve the outer temporary.
+Independent source execution, wrong-merge/old-value/update mutants, actual declaration
+counts, reversed arenas and block composition verify output. Independent tiny
+representative-prerequisite and initialization-subset/throw/resume oracles verify
+proof order and subset stability; existing closure/flow/scaling/budget tests remain.
+
+This closes joint storage-binding retirement for fixed roots without moving their
+scopes or inventing new names. Arbitrary renaming/relocation, choosing new roots
+after subset rejection, full activation/capture/finally, original IR/SSA correspondence
+and global incremental pass convergence remain gaps. Existing Values/Storage/Grammar
+and demand-cleanup contracts remain; the milestone/stage-one Goal is still active.

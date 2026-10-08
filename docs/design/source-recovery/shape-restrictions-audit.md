@@ -2695,3 +2695,22 @@ retirement, newly retained shadows, conditional demands, legal preceding storage
 recovery, TDZ/incorrect-root counterexamples and layout/budget/scaling stability.
 Prospective storage-group renaming/retirement, full activation/capture/finally and
 original IR/SSA correspondence remain documented gaps.
+
+### 2026-10-09 rules240: joint storage namespace
+
+Obligation: all remapped semantic reads/writes and live-undefined writes resolve to
+their fixed representative in the final accepted storage proposal. Coalesce uses
+common retirement closure rather than two original-namespace ResolveNames batches
+and optimizer-local blocked-mask filtering. Root/original completion, lexical lifetime,
+undefined liveness and interference remain independently required and proved on the
+same unchanged flow. Rejecting a mapping leaves other member-local initialization
+actions valid; storage sharing never makes its RHS reads disappear.
+
+Representative completion/lifetime feasibility now precedes current-shadow preference,
+which may become obsolete when another group retires the shadow. This is proof-order
+repair, not a new compiler-layout matcher. Two writable-group positives, source-local
+and interference negatives, independent execution/mutants/declaration counts, reversed
+arenas/block composition and tiny rank/subset/throw/resume oracles cover the change.
+No sample/opcode sequence, adjacency, same-block or fixed-shape condition is introduced.
+Arbitrary renaming/relocation/re-ranking after subset rejection, full activation/capture/
+finally/original IR/SSA/convergence remain explicit precision gaps.

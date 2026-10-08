@@ -702,6 +702,51 @@ void StorageNameOracle() {
     }
   std::cout<<"independent storage name cases "<<cases<<'\n';
 }
+void StoragePrerequisitePreference() {
+  unsigned cases=0;
+  for(unsigned availability=0;availability<16;++availability)for(unsigned names=0;names<4;++names)for(unsigned style=0;style<4;++style)for(bool reverse:{false,true}) {
+    const auto id=[&](unsigned i){return SymbolId{reverse?1-i:i};};
+    BindingInterference facts;facts.affinities.push_back({id(0),id(1),false});
+    std::array<StorageBinding,2> bindings;std::vector<StorageShadow> shadows;
+    const std::array reads{StorageReference{id(0),{2}},StorageReference{id(1),{2}}};
+    for(unsigned i=0;i<2;++i) {
+      auto& binding=bindings[id(i).value];binding.eligible=true;binding.reference_region=SourceRegion{{2},{3}};
+      binding.binding_region=availability&(1U<<i)?SourceRegion{{0},{4}}:SourceRegion{{0},{1}};
+      binding.reachable_references=CompletionRegion{2,3};binding.initialized_region=availability&(1U<<(i+2))?CompletionRegion{0,4}:CompletionRegion{0,1};
+      binding.unique_spelling=(style&(1U<<i))!=0;binding.native_declaration=i==0;binding.initialization_order=i+1;
+      if(names&(1U<<i))shadows.push_back({id(i),SourceRegion{{2},{3}}});
+    }
+    const auto rank=[&](unsigned i){const bool feasible=(availability&(1U<<i))&&(availability&(1U<<(i+2)));return std::tuple{!feasible,(names&(1U<<i))!=0,!(style&(1U<<i)),i!=0,i,id(i).value};};
+    const auto winner=rank(0)<rank(1)?id(0):id(1);
+    const auto result=std::get<StorageCoalescing>(PlanStorageCoalescing(facts,bindings,{},StorageNames{shadows,reads}));
+    for(unsigned i=0;i<2;++i)Check(result.storage[i]==(i==winner.value?std::nullopt:std::optional{winner}));++cases;
+  }
+  std::cout<<"independent storage prerequisite ranks "<<cases<<'\n';
+}
+void StorageInitializationSubsets() {
+  unsigned cases=0;
+  for(unsigned edges=0;edges<4;++edges)for(unsigned roots=0;roots<4;++roots)for(unsigned mask=0;mask<4;++mask) {
+    RecoveryFlow flow{};flow.entry={0};flow.events.resize(7);flow.statements.resize(4);flow.bindings.resize(4);
+    for(unsigned i=0;i<6;++i)Link(flow,i,i+1);
+    if(edges&1){Link(flow,0,2);flow.edges.back().completion=FlowCompletion::kThrow;}
+    if(edges&2){Link(flow,5,2);flow.edges.back().completion=FlowCompletion::kResumeNext;}
+    for(unsigned i=0;i<4;++i){flow.bindings[i]={BindingKind::kCompilerTemporary,FlowBindingExposure::kPrivate,StmtId{i}};flow.definitions.push_back({{i+1},{i},FlowDefinitionKind::kUndefined,{},{},StmtId{i}});flow.events[i+1].definition=FlowDefinitionId{i};}
+    flow.events[5].read=SymbolId{2};flow.events[6].read=SymbolId{3};
+    const auto reachable=[&](unsigned removed,unsigned destination){std::array<bool,7> seen{};std::vector<unsigned> pending{0};seen[0]=true;while(!pending.empty()){const auto from=pending.back();pending.pop_back();for(const auto& edge:flow.edges)if(edge.from.value==from&&edge.to.value!=removed&&!seen[edge.to.value]){seen[edge.to.value]=true;pending.push_back(edge.to.value);}}return seen[destination];};
+    const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));const auto initialized=std::get<FlowInitializations>(AnalyzeFlowInitializations(flow));
+    std::array<std::optional<SymbolId>,4> proposal{};proposal[2]=SymbolId{roots&1};proposal[3]=SymbolId{(roots>>1)&1};
+    const auto full=std::get<StorageInitializations>(PlanStorageInitializations(flow,live,initialized,proposal));
+    for(unsigned i=0;i<2;++i)if(!(mask&(1U<<i)))proposal[i+2].reset();
+    const auto subset=std::get<StorageInitializations>(PlanStorageInitializations(flow,live,initialized,proposal));
+    for(unsigned i=2;i<4;++i) {
+      const bool blocked=proposal[i]&&reachable(proposal[i]->value+1,i+1);
+      Check(bool(subset.blocked[i])==blocked);Check(subset.stores[i]==(proposal[i]&&!blocked?proposal[i]:std::nullopt));
+      if(proposal[i])Check(subset.stores[i]==full.stores[i]&&subset.blocked[i]==full.blocked[i]);
+    }
+    ++cases;
+  }
+  std::cout<<"independent storage initialization subsets "<<cases<<'\n';
+}
 void StorageNameHoles() {
   for(bool observed:{false,true})for(bool reverse:{false,true}) {
     std::uint64_t previous=0;
@@ -1695,4 +1740,4 @@ void PassContracts() {
   Check(!unfinished.DemandCleanupNeeded());
   std::cout<<"pass ownership, dependency and cleanup counterexamples passed\n";
 }
-int main(){InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();PassContracts();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+int main(){InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();PassContracts();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

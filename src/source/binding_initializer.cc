@@ -1047,61 +1047,53 @@ class Initializers {
     auto proposed=std::move(delta.storage);
     bool sharing=false;for(const auto root:proposed){budget_.Step();sharing|=root.has_value();}
     if(!sharing)return;
-    std::vector<std::uint8_t> blocked;budget_.Array(blocked,uses_.size());
-    std::vector<SourceNameQuery> references;
-    std::vector<std::optional<StmtId>> occurrences;
-    std::vector<SymbolId> targets;
-    budget_.Array(references,flow.references.size());budget_.Array(occurrences,flow.references.size());
-    budget_.Array(targets,flow.references.size());std::size_t count=0;
-    // Reference occurrences and execution order come from the same current
-    // flow, including forwarded RHSs and update read/write halves. Original
-    // arena order and expressions removed by earlier passes are not evidence.
-    for(const auto& reference:flow.references) {
-      budget_.Step();const auto root=proposed[reference.binding.value];if(!root)continue;
-      // A new initialized slot cannot mask an original pre-initialization access.
-      // This is the same completion fact used for the destination, not a
-      // declaration-shape or statement-order admission rule.
-      if(!initialization_order.Completed(*root,reference.point) ||
-          !initialization_order.Completed(reference.binding,reference.point))blocked[reference.binding.value]=1;
-      RequireTree(reference.owner.has_value(),TreeStructureError::kOwnership);
-      references[count]={*root,reference.owner};occurrences[count]=reference.owner;targets[count++]=reference.binding;
-    }
-    references.resize(count); const auto visible = ResolveNames(flow,references);
-    for (std::size_t i = 0; i < count; ++i) {
-      budget_.Step(); const auto root = std::get<SymbolId>(references[i].name); const auto occurrence = occurrences[i];
-      const auto lifetime=flow.BindingInScope(root,occurrence);
-      if(visible[i]!=SourceNameResolution::kResolved || !lifetime)blocked[targets[i].value]=1;
-    }
-    for(std::size_t i=0;i<proposed.size();++i){budget_.Step();if(blocked[i])proposed[i].reset();}
+    // Initialization preservation is member-local with fixed representatives.
+    // Its owned actions remain valid if name/lifetime closure retains a subset;
+    // there is no graph or plan mutation between these independent analyses.
     auto initialized=PlanStorageInitializations(flow,liveness,initialization_order,proposed,budget_.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&initialized))throw *error;
     const auto& initialization=std::get<StorageInitializations>(initialized);
     budget_.Admit(initialization.allocated_bytes,1);budget_.Step(initialization.work);
-    // The independent initialization plan owns value preservation. Reuse the
-    // source planner's lexical proof for its newly explicit write occurrences.
-    std::vector<SourceNameQuery> initialization_references;
-    std::vector<SymbolId> initialization_targets;
-    std::vector<StmtId> initialization_occurrences;
-    budget_.Array(initialization_references,flow.definitions.size());budget_.Array(initialization_targets,flow.definitions.size());
-    budget_.Array(initialization_occurrences,flow.definitions.size());count=0;
-    for(std::size_t i=0;i<proposed.size();++i){budget_.Step();blocked[i] |= initialization.blocked[i];}
+    std::vector<SourceRetirement> candidates_mask;
+    std::vector<SourceRetirementQuery> references;
+    std::vector<SourceRetentionDemand> demands;
+    RequireTree(flow.references.size()<=std::numeric_limits<std::size_t>::max()-flow.definitions.size(),TreeStructureError::kResourceLimit);
+    const auto occurrences=flow.references.size()+flow.definitions.size();
+    RequireTree(occurrences<=std::numeric_limits<std::size_t>::max()-proposed.size(),TreeStructureError::kResourceLimit);
+    budget_.Array(candidates_mask,proposed.size());budget_.Array(references,occurrences);budget_.Array(demands,occurrences+proposed.size());
+    std::size_t count=0,demand_count=0;
+    for(std::size_t i=0;i<proposed.size();++i) {
+      budget_.Step();if(!proposed[i])continue;candidates_mask[i]=SourceRetirement::kProposed;
+      if(initialization.blocked[i])demands[demand_count++]={SymbolId{static_cast<std::uint32_t>(i)},{}};
+    }
+    // All retained reads/writes survive storage sharing, including forwarded
+    // RHSs and update halves. Their current semantic owners, not original arena
+    // order, define lookup. Storage removal never makes an RHS read conditional.
+    for(const auto& reference:flow.references) {
+      budget_.Step();const auto root=proposed[reference.binding.value];if(!root)continue;
+      RequireTree(reference.owner.has_value(),TreeStructureError::kOwnership);
+      references[count++]={{*root,reference.owner},reference.binding,{}};
+      // New initialized storage cannot mask an original pre-initialization
+      // access. Completion and lexical lifetime stay independent of spelling.
+      if(!initialization_order.Completed(*root,reference.point)||
+          !initialization_order.Completed(reference.binding,reference.point)||
+          !flow.BindingInScope(*root,reference.owner))demands[demand_count++]={reference.binding,{}};
+    }
+    // A live undefined initialization becomes a write to the retained slot.
+    // Check its actual declaration occurrence in the same final namespace;
+    // keeping its old binding removes that proposed write without changing any
+    // other member's independently proved initialization action.
     for(const auto& definition:flow.definitions) {
-      budget_.Step();const auto symbol=definition.binding;
-      if(definition.kind!=FlowDefinitionKind::kUndefined || !definition.declaration ||
-          !proposed[symbol.value] || blocked[symbol.value] || !initialization.stores[definition.declaration->value])continue;
-      const auto statement=*definition.declaration;
-      initialization_references[count]={*proposed[symbol.value],statement};
-      initialization_occurrences[count]=statement;initialization_targets[count++]=symbol;
+      budget_.Step();const auto binding=definition.binding;const auto root=proposed[binding.value];
+      if(definition.kind!=FlowDefinitionKind::kUndefined||!definition.declaration||!root||!initialization.stores[definition.declaration->value])continue;
+      const auto statement=*definition.declaration;references[count++]={{*root,statement},binding,{}};
+      if(!flow.BindingInScope(*root,statement))demands[demand_count++]={binding,{}};
     }
-    initialization_references.resize(count);initialization_targets.resize(count);initialization_occurrences.resize(count);
-    if(count) {
-      const auto resolved=ResolveNames(flow,initialization_references);
-      for(std::size_t i=0;i<count;++i) {
-        budget_.Step();const auto target=initialization_targets[i];const auto root=*proposed[target.value];
-        const auto declaration=initialization_occurrences[i];
-        if(resolved[i]!=SourceNameResolution::kResolved || !flow.BindingInScope(root,declaration))blocked[target.value]=1;
-      }
-    }
+    references.resize(count);demands.resize(demand_count);
+    auto names=AnalyzeSourceNameRetirement(flow,candidates_mask,references,demands,budget_.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&names))throw *error;
+    auto retirement=std::get<SourceNameRetirement>(std::move(names));
+    budget_.Admit(retirement.allocated_bytes,1);budget_.Step(retirement.work);
     // Completion occurrences include recovered declarations, not just original
     // placeholders. Own every remap before commit; shared initialization/liveness
     // decides whether its undefined value needs a successful slot write.
@@ -1111,12 +1103,12 @@ class Initializers {
     for(std::size_t i=0;i<plan_.declaration_completions.size();++i) {
       budget_.Step();const auto& completion=plan_.declaration_completions[i];
       if(!completion || completion->kind!=DeclarationCompletionKind::kInitialize ||
-          !proposed[completion->binding.value] || blocked[completion->binding.value])continue;
+          !proposed[completion->binding.value] || retirement.presence[completion->binding.value]==SourceBindingPresence::kRetained)continue;
       completions[completion_count++]={StmtId{static_cast<std::uint32_t>(i)},initialization.stores[i]};
     }
     completions.resize(completion_count);
     for (std::size_t i = 0; i < proposed.size(); ++i) {
-      budget_.Step(); if (!proposed[i] || blocked[i]) continue;
+      budget_.Step(); if (!proposed[i] || retirement.presence[i]==SourceBindingPresence::kRetained) continue;
       const auto root = *proposed[i]; const auto& use = uses_[i];
       BeginCommit();plan_.storage[i] = root;
       // Lifetime removal and value preservation are separate plan actions.

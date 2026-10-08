@@ -120,9 +120,12 @@ class Coalescing {
     budget_.Step();const auto& left=bindings_[a.value];const auto& right=bindings_[b.value];
     // Reject no group here: rank each member against the final shared reference
     // extent. A wider scope alone must not bias source style.
-    const bool left_covers=Covers(left,region,unlocated)&&Initialized(left,references)&&!name_blocked_[a.value];
-    const bool right_covers=Covers(right,region,unlocated)&&Initialized(right,references)&&!name_blocked_[b.value];
+    const bool left_covers=Covers(left,region,unlocated)&&Initialized(left,references);
+    const bool right_covers=Covers(right,region,unlocated)&&Initialized(right,references);
     if(left_covers!=right_covers)return left_covers?a:b;
+    // Current shadows are only a preference: another group may retire them.
+    // Do not let that stale preference outrank proven completion/lifetime.
+    if(name_blocked_[a.value]!=name_blocked_[b.value])return name_blocked_[a.value]?b:a;
     if(left.unique_spelling!=right.unique_spelling)return left.unique_spelling?a:b;
     if(left.native_declaration!=right.native_declaration)return left.native_declaration?a:b;
     if(left.initialization_order!=right.initialization_order){
