@@ -3270,3 +3270,24 @@ initial-value/binding cleanup remain independent ordered passes. Printed names a
 origin spans consume the same projection. Tests exercise 200/201/geometric and
 reverse arenas, unique RHS evaluation, independent execution and semantic mutants;
 actual selected timings are in status.md. Broader corpus/RSS/benchmarks remain paused.
+
+### Canonical lexical-region indexing (2026-10-08, rules235)
+
+Provenance is the existing preorder subtree interval containment index, published
+by the source adapter once and consumed by common RecoveryFlow. No dependency or
+license change. With Q checked source scopes, S statements and B bindings, the new
+canonical scope index costs O(Q) storage, O(S) traversal work (inside the existing
+traversal), and O(B) lookup work when building current Flow. BindingRegion and
+BindingInScope are O(1). Storage consumes the same intervals and completed-group
+reference extents, so there is no per-binding ancestor walk or extra optimizer
+census. Existing interference/output costs remain unchanged; all retained arrays,
+validation and graph copies use the original byte/work budget.
+
+Canonical and recovered intervals are lexical coordinates, distinct from ALL-
+completion dominator intervals. Both are candidate preferences; post-proposal
+spelling, completion, cell and initial-value/effect obligations still decide
+acceptance. Original bindings without supplied regions retain the legacy contract;
+missing projected regions reject access. Tests compare against a small independent
+ancestry oracle, reverse arenas, exercise 200/201/geometric source sizes, exact/short
+budgets and independent generated-source behavior/mutants. This evidence does not
+establish whole-process RSS or global pass convergence; paused checks remain paused.

@@ -3,7 +3,7 @@ import {execFileSync} from 'node:child_process';
 import vm from 'node:vm';
 import {parseJavaScript} from './class_reference.mjs';
 const records=execFileSync(process.argv[2],['--emit'],{encoding:'utf8',timeout:60_000,maxBuffer:16*1024*1024}).trim().split('\n').map(JSON.parse);
-assert.equal(records.length,300);
+assert.equal(records.length,312);
 // Oracles describe the original storage semantics, never enter the engine.
 const references=[
   function(input,report,flag){let current=input,scratch=current;++scratch;current=scratch;return current;},
@@ -31,6 +31,7 @@ const references=[
   function(input,report,flag){let current=input,scratch=current,snapshot;snapshot=scratch;{if(snapshot){}let input=100;}current=scratch;return current;},
   function(input,report,flag){let current=input,scratch;scratch=current;++scratch;current=scratch;return current;},
   function(input,report,flag){let current=report(input),scratch;scratch=current;++scratch;current=scratch;return current;},
+  function(input,report,flag){let current;{let scratch;report(scratch=input);++scratch;current=scratch;++current;report(current);}{let current;}return current;},
 ];
 const primitives=[undefined,null,false,true,0,-0,1,-2,0n,2n,NaN,Infinity,'','7','bad',Symbol('input')];
 let cases=0,mutations=0;
@@ -85,7 +86,7 @@ for(const record of records){
     assert.notDeepEqual(await observe(wrong,17,6,'normal',true,'next'),
         await observe(references[17],17,6,'normal',true,'next'));++mutations;
   }
-  if(record.count===0&&!record.reverse&&[18,19,23,24].includes(record.form)) {
+  if(record.count===0&&!record.reverse&&[18,19,23,24,25].includes(record.form)) {
     const pending=[inspect];let update;
     while(pending.length){const node=pending.pop();if(node.type==='UpdateExpression')update=node;
       for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)pending.push(child);}else if(value?.type)pending.push(value);}}
@@ -94,6 +95,11 @@ for(const record of records){
     const wrong=vm.runInNewContext(mutant);
     assert.notDeepEqual(await observe(wrong,record.form,6,'normal',true,'next'),
         await observe(references[record.form],record.form,6,'normal',true,'next'));++mutations;
+  }
+  if(record.count===0&&!record.reverse&&record.form===25) {
+    const wrong=function(input,report){let current;{let scratch;report(scratch=input);++scratch;current=scratch;++current;report(current);}{let current;}return scratch;};
+    assert.notDeepEqual(await observe(wrong,25,6,'normal',true,'next'),
+        await observe(references[25],25,6,'normal',true,'next'));++mutations;
   }
   if(record.count===0&&!record.reverse&&record.form===22) {
     // Wrong late aliasing crosses the shadowing declaration's TDZ. Rename only

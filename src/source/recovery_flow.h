@@ -28,7 +28,7 @@ enum class FlowBindingExposure : std::uint8_t { kObservable, kPrivate };
 struct SourceRegionId {std::uint32_t value=0;auto operator<=>(const SourceRegionId&)const=default;};
 struct SourcePosition {std::size_t value=0;auto operator<=>(const SourcePosition&)const=default;};
 struct SourceRegion {SourcePosition first,last;};
-struct OriginalBindingScope {};
+struct OriginalBindingScope {std::optional<SourceRegionId> region;};
 struct ProjectedBindingScope {SourceRegionId region;};
 struct UnmodeledBindingScope {};
 // Lexical containment only: dynamic cell identity, initialization completion
@@ -170,21 +170,23 @@ struct RecoveryFlow {
   FlowPoint entry, terminal;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
-  // Supplemental containment for recovered declarations. Original scope has
-  // no added narrowing; ordinary name resolution still must succeed. This is
-  // not a completion-dominance or per-activation/capture identity proof.
-  [[nodiscard]] bool BindingInScope(SymbolId binding,std::optional<StmtId> occurrence) const {
-    return std::visit([&](const auto& scope) {
+  // The syntax adapter publishes original and projected lexical regions once.
+  // Absence on an original binding preserves the legacy identity contract;
+  // neither this query nor containment proves spelling, completion or cell identity.
+  [[nodiscard]] std::optional<SourceRegionId> BindingRegion(SymbolId binding) const {
+    return std::visit([](const auto& scope)->std::optional<SourceRegionId> {
       using T=std::decay_t<decltype(scope)>;
-      if constexpr(std::is_same_v<T,OriginalBindingScope>)return true;
-      else if constexpr(std::is_same_v<T,UnmodeledBindingScope>)return false;
-      else {
-        static_assert(std::is_same_v<T,ProjectedBindingScope>);
-        if(!occurrence || !source_occurrences[occurrence->value])return false;
-        const auto position=*source_occurrences[occurrence->value];const auto region=source_regions[scope.region.value];
-        return position>=region.first&&position<region.last;
-      }
+      if constexpr(std::is_same_v<T,OriginalBindingScope>||std::is_same_v<T,ProjectedBindingScope>)return scope.region;
+      else {static_assert(std::is_same_v<T,UnmodeledBindingScope>);return {};}
     },bindings[binding.value].scope);
+  }
+  [[nodiscard]] bool BindingInScope(SymbolId binding,std::optional<StmtId> occurrence) const {
+    if(const auto region_id=BindingRegion(binding)) {
+      if(!occurrence || !source_occurrences[occurrence->value])return false;
+      const auto position=*source_occurrences[occurrence->value];const auto region=source_regions[region_id->value];
+      return position>=region.first&&position<region.last;
+    }
+    return std::holds_alternative<OriginalBindingScope>(bindings[binding.value].scope);
   }
 };
 // Source-side migration entry: checked tree plus explicit legacy projection.

@@ -87,9 +87,9 @@ class FlowBuilder {
               ? FlowBindingExposure::kPrivate : FlowBindingExposure::kObservable};
       if(!scopes.bindings.empty()) {
         result.bindings[i].scope=scopes.bindings[i];
-        if(const auto* narrowed=std::get_if<ProjectedBindingScope>(&result.bindings[i].scope)) {
-          RequireTree(narrowed->region.value<result.source_regions.size(),Error::kOwnership);
-          const auto& region=result.source_regions[narrowed->region.value];
+        if(const auto region_id=result.BindingRegion(SymbolId{static_cast<std::uint32_t>(i)})) {
+          RequireTree(region_id->value<result.source_regions.size(),Error::kOwnership);
+          const auto& region=result.source_regions[region_id->value];
           RequireTree(!scopes.occurrences.empty()&&region.first<region.last,Error::kOwnership);
         }
       }

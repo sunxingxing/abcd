@@ -190,6 +190,48 @@ std::uint64_t Run(Form form,unsigned count,bool reverse,bool emit){
   if(emit)std::cout<<nlohmann::json{{"form",unsigned(form)},{"count",count},{"reverse",reverse},{"merged",merged},{"source",output.str()}}<<'\n';
   return bindings.work;
 }
+// Canonical lexical scope must participate in representative selection, even
+// when both initializations dominate every use. An unrelated sibling shadow
+// makes the narrower spelling unique; it cannot make that slot visible outside.
+std::uint64_t CanonicalScope(unsigned count,bool reverse,bool emit){
+  Fixture f(Form::kStraight);auto& tree=f.tree;
+  const auto outer=f.Stmt(DeclarationStmt{{3},{}});
+  const auto inner=f.Block({});
+  const auto scope=std::get<BlockStmt>(tree.statements[inner.value].statement).scope;
+  tree.symbols[4].scope=scope;
+  std::vector<StmtId> body{f.Stmt(DeclarationStmt{{4},{}}),
+      f.Stmt(ExpressionStmt{f.Call({f.Store(4,f.Read(0))})}),
+      f.Stmt(ExpressionStmt{f.Expr(UpdateExpr{{4},UpdateDirection::kIncrement,UpdateResult::kPrefix})}),
+      f.Write(3,f.Read(4)),
+      f.Stmt(ExpressionStmt{f.Expr(UpdateExpr{{3},UpdateDirection::kIncrement,UpdateResult::kPrefix})}),
+      f.Stmt(ExpressionStmt{f.Call({f.Read(3)})})};
+  for(unsigned i=0;i<count;++i)body.push_back(f.Block({},scope));
+  auto& block=std::get<BlockStmt>(tree.statements[inner.value].statement);
+  block.first_child=tree.children.size();block.child_count=body.size();
+  tree.children.insert(tree.children.end(),body.begin(),body.end());
+  const auto shadow=f.Block({});
+  const auto shadow_scope=std::get<BlockStmt>(tree.statements[shadow.value].statement).scope;
+  const SymbolId local{static_cast<std::uint32_t>(tree.symbols.size())};
+  tree.symbols.push_back({shadow_scope,{3},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
+  const auto declaration=f.Stmt(DeclarationStmt{local,{}});
+  auto& sibling=std::get<BlockStmt>(tree.statements[shadow.value].statement);
+  sibling.first_child=tree.children.size();sibling.child_count=1;tree.children.push_back(declaration);
+  f.Finish({outer,inner,shadow,f.Stmt(ReturnStmt{f.Read(3)})},reverse);
+  Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));
+  const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
+  const auto bindings=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
+  Check(bindings.storage[4]==SymbolId{3});
+  if(count==0) {
+    Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work})));
+    Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes-1,bindings.work}))==TreeStructureError::kResourceLimit);
+    Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work-1}))==TreeStructureError::kWorkLimit);
+  }
+  std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
+  Check(output.str().find("scratch")==std::string::npos);
+  if(emit)std::cout<<nlohmann::json{{"form",25},{"count",count},{"reverse",reverse},{"merged",true},{"source",output.str()}}<<'\n';
+  return bindings.work;
+}
 std::uint64_t Many(unsigned count,bool emit){
   Fixture f(Form::kStraight);auto& tree=f.tree;std::vector<StmtId> declarations,body;
   for(unsigned i=0;i<count;++i){
@@ -263,6 +305,8 @@ int main(int argc,char** argv){
     std::uint64_t previous=0;for(unsigned count:{1U,200U,201U,400U,800U}){
       const auto work=Many(count,true);if(count==800)Check(work<previous*3);previous=work;}return 0;
   }
+for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){
+  const auto work=CanonicalScope(count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}
 for(bool conflict:{false,true})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{1U,2U,200U,201U,400U,800U}){
   const auto work=Chain(count,conflict,reverse,false);if(count==800)Check(work<previous*3);previous=work;}}
 for(unsigned form=0;form<=unsigned(Form::kNativeProducer);++form){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}){

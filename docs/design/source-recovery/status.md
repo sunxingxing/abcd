@@ -24,6 +24,38 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则235，原始与恢复后绑定共享词法范围
+
+- 在已有唯一语法扫描中发布ScopeId到SourceRegionId索引，原始
+  声明和恢复后声明共同消费BindingRegion/BindingInScope。
+  存储代表选择不再把所有原始绑定当作无范围限制；初始化均覆盖
+  所有引用时，内层唯一名字不能压过能覆盖块外返回的外层槽。
+  原始绑定无索引时保留既有identity契约，未建模投影不能授权访问。
+- 此范围只证明词法包含；名字解析、root/member完成支配、动态
+  cell身份、初始值活跃性与效果仍独立证明。没有新增样本/序列/
+  同块/邻接/固定图形状准入，也没有优化器各自重扫语法。
+- 不增加pass轮次。原始范围是不可变syntax事实，恢复后范围从
+  当前revision计划选取；首次commit先失效ProjectionFacts，禁止
+  提交期间读分析。存储合并只消费fresh共同图，后续归一化、
+  dead-definition/initial-value/binding清理及grammar阶段边界保持。
+- 新源码反例RED在1.19秒失败；共同模型实现后聚焦3/3在16.40秒
+  通过。随后加强original region非法ID/缺失occurrence、exact/short
+  预算、独立块外引用反例与几何work断言，并纳入最终既定选择。
+- 最终29目标构建169.08秒通过，固定导出2.59秒：19records仍
+  10完整/0部分/9无module，10源码语法通过，全部源码字节等于234。
+  language_numeric_constructors_v1与真实原预算保持，输入SHA前后
+  一致；证据在build/stage-one/canonical-scope-verification。
+- 最终既定59/59测试在435.01秒通过，combined-coverage.json核验
+  通过名称与原选择完全一致。存储源码341/50036行为比较/23错误
+  变体；声明源码2568/513600/100，初始化2004/482752/368，循环
+  276/13976/68；既有模型、调度器反例、真实callback、rich-text及
+  EntryAbility完整类对照通过。嵌套作用域、初始undefined、异常、
+  TDZ、反向arena、200/201与几何成本及exact/short预算均保留。
+  固定输入SHA256为854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e。
+- 更完整名字/cell/value可行代表选择、原始IR/SSA、activation/
+  capture/finally与global convergence仍未完成。统一变量里程碑和
+  阶段一Goal继续active；full suite/扩展corpus/RSS/DFX/agents保持暂停。
+
 ### 2026-10-08：规则234，表达式 occurrence 运输与共同提案依赖
 
 - 快照源移除与读值替换分别表示：ExpressionTransport只移除已证明

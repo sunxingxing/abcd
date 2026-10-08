@@ -74,9 +74,9 @@ class Coalescing {
     return Region{std::min(a->first,b->first),std::max(a->last,b->last)};
   }
   static bool Covers(const StorageBinding& binding,std::optional<SourceRegion> region,bool unlocated) {
-    if(!binding.narrowed_region)return true;
+    if(!binding.binding_region)return true;
     if(unlocated)return false;
-    return !region||(binding.narrowed_region->first<=region->first&&binding.narrowed_region->last>=region->last);
+    return !region||(binding.binding_region->first<=region->first&&binding.binding_region->last>=region->last);
   }
   static bool Initialized(const StorageBinding& binding,std::optional<CompletionRegion> references) {
     return !references||(binding.initialized_region&&binding.initialized_region->first<=references->first&&

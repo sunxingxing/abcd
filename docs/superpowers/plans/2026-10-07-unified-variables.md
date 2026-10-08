@@ -406,3 +406,17 @@ versus unrelated scope failures, with reversed arenas and geometric sizes. No
 extra round or source-shape admission is added. Original IR/SSA, full activation/
 capture/finally, feasible storage and global convergence remain open. status.md
 records selected verification; unified-variable milestone and stage-one Goal active.
+
+Task 2/4 implementation substep (rules235): publish canonical binding regions
+from the existing once-owned lexical traversal. Common BindingRegion/BindingInScope
+serve both original and projected declarations; pure storage candidate ranking
+consumes those facts before independent name/completion/lifetime/value proofs.
+Original scope containment is no longer deferred entirely until after representative
+selection. Immutable canonical syntax facts and revision-owned projected selection
+remain distinct; each commit invalidates common facts and all proposal validation
+precedes mutation. Existing pass order and stage/cleanup contracts remain unchanged.
+Source nested-scope/sibling-shadow/outside-return cases, independent ancestry and
+semantic mutants cover the precision correction with layout/scaling/budget checks.
+No new production shape admission. Status.md records actual selected evidence;
+originalIR/SSA/full lifetime/capture/finally/complete feasibility/global convergence
+remain open. Unified-variable milestone and stage-one Goal remain active.

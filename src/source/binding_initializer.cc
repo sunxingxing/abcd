@@ -77,6 +77,7 @@ class Initializers {
     budget.Array(expressions_, tree.expressions.size()); budget.Array(statements_, tree.statements.size());
     budget.Array(statement_owners_,tree.statements.size());budget.Array(statement_scopes_,tree.statements.size());
     budget.Array(source_regions_,tree.statements.size());budget.Array(source_occurrences_,tree.statements.size());
+    budget.Array(source_scope_regions_,tree.scopes.size());
     budget.Array(expression_owners_,tree.expressions.size());budget.Array(expression_projections_,tree.expressions.size());
   }
   BindingInitializers Run() {
@@ -157,6 +158,10 @@ class Initializers {
           container_order_[next_container_] = visit.statement;
           containers_[visit.statement.value].begin = next_container_++;
           visit.lexical = visit.statement;
+          // Index canonical scope at the same lexical census boundary as projected
+          // regions. Later passes consume this fact without rescanning syntax.
+          if(const auto* block=std::get_if<BlockStmt>(&node))
+            source_scope_regions_[block->scope.value]=SourceRegionId{visit.statement.value};
         }
         lexical_[visit.statement.value] = visit.lexical;
         statement_scopes_[visit.statement.value]=visit.scope;
@@ -764,6 +769,7 @@ class Initializers {
     budget_.Array(source_bindings,uses_.size());
     for (std::size_t i=0;i<uses_.size();++i) {
       budget_.Step();private_bindings[i]=tree_.symbols[i].kind==BindingKind::kCompilerTemporary && !uses_[i].escaped;
+      source_bindings[i]=OriginalBindingScope{source_scope_regions_[tree_.symbols[i].scope.value]};
       const auto& site=declaration_sites_[i];
       if(site&&plan_.statements[site->statement.value])source_bindings[i]=ProjectedBindingScope{SourceRegionId{site->container.value}};
     }
@@ -970,8 +976,8 @@ class Initializers {
       bindings[i].eligible=eligible(symbol);
       bindings[i].unique_spelling=spellings.UniqueSpelling(symbol);
       bindings[i].native_declaration=site&&plan_.statements[site->statement.value].has_value();
-      if(const auto* scope=std::get_if<ProjectedBindingScope>(&flow.bindings[i].scope))
-        bindings[i].narrowed_region=flow.source_regions[scope->region.value];
+      if(const auto region=flow.BindingRegion(symbol))
+        bindings[i].binding_region=flow.source_regions[region->value];
       if(const auto point=initialization_order.declarations[i]) {
         const auto node=initialization_order.order.tree.nodes[point->value];
         if(node.begin) {
@@ -1837,6 +1843,7 @@ class Initializers {
   std::vector<std::optional<StmtId>> statement_owners_;
   std::vector<ScopeId> statement_scopes_;
   std::vector<SourceRegion> source_regions_;
+  std::vector<std::optional<SourceRegionId>> source_scope_regions_;
   std::vector<std::optional<SourcePosition>> source_occurrences_;
   std::vector<TextId> literal_texts_;
   std::vector<std::optional<PrimitiveId>> expression_primitives_;

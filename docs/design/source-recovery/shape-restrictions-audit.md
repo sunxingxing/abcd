@@ -2593,3 +2593,23 @@ Arena reversal, sibling composition and 200/201/geometric cases remain. Current
 resource/creation and whole-native-declaration printer limits are not language
 invariants and are not expanded here. Original IR/SSA/lifetime/capture/finally,
 full feasible storage selection and global convergence remain open.
+
+### 2026-10-08: rules235, canonical and projected scope share one fact
+
+Retired precision restriction: only ProjectedBindingScope supplied a storage
+candidate region, while OriginalBindingScope always passed containment and relied
+on name resolution after the representative had already been selected. Original
+lexical regions now come from the same single source-adapter traversal; candidate
+selection and final lifetime queries use the common BindingRegion/BindingInScope.
+No same-block, adjacency, instruction sequence, sample name or fixed scope shape
+admission is added. An inner canonical slot cannot gain visibility from a unique
+spelling, and a harmless sibling shadow need not prevent valid outer-slot recovery.
+
+Independent root/member initialization, actual-reference names, initial-value
+liveness/effects and cell identity remain separate mandatory proofs. Pass order,
+revision invalidation, proposal/commit ownership and grammar barriers retain their
+contracts. Source cases and independent ancestry oracles cover inner/outside uses,
+sibling shadows, reversed IDs/arenas, missing facts, adverse update/scope mutations
+and 200/201/geometric sizes. Unlocated original scopes preserve the existing identity
+contract, not a new lifetime theorem. Full activation/capture/finally, original
+IR/SSA, exhaustive feasible representative choice and global convergence remain gaps.

@@ -327,14 +327,19 @@ void SourceScopeOracle() {
     };
     visit(visit,0);
     for(unsigned binding=0;binding<count;++binding) {
-      flow.bindings[index(binding)].scope=ProjectedBindingScope{SourceRegionId{index(binding)}};
-      for(unsigned owner=0;owner<count;++owner) {
-        bool expected=false;auto node=std::optional{owner};
-        while(node){if(*node==binding){expected=true;break;}node=parents[*node];}
-        Check(flow.BindingInScope({index(binding)},StmtId{index(owner)})==expected);
+      for(bool projected:{false,true}) {
+        const SourceRegionId region{index(binding)};
+        flow.bindings[index(binding)].scope=projected?SourceBindingScope{ProjectedBindingScope{region}}:
+            SourceBindingScope{OriginalBindingScope{region}};
+        Check(flow.BindingRegion({index(binding)})==region);
+        for(unsigned owner=0;owner<count;++owner) {
+          bool expected=false;auto node=std::optional{owner};
+          while(node){if(*node==binding){expected=true;break;}node=parents[*node];}
+          Check(flow.BindingInScope({index(binding)},StmtId{index(owner)})==expected);
+        }
+        Check(!flow.BindingInScope({index(binding)},{}));
+        Check(!flow.BindingInScope({index(binding)},StmtId{count}));
       }
-      Check(!flow.BindingInScope({index(binding)},{}));
-      Check(!flow.BindingInScope({index(binding)},StmtId{count}));
       flow.bindings[index(binding)].scope=UnmodeledBindingScope{};
       Check(!flow.BindingInScope({index(binding)},StmtId{index(binding)}));
       flow.bindings[index(binding)].scope=OriginalBindingScope{};
@@ -603,6 +608,15 @@ void SourceEvents() {
   Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,
       {aliases,literals,replacements,omitted,evaluations,normal,native,private_bindings,{},{},{},{},{regions,positions,source_bindings}},
       {scoped.allocated_bytes,scoped.work-1}))==TreeStructureError::kWorkLimit);
+  // Original bindings use the same published facts and boundary validation.
+  source_bindings[1]=OriginalBindingScope{SourceRegionId{1}};
+  const auto original=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,
+      {aliases,literals,replacements,omitted,evaluations,normal,native,private_bindings,{},{},{},{},{regions,positions,source_bindings}}));
+  Check(original.BindingInScope({1},StmtId{3})&&!original.BindingInScope({1},StmtId{4}));
+  Check(!original.BindingInScope({1},{}));
+  source_bindings[1]=OriginalBindingScope{SourceRegionId{2}};
+  Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,
+      {aliases,literals,replacements,omitted,evaluations,normal,native,private_bindings,{},{},{},{},{regions,positions,source_bindings}}))==TreeStructureError::kOwnership);
   source_bindings[1]=ProjectedBindingScope{{2}};
   Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,
       {aliases,literals,replacements,omitted,evaluations,normal,native,private_bindings,{},{},{},{},{regions,positions,source_bindings}}))==TreeStructureError::kOwnership);
@@ -788,9 +802,9 @@ void GroupOracle(){
         admission[i].reference_region=i%2?SourceRegion{{6},{7}}:SourceRegion{{2},{3}};
         switch((i+policy)%4) {
           case 0:break;
-          case 1:admission[i].narrowed_region=SourceRegion{{0},{10}};break;
-          case 2:admission[i].narrowed_region=SourceRegion{{2},{4}};break;
-          case 3:admission[i].narrowed_region=SourceRegion{{6},{8}};break;
+          case 1:admission[i].binding_region=SourceRegion{{0},{10}};break;
+          case 2:admission[i].binding_region=SourceRegion{{2},{4}};break;
+          case 3:admission[i].binding_region=SourceRegion{{6},{8}};break;
         }
         admission[i].native_declaration=i%2==0;admission[i].unique_spelling=i%3!=0;
         if(policy==6&&i%2)admission[i].initialization_order.reset();
@@ -816,10 +830,10 @@ void GroupOracle(){
     // intentionally slow tiny oracle uses neither DSU nor interval summaries.
     const auto rank=[&](unsigned candidate) {
       const auto& slot=admission[candidate];bool covers=true;
-      if(slot.narrowed_region)for(unsigned member=0;member<bindings;++member)if(owner[member]==owner[candidate]) {
+      if(slot.binding_region)for(unsigned member=0;member<bindings;++member)if(owner[member]==owner[candidate]) {
         if(admission[member].unlocated_reference)covers=false;
         if(const auto& observed=admission[member].reference_region;observed&&
-            (observed->first<slot.narrowed_region->first||observed->last>slot.narrowed_region->last))covers=false;
+            (observed->first<slot.binding_region->first||observed->last>slot.binding_region->last))covers=false;
       }
       for(unsigned member=0;member<bindings;++member)if(owner[member]==owner[candidate])
         if(const auto& observed=admission[member].reachable_references;observed&&
@@ -1121,7 +1135,7 @@ void ReadConstants() {
 }
 void InitializedRepresentatives() {
   std::array<StorageBinding,2> bindings{};BindingInterference facts;
-  for(auto& binding:bindings){binding.eligible=true;binding.narrowed_region=SourceRegion{{0},{10}};binding.reference_region=SourceRegion{{2},{3}};}
+  for(auto& binding:bindings){binding.eligible=true;binding.binding_region=SourceRegion{{0},{10}};binding.reference_region=SourceRegion{{2},{3}};}
   bindings[0].initialized_region=CompletionRegion{1,5};bindings[0].reachable_references=CompletionRegion{1,2};
   bindings[1].native_declaration=true;bindings[1].initialized_region=CompletionRegion{3,5};bindings[1].reachable_references=CompletionRegion{3,4};
   facts.affinities.push_back({{0},{1},false});
@@ -1147,8 +1161,8 @@ void GroupRepresentatives() {
         auto& binding=bindings[id(i).value];binding.eligible=true;
         binding.native_declaration=i!=0;binding.initialization_order=i+1;
         binding.reference_region=i+1==count?SourceRegion{{6},{7}}:SourceRegion{{2},{3}};
-        if(i)binding.narrowed_region=i+1==count?SourceRegion{{6},{8}}:SourceRegion{{2},{4}};
-        else if(projected)binding.narrowed_region=SourceRegion{{0},{10}};
+        if(i)binding.binding_region=i+1==count?SourceRegion{{6},{8}}:SourceRegion{{2},{4}};
+        else if(projected)binding.binding_region=SourceRegion{{0},{10}};
         if(i)facts.affinities.push_back({id(i-1),id(i),false});
       }
       if(reordered)std::reverse(facts.affinities.begin(),facts.affinities.end());
@@ -1180,8 +1194,8 @@ void StorageScopePreference() {
       for(unsigned i=0;i<count;++i) {
         bindings[i].eligible=true;bindings[i].native_declaration=i!=outer.value;
         bindings[i].initialization_order=i==outer.value?2:1;
-        if(i!=outer.value)bindings[i].narrowed_region=SourceRegion{{2},{4}};
-        else if(projected)bindings[i].narrowed_region=SourceRegion{{0},{6}};
+        if(i!=outer.value)bindings[i].binding_region=SourceRegion{{2},{4}};
+        else if(projected)bindings[i].binding_region=SourceRegion{{0},{6}};
         bindings[i].reference_region=i==outer.value?SourceRegion{{0},{6}}:SourceRegion{{2},{4}};
         if(i!=outer.value)facts.affinities.push_back({SymbolId{i},outer,false});
       }
@@ -1194,7 +1208,7 @@ void StorageScopePreference() {
     }
   std::array<StorageBinding,2> bindings{};BindingInterference facts;
   for(auto& binding:bindings){binding.eligible=true;binding.reference_region=SourceRegion{{2},{4}};}
-  bindings[1].native_declaration=true;bindings[1].narrowed_region=SourceRegion{{2},{4}};
+  bindings[1].native_declaration=true;bindings[1].binding_region=SourceRegion{{2},{4}};
   facts.affinities.push_back({{0},{1},false});
   // Both candidates cover all references: keep the native narrow spelling.
   const auto plan=std::get<StorageCoalescing>(PlanStorageCoalescing(facts,bindings));

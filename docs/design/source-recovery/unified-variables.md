@@ -1849,3 +1849,38 @@ missing declarations. Scope/resource precision still retains entire dependent
 components when a proposal fails. Direct creation/resource-environment limitations
 remain explicit existing gaps. Original IR/SSA, complete activation/capture/finally
 and global pass convergence remain open; selected evidence belongs in status.md.
+
+### Original lexical regions share storage facts (2026-10-08, rules235)
+
+The syntax adapter now publishes a ScopeId-to-SourceRegionId index during its
+existing single lexical traversal. OriginalBindingScope carries an optional region;
+ProjectedBindingScope continues to carry the recovered declaration region. Shared
+BindingRegion and BindingInScope queries consume both forms. Original bindings
+without supplied regions retain the legacy identity contract; unmodeled projected
+bindings cannot authorize access. Name resolution, completed initialization and
+activation/captured-cell identity remain distinct obligations.
+
+Storage candidate ranking consumes this common region for every original member,
+including canonical declarations. It no longer treats all original scopes as
+unnarrowed while only recovered declarations carry containment facts. A unique
+inner spelling cannot outrank an available outer slot when it cannot cover the
+completed group's actual references. The independent post-proposal reference-name,
+root/member completion, lexical containment and initial-value/effect checks remain.
+No new admission, optimizer-local syntax census or candidate retry is introduced.
+
+Canonical source regions are immutable syntax facts; projected declaration regions
+are selected from the current versioned plan when building Flow. Every commit
+invalidates ProjectionFacts before mutation. Storage therefore cannot consume a
+pre-declaration or pre-snapshot region selection. Proposal generation/validation
+stays read-only and commit consumes owned IDs. Existing ordered normalization,
+dead-definition/initial-value/binding cleanup, values/storage/grammar stage barriers
+remain unchanged; the printer consumes the final plan.
+
+The new source case combines inner mutation/copy, observed assignment, sibling
+shadow and an outside return with both initializations dominating all references.
+Independent execution and update/scope mutants test effects and visibility;
+reversed statement/region arenas, 200/201 and geometric inputs test layout and cost.
+Independent ancestry checks exercise bounded original and projected scopes equally,
+including missing occurrences, invalid region IDs and graph reuse. This adds lexical
+containment precision only. Exhaustive name/cell/value representative feasibility,
+original IR/SSA, full activation/capture/finally and global convergence remain open.
