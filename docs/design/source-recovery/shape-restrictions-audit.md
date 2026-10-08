@@ -2465,3 +2465,23 @@ capture和结构验证保持，静态fields的独立准备仍记录为重复开�
 没有修改预算或用资源失败切换语义。直接/借用方程独立对照、布局变换、
 异常/更新反例及完整源码执行见status。原IR对应、完整生命期/capture/
 finally、per-read值精化与全局pass收敛仍开放。
+
+
+### 2026-10-08: rules230, declared pass dependencies and cleanup checkpoints
+
+The former producer-specific cleanup booleans have left the decision path.
+RecoverySchedule requires declared current facts, disallows analysis during an
+atomic commit and enforces values -> storage -> grammar stage order. Cleanup
+completion is published only by the ordered independent definition/initial-value/
+binding passes. Dirty projections cannot enter downstream storage/grammar;
+no-op passes avoid repeating already completed cleanup. Only the existing
+snapshot-motion obligation transports an established checkpoint.
+
+These are compiler ownership/order contracts, not recovery admissions based on
+samples, opcodes, register/PC layouts, same blocks, adjacency or graph shape.
+They neither infer value identity nor justify deleting a write. Availability,
+identity, effects, exception order and scope proofs remain with shared semantic
+analyses. Contract negatives cover stale facts, undeclared dependencies, nested
+pass/commit reads, missing cleanup owners and wrong stages; generated-source and
+actual-record verification remain independent. Per-read precision and global
+pass convergence have not been implemented or claimed.

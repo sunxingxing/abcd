@@ -1603,3 +1603,60 @@ equal copied-tree rejection and canonical analysis without source preparation.
 Status.md records actual source execution/mutant and fixed-record evidence.
 Original IR/SSA correspondence, full activation/capture/finally, per-read precision
 and global dependency-driven pass convergence remain open.
+
+
+## Declared pass contracts and revision-owned cleanup (rules230)
+
+RecoverySchedule now owns the typed pass phase, projection revision, semantic
+stage and demand-cleanup checkpoint. The previous private phase/revision switch
+in Initializers has retired. PassContract declares cached fact inputs and
+initialization preservation in one exhaustive typed table. RequiredFacts closes
+provider dependencies: constants need liveness; liveness/demand/initialization
+need flow; flow and expressions share the conservative-effect -> initialization
+-> refined-effect bootstrap. Providers remain lazy, so declaring a dependency
+does not eagerly allocate unused analyses. Every cached fact entry point checks
+the active pass's declared dependency closure and exact projection revision.
+
+The first commit increments the revision once and invalidates the whole
+ProjectionFacts aggregate before any plan write. Further writes belong to the
+same proposal batch; analysis remains forbidden until Finish. An undeclared
+fact request, stale revision, nested pass or stage violation is an ownership
+error. Initialization positives outside ProjectionFacts retain only the existing
+explicitly proved per-pass transport obligations; this change does not strengthen
+any availability/TDZ proof or authorize read substitution.
+
+The constants_changed/value_cleanup_needed/cleanup_needed control paths have
+retired. After normalized value reads/stores/effects, alias producer coverage
+consumes a completed demand-cleanup checkpoint. The schedule publishes that
+checkpoint only after DeadDefinitions -> InitialValues -> Bindings have all
+finished in order. A caller cannot mark it clean directly, skip an owner or
+interleave another pass inside that group. Any subsequent producer commit makes
+the checkpoint dirty; a no-op leaves it current. Snapshot motion alone transports
+a previously current checkpoint: it removes its own single producer/read and
+retains RHS completion, without making another producer newly dead. It cannot
+create a checkpoint when one was already dirty.
+
+Value recovery precedes snapshot/storage recovery, which precedes final loop
+and declaration grammar. Values-stage aliases, entering storage and entering
+grammar require the current demand checkpoint. Final inert-operand removal is
+followed by the same checkpoint barrier before grammar. Individual passes remain
+separate proposal/commit owners; a group is a sequencing contract, not a combined
+semantic optimizer. The existing ordered pipeline still chooses intra-stage
+pass order. No arbitrary reordering, global pass fixed point, dynamic dependency
+scheduler or per-read SSA precision is claimed. The checkpoint means that the
+ordered cleanup group ran at this projection, not that all optimizations converged.
+
+Tests exercise stale/undeclared facts, commit-phase reads, nested passes, omitted
+cleanup owners, dirty stage transitions, reverse stages, checkpoint transport and
+200/201/400/800 repetitions. The existing generated-source tests supply the
+semantic/layout/exception/capture/loop evidence. A deliberately incorrect
+undeclared-fact admission is rejected by the negative test. The initial new API
+test failed to build because the schedule did not yet exist; that is interface
+RED evidence, not a behavior comparison. Final selected verification and fixed
+record evidence are recorded in status.md.
+
+Next precision work remains per-read normal values over shared live incoming
+facts, with initialization and completed-write obligations. This turn deliberately
+finished the scheduling prerequisite first; no new per-read substitution has
+been implemented. Original IR/SSA correspondence, full activation/capture/finally
+and global convergence remain open; the milestone and stage-one Goal are active.

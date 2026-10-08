@@ -24,6 +24,53 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则230，pass依赖契约与版本化清理调度
+
+- RecoverySchedule在生产Initializers中统一拥有typed pass/fact契约、
+  projection revision、analysis/commit阶段和values→storage→grammar
+  顺序。六个缓存事实入口核对已声明依赖闭包与当前版本；provider
+  仍按需构造。Flow/Expressions共同bootstrap明确为分析供应边界，
+  不是两个相互调用的优化pass。提交前销毁整个ProjectionFacts，
+  一批修改只增加一次revision，提交中禁止再次分析。
+- 原constants_changed/value_cleanup_needed/cleanup_needed控制路径
+  退出。共同调度器仅在DeadDefinitions→InitialValues→Bindings
+  三个独立pass依次完成后记录清理检查点，调用方不能手工标记完成。
+  producer提交自动使其过期，无修改pass保持；快照移动仅按既有
+  “移除自身单一producer/read且保留RHS、不令其他producer新增死亡”
+  义务搬运已有检查点，不能生成或修复过期检查点。values阶段alias
+  producer覆盖、进入storage和grammar都检查版本；最终inert operand
+  修改后也经过相同屏障。初始化正事实仍按原有义务单独搬运。
+- 调度契约不以样本、opcode序列、同块、邻接或固定图形状准入。
+  分析/传播、存储共享、删除写入/初始化、恢复声明和打印的职责保持。
+  原有阶段内顺序仍显式；检查点只表示该版本完成有序清理，不能宣称
+  任意pass重排或全局固定点。无新增per-read替换，先交付该精度扩展
+  需要的调度前提；下一步仍为共同活跃incoming事实上的逐读取正常值。
+- 新接口红测缺失recovery_schedule.h导致构建失败，明确是interface
+  RED。首轮变异实验提前执行了旧binary，invalid-mutant-tests.log
+  仅保留诊断，不计入证据。随后确认完整构建的错误变体移除了声明
+  依赖限制，recovery_flow_test在1016反例断言以SIGABRT拒绝；生产
+  变体已恢复。反例另覆盖stale revision、commit查询、嵌套pass、
+  缺失/乱序清理owner、脏阶段进入、阶段倒退、快照检查点搬运和
+  200/201/400/800重复。初次源码/model 3/3在38.49秒通过；新增
+  完整清理组及阶段屏障后的最终结果下列补充。
+- 当前29目标构建97.33秒成功，fresh固定pasteboard导出2.61秒：
+  19records、10完整/0部分/9无module，10源码语法检查通过，源码
+  与规则229逐字节一致。language_numeric_constructors_v1及原预算
+  保持，输入SHA-256为854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e。
+  证据在build/stage-one/pass-contract-verification，导出在
+  build/stage-one/pass-contract-rule230。fresh既定59/59相关回归在
+  358.14秒全部通过；声明2,136源码/427,200独立比较/79错误变体，
+  初始化2,004/482,752/346，死定义586/14,488/61。布局变化、循环、
+  异常、闭包、optional/nullish、partial及actual records保持通过。
+  补充“commit结束后stale revision仍拒绝”的反例后仅重建模型目标
+  3.34秒、重新运行4.50秒通过，生产代码不变；stale-{build,tests}.log
+  与stale-result.json保存追加证据。final-{build,tests,detail}.log及
+  final-result.json/final-record-result.json保存最终构建、59项和导出证据。
+  输入前后SHA-256相同；不是全量suite、广语料、平台或1G RSS验收。
+- 原IR/SSA对应、完整activation/capture/finally、per-read精化及全局
+  pass收敛仍开放。统一变量里程碑/结构gate/阶段一Goal未完成；
+  全量suite、广语料、RSS/DFX/benchmarks和agents保持暂停。
+
 ### 2026-10-08：规则229，正常值依赖闭包与后代不可变准备共享
 
 - 旧后序事实在producer变为常量后仍不能闭合consumer的条件正常结果。

@@ -3126,3 +3126,27 @@ geometric work bounds and arena/copy variations remain. Fixed-record regression
 was retained and resolved with compact facts/owner reuse at unchanged budgets.
 Measured verification belongs in status.md; full-suite/corpus/RSS/DFX/benchmarks
 remain paused.
+
+
+### Revision-owned source pass scheduling (2026-10-08, rules230)
+
+RecoverySchedule is an allocation-free finite state machine over declared pass
+contracts, projection revisions, semantic stages and an ordered demand-cleanup
+checkpoint. Each Start/Finish/Commit/fact request costs O(1) time and storage;
+there are six cached fact kinds and a compile-time finite dependency closure.
+Providers remain lazy and retain the existing budgeted analyses. No N-sized pass
+queue, eager analysis, added graph scan or unconditional global round is introduced.
+A committed projection dirties cleanup; the complete definition/initial-value/
+binding group publishes the current checkpoint. No-op passes preserve it; only
+proven snapshot motion transports it across a commit. This is conventional
+compiler analysis invalidation/dependency ownership, implemented locally without
+a dependency or copied upstream code.
+
+The changed barrier can run cleanup earlier than the former Constants-specific
+boolean branch, so whole-function costs are still the sum of the actual analyses
+invoked, not a claim that the full pipeline is O(1) or linear. Checkpoint freshness
+does not establish a global optimization fixed point. Existing 200/201/geometric
+source and sparse-graph budget tests remain the meaningful scaling evidence;
+controller repetition tests exercise version/checkpoint stability. Final selected
+timing and unchanged-budget record evidence are in status.md. RSS/full-corpus and
+benchmarks remain paused.

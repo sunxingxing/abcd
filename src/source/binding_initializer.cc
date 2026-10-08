@@ -1,4 +1,5 @@
 #include "binding_initializer.h"
+#include "recovery_schedule.h"
 #include "binding_interference.h"
 #include "storage_coalescing.h"
 #include "definition_elision.h"
@@ -202,68 +203,45 @@ class Initializers {
     RunPass(Pass::kInertStatements);
     // Remove dead value definitions before turning a store into a lexical
     // initializer whose binding completion must subsequently be preserved.
-    RunPass(Pass::kDeadDefinitions);
-    RunPass(Pass::kInitialValues);
-    RunPass(Pass::kBindings);
+    DemandCleanup();
     RunPass(Pass::kDeclarations);
     // Literal stability also depends on retained writes. Clear identity stores
     // before coverage, then clear new identities exposed by literal projection.
     RunPass(Pass::kStoredResults);
     RunPass(Pass::kInertOperands);
     RunPass(Pass::kInertStatements);
-    const bool constants_changed=RunPass(Pass::kConstants);
-    // Copy stability consumes the retained writes, after identity-store
-    // cleanup. BeginCommit invalidates the flow before alias coverage reads it;
-    // RHS effects remain at their original occurrence.
+    RunPass(Pass::kConstants);
     RunPass(Pass::kStoredResults);
-    // Constants now changes reads only. Retire newly dead writes and their
-    // independent initialization/binding obligations before dynamic-copy
-    // coverage, just as that consumer previously saw a write-cleaned plan.
-    if(constants_changed) {
-      RunPass(Pass::kInertOperands);
-      RunPass(Pass::kInertStatements);
-      RunPass(Pass::kDeadDefinitions);
-      RunPass(Pass::kInitialValues);
-      RunPass(Pass::kBindings);
-    }
-    bool value_cleanup_needed=RunPass(Pass::kAliases);
-    value_cleanup_needed |= RunPass(Pass::kStoredResults);
-    value_cleanup_needed |= RunPass(Pass::kInertOperands);
-    value_cleanup_needed |= RunPass(Pass::kInertStatements);
-    // Dead reads/stores must leave the projection before snapshot coverage is
-    // analyzed. Forwarding preserves every RHS occurrence and removes its own
-    // single read/store/declaration; it cannot make another definition dead.
-    // Coalesce builds fresh ownership facts after that commit. Demand cleanup
-    // is scheduled again only by a producer commit. If Constants already
-    // scheduled it and these passes made no change, do not repeat the analysis
-    // on the same projection; RunPass derives this dependency from revisions.
-    if(!constants_changed || value_cleanup_needed) {
-      RunPass(Pass::kDeadDefinitions);
-      RunPass(Pass::kInitialValues);
-      RunPass(Pass::kBindings);
-    }
-    RunPass(Pass::kSnapshots);
-    bool cleanup_needed=RunPass(Pass::kStorage);
-    cleanup_needed |= RunPass(Pass::kStoredResults);
-    cleanup_needed |= RunPass(Pass::kInertOperands);
-    cleanup_needed |= RunPass(Pass::kInertStatements);
-    // Coalescing and identity-store cleanup can leave one immutable value
-    // definition. Consume that new fact before recovering loop declarations;
-    // this is a producer/consumer dependency, not a global fixed-point sweep.
-    cleanup_needed |= RunPass(Pass::kAliases);
-    cleanup_needed |= RunPass(Pass::kStoredResults);
-    cleanup_needed |= RunPass(Pass::kInertOperands);
-    cleanup_needed |= RunPass(Pass::kInertStatements);
-    // Storage/alias projections are now final. Their commits invalidate facts
-    // before demand, initial-value and binding cleanup; source grammar follows.
-    if(cleanup_needed) {
-      RunPass(Pass::kDeadDefinitions);
-      RunPass(Pass::kInitialValues);
-      RunPass(Pass::kBindings);
-    }
     RunPass(Pass::kInertOperands);
+    RunPass(Pass::kInertStatements);
+    // Value substitution may retire reads. Normalize stores/effects, then
+    // discharge independent definition/initialization/binding obligations
+    // before aliases consume retained producer coverage. The checkpoint is
+    // revision-owned; no producer-specific change booleans control consumers.
+    EnsureDemandCleanup();
+    RunPass(Pass::kAliases);
+    RunPass(Pass::kStoredResults);
+    RunPass(Pass::kInertOperands);
+    RunPass(Pass::kInertStatements);
+    EnsureDemandCleanup();
+    schedule_.EnterStorage();
+    RunPass(Pass::kSnapshots);
+    RunPass(Pass::kStorage);
+    RunPass(Pass::kStoredResults);
+    RunPass(Pass::kInertOperands);
+    RunPass(Pass::kInertStatements);
+    // Final aliases consume the coalesced slots. No storage pass is legal
+    // after entering grammar, where loop/declaration spelling consumes them.
+    RunPass(Pass::kAliases);
+    RunPass(Pass::kStoredResults);
+    RunPass(Pass::kInertOperands);
+    RunPass(Pass::kInertStatements);
+    EnsureDemandCleanup();
+    RunPass(Pass::kInertOperands);
+    EnsureDemandCleanup();
     // Final source grammar consumes the final bindings/evaluations. It can
     // retain outlined prefix effects without reviving removed declarations.
+    schedule_.EnterGrammar();
     RunPass(Pass::kLoopDeclarations);
     RunPass(Pass::kDeclarationKinds);
     for (std::size_t i = 0; i < loops_.initializer_roots.size(); ++i) {
@@ -276,10 +254,7 @@ class Initializers {
     return Finish();
   }
  private:
-  enum class Pass { kDeclarations,kConstants,kAliases,kStoredResults,kDeadDefinitions,kInitialValues,kBindings,kSnapshots,
-      kStorage,kInertStatements,kInertOperands,kLoopDeclarations,kDeclarationKinds };
-  enum class PassPhase { kIdle,kAnalysis,kCommit };
-  struct ProjectionRevision { std::uint64_t value=0; };
+  using Pass=RecoveryPass;
   struct ExpressionFacts {
     std::vector<std::optional<SymbolId>> bindings;
     // Primitive normal-result identity is independent of retained evaluation.
@@ -307,17 +282,15 @@ class Initializers {
   };
   ProjectionFacts& CurrentFacts() const {
     RequireAnalysis();
-    if(!facts_)facts_.emplace(ProjectionFacts{projection_revision_,{},{},{},{},{},{}});
-    RequireTree(facts_->revision.value==projection_revision_.value,TreeStructureError::kOwnership);
+    if(!facts_)facts_.emplace(ProjectionFacts{schedule_.Revision(),{},{},{},{},{},{}});
+    schedule_.RequireCurrent(facts_->revision);
     return *facts_;
   }
   // The first write enters a one-way commit phase. Analysis cannot observe a
   // partly applied batch, and scheduling derives changes from the revision,
   // never a hand-maintained boolean returned by an individual pass.
   bool RunPass(Pass pass) {
-    RequireTree(pass_phase_==PassPhase::kIdle,TreeStructureError::kOwnership);
-    const auto before=projection_revision_.value;
-    active_pass_=pass;pass_phase_=PassPhase::kAnalysis;
+    schedule_.Start(pass);
     switch(pass) {
       case Pass::kDeclarations:Declarations();break;
       case Pass::kDeclarationKinds:DeclarationKinds();break;
@@ -333,32 +306,23 @@ class Initializers {
       case Pass::kInertOperands:ElideInertOperands();break;
       case Pass::kStorage:Coalesce();break;
     }
-    pass_phase_=PassPhase::kIdle;
-    return projection_revision_.value!=before;
+    return schedule_.Finish();
+  }
+  void DemandCleanup() {
+    RunPass(Pass::kDeadDefinitions);
+    RunPass(Pass::kInitialValues);
+    RunPass(Pass::kBindings);
+  }
+  void EnsureDemandCleanup() {
+    if(schedule_.DemandCleanupNeeded())DemandCleanup();
   }
   void BeginCommit() {
-    if(pass_phase_==PassPhase::kCommit)return;
-    RequireTree(pass_phase_==PassPhase::kAnalysis,TreeStructureError::kOwnership);
-    bool preserve=false;
-    switch(active_pass_) {
-      case Pass::kDeclarations:case Pass::kConstants:case Pass::kAliases:case Pass::kSnapshots:
-      case Pass::kLoopDeclarations:break;
-      // These passes retain initialization at each retained occurrence.
-      // Binding removal leaves no reference to its removed initialization.
-      // Storage merging proves the new root initialized before every remap.
-      case Pass::kStoredResults:case Pass::kDeadDefinitions:case Pass::kInitialValues:case Pass::kBindings:
-      case Pass::kInertStatements:case Pass::kInertOperands:case Pass::kStorage:
-      case Pass::kDeclarationKinds:preserve=true;break;
-    }
-    RequireTree(projection_revision_.value<std::numeric_limits<std::uint64_t>::max(),TreeStructureError::kResourceLimit);
-    ++projection_revision_.value;pass_phase_=PassPhase::kCommit;
+    if(!schedule_.Commit())return;
     if(facts_ && facts_->flow)flow_storage_=std::move(*facts_->flow);
     facts_.reset();
-    if(!preserve)initialized_.reset();
+    if(!schedule_.PreservesInitialization())initialized_.reset();
   }
-  void RequireAnalysis() const {
-    RequireTree(pass_phase_!=PassPhase::kCommit,TreeStructureError::kOwnership);
-  }
+  void RequireAnalysis() const {schedule_.RequireAnalysis();}
   struct DeclarationCandidate {
     DeclarationSite site;
     ExprId assignment;
@@ -759,6 +723,7 @@ class Initializers {
     }
   }
   const RecoveryFlow& CurrentFlow() const {
+    schedule_.RequireFact(RecoveryFact::kFlow);
     auto& facts=CurrentFacts();
     if(facts.flow)return *facts.flow;
     // Bootstrap without initialization assumptions. Completion dominance on
@@ -809,6 +774,7 @@ class Initializers {
     facts.flow=std::move(provisional);return *facts.flow;
   }
   const FlowLiveness& CurrentLiveness() const {
+    schedule_.RequireFact(RecoveryFact::kLiveness);
     auto& facts=CurrentFacts();
     if(facts.liveness)return *facts.liveness;
     const auto& flow=CurrentFlow();
@@ -818,6 +784,7 @@ class Initializers {
     budget_.Admit(facts.liveness->allocated_bytes,1);budget_.Step(facts.liveness->work);return *facts.liveness;
   }
   const FlowDemand& CurrentDemand() const {
+    schedule_.RequireFact(RecoveryFact::kDemand);
     auto& facts=CurrentFacts();
     if(!facts.demand) {
       auto analyzed=AnalyzeFlowDemand(CurrentFlow(),budget_.Remaining());
@@ -828,6 +795,7 @@ class Initializers {
     return *facts.demand;
   }
   const FlowInitializations& CurrentInitializations() const {
+    schedule_.RequireFact(RecoveryFact::kInitializations);
     auto& facts=CurrentFacts();
     const auto& flow=CurrentFlow();
     // Consumers need dominance of the exact current graph. Bootstrap positives
@@ -1099,6 +1067,7 @@ class Initializers {
     }
   }
   const ExpressionFacts& AnalyzeExpressions() const {
+    schedule_.RequireFact(RecoveryFact::kExpressions);
     auto& facts=CurrentFacts();
     if(!facts.expressions) {
       if(initialized_)facts.expressions=ComputeExpressions(*initialized_);
@@ -1438,6 +1407,7 @@ class Initializers {
     return result;
   }
   const FlowConstants& CurrentConstants() const {
+    schedule_.RequireFact(RecoveryFact::kConstants);
     auto& facts=CurrentFacts();
     if(!facts.constants) {
       const auto& flow=CurrentFlow();
@@ -1797,9 +1767,7 @@ class Initializers {
   std::vector<std::optional<SymbolId>> constant_heads_, constant_next_;
   std::vector<SymbolId> constant_queue_;
   std::vector<StatementVisit> statements_;
-  PassPhase pass_phase_=PassPhase::kIdle;
-  Pass active_pass_=Pass::kConstants;
-  ProjectionRevision projection_revision_;
+  RecoverySchedule schedule_;
   mutable std::optional<std::vector<std::uint8_t>> initialized_;
   mutable std::optional<ProjectionFacts> facts_;
   mutable RecoveryFlow flow_storage_{};

@@ -3,6 +3,7 @@
 #include "../../../src/source/storage_coalescing.h"
 #include "../../../src/source/flow_definitions.h"
 #include "../../../src/source/flow_constants.h"
+#include "../../../src/source/recovery_schedule.h"
 #include <bit>
 #include <limits>
 #include "../../../src/source/definition_elision.h"
@@ -996,4 +997,80 @@ void ExpressionConstants() {
       FlowValueEquations{equations,wrong_replacements,{}},primitives,texts))==TreeStructureError::kOwnership);
   std::cout<<"independent expression equations "<<cases<<'\n';
 }
-int main(){ExpressionConstants();ConstantEquations();SourceScopeOracle();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+void PassContracts() {
+  const auto rejects=[](const auto& action) {
+    try {action();return false;}catch(TreeStructureError error){return error==TreeStructureError::kOwnership;}
+  };
+  const auto cleanup=[](RecoverySchedule& schedule) {
+    for(const auto pass:{RecoveryPass::kDeadDefinitions,RecoveryPass::kInitialValues,RecoveryPass::kBindings}) {
+      schedule.Start(pass);Check(!schedule.Finish());
+    }
+  };
+  // These are ownership/order counterexamples, independent of source layout.
+  // A proposal can only read its declared facts on its unchanged projection.
+  RecoverySchedule schedule;
+  schedule.Start(RecoveryPass::kStoredResults);
+  const auto original=schedule.Revision();
+  schedule.RequireFact(RecoveryFact::kExpressions);
+  schedule.RequireFact(RecoveryFact::kFlow); // Joint expression/flow bootstrap.
+  Check(rejects([&]{schedule.RequireFact(RecoveryFact::kConstants);}));
+  Check(rejects([&]{schedule.Start(RecoveryPass::kAliases);}));
+  Check(schedule.Commit());Check(!schedule.Commit());
+  Check(rejects([&]{schedule.RequireFact(RecoveryFact::kExpressions);}));
+  Check(rejects([&]{schedule.RequireCurrent(original);}));
+  Check(schedule.Finish());
+  Check(schedule.Revision().value==original.value+1);
+  Check(rejects([&]{schedule.RequireCurrent(original);})); // Stale even after commit has finished.
+  Check(rejects([&]{schedule.Start(RecoveryPass::kAliases);}));
+  Check(rejects([&]{schedule.EnterStorage();}));
+  schedule.Start(RecoveryPass::kConstants);
+  schedule.RequireFact(RecoveryFact::kConstants);
+  schedule.RequireFact(RecoveryFact::kLiveness);
+  schedule.RequireCurrent(schedule.Revision());
+  Check(!schedule.Finish()); // No proposal: neither revision nor cleanup changes.
+  Check(schedule.DemandCleanupNeeded());cleanup(schedule);
+  Check(!schedule.DemandCleanupNeeded());
+  schedule.Start(RecoveryPass::kAliases);Check(!schedule.Finish());
+  Check(!schedule.DemandCleanupNeeded());
+  Check(rejects([&]{schedule.Start(RecoveryPass::kLoopDeclarations);}));
+  schedule.EnterStorage();
+  Check(rejects([&]{schedule.Start(RecoveryPass::kConstants);}));
+  // Snapshot motion preserves the demand checkpoint only when one exists.
+  schedule.Start(RecoveryPass::kSnapshots);Check(schedule.Commit());Check(schedule.Finish());
+  Check(!schedule.DemandCleanupNeeded());
+  schedule.Start(RecoveryPass::kStorage);Check(schedule.Commit());Check(schedule.Finish());
+  Check(schedule.DemandCleanupNeeded());
+  schedule.Start(RecoveryPass::kSnapshots);Check(schedule.Commit());Check(schedule.Finish());
+  Check(schedule.DemandCleanupNeeded());
+  Check(rejects([&]{schedule.EnterGrammar();}));cleanup(schedule);
+  schedule.EnterGrammar();
+  Check(rejects([&]{schedule.Start(RecoveryPass::kAliases);}));
+  Check(rejects([&]{schedule.EnterStorage();}));
+  schedule.Start(RecoveryPass::kLoopDeclarations);
+  Check(rejects([&]{schedule.RequireFact(RecoveryFact::kFlow);}));
+  Check(!schedule.Finish());
+  schedule.Start(RecoveryPass::kDeclarationKinds);schedule.RequireFact(RecoveryFact::kFlow);
+  Check(!schedule.Finish());
+  for(unsigned count:{200U,201U,400U,800U}) {
+    RecoverySchedule repeated;cleanup(repeated);
+    for(unsigned i=0;i<count;++i) {
+      repeated.Start(RecoveryPass::kStoredResults);
+      Check(!repeated.Finish());Check(!repeated.DemandCleanupNeeded());
+      repeated.Start(RecoveryPass::kInertOperands);Check(repeated.Commit());
+      Check(repeated.Finish());Check(repeated.DemandCleanupNeeded());cleanup(repeated);
+    }
+    Check(repeated.Revision().value==count);
+  }
+  RecoverySchedule unfinished;
+  Check(rejects([&]{unfinished.Start(RecoveryPass::kInitialValues);}));
+  Check(rejects([&]{unfinished.Start(RecoveryPass::kBindings);}));
+  unfinished.Start(RecoveryPass::kDeadDefinitions);Check(!unfinished.Finish());
+  Check(rejects([&]{unfinished.Start(RecoveryPass::kBindings);}));
+  Check(rejects([&]{unfinished.Start(RecoveryPass::kConstants);}));
+  Check(rejects([&]{unfinished.EnterStorage();}));
+  unfinished.Start(RecoveryPass::kInitialValues);Check(!unfinished.Finish());
+  unfinished.Start(RecoveryPass::kBindings);Check(!unfinished.Finish());
+  Check(!unfinished.DemandCleanupNeeded());
+  std::cout<<"pass ownership, dependency and cleanup counterexamples passed\n";
+}
+int main(){PassContracts();ExpressionConstants();ConstantEquations();SourceScopeOracle();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

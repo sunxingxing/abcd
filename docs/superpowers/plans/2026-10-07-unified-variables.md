@@ -334,3 +334,17 @@ and global convergence remain unfinished.
 - Replacement edits are fully proposed before commit; final printer remains a
   consumer. Nested composition and counterexamples verify value/effect separation.
 - Global pass convergence, activation/unwind and original IR migration stay open.
+
+
+Task 4 implementation substep (rules230): RecoverySchedule now owns typed
+pass/fact dependencies, projection revisions, commit phase, stage order and
+ordered demand-cleanup checkpoints. Fact providers remain lazy and check the
+active contract. The old constants_changed/value_cleanup_needed/cleanup_needed
+scheduling booleans have retired. Cleanup is published only after the independent
+DeadDefinitions/InitialValues/Bindings passes complete in order; callers cannot
+mark it clean manually. Dirty value projections cannot enter storage or grammar.
+Existing initialization transport obligations remain explicit; no new availability
+proof is inferred. A component checkpoint is not global pass convergence, so
+task 4 and the original milestone remain incomplete. Per-read normal-value
+precision remains the next model-to-source extension after this prerequisite.
+Selected current verification and fixed-record evidence are in status.md.
