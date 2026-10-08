@@ -448,8 +448,13 @@ std::uint64_t Alias(unsigned form,unsigned count,bool reverse,bool emit) {
   const bool aliased=folded&&form!=15;
   if(form==15)for(const auto declaration:declarations)
     test::Check(plan.omitted[reverse?tree.statements.size()-1-declaration.value:declaration.value]);
-  if(plan.aliases[reverse?tree.symbols.size()-1-last:last].has_value()!=aliased)std::cerr<<"alias form="<<form<<" count="<<count<<" reverse="<<reverse<<'\n';
-  test::Check(plan.aliases[reverse?tree.symbols.size()-1-last:last].has_value()==aliased);test::Check(!plan.aliases[reverse?tree.symbols.size()-3:2]);
+  // A blocked original root can still permit a partial copy into a different
+  // retained slot after coalescing. Assert the value-root obligation, not the
+  // absence of every safe alias; independent source execution checks the slot.
+  const SymbolId root{static_cast<std::uint32_t>(reverse?tree.symbols.size()-3:2)};
+  const auto alias=plan.aliases[reverse?tree.symbols.size()-1-last:last];
+  if((alias==root)!=aliased)std::cerr<<"alias form="<<form<<" count="<<count<<" reverse="<<reverse<<'\n';
+  test::Check((alias==root)==aliased);test::Check(!plan.aliases[root.value]);
   std::ostringstream output;const auto printed=PrintFunctionTree(tree,output);test::Check(std::holds_alternative<PrintedFunction>(printed));
   for(const auto range:std::get<PrintedFunction>(printed).expressions)test::Check(range.begin<=range.end&&range.end<=output.str().size());
   for(const auto anchor:std::get<PrintedFunction>(printed).anchors)test::Check(anchor>0&&anchor<=output.str().size());

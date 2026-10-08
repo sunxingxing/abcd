@@ -1023,3 +1023,58 @@ exceptions, and the shared motion/handler proofs preserve their ordering. No
 receiver expression is replaced with a parameter or moved across a callable.
 Observable activation resource requirements and unmodeled closure/class/helper
 dependencies remain. No new scan, graph walk, opcode or shape condition is added.
+
+
+## Storage consumes early copies; late copies consume cleaned storage (rules219, 2026-10-08)
+
+The ordered schedule now has an explicit post-storage alias consumer:
+
+`Storage → StoredResults → InertOperands → InertStatements → Aliases →
+StoredResults → InertOperands → InertStatements → LoopDeclarations`.
+
+The earlier Aliases stage still prepares storage affinities. Coalescing can turn
+multiple writes into identity copies; their independent removal can expose a
+single immutable definition. The later Aliases stage consumes fresh retained
+coverage and normal-result facts for that definition. It does not merge storage,
+remove effects, change observable source/captured bindings, or infer declaration
+syntax. It uses the existing analysis/proposal/commit boundary: BeginCommit
+invalidates the entire revision-tagged ProjectionFacts aggregate and positive
+initialization transport for alias substitution. Each subsequent consumer obtains
+facts for the committed projection, including fresh flow and initialization.
+
+BindingInitializers::Storage and FlowBuilder::Resolve compose the same bounded
+mapping: early direct value root, direct storage slot, then the late direct value
+root of that slot. The alias solver publishes terminal roots from its sparse
+worklist; the storage solver publishes disjoint direct slots. No coalescing stage
+runs after late aliases. This stage contract gives O(1) identity lookup without
+per-reference alias/storage chain walks. Adding another storage phase would
+require revisiting this contract; arbitrary alternating mappings are not supported.
+
+Aliases now resolves source spelling and narrowed declaration lifetime from
+FlowReference.owner, the current execution statement. Original ExprId remains
+source evidence, not a lexical location after snapshot forwarding. The original
+expression_scopes_ array and RootLifetime(SymbolId, ExprId) overload are removed
+from production. Coverage, spelling and lifetime all consume occurrences from the
+same current flow. The owner presence check asserts an internal occurrence
+invariant for eligible body-private reads; it is not a same-block input limit.
+Full original-IR correspondence and binding lifecycle analysis remain open.
+
+New tests compose storage merging with late immutable copies, and forwarding into
+a scope that shadows the parameter root before its initialization. The former
+eliminates both temporary bindings; the latter retains the necessary slot because
+substituting the parameter spelling would enter the shadowing binding's TDZ.
+Independent execution checks callback observations/throws and object identity;
+wrong value deletion and TDZ substitution are detected. Variants reverse the
+statement arena and add 0/1/200/201/400/800 empty blocks; existing loop, exception,
+capture, suspension and live undefined cases continue to run. One additional
+producer/consumer stage has constant sweep count and uses the existing budgeted,
+indexed analyses; it is not global fixed-point convergence or a per-combination
+production branch. Transitive coalescing and finer lifecycle precision remain open.
+
+
+The existing long-copy-chain test now checks whether its last immutable alias
+selects the original value root, rather than whether any alias exists. Under a
+shadowing scope, coalescing may retain another visible copy slot and the late
+phase may safely propagate into that slot while still rejecting the original
+spelling. This is a semantic assertion change, with no corresponding production
+condition. The full existing independent source behavior comparison is retained.

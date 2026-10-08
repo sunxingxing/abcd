@@ -24,6 +24,40 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则219，存储合并后的复制传播消费当前owner
+
+- 增加明确依赖阶段：Storage → identity/inert独立清理 → Aliases →
+  identity/inert独立清理 → LoopDeclarations。多写经过共用存储并去掉
+  同值写回后可成为单一不可变定义，后序复制传播消费当前coverage。
+  使用既有RunPass/BeginCommit边界，提交统一失效整个ProjectionFacts；
+  别名提交同时清除初始化传输证明。未增加全局不动点或形状准入条件。
+- Aliases的词法解析与收窄声明生命期使用FlowReference当前owner；
+  移除expression_scopes_及RootLifetime(SymbolId,ExprId)旧决策路径。
+  名字遮蔽含TDZ仍由共同scope解析证明，源码/capture写入、活跃undefined、
+  效果与初始化义务保持独立。早期直接值根/直接slot/后期直接值根按
+  阶段契约O(1)组合，后期Aliases之后不再coalesce。
+- 新往返复制正例恢复为report(input); return input；快照转发后进入
+  input同名TDZ scope的反例保留current。覆盖正反arena和0/1/200/201/
+  400/800块组合，无样本、同块、邻接、opcode序列生产分支。
+  旧版本缺少末轮alias时form21失败4.16秒；相关5/5通过32.00秒。
+- 首轮56项回归在长复制链form14反向布局中触发旧“任何alias都必须
+  不存在”断言，停止该轮，证据interrupted-{tests,detail}.log。检查
+  表明共同算法可保留另一个可见slot并传播部分复制；测试改为验证
+  是否选中被遮蔽的原始值根，无生产特例。既有变量恢复2/2通过
+  197.52秒：2,004份源码/482,752独立JS行为/342错误变体。
+- 最终28个目标构建通过；上述2项加剩余54/54（335.17秒）覆盖同一
+  56项既定选择。包含存储281份源码/42,260行为/17错误变体，快照
+  540份/20,760行为/60变体，以及Home/PageA实际record独立对照。
+  selection.json/final-result.json、alias-root-{tests,detail}.log与
+  final-{build,tests,detail}.log记录完整选择、结果及拆分执行。
+- 证据目录build/stage-one/late-alias-verification。fresh ABC-only导出
+  build/stage-one/late-alias-rule219：19 records，10 complete / 0 partial /
+  9 noModule；10份语法通过，源码相对规则218逐字节一致，输入SHA256
+  不变，export-check.json记录结果。新增通用正例不代表新增record完成。
+- 全局pass收敛、transitive coalescing、完整绑定生命期及original IR
+  correspondence仍开放；阶段一Goal active。完整corpus/RSS/基准及
+  任务调度器暂停保持；本交付不替代字段、全局、签名与body整体验收。
+
 ### 2026-10-08：规则218，this调用所有权贯通局部快照移动
 
 - 共同LexicalDependency新增kCallableOwner，复用已验证ThisExpr的

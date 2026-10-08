@@ -2259,3 +2259,23 @@ effects, and must propagate an earlier RHS failure unchanged.
   异常路由继续控制移动；方法getter及receiver身份不能替换为参数读取。
 - 目的flag及同名input局部声明均作通用正例，含receiver变化、getter
   异常/次数和真实派生构造器super前执行比较；未添加生产形状匹配。
+
+
+### 2026-10-08：规则219，存储提交后的复制传播与当前owner
+
+Aliases移除expression_scopes_及按原ExprId推导RootLifetime的决策路径。
+词法可见性与收窄声明生命期消费共同FlowReference.owner，覆盖证明仍由
+当前flow产生；快照移动不再让旧scope决定后续值替换。owner存在是私有
+body读取的内部表示不变量，不是同块、邻接或原布局准入条件。
+
+Storage及独立identity/inert清理后显式调度同一Aliases算法；该依赖让
+合并后只有一个值定义的slot重新进入不可变复制分析。没有新的源码/样本
+名字、opcode序列、图形或固定选择数量匹配。两阶段别名与直接slot按
+约定O(1)组合，之后不再存储合并；每次提交统一失效整个ProjectionFacts，
+别名提交也清除旧初始化传输证明。源码/capture写回、效果、活跃undefined
+及映射arguments义务保持独立。后续声明语法只消费已证明的计划。
+
+正例包含callback观察的往返复制；反例包含先取得snapshot再进入参数
+同名TDZ scope的读取。变体反向statement arena并增加0/1/200/201/400/800
+空块，独立行为及错误替换验证见status。未宣称全局pass不动点、完整绑定
+生命期或original IR correspondence已经完成，不继续扩展局部模式。

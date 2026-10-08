@@ -67,7 +67,6 @@ class Initializers {
     budget.Array(retained_bodies_, tree.statements.size());
     budget.Array(projection_observations_, ProjectionCapacity());
     budget.Array(expressions_, tree.expressions.size()); budget.Array(statements_, tree.statements.size());
-    budget.Array(expression_scopes_, tree.expressions.size());
     budget.Array(statement_owners_,tree.statements.size());budget.Array(statement_scopes_,tree.statements.size());
     budget.Array(expression_owners_,tree.expressions.size());budget.Array(expression_projections_,tree.expressions.size());
   }
@@ -85,7 +84,7 @@ class Initializers {
       budget_.Step(); uses_[alias.symbol.value].escaped = true; uses_[alias.symbol.value].module_alias = true;
     }
     for (const auto& parameter : tree_.parameters) {
-      budget_.Step(); if (parameter.initializer) Scan(*parameter.initializer, {}, {}, tree_.parameter_scope);
+      budget_.Step(); if (parameter.initializer) Scan(*parameter.initializer, {}, {});
     }
     // Expression programs cannot host statement declarations. Loop entry may
     // instead use ForDeclaration after the common completion/scope proof.
@@ -211,6 +210,13 @@ class Initializers {
     RunPass(Pass::kDeadDefinitions);
     RunPass(Pass::kSnapshots);
     bool cleanup_needed=RunPass(Pass::kStorage);
+    cleanup_needed |= RunPass(Pass::kStoredResults);
+    cleanup_needed |= RunPass(Pass::kInertOperands);
+    cleanup_needed |= RunPass(Pass::kInertStatements);
+    // Coalescing and identity-store cleanup can leave one immutable value
+    // definition. Consume that new fact before recovering loop declarations;
+    // this is a producer/consumer dependency, not a global fixed-point sweep.
+    cleanup_needed |= RunPass(Pass::kAliases);
     cleanup_needed |= RunPass(Pass::kStoredResults);
     cleanup_needed |= RunPass(Pass::kInertOperands);
     cleanup_needed |= RunPass(Pass::kInertStatements);
@@ -1040,9 +1046,6 @@ class Initializers {
   }
   // Transitional for-let lifetime proof; SourceVariables will consume the
   // shared binding activation/initialization facts, not another scope census.
-  bool RootLifetime(SymbolId root,ExprId occurrence) const {
-    return RootLifetime(root,expression_owners_[occurrence.value]);
-  }
   bool RootLifetime(SymbolId root,std::optional<StmtId> owner) const {
     const auto& site=declaration_sites_[root.value];
     if(!site||!plan_.statements[site->statement.value])return true;
@@ -1290,7 +1293,7 @@ class Initializers {
     std::vector<Dependency> dependencies;std::size_t dependency_count=0;
     std::vector<std::uint8_t> blocked;
     std::vector<TreeScopedReference> references;
-    struct AliasRead { ExprId expression; SymbolId binding; std::optional<SymbolId> removed_by; };
+    struct AliasRead { std::optional<StmtId> owner; SymbolId binding; std::optional<SymbolId> removed_by; };
     std::vector<AliasRead> occurrences;
     budget_.Array(copy_targets,tree_.statements.size());budget_.Array(blocked_heads,uses_.size());
     budget_.Array(dependencies,coverage.references.size());
@@ -1307,15 +1310,16 @@ class Initializers {
     std::size_t count=0;
     // Name/lifetime obligations belong to retained semantic reads, including
     // compound operations. Their binding identity comes from the same flow as
-    // coverage, never a second census of original SymbolExpr nodes.
+    // coverage, never a second census of original SymbolExpr nodes. Scope and
+    // lifetime consume current owners: forwarding can move an original ExprId.
     for(const auto& read:coverage.references) {
       budget_.Step();if(read.kind!=FlowReferenceKind::kRead)continue;
       if(!roots[read.binding.value]||roots[read.binding.value]==read.binding)continue;
-      const auto expression=std::get<ExprId>(read.site);
-      references[count]={*roots[read.binding.value],expression_scopes_[expression.value]};
+      RequireTree(read.owner.has_value(),TreeStructureError::kOwnership);
+      references[count]={*roots[read.binding.value],statement_scopes_[read.owner->value]};
       const auto discarded=flow.events[read.point.value].discarded;
       const auto target=discarded?copy_targets[flow.discarded[discarded->value].statement.value]:std::nullopt;
-      occurrences[count++]={expression,read.binding,target};
+      occurrences[count++]={ReferenceOwner(read),read.binding,target};
     }
     references.resize(count);const auto visible=ResolveTreeReferences(tree_,references,budget_);
     ready=0;
@@ -1326,7 +1330,7 @@ class Initializers {
       }
     };
     for(std::size_t i=0;i<count;++i) {
-      budget_.Step();if(visible[i]&&RootLifetime(references[i].symbol,occurrences[i].expression))continue;
+      budget_.Step();if(visible[i]&&RootLifetime(references[i].symbol,occurrences[i].owner))continue;
       const auto source=occurrences[i].binding;
       // A copy RHS ceases to be a read when its store is elided. Only if the
       // destination must remain does its unavailable root force source storage.
@@ -1389,13 +1393,12 @@ class Initializers {
       budget_.Step(); if (alias.target.owner == tree_.owner) Capture(alias.target.symbol, occurrence, container, projector);
     }
   }
-  void Scan(ExprId root, std::optional<StmtId> container, std::optional<StmtId> projector, ScopeId scope) {
+  void Scan(ExprId root, std::optional<StmtId> container, std::optional<StmtId> projector) {
     std::size_t pending = 1; expressions_[0] = {root};
     while (pending) {
       budget_.Step(); const auto visit = expressions_[--pending];
       const auto& node = tree_.expressions[visit.expression.value].expression;
       if (!visit.finish) {
-        expression_scopes_[visit.expression.value]=scope;
         expression_owners_[visit.expression.value]=projector?projector:container;
         expression_projections_[visit.expression.value]=projector.has_value();
         expressions_[pending++] = {visit.expression, true};
@@ -1448,7 +1451,7 @@ class Initializers {
     std::visit([&](const auto& syntax) {
       using T = std::decay_t<decltype(syntax)>;
       if constexpr (std::is_same_v<T, DeclarationStmt>) {
-        if (syntax.initializer) Scan(*syntax.initializer, visit.lexical, visit.projector,visit.scope);
+        if (syntax.initializer) Scan(*syntax.initializer, visit.lexical, visit.projector);
         const auto& symbol = tree_.symbols[syntax.symbol.value]; auto& use = uses_[syntax.symbol.value];
         if (!syntax.initializer && (symbol.kind == BindingKind::kCompilerTemporary || symbol.kind == BindingKind::kLocal) &&
             symbol.declaration == DeclarationKind::kLet && visit.container && !visit.projected) {
@@ -1456,7 +1459,7 @@ class Initializers {
           use.private_storage = symbol.kind == BindingKind::kCompilerTemporary;
         }
       } else if constexpr (std::is_same_v<T, ExpressionStmt>) {
-        Scan(syntax.expression, visit.lexical, visit.projector,visit.scope);
+        Scan(syntax.expression, visit.lexical, visit.projector);
         const auto entry=loops_.initializer_owners[visit.statement.value];
         if((!visit.projected && visit.container) || entry)
           declaration_containers_[visit.statement.value]=entry?entry:visit.container;
@@ -1466,9 +1469,9 @@ class Initializers {
             if(use.declaration && declaration_containers_[visit.statement.value] && !use.legacy_initializer)
               use.legacy_initializer=visit.statement;
           }
-      } else if constexpr (std::is_same_v<T, IfStmt>) Scan(syntax.condition, visit.lexical, visit.projector,visit.scope);
-      else if constexpr (std::is_same_v<T, ReturnStmt>) { if (syntax.value) Scan(*syntax.value, visit.lexical, visit.projector,visit.scope); }
-      else if constexpr (std::is_same_v<T, ThrowStmt>) Scan(syntax.value, visit.lexical, visit.projector,visit.scope);
+      } else if constexpr (std::is_same_v<T, IfStmt>) Scan(syntax.condition, visit.lexical, visit.projector);
+      else if constexpr (std::is_same_v<T, ReturnStmt>) { if (syntax.value) Scan(*syntax.value, visit.lexical, visit.projector); }
+      else if constexpr (std::is_same_v<T, ThrowStmt>) Scan(syntax.value, visit.lexical, visit.projector);
       else static_assert(std::is_same_v<T, BlockStmt> || std::is_same_v<T, TryStmt> || std::is_same_v<T, LoopStmt> ||
           std::is_same_v<T, BreakStmt> || std::is_same_v<T, ContinueStmt> || std::is_same_v<T, DebuggerStmt> || std::is_same_v<T, UnrecoveredStmt>);
     }, node);
@@ -1494,7 +1497,6 @@ class Initializers {
   std::vector<ExpressionVisit> expressions_;
   std::vector<ExprId> completions_;
   std::size_t completion_count_ = 0;
-  std::vector<ScopeId> expression_scopes_;
   std::vector<std::optional<StmtId>> statement_owners_;
   std::vector<ScopeId> statement_scopes_;
   std::vector<std::optional<StmtId>> expression_owners_;

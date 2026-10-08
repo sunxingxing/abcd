@@ -13,7 +13,7 @@ using namespace abcd::source;
 namespace {
 void Check(bool ok,std::source_location at=std::source_location::current()){
   if(!ok){std::cerr<<"binding interference check "<<at.line()<<'\n';std::abort();}}
-enum class Form { kStraight,kObserved,kUpdateThrows,kAfterThrows,kAwait,kYield,kBranch,kLoop,kLocal,kCapture,kShadow,kInitialUndefined,kSharedWrite,kLiveUndefined,kRepeatedUndefined,kUndefinedBeforeRoot,kElidedReference,kRetainedReference,kForwardedUpdate,kForwardedUpdateThrows,kForwardedShadow };
+enum class Form { kStraight,kObserved,kUpdateThrows,kAfterThrows,kAwait,kYield,kBranch,kLoop,kLocal,kCapture,kShadow,kInitialUndefined,kSharedWrite,kLiveUndefined,kRepeatedUndefined,kUndefinedBeforeRoot,kElidedReference,kRetainedReference,kForwardedUpdate,kForwardedUpdateThrows,kForwardedShadow,kRoundTrip,kForwardedAliasShadow };
 struct Fixture {
   FunctionTree tree{};
   Fixture(Form form){
@@ -56,7 +56,7 @@ std::uint64_t Run(Form form,unsigned count,bool reverse,bool emit){
   const bool live_undefined=form==Form::kLiveUndefined||form==Form::kRepeatedUndefined;
   std::vector<StmtId> roots{f.Stmt(DeclarationStmt{{3},{}}),f.Stmt(DeclarationStmt{{4},{}}),f.Write(3,form==Form::kLoop||live_undefined?f.Expr(TreeLiteral{IntegerLiteral{0}}):f.Read(0))};
   std::vector<StmtId> operations;
-  const bool forwarded=form==Form::kForwardedUpdate||form==Form::kForwardedUpdateThrows||form==Form::kForwardedShadow;
+  const bool forwarded=form==Form::kForwardedUpdate||form==Form::kForwardedUpdateThrows||form==Form::kForwardedShadow||form==Form::kForwardedAliasShadow;
   if(forwarded) {
     tree.names.push_back(u"snapshot");
     tree.symbols.push_back({{1},{6},BindingKind::kCompilerTemporary,DeclarationKind::kLet,NameEvidence::kSynthesized,TemporaryReason::kMultipleUses});
@@ -80,8 +80,8 @@ std::uint64_t Run(Form form,unsigned count,bool reverse,bool emit){
   if(form==Form::kInitialUndefined){std::swap(roots[1],roots[2]);operations.push_back(f.Stmt(ExpressionStmt{f.Call({f.Read(4)})}));}
   operations.push_back(f.Write(4,f.Read(3)));
   if(!forwarded)for(unsigned i=0;i<count;++i)operations.push_back(f.Block({}));
-  const auto value=f.Expr(UpdateExpr{{4},UpdateDirection::kIncrement,UpdateResult::kPrefix});
-  const auto update=forwarded?f.Write(5,value):f.Stmt(ExpressionStmt{value});
+  const auto value=form==Form::kRoundTrip||form==Form::kForwardedAliasShadow?f.Read(4):f.Expr(UpdateExpr{{4},UpdateDirection::kIncrement,UpdateResult::kPrefix});
+  const auto update=forwarded?f.Write(5,value):f.Stmt(ExpressionStmt{form==Form::kRoundTrip?f.Call({value}):value});
   if(form==Form::kShadow){
     const auto block=f.Block({});const auto scope=std::get<BlockStmt>(tree.statements[block.value].statement).scope;
     tree.symbols.push_back({scope,{3},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
@@ -96,10 +96,10 @@ std::uint64_t Run(Form form,unsigned count,bool reverse,bool emit){
   if(form==Form::kYield)operations.push_back(f.Stmt(ExpressionStmt{f.Expr(YieldExpr{f.Read(4)})}));
   if(form==Form::kBranch)operations.push_back(f.Stmt(IfStmt{f.Read(2),f.Block({f.Stmt(ReturnStmt{f.Read(3)})}),{}}));
   if(form==Form::kSharedWrite)operations.push_back(f.Write(4,f.Call({f.Read(4)})));
-  if(form==Form::kForwardedShadow) {
+  if(form==Form::kForwardedShadow||form==Form::kForwardedAliasShadow) {
     const auto inner=f.Block({});const auto scope=std::get<BlockStmt>(tree.statements[inner.value].statement).scope;
     const SymbolId shadow{static_cast<std::uint32_t>(tree.symbols.size())};
-    tree.symbols.push_back({scope,{3},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
+    tree.symbols.push_back({scope,{form==Form::kForwardedShadow?3U:0U},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
     const auto branch=f.Block({},scope);
     const auto condition=f.Stmt(IfStmt{f.Read(5),branch,{}});
     const auto declaration=f.Stmt(DeclarationStmt{shadow,f.Expr(TreeLiteral{IntegerLiteral{100}})});
@@ -146,9 +146,13 @@ std::uint64_t Run(Form form,unsigned count,bool reverse,bool emit){
   auto planned=PlanBindingInitializers(tree,loops,nullish);
   if(auto* error=std::get_if<TreeStructureError>(&planned))std::cerr<<"form "<<unsigned(form)<<" error "<<unsigned(*error)<<'\n';
   Check(std::holds_alternative<BindingInitializers>(planned));const auto& bindings=std::get<BindingInitializers>(planned);
-  const bool merged=form==Form::kStraight||form==Form::kUpdateThrows||form==Form::kLoop||form==Form::kSharedWrite||form==Form::kElidedReference||live_undefined||(forwarded&&form!=Form::kForwardedShadow);
+  const bool merged=form==Form::kStraight||form==Form::kUpdateThrows||form==Form::kLoop||form==Form::kSharedWrite||form==Form::kElidedReference||form==Form::kRoundTrip||live_undefined||(forwarded&&form!=Form::kForwardedShadow);
   if(bool(bindings.storage[4])!=merged)std::cerr<<"form "<<unsigned(form)<<" count "<<count<<" reverse "<<reverse<<" merged "<<bool(bindings.storage[4])<<'\n';
   Check(bool(bindings.storage[4])==merged);
+  // Coalescing creates an immutable copy. Its late propagation must compose
+  // through the retained slot, but use the forwarded read's current TDZ scope.
+  if(form==Form::kRoundTrip){Check(bindings.aliases[3]==SymbolId{0});Check(bindings.Storage({4})==SymbolId{0});}
+  if(form==Form::kForwardedAliasShadow){Check(!bindings.aliases[3]);Check(bindings.Storage({4})==SymbolId{3});}
   if(forwarded) {
     const auto at=reverse?tree.statements.size()-1-update.value:update.value;
     Check(bindings.forwarded_values[at]==value);
@@ -174,6 +178,8 @@ std::uint64_t Run(Form form,unsigned count,bool reverse,bool emit){
   }else Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
   Check((output.str().find("scratch")==std::string::npos)==merged);
   if(forwarded)Check(output.str().find("snapshot")==std::string::npos);
+  if(form==Form::kRoundTrip)Check(output.str().find("current")==std::string::npos);
+  if(form==Form::kForwardedAliasShadow)Check(output.str().find("current")!=std::string::npos);
   if(emit)std::cout<<nlohmann::json{{"form",unsigned(form)},{"count",count},{"reverse",reverse},{"merged",merged},{"source",output.str()}}<<'\n';
   return bindings.work;
 }
@@ -207,5 +213,5 @@ int main(int argc,char** argv){
     std::uint64_t previous=0;for(unsigned count:{1U,200U,201U,400U,800U}){
       const auto work=Many(count,true);if(count==800)Check(work<previous*3);previous=work;}return 0;
   }
-for(unsigned form=0;form<=unsigned(Form::kForwardedShadow);++form){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}){
+for(unsigned form=0;form<=unsigned(Form::kForwardedAliasShadow);++form){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}){
   const auto work=Run(Form(form),count,reverse,argc>1);if(!reverse){if(count==800)Check(work<previous*3);previous=work;}}}}

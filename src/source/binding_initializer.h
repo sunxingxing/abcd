@@ -32,7 +32,11 @@ struct BindingInitializers {
   std::vector<std::optional<SymbolId>> undefined_stores;
   [[nodiscard]] SymbolId Storage(SymbolId symbol) const {
     const auto root = aliases[symbol.value].value_or(symbol);
-    return storage[root.value].value_or(root);
+    // Both alias stages publish direct value roots; coalescing publishes direct
+    // slots. The final alias stage consumes those slots and precedes all later
+    // consumers; no further coalescing may introduce another storage hop.
+    const auto slot = storage[root.value].value_or(root);
+    return aliases[slot.value].value_or(slot);
   }
   // ExprId indexed: a redundant store projects to its RHS; a unique private
   // snapshot read can consume the original RHS after ordered lifetime proof.

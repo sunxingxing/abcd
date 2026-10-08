@@ -3,7 +3,7 @@ import {execFileSync} from 'node:child_process';
 import vm from 'node:vm';
 import {parseJavaScript} from './class_reference.mjs';
 const records=execFileSync(process.argv[2],['--emit'],{encoding:'utf8',timeout:60_000,maxBuffer:16*1024*1024}).trim().split('\n').map(JSON.parse);
-assert.equal(records.length,252);
+assert.equal(records.length,276);
 // Oracles describe the original storage semantics, never enter the engine.
 const references=[
   function(input,report,flag){let current=input,scratch=current;++scratch;current=scratch;return current;},
@@ -27,6 +27,8 @@ const references=[
   function(input,report,flag){let current=input,scratch=current,snapshot;snapshot=++scratch;{current=snapshot;}return current;},
   function(input,report,flag){let current=input,scratch,snapshot;try{scratch=current;snapshot=++scratch;{current=snapshot;}}catch(error){return current;}return current;},
   function(input,report,flag){let current=input,scratch=current,snapshot;snapshot=++scratch;{if(snapshot){}let current=100;}current=scratch;return current;},
+  function(input,report,flag){let current=input,scratch=current;report(scratch);current=scratch;return current;},
+  function(input,report,flag){let current=input,scratch=current,snapshot;snapshot=scratch;{if(snapshot){}let input=100;}current=scratch;return current;},
 ];
 const primitives=[undefined,null,false,true,0,-0,1,-2,0n,2n,NaN,Infinity,'','7','bad',Symbol('input')];
 let cases=0,mutations=0;
@@ -50,10 +52,12 @@ async function observe(fn,form,index,mode,flag,request){
 }
 for(const record of records){
   parseJavaScript(record.source);const recovered=vm.runInNewContext(record.source);
-  const inspect=parseJavaScript(record.source);const pending=[inspect];let hasScratch=false;
-  while(pending.length){const node=pending.pop();if(node.type==='VariableDeclarator'&&node.id.name==='scratch')hasScratch=true;
+  const inspect=parseJavaScript(record.source);const pending=[inspect];let hasScratch=false,hasCurrent=false;
+  while(pending.length){const node=pending.pop();if(node.type==='VariableDeclarator'){if(node.id.name==='scratch')hasScratch=true;if(node.id.name==='current')hasCurrent=true;}
     for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)pending.push(child);}else if(value?.type)pending.push(value);}}
   assert.equal(hasScratch,!record.merged);
+  if(record.form===21)assert.equal(hasCurrent,false);
+  if(record.form===22)assert.equal(hasCurrent,true);
   const inputs=record.form===7?[2,3,4,6,7,8,12,13]:Array.from({length:primitives.length+2},(_,i)=>i);
   for(const index of inputs)for(const mode of ['normal','coercion-throw','report-throw','reject'])for(const flag of [false,true])for(const request of record.form===5?['next','throw','return']:['next']){
     if(record.form===7&&primitives[index]===Infinity)continue;
@@ -81,6 +85,21 @@ for(const record of records){
     const wrong=vm.runInNewContext(mutant);
     assert.notDeepEqual(await observe(wrong,record.form,6,'normal',true,'next'),
         await observe(references[record.form],record.form,6,'normal',true,'next'));++mutations;
+  }
+  if(record.count===0&&!record.reverse&&record.form===22) {
+    // Wrong late aliasing crosses the shadowing declaration's TDZ. Rename only
+    // reads, preserving declarations so the mutant remains syntactically valid.
+    const edits=[],work=[inspect];
+    while(work.length){const node=work.pop();if(node.type==='Identifier'&&node.name==='current')edits.push(node);
+      for(const [key,value]of Object.entries(node)){if(node.type==='VariableDeclarator'&&key==='id')continue;
+        if(Array.isArray(value)){for(const child of value)if(child?.type)work.push(child);}else if(value?.type)work.push(value);}}
+    let mutant=record.source;for(const edit of edits.sort((a,b)=>b.start-a.start))mutant=mutant.slice(0,edit.start)+'input'+mutant.slice(edit.end);
+    parseJavaScript(mutant);const wrong=vm.runInNewContext(mutant);
+    assert.notDeepEqual(await observe(wrong,22,6,'normal',true,'next'),await observe(references[22],22,6,'normal',true,'next'));++mutations;
+  }
+  if(record.count===0&&!record.reverse&&record.form===21) {
+    const wrong=function(input,report){report(input);return undefined;};
+    assert.notDeepEqual(await observe(wrong,21,6,'normal',true,'next'),await observe(references[21],21,6,'normal',true,'next'));++mutations;
   }
   if(record.count===0&&!record.reverse&&[13,14].includes(record.form)) {
     const missing=record.source.replaceAll('current = void 0;','');assert.notEqual(missing,record.source);

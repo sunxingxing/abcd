@@ -134,7 +134,10 @@ class FlowBuilder {
   }
   SymbolId Resolve(SymbolId symbol) const {
     const auto value=projection_.aliases[symbol.value].value_or(symbol);
-    return projection_.storage.empty()?value:projection_.storage[value.value].value_or(value);
+    // Same stage contract as BindingInitializers::Storage: direct early root,
+    // direct slot, then the late immutable root of that retained slot.
+    const auto slot=projection_.storage.empty()?value:projection_.storage[value.value].value_or(value);
+    return projection_.aliases[slot.value].value_or(slot);
   }
   void ProjectedReads() {
     reads_.resize(tree_.expressions.size());read_states_.resize(tree_.expressions.size());
