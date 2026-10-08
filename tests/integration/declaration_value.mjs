@@ -60,10 +60,17 @@ function reference(row) {
         66:'(report(input),current)?input:seed()',67:'(report(input),current)?input:seed()',73:'++current'
       })[form]??((form===22||form===23)?'seed()':form===16?'(report(input),42)':form===48?'(report(input),current)':'current'),form===6));
   }
-  if(form>=74) {
+  if(form>=74&&form<=80) {
     const value=form===75?'(report(input),current)??input':form===76?'(report(input),current)?seed():input':form===77?'(report(input),current)':'current';
     body=(form===79?'report(current);':'')+'let current;'+(form===80?'if(flag){current=input;}':'')+initialize('scratch',value);
     if(form===78)body+='while(flag()){current=scratch;scratch=current;}';
+  }
+  if(form>=81) {
+    body=initialize('current',form===82?'null':form===86?'flag':form===87?'0':form===84||form===85?'true':'false');
+    let previous='current';
+    if(form===88)for(let i=0;i<row.count;++i){const name='chain'+i;body+=initialize(name,previous+'?seed():false');previous=name;}
+    const value=form===82?'current??42':form===83?'current||42':form===84?'current&&42':form===85?'current?(report(input),42):seed()':form===86?'current?43:42':form===87?'++current?43:42':previous+'?seed():42';
+    body+=initialize('scratch',value);
   }
   if(form===72)body+='while(flag()){current=scratch;scratch=current;}';
   if(form===5||form===15)body+='++scratch;current=scratch;';
@@ -109,7 +116,8 @@ for(const row of rows) {
     }
   if(row.form<=3||row.form===16||row.form===17||row.form===21||row.form===28||
       (row.form>=29&&row.form<58&&![30,33,39,41].includes(row.form))||
-      (row.form>=60&&row.form<68&&![65,67].includes(row.form))||[68,70,72,74,75,76,77,78].includes(row.form))assert.doesNotMatch(row.source,/\b(?:current|scratch)\b/);
+      (row.form>=60&&row.form<68&&![65,67].includes(row.form))||[68,70,72,74,75,76,77,78,81,82,83,84,85,88].includes(row.form))assert.doesNotMatch(row.source,/\b(?:current|scratch)\b/);
+  if(row.form===88)assert.doesNotMatch(row.source,/\bchain\d+\b/);
   if(row.form===5) {
     const ast=parseJavaScript(row.source);const declarations=[];
     const walk=node=>{if(!node||typeof node!=='object')return;if(node.type==='VariableDeclaration')declarations.push(...node.declarations);for(const value of Object.values(node))if(Array.isArray(value))value.forEach(walk);else if(value&&typeof value==='object')walk(value);};

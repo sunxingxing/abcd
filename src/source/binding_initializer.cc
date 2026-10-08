@@ -14,8 +14,6 @@
 #include "nullish_syntax.h"
 #include "statement_children.h"
 #include <algorithm>
-#include <bit>
-#include <cmath>
 #include <limits>
 #include <new>
 #include <stdexcept>
@@ -89,6 +87,7 @@ class Initializers {
     }
     IndexLiteralTexts();
     IndexPrimitiveValues();
+    IndexValueEquations();
     for (auto symbol : tree_.closure_captures) { budget_.Step(); uses_[symbol.value].escaped = true; }
     for (const auto& alias : tree_.modules) {
       budget_.Step(); uses_[alias.symbol.value].escaped = true; uses_[alias.symbol.value].module_alias = true;
@@ -1142,22 +1141,39 @@ class Initializers {
       }
     }
   }
+  void IndexValueEquations() {
+    // Immutable source instruction meaning, adapted once. Projection below
+    // transports committed replacements/storage/value identities; it never
+    // re-infers language meaning from a rewritten syntax shape.
+    budget_.Array(value_equations_,tree_.expressions.size());
+    for(std::size_t i=0;i<tree_.expressions.size();++i) {
+      budget_.Step();const auto& node=tree_.expressions[i].expression;auto& equation=value_equations_[i];
+      if(std::holds_alternative<TreeLiteral>(node))equation=FlowPrimitiveReference{*expression_primitives_[i]};
+      else if(const auto* read=std::get_if<SymbolExpr>(&node))equation=FlowBindingValue{read->symbol};
+      else if(const auto* assignment=std::get_if<AssignmentExpr>(&node))equation=FlowExpressionValue{assignment->value};
+      else if(const auto* sequence=std::get_if<SequenceExpr>(&node))equation=FlowExpressionValue{sequence->right};
+      else if(const auto* choice=std::get_if<ConditionalExpr>(&node))equation=FlowChoiceValue{choice->condition,choice->consequent,choice->alternate};
+      else if(const auto* logical=std::get_if<LogicalExpr>(&node))equation=FlowLogicalValue{logical->operation,logical->left,logical->right};
+    }
+  }
+  FlowValueEquation ProjectedBindingValue(SymbolId id) const {
+    RequireAnalysis();
+    if(const auto primitive=plan_.literals[id.value])return FlowPrimitiveReference{*primitive};
+    return FlowBindingValue{plan_.Storage(id)};
+  }
+  FlowValueEquation ProjectedValueEquation(ExprId id) const {
+    RequireAnalysis();
+    if(const auto replacement=plan_.replacements[id.value])return FlowExpressionValue{*replacement};
+    auto equation=value_equations_[id.value];
+    if(const auto* read=std::get_if<FlowBindingValue>(&equation)) {
+      return ProjectedBindingValue(read->binding);
+    }
+    return equation;
+  }
   const TreeLiteral& LiteralValue(PrimitiveId literal) const {return plan_.primitives[literal.value];}
   bool SameLiteral(PrimitiveId left,PrimitiveId right) const {return SamePrimitiveValue(LiteralValue(left),LiteralValue(right));}
-  bool LiteralTruth(PrimitiveId literal) const {
-    return std::visit([&](const auto& value) {
-      using T=std::decay_t<decltype(value)>;
-      if constexpr(std::is_same_v<T,UndefinedLiteral>||std::is_same_v<T,NullLiteral>)return false;
-      else if constexpr(std::is_same_v<T,BooleanLiteral>||std::is_same_v<T,IntegerLiteral>)return bool(value.value);
-      else if constexpr(std::is_same_v<T,NumberLiteral>) {
-        const auto number=std::bit_cast<double>(value.bits);return number!=0&&!std::isnan(number);
-      } else {static_assert(std::is_same_v<T,TextId>);return !tree_.texts[value.value].empty();}
-    },LiteralValue(literal));
-  }
-  bool LiteralNullish(PrimitiveId literal) const {
-    const auto& value=LiteralValue(literal);
-    return std::holds_alternative<UndefinedLiteral>(value)||std::holds_alternative<NullLiteral>(value);
-  }
+  bool LiteralTruth(PrimitiveId literal) const {return PrimitiveTruth(LiteralValue(literal),tree_.texts);}
+  bool LiteralNullish(PrimitiveId literal) const {return PrimitiveNullish(LiteralValue(literal));}
   ExpressionFacts ComputeExpressions(std::span<const std::uint8_t> initialized) const {
     RequireAnalysis();
     ExpressionFacts facts;
@@ -1194,6 +1210,7 @@ class Initializers {
         facts.lexical[id.value]=facts.lexical[replacement->value];
         continue;
       }
+      const auto equation=ProjectedValueEquation(id);
       auto evaluation = IntrinsicEvaluation(node);
       auto lexical=IntrinsicLexicalDependency(node);
       if (const auto* read = std::get_if<SymbolExpr>(&node)) {
@@ -1225,27 +1242,29 @@ class Initializers {
       // logical selection uses ToBoolean/nullish, never user coercion. Unknown
       // operators/calls/updates/suspensions retain no primitive fact. Effects,
       // initialization and source ownership are still analyzed separately.
-      if(std::holds_alternative<TreeLiteral>(node))literal=expression_primitives_[id.value];
-      else if(const auto* sequence=std::get_if<SequenceExpr>(&node))literal=facts.literals[sequence->right.value];
-      else if(const auto* choice=std::get_if<ConditionalExpr>(&node)) {
-        const auto a=facts.literals[choice->consequent.value],b=facts.literals[choice->alternate.value];
-        if(const auto condition=facts.literals[choice->condition.value]) {
-          const auto selected=LiteralTruth(*condition)?choice->consequent:choice->alternate;
-          literal=facts.literals[selected.value];result=stored[selected.value];
-        }
-        else if(a&&b&&SameLiteral(*a,*b))literal=a;
-      } else if(const auto* logical=std::get_if<LogicalExpr>(&node)) {
-        if(const auto left=facts.literals[logical->left.value]) {
-          bool choose_right=false;
-          switch(logical->operation) {
-            case TreeLogical::kAnd:choose_right=LiteralTruth(*left);break;
-            case TreeLogical::kOr:choose_right=!LiteralTruth(*left);break;
-            case TreeLogical::kNullish:choose_right=LiteralNullish(*left);break;
+      std::visit([&](const auto& value) {
+        using T=std::decay_t<decltype(value)>;
+        if constexpr(std::is_same_v<T,FlowPrimitiveReference>)literal=value.primitive;
+        else if constexpr(std::is_same_v<T,FlowExpressionValue>)literal=facts.literals[value.expression.value];
+        else if constexpr(std::is_same_v<T,FlowChoiceValue>) {
+          const auto a=facts.literals[value.consequent.value],b=facts.literals[value.alternate.value];
+          if(const auto condition=facts.literals[value.condition.value]) {
+            const auto selected=LiteralTruth(*condition)?value.consequent:value.alternate;
+            literal=facts.literals[selected.value];result=stored[selected.value];
+          } else if(a&&b&&SameLiteral(*a,*b))literal=a;
+        } else if constexpr(std::is_same_v<T,FlowLogicalValue>) {
+          if(const auto left=facts.literals[value.left.value]) {
+            bool right=false;
+            switch(value.operation) {
+              case TreeLogical::kAnd:right=LiteralTruth(*left);break;
+              case TreeLogical::kOr:right=!LiteralTruth(*left);break;
+              case TreeLogical::kNullish:right=LiteralNullish(*left);break;
+            }
+            literal=right?facts.literals[value.right.value]:left;
+            result=stored[(right?value.right:value.left).value];
           }
-          literal=choose_right?facts.literals[logical->right.value]:left;
-          result=stored[(choose_right?logical->right:logical->left).value];
-        }
-      }
+        } else static_assert(std::is_same_v<T,UnknownFlowValue>||std::is_same_v<T,FlowBindingValue>);
+      },equation);
       VisitExpressionChildren(tree_, node, [&](ExprId child) {
         budget_.Step(); if (facts.evaluations[child.value] == ExpressionEvaluation::kRequired)
           evaluation = ExpressionEvaluation::kRequired;
@@ -1421,7 +1440,10 @@ class Initializers {
   const FlowConstants& CurrentConstants() const {
     auto& facts=CurrentFacts();
     if(!facts.constants) {
-      const auto& flow=CurrentFlow();const auto& expressions=AnalyzeExpressions();
+      const auto& flow=CurrentFlow();
+      std::vector<FlowValueEquation> bindings;budget_.Array(bindings,tree_.symbols.size());
+      for(std::size_t i=0;i<bindings.size();++i){budget_.Step();bindings[i]=ProjectedBindingValue({static_cast<std::uint32_t>(i)});}
+      const FlowValueEquations expressions{value_equations_,plan_.replacements,bindings};
       std::vector<FlowDefinitionValue> values;budget_.Array(values,flow.definitions.size());
       for(std::size_t i=0;i<values.size();++i) {
         budget_.Step();const auto& definition=flow.definitions[i];
@@ -1429,11 +1451,7 @@ class Initializers {
           case FlowDefinitionKind::kUndefined:case FlowDefinitionKind::kUndefinedStore:
             values[i]=FlowPrimitiveValue{LiteralValue(undefined_value_),undefined_value_};break;
           case FlowDefinitionKind::kAssignment:case FlowDefinitionKind::kInitializer:
-            if(definition.value) {
-              const auto value=*definition.value;
-              if(const auto literal=expressions.literals[value.value])values[i]=FlowPrimitiveValue{LiteralValue(*literal),literal};
-              else if(const auto source=expressions.bindings[value.value])values[i]=FlowBindingValue{*source};
-            }
+            if(definition.value)values[i]=FlowExpressionValue{*definition.value};
             break;
           // Update computes a new numeric value; its stored-result identity
           // is not a transparent self-copy equation. Entry/external values
@@ -1442,7 +1460,7 @@ class Initializers {
           case FlowDefinitionKind::kCatch:case FlowDefinitionKind::kFunctionSelf:break;
         }
       }
-      auto analyzed=AnalyzeFlowConstants(flow,CurrentLiveness(),values,budget_.Remaining());
+      auto analyzed=AnalyzeFlowConstants(flow,CurrentLiveness(),values,expressions,plan_.primitives,tree_.texts,budget_.Remaining());
       if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
       facts.constants=std::get<FlowConstants>(std::move(analyzed));
       budget_.Admit(facts.constants->allocated_bytes,1);budget_.Step(facts.constants->work);
@@ -1773,6 +1791,7 @@ class Initializers {
   std::vector<TextId> literal_texts_;
   std::vector<std::optional<PrimitiveId>> expression_primitives_;
   PrimitiveId undefined_value_;
+  std::vector<FlowValueEquation> value_equations_;
   std::vector<std::optional<StmtId>> expression_owners_;
   std::vector<std::uint8_t> expression_projections_;
   std::vector<std::optional<SymbolId>> constant_heads_, constant_next_;

@@ -47,7 +47,9 @@ class NamePlan {
         }
       }
     }
-    if (candidates_.empty()) return {{}, budget_.Bytes(), budget_.Work()};
+    if (candidates_.empty()) {
+      ClassNames result;result.scope=scope_;result.allocated_bytes=budget_.Bytes();result.work=budget_.Work();return result;
+    }
     if (ownership_ == Ownership::kPrinted) {
       // Borrow the printing owner's immutable projection. Nested class bodies
       // not in that preparation use the same coordinator and remain owned here;
@@ -134,12 +136,20 @@ class NamePlan {
     else if (raw) Push(EnterTree{Find(raw->owner)});
     else Push(EnterClass{Find(*root_class), {}});
     while (pending_) { budget_.Step(); const auto task = tasks_[--pending_]; std::visit([&](auto at) { Walk(at); }, task); }
-    ClassNames result;
+    ClassNames result;result.scope=scope_;
     budget_.Array(result.entries, candidates_.size());
     for (std::size_t i = 0; i < candidates_.size(); ++i)
       result.entries[i] = {candidates_[i].definition, candidates_[i].named};
     std::sort(result.entries.begin(), result.entries.end(), [&](auto a, auto b) {
       budget_.Step(); return std::less<const ClassTree*>{}(a.definition, b.definition);
+    });
+    // Preserve the already proved descendant projection for emission. This
+    // transfers ownership, not a cache across tree mutation or destination
+    // changes. No copied plan and no second pass execution for the same owner.
+    result.prepared=std::move(prepared_);
+    std::erase_if(result.prepared,[&](const auto& plan){budget_.Step();return !plan.tree;});
+    std::sort(result.prepared.begin(),result.prepared.end(),[&](const auto& a,const auto& b){
+      budget_.Step();return std::less<const FunctionTree*>{}(a.tree,b.tree);
     });
     result.allocated_bytes = budget_.Bytes(); result.work = budget_.Work(); return result;
   }
@@ -353,6 +363,13 @@ ClassNames::Use ClassNames::Lookup(const ClassTree& tree) const {
     return std::less<const ClassTree*>{}(a.definition,p);
   });
   return {at != entries.end() && at->definition == &tree && at->named, work};
+}
+ClassNames::Variables ClassNames::Lookup(const FunctionTree& tree) const {
+  std::uint64_t work=1;
+  const auto at=std::lower_bound(prepared.begin(),prepared.end(),&tree,[&](const auto& plan,auto key){
+    ++work;return std::less<const FunctionTree*>{}(plan.tree,key);
+  });
+  return {at!=prepared.end()&&at->tree==&tree?&*at:nullptr,work};
 }
 std::variant<ClassNames, TreeStructureError> PlanClassNames(const ConstructedFamily& input, const GlobalScope* scope, analysis::SemanticBudget budget) { return Plan(input,scope,budget); }
 std::variant<ClassNames, TreeStructureError> PlanClassNames(const FunctionTree& input, const GlobalScope* scope, analysis::SemanticBudget budget) { return Plan(input,scope,budget); }

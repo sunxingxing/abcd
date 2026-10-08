@@ -3079,3 +3079,50 @@ loop cycles, selected parameter values and required calls, and rejects early-TDZ
 unknown-write and wrong-value variants. Native/store encodings, reversed arenas,
 200/201/400/800 and exact/short byte/work budgets remain the bounded evidence;
 full suite, wider corpus, RSS/DFX and benchmarks remain paused.
+
+
+### Sparse normal-value equations and preparation reuse (rules229)
+
+Algorithm provenance: [Wegman and Zadeck, Constant Propagation with Conditional
+Branches, ACM TOPLAS 13(2), 1991, pp. 181-210](https://courses.grainger.illinois.edu/CS426/fa2022/Papers/sccp.toplas91.pdf),
+flat value lattice (section 2.2) and sparse dependency worklists (sections 4/5.4).
+This project-owned implementation borrows those ideas, not external code. No
+library, copied implementation or new dependency/license obligation is introduced.
+It is not full SCCP: the source adapter supplies normal-result meaning and the
+solver never changes executable CFG edges. Maintain it with that adapter and the
+independent graph/source oracles. Unknown operations stay unknown.
+
+For B bindings, E input equations, D successful definitions, C retained mutable
+value-dependency incidences, and L incoming live facts, construction and solve
+cost O(B+E+D+C+L). Each value advances unresolved -> primitive -> unknown at most,
+with at most one additional printable-identity notification. Each expression
+transfer reads at most three operands; binding joins are incremental. No repeated
+scan of all definitions, graph walk per binding or whole-pass iteration is used.
+A queued flag limits the pending stack to the number of mutable nodes. Terminal
+primitive/unknown equations do not own mutable nodes; a binding read maps to its
+binding node. The E-sized typed-absence index retains every terminal operand's
+meaning, and primitive payloads borrow immutable input until result publication.
+
+Working storage is O(B+E+D+C): immutable base equations are adapted once, current
+projection borrows replacements and owns a B-sized binding snapshot, mutable
+states/adjacency/worklist use B+K slots (K nonterminal expression transfers),
+and edges reserve actual C. Returned values own copies and retain immutable pool
+IDs. Every allocation/capacity and work step is admitted under existing budgets;
+conservative cumulative charges are not process peak-RSS evidence.
+
+Class-name preparation transfers its already charged descendant plans into the
+printing owner rather than freeing/rebuilding them. A sorted exact-tree index
+costs O(T log(T+1)) comparisons for T owners, then O(log(T+1)) lookup per emitted
+owner. Moves/sort do not duplicate plan arrays; emission borrows them synchronously
+under unchanged trees/external context. Existing destination/capture checks still
+run. Retained memory lives until that printer finishes, so the owner must include
+it in admission; no cross-method cache, threshold or error fallback is added.
+Static field emission still separately prepares its plan; broader reuse is open.
+
+Tests use the 32,768 independent copy oracle, 864 finite truth/selection cases in
+direct and borrowed representations, 0/1/200/201/400/800 source chains, exact/short
+byte/work budgets and independent JS execution with incorrect mutants. Existing
+geometric work bounds and arena/copy variations remain. Fixed-record regression
+was retained and resolved with compact facts/owner reuse at unchanged budgets.
+Measured verification belongs in status.md; full-suite/corpus/RSS/DFX/benchmarks
+remain paused.

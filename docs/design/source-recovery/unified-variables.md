@@ -1538,3 +1538,68 @@ to temporary variant results; the test now keeps the owning variant alive before
 iterating, so the negative graph cases are valid C++20 evidence. This does not
 complete original IR correspondence, all lifetime/capture/unwind reconstruction,
 per-read value precision or global dependency-driven convergence.
+
+
+## Normal-value dependency closure and immutable descendant reuse (rules229)
+
+Rules228 postorder facts cannot close a value dependency discovered only after a
+producer binding becomes constant. For example, `let current = false; let scratch =
+current ? seed() : 42; report(scratch); return scratch;` retained scratch until a
+later analysis despite having a normal result of 42. The copy-only Kosaraju solver
+and the assumption that normal expression values are already settled are retired.
+No extra whole-function pass round or conditional-expression admission was added.
+
+The source adapter publishes immutable typed value equations once before passes:
+primitive identity, binding read, forwarded normal result, conditional selection
+and logical selection. Assignment/sequence forward normal values; updates and
+unmodeled computations stay unknown. Current projection transports replacements,
+primitive substitutions and resolved storage through that same meaning. Postorder
+completion facts consume the typed equations rather than rematching selection
+syntax. Primitive truth/nullish operations have one shared implementation.
+
+CurrentConstants borrows the immutable base and unchanged replacement plan, and
+owns only a B-sized snapshot of current binding values. The synchronous borrowed
+view cannot escape analysis or observe a commit. ProjectionFacts still owns the
+result by revision; BeginCommit invalidates the aggregate before changing any
+plan state, and commit-phase analysis is forbidden. Constants changes reads only;
+independent dead-definition/initialization/binding cleanup runs before Aliases,
+and final loop/declaration grammar follows storage and effect cleanup. Producer
+and consumer dependencies and change detection remain revision-driven.
+
+A bounded sparse worklist solves expression and successful-binding equations
+jointly. Unresolved, one typed primitive, and unknown form a flat lattice; changes
+notify indexed dependent equations, each with constant arity. Missing grounding
+becomes unknown and propagates before publication. Terminal values borrow their
+immutable payload; binding reads share the binding node directly. Neither an
+unknown operand nor an unseeded cycle disappears when its mutable node is omitted.
+The result is still one stable value per binding, not per-read SSA/SCCP. Executable
+edges, effects, writes, initialization, lifetime and exception paths are unchanged
+by this solver. A known normal result is never permission to delete its RHS.
+
+Fixed-record validation exposed repeated recovery, not a semantic failure:
+printed class-name analysis prepared descendants then discarded their plans;
+member emission reran the same passes. ClassNames now owns those already prepared
+SourceVariables, sorted by exact tree identity. Class member printers borrow them
+and the common naming result synchronously from their enclosing printing owner.
+Supplied root-family plans remain owned by the caller. No mutable/global cache or
+cross-revision reuse is introduced. Tree identity and unchanged external-context
+identity scope the borrow; unrelated/equal copied trees cannot reuse a plan.
+Global/module/capture destination checks and structural checks still run. Static
+field emission's separate preparation remains a documented duplication gap.
+
+The original default budgets remain intact. Initial broad expression-state
+allocation and repeated base/projection arrays were compressed before the
+owner-reuse change; none of these changes discard equations or choose a fallback
+by resource failure, input count, sample, layout, or operation sequence. The old
+"prepare again for every emitted class family" path is absent when the enclosing
+owner already supplies that exact immutable plan.
+
+Tests cover conditional/logical/effect compositions, an unknown predicate,
+consumed update, missing grounding, native/store encodings, reversed arenas and
+0/1/200/201/400/800 chains. An independent finite table checks 864 combinations
+through both direct equations and borrowed projections, alongside the existing
+32,768 copy-graph oracle. Owner tests check moved preparation, exact-tree reuse,
+equal copied-tree rejection and canonical analysis without source preparation.
+Status.md records actual source execution/mutant and fixed-record evidence.
+Original IR/SSA correspondence, full activation/capture/finally, per-read precision
+and global dependency-driven pass convergence remain open.

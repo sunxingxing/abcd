@@ -86,9 +86,12 @@ class PreparedFamily {
   // Shared printer and original-PC positions, still no executable receipt.
   // Rechecks the actual embedding before writing any bytes. On output failure
   // the caller must discard the partial stream, as with PrintFamilyDraft.
+  // Optional preparation is borrowed only during synchronous printing; its
+  // exact trees and external context must stay unchanged throughout the call.
   [[nodiscard]] std::variant<PrintedFamilyDraft, FamilyPrepareFailure, TreePrintError> PrintDraft(
       FamilyDestination destination, std::ostream& output,
-      EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {}, std::size_t indent = 0) const;
+      EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {}, std::size_t indent = 0,
+      const ClassNames* prepared = nullptr) const;
  private:
   struct Storage;
   static std::variant<PreparedFamily, FamilyPrepareFailure> Prepare(

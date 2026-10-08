@@ -6,6 +6,7 @@
 
 namespace abcd::source {
 class ClassTreeContext;
+struct ClassNames;
 struct PrintedFamilyDraft {
   std::vector<PrintedFunction> members;
   std::vector<GeneratedRange> functions;
@@ -42,6 +43,7 @@ struct PrintedFamilyDraft {
 [[nodiscard]] std::variant<PrintedFamilyDraft, TreePrintError> PrintClassFamilyDraft(
     const ConstructedFamily& family, const ClassTreeContext& context, std::ostream& output,
     EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {},
-    const GlobalScope* scope = nullptr, std::size_t indent = 0);
+    const GlobalScope* scope = nullptr, std::size_t indent = 0,
+    const ClassNames* prepared = nullptr);
 }  // namespace abcd::source
 #endif

@@ -139,12 +139,23 @@ void CheckClassNames(const std::function<std::shared_ptr<abcd::source::ClassTree
     Check(std::holds_alternative<ClassNames>(actual));
     const auto& names = std::get<ClassNames>(actual);
     Check(names.Lookup(*definition).named == !conflict);
-    const auto shared=std::get<ClassNames>(PlanPrintedClassNames(projected,nullptr,{},
+    auto shared=std::get<ClassNames>(PlanPrintedClassNames(projected,nullptr,{},
         std::span<const SourceVariables>(&prepared,1)));
     Check(shared.Lookup(*definition).named==!conflict);
     // Shared preparation must actually avoid recomputation, not just reproduce
     // the same source through another planner invocation.
     Check(shared.work<names.work);
+    // Descendant preparation survives publication and a move. Identity-scoped
+    // reuse must reject another tree object even when all its fields are equal.
+    if(copies==0&&!reverse&&!parameter) {
+      Check(!shared.Lookup(projected).plan); // Caller still owns this plan.
+      const auto& child=definition->constructor->Family().members.front().tree;
+      const auto found=shared.Lookup(child);Check(found.plan&&found.plan->tree==&child);
+      auto retained=std::move(shared);
+      Check(retained.Lookup(child).plan==found.plan);
+      const auto copy=child;Check(!retained.Lookup(copy).plan);
+      Check(Names(projected).prepared.empty()); // Canonical analysis has no source plan.
+    }
     if(copies==0&&!reverse&&!parameter) {
       Check(std::get<TreeStructureError>(PrepareSourceVariables(projected,
           {prepared.allocated_bytes-1,prepared.work}))==TreeStructureError::kResourceLimit);

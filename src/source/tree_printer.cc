@@ -41,7 +41,8 @@ using Error = TreePrintError;
 enum class ClassPrintForm { kExpression, kInferredExpression, kNamedExpression, kDeclaration, kDerivedBody };
 std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassPart(
     const ClassTree&, std::ostream&, EmitBudget, analysis::SemanticBudget,
-    const GlobalScope*, std::size_t, ClassPrintForm, const ClassCaptureDestination* = nullptr);
+    const GlobalScope*, std::size_t, ClassPrintForm, const ClassCaptureDestination* = nullptr,
+    const ClassNames* = nullptr);
 struct DerivedClassBody { std::shared_ptr<const ClassTree> definition; ExprId expression; ClassPrintForm form; };
 struct EndExpression { ExprId id; };
 struct ProjectedExpression { ExprId id; std::uint64_t begin, end; GeneratedExtent extent = GeneratedExtent::kSpan; std::optional<ExprId> retained; };
@@ -108,8 +109,8 @@ class TreePrinter {
         limit_(limit.bytes), initial_(scratch), remaining_(scratch), scope_(scope) {}
   TreePrinter(const ConstructedFamily& family, std::ostream& output,
               EmitBudget limit, analysis::SemanticBudget scratch, const ClassTreeContext* member,
-              const GlobalScope* scope)
-      : family_(&family), class_root_(member), output_(output), limit_(limit.bytes), initial_(scratch), remaining_(scratch), scope_(scope) {}
+              const GlobalScope* scope, const ClassNames* prepared = nullptr)
+      : family_(&family), class_root_(member), output_(output), limit_(limit.bytes), initial_(scratch), remaining_(scratch), scope_(scope), enclosing_names_(prepared) {}
   PrintedFunction Print() {
     if (!function_->ClassCreation() || Tree().callable != CallableKind::kMethod ||
         Tree().strictness != Strictness::kStrict || Tree().self || Tree().capture_scope || !Tree().captures.empty())
@@ -350,6 +351,10 @@ class TreePrinter {
     return u"";
   }
   void PrepareClassNames() {
+    if(enclosing_names_) {
+      if(enclosing_names_->scope!=scope_)throw Error::kUnsupportedContext;
+      return;
+    }
     const auto prepared = family_ ? std::span<const SourceVariables>(family_variables_) :
         std::span<const SourceVariables>(&variables_, 1);
     auto planned = family_ ? PlanPrintedClassNames(*family_, scope_, remaining_, prepared) :
@@ -362,6 +367,7 @@ class TreePrinter {
     class_names_ = std::get<ClassNames>(std::move(planned));
     Admit(class_names_.allocated_bytes, 1); Step(class_names_.work);
   }
+  const ClassNames& Names() const {return enclosing_names_?*enclosing_names_:class_names_;}
   bool NativeName() const { return family_ && native_names_[current_]; }
   void PrepareNativeNames() {
     const auto set = [&](ExprId id, NameContext context) {
@@ -849,7 +855,7 @@ class TreePrinter {
     // adding an immutable inner class binding. Other naming contexts use the
     // common lexical plan, which proves no actual reference is shadowed.
     const bool inferred = ContextName(inferred_name) == node.definition->name;
-    const auto name = class_names_.Lookup(*node.definition); Step(name.work);
+    const auto name = Names().Lookup(*node.definition); Step(name.work);
     ClassCreation(node, expression, inferred ? ClassPrintForm::kInferredExpression :
         name.named ? ClassPrintForm::kNamedExpression : ClassPrintForm::kExpression);
   }
@@ -882,7 +888,7 @@ class TreePrinter {
   }
   void ClassPart(const ClassTree& definition, ClassPrintForm form, ExprId expression) {
     const ClassCaptureDestination parent{Tree(), expression};
-    auto emitted = PrintClassPart(definition, output_, {limit_ - written_}, remaining_, scope_, depth_, form, &parent);
+    auto emitted = PrintClassPart(definition, output_, {limit_ - written_}, remaining_, scope_, depth_, form, &parent, &Names());
     if (const auto* error = std::get_if<TreePrintError>(&emitted)) throw *error;
     if (const auto* failure = std::get_if<FamilyPrepareFailure>(&emitted)) {
       switch (FamilyRouteFailure(*failure).failure_class) {
@@ -1383,7 +1389,7 @@ class TreePrinter {
     if (node.initializer && binding.declaration == DeclarationKind::kLet) {
       const auto* created = std::get_if<ClassExpr>(&Tree().expressions[node.initializer->value].expression);
       if (created && created->definition && Tree().names[binding.name.value] == created->definition->name) {
-        const auto name = class_names_.Lookup(*created->definition); Step(name.work);
+        const auto name = Names().Lookup(*created->definition); Step(name.work);
         if (name.named) {
           // ECMA-262 class declarations keep the writable outer let binding
           // and creation/TDZ timing. Their added immutable self scope is safe
@@ -1747,16 +1753,26 @@ class TreePrinter {
     Push(Indent{depth});
   }
   void PrepareAnchors() {
-    auto planned = PrepareSourceVariables(Tree(), remaining_);
-    if (const auto* error = std::get_if<TreeStructureError>(&planned)) {
-      if (*error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
-      if (*error == TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
-      throw Error::kUnsupportedContext;
+    if(enclosing_names_) {
+      // This synchronous borrow is scoped by exact tree object identity. The
+      // outer name analysis owns the immutable plans until emission finishes;
+      // destination/global/capture checks still run independently above.
+      const auto found=enclosing_names_->Lookup(Tree());Step(found.work);
+      if(!found.plan)throw Error::kUnsupportedContext;
+      if(borrowed_variables_.empty())Array(borrowed_variables_,family_->members.size());
+      borrowed_variables_[current_]=found.plan;
+    }else {
+      auto planned = PrepareSourceVariables(Tree(), remaining_);
+      if (const auto* error = std::get_if<TreeStructureError>(&planned)) {
+        if (*error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
+        if (*error == TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
+        throw Error::kUnsupportedContext;
+      }
+      if (family_ && family_variables_.empty()) Array(family_variables_, family_->members.size());
+      auto& variables = family_ ? family_variables_[current_] : variables_;
+      variables = std::get<SourceVariables>(std::move(planned));
+      Admit(variables.allocated_bytes, 1); Step(variables.work);
     }
-    if (family_ && family_variables_.empty()) Array(family_variables_, family_->members.size());
-    auto& variables = family_ ? family_variables_[current_] : variables_;
-    variables = std::get<SourceVariables>(std::move(planned));
-    Admit(variables.allocated_bytes, 1); Step(variables.work);
     Array(Located(), Tree().anchors.size());
     std::size_t count = 0;
     for (std::size_t i = 0; i < Tree().anchors.size(); ++i) {
@@ -1772,7 +1788,10 @@ class TreePrinter {
   static bool Less(BlockBoundary left, BlockBoundary right) {
     return left.block != right.block ? left.block < right.block : left.index < right.index;
   }
-  const SourceVariables& Variables() const { return family_ ? family_variables_[current_] : variables_; }
+  const SourceVariables& Variables() const {
+    if(enclosing_names_)return *borrowed_variables_[current_];
+    return family_ ? family_variables_[current_] : variables_;
+  }
   const NullishSyntax& Nullish() const { return Variables().nullish; }
   const BindingInitializers& Initializers() const { return Variables().bindings; }
   void FinalizeNullishRanges() {
@@ -1837,6 +1856,8 @@ class TreePrinter {
   std::vector<std::uint8_t> printed_;
   std::vector<std::uint8_t> native_names_;
   ClassNames class_names_;
+  const ClassNames* enclosing_names_=nullptr;
+  std::vector<const SourceVariables*> borrowed_variables_;
   SourceVariables variables_;
   std::vector<SourceVariables> family_variables_;
 };
@@ -1903,8 +1924,9 @@ std::variant<PrintedFamilyDraft, TreePrintError> PrintModuleFamilyDraft(const Co
   } catch (const std::ios_base::failure&) { return Error::kWrite; }
 }
 std::variant<PrintedFamilyDraft, TreePrintError> PrintClassFamilyDraft(const ConstructedFamily& family,
-    const ClassTreeContext& context, std::ostream& output, EmitBudget limit, analysis::SemanticBudget scratch, const GlobalScope* scope, std::size_t indent) {
-  try { return TreePrinter(family, output, limit, scratch, &context, scope).Draft(indent);
+    const ClassTreeContext& context, std::ostream& output, EmitBudget limit, analysis::SemanticBudget scratch, const GlobalScope* scope, std::size_t indent,
+    const ClassNames* prepared) {
+  try { return TreePrinter(family, output, limit, scratch, &context, scope, prepared).Draft(indent);
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit;
@@ -1950,7 +1972,7 @@ namespace {
 std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassPart(
     const ClassTree& tree, std::ostream& output, EmitBudget limit,
     analysis::SemanticBudget budget, const GlobalScope* globals, std::size_t indent, ClassPrintForm form,
-    const ClassCaptureDestination* parent) {
+    const ClassCaptureDestination* parent, const ClassNames* prepared) {
   using Failure = TreePrintError;
   const auto initial = budget;
   try {
@@ -2015,7 +2037,7 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
     };
     const FamilyDestination destination{Strictness::kStrict, globals, FunctionFragment::kClassMember, {}, nullptr, parent};
     const auto member = [&](const PreparedFamily& family) {
-      auto printed = family.PrintDraft(destination, output, {limit.bytes - result.bytes}, budget, indent + 1);
+      auto printed = family.PrintDraft(destination, output, {limit.bytes - result.bytes}, budget, indent + 1, prepared);
       if (const auto* failure = std::get_if<FamilyPrepareFailure>(&printed)) throw *failure;
       if (const auto* failure = std::get_if<TreePrintError>(&printed)) throw *failure;
       auto positions = std::get<PrintedFamilyDraft>(std::move(printed));
@@ -2146,7 +2168,7 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassT
   if (names.work > budget.work || name.work > budget.work - names.work) return TreePrintError::kWorkLimit;
   budget.bytes -= names.allocated_bytes; budget.work -= names.work + name.work;
   auto result = PrintClassPart(tree, output, limit, budget, globals, indent,
-      name.named ? ClassPrintForm::kNamedExpression : ClassPrintForm::kExpression);
+      name.named ? ClassPrintForm::kNamedExpression : ClassPrintForm::kExpression, nullptr, &names);
   if (auto* printed = std::get_if<PrintedClassTree>(&result)) {
     printed->allocated_bytes += names.allocated_bytes;
     printed->work += names.work + name.work;

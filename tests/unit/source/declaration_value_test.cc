@@ -62,7 +62,23 @@ struct Fixture {
         body.push_back(Stmt(DeclarationStmt{{binding},value}));
       else {body.push_back(Stmt(DeclarationStmt{{binding},{}}));body.push_back(Write(binding,value));}
     };
-    if(form>=74) {
+    if(form>=81) {
+      const auto literal=[&](TreeLiteral value){return Expr(std::move(value));};
+      initialize(4,form==82?literal(NullLiteral{}):form==86?Read(3):
+          form==87?literal(IntegerLiteral{0}):literal(BooleanLiteral{form==84||form==85}));
+      unsigned previous=4;
+      if(form==88)for(unsigned i=0;i<count;++i) {
+        const auto binding=static_cast<std::uint32_t>(tree.symbols.size()),name=static_cast<std::uint32_t>(tree.names.size());
+        const auto digits=std::to_string(i);tree.names.push_back(u"chain"+std::u16string(digits.begin(),digits.end()));
+        tree.symbols.push_back({{1},{name},BindingKind::kCompilerTemporary,DeclarationKind::kLet,NameEvidence::kSynthesized,TemporaryReason::kMultipleUses});
+        initialize(binding,Expr(ConditionalExpr{Read(previous),Call(1),literal(BooleanLiteral{false})}));previous=binding;
+      }
+      auto condition=form==87?Expr(UpdateExpr{{4},UpdateDirection::kIncrement,UpdateResult::kPrefix}):Read(previous);
+      ExprId value;
+      if(form>=82&&form<=84)value=Expr(LogicalExpr{form==82?TreeLogical::kNullish:form==83?TreeLogical::kOr:TreeLogical::kAnd,condition,literal(IntegerLiteral{42})});
+      else value=Expr(ConditionalExpr{condition,form==85?Expr(SequenceExpr{Call(2,0),literal(IntegerLiteral{42})}):form==86||form==87?literal(IntegerLiteral{43}):Call(1),form==85?Call(1):literal(IntegerLiteral{42})});
+      initialize(5,value);
+    } else if(form>=74) {
       if(form==79)body.push_back(Stmt(ExpressionStmt{Call(2,4)}));
       body.push_back(Stmt(DeclarationStmt{{4},{}}));
       if(form==80) {
@@ -287,7 +303,7 @@ struct Fixture {
 };
 }
 int main(int argc,char**) {
-  for(unsigned form=0;form<81;++form)for(bool native:{false,true}) {
+  for(unsigned form=0;form<89;++form)for(bool native:{false,true}) {
     std::uint64_t small=0,large=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}) {
       Fixture fixture(form,count,native,reverse);std::ostringstream output;
@@ -329,10 +345,11 @@ int main(int argc,char**) {
         test::Check(projected);
       }
       if(form<=3||form==16||form==17||form==21||form==28||(form>=29&&form!=30&&form!=33&&form!=39&&form!=41&&form<58)||
-          (form>=60&&form<68&&form!=65&&form!=67)||form==68||form==70||form==72||(form>=74&&form<=78)) {
+          (form>=60&&form<68&&form!=65&&form!=67)||form==68||form==70||form==72||(form>=74&&form<=78)||(form>=81&&form<=85)||form==88) {
         if(output.str().find("current")!=std::string::npos||output.str().find("scratch")!=std::string::npos)
           std::cerr<<"form="<<form<<" native="<<native<<" reverse="<<reverse<<'\n'<<output.str()<<'\n';
         test::Check(output.str().find("current")==std::string::npos&&output.str().find("scratch")==std::string::npos);
+        if(form==88)test::Check(output.str().find("chain")==std::string::npos);
       }
       if(argc>1)std::cout<<nlohmann::json{{"source",output.str()},{"form",form},{"native",native},{"count",count},{"reverse",reverse}}<<'\n';
     }

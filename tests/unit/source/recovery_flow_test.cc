@@ -3,6 +3,8 @@
 #include "../../../src/source/storage_coalescing.h"
 #include "../../../src/source/flow_definitions.h"
 #include "../../../src/source/flow_constants.h"
+#include <bit>
+#include <limits>
 #include "../../../src/source/definition_elision.h"
 #include "../../../src/source/flow_dominance.h"
 #include "../../../src/source/flow_motion.h"
@@ -920,4 +922,78 @@ void ConstantEquations() {
   }
   Check(large<small*3);std::cout<<"independent constant equations 32768\n";
 }
-int main(){ConstantEquations();SourceScopeOracle();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+void ExpressionConstants() {
+  // Independent finite truth/selection table; no production transfer function,
+  // lattice solver or source ID traversal is used to compute these answers.
+  const std::vector<TreeLiteral> primitives{BooleanLiteral{false},BooleanLiteral{true},IntegerLiteral{42},IntegerLiteral{43},
+      NullLiteral{},IntegerLiteral{0},NumberLiteral{std::bit_cast<std::uint64_t>(std::numeric_limits<double>::quiet_NaN())},
+      NumberLiteral{std::bit_cast<std::uint64_t>(-0.0)},TextId{0},TextId{1},UndefinedLiteral{}};
+  const std::array<bool,11> truth{false,true,true,true,false,false,false,false,false,true,false};
+  const std::array<bool,11> nullish{false,false,false,false,true,false,false,false,false,false,true};
+  const std::vector<std::u16string> texts{u"",u"value"};
+  std::size_t cases=0;
+  for(unsigned condition=0;condition<=primitives.size();++condition)for(unsigned a=2;a<=4;++a)for(unsigned b=2;b<=4;++b)
+    for(unsigned operation=0;operation<4;++operation)for(bool reverse:{false,true}) {
+      RecoveryFlow flow{};flow.bindings.resize(1);flow.bindings[0].kind=BindingKind::kCompilerTemporary;flow.bindings[0].exposure=FlowBindingExposure::kPrivate;
+      flow.definitions.push_back({{},{0},FlowDefinitionKind::kAssignment});FlowLiveness live{};live.live_definitions={1};
+      std::vector<FlowValueEquation> equations(4);
+      if(condition<primitives.size())equations[0]=FlowPrimitiveReference{{condition}};
+      if(a<4)equations[1]=FlowPrimitiveReference{{a}};
+      if(b<4)equations[2]=FlowPrimitiveReference{{b}};
+      if(!operation)equations[3]=FlowChoiceValue{{0},{1},{2}};
+      else equations[3]=FlowLogicalValue{operation==1?TreeLogical::kAnd:operation==2?TreeLogical::kOr:TreeLogical::kNullish,{0},{1}};
+      std::optional<unsigned> expected;
+      if(!operation) {
+        if(condition<primitives.size()){const auto selected=truth[condition]?a:b;if(selected<4)expected=selected;}
+        else if(a==b&&a<4)expected=a;
+      }else if(condition<primitives.size()) {
+        const bool right=operation==1?truth[condition]:operation==2?!truth[condition]:nullish[condition];
+        if(!right)expected=condition;else if(a<4)expected=a;
+      }
+      std::vector<FlowDefinitionValue> values{FlowExpressionValue{{3}}};
+      if(reverse) {
+        const auto remap=[](ExprId id){return ExprId{3-id.value};};
+        for(auto& equation:equations)std::visit([&](auto& value){using T=std::decay_t<decltype(value)>;
+          if constexpr(std::is_same_v<T,FlowChoiceValue>){value.condition=remap(value.condition);value.consequent=remap(value.consequent);value.alternate=remap(value.alternate);}
+          else if constexpr(std::is_same_v<T,FlowLogicalValue>){value.left=remap(value.left);value.right=remap(value.right);}
+        },equation);
+        std::reverse(equations.begin(),equations.end());values[0]=FlowExpressionValue{{0}};
+      }
+      const auto result=std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,values,equations,primitives,texts));
+      Check(bool(result.values[0])==bool(expected));if(expected)Check(result.values[0]->literal==PrimitiveId{*expected});
+      // Same independent expected result through a borrowed current projection.
+      // Terminal values now arise from binding facts, and a committed root
+      // replacement owns the selection. The base root itself is unknown.
+      auto base=equations;std::vector<FlowValueEquation> binding_values;
+      const auto original=std::get<FlowExpressionValue>(values[0]).expression;
+      const ExprId projected{static_cast<std::uint32_t>(base.size())};base.push_back(base[original.value]);
+      base[original.value]=UnknownFlowValue{};
+      for(auto& equation:base)if(const auto* literal=std::get_if<FlowPrimitiveReference>(&equation)) {
+        const SymbolId binding{static_cast<std::uint32_t>(binding_values.size())};
+        binding_values.push_back(*literal);equation=FlowBindingValue{binding};
+      }
+      std::vector<std::optional<ExprId>> replacements(base.size());replacements[original.value]=projected;
+      const auto borrowed=std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,values,
+          FlowValueEquations{base,replacements,binding_values},primitives,texts));
+      Check(bool(borrowed.values[0])==bool(expected));if(expected)Check(borrowed.values[0]->literal==PrimitiveId{*expected});
+      if(condition==0&&a==2&&b==2) {
+        Check(std::holds_alternative<FlowConstants>(AnalyzeFlowConstants(flow,live,values,equations,primitives,texts,{result.allocated_bytes,result.work})));
+        Check(std::get<TreeStructureError>(AnalyzeFlowConstants(flow,live,values,equations,primitives,texts,{result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
+        Check(std::get<TreeStructureError>(AnalyzeFlowConstants(flow,live,values,equations,primitives,texts,{result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);
+      }
+      ++cases;
+    }
+  // A temporarily known arm cannot hide an ungrounded competing source.
+  RecoveryFlow flow{};flow.bindings.resize(2);
+  for(auto& binding:flow.bindings){binding.kind=BindingKind::kCompilerTemporary;binding.exposure=FlowBindingExposure::kPrivate;}
+  flow.definitions.push_back({{},{0},FlowDefinitionKind::kAssignment});FlowLiveness live{};live.live_definitions={1};
+  const std::vector<FlowValueEquation> equations{UnknownFlowValue{},FlowPrimitiveReference{{2}},FlowBindingValue{{1}},FlowChoiceValue{{0},{1},{2}}};
+  const std::vector<FlowDefinitionValue> values{FlowExpressionValue{{3}}};
+  const auto result=std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,values,equations,primitives,texts));
+  Check(!result.values[0]&&!result.values[1]);
+  const std::vector<std::optional<ExprId>> wrong_replacements(1);
+  Check(std::get<TreeStructureError>(AnalyzeFlowConstants(flow,live,values,
+      FlowValueEquations{equations,wrong_replacements,{}},primitives,texts))==TreeStructureError::kOwnership);
+  std::cout<<"independent expression equations "<<cases<<'\n';
+}
+int main(){ExpressionConstants();ConstantEquations();SourceScopeOracle();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

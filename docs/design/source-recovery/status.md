@@ -24,6 +24,62 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则229，正常值依赖闭包与后代不可变准备共享
+
+- 旧后序事实在producer变为常量后仍不能闭合consumer的条件正常结果。
+  form81红测28.20秒失败：`current=false; scratch=current?seed():42`
+  仍保留scratch。共同source adapter现一次发布typed primitive/read/
+  forwarded-result/conditional/logical方程，稀疏单调worklist联合求解
+  绑定与表达式。复制专用Kosaraju及“表达式必须先在后序中变为已知”
+  的限制退出，没有增加整函数pass轮次或组合形状匹配。未知运算、
+  update、未grounded来源及可观察/入口值仍为unknown。
+- 基础方程跨pass不可变，当前方程view借用已提交的replacement，仅
+  快照B个binding值。绑定读取直接用binding节点，终端primitive/
+  unknown不分配可变节点，但全部操作数含义保持；payload借用到
+  同步分析结束，发布值拥有副本。ExpressionFacts消费同一typed
+  方程与共同truth/nullish语义，未追加AST。Constants只提交读取，
+  dead-definition/initialization/binding删除独立；版本整体失效、
+  提交中禁分析及Constants→清理→Aliases→存储后清理→最终语法
+  顺序保持。仅值依赖收敛，不宣称全局pass固定点或per-read SSA。
+- 初次聚焦3/3在71.37秒通过（2,136完整源码、427,200独立比较、
+  79错误变体），实际record却在8383拒绝。内部定位RecordProgram
+  resource，非语义失败。先移除每revision重复方程数组、压缩终端/
+  binding节点与current projection复制；仍触及原预算。保留所有
+  中间诊断/失败，未增加预算、输入count阈值或资源失败回退。
+- 逐pass分配比较HEAD adapter（同一新solver复制兼容入口）证明
+  record的pass提交/顺序不变。浪费来自类命名为后代准备后丢弃
+  SourceVariables，成员打印再执行相同pass。现ClassNames持有
+  已计费的后代不可变结果，按确切tree身份索引；成员打印同步借用
+  这些计划及同一外部context的命名事实。借用不跨tree/context
+  变化；原global/module/capture目标和结构检查保留。该供应路径
+  的重复pass退出，static fields的独立准备仍是开销缺口。
+- 最终实现前的6项聚焦45.09秒全通过，构建12.35秒；包含正常
+  值/声明源码、直接及借用方程、类名/访问器源码与计划move/身份
+  所有权。864独立truth/selection组合分别验证直接和借用表示，
+  原32,768复制小图对照保留。新增unknown predicate、成功update
+  反例、效果组合及0/1/200/201/400/800依赖链，两种初始化编码、
+  arena反排、精确/不足byte/work预算保持。最后外部context身份
+  核对随最终59项重建/验证，以下只记录实际最终结果。
+- 最终29目标构建77.92秒成功；fresh 59/59相关回归
+  344.83秒全部通过，构建+导出+测试425.30秒。最后
+  context身份核对及864直接/借用方程、32,768复制小图再次通过；
+  声明源码2,136份/427,200独立比较/79变体，初始化2,004份/
+  482,752比较/346变体，死定义586份/14,488比较/61变体。既定
+  循环/异常/闭包、partial、命名/类、可选链/空值及actual record
+  回归全部保持通过。日志在build/stage-one/value-dependency-
+  verification，final-{build,tests,detail}.log、final-result.json。
+  本次中途29目标83.50秒成功、验证主动停止的日志保留为intermediate，
+  不混入最终通过证据；所有临时诊断已从生产代码移除。
+- fresh固定pasteboard导出到build/stage-one/value-dependency-final-
+  rule229：19records、10完整/0部分/9无module，10源码语法通过，
+  与规则228源码逐字节一致，contract为language_numeric_constructors_v1。
+  最终导出2.55秒；输入SHA-256前后记录在final-result.json，样本身份
+  保持854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e。
+  原预算保持。不是新增真实record覆盖、paired corpus/platform或
+  全过程1G RSS证明。原IR/SSA对应、完整activation/capture/finally、
+  per-read精化和全局pass依赖收敛仍开放；统一变量里程碑/结构gate/
+  阶段一Goal未完成。全量suite/广语料/RSS/DFX/benchmarks仍暂停。
+
 ### 2026-10-08：规则228，原始值身份与表达式发生点分离
 
 - 退休规则227的“已知undefined无原literal节点不能替换”表示缺口。
