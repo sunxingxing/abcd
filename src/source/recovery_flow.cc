@@ -30,6 +30,7 @@ class FlowBuilder {
         statements_(&memory_), expressions_(&memory_), exits_(&memory_), tasks_(&memory_), seen_(&memory_), reads_(&memory_), read_states_(&memory_), initializers_(&memory_), result_(std::move(storage)) {
     events_=std::move(result_.events);events_.clear();edges_=std::move(result_.edges);edges_.clear();
     definitions_=std::move(result_.definitions);definitions_.clear();references_=std::move(result_.references);references_.clear();
+    names_=std::move(result_.names);names_.clear();
     discarded_=std::move(result_.discarded);discarded_.clear();
   }
   RecoveryFlow Run() {
@@ -66,7 +67,7 @@ class FlowBuilder {
     result.entry=entry_;result.terminal=terminal_;
     const auto copy=[&](auto& destination,const auto& source){Resize(destination,source.size());std::copy(source.begin(),source.end(),destination.begin());};
     result.events=std::move(events_);result.edges=std::move(edges_);
-    result.definitions=std::move(definitions_);result.references=std::move(references_);
+    result.definitions=std::move(definitions_);result.references=std::move(references_);result.names=std::move(names_);
     result.discarded=std::move(discarded_);
     copy(result.statements,statements_);copy(result.expressions,expressions_);
     Resize(result.bindings,tree_.symbols.size());
@@ -187,6 +188,8 @@ class FlowBuilder {
         Reference(effect,Resolve(read->symbol),FlowReferenceKind::kRead,at.id,FlowExceptionContext{context.thrown,context.finalizer},context.owner);
       }
     }
+    if(const auto* name=std::get_if<GlobalNameExpr>(&node))
+      Append(names_,{effect,name->name,at.id,context.owner});
     if(const auto* assignment=std::get_if<AssignmentExpr>(&node)) {
       if(const auto* target=std::get_if<SymbolTarget>(&assignment->target)) {
         const auto copied=Read(assignment->value);
@@ -300,6 +303,7 @@ class FlowBuilder {
   std::pmr::vector<std::optional<StmtId>> initializers_;
   std::vector<DiscardedEvaluation> discarded_;
   std::vector<FlowReference> references_;
+  std::vector<FlowNameReference> names_;
   Point entry_{},terminal_{},dispatch_{};
   RecoveryFlow result_;
 };

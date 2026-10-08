@@ -24,6 +24,33 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则217，显式全局名字贯通快照与目的解析
+
+- RecoveryFlow.names新增typed名字读取事实：NameId、发生点、原始
+  ExprId、当前owner。跟随替换/转发上下文，细化保持，复用容量清空。
+  全局名字不再被当作不可分析的整环境依赖；闭包/类/隐式helper等缺口
+  继续保留，不放宽V1可观察激活资源边界。
+- ForwardSnapshots按当前producer owner收集目的名字查询；同一
+  TreeScopeCheck索引与scope遍历算法同时支持SymbolId和NameId查询。
+  真正的局部遮蔽（含TDZ）拒绝，无关flag不阻止；效果、异常路由、
+  双向执行次数证明保持，无样本、同块、邻接或opcode序列新增条件。
+- 新增无关绑定下!!Math和可观察全局getter组合的正例；原!!Math
+  遇到同名局部遮蔽的反例保持。重复getter读取的错误源码必须被发现。
+  各form覆盖0/1/200/201/400/800节点和反向statement arena。
+  旧实现form40失败8.65秒，red-tests.log；相关3/3通过20.96秒，
+  504份生成源码/19,212行为/50错误变体，focused-detail.log。
+  共同流补测原/移动owner、细化保持及容量复用清空名字事实。
+- 最终28个既定目标构建通过，56/56定向回归通过539.42秒；证据在
+  build/stage-one/free-name-flow-verification/final-{build,tests,detail}.log。
+  变量恢复2,004份源码/482,752行为/342变体，存储257份源码/
+  38,804行为/15变体，快照504份源码/19,212行为/50变体，包含
+  Home/PageA实际record独立对照。最终共同流测试包含名字归属与清空补测。
+- fresh ABC-only导出build/stage-one/free-name-flow-rule217：19 records，
+  10 complete / 0 partial / 9 noModule，10份语法通过，源码相对规则216
+  逐字节一致，输入SHA256不变，export-check.json记录结果。本次新增
+  通用恢复正例不等于新增实际record完成覆盖；阶段一Goal active，
+  完整corpus/RSS/基准及调度器保持暂停。
+
 ### 2026-10-08：规则216，存储分析消费细化后图的初始化顺序
 
 - 定位到同一投影内部的两阶段事实混用：引导初始化支配针对保守图，

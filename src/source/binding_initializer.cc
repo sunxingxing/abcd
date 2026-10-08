@@ -666,6 +666,19 @@ class Initializers {
       queries.resize(size);owners.resize(size);
       const auto resolved=ResolveTreeReferences(tree_,queries,budget_);
       for(std::size_t i=0;i<size;++i){budget_.Step();if(!resolved[i])blocked[owners[i]]=1;}
+      std::vector<TreeScopedName> names;std::vector<std::size_t> name_owners;
+      budget_.Array(names,flow.names.size());budget_.Array(name_owners,flow.names.size());size=0;
+      for(const auto& reference:flow.names) {
+        budget_.Step();if(!reference.owner)continue;
+        const auto candidate=candidates[reference.owner->value];if(!candidate)continue;
+        const auto destination=*proposed[*candidate].destination;
+        names[size]={reference.name,statement_scopes_[destination.value]};name_owners[size++]=*candidate;
+      }
+      names.resize(size);name_owners.resize(size);
+      if(!names.empty()) {
+        const auto resolved_names=ResolveTreeNames(tree_,names,budget_);
+        for(std::size_t i=0;i<size;++i){budget_.Step();if(!resolved_names[i])blocked[name_owners[i]]=1;}
+      }
     }
     // Value availability, motion and lexical proofs all observe the same
     // projection. Apply only after all proposals are complete; later passes

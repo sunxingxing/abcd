@@ -43,6 +43,7 @@ class TreeScopeCheck {
   [[nodiscard]] bool Resolves(SymbolId symbol);
   void EnclosingReference(std::u16string_view name, const ModuleSymbol* module = nullptr);
   void FreeReference(std::u16string_view name);
+  [[nodiscard]] bool ResolvesFree(NameId name);
   void Declare(SymbolId symbol, ScopeId scope, bool initializer);
   void CatchParameter(SymbolId symbol, ScopeId scope);
   void Finish();
@@ -62,11 +63,14 @@ class TreeScopeCheck {
 };
 
 struct TreeScopedReference { SymbolId symbol; ScopeId scope; };
+struct TreeScopedName { NameId name; ScopeId scope; };
 // Resolve a batch through the same spelling/activation model as structural
 // checking. Indexed scope/query adjacency avoids an ancestor walk per read.
 // The caller supplies a checked tree and the actual occurrence's lexical scope.
 [[nodiscard]] std::vector<std::uint8_t> ResolveTreeReferences(
     const FunctionTree&, std::span<const TreeScopedReference>, TreeCheckBudget&);
+[[nodiscard]] std::vector<std::uint8_t> ResolveTreeNames(
+    const FunctionTree&, std::span<const TreeScopedName>, TreeCheckBudget&);
 
 // Canonical origin arenas own contiguous part ranges, referencing only earlier
 // origins. Sharing uses origin IDs, never overlapping part-list storage.

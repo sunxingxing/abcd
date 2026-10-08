@@ -44,6 +44,14 @@ struct FlowReference {
   // The source expression identity alone cannot locate a moved evaluation.
   std::optional<StmtId> owner;
 };
+// Free lexical names are observations, not bindings with local definitions.
+// Their original expression and current owner are distinct after forwarding.
+struct FlowNameReference {
+  FlowPoint point;
+  NameId name;
+  ExprId site;
+  std::optional<StmtId> owner;
+};
 struct BindingInitializer;
 struct FlowDefinition {
   FlowPoint point;
@@ -97,6 +105,7 @@ struct RecoveryFlow {
   std::vector<FlowEdge> edges;
   std::vector<FlowDefinition> definitions;
   std::vector<FlowReference> references;
+  std::vector<FlowNameReference> names;
   std::vector<DiscardedEvaluation> discarded;
   std::vector<FlowPoint> statements, expressions;
   // Current expression occurrences, including replacements. Unmodeled signature

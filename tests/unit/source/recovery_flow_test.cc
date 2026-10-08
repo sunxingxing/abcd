@@ -369,6 +369,20 @@ void SourceEvents() {
     Check(reference.owner==StmtId{6});++forwarded;
   }
   Check(forwarded==1);omitted[3]=0;replacements[5].reset();
+  // Explicit free names retain their identity and follow the current owner,
+  // independently of local binding references and reusable graph capacity.
+  tree.names.push_back(u"free");tree.expressions[0].expression=GlobalNameExpr{{3}};
+  auto named=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,{aliases,literals,replacements,omitted,evaluations,normal}));
+  Check(named.names.size()==1&&named.names[0].name==NameId{3}&&named.names[0].site==ExprId{0}&&named.names[0].owner==StmtId{3});
+  omitted[3]=1;replacements[5]=ExprId{0};
+  const auto moved_name=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,{aliases,literals,replacements,omitted,evaluations,normal}));
+  Check(moved_name.names.size()==1&&moved_name.names[0].owner==StmtId{6}&&moved_name.names[0].site==ExprId{0});
+  Check(std::holds_alternative<FlowRefinement>(RefineRecoveryFlowEffects(named,tree,evaluations,normal)));
+  Check(named.names.size()==1&&named.names[0].owner==StmtId{3});
+  omitted[3]=0;replacements[5].reset();tree.expressions[0].expression=SymbolExpr{{0}};tree.names.pop_back();
+  const auto cleared=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,{aliases,literals,replacements,omitted,evaluations,normal},{},std::move(named)));
+  Check(cleared.names.empty());
+
   std::optional<FlowPoint> read,convert,write;
   for(const auto& definition:flow.definitions) {
     parameters+=definition.kind==FlowDefinitionKind::kParameter;

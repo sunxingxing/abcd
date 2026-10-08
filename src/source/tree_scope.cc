@@ -224,6 +224,10 @@ void TreeScopeCheck::EnclosingReference(std::u16string_view name, const ModuleSy
 void TreeScopeCheck::FreeReference(std::u16string_view name) {
   RequireTree(!ActiveBinding(name), TreeStructureError::kGlobalShadowed);
 }
+bool TreeScopeCheck::ResolvesFree(NameId name) {
+  RequireTree(name.value<tree_.names.size(),Error::kRange);
+  return !ActiveBinding(tree_.names[name.value]);
+}
 void TreeScopeCheck::CatchParameter(SymbolId symbol, ScopeId scope) {
   RequireTree(symbol.value < tree_.symbols.size(), Error::kRange);
   RequireTree(tree_.symbols[symbol.value].scope == scope &&
@@ -237,8 +241,10 @@ void TreeScopeCheck::Finish() {
   for (const auto scope : entered_) { budget_.Step(); RequireTree(scope, Error::kScope); }
   for (const auto active : active_) { budget_.Step(); RequireTree(!active, Error::kScope); }
 }
-std::vector<std::uint8_t> ResolveTreeReferences(const FunctionTree& tree,
-    std::span<const TreeScopedReference> references, TreeCheckBudget& budget) {
+namespace {
+template<class Reference,class Resolve>
+std::vector<std::uint8_t> ResolveScopes(const FunctionTree& tree,
+    std::span<const Reference> references, TreeCheckBudget& budget,Resolve resolve) {
   TreeScopeCheck scopes(tree,budget);
   std::vector<std::uint8_t> resolved;
   std::vector<std::optional<ScopeId>> heads,next;
@@ -267,7 +273,7 @@ std::vector<std::uint8_t> ResolveTreeReferences(const FunctionTree& tree,
       if(!visit.entered) {
         scopes.Enter(visit.scope);visit.entered=true;visit.child=heads[visit.scope.value];
         for(auto query=queries[visit.scope.value];query;query=following[*query]) {
-          budget.Step();resolved[*query]=scopes.Resolves(references[*query].symbol);
+          budget.Step();resolved[*query]=resolve(scopes,references[*query]);
         }
       }
       if(const auto child=visit.child) {
@@ -277,5 +283,14 @@ std::vector<std::uint8_t> ResolveTreeReferences(const FunctionTree& tree,
     }
   }
   return resolved;
+}
+}
+std::vector<std::uint8_t> ResolveTreeReferences(const FunctionTree& tree,
+    std::span<const TreeScopedReference> references,TreeCheckBudget& budget) {
+  return ResolveScopes(tree,references,budget,[](auto& scopes,const auto& reference){return scopes.Resolves(reference.symbol);});
+}
+std::vector<std::uint8_t> ResolveTreeNames(const FunctionTree& tree,
+    std::span<const TreeScopedName> references,TreeCheckBudget& budget) {
+  return ResolveScopes(tree,references,budget,[](auto& scopes,const auto& reference){return scopes.ResolvesFree(reference.name);});
 }
 }  // namespace abcd::source

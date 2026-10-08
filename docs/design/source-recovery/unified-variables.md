@@ -980,3 +980,27 @@ The old bootstrap result is destroyed before later passes, rather than retained
 beside the exact graph result. Existing allocation/work accounting applies.
 The positive ExprId transport contract across commits is unchanged. Further
 iterated effect precision and full binding lifecycle remain separate gaps.
+
+
+## Explicit free-name references (rules217, 2026-10-08)
+
+RecoveryFlow.names records GlobalNameExpr observations with typed NameId,
+FlowPoint, original ExprId and current statement owner. Construction follows the
+same replacement and operand context as binding references; effect refinement
+keeps these occurrences, and buffer reuse clears prior identities. They are
+lexical name observations, not local bindings with definitions or storage.
+
+IntrinsicLexicalDependency now treats an explicit GlobalNameExpr as a modeled
+reference. ForwardSnapshots groups free-name queries by current producer owner
+and checks the actual destination scope before commit. ResolveTreeNames reuses
+the same indexed scope traversal and active spelling model as ResolveTreeReferences.
+A local declaration shadows a free name even before initialization; an unrelated
+binding does not. Getter/read effects, exception route and exactly-once motion
+are still proved independently. Name availability alone cannot elide evaluation.
+
+The additional producer/name scan is O(S+G); scope resolution uses indexed scope
+adjacency and one traversal for the name batch, O(B log B+S+G log B), plus spelling
+comparison costs. There is no per-name ancestor or per-candidate expression walk.
+Closures, classes and implicit helper names retain their enclosing-environment
+summary until their dependencies enter this shared model. V1 observable activation
+resources keep the existing motion boundary. Full binding lifecycle remains open.
