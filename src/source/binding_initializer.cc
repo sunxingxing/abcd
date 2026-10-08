@@ -818,7 +818,8 @@ class Initializers {
       std::span<const std::optional<ExprId>> replacements,
       std::span<const std::optional<ExpressionTransport>> transports,
       std::span<const std::uint8_t> omitted,RecoveryFlow storage={},
-      std::span<const std::optional<SymbolId>> transported_reads={}) const {
+      std::span<const std::optional<SymbolId>> transported_reads={},
+      std::span<const std::optional<SymbolId>> normal_bindings={}) const {
     RequireAnalysis();
     std::vector<std::uint8_t> private_bindings;
     std::vector<SourceBindingScope> source_bindings;
@@ -841,7 +842,7 @@ class Initializers {
     const LegacyFlowProjection projection{plan_.aliases,plan_.literals,replacements,
         omitted,expressions.evaluations,expressions.normal_stores,plan_.statements,private_bindings,
         plan_.storage,plan_.undefined_stores,plan_.declaration_values,plan_.declaration_completions,
-        {source_regions_,source_occurrences_,source_bindings,source_shadows_,unique_spellings_,spellings_,name_spellings_},plan_.read_literals,transports,transported_reads,plan_.read_bindings,stable_entries_};
+        {source_regions_,source_occurrences_,source_bindings,source_shadows_,unique_spellings_,spellings_,name_spellings_},plan_.read_literals,transports,transported_reads,plan_.read_bindings,stable_entries_,normal_bindings};
     auto built=BuildRecoveryFlow(tree_,projection,budget_.Remaining(),std::move(storage));
     if(const auto* error=std::get_if<TreeStructureError>(&built))throw *error;
     auto flow=std::get<RecoveryFlow>(std::move(built));
@@ -855,7 +856,9 @@ class Initializers {
     // this conservative graph proves facts before effect summaries are refined.
     // Unmodeled signature-program occurrences receive no body-entry proof.
     const auto build=[&](const ExpressionFacts& expressions) {
-      return BuildProjectedFlow(expressions,plan_.replacements,plan_.transports,plan_.omitted,std::move(flow_storage_));
+      // CurrentFacts owns these exact-revision results. Hypothetical motion
+      // projections do not reuse them before their own value analysis exists.
+      return BuildProjectedFlow(expressions,plan_.replacements,plan_.transports,plan_.omitted,std::move(flow_storage_),{},expressions.bindings);
     };
     if(initialized_) {
       if(!facts.expressions)facts.expressions=ComputeExpressions(*initialized_);

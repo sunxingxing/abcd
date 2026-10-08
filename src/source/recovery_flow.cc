@@ -37,7 +37,10 @@ class FlowBuilder {
   RecoveryFlow Run() {
     RequireTree(projection_.stable_entries.empty()||projection_.stable_entries.size()==tree_.symbols.size(),Error::kOwnership);
     RequireTree(projection_.read_bindings.empty()||projection_.read_bindings.size()==tree_.symbols.size(),Error::kOwnership);
-    ProjectedReads();
+    RequireTree(projection_.normal_bindings.empty()||projection_.normal_bindings.size()==tree_.expressions.size(),Error::kOwnership);
+    // Current production flow consumes shared normal-result facts. Unproved
+    // trial/legacy projections retain only the direct-read fallback.
+    if(projection_.normal_bindings.empty())ProjectedReads();
     initializers_.resize(tree_.expressions.size());
     for (std::size_t i=0;i<projection_.initializers.size();++i) {
       budget_.Step();
@@ -208,7 +211,12 @@ class FlowBuilder {
     const auto target=BindingProjection{projection_.aliases,projection_.storage,projection_.read_bindings}.Read(symbol);
     RequireTree(target.value<tree_.symbols.size(),Error::kBinding);return target;
   }
-  std::optional<SymbolId> Read(ExprId id) const {return reads_[id.value];}
+  std::optional<SymbolId> CopyValue(ExprId id) const {
+    if(projection_.normal_bindings.empty())return reads_[id.value];
+    const auto result=projection_.normal_bindings[id.value];
+    if(result)RequireTree(result->value<tree_.symbols.size(),Error::kBinding);
+    return result;
+  }
   Point Expr(ExprId id,Context context){tasks_.push_back(Expression{id,context});return expressions_[id.value];}
   Point Stmt(StmtId id,Context context){tasks_.push_back(Statement{id,context});return statements_[id.value];}
   void Abrupt(Point point,Point target,const Context& context,FlowCompletion completion) {
@@ -256,7 +264,7 @@ class FlowBuilder {
       Append(names_,{effect,name->name,at.id,context.owner});
     if(const auto* assignment=std::get_if<AssignmentExpr>(&node)) {
       if(const auto* target=std::get_if<SymbolTarget>(&assignment->target)) {
-        const auto copied=Read(assignment->value);
+        const auto copied=CopyValue(assignment->value);
         // A native source declaration initializes a binding at this commit;
         // dead-value elimination must not erase the lexical initialization.
         const auto declaration=initializers_[at.id.value];
@@ -338,7 +346,7 @@ class FlowBuilder {
             // consumes the RHS value. Only a later store-elision pass may
             // turn that operand into a discarded value.
             evaluation.value_use=FlowValueUse::kObserved;
-            const auto commit=Define(*value->target,FlowDefinitionKind::kAssignment,Read(value->value),
+            const auto commit=Define(*value->target,FlowDefinitionKind::kAssignment,CopyValue(value->value),
                 value->value,at.id,{},FlowWriteEffect::kInert,id,
                 FlowExceptionContext{context.thrown,context.finalizer},context.owner);
             evaluation.next=commit;Link(commit,context.next);
@@ -373,7 +381,7 @@ class FlowBuilder {
           evaluation.discarded=id;
         }
         auto commit=Define(node.symbol,node.initializer?FlowDefinitionKind::kInitializer:FlowDefinitionKind::kUndefined,
-            node.initializer?Read(*node.initializer):std::nullopt,node.initializer,at.id,{},
+            node.initializer?CopyValue(*node.initializer):std::nullopt,node.initializer,at.id,{},
             private_binding?FlowWriteEffect::kInert:FlowWriteEffect::kObservable,id,FlowExceptionContext{context.thrown,context.finalizer},context.owner);
         if(node.initializer&&!private_binding)events_[commit.value].effect=ExpressionEvaluation::kRequired;
         Link(commit,context.next);

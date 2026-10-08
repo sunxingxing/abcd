@@ -888,6 +888,22 @@ void SourceEvents() {
   for(const auto& reference:flow.references)
     Check(reference.owner==owners[std::get<ExprId>(reference.site).value]);
   for(std::size_t i=0;i<owners.size();++i)Check(flow.expression_owners[i]==owners[i]);
+  // Supplied normal values are authoritative even when unknown. The coarse
+  // direct-read fallback must not infer a second answer for the same projection.
+  for(bool known:{false,true}){
+    auto projected=projection;std::vector<std::optional<SymbolId>> results(tree.expressions.size());
+    if(known)results={SymbolId{0},SymbolId{1},SymbolId{1},SymbolId{2},SymbolId{2},SymbolId{2}};
+    projected.normal_bindings=results;const auto normal=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,projected));
+    for(const auto& definition:normal.definitions){
+      if(known&&definition.kind==FlowDefinitionKind::kAssignment)Check(definition.copy==SymbolId{definition.binding.value==1?0U:1U});
+      else Check(!definition.copy);}
+    Check(std::holds_alternative<RecoveryFlow>(BuildRecoveryFlow(tree,projected,{normal.allocated_bytes,normal.work})));
+    Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,projected,{normal.allocated_bytes-1,normal.work}))==TreeStructureError::kResourceLimit);
+    Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,projected,{normal.allocated_bytes,normal.work-1}))==TreeStructureError::kWorkLimit);
+    results[0]=SymbolId{static_cast<std::uint32_t>(tree.symbols.size())};Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,projected))==TreeStructureError::kBinding);
+    projected.normal_bindings=std::span<const std::optional<SymbolId>>{results}.first(results.size()-1);
+    Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,projected))==TreeStructureError::kOwnership);
+  }
   // ReadValues follows the actual slot; assignment/update still use that
   // slot, including both update halves. Old immutable facts stay unchanged.
   for(bool alias:{false,true})for(bool shared:{false,true})for(bool value:{false,true}){

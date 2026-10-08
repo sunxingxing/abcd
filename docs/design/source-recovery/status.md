@@ -24,6 +24,48 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-09：规则244，共同正常结果值贯通复制干涉分析
+
+- CurrentFlow提供共同ExpressionFacts的exact-revision正常结果绑定，
+  赋值/初始化成功定义直接消费该copy事实；它表示完成时的当前绑定值，
+  不等于旧快照或全定义不可变入口值。当前生产路径不再构造/扫描
+  direct-SymbolExpr复制索引；显式unknown不会再次按语法猜测。
+- 原稀疏affinity/interference消费新事实，活跃冲突、初始化/异常完成、
+  scope/name/capture/lifetime仍独立证明；效果与死写清理由独立pass决定。
+  借用结果向量只活到build结束，flow发布自有typed IDs；CurrentFacts
+  版本及first-commit聚合失效保持。试算移动图不借用当前正常值精度，
+  其原直接读fallback暂作为能力缺口保留，无新增producer形状分支。
+- 有效旧实现RED exit134（533）。新12种源码组合覆盖逗号/效果、条件/
+  OR/AND/nullish、prefix、被观察的嵌套赋值与词法初始化；不同活跃值、
+  混合分支、postfix旧值和catch前undefined反例保留必要存储。无观察
+  内层写入会被早期清理合法移除，不为测试阻止；postfix反例提前观察
+  区别。native夹具未归属声明的结构失败只计setup，已修正。
+  反向arena、0/1/200/201/400/800、独立执行/变体、明确known/unknown、
+  非法span/ID和exact/short预算覆盖；聚焦3/3在29.04秒通过。
+  聚焦修正5/5在49.10秒通过；最终29目标构建19.99秒、exact原59/59
+  选定回归444.14秒通过，combined-coverage.json核对名称集合一致。
+  首次完整构建169.60秒后57/59，两个失败均为旧ScopedCopies全无alias
+  断言：共享存储后的独立清理删除了惰性同值条件，其condition引用消失，
+  upstream参数alias合法。改按实际保留引用验证，加入mixed-arm对照
+  要求条件和两个TDZ-shadowed副本保留；独立truthy/falsy Cartesian
+  执行和错误变体通过，无生产限制补丁。首次失败证据保留。
+- 存储857源码/124340行为比较/76错误变体；定义消除588/14796/65，
+  声明2568/513600/100、初始化2004/482752/368、循环276/13976/68；
+  共同值/名字/retirement/初始化subset/调度反例与真实callback/rich-text/
+  progressbar/EntryAbility回归通过。首轮仅既有literal_plan.cc kNoop
+  switch警告，最终增量构建无新警告。
+- fresh固定pasteboard最终导出1.32秒，19records、10完整/0部分/9无module，
+  10语法检查通过；源码字节等于243，原language_numeric_constructors_v1
+  与预算保持。输入SHA256前后均为
+  854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e。
+  重跑曾因复用首轮目标目录被kDestination拒绝，改用新的final目录后
+  完成；未计为源码验收。最终证据在build/stage-one/normal-copy-verification，
+  导出在build/stage-one/normal-copy-rule244-final。
+- 共同生产的复合正常值复制关系已接入；试算值精度、任意local/catch/
+  capture符号值、完整activation/finally、原IR/SSA及共同增量全局收敛
+  仍开放。统一变量里程碑/结构gate/阶段一Goal active；全suite/广语料/
+  RSS/benchmarks/DFX/代理暂停保持。
+
 ### 2026-10-09：规则243，读取值与存储投影按共同阶段组合
 
 - ReadValues提案按当前flow的最终slot索引，原符号先查read_bindings

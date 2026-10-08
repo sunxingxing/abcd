@@ -74,14 +74,19 @@ for(const row of rows) {
   }
   if(row.scoped_copy) {
     const actual=Function('return ('+row.source+');')();
-    const expected=Function('produce','flag','"use strict";let state=produce,second=flag;{let selected=state?second:second;let produce=1;let flag=2;return selected;}');
-    const run=(fn,flag)=>{const result=observe(fn,flag,-1);if(result.thrown instanceof ReferenceError)result.thrown='tdz';return result;};
-    for(const flag of [undefined,null,false,true,-0,7n,Symbol.for('scope'),values[0]]) {
-      assert.deepEqual(run(actual,flag),run(expected,flag));++executions;
+    const alternative=row.agreeing?'second':'state';
+    const expected=Function('produce','flag','"use strict";let state=produce,second=flag;{let selected=state?second:'+alternative+';let produce=1;let flag=2;return selected;}');
+    const run=(fn,produce,flag)=>{
+      let value,thrown;try{value=fn(produce,flag);}catch(error){thrown=error instanceof ReferenceError?'tdz':error;}
+      return {value,thrown};
+    };
+    const inputs=[undefined,null,false,true,0,-0,7n,Symbol.for('scope'),values[0]];
+    for(const produce of inputs)for(const flag of inputs) {
+      assert.deepEqual(run(actual,produce,flag),run(expected,produce,flag));++executions;
     }
-    for(const expression of ['produce?second:second','state?flag:flag']) {
+    for(const expression of ['produce?second:'+alternative,'state?flag:'+alternative]) {
       const bad=Function('produce','flag','"use strict";let state=produce,second=flag;{let selected='+expression+';let produce=1;let flag=2;return selected;}');
-      assert.notDeepEqual(run(bad,values[0]),run(expected,values[0]));++mutations;
+      assert.notDeepEqual(run(bad,values[0],values[1]),run(expected,values[0],values[1]));++mutations;
     }
     continue;
   }

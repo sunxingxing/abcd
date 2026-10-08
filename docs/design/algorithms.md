@@ -3496,3 +3496,30 @@ lexical-shadow counterexamples with reversed arenas and 0/1/200/201/400/800 bloc
 composition. Eight common-flow alias/storage/read projections separately verify
 actual read identity, assignment targets and both update halves, immutable earlier
 results and exact/short budgets. Full process RSS remains paused.
+
+
+### Shared normal-result copy affinities (2026-10-09, rules244)
+
+Provenance: reuse the local normal-completion result analysis and existing sparse
+copy-affinity/interference solver; no dependency or licensing change. A copy fact
+states source binding value equals destination value at its successful definition.
+A postfix snapshot cannot supply this fact; prefix/assignment/selection results can
+only when the shared producer proves current binding identity. Affinity is not
+permission to share storage, move effects, suppress exceptions or remove writes.
+
+For E expressions and D definitions, the producer already visits E once per current
+projection. The adapter borrows its vector and performs O(1) typed lookup for each
+value definition, O(D) incremental work and no added buffer. Current production
+avoids the old E-sized direct-copy normalization buffers/work. An additional known
+copy can increase the existing affinity/output dimension A; sparse liveness facts
+L and traversed predecessor edges P drive conflict output K. Existing O(D+L+A log(A+1)
++P+K log(K+1)) interference work and O(A+K) solver storage remain charged honestly.
+Dense conflict output is still bounded by the existing semantic resource budget;
+no per-variable graph walk, pairwise cutoff or input-sized pass retry is added.
+
+Current revision ownership and first-commit aggregate invalidation precede any
+consumer mutation. Hypothetical projections retain a documented coarse fallback
+without borrowing current normal-result precision. Tests cover composed source
+values, live/exception/postfix counterexamples, native initialization, 200/201/
+geometric/reversed layouts, explicit unknown facts, malformed span/ID boundaries
+and exact/short budgets. No new whole-process RSS claim is made.

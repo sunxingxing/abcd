@@ -2779,3 +2779,32 @@ namespace allocation and global convergence remain documented implementation gap
 - The existing ReadValues stage excludes later alias/storage/motion mutation;
   first-commit fact invalidation and owned proposals are unchanged. Arbitrary
   symbolic local/catch/capture values and common global convergence remain gaps.
+
+
+### rules244: current normal-result facts replace direct-read copy inference
+
+- Current production RecoveryFlow consumes the shared exact-revision normal binding
+  results. Assignment/initializer copy facts no longer require direct SymbolExpr
+  RHS or a normalized chain ending at that shape. Explicit unknown results stay
+  unknown; a second syntax inference does not authorize a copy.
+- Interference still requires equal current source value at a successful commit,
+  then all live conflicts, initialization/completion/name/lifetime proofs. Prefix
+  results can agree with current storage; postfix old values cannot be guessed as
+  the current source. Shared storage does not remove effectful RHS evaluation.
+- Hypothetical motion and legacy projections without normal facts retain the old
+  direct-read fallback only as a documented precision gap. They do not consume a
+  current vector belonging to another projection. Extend this with common trial
+  value analysis, never more local producer matches.
+- Positive source composition, distinct live values/mixed roots/postfix/catch
+  negatives, native declarations, independent execution/mutants and 200/201/
+  geometric/reversed/exact-short tests verify semantics and output quality.
+  Dead inner writes are not artificially retained for a test; observation makes
+  the retained-write copy contract concrete. Overall migration stays incomplete.
+
+- One existing scoped-copy assertion required all original upstream aliases to stay
+  absent. Composed affinity legitimately retires an inert condition, removing the
+  reference that originally demanded one private copy. Updated checks preserve the
+  actually retained TDZ-shadowed value binding and add a mixed-arm counterexample
+  retaining both upstream copies. Independent truthy/falsy value identity/error
+  comparisons and shadow mutants cover both arena orders; no production restriction
+  was added to preserve the old representation.

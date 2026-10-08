@@ -522,3 +522,14 @@ revision invalidation and owned proposals remain prerequisites. New layout varia
 permit a different legal representative spelling while preserving required variable
 count and independent behavior. No new sample/shape condition or pass retry. Final
 selected verification is recorded in status.md; the overall milestone stays open.
+
+
+rules244 implemented substep: CurrentFlow consumes shared normal-completion binding
+results for successful assignment/initializer copy facts. Direct-read indexing exits
+the ordinary production path; explicit unknown results do not trigger a fallback
+shape inference. Interference/coalescing and independent effect/definition cleanup
+remain separate. CurrentFacts owns exact revisions; trial projections omit current
+normal-value precision. Source sequence/choice/logical/prefix/assignment/native-init
+composition and live/postfix/exception counterexamples verify the migration. Final
+selected evidence is recorded in status.md. Trial value precision, originalIR/SSA,
+full activation/capture/finally and global convergence remain open.

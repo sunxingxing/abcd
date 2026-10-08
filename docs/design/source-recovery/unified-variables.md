@@ -2202,3 +2202,56 @@ copy as an interference affinity. Effectful first-group definitions plus direct
 second-group copies exercise the existing sharing contract here. Extending affinity
 precision must consume common normal-value equations; it must not add Sequence or
 other producer-shape matches to storage recovery.
+
+
+### Normal completion values supply copy affinities (2026-10-09, rules244)
+
+The existing shared ExpressionFacts binding result means the expression's normal
+completion equals the current value of that binding. This is distinct from the
+flat solver's all-definition immutable entry value, and from an earlier snapshot.
+Sequence, conditional/logical selection, successful writable assignment and prefix
+update already produce these facts once; postfix snapshots and differing branches
+remain unknown. Consumers must not infer another result from producer syntax.
+
+CurrentFlow now supplies that exact-revision result vector to the source event
+adapter. Successful assignment and declaration definitions consume the proved
+binding as their copy value. Interference can propose the usual affinity and
+exclude only the equal current source at that commit; all other live conflicts,
+initialization, exception, scope, capture and name obligations remain independent.
+The ordinary production path no longer builds/scans the direct-SymbolExpr copy
+index or guesses affinity from that shape. An explicitly supplied unknown result
+stays unknown, without a second direct-read answer.
+
+The vector is borrowed only while building; RecoveryFlow publishes owned typed IDs.
+CurrentFacts checks its projection revision and aggregate first-commit invalidation
+retires expression/flow/liveness together. Bootstrap initialization changes effect
+precision, not these normal-result identities. Hypothetical snapshot-motion flows
+omit the current vector until their own normal-value analysis exists; their legacy
+coarse direct-read fallback follows the actual proposed replacements and does not
+claim composed-value precision. This is a documented capability gap, not an output
+admission rule or a language invariant. No new analysis cache/pass round is added.
+
+Independent source cases recover shared mutable storage through effectful sequences,
+choice/logical composition, prefix results, retained nested assignments and lexical
+initialization. Live distinct values, mixed branch results, postfix snapshots and
+catch observations before successful writes keep separate slots. A dead nested
+assignment may be removed by earlier cleanup, so its normal-result copy also
+legitimately disappears; tests observe the assignment's value when testing that
+retained-copy obligation. A postfix counterexample observes both bindings before
+another update can coincidentally make their values agree. Tests use independent
+execution/mutants, reversed arenas, block splitting and exact/short budgets.
+
+Original IR/SSA and arbitrary local symbolic entry values, complete activation/
+capture/finally and common global convergence remain open. Trial value precision
+must be extended through the same model, without Sequence or other shape matches.
+
+Retirement consumes the current post-cleanup references. In the scoped-copy
+regression, agreeing arms allow storage sharing; independent cleanup then removes
+the inert discarded choice and its condition reference. Its upstream private copy
+can legally alias the parameter despite an original inner shadow. A retained value
+reference still requires its distinct unshadowed binding. A mixed-arm control keeps
+the condition and both upstream copies; independent truthy/falsy execution and TDZ
+mutants verify these obligations. The old all-alias-none assertion described the
+original syntax rather than the final semantic projection; no production admission
+was tightened to retain it. Each consumer obtains fresh revision-owned facts after
+cleanup, without conflating storage sharing with effect or binding removal.

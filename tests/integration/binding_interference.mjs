@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import {isDeepStrictEqual} from 'node:util';
 import {parseJavaScript} from './class_reference.mjs';
 const records=execFileSync(process.argv[2],['--emit'],{encoding:'utf8',timeout:60_000,maxBuffer:16*1024*1024}).trim().split('\n').map(JSON.parse);
-assert.equal(records.length,684);
+assert.equal(records.length,828);
 // Oracles describe the original storage semantics, never enter the engine.
 const references=[
   function(input,report,flag){let current=input,scratch=current;++scratch;current=scratch;return current;},
@@ -65,6 +65,18 @@ references.push(function(input,report,flag){let current,scratch;if(flag)current=
 references.push(function(input,report,flag){let current,scratch;if(flag)current=input;else current=input;report(current);if(flag)scratch=current;else scratch=current;input=flag;return scratch;});
 references.push(function(input,report,flag){let current,scratch;if(flag)current=input;else current=input;report(current);if(flag)scratch=current;else scratch=current;{let input=flag;report(input);return scratch;}});
 references.push(function(input,report,flag){let current,scratch;if(flag)current=(report(flag),input);else current=(report(flag),input);report(current);if(flag)scratch=current;else scratch=current;return scratch;});
+references.push(function(input,report,flag){let current=input,scratch;++current;scratch=(report(flag),current);++scratch;return scratch;});
+references.push(function(input,report,flag){let current=input,scratch;++current;scratch=flag?(report(flag),current):(report(flag),current);++scratch;return scratch;});
+references.push(function(input,report,flag){let current=input,scratch;++current;scratch=current||(report(flag),current);++scratch;return scratch;});
+references.push(function(input,report,flag){let current=input,scratch;++current;scratch=current&&(report(flag),current);++scratch;return scratch;});
+references.push(function(input,report,flag){let current=input,scratch;++current;scratch=current??(report(flag),current);++scratch;return scratch;});
+references.push(function(input,report,flag){let current=input,scratch;++current;scratch=++current;++scratch;return scratch;});
+references.push(function(input,report,flag){let current=input,scratch;++current;scratch=(current=input);report(current);++scratch;return scratch;});
+references.push(function(input,report,flag){let current=input,scratch;++current;scratch=(report(flag),current);++scratch;report(current);return scratch;});
+references.push(function(input,report,flag){let current=input,scratch;++current;scratch=flag?(report(flag),current):input;++scratch;report(current);return scratch;});
+references.push(function(input,report,flag){let current=input,scratch;++current;scratch=current++;report(current);++scratch;report(current);return scratch;});
+references.push(function(input,report,flag){let current=input,scratch;++current;try{scratch=(report(flag),current);++scratch;}catch(error){report(current,scratch);return current;}return scratch;});
+references.push(function(input,report,flag){let current=input;++current;let scratch=(report(flag),current);++scratch;return scratch;});
 const primitives=[undefined,null,false,true,0,-0,1,-2,0n,2n,NaN,Infinity,'','7','bad',Symbol('input')];
 let cases=0,mutations=0;
 async function observe(fn,form,index,mode,flag,request){
@@ -96,7 +108,10 @@ for(const record of records){
       for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)pending.push(child);}else if(value?.type)pending.push(value);}}
     assert.ok(native,'native loop declaration');
   }
-  if(record.form>=44){
+  if(record.form>=57){
+    const slots=inspect.body[0].expression.body.body.filter(node=>node.type==='VariableDeclaration').flatMap(node=>node.declarations.map(item=>item.id.name));
+    assert.equal(slots.length,record.merged?1:2);assert.ok(slots.every(name=>['current','scratch'].includes(name)));
+  }else if(record.form>=44){
     const slots=inspect.body[0].expression.body.body.filter(node=>node.type==='VariableDeclaration').flatMap(node=>node.declarations.map(item=>item.id.name));
     assert.deepEqual(slots,record.merged?[]:[record.form>=53?(record.slot===3?'current':'scratch'):'scratch']);
     const work=[inspect];let returned;while(work.length){const node=work.pop();if(node.type==='ReturnStatement')returned=node;for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)work.push(child);}else if(value?.type)work.push(value);}}
@@ -173,12 +188,22 @@ for(const record of records){
     const differences=[];for(const flag of [false,true])differences.push(!isDeepStrictEqual(await observe(wrong,record.form,6,'normal',flag,'next'),await observe(references[record.form],record.form,6,'normal',flag,'next')));
     assert.ok(differences.some(Boolean),`stable value mutation ${record.form}`);++mutations;
   }
-  if(record.count===0&&!record.reverse&&record.form>=53){
+  if(record.count===0&&!record.reverse&&record.form>=53&&record.form<=56){
     const work=[inspect];let returned,call;while(work.length){const node=work.pop();if(node.type==='ReturnStatement')returned=node;if(node.type==='CallExpression')call=node;for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)work.push(child);}else if(value?.type)work.push(value);}}
     const source=record.form===56?record.source.slice(0,call.start)+'void 0'+record.source.slice(call.end):record.source.slice(0,returned.argument.start)+(record.form===53?'flag':'input')+record.source.slice(returned.argument.end);
     const wrong=vm.runInNewContext(source);const differences=[];
     for(const flag of [false,true])differences.push(!isDeepStrictEqual(await observe(wrong,record.form,6,'normal',flag,'next'),await observe(references[record.form],record.form,6,'normal',flag,'next')));
     assert.ok(differences.some(Boolean),`shared stable value mutation ${record.form}`);++mutations;
+  }
+  if(record.count===0&&!record.reverse&&record.form>=57){
+    const work=[inspect];let returned;while(work.length){const node=work.pop();if(node.type==='ReturnStatement')returned=node;for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)work.push(child);}else if(value?.type)work.push(value);}}
+    let changed=record.source;
+    if(record.merged)changed=changed.slice(0,returned.argument.start)+'flag'+changed.slice(returned.argument.end);
+    else{const edits=[],nodes=[inspect];while(nodes.length){const node=nodes.pop();if(node.type==='Identifier'&&node.name==='scratch')edits.push(node);for(const [key,value]of Object.entries(node)){if(node.type==='VariableDeclarator'&&key==='id')continue;if(Array.isArray(value)){for(const child of value)if(child?.type)nodes.push(child);}else if(value?.type)nodes.push(value);}}
+      for(const edit of edits.sort((a,b)=>b.start-a.start))changed=changed.slice(0,edit.start)+'current'+changed.slice(edit.end);}
+    parseJavaScript(changed);const wrong=vm.runInNewContext(changed),differences=[];
+    for(const flag of [false,true])for(const mode of ['normal','report-throw'])differences.push(!isDeepStrictEqual(await observe(wrong,record.form,6,mode,flag,'next'),await observe(references[record.form],record.form,6,mode,flag,'next')));
+    assert.ok(differences.some(Boolean),`normal copy mutation ${record.form}`);++mutations;
   }
   if(record.count===0&&!record.reverse&&record.form===40) {
     const wrong=function(input,report,flag){let current;report(current=input);++current;let scratch=current;++scratch;let bridge=flag;report(bridge);{let current=flag;++current;++current;report(current);report(current);report(scratch);}current=scratch;return current;};

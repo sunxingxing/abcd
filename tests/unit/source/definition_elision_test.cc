@@ -336,7 +336,7 @@ std::uint64_t DiscardedResults(unsigned form,unsigned count,bool reverse,bool em
   return plan.work;
 }
 
-void ScopedCopies(bool reverse,bool emit) {
+void ScopedCopies(bool reverse,bool emit,bool agreeing) {
   Fixture f;auto& tree=f.tree;const auto scope=f.Scope();
   tree.names.push_back(u"second");tree.names.push_back(u"selected");
   tree.symbols.push_back({{1},{4},BindingKind::kCompilerTemporary,DeclarationKind::kLet,NameEvidence::kSynthesized,TemporaryReason::kMultipleUses});
@@ -344,7 +344,7 @@ void ScopedCopies(bool reverse,bool emit) {
   tree.symbols.push_back({scope,{0},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
   tree.symbols.push_back({scope,{1},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
   const auto store=[&](unsigned target,ExprId rhs){return f.Stmt(ExpressionStmt{f.Expr(AssignmentExpr{SymbolTarget{{target}},rhs})});};
-  const auto choice=f.Expr(ConditionalExpr{f.Read(2),f.Read(3),f.Read(3)});
+  const auto choice=f.Expr(ConditionalExpr{f.Read(2),f.Read(3),f.Read(agreeing?3:2)});
   const auto inner=f.Block({f.Stmt(DeclarationStmt{{4},{}}),store(4,choice),
       f.Stmt(DeclarationStmt{{5},f.Expr(TreeLiteral{IntegerLiteral{1}})}),
       f.Stmt(DeclarationStmt{{6},f.Expr(TreeLiteral{IntegerLiteral{2}})}),f.Stmt(ReturnStmt{f.Read(4)})},scope);
@@ -353,11 +353,20 @@ void ScopedCopies(bool reverse,bool emit) {
   test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
   const auto plan=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
-  // Keeping selected also keeps BOTH upstream copies: their original parameter
-  // names resolve to TDZ shadows at the conditional's retained occurrence.
-  for(unsigned i:{2U,3U,4U})test::Check(!plan.aliases[i]);
+  // Name retirement follows retained occurrences, not the original choice.
+  // Agreeing values share storage; independent cleanup retires the inert
+  // condition, so its upstream parameter can now lose the private copy.
+  // Mixed values retain that condition and BOTH TDZ-shadowed upstream copies.
+  test::Check(!plan.aliases[3]&&!plan.aliases[4]);
+  if(agreeing) {
+    test::Check(plan.Storage(SymbolId{4})==SymbolId{3});
+    test::Check(plan.aliases[2]==SymbolId{0});
+  } else {
+    test::Check(!plan.aliases[2]);
+    test::Check(plan.Storage(SymbolId{4})==SymbolId{4});
+  }
   std::ostringstream out;test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,out)));
-  if(emit)std::cout<<nlohmann::json{{"source",out.str()},{"scoped_copy",true}}<<'\n';
+  if(emit)std::cout<<nlohmann::json{{"source",out.str()},{"scoped_copy",true},{"agreeing",agreeing}}<<'\n';
 }
 
 void BindingObligations() {
@@ -472,7 +481,7 @@ int main(int argc,char**) {
       if(count>=400)test::Check(work<previous*3);previous=work;
     }
   }
-  for(bool reverse:{false,true})ScopedCopies(reverse,argc>1);
+  for(bool reverse:{false,true})for(bool agreeing:{false,true})ScopedCopies(reverse,argc>1,agreeing);
   for(unsigned form=0;form<8;++form)for(bool reverse:{false,true}) {
     std::uint64_t previous=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U}) {

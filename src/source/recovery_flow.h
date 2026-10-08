@@ -174,6 +174,9 @@ struct LegacyFlowProjection {
   // ReadValues addresses canonical slots after alias/storage publication.
   std::span<const std::optional<SymbolId>> read_bindings;
   std::span<const std::uint8_t> stable_entries;
+  // Exact-projection normal completion values: result equals the current
+  // binding at commit, not an earlier snapshot. Empty for unproved trials.
+  std::span<const std::optional<SymbolId>> normal_bindings;
   [[nodiscard]] std::optional<PrimitiveId> ReadLiteral(ExprId expression,SymbolId binding) const {
     if(!read_literals.empty()&&read_literals[expression.value])return read_literals[expression.value];
     return literals[binding.value];
