@@ -1423,3 +1423,72 @@ signed zero, TDZ and live undefined in catch. Independent execution compares
 values, receiver, effects and exceptions; initializer removal/early-write mutants
 must differ. Budget tests cover exact and short byte/work limits. Status.md owns
 measured runs and the fresh fixed-record export; no full corpus/RSS claim follows.
+
+
+## Definition value joins and separate pass responsibilities (rules227)
+
+FlowConstants is a revision-owned analysis of the same RecoveryFlow and
+FlowLiveness as the existing consumers. The source semantic adapter supplies a
+typed equation per successful definition: primitive value, copied binding value,
+or unknown. Initializer/assignment completion consumes the shared expression
+facts; lexical undefined is itself a definition. Update is an unknown numeric
+computation, not a transparent copy of its normal-result binding identity.
+Primitive equality is shared with expression joins and preserves representation,
+number bits and canonical UTF-16 identity.
+
+The analysis proves a storage-value invariant across all retained successful
+noninitial writes. Only lexical undefined initialization proved dead by common
+liveness is excluded. Other retained writes participate even if their ordinary
+read demand is empty: prefix update can supply a consumed normal result without
+another GetValue of the updated binding. Observable/exposed cells and live entry
+values remain unknown. This deliberately conservative invariant does not prune
+executable edges or infer per-read SSA constants. An unrelated retained dead
+assignment can reduce precision; independently scheduled dead-definition cleanup
+precedes the analysis rather than being embedded in it.
+
+Sparse copy dependencies are condensed by iterative Kosaraju. Components join
+primitive seeds and propagate unknown/conflicting values in topological order.
+A copy cycle needs a grounded primitive; a seed downstream cannot erase an
+ungrounded or unknown dependency. The analysis never examines control-flow
+shape, block count, source names, instruction sequences or printed expressions.
+Known abstract undefined with no original literal anchor remains a value fact;
+the current read plan cannot print a new literal node. This is a documented
+representation gap, not a language restriction. Equal anchored inputs can
+provide an existing original literal without replaying evaluation.
+
+Constants now commits only owned read-substitution proposals. Its single-write
+and single-definition coverage admission, private copy queue, selected-write
+removal and declaration retirement have exited this decision path. Aliases still
+uses single-definition coverage for dynamic-value identity; that is a different
+obligation and is not removed by constant-value agreement. DeadDefinitions,
+InitialValues and Bindings independently decide writes, required evaluations,
+lexical completion and binding retention from fresh facts. The pass sequence
+runs early identity/effect/dead-definition cleanup and initialization/binding
+recovery, then Constants. A Constants commit schedules identity/effect and
+demand/initialization/binding cleanup before Aliases. Subsequent alias/identity/
+effect commits schedule fresh cleanup; if none committed, the already-clean
+projection does not repeat the same analysis. Without a Constants commit, the
+existing cleanup before snapshots is retained. Snapshots/storage and final cleanup still
+precede loop/declaration grammar. These dependencies use RunPass revision changes,
+not manually reported pass booleans. No new pass kind, fixed-round sweep or
+arbitrary reordering is introduced. The fixed record exposed the redundant
+same-projection analysis through budget exhaustion; dependency scheduling removes
+that repeated allocation without changing the budget or weakening proofs.
+
+FlowConstants belongs to the whole ProjectionFacts aggregate. BeginCommit clears
+that aggregate before the first mutation, advances the revision and forbids
+analysis during the commit phase. The pass holds IDs in an owned proposal before
+committing; later consumers request new facts. Changes are derived from revision
+movement, not manually reported flags. This extends existing invalidation and
+transaction discipline to the new analysis instead of requiring another manual
+reset at each call site. Full dependency-driven convergence, original IR/SSA
+correspondence and complete lifetime/unwind/capture reconstruction remain open.
+
+The small independent oracle walks backwards origins and separately requires
+each contributing origin to be grounded; it uses neither SCCs nor component
+ordering. All three-binding edge/seed combinations are checked, with reversed
+identities. End-to-end fixtures add equal/different branch definitions, zero or
+multiple loop iterations, self copies, a grounded mutual-copy cycle and a prefix
+update counterexample. Native declaration and empty-declaration/store encodings,
+arena reversal, semantic execution, 200/201/geometric sizes and exact/short
+budgets remain required. Status.md records actual verification and record scope.

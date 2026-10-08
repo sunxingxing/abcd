@@ -106,6 +106,8 @@ struct Fixture {
           case 59:value=effect(integer(42),2);break;
           case 60:case 61:case 62:case 63:case 64:case 65:value=Read(0);break;
           case 66:case 67:value=Expr(TreeLiteral{BooleanLiteral{form==66}});break;
+          case 68:case 69:case 70:case 71:case 72:value=integer(42);break;
+          case 73:value=integer(0);break;
           default:test::Check(false);
         }
       }
@@ -117,6 +119,19 @@ struct Fixture {
         body.push_back(Stmt(TryStmt{Block({Write(4,value)},protected_scope),
             CatchClause{{6},Block({Stmt(ExpressionStmt{Call(2,4)})},catch_scope)},{}}));
       } else initialize(4,value);
+      if(form==68||form==69) {
+        const ScopeId a{static_cast<std::uint32_t>(tree.scopes.size())};tree.scopes.push_back({ScopeKind::kBlock,ScopeId{1}});
+        const ScopeId b{static_cast<std::uint32_t>(tree.scopes.size())};tree.scopes.push_back({ScopeKind::kBlock,ScopeId{1}});
+        body.push_back(Stmt(IfStmt{Read(3),Block({Write(4,Expr(TreeLiteral{IntegerLiteral{42}}))},a),
+            Block({Write(4,Expr(TreeLiteral{IntegerLiteral{form==68?42:43}}))},b)}));
+      }
+      const auto carried=[&](std::vector<StmtId> writes) {
+        const auto loop=Stmt(LoopStmt{});const ScopeId scope{static_cast<std::uint32_t>(tree.scopes.size())};tree.scopes.push_back({ScopeKind::kBlock,ScopeId{1}});
+        const ScopeId exit{static_cast<std::uint32_t>(tree.scopes.size())};tree.scopes.push_back({ScopeKind::kBlock,scope});
+        writes.insert(writes.begin(),Stmt(IfStmt{Expr(UnaryExpr{TreeUnary::kNot,Call(3)}),Block({Stmt(BreakStmt{loop,{}})},exit),{}}));
+        std::get<LoopStmt>(tree.statements[loop.value].statement).body=Block(writes,scope);body.push_back(loop);
+      };
+      if(form==70||form==71)carried({Write(4,form==70?Read(4):Expr(TreeLiteral{IntegerLiteral{43}}))});
       if(form==7)body.push_back(Stmt(ExpressionStmt{Call(2,5)}));
       if(form==15)body.push_back(Write(5,Call(1)));
       if(form==3||form==4||form==11||form==12)body.push_back(Stmt(DeclarationStmt{{5},{}}));
@@ -127,13 +142,16 @@ struct Fixture {
           // These cases consume a literal fact committed by an earlier pass.
           const auto primitive=[&](TreeLiteral literal){return Expr(std::move(literal));};
           const auto effect=[&](ExprId value){return Expr(SequenceExpr{Call(2,0),value});};
-          if(form==60||form==65)copy=Expr(ConditionalExpr{effect(primitive(BooleanLiteral{form==60})),Read(4),Call(1)});
+          if(form==73)copy=Expr(UpdateExpr{{4},UpdateDirection::kIncrement,UpdateResult::kPrefix});
+          else if(form>=68)copy=Read(4);
+          else if(form==60||form==65)copy=Expr(ConditionalExpr{effect(primitive(BooleanLiteral{form==60})),Read(4),Call(1)});
           else if(form==66||form==67)copy=Expr(ConditionalExpr{effect(Read(4)),Read(0),Call(1)});
           else copy=Expr(LogicalExpr{form==61?TreeLogical::kOr:form==63?TreeLogical::kNullish:TreeLogical::kAnd,
               effect(form==63?primitive(NullLiteral{}):form==64?primitive(BooleanLiteral{false}):primitive(IntegerLiteral{form==61?0:42})),Read(4)});
         }
         initialize(5,copy);
       }
+      if(form==72)carried({Write(4,Read(5)),Write(5,Read(4))});
     }
     for(unsigned i=0;i<count;++i) {
       const ScopeId scope{static_cast<std::uint32_t>(tree.scopes.size())};
@@ -228,6 +246,7 @@ struct Fixture {
         else if constexpr(std::is_same_v<T,SequenceExpr>){syntax.left=expression(syntax.left);syntax.right=expression(syntax.right);}
         else if constexpr(std::is_same_v<T,ConditionalExpr>){syntax.condition=expression(syntax.condition);syntax.consequent=expression(syntax.consequent);syntax.alternate=expression(syntax.alternate);}
         else if constexpr(std::is_same_v<T,LogicalExpr>){syntax.left=expression(syntax.left);syntax.right=expression(syntax.right);}
+        else if constexpr(std::is_same_v<T,UnaryExpr>)syntax.operand=expression(syntax.operand);
         else if constexpr(std::is_same_v<T,AssignmentExpr>){syntax.value=expression(syntax.value);
           if(auto* target=std::get_if<SymbolTarget>(&syntax.target))target->symbol=symbol(target->symbol);
           else std::get<MemberTarget>(syntax.target).base=expression(std::get<MemberTarget>(syntax.target).base);}
@@ -250,7 +269,7 @@ struct Fixture {
 };
 }
 int main(int argc,char**) {
-  for(unsigned form=0;form<68;++form)for(bool native:{false,true}) {
+  for(unsigned form=0;form<74;++form)for(bool native:{false,true}) {
     std::uint64_t small=0,large=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}) {
       Fixture fixture(form,count,native,reverse);std::ostringstream output;
@@ -292,7 +311,7 @@ int main(int argc,char**) {
         test::Check(projected);
       }
       if(form<=3||form==16||form==17||form==21||form==28||(form>=29&&form!=30&&form!=33&&form!=39&&form!=41&&form<58)||
-          (form>=60&&form!=65&&form!=67)) {
+          (form>=60&&form<68&&form!=65&&form!=67)||form==68||form==70||form==72) {
         if(output.str().find("current")!=std::string::npos||output.str().find("scratch")!=std::string::npos)
           std::cerr<<"form="<<form<<" native="<<native<<" reverse="<<reverse<<'\n'<<output.str()<<'\n';
         test::Check(output.str().find("current")==std::string::npos&&output.str().find("scratch")==std::string::npos);

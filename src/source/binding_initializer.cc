@@ -4,6 +4,8 @@
 #include "definition_elision.h"
 #include "flow_dominance.h"
 #include "flow_definitions.h"
+#include "flow_constants.h"
+#include "primitive_value.h"
 #include "flow_motion.h"
 #include "class_tree.h"
 #include "expression_children.h"
@@ -209,23 +211,37 @@ class Initializers {
     RunPass(Pass::kStoredResults);
     RunPass(Pass::kInertOperands);
     RunPass(Pass::kInertStatements);
-    RunPass(Pass::kConstants);
+    const bool constants_changed=RunPass(Pass::kConstants);
     // Copy stability consumes the retained writes, after identity-store
     // cleanup. BeginCommit invalidates the flow before alias coverage reads it;
     // RHS effects remain at their original occurrence.
     RunPass(Pass::kStoredResults);
-    RunPass(Pass::kAliases);
-    RunPass(Pass::kStoredResults);
-    RunPass(Pass::kInertOperands);
-    RunPass(Pass::kInertStatements);
+    // Constants now changes reads only. Retire newly dead writes and their
+    // independent initialization/binding obligations before dynamic-copy
+    // coverage, just as that consumer previously saw a write-cleaned plan.
+    if(constants_changed) {
+      RunPass(Pass::kInertOperands);
+      RunPass(Pass::kInertStatements);
+      RunPass(Pass::kDeadDefinitions);
+      RunPass(Pass::kInitialValues);
+      RunPass(Pass::kBindings);
+    }
+    bool value_cleanup_needed=RunPass(Pass::kAliases);
+    value_cleanup_needed |= RunPass(Pass::kStoredResults);
+    value_cleanup_needed |= RunPass(Pass::kInertOperands);
+    value_cleanup_needed |= RunPass(Pass::kInertStatements);
     // Dead reads/stores must leave the projection before snapshot coverage is
     // analyzed. Forwarding preserves every RHS occurrence and removes its own
     // single read/store/declaration; it cannot make another definition dead.
     // Coalesce builds fresh ownership facts after that commit. Demand cleanup
-    // is scheduled again only by later storage/declaration changes.
-    RunPass(Pass::kDeadDefinitions);
-    RunPass(Pass::kInitialValues);
-    RunPass(Pass::kBindings);
+    // is scheduled again only by a producer commit. If Constants already
+    // scheduled it and these passes made no change, do not repeat the analysis
+    // on the same projection; RunPass derives this dependency from revisions.
+    if(!constants_changed || value_cleanup_needed) {
+      RunPass(Pass::kDeadDefinitions);
+      RunPass(Pass::kInitialValues);
+      RunPass(Pass::kBindings);
+    }
     RunPass(Pass::kSnapshots);
     bool cleanup_needed=RunPass(Pass::kStorage);
     cleanup_needed |= RunPass(Pass::kStoredResults);
@@ -287,10 +303,11 @@ class Initializers {
     std::optional<RecoveryFlow> flow;
     std::optional<FlowLiveness> liveness;
     std::optional<FlowDemand> demand;
+    std::optional<FlowConstants> constants;
   };
   ProjectionFacts& CurrentFacts() const {
     RequireAnalysis();
-    if(!facts_)facts_.emplace(ProjectionFacts{projection_revision_,{},{},{},{},{}});
+    if(!facts_)facts_.emplace(ProjectionFacts{projection_revision_,{},{},{},{},{},{}});
     RequireTree(facts_->revision.value==projection_revision_.value,TreeStructureError::kOwnership);
     return *facts_;
   }
@@ -1109,19 +1126,13 @@ class Initializers {
       previous=id;
     }
   }
+  TreeLiteral LiteralValue(ExprId literal) const {
+    auto value=std::get<TreeLiteral>(tree_.expressions[literal.value].expression);
+    if(auto* text=std::get_if<TextId>(&value))*text=literal_texts_[text->value];
+    return value;
+  }
   bool SameLiteral(ExprId left,ExprId right) const {
-    const auto& a=std::get<TreeLiteral>(tree_.expressions[left.value].expression);
-    const auto& b=std::get<TreeLiteral>(tree_.expressions[right.value].expression);
-    // Preserve the profile's numeric encoding and all signed-zero/NaN bits.
-    // This is a value join, not JS equality (NaN is still the same result).
-    return std::visit([&](const auto& value) {
-      using T=std::decay_t<decltype(value)>;const auto* other=std::get_if<T>(&b);
-      if(!other)return false;
-      if constexpr(std::is_same_v<T,UndefinedLiteral>||std::is_same_v<T,NullLiteral>)return true;
-      else if constexpr(std::is_same_v<T,BooleanLiteral>||std::is_same_v<T,IntegerLiteral>)return value.value==other->value;
-      else if constexpr(std::is_same_v<T,NumberLiteral>)return value.bits==other->bits;
-      else {static_assert(std::is_same_v<T,TextId>);return literal_texts_[value.value]==literal_texts_[other->value];}
-    },a);
+    return SamePrimitiveValue(LiteralValue(left),LiteralValue(right));
   }
   bool LiteralTruth(ExprId literal) const {
     return std::visit([&](const auto& value) {
@@ -1397,52 +1408,52 @@ class Initializers {
     result.references=flow.references;
     return result;
   }
+  const FlowConstants& CurrentConstants() const {
+    auto& facts=CurrentFacts();
+    if(!facts.constants) {
+      const auto& flow=CurrentFlow();const auto& expressions=AnalyzeExpressions();
+      std::vector<FlowDefinitionValue> values;budget_.Array(values,flow.definitions.size());
+      for(std::size_t i=0;i<values.size();++i) {
+        budget_.Step();const auto& definition=flow.definitions[i];
+        switch(definition.kind) {
+          case FlowDefinitionKind::kUndefined:case FlowDefinitionKind::kUndefinedStore:
+            values[i]=FlowPrimitiveValue{UndefinedLiteral{},{}};break;
+          case FlowDefinitionKind::kAssignment:case FlowDefinitionKind::kInitializer:
+            if(definition.value) {
+              const auto value=*definition.value;
+              if(const auto literal=expressions.literals[value.value])values[i]=FlowPrimitiveValue{LiteralValue(*literal),literal};
+              else if(const auto source=expressions.bindings[value.value])values[i]=FlowBindingValue{*source};
+            }
+            break;
+          // Update computes a new numeric value; its stored-result identity
+          // is not a transparent self-copy equation. Entry/external values
+          // remain unknown until their independent semantics are modeled.
+          case FlowDefinitionKind::kUpdate:case FlowDefinitionKind::kParameter:
+          case FlowDefinitionKind::kCatch:case FlowDefinitionKind::kFunctionSelf:break;
+        }
+      }
+      auto analyzed=AnalyzeFlowConstants(flow,CurrentLiveness(),values,budget_.Remaining());
+      if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
+      facts.constants=std::get<FlowConstants>(std::move(analyzed));
+      budget_.Admit(facts.constants->allocated_bytes,1);budget_.Step(facts.constants->work);
+    }
+    return *facts.constants;
+  }
   void Constants() {
-    const auto eligible=[&](const BindingUses& use) {
-      return use.private_storage && use.declaration && !use.escaped;
-    };
     bool candidate=false;
-    for(const auto& use:uses_) {budget_.Step();candidate |= eligible(use);}
+    for(const auto& use:uses_){budget_.Step();candidate|=use.private_storage&&use.declaration&&!use.escaped;}
     if(!candidate)return;
-    const auto coverage=AnalyzeBindingReadCoverage();const auto& expressions=AnalyzeExpressions();
-    std::vector<std::optional<ExprId>> literals;
-    budget_.Array(literals,uses_.size());
-    // A primitive literal has the same value on every execution of its store.
-    // Shared coverage excludes reads of undefined or any other definition;
-    // unlike effectful copies this needs no dynamic occurrence identity.
-    // Propagate proposals once per dependency edge, then commit as a batch.
-    std::size_t ready = 0;
-    for (std::size_t i = 0; i < uses_.size(); ++i) {
-      budget_.Step();const auto& use = uses_[i];
-      if (!eligible(use) || coverage.writes[i]!=1 || !coverage.covered_writes[i]) continue;
-      const auto symbol = SymbolId{static_cast<std::uint32_t>(i)};
-      const auto& selected=*coverage.covered_writes[i];
-      // Coverage proves value availability, not successful PutValue. Retain
-      // throwing writes; lexical initialization is a distinct definition kind.
-      if(selected.kind==FlowDefinitionKind::kAssignment && selected.effect!=FlowWriteEffect::kInert)continue;
-      const auto value = selected.value;
-      if (const auto literal=expressions.literals[value.value]) {
-        literals[i] = literal;constant_queue_[ready++] = symbol;
-      } else if (const auto source=expressions.bindings[value.value]) {
-        constant_next_[i] = constant_heads_[source->value];constant_heads_[source->value] = symbol;
-      }
+    const auto& values=CurrentConstants();
+    std::vector<std::optional<ExprId>> proposed;budget_.Array(proposed,uses_.size());
+    for(std::size_t i=0;i<uses_.size();++i) {
+      budget_.Step();const auto& use=uses_[i];
+      if(use.private_storage&&use.declaration&&!use.escaped&&values.values[i])proposed[i]=values.values[i]->literal;
     }
-    for (std::size_t at = 0; at < ready; ++at) {
-      budget_.Step();const auto source = constant_queue_[at];
-      for (auto target = constant_heads_[source.value]; target; target = constant_next_[target->value]) {
-        budget_.Step();RequireTree(!literals[target->value] && ready < constant_queue_.size(),TreeStructureError::kOwnership);
-        literals[target->value] = literals[source.value];constant_queue_[ready++] = *target;
-      }
-    }
-    for (std::size_t i = 0; i < uses_.size(); ++i) {
-      budget_.Step();if (!literals[i]) continue;
-      BeginCommit();plan_.literals[i]=literals[i];
-      // Value substitution and write removal are separate from statement
-      // cleanup. Remove the selected current write, retaining its RHS at the
-      // original occurrence; the effect pass decides whether that is inert.
-      const auto& selected=*coverage.covered_writes[i];
-      RemoveCoveredWrite(selected,*uses_[i].declaration);
-      if(const auto& site=declaration_sites_[i])plan_.statements[site->statement.value].reset();
+    // Read substitution only. DeadDefinitions/InitialValues/Bindings decide
+    // writes, required evaluations and lexical completion on fresh facts.
+    for(std::size_t i=0;i<proposed.size();++i) {
+      budget_.Step();if(!proposed[i]||plan_.literals[i]==proposed[i])continue;
+      BeginCommit();plan_.literals[i]=proposed[i];
     }
   }
   void Aliases() {

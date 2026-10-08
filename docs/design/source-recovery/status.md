@@ -24,6 +24,61 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则227，多定义值合流与按提交版本调度清理
+
+- 新FlowConstants消费同一RecoveryFlow、活跃性和表达式正常结果，
+  以primitive/binding/unknown方程表示成功定义。迭代Kosaraju处理
+  稀疏复制依赖，合流所有保留写入的值；同值分支、自复制和有常量
+  来源的互复制循环可以消除机械临时。不同值、未知/无来源复制、
+  入口活跃值、可观察绑定保持未知。更新是未知的新数值计算，
+  不能把++x的stored binding误作旧值的自复制。仅共同活跃性证明
+  无读取的词法undefined初始定义可以排除；其他保留写入均参与，
+  即使普通GetValue无需求，其正常结果仍可能被消费。
+- Constants的单写入计数/唯一覆盖定义、本地复制队列以及选中写入
+  删除/声明退役退出决策路径。它只提交拥有的读取替换提案；独立
+  DeadDefinitions/InitialValues/Bindings决定写入、RHS效果、
+  正常/异常完成和绑定保留。动态值Aliases的唯一覆盖义务保持。
+  新分析随revision-owned ProjectionFacts整体在提交前失效；
+  提交中禁止分析，后序consumer请求新事实，未新增手工reset。
+- 明确Constants→清理→Aliases依赖。常量提交后先独立清理；
+  后续别名/身份/效果有提交才重跑清理。RunPass版本变化产生
+  change信息，已清理而未变化的版本不重复相同分析。最终循环/
+  声明语法仍位于存储和值/绑定清理之后，没有新增pass种类、
+  固定轮次或任意重排。不是全局依赖驱动收敛的完成声明。
+- 旧实现form68同值分支仍保留current/scratch，聚焦失败21.79秒。
+  初始新实现2/2源码/单元52.09秒通过；组合9项中8项通过、独立
+  oracle发现自身把无来源依赖忽略，补齐每个来源的grounding后
+  32,768小图对照4.76秒通过，未弱化生产算法。
+- 首次固定导出在17函数family目标验证耗尽原预算。停止中间59项
+  验证，定位并移除同版本重复需求清理；另将复制边容量从D收紧为
+  实际C、依赖/component身份使用共同32位强ID。预算不变，无
+  样本/大小/资源失败回退或丢弃语义。原实现/中间/最终的累计
+  分配诊断保存在本次目录，所有临时诊断已移除生产代码。
+- 干净实现3/3聚焦57.34秒通过：1,776份完整源码、355,200独立
+  执行比较、64错误变体；32,768方程小图独立对照。涵盖同值/
+  异值分支、零次/多次循环、自/互复制、前缀更新反例，保留原有
+  异常、TDZ、catch活跃undefined、setter及复合表达式组合。
+  两种初始化编码、arena反排、200/201/400/800及精确/不足byte
+  与work预算通过。dependency-check-{build,tests,detail}.log
+  位于build/stage-one/value-join-verification。
+- 最终29目标构建成功，59/59相关回归629.99秒全部通过，构建+
+  测试655.85秒。selection.json、final-result.json、final-{build,
+  tests}.log及LastTest.log保存在本次验证目录。共同值小图和声明
+  源码计数再次通过；既有statement-snapshot 540份/20,760行为/
+  60变体、stored-result 528份/18,192行为/14变体通过。变量、
+  循环、异常、命名、类、可选链/空值组合、partial与真实record
+  回归保持通过。Finish原空白格式恢复后另保留post-format构建
+  记录，无语义变更或额外重复行为测试。
+- 固定pasteboard导出至build/stage-one/value-join-rule227：
+  19 records，10完整/0部分/9无module，10源码语法通过，与规则226
+  源码逐字节相同。输入SHA-256前后均为
+  854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e。
+  导出3.10秒；record-{export.log,result.json,source.diff}在本次
+  验证目录。无新增真实record覆盖；不是paired corpus/platform
+  验收。完整生命期/capture/finally、原IR/SSA对应、per-read值精化、
+  全局依赖收敛及无原literal节点的undefined表示仍开放。全量suite、
+  广语料、RSS/DFX及benchmarks继续暂停，阶段一Goal保持active。
+
 ### 2026-10-08：规则226，共同正常结果事实恢复复合常量与复制
 
 - ComputeExpressions在同一只读后序入口发布primitive literal正常

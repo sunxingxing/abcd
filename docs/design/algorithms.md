@@ -3001,3 +3001,50 @@ selected/unknown branches, signed zero, NaN, TDZ and catch reads. Forward/revers
 text/arena IDs must retain recovery and behavior. A deleted-initializer or early
 write must change the independent observation. These are bounded semantic/cost
 checks; broad corpus, full-process RSS and benchmarks remain paused.
+
+
+### Primitive definition joins over copy components (rules227)
+
+AnalyzeFlowConstants implements the project-owned constant/unknown value join
+and iterative Kosaraju SCC condensation already used by parameter_origins.cc.
+The established SCC algorithm avoids per-binding walks and repeated convergence
+rounds; no external implementation or new dependency/license is introduced.
+Maintenance is isolated in flow_constants.cc; the checked source adapter supplies
+typed successful-definition equations from common expression facts. Prerequisites
+are one immutable RecoveryFlow/liveness revision, canonical primitive identities,
+private storage and absence of live entry demand. All retained noninitial writes
+participate, including updates whose normal result is used without a GetValue.
+Dead lexical undefined can be excluded only by shared liveness. Unknown writes,
+exposure, missing grounding or conflicting primitive values prevent substitution.
+Writes, effects, exception timing and lexical completion remain separate proofs.
+
+For B bindings, D definitions, C retained copy edges (C <= D) and L published
+live-in facts, graph construction, two iterative graph traversals, component
+joins, condensation propagation and publication take O(B+D+C+L) work and
+O(B+D+C) additional storage. Adjacency is indexed, stacks are iterative and all
+arrays/work are budgeted. Copy-edge capacity is exactly C, not D. Dependency and
+component IDs use the common flow strong 32-bit identity domain with a typed
+resource failure for an unrepresentable count, avoiding size_t-width adjacency
+slots. The existing flow/liveness cost remains fact-dependent;
+this bound does not claim a linear whole recovery pipeline or process RSS proof.
+Primitive comparison is O(1) after rules226 immutable-input UTF-16 interning.
+Constants replaces only reads; separately scheduled cleanup owns writes and
+bindings. A Constants commit schedules cleanup before Aliases. A subsequent
+alias/identity/effect commit requires fresh cleanup; no commit leaves the already
+clean projection intact rather than charging duplicate same-version analysis.
+RunPass revision movement drives these dependencies. The fresh fixed record
+checks the unchanged default allowance, not an inflated resource budget.
+No quadratic production fallback, new pass sweep or input-count cutoff.
+This invariant is less precise than per-read SCCP/executable-edge analysis, and
+known undefined lacking an original literal anchor cannot yet be printed.
+
+The independent slow test oracle enumerates 32,768 three-binding edge/seed cases,
+walks backwards origins and verifies every contributing origin has a primitive
+source. Its repeated graph walks are test-only and independent of SCC ordering.
+200/201/400/800 cycle cases exercise grounding, live initial undefined, exposed
+bindings, live entry demand, dead unknown updates and exact/short budgets.
+400/800 work must grow by less than threefold. Independent JS execution compares
+equal/different branch definitions, self/mutual copies, zero/multiple loop
+iterations and consumed prefix update, with reversed arenas and both declaration
+encodings. Semantic mutants must differ. Status.md owns measured times/counts;
+full suite, wider corpus, benchmarks and RSS remain paused.

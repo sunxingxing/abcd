@@ -2,6 +2,7 @@
 #include "../../../src/source/binding_interference.h"
 #include "../../../src/source/storage_coalescing.h"
 #include "../../../src/source/flow_definitions.h"
+#include "../../../src/source/flow_constants.h"
 #include "../../../src/source/definition_elision.h"
 #include "../../../src/source/flow_dominance.h"
 #include "../../../src/source/flow_motion.h"
@@ -844,4 +845,75 @@ void DeclarationValues() {
   }
   Check(checked);
 }
-int main(){SourceScopeOracle();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+void ConstantEquations() {
+  // Independent backwards origin closure, deliberately slow and test-only.
+  // It knows no SCC order and compares semantic integer seeds, not source IDs.
+  for(unsigned mask=0;mask<512;++mask)for(unsigned encoded=0;encoded<64;++encoded) {
+    RecoveryFlow flow{};flow.bindings.resize(3);FlowLiveness live{};
+    std::vector<FlowDefinitionValue> values;std::array<unsigned,3> seeds{};auto code=encoded;
+    const bool reverse=mask%2;const auto id=[&](unsigned i){return SymbolId{reverse?2-i:i};};
+    const auto add=[&](unsigned target,FlowDefinitionValue value) {
+      flow.definitions.push_back({{},id(target),FlowDefinitionKind::kAssignment});values.push_back(value);live.live_definitions.push_back(1);
+    };
+    for(unsigned i=0;i<3;++i) {
+      flow.bindings[i].kind=BindingKind::kCompilerTemporary;flow.bindings[i].exposure=FlowBindingExposure::kPrivate;
+      seeds[i]=code%4;code/=4;
+      if(seeds[i]==3)add(i,UnknownFlowValue{});
+      else if(seeds[i])add(i,FlowPrimitiveValue{IntegerLiteral{static_cast<std::int32_t>(seeds[i]-1)},ExprId{i}});
+    }
+    for(unsigned source=0;source<3;++source)for(unsigned target=0;target<3;++target)
+      if(mask&(1U<<(source*3+target)))add(target,FlowBindingValue{id(source)});
+    const auto result=std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,values));
+    std::array<bool,3> grounded{};
+    for(unsigned root=0;root<3;++root) {
+      std::array<bool,3> seen{};std::vector<unsigned> pending{root};seen[root]=true;
+      while(!pending.empty()) {
+        const auto at=pending.back();pending.pop_back();grounded[root]|=seeds[at]==1||seeds[at]==2;
+        for(unsigned source=0;source<3;++source)if((mask&(1U<<(source*3+at)))&&!seen[source]){seen[source]=true;pending.push_back(source);}
+      }
+    }
+    for(unsigned root=0;root<3;++root) {
+      std::array<bool,3> seen{};std::vector<unsigned> pending{root};seen[root]=true;
+      bool unknown=false;std::optional<unsigned> expected;
+      while(!pending.empty()) {
+        const auto at=pending.back();pending.pop_back();
+        if(seeds[at]==3||!grounded[at])unknown=true;
+        else if(seeds[at]){if(expected&&*expected!=seeds[at]-1)unknown=true;else expected=seeds[at]-1;}
+        for(unsigned source=0;source<3;++source)if((mask&(1U<<(source*3+at)))&&!seen[source]){seen[source]=true;pending.push_back(source);}
+      }
+      const auto& value=result.values[id(root).value];Check(bool(value)==(!unknown&&expected.has_value()));
+      if(value)Check(std::get<IntegerLiteral>(value->value).value==static_cast<std::int32_t>(*expected));
+    }
+  }
+  std::uint64_t small=0,large=0;
+  for(unsigned count:{200U,201U,400U,800U}) {
+    RecoveryFlow flow{};flow.bindings.resize(count);FlowLiveness live{};std::vector<FlowDefinitionValue> values;
+    const auto add=[&](unsigned target,FlowDefinitionKind kind,FlowDefinitionValue value,bool needed=true) {
+      flow.definitions.push_back({{1},{target},kind});values.push_back(value);live.live_definitions.push_back(needed);
+    };
+    for(unsigned i=0;i<count;++i) {
+      flow.bindings[i].kind=BindingKind::kCompilerTemporary;flow.bindings[i].exposure=FlowBindingExposure::kPrivate;
+      add(i,FlowDefinitionKind::kAssignment,FlowBindingValue{{(i+1)%count}});
+    }
+    add(0,FlowDefinitionKind::kInitializer,FlowPrimitiveValue{IntegerLiteral{42},ExprId{0}});
+    add(0,FlowDefinitionKind::kUndefined,FlowPrimitiveValue{UndefinedLiteral{},{}},false);
+    auto result=std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,values));
+    for(const auto& value:result.values)Check(value&&std::get<IntegerLiteral>(value->value).value==42);
+    if(count==400)small=result.work;if(count==800)large=result.work;
+    Check(std::holds_alternative<FlowConstants>(AnalyzeFlowConstants(flow,live,values,{result.allocated_bytes,result.work})));
+    Check(std::get<TreeStructureError>(AnalyzeFlowConstants(flow,live,values,{result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
+    Check(std::get<TreeStructureError>(AnalyzeFlowConstants(flow,live,values,{result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);
+    live.live_definitions.back()=1;
+    for(const auto& value:std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,values)).values)Check(!value);
+    live.live_definitions.back()=0;
+    flow.bindings[0].exposure=FlowBindingExposure::kObservable;
+    for(const auto& value:std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,values)).values)Check(!value);
+    flow.bindings[0].exposure=FlowBindingExposure::kPrivate;live.live_in.push_back({flow.entry,{0}});
+    for(const auto& value:std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,values)).values)Check(!value);
+    live.live_in.clear();add(0,FlowDefinitionKind::kUpdate,UnknownFlowValue{},false);
+    // An otherwise dead successful write still supplies normal-result values.
+    for(const auto& value:std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,values)).values)Check(!value);
+  }
+  Check(large<small*3);std::cout<<"independent constant equations 32768\n";
+}
+int main(){ConstantEquations();SourceScopeOracle();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
