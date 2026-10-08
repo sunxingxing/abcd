@@ -202,10 +202,10 @@ class Initializers {
     // proved on retained references. Observable reads and RHS effects remain.
     RunPass(Pass::kInertOperands);
     RunPass(Pass::kInertStatements);
-    // Remove dead value definitions before turning a store into a lexical
-    // initializer whose binding completion must subsequently be preserved.
+    // Remove dead value definitions before propagating their retained values.
+    // Declaration placement waits for the normalized read/producer projection;
+    // an early grammar decision would retain observations later made literal.
     DemandCleanup();
-    RunPass(Pass::kDeclarations);
     // Literal stability also depends on retained writes. Clear identity stores
     // before coverage, then clear new identities exposed by literal projection.
     RunPass(Pass::kStoredResults);
@@ -219,6 +219,10 @@ class Initializers {
     // discharge independent definition/initialization/binding obligations
     // before aliases consume retained producer coverage. The checkpoint is
     // revision-owned; no producer-specific change booleans control consumers.
+    EnsureDemandCleanup();
+    // Place initialization after value normalization, before producer coverage.
+    // Existing dominance/extent proofs consume the current retained projection.
+    RunPass(Pass::kDeclarations);
     EnsureDemandCleanup();
     RunPass(Pass::kAliases);
     RunPass(Pass::kStoredResults);
@@ -932,10 +936,24 @@ class Initializers {
       bindings[i].eligible=eligible(symbol);
       bindings[i].unique_spelling=spellings.UniqueSpelling(symbol);
       bindings[i].native_declaration=site&&plan_.statements[site->statement.value].has_value();
+      if(const auto* scope=std::get_if<ProjectedBindingScope>(&flow.bindings[i].scope))
+        bindings[i].narrowed_region=flow.source_regions[scope->region.value];
       if(const auto point=initialization_order.declarations[i]) {
         const auto position=initialization_order.order.tree.nodes[point->value].begin;
         if(position)bindings[i].initialization_order=position;
       }
+    }
+    // Representative choice consumes the same actual occurrence locations as
+    // the later lifetime proof. Aggregate once; do not walk a graph per slot.
+    for(const auto& reference:flow.references) {
+      budget_.Step();auto& binding=bindings[reference.binding.value];
+      const auto position=reference.owner?flow.source_occurrences[reference.owner->value]:std::nullopt;
+      if(!position){binding.unlocated_reference=true;continue;}
+      RequireTree(position->value<std::numeric_limits<std::size_t>::max(),TreeStructureError::kResourceLimit);
+      const SourceRegion region{*position,{position->value+1}};
+      if(binding.reference_region)binding.reference_region=SourceRegion{
+          std::min(binding.reference_region->first,region.first),std::max(binding.reference_region->last,region.last)};
+      else binding.reference_region=region;
     }
     auto coalesced=PlanStorageCoalescing(facts,bindings,budget_.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&coalesced))throw *error;

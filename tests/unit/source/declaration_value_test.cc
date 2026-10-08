@@ -17,6 +17,7 @@ namespace {
 // retain TDZ/const/source-cell obligations; layout is only a test perturbation.
 struct Fixture {
   FunctionTree tree{};
+  std::optional<StmtId> late_store;
   ExprId Expr(TreeExpression node) {
     ExprId id{static_cast<std::uint32_t>(tree.expressions.size())};
     tree.expressions.push_back({std::move(node),{0}});return id;
@@ -53,16 +54,40 @@ struct Fixture {
       tree.parameters.push_back({{i},{},false});
     }
     for(unsigned i=4;i<6;++i)tree.symbols.push_back({{1},{i},
-        form==12||form==96||(form==6&&i==5)?BindingKind::kLocal:BindingKind::kCompilerTemporary,
+        form==12||form==96||(form==105&&i==4)||(form==6&&i==5)?BindingKind::kLocal:BindingKind::kCompilerTemporary,
         form==6&&i==5?DeclarationKind::kConst:DeclarationKind::kLet,
-        NameEvidence::kSynthesized,form==12||form==96||(form==6&&i==5)?std::optional<TemporaryReason>{}:TemporaryReason::kMultipleUses});
+        NameEvidence::kSynthesized,form==12||form==96||(form==105&&i==4)||(form==6&&i==5)?std::optional<TemporaryReason>{}:TemporaryReason::kMultipleUses});
     std::vector<StmtId> body;
     const auto initialize=[&](unsigned binding,ExprId value) {
       if(native || tree.symbols[binding].declaration==DeclarationKind::kConst)
         body.push_back(Stmt(DeclarationStmt{{binding},value}));
       else {body.push_back(Stmt(DeclarationStmt{{binding},{}}));body.push_back(Write(binding,value));}
     };
-    if(form>=89) {
+    if(form>=100) {
+      const auto scope=[&](ScopeKind kind=ScopeKind::kBlock) {
+        const ScopeId id{static_cast<std::uint32_t>(tree.scopes.size())};tree.scopes.push_back({kind,ScopeId{1}});return id;
+      };
+      const auto report=[&]{return Stmt(ExpressionStmt{Call(2,4)});};
+      if(form==106)body.push_back(report()); // Moving a TDZ is never value cleanup.
+      auto initial=Expr(TreeLiteral{UndefinedLiteral{}});
+      if(form==101)initial=Expr(SequenceExpr{Call(2,0),initial});
+      initialize(4,initial);body.push_back(report());
+      late_store=Write(4,Call(1));
+      if(form==102)body.push_back(Stmt(IfStmt{Read(3),Block({*late_store,report()},scope()),
+          Block({Write(4,Call(1)),report()},scope())}));
+      else if(form==103) {
+        const auto loop=Stmt(LoopStmt{});const auto loop_scope=scope();
+        const ScopeId exit{static_cast<std::uint32_t>(tree.scopes.size())};tree.scopes.push_back({ScopeKind::kBlock,loop_scope});
+        const auto guard=Stmt(IfStmt{Expr(UnaryExpr{TreeUnary::kNot,Call(3)}),Block({Stmt(BreakStmt{loop,{}})},exit),{}});
+        std::get<LoopStmt>(tree.statements[loop.value].statement).body=Block({guard,report(),*late_store,report()},loop_scope);body.push_back(loop);
+      }else if(form==104) {
+        const auto protected_scope=scope(),catch_scope=scope(ScopeKind::kCatch);
+        tree.symbols.push_back({catch_scope,{6},BindingKind::kCatchParameter,DeclarationKind::kCatchParameter,NameEvidence::kSynthesized,{}});
+        body.push_back(Stmt(TryStmt{Block({*late_store,report()},protected_scope),CatchClause{{6},Block({report()},catch_scope)},{}}));
+      }else body.push_back(*late_store);
+      for(unsigned i=0;i<count;++i)body.push_back(report());
+      initialize(5,Read(4));
+    } else if(form>=89) {
       const auto integer=[&](std::int32_t value){return Expr(TreeLiteral{IntegerLiteral{value}});};
       const auto report=[&]{return Stmt(ExpressionStmt{Call(2,4)});};
       const auto scope=[&](ScopeKind kind=ScopeKind::kBlock) {
@@ -295,6 +320,7 @@ struct Fixture {
     tree.body=Block(body,{1});
     if(reverse) {
       const auto remap=[&](StmtId id){return StmtId{static_cast<std::uint32_t>(tree.statements.size()-1-id.value)};};
+      if(late_store)late_store=remap(*late_store);
       for(auto& id:tree.children)id=remap(id);
       for(auto& statement:tree.statements)std::visit([&](auto& syntax) {
         using T=std::decay_t<decltype(syntax)>;
@@ -336,7 +362,7 @@ struct Fixture {
 };
 }
 int main(int argc,char**) {
-  for(unsigned form=0;form<100;++form)for(bool native:{false,true}) {
+  for(unsigned form=0;form<107;++form)for(bool native:{false,true}) {
     std::uint64_t small=0,large=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}) {
       Fixture fixture(form,count,native,reverse);std::ostringstream output;
@@ -347,6 +373,13 @@ int main(int argc,char**) {
       const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(fixture.tree));
       const auto planned=PlanBindingInitializers(fixture.tree,loops,nullish);
       test::Check(std::holds_alternative<BindingInitializers>(planned));
+      if(fixture.late_store) {
+        const auto& declaration=std::get<BindingInitializers>(planned).statements[fixture.late_store->value];
+        const bool expected=form==100||form==101;
+        if(bool(declaration)!=expected)std::cerr<<"late declaration form="<<form<<" native="<<native<<" reverse="<<reverse<<'\n';
+        test::Check(bool(declaration)==expected);
+        if(expected)test::Check(declaration->declaration==DeclarationKind::kConst);
+      }
       if(form>=29&&count==0&&!reverse) {
         const auto& plan=std::get<BindingInitializers>(planned);
         test::Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(fixture.tree,loops,nullish,{plan.allocated_bytes,plan.work})));

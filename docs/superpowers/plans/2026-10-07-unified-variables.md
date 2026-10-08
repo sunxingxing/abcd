@@ -361,3 +361,18 @@ substitutions. This extends actual generated source, not merely interfaces. Full
 original IR/SSA correspondence, activation/capture/finally, nonprimitive read
 identity and global pass convergence remain open; task 2/4 and the stage-one Goal
 remain active. status.md records the precise selected evidence and paused scope.
+
+Task 2/4 implementation substep (rules232): the sole declaration-placement pass
+now follows normal values and fresh independent cleanup, before alias/storage
+coverage. The early call is removed; its commit dirties the revision checkpoint.
+All-completion dominance and lexical extent remain the proof. Placement still
+models initialization completion; a trial after all storage lost coverage and
+was retired. Common projected scopes and actual group reference extents fix repeated-loop
+representative bias: prefer a covering candidate over a noncovering one; equal
+coverage keeps existing ranks. No merging assertion or post-proposal completion/
+name/lifetime proof is weakened. Unconditional wide preference regressed record
+loop spelling and was retired. Full feasible representative search stays open.
+Independent source harness explicit undefined and producer mutants are corrected.
+No extra round or source-form admission is introduced. General lifetime/capture/
+finally, original IR/SSA and global convergence stay open; status.md records the
+actual bounded evidence. Stage-one Goal remains active.

@@ -96,7 +96,9 @@ class RecoverySchedule {
         scope==RecoveryPassScope::kStorage?stage_==Stage::kStorage:
         scope==RecoveryPassScope::kGrammar?stage_==Stage::kGrammar:stage_!=Stage::kGrammar;
     RequireTree(allowed,TreeStructureError::kOwnership);
-    if(pass==RecoveryPass::kAliases&&stage_==Stage::kValues)
+    // Binding placement and producer coverage both require all independent
+    // value/initialization/binding cleanup owners at the current projection.
+    if((pass==RecoveryPass::kDeclarations||pass==RecoveryPass::kAliases)&&stage_==Stage::kValues)
       RequireTree(!DemandCleanupNeeded(),TreeStructureError::kOwnership);
     active_=pass;before_=revision_;phase_=Phase::kAnalysis;
   }

@@ -24,6 +24,59 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则232，归一化后声明恢复与共享组词法覆盖
+
+- 唯一的Declarations从值归一化之前移到Constants及独立需求/初值/
+  绑定清理之后、Aliases/Storage之前，旧早期调用退出，不增加重试轮。
+  RecoverySchedule要求当前revision的完整清理检查点；声明提交统一
+  失效分析并使检查点过期，随后独立清理完成才准许覆盖传播。无修改
+  保留检查点。原全completion支配与词法extent证明继续负责初始化
+  放置，原RHS效果保留原位置；没有新增样本/同块/邻接/opcode序列准入。
+- 新顺序暴露存储代表偏好问题：native声明可能使循环内窄slot优先，
+  然后因组内循环外引用而被共同生命期证明拒绝。现在一次扫描共同
+  Flow真实occurrence生成每binding引用extent；DSU union合并extent和
+  缺位置事实。两个保留候选中，优先能覆盖组实际引用的候选；覆盖
+  能力相同时保持原名字/native/初始化rank偏好。不是group准入，所有
+  映射仍通过独立初始化、名字、source containment与初值保留证明。
+  新成本O(R)扫描/O(B)数组/每union O(1)，仍计入原预算，无per-slot图遍历。
+- 试验把声明移到全部storage之后，丢失既有producer/初始化覆盖及
+  源码表示质量，已经退回；当前声明恢复仍承载初始化completion。
+  无条件偏好宽作用域也使真实pasteboard循环退回机械变量，已经删除。
+  最终只比较组实际引用覆盖，保留已有循环表示。没有弱化循环存储
+  合并断言来接受回退。原IR/完整cell生命周期分离仍需后续共同模型。
+- 新声明正反例含早读undefined、未知producer后多次读取、初始效果、
+  分支/循环携带/失败RHS与catch状态、SourceLocal与TDZ；native/store、
+  arena反排、0/1/200/201/400/800及精确/不足预算保持。新增scope组星图
+  在2/200/201/400/800反排ID，检查覆盖优先及两者覆盖时保留native窄slot。
+  原32,768逐读小图及复制/选择/活跃性/版本反例仍通过。
+- 循环独立runner原默认参数把显式undefined替换为initial，callback
+  协议断言可能被被测函数catch吞掉。最终使用尾参数实际存在性保留
+  undefined，正常参考执行额外要求setup事件；错误变体删除真实state
+  producer，而非删除等价的惰性声明。这是验收入口修复，不是引擎样本匹配。
+- RED：初始新增声明/model两项在41.83秒正确失败，build6.12秒；初次
+  GREEN三项67.63秒通过，2,568源码/513,600比较/100错误变体。初轮
+  29目标build173.82秒、59回归385.89秒得51通过/8旧保留断言失败；
+  修订后8项196.34秒得5通过/3失败，定位循环代表偏好与runner变体。
+  全storage后置试验59项274.79秒得51通过/8失败；宽scope试验在真实
+  输出回退后终止自身进程，仅留中间证据。再次导出到已存在目录被
+  ExportError::kDestination拒绝，改用fresh目录；未覆盖既有证据。
+- 最终当前29目标build35.52秒成功；选定59项一次全部通过，419.68秒。
+  声明源码2,568/513,600/100，初始化源码2,004/482,752/368，干涉源码
+  305/44,852/19，循环源码276/13,976/68均通过。增加参考producer
+  实际执行断言后的循环source注册CTest在15.31秒单独通过，证据见loop-final-*。
+  这仍是既定相关集合，不是full suite、paired corpus或平台执行验收。
+- fresh固定导出2.36秒，build/stage-one/declaration-order-coverage-rule232：
+  19records、10完整/0部分/9无module，10源码语法通过，与规则231源码
+  逐字节一致；language_numeric_constructors_v1及原预算保持。输入
+  SHA-256前后均854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e。
+  build/stage-one/declaration-order-verification的final-*、combined-coverage.json
+  保存最终证据；initial-final-*、expectations-*、storage-order-*、
+  broad-scope-partial-*与termination记录中间过程，不作最终通过依据。
+- 完整group内可行代表选择仍开放，目前比较两个保留候选；一般原IR/SSA
+  对应、activation/capture/finally、非primitive值传播及全局pass收敛仍
+  开放。统一变量里程碑、结构gate与阶段一Goal未完成。全量suite、
+  广语料、RSS/DFX/benchmarks、agents及新worktree继续暂停。
+
 ### 2026-10-08：规则231，共同完成流上的逐读取原始值
 
 - 共同正常值求解器新增实际读取与活跃incoming事实节点，区别绑定

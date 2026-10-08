@@ -1058,6 +1058,37 @@ void ReadConstants() {
   }
   std::cout<<"independent per-read normal values "<<cases<<'\n';
 }
+void StorageScopePreference() {
+  // A native narrow slot must not win merely because placement ran first.
+  // A broader representative is only a proposal; source integration still
+  // proves completion, spelling and activation for every remapped reference.
+  for(unsigned count:{2U,200U,201U,400U,800U})for(bool reverse:{false,true})
+    for(bool projected:{false,true}) {
+      std::vector<StorageBinding> bindings(count);
+      const SymbolId outer{reverse?count-1:0};BindingInterference facts;
+      for(unsigned i=0;i<count;++i) {
+        bindings[i].eligible=true;bindings[i].native_declaration=i!=outer.value;
+        bindings[i].initialization_order=i==outer.value?2:1;
+        if(i!=outer.value)bindings[i].narrowed_region=SourceRegion{{2},{4}};
+        else if(projected)bindings[i].narrowed_region=SourceRegion{{0},{6}};
+        bindings[i].reference_region=i==outer.value?SourceRegion{{0},{6}}:SourceRegion{{2},{4}};
+        if(i!=outer.value)facts.affinities.push_back({SymbolId{i},outer,false});
+      }
+      const auto result=PlanStorageCoalescing(facts,bindings);
+      Check(std::holds_alternative<StorageCoalescing>(result));
+      const auto& plan=std::get<StorageCoalescing>(result);
+      for(unsigned i=0;i<count;++i)Check(plan.storage[i]==(i==outer.value?std::nullopt:std::optional{outer}));
+      Check(std::holds_alternative<StorageCoalescing>(PlanStorageCoalescing(facts,bindings,{plan.allocated_bytes,plan.work})));
+      Check(std::get<TreeStructureError>(PlanStorageCoalescing(facts,bindings,{plan.allocated_bytes-1,plan.work}))==TreeStructureError::kResourceLimit);
+    }
+  std::array<StorageBinding,2> bindings{};BindingInterference facts;
+  for(auto& binding:bindings){binding.eligible=true;binding.reference_region=SourceRegion{{2},{4}};}
+  bindings[1].native_declaration=true;bindings[1].narrowed_region=SourceRegion{{2},{4}};
+  facts.affinities.push_back({{0},{1},false});
+  // Both candidates cover all references: keep the native narrow spelling.
+  const auto plan=std::get<StorageCoalescing>(PlanStorageCoalescing(facts,bindings));
+  Check(plan.storage[0]==SymbolId{1});Check(!plan.storage[1]);
+}
 void PassContracts() {
   const auto rejects=[](const auto& action) {
     try {action();return false;}catch(TreeStructureError error){return error==TreeStructureError::kOwnership;}
@@ -1123,6 +1154,7 @@ void PassContracts() {
     Check(repeated.Revision().value==count);
   }
   RecoverySchedule unfinished;
+  Check(rejects([&]{unfinished.Start(RecoveryPass::kDeclarations);}));
   Check(rejects([&]{unfinished.Start(RecoveryPass::kInitialValues);}));
   Check(rejects([&]{unfinished.Start(RecoveryPass::kBindings);}));
   unfinished.Start(RecoveryPass::kDeadDefinitions);Check(!unfinished.Finish());
@@ -1132,6 +1164,12 @@ void PassContracts() {
   unfinished.Start(RecoveryPass::kInitialValues);Check(!unfinished.Finish());
   unfinished.Start(RecoveryPass::kBindings);Check(!unfinished.Finish());
   Check(!unfinished.DemandCleanupNeeded());
+  unfinished.Start(RecoveryPass::kDeclarations);unfinished.RequireFact(RecoveryFact::kFlow);
+  Check(unfinished.Commit());Check(unfinished.Finish());Check(unfinished.DemandCleanupNeeded());
+  Check(rejects([&]{unfinished.Start(RecoveryPass::kAliases);}));
+  Check(rejects([&]{unfinished.EnterStorage();}));cleanup(unfinished);
+  unfinished.Start(RecoveryPass::kDeclarations);Check(!unfinished.Finish());
+  Check(!unfinished.DemandCleanupNeeded());
   std::cout<<"pass ownership, dependency and cleanup counterexamples passed\n";
 }
-int main(){ReadConstants();PassContracts();ExpressionConstants();ConstantEquations();SourceScopeOracle();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+int main(){ReadConstants();StorageScopePreference();PassContracts();ExpressionConstants();ConstantEquations();SourceScopeOracle();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

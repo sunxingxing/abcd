@@ -146,7 +146,7 @@ std::uint64_t Run(Form form,unsigned count,bool reverse,bool emit){
   auto planned=PlanBindingInitializers(tree,loops,nullish);
   if(auto* error=std::get_if<TreeStructureError>(&planned))std::cerr<<"form "<<unsigned(form)<<" error "<<unsigned(*error)<<'\n';
   Check(std::holds_alternative<BindingInitializers>(planned));const auto& bindings=std::get<BindingInitializers>(planned);
-  const bool merged=form==Form::kStraight||form==Form::kUpdateThrows||form==Form::kLoop||form==Form::kSharedWrite||form==Form::kElidedReference||form==Form::kRetainedReference||form==Form::kRoundTrip||form==Form::kUndefinedBeforeRoot||live_undefined||(forwarded&&form!=Form::kForwardedShadow);
+  const bool merged=form==Form::kStraight||form==Form::kUpdateThrows||form==Form::kLoop||form==Form::kSharedWrite||form==Form::kInitialUndefined||form==Form::kElidedReference||form==Form::kRetainedReference||form==Form::kRoundTrip||form==Form::kUndefinedBeforeRoot||live_undefined||(forwarded&&form!=Form::kForwardedShadow);
   if(bool(bindings.storage[4])!=merged)std::cerr<<"form "<<unsigned(form)<<" count "<<count<<" reverse "<<reverse<<" merged "<<bool(bindings.storage[4])<<'\n';
   Check(bool(bindings.storage[4])==merged);
   // Coalescing creates an immutable copy. Its late propagation must compose

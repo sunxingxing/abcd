@@ -1714,3 +1714,55 @@ remaining reads may let independent snapshot/binding cleanup remove the whole
 slot, but this does not establish general initializer motion. That representation
 precision gap needs a common initialization/lifetime proposal; it must not be
 expanded with a local source-form or same-block admission.
+
+## Initialization placement consumes normalized values (rules232)
+
+The rules231 multi-use unknown-value gap was traced to the sole Declarations
+pass running before value propagation. Existing successful-definition dominance
+over all completion edges and retained lexical extent already prove placement
+in this bounded domain. Declarations now runs once after normal-value substitution
+and complete independent demand/initial-value/binding cleanup, before aliases and
+storage. The former early call is removed, not retained with a late retry.
+RecoverySchedule requires the current cleanup checkpoint; a placement commit
+invalidates facts and dirties cleanup before aliases. A no-op preserves it.
+
+Placement still carries initialization completion in the current source model.
+An attempted placement after all storage passes lost useful producer/initialization
+coverage and source quality; that order was retired. Complete value/storage/cell
+separation remains a migration task, not a reason to weaken existing proof.
+
+An intermediate order exposed a distinct representative-choice problem: native
+spelling preference could choose a newly narrowed loop slot for a group also
+observed outside the loop. Coalescing now consumes the shared projected region
+and actual reference positions. The source adapter aggregates a reference extent
+once per binding; DSU contraction joins those extents and missing-position facts
+once per union. Between the two retained candidates, prefer one whose known
+region covers the group's references over one whose region cannot. Neither
+candidate is admitted or rejected here. When both cover (or both fail), existing
+unique-name/native/completion-rank/ID preferences remain. Preferring wide regions
+unconditionally was tested and retired: it regressed real record loop spelling.
+
+Reference occurrences and projected scopes come from common RecoveryFlow, not
+another AST scope census. Every proposed mapping still independently proves
+completed initialization, name resolution, source containment and initial-value
+preservation. Unknown locations cannot establish narrowed coverage. Complete
+feasible representative search among all original group members remains an
+explicit precision gap; the bounded choice considers the two retained candidates.
+
+Required old-initializer RHS effects stay at their original occurrence through
+DiscardDeclaration. Early reads replaced with proved primitives no longer demand
+that storage. Remaining TDZ, loop/branch/catch state, source-local/captured cells
+retain existing obligations. No new same-block, opcode/producer list, adjacency,
+sample identity or fixed graph admission is introduced.
+
+Tests cover early undefined followed by one unknown producer and many uses,
+required initial effects and branch/loop/catch/source-local/TDZ negatives. Native/
+store, reversed arenas, 0/1/200/201/400/800 and exact/short budgets remain. Scope
+preference stars reverse IDs and check 200/201/geometric sizes; a both-covered
+negative keeps native narrow spelling; repeated-loop
+source recovery retains its merging assertion and independent execution. The
+loop reference harness now distinguishes an omitted argument from explicit
+undefined, so callbacks actually run. Adverse mutations target the state producer,
+not an equivalent inert declarator. Actual verification belongs in status.md.
+Original IR/SSA, complete activation/capture/finally and global pass convergence
+remain open.

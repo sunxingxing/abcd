@@ -25,7 +25,9 @@ function bindingReference(form,count) {
     ';mark();state='+value+';while(state){'+'report(state);'.repeat(count+1)+
     'state=step(state);}}catch(error){return;}return'+(form===3?' state':'')+';})')();
 }
-async function observe(fn, form, initial, next, throwAt, choice, interrupt = false, setupResult = initial, reject = false, setupInput = initial) {
+async function observe(fn, form, initial, next, throwAt, choice, interrupt = false, setupResult = initial, reject = false, ...setupInputs) {
+  // JS defaults also replace explicitly passed undefined. Preserve its presence.
+  const setupInput=setupInputs.length?setupInputs[0]:initial;
   const events = [], requests = []; let at = 0, value, error;
   const event = value => {events.push(value); assert.ok(events.length < 20_000); if(events.length === throwAt) throw failure;};
   const callbacks = [initial, function(value) {
@@ -69,6 +71,7 @@ for(const row of rows){
       row.binding===4 || row.binding===5 ? undefined : initial);
     for(const [initial,next] of [[false,[]],[NaN,[]],[-0,[]],[object,[symbol,0]],[1n,[0n]]]) {
       const baseline=await run(original,initial,next,Infinity);
+      assert.ok(baseline.events.some(event=>event[0]==='setup'),'reference must execute the producer; a swallowed harness assertion is not equivalence');
       for(const fault of [...new Set([Infinity,1,2,3,4,baseline.events.length-1,baseline.events.length].filter(value=>value>0))]) {
         compare(await run(generated,initial,next,fault),await run(original,initial,next,fault));++comparisons;
       }
@@ -76,12 +79,14 @@ for(const row of rows){
       if(form===4)for(const request of ['return',true]){compare(await run(generated,initial,next,Infinity,request),await run(original,initial,next,Infinity,request));++comparisons;}
     }
     if(row.lexical && row.count===0) {
-      const init=loops[0].init.declarations[0].init;
+      // Value normalization may introduce an earlier inert declarator. Mutate
+      // the state producer, rather than an equivalent undefined initialization.
+      const init=loops[0].init.declarations.find(value=>value.id.name==='state').init;
       for(const replacement of ['void 0','(mark(), '+row.source.slice(init.start,init.end)+')']) {
         const changed=row.source.slice(0,init.start)+replacement+row.source.slice(init.end);parseJavaScript(changed);
         const bad=Function('return ('+changed+')')();
         const actual=await run(bad,object,[symbol,0],Infinity),expected=await run(original,object,[symbol,0],Infinity);
-        assert.throws(()=>compare(actual,expected),assert.AssertionError);++mutations;
+        assert.throws(()=>compare(actual,expected),assert.AssertionError,JSON.stringify({binding:row.binding,replacement}));++mutations;
       }
     }
     continue;

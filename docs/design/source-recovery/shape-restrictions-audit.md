@@ -2512,3 +2512,31 @@ and source-local bindings remain counterexamples. Layout/encoding permutations,
 small independent read graphs and composition/source verification are recorded in
 status.md. No original SSA, arbitrary nonprimitive identity, complete binding
 activation/capture/finally or global pass fixed-point claim is made.
+
+### 2026-10-08: rules232, normalized placement and lexical slot preference
+
+The original early Declarations call has retired. Sole placement follows normal
+value substitution and the current independent cleanup checkpoint, before aliases/
+storage; its commit requires fresh cleanup before coverage. Successful-definition
+dominance over every completion edge and retained lexical extent remain its proof.
+Required original RHS effects retain their occurrence. No second placement round
+or source-form admission is introduced. Placement still carries completion in the
+current model; moving it past all storage lost useful coverage and was retired.
+
+Newly native loop declarations exposed a representative preference bias. Common
+RecoveryFlow regions/occurrences now supply binding reference extents; contracted
+groups union them once. Prefer a retained representative covering actual group
+references over one that cannot; missing positions cannot prove narrowed scope.
+If both cover or both fail, preserve existing spelling/native/completion ranks.
+No group admission changes. Every mapping still passes completion/name/source
+containment/initial-value proofs. An unconditional wider-scope preference regressed
+real record loop spelling and was retired. Complete feasible choice among all
+group members remains an explicit gap; this bounded choice compares two retained
+candidates. No new AST scope inference or per-variable graph walk is added.
+
+Repeated-loop merging assertions stay, rather than accepting added temporaries.
+Tests reverse IDs/arenas and grow 200/201/geometrically. Independent execution
+preserves early values/effects and TDZ/branch/catch/loop/source-cell counterexamples.
+Loop harness explicit undefined no longer falls through its default, and mutants
+remove the actual producer. status.md records failures and final evidence. Full
+lifetime/capture/finally/original IR and global convergence remain open.

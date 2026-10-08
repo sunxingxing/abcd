@@ -180,7 +180,8 @@ std::uint64_t Native(unsigned form, unsigned count, bool reverse, bool emit) {
     std::get<AssignmentExpr>(tree.expressions[store->value].expression).value = suspended;
   }
   if (form == 5) {
-    // A real observation in the entry prefix must retain undefined storage.
+    // The entry observation retains its undefined value independently of the
+    // storage used after the successful loop initializer.
     for (auto& expression : tree.expressions) if (auto* assignment = std::get_if<AssignmentExpr>(&expression.expression))
       if (const auto* target = std::get_if<SymbolTarget>(&assignment->target); target && target->symbol == SymbolId{7})
         std::get<SymbolExpr>(tree.expressions[assignment->value.value].expression).symbol = {6};
@@ -233,7 +234,9 @@ std::uint64_t Native(unsigned form, unsigned count, bool reverse, bool emit) {
   const auto planned = PlanBindingInitializers(tree, loops, nullish);test::Check(std::holds_alternative<BindingInitializers>(planned));
   const auto& bindings = std::get<BindingInitializers>(planned);
   std::ostringstream source; const auto printed = PrintFunctionTree(tree, source); test::Check(std::holds_alternative<PrintedFunction>(printed));
-  const bool lexical = form < 3 || form >= 6;
+  // Normalized entry reads no longer require the loop's later storage. An
+  // actual post-loop read (form 3) still prevents narrowing its lifetime.
+  const bool lexical = form != 3;
   test::Check((source.str().find("for (let state = ") != std::string::npos) == lexical);
   const auto& ranges = std::get<PrintedFunction>(printed);
   const auto completion = ImplicitTailCompletion(tree);

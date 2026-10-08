@@ -81,8 +81,8 @@ std::uint64_t Check(unsigned form,unsigned count,bool reverse,bool emit,bool res
   // cleanup. Resource-observable lifetimes stay; a completed private initial
   // read can retain undefined without retaining its native binding.
   if(form==5) {test::Check(plan.omitted[body[0].value]);test::Check(plan.statements[body[count+1].value].has_value()==resources);}
-  else if(resources)test::Check(!plan.omitted[body[0].value]);
   else if(form==6)test::Check(plan.omitted[body[0].value]);
+  else if(resources)test::Check(!plan.omitted[body[0].value]);
   if(count<=1) {
     test::Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes,plan.work})));
     test::Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes-1,plan.work}))==TreeStructureError::kResourceLimit);

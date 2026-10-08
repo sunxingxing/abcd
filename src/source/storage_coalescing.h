@@ -11,6 +11,12 @@ struct StorageBinding {
   // Prefer a spelling without another binding in this checked tree. This
   // improves representative choice; it is never an admission requirement.
   bool unique_spelling=true;
+  // Shared lexical projection and actual reference extent, only preferences.
+  // Absence adds no known narrowing/observation. Complete initialization, name
+  // and lifetime proofs still follow the proposal.
+  std::optional<SourceRegion> narrowed_region;
+  std::optional<SourceRegion> reference_region;
+  bool unlocated_reference=false;
 };
 struct StorageCoalescing {
   std::vector<std::optional<SymbolId>> storage;

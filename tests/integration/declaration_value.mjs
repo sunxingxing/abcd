@@ -72,7 +72,7 @@ function reference(row) {
     const value=form===82?'current??42':form===83?'current||42':form===84?'current&&42':form===85?'current?(report(input),42):seed()':form===86?'current?43:42':form===87?'++current?43:42':previous+'?seed():42';
     body+=initialize('scratch',value);
   }
-  if(form>=89) {
+  if(form>=89&&form<100) {
     body=(form===95?'report(current);':'')+(form===94?'let current;':initialize('current',form===98?'false':'42'))+'report(current);';
     if(form===90||form===91)body+=`if(flag){current=43;report(current);}else{current=${form===90?44:43};report(current);}`;
     else if(form===92)body+='try{current=(report(input),43);report(current);}catch(error){report(current);}';
@@ -81,6 +81,14 @@ function reference(row) {
     else {if(form===89)for(let i=0;i<row.count;++i)body+=`current=${i+50};report(current);`;body+='current=43;';}
     if(form===98)body+="current=true;"+initialize('scratch','current?(report(input),43):seed()');
     else {if(form===99)body+='current=seed();';body+=initialize('scratch','current');}
+  }
+  if(form>=100) {
+    body=(form===106?'report(current);':'')+initialize('current',form===101?'(report(input),undefined)':'undefined')+'report(current);';
+    if(form===102)body+='if(flag){current=seed();report(current);}else{current=seed();report(current);}';
+    else if(form===103)body+='while(flag()){report(current);current=seed();report(current);}';
+    else if(form===104)body+='try{current=seed();report(current);}catch(error){report(current);}';
+    else body+='current=seed();';
+    body+='report(current);'.repeat(row.count)+initialize('scratch','current');
   }
   if(form===72)body+='while(flag()){current=scratch;scratch=current;}';
   if(form===5||form===15)body+='++scratch;current=scratch;';
@@ -109,7 +117,7 @@ function observe(fn,row,input,fault,throwSeed,coercion) {
     else event('report',value);
   };
   if(row.form===49)Object.defineProperty(seed,'value',{set(value){assert.equal(this,seed);event('setter',value);}});
-  const flag=(row.form===14||row.form===21||((row.form>=70&&row.form<=72)||row.form===78)||row.form===93)?()=>{event('iteration',iterations);return iterations++<(row.form>=70&&coercion?0:2);}:!coercion;
+  const flag=(row.form===14||row.form===21||((row.form>=70&&row.form<=72)||row.form===78)||row.form===93||row.form===103)?()=>{event('iteration',iterations);return iterations++<(row.form>=70&&coercion?0:2);}:!coercion;
   try{ returned=fn(input,seed,report,flag);if(row.form===11){assert.equal(returned,object);returned=token;} }
   catch(error){thrown=error;}
   if(thrown instanceof ReferenceError)thrown='ReferenceError';
@@ -118,7 +126,13 @@ function observe(fn,row,input,fault,throwSeed,coercion) {
 let comparisons=0,mutations=0;
 const observed=(source,row,...args)=>observe(Function(`return ${source}`)(),row,...args);
 for(const row of rows) {
-  parseJavaScript(row.source);
+  const syntax=parseJavaScript(row.source);
+  if(row.form===100||row.form===101) {
+    const nodes=[syntax];let producer;
+    while(nodes.length){const node=nodes.pop();if(node.type==='VariableDeclaration'&&node.declarations.some(value=>value.id.name==='current'))producer=node;
+      for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)nodes.push(child);}else if(value?.type)nodes.push(value);}}
+    assert.equal(producer?.kind,'const');assert.equal(producer.declarations.find(value=>value.id.name==='current').init.type,'CallExpression');
+  }
   const expected=reference(row),actual=Function(`return ${row.source}`)();
   for(const input of [undefined,null,false,0,-0,NaN,42,'text',token,second])
     for(const fault of [0,1,2,3,4])for(const throwSeed of [false,true])for(const coercion of [false,true]) {
@@ -202,6 +216,13 @@ for(const row of rows) {
     if(row.form===92) {
       const wrong='(function(input,seed,report){let current=42;report(current);try{current=43;report(input);report(current);}catch(error){report(current);}report(current);return current;})';
       assert.notDeepEqual(observed(wrong,row,token,2,false,false),observe(expected,row,token,2,false,false));++mutations;
+    }
+    if(row.form===100||row.form===101) {
+      // Moving the unknown producer before the initial undefined observation
+      // changes both the value and the execution order; narrowing is not a
+      // license to evaluate it earlier.
+      const wrong='(function(input,seed,report){const current=seed();report(current);report(current);return current;})';
+      assert.notDeepEqual(observed(wrong,row,token,0,false,false),observe(expected,row,token,0,false,false));++mutations;
     }
     if(row.form===10) {
       assert.notDeepEqual(observed('(function(input,seed,report){let value;try{value=seed();}catch(e){report(value);}report(value);return value;})',row,token,0,true,false),observe(expected,row,token,0,true,false));++mutations;

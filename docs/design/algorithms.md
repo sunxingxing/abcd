@@ -3186,3 +3186,30 @@ use a deliberately slow reference solver; production remains sparse. Tests use
 0/1/200/201/400/800 sources, exact/short byte/work budgets, arena permutations,
 32,768 read graphs, independent execution and adverse substitutions. Selected
 timing and unchanged-budget fixed-record evidence are recorded in status.md.
+
+### Normalized placement and lexical slot preference (2026-10-08, rules232)
+
+The existing placement analysis remains a successful-definition dominator scan
+on shared RecoveryFlow and retained lexical extents. The sole pass moves after
+value normalization and independent cleanup, before alias/storage coverage; the
+early call is removed. Its current revision checkpoint costs O(1), and a commit
+requires a fresh independent cleanup group. Total cost is the sum of invoked
+analyses; no global fixed point or O(1) whole-function claim is made.
+
+Storage coalescing reuses common projected SourceRegion and source occurrence
+facts. One O(R) reference scan builds extents, O(B) fields/working arrays carry
+them, and each accepted DSU union joins two intervals/missing-position flags and
+compares candidate coverage in O(1). Existing conflict adjacency/DSU costs remain.
+All arrays, scans and proposals remain budgeted. No library, per-variable graph
+walk, read-by-definition relation or AST scope census is added. If candidates
+have equal coverage, existing representative ranks stay; the full post-proposal
+proof remains. This is bounded two-candidate preference, not exhaustive feasible
+root search. An unconditional wider-scope heuristic was retired after record
+loop spelling regressed. Total tests include both-covered native spelling.
+
+Tests grow real unknown reads at 0/1/200/201/400/800, reverse encodings/arenas, check
+exact/short budgets and compare independent execution. Scope preference stars
+reverse IDs at 2/200/201/400/800 and retain repeated-loop merging. Loop callbacks
+now actually observe explicit undefined; producer mutations remain adverse.
+Selected timings and unchanged-budget fixed-record evidence belong in status.md.
+RSS/benchmarks/full corpus remain paused.

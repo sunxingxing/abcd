@@ -695,10 +695,10 @@ int main(int argc, char**) {
     test::Check(std::holds_alternative<PrintedFunction>(printed));
     const auto& ranges = std::get<PrintedFunction>(printed);
     if(form==21)test::Check(output.str().find("unused")==std::string::npos);
-    // Known early reads can release a single-use snapshot's whole binding.
-    // Multi-use unknown values still retain their original initialization;
-    // this change does not move that independent lexical completion.
-    const bool fold = form == 0 || form == 1 || form == 3 || form == 5 || form == 6 || form == 7 || form == 8 || form == 9 || form == 11 || form == 13 || form == 15 || form == 16 || (form >= 18 && form <= 23) || (count == 0 && (form == 2 || form == 17 || form == 24));
+    // Placement now consumes known early reads after value normalization.
+    // The remaining producer dominates every read, including multiple uses;
+    // single-use snapshot removal remains an independent later decision.
+    const bool fold = form == 0 || form == 1 || form == 2 || form == 3 || form == 5 || form == 6 || form == 7 || form == 8 || form == 9 || form == 11 || form == 13 || form == 15 || form == 16 || form == 17 || (form >= 18 && form <= 24);
     const bool folded_declaration=ranges.statements[fixture.declaration.value].begin == ranges.statements[fixture.declaration.value].end;
     if(folded_declaration!=fold)std::cerr<<"declaration form="<<form<<" count="<<count<<" reverse="<<reverse<<'\n'<<output.str()<<'\n';
     test::Check(folded_declaration == fold);
