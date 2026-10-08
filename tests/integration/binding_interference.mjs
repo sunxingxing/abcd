@@ -3,7 +3,7 @@ import {execFileSync} from 'node:child_process';
 import vm from 'node:vm';
 import {parseJavaScript} from './class_reference.mjs';
 const records=execFileSync(process.argv[2],['--emit'],{encoding:'utf8',timeout:60_000,maxBuffer:16*1024*1024}).trim().split('\n').map(JSON.parse);
-assert.equal(records.length,216);
+assert.equal(records.length,240);
 // Oracles describe the original storage semantics, never enter the engine.
 const references=[
   function(input,report,flag){let current=input,scratch=current;++scratch;current=scratch;return current;},
@@ -24,6 +24,8 @@ const references=[
   function(input,report,flag){let current,scratch;report(scratch);current=input;scratch=current;++scratch;current=scratch;return current;},
   function(input,report,flag){let current,scratch;(scratch=0,report());current=input;scratch=current;++scratch;current=scratch;return current;},
   function(input,report,flag){let current,scratch;(scratch=0,report(scratch));current=input;scratch=current;++scratch;current=scratch;return current;},
+  function(input,report,flag){let current=input,scratch=current,snapshot;snapshot=++scratch;{current=snapshot;}return current;},
+  function(input,report,flag){let current=input,scratch,snapshot;try{scratch=current;snapshot=++scratch;{current=snapshot;}}catch(error){return current;}return current;},
 ];
 const primitives=[undefined,null,false,true,0,-0,1,-2,0n,2n,NaN,Infinity,'','7','bad',Symbol('input')];
 let cases=0,mutations=0;
@@ -68,6 +70,16 @@ for(const record of records){
     parseJavaScript(mutant);const wrong=vm.runInNewContext(mutant);
     const mode=record.form===3?'report-throw':record.form===4?'reject':'normal';const request=record.form===5?'return':'next';
     assert.notDeepEqual(await observe(wrong,record.form,6,mode,true,request),await observe(references[record.form],record.form,6,mode,true,request));++mutations;
+  }
+  if(record.count===0&&!record.reverse&&[18,19].includes(record.form)) {
+    const pending=[inspect];let update;
+    while(pending.length){const node=pending.pop();if(node.type==='UpdateExpression')update=node;
+      for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)pending.push(child);}else if(value?.type)pending.push(value);}}
+    assert.ok(update);
+    const mutant=record.source.slice(0,update.start)+record.source.slice(update.argument.start,update.argument.end)+record.source.slice(update.end);
+    const wrong=vm.runInNewContext(mutant);
+    assert.notDeepEqual(await observe(wrong,record.form,6,'normal',true,'next'),
+        await observe(references[record.form],record.form,6,'normal',true,'next'));++mutations;
   }
   if(record.count===0&&!record.reverse&&[13,14].includes(record.form)) {
     const missing=record.source.replaceAll('current = void 0;','');assert.notEqual(missing,record.source);
