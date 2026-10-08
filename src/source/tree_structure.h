@@ -5,6 +5,8 @@
 
 namespace abcd::source {
 struct GlobalScope;
+// Source-name retention in one projection, distinct from value liveness/TDZ.
+enum class SourceBindingPresence : std::uint8_t {kRetained,kElided};
 enum class TreeStructureError : std::uint8_t {
   kRange, kOwnership, kScope, kBinding, kName, kTarget, kOrigin,
   kUnsupportedSyntax, kResourceLimit, kWorkLimit, kGlobalShadowed

@@ -1923,3 +1923,42 @@ indexes; actual-use holes, reordered groups/references, 200/201/geometric and ex
 short budgets verify precision and cost. Full original IR/SSA, activation/capture/
 finally, rewritten binding visibility and exhaustive cell/value feasibility remain
 open. Verification scope and results belong in status.md.
+
+### Current binding retention and shared name projection (2026-10-09, rules237)
+
+AnalyzeFlowBindingNames is a pure analysis of one current RecoveryFlow. It publishes
+typed retained/elided name presence and projects canonical same-spelling parent
+facts. Parameters, source locals, catch/self/capture/module bindings and observable
+compiler temporaries remain retained. Every current definition or reference retains
+its binding, including implicit undefined initialization and unreachable syntax.
+Only a private compiler temporary without these facts is elided from name activation.
+This is a source-name fact, not value liveness, TDZ, cell identity or authorization
+to delete initialization. Existing independent lifetime/effect/completion proofs stay.
+
+Canonical spelling facts now include the shadowing SymbolId. A parent-before-child
+forest traversal memoizes each nearest retained ancestor once, skips retired inner
+bindings and reconnects retained inner shadows across retired parents. Legacy shadow
+facts without inner identity remain conservative; identity is never guessed. The
+current graph's mask is consumed by storage selection and all current alias/storage/
+snapshot name queries through the shared scope resolver. Structural checking and
+canonical spelling publication retain the full original binding model. The previous
+all-original-symbol activation exits current source-name decisions.
+
+Each graph rebuild derives these facts afresh, including reuse of graph storage.
+They belong to ProjectionFacts and become inaccessible when BeginCommit invalidates
+the projection. Canonical facts stay immutable; analysis does not mutate replacement
+plans. Existing Values/Storage/Grammar order, cleanup checkpoints and owned proposal
+commit contracts remain. No new whole-function optimization round is introduced.
+
+Independent ancestor oracles cover retained masks, reads/undefined definitions/
+observable exposure/source locals/captures, renumbering and reordered facts. Native
+source tests combine early observed writes, a later initializer, retired or retained
+inner shadows, updates and sibling scopes; execution and wrong-name/update mutants
+protect behavior. Chain/star 200/201/geometric facts and exact/short budgets cover
+cost; stale graph storage and malformed provenance are tested.
+
+Full native-for rewritten name visibility, scope relocation and prospective retirement
+of multiple bindings in a storage proposal remain precision gaps. Canonical uniqueness
+stays a style preference. General incremental pass convergence, original IR/SSA
+correspondence and full activation/capture/finally remain open. Status.md contains
+actual selected verification; the milestone and stage-one Goal remain active.

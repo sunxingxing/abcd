@@ -96,15 +96,6 @@ class FlowBuilder {
         }
       }
     }
-    copy(result.source_shadows,scopes.shadows);
-    for(const auto& shadow:result.source_shadows) {
-      budget_.Step();RequireTree(shadow.binding.value<result.bindings.size(),Error::kOwnership);
-      if(shadow.region) {
-        RequireTree(shadow.region->value<result.source_regions.size(),Error::kOwnership);
-        const auto region=result.source_regions[shadow.region->value];
-        RequireTree(!scopes.occurrences.empty()&&region.first<region.last,Error::kOwnership);
-      }
-    }
     for(const auto& definition:result.definitions) {
       budget_.Step();auto& binding=result.bindings[definition.binding.value];
       if(definition.kind==FlowDefinitionKind::kInitializer ||
@@ -127,6 +118,11 @@ class FlowBuilder {
         if(native&&scopes.bindings.empty())binding.scope=UnmodeledBindingScope{};
       }
     }
+    auto analyzed_names=AnalyzeFlowBindingNames(result,scopes.shadows,budget_.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&analyzed_names))throw *error;
+    auto names=std::get<FlowBindingNames>(std::move(analyzed_names));
+    budget_.Admit(names.allocated_bytes,1);budget_.Step(names.work);
+    result.source_shadows=std::move(names.shadows);result.binding_presence=std::move(names.presence);
     result.allocated_bytes=budget_.Bytes();result.work=budget_.Work();return std::move(result);
   }
  private:

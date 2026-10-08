@@ -433,3 +433,16 @@ name/candidate oracles and hole/reordered/scaling/budget cases cover the impleme
 General pass convergence needs dependency/incremental cost ownership and remains
 open along with originalIR/SSA/full lifetime/capture/finally/rewritten visibility.
 Status.md records selected acceptance; unified-variable milestone/stage-one Goal active.
+
+Task 2/4 implementation substep (rules237): pure current graph binding-name retention
+and sparse canonical-shadow projection replace all-original-symbol activation in
+current alias/storage/snapshot name decisions. Every retained definition/reference
+and observable binding preserves its name; undefined initialization is a definition.
+Retired private temporaries exit the name model only after common earlier passes
+remove syntax. Value/lifetime/effect/delete obligations remain separate. Existing
+revision invalidation, stage order and demand-cleanup contracts remain; no extra
+pass round. Independent retained masks/ancestor oracles, source execution/mutations,
+layout/200-201/geometric/budget/reuse negatives verify the substep. Complete rewritten
+native-for namespace/prospective storage retirement, originalIR/SSA/full activation/
+capture/finally/global convergence remain open. Actual evidence is in status.md;
+unified-variable milestone and stage-one Goal remain active.

@@ -274,6 +274,48 @@ std::uint64_t NameScope(bool observed,unsigned count,bool reverse,bool emit){
   if(emit)std::cout<<nlohmann::json{{"form",observed?26:27},{"count",count},{"reverse",reverse},{"merged",true},{"slot",observed?"scratch":"current"},{"source",output.str()}}<<'\n';
   return bindings.work;
 }
+// The current private shadow has been elided before storage selection. Its
+// original spelling must not block the outer slot; retained source locals do.
+std::uint64_t RetiredShadow(bool retired,unsigned count,bool reverse,bool emit){
+  Fixture f(Form::kStraight);auto& tree=f.tree;
+  std::vector<StmtId> roots{f.Stmt(DeclarationStmt{{3},{}}),
+      f.Stmt(ExpressionStmt{f.Call({f.Store(3,f.Read(0))})}),
+      f.Stmt(ExpressionStmt{f.Expr(UpdateExpr{{3},UpdateDirection::kIncrement,UpdateResult::kPrefix})}),
+      f.Stmt(DeclarationStmt{{4},f.Read(3)})};
+  const auto inner=f.Block({});const auto scope=std::get<BlockStmt>(tree.statements[inner.value].statement).scope;
+  const SymbolId shadow{static_cast<std::uint32_t>(tree.symbols.size())};
+  tree.symbols.push_back({scope,{3},retired?BindingKind::kCompilerTemporary:BindingKind::kLocal,
+      DeclarationKind::kLet,NameEvidence::kSynthesized,retired?std::optional{TemporaryReason::kMultipleUses}:std::nullopt});
+  const auto declaration=f.Stmt(DeclarationStmt{shadow,f.Expr(TreeLiteral{IntegerLiteral{100}})});
+  std::vector<StmtId> children{declaration,f.Stmt(ExpressionStmt{f.Call({f.Read(shadow.value)})}),
+      f.Stmt(ExpressionStmt{f.Expr(UpdateExpr{{4},UpdateDirection::kIncrement,UpdateResult::kPrefix})}),
+      f.Stmt(ExpressionStmt{f.Call({f.Read(4)})})};
+  for(unsigned i=0;i<count;++i)children.push_back(f.Block({},scope));
+  auto& block=std::get<BlockStmt>(tree.statements[inner.value].statement);
+  block.first_child=tree.children.size();block.child_count=children.size();
+  tree.children.insert(tree.children.end(),children.begin(),children.end());roots.push_back(inner);
+  roots.push_back(f.Write(3,f.Read(4)));roots.push_back(f.Stmt(ReturnStmt{f.Read(3)}));
+  const auto later=f.Block({});const auto later_scope=std::get<BlockStmt>(tree.statements[later.value].statement).scope;
+  const SymbolId other{static_cast<std::uint32_t>(tree.symbols.size())};
+  tree.symbols.push_back({later_scope,{4},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
+  const auto empty=f.Stmt(DeclarationStmt{other,{}});
+  auto& sibling=std::get<BlockStmt>(tree.statements[later.value].statement);
+  sibling.first_child=tree.children.size();sibling.child_count=1;tree.children.push_back(empty);roots.push_back(later);
+  f.Finish(roots,reverse);Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
+  const auto bindings=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
+  const auto at=reverse?tree.statements.size()-1-declaration.value:declaration.value;
+  Check(bool(bindings.omitted[at])==retired);
+  Check(bindings.Storage({3})==SymbolId{3});Check(bindings.Storage({4})==SymbolId{retired?3U:4U});
+  if(!count) {
+    Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work})));
+    Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes-1,bindings.work}))==TreeStructureError::kResourceLimit);
+    Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work-1}))==TreeStructureError::kWorkLimit);
+  }
+  std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
+  if(emit)std::cout<<nlohmann::json{{"form",retired?28:29},{"count",count},{"reverse",reverse},{"merged",retired},{"source",output.str()}}<<'\n';
+  return bindings.work;
+}
 std::uint64_t Many(unsigned count,bool emit){
   Fixture f(Form::kStraight);auto& tree=f.tree;std::vector<StmtId> declarations,body;
   for(unsigned i=0;i<count;++i){
@@ -347,6 +389,8 @@ int main(int argc,char** argv){
     std::uint64_t previous=0;for(unsigned count:{1U,200U,201U,400U,800U}){
       const auto work=Many(count,true);if(count==800)Check(work<previous*3);previous=work;}return 0;
   }
+for(bool retired:{true,false})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){
+  const auto work=RetiredShadow(retired,count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}
 for(bool observed:{true,false})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){
   const auto work=NameScope(observed,count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}
 for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){

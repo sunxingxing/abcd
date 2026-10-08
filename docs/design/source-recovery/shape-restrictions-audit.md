@@ -2634,3 +2634,22 @@ Tests use two independently shadowed spellings, active versus harmless scopes,
 actual-use holes, ancestry/brute-force oracles, wrong-name/update mutants, reverse
 arenas/IDs and 200/201/geometric/exact-short inputs. Original IR/SSA, rewritten
 binding visibility, full activation/capture/finally and global convergence remain.
+
+### 2026-10-09 rules237: current names after binding retirement
+
+Obligation: a proposed source name resolves to the retained binding at each actual
+occurrence. The common current graph now publishes retained-name presence from
+binding kind/exposure plus all retained definitions/references. Canonical nearest
+same-spelling identities are projected across retired private temporaries with a
+sparse forest traversal. Current storage/snapshot/alias name checks share this mask;
+old all-original-symbol activation exits those decisions. No samples, operation
+sequences, block adjacency or fixed source/CFG shapes decide retention. Canonical
+forest ownership validation checks semantic provenance, not compiler-layout admission.
+
+The fact cannot delete a lexical initialization, merge observable cells or prove
+TDZ/completion/effect order. Existing independent proofs remain. Source locals and
+captures are retained even without a current read; unknown shadow identity remains
+conservative. Independent ancestor masks, ID/fact/arena permutations, retained-local
+wrong-merge/update mutants and 200/201/geometric/exact-short budgets cover this path.
+Rewritten native-for visibility, relocated scopes and simultaneous prospective
+storage retirement remain documented precision gaps, not language invariants.

@@ -37,7 +37,13 @@ struct UnmodeledBindingScope {};
 using SourceBindingScope=std::variant<OriginalBindingScope,ProjectedBindingScope,UnmodeledBindingScope>;
 // A canonical inner scope shadows this enclosing binding's source spelling.
 // Missing region is an explicit precision gap; this fact never merges cells.
-struct SourceBindingShadow {SymbolId binding;std::optional<SourceRegionId> region;};
+struct SourceBindingShadow {
+  SymbolId binding;
+  std::optional<SourceRegionId> region;
+  // Canonical shadowing identity enables current retention projection. Absent
+  // on legacy facts: preserve their conservative region, never guess identity.
+  std::optional<SymbolId> shadowing;
+};
 struct SourceScopeProjection {
   std::span<const SourceRegion> regions;
   std::span<const std::optional<SourcePosition>> occurrences;
@@ -173,6 +179,7 @@ struct RecoveryFlow {
   std::vector<FlowBinding> bindings;
   std::vector<SourceRegion> source_regions;
   std::vector<SourceBindingShadow> source_shadows;
+  std::vector<SourceBindingPresence> binding_presence;
   std::vector<std::optional<SourcePosition>> source_occurrences;
   FlowPoint entry, terminal;
   std::size_t allocated_bytes = 0;
@@ -196,6 +203,17 @@ struct RecoveryFlow {
     return std::holds_alternative<OriginalBindingScope>(bindings[binding.value].scope);
   }
 };
+struct FlowBindingNames {
+  std::vector<SourceBindingPresence> presence;
+  std::vector<SourceBindingShadow> shadows;
+  std::size_t allocated_bytes=0;
+  std::uint64_t work=0;
+};
+// Analyze one current graph. Definitions/references and observable cells retain
+// lexical names; canonical same-spelling parents skip already-elided bindings.
+// This never chooses storage or authorizes removing a declaration/TDZ effect.
+[[nodiscard]] std::variant<FlowBindingNames,TreeStructureError> AnalyzeFlowBindingNames(
+    const RecoveryFlow&,std::span<const SourceBindingShadow>,analysis::SemanticBudget = {});
 // Source-side migration entry: checked tree plus explicit legacy projection.
 // Parameter definitions denote body entry after the existing signature program.
 // Scope leave events currently describe normal exits only; abrupt unwind and

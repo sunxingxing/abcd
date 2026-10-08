@@ -3318,3 +3318,26 @@ these accounting facts do not prove process RSS. Tiny dense oracles are test-onl
 Tests include holes without observations, unknown facts, reverse IDs/affinities,
 200/201/geometric source/group sizes, independent execution, mutants and exact/short
 budgets. Actual measurements are in status.md; broader corpus/RSS remain paused.
+
+### Current retained-name projection (rules237, 2026-10-09)
+
+Provenance: standard sparse rooted-forest traversal and memoized nearest retained
+ancestor, implemented locally without dependency/license/profile changes. Inputs
+are checked canonical nearest same-spelling parent identities and one current
+RecoveryFlow's binding kinds/exposure, definitions and references. Name retention
+is separate from value liveness and source lifetime; legacy unidentified shadows
+retain conservative meaning.
+
+For B bindings, H canonical shadows, D definitions and R references, retention
+scanning and forest projection use O(B+H+D+R) work and O(B+H) storage. Each binding
+has at most one canonical parent; adjacency arrays and a bounded parent-before-child
+queue visit every vertex/edge once. No per-binding ancestor walk, recursion or
+repeated sweep occurs in production. Fresh output/temporary buffers and all scans
+are charged to the unchanged semantic budget. Fresh graph facts replace prior masks
+and shadows; this does not claim buffer-capacity reuse for the new analysis.
+
+Current name resolution retains the existing spelling sorting and scope traversal;
+mask activation adds O(B) validation and constant work per visited binding. Small
+independent ancestor walks are test-only. 200/201, chain/star geometric growth and
+exact/short budgets validate accounting; measured selected acceptance is in status.md.
+These results do not establish full-process RSS, which remains paused.

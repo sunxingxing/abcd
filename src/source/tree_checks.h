@@ -36,7 +36,8 @@ class TreeCheckBudget {
 // resolve in O(1), free spellings in O(log B), without per-use parent walks.
 class TreeScopeCheck {
  public:
-  TreeScopeCheck(const FunctionTree& tree, TreeCheckBudget& budget);
+  TreeScopeCheck(const FunctionTree& tree, TreeCheckBudget& budget,
+      std::span<const SourceBindingPresence> presence = {});
   void Enter(ScopeId scope);
   void Leave(ScopeId scope);
   void Reference(SymbolId symbol, bool assignment = false);
@@ -56,6 +57,7 @@ class TreeScopeCheck {
   [[nodiscard]] std::optional<SymbolId> ActiveBinding(std::u16string_view name);
   const FunctionTree& tree_;
   TreeCheckBudget& budget_;
+  std::span<const SourceBindingPresence> presence_;
   std::vector<SymbolId> ordered_;
   std::vector<std::size_t> groups_;
   std::vector<std::size_t> group_counts_;
@@ -81,9 +83,11 @@ struct TreeSpellingFacts {
 // checking. Indexed scope/query adjacency avoids an ancestor walk per read.
 // The caller supplies a checked tree and the actual occurrence's lexical scope.
 [[nodiscard]] std::vector<std::uint8_t> ResolveTreeReferences(
-    const FunctionTree&, std::span<const TreeScopedReference>, TreeCheckBudget&);
+    const FunctionTree&, std::span<const TreeScopedReference>, TreeCheckBudget&,
+    std::span<const SourceBindingPresence> = {});
 [[nodiscard]] std::vector<std::uint8_t> ResolveTreeNames(
-    const FunctionTree&, std::span<const TreeScopedName>, TreeCheckBudget&);
+    const FunctionTree&, std::span<const TreeScopedName>, TreeCheckBudget&,
+    std::span<const SourceBindingPresence> = {});
 
 // Canonical origin arenas own contiguous part ranges, referencing only earlier
 // origins. Sharing uses origin IDs, never overlapping part-list storage.

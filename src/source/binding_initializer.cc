@@ -209,7 +209,7 @@ class Initializers {
     const auto& shadowed=spelling.shadowed;
     budget_.Array(source_shadows_,shadowed.size());std::size_t shadow_count=0;
     for(std::size_t i=0;i<shadowed.size();++i) {
-      budget_.Step();if(shadowed[i])source_shadows_[shadow_count++]={*shadowed[i],source_scope_regions_[tree_.symbols[i].scope.value]};
+      budget_.Step();if(shadowed[i])source_shadows_[shadow_count++]={*shadowed[i],source_scope_regions_[tree_.symbols[i].scope.value],SymbolId{static_cast<std::uint32_t>(i)}};
     }
     source_shadows_.resize(shadow_count);
     // Normalize redundant writes before dead-definition analysis chooses the
@@ -716,7 +716,7 @@ class Initializers {
       queries[size]={reference.binding,statement_scopes_[owner.value]};roots[size++]=*root;
     }
     queries.resize(size);roots.resize(size);
-    const auto resolved=ResolveTreeReferences(tree_,queries,budget_);
+    const auto resolved=ResolveTreeReferences(tree_,queries,budget_,projected.binding_presence);
     for(std::size_t i=0;i<size;++i){budget_.Step();if(!resolved[i])invalid[roots[i].value]=1;}
     std::vector<TreeScopedName> names;std::vector<SymbolId> name_roots;
     budget_.Array(names,projected.names.size());budget_.Array(name_roots,projected.names.size());size=0;
@@ -727,7 +727,7 @@ class Initializers {
       names[size]={reference.name,statement_scopes_[owner.value]};name_roots[size++]=*root;
     }
     names.resize(size);name_roots.resize(size);
-    const auto resolved_names=ResolveTreeNames(tree_,names,budget_);
+    const auto resolved_names=ResolveTreeNames(tree_,names,budget_,projected.binding_presence);
     for(std::size_t i=0;i<size;++i){budget_.Step();if(!resolved_names[i])invalid[name_roots[i].value]=1;}
     std::vector<std::uint8_t> blocked;budget_.Array(blocked,count);
     for(std::size_t i=0;i<count;++i) {
@@ -1051,7 +1051,7 @@ class Initializers {
       const auto scope=statement_scopes_[reference.owner->value];
       references[count]={*root,scope};occurrences[count]=reference.owner;targets[count++]=reference.binding;
     }
-    references.resize(count); const auto visible = ResolveTreeReferences(tree_, references, budget_);
+    references.resize(count); const auto visible = ResolveTreeReferences(tree_, references, budget_,flow.binding_presence);
     for (std::size_t i = 0; i < count; ++i) {
       budget_.Step(); const auto root = references[i].symbol; const auto occurrence = occurrences[i];
       const auto lifetime=flow.BindingInScope(root,occurrence);
@@ -1080,7 +1080,7 @@ class Initializers {
     }
     initialization_references.resize(count);initialization_targets.resize(count);initialization_occurrences.resize(count);
     if(count) {
-      const auto resolved=ResolveTreeReferences(tree_,initialization_references,budget_);
+      const auto resolved=ResolveTreeReferences(tree_,initialization_references,budget_,flow.binding_presence);
       for(std::size_t i=0;i<count;++i) {
         budget_.Step();const auto target=initialization_targets[i];const auto root=*proposed[target.value];
         const auto declaration=initialization_occurrences[i];
@@ -1678,7 +1678,7 @@ class Initializers {
       const auto target=discarded?copy_targets[flow.discarded[discarded->value].statement.value]:std::nullopt;
       occurrences[count++]={read.owner,read.binding,target};
     }
-    references.resize(count);const auto visible=ResolveTreeReferences(tree_,references,budget_);
+    references.resize(count);const auto visible=ResolveTreeReferences(tree_,references,budget_,flow.binding_presence);
     ready=0;
     const auto retain=[&](SymbolId symbol) {
       if(!blocked[symbol.value]) {

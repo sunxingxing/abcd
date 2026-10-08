@@ -29,8 +29,16 @@ bool ValidTemporary(TemporaryReason reason) {
 }
 }  // namespace
 
-TreeScopeCheck::TreeScopeCheck(const FunctionTree& tree, TreeCheckBudget& budget)
-    : tree_(tree), budget_(budget) {
+TreeScopeCheck::TreeScopeCheck(const FunctionTree& tree, TreeCheckBudget& budget,
+    std::span<const SourceBindingPresence> presence)
+    : tree_(tree), budget_(budget), presence_(presence) {
+  RequireTree(presence.empty()||presence.size()==tree.symbols.size(),Error::kOwnership);
+  for(const auto binding:presence) {
+    budget.Step();switch(binding) {
+      case SourceBindingPresence::kRetained:case SourceBindingPresence::kElided:break;
+      default:throw Error::kOwnership;
+    }
+  }
   const auto count = tree.symbols.size();
   budget.Array(ordered_, count);
   budget.Array(groups_, count);
@@ -171,6 +179,9 @@ void TreeScopeCheck::Enter(ScopeId scope) {
   auto symbol = heads_[scope.value];
   while (symbol) {
     budget_.Step();
+    if(!presence_.empty()&&presence_[symbol->value]==SourceBindingPresence::kElided) {
+      symbol=next_[symbol->value];continue;
+    }
     auto& active = active_[groups_[symbol->value]];
     previous_[symbol->value] = active;
     // A body lexical declaration cannot redeclare a simple formal even though
@@ -185,6 +196,9 @@ void TreeScopeCheck::Leave(ScopeId scope) {
   auto symbol = heads_[scope.value];
   while (symbol) {
     budget_.Step();
+    if(!presence_.empty()&&presence_[symbol->value]==SourceBindingPresence::kElided) {
+      symbol=next_[symbol->value];continue;
+    }
     auto& active = active_[groups_[symbol->value]];
     RequireTree(active == symbol, Error::kScope);
     active = previous_[symbol->value];
@@ -254,8 +268,9 @@ void TreeScopeCheck::Finish() {
 namespace {
 template<class Reference,class Resolve>
 std::vector<std::uint8_t> ResolveScopes(const FunctionTree& tree,
-    std::span<const Reference> references, TreeCheckBudget& budget,Resolve resolve) {
-  TreeScopeCheck scopes(tree,budget);
+    std::span<const Reference> references, TreeCheckBudget& budget,Resolve resolve,
+    std::span<const SourceBindingPresence> presence = {}) {
+  TreeScopeCheck scopes(tree,budget,presence);
   std::vector<std::uint8_t> resolved;
   std::vector<std::optional<ScopeId>> heads,next;
   std::vector<std::optional<std::size_t>> queries,following;
@@ -310,11 +325,13 @@ TreeSpellingFacts AnalyzeTreeSpellings(const FunctionTree& tree,TreeCheckBudget&
   return result;
 }
 std::vector<std::uint8_t> ResolveTreeReferences(const FunctionTree& tree,
-    std::span<const TreeScopedReference> references,TreeCheckBudget& budget) {
-  return ResolveScopes(tree,references,budget,[](auto& scopes,const auto& reference){return scopes.Resolves(reference.symbol);});
+    std::span<const TreeScopedReference> references,TreeCheckBudget& budget,
+    std::span<const SourceBindingPresence> presence) {
+  return ResolveScopes(tree,references,budget,[](auto& scopes,const auto& reference){return scopes.Resolves(reference.symbol);},presence);
 }
 std::vector<std::uint8_t> ResolveTreeNames(const FunctionTree& tree,
-    std::span<const TreeScopedName> references,TreeCheckBudget& budget) {
-  return ResolveScopes(tree,references,budget,[](auto& scopes,const auto& reference){return scopes.ResolvesFree(reference.name);});
+    std::span<const TreeScopedName> references,TreeCheckBudget& budget,
+    std::span<const SourceBindingPresence> presence) {
+  return ResolveScopes(tree,references,budget,[](auto& scopes,const auto& reference){return scopes.ResolvesFree(reference.name);},presence);
 }
 }  // namespace abcd::source

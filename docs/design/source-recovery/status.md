@@ -1,6 +1,6 @@
 # 项目进展与设计审查
 
-更新时间：2026-10-08。设计基线见 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md)。
+更新时间：2026-10-09。设计基线见 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md)。
 本页是当前状态入口；[progress.md](progress.md) 保留历史证据，不覆盖本页结论。
 
 ## 更新规则
@@ -23,6 +23,43 @@
 打印器只消费计划。必须退出对应旧局部判断的决策路径，不能仅新增接口。
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
+
+### 2026-10-09：规则237，当前绑定保留事实贯通名字决策
+
+- 新纯分析AnalyzeFlowBindingNames从当前共同图发布typed名字保留事实。
+  参数、源码local/catch/self/capture/module及可观察temporary保留；所有
+  当前定义/引用保留名字，包括初始undefined和不可达但仍输出的语法。
+  仅已无这些事实的私有temporary退出名字activation。它不是值活跃性、
+  TDZ或删除初始化的证明，独立cell/lifetime/完成/效果义务继续保留。
+- Canonical shadow增加内层SymbolId；稀疏父先子后遍历跳过退役temporary，
+  将仍保留的内层遮蔽重接到最近保留祖先。未知内层身份的legacy事实保守
+  保留。storage选择及snapshot/storage/alias最终名字查询共享当前mask；
+  原来激活全部原始symbol的判断退出这些决策路径。结构校验仍用原模型。
+- 图重建/复用均重新产生mask/shadow；它们归ProjectionFacts同一revision。
+  首次commit先失效所有分析，提交只消费自有ID；现有阶段和cleanup屏障
+  保持，无额外pass轮次或样本/序列/同块/邻接/固定图形状条件。
+- 新源码反例RED1.14秒：内层temporary声明已省略但旧名字仍阻挡合并。
+  初版聚焦3/3在16.93秒通过；加强独立oracle后3/3在17.44秒通过。
+  最终7696独立retention/父链对照、全部小型mask名字/自由名字祖先对照、
+  9360既有候选对照，覆盖reads/undefined定义/observable/local/capture，
+  反向IDs/事实/arena、retained-local错误合并与更新mutation、复用旧mask、
+  非法provenance/enum/尺寸及200/201/400/800、exact/short预算。
+- 名字retention/projection额外O(B+H+D+R)工作、O(B+H)空间，父链只遍历
+  一次，无每变量祖先/CFG扫描；所有缓冲和工作计入原预算。这是共同
+  分析与几何/预算验证，不能替代已暂停的完整过程RSS验证。
+- 最终29目标构建169.73秒、既定59/59测试437.05秒通过；名称集合逐项
+  等于原选择。存储源码389/56948行为比较/29错误变体；声明2568/513600/100，
+  初始化2004/482752/368、循环276/13976/68；共同调度器反例及既定真实
+  callback/rich-text/progressbar/EntryAbility对照通过。
+- fresh固定pasteboard导出2.70秒：19records，10完整/0部分/9无module，
+  10语法检查通过，全部源码字节等于236；language_numeric_constructors_v1
+  及原预算保持。输入SHA256前后均为
+  854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e。
+  实际证据在build/stage-one/retired-shadow-verification/combined-coverage.json。
+- 完整native-for重写名字范围、保留绑定scope搬移和storage提案中多个
+  绑定同时退役的预测仍有精度缺口；canonical唯一性仅style偏好。
+  原IR/SSA、完整activation/capture/finally、cell/value可行代表及增量
+  pass依赖收敛仍开放。统一变量里程碑/阶段一Goal active；所有既定暂停保持。
 
 ### 2026-10-08：规则236，共同名字事实与实际引用可见性
 
