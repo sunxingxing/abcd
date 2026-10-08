@@ -24,6 +24,50 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-09：规则239，复制绑定整批退休的名字需求闭包
+
+- Aliases把值/覆盖/cell/效果已证明的全部复制候选交给纯分析
+  AnalyzeSourceNameRetirement。共同模型在所有候选暂时消失的namespace
+  中解析名字，再按必须保留的绑定单调传播遮蔽与条件RHS需求；固定且
+  retained的root是规范化提案契约，不是指令布局准入。
+- SourceNameIndex记录inactive绑定的最近baseline retained父身份及
+  同名同词法范围peer身份。按spelling/root/位置分区，successor删除只
+  访问每个失效query一次；每个binding入队一次，未知范围或声明冲突
+  按spelling传播typed精度缺口。无整函数重跑、逐变量CFG/祖先遍历。
+- 旧Alias内部基于变更前namespace的拒绝及blocked-copy依赖图退出；
+  生命周期失败作为独立需求输入。只有inert statement RHS可随目的
+  copy消失；observable/embedded RHS仍是无条件读取。名称分析不删除
+  计算/初始化，也不合并cell或推断TDZ；独立证明保持。
+- 提案presence为自有delta，第一次BeginCommit先使ProjectionFacts失效，
+  后续提交不读共同分析。现有Values→Storage→Grammar契约、revision、
+  独立pass及DeadDefinitions→InitialValues→Bindings顺序保持。
+- 新正例在旧实现RED（exit134）；当前3968独立词法祖先/retirement-mask/
+  projection/条件copy闭包对照通过，包含无种子环、自由名字、声明冲突、
+  反向身份、exact/short预算及非法root/ID。名字激活、unknown和coincident
+  缺口与latent RHS边共同传播。200/201/400/800/1600工作量为
+  15554/15634/31844/65222/133576，无200准入阈值。
+- 新源码覆盖同名临时绑定一起消失、source local必须保留/TDZ、保留
+  遮蔽导致外层copy继续存活、快照安全共享scratch。先行storage pass
+  已证明的合法共享保留，不为测试预设结果阻止pass组合。布局反转、
+  0/1/200/201/400/800块拆分、独立行为及错合并/错root变体覆盖。
+- B绑定、N NameId、H shadow、Q query、D需求：
+  O((B+Q) log(B+Q+1)+N+H+D)工作、O(B+Q+N+H+D)内存；排序、
+  访问、缓冲、子分析全部计入原预算，不扩大资源/语言契约。
+- 当前29目标构建85.55秒通过；固定pasteboard导出2.56秒保持19records、
+  10完整/0部分/9无module及10语法检查，源码字节等于238。输入SHA256
+  前后均为854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e。
+  最终59/59选定测试439.95秒通过，combined-coverage.json核对名称与
+  既定选择完全一致。存储485源码/70772行为比较/40错误变体；声明
+  2568/513600/100，初始化2004/482752/368，循环276/13976/68；
+  调度/ownership反例、既有7696 retention、12304当前namespace和9360
+  storage-name对照及真实callback、rich-text、progressbar、EntryAbility
+  验证通过。证据在build/stage-one/name-retirement-verification；当前
+  构建完成前误用旧binary的观察日志明确排除，不作为验收。
+- 本次完成固定root契约内的copy-binding同时退休；storage-group同时
+  退休/重命名/搬作用域仍需提案模型，完整activation/capture/finally、
+  原IR/SSA对应及全局增量pass收敛仍开放。统一变量里程碑、结构gate及
+  阶段一Goal active；全量suite/广语料/RSS/benchmarks/DFX/代理暂停保持。
+
 ### 2026-10-09：规则238，当前源码名字范围统一解析
 
 - AnalyzeTreeSpellings一次发布binding与NameId的typed SourceSpellingId，

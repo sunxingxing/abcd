@@ -1,4 +1,5 @@
 #include "source_names.h"
+#include "source_name_retirement.h"
 #include "binding_initializer.h"
 #include "recovery_schedule.h"
 #include "binding_interference.h"
@@ -1659,65 +1660,39 @@ class Initializers {
     }
     if(!candidates)return;
     std::vector<std::optional<SymbolId>> copy_targets;
-    std::vector<std::optional<std::size_t>> blocked_heads;
-    struct Dependency { SymbolId source; std::optional<std::size_t> next; };
-    std::vector<Dependency> dependencies;std::size_t dependency_count=0;
-    std::vector<std::uint8_t> blocked;
-    std::vector<SourceNameQuery> references;
-    struct AliasRead { std::optional<StmtId> owner; SymbolId binding; std::optional<SymbolId> removed_by; };
-    std::vector<AliasRead> occurrences;
-    budget_.Array(copy_targets,tree_.statements.size());budget_.Array(blocked_heads,uses_.size());
-    budget_.Array(dependencies,coverage.references.size());
-    budget_.Array(blocked,uses_.size());budget_.Array(references,coverage.references.size());
-    budget_.Array(occurrences,coverage.references.size());
+    std::vector<SourceRetirement> candidates_mask;
+    std::vector<SourceRetirementQuery> references;
+    std::vector<SourceRetentionDemand> scope_demands;
+    budget_.Array(copy_targets,tree_.statements.size());budget_.Array(candidates_mask,uses_.size());
+    budget_.Array(references,coverage.references.size());budget_.Array(scope_demands,coverage.references.size());
     for(std::size_t i=0;i<roots.size();++i) {
       budget_.Step();if(!roots[i]||roots[i]->value==i)continue;
-      // A statement store disappears entirely. An embedded store still yields
-      // its RHS at that occurrence; lexical resolution remains required there.
+      candidates_mask[i]=SourceRetirement::kProposed;
+      // Only inert statement RHS reads vanish with their destination. An
+      // embedded/observable RHS remains independently required after retirement.
       const auto statement=coverage.covered_writes[i]->statement;
-      if(!statement || !discard_rhs[i])continue;
-      copy_targets[statement->value]=SymbolId{static_cast<std::uint32_t>(i)};
+      if(statement&&discard_rhs[i])copy_targets[statement->value]=SymbolId{static_cast<std::uint32_t>(i)};
     }
-    std::size_t count=0;
-    // Name/lifetime obligations belong to retained semantic reads, including
-    // compound operations. Their binding identity comes from the same flow as
-    // coverage, never a second census of original SymbolExpr nodes. Scope and
-    // lifetime consume current owners: forwarding can move an original ExprId.
+    std::size_t count=0,demand_count=0;
     for(const auto& read:coverage.references) {
       budget_.Step();if(read.kind!=FlowReferenceKind::kRead)continue;
       if(!roots[read.binding.value]||roots[read.binding.value]==read.binding)continue;
       RequireTree(read.owner.has_value(),TreeStructureError::kOwnership);
-      references[count]={*roots[read.binding.value],read.owner};
       const auto discarded=flow.events[read.point.value].discarded;
       const auto target=discarded?copy_targets[flow.discarded[discarded->value].statement.value]:std::nullopt;
-      occurrences[count++]={read.owner,read.binding,target};
+      references[count++]={{*roots[read.binding.value],read.owner},read.binding,target};
+      // Lexical containment remains independent of name resolution and TDZ.
+      if(!flow.BindingInScope(*roots[read.binding.value],read.owner))scope_demands[demand_count++]={read.binding,target};
     }
-    references.resize(count);const auto visible=ResolveNames(flow,references);
-    ready=0;
-    const auto retain=[&](SymbolId symbol) {
-      if(!blocked[symbol.value]) {
-        RequireTree(ready<constant_queue_.size(),TreeStructureError::kOwnership);
-        blocked[symbol.value]=1;constant_queue_[ready++]=symbol;
-      }
-    };
-    for(std::size_t i=0;i<count;++i) {
-      budget_.Step();if(visible[i]==SourceNameResolution::kResolved&&flow.BindingInScope(std::get<SymbolId>(references[i].name),occurrences[i].owner))continue;
-      const auto source=occurrences[i].binding;
-      // A copy RHS ceases to be a read when its store is elided. Only if the
-      // destination must remain does its unavailable root force source storage.
-      if(const auto target=occurrences[i].removed_by) {
-        dependencies[dependency_count]={source,blocked_heads[target->value]};
-        blocked_heads[target->value]=dependency_count++;
-      } else retain(source);
-    }
-    for(std::size_t at=0;at<ready;++at) {
-      budget_.Step();
-      for(auto edge=blocked_heads[constant_queue_[at].value];edge;edge=dependencies[*edge].next) {
-        budget_.Step();retain(dependencies[*edge].source);
-      }
-    }
+    references.resize(count);scope_demands.resize(demand_count);
+    auto analyzed=AnalyzeSourceNameRetirement(flow,candidates_mask,references,scope_demands,budget_.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
+    auto retirement=std::get<SourceNameRetirement>(std::move(analyzed));
+    budget_.Admit(retirement.allocated_bytes,1);budget_.Step(retirement.work);
+    // An owned delta survives invalidation. No shared fact is consulted after
+    // BeginCommit; value/effect eligibility and common name closure are complete.
     for(std::size_t i=0;i<roots.size();++i) {
-      budget_.Step();if(!roots[i]||roots[i]->value==i||blocked[i])continue;
+      budget_.Step();if(!roots[i]||roots[i]->value==i||retirement.presence[i]==SourceBindingPresence::kRetained)continue;
       const auto& selected=*coverage.covered_writes[i];const auto& use=uses_[i];
       BeginCommit();plan_.aliases[i]=roots[i];
       RemoveCoveredWrite(selected,*use.declaration);

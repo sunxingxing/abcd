@@ -459,3 +459,16 @@ independent ancestry/projection/mask oracles and syntax/execution/mutation/layou
 scaling/budget/reuse checks verify the substep. Actual evidence belongs in status.md;
 prospective simultaneous retirement/renaming, originalIR/SSA/full activation/capture/
 finally/global convergence and the overall milestone/stage-one remain open.
+
+
+Task 2/4 implementation substep (rules239): pure common name-retirement analysis
+consumes the complete value/effect-safe copy proposal with fixed retained roots.
+A prospective lexical baseline, root/position query partitions, successor deletion
+and a monotone activation/conditional-demand queue replace Aliases' old-namespace
+rejection and optimizer-local blocked-copy graph. Independent value/cell/lifetime/
+TDZ/effect/deletion proofs remain; first-commit invalidation, owned deltas and typed
+stage/cleanup contracts remain. Source tests allow legitimate preceding storage
+recovery; independent tiny ancestry/projection/copy-demand oracles test the closure
+rather than require a particular intermediate plan. Actual acceptance belongs in
+status.md. Prospective storage-group renaming/retirement, original IR/SSA/full
+activation/capture/finally/global convergence and the overall milestone remain open.

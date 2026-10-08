@@ -2674,3 +2674,24 @@ outside/inside-read source cases, actual syntax assertions, wrong-merge/update
 mutants and layout/scaling/budget/reuse negatives cover the migration. Prospective
 simultaneous storage retirement/renaming remains a precision gap, never a language
 invariant. Full activation/capture/finally/original IR/SSA/convergence remain open.
+
+### 2026-10-09 rules239: simultaneous copy-binding retirement
+
+Obligation: every retained rewritten read must resolve to its fixed intended root
+under the final retirement proposal. AnalyzeSourceNameRetirement starts with all
+eligible copies absent and monotonically activates bindings required by name or
+independent lifetime demands. Inert copy RHS reads are conditional on their owning
+destination surviving; observable/embedded RHS reads stay required. The common
+worklist combines lexical shadow activation with these conditional dependencies.
+Aliases' optimizer-local old-namespace rejection and blocked-copy graph retire.
+Value/cell/effect/completion/TDZ proofs remain separate and unchanged.
+
+Nearest retained lexical parent and coincident-region peer identities are common
+semantic facts. Unknown scopes or ambiguous declarations are typed capability gaps.
+No sample/name/opcode sequence, same-block, adjacency or fixed CFG layout admission
+is introduced. Fixed retained roots are the normalized proposal contract, not an
+instruction pattern. Source and small independent graph oracles test simultaneous
+retirement, newly retained shadows, conditional demands, legal preceding storage
+recovery, TDZ/incorrect-root counterexamples and layout/budget/scaling stability.
+Prospective storage-group renaming/retirement, full activation/capture/finally and
+original IR/SSA correspondence remain documented gaps.

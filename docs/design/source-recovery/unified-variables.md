@@ -2004,3 +2004,44 @@ reconstruction for arbitrary binding rewrites. Prospective simultaneous storage
 retirement/renaming, full activation/capture/finally and original IR/SSA integration
 remain open, as does incremental global pass convergence. Status.md records actual
 selected acceptance; the unified-variable milestone and stage-one Goal stay active.
+
+### Prospective copy-retirement name closure (2026-10-09, rules239)
+
+Aliases now submits its complete eligible copy-retirement mask to the pure common
+AnalyzeSourceNameRetirement analysis. It supplies normalized fixed retained roots,
+current semantic read owners, and conditional read ownership for inert statement
+RHS values. Independent lexical-containment failures enter as retention demands.
+Value coverage, cell identity, activation/TDZ, successful write completion and RHS
+effects remain independently proved; namespace analysis cannot authorize their
+removal. An observable or embedded RHS stays an unconditional read.
+
+The baseline removes every proposed copy binding at once. Shared SourceNameIndex
+records nearest baseline retained same-spelling parents even for inactive entries,
+and coincident local-region peer identity. Queries use an explicit immutable index
+without copying or mutating RecoveryFlow. Retention activation invalidates queries
+in that binding's lexical interval and baseline-root partition. A bounded worklist
+also propagates latent RHS demands when their destination becomes retained. Each
+binding activates once and each failing query installs at most one demand edge.
+Unknown scopes and coincident declaration conflicts invalidate the affected spelling
+as typed precision gaps. They do not invent a compiler-shape admission condition.
+
+The optimizer-local pre-proposal name rejection and blocked-copy dependency graph
+exit Aliases. The returned presence delta is owned before BeginCommit invalidates
+ProjectionFacts; commit reads no shared analysis. Existing typed pass contracts,
+Values/Storage/Grammar stages, and ordered DeadDefinitions/InitialValues/Bindings
+checkpoints remain. This is one monotone semantic analysis inside a pass, not an
+extra whole-function optimization round or a shared mutable-plan fixed point.
+
+Tiny independent lexical-ancestry/mask/projection/copy-demand oracles compare the
+least retention closure, including cycles without seeds, free names, coincident
+regions and reversed identities. Source execution checks simultaneous disappearance,
+retained local TDZ, shadow activation, and a snapshot safely sharing retained
+scratch storage. Existing storage recovery may improve that snapshot before
+Aliases; tests assert the proved result rather than forbid pass interaction.
+200/201/geometric work, exact/short budgets and invalid roots/IDs cover boundaries.
+
+This closes prospective simultaneous copy-binding retirement under the stated
+fixed-root contract. Simultaneous storage-group retirement/renaming or scope
+relocation still needs its own proposal model; full activation/capture/finally,
+original IR/SSA correspondence and global incremental pass convergence remain open.
+The unified-variable milestone and stage-one Goal remain active.

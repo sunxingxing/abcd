@@ -19,6 +19,8 @@ struct SourceNameResults {
     const RecoveryFlow&,std::span<const SourceBindingPresence>,
     std::span<const SourceBindingShadow>,analysis::SemanticBudget = {});
 [[nodiscard]] std::variant<SourceNameResults,TreeStructureError> ResolveSourceNames(
+    const RecoveryFlow&,const SourceNameIndex&,std::span<const SourceNameQuery>,analysis::SemanticBudget = {});
+[[nodiscard]] std::variant<SourceNameResults,TreeStructureError> ResolveSourceNames(
     const RecoveryFlow&,std::span<const SourceNameQuery>,analysis::SemanticBudget = {});
 }
 #endif

@@ -3368,3 +3368,28 @@ queue/sweep visits and binary searches use the unchanged semantic budget. Rebuil
 indexes replace prior facts; this does not claim new buffer-capacity reuse. Tiny
 slow ancestry oracles are test-only. 200/201, geometric chain/star and exact/short
 budgets validate cost/accounting, not complete process RSS (still paused).
+
+### Prospective copy-retirement name demands (2026-10-09, rules239)
+
+Provenance: monotone Horn-style implication closure with an adjacency worklist,
+sorted lexical interval/root indexes, and successor-set deletion with path
+compression. Local implementation; no new dependency, license or profile. Requires
+validated spelling/scope facts and a value/effect-safe retirement proposal whose
+symbol lookup roots are fixed retained bindings. Namespace analysis has no write
+or declaration-deletion authority. Missing facts remain explicit precision gaps.
+
+For B bindings, N NameIds, H canonical shadow edges, Q proposed reads and D external
+retention demands, baseline name indexing costs O(B log(B+1)+B+N+H), query resolution
+O(Q log(B+1)), and sorting query positions O(Q log(Q+1)). Root partitions avoid
+scanning deeper fixed-binding queries on each ancestor activation. Each candidate
+activates once; each query fails once and adds at most one conditional edge. Binary
+range lookup adds O(B log(Q+1)); successor deletion uses monotone path compression
+with a conservative O(Q log(Q+1)) amortized bound (no rank-union claim). Overall
+O((B+Q) log(B+Q+1)+N+H+D), memory O(B+Q+N+H+D). Each explicit demand edge is charged;
+there is no per-variable graph walk, pairwise threshold or repeated full analysis.
+
+Coincident-region occupancy and once-per-spelling precision invalidation are
+indexed. All owned buffers, nested analysis costs, sorts, binary searches, worklist
+visits and successor traversals consume the existing semantic budget. Small slow
+repeated-resolution oracles exist only in tests. 200/201/geometric and exact/short
+checks measure work/accounting; process RSS and broad corpus validation stay paused.

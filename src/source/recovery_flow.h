@@ -52,6 +52,10 @@ struct SourceNameRange {SourceSpellingId spelling;SourceRegion region;SymbolId b
 struct SourceNameIndex {
   std::vector<SourceNameRange> ranges;
   std::vector<SourceNameResolution> precision;
+  // Nearest retained spelling at each binding entry, including elided entries.
+  // Coincident local regions share a peer identity for declaration conflicts.
+  std::vector<std::optional<SymbolId>> enclosing;
+  std::vector<std::optional<SymbolId>> scope_peer;
 };
 struct SourceNameQuery {std::variant<SymbolId,NameId> name;std::optional<StmtId> owner;};
 struct SourceScopeProjection {

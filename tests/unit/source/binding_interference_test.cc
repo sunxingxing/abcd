@@ -363,6 +363,40 @@ std::uint64_t NarrowedShadow(bool loop,bool inside,unsigned count,bool reverse,b
   if(emit)std::cout<<nlohmann::json{{"form",30+(loop?1:0)+(inside?2:0)},{"count",count},{"reverse",reverse},{"merged",!inside},{"source",output.str()}}<<'\n';
   return bindings.work;
 }
+std::uint64_t RetiringCopies(unsigned form,unsigned count,bool reverse,bool emit){
+  Fixture f(Form::kStraight);auto& tree=f.tree;tree.symbols[3].kind=BindingKind::kLocal;tree.symbols[3].temporary.reset();
+  const bool retained=form==35,activated=form>=36,conditional=form==37;
+  std::vector<StmtId> roots{f.Stmt(DeclarationStmt{{3},f.Call({f.Read(0)})}),f.Stmt(DeclarationStmt{{4},f.Read(3)})};
+  const auto inner=f.Block({});const auto scope=std::get<BlockStmt>(tree.statements[inner.value].statement).scope;
+  tree.symbols.push_back({scope,{3},retained?BindingKind::kLocal:BindingKind::kCompilerTemporary,DeclarationKind::kLet,
+      NameEvidence::kSynthesized,retained?std::nullopt:std::optional{TemporaryReason::kMultipleUses}});
+  std::vector<StmtId> children{f.Stmt(DeclarationStmt{{5},f.Read(activated?0:4)})};
+  if(conditional){tree.names.push_back(u"snapshot");tree.symbols.push_back({scope,{6},BindingKind::kCompilerTemporary,DeclarationKind::kLet,NameEvidence::kSynthesized,TemporaryReason::kMultipleUses});}
+  if(activated) {
+    const auto nested=f.Block({},scope);const auto nested_scope=std::get<BlockStmt>(tree.statements[nested.value].statement).scope;
+    const SymbolId shadow{static_cast<std::uint32_t>(tree.symbols.size())};
+    tree.symbols.push_back({nested_scope,{0},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
+    const auto declaration=f.Stmt(DeclarationStmt{shadow,f.Expr(TreeLiteral{IntegerLiteral{100}})});
+    const auto report=f.Stmt(ExpressionStmt{f.Call({f.Read(5)})});
+    auto& block=std::get<BlockStmt>(tree.statements[nested.value].statement);block.first_child=tree.children.size();block.child_count=2;
+    tree.children.insert(tree.children.end(),{declaration,report});children.push_back(nested);
+    if(conditional)children.push_back(f.Stmt(DeclarationStmt{{6},f.Read(4)}));
+    children.push_back(f.Stmt(ExpressionStmt{f.Call({f.Read(conditional?6:4)})}));
+  }else children.push_back(f.Stmt(ExpressionStmt{f.Call({f.Read(5)})}));
+  for(unsigned i=0;i<count;++i)children.push_back(f.Block({},scope));
+  auto& block=std::get<BlockStmt>(tree.statements[inner.value].statement);block.first_child=tree.children.size();block.child_count=children.size();tree.children.insert(tree.children.end(),children.begin(),children.end());roots.push_back(inner);
+  roots.push_back(f.Stmt(ReturnStmt{f.Read(3)}));f.Finish(roots,reverse);
+  Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
+  const auto bindings=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
+  Check(bindings.Storage({4})==SymbolId{form==34?3U:4U});Check(bindings.Storage({5})==SymbolId{form==34?3U:5U});
+  // Earlier storage recovery can share the immutable snapshot with scratch.
+  // Its spelling remains visible even when the outer current is shadowed.
+  if(conditional)Check(bindings.Storage({6})==SymbolId{4});
+  std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
+  if(emit)std::cout<<nlohmann::json{{"form",form},{"count",count},{"reverse",reverse},{"merged",form==34},{"source",output.str()}}<<'\n';
+  return bindings.work;
+}
 std::uint64_t Many(unsigned count,bool emit){
   Fixture f(Form::kStraight);auto& tree=f.tree;std::vector<StmtId> declarations,body;
   for(unsigned i=0;i<count;++i){
@@ -436,6 +470,7 @@ int main(int argc,char** argv){
     std::uint64_t previous=0;for(unsigned count:{1U,200U,201U,400U,800U}){
       const auto work=Many(count,true);if(count==800)Check(work<previous*3);previous=work;}return 0;
   }
+for(unsigned form:{34U,35U,36U,37U})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){const auto work=RetiringCopies(form,count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}
 for(bool loop:{false,true})for(bool inside:{false,true})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){const auto work=NarrowedShadow(loop,inside,count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}
 for(bool retired:{true,false})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){
   const auto work=RetiredShadow(retired,count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}

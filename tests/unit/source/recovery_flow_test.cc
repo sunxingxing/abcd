@@ -5,6 +5,7 @@
 #include "../../../src/source/flow_constants.h"
 #include "../../../src/source/recovery_schedule.h"
 #include "../../../src/source/source_names.h"
+#include "../../../src/source/source_name_retirement.h"
 #include <bit>
 #include <limits>
 #include "../../../src/source/definition_elision.h"
@@ -510,6 +511,105 @@ void SourceNameOracle() {
   RecoveryFlow empty{};empty.source_name_spellings={std::nullopt};auto empty_names=std::get<FlowBindingNames>(AnalyzeFlowBindingNames(empty,{}));empty.source_names=std::move(empty_names.index);
   const std::array free{SourceNameQuery{NameId{0},{}}};Check(std::get<SourceNameResults>(ResolveSourceNames(empty,free)).resolutions[0]==SourceNameResolution::kResolved);
   std::cout<<"independent current source name cases "<<cases<<'\n';
+}
+void RetirementOracle() {
+  std::uint64_t cases=0;
+  // Slow independent lexical-ancestry fixed point, test-only. Each source name
+  // is resolved from retained bindings rather than production range indexes.
+  for(unsigned count=2;count<=6;++count)for(unsigned layout=0;layout<4;++layout)
+  for(unsigned mask=0;mask<(1U<<(count-1));++mask)for(unsigned pattern=0;pattern<8;++pattern)for(bool reverse:{false,true}) {
+    const auto id=[&](unsigned i){return SymbolId{reverse?count-1-i:i};};
+    RecoveryFlow flow{};flow.bindings.resize(count);flow.source_regions.resize(count);flow.source_occurrences.resize(count);
+    flow.source_spellings.resize(count);flow.source_name_spellings={SourceSpellingId{0},SourceSpellingId{1}};
+    flow.binding_presence.assign(count,SourceBindingPresence::kRetained);
+    std::vector<std::optional<unsigned>> parents(count);std::vector<unsigned> spelling(count),scope(count);
+    for(unsigned i=1;i<count;++i)parents[i]=layout==0?0:layout==1?i-1:layout==2?(i-1)/2:(i+pattern)%i;
+    const auto contains=[&](unsigned outer,unsigned inner){auto at=std::optional{inner};while(at){if(*at==outer)return true;at=parents[*at];}return false;};
+    std::size_t cursor=0;
+    const auto visit=[&](auto&& self,unsigned node)->void {
+      const SourcePosition first{cursor++};flow.source_occurrences[node]=first;
+      for(unsigned child=node+1;child<count;++child)if(parents[child]==node)self(self,child);
+      flow.source_regions[node]={first,SourcePosition{cursor}};
+    };visit(visit,0);
+    std::vector<SourceRetirement> candidates(count,SourceRetirement::kFixed);
+    std::vector<bool> retained(count,true);
+    for(unsigned i=0;i<count;++i){spelling[i]=(pattern>> (i%3))&1;scope[i]=(pattern&4)&&i+1<count&&contains(i,i+1)?i+1:i;flow.source_spellings[id(i).value]={spelling[i]};flow.bindings[id(i).value].scope=scope[i]==i?SourceBindingScope{OriginalBindingScope{SourceRegionId{i}}}:SourceBindingScope{ProjectedBindingScope{SourceRegionId{scope[i]}}};
+      if(i&&(mask&(1U<<(i-1)))){candidates[id(i).value]=SourceRetirement::kProposed;retained[i]=false;}}
+    for(unsigned i=1;i<count;++i){auto outer=parents[i];while(outer&&spelling[*outer]!=spelling[i])outer=parents[*outer];if(outer)flow.source_shadows.push_back({id(*outer),SourceRegionId{i},id(i)});}
+    auto original=std::get<SourceNameFacts>(AnalyzeSourceNames(flow,flow.binding_presence,flow.source_shadows));flow.source_names=std::move(original.index);
+    std::vector<SourceRetirementQuery> queries;std::vector<SourceRetentionDemand> demands;
+    for(unsigned i=1;i<count;++i)if(candidates[id(i).value]==SourceRetirement::kProposed) {
+      const auto condition=pattern&1?std::optional{id(i==count-1?1:i+1)}:std::nullopt;
+      for(unsigned owner=0;owner<count;++owner)for(unsigned root=0;root<count;++root)if(candidates[id(root).value]==SourceRetirement::kFixed)queries.push_back({{pattern&2?std::variant<SymbolId,NameId>{NameId{spelling[root]}}:std::variant<SymbolId,NameId>{id(root)},StmtId{owner}},id(i),condition});
+      if(pattern&4)demands.push_back({id(i),i==1?std::nullopt:std::optional{id(i-1)}});
+    }
+    const auto active=[&](std::optional<SymbolId> condition){return !condition||retained[reverse?count-1-condition->value:condition->value];};
+    bool changed=true;
+    while(changed){changed=false;
+      const auto keep=[&](SymbolId binding){const auto i=reverse?count-1-binding.value:binding.value;if(!retained[i]){retained[i]=true;changed=true;}};
+      for(const auto& demand:demands)if(active(demand.retained_by))keep(demand.binding);
+      for(const auto& query:queries)if(active(query.retained_by)) {
+        const unsigned owner=query.lookup.owner->value;
+        const auto* symbol=std::get_if<SymbolId>(&query.lookup.name);const auto root=symbol?std::optional<unsigned>{reverse?count-1-symbol->value:symbol->value}:std::nullopt;
+        const auto name=root?spelling[*root]:std::get<NameId>(query.lookup.name).value;
+        std::optional<unsigned> selected;bool ambiguous=false;
+        for(unsigned binding=0;binding<count;++binding)if(retained[binding]&&spelling[binding]==name) {
+          for(unsigned other=0;other<binding;++other)if(retained[other]&&spelling[other]==name&&scope[other]==scope[binding])ambiguous=true;
+          if(contains(scope[binding],owner)&&(!selected||contains(scope[*selected],scope[binding])))selected=binding;
+        }
+        const bool valid=!ambiguous&&(root?selected==root:!selected);
+        if(!valid)keep(query.binding);
+      }
+    }
+    auto analyzed=AnalyzeSourceNameRetirement(flow,candidates,queries,demands);Check(std::holds_alternative<SourceNameRetirement>(analyzed));const auto result=std::get<SourceNameRetirement>(std::move(analyzed));
+    for(unsigned i=0;i<count;++i)Check((result.presence[id(i).value]==SourceBindingPresence::kRetained)==retained[i]);++cases;
+    if(count==4&&layout==1&&mask==7&&pattern==4&&!reverse) {
+      const auto exact=analysis::SemanticBudget{result.allocated_bytes,result.work};
+      Check(std::holds_alternative<SourceNameRetirement>(AnalyzeSourceNameRetirement(flow,candidates,queries,demands,exact)));
+      Check(std::get<TreeStructureError>(AnalyzeSourceNameRetirement(flow,candidates,queries,demands,{exact.bytes-1,exact.work}))==TreeStructureError::kResourceLimit);
+      Check(std::get<TreeStructureError>(AnalyzeSourceNameRetirement(flow,candidates,queries,demands,{exact.bytes,exact.work-1}))==TreeStructureError::kWorkLimit);
+      auto invalid=candidates;invalid[0]=SourceRetirement::kProposed;Check(std::get<TreeStructureError>(AnalyzeSourceNameRetirement(flow,invalid,queries,demands))==TreeStructureError::kOwnership);
+      auto bad=queries;bad[0].retained_by=SymbolId{count};Check(std::get<TreeStructureError>(AnalyzeSourceNameRetirement(flow,candidates,bad,demands))==TreeStructureError::kOwnership);
+    }
+  }
+  // A name-activation chain and conditional-copy chain share one bounded queue.
+  // Each query is invalidated once even with nested overlap; fixed descendants
+  // partition unaffected queries away from ancestor activations.
+  std::uint64_t previous=0;
+  for(unsigned count:{200U,201U,400U,800U,1600U}) {
+    RecoveryFlow flow{};flow.bindings.resize(count+1);flow.source_spellings.resize(count+1,SourceSpellingId{0});
+    flow.binding_presence.resize(count+1,SourceBindingPresence::kRetained);flow.source_regions.resize(count+1);flow.source_occurrences.resize(count);
+    std::vector<SourceRetirement> candidates(count+1,SourceRetirement::kProposed);candidates[0]=SourceRetirement::kFixed;
+    for(unsigned i=0;i<=count;++i){flow.bindings[i].scope=OriginalBindingScope{SourceRegionId{i}};flow.source_regions[i]={{i},{2*count+1-i}};if(i)flow.source_shadows.push_back({{i-1},SourceRegionId{i},SymbolId{i}});}
+    std::vector<SourceRetirementQuery> queries;
+    for(unsigned i=1;i<=count;++i){flow.source_occurrences[i-1]=SourcePosition{i};queries.push_back({{SymbolId{0},StmtId{i-1}},SymbolId{i==count?count:i+1},{}});}
+    auto original=std::get<SourceNameFacts>(AnalyzeSourceNames(flow,flow.binding_presence,flow.source_shadows));flow.source_names=std::move(original.index);
+    const std::array demands{SourceRetentionDemand{SymbolId{1},{}}};
+    auto result=std::get<SourceNameRetirement>(AnalyzeSourceNameRetirement(flow,candidates,queries,demands));
+    for(const auto presence:result.presence)Check(presence==SourceBindingPresence::kRetained);
+    if(count>=400)Check(result.work<previous*3);previous=result.work;
+    std::cout<<"name retirement size "<<count<<" work "<<result.work<<'\n';
+  }
+  for(unsigned variant=0;variant<3;++variant) {
+    RecoveryFlow flow{};flow.bindings.resize(4);flow.binding_presence.assign(4,SourceBindingPresence::kRetained);
+    flow.source_spellings={{0},{0},{1},{1}};flow.source_name_spellings={SourceSpellingId{0},std::nullopt};
+    flow.source_regions={{{0},{10}},{{1},{9}},{{2},{8}},{{3},{7}}};flow.source_occurrences={SourcePosition{5}};
+    for(unsigned i=0;i<4;++i)flow.bindings[i].scope=OriginalBindingScope{SourceRegionId{i}};
+    if(variant==1)flow.bindings[1].scope=UnmodeledBindingScope{};
+    if(variant==2)flow.bindings[1].scope=ProjectedBindingScope{{0}};
+    flow.source_shadows={{{0},SourceRegionId{1},SymbolId{1}},{{2},SourceRegionId{3},SymbolId{3}}};
+    auto original=std::get<SourceNameFacts>(AnalyzeSourceNames(flow,flow.binding_presence,flow.source_shadows));flow.source_names=std::move(original.index);
+    const std::array candidates{SourceRetirement::kFixed,SourceRetirement::kProposed,SourceRetirement::kProposed,SourceRetirement::kProposed};
+    // Query 3 fails while its owner 2 is absent, installing a latent demand.
+    const std::array queries{SourceRetirementQuery{{SymbolId{0},StmtId{0}},SymbolId{3},SymbolId{2}},SourceRetirementQuery{{SymbolId{0},StmtId{0}},SymbolId{2},{}}};
+    const std::array seeds{SourceRetentionDemand{SymbolId{1},{}}};
+    auto result=std::get<SourceNameRetirement>(AnalyzeSourceNameRetirement(flow,candidates,queries,seeds));
+    for(const auto presence:result.presence)Check(presence==SourceBindingPresence::kRetained);
+    auto inert=std::get<SourceNameRetirement>(AnalyzeSourceNameRetirement(flow,candidates,queries,{}));
+    Check(inert.presence[1]==SourceBindingPresence::kElided&&inert.presence[2]==SourceBindingPresence::kElided&&inert.presence[3]==SourceBindingPresence::kElided);
+    flow.source_names.reset();auto gap=std::get<SourceNameRetirement>(AnalyzeSourceNameRetirement(flow,candidates,queries,{}));for(const auto presence:gap.presence)Check(presence==SourceBindingPresence::kRetained);
+  }
+  std::cout<<"independent name retirement cases "<<cases<<'\n';
 }
 void SpellingOracle() {
   const auto run=[](unsigned count,unsigned encoded,unsigned pattern,bool reverse) {
@@ -1595,4 +1695,4 @@ void PassContracts() {
   Check(!unfinished.DemandCleanupNeeded());
   std::cout<<"pass ownership, dependency and cleanup counterexamples passed\n";
 }
-int main(){InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();PassContracts();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();SpellingOracle();StorageNameOracle();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+int main(){InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();PassContracts();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

@@ -3,7 +3,7 @@ import {execFileSync} from 'node:child_process';
 import vm from 'node:vm';
 import {parseJavaScript} from './class_reference.mjs';
 const records=execFileSync(process.argv[2],['--emit'],{encoding:'utf8',timeout:60_000,maxBuffer:16*1024*1024}).trim().split('\n').map(JSON.parse);
-assert.equal(records.length,408);
+assert.equal(records.length,456);
 // Oracles describe the original storage semantics, never enter the engine.
 const references=[
   function(input,report,flag){let current=input,scratch=current;++scratch;current=scratch;return current;},
@@ -41,6 +41,10 @@ references.push(function(input,report,flag){let current=input;report(current);++
 references.push(function(input,report,flag){let current=input;report(current);++current;let scratch=current;{let current;current=report(input);while(!(current>=2)){++current;report(current);if(flag)break;flag=true;}report(scratch);}return scratch;{let scratch;}});
 references.push(function(input,report,flag){let current=input;report(current);++current;let scratch=current;{let current;{current=report(input);++current;report(current);report(scratch);}report(scratch);}return scratch;{let scratch;}});
 references.push(function(input,report,flag){let current=input;report(current);++current;let scratch=current;{let current;current=report(input);while(!(current>=2)){++current;report(current);report(scratch);if(flag)break;flag=true;}report(scratch);}return scratch;{let scratch;}});
+references.push(function(input,report,flag){let current=report(input),scratch=current;{let current=scratch;report(current);}return current;});
+references.push(function(input,report,flag){let current=report(input),scratch=current;{let current=scratch;report(current);}return current;});
+references.push(function(input,report,flag){let current=report(input),scratch=current;{let current=input;{let input=100;report(current);}report(scratch);}return current;});
+references.push(function(input,report,flag){let current=report(input),scratch=current;{let current=input;{let input=100;report(current);}let snapshot=scratch;report(snapshot);}return current;});
 const primitives=[undefined,null,false,true,0,-0,1,-2,0n,2n,NaN,Infinity,'','7','bad',Symbol('input')];
 let cases=0,mutations=0;
 async function observe(fn,form,index,mode,flag,request){
@@ -48,7 +52,7 @@ async function observe(fn,form,index,mode,flag,request){
   if(index<primitives.length)input=primitives[index];
   else input={ [Symbol.toPrimitive](hint){events.push(['coerce',hint]);if(mode==='coercion-throw')throw original;return index===primitives.length?4:5n;} };
   const encode=value=>value===input&&typeof value==='object'&&value!==null?'input-object':value===original?'original-throw':value===returned?'return-object':value;
-  const report=(...args)=>{events.push(['report',...args.map(value=>typeof value==='function'?['capture',encode(value())]:encode(value))]);if(mode==='report-throw')throw original;if(mode==='reject')return Promise.reject(original);return form===24?input:form===31||form===33?0:undefined;};
+  const report=(...args)=>{events.push(['report',...args.map(value=>typeof value==='function'?['capture',encode(value())]:encode(value))]);if(mode==='report-throw')throw original;if(mode==='reject')return Promise.reject(original);return [24,34,35].includes(form)?input:[31,33,36,37].includes(form)?0:undefined;};
   // Avoid an unused rejected promise outside the awaited case.
   if(mode==='reject'&&form!==4)return;
   let result;
@@ -86,7 +90,7 @@ for(const record of records){
     if(record.form===7&&primitives[index]===Infinity)continue;
     assert.deepEqual(await observe(recovered,record.form,index,mode,flag,request),await observe(references[record.form],record.form,index,mode,flag,request),JSON.stringify({form:record.form,index,mode,flag,request}));++cases;
   }
-  if(record.count===0&&!record.reverse&&[1,3,4,5,6,9,10,20,32,33].includes(record.form)){
+  if(record.count===0&&!record.reverse&&[1,3,4,5,6,9,10,20,32,33,35,36,37].includes(record.form)){
     // A semantically wrong coalescing remains valid JS: reuse current for every
     // scratch access while retaining the now-unused scratch declaration.
     const changed=record.source.replaceAll('scratch','currentAlias');
@@ -98,6 +102,10 @@ for(const record of records){
     parseJavaScript(mutant);const wrong=vm.runInNewContext(mutant);
     const mode=record.form===3?'report-throw':record.form===4?'reject':'normal';const request=record.form===5?'return':'next';
     assert.notDeepEqual(await observe(wrong,record.form,6,mode,record.form!==33,request),await observe(references[record.form],record.form,6,mode,record.form!==33,request),`coalescing mutant ${record.form}`);++mutations;
+  }
+  if(record.count===0&&!record.reverse&&[36,37].includes(record.form)) {
+    const wrong=function(input,report){let current=report(input),scratch=current;{let current=input;{let input=100;report(input);}report(scratch);}return current;};
+    assert.notDeepEqual(await observe(wrong,record.form,6,'normal',true,'next'),await observe(references[record.form],record.form,6,'normal',true,'next'));++mutations;
   }
   if(record.count===0&&!record.reverse&&record.form===17) {
     // The read of scratch's known 0 can now be replaced before coalescing.

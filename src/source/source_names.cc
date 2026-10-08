@@ -10,7 +10,7 @@ std::variant<SourceNameFacts,TreeStructureError> AnalyzeSourceNames(
   try {
     TreeCheckBudget budget(allowance);SourceNameFacts result;const auto count=flow.bindings.size();
     RequireTree(presence.size()==count&&flow.source_spellings.size()==count,TreeStructureError::kOwnership);
-    budget.Array(result.index.precision,count);
+    budget.Array(result.index.precision,count);budget.Array(result.index.enclosing,count);budget.Array(result.index.scope_peer,count);
     for(auto& precision:result.index.precision){budget.Step();precision=SourceNameResolution::kResolved;}
     for(const auto spelling:flow.source_spellings){budget.Step();RequireTree(spelling.value<count,TreeStructureError::kOwnership);}
     for(const auto spelling:flow.source_name_spellings){budget.Step();RequireTree(!spelling||spelling->value<count,TreeStructureError::kOwnership);}
@@ -48,9 +48,10 @@ std::variant<SourceNameFacts,TreeStructureError> AnalyzeSourceNames(
     RequireTree(queued==count,TreeStructureError::kOwnership);
     struct BindingRange {SymbolId binding;SourceSpellingId spelling;SourceRegion region;bool external=false;};
     std::vector<BindingRange> bindings;std::vector<std::size_t> stack;
+    std::vector<std::optional<std::size_t>> active;budget.Array(active,count);
     budget.Array(bindings,count);budget.Array(stack,count);std::size_t retained=0;
     for(std::size_t i=0;i<count;++i) {
-      budget.Step();if(presence[i]==SourceBindingPresence::kElided)continue;
+      budget.Step();
       const SymbolId binding{static_cast<std::uint32_t>(i)};const auto spelling=flow.source_spellings[i];
       if(const auto region=flow.BindingRegion(binding)) {
         RequireTree(region->value<flow.source_regions.size(),TreeStructureError::kOwnership);
@@ -61,7 +62,7 @@ std::variant<SourceNameFacts,TreeStructureError> AnalyzeSourceNames(
         // Canonical parent identity orders self/capture/module/parameter layers;
         // they cover every body position without guessing an AST container.
         bindings[retained++]={binding,spelling,{{0},{std::numeric_limits<std::size_t>::max()}},true};
-      } else result.index.precision[spelling.value]=SourceNameResolution::kUnmodeled;
+      } else if(presence[i]==SourceBindingPresence::kRetained)result.index.precision[spelling.value]=SourceNameResolution::kUnmodeled;
     }
     bindings.resize(retained);
     std::sort(bindings.begin(),bindings.end(),[&](const auto& a,const auto& b){
@@ -80,7 +81,11 @@ std::variant<SourceNameFacts,TreeStructureError> AnalyzeSourceNames(
     const auto emit=[&](SourcePosition end) {
       budget.Step();if(pending&&cursor<end) {
         RequireTree(spans<result.index.ranges.size(),TreeStructureError::kOwnership);
-        const auto& binding=bindings[stack[pending-1]];result.index.ranges[spans++]={binding.spelling,{cursor,end},binding.binding};
+        if(const auto at=active[stack[pending-1]]) {
+          const auto& binding=bindings[*at];
+          if(spans&&result.index.ranges[spans-1].spelling==binding.spelling&&result.index.ranges[spans-1].binding==binding.binding&&result.index.ranges[spans-1].region.last==cursor)result.index.ranges[spans-1].region.last=end;
+          else result.index.ranges[spans++]={binding.spelling,{cursor,end},binding.binding};
+        }
       }
       cursor=end;
     };
@@ -92,19 +97,35 @@ std::variant<SourceNameFacts,TreeStructureError> AnalyzeSourceNames(
         budget.Step();emit(bindings[stack[pending-1]].region.last);--pending;
       }
       emit(binding.region.first);
+      std::optional<std::size_t> parent_active;
       if(pending) {
         const auto& parent=bindings[stack[pending-1]];
         // Lexical intervals are nested or disjoint by scope semantics. Crossing
         // intervals are invalid adapter provenance, never a compiler pattern.
         RequireTree(binding.region.last<=parent.region.last,TreeStructureError::kOwnership);
-        if(binding.region.first==parent.region.first&&binding.region.last==parent.region.last) {
-          const auto original_parent=parents[binding.binding.value];
-          const auto retained_parent=original_parent?nearest[original_parent->value]:std::nullopt;
-          if((!binding.external&&!parent.external)||(binding.external&&parent.external&&retained_parent!=parent.binding))
-            result.index.precision[binding.spelling.value]=SourceNameResolution::kAmbiguous;
-        }
-        result.shadows[shadows++]={parent.binding,flow.BindingRegion(binding.binding),binding.binding};
+        parent_active=active[stack[pending-1]];
       }
+      if(i&&!binding.external) {
+        const auto& previous=bindings[i-1];
+        if(!previous.external&&previous.spelling==binding.spelling&&previous.region.first==binding.region.first&&previous.region.last==binding.region.last) {
+          const auto peer=result.index.scope_peer[previous.binding.value].value_or(previous.binding);
+          result.index.scope_peer[previous.binding.value]=peer;result.index.scope_peer[binding.binding.value]=peer;
+        }
+      }
+      if(parent_active)result.index.enclosing[binding.binding.value]=bindings[*parent_active].binding;
+      if(presence[binding.binding.value]==SourceBindingPresence::kRetained) {
+        if(parent_active) {
+          const auto& parent=bindings[*parent_active];
+          if(binding.region.first==parent.region.first&&binding.region.last==parent.region.last) {
+            const auto original_parent=parents[binding.binding.value];
+            const auto retained_parent=original_parent?nearest[original_parent->value]:std::nullopt;
+            if((!binding.external&&!parent.external)||(binding.external&&parent.external&&retained_parent!=parent.binding))
+              result.index.precision[binding.spelling.value]=SourceNameResolution::kAmbiguous;
+          }
+          result.shadows[shadows++]={parent.binding,flow.BindingRegion(binding.binding),binding.binding};
+        }
+        active[i]=i;
+      }else active[i]=parent_active;
       stack[pending++]=i;
     }
     finish();
@@ -116,13 +137,12 @@ std::variant<SourceNameFacts,TreeStructureError> AnalyzeSourceNames(
   catch(const std::length_error&){return TreeStructureError::kResourceLimit;}
 }
 std::variant<SourceNameResults,TreeStructureError> ResolveSourceNames(
-    const RecoveryFlow& flow,std::span<const SourceNameQuery> queries,analysis::SemanticBudget allowance) {
+    const RecoveryFlow& flow,const SourceNameIndex& index,std::span<const SourceNameQuery> queries,analysis::SemanticBudget allowance) {
   try {
     TreeCheckBudget budget(allowance);SourceNameResults result;budget.Array(result.resolutions,queries.size());
     for(std::size_t i=0;i<queries.size();++i) {
       budget.Step();const auto& query=queries[i];auto& resolution=result.resolutions[i];resolution=SourceNameResolution::kUnmodeled;
-      if(!flow.source_names)continue;
-      const auto& index=*flow.source_names;std::optional<SourceSpellingId> spelling;
+      std::optional<SourceSpellingId> spelling;
       const auto* symbol=std::get_if<SymbolId>(&query.name);
       if(symbol){RequireTree(symbol->value<flow.source_spellings.size(),TreeStructureError::kOwnership);spelling=flow.source_spellings[symbol->value];}
       else {const auto name=std::get<NameId>(query.name);RequireTree(name.value<flow.source_name_spellings.size(),TreeStructureError::kOwnership);spelling=flow.source_name_spellings[name.value];}
@@ -141,6 +161,17 @@ std::variant<SourceNameResults,TreeStructureError> ResolveSourceNames(
       resolution=active?(symbol&&*symbol==active->binding?SourceNameResolution::kResolved:SourceNameResolution::kShadowed):
           symbol?SourceNameResolution::kUnavailable:SourceNameResolution::kResolved;
     }
+    result.allocated_bytes=budget.Bytes();result.work=budget.Work();return result;
+  }catch(TreeStructureError error){return error;}
+  catch(const std::bad_alloc&){return TreeStructureError::kResourceLimit;}
+  catch(const std::length_error&){return TreeStructureError::kResourceLimit;}
+}
+std::variant<SourceNameResults,TreeStructureError> ResolveSourceNames(
+    const RecoveryFlow& flow,std::span<const SourceNameQuery> queries,analysis::SemanticBudget allowance) {
+  if(flow.source_names)return ResolveSourceNames(flow,*flow.source_names,queries,allowance);
+  try {
+    TreeCheckBudget budget(allowance);SourceNameResults result;budget.Array(result.resolutions,queries.size());
+    for(auto& resolution:result.resolutions){budget.Step();resolution=SourceNameResolution::kUnmodeled;}
     result.allocated_bytes=budget.Bytes();result.work=budget.Work();return result;
   }catch(TreeStructureError error){return error;}
   catch(const std::bad_alloc&){return TreeStructureError::kResourceLimit;}
