@@ -484,3 +484,16 @@ Source two-group mutable positives/local/interference negatives and tiny prerequ
 subset/throw/resume oracles verify the boundary. Actual acceptance is in status.md;
 arbitrary rename/relocation/new-root selection after rejection, original IR/SSA/full
 activation/capture/finally/global convergence and the overall milestone remain open.
+
+
+Task 2/4 implementation substep (rules241): a version-owned completed snapshot
+attempt is refreshed once after storage/alias normalization and complete ordered
+demand cleanup if the projection changed. Initial snapshot normalization remains
+before interference contraction. The checkpoint is consumer scheduling state, not
+analysis validity; first-commit invalidation and owned proposal deltas still apply.
+Wrong-stage/active/dirty and clean-partial cleanup queries are rejected. Motion and
+lexical environment indexes are lazy without new admission. Storage-shadow retirement
+positives and local/interference TDZ negatives are independently executed, mutated
+and tested under reversed arenas/200-201/geometric composition. Actual acceptance is
+in status.md; this bounded stage dependency repair does not complete global pass
+convergence, original IR/SSA/full activation/capture/finally or the overall milestone.

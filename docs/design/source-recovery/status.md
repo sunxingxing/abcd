@@ -24,6 +24,42 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-09：规则241，按版本复查存储阶段的快照消费者
+
+- 保留存储合并前的快照规范化；存储/alias及独立清理结束后，调度器
+  比较Snapshots最后完成版本与当前projection版本，发生后续提交时
+  在稳定边界用新事实复查一次。producer无变更不触发，消费者自己的
+  提交不形成自循环；检查点记录处理进度，不是分析缓存有效性。
+- first-commit聚合事实失效、RequireCurrent与自有提案提交契约保持。
+  查询必须处于Storage、无活动pass、清理组idle且demand检查点current。
+  清理组中途即使旧版本仍clean也拒绝。复查仍消费共同coverage、双向
+  motion、exception、完成、名字及lifetime证明；后续独立结果/效果/
+  demand清理完成后才进入Grammar，打印器不重新优化。
+- Motion只在现有候选真正需要证明时按需构建一次；environment索引
+  只为实际提案分配。原预算保持；新增边界查询O(1)，至多增加一个
+  同成本消费者尝试，无逐变量整图重建、整函数重试或输入相关轮数。
+- 实际正例：内层同名临时变量被存储共享消除后，条件快照恢复为直接
+  一元表达式。source-local及真实干涉反例保留内层绑定和快照，避免
+  TDZ/旧值错误。旧实现RED exit134（442）；反向arena及
+  0/1/200/201/400/800块组合、独立源码执行和错误条件/更新/合并变体
+  验证行为。首轮聚焦3/3在22.25秒通过；另补clean/dirty partial
+  cleanup、活动pass、错误stage及旧事实版本反例。
+- 最终当前29目标构建35.70秒通过；fresh固定pasteboard导出2.60秒，
+  19records、10完整/0部分/9无module，10语法检查通过，源码字节等于240。
+  language_numeric_constructors_v1、原预算及输入SHA256保持。
+  最终59/59选定回归438.36秒通过，combined-coverage.json核对通过
+  名称集合与原选择完全一致。存储557源码/81140行为比较/53错误变体；
+  声明2568/513600/100、初始化2004/482752/368、循环276/13976/68。
+  revision/cleanup/stage检查点反例及原共同名字、retirement、存储、
+  真实callback/rich-text/progressbar/EntryAbility验证通过。SHA256前后均为
+  854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e。
+  证据在build/stage-one/snapshot-checkpoint-verification。
+- 本次关闭存储/alias规范化后的快照阶段依赖，未声称完整pass收敛。
+  cleanup仍可能暴露更多机会；共同增量依赖/worklist、任意名字移动、
+  完整activation/capture/finally及原IR/SSA继续开放。统一变量里程碑、
+  结构gate及阶段一Goal active；全suite/广语料/RSS/benchmarks/DFX/
+  代理暂停保持。
+
 ### 2026-10-09：规则240，存储组整批名字闭包与初始化子集契约
 
 - Coalesce把完整interference-safe、direct fixed-root存储提案接入共同

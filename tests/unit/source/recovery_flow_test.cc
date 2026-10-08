@@ -1657,6 +1657,36 @@ void StorageScopePreference() {
   const auto plan=std::get<StorageCoalescing>(PlanStorageCoalescing(facts,bindings));
   Check(plan.storage[0]==SymbolId{1});Check(!plan.storage[1]);
 }
+void SnapshotCheckpoints() {
+  const auto rejects=[](const auto& action){try{action();return false;}catch(TreeStructureError error){return error==TreeStructureError::kOwnership;}};
+  const auto cleanup=[](RecoverySchedule& schedule){for(const auto pass:{RecoveryPass::kDeadDefinitions,RecoveryPass::kInitialValues,RecoveryPass::kBindings}){schedule.Start(pass);Check(!schedule.Finish());}};
+  for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool changes:{false,true}) {
+    RecoverySchedule schedule;Check(rejects([&]{(void)schedule.SnapshotRefreshNeeded();}));cleanup(schedule);schedule.EnterStorage();
+    Check(schedule.SnapshotRefreshNeeded());schedule.Start(RecoveryPass::kSnapshots);Check(!schedule.Finish());Check(!schedule.SnapshotRefreshNeeded());
+    for(unsigned i=0;i<count;++i) {
+      schedule.Start(RecoveryPass::kStorage);if(changes)Check(schedule.Commit());Check(schedule.Finish()==changes);
+      if(changes)Check(rejects([&]{(void)schedule.SnapshotRefreshNeeded();}));cleanup(schedule);
+      Check(schedule.SnapshotRefreshNeeded()==changes);
+      schedule.Start(RecoveryPass::kAliases);Check(!schedule.Finish());Check(schedule.SnapshotRefreshNeeded()==changes);
+      if(schedule.SnapshotRefreshNeeded()) {
+        const auto previous=schedule.Revision();schedule.Start(RecoveryPass::kSnapshots);
+        Check(rejects([&]{(void)schedule.SnapshotRefreshNeeded();}));Check(schedule.Commit());Check(schedule.Finish());
+        Check(rejects([&]{schedule.RequireCurrent(previous);}));Check(!schedule.DemandCleanupNeeded());Check(!schedule.SnapshotRefreshNeeded());
+      }
+    }
+    Check(schedule.Revision().value==(changes?count*2:0));schedule.EnterGrammar();Check(rejects([&]{(void)schedule.SnapshotRefreshNeeded();}));
+  }
+  RecoverySchedule dirty;cleanup(dirty);dirty.EnterStorage();dirty.Start(RecoveryPass::kInertOperands);Check(dirty.Commit());Check(dirty.Finish());
+  Check(rejects([&]{(void)dirty.SnapshotRefreshNeeded();}));dirty.Start(RecoveryPass::kDeadDefinitions);Check(!dirty.Finish());
+  Check(rejects([&]{(void)dirty.SnapshotRefreshNeeded();}));dirty.Start(RecoveryPass::kInitialValues);Check(!dirty.Finish());
+  Check(rejects([&]{(void)dirty.SnapshotRefreshNeeded();}));dirty.Start(RecoveryPass::kBindings);Check(!dirty.Finish());Check(dirty.SnapshotRefreshNeeded());
+  // Even an unchanged projection must finish every ordered cleanup owner before
+  // querying a stable consumer boundary; an older clean checkpoint is not enough.
+  RecoverySchedule clean;cleanup(clean);clean.EnterStorage();clean.Start(RecoveryPass::kDeadDefinitions);Check(!clean.Finish());
+  Check(rejects([&]{(void)clean.SnapshotRefreshNeeded();}));clean.Start(RecoveryPass::kInitialValues);Check(!clean.Finish());
+  Check(rejects([&]{(void)clean.SnapshotRefreshNeeded();}));clean.Start(RecoveryPass::kBindings);Check(!clean.Finish());Check(clean.SnapshotRefreshNeeded());
+  std::cout<<"snapshot checkpoint revision/cleanup/stage counterexamples passed\n";
+}
 void PassContracts() {
   const auto rejects=[](const auto& action) {
     try {action();return false;}catch(TreeStructureError error){return error==TreeStructureError::kOwnership;}
@@ -1740,4 +1770,4 @@ void PassContracts() {
   Check(!unfinished.DemandCleanupNeeded());
   std::cout<<"pass ownership, dependency and cleanup counterexamples passed\n";
 }
-int main(){InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();PassContracts();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+int main(){InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();PassContracts();SnapshotCheckpoints();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

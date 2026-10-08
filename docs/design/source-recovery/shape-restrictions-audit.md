@@ -2714,3 +2714,23 @@ arenas/block composition and tiny rank/subset/throw/resume oracles cover the cha
 No sample/opcode sequence, adjacency, same-block or fixed-shape condition is introduced.
 Arbitrary renaming/relocation/re-ranking after subset rejection, full activation/capture/
 finally/original IR/SSA/convergence remain explicit precision gaps.
+
+
+### 2026-10-09 rules241: snapshot consumer dependency refresh
+
+Obligation: a consumer following storage/alias changes uses the current retained
+namespace and observations, with ordered cleanup complete. A revision-owned completed
+snapshot attempt requests one fresh application at the stable storage boundary;
+no-op producers do not request it and consumer edits do not create a self-loop.
+This is a scheduling dependency, never source/bytecode admission. Old fact revisions
+remain invalid even when the consumer checkpoint advances. Clean and dirty partial
+cleanup groups, active-pass and wrong-stage queries are rejected.
+
+The refresh reuses existing common availability, count, motion, exception, completion,
+name and lifetime analyses. Storage can remove an inner lexical shadow and enable
+ordinary expression recovery; source-local or genuinely interfering values keep that
+shadow and retain snapshots to avoid TDZ. Independent execution/semantic mutants,
+reversed statement arenas and block composition cover both. No sample/name/opcode
+sequence, same-block, adjacency or fixed CFG shape condition is added. Lazy proof
+construction changes cost only. Arbitrary incremental convergence, full activation/
+capture/finally and original IR/SSA remain explicit gaps.

@@ -2084,3 +2084,37 @@ scopes or inventing new names. Arbitrary renaming/relocation, choosing new roots
 after subset rejection, full activation/capture/finally, original IR/SSA correspondence
 and global incremental pass convergence remain gaps. Existing Values/Storage/Grammar
 and demand-cleanup contracts remain; the milestone/stage-one Goal is still active.
+
+
+### Revision-owned snapshot consumer checkpoint (2026-10-09, rules241)
+
+The first snapshot pass still precedes storage contraction, so removing a proven
+single-use definition can reduce later interference. Storage/alias normalization
+and ordered demand cleanup can then remove names or observations which blocked
+that attempt. RecoverySchedule records the revision at which Snapshots completed.
+At the stable storage boundary it requests one fresh attempt if later commits
+changed the projection. No-op producers do not trigger it; a snapshot's own commit
+does not schedule itself. This checkpoint records consumer work, not reusable facts.
+First-commit aggregate invalidation and RequireCurrent still reject all old analysis.
+
+The boundary query requires Storage stage, no active pass, an idle complete cleanup
+group and a current demand checkpoint. Partial DeadDefinitions/InitialValues groups
+are rejected even if an older unchanged checkpoint was current. The refresh uses
+the same common read coverage, bidirectional motion, exception identity, completion,
+lexical name and lifetime proofs. It builds and validates owned proposals before
+commit; independent stored-result/inert/demand owners run afterwards. Grammar starts
+only after the resulting projection is clean. The printer introduces no optimization.
+
+Motion pairing is computed lazily once when an existing eligible occurrence needs
+it. Lexical environment indexes are built only for actual motion proposals. Empty
+refreshes avoid those allocations without weakening any semantic prerequisite.
+A real storage-shadow retirement positive now emits a direct condition expression;
+source locals and simultaneous live values retain their shadow and snapshot to
+preserve TDZ. Independent execution, wrong-forward/update/merge mutants, reversed
+arenas and 200/201/geometric composition exercise the output and scheduling contract.
+
+This is a bounded dependency repair at one explicit stage boundary, not global
+fixed-point convergence. Cleanup can expose further opportunities, and arbitrary
+pass cycles still require a common incremental dependency/worklist design with a
+measured complexity bound. Original IR/SSA correspondence, full activation/capture/
+finally, arbitrary namespace relocation and the overall milestone remain open.

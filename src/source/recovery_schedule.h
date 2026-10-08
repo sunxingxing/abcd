@@ -126,6 +126,10 @@ class RecoverySchedule {
     if(*active_==RecoveryPass::kDeadDefinitions)cleanup_=Cleanup::kInitialValues;
     else if(*active_==RecoveryPass::kInitialValues)cleanup_=Cleanup::kBindings;
     else if(*active_==RecoveryPass::kBindings){cleanup_=Cleanup::kIdle;demand_checkpoint_=revision_;}
+    // A consumer checkpoint records its completed attempt, never a reusable
+    // analysis result. Its own edits do not create a scheduling self-loop;
+    // later projection commits make the downstream boundary reconsider it.
+    if(*active_==RecoveryPass::kSnapshots)snapshot_checkpoint_=revision_;
     const bool changed=revision_.value!=before_.value;active_.reset();phase_=Phase::kIdle;return changed;
   }
   void EnterStorage() {
@@ -139,6 +143,10 @@ class RecoverySchedule {
   [[nodiscard]] bool DemandCleanupNeeded() const {
     RequireIdle();return !demand_checkpoint_||demand_checkpoint_->value!=revision_.value;
   }
+  [[nodiscard]] bool SnapshotRefreshNeeded() const {
+    RequireIdle();RequireTree(stage_==Stage::kStorage&&cleanup_==Cleanup::kIdle&&!DemandCleanupNeeded(),TreeStructureError::kOwnership);
+    return !snapshot_checkpoint_||snapshot_checkpoint_->value!=revision_.value;
+  }
  private:
   enum class Phase {kIdle,kAnalysis,kCommit};
   enum class Stage {kValues,kStorage,kGrammar};
@@ -149,7 +157,7 @@ class RecoverySchedule {
   Cleanup cleanup_=Cleanup::kIdle;
   std::optional<RecoveryPass> active_;
   ProjectionRevision revision_,before_;
-  std::optional<ProjectionRevision> demand_checkpoint_;
+  std::optional<ProjectionRevision> demand_checkpoint_,snapshot_checkpoint_;
 };
 }
 #endif

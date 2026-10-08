@@ -3417,3 +3417,31 @@ selection. That preference adds no admission; only the final proposal namespace
 establishes occurrence resolution. Independent small rank/subset oracles and generated
 source composition/mutants/layout/geometric/exact-short tests verify these contracts.
 Full process RSS and expanded-corpus benchmarking remain paused.
+
+
+### Stable storage-boundary snapshot refresh (2026-10-09, rules241)
+
+Provenance: revision-stamped compiler pass dependency invalidation and lazy analysis;
+local implementation, no new dependency, license, profile or acceptance mode.
+Prerequisites: validated current RecoveryFlow and a complete ordered demand-cleanup
+checkpoint. Snapshot forwarding retains its existing coverage, execution-count,
+exception/effect-order, initialization, binding identity and lexical lifetime proofs.
+Consumer checkpoints record completed attempts, never analysis cache validity.
+
+RecoverySchedule compares two revisions in O(1) time/space at the storage boundary.
+The original snapshot attempt remains before contraction; at most one additional
+attempt follows storage/alias normalization. No whole-pipeline retry or input-sized
+round count is introduced. A no-op producer retains the revision and avoids refresh.
+The added attempt has the same charged cost as the existing forwarding analysis,
+so the pipeline increases that component by a constant factor rather than repeating
+it per binding. This does not claim arbitrary downstream opportunities converge.
+
+Let B be bindings and R retained references, S statements and C lexical containers.
+Existing candidate/read/write scans cost O(B+R); lexical environment construction
+costs O(S+B+C) work and O(S+C) temporary storage and runs only for actual proposals.
+The existing common motion solver is allocated/computed at most once per unchanged
+attempt and only after a candidate reaches its existing semantic prerequisites.
+All graph/index/proposal buffers and nested analysis work remain under the original
+semantic budgets. State/stage/partial-cleanup negatives, independent generated-source
+execution and 200/201/400/800 composition verify contracts and bounded work. This is
+not a new whole-process RSS claim; full RSS and expanded-corpus runs remain paused.

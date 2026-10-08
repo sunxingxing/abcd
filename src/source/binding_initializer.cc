@@ -261,6 +261,16 @@ class Initializers {
     RunPass(Pass::kInertOperands);
     RunPass(Pass::kInertStatements);
     EnsureDemandCleanup();
+    // Storage/alias cleanup can remove names or observations that blocked the
+    // earlier snapshot attempt. Reconsider once at this stable stage boundary,
+    // with fresh versioned facts. No whole-function retry loop or round cap.
+    if(schedule_.SnapshotRefreshNeeded()) {
+      RunPass(Pass::kSnapshots);
+      RunPass(Pass::kStoredResults);
+      RunPass(Pass::kInertOperands);
+      RunPass(Pass::kInertStatements);
+      EnsureDemandCleanup();
+    }
     RunPass(Pass::kInertOperands);
     EnsureDemandCleanup();
     // Final source grammar consumes the final bindings/evaluations. It can
@@ -609,6 +619,67 @@ class Initializers {
           break;
       }
     }
+    // Must execute the same next observation on every completion path. The
+    // shared solver accounts for effects, state, exits and transparent cycles;
+    // original statement counts/linear epochs no longer decide motion.
+    std::optional<FlowMotion> motion;
+    const auto pairing=[&]() -> const FlowMotion& {
+      RequireAnalysis();
+      // A refresh may have no single-definition/read candidate after storage
+      // sharing. Build the common motion proof lazily, once per unchanged pass.
+      if(!motion) {
+        auto analyzed=AnalyzeFlowMotion(flow,budget_.Remaining());
+        if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
+        motion=std::get<FlowMotion>(std::move(analyzed));
+        budget_.Admit(motion->allocated_bytes,1);budget_.Step(motion->work);
+      }
+      return *motion;
+    };
+    struct ForwardedSnapshot {SymbolId binding;ExprId read,value;std::optional<ExprId> expression;StmtId statement,owner;std::optional<StmtId> initialization;};
+    std::vector<ForwardedSnapshot> proposed;
+    budget_.Array(proposed,uses_.size());std::size_t count=0;
+    for (std::size_t i = 0; i < uses_.size(); ++i) {
+      budget_.Step();
+      // Count retained writes in the same projection as read coverage and
+      // motion. Original Scan counts include stores eliminated by earlier
+      // passes; they cannot decide single-definition snapshot recovery.
+      if(!eligible(i) || counts[i]!=1 || write_counts[i]!=1 || !definitions[i])continue;
+      const auto& definition=*definitions[i];
+      // Removing PutValue must preserve its own completion, not just the
+      // moved RHS. Shared write effects prove initialized writable storage;
+      // lexical initialization is a separate, non-PutValue definition kind.
+      if(definition.kind==FlowDefinitionKind::kAssignment && definition.effect!=FlowWriteEffect::kInert)continue;
+      const auto read=std::get<ExprId>(reads[i]->site);
+      if(!stores[i])continue;
+      const auto owner=definition.write?stores[i]->owner:definition.declaration;
+      if(!owner)continue;
+      const auto statement=*owner;
+      // Source occurrence removal must preserve its enclosing value. The
+      // common adapter, not whole-statement syntax, proves a discarded result.
+      // A lexical initializer has no separately observed assignment result.
+      if(definition.write && definition.kind==FlowDefinitionKind::kAssignment &&
+          flow.value_uses[definition.write->value]!=FlowValueUse::kDiscarded)continue;
+      const auto& paired=pairing();
+      if(paired.next[stores[i]->point.value]!=reads[i]->point ||
+          paired.previous[reads[i]->point.value]!=stores[i]->point)continue;
+      // Bidirectional observation pairing proves execution count. The shared
+      // handler/cleanup identity separately preserves throws and abrupt resume.
+      if(!stores[i]->exceptions || stores[i]->exceptions!=reads[i]->exceptions)continue;
+      const auto old_owner=ReferenceOwner(*stores[i]),new_owner=ReferenceOwner(*reads[i]);
+      if(!old_owner || !new_owner)continue;
+      const auto rhs=*definition.value;
+      // Native naming follows the projected destination. Moving a direct
+      // creation can require a computed-name wrapper; retain strict resource
+      // contracts until no additional allocation is proved for that destination.
+      if (ResourceFailures(tree_.identity.contract) != ResourceFailureScope::kExcluded &&
+          (std::holds_alternative<FunctionExpr>(tree_.expressions[rhs.value].expression) ||
+           std::holds_alternative<ClassExpr>(tree_.expressions[rhs.value].expression))) continue;
+      proposed[count++]={SymbolId{static_cast<std::uint32_t>(i)},read,rhs,definition.write,statement,
+          *old_owner,flow.bindings[i].declaration};
+    }
+    if(!count)return;
+    // Environment signatures are consumed only by actual motion proposals.
+    // A failed/no-candidate refresh does not allocate or rebuild this index.
     budget_.Array(bound, tree_.statements.size());
     budget_.Array(scope_containers, tree_.scopes.size());
     budget_.Array(environments, tree_.statements.size());
@@ -635,55 +706,6 @@ class Initializers {
       budget_.Step(); const auto id = container_order_[i]; const auto parent = container_parents_[id.value];
       environments[id.value] = bound[id.value] || !parent ? id : environments[parent->value];
     }
-    // Must execute the same next observation on every completion path. The
-    // shared solver accounts for effects, state, exits and transparent cycles;
-    // original statement counts/linear epochs no longer decide motion.
-    auto analyzed=AnalyzeFlowMotion(flow,budget_.Remaining());
-    if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
-    const auto& motion=std::get<FlowMotion>(analyzed);
-    budget_.Admit(motion.allocated_bytes,1);budget_.Step(motion.work);
-    struct ForwardedSnapshot {SymbolId binding;ExprId read,value;std::optional<ExprId> expression;StmtId statement,owner;std::optional<StmtId> initialization;};
-    std::vector<ForwardedSnapshot> proposed;
-    budget_.Array(proposed,uses_.size());std::size_t count=0;
-    for (std::size_t i = 0; i < uses_.size(); ++i) {
-      budget_.Step();
-      // Count retained writes in the same projection as read coverage and
-      // motion. Original Scan counts include stores eliminated by earlier
-      // passes; they cannot decide single-definition snapshot recovery.
-      if(!eligible(i) || counts[i]!=1 || write_counts[i]!=1 || !definitions[i])continue;
-      const auto& definition=*definitions[i];
-      // Removing PutValue must preserve its own completion, not just the
-      // moved RHS. Shared write effects prove initialized writable storage;
-      // lexical initialization is a separate, non-PutValue definition kind.
-      if(definition.kind==FlowDefinitionKind::kAssignment && definition.effect!=FlowWriteEffect::kInert)continue;
-      const auto read=std::get<ExprId>(reads[i]->site);
-      if(!stores[i])continue;
-      const auto owner=definition.write?stores[i]->owner:definition.declaration;
-      if(!owner)continue;
-      const auto statement=*owner;
-      // Source occurrence removal must preserve its enclosing value. The
-      // common adapter, not whole-statement syntax, proves a discarded result.
-      // A lexical initializer has no separately observed assignment result.
-      if(definition.write && definition.kind==FlowDefinitionKind::kAssignment &&
-          flow.value_uses[definition.write->value]!=FlowValueUse::kDiscarded)continue;
-      if(motion.next[stores[i]->point.value]!=reads[i]->point ||
-          motion.previous[reads[i]->point.value]!=stores[i]->point)continue;
-      // Bidirectional observation pairing proves execution count. The shared
-      // handler/cleanup identity separately preserves throws and abrupt resume.
-      if(!stores[i]->exceptions || stores[i]->exceptions!=reads[i]->exceptions)continue;
-      const auto old_owner=ReferenceOwner(*stores[i]),new_owner=ReferenceOwner(*reads[i]);
-      if(!old_owner || !new_owner)continue;
-      const auto rhs=*definition.value;
-      // Native naming follows the projected destination. Moving a direct
-      // creation can require a computed-name wrapper; retain strict resource
-      // contracts until no additional allocation is proved for that destination.
-      if (ResourceFailures(tree_.identity.contract) != ResourceFailureScope::kExcluded &&
-          (std::holds_alternative<FunctionExpr>(tree_.expressions[rhs.value].expression) ||
-           std::holds_alternative<ClassExpr>(tree_.expressions[rhs.value].expression))) continue;
-      proposed[count++]={SymbolId{static_cast<std::uint32_t>(i)},read,rhs,definition.write,statement,
-          *old_owner,flow.bindings[i].declaration};
-    }
-    if(!count)return;
     // Evaluate the whole proposed projection WITHOUT mutating the plan. Shared
     // flow assigns actual owners after composed/nested transports; checking old
     // statement owners would move siblings or miss final destination scopes.
