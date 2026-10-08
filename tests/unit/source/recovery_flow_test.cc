@@ -906,18 +906,24 @@ void SourceEvents() {
   }
   // ReadValues follows the actual slot; assignment/update still use that
   // slot, including both update halves. Old immutable facts stay unchanged.
-  for(bool alias:{false,true})for(bool shared:{false,true})for(bool value:{false,true}){
+  for(bool alias:{false,true})for(bool shared:{false,true})for(bool value:{false,true})for(bool occurrence:{false,true}){
     auto projected=projection;auto copy_aliases=aliases;
     std::vector<std::optional<SymbolId>> storage(tree.symbols.size()),read_values(tree.symbols.size());
     if(alias)copy_aliases[2]=SymbolId{1};if(shared)storage[2]=SymbolId{1};if(value)read_values[1]=SymbolId{0};
-    projected.aliases=copy_aliases;projected.storage=storage;projected.read_bindings=read_values;
+    std::vector<std::optional<SymbolId>> sources(tree.expressions.size());
+    if(occurrence){sources[5]=SymbolId{0};sources[4]=SymbolId{0};}
+    projected.aliases=copy_aliases;projected.storage=storage;projected.read_bindings=read_values;projected.read_sources=sources;
     const auto composed=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,projected));
     unsigned writes=0,update_reads=0,returns=0;
     for(const auto& reference:composed.references){const auto expression=std::get<ExprId>(reference.site);
       if(expression==ExprId{3}&&reference.kind==FlowReferenceKind::kWrite){Check(reference.binding==SymbolId{alias||shared?1U:2U});++writes;}
       if(expression==ExprId{4}){Check(reference.binding==SymbolId{alias||shared?1U:2U});if(reference.kind==FlowReferenceKind::kRead)++update_reads;else ++writes;}
-      if(expression==ExprId{5}){Check(reference.binding==SymbolId{alias||shared?(value?0U:1U):2U});Check(reference.owner==StmtId{6});++returns;}}
+      if(expression==ExprId{5}){Check(reference.binding==SymbolId{occurrence?0U:alias||shared?(value?0U:1U):2U});Check(reference.owner==StmtId{6});++returns;}}
     Check(writes==2&&update_reads==1&&returns==1);
+    auto invalid=projected;invalid.read_sources=std::span<const std::optional<SymbolId>>{sources}.first(sources.size()-1);
+    Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,invalid))==TreeStructureError::kOwnership);
+    auto out_of_range=sources;out_of_range[5]=SymbolId{static_cast<std::uint32_t>(tree.symbols.size())};invalid.read_sources=out_of_range;
+    Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,invalid))==TreeStructureError::kBinding);
     Check(std::holds_alternative<RecoveryFlow>(BuildRecoveryFlow(tree,projected,{composed.allocated_bytes,composed.work})));
     Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,projected,{composed.allocated_bytes-1,composed.work}))==TreeStructureError::kResourceLimit);
     Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,projected,{composed.allocated_bytes,composed.work-1}))==TreeStructureError::kWorkLimit);
@@ -1611,8 +1617,9 @@ void ReadConstants() {
   const std::vector<TreeLiteral> primitives{IntegerLiteral{42},IntegerLiteral{43}};
   const std::vector<std::uint8_t> completed(3,1);
   std::size_t cases=0;
-  for(unsigned edges=0;edges<512;++edges)for(unsigned actions=0;actions<64;++actions) {
-    RecoveryFlow flow{};flow.events.resize(3);flow.bindings.resize(1);
+  for(bool symbolic:{false,true})for(unsigned edges=0;edges<512;++edges)for(unsigned actions=0;actions<64;++actions) {
+    RecoveryFlow flow{};flow.events.resize(3);flow.bindings.resize(symbolic?3:1);
+    if(symbolic)for(unsigned i=1;i<3;++i){flow.bindings[i].kind=BindingKind::kParameter;flow.bindings[i].exposure=FlowBindingExposure::kObservable;flow.bindings[i].stable_entry=true;}
     flow.bindings[0].exposure=FlowBindingExposure::kPrivate;
     std::vector<FlowDefinitionValue> definitions;std::vector<FlowValueEquation> equations(3,FlowBindingValue{{0}});
     std::array<unsigned,3> action{};auto encoded=actions;
@@ -1623,10 +1630,15 @@ void ReadConstants() {
         const auto id=static_cast<std::uint32_t>(definitions.size());
         flow.events[i].definition=FlowDefinitionId{id};flow.definitions.push_back({{i},{0},FlowDefinitionKind::kAssignment});
         if(action[i]==3)definitions.push_back(UnknownFlowValue{});
+        else if(symbolic)definitions.push_back(FlowBindingValue{SymbolId{action[i]}});
         else definitions.push_back(FlowPrimitiveValue{primitives[action[i]-1],PrimitiveId{action[i]-1}});
       }
     }
     for(unsigned i=0;i<9;++i)if(edges&(1U<<i)){Link(flow,i/3,i%3);flow.edges.back().completion=i%2?FlowCompletion::kThrow:FlowCompletion::kResumeNext;}
+    std::array<bool,3> reachable{true,false,false};bool growing=true;
+    while(growing){growing=false;for(unsigned i=0;i<9;++i)if(edges&(1U<<i)){
+      if(reachable[i/3]&&!reachable[i%3]){reachable[i%3]=true;growing=true;}
+    }}
     std::array<unsigned,3> expected{};
     const auto close=[&] {
       bool changed=true;
@@ -1634,7 +1646,7 @@ void ReadConstants() {
         changed=false;
         for(unsigned i=0;i<3;++i) {
           unsigned incoming=i==0?1U:0U;bool predecessor=false;
-          for(unsigned j=0;j<3;++j)if(edges&(1U<<(j*3+i))) {
+          for(unsigned j=0;j<3;++j)if(reachable[j]&&(edges&(1U<<(j*3+i)))) {
             predecessor=true;incoming|=action[j]?action[j]==3?1U:1U<<action[j]:expected[j];
           }
           if(!predecessor)incoming|=1U;
@@ -1644,22 +1656,49 @@ void ReadConstants() {
     };
     close();for(auto& state:expected)if(!state)state=1;close();
     const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));
+    for(unsigned i=0;i<3;++i)Check(bool(live.reachable[i])==reachable[i]);
+    if(edges==2&&actions==1){
+      const auto shared=std::get<FlowMotion>(AnalyzeFlowMotion(flow,live));
+      const auto standalone=std::get<FlowMotion>(AnalyzeFlowMotion(flow));
+      Check(shared.next==standalone.next&&shared.previous==standalone.previous);
+      Check(std::holds_alternative<FlowMotion>(AnalyzeFlowMotion(flow,live,{shared.allocated_bytes,shared.work})));
+      Check(std::get<TreeStructureError>(AnalyzeFlowMotion(flow,live,{shared.allocated_bytes-1,shared.work}))==TreeStructureError::kResourceLimit);
+      Check(std::get<TreeStructureError>(AnalyzeFlowMotion(flow,live,{shared.allocated_bytes,shared.work-1}))==TreeStructureError::kWorkLimit);
+      auto invalid=live;invalid.reachable.pop_back();
+      Check(std::get<TreeStructureError>(AnalyzeFlowMotion(flow,invalid))==TreeStructureError::kOwnership);
+    }
     const auto result=std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,definitions,
         FlowValueEquations{equations,{},{},completed,{}},primitives,{}));
     for(unsigned i=0;i<3;++i) {
-      const auto found=std::find_if(result.reads.begin(),result.reads.end(),[&](const auto& read){return read.expression==ExprId{i};});
-      const bool known=expected[i]==2||expected[i]==4;
-      if((found!=result.reads.end())!=known)std::cerr<<"read oracle edges="<<edges<<" actions="<<actions<<" point="<<i<<" expected="<<expected[i]<<'\n';
-      Check((found!=result.reads.end())==known);
-      if(known)Check(found->primitive==PrimitiveId{expected[i]==2?0U:1U});
+      const bool known=reachable[i]&&(expected[i]==2||expected[i]==4);
+      if(symbolic){
+        const auto found=std::find_if(result.binding_reads.begin(),result.binding_reads.end(),[&](const auto& read){return read.expression==ExprId{i};});
+        Check((found!=result.binding_reads.end())==known);
+        if(known)Check(found->binding==SymbolId{expected[i]==2?1U:2U});
+        Check(result.reads.empty());
+      }else{
+        const auto found=std::find_if(result.reads.begin(),result.reads.end(),[&](const auto& read){return read.expression==ExprId{i};});
+        Check((found!=result.reads.end())==known);
+        if(known)Check(found->primitive==PrimitiveId{expected[i]==2?0U:1U});
+        Check(result.binding_reads.empty());
+      }
     }
     if(edges==2&&actions==1) {
       Check(std::holds_alternative<FlowConstants>(AnalyzeFlowConstants(flow,live,definitions,FlowValueEquations{equations,{},{},completed,{}},primitives,{}, {result.allocated_bytes,result.work})));
       Check(std::get<TreeStructureError>(AnalyzeFlowConstants(flow,live,definitions,FlowValueEquations{equations,{},{},completed,{}},primitives,{}, {result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
+      Check(std::get<TreeStructureError>(AnalyzeFlowConstants(flow,live,definitions,FlowValueEquations{equations,{},{},completed,{}},primitives,{}, {result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);
       const std::vector<std::uint8_t> unavailable(3,0);
-      Check(std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,definitions,FlowValueEquations{equations,{},{},unavailable,{}},primitives,{})).reads.empty());
+      const auto missing=std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,definitions,FlowValueEquations{equations,{},{},unavailable,{}},primitives,{}));
+      Check(missing.reads.empty()&&missing.binding_reads.empty());
       flow.bindings[0].exposure=FlowBindingExposure::kObservable;
-      Check(std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,definitions,FlowValueEquations{equations,{},{},completed,{}},primitives,{})).reads.empty());
+      const auto exposed=std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,definitions,FlowValueEquations{equations,{},{},completed,{}},primitives,{}));
+      Check(exposed.reads.empty()&&exposed.binding_reads.empty());
+      if(symbolic){flow.bindings[0].exposure=FlowBindingExposure::kPrivate;
+        flow.definitions.push_back({{},SymbolId{1},FlowDefinitionKind::kAssignment});definitions.push_back(UnknownFlowValue{});
+        auto written_live=live;written_live.live_definitions.push_back(1);
+        const auto written=std::get<FlowConstants>(AnalyzeFlowConstants(flow,written_live,definitions,FlowValueEquations{equations,{},{},completed,{}},primitives,{}));
+        Check(written.binding_reads.empty());
+      }
     }
     ++cases;
   }

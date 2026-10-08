@@ -27,24 +27,29 @@ struct FlowValueEquations {
   std::span<const std::optional<PrimitiveId>> read_values;
   std::span<const std::optional<FlowPrimitiveValue>> invariants;
   std::span<const std::optional<ExpressionTransport>> transports;
+  std::span<const std::optional<SymbolId>> read_sources;
   [[nodiscard]] std::size_t size() const {return base.size();}
   [[nodiscard]] FlowValueEquation operator[](std::size_t) const;
 };
 using FlowDefinitionValue=std::variant<UnknownFlowValue,FlowPrimitiveValue,FlowBindingValue,FlowExpressionValue>;
 struct FlowReadConstant {ExprId expression;PrimitiveId primitive;};
+struct FlowReadBinding {ExprId expression;SymbolId binding;};
 struct FlowConstants {
   std::vector<std::optional<FlowPrimitiveValue>> values;
   // All-definition invariants grounded in a proven immutable body-entry value.
   // These are read values, never storage mappings or deletion permissions.
   std::vector<std::optional<SymbolId>> bindings;
   std::vector<FlowReadConstant> reads;
+  // Completed occurrence values may differ across reads of one binding.
+  // Roots are still proven immutable entry identities, never writable slots.
+  std::vector<FlowReadBinding> binding_reads;
   std::size_t allocated_bytes=0;
   std::uint64_t work=0;
 };
 // All retained successful definitions agree, except dead lexical undefined
 // initialization. Include otherwise dead writes: a normal-result binding may
 // observe a just-written value without a separate read (e.g. prefix update).
-// Sparse monotone value equations need a grounded primitive; unresolved inputs
+// Sparse monotone value equations need a grounded primitive or immutable entry; unresolved inputs
 // become unknown before publication, so copy cycles cannot invent a value.
 // Observable cells/entry demand remain unknown. No write/effect removal is
 // authorized by this read-substitution fact. Inputs share this exact flow.

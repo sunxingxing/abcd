@@ -2255,3 +2255,48 @@ mutants verify these obligations. The old all-alias-none assertion described the
 original syntax rather than the final semantic projection; no production admission
 was tightened to retain it. Each consumer obtains fresh revision-owned facts after
 cleanup, without conflating storage sharing with effect or binding removal.
+
+
+### Occurrence-specific symbolic read values (2026-10-09, rules245)
+
+The common sparse normal-value solver already tracks values arriving at completed
+private reads. It now publishes symbolic entry identities in a distinct binding_reads
+result, alongside primitive reads. The independent all-definition binding invariant
+is still frozen and restored separately. A read returning the entry value after one
+successful assignment does not claim the binding held it before that assignment.
+Unseeded/conflicting/written/mapped/captured roots and uninitialized reads stay unknown.
+
+Late BindingValues owns both invariant and occurrence proposals, after final storage
+and snapshot destinations. Each proposal independently checks actual retained owners,
+common lexical scope and name resolution before first commit. An occurrence query
+cannot hide a failed invariant query. ReadSources is expression-indexed; one
+BindingProjection supplies flow, expression equations, class-name analysis and source
+printing, while Storage and both update halves keep their original write identity.
+Definitions, initial values, effects and bindings are removed only by their separate
+current-fact cleanup owners. No new optimization round or backward stage mutation.
+
+Invocation reachability is published once by common FlowLiveness on every completion
+edge, at the same immutable projection as its sparse live facts. Contextual values
+consume reachable reads/facts/predecessors; conservative all-read liveness and
+all-definition stability retain unreachable syntax obligations. This prevents a
+structural normal exit with no invocation path from poisoning the next read after
+an abrupt completion. No catch/return/loop shape inference is involved. Current
+snapshot motion borrows the same reachability; standalone legacy motion computes
+its own, and manually supplied legacy liveness without the mask remains conservative.
+
+Tests combine mixed prior values, live undefined initialization, multiple catch
+states and failed effectful RHSs with written entry, TDZ shadow, source-local and
+mapped-argument negatives. Final values and prior observations are independently
+executed, including failures on second/third calls. A source-only or reference-only
+forced merge can be equivalent after value substitution or before snapshot motion;
+coalescing mutants exercise both and require an actual wrong behavior. Other output
+mutants remain. Two 32768-case finite-set graph oracles independently compute entry
+reachability and incoming primitive/symbolic value sets; none uses the production
+lattice. Shared/standalone motion, composed storage/read/occurrence maps, malformed
+boundaries and exact/short budgets cover fact ownership. Reversed statement arenas
+and 0/1/200/201/400/800 composition check output/scaling. The missed unused scratch
+declaration was a fixture setup failure, not feature RED; the rebuilt actual previous
+consumer subsequently passed structure/printing and failed the intended return check.
+
+Arbitrary local/catch/capture symbolic roots, trial projection value precision,
+original IR/SSA/full activation/finally and common global convergence remain open.

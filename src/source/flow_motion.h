@@ -1,6 +1,6 @@
 #ifndef ABCD_SOURCE_FLOW_MOTION_H_
 #define ABCD_SOURCE_FLOW_MOTION_H_
-#include "recovery_flow.h"
+#include "flow_liveness.h"
 namespace abcd::source {
 struct FlowMotion {
   // The first observation or terminal sink reached after each point on EVERY path. Absence
@@ -20,5 +20,9 @@ struct FlowMotion {
 // O(N) space; only execution order is proved, not handler/activation equivalence.
 [[nodiscard]] std::variant<FlowMotion,TreeStructureError> AnalyzeFlowMotion(
     const RecoveryFlow&,analysis::SemanticBudget = {});
+// Current recovery consumes the same revision's invocation reachability.
+// The standalone overload constructs its own facts for legacy callers only.
+[[nodiscard]] std::variant<FlowMotion,TreeStructureError> AnalyzeFlowMotion(
+    const RecoveryFlow&,const FlowLiveness&,analysis::SemanticBudget = {});
 }
 #endif

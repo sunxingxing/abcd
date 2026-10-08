@@ -37,6 +37,7 @@ class FlowBuilder {
   RecoveryFlow Run() {
     RequireTree(projection_.stable_entries.empty()||projection_.stable_entries.size()==tree_.symbols.size(),Error::kOwnership);
     RequireTree(projection_.read_bindings.empty()||projection_.read_bindings.size()==tree_.symbols.size(),Error::kOwnership);
+    RequireTree(projection_.read_sources.empty()||projection_.read_sources.size()==tree_.expressions.size(),Error::kOwnership);
     RequireTree(projection_.normal_bindings.empty()||projection_.normal_bindings.size()==tree_.expressions.size(),Error::kOwnership);
     // Current production flow consumes shared normal-result facts. Unproved
     // trial/legacy projections retain only the direct-read fallback.
@@ -200,15 +201,15 @@ class FlowBuilder {
         }
         if (const auto replacement=projection_.replacements[id.value]) {id=*replacement;continue;}
         if (const auto* read=std::get_if<SymbolExpr>(&tree_.expressions[id.value].expression);
-            read&&!projection_.ReadLiteral(id,read->symbol))reads_[id.value]=ResolveRead(read->symbol);
+            read&&!projection_.ReadLiteral(id,read->symbol))reads_[id.value]=ResolveRead(id,read->symbol);
         read_states_[id.value]=ReadState::kDone;break;
       }
       RequireTree(read_states_[id.value]==ReadState::kDone,Error::kOwnership);
       for (const auto at:path) {budget_.Step();reads_[at.value]=reads_[id.value];read_states_[at.value]=ReadState::kDone;}
     }
   }
-  SymbolId ResolveRead(SymbolId symbol) const {
-    const auto target=BindingProjection{projection_.aliases,projection_.storage,projection_.read_bindings}.Read(symbol);
+  SymbolId ResolveRead(ExprId expression,SymbolId symbol) const {
+    const auto target=BindingProjection{projection_.aliases,projection_.storage,projection_.read_bindings,projection_.read_sources}.Read(expression,symbol);
     RequireTree(target.value<tree_.symbols.size(),Error::kBinding);return target;
   }
   std::optional<SymbolId> CopyValue(ExprId id) const {
@@ -256,8 +257,8 @@ class FlowBuilder {
         projection_.evaluations[at.id.value]!=ExpressionEvaluation::kInert;
     if(const auto* read=std::get_if<SymbolExpr>(&node)) {
       if(!projection_.ReadLiteral(at.id,read->symbol)) {
-        events_[effect.value].read=ResolveRead(read->symbol);events_[effect.value].kind=FlowEventKind::kRead;
-        Reference(effect,ResolveRead(read->symbol),FlowReferenceKind::kRead,at.id,FlowExceptionContext{context.thrown,context.finalizer},context.owner);
+        events_[effect.value].read=ResolveRead(at.id,read->symbol);events_[effect.value].kind=FlowEventKind::kRead;
+        Reference(effect,ResolveRead(at.id,read->symbol),FlowReferenceKind::kRead,at.id,FlowExceptionContext{context.thrown,context.finalizer},context.owner);
       }
     }
     if(const auto* name=std::get_if<GlobalNameExpr>(&node))

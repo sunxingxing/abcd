@@ -24,6 +24,39 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-09：规则245，按读取发生点的符号值恢复
+
+- 共同稀疏normal-value分析发布binding_reads，独立于all-definition
+  不变量。ReadValues在storage/snapshot之后按实际读取发生点恢复
+  immutable entry值；两个提案分别证明scope/name，首次提交前均自有。
+  Flow/表达式/class-name/printer复用BindingProjection的occurrence优先
+  解释，写入/update两半仍用Storage；删除由独立清理pass消费新事实。
+- FlowLiveness一次发布所有completion边的invocation reachability。
+  contextual合流消费可达前驱，保留原保守liveness/global/name义务；
+  catch return后无入口的正常出口不再污染后续值。当前snapshot motion
+  复用同一mask，其重复遍历退出；legacy standalone与手工无mask图
+  保留明确的保守兼容路径。无新的catch/块/邻接/producer准入。
+- 新8种源码组合覆盖mixed prior/liveundefined/catch状态/抛异常RHS，
+  written-root/TDZ shadow/source-local/mapped反例、反向statement arena、
+  0/1/200/201/400/800及exact/short预算。65,536组独立reach/value小图
+  对照、shared motion与16种storage/read/occurrence投影通过。首次571
+  是漏声明scratch的setup失败；修正后重建真实HEAD消费实现，结构/
+  打印通过后在576获得有效功能RED。错误coalescing候选可因不可变参数
+  快照或移动位置变成等价；测试同时验证独立原始程序与实际输出，要求
+  实际行为反例，不限制生产恢复。聚焦3/3在32.76秒通过。
+  最后无提案分配优化已纳入最终验证：29构建目标86.49秒通过，原定
+  59/59项CTest在469.44秒通过，combined-coverage.json核对选定名称一致。
+  存储恢复953份源码、145,076次行为比较、92组语义变异反例通过；既有
+  初始化、声明、循环、名字/作用域、pass所有权/依赖/清理、版本检查点
+  与真实callback/rich-text/progressbar/EntryAbility回归通过。
+  fresh固定pasteboard导出2.75秒：19records、10complete/0partial/9no-module，
+  10份源码语法检查通过，源码字节与规则244一致，原输入SHA前后不变。
+  原预算与language_numeric_constructors_v1保留；最终构建无warning/error。
+  证据位于build/stage-one/read-binding-verification，未扩大验证范围。
+- 任意local/catch/capture符号根、试算值精度、原IR/SSA/full activation/
+  finally及共同增量全局收敛仍开放；统一变量/结构gate/阶段一Goal active。
+  全suite/广语料/RSS/benchmarks/DFX/代理暂停保持。
+
 ### 2026-10-09：规则244，共同正常结果值贯通复制干涉分析
 
 - CurrentFlow提供共同ExpressionFacts的exact-revision正常结果绑定，

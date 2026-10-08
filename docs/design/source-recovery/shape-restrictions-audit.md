@@ -2808,3 +2808,26 @@ namespace allocation and global convergence remain documented implementation gap
   retaining both upstream copies. Independent truthy/falsy value identity/error
   comparisons and shadow mutants cover both arena orders; no production restriction
   was added to preserve the old representation.
+
+
+### rules245: contextual read values consume shared invocation paths
+
+- BindingValues consumes common per-occurrence symbolic facts, independently of
+  all-definition invariants; no assignment/branch/catch producer match decides it.
+  Successful definition, completed read and immutable root proofs precede source
+  scope/name queries. Each invariant/occurrence proposal must pass independently.
+- Shared liveness publishes invocation reachability once. Contextual joins ignore
+  predecessors with no invocation path; conservative liveness/global stability and
+  lexical checks still cover retained syntax. Abrupt catch normal exits exposed this
+  missing fact, not a catch-specific admission. Snapshot motion's current path exits
+  its own reachability traversal and consumes the shared mask.
+- Common BindingProjection interprets actual read occurrence before slot invariant;
+  flow, expression analysis, class names and printing consume it. Writes/update
+  halves retain storage. Independent cleanup remains the deletion owner.
+- Tests cover mixed histories/live undefined/effectful failure, written/mapped/shadow/
+  local negatives, independent graph reach/value oracles and output execution/mutants.
+  Forced merges can become equivalent after source recovery; test the original and
+  recovered programs and require an observed counterexample instead of forcing the
+  old snapshot spelling to survive. No production shape restriction was added.
+- Unmodeled local/capture/catch grounding, original IR/SSA/full activation/finally,
+  trial projection precision and common global convergence remain declared gaps.

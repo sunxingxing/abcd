@@ -15,6 +15,7 @@ FlowValueEquation FlowValueEquations::operator[](std::size_t i) const {
   if(!transports.empty()&&transports[i])return FlowPrimitiveReference{transports[i]->replacement};
   if(!replacements.empty()&&replacements[i])return FlowExpressionValue{*replacements[i]};
   if(!read_values.empty()&&read_values[i])return FlowPrimitiveReference{*read_values[i]};
+  if(!read_sources.empty()&&read_sources[i])return FlowBindingValue{*read_sources[i]};
   auto equation=base[i];
   if(const auto* read=std::get_if<FlowBindingValue>(&equation);read&&!bindings.empty()) {
     RequireTree(read->binding.value<bindings.size(),TreeStructureError::kOwnership);
@@ -49,12 +50,12 @@ std::variant<FlowConstants,TreeStructureError> AnalyzeFlowConstants(
     // incoming facts. A provisional contextual value must never erase that
     // independent stronger proof. Both domains consume the same equations.
     auto initial=SolveConstants(flow,live,values,
-        {expressions.base,expressions.replacements,expressions.bindings,{},expressions.read_values,{},expressions.transports},primitives,texts,budget.Remaining());
+        {expressions.base,expressions.replacements,expressions.bindings,{},expressions.read_values,{},expressions.transports,expressions.read_sources},primitives,texts,budget.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&initial))throw *error;
     auto invariant=std::get<FlowConstants>(std::move(initial));
     budget.Admit(invariant.allocated_bytes,1);budget.Step(invariant.work);
     const FlowValueEquations refined{expressions.base,expressions.replacements,expressions.bindings,
-        expressions.completed_reads,expressions.read_values,invariant.values,expressions.transports};
+        expressions.completed_reads,expressions.read_values,invariant.values,expressions.transports,expressions.read_sources};
     bool candidate=false;
     for(const auto& reference:flow.references) {
       budget.Step();const auto* id=std::get_if<ExprId>(&reference.site);
@@ -69,8 +70,8 @@ std::variant<FlowConstants,TreeStructureError> AnalyzeFlowConstants(
     auto result=std::get<FlowConstants>(std::move(analyzed));
     budget.Admit(result.allocated_bytes,1);budget.Step(result.work);
     for(std::size_t i=0;i<result.values.size();++i){budget.Step();if(invariant.values[i])result.values[i]=invariant.values[i];}
-    // Symbolic binding substitution requires the all-definition invariant;
-    // contextual primitive reads cannot manufacture global storage identity.
+    // All-read substitution requires the independent all-definition invariant;
+    // contextual primitive/symbolic reads remain occurrence-specific values.
     result.bindings=std::move(invariant.bindings);
     result.allocated_bytes=budget.Bytes();result.work=budget.Work();return result;
   }catch(TreeStructureError error){return error;}
@@ -84,10 +85,16 @@ std::variant<FlowConstants,TreeStructureError> SolveConstants(
     std::span<const std::u16string> texts,analysis::SemanticBudget allowance) {
   try {
     TreeCheckBudget budget(allowance);
+    RequireTree(live.reachable.empty()||live.reachable.size()==flow.events.size(),TreeStructureError::kOwnership);
+    const auto reachable=[&](FlowPoint point){
+      if(live.reachable.empty())return true;
+      RequireTree(point.value<live.reachable.size(),TreeStructureError::kTarget);return live.reachable[point.value]!=0;
+    };
     RequireTree(values.size()==flow.definitions.size()&&live.live_definitions.size()==values.size(),TreeStructureError::kOwnership);
     RequireTree(expressions.replacements.empty()||expressions.replacements.size()==expressions.size(),TreeStructureError::kOwnership);
     RequireTree(expressions.completed_reads.empty()||expressions.completed_reads.size()==expressions.size(),TreeStructureError::kOwnership);
     RequireTree(expressions.read_values.empty()||expressions.read_values.size()==expressions.size(),TreeStructureError::kOwnership);
+    RequireTree(expressions.read_sources.empty()||expressions.read_sources.size()==expressions.size(),TreeStructureError::kOwnership);
     RequireTree(expressions.transports.empty()||expressions.transports.size()==expressions.size(),TreeStructureError::kOwnership);
     struct ValueId {std::uint32_t value;};
     struct DependencyId {std::uint32_t value;};
@@ -132,7 +139,7 @@ std::variant<FlowConstants,TreeStructureError> SolveConstants(
     // incoming liveness facts are shared by every consumer; no read x definition
     // product is materialized. Observable cells keep invariant/unknown values.
     const auto read_site=[&](const FlowReference& reference)->std::optional<ExprId> {
-      if(expressions.completed_reads.empty()||reference.kind!=FlowReferenceKind::kRead)return {};
+      if(expressions.completed_reads.empty()||reference.kind!=FlowReferenceKind::kRead||!reachable(reference.point))return {};
       const auto* id=std::get_if<ExprId>(&reference.site);if(!id)return {};
       RequireTree(id->value<expressions.size()&&reference.binding.value<bindings,TreeStructureError::kOwnership);
       const auto equation=expressions[id->value];const auto* read=std::get_if<FlowBindingValue>(&equation);
@@ -150,10 +157,10 @@ std::variant<FlowConstants,TreeStructureError> SolveConstants(
       std::size_t count=0;std::optional<LiveBinding> previous;
       for(const auto& fact:live.live_in) {
         budget.Step();RequireTree(fact.binding.value<bindings&&fact.point.value<flow.events.size()&&(!previous||*previous<fact),TreeStructureError::kOwnership);
-        previous=fact;count+=read_bindings[fact.binding.value];
+        previous=fact;count+=read_bindings[fact.binding.value]&&reachable(fact.point);
       }
       budget.Array(fact_ids,count);std::size_t next=0;
-      for(std::size_t i=0;i<live.live_in.size();++i){budget.Step();if(read_bindings[live.live_in[i].binding.value])fact_ids[next++]={static_cast<std::uint32_t>(i)};}
+      for(std::size_t i=0;i<live.live_in.size();++i){budget.Step();if(read_bindings[live.live_in[i].binding.value]&&reachable(live.live_in[i].point))fact_ids[next++]={static_cast<std::uint32_t>(i)};}
     }
     const auto read_begin=fact_begin+fact_ids.size();std::size_t size=read_begin;
     RequireTree(read_begin>=fact_begin&&read_begin<=std::numeric_limits<std::uint32_t>::max(),TreeStructureError::kResourceLimit);
@@ -175,7 +182,7 @@ std::variant<FlowConstants,TreeStructureError> SolveConstants(
       const auto& fact=live.live_in[id.value];const auto& event=flow.events[fact.point.value];
       if(fact.point==flow.entry||!event.incoming)node(std::optional<ValueId>{});
       for(auto edge=event.incoming;edge;edge=flow.edges[*edge].incoming) {
-        budget.Step();const auto predecessor=flow.edges[*edge].from;const auto defined=flow.events[predecessor.value].definition;
+        budget.Step();const auto predecessor=flow.edges[*edge].from;if(!reachable(predecessor))continue;const auto defined=flow.events[predecessor.value].definition;
         if(defined&&flow.definitions[defined->value].binding==fact.binding)definition(values[defined->value]);
         else node(fact_node({predecessor,fact.binding}));
       }
@@ -312,13 +319,17 @@ std::variant<FlowConstants,TreeStructureError> SolveConstants(
     for(std::size_t i=bindings;i<size;++i){budget.Step();if(states[i].kind==ValueKind::kUnresolved)update({static_cast<std::uint32_t>(i)},unknown);}
     solve();
     FlowConstants result;budget.Array(result.values,bindings);budget.Array(result.bindings,bindings);
-    std::size_t read_count=0;
+    std::size_t read_count=0,binding_count=0;
     for(const auto node:expression_nodes){budget.Step();if(node&&node->value>=read_begin&&states[node->value].kind==ValueKind::kPrimitive&&states[node->value].literal)++read_count;}
-    budget.Array(result.reads,read_count);std::size_t read_next=0;
+    for(const auto node:expression_nodes){budget.Step();if(node&&node->value>=read_begin&&states[node->value].kind==ValueKind::kBinding)++binding_count;}
+    budget.Array(result.reads,read_count);budget.Array(result.binding_reads,binding_count);
+    std::size_t read_next=0,binding_next=0;
     for(std::size_t i=0;i<expression_nodes.size();++i) {
       budget.Step();const auto node=expression_nodes[i];
       if(node&&node->value>=read_begin&&states[node->value].kind==ValueKind::kPrimitive&&states[node->value].literal)
         result.reads[read_next++]={{static_cast<std::uint32_t>(i)},*states[node->value].literal};
+      else if(node&&node->value>=read_begin&&states[node->value].kind==ValueKind::kBinding)
+        result.binding_reads[binding_next++]={{static_cast<std::uint32_t>(i)},*states[node->value].root};
     }
     for(std::size_t i=0;i<bindings;++i){budget.Step();if(states[i].kind==ValueKind::kPrimitive)result.values[i]=FlowPrimitiveValue{*states[i].primitive,states[i].literal};
       else if(states[i].kind==ValueKind::kBinding)result.bindings[i]=states[i].root;}

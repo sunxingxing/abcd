@@ -22,6 +22,22 @@ std::variant<LivenessResult,TreeStructureError> Solve(
       budget.Step(flow.discarded.size());heads.resize(flow.discarded.size());
       budget.Step(flow.events.size());next.resize(flow.events.size());
     }
+    if(roots==Roots::kAllReads) {
+      budget.Array(result.liveness.reachable,flow.events.size());
+      std::pmr::vector<FlowPoint> reachable(&memory);
+      if(!flow.events.empty()){
+        RequireTree(flow.entry.value<flow.events.size(),Error::kTarget);
+        result.liveness.reachable[flow.entry.value]=1;reachable.push_back(flow.entry);
+      }
+      while(!reachable.empty()){
+        budget.Step();const auto point=reachable.back();reachable.pop_back();
+        for(auto edge=flow.events[point.value].outgoing;edge;edge=flow.edges[*edge].outgoing){
+          budget.Step();const auto target=flow.edges[*edge].to;
+          RequireTree(target.value<flow.events.size(),Error::kTarget);
+          if(!result.liveness.reachable[target.value]){result.liveness.reachable[target.value]=1;reachable.push_back(target);}
+        }
+      }
+    }
     const auto add=[&](LiveBinding fact){if(facts.insert(fact).second)pending.push_back(fact);};
     const auto retain=[&](DiscardedId id) {
       if(result.retained[id.value])return;

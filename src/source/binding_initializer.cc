@@ -56,6 +56,7 @@ class Initializers {
     budget.Array(plan_.literals, tree.symbols.size());
     budget.Array(plan_.read_literals, tree.expressions.size());
     budget.Array(plan_.read_bindings,tree.symbols.size());
+    budget.Array(plan_.read_sources,tree.expressions.size());
     budget.Array(plan_.aliases, tree.symbols.size());
     budget.Array(plan_.storage, tree.symbols.size());
     budget.Array(plan_.undefined_stores, tree.statements.size());
@@ -644,7 +645,7 @@ class Initializers {
       // A refresh may have no single-definition/read candidate after storage
       // sharing. Build the common motion proof lazily, once per unchanged pass.
       if(!motion) {
-        auto analyzed=AnalyzeFlowMotion(flow,budget_.Remaining());
+        auto analyzed=AnalyzeFlowMotion(flow,CurrentLiveness(),budget_.Remaining());
         if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
         motion=std::get<FlowMotion>(std::move(analyzed));
         budget_.Admit(motion->allocated_bytes,1);budget_.Step(motion->work);
@@ -842,7 +843,7 @@ class Initializers {
     const LegacyFlowProjection projection{plan_.aliases,plan_.literals,replacements,
         omitted,expressions.evaluations,expressions.normal_stores,plan_.statements,private_bindings,
         plan_.storage,plan_.undefined_stores,plan_.declaration_values,plan_.declaration_completions,
-        {source_regions_,source_occurrences_,source_bindings,source_shadows_,unique_spellings_,spellings_,name_spellings_},plan_.read_literals,transports,transported_reads,plan_.read_bindings,stable_entries_,normal_bindings};
+        {source_regions_,source_occurrences_,source_bindings,source_shadows_,unique_spellings_,spellings_,name_spellings_},plan_.read_literals,transports,transported_reads,plan_.read_bindings,stable_entries_,normal_bindings,plan_.read_sources};
     auto built=BuildRecoveryFlow(tree_,projection,budget_.Remaining(),std::move(storage));
     if(const auto* error=std::get_if<TreeStructureError>(&built))throw *error;
     auto flow=std::get<RecoveryFlow>(std::move(built));
@@ -1271,6 +1272,7 @@ class Initializers {
     if(const auto transport=plan_.transports[id.value])return FlowPrimitiveReference{transport->replacement};
     if(const auto replacement=plan_.replacements[id.value])return FlowExpressionValue{*replacement};
     if(const auto primitive=plan_.read_literals[id.value])return FlowPrimitiveReference{*primitive};
+    if(plan_.read_sources[id.value])return FlowBindingValue{*plan_.read_sources[id.value]};
     auto equation=value_equations_[id.value];
     if(const auto* read=std::get_if<FlowBindingValue>(&equation)) {
       return ProjectedBindingValue(read->binding);
@@ -1328,7 +1330,7 @@ class Initializers {
       if (const auto* read = std::get_if<SymbolExpr>(&node)) {
         literal=plan_.ReadLiteral(id,read->symbol);
         if (!literal) {
-          const auto source = plan_.ReadBinding(read->symbol);
+          const auto source = plan_.ReadBinding(id,read->symbol);
           result = source;
         }
         if (literal || (!initialized.empty() && initialized[id.value]))
@@ -1556,7 +1558,7 @@ class Initializers {
       const auto& flow=CurrentFlow();
       std::vector<FlowValueEquation> bindings;budget_.Array(bindings,tree_.symbols.size());
       for(std::size_t i=0;i<bindings.size();++i){budget_.Step();bindings[i]=ProjectedBindingValue({static_cast<std::uint32_t>(i)});}
-      const FlowValueEquations expressions{value_equations_,plan_.replacements,bindings,*initialized_,plan_.read_literals,{},plan_.transports};
+      const FlowValueEquations expressions{value_equations_,plan_.replacements,bindings,*initialized_,plan_.read_literals,{},plan_.transports,plan_.read_sources};
       std::vector<FlowDefinitionValue> values;budget_.Array(values,flow.definitions.size());
       for(std::size_t i=0;i<values.size();++i) {
         budget_.Step();const auto& definition=flow.definitions[i];
@@ -1612,23 +1614,54 @@ class Initializers {
     if(!candidate)return;
     const auto& values=CurrentConstants();
     std::vector<std::optional<SymbolId>> bindings;budget_.Array(bindings,uses_.size());
+    bool invariant=false;
     for(std::size_t i=0;i<uses_.size();++i){budget_.Step();const auto& use=uses_[i];
       if(use.private_storage&&use.declaration&&!use.escaped&&!use.outside_body&&values.bindings[i]&&
-          values.bindings[i]->value!=i&&plan_.read_bindings[i]!=values.bindings[i])bindings[i]=values.bindings[i];}
+          values.bindings[i]->value!=i&&plan_.read_bindings[i]!=values.bindings[i]) {bindings[i]=values.bindings[i];invariant=true;}}
+    std::vector<FlowReadBinding> reads;budget_.Array(reads,values.binding_reads.size());
+    std::size_t read_count=0;
+    for(const auto& read:values.binding_reads){
+      budget_.Step();const auto* source=std::get_if<FlowBindingValue>(&value_equations_[read.expression.value]);
+      RequireTree(source!=nullptr,TreeStructureError::kOwnership);const auto& use=uses_[source->binding.value];
+      if(use.private_storage&&use.declaration&&!use.escaped&&!use.outside_body&&
+          plan_.ReadBinding(read.expression,source->binding)!=read.binding)reads[read_count++]=read;
+    }
+    reads.resize(read_count);
+    if(!invariant&&reads.empty())return;
     const auto& flow=CurrentFlow();
-    std::vector<SourceNameQuery> queries;std::vector<SymbolId> owners;std::vector<std::uint8_t> blocked;
-    budget_.Array(queries,flow.references.size());budget_.Array(owners,flow.references.size());budget_.Array(blocked,uses_.size());
+    std::vector<std::optional<std::size_t>> occurrence;budget_.Array(occurrence,reads.empty()?0:tree_.expressions.size());
+    for(std::size_t i=0;i<reads.size();++i){budget_.Step();occurrence[reads[i].expression.value]=i;}
+    std::vector<SourceNameQuery> queries;std::vector<SymbolId> owners;std::vector<std::optional<std::size_t>> read_owners;
+    std::vector<std::uint8_t> blocked,read_blocked;
+    constexpr std::size_t kQueriesPerRead=2; // independent invariant and occurrence proposals
+    RequireTree(flow.references.size()<=std::numeric_limits<std::size_t>::max()/kQueriesPerRead,TreeStructureError::kResourceLimit);
+    const auto capacity=flow.references.size()*kQueriesPerRead;
+    budget_.Array(queries,capacity);budget_.Array(owners,capacity);budget_.Array(read_owners,capacity);
+    budget_.Array(blocked,uses_.size());budget_.Array(read_blocked,reads.size());
     std::size_t query_count=0;
-    for(const auto& reference:flow.references){budget_.Step();if(reference.kind!=FlowReferenceKind::kRead)continue;
-      const auto target=bindings[reference.binding.value];if(!target)continue;
-      if(!reference.owner||!flow.BindingInScope(*target,reference.owner)){blocked[reference.binding.value]=1;continue;}
-      queries[query_count]={*target,reference.owner};owners[query_count++]=reference.binding;}
-    queries.resize(query_count);owners.resize(query_count);
+    for(const auto& reference:flow.references){
+      budget_.Step();if(reference.kind!=FlowReferenceKind::kRead)continue;
+      const auto* expression=std::get_if<ExprId>(&reference.site);
+      const auto at=expression&&!occurrence.empty()?occurrence[expression->value]:std::nullopt;
+      const auto append=[&](SymbolId target,std::optional<std::size_t> read){
+        if(!reference.owner||!flow.BindingInScope(target,reference.owner)){
+          if(read)read_blocked[*read]=1;else blocked[reference.binding.value]=1;return;
+        }
+        queries[query_count]={target,reference.owner};owners[query_count]=reference.binding;read_owners[query_count++]=read;
+      };
+      if(at)append(reads[*at].binding,at);
+      if(const auto target=bindings[reference.binding.value])append(*target,{});
+    }
+    queries.resize(query_count);owners.resize(query_count);read_owners.resize(query_count);
     const auto resolved=ResolveNames(flow,queries);
-    for(std::size_t i=0;i<query_count;++i){budget_.Step();if(resolved[i]!=SourceNameResolution::kResolved)blocked[owners[i].value]=1;}
-    // Read substitution only, after storage/snapshot destination ownership is
-    // established. Keep every write/RHS/completion until independent cleanup.
+    for(std::size_t i=0;i<query_count;++i){budget_.Step();if(resolved[i]!=SourceNameResolution::kResolved){
+      if(read_owners[i])read_blocked[*read_owners[i]]=1;else blocked[owners[i].value]=1;
+    }}
+    // Both proposals belong to the same immutable projection. Occurrence
+    // substitution never turns its fact into an all-definition invariant.
+    // Keep every write/RHS/completion until independent demand cleanup.
     for(std::size_t i=0;i<bindings.size();++i){budget_.Step();if(bindings[i]&&!blocked[i]){BeginCommit();plan_.read_bindings[i]=bindings[i];}}
+    for(std::size_t i=0;i<reads.size();++i){budget_.Step();if(!read_blocked[i]){BeginCommit();plan_.read_sources[reads[i].expression.value]=reads[i].binding;}}
   }
   void Aliases() {
     // A single retained definition must cover all source reads, including each

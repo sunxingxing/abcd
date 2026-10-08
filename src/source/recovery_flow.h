@@ -177,6 +177,7 @@ struct LegacyFlowProjection {
   // Exact-projection normal completion values: result equals the current
   // binding at commit, not an earlier snapshot. Empty for unproved trials.
   std::span<const std::optional<SymbolId>> normal_bindings;
+  std::span<const std::optional<SymbolId>> read_sources;
   [[nodiscard]] std::optional<PrimitiveId> ReadLiteral(ExprId expression,SymbolId binding) const {
     if(!read_literals.empty()&&read_literals[expression.value])return read_literals[expression.value];
     return literals[binding.value];

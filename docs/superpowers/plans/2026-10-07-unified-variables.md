@@ -533,3 +533,15 @@ normal-value precision. Source sequence/choice/logical/prefix/assignment/native-
 composition and live/postfix/exception counterexamples verify the migration. Final
 selected evidence is recorded in status.md. Trial value precision, originalIR/SSA,
 full activation/capture/finally and global convergence remain open.
+
+
+rules245 implemented substep: shared normal values publish symbolic results at actual
+completed reads, independently of all-definition invariants. Late BindingValues owns
+both proposals; each checks current scope/names before first-commit invalidation.
+One BindingProjection supplies occurrence-before-slot read interpretation to flow,
+expressions, class names and printing, preserving write identity. Shared liveness
+publishes invocation reachability once, consumed by contextual joins and current
+snapshot motion; conservative live/global/name obligations stay independent. Mixed
+prior/liveundefined/effectful-catch and semantic negatives plus independent graph
+oracles, actual source execution/mutants/layout/scaling verify the substep. Final
+selected evidence is recorded in status.md. Overall milestone remains incomplete.

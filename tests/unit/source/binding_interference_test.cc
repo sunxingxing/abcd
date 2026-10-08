@@ -540,6 +540,48 @@ std::uint64_t ComposedCopies(unsigned form,unsigned count,bool reverse,bool emit
   if(emit)std::cout<<nlohmann::json{{"form",form},{"count",count},{"reverse",reverse},{"merged",shared},{"source",output.str()}}<<'\n';
   return bindings.work;
 }
+std::uint64_t ReadCopies(unsigned form,unsigned count,bool reverse,bool emit){
+  Fixture f(Form::kStraight);auto& tree=f.tree;
+  if(form==74){tree.symbols[3].kind=BindingKind::kLocal;tree.symbols[3].temporary.reset();}
+  if(form==75)tree.strictness=Strictness::kSloppy;
+  std::vector<StmtId> roots{f.Stmt(DeclarationStmt{{3},{}}),f.Stmt(DeclarationStmt{{4},{}})};
+  if(form==70)roots.push_back(f.Stmt(ExpressionStmt{f.Call({f.Read(3)})}));
+  for(unsigned i=0;i<count;++i)roots.push_back(f.Block({}));
+  roots.push_back(f.Stmt(IfStmt{f.Read(2),f.Block({f.Write(3,f.Read(0))}),f.Block({f.Write(3,f.Read(2))})}));
+  roots.push_back(f.Stmt(ExpressionStmt{f.Call({f.Read(3)})}));
+  if(form==71||form==76){
+    const auto handler=f.Block({});const auto scope=std::get<BlockStmt>(tree.statements[handler.value].statement).scope;
+    tree.scopes[scope.value].kind=ScopeKind::kCatch;
+    tree.symbols.push_back({scope,{5},BindingKind::kCatchParameter,DeclarationKind::kCatchParameter,NameEvidence::kMetadata,{}});
+    const auto report=f.Stmt(ExpressionStmt{f.Call({f.Read(3)})}),result=f.Stmt(ReturnStmt{f.Read(3)});
+    auto& block=std::get<BlockStmt>(tree.statements[handler.value].statement);block.first_child=tree.children.size();block.child_count=2;tree.children.insert(tree.children.end(),{report,result});
+    std::vector<StmtId> work;
+    if(form==71)work={f.Write(3,f.Read(0)),f.Stmt(ExpressionStmt{f.Call({f.Read(2)})}),f.Write(3,f.Read(2)),f.Stmt(ExpressionStmt{f.Call({f.Read(3)})})};
+    else work={f.Write(3,f.Expr(SequenceExpr{f.Call({f.Read(2)}),f.Read(0)}))};
+    roots.push_back(f.Stmt(TryStmt{f.Block(work),CatchClause{{5},handler},{}}));
+  }
+  if(form!=76)roots.push_back(f.Write(3,f.Read(0)));
+  if(form==72)roots.push_back(f.Write(0,f.Read(2)));
+  const auto read=f.Read(3);
+  if(form==73){const auto inner=f.Block({});const auto scope=std::get<BlockStmt>(tree.statements[inner.value].statement).scope;
+    tree.symbols.push_back({scope,{0},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
+    const auto init=f.Stmt(DeclarationStmt{{5},f.Read(2)}),result=f.Stmt(ReturnStmt{read});
+    auto& block=std::get<BlockStmt>(tree.statements[inner.value].statement);block.first_child=tree.children.size();block.child_count=2;tree.children.insert(tree.children.end(),{init,result});roots.push_back(inner);
+  }else roots.push_back(f.Stmt(ReturnStmt{read}));
+  f.Finish(roots,reverse);Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
+  const auto bindings=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
+  const bool known=form<=71||form==76;
+  Check(bindings.ReadBinding(read,SymbolId{3})==(known?SymbolId{0}:bindings.Storage(SymbolId{3})));
+  std::ostringstream output;const auto printed=PrintFunctionTree(tree,output);
+  Check(std::holds_alternative<PrintedFunction>(printed));
+  Check((output.str().rfind("return input;")!=std::string::npos)==known);
+  if(!count){Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work})));
+    Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes-1,bindings.work}))==TreeStructureError::kResourceLimit);
+    Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work-1}))==TreeStructureError::kWorkLimit);}
+  if(emit)std::cout<<nlohmann::json{{"form",form},{"count",count},{"reverse",reverse},{"partial",true},{"merged",known},{"source",output.str()}}<<'\n';
+  return bindings.work;
+}
 std::uint64_t Many(unsigned count,bool emit){
   Fixture f(Form::kStraight);auto& tree=f.tree;std::vector<StmtId> declarations,body;
   for(unsigned i=0;i<count;++i){
@@ -613,6 +655,7 @@ int main(int argc,char** argv){
     std::uint64_t previous=0;for(unsigned count:{1U,200U,201U,400U,800U}){
       const auto work=Many(count,true);if(count==800)Check(work<previous*3);previous=work;}return 0;
   }
+for(unsigned form:{69U,70U,71U,72U,73U,74U,75U,76U})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){const auto work=ReadCopies(form,count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}
 for(unsigned form:{57U,58U,59U,60U,61U,62U,63U,64U,65U,66U,67U,68U})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){const auto work=ComposedCopies(form,count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}
 for(unsigned form:{53U,54U,55U,56U})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){const auto work=SharedCopies(form,count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}
 for(unsigned form:{44U,45U,46U,47U,48U,49U,50U,51U,52U})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){const auto work=JoinedCopies(form,count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}

@@ -1260,7 +1260,7 @@ class TreePrinter {
       Expression(literal);return;
     }
     if(const auto* read=std::get_if<SymbolExpr>(&expression)) {
-      Name(Initializers().ReadBinding(read->symbol));return;
+      Name(Initializers().ReadBinding(operand.id,read->symbol));return;
     }
     const auto* unary_parent = std::get_if<TreeUnary>(&operand.context.parent);
     if (operand.value_result &&

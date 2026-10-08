@@ -3523,3 +3523,30 @@ without borrowing current normal-result precision. Tests cover composed source
 values, live/exception/postfix counterexamples, native initialization, 200/201/
 geometric/reversed layouts, explicit unknown facts, malformed span/ID boundaries
 and exact/short budgets. No new whole-process RSS claim is made.
+
+
+### Contextual symbolic values and shared reachability (2026-10-09, rules245)
+
+Provenance: reuse the existing sparse flat normal-value lattice and finite monotone
+notifications (primitive or proved immutable entry identity); no new dependency or
+license. Distinct primitive/binding occurrence outputs express read values only,
+never completion, store deletion or global binding identity.
+
+For N events, Q completion edges, E expressions, B bindings, R references and C proved
+symbolic reads, common invocation reachability adds O(N+Q) work, O(N) retained mask and
+O(N) bounded scratch. It leaves conservative live facts unchanged. The contextual
+solver filters existing sparse facts/edges by the mask; publication adds O(E+C) work
+and O(C) owned output to its existing lattice cost. No read-definition Cartesian
+product or per-binding traversal is materialized. Snapshot motion borrows this mask,
+removing its current production reachability buffer/traversal; legacy standalone
+analysis keeps its explicit construction.
+
+ReadSources uses O(E) owned plan storage and O(1) occurrence lookup before the existing
+slot invariant. Actual BindingValues proposals use O(E+B+R+C) scratch/batch queries,
+at most two independently proved queries per reference; common name-index costs
+remain separately charged. No-proposal functions skip query, owner, blocked and
+occurrence-index arrays; invariant-only proposals need no expression lookup index.
+Dense sparse-fact/output dimensions remain
+honestly charged under existing budgets. No new pipeline round, cutoff or quadratic
+selection algorithm. Independent 65536 graph cases, 200/201/geometric source layouts
+and exact/short allowances verify this boundary; full process RSS remains paused.

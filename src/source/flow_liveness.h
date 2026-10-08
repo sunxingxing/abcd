@@ -11,6 +11,9 @@ struct FlowLiveness {
   // Sorted incoming facts. Reads occur before a definition at the same point.
   std::vector<LiveBinding> live_in;
   std::vector<std::uint8_t> live_definitions;
+  // Invocation reachability includes every completion edge. Liveness remains
+  // conservative for retained syntax; contextual values consume this separately.
+  std::vector<std::uint8_t> reachable;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };

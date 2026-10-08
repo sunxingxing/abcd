@@ -48,6 +48,12 @@ struct BindingInitializers {
   // Final storage SymbolId indexed all-read substitution. Writes use Storage;
   // independent cleanup owns their evaluation, completion and binding removal.
   std::vector<std::optional<SymbolId>> read_bindings;
+  // ExprId indexed values proved for one actual completed read. Late
+  // ReadValues owns these after storage/motion; writes retain Storage.
+  std::vector<std::optional<SymbolId>> read_sources;
+  [[nodiscard]] SymbolId ReadBinding(ExprId expression,SymbolId binding) const {
+    return BindingProjection{aliases,storage,read_bindings,read_sources}.Read(expression,binding);
+  }
   [[nodiscard]] SymbolId ReadBinding(SymbolId binding) const {
     return BindingProjection{aliases,storage,read_bindings}.Read(binding);
   }
