@@ -5,7 +5,7 @@ const rows=execFileSync(process.argv[2],['--emit'],{encoding:'utf8',maxBuffer:32
 const token={},resumed={},failure=Symbol('original failure');
 function reference({form,count}) {
   const kind=form===8?'async function':form===9?'function*':'function';
-  const value=form===8?'await input.read()':form===9?'yield input.read()':form===10?'__snapshotMissing':(form===39||form===40)?'!!Math':form===41?'!!__snapshotFree':(form===5||form===37)?'(flag=input.read())':'input.read()';
+  const value=form===8?'await input.read()':form===9?'yield input.read()':form===10?'__snapshotMissing':(form===39||form===40)?'!!Math':form===41?'!!__snapshotFree':form===44?'this':(form===42||form===43)?'this.read()':(form===5||form===37)?'(flag=input.read())':'input.read()';
   let body='let saved;saved='+value+';';
   if(form===1)body+='if(saved)return true;else return false;';
   else if(form===2)body='let saved;while(true){saved=input.read();if(!saved)break;report();}return false;';
@@ -15,7 +15,8 @@ function reference({form,count}) {
   else if(form===7)body+='if(true)return false;return saved;';
   else if(form===10)body+='return typeof saved;';
   else if(form===12)body+='{return saved;let input=false;}';
-  else if(form===36||form===37||form===38||form===40||form===41)body+='{return saved;let flag=false;}';
+  else if(form===36||form===37||form===38||form===40||form===41||form===42||form===44)body+='{return saved;let flag=false;}';
+  else if(form===43)body+='{return saved;let input=false;}';
   else if(form===39)body+='{return saved;let Math=false;}';
   else if(form===13)body+='if(false)return saved;';
   else if(form===14)body='let saved;try{saved=input.read();return saved;}catch(error){return error;}';
@@ -42,6 +43,7 @@ async function observe(fn,row,options={}) {
   const encode=v=>{
     if(v===null||typeof v!=='object'&&typeof v!=='function')return v;
     if(v===token)return {identity:'token'};if(v===resumed)return {identity:'resume'};
+    if(v===input)return {identity:'receiver'};if(v===other)return {identity:'other-receiver'};
     if(v===value)return {identity:'input-value'};if(v===thrownValue)return {identity:'failure'};
     if(v instanceof Error)return {error:v.name};assert.fail('unknown object identity');
   };
@@ -55,10 +57,19 @@ async function observe(fn,row,options={}) {
     get effect(){event('get-effect');return function(){assert.equal(this,input);event('call-effect');};},
   };
   const report=function(...args){assert.equal(this,undefined);event('report',...args.map(encode));};
+  const other={get read(){event('get-other');return function(){assert.equal(this,other);event('call-other');return resumed;};}};
+  const receiver=(row.form>=42&&row.form<=44)?(options.otherReceiver?other:Object.hasOwn(options,'receiver')?options.receiver:input):undefined;
   const oldGlobal=Object.getOwnPropertyDescriptor(globalThis,'__snapshotFree');
   if(row.form===41)Object.defineProperty(globalThis,'__snapshotFree',{configurable:true,get(){event('global-read');return value;}});
   try {
-    let returned=fn(input,report,options.flag??false);
+    let returned;
+    if(options.beforeSuper) {
+      // Execute the generated body in a real derived-constructor this TDZ.
+      // This test wrapper supplies no source to the decompiler.
+      const text='('+fn.toString()+')',body=parseJavaScript(text).body[0].expression.body;
+      const Constructor=Function('return class extends class {} {constructor(input,report,flag) '+text.slice(body.start,body.end)+'}')();
+      returned=new Constructor(input,report,options.flag??false);
+    } else returned=fn.call(receiver,input,report,options.flag??false);
     if(row.form===9) {
       let next=returned.next();event('yield',encode(next.value),next.done);
       next=options.request==='throw'?returned.throw(thrownValue):options.request==='return'?returned.return(resumed):returned.next(resumed);
@@ -77,6 +88,7 @@ for(const row of rows) {
   const actual=Function('"use strict";return '+row.source)(),expected=reference(row);
   const scenarios=[...([undefined,null,false,0,-0,NaN,1n,Symbol.for('value'),token,'ok'].map(value=>({value})))];
   for(const failureValue of [undefined,null,false,0,NaN,failure,token])for(const failAt of [1,2,3,4])scenarios.push({failureValue,failAt});
+  if(row.form>=42&&row.form<=44)scenarios.push({receiver:null},{receiver:undefined},{receiver:7},{otherReceiver:true},{beforeSuper:true});
   if(row.form===8)scenarios.push({thenable:true},{thenable:true,reject:true},{thenable:true,failAt:3});
   if(row.form===9)scenarios.push({request:'throw'},{request:'return'});
   for(const scenario of scenarios){assert.deepStrictEqual(await observe(actual,row,scenario),await observe(expected,row,scenario),`form=${row.form} count=${row.count}`);++cases;}
@@ -105,6 +117,18 @@ for(const row of rows) {
   if(!row.count&&row.form===39) {
     const wrong=Function('input','report','flag','"use strict";{return !!Math;let Math=false;}');
     assert.notDeepStrictEqual(await observe(wrong,row),await observe(expected,row));++mutations;
+  }
+  if(!row.count&&row.form===44) {
+    const wrong=Function('input','report','flag','"use strict";return input;');
+    assert.notDeepStrictEqual(await observe(wrong,row,{otherReceiver:true}),await observe(expected,row,{otherReceiver:true}));++mutations;
+  }
+  if(!row.count&&(row.form===42||row.form===43)) {
+    const duplicate=Function('"use strict";return '+row.source.replace('this.read()','(this.read(),this.read())'))();
+    assert.notDeepStrictEqual(await observe(duplicate,row),await observe(expected,row));++mutations;
+    const substituted=Function('"use strict";return '+row.source.replace('this.read()','input.read()'))();
+    assert.notDeepStrictEqual(await observe(substituted,row,{otherReceiver:true}),await observe(expected,row,{otherReceiver:true}));
+    // The input-shadow form has its own TDZ, giving the same observed error.
+    if(row.form===42)assert.notDeepStrictEqual(await observe(substituted,row,{beforeSuper:true}),await observe(expected,row,{beforeSuper:true}));++mutations;
   }
   if(!row.count&&row.form===41) {
     const wrong=Function('input','report','flag','"use strict";{return (!!__snapshotFree,!!__snapshotFree);let flag=false;}');

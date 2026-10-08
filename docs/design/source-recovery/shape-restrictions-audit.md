@@ -2248,3 +2248,14 @@ effects, and must propagate an earlier RHS failure unchanged.
   抛异常和返回关系。名字查询不授权省略效果，原双向motion/异常证明保持。
 - 闭包/类/隐式helper/observable资源等尚未表达的依赖仍保留旧边界，
   不能从这次显式名字迁移推出全部跨环境移动已支持。
+
+
+### 2026-10-08：规则218，this所有权与局部环境分离
+
+- ThisExpr的FunctionOwnerId由共同树验证；同一准备内的快照不能进入
+  子函数树。该所有权事实进入共同词法依赖摘要，替代this遇到任意局部
+  声明就要求整环境一致的旧限制，组合表达式保留该依赖。
+- 这不证明this已初始化：派生构造器/arrow原效果保留，双向motion和
+  异常路由继续控制移动；方法getter及receiver身份不能替换为参数读取。
+- 目的flag及同名input局部声明均作通用正例，含receiver变化、getter
+  异常/次数和真实派生构造器super前执行比较；未添加生产形状匹配。

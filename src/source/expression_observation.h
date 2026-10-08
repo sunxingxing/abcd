@@ -8,15 +8,17 @@ enum class ExpressionEvaluation : std::uint8_t { kRequired, kInert };
 // scope. Closure environments and implicit source helpers still require the
 // enclosing environment until their dependencies join that reference model.
 // This exhaustive AST semantic property is not an opcode admission list.
-enum class LexicalDependency : std::uint8_t { kReferences, kEnclosingEnvironment };
+// Callable ownership is fixed by the checked tree's FunctionOwnerId. Local
+// scope projection cannot change it; initialization/effects are separate facts.
+enum class LexicalDependency : std::uint8_t { kReferences, kCallableOwner, kEnclosingEnvironment };
 inline LexicalDependency IntrinsicLexicalDependency(const TreeExpression& expression) {
   return std::visit([](const auto& node) {
     using T=std::decay_t<decltype(node)>;
-    if constexpr(std::is_same_v<T,FunctionExpr> ||
+    if constexpr(std::is_same_v<T,ThisExpr>) return LexicalDependency::kCallableOwner;
+    else if constexpr(std::is_same_v<T,FunctionExpr> ||
         std::is_same_v<T,ClassExpr> || std::is_same_v<T,RealmObjectExpr> ||
         std::is_same_v<T,SymbolConstructorExpr> || std::is_same_v<T,ArgumentSnapshotExpr> ||
-        std::is_same_v<T,SuperCallExpr> || std::is_same_v<T,FieldDefinitionExpr> ||
-        std::is_same_v<T,ThisExpr>) return LexicalDependency::kEnclosingEnvironment;
+        std::is_same_v<T,SuperCallExpr> || std::is_same_v<T,FieldDefinitionExpr>) return LexicalDependency::kEnclosingEnvironment;
     else {
       static_assert(std::is_same_v<T,TreeLiteral> || std::is_same_v<T,SymbolExpr> ||
           std::is_same_v<T,GlobalNameExpr> ||

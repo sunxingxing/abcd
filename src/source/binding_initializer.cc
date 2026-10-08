@@ -627,6 +627,8 @@ class Initializers {
       if(!old_owner || !new_owner)continue;
       const auto rhs=*definition.value;
       const bool changed_environment=environments[old_owner->value]!=environments[new_owner->value];
+      // Callable-owner dependencies are already proved by the checked tree;
+      // forwarding within this preparation cannot enter another callable.
       // Legacy resource-observable contracts also need activation-allocation
       // ordering, which body flow does not yet model. Preserve their original
       // environment boundary until that effect has a common representation.
@@ -983,8 +985,13 @@ class Initializers {
       VisitExpressionChildren(tree_, node, [&](ExprId child) {
         budget_.Step(); if (facts.evaluations[child.value] == ExpressionEvaluation::kRequired)
           evaluation = ExpressionEvaluation::kRequired;
-        if(facts.lexical[child.value]==LexicalDependency::kEnclosingEnvironment)
-          lexical=LexicalDependency::kEnclosingEnvironment;
+        switch(facts.lexical[child.value]) {
+          case LexicalDependency::kReferences:break;
+          case LexicalDependency::kCallableOwner:
+            if(lexical==LexicalDependency::kReferences)lexical=LexicalDependency::kCallableOwner;
+            break;
+          case LexicalDependency::kEnclosingEnvironment:lexical=LexicalDependency::kEnclosingEnvironment;break;
+        }
       });
       facts.evaluations[id.value] = evaluation;facts.lexical[id.value]=lexical;
     }

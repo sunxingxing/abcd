@@ -1004,3 +1004,22 @@ comparison costs. There is no per-name ancestor or per-candidate expression walk
 Closures, classes and implicit helper names retain their enclosing-environment
 summary until their dependencies enter this shared model. V1 observable activation
 resources keep the existing motion boundary. Full binding lifecycle remains open.
+
+
+## Callable ownership versus block environments (rules218, 2026-10-08)
+
+LexicalDependency distinguishes kCallableOwner from kEnclosingEnvironment.
+ThisExpr carries FunctionOwnerId, which VerifyTreeStructure already checks against
+the function owner and invocation form. Local projection and snapshot forwarding
+operate inside that one checked FunctionTree; child callables have separate trees.
+Ordinary block bindings therefore cannot change a ThisExpr receiver identity.
+The common expression postorder propagates callable ownership through operands,
+while an enclosing-environment dependency still dominates the composed summary.
+
+ForwardSnapshots consumes this existing owner proof and retires the unconditional
+local-environment identity gate for receiver reads. This does not claim this is
+initialized: the existing evaluation facts preserve derived-constructor and arrow
+exceptions, and the shared motion/handler proofs preserve their ordering. No
+receiver expression is replaced with a parameter or moved across a callable.
+Observable activation resource requirements and unmodeled closure/class/helper
+dependencies remain. No new scan, graph walk, opcode or shape condition is added.

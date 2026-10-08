@@ -24,6 +24,34 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则218，this调用所有权贯通局部快照移动
+
+- 共同LexicalDependency新增kCallableOwner，复用已验证ThisExpr的
+  FunctionOwnerId；表达式后序统一组合，整环境依赖优先。同一准备
+  只修改一个FunctionTree，局部块不改变调用所有权，子函数是独立树。
+  this退出遇到任意局部绑定就要求整环境一致的限制。未新增准入形状。
+- 这不证明this初始化：普通/derived/arrow现有效果规则保持，异常与
+  双向motion仍必须成立；V1激活资源、闭包/类/隐式helper等缺口保持。
+- 新增this.read在无关flag和同名input局部scope下的正例，验证独立
+  receiver、null/undefined/primitive、getter异常与一次执行；重复读取
+  和把this换成input的错误代码必须被发现。共同树原wrong-owner与
+  arrow-method反例继续运行。旧版本form42失败8.95秒，red-tests.log。
+- 相关3/3通过18.68秒，528份源码/20,220行为/58变体。追加真实derived
+  constructor super前对照时，input-shadow错误变体自身也报ReferenceError，
+  不能作为该观察范围的反例；收窄测试后528份/20,244行为/58变体通过，
+  receiver-corrected.log。这是测试反例选择修正，没有生成代码行为失败。
+  再补直接this值经已有comma简化后进入快照的组合正例。
+- 直接this值组合的最终独立脚本通过：540份源码/20,760行为/60变体，
+  value-final.log。最新版28个既定目标构建通过，56/56最终回归通过
+  539.62秒，final-{build,tests,detail}.log；包含同一540份快照对照、
+  2,004份变量源码/482,752行为/342变体、存储257份/38,804行为/
+  15变体，以及Home/PageA实际record独立对照。
+- 记录在build/stage-one/this-owner-verification。fresh ABC-only导出
+  build/stage-one/this-owner-rule218：19 records，10 complete / 0 partial /
+  9 noModule，10份语法通过，源码相对规则217逐字节一致，输入SHA256
+  不变，export-check.json记录结果。新增通用正例不等于新增实际record
+  完成覆盖；阶段一Goal active，完整corpus/RSS/基准及调度器暂停保持。
+
 ### 2026-10-08：规则217，显式全局名字贯通快照与目的解析
 
 - RecoveryFlow.names新增typed名字读取事实：NameId、发生点、原始
