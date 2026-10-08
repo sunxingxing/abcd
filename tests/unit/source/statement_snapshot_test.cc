@@ -10,10 +10,11 @@ using namespace abcd::source;
 namespace {
 enum class Form { kReturn, kIf, kLoop, kMultiple, kEffect, kArgument, kLocal, kBranchExit,
   kAwait, kYield, kTypeof, kAlias, kShadow, kGuarded, kCatch, kOutsideCatch, kCatchReads, kProjectedLocal, kInterleavedAlias,
-  kDeadInitialRead, kObservedInitialRead, kDiscardedOperand, kEffectOperand, kTransparentControl, kDebugger, kOnceLoop, kRepeatedLoop, kRedundantWrites, kEffectWrites, kDeadPrefix, kEffectPrefix, kObservedPrefix, kProjectedPrefix, kProjectedSuffix, kRequiredPrefix, kTdzStore };
+  kDeadInitialRead, kObservedInitialRead, kDiscardedOperand, kEffectOperand, kTransparentControl, kDebugger, kOnceLoop, kRepeatedLoop, kRedundantWrites, kEffectWrites, kDeadPrefix, kEffectPrefix, kObservedPrefix, kProjectedPrefix, kProjectedSuffix, kRequiredPrefix, kTdzStore, kUnrelatedBinding, kWrittenShadow, kResourceEnvironment, kFreeNameShadow };
 struct Fixture {
   FunctionTree tree{};
   Fixture(Form form) {
+    if(form==Form::kResourceEnvironment)tree.identity.contract=SourceContract::kLanguageAndHostV1;
     tree.callable=form==Form::kAwait?CallableKind::kAsyncFunction:form==Form::kYield?CallableKind::kGenerator:CallableKind::kFunction;
     tree.strictness=Strictness::kStrict;tree.parameter_scope={0};tree.body_scope={1};tree.body={0};
     tree.scopes={{ScopeKind::kParameters,{}},{ScopeKind::kFunctionBody,ScopeId{0}}};
@@ -58,6 +59,16 @@ struct Fixture {
 std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
   Fixture f(form);auto& tree=f.tree;const auto declaration=f.Stmt(DeclarationStmt{{3},{}});
   auto rhs=form==Form::kTypeof?f.Expr(GlobalNameExpr{{6}}):f.Call(4);
+  if(form==Form::kFreeNameShadow) {
+    tree.names.push_back(u"Math");
+    // Keep the original owned callee/base occurrences reachable while replacing
+    // their semantics with a composed free-name observation.
+    const auto call=std::get<CallExpr>(tree.expressions[rhs.value].expression);
+    const auto base=std::get<MemberExpr>(tree.expressions[call.callee.value].expression).base;
+    tree.expressions[base.value].expression=GlobalNameExpr{{7}};
+    tree.expressions[call.callee.value].expression=UnaryExpr{TreeUnary::kNot,base};
+    tree.expressions[rhs.value].expression=UnaryExpr{TreeUnary::kNot,call.callee};
+  }
   if(form==Form::kProjectedLocal) {
     tree.names.push_back(u"local");tree.names.push_back(u"value");tree.symbols.push_back({{1},{7},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
     // Replace the original root without leaving an unowned expression behind.
@@ -67,7 +78,7 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
     tree.expressions[call.callee.value].expression=MemberExpr{base,NameId{8}};
     tree.expressions[rhs.value].expression=UnaryExpr{TreeUnary::kNot,call.callee};
   }
-  if(form==Form::kArgument)rhs=f.Expr(AssignmentExpr{SymbolTarget{{2}},rhs});
+  if(form==Form::kArgument||form==Form::kWrittenShadow)rhs=f.Expr(AssignmentExpr{SymbolTarget{{2}},rhs});
   if(form==Form::kAwait)rhs=f.Expr(AwaitExpr{rhs});if(form==Form::kYield)rhs=f.Expr(YieldExpr{rhs});
   auto stored=f.Expr(AssignmentExpr{SymbolTarget{{3}},rhs});
   if(form==Form::kProjectedPrefix||form==Form::kProjectedSuffix||form==Form::kRequiredPrefix)
@@ -131,9 +142,9 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
     std::get<LoopStmt>(tree.statements[loop.value].statement).body=loop_body;body.back()=loop;body.push_back(f.Stmt(ReturnStmt{f.Literal(false)}));
   } else if(form==Form::kArgument) {body.push_back(f.Report({f.Read(2),read}));body.push_back(f.Stmt(ReturnStmt{f.Literal(false)}));}
   else if(form==Form::kGuarded)body.push_back(f.Stmt(IfStmt{f.Literal(false),f.Block({f.Stmt(ReturnStmt{read})}),{}}));
-  else if(form==Form::kShadow) {
+  else if(form==Form::kShadow||form==Form::kUnrelatedBinding||form==Form::kWrittenShadow||form==Form::kResourceEnvironment||form==Form::kFreeNameShadow) {
     const auto inner=f.Block({});const auto scope=std::get<BlockStmt>(tree.statements[inner.value].statement).scope;
-    const auto shadow=static_cast<unsigned>(tree.symbols.size());tree.symbols.push_back({scope,{0},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
+    const auto shadow=static_cast<unsigned>(tree.symbols.size());tree.symbols.push_back({scope,{form==Form::kShadow?0U:form==Form::kFreeNameShadow?7U:2U},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
     auto& block=std::get<BlockStmt>(tree.statements[inner.value].statement);block.first_child=tree.children.size();block.child_count=2;tree.children.push_back(f.Stmt(ReturnStmt{read}));tree.children.push_back(f.Stmt(DeclarationStmt{{shadow},f.Literal(false)}));body.push_back(inner);
   } else body.push_back(f.Stmt(ReturnStmt{result}));
   if(form==Form::kTdzStore) {body.erase(body.begin());body.push_back(declaration);}
@@ -164,7 +175,7 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
       test::Check(plan.evaluations[i]==ExpressionEvaluation::kRequired);
   }
 
-  const bool folded=form==Form::kReturn||form==Form::kIf||form==Form::kLoop||form==Form::kAwait||form==Form::kYield||form==Form::kTypeof||form==Form::kAlias||form==Form::kCatch||form==Form::kInterleavedAlias||form==Form::kDeadInitialRead||form==Form::kDiscardedOperand||form==Form::kTransparentControl||form==Form::kOnceLoop||form==Form::kRedundantWrites||form==Form::kDeadPrefix||form==Form::kEffectPrefix||form==Form::kProjectedPrefix||form==Form::kProjectedSuffix;
+  const bool folded=form==Form::kReturn||form==Form::kIf||form==Form::kLoop||form==Form::kAwait||form==Form::kYield||form==Form::kTypeof||form==Form::kAlias||form==Form::kCatch||form==Form::kInterleavedAlias||form==Form::kDeadInitialRead||form==Form::kDiscardedOperand||form==Form::kTransparentControl||form==Form::kOnceLoop||form==Form::kRedundantWrites||form==Form::kDeadPrefix||form==Form::kEffectPrefix||form==Form::kProjectedPrefix||form==Form::kProjectedSuffix||form==Form::kUnrelatedBinding;
   if(plan.replacements[read.value].has_value()!=folded)std::cerr<<"form="<<static_cast<unsigned>(form)<<" count="<<count<<" reverse="<<reverse<<'\n';
   test::Check(plan.replacements[read.value].has_value()==folded);
   const bool aliased=form==Form::kArgument;
@@ -189,7 +200,7 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
 }
 }
 int main(int argc,char**) {
-  for(unsigned form=0;form<=static_cast<unsigned>(Form::kTdzStore);++form){std::uint64_t small=0,large=0;
+  for(unsigned form=0;form<=static_cast<unsigned>(Form::kFreeNameShadow);++form){std::uint64_t small=0,large=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}){const auto work=Check(static_cast<Form>(form),count,reverse,argc>1);if(count==400&&!reverse)small=work;if(count==800&&!reverse)large=work;}
     test::Check(large<small*3);
   }

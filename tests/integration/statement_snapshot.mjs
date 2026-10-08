@@ -5,7 +5,7 @@ const rows=execFileSync(process.argv[2],['--emit'],{encoding:'utf8',maxBuffer:32
 const token={},resumed={},failure=Symbol('original failure');
 function reference({form,count}) {
   const kind=form===8?'async function':form===9?'function*':'function';
-  const value=form===8?'await input.read()':form===9?'yield input.read()':form===10?'__snapshotMissing':form===5?'(flag=input.read())':'input.read()';
+  const value=form===8?'await input.read()':form===9?'yield input.read()':form===10?'__snapshotMissing':form===39?'!!Math':(form===5||form===37)?'(flag=input.read())':'input.read()';
   let body='let saved;saved='+value+';';
   if(form===1)body+='if(saved)return true;else return false;';
   else if(form===2)body='let saved;while(true){saved=input.read();if(!saved)break;report();}return false;';
@@ -15,6 +15,8 @@ function reference({form,count}) {
   else if(form===7)body+='if(true)return false;return saved;';
   else if(form===10)body+='return typeof saved;';
   else if(form===12)body+='{return saved;let input=false;}';
+  else if(form===36||form===37||form===38)body+='{return saved;let flag=false;}';
+  else if(form===39)body+='{return saved;let Math=false;}';
   else if(form===13)body+='if(false)return saved;';
   else if(form===14)body='let saved;try{saved=input.read();return saved;}catch(error){return error;}';
   else if(form===15)body='let saved;try{saved=input.read();}catch(error){return error;}return saved;';
@@ -97,9 +99,17 @@ for(const row of rows) {
     const wrong=Function('input','report','flag','"use strict";input.read();while(true){if(input.read())break;report();if(flag)break;flag=true;}return false;');
     assert.notDeepStrictEqual(await observe(wrong,row,{value:false}),await observe(expected,row,{value:false}));++mutations;
   }
-  if(!row.count&&[0,2,5,10,19,21,23,25,27,29,32,33].includes(row.form)) {
+  if(!row.count&&row.form===39) {
+    const wrong=Function('input','report','flag','"use strict";{return !!Math;let Math=false;}');
+    assert.notDeepStrictEqual(await observe(wrong,row),await observe(expected,row));++mutations;
+  }
+  if(!row.count&&row.form===37) {
+    const wrong=Function('input','report','flag','"use strict";{return (flag=input.read());let flag=false;}');
+    assert.notDeepStrictEqual(await observe(wrong,row),await observe(expected,row));++mutations;
+  }
+  if(!row.count&&[0,2,5,10,19,21,23,25,27,29,32,33,36].includes(row.form)) {
     let wrong;
-    if(row.form===0||row.form===19||row.form===21||row.form===23||row.form===25||row.form===27||row.form===29||row.form===32||row.form===33)wrong=row.source.replace('input.read()','(input.read(), input.read())');
+    if(row.form===0||row.form===19||row.form===21||row.form===23||row.form===25||row.form===27||row.form===29||row.form===32||row.form===33||row.form===36)wrong=row.source.replace('input.read()','(input.read(), input.read())');
     if(row.form===2)wrong=row.source.replace('input.read()','false');
     if(row.form===5)wrong=row.source.replace(/\(flag = input\.read\(\)\)/,'false').replace(/\(0, report\)\(flag, saved\)/,'(0, report)(flag, (flag = input.read()))');
     if(row.form===10)wrong=row.source.replace(/\(0, __snapshotMissing\)/,'__snapshotMissing');

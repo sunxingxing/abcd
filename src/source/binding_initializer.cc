@@ -569,7 +569,7 @@ class Initializers {
     if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
     const auto& motion=std::get<FlowMotion>(analyzed);
     budget_.Admit(motion.allocated_bytes,1);budget_.Step(motion.work);
-    struct ForwardedSnapshot { SymbolId binding; ExprId read, value; StmtId statement; };
+    struct ForwardedSnapshot { SymbolId binding; ExprId read, value, store; StmtId statement; std::optional<StmtId> destination; };
     std::vector<ForwardedSnapshot> proposed;
     budget_.Array(proposed,uses_.size());std::size_t count=0;
     for (std::size_t i = 0; i < uses_.size(); ++i) {
@@ -597,22 +597,55 @@ class Initializers {
       // Bidirectional observation pairing proves execution count. The shared
       // handler/cleanup identity separately preserves throws and abrupt resume.
       if(!stores[i]->exceptions || stores[i]->exceptions!=reads[i]->exceptions)continue;
-      const auto old_owner = expression_owners_[store.value], new_owner = expression_owners_[read.value];
-      if (!old_owner || !new_owner || environments[old_owner->value] != environments[new_owner->value]) continue;
-      const auto rhs = *definition.value;
+      const auto old_owner=ReferenceOwner(*stores[i]),new_owner=ReferenceOwner(*reads[i]);
+      if(!old_owner || !new_owner)continue;
+      const auto rhs=*definition.value;
+      const bool changed_environment=environments[old_owner->value]!=environments[new_owner->value];
+      // Legacy resource-observable contracts also need activation-allocation
+      // ordering, which body flow does not yet model. Preserve their original
+      // environment boundary until that effect has a common representation.
+      if(changed_environment && (ResourceFailures(tree_.identity.contract)==ResourceFailureScope::kObservable ||
+          expressions.lexical[rhs.value]==LexicalDependency::kEnclosingEnvironment))continue;
       // Native naming follows the projected destination. Moving a direct
       // creation can require a computed-name wrapper; retain strict resource
       // contracts until no additional allocation is proved for that destination.
       if (ResourceFailures(tree_.identity.contract) != ResourceFailureScope::kExcluded &&
           (std::holds_alternative<FunctionExpr>(tree_.expressions[rhs.value].expression) ||
            std::holds_alternative<ClassExpr>(tree_.expressions[rhs.value].expression))) continue;
-      proposed[count++]={SymbolId{static_cast<std::uint32_t>(i)},read,rhs,statement};
+      proposed[count++]={SymbolId{static_cast<std::uint32_t>(i)},read,rhs,store,statement,
+          changed_environment?reads[i]->owner:std::nullopt};
+    }
+    std::vector<std::uint8_t> blocked;budget_.Array(blocked,count);
+    bool needs_scope=false;
+    for(std::size_t i=0;i<count;++i){budget_.Step();needs_scope |= proposed[i].destination.has_value();}
+    if(needs_scope) {
+      // Whole-statement candidates have disjoint current reference ownership.
+      // Batch their destination queries once; never walk a subtree per symbol.
+      std::vector<std::optional<std::size_t>> candidates;
+      std::vector<TreeScopedReference> queries;std::vector<std::size_t> owners;
+      budget_.Array(candidates,tree_.statements.size());
+      budget_.Array(queries,flow.references.size());budget_.Array(owners,flow.references.size());
+      for(std::size_t i=0;i<count;++i){budget_.Step();if(proposed[i].destination)candidates[proposed[i].statement.value]=i;}
+      std::size_t size=0;
+      for(const auto& reference:flow.references) {
+        budget_.Step();if(!reference.owner)continue;
+        const auto candidate=candidates[reference.owner->value];if(!candidate)continue;
+        const auto& edit=proposed[*candidate];
+        // The removed snapshot PutValue is not part of the transported RHS.
+        if(reference.site==FlowReferenceSite{edit.store})continue;
+        const auto destination=*edit.destination;
+        if(!RootLifetime(reference.binding,statement_owners_[destination.value]))blocked[*candidate]=1;
+        queries[size]={reference.binding,statement_scopes_[destination.value]};owners[size++]=*candidate;
+      }
+      queries.resize(size);owners.resize(size);
+      const auto resolved=ResolveTreeReferences(tree_,queries,budget_);
+      for(std::size_t i=0;i<size;++i){budget_.Step();if(!resolved[i])blocked[owners[i]]=1;}
     }
     // Value availability, motion and lexical proofs all observe the same
     // projection. Apply only after all proposals are complete; later passes
     // must reconstruct facts for the forwarded expression ownership.
     for(std::size_t i=0;i<count;++i) {
-      budget_.Step();const auto& action=proposed[i];const auto& use=uses_[action.binding.value];
+      budget_.Step();if(blocked[i])continue;const auto& action=proposed[i];const auto& use=uses_[action.binding.value];
       BeginCommit();plan_.replacements[action.read.value]=action.value;
       plan_.forwarded_values[action.statement.value]=action.value;
       plan_.omitted[use.declaration->value]=plan_.omitted[action.statement.value]=1;
@@ -844,6 +877,7 @@ class Initializers {
     std::vector<ExprId> roots;
     std::vector<std::uint8_t> normal_stores;
     std::vector<ExpressionEvaluation> evaluations;
+    std::vector<LexicalDependency> lexical;
   };
   const ExpressionFacts& AnalyzeExpressions() const {
     RequireAnalysis();
@@ -860,6 +894,7 @@ class Initializers {
     budget_.Array(facts.roots, tree_.expressions.size());
     budget_.Array(facts.normal_stores, tree_.expressions.size());
     budget_.Array(facts.evaluations, tree_.expressions.size());
+    budget_.Array(facts.lexical,tree_.expressions.size());
     auto& stored = facts.bindings;
     // All facts describe one unchanged projection. The analysis is const and
     // publishes no plan state; proposal/commit consumers own all mutations.
@@ -882,9 +917,11 @@ class Initializers {
         facts.roots[id.value]=facts.roots[replacement->value];
         result = stored[replacement->value];
         facts.evaluations[id.value] = facts.evaluations[replacement->value];
+        facts.lexical[id.value]=facts.lexical[replacement->value];
         continue;
       }
       auto evaluation = IntrinsicEvaluation(node);
+      auto lexical=IntrinsicLexicalDependency(node);
       if (const auto* read = std::get_if<SymbolExpr>(&node)) {
         if (!plan_.literals[read->symbol.value]) {
           const auto source = plan_.Storage(read->symbol);
@@ -910,8 +947,10 @@ class Initializers {
       VisitExpressionChildren(tree_, node, [&](ExprId child) {
         budget_.Step(); if (facts.evaluations[child.value] == ExpressionEvaluation::kRequired)
           evaluation = ExpressionEvaluation::kRequired;
+        if(facts.lexical[child.value]==LexicalDependency::kEnclosingEnvironment)
+          lexical=LexicalDependency::kEnclosingEnvironment;
       });
-      facts.evaluations[id.value] = evaluation;
+      facts.evaluations[id.value] = evaluation;facts.lexical[id.value]=lexical;
     }
     return facts;
   }
