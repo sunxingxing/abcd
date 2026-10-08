@@ -1,5 +1,6 @@
 #include "binding_initializer.h"
 #include "binding_interference.h"
+#include "storage_coalescing.h"
 #include "definition_elision.h"
 #include "flow_dominance.h"
 #include "flow_definitions.h"
@@ -827,23 +828,28 @@ class Initializers {
     if (const auto* error = std::get_if<TreeStructureError>(&analyzed)) throw *error;
     auto facts = std::get<BindingInterference>(std::move(analyzed));
     budget_.Admit(facts.allocated_bytes, 1); budget_.Step(facts.work);
-    std::vector<std::optional<SymbolId>> proposed;
-    std::vector<std::uint8_t> paired, blocked;
-    budget_.Array(proposed, uses_.size()); budget_.Array(paired, uses_.size()); budget_.Array(blocked, uses_.size());
-    // A disjoint matching avoids transitive interference: every accepted group
-    // has the exact pair proved below, never an unchecked union of affinities.
-    bool sharing=false;
-    for (auto pair : facts.affinities) {
-      budget_.Step(); if (pair.interference || paired[pair.first.value] || paired[pair.second.value] ||
-          !eligible(pair.first) || !eligible(pair.second)) continue;
-      const auto native = [&](SymbolId symbol) { const auto& site=declaration_sites_[symbol.value];
-        return site && plan_.statements[site->statement.value].has_value(); };
-      if (!native(pair.first) && native(pair.second)) std::swap(pair.first, pair.second);
-      paired[pair.first.value] = paired[pair.second.value] = 1;
-      proposed[pair.second.value] = pair.first;sharing=true;
-    }
-    if(!sharing)return;
     const auto& initialization_order=CurrentInitializations();
+    std::vector<StorageBinding> bindings;budget_.Array(bindings,uses_.size());
+    TreeScopeCheck spellings(tree_,budget_);
+    for(std::size_t i=0;i<bindings.size();++i) {
+      budget_.Step();const SymbolId symbol{static_cast<std::uint32_t>(i)};
+      const auto& site=declaration_sites_[i];
+      bindings[i].eligible=eligible(symbol);
+      bindings[i].unique_spelling=spellings.UniqueSpelling(symbol);
+      bindings[i].native_declaration=site&&plan_.statements[site->statement.value].has_value();
+      if(const auto point=initialization_order.declarations[i]) {
+        const auto position=initialization_order.order.tree.nodes[point->value].begin;
+        if(position)bindings[i].initialization_order=position;
+      }
+    }
+    auto coalesced=PlanStorageCoalescing(facts,bindings,budget_.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&coalesced))throw *error;
+    auto delta=std::get<StorageCoalescing>(std::move(coalesced));
+    budget_.Admit(delta.allocated_bytes,1);budget_.Step(delta.work);
+    auto proposed=std::move(delta.storage);
+    bool sharing=false;for(const auto root:proposed){budget_.Step();sharing|=root.has_value();}
+    if(!sharing)return;
+    std::vector<std::uint8_t> blocked;budget_.Array(blocked,uses_.size());
     std::vector<TreeScopedReference> references;
     std::vector<std::optional<StmtId>> occurrences;
     std::vector<SymbolId> targets;

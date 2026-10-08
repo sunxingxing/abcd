@@ -207,11 +207,56 @@ std::uint64_t Many(unsigned count,bool emit){
   if(emit)std::cout<<nlohmann::json{{"count",count},{"work",bindings.work},{"source",output.str()}}<<'\n';
   return bindings.work;
 }
+
+std::uint64_t Chain(unsigned count,bool conflict,bool reverse,bool emit){
+  Fixture f(Form::kStraight);auto& tree=f.tree;
+  std::vector<unsigned> slots{4};
+  for(unsigned i=1;i<count;++i){
+    const NameId name{static_cast<std::uint32_t>(tree.names.size())};const auto label="copy"+std::to_string(i);
+    tree.names.emplace_back(label.begin(),label.end());slots.push_back(tree.symbols.size());
+    tree.symbols.push_back({{1},name,BindingKind::kCompilerTemporary,DeclarationKind::kLet,NameEvidence::kSynthesized,TemporaryReason::kMultipleUses});
+  }
+  std::vector<StmtId> body{f.Stmt(DeclarationStmt{{3},{}})};
+  for(auto slot:slots)body.push_back(f.Stmt(DeclarationStmt{{slot},{}}));
+  body.push_back(f.Write(3,f.Read(0)));unsigned previous=3;
+  for(auto slot:slots){body.push_back(f.Write(slot,f.Read(previous)));body.push_back(f.Stmt(ExpressionStmt{f.Call({f.Read(slot)})}));previous=slot;}
+  body.push_back(f.Stmt(ExpressionStmt{f.Expr(UpdateExpr{{previous},UpdateDirection::kIncrement,UpdateResult::kPrefix})}));
+  if(conflict)body.push_back(f.Stmt(ExpressionStmt{f.Call({f.Read(3)})}));
+  body.push_back(f.Write(3,f.Read(previous)));body.push_back(f.Stmt(ReturnStmt{f.Read(3)}));
+  if(reverse){
+    const auto map=[&](SymbolId id){return SymbolId{static_cast<std::uint32_t>(tree.symbols.size()-1-id.value)};};
+    for(auto& parameter:tree.parameters)parameter.symbol=map(parameter.symbol);
+    for(auto& expression:tree.expressions)std::visit([&](auto& value){using T=std::decay_t<decltype(value)>;
+      if constexpr(std::is_same_v<T,SymbolExpr>)value.symbol=map(value.symbol);
+      else if constexpr(std::is_same_v<T,AssignmentExpr>)std::get<SymbolTarget>(value.target).symbol=map(std::get<SymbolTarget>(value.target).symbol);
+      else if constexpr(std::is_same_v<T,UpdateExpr>)value.symbol=map(value.symbol);
+    },expression.expression);
+    for(auto& statement:tree.statements)if(auto* declaration=std::get_if<DeclarationStmt>(&statement.statement))declaration->symbol=map(declaration->symbol);
+    std::reverse(tree.symbols.begin(),tree.symbols.end());
+  }
+  f.Finish(body,reverse);Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
+  const auto planned=PlanBindingInitializers(tree,loops,nullish);Check(std::holds_alternative<BindingInitializers>(planned));
+  const auto& bindings=std::get<BindingInitializers>(planned);
+  unsigned merged=0;for(const auto slot:bindings.storage)merged+=slot.has_value();
+  if(merged!=count-unsigned(conflict))std::cerr<<"chain "<<count<<" conflict "<<conflict<<" reverse "<<reverse<<" merged "<<merged<<'\n';
+  Check(merged==count-unsigned(conflict));
+  std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
+  if(emit)std::cout<<nlohmann::json{{"count",count},{"conflict",conflict},{"reverse",reverse},{"source",output.str()}}<<'\n';
+  return bindings.work;
+}
 }
 int main(int argc,char** argv){
+  if(argc>1&&std::string_view(argv[1])=="--chains"){
+    for(bool conflict:{false,true})for(bool reverse:{false,true}){
+      std::uint64_t previous=0;for(unsigned count:{1U,2U,200U,201U,400U,800U}){
+        const auto work=Chain(count,conflict,reverse,true);if(count==800)Check(work<previous*3);previous=work;}}return 0;
+  }
   if(argc>1&&std::string_view(argv[1])=="--scale"){
     std::uint64_t previous=0;for(unsigned count:{1U,200U,201U,400U,800U}){
       const auto work=Many(count,true);if(count==800)Check(work<previous*3);previous=work;}return 0;
   }
+for(bool conflict:{false,true})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{1U,2U,200U,201U,400U,800U}){
+  const auto work=Chain(count,conflict,reverse,false);if(count==800)Check(work<previous*3);previous=work;}}
 for(unsigned form=0;form<=unsigned(Form::kForwardedAliasShadow);++form){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}){
   const auto work=Run(Form(form),count,reverse,argc>1);if(!reverse){if(count==800)Check(work<previous*3);previous=work;}}}}

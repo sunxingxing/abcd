@@ -1078,3 +1078,62 @@ shadowing scope, coalescing may retain another visible copy slot and the late
 phase may safely propagate into that slot while still rejecting the original
 spelling. This is a semantic assertion change, with no corresponding production
 condition. The full existing independent source behavior comparison is retained.
+
+
+## Complete interference and group contraction (rules220, 2026-10-08)
+
+FindBindingInterference now publishes every compiler-temporary conflict derived
+from current shared live-in facts and successful definitions, including pairs
+without a copy affinity. Affinities remain proposals; their interference flags
+are derived from the same sorted conflict graph. Recording only affinity-pair
+conflicts is insufficient for transitive coalescing: two accepted edges can join
+endpoints whose values must remain distinct. The shared two-binding exhaustive
+oracle checks complete conflicts even on graphs without any affinity.
+
+PlanStorageCoalescing independently contracts nonadjacent affinity groups. It
+maintains symmetric indexed conflict adjacency and a DSU balanced by group size.
+A group has no internal interference; each neighbor rewrite removes the old root
+from both endpoints and adds the surviving root. Printed representative selection
+is separate from DSU balancing. The result is a direct slot for every removed
+member, with no chained maps or extra storage passes. Coalesce no longer owns a
+paired bitmap or admits only disjoint pairs.
+
+Spelling preference comes from the shared TreeScopeCheck spelling index, not an
+optimizer-specific comparison or a named sample. A binding with a unique spelling
+is preferred; native declarations and earlier current initialization dominator
+positions follow. This is a quality preference only: duplicate spellings remain
+eligible and can merge. Actual name resolution, current reference ownership,
+completion-before-remap and narrowed source declaration lifetime still decide
+which members can commit. A group can retain any subset independently, because
+all of its members were mutually noninterfering before source restrictions. Live
+empty initialization is separately expressed by PlanStorageInitializations.
+
+The existing schedule is unchanged: snapshot commit precedes fresh storage facts,
+and identity/inert cleanup precedes the late alias stage. Group contraction does
+not delete stores, drop RHS effects, propagate immutable values or recover source
+syntax. BeginCommit still invalidates one ProjectionFacts aggregate before later
+consumers. Conservative finally, escaping cells and original-IR correspondence
+remain independent precision gaps; no fixed-point scheduling is introduced.
+
+The small dense reference planner scans cross-group member pairs and rewrites
+all labels, independently of DSU/indexed adjacency. 20,480 four-binding graph and
+preference cases include eligibility, native ordering, reversed initialization
+ranks, duplicate spelling and conflicts absent from affinity edges. Long source
+chains retain each callback, ++ conversion and successful writeback. Their
+non-affinity first/last conflict preserves two slots; without that observation
+one slot suffices. Symbol and statement arena reversal plus 1/2/200/201/
+400/800 chains exercise recovery and geometric work growth. Wrong full contraction
+and dropped update are detected by independent execution. Existing shadowing
+chains also require at most one retained copy, rather than allowing the new group
+representative to increase mechanical declarations.
+
+
+The actual PasteBoard nested type loop removes one private success-state carrier
+and its update-program copy. A new paired callback test generates the ABC-only
+record before reading the TS reference, then compares only that async callback.
+Mixed records/types, getter reads, type-array proxies, length coercion, record and
+system promise rejection and every-effect-point exceptions preserve traces and
+completion. Deleting the success write or its record-data await is detected.
+This advances one real callback's semantic/style evidence; the whole record and
+platform execution are not accepted by that test. Final coverage is recorded in
+status.md; paused corpus/RSS measurements are not resumed.

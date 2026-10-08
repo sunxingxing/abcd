@@ -119,4 +119,32 @@ assert(scaled.at(-1).work<3*scaled.at(-2).work);
 for(const test of scaled){parseJavaScript(test.source);const fn=vm.runInNewContext(test.source);
   for(const value of [0,2n,-0,'7']){const seen=[];fn(value,x=>seen.push(x));let expected=value;++expected;
     assert.equal(seen.length,test.count);for(const actual of seen)assert.equal(actual,expected);++cases;}}
-console.log(JSON.stringify({sources:records.length+scaled.length,cases,mutations}));
+const chains=execFileSync(process.argv[2],['--chains'],{encoding:'utf8',timeout:120_000,maxBuffer:16*1024*1024}).trim().split('\n').map(JSON.parse);
+assert.equal(chains.length,24);
+for(const test of chains){
+  const ast=parseJavaScript(test.source),pending=[ast];let declarations=0;
+  while(pending.length){const node=pending.pop();if(node.type==='VariableDeclarator')++declarations;
+    for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)pending.push(child);}else if(value?.type)pending.push(value);}}
+  assert.equal(declarations,test.conflict?2:1);
+  const names=Array.from({length:test.count},(_,i)=>'slot'+i);
+  let body='let current=input;'+names.map(name=>'let '+name+';').join('');
+  for(let i=0;i<names.length;++i)body+=names[i]+'='+(i?names[i-1]:'current')+';report('+names[i]+');';
+  body+='++'+names.at(-1)+';'+(test.conflict?'report(current);':'')+'current='+names.at(-1)+';return current;';
+  const reference=Function('return function(input,report,flag){'+body+'}')();
+  const recovered=vm.runInNewContext(test.source);
+  for(let index=0;index<primitives.length+2;++index)for(const mode of ['normal','coercion-throw','report-throw'])for(const flag of [false,true]){
+    assert.deepEqual(await observe(recovered,-1,index,mode,flag,'next'),await observe(reference,-1,index,mode,flag,'next'),JSON.stringify(test));++cases;
+  }
+  if(test.count===2&&!test.reverse){
+    if(test.conflict){
+      // Every affinity pair can be safe while a non-affinity end pair conflicts.
+      // Blind contraction must expose the updated value at the old-root read.
+      const wrong=function(input,report){let current=input;report(current);report(current);++current;report(current);return current;};
+      assert.notDeepEqual(await observe(wrong,-1,6,'normal',true,'next'),await observe(reference,-1,6,'normal',true,'next'));++mutations;
+    }else{
+      const wrong=function(input,report){report(input);report(input);return input;};
+      assert.notDeepEqual(await observe(wrong,-1,6,'normal',true,'next'),await observe(reference,-1,6,'normal',true,'next'));++mutations;
+    }
+  }
+}
+console.log(JSON.stringify({sources:records.length+scaled.length+chains.length,cases,mutations}));

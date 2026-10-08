@@ -1,0 +1,76 @@
+#include "storage_coalescing.h"
+#include "recovery_scratch.h"
+#include <set>
+#include <stdexcept>
+namespace abcd::source {
+namespace {
+struct ConflictOrder {
+  TreeCheckBudget* budget;
+  bool operator()(SymbolId a,SymbolId b) const {budget->Step();return a<b;}
+};
+class Coalescing {
+ public:
+  Coalescing(const BindingInterference& facts,std::span<const StorageBinding> bindings,
+      analysis::SemanticBudget allowance):facts_(facts),bindings_(bindings),budget_(allowance),
+      memory_(budget_),neighbors_(&memory_) {}
+  StorageCoalescing Run() {
+    budget_.Array(parents_,bindings_.size());budget_.Array(sizes_,bindings_.size());
+    budget_.Array(retained_,bindings_.size());neighbors_.reserve(bindings_.size());
+    for(std::size_t i=0;i<bindings_.size();++i){budget_.Step();
+      parents_[i]=retained_[i]=SymbolId{static_cast<std::uint32_t>(i)};sizes_[i]=1;
+      neighbors_.emplace_back(ConflictOrder{&budget_});}
+    for(const auto& conflict:facts_.conflicts){budget_.Step();CheckPair(conflict.first,conflict.second);
+      neighbors_[conflict.first.value].insert(conflict.second);
+      neighbors_[conflict.second.value].insert(conflict.first);}
+    for(const auto& pair:facts_.affinities){budget_.Step();CheckPair(pair.first,pair.second);
+      if(!bindings_[pair.first.value].eligible||!bindings_[pair.second.value].eligible)continue;
+      auto a=Find(pair.first),b=Find(pair.second);
+      if(a==b||neighbors_[a.value].contains(b))continue;
+      // Separate DSU balancing from printed-slot preference. Each removed
+      // group's weight at least doubles, bounding repeated adjacency rewrites.
+      if(sizes_[a.value]<sizes_[b.value])std::swap(a,b);
+      const auto retained=Prefer(retained_[a.value],retained_[b.value]);
+      for(auto neighbor:neighbors_[b.value]){budget_.Step();
+        const auto erased=neighbors_[neighbor.value].erase(b);
+        RequireTree(erased==1,TreeStructureError::kOwnership);
+        neighbors_[neighbor.value].insert(a);neighbors_[a.value].insert(neighbor);}
+      neighbors_[b.value].clear();parents_[b.value]=a;sizes_[a.value]+=sizes_[b.value];retained_[a.value]=retained;
+    }
+    StorageCoalescing result;budget_.Array(result.storage,bindings_.size());
+    for(std::size_t i=0;i<bindings_.size();++i){budget_.Step();const SymbolId id{static_cast<std::uint32_t>(i)};
+      const auto root=retained_[Find(id).value];if(root!=id)result.storage[i]=root;}
+    result.allocated_bytes=budget_.Bytes();result.work=budget_.Work();return result;
+  }
+ private:
+  void CheckPair(SymbolId a,SymbolId b) const {
+    RequireTree(a.value<bindings_.size()&&b.value<bindings_.size()&&a!=b,TreeStructureError::kBinding);
+  }
+  SymbolId Find(SymbolId id) {
+    auto root=id;
+    while(parents_[root.value]!=root){budget_.Step();root=parents_[root.value];}
+    while(id!=root){budget_.Step();const auto next=parents_[id.value];parents_[id.value]=root;id=next;}
+    return root;
+  }
+  SymbolId Prefer(SymbolId a,SymbolId b) {
+    budget_.Step();const auto& left=bindings_[a.value];const auto& right=bindings_[b.value];
+    if(left.unique_spelling!=right.unique_spelling)return left.unique_spelling?a:b;
+    if(left.native_declaration!=right.native_declaration)return left.native_declaration?a:b;
+    if(left.initialization_order!=right.initialization_order){
+      if(!left.initialization_order)return b;if(!right.initialization_order)return a;
+      return *left.initialization_order<*right.initialization_order?a:b;}
+    return a<b?a:b;
+  }
+  const BindingInterference& facts_;std::span<const StorageBinding> bindings_;
+  TreeCheckBudget budget_;RecoveryScratch memory_;
+  std::vector<SymbolId> parents_,retained_;std::vector<std::size_t> sizes_;
+  std::pmr::vector<std::pmr::set<SymbolId,ConflictOrder>> neighbors_;
+};
+}
+std::variant<StorageCoalescing,TreeStructureError> PlanStorageCoalescing(
+    const BindingInterference& facts,std::span<const StorageBinding> bindings,analysis::SemanticBudget allowance) {
+  try{return Coalescing(facts,bindings,allowance).Run();}
+  catch(TreeStructureError error){return error;}
+  catch(const std::bad_alloc&){return TreeStructureError::kResourceLimit;}
+  catch(const std::length_error&){return TreeStructureError::kResourceLimit;}
+}
+}

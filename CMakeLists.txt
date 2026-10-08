@@ -302,7 +302,7 @@ target_sources(abcd_source PRIVATE src/source/call_plan.cc)
 target_sources(abcd_source PRIVATE src/source/default_signature.cc src/source/default_signature_verify.cc)
 target_sources(abcd_source PRIVATE src/source/tree_printer.cc src/source/tree_print_tokens.cc src/source/nullish_syntax.cc src/source/loop_syntax.cc src/source/loop_transition.cc src/source/loop_initializer.cc)
 target_sources(abcd_source PRIVATE src/source/loop_declarations.cc src/source/binding_initializer.cc src/source/source_variables.cc src/source/binding_interference.cc src/source/recovery_flow.cc src/source/flow_liveness.cc src/source/flow_dominance.cc src/source/flow_motion.cc src/source/flow_definitions.cc src/source/definition_elision.cc)
-target_sources(abcd_source PRIVATE src/source/evaluation_boolean.cc)
+target_sources(abcd_source PRIVATE src/source/evaluation_boolean.cc src/source/storage_coalescing.cc)
 target_link_libraries(abcd_source PUBLIC abcd_analysis PRIVATE abcd_json)
 target_compile_features(abcd_source PUBLIC cxx_std_20)
 target_include_directories(abcd_source PUBLIC include)
@@ -1349,6 +1349,14 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/empty_tail.mjs $<TARGET_FILE:logical_regions_test>)
     add_test(NAME branch_polarity_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/branch_polarity.mjs $<TARGET_FILE:logical_regions_test>)
+    if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc" AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/pasteboard_src/src/main/ets/pages/PasteBoard.ts")
+      add_test(NAME pasteboard_storage_callback_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/pasteboard_storage_callback.mjs $<TARGET_FILE:abc_structure>
+        "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc"
+        "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/pasteboard_src/src/main/ets/pages/PasteBoard.ts"
+        "${CMAKE_CURRENT_BINARY_DIR}/pasteboard-storage-callback")
+    endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc" AND
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/pasteboard_src/src/main/ets/entryability/EntryAbility.ts")
       add_test(NAME pasteboard_partial_callback_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals --experimental-vm-modules

@@ -8,7 +8,7 @@ using Error=TreeStructureError;
 class Interference {
  public:
   Interference(const RecoveryFlow& flow,const FlowLiveness& liveness,analysis::SemanticBudget budget)
-      :flow_(flow),liveness_(liveness),budget_(budget),memory_(budget_),proposals_(&memory_) {}
+      :flow_(flow),liveness_(liveness),budget_(budget),memory_(budget_),proposals_(&memory_),conflicts_(&memory_) {}
   BindingInterference Run() {
     for(const auto& definition:flow_.definitions) {
       budget_.Step();const auto copied=definition.copy;
@@ -20,9 +20,19 @@ class Interference {
     const auto less=[&](const BindingAffinity& a,const BindingAffinity& b){budget_.Step();return Key(a)<Key(b);};
     std::sort(proposals_.begin(),proposals_.end(),less);
     proposals_.erase(std::unique(proposals_.begin(),proposals_.end(),[&](auto a,auto b){budget_.Step();return Key(a)==Key(b);}),proposals_.end());
-    if(!proposals_.empty())MarkInterference();
+    MarkInterference();
+    std::sort(conflicts_.begin(),conflicts_.end(),[&](auto a,auto b){budget_.Step();return a<b;});
+    conflicts_.erase(std::unique(conflicts_.begin(),conflicts_.end(),[&](auto a,auto b){budget_.Step();return a==b;}),conflicts_.end());
+    std::size_t conflict=0;
+    for(auto& pair:proposals_) {
+      budget_.Step();const BindingConflict key{pair.first,pair.second};
+      while(conflict<conflicts_.size()&&conflicts_[conflict]<key){budget_.Step();++conflict;}
+      pair.interference=conflict<conflicts_.size()&&conflicts_[conflict]==key;
+    }
     BindingInterference result;budget_.Array(result.affinities,proposals_.size());
     std::copy(proposals_.begin(),proposals_.end(),result.affinities.begin());
+    budget_.Array(result.conflicts,conflicts_.size());
+    std::copy(conflicts_.begin(),conflicts_.end(),result.conflicts.begin());
     result.allocated_bytes=budget_.Bytes();result.work=budget_.Work();return result;
   }
  private:
@@ -34,16 +44,18 @@ class Interference {
       for(auto edge=flow_.events[fact.point.value].incoming;edge;edge=flow_.edges[*edge].incoming) {
         budget_.Step();const auto predecessor=flow_.edges[*edge].from;const auto& event=flow_.events[predecessor.value];
         const auto* definition=event.definition?&flow_.definitions[event.definition->value]:nullptr;
-        if(definition&&definition->binding!=fact.binding&&definition->copy!=fact.binding) {
+        if(definition&&definition->binding!=fact.binding&&definition->copy!=fact.binding&&
+            flow_.bindings[definition->binding.value].kind==BindingKind::kCompilerTemporary&&
+            flow_.bindings[fact.binding.value].kind==BindingKind::kCompilerTemporary) {
           const auto pair=Pair(definition->binding,fact.binding);
-          const auto at=std::lower_bound(proposals_.begin(),proposals_.end(),pair,[&](auto a,auto b){budget_.Step();return Key(a)<Key(b);});
-          if(at!=proposals_.end()&&Key(*at)==Key(pair))at->interference=true;
+          conflicts_.push_back({pair.first,pair.second});
         }
       }
     }
   }
   const RecoveryFlow& flow_;const FlowLiveness& liveness_;TreeCheckBudget budget_;RecoveryScratch memory_;
   std::pmr::vector<BindingAffinity> proposals_;
+  std::pmr::vector<BindingConflict> conflicts_;
 };
 }
 std::variant<BindingInterference,TreeStructureError> FindBindingInterference(

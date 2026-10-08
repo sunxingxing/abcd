@@ -2789,3 +2789,36 @@ remain unmodeled. Buffer reuse resets all facts, and effect refinement leaves
 value use unchanged. Sequence-right elision queries this fact in constant time
 per candidate and batches edits. No new ancestor scans or iterative whole-tree
 fixed-point rounds are added.
+
+
+### Complete interference graph and storage-group contraction (rules220)
+
+The implementation in binding_interference/storage_coalescing is project-owned
+classical greedy copy coalescing by interference-graph contraction, with union by
+size, path compression and ordered conflict sets. It introduces no dependency or
+third-party source; the project license applies. This is not optimal coloring.
+Source initialization, scope, lifetime and effects remain separate prerequisites
+at the caller, so graph contraction alone never authorizes source rewriting.
+
+Let B be binding count, D definitions, L live-in facts, K copy observations,
+A unique affinity edges, M live-fact/predecessor definition conflict observations,
+E unique conflict edges, and Q live-fact predecessor edge visits. Construction
+costs O(D+L+Q + K log(K+1) + M log(M+1) + A+E), with O(K+M+A+E)
+budgeted storage. Repeated affinities are charged before deduplication. Set comparisons during contraction are charged.
+Every removed group at least doubles its DSU weight; each original conflict endpoint
+can therefore be rewritten O(log(B+1)) times. Contraction costs
+O(B + (A+B) alpha(B) + A log(B+1) + E log(B+1)^2) and O(B+E) resident storage,
+in addition to cumulative charged allocation growth. Output is B direct mappings.
+Dense M/E is genuine input/output cost and is not discarded. Typed resource/work
+exhaustion returns no partial storage plan. The complete process RSS gate remains
+paused; these counters do not establish peak-memory compliance.
+
+Printed-slot choice is independent of balancing. Shared spelling-group counts
+provide O(1) uniqueness preference after their existing indexed name sort; current
+initialization dominator coordinates provide a rank, not proof of completion.
+Name comparison costs remain explicit in TreeScopeCheck. All actual occurrences
+still use common name/lifetime/completion checks before commit. The existing
+identity/alias composition therefore keeps O(1) direct-map lookups even for a
+whole group. Independent dense tiny graphs, non-affinity conflict counterexamples,
+source/symbol reversal and 200/201/geometric chain work checks verify the contracts;
+no 200-item production cutoff or repeated per-binding CFG walk is added.

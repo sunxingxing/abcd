@@ -34,6 +34,7 @@ TreeScopeCheck::TreeScopeCheck(const FunctionTree& tree, TreeCheckBudget& budget
   const auto count = tree.symbols.size();
   budget.Array(ordered_, count);
   budget.Array(groups_, count);
+  budget.Array(group_counts_, count);
   budget.Array(heads_, tree.scopes.size());
   budget.Array(next_, count);
   budget.Array(active_, count);
@@ -112,6 +113,7 @@ TreeScopeCheck::TreeScopeCheck(const FunctionTree& tree, TreeCheckBudget& budget
                        Error::kName);
     }
     groups_[ordered_[i].value] = group;
+    ++group_counts_[group];
   }
   for (std::size_t i = 0; i < tree.parameters.size(); ++i) {
     const auto& parameter = tree.parameters[i];
@@ -152,6 +154,10 @@ TreeScopeCheck::TreeScopeCheck(const FunctionTree& tree, TreeCheckBudget& budget
   for (std::size_t i = 1; i < targets.size(); ++i) {
     budget.Step(); RequireTree(targets[i - 1] != targets[i], Error::kBinding);
   }
+}
+
+bool TreeScopeCheck::UniqueSpelling(SymbolId symbol) {
+  budget_.Step();return group_counts_[groups_[symbol.value]]==1;
 }
 
 void TreeScopeCheck::Enter(ScopeId scope) {

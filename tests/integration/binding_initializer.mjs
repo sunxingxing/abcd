@@ -384,6 +384,7 @@ for (const row of rows) {
     }
     if(row.alias===12){const declaration=declarations.find(node=>node.declarations.some(item=>item.id.name==='saved'));assert.equal(declaration.kind,'let');assert.ok(declaration.declarations.find(item=>item.id.name==='saved').init);assert.equal(stores.filter(node=>node.expression.left.name==='saved').length,0);}
     if(row.folded){assert.ok(!declarations.some(node=>node.declarations.some(item=>item.id.name.startsWith('copy'))));++folded;}
+    if(row.alias===14&&row.count)assert.ok(declarations.flatMap(node=>node.declarations).filter(item=>item.id.name.startsWith('copy')).length<=1);
     if(row.alias===9||row.alias===10)assert.notEqual(generated(()=>{},()=>{}),generated(()=>{},()=>{}));
     const run=(fn,value,fault,flag=true,request='next',reject=false,iterations=2)=>observeAlias(fn,row,value,fault,flag,request,reject,iterations);
     for(const value of [undefined,null,-0,NaN,1n,Symbol('input'),token])for(const flag of [3,21].includes(row.alias)?[false,true,undefined,0,1n,token]:[true])for(const iterations of row.alias===18||row.alias===19?[0,1,2,3]:[2])for(const fault of [Infinity,1,2,row.count+1]) {

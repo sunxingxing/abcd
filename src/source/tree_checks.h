@@ -41,6 +41,9 @@ class TreeScopeCheck {
   void Leave(ScopeId scope);
   void Reference(SymbolId symbol, bool assignment = false);
   [[nodiscard]] bool Resolves(SymbolId symbol);
+  // A printing preference only. Duplicate spellings remain valid bindings and
+  // still use actual occurrence resolution; uniqueness never proves lifetime.
+  [[nodiscard]] bool UniqueSpelling(SymbolId symbol);
   void EnclosingReference(std::u16string_view name, const ModuleSymbol* module = nullptr);
   void FreeReference(std::u16string_view name);
   [[nodiscard]] bool ResolvesFree(NameId name);
@@ -53,6 +56,7 @@ class TreeScopeCheck {
   TreeCheckBudget& budget_;
   std::vector<SymbolId> ordered_;
   std::vector<std::size_t> groups_;
+  std::vector<std::size_t> group_counts_;
   std::vector<std::optional<SymbolId>> heads_;
   std::vector<std::optional<SymbolId>> next_;
   std::vector<std::optional<SymbolId>> active_;

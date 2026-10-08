@@ -1,5 +1,6 @@
 #include "../../../src/source/recovery_flow.h"
 #include "../../../src/source/binding_interference.h"
+#include "../../../src/source/storage_coalescing.h"
 #include "../../../src/source/flow_definitions.h"
 #include "../../../src/source/definition_elision.h"
 #include "../../../src/source/flow_dominance.h"
@@ -225,8 +226,9 @@ void SmallGraphs() {
       for(unsigned bit=0;bit<edge_bits;++bit)if(mask&(1U<<bit))Link(graph,bit/vertices,bit%vertices);
       const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(graph));
       const auto result=FindBindingInterference(graph,live);Check(std::holds_alternative<BindingInterference>(result));
-      const auto& pairs=std::get<BindingInterference>(result).affinities;
+      const auto& facts=std::get<BindingInterference>(result);const auto& pairs=facts.affinities;
       Check(pairs.size()==std::size_t(affinity));const auto expected=Oracle(graph);if(affinity)Check(pairs[0].interference==expected.interference);
+      Check(facts.conflicts.size()==std::size_t(expected.interference));
       for(unsigned point=0;point<vertices;++point)for(unsigned binding=0;binding<2;++binding)
         Check(std::binary_search(live.live_in.begin(),live.live_in.end(),LiveBinding{{point},{binding}})==expected.live[point][binding]);
       // Independent forward fixed point without production liveness pruning.
@@ -591,4 +593,45 @@ void SourceEvents() {
 
 }
 }
-int main(){RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+
+namespace {
+void GroupOracle(){
+  constexpr unsigned bindings=4,pairs=bindings*(bindings-1)/2;
+  unsigned variants=1;for(unsigned i=0;i<pairs;++i)variants*=4;
+  for(unsigned encoded=0;encoded<variants;++encoded)for(unsigned policy=0;policy<5;++policy){
+    BindingInterference facts;std::array<std::array<bool,bindings>,bindings> conflict{};
+    unsigned remaining=encoded;
+    for(unsigned a=0;a<bindings;++a)for(unsigned b=a+1;b<bindings;++b){
+      const auto kind=remaining%4;remaining/=4;
+      if(kind&1)facts.affinities.push_back({{a},{b},bool(kind&2)});
+      if(kind&2){facts.conflicts.push_back({{a},{b}});conflict[a][b]=conflict[b][a]=true;}
+    }
+    std::array<StorageBinding,bindings> admission{};std::array<unsigned,bindings> owner{},preferred{};
+    for(unsigned i=0;i<bindings;++i){owner[i]=preferred[i]=i;admission[i]={policy!=1||i!=0,policy!=2||i%2==0,policy==3?bindings-i:i,policy!=4||i%2==0};}
+    const auto prefer=[&](unsigned a,unsigned b){const auto& left=admission[a];const auto& right=admission[b];
+      if(left.unique_spelling!=right.unique_spelling)return left.unique_spelling?a:b;
+      if(left.native_declaration!=right.native_declaration)return left.native_declaration?a:b;
+      if(left.initialization_order!=right.initialization_order)return left.initialization_order<right.initialization_order?a:b;
+      return std::min(a,b);};
+    // Independent tiny dense oracle: inspect every cross-group member pair,
+    // then rewrite all labels. No DSU, sparse adjacency or production helpers.
+    for(const auto& affinity:facts.affinities){const auto a=affinity.first.value,b=affinity.second.value;
+      if(!admission[a].eligible||!admission[b].eligible||owner[a]==owner[b])continue;
+      const auto first=owner[a],second=owner[b];bool blocked=false;
+      for(unsigned i=0;i<bindings;++i)for(unsigned j=0;j<bindings;++j)if(owner[i]==first&&owner[j]==second)blocked|=conflict[i][j];
+      if(blocked)continue;const auto selected=prefer(preferred[first],preferred[second]);
+      for(auto& label:owner)if(label==second)label=first;preferred[first]=selected;
+    }
+    const auto value=PlanStorageCoalescing(facts,admission);Check(std::holds_alternative<StorageCoalescing>(value));
+    const auto& result=std::get<StorageCoalescing>(value);
+    for(unsigned i=0;i<bindings;++i){const auto expected=preferred[owner[i]];
+      Check(result.storage[i]==(expected==i?std::nullopt:std::optional{SymbolId{expected}}));}
+    if(encoded==variants-1&&policy==0){
+      Check(std::holds_alternative<StorageCoalescing>(PlanStorageCoalescing(facts,admission,{result.allocated_bytes,result.work})));
+      Check(std::get<TreeStructureError>(PlanStorageCoalescing(facts,admission,{result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
+      Check(std::get<TreeStructureError>(PlanStorageCoalescing(facts,admission,{result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);
+    }
+  }
+}
+}
+int main(){GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

@@ -2279,3 +2279,23 @@ Storage及独立identity/inert清理后显式调度同一Aliases算法；该依�
 同名TDZ scope的读取。变体反向statement arena并增加0/1/200/201/400/800
 空块，独立行为及错误替换验证见status。未宣称全局pass不动点、完整绑定
 生命期或original IR correspondence已经完成，不继续扩展局部模式。
+
+
+### 2026-10-08：规则220，组间完整干涉替代两两配对限制
+
+Coalesce移除paired bitmap及“一个symbol最多进入一对”的决策路径。
+共同live-in/成功定义产生全部temporary干涉边，包含无affinity的端点；
+独立PlanStorageCoalescing维护组间冲突邻接并收缩安全affinity。每组
+所有成员必须两两无干涉，不能把相邻两对无干涉误当作传递证明。
+
+代表选择复用共同spelling分组的唯一性偏好、native声明和当前初始化
+dominator位置。名字用于源码词法身份与打印质量，既不定义值等价，也
+不作为准入名单；同名绑定仍可合并。逐读取/写入的实际scope、初始化
+及RootLifetime证明和独立活跃undefined写回保持。无样本、opcode序列、
+同块、邻接、寄存器号或固定链长准入条件。图收缩只提案，后续pass在
+提交统一失效后消费direct slot map，打印器仍不优化语义。
+
+小图稠密oracle验证所有成员的跨组冲突；长链/链首链尾非affinity冲突/
+反向symbol与statement arena/1/2/200/201/400/800及错误变换覆盖组合。
+已有同名shadow长链验最多一个copy声明，防止代表选择退化。完整绑定
+生命期、finally精度、原IR对应及全局pass收敛仍未宣布完成。

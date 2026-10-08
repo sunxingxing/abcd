@@ -24,6 +24,47 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则220，完整干涉图与通用存储组收缩
+
+- FindBindingInterference从共同live-in/成功定义发布完整temporary干涉边，
+  包含没有copy affinity的端点；affinity的冲突标记来自同一图。否则
+  相邻两对都安全仍可能错误合并必须同时保留的链首与链尾值。
+- 独立PlanStorageCoalescing使用组间冲突邻接、union by size/path
+  compression产生direct slot map。Coalesce移除paired bitmap及每个
+  symbol仅进入一对的限制；代表选择与DSU平衡独立。共同spelling索引
+  提供唯一性软偏好，再考虑native声明/当前初始化dominator位置；同名
+  不拒绝。所有实际引用仍独立证明初始化、scope与RootLifetime，活跃
+  undefined由独立初始化计划保留。调度和提交统一失效契约保持。
+- 两级长链旧版只合并一对，red-tests.log失败1.47秒；通用算法可把
+  1/2/200/201/400/800链恢复为一个slot，首尾冲突保留两个。反向symbol/
+  statement arena、callbacks/coercion/throw、错误全收缩/删除update
+  通过独立执行。已有shadow链最多保留一个copy，无新增样本/序列准入。
+- 完整干涉通过既有175,616个两绑定三点图稠密固定点oracle；新20,480
+  个四绑定图/偏好组合用独立稠密跨组扫描核对收缩，覆盖非affinity冲突、
+  eligibility/native/逆序初始化及同名偏好。typed资源/work边界也验证。
+  相关3/3通过21.79秒：305份源码/44,852行为/19错误变体。
+- 首次构建遇到Prefer的const方法调用预算Step，已修正分析计费方法
+  限定，initial-build.log保留诊断；无生成代码行为失败。最终28个既定
+  目标构建通过，56/56定向回归558.90秒；包含2,004份变量源码/
+  482,752行为/342变体、同一305份存储组合、540份快照/20,760行为/
+  60变体，以及Home/PageA实际record的独立语义/style对照。
+- fresh ABC-only导出build/stage-one/group-coalescing-rule220仍为
+  19 records、10 complete / 0 partial / 9 noModule，10份语法通过，
+  输入SHA256不变。PasteBoard.mjs移除$phi6及循环尾搬运赋值，其他
+  九份完整源码逐字节一致。来源为共同干涉/存储/identity清理，不是样本修复。
+- 新pasteboard_storage_callback_source_test先ABC-only生成，再读取
+  独立paired TS。record8383的PasteButton异步回调通过6,995场景/
+  两mutation，覆盖多record/types、常量getter、类型数组Proxy、length
+  coercion、await拒绝及每个效果点throw；success flag一个slot，两个
+  loop indices。注册后1/1通过3.61秒，即最终56+1项全部通过。
+  仅该回调验收；wholeRecordBehavior/platformExecution=false。
+- 证据目录build/stage-one/group-coalescing-verification，selection.json、
+  final-result.json、final-{build,tests,detail}.log、callback-{build,tests,
+  detail}.log及export-check.json记录完整范围。算法成本、稠密图输出、
+  预算计费及来源见algorithms.md；不恢复暂停的RSS/全corpus/基准/调度器。
+  原IR对应、完整绑定生命期、复杂finally与全局pass收敛仍开放。
+  阶段一Goal active，字段/全局/签名/body和全paired整体验收未完成。
+
 ### 2026-10-08：规则219，存储合并后的复制传播消费当前owner
 
 - 增加明确依赖阶段：Storage → identity/inert独立清理 → Aliases →
