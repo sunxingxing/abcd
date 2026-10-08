@@ -1378,3 +1378,48 @@ source execution comparisons exercise loop/header/body/update, nested scope,
 exception and snapshot/storage compositions. This is retirement of supplemental
 local scope decisions, not completion of the binding lifetime model, original IR
 correspondence, arbitrary pass reordering or global pass convergence.
+
+
+## Primitive completion values in the shared expression facts (rules226)
+
+The existing const postorder ComputeExpressions now publishes a primitive
+normal-result literal alongside stored-binding identity, required evaluation and
+lexical dependency. Facts refer only to original TreeLiteral nodes. Assignment
+and sequence forward normal values; conditional joins equal primitive values or
+selects a proved primitive condition; logical selection uses ToBoolean/nullish.
+The same selected completion supplies stored-binding identity for later copies.
+Calls, updates, coercing operators and suspension retain unknown primitive results;
+this is value propagation, not arithmetic folding or executable-edge pruning.
+
+SameLiteral preserves the literal representation kind and exact numeric bits,
+including signed zero and NaN payload. Equal UTF-16 text values are interned once
+from immutable input, independent of TextId arena identity; no normalization or
+repeated long-string comparisons at joins. Cross-representation numeric equality
+is not inferred without profile-specific equivalence. This precision boundary
+never becomes an additional admission condition on already proved value facts.
+
+Constants no longer examines the original RHS for TreeLiteral/SymbolExpr shape.
+It consumes these common literal/binding result facts and the existing shared read
+coverage. Its sparse copy dependency queue carries a known constant through
+compound normal results. RemoveCoveredWrite still preserves the full original
+RHS and independent declaration completion; later effect/binding passes own
+removal. An observable member setter, condition call, self-read TDZ or catch
+observation cannot be deleted just because a successful result is constant.
+
+Facts remain inside the revision-owned ExpressionFacts/ProjectionFacts. Constants
+commits a complete proposal then invalidates facts before Aliases consumes its
+literal predicate substitution. A true predicate exposes a parameter copy;
+a false predicate preserves the selected call's dynamic return. This closes a
+cross-pass precision gap through a new shared fact, without another pass, fixed
+round count or a whole-graph convergence sweep. Final loop grammar still follows
+storage/value/binding cleanup. Complete lifetime/unwind/capture, original IR
+correspondence and global dependency convergence remain separate gaps.
+
+Tests retain both native and empty-declaration/store encodings, reverse symbol,
+expression, statement and text identities, and 0/1/200/201/400/800 inputs. New
+compound primitive/binding cases cover selected and joined values, distinct arms,
+parameter/member assignment, short circuit, equal text in distinct entries, NaN,
+signed zero, TDZ and live undefined in catch. Independent execution compares
+values, receiver, effects and exceptions; initializer removal/early-write mutants
+must differ. Budget tests cover exact and short byte/work limits. Status.md owns
+measured runs and the fresh fixed-record export; no full corpus/RSS claim follows.

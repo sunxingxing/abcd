@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
+import {isDeepStrictEqual} from 'node:util';
 import {parseJavaScript} from './class_reference.mjs';
 const rows=execFileSync(process.argv[2],['--emit'],{encoding:'utf8',maxBuffer:32_000_000}).trim().split('\n').map(JSON.parse);
 const failure=Symbol('throw'),token={},second={};
@@ -11,9 +12,50 @@ function reference(row) {
   let body;
   if(form===8)body='let current=current;let scratch;';
   else {
-    const value=form===0?'42':(form===20||form===27)?'seed(current)':(form===25||form===28)?'seed()':([3,4,5,7,12].includes(form)||(form>=17&&form<22))?'seed()':form===11?'{}':(form===2||form===26)?'(report(input),input)':'input';
-    body=initialize('current',value)+(form===7?'report(scratch);':form===15?'scratch=seed();':'')+
-      ([3,4,11,12].includes(form)?'let scratch;':initialize('scratch',(form===22||form===23)?'seed()':form===16?'(report(input),42)':'current',form===6));
+    let value=form===0?'42':(form===20||form===27)?'seed(current)':(form===25||form===28)?'seed()':([3,4,5,7,12].includes(form)||(form>=17&&form<22))?'seed()':form===11?'{}':(form===2||form===26)?'(report(input),input)':'input';
+    const primitiveValues={
+      29:'flag?(report(input),42):(seed(input),42)',
+      30:'flag?(report(input),42):(seed(input),43)',
+      31:'input=(report(input),42)',
+      32:'flag?(report(input),-0):(seed(input),-0)',
+      33:'flag?(report(input),-0):(seed(input),0)',
+      34:'(report(input),0)||(seed(input),42)',
+      35:'(report(input),0)&&(seed(input),42)',
+      36:'(report(input),null)??(seed(input),42)',
+      37:'(report(input),0)??(seed(input),42)',
+      38:'flag?(report(input),"text"):(seed(input),"text")',
+      39:'flag?(report(input),"text"):(seed(input),"other")',
+      40:'seed()?(report(input),42):(seed(input),42)',
+      41:'(current,42)',
+      42:'(input=(report(input),42),"text")',
+      43:'flag?(report(input),NaN):(seed(input),NaN)',
+      44:'flag?(report(input),true):(seed(input),true)',
+      45:'flag?(report(input),void 0):(seed(input),void 0)',
+      46:'(report(input),"")||(seed(input),42)',
+      47:'(report(input),"text")&&(seed(input),42)',
+      48:'42',
+      49:'seed.value=(report(input),42)',
+      50:'(report(input),NaN)||(seed(input),42)',
+      51:'(report(input),NaN)&&(seed(input),42)',
+      52:'(report(input),false)?(report(input),42):(seed(input),43)',
+      53:'(report(input),-1)||(seed(input),42)',
+      54:'(report(input),Infinity)&&(seed(input),42)',
+      55:'(report(input),void 0)??(seed(input),42)',
+      56:'(report(input),-0)?(report(input),42):(seed(input),43)',
+      57:'(report(input),true)?(seed(input),42):seed()',
+      58:'(report(input),false)?(seed(input),42):seed()',
+      59:'(report(input),42)',
+      60:'input',61:'input',62:'input',63:'input',64:'input',65:'input',66:'true',67:'false'
+    };
+    if(form>=29)value=primitiveValues[form];
+    body=(form===59?'let current;try{current=(report(input),42);}catch(error){report(current);}':initialize('current',value))+
+      (form===7?'report(scratch);':form===15?'scratch=seed();':'')+
+      ([3,4,11,12].includes(form)?'let scratch;':initialize('scratch',({
+        60:'(report(input),true)?current:seed()',61:'(report(input),0)||current',
+        62:'(report(input),42)&&current',63:'(report(input),null)??current',
+        64:'(report(input),false)&&current',65:'(report(input),false)?current:seed()',
+        66:'(report(input),current)?input:seed()',67:'(report(input),current)?input:seed()'
+      })[form]??((form===22||form===23)?'seed()':form===16?'(report(input),42)':form===48?'(report(input),current)':'current'),form===6));
   }
   if(form===5||form===15)body+='++scratch;current=scratch;';
   if(form===13)body+='if(flag){++scratch;current=scratch;}';
@@ -23,7 +65,7 @@ function reference(row) {
   if(form===21)body+='while(flag()){scratch=seed();}';
   if(form===22)body+='scratch=seed();report(scratch);current=scratch;';
   if(form===23)body+='try{scratch=seed();report(scratch);current=scratch;}catch(error){report(current);}';
-  if(form>=24)body+='current=seed();';
+  if(form>=24&&form<29)body+='current=seed();';
   if(form===16)body+='report(scratch);current=scratch;';
   if(form===10)body+='try{scratch=seed();current=scratch;}catch(error){report(current);}';
   const result=form===17||form===21?'input':form===18?'scratch':[3,4,5,8,10,11,12,13,14,15,16,19,20,22,23,24,25,26,27,28].includes(form)?'current':'scratch';
@@ -35,11 +77,12 @@ function observe(fn,row,input,fault,throwSeed,coercion) {
   const trace=[];let at=0,returned,thrown,object,iterations=0;
   const event=(kind,value)=>{trace.push([kind,identity(value)]);if(++at===fault)throw failure;};
   const numeric={ [Symbol.toPrimitive](hint){event('numeric',hint);if(coercion)throw failure;return 3;} };
-  const seed=function(){assert.equal(this,undefined);event('seed',input);if(throwSeed)throw failure;return row.form>=22?second:row.form===5?numeric:input;};
+  const seed=function(){assert.equal(this,undefined);event('seed',input);if(throwSeed)throw failure;return (row.form>=22&&row.form<29)||row.form===65||row.form===67?second:row.form===5?numeric:input;};
   const report=function(value){assert.equal(this,undefined);
     if(row.form===11){object??=value;assert.equal(value,object);value.visits=(value.visits??0)+1;event('report',value.visits);}
     else event('report',value);
   };
+  if(row.form===49)Object.defineProperty(seed,'value',{set(value){assert.equal(this,seed);event('setter',value);}});
   const flag=(row.form===14||row.form===21)?()=>{event('iteration',iterations);return iterations++<2;}:!coercion;
   try{ returned=fn(input,seed,report,flag);if(row.form===11){assert.equal(returned,object);returned=token;} }
   catch(error){thrown=error;}
@@ -55,7 +98,9 @@ for(const row of rows) {
     for(const fault of [0,1,2,3,4])for(const throwSeed of [false,true])for(const coercion of [false,true]) {
       assert.deepEqual(observe(actual,row,input,fault,throwSeed,coercion),observe(expected,row,input,fault,throwSeed,coercion),JSON.stringify(row));++comparisons;
     }
-  if(row.form<=3||row.form===17||row.form===21||row.form===28)assert.doesNotMatch(row.source,/\b(?:current|scratch)\b/);
+  if(row.form<=3||row.form===16||row.form===17||row.form===21||row.form===28||
+      (row.form>=29&&row.form<58&&![30,33,39,41].includes(row.form))||
+      (row.form>=60&&![65,67].includes(row.form)))assert.doesNotMatch(row.source,/\b(?:current|scratch)\b/);
   if(row.form===5) {
     const ast=parseJavaScript(row.source);const declarations=[];
     const walk=node=>{if(!node||typeof node!=='object')return;if(node.type==='VariableDeclaration')declarations.push(...node.declarations);for(const value of Object.values(node))if(Array.isArray(value))value.forEach(walk);else if(value&&typeof value==='object')walk(value);};
@@ -106,6 +151,22 @@ for(const row of rows) {
     }
     if(row.form===28) {
       assert.notDeepEqual(observed('(function(input,seed){return seed();})',row,token,0,false,false),observe(expected,row,token,0,false,false));++mutations;
+    }
+    if(row.form>=29&&row.form!==41&&row.form!==59) {
+      // Removing the original initializer also removes its condition/calls/
+      // parameter write or TDZ read. Independent execution rejects that edit.
+      const ast=parseJavaScript(row.source),body=ast.body[0].expression.body.body;
+      if(body.length>1) {
+        const wrong=row.source.slice(0,body[0].start)+row.source.slice(body[0].end);
+        const differs=[false,true].some(coercion=>!isDeepStrictEqual(observed(wrong,row,token,0,false,coercion),observe(expected,row,token,0,false,coercion)));
+        assert.ok(differs,JSON.stringify(row));++mutations;
+      }
+    }
+    if(row.form===41) {
+      assert.notDeepEqual(observed('(function(){return 42;})',row,token,0,false,false),observe(expected,row,token,0,false,false));++mutations;
+    }
+    if(row.form===59) {
+      assert.notDeepEqual(observed('(function(input,seed,report){let value=42;try{report(input);}catch(error){report(value);}report(value);return value;})',row,token,1,false,false),observe(expected,row,token,1,false,false));++mutations;
     }
     if(row.form===10) {
       assert.notDeepEqual(observed('(function(input,seed,report){let value;try{value=seed();}catch(e){report(value);}report(value);return value;})',row,token,0,true,false),observe(expected,row,token,0,true,false));++mutations;

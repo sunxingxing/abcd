@@ -5,6 +5,8 @@
 #include "abcd/source/tree_printer.h"
 #include "../../support/analysis/ssa_fixture.h"
 #include <algorithm>
+#include <bit>
+#include <limits>
 #include <iostream>
 #include <sstream>
 #include <nlohmann/json.hpp>
@@ -41,7 +43,10 @@ struct Fixture {
     tree.callable=CallableKind::kFunction;tree.strictness=Strictness::kStrict;
     tree.parameter_scope={0};tree.body_scope={1};
     tree.scopes={{ScopeKind::kParameters,{}},{ScopeKind::kFunctionBody,ScopeId{0}}};
-    tree.names={u"input",u"seed",u"report",u"flag",u"current",u"scratch",u"error"};
+    tree.names={u"input",u"seed",u"report",u"flag",u"current",u"scratch",u"error",u"value"};
+    if(form>=29)tree.texts={u"text",form==39?u"other":u"text",u""};
+    if(form==38||form==39)for(unsigned i=0;i<count;++i)
+      tree.texts.push_back(std::u16string(64,u'x')+std::u16string(1,static_cast<char16_t>(i+1)));
     tree.origins={OriginalSite{{0},{0}}};
     for(unsigned i=0;i<4;++i) {
       tree.symbols.push_back({{0},{i},BindingKind::kParameter,DeclarationKind::kParameter,NameEvidence::kSynthesized,{}});
@@ -63,15 +68,72 @@ struct Fixture {
       body.push_back(Stmt(DeclarationStmt{{4},Read(4)}));
       body.push_back(Stmt(DeclarationStmt{{5},{}}));
     } else {
-      auto value=form==0?Expr(TreeLiteral{IntegerLiteral{42}}):
+      ExprId value{};if(form<29)value=form==0?Expr(TreeLiteral{IntegerLiteral{42}}):
           form==3||form==4||form==5||form==7||form==12||(form>=17&&form<22&&form!=20)?Call(1):
           form==11?Expr(EmptyObjectExpr{}):form==20||form==27?Call(1,4):form==25||form==28?Call(1):Read(0);
       if(form==2||form==26)value=Expr(SequenceExpr{Call(2,0),value});
-      initialize(4,value);
+      if(form>=29) {
+        const auto integer=[&](std::int32_t number){return Expr(TreeLiteral{IntegerLiteral{number}});};
+        const auto number=[&](double number){return Expr(TreeLiteral{NumberLiteral{std::bit_cast<std::uint64_t>(number)}});};
+        const auto effect=[&](ExprId value,unsigned function){return Expr(SequenceExpr{Call(function,0),value});};
+        const auto choice=[&](ExprId condition,ExprId a,ExprId b){return Expr(ConditionalExpr{condition,effect(a,2),effect(b,1)});};
+        switch(form) {
+          case 29:case 30:value=choice(Read(3),integer(42),integer(form==30?43:42));break;
+          case 31:value=Expr(AssignmentExpr{SymbolTarget{{0}},effect(integer(42),2)});break;
+          case 32:case 33:value=choice(Read(3),number(-0.0),number(form==33?0.0:-0.0));break;
+          case 34:case 35:case 36:case 37:
+            value=Expr(LogicalExpr{form==34?TreeLogical::kOr:form==35?TreeLogical::kAnd:TreeLogical::kNullish,
+                effect(form==36?Expr(TreeLiteral{NullLiteral{}}):integer(0),2),effect(integer(42),1)});break;
+          case 38:case 39:value=choice(Read(3),Expr(TreeLiteral{TextId{0}}),Expr(TreeLiteral{TextId{1}}));break;
+          case 40:value=choice(Call(1),integer(42),integer(42));break;
+          case 41:value=Expr(SequenceExpr{Read(4),integer(42)});break;
+          case 42:value=Expr(SequenceExpr{Expr(AssignmentExpr{SymbolTarget{{0}},effect(integer(42),2)}),Expr(TreeLiteral{TextId{0}})});break;
+          case 43:value=choice(Read(3),number(std::numeric_limits<double>::quiet_NaN()),number(std::numeric_limits<double>::quiet_NaN()));break;
+          case 44:value=choice(Read(3),Expr(TreeLiteral{BooleanLiteral{true}}),Expr(TreeLiteral{BooleanLiteral{true}}));break;
+          case 45:value=choice(Read(3),Expr(TreeLiteral{UndefinedLiteral{}}),Expr(TreeLiteral{UndefinedLiteral{}}));break;
+          case 46:case 47:value=Expr(LogicalExpr{form==46?TreeLogical::kOr:TreeLogical::kAnd,
+                effect(Expr(TreeLiteral{TextId{form==46?2U:0U}}),2),effect(integer(42),1)});break;
+          case 48:value=integer(42);break;
+          case 49:value=Expr(AssignmentExpr{MemberTarget{Read(1),NameId{7}},effect(integer(42),2)});break;
+          case 50:case 51:value=Expr(LogicalExpr{form==50?TreeLogical::kOr:TreeLogical::kAnd,
+                effect(number(std::numeric_limits<double>::quiet_NaN()),2),effect(integer(42),1)});break;
+          case 52:value=choice(effect(Expr(TreeLiteral{BooleanLiteral{false}}),2),integer(42),integer(43));break;
+          case 53:value=Expr(LogicalExpr{TreeLogical::kOr,effect(integer(-1),2),effect(integer(42),1)});break;
+          case 54:value=Expr(LogicalExpr{TreeLogical::kAnd,effect(number(std::numeric_limits<double>::infinity()),2),effect(integer(42),1)});break;
+          case 55:value=Expr(LogicalExpr{TreeLogical::kNullish,effect(Expr(TreeLiteral{UndefinedLiteral{}}),2),effect(integer(42),1)});break;
+          case 56:value=choice(effect(number(-0.0),2),integer(42),integer(43));break;
+          case 57:case 58:value=Expr(ConditionalExpr{effect(Expr(TreeLiteral{BooleanLiteral{form==57}}),2),effect(integer(42),1),Call(1)});break;
+          case 59:value=effect(integer(42),2);break;
+          case 60:case 61:case 62:case 63:case 64:case 65:value=Read(0);break;
+          case 66:case 67:value=Expr(TreeLiteral{BooleanLiteral{form==66}});break;
+          default:test::Check(false);
+        }
+      }
+      if(form==59) {
+        body.push_back(Stmt(DeclarationStmt{{4},{}}));
+        const ScopeId protected_scope{static_cast<std::uint32_t>(tree.scopes.size())};tree.scopes.push_back({ScopeKind::kBlock,ScopeId{1}});
+        const ScopeId catch_scope{static_cast<std::uint32_t>(tree.scopes.size())};tree.scopes.push_back({ScopeKind::kCatch,ScopeId{1}});
+        tree.symbols.push_back({catch_scope,{6},BindingKind::kCatchParameter,DeclarationKind::kCatchParameter,NameEvidence::kSynthesized,{}});
+        body.push_back(Stmt(TryStmt{Block({Write(4,value)},protected_scope),
+            CatchClause{{6},Block({Stmt(ExpressionStmt{Call(2,4)})},catch_scope)},{}}));
+      } else initialize(4,value);
       if(form==7)body.push_back(Stmt(ExpressionStmt{Call(2,5)}));
       if(form==15)body.push_back(Write(5,Call(1)));
       if(form==3||form==4||form==11||form==12)body.push_back(Stmt(DeclarationStmt{{5},{}}));
-      else initialize(5,(form==22||form==23)?Call(1):form==16?Expr(SequenceExpr{Call(2,0),Expr(TreeLiteral{IntegerLiteral{42}})}):Read(4));
+      else {
+        ExprId copy{};if(form<60)copy=(form==22||form==23)?Call(1):form==16?Expr(SequenceExpr{Call(2,0),Expr(TreeLiteral{IntegerLiteral{42}})}):
+            form==48?Expr(SequenceExpr{Call(2,0),Read(4)}):Read(4);
+        if(form>=60) {
+          // These cases consume a literal fact committed by an earlier pass.
+          const auto primitive=[&](TreeLiteral literal){return Expr(std::move(literal));};
+          const auto effect=[&](ExprId value){return Expr(SequenceExpr{Call(2,0),value});};
+          if(form==60||form==65)copy=Expr(ConditionalExpr{effect(primitive(BooleanLiteral{form==60})),Read(4),Call(1)});
+          else if(form==66||form==67)copy=Expr(ConditionalExpr{effect(Read(4)),Read(0),Call(1)});
+          else copy=Expr(LogicalExpr{form==61?TreeLogical::kOr:form==63?TreeLogical::kNullish:TreeLogical::kAnd,
+              effect(form==63?primitive(NullLiteral{}):form==64?primitive(BooleanLiteral{false}):primitive(IntegerLiteral{form==61?0:42})),Read(4)});
+        }
+        initialize(5,copy);
+      }
     }
     for(unsigned i=0;i<count;++i) {
       const ScopeId scope{static_cast<std::uint32_t>(tree.scopes.size())};
@@ -122,7 +184,7 @@ struct Fixture {
         body.push_back(Stmt(TryStmt{Block(writes,protected_scope),CatchClause{{6},handler},{}}));
       }
     }
-    if(form>=24)body.push_back(Write(4,Call(1)));
+    if(form>=24&&form<29)body.push_back(Write(4,Call(1)));
     if(form==16) {body.push_back(Stmt(ExpressionStmt{Call(2,5)}));body.push_back(Write(4,Read(5)));}
     if(form==10) {
       const ScopeId protected_scope{static_cast<std::uint32_t>(tree.scopes.size())};
@@ -134,7 +196,7 @@ struct Fixture {
       const auto handler=Block({Stmt(ExpressionStmt{Call(2,4)})},catch_scope);
       body.push_back(Stmt(TryStmt{protected_body,CatchClause{{6},handler},{}}));
     }
-    const unsigned result=form==17||form==21?0:form==18?5:form==3||form==4||form==5||form==8||form==10||form==11||form==12||form>=13?4:5;
+    const unsigned result=form==17||form==21?0:form==18?5:form==3||form==4||form==5||form==8||form==10||form==11||form==12||(form>=13&&form<29)?4:5;
     std::vector<StmtId> tail;
     if(form!=3&&form!=17&&form!=20&&form!=21&&form!=28)tail.push_back(Stmt(ExpressionStmt{Call(2,result)}));
     tail.push_back(Stmt(ReturnStmt{Read(result)}));
@@ -161,9 +223,14 @@ struct Fixture {
       const auto symbol=[&](SymbolId id){return SymbolId{static_cast<std::uint32_t>(tree.symbols.size()-1-id.value)};};
       for(auto& node:tree.expressions)std::visit([&](auto& syntax) {
         using T=std::decay_t<decltype(syntax)>;
-        if constexpr(std::is_same_v<T,CallExpr>)syntax.callee=expression(syntax.callee);
+        if constexpr(std::is_same_v<T,TreeLiteral>) {if(auto* text=std::get_if<TextId>(&syntax))text->value=static_cast<std::uint32_t>(tree.texts.size()-1-text->value);}
+        else if constexpr(std::is_same_v<T,CallExpr>)syntax.callee=expression(syntax.callee);
         else if constexpr(std::is_same_v<T,SequenceExpr>){syntax.left=expression(syntax.left);syntax.right=expression(syntax.right);}
-        else if constexpr(std::is_same_v<T,AssignmentExpr>){syntax.value=expression(syntax.value);std::get<SymbolTarget>(syntax.target).symbol=symbol(std::get<SymbolTarget>(syntax.target).symbol);}
+        else if constexpr(std::is_same_v<T,ConditionalExpr>){syntax.condition=expression(syntax.condition);syntax.consequent=expression(syntax.consequent);syntax.alternate=expression(syntax.alternate);}
+        else if constexpr(std::is_same_v<T,LogicalExpr>){syntax.left=expression(syntax.left);syntax.right=expression(syntax.right);}
+        else if constexpr(std::is_same_v<T,AssignmentExpr>){syntax.value=expression(syntax.value);
+          if(auto* target=std::get_if<SymbolTarget>(&syntax.target))target->symbol=symbol(target->symbol);
+          else std::get<MemberTarget>(syntax.target).base=expression(std::get<MemberTarget>(syntax.target).base);}
         else if constexpr(std::is_same_v<T,UpdateExpr>||std::is_same_v<T,SymbolExpr>)syntax.symbol=symbol(syntax.symbol);
       },node.expression);
       for(auto& argument:tree.arguments)argument=expression(argument);
@@ -177,12 +244,13 @@ struct Fixture {
       },node.statement);
       for(auto& parameter:tree.parameters)parameter.symbol=symbol(parameter.symbol);
       std::reverse(tree.expressions.begin(),tree.expressions.end());std::reverse(tree.symbols.begin(),tree.symbols.end());
+      std::reverse(tree.texts.begin(),tree.texts.end());
     }
   }
 };
 }
 int main(int argc,char**) {
-  for(unsigned form=0;form<29;++form)for(bool native:{false,true}) {
+  for(unsigned form=0;form<68;++form)for(bool native:{false,true}) {
     std::uint64_t small=0,large=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}) {
       Fixture fixture(form,count,native,reverse);std::ostringstream output;
@@ -193,6 +261,12 @@ int main(int argc,char**) {
       const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(fixture.tree));
       const auto planned=PlanBindingInitializers(fixture.tree,loops,nullish);
       test::Check(std::holds_alternative<BindingInitializers>(planned));
+      if(form>=29&&count==0&&!reverse) {
+        const auto& plan=std::get<BindingInitializers>(planned);
+        test::Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(fixture.tree,loops,nullish,{plan.allocated_bytes,plan.work})));
+        test::Check(std::get<TreeStructureError>(PlanBindingInitializers(fixture.tree,loops,nullish,{plan.allocated_bytes-1,plan.work}))==TreeStructureError::kResourceLimit);
+        test::Check(std::get<TreeStructureError>(PlanBindingInitializers(fixture.tree,loops,nullish,{plan.allocated_bytes,plan.work-1}))==TreeStructureError::kWorkLimit);
+      }
       if(!reverse&&count==400)small=std::get<BindingInitializers>(planned).work;
       if(!reverse&&count==800)large=std::get<BindingInitializers>(planned).work;
       test::Check(std::get<TreeStructureError>(PlanBindingInitializers(fixture.tree,loops,nullish,{0}))==TreeStructureError::kResourceLimit);
@@ -217,7 +291,8 @@ int main(int argc,char**) {
         }
         test::Check(projected);
       }
-      if(form<=3||form==17||form==21||form==28) {
+      if(form<=3||form==16||form==17||form==21||form==28||(form>=29&&form!=30&&form!=33&&form!=39&&form!=41&&form<58)||
+          (form>=60&&form!=65&&form!=67)) {
         if(output.str().find("current")!=std::string::npos||output.str().find("scratch")!=std::string::npos)
           std::cerr<<"form="<<form<<" native="<<native<<" reverse="<<reverse<<'\n'<<output.str()<<'\n';
         test::Check(output.str().find("current")==std::string::npos&&output.str().find("scratch")==std::string::npos);

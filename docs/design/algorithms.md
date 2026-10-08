@@ -2970,3 +2970,34 @@ Forward/reverse identities and 200/201/400/800 cases check indexed membership,
 with missing facts, invalid IDs, budget exhaustion and stale-capacity clearing.
 Existing source semantic/cost cases remain the end-to-end evidence; full-process
 RSS, benchmarks and broad corpus remain paused. See status.md for measured runs.
+
+
+### Primitive normal-result propagation (rules226)
+
+This is the project-owned constant/unknown value lattice over the existing checked
+expression postorder, using ECMA-262 2024 assignment, sequence, conditional and
+logical completion/ToBoolean rules. It is not SCCP, arithmetic folding or CFG
+executable-edge elimination. Maintenance stays in ComputeExpressions and the
+existing Constants/Aliases consumers; no copied implementation, new dependency
+or license obligation. Prerequisites are shared definition coverage and the
+independent successful-write, initialization, scope, capture and effect proofs.
+Only original primitive literal nodes can supply a constant result; required RHS
+execution remains at its original occurrence and handler.
+
+For E expressions, A child edges and T text entries, publication adds O(E+A)
+work and O(E) storage to the existing expression analysis. Literal joins and
+ToBoolean/nullish tests are O(1). UTF-16 value interning happens once per immutable
+function input: O(T log T) comparisons plus C actually compared code units,
+charged individually, and two O(T) ID arrays (retained index and temporary order).
+It does not rescan text per expression or projection revision. Existing sparse
+copy propagation remains O(B+copy edges) after shared coverage, with no repeated
+pass sweep, new per-binding traversal or pairwise production algorithm. The
+full flow/demand/liveness cost remains fact-dependent, not claimed linear.
+
+Geometric tests include 200/201 and common-prefix text pools at 400/800; exact and
+short byte/work budgets exercise the whole plan. The independent JS reference
+checks compound primitive and binding results with effects, setter throws,
+selected/unknown branches, signed zero, NaN, TDZ and catch reads. Forward/reverse
+text/arena IDs must retain recovery and behavior. A deleted-initializer or early
+write must change the independent observation. These are bounded semantic/cost
+checks; broad corpus, full-process RSS and benchmarks remain paused.

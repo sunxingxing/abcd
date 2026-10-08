@@ -1,5 +1,20 @@
 # 按用户要求进行的恢复条件审计
 
+规则226补充：Constants不再从原RHS的TreeLiteral/SymbolExpr语法形状
+选择值，改读共同表达式正常结果的primitive literal与binding事实。
+赋值/sequence转交完成值，条件合流比较值，逻辑选择依据语言ToBoolean/
+nullish；这是typed AST语义，不是操作序列或producer白名单。
+同一选择同时提供复制的binding结果，后序Aliases消费前序常量提交后的
+新版本事实；未增加新pass、固定轮次或逐组合生产分支。
+
+值传播不授权删除RHS、绑定完成或异常前的undefined定义。必要条件求值、
+成员setter、TDZ和catch读保持独立义务；作用域/捕获/覆盖证明未删除。
+数值kind与原bits保持；同值UTF-16表项按内容一次建立身份，不按TextId
+编号匹配。跨数值编码等价、算术folding与可执行边精化仍是独立精度
+边界，不以布局条件掩盖。通用声明/异常/循环/复制等价测试及错误变体
+验证原行为；退出的原RHS语法分支和最终证据见status。
+
+
 规则225补充：RootLifetime局部查询已删除。快照目的引用、存储引用
 替换、undefined完成重映射和别名传播统一消费RecoveryFlow的
 BindingInScope；源声明投影范围与当前引用owner由共同入口发布一次，

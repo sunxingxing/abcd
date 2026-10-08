@@ -24,6 +24,51 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则226，共同正常结果事实恢复复合常量与复制
+
+- ComputeExpressions在同一只读后序入口发布primitive literal正常
+  结果，与已保存binding、必要求值及词法依赖分离。赋值/sequence
+  转交值；条件按共同值合流或已知primitive选择；逻辑使用ToBoolean/
+  nullish。同一选择也产生binding结果。调用/更新/算术coercion/暂停
+  未推断primitive常量，没有执行边裁剪或新增语义模式。
+- Constants的原RHS TreeLiteral/SymbolExpr形状分支退出，消费共同
+  结果与read coverage；原稀疏复制队列贯通任意复合结果的常量依赖。
+  整个RHS、成员setter、异常及词法完成独立保留，后序效果/绑定pass
+  再清理。数值kind/bits保持，UTF-16同值表项一次建立共同身份，
+  不按TextId/arena布局匹配；每次表达式join不再扫描长字符串。
+- primitive结果随整个revision-owned ProjectionFacts在提交前失效。
+  Constants提交私有条件true后，Aliases从新版本选择参数复制并消除
+  临时；false条件保留所选调用的动态值。值事实没有被运输成效果或
+  初始化证明；既有pass顺序保持，没有新pass、固定轮次或扫全图。
+- 新form16表示要求在旧实现6.21秒失败，仍保留const scratch=
+  (report(input),42)。迁移后2/2聚焦32.23秒通过；扩展成员setter与
+  预算后9/9组合111.01秒通过。新增catch的中间2项有一项source
+  mutant断言失败：无异常路径删除空let未改变该观察。改用显式
+  提前写回及异常路径反例，未放宽生产证明或正常/异常执行要求。
+- 最终扩展2/2聚焦45.02秒通过：1,632份完整源码、326,400独立
+  执行比较、58错误变体。涵盖正负零/NaN/Infinity、同值/异值分支、
+  不同TextId同字符串、短路/所选未知值、参数/member赋值、TDZ、
+  catch活跃undefined及前序常量条件影响后序复制。两种初始化编码，
+  symbol/expression/statement/text反排，0/1/200/201/400/800及
+  同前缀长文本池，精确/不足byte与work预算均通过。
+  {red,green,compose,exception,selection}-{build,tests}.log及
+  selection-detail.log保存在build/stage-one/literal-result-verification。
+- 最终29目标构建成功，59/59相关回归614.66秒全部通过，构建+
+  测试691.76秒。selection.json、final-result.json、final-{build,
+  tests}.log及LastTest.log保存在本次验证目录。声明源码1,632份/
+  326,400行为/58错误变体再次通过；既有statement-snapshot 540份/
+  20,760行为/60变体与stored-result 528份/18,192行为/14变体通过。
+  相关变量/循环/异常/命名/类/表达式组合/partial及真实record回归
+  保持通过；这不替代全语料语义/style或平台验收。
+- 固定pasteboard导出至build/stage-one/literal-result-rule226，
+  19 records，10完整/0部分/9无module，10源码语法通过，与规则225
+  源码逐字节相同。输入SHA-256前后均为
+  854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e。
+  导出2.36秒；record-{export.log,result.json,source.diff}保留在本次
+  验证目录。没有新增真实record覆盖，非paired corpus/platform验收。
+  完整生命期/capture/finally、原IR对应及全局pass收敛仍开放；全量
+  suite、广语料、RSS/DFX及benchmarks继续暂停，阶段一Goal保持active。
+
 ### 2026-10-08：规则225，恢复声明范围归入共同流图
 
 - RecoveryFlow持有SourceRegion、当前引用位置及Original/Projected/
