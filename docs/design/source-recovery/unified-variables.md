@@ -1339,3 +1339,42 @@ check declaration identity, before/after completion and RHS retention after each
 independent removal. 200/201/400/800 exercise costs and stale grammar clearing.
 Full lifetime/finally/capture, original-IR correspondence and global convergence
 remain gaps; final verification and actual record scope are in status.md.
+
+
+## Revision-owned recovered source regions (rules225)
+
+RecoveryFlow now owns SourceRegion, current occurrence positions and a typed
+SourceBindingScope: Original, Projected or Unmodeled. Syntax preparation builds
+its lexical ancestry interval index once from the checked source ownership
+census; each flow revision publishes active recovered declaration regions from
+the current plan. Region IDs are explicit projection-table identities, never PC,
+register or block-layout admission. Consumers use the raw current reference
+owner; publication normalizes it to the printed lexical owner once.
+
+BindingInScope answers supplemental containment for a recovered declaration.
+Original means no additional narrowing, and still requires independent ordinary
+name resolution. Projected requires a modeled occurrence within its region;
+Unmodeled cannot prove containment. Native declaration publication without
+scope facts explicitly produces Unmodeled. This does not prove initialization
+completion, per-iteration activation/captured cell identity or abrupt scope unwind.
+Those obligations remain separate; LegacyConfined is retained without expansion.
+
+RootLifetime is deleted. Snapshot destination, storage reference substitution,
+undefined completion remapping and alias propagation all consume the shared query
+instead of consulting declaration_sites, current statement plan and intervals
+independently. Scope facts belong to the revision-tagged ProjectionFacts flow;
+BeginCommit invalidates them with demand, initialization and liveness before any
+write. Reusing flow capacity clears retired regions/occurrences. No optimization
+runs analysis during commit, and no pass may transport these regions as an
+initialization proof. There is no new pass or sweep, and the existing dependency
+order remains: dead definitions -> initial values -> bindings; updated storage
+and value cleanup precede final loop declaration syntax.
+
+An independent parent-walk oracle checks the interval query for every pair in
+24 five-node tree shapes, forward/reversed identities, and 200/201/400/800 query
+sets. Model tests check missing scope facts, inside/outside occurrences, invalid
+region ownership, exact/short budgets and reused-storage clearing. Existing
+source execution comparisons exercise loop/header/body/update, nested scope,
+exception and snapshot/storage compositions. This is retirement of supplemental
+local scope decisions, not completion of the binding lifetime model, original IR
+correspondence, arbitrary pass reordering or global pass convergence.

@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_RECOVERY_FLOW_H_
 #include "tree_structure.h"
 #include "expression_observation.h"
+#include <type_traits>
 namespace abcd::source {
 struct FlowPoint { std::uint32_t value = 0; auto operator<=>(const FlowPoint&) const = default; };
 struct FlowDefinitionId { std::uint32_t value = 0; auto operator<=>(const FlowDefinitionId&) const = default; };
@@ -22,11 +23,27 @@ enum class FlowEventKind : std::uint8_t { kControl, kTruthBranch, kNullishBranch
 enum class FlowValueUse : std::uint8_t { kUnmodeled, kDiscarded, kObserved };
 enum class FlowWriteEffect : std::uint8_t { kObservable, kInert };
 enum class FlowBindingExposure : std::uint8_t { kObservable, kPrivate };
+struct SourceRegionId {std::uint32_t value=0;auto operator<=>(const SourceRegionId&)const=default;};
+struct SourcePosition {std::size_t value=0;auto operator<=>(const SourcePosition&)const=default;};
+struct SourceRegion {SourcePosition first,last;};
+struct OriginalBindingScope {};
+struct ProjectedBindingScope {SourceRegionId region;};
+struct UnmodeledBindingScope {};
+// Lexical containment only: dynamic cell identity, initialization completion
+// and source spelling remain separate obligations. Missing projection facts
+// cannot authorize access to a narrowed declaration.
+using SourceBindingScope=std::variant<OriginalBindingScope,ProjectedBindingScope,UnmodeledBindingScope>;
+struct SourceScopeProjection {
+  std::span<const SourceRegion> regions;
+  std::span<const std::optional<SourcePosition>> occurrences;
+  std::span<const SourceBindingScope> bindings;
+};
 struct FlowBinding {
   BindingKind kind;
   FlowBindingExposure exposure = FlowBindingExposure::kObservable;
   std::optional<StmtId> declaration;
   std::optional<FlowDefinitionKind> initialization;
+  SourceBindingScope scope=OriginalBindingScope{};
 };
 enum class FlowReferenceKind : std::uint8_t { kRead, kWrite };
 using FlowReferenceSite=std::variant<ExprId,StmtId>;
@@ -113,6 +130,7 @@ struct LegacyFlowProjection {
   std::span<const std::optional<SymbolId>> undefined_stores;
   std::span<const std::optional<DeclarationValue>> declaration_values;
   std::span<const std::optional<DeclarationCompletion>> declaration_completions;
+  SourceScopeProjection source_scopes;
 };
 struct RecoveryFlow {
   RouteInputIdentity identity;
@@ -129,9 +147,27 @@ struct RecoveryFlow {
   // roots are not evidence of an ignored value. Effects remain independent.
   std::vector<FlowValueUse> value_uses;
   std::vector<FlowBinding> bindings;
+  std::vector<SourceRegion> source_regions;
+  std::vector<std::optional<SourcePosition>> source_occurrences;
   FlowPoint entry, terminal;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
+  // Supplemental containment for recovered declarations. Original scope has
+  // no added narrowing; ordinary name resolution still must succeed. This is
+  // not a completion-dominance or per-activation/capture identity proof.
+  [[nodiscard]] bool BindingInScope(SymbolId binding,std::optional<StmtId> occurrence) const {
+    return std::visit([&](const auto& scope) {
+      using T=std::decay_t<decltype(scope)>;
+      if constexpr(std::is_same_v<T,OriginalBindingScope>)return true;
+      else if constexpr(std::is_same_v<T,UnmodeledBindingScope>)return false;
+      else {
+        static_assert(std::is_same_v<T,ProjectedBindingScope>);
+        if(!occurrence || !source_occurrences[occurrence->value])return false;
+        const auto position=*source_occurrences[occurrence->value];const auto region=source_regions[scope.region.value];
+        return position>=region.first&&position<region.last;
+      }
+    },bindings[binding.value].scope);
+  }
 };
 // Source-side migration entry: checked tree plus explicit legacy projection.
 // Parameter definitions denote body entry after the existing signature program.

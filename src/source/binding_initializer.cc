@@ -71,6 +71,7 @@ class Initializers {
     budget.Array(projection_observations_, ProjectionCapacity());
     budget.Array(expressions_, tree.expressions.size()); budget.Array(statements_, tree.statements.size());
     budget.Array(statement_owners_,tree.statements.size());budget.Array(statement_scopes_,tree.statements.size());
+    budget.Array(source_regions_,tree.statements.size());budget.Array(source_occurrences_,tree.statements.size());
     budget.Array(expression_owners_,tree.expressions.size());budget.Array(expression_projections_,tree.expressions.size());
   }
   BindingInitializers Run() {
@@ -169,6 +170,13 @@ class Initializers {
       statements_[pending-1].scope=scope;
     }
     for(auto& owner:statement_owners_) {budget_.Step();if(owner)owner=lexical_[owner->value];}
+    // Syntax recovery owns source region construction once. Publish current
+    // occurrence ownership to the shared flow; consumers never infer lifetime
+    // from a declaration's old arena position or perform another scope census.
+    for(std::size_t i=0;i<tree_.statements.size();++i) {
+      budget_.Step();source_regions_[i]={{containers_[i].begin},{containers_[i].end}};
+      if(statement_owners_[i])source_occurrences_[i]=SourcePosition{containers_[statement_owners_[i]->value].begin};
+    }
     for(std::size_t i=0;i<expression_owners_.size();++i) {
       budget_.Step();if(expression_projections_[i]&&expression_owners_[i])expression_owners_[i]=lexical_[expression_owners_[i]->value];
     }
@@ -692,7 +700,7 @@ class Initializers {
         // The removed snapshot PutValue is not part of the transported RHS.
         if(reference.site==edit.store)continue;
         const auto destination=*edit.destination;
-        if(!RootLifetime(reference.binding,statement_owners_[destination.value]))blocked[*candidate]=1;
+        if(!flow.BindingInScope(reference.binding,destination))blocked[*candidate]=1;
         queries[size]={reference.binding,statement_scopes_[destination.value]};owners[size++]=*candidate;
       }
       queries.resize(size);owners.resize(size);
@@ -734,13 +742,18 @@ class Initializers {
     // this conservative graph proves facts before effect summaries are refined.
     // Unmodeled signature-program occurrences receive no body-entry proof.
     std::vector<std::uint8_t> private_bindings;
+    std::vector<SourceBindingScope> source_bindings;
     budget_.Array(private_bindings,uses_.size());
+    budget_.Array(source_bindings,uses_.size());
     for (std::size_t i=0;i<uses_.size();++i) {
       budget_.Step();private_bindings[i]=tree_.symbols[i].kind==BindingKind::kCompilerTemporary && !uses_[i].escaped;
+      const auto& site=declaration_sites_[i];
+      if(site&&plan_.statements[site->statement.value])source_bindings[i]=ProjectedBindingScope{SourceRegionId{site->container.value}};
     }
     const auto build=[&](const auto& facts) {
       const LegacyFlowProjection projection{plan_.aliases,plan_.literals,plan_.replacements,
-          plan_.omitted,facts.evaluations,facts.normal_stores,plan_.statements,private_bindings,plan_.storage,plan_.undefined_stores,plan_.declaration_values,plan_.declaration_completions};
+          plan_.omitted,facts.evaluations,facts.normal_stores,plan_.statements,private_bindings,plan_.storage,plan_.undefined_stores,plan_.declaration_values,plan_.declaration_completions,
+          {source_regions_,source_occurrences_,source_bindings}};
       auto built=BuildRecoveryFlow(tree_,projection,budget_.Remaining(),std::move(flow_storage_));
       if(const auto* error=std::get_if<TreeStructureError>(&built))throw *error;
       auto flow=std::get<RecoveryFlow>(std::move(built));
@@ -957,12 +970,12 @@ class Initializers {
           !initialization_order.Completed(reference.binding,reference.point))blocked[reference.binding.value]=1;
       RequireTree(reference.owner.has_value(),TreeStructureError::kOwnership);
       const auto scope=statement_scopes_[reference.owner->value];
-      references[count]={*root,scope};occurrences[count]=ReferenceOwner(reference);targets[count++]=reference.binding;
+      references[count]={*root,scope};occurrences[count]=reference.owner;targets[count++]=reference.binding;
     }
     references.resize(count); const auto visible = ResolveTreeReferences(tree_, references, budget_);
     for (std::size_t i = 0; i < count; ++i) {
       budget_.Step(); const auto root = references[i].symbol; const auto occurrence = occurrences[i];
-      const auto lifetime=RootLifetime(root,occurrence);
+      const auto lifetime=flow.BindingInScope(root,occurrence);
       if(!visible[i] || !lifetime)blocked[targets[i].value]=1;
     }
     for(std::size_t i=0;i<proposed.size();++i){budget_.Step();if(blocked[i])proposed[i].reset();}
@@ -992,7 +1005,7 @@ class Initializers {
       for(std::size_t i=0;i<count;++i) {
         budget_.Step();const auto target=initialization_targets[i];const auto root=*proposed[target.value];
         const auto declaration=initialization_occurrences[i];
-        if(!resolved[i] || !RootLifetime(root,lexical_[declaration.value]))blocked[target.value]=1;
+        if(!resolved[i] || !flow.BindingInScope(root,declaration))blocked[target.value]=1;
       }
     }
     // Completion occurrences include recovered declarations, not just original
@@ -1184,18 +1197,6 @@ class Initializers {
         omitted[count++] = StmtId{static_cast<std::uint32_t>(i)};
     }
     omitted.resize(count); return omitted;
-  }
-  // Transitional for-let lifetime proof; SourceVariables will consume the
-  // shared binding activation/initialization facts, not another scope census.
-  bool RootLifetime(SymbolId root,std::optional<StmtId> owner) const {
-    const auto& site=declaration_sites_[root.value];
-    if(!site||!plan_.statements[site->statement.value])return true;
-    // A prospective native declaration may narrow its original lifetime (for
-    // let includes test/body/update). Availability must cover substituted reads
-    // in the printed owner, not only the canonical symbol's original scope.
-    if(!owner)return false;
-    const auto at=containers_[owner->value].begin;const auto range=containers_[site->container.value];
-    return at>=range.begin&&at<range.end;
   }
   bool LegacyConfined(const BindingUses& use, std::optional<StmtId> owner) const {
     if (use.outside_body || !owner || !use.first_container) return false;
@@ -1478,7 +1479,7 @@ class Initializers {
       references[count]={*roots[read.binding.value],statement_scopes_[read.owner->value]};
       const auto discarded=flow.events[read.point.value].discarded;
       const auto target=discarded?copy_targets[flow.discarded[discarded->value].statement.value]:std::nullopt;
-      occurrences[count++]={ReferenceOwner(read),read.binding,target};
+      occurrences[count++]={read.owner,read.binding,target};
     }
     references.resize(count);const auto visible=ResolveTreeReferences(tree_,references,budget_);
     ready=0;
@@ -1489,7 +1490,7 @@ class Initializers {
       }
     };
     for(std::size_t i=0;i<count;++i) {
-      budget_.Step();if(visible[i]&&RootLifetime(references[i].symbol,occurrences[i].owner))continue;
+      budget_.Step();if(visible[i]&&flow.BindingInScope(references[i].symbol,occurrences[i].owner))continue;
       const auto source=occurrences[i].binding;
       // A copy RHS ceases to be a read when its store is elided. Only if the
       // destination must remain does its unavailable root force source storage.
@@ -1662,6 +1663,8 @@ class Initializers {
   std::size_t completion_count_ = 0;
   std::vector<std::optional<StmtId>> statement_owners_;
   std::vector<ScopeId> statement_scopes_;
+  std::vector<SourceRegion> source_regions_;
+  std::vector<std::optional<SourcePosition>> source_occurrences_;
   std::vector<std::optional<StmtId>> expression_owners_;
   std::vector<std::uint8_t> expression_projections_;
   std::vector<std::optional<SymbolId>> constant_heads_, constant_next_;

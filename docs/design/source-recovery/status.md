@@ -24,6 +24,43 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则225，恢复声明范围归入共同流图
+
+- RecoveryFlow持有SourceRegion、当前引用位置及Original/Projected/
+  Unmodeled绑定范围。共同入口从验证过的源码所有权索引发布词法
+  范围；活动声明从当前投影取得。区间表达祖先关系，不是字节码布局。
+  Original表示没有额外收窄，名字解析仍需通过；缺失原生声明范围事实
+  显式成为Unmodeled，不能授权访问。初始化完成、异常及动态cell
+  身份保持独立义务，未把该查询宣称为完整绑定生命期证明。
+- 删除RootLifetime，快照目的引用、存储引用替换、undefined完成
+  重映射与别名传播四个消费者改读共同BindingInScope。消费者不再
+  自行读取声明位置/plan/区间构造判断；当前引用owner在发布时统一
+  映射到打印owner。LegacyConfined保留且未扩展，无新样本、同块、
+  邻接、操作序列或固定图准入。
+- 范围事实随revision-tagged ProjectionFacts在BeginCommit前统一
+  失效，禁止提交中分析；重用flow容量时清空旧范围/位置。现有独立
+  分析 -> 完整提案 -> 提交边界及pass依赖顺序保持，没有新pass或
+  固定轮次扫描。准备/发布增加O(S+B)预算计费，单次范围查询O(1)。
+- 首批7/7聚焦66.54秒；新增模型后11/11聚焦159.83秒通过。
+  独立父链oracle核对24种五节点树、正反编号与200/201/400/800
+  查询集合；模型覆盖范围内外、缺失事实、无效region、精确/不足
+  字节与工作预算、复用容量清空。慢oracle只在测试中枚举成对关系。
+  model-{build,tests}.log保留在build/stage-one/binding-scope-verification。
+- 最终29目标构建成功，59/59相关回归590.89秒全部通过，构建+
+  测试676.15秒。selection.json、final-result.json、final-{build,
+  tests}.log及LastTest.log保存在本次验证目录；覆盖变量/循环/快照/
+  干涉、名字/类、表达式组合、partial输出与既定真实record行为。
+  声明源码696份/139,200行为/19错误变体，绑定初始化源码2,004份/
+  482,752行为/342错误变体均通过。这是相关回归验收，非全语料结论。
+- 固定pasteboard重新导出至build/stage-one/binding-scope-rule225，
+  19 records，10完整/0部分/9无module，10源码语法通过，与规则224
+  源码逐字节相同。输入SHA-256前后均为
+  854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e。
+  导出2.39秒；record-{export.log,result.json}保留在本次验证目录。
+  这不替代整个paired corpus或platform验收；阶段一Goal保持active。
+  完整生命期/capture/finally、原IR对应及全局pass收敛仍开放；全量
+  suite、广语料、RSS/DFX及benchmarks继续暂停。
+
 ### 2026-10-08：规则224，死初值、必要RHS与绑定完成分离
 
 - 独立InitialValues消费当前RecoveryFlow/FlowDemand，裁剪私有死初值；

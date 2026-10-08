@@ -2943,3 +2943,30 @@ values, required call/comma effects and pre-initialization self reads. Indexed
 loop grammar clearing is exercised at 1/200/201/400/800 without a quadratic fallback.
 These are bounded semantic/cost tests; full-process RSS and broad corpus remain
 paused. See status.md for measured verification and record scope.
+
+
+### Recovered source region publication (rules225)
+
+This uses the standard lexical-tree DFS ancestry interval index already built by
+source ownership preparation. The implementation is project-owned; no copied
+implementation, dependency, license or maintenance obligation is added.
+RecoveryFlow maintains the published facts and binding_initializer supplies the
+checked current projection. Prerequisites are validated source ownership and
+an active recovered declaration region; spelling resolution, initialization
+completion, capture/activation and exception obligations remain independent.
+
+For S statements and B bindings, preparation adds O(S) work/storage; publication
+adds O(S+B) charged work/storage to the existing flow build. Each containment
+query is O(1), replacing the old RootLifetime query in four consumers. Occurrence
+and region arrays, binding variants and publication copies are charged against
+the existing typed byte/work budgets; reusable storage is cleared on rebuild.
+The existing sparse flow/demand/liveness cost is unchanged. There is no new
+per-binding graph traversal, whole-pass round or quadratic production fallback.
+This does not claim complete lifetime reconstruction or a linear whole solver.
+
+The independent test-only oracle walks parent chains and enumerates pairs; its
+quadratic work is deliberate and is not a production scaling measurement.
+Forward/reverse identities and 200/201/400/800 cases check indexed membership,
+with missing facts, invalid IDs, budget exhaustion and stale-capacity clearing.
+Existing source semantic/cost cases remain the end-to-end evidence; full-process
+RSS, benchmarks and broad corpus remain paused. See status.md for measured runs.

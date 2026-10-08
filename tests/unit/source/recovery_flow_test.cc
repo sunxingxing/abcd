@@ -307,6 +307,41 @@ void DemandGraphs() {
     }
   std::cout<<"independent demand graphs "<<cases<<'\n';
 }
+void SourceScopeOracle() {
+  // Independent lexical ancestry is the oracle; production only queries the
+  // published interval index. Renumbering regions/statements changes no fact.
+  const auto run=[](unsigned count,unsigned encoded,bool reverse) {
+    std::vector<std::optional<unsigned>> parents(count);
+    for(unsigned i=1;i<count;++i){parents[i]=encoded%i;encoded/=i;}
+    const auto index=[&](unsigned i){return reverse?count-1-i:i;};
+    RecoveryFlow flow{};flow.bindings.resize(count);flow.source_regions.resize(count);
+    flow.source_occurrences.resize(count+1);std::size_t next=0;
+    const auto visit=[&](auto&& self,unsigned node)->void {
+      const auto first=SourcePosition{next++};flow.source_occurrences[index(node)]=first;
+      for(unsigned child=node+1;child<count;++child)if(parents[child]==node)self(self,child);
+      flow.source_regions[index(node)]={first,SourcePosition{next}};
+    };
+    visit(visit,0);
+    for(unsigned binding=0;binding<count;++binding) {
+      flow.bindings[index(binding)].scope=ProjectedBindingScope{SourceRegionId{index(binding)}};
+      for(unsigned owner=0;owner<count;++owner) {
+        bool expected=false;auto node=std::optional{owner};
+        while(node){if(*node==binding){expected=true;break;}node=parents[*node];}
+        Check(flow.BindingInScope({index(binding)},StmtId{index(owner)})==expected);
+      }
+      Check(!flow.BindingInScope({index(binding)},{}));
+      Check(!flow.BindingInScope({index(binding)},StmtId{count}));
+      flow.bindings[index(binding)].scope=UnmodeledBindingScope{};
+      Check(!flow.BindingInScope({index(binding)},StmtId{index(binding)}));
+      flow.bindings[index(binding)].scope=OriginalBindingScope{};
+      Check(flow.BindingInScope({index(binding)},{}));
+    }
+  };
+  for(unsigned encoded=0;encoded<24;++encoded)for(bool reverse:{false,true})run(5,encoded,reverse);
+  // Large query sets keep production's constant-time index and exercise the
+  // 200/201 boundary. The deliberately slow ancestry oracle remains test-only.
+  for(unsigned count:{200U,201U,400U,800U})for(bool reverse:{false,true})run(count,1,reverse);
+}
 void InitialValueObligations() {
   for(bool needed:{false,true})for(bool private_binding:{false,true})
     for(bool inert:{false,true})for(bool required:{false,true})for(bool modeled:{false,true}) {
@@ -519,6 +554,30 @@ void SourceEvents() {
     Check(definition.kind==FlowDefinitionKind::kInitializer&&definition.declaration==StmtId{3});initialized=true;
   }
   Check(initialized);
+  Check(std::holds_alternative<UnmodeledBindingScope>(projected.bindings[1].scope));
+  Check(!projected.BindingInScope({1},StmtId{3}));
+  std::vector<SourceRegion> regions{{{0},{2}},{{1},{2}}};
+  std::vector<std::optional<SourcePosition>> positions(tree.statements.size(),SourcePosition{0});positions[3]=SourcePosition{1};
+  std::vector<SourceBindingScope> source_bindings(tree.symbols.size());source_bindings[1]=ProjectedBindingScope{{1}};
+  auto scoped=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,
+      {aliases,literals,replacements,omitted,evaluations,normal,native,private_bindings,{},{},{},{},{regions,positions,source_bindings}}));
+  Check(scoped.BindingInScope({1},StmtId{3})&&!scoped.BindingInScope({1},StmtId{4}));
+  Check(std::holds_alternative<RecoveryFlow>(BuildRecoveryFlow(tree,
+      {aliases,literals,replacements,omitted,evaluations,normal,native,private_bindings,{},{},{},{},{regions,positions,source_bindings}},
+      {scoped.allocated_bytes,scoped.work})));
+  Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,
+      {aliases,literals,replacements,omitted,evaluations,normal,native,private_bindings,{},{},{},{},{regions,positions,source_bindings}},
+      {scoped.allocated_bytes-1,scoped.work}))==TreeStructureError::kResourceLimit);
+  Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,
+      {aliases,literals,replacements,omitted,evaluations,normal,native,private_bindings,{},{},{},{},{regions,positions,source_bindings}},
+      {scoped.allocated_bytes,scoped.work-1}))==TreeStructureError::kWorkLimit);
+  source_bindings[1]=ProjectedBindingScope{{2}};
+  Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,
+      {aliases,literals,replacements,omitted,evaluations,normal,native,private_bindings,{},{},{},{},{regions,positions,source_bindings}}))==TreeStructureError::kOwnership);
+  const auto cleared_scopes=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,
+      {aliases,literals,replacements,omitted,evaluations,normal,native,private_bindings},{},std::move(scoped)));
+  Check(cleared_scopes.source_regions.empty()&&cleared_scopes.source_occurrences.empty());
+  Check(std::holds_alternative<UnmodeledBindingScope>(cleared_scopes.bindings[1].scope));
   // The native declaration remains authoritative when its value is pruned.
   // Its discarded RHS runs before lexical completion; throw never commits.
   std::vector<std::optional<DeclarationCompletion>> completions(tree.statements.size());
@@ -785,4 +844,4 @@ void DeclarationValues() {
   }
   Check(checked);
 }
-int main(){InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+int main(){SourceScopeOracle();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

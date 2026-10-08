@@ -70,11 +70,24 @@ class FlowBuilder {
     result.definitions=std::move(definitions_);result.references=std::move(references_);result.names=std::move(names_);
     result.discarded=std::move(discarded_);
     copy(result.statements,statements_);copy(result.expressions,expressions_);
+    const auto& scopes=projection_.source_scopes;
+    RequireTree(scopes.occurrences.empty() || scopes.occurrences.size()==tree_.statements.size(),Error::kOwnership);
+    RequireTree(scopes.bindings.empty() || scopes.bindings.size()==tree_.symbols.size(),Error::kOwnership);
+    Resize(result.source_regions,scopes.regions.size());std::copy(scopes.regions.begin(),scopes.regions.end(),result.source_regions.begin());
+    Resize(result.source_occurrences,scopes.occurrences.size());std::copy(scopes.occurrences.begin(),scopes.occurrences.end(),result.source_occurrences.begin());
     Resize(result.bindings,tree_.symbols.size());
     for(std::size_t i=0;i<tree_.symbols.size();++i) {
       budget_.Step();result.bindings[i]={tree_.symbols[i].kind,
           !projection_.private_bindings.empty() && projection_.private_bindings[i]
               ? FlowBindingExposure::kPrivate : FlowBindingExposure::kObservable};
+      if(!scopes.bindings.empty()) {
+        result.bindings[i].scope=scopes.bindings[i];
+        if(const auto* narrowed=std::get_if<ProjectedBindingScope>(&result.bindings[i].scope)) {
+          RequireTree(narrowed->region.value<result.source_regions.size(),Error::kOwnership);
+          const auto& region=result.source_regions[narrowed->region.value];
+          RequireTree(!scopes.occurrences.empty()&&region.first<region.last,Error::kOwnership);
+        }
+      }
     }
     for(const auto& definition:result.definitions) {
       budget_.Step();auto& binding=result.bindings[definition.binding.value];
@@ -95,6 +108,7 @@ class FlowBuilder {
       if((native||outlined) && (definition.kind==FlowDefinitionKind::kInitializer || definition.kind==FlowDefinitionKind::kUndefined)) {
         auto& binding=result.bindings[definition.binding.value];
         binding.declaration=definition.declaration;binding.initialization=definition.kind;
+        if(native&&scopes.bindings.empty())binding.scope=UnmodeledBindingScope{};
       }
     }
     result.allocated_bytes=budget_.Bytes();result.work=budget_.Work();return std::move(result);

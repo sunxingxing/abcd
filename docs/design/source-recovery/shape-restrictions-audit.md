@@ -1,5 +1,21 @@
 # 按用户要求进行的恢复条件审计
 
+规则225补充：RootLifetime局部查询已删除。快照目的引用、存储引用
+替换、undefined完成重映射和别名传播统一消费RecoveryFlow的
+BindingInScope；源声明投影范围与当前引用owner由共同入口发布一次，
+不再由各优化器直接读取declaration_sites/plan/intervals拼装判断。
+区间只表达词法祖先关系，不是字节码布局、同块或邻接准入。
+
+Original表示没有额外收窄，仍需普通名字解析；Projected必须有当前
+引用范围事实；Unmodeled不能授权访问。原生声明缺少范围投影时显式
+标记Unmodeled，重建时清空旧事实。作用域事实随整个ProjectionFacts
+在BeginCommit前失效，禁止作为跨版本缓存或正向初始化证明运输。
+初始化完成/异常顺序、动态捕获cell及原名字解析义务未删除。
+LegacyConfined未扩展；完整生命期/unwind、原IR对应及全局pass收敛
+仍是能力缺口。独立父链对照、范围外反例、arena反排、200/201及
+几何规模、重建清空与独立源码执行的实际证据见status。
+
+
 规则224补充：InitialValues独立消费当前需求/效果，裁剪死初值时保留
 必要RHS和正常完成后的词法初始化。绑定删除、存储合并、声明移动
 分别消费显式完成与求值；不把值无需求当作删除生命期的证明。
