@@ -2300,3 +2300,29 @@ consumer subsequently passed structure/printing and failed the intended return c
 
 Arbitrary local/catch/capture symbolic roots, trial projection value precision,
 original IR/SSA/full activation/finally and common global convergence remain open.
+
+### Revision-owned initialization evidence (2026-10-09, rules246)
+
+The occurrence initialization mask was the remaining transported analysis outside
+ProjectionFacts. It now owns its ProjectionRevision as InitializedOccurrences;
+every expression/value consumer obtains it through InitializedReads, which requires
+the exact current revision and an analysis phase. Immutable original CFG/SSA
+revisions cannot justify reuse after source projection edits.
+
+First commit transfers this owned proof through RecoverySchedule's
+TransportInitializations(source revision). Only the active commit phase and that
+pass's input revision are valid. The existing semantic preservation contract either
+returns the new revision or revokes the proof. No-op passes leave it unchanged;
+further writes in one batch create no additional revision. The bare preservation
+boolean API no longer decides production reuse. All other projection facts still
+invalidate together; transported evidence does not preserve flow/effect/name facts.
+
+Independent phase/version/transport counterexamples cover every pass category,
+non-preserving edits, stale/future/output versions, no-op and batch commits, and
+0/1/200/201/400/800 consecutive uses. Existing source execution tests exercise
+initialization, TDZ, effects, storage and declaration cleanup on this path. This is
+an internal analysis ownership contract, never a recovery admission based on input
+shape. It adds constant work per access/commit and constant cache metadata, with no
+new graph, traversal, payload copy or eager analysis. Original IR/SSA integration,
+local/catch/capture roots, trial precision, full activation/finally and global
+convergence remain open; the overall milestone is incomplete.

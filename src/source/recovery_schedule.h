@@ -119,9 +119,12 @@ class RecoverySchedule {
     if(transport)demand_checkpoint_=revision_;
     return true;
   }
-  [[nodiscard]] bool PreservesInitialization() const {
-    RequireTree(active_.has_value(),TreeStructureError::kOwnership);
-    return PassContract(*active_).preserves_initialization;
+  // Transfer only evidence of this pass's input projection, after first
+  // commit. A preservation contract cannot bless stale/unversioned evidence.
+  // This transports initialization alone, never flow/effect/name facts.
+  [[nodiscard]] std::optional<ProjectionRevision> TransportInitializations(ProjectionRevision source) const {
+    RequireTree(phase_==Phase::kCommit&&active_&&source.value==before_.value,TreeStructureError::kOwnership);
+    return PassContract(*active_).preserves_initialization?std::optional{revision_}:std::nullopt;
   }
   [[nodiscard]] bool Finish() {
     RequireTree(active_.has_value(),TreeStructureError::kOwnership);

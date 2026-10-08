@@ -330,6 +330,18 @@ class Initializers {
     std::optional<FlowDemand> demand;
     std::optional<FlowConstants> constants;
   };
+  // This read-occurrence proof is the only analysis transported across a
+  // projection commit. Its semantic contract and version are both required;
+  // unchanged original CFG/SSA revisions alone do not justify reuse.
+  struct InitializedOccurrences {
+    ProjectionRevision revision;
+    std::vector<std::uint8_t> reads;
+  };
+  std::span<const std::uint8_t> InitializedReads() const {
+    RequireTree(initialized_.has_value(),TreeStructureError::kOwnership);
+    schedule_.RequireCurrent(initialized_->revision);
+    return initialized_->reads;
+  }
   ProjectionFacts& CurrentFacts() const {
     RequireAnalysis();
     if(!facts_)facts_.emplace(ProjectionFacts{schedule_.Revision(),{},{},{},{},{},{}});
@@ -371,7 +383,10 @@ class Initializers {
     if(!schedule_.Commit())return;
     if(facts_ && facts_->flow)flow_storage_=std::move(*facts_->flow);
     facts_.reset();
-    if(!schedule_.PreservesInitialization())initialized_.reset();
+    if(initialized_) {
+      if(const auto revision=schedule_.TransportInitializations(initialized_->revision))initialized_->revision=*revision;
+      else initialized_.reset();
+    }
   }
   void RequireAnalysis() const {schedule_.RequireAnalysis();}
   struct DeclarationCandidate {
@@ -862,7 +877,7 @@ class Initializers {
       return BuildProjectedFlow(expressions,plan_.replacements,plan_.transports,plan_.omitted,std::move(flow_storage_),{},expressions.bindings);
     };
     if(initialized_) {
-      if(!facts.expressions)facts.expressions=ComputeExpressions(*initialized_);
+      if(!facts.expressions)facts.expressions=ComputeExpressions(InitializedReads());
       facts.flow=build(*facts.expressions);return *facts.flow;
     }
     const auto conservative=ComputeExpressions({});
@@ -873,13 +888,13 @@ class Initializers {
     // Do not publish their conservative dominance as the refined graph cache.
     const auto initialization=std::get<FlowInitializations>(std::move(analyzed));
     budget_.Admit(initialization.allocated_bytes,1);budget_.Step(initialization.work);
-    initialized_.emplace();auto& initialized=*initialized_;
+    initialized_.emplace(InitializedOccurrences{schedule_.Revision(),{}});auto& initialized=initialized_->reads;
     budget_.Array(initialized,tree_.expressions.size());
     for(const auto& reference:provisional.references) {
       budget_.Step();if(const auto* expression=std::get_if<ExprId>(&reference.site))
         initialized[expression->value]=initialization.Completed(reference.binding,reference.point);
     }
-    facts.expressions=ComputeExpressions(initialized);
+    facts.expressions=ComputeExpressions(InitializedReads());
     auto refined=RefineRecoveryFlowEffects(provisional,tree_,facts.expressions->evaluations,
         facts.expressions->normal_stores,budget_.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&refined))throw *error;
@@ -1207,7 +1222,7 @@ class Initializers {
     schedule_.RequireFact(RecoveryFact::kExpressions);
     auto& facts=CurrentFacts();
     if(!facts.expressions) {
-      if(initialized_)facts.expressions=ComputeExpressions(*initialized_);
+      if(initialized_)facts.expressions=ComputeExpressions(InitializedReads());
       else CurrentFlow();
     }
     return *facts.expressions;
@@ -1558,7 +1573,7 @@ class Initializers {
       const auto& flow=CurrentFlow();
       std::vector<FlowValueEquation> bindings;budget_.Array(bindings,tree_.symbols.size());
       for(std::size_t i=0;i<bindings.size();++i){budget_.Step();bindings[i]=ProjectedBindingValue({static_cast<std::uint32_t>(i)});}
-      const FlowValueEquations expressions{value_equations_,plan_.replacements,bindings,*initialized_,plan_.read_literals,{},plan_.transports,plan_.read_sources};
+      const FlowValueEquations expressions{value_equations_,plan_.replacements,bindings,InitializedReads(),plan_.read_literals,{},plan_.transports,plan_.read_sources};
       std::vector<FlowDefinitionValue> values;budget_.Array(values,flow.definitions.size());
       for(std::size_t i=0;i<values.size();++i) {
         budget_.Step();const auto& definition=flow.definitions[i];
@@ -1952,7 +1967,7 @@ class Initializers {
   std::vector<SymbolId> constant_queue_;
   std::vector<StatementVisit> statements_;
   RecoverySchedule schedule_;
-  mutable std::optional<std::vector<std::uint8_t>> initialized_;
+  mutable std::optional<InitializedOccurrences> initialized_;
   mutable std::optional<ProjectionFacts> facts_;
   mutable RecoveryFlow flow_storage_{};
 };

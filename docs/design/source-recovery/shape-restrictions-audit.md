@@ -2831,3 +2831,14 @@ namespace allocation and global convergence remain documented implementation gap
   old snapshot spelling to survive. No production shape restriction was added.
 - Unmodeled local/capture/catch grounding, original IR/SSA/full activation/finally,
   trial projection precision and common global convergence remain declared gaps.
+### Rules246: initialization proof revision ownership
+
+Initialized-read evidence owns the source projection revision. Every consumer
+requires the current analysis revision; first commit transfers or revokes it
+through the typed pass preservation contract. These checks prove internal fact
+ownership and prevent stale analysis reuse; they do not admit/reject recovery
+based on opcode, sample, block, adjacency or graph layout. The unversioned cache
+and bare preservation-boolean decision path are retired. Existing initialization,
+scope, effect and lifetime obligations remain; no source precision is claimed
+from the metadata change. Independent phase/stale/future/no-op/batch/pass-category
+and geometric protocol counterexamples complement actual generated-source tests.

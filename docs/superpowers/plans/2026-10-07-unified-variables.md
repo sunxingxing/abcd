@@ -545,3 +545,13 @@ snapshot motion; conservative live/global/name obligations stay independent. Mix
 prior/liveundefined/effectful-catch and semantic negatives plus independent graph
 oracles, actual source execution/mutants/layout/scaling verify the substep. Final
 selected evidence is recorded in status.md. Overall milestone remains incomplete.
+
+rules246 implemented substep: initialized-read occurrence evidence owns its source
+projection revision; all production expression/value consumers require the current
+analysis revision. First commit explicitly transports or revokes that evidence
+under the existing typed pass contract. The unversioned cache/preservation boolean
+decision path exits; other facts still invalidate atomically. No-op and batch
+semantics, all pass categories and stale/phase/geometric counterexamples plus
+existing source execution verify ownership. No new recovery admission or graph
+analysis. Final selected evidence is recorded in status.md; overall milestone and
+original correspondence/full lifetime/global convergence remain incomplete.

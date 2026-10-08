@@ -3550,3 +3550,20 @@ Dense sparse-fact/output dimensions remain
 honestly charged under existing budgets. No new pipeline round, cutoff or quadratic
 selection algorithm. Independent 65536 graph cases, 200/201/geometric source layouts
 and exact/short allowances verify this boundary; full process RSS remains paused.
+
+### Initialization evidence transport (2026-10-09, rules246)
+
+Provenance: the existing projection revision/invalidation protocol and semantic
+pass preservation contracts; no new dependency or algorithm. The retained
+ExprId-indexed initialized-read mask owns its source ProjectionRevision. Every
+access verifies the current analysis phase/revision; first commit explicitly
+transports that revision or revokes the mask under the pass contract. Flow/effect/
+name facts remain independently invalidated. The former unversioned cache and
+bare preservation boolean leave production decisions.
+
+Each access/transfer is O(1) work and adds O(1) cache metadata; mask storage and
+budget charging, graph costs and lazy analysis stay unchanged. No mask copy or
+per-occurrence revision array is added. No-op passes do not manufacture revisions;
+one batch advances once. Independent stale/phase/non-preserving and 200/201/
+geometric protocol cases plus existing generated-source execution verify the
+boundary. Full process RSS remains paused, so no new peak-memory claim is made.

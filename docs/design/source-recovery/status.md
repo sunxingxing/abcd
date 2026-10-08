@@ -24,6 +24,30 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-09：规则246，初始化读取证明的版本所有权
+
+- InitializedOccurrences自有投影revision与读取mask，表达式和值分析统一
+  经InitializedReads验证当前版本/analysis阶段。首次提交以pass输入版本
+  显式TransportInitializations，按已有语义契约运输到新版本或撤销；
+  noop不改版本，同批后续写入不再运输。旧unversioned缓存/裸preservation
+  boolean决策退出生产路径，其余flow/effect/name事实仍聚合失效。
+- 旧实现有效RED：analysis阶段仍可取得初始化保留许可，1836退出134。
+  新反例覆盖每种pass、stale/future/output版本、提交阶段禁止读取、
+  noop/batch及0/1/200/201/400/800连续运输。聚焦3/3在35.53秒通过；
+  最终29目标构建82.06秒、exact原59/59项CTest在472.34秒通过，
+  combined-coverage.json核对选定名称一致，包含新运输协议反例与既有
+  65,536逐读值/32,768稳定值、名字、清理、版本检查点及真实record回归。
+  存储953源码/145,076行为比较/92组变异反例，声明2568/513600/100、
+  初始化2004/482752/368、循环276/13976/68通过。fresh固定pasteboard
+  导出2.66秒：19records、10complete/0partial/9no-module，10语法检查
+  通过，源码字节与规则245一致，输入SHA前后不变，原预算及语言模式保留。
+  最终构建无warning/error；早期完整聚焦构建只有既有literal_plan.cc
+  kNoop warning。证据位于build/stage-one/initialization-revision-verification。
+  没有新增输入形状准入、图分析或mask复制。
+- 原IR/SSA接入、local/catch/capture根、试算精度、完整activation/finally
+  与共同全局收敛仍开放，统一变量/结构gate/阶段一Goal active。
+  全suite/广语料/RSS/benchmarks/DFX/代理暂停保持。
+
 ### 2026-10-09：规则245，按读取发生点的符号值恢复
 
 - 共同稀疏normal-value分析发布binding_reads，独立于all-definition
