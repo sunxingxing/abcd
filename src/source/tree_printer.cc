@@ -1246,9 +1246,9 @@ class TreePrinter {
       Name(*source);return;
     }
     if (const auto* read = std::get_if<SymbolExpr>(&expression)) if (const auto value = Initializers().literals[read->symbol.value]) {
-      const auto& literal = Tree().expressions[value->value].expression;
-      if (TreeOperandGrouping(literal,operand.context)) { Append("(");Push(std::string_view(")")); }
-      Expression(std::get<TreeLiteral>(literal));return;
+      const auto& literal = Initializers().primitives[value->value];
+      if (TreeOperandGrouping(TreeExpression{literal},operand.context)) { Append("(");Push(std::string_view(")")); }
+      Expression(literal);return;
     }
     const auto* unary_parent = std::get_if<TreeUnary>(&operand.context.parent);
     if (operand.value_result &&

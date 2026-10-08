@@ -24,6 +24,59 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则228，原始值身份与表达式发生点分离
+
+- 退休规则227的“已知undefined无原literal节点不能替换”表示缺口。
+  BindingInitializers发布typed primitive值池及PrimitiveId，准备
+  阶段一次接入输入字面量和词法初始化的隐式undefined，不追加或
+  改写原AST。共同ExpressionFacts、FlowPrimitiveValue、读取计划
+  与打印器共享值身份；ID不再借用ExprId或要求producer节点。
+  数值kind/bits、UTF-16内容身份和源读取范围保持，打印器只消费
+  值及原优先级规则。流图/类命名消费者同样消费已提交的值替换。
+- Constants仍只提交读取提案，按语义值比较变化，不因选择另一
+  个同值发生点增加revision。池跨pass保持不可变，revision-owned
+  分析整体提交前失效；已有Constants→独立清理→Aliases依赖保持。
+  初始化、成功写入、异常/效果、捕获cell及SourceLocal不被值事实
+  替代。TDZ和未知/不同值写入保持原义务，没有新增样本、同块、
+  邻接、操作序列或固定图形状准入。
+- 旧实现form74在25.98秒失败：无literal输入仍输出let current及
+  两次current读取。值池接通后3/3聚焦62.28秒通过，1,944份完整
+  源码、388,800独立执行比较、71错误变体。新增隐式初值复制、
+  sequence效果、nullish/conditional参数选择、自/互复制循环、
+  早读TDZ及unknown branch write；native/store编码、arena反排、
+  0/1/200/201/400/800及精确/不足byte/work预算通过。red/green
+  的build/tests及green-detail.log在build/stage-one/primitive-pool-
+  verification；不是全语料语义/style验收。
+- 编译器暴露规则227测试中四处经临时variant引用迭代member范围的
+  生命周期问题。测试改为先持有variant再遍历，消除dangling警告；
+  fresh recovery_flow_test 4.95秒通过，32,768小图独立对照以及
+  活跃初值/外部绑定/入口需求/未知更新反例重新通过。未更改生产
+  方程证明或弱化断言，记录见record-build.log/lifetime-tests.log。
+- 既定29目标构建81.67秒成功，初轮59相关回归55通过，耗时
+  424.08秒。4项失败来自旧存储保留断言及其依赖的源码runner：
+  自复制、嵌套shadow只读初值、赋值结果转发后的初始读取，旧断言
+  要求保留copy0/声明。更新为明确的存储消除断言，并保留update、
+  SourceLocal和未知活跃写入反例；生产代码未为这些测试增加分支。
+- 重跑时先验证死定义单元18.22秒/源码16.48秒通过：586份完整
+  源码、14,488独立行为比较、61错误变体。随后恢复测试最后一处
+  自复制声明旧断言也退休；最终初始化单元103.81秒/源码106.91秒
+  通过，2,004份完整源码、482,752独立比较、346错误变体，2项
+  并行总106.92秒，fresh构建3.48秒。既定59项分批全部取得通过
+  证据（初轮55+死定义2+最后2），不是一次新的59/59或全量suite。
+  生产实现自初轮29目标构建后保持不变；只重跑受修改断言影响的
+  测试。combined-coverage.json记录逐项覆盖，initial-final-*、
+  expectation-*、second-final-*保存中间失败，最终final-{build,
+  tests}.log、final-result.json、LastTest.log保存通过结果。
+- fresh pasteboard导出至build/stage-one/primitive-pool-rule228，
+  19 records，10完整/0部分/9无module，10源码语法通过，与规则227
+  源码逐字节相同；原预算保持。输入SHA-256前后均为
+  854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e。
+  导出2.59秒，record-{export.log,result.json,source.diff}保存在本次
+  验证目录。无新增actual record coverage/platform证据。完整绑定
+  生命期/capture/finally、原IR/SSA对应、per-read值精化及全局依赖
+  收敛仍开放。全量suite、广语料、RSS/DFX/benchmarks继续暂停，
+  阶段一Goal保持active。
+
 ### 2026-10-08：规则227，多定义值合流与按提交版本调度清理
 
 - 新FlowConstants消费同一RecoveryFlow、活跃性和表达式正常结果，

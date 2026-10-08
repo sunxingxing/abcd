@@ -62,7 +62,25 @@ struct Fixture {
         body.push_back(Stmt(DeclarationStmt{{binding},value}));
       else {body.push_back(Stmt(DeclarationStmt{{binding},{}}));body.push_back(Write(binding,value));}
     };
-    if(form==8) {
+    if(form>=74) {
+      if(form==79)body.push_back(Stmt(ExpressionStmt{Call(2,4)}));
+      body.push_back(Stmt(DeclarationStmt{{4},{}}));
+      if(form==80) {
+        const ScopeId arm{static_cast<std::uint32_t>(tree.scopes.size())};tree.scopes.push_back({ScopeKind::kBlock,ScopeId{1}});
+        body.push_back(Stmt(IfStmt{Read(3),Block({Write(4,Read(0))},arm),{}}));
+      }
+      ExprId value=Read(4);
+      if(form==75||form==76||form==77)value=Expr(SequenceExpr{Call(2,0),value});
+      if(form==75)value=Expr(LogicalExpr{TreeLogical::kNullish,value,Read(0)});
+      if(form==76)value=Expr(ConditionalExpr{value,Call(1),Read(0)});
+      initialize(5,value);
+      if(form==78) {
+        const auto loop=Stmt(LoopStmt{});const ScopeId scope{static_cast<std::uint32_t>(tree.scopes.size())};tree.scopes.push_back({ScopeKind::kBlock,ScopeId{1}});
+        const ScopeId exit{static_cast<std::uint32_t>(tree.scopes.size())};tree.scopes.push_back({ScopeKind::kBlock,scope});
+        const auto test=Stmt(IfStmt{Expr(UnaryExpr{TreeUnary::kNot,Call(3)}),Block({Stmt(BreakStmt{loop,{}})},exit),{}});
+        std::get<LoopStmt>(tree.statements[loop.value].statement).body=Block({test,Write(4,Read(5)),Write(5,Read(4))},scope);body.push_back(loop);
+      }
+    } else if(form==8) {
       // Both encodings here are actual lexical initialization: a TDZ read is
       // deliberately not equated with reading an earlier empty let's value.
       body.push_back(Stmt(DeclarationStmt{{4},Read(4)}));
@@ -269,7 +287,7 @@ struct Fixture {
 };
 }
 int main(int argc,char**) {
-  for(unsigned form=0;form<74;++form)for(bool native:{false,true}) {
+  for(unsigned form=0;form<81;++form)for(bool native:{false,true}) {
     std::uint64_t small=0,large=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}) {
       Fixture fixture(form,count,native,reverse);std::ostringstream output;
@@ -311,7 +329,7 @@ int main(int argc,char**) {
         test::Check(projected);
       }
       if(form<=3||form==16||form==17||form==21||form==28||(form>=29&&form!=30&&form!=33&&form!=39&&form!=41&&form<58)||
-          (form>=60&&form<68&&form!=65&&form!=67)||form==68||form==70||form==72) {
+          (form>=60&&form<68&&form!=65&&form!=67)||form==68||form==70||form==72||(form>=74&&form<=78)) {
         if(output.str().find("current")!=std::string::npos||output.str().find("scratch")!=std::string::npos)
           std::cerr<<"form="<<form<<" native="<<native<<" reverse="<<reverse<<'\n'<<output.str()<<'\n';
         test::Check(output.str().find("current")==std::string::npos&&output.str().find("scratch")==std::string::npos);

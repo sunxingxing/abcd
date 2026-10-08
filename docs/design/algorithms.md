@@ -3048,3 +3048,34 @@ equal/different branch definitions, self/mutual copies, zero/multiple loop
 iterations and consumed prefix update, with reversed arenas and both declaration
 encodings. Semantic mutants must differ. Status.md owns measured times/counts;
 full suite, wider corpus, benchmarks and RSS remain paused.
+
+
+### Immutable source primitive pool (rules228)
+
+This extends the project-owned primitive completion/definition lattice with a
+source value identity independent of AST occurrence. ECMA-262 empty lexical
+initialization supplies undefined; input literal values preserve typed numeric
+representation/bits and rules226 canonical UTF-16 identity. It introduces no
+folding, external implementation, dependency or license obligation. Maintenance
+stays in source preparation, shared primitive identity and the literal printer.
+Initialization, liveness, definition join, effect and scope proofs remain distinct.
+
+For E input expressions and P literal entries plus the implicit initialization
+value, counting and indexing take O(E+P) work, O(E) private expression-ID indexing
+and O(P) published typed value storage. Values do not duplicate string contents;
+they retain validated TextIds into immutable input. Known value joins/truth/
+nullish tests remain O(1); pool capacity and index work are budgeted. The pool
+is built once per function preparation and stays immutable across pass revisions,
+not rebuilt per definition, use, variable or analysis. No graph traversal, global
+pass sweep or input-count threshold is added. Default allowances remain unchanged.
+
+The source plan and ExpressionFacts keep compact optional PrimitiveIds in the
+same slots that previously held optional ExprIds. Proposed substitutions compare
+semantic value equality, avoiding revision changes caused only by choosing an
+equal occurrence. The printer emits a proved value with the existing operator
+precedence and each read's original range, without new AST nodes or independent
+optimization. Independent JS execution checks no-literal-input undefined copies,
+loop cycles, selected parameter values and required calls, and rejects early-TDZ,
+unknown-write and wrong-value variants. Native/store encodings, reversed arenas,
+200/201/400/800 and exact/short byte/work budgets remain the bounded evidence;
+full suite, wider corpus, RSS/DFX and benchmarks remain paused.

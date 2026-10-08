@@ -2,7 +2,7 @@
 #define ABCD_SOURCE_FLOW_CONSTANTS_H_
 #include "flow_liveness.h"
 namespace abcd::source {
-struct FlowPrimitiveValue {TreeLiteral value;std::optional<ExprId> literal;};
+struct FlowPrimitiveValue {TreeLiteral value;std::optional<PrimitiveId> literal;};
 struct FlowBindingValue {SymbolId binding;};
 struct UnknownFlowValue {};
 using FlowDefinitionValue=std::variant<UnknownFlowValue,FlowPrimitiveValue,FlowBindingValue>;

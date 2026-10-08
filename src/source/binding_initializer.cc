@@ -88,6 +88,7 @@ class Initializers {
       return Finish();
     }
     IndexLiteralTexts();
+    IndexPrimitiveValues();
     for (auto symbol : tree_.closure_captures) { budget_.Step(); uses_[symbol.value].escaped = true; }
     for (const auto& alias : tree_.modules) {
       budget_.Step(); uses_[alias.symbol.value].escaped = true; uses_[alias.symbol.value].module_alias = true;
@@ -283,8 +284,8 @@ class Initializers {
   struct ExpressionFacts {
     std::vector<std::optional<SymbolId>> bindings;
     // Primitive normal-result identity is independent of retained evaluation.
-    // IDs always denote original TreeLiteral nodes, never a replayed expression.
-    std::vector<std::optional<ExprId>> literals;
+    // IDs denote values in the immutable primitive pool, not occurrences.
+    std::vector<std::optional<PrimitiveId>> literals;
     // Effective expression identity after the current replacement plan. Each
     // consumer uses this shared normalization instead of chasing old syntax.
     std::vector<ExprId> roots;
@@ -1126,15 +1127,24 @@ class Initializers {
       previous=id;
     }
   }
-  TreeLiteral LiteralValue(ExprId literal) const {
-    auto value=std::get<TreeLiteral>(tree_.expressions[literal.value].expression);
-    if(auto* text=std::get_if<TextId>(&value))*text=literal_texts_[text->value];
-    return value;
+  void IndexPrimitiveValues() {
+    budget_.Array(expression_primitives_,tree_.expressions.size());
+    std::size_t count=1;  // ECMA-262 empty lexical declaration initializes undefined.
+    for(const auto& expression:tree_.expressions){budget_.Step();count+=std::holds_alternative<TreeLiteral>(expression.expression);}
+    RequireTree(count<=std::numeric_limits<std::uint32_t>::max(),TreeStructureError::kResourceLimit);
+    budget_.Array(plan_.primitives,count);
+    std::uint32_t next=0;undefined_value_={next++};plan_.primitives[undefined_value_.value]=UndefinedLiteral{};
+    for(std::size_t i=0;i<tree_.expressions.size();++i) {
+      budget_.Step();if(const auto* literal=std::get_if<TreeLiteral>(&tree_.expressions[i].expression)) {
+        const PrimitiveId id{next++};expression_primitives_[i]=id;auto value=*literal;
+        if(auto* text=std::get_if<TextId>(&value))*text=literal_texts_[text->value];
+        plan_.primitives[id.value]=value;
+      }
+    }
   }
-  bool SameLiteral(ExprId left,ExprId right) const {
-    return SamePrimitiveValue(LiteralValue(left),LiteralValue(right));
-  }
-  bool LiteralTruth(ExprId literal) const {
+  const TreeLiteral& LiteralValue(PrimitiveId literal) const {return plan_.primitives[literal.value];}
+  bool SameLiteral(PrimitiveId left,PrimitiveId right) const {return SamePrimitiveValue(LiteralValue(left),LiteralValue(right));}
+  bool LiteralTruth(PrimitiveId literal) const {
     return std::visit([&](const auto& value) {
       using T=std::decay_t<decltype(value)>;
       if constexpr(std::is_same_v<T,UndefinedLiteral>||std::is_same_v<T,NullLiteral>)return false;
@@ -1142,10 +1152,10 @@ class Initializers {
       else if constexpr(std::is_same_v<T,NumberLiteral>) {
         const auto number=std::bit_cast<double>(value.bits);return number!=0&&!std::isnan(number);
       } else {static_assert(std::is_same_v<T,TextId>);return !tree_.texts[value.value].empty();}
-    },std::get<TreeLiteral>(tree_.expressions[literal.value].expression));
+    },LiteralValue(literal));
   }
-  bool LiteralNullish(ExprId literal) const {
-    const auto& value=std::get<TreeLiteral>(tree_.expressions[literal.value].expression);
+  bool LiteralNullish(PrimitiveId literal) const {
+    const auto& value=LiteralValue(literal);
     return std::holds_alternative<UndefinedLiteral>(value)||std::holds_alternative<NullLiteral>(value);
   }
   ExpressionFacts ComputeExpressions(std::span<const std::uint8_t> initialized) const {
@@ -1215,7 +1225,7 @@ class Initializers {
       // logical selection uses ToBoolean/nullish, never user coercion. Unknown
       // operators/calls/updates/suspensions retain no primitive fact. Effects,
       // initialization and source ownership are still analyzed separately.
-      if(std::holds_alternative<TreeLiteral>(node))literal=id;
+      if(std::holds_alternative<TreeLiteral>(node))literal=expression_primitives_[id.value];
       else if(const auto* sequence=std::get_if<SequenceExpr>(&node))literal=facts.literals[sequence->right.value];
       else if(const auto* choice=std::get_if<ConditionalExpr>(&node)) {
         const auto a=facts.literals[choice->consequent.value],b=facts.literals[choice->alternate.value];
@@ -1417,7 +1427,7 @@ class Initializers {
         budget_.Step();const auto& definition=flow.definitions[i];
         switch(definition.kind) {
           case FlowDefinitionKind::kUndefined:case FlowDefinitionKind::kUndefinedStore:
-            values[i]=FlowPrimitiveValue{UndefinedLiteral{},{}};break;
+            values[i]=FlowPrimitiveValue{LiteralValue(undefined_value_),undefined_value_};break;
           case FlowDefinitionKind::kAssignment:case FlowDefinitionKind::kInitializer:
             if(definition.value) {
               const auto value=*definition.value;
@@ -1444,7 +1454,7 @@ class Initializers {
     for(const auto& use:uses_){budget_.Step();candidate|=use.private_storage&&use.declaration&&!use.escaped;}
     if(!candidate)return;
     const auto& values=CurrentConstants();
-    std::vector<std::optional<ExprId>> proposed;budget_.Array(proposed,uses_.size());
+    std::vector<std::optional<PrimitiveId>> proposed;budget_.Array(proposed,uses_.size());
     for(std::size_t i=0;i<uses_.size();++i) {
       budget_.Step();const auto& use=uses_[i];
       if(use.private_storage&&use.declaration&&!use.escaped&&values.values[i])proposed[i]=values.values[i]->literal;
@@ -1452,7 +1462,7 @@ class Initializers {
     // Read substitution only. DeadDefinitions/InitialValues/Bindings decide
     // writes, required evaluations and lexical completion on fresh facts.
     for(std::size_t i=0;i<proposed.size();++i) {
-      budget_.Step();if(!proposed[i]||plan_.literals[i]==proposed[i])continue;
+      budget_.Step();if(!proposed[i]||(plan_.literals[i]&&SameLiteral(*plan_.literals[i],*proposed[i])))continue;
       BeginCommit();plan_.literals[i]=proposed[i];
     }
   }
@@ -1761,6 +1771,8 @@ class Initializers {
   std::vector<SourceRegion> source_regions_;
   std::vector<std::optional<SourcePosition>> source_occurrences_;
   std::vector<TextId> literal_texts_;
+  std::vector<std::optional<PrimitiveId>> expression_primitives_;
+  PrimitiveId undefined_value_;
   std::vector<std::optional<StmtId>> expression_owners_;
   std::vector<std::uint8_t> expression_projections_;
   std::vector<std::optional<SymbolId>> constant_heads_, constant_next_;

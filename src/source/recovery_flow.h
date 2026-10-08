@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_RECOVERY_FLOW_H_
 #include "tree_structure.h"
 #include "expression_observation.h"
+#include "primitive_value.h"
 #include <type_traits>
 namespace abcd::source {
 struct FlowPoint { std::uint32_t value = 0; auto operator<=>(const FlowPoint&) const = default; };
@@ -118,7 +119,8 @@ struct FlowEdge {
 // this view must not become a second source of truth for new optimizations.
 struct LegacyFlowProjection {
   std::span<const std::optional<SymbolId>> aliases;
-  std::span<const std::optional<ExprId>> literals, replacements;
+  std::span<const std::optional<PrimitiveId>> literals;
+  std::span<const std::optional<ExprId>> replacements;
   std::span<const std::uint8_t> omitted;
   std::span<const ExpressionEvaluation> evaluations;
   std::span<const std::uint8_t> normal_stores;

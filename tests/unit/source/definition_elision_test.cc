@@ -162,7 +162,14 @@ std::uint64_t EmptyBinding(unsigned form,unsigned count,bool reverse,bool emit) 
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
   const auto result=PlanBindingInitializers(tree,loops,nullish);test::Check(std::holds_alternative<BindingInitializers>(result));
   const auto& plan=std::get<BindingInitializers>(result);
-  test::Check(bool(plan.omitted[declaration.value])==(form==0||form==1));
+  // The nested shadow leaves the outer initialized undefined value intact.
+  // A later assignment whose result is forwarded has no subsequent target
+  // read; after dead-write cleanup the initial read also has a known value.
+  // Updates and source-owned locals retain their separate retention proof.
+  const bool omitted=form==0||form==1||form==2||form==4;
+  if(bool(plan.omitted[declaration.value])!=omitted)
+    std::cerr<<"empty binding form="<<form<<" count="<<count<<" reverse="<<reverse<<'\n';
+  test::Check(bool(plan.omitted[declaration.value])==omitted);
   if(inner)test::Check(plan.omitted[inner->value]);
   if(count==0) {
     test::Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes,plan.work})));

@@ -443,7 +443,7 @@ void SourceEvents() {
   tree.children={{1},{2},{3},{4},{5},{6}};
   Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
   std::vector<std::optional<SymbolId>> aliases(tree.symbols.size());
-  std::vector<std::optional<ExprId>> literals(tree.symbols.size()),replacements(tree.expressions.size());
+  std::vector<std::optional<PrimitiveId>> literals(tree.symbols.size());std::vector<std::optional<ExprId>> replacements(tree.expressions.size());
   std::vector<std::uint8_t> omitted(tree.statements.size()),normal(tree.expressions.size());
   std::vector<ExpressionEvaluation> evaluations(tree.expressions.size(),ExpressionEvaluation::kRequired);
   const LegacyFlowProjection projection{aliases,literals,replacements,omitted,evaluations,normal};
@@ -792,7 +792,7 @@ void DeclarationValues() {
       {DeclarationStmt{{2},ExprId{1}},{0}},{ReturnStmt{ExprId{2}},{0}}};tree.children={{1},{2},{3}};
   Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
   std::vector<std::optional<SymbolId>> aliases(3),storage(3);
-  std::vector<std::optional<ExprId>> literals(3),replacements(3);
+  std::vector<std::optional<PrimitiveId>> literals(3);std::vector<std::optional<ExprId>> replacements(3);
   std::vector<std::uint8_t> omitted(4),normal(3),private_bindings{0,1,1};
   std::vector<ExpressionEvaluation> evaluations(3,ExpressionEvaluation::kRequired);
   std::vector<std::optional<BindingInitializer>> initializers(4);
@@ -859,7 +859,7 @@ void ConstantEquations() {
       flow.bindings[i].kind=BindingKind::kCompilerTemporary;flow.bindings[i].exposure=FlowBindingExposure::kPrivate;
       seeds[i]=code%4;code/=4;
       if(seeds[i]==3)add(i,UnknownFlowValue{});
-      else if(seeds[i])add(i,FlowPrimitiveValue{IntegerLiteral{static_cast<std::int32_t>(seeds[i]-1)},ExprId{i}});
+      else if(seeds[i])add(i,FlowPrimitiveValue{IntegerLiteral{static_cast<std::int32_t>(seeds[i]-1)},PrimitiveId{i}});
     }
     for(unsigned source=0;source<3;++source)for(unsigned target=0;target<3;++target)
       if(mask&(1U<<(source*3+target)))add(target,FlowBindingValue{id(source)});
@@ -895,7 +895,7 @@ void ConstantEquations() {
       flow.bindings[i].kind=BindingKind::kCompilerTemporary;flow.bindings[i].exposure=FlowBindingExposure::kPrivate;
       add(i,FlowDefinitionKind::kAssignment,FlowBindingValue{{(i+1)%count}});
     }
-    add(0,FlowDefinitionKind::kInitializer,FlowPrimitiveValue{IntegerLiteral{42},ExprId{0}});
+    add(0,FlowDefinitionKind::kInitializer,FlowPrimitiveValue{IntegerLiteral{42},PrimitiveId{0}});
     add(0,FlowDefinitionKind::kUndefined,FlowPrimitiveValue{UndefinedLiteral{},{}},false);
     auto result=std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,values));
     for(const auto& value:result.values)Check(value&&std::get<IntegerLiteral>(value->value).value==42);
@@ -903,16 +903,20 @@ void ConstantEquations() {
     Check(std::holds_alternative<FlowConstants>(AnalyzeFlowConstants(flow,live,values,{result.allocated_bytes,result.work})));
     Check(std::get<TreeStructureError>(AnalyzeFlowConstants(flow,live,values,{result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
     Check(std::get<TreeStructureError>(AnalyzeFlowConstants(flow,live,values,{result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);
+    const auto unknown=[&] {
+      const auto analyzed=AnalyzeFlowConstants(flow,live,values);
+      for(const auto& value:std::get<FlowConstants>(analyzed).values)Check(!value);
+    };
     live.live_definitions.back()=1;
-    for(const auto& value:std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,values)).values)Check(!value);
+    unknown();
     live.live_definitions.back()=0;
     flow.bindings[0].exposure=FlowBindingExposure::kObservable;
-    for(const auto& value:std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,values)).values)Check(!value);
+    unknown();
     flow.bindings[0].exposure=FlowBindingExposure::kPrivate;live.live_in.push_back({flow.entry,{0}});
-    for(const auto& value:std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,values)).values)Check(!value);
+    unknown();
     live.live_in.clear();add(0,FlowDefinitionKind::kUpdate,UnknownFlowValue{},false);
     // An otherwise dead successful write still supplies normal-result values.
-    for(const auto& value:std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,values)).values)Check(!value);
+    unknown();
   }
   Check(large<small*3);std::cout<<"independent constant equations 32768\n";
 }

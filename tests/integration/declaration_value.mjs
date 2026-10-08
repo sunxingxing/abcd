@@ -60,6 +60,11 @@ function reference(row) {
         66:'(report(input),current)?input:seed()',67:'(report(input),current)?input:seed()',73:'++current'
       })[form]??((form===22||form===23)?'seed()':form===16?'(report(input),42)':form===48?'(report(input),current)':'current'),form===6));
   }
+  if(form>=74) {
+    const value=form===75?'(report(input),current)??input':form===76?'(report(input),current)?seed():input':form===77?'(report(input),current)':'current';
+    body=(form===79?'report(current);':'')+'let current;'+(form===80?'if(flag){current=input;}':'')+initialize('scratch',value);
+    if(form===78)body+='while(flag()){current=scratch;scratch=current;}';
+  }
   if(form===72)body+='while(flag()){current=scratch;scratch=current;}';
   if(form===5||form===15)body+='++scratch;current=scratch;';
   if(form===13)body+='if(flag){++scratch;current=scratch;}';
@@ -87,7 +92,7 @@ function observe(fn,row,input,fault,throwSeed,coercion) {
     else event('report',value);
   };
   if(row.form===49)Object.defineProperty(seed,'value',{set(value){assert.equal(this,seed);event('setter',value);}});
-  const flag=(row.form===14||row.form===21||(row.form>=70&&row.form<=72))?()=>{event('iteration',iterations);return iterations++<(row.form>=70&&coercion?0:2);}:!coercion;
+  const flag=(row.form===14||row.form===21||((row.form>=70&&row.form<=72)||row.form===78))?()=>{event('iteration',iterations);return iterations++<(row.form>=70&&coercion?0:2);}:!coercion;
   try{ returned=fn(input,seed,report,flag);if(row.form===11){assert.equal(returned,object);returned=token;} }
   catch(error){thrown=error;}
   if(thrown instanceof ReferenceError)thrown='ReferenceError';
@@ -104,7 +109,7 @@ for(const row of rows) {
     }
   if(row.form<=3||row.form===16||row.form===17||row.form===21||row.form===28||
       (row.form>=29&&row.form<58&&![30,33,39,41].includes(row.form))||
-      (row.form>=60&&row.form<68&&![65,67].includes(row.form))||[68,70,72].includes(row.form))assert.doesNotMatch(row.source,/\b(?:current|scratch)\b/);
+      (row.form>=60&&row.form<68&&![65,67].includes(row.form))||[68,70,72,74,75,76,77,78].includes(row.form))assert.doesNotMatch(row.source,/\b(?:current|scratch)\b/);
   if(row.form===5) {
     const ast=parseJavaScript(row.source);const declarations=[];
     const walk=node=>{if(!node||typeof node!=='object')return;if(node.type==='VariableDeclaration')declarations.push(...node.declarations);for(const value of Object.values(node))if(Array.isArray(value))value.forEach(walk);else if(value&&typeof value==='object')walk(value);};

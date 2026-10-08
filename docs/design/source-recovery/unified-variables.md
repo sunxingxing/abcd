@@ -1492,3 +1492,49 @@ multiple loop iterations, self copies, a grounded mutual-copy cycle and a prefix
 update counterexample. Native declaration and empty-declaration/store encodings,
 arena reversal, semantic execution, 200/201/geometric sizes and exact/short
 budgets remain required. Status.md records actual verification and record scope.
+
+
+## Source primitive identity independent of AST occurrence (rules228)
+
+The rules227 inability to materialize known lexical undefined without an original
+TreeLiteral is retired. BindingInitializers now owns one immutable pool of typed
+TreeLiteral values; PrimitiveId denotes a value in that owner's pool, not an
+ExprId. Initialization's implicit undefined and input primitive literals enter
+this pool once before pass execution. The adapter preserves number kind/bits and
+canonical UTF-16 identities. The expression-to-primitive index is private to
+preparation; the published plan owns values without changing the canonical AST.
+
+ExpressionFacts, FlowPrimitiveValue and the committed read plan use this same
+identity domain. CurrentConstants supplies the implicit value ID for undefined
+initialization/store definitions. Existing sparse definition joins and independent
+write/initialization/binding cleanup remain unchanged. A read can materialize the
+proved value even if input contains no literal expression. Conditional/logical
+result selection consumes its primitive truth/nullish facts through the same
+postorder analysis, so later Aliases can use a selected parameter value while
+preserving the original condition/effects. No undefined syntax pattern, loop
+shape, producer list or fixed block condition selects recovery.
+
+The value pool is immutable across projection revisions. Fact caches still belong
+to ProjectionFacts and are invalidated before the first commit. A Constants
+proposal compares semantic primitive values rather than occurrence/ID equality;
+choosing another equal pool entry cannot falsely report a semantic change.
+The established revision-driven pass dependencies remain intact. Pool creation
+is input adaptation before passes, not a side effect of expression analysis.
+
+Printing consumes the committed value and normal operator grouping. It performs
+no analysis, appends no AST nodes and preserves each read's original source
+range. Class-name analysis and RecoveryFlow treat that read as the same committed
+value substitution and do not invent a binding reference. RHS evaluation,
+exception order, TDZ/availability, dynamic update results, observable/captured
+cells and source-local identity retain their independent obligations. Primitive
+pool publication does not license removing initialization before an early read.
+
+Tests add zero-literal-input declarations, copy/loop cycles, sequence effects,
+nullish/conditional parameter selection, early TDZ and unknown branch writes,
+with both declaration/copy encodings and arena reversal. The existing source
+range, effects, numeric/text and 200/201/geometric budget tests remain required.
+A compiler warning also exposed four test-only ranges obtained through references
+to temporary variant results; the test now keeps the owning variant alive before
+iterating, so the negative graph cases are valid C++20 evidence. This does not
+complete original IR correspondence, all lifetime/capture/unwind reconstruction,
+per-read value precision or global dependency-driven convergence.

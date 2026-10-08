@@ -3,6 +3,9 @@
 #include "abcd/source/source_tree.h"
 #include <type_traits>
 namespace abcd::source {
+// Identity in one immutable source primitive pool, independent of expression
+// ownership. Implicit initialization values need no original literal node.
+struct PrimitiveId {std::uint32_t value=0;auto operator<=>(const PrimitiveId&)const=default;};
 // Semantic adapter canonicalizes UTF-16 text identities within one input.
 // Preserve numeric representation/bits; this is a value join, not JS equality.
 inline bool SamePrimitiveValue(const TreeLiteral& a,const TreeLiteral& b) {

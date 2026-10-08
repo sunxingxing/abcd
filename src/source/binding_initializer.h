@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_BINDING_INITIALIZER_H_
 #include "tree_structure.h"
 #include "expression_observation.h"
+#include "primitive_value.h"
 namespace abcd::source {
 struct LoopSyntax;
 struct NullishSyntax;
@@ -32,9 +33,12 @@ struct BindingInitializers {
   // LoopStmt indexed: first declarator in its existing ordered entry program.
   // Earlier effects remain before the loop, in their original handler/scope.
   std::vector<std::optional<std::uint32_t>> loop_declarations;
-  // SymbolId indexed: original TreeLiteral occurrence for a proven immutable
-  // primitive value. Stores and reads keep their own original source ranges.
-  std::vector<std::optional<ExprId>> literals;
+  // Immutable typed primitive values. The original AST and evaluation remain
+  // untouched; each substituted read retains its own source range and grammar.
+  std::vector<TreeLiteral> primitives;
+  // SymbolId indexed: proven value identity in this pool, not an ExprId whose
+  // original occurrence would be replayed. Includes lexical undefined.
+  std::vector<std::optional<PrimitiveId>> literals;
   // SymbolId indexed: retained immutable producer storage for an elided copy.
   std::vector<std::optional<SymbolId>> aliases;
   // Mutable storage coalescing is separate from immutable value aliases.
@@ -84,9 +88,10 @@ struct BindingInitializers {
 // Uncaptured loop-entry bindings may use native for let. The same
 // first-store and confinement proof covers initializer/test/body/update and
 // rejects observations after exit. Source/cell captures never change lifetime.
-// Single-store eligible bindings form a sparse constant lattice: primitive
-// TreeLiteral definitions propagate through immutable copies. Allocations,
-// calls/getters, mutable values and captured/source bindings retain storage.
+// Eligible bindings form a sparse constant lattice over successful definitions:
+// primitive values propagate through immutable copies, including implicit
+// lexical initialization. Value substitution never removes writes/effects.
+// Allocations, calls/getters, mutable values and captured/source bindings retain storage.
 // Literal substitution keeps each read's origin and its actual parent grammar.
 // Other immutable copies may share a retained producer after common lexical
 // resolution at each remaining read; a required copy propagates upstream only
