@@ -24,6 +24,45 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则236，共同名字事实与实际引用可见性
+
+- AnalyzeTreeSpellings复用同一spelling-group/scope-activation模型，
+  一次发布最近同名外层绑定与唯一性偏好。语法adapter将遮蔽scope
+  映射到共同SourceRegion；RecoveryFlow验证并发布，复用时清空。
+  Coalesce自建TreeScopeCheck/重新统计唯一性的路径已退出。
+- 全部干涉组构造结束后，按组/位置排序当前真实引用；每个候选
+  遮蔽范围做一次二分查询。范围落在引用min/max之间却无实际
+  引用时仍可选择该名字。唯一性继续只是style偏好，不能证明
+  可见性；没有新样本/序列/同块/邻接/固定图形状准入。
+- grouping仍只决定干涉；最终name、root/member完成支配、词法
+  lifetime、cell、初始值及效果证明独立保留。原始名字事实不因
+  计划revision改变，实际引用从fresh共同图读取；提案先验证，
+  首次commit先失效事实，提交只使用自有ID。没有新增pass轮次。
+- 新源码双重同名/内层观察反例RED在1.18秒失败；初版聚焦3/3
+  16.75秒通过。共同唯一性迁移和加强后3/3在16.60秒通过：独立
+  祖先名字oracle、9360小型暴力候选对照、无引用遮蔽空洞、反向
+  IDs/affinities/arenas、200/201/400/800及exact/short预算；新源码
+  执行及错误名字/更新mutation通过。
+- 名字排序O(B log B)，scope发布O(Q+B)；组内引用索引额外
+  O(R log R+H log R+B)，空间O(R+H+B)，H<=B。没有per-variable
+  CFG/祖先/整函数扫描；无shadow时跳过引用索引。全部计入原预算。
+  这是资源计数与几何证据，不能替代已暂停的过程RSS验证。
+- 最终29目标build168.74秒、固定导出2.83秒成功：19records仍
+  10完整/0部分/9无module，10语法通过，全部源码字节等于235；
+  原预算和language_numeric_constructors_v1保持，输入SHA未改变。
+  证据在build/stage-one/name-scope-verification。
+- 最终既定59/59测试在439.23秒通过，combined-coverage.json确认
+  名称与原选择完全一致。存储源码365/53492比较/26错误变体；
+  声明2568/513600/100、初始化2004/482752/368、循环276/13976/68；
+  9360独立名字候选、共同调度器反例、原model/ABC布局变体及
+  既定真实callback/rich-text/progressbar/EntryAbility对照均通过。
+  固定输入SHA256前后为854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e。
+- 原始scope的遮蔽不等于重写后native-for名字可见性；声明省略/
+  搬移后的完整名字模型仍有精度缺口，由最终name与projected
+  lifetime校验保护。原IR/SSA、activation/capture/finally、完整
+  cell/value可行代表及增量依赖收敛仍开放。统一变量里程碑和
+  阶段一Goal active，既定暂停范围保持。
+
 ### 2026-10-08：规则235，原始与恢复后绑定共享词法范围
 
 - 在已有唯一语法扫描中发布ScopeId到SourceRegionId索引，原始

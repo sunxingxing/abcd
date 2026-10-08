@@ -420,3 +420,16 @@ semantic mutants cover the precision correction with layout/scaling/budget check
 No new production shape admission. Status.md records actual selected evidence;
 originalIR/SSA/full lifetime/capture/finally/complete feasibility/global convergence
 remain open. Unified-variable milestone and stage-one Goal remain active.
+
+Task 2/4 implementation substep (rules236): shared canonical spelling facts
+publish nearest shadows and uniqueness through RecoveryFlow. Coalesce's independent
+uniqueness census retires. Final interference groups index actual reference positions;
+candidate shadow regions use binary-search interval queries rather than per-variable
+walks or bounding-box rejection. Group interference construction and independent
+final name/init/lifetime/cell/value proofs remain. Fresh projection/atomic proposal-
+commit contracts and existing pass order remain; no extra round/retry is introduced.
+Independent source active/harmless shadows, real wrong-name/update mutations, tiny
+name/candidate oracles and hole/reordered/scaling/budget cases cover the implementation.
+General pass convergence needs dependency/incremental cost ownership and remains
+open along with originalIR/SSA/full lifetime/capture/finally/rewritten visibility.
+Status.md records selected acceptance; unified-variable milestone/stage-one Goal active.

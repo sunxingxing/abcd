@@ -201,6 +201,17 @@ class Initializers {
       budget_.Step(); const auto& observation = projection_observations_[i];
       ObserveContainer(uses_[observation.symbol.value], lexical_[observation.owner.value]);
     }
+    // Shared spelling activation publishes nearest-shadow facts once. These
+    // canonical names match final reference resolution; projected lifetimes
+    // and initialization remain separate current-revision facts.
+    auto spelling=AnalyzeTreeSpellings(tree_,budget_);
+    unique_spellings_=std::move(spelling.unique);
+    const auto& shadowed=spelling.shadowed;
+    budget_.Array(source_shadows_,shadowed.size());std::size_t shadow_count=0;
+    for(std::size_t i=0;i<shadowed.size();++i) {
+      budget_.Step();if(shadowed[i])source_shadows_[shadow_count++]={*shadowed[i],source_scope_regions_[tree_.symbols[i].scope.value]};
+    }
+    source_shadows_.resize(shadow_count);
     // Normalize redundant writes before dead-definition analysis chooses the
     // retained producer; both passes preserve the original RHS evaluation.
     RunPass(Pass::kStoredResults);
@@ -776,7 +787,7 @@ class Initializers {
     const LegacyFlowProjection projection{plan_.aliases,plan_.literals,replacements,
         omitted,expressions.evaluations,expressions.normal_stores,plan_.statements,private_bindings,
         plan_.storage,plan_.undefined_stores,plan_.declaration_values,plan_.declaration_completions,
-        {source_regions_,source_occurrences_,source_bindings},plan_.read_literals,transports,transported_reads};
+        {source_regions_,source_occurrences_,source_bindings,source_shadows_,unique_spellings_},plan_.read_literals,transports,transported_reads};
     auto built=BuildRecoveryFlow(tree_,projection,budget_.Remaining(),std::move(storage));
     if(const auto* error=std::get_if<TreeStructureError>(&built))throw *error;
     auto flow=std::get<RecoveryFlow>(std::move(built));
@@ -969,12 +980,11 @@ class Initializers {
     budget_.Admit(facts.allocated_bytes, 1); budget_.Step(facts.work);
     const auto& initialization_order=CurrentInitializations();
     std::vector<StorageBinding> bindings;budget_.Array(bindings,uses_.size());
-    TreeScopeCheck spellings(tree_,budget_);
     for(std::size_t i=0;i<bindings.size();++i) {
       budget_.Step();const SymbolId symbol{static_cast<std::uint32_t>(i)};
       const auto& site=declaration_sites_[i];
       bindings[i].eligible=eligible(symbol);
-      bindings[i].unique_spelling=spellings.UniqueSpelling(symbol);
+      bindings[i].unique_spelling=flow.bindings[i].unique_spelling;
       bindings[i].native_declaration=site&&plan_.statements[site->statement.value].has_value();
       if(const auto region=flow.BindingRegion(symbol))
         bindings[i].binding_region=flow.source_regions[region->value];
@@ -989,6 +999,13 @@ class Initializers {
     // Representative choice consumes the same actual locations and completion
     // dominance as the later lifetime/initialization proofs. Aggregate each
     // coordinate domain once; do not walk a graph per slot or mix the domains.
+    std::vector<StorageReference> name_references;budget_.Array(name_references,flow.source_shadows.empty()?0:flow.references.size());
+    std::size_t located=0;
+    std::vector<StorageShadow> shadows;budget_.Array(shadows,flow.source_shadows.size());
+    for(std::size_t i=0;i<shadows.size();++i) {
+      budget_.Step();const auto& shadow=flow.source_shadows[i];
+      shadows[i]={shadow.binding,shadow.region?std::optional{flow.source_regions[shadow.region->value]}:std::nullopt};
+    }
     for(const auto& reference:flow.references) {
       budget_.Step();auto& binding=bindings[reference.binding.value];
       const auto completion=initialization_order.order.tree.nodes[reference.point.value].begin;
@@ -1000,13 +1017,14 @@ class Initializers {
       }
       const auto position=reference.owner?flow.source_occurrences[reference.owner->value]:std::nullopt;
       if(!position){binding.unlocated_reference=true;continue;}
+      if(!flow.source_shadows.empty())name_references[located++]={reference.binding,*position};
       RequireTree(position->value<std::numeric_limits<std::size_t>::max(),TreeStructureError::kResourceLimit);
       const SourceRegion region{*position,{position->value+1}};
       if(binding.reference_region)binding.reference_region=SourceRegion{
           std::min(binding.reference_region->first,region.first),std::max(binding.reference_region->last,region.last)};
       else binding.reference_region=region;
     }
-    auto coalesced=PlanStorageCoalescing(facts,bindings,budget_.Remaining());
+    auto coalesced=PlanStorageCoalescing(facts,bindings,budget_.Remaining(),{shadows,std::span<const StorageReference>{name_references}.first(located)});
     if(const auto* error=std::get_if<TreeStructureError>(&coalesced))throw *error;
     auto delta=std::get<StorageCoalescing>(std::move(coalesced));
     budget_.Admit(delta.allocated_bytes,1);budget_.Step(delta.work);
@@ -1843,6 +1861,8 @@ class Initializers {
   std::vector<std::optional<StmtId>> statement_owners_;
   std::vector<ScopeId> statement_scopes_;
   std::vector<SourceRegion> source_regions_;
+  std::vector<SourceBindingShadow> source_shadows_;
+  std::vector<std::uint8_t> unique_spellings_;
   std::vector<std::optional<SourceRegionId>> source_scope_regions_;
   std::vector<std::optional<SourcePosition>> source_occurrences_;
   std::vector<TextId> literal_texts_;

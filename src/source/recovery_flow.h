@@ -35,10 +35,15 @@ struct UnmodeledBindingScope {};
 // and source spelling remain separate obligations. Missing projection facts
 // cannot authorize access to a narrowed declaration.
 using SourceBindingScope=std::variant<OriginalBindingScope,ProjectedBindingScope,UnmodeledBindingScope>;
+// A canonical inner scope shadows this enclosing binding's source spelling.
+// Missing region is an explicit precision gap; this fact never merges cells.
+struct SourceBindingShadow {SymbolId binding;std::optional<SourceRegionId> region;};
 struct SourceScopeProjection {
   std::span<const SourceRegion> regions;
   std::span<const std::optional<SourcePosition>> occurrences;
   std::span<const SourceBindingScope> bindings;
+  std::span<const SourceBindingShadow> shadows;
+  std::span<const std::uint8_t> unique_spellings;
 };
 struct FlowBinding {
   BindingKind kind;
@@ -46,6 +51,7 @@ struct FlowBinding {
   std::optional<StmtId> declaration;
   std::optional<FlowDefinitionKind> initialization;
   SourceBindingScope scope=OriginalBindingScope{};
+  bool unique_spelling=true;
 };
 enum class FlowReferenceKind : std::uint8_t { kRead, kWrite };
 using FlowReferenceSite=std::variant<ExprId,StmtId>;
@@ -166,6 +172,7 @@ struct RecoveryFlow {
   std::vector<FlowValueUse> value_uses;
   std::vector<FlowBinding> bindings;
   std::vector<SourceRegion> source_regions;
+  std::vector<SourceBindingShadow> source_shadows;
   std::vector<std::optional<SourcePosition>> source_occurrences;
   FlowPoint entry, terminal;
   std::size_t allocated_bytes = 0;

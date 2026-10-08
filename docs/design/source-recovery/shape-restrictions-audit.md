@@ -2613,3 +2613,24 @@ sibling shadows, reversed IDs/arenas, missing facts, adverse update/scope mutati
 and 200/201/geometric sizes. Unlocated original scopes preserve the existing identity
 contract, not a new lifetime theorem. Full activation/capture/finally, original
 IR/SSA, exhaustive feasible representative choice and global convergence remain gaps.
+
+### 2026-10-08: rules236, shared actual name visibility before representative choice
+
+Retired decision path: Coalesce independently constructs TreeScopeCheck and uses
+global unique-spelling counts before actual names are validated after selecting a
+representative. Unique spelling now comes from the shared canonical spelling facts,
+and direct shadow regions query actual current references of each finalized group.
+Global uniqueness remains only a style tie-break; it cannot approximate visibility.
+A candidate with a shadow containing a group use ranks below a name covering all
+uses. A shadow hole containing no use does not block it merely because it intersects
+the bounding extent. No sample/sequence/same-block/adjacency/fixed-shape admission.
+
+Storage grouping still owns interference only. Final name resolution, completion,
+lexical lifetime, cell identity and initial-value/effect proofs remain independent;
+missing regions are an explicit preference precision gap. Canonical elided shadows
+remain conservative because final name resolution still uses the checked canonical
+scope tree. No new whole-function round or incremental partial-acceptance retry.
+Tests use two independently shadowed spellings, active versus harmless scopes,
+actual-use holes, ancestry/brute-force oracles, wrong-name/update mutants, reverse
+arenas/IDs and 200/201/geometric/exact-short inputs. Original IR/SSA, rewritten
+binding visibility, full activation/capture/finally and global convergence remain.

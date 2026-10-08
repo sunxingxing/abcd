@@ -78,6 +78,7 @@ class FlowBuilder {
     const auto& scopes=projection_.source_scopes;
     RequireTree(scopes.occurrences.empty() || scopes.occurrences.size()==tree_.statements.size(),Error::kOwnership);
     RequireTree(scopes.bindings.empty() || scopes.bindings.size()==tree_.symbols.size(),Error::kOwnership);
+    RequireTree(scopes.unique_spellings.empty() || scopes.unique_spellings.size()==tree_.symbols.size(),Error::kOwnership);
     Resize(result.source_regions,scopes.regions.size());std::copy(scopes.regions.begin(),scopes.regions.end(),result.source_regions.begin());
     Resize(result.source_occurrences,scopes.occurrences.size());std::copy(scopes.occurrences.begin(),scopes.occurrences.end(),result.source_occurrences.begin());
     Resize(result.bindings,tree_.symbols.size());
@@ -85,6 +86,7 @@ class FlowBuilder {
       budget_.Step();result.bindings[i]={tree_.symbols[i].kind,
           !projection_.private_bindings.empty() && projection_.private_bindings[i]
               ? FlowBindingExposure::kPrivate : FlowBindingExposure::kObservable};
+      if(!scopes.unique_spellings.empty())result.bindings[i].unique_spelling=scopes.unique_spellings[i]!=0;
       if(!scopes.bindings.empty()) {
         result.bindings[i].scope=scopes.bindings[i];
         if(const auto region_id=result.BindingRegion(SymbolId{static_cast<std::uint32_t>(i)})) {
@@ -92,6 +94,15 @@ class FlowBuilder {
           const auto& region=result.source_regions[region_id->value];
           RequireTree(!scopes.occurrences.empty()&&region.first<region.last,Error::kOwnership);
         }
+      }
+    }
+    copy(result.source_shadows,scopes.shadows);
+    for(const auto& shadow:result.source_shadows) {
+      budget_.Step();RequireTree(shadow.binding.value<result.bindings.size(),Error::kOwnership);
+      if(shadow.region) {
+        RequireTree(shadow.region->value<result.source_regions.size(),Error::kOwnership);
+        const auto region=result.source_regions[shadow.region->value];
+        RequireTree(!scopes.occurrences.empty()&&region.first<region.last,Error::kOwnership);
       }
     }
     for(const auto& definition:result.definitions) {

@@ -12,7 +12,7 @@ struct ConflictOrder {
 class Coalescing {
  public:
   Coalescing(const BindingInterference& facts,std::span<const StorageBinding> bindings,
-      analysis::SemanticBudget allowance):facts_(facts),bindings_(bindings),budget_(allowance),
+      analysis::SemanticBudget allowance,StorageNames names):facts_(facts),bindings_(bindings),names_(names),budget_(allowance),
       memory_(budget_),neighbors_(&memory_) {}
   StorageCoalescing Run() {
     budget_.Array(parents_,bindings_.size());budget_.Array(sizes_,bindings_.size());
@@ -45,6 +45,7 @@ class Coalescing {
       regions_[a.value]=region;unlocated_[a.value]=unlocated;
       reachable_[a.value]=Join(reachable_[a.value],reachable_[b.value]);
     }
+    IndexNames();
     // Rank every member against its FINAL group. Covers can change when a
     // later union extends observations; ranking only previous winners would
     // lose a now-useful slot and make recovery depend on affinity order.
@@ -82,13 +83,45 @@ class Coalescing {
     return !references||(binding.initialized_region&&binding.initialized_region->first<=references->first&&
         binding.initialized_region->last>=references->last);
   }
+  void IndexNames() {
+    // Sort current observations by final interference group. Each nearest
+    // spelling shadow asks one interval query, never every group member/use.
+    struct Observation {SymbolId group;SourcePosition position;};
+    struct Range {std::size_t first=0,last=0;};
+    budget_.Array(name_blocked_,bindings_.size());
+    if(names_.shadows.empty())return;
+    std::vector<Observation> observations;std::vector<Range> ranges;
+    budget_.Array(observations,names_.references.size());budget_.Array(ranges,bindings_.size());
+    for(std::size_t i=0;i<observations.size();++i) {
+      budget_.Step();const auto reference=names_.references[i];
+      RequireTree(reference.binding.value<bindings_.size(),TreeStructureError::kBinding);
+      observations[i]={Find(reference.binding),reference.position};
+    }
+    std::sort(observations.begin(),observations.end(),[&](const auto& a,const auto& b){
+      budget_.Step();return a.group!=b.group?a.group<b.group:a.position<b.position;});
+    for(std::size_t i=0;i<observations.size();++i) {
+      budget_.Step();auto& range=ranges[observations[i].group.value];
+      if(!i||observations[i-1].group!=observations[i].group)range.first=i;
+      range.last=i+1;
+    }
+    for(const auto& shadow:names_.shadows) {
+      budget_.Step();RequireTree(shadow.binding.value<bindings_.size(),TreeStructureError::kBinding);
+      if(!shadow.region){name_blocked_[shadow.binding.value]=1;continue;}
+      RequireTree(shadow.region->first<shadow.region->last,TreeStructureError::kOwnership);
+      const auto range=ranges[Find(shadow.binding).value];
+      const auto begin=observations.begin()+range.first,end=observations.begin()+range.last;
+      const auto found=std::lower_bound(begin,end,shadow.region->first,[&](const auto& observation,SourcePosition wanted){
+        budget_.Step();return observation.position<wanted;});
+      if(found!=end&&found->position<shadow.region->last)name_blocked_[shadow.binding.value]=1;
+    }
+  }
   SymbolId Prefer(SymbolId a,SymbolId b,std::optional<SourceRegion> region,bool unlocated,
       std::optional<CompletionRegion> references) {
     budget_.Step();const auto& left=bindings_[a.value];const auto& right=bindings_[b.value];
     // Reject no group here: rank each member against the final shared reference
     // extent. A wider scope alone must not bias source style.
-    const bool left_covers=Covers(left,region,unlocated)&&Initialized(left,references);
-    const bool right_covers=Covers(right,region,unlocated)&&Initialized(right,references);
+    const bool left_covers=Covers(left,region,unlocated)&&Initialized(left,references)&&!name_blocked_[a.value];
+    const bool right_covers=Covers(right,region,unlocated)&&Initialized(right,references)&&!name_blocked_[b.value];
     if(left_covers!=right_covers)return left_covers?a:b;
     if(left.unique_spelling!=right.unique_spelling)return left.unique_spelling?a:b;
     if(left.native_declaration!=right.native_declaration)return left.native_declaration?a:b;
@@ -97,7 +130,8 @@ class Coalescing {
       return *left.initialization_order<*right.initialization_order?a:b;}
     return a<b?a:b;
   }
-  const BindingInterference& facts_;std::span<const StorageBinding> bindings_;
+  const BindingInterference& facts_;std::span<const StorageBinding> bindings_;StorageNames names_;
+  std::vector<std::uint8_t> name_blocked_;
   TreeCheckBudget budget_;RecoveryScratch memory_;
   std::vector<SymbolId> parents_;std::vector<std::optional<SymbolId>> retained_;std::vector<std::size_t> sizes_;
   std::vector<std::optional<SourceRegion>> regions_;std::vector<std::uint8_t> unlocated_;
@@ -106,8 +140,8 @@ class Coalescing {
 };
 }
 std::variant<StorageCoalescing,TreeStructureError> PlanStorageCoalescing(
-    const BindingInterference& facts,std::span<const StorageBinding> bindings,analysis::SemanticBudget allowance) {
-  try{return Coalescing(facts,bindings,allowance).Run();}
+    const BindingInterference& facts,std::span<const StorageBinding> bindings,analysis::SemanticBudget allowance,StorageNames names) {
+  try{return Coalescing(facts,bindings,allowance,names).Run();}
   catch(TreeStructureError error){return error;}
   catch(const std::bad_alloc&){return TreeStructureError::kResourceLimit;}
   catch(const std::length_error&){return TreeStructureError::kResourceLimit;}

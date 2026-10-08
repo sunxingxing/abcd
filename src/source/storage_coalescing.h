@@ -23,6 +23,14 @@ struct StorageBinding {
   std::optional<CompletionRegion> initialized_region;
   std::optional<CompletionRegion> reachable_references;
 };
+struct StorageShadow {SymbolId binding;std::optional<SourceRegion> region;};
+struct StorageReference {SymbolId binding;SourcePosition position;};
+// Common canonical spelling facts and actual current reference positions.
+// This is a representative preference, not an extra storage admission.
+struct StorageNames {
+  std::span<const StorageShadow> shadows;
+  std::span<const StorageReference> references;
+};
 struct StorageCoalescing {
   std::vector<std::optional<SymbolId>> storage;
   std::size_t allocated_bytes=0;
@@ -35,6 +43,6 @@ struct StorageCoalescing {
 // Semantic scope/initialization checks follow this pure storage proposal and
 // may retain any subset of its members independently.
 [[nodiscard]] std::variant<StorageCoalescing,TreeStructureError> PlanStorageCoalescing(
-    const BindingInterference&,std::span<const StorageBinding>,analysis::SemanticBudget = {});
+    const BindingInterference&,std::span<const StorageBinding>,analysis::SemanticBudget = {},StorageNames = {});
 }
 #endif

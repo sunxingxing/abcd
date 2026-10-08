@@ -3,7 +3,7 @@ import {execFileSync} from 'node:child_process';
 import vm from 'node:vm';
 import {parseJavaScript} from './class_reference.mjs';
 const records=execFileSync(process.argv[2],['--emit'],{encoding:'utf8',timeout:60_000,maxBuffer:16*1024*1024}).trim().split('\n').map(JSON.parse);
-assert.equal(records.length,312);
+assert.equal(records.length,336);
 // Oracles describe the original storage semantics, never enter the engine.
 const references=[
   function(input,report,flag){let current=input,scratch=current;++scratch;current=scratch;return current;},
@@ -32,6 +32,8 @@ const references=[
   function(input,report,flag){let current=input,scratch;scratch=current;++scratch;current=scratch;return current;},
   function(input,report,flag){let current=report(input),scratch;scratch=current;++scratch;current=scratch;return current;},
   function(input,report,flag){let current;{let scratch;report(scratch=input);++scratch;current=scratch;++current;report(current);}{let current;}return current;},
+  function(input,report,flag){let current,scratch;report(current=input);++current;report(scratch=current);{let current;++scratch;report(scratch);}current=scratch;return current;{let scratch;}},
+  function(input,report,flag){let current,scratch;report(current=input);++current;report(scratch=current);++scratch;report(scratch);{let current;}current=scratch;return current;{let scratch;}},
 ];
 const primitives=[undefined,null,false,true,0,-0,1,-2,0n,2n,NaN,Infinity,'','7','bad',Symbol('input')];
 let cases=0,mutations=0;
@@ -58,7 +60,10 @@ for(const record of records){
   const inspect=parseJavaScript(record.source);const pending=[inspect];let hasScratch=false,hasCurrent=false;
   while(pending.length){const node=pending.pop();if(node.type==='VariableDeclarator'){if(node.id.name==='scratch')hasScratch=true;if(node.id.name==='current')hasCurrent=true;}
     for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)pending.push(child);}else if(value?.type)pending.push(value);}}
-  assert.equal(hasScratch,!record.merged);
+  if(record.form===26||record.form===27){
+    const slots=inspect.body[0].expression.body.body.filter(node=>node.type==='VariableDeclaration').flatMap(node=>node.declarations.map(item=>item.id.name));
+    assert.deepEqual(slots,[record.slot]);
+  }else assert.equal(hasScratch,!record.merged);
   if(record.form===21)assert.equal(hasCurrent,false);
   if(record.form===22)assert.equal(hasCurrent,true);
   const inputs=record.form===7?[2,3,4,6,7,8,12,13]:Array.from({length:primitives.length+2},(_,i)=>i);
@@ -86,7 +91,7 @@ for(const record of records){
     assert.notDeepEqual(await observe(wrong,17,6,'normal',true,'next'),
         await observe(references[17],17,6,'normal',true,'next'));++mutations;
   }
-  if(record.count===0&&!record.reverse&&[18,19,23,24,25].includes(record.form)) {
+  if(record.count===0&&!record.reverse&&[18,19,23,24,25,26,27].includes(record.form)) {
     const pending=[inspect];let update;
     while(pending.length){const node=pending.pop();if(node.type==='UpdateExpression')update=node;
       for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)pending.push(child);}else if(value?.type)pending.push(value);}}
@@ -95,6 +100,11 @@ for(const record of records){
     const wrong=vm.runInNewContext(mutant);
     assert.notDeepEqual(await observe(wrong,record.form,6,'normal',true,'next'),
         await observe(references[record.form],record.form,6,'normal',true,'next'));++mutations;
+  }
+  if(record.count===0&&!record.reverse&&record.form===26) {
+    const wrong=function(input,report){let current;report(current=input);++current;report(current);{let current;++current;report(current);}return current;{let scratch;}};
+    assert.notDeepEqual(await observe(wrong,26,6,'normal',true,'next'),
+        await observe(references[26],26,6,'normal',true,'next'));++mutations;
   }
   if(record.count===0&&!record.reverse&&record.form===25) {
     const wrong=function(input,report){let current;{let scratch;report(scratch=input);++scratch;current=scratch;++current;report(current);}{let current;}return scratch;};

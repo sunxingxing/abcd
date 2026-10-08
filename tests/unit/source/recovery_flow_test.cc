@@ -351,6 +351,101 @@ void SourceScopeOracle() {
   // 200/201 boundary. The deliberately slow ancestry oracle remains test-only.
   for(unsigned count:{200U,201U,400U,800U})for(bool reverse:{false,true})run(count,1,reverse);
 }
+void SpellingOracle() {
+  const auto run=[](unsigned count,unsigned encoded,unsigned pattern,bool reverse) {
+    const auto index=[&](unsigned i){return reverse?count-1-i:i;};
+    FunctionTree tree{};tree.parameter_scope={count};tree.body_scope={index(0)};
+    tree.scopes.resize(count+1);tree.scopes[count]={ScopeKind::kParameters,{}};
+    tree.names={u"left",u"right",u"left"};tree.symbols.resize(count);
+    std::vector<std::optional<unsigned>> parents(count);
+    for(unsigned i=0;i<count;++i) {
+      if(i){parents[i]=encoded%i;encoded/=i;}
+      tree.scopes[index(i)]={i?ScopeKind::kBlock:ScopeKind::kFunctionBody,ScopeId{i?index(*parents[i]):count}};
+      tree.symbols[index(i)]={{index(i)},{pattern%3},BindingKind::kCompilerTemporary,DeclarationKind::kLet,
+          NameEvidence::kSynthesized,TemporaryReason::kMultipleUses};pattern/=3;
+    }
+    TreeCheckBudget budget({});const auto facts=AnalyzeTreeSpellings(tree,budget);
+    for(unsigned i=0;i<count;++i) {
+      const auto& name=tree.names[tree.symbols[index(i)].name.value];
+      std::optional<SymbolId> expected;auto parent=parents[i];
+      while(parent){if(tree.names[tree.symbols[index(*parent)].name.value]==name){expected=SymbolId{index(*parent)};break;}parent=parents[*parent];}
+      unsigned matches=0;for(const auto& symbol:tree.symbols)matches+=tree.names[symbol.name.value]==name;
+      Check(facts.shadowed[index(i)]==expected);Check(bool(facts.unique[index(i)])==(matches==1));
+    }
+  };
+  for(unsigned encoded=0;encoded<24;++encoded)for(unsigned pattern=0;pattern<27;++pattern)
+    for(bool reverse:{false,true})run(5,encoded,pattern,reverse);
+  for(unsigned count:{200U,201U,400U,800U})for(bool reverse:{false,true})run(count,1,1,reverse);
+}
+void StorageNameOracle() {
+  std::uint64_t cases=0;
+  for(unsigned count=1;count<=4;++count)for(unsigned encoded=0;encoded<(1U<<(count*2));++encoded)
+    for(unsigned positions=0;positions<(1U<<count);++positions)for(bool reverse:{false,true}) {
+      const auto index=[&](unsigned i){return reverse?count-1-i:i;};
+      BindingInterference graph;std::vector<StorageBinding> bindings(count);
+      std::vector<StorageShadow> shadows;std::vector<StorageReference> reads;
+      unsigned word=encoded;
+      for(unsigned i=0;i<count;++i) {
+        const SymbolId id{index(i)};bindings[id.value].eligible=true;
+        bindings[id.value].unique_spelling=false;bindings[id.value].native_declaration=i%2==0;
+        bindings[id.value].initialization_order=i+1;
+        reads.push_back({id,SourcePosition{positions&(1U<<i)?2U:0U}});
+        switch(word%4) {
+          case 0:break;
+          case 1:shadows.push_back({id,SourceRegion{{0},{1}}});break;
+          case 2:shadows.push_back({id,SourceRegion{{2},{3}}});break;
+          case 3:shadows.push_back({id,{}});break;
+        }
+        word/=4;if(i)graph.affinities.push_back({SymbolId{index(0)},id,false});
+      }
+      const auto rank=[&](unsigned candidate) {
+        bool visible=true;
+        for(const auto& shadow:shadows)if(shadow.binding.value==candidate) {
+          if(!shadow.region)visible=false;
+          else for(const auto& read:reads)if(read.position>=shadow.region->first&&read.position<shadow.region->last)visible=false;
+        }
+        return std::tuple{!visible,!bindings[candidate].native_declaration,*bindings[candidate].initialization_order,candidate};
+      };
+      unsigned expected=0;for(unsigned i=1;i<count;++i)if(rank(i)<rank(expected))expected=i;
+      const auto result=std::get<StorageCoalescing>(PlanStorageCoalescing(graph,bindings,{},StorageNames{shadows,reads}));
+      for(unsigned i=0;i<count;++i)Check(result.storage[i]==(i==expected?std::nullopt:std::optional{SymbolId{expected}}));
+      if(count==4&&!encoded&&!positions&&!reverse) {
+        Check(std::holds_alternative<StorageCoalescing>(PlanStorageCoalescing(graph,bindings,{result.allocated_bytes,result.work},{shadows,reads})));
+        Check(std::get<TreeStructureError>(PlanStorageCoalescing(graph,bindings,{result.allocated_bytes-1,result.work},{shadows,reads}))==TreeStructureError::kResourceLimit);
+        Check(std::get<TreeStructureError>(PlanStorageCoalescing(graph,bindings,{result.allocated_bytes,result.work-1},{shadows,reads}))==TreeStructureError::kWorkLimit);
+      }
+      ++cases;
+    }
+  std::cout<<"independent storage name cases "<<cases<<'\n';
+}
+void StorageNameHoles() {
+  for(bool observed:{false,true})for(bool reverse:{false,true}) {
+    std::uint64_t previous=0;
+    for(unsigned count:{2U,200U,201U,400U,800U}) {
+      const auto id=[&](unsigned i){return SymbolId{reverse?count-1-i:i};};
+      BindingInterference graph;std::vector<StorageBinding> bindings(count);
+      std::vector<StorageShadow> shadows;std::vector<StorageReference> reads;
+      for(unsigned i=0;i<count;++i) {
+        bindings[id(i).value].eligible=true;bindings[id(i).value].unique_spelling=i!=0;
+        bindings[id(i).value].initialization_order=i+1;
+        // Group uses are at 0 and 2: the hole [1,2) lies inside the bounding
+        // extent but contains no use. A min/max visibility approximation fails.
+        const auto hidden=i==0?(observed?SourceRegion{{2},{3}}:SourceRegion{{1},{2}}):
+            i==1?(observed?SourceRegion{{3},{4}}:SourceRegion{{2},{3}}):SourceRegion{{0},{1}};
+        shadows.push_back({id(i),hidden});
+        reads.push_back({id(i),{i+1==count?2U:0U}});
+        if(i)graph.affinities.push_back({id(0),id(i),false});
+      }
+      if(reverse){std::reverse(graph.affinities.begin(),graph.affinities.end());std::reverse(reads.begin(),reads.end());std::reverse(shadows.begin(),shadows.end());}
+      const auto plan=std::get<StorageCoalescing>(PlanStorageCoalescing(graph,bindings,{},StorageNames{shadows,reads}));
+      const auto expected=id(observed?1:0);
+      for(unsigned i=0;i<count;++i)Check(plan.storage[i]==(SymbolId{i}==expected?std::nullopt:std::optional{expected}));
+      if(count==800)Check(plan.work<previous*3);previous=plan.work;
+      Check(std::get<TreeStructureError>(PlanStorageCoalescing(graph,bindings,{plan.allocated_bytes-1,plan.work},{shadows,reads}))==TreeStructureError::kResourceLimit);
+      Check(std::get<TreeStructureError>(PlanStorageCoalescing(graph,bindings,{plan.allocated_bytes,plan.work-1},{shadows,reads}))==TreeStructureError::kWorkLimit);
+    }
+  }
+}
 void InitialValueObligations() {
   for(bool needed:{false,true})for(bool private_binding:{false,true})
     for(bool inert:{false,true})for(bool required:{false,true})for(bool modeled:{false,true}) {
@@ -620,6 +715,21 @@ void SourceEvents() {
   source_bindings[1]=ProjectedBindingScope{{2}};
   Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,
       {aliases,literals,replacements,omitted,evaluations,normal,native,private_bindings,{},{},{},{},{regions,positions,source_bindings}}))==TreeStructureError::kOwnership);
+  source_bindings[1]=OriginalBindingScope{SourceRegionId{1}};
+  std::vector<SourceBindingShadow> shadows{{{1},SourceRegionId{1}}};
+  std::vector<std::uint8_t> unique(tree.symbols.size(),1);unique[1]=0;
+  auto spelled=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,
+      {aliases,literals,replacements,omitted,evaluations,normal,native,private_bindings,{},{},{},{},{regions,positions,source_bindings,shadows,unique}}));
+  Check(spelled.source_shadows.size()==1&&!spelled.bindings[1].unique_spelling);
+  shadows[0].region=SourceRegionId{2};
+  Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,
+      {aliases,literals,replacements,omitted,evaluations,normal,native,private_bindings,{},{},{},{},{regions,positions,source_bindings,shadows,unique}}))==TreeStructureError::kOwnership);
+  shadows[0]={SymbolId{static_cast<std::uint32_t>(tree.symbols.size())},{}};
+  Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,
+      {aliases,literals,replacements,omitted,evaluations,normal,native,private_bindings,{},{},{},{},{regions,positions,source_bindings,shadows,unique}}))==TreeStructureError::kOwnership);
+  const auto unnamed=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,
+      {aliases,literals,replacements,omitted,evaluations,normal,native,private_bindings},{},std::move(spelled)));
+  Check(unnamed.source_shadows.empty()&&unnamed.bindings[1].unique_spelling);
   const auto cleared_scopes=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,
       {aliases,literals,replacements,omitted,evaluations,normal,native,private_bindings},{},std::move(scoped)));
   Check(cleared_scopes.source_regions.empty()&&cleared_scopes.source_occurrences.empty());
@@ -1297,4 +1407,4 @@ void PassContracts() {
   Check(!unfinished.DemandCleanupNeeded());
   std::cout<<"pass ownership, dependency and cleanup counterexamples passed\n";
 }
-int main(){InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();PassContracts();ExpressionConstants();ConstantEquations();SourceScopeOracle();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+int main(){InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();PassContracts();ExpressionConstants();ConstantEquations();SourceScopeOracle();SpellingOracle();StorageNameOracle();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

@@ -1884,3 +1884,42 @@ Independent ancestry checks exercise bounded original and projected scopes equal
 including missing occurrences, invalid region IDs and graph reuse. This adds lexical
 containment precision only. Exhaustive name/cell/value representative feasibility,
 original IR/SSA, full activation/capture/finally and global convergence remain open.
+
+### Shared spelling facts and feasible storage names (2026-10-08, rules236)
+
+AnalyzeTreeSpellings uses the same spelling-group and scope-activation model as
+ResolveTreeReferences. It publishes nearest enclosing same-spelling bindings and
+unique-spelling preferences once for the checked canonical scope tree. The source
+adapter maps shadowing scopes to shared lexical regions and publishes them through
+RecoveryFlow. Coalesce no longer builds a separate TreeScopeCheck to count duplicate
+spellings; it consumes common FlowBinding preferences and SourceBindingShadow facts.
+Canonical removed-binding spelling remains conservative, matching the existing
+final reference resolver. Canonical shadow intervals do not prove rewritten
+native-for visibility; declaration relocation/retirement precision remains open
+under independent final names and projected-lifetime checks.
+
+After all interference contractions, current reference positions are sorted by
+final storage group. Each candidate's direct shadow region queries that group's
+actual positions by binary search. The nearest shadow covers its whole subtree,
+so deeper shadows need no pairwise ancestor expansion. A hole inside a group's
+min/max extent does not block a candidate when no actual observation lies inside.
+Missing region facts mark a candidate's preference unproved. This neither rejects
+an interference group nor substitutes for final name/lifetime/completion/cell and
+initial-value/effect proofs; unavailable candidates may still be proposed and
+independently rejected when no fully covered candidate exists.
+
+The same immutable projection owns names, original/projected regions and actual
+current references. Proposal validation precedes commit, first commit invalidates
+ProjectionFacts, and the mutation loop consumes owned IDs only. No normalization
+round or whole-function fixed-point sweep is added. Sparse analysis fixed points
+already operate over shared facts; general pass dependency convergence still needs
+an incremental cost model rather than one full rebuild per eliminated node.
+
+Source regressions combine observed assignments, updates/copies, an active inner
+shadow, a harmless sibling shadow, outside return and reversed arenas. Independent
+execution and wrong-name/update mutants exercise value/effect fidelity. Independent
+ancestry plus tiny brute-force candidate oracles compare names without production
+indexes; actual-use holes, reordered groups/references, 200/201/geometric and exact/
+short budgets verify precision and cost. Full original IR/SSA, activation/capture/
+finally, rewritten binding visibility and exhaustive cell/value feasibility remain
+open. Verification scope and results belong in status.md.

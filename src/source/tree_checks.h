@@ -44,6 +44,8 @@ class TreeScopeCheck {
   // A printing preference only. Duplicate spellings remain valid bindings and
   // still use actual occurrence resolution; uniqueness never proves lifetime.
   [[nodiscard]] bool UniqueSpelling(SymbolId symbol);
+  // Query while the binding's own scope is active; identity, not name text.
+  [[nodiscard]] std::optional<SymbolId> ShadowedBinding(SymbolId symbol);
   void EnclosingReference(std::u16string_view name, const ModuleSymbol* module = nullptr);
   void FreeReference(std::u16string_view name);
   [[nodiscard]] bool ResolvesFree(NameId name);
@@ -68,6 +70,13 @@ class TreeScopeCheck {
 
 struct TreeScopedReference { SymbolId symbol; ScopeId scope; };
 struct TreeScopedName { NameId name; ScopeId scope; };
+// Nearest enclosing binding with the same spelling, indexed once by canonical
+// scope activation. Absence means no enclosing shadow, not global uniqueness.
+struct TreeSpellingFacts {
+  std::vector<std::optional<SymbolId>> shadowed;
+  std::vector<std::uint8_t> unique;
+};
+[[nodiscard]] TreeSpellingFacts AnalyzeTreeSpellings(const FunctionTree&,TreeCheckBudget&);
 // Resolve a batch through the same spelling/activation model as structural
 // checking. Indexed scope/query adjacency avoids an ancestor walk per read.
 // The caller supplies a checked tree and the actual occurrence's lexical scope.

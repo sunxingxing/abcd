@@ -160,6 +160,10 @@ bool TreeScopeCheck::UniqueSpelling(SymbolId symbol) {
   budget_.Step();return group_counts_[groups_[symbol.value]]==1;
 }
 
+std::optional<SymbolId> TreeScopeCheck::ShadowedBinding(SymbolId symbol) {
+  RequireTree(Resolves(symbol),Error::kScope);return previous_[symbol.value];
+}
+
 void TreeScopeCheck::Enter(ScopeId scope) {
   budget_.Step();
   RequireTree(scope.value < entered_.size() && !entered_[scope.value], Error::kScope);
@@ -290,6 +294,20 @@ std::vector<std::uint8_t> ResolveScopes(const FunctionTree& tree,
   }
   return resolved;
 }
+}
+TreeSpellingFacts AnalyzeTreeSpellings(const FunctionTree& tree,TreeCheckBudget& budget) {
+  std::vector<TreeScopedReference> references;
+  TreeSpellingFacts result;
+  budget.Array(references,tree.symbols.size());budget.Array(result.shadowed,tree.symbols.size());
+  budget.Array(result.unique,tree.symbols.size());
+  for(std::size_t i=0;i<tree.symbols.size();++i) {
+    budget.Step();references[i]={SymbolId{static_cast<std::uint32_t>(i)},tree.symbols[i].scope};
+  }
+  (void)ResolveScopes(tree,std::span<const TreeScopedReference>{references},budget,
+      [&](auto& scopes,const auto& reference){
+        result.shadowed[reference.symbol.value]=scopes.ShadowedBinding(reference.symbol);
+        result.unique[reference.symbol.value]=scopes.UniqueSpelling(reference.symbol);return true;});
+  return result;
 }
 std::vector<std::uint8_t> ResolveTreeReferences(const FunctionTree& tree,
     std::span<const TreeScopedReference> references,TreeCheckBudget& budget) {

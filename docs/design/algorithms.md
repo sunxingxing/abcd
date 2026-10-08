@@ -3291,3 +3291,30 @@ missing projected regions reject access. Tests compare against a small independe
 ancestry oracle, reverse arenas, exercise 200/201/geometric source sizes, exact/short
 budgets and independent generated-source behavior/mutants. This evidence does not
 establish whole-process RSS or global pass convergence; paused checks remain paused.
+
+### Shared shadow regions and storage observation index (2026-10-08, rules236)
+
+Provenance is the existing canonical spelling-group activation stack, preorder
+subtree intervals and sorted point/interval stabbing queries. No dependency, license
+or pinned profile changes. Prerequisites are the checked scope tree and one current
+RecoveryFlow; canonical spelling facts remain conservative for elided declarations,
+with final actual-name proofs mandatory.
+
+Let B be bindings, Q scopes, R actual reference positions and H direct shadow facts.
+Spelling analysis reuses the existing O(B log B) name sorting (including charged
+UTF-16 comparison lengths), then O(Q+B) activation/query work and storage. Every
+binding has at most one nearest enclosing same-spelling binding, so H<=B; nested
+shadows require no expansion to every ancestor. Optimizer-local uniqueness indexing
+retires. Existing current Flow copies O(H) shadow facts and B unique flags under the
+original budget. Source region lookup is O(H); references are already scanned once.
+
+After final DSU grouping, sort R observations by group/position in O(R log R),
+construct group ranges in O(R+B), then query each known shadow interval in O(log R).
+Total additional name work is O(R log R+H log R+B), storage O(R+H+B), plus existing
+amortized DSU find costs. With H=0 skip the observation index. Candidate ranking
+still visits all original members once. No per-candidate CFG/name/ancestor scan,
+whole-function retry or new pass round. All buffers/comparisons/queries are charged;
+these accounting facts do not prove process RSS. Tiny dense oracles are test-only.
+Tests include holes without observations, unknown facts, reverse IDs/affinities,
+200/201/geometric source/group sizes, independent execution, mutants and exact/short
+budgets. Actual measurements are in status.md; broader corpus/RSS remain paused.
