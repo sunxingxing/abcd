@@ -3213,3 +3213,31 @@ reverse IDs at 2/200/201/400/800 and retain repeated-loop merging. Loop callback
 now actually observe explicit undefined; producer mutations remain adverse.
 Selected timings and unchanged-budget fixed-record evidence belong in status.md.
 RSS/benchmarks/full corpus remain paused.
+
+### Final-group representative selection (2026-10-08, rules233)
+
+The existing union-by-size interference contraction and common all-completion
+dominator analysis remain the algorithms/provenance; no library or dependency is
+added. Union-time source winner selection is removed. Let B be bindings and R
+actual common references. After membership closes, an additional B-sized scan
+with path-compressed finds ranks all original members, costing O(B alpha(B))
+amortized; interval coverage/rank comparison is O(1). Working candidate and
+reachable-completion arrays cost O(B). Existing weighted conflict-adjacency
+rewrites and greedy membership cost are unchanged, including dense-output costs.
+
+The source adapter reuses current FlowInitializations' dominator subtrees and
+preorder positions, adding constant work to the existing O(B+R) scans. Joining
+reachable reference extents is O(1) per accepted union. Lexical SourceRegion and
+execution CompletionRegion are typed separately. There is no per-binding graph
+walk, candidate-by-reference relation or repeated semantic solve. All arrays,
+finds/scans/comparisons and proposals are charged under the existing budgets;
+post-proposal proofs retain their existing costs. These charges do not prove RSS.
+
+The final scan is exhaustive only for the modeled scope/completed-initialization
+preference. Independent name/cell/initial-value checks may still retain members;
+no complete feasible-root search or order-independent greedy partition is claimed.
+The small oracle deliberately uses dense pair scans and enumerates all candidates
+against original observations, rather than production DSU/interval summaries.
+Tests cover 45,056 oracle cases, 3/200/201/400/800 reordered groups, exact/short
+budgets and actual native initializer/producer source execution. Current selected
+timings and fixed-record evidence belong in status.md; paused scope is unchanged.

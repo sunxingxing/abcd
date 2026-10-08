@@ -376,3 +376,17 @@ Independent source harness explicit undefined and producer mutants are corrected
 No extra round or source-form admission is introduced. General lifetime/capture/
 finally, original IR/SSA and global convergence stay open; status.md records the
 actual bounded evidence. Stage-one Goal remains active.
+
+Task 2/4 implementation substep (rules233): interference membership closes before
+representative choice. Every original member is ranked against the final shared
+lexical and reachable-completion extents; union-time two-winner retention retires.
+Source availability reuses the existing current initialization dominator facts,
+with distinct lexical/execution coordinate types and one shared reference scan.
+The storage proposal remains immutable until complete; schedule revision and
+commit invalidation rules are unchanged. Independent completion/name/lifetime/
+cell/initial-value checks remain, with original RHS effects at their occurrence.
+An independent 45,056-case all-candidate oracle and native initializer/producer
+source compositions verify the change with layout/budget/adverse cases. Full
+feasible name/cell/value choice, original IR/SSA, activation/capture/finally and
+global pass convergence stay open. status.md records current selected evidence;
+the unified-variable milestone and stage-one Goal remain active.

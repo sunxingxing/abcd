@@ -18,9 +18,11 @@ class Coalescing {
     budget_.Array(parents_,bindings_.size());budget_.Array(sizes_,bindings_.size());
     budget_.Array(retained_,bindings_.size());neighbors_.reserve(bindings_.size());
     budget_.Array(regions_,bindings_.size());budget_.Array(unlocated_,bindings_.size());
+    budget_.Array(reachable_,bindings_.size());
     for(std::size_t i=0;i<bindings_.size();++i){budget_.Step();
-      parents_[i]=retained_[i]=SymbolId{static_cast<std::uint32_t>(i)};sizes_[i]=1;
+      parents_[i]=SymbolId{static_cast<std::uint32_t>(i)};sizes_[i]=1;
       regions_[i]=bindings_[i].reference_region;unlocated_[i]=bindings_[i].unlocated_reference;
+      reachable_[i]=bindings_[i].reachable_references;
       neighbors_.emplace_back(ConflictOrder{&budget_});}
     for(const auto& conflict:facts_.conflicts){budget_.Step();CheckPair(conflict.first,conflict.second);
       neighbors_[conflict.first.value].insert(conflict.second);
@@ -29,22 +31,31 @@ class Coalescing {
       if(!bindings_[pair.first.value].eligible||!bindings_[pair.second.value].eligible)continue;
       auto a=Find(pair.first),b=Find(pair.second);
       if(a==b||neighbors_[a.value].contains(b))continue;
-      // Separate DSU balancing from printed-slot preference. Each removed
-      // group's weight at least doubles, bounding repeated adjacency rewrites.
+      // Group construction owns interference only. Each removed group's weight
+      // at least doubles, bounding repeated adjacency rewrites. Candidate
+      // ranking waits for complete reference extents, never discards a member.
       if(sizes_[a.value]<sizes_[b.value])std::swap(a,b);
       const auto region=Join(regions_[a.value],regions_[b.value]);
       const bool unlocated=unlocated_[a.value]||unlocated_[b.value];
-      const auto retained=Prefer(retained_[a.value],retained_[b.value],region,unlocated);
       for(auto neighbor:neighbors_[b.value]){budget_.Step();
         const auto erased=neighbors_[neighbor.value].erase(b);
         RequireTree(erased==1,TreeStructureError::kOwnership);
         neighbors_[neighbor.value].insert(a);neighbors_[a.value].insert(neighbor);}
-      neighbors_[b.value].clear();parents_[b.value]=a;sizes_[a.value]+=sizes_[b.value];retained_[a.value]=retained;
+      neighbors_[b.value].clear();parents_[b.value]=a;sizes_[a.value]+=sizes_[b.value];
       regions_[a.value]=region;unlocated_[a.value]=unlocated;
+      reachable_[a.value]=Join(reachable_[a.value],reachable_[b.value]);
+    }
+    // Rank every member against its FINAL group. Covers can change when a
+    // later union extends observations; ranking only previous winners would
+    // lose a now-useful slot and make recovery depend on affinity order.
+    for(std::size_t i=0;i<bindings_.size();++i) {
+      budget_.Step();const SymbolId id{static_cast<std::uint32_t>(i)};
+      const auto group=Find(id);auto& retained=retained_[group.value];
+      retained=retained?Prefer(*retained,id,regions_[group.value],unlocated_[group.value],reachable_[group.value]):id;
     }
     StorageCoalescing result;budget_.Array(result.storage,bindings_.size());
     for(std::size_t i=0;i<bindings_.size();++i){budget_.Step();const SymbolId id{static_cast<std::uint32_t>(i)};
-      const auto root=retained_[Find(id).value];if(root!=id)result.storage[i]=root;}
+      const auto root=*retained_[Find(id).value];if(root!=id)result.storage[i]=root;}
     result.allocated_bytes=budget_.Bytes();result.work=budget_.Work();return result;
   }
  private:
@@ -57,20 +68,27 @@ class Coalescing {
     while(id!=root){budget_.Step();const auto next=parents_[id.value];parents_[id.value]=root;id=next;}
     return root;
   }
-  static std::optional<SourceRegion> Join(std::optional<SourceRegion> a,std::optional<SourceRegion> b) {
+  template<class Region>
+  static std::optional<Region> Join(std::optional<Region> a,std::optional<Region> b) {
     if(!a)return b;if(!b)return a;
-    return SourceRegion{std::min(a->first,b->first),std::max(a->last,b->last)};
+    return Region{std::min(a->first,b->first),std::max(a->last,b->last)};
   }
   static bool Covers(const StorageBinding& binding,std::optional<SourceRegion> region,bool unlocated) {
     if(!binding.narrowed_region)return true;
     if(unlocated)return false;
     return !region||(binding.narrowed_region->first<=region->first&&binding.narrowed_region->last>=region->last);
   }
-  SymbolId Prefer(SymbolId a,SymbolId b,std::optional<SourceRegion> region,bool unlocated) {
+  static bool Initialized(const StorageBinding& binding,std::optional<CompletionRegion> references) {
+    return !references||(binding.initialized_region&&binding.initialized_region->first<=references->first&&
+        binding.initialized_region->last>=references->last);
+  }
+  SymbolId Prefer(SymbolId a,SymbolId b,std::optional<SourceRegion> region,bool unlocated,
+      std::optional<CompletionRegion> references) {
     budget_.Step();const auto& left=bindings_[a.value];const auto& right=bindings_[b.value];
-    // Reject no group here: choose between its representatives using actual
-    // shared reference extents. A wider scope alone must not bias source style.
-    const bool left_covers=Covers(left,region,unlocated),right_covers=Covers(right,region,unlocated);
+    // Reject no group here: rank each member against the final shared reference
+    // extent. A wider scope alone must not bias source style.
+    const bool left_covers=Covers(left,region,unlocated)&&Initialized(left,references);
+    const bool right_covers=Covers(right,region,unlocated)&&Initialized(right,references);
     if(left_covers!=right_covers)return left_covers?a:b;
     if(left.unique_spelling!=right.unique_spelling)return left.unique_spelling?a:b;
     if(left.native_declaration!=right.native_declaration)return left.native_declaration?a:b;
@@ -81,8 +99,9 @@ class Coalescing {
   }
   const BindingInterference& facts_;std::span<const StorageBinding> bindings_;
   TreeCheckBudget budget_;RecoveryScratch memory_;
-  std::vector<SymbolId> parents_,retained_;std::vector<std::size_t> sizes_;
+  std::vector<SymbolId> parents_;std::vector<std::optional<SymbolId>> retained_;std::vector<std::size_t> sizes_;
   std::vector<std::optional<SourceRegion>> regions_;std::vector<std::uint8_t> unlocated_;
+  std::vector<std::optional<CompletionRegion>> reachable_;
   std::pmr::vector<std::pmr::set<SymbolId,ConflictOrder>> neighbors_;
 };
 }

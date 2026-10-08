@@ -24,6 +24,56 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则233，分组完成后选择全部候选与共享初始化可用性
+
+- 存储合并先独立完成干涉组及引用extent，再一次扫描全部原始成员
+  选择代表。旧union期间只比较两个赢家、丢弃其他候选的判断已删除。
+  后续引用扩大范围时，早先不占优的候选仍可成为最终代表；不修改
+  greedy干涉分组，不增加样本/同块/邻接/固定图形状准入。
+- 代表偏好同时复用当前FlowInitializations的全completion支配事实。
+  初始化子树和可达引用区间使用CompletionRegion，词法范围继续用
+  SourceRegion；一次共同reference扫描分别聚合，不能混用坐标。
+  优先选择词法与初始化均覆盖最终组的候选；能力相同时保留原
+  名字/native/初始化rank/ID偏好。不可达语法不产生执行需求，但仍
+  保留词法证明。原RHS的执行、效果、异常位置不由代表偏好更改。
+- Storage通过RecoverySchedule请求当前版本活跃性/初始化，全部
+  提案生成后提交，提交前统一失效事实；不在commit期间读分析。
+  每映射的root/member初始化、名字、source containment、cell身份
+  和独立初值保留证明继续负责合法性。不是将这些职责塞进代表选择。
+  新增最终扫描O(B alpha(B))及O(B)数组，引用扫描仍O(B+R)，union
+  区间join O(1)；没有per-binding图遍历，原预算保持。
+- 红测先证明丢失候选：未改生产时count3失败，build3.09秒/test1.27秒。
+  全组扫描后model在5.42秒通过，build7.08秒。实际native初始声明/
+  复制/自增/写回红测保留两个slot，build4.02秒/test9.19秒；初始化
+  model红测build6.97秒/test1.21秒。接入共同completion事实后聚焦
+  3/3在17.14秒通过，build6.88秒；之后增强producer返回原输入及
+  更新删除反例，纳入最终既定59项验证。
+- 独立dense组membership/逐候选逐原始引用oracle覆盖45,056小图，
+  不调用生产DSU/区间聚合。ID/affinity反排、缺位置、窄/宽scope、
+  不同初始化完成范围及不可达引用都有覆盖；3/200/201/400/800及
+  精确/不足预算保持。源码组合含原生初始化及效果producer，继续
+  独立比较Number/BigInt/对象转换失败/producer抛异常及错误变体。
+- 最终当前29目标build179.41秒成功；选定59项一次全部通过，427.64秒。
+  model6.72秒，45,056全组代表/32,768逐读小图及原graph/schedule反例
+  通过。干涉source16.93秒：329源码/48,308比较/21错误变体；声明
+  2,568/513,600/100、初始化2,004/482,752/368、循环276/13,976/68
+  均通过。没有修改旧源码语义/表示断言来接受回退。build出现未改动
+  literal_plan.cc:59既有kNoop switch警告，本补丁未改动该文件。
+  这仍是既定相关集合，不是full suite、paired corpus或平台执行验收。
+- fresh固定导出2.67秒，位置
+  build/stage-one/group-roots-rule233：19records、10完整/0部分/9无module，
+  10源码语法通过，与规则232源码逐字节一致；原预算与显式语言
+  数值/构造contract保持，输入SHA-256前后均
+  854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e。
+  build/stage-one/group-roots-verification的final-*及combined-coverage.json
+  保存最终证据；red/green/initialization-red/completion-red/green记录
+  中间过程，不作最终通过依据。
+- 全组词法/初始化偏好中的候选丢失已解决；跨名字遮蔽、动态cell、
+  初值保留的完整可行代表搜索仍开放。一般原IR/SSA对应、activation/
+  capture/finally、非primitive值传播及全局pass收敛仍开放。统一变量
+  里程碑、结构gate和阶段一Goal未完成；全量suite、广语料、RSS/
+  DFX/benchmarks、agents和新worktree继续暂停。
+
 ### 2026-10-08：规则232，归一化后声明恢复与共享组词法覆盖
 
 - 唯一的Declarations从值归一化之前移到Constants及独立需求/初值/

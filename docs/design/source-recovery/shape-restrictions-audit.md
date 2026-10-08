@@ -2540,3 +2540,29 @@ preserves early values/effects and TDZ/branch/catch/loop/source-cell counterexam
 Loop harness explicit undefined no longer falls through its default, and mutants
 remove the actual producer. status.md records failures and final evidence. Full
 lifetime/capture/finally/original IR and global convergence remain open.
+
+### 2026-10-08: rules233, final-group scope and initialization preference
+
+The union-time two-winner rule is removed. Sparse interference contraction closes
+membership/reference extents first; a final linear candidate scan considers every
+original group member. Earlier spelling preference cannot discard a candidate
+needed by later observations. Conflict membership remains greedy; no new group
+admission or fixed shape is introduced.
+
+Existing current all-completion initialization dominance now supplies candidate
+availability alongside shared lexical extent. CompletionRegion and SourceRegion
+are distinct types; reachable reference extents and initialization subtrees come
+from the same immutable FlowInitializations, without another semantic inference.
+Scope plus initialization coverage ranks candidates before spelling. Unreachable
+references omit only execution demand, not lexical proof. Existing per-mapping
+completion/name/lifetime/initial-value/cell obligations still decide legality.
+Selection proposes storage only; neither RHS effects nor initialization are
+deleted by its preference. The pass contract/version/commit boundaries remain.
+
+An independent all-candidate oracle covers 45,056 small group cases; reversed
+IDs/affinities, missing locations and 200/201/geometric cases target candidate
+loss. Native original initialization and producer/update/writeback compositions
+exercise generated source with independent execution and adverse mutations.
+No sample, operation sequence, same-block, adjacency or fixed graph admission is
+added. Exhaustive feasibility across name/cell/value obligations, original IR/SSA,
+full activation/capture/finally and global convergence remain explicit gaps.

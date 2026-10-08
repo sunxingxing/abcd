@@ -745,7 +745,8 @@ namespace {
 void GroupOracle(){
   constexpr unsigned bindings=4,pairs=bindings*(bindings-1)/2;
   unsigned variants=1;for(unsigned i=0;i<pairs;++i)variants*=4;
-  for(unsigned encoded=0;encoded<variants;++encoded)for(unsigned policy=0;policy<5;++policy){
+  unsigned cases=0;
+  for(unsigned encoded=0;encoded<variants;++encoded)for(unsigned policy=0;policy<11;++policy){
     BindingInterference facts;std::array<std::array<bool,bindings>,bindings> conflict{};
     unsigned remaining=encoded;
     for(unsigned a=0;a<bindings;++a)for(unsigned b=a+1;b<bindings;++b){
@@ -753,32 +754,64 @@ void GroupOracle(){
       if(kind&1)facts.affinities.push_back({{a},{b},bool(kind&2)});
       if(kind&2){facts.conflicts.push_back({{a},{b}});conflict[a][b]=conflict[b][a]=true;}
     }
-    std::array<StorageBinding,bindings> admission{};std::array<unsigned,bindings> owner{},preferred{};
-    for(unsigned i=0;i<bindings;++i){owner[i]=preferred[i]=i;admission[i]={policy!=1||i!=0,policy!=2||i%2==0,policy==3?bindings-i:i,policy!=4||i%2==0};}
-    const auto prefer=[&](unsigned a,unsigned b){const auto& left=admission[a];const auto& right=admission[b];
-      if(left.unique_spelling!=right.unique_spelling)return left.unique_spelling?a:b;
-      if(left.native_declaration!=right.native_declaration)return left.native_declaration?a:b;
-      if(left.initialization_order!=right.initialization_order)return left.initialization_order<right.initialization_order?a:b;
-      return std::min(a,b);};
+    std::array<StorageBinding,bindings> admission{};std::array<unsigned,bindings> owner{};
+    for(unsigned i=0;i<bindings;++i){owner[i]=i;admission[i]={policy!=1||i!=0,policy!=2||i%2==0,policy==3?bindings-i:i,policy!=4||i%2==0};
+      if(policy>=5) {
+        admission[i].reference_region=i%2?SourceRegion{{6},{7}}:SourceRegion{{2},{3}};
+        switch((i+policy)%4) {
+          case 0:break;
+          case 1:admission[i].narrowed_region=SourceRegion{{0},{10}};break;
+          case 2:admission[i].narrowed_region=SourceRegion{{2},{4}};break;
+          case 3:admission[i].narrowed_region=SourceRegion{{6},{8}};break;
+        }
+        admission[i].native_declaration=i%2==0;admission[i].unique_spelling=i%3!=0;
+        if(policy==6&&i%2)admission[i].initialization_order.reset();
+        admission[i].unlocated_reference=policy==7&&i==3;
+      }
+      if(policy>=8) {
+        admission[i].reachable_references=CompletionRegion{i*2+1,i*2+2};
+        admission[i].initialized_region=CompletionRegion{i*2+1,bindings*2+1};
+        if(policy==9&&i==0)admission[i].initialized_region.reset();
+        if(policy==10&&i%2)admission[i].reachable_references.reset();
+      }
+    }
     // Independent tiny dense oracle: inspect every cross-group member pair,
     // then rewrite all labels. No DSU, sparse adjacency or production helpers.
     for(const auto& affinity:facts.affinities){const auto a=affinity.first.value,b=affinity.second.value;
       if(!admission[a].eligible||!admission[b].eligible||owner[a]==owner[b])continue;
       const auto first=owner[a],second=owner[b];bool blocked=false;
       for(unsigned i=0;i<bindings;++i)for(unsigned j=0;j<bindings;++j)if(owner[i]==first&&owner[j]==second)blocked|=conflict[i][j];
-      if(blocked)continue;const auto selected=prefer(preferred[first],preferred[second]);
-      for(auto& label:owner)if(label==second)label=first;preferred[first]=selected;
+      if(blocked)continue;
+      for(auto& label:owner)if(label==second)label=first;
     }
+    // Enumerate every candidate and every original member's observations. This
+    // intentionally slow tiny oracle uses neither DSU nor interval summaries.
+    const auto rank=[&](unsigned candidate) {
+      const auto& slot=admission[candidate];bool covers=true;
+      if(slot.narrowed_region)for(unsigned member=0;member<bindings;++member)if(owner[member]==owner[candidate]) {
+        if(admission[member].unlocated_reference)covers=false;
+        if(const auto& observed=admission[member].reference_region;observed&&
+            (observed->first<slot.narrowed_region->first||observed->last>slot.narrowed_region->last))covers=false;
+      }
+      for(unsigned member=0;member<bindings;++member)if(owner[member]==owner[candidate])
+        if(const auto& observed=admission[member].reachable_references;observed&&
+            (!slot.initialized_region||observed->first<slot.initialized_region->first||observed->last>slot.initialized_region->last))covers=false;
+      return std::tuple{!covers,!slot.unique_spelling,!slot.native_declaration,
+          !slot.initialization_order.has_value(),slot.initialization_order.value_or(0),candidate};
+    };
     const auto value=PlanStorageCoalescing(facts,admission);Check(std::holds_alternative<StorageCoalescing>(value));
     const auto& result=std::get<StorageCoalescing>(value);
-    for(unsigned i=0;i<bindings;++i){const auto expected=preferred[owner[i]];
+    for(unsigned i=0;i<bindings;++i){auto expected=i;
+      for(unsigned candidate=0;candidate<bindings;++candidate)if(owner[candidate]==owner[i]&&rank(candidate)<rank(expected))expected=candidate;
       Check(result.storage[i]==(expected==i?std::nullopt:std::optional{SymbolId{expected}}));}
     if(encoded==variants-1&&policy==0){
       Check(std::holds_alternative<StorageCoalescing>(PlanStorageCoalescing(facts,admission,{result.allocated_bytes,result.work})));
       Check(std::get<TreeStructureError>(PlanStorageCoalescing(facts,admission,{result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
       Check(std::get<TreeStructureError>(PlanStorageCoalescing(facts,admission,{result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);
     }
+    ++cases;
   }
+  std::cout<<"independent whole-group representatives "<<cases<<'\n';
 }
 }
 void DeclarationValues() {
@@ -1058,6 +1091,56 @@ void ReadConstants() {
   }
   std::cout<<"independent per-read normal values "<<cases<<'\n';
 }
+void InitializedRepresentatives() {
+  std::array<StorageBinding,2> bindings{};BindingInterference facts;
+  for(auto& binding:bindings){binding.eligible=true;binding.narrowed_region=SourceRegion{{0},{10}};binding.reference_region=SourceRegion{{2},{3}};}
+  bindings[0].initialized_region=CompletionRegion{1,5};bindings[0].reachable_references=CompletionRegion{1,2};
+  bindings[1].native_declaration=true;bindings[1].initialized_region=CompletionRegion{3,5};bindings[1].reachable_references=CompletionRegion{3,4};
+  facts.affinities.push_back({{0},{1},false});
+  // Native spelling cannot make a later initialization cover earlier writes.
+  auto plan=std::get<StorageCoalescing>(PlanStorageCoalescing(facts,bindings));
+  Check(!plan.storage[0]);Check(plan.storage[1]==SymbolId{0});
+  // Unreachable syntax has no completion-order demand; source scope remains.
+  bindings[0].reachable_references.reset();
+  plan=std::get<StorageCoalescing>(PlanStorageCoalescing(facts,bindings));
+  Check(plan.storage[0]==SymbolId{1});Check(!plan.storage[1]);
+}
+void GroupRepresentatives() {
+  // A candidate discarded in an early contraction can be the only slot whose
+  // known scope covers the final group. Source placement must not depend on
+  // affinity order or on which component root survived DSU balancing.
+  std::uint64_t small=0,large=0;
+  for(unsigned count:{3U,200U,201U,400U,800U})for(bool reverse:{false,true})
+    for(bool reordered:{false,true})for(bool projected:{false,true}) {
+      const auto id=[&](unsigned i){return SymbolId{reverse?count-1-i:i};};
+      const auto outer=id(0);std::vector<StorageBinding> bindings(count);
+      BindingInterference facts;
+      for(unsigned i=0;i<count;++i) {
+        auto& binding=bindings[id(i).value];binding.eligible=true;
+        binding.native_declaration=i!=0;binding.initialization_order=i+1;
+        binding.reference_region=i+1==count?SourceRegion{{6},{7}}:SourceRegion{{2},{3}};
+        if(i)binding.narrowed_region=i+1==count?SourceRegion{{6},{8}}:SourceRegion{{2},{4}};
+        else if(projected)binding.narrowed_region=SourceRegion{{0},{10}};
+        if(i)facts.affinities.push_back({id(i-1),id(i),false});
+      }
+      if(reordered)std::reverse(facts.affinities.begin(),facts.affinities.end());
+      const auto result=PlanStorageCoalescing(facts,bindings);
+      Check(std::holds_alternative<StorageCoalescing>(result));
+      const auto& plan=std::get<StorageCoalescing>(result);
+      if(!reverse&&!reordered&&!projected){if(count==400)small=plan.work;if(count==800)large=plan.work;}
+      for(unsigned i=0;i<count;++i) {
+        if(plan.storage[i]!=(i==outer.value?std::nullopt:std::optional{outer}))
+          std::cerr<<"group representative count="<<count<<" reverse="<<reverse<<" reordered="<<reordered<<" projected="<<projected<<'\n';
+        Check(plan.storage[i]==(i==outer.value?std::nullopt:std::optional{outer}));
+      }
+      if(count<=201) {
+        Check(std::holds_alternative<StorageCoalescing>(PlanStorageCoalescing(facts,bindings,{plan.allocated_bytes,plan.work})));
+        Check(std::get<TreeStructureError>(PlanStorageCoalescing(facts,bindings,{plan.allocated_bytes-1,plan.work}))==TreeStructureError::kResourceLimit);
+        Check(std::get<TreeStructureError>(PlanStorageCoalescing(facts,bindings,{plan.allocated_bytes,plan.work-1}))==TreeStructureError::kWorkLimit);
+      }
+    }
+  Check(large<small*3);
+}
 void StorageScopePreference() {
   // A native narrow slot must not win merely because placement ran first.
   // A broader representative is only a proposal; source integration still
@@ -1172,4 +1255,4 @@ void PassContracts() {
   Check(!unfinished.DemandCleanupNeeded());
   std::cout<<"pass ownership, dependency and cleanup counterexamples passed\n";
 }
-int main(){ReadConstants();StorageScopePreference();PassContracts();ExpressionConstants();ConstantEquations();SourceScopeOracle();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+int main(){InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();PassContracts();ExpressionConstants();ConstantEquations();SourceScopeOracle();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

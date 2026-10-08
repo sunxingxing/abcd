@@ -939,14 +939,25 @@ class Initializers {
       if(const auto* scope=std::get_if<ProjectedBindingScope>(&flow.bindings[i].scope))
         bindings[i].narrowed_region=flow.source_regions[scope->region.value];
       if(const auto point=initialization_order.declarations[i]) {
-        const auto position=initialization_order.order.tree.nodes[point->value].begin;
-        if(position)bindings[i].initialization_order=position;
+        const auto node=initialization_order.order.tree.nodes[point->value];
+        if(node.begin) {
+          bindings[i].initialization_order=node.begin;
+          bindings[i].initialized_region=CompletionRegion{node.begin,node.end};
+        }
       }
     }
-    // Representative choice consumes the same actual occurrence locations as
-    // the later lifetime proof. Aggregate once; do not walk a graph per slot.
+    // Representative choice consumes the same actual locations and completion
+    // dominance as the later lifetime/initialization proofs. Aggregate each
+    // coordinate domain once; do not walk a graph per slot or mix the domains.
     for(const auto& reference:flow.references) {
       budget_.Step();auto& binding=bindings[reference.binding.value];
+      const auto completion=initialization_order.order.tree.nodes[reference.point.value].begin;
+      if(completion) {
+        const CompletionRegion observed{completion,completion+1};
+        if(binding.reachable_references)binding.reachable_references=CompletionRegion{
+            std::min(binding.reachable_references->first,observed.first),std::max(binding.reachable_references->last,observed.last)};
+        else binding.reachable_references=observed;
+      }
       const auto position=reference.owner?flow.source_occurrences[reference.owner->value]:std::nullopt;
       if(!position){binding.unlocated_reference=true;continue;}
       RequireTree(position->value<std::numeric_limits<std::size_t>::max(),TreeStructureError::kResourceLimit);

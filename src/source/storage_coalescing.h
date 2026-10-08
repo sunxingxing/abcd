@@ -2,6 +2,9 @@
 #define ABCD_SOURCE_STORAGE_COALESCING_H_
 #include "binding_interference.h"
 namespace abcd::source {
+// Half-open preorder interval in the shared ALL-completion dominator tree.
+// Distinct from SourceRegion: execution availability is not lexical extent.
+struct CompletionRegion {std::uint32_t first=0,last=0;};
 struct StorageBinding {
   bool eligible=false;
   bool native_declaration=false;
@@ -17,6 +20,8 @@ struct StorageBinding {
   std::optional<SourceRegion> narrowed_region;
   std::optional<SourceRegion> reference_region;
   bool unlocated_reference=false;
+  std::optional<CompletionRegion> initialized_region;
+  std::optional<CompletionRegion> reachable_references;
 };
 struct StorageCoalescing {
   std::vector<std::optional<SymbolId>> storage;
@@ -25,8 +30,10 @@ struct StorageCoalescing {
 };
 // Greedy interference-graph contraction with union by size and indexed conflict
 // adjacency. Each accepted group has no internal conflict; output slots are
-// direct representatives. Semantic scope/initialization checks follow this pure
-// storage proposal and may retain any subset of its members independently.
+// direct representatives. Rank ALL original members against completed group
+// extents after contraction; do not choose/discard candidates during unions.
+// Semantic scope/initialization checks follow this pure storage proposal and
+// may retain any subset of its members independently.
 [[nodiscard]] std::variant<StorageCoalescing,TreeStructureError> PlanStorageCoalescing(
     const BindingInterference&,std::span<const StorageBinding>,analysis::SemanticBudget = {});
 }

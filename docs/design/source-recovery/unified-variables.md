@@ -1766,3 +1766,45 @@ undefined, so callbacks actually run. Adverse mutations target the state produce
 not an equivalent inert declarator. Actual verification belongs in status.md.
 Original IR/SSA, complete activation/capture/finally and global pass convergence
 remain open.
+
+## Representative choice consumes completed groups (rules233)
+
+Rules232's two-retained-candidate limit is retired. Interference contraction now
+determines membership and joins reference extents only. After all contractions,
+one scan ranks every original member against its final group. A candidate whose
+scope was unnecessary early can therefore become the final representative when
+later members widen the observations. DSU balancing no longer discards source
+candidates. This is two phases of one immutable storage proposal, not two passes
+mutating the recovery plan. Greedy conflict-constrained membership remains.
+
+Selection also consumes the existing current FlowInitializations. Its shared
+all-completion dominator intervals describe completed initialization and reachable
+references; lexical SourceRegion remains a separate coordinate domain. The
+source adapter aggregates both extents in one reference scan. Prefer a member
+whose lexical scope and completed initialization cover the final group; equal
+capability retains unique spelling/native declaration/initialization rank/ID.
+Unreachable syntax adds no execution-order demand, but retains lexical obligations.
+Missing source locations cannot establish narrowed scope coverage.
+
+Storage still requests current liveness and initialization through RecoverySchedule.
+All grouping, ranking, reference/name/lifetime and initial-value proposals finish
+before commit; a commit invalidates the revision's facts before plan writes. No
+analysis is consumed during commit. Selection is a preference, not a new admission:
+the existing per-mapping root/member completion, name resolution, source containment,
+cell identity and independent initial-value preservation proofs remain authoritative.
+Original declaration RHS evaluations and exception positions are unchanged.
+
+The old union-time winner decision exits the production path. This closes candidate
+loss for the modeled lexical/initialization capability, not exhaustive feasible
+choice across shadowing, dynamic cells or initial-value preservation. Those remain
+common-analysis precision work; do not add retry patterns or syntax admissions.
+
+Tests enumerate 45,056 tiny group cases using an independent dense membership and
+all-candidate oracle. Discarded-candidate cases reverse IDs/affinities at
+3/200/201/400/800, cover projected/unprojected scopes and exact/short budgets.
+Native original initializers and effectful producers now compose with copies,
+updates and writeback in actual generated source. Independent execution checks
+Number/BigInt/coercion failures and producer exceptions; adverse update deletions
+remain detectable. Existing completion, TDZ, shadowing, capture and loop negatives
+remain. Selected current verification belongs in status.md. Original IR/SSA,
+complete activation/capture/finally and global pass convergence remain open.

@@ -13,7 +13,7 @@ using namespace abcd::source;
 namespace {
 void Check(bool ok,std::source_location at=std::source_location::current()){
   if(!ok){std::cerr<<"binding interference check "<<at.line()<<'\n';std::abort();}}
-enum class Form { kStraight,kObserved,kUpdateThrows,kAfterThrows,kAwait,kYield,kBranch,kLoop,kLocal,kCapture,kShadow,kInitialUndefined,kSharedWrite,kLiveUndefined,kRepeatedUndefined,kUndefinedBeforeRoot,kElidedReference,kRetainedReference,kForwardedUpdate,kForwardedUpdateThrows,kForwardedShadow,kRoundTrip,kForwardedAliasShadow };
+enum class Form { kStraight,kObserved,kUpdateThrows,kAfterThrows,kAwait,kYield,kBranch,kLoop,kLocal,kCapture,kShadow,kInitialUndefined,kSharedWrite,kLiveUndefined,kRepeatedUndefined,kUndefinedBeforeRoot,kElidedReference,kRetainedReference,kForwardedUpdate,kForwardedUpdateThrows,kForwardedShadow,kRoundTrip,kForwardedAliasShadow,kNativeInitializer,kNativeProducer };
 struct Fixture {
   FunctionTree tree{};
   Fixture(Form form){
@@ -54,7 +54,10 @@ std::uint64_t Run(Form form,unsigned count,bool reverse,bool emit){
   Fixture f(form);auto& tree=f.tree;
   if(form==Form::kLocal||form==Form::kCapture){tree.symbols[3].kind=BindingKind::kLocal;tree.symbols[3].temporary.reset();}
   const bool live_undefined=form==Form::kLiveUndefined||form==Form::kRepeatedUndefined;
-  std::vector<StmtId> roots{f.Stmt(DeclarationStmt{{3},{}}),f.Stmt(DeclarationStmt{{4},{}}),f.Write(3,form==Form::kLoop||live_undefined?f.Expr(TreeLiteral{IntegerLiteral{0}}):f.Read(0))};
+  const bool native=form==Form::kNativeInitializer||form==Form::kNativeProducer;
+  std::vector<StmtId> roots;
+  if(native)roots={f.Stmt(DeclarationStmt{{3},form==Form::kNativeProducer?f.Call({f.Read(0)}):f.Read(0)}),f.Stmt(DeclarationStmt{{4},{}})};
+  else roots={f.Stmt(DeclarationStmt{{3},{}}),f.Stmt(DeclarationStmt{{4},{}}),f.Write(3,form==Form::kLoop||live_undefined?f.Expr(TreeLiteral{IntegerLiteral{0}}):f.Read(0))};
   std::vector<StmtId> operations;
   const bool forwarded=form==Form::kForwardedUpdate||form==Form::kForwardedUpdateThrows||form==Form::kForwardedShadow||form==Form::kForwardedAliasShadow;
   if(forwarded) {
@@ -146,7 +149,7 @@ std::uint64_t Run(Form form,unsigned count,bool reverse,bool emit){
   auto planned=PlanBindingInitializers(tree,loops,nullish);
   if(auto* error=std::get_if<TreeStructureError>(&planned))std::cerr<<"form "<<unsigned(form)<<" error "<<unsigned(*error)<<'\n';
   Check(std::holds_alternative<BindingInitializers>(planned));const auto& bindings=std::get<BindingInitializers>(planned);
-  const bool merged=form==Form::kStraight||form==Form::kUpdateThrows||form==Form::kLoop||form==Form::kSharedWrite||form==Form::kInitialUndefined||form==Form::kElidedReference||form==Form::kRetainedReference||form==Form::kRoundTrip||form==Form::kUndefinedBeforeRoot||live_undefined||(forwarded&&form!=Form::kForwardedShadow);
+  const bool merged=native||form==Form::kStraight||form==Form::kUpdateThrows||form==Form::kLoop||form==Form::kSharedWrite||form==Form::kInitialUndefined||form==Form::kElidedReference||form==Form::kRetainedReference||form==Form::kRoundTrip||form==Form::kUndefinedBeforeRoot||live_undefined||(forwarded&&form!=Form::kForwardedShadow);
   if(bool(bindings.storage[4])!=merged)std::cerr<<"form "<<unsigned(form)<<" count "<<count<<" reverse "<<reverse<<" merged "<<bool(bindings.storage[4])<<'\n';
   Check(bool(bindings.storage[4])==merged);
   // Coalescing creates an immutable copy. Its late propagation must compose
@@ -261,5 +264,5 @@ int main(int argc,char** argv){
   }
 for(bool conflict:{false,true})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{1U,2U,200U,201U,400U,800U}){
   const auto work=Chain(count,conflict,reverse,false);if(count==800)Check(work<previous*3);previous=work;}}
-for(unsigned form=0;form<=unsigned(Form::kForwardedAliasShadow);++form){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}){
+for(unsigned form=0;form<=unsigned(Form::kNativeProducer);++form){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}){
   const auto work=Run(Form(form),count,reverse,argc>1);if(!reverse){if(count==800)Check(work<previous*3);previous=work;}}}}
