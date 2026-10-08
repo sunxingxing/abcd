@@ -3,6 +3,7 @@
 #include "../../../src/source/storage_coalescing.h"
 #include "../../../src/source/flow_definitions.h"
 #include "../../../src/source/flow_constants.h"
+#include "../../../src/source/flow_copies.h"
 #include "../../../src/source/recovery_schedule.h"
 #include "../../../src/source/source_names.h"
 #include "../../../src/source/source_name_retirement.h"
@@ -1815,6 +1816,99 @@ void SnapshotCheckpoints() {
   Check(rejects([&]{(void)clean.SnapshotRefreshNeeded();}));clean.Start(RecoveryPass::kBindings);Check(!clean.Finish());Check(clean.SnapshotRefreshNeeded());
   std::cout<<"snapshot checkpoint revision/cleanup/stage counterexamples passed\n";
 }
+void AvailableCopyOracle() {
+  std::uint64_t cases=0;
+  // Independent finite concrete state exploration. Roots denote distinct
+  // entry values; each source write creates a fresh value. The state records
+  // which current root the temporary equals, with no production lattice,
+  // sparse facts, dependency graph or transfer helper in the oracle.
+  for(unsigned mask=0;mask<512;++mask)for(unsigned encoded=0;encoded<216;++encoded)for(bool reverse:{false,true}) {
+    const auto id=[&](unsigned i){return SymbolId{reverse?2-i:i};};
+    RecoveryFlow flow{};flow.events.resize(3);flow.bindings.resize(3);flow.entry={0};
+    flow.bindings[id(0).value].kind=BindingKind::kCompilerTemporary;flow.bindings[id(0).value].exposure=FlowBindingExposure::kPrivate;
+    for(unsigned root=1;root<=2;++root){flow.bindings[id(root).value].kind=BindingKind::kParameter;flow.bindings[id(root).value].stable_entry=(mask&(1U<<(root-1)))!=0;}
+    std::array<unsigned,3> operations{};auto code=encoded;
+    std::array<FlowValueEquation,3> equations;std::array<std::uint8_t,3> completed{1,std::uint8_t(encoded%2),1};
+    for(unsigned point=0;point<3;++point) {
+      operations[point]=code%6;code/=6;flow.events[point].read=id(0);equations[point]=FlowBindingValue{id(0)};
+      // A reference inside an update is not a replaceable SymbolExpr read.
+      if(point==1&&encoded%5==0)equations[point]=UnknownFlowValue{};
+      flow.references.push_back({{point},id(0),FlowReferenceKind::kRead,ExprId{point}});
+      if(operations[point]) {
+        const auto definition=FlowDefinitionId{static_cast<std::uint32_t>(flow.definitions.size())};flow.events[point].definition=definition;
+        const bool root_write=operations[point]==3||operations[point]==4;
+        const auto target=id(root_write?operations[point]-2:0);
+        const auto kind=root_write?FlowDefinitionKind::kUpdate:operations[point]==5?FlowDefinitionKind::kUndefined:FlowDefinitionKind::kAssignment;
+        flow.definitions.push_back({{point},target,kind,operations[point]<=2?std::optional{id(operations[point])}:std::nullopt});
+      }
+    }
+    for(unsigned from=0;from<3;++from)for(unsigned to=0;to<3;++to)if(mask&(1U<<(from*3+to)))Link(flow,from,to);
+    std::array<std::array<bool,3>,3> seen{};std::vector<std::pair<unsigned,unsigned>> pending{{0,0}};seen[0][0]=true;
+    while(!pending.empty()) {
+      const auto [point,input]=pending.back();pending.pop_back();auto output=input;
+      switch(operations[point]) {
+        case 0:break;case 1:output=1;break;case 2:output=2;break;
+        case 3:if(input==1)output=0;break;case 4:if(input==2)output=0;break;
+        case 5:output=0;break;
+      }
+      for(unsigned target=0;target<3;++target)if((mask&(1U<<(point*3+target)))&&!seen[target][output]){seen[target][output]=true;pending.push_back({target,output});}
+    }
+    const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));
+    const FlowValueEquations expressions{equations,{},{},completed};
+    const auto result=std::get<FlowCopies>(AnalyzeFlowCopies(flow,live,expressions));
+    std::array<std::optional<SymbolId>,3> actual{};for(const auto& read:result.reads)actual[read.expression.value]=read.source;
+    for(unsigned point=0;point<3;++point) {
+      std::optional<SymbolId> expected;
+      if(completed[point]&&std::holds_alternative<FlowBindingValue>(equations[point])&&!seen[point][0]) {
+        if(seen[point][1]&&!seen[point][2]&&flow.bindings[id(1).value].stable_entry)expected=id(1);
+        if(seen[point][2]&&!seen[point][1]&&flow.bindings[id(2).value].stable_entry)expected=id(2);
+      }
+      Check(actual[point]==expected);
+    }
+    if(!mask&&encoded==1&&!reverse) {
+      Check(std::holds_alternative<FlowCopies>(AnalyzeFlowCopies(flow,live,expressions,{result.allocated_bytes,result.work})));
+      Check(std::get<TreeStructureError>(AnalyzeFlowCopies(flow,live,expressions,{result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
+      Check(std::get<TreeStructureError>(AnalyzeFlowCopies(flow,live,expressions,{result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);
+      auto invalid=live;invalid.reachable.pop_back();Check(std::get<TreeStructureError>(AnalyzeFlowCopies(flow,invalid,expressions))==TreeStructureError::kOwnership);
+      auto short_reads=expressions;short_reads.completed_reads=std::span{completed}.first(2);Check(std::get<TreeStructureError>(AnalyzeFlowCopies(flow,live,short_reads))==TreeStructureError::kOwnership);
+      auto invalid_flow=flow;invalid_flow.definitions[0].point={3};Check(std::get<TreeStructureError>(AnalyzeFlowCopies(invalid_flow,live,expressions))==TreeStructureError::kOwnership);
+      invalid_flow=flow;invalid_flow.definitions[0].copy=id(3);Check(std::get<TreeStructureError>(AnalyzeFlowCopies(invalid_flow,live,expressions))==TreeStructureError::kBinding);
+    }
+    ++cases;
+  }
+  // A write reference without a modeled normal value still changes storage.
+  // Test both destination and source kills; never infer an unchanged value
+  // from the absence of a FlowDefinition.
+  for(unsigned target:{0U,1U}) {
+    RecoveryFlow flow{};flow.events.resize(3);flow.bindings.resize(2);flow.entry={0};
+    flow.bindings[0].kind=BindingKind::kCompilerTemporary;flow.bindings[0].exposure=FlowBindingExposure::kPrivate;
+    flow.bindings[1].kind=BindingKind::kParameter;flow.bindings[1].stable_entry=true;
+    flow.definitions={{{0},{0},FlowDefinitionKind::kAssignment,SymbolId{1}}};flow.events[0].definition=FlowDefinitionId{0};
+    Link(flow,0,1);Link(flow,1,2);flow.events[2].read=SymbolId{0};
+    flow.references={{{1},{target},FlowReferenceKind::kWrite,StmtId{0}},{{2},{0},FlowReferenceKind::kRead,ExprId{0}}};
+    const std::array<FlowValueEquation,1> equations{FlowBindingValue{{0}}};const std::array<std::uint8_t,1> completed{1};
+    const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));
+    Check(std::get<FlowCopies>(AnalyzeFlowCopies(flow,live,{equations,{},{},completed})).reads.empty());
+  }
+  std::uint64_t small=0,large=0;
+  for(unsigned count:{200U,201U,400U,800U}) {
+    RecoveryFlow flow{};flow.events.resize(count);flow.bindings.resize(2);flow.entry={0};
+    flow.bindings[0].kind=BindingKind::kCompilerTemporary;flow.bindings[0].exposure=FlowBindingExposure::kPrivate;
+    flow.bindings[1].kind=BindingKind::kParameter;flow.bindings[1].stable_entry=true;
+    flow.definitions={{{0},{0},FlowDefinitionKind::kAssignment,SymbolId{1}},{{count/2},{1},FlowDefinitionKind::kUpdate}};
+    flow.events[0].definition=FlowDefinitionId{0};flow.events[count/2].definition=FlowDefinitionId{1};
+    std::vector<FlowValueEquation> equations(count,FlowBindingValue{{0}});std::vector<std::uint8_t> completed(count,1);
+    for(unsigned i=1;i<count;++i){Link(flow,i-1,i);flow.events[i].read=SymbolId{0};flow.references.push_back({{i},{0},FlowReferenceKind::kRead,ExprId{i}});}
+    const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));const FlowValueEquations expressions{equations,{},{},completed};
+    const auto result=std::get<FlowCopies>(AnalyzeFlowCopies(flow,live,expressions));Check(result.reads.size()==count/2);
+    for(unsigned i=0;i<result.reads.size();++i)Check(result.reads[i].expression==ExprId{i+1}&&result.reads[i].source==SymbolId{1});
+    Check(std::holds_alternative<FlowCopies>(AnalyzeFlowCopies(flow,live,expressions,{result.allocated_bytes,result.work})));
+    Check(std::get<TreeStructureError>(AnalyzeFlowCopies(flow,live,expressions,{result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
+    Check(std::get<TreeStructureError>(AnalyzeFlowCopies(flow,live,expressions,{result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);
+    if(count==400)small=result.work;if(count==800)large=result.work;
+  }
+  Check(large<small*3);std::cout<<"independent current-copy path states "<<cases<<'\n';
+}
 void InitializationTransfers() {
   const auto rejects=[](const auto& action) {
     try {action();return false;}catch(TreeStructureError error){return error==TreeStructureError::kOwnership;}
@@ -1909,6 +2003,7 @@ void PassContracts() {
   // an analysis while the source/destination revisions are unspecified.
   Check(rejects([&]{(void)schedule.TransportInitializations(original);}));
   Check(rejects([&]{schedule.RequireFact(RecoveryFact::kConstants);}));
+  Check(rejects([&]{schedule.RequireFact(RecoveryFact::kCopies);}));
   Check(rejects([&]{schedule.Start(RecoveryPass::kAliases);}));
   Check(schedule.Commit());Check(!schedule.Commit());
   Check(rejects([&]{schedule.RequireFact(RecoveryFact::kExpressions);}));
@@ -1943,6 +2038,7 @@ void PassContracts() {
   schedule.EnterReadValues();Check(rejects([&]{schedule.EnterGrammar();}));
   for(const auto pass:{RecoveryPass::kAliases,RecoveryPass::kStorage,RecoveryPass::kSnapshots})Check(rejects([&]{schedule.Start(pass);}));
   schedule.Start(RecoveryPass::kBindingValues);schedule.RequireFact(RecoveryFact::kConstants);schedule.RequireFact(RecoveryFact::kLiveness);
+  schedule.RequireFact(RecoveryFact::kCopies);
   Check(schedule.Commit());Check(schedule.Finish());Check(rejects([&]{schedule.EnterGrammar();}));cleanup(schedule);
   schedule.EnterGrammar();
   Check(rejects([&]{schedule.Start(RecoveryPass::kAliases);}));
@@ -1981,4 +2077,4 @@ void PassContracts() {
   Check(!unfinished.DemandCleanupNeeded());
   std::cout<<"pass ownership, dependency and cleanup counterexamples passed\n";
 }
-int main(){InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();InitializationTransfers();PassContracts();SnapshotCheckpoints();StableValues();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+int main(){InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();AvailableCopyOracle();InitializationTransfers();PassContracts();SnapshotCheckpoints();StableValues();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

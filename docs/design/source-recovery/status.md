@@ -24,6 +24,44 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-09：规则247，共同可用复制恢复可写入口绑定的读取
+
+- 新FlowCopies在共同RecoveryFlow/normal-result复制定义、稀疏活跃性、
+  invocation reachability与已初始化的binding-value读取上计算gen/kill。
+  证明的是读取发生时与入口单元当前值相同，独立于全定义不可变根及
+  存储合并。每次成功源写入撤销关系；未知目标写入也撤销；抛异常的RHS
+  未经过成功定义，其异常路径保留原状态。合流需所有可达路径一致。
+  source stable_entry只表达adapter单元证据，排除mapped/capture/signature
+  外部改写；local/catch跨activation身份仍未证明，不能用词法scope替代。
+- Late BindingValues显式声明Copies及其Liveness/Flow/Expressions依赖，
+  取得同一revision的不可变/当前复制结果，按ExprId归并成自有提案。
+  实际scope/name独立证明后提交；首次提交原子失效含copies的聚合事实，
+  后续死定义/初始值/绑定清理重新取当前事实，最后恢复grammar。
+  旧“全函数不可变才可恢复此读取”的唯一决策退出这些可写入口场景；
+  不可变根的独立证明保留。无回退阶段、额外轮次、打印器分析或样本/
+  同块/邻接/操作序列准入。计量区分live facts与实际检查前驱连接，
+  所有稠密事实/连接/输出均计入预算，无复制对枚举或每绑定图遍历。
+- 有效功能RED619 exit134，结构验证先通过。独立未知写引用反例在
+  原solver上1517 exit134后补齐通用目标kill。首个生产构建漏tree_checks
+  include已修正，未用失败产物运行测试。首轮聚焦2/3的源码失败仅为
+  新测试未识别既有(0,report)值调用；修正AST目标解析，无生产限制补丁。
+  最终聚焦3/3在48.43秒通过：11种写入/刷新/合流/循环/异常/prefix/
+  postfix/mapped/shadow源码组合，反向arena与0/1/200/201/400/800，
+  独立221184小图路径状态及未知写/exact-short预算/非法边界通过。
+- 最终原29目标构建81.90秒、exact原59/59项CTest478.62秒通过，
+  combined-coverage.json核对名称集合一致。存储1085源码/173588行为
+  比较/122变异反例，声明2568/513600/100、初始化2004/482752/368、
+  循环276/13976/68；既有逐读值65536/稳定值32768、名字/作用域、
+  pass所有权/依赖/清理、初始化版本运输和真实record回归通过。
+  fresh固定pasteboard导出4.95秒：19records、10complete/0partial/
+  9no-module，10语法检查通过，源码字节与规则246一致，输入SHA前后
+  不变，原预算和language_numeric_constructors_v1保持。最终构建无
+  warning/error；早期完整构建仅原literal_plan.cc kNoop warning及已修正
+  的缺include错误。证据build/stage-one/available-copy-verification。
+- 原IR/SSA接入、local/catch/capture activation、试算精度、完整finally
+  与共同全局收敛仍开放，统一变量/结构gate/阶段一Goal active。
+  全suite/广语料/RSS/benchmarks/DFX/代理暂停保持。
+
 ### 2026-10-09：规则246，初始化读取证明的版本所有权
 
 - InitializedOccurrences自有投影revision与读取mask，表达式和值分析统一

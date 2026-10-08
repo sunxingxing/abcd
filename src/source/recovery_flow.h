@@ -75,8 +75,9 @@ struct FlowBinding {
   SourceBindingScope scope=OriginalBindingScope{};
   bool unique_spelling=true;
   // Semantic adapter proof: body-entry identity cannot be changed by mapped
-  // arguments, unknown captures or unmodeled signature evaluation. The value
-  // solver independently rejects retained writes before grounding this root.
+  // arguments, unknown captures or unmodeled signature evaluation. Immutable
+  // values separately reject body writes; current-copy equality kills at each
+  // successful write. Neither analysis grounds local activation identities.
   bool stable_entry=false;
 };
 enum class FlowReferenceKind : std::uint8_t { kRead, kWrite };

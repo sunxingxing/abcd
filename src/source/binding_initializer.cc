@@ -8,6 +8,7 @@
 #include "flow_dominance.h"
 #include "flow_definitions.h"
 #include "flow_constants.h"
+#include "flow_copies.h"
 #include "primitive_value.h"
 #include "flow_motion.h"
 #include "class_tree.h"
@@ -329,6 +330,7 @@ class Initializers {
     std::optional<FlowLiveness> liveness;
     std::optional<FlowDemand> demand;
     std::optional<FlowConstants> constants;
+    std::optional<FlowCopies> copies;
   };
   // This read-occurrence proof is the only analysis transported across a
   // projection commit. Its semantic contract and version are both required;
@@ -344,7 +346,7 @@ class Initializers {
   }
   ProjectionFacts& CurrentFacts() const {
     RequireAnalysis();
-    if(!facts_)facts_.emplace(ProjectionFacts{schedule_.Revision(),{},{},{},{},{},{}});
+    if(!facts_)facts_.emplace(ProjectionFacts{schedule_.Revision(),{},{},{},{},{},{},{}});
     schedule_.RequireCurrent(facts_->revision);
     return *facts_;
   }
@@ -1597,6 +1599,20 @@ class Initializers {
     }
     return *facts.constants;
   }
+  const FlowCopies& CurrentCopies() const {
+    schedule_.RequireFact(RecoveryFact::kCopies);auto& facts=CurrentFacts();
+    if(!facts.copies) {
+      const auto& flow=CurrentFlow();
+      std::vector<FlowValueEquation> bindings;budget_.Array(bindings,tree_.symbols.size());
+      for(std::size_t i=0;i<bindings.size();++i){budget_.Step();bindings[i]=ProjectedBindingValue({static_cast<std::uint32_t>(i)});}
+      const FlowValueEquations expressions{value_equations_,plan_.replacements,bindings,InitializedReads(),plan_.read_literals,{},plan_.transports,plan_.read_sources};
+      auto analyzed=AnalyzeFlowCopies(flow,CurrentLiveness(),expressions,budget_.Remaining());
+      if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
+      facts.copies=std::get<FlowCopies>(std::move(analyzed));
+      budget_.Admit(facts.copies->allocated_bytes,1);budget_.Step(facts.copies->work);
+    }
+    return *facts.copies;
+  }
   void Constants() {
     bool candidate=false;
     for(const auto& use:uses_){budget_.Step();candidate|=use.private_storage&&use.declaration&&!use.escaped;}
@@ -1633,9 +1649,20 @@ class Initializers {
     for(std::size_t i=0;i<uses_.size();++i){budget_.Step();const auto& use=uses_[i];
       if(use.private_storage&&use.declaration&&!use.escaped&&!use.outside_body&&values.bindings[i]&&
           values.bindings[i]->value!=i&&plan_.read_bindings[i]!=values.bindings[i]) {bindings[i]=values.bindings[i];invariant=true;}}
-    std::vector<FlowReadBinding> reads;budget_.Array(reads,values.binding_reads.size());
+    const auto& copies=CurrentCopies();
+    RequireTree(copies.reads.size()<=std::numeric_limits<std::size_t>::max()-values.binding_reads.size(),TreeStructureError::kResourceLimit);
+    std::vector<FlowReadBinding> reads;budget_.Array(reads,values.binding_reads.size()+copies.reads.size());
     std::size_t read_count=0;
-    for(const auto& read:values.binding_reads){
+    // Both common results are sorted by occurrence. Prefer a proved immutable
+    // value when available; current-copy equality never becomes an invariant.
+    std::size_t value_at=0,copy_at=0;
+    while(value_at<values.binding_reads.size()||copy_at<copies.reads.size()) {
+      FlowReadBinding read;
+      if(value_at<values.binding_reads.size()&&(copy_at==copies.reads.size()||
+          values.binding_reads[value_at].expression.value<=copies.reads[copy_at].expression.value)) {
+        read=values.binding_reads[value_at++];
+        if(copy_at<copies.reads.size()&&copies.reads[copy_at].expression==read.expression)++copy_at;
+      }else {const auto& copy=copies.reads[copy_at++];read={copy.expression,copy.source};}
       budget_.Step();const auto* source=std::get_if<FlowBindingValue>(&value_equations_[read.expression.value]);
       RequireTree(source!=nullptr,TreeStructureError::kOwnership);const auto& use=uses_[source->binding.value];
       if(use.private_storage&&use.declaration&&!use.escaped&&!use.outside_body&&

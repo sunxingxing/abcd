@@ -2842,3 +2842,24 @@ and bare preservation-boolean decision path are retired. Existing initialization
 scope, effect and lifetime obligations remain; no source precision is claimed
 from the metadata change. Independent phase/stale/future/no-op/batch/pass-category
 and geometric protocol counterexamples complement actual generated-source tests.
+
+
+### Rules247: mutable-entry reads use common available copies
+
+- ReadValues may replace a completed private read when common gen/kill facts prove
+  it equals the current entry cell on every invocation path. Global immutability
+  remains a separate proof; a later write no longer rejects an earlier safe read.
+- Normal-result copy definitions generate relations; every successful source write
+  and unknown destination write kills them. Exception edges bypass failed stores.
+  No assignment/update/branch/loop opcode sequence or producer layout is matched.
+- Entry-cell adapter evidence, initialization and actual scope/name obligations
+  remain independent. Arbitrary local/catch activation is explicitly unmodeled;
+  scope membership alone is not a substitute for cell identity across reentry.
+- Exact-revision copies live in ProjectionFacts and are declared pass inputs.
+  Owned occurrence proposals precede first-commit invalidation. Cleanup owns
+  writes/effects/declarations; the printer only consumes the committed plan.
+- Independent concrete graph exploration, reverse arena/geometric layouts,
+  source/unknown-write semantic counterexamples and generated-source execution
+  validate the change. The added test's initial direct-callee assumption missed
+  the existing `(0, report)` value-call representation; AST target resolution was
+  corrected without changing production output or admission.

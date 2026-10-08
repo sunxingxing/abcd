@@ -9,7 +9,7 @@ enum class RecoveryPass {
   kDeclarations,kConstants,kBindingValues,kAliases,kStoredResults,kDeadDefinitions,kInitialValues,
   kBindings,kSnapshots,kStorage,kInertStatements,kInertOperands,kLoopDeclarations,kDeclarationKinds
 };
-enum class RecoveryFact : std::uint8_t {kExpressions,kFlow,kLiveness,kDemand,kInitializations,kConstants};
+enum class RecoveryFact : std::uint8_t {kExpressions,kFlow,kLiveness,kDemand,kInitializations,kConstants,kCopies};
 class RecoveryFactSet {
  public:
   constexpr RecoveryFactSet(std::initializer_list<RecoveryFact> facts) {
@@ -37,7 +37,7 @@ struct RecoveryPassContract {
   switch(pass) {
     case RecoveryPass::kDeclarations:return {{Fact::kFlow},Scope::kValues,false};
     case RecoveryPass::kConstants:return {{Fact::kConstants},Scope::kValues,false};
-    case RecoveryPass::kBindingValues:return {{Fact::kConstants},Scope::kReadValues,false};
+    case RecoveryPass::kBindingValues:return {{Fact::kConstants,Fact::kCopies},Scope::kReadValues,false};
     case RecoveryPass::kAliases:return {{Fact::kLiveness},Scope::kValueOrStorage,false};
     // Store identity elision retains RHS completion at its occurrence.
     case RecoveryPass::kStoredResults:return {{Fact::kExpressions},Scope::kNormalization,true};
@@ -62,7 +62,7 @@ struct RecoveryPassContract {
 }
 [[nodiscard]] inline RecoveryFactSet RequiredFacts(RecoveryPass pass) {
   auto result=PassContract(pass).inputs;
-  if(result.Contains(RecoveryFact::kConstants))result.Add(RecoveryFact::kLiveness);
+  if(result.Contains(RecoveryFact::kConstants)||result.Contains(RecoveryFact::kCopies))result.Add(RecoveryFact::kLiveness);
   if(result.Contains(RecoveryFact::kLiveness)||result.Contains(RecoveryFact::kDemand)||
       result.Contains(RecoveryFact::kInitializations))result.Add(RecoveryFact::kFlow);
   // Flow and expressions are bootstrapped together: conservative effects ->

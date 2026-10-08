@@ -3567,3 +3567,34 @@ per-occurrence revision array is added. No-op passes do not manufacture revision
 one batch advances once. Independent stale/phase/non-preserving and 200/201/
 geometric protocol cases plus existing generated-source execution verify the
 boundary. Full process RSS remains paused, so no new peak-memory claim is made.
+
+
+### Available current-cell copies (2026-10-09, rules247)
+
+Provenance: classical available-copy gen/kill dataflow, implemented internally in
+flow_copies.cc with the existing charged sparse worklist and strong graph IDs; no
+new dependency or external code/license. Prerequisites are current shared normal
+copy definitions, sparse liveness, invocation reachability and completed binding
+reads. Adapter evidence admits entry-cell identity independently of body writes.
+Each successful source write kills a relation; each successful destination copy
+generates one, other destination writes kill it. All completion edges participate;
+failed-before-write paths retain the old state. Incoming paths must agree on a
+single current source. Immutable roots and storage interference remain separate.
+
+Let N/B/D/R/E denote events/bindings/definitions/references/expressions, L all
+supplied sparse live facts, P all incoming edges inspected across the selected
+reachable subset (including constant and unreachable predecessors), and A materialized dependencies
+with A <= P. Filtering and charged sorted lookup cost
+O(N+B+D+R+E+L+(P+R) log(L+1)); memory is O(N+B+E+L+A+output). No copy-pair enumeration or per-binding graph walk occurs.
+A flat unresolved/source/unknown fact changes at most twice; counted adjacency and
+bounded queued IDs notify only dependents. Ungrounded cycles become unknown.
+Dense L/P/A/output is honestly charged, not discarded by a cutoff. All arrays,
+iterations and failed resource admissions consume the existing budgets.
+
+ReadValues merges sorted invariant/available occurrence outputs in O(output)
+work and owned space before separate batched scope/name queries. First commit
+invalidates revision-owned results; no borrowed analysis survives into mutation.
+No full-function retry, new pass round or eager reanalysis is added. Independent
+221184 concrete small-graph cases, 200/201/geometric layouts, unknown-write kills
+and exact/short quotas verify this boundary. Full process RSS remains paused;
+these bounds and quota checks do not constitute a measured peak-memory claim.

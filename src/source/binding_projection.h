@@ -11,7 +11,7 @@ struct BindingProjection {
   std::span<const std::optional<SymbolId>> storage;
   std::span<const std::optional<SymbolId>> read_values;
   // A proved occurrence value takes precedence over the binding invariant.
-  // Published roots are stable values; this does not remap any write.
+  // Published identities are proved at this read; this does not remap any write.
   std::span<const std::optional<SymbolId>> read_sources;
   [[nodiscard]] SymbolId Storage(SymbolId symbol) const {
     const auto root=aliases.empty()?symbol:aliases[symbol.value].value_or(symbol);

@@ -555,3 +555,16 @@ semantics, all pass categories and stale/phase/geometric counterexamples plus
 existing source execution verify ownership. No new recovery admission or graph
 analysis. Final selected evidence is recorded in status.md; overall milestone and
 original correspondence/full lifetime/global convergence remain incomplete.
+
+
+rules247 implemented substep: shared sparse FlowCopies proves current-entry equality
+at completed private read occurrences through normal-result gen/kill and all
+reachable completion paths. Successful source/unknown destination writes revoke
+relations; failed RHS paths retain them. Global immutable roots remain separate.
+Late BindingValues declares Copies/Liveness/Flow/Expression dependencies, owns
+merged proposals and separately proves scope/names before aggregate invalidation;
+subsequent cleanup consumes fresh facts. No backward pass, extra round or printer
+analysis. Mutable entry reads, loops, refresh/exception/shadow/mapped/prefix/postfix
+source compositions and independent concrete small graphs verify the substep.
+Actual selected evidence is recorded in status.md. Local/catch/capture activation,
+original correspondence/full lifetime/global convergence and milestone remain open.

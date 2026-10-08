@@ -2326,3 +2326,43 @@ shape. It adds constant work per access/commit and constant cache metadata, with
 new graph, traversal, payload copy or eager analysis. Original IR/SSA integration,
 local/catch/capture roots, trial precision, full activation/finally and global
 convergence remain open; the overall milestone is incomplete.
+
+
+### Available current-cell copies (2026-10-09, rules247)
+
+FlowCopies computes classical available-copy gen/kill facts on the current shared
+RecoveryFlow, sparse FlowLiveness and invocation reachability. Normal-completion
+copy metadata generates equality between a private stored value and an entry cell's
+current value. A successful write to the source kills that equality; an unknown
+write to the destination also kills it. A failing RHS bypasses the successful
+write event, so exception paths retain the earlier state. Every reachable incoming
+path must agree. This equality is separate from FlowConstants' immutable roots and
+never becomes an all-definition invariant or a storage mapping.
+
+The stable_entry adapter evidence excludes mapped arguments, external captures and
+unmodeled signature mutation. Body writes are permitted in this analysis and are
+explicit kill events. Arbitrary local/catch roots remain a capability gap: lexical
+scope alone cannot prove activation identity across loop reentry and TDZ. Completed
+initialization and binding-value equation facts identify substitutable reads;
+update reference halves keep Storage and are not independently rewritten.
+
+BindingValues declares its new kCopies dependency and obtains both immutable and
+current-copy results at one exact projection revision. It merges their sorted
+occurrence results into owned proposals, separately proves actual scope/name
+resolution, then commits. First commit invalidates the aggregate including copies;
+no fact is read after that boundary. Late ReadValues remains after alias/storage/
+snapshot work, followed by independent current-fact demand/initial-value/binding
+cleanup and grammar restoration. No backward phase, new round or printer analysis
+is introduced. Whole-function immutability is no longer the only decision path for
+these mutable-entry reads; its independent invariant proof remains intact.
+
+Eleven generated-source combinations cover writes before/after reads, conditional
+kills, refreshed copies, loops, prefix-current/postfix-old results, failed RHS,
+mapped arguments and shadowed names. Reverse arenas and 0/1/200/201/400/800 sizes
+exercise layout and cost. Independent concrete path-state exploration checks
+221184 small graph cases without the production lattice or dependency solver;
+unknown source/destination write references, exact/short budgets and malformed
+boundaries add counterexamples. Output execution and forced wrong merges/read
+removal verify observable behavior. See status.md for actual selected validation.
+Original IR/SSA correspondence, local/catch/capture activation, trial precision,
+full finally and common global convergence remain open.
