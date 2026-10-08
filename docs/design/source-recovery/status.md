@@ -24,6 +24,31 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则214，当前引用归属贯通快照之后的存储分析
+
+- RecoveryFlow.references 新增当前语句owner，由构造上下文统一传播；
+  原表达式site仍作来源身份，替换/转发继承目的语句，二者不再混用。
+  子表达式通过复制上下文调整continuation/value-use，保留异常与归属。
+- RetainedExtents 和快照之后的 Coalesce 使用当前引用owner映射到既有
+  源码语法的词法目的及作用域。后者退出按原始ExprId查位置的路径；
+  正常初始化、干涉、名字解析和声明生命期证明均保留。两个只读索引
+  随函数准备构建，流图引用归属随每次提交后的重建更新。
+- 当前归属不等于完整绑定生命期；捕获单元、异常scope退出和暂停的
+  精细语义仍未补齐。不添加同块/布局/样本条件，不修改打印器语义。
+- 新增原引用与转发目的、旧图、重用存储、效果细化及条件/短路/暂停
+  子引用归属检查。中断前旧构造器失败1.15秒，直接相关5/5通过28.95秒；
+  原/tmp日志在环境中断后已不可用，未完成的51项不计通过。
+- 恢复后确认原句柄及进程不存在，重新构建并运行全部56项相关测试，
+  56/56通过498.46秒；新记录保存在
+  build/stage-one/rule214-verification/{build,tests,detail}.log。
+  变量恢复2,004份源码/482,752行为/342变体，存储干涉221份/33,620行为/
+  12变体，快照432份/16,476行为/42变体；包括Home/PageA实际record对照。
+- 恢复后的新鲜ABC-only导出
+  build/stage-one/current-reference-owner-rule214-resumed：19 records，
+  10 complete / 0 partial / 9 noModule，10份语法通过；正文相对规则213
+  不变，输入SHA256不变，证据为上述验证目录的export-check.json。
+  阶段一Goal继续，完整corpus、平台执行及暂停的RSS/基准不在本轮范围。
+
 ### 2026-10-08：规则213，以保留引用替代普通绑定的原始范围统计
 
 - Declarations 与 Aliases 共用 RetainedExtents，逐次从当前 RecoveryFlow

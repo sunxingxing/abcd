@@ -40,6 +40,9 @@ struct FlowReference {
   // Retain the handler/cleanup route even if the reference itself is proved
   // nonthrowing. Moving a producer here must preserve its exceptional route.
   std::optional<FlowExceptionContext> exceptions;
+  // Current occurrence owner, transported through replacement/forwarding.
+  // The source expression identity alone cannot locate a moved evaluation.
+  std::optional<StmtId> owner;
 };
 struct BindingInitializer;
 struct FlowDefinition {

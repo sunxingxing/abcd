@@ -328,6 +328,19 @@ void SourceEvents() {
   Check(flow.value_uses==std::vector<FlowValueUse>{FlowValueUse::kObserved,FlowValueUse::kDiscarded,
       FlowValueUse::kObserved,FlowValueUse::kDiscarded,FlowValueUse::kDiscarded,FlowValueUse::kObserved});
   for(const auto& reference:flow.references) {Check(reference.exceptions.has_value());Check(reference.exceptions->thrown==flow.terminal);}
+  const std::array<StmtId,6> owners{{{3},{3},{4},{4},{5},{6}}};
+  for(const auto& reference:flow.references)
+    Check(reference.owner==owners[std::get<ExprId>(reference.site).value]);
+  // The same original read now executes in the return, not in its omitted
+  // source store. Rebuilding must publish the destination, without mutating
+  // the previous immutable result or confusing the read with its replacement.
+  omitted[3]=1;replacements[5]=ExprId{0};
+  const auto moved=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,projection));
+  unsigned forwarded=0;
+  for(const auto& reference:moved.references)if(reference.site==FlowReferenceSite{ExprId{0}}) {
+    Check(reference.owner==StmtId{6});++forwarded;
+  }
+  Check(forwarded==1);omitted[3]=0;replacements[5].reset();
   std::optional<FlowPoint> read,convert,write;
   for(const auto& definition:flow.definitions) {
     parameters+=definition.kind==FlowDefinitionKind::kParameter;
@@ -358,7 +371,7 @@ void SourceEvents() {
   const auto refinement=std::get<FlowRefinement>(RefineRecoveryFlowEffects(refined,tree,refined_evaluations,refined_normal));
   Check(refined.events.size()==flow.events.size()&&refined.references.size()==flow.references.size());
   Check(refined.value_uses==flow.value_uses);
-  for(std::size_t i=0;i<flow.references.size();++i)Check(refined.references[i].exceptions==flow.references[i].exceptions);
+  for(std::size_t i=0;i<flow.references.size();++i)Check(refined.references[i].exceptions==flow.references[i].exceptions && refined.references[i].owner==flow.references[i].owner);
   Check(refined.edges.size()<flow.edges.size());
   const auto refined_initializations=std::get<FlowInitializations>(AnalyzeFlowInitializations(refined));
   bool coercion_throw=false;
@@ -444,7 +457,7 @@ void SourceEvents() {
   }
   for(std::size_t i=0;i<shared.references.size();++i) {
     const auto& a=reused.references[i];const auto& b=shared.references[i];
-    Check(std::tie(a.point,a.binding,a.kind,a.site,a.exceptions)==std::tie(b.point,b.binding,b.kind,b.site,b.exceptions));
+    Check(std::tie(a.point,a.binding,a.kind,a.site,a.exceptions,a.owner)==std::tie(b.point,b.binding,b.kind,b.site,b.exceptions,b.owner));
   }
   Check(reused.value_uses==shared.value_uses);
   unsigned read_references=0,write_references=0;
@@ -490,7 +503,12 @@ void SourceEvents() {
     replacements.resize(tree.expressions.size());normal.resize(tree.expressions.size());
     evaluations.resize(tree.expressions.size(),ExpressionEvaluation::kRequired);
     Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
-    return std::get<RecoveryFlow>(BuildRecoveryFlow(tree,{aliases,literals,replacements,omitted,evaluations,normal}));
+    auto result=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,{aliases,literals,replacements,omitted,evaluations,normal}));
+    for(const auto& reference:result.references) {
+      const auto expression=std::get<ExprId>(reference.site).value;
+      Check(reference.owner==StmtId{expression<2?3U:expression<4?4U:expression==4?5U:6U});
+    }
+    return result;
   };
   tree.expressions[5].expression=ConditionalExpr{{6},{7},{8}};
   tree.expressions.push_back({SymbolExpr{{0}},{0}});

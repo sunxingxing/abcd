@@ -68,6 +68,7 @@ class Initializers {
     budget.Array(projection_observations_, ProjectionCapacity());
     budget.Array(expressions_, tree.expressions.size()); budget.Array(statements_, tree.statements.size());
     budget.Array(expression_scopes_, tree.expressions.size());
+    budget.Array(statement_owners_,tree.statements.size());budget.Array(statement_scopes_,tree.statements.size());
     budget.Array(expression_owners_,tree.expressions.size());budget.Array(expression_projections_,tree.expressions.size());
   }
   BindingInitializers Run() {
@@ -147,6 +148,8 @@ class Initializers {
           visit.lexical = visit.statement;
         }
         lexical_[visit.statement.value] = visit.lexical;
+        statement_scopes_[visit.statement.value]=visit.scope;
+        statement_owners_[visit.statement.value]=visit.projector?visit.projector:visit.lexical;
         Enter(visit);
       }
       const auto child = StatementChild(node, visit.child++, [&](const BlockStmt& block) {
@@ -163,6 +166,7 @@ class Initializers {
       statements_[pending++] = {*child, container, lexical, projector, 0, projected};
       statements_[pending-1].scope=scope;
     }
+    for(auto& owner:statement_owners_) {budget_.Step();if(owner)owner=lexical_[owner->value];}
     for(std::size_t i=0;i<expression_owners_.size();++i) {
       budget_.Step();if(expression_projections_[i]&&expression_owners_[i])expression_owners_[i]=lexical_[expression_owners_[i]->value];
     }
@@ -755,7 +759,7 @@ class Initializers {
     }
     const auto& initialization_order=*initializations_;
     std::vector<TreeScopedReference> references;
-    std::vector<FlowReferenceSite> occurrences;
+    std::vector<std::optional<StmtId>> occurrences;
     std::vector<SymbolId> targets;
     budget_.Array(references,flow.references.size());budget_.Array(occurrences,flow.references.size());
     budget_.Array(targets,flow.references.size());std::size_t count=0;
@@ -765,19 +769,14 @@ class Initializers {
     for(const auto& reference:flow.references) {
       budget_.Step();const auto root=proposed[reference.binding.value];if(!root)continue;
       if(!initialization_order.Completed(*root,reference.point))blocked[reference.binding.value]=1;
-      const auto scope=std::visit([&](auto site) {
-        if constexpr(std::is_same_v<decltype(site),ExprId>)return expression_scopes_[site.value];
-        else return tree_.symbols[std::get<DeclarationStmt>(tree_.statements[site.value].statement).symbol.value].scope;
-      },reference.site);
-      references[count]={*root,scope};occurrences[count]=reference.site;targets[count++]=reference.binding;
+      RequireTree(reference.owner.has_value(),TreeStructureError::kOwnership);
+      const auto scope=statement_scopes_[reference.owner->value];
+      references[count]={*root,scope};occurrences[count]=ReferenceOwner(reference);targets[count++]=reference.binding;
     }
     references.resize(count); const auto visible = ResolveTreeReferences(tree_, references, budget_);
     for (std::size_t i = 0; i < count; ++i) {
       budget_.Step(); const auto root = references[i].symbol; const auto occurrence = occurrences[i];
-      const auto lifetime=std::visit([&](auto site) {
-        if constexpr(std::is_same_v<decltype(site),ExprId>)return RootLifetime(root,site);
-        else return RootLifetime(root,lexical_[site.value]);
-      },occurrence);
+      const auto lifetime=RootLifetime(root,occurrence);
       if(!visible[i] || !lifetime)blocked[targets[i].value]=1;
     }
     for(std::size_t i=0;i<proposed.size();++i){budget_.Step();if(blocked[i])proposed[i].reset();}
@@ -977,6 +976,9 @@ class Initializers {
     const auto range = containers_[owner->value];
     return *use.first_container >= range.begin && *use.last_container < range.end;
   }
+  std::optional<StmtId> ReferenceOwner(const FlowReference& reference) const {
+    return reference.owner?statement_owners_[reference.owner->value]:std::nullopt;
+  }
   struct BindingExtent {
     std::optional<std::size_t> first,last;
     bool outside=false;
@@ -989,17 +991,13 @@ class Initializers {
     for(std::size_t i=0;i<uses_.size();++i) {
       budget_.Step();extents[i].outside=uses_[i].outside_body;
     }
-    // Declaration placement and alias roots run before snapshot motion. These
-    // shared reference identities therefore still have their owned lexical
-    // occurrence; projections already resolve native loop destinations above.
+    // Current owners travel with references through replacements and snapshot
+    // motion. Source grammar maps those statement owners to lexical destinations.
     // Inspect all retained references, including unreachable printed syntax:
     // control reachability does not excuse a dangling lexical name.
     for(const auto& reference:CurrentFlow().references) {
       budget_.Step();auto& extent=extents[reference.binding.value];
-      const auto owner=std::visit([&](auto site)->std::optional<StmtId> {
-        if constexpr(std::is_same_v<decltype(site),ExprId>)return expression_owners_[site.value];
-        else return lexical_[site.value];
-      },reference.site);
+      const auto owner=ReferenceOwner(reference);
       if(!owner){extent.outside=true;continue;}
       const auto position=containers_[owner->value].begin;
       extent.first=extent.first?std::min(*extent.first,position):position;
@@ -1415,6 +1413,8 @@ class Initializers {
   std::vector<ExprId> completions_;
   std::size_t completion_count_ = 0;
   std::vector<ScopeId> expression_scopes_;
+  std::vector<std::optional<StmtId>> statement_owners_;
+  std::vector<ScopeId> statement_scopes_;
   std::vector<std::optional<StmtId>> expression_owners_;
   std::vector<std::uint8_t> expression_projections_;
   std::vector<std::optional<SymbolId>> constant_heads_, constant_next_;
