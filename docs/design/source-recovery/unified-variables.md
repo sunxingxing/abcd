@@ -934,3 +934,29 @@ carrying the omitted ExprId. It only transports ranges after emission; it does
 not decide value demand or effects. Existing initializer range assertions caught
 the missing right-side mapping, and new discarded-result tests now check every
 original expression's nonempty in-bounds range too.
+
+
+## Projection-owned analysis lifetime (2026-10-08, rules215 unchanged)
+
+ExpressionFacts, RecoveryFlow, FlowLiveness and event-indexed FlowInitializations
+now live in one private ProjectionFacts aggregate tagged with ProjectionRevision.
+CurrentFacts checks the analysis/commit phase and revision before any cache is
+read. BeginCommit retires the complete aggregate, preserving only reusable flow
+capacity; it no longer names four independent caches to invalidate. A future
+projection analysis belongs in this aggregate, not beside it. No-op passes retain
+the snapshot and lazy construction remains unchanged.
+
+The positive ExprId initialization facts remain separate because their transport
+is an explicit per-pass semantic contract. This change does not grant additional
+preservation to any pass. Bootstrap initialization dominance remains valid after
+effect refinement removes impossible exceptional edges. CurrentInitializations
+owns lazy construction for later consumers; Coalesce no longer constructs or
+publishes that analysis itself. Both paths publish into the same snapshot.
+
+This removes per-cache reset bookkeeping and the storage pass's analysis-cache
+ownership. It does not change scheduling or claim arbitrary pass reordering is
+valid: declaration recovery, motion, coalescing and final declaration spelling
+still consume the ordered prerequisites documented above. Raw references cannot
+outlive the analysis phase; this private aggregate is not a persistent checked
+handle API. Global fixed-point scheduling and full binding lifecycle remain open.
+No new graph walk, input admission condition, or source recovery rule is added.

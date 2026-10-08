@@ -24,6 +24,28 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：投影统一拥有分析缓存，规则215保持
+
+- ExpressionFacts、RecoveryFlow、FlowLiveness、事件索引的初始化分析
+  合并到带ProjectionRevision的私有ProjectionFacts。CurrentFacts统一
+  检查分析阶段与版本；BeginCommit整体销毁，不再逐项维护reset列表。
+  no-op保留缓存，流图容量复用保持。初始化正证明仍按原pass保留契约
+  单独传递，没有扩大任何pass可保留的语义事实。
+- CurrentInitializations统一负责按需构造；Coalesce退出自行创建并发布
+  初始化分析缓存的职责。pass先后顺序、准入条件、打印及规则版本不变。
+  这不等于任意pass可换序，尚未实现全局不动点调度或持久分析句柄。
+- 独立build副本故意去掉facts_.reset，存储测试form0立即返回kOwnership，
+  测试断言终止（exit -6）；正式生产源没有该故障。证据保存在
+  build/stage-one/projection-facts-verification/stale-{build,tests}.log。
+- 28个既定目标构建通过，56/56定向回归通过530.06秒，记录在上述
+  verification目录的build.log、tests.log、detail.log；变量恢复2,004份
+  源码/482,752行为/342变体，存储257份/38,804行为/15变体，快照
+  480份/18,300行为/48变体，包含Home/PageA实际record独立对照。
+  fresh ABC-only导出build/stage-one/projection-facts-rule215：19 records，
+  10 complete / 0 partial / 9 noModule，10份语法通过，源码相对规则215
+  上轮最终导出逐字节一致，输入SHA256不变。export-check.json记录结果。
+  完整corpus/RSS/基准保持暂停，阶段一Goal继续。
+
 ### 2026-10-08：规则215，显式引用驱动跨环境快照证明
 
 - 共同ExpressionFacts新增词法依赖摘要，随当前替换及子表达式组合，
