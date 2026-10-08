@@ -78,10 +78,11 @@ std::uint64_t Check(unsigned form,unsigned count,bool reverse,bool emit,bool res
   const auto id=reverse?tree.expressions.size()-1-first.value:first.value;
   test::Check(plan.replacements[id].has_value()==(!resources&&(form==0||form==3||form==4||form==5||form==6)));
   // A dead assignment must not become a protected initializer before demand
-  // cleanup. Retained initial reads/resource-observable lifetimes stay; unused
-  // native bindings may disappear through the independent binding pass.
+  // cleanup. Resource-observable lifetimes stay; a completed private initial
+  // read can retain undefined without retaining its native binding.
   if(form==5) {test::Check(plan.omitted[body[0].value]);test::Check(plan.statements[body[count+1].value].has_value()==resources);}
-  else if(resources||form==6)test::Check(!plan.omitted[body[0].value]);
+  else if(resources)test::Check(!plan.omitted[body[0].value]);
+  else if(form==6)test::Check(plan.omitted[body[0].value]);
   if(count<=1) {
     test::Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes,plan.work})));
     test::Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes-1,plan.work}))==TreeStructureError::kResourceLimit);
@@ -255,7 +256,9 @@ std::uint64_t CompoundCopies(unsigned form,unsigned count,bool reverse,bool emit
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
   const auto planned=PlanBindingInitializers(tree,loops,nullish);test::Check(std::holds_alternative<BindingInitializers>(planned));
   const auto& plan=std::get<BindingInitializers>(planned);
-  const bool expected=form<3 || form==7;
+  // Early/caught reads of the initial undefined value no longer require a
+  // slot. The surviving normal reads still require the common alias proof.
+  const bool expected=form<3 || form==4 || form==6 || form==7;
   if(plan.aliases[2].has_value()!=expected)std::cerr<<"compound copy form="<<form<<" count="<<count<<" reverse="<<reverse<<'\n';
   test::Check(plan.aliases[2].has_value()==expected);
   if(expected)test::Check(plan.aliases[2]==SymbolId{source});

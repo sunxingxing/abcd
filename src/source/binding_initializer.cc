@@ -52,6 +52,7 @@ class Initializers {
     budget.Array(plan_.loop_declarations, tree.statements.size());
     budget.Array(plan_.forwarded_values, tree.statements.size());
     budget.Array(plan_.literals, tree.symbols.size());
+    budget.Array(plan_.read_literals, tree.expressions.size());
     budget.Array(plan_.aliases, tree.symbols.size());
     budget.Array(plan_.storage, tree.symbols.size());
     budget.Array(plan_.undefined_stores, tree.statements.size());
@@ -741,7 +742,7 @@ class Initializers {
     const auto build=[&](const auto& facts) {
       const LegacyFlowProjection projection{plan_.aliases,plan_.literals,plan_.replacements,
           plan_.omitted,facts.evaluations,facts.normal_stores,plan_.statements,private_bindings,plan_.storage,plan_.undefined_stores,plan_.declaration_values,plan_.declaration_completions,
-          {source_regions_,source_occurrences_,source_bindings}};
+          {source_regions_,source_occurrences_,source_bindings},plan_.read_literals};
       auto built=BuildRecoveryFlow(tree_,projection,budget_.Remaining(),std::move(flow_storage_));
       if(const auto* error=std::get_if<TreeStructureError>(&built))throw *error;
       auto flow=std::get<RecoveryFlow>(std::move(built));
@@ -1133,6 +1134,7 @@ class Initializers {
   FlowValueEquation ProjectedValueEquation(ExprId id) const {
     RequireAnalysis();
     if(const auto replacement=plan_.replacements[id.value])return FlowExpressionValue{*replacement};
+    if(const auto primitive=plan_.read_literals[id.value])return FlowPrimitiveReference{*primitive};
     auto equation=value_equations_[id.value];
     if(const auto* read=std::get_if<FlowBindingValue>(&equation)) {
       return ProjectedBindingValue(read->binding);
@@ -1183,12 +1185,12 @@ class Initializers {
       auto evaluation = IntrinsicEvaluation(node);
       auto lexical=IntrinsicLexicalDependency(node);
       if (const auto* read = std::get_if<SymbolExpr>(&node)) {
-        literal=plan_.literals[read->symbol.value];
-        if (!plan_.literals[read->symbol.value]) {
+        literal=plan_.ReadLiteral(id,read->symbol);
+        if (!literal) {
           const auto source = plan_.Storage(read->symbol);
           result = source;
         }
-        if (plan_.literals[read->symbol.value] || (!initialized.empty() && initialized[id.value]))
+        if (literal || (!initialized.empty() && initialized[id.value]))
           evaluation = ExpressionEvaluation::kInert;
       } else if (const auto* assignment = std::get_if<AssignmentExpr>(&node)) {
         literal=facts.literals[assignment->value.value];
@@ -1413,7 +1415,7 @@ class Initializers {
       const auto& flow=CurrentFlow();
       std::vector<FlowValueEquation> bindings;budget_.Array(bindings,tree_.symbols.size());
       for(std::size_t i=0;i<bindings.size();++i){budget_.Step();bindings[i]=ProjectedBindingValue({static_cast<std::uint32_t>(i)});}
-      const FlowValueEquations expressions{value_equations_,plan_.replacements,bindings};
+      const FlowValueEquations expressions{value_equations_,plan_.replacements,bindings,*initialized_,plan_.read_literals};
       std::vector<FlowDefinitionValue> values;budget_.Array(values,flow.definitions.size());
       for(std::size_t i=0;i<values.size();++i) {
         budget_.Step();const auto& definition=flow.definitions[i];
@@ -1447,12 +1449,21 @@ class Initializers {
       budget_.Step();const auto& use=uses_[i];
       if(use.private_storage&&use.declaration&&!use.escaped&&values.values[i])proposed[i]=values.values[i]->literal;
     }
+    std::vector<FlowReadConstant> read_proposals;budget_.Array(read_proposals,values.reads.size());std::size_t read_count=0;
+    for(const auto& read:values.reads) {
+      budget_.Step();const auto* source=std::get_if<FlowBindingValue>(&value_equations_[read.expression.value]);
+      RequireTree(source!=nullptr,TreeStructureError::kOwnership);const auto& use=uses_[source->binding.value];
+      if(use.private_storage&&use.declaration&&!use.escaped&&
+          (!plan_.read_literals[read.expression.value]||!SameLiteral(*plan_.read_literals[read.expression.value],read.primitive)))
+        read_proposals[read_count++]=read;
+    }
     // Read substitution only. DeadDefinitions/InitialValues/Bindings decide
     // writes, required evaluations and lexical completion on fresh facts.
     for(std::size_t i=0;i<proposed.size();++i) {
       budget_.Step();if(!proposed[i]||(plan_.literals[i]&&SameLiteral(*plan_.literals[i],*proposed[i])))continue;
       BeginCommit();plan_.literals[i]=proposed[i];
     }
+    for(std::size_t i=0;i<read_count;++i){budget_.Step();const auto& edit=read_proposals[i];BeginCommit();plan_.read_literals[edit.expression.value]=edit.primitive;}
   }
   void Aliases() {
     // A single retained definition must cover all source reads, including each

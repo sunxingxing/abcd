@@ -290,7 +290,9 @@ std::uint64_t Constant(unsigned form, unsigned count, unsigned literal, bool rev
   const auto& plan = std::get<BindingInitializers>(result);
   // A self-copy's initial undefined is a known value even without a literal
   // occurrence. Independent write/lifetime cleanup can retire its storage.
-  const bool folded = form < 2 || form == 6 || (form == 3 && count == 0) || (form >= 9 && form < 14) || ((form == 14 || form == 15) && count == 0) || form == 16 || form == 17 || form == 18 || form == 20;
+  // Completed reads before and after a distinct write have separate values.
+  // Initial undefined and later literal reads no longer demand one shared slot.
+  const bool folded = form < 4 || form == 6 || (form >= 9 && form < 14) || ((form == 14 || form == 15) && count == 0) || form == 16 || form == 17 || form == 18 || form == 19 || form == 20;
   std::ostringstream output;const auto printed = PrintFunctionTree(tree,output);test::Check(std::holds_alternative<PrintedFunction>(printed));
   if((output.str().find("saved")==std::string::npos)!=folded)std::cerr<<"constant form="<<form<<" count="<<count<<" reverse="<<reverse<<'\n'<<output.str()<<'\n';
   test::Check((output.str().find("saved") == std::string::npos) == folded);
@@ -444,7 +446,9 @@ std::uint64_t Alias(unsigned form,unsigned count,bool reverse,bool emit) {
     test::Check(plan.statements[fixture.store.value].has_value());
     test::Check(plan.statements[fixture.store.value]->declaration==DeclarationKind::kConst);
   }
-  const bool folded=count&&form!=2&&form!=3&&form!=5&&form!=11&&form!=14&&form!=16&&form!=17&&form!=19&&form!=23&&form!=29;
+  // The early completed read consumes undefined independently of later
+  // unknown-value copies; removing that read permits their stable-root alias.
+  const bool folded=count&&form!=3&&form!=5&&form!=11&&form!=14&&form!=16&&form!=17&&form!=19&&form!=23&&form!=29;
   // Completely unused copies are removed by dead-definition cleanup before
   // alias propagation; surviving copies still require the selected alias root.
   const bool aliased=folded&&form!=15;
@@ -691,11 +695,14 @@ int main(int argc, char**) {
     test::Check(std::holds_alternative<PrintedFunction>(printed));
     const auto& ranges = std::get<PrintedFunction>(printed);
     if(form==21)test::Check(output.str().find("unused")==std::string::npos);
-    const bool fold = form == 0 || form == 1 || form == 3 || form == 5 || form == 6 || form == 7 || form == 8 || form == 9 || form == 11 || form == 13 || form == 15 || form == 16 || (form >= 18 && form <= 23);
+    // Known early reads can release a single-use snapshot's whole binding.
+    // Multi-use unknown values still retain their original initialization;
+    // this change does not move that independent lexical completion.
+    const bool fold = form == 0 || form == 1 || form == 3 || form == 5 || form == 6 || form == 7 || form == 8 || form == 9 || form == 11 || form == 13 || form == 15 || form == 16 || (form >= 18 && form <= 23) || (count == 0 && (form == 2 || form == 17 || form == 24));
     const bool folded_declaration=ranges.statements[fixture.declaration.value].begin == ranges.statements[fixture.declaration.value].end;
     if(folded_declaration!=fold)std::cerr<<"declaration form="<<form<<" count="<<count<<" reverse="<<reverse<<'\n'<<output.str()<<'\n';
     test::Check(folded_declaration == fold);
-    const bool forwarded = count == 0 && (form == 0 || form == 1 || form == 5 || form == 6 || form == 8 || form == 9 || form == 15 || form == 16 || (form >= 18 && form <= 23));
+    const bool forwarded = count == 0 && (form == 0 || form == 1 || form == 2 || form == 5 || form == 6 || form == 8 || form == 9 || form == 15 || form == 16 || form == 17 || form == 24 || (form >= 18 && form <= 23));
     // A self-copy needs no storage for its initialized undefined value, even
     // when report calls remain. Their effects are checked by source execution.
     const bool dead = form == 3 || (count == 0 && (form == 11 || form == 13));

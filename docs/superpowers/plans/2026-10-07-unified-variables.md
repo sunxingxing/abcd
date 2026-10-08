@@ -348,3 +348,16 @@ proof is inferred. A component checkpoint is not global pass convergence, so
 task 4 and the original milestone remain incomplete. Per-read normal-value
 precision remains the next model-to-source extension after this prerequisite.
 Selected current verification and fixed-record evidence are in status.md.
+
+Task 2/4 implementation substep (rules231): completed private primitive reads now
+consume common incoming liveness/completion facts. Binding invariants freeze
+before contextual read/expression/definition refinement on one unchanged
+projection. Constants owns all read proposals before commit; version invalidation
+and independent fresh cleanup precede aliases/storage. Binding-wide conflation of
+different sequential values is no longer the decision limit for those reads.
+Unknown, TDZ, source-local/observable cells and updates remain conservative, with
+layout permutations, independent finite-set/read/source oracles and adverse value
+substitutions. This extends actual generated source, not merely interfaces. Full
+original IR/SSA correspondence, activation/capture/finally, nonprimitive read
+identity and global pass convergence remain open; task 2/4 and the stage-one Goal
+remain active. status.md records the precise selected evidence and paused scope.

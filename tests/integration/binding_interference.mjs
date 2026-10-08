@@ -63,7 +63,7 @@ for(const record of records){
     if(record.form===7&&primitives[index]===Infinity)continue;
     assert.deepEqual(await observe(recovered,record.form,index,mode,flag,request),await observe(references[record.form],record.form,index,mode,flag,request),JSON.stringify({form:record.form,index,mode,flag,request}));++cases;
   }
-  if(record.count===0&&!record.reverse&&[1,3,4,5,6,9,10,11,17,20].includes(record.form)){
+  if(record.count===0&&!record.reverse&&[1,3,4,5,6,9,10,20].includes(record.form)){
     // A semantically wrong coalescing remains valid JS: reuse current for every
     // scratch access while retaining the now-unused scratch declaration.
     const changed=record.source.replaceAll('scratch','currentAlias');
@@ -74,7 +74,14 @@ for(const record of records){
     let mutant=changed;for(const edit of edits.sort((a,b)=>b.start-a.start))mutant=mutant.slice(0,edit.start)+'current'+mutant.slice(edit.end);
     parseJavaScript(mutant);const wrong=vm.runInNewContext(mutant);
     const mode=record.form===3?'report-throw':record.form===4?'reject':'normal';const request=record.form===5?'return':'next';
-    assert.notDeepEqual(await observe(wrong,record.form,6,mode,true,request),await observe(references[record.form],record.form,6,mode,true,request));++mutations;
+    assert.notDeepEqual(await observe(wrong,record.form,6,mode,true,request),await observe(references[record.form],record.form,6,mode,true,request),`coalescing mutant ${record.form}`);++mutations;
+  }
+  if(record.count===0&&!record.reverse&&record.form===17) {
+    // The read of scratch's known 0 can now be replaced before coalescing.
+    // Replacing it with the other binding's early undefined is still wrong.
+    const wrong=function(input,report){let current,scratch;(scratch=0,report(current));current=input;scratch=current;++scratch;current=scratch;return current;};
+    assert.notDeepEqual(await observe(wrong,17,6,'normal',true,'next'),
+        await observe(references[17],17,6,'normal',true,'next'));++mutations;
   }
   if(record.count===0&&!record.reverse&&[18,19].includes(record.form)) {
     const pending=[inspect];let update;
@@ -101,8 +108,14 @@ for(const record of records){
     const wrong=function(input,report){report(input);return undefined;};
     assert.notDeepEqual(await observe(wrong,21,6,'normal',true,'next'),await observe(references[21],21,6,'normal',true,'next'));++mutations;
   }
-  if(record.count===0&&!record.reverse&&[13,14].includes(record.form)) {
-    const missing=record.source.replaceAll('current = void 0;','');assert.notEqual(missing,record.source);
+  if(record.count===0&&!record.reverse&&[11,13,14].includes(record.form)) {
+    // Initialization now survives as a per-read undefined value, independently
+    // of storage. Prematurely substituting the later input must be detected.
+    const work=[inspect];let initial;
+    while(work.length){const node=work.pop();if(node.type==='UnaryExpression'&&node.operator==='void')initial=node;
+      for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)work.push(child);}else if(value?.type)work.push(value);}}
+    assert.ok(initial);
+    const missing=record.source.slice(0,initial.start)+'input'+record.source.slice(initial.end);
     const wrong=vm.runInNewContext(missing);
     assert.notDeepEqual(await observe(wrong,record.form,6,'normal',false,'next'),
         await observe(references[record.form],record.form,6,'normal',false,'next'));++mutations;

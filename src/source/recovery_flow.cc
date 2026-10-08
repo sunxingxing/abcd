@@ -179,7 +179,7 @@ class FlowBuilder {
         budget_.Step();read_states_[id.value]=ReadState::kPending;path.push_back(id);
         if (const auto replacement=projection_.replacements[id.value]) {id=*replacement;continue;}
         if (const auto* read=std::get_if<SymbolExpr>(&tree_.expressions[id.value].expression);
-            read&&!projection_.literals[read->symbol.value])reads_[id.value]=Resolve(read->symbol);
+            read&&!projection_.ReadLiteral(id,read->symbol))reads_[id.value]=Resolve(read->symbol);
         read_states_[id.value]=ReadState::kDone;break;
       }
       RequireTree(read_states_[id.value]==ReadState::kDone,Error::kOwnership);
@@ -215,7 +215,7 @@ class FlowBuilder {
     bool required=IntrinsicEvaluation(node)==ExpressionEvaluation::kRequired &&
         projection_.evaluations[at.id.value]!=ExpressionEvaluation::kInert;
     if(const auto* read=std::get_if<SymbolExpr>(&node)) {
-      if(!projection_.literals[read->symbol.value]) {
+      if(!projection_.ReadLiteral(at.id,read->symbol)) {
         events_[effect.value].read=Resolve(read->symbol);events_[effect.value].kind=FlowEventKind::kRead;
         Reference(effect,Resolve(read->symbol),FlowReferenceKind::kRead,at.id,FlowExceptionContext{context.thrown,context.finalizer},context.owner);
       }

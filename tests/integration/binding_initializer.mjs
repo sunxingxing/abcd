@@ -523,7 +523,7 @@ for (const row of rows) {
       await assert.rejects(async()=>compare(await observe(bad,row,token,Infinity),await observe(reference,row,token,Infinity)),assert.AssertionError);++mutations;
     }
   }
-  if((row.form===4 || row.form===10 || row.form===12 || row.form===14 || row.form===17) && row.count===1) {
+  if((row.form===4 || row.form===10 || row.form===12 || row.form===14) && row.count===1) {
     const declaration=declarations.find(node=>node.declarations.some(item=>item.id.name==='saved'));
     const store=stores.filter(node=>node.expression.left.name==='saved').sort((a,b)=>a.start-b.start)[0]; assert.ok(declaration && store);
     // Valid JS with an incorrectly shortened lifetime must be detected when
@@ -533,7 +533,16 @@ for (const row of rows) {
       replacement+row.source.slice(store.end);
     parseJavaScript(changed); const bad=Function('return '+changed)();
     await assert.rejects(async()=>compare(await observe(bad,row,token,row.form===10 ? 1 : Infinity),
-      await observe(reference,row,token,row.form===10 ? 1 : Infinity)),assert.AssertionError); ++mutations;
+      await observe(reference,row,token,row.form===10 ? 1 : Infinity)),assert.AssertionError,`lifetime mutation ${row.form}`); ++mutations;
+  }
+  if(row.form===17 && row.count===1) {
+    // Its early read is now undefined, so shortening a later declaration's
+    // lifetime alone is equivalent. Prematurely evaluating the later producer
+    // at that initial read must still change value/effect order.
+    const changed=editExpression(row.source,node=>node.type==='UnaryExpression'&&node.operator==='void',()=> 'seed()',{first:true});
+    parseJavaScript(changed);const bad=Function('return '+changed)();
+    await assert.rejects(async()=>compare(await observe(bad,row,token,Infinity),
+      await observe(reference,row,token,Infinity)),assert.AssertionError);++mutations;
   }
   if(row.decoded_loop && row.mutate) {
     const call=row.source.slice(seedInitializer.start,seedInitializer.end);

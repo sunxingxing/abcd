@@ -20,12 +20,20 @@ struct FlowValueEquations {
   std::span<const FlowValueEquation> base;
   std::span<const std::optional<ExprId>> replacements;
   std::span<const FlowValueEquation> bindings;
+  // Occurrence initialization proof from the shared flow bootstrap. An empty
+  // span keeps the binding-invariant compatibility entry; no per-read proof
+  // is inferred by the value solver. Existing read substitutions are values.
+  std::span<const std::uint8_t> completed_reads;
+  std::span<const std::optional<PrimitiveId>> read_values;
+  std::span<const std::optional<FlowPrimitiveValue>> invariants;
   [[nodiscard]] std::size_t size() const {return base.size();}
   [[nodiscard]] FlowValueEquation operator[](std::size_t) const;
 };
 using FlowDefinitionValue=std::variant<UnknownFlowValue,FlowPrimitiveValue,FlowBindingValue,FlowExpressionValue>;
+struct FlowReadConstant {ExprId expression;PrimitiveId primitive;};
 struct FlowConstants {
   std::vector<std::optional<FlowPrimitiveValue>> values;
+  std::vector<FlowReadConstant> reads;
   std::size_t allocated_bytes=0;
   std::uint64_t work=0;
 };
@@ -36,6 +44,9 @@ struct FlowConstants {
 // become unknown before publication, so copy cycles cannot invent a value.
 // Observable cells/entry demand remain unknown. No write/effect removal is
 // authorized by this read-substitution fact. Inputs share this exact flow.
+// Completed private read occurrences additionally join shared live incoming
+// facts; binding invariants remain an independent stronger proof. Normal values
+// never authorize early PutValue, lifetime changes or executable-edge removal.
 [[nodiscard]] std::variant<FlowConstants,TreeStructureError> AnalyzeFlowConstants(
     const RecoveryFlow&,const FlowLiveness&,std::span<const FlowDefinitionValue>,analysis::SemanticBudget = {});
 [[nodiscard]] std::variant<FlowConstants,TreeStructureError> AnalyzeFlowConstants(

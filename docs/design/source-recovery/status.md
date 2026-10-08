@@ -24,6 +24,67 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则231，共同完成流上的逐读取原始值
+
+- 共同正常值求解器新增实际读取与活跃incoming事实节点，区别绑定
+  invariant和各次读取的primitive正常值。先冻结独立的全定义/入口
+  invariant，再对未解析的已初始化private读取闭合表达式、成功定义、
+  incoming和读取方程；较弱的保守不可达前驱unknown不能抹掉较强证明。
+  两个分析域共用同一不可变projection及原预算，不是两个优化pass。
+  所有throw/resume/cleanup边保留，入口/缺来源/未grounded循环、未知
+  运算/update和可观察cell保持unknown；TDZ使用共同bootstrap证明。
+- Constants先拥有全部binding/per-read提案，再一次提交使旧事实失效。
+  写入、初值、绑定删除仍由独立owner基于新事实决定，之后才有alias/
+  storage/grammar。共同表达式、流图和命名消费已提交的逐读取值，
+  打印器在alias前消费primitive与原优先级/范围，无独立语义推断。
+  原绑定单值限制在这些读取的决策路径退出；没有新增样本、opcode
+  序列、同块、邻接、producer-list、selection-count或固定形状准入。
+- 新顺序写入42/43红测在32.21秒失败，证明原限制确实保留机械存储。
+  首轮联合context求解使既有循环正例被保守前驱unknown弱化；独立
+  invariant先冻结后精化解决该精度回退，未裁剪边或增加布局限制。
+  初次聚焦3/3在46.96秒通过：2,352源码/470,400比较/89错误变体，
+  再增加已知predicate闭包与早读值/晚alias组合后参与最终59项。
+- 最终29目标构建173.45秒成功；初轮既定59相关回归在240.13秒得到
+  51通过/8失败。8项是旧存储保留断言及对应runner：初始undefined/
+  已知零读取成为terminal后，独立cleanup、copy或snapshot可以删除
+  原存储。逐项核对并保留独立执行，错误变体改测错误初值替换，而非
+  依赖已删除的赋值文本。没有新增生产条件。中间失败完整保留；直接
+  runner首次遗漏注册的--expose-internals，invalid-direct-source.log
+  仅作调用诊断，不计入验证。后续还确认单次unknown读取可删除整slot，
+  多次使用则仍保留原初始化；最后一项旧“缩短声明必错”反例在已知
+  早读替换后成为等价变换，改用初始读取处提前执行producer的反例。
+- 最终初轮声明源码2,400份/480,000独立比较/91错误变体通过；新增
+  32,768有限集合小图独立对照通过，既有复制/选择/活跃性、pass版本
+  与依赖反例保持。源测试含分支、循环、失败RHS、初始undefined、TDZ、
+  SourceLocal/update、native/store、arena反排与0/1/200/201/400/800。
+  每域与提案内存/工作均计费，无read×definition积；精确/不足预算
+  和几何工作检查保留，复杂度维度见algorithms.md。不是RSS证明。
+- fresh固定pasteboard导出3.69秒，build/stage-one/read-values-rule231：
+  19records、10完整/0部分/9无module，10源码语法检查通过，与规则230
+  源码逐字节一致，language_numeric_constructors_v1及原预算保持。
+  输入前后SHA-256均为854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e。
+  final-record-result.json/final-result.json记录此实际证据；不是新增
+  真实record覆盖、paired corpus或平台验收。
+- 最终既定59项分批全部通过：初轮51，加snapshot2、storage/死定义3、
+  interference源码1、初始化单元1及最后源码1；不是一次新的59/59。
+  初始化单元123.86秒通过，最后测试目标构建7.33秒成功、只重跑受
+  runner变体修改影响的初始化源码122.85秒通过：2,004份源码、
+  482,752比较、356错误变体。死定义源码586/14,488/61，存储源码
+  305/44,852/19；后者注册CTest在13.48秒通过，等同正确直接调用
+  13.86秒的计数证据。生产逻辑自初轮29目标后未变，只更改旧断言/
+  错误变体及补充接口注释，不额外重跑无变更的通过项。
+  build/stage-one/read-value-verification/combined-coverage.json列逐项
+  通过日志，initial-final-*保存初轮，retention*/storage-final*/
+  last-binding*/verified-binding*保存修订过程；最终初始化源码见
+  initializer-final-source-{test.log,detail.log,result.json}。bounded
+  fixture诊断仅辅助区分初始化移动缺口，不代替完整独立执行验收。
+- 多次使用的后续unknown值仍可能保留已拥有词法completion的原声明/
+  赋值；单次读取能让snapshot删除整个slot不等于一般初始化移动。
+  已记录共同初始化/生命期精度缺口，不扩展局部准入。原IR/SSA对应、
+  完整activation/capture/finally、非primitive逐读identity及全局pass
+  收敛仍开放；统一变量里程碑/结构gate/阶段一Goal未完成。全量suite、
+  广语料、RSS/DFX/benchmarks和agents继续暂停。
+
 ### 2026-10-08：规则230，pass依赖契约与版本化清理调度
 
 - RecoverySchedule在生产Initializers中统一拥有typed pass/fact契约、

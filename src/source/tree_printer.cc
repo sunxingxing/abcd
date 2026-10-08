@@ -1248,13 +1248,13 @@ class TreePrinter {
       }
       operand.id=*replacement;operand.value_result=true;Push(operand);return;
     }
-    if(const auto* read=std::get_if<SymbolExpr>(&expression))if(const auto source=Initializers().aliases[read->symbol.value]) {
-      Name(*source);return;
-    }
-    if (const auto* read = std::get_if<SymbolExpr>(&expression)) if (const auto value = Initializers().literals[read->symbol.value]) {
+    if (const auto* read = std::get_if<SymbolExpr>(&expression)) if (const auto value = Initializers().ReadLiteral(operand.id,read->symbol)) {
       const auto& literal = Initializers().primitives[value->value];
       if (TreeOperandGrouping(TreeExpression{literal},operand.context)) { Append("(");Push(std::string_view(")")); }
       Expression(literal);return;
+    }
+    if(const auto* read=std::get_if<SymbolExpr>(&expression))if(const auto source=Initializers().aliases[read->symbol.value]) {
+      Name(*source);return;
     }
     const auto* unary_parent = std::get_if<TreeUnary>(&operand.context.parent);
     if (operand.value_result &&

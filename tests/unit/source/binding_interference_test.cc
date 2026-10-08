@@ -146,7 +146,7 @@ std::uint64_t Run(Form form,unsigned count,bool reverse,bool emit){
   auto planned=PlanBindingInitializers(tree,loops,nullish);
   if(auto* error=std::get_if<TreeStructureError>(&planned))std::cerr<<"form "<<unsigned(form)<<" error "<<unsigned(*error)<<'\n';
   Check(std::holds_alternative<BindingInitializers>(planned));const auto& bindings=std::get<BindingInitializers>(planned);
-  const bool merged=form==Form::kStraight||form==Form::kUpdateThrows||form==Form::kLoop||form==Form::kSharedWrite||form==Form::kElidedReference||form==Form::kRoundTrip||live_undefined||(forwarded&&form!=Form::kForwardedShadow);
+  const bool merged=form==Form::kStraight||form==Form::kUpdateThrows||form==Form::kLoop||form==Form::kSharedWrite||form==Form::kElidedReference||form==Form::kRetainedReference||form==Form::kRoundTrip||form==Form::kUndefinedBeforeRoot||live_undefined||(forwarded&&form!=Form::kForwardedShadow);
   if(bool(bindings.storage[4])!=merged)std::cerr<<"form "<<unsigned(form)<<" count "<<count<<" reverse "<<reverse<<" merged "<<bool(bindings.storage[4])<<'\n';
   Check(bool(bindings.storage[4])==merged);
   // Coalescing creates an immutable copy. Its late propagation must compose
@@ -158,8 +158,11 @@ std::uint64_t Run(Form form,unsigned count,bool reverse,bool emit){
     Check(bindings.forwarded_values[at]==value);
   }
   const auto empty_index=reverse?tree.statements.size()-1-empty.value:empty.value;
-  Check(bindings.undefined_stores[empty_index].has_value()==live_undefined);
-  if(live_undefined)Check(!bindings.omitted[empty_index]);
+  // Completed private reads now consume the initial undefined primitive.
+  // Fresh demand/initial-value cleanup removes its dead write; storage merging
+  // is independently retained. Repeated activation still reads undefined.
+  Check(!bindings.undefined_stores[empty_index]);
+  if(live_undefined)Check(bindings.omitted[empty_index]);
   if(live_undefined&&count==0) {
     Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work})));
     Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes-1,bindings.work}))==TreeStructureError::kResourceLimit);

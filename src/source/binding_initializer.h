@@ -39,6 +39,14 @@ struct BindingInitializers {
   // SymbolId indexed: proven value identity in this pool, not an ExprId whose
   // original occurrence would be replayed. Includes lexical undefined.
   std::vector<std::optional<PrimitiveId>> literals;
+  // ExprId indexed private read values, independent of all-write invariants.
+  // Successful definitions and lexical availability are proved in common flow;
+  // this projection never authorizes deleting the producer or its effects.
+  std::vector<std::optional<PrimitiveId>> read_literals;
+  [[nodiscard]] std::optional<PrimitiveId> ReadLiteral(ExprId expression,SymbolId binding) const {
+    if(!read_literals.empty()&&read_literals[expression.value])return read_literals[expression.value];
+    return literals[binding.value];
+  }
   // SymbolId indexed: retained immutable producer storage for an elided copy.
   std::vector<std::optional<SymbolId>> aliases;
   // Mutable storage coalescing is separate from immutable value aliases.

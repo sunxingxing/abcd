@@ -997,6 +997,67 @@ void ExpressionConstants() {
       FlowValueEquations{equations,wrong_replacements,{}},primitives,texts))==TreeStructureError::kOwnership);
   std::cout<<"independent expression equations "<<cases<<'\n';
 }
+void ReadConstants() {
+  // Independent finite-set forward oracle. It recomputes incoming possibilities
+  // on a three-point graph, then grounds empty cycles as unknown. No production
+  // normal-value lattice or sparse dependency machinery computes the answer.
+  const std::vector<TreeLiteral> primitives{IntegerLiteral{42},IntegerLiteral{43}};
+  const std::vector<std::uint8_t> completed(3,1);
+  std::size_t cases=0;
+  for(unsigned edges=0;edges<512;++edges)for(unsigned actions=0;actions<64;++actions) {
+    RecoveryFlow flow{};flow.events.resize(3);flow.bindings.resize(1);
+    flow.bindings[0].exposure=FlowBindingExposure::kPrivate;
+    std::vector<FlowDefinitionValue> definitions;std::vector<FlowValueEquation> equations(3,FlowBindingValue{{0}});
+    std::array<unsigned,3> action{};auto encoded=actions;
+    for(unsigned i=0;i<3;++i) {
+      action[i]=encoded%4;encoded/=4;flow.events[i].read=SymbolId{0};
+      flow.references.push_back({{i},{0},FlowReferenceKind::kRead,ExprId{i}});
+      if(action[i]) {
+        const auto id=static_cast<std::uint32_t>(definitions.size());
+        flow.events[i].definition=FlowDefinitionId{id};flow.definitions.push_back({{i},{0},FlowDefinitionKind::kAssignment});
+        if(action[i]==3)definitions.push_back(UnknownFlowValue{});
+        else definitions.push_back(FlowPrimitiveValue{primitives[action[i]-1],PrimitiveId{action[i]-1}});
+      }
+    }
+    for(unsigned i=0;i<9;++i)if(edges&(1U<<i)){Link(flow,i/3,i%3);flow.edges.back().completion=i%2?FlowCompletion::kThrow:FlowCompletion::kResumeNext;}
+    std::array<unsigned,3> expected{};
+    const auto close=[&] {
+      bool changed=true;
+      while(changed) {
+        changed=false;
+        for(unsigned i=0;i<3;++i) {
+          unsigned incoming=i==0?1U:0U;bool predecessor=false;
+          for(unsigned j=0;j<3;++j)if(edges&(1U<<(j*3+i))) {
+            predecessor=true;incoming|=action[j]?action[j]==3?1U:1U<<action[j]:expected[j];
+          }
+          if(!predecessor)incoming|=1U;
+          incoming|=expected[i];if(incoming!=expected[i]){expected[i]=incoming;changed=true;}
+        }
+      }
+    };
+    close();for(auto& state:expected)if(!state)state=1;close();
+    const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));
+    const auto result=std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,definitions,
+        FlowValueEquations{equations,{},{},completed,{}},primitives,{}));
+    for(unsigned i=0;i<3;++i) {
+      const auto found=std::find_if(result.reads.begin(),result.reads.end(),[&](const auto& read){return read.expression==ExprId{i};});
+      const bool known=expected[i]==2||expected[i]==4;
+      if((found!=result.reads.end())!=known)std::cerr<<"read oracle edges="<<edges<<" actions="<<actions<<" point="<<i<<" expected="<<expected[i]<<'\n';
+      Check((found!=result.reads.end())==known);
+      if(known)Check(found->primitive==PrimitiveId{expected[i]==2?0U:1U});
+    }
+    if(edges==2&&actions==1) {
+      Check(std::holds_alternative<FlowConstants>(AnalyzeFlowConstants(flow,live,definitions,FlowValueEquations{equations,{},{},completed,{}},primitives,{}, {result.allocated_bytes,result.work})));
+      Check(std::get<TreeStructureError>(AnalyzeFlowConstants(flow,live,definitions,FlowValueEquations{equations,{},{},completed,{}},primitives,{}, {result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
+      const std::vector<std::uint8_t> unavailable(3,0);
+      Check(std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,definitions,FlowValueEquations{equations,{},{},unavailable,{}},primitives,{})).reads.empty());
+      flow.bindings[0].exposure=FlowBindingExposure::kObservable;
+      Check(std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,definitions,FlowValueEquations{equations,{},{},completed,{}},primitives,{})).reads.empty());
+    }
+    ++cases;
+  }
+  std::cout<<"independent per-read normal values "<<cases<<'\n';
+}
 void PassContracts() {
   const auto rejects=[](const auto& action) {
     try {action();return false;}catch(TreeStructureError error){return error==TreeStructureError::kOwnership;}
@@ -1073,4 +1134,4 @@ void PassContracts() {
   Check(!unfinished.DemandCleanupNeeded());
   std::cout<<"pass ownership, dependency and cleanup counterexamples passed\n";
 }
-int main(){PassContracts();ExpressionConstants();ConstantEquations();SourceScopeOracle();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+int main(){ReadConstants();PassContracts();ExpressionConstants();ConstantEquations();SourceScopeOracle();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

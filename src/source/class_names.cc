@@ -288,7 +288,7 @@ class NamePlan {
       if (ownership_ == Ownership::kCanonical) Symbol(at.tree, read->symbol);
       else {
         const auto& projection = *projections_[at.tree];
-        if (!projection.literals[read->symbol.value])
+        if (!projection.ReadLiteral(at.expression,read->symbol))
           Symbol(at.tree, projection.Storage(read->symbol));
       }
     }

@@ -2485,3 +2485,30 @@ analyses. Contract negatives cover stale facts, undeclared dependencies, nested
 pass/commit reads, missing cleanup owners and wrong stages; generated-source and
 actual-record verification remain independent. Per-read precision and global
 pass convergence have not been implemented or claimed.
+
+### 2026-10-08: rules231, actual read values from common completion facts
+
+The binding-wide-only value limit has retired for completed private primitive
+reads. Shared incoming liveness facts, successful definition values and actual
+read references now close with the existing expression equations. Initialization
+proof belongs to the flow bootstrap; every completion predecessor contributes.
+Unknown/missing/entry/update values and observable cells remain conservative.
+Independent stronger binding invariants are frozen before contextual refinement;
+conservative unreachable incoming unknowns cannot weaken that separate proof.
+
+These conditions establish value identity and completed GetValue. They are not
+same-block, opcode-list, adjacency, selection-count or compiler-shape admissions.
+Each repeated ExprId joins its actual references. Constants proposes read values
+only; fresh ordered dead-definition/initial-value/binding passes separately decide
+storage and writes, followed by unchanged alias/interference/motion obligations.
+The printer consumes committed primitive values before aliases and retains source
+range/precedence. It does not infer semantics from output or names.
+
+Earlier tests that required initial undefined/known-zero storage now assert its
+absence where independent cleanup is proved. Their independent execution checks
+remain, and incorrect initial-value substitutions remain adverse cases even when
+the old assignment is gone. TDZ, failed writes, unknown branches/updates, escaping
+and source-local bindings remain counterexamples. Layout/encoding permutations,
+small independent read graphs and composition/source verification are recorded in
+status.md. No original SSA, arbitrary nonprimitive identity, complete binding
+activation/capture/finally or global pass fixed-point claim is made.

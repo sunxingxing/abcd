@@ -1559,6 +1559,7 @@ tests separately cover receiver/effects/errors. Scaling assertions compare
 charged work across the geometric cases; physical memory and full-corpus
 benchmarks remain paused.
 
+
 ### Native callable tail completion (2026-10-04, rules 100)
 
 The shared syntax projection inspects only the last direct child of the actual
@@ -3150,3 +3151,38 @@ source and sparse-graph budget tests remain the meaningful scaling evidence;
 controller repetition tests exercise version/checkpoint stability. Final selected
 timing and unchanged-budget record evidence are in status.md. RSS/full-corpus and
 benchmarks remain paused.
+
+
+### Sparse per-read normal values (2026-10-08, rules231)
+
+Extend the project-owned flat constant lattice and worklist documented at rules229
+with incoming live-fact and actual read nodes. Binding invariants are solved and
+frozen first; unresolved completed private reads then consume them as immutable
+terminal inputs. Both solves use the same projection and share the same total
+budget. The contextual solve is skipped when no such unresolved read exists.
+This is value propagation without executable-edge SCCP, external code or a new
+dependency. The source semantic adapter and independent oracles own maintenance.
+
+Let B be bindings, E expression equations, D definitions, L all incoming live
+facts, F the selected incoming facts, R selected read expressions, and I actual
+dependency incidences (including predecessor transfers). A B-sized mask selects
+bindings, and a sorted F-sized index borrows the existing liveness facts instead
+of copying them. Incoming lookup costs O(log(F+1)); construction and solving cost
+O(B+E+D+L+I log(F+1)), plus primitive payload comparison units as previously
+documented. There is no read-by-definition relation or per-variable graph walk.
+Each mutable value advances through the finite lattice; each expression has at
+most three operands, and incoming/read joins notify dependents incrementally.
+The independent invariant solve adds its previously documented cost, not an
+unbounded pass round. All terminal operands, unknown predecessors and completion
+edges keep their meanings.
+
+Working storage is O(B+E+D+F+R+I): immutable inputs are borrowed, terminal known
+equations have no mutable nodes, and the output has one owned record per known
+read. The committed source plan adds an E-indexed optional PrimitiveId array.
+Both analysis domains, their temporary/output arrays, actual edges, lookup steps
+and proposal storage are charged under unchanged budgets. These cumulative
+charges do not establish process peak RSS. The finite-set small-graph oracle may
+use a deliberately slow reference solver; production remains sparse. Tests use
+0/1/200/201/400/800 sources, exact/short byte/work budgets, arena permutations,
+32,768 read graphs, independent execution and adverse substitutions. Selected
+timing and unchanged-budget fixed-record evidence are recorded in status.md.

@@ -1660,3 +1660,57 @@ facts, with initialization and completed-write obligations. This turn deliberate
 finished the scheduling prerequisite first; no new per-read substitution has
 been implemented. Original IR/SSA correspondence, full activation/capture/finally
 and global convergence remain open; the milestone and stage-one Goal are active.
+
+## Completed private read values over shared incoming facts (rules231)
+
+The source adapter now distinguishes a binding-wide invariant from the normal
+primitive value at an actual read. AnalyzeFlowConstants first freezes the
+independent all-retained-definition/entry proof, then refines unresolved completed
+private reads over shared live incoming facts. These are two analysis domains
+within one immutable projection, not two optimization passes. A weaker contextual
+unknown from conservative unreachable predecessors cannot erase a stronger
+binding invariant. No executable edge is removed to obtain a value.
+
+The contextual domain joins each predecessor's successful definition or incoming
+value for that binding. It includes throw, resume and cleanup edges. Source read
+nodes join every actual occurrence of the ExprId. Expression result equations,
+successful definitions and incoming values close on the same sparse monotone
+worklist. Entry, missing inputs, ungrounded cycles, unknown computations and
+updates remain unknown. Initialization availability comes from the existing
+shared flow bootstrap; TDZ and observable/captured/source-local cells do not gain
+permission from this analysis. It is source-projection precision, not original
+IR/SSA correspondence or complete activation/capture reconstruction.
+
+Constants owns binding and per-read primitive proposals before BeginCommit.
+The common schedule invalidates all revision facts once; the independent demand,
+initial-value and binding cleanup owners run on fresh facts before aliases and
+storage. Read replacement does not itself remove a write, declaration or RHS
+evaluation. Previously required initial undefined storage can disappear only
+after its actual observations have become terminal values and cleanup proves it
+dead. Remaining unknown reads still require independent alias/interference,
+receiver, scope and completion proofs. No new admission is based on same blocks,
+adjacency, opcode sequences, sample identities or compiler graph shapes.
+
+BindingInitializers owns ExprId-indexed primitive substitutions. Shared flow,
+expression facts and name preparation consume them; the printer emits them
+before any remaining binding alias and preserves the read's grammar/source range.
+It computes no independent semantic optimization. A known early read therefore
+survives late alias recovery for the same binding's unknown value.
+
+The old binding-wide-only precision limit retires for completed private primitive
+reads. Arbitrary object/reference identity propagation, full lifetime/unwind,
+original IR/SSA correspondence and global pass convergence remain open. Tests
+cover sequential differing writes, branch joins, loop-carried mixed values,
+failed RHS writes, initialized undefined, TDZ, source-local cells, updates and
+known reads composed with later aliases. An independent finite-set oracle checks
+32,768 small graphs, including cycles and conservative completion edges. Layout,
+native/store encoding, 200/201 and geometric growth tests remain; status.md records
+the actual selected regression and fixed-record evidence.
+
+Declaration grammar still preserves an already modeled lexical initialization
+when a later unknown value needs multiple uses. Removing its early value read
+does not alone justify relocating the binding's initialization/lifetime. Single
+remaining reads may let independent snapshot/binding cleanup remove the whole
+slot, but this does not establish general initializer motion. That representation
+precision gap needs a common initialization/lifetime proposal; it must not be
+expanded with a local source-form or same-block admission.

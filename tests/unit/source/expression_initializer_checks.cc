@@ -134,7 +134,9 @@ std::uint64_t Check(unsigned form,unsigned count,bool reverse,bool emit) {
   test::Check(std::holds_alternative<TreeStructure>(checked));
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));const auto plan=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
   std::ostringstream output;const auto result=PrintFunctionTree(tree,output);test::Check(std::holds_alternative<PrintedFunction>(result));
-  const bool folded=count&&form!=1&&form!=3&&form!=5&&form!=9&&form!=14&&form!=18;
+  const bool folded=count&&form!=3&&form!=5&&form!=9&&form!=14&&form!=18;
+  // An argument read before its nested store also observes initialized undefined.
+  // Per-read substitution removes that observation before alias coverage.
   // The self-copy has a live initialized undefined value. The common value
   // proof replaces reads; independent dead-definition/lifetime passes may
   // then remove storage without deleting an observable initialization.

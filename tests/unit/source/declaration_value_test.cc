@@ -53,16 +53,49 @@ struct Fixture {
       tree.parameters.push_back({{i},{},false});
     }
     for(unsigned i=4;i<6;++i)tree.symbols.push_back({{1},{i},
-        form==12||(form==6&&i==5)?BindingKind::kLocal:BindingKind::kCompilerTemporary,
+        form==12||form==96||(form==6&&i==5)?BindingKind::kLocal:BindingKind::kCompilerTemporary,
         form==6&&i==5?DeclarationKind::kConst:DeclarationKind::kLet,
-        NameEvidence::kSynthesized,form==12||(form==6&&i==5)?std::optional<TemporaryReason>{}:TemporaryReason::kMultipleUses});
+        NameEvidence::kSynthesized,form==12||form==96||(form==6&&i==5)?std::optional<TemporaryReason>{}:TemporaryReason::kMultipleUses});
     std::vector<StmtId> body;
     const auto initialize=[&](unsigned binding,ExprId value) {
       if(native || tree.symbols[binding].declaration==DeclarationKind::kConst)
         body.push_back(Stmt(DeclarationStmt{{binding},value}));
       else {body.push_back(Stmt(DeclarationStmt{{binding},{}}));body.push_back(Write(binding,value));}
     };
-    if(form>=81) {
+    if(form>=89) {
+      const auto integer=[&](std::int32_t value){return Expr(TreeLiteral{IntegerLiteral{value}});};
+      const auto report=[&]{return Stmt(ExpressionStmt{Call(2,4)});};
+      const auto scope=[&](ScopeKind kind=ScopeKind::kBlock) {
+        const ScopeId id{static_cast<std::uint32_t>(tree.scopes.size())};tree.scopes.push_back({kind,ScopeId{1}});return id;
+      };
+      if(form==95)body.push_back(report()); // TDZ is not a primitive normal read.
+      if(form==94)body.push_back(Stmt(DeclarationStmt{{4},{}}));else initialize(4,form==98?Expr(TreeLiteral{BooleanLiteral{false}}):integer(42));
+      body.push_back(report());
+      if(form==90||form==91)body.push_back(Stmt(IfStmt{Read(3),Block({Write(4,integer(43)),report()},scope()),
+          Block({Write(4,integer(form==90?44:43)),report()},scope())}));
+      else if(form==92) {
+        const auto protected_scope=scope(),catch_scope=scope(ScopeKind::kCatch);
+        tree.symbols.push_back({catch_scope,{6},BindingKind::kCatchParameter,DeclarationKind::kCatchParameter,NameEvidence::kSynthesized,{}});
+        body.push_back(Stmt(TryStmt{Block({Write(4,Expr(SequenceExpr{Call(2,0),integer(43)})),report()},protected_scope),
+            CatchClause{{6},Block({report()},catch_scope)},{}}));
+      }else if(form==93) {
+        const auto loop=Stmt(LoopStmt{});const auto loop_scope=scope();
+        const ScopeId exit{static_cast<std::uint32_t>(tree.scopes.size())};tree.scopes.push_back({ScopeKind::kBlock,loop_scope});
+        const auto test=Stmt(IfStmt{Expr(UnaryExpr{TreeUnary::kNot,Call(3)}),Block({Stmt(BreakStmt{loop,{}})},exit),{}});
+        std::get<LoopStmt>(tree.statements[loop.value].statement).body=Block({test,Write(4,integer(43)),report()},loop_scope);body.push_back(loop);
+      }else if(form==97)body.push_back(Stmt(ExpressionStmt{Expr(UpdateExpr{{4},UpdateDirection::kIncrement,UpdateResult::kPrefix})}));
+      else {
+        if(form==89)for(unsigned i=0;i<count;++i){body.push_back(Write(4,integer(static_cast<std::int32_t>(i+50))));body.push_back(report());}
+        body.push_back(Write(4,integer(43)));
+      }
+      if(form==98) {
+        body.push_back(Write(4,Expr(TreeLiteral{BooleanLiteral{true}})));
+        initialize(5,Expr(ConditionalExpr{Read(4),Expr(SequenceExpr{Call(2,0),integer(43)}),Call(1)}));
+      }else {
+        if(form==99)body.push_back(Write(4,Call(1)));
+        initialize(5,Read(4));
+      }
+    } else if(form>=81) {
       const auto literal=[&](TreeLiteral value){return Expr(std::move(value));};
       initialize(4,form==82?literal(NullLiteral{}):form==86?Read(3):
           form==87?literal(IntegerLiteral{0}):literal(BooleanLiteral{form==84||form==85}));
@@ -303,7 +336,7 @@ struct Fixture {
 };
 }
 int main(int argc,char**) {
-  for(unsigned form=0;form<89;++form)for(bool native:{false,true}) {
+  for(unsigned form=0;form<100;++form)for(bool native:{false,true}) {
     std::uint64_t small=0,large=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}) {
       Fixture fixture(form,count,native,reverse);std::ostringstream output;
@@ -345,12 +378,13 @@ int main(int argc,char**) {
         test::Check(projected);
       }
       if(form<=3||form==16||form==17||form==21||form==28||(form>=29&&form!=30&&form!=33&&form!=39&&form!=41&&form<58)||
-          (form>=60&&form<68&&form!=65&&form!=67)||form==68||form==70||form==72||(form>=74&&form<=78)||(form>=81&&form<=85)||form==88) {
+          (form>=60&&form<68&&form!=65&&form!=67)||form==68||form==70||form==72||(form>=74&&form<=78)||(form>=81&&form<=85)||form==88||form==89||form==91||form==94||form==98) {
         if(output.str().find("current")!=std::string::npos||output.str().find("scratch")!=std::string::npos)
           std::cerr<<"form="<<form<<" native="<<native<<" reverse="<<reverse<<'\n'<<output.str()<<'\n';
         test::Check(output.str().find("current")==std::string::npos&&output.str().find("scratch")==std::string::npos);
         if(form==88)test::Check(output.str().find("chain")==std::string::npos);
       }
+      if(form==96)test::Check(output.str().find("current")!=std::string::npos);
       if(argc>1)std::cout<<nlohmann::json{{"source",output.str()},{"form",form},{"native",native},{"count",count},{"reverse",reverse}}<<'\n';
     }
     test::Check(large<small*3);

@@ -133,6 +133,11 @@ struct LegacyFlowProjection {
   std::span<const std::optional<DeclarationValue>> declaration_values;
   std::span<const std::optional<DeclarationCompletion>> declaration_completions;
   SourceScopeProjection source_scopes;
+  std::span<const std::optional<PrimitiveId>> read_literals;
+  [[nodiscard]] std::optional<PrimitiveId> ReadLiteral(ExprId expression,SymbolId binding) const {
+    if(!read_literals.empty()&&read_literals[expression.value])return read_literals[expression.value];
+    return literals[binding.value];
+  }
 };
 struct RecoveryFlow {
   RouteInputIdentity identity;
