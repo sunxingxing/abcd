@@ -1915,7 +1915,7 @@ removable regions; source declaration initialization forces retention. Both an
 entirely unused cycle and a demanded chain use the same worklist rules. Storage
 and scope admissions are unchanged; no CompletedStore exception was added.
 
-## Rules182: declaration retention is independent of value demand
+## Rules182: declaration retention is independent of value demand (superseded by rules222)
 
 PlanBindingElisions uses FlowBinding exposure plus retained semantic occurrences
 after a definition-elision proposal. It never uses variable spelling, first use,
@@ -2316,3 +2316,23 @@ opcode序列、固定链长、样本名称或图形状准入规则。
 不可写性质复用MutableBinding；原生初始化不重复变为另一个初始化语法。
 所有新提交统一失效当前投影分析，后序pass重建；原IR/完整生命期及
 全局pass收敛缺口保持。布局、分支/循环、异常和反例证据见status。
+
+
+### 2026-10-08：规则222，绑定保留独立消费当前投影
+
+原PlanBindingElisions依赖尚未提交的DefinitionElisions并与其联合提交，
+现已退出生产路径。DeadDefinitions只删除无需求的赋值/非初始化求值；
+独立Bindings在其提交之后读取当前flow及版本缓存的FlowDemand。需求
+事实与其他ProjectionFacts统一失效，提交阶段禁止查询，提案只持有ID。
+
+私有词法初始化的成功完成不再冒充必须保留的RHS效果；初始化region
+通过typed owner连接绑定。保留的读取/写入和source/capture身份作为根；
+若保留绑定还需要打印其无效果初始化，owner到RHS读取绑定的依赖由
+共同事件一次发布并经稀疏闭包传播。未使用绑定可删除，必要RHS保持
+原位置、GetValue、次数、异常路由；TDZ读取仍保留。仍活跃的初始化
+值暂不单独裁剪，公开为精度缺口，而非增加新的语法准入条件。
+
+未新增名字、样本、操作序列、同块、邻接或固定图形状判断。声明原节点
+及已提交词法初始化消费同一义务。原始IR对应、完整生命期/finally/
+capture及全局pass收敛继续开放。独立小图闭包、200/201几何增长、
+复制/arena变换、异常/循环组合及实际record证据见status。

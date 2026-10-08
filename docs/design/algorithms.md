@@ -2448,7 +2448,7 @@ condition reads remain. Maintenance belongs to the existing source adapter, shar
 liveness solver and definition-elision consumer.
 
 RecoveryFlow records typed discarded-value regions and composes their operation
-effects once. Private successful writes can be inert; initialization, observable
+effects once. Private successful writes can be inert; required binding initialization, observable
 writes, getters/coercion, calls, throws and suspension force retention. Existing
 initialization/escape facts remain an explicit migration prerequisite and gap.
 
@@ -2482,7 +2482,7 @@ oracle, exact/short budgets and geometric work assertions. This is not process R
 or full-corpus evidence. Whole-pipeline convergence and binding lifetime recovery
 remain open.
 
-### Unused private binding retention (rules182)
+### Unused private binding retention (rules182, superseded by rules222)
 
 Project-owned occurrence indexing applies the standard unused-binding rule:
 an unobservable empty lexical binding with no remaining references may be removed.
@@ -2500,6 +2500,9 @@ including zero-filled indexes and output capacity. There is no per-binding graph
 walk, repeated demand closure or extra graph construction. The two immutable
 proposal stages commit together; the subsequent storage consumer rebuilds its
 facts. Allocation and work accounting include all simultaneously live proposals.
+
+Rules222 replace this pending-delta path with the separate current-projection
+binding pass described below.
 
 ### Committed storage projection and dependent cleanup (rules183)
 
@@ -2844,3 +2847,36 @@ new arrays/events and loops use the same byte/work budgets. Tests at
 0/1/200/201/400/800 statements check geometric work (<3 for doubling) and typed
 resource failure. These tests are not process peak-RSS or performance benchmarks;
 the paused full-process RSS and corpus gates remain paused.
+
+
+### Initialization binding dependencies (rules222)
+
+Project-owned mark-from-roots reachability implements unused-binding retention;
+no copied implementation, new dependency or licensing requirement is introduced.
+Provenance is the same standard observable-root elimination family as rules181,
+with lexical name retention explicitly separate from runtime value demand.
+Maintenance belongs to RecoveryFlow, shared demand analysis and the independent
+binding elision consumer. Native private initializer regions carry their binding
+owner; initializer effects and successful completion have separate obligations.
+Current projected syntax, binding exposure and FlowDemand are prerequisites.
+Capture/resource contracts retain existing boundaries; arbitrary lifetime
+movement and live-initializer value pruning are explicit precision gaps.
+
+For B bindings, N events, D definitions and K initializer-read dependencies,
+FindUnusedBindings scans bindings/events once, stores dependencies in indexed
+adjacency, propagates a binding queue once per retained binding/edge and scans
+definitions once. Work and storage are O(B+N+D+K), with K <= N; dense input is
+charged honestly. FlowDemand retains its existing sparse fact-dependent cost.
+The new analysis is cached in the same projection revision aggregate as all
+other graph facts. A commit invalidates it wholesale; no fixed-count sweep or
+per-binding subtree/CFG traversal is added. Capacity, output, adjacency, queue
+and work are charged against typed semantic budgets; this is not process RSS
+or full-corpus evidence. The previous pending-elision indexes and joint commit
+are removed from the production decision path.
+
+The small independent oracle uses dense Floyd-Warshall closure over all 65,536
+three-binding graph/effect/root/reversed-layout cases. It is test-only; production
+never selects a quadratic fallback at 200. Chain tests exercise 200/201/400/800
+bindings, growth and exact/short budgets, with source execution covering retained
+RHS effects, TDZ failures, overwrites and repeated loop effects. See status.md for
+measured verification and record acceptance scope.

@@ -11,6 +11,9 @@ struct DiscardedId { std::uint32_t value = 0; auto operator<=>(const DiscardedId
 struct DiscardedEvaluation {
   StmtId statement;
   ExpressionEvaluation effect = ExpressionEvaluation::kInert;
+  // An initializer's result feeds this binding rather than an external value.
+  // Value demand does not by itself authorize removing its lexical completion.
+  std::optional<SymbolId> initializer;
 };
 enum class FlowCompletion : std::uint8_t { kNormal, kThrow, kReturn, kJump, kTaken, kNotTaken, kResumeNext, kResumeThrow, kResumeReturn, kConservativeCleanup };
 enum class FlowDefinitionKind : std::uint8_t { kParameter, kUndefined, kInitializer, kAssignment, kUpdate, kCatch, kUndefinedStore, kFunctionSelf };

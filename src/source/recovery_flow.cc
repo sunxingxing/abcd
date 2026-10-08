@@ -202,11 +202,14 @@ class FlowBuilder {
         // dead-value elimination must not erase the lexical initialization.
         const auto declaration=initializers_[at.id.value];
         const auto kind=declaration?FlowDefinitionKind::kInitializer:FlowDefinitionKind::kAssignment;
-        const bool inert=!projection_.private_bindings.empty() &&
-            projection_.private_bindings[Resolve(target->symbol).value] && projection_.normal_stores[at.id.value];
+        const bool private_binding=!projection_.private_bindings.empty() &&
+            projection_.private_bindings[Resolve(target->symbol).value];
+        const bool inert=private_binding && (declaration || projection_.normal_stores[at.id.value]);
+        if(declaration && context.discarded)
+          discarded_[context.discarded->value].initializer=Resolve(target->symbol);
         normal=Define(target->symbol,kind,copied,assignment->value,declaration,at.id,
             inert?FlowWriteEffect::kInert:FlowWriteEffect::kObservable,context.discarded,FlowExceptionContext{context.thrown,context.finalizer},context.owner);Link(normal,context.next);
-        required=!inert || kind==FlowDefinitionKind::kInitializer;
+        required=!inert;
       }
     }
     if(const auto* update=std::get_if<UpdateExpr>(&node)) {
@@ -283,10 +286,21 @@ class FlowBuilder {
           const auto commit=Define(*target,FlowDefinitionKind::kUndefinedStore,{},{},at.id,{},FlowWriteEffect::kInert,{},FlowExceptionContext{context.thrown,context.finalizer},context.owner);
           Link(start,commit);Link(commit,context.next);return;
         }
+        auto evaluation=context;
+        std::optional<DiscardedId> id;
+        const bool private_binding=!projection_.private_bindings.empty() && projection_.private_bindings[Resolve(node.symbol).value];
+        if(node.initializer) {
+          RequireTree(discarded_.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
+          id=DiscardedId{static_cast<std::uint32_t>(discarded_.size())};
+          Append(discarded_,{at.id,private_binding?ExpressionEvaluation::kInert:ExpressionEvaluation::kRequired,Resolve(node.symbol)});
+          evaluation.discarded=id;
+        }
         auto commit=Define(node.symbol,node.initializer?FlowDefinitionKind::kInitializer:FlowDefinitionKind::kUndefined,
             node.initializer?Read(*node.initializer):std::nullopt,node.initializer,at.id,{},
-            FlowWriteEffect::kObservable,{},FlowExceptionContext{context.thrown,context.finalizer},context.owner);Link(commit,context.next);
-        Link(start,node.initializer?Expr(*node.initializer,context.Operand(commit)):commit);
+            private_binding?FlowWriteEffect::kInert:FlowWriteEffect::kObservable,id,FlowExceptionContext{context.thrown,context.finalizer},context.owner);
+        if(node.initializer&&!private_binding)events_[commit.value].effect=ExpressionEvaluation::kRequired;
+        Link(commit,context.next);
+        Link(start,node.initializer?Expr(*node.initializer,evaluation.Operand(commit)):commit);
       } else if constexpr(std::is_same_v<T,IfStmt>) {
         auto branch=New({FlowEventKind::kTruthBranch,{},{},node.condition});Link(start,Expr(node.condition,context.Operand(branch)));
         Link(branch,Stmt(node.consequent,context),FlowCompletion::kTaken);Link(branch,node.alternate?Stmt(*node.alternate,context):context.next,FlowCompletion::kNotTaken);
@@ -349,15 +363,19 @@ std::variant<FlowRefinement,TreeStructureError> RefineRecoveryFlowEffects(
       budget.Step();if(!definition.write || (definition.kind!=FlowDefinitionKind::kAssignment &&
           definition.kind!=FlowDefinitionKind::kInitializer))continue;
       const bool inert=flow.bindings[definition.binding.value].exposure==FlowBindingExposure::kPrivate &&
-          normal_stores[definition.write->value];
+          (definition.kind==FlowDefinitionKind::kInitializer || normal_stores[definition.write->value]);
       definition.effect=inert?FlowWriteEffect::kInert:FlowWriteEffect::kObservable;
-      assignments[definition.write->value]=inert && definition.kind!=FlowDefinitionKind::kInitializer?
+      assignments[definition.write->value]=inert?
           ExpressionEvaluation::kInert:ExpressionEvaluation::kRequired;
     }
     for(auto& discarded:flow.discarded){budget.Step();discarded.effect=ExpressionEvaluation::kInert;}
     for(auto& event:flow.events) {
       budget.Step();event.incoming.reset();event.outgoing.reset();
-      if(!event.expression || event.kind==FlowEventKind::kTruthBranch || event.kind==FlowEventKind::kNullishBranch)continue;
+      if(!event.expression || event.kind==FlowEventKind::kTruthBranch || event.kind==FlowEventKind::kNullishBranch) {
+        if(event.discarded&&event.effect==ExpressionEvaluation::kRequired)
+          flow.discarded[event.discarded->value].effect=ExpressionEvaluation::kRequired;
+        continue;
+      }
       const auto id=*event.expression;const auto& node=tree.expressions[id.value].expression;
       bool required=IntrinsicEvaluation(node)==ExpressionEvaluation::kRequired &&
           evaluations[id.value]!=ExpressionEvaluation::kInert;

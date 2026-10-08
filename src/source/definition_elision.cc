@@ -35,42 +35,72 @@ std::variant<DefinitionElisions,TreeStructureError> PlanDefinitionElisions(
     result.writes.resize(count);count=0;
     budget.Array(result.statements,flow.discarded.size());
     for(std::size_t i=0;i<flow.discarded.size();++i) {
-      budget.Step();if(!demand.retained[i])result.statements[count++]=flow.discarded[i].statement;
+      budget.Step();if(!demand.retained[i]&&!flow.discarded[i].initializer)result.statements[count++]=flow.discarded[i].statement;
     }
     result.statements.resize(count);result.allocated_bytes=budget.Bytes();result.work=budget.Work();return result;
   } catch(TreeStructureError error){return error;}
   catch(const std::bad_alloc&){return TreeStructureError::kResourceLimit;}
   catch(const std::length_error&){return TreeStructureError::kResourceLimit;}
 }
-std::variant<BindingElisions,TreeStructureError> PlanBindingElisions(
-    const RecoveryFlow& flow,const DefinitionElisions& delta,analysis::SemanticBudget allowance) {
+std::variant<BindingElisions,TreeStructureError> FindUnusedBindings(
+    const RecoveryFlow& flow,const FlowDemand& demand,analysis::SemanticBudget allowance) {
   try {
     TreeCheckBudget budget(allowance);BindingElisions result;
-    std::vector<std::uint8_t> removed_statements,removed_writes,retained;
-    budget.Array(removed_statements,flow.statements.size());
-    budget.Array(removed_writes,flow.expressions.size());
-    budget.Array(retained,flow.bindings.size());
-    for(const auto statement:delta.statements){budget.Step();removed_statements[statement.value]=1;}
-    for(const auto write:delta.writes){budget.Step();removed_writes[write.value]=1;}
-    // Visit semantic occurrences, including unreachable retained syntax: even
-    // that syntax needs its lexical binding. No reachability/name/shape census.
+    struct Dependency { SymbolId binding; std::optional<std::size_t> next; };
+    std::vector<std::optional<std::size_t>> heads;
+    std::vector<Dependency> dependencies;
+    std::vector<SymbolId> pending;
+    std::vector<std::uint8_t> retained;
+    budget.Array(heads,flow.bindings.size());budget.Array(retained,flow.bindings.size());
+    budget.Array(pending,flow.bindings.size());budget.Array(dependencies,flow.events.size());
+    std::size_t queued=0,edges=0;
+    const auto retain=[&](SymbolId binding) {
+      if(!retained[binding.value]) {retained[binding.value]=1;pending[queued++]=binding;}
+    };
+    for(std::size_t i=0;i<flow.bindings.size();++i) {
+      budget.Step();if(flow.bindings[i].exposure==FlowBindingExposure::kObservable)
+        retain(SymbolId{static_cast<std::uint32_t>(i)});
+    }
+    // Actual surviving syntax needs lexical names even on unreachable paths.
+    // Only an inert initializer may lose its reads with its own unused binding.
+    // If its binding survives, those reads form binding-retention dependencies,
+    // not value-demand roots. No per-binding CFG/subtree walk is necessary.
     for(const auto& event:flow.events) {
       budget.Step();
-      if(event.discarded && removed_statements[flow.discarded[event.discarded->value].statement.value])continue;
-      if(event.read)retained[event.read->value]=1;
+      if(event.read) {
+        const auto owner=event.discarded?flow.discarded[event.discarded->value].initializer:std::nullopt;
+        if(owner&&!demand.retained[event.discarded->value]) {
+          dependencies[edges]={*event.read,heads[owner->value]};heads[owner->value]=edges++;
+        } else retain(*event.read);
+      }
       if(event.definition) {
         const auto& definition=flow.definitions[event.definition->value];
         if(definition.kind==FlowDefinitionKind::kUndefined)continue;
-        if(definition.write && removed_writes[definition.write->value])continue;
-        retained[definition.binding.value]=1;
+        if(definition.kind==FlowDefinitionKind::kInitializer && event.discarded &&
+            flow.discarded[event.discarded->value].initializer==definition.binding)continue;
+        // Unmodeled initializer evaluation is not evidence of unused storage.
+        retain(definition.binding);
+      }
+    }
+    for(std::size_t at=0;at<queued;++at) {
+      budget.Step();const auto binding=pending[at];
+      for(auto edge=heads[binding.value];edge;edge=dependencies[*edge].next) {
+        budget.Step();retain(dependencies[*edge].binding);
       }
     }
     budget.Array(result.declarations,flow.definitions.size());std::size_t count=0;
     for(const auto& definition:flow.definitions) {
       budget.Step();
-      if(definition.kind==FlowDefinitionKind::kUndefined && definition.declaration &&
-          flow.bindings[definition.binding.value].exposure==FlowBindingExposure::kPrivate &&
-          !retained[definition.binding.value])result.declarations[count++]=*definition.declaration;
+      if(!definition.declaration || retained[definition.binding.value])continue;
+      if(definition.kind==FlowDefinitionKind::kUndefined) {
+        result.declarations[count++]={*definition.declaration,{},{}};
+      } else if(definition.kind==FlowDefinitionKind::kInitializer) {
+        const auto region=flow.events[definition.point.value].discarded;
+        RequireTree(region&&flow.discarded[region->value].initializer==definition.binding,
+            TreeStructureError::kOwnership);
+        const auto value=demand.retained[region->value]?definition.value:std::nullopt;
+        result.declarations[count++]={*definition.declaration,value,definition.write};
+      }
     }
     result.declarations.resize(count);result.allocated_bytes=budget.Bytes();result.work=budget.Work();return result;
   } catch(TreeStructureError error){return error;}

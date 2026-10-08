@@ -189,6 +189,7 @@ class Initializers {
     // Remove dead value definitions before turning a store into a lexical
     // initializer whose binding completion must subsequently be preserved.
     RunPass(Pass::kDeadDefinitions);
+    RunPass(Pass::kBindings);
     RunPass(Pass::kDeclarations);
     // Literal stability also depends on retained writes. Clear identity stores
     // before coverage, then clear new identities exposed by literal projection.
@@ -210,6 +211,7 @@ class Initializers {
     // Coalesce builds fresh ownership facts after that commit. Demand cleanup
     // is scheduled again only by later storage/declaration changes.
     RunPass(Pass::kDeadDefinitions);
+    RunPass(Pass::kBindings);
     RunPass(Pass::kSnapshots);
     bool cleanup_needed=RunPass(Pass::kStorage);
     cleanup_needed |= RunPass(Pass::kStoredResults);
@@ -228,7 +230,10 @@ class Initializers {
     cleanup_needed |= RunPass(Pass::kInertStatements);
     // Storage and loop declaration projection are now final. Their commits
     // invalidate facts before dependent demand/declaration cleanup.
-    if(cleanup_needed)RunPass(Pass::kDeadDefinitions);
+    if(cleanup_needed) {
+      RunPass(Pass::kDeadDefinitions);
+      RunPass(Pass::kBindings);
+    }
     RunPass(Pass::kInertOperands);
     RunPass(Pass::kDeclarationKinds);
     for (std::size_t i = 0; i < loops_.initializer_roots.size(); ++i) {
@@ -241,7 +246,7 @@ class Initializers {
     return Finish();
   }
  private:
-  enum class Pass { kDeclarations,kConstants,kAliases,kStoredResults,kDeadDefinitions,kSnapshots,
+  enum class Pass { kDeclarations,kConstants,kAliases,kStoredResults,kDeadDefinitions,kBindings,kSnapshots,
       kStorage,kInertStatements,kInertOperands,kLoopDeclarations,kDeclarationKinds };
   enum class PassPhase { kIdle,kAnalysis,kCommit };
   struct ProjectionRevision { std::uint64_t value=0; };
@@ -264,10 +269,11 @@ class Initializers {
     std::optional<ExpressionFacts> expressions;
     std::optional<RecoveryFlow> flow;
     std::optional<FlowLiveness> liveness;
+    std::optional<FlowDemand> demand;
   };
   ProjectionFacts& CurrentFacts() const {
     RequireAnalysis();
-    if(!facts_)facts_.emplace(ProjectionFacts{projection_revision_,{},{},{},{}});
+    if(!facts_)facts_.emplace(ProjectionFacts{projection_revision_,{},{},{},{},{}});
     RequireTree(facts_->revision.value==projection_revision_.value,TreeStructureError::kOwnership);
     return *facts_;
   }
@@ -287,6 +293,7 @@ class Initializers {
       case Pass::kLoopDeclarations:ProjectLoopDeclarations();break;
       case Pass::kStoredResults:ElideStoredResults();break;
       case Pass::kDeadDefinitions:ElideDeadDefinitions();break;
+      case Pass::kBindings:ElideUnusedBindings();break;
       case Pass::kInertStatements:OmitInertStatements();break;
       case Pass::kInertOperands:ElideInertOperands();break;
       case Pass::kStorage:Coalesce();break;
@@ -302,8 +309,9 @@ class Initializers {
       case Pass::kDeclarations:case Pass::kConstants:case Pass::kAliases:case Pass::kSnapshots:
       case Pass::kLoopDeclarations:break;
       // These passes retain initialization at each retained occurrence.
+      // Binding removal leaves no reference to its removed initialization.
       // Storage merging proves the new root initialized before every remap.
-      case Pass::kStoredResults:case Pass::kDeadDefinitions:
+      case Pass::kStoredResults:case Pass::kDeadDefinitions:case Pass::kBindings:
       case Pass::kInertStatements:case Pass::kInertOperands:case Pass::kStorage:
       case Pass::kDeclarationKinds:preserve=true;break;
     }
@@ -762,6 +770,16 @@ class Initializers {
     facts.liveness=std::get<FlowLiveness>(std::move(analyzed));
     budget_.Admit(facts.liveness->allocated_bytes,1);budget_.Step(facts.liveness->work);return *facts.liveness;
   }
+  const FlowDemand& CurrentDemand() const {
+    auto& facts=CurrentFacts();
+    if(!facts.demand) {
+      auto analyzed=AnalyzeFlowDemand(CurrentFlow(),budget_.Remaining());
+      if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
+      facts.demand=std::get<FlowDemand>(std::move(analyzed));
+      budget_.Admit(facts.demand->allocated_bytes,1);budget_.Step(facts.demand->work);
+    }
+    return *facts.demand;
+  }
   const FlowInitializations& CurrentInitializations() const {
     auto& facts=CurrentFacts();
     const auto& flow=CurrentFlow();
@@ -775,42 +793,55 @@ class Initializers {
     }
     return *facts.initializations;
   }
+  bool HasPrivateBindings() const {
+    bool candidate=false;
+    for(std::size_t i=0;i<uses_.size();++i) {
+      budget_.Step();candidate |= tree_.symbols[i].kind==BindingKind::kCompilerTemporary && !uses_[i].escaped;
+    }
+    return candidate;
+  }
   void ElideDeadDefinitions() {
     // Source naming recovery preserves NamedEvaluation after an assignment is
     // projected to its RHS, but can require a naming envelope. Its allocation
     // equivalence is not proved under the legacy resource-observable contract.
     // Retain that contract's representation without inspecting producer shapes.
     if (ResourceFailures(tree_.identity.contract)!=ResourceFailureScope::kExcluded) return;
-    bool candidate=false;
-    for (std::size_t i=0;i<uses_.size();++i) {
-      budget_.Step();candidate |= tree_.symbols[i].kind==BindingKind::kCompilerTemporary &&
-          !uses_[i].escaped;
-    }
-    if (!candidate) return;
+    if(!HasPrivateBindings())return;
     const auto& flow=CurrentFlow();
-    auto analyzed=AnalyzeFlowDemand(flow,budget_.Remaining());
-    if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
-    const auto& demand=std::get<FlowDemand>(analyzed);
-    budget_.Admit(demand.allocated_bytes,1);budget_.Step(demand.work);
+    const auto& demand=CurrentDemand();
     auto proposed=PlanDefinitionElisions(flow,demand,budget_.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&proposed))throw *error;
     const auto& delta=std::get<DefinitionElisions>(proposed);
     budget_.Admit(delta.allocated_bytes,1);budget_.Step(delta.work);
-    auto bindings=PlanBindingElisions(flow,delta,budget_.Remaining());
-    if(const auto* error=std::get_if<TreeStructureError>(&bindings))throw *error;
-    const auto& binding_delta=std::get<BindingElisions>(bindings);
-    budget_.Admit(binding_delta.allocated_bytes,1);budget_.Step(binding_delta.work);
-    // Commit after demand closure. Only wholly inert discarded evaluations
-    // disappear; every required RHS retains its occurrence and completion.
-    // Binding removal consumes the proposed delta before either pass mutates
-    // the projection. Storage analysis rebuilds after this batch commits.
-    if(binding_delta.declarations.empty() && delta.statements.empty() && delta.writes.empty())return;
+    // Removing a dead value store retains its RHS and lexical completion.
+    // Binding removal runs separately on a fresh projection after this commit.
+    if(delta.statements.empty() && delta.writes.empty())return;
     BeginCommit();
-    for (const auto statement:binding_delta.declarations) {budget_.Step();plan_.omitted[statement.value]=1;}
     for (const auto statement:delta.statements) {budget_.Step();plan_.omitted[statement.value]=1;}
     for (const auto write:delta.writes) {
       budget_.Step();plan_.replacements[write.value]=
           std::get<AssignmentExpr>(tree_.expressions[write.value].expression).value;
+    }
+  }
+  void ElideUnusedBindings() {
+    // The same naming/resource contract as dead-value projection applies.
+    if(ResourceFailures(tree_.identity.contract)!=ResourceFailureScope::kExcluded || !HasPrivateBindings())return;
+    const auto& flow=CurrentFlow();
+    auto proposed=FindUnusedBindings(flow,CurrentDemand(),budget_.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&proposed))throw *error;
+    const auto& delta=std::get<BindingElisions>(proposed);
+    budget_.Admit(delta.allocated_bytes,1);budget_.Step(delta.work);
+    if(delta.declarations.empty())return;
+    // The proposal owns its IDs. No facts are consulted after BeginCommit.
+    // Required RHS GetValue stays at the original occurrence and handler;
+    // no remaining syntax refers to a removed binding, including TDZ reads.
+    BeginCommit();
+    for(const auto& action:delta.declarations) {
+      budget_.Step();
+      if(!action.value)plan_.omitted[action.statement.value]=1;
+      else if(action.write)plan_.replacements[action.write->value]=*action.value;
+      else plan_.declaration_values[action.statement.value]=DeclarationValue{*action.value,{}};
+      plan_.statements[action.statement.value].reset();
     }
   }
   void Coalesce() {

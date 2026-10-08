@@ -24,6 +24,44 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则222，初始化值需求与绑定保留分离
+
+- 原生词法初始化region发布typed initializer owner，私有成功完成与
+  RHS效果/值需求分开。DeadDefinitions只处理死值写入及非初始化
+  求值；独立Bindings在它提交后读取当前flow和FlowDemand。原
+  PlanBindingElisions消费待提交delta并联合提交的路径已移除。
+- FlowDemand进入同一版本的ProjectionFacts；BeginCommit统一销毁
+  全部分析，提交阶段禁止查询。提案持有自己的ID/值，后序声明/
+  快照/存储消费者只分析已提交投影。既定最终cleanup也使用死定义
+  ->绑定保留顺序，无新的固定轮次或语法准入匹配。
+- 保留读取/写入/source/capture身份作为绑定根。保留绑定的无效果
+  初始化仍需输出时，其owner到RHS读取绑定的依赖经一次稀疏闭包
+  传播，避免删除provider留下悬空名字。未使用原生声明可删除，但
+  必要RHS GetValue保持原位置、次数和异常路由。仍活跃绑定的死
+  初始化值暂不单独裁剪，记录为精度缺口；原IR对应、完整生命期/
+  finally/capture及全局pass收敛继续开放。
+- 新增未使用effectful初始化、活跃绑定初始化依赖、覆盖写入、TDZ
+  自读及循环丢弃写入，两种初始化表示、反向arena及0/1/200/201/
+  400/800组合。528份源码/105,600独立执行比较/13错误变体通过。
+  小图独立dense闭包覆盖65,536种图/根/效果/布局组合；链测试
+  核对200/201几何增长与exact/short typed预算。
+- red-tests.log在旧实现上复现form17原生初始化留下current，6.67秒
+  失败。聚焦5/5通过48.44秒，证据为
+  build/stage-one/unused-initializer-verification的oracle-{build,tests}.log。
+  首轮聚焦旧“未做别名/常量则声明必须存在”断言失败，改为真正的
+  活跃初始化/资源义务，独立行为对照不降低；诊断保留。
+- 最终29个目标构建成功，59/59定向回归577.43秒全部通过，构建+
+  测试711.52秒；selection.json、final-result.json和final-{build,
+  tests,detail}.log持久证据位于同一验证目录。包含既定变量/干涉/
+  快照/循环/声明/optional/nullish组合、命名/类及真实record行为。
+- 固定pasteboard ABC导出至build/stage-one/unused-initializer-rule222：
+  19 records，10份完整源码/0部分/9无module，10份语法全部通过，
+  与规则221实际导出源码逐字节一致。输入SHA-256前后均为
+  854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e。
+  record-{export.log,result.json}持久保存；不代替完整paired corpus
+  或整个PasteBoard/platform验收。阶段一Goal保持active。
+  全量suite、广语料、RSS/DFX及benchmarks保持暂停。
+
 ### 2026-10-08：规则221，原生词法初始化贯通变量恢复 pass
 
 - 原DeclarationStmt初始化现在发布共同RHS/copy/StmtId写引用/当前owner/

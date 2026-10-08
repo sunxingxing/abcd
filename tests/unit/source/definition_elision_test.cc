@@ -77,11 +77,11 @@ std::uint64_t Check(unsigned form,unsigned count,bool reverse,bool emit,bool res
   const auto planned=PlanBindingInitializers(tree,loops,nullish);test::Check(std::holds_alternative<BindingInitializers>(planned));const auto& plan=std::get<BindingInitializers>(planned);
   const auto id=reverse?tree.expressions.size()-1-first.value:first.value;
   test::Check(plan.replacements[id].has_value()==(!resources&&(form==0||form==3||form==4||form==5||form==6)));
-  // Existing lexical initialization stays while storage is retained; a covered
-  // immutable value may replace that binding. A dead assignment must not be
-  // promoted into a protected initializer before independent demand cleanup.
+  // A dead assignment must not become a protected initializer before demand
+  // cleanup. Retained initial reads/resource-observable lifetimes stay; unused
+  // native bindings may disappear through the independent binding pass.
   if(form==5) {test::Check(plan.omitted[body[0].value]);test::Check(plan.statements[body[count+1].value].has_value()==resources);}
-  else if(!plan.aliases[2]&&!plan.literals[2])test::Check(!plan.omitted[body[0].value]);
+  else if(resources||form==6)test::Check(!plan.omitted[body[0].value]);
   if(count<=1) {
     test::Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes,plan.work})));
     test::Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes-1,plan.work}))==TreeStructureError::kResourceLimit);
@@ -366,20 +366,88 @@ void BindingObligations() {
         flow.definitions.push_back({{2},{0},FlowDefinitionKind::kAssignment,{},{},{},ExprId{0}});
         flow.events[2].definition=FlowDefinitionId{1};flow.events[2].discarded=DiscardedId{0};
       }
-      DefinitionElisions delta;if(drop_region)delta.statements.push_back({1});if(drop_write)delta.writes.push_back({0});
+      // Model the committed projection, rather than consume an uncommitted delta.
+      if(drop_region) {flow.events[1].read.reset();flow.events[2].definition.reset();}
+      else if(drop_write)flow.events[2].definition.reset();
+      FlowDemand demand;demand.retained={1};
       if(reverse)std::reverse(flow.events.begin(),flow.events.end());
-      const auto result=std::get<BindingElisions>(PlanBindingElisions(flow,delta));
+      const auto result=std::get<BindingElisions>(FindUnusedBindings(flow,demand));
       const bool expected=!observable && (drop_region || (!read && (!write||drop_write)));
       test::Check(result.declarations.size()==std::size_t(expected));
-      test::Check(std::holds_alternative<BindingElisions>(PlanBindingElisions(flow,delta,{result.allocated_bytes,result.work})));
-      test::Check(std::get<TreeStructureError>(PlanBindingElisions(flow,delta,{result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
-      test::Check(std::get<TreeStructureError>(PlanBindingElisions(flow,delta,{result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);
+      test::Check(std::holds_alternative<BindingElisions>(FindUnusedBindings(flow,demand,{result.allocated_bytes,result.work})));
+      test::Check(std::get<TreeStructureError>(FindUnusedBindings(flow,demand,{result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
+      test::Check(std::get<TreeStructureError>(FindUnusedBindings(flow,demand,{result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);
+  }
+}
+
+void BindingDependencyOracle() {
+  // Independent dense transitive closure for all directed three-binding graphs,
+  // region effects and retained-name roots. Production uses sparse adjacency.
+  constexpr unsigned size=3;
+  for(unsigned graph=0;graph<(1U<<(size*size));++graph)
+    for(unsigned roots=0;roots<(1U<<size);++roots)
+      for(unsigned required=0;required<(1U<<size);++required)for(bool reverse:{false,true}) {
+        RecoveryFlow flow{};FlowDemand demand;bool reachable[size][size]{};bool keep[size]{};
+        for(unsigned i=0;i<size;++i) {
+          flow.bindings.push_back({BindingKind::kCompilerTemporary,
+              (roots&(1U<<i))?FlowBindingExposure::kObservable:FlowBindingExposure::kPrivate});
+          flow.discarded.push_back({StmtId{i},ExpressionEvaluation::kInert,SymbolId{i}});
+          demand.retained.push_back(bool(required&(1U<<i)));
+          flow.events.emplace_back();flow.events.back().definition=FlowDefinitionId{i};
+          flow.events.back().discarded=DiscardedId{i};
+          flow.definitions.push_back({FlowPoint{i},SymbolId{i},FlowDefinitionKind::kInitializer,
+              {},ExprId{i},StmtId{i}});
+          keep[i]=bool(roots&(1U<<i));reachable[i][i]=true;
+        }
+        for(unsigned i=0;i<size;++i)for(unsigned j=0;j<size;++j)if(graph&(1U<<(i*size+j))) {
+          flow.events.emplace_back();flow.events.back().read=SymbolId{j};
+          flow.events.back().discarded=DiscardedId{i};
+          if(required&(1U<<i))keep[j]=true;else reachable[i][j]=true;
+        }
+        for(unsigned k=0;k<size;++k)for(unsigned i=0;i<size;++i)for(unsigned j=0;j<size;++j)
+          reachable[i][j]=reachable[i][j]||(reachable[i][k]&&reachable[k][j]);
+        bool expected[size]{};
+        for(unsigned i=0;i<size;++i)for(unsigned j=0;j<size;++j)expected[j]|=keep[i]&&reachable[i][j];
+        if(reverse) {
+          for(auto& definition:flow.definitions)definition.point.value=flow.events.size()-1-definition.point.value;
+          std::reverse(flow.events.begin(),flow.events.end());
+        }
+        const auto result=std::get<BindingElisions>(FindUnusedBindings(flow,demand));
+        unsigned at=0;
+        for(unsigned i=0;i<size;++i)if(!expected[i]) {
+          test::Check(at<result.declarations.size());const auto& action=result.declarations[at++];
+          test::Check(action.statement==StmtId{i});
+          test::Check(action.value==((required&(1U<<i))?std::optional{ExprId{i}}:std::nullopt));
+        }
+        test::Check(at==result.declarations.size());
+      }
+  for(bool root:{false,true}) {
+    std::uint64_t previous=0;
+    for(unsigned size:{200U,201U,400U,800U}) {
+      RecoveryFlow flow{};FlowDemand demand;
+      for(unsigned i=0;i<size;++i) {
+        flow.bindings.push_back({BindingKind::kCompilerTemporary,
+            root&&i==0?FlowBindingExposure::kObservable:FlowBindingExposure::kPrivate});
+        flow.discarded.push_back({StmtId{i},ExpressionEvaluation::kInert,SymbolId{i}});
+        demand.retained.push_back(0);const auto point=FlowPoint{static_cast<unsigned>(flow.events.size())};
+        flow.events.emplace_back();flow.events.back().definition=FlowDefinitionId{i};flow.events.back().discarded=DiscardedId{i};
+        flow.definitions.push_back({point,SymbolId{i},FlowDefinitionKind::kInitializer,{},ExprId{i},StmtId{i}});
+        if(i+1<size) {flow.events.emplace_back();flow.events.back().read=SymbolId{i+1};flow.events.back().discarded=DiscardedId{i};}
+      }
+      const auto result=std::get<BindingElisions>(FindUnusedBindings(flow,demand));
+      test::Check(result.declarations.size()==(root?0:size));
+      if(size>=400)test::Check(result.work<previous*3);previous=result.work;
+      test::Check(std::holds_alternative<BindingElisions>(FindUnusedBindings(flow,demand,{result.allocated_bytes,result.work})));
+      test::Check(std::get<TreeStructureError>(FindUnusedBindings(flow,demand,{result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
+      test::Check(std::get<TreeStructureError>(FindUnusedBindings(flow,demand,{result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);
+    }
   }
 }
 
 }
 int main(int argc,char**) {
   BindingObligations();
+  BindingDependencyOracle();
   for(unsigned form=0;form<8;++form)for(bool reverse:{false,true})for(bool wrapped:{false,true}) {
     std::uint64_t previous=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U}) {

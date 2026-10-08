@@ -1187,3 +1187,52 @@ built owned syntax encodings, branch/loop combinations, throwing RHS/state,
 TDZ reads/writes, source const/local identity, object mutation, and reversed
 expression/statement/symbol arenas. Test fixture shapes do not define production
 semantics; independent JS execution and adverse mutants supply behavior evidence.
+
+
+## Independent binding retention and versioned demand (rules222)
+
+The evaluation region of a native lexical initializer has a typed initializer
+binding owner. Its private successful initialization is distinct from RHS effects
+and RHS value demand. Value-demand analysis may prove the value dead, but cannot
+remove the lexical completion. DeadDefinitions retains initializer regions and
+only commits its own value-store/evaluation edits. The separate Bindings pass
+then consumes the committed projection and shared FlowDemand, before declaration
+placement, snapshots or storage coalescing. Final dependent cleanup follows the
+same order. The former PlanBindingElisions proposal-on-pending-delta path is gone.
+
+FlowDemand is now part of revision-tagged ProjectionFacts, alongside expression,
+initialization, flow and liveness facts. BeginCommit destroys the aggregate before
+any plan mutation; analysis cannot run during a commit. Each pass owns its proposal
+and copies no event-indexed facts across that boundary. Unchanged inputs reuse
+immutable facts. Removing an unused private binding preserves positive occurrence
+initialization proofs for all remaining references: none refers to that binding,
+and retained RHS GetValue stays at the original site and handler. This contract
+is explicit in the typed pass invalidation switch.
+
+Binding retention roots observable/captured/source identities and all surviving
+reads or non-initialization writes, including unreachable printed syntax. An
+inert unused initializer's read instead creates an owner-binding -> read-binding
+dependency. A surviving owner retains those names even if its initializer value
+is dead. Sparse adjacency and a monotone worklist close those dependencies once
+per binding/edge, so deleting a provider cannot leave a dangling name. This is
+separate from value propagation and storage interference. It does not inspect
+names, instruction sequences, producer types, block identity or adjacency.
+
+An unused private native binding disappears, retaining any required RHS GetValue;
+an entirely inert unused initializer disappears with it. The same rule covers
+original DeclarationStmt and a committed lexical initializer projection. Reads
+that can throw through TDZ remain required and retain their binding. Source and
+captured identities and resource-observable naming contracts retain the original
+representation. A still-live binding conservatively keeps its dead initializer
+value and the dependencies that printing it requires; independently pruning that
+value while preserving initialization completion is a future precision task.
+Arbitrary lifetime movement, full abrupt scope unwind/capture identity, original
+IR correspondence and global pass convergence remain open.
+
+Independent dense transitive closure checks all 65,536 three-binding graph/root/
+effect/layout combinations, including cycles. 200/201/400/800 chains verify work
+and exact/short typed budgets. Source tests compose unused calls, live-binding
+initialization dependencies, pre-initialization self reads, overwrites and loop
+writes with two initializer encodings and reversed arenas. Independent execution
+and intentionally removed calls/providers/TDZ effects check the semantic contract;
+final selected regression and actual record evidence are recorded in status.md.

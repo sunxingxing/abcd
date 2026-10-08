@@ -9,17 +9,20 @@ function reference(row) {
   let body;
   if(form===8)body='let current=current;let scratch;';
   else {
-    const value=form===0?'42':[3,4,5,7,12].includes(form)?'seed()':form===11?'{}':form===2?'(report(input),input)':'input';
+    const value=form===0?'42':form===20?'seed(current)':([3,4,5,7,12].includes(form)||form>=17)?'seed()':form===11?'{}':form===2?'(report(input),input)':'input';
     body=initialize('current',value)+(form===7?'report(scratch);':form===15?'scratch=seed();':'')+
       ([3,4,11,12].includes(form)?'let scratch;':initialize('scratch',form===16?'(report(input),42)':'current',form===6));
   }
   if(form===5||form===15)body+='++scratch;current=scratch;';
   if(form===13)body+='if(flag){++scratch;current=scratch;}';
   if(form===14)body+='while(flag()){++scratch;current=scratch;}';
+  if(form===18)body+='scratch=seed();';
+  if(form===19)body+='current=seed();';
+  if(form===21)body+='while(flag()){scratch=seed();}';
   if(form===16)body+='report(scratch);current=scratch;';
   if(form===10)body+='try{scratch=seed();current=scratch;}catch(error){report(current);}';
-  const result=[3,4,5,8,10,11,12,13,14,15,16].includes(form)?'current':'scratch';
-  const tail=(form===3?'':`report(${result});`)+`return ${result};`;
+  const result=form===17||form===21?'input':form===18?'scratch':[3,4,5,8,10,11,12,13,14,15,16,19,20].includes(form)?'current':'scratch';
+  const tail=([3,17,20,21].includes(form)?'':`report(${result});`)+`return ${result};`;
   body+=form===9?`{let input=17;${tail}}`:tail;
   return Function(`return function(input,seed,report,flag){'use strict';${body}}`)();
 }
@@ -32,7 +35,7 @@ function observe(fn,row,input,fault,throwSeed,coercion) {
     if(row.form===11){object??=value;assert.equal(value,object);value.visits=(value.visits??0)+1;event('report',value.visits);}
     else event('report',value);
   };
-  const flag=row.form===14?()=>{event('iteration',iterations);return iterations++<2;}:!coercion;
+  const flag=(row.form===14||row.form===21)?()=>{event('iteration',iterations);return iterations++<2;}:!coercion;
   try{ returned=fn(input,seed,report,flag);if(row.form===11){assert.equal(returned,object);returned=token;} }
   catch(error){thrown=error;}
   if(thrown instanceof ReferenceError)thrown='ReferenceError';
@@ -47,7 +50,7 @@ for(const row of rows) {
     for(const fault of [0,1,2,3,4])for(const throwSeed of [false,true])for(const coercion of [false,true]) {
       assert.deepEqual(observe(actual,row,input,fault,throwSeed,coercion),observe(expected,row,input,fault,throwSeed,coercion),JSON.stringify(row));++comparisons;
     }
-  if(row.form<=3)assert.doesNotMatch(row.source,/\b(?:current|scratch)\b/);
+  if(row.form<=3||row.form===17||row.form===21)assert.doesNotMatch(row.source,/\b(?:current|scratch)\b/);
   if(row.form===5) {
     const ast=parseJavaScript(row.source);const declarations=[];
     const walk=node=>{if(!node||typeof node!=='object')return;if(node.type==='VariableDeclaration')declarations.push(...node.declarations);for(const value of Object.values(node))if(Array.isArray(value))value.forEach(walk);else if(value&&typeof value==='object')walk(value);};
@@ -60,11 +63,26 @@ for(const row of rows) {
     if(row.form===5) {
       assert.notDeepEqual(observed('(function(input,seed,report){let value=seed();report(value);return value;})',row,token,0,false,false),observe(expected,row,token,0,false,false));++mutations;
     }
-    if(row.form===7||row.form===8||row.form===15) {
+    if(row.form===7||row.form===8||row.form===15||row.form===20) {
       assert.notDeepEqual(observed('(function(input){return input;})',row,token,0,false,false),observe(expected,row,token,0,false,false));++mutations;
     }
     if(row.form===16) {
       assert.notDeepEqual(observed('(function(input,seed,report){report(input);let value=void 0;report(value);report(value);return value;})',row,token,0,false,false),observe(expected,row,token,0,false,false));++mutations;
+    }
+    if(row.form===17) {
+      assert.notDeepEqual(observed('(function(input){return input;})',row,token,0,false,false),observe(expected,row,token,0,false,false));++mutations;
+    }
+    if(row.form===18) {
+      assert.notDeepEqual(observed('(function(input,seed,report){let scratch=current;scratch=seed();report(scratch);return scratch;})',row,token,0,false,false),observe(expected,row,token,0,false,false));++mutations;
+    }
+    if(row.form===19) {
+      assert.notDeepEqual(observed('(function(input,seed,report){let current=seed();report(current);return current;})',row,token,0,false,false),observe(expected,row,token,0,false,false));++mutations;
+    }
+    if(row.form===21) {
+      for(const source of ['(function(input,seed,report,flag){while(flag()){seed();}return input;})',
+          '(function(input,seed,report,flag){seed();while(flag()){}return input;})']) {
+        assert.notDeepEqual(observed(source,row,token,0,false,false),observe(expected,row,token,0,false,false));++mutations;
+      }
     }
     if(row.form===10) {
       assert.notDeepEqual(observed('(function(input,seed,report){let value;try{value=seed();}catch(e){report(value);}report(value);return value;})',row,token,0,true,false),observe(expected,row,token,0,true,false));++mutations;

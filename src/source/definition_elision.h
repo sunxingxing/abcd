@@ -15,17 +15,24 @@ struct DefinitionElisions {
 // Initialization and binding lifetime are never removed here.
 [[nodiscard]] std::variant<DefinitionElisions,TreeStructureError> PlanDefinitionElisions(
     const RecoveryFlow&,const FlowDemand&,analysis::SemanticBudget = {});
+struct BindingElision {
+  StmtId statement;
+  // Retained RHS GetValue at the original declaration occurrence. Absence
+  // means its entire evaluation region was proved unneeded and inert.
+  std::optional<ExprId> value;
+  std::optional<ExprId> write;
+};
 struct BindingElisions {
-  std::vector<StmtId> declarations;
+  std::vector<BindingElision> declarations;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };
-// Separate lifetime decision against the SAME immutable flow and proposed delta.
-// Remove an undefined initialization only if its private binding has no remaining
-// reference or other definition. This does not authorize moving/sharing a live
-// lifetime, or dropping native/explicit initializer evaluation.
-[[nodiscard]] std::variant<BindingElisions,TreeStructureError> PlanBindingElisions(
-    const RecoveryFlow&,const DefinitionElisions&,analysis::SemanticBudget = {});
+// Consume CURRENT retained syntax and value demand after dead-write projection.
+// A surviving binding also retains references in its inert unused initializer;
+// propagate these dependencies once per edge before removing any declaration.
+// Required RHS evaluation stays. This does not move/share a retained lifetime.
+[[nodiscard]] std::variant<BindingElisions,TreeStructureError> FindUnusedBindings(
+    const RecoveryFlow&,const FlowDemand&,analysis::SemanticBudget = {});
 struct StorageInitializations {
   std::vector<std::optional<SymbolId>> stores;
   std::vector<std::uint8_t> blocked;
