@@ -24,6 +24,31 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则216，存储分析消费细化后图的初始化顺序
+
+- 定位到同一投影内部的两阶段事实混用：引导初始化支配针对保守图，
+  效果细化删除不可能异常边后仍被缓存。旧肯定结论安全，但否定结论
+  可能漏掉已成立的关系；本次没有发现旧输出行为错误。
+- 引导FlowInitializations改为局部结果，仅负责产生效果细化所需的
+  ExprId正证明。CurrentInitializations按需构造最终图分析并进入共同
+  投影缓存，存储合并不再消费引导图的否定结论。无新增图形状准入，
+  原初始化传递契约、pass顺序与生命周期证明保持。
+- 新增共同图精度测试：真实异常仍阻挡，不可能异常被细化删除后建立
+  初始化支配，0/1/200/201/400/800节点均验证。已有初始化小图独立
+  oracle及存储源码行为对照一起通过：相关3/3，详见
+  build/stage-one/refined-initialization-verification/focused-{tests,detail}.log。
+  这是精度契约验证，不声称新测试在旧planner下失败或新增真实record覆盖。
+- 相关3/3通过13.47秒，其余53/53通过523.19秒，28个既定目标构建
+  通过。共同图测试后续明确区分参数读取与可抛一元转换，最终版本直接
+  执行通过，refinement-final.log包含512支配图/175,616定义使用图/
+  98,304需求图的独立对照及200/201几何增长。回归包含2,004份源码/
+  482,752行为/342变体，存储257份/38,804行为/15变体，快照480份/
+  18,300行为/48变体，以及Home/PageA实际record对照。
+- 新鲜ABC-only导出build/stage-one/refined-initialization-rule216：19 records，
+  10 complete / 0 partial / 9 noModule，10份语法通过；除规则头外正文
+  相对规则215不变，输入SHA256不变，export-check.json记录结果。
+  阶段一Goal保持active，完整corpus/RSS/基准保持暂停。
+
 ### 2026-10-08：投影统一拥有分析缓存，规则215保持
 
 - ExpressionFacts、RecoveryFlow、FlowLiveness、事件索引的初始化分析

@@ -705,8 +705,9 @@ class Initializers {
     auto provisional=build(conservative);
     auto analyzed=AnalyzeFlowInitializations(provisional,budget_.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
-    facts.initializations=std::get<FlowInitializations>(std::move(analyzed));
-    const auto& initialization=*facts.initializations;
+    // Bootstrap proofs justify removing impossible exceptional edges only.
+    // Do not publish their conservative dominance as the refined graph cache.
+    const auto initialization=std::get<FlowInitializations>(std::move(analyzed));
     budget_.Admit(initialization.allocated_bytes,1);budget_.Step(initialization.work);
     initialized_.emplace();auto& initialized=*initialized_;
     budget_.Array(initialized,tree_.expressions.size());
@@ -734,8 +735,8 @@ class Initializers {
   const FlowInitializations& CurrentInitializations() const {
     auto& facts=CurrentFacts();
     const auto& flow=CurrentFlow();
-    // Refinement only removes impossible exceptional edges, preserving positive
-    // bootstrap proofs. After a projection commit, event-indexed facts are rebuilt.
+    // Consumers need dominance of the exact current graph. Bootstrap positives
+    // remain sound after refinement, but its negative answers can become stale.
     if(!facts.initializations) {
       auto analyzed=AnalyzeFlowInitializations(flow,budget_.Remaining());
       if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;

@@ -135,6 +135,34 @@ void CompletionDominance() {
   }
   std::cout<<"independent completion dominance graphs 512\n";
 }
+void RefinedInitializations() {
+  // A conservative throw can bypass initialization. Proving the evaluation
+  // inert removes that path; retaining bootstrap dominance loses the new fact.
+  for(bool inert:{false,true})for(unsigned count:{0U,1U,200U,201U,400U,800U}) {
+    FunctionTree tree{};
+    tree.expressions.push_back({inert?TreeExpression{SymbolExpr{{1}}}:TreeExpression{UnaryExpr{TreeUnary::kPlus,{1}}},{0}});
+    tree.expressions.push_back({SymbolExpr{{1}},{0}});
+    RecoveryFlow flow{};flow.entry={0};flow.events.resize(count+4);
+    flow.bindings={{BindingKind::kCompilerTemporary,FlowBindingExposure::kPrivate,StmtId{0}},
+        {BindingKind::kParameter}};
+    const unsigned initialized=count+2,read=count+3;
+    flow.definitions={{{initialized},{0},FlowDefinitionKind::kUndefined,{},{},StmtId{0}},
+        {{0},{1},FlowDefinitionKind::kParameter}};
+    flow.events[0].definition=FlowDefinitionId{1};
+    flow.events[initialized].definition=FlowDefinitionId{0};
+    flow.events[read].read=SymbolId{0};flow.events[1].expression=ExprId{0};
+    for(unsigned i=0;i<read;++i)Link(flow,i,i+1);
+    Link(flow,1,read);flow.edges.back().completion=FlowCompletion::kThrow;
+    const auto bootstrap=std::get<FlowInitializations>(AnalyzeFlowInitializations(flow));
+    Check(!bootstrap.Completed({0},{read}));
+    const std::array evaluations{inert?ExpressionEvaluation::kInert:ExpressionEvaluation::kRequired,ExpressionEvaluation::kInert};
+    const std::array<std::uint8_t,2> normal{0,0};
+    Check(std::holds_alternative<FlowRefinement>(RefineRecoveryFlowEffects(flow,tree,evaluations,normal)));
+    const auto current=std::get<FlowInitializations>(AnalyzeFlowInitializations(flow));
+    Check(current.Completed({0},{read})==inert);
+    Check(!bootstrap.Completed({0},{read}));
+  }
+}
 void PreservedInitializations() {
   for(bool bypass:{false,true}) {
     RecoveryFlow flow{};flow.entry={0};flow.events.resize(4);flow.statements.resize(2);
@@ -549,4 +577,4 @@ void SourceEvents() {
 
 }
 }
-int main(){UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+int main(){RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

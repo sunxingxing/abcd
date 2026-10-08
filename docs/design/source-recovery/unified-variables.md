@@ -948,10 +948,10 @@ the snapshot and lazy construction remains unchanged.
 
 The positive ExprId initialization facts remain separate because their transport
 is an explicit per-pass semantic contract. This change does not grant additional
-preservation to any pass. Bootstrap initialization dominance remains valid after
-effect refinement removes impossible exceptional edges. CurrentInitializations
-owns lazy construction for later consumers; Coalesce no longer constructs or
-publishes that analysis itself. Both paths publish into the same snapshot.
+preservation to any pass. Bootstrap positive initialization facts remain valid after effect refinement
+removes impossible exceptional edges. CurrentInitializations owns lazy construction
+for later consumers; Coalesce no longer constructs or publishes that analysis itself.
+Rule216 below separates bootstrap dominance from the final graph cache.
 
 This removes per-cache reset bookkeeping and the storage pass's analysis-cache
 ownership. It does not change scheduling or claim arbitrary pass reordering is
@@ -960,3 +960,23 @@ still consume the ordered prerequisites documented above. Raw references cannot
 outlive the analysis phase; this private aggregate is not a persistent checked
 handle API. Global fixed-point scheduling and full binding lifecycle remain open.
 No new graph walk, input admission condition, or source recovery rule is added.
+
+
+## Bootstrap proofs versus current dominance (rules216, 2026-10-08)
+
+CurrentFlow uses conservative initialization dominance only to derive positive
+ExprId initialization facts for effect refinement. That temporary dominance
+result is now local and never installed as ProjectionFacts.initializations.
+CurrentInitializations lazily computes dominance on the refined current flow.
+An impossible exception edge can bypass an initialization in the provisional
+graph: removing it preserves positive proofs but can change a negative answer
+to positive. Same event numbering and projection revision are insufficient to
+claim the provisional dominance describes the final graph exactly.
+
+The production change adds no convergence loop or local recovery condition.
+A storage consumer that needs initialization order pays one fresh LT dominance
+analysis of the current graph; consumers that do not need it do not compute it.
+The old bootstrap result is destroyed before later passes, rather than retained
+beside the exact graph result. Existing allocation/work accounting applies.
+The positive ExprId transport contract across commits is unchanged. Further
+iterated effect precision and full binding lifecycle remain separate gaps.

@@ -2226,3 +2226,14 @@ a distinct definition kind. This is an exception/initialization proof, not a
 declaration-order, same-block or layout test. The independently executed
 `store; return read; let binding;` case must retain its ReferenceError after RHS
 effects, and must propagate an earlier RHS failure unchanged.
+
+### 2026-10-08：规则216，初始化引导事实与当前图事实分离
+
+- 当前流图会细化不可能的异常边；引导图的肯定初始化证明可以传递，
+  但其否定结论不能代替当前图的精确支配分析。事件编号不变不是分析
+  结果完全相同的证明。
+- CurrentFlow不再把引导FlowInitializations发布为最终图缓存；
+  CurrentInitializations按需分析最终图。未增加任何样本、同块、邻接或
+  操作序列条件，未删除效果/词法生命期义务，也未新增迭代精度循环。
+- 共同图测试分别保留真实异常和移除不可能异常，并覆盖0/1/200/201/
+  400/800个中间节点；旧正证明仍安全，新增精度不等于完整生命周期。
