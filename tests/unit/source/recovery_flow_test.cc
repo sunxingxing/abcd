@@ -634,4 +634,70 @@ void GroupOracle(){
   }
 }
 }
-int main(){GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+void DeclarationValues() {
+  FunctionTree tree{};tree.callable=CallableKind::kFunction;tree.strictness=Strictness::kStrict;
+  tree.parameter_scope={0};tree.body_scope={1};tree.body={0};
+  tree.scopes={{ScopeKind::kParameters,{}},{ScopeKind::kFunctionBody,ScopeId{0}}};
+  tree.names={u"input",u"current",u"scratch"};tree.origins={OriginalSite{{0},{0}}};
+  tree.symbols={{{0},{0},BindingKind::kParameter,DeclarationKind::kParameter,NameEvidence::kSynthesized,{}},
+      {{1},{1},BindingKind::kCompilerTemporary,DeclarationKind::kLet,NameEvidence::kSynthesized,TemporaryReason::kMultipleUses},
+      {{1},{2},BindingKind::kCompilerTemporary,DeclarationKind::kLet,NameEvidence::kSynthesized,TemporaryReason::kMultipleUses}};
+  tree.parameters={{{0},{},false}};
+  tree.expressions={{SymbolExpr{{0}},{0}},{SymbolExpr{{1}},{0}},{SymbolExpr{{2}},{0}}};
+  tree.statements={{BlockStmt{{1},0,3},{0}},{DeclarationStmt{{1},ExprId{0}},{0}},
+      {DeclarationStmt{{2},ExprId{1}},{0}},{ReturnStmt{ExprId{2}},{0}}};tree.children={{1},{2},{3}};
+  Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  std::vector<std::optional<SymbolId>> aliases(3),storage(3);
+  std::vector<std::optional<ExprId>> literals(3),replacements(3);
+  std::vector<std::uint8_t> omitted(4),normal(3),private_bindings{0,1,1};
+  std::vector<ExpressionEvaluation> evaluations(3,ExpressionEvaluation::kRequired);
+  std::vector<std::optional<BindingInitializer>> initializers(4);
+  std::vector<std::optional<DeclarationValue>> values(4);
+  const auto build=[&](RecoveryFlow capacity=RecoveryFlow{}) {
+    return std::get<RecoveryFlow>(BuildRecoveryFlow(tree,{aliases,literals,replacements,omitted,
+        evaluations,normal,initializers,private_bindings,storage,{},values},{},std::move(capacity)));
+  };
+  auto flow=build();unsigned definitions=0,writes=0;
+  for(const auto& definition:flow.definitions)if(definition.kind==FlowDefinitionKind::kInitializer) {
+    ++definitions;Check(definition.value&&definition.declaration&&!definition.write);
+    Check(definition.copy==SymbolId{definition.binding.value-1});
+  }
+  for(const auto& reference:flow.references)if(reference.kind==FlowReferenceKind::kWrite) {
+    ++writes;Check(std::get<StmtId>(reference.site)==reference.owner);
+    Check(reference.exceptions&&reference.exceptions->thrown==flow.terminal);
+  }
+  Check(definitions==2&&writes==2);
+  const auto initialized=std::get<FlowInitializations>(AnalyzeFlowInitializations(flow));
+  for(const auto& reference:flow.references) {
+    Check(initialized.Completed(reference.binding,reference.point));
+    if(reference.site==FlowReferenceSite{ExprId{1}})Check(!initialized.Completed({2},reference.point));
+  }
+  const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));
+  const auto interference=std::get<BindingInterference>(FindBindingInterference(flow,live));
+  Check(!interference.affinities.empty());
+  // A retained value write is an assignment, not a second initialization.
+  values[2]=DeclarationValue{{1},SymbolId{1}};storage[2]=SymbolId{1};
+  auto projected=build(std::move(flow));
+  Check(projected.bindings[1].declaration==StmtId{1});
+  Check(projected.value_uses[1]==FlowValueUse::kObserved);
+  unsigned assignments=0;
+  for(const auto& definition:projected.definitions)if(definition.kind==FlowDefinitionKind::kAssignment) {
+    ++assignments;Check(definition.binding==SymbolId{1}&&definition.copy==SymbolId{1});
+    Check(definition.effect==FlowWriteEffect::kInert&&definition.value==ExprId{1});
+  }
+  Check(assignments==1);
+  values[2]->target.reset();projected=build(std::move(projected));
+  Check(projected.value_uses[1]==FlowValueUse::kDiscarded);
+  for(const auto& definition:projected.definitions)Check(definition.kind!=FlowDefinitionKind::kAssignment);
+  // Restoring the declaration with a self-read restores TDZ, even while buffer
+  // capacity is reused. No definition or reference fact survives publication.
+  values[2].reset();storage[2].reset();tree.expressions[1].expression=SymbolExpr{{2}};
+  projected=build(std::move(projected));
+  const auto tdz=std::get<FlowInitializations>(AnalyzeFlowInitializations(projected));
+  bool checked=false;
+  for(const auto& reference:projected.references)if(reference.site==FlowReferenceSite{ExprId{1}}) {
+    Check(!tdz.Completed({2},reference.point));checked=true;
+  }
+  Check(checked);
+}
+int main(){DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

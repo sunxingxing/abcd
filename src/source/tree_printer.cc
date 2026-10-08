@@ -404,6 +404,10 @@ class TreePrinter {
         Step(); if (Initializers().omitted[at]) continue;
         const auto& statement = Tree().statements[at].statement;
         if (const auto* declaration = std::get_if<DeclarationStmt>(&statement)) {
+          if(const auto& value=Initializers().declaration_values[at]) {
+            push(value->value,value->target?NameContext{Tree().symbols[Initializers().Storage(*value->target).value].name}:NameContext{});
+            continue;
+          }
           const bool default_value = ModuleBody() && default_export_ &&
               default_export_->declaration == StmtId{static_cast<std::uint32_t>(at)};
           if (declaration->initializer) push(*declaration->initializer, default_value ? NameContext{DefaultInferredName{}} :
@@ -1311,6 +1315,15 @@ class TreePrinter {
     Push(BlockCursor{at.id, 0, at.depth});
   }
   void StatementNode(const DeclarationStmt& node, Statement at) {
+    if(const auto& value=Initializers().declaration_values[at.id.value]) {
+      Push(std::string_view(";"));
+      if(value->target) {
+        Name(*value->target);Append(" = ");
+        Push(ExpressionOperand{value->value,{ExpressionGrammar::kAssignmentValue},
+            Tree().symbols[Initializers().Storage(*value->target).value].name});
+      } else Push(value->value);
+      return;
+    }
     if(const auto target=Initializers().undefined_stores[at.id.value]) {
       Name(*target);Append(" = void 0;");return;
     }
@@ -1548,15 +1561,16 @@ class TreePrinter {
   void OmitBindingStatement(StmtId id) {
     Result().statements[id.value] = {written_,written_};
     Result().statement_extents[id.value] = GeneratedExtent::kBoundary;
-    if (const auto* effect = std::get_if<ExpressionStmt>(&Tree().statements[id.value].statement)) {
+    VisitStatementExpressions(Tree().statements[id.value].statement,[&](ExprId expression) {
       // Mark every omitted owned occurrence, excluding exactly the moved
       // RHS. Skipping the whole original tree would lose wrapper origins;
       // projecting the RHS would overwrite its retained destination span.
-      Result().expressions[effect->expression.value] = {written_,written_};
-      Result().expression_extents[effect->expression.value] = GeneratedExtent::kBoundary;
-      Push(ProjectedExpression{effect->expression,written_,written_,GeneratedExtent::kBoundary,
+      if(Initializers().forwarded_values[id.value]==expression)return;
+      Result().expressions[expression.value] = {written_,written_};
+      Result().expression_extents[expression.value] = GeneratedExtent::kBoundary;
+      Push(ProjectedExpression{expression,written_,written_,GeneratedExtent::kBoundary,
           Initializers().forwarded_values[id.value]});
-    }
+    });
   }
   void Run(LoopInitializerCursor at) {
     if (at.index == at.end) return;

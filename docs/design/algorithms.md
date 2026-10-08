@@ -2822,3 +2822,25 @@ identity/alias composition therefore keeps O(1) direct-map lookups even for a
 whole group. Independent dense tiny graphs, non-affinity conflict counterexamples,
 source/symbol reversal and 200/201/geometric chain work checks verify the contracts;
 no 200-item production cutoff or repeated per-binding CFG walk is added.
+
+
+### Native lexical initializer projection (rules221)
+
+The existing source-side semantic adapter now publishes a lexical initializer's
+copy identity and statement write reference with completion/owner/exception
+context. It reuses the classical def-use, liveness, dominance, copy coalescing
+and observation-motion algorithms already documented here; there is no new
+third-party implementation or dependency. Project-owned code uses the project
+license and retains the legacy adapter/capture/abrupt-lifetime precision limits.
+
+For S statements, X expressions and R retained binding references, this adds
+O(S) statement projection storage and O(S+R) adapter/consumer census work per
+existing pass. Each native initializer contributes one definition/reference;
+its RHS remains owned once. Completion checks reuse the shared dominator index
+in constant time per reference. Identity and effect cleanup use existing
+postorder expression facts, without a per-binding CFG/subtree walk. Existing
+sparse live-fact/edge costs and dense interference output costs remain; all
+new arrays/events and loops use the same byte/work budgets. Tests at
+0/1/200/201/400/800 statements check geometric work (<3 for doubling) and typed
+resource failure. These tests are not process peak-RSS or performance benchmarks;
+the paused full-process RSS and corpus gates remain paused.

@@ -10,6 +10,10 @@ struct BindingInitializer {
   ExprId assignment;
   DeclarationKind declaration;
 };
+// An existing lexical initializer whose binding is removed or shares a slot.
+// Its value still executes at the original statement, after all RHS effects;
+// an absent target means GetValue only. This is a committed source projection.
+struct DeclarationValue { ExprId value; std::optional<SymbolId> target; };
 struct BindingInitializers {
   std::vector<std::optional<BindingInitializer>> statements;
   std::vector<std::uint8_t> omitted;
@@ -25,11 +29,12 @@ struct BindingInitializers {
   // SymbolId indexed: retained immutable producer storage for an elided copy.
   std::vector<std::optional<SymbolId>> aliases;
   // Mutable storage coalescing is separate from immutable value aliases.
-  // Disjoint pairs share a retained lexical binding after interference proof.
+  // Noninterfering groups share a retained binding after interference proof.
   std::vector<std::optional<SymbolId>> storage;
   // Statement indexed: a live empty-declaration value retained as a write to
   // shared initialized storage at the original occurrence, not a new binding.
   std::vector<std::optional<SymbolId>> undefined_stores;
+  std::vector<std::optional<DeclarationValue>> declaration_values;
   [[nodiscard]] SymbolId Storage(SymbolId symbol) const {
     const auto root = aliases[symbol.value].value_or(symbol);
     // Both alias stages publish direct value roots; coalescing publishes direct

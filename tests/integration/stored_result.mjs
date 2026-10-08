@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {parseJavaScript} from './class_reference.mjs';
+import {editExpression} from './expression_edits.mjs';
 
 const rows=execFileSync(process.argv[2],['--emit'],{encoding:'utf8',maxBuffer:32_000_000}).trim().split('\n').map(JSON.parse);
 const returnedObject={},failure=Symbol('original failure'),resumeObject={};
@@ -87,7 +88,8 @@ for(const row of rows) {
   if(!row.count&&[1,2,13].includes(row.form)) {
     const wrong=row.form===1?row.source.replace('(0, other)()', 'input'):
       row.form===2?row.source.replace('++state','state++'):
-      row.source.replace('input.value = state','input.value = 0');
+      editExpression(row.source,node=>node.type==='AssignmentExpression'&&node.left.type==='MemberExpression',
+        (node,text)=>`(${text(node.left)} = 0)`);
     assert.notEqual(wrong,row.source);parseJavaScript(wrong);
     const changed=Function('"use strict";return '+wrong)();
     assert.notDeepStrictEqual(await observe(changed,row,{kind:'coerceNumber'}),await observe(expected,row,{kind:'coerceNumber'}));++mutations;

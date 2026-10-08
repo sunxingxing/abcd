@@ -628,6 +628,9 @@ if(BUILD_TESTING)
     tests/unit/source/entry_initializer_checks.cc tests/unit/source/expression_initializer_checks.cc)
   target_link_libraries(binding_initializer_test PRIVATE abcd_source abcd_json)
   add_test(NAME binding_initializer_test COMMAND binding_initializer_test)
+  add_executable(declaration_value_test tests/unit/source/declaration_value_test.cc)
+  target_link_libraries(declaration_value_test PRIVATE abcd_source abcd_json)
+  add_test(NAME declaration_value_test COMMAND declaration_value_test)
   add_executable(binding_interference_test tests/unit/source/binding_interference_test.cc)
   target_link_libraries(binding_interference_test PRIVATE abcd_source abcd_json)
   add_test(NAME binding_interference_test COMMAND binding_interference_test)
@@ -1880,6 +1883,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/loop_initializer.mjs $<TARGET_FILE:loop_initializer_test>)
     add_test(NAME binding_initializer_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals --stack-size=4096
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/binding_initializer.mjs $<TARGET_FILE:binding_initializer_test>)
+    add_test(NAME declaration_value_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals --stack-size=4096
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/declaration_value.mjs $<TARGET_FILE:declaration_value_test>)
     add_test(NAME binding_interference_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/binding_interference.mjs $<TARGET_FILE:binding_interference_test>)
     add_test(NAME statement_snapshot_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals --stack-size=4096

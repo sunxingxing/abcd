@@ -24,6 +24,55 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则221，原生词法初始化贯通变量恢复 pass
+
+- 原DeclarationStmt初始化现在发布共同RHS/copy/StmtId写引用/当前owner/
+  异常路由，covered value与快照不再假设所有定义都是AssignmentExpr。
+  初始化完成与赋值PutValue保持不同语义；常量/别名、快照和存储分析
+  复用同一coverage/liveness/completion/motion事实。
+- 独立DeclarationValue源码投影保留原位置RHS GetValue，或把成功
+  初始化写入已证明初始化的共享slot。合并不再直接省略含值声明；后序
+  StoredResults独立删除identity写回，InertStatements独立删除无效果
+  丢弃值。打印器/name preflight消费同一计划。所有提交仍统一失效
+  ProjectionFacts，保持既定先后依赖，无新固定轮次或局部布局匹配。
+- 共享存储同时证明原绑定及目的slot在当前引用处已初始化，包含TDZ
+  读与写；const可值传播但不可mutable coalesce。源码local/const与
+  capture身份保持。已初始化声明不会被语法恢复再次初始化。共享赋值
+  仍消费RHS值；独立identity写入消除后才能成为discarded值，防止逗号
+  清理误删被写入的常量。省略初始化origin显式标记boundary，转发值
+  仍映射真实目的位置。
+- 新declaration_value测试独立建立两种初始化表示，覆盖复制/常量/
+  effectful RHS、单次与多次快照、组收缩、异常旧值、对象身份、名字
+  遮蔽、TDZ读/写、分支及循环携带值。反向expression/statement/symbol
+  arena与0/1/200/201/400/800节点组合，检查work增长及typed资源失败。
+  408份引擎源码/81,600独立执行对照/7错误变体通过；源码两种表示均
+  消除无需保留的机械变量，多次写入组使用同一slot。共同flow补测
+  原生initializer/copy/context、投影写不重复初始化、TDZ和容量复用清空。
+- 初始旧实现直接let current=42/copy无法传播，red-tests.log失败1.52秒。
+  测试开发中修正非法const赋值fixture、arena增长后的scope ID、loop
+  alternate必须为block及干涉字段拼写；保留诊断，无生产样本特例。
+  expanded3 2/2通过12.04秒；原binding/interference/snapshot/flow单元
+  亦通过。首轮59项522.58秒中55项通过，4项受旧“所有表达式span
+  非空”断言阻挡；统一范围检查按省略计划验boundary并保留转发范围。
+  stored-result成员写入mutation也改用AST节点选择，消除对被恢复掉的
+  state名字依赖；原“观察到值就必须保留全部copy/初始化”断言改为
+  保留必要绑定初始化义务并用独立执行核对值，不要求冗余存储。
+  未降低独立行为对照，range系列诊断保留。
+- 最终29个目标构建成功，59/59定向回归587.69秒全部通过；证据为
+  build/stage-one/declaration-value-verification的selection.json、
+  final-result.json及final-{build,tests,detail}.log。包含2,004份变量
+  源码/482,752行为/342变体，408份新增/81,600行为/7变体，305份
+  存储组合/44,852行为/19变体，540份快照/20,760行为/60变体，
+  586份dead-definition/14,488执行/61变体，528份stored-result/
+  18,192行为/12变体，以及Home/PageA独立整record语义与style验收。
+  PasteBoard异步回调仍通过6,995场景/两变体，仅该回调验收。
+- fresh ABC-only导出build/stage-one/declaration-value-rule221-final：19 records，
+  10 complete / 0 partial / 9 noModule；10份语法通过，相对规则220源码
+  逐字节不变，输入SHA256不变，export-check.json记录结果。
+  原生声明dead-definition及声明kind精度、完整生命期/原IR对应/复杂
+  finally/全局pass收敛仍开放；阶段一Goal active。暂停的完整corpus/
+  RSS/基准/调度器保持，不把本次通用迁移当作新的record完成验收。
+
 ### 2026-10-08：规则220，完整干涉图与通用存储组收缩
 
 - FindBindingInterference从共同live-in/成功定义发布完整temporary干涉边，

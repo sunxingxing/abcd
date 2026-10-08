@@ -1,0 +1,36 @@
+#ifndef ABCD_TEST_SOURCE_PROJECTED_RANGES_H_
+#define ABCD_TEST_SOURCE_PROJECTED_RANGES_H_
+#include "../../../src/source/binding_initializer.h"
+#include "../../../src/source/expression_children.h"
+#include "../../../src/source/statement_expressions.h"
+#include "abcd/source/tree_printer.h"
+#include "../../support/analysis/ssa_fixture.h"
+namespace abcd::test {
+// Source origins of removed owned syntax map to an explicit empty boundary.
+// Forwarded values remain at their retained destination. This checks range
+// ownership only; independent integration execution proves transformation safety.
+inline void CheckProjectedRanges(const source::FunctionTree& tree,
+    const source::BindingInitializers& plan,const source::PrintedFunction& printed,
+    std::size_t output_size) {
+  std::vector<std::uint8_t> removed(tree.expressions.size());
+  std::vector<source::ExprId> pending;
+  for(std::size_t i=0;i<tree.statements.size();++i) {
+    if(!plan.omitted[i])continue;
+    source::VisitStatementExpressions(tree.statements[i].statement,[&](auto root){pending.push_back(root);});
+    while(!pending.empty()) {
+      const auto id=pending.back();pending.pop_back();
+      if(plan.forwarded_values[i]==id)continue;
+      removed[id.value]=1;
+      source::VisitExpressionChildren(tree,tree.expressions[id.value].expression,[&](auto child){pending.push_back(child);});
+    }
+  }
+  Check(printed.expressions.size()==tree.expressions.size());
+  for(std::size_t i=0;i<printed.expressions.size();++i) {
+    const auto range=printed.expressions[i];
+    Check(range.begin<=range.end&&range.end<=output_size);
+    Check((range.begin==range.end)==bool(removed[i]));
+    if(removed[i])Check(printed.expression_extents[i]==source::GeneratedExtent::kBoundary);
+  }
+}
+}
+#endif

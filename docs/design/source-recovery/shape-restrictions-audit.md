@@ -2299,3 +2299,20 @@ dominator位置。名字用于源码词法身份与打印质量，既不定义�
 反向symbol与statement arena/1/2/200/201/400/800及错误变换覆盖组合。
 已有同名shadow长链验最多一个copy声明，防止代表选择退化。完整绑定
 生命期、finally精度、原IR对应及全局pass收敛仍未宣布完成。
+
+
+### 2026-10-08：规则221，直接初始化消费共同定义与引用
+
+覆盖值/复制/快照不再要求所有定义都具有AssignmentExpr。原生词法初始化
+在RecoveryFlow中提供RHS、copy、StmtId写引用、当前owner与异常路由，
+消费者使用共同coverage、liveness、completion及motion事实。源码变量/
+捕获仍保留身份；CompilerTemporary才允许移除存储。没有新增同块、邻接、
+opcode序列、固定链长、样本名称或图形状准入规则。
+
+独立DeclarationValue投影把移除绑定与保留RHS/写回分开；合并后identity
+写入由StoredResults消除，效果由InertStatements处理，打印器不重判语义。
+原绑定与目的slot均须在实际引用处完成初始化，防止掩盖TDZ读或写。
+这是共同语义义务，不是按直接初始化语法扩展的禁止合并补丁。const的
+不可写性质复用MutableBinding；原生初始化不重复变为另一个初始化语法。
+所有新提交统一失效当前投影分析，后序pass重建；原IR/完整生命期及
+全局pass收敛缺口保持。布局、分支/循环、异常和反例证据见status。

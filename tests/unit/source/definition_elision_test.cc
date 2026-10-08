@@ -1,4 +1,5 @@
 #include "../../../src/source/binding_initializer.h"
+#include "projected_ranges.h"
 #include "../../../src/source/loop_syntax.h"
 #include "../../../src/source/nullish_syntax.h"
 #include "../../../src/source/definition_elision.h"
@@ -76,10 +77,11 @@ std::uint64_t Check(unsigned form,unsigned count,bool reverse,bool emit,bool res
   const auto planned=PlanBindingInitializers(tree,loops,nullish);test::Check(std::holds_alternative<BindingInitializers>(planned));const auto& plan=std::get<BindingInitializers>(planned);
   const auto id=reverse?tree.expressions.size()-1-first.value:first.value;
   test::Check(plan.replacements[id].has_value()==(!resources&&(form==0||form==3||form==4||form==5||form==6)));
-  // Existing lexical initialization stays when its value or binding is needed.
-  // A dead assignment must not be promoted into a protected initializer first.
+  // Existing lexical initialization stays while storage is retained; a covered
+  // immutable value may replace that binding. A dead assignment must not be
+  // promoted into a protected initializer before independent demand cleanup.
   if(form==5) {test::Check(plan.omitted[body[0].value]);test::Check(plan.statements[body[count+1].value].has_value()==resources);}
-  else test::Check(!plan.omitted[body[0].value]);
+  else if(!plan.aliases[2]&&!plan.literals[2])test::Check(!plan.omitted[body[0].value]);
   if(count<=1) {
     test::Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes,plan.work})));
     test::Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes-1,plan.work}))==TreeStructureError::kResourceLimit);
@@ -115,7 +117,10 @@ std::uint64_t Chain(unsigned size,bool cycle,bool observed,bool reverse,bool emi
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
   const auto result=PlanBindingInitializers(tree,loops,nullish);test::Check(std::holds_alternative<BindingInitializers>(result));
   const auto& plan=std::get<BindingInitializers>(result);
-  for(const auto statement:writes)test::Check(bool(plan.omitted[statement.value])==!observed);
+  // Observed values may now propagate through native initialized copies.
+  // Demand still removes all unobserved writes; independent JS execution
+  // checks observed chains and cycles without requiring redundant storage.
+  if(!observed)for(const auto statement:writes)test::Check(plan.omitted[statement.value]);
   test::Check(plan.omitted[discarded.value]);
   if(size==2) {
     test::Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes,plan.work})));
@@ -189,7 +194,7 @@ std::uint64_t DiscardedOperands(unsigned form,unsigned count,bool reverse,bool e
   for(const auto sequence:sequences)test::Check(bool(plan.replacements[id(sequence)])==!form);
   std::ostringstream out;const auto printed=PrintFunctionTree(tree,out);
   test::Check(std::holds_alternative<PrintedFunction>(printed));
-  for(const auto range:std::get<PrintedFunction>(printed).expressions)test::Check(range.begin<range.end && range.end<=out.str().size());
+  test::CheckProjectedRanges(tree,plan,std::get<PrintedFunction>(printed),out.str().size());
   if(emit)std::cout<<nlohmann::json{{"source",out.str()},{"operands",true},{"form",form},{"count",count}}<<'\n';
   return plan.work;
 }
@@ -316,8 +321,7 @@ std::uint64_t DiscardedResults(unsigned form,unsigned count,bool reverse,bool em
   }
   std::ostringstream out;const auto printed=PrintFunctionTree(tree,out);
   test::Check(std::holds_alternative<PrintedFunction>(printed));
-  for(const auto range:std::get<PrintedFunction>(printed).expressions)
-    test::Check(range.begin<range.end && range.end<=out.str().size());
+  test::CheckProjectedRanges(tree,plan,std::get<PrintedFunction>(printed),out.str().size());
   if(emit)std::cout<<nlohmann::json{{"source",out.str()},{"discarded_result",true},{"form",form},{"count",count}}<<'\n';
   return plan.work;
 }

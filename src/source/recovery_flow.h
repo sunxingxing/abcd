@@ -34,7 +34,7 @@ struct FlowReference {
   FlowPoint point;
   SymbolId binding;
   FlowReferenceKind kind;
-  // Statement sites denote preserved empty-declaration writes. Expression
+  // Statement sites denote lexical initialization or projected writes. Expression
   // sites retain source identity even when forwarded to a new flow position.
   FlowReferenceSite site;
   // Retain the handler/cleanup route even if the reference itself is proved
@@ -53,6 +53,7 @@ struct FlowNameReference {
   std::optional<StmtId> owner;
 };
 struct BindingInitializer;
+struct DeclarationValue;
 struct FlowDefinition {
   FlowPoint point;
   SymbolId binding;
@@ -96,6 +97,7 @@ struct LegacyFlowProjection {
   // successful definitions and update read/write halves use this identity.
   std::span<const std::optional<SymbolId>> storage;
   std::span<const std::optional<SymbolId>> undefined_stores;
+  std::span<const std::optional<DeclarationValue>> declaration_values;
 };
 struct RecoveryFlow {
   RouteInputIdentity identity;

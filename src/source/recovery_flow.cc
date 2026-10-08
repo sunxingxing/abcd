@@ -122,7 +122,9 @@ class FlowBuilder {
     events_[point.value].discarded=discarded;
     Append(definitions_,{point,Resolve(binding),kind,copy,value,declaration,write,effect});
     if(write)Reference(point,Resolve(binding),FlowReferenceKind::kWrite,*write,exceptions,owner);
-    else if(kind==FlowDefinitionKind::kUndefinedStore)Reference(point,Resolve(binding),FlowReferenceKind::kWrite,*declaration,exceptions,owner);
+    else if(declaration && (kind==FlowDefinitionKind::kUndefinedStore ||
+        kind==FlowDefinitionKind::kInitializer || kind==FlowDefinitionKind::kAssignment))
+      Reference(point,Resolve(binding),FlowReferenceKind::kWrite,*declaration,exceptions,owner);
     return point;
   }
   void Reference(FlowPoint point,SymbolId binding,FlowReferenceKind kind,FlowReferenceSite site,std::optional<FlowExceptionContext> exceptions={},std::optional<StmtId> owner={}) {
@@ -261,11 +263,29 @@ class FlowBuilder {
         auto evaluation=context;evaluation.discarded=id;evaluation.value_use=FlowValueUse::kDiscarded;Link(start,Expr(node.expression,evaluation));
       }
       else if constexpr(std::is_same_v<T,DeclarationStmt>) {
+        if(!projection_.declaration_values.empty())if(const auto& value=projection_.declaration_values[at.id.value]) {
+          RequireTree(discarded_.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
+          const DiscardedId id{static_cast<std::uint32_t>(discarded_.size())};Append(discarded_,{at.id});
+          auto evaluation=context;evaluation.discarded=id;evaluation.value_use=FlowValueUse::kDiscarded;
+          if(value->target) {
+            // The statement discards its result, but the retained assignment
+            // consumes the RHS value. Only a later store-elision pass may
+            // turn that operand into a discarded value.
+            evaluation.value_use=FlowValueUse::kObserved;
+            const auto commit=Define(*value->target,FlowDefinitionKind::kAssignment,Read(value->value),
+                value->value,at.id,{},FlowWriteEffect::kInert,id,
+                FlowExceptionContext{context.thrown,context.finalizer},context.owner);
+            evaluation.next=commit;Link(commit,context.next);
+          }
+          Link(start,Expr(value->value,evaluation));return;
+        }
         if(!projection_.undefined_stores.empty())if(const auto target=projection_.undefined_stores[at.id.value]) {
           const auto commit=Define(*target,FlowDefinitionKind::kUndefinedStore,{},{},at.id,{},FlowWriteEffect::kInert,{},FlowExceptionContext{context.thrown,context.finalizer},context.owner);
           Link(start,commit);Link(commit,context.next);return;
         }
-        auto commit=Define(node.symbol,node.initializer?FlowDefinitionKind::kInitializer:FlowDefinitionKind::kUndefined,{},node.initializer,at.id);Link(commit,context.next);
+        auto commit=Define(node.symbol,node.initializer?FlowDefinitionKind::kInitializer:FlowDefinitionKind::kUndefined,
+            node.initializer?Read(*node.initializer):std::nullopt,node.initializer,at.id,{},
+            FlowWriteEffect::kObservable,{},FlowExceptionContext{context.thrown,context.finalizer},context.owner);Link(commit,context.next);
         Link(start,node.initializer?Expr(*node.initializer,context.Operand(commit)):commit);
       } else if constexpr(std::is_same_v<T,IfStmt>) {
         auto branch=New({FlowEventKind::kTruthBranch,{},{},node.condition});Link(start,Expr(node.condition,context.Operand(branch)));

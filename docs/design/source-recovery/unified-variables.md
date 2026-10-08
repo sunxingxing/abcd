@@ -1137,3 +1137,53 @@ completion. Deleting the success write or its record-data await is detected.
 This advances one real callback's semantic/style evidence; the whole record and
 platform execution are not accepted by that test. Final coverage is recorded in
 status.md; paused corpus/RSS measurements are not resumed.
+
+
+## Native initialized values share recovery passes (rules221)
+
+A lexical DeclarationStmt initializer is a value definition with its RHS, copy
+identity, successful completion, statement write site, current owner and exception
+route. Previously the adapter omitted its copy/reference facts and consumers
+assumed every covered definition had an AssignmentExpr. The common coverage,
+liveness, initialization dominance and motion analyses now cover both sites;
+constant/alias and snapshot consumers use the shared RHS value. Private storage
+eligibility includes already initialized compiler declarations; source bindings
+and captured cells keep their original semantic identity.
+
+DeclarationValue is an explicit committed statement projection. Removing a
+binding retains RHS GetValue at its original occurrence; coalescing instead
+retains an assignment to the proved initialized writable root. The subsequent
+StoredResults pass independently removes identity writes, and InertStatements
+independently removes inert discarded values. RHS calls, coercions, throws,
+allocations and identities cannot disappear just because storage disappears.
+A retained assignment observes its RHS value even though its enclosing statement
+discards its result. Only store elision changes that value-use fact; subsequent
+comma cleanup therefore cannot drop an assigned constant. Removed initializer
+origins map to explicit empty boundaries, while forwarded RHS origins stay at
+their real destination. The printer and name preflight consume the same projection; actual destinations
+use existing common NamedEvaluation envelopes and resource contracts.
+
+The schedule remains StoredResults/demand cleanup -> declaration placement ->
+constants -> aliases -> demand cleanup -> snapshots -> storage -> independent
+identity/inert cleanup -> late aliases -> loop declarations -> final cleanup and
+declaration kinds. Every new projection goes through BeginCommit, invalidating
+the whole revision-tagged ProjectionFacts before another pass can analyze it.
+No analysis is read after a batch enters commit. No additional fixed-count
+optimization sweep or local graph/layout admission was added.
+
+Storage merging independently proves completion of both the original binding
+and retained slot at every remapped reference. Otherwise remapping an original
+TDZ read/write could make it succeed merely because the root was initialized.
+Const storage is excluded through existing MutableBinding semantics, while its
+immutable values can still propagate after common coverage. Already initialized
+declarations are excluded only from the grammar action that would initialize
+that same binding a second time; this is not a recovery admission restriction.
+
+The original adapter, partial binding lifetime and capture/unwind model remain
+migration gaps. Dead-definition removal still preserves original lexical
+initialization; arbitrary declaration relocation, global pass convergence and
+full finally/capture recovery are not claimed. Tests compare two independently
+built owned syntax encodings, branch/loop combinations, throwing RHS/state,
+TDZ reads/writes, source const/local identity, object mutation, and reversed
+expression/statement/symbol arenas. Test fixture shapes do not define production
+semantics; independent JS execution and adverse mutants supply behavior evidence.
