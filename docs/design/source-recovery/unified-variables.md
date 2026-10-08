@@ -1962,3 +1962,45 @@ of multiple bindings in a storage proposal remain precision gaps. Canonical uniq
 stays a style preference. General incremental pass convergence, original IR/SSA
 correspondence and full activation/capture/finally remain open. Status.md contains
 actual selected verification; the milestone and stage-one Goal remain active.
+
+### Current source namespace (2026-10-09, rules238)
+
+Canonical spelling analysis now publishes typed SourceSpellingId mappings for
+bindings and NameIds, including distinct NameIds with equal UTF-16 text. Text
+matching stays at this validated boundary. Each current RecoveryFlow derives
+retained-name activation from its original/projected lexical regions. Sorted
+nested intervals publish disjoint active-name ranges and current direct shadows.
+Canonical shadows no longer stand in for a narrowed binding's whole original
+scope. All alias/storage/initialization-write and snapshot symbol/free-name queries
+consume this common index; optimizer-local original statement_scopes_ lookup and
+ResolveTreeReferences/Names calls exit those decisions. Structural validation
+continues to use the canonical tree.
+
+EnclosingBindingScope explicitly models self/module/capture/parameter environments
+that enclose the function body. Canonical parent identities preserve their order
+when several layers share the whole-body envelope. Missing local regions remain
+unmodeled; absence never implies an enclosing environment. Ambiguous co-located
+declarations and unknown facts return typed precision gaps. Names neither establish
+TDZ/initialization completion nor authorize merging cells; independent lifetime,
+completion, initial-value, interference and effect obligations remain.
+
+SourceNameIndex belongs to the same immutable projection as current definitions
+and references. Rebuild/reuse regenerates it; first commit invalidates the aggregate.
+Queries are read-only and return owned results. Existing pass order and cleanup
+contracts remain, with no whole-function retry/normalization round. Legacy direct
+component flows without spelling identities keep conservative shadow facts and
+return an unmodeled name query instead of guessing text or scope.
+
+Independent tiny ancestry/mask/projection oracles compare symbol and free-name
+queries. Enclosing-layer precedence, missing positions, half-open endpoints,
+unknown/ambiguous/crossing provenance, stale reused index, 200/201/chain/star
+geometric and exact/short budgets cover analysis boundaries. Source tests combine
+relocated native declarations and native-for loop-carried bindings with outside
+reads (legal merge) or inside reads (retained slots), reversed arenas and independent
+execution/wrong-merge/update mutants. They assert actual native-for syntax.
+
+This closes current known lexical-region name resolution, not a complete namespace
+reconstruction for arbitrary binding rewrites. Prospective simultaneous storage
+retirement/renaming, full activation/capture/finally and original IR/SSA integration
+remain open, as does incremental global pass convergence. Status.md records actual
+selected acceptance; the unified-variable milestone and stage-one Goal stay active.

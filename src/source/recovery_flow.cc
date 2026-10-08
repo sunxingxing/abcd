@@ -79,8 +79,11 @@ class FlowBuilder {
     RequireTree(scopes.occurrences.empty() || scopes.occurrences.size()==tree_.statements.size(),Error::kOwnership);
     RequireTree(scopes.bindings.empty() || scopes.bindings.size()==tree_.symbols.size(),Error::kOwnership);
     RequireTree(scopes.unique_spellings.empty() || scopes.unique_spellings.size()==tree_.symbols.size(),Error::kOwnership);
+    RequireTree(scopes.spellings.empty()||scopes.spellings.size()==tree_.symbols.size(),Error::kOwnership);
+    RequireTree(scopes.names.empty()||scopes.names.size()==tree_.names.size(),Error::kOwnership);
     Resize(result.source_regions,scopes.regions.size());std::copy(scopes.regions.begin(),scopes.regions.end(),result.source_regions.begin());
     Resize(result.source_occurrences,scopes.occurrences.size());std::copy(scopes.occurrences.begin(),scopes.occurrences.end(),result.source_occurrences.begin());
+    copy(result.source_spellings,scopes.spellings);copy(result.source_name_spellings,scopes.names);
     Resize(result.bindings,tree_.symbols.size());
     for(std::size_t i=0;i<tree_.symbols.size();++i) {
       budget_.Step();result.bindings[i]={tree_.symbols[i].kind,
@@ -123,6 +126,7 @@ class FlowBuilder {
     auto names=std::get<FlowBindingNames>(std::move(analyzed_names));
     budget_.Admit(names.allocated_bytes,1);budget_.Step(names.work);
     result.source_shadows=std::move(names.shadows);result.binding_presence=std::move(names.presence);
+    result.source_names=std::move(names.index);
     result.allocated_bytes=budget_.Bytes();result.work=budget_.Work();return std::move(result);
   }
  private:

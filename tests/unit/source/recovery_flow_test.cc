@@ -4,6 +4,7 @@
 #include "../../../src/source/flow_definitions.h"
 #include "../../../src/source/flow_constants.h"
 #include "../../../src/source/recovery_schedule.h"
+#include "../../../src/source/source_names.h"
 #include <bit>
 #include <limits>
 #include "../../../src/source/definition_elision.h"
@@ -412,6 +413,104 @@ void BindingNameOracle() {
   Check(std::get<TreeStructureError>(AnalyzeFlowBindingNames(flow,{}))==TreeStructureError::kOwnership);
   std::cout<<"independent binding name cases "<<cases<<'\n';
 }
+void SourceNameOracle() {
+  std::uint64_t cases=0;
+  const auto run=[&](unsigned count,unsigned encoded,unsigned projected,unsigned mask,bool reverse,bool star) {
+    const auto id=[&](unsigned i){return SymbolId{reverse?count-1-i:i};};
+    std::vector<std::optional<unsigned>> parents(count);std::vector<unsigned> scope(count);
+    for(unsigned i=1;i<count;++i){parents[i]=count<=5?encoded%i:star?0:i-1;encoded/=i;}
+    const auto contains=[&](unsigned parent,unsigned child){auto node=std::optional{child};while(node){if(*node==parent)return true;node=parents[*node];}return false;};
+    RecoveryFlow flow{};flow.bindings.resize(count);flow.source_regions.resize(count);flow.source_occurrences.resize(count);
+    flow.source_spellings.resize(count,SourceSpellingId{0});flow.source_name_spellings={SourceSpellingId{0},std::nullopt};
+    std::vector<SourceBindingPresence> presence(count);std::vector<SourceBindingShadow> canonical;std::size_t position=0;
+    const auto visit=[&](auto&& self,unsigned node)->void {
+      const SourcePosition first{position++};flow.source_occurrences[id(node).value]=first;
+      for(unsigned child=node+1;child<count;++child)if(parents[child]==node)self(self,child);
+      flow.source_regions[id(node).value]={first,SourcePosition{position}};
+    };visit(visit,0);
+    bool ambiguous=false;
+    for(unsigned i=0;i<count;++i) {
+      scope[i]=i;
+      if(count<=5&&(projected&(1U<<i))&&i+1<count&&contains(i,i+1))scope[i]=i+1;
+      flow.bindings[id(i).value].scope=scope[i]==i?SourceBindingScope{OriginalBindingScope{SourceRegionId{id(scope[i]).value}}}:
+          SourceBindingScope{ProjectedBindingScope{SourceRegionId{id(scope[i]).value}}};
+      presence[id(i).value]=count>5||mask&(1U<<i)?SourceBindingPresence::kRetained:SourceBindingPresence::kElided;
+      if(i)canonical.push_back({id(*parents[i]),SourceRegionId{id(i).value},id(i)});
+      if(presence[id(i).value]==SourceBindingPresence::kRetained)
+        for(unsigned j=0;j<i;++j)if(presence[id(j).value]==SourceBindingPresence::kRetained&&scope[i]==scope[j])ambiguous=true;
+    }
+    if(reverse)std::reverse(canonical.begin(),canonical.end());
+    auto facts=std::get<SourceNameFacts>(AnalyzeSourceNames(flow,presence,canonical));
+    const auto bytes=facts.allocated_bytes;const auto work=facts.work;flow.source_names=std::move(facts.index);
+    std::vector<SourceNameQuery> queries;std::vector<SourceNameResolution> expected;
+    for(unsigned owner=0;owner<count;++owner) {
+      std::optional<unsigned> nearest;
+      for(unsigned binding=0;binding<count;++binding)if(presence[id(binding).value]==SourceBindingPresence::kRetained&&contains(scope[binding],owner))
+        if(!nearest||contains(scope[*nearest],scope[binding]))nearest=binding;
+      for(unsigned binding=0;binding<(count<=5?count:2);++binding) {
+        const unsigned target=count<=5?binding:binding?owner:0;
+        queries.push_back({id(target),StmtId{id(owner).value}});
+        expected.push_back(ambiguous?SourceNameResolution::kAmbiguous:nearest?*nearest==target?SourceNameResolution::kResolved:SourceNameResolution::kShadowed:SourceNameResolution::kUnavailable);
+      }
+      queries.push_back({NameId{0},StmtId{id(owner).value}});expected.push_back(ambiguous?SourceNameResolution::kAmbiguous:nearest?SourceNameResolution::kShadowed:SourceNameResolution::kResolved);
+      queries.push_back({NameId{1},StmtId{id(owner).value}});expected.push_back(SourceNameResolution::kResolved);
+    }
+    const auto resolved=std::get<SourceNameResults>(ResolveSourceNames(flow,queries));Check(resolved.resolutions==expected);
+    if(count>=200||(!mask&&!projected&&!reverse)) {
+      Check(std::holds_alternative<SourceNameFacts>(AnalyzeSourceNames(flow,presence,canonical,{bytes,work})));
+      Check(std::get<TreeStructureError>(AnalyzeSourceNames(flow,presence,canonical,{bytes-1,work}))==TreeStructureError::kResourceLimit);
+      Check(std::get<TreeStructureError>(AnalyzeSourceNames(flow,presence,canonical,{bytes,work-1}))==TreeStructureError::kWorkLimit);
+      Check(std::holds_alternative<SourceNameResults>(ResolveSourceNames(flow,queries,{resolved.allocated_bytes,resolved.work})));
+      Check(std::get<TreeStructureError>(ResolveSourceNames(flow,queries,{resolved.allocated_bytes-1,resolved.work}))==TreeStructureError::kResourceLimit);
+      Check(std::get<TreeStructureError>(ResolveSourceNames(flow,queries,{resolved.allocated_bytes,resolved.work-1}))==TreeStructureError::kWorkLimit);
+    }
+    ++cases;return work;
+  };
+  for(unsigned encoded=0;encoded<24;++encoded)for(unsigned projected=0;projected<8;++projected)
+    for(unsigned mask=0;mask<32;++mask)for(bool reverse:{false,true})run(5,encoded,projected,mask,reverse,false);
+  for(bool star:{false,true})for(bool reverse:{false,true}) {
+    std::uint64_t previous=0;for(unsigned count:{200U,201U,400U,800U}) {
+      const auto work=run(count,0,0,0,reverse,star);if(count==800)Check(work<previous*3);previous=work;
+    }
+  }
+  // Enclosing original environments share the whole body envelope, but retain
+  // their canonical self/parameter/capture precedence; unrelated layers do not.
+  RecoveryFlow flow{};flow.bindings.resize(3);flow.source_spellings.resize(3,SourceSpellingId{0});
+  for(auto& binding:flow.bindings)binding.scope=EnclosingBindingScope{};
+  flow.source_name_spellings={SourceSpellingId{0},std::nullopt};flow.source_occurrences={SourcePosition{0}};
+  std::vector<SourceBindingPresence> presence(3,SourceBindingPresence::kRetained);
+  std::vector<SourceBindingShadow> canonical{{{0},{},SymbolId{1}},{{1},{},SymbolId{2}}};
+  auto publish=[&](){auto facts=std::get<SourceNameFacts>(AnalyzeSourceNames(flow,presence,canonical));flow.source_names=std::move(facts.index);};
+  const std::vector<SourceNameQuery> queries{{SymbolId{0},StmtId{0}},{SymbolId{1},StmtId{0}},{SymbolId{2},StmtId{0}},{NameId{0},StmtId{0}},{NameId{1},{}}};
+  publish();auto results=std::get<SourceNameResults>(ResolveSourceNames(flow,queries)).resolutions;
+  Check(results==std::vector<SourceNameResolution>{SourceNameResolution::kShadowed,SourceNameResolution::kShadowed,SourceNameResolution::kResolved,SourceNameResolution::kShadowed,SourceNameResolution::kResolved});
+  presence[1]=SourceBindingPresence::kElided;publish();Check(std::get<SourceNameResults>(ResolveSourceNames(flow,queries)).resolutions[2]==SourceNameResolution::kResolved);
+  canonical.clear();publish();Check(std::get<SourceNameResults>(ResolveSourceNames(flow,queries)).resolutions[2]==SourceNameResolution::kAmbiguous);
+  flow.bindings[2].scope=UnmodeledBindingScope{};publish();Check(std::get<SourceNameResults>(ResolveSourceNames(flow,queries)).resolutions[2]==SourceNameResolution::kUnmodeled);
+  flow.source_names.reset();Check(std::get<SourceNameResults>(ResolveSourceNames(flow,queries)).resolutions[2]==SourceNameResolution::kUnmodeled);
+  flow.bindings[2].scope=OriginalBindingScope{};publish();Check(std::get<SourceNameResults>(ResolveSourceNames(flow,queries)).resolutions[2]==SourceNameResolution::kUnmodeled);
+  RecoveryFlow boundary{};boundary.bindings.resize(1);boundary.bindings[0].scope=OriginalBindingScope{SourceRegionId{0}};
+  boundary.source_regions={{{0},{1}}};boundary.source_occurrences={SourcePosition{0},SourcePosition{1}};
+  boundary.source_spellings={SourceSpellingId{0}};boundary.source_name_spellings={SourceSpellingId{0}};
+  const std::vector<SourceBindingPresence> retained{SourceBindingPresence::kRetained};
+  auto index=std::get<SourceNameFacts>(AnalyzeSourceNames(boundary,retained,{}));boundary.source_names=std::move(index.index);
+  const std::vector<SourceNameQuery> endpoints{{SymbolId{0},StmtId{0}},{SymbolId{0},StmtId{1}},{NameId{0},StmtId{0}},{NameId{0},StmtId{1}},{SymbolId{0},{}}};
+  Check(std::get<SourceNameResults>(ResolveSourceNames(boundary,endpoints)).resolutions==std::vector<SourceNameResolution>{
+      SourceNameResolution::kResolved,SourceNameResolution::kUnavailable,SourceNameResolution::kShadowed,SourceNameResolution::kResolved,SourceNameResolution::kUnmodeled});
+  for(const auto query:{SourceNameQuery{SymbolId{1},StmtId{0}},SourceNameQuery{NameId{1},StmtId{0}},SourceNameQuery{SymbolId{0},StmtId{2}}}) {
+    const std::array queries{query};Check(std::get<TreeStructureError>(ResolveSourceNames(boundary,queries))==TreeStructureError::kOwnership);
+  }
+  boundary.source_spellings[0]={1};Check(std::get<TreeStructureError>(AnalyzeSourceNames(boundary,retained,{}))==TreeStructureError::kOwnership);
+  boundary.source_spellings[0]={0};boundary.bindings[0].scope=ProjectedBindingScope{{1}};
+  Check(std::get<TreeStructureError>(AnalyzeSourceNames(boundary,retained,{}))==TreeStructureError::kOwnership);
+  boundary.bindings.resize(2);boundary.source_spellings.resize(2,SourceSpellingId{0});boundary.source_regions={{{0},{2}},{{1},{3}}};
+  boundary.bindings[0].scope=OriginalBindingScope{SourceRegionId{0}};boundary.bindings[1].scope=ProjectedBindingScope{{1}};
+  const std::vector<SourceBindingPresence> crossing(2,SourceBindingPresence::kRetained);
+  Check(std::get<TreeStructureError>(AnalyzeSourceNames(boundary,crossing,{}))==TreeStructureError::kOwnership);
+  RecoveryFlow empty{};empty.source_name_spellings={std::nullopt};auto empty_names=std::get<FlowBindingNames>(AnalyzeFlowBindingNames(empty,{}));empty.source_names=std::move(empty_names.index);
+  const std::array free{SourceNameQuery{NameId{0},{}}};Check(std::get<SourceNameResults>(ResolveSourceNames(empty,free)).resolutions[0]==SourceNameResolution::kResolved);
+  std::cout<<"independent current source name cases "<<cases<<'\n';
+}
 void SpellingOracle() {
   const auto run=[](unsigned count,unsigned encoded,unsigned pattern,bool reverse) {
     const auto index=[&](unsigned i){return reverse?count-1-i:i;};
@@ -438,6 +537,7 @@ void SpellingOracle() {
       while(parent){if(tree.names[tree.symbols[index(*parent)].name.value]==name){expected=SymbolId{index(*parent)};break;}parent=parents[*parent];}
       unsigned matches=0;for(const auto& symbol:tree.symbols)matches+=tree.names[symbol.name.value]==name;
       Check(facts.shadowed[index(i)]==expected);Check(bool(facts.unique[index(i)])==(matches==1));
+      Check(facts.names[tree.symbols[index(i)].name.value]==facts.bindings[index(i)]);
     }
     // Every retained-name mask is checked independently of production's forest.
     if(count==5)for(unsigned mask=0;mask<32;++mask) {
@@ -812,9 +912,11 @@ void SourceEvents() {
   Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,
       {aliases,literals,replacements,omitted,evaluations,normal,native,private_bindings,{},{},{},{},{regions,positions,source_bindings,shadows,unique}}))==TreeStructureError::kOwnership);
   std::fill(spelled.binding_presence.begin(),spelled.binding_presence.end(),SourceBindingPresence::kElided);
+  spelled.source_names=SourceNameIndex{};spelled.source_spellings.assign(tree.symbols.size(),SourceSpellingId{0});spelled.source_name_spellings={SourceSpellingId{0}};
   const auto unnamed=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,
       {aliases,literals,replacements,omitted,evaluations,normal,native,private_bindings},{},std::move(spelled)));
   Check(unnamed.source_shadows.empty()&&unnamed.bindings[1].unique_spelling);
+  Check(!unnamed.source_names&&unnamed.source_spellings.empty()&&unnamed.source_name_spellings.empty());
   Check(unnamed.binding_presence.size()==tree.symbols.size()&&unnamed.binding_presence[1]==SourceBindingPresence::kRetained);
   const auto cleared_scopes=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,
       {aliases,literals,replacements,omitted,evaluations,normal,native,private_bindings},{},std::move(scoped)));
@@ -1493,4 +1595,4 @@ void PassContracts() {
   Check(!unfinished.DemandCleanupNeeded());
   std::cout<<"pass ownership, dependency and cleanup counterexamples passed\n";
 }
-int main(){InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();PassContracts();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SpellingOracle();StorageNameOracle();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+int main(){InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();PassContracts();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();SpellingOracle();StorageNameOracle();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

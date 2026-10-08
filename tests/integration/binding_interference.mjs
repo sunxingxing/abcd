@@ -3,7 +3,7 @@ import {execFileSync} from 'node:child_process';
 import vm from 'node:vm';
 import {parseJavaScript} from './class_reference.mjs';
 const records=execFileSync(process.argv[2],['--emit'],{encoding:'utf8',timeout:60_000,maxBuffer:16*1024*1024}).trim().split('\n').map(JSON.parse);
-assert.equal(records.length,360);
+assert.equal(records.length,408);
 // Oracles describe the original storage semantics, never enter the engine.
 const references=[
   function(input,report,flag){let current=input,scratch=current;++scratch;current=scratch;return current;},
@@ -37,6 +37,10 @@ const references=[
   function(input,report,flag){let current;report(current=input);++current;let scratch=current;{let current=100;report(current);++scratch;report(scratch);}current=scratch;return current;{let scratch;}},
   function(input,report,flag){let current;report(current=input);++current;let scratch=current;{let current=100;report(current);++scratch;report(scratch);}current=scratch;return current;{let scratch;}},
 ];
+references.push(function(input,report,flag){let current=input;report(current);++current;let scratch=current;{let current;{current=report(input);++current;report(current);}report(scratch);}return scratch;{let scratch;}});
+references.push(function(input,report,flag){let current=input;report(current);++current;let scratch=current;{let current;current=report(input);while(!(current>=2)){++current;report(current);if(flag)break;flag=true;}report(scratch);}return scratch;{let scratch;}});
+references.push(function(input,report,flag){let current=input;report(current);++current;let scratch=current;{let current;{current=report(input);++current;report(current);report(scratch);}report(scratch);}return scratch;{let scratch;}});
+references.push(function(input,report,flag){let current=input;report(current);++current;let scratch=current;{let current;current=report(input);while(!(current>=2)){++current;report(current);report(scratch);if(flag)break;flag=true;}report(scratch);}return scratch;{let scratch;}});
 const primitives=[undefined,null,false,true,0,-0,1,-2,0n,2n,NaN,Infinity,'','7','bad',Symbol('input')];
 let cases=0,mutations=0;
 async function observe(fn,form,index,mode,flag,request){
@@ -44,7 +48,7 @@ async function observe(fn,form,index,mode,flag,request){
   if(index<primitives.length)input=primitives[index];
   else input={ [Symbol.toPrimitive](hint){events.push(['coerce',hint]);if(mode==='coercion-throw')throw original;return index===primitives.length?4:5n;} };
   const encode=value=>value===input&&typeof value==='object'&&value!==null?'input-object':value===original?'original-throw':value===returned?'return-object':value;
-  const report=(...args)=>{events.push(['report',...args.map(value=>typeof value==='function'?['capture',encode(value())]:encode(value))]);if(mode==='report-throw')throw original;if(mode==='reject')return Promise.reject(original);return form===24?input:undefined;};
+  const report=(...args)=>{events.push(['report',...args.map(value=>typeof value==='function'?['capture',encode(value())]:encode(value))]);if(mode==='report-throw')throw original;if(mode==='reject')return Promise.reject(original);return form===24?input:form===31||form===33?0:undefined;};
   // Avoid an unused rejected promise outside the awaited case.
   if(mode==='reject'&&form!==4)return;
   let result;
@@ -62,7 +66,13 @@ for(const record of records){
   const inspect=parseJavaScript(record.source);const pending=[inspect];let hasScratch=false,hasCurrent=false;
   while(pending.length){const node=pending.pop();if(node.type==='VariableDeclarator'){if(node.id.name==='scratch')hasScratch=true;if(node.id.name==='current')hasCurrent=true;}
     for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)pending.push(child);}else if(value?.type)pending.push(value);}}
-  if(record.form===28||record.form===29){
+  if(record.form===31||record.form===33){
+    const pending=[inspect];let native=false;
+    while(pending.length){const node=pending.pop();if(node.type==='ForStatement'&&node.init?.type==='VariableDeclaration')native=true;
+      for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)pending.push(child);}else if(value?.type)pending.push(value);}}
+    assert.ok(native,'native loop declaration');
+  }
+  if(record.form===28||record.form===29||record.form>=30){
     const slots=inspect.body[0].expression.body.body.filter(node=>node.type==='VariableDeclaration').flatMap(node=>node.declarations.map(item=>item.id.name));
     assert.deepEqual(slots,record.merged?['current']:['current','scratch']);
   }else if(record.form===26||record.form===27){
@@ -76,7 +86,7 @@ for(const record of records){
     if(record.form===7&&primitives[index]===Infinity)continue;
     assert.deepEqual(await observe(recovered,record.form,index,mode,flag,request),await observe(references[record.form],record.form,index,mode,flag,request),JSON.stringify({form:record.form,index,mode,flag,request}));++cases;
   }
-  if(record.count===0&&!record.reverse&&[1,3,4,5,6,9,10,20].includes(record.form)){
+  if(record.count===0&&!record.reverse&&[1,3,4,5,6,9,10,20,32,33].includes(record.form)){
     // A semantically wrong coalescing remains valid JS: reuse current for every
     // scratch access while retaining the now-unused scratch declaration.
     const changed=record.source.replaceAll('scratch','currentAlias');
@@ -87,7 +97,7 @@ for(const record of records){
     let mutant=changed;for(const edit of edits.sort((a,b)=>b.start-a.start))mutant=mutant.slice(0,edit.start)+'current'+mutant.slice(edit.end);
     parseJavaScript(mutant);const wrong=vm.runInNewContext(mutant);
     const mode=record.form===3?'report-throw':record.form===4?'reject':'normal';const request=record.form===5?'return':'next';
-    assert.notDeepEqual(await observe(wrong,record.form,6,mode,true,request),await observe(references[record.form],record.form,6,mode,true,request),`coalescing mutant ${record.form}`);++mutations;
+    assert.notDeepEqual(await observe(wrong,record.form,6,mode,record.form!==33,request),await observe(references[record.form],record.form,6,mode,record.form!==33,request),`coalescing mutant ${record.form}`);++mutations;
   }
   if(record.count===0&&!record.reverse&&record.form===17) {
     // The read of scratch's known 0 can now be replaced before coalescing.
@@ -96,15 +106,15 @@ for(const record of records){
     assert.notDeepEqual(await observe(wrong,17,6,'normal',true,'next'),
         await observe(references[17],17,6,'normal',true,'next'));++mutations;
   }
-  if(record.count===0&&!record.reverse&&[18,19,23,24,25,26,27,28,29].includes(record.form)) {
+  if(record.count===0&&!record.reverse&&[18,19,23,24,25,26,27,28,29,30,31,32,33].includes(record.form)) {
     const pending=[inspect];let update;
     while(pending.length){const node=pending.pop();if(node.type==='UpdateExpression')update=node;
       for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)pending.push(child);}else if(value?.type)pending.push(value);}}
     assert.ok(update);
     const mutant=record.source.slice(0,update.start)+record.source.slice(update.argument.start,update.argument.end)+record.source.slice(update.end);
     const wrong=vm.runInNewContext(mutant);
-    assert.notDeepEqual(await observe(wrong,record.form,6,'normal',true,'next'),
-        await observe(references[record.form],record.form,6,'normal',true,'next'));++mutations;
+    assert.notDeepEqual(await observe(wrong,record.form,6,'normal',record.form<30,'next'),
+        await observe(references[record.form],record.form,6,'normal',record.form<30,'next'));++mutations;
   }
   if(record.count===0&&!record.reverse&&record.form===26) {
     const wrong=function(input,report){let current;report(current=input);++current;report(current);{let current;++current;report(current);}return current;{let scratch;}};

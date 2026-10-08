@@ -1,5 +1,6 @@
 #include "recovery_flow.h"
 #include "tree_checks.h"
+#include "source_names.h"
 #include <algorithm>
 #include <stdexcept>
 
@@ -34,7 +35,7 @@ std::variant<FlowBindingNames,TreeStructureError> AnalyzeFlowBindingNames(
     // Bare declaration initialization is a definition, not evidence of elision.
     for(const auto& definition:flow.definitions){budget.Step();retain(definition.binding);}
     for(const auto& reference:flow.references){budget.Step();retain(reference.binding);}
-    budget.Array(result.shadows,canonical.size());bool identified=false;
+    bool identified=false;
     for(const auto& shadow:canonical) {
       budget.Step();RequireTree(shadow.binding.value<flow.bindings.size(),TreeStructureError::kOwnership);
       if(shadow.region) {
@@ -48,9 +49,17 @@ std::variant<FlowBindingNames,TreeStructureError> AnalyzeFlowBindingNames(
         identified=true;
       }
     }
-    if(!identified) {
+    if(!flow.source_spellings.empty()||!flow.source_name_spellings.empty()) {
+      auto analyzed=AnalyzeSourceNames(flow,result.presence,canonical,budget.Remaining());
+      if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
+      auto names=std::get<SourceNameFacts>(std::move(analyzed));
+      budget.Admit(names.allocated_bytes,1);budget.Step(names.work);
+      result.shadows=std::move(names.shadows);result.index=std::move(names.index);
+    } else if(!identified) {
+      budget.Array(result.shadows,canonical.size());
       budget.Step(canonical.size());std::copy(canonical.begin(),canonical.end(),result.shadows.begin());
     } else {
+      budget.Array(result.shadows,canonical.size());
       std::vector<std::optional<SymbolId>> parents,heads,next,nearest;
       std::vector<SymbolId> ready;
       budget.Array(parents,flow.bindings.size());budget.Array(heads,flow.bindings.size());

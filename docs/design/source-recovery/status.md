@@ -24,6 +24,51 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-09：规则238，当前源码名字范围统一解析
+
+- AnalyzeTreeSpellings一次发布binding与NameId的typed SourceSpellingId，
+  相同UTF-16文本的不同NameId归同一身份；匹配留在验证的文本边界。
+  当前共同图按retained original/projected词法范围排序/扫栈，发布不相交
+  的名字activation区间和当前direct shadow。声明缩窄及native-for不再
+  使用整个原始scope的遮蔽范围。
+- Alias/storage/初始化新增写入及snapshot的symbol/free-name查询全部
+  消费共同SourceNameIndex；原statement_scopes_数组与这些优化器的
+  ResolveTreeReferences/Names路径退出。结构验证保持canonical模型。
+  未弱化cell/初始值/完成/效果/干涉/lifetime等独立义务。
+- EnclosingBindingScope显式表示self/module/capture/parameter外层环境，
+  canonical父身份保持相同body-envelope中的层次；缺少local范围不能
+  推断为全函数作用域。冲突、未知范围/身份/位置返回typed分析缺口；
+  crossing范围是非法词法adapter provenance，不是CFG形状准入。
+- 索引属于同一immutable ProjectionFacts revision；图重建/复用均清除
+  旧索引，首次commit先失效，查询只产生自有结果。原阶段/依赖/cleanup
+  契约保持，无额外pass轮次或样本/序列/同块/邻接匹配。
+- 缩窄声明反例RED1.19秒；初版聚焦3/3在19.71秒通过。Native-for初始
+  fixture未产生for声明，按现有循环携带值构造更正测试，未改生产matcher；
+  外部可合并/内部必须保留组合及实际for-let语法检查通过。显式外层
+  环境检查后最终聚焦3/3在20.77秒通过。
+- 最终12304独立当前名字scope/projection/mask对照、7696既有retention
+  与9360候选对照通过。覆盖外层父身份、缺失local/owner、half-open边界、
+  冲突/crossing/非法IDs及旧index复用；反向ID/arena/事实、200/201/400/800
+  chain/star、exact/short预算、源码独立执行和错误名字合并/更新mutation。
+- B绑定、N NameId、H shadow、Q query：边界新增O(N log(B+1))文本比较；
+  当前范围索引O(B log(B+1)+B+H+N)，最多2B段，查询O(Q log(B+1))。
+  无per-variable祖先/CFG扫描；原预算计入缓冲、比较、访问。此证据不替代
+  已暂停的完整过程RSS验证。
+- inline检查发现缺范围过宽推断后，首轮构建仅终止自身8个进程，未导出/
+  测试；该中断日志不作为验收。最终当前29目标构建65.77秒、既定59/59
+  测试439.77秒通过，combined-coverage.json核对名称与原选择完全一致。
+  存储437源码/63860行为比较/35错误变体；声明2568/513600/100，初始化
+  2004/482752/368、循环276/13976/68；调度器反例及既定真实callback、
+  rich-text、progressbar、EntryAbility对照均通过。
+- fresh固定pasteboard导出2.59秒：19records保持10完整/0部分/9无module，
+  10语法检查通过，全部源码字节等于237；原预算与language_numeric_constructors_v1
+  保持。输入SHA256前后均为
+  854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e。
+  证据在build/stage-one/projected-names-verification。
+- 已知当前词法范围解析迁移完成；任意binding改写的完整namespace、storage
+  提案的同时退役/重命名、原IR/SSA、完整activation/capture/finally及增量
+  pass收敛仍开放。统一变量里程碑与阶段一Goal active，所有暂停范围保持。
+
 ### 2026-10-09：规则237，当前绑定保留事实贯通名字决策
 
 - 新纯分析AnalyzeFlowBindingNames从当前共同图发布typed名字保留事实。

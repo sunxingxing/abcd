@@ -31,10 +31,13 @@ struct SourceRegion {SourcePosition first,last;};
 struct OriginalBindingScope {std::optional<SourceRegionId> region;};
 struct ProjectedBindingScope {SourceRegionId region;};
 struct UnmodeledBindingScope {};
+// Explicit external environment: self/module/capture/parameter activation
+// encloses the body. Absence of a local region never establishes this fact.
+struct EnclosingBindingScope {};
 // Lexical containment only: dynamic cell identity, initialization completion
 // and source spelling remain separate obligations. Missing projection facts
 // cannot authorize access to a narrowed declaration.
-using SourceBindingScope=std::variant<OriginalBindingScope,ProjectedBindingScope,UnmodeledBindingScope>;
+using SourceBindingScope=std::variant<OriginalBindingScope,ProjectedBindingScope,UnmodeledBindingScope,EnclosingBindingScope>;
 // A canonical inner scope shadows this enclosing binding's source spelling.
 // Missing region is an explicit precision gap; this fact never merges cells.
 struct SourceBindingShadow {
@@ -44,12 +47,21 @@ struct SourceBindingShadow {
   // on legacy facts: preserve their conservative region, never guess identity.
   std::optional<SymbolId> shadowing;
 };
+enum class SourceNameResolution : std::uint8_t {kResolved,kShadowed,kUnavailable,kUnmodeled,kAmbiguous};
+struct SourceNameRange {SourceSpellingId spelling;SourceRegion region;SymbolId binding;};
+struct SourceNameIndex {
+  std::vector<SourceNameRange> ranges;
+  std::vector<SourceNameResolution> precision;
+};
+struct SourceNameQuery {std::variant<SymbolId,NameId> name;std::optional<StmtId> owner;};
 struct SourceScopeProjection {
   std::span<const SourceRegion> regions;
   std::span<const std::optional<SourcePosition>> occurrences;
   std::span<const SourceBindingScope> bindings;
   std::span<const SourceBindingShadow> shadows;
   std::span<const std::uint8_t> unique_spellings;
+  std::span<const SourceSpellingId> spellings;
+  std::span<const std::optional<SourceSpellingId>> names;
 };
 struct FlowBinding {
   BindingKind kind;
@@ -180,6 +192,9 @@ struct RecoveryFlow {
   std::vector<SourceRegion> source_regions;
   std::vector<SourceBindingShadow> source_shadows;
   std::vector<SourceBindingPresence> binding_presence;
+  std::vector<SourceSpellingId> source_spellings;
+  std::vector<std::optional<SourceSpellingId>> source_name_spellings;
+  std::optional<SourceNameIndex> source_names;
   std::vector<std::optional<SourcePosition>> source_occurrences;
   FlowPoint entry, terminal;
   std::size_t allocated_bytes = 0;
@@ -191,7 +206,7 @@ struct RecoveryFlow {
     return std::visit([](const auto& scope)->std::optional<SourceRegionId> {
       using T=std::decay_t<decltype(scope)>;
       if constexpr(std::is_same_v<T,OriginalBindingScope>||std::is_same_v<T,ProjectedBindingScope>)return scope.region;
-      else {static_assert(std::is_same_v<T,UnmodeledBindingScope>);return {};}
+      else {static_assert(std::is_same_v<T,UnmodeledBindingScope>||std::is_same_v<T,EnclosingBindingScope>);return {};}
     },bindings[binding.value].scope);
   }
   [[nodiscard]] bool BindingInScope(SymbolId binding,std::optional<StmtId> occurrence) const {
@@ -200,12 +215,14 @@ struct RecoveryFlow {
       const auto position=*source_occurrences[occurrence->value];const auto region=source_regions[region_id->value];
       return position>=region.first&&position<region.last;
     }
-    return std::holds_alternative<OriginalBindingScope>(bindings[binding.value].scope);
+    return std::holds_alternative<OriginalBindingScope>(bindings[binding.value].scope)||
+        std::holds_alternative<EnclosingBindingScope>(bindings[binding.value].scope);
   }
 };
 struct FlowBindingNames {
   std::vector<SourceBindingPresence> presence;
   std::vector<SourceBindingShadow> shadows;
+  std::optional<SourceNameIndex> index;
   std::size_t allocated_bytes=0;
   std::uint64_t work=0;
 };

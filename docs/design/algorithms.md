@@ -3341,3 +3341,30 @@ mask activation adds O(B) validation and constant work per visited binding. Smal
 independent ancestor walks are test-only. 200/201, chain/star geometric growth and
 exact/short budgets validate accounting; measured selected acceptance is in status.md.
 These results do not establish full-process RSS, which remains paused.
+
+### Current source-name range index (2026-10-09, rules238)
+
+Provenance: standard sorting and stack sweep of nested lexical intervals, followed
+by binary search in disjoint active-name ranges. Implemented locally without new
+dependencies, licensing or profile changes. Prerequisites are validated canonical
+spelling identities, retained binding presence, current original/projected lexical
+regions and explicit enclosing-environment facts. Lexical intervals are nested or
+disjoint by source scope semantics; crossing inputs are invalid adapter provenance,
+not a compiler-layout admission. Unknown local scope remains a typed gap.
+
+Let B be bindings, N NameIds, H canonical shadow edges, D definitions, R references
+and Q queries. Text identity publication adds O(N log(B+1)) name comparisons to the
+existing O(B log(B+1)) spelling sort; compared UTF-16 units are charged. Current
+retention is O(B+D+R), canonical enclosing-layer precedence O(B+H), and current
+range sorting/sweep O(B log(B+1)+B+H+N), with O(B+H+N) retained/temporary storage.
+There are at most 2B disjoint ranges; each lexical interval enters/leaves once.
+Current direct shadows are produced by that sweep rather than a per-binding
+ancestor scan. Unknown legacy shadow identities remain conservative.
+
+Q read-only symbol/free-name queries take O(Q log(B+1)) work and O(Q) output.
+Optimizer-local repeated canonical spelling/scope checkers and the original
+statement-scope query table retire. All buffers, text comparisons, sort comparisons,
+queue/sweep visits and binary searches use the unchanged semantic budget. Rebuilt
+indexes replace prior facts; this does not claim new buffer-capacity reuse. Tiny
+slow ancestry oracles are test-only. 200/201, geometric chain/star and exact/short
+budgets validate cost/accounting, not complete process RSS (still paused).

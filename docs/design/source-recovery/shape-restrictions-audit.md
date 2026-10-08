@@ -2653,3 +2653,24 @@ conservative. Independent ancestor masks, ID/fact/arena permutations, retained-l
 wrong-merge/update mutants and 200/201/geometric/exact-short budgets cover this path.
 Rewritten native-for visibility, relocated scopes and simultaneous prospective
 storage retirement remain documented precision gaps, not language invariants.
+
+### 2026-10-09 rules238: projected lexical name resolution
+
+Obligation: each retained occurrence resolves its proposed spelling to the intended
+current binding. The common name index sweeps current retained original/projected
+lexical intervals using canonical typed spelling identity. All alias/storage and
+snapshot symbol/free-name decisions consume it; original statement scope queries
+and repeated TreeScopeCheck instances exit those optimizer paths. Current shadows
+also come from this sweep, so narrower native declarations/native-for lifetimes no
+longer cast their entire original shadow. Independent init/cell/value/effect and
+completion/lifetime proofs remain; name resolution is not a deletion decision.
+
+Explicit enclosing environments preserve self/module/capture/parameter parent
+identity; missing local scope is unmodeled. Co-located conflicts/unknown facts
+return typed gaps. Nested/disjoint intervals are a source lexical-scope invariant,
+not an ABC or CFG shape admission. No sample, sequence, same-block or adjacency
+matcher is introduced. Independent ancestry/mask/projection oracles, native-for
+outside/inside-read source cases, actual syntax assertions, wrong-merge/update
+mutants and layout/scaling/budget/reuse negatives cover the migration. Prospective
+simultaneous storage retirement/renaming remains a precision gap, never a language
+invariant. Full activation/capture/finally/original IR/SSA/convergence remain open.

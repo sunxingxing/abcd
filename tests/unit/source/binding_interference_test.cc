@@ -316,6 +316,53 @@ std::uint64_t RetiredShadow(bool retired,unsigned count,bool reverse,bool emit){
   if(emit)std::cout<<nlohmann::json{{"form",retired?28:29},{"count",count},{"reverse",reverse},{"merged",retired},{"source",output.str()}}<<'\n';
   return bindings.work;
 }
+std::uint64_t NarrowedShadow(bool loop,bool inside,unsigned count,bool reverse,bool emit){
+  Fixture f(Form::kStraight);auto& tree=f.tree;
+  std::vector<StmtId> roots{f.Stmt(DeclarationStmt{{3},f.Read(0)}),
+      f.Stmt(ExpressionStmt{f.Call({f.Read(3)})}),
+      f.Stmt(ExpressionStmt{f.Expr(UpdateExpr{{3},UpdateDirection::kIncrement,UpdateResult::kPrefix})}),
+      f.Stmt(DeclarationStmt{{4},f.Read(3)})};
+  const auto outer=f.Block({});const auto scope=std::get<BlockStmt>(tree.statements[outer.value].statement).scope;
+  tree.symbols.push_back({scope,{3},BindingKind::kCompilerTemporary,DeclarationKind::kLet,NameEvidence::kSynthesized,TemporaryReason::kMultipleUses});
+  const auto declaration=f.Stmt(DeclarationStmt{{5},{}});const auto initializer=f.Write(5,f.Call({f.Read(0)}));
+  const auto looping=loop?std::optional{f.Stmt(LoopStmt{})}:std::nullopt;
+  std::vector<StmtId> inner;
+  std::optional<StmtId> exit,flag_exit;
+  if(loop){exit=f.Block({f.Stmt(BreakStmt{*looping})},scope);flag_exit=f.Block({f.Stmt(BreakStmt{*looping})},scope);inner.push_back(f.Stmt(IfStmt{f.Expr(BinaryExpr{analysis::BinaryOperator::kGreaterEqual,f.Read(5),f.Expr(TreeLiteral{IntegerLiteral{2}})}),*exit,{}}));}
+  else inner.push_back(initializer);
+  inner.push_back(f.Stmt(ExpressionStmt{f.Expr(UpdateExpr{{5},UpdateDirection::kIncrement,UpdateResult::kPrefix})}));
+  inner.push_back(f.Stmt(ExpressionStmt{f.Call({f.Read(5)})}));
+  if(inside)inner.push_back(f.Stmt(ExpressionStmt{f.Call({f.Read(4)})}));
+  for(unsigned i=0;i<count;++i)inner.push_back(f.Block({},scope));
+  if(loop){inner.push_back(f.Stmt(IfStmt{f.Read(2),*flag_exit,{}}));inner.push_back(f.Write(2,f.Expr(TreeLiteral{BooleanLiteral{true}})));}
+  const auto nested=f.Block(inner,scope);const auto nested_scope=std::get<BlockStmt>(tree.statements[nested.value].statement).scope;
+  for(const auto child:inner)if(auto* block=std::get_if<BlockStmt>(&tree.statements[child.value].statement))tree.scopes[block->scope.value].parent=nested_scope;
+  if(exit)tree.scopes[std::get<BlockStmt>(tree.statements[exit->value].statement).scope.value].parent=nested_scope;
+  if(flag_exit)tree.scopes[std::get<BlockStmt>(tree.statements[flag_exit->value].statement).scope.value].parent=nested_scope;
+  if(loop)std::get<LoopStmt>(tree.statements[looping->value].statement).body=nested;
+  const auto report=f.Stmt(ExpressionStmt{f.Call({f.Read(4)})});
+  std::vector<StmtId> outer_children{declaration};if(loop)outer_children.push_back(initializer);
+  outer_children.push_back(loop?*looping:nested);outer_children.push_back(report);
+  auto& block=std::get<BlockStmt>(tree.statements[outer.value].statement);
+  block.first_child=tree.children.size();block.child_count=outer_children.size();tree.children.insert(tree.children.end(),outer_children.begin(),outer_children.end());roots.push_back(outer);
+  roots.push_back(f.Stmt(ReturnStmt{f.Read(4)}));
+  const auto sibling=f.Block({});const auto sibling_scope=std::get<BlockStmt>(tree.statements[sibling.value].statement).scope;
+  tree.symbols.push_back({sibling_scope,{4},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
+  const auto empty=f.Stmt(DeclarationStmt{{6},{}});auto& later=std::get<BlockStmt>(tree.statements[sibling.value].statement);later.first_child=tree.children.size();later.child_count=1;tree.children.push_back(empty);roots.push_back(sibling);
+  f.Finish(roots,reverse);Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
+  const auto bindings=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
+  Check(bindings.Storage({3})==SymbolId{3});Check(bindings.Storage({4})==SymbolId{inside?4U:3U});
+  if(loop){const auto at=reverse?tree.statements.size()-1-looping->value:looping->value;Check(bindings.loop_declarations[at].has_value());}
+  if(!count) {
+    Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work})));
+    Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes-1,bindings.work}))==TreeStructureError::kResourceLimit);
+    Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work-1}))==TreeStructureError::kWorkLimit);
+  }
+  std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
+  if(emit)std::cout<<nlohmann::json{{"form",30+(loop?1:0)+(inside?2:0)},{"count",count},{"reverse",reverse},{"merged",!inside},{"source",output.str()}}<<'\n';
+  return bindings.work;
+}
 std::uint64_t Many(unsigned count,bool emit){
   Fixture f(Form::kStraight);auto& tree=f.tree;std::vector<StmtId> declarations,body;
   for(unsigned i=0;i<count;++i){
@@ -389,6 +436,7 @@ int main(int argc,char** argv){
     std::uint64_t previous=0;for(unsigned count:{1U,200U,201U,400U,800U}){
       const auto work=Many(count,true);if(count==800)Check(work<previous*3);previous=work;}return 0;
   }
+for(bool loop:{false,true})for(bool inside:{false,true})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){const auto work=NarrowedShadow(loop,inside,count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}
 for(bool retired:{true,false})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){
   const auto work=RetiredShadow(retired,count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}
 for(bool observed:{true,false})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){

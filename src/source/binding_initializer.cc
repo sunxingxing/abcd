@@ -1,3 +1,4 @@
+#include "source_names.h"
 #include "binding_initializer.h"
 #include "recovery_schedule.h"
 #include "binding_interference.h"
@@ -75,7 +76,7 @@ class Initializers {
     budget.Array(retained_bodies_, tree.statements.size());
     budget.Array(projection_observations_, ProjectionCapacity());
     budget.Array(expressions_, tree.expressions.size()); budget.Array(statements_, tree.statements.size());
-    budget.Array(statement_owners_,tree.statements.size());budget.Array(statement_scopes_,tree.statements.size());
+    budget.Array(statement_owners_,tree.statements.size());
     budget.Array(source_regions_,tree.statements.size());budget.Array(source_occurrences_,tree.statements.size());
     budget.Array(source_scope_regions_,tree.scopes.size());
     budget.Array(expression_owners_,tree.expressions.size());budget.Array(expression_projections_,tree.expressions.size());
@@ -164,7 +165,6 @@ class Initializers {
             source_scope_regions_[block->scope.value]=SourceRegionId{visit.statement.value};
         }
         lexical_[visit.statement.value] = visit.lexical;
-        statement_scopes_[visit.statement.value]=visit.scope;
         statement_owners_[visit.statement.value]=visit.projector?visit.projector:visit.lexical;
         Enter(visit);
       }
@@ -206,6 +206,7 @@ class Initializers {
     // and initialization remain separate current-revision facts.
     auto spelling=AnalyzeTreeSpellings(tree_,budget_);
     unique_spellings_=std::move(spelling.unique);
+    spellings_=std::move(spelling.bindings);name_spellings_=std::move(spelling.names);
     const auto& shadowed=spelling.shadowed;
     budget_.Array(source_shadows_,shadowed.size());std::size_t shadow_count=0;
     for(std::size_t i=0;i<shadowed.size();++i) {
@@ -704,7 +705,7 @@ class Initializers {
     }
     const auto projected=BuildProjectedFlow(expressions,replacements,transports,omitted,{},transported_reads);
     std::vector<std::uint8_t> invalid;budget_.Array(invalid,uses_.size());
-    std::vector<TreeScopedReference> queries;std::vector<SymbolId> roots;
+    std::vector<SourceNameQuery> queries;std::vector<SymbolId> roots;
     budget_.Array(queries,projected.references.size());budget_.Array(roots,projected.references.size());
     std::size_t size=0;
     for(const auto& reference:projected.references) {
@@ -713,22 +714,22 @@ class Initializers {
       if(!root)continue;
       if(!reference.owner){invalid[root->value]=1;continue;}const auto owner=*reference.owner;
       if(!flow.BindingInScope(reference.binding,owner))invalid[root->value]=1;
-      queries[size]={reference.binding,statement_scopes_[owner.value]};roots[size++]=*root;
+      queries[size]={reference.binding,owner};roots[size++]=*root;
     }
     queries.resize(size);roots.resize(size);
-    const auto resolved=ResolveTreeReferences(tree_,queries,budget_,projected.binding_presence);
-    for(std::size_t i=0;i<size;++i){budget_.Step();if(!resolved[i])invalid[roots[i].value]=1;}
-    std::vector<TreeScopedName> names;std::vector<SymbolId> name_roots;
+    const auto resolved=ResolveNames(projected,queries);
+    for(std::size_t i=0;i<size;++i){budget_.Step();if(resolved[i]!=SourceNameResolution::kResolved)invalid[roots[i].value]=1;}
+    std::vector<SourceNameQuery> names;std::vector<SymbolId> name_roots;
     budget_.Array(names,projected.names.size());budget_.Array(name_roots,projected.names.size());size=0;
     for(const auto& reference:projected.names) {
       budget_.Step();const auto root=projected.expression_transports[reference.site.value];
       if(!root)continue;
       if(!reference.owner){invalid[root->value]=1;continue;}const auto owner=*reference.owner;
-      names[size]={reference.name,statement_scopes_[owner.value]};name_roots[size++]=*root;
+      names[size]={reference.name,owner};name_roots[size++]=*root;
     }
     names.resize(size);name_roots.resize(size);
-    const auto resolved_names=ResolveTreeNames(tree_,names,budget_,projected.binding_presence);
-    for(std::size_t i=0;i<size;++i){budget_.Step();if(!resolved_names[i])invalid[name_roots[i].value]=1;}
+    const auto resolved_names=ResolveNames(projected,names);
+    for(std::size_t i=0;i<size;++i){budget_.Step();if(resolved_names[i]!=SourceNameResolution::kResolved)invalid[name_roots[i].value]=1;}
     std::vector<std::uint8_t> blocked;budget_.Array(blocked,count);
     for(std::size_t i=0;i<count;++i) {
       budget_.Step();const auto& action=proposed[i];const auto owner=projected.expression_owners[action.value.value];
@@ -768,6 +769,12 @@ class Initializers {
         completion.reset();
     }
   }
+  std::vector<SourceNameResolution> ResolveNames(const RecoveryFlow& flow,std::span<const SourceNameQuery> queries) const {
+    RequireAnalysis();auto analyzed=ResolveSourceNames(flow,queries,budget_.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
+    auto result=std::get<SourceNameResults>(std::move(analyzed));
+    budget_.Admit(result.allocated_bytes,1);budget_.Step(result.work);return std::move(result.resolutions);
+  }
   RecoveryFlow BuildProjectedFlow(const ExpressionFacts& expressions,
       std::span<const std::optional<ExprId>> replacements,
       std::span<const std::optional<ExpressionTransport>> transports,
@@ -780,14 +787,22 @@ class Initializers {
     budget_.Array(source_bindings,uses_.size());
     for (std::size_t i=0;i<uses_.size();++i) {
       budget_.Step();private_bindings[i]=tree_.symbols[i].kind==BindingKind::kCompilerTemporary && !uses_[i].escaped;
-      source_bindings[i]=OriginalBindingScope{source_scope_regions_[tree_.symbols[i].scope.value]};
+      const auto scope=tree_.symbols[i].scope;const auto region=source_scope_regions_[scope.value];
+      if(region)source_bindings[i]=OriginalBindingScope{region};
+      else switch(tree_.scopes[scope.value].kind) {
+        case ScopeKind::kParameters:case ScopeKind::kFunctionSelf:
+        case ScopeKind::kCaptures:case ScopeKind::kModule:source_bindings[i]=EnclosingBindingScope{};break;
+        case ScopeKind::kFunctionBody:case ScopeKind::kBlock:case ScopeKind::kCatch:
+          source_bindings[i]=UnmodeledBindingScope{};break;
+        default:throw TreeStructureError::kScope;
+      }
       const auto& site=declaration_sites_[i];
       if(site&&plan_.statements[site->statement.value])source_bindings[i]=ProjectedBindingScope{SourceRegionId{site->container.value}};
     }
     const LegacyFlowProjection projection{plan_.aliases,plan_.literals,replacements,
         omitted,expressions.evaluations,expressions.normal_stores,plan_.statements,private_bindings,
         plan_.storage,plan_.undefined_stores,plan_.declaration_values,plan_.declaration_completions,
-        {source_regions_,source_occurrences_,source_bindings,source_shadows_,unique_spellings_},plan_.read_literals,transports,transported_reads};
+        {source_regions_,source_occurrences_,source_bindings,source_shadows_,unique_spellings_,spellings_,name_spellings_},plan_.read_literals,transports,transported_reads};
     auto built=BuildRecoveryFlow(tree_,projection,budget_.Remaining(),std::move(storage));
     if(const auto* error=std::get_if<TreeStructureError>(&built))throw *error;
     auto flow=std::get<RecoveryFlow>(std::move(built));
@@ -1032,7 +1047,7 @@ class Initializers {
     bool sharing=false;for(const auto root:proposed){budget_.Step();sharing|=root.has_value();}
     if(!sharing)return;
     std::vector<std::uint8_t> blocked;budget_.Array(blocked,uses_.size());
-    std::vector<TreeScopedReference> references;
+    std::vector<SourceNameQuery> references;
     std::vector<std::optional<StmtId>> occurrences;
     std::vector<SymbolId> targets;
     budget_.Array(references,flow.references.size());budget_.Array(occurrences,flow.references.size());
@@ -1048,14 +1063,13 @@ class Initializers {
       if(!initialization_order.Completed(*root,reference.point) ||
           !initialization_order.Completed(reference.binding,reference.point))blocked[reference.binding.value]=1;
       RequireTree(reference.owner.has_value(),TreeStructureError::kOwnership);
-      const auto scope=statement_scopes_[reference.owner->value];
-      references[count]={*root,scope};occurrences[count]=reference.owner;targets[count++]=reference.binding;
+      references[count]={*root,reference.owner};occurrences[count]=reference.owner;targets[count++]=reference.binding;
     }
-    references.resize(count); const auto visible = ResolveTreeReferences(tree_, references, budget_,flow.binding_presence);
+    references.resize(count); const auto visible = ResolveNames(flow,references);
     for (std::size_t i = 0; i < count; ++i) {
-      budget_.Step(); const auto root = references[i].symbol; const auto occurrence = occurrences[i];
+      budget_.Step(); const auto root = std::get<SymbolId>(references[i].name); const auto occurrence = occurrences[i];
       const auto lifetime=flow.BindingInScope(root,occurrence);
-      if(!visible[i] || !lifetime)blocked[targets[i].value]=1;
+      if(visible[i]!=SourceNameResolution::kResolved || !lifetime)blocked[targets[i].value]=1;
     }
     for(std::size_t i=0;i<proposed.size();++i){budget_.Step();if(blocked[i])proposed[i].reset();}
     auto initialized=PlanStorageInitializations(flow,liveness,initialization_order,proposed,budget_.Remaining());
@@ -1064,7 +1078,7 @@ class Initializers {
     budget_.Admit(initialization.allocated_bytes,1);budget_.Step(initialization.work);
     // The independent initialization plan owns value preservation. Reuse the
     // source planner's lexical proof for its newly explicit write occurrences.
-    std::vector<TreeScopedReference> initialization_references;
+    std::vector<SourceNameQuery> initialization_references;
     std::vector<SymbolId> initialization_targets;
     std::vector<StmtId> initialization_occurrences;
     budget_.Array(initialization_references,flow.definitions.size());budget_.Array(initialization_targets,flow.definitions.size());
@@ -1075,16 +1089,16 @@ class Initializers {
       if(definition.kind!=FlowDefinitionKind::kUndefined || !definition.declaration ||
           !proposed[symbol.value] || blocked[symbol.value] || !initialization.stores[definition.declaration->value])continue;
       const auto statement=*definition.declaration;
-      initialization_references[count]={*proposed[symbol.value],statement_scopes_[statement.value]};
+      initialization_references[count]={*proposed[symbol.value],statement};
       initialization_occurrences[count]=statement;initialization_targets[count++]=symbol;
     }
     initialization_references.resize(count);initialization_targets.resize(count);initialization_occurrences.resize(count);
     if(count) {
-      const auto resolved=ResolveTreeReferences(tree_,initialization_references,budget_,flow.binding_presence);
+      const auto resolved=ResolveNames(flow,initialization_references);
       for(std::size_t i=0;i<count;++i) {
         budget_.Step();const auto target=initialization_targets[i];const auto root=*proposed[target.value];
         const auto declaration=initialization_occurrences[i];
-        if(!resolved[i] || !flow.BindingInScope(root,declaration))blocked[target.value]=1;
+        if(resolved[i]!=SourceNameResolution::kResolved || !flow.BindingInScope(root,declaration))blocked[target.value]=1;
       }
     }
     // Completion occurrences include recovered declarations, not just original
@@ -1649,7 +1663,7 @@ class Initializers {
     struct Dependency { SymbolId source; std::optional<std::size_t> next; };
     std::vector<Dependency> dependencies;std::size_t dependency_count=0;
     std::vector<std::uint8_t> blocked;
-    std::vector<TreeScopedReference> references;
+    std::vector<SourceNameQuery> references;
     struct AliasRead { std::optional<StmtId> owner; SymbolId binding; std::optional<SymbolId> removed_by; };
     std::vector<AliasRead> occurrences;
     budget_.Array(copy_targets,tree_.statements.size());budget_.Array(blocked_heads,uses_.size());
@@ -1673,12 +1687,12 @@ class Initializers {
       budget_.Step();if(read.kind!=FlowReferenceKind::kRead)continue;
       if(!roots[read.binding.value]||roots[read.binding.value]==read.binding)continue;
       RequireTree(read.owner.has_value(),TreeStructureError::kOwnership);
-      references[count]={*roots[read.binding.value],statement_scopes_[read.owner->value]};
+      references[count]={*roots[read.binding.value],read.owner};
       const auto discarded=flow.events[read.point.value].discarded;
       const auto target=discarded?copy_targets[flow.discarded[discarded->value].statement.value]:std::nullopt;
       occurrences[count++]={read.owner,read.binding,target};
     }
-    references.resize(count);const auto visible=ResolveTreeReferences(tree_,references,budget_,flow.binding_presence);
+    references.resize(count);const auto visible=ResolveNames(flow,references);
     ready=0;
     const auto retain=[&](SymbolId symbol) {
       if(!blocked[symbol.value]) {
@@ -1687,7 +1701,7 @@ class Initializers {
       }
     };
     for(std::size_t i=0;i<count;++i) {
-      budget_.Step();if(visible[i]&&flow.BindingInScope(references[i].symbol,occurrences[i].owner))continue;
+      budget_.Step();if(visible[i]==SourceNameResolution::kResolved&&flow.BindingInScope(std::get<SymbolId>(references[i].name),occurrences[i].owner))continue;
       const auto source=occurrences[i].binding;
       // A copy RHS ceases to be a read when its store is elided. Only if the
       // destination must remain does its unavailable root force source storage.
@@ -1859,7 +1873,8 @@ class Initializers {
   std::vector<ExprId> completions_;
   std::size_t completion_count_ = 0;
   std::vector<std::optional<StmtId>> statement_owners_;
-  std::vector<ScopeId> statement_scopes_;
+  std::vector<SourceSpellingId> spellings_;
+  std::vector<std::optional<SourceSpellingId>> name_spellings_;
   std::vector<SourceRegion> source_regions_;
   std::vector<SourceBindingShadow> source_shadows_;
   std::vector<std::uint8_t> unique_spellings_;

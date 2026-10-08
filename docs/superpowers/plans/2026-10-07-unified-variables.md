@@ -446,3 +446,16 @@ layout/200-201/geometric/budget/reuse negatives verify the substep. Complete rew
 native-for namespace/prospective storage retirement, originalIR/SSA/full activation/
 capture/finally/global convergence remain open. Actual evidence is in status.md;
 unified-variable milestone and stage-one Goal remain active.
+
+Task 2/4 implementation substep (rules238): canonical typed spelling identities
+feed one current retained lexical-name range index. Current regions, not original
+statement scopes, own symbol/free-name lookup and current shadow publication.
+Explicit enclosing environments distinguish actual external activation from missing
+local regions; unknown/conflicting facts retain typed gaps. Original name-query
+paths exit aliases/storage/snapshots. Independent value/cell/initialization/lifetime/
+effect proofs and revision/commit/stage/cleanup contracts remain; no new pass round.
+Native declaration and native-for outside-read positives/inside-read negatives,
+independent ancestry/projection/mask oracles and syntax/execution/mutation/layout/
+scaling/budget/reuse checks verify the substep. Actual evidence belongs in status.md;
+prospective simultaneous retirement/renaming, originalIR/SSA/full activation/capture/
+finally/global convergence and the overall milestone/stage-one remain open.
