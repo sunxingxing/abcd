@@ -31,7 +31,12 @@ std::variant<DefinitionElisions,TreeStructureError> PlanDefinitionElisions(
       if(demand.definitions[i] || definition.effect!=FlowWriteEffect::kInert)continue;
       switch(definition.kind) {
         case FlowDefinitionKind::kAssignment:case FlowDefinitionKind::kUndefinedStore:
-          if(const auto site=definition.WriteSite())result.writes[count++]={*site,definition.value};
+          if(const auto site=definition.WriteSite()) {
+            auto evaluation=definition.value;
+            const auto region=flow.events[definition.point.value].discarded;
+            if(!evaluation&&region)evaluation=flow.discarded[region->value].evaluation;
+            result.writes[count++]={*site,evaluation};
+          }
           break;
         // Lexical completion is a binding obligation, independently of value
         // demand. Updates retain their conversion/read/successful writeback.
@@ -47,6 +52,25 @@ std::variant<DefinitionElisions,TreeStructureError> PlanDefinitionElisions(
     }
     result.statements.resize(count);result.allocated_bytes=budget.Bytes();result.work=budget.Work();return result;
   } catch(TreeStructureError error){return error;}
+  catch(const std::bad_alloc&){return TreeStructureError::kResourceLimit;}
+  catch(const std::length_error&){return TreeStructureError::kResourceLimit;}
+}
+std::variant<InitialValueElisions,TreeStructureError> FindDeadInitialValues(
+    const RecoveryFlow& flow,const FlowDemand& demand,analysis::SemanticBudget allowance) {
+  try {
+    TreeCheckBudget budget(allowance);InitialValueElisions result;
+    budget.Array(result.values,flow.definitions.size());std::size_t count=0;
+    for(std::size_t i=0;i<flow.definitions.size();++i) {
+      budget.Step();const auto& definition=flow.definitions[i];
+      if(definition.kind!=FlowDefinitionKind::kInitializer || demand.definitions[i] ||
+          definition.effect!=FlowWriteEffect::kInert || flow.bindings[definition.binding.value].exposure!=FlowBindingExposure::kPrivate || !definition.declaration)continue;
+      const auto region=flow.events[definition.point.value].discarded;
+      if(!region||flow.discarded[region->value].initializer!=definition.binding)continue;
+      result.values[count++]={*definition.declaration,definition.binding,
+          demand.retained[region->value]?definition.value:std::nullopt};
+    }
+    result.values.resize(count);result.allocated_bytes=budget.Bytes();result.work=budget.Work();return result;
+  }catch(TreeStructureError error){return error;}
   catch(const std::bad_alloc&){return TreeStructureError::kResourceLimit;}
   catch(const std::length_error&){return TreeStructureError::kResourceLimit;}
 }
@@ -101,7 +125,9 @@ std::variant<BindingElisions,TreeStructureError> FindUnusedBindings(
       budget.Step();
       if(!definition.declaration || retained[definition.binding.value])continue;
       if(definition.kind==FlowDefinitionKind::kUndefined) {
-        result.declarations[count++]={*definition.declaration,{},{}};
+        const auto region=flow.events[definition.point.value].discarded;
+        const auto value=region&&demand.retained[region->value]?flow.discarded[region->value].evaluation:std::nullopt;
+        result.declarations[count++]={*definition.declaration,value,{}};
       } else if(definition.kind==FlowDefinitionKind::kInitializer) {
         const auto region=flow.events[definition.point.value].discarded;
         RequireTree(region&&flow.discarded[region->value].initializer==definition.binding,

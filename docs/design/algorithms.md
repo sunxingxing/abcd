@@ -2902,3 +2902,44 @@ fixed-count sweep. The existing sparse demand fact cost and revision invalidatio
 remain unchanged. Tests cover both site kinds, all semantic definition kinds,
 effects and live/dead facts, with exact/short budgets; source tests extend existing
 0/1/200/201/400/800 and reversed arenas. This is no RSS or corpus claim.
+
+### Dead initial values and independent completion projection (rules224)
+
+This extends the existing project-owned observable-root dead-code analysis;
+there is no copied implementation, new dependency or licensing obligation.
+Maintenance is in RecoveryFlow, FindDeadInitialValues and source completion
+projection, with the printer rendering the immutable result. Prerequisites are
+the current validated private-binding projection, shared value/effect demand,
+and explicit RHS owner and lexical completion. Successful initialization is
+retained independently of the dead value; source/capture/resource-visible
+contracts keep existing boundaries. Complete binding lifetime/unwind, original
+IR correspondence and global pass convergence remain open.
+
+For D definitions and S statements, the new proposal costs O(D) work/storage and
+the occurrence-indexed completion plan O(S) storage. Binding declaration identity
+publication adds one O(D) scan using supplied projection ownership. Storage
+completion remapping adds one O(S) scan and owned occurrence proposal storage;
+it cannot substitute original placeholder locations for recovered declarations.
+Lexical resolution/lifetime proposals enumerate current undefined definitions
+in O(D) space/work before the existing indexed scope resolution, replacing the
+original-placeholder-only census. RHS evaluation and undefined completion each
+add bounded events/edges; no per-binding graph or
+subtree traversal is introduced. Existing sparse demand/liveness costs remain
+fact-dependent. Value/copy/snapshot proposals carry one additional optional
+initialization identity, charged in their existing owned arrays; retirement
+preserves prior independent RHS projections without another traversal or sweep.
+This does not claim the whole solver is linear. Final loop grammar
+uses its existing indexed initializer ranges once, with explicit optional suffix
+clearing after binding cleanup. It replaces the former placement before dependent
+cleanup and removes that post-grammar cleanup group, rather than adding sweeps.
+Every output, event and scan is charged against typed byte/work budgets.
+
+Cartesian dead/live, private/observable, inert/observable, required/inert and
+modeled/unmodeled facts test the proposal contract with exact/short budgets.
+Model tests verify completion ordering/identity and independent RHS retention
+through binding/store removal. Existing two initializer encodings, arena reversal,
+0/1/200/201/400/800 and independent execution/mutants now include dead initial
+values, required call/comma effects and pre-initialization self reads. Indexed
+loop grammar clearing is exercised at 1/200/201/400/800 without a quadratic fallback.
+These are bounded semantic/cost tests; full-process RSS and broad corpus remain
+paused. See status.md for measured verification and record scope.

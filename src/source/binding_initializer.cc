@@ -53,6 +53,7 @@ class Initializers {
     budget.Array(plan_.storage, tree.symbols.size());
     budget.Array(plan_.undefined_stores, tree.statements.size());
     budget.Array(plan_.declaration_values, tree.statements.size());
+    budget.Array(plan_.declaration_completions, tree.statements.size());
     budget.Array(plan_.replacements, tree.expressions.size());
     budget.Array(completions_, tree.expressions.size());
     budget.Array(plan_.entry_counts, loops.initializer_roots.size() + 1);
@@ -189,6 +190,7 @@ class Initializers {
     // Remove dead value definitions before turning a store into a lexical
     // initializer whose binding completion must subsequently be preserved.
     RunPass(Pass::kDeadDefinitions);
+    RunPass(Pass::kInitialValues);
     RunPass(Pass::kBindings);
     RunPass(Pass::kDeclarations);
     // Literal stability also depends on retained writes. Clear identity stores
@@ -211,6 +213,7 @@ class Initializers {
     // Coalesce builds fresh ownership facts after that commit. Demand cleanup
     // is scheduled again only by later storage/declaration changes.
     RunPass(Pass::kDeadDefinitions);
+    RunPass(Pass::kInitialValues);
     RunPass(Pass::kBindings);
     RunPass(Pass::kSnapshots);
     bool cleanup_needed=RunPass(Pass::kStorage);
@@ -224,17 +227,17 @@ class Initializers {
     cleanup_needed |= RunPass(Pass::kStoredResults);
     cleanup_needed |= RunPass(Pass::kInertOperands);
     cleanup_needed |= RunPass(Pass::kInertStatements);
-    cleanup_needed |= RunPass(Pass::kLoopDeclarations);
-    cleanup_needed |= RunPass(Pass::kStoredResults);
-    cleanup_needed |= RunPass(Pass::kInertOperands);
-    cleanup_needed |= RunPass(Pass::kInertStatements);
-    // Storage and loop declaration projection are now final. Their commits
-    // invalidate facts before dependent demand/declaration cleanup.
+    // Storage/alias projections are now final. Their commits invalidate facts
+    // before demand, initial-value and binding cleanup; source grammar follows.
     if(cleanup_needed) {
       RunPass(Pass::kDeadDefinitions);
+      RunPass(Pass::kInitialValues);
       RunPass(Pass::kBindings);
     }
     RunPass(Pass::kInertOperands);
+    // Final source grammar consumes the final bindings/evaluations. It can
+    // retain outlined prefix effects without reviving removed declarations.
+    RunPass(Pass::kLoopDeclarations);
     RunPass(Pass::kDeclarationKinds);
     for (std::size_t i = 0; i < loops_.initializer_roots.size(); ++i) {
       budget_.Step(); plan_.entry_counts[i + 1] = plan_.entry_counts[i] +
@@ -246,7 +249,7 @@ class Initializers {
     return Finish();
   }
  private:
-  enum class Pass { kDeclarations,kConstants,kAliases,kStoredResults,kDeadDefinitions,kBindings,kSnapshots,
+  enum class Pass { kDeclarations,kConstants,kAliases,kStoredResults,kDeadDefinitions,kInitialValues,kBindings,kSnapshots,
       kStorage,kInertStatements,kInertOperands,kLoopDeclarations,kDeclarationKinds };
   enum class PassPhase { kIdle,kAnalysis,kCommit };
   struct ProjectionRevision { std::uint64_t value=0; };
@@ -293,6 +296,7 @@ class Initializers {
       case Pass::kLoopDeclarations:ProjectLoopDeclarations();break;
       case Pass::kStoredResults:ElideStoredResults();break;
       case Pass::kDeadDefinitions:ElideDeadDefinitions();break;
+      case Pass::kInitialValues:ElideInitialValues();break;
       case Pass::kBindings:ElideUnusedBindings();break;
       case Pass::kInertStatements:OmitInertStatements();break;
       case Pass::kInertOperands:ElideInertOperands();break;
@@ -311,7 +315,7 @@ class Initializers {
       // These passes retain initialization at each retained occurrence.
       // Binding removal leaves no reference to its removed initialization.
       // Storage merging proves the new root initialized before every remap.
-      case Pass::kStoredResults:case Pass::kDeadDefinitions:case Pass::kBindings:
+      case Pass::kStoredResults:case Pass::kDeadDefinitions:case Pass::kInitialValues:case Pass::kBindings:
       case Pass::kInertStatements:case Pass::kInertOperands:case Pass::kStorage:
       case Pass::kDeclarationKinds:preserve=true;break;
     }
@@ -345,7 +349,7 @@ class Initializers {
     for(const auto& definition:flow.definitions) {
       budget_.Step();const auto& use=uses_[definition.binding.value];
       if(!use.declaration || use.escaped || !definition.write ||
-          std::get<DeclarationStmt>(tree_.statements[use.declaration->value].statement).initializer ||
+          flow.bindings[definition.binding.value].initialization==FlowDefinitionKind::kInitializer ||
           !expressions.normal_stores[definition.write->value])continue;
       // Declaration spelling needs an owned whole-statement assignment (or a
       // supported native for declarator), not a write nested in another use.
@@ -390,7 +394,7 @@ class Initializers {
       std::optional<DeclarationSite> site;std::optional<ExprId> assignment;
       // This grammar action replaces a later assignment with initialization;
       // an existing lexical initializer already owns that binding completion.
-      if(std::get<DeclarationStmt>(tree_.statements[use.declaration->value].statement).initializer)continue;
+      if(CurrentFlow().bindings[i].initialization==FlowDefinitionKind::kInitializer)continue;
       if(use.escaped) {
         // Transitional capture proof: child-cell observations are not fully
         // represented in shared flow. Preserve the original admission and
@@ -420,7 +424,7 @@ class Initializers {
       budget_.Step();const auto& edit=proposed[i];BeginCommit();
       declaration_sites_[edit.initializer.symbol.value]=edit.site;
       plan_.statements[edit.site.statement.value]=edit.initializer;
-      if(edit.omitted)plan_.omitted[edit.omitted->value]=1;
+      if(edit.omitted)DiscardDeclaration(*edit.omitted);
     }
   }
   void DeclarationKinds() {
@@ -472,10 +476,13 @@ class Initializers {
     if(delta.starts.empty() && delta.demoted.empty() && delta.declarators.empty())return;
     BeginCommit();
     for(const auto& start:delta.starts){budget_.Step();plan_.loop_declarations[start.loop.value]=start.first;}
-    for(const auto root:delta.demoted){budget_.Step();plan_.statements[root.value].reset();}
+    for(const auto root:delta.demoted) {
+      budget_.Step();plan_.statements[root.value].reset();
+      if(auto& completion=plan_.declaration_completions[root.value])completion->kind=DeclarationCompletionKind::kAssignUndefined;
+    }
     for(const auto& declarator:delta.declarators) {
       budget_.Step();plan_.statements[declarator.initializer.value]->declaration=DeclarationKind::kLet;
-      plan_.omitted[declarator.declaration.value]=1;
+      DiscardDeclaration(declarator.declaration);
     }
   }
   void ElideInertOperands() {
@@ -616,7 +623,7 @@ class Initializers {
     if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
     const auto& motion=std::get<FlowMotion>(analyzed);
     budget_.Admit(motion.allocated_bytes,1);budget_.Step(motion.work);
-    struct ForwardedSnapshot { SymbolId binding; ExprId read, value; FlowReferenceSite store; StmtId statement; std::optional<StmtId> destination; };
+    struct ForwardedSnapshot { SymbolId binding; ExprId read, value; FlowReferenceSite store; StmtId statement; std::optional<StmtId> destination,initialization; };
     std::vector<ForwardedSnapshot> proposed;
     budget_.Array(proposed,uses_.size());std::size_t count=0;
     for (std::size_t i = 0; i < uses_.size(); ++i) {
@@ -664,7 +671,7 @@ class Initializers {
           (std::holds_alternative<FunctionExpr>(tree_.expressions[rhs.value].expression) ||
            std::holds_alternative<ClassExpr>(tree_.expressions[rhs.value].expression))) continue;
       proposed[count++]={SymbolId{static_cast<std::uint32_t>(i)},read,rhs,store,statement,
-          changed_environment?reads[i]->owner:std::nullopt};
+          changed_environment?reads[i]->owner:std::nullopt,flow.bindings[i].declaration};
     }
     std::vector<std::uint8_t> blocked;budget_.Array(blocked,count);
     bool needs_scope=false;
@@ -712,8 +719,12 @@ class Initializers {
       budget_.Step();if(blocked[i])continue;const auto& action=proposed[i];const auto& use=uses_[action.binding.value];
       BeginCommit();plan_.replacements[action.read.value]=action.value;
       plan_.forwarded_values[action.statement.value]=action.value;
-      plan_.omitted[use.declaration->value]=plan_.omitted[action.statement.value]=1;
+      DiscardDeclaration(*use.declaration);
+      if(action.initialization && *action.initialization!=action.statement &&
+          plan_.declaration_completions[action.initialization->value])DiscardDeclaration(*action.initialization);
+      plan_.omitted[action.statement.value]=1;
       plan_.statements[action.statement.value].reset();
+      plan_.declaration_completions[action.statement.value].reset();
     }
   }
   const RecoveryFlow& CurrentFlow() const {
@@ -729,7 +740,7 @@ class Initializers {
     }
     const auto build=[&](const auto& facts) {
       const LegacyFlowProjection projection{plan_.aliases,plan_.literals,plan_.replacements,
-          plan_.omitted,facts.evaluations,facts.normal_stores,plan_.statements,private_bindings,plan_.storage,plan_.undefined_stores,plan_.declaration_values};
+          plan_.omitted,facts.evaluations,facts.normal_stores,plan_.statements,private_bindings,plan_.storage,plan_.undefined_stores,plan_.declaration_values,plan_.declaration_completions};
       auto built=BuildRecoveryFlow(tree_,projection,budget_.Remaining(),std::move(flow_storage_));
       if(const auto* error=std::get_if<TreeStructureError>(&built))throw *error;
       auto flow=std::get<RecoveryFlow>(std::move(built));
@@ -828,8 +839,34 @@ class Initializers {
           if(write.value)plan_.declaration_values[site.value]=DeclarationValue{*write.value,{}};
           else plan_.omitted[site.value]=1;
           plan_.undefined_stores[site.value].reset();plan_.statements[site.value].reset();
+          plan_.declaration_completions[site.value].reset();
         }
       },write.site);
+    }
+  }
+  void DiscardDeclaration(StmtId statement) {
+    // Retire only binding completion. An earlier pass may already have outlined
+    // its independent RHS; declaration removal never authorizes deleting it.
+    if(const auto completion=plan_.declaration_completions[statement.value]) {
+      if(completion->evaluation) {
+        plan_.declaration_values[statement.value]=DeclarationValue{*completion->evaluation,{}};
+        plan_.omitted[statement.value]=0;
+      }else plan_.omitted[statement.value]=1;
+      plan_.declaration_completions[statement.value].reset();
+    }else if(!plan_.declaration_values[statement.value])plan_.omitted[statement.value]=1;
+  }
+  void ElideInitialValues() {
+    if(ResourceFailures(tree_.identity.contract)!=ResourceFailureScope::kExcluded || !HasPrivateBindings())return;
+    auto proposed=FindDeadInitialValues(CurrentFlow(),CurrentDemand(),budget_.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&proposed))throw *error;
+    const auto& delta=std::get<InitialValueElisions>(proposed);
+    budget_.Admit(delta.allocated_bytes,1);budget_.Step(delta.work);
+    if(delta.values.empty())return;
+    BeginCommit();
+    for(const auto& value:delta.values) {
+      budget_.Step();const auto& native=plan_.statements[value.statement.value];
+      const auto declaration=native?native->declaration:tree_.symbols[value.binding.value].declaration;
+      plan_.declaration_completions[value.statement.value]=DeclarationCompletion{value.binding,value.evaluation,declaration};
     }
   }
   void ElideUnusedBindings() {
@@ -851,6 +888,7 @@ class Initializers {
       else if(action.write)plan_.replacements[action.write->value]=*action.value;
       else plan_.declaration_values[action.statement.value]=DeclarationValue{*action.value,{}};
       plan_.statements[action.statement.value].reset();
+      plan_.declaration_completions[action.statement.value].reset();
     }
   }
   void Coalesce() {
@@ -936,34 +974,61 @@ class Initializers {
     // source planner's lexical proof for its newly explicit write occurrences.
     std::vector<TreeScopedReference> initialization_references;
     std::vector<SymbolId> initialization_targets;
-    budget_.Array(initialization_references,uses_.size());budget_.Array(initialization_targets,uses_.size());count=0;
-    for(std::size_t i=0;i<proposed.size();++i) {
-      budget_.Step();blocked[i] |= initialization.blocked[i];
-      if(!proposed[i] || blocked[i] || !initialization.stores[uses_[i].declaration->value])continue;
-      initialization_references[count]={*proposed[i],tree_.symbols[i].scope};
-      initialization_targets[count++]={static_cast<std::uint32_t>(i)};
+    std::vector<StmtId> initialization_occurrences;
+    budget_.Array(initialization_references,flow.definitions.size());budget_.Array(initialization_targets,flow.definitions.size());
+    budget_.Array(initialization_occurrences,flow.definitions.size());count=0;
+    for(std::size_t i=0;i<proposed.size();++i){budget_.Step();blocked[i] |= initialization.blocked[i];}
+    for(const auto& definition:flow.definitions) {
+      budget_.Step();const auto symbol=definition.binding;
+      if(definition.kind!=FlowDefinitionKind::kUndefined || !definition.declaration ||
+          !proposed[symbol.value] || blocked[symbol.value] || !initialization.stores[definition.declaration->value])continue;
+      const auto statement=*definition.declaration;
+      initialization_references[count]={*proposed[symbol.value],statement_scopes_[statement.value]};
+      initialization_occurrences[count]=statement;initialization_targets[count++]=symbol;
     }
-    initialization_references.resize(count);initialization_targets.resize(count);
+    initialization_references.resize(count);initialization_targets.resize(count);initialization_occurrences.resize(count);
     if(count) {
       const auto resolved=ResolveTreeReferences(tree_,initialization_references,budget_);
       for(std::size_t i=0;i<count;++i) {
         budget_.Step();const auto target=initialization_targets[i];const auto root=*proposed[target.value];
-        const auto declaration=*uses_[target.value].declaration;
+        const auto declaration=initialization_occurrences[i];
         if(!resolved[i] || !RootLifetime(root,lexical_[declaration.value]))blocked[target.value]=1;
       }
     }
+    // Completion occurrences include recovered declarations, not just original
+    // placeholders. Own every remap before commit; shared initialization/liveness
+    // decides whether its undefined value needs a successful slot write.
+    struct StorageCompletion {StmtId statement;std::optional<SymbolId> write;};
+    std::vector<StorageCompletion> completions;
+    budget_.Array(completions,plan_.declaration_completions.size());std::size_t completion_count=0;
+    for(std::size_t i=0;i<plan_.declaration_completions.size();++i) {
+      budget_.Step();const auto& completion=plan_.declaration_completions[i];
+      if(!completion || completion->kind!=DeclarationCompletionKind::kInitialize ||
+          !proposed[completion->binding.value] || blocked[completion->binding.value])continue;
+      completions[completion_count++]={StmtId{static_cast<std::uint32_t>(i)},initialization.stores[i]};
+    }
+    completions.resize(completion_count);
     for (std::size_t i = 0; i < proposed.size(); ++i) {
       budget_.Step(); if (!proposed[i] || blocked[i]) continue;
       const auto root = *proposed[i]; const auto& use = uses_[i];
       BeginCommit();plan_.storage[i] = root;
       // Lifetime removal and value preservation are separate plan actions.
-      if(initialization.stores[use.declaration->value])plan_.undefined_stores[use.declaration->value]=root;
-      else if(const auto value=std::get<DeclarationStmt>(tree_.statements[use.declaration->value].statement).initializer)
-        plan_.declaration_values[use.declaration->value]=DeclarationValue{*value,root};
-      else plan_.omitted[use.declaration->value]=1;
+      if(!plan_.declaration_completions[use.declaration->value]) {
+        if(initialization.stores[use.declaration->value])plan_.undefined_stores[use.declaration->value]=root;
+        else if(const auto value=std::get<DeclarationStmt>(tree_.statements[use.declaration->value].statement).initializer)
+          plan_.declaration_values[use.declaration->value]=DeclarationValue{*value,root};
+        else plan_.omitted[use.declaration->value]=1;
+      }
       if(const auto& site=declaration_sites_[i])plan_.statements[site->statement.value].reset();
       if(const auto& site=declaration_sites_[root.value];site && plan_.statements[site->statement.value])
         plan_.statements[site->statement.value]->declaration=DeclarationKind::kLet;
+    }
+    for(const auto& completion:completions) {
+      budget_.Step();BeginCommit();
+      if(completion.write) {
+        auto& retained=*plan_.declaration_completions[completion.statement.value];
+        retained.binding=*completion.write;retained.kind=DeclarationCompletionKind::kAssignUndefined;
+      }else DiscardDeclaration(completion.statement);
     }
   }
   bool MutableBinding(SymbolId symbol) const {
@@ -1113,8 +1178,9 @@ class Initializers {
     for (std::size_t i = 0; i < tree_.statements.size(); ++i) {
       budget_.Step(); const auto* effect = std::get_if<ExpressionStmt>(&tree_.statements[i].statement);
       const auto& value=plan_.declaration_values[i];
-      if (!plan_.omitted[i] && ((effect && facts.evaluations[effect->expression.value] == ExpressionEvaluation::kInert) ||
-          (value && !value->target && facts.evaluations[value->value.value]==ExpressionEvaluation::kInert)))
+      if (!plan_.omitted[i] && !plan_.declaration_completions[i] && !plan_.statements[i] &&
+          (value ? !value->target && facts.evaluations[value->value.value]==ExpressionEvaluation::kInert :
+              effect && facts.evaluations[effect->expression.value] == ExpressionEvaluation::kInert))
         omitted[count++] = StmtId{static_cast<std::uint32_t>(i)};
     }
     omitted.resize(count); return omitted;
@@ -1177,17 +1243,22 @@ class Initializers {
     FlowDefinitionKind kind;
     FlowWriteEffect effect;
     std::optional<StmtId> statement;
+    std::optional<StmtId> initialization;
   };
   void RemoveCoveredWrite(const CoveredWrite& selected,StmtId placeholder) {
     BeginCommit();
     if(selected.expression) {
       plan_.replacements[selected.expression->value]=selected.value;
-      plan_.omitted[placeholder.value]=1;
+      DiscardDeclaration(placeholder);
     } else {
       RequireTree(selected.declaration.has_value(),TreeStructureError::kOwnership);
       plan_.declaration_values[selected.declaration->value]=DeclarationValue{selected.value,{}};
-      if(placeholder!=*selected.declaration)plan_.omitted[placeholder.value]=1;
+      if(placeholder!=*selected.declaration)DiscardDeclaration(placeholder);
     }
+    // Value propagation retires the current binding completion independently
+    // of the selected value producer and its original empty placeholder.
+    if(selected.initialization && *selected.initialization!=placeholder &&
+        plan_.declaration_completions[selected.initialization->value])DiscardDeclaration(*selected.initialization);
   }
   struct BindingReadCoverage {
     std::vector<std::optional<StmtId>> declarations;
@@ -1212,7 +1283,8 @@ class Initializers {
       budget_.Step();const auto& definition=flow.definitions[i];
       if(coverage.definitions[i] && definition.value && (definition.write || definition.declaration) &&
           (definition.kind==FlowDefinitionKind::kAssignment||definition.kind==FlowDefinitionKind::kInitializer)) {
-        CoveredWrite selected{definition.write,*definition.value,definition.declaration,definition.kind,definition.effect,{}};
+        CoveredWrite selected{definition.write,*definition.value,definition.declaration,definition.kind,definition.effect,{},
+            flow.bindings[definition.binding.value].declaration};
         if(!definition.write)selected.statement=definition.declaration;
         // Ownership identifies what a whole-statement deletion would remove.
         // Other occurrences still support write-to-RHS projection; this is not

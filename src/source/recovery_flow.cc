@@ -76,13 +76,26 @@ class FlowBuilder {
           !projection_.private_bindings.empty() && projection_.private_bindings[i]
               ? FlowBindingExposure::kPrivate : FlowBindingExposure::kObservable};
     }
-    // Native source declarations supersede their original empty placeholders.
-    // This is the supplied declaration plan, not inferred first-use syntax.
     for(const auto& definition:result.definitions) {
       budget_.Step();auto& binding=result.bindings[definition.binding.value];
       if(definition.kind==FlowDefinitionKind::kInitializer ||
           (definition.kind==FlowDefinitionKind::kUndefined && !binding.declaration))
-        binding.declaration=definition.declaration;
+        {binding.declaration=definition.declaration;binding.initialization=definition.kind;}
+    }
+    // Supplied native declarations supersede original empty placeholders even
+    // after dead-value removal changes Initialize(value) to Initialize(undefined).
+    // Declaration ownership comes from the plan, never definition arena order.
+    for(const auto& definition:result.definitions) {
+      budget_.Step();if(!definition.declaration)continue;
+      const auto statement=definition.declaration->value;
+      const bool native=!projection_.initializers.empty() && projection_.initializers[statement].has_value();
+      const bool outlined=!projection_.declaration_completions.empty() &&
+          projection_.declaration_completions[statement] &&
+          projection_.declaration_completions[statement]->kind==DeclarationCompletionKind::kInitialize;
+      if((native||outlined) && (definition.kind==FlowDefinitionKind::kInitializer || definition.kind==FlowDefinitionKind::kUndefined)) {
+        auto& binding=result.bindings[definition.binding.value];
+        binding.declaration=definition.declaration;binding.initialization=definition.kind;
+      }
     }
     result.allocated_bytes=budget_.Bytes();result.work=budget_.Work();return std::move(result);
   }
@@ -207,6 +220,8 @@ class FlowBuilder {
         const bool inert=private_binding && (declaration || projection_.normal_stores[at.id.value]);
         if(declaration && context.discarded)
           discarded_[context.discarded->value].initializer=Resolve(target->symbol);
+        if(declaration && context.discarded)
+          discarded_[context.discarded->value].evaluation=assignment->value;
         normal=Define(target->symbol,kind,copied,assignment->value,declaration,at.id,
             inert?FlowWriteEffect::kInert:FlowWriteEffect::kObservable,context.discarded,FlowExceptionContext{context.thrown,context.finalizer},context.owner);Link(normal,context.next);
         required=!inert;
@@ -252,21 +267,23 @@ class FlowBuilder {
     const auto start=statements_[at.id.value];auto context=at.context;context.owner=at.id;
     exits_[at.id.value]=context.next;
     if(projection_.omitted[at.id.value]){Link(start,context.next);return;}
-    std::visit([&](const auto& node){
-      using T=std::decay_t<decltype(node)>;
-      if constexpr(std::is_same_v<T,BlockStmt>) {
-        const auto entered=New({FlowEventKind::kEnterScope,{},{},{},node.scope});
-        auto next=New({FlowEventKind::kLeaveScope,{},{},{},node.scope});Link(next,context.next);
-        for(std::size_t i=node.child_count;i;--i)next=Stmt(tree_.children[node.first_child+i-1],{next,context.thrown,context.finalizer});
-        Link(entered,next);Link(start,entered);
-      } else if constexpr(std::is_same_v<T,ExpressionStmt>) {
+    if(!projection_.declaration_completions.empty())if(const auto& completion=projection_.declaration_completions[at.id.value]) {
+      const bool initialize=completion->kind==DeclarationCompletionKind::kInitialize;
+      std::optional<DiscardedId> id;
+      auto evaluation=context;evaluation.value_use=FlowValueUse::kDiscarded;
+      if(completion->evaluation) {
         RequireTree(discarded_.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
-        const DiscardedId id{static_cast<std::uint32_t>(discarded_.size())};
-        Append(discarded_,{at.id});
-        auto evaluation=context;evaluation.discarded=id;evaluation.value_use=FlowValueUse::kDiscarded;Link(start,Expr(node.expression,evaluation));
+        id=DiscardedId{static_cast<std::uint32_t>(discarded_.size())};
+        Append(discarded_,{at.id,ExpressionEvaluation::kInert,
+            initialize?std::optional{Resolve(completion->binding)}:std::nullopt,completion->evaluation});
+        evaluation.discarded=id;
       }
-      else if constexpr(std::is_same_v<T,DeclarationStmt>) {
-        if(!projection_.declaration_values.empty())if(const auto& value=projection_.declaration_values[at.id.value]) {
+      const auto commit=Define(completion->binding,initialize?FlowDefinitionKind::kUndefined:FlowDefinitionKind::kUndefinedStore,
+          {},{},at.id,{},FlowWriteEffect::kInert,id,FlowExceptionContext{context.thrown,context.finalizer},context.owner);
+      Link(commit,context.next);evaluation.next=commit;
+      Link(start,completion->evaluation?Expr(*completion->evaluation,evaluation):commit);return;
+    }
+    if(!projection_.declaration_values.empty())if(const auto& value=projection_.declaration_values[at.id.value]) {
           RequireTree(discarded_.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
           const DiscardedId id{static_cast<std::uint32_t>(discarded_.size())};Append(discarded_,{at.id});
           auto evaluation=context;evaluation.discarded=id;evaluation.value_use=FlowValueUse::kDiscarded;
@@ -282,6 +299,20 @@ class FlowBuilder {
           }
           Link(start,Expr(value->value,evaluation));return;
         }
+    std::visit([&](const auto& node){
+      using T=std::decay_t<decltype(node)>;
+      if constexpr(std::is_same_v<T,BlockStmt>) {
+        const auto entered=New({FlowEventKind::kEnterScope,{},{},{},node.scope});
+        auto next=New({FlowEventKind::kLeaveScope,{},{},{},node.scope});Link(next,context.next);
+        for(std::size_t i=node.child_count;i;--i)next=Stmt(tree_.children[node.first_child+i-1],{next,context.thrown,context.finalizer});
+        Link(entered,next);Link(start,entered);
+      } else if constexpr(std::is_same_v<T,ExpressionStmt>) {
+        RequireTree(discarded_.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
+        const DiscardedId id{static_cast<std::uint32_t>(discarded_.size())};
+        Append(discarded_,{at.id});
+        auto evaluation=context;evaluation.discarded=id;evaluation.value_use=FlowValueUse::kDiscarded;Link(start,Expr(node.expression,evaluation));
+      }
+      else if constexpr(std::is_same_v<T,DeclarationStmt>) {
         if(!projection_.undefined_stores.empty())if(const auto target=projection_.undefined_stores[at.id.value]) {
           const auto commit=Define(*target,FlowDefinitionKind::kUndefinedStore,{},{},at.id,{},FlowWriteEffect::kInert,{},FlowExceptionContext{context.thrown,context.finalizer},context.owner);
           Link(start,commit);Link(commit,context.next);return;
@@ -292,7 +323,7 @@ class FlowBuilder {
         if(node.initializer) {
           RequireTree(discarded_.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
           id=DiscardedId{static_cast<std::uint32_t>(discarded_.size())};
-          Append(discarded_,{at.id,private_binding?ExpressionEvaluation::kInert:ExpressionEvaluation::kRequired,Resolve(node.symbol)});
+          Append(discarded_,{at.id,private_binding?ExpressionEvaluation::kInert:ExpressionEvaluation::kRequired,Resolve(node.symbol),node.initializer});
           evaluation.discarded=id;
         }
         auto commit=Define(node.symbol,node.initializer?FlowDefinitionKind::kInitializer:FlowDefinitionKind::kUndefined,

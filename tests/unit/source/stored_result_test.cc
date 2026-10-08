@@ -100,8 +100,14 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool temporary,bool em
   test::Check(plan.replacements[id].has_value()==folded);
   // Independent semantic expectation: reading an initialized local (including
   // an agreeing choice or nested redundant write) has no observable effect.
+  // Removing a private dead initial value also exposes the input copy in a
+  // nested store as an immutable root; those private writes then disappear.
   // Coercion, calls, suspension, retained writes and TDZ reads still do.
-  const bool inert=count==0 && (form==Form::kRead || form==Form::kNestedRead || form==Form::kSameReadChoice);
+  const bool inert=count==0 && (form==Form::kRead || form==Form::kNestedRead || form==Form::kSameReadChoice ||
+      (temporary&&form==Form::kNestedStore));
+  if((plan.evaluations[id]==ExpressionEvaluation::kInert)!=inert)
+    std::cerr<<"evaluation form="<<static_cast<unsigned>(form)<<" count="<<count<<" reverse="<<reverse
+        <<" temporary="<<temporary<<" expected_inert="<<inert<<'\n';
   test::Check((plan.evaluations[id]==ExpressionEvaluation::kInert)==inert);
   // Every final analysis describes the current projection. An assignment
   // removed by an earlier pass must not retain its old PutValue summary.

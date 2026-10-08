@@ -14,6 +14,7 @@ struct DiscardedEvaluation {
   // An initializer's result feeds this binding rather than an external value.
   // Value demand does not by itself authorize removing its lexical completion.
   std::optional<SymbolId> initializer;
+  std::optional<ExprId> evaluation;
 };
 enum class FlowCompletion : std::uint8_t { kNormal, kThrow, kReturn, kJump, kTaken, kNotTaken, kResumeNext, kResumeThrow, kResumeReturn, kConservativeCleanup };
 enum class FlowDefinitionKind : std::uint8_t { kParameter, kUndefined, kInitializer, kAssignment, kUpdate, kCatch, kUndefinedStore, kFunctionSelf };
@@ -25,6 +26,7 @@ struct FlowBinding {
   BindingKind kind;
   FlowBindingExposure exposure = FlowBindingExposure::kObservable;
   std::optional<StmtId> declaration;
+  std::optional<FlowDefinitionKind> initialization;
 };
 enum class FlowReferenceKind : std::uint8_t { kRead, kWrite };
 using FlowReferenceSite=std::variant<ExprId,StmtId>;
@@ -57,6 +59,7 @@ struct FlowNameReference {
 };
 struct BindingInitializer;
 struct DeclarationValue;
+struct DeclarationCompletion;
 struct FlowDefinition {
   FlowPoint point;
   SymbolId binding;
@@ -109,6 +112,7 @@ struct LegacyFlowProjection {
   std::span<const std::optional<SymbolId>> storage;
   std::span<const std::optional<SymbolId>> undefined_stores;
   std::span<const std::optional<DeclarationValue>> declaration_values;
+  std::span<const std::optional<DeclarationCompletion>> declaration_completions;
 };
 struct RecoveryFlow {
   RouteInputIdentity identity;

@@ -14,6 +14,15 @@ struct BindingInitializer {
 // Its value still executes at the original statement, after all RHS effects;
 // an absent target means GetValue only. This is a committed source projection.
 struct DeclarationValue { ExprId value; std::optional<SymbolId> target; };
+enum class DeclarationCompletionKind { kInitialize, kAssignUndefined };
+// Evaluate an optional discarded RHS, then complete only on its normal path.
+// Initialization and a write to an already initialized slot remain distinct.
+struct DeclarationCompletion {
+  SymbolId binding;
+  std::optional<ExprId> evaluation;
+  DeclarationKind declaration;
+  DeclarationCompletionKind kind=DeclarationCompletionKind::kInitialize;
+};
 struct BindingInitializers {
   std::vector<std::optional<BindingInitializer>> statements;
   std::vector<std::uint8_t> omitted;
@@ -35,6 +44,7 @@ struct BindingInitializers {
   // shared initialized storage at the original occurrence, not a new binding.
   std::vector<std::optional<SymbolId>> undefined_stores;
   std::vector<std::optional<DeclarationValue>> declaration_values;
+  std::vector<std::optional<DeclarationCompletion>> declaration_completions;
   [[nodiscard]] SymbolId Storage(SymbolId symbol) const {
     const auto root = aliases[symbol.value].value_or(symbol);
     // Both alias stages publish direct value roots; coalescing publishes direct

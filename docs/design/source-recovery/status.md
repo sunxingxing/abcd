@@ -24,6 +24,63 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-08：规则224，死初值、必要RHS与绑定完成分离
+
+- 独立InitialValues消费当前RecoveryFlow/FlowDemand，裁剪私有死初值；
+  DeclarationCompletion显式保留必要RHS求值与正常完成后的词法
+  Initialize(undefined)，区分已初始化slot的AssignUndefined。
+  RHS抛异常时不提前初始化/写回，TDZ、次数及原异常路由保持。
+  Bindings、声明移动、存储合并和死slot写入各自消费这些事实。
+- 声明候选/放置的原DeclarationStmt.initializer条件退出生产路径，
+  改用共同FlowBinding初始化kind。已恢复声明在初值裁剪后仍拥有
+  初始化身份；存储完成提案枚举全部显式位置，涵盖原placeholder
+  之外的声明，使用共同活跃undefined及目的初始化证明。
+- pass依赖明确为DeadDefinitions -> InitialValues -> Bindings，
+  后序声明/快照/存储消费已提交投影；最终循环语法移到值/绑定清理
+  之后，清除过期declarator suffix并保留必要prefix RHS。原循环
+  语法后的重复清理组移除。每次BeginCommit统一失效ProjectionFacts，
+  提交阶段禁止分析；初值裁剪仅运输未改变完成位置的正向初始化证明。
+  未增加名字/样本/同块/邻接/操作序列/固定图准入或固定轮次扫全图。
+- 新form24在旧实现red-tests.log的8.70秒复现死初值保留；聚焦5项
+  54.65秒、循环顺序7项78.17秒、模型7项78.31秒均通过。
+  ownership独立模型测试4.43秒通过。新增死初值调用/comma效果/
+  自读TDZ，两个初始化编码与反向arena、0/1/200/201/400/800继续
+  检查独立源码行为和错误变体；模型验证独立绑定/写回删除仍保留RHS，
+  已恢复声明的初始化身份与前后完成关系，循环语法显式清除过期状态。
+- 自审补充全部完成位置的存储提案与词法证明；首轮59项575.20秒
+  57/59通过，两项同源失败是stored-result旧断言假设保留嵌套私有
+  写入。裁剪死初值后，共同copy分析使该输入复制根可被传播；最终
+  效果已无写入。改为要求零冗余赋值，并新增删除report的AST错误变体，
+  独立执行证明效果仍保留。修正后7/7聚焦75.71秒通过。
+  672份声明源码/134,400行为/18错误变体，528份stored-result源码/
+  18,192行为/14错误变体均通过；未弱化原语义，也未新增生产样本分支。
+  pre-storage、effect、recovery各诊断日志保留在同一验证目录。
+- 初始化裁剪 -> 声明移动 -> 返回快照组合揭示跨pass遗漏：快照删除
+  原placeholder时把前序pass已保留的独立RHS也省略。统一声明退役
+  仅移除完成，保留DeclarationValue；值/复制/快照提案同时持有当前
+  初始化身份，覆盖原声明之外的完成位置。新增form28独立对照、
+  无冗余变量要求及调用删除反例；恢复旧省略行为的snapshot-red在
+  11.55秒失败，输出仅一次seed调用。临时变体已恢复，生产无组合模式。
+  更新中间版本因这处修复主动停止回归（pre-snapshot，50项已通过），
+  不把中断验证记作完整通过。
+- 最终快照组合聚焦9/9在149.55秒通过；696份声明源码/139,200独立
+  行为/19错误变体，540份statement-snapshot源码/20,760行为/60错误
+  变体，528份stored-result源码/18,192行为/14错误变体均通过。
+  snapshot-{build,tests,detail}.log保留完整证据。
+- 最终29目标构建成功，59/59相关回归588.18秒全部通过，构建+
+  测试618.76秒；selection.json、final-result.json及final-{build,
+  tests,detail}.log保存在build/stage-one/initial-value-verification。
+  覆盖既定变量/干涉/循环/快照、命名/类、表达式组合、partial输出与
+  真实record行为；上列中间失败与中断不替代这份最终验收。
+- 固定pasteboard最终ABC导出至build/stage-one/initial-value-rule224-verified，
+  19 records，10完整/0部分/9无module，10源码语法通过，与规则223
+  逐字节相同。输入SHA-256前后均为
+  854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e。
+  导出2.38秒；record-{export.log,result.json}保留。这不替代整个paired
+  corpus/PasteBoard/platform验收；原阶段一Goal保持active。
+  完整绑定生命期/finally/capture、原IR对应和全局pass收敛仍开放；
+  全量suite、广语料、RSS/DFX及benchmarks继续暂停。
+
 ### 2026-10-08：规则223，死定义统一处理语句/表达式写入
 
 - 共同FlowDefinition::WriteSite供reference发布及死写入提案使用；

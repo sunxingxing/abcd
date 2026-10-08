@@ -3,7 +3,7 @@
 #include "binding_initializer.h"
 #include "loop_syntax.h"
 namespace abcd::source {
-struct LoopDeclarationStart { StmtId loop; std::uint32_t first; };
+struct LoopDeclarationStart { StmtId loop; std::optional<std::uint32_t> first; };
 struct LoopDeclarator { StmtId initializer, declaration; };
 struct LoopDeclarations {
   std::vector<LoopDeclarationStart> starts;

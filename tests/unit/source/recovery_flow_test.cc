@@ -307,6 +307,39 @@ void DemandGraphs() {
     }
   std::cout<<"independent demand graphs "<<cases<<'\n';
 }
+void InitialValueObligations() {
+  for(bool needed:{false,true})for(bool private_binding:{false,true})
+    for(bool inert:{false,true})for(bool required:{false,true})for(bool modeled:{false,true}) {
+      RecoveryFlow flow{};FlowDemand demand;
+      flow.bindings.push_back({BindingKind::kCompilerTemporary,
+          private_binding?FlowBindingExposure::kPrivate:FlowBindingExposure::kObservable});
+      flow.events.resize(1);flow.events[0].discarded=DiscardedId{0};
+      flow.definitions.push_back({{0},{0},FlowDefinitionKind::kInitializer,{},ExprId{7},StmtId{2},{},
+          inert?FlowWriteEffect::kInert:FlowWriteEffect::kObservable});
+      flow.discarded.push_back({{2},required?ExpressionEvaluation::kRequired:ExpressionEvaluation::kInert,
+          modeled?std::optional{SymbolId{0}}:std::nullopt,ExprId{7}});
+      demand.definitions={std::uint8_t(needed)};demand.retained={std::uint8_t(required)};
+      const auto result=std::get<InitialValueElisions>(FindDeadInitialValues(flow,demand));
+      const bool remove=!needed&&private_binding&&inert&&modeled;
+      Check(result.values.size()==std::size_t(remove));
+      if(remove)Check(result.values[0].evaluation==(required?std::optional{ExprId{7}}:std::nullopt));
+      Check(std::holds_alternative<InitialValueElisions>(FindDeadInitialValues(flow,demand,{result.allocated_bytes,result.work})));
+      Check(std::get<TreeStructureError>(FindDeadInitialValues(flow,demand,{result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
+      Check(std::get<TreeStructureError>(FindDeadInitialValues(flow,demand,{result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);
+    }
+  // Outlining a required RHS must survive both binding removal and later
+  // dead-slot-write removal. Neither decision can erase its evaluation.
+  RecoveryFlow flow{};flow.bindings={{BindingKind::kCompilerTemporary,FlowBindingExposure::kPrivate}};
+  flow.events.resize(1);flow.events[0].definition=FlowDefinitionId{0};flow.events[0].discarded=DiscardedId{0};
+  flow.discarded={{{2},ExpressionEvaluation::kRequired,SymbolId{0},ExprId{7}}};
+  flow.definitions={{{0},{0},FlowDefinitionKind::kUndefined,{},{},StmtId{2},{},FlowWriteEffect::kInert}};
+  FlowDemand demand;demand.definitions={0};demand.retained={1};
+  const auto binding=std::get<BindingElisions>(FindUnusedBindings(flow,demand));
+  Check(binding.declarations.size()==1&&binding.declarations[0].value==ExprId{7});
+  flow.definitions[0].kind=FlowDefinitionKind::kUndefinedStore;flow.discarded[0].initializer.reset();
+  const auto store=std::get<DefinitionElisions>(PlanDefinitionElisions(flow,demand));
+  Check(store.writes.size()==1&&store.writes[0].value==ExprId{7}&&store.statements.empty());
+}
 void DefinitionSites() {
   // Cartesian semantic obligations: site representation cannot decide whether
   // a value write is removable. Completion/updates and observable writes stay.
@@ -314,7 +347,7 @@ void DefinitionSites() {
       FlowDefinitionKind::kInitializer,FlowDefinitionKind::kAssignment,FlowDefinitionKind::kUpdate,
       FlowDefinitionKind::kCatch,FlowDefinitionKind::kUndefinedStore,FlowDefinitionKind::kFunctionSelf})
     for(bool statement:{false,true})for(bool needed:{false,true})for(bool inert:{false,true}) {
-      RecoveryFlow flow{};FlowDemand demand;
+      RecoveryFlow flow{};FlowDemand demand;flow.events.resize(1);
       flow.definitions.push_back({{0},{0},kind,{},kind==FlowDefinitionKind::kUndefinedStore?std::nullopt:std::optional{ExprId{9}},
           statement?std::optional{StmtId{4}}:std::nullopt,
           statement?std::nullopt:std::optional{ExprId{3}},
@@ -486,6 +519,32 @@ void SourceEvents() {
     Check(definition.kind==FlowDefinitionKind::kInitializer&&definition.declaration==StmtId{3});initialized=true;
   }
   Check(initialized);
+  // The native declaration remains authoritative when its value is pruned.
+  // Its discarded RHS runs before lexical completion; throw never commits.
+  std::vector<std::optional<DeclarationCompletion>> completions(tree.statements.size());
+  completions[3]=DeclarationCompletion{{1},ExprId{0},DeclarationKind::kLet};
+  const auto outlined=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,
+      {aliases,literals,replacements,omitted,evaluations,normal,native,private_bindings,{},{},{},completions}));
+  Check(outlined.bindings[1].declaration==StmtId{3}&&outlined.bindings[1].initialization==FlowDefinitionKind::kUndefined);
+  Check(outlined.value_uses[0]==FlowValueUse::kDiscarded);
+  const auto completion_order=std::get<FlowInitializations>(AnalyzeFlowInitializations(outlined));
+  bool before=false,after=false;
+  for(const auto& reference:outlined.references) {
+    if(reference.site==FlowReferenceSite{ExprId{0}}) {
+      Check(!completion_order.Completed({1},reference.point));before=true;
+    }
+    if(reference.site==FlowReferenceSite{ExprId{2}}) {
+      Check(completion_order.Completed({1},reference.point));after=true;
+    }
+  }
+  Check(before&&after);
+  // Shared-slot initialization planning owns the recovered completion too,
+  // independently of the original empty placeholder's statement identity.
+  const auto outlined_live=std::get<FlowLiveness>(AnalyzeFlowLiveness(outlined));
+  std::vector<std::optional<SymbolId>> outlined_storage(tree.symbols.size());outlined_storage[1]=SymbolId{0};
+  const auto outlined_stores=std::get<StorageInitializations>(PlanStorageInitializations(
+      outlined,outlined_live,completion_order,outlined_storage));
+  Check(!outlined_stores.blocked[1]&&outlined_stores.stores[3]==SymbolId{0});
   // Storage is a current semantic identity, not an immutable value copy.
   // Updating the removed slot must read and commit the retained binding.
   std::vector<std::optional<SymbolId>> storage(tree.symbols.size());storage[2]=SymbolId{1};
@@ -726,4 +785,4 @@ void DeclarationValues() {
   }
   Check(checked);
 }
-int main(){DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+int main(){InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

@@ -15,11 +15,15 @@ inline void CheckProjectedRanges(const source::FunctionTree& tree,
   std::vector<std::uint8_t> removed(tree.expressions.size());
   std::vector<source::ExprId> pending;
   for(std::size_t i=0;i<tree.statements.size();++i) {
-    if(!plan.omitted[i])continue;
+    const auto& completion=plan.declaration_completions[i];
+    const auto& value=plan.declaration_values[i];
+    if(!plan.omitted[i]&&!completion&&!value)continue;
+    const auto retained=plan.omitted[i]?plan.forwarded_values[i]:completion?completion->evaluation:
+        value?std::optional{value->value}:std::nullopt;
     source::VisitStatementExpressions(tree.statements[i].statement,[&](auto root){pending.push_back(root);});
     while(!pending.empty()) {
       const auto id=pending.back();pending.pop_back();
-      if(plan.forwarded_values[i]==id)continue;
+      if(retained==id)continue;
       removed[id.value]=1;
       source::VisitExpressionChildren(tree,tree.expressions[id.value].expression,[&](auto child){pending.push_back(child);});
     }

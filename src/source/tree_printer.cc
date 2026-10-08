@@ -403,11 +403,15 @@ class TreePrinter {
       for (std::size_t at = 0; at < Tree().statements.size(); ++at) {
         Step(); if (Initializers().omitted[at]) continue;
         const auto& statement = Tree().statements[at].statement;
+        if(const auto& completion=Initializers().declaration_completions[at]) {
+          if(completion->evaluation)push(*completion->evaluation);
+          continue;
+        }
+        if(const auto& value=Initializers().declaration_values[at]) {
+          push(value->value,value->target?NameContext{Tree().symbols[Initializers().Storage(*value->target).value].name}:NameContext{});
+          continue;
+        }
         if (const auto* declaration = std::get_if<DeclarationStmt>(&statement)) {
-          if(const auto& value=Initializers().declaration_values[at]) {
-            push(value->value,value->target?NameContext{Tree().symbols[Initializers().Storage(*value->target).value].name}:NameContext{});
-            continue;
-          }
           const bool default_value = ModuleBody() && default_export_ &&
               default_export_->declaration == StmtId{static_cast<std::uint32_t>(at)};
           if (declaration->initializer) push(*declaration->initializer, default_value ? NameContext{DefaultInferredName{}} :
@@ -1309,21 +1313,55 @@ class TreePrinter {
     constexpr std::string_view kIndent = "  ";
     for (std::size_t i = 0; i < indent.depth; ++i) Append(kIndent);
   }
+  void ProjectDeclarationOrigins(StmtId statement,std::optional<ExprId> retained) {
+    VisitStatementExpressions(Tree().statements[statement.value].statement,[&](ExprId expression) {
+      if(retained==expression)return;
+      Push(ProjectedExpression{expression,written_,written_,GeneratedExtent::kBoundary,retained});
+    });
+  }
+  void PrintCompletion(const DeclarationCompletion& completion,StmtId statement,bool declarator=false,bool header=false) {
+    ProjectDeclarationOrigins(statement,completion.evaluation);
+    if(declarator) {
+      Name(completion.binding);
+      if(completion.evaluation) {
+        Append(" = (");Push(std::string_view(", void 0)"));
+        Push(ExpressionOperand{*completion.evaluation,{}, {},ExpressionObservation::kDiscarded});
+      }else if(completion.declaration==DeclarationKind::kConst)Append(" = void 0");
+      return;
+    }
+    if(header) {
+      if(completion.evaluation) {
+        Append("(");Push(std::string_view(")"));
+        Push(std::string_view(" = void 0"));Push(SymbolName{completion.binding});Push(std::string_view(", "));
+        Push(ExpressionOperand{*completion.evaluation,{}, {},ExpressionObservation::kDiscarded});
+      }else {Name(completion.binding);Append(" = void 0");}
+      return;
+    }
+    Push(std::string_view(";"));
+    if(completion.kind==DeclarationCompletionKind::kAssignUndefined || completion.declaration==DeclarationKind::kConst)
+      Push(std::string_view(" = void 0"));
+    Push(SymbolName{completion.binding});
+    if(completion.kind==DeclarationCompletionKind::kInitialize)
+      Push(std::string_view(completion.declaration==DeclarationKind::kConst?"const ":"let "));
+    if(completion.evaluation) {
+      Push(Indent{depth_});Push(std::string_view(";\n"));
+      Push(ExpressionOperand{*completion.evaluation,{}, {},ExpressionObservation::kDiscarded});
+    }
+  }
+  void PrintDeclarationValue(const DeclarationValue& value,StmtId statement) {
+    ProjectDeclarationOrigins(statement,value.value);Push(std::string_view(";"));
+    if(value.target) {
+      Name(*value.target);Append(" = ");
+      Push(ExpressionOperand{value.value,{ExpressionGrammar::kAssignmentValue},
+          Tree().symbols[Initializers().Storage(*value.target).value].name});
+    }else Push(value.value);
+  }
   void StatementNode(const BlockStmt& node, Statement at) {
     if (node.label) { Label(*node.label); Append(": "); }
     if (!ModuleBody() || at.id != Tree().body) Append("{\n");
     Push(BlockCursor{at.id, 0, at.depth});
   }
   void StatementNode(const DeclarationStmt& node, Statement at) {
-    if(const auto& value=Initializers().declaration_values[at.id.value]) {
-      Push(std::string_view(";"));
-      if(value->target) {
-        Name(*value->target);Append(" = ");
-        Push(ExpressionOperand{value->value,{ExpressionGrammar::kAssignmentValue},
-            Tree().symbols[Initializers().Storage(*value->target).value].name});
-      } else Push(value->value);
-      return;
-    }
     if(const auto target=Initializers().undefined_stores[at.id.value]) {
       Name(*target);Append(" = void 0;");return;
     }
@@ -1486,6 +1524,19 @@ class TreePrinter {
     if (at.retained == at.id) { Append("true"); return; }
     Result().statements[at.id.value].begin = written_; Push(EndStatement{at.id});
     const auto& node = Tree().statements[at.id.value].statement;
+    if(const auto& completion=Initializers().declaration_completions[at.id.value]) {
+      PrintCompletion(*completion,at.id,false,true);return;
+    }
+    if(const auto& value=Initializers().declaration_values[at.id.value]) {
+      ProjectDeclarationOrigins(at.id,value->value);
+      Append("(");Push(std::string_view(at.discarded ? ")" : ", true)"));
+      if(value->target) {
+        Name(*value->target);Append(" = ");
+        Push(ExpressionOperand{value->value,{ExpressionGrammar::kAssignmentValue},
+            Tree().symbols[Initializers().Storage(*value->target).value].name});
+      }else Push(ExpressionOperand{value->value,{ExpressionGrammar::kAssignmentValue}, {},ExpressionObservation::kDiscarded});
+      return;
+    }
     if (const auto* effect = std::get_if<ExpressionStmt>(&node)) {
       Append("("); Push(std::string_view(at.discarded ? ")" : ", true)"));
       Push(ExpressionOperand{effect->expression, {ExpressionGrammar::kAssignmentValue}, {}, ExpressionObservation::kDiscarded});
@@ -1597,6 +1648,9 @@ class TreePrinter {
     if (at.emitted) Append(", ");
     Result().statements[root.statement.value].begin = written_;
     const auto& binding = *Initializers().statements[root.statement.value];
+    if(const auto& completion=Initializers().declaration_completions[root.statement.value]) {
+      Push(EndStatement{root.statement});PrintCompletion(*completion,root.statement,true);return;
+    }
     const auto& assignment = std::get<AssignmentExpr>(Tree().expressions[binding.assignment.value].expression);
     Push(EndStatement{root.statement});
     BeginDeclarationExpression(std::get<ExpressionStmt>(Tree().statements[root.statement.value].statement).expression,
@@ -1644,7 +1698,9 @@ class TreePrinter {
     depth_ = at.depth;
     Result().statements[at.id.value].begin = written_;
     Push(EndStatement{at.id});
-    std::visit([&](const auto& node) { StatementNode(node, at); }, Tree().statements[at.id.value].statement);
+    if(const auto& completion=Initializers().declaration_completions[at.id.value])PrintCompletion(*completion,at.id);
+    else if(const auto& value=Initializers().declaration_values[at.id.value])PrintDeclarationValue(*value,at.id);
+    else std::visit([&](const auto& node) { StatementNode(node, at); }, Tree().statements[at.id.value].statement);
   }
   void Run(EndStatement end) { Result().statements[end.id.value].end = written_; }
   void Run(BlockCursor at) {

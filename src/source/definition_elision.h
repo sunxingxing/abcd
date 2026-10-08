@@ -22,6 +22,16 @@ struct DefinitionElisions {
 // Initialization and binding lifetime are never removed here.
 [[nodiscard]] std::variant<DefinitionElisions,TreeStructureError> PlanDefinitionElisions(
     const RecoveryFlow&,const FlowDemand&,analysis::SemanticBudget = {});
+struct InitialValueElision { StmtId statement; SymbolId binding; std::optional<ExprId> evaluation; };
+struct InitialValueElisions {
+  std::vector<InitialValueElision> values;
+  std::size_t allocated_bytes=0;
+  std::uint64_t work=0;
+};
+// Delete an unused private initializer VALUE, keeping RHS effects and normal
+// lexical completion at the same site. Source declaration spelling is separate.
+[[nodiscard]] std::variant<InitialValueElisions,TreeStructureError> FindDeadInitialValues(
+    const RecoveryFlow&,const FlowDemand&,analysis::SemanticBudget = {});
 struct BindingElision {
   StmtId statement;
   // Retained RHS GetValue at the original declaration occurrence. Absence

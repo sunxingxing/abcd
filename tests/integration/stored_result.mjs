@@ -72,7 +72,10 @@ for(const row of rows) {
   // binding. The suspension and its value remain and are executed below.
   const count=[0,1,0,0,1,1,1,1,1,1,1,1,1,1,2,2,0,1,1,1,0,0][row.form];
   const deadInner=row.temporary&&[14,15].includes(row.form);
-  assert.equal(assignments,count-Number(deadInner),`stored-result syntax form=${row.form}`);
+  // All nested private copies of input can disappear after pruning the dead
+  // initial value. Require their removal; source-local identity stays explicit.
+  const privateCopies=row.temporary&&row.form===17;
+  assert.equal(assignments,count-Number(deadInner)-Number(privateCopies),`stored-result syntax form=${row.form}`);
   const actual=Function('"use strict";return '+row.source)(),expected=reference(row);
   const scenarios=[];
   for(const kind of ['number','bigint','zero','negativeZero','nan','null','undefined','string','symbol','coerceNumber','coerceBigint'])
@@ -93,6 +96,11 @@ for(const row of rows) {
     assert.notEqual(wrong,row.source);parseJavaScript(wrong);
     const changed=Function('"use strict";return '+wrong)();
     assert.notDeepStrictEqual(await observe(changed,row,{kind:'coerceNumber'}),await observe(expected,row,{kind:'coerceNumber'}));++mutations;
+  }
+  if(!row.count&&row.temporary&&row.form===17) {
+    const wrong=editExpression(row.source,node=>node.type==='CallExpression',()=>'(void 0)');
+    assert.notEqual(wrong,row.source);parseJavaScript(wrong);
+    assert.notDeepStrictEqual(await observe(Function('return '+wrong)(),row),await observe(expected,row));++mutations;
   }
 }
 console.log(`stored-result: ${rows.length} generated functions, ${cases} behavior cases, ${mutations} detected mutations`);

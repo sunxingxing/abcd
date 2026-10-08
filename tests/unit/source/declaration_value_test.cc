@@ -65,13 +65,13 @@ struct Fixture {
     } else {
       auto value=form==0?Expr(TreeLiteral{IntegerLiteral{42}}):
           form==3||form==4||form==5||form==7||form==12||(form>=17&&form<22&&form!=20)?Call(1):
-          form==11?Expr(EmptyObjectExpr{}):form==20?Call(1,4):Read(0);
-      if(form==2)value=Expr(SequenceExpr{Call(2,0),value});
+          form==11?Expr(EmptyObjectExpr{}):form==20||form==27?Call(1,4):form==25||form==28?Call(1):Read(0);
+      if(form==2||form==26)value=Expr(SequenceExpr{Call(2,0),value});
       initialize(4,value);
       if(form==7)body.push_back(Stmt(ExpressionStmt{Call(2,5)}));
       if(form==15)body.push_back(Write(5,Call(1)));
       if(form==3||form==4||form==11||form==12)body.push_back(Stmt(DeclarationStmt{{5},{}}));
-      else initialize(5,form>=22?Call(1):form==16?Expr(SequenceExpr{Call(2,0),Expr(TreeLiteral{IntegerLiteral{42}})}):Read(4));
+      else initialize(5,(form==22||form==23)?Call(1):form==16?Expr(SequenceExpr{Call(2,0),Expr(TreeLiteral{IntegerLiteral{42}})}):Read(4));
     }
     for(unsigned i=0;i<count;++i) {
       const ScopeId scope{static_cast<std::uint32_t>(tree.scopes.size())};
@@ -109,7 +109,7 @@ struct Fixture {
       const auto guard=Stmt(IfStmt{Call(3),Block({Write(5,Call(1))},arm),Block({Stmt(BreakStmt{loop,{}})},exit)});
       std::get<LoopStmt>(tree.statements[loop.value].statement).body=Block({guard},scope);body.push_back(loop);
     }
-    if(form>=22) {
+    if(form==22||form==23) {
       std::vector<StmtId> writes{Write(5,Call(1)),Stmt(ExpressionStmt{Call(2,5)}),Write(4,Read(5))};
       if(form==22)body.insert(body.end(),writes.begin(),writes.end());
       else {
@@ -122,6 +122,7 @@ struct Fixture {
         body.push_back(Stmt(TryStmt{Block(writes,protected_scope),CatchClause{{6},handler},{}}));
       }
     }
+    if(form>=24)body.push_back(Write(4,Call(1)));
     if(form==16) {body.push_back(Stmt(ExpressionStmt{Call(2,5)}));body.push_back(Write(4,Read(5)));}
     if(form==10) {
       const ScopeId protected_scope{static_cast<std::uint32_t>(tree.scopes.size())};
@@ -135,7 +136,7 @@ struct Fixture {
     }
     const unsigned result=form==17||form==21?0:form==18?5:form==3||form==4||form==5||form==8||form==10||form==11||form==12||form>=13?4:5;
     std::vector<StmtId> tail;
-    if(form!=3&&form!=17&&form!=20&&form!=21)tail.push_back(Stmt(ExpressionStmt{Call(2,result)}));
+    if(form!=3&&form!=17&&form!=20&&form!=21&&form!=28)tail.push_back(Stmt(ExpressionStmt{Call(2,result)}));
     tail.push_back(Stmt(ReturnStmt{Read(result)}));
     if(form==9) {
       const ScopeId scope{static_cast<std::uint32_t>(tree.scopes.size())};
@@ -181,7 +182,7 @@ struct Fixture {
 };
 }
 int main(int argc,char**) {
-  for(unsigned form=0;form<24;++form)for(bool native:{false,true}) {
+  for(unsigned form=0;form<29;++form)for(bool native:{false,true}) {
     std::uint64_t small=0,large=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}) {
       Fixture fixture(form,count,native,reverse);std::ostringstream output;
@@ -198,6 +199,14 @@ int main(int argc,char**) {
       const auto printed=PrintFunctionTree(fixture.tree,output);
       test::Check(std::holds_alternative<PrintedFunction>(printed));
       test::CheckProjectedRanges(fixture.tree,std::get<BindingInitializers>(planned),std::get<PrintedFunction>(printed),output.str().size());
+      if(native&&(form==24||form==25||form==26)) {
+        for(unsigned i=0;i<fixture.tree.statements.size();++i)if(const auto* declaration=std::get_if<DeclarationStmt>(&fixture.tree.statements[i].statement))
+          if(declaration->initializer&&fixture.tree.names[fixture.tree.symbols[declaration->symbol.value].name.value]==u"current") {
+            const auto& plan=std::get<BindingInitializers>(planned);
+            if(form==24)test::Check(plan.omitted[i]);
+            else test::Check(plan.declaration_values[i]&&!plan.declaration_values[i]->target);
+          }
+      }
       if(form==22&&native) {
         const auto& plan=std::get<BindingInitializers>(planned);
         bool projected=false;
@@ -208,7 +217,7 @@ int main(int argc,char**) {
         }
         test::Check(projected);
       }
-      if(form<=3||form==17||form==21) {
+      if(form<=3||form==17||form==21||form==28) {
         if(output.str().find("current")!=std::string::npos||output.str().find("scratch")!=std::string::npos)
           std::cerr<<"form="<<form<<" native="<<native<<" reverse="<<reverse<<'\n'<<output.str()<<'\n';
         test::Check(output.str().find("current")==std::string::npos&&output.str().find("scratch")==std::string::npos);

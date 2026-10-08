@@ -307,6 +307,13 @@ void DeclarationBatches() {
     }
     const auto again=std::get<LoopDeclarations>(PlanLoopDeclarations(loops,applied,declarations));
     test::Check(again.starts.empty() && again.demoted.empty() && again.declarators.empty());
+    // Removing the final binding invalidates an earlier grammar suffix. The
+    // planner explicitly clears it instead of retaining a stale declarator.
+    auto without=applied;
+    for(unsigned i=0;i<count;++i)without.statements[i*6+3].reset();
+    const auto cleared=std::get<LoopDeclarations>(PlanLoopDeclarations(loops,without,declarations));
+    test::Check(cleared.starts.size()==count);
+    for(const auto& start:cleared.starts)test::Check(!start.first);
     test::Check(std::holds_alternative<LoopDeclarations>(PlanLoopDeclarations(loops,input,declarations,{result.allocated_bytes,result.work})));
     test::Check(std::get<TreeStructureError>(PlanLoopDeclarations(loops,input,declarations,{result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
     test::Check(std::get<TreeStructureError>(PlanLoopDeclarations(loops,input,declarations,{result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);

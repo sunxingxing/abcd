@@ -1226,6 +1226,7 @@ captured identities and resource-observable naming contracts retain the original
 representation. A still-live binding conservatively keeps its dead initializer
 value and the dependencies that printing it requires; independently pruning that
 value while preserving initialization completion is a future precision task.
+Rules224 below close that dead-initial-value projection gap for private bindings.
 Arbitrary lifetime movement, full abrupt scope unwind/capture identity, original
 IR correspondence and global pass convergence remain open.
 
@@ -1269,6 +1270,72 @@ demand tests protect lexical completion and update obligations.
 
 This closes dead assignment projection after shared native initialization, not
 pruning the initializer value of a still-live lexical binding. That precision
-gap, full binding lifetime/capture/unwind, original-IR correspondence and global
+gap is closed by rules224 below; full binding lifetime/capture/unwind, original-IR correspondence and global
 pass convergence remain explicit. Final selected verification and actual record
 scope are recorded in status.md.
+
+## Dead initial values retain evaluation and lexical completion (rules224)
+
+The independent InitialValues pass consumes the current RecoveryFlow and cached
+FlowDemand after DeadDefinitions and before Bindings. A private inert successful
+initializer whose value has no demand becomes a DeclarationCompletion: optional
+discarded RHS evaluation, followed on its normal path by Initialize(undefined).
+The RHS keeps its original position, execution count, GetValue and exception
+route. Throws do not initialize the binding. Removing its value does not remove
+the lexical completion, binding identity or TDZ. Required self reads retain their
+original initialization boundary; an entirely inert dead value needs no RHS.
+
+DeclarationCompletion distinguishes lexical initialization from AssignUndefined
+to an already initialized shared slot. RecoveryFlow publishes both explicitly;
+DiscardedEvaluation owns the independent RHS occurrence and FlowBinding publishes
+the selected declaration and initialization kind. A supplied native declaration
+remains authoritative even after its value is pruned; selecting the old empty
+placeholder by definition arena order would give incorrect completion dominance.
+Declaration placement now consumes that shared kind, retiring the original-tree
+DeclarationStmt.initializer tests in its candidate/placement paths. All existing
+coverage, dominance, scope, lifetime and exposure obligations remain.
+
+Binding removal, declaration movement and coalescing consume the same projected
+completion. Each can remove the completion while retaining the necessary RHS as
+DeclarationValue without a target. A live undefined value mapped to shared storage
+retains its successful AssignUndefined, after the RHS. Dead-slot-write removal
+also transports that independent RHS. No pass infers it again from the original
+assignment/declaration syntax. Source/captured identities and the resource-visible
+naming contract retain their existing representation and documented limits.
+Storage completion proposals enumerate the supplied completion occurrences before
+commit, including recovered declarations away from their original placeholders;
+all use the same live-undefined and destination-initialization result.
+The independent lexical resolution/lifetime obligation also enumerates the
+current undefined definitions, including recovered occurrences, rather than
+checking only each binding's original declaration slot.
+Value/copy and snapshot proposals also own the current initialization identity.
+When retiring that binding they preserve any independent outlined RHS at the
+initialization occurrence. Removing a declaration is never authority to delete
+an earlier DeclarationValue evaluation left by another pass. A composed
+dead-initializer -> declaration-placement -> return-snapshot test detects this
+cross-pass omission by restoring the former unconditional declaration deletion;
+the independent execution comparison observes the lost first call.
+
+Every changed pass enters BeginCommit, invalidating the entire revision-tagged
+ProjectionFacts before applying its owned proposal. InitialValues may transport
+positive initialization proofs because the completion remains at the same point
+after the same required RHS. Analysis is forbidden during commit. The dependent
+order is DeadDefinitions -> InitialValues -> Bindings -> declaration/value users;
+the final storage/alias cleanup follows that order too. LoopDeclarations now runs
+after final value/binding cleanup, so its grammar consumes the surviving bindings
+and evaluations. It explicitly clears a stale declarator suffix and preserves
+outlined prefix effects. The former post-loop cleanup group is removed. This is
+an explicit producer/consumer schedule, not extra fixed-count sweeps or a claim
+of whole-pipeline convergence or arbitrary pass reordering.
+
+The printer only renders supplied completions/values, declaration grammar and
+precedence, including a discarded RHS before successful undefined initialization.
+It performs no new effect, demand, or binding analysis. Origin ranges exclude the
+retained RHS from removed assignment/declaration origins. Tests compare split and
+native initializers, reversed arenas, composed loops/branches/exceptions, dead
+initial values with required calls/comma effects, and self-TDZ reads. Independent
+execution detects dropped RHS calls and early initialization; common model tests
+check declaration identity, before/after completion and RHS retention after each
+independent removal. 200/201/400/800 exercise costs and stale grammar clearing.
+Full lifetime/finally/capture, original-IR correspondence and global convergence
+remain gaps; final verification and actual record scope are in status.md.

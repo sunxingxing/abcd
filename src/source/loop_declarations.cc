@@ -21,8 +21,9 @@ std::variant<LoopDeclarations,TreeStructureError> PlanLoopDeclarations(
         if(!projection.statements[root.value] && !projection.omitted[root.value])break;
         declaration |= projection.statements[root.value].has_value();--first;
       }
-      if(declaration && projection.loop_declarations[i]!=first)
-        result.starts[starts++]={StmtId{static_cast<std::uint32_t>(i)},first};
+      const auto selected=declaration?std::optional{first}:std::nullopt;
+      if(projection.loop_declarations[i]!=selected)
+        result.starts[starts++]={StmtId{static_cast<std::uint32_t>(i)},selected};
       for(auto at=entry->first;at<entry->end;++at) {
         budget.Step();const auto root=loops.initializer_roots[at].statement;
         const auto& initializer=projection.statements[root.value];
@@ -31,7 +32,7 @@ std::variant<LoopDeclarations,TreeStructureError> PlanLoopDeclarations(
           RequireTree(initializer.has_value(),TreeStructureError::kOwnership);
           const auto original=declarations[initializer->symbol.value];
           RequireTree(original.has_value(),TreeStructureError::kOwnership);
-          if(initializer->declaration!=DeclarationKind::kLet || !projection.omitted[original->value])
+          if(initializer->declaration!=DeclarationKind::kLet || (!projection.omitted[original->value] && (projection.declaration_values.empty() || !projection.declaration_values[original->value])))
             result.declarators[declarators++]={root,*original};
         }
       }
