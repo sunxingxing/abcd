@@ -22,7 +22,7 @@ struct DiscardedEvaluation {
 };
 enum class FlowCompletion : std::uint8_t { kNormal, kThrow, kReturn, kJump, kTaken, kNotTaken, kResumeNext, kResumeThrow, kResumeReturn, kConservativeCleanup };
 enum class FlowDefinitionKind : std::uint8_t { kParameter, kUndefined, kInitializer, kAssignment, kUpdate, kCatch, kUndefinedStore, kFunctionSelf };
-enum class FlowEventKind : std::uint8_t { kControl, kTruthBranch, kNullishBranch, kRead, kEvaluation, kEnterScope, kLeaveScope, kDefinition, kSuspend };
+enum class FlowEventKind : std::uint8_t { kControl, kTruthBranch, kNullishBranch, kRead, kEvaluation, kEnterScope, kLeaveScope, kDefinition, kSuspend, kPropertyReference };
 enum class FlowValueUse : std::uint8_t { kUnmodeled, kDiscarded, kObserved };
 enum class FlowWriteEffect : std::uint8_t { kObservable, kInert };
 enum class FlowBindingExposure : std::uint8_t { kObservable, kPrivate };
@@ -104,6 +104,23 @@ struct FlowReference {
   // Original operand occurrences, distinct from current projected binding.
   std::optional<OriginalInputRange> original;
 };
+struct FlowPropertyId {std::uint32_t value=0;auto operator<=>(const FlowPropertyId&)const=default;};
+enum class FlowPropertyPhase : std::uint8_t {kAcquisition,kReceiver,kKey,kAccess};
+struct FlowPropertySite {FlowPropertyId reference;FlowPropertyPhase phase;auto operator<=>(const FlowPropertySite&)const=default;};
+// ECMA-262 2025 13.3.3/6.2.5: acquisition retains base/unconverted key.
+// GetValue/PutValue check the receiver, convert the key, then Get/Set.
+// Assignment evaluates RHS between acquisition and PutValue. Never move the
+// 2024 early conversion here; see reference/source-property-references.md.
+struct FlowPropertyReference {
+  FlowPoint acquisition,receiver,key_conversion,access,normal;
+  FlowReferenceKind kind;
+  ExprId site,base;
+  MemberKey key;
+  FlowExceptionContext exceptions;
+  std::optional<StmtId> owner;
+  // Checked original operands, not current binding/cell identity proofs.
+  std::optional<OriginalInputRange> original_base,original_key;
+};
 // Free lexical names are observations, not bindings with local definitions.
 // Their original expression and current owner are distinct after forwarding.
 struct FlowNameReference {
@@ -162,6 +179,7 @@ struct FlowEvent {
   ExpressionEvaluation effect = ExpressionEvaluation::kInert;
   std::optional<StmtId> owner;
   bool entry_evaluation=false;
+  std::optional<FlowPropertySite> property;
 };
 struct FlowEdge {
   FlowPoint from, to;
@@ -221,6 +239,7 @@ struct RecoveryFlow {
   std::vector<FlowEdge> edges;
   std::vector<FlowDefinition> definitions;
   std::vector<FlowReference> references;
+  std::vector<FlowPropertyReference> properties;
   std::vector<FlowNameReference> names;
   std::vector<DiscardedEvaluation> discarded;
   std::vector<FlowPoint> statements, expressions;

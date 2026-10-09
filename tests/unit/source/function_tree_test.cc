@@ -774,6 +774,29 @@ void ComputedStoreTree() {
   Check(std::holds_alternative<ConstructedFunction>(built));
   const auto& tree = std::get<ConstructedFunction>(built).tree;
   Check(std::holds_alternative<TreeSemantics>(fixture.Verify(tree)));
+  const auto& original=*std::get<ConstructedFunction>(built).flow->original;
+  const auto prepared=std::get<SourceVariables>(PrepareSourceVariables(tree));
+  const auto& bindings=prepared.bindings;
+  LegacyFlowProjection projection{bindings.aliases,bindings.literals,bindings.replacements,
+      bindings.omitted,bindings.evaluations,bindings.normal_stores,bindings.statements,{},
+      bindings.storage,bindings.undefined_stores,bindings.declaration_values,bindings.declaration_completions};
+  projection.original=&original;
+  const auto flow=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,projection));
+  bool original_write=false;
+  for(const auto& property:flow.properties)if(property.kind==FlowReferenceKind::kWrite) {
+    Check(property.original_base&&property.original_key);
+    Check(flow.normal_exits[property.site.value]==property.normal);
+    for(const auto pair:{std::pair{*property.original_base,OperandRole::kBase},std::pair{*property.original_key,OperandRole::kKey}}) {
+      bool found=false;
+      for(std::size_t i=0;i<pair.first.count;++i) {
+        const auto& input=original.inputs[pair.first.first+i];
+        if(input.occurrence) {const auto& use=original.uses[input.occurrence->value];found|=use.owner==std::variant<OpId,ValueId>{OpId{1}}&&use.role==pair.second;}
+      }
+      Check(found);
+    }
+    original_write=true;
+  }
+  Check(original_write);
   bool checked = false;
   auto sloppy = tree;
   sloppy.strictness = Strictness::kSloppy;

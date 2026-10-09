@@ -48,6 +48,24 @@ inline analysis::ValueKinds PrimitiveKinds(const TreeLiteral& literal) {
 inline bool CoercionPrimitive(analysis::ValueKinds kinds) {
   return kinds.IsNumber()||kinds.IsString()||kinds.IsZeroOrOnePrimitive();
 }
+// ECMA-262 2025 GetValue/PutValue convert a retained reference's key, after
+// receiver conversion (and after an assignment RHS). Acquisition is inert.
+// Primitive conversion cannot invoke user hooks. Resource-observable contracts
+// retain potential string allocation; absent precise domains stay conservative.
+inline ExpressionEvaluation NormalPropertyKeyEvaluation(const MemberKey& key,
+    std::span<const analysis::ValueKinds> kinds,ResourceFailureScope resources) {
+  const auto* computed=std::get_if<ComputedKey>(&key);
+  if(!computed)return ExpressionEvaluation::kInert;
+  const auto domain=kinds.empty()?analysis::ValueKinds::Language():kinds[computed->expression.value];
+  return domain.IsString() || (resources==ResourceFailureScope::kExcluded&&CoercionPrimitive(domain))?
+      ExpressionEvaluation::kInert:ExpressionEvaluation::kRequired;
+}
+inline ExpressionEvaluation NormalPropertyReceiverEvaluation(ExprId base,
+    std::span<const analysis::ValueKinds> kinds,ResourceFailureScope resources) {
+  const auto domain=kinds.empty()?analysis::ValueKinds::Language():kinds[base.value];
+  return resources==ResourceFailureScope::kExcluded&&(domain.IsString()||domain.IsNumber()||domain.IsBoolean())?
+      ExpressionEvaluation::kInert:ExpressionEvaluation::kRequired;
+}
 // One exhaustive ECMA-262 effect table for canonical and projected source.
 // Normal operand domains may exclude coercion hooks/language exceptions;
 // GetValue, lexical initialization and child completion are separate facts.

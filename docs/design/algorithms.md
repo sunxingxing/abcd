@@ -3721,3 +3721,17 @@ Fixtures expose real O/V/U/E dimensions and construction work/bytes. Boundary
 SSA renumbering, block splits and arena reversal. Exact/one-short source preparation
 budgets reject insufficient work/storage. These counters are accounted complexity
 evidence, not process RSS or a resumed benchmark. Full-corpus/RSS remain paused.
+
+## Property reference stages (rules253)
+
+The checked source adapter adds three phase points and a constant-size typed
+reference per retained MemberExpr/MemberTarget. Let P be retained property
+references. Construction adds O(P) work/storage to existing source-flow cost;
+all edges and buffers are charged by the same budget, with geometric reuse.
+Original base/key ranges attach in O(1) from the existing checked ExprId index,
+not a per-property scan of operations or uses. Refinement visits events/edges
+once and consumes the same key/receiver domain table. Existing shared motion
+and liveness costs remain dimension-based and may depend on live facts.
+Tests cover200/201/400/800 reference forests, exact/one-short budgets and reverse
+source arenas. This is not a claim about total recovery convergence or peak RSS.
+Provenance and version prerequisites: docs/reference/source-property-references.md.

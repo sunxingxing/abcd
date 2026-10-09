@@ -636,3 +636,13 @@ new layout admission, storage root shortcut or additional pass round. Full origi
 operation/reference/phase mapping, ordinary binding activation, trial precision,
 full dependency convergence and milestone acceptance remain OPEN. Other appearance
 optimizations stay paused until these five delivery loops close.
+
+Task1 rules253 substep: public property references now publish acquisition,
+receiver, key conversion, Get/Set and successful continuation in the common
+source graph. Original base/key UseId ranges attach through the existing index.
+Motion/demand/refinement consume these phases; generic child/single-effect
+member handling exits the decision path. Versioned source semantics use2025
+deferred keys, documented against primary specification and independent Node
+execution; the initial2024 assumption was withdrawn. Complete original
+operation/region/protocol phase projection remains OPEN, as do the other four
+backbone delivery loops. No appearance optimization or paused work resumed.

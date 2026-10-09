@@ -41,6 +41,19 @@ continuations，并消费这些共同 domains。只有一个穷尽语言 effects
 原始 operation/reference/phase 的完整多对多投射仍开放；Task1 和整个
 五项交付主干均不能因这段值域/使用点贯通而关闭。
 
+规则253将普通 public property Reference 加入同一源码事件适配器：typed
+acquisition/receiver/key/access、normal continuation、throw/finalizer context、
+current owner 与原始 base/key operand ranges。取得引用保存输入值，赋值 RHS
+在 PutValue 之前；receiver、key 转换与 Get/Set 的效果、异常按2025 source
+语义分开。正常结果不在 receiver/key 失败路径上提交。原始 ranges 是来源，
+不能直接把整个 VM before_throw flags 当作每个 native phase 的精确效果。
+移动、活跃性、需求与试算共同消费此图；初始化后的效果 refinement 保留
+独立阶段，不用整个赋值的 normal-store 总结抹去 key/receiver 异常。原 generic
+children→single-effect 的 member/target 决策路径退出此范围。
+已记录2024/2025差异和当前 native runtime 对照，见
+[source reference phases](../../reference/source-property-references.md)。
+完整原始 operation/region/protocol/phase 多对多对应及五项主干仍开放。
+
 核心类型为 FlowPoint、FlowDefinition、FlowReference、FlowCompletion、
 FlowBinding；均为强 ID/typed variant。定义记录参数/undefined初始化/
 表达式结果/赋值/phi 来源。引用区分绑定与属性，捕获保存单元身份而非值。

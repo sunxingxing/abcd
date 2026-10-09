@@ -36,6 +36,39 @@
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
 
+### 2026-10-09：规则253，共同 public property 引用与完成阶段
+
+- 主干第1项继续实施：共同源码 adapter 对所有 MemberExpr/MemberTarget 发布
+  typed Reference acquisition、receiver、key、access、normal continuation 与
+  throw/finalizer route/current owner；原始 base/key 的 raw/resolved UseId ranges
+  通过既有索引接入。成功结果与 receiver/key/get/set 的异常出口分离，不把
+  来源 ranges 冒充原始 VM flags 的完整阶段证书。
+- 原 generic children→single-effect 的 member/target 路径退出；GetValue 在
+  call arguments 前，PutValue 在 RHS 后，reference 保存求值时的 base/key。
+  shared motion、定义需求与各现有试算 builder 消费这些事件。refinement
+  复用唯一 receiver/key 域规则；整个赋值的 normal-store 总结不抹去独立
+  阶段的 throw。试算域重算完整性仍属于开放的第3项，未宣称已经闭合。
+- 实施中独立 Node 执行发现2024/2025规范差异：2024早转换假设不适用当前
+  native source，初始RED不计有效修复证据；已纠正为2025 deferred key，
+  正确的 inert acquisition 义务在修复前 fresh property check99 exit134。
+  源码 profile/version 边界见 [reference phases](../../reference/source-property-references.md)。
+  不扩展旧模式识别、不新增准入条件或静默改变原始 Ark effects。
+- 聚焦验证8源码/336独立执行比较/6反例，正反arena、key hook/throw、
+  null/undefined receiver、Proxy/getter/setter、成功/失败写入状态、原始
+  operand role/use身份、精确/短预算和200/201/400/800维度成本。首轮试算
+  测试对universal motion误用了normal-only预期及scaling fixture漏声明已
+  修正，未增加生产条件。最终62/62项CTest494.51秒通过，exact名称集合
+  为既定60项加2项property测试；原SSA96源码/2880执行比较/4反例以及
+  既有独立值/复制/完成/存储/名字/初始化对照均通过。
+- 最终30目标构建102.89秒无warning/error；fresh固定pasteboard导出3.26秒，
+  19records、10complete/0partial/9no-module，10份源码语法检查通过，
+  输出与规则252字节一致，输入SHA前后不变。原预算及
+  language_numeric_constructors_v1保持。证据
+  build/stage-one/property-flow-verification；不是全corpus/Ark平台/RSS终验。
+- 五项主干仍全部开放；下一步继续完整原始 operation/region/protocol
+  effects/completion 对应，再推进普通绑定生命期、试算与依赖收敛。
+  完整套件、扩展corpus、RSS/benchmarks/DFX/agents暂停保持。
+
 ### 2026-10-09：规则252，原始 SSA 值域与使用点接入共同恢复事实
 
 - 主干第1项的实施子闭环：在同一次 TreeSemantics 校验中保留 OriginalFlow，

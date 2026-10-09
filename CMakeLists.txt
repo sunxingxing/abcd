@@ -709,6 +709,9 @@ if(BUILD_TESTING)
   add_test(NAME control_view_test COMMAND control_view_test)
   target_link_libraries(function_tree_test PRIVATE abcd_source abcd_json)
   add_test(NAME function_tree_test COMMAND function_tree_test)
+  add_executable(property_flow_test tests/unit/source/property_flow_test.cc)
+  target_link_libraries(property_flow_test PRIVATE abcd_source abcd_json)
+  add_test(NAME property_flow_test COMMAND property_flow_test)
   add_executable(binding_plan_test tests/unit/source/binding_plan_test.cc)
   target_link_libraries(binding_plan_test PRIVATE abcd_source)
   add_test(NAME binding_plan_test COMMAND binding_plan_test)
@@ -887,6 +890,8 @@ if(BUILD_TESTING)
   if(ABCD_NODE_EXECUTABLE)
     add_test(NAME original_flow_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/original_flow.mjs $<TARGET_FILE:function_tree_test>)
+    add_test(NAME property_flow_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/property_flow.mjs $<TARGET_FILE:property_flow_test>)
     add_test(NAME family_array_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/family_array.mjs
       $<TARGET_FILE:family_array_test> $<TARGET_FILE:class_tree_context_test>)

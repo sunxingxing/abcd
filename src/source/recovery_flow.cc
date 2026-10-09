@@ -35,6 +35,7 @@ class FlowBuilder {
     definitions_=std::move(result_.definitions);definitions_.clear();references_=std::move(result_.references);references_.clear();
     names_=std::move(result_.names);names_.clear();
     discarded_=std::move(result_.discarded);discarded_.clear();
+    result_.properties.clear();
   }
   RecoveryFlow Run() {
     result_.original=projection_.original;
@@ -238,6 +239,35 @@ class FlowBuilder {
     return result;
   }
   Point Expr(ExprId id,Context context){tasks_.push_back(Expression{id,context});return expressions_[id.value];}
+  Point Property(ExprId site,ExprId base,MemberKey key,FlowReferenceKind kind,Point access,const Context& context) {
+    RequireTree(result_.properties.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
+    const FlowPropertyId id{static_cast<std::uint32_t>(result_.properties.size())};
+    const auto acquisition=New({FlowEventKind::kPropertyReference,{},{},site});
+    events_[acquisition.value].property=FlowPropertySite{id,FlowPropertyPhase::kAcquisition};
+    events_[access.value].property=FlowPropertySite{id,FlowPropertyPhase::kAccess};
+    const auto phase=[&](FlowPropertyPhase phase,ExpressionEvaluation evaluation) {
+      const auto point=New({FlowEventKind::kPropertyReference,{},{},site});
+      events_[point.value].property=FlowPropertySite{id,phase};events_[point.value].discarded=context.discarded;
+      events_[point.value].effect=evaluation;
+      if(evaluation==ExpressionEvaluation::kRequired) {
+        Link(point,context.thrown,FlowCompletion::kThrow);
+        if(context.discarded)discarded_[context.discarded->value].effect=evaluation;
+      }
+      return point;
+    };
+    const auto resources=ResourceFailures(tree_.identity.contract);
+    const auto receiver=phase(FlowPropertyPhase::kReceiver,NormalPropertyReceiverEvaluation(base,result_.normal_kinds,resources));
+    const auto conversion=phase(FlowPropertyPhase::kKey,NormalPropertyKeyEvaluation(key,result_.normal_kinds,resources));
+    Link(receiver,conversion);Link(conversion,access);
+    FlowPropertyReference reference{acquisition,receiver,conversion,access,context.next,kind,site,base,key,{context.thrown,context.finalizer},context.owner};
+    if(result_.original) {
+      const auto range=result_.original->input_ranges[base.value];if(range.count)reference.original_base=range;
+      if(const auto* computed=std::get_if<ComputedKey>(&key)) {
+        const auto range=result_.original->input_ranges[computed->expression.value];if(range.count)reference.original_key=range;
+      }
+    }
+    Append(result_.properties,std::move(reference));return acquisition;
+  }
   Point Stmt(StmtId id,Context context){tasks_.push_back(Statement{id,context});return statements_[id.value];}
   void Abrupt(Point point,Point target,const Context& context,FlowCompletion completion) {
     Link(point,target,completion); // Bypass is a may-path, never evidence that cleanup is absent.
@@ -319,6 +349,20 @@ class FlowBuilder {
         !projection_.normal_stores[at.id.value])Link(effect,context.thrown,suspension?FlowCompletion::kResumeThrow:FlowCompletion::kThrow);
     if(suspension)events_[effect.value].kind=FlowEventKind::kSuspend;
     if(std::holds_alternative<YieldExpr>(node))Abrupt(effect,terminal_,context,FlowCompletion::kResumeReturn);
+    // References retain input values once. GetValue precedes call arguments;
+    // PutValue follows RHS writes. Receiver/key failures cannot publish access.
+    // All motion/liveness/trial consumers see these same phase edges.
+    if(const auto* member=std::get_if<MemberExpr>(&node)) {
+      auto next=Property(at.id,member->base,member->key,FlowReferenceKind::kRead,effect,context);Link(next,result_.properties.back().receiver);
+      if(const auto* key=std::get_if<ComputedKey>(&member->key))next=Expr(key->expression,context.Operand(next));
+      Link(start,Expr(member->base,context.Operand(next)));return;
+    }
+    if(const auto* assignment=std::get_if<AssignmentExpr>(&node))if(const auto* member=std::get_if<MemberTarget>(&assignment->target)) {
+      auto next=Property(at.id,member->base,member->key,FlowReferenceKind::kWrite,effect,context);
+      Link(next,Expr(assignment->value,context.Operand(result_.properties.back().receiver)));
+      if(const auto* key=std::get_if<ComputedKey>(&member->key))next=Expr(key->expression,context.Operand(next));
+      Link(start,Expr(member->base,context.Operand(next)));return;
+    }
     // Children keep language evaluation order, including callee, receiver and
     // assignment RHS. Their commits are distinct from throwing evaluation.
     std::pmr::vector<ExprId> children(&memory_);
@@ -508,6 +552,19 @@ std::variant<FlowRefinement,TreeStructureError> RefineRecoveryFlowEffects(
           flow.discarded[event.discarded->value].effect=ExpressionEvaluation::kRequired;
         continue;
       }
+      if(event.kind==FlowEventKind::kPropertyReference) {
+        RequireTree(event.property&&event.property->reference.value<flow.properties.size(),Error::kOwnership);
+        const auto& reference=flow.properties[event.property->reference.value];
+        const auto resources=ResourceFailures(tree.identity.contract);
+        switch(event.property->phase) {
+          case FlowPropertyPhase::kAcquisition:event.effect=ExpressionEvaluation::kInert;break;
+          case FlowPropertyPhase::kReceiver:event.effect=NormalPropertyReceiverEvaluation(reference.base,flow.normal_kinds,resources);break;
+          case FlowPropertyPhase::kKey:event.effect=NormalPropertyKeyEvaluation(reference.key,flow.normal_kinds,resources);break;
+          case FlowPropertyPhase::kAccess:throw Error::kOwnership;
+        }
+        if(event.discarded&&event.effect==ExpressionEvaluation::kRequired)flow.discarded[event.discarded->value].effect=event.effect;
+        continue;
+      }
       const auto id=*event.expression;const auto& node=tree.expressions[id.value].expression;
       bool required=NormalValueEvaluation(node,flow.normal_kinds,ResourceFailures(tree.identity.contract))==ExpressionEvaluation::kRequired &&
           evaluations[id.value]!=ExpressionEvaluation::kInert;
@@ -519,11 +576,13 @@ std::variant<FlowRefinement,TreeStructureError> RefineRecoveryFlowEffects(
     for(std::size_t i=0;i<flow.edges.size();++i) {
       budget.Step();auto edge=flow.edges[i];const auto& event=flow.events[edge.from.value];
       if(edge.completion==FlowCompletion::kThrow && event.expression) {
+        if(event.kind==FlowEventKind::kPropertyReference&&event.effect==ExpressionEvaluation::kInert)continue;
         const auto id=*event.expression;const auto& node=tree.expressions[id.value].expression;
         // Update's binding read and coercion are separate events. A normal
         // write summary never licenses deleting a coercion's throwing path.
-        const bool update_read=event.kind==FlowEventKind::kRead && std::holds_alternative<UpdateExpr>(node);
-        if(!update_read && (evaluations[id.value]==ExpressionEvaluation::kInert || normal_stores[id.value]))continue;
+        const bool independent=event.kind==FlowEventKind::kPropertyReference ||
+            (event.kind==FlowEventKind::kRead && std::holds_alternative<UpdateExpr>(node));
+        if(!independent && (evaluations[id.value]==ExpressionEvaluation::kInert || normal_stores[id.value]))continue;
       }
       edge.incoming=flow.events[edge.to.value].incoming;edge.outgoing=flow.events[edge.from.value].outgoing;
       flow.edges[retained]=edge;flow.events[edge.to.value].incoming=retained;

@@ -2936,3 +2936,19 @@ Tests permute SSA IDs and expression/statement arenas, introduce copies and spli
 blocks; unknown-value coercion and removed-conversion execution mutants reject
 false elimination. Full reference/phase projection and binding activations stay
 open; no new local admission or pass round is introduced.
+
+## Rules253: public property reference phases
+
+Semantic obligations: retain base/key values once; acquire Reference before RHS;
+receiver check before key conversion/Get/Set; source result commits only after
+successful access; preserve exceptional handler/cleanup and current owner.
+The common source adapter publishes these phases for every legal MemberExpr/
+MemberTarget, including nested/projected positions. No sample, layout, block,
+adjacency or sequence admission is added. Shared consumers see the graph rather
+than reconstructing phases. Primitive domain refinements are typed language
+facts; original input ranges preserve provenance but do not prove cell identity
+or a one-to-one raw effect projection. Old generic children/single-effect path
+exits member/target handling. ECMA-2622024 early-key assumption was found invalid
+for current source by independent execution and corrected to2025; its initial
+RED result is not valid evidence. Full original profile/normalized phase mapping
+remains open. See source-property-references.md for prerequisites and tests.

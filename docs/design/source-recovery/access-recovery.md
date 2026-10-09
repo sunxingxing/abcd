@@ -81,8 +81,13 @@ decode/lift/value IR/AST/behavior 五个阶段分开记录，不能以单一 sup
 读取输入值、构造 Reference、检查 receiver、ToPropertyKey、Get/Set/Define、正常提交。
 相位是 typed 枚举/记录，由具体 runtime profile 定义，不能假定所有指令共用同一顺序。
 
-关键反例：原 ABC 先计算 RHS，然后 STOBJBYVALUE 才执行 key 转换。
-若直接把 RHS 内联成 `obj[key] = sideEffect()`，JS 的 key 转换可能先于 RHS，改变行为。
+关键版本边界：原 ABC 先计算 RHS，然后 STOBJBYVALUE 才执行 key 转换。
+ECMA-262 2025 的简单赋值也在 RHS 后的 PutValue 中转换 key；2024 规范则曾
+在取得 Reference 时转换。不能把旧规范顺序当作所有 JS runtime 的不变式。
+规则253的源码共同模型明确采用2025 public reference阶段，见
+[版本和独立证据](../../reference/source-property-references.md)。原始 profile
+仍需分别证明 receiver、key、Get/Set 与成功提交对应，不能仅凭现代源码语法
+允许 RHS 内联；旧源 runtime 需要独立、显式的语义适配器。
 因此 EvaluationPlan 必须检查操作内部边界，而不只是所有 operand 之后的一个效果点。
 不能证明安全时保留 RHS 快照；独立 verifier 拒绝跨 key 转换的错误内联。
 现有固定两个 ExprId 的 lowering scratch 需要按语义最大固定 arity 扩展或改用有界 span；
