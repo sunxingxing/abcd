@@ -26,41 +26,41 @@ enum class RecoveryPassScope {kValues,kValueOrStorage,kStorage,kReadValues,kNorm
 struct RecoveryPassContract {
   RecoveryFactSet inputs;
   RecoveryPassScope scope;
-  bool preserves_initialization;
   bool preserves_demand_checkpoint=false;
 };
 // These contracts describe semantic dependencies, never bytecode/source
 // admission. Providers close dependencies lazily; no eager graph rebuild is
-// introduced. Initialization preservation must be proved for each pass.
+// introduced. Occurrence initialization is rebuilt on every projection.
 [[nodiscard]] inline RecoveryPassContract PassContract(RecoveryPass pass) {
   using Fact=RecoveryFact;using Scope=RecoveryPassScope;
   switch(pass) {
-    case RecoveryPass::kDeclarations:return {{Fact::kFlow},Scope::kValues,false};
-    case RecoveryPass::kConstants:return {{Fact::kConstants},Scope::kValues,false};
-    case RecoveryPass::kBindingValues:return {{Fact::kConstants,Fact::kCopies},Scope::kReadValues,false};
-    case RecoveryPass::kAliases:return {{Fact::kLiveness},Scope::kValueOrStorage,false};
+    case RecoveryPass::kDeclarations:return {{Fact::kFlow},Scope::kValues};
+    case RecoveryPass::kConstants:return {{Fact::kConstants},Scope::kValues};
+    case RecoveryPass::kBindingValues:return {{Fact::kConstants,Fact::kCopies},Scope::kReadValues};
+    case RecoveryPass::kAliases:return {{Fact::kLiveness},Scope::kValueOrStorage};
     // Store identity elision retains RHS completion at its occurrence.
-    case RecoveryPass::kStoredResults:return {{Fact::kExpressions},Scope::kNormalization,true};
+    case RecoveryPass::kStoredResults:return {{Fact::kExpressions},Scope::kNormalization};
     // Removed definitions/initial values/bindings leave no retained reference
     // to the removed completion; other occurrence initialization is unchanged.
     case RecoveryPass::kDeadDefinitions:case RecoveryPass::kInitialValues:case RecoveryPass::kBindings:
-      return {{Fact::kDemand},Scope::kNormalization,true};
+      return {{Fact::kDemand},Scope::kNormalization};
     // A snapshot removes its own single definition/read while preserving the
     // RHS at the destination. It cannot make another producer newly dead.
     // Transport only an already established checkpoint, never create one.
-    case RecoveryPass::kSnapshots:return {{Fact::kLiveness},Scope::kStorage,false,true};
-    // Coalescing proves the new slot initialized before every remapped read.
-    case RecoveryPass::kStorage:return {{Fact::kLiveness,Fact::kInitializations},Scope::kStorage,true};
+    case RecoveryPass::kSnapshots:return {{Fact::kLiveness},Scope::kStorage,true};
+    // Coalescing consumes current slot initialization; the next projection
+    // independently re-establishes each occurrence's completed initialization.
+    case RecoveryPass::kStorage:return {{Fact::kLiveness,Fact::kInitializations},Scope::kStorage};
     // Preserve mandatory evaluation at its exact occurrence; only the common
     // inert residual disappears. Final read destinations and cleanup precede it.
-    case RecoveryPass::kStatementValues:return {{Fact::kStatements},Scope::kReadValues,true};
+    case RecoveryPass::kStatementValues:return {{Fact::kStatements},Scope::kReadValues};
     // Only proven inert occurrences disappear; no retained initialization moves.
-    case RecoveryPass::kInertStatements:return {{Fact::kStatements},Scope::kNormalization,true};
+    case RecoveryPass::kInertStatements:return {{Fact::kStatements},Scope::kNormalization};
     case RecoveryPass::kInertOperands:
-      return {{Fact::kExpressions},Scope::kNormalization,true};
-    case RecoveryPass::kLoopDeclarations:return {{},Scope::kGrammar,false};
+      return {{Fact::kExpressions},Scope::kNormalization};
+    case RecoveryPass::kLoopDeclarations:return {{},Scope::kGrammar};
     // Grammar-only const spelling changes neither values nor completion.
-    case RecoveryPass::kDeclarationKinds:return {{Fact::kFlow},Scope::kGrammar,true};
+    case RecoveryPass::kDeclarationKinds:return {{Fact::kFlow},Scope::kGrammar};
   }
   throw TreeStructureError::kOwnership;
 }
@@ -124,13 +124,6 @@ class RecoverySchedule {
     ++revision_.value;phase_=Phase::kCommit;
     if(transport)demand_checkpoint_=revision_;
     return true;
-  }
-  // Transfer only evidence of this pass's input projection, after first
-  // commit. A preservation contract cannot bless stale/unversioned evidence.
-  // This transports initialization alone, never flow/effect/name facts.
-  [[nodiscard]] std::optional<ProjectionRevision> TransportInitializations(ProjectionRevision source) const {
-    RequireTree(phase_==Phase::kCommit&&active_&&source.value==before_.value,TreeStructureError::kOwnership);
-    return PassContract(*active_).preserves_initialization?std::optional{revision_}:std::nullopt;
   }
   [[nodiscard]] bool Finish() {
     RequireTree(active_.has_value(),TreeStructureError::kOwnership);

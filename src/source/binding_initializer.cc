@@ -4,6 +4,7 @@
 #include "original_flow.h"
 #include "expression_observation.h"
 #include "recovery_schedule.h"
+#include "recovery_projection.h"
 #include "binding_interference.h"
 #include "storage_coalescing.h"
 #include "definition_elision.h"
@@ -311,6 +312,7 @@ class Initializers {
       budget_.Step(); plan_.entry_counts[i + 1] = plan_.entry_counts[i] +
           !plan_.omitted[loops_.initializer_roots[i].statement.value];
     }
+    CurrentFlow();
     AnalyzeExpressions();
     plan_.normal_stores = std::move(CurrentFacts().expressions->normal_stores);
     plan_.evaluations = std::move(CurrentFacts().expressions->evaluations);
@@ -318,23 +320,11 @@ class Initializers {
   }
  private:
   using Pass=RecoveryPass;
-  struct ExpressionFacts {
-    std::vector<std::optional<SymbolId>> bindings;
-    // Primitive normal-result identity is independent of retained evaluation.
-    // IDs denote values in the immutable primitive pool, not occurrences.
-    std::vector<std::optional<PrimitiveId>> literals;
-    // Effective expression identity after the current replacement plan. Each
-    // consumer uses this shared normalization instead of chasing old syntax.
-    std::vector<ExprId> roots;
-    std::vector<std::uint8_t> normal_stores;
-    std::vector<ExpressionEvaluation> evaluations;
-    std::vector<LexicalDependency> lexical;
-    std::vector<analysis::ValueKinds> kinds;
-  };
+  using ExpressionFacts=RecoveryExpressions;
   // All event-indexed and expression facts belong to one immutable projection.
   // A commit destroys this aggregate, so adding an analysis cannot accidentally
-  // omit its invalidation. Only explicitly transported initialization proofs
-  // live outside it; reusable flow capacity contains no published facts.
+  // omit its invalidation. Occurrence initialization is discarded too;
+  // destroyed cache admission is released, while the peak/work stay counted.
   struct ProjectionFacts {
     ProjectionRevision revision;
     std::optional<FlowInitializations> initializations;
@@ -346,10 +336,10 @@ class Initializers {
     std::optional<FlowCopies> copies;
     std::optional<FlowStatements> statements;
     std::optional<FlowCycles> cycles;
+    std::size_t admitted_bytes=0;
   };
-  // This read-occurrence proof is the only analysis transported across a
-  // projection commit. Its semantic contract and version are both required;
-  // unchanged original CFG/SSA revisions alone do not justify reuse.
+  // Occurrence proofs belong to the same exact projection as the shared flow.
+  // Every commit discards them; raw CFG/SSA revisions cannot justify reuse.
   struct InitializedOccurrences {
     ProjectionRevision revision;
     std::vector<std::uint8_t> reads;
@@ -399,12 +389,9 @@ class Initializers {
   }
   void BeginCommit() {
     if(!schedule_.Commit())return;
-    if(facts_ && facts_->flow)flow_storage_=std::move(*facts_->flow);
-    facts_.reset();
-    if(initialized_) {
-      if(const auto revision=schedule_.TransportInitializations(initialized_->revision))initialized_->revision=*revision;
-      else initialized_.reset();
-    }
+    const auto bytes=facts_?facts_->admitted_bytes:0;
+    facts_.reset();initialized_.reset();
+    budget_.Release(bytes);
   }
   void RequireAnalysis() const {schedule_.RequireAnalysis();}
   struct DeclarationCandidate {
@@ -653,7 +640,6 @@ class Initializers {
     const auto covered=AnalyzeFlowReadCoverage(flow,CurrentLiveness(),budget_.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&covered))throw *error;
     const auto& coverage=std::get<FlowReadCoverage>(covered);
-    const auto& expressions=AnalyzeExpressions();
     budget_.Admit(coverage.allocated_bytes,1);budget_.Step(coverage.work);
     std::vector<const FlowDefinition*> definitions;
     budget_.Array(definitions,uses_.size());
@@ -786,7 +772,8 @@ class Initializers {
       if(action.expression)transports[action.expression->value]=ExpressionTransport{action.value,undefined_value_};
       else omitted[action.statement.value]=1;
     }
-    const auto projected=BuildProjectedFlow(expressions,replacements,transports,omitted,{},transported_reads);
+    const auto trial=BuildProjectedFlow(replacements,transports,omitted,transported_reads);
+    const auto& projected=trial.flow;
     std::vector<std::uint8_t> invalid;budget_.Array(invalid,uses_.size());
     std::vector<SourceNameQuery> queries;std::vector<SymbolId> roots;
     budget_.Array(queries,projected.references.size());budget_.Array(roots,projected.references.size());
@@ -822,7 +809,7 @@ class Initializers {
       const auto environment=statement_owners_[owner->value];
       if(environments[action.owner.value]!=environments[environment->value] &&
           (ResourceFailures(tree_.identity.contract)==ResourceFailureScope::kObservable ||
-           expressions.lexical[action.value.value]==LexicalDependency::kEnclosingEnvironment))invalid[root->value]=1;
+           trial.expressions.lexical[action.value.value]==LexicalDependency::kEnclosingEnvironment))invalid[root->value]=1;
     }
     // A nested transport can rely on an outer transport's final environment.
     // The common adapter records that dependency, independently of statement
@@ -858,12 +845,10 @@ class Initializers {
     auto result=std::get<SourceNameResults>(std::move(analyzed));
     budget_.Admit(result.allocated_bytes,1);budget_.Step(result.work);return std::move(result.resolutions);
   }
-  RecoveryFlow BuildProjectedFlow(const ExpressionFacts& expressions,
-      std::span<const std::optional<ExprId>> replacements,
+  RecoveryProjection BuildProjectedFlow(std::span<const std::optional<ExprId>> replacements,
       std::span<const std::optional<ExpressionTransport>> transports,
-      std::span<const std::uint8_t> omitted,RecoveryFlow storage={},
-      std::span<const std::optional<SymbolId>> transported_reads={},
-      std::span<const std::optional<SymbolId>> normal_bindings={}) const {
+      std::span<const std::uint8_t> omitted,
+      std::span<const std::optional<SymbolId>> transported_reads={}) const {
     RequireAnalysis();
     std::vector<std::uint8_t> private_bindings;
     std::vector<SourceBindingScope> source_bindings;
@@ -884,51 +869,28 @@ class Initializers {
       if(site&&plan_.statements[site->statement.value])source_bindings[i]=ProjectedBindingScope{SourceRegionId{site->container.value}};
     }
     const LegacyFlowProjection projection{plan_.aliases,plan_.literals,replacements,
-        omitted,expressions.evaluations,expressions.normal_stores,plan_.statements,private_bindings,
+        omitted,{},{},plan_.statements,private_bindings,
         plan_.storage,plan_.undefined_stores,plan_.declaration_values,plan_.declaration_completions,
-        {source_regions_,source_occurrences_,source_bindings,source_shadows_,unique_spellings_,spellings_,name_spellings_},plan_.read_literals,transports,transported_reads,plan_.read_bindings,stable_entries_,normal_bindings,plan_.read_sources,plan_.statement_values,expressions.kinds,original_};
-    auto built=BuildRecoveryFlow(tree_,projection,budget_.Remaining(),std::move(storage));
-    if(const auto* error=std::get_if<TreeStructureError>(&built))throw *error;
-    auto flow=std::get<RecoveryFlow>(std::move(built));
-    budget_.Admit(flow.allocated_bytes,1);budget_.Step(flow.work);return flow;
+        {source_regions_,source_occurrences_,source_bindings,source_shadows_,unique_spellings_,spellings_,name_spellings_},plan_.read_literals,transports,transported_reads,plan_.read_bindings,stable_entries_,{},plan_.read_sources,plan_.statement_values,{},original_};
+    const RecoveryExpressionInput input{plan_,value_equations_,
+        std::span<const ExprId>(completions_).first(completion_count_),replacements,transports,original_};
+    auto prepared=PrepareRecoveryProjection(tree_,projection,input,budget_.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&prepared))throw *error;
+    auto result=std::get<RecoveryProjection>(std::move(prepared));
+    budget_.Admit(result.allocated_bytes,1);budget_.Step(result.work);return result;
   }
   const RecoveryFlow& CurrentFlow() const {
     schedule_.RequireFact(RecoveryFact::kFlow);
     auto& facts=CurrentFacts();
     if(facts.flow)return *facts.flow;
-    // Bootstrap without initialization assumptions. Completion dominance on
-    // this conservative graph proves facts before effect summaries are refined.
-    // Unmodeled signature-program occurrences receive no body-entry proof.
-    const auto build=[&](const ExpressionFacts& expressions) {
-      // CurrentFacts owns these exact-revision results. Hypothetical motion
-      // projections do not reuse them before their own value analysis exists.
-      return BuildProjectedFlow(expressions,plan_.replacements,plan_.transports,plan_.omitted,std::move(flow_storage_),{},expressions.bindings);
-    };
-    if(initialized_) {
-      if(!facts.expressions)facts.expressions=ComputeExpressions(InitializedReads());
-      facts.flow=build(*facts.expressions);return *facts.flow;
-    }
-    const auto conservative=ComputeExpressions({});
-    auto provisional=build(conservative);
-    auto analyzed=AnalyzeFlowInitializations(provisional,budget_.Remaining());
-    if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
-    // Bootstrap proofs justify removing impossible exceptional edges only.
-    // Do not publish their conservative dominance as the refined graph cache.
-    const auto initialization=std::get<FlowInitializations>(std::move(analyzed));
-    budget_.Admit(initialization.allocated_bytes,1);budget_.Step(initialization.work);
-    initialized_.emplace(InitializedOccurrences{schedule_.Revision(),{}});auto& initialized=initialized_->reads;
-    budget_.Array(initialized,tree_.expressions.size());
-    for(const auto& reference:provisional.references) {
-      budget_.Step();if(const auto* expression=std::get_if<ExprId>(&reference.site))
-        initialized[expression->value]=initialization.Completed(reference.binding,reference.point);
-    }
-    facts.expressions=ComputeExpressions(InitializedReads());
-    auto refined=RefineRecoveryFlowEffects(provisional,tree_,facts.expressions->evaluations,
-        facts.expressions->normal_stores,budget_.Remaining());
-    if(const auto* error=std::get_if<TreeStructureError>(&refined))throw *error;
-    const auto& refinement=std::get<FlowRefinement>(refined);
-    budget_.Admit(refinement.allocated_bytes,1);budget_.Step(refinement.work);
-    facts.flow=std::move(provisional);return *facts.flow;
+    // Current and trial use the same bootstrap, normal domains and exception
+    // refinement. No earlier projection's initialization proof is transported.
+    const auto before=budget_.ActiveBytes();
+    auto prepared=BuildProjectedFlow(plan_.replacements,plan_.transports,plan_.omitted);
+    facts.admitted_bytes+=budget_.ActiveBytes()-before;
+    initialized_.emplace(InitializedOccurrences{schedule_.Revision(),std::move(prepared.initialized_reads)});
+    facts.expressions=std::move(prepared.expressions);facts.flow=std::move(prepared.flow);
+    return *facts.flow;
   }
   const FlowCycles& CurrentCycles() const {
     schedule_.RequireFact(RecoveryFact::kCycles);auto& facts=CurrentFacts();
@@ -937,6 +899,7 @@ class Initializers {
       if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
       facts.cycles=std::get<FlowCycles>(std::move(analyzed));
       budget_.Admit(facts.cycles->allocated_bytes,1);budget_.Step(facts.cycles->work);
+      facts.admitted_bytes+=facts.cycles->allocated_bytes;
     }
     return *facts.cycles;
   }
@@ -950,6 +913,7 @@ class Initializers {
       if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
       facts.statements=std::get<FlowStatements>(std::move(analyzed));
       budget_.Admit(facts.statements->allocated_bytes,1);budget_.Step(facts.statements->work);
+      facts.admitted_bytes+=facts.statements->allocated_bytes;
     }
     return *facts.statements;
   }
@@ -961,7 +925,8 @@ class Initializers {
     auto analyzed=AnalyzeFlowLiveness(flow,budget_.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
     facts.liveness=std::get<FlowLiveness>(std::move(analyzed));
-    budget_.Admit(facts.liveness->allocated_bytes,1);budget_.Step(facts.liveness->work);return *facts.liveness;
+    budget_.Admit(facts.liveness->allocated_bytes,1);budget_.Step(facts.liveness->work);
+    facts.admitted_bytes+=facts.liveness->allocated_bytes;return *facts.liveness;
   }
   const FlowDemand& CurrentDemand() const {
     schedule_.RequireFact(RecoveryFact::kDemand);
@@ -971,6 +936,7 @@ class Initializers {
       if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
       facts.demand=std::get<FlowDemand>(std::move(analyzed));
       budget_.Admit(facts.demand->allocated_bytes,1);budget_.Step(facts.demand->work);
+      facts.admitted_bytes+=facts.demand->allocated_bytes;
     }
     return *facts.demand;
   }
@@ -985,6 +951,7 @@ class Initializers {
       if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
       facts.initializations=std::get<FlowInitializations>(std::move(analyzed));
       budget_.Admit(facts.initializations->allocated_bytes,1);budget_.Step(facts.initializations->work);
+      facts.admitted_bytes+=facts.initializations->allocated_bytes;
     }
     return *facts.initializations;
   }
@@ -1238,20 +1205,7 @@ class Initializers {
       }else DiscardDeclaration(completion.statement);
     }
   }
-  bool MutableBinding(SymbolId symbol) const {
-    // Only a native writable declarative binding has an unobservable PutValue.
-    // Import/capture/self bindings need their own mutability/environment proof;
-    // a property target can invoke a setter even when the value is unchanged.
-    const auto& binding = tree_.symbols[symbol.value];
-    if (binding.declaration == DeclarationKind::kConst) return false;
-    switch (binding.kind) {
-      case BindingKind::kLocal: case BindingKind::kCompilerTemporary:
-      case BindingKind::kParameter: case BindingKind::kCatchParameter: return true;
-      case BindingKind::kCapture: case BindingKind::kModule:
-      case BindingKind::kFunctionSelf: return false;
-    }
-    throw TreeStructureError::kBinding;
-  }
+  bool MutableBinding(SymbolId symbol) const {return WritableRecoveryBinding(tree_,symbol);}
   void ElideStoredResults() {
     // Analysis and proposals observe one immutable projection. Only this
     // commit changes replacements; consumers derive their own current facts.
@@ -1273,8 +1227,16 @@ class Initializers {
     schedule_.RequireFact(RecoveryFact::kExpressions);
     auto& facts=CurrentFacts();
     if(!facts.expressions) {
-      if(initialized_)facts.expressions=ComputeExpressions(InitializedReads());
-      else CurrentFlow();
+      // Value equations can be consumed without an initialization assumption.
+      // These conservative effects cannot authorize removing a required read.
+      // A flow consumer replaces this product with the common completed
+      // bootstrap before publishing graph-dependent facts. Never force full
+      // dominance/flow merely to inspect a normal-result identity.
+      const RecoveryExpressionInput input{plan_,value_equations_,
+          std::span<const ExprId>(completions_).first(completion_count_),plan_.replacements,plan_.transports,original_};
+      const auto before=budget_.ActiveBytes();
+      facts.expressions=AnalyzeRecoveryExpressions(tree_,input,{},budget_);
+      facts.admitted_bytes+=budget_.ActiveBytes()-before;
     }
     return *facts.expressions;
   }
@@ -1333,146 +1295,8 @@ class Initializers {
     if(const auto primitive=plan_.literals[id.value])return FlowPrimitiveReference{*primitive};
     return FlowBindingValue{plan_.ReadBinding(id)};
   }
-  FlowValueEquation ProjectedValueEquation(ExprId id) const {
-    RequireAnalysis();
-    if(const auto transport=plan_.transports[id.value])return FlowPrimitiveReference{transport->replacement};
-    if(const auto replacement=plan_.replacements[id.value])return FlowExpressionValue{*replacement};
-    if(const auto primitive=plan_.read_literals[id.value])return FlowPrimitiveReference{*primitive};
-    if(plan_.read_sources[id.value])return FlowBindingValue{*plan_.read_sources[id.value]};
-    auto equation=value_equations_[id.value];
-    if(const auto* read=std::get_if<FlowBindingValue>(&equation)) {
-      return ProjectedBindingValue(read->binding);
-    }
-    return equation;
-  }
   const TreeLiteral& LiteralValue(PrimitiveId literal) const {return plan_.primitives[literal.value];}
   bool SameLiteral(PrimitiveId left,PrimitiveId right) const {return SamePrimitiveValue(LiteralValue(left),LiteralValue(right));}
-  bool LiteralTruth(PrimitiveId literal) const {return PrimitiveTruth(LiteralValue(literal),tree_.texts);}
-  bool LiteralNullish(PrimitiveId literal) const {return PrimitiveNullish(LiteralValue(literal));}
-  ExpressionFacts ComputeExpressions(std::span<const std::uint8_t> initialized) const {
-    RequireAnalysis();
-    ExpressionFacts facts;
-    budget_.Array(facts.bindings, tree_.expressions.size());
-    budget_.Array(facts.literals, tree_.expressions.size());
-    budget_.Array(facts.roots, tree_.expressions.size());
-    budget_.Array(facts.normal_stores, tree_.expressions.size());
-    budget_.Array(facts.evaluations, tree_.expressions.size());
-    budget_.Array(facts.lexical,tree_.expressions.size());
-    budget_.Array(facts.kinds,original_?tree_.expressions.size():0);
-    auto& stored = facts.bindings;
-    // All facts describe one unchanged projection. The analysis is const and
-    // publishes no plan state; proposal/commit consumers own all mutations.
-    // Scan's finish order is postorder even when expression IDs are reversed.
-    // Each owned child is consumed once. No repeated subtree/type/CFG walk.
-    for (std::size_t at = 0; at < completion_count_; ++at) {
-      budget_.Step(); const auto id = completions_[at];
-      const auto& node = tree_.expressions[id.value].expression;
-      // Normal-completion fact: the result is still the value of this binding.
-      // ECMA-262 assignment/prefix update write before returning that value;
-      // comma forwards its right completion, and choice joins must agree.
-      // Unknown calls/coercions/suspensions produce no fact. No effect moves,
-      // and a throwing/TDZ RHS still executes before any projected outer store.
-      // Use the existing finish order, not arena order or a local syntax match.
-      auto& result = stored[id.value];facts.roots[id.value]=id;
-      auto& literal=facts.literals[id.value];
-      analysis::ValueKinds unmodeled;
-      auto& kinds=original_?facts.kinds[id.value]:unmodeled;
-      kinds=original_&&original_->normal_kinds[id.value]?*original_->normal_kinds[id.value]:analysis::ValueKinds::Language();
-      const auto join = [&](ExprId left, ExprId right) -> std::optional<SymbolId> {
-        return stored[left.value] == stored[right.value] ? stored[left.value] : std::nullopt;
-      };
-      if(const auto transport=plan_.transports[id.value]) {
-        literal=transport->replacement;kinds=PrimitiveKinds(LiteralValue(*literal));
-        facts.evaluations[id.value]=ExpressionEvaluation::kInert;
-        facts.lexical[id.value]=LexicalDependency::kReferences;
-        continue;
-      }
-      if (const auto replacement = plan_.replacements[id.value]) {
-        facts.roots[id.value]=facts.roots[replacement->value];
-        result = stored[replacement->value];
-        literal=facts.literals[replacement->value];
-        if(original_)kinds=facts.kinds[replacement->value];
-        facts.evaluations[id.value] = facts.evaluations[replacement->value];
-        facts.lexical[id.value]=facts.lexical[replacement->value];
-        continue;
-      }
-      const auto equation=ProjectedValueEquation(id);
-      auto evaluation = NormalValueEvaluation(node,facts.kinds,ResourceFailures(tree_.identity.contract));
-      auto lexical=IntrinsicLexicalDependency(node);
-      if (const auto* read = std::get_if<SymbolExpr>(&node)) {
-        literal=plan_.ReadLiteral(id,read->symbol);
-        if (!literal) {
-          const auto source = plan_.ReadBinding(id,read->symbol);
-          result = source;
-        }
-        if (literal || (!initialized.empty() && initialized[id.value]))
-          evaluation = ExpressionEvaluation::kInert;
-      } else if (const auto* assignment = std::get_if<AssignmentExpr>(&node)) {
-        literal=facts.literals[assignment->value.value];
-        if (const auto* target = std::get_if<SymbolTarget>(&assignment->target);
-            target && MutableBinding(target->symbol)) {
-          result = plan_.Storage(target->symbol);
-          facts.normal_stores[id.value] = !initialized.empty() && initialized[id.value];
-        }
-      } else if (const auto* update = std::get_if<UpdateExpr>(&node)) {
-        if (update->result == UpdateResult::kPrefix && MutableBinding(update->symbol)) result = plan_.Storage(update->symbol);
-      } else if (const auto* sequence = std::get_if<SequenceExpr>(&node)) result = stored[sequence->right.value];
-      else if (const auto* choice = std::get_if<ConditionalExpr>(&node)) result = join(choice->consequent, choice->alternate);
-      else if (const auto* logical = std::get_if<LogicalExpr>(&node)) result = join(logical->left, logical->right);
-      else if (const auto* receiver = std::get_if<ThisExpr>(&node)) {
-        if (receiver->owner == tree_.owner && tree_.callable != CallableKind::kDerivedConstructor &&
-            !IsArrowCallable(tree_.callable)) evaluation = ExpressionEvaluation::kInert;
-      }
-      // ECMA-262 completion values: sequence/assignment forward a value;
-      // conditional joins equal values or selects a known primitive condition;
-      // logical selection uses ToBoolean/nullish, never user coercion. Unknown
-      // operators/calls/updates/suspensions retain no primitive fact. Effects,
-      // initialization and source ownership are still analyzed separately.
-      std::visit([&](const auto& value) {
-        using T=std::decay_t<decltype(value)>;
-        if constexpr(std::is_same_v<T,FlowPrimitiveReference>)literal=value.primitive;
-        else if constexpr(std::is_same_v<T,FlowExpressionValue>)literal=facts.literals[value.expression.value];
-        else if constexpr(std::is_same_v<T,FlowChoiceValue>) {
-          const auto a=facts.literals[value.consequent.value],b=facts.literals[value.alternate.value];
-          if(const auto condition=facts.literals[value.condition.value]) {
-            const auto selected=LiteralTruth(*condition)?value.consequent:value.alternate;
-            literal=facts.literals[selected.value];result=stored[selected.value];
-          } else if(a&&b&&SameLiteral(*a,*b))literal=a;
-        } else if constexpr(std::is_same_v<T,FlowLogicalValue>) {
-          if(const auto left=facts.literals[value.left.value]) {
-            bool right=false;
-            switch(value.operation) {
-              case TreeLogical::kAnd:right=LiteralTruth(*left);break;
-              case TreeLogical::kOr:right=!LiteralTruth(*left);break;
-              case TreeLogical::kNullish:right=LiteralNullish(*left);break;
-            }
-            literal=right?facts.literals[value.right.value]:left;
-            result=stored[(right?value.right:value.left).value];
-          }
-        } else static_assert(std::is_same_v<T,UnknownFlowValue>||std::is_same_v<T,FlowBindingValue>);
-      },equation);
-      if(literal)kinds=PrimitiveKinds(LiteralValue(*literal));
-      else if(original_) {
-        if(const auto* value=std::get_if<FlowExpressionValue>(&equation))kinds=facts.kinds[value->expression.value];
-      }
-      // Original domains remain normal-result proofs. Source replacements use
-      // their actual producer's domain; no type fact bypasses child GetValue,
-      // initialization or effect completion.
-      VisitExpressionChildren(tree_, node, [&](ExprId child) {
-        budget_.Step(); if (facts.evaluations[child.value] == ExpressionEvaluation::kRequired)
-          evaluation = ExpressionEvaluation::kRequired;
-        switch(facts.lexical[child.value]) {
-          case LexicalDependency::kReferences:break;
-          case LexicalDependency::kCallableOwner:
-            if(lexical==LexicalDependency::kReferences)lexical=LexicalDependency::kCallableOwner;
-            break;
-          case LexicalDependency::kEnclosingEnvironment:lexical=LexicalDependency::kEnclosingEnvironment;break;
-        }
-      });
-      facts.evaluations[id.value] = evaluation;facts.lexical[id.value]=lexical;
-    }
-    return facts;
-  }
   std::vector<std::optional<ExprId>> PlanStoredResultElisions(const ExpressionFacts& facts) const {
     std::vector<std::optional<ExprId>> replacements;
     budget_.Array(replacements, tree_.expressions.size());
@@ -1652,6 +1476,7 @@ class Initializers {
       if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
       facts.constants=std::get<FlowConstants>(std::move(analyzed));
       budget_.Admit(facts.constants->allocated_bytes,1);budget_.Step(facts.constants->work);
+      facts.admitted_bytes+=facts.constants->allocated_bytes;
     }
     return *facts.constants;
   }
@@ -1666,6 +1491,7 @@ class Initializers {
       if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
       facts.copies=std::get<FlowCopies>(std::move(analyzed));
       budget_.Admit(facts.copies->allocated_bytes,1);budget_.Step(facts.copies->work);
+      facts.admitted_bytes+=facts.copies->allocated_bytes;
     }
     return *facts.copies;
   }
@@ -2053,7 +1879,6 @@ class Initializers {
   RecoverySchedule schedule_;
   mutable std::optional<InitializedOccurrences> initialized_;
   mutable std::optional<ProjectionFacts> facts_;
-  mutable RecoveryFlow flow_storage_{};
 };
 }
 std::variant<BindingInitializers, TreeStructureError> PlanBindingInitializers(

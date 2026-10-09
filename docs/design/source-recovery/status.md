@@ -36,6 +36,39 @@
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
 
+### 2026-10-09：规则254，当前计划与试算共享投射事实入口
+
+- `RecoveryProjection` 持有同一候选的 expression facts、共同流图和
+  occurrence initialization。CurrentFlow 与快照试算实际调用相同
+  `PrepareRecoveryProjection`；候选不再借当前计划的 effects/domains。
+- replacement/transport 的事实按实际 producer/primitive 和投射依赖
+  顺序计算，迭代 DFS 不依赖 arena/原 finish 顺序。保守初始化 bootstrap
+  包含所有 completion 边，refinement 只消除已证明不可能的 throw。
+- 删除手工跨 commit 转运初始化证明的实际路径、公共内部 API 和
+  pass preservation flags；所有 occurrence proof 随 commit 失效。
+  demand/snapshot checkpoint 仍是调度证据，不冒充可重用分析。
+- 无初始化假设的 normal-result 查询继续惰性执行共同纯分析；流消费者
+  与最终输出强制共同 completed bootstrap。缓存 admission 属于该
+  ProjectionFacts，commit 销毁所有缓存/初始化证明后释放占用；峰值和
+  工作量保留。旧 flow buffer 复用暂退，避免误释放仍持有的容量。
+- 最终冻结版本31个目标构建50.9162秒通过，fresh固定 pasteboard 导出
+  2.6827秒通过，精确63/63 CTests548.1334秒通过；名字集合与selection
+  完全匹配。记录在build/stage-one/trial-projection-verification。
+- 固定输入19records/10complete/0partial/9no-module，10语法检查通过，
+  changed_sources=[]（对规则253），原输入SHA-256前后相同。
+- unknown producer 替换 Number read、删除初始化声明的两项错误修改
+  fresh测试均SIGABRT；恢复后最终验证通过。反转arena/根列表、循环
+  replacement、raw fallback、exact/one-short预算与工作量均通过。
+- 800组变量曾耗尽默认预算：阶段临时内存和已销毁缓存被累计计账。
+  修复所有权/峰值计账后保持原预算通过，400→800工作量约2.075倍；
+  无样本/布局准入。初次宽头重编译暴露既有literal_plan.cc kNoop
+  未穷尽switch警告，本轮最终增量构建无warning/error，未扩大其他优化。
+- 修正旧测试对已省略/未建模读取的inert断言，仍检查所有保留观察并
+  对全部生成源码做独立执行对照。初步或失败运行不计最终验收。
+- 全部五项主干仍开放。此处未证明完整原始 effects/protocol 映射、
+  local/catch activation、完整候选 lifetime delta 或全 pass 收敛；
+  表现层优化及既定大范围验证暂停不变。
+
 ### 2026-10-09：规则253，共同 public property 引用与完成阶段
 
 - 主干第1项继续实施：共同源码 adapter 对所有 MemberExpr/MemberTarget 发布

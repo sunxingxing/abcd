@@ -3,6 +3,7 @@
 #include "../../../src/source/expression_children.h"
 #include "../../../src/source/loop_syntax.h"
 #include "../../../src/source/nullish_syntax.h"
+#include "../../../src/source/recovery_flow.h"
 #include "abcd/source/tree_printer.h"
 #include "../../support/analysis/ssa_fixture.h"
 #include <nlohmann/json.hpp>
@@ -198,7 +199,19 @@ std::uint64_t Sequence(unsigned form,unsigned count,bool reverse,bool emit) {
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
   const auto plan=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
   const bool inert=form<=4||form==8||form==9||form==10||form==11||form==12||form==19;
-  if(probe)test::Check((plan.evaluations[probe->value]==ExpressionEvaluation::kInert)==inert);
+  if(probe) {
+    const LegacyFlowProjection projection{plan.aliases,plan.literals,plan.replacements,plan.omitted,
+        plan.evaluations,plan.normal_stores,plan.statements,{},plan.storage,plan.undefined_stores,
+        plan.declaration_values,plan.declaration_completions,{},plan.read_literals,plan.transports,
+        {},plan.read_bindings,{}, {},plan.read_sources,plan.statement_values};
+    const auto flow=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,projection));
+    // A removed occurrence has no current initialization point. Do not require
+    // the retired cross-revision proof to give it an inert summary. Retained
+    // observations still satisfy the independent language obligation below;
+    // the source runner checks every generated result against original behavior.
+    if(flow.value_uses[probe->value]!=FlowValueUse::kUnmodeled)
+      test::Check((plan.evaluations[probe->value]==ExpressionEvaluation::kInert)==inert);
+  }
   std::ostringstream output;const auto printed=PrintFunctionTree(tree,output);test::Check(std::holds_alternative<PrintedFunction>(printed));
   CheckExpressionRanges(tree,plan,std::get<PrintedFunction>(printed),output.str().size());
   if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"sequence",form},{"count",count},{"inert",inert}}<<'\n';

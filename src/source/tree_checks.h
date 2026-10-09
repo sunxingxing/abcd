@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_TREE_CHECKS_H_
 
 #include "tree_structure.h"
+#include <algorithm>
 
 namespace abcd::source {
 inline void RequireTree(bool condition, TreeStructureError error) {
@@ -17,6 +18,13 @@ class TreeCheckBudget {
   void Admit(std::size_t count, std::size_t width) {
     RequireTree(count <= remaining_.bytes / width, TreeStructureError::kResourceLimit);
     remaining_.bytes -= count * width;
+    peak_bytes_ = std::max(peak_bytes_,initial_.bytes-remaining_.bytes);
+  }
+  // Release only a destroyed owner's admitted storage. Peak admission and
+  // cumulative work survive release; credit is not permission to reuse facts.
+  void Release(std::size_t bytes) {
+    RequireTree(bytes<=ActiveBytes(),TreeStructureError::kOwnership);
+    remaining_.bytes+=bytes;
   }
   template <class T> void Array(std::vector<T>& values, std::size_t count) {
     Admit(count, sizeof(T));
@@ -24,12 +32,14 @@ class TreeCheckBudget {
     values.resize(count);
     Admit(values.capacity() - count, sizeof(T));
   }
-  [[nodiscard]] std::size_t Bytes() const { return initial_.bytes - remaining_.bytes; }
+  [[nodiscard]] std::size_t Bytes() const { return peak_bytes_; }
+  [[nodiscard]] std::size_t ActiveBytes() const {return initial_.bytes-remaining_.bytes;}
   [[nodiscard]] std::uint64_t Work() const { return initial_.work - remaining_.work; }
   [[nodiscard]] analysis::SemanticBudget Remaining() const { return remaining_; }
  private:
   analysis::SemanticBudget initial_;
   analysis::SemanticBudget remaining_;
+  std::size_t peak_bytes_=0;
 };
 
 // Scope activation uses one slot per distinct spelling. SymbolId references

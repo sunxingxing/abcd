@@ -2225,7 +2225,7 @@ void StatementEntryOracle() {
   Check(rejects([&]{schedule.Start(RecoveryPass::kStatementValues);}));
   std::cout<<"independent statement entry forests "<<cases<<'\n';
 }
-void InitializationTransfers() {
+void InitializationInvalidation() {
   const auto rejects=[](const auto& action) {
     try {action();return false;}catch(TreeStructureError error){return error==TreeStructureError::kOwnership;}
   };
@@ -2234,17 +2234,15 @@ void InitializationTransfers() {
       schedule.Start(pass);Check(!schedule.Finish());
     }
   };
-  // Independently specified obligations: no test expectation calls PassContract.
-  // A wrong preservation flag or unchecked phase/version must fail this table.
+  // Every commit invalidates occurrence initialization. There is no per-pass
+  // preservation whitelist or API for blessing an old proof as a new one.
   const std::array obligations{
-      std::pair{RecoveryPass::kDeclarations,false},std::pair{RecoveryPass::kConstants,false},
-      std::pair{RecoveryPass::kBindingValues,false},std::pair{RecoveryPass::kAliases,false},
-      std::pair{RecoveryPass::kStoredResults,true},std::pair{RecoveryPass::kDeadDefinitions,true},
-      std::pair{RecoveryPass::kInitialValues,true},std::pair{RecoveryPass::kBindings,true},
-      std::pair{RecoveryPass::kSnapshots,false},std::pair{RecoveryPass::kStorage,true},
-      std::pair{RecoveryPass::kInertStatements,true},std::pair{RecoveryPass::kInertOperands,true},std::pair{RecoveryPass::kStatementValues,true},
-      std::pair{RecoveryPass::kLoopDeclarations,false},std::pair{RecoveryPass::kDeclarationKinds,true}};
-  for(const auto [pass,preserves]:obligations)for(bool commit:{false,true}) {
+      RecoveryPass::kDeclarations,RecoveryPass::kConstants,RecoveryPass::kBindingValues,
+      RecoveryPass::kAliases,RecoveryPass::kStoredResults,RecoveryPass::kDeadDefinitions,
+      RecoveryPass::kInitialValues,RecoveryPass::kBindings,RecoveryPass::kSnapshots,
+      RecoveryPass::kStorage,RecoveryPass::kInertStatements,RecoveryPass::kInertOperands,
+      RecoveryPass::kStatementValues,RecoveryPass::kLoopDeclarations,RecoveryPass::kDeclarationKinds};
+  for(const auto pass:obligations)for(bool commit:{false,true}) {
     RecoverySchedule schedule;
     if(pass==RecoveryPass::kDeclarations||pass==RecoveryPass::kAliases)cleanup(schedule);
     if(pass==RecoveryPass::kSnapshots||pass==RecoveryPass::kStorage||
@@ -2262,42 +2260,32 @@ void InitializationTransfers() {
       if(pass==RecoveryPass::kBindings){schedule.Start(RecoveryPass::kInitialValues);Check(!schedule.Finish());}
     }
     const auto source=schedule.Revision();
-    Check(rejects([&]{(void)schedule.TransportInitializations(source);}));
     schedule.Start(pass);schedule.RequireCurrent(source);
-    Check(rejects([&]{(void)schedule.TransportInitializations(source);}));
     if(commit) {
       Check(schedule.Commit());const auto target=schedule.Revision();
       Check(target.value==source.value+1);
-      const auto transported=schedule.TransportInitializations(source);
-      Check(transported.has_value()==preserves);
-      if(transported)Check(transported->value==target.value);
-      Check(rejects([&]{(void)schedule.TransportInitializations(target);}));
-      Check(rejects([&]{(void)schedule.TransportInitializations({target.value+1});}));
-      Check(rejects([&]{schedule.RequireCurrent(target);})); // No reads in commit, even transported ones.
+      Check(rejects([&]{schedule.RequireCurrent(target);})); // No reads during a partly committed batch.
       Check(!schedule.Commit()); // Further writes do not create another evidence revision.
-      Check(schedule.TransportInitializations(source).has_value()==preserves);
       Check(schedule.Finish());schedule.RequireCurrent(target);
       Check(rejects([&]{schedule.RequireCurrent(source);}));
     }else{Check(!schedule.Finish());schedule.RequireCurrent(source);}
-    Check(rejects([&]{(void)schedule.TransportInitializations(source);}));
   }
   for(unsigned count:{0U,1U,200U,201U,400U,800U}) {
     RecoverySchedule schedule;auto proof=schedule.Revision();
     for(unsigned i=0;i<count;++i) {
-      // Consecutive preserving consumers must transport from the last proved
-      // input, not from the immutable original CFG revision or a batch output.
+      // Consecutive commits cannot carry an old occurrence proof through a
+      // normalization pass. Fresh analysis owns the new revision.
       schedule.Start(i%2?RecoveryPass::kStoredResults:RecoveryPass::kInertOperands);
       schedule.RequireCurrent(proof);Check(schedule.Commit());
-      const auto next=schedule.TransportInitializations(proof);Check(next.has_value());
-      if(i)Check(rejects([&]{(void)schedule.TransportInitializations({proof.value-1});}));
-      proof=*next;Check(!schedule.Commit());Check(schedule.Finish());schedule.RequireCurrent(proof);
+      Check(rejects([&]{schedule.RequireCurrent(proof);}));
+      const auto next=schedule.Revision();Check(!schedule.Commit());Check(schedule.Finish());
+      Check(rejects([&]{schedule.RequireCurrent(proof);}));proof=next;schedule.RequireCurrent(proof);
     }
     Check(proof.value==count);
-    schedule.Start(RecoveryPass::kConstants);Check(schedule.Commit());
-    Check(!schedule.TransportInitializations(proof));Check(schedule.Finish());
+    schedule.Start(RecoveryPass::kConstants);Check(schedule.Commit());Check(schedule.Finish());
     Check(rejects([&]{schedule.RequireCurrent(proof);}));
   }
-  std::cout<<"initialization evidence phase/revision/transport counterexamples passed\n";
+  std::cout<<"initialization evidence phase/revision/invalidation counterexamples passed\n";
 }
 void PassContracts() {
   const auto rejects=[](const auto& action) {
@@ -2315,9 +2303,6 @@ void PassContracts() {
   const auto original=schedule.Revision();
   schedule.RequireFact(RecoveryFact::kExpressions);
   schedule.RequireFact(RecoveryFact::kFlow); // Joint expression/flow bootstrap.
-  // Preservation is a commit-time proof transfer, never permission to reuse
-  // an analysis while the source/destination revisions are unspecified.
-  Check(rejects([&]{(void)schedule.TransportInitializations(original);}));
   Check(rejects([&]{schedule.RequireFact(RecoveryFact::kConstants);}));
   Check(rejects([&]{schedule.RequireFact(RecoveryFact::kCopies);}));
   Check(rejects([&]{schedule.Start(RecoveryPass::kAliases);}));
@@ -2393,4 +2378,4 @@ void PassContracts() {
   Check(!unfinished.DemandCleanupNeeded());
   std::cout<<"pass ownership, dependency and cleanup counterexamples passed\n";
 }
-int main(){InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();AvailableCopyOracle();TransitiveCopyOracle();CompletionCycles();LocalCompletionOracle();StatementObservationOracle();StatementEntryOracle();InitializationTransfers();PassContracts();SnapshotCheckpoints();StableValues();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+int main(){InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();AvailableCopyOracle();TransitiveCopyOracle();CompletionCycles();LocalCompletionOracle();StatementObservationOracle();StatementEntryOracle();InitializationInvalidation();PassContracts();SnapshotCheckpoints();StableValues();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

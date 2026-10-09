@@ -4,6 +4,53 @@
 规则172/f656e763是迁移基线。范围为普通函数临时变量与循环携带值，
 不推倒重写解码、IR、结构恢复或验证链，不扩大语料/恢复暂停事项。
 
+## 规则254：当前计划与试算共享事实提供者
+
+`PrepareRecoveryProjection` 对传入的完整表达式投射执行共同闭环：
+保守 `AnalyzeRecoveryExpressions` -> `BuildRecoveryFlow` ->
+所有 completion 边上的 `AnalyzeFlowInitializations` -> 当前 occurrence
+初始化与效果 refinement。正常值域、成功写回、primitive identity、
+词法依赖与 flow 来自同一候选。当前 pass 的 `CurrentFlow` 以及快照
+移动试算均实际消费该入口；试算不接收当前计划的 ExpressionFacts。
+
+原始值域只描述原 occurrence 的 normal result；replacement 取实际
+producer 的 facts，transport 取实际 primitive。表达式事实保持纯分析，
+不写 BindingInitializers。投射依赖按迭代三色 DFS 的完成顺序计算：
+source child edges 加 replacement edges，transport 切断旧 RHS 依赖；
+不得依赖 expression arena 或原 canonical finish 列表排列。循环替换
+无法表示有限表达式，返回 typed ownership error，不是形状准入限制。
+该分析 O(X + D)，其中 X 是表达式数，D 是子节点及替换依赖数；
+复用现有 language child adapter，无新依赖或第二张语义表。
+共同 bootstrap 在每个阶段扣除全部同时存活的保守占用；conservative
+expression facts 和 initialization/dominance scratch 在各阶段边界释放。
+报告 admitted peak，不把已释放 scratch 累加成后续打印的持续占用；
+work 仍累计全部阶段。ProjectionFacts 记录自己产生的缓存 admission；
+commit 销毁缓存及 occurrence proof 后释放其占用，peak 和 work 不回退。
+旧 flow buffer 复用暂退，避免把继续持有的容量当作已释放；未来若复用
+必须明确接入独立容量所有权。纯 normal-result 查询仍可惰性消费同一
+表达式提供者的保守结果；流消费者与最终输出强制共同 completed
+bootstrap，不以 conservative negatives 冒充完整初始化分析。
+固定 record 和800组变量暴露该成本回归并验证修复，预算未
+放宽。该局部资源证明不能代替整个进程 RSS 或全 pass 成本验收。
+
+每次 commit 使 flow、表达式事实及 occurrence 初始化证明一并失效。
+旧 `RecoverySchedule::TransportInitializations`、`preserves_initialization`
+标记以及 Initializers 手工转运路径已删除；下一投射重新证明初始化。
+调度阶段与 demand/snapshot consumer checkpoint 保留各自职责，不能把
+重新分析等同于多轮 pass 收敛。版本守卫禁止读取提交中的不完整批次。
+
+单元反例使用 synthetic analysis inputs，不冒充完整原始 IR 的证明。
+未知 producer 替代 Number read 时，不沿用旧 Number 域；删除声明
+候选不沿用旧 initialized proof；反转 arena/根列表、200/201/400/800、
+exact/one-short resource/work、循环投射与 raw fallback 都验证共同入口。
+整个旧有有限源码执行集继续检查生产输出；全 suite/扩展 corpus/RSS/
+benchmark/DFX/agents 暂停不变。
+
+此子步关闭的是试算消费当前 ExpressionFacts 的决策路径，未关闭全部
+试算交付：原始 operation/region/protocol 多对多映射、普通 local/catch
+activation identity、完整候选声明/生命期 delta、最终值事实及依赖驱动
+pass 重跑/成本仍须完成。因此五个主干交付均保持开放，继续原始模型。
+
 ## 唯一语义入口
 
 生产入口位于通过 VerifyTreeFlow/CheckTreeOperands/
