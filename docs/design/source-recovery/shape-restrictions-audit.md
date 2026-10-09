@@ -3259,3 +3259,21 @@ and is not expanded. New namespace-graph tests separate restoration from motion
 eligibility; source tests cover combined behavior. No sample/layout, opcode list,
 same-block, adjacency, or fixed selection-count branch was introduced. Raw IR,
 ordinary units, other candidate consumers and convergence remain mainline work.
+
+
+### Rules267: original inline range proof validity
+
+Inline original ranges now use actual source evaluation entry and normal completion
+plus shared operand/completion dependencies. Live-result and correspondence checks
+state ownership/availability obligations; they do not require a source temporary,
+same block, adjacency, producer list or fixed graph layout. No raw opcode variant
+is interpreted again, and raw effect flags do not bypass current language effects.
+Changed projections invalidate through the common graph, including deleted intrinsic
+events. Source arenas are re-verified after permutation, not merely relabelled on
+stale annotations. Missing intervals retain conservative current domains.
+
+Three production mutants disable inline consumption, its path dependency or
+missing-expression-boundary fallback and fail
+the semantic checks. Independent source execution covers unchanged normal results
+and altered comparison behavior. The full phase/exception correspondence, ordinary
+units, remaining trials and global pass convergence remain OPEN mainline work.

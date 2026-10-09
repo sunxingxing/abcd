@@ -162,6 +162,16 @@ class FlowBuilder {
       }
     }
     copy(result.statements,statements_);copy(result.expressions,expressions_);
+    Resize(result.original_results,result.original?result.original->operations.size():0);
+    for(std::size_t i=0;i<result.original_results.size();++i) {
+      budget_.Step();auto& occurrence=result.original_results[i];occurrence.reset();
+      const auto& operation=result.original->operations[i];
+      if(operation.life!=analysis::ValueLife::kLive||!operation.result||!operation.expression)continue;
+      const auto expression=*operation.expression;
+      RequireTree(expression.value<result.normal_exits.size(),Error::kOwnership);
+      if(const auto normal=result.normal_exits[expression.value])
+        occurrence=FlowOriginalResult{expression,expressions_[expression.value],*normal};
+    }
     const auto& scopes=projection_.source_scopes;
     RequireTree(scopes.occurrences.empty() || scopes.occurrences.size()==tree_.statements.size(),Error::kOwnership);
     RequireTree(scopes.bindings.empty() || scopes.bindings.size()==tree_.symbols.size(),Error::kOwnership);

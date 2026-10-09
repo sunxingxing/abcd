@@ -3075,3 +3075,39 @@ This closes the known partial snapshot delta and unchecked subset path. Other
 candidate consumers, complete raw IR correspondence, ordinary/catch/reentry unit
 identity, dependency convergence and milestone acceptance still require delivery.
 All five backbone deliveries remain OPEN; final bounded evidence is in status.md.
+
+
+### Rules267: inline original results on the common completion graph
+
+RecoveryFlow now publishes an OpId-indexed OriginalResult evaluation interval:
+the checked source expression, its actual current entry and its normal continuation.
+Omitted/unmapped raw results have no interval. This records correspondence, not
+dynamic value equality, a completed store, or permission to move an effect.
+The current source producer remains the authority for source-specific effects;
+raw normal/before_throw flags cannot simply override language semantics.
+
+AnalyzeFlowNormalKinds consumes the raw result ValueDefinition domain through
+that interval and the existing sparse operand/completion invalidation graph.
+Each interval adds one completion dependency from current entry to result;
+changed replacements/transports seed their actual boundary even when the old
+intrinsic event is gone. This covers path-dependent original ranges without a
+per-result graph walk. The joined original normal_kinds array also contains
+operand hints and is deliberately not used as an inline certificate.
+
+Inline result precision and successful source-store precision are independent
+inputs to the same equations. Losing one does not invalidate the other by fiat;
+missing both, changed operands/path, unknown environments or absent source
+boundaries retain current language domains. Original domains only tighten a
+current domain when they are a subset, and the finite lattice still widens to
+convergence. Shared expression/effect refinement consumes the resulting domains
+in the existing producer order; no consumer edits a plan or retains old facts.
+
+Tests include copied/reallocated SSA, split blocks, reversed source arenas with
+real re-verification, producer/path edits, missing interval/store certificates,
+and exact/one-short allowances. Generated sources are independently executed;
+removing inline consumption or the completion dependency must fail the model
+checks. Missing expression boundaries have their own RED→GREEN counterexample:
+value-only clients keep solving source values, conservatively lose raw path
+precision, and accept transported values. A third production mutant removes this
+fallback and must fail. Raw effect phase/exception action correspondence remains unfinished;
+all five backbone deliveries remain OPEN.

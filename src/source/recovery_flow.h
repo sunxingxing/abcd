@@ -9,6 +9,10 @@
 #include <type_traits>
 namespace abcd::source {
 struct FlowPoint { std::uint32_t value = 0; auto operator<=>(const FlowPoint&) const = default; };
+// Checked raw result and its current source evaluation interval. The normal
+// continuation excludes the throwing route and never certifies a later store.
+// Missing entries are correspondence gaps, not permission to reuse raw effects.
+struct FlowOriginalResult { ExprId expression; FlowPoint entry,normal; };
 struct FlowDefinitionId { std::uint32_t value = 0; auto operator<=>(const FlowDefinitionId&) const = default; };
 struct DiscardedId { std::uint32_t value = 0; auto operator<=>(const DiscardedId&) const = default; };
 // An ignored expression result, with effects composed by the semantic adapter.
@@ -315,6 +319,7 @@ struct RecoveryFlow {
   std::shared_ptr<const FlowScopes> scopes;
   std::vector<analysis::ValueKinds> normal_kinds;
   std::vector<std::optional<FlowPoint>> normal_exits;
+  std::vector<std::optional<FlowOriginalResult>> original_results; // OpId indexed.
   RouteInputIdentity identity;
   analysis::IrRevision value_revision;
   analysis::CfgRevision cfg_revision;

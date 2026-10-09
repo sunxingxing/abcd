@@ -116,6 +116,45 @@ class Fixture {
     return VerifyTreeSemantics(graph, std::get<ControlPlan>(control),
         std::get<EvaluationPlan>(evaluation), tree, {constants, 2, 0, {}}, budget);
   }
+  void ReverseArenas(ConstructedFunction& built) const {
+    auto& tree=built.tree;
+    const auto expression=[&](ExprId id){return ExprId{static_cast<unsigned>(tree.expressions.size()-1-id.value)};};
+    const auto statement=[&](StmtId id){return StmtId{static_cast<unsigned>(tree.statements.size()-1-id.value)};};
+    for(auto& node:tree.expressions)std::visit([&](auto& value) {
+      using T=std::decay_t<decltype(value)>;
+      if constexpr(std::is_same_v<T,UnaryExpr>)value.operand=expression(value.operand);
+      else if constexpr(std::is_same_v<T,BinaryExpr>||std::is_same_v<T,SequenceExpr>||std::is_same_v<T,LogicalExpr>) {
+        value.left=expression(value.left);value.right=expression(value.right);
+      } else if constexpr(std::is_same_v<T,AssignmentExpr>)value.value=expression(value.value);
+      else if constexpr(std::is_same_v<T,ConditionalExpr>) {
+        value.condition=expression(value.condition);value.consequent=expression(value.consequent);value.alternate=expression(value.alternate);
+      } else Check((std::is_same_v<T,TreeLiteral>||std::is_same_v<T,SymbolExpr>));
+    },node.expression);
+    for(auto& node:tree.statements)std::visit([&](auto& value) {
+      using T=std::decay_t<decltype(value)>;
+      if constexpr(std::is_same_v<T,DeclarationStmt>) {if(value.initializer)value.initializer=expression(*value.initializer);}
+      else if constexpr(std::is_same_v<T,ExpressionStmt>)value.expression=expression(value.expression);
+      else if constexpr(std::is_same_v<T,ReturnStmt>) {if(value.value)value.value=expression(*value.value);}
+      else if constexpr(std::is_same_v<T,IfStmt>) {
+        value.condition=expression(value.condition);value.consequent=statement(value.consequent);
+        if(value.alternate)value.alternate=statement(*value.alternate);
+      } else Check((std::is_same_v<T,BlockStmt>));
+    },node.statement);
+    for(auto& op:tree.operations)std::visit([&](auto& id) {
+      using T=std::decay_t<decltype(id)>;
+      if constexpr(std::is_same_v<T,ExprId>)id=expression(id);
+      else if constexpr(std::is_same_v<T,StmtId>)id=statement(id);
+    },op.node);
+    for(auto& child:tree.children)child=statement(child);
+    for(auto& anchor:tree.anchors)if(auto* boundary=std::get_if<BlockBoundary>(&anchor.position))boundary->block=statement(boundary->block);
+    tree.body=statement(tree.body);
+    std::reverse(tree.expressions.begin(),tree.expressions.end());std::reverse(tree.statements.begin(),tree.statements.end());
+    // Any canonical AST mutation replaces correspondence at the real boundary;
+    // the old annotation is never reused by a layout-variation fixture.
+    auto checked=Verify(tree);Check(std::holds_alternative<TreeSemantics>(checked));
+    auto semantics=std::get<TreeSemantics>(std::move(checked));
+    built.flow=std::move(semantics.flow);built.work+=semantics.work;built.allocated_bytes+=semantics.allocated_bytes;
+  }
   CallableKind callable=CallableKind::kMethod;
   analysis::ValueProgram graph;
   std::vector<ExpressionConstant> constants;
@@ -165,45 +204,7 @@ void OriginalNumericSnapshots(bool emit=false,unsigned copies=0,bool reverse=fal
   }
   auto constructed=fixture.Build();Check(std::holds_alternative<ConstructedFunction>(constructed));
   auto built=std::get<ConstructedFunction>(std::move(constructed));
-  if(arena) {
-    auto& tree=built.tree;
-    const auto expression=[&](ExprId id){return ExprId{static_cast<unsigned>(tree.expressions.size()-1-id.value)};};
-    const auto statement=[&](StmtId id){return StmtId{static_cast<unsigned>(tree.statements.size()-1-id.value)};};
-    for(auto& node:tree.expressions)std::visit([&](auto& value) {
-      using T=std::decay_t<decltype(value)>;
-      if constexpr(std::is_same_v<T,UnaryExpr>)value.operand=expression(value.operand);
-      else if constexpr(std::is_same_v<T,BinaryExpr>||std::is_same_v<T,SequenceExpr>||std::is_same_v<T,LogicalExpr>) {
-        value.left=expression(value.left);value.right=expression(value.right);
-      } else if constexpr(std::is_same_v<T,AssignmentExpr>)value.value=expression(value.value);
-      else if constexpr(std::is_same_v<T,ConditionalExpr>) {
-        value.condition=expression(value.condition);value.consequent=expression(value.consequent);value.alternate=expression(value.alternate);
-      } else Check((std::is_same_v<T,TreeLiteral>||std::is_same_v<T,SymbolExpr>));
-    },node.expression);
-    for(auto& node:tree.statements)std::visit([&](auto& value) {
-      using T=std::decay_t<decltype(value)>;
-      if constexpr(std::is_same_v<T,DeclarationStmt>) {if(value.initializer)value.initializer=expression(*value.initializer);}
-      else if constexpr(std::is_same_v<T,ExpressionStmt>)value.expression=expression(value.expression);
-      else if constexpr(std::is_same_v<T,ReturnStmt>) {if(value.value)value.value=expression(*value.value);}
-      else if constexpr(std::is_same_v<T,IfStmt>) {
-        value.condition=expression(value.condition);value.consequent=statement(value.consequent);
-        if(value.alternate)value.alternate=statement(*value.alternate);
-      } else Check((std::is_same_v<T,BlockStmt>));
-    },node.statement);
-    for(auto& op:tree.operations)std::visit([&](auto& id) {
-      using T=std::decay_t<decltype(id)>;
-      if constexpr(std::is_same_v<T,ExprId>)id=expression(id);
-      else if constexpr(std::is_same_v<T,StmtId>)id=statement(id);
-    },op.node);
-    for(auto& child:tree.children)child=statement(child);
-    for(auto& anchor:tree.anchors)if(auto* boundary=std::get_if<BlockBoundary>(&anchor.position))boundary->block=statement(boundary->block);
-    tree.body=statement(tree.body);
-    std::reverse(tree.expressions.begin(),tree.expressions.end());std::reverse(tree.statements.begin(),tree.statements.end());
-    // Any canonical AST mutation replaces correspondence at the real boundary;
-    // the old annotation is never reused by a layout-variation fixture.
-    auto checked=fixture.Verify(tree);Check(std::holds_alternative<TreeSemantics>(checked));
-    auto semantics=std::get<TreeSemantics>(std::move(checked));
-    built.flow=std::move(semantics.flow);built.work+=semantics.work;built.allocated_bytes+=semantics.allocated_bytes;
-  }
+  if(arena)fixture.ReverseArenas(built);
   Check(built.flow->original != nullptr);
   const auto& original=*built.flow->original;
   Check(original.values.size()==fixture.graph.values.size());Check(original.uses.size()==fixture.graph.uses.size());
@@ -268,7 +269,7 @@ void OriginalNumericSnapshots(bool emit=false,unsigned copies=0,bool reverse=fal
   Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(built.tree,output,{}, {},nullptr,&original)));
   if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"numeric",numeric},{"copies",copies},{"reverse",reverse},{"split",split},{"arena",arena},{"work",built.work},{"bytes",built.allocated_bytes},{"operations",fixture.graph.ops.size()},{"values",fixture.graph.values.size()},{"uses",fixture.graph.uses.size()},{"edges",fixture.graph.edges.size()}}<<'\n';
 }
-void OriginalSuccessfulDomains(unsigned copies=0,bool reverse=false,bool split=false,bool conditional=false,bool emit=false) {
+void OriginalSuccessfulDomains(unsigned copies=0,bool reverse=false,bool split=false,bool conditional=false,bool emit=false,bool arena=false) {
   using namespace analysis;
   Fixture f;f.callable=CallableKind::kFunction;
   const auto comparison=f.Add(0,0,0,ValueBinary{BinaryOperator::kStrictEqual},true,
@@ -307,7 +308,9 @@ void OriginalSuccessfulDomains(unsigned copies=0,bool reverse=false,bool split=f
     std::reverse(f.graph.values.begin(),f.graph.values.end());
   }
   const auto construction=f.Build();Check(std::holds_alternative<ConstructedFunction>(construction));
-  const auto built=std::get<ConstructedFunction>(construction);const auto& tree=built.tree;
+  auto built=std::get<ConstructedFunction>(construction);
+  if(arena)f.ReverseArenas(built);
+  const auto& tree=built.tree;
   const auto x=tree.expressions.size(),s=tree.statements.size(),b=tree.symbols.size();
   BindingInitializers plan;
   plan.aliases.resize(b);plan.storage.resize(b);plan.read_bindings.resize(b);plan.literals.resize(b);
@@ -350,6 +353,25 @@ void OriginalSuccessfulDomains(unsigned copies=0,bool reverse=false,bool split=f
       Check(OriginalDefinitionKinds(*original,*definition).IsFiniteNumber());
     }
   Check(mapped);
+  // The verified result belongs to the expression's normal completion, even
+  // before a compiler temporary stores it. Recovery must consume this proof
+  // for inline computations through the same current completion graph.
+  Check(model.expressions.kinds[producer.value].IsFiniteNumber());
+  const auto& interval=model.flow.original_results[conversion.value];
+  Check(interval&&interval->expression==producer&&interval->entry==model.flow.expressions[producer.value]&&
+      interval->normal==model.flow.normal_exits[producer.value]);
+  const SemanticBudget exact{model.allocated_bytes,model.work};
+  Check(std::holds_alternative<RecoveryProjection>(PrepareRecoveryProjection(tree,projection,input,exact)));
+  Check(std::get<TreeStructureError>(PrepareRecoveryProjection(tree,projection,input,{exact.bytes-1,exact.work}))==TreeStructureError::kResourceLimit);
+  Check(std::get<TreeStructureError>(PrepareRecoveryProjection(tree,projection,input,{exact.bytes,exact.work-1}))==TreeStructureError::kWorkLimit);
+  auto gap=model.flow;gap.original_results.clear();
+  const auto gap_live=std::get<FlowLiveness>(AnalyzeFlowLiveness(gap));
+  const auto gap_types=std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(tree,gap,gap_live,input));
+  Check(gap_types.expressions[producer.value].IsNumber()&&!gap_types.expressions[producer.value].IsFiniteNumber());
+  auto no_expression_boundaries=model.flow;no_expression_boundaries.expressions.clear();
+  const auto no_boundaries_result=AnalyzeFlowNormalKinds(tree,no_expression_boundaries,gap_live,input);
+  Check(std::holds_alternative<FlowNormalKinds>(no_boundaries_result));
+  Check(!std::get<FlowNormalKinds>(no_boundaries_result).expressions[producer.value].IsFiniteNumber());
   // An actual producer edit invalidates the checked successful-definition
   // domain, even though the write, consumer and original hint remain present.
   auto changed_value=plan.transports;
@@ -360,6 +382,11 @@ void OriginalSuccessfulDomains(unsigned copies=0,bool reverse=false,bool split=f
   Check(std::holds_alternative<RecoveryProjection>(changed_result));
   const auto changed=std::get<RecoveryProjection>(changed_result);
   for(const auto site:observed)Check(changed.expressions.kinds[site.value]==ValueKinds::Boolean());
+  auto transported_gap=changed.flow;transported_gap.expressions.clear();
+  const auto transported_live=std::get<FlowLiveness>(AnalyzeFlowLiveness(transported_gap));
+  const auto transported_types=AnalyzeFlowNormalKinds(tree,transported_gap,transported_live,candidate);
+  Check(std::holds_alternative<FlowNormalKinds>(transported_types));
+  for(const auto site:observed)Check(std::get<FlowNormalKinds>(transported_types).expressions[site.value]==ValueKinds::Boolean());
   if(branch) {
     auto transports=plan.transports;
     const auto condition=*original->operations[branch->value].expression;
@@ -377,10 +404,19 @@ void OriginalSuccessfulDomains(unsigned copies=0,bool reverse=false,bool split=f
   if(emit) {
     std::ostringstream output;
     Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output,{}, {},nullptr,original)));
-    std::cout<<nlohmann::json{{"source",output.str()},{"conditional",conditional},{"copies",copies},{"reverse",reverse},{"split",split}}<<'\n';
+    std::cout<<nlohmann::json{{"source",output.str()},{"conditional",conditional},{"copies",copies},{"reverse",reverse},{"split",split},
+      {"work",model.work},{"allocated_bytes",model.allocated_bytes},{"arena",arena}}<<'\n';
   }
-  auto without_definitions=*original;without_definitions.definitions.clear();
+  auto without_definitions=*original;
+  for(auto& definition:without_definitions.definitions)if(definition)
+    if(const auto* result=std::get_if<OriginalResultDefinition>(&definition->origin);result&&result->operation==conversion)definition.reset();
   RecoveryExpressionInput missing{plan,equations,order,&without_definitions};
+  const auto inline_result=PrepareRecoveryProjection(tree,projection,missing);
+  Check(std::holds_alternative<RecoveryProjection>(inline_result));
+  // Losing a source-store certificate does not erase an independently checked
+  // inline result. Losing both leaves only the current language semantics.
+  for(const auto site:observed)Check(std::get<RecoveryProjection>(inline_result).expressions.kinds[site.value].IsFiniteNumber());
+  for(auto& operation:without_definitions.operations)operation.result.reset();
   const auto conservative_result=PrepareRecoveryProjection(tree,projection,missing);
   Check(std::holds_alternative<RecoveryProjection>(conservative_result));
   const auto conservative=std::get<RecoveryProjection>(conservative_result);
@@ -1416,9 +1452,9 @@ void RetainedReceiverTrees() {
 }  // namespace
 int main(int argc,char** argv) {
   if(argc==2&&std::string_view(argv[1])=="--definitions") {
-    for(const unsigned copies:{0U,1U,200U,201U})
-      for(const bool reverse:{false,true})for(const bool split:{false,true})OriginalSuccessfulDomains(copies,reverse,split,false,true);
-    for(const bool reverse:{false,true})OriginalSuccessfulDomains(1,reverse,false,true,true);
+    for(const unsigned copies:{0U,1U,200U,201U,400U,800U})
+      for(const bool reverse:{false,true})for(const bool split:{false,true})for(const bool arena:{false,true})OriginalSuccessfulDomains(copies,reverse,split,false,true,arena);
+    for(const bool reverse:{false,true})for(const bool arena:{false,true})OriginalSuccessfulDomains(1,reverse,false,true,true,arena);
     return 0;
   }
   if(argc==2&&std::string_view(argv[1])=="--original") {

@@ -25,13 +25,24 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
     };
     const auto value_count=expressions+facts,count=value_count+events;
     const auto event_node=[&](FlowPoint point){return NodeId{static_cast<std::uint32_t>(value_count+point.value)};};
-    std::vector<K> values,entries;
+    std::vector<K> values,entries,original_results;
     std::vector<std::optional<std::uint32_t>> heads;
     std::vector<std::uint8_t> queued,modeled_reads,changed,original_entries;
     std::vector<NodeId> pending;
     budget.Array(values,value_count);budget.Array(heads,count);budget.Array(queued,value_count);budget.Array(pending,count);
     budget.Array(modeled_reads,expressions);budget.Array(entries,flow.bindings.size());
     budget.Array(changed,count);budget.Array(original_entries,flow.bindings.size());
+    budget.Array(original_results,expressions);
+    RequireTree(flow.original_results.empty()||flow.original_results.size()==input.original->operations.size(),Error::kOwnership);
+    for(std::size_t i=0;i<flow.original_results.size();++i) {
+      budget.Step();const auto& occurrence=flow.original_results[i];if(!occurrence)continue;
+      const auto& operation=input.original->operations[i];
+      RequireTree(operation.result&&operation.expression==occurrence->expression&&
+          occurrence->expression.value<expressions&&occurrence->entry.value<events&&occurrence->normal.value<events&&
+          operation.result->value<input.original->values.size(),Error::kOwnership);
+      auto& kinds=original_results[occurrence->expression.value];
+      kinds=kinds.Join(input.original->values[operation.result->value].domain);
+    }
     // Entry domain is a type proof from the verified original SSA, not an
     // immutable value/cell identity. Mapped arguments/captures remain unknown
     // through the adapter's exposure/stable-entry contract.
@@ -89,6 +100,13 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
             VisitExpressionChildren(tree,tree.expressions[i].expression,expression);
           else static_assert(std::is_same_v<T,FlowPrimitiveReference>||std::is_same_v<T,FlowBindingValue>);
         },equation);
+      }
+      // A result range can depend on the path reaching its evaluation. This
+      // edge joins the shared invalidation graph; predicates are completion
+      // dependencies, never value operands or a per-operation backward walk.
+      for(const auto& occurrence:flow.original_results) {
+        budget.Step();if(!occurrence)continue;
+        dependency(event_node(occurrence->entry),NodeId{occurrence->expression.value},DependencyKind::kCompletion,nullptr);
       }
       for(const auto& reference:flow.references) {
         budget.Step();const auto* expression=std::get_if<ExprId>(&reference.site);
@@ -173,6 +191,12 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
       budget.Step();const auto& node=tree.expressions[i].expression;
       if(input.bindings.replacements[i]||input.bindings.transports[i]||input.bindings.read_sources[i]||input.bindings.read_literals[i]||
           IntrinsicLexicalDependency(node)!=LexicalDependency::kReferences)changed[i]=1;
+      // Replaced/transported evaluations may have no intrinsic event left.
+      // Seed their actual boundary so later path-dependent proofs see the edit.
+      if(flow.expressions.size()==expressions&&(input.bindings.replacements[i]||input.bindings.transports[i])) {
+        RequireTree(flow.expressions[i].value<events,Error::kOwnership);
+        changed[event_node(flow.expressions[i]).value]=1;
+      }
       if(input.bindings.replacements[i])changed[input.bindings.replacements[i]->value]=1;
       if(const auto* read=std::get_if<SymbolExpr>(&node)) {
         const auto id=read->symbol.value;
@@ -183,7 +207,7 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
     // Even an omitted statement retains a linked boundary point, while its
     // current owner is absent. Seed the explicit projection delta there, so
     // removal of an earlier computation cannot silently retain a path proof.
-    if(flow.statements.size()!=tree.statements.size()) {
+    if(flow.statements.size()!=tree.statements.size()||flow.expressions.size()!=expressions) {
       // A value-only graph can still solve source domains. Missing boundary
       // correspondence makes original path precision unavailable, not invalid
       // source semantics or a reason to reject the entire projection.
@@ -210,7 +234,7 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
     inputs(update,[](NodeId,NodeId,DependencyKind,const FlowDefinition*){},[](NodeId){});
     const auto expression=[&](NodeId target) {
       const auto equation=ProjectedRecoveryEquation(input,ExprId{target.value});
-      return std::visit([&](const auto& value)->K {
+      auto incoming=std::visit([&](const auto& value)->K {
         using T=std::decay_t<decltype(value)>;
         if constexpr(std::is_same_v<T,FlowExpressionValue>)return values[value.expression.value];
         else if constexpr(std::is_same_v<T,FlowChoiceValue>)return values[value.consequent.value].Join(values[value.alternate.value]);
@@ -220,6 +244,11 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
         } else if constexpr(std::is_same_v<T,FlowBindingValue>)return modeled_reads[target.value]?K{}:K::Language();
         else {static_assert(std::is_same_v<T,UnknownFlowValue>);return NormalValueKinds(tree.expressions[target.value].expression,{values.data(),expressions});}
       },equation);
+      const auto original=original_results[target.value];
+      // Inline results and stored results use the same operand/completion
+      // validity. Do not use normal_kinds: it also contains operand hints.
+      if(!changed[target.value]&&!original.IsEmpty()&&original.Join(incoming)==incoming)incoming=original;
+      return incoming;
     };
     for(std::size_t i=0;i<expressions;++i){budget.Step();const NodeId id{static_cast<std::uint32_t>(i)};update(id,expression(id));}
     const auto solve=[&] {

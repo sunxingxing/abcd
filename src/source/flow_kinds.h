@@ -9,7 +9,8 @@ struct FlowNormalKinds {
   std::uint64_t work=0;
 };
 // Sparse normal-value equations over this exact projected graph. Successful
-// writes generate domains; throwing paths retain the previous state. Static
+// writes and unchanged original evaluation intervals generate domains;
+// throwing paths retain the previous state. Static
 // definition identity never equates values across executions or scope reentry.
 [[nodiscard]] std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
     const FunctionTree&,const RecoveryFlow&,const FlowLiveness&,

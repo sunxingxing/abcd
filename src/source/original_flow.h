@@ -63,7 +63,8 @@ struct OriginalFlow {
   std::vector<std::optional<OriginalSourceDefinition>> definitions; // ExprId indexed.
   // Raw normal-result provenance, joined when normalization maps values to an
   // occurrence. This is NOT a type proof for a later recovery projection;
-  // successful source definitions and current operands own projected domains.
+  // successful source definitions, current evaluation intervals and operands
+  // own projected domains. Inline certificates read raw results, not this join.
   std::vector<std::optional<analysis::ValueKinds>> normal_kinds;
 };
 [[nodiscard]] std::shared_ptr<OriginalFlow> RetainOriginalFlow(

@@ -4103,3 +4103,23 @@ Temporary graphs die before admission credit; old plan arrays die before replace
 credit. The shared 64MiB allowance and cumulative work remain unchanged. Semantic
 cost tests include 200/201/400/800, independently permuted IDs, exact and one-short
 allowances. Full-process RSS/performance and expanded corpora stay paused.
+
+
+### Inline original result correspondence (rules267)
+
+A single O(O) pass over retained original operations publishes current expression
+entry/normal intervals; O is the original operation count. The sparse normal-value
+solver joins result domains into an E-sized array and adds at most O completion
+edges, sharing the existing operand/definition/event adjacency and change closure.
+There are no per-result CFG walks, pairwise operation scans, graph-size thresholds
+or new opcode dispatch. Time for the added correspondence/closure is O(E+O) plus
+existing sparse edges, and value solving retains finite lattice-height bounds.
+Missing correspondence means lost precision, not altered execution semantics.
+
+For copied inputs N=200/201/400/800, same-block ordinary projections admit
+work=4660/4667/6060/8860 and bytes=21968/21984/25168/31568. Split/reallocated and
+reversed-source-arena variants also pass geometric growth and exact/one-short
+byte/work tests. Raw operation count grows with copies while source normalization
+can keep E constant; these are component admission/work facts, not latency or RSS.
+The existing byte/work allowances are unchanged and full-process benchmarks/RSS
+stay paused.

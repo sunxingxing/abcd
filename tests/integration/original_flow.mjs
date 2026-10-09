@@ -151,8 +151,17 @@ for(const row of definitions) {
   const mutant=source.slice(0,comparison.start)+replacement+source.slice(comparison.end);
   assert.throws(()=>definitionEquivalent(mutant,row.conditional));++definitionMutants;
 }
-assert.equal(definitions.length,18);
+assert.equal(definitions.length,52);
 console.log(`${definitions.length} checked successful-definition sources / ${definitionComparisons} independent comparisons / ${definitionMutants} adverse mutants`);
+for(const reverse of [false,true])for(const split of [false,true])for(const arena of [false,true]) {
+  const series=definitions.filter(row=>!row.conditional&&row.reverse===reverse&&row.split===split&&row.arena===arena&&row.copies>=200);
+  assert.deepEqual(series.map(row=>row.copies),[200,201,400,800]);
+  for(let i=1;i<series.length;++i) {
+    assert.ok(series[i].work<series[i-1].work*3);
+    assert.ok(series[i].allocated_bytes<series[i-1].allocated_bytes*3);
+  }
+}
+console.log('inline-result 200/201/400/800 admitted cost scaling passed');
 
 // Independently execute current catch identities and undefined declaration
 // completion over repeated entries. These are source-adapter fixtures, not

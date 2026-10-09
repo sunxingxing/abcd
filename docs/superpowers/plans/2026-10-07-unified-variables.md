@@ -850,3 +850,18 @@ selection outcomes; production mutants must demonstrate detection. Follow the
 frozen31/63/fixedABC gate and original paused scope. All five backbone deliveries
 remain OPEN; continue complete raw IR/value/effect correspondence, ordinary units,
 remaining trial consumers, dependency convergence and final milestone acceptance.
+
+
+Rules267 advances Task1's actual raw SSA consumer: original inline results now
+map to current evaluation entry/normal continuation and feed common normal-value
+analysis under the same operand/path validity as stored definitions. A missing
+store correspondence cannot arbitrarily erase a surviving inline proof. Changed
+projections seed actual boundaries; raw operand-hint joins are not certificates.
+The existing preparation order remains graph, initialization/liveness, domains,
+shared effects. No separate optimizer mutates/reuses these facts.
+
+This is a bounded correspondence substep, not Task1 completion: raw before/commit
+phase and exception exit-to-source action relationships still need integration.
+Ordinary local/catch/reentry identity, remaining trial clients, dependency-driven
+convergence and full milestone acceptance follow that work. All five OPEN.
+Frozen 31 targets/63 names/fixed ABC and all paused scopes remain unchanged.
