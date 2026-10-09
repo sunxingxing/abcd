@@ -31,7 +31,7 @@ struct FlowValueEquations {
   [[nodiscard]] std::size_t size() const {return base.size();}
   [[nodiscard]] FlowValueEquation operator[](std::size_t) const;
 };
-using FlowDefinitionValue=std::variant<UnknownFlowValue,FlowPrimitiveValue,FlowBindingValue,FlowExpressionValue>;
+using FlowDefinitionValue=std::variant<UnknownFlowValue,FlowPrimitiveValue,FlowBindingValue,FlowExpressionValue,FlowCapturedValue>;
 struct FlowReadConstant {ExprId expression;PrimitiveId primitive;};
 struct FlowReadBinding {ExprId expression;SymbolId binding;};
 struct FlowConstants {

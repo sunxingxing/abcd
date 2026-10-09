@@ -22,8 +22,8 @@ struct DiscardedEvaluation {
   std::optional<ExprId> evaluation;
 };
 enum class FlowCompletion : std::uint8_t { kNormal, kThrow, kReturn, kJump, kTaken, kNotTaken, kResumeNext, kResumeThrow, kResumeReturn, kConservativeCleanup };
-enum class FlowDefinitionKind : std::uint8_t { kParameter, kUndefined, kInitializer, kAssignment, kUpdate, kCatch, kUndefinedStore, kFunctionSelf };
-enum class FlowEventKind : std::uint8_t { kControl, kTruthBranch, kNullishBranch, kRead, kEvaluation, kEnterScope, kLeaveScope, kDefinition, kSuspend, kPropertyReference, kEnterLoopEnvironment };
+enum class FlowDefinitionKind : std::uint8_t { kParameter, kUndefined, kInitializer, kAssignment, kUpdate, kCatch, kUndefinedStore, kFunctionSelf, kIterationCopy };
+enum class FlowEventKind : std::uint8_t { kControl, kTruthBranch, kNullishBranch, kRead, kEvaluation, kEnterScope, kLeaveScope, kDefinition, kSuspend, kPropertyReference, kEnterLoopEnvironment, kCopyInput };
 enum class FlowValueUse : std::uint8_t { kUnmodeled, kDiscarded, kObserved };
 enum class FlowWriteEffect : std::uint8_t { kObservable, kInert };
 enum class FlowBindingExposure : std::uint8_t { kObservable, kPrivate };
@@ -161,6 +161,10 @@ struct LoopSyntax;
 struct BindingInitializer;
 struct DeclarationValue;
 struct DeclarationCompletion;
+// A captured value belongs to this read occurrence, not the current binding
+// at its eventual commit. Native environment copies produce this input once;
+// demand/value consumers must preserve the old-value dependency across resets.
+struct FlowCapturedValue {FlowPoint point;SymbolId binding;auto operator<=>(const FlowCapturedValue&)const=default;};
 struct FlowDefinition {
   FlowPoint point;
   SymbolId binding;
@@ -173,6 +177,7 @@ struct FlowDefinition {
   // Conditional provenance from the checked original write. The common value
   // dependency analysis decides whether its domain survived this projection.
   const OriginalSourceDefinition* original=nullptr;
+  std::optional<FlowCapturedValue> input;
   // The semantic adapter owns both expression and statement write positions.
   // Kind still distinguishes lexical completion from assignment/slot writes;
   // a site alone never authorizes deleting initialization or binding lifetime.
@@ -268,7 +273,11 @@ struct LegacyFlowProjection {
 };
 // Actual source loop completion phases. Entry/repetition are distinct even
 // when they carry the same scalar values; iteration cell transport is separate.
-struct FlowLoop {FlowPoint condition,body,increment,exit;};
+struct FlowLoop {
+  FlowPoint condition,body,increment,exit;
+  // Completed scalar copying, not a certificate of captured-cell identity.
+  std::optional<FlowPoint> entry_copy,repeat_copy;
+};
 struct RecoveryFlow {
   // Shared unit transfer owns both scope events and abrupt edge exits.
   // Unmodeled transfer preserves possible demand but invalidates known values.

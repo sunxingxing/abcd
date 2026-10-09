@@ -17,7 +17,7 @@ std::variant<FlowInitializations,TreeStructureError> AnalyzeFlowInitializations(
         case FlowDefinitionKind::kUndefined: case FlowDefinitionKind::kInitializer:
           selected=definition.declaration && definition.declaration==flow.bindings[definition.binding.value].declaration;break;
         case FlowDefinitionKind::kAssignment: case FlowDefinitionKind::kUpdate:
-        case FlowDefinitionKind::kUndefinedStore:break;
+        case FlowDefinitionKind::kUndefinedStore:case FlowDefinitionKind::kIterationCopy:break;
       }
       if(selected)result.declarations[definition.binding.value]=definition.point;
     }

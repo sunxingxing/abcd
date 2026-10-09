@@ -2869,3 +2869,47 @@ identity have not been implemented here. Initial/captured cells, precise finally
 transport, complete original IR correspondence, trial lifetime deltas, dependency
 convergence and final acceptance still need the common model. All five backbone
 deliveries remain OPEN; status.md records bounded verification.
+
+### Rules263: explicit native-loop copied scalar inputs
+
+The same current/trial/bootstrap/refinement flow producer now consumes actual
+native BoundNames and publishes two scalar transport programs: before the first
+condition and after body normal/continue completion, before increment. Header
+clause continuation still reaches the condition directly; break/return/throw do
+not enter the next transport. Missing source LoopSyntax retains the documented
+legacy phase gap instead of fabricating copies from raw body layout.
+
+Each program obtains all old binding values before defining the new scalar
+values. `FlowCapturedValue{point,binding}` identifies the retained read occurrence;
+`kIterationCopy` distinguishes this definition from a source assignment or lexical
+declarator. It has no fabricated ExprId, declaration site or original SSA write.
+This is the scalar plane of ECMA-262 2025 14.7.4.3/.4, not the allocation/cell plane:
+https://tc39.es/ecma262/2025/multipage/ecmascript-language-statements-and-declarations.html#sec-createperiterationenvironment
+No externally observable computation occurs within this implicit scalar transport;
+cell allocation and resource-failure modeling remain separate existing contracts.
+
+Liveness and observable demand activate an old-value input when its destination
+definition becomes live; merely building an implicit copy cannot retain dead
+values. Reaching definitions consume the resulting shared facts. Contextual
+constant and normal-domain equations use the captured read point, including when
+a definite reset lies between that read and commit. A later conflicting write
+must not change the retained input. Ordinary normal-result current-binding copy
+queries remain a different contract; available-copy analysis cannot replace an
+earlier captured value with a current mutable parameter root. No additional
+same-block, adjacency, operation list, sample or shape condition is introduced.
+
+Member indexes are built once from the actual adapter product, not inferred from
+region peers. Both programs are owned by the returned graph, including their phase
+boundaries; no borrowed syntax, scratch input or previous revision survives.
+The flow dependency already includes the shared loop-entry provider. No new pass
+round, order, hand-maintained analysis refresh or mutation from an analysis query
+is added.
+
+The implementation intentionally retains CompletionOnlyLifetime for native
+iteration bindings. It does NOT allocate fresh per-iteration units, prove captured
+cell equality, or replace declaration dominance with reset-aware must-initialize
+analysis. Ordinary/catch lifecycle precision, full original correspondence,
+complete trial lifetime deltas, dependency-driven convergence and milestone final
+acceptance remain OPEN. Next migration must add actual unit allocation and its
+initialization proof together; inserting a reset alone would discard the old
+input or wrongly certify a missing initialization.

@@ -124,6 +124,11 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
             const auto& generated=flow.definitions[definition->value];
             if(generated.binding==fact.binding) {
               switch(generated.kind) {
+                case FlowDefinitionKind::kIterationCopy:
+                  if(generated.input)if(const auto source=fact_node({generated.input->point,generated.input->binding})) {
+                    dependency(*source,target,DependencyKind::kValue,nullptr);continue;
+                  }
+                  break;
                 case FlowDefinitionKind::kAssignment:case FlowDefinitionKind::kInitializer:
                   if(generated.value){RequireTree(generated.value->value<expressions,Error::kOwnership);dependency(NodeId{generated.value->value},target,DependencyKind::kValue,&generated);
                     dependency(event_node(generated.point),target,DependencyKind::kCompletion,nullptr);

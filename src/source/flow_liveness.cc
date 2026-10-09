@@ -56,6 +56,9 @@ std::variant<LivenessResult,TreeStructureError> Solve(
     };
     for(std::size_t i=0;i<flow.events.size();++i) {
       budget.Step();const auto& event=flow.events[i];if(!event.read)continue;
+      // Implicit value transport is demanded by its destination definition,
+      // never by merely constructing a copied environment with dead values.
+      if(event.kind==FlowEventKind::kCopyInput)continue;
       const FlowPoint point{static_cast<std::uint32_t>(i)};
       if(roots==Roots::kObservable && event.discarded) {
         next[i]=heads[event.discarded->value];heads[event.discarded->value]=point;
@@ -81,6 +84,10 @@ std::variant<LivenessResult,TreeStructureError> Solve(
         if(definition&&flow.definitions[definition->value].binding==fact.binding) {
           if(!result.liveness.live_definitions[definition->value]) {
             result.liveness.live_definitions[definition->value]=1;
+            if(const auto& input=flow.definitions[definition->value].input) {
+              RequireTree(input->point.value<flow.events.size()&&input->binding.value<flow.bindings.size(),Error::kOwnership);
+              add({input->point,input->binding});
+            }
             if(roots==Roots::kObservable && event.discarded)retain(*event.discarded);
           }
         } else add({predecessor,fact.binding});

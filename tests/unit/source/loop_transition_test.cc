@@ -1,6 +1,7 @@
 #include "../../../src/source/loop_syntax.h"
 #include "../../../src/source/recovery_flow.h"
 #include "../../../src/source/flow_dominance.h"
+#include "../../../src/source/flow_liveness.h"
 #include "../../../src/source/statement_children.h"
 #include "abcd/source/tree_printer.h"
 #include "../../support/analysis/ssa_fixture.h"
@@ -124,8 +125,26 @@ struct Fixture {
     tree.body = remap(tree.body); loop = remap(loop); std::reverse(tree.statements.begin(), tree.statements.end());
   }
 };
-std::uint64_t PhaseScopes(unsigned form,unsigned count,bool reverse) {
-  Fixture fixture(form,count,reverse);const auto& tree=fixture.tree;
+std::uint64_t PhaseScopes(unsigned form,unsigned count,bool reverse,bool native=false,unsigned members=1) {
+  Fixture fixture(form,count,reverse);auto& tree=fixture.tree;
+  std::vector<SymbolId> copied{SymbolId{5}};
+  if(native&&members>1) {
+    const auto original=std::get<BlockStmt>(tree.statements[tree.body.value].statement);
+    std::vector<StmtId> children;
+    for(unsigned i=0;i<original.child_count;++i)children.push_back(tree.children[original.first_child+i]);
+    std::vector<StmtId> extra;
+    for(unsigned i=1;i<members;++i) {
+      const SymbolId binding{static_cast<std::uint32_t>(tree.symbols.size())};copied.push_back(binding);
+      const NameId name{static_cast<std::uint32_t>(tree.names.size())};
+      auto text=std::to_string(i);std::u16string spelling=u"carry";for(char c:text)spelling.push_back(c);tree.names.push_back(std::move(spelling));
+      tree.symbols.push_back({{1},name,BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kSynthesized,{}});
+      extra.push_back(fixture.Stmt(DeclarationStmt{binding,fixture.Read(0)}));
+    }
+    children.insert(children.begin()+1,extra.begin(),extra.end());
+    auto& root=std::get<BlockStmt>(tree.statements[tree.body.value].statement);
+    root.first_child=static_cast<std::uint32_t>(tree.children.size());root.child_count=static_cast<std::uint32_t>(children.size());
+    tree.children.insert(tree.children.end(),children.begin(),children.end());
+  }
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));
   const auto condition=loops.conditions[fixture.loop.value];test::Check(condition.has_value());
   const auto body_id=std::get<LoopStmt>(tree.statements[fixture.loop.value].statement).body;
@@ -146,14 +165,61 @@ std::uint64_t PhaseScopes(unsigned form,unsigned count,bool reverse) {
   std::vector<std::optional<ExprId>> replacements(tree.expressions.size());std::vector<std::uint8_t> omitted(tree.statements.size());
   std::vector<ExpressionEvaluation> evaluations(tree.expressions.size(),ExpressionEvaluation::kRequired);std::vector<std::uint8_t> stores(tree.expressions.size(),1);
   LegacyFlowProjection projection{aliases,literals,replacements,omitted,evaluations,stores};projection.loops=&loops;
+  std::vector<std::optional<NativeLoopAllocation>> allocations(tree.symbols.size());
+  if(native) {
+    std::optional<StmtId> entry;
+    for(unsigned i=0;i<tree.statements.size();++i)if(const auto* declaration=std::get_if<DeclarationStmt>(&tree.statements[i].statement))
+      if(declaration->symbol==SymbolId{5})entry=StmtId{i};
+    test::Check(entry.has_value());for(const auto binding:copied)allocations[binding.value]=NativeLoopAllocation{fixture.loop,*entry};
+    projection.source_scopes.loop_allocations=allocations;
+  }
   const auto flow=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,projection));
+  if(native) {
+    unsigned copies=0,inputs=0;
+    for(const auto& definition:flow.definitions)
+      if(definition.kind==FlowDefinitionKind::kIterationCopy) {
+        ++copies;test::Check(definition.input.has_value());
+        test::Check(definition.input->binding==definition.binding);
+        test::Check(flow.events[definition.input->point.value].kind==FlowEventKind::kCopyInput);
+      }
+    for(const auto& reference:flow.references)
+      if(reference.kind==FlowReferenceKind::kRead&&reference.site==FlowReferenceSite{fixture.loop})++inputs;
+    test::Check(copies==2*members&&inputs==2*members);
+    const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));
+    const auto demand=std::get<FlowDemand>(AnalyzeFlowDemand(flow));
+    for(unsigned i=0;i<flow.definitions.size();++i)if(flow.definitions[i].kind==FlowDefinitionKind::kIterationCopy)
+      test::Check(bool(live.live_definitions[i])==(flow.definitions[i].binding==SymbolId{5})&&bool(demand.definitions[i])==(flow.definitions[i].binding==SymbolId{5}));
+  }
   test::Check(flow.loops[fixture.loop.value].has_value());
   const auto stages=*flow.loops[fixture.loop.value];
+  if(native) {
+    test::Check(stages.entry_copy&&stages.repeat_copy);
+    const auto check_copy=[&](FlowPoint first,FlowPoint last) {
+      unsigned reads=0,writes=0;auto point=first;
+      std::vector<std::uint8_t> seen(tree.symbols.size());
+      while(point!=last) {
+        const auto& event=flow.events[point.value];
+        if(event.kind==FlowEventKind::kCopyInput) {
+          test::Check(writes==0&&event.read.has_value());++reads;seen[event.read->value]=1;
+        } else if(event.definition) {
+          const auto& definition=flow.definitions[event.definition->value];
+          test::Check(reads==members&&seen[definition.binding.value]);++writes;
+          test::Check(definition.kind==FlowDefinitionKind::kIterationCopy&&definition.input.has_value());
+        }
+        test::Check(event.outgoing.has_value());const auto& edge=flow.edges[*event.outgoing];
+        test::Check(!edge.outgoing&&edge.completion==FlowCompletion::kNormal);point=edge.to;
+        test::Check(reads<=members&&writes<=members);
+      }
+      test::Check(reads==members&&writes==members);
+    };
+    check_copy(*stages.entry_copy,stages.condition);check_copy(*stages.repeat_copy,stages.increment);
+  } else test::Check(!stages.entry_copy&&!stages.repeat_copy);
   test::Check(flow.statement_semantics[tree.body.value]->retention==FlowStatementRetention::kRequired);
   test::Check(flow.statement_semantics[body_id.value]->retention==FlowStatementRetention::kRequired);
   test::Check(flow.scopes->Presence(body.scope,stages.condition,FlowScopePhase::kBefore)==FlowUnitPresence::kInactive);
   test::Check(flow.scopes->Presence(body.scope,stages.increment,FlowScopePhase::kBefore)==FlowUnitPresence::kInactive);
   const auto order=std::get<FlowDominance>(AnalyzeFlowDominance(flow));
+  if(native)test::Check(order.Dominates(*stages.entry_copy,stages.condition));
   std::optional<FlowPoint> entered;
   for(unsigned i=0;i<flow.events.size();++i)if(flow.events[i].kind==FlowEventKind::kEnterScope&&flow.events[i].scope==body.scope)entered=FlowPoint{i};
   test::Check(entered.has_value());test::Check(!order.Dominates(*entered,stages.condition));
@@ -172,14 +238,14 @@ std::uint64_t PhaseScopes(unsigned form,unsigned count,bool reverse) {
     const auto owner=flow.events[edge.from.value].owner;if(!owner)continue;
     if(const auto* transfer=std::get_if<ContinueStmt>(&tree.statements[owner->value].statement)) {
       test::Check(transfer->target==fixture.loop);
-      test::Check(edge.to==(increments[owner->value]?stages.condition:stages.increment));++tested_transfers;
+      test::Check(edge.to==(increments[owner->value]?stages.condition:stages.repeat_copy.value_or(stages.increment)));++tested_transfers;
     }
     if(std::holds_alternative<BreakStmt>(tree.statements[owner->value].statement))test::Check(edge.to==stages.exit);
   }
   if(!loops.transitions[fixture.loop.value])test::Check(tested_transfers);
   bool body_exit=false;
   for(const auto& edge:flow.edges)if(flow.events[edge.from.value].kind==FlowEventKind::kLeaveScope&&flow.events[edge.from.value].scope==body.scope) {
-    test::Check(edge.to==stages.increment);body_exit=true;
+    test::Check(edge.to==stages.repeat_copy.value_or(stages.increment));body_exit=true;
   }
   test::Check(body_exit);
   if(condition->body) {
@@ -201,6 +267,13 @@ int main(int argc, char** argv) {
       const auto work=PhaseScopes(form,count,reverse);
       if(!reverse){if(count>=400)test::Check(work<previous*3);previous=work;}
     }
+  }
+  for(unsigned form=0;form<12;++form)for(unsigned count:{1U,200U,201U,400U,800U})for(bool reverse:{false,true})
+    PhaseScopes(form,count,reverse,true);
+  std::uint64_t previous=0;
+  for(unsigned members:{2U,200U,201U,400U,800U})for(bool reverse:{false,true}) {
+    const auto work=PhaseScopes(0,1,reverse,true,members);
+    if(!reverse){if(members>=400)test::Check(work<previous*3);previous=work;}
   }
   if(argc==2 && std::string_view(argv[1])=="--phase-scopes")return 0;
   std::array<std::uint64_t, 2> small{}, large{};

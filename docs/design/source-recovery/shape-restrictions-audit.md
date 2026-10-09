@@ -3151,3 +3151,26 @@ when no computation remains. Required slots carry no fabricated effect that
 would retain their ancestors. The initial phase-only graph omitted the empty
 body yet printing emitted its moved predicate; existing source range checks
 rejected the conflict. No range/reference assertions were weakened.
+
+### Rules263 native copied scalar inputs
+
+Obligation: the first condition observes copied entry values; normal/continue
+copies the previous iteration values before increment; abrupt exit skips next
+copy. Actual BoundNames and the already shared source completion program supply
+membership and routes. All old inputs are retained before scalar definitions;
+common liveness/demand/value/type consumers use the explicit captured occurrence.
+The old current-binding-at-commit assumption is not used for these implicit copies.
+
+No source name, sample, opcode sequence, same-block, adjacency, fixed shape/count,
+region-peer membership or register layout admission is added. Owned member/phase
+and input bounds validate semantic adapters. Existing grammar coverage restrictions
+remain producer gaps. Current/trial share the producer through the same flow fact
+and projection revision. A captured earlier value cannot be turned into a current
+mutable-root alias without the common effect/write proof; precision remains
+conservative rather than adding a local safe-shape branch.
+
+Value transport is not dynamic cell identity. Native bindings still have the
+explicit completion-only iteration capability; actual fresh units, reset-aware
+initialization and captured-cell proofs must be delivered together next. All five
+backbone loops stay OPEN. Component counterexamples/mutants do not substitute for
+original IR correspondence, full lifetime trials, convergence or final acceptance.

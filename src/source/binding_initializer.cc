@@ -1531,6 +1531,9 @@ class Initializers {
           case FlowDefinitionKind::kAssignment:case FlowDefinitionKind::kInitializer:
             if(definition.value)values[i]=FlowExpressionValue{*definition.value};
             break;
+          case FlowDefinitionKind::kIterationCopy:
+            if(definition.input)values[i]=*definition.input;
+            break;
           // Update computes a new numeric value; its stored-result identity
           // is not a transparent self-copy equation. Entry/external values
           // remain unknown until their independent semantics are modeled.

@@ -32,6 +32,66 @@ void Link(RecoveryFlow& flow,unsigned from,unsigned to) {
   flow.edges.push_back({{from},{to},FlowCompletion::kNormal,flow.events[to].incoming,flow.events[from].outgoing});
   flow.events[to].incoming=flow.events[from].outgoing=flow.edges.size()-1;
 }
+void CapturedValues() {
+  // Independent scalar execution: read old x, reset its unit, initialize x
+  // from the retained value. A dead destination must not demand the old x.
+  for(bool live_read:{false,true})for(bool old_value:{false,true})for(bool reverse:{false,true}) {
+    RecoveryFlow flow{};flow.events.resize(6);flow.bindings.resize(1);
+    flow.bindings[0].kind=BindingKind::kLocal;flow.bindings[0].exposure=FlowBindingExposure::kPrivate;
+    const auto point=[&](unsigned i){return FlowPoint{reverse?5-i:i};};flow.entry=point(0);
+    flow.bindings[0].allocation=point(2);
+    flow.events[point(1).value].kind=FlowEventKind::kCopyInput;flow.events[point(1).value].read=SymbolId{0};
+    std::vector<FlowDefinitionValue> values;
+    if(old_value) {
+      flow.events[point(0).value].definition=FlowDefinitionId{0};
+      flow.definitions.push_back({point(0),{0},FlowDefinitionKind::kAssignment});
+      values.push_back(FlowPrimitiveValue{IntegerLiteral{42},PrimitiveId{0}});
+    }
+    flow.events[point(3).value].definition=FlowDefinitionId{static_cast<std::uint32_t>(flow.definitions.size())};
+    const auto copied=flow.definitions.size();
+    flow.definitions.push_back({point(3),{0},FlowDefinitionKind::kIterationCopy});
+    flow.definitions.back().input=FlowCapturedValue{point(1),{0}};values.push_back(*flow.definitions.back().input);
+    if(live_read){flow.events[point(4).value].read=SymbolId{0};flow.references.push_back({point(4),{0},FlowReferenceKind::kRead,ExprId{0}});}
+    // A later, otherwise dead store prevents an all-definition invariant;
+    // the read must receive the earlier captured value contextually.
+    flow.events[point(5).value].definition=FlowDefinitionId{static_cast<std::uint32_t>(flow.definitions.size())};
+    flow.definitions.push_back({point(5),{0},FlowDefinitionKind::kAssignment});
+    values.push_back(FlowPrimitiveValue{IntegerLiteral{43},PrimitiveId{1}});
+    for(unsigned i=0;i<5;++i)Link(flow,point(i).value,point(i+1).value);
+    const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));
+    const auto demand=std::get<FlowDemand>(AnalyzeFlowDemand(flow));
+    Check(bool(live.live_definitions[copied])==live_read);Check(bool(demand.definitions[copied])==live_read);
+    if(old_value){Check(bool(live.live_definitions.front())==live_read);Check(bool(demand.definitions.front())==live_read);}
+    const std::array<FlowValueEquation,1> equations{FlowBindingValue{{0}}};
+    const std::array<std::uint8_t,1> completed{1};const std::array<TreeLiteral,2> primitives{IntegerLiteral{42},IntegerLiteral{43}};
+    const auto constants=std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,values,FlowValueEquations{equations,{},{},completed,{}},primitives,{}));
+    Check(constants.reads.size()==std::size_t(live_read&&old_value));
+    if(!constants.reads.empty())Check(constants.reads[0].primitive==PrimitiveId{0});
+    const auto definitions=std::get<FlowDefinitions>(AnalyzeFlowDefinitions(flow,live));
+    const auto seen=std::count_if(definitions.reads.begin(),definitions.reads.end(),[&](const auto& read){return read.point==point(1);});
+    Check(seen==unsigned(live_read&&old_value));
+    // Moving the input to the post-allocation commit must lose the old value.
+    flow.definitions[copied].input=FlowCapturedValue{point(3),{0}};values[copied]=*flow.definitions[copied].input;
+    const auto changed=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));
+    Check(std::get<FlowConstants>(AnalyzeFlowConstants(flow,changed,values,FlowValueEquations{equations,{},{},completed,{}},primitives,{})).reads.empty());
+  }
+  // The captured value survives a write to its former parameter root, but
+  // replacing it by a CURRENT read of that parameter would change behavior.
+  RecoveryFlow flow{};flow.events.resize(6);flow.bindings.resize(3);
+  flow.bindings[0].kind=BindingKind::kParameter;flow.bindings[0].stable_entry=true;
+  for(unsigned i:{1U,2U}){flow.bindings[i].kind=BindingKind::kLocal;flow.bindings[i].exposure=FlowBindingExposure::kPrivate;}
+  flow.definitions={{{0},{0},FlowDefinitionKind::kParameter},{{1},{1},FlowDefinitionKind::kAssignment,SymbolId{0}},
+      {{3},{0},FlowDefinitionKind::kAssignment},{{4},{2},FlowDefinitionKind::kIterationCopy}};
+  for(unsigned i=0;i<flow.definitions.size();++i)flow.events[flow.definitions[i].point.value].definition=FlowDefinitionId{i};
+  flow.events[2].kind=FlowEventKind::kCopyInput;flow.events[2].read=SymbolId{1};
+  flow.definitions[3].input=FlowCapturedValue{{2},{1}};
+  flow.events[5].read=SymbolId{2};flow.references={{{5},{2},FlowReferenceKind::kRead,ExprId{0}},{{2},{1},FlowReferenceKind::kRead,ExprId{1}}};
+  for(unsigned i=0;i<5;++i)Link(flow,i,i+1);
+  const std::array<FlowValueEquation,2> equations{FlowBindingValue{{2}},FlowBindingValue{{1}}};const std::array<std::uint8_t,2> completed{1,1};
+  const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));
+  const auto copies=std::get<FlowCopies>(AnalyzeFlowCopies(flow,live,FlowValueEquations{equations,{},{},completed,{}}));
+  Check(copies.reads.size()==1&&copies.reads[0].expression==ExprId{1}&&copies.reads[0].source==SymbolId{0});
+}
 void UniversalObservations() {
   for(unsigned edges=0;edges<512;++edges)for(unsigned observed=0;observed<8;++observed) {
     RecoveryFlow flow{};flow.events.resize(3);
@@ -2739,6 +2799,7 @@ void CatchActivationOrder() {
     Check(initialized.Completed(reference.binding,reference.point));
 }
 int main(int argc,char** argv){
+  if(argc==2&&std::string_view(argv[1])=="--captured-values"){CapturedValues();return 0;}
   for(bool reverse:{false,true})for(bool known:{false,true}){ProjectedLifetime(false,known,reverse);ProjectedLifetime(true,known,reverse);}
   if(argc==2&&std::string_view(argv[1])=="--projected-lifetime")return 0;
   if(argc==2&&std::string_view(argv[1])=="--scope-exits") {
@@ -2748,6 +2809,6 @@ int main(int argc,char** argv){
   DemandWithoutUnits();ScopeIndexOracle();UnknownScopeTransfer();
   for(bool reverse:{false,true}){ScopeExitTrial(false,reverse);ScopeExitTrial(true,reverse);}
   if(argc==2&&std::string_view(argv[1])=="--activation") {
-    BindingActivationScaling();BindingActivationOracle();CatchActivationOrder();return 0;
+    CapturedValues();BindingActivationScaling();BindingActivationOracle();CatchActivationOrder();return 0;
   }
-  BindingActivationScaling();BindingActivationOracle();CatchActivationOrder();InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();AvailableCopyOracle();TransitiveCopyOracle();CompletionCycles();LocalCompletionOracle();StatementObservationOracle();StatementEntryOracle();InitializationInvalidation();PassContracts();SnapshotCheckpoints();StableValues();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+  CapturedValues();BindingActivationScaling();BindingActivationOracle();CatchActivationOrder();InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();AvailableCopyOracle();TransitiveCopyOracle();CompletionCycles();LocalCompletionOracle();StatementObservationOracle();StatementEntryOracle();InitializationInvalidation();PassContracts();SnapshotCheckpoints();StableValues();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

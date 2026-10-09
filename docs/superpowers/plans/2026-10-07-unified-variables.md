@@ -773,3 +773,16 @@ plan. FlowStatementRetention now represents mandatory grammar slots separately
 from effects; inert elision consumes it and removes its old tree.body exception.
 Original range assertions remain unchanged. The first final runner was stopped
 on this real regression; final evidence must come from the corrected frozen build.
+
+Rules263 Task2/3 value-plane substep: actual source native first/repeat scalar
+transport now belongs to the common current/trial flow provider. Explicit
+captured inputs feed shared liveness/demand/reaching definitions/constants/types;
+available-current-root substitution stays conservative. Native member indexing,
+phase ownership, cross-reset/dead-input/mutable-root negatives, layout/scaling and
+seven production mutations supplement existing independent source checks. First
+mutation sweep exposed a disconnected-entry coverage gap; invocation dominance
+now checks execution, not merely node presence. status.md records final evidence.
+No pass round/order or hand-maintained analysis refresh is introduced. Per-iteration
+allocation, reset-aware initialization, cell/capture identity, original IR/SSA,
+full trial lifetime deltas, convergence and milestone final acceptance remain
+required; all five backbone delivery loops OPEN and other optimizations paused.

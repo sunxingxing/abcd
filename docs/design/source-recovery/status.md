@@ -36,6 +36,39 @@
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
 
+### 2026-10-09：规则263，实际循环复制值与共同读取依赖
+
+- 主干第2/3项：共同flow从实际native BoundNames及已建模source loop阶段
+  生成首轮和normal/continue后的标量复制；首轮在condition前，逐轮复制在
+  increment前。break/return/throw不进入下一轮复制。成员按loop/binding
+  一次索引，不按region peers、样本、指令序列、同块、邻接或数量准入。
+- FlowCapturedValue明确保留旧值的读取位置；kIterationCopy独立表示新标量
+  定义，无伪造ExprId、源码写入或原始SSA定义。共同活跃性/需求只在目标
+  定义活跃时拉入旧输入，定义—使用、常量与类型分析消费同一事实。
+  跨reset的输入和后续冲突写入都有反例。当前绑定复制分析不把较早捕获值
+  替换为可变参数root的当前值；这一精度义务留待共同效果/写入证明。
+- 当前/trial/bootstrap/refinement复用同一producer，返回图拥有输入与阶段
+  记录；未新增pass轮次、顺序、手工刷新位置或分析查询修改计划的职责。
+  既有原生入口分配及声明完成契约保持，源码打印消费已有计划。
+- 新增120组native阶段组合、10组2/200/201/400/800声明成员及反向arena
+  检查，含exact/one-short建图预算及几何增长；8组跨reset/死输入/冲突写入、
+  1组可变root及2组类型输入反例。七项最终生产突变build0/model-6，
+  恢复后的value/phase/type模型全部0。第一轮突变发现断开的首轮程序仍被
+  静态活跃性看到，补充入口支配关系；可变root反例补充先前读取的正例与
+  后续读取的负例。早期日志保留，未削弱执行/范围参照。
+- 最终31目标构建91.8466s、fresh固定record3.4759s、精确63/63项定向
+  CTest593.5276s通过，名单一致且无重复。固定19records/10complete/
+  0partial/9no-module，10语法检查通过，源码与规则262字节相同；输入
+  SHA256前后相同，profile与预算保持。最终构建无warning/error。
+  证据build/stage-one/iteration-copy-verification；fresh输出
+  build/stage-one/iteration-copy-final-rule263。未运行扩展语料或新平台验证。
+- **五项主干仍全部开放**。本轮接通旧值读取和新标量定义，仍未分配新的
+  逐轮单元、证明captured cell相等或以reset-aware must-initialize替换声明
+  dominance。下一步必须把逐轮分配与初始化证明一起迁移，随后继续原始
+  IR/SSA完整对应、完整trial生命期delta、依赖驱动收敛和统一变量终验。
+  作者inline复核，agents/fullsuite/expanded corpus/RSS/benchmark/DFX
+  保持暂停；本组件通过不替代主干或阶段一验收。
+
 ### 2026-10-09：规则262，实际循环阶段与共同语法保留事实
 
 - 主干第2/3项：当前/trial及其bootstrap/refinement都消费打印器已有的

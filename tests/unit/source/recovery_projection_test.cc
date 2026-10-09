@@ -375,6 +375,28 @@ void ScopeExitSource(unsigned form,unsigned copies,bool split,bool emit,bool nar
       {"bindings",tree.symbols.size()},{"statements",tree.statements.size()},{"expressions",tree.expressions.size()},
       {"work",facts.work},{"allocated_bytes",facts.allocated_bytes}}<<'\n';
 }
+void CapturedKinds(bool reverse) {
+  Fixture f(1,reverse);RecoveryFlow flow{};flow.original=&f.original;flow.events.resize(5);flow.bindings.resize(2);
+  flow.bindings[0].kind=BindingKind::kParameter;
+  flow.bindings[1].kind=BindingKind::kCompilerTemporary;flow.bindings[1].exposure=FlowBindingExposure::kPrivate;
+  const auto point=[&](unsigned i){return FlowPoint{reverse?4-i:i};};flow.entry=point(0);flow.bindings[1].allocation=point(2);
+  flow.definitions={{point(0),{1},FlowDefinitionKind::kInitializer,{},f.values[0]},
+      {point(3),{1},FlowDefinitionKind::kIterationCopy}};
+  flow.definitions[1].input=FlowCapturedValue{point(1),{1}};
+  flow.events[point(0).value].definition=FlowDefinitionId{0};flow.events[point(3).value].definition=FlowDefinitionId{1};
+  flow.events[point(1).value].kind=FlowEventKind::kCopyInput;flow.events[point(1).value].read=SymbolId{1};
+  flow.events[point(4).value].kind=FlowEventKind::kRead;flow.events[point(4).value].read=SymbolId{1};
+  flow.references={{point(4),{1},FlowReferenceKind::kRead,f.reads[0]}};
+  for(unsigned i=0;i<4;++i) {
+    const auto from=point(i),to=point(i+1);
+    flow.edges.push_back({from,to,FlowCompletion::kNormal,flow.events[to.value].incoming,flow.events[from.value].outgoing});
+    flow.events[to.value].incoming=flow.events[from.value].outgoing=flow.edges.size()-1;
+  }
+  const auto solve=[&]{return std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(f.tree,flow,std::get<FlowLiveness>(AnalyzeFlowLiveness(flow)),f.Input()));};
+  Check(solve().expressions[f.reads[0].value].IsNumber());
+  flow.definitions[1].input=FlowCapturedValue{point(3),{1}};
+  Check(solve().expressions[f.reads[0].value]==analysis::ValueKinds::Language());
+}
 void ActivationKinds(bool reverse) {
   Fixture fixture(1,reverse);
   auto projection=std::get<RecoveryProjection>(PrepareRecoveryProjection(fixture.tree,fixture.Projection(),fixture.Input()));
@@ -435,6 +457,7 @@ void ActivationSource(unsigned copies,bool split,bool emit) {
 
 }
 int main(int argc,char** argv) {
+  if(argc==2&&std::string_view(argv[1])=="--captured-kinds"){CapturedKinds(false);CapturedKinds(true);return 0;}
   if(argc==2&&std::string_view(argv[1])=="--projected-lifetime") {
     for(unsigned form=0;form<4;++form)for(unsigned copies:{0U,1U,200U,201U,400U,800U})for(bool split:{false,true})ScopeExitSource(form,copies,split,true,true);
     return 0;
@@ -462,7 +485,7 @@ int main(int argc,char** argv) {
     rejected=false;try{budget.Step(94);}catch(TreeStructureError error){rejected=error==TreeStructureError::kWorkLimit;}Check(rejected);
   }
   for(unsigned form=0;form<4;++form){ScopeExitSource(form,0,false,false);ScopeExitSource(form,0,false,false,true);}
-  ActivationKinds(false);ActivationKinds(true);
+  CapturedKinds(false);CapturedKinds(true);ActivationKinds(false);ActivationKinds(true);
   ActivationSource(0,false,false);ActivationSource(1,true,false);
   Case(false);Case(true);ChangedDefinition(false);ChangedDefinition(true);
   OriginalEntries(false);OriginalEntries(true);

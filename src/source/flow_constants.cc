@@ -150,6 +150,13 @@ std::variant<FlowConstants,TreeStructureError> SolveConstants(
     std::vector<std::uint8_t> read_bindings;budget.Array(read_bindings,bindings);
     bool occurrence_values=false;
     for(const auto& reference:flow.references){budget.Step();if(read_site(reference)){read_bindings[reference.binding.value]=1;occurrence_values=true;}}
+    for(const auto& definition:flow.definitions) {
+      budget.Step();if(!definition.input)continue;
+      RequireTree(definition.input->binding.value<bindings&&definition.input->point.value<flow.events.size(),TreeStructureError::kOwnership);
+      if(flow.bindings[definition.input->binding.value].exposure==FlowBindingExposure::kPrivate) {
+        read_bindings[definition.input->binding.value]=1;occurrence_values=true;
+      }
+    }
     struct LiveFactId {std::uint32_t value;};
     std::vector<LiveFactId> fact_ids;
     if(occurrence_values) {
@@ -189,7 +196,7 @@ std::variant<FlowConstants,TreeStructureError> SolveConstants(
       }
     };
     const auto expression=[&](ExprId id){RequireTree(id.value<expressions.size(),TreeStructureError::kOwnership);return expression_nodes[id.value];};
-    const auto retained=[&](std::size_t i){return flow.definitions[i].kind!=FlowDefinitionKind::kUndefined||live.live_definitions[i];};
+    const auto retained=[&](std::size_t i){return (flow.definitions[i].kind!=FlowDefinitionKind::kUndefined&&flow.definitions[i].kind!=FlowDefinitionKind::kIterationCopy)||live.live_definitions[i];};
     std::vector<Value> states;std::vector<std::optional<DependencyId>> heads;
     std::vector<std::uint8_t> queued;std::vector<ValueId> pending;std::vector<Dependency> dependencies;
     budget.Array(states,size);budget.Array(heads,size);budget.Array(queued,size);budget.Array(pending,size);
@@ -197,6 +204,7 @@ std::variant<FlowConstants,TreeStructureError> SolveConstants(
       std::visit([&](const auto& value) {
         using T=std::decay_t<decltype(value)>;
         if constexpr(std::is_same_v<T,FlowBindingValue>)visit(std::optional{binding(value.binding)});
+        else if constexpr(std::is_same_v<T,FlowCapturedValue>)visit(fact_node({value.point,value.binding}));
         else if constexpr(std::is_same_v<T,FlowExpressionValue>)visit(expression(value.expression));
         else if constexpr(std::is_same_v<T,FlowChoiceValue>){visit(expression(value.condition));visit(expression(value.consequent));visit(expression(value.alternate));}
         else if constexpr(std::is_same_v<T,FlowLogicalValue>){visit(expression(value.left));visit(expression(value.right));}
@@ -241,6 +249,7 @@ std::variant<FlowConstants,TreeStructureError> SolveConstants(
       std::visit([&](const auto& source) {
         using T=std::decay_t<decltype(source)>;
         if constexpr(std::is_same_v<T,FlowBindingValue>)depend(binding(source.binding),target);
+        else if constexpr(std::is_same_v<T,FlowCapturedValue>){if(const auto id=fact_node({source.point,source.binding}))depend(*id,target);else update(target,unknown);}
         else if constexpr(std::is_same_v<T,FlowExpressionValue>){if(const auto id=expression(source.expression))depend(*id,target);else update(target,read_expression(source.expression));}
         else if constexpr(std::is_same_v<T,FlowPrimitiveValue>)update(target,primitive(source));
         else {static_assert(std::is_same_v<T,UnknownFlowValue>);update(target,unknown);}

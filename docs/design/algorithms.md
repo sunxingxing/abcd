@@ -3955,3 +3955,39 @@ normal completion destinations, exact and one-short budgets, and geometric work
 growth. Six final production mutants deliberately corrupt phase scopes, continue
 routing, retained-body, update ownership and required body grammar retention. These are bounded component cost
 checks; paused process RSS/benchmarks/global convergence runs remain paused.
+
+### Rules263 native-loop scalar copy and captured-value costs
+
+Let S/B be statement/binding counts, L be modeled native loops with members,
+and N the total actual native BoundNames. Shared construction indexes member
+heads by loop and successors by binding in O(S+B+N) work and O(S+B) scratch.
+Each of the two transport programs visits only its indexed members. It adds
+4N+2L events, 4N+2L internal/exit edges, 2N definitions and 2N references;
+loop entry/body edges use those owned boundaries. Captured inputs are typed
+records, not new expression-arena nodes or an expression-sized projection array.
+PMR scratch and owned graph growth are charged to the unchanged semantic budget.
+
+Demand activation adds one old-input fact per newly live implicit definition.
+The shared sparse gen/kill worklist keeps its existing set lookup and predecessor
+costs. Constants/types add indexed dependencies on the captured incoming facts;
+they do not reconstruct a graph per variable or materialize a read-definition
+product. Cost is expressed in actual live fact/edge counts F/A, including dense
+coexistence; no linear-in-B claim is made for inherently dense facts. There is no
+200-item cutoff or value-discard fallback. The available-copy domain conservatively
+leaves captured-current-root equality unproved until the common effect/root-write
+analysis can own that obligation.
+
+Provenance: ECMA-262 2025 14.7.4.3/.4 specifies first and normal/continue scalar
+transport; the existing sparse worklists/finite normal-value domains supply the
+implementation. Project-owned C++20; no copied upstream code, new dependency or
+license change. Allocation identity/captured cells and must-initialize precision
+are explicitly NOT certified by this value-plane step.
+
+Bounded component tests add 120 native phase compositions plus 10 member-index
+cases at 2/200/201/400/800 with arena reversal, exact/one-short construction budgets
+and geometric growth. Cross-reset, dead input, conflicting later write and mutable
+root cases distinguish captured values from current binding reads. Seven production
+mutants check input demand, dead input roots, captured-value equations, first and
+continue routes, unsafe mutable-root substitution, and captured type input position. Invocation dominance must
+reject a disconnected first-copy program even when conservative structural
+liveness still sees its retained nodes. Paused RSS/global benchmarks remain paused.

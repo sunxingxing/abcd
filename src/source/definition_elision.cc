@@ -42,7 +42,8 @@ std::variant<DefinitionElisions,TreeStructureError> PlanDefinitionElisions(
         // demand. Updates retain their conversion/read/successful writeback.
         case FlowDefinitionKind::kParameter:case FlowDefinitionKind::kUndefined:
         case FlowDefinitionKind::kInitializer:case FlowDefinitionKind::kUpdate:
-        case FlowDefinitionKind::kCatch:case FlowDefinitionKind::kFunctionSelf:break;
+        case FlowDefinitionKind::kCatch:case FlowDefinitionKind::kFunctionSelf:
+        case FlowDefinitionKind::kIterationCopy:break;
       }
     }
     result.writes.resize(count);count=0;
