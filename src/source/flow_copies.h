@@ -11,8 +11,10 @@ struct FlowCopies {
   std::uint64_t work=0;
 };
 // Classical available-copy gen/kill on shared sparse incoming live facts.
-// Normal-completion copy metadata generates relations; every source definition
-// kills them. All completion edges participate. Entry-cell adapter evidence
+// Normal-completion copy metadata generates relations, inheriting proved entry
+// equality through private copies. Common liveness includes source-value queries
+// at copy commit; missing query facts remain unknown. Every entry-root definition
+// kills its relations. All completion edges participate. Entry-cell adapter evidence
 // excludes mapped/captured/signature mutation; local activation roots remain
 // unproved. Initialization, lexical names, effects and deletion are independent.
 [[nodiscard]] std::variant<FlowCopies,TreeStructureError> AnalyzeFlowCopies(

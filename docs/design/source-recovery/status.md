@@ -24,6 +24,42 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-09：规则248，共同完成值查询贯通私有复制链
+
+- 共同all-read FlowLiveness在正常复制定义成功提交前查询源当前值，
+  与真实读取一起在同一稀疏worklist闭合。查询不是执行GetValue，
+  不新增FlowReference、不改变初始化/效果；observable FlowDemand不
+  以这些查询为根。干涉可保守消费扩展事实，删除写入仍由独立需求决定。
+- FlowCopies把查询到的私有中间单元加入共同稀疏依赖，复制成功时继承
+  源已证明的入口当前值关系。中间单元后来改写不改变其他单元保存的值；
+  入口根写入仍撤销关系，合流要求所有路径一致，失败RHS绕过定义，
+  暴露单元/无来源循环保持unknown。旧direct-entry-only生成退出私有链
+  决策，不增加pass轮次、回退阶段、复制深度/块/邻接/producer形状条件。
+  原exact-revision缓存、自有提案/首次提交失效、名字/作用域/初始化及
+  独立清理契约保持；不把local/catch/capture提升为activation根。
+- 有效旧实现RED684 exit134，结构先通过。首轮聚焦2/3的源码失败为
+  等价变异：正常读取恢复已合法删除current，输出scratch改名current
+  没有合并仍同时活跃的值。改用独立原程序验证错误共享，实际输出验证
+  错误入口替换/读取删除；不要求生产保留无用声明。源码单项36.95秒，
+  最终聚焦3/3在56.50秒通过。8种多级复制/中间转换/根写入/混合分支/
+  逗号异常RHS/循环刷新/mapped/postfix组合、反向arena及几何规模通过。
+  独立524288双单元路径状态，200/201/400/800链拆分边/反转事件arena，
+  observable中间单元、query-only无observable需求、非法边界及exact/
+  short预算通过；既有221184直接复制与版本/名字/值反例保持。
+- 最终原29目标构建84.44秒，exact原59/59项CTest497.55秒通过；
+  combined-coverage.json核对选定名称集合一致。存储1181源码/194324
+  行为比较/150变异反例，声明2568/513600/100、初始化2004/482752/368、
+  循环276/13976/68及既有真实record回归通过。fresh固定pasteboard
+  导出2.69秒：19records、10complete/0partial/9no-module，10语法检查
+  通过，源码字节与规则247一致，输入SHA前后不变；原预算及显式语言
+  契约language_numeric_constructors_v1保持。最终构建无warning/error，
+  早期完整聚焦构建仅原literal_plan.cc kNoop warning。
+  证据build/stage-one/transitive-copy-verification。
+- 共同语句完成/效果消除尚未清理读取恢复后暴露的纯空控制，是实际
+  表示缺口，不能加局部分支形状匹配。原IR/SSA、activation单元身份、
+  试算精度、完整finally与共同全局收敛仍开放。统一变量/结构gate/
+  阶段一Goal active；全suite/广语料/RSS/benchmarks/DFX/代理暂停保持。
+
 ### 2026-10-09：规则247，共同可用复制恢复可写入口绑定的读取
 
 - 新FlowCopies在共同RecoveryFlow/normal-result复制定义、稀疏活跃性、

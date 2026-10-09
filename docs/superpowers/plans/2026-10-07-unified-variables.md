@@ -568,3 +568,15 @@ analysis. Mutable entry reads, loops, refresh/exception/shadow/mapped/prefix/pos
 source compositions and independent concrete small graphs verify the substep.
 Actual selected evidence is recorded in status.md. Local/catch/capture activation,
 original correspondence/full lifetime/global convergence and milestone remain open.
+
+
+rules248 implemented substep: common all-read liveness includes proof-only current
+source-value queries at successful normal-copy definitions. Observable demand
+ignores those queries. FlowCopies inherits entry-root equality through private
+intermediates using the same sparse dependency solver, with root kills, independent
+intermediate writes and exception bypass. Direct-entry-only generation leaves the
+private chain path; no extra pass round or layout/copy-depth match. Independent
+two-cell graphs, split/reversed/geometric chains and actual source/mutants verify
+composition. Actual selected evidence is recorded in status.md. Local/catch/capture
+activation, original correspondence, trial precision/fullfinally/global convergence
+and overall milestone remain open.

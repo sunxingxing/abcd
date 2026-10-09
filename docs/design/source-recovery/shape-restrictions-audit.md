@@ -2863,3 +2863,22 @@ and geometric protocol counterexamples complement actual generated-source tests.
   validate the change. The added test's initial direct-callee assumption missed
   the existing `(0, report)` value-call representation; AST target resolution was
   corrected without changing production output or admission.
+
+
+### Rules248: private copy chains use semantic dependencies
+
+- Normal copy facts query current source state at successful commit through common
+  sparse liveness. Queries are not actual source reads or observable demand roots.
+- Transitive generation inherits entry equality through private cells; exposed or
+  unmodeled roots stay unknown. Root writes kill, intermediate writes change only
+  their own state, and failed RHS paths skip commits. No producer sequence, same
+  block, adjacency, copy depth, graph shape or selection-count admission appears.
+- Query/result/proposal ownership uses the existing exact projection revision;
+  no additional pass round or backward stage is introduced. Names, initialization,
+  effects, scope and deletion retain independent owners.
+- Independent two-cell graph states, split edges/reversed arenas/geometric chains,
+  output execution and semantic mutants validate the change. Wrong sharing must
+  join two values that really coexist: when a proved read replacement deletes an
+  intermediate cell, tests use the original program for that counterexample and
+  actual output for wrong entry replacement/read deletion. Production need not
+  retain an unused declaration to make a mutant differ.

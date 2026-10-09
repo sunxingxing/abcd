@@ -39,6 +39,14 @@ std::variant<LivenessResult,TreeStructureError> Solve(
       }
     }
     const auto add=[&](LiveBinding fact){if(facts.insert(fact).second)pending.push_back(fact);};
+    if(roots==Roots::kAllReads)for(const auto& definition:flow.definitions) {
+      budget.Step();if(!definition.copy)continue;
+      RequireTree(definition.point.value<flow.events.size()&&definition.copy->value<flow.bindings.size(),Error::kOwnership);
+      // Normal-result equality queries the source's current value immediately
+      // before successful copy commit. It is not an executed GetValue read:
+      // observable demand must never seed this proof-only query.
+      add({definition.point,*definition.copy});
+    }
     const auto retain=[&](DiscardedId id) {
       if(result.retained[id.value])return;
       result.retained[id.value]=1;

@@ -2366,3 +2366,46 @@ boundaries add counterexamples. Output execution and forced wrong merges/read
 removal verify observable behavior. See status.md for actual selected validation.
 Original IR/SSA correspondence, local/catch/capture activation, trial precision,
 full finally and common global convergence remain open.
+
+
+### Transitive current-copy facts (2026-10-09, rules248)
+
+Normal-completion copy definitions now seed source-value queries in common all-read
+FlowLiveness, immediately before successful target commit. These are proof queries,
+not executed GetValue references: FlowReference, ownership, initialization, effects
+and observable FlowDemand roots are unchanged. Conservative interference may consume
+the expanded facts; dead-definition/effect removal continues to use independent
+demand. One shared sparse worklist closes real reads and proof queries together.
+
+FlowCopies includes queried private intermediates in its existing sparse fact
+selection. A completed copy inherits the source's available entry-root equality at
+that point; unknown or exposed intermediates remain unknown. The stored relation
+continues to denote equality with the entry cell's current value. Later writes to
+an intermediate do not rewrite another cell's already saved value; later entry-root
+writes still kill the inherited relation. All incoming paths agree, failed RHS
+paths bypass target definitions, and ungrounded cycles remain unknown. This is a
+normal semantic dependency, never a direct/sequence/branch/loop producer match.
+Local/catch/captured cells are not promoted to activation roots.
+
+ReadValues retains the same exact-revision ownership and owned-proposal boundary.
+No extra pass round, backward scheduling, printer inference or copy-depth cutoff
+was added. The previous direct-entry-only generation exits decisions for private
+copy chains. Existing scope/name/initialization/lifetime and independent cleanup
+remain. Trial-flow normal-result precision and original IR/SSA/full activation/
+finally/global convergence remain gaps; whole milestone remains incomplete.
+
+Eight source combinations exercise chain insertion, intermediate updates, root
+writes, normal sequence results and RHS exceptions, mixed joins, refreshed loops,
+mapped arguments and postfix conversion. Reversed statement arenas and geometric
+sizes remain. Independent concrete two-cell state enumeration covers 524288 graph
+cases; 200/201/400/800 chains additionally split edges and reverse event arenas.
+Exposed intermediates, unknown writes, malformed query boundaries and exact/short
+budgets cover adverse cases. A query-only graph must produce all-read facts without
+making any definition observable. Actual output execution/read deletion/incorrect
+entry substitution complement wrong sharing in the independent original program:
+when current read substitution legitimately retires an intermediate binding,
+renaming an output slot to that absent name is not a valid coalescing counterexample.
+See status.md for actual final selected evidence. Read substitution can expose
+pure empty controls after independent binding cleanup; general statement completion/
+effect normalization remains a source-style gap. It must be owned by common semantic
+facts rather than a new empty-branch shape rule.

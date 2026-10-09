@@ -8,7 +8,9 @@ struct LiveBinding {
   auto operator<=>(const LiveBinding&) const = default;
 };
 struct FlowLiveness {
-  // Sorted incoming facts. Reads occur before a definition at the same point.
+  // Sorted incoming facts for retained reads and normal-copy value queries.
+  // Both refer to state before a definition at the same point; a proof query
+  // is not an observable read and never seeds FlowDemand.
   std::vector<LiveBinding> live_in;
   std::vector<std::uint8_t> live_definitions;
   // Invocation reachability includes every completion edge. Liveness remains

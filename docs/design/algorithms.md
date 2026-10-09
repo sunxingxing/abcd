@@ -3598,3 +3598,31 @@ No full-function retry, new pass round or eager reanalysis is added. Independent
 221184 concrete small-graph cases, 200/201/geometric layouts, unknown-write kills
 and exact/short quotas verify this boundary. Full process RSS remains paused;
 these bounds and quota checks do not constitute a measured peak-memory claim.
+
+
+### Transitive available copies and completion queries (2026-10-09, rules248)
+
+Provenance: the same internal classical available-copy gen/kill solver and sparse
+liveness worklist as rules247, with normal-copy dependencies; no new dependency or
+external code/license. Common all-read liveness seeds at most one source-value
+query per normal-copy definition, on pre-commit state. Observable demand does not
+seed them; a queried value is not an executed read or effect. Successful copies
+inherit proved entry equality from private source facts; exposed/missing facts and
+ungrounded cycles remain unknown. Intermediate overwrites do not retroactively
+modify a saved copy; entry-root writes kill the current-value relation.
+
+Let D count definitions, Q <= D count completion queries and L the shared sparse
+facts after closing actual reads and queries. The shared liveness pass adds O(D)
+seed visits and charged O(Q log(L+1)) insertion work; its existing fact/edge costs
+include all expanded L. No consumer performs another graph closure or per-binding
+walk. Copy generation adds one indexed dependency lookup per inspected copied
+definition connection, already included in rules247's P/log L dimension; arrays,
+output and materialized dependency A bounds remain unchanged with the expanded L.
+The flat facts still change at most twice. Dense L/P/A/output is charged honestly.
+
+Source chain insertion, independent 524288 two-cell concrete graph states,
+200/201/geometric chains with split edges/reversed arena and exact/short quotas
+exercise costs and layout independence. Query-only demand and exposed-source
+counterexamples verify that proof facts do not authorize observable work or external
+cell assumptions. Actual source execution remains independent of engine inputs.
+No new peak RSS or benchmark claim is made; those measurements remain paused.

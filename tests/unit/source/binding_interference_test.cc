@@ -635,6 +635,62 @@ std::uint64_t AvailableCopies(unsigned form,unsigned count,bool reverse,bool emi
   if(emit)std::cout<<nlohmann::json{{"form",form},{"count",count},{"reverse",reverse},{"available",true},{"first",first_known},{"last",last_known},{"source",output.str()}}<<'\n';
   return bindings.work;
 }
+std::uint64_t TransitiveCopies(unsigned form,unsigned count,bool reverse,bool emit){
+  Fixture f(Form::kStraight);auto& tree=f.tree;
+  if(form==94)tree.strictness=Strictness::kSloppy;
+  std::vector<StmtId> roots{f.Stmt(DeclarationStmt{{3},{}}),f.Stmt(DeclarationStmt{{4},{}})};
+  for(unsigned i=0;i<count;++i)roots.push_back(f.Block({}));
+  const auto copies=[&](std::vector<StmtId>& nodes,unsigned target,unsigned source,ScopeId scope=ScopeId{1}){
+    const auto value=[&]{
+      if(target==4&&form==95)return f.Expr(UpdateExpr{{3},UpdateDirection::kIncrement,UpdateResult::kPostfix});
+      if(target==4&&form==91)return f.Expr(SequenceExpr{f.Call({f.Read(2)}),f.Read(source)});
+      return f.Read(source);
+    };
+    nodes.push_back(f.Stmt(IfStmt{f.Read(2),f.Block({f.Write(target,value())},scope),
+        f.Block({f.Write(target,target==4&&form==92?f.Read(2):value())},scope)}));
+  };
+  copies(roots,3,0);
+  if(form==89)roots.push_back(f.Write(0,f.Read(2)));
+  const auto first=f.Read(4),second=f.Read(4);
+  if(form==93){
+    const auto loop=f.Stmt(LoopStmt{}),body=f.Block({});const auto scope=std::get<BlockStmt>(tree.statements[body.value].statement).scope;
+    const auto exit=f.Block({f.Stmt(BreakStmt{loop})},scope);
+    std::vector<StmtId> children{f.Stmt(IfStmt{f.Expr(UnaryExpr{TreeUnary::kNot,f.Read(2)}),exit,{}})};
+    copies(children,3,0,scope);copies(children,4,3,scope);
+    children.insert(children.end(),{f.Stmt(ExpressionStmt{f.Call({first})}),f.Write(3,f.Read(2)),f.Stmt(ExpressionStmt{f.Call({f.Read(3)})}),f.Write(2,f.Expr(TreeLiteral{BooleanLiteral{false}}))});
+    auto& block=std::get<BlockStmt>(tree.statements[body.value].statement);block.first_child=tree.children.size();block.child_count=children.size();tree.children.insert(tree.children.end(),children.begin(),children.end());
+    std::get<LoopStmt>(tree.statements[loop.value].statement).body=body;roots.push_back(loop);
+  }else{
+    if(form==91){
+      const auto tried=f.Block({});const auto scope=std::get<BlockStmt>(tree.statements[tried.value].statement).scope;
+      std::vector<StmtId> children;copies(children,4,3,scope);
+      auto& block=std::get<BlockStmt>(tree.statements[tried.value].statement);block.first_child=tree.children.size();block.child_count=children.size();tree.children.insert(tree.children.end(),children.begin(),children.end());
+      const auto handler=f.Block({});const auto caught_scope=std::get<BlockStmt>(tree.statements[handler.value].statement).scope;tree.scopes[caught_scope.value].kind=ScopeKind::kCatch;
+      tree.symbols.push_back({caught_scope,{5},BindingKind::kCatchParameter,DeclarationKind::kCatchParameter,NameEvidence::kMetadata,{}});
+      const std::vector<StmtId> caught{f.Stmt(ExpressionStmt{f.Call({f.Read(4)})}),f.Stmt(ReturnStmt{f.Read(4)})};
+      auto& catcher=std::get<BlockStmt>(tree.statements[handler.value].statement);catcher.first_child=tree.children.size();catcher.child_count=caught.size();tree.children.insert(tree.children.end(),caught.begin(),caught.end());
+      roots.push_back(f.Stmt(TryStmt{tried,CatchClause{{5},handler},{}}));
+    }else copies(roots,4,3);
+    if(form==90)roots.insert(roots.end(),{f.Stmt(ExpressionStmt{f.Expr(UpdateExpr{{3},UpdateDirection::kIncrement,UpdateResult::kPrefix})}),f.Stmt(ExpressionStmt{f.Call({f.Read(3)})})});
+    roots.push_back(f.Stmt(ExpressionStmt{f.Call({first})}));
+    if(form!=90)roots.insert(roots.end(),{f.Write(3,f.Read(2)),f.Stmt(ExpressionStmt{f.Call({f.Read(3)})})});
+  }
+  roots.push_back(f.Stmt(ExpressionStmt{f.Call({second})}));roots.push_back(f.Write(0,f.Read(2)));
+  const auto last=f.Read(4);roots.insert(roots.end(),{f.Stmt(ExpressionStmt{f.Call({f.Read(4)})}),f.Stmt(ReturnStmt{last})});
+  f.Finish(roots,reverse);Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
+  const auto bindings=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
+  const bool known=form==88||form==90||form==91||form==93;
+  Check(bindings.ReadBinding(first,{4})==(known?SymbolId{0}:bindings.Storage({4})));
+  if(form!=93)Check(bindings.ReadBinding(second,{4})==(known?SymbolId{0}:bindings.Storage({4})));
+  Check(bindings.ReadBinding(last,{4})==bindings.Storage({4}));
+  std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
+  if(!count){Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work})));
+    Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes-1,bindings.work}))==TreeStructureError::kResourceLimit);
+    Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work-1}))==TreeStructureError::kWorkLimit);}
+  if(emit)std::cout<<nlohmann::json{{"form",form},{"count",count},{"reverse",reverse},{"transitive",true},{"first",known},{"source",output.str()}}<<'\n';
+  return bindings.work;
+}
 std::uint64_t Many(unsigned count,bool emit){
   Fixture f(Form::kStraight);auto& tree=f.tree;std::vector<StmtId> declarations,body;
   for(unsigned i=0;i<count;++i){
@@ -708,6 +764,7 @@ int main(int argc,char** argv){
     std::uint64_t previous=0;for(unsigned count:{1U,200U,201U,400U,800U}){
       const auto work=Many(count,true);if(count==800)Check(work<previous*3);previous=work;}return 0;
   }
+for(unsigned form:{88U,89U,90U,91U,92U,93U,94U,95U})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){const auto work=TransitiveCopies(form,count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}
 for(unsigned form:{77U,78U,79U,80U,81U,82U,83U,84U,85U,86U,87U})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){const auto work=AvailableCopies(form,count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}
 for(unsigned form:{69U,70U,71U,72U,73U,74U,75U,76U})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){const auto work=ReadCopies(form,count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}
 for(unsigned form:{57U,58U,59U,60U,61U,62U,63U,64U,65U,66U,67U,68U})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){const auto work=ComposedCopies(form,count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}

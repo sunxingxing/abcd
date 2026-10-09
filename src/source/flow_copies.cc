@@ -61,6 +61,8 @@ std::variant<FlowCopies,TreeStructureError> AnalyzeFlowCopies(
     };
     std::vector<std::uint8_t> selected;budget.Array(selected,flow.bindings.size());
     for(const auto& reference:flow.references){budget.Step();if(read_site(reference))selected[reference.binding.value]=1;}
+    for(const auto& definition:flow.definitions){budget.Step();if(definition.copy&&
+        flow.bindings[definition.copy->value].exposure==FlowBindingExposure::kPrivate)selected[definition.copy->value]=1;}
     struct FactId {std::uint32_t value;};
     std::vector<std::uint32_t> facts;std::size_t count=0;std::optional<LiveBinding> previous;
     RequireTree(live.live_in.size()<=std::numeric_limits<std::uint32_t>::max(),TreeStructureError::kResourceLimit);
@@ -78,16 +80,20 @@ std::variant<FlowCopies,TreeStructureError> AnalyzeFlowCopies(
     enum class Kind : std::uint8_t {kUnresolved,kCopy,kUnknown};
     struct Value {Kind kind=Kind::kUnresolved;std::optional<SymbolId> source;};
     const Value unknown{Kind::kUnknown,{}};
-    const auto generated=[&](const FlowDefinition& definition)->Value {
+    const auto generated=[&](const FlowDefinition& definition,const auto& constant,const auto& dependency) {
       switch(definition.kind) {
         case FlowDefinitionKind::kAssignment:case FlowDefinitionKind::kInitializer:
-          if(definition.copy&&flow.bindings[definition.copy->value].stable_entry)return {Kind::kCopy,definition.copy};
+          if(definition.copy) {
+            if(flow.bindings[definition.copy->value].stable_entry){constant(Value{Kind::kCopy,definition.copy});return;}
+            if(flow.bindings[definition.copy->value].exposure==FlowBindingExposure::kPrivate)
+              if(const auto source=find({definition.point,*definition.copy})){dependency(*source,std::nullopt);return;}
+          }
           break;
         case FlowDefinitionKind::kUndefined:case FlowDefinitionKind::kUndefinedStore:
         case FlowDefinitionKind::kParameter:case FlowDefinitionKind::kFunctionSelf:
         case FlowDefinitionKind::kUpdate:case FlowDefinitionKind::kCatch:break;
       }
-      return unknown;
+      constant(unknown);
     };
     // Incoming facts describe values before this event. A predecessor's
     // successful definition acts before its outgoing edge; a thrown RHS never
@@ -101,7 +107,7 @@ std::variant<FlowCopies,TreeStructureError> AnalyzeFlowCopies(
         if(defined){
           RequireTree(defined->value<flow.definitions.size(),TreeStructureError::kOwnership);
           const auto& definition=flow.definitions[defined->value];
-          if(definition.binding==fact.binding){constant(generated(definition));continue;}
+          if(definition.binding==fact.binding){generated(definition,constant,dependency);continue;}
         }
         if(writes[predecessor.value]==fact.binding){constant(unknown);continue;}
         if(const auto source=find({predecessor,fact.binding}))dependency(*source,writes[predecessor.value]);
