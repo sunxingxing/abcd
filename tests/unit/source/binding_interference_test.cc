@@ -720,7 +720,10 @@ std::uint64_t Many(unsigned count,bool emit){
   if(std::holds_alternative<BindingInitializers>(work_short))std::cerr<<"scale count="<<count<<" work-short accepted reported="<<bindings.work<<'\n';
   Check(std::holds_alternative<TreeStructureError>(work_short));
   Check(std::get<TreeStructureError>(work_short)==TreeStructureError::kWorkLimit);
-  std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
+  std::ostringstream output;const auto printed=PrintFunctionTree(tree,output);
+  if(const auto* error=std::get_if<TreePrintError>(&printed))
+    std::cerr<<"scale count="<<count<<" print error="<<static_cast<unsigned>(*error)<<'\n';
+  Check(std::holds_alternative<PrintedFunction>(printed));
   Check(output.str().find("scratch")==std::string::npos);
   if(emit)std::cout<<nlohmann::json{{"count",count},{"work",bindings.work},{"bytes",bindings.allocated_bytes},{"source",output.str()}}<<'\n';
   return bindings.work;

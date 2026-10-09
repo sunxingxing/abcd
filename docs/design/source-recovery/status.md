@@ -36,6 +36,48 @@
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
 
+### 2026-10-10：规则269，完成路径效果与可观察写入分离
+
+- 主干第1项继续 source 侧效果对应：唯一穷尽语言表返回 typed normal/
+  before_throw masks 和 exceptional completion，Required/Inert 从同一事实
+  派生，未增加第二张操作表。当前 flow 在实际 intrinsic、receiver/key/
+  access、update read 处发布效果；成功 declarative definition 单独发布
+  lexical write。规范化源码仍以语言语义为准，不直接覆盖 raw VM flags。
+- 共同正常域分析改为读取当前 completion 的 UserCode：正常/resume-next
+  使用 normal，throw/resume-throw 使用 before_throw。Required guard、分配
+  和其他绑定的普通写入仍保留自身效果，但不冒充外部修改。原来的粗
+  Required kill 已退出建模源码事件的决策路径；未知图客户端 fallback
+  和 unmodeled cleanup 保守。无 motion/elision 许可随之隐含产生。
+- 纯绑定写入反例 build0/model134；修复后针对4项全部通过，22.27s，
+  SourceAdapter 新生成2函数/60独立行为比较/2执行突变，写入仍可观察，
+  数值转换保留、冗余一元运算消除。正常/异常两类效果的反向组合有
+  独立小图反例；这些 synthetic 原始包不冒充完整 raw/closure 证书。
+  receiver/key/access、资源契约和未知转换覆盖共同表语义。
+- 三项生产突变退回粗 kill、在异常路径取 normal masks、删除 key 回调，
+  均 build0/model-6；已恢复。N=200/201/400/800 native scoped definitions
+  work=691921/695278/1419907/2910736，bytes=3233801/3237587/6464985/
+  12927353；反向 arena、exact/one-short byte/work 通过，预算未放宽，
+  这是组件 admission，不是进程 RSS。语义依据已核对 ECMA-262 edition16
+  RequireObjectCoercible/ToObject/ToPropertyKey；原语言及 Ark profile 不变。
+- 第一轮冻结31目标构建0、固定ABC0；63项62通过/1失败，800 binding
+  打印返回资源错误。完整效果事实导致 event 128→136 byte；重新布局
+  窄字段后恢复128 byte，无额度放宽。针对投影与失败源码2项全部通过，
+  62.97s；first final 失败及 probe 均保留在证据根。
+- 第二轮同一31目标构建0（47.11s）、固定ABC0（3.62s），精确63项
+  全部通过（985.53s）；JUnit 名称完整且无重复。8份冻结代码哈希、
+  测试清单及 ABC SHA 在导出前/后和测试后均不变；profile、64MiB
+  及既定 lower-API work 额度不变。19 records：10 complete、0 partial、
+  9 no-module；10模块语法全部通过，源码逐字节与268相同。新增效果
+  源码2/60/2比较与突变、已有原始SSA/异常/生命期/试算及固定record
+  验证全部通过。第二轮与 repair build 无 warning/error；第一轮暴露
+  的既有 literal_plan.cc:59 kNoop switch warning 仍记录在首轮证据。
+  证据根 build/stage-one/completion-effects-verification；最终 fresh输出
+  build/stage-one/completion-effects-final-rule269-verified。
+  五项主干仍未关闭：完整 raw phase/protocol/action 对应、普通单元身份、
+  其他 trial、依赖收敛和里程碑终验继续。对象/class/helper 未精确建模的
+  效果保守，不加白名单。其他优化及 agents/fullsuite/扩展语料/RSS/
+  benchmarks/DFX 保持暂停。
+
 ### 2026-10-10：规则268，当前异常值合流与普通作用域值状态
 
 - 主干继续第1/2/3项：同一次 verified TreeFlow 转移 raw Catch 的值、

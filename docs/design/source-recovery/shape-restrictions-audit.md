@@ -3290,3 +3290,15 @@ same-block, adjacency, sample/name or fixed graph-size admission. Write
 observability stays independent. Initialization refinement precedes its liveness/
 domain consumers and cannot mutate the recovery plan. Full raw phase/action and
 closure/finally precision remain implementation gaps, not language restrictions.
+
+
+### Rules269: effects and write observability are independent facts
+
+The original exhaustive source semantic table owns typed normal/before-throw
+effects; no second visitor or production opcode pattern decides mutation. The
+normal-value solver consumes UserCode on the actual completion edge, alongside
+existing successful definitions and unit transfers. Required allocation, guards
+and declarative writes are not callback evidence. Their retention, completion,
+identity and scope obligations remain independent. Unknown/unmodeled paths stay
+conservative; no sample/name, same-block, adjacency, fixed graph or size admission
+was added. Raw phase/protocol correspondence remains an implementation gap.

@@ -675,6 +675,109 @@ void ScopedExposedKinds(bool reverse) {
   Check(changed.expressions[f.reads[0].value]==analysis::ValueKinds::Language());
   event.effect=ExpressionEvaluation::kInert;
   Check(std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(f.tree,model.flow,live,f.Input())).expressions[f.reads[0].value].IsNumber());
+  // Independent two-completion counterexample: the same retained operation
+  // has no normal callback but may invoke one before throwing. This model
+  // graph is not a certificate for a changed canonical source tree.
+  event.effect=ExpressionEvaluation::kRequired;
+  event.effects=SourceEffects{analysis::LanguageEffect::kNone,analysis::LanguageEffect::kUserCode,
+      analysis::ExceptionalCompletion::kMayThrow};
+  Check(std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(f.tree,model.flow,live,f.Input())).expressions[f.reads[0].value].IsNumber());
+  auto& completion=model.flow.edges[*model.flow.events[read->point.value].incoming].completion;
+  completion=FlowCompletion::kThrow;
+  Check(std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(f.tree,model.flow,live,f.Input())).expressions[f.reads[0].value]==analysis::ValueKinds::Language());
+  event.effects=SourceEffects{analysis::LanguageEffect::kUserCode,analysis::LanguageEffect::kNone,
+      analysis::ExceptionalCompletion::kMayThrow};
+  Check(std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(f.tree,model.flow,live,f.Input())).expressions[f.reads[0].value].IsNumber());
+  completion=FlowCompletion::kNormal;
+  Check(std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(f.tree,model.flow,live,f.Input())).expressions[f.reads[0].value]==analysis::ValueKinds::Language());
+}
+std::pair<std::uint64_t,std::size_t> ScopedPureWriteKinds(bool reverse,bool emit=false,unsigned count=1) {
+  Fixture f(count,reverse);
+  for(unsigned i=1;i<f.tree.symbols.size();++i) {
+    f.private_bindings[i]=0;f.tree.symbols[i].kind=BindingKind::kLocal;f.tree.symbols[i].temporary.reset();
+    const auto number=std::to_string(i);auto& name=f.tree.names[f.tree.symbols[i].name.value];
+    name=u"saved";name.append(number.begin(),number.end());
+  }
+  const SymbolId other{static_cast<unsigned>(f.tree.symbols.size())};
+  const NameId name{static_cast<unsigned>(f.tree.names.size())};f.tree.names.push_back(u"other");
+  f.tree.symbols.push_back({{1},name,BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
+  const auto expression=[&](TreeExpression node,FlowValueEquation equation) {
+    const ExprId id{static_cast<unsigned>(f.tree.expressions.size())};
+    f.tree.expressions.push_back({std::move(node),{0}});f.equations.push_back(equation);f.order.push_back(id);return id;
+  };
+  const auto zero=expression(TreeLiteral{IntegerLiteral{7}},FlowPrimitiveReference{{1}});
+  const auto value=expression(TreeLiteral{IntegerLiteral{7}},FlowPrimitiveReference{{1}});
+  const auto write=expression(AssignmentExpr{SymbolTarget{other},value},FlowExpressionValue{value});
+  const StmtId declaration{static_cast<unsigned>(f.tree.statements.size())};
+  f.tree.statements.push_back({DeclarationStmt{other,zero},{0}});
+  const StmtId assignment{static_cast<unsigned>(f.tree.statements.size())};
+  f.tree.statements.push_back({ExpressionStmt{write},{0}});
+  f.tree.children.insert(f.tree.children.begin(),declaration);
+  f.tree.children.insert(f.tree.children.begin()+3*count,assignment);
+  const auto returned=expression(SymbolExpr{{count}},FlowBindingValue{{count}});
+  const StmtId returning{static_cast<unsigned>(f.tree.statements.size())};
+  f.tree.statements.push_back({ReturnStmt{returned},{0}});f.tree.children.push_back(returning);
+  std::get<BlockStmt>(f.tree.statements[0].statement).child_count=f.tree.children.size();
+  const auto b=f.tree.symbols.size(),e=f.tree.expressions.size(),s=f.tree.statements.size();
+  f.plan.aliases.resize(b);f.plan.storage.resize(b);f.plan.read_bindings.resize(b);f.plan.literals.resize(b);f.private_bindings.resize(b,0);
+  f.plan.read_sources.resize(e);f.plan.read_literals.resize(e);f.plan.replacements.resize(e);f.plan.transports.resize(e);
+  f.plan.omitted.resize(s);f.plan.statements.resize(s);
+  f.original.statements=s;f.original.bindings=b;f.original.normal_kinds.resize(e);f.original.input_ranges.resize(e);
+  Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(f.tree)));
+  const auto model=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,f.Projection(),f.Input()));
+  const analysis::SemanticBudget exact{model.allocated_bytes,model.work};
+  Check(std::holds_alternative<RecoveryProjection>(PrepareRecoveryProjection(f.tree,f.Projection(),f.Input(),exact)));
+  Check(std::get<TreeStructureError>(PrepareRecoveryProjection(f.tree,f.Projection(),f.Input(),{exact.bytes-1,exact.work}))==TreeStructureError::kResourceLimit);
+  Check(std::get<TreeStructureError>(PrepareRecoveryProjection(f.tree,f.Projection(),f.Input(),{exact.bytes,exact.work-1}))==TreeStructureError::kWorkLimit);
+  bool observable=false;
+  for(const auto& d:model.flow.definitions)if(d.write==write) {
+    Check(d.effect==FlowWriteEffect::kObservable);observable=true;
+  }
+  Check(observable);
+  bool event_seen=false;
+  for(const auto& event:model.flow.events)if(event.expression==write) {
+    Check(event.effect==ExpressionEvaluation::kRequired&&event.effects);
+    Check(!event.MayInvokeUserCode(FlowCompletion::kNormal));event_seen=true;
+  }
+  Check(event_seen);
+  // Pure PutValue to another declarative unit must retain its observable write
+  // without inventing a user callback that could replace this numeric value.
+  for(unsigned i=0;i<count;++i) {
+    Check(model.expressions.kinds[f.reads[i].value].IsNumber());
+    Check(model.expressions.evaluations[f.results[i].value]==ExpressionEvaluation::kInert);
+  }
+  if(emit) {
+    std::ostringstream output;
+    Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(f.tree,output,{}, {},nullptr,&f.original)));
+    std::cout<<nlohmann::json{{"source",output.str()},{"reverse",reverse},{"count",count},
+      {"events",model.flow.events.size()},{"edges",model.flow.edges.size()},{"work",model.work},{"bytes",model.allocated_bytes}}<<'\n';
+  }
+  return {model.work,model.allocated_bytes};
+}
+void SourceEffectPhases() {
+  using L=analysis::LanguageEffect;
+  const std::array unknown{analysis::ValueKinds::Language()};
+  const std::array primitive{analysis::ValueKinds::Number()};
+  for(const auto resources:{ResourceFailureScope::kObservable,ResourceFailureScope::kExcluded}) {
+    const auto receiver=NormalPropertyReceiverEffects({0},unknown,resources);
+    Check(receiver.Evaluation()==ExpressionEvaluation::kRequired);
+    Check(!HasLanguageEffect(receiver.normal,L::kUserCode)&&!HasLanguageEffect(receiver.before_throw,L::kUserCode));
+    const auto key=NormalPropertyKeyEffects(ComputedKey{{0}},unknown,resources);
+    Check(HasLanguageEffect(key.normal,L::kUserCode)&&HasLanguageEffect(key.before_throw,L::kUserCode));
+    const auto allocation=NormalValueEffects(EmptyObjectExpr{},unknown,resources);
+    Check(allocation.Evaluation()==ExpressionEvaluation::kRequired&&!HasLanguageEffect(allocation.normal,L::kUserCode));
+    const auto negate=NormalValueEffects(UnaryExpr{TreeUnary::kNegate,{0}},primitive,resources);
+    Check(negate.Evaluation()==ExpressionEvaluation::kInert);
+    const auto hooks=NormalValueEffects(UnaryExpr{TreeUnary::kNegate,{0}},unknown,resources);
+    Check(HasLanguageEffect(hooks.normal,L::kUserCode)&&HasLanguageEffect(hooks.before_throw,L::kUserCode));
+    const auto store=NormalValueEffects(AssignmentExpr{SymbolTarget{{0}},{0}},unknown,resources);
+    Check(store.Evaluation()==ExpressionEvaluation::kRequired&&!HasLanguageEffect(store.normal,L::kUserCode));
+    const auto put=NormalValueEffects(AssignmentExpr{MemberTarget{{0},ComputedKey{{0}}},{0}},unknown,resources);
+    Check(HasLanguageEffect(put.normal,L::kUserCode)&&HasLanguageEffect(put.before_throw,L::kUserCode));
+    const auto key_number=NormalPropertyKeyEffects(ComputedKey{{0}},primitive,resources);
+    Check(!HasLanguageEffect(key_number.normal,L::kUserCode));
+    Check((key_number.Evaluation()==ExpressionEvaluation::kInert)==(resources==ResourceFailureScope::kExcluded));
+  }
 }
 void ActivationSource(unsigned copies,bool split,bool emit) {
   FunctionTree tree{};tree.callable=CallableKind::kFunction;tree.strictness=Strictness::kStrict;
@@ -726,6 +829,10 @@ void ActivationSource(unsigned copies,bool split,bool emit) {
 
 }
 int main(int argc,char** argv) {
+  if(argc==2&&std::string_view(argv[1])=="--effects") {
+    for(bool reverse:{false,true})ScopedPureWriteKinds(reverse,true);
+    return 0;
+  }
   for(bool reverse:{false,true}){CandidatePlan(reverse);CandidateDeclarations(reverse);SnapshotPlan(reverse,false);SnapshotPlan(reverse,true);SnapshotPlan(reverse,false,true);}
   for(bool reverse:{false,true})for(bool nested:{false,true})for(bool free:{false,true})SnapshotRestoration(1,reverse,nested,free);
   for(bool reverse:{false,true})SnapshotRestoration(1,reverse,false,false,true);
@@ -772,6 +879,15 @@ int main(int argc,char** argv) {
   for(unsigned form=0;form<4;++form){ScopeExitSource(form,0,false,false);ScopeExitSource(form,0,false,false,true);}
   CapturedKinds(false);CapturedKinds(true);ActivationKinds(false);ActivationKinds(true);
   ScopedExposedKinds(false);ScopedExposedKinds(true);
+  ScopedPureWriteKinds(false);ScopedPureWriteKinds(true);
+  SourceEffectPhases();
+  std::uint64_t effects_work=0;std::size_t effects_bytes=0;
+  for(unsigned count:{200U,201U,400U,800U}) {
+    const auto [work,bytes]=ScopedPureWriteKinds(false,false,count);ScopedPureWriteKinds(true,false,count);
+    Check(!effects_work||work<effects_work*3);Check(!effects_bytes||bytes<effects_bytes*3);
+    effects_work=work;effects_bytes=bytes;
+    std::cout<<"completion effects count="<<count<<" work="<<work<<" bytes="<<bytes<<'\n';
+  }
   ActivationSource(0,false,false);ActivationSource(1,true,false);
   Case(false);Case(true);ChangedDefinition(false);ChangedDefinition(true);
   OriginalEntries(false);OriginalEntries(true);

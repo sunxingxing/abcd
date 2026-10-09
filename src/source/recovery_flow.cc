@@ -300,6 +300,7 @@ class FlowBuilder {
       std::optional<StmtId> owner={}) {
     RequireTree(definitions_.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
     const auto point=New({FlowEventKind::kDefinition,{},FlowDefinitionId{static_cast<std::uint32_t>(definitions_.size())}});
+    events_[point.value].effects=SourceEffects{analysis::LanguageEffect::kLexicalWrite};
     events_[point.value].discarded=discarded;
     Append(definitions_,{point,Resolve(binding),kind,copy,value,declaration,write,effect});
     if(result_.original&&write&&!result_.original->definitions.empty()) {
@@ -383,11 +384,14 @@ class FlowBuilder {
     const FlowPropertyId id{static_cast<std::uint32_t>(result_.properties.size())};
     const auto acquisition=New({FlowEventKind::kPropertyReference,{},{},site});
     events_[acquisition.value].property=FlowPropertySite{id,FlowPropertyPhase::kAcquisition};
+    events_[acquisition.value].effects=SourceEffects{};
     events_[access.value].property=FlowPropertySite{id,FlowPropertyPhase::kAccess};
-    const auto phase=[&](FlowPropertyPhase phase,ExpressionEvaluation evaluation) {
+    const auto phase=[&](FlowPropertyPhase phase,SourceEffects effects) {
+      const auto evaluation=effects.Evaluation();
       const auto point=New({FlowEventKind::kPropertyReference,{},{},site});
       events_[point.value].property=FlowPropertySite{id,phase};events_[point.value].discarded=context.discarded;
       events_[point.value].effect=evaluation;
+      events_[point.value].effects=effects;
       if(evaluation==ExpressionEvaluation::kRequired) {
         Link(point,context.thrown,FlowCompletion::kThrow);
         if(context.discarded)discarded_[context.discarded->value].effect=evaluation;
@@ -395,8 +399,8 @@ class FlowBuilder {
       return point;
     };
     const auto resources=ResourceFailures(tree_.identity.contract);
-    const auto receiver=phase(FlowPropertyPhase::kReceiver,NormalPropertyReceiverEvaluation(base,result_.normal_kinds,resources));
-    const auto conversion=phase(FlowPropertyPhase::kKey,NormalPropertyKeyEvaluation(key,result_.normal_kinds,resources));
+    const auto receiver=phase(FlowPropertyPhase::kReceiver,NormalPropertyReceiverEffects(base,result_.normal_kinds,resources));
+    const auto conversion=phase(FlowPropertyPhase::kKey,NormalPropertyKeyEffects(key,result_.normal_kinds,resources));
     Link(receiver,conversion);Link(conversion,access);
     FlowPropertyReference reference{acquisition,receiver,conversion,access,context.next,kind,site,base,key,{context.thrown,context.finalizer},context.owner};
     if(result_.original) {
@@ -491,6 +495,7 @@ class FlowBuilder {
     // whether their result is later used. Inert private writes can be dropped;
     // initialization, getters, coercion, calls, throws and suspension remain.
     events_[effect.value].effect=required?ExpressionEvaluation::kRequired:ExpressionEvaluation::kInert;
+    events_[effect.value].effects=required?NormalValueEffects(node,result_.normal_kinds,ResourceFailures(tree_.identity.contract)):SourceEffects{};
     if(context.discarded && required)discarded_[context.discarded->value].effect=ExpressionEvaluation::kRequired;
     const bool suspension=std::holds_alternative<AwaitExpr>(node)||std::holds_alternative<YieldExpr>(node);
     Link(effect,normal,suspension?FlowCompletion::kResumeNext:FlowCompletion::kNormal);
@@ -521,6 +526,7 @@ class FlowBuilder {
     if(const auto* update=std::get_if<UpdateExpr>(&node)) {
       const auto read=New({FlowEventKind::kRead,Resolve(update->symbol),{},at.id});events_[read.value].discarded=context.discarded;Link(read,effect);
       events_[read.value].effect=ExpressionEvaluation::kRequired;
+      events_[read.value].effects=NormalValueEffects(SymbolExpr{update->symbol},{},ResourceFailures(tree_.identity.contract));
       Reference(read,Resolve(update->symbol),FlowReferenceKind::kRead,at.id,FlowExceptionContext{context.thrown,context.finalizer},context.owner);
       Link(read,context.thrown,FlowCompletion::kThrow);next=read;
     }
@@ -811,11 +817,12 @@ std::variant<FlowRefinement,TreeStructureError> RefineRecoveryFlowEffects(
         const auto& reference=flow.properties[event.property->reference.value];
         const auto resources=ResourceFailures(tree.identity.contract);
         switch(event.property->phase) {
-          case FlowPropertyPhase::kAcquisition:event.effect=ExpressionEvaluation::kInert;break;
-          case FlowPropertyPhase::kReceiver:event.effect=NormalPropertyReceiverEvaluation(reference.base,flow.normal_kinds,resources);break;
-          case FlowPropertyPhase::kKey:event.effect=NormalPropertyKeyEvaluation(reference.key,flow.normal_kinds,resources);break;
+          case FlowPropertyPhase::kAcquisition:event.effects=SourceEffects{};break;
+          case FlowPropertyPhase::kReceiver:event.effects=NormalPropertyReceiverEffects(reference.base,flow.normal_kinds,resources);break;
+          case FlowPropertyPhase::kKey:event.effects=NormalPropertyKeyEffects(reference.key,flow.normal_kinds,resources);break;
           case FlowPropertyPhase::kAccess:throw Error::kOwnership;
         }
+        event.effect=event.effects->Evaluation();
         if(event.discarded&&event.effect==ExpressionEvaluation::kRequired)flow.discarded[event.discarded->value].effect=event.effect;
         continue;
       }
@@ -824,6 +831,9 @@ std::variant<FlowRefinement,TreeStructureError> RefineRecoveryFlowEffects(
           evaluations[id.value]!=ExpressionEvaluation::kInert;
       if(std::holds_alternative<AssignmentExpr>(node))required=assignments[id.value]==ExpressionEvaluation::kRequired;
       event.effect=required?ExpressionEvaluation::kRequired:ExpressionEvaluation::kInert;
+      event.effects=required?NormalValueEffects(node,flow.normal_kinds,ResourceFailures(tree.identity.contract)):SourceEffects{};
+      if(event.kind==FlowEventKind::kRead&&std::holds_alternative<UpdateExpr>(node))
+        event.effects=NormalValueEffects(SymbolExpr{std::get<UpdateExpr>(node).symbol},{},ResourceFailures(tree.identity.contract));
       if(event.discarded && required)flow.discarded[event.discarded->value].effect=ExpressionEvaluation::kRequired;
     }
     std::size_t retained=0;

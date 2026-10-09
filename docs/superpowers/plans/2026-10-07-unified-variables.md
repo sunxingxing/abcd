@@ -877,3 +877,22 @@ external invalidation and failed stores. Complete raw phase/action correspondenc
 ordinary unit identity, all trial consumers, dependency convergence and milestone
 acceptance remain OPEN. Do not proceed to other optimizations before those five
 backbone deliveries close. Existing fixed verification/paused work scope remains.
+
+
+Rules269 substep: the common source semantic table produces normal/before-throw
+effects, current source phases publish them, and the shared value solver consumes
+UserCode on the actual completion. Required is retained for write/evaluation
+observability, not reused as mutation evidence. This retires that coarse current
+production decision; unknown graph clients/cleanup remain conservative. Tests
+include emitted ordinary local source, a two-completion counterexample, property
+phase semantics, reverse IDs, exact/short budgets, 200/201/400/800 and production
+mutants. Full raw phase/action correspondence and all five backbone deliveries
+remain OPEN; do not resume unrelated optimizations or paused work.
+
+Rules269 final evidence: first frozen63 run retained62/63 with800-binding
+printer resource failure; compact field layout preserves complete phase facts
+and restores128-byte event without increasing allowances. Repaired targeted2/2
+and second frozen31/63/fixedABC all pass; source/input/selection hashes unchanged.
+No backbone delivery is closed by this component; next implementation remains
+complete raw phase/action/exception correspondence, ordinary units, remaining
+trials, dependency convergence and final milestone acceptance.

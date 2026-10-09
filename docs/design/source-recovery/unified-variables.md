@@ -3156,3 +3156,58 @@ counterexample distinguishes initialized reads from external mutation barriers.
 All five backbone deliveries remain OPEN, including complete raw phase/action
 correspondence, ordinary unit identity, other trials, global convergence and final
 milestone acceptance. Other optimizations and paused verification remain paused.
+
+
+### Rules269: completion-specific effects from the common language table
+
+The existing exhaustive language table now returns SourceEffects: possible normal
+and before-throw LanguageEffect masks and exceptional completion. Required/Inert
+is derived from that same table, not a second operator rule. Current flow assigns
+those phases at actual intrinsic, property receiver/key/access and update-read
+positions; success-only declarative definitions separately publish lexical writes.
+The shared bootstrap refines these facts for the exact current candidate.
+
+AnalyzeFlowNormalKinds now invalidates exposed units from the actual edge's
+UserCode mask. Normal/resume-next use normal effects; throw/resume-throw use
+before-throw effects. Unknown graph clients retain the conservative Required
+fallback, and unmodeled cleanup remains conservative. Observable writes and
+allocation remain Required for existing retention obligations while their absence
+of a callback no longer destroys a separate numeric definition. No motion or
+elision permission follows from absence of UserCode. This retires the production
+Required-equals-external-mutation decision for modeled source events.
+
+This is the source side of the raw/source effect correspondence, not permission
+to copy VM normal/before_throw flags onto normalized source. Raw operation,
+protocol and phase/action mapping is still incomplete. Normalization can compose
+several operations or introduce source guards/definitions; those events keep
+the language adapter as their semantic owner. Object/class/helper protocols and
+imprecise operand domains conservatively retain callback effects until their
+shared semantics can prove otherwise; no local opcode whitelist is introduced.
+
+The effect split follows ECMA-262 2025 edition 16 abstract operations:
+[RequireObjectCoercible](https://262.ecma-international.org/16.0/#sec-requireobjectcoercible)
+and [ToObject](https://262.ecma-international.org/16.0/#sec-toobject) can fail/allocate
+without invoking a receiver hook, whereas
+[ToPropertyKey](https://262.ecma-international.org/16.0/#sec-topropertykey)
+may invoke ToPrimitive. This is an inference from their algorithms. Current
+Unknown key/call/coercion effects remain conservative. The edition and fetched
+source identity are recorded in ignored semantic-provenance.json; no new dependency
+or runtime input was added, and the locked Ark and language profiles stay unchanged.
+
+Tests distinguish pure observable commits, normal versus exceptional callbacks,
+receiver/key/access phases, unknown fallback, resource modes and numeric coercion.
+A real current SourceVariables/PrintFunctionTree path independently executes the
+new source-adapter case; its synthetic original envelope is explicitly not a
+raw-IR or closure certificate. Reverse arena order, exact/one-short allowances and
+200/201/400/800 ordinary scoped definitions verify cost/candidate properties.
+Three production mutants restore the coarse kill, use normal effects on throw,
+or omit key callbacks; each must fail. All five backbone deliveries stay OPEN.
+
+Rules269 final acceptance exposed a source-print admission regression at 800
+bindings: the complete effect payload grew per-event padding to 136 bytes. The
+current ARM64 layout now groups narrow fields before the size_t links and keeps
+the typed construction prefix; it returns to 128 bytes with all normal,
+before-throw and exception facts present. The default source printing case
+passes at its original 64MiB allowance. No semantic narrowing or budget increase
+was used. Frozen first-attempt failure/probe and repaired targeted checks are
+retained; current final verification is recorded in status.md.

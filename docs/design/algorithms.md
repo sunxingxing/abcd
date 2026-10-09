@@ -4147,3 +4147,32 @@ Copied/split/reallocated decoded exception graphs test 200/201/400/800 and exact
 one-short allowances; current byte/work limits remain unchanged. Measured costs
 and final bounded validation are recorded in status.md; full-process performance,
 RSS, expanded corpora and other paused checks remain paused.
+
+
+### Completion-specific source effects (rules269)
+
+The existing constant-time exhaustive source operation table now returns typed
+normal/before-throw masks. Current event creation/refinement adds O(P) constant
+field work and O(P) stored facts for P events; property phases reuse the existing
+reference adapter. The normal-value solver's existing sparse edge/fact traversal
+reads the corresponding completion mask in O(1), removing the coarse Required
+mutation predicate. No extra graph scan per variable, operation, catch or candidate
+is added, and masks never authorize deleting writes or moving computations.
+
+N=200/201/400/800 ordinary scoped definitions admit work=691921/695278/1419907/
+2910736 and bytes=3233801/3237587/6464985/12927353. Arena reversal and exact/
+one-short byte/work allowances pass at unchanged limits. These are accounted
+component facts, not process RSS or full-pipeline performance measurements.
+Provenance is the same finite-domain/effect solver plus ECMA-262 edition16 source
+semantics described in unified-variables.md; no dependency/license change.
+Global dependency-driven pass convergence and paused full-process checks remain open.
+
+Rules269 frozen acceptance first exposed an end-to-end 800-binding admission
+regression: adding the facts increased FlowEvent padding from 128 to 136 bytes
+on the current ARM64 build, and the default printer exceeded its unchanged
+64MiB allowance. Grouping narrow fields preserves the typed construction prefix
+and every effect fact while returning the event to 128 bytes. The same default
+800-binding source printing and exact/one-short component checks pass. No
+resource allowance or semantic fact was removed; the first failure is retained
+in completion-effects-verification/final-attempt-1. This is an admission
+regression repair required by the semantic change, not a process RSS claim.

@@ -219,23 +219,44 @@ struct FlowStatement {
   FlowStatementRetention retention=FlowStatementRetention::kOptional;
 };
 struct FlowEvent {
+  // Group narrow fields before the size_t links; retain all phase facts without
+  // increasing padding in every admitted event. Construction uses the typed
+  // kind/read/definition/expression/scope prefix, never physical field offsets.
   FlowEventKind kind = FlowEventKind::kControl;
   std::optional<SymbolId> read;
   std::optional<FlowDefinitionId> definition;
   std::optional<ExprId> expression;
   std::optional<ScopeId> scope;
-  std::optional<std::size_t> incoming, outgoing;
   std::optional<DiscardedId> discarded;
-  // Intrinsic effect at this event, refined with binding completion. State
-  // reads and successful writes remain observations even when this is inert.
-  ExpressionEvaluation effect = ExpressionEvaluation::kInert;
   std::optional<StmtId> owner;
-  bool entry_evaluation=false;
   std::optional<FlowPropertySite> property;
+  std::optional<std::size_t> incoming, outgoing;
   std::optional<StmtId> loop_environment;
   // Explicit throw evaluates this value before publishing the exception.
   // Implicit exceptions/resume failures have no known language payload.
   std::optional<ExprId> thrown_value;
+  // Exact current intrinsic phases from the sole language semantic table.
+  // Missing facts retain the conservative Required fallback for graph clients.
+  std::optional<SourceEffects> effects;
+  // Intrinsic effect at this event, refined with binding completion. State
+  // reads and successful writes remain observations even when this is inert.
+  ExpressionEvaluation effect = ExpressionEvaluation::kInert;
+  bool entry_evaluation=false;
+  [[nodiscard]] bool MayInvokeUserCode(FlowCompletion completion) const {
+    if(completion==FlowCompletion::kConservativeCleanup)return true;
+    if(!effects)return effect==ExpressionEvaluation::kRequired;
+    switch(completion) {
+      case FlowCompletion::kThrow:case FlowCompletion::kResumeThrow:
+        return HasLanguageEffect(effects->before_throw,analysis::LanguageEffect::kUserCode);
+      case FlowCompletion::kNormal:case FlowCompletion::kReturn:case FlowCompletion::kJump:
+      case FlowCompletion::kTaken:case FlowCompletion::kNotTaken:case FlowCompletion::kResumeNext:
+        return HasLanguageEffect(effects->normal,analysis::LanguageEffect::kUserCode);
+      case FlowCompletion::kResumeReturn:
+        return HasLanguageEffect(effects->normal|effects->before_throw,analysis::LanguageEffect::kUserCode);
+      case FlowCompletion::kConservativeCleanup:return true;
+    }
+    throw TreeStructureError::kOwnership;
+  }
 };
 struct FlowEdge {
   FlowPoint from, to;

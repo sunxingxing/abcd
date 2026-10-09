@@ -215,10 +215,10 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
               constant(target,K::Language());invalidate(target);continue;
             }
           }
-          // External/captured mutation can occur during a required evaluation
-          // on normal or exceptional completion. Successful explicit stores
-          // above generate their new value independently of this kill.
-          if(!closed_binding(fact.binding)&&prior.effect==ExpressionEvaluation::kRequired) {
+          // The actual completion's user effects can replace exposed units.
+          // Retained guards, allocation and other declarative writes cannot.
+          // Successful stores above independently generate their new value.
+          if(!closed_binding(fact.binding)&&prior.MayInvokeUserCode(flow.edges[*edge].completion)) {
             constant(target,K::Language());invalidate(target);continue;
           }
           if(writes[predecessor.value]==fact.binding){constant(target,K::Language());invalidate(target);continue;}

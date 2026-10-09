@@ -202,6 +202,32 @@ for(const split of [false,true])for(const reallocated of [false,true]) {
 }
 console.log(`${catches.length} original catch/implicit failure/commit sources / ${catches.length*catchFactories.length} independent comparisons / ${catchMutants} adverse mutants`);
 
+// Source-adapter model: observable declarative commits are distinct from user
+// callbacks. Its synthetic original envelope is not a raw IR certificate.
+const effectSources=execFileSync(process.argv[3],['--effects'],{encoding:'utf8'}).trim().split('\n').map(JSON.parse);
+const effectReference=function(input){let other=7;let saved=7;saved=+input();other=7;-saved;return saved;};
+function effectEquivalent(source) {
+  const generated=Function('return ('+source+')')();
+  for(const factory of factories) {
+    const reference=function(params){return effectReference(()=>params);};
+    const actual=function(params){return generated(()=>params);};
+    assert.deepEqual(outcome(actual,factory),outcome(reference,factory));
+  }
+}
+let effectMutants=0;
+for(const row of effectSources) {
+  effectEquivalent(row.source);
+  const wrapped='('+row.source+')',all=nodes(parseJavaScript(wrapped));
+  assert.equal(all.filter(node=>node.type==='UnaryExpression'&&node.operator==='-').length,0);
+  assert.ok(all.some(node=>node.type==='AssignmentExpression'&&node.left.name==='other'),
+    'absence of user callbacks does not license erasing an observable commit');
+  const conversion=all.find(node=>node.type==='UnaryExpression'&&node.operator==='+');assert.ok(conversion);
+  const mutant=wrapped.slice(0,conversion.start)+wrapped.slice(conversion.argument.start,conversion.argument.end)+wrapped.slice(conversion.end);
+  assert.throws(()=>effectEquivalent(mutant));++effectMutants;
+}
+assert.equal(effectSources.length,2);
+console.log(`${effectSources.length} completion-effect sources / ${effectSources.length*factories.length} independent comparisons / ${effectMutants} adverse mutants`);
+
 // Independently execute current catch identities and undefined declaration
 // completion over repeated entries. These are source-adapter fixtures, not
 // decoded original-SSA certificates; production never receives this program.

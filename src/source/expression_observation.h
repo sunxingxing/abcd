@@ -5,6 +5,27 @@
 #include <type_traits>
 namespace abcd::source {
 enum class ExpressionEvaluation : std::uint8_t { kRequired, kInert };
+// Intrinsic source operation effects, not child evaluations or successful
+// declarative commits. The shared flow adapter owns those separate phases.
+// Normal/before-throw masks describe possible effects on each completion;
+// Required retention is independent of permission to mutate a captured unit.
+struct SourceEffects {
+  analysis::LanguageEffect normal=analysis::LanguageEffect::kNone;
+  analysis::LanguageEffect before_throw=analysis::LanguageEffect::kNone;
+  analysis::ExceptionalCompletion exceptional=analysis::ExceptionalCompletion::kImpossible;
+  [[nodiscard]] ExpressionEvaluation Evaluation() const {
+    return normal==analysis::LanguageEffect::kNone&&before_throw==analysis::LanguageEffect::kNone&&
+        exceptional==analysis::ExceptionalCompletion::kImpossible?ExpressionEvaluation::kInert:ExpressionEvaluation::kRequired;
+  }
+};
+inline bool HasLanguageEffect(analysis::LanguageEffect effects,analysis::LanguageEffect effect) {
+  return (static_cast<std::uint16_t>(effects)&static_cast<std::uint16_t>(effect))!=0;
+}
+inline SourceEffects CallbackEffects(analysis::LanguageEffect extra=analysis::LanguageEffect::kNone) {
+  using L=analysis::LanguageEffect;
+  const auto possible=L::kUserCode|L::kHeapRead|L::kHeapWrite|L::kAllocation|extra;
+  return {possible,possible,analysis::ExceptionalCompletion::kMayThrow};
+}
 // Explicit binding and free-name references can be checked at a destination
 // scope. Closure environments and implicit source helpers still require the
 // enclosing environment until their dependencies join that reference model.
@@ -113,47 +134,63 @@ inline analysis::ValueKinds NormalValueKinds(const TreeExpression& expression,
 // receiver conversion (and after an assignment RHS). Acquisition is inert.
 // Primitive conversion cannot invoke user hooks. Resource-observable contracts
 // retain potential string allocation; absent precise domains stay conservative.
-inline ExpressionEvaluation NormalPropertyKeyEvaluation(const MemberKey& key,
+inline SourceEffects NormalPropertyKeyEffects(const MemberKey& key,
     std::span<const analysis::ValueKinds> kinds,ResourceFailureScope resources) {
   const auto* computed=std::get_if<ComputedKey>(&key);
-  if(!computed)return ExpressionEvaluation::kInert;
+  if(!computed)return {};
   const auto domain=kinds.empty()?analysis::ValueKinds::Language():kinds[computed->expression.value];
-  return domain.IsString() || (resources==ResourceFailureScope::kExcluded&&CoercionPrimitive(domain))?
-      ExpressionEvaluation::kInert:ExpressionEvaluation::kRequired;
+  if(domain.IsString()||(resources==ResourceFailureScope::kExcluded&&CoercionPrimitive(domain)))return {};
+  if(CoercionPrimitive(domain))return {analysis::LanguageEffect::kAllocation,analysis::LanguageEffect::kAllocation,
+      analysis::ExceptionalCompletion::kMayThrow};
+  return CallbackEffects();
+}
+inline SourceEffects NormalPropertyReceiverEffects(ExprId base,
+    std::span<const analysis::ValueKinds> kinds,ResourceFailureScope resources) {
+  const auto domain=kinds.empty()?analysis::ValueKinds::Language():kinds[base.value];
+  if(resources==ResourceFailureScope::kExcluded&&(domain.IsString()||domain.IsNumber()||domain.IsBoolean()))return {};
+  // RequireObjectCoercible/ToObject may throw or allocate, but neither calls a
+  // getter/proxy hook. Access and computed-key conversion have separate events.
+  return {analysis::LanguageEffect::kAllocation,analysis::LanguageEffect::kGuard|analysis::LanguageEffect::kAllocation,
+      analysis::ExceptionalCompletion::kMayThrow};
+}
+inline ExpressionEvaluation NormalPropertyKeyEvaluation(const MemberKey& key,
+    std::span<const analysis::ValueKinds> kinds,ResourceFailureScope resources) {
+  return NormalPropertyKeyEffects(key,kinds,resources).Evaluation();
 }
 inline ExpressionEvaluation NormalPropertyReceiverEvaluation(ExprId base,
     std::span<const analysis::ValueKinds> kinds,ResourceFailureScope resources) {
-  const auto domain=kinds.empty()?analysis::ValueKinds::Language():kinds[base.value];
-  return resources==ResourceFailureScope::kExcluded&&(domain.IsString()||domain.IsNumber()||domain.IsBoolean())?
-      ExpressionEvaluation::kInert:ExpressionEvaluation::kRequired;
+  return NormalPropertyReceiverEffects(base,kinds,resources).Evaluation();
 }
 // One exhaustive ECMA-262 effect table for canonical and projected source.
 // Normal operand domains may exclude coercion hooks/language exceptions;
 // GetValue, lexical initialization and child completion are separate facts.
 // Undefined/Symbol/BigInt lack precise ValueKinds categories and remain unknown.
-inline ExpressionEvaluation NormalValueEvaluation(const TreeExpression& expression,
+inline SourceEffects NormalValueEffects(const TreeExpression& expression,
     std::span<const analysis::ValueKinds> kinds,ResourceFailureScope resources) {
-  using E=ExpressionEvaluation;
-  return std::visit([&](const auto& node)->E {
+  using L=analysis::LanguageEffect;using X=analysis::ExceptionalCompletion;
+  const SourceEffects guard{L::kGuard,L::kGuard,X::kMayThrow};
+  const SourceEffects allocation{L::kAllocation,L::kAllocation,X::kMayThrow};
+  return std::visit([&](const auto& node)->SourceEffects {
     using T=std::decay_t<decltype(node)>;
     if constexpr(std::is_same_v<T,TreeLiteral>||std::is_same_v<T,SequenceExpr>||
-        std::is_same_v<T,LogicalExpr>||std::is_same_v<T,ConditionalExpr>)return E::kInert;
+        std::is_same_v<T,LogicalExpr>||std::is_same_v<T,ConditionalExpr>)return {};
     else if constexpr(std::is_same_v<T,UnaryExpr>) {
       const bool primitive=!kinds.empty()&&CoercionPrimitive(kinds[node.operand.value]);
       switch(node.operation) {
-        case TreeUnary::kNot:case TreeUnary::kTypeof:return E::kInert;
+        case TreeUnary::kNot:case TreeUnary::kTypeof:return {};
         case TreeUnary::kNegate:case TreeUnary::kBitNot:case TreeUnary::kPlus:
-          return primitive?E::kInert:E::kRequired;
+          return primitive?SourceEffects{}:CallbackEffects();
       }
     } else if constexpr(std::is_same_v<T,BinaryExpr>) {
       const auto left=kinds.empty()?analysis::ValueKinds::Language():kinds[node.left.value];
       const auto right=kinds.empty()?analysis::ValueKinds::Language():kinds[node.right.value];
       const bool primitive=CoercionPrimitive(left)&&CoercionPrimitive(right);
       switch(node.operation) {
-        case analysis::BinaryOperator::kStrictEqual:case analysis::BinaryOperator::kStrictNotEqual:return E::kInert;
+        case analysis::BinaryOperator::kStrictEqual:case analysis::BinaryOperator::kStrictNotEqual:return {};
         case analysis::BinaryOperator::kAdd:
-          if(resources==ResourceFailureScope::kObservable&&(left.IsString()||right.IsString()))return E::kRequired;
-          return primitive?E::kInert:E::kRequired;
+          if(!primitive)return CallbackEffects();
+          if(resources==ResourceFailureScope::kObservable&&(left.IsString()||right.IsString()))return allocation;
+          return {};
         case analysis::BinaryOperator::kSubtract:case analysis::BinaryOperator::kMultiply:
         case analysis::BinaryOperator::kDivide:case analysis::BinaryOperator::kRemainder:
         case analysis::BinaryOperator::kExponent:case analysis::BinaryOperator::kEqual:
@@ -162,23 +199,30 @@ inline ExpressionEvaluation NormalValueEvaluation(const TreeExpression& expressi
         case analysis::BinaryOperator::kGreaterEqual:case analysis::BinaryOperator::kShiftLeft:
         case analysis::BinaryOperator::kShiftRightSigned:case analysis::BinaryOperator::kShiftRightUnsigned:
         case analysis::BinaryOperator::kBitAnd:case analysis::BinaryOperator::kBitOr:
-        case analysis::BinaryOperator::kBitXor:return primitive?E::kInert:E::kRequired;
-        case analysis::BinaryOperator::kIn:case analysis::BinaryOperator::kInstanceOf:return E::kRequired;
+        case analysis::BinaryOperator::kBitXor:return primitive?SourceEffects{}:CallbackEffects();
+        case analysis::BinaryOperator::kIn:case analysis::BinaryOperator::kInstanceOf:return CallbackEffects();
       }
-    } else {
-      static_assert(std::is_same_v<T,SymbolExpr>||std::is_same_v<T,GlobalNameExpr>||
-          std::is_same_v<T,RealmObjectExpr>||std::is_same_v<T,SymbolConstructorExpr>||
-          std::is_same_v<T,ThisExpr>||std::is_same_v<T,MemberExpr>||
-          std::is_same_v<T,AwaitExpr>||std::is_same_v<T,YieldExpr>||
-          std::is_same_v<T,AssignmentExpr>||std::is_same_v<T,UpdateExpr>||
+    } else if constexpr(std::is_same_v<T,SymbolExpr>||std::is_same_v<T,ThisExpr>)return guard;
+    else if constexpr(std::is_same_v<T,AssignmentExpr>) {
+      // Declarative PutValue has no callback; its success-only write belongs
+      // to a FlowDefinition. Member PutValue may invoke a setter/proxy trap.
+      return std::holds_alternative<SymbolTarget>(node.target)?guard:CallbackEffects();
+    } else if constexpr(std::is_same_v<T,EmptyArrayExpr>||std::is_same_v<T,EmptyObjectExpr>||std::is_same_v<T,FunctionExpr>)return allocation;
+    else if constexpr(std::is_same_v<T,AwaitExpr>||std::is_same_v<T,YieldExpr>)return CallbackEffects(L::kSuspension);
+    else if constexpr(std::is_same_v<T,GlobalNameExpr>||std::is_same_v<T,RealmObjectExpr>||std::is_same_v<T,SymbolConstructorExpr>)return CallbackEffects(L::kGlobalAccess);
+    else {
+      static_assert(std::is_same_v<T,MemberExpr>||std::is_same_v<T,UpdateExpr>||
           std::is_same_v<T,CallExpr>||std::is_same_v<T,ConstructExpr>||
-          std::is_same_v<T,EmptyArrayExpr>||std::is_same_v<T,EmptyObjectExpr>||
-          std::is_same_v<T,ObjectExpr>||std::is_same_v<T,FunctionExpr>||
+          std::is_same_v<T,ObjectExpr>||
           std::is_same_v<T,ArgumentSnapshotExpr>||std::is_same_v<T,ClassExpr>||
           std::is_same_v<T,FieldDefinitionExpr>||std::is_same_v<T,SuperCallExpr>);
     }
-    return E::kRequired;
+    return CallbackEffects();
   },expression);
+}
+inline ExpressionEvaluation NormalValueEvaluation(const TreeExpression& expression,
+    std::span<const analysis::ValueKinds> kinds,ResourceFailureScope resources) {
+  return NormalValueEffects(expression,kinds,resources).Evaluation();
 }
 inline ExpressionEvaluation IntrinsicEvaluation(const TreeExpression& expression) {
   return NormalValueEvaluation(expression,{},ResourceFailureScope::kObservable);
