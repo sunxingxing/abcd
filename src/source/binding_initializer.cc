@@ -53,6 +53,7 @@ class Initializers {
   Initializers(const FunctionTree& tree, const LoopSyntax& loops, const NullishSyntax& nullish,
       TreeCheckBudget& budget) : tree_(tree), loops_(loops), nullish_(nullish), budget_(budget) {
     budget.Array(plan_.statements, tree.statements.size()); budget.Array(plan_.omitted, tree.statements.size());
+    budget.Array(plan_.statement_values,tree.statements.size());
     budget.Array(plan_.loop_declarations, tree.statements.size());
     budget.Array(plan_.forwarded_values, tree.statements.size());
     budget.Array(plan_.literals, tree.symbols.size());
@@ -289,6 +290,10 @@ class Initializers {
     schedule_.EnterReadValues();
     RunPass(Pass::kBindingValues);
     EnsureDemandCleanup();
+    // Preserve entry effects after final read destinations are fixed; residual
+    // control normalization cannot reopen storage, alias or snapshot choices.
+    RunPass(Pass::kStatementValues);
+    EnsureDemandCleanup();
     RunPass(Pass::kInertOperands);
     // Read substitution exposes inert controls only after private writes and
     // binding lifetimes have been discharged by their independent owners.
@@ -373,6 +378,7 @@ class Initializers {
       case Pass::kDeadDefinitions:ElideDeadDefinitions();break;
       case Pass::kInitialValues:ElideInitialValues();break;
       case Pass::kBindings:ElideUnusedBindings();break;
+      case Pass::kStatementValues:ProjectStatementValues();break;
       case Pass::kInertStatements:OmitInertStatements();break;
       case Pass::kInertOperands:ElideInertOperands();break;
       case Pass::kStorage:Coalesce();break;
@@ -585,6 +591,17 @@ class Initializers {
       budget_.Step();const auto& edit=proposed[i];BeginCommit();
       plan_.replacements[edit.expression.value]=edit.value;
     }
+  }
+  void ProjectStatementValues() {
+    const auto& facts=CurrentStatements();const auto& flow=CurrentFlow();
+    struct Proposal {StmtId statement;ExprId value;};
+    std::vector<Proposal> proposed;budget_.Array(proposed,flow.statement_order.size());std::size_t count=0;
+    for(const auto id:flow.statement_order) {
+      budget_.Step();const auto& statement=*flow.statement_semantics[id.value];
+      if(statement.entry_value&&!plan_.statement_values[id.value]&&facts.residuals[id.value].Inert())
+        proposed[count++]={id,*statement.entry_value};
+    }
+    for(std::size_t i=0;i<count;++i){budget_.Step();const auto& edit=proposed[i];BeginCommit();plan_.statement_values[edit.statement.value]=edit.value;}
   }
   void OmitInertStatements() {
     const auto omitted = PlanInertStatements(CurrentStatements());
@@ -865,7 +882,7 @@ class Initializers {
     const LegacyFlowProjection projection{plan_.aliases,plan_.literals,replacements,
         omitted,expressions.evaluations,expressions.normal_stores,plan_.statements,private_bindings,
         plan_.storage,plan_.undefined_stores,plan_.declaration_values,plan_.declaration_completions,
-        {source_regions_,source_occurrences_,source_bindings,source_shadows_,unique_spellings_,spellings_,name_spellings_},plan_.read_literals,transports,transported_reads,plan_.read_bindings,stable_entries_,normal_bindings,plan_.read_sources};
+        {source_regions_,source_occurrences_,source_bindings,source_shadows_,unique_spellings_,spellings_,name_spellings_},plan_.read_literals,transports,transported_reads,plan_.read_bindings,stable_entries_,normal_bindings,plan_.read_sources,plan_.statement_values};
     auto built=BuildRecoveryFlow(tree_,projection,budget_.Remaining(),std::move(storage));
     if(const auto* error=std::get_if<TreeStructureError>(&built))throw *error;
     auto flow=std::get<RecoveryFlow>(std::move(built));

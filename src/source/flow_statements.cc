@@ -9,7 +9,7 @@ std::variant<FlowStatements,TreeStructureError> AnalyzeFlowStatements(
     const auto size=flow.statement_semantics.size();
     RequireTree(size==flow.statements.size(),TreeStructureError::kOwnership);
     RequireTree(cycles.cyclic.empty()||cycles.cyclic.size()==flow.events.size(),TreeStructureError::kOwnership);
-    budget.Array(result.observations,size);
+    budget.Array(result.observations,size);budget.Array(result.residuals,size);
     std::vector<std::uint8_t> seen;budget.Array(seen,size);
     // Validate and seed in semantic traversal order; numeric IDs/arena order
     // are irrelevant. Parent publication must precede its owned children.
@@ -17,6 +17,7 @@ std::variant<FlowStatements,TreeStructureError> AnalyzeFlowStatements(
       budget.Step();RequireTree(id.value<size&&!seen[id.value]&&flow.statement_semantics[id.value],TreeStructureError::kOwnership);
       const auto& statement=*flow.statement_semantics[id.value];
       if(statement.parent)RequireTree(statement.parent->value<size&&seen[statement.parent->value],TreeStructureError::kOwnership);
+      if(statement.entry_value)RequireTree(statement.entry_value->value<flow.expressions.size(),TreeStructureError::kOwnership);
       seen[id.value]=1;auto& observation=result.observations[id.value];
       switch(statement.completion) {
         case FlowStatementCompletion::kNormal:case FlowStatementCompletion::kJump:break;
@@ -34,13 +35,24 @@ std::variant<FlowStatements,TreeStructureError> AnalyzeFlowStatements(
       }
     }
     for(std::size_t i=0;i<size;++i) {budget.Step();RequireTree(bool(flow.statement_semantics[i])==bool(seen[i]),TreeStructureError::kOwnership);}
+    budget.Step(size);result.residuals=result.observations;
+    const auto merge=[](StatementObservations& to,const StatementObservations& from) {
+      if(from.evaluation==ExpressionEvaluation::kRequired)to.evaluation=ExpressionEvaluation::kRequired;
+      to.definitions|=from.definitions;to.abrupt|=from.abrupt;to.cleanup|=from.cleanup;
+      to.repetition|=from.repetition;to.suspension|=from.suspension;
+    };
     for(const auto& event:flow.events) {
       budget.Step();if(!event.owner)continue;
       RequireTree(event.owner->value<size&&seen[event.owner->value],TreeStructureError::kOwnership);
+      RequireTree(!event.entry_evaluation||flow.statement_semantics[event.owner->value]->entry_value.has_value(),TreeStructureError::kOwnership);
       auto& observation=result.observations[event.owner->value];
       if(event.effect==ExpressionEvaluation::kRequired)observation.evaluation=ExpressionEvaluation::kRequired;
       observation.definitions|=event.definition.has_value();
       observation.suspension|=event.kind==FlowEventKind::kSuspend;
+      if(!event.entry_evaluation) {
+        StatementObservations local;local.evaluation=event.effect;local.definitions=event.definition.has_value();
+        local.suspension=event.kind==FlowEventKind::kSuspend;merge(result.residuals[event.owner->value],local);
+      }
     }
     // Resolve all local jump consumers through indexed semantic boundaries.
     // A forest activation stack gives the nearest owning normal exit in O(1)
@@ -51,7 +63,7 @@ std::variant<FlowStatements,TreeStructureError> AnalyzeFlowStatements(
       budget.Step();RequireTree(edge.from.value<flow.events.size()&&edge.to.value<flow.events.size(),TreeStructureError::kTarget);
       const auto owner=flow.events[edge.from.value].owner;if(!owner)continue;
       RequireTree(owner->value<size&&seen[owner->value],TreeStructureError::kOwnership);
-      auto& observation=result.observations[owner->value];
+      StatementObservations local;auto& observation=local;
       switch(edge.completion) {
         case FlowCompletion::kNormal:case FlowCompletion::kTaken:case FlowCompletion::kNotTaken:break;
         case FlowCompletion::kJump:++count;break;
@@ -61,6 +73,18 @@ std::variant<FlowStatements,TreeStructureError> AnalyzeFlowStatements(
           observation.suspension=true;observation.abrupt=true;break;
         case FlowCompletion::kConservativeCleanup:observation.cleanup=true;break;
       }
+      merge(result.observations[owner->value],local);
+      // A retained entry expression preserves its throw/suspend completions.
+      // Cleanup and jumps remain conservative independent obligations.
+      if(flow.events[edge.from.value].entry_evaluation) {
+        switch(edge.completion) {
+          case FlowCompletion::kThrow:case FlowCompletion::kResumeNext:case FlowCompletion::kResumeThrow:case FlowCompletion::kResumeReturn:
+            local.abrupt=false;local.suspension=false;break;
+          case FlowCompletion::kNormal:case FlowCompletion::kTaken:case FlowCompletion::kNotTaken:
+          case FlowCompletion::kJump:case FlowCompletion::kReturn:case FlowCompletion::kConservativeCleanup:break;
+        }
+      }
+      merge(result.residuals[owner->value],local);
     }
     struct Jump {FlowPoint target;std::optional<std::size_t> next;};
     std::vector<Jump> jumps;budget.Array(jumps,count);
@@ -101,17 +125,15 @@ std::variant<FlowStatements,TreeStructureError> AnalyzeFlowStatements(
     }
     for(const auto id:flow.statement_order) {
       budget.Step();if(flow.statement_semantics[id.value]->completion==FlowStatementCompletion::kJump&&!queries[id.value])
-        result.observations[id.value].abrupt=true; // Missing modeled route is not normal completion.
+        result.observations[id.value].abrupt=result.residuals[id.value].abrupt=true; // Missing modeled route is not normal completion.
     }
     for(auto at=flow.statement_order.rbegin();at!=flow.statement_order.rend();++at) {
       budget.Step();const auto& statement=*flow.statement_semantics[at->value];if(!statement.parent)continue;
       const auto& child=result.observations[at->value];auto& parent=result.observations[statement.parent->value];
-      if(child.evaluation==ExpressionEvaluation::kRequired)parent.evaluation=ExpressionEvaluation::kRequired;
-      parent.definitions|=child.definitions;parent.abrupt|=child.abrupt;parent.cleanup|=child.cleanup;
-      parent.repetition|=child.repetition;parent.suspension|=child.suspension;
+      merge(parent,child);merge(result.residuals[statement.parent->value],child);
       delta[statement.parent->value]+=delta[at->value];
     }
-    for(const auto id:flow.statement_order){budget.Step();RequireTree(delta[id.value]>=0,TreeStructureError::kOwnership);result.observations[id.value].abrupt|=delta[id.value]>0;}
+    for(const auto id:flow.statement_order){budget.Step();RequireTree(delta[id.value]>=0,TreeStructureError::kOwnership);result.observations[id.value].abrupt|=delta[id.value]>0;result.residuals[id.value].abrupt|=delta[id.value]>0;}
     result.allocated_bytes=budget.Bytes();result.work=budget.Work();return result;
   } catch(TreeStructureError error) {return error;
   } catch(const std::bad_alloc&) {return TreeStructureError::kResourceLimit;

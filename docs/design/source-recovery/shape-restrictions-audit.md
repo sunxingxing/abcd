@@ -2907,3 +2907,16 @@ pass整轮/回退阶段或每区域图扫描。return/throw/resume/cleanup由边
 缺元数据和复杂finally仍保守。普通有限循环与反向/拆边/组合反例共同验证；
 保留defs/init/lifetime和effects归属独立。Scope可见性不足以证明local activation
 root，本轮未以它扩展复制根准入；该能力缺口继续保留。
+
+
+### 2026-10-09 rules251: mandatory entry evaluation
+
+Effectful conditions with inert owned regions previously retained mechanical control
+syntax. StatementValues now consumes common mandatory entry/residual facts, preserving
+the original evaluation and removing only proven inert residual control. It does not
+match empty-if, fixed body shape, opcode, block adjacency or producer lists. Adapter
+entry provenance states execution/scope/handler ownership once; complete child effects,
+definitions, abrupt/suspend/cycle and cleanup obligations stay independent. Required
+entry evaluation is not deleted by whole-region inertness. Legacy unsupported branch
+program synthesis/fullfinally remains a capability gap, not a new admission pattern.
+See status.md and unified-variables.md for implementation and selected evidence.

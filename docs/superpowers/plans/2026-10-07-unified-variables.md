@@ -600,3 +600,25 @@ round or backward stage. Old always-repeat/always-abrupt jump behavior retires w
 common proof exists; legacy missing facts/fullfinally remain conservative. Dense graph
 and ancestor-chain references/source variants are recorded in status.md. Initialization,
 activation, original correspondence and whole milestone remain open.
+
+
+rules251 implemented substep: adapter-owned mandatory entry expression/events feed
+complete and residual statement observations. Residuals exclude only own entry
+completion, never full child effects/definitions/lifetimes/return/jump/cleanup/cycles.
+Independent late StatementValues waits for final ReadValues/demand, owns proposals
+before first commit, preserves evaluation at its occurrence and invalidates facts;
+independent cleanup then grammar consume the same projection. No backward stage,
+whole-function iteration, shape matching or printer analysis. Actual receiver,
+conversion, assignment, exception, generator and async source comparisons plus
+independent forests/layout/scaling/protocol tests are recorded in status.md.
+Multi-branch program synthesis/fullfinally/activation/original correspondence/global
+convergence and overall milestone remain open.
+
+
+2026-10-09 user priority after rules251: finish this pass, then resume the five
+backbone delivery loops before any further appearance optimization: original IR/SSA
+correspondence, ordinary local/catch activation identity, shared trial precision,
+dependency-driven bounded pass convergence, and complete unified-variable acceptance.
+All five remain open. Start with original IR/SSA integration and carry the proven
+current source projection facts forward; do not replace these loops with local fixes.
+Existing paused verification/corpus/resource/agent scopes stay paused.

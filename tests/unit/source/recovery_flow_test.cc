@@ -2165,6 +2165,66 @@ void StatementObservationOracle() {
   schedule.Start(RecoveryPass::kInertOperands);Check(rejects([&]{schedule.RequireFact(RecoveryFact::kStatements);}));Check(!schedule.Finish());
   std::cout<<"independent statement observation forests "<<cases<<'\n';
 }
+void StatementEntryOracle() {
+  // Reference walks each descendant and excludes only the queried statement's
+  // own carried evaluation. AST completion/lifetime and child effects remain.
+  std::uint64_t cases=0;
+  for(bool chain:{false,true})for(unsigned encoded=0;encoded<512;++encoded)
+    for(unsigned carried=0;carried<8;++carried)for(bool reverse:{false,true}) {
+      RecoveryFlow flow;flow.statements.resize(3);flow.expressions.resize(3);flow.statement_semantics.resize(3);
+      std::array<unsigned,3> full{},local{},parents{0,0,chain?1U:0U};unsigned code=encoded;
+      const auto id=[&](unsigned i){return StmtId{reverse?2-i:i};};
+      for(unsigned i=0;i<3;++i) {
+        const auto feature=code%8;code/=8;const bool entry=(carried&(1U<<i))!=0;
+        flow.statement_order.push_back(id(i));auto& statement=flow.statement_semantics[id(i).value];
+        statement=FlowStatement{i?std::optional{id(parents[i])}:std::nullopt};
+        if(entry)statement->entry_value=ExprId{i};
+        FlowEvent event;event.owner=id(i);event.entry_evaluation=entry;
+        switch(feature) {
+          case 0:break;
+          case 1:event.effect=ExpressionEvaluation::kRequired;full[i]=1;break;
+          case 2:event.definition=FlowDefinitionId{0};full[i]=2;break;
+          case 3:statement->completion=FlowStatementCompletion::kAbrupt;full[i]=4;break;
+          case 4:statement->completion=FlowStatementCompletion::kCleanup;full[i]=8;break;
+          case 5:statement->progress=FlowStatementProgress::kMayRepeat;full[i]=16;break;
+          case 6:event.kind=FlowEventKind::kSuspend;full[i]=32;break;
+          case 7:full[i]=4;break;
+        }
+        local[i]=entry&&(feature==1||feature==2||feature==6||feature==7)?0:full[i];
+        flow.events.push_back(event);
+        if(feature==7){FlowEvent target;flow.events.push_back(target);Link(flow,flow.events.size()-2,flow.events.size()-1);flow.edges.back().completion=FlowCompletion::kThrow;}
+      }
+      const auto result=std::get<FlowStatements>(AnalyzeFlowStatements(flow));
+      const auto mask=[](const StatementObservations& o){return (o.evaluation==ExpressionEvaluation::kRequired?1U:0U)|(o.definitions?2U:0U)|(o.abrupt?4U:0U)|(o.cleanup?8U:0U)|(o.repetition?16U:0U)|(o.suspension?32U:0U);};
+      for(unsigned i=0;i<3;++i) {
+        auto expected=full[i],residual=local[i];
+        for(unsigned j=i+1;j<3;++j){auto parent=parents[j];while(parent>i)parent=parents[parent];if(parent==i){expected|=full[j];residual|=full[j];}}
+        Check(mask(result.observations[id(i).value])==expected);Check(mask(result.residuals[id(i).value])==residual);
+      }
+      ++cases;
+    }
+  for(const auto completion:{FlowCompletion::kThrow,FlowCompletion::kReturn,FlowCompletion::kResumeNext,FlowCompletion::kResumeThrow,FlowCompletion::kResumeReturn,FlowCompletion::kConservativeCleanup}) {
+    RecoveryFlow flow;flow.events.resize(2);flow.events[0].owner=StmtId{0};flow.events[0].entry_evaluation=true;
+    flow.statements.resize(1);flow.expressions.resize(1);flow.statement_order={{0}};flow.statement_semantics={FlowStatement{}};flow.statement_semantics[0]->entry_value=ExprId{0};
+    Link(flow,0,1);flow.edges.back().completion=completion;
+    const auto result=std::get<FlowStatements>(AnalyzeFlowStatements(flow));
+    Check(result.residuals[0].Inert()==(completion!=FlowCompletion::kReturn&&completion!=FlowCompletion::kConservativeCleanup));
+    flow.statement_semantics[0]->entry_value.reset();Check(std::get<TreeStructureError>(AnalyzeFlowStatements(flow))==TreeStructureError::kOwnership);
+  }
+  const auto rejects=[](const auto& action){try{action();return false;}catch(TreeStructureError error){return error==TreeStructureError::kOwnership;}};
+  RecoverySchedule schedule;Check(rejects([&]{schedule.Start(RecoveryPass::kStatementValues);}));
+  const auto cleanup=[&]{for(const auto pass:{RecoveryPass::kDeadDefinitions,RecoveryPass::kInitialValues,RecoveryPass::kBindings}){schedule.Start(pass);Check(!schedule.Finish());}};
+  cleanup();schedule.EnterStorage();schedule.Start(RecoveryPass::kSnapshots);Check(!schedule.Finish());schedule.EnterReadValues();
+  Check(rejects([&]{schedule.Start(RecoveryPass::kStatementValues);}));
+  schedule.Start(RecoveryPass::kBindingValues);Check(schedule.Commit());Check(schedule.Finish());
+  Check(rejects([&]{schedule.Start(RecoveryPass::kStatementValues);}));cleanup();
+  const auto revision=schedule.Revision();schedule.Start(RecoveryPass::kStatementValues);
+  schedule.RequireFact(RecoveryFact::kStatements);schedule.RequireFact(RecoveryFact::kCycles);schedule.RequireFact(RecoveryFact::kFlow);
+  Check(schedule.Commit());Check(rejects([&]{schedule.RequireCurrent(revision);}));Check(schedule.Finish());
+  Check(schedule.DemandCleanupNeeded());cleanup();schedule.EnterGrammar();
+  Check(rejects([&]{schedule.Start(RecoveryPass::kStatementValues);}));
+  std::cout<<"independent statement entry forests "<<cases<<'\n';
+}
 void InitializationTransfers() {
   const auto rejects=[](const auto& action) {
     try {action();return false;}catch(TreeStructureError error){return error==TreeStructureError::kOwnership;}
@@ -2182,18 +2242,18 @@ void InitializationTransfers() {
       std::pair{RecoveryPass::kStoredResults,true},std::pair{RecoveryPass::kDeadDefinitions,true},
       std::pair{RecoveryPass::kInitialValues,true},std::pair{RecoveryPass::kBindings,true},
       std::pair{RecoveryPass::kSnapshots,false},std::pair{RecoveryPass::kStorage,true},
-      std::pair{RecoveryPass::kInertStatements,true},std::pair{RecoveryPass::kInertOperands,true},
+      std::pair{RecoveryPass::kInertStatements,true},std::pair{RecoveryPass::kInertOperands,true},std::pair{RecoveryPass::kStatementValues,true},
       std::pair{RecoveryPass::kLoopDeclarations,false},std::pair{RecoveryPass::kDeclarationKinds,true}};
   for(const auto [pass,preserves]:obligations)for(bool commit:{false,true}) {
     RecoverySchedule schedule;
     if(pass==RecoveryPass::kDeclarations||pass==RecoveryPass::kAliases)cleanup(schedule);
     if(pass==RecoveryPass::kSnapshots||pass==RecoveryPass::kStorage||
-        pass==RecoveryPass::kBindingValues||pass==RecoveryPass::kLoopDeclarations||pass==RecoveryPass::kDeclarationKinds) {
+        pass==RecoveryPass::kBindingValues||pass==RecoveryPass::kStatementValues||pass==RecoveryPass::kLoopDeclarations||pass==RecoveryPass::kDeclarationKinds) {
       cleanup(schedule);schedule.EnterStorage();
       if(pass!=RecoveryPass::kSnapshots&&pass!=RecoveryPass::kStorage) {
         schedule.Start(RecoveryPass::kSnapshots);Check(!schedule.Finish());schedule.EnterReadValues();
         if(pass!=RecoveryPass::kBindingValues) {
-          schedule.Start(RecoveryPass::kBindingValues);Check(!schedule.Finish());schedule.EnterGrammar();
+          schedule.Start(RecoveryPass::kBindingValues);Check(!schedule.Finish());if(pass!=RecoveryPass::kStatementValues)schedule.EnterGrammar();
         }
       }
     }
@@ -2333,4 +2393,4 @@ void PassContracts() {
   Check(!unfinished.DemandCleanupNeeded());
   std::cout<<"pass ownership, dependency and cleanup counterexamples passed\n";
 }
-int main(){InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();AvailableCopyOracle();TransitiveCopyOracle();CompletionCycles();LocalCompletionOracle();StatementObservationOracle();InitializationTransfers();PassContracts();SnapshotCheckpoints();StableValues();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+int main(){InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();AvailableCopyOracle();TransitiveCopyOracle();CompletionCycles();LocalCompletionOracle();StatementObservationOracle();StatementEntryOracle();InitializationTransfers();PassContracts();SnapshotCheckpoints();StableValues();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

@@ -16,6 +16,7 @@ struct Context {
   FlowValueUse value_use=FlowValueUse::kObserved;
   std::optional<StmtId> owner;
   std::optional<SymbolId> transport;
+  bool entry_evaluation=false;
   Context Operand(Point continuation,FlowValueUse use=FlowValueUse::kObserved) const {
     auto result=*this;result.next=continuation;result.value_use=use;return result;
   }
@@ -35,6 +36,7 @@ class FlowBuilder {
     discarded_=std::move(result_.discarded);discarded_.clear();
   }
   RecoveryFlow Run() {
+    RequireTree(projection_.statement_values.empty()||projection_.statement_values.size()==tree_.statements.size(),Error::kOwnership);
     RequireTree(projection_.stable_entries.empty()||projection_.stable_entries.size()==tree_.symbols.size(),Error::kOwnership);
     RequireTree(projection_.read_bindings.empty()||projection_.read_bindings.size()==tree_.symbols.size(),Error::kOwnership);
     RequireTree(projection_.read_sources.empty()||projection_.read_sources.size()==tree_.expressions.size(),Error::kOwnership);
@@ -163,7 +165,7 @@ class FlowBuilder {
   }
   Point New(FlowEvent event={}) {
     RequireTree(events_.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
-    budget_.Step();event.owner=current_owner_;Point result{static_cast<std::uint32_t>(events_.size())};Append(events_,event);return result;
+    budget_.Step();event.owner=current_owner_;event.entry_evaluation=current_entry_evaluation_;Point result{static_cast<std::uint32_t>(events_.size())};Append(events_,event);return result;
   }
   Point Define(SymbolId binding,FlowDefinitionKind kind,std::optional<SymbolId> copy={},
       std::optional<ExprId> value={},std::optional<StmtId> declaration={},
@@ -230,7 +232,8 @@ class FlowBuilder {
   void Build(Expression at) {
     RequireTree(!seen_[at.id.value],Error::kOwnership);seen_[at.id.value]=1;
     const auto start=expressions_[at.id.value];const auto& context=at.context;
-    current_owner_=context.owner;events_[start.value].owner=context.owner;
+    current_owner_=context.owner;current_entry_evaluation_=context.entry_evaluation;
+    events_[start.value].owner=context.owner;events_[start.value].entry_evaluation=context.entry_evaluation;
     result_.value_uses[at.id.value]=context.value_use;
     result_.expression_owners[at.id.value]=context.owner;
     if(!result_.expression_transports.empty())result_.expression_transports[at.id.value]=context.transport;
@@ -324,7 +327,7 @@ class FlowBuilder {
   }
   void Build(Statement at) {
     const auto start=statements_[at.id.value];auto context=at.context;context.owner=at.id;
-    current_owner_=at.id;events_[start.value].owner=at.id;
+    current_owner_=at.id;current_entry_evaluation_=false;events_[start.value].owner=at.id;
     exits_[at.id.value]=context.next;
     if(projection_.omitted[at.id.value]){events_[start.value].owner.reset();Link(start,context.next);return;}
     RequireTree(!result_.statement_semantics[at.id.value],Error::kOwnership);
@@ -332,6 +335,13 @@ class FlowBuilder {
     Append(result_.statement_order,at.id);
     auto& semantics=*result_.statement_semantics[at.id.value];
     semantics.normal_exit=context.next;
+    if(!projection_.statement_values.empty())if(const auto value=projection_.statement_values[at.id.value]) {
+      semantics.entry_value=*value;auto evaluation=context;
+      RequireTree(discarded_.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
+      evaluation.discarded=DiscardedId{static_cast<std::uint32_t>(discarded_.size())};Append(discarded_,{at.id});
+      evaluation.entry_evaluation=true;evaluation.value_use=FlowValueUse::kDiscarded;
+      Link(start,Expr(*value,evaluation));return;
+    }
     if(!projection_.declaration_completions.empty())if(const auto& completion=projection_.declaration_completions[at.id.value]) {
       const bool initialize=completion->kind==DeclarationCompletionKind::kInitialize;
       std::optional<DiscardedId> id;
@@ -398,7 +408,8 @@ class FlowBuilder {
         Link(commit,context.next);
         Link(start,node.initializer?Expr(*node.initializer,evaluation.Operand(commit)):commit);
       } else if constexpr(std::is_same_v<T,IfStmt>) {
-        auto branch=New({FlowEventKind::kTruthBranch,{},{},node.condition});Link(start,Expr(node.condition,context.Operand(branch)));
+        semantics.entry_value=node.condition;auto evaluation=context.Operand(New({FlowEventKind::kTruthBranch,{},{},node.condition}));
+        evaluation.entry_evaluation=true;const auto branch=evaluation.next;Link(start,Expr(node.condition,evaluation));
         Link(branch,Stmt(node.consequent,context),FlowCompletion::kTaken);Link(branch,node.alternate?Stmt(*node.alternate,context):context.next,FlowCompletion::kNotTaken);
       } else if constexpr(std::is_same_v<T,LoopStmt>) {
         semantics.progress=FlowStatementProgress::kMayRepeat;semantics.repeat_point=start;
@@ -437,6 +448,7 @@ class FlowBuilder {
     },tree_.statements[at.id.value].statement);
   }
   std::optional<StmtId> current_owner_;
+  bool current_entry_evaluation_=false;
   const FunctionTree& tree_;LegacyFlowProjection projection_;TreeCheckBudget budget_;RecoveryScratch memory_;
   std::vector<FlowEvent> events_;std::vector<FlowEdge> edges_;
   std::pmr::vector<Point> statements_,expressions_,exits_;std::pmr::vector<Task> tasks_;

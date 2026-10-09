@@ -24,6 +24,51 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+2026-10-09用户最新优先级：规则251本轮pass完成后回到主干，主干完成前
+暂停其他表现层优化。以下五项均未关闭，按依赖推进交付闭环：
+
+1. 原始IR/SSA接入：原始值、效果与源码恢复模型的完整对应。
+2. 普通绑定生命期：local/catch在作用域进入、初始化、重复进入时的单元身份。
+3. 试算模型精度：移动/替换候选完整复用共同模型，消除独立语义推断。
+4. 多轮Pass收敛：依赖驱动的重跑范围、终止依据与成本控制。
+5. 统一变量里程碑终验：全部职责共享事实、被替代旧判断退出、规定端到端验收。
+
+这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
+宣布任何一项关闭。既定暂停事项仍保持。
+
+### 2026-10-09：规则251，共同入口求值与剩余控制分离
+
+- 共同adapter一次发布mandatory entry-value及其事件来源；statement分析
+  同时保留完整观测和排除本语句入口求值后的residual观测。子语句效果、
+  定义、绑定完成、return/jump、cleanup与可能重复仍进入父区域，不能
+  用子语句自己的入口排除证明父区域无作用。入口throw/resume由原表达式
+  保留；普通return与保守cleanup不被排除。无空if/body/opcode布局匹配。
+- 独立StatementValues pass只消费exact kStatements及共同依赖，待最终
+  BindingValues与独立需求清理完成后，将已证明inert residual的区域
+  投影为原位置的discarded表达式。完整自有提案先于首次提交/事实失效；
+  再独立需求、operand/statement清理，最后grammar。打印与flow消费同一
+  statement_values投影；不重推语义、不移动求值、不回退storage/motion。
+- 有效旧输出RED390 exit134，结构先通过。首轮3/3通过；扩展测试构造的
+  成员key类型、错误替换位置、未拥有条件及catch嵌套scope问题已修正，
+  未更改生产准入。之后3/3在62.46秒通过，900源码/23400执行比较/
+  103反例，独立16384入口森林对照通过；补入receiver/暂停删除反例后，
+  最终聚焦5/5在90.65秒通过（后续测试scope构造仅作等价可读性整理）。
+- 最终原29目标构建86.04秒，exact原59/59项CTest490.45秒通过，
+  combined-coverage.json核对名称集合完全一致。900源码/23400执行比较/
+  105反例和16384入口森林，以及既有2048循环图、78732完成森林、28812
+  完整观测森林和各值/复制/名字/初始化/存储/真实record对照均通过。
+  fresh固定pasteboard导出2.69秒：19records、10complete/0partial/
+  9no-module，10源码语法检查通过，输出字节与规则250一致，输入SHA前后
+  不变；language_numeric_constructors_v1与原预算保持。最终目标构建
+  无warning/error，早前完整聚焦构建仅既有literal_plan.cc kNoop warning。
+  证据build/stage-one/statement-values-verification。
+- 覆盖短路、条件、逗号转换、参数赋值、getter/receiver、catch、generator
+  next/throw/return与async thenable恢复；reverse arena、200/201/400/800、
+  来源/anchor和预算反例保持。分析和提案为线性遍历，无逐区域图搜索。
+  多个有作用分支的合成求值程序、完整finally、activation身份、原IR/SSA
+  对应与全局收敛仍开放；统一变量/结构gate/阶段一Goal未完成。
+  完整套件/扩展corpus/RSS/benchmarks/DFX/agents暂停。
+
 ### 2026-10-09：规则250，共同图证明有限正常完成
 
 - Source adapter发布normal-exit/repeat-point，并区分jump与return/throw。

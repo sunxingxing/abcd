@@ -142,6 +142,9 @@ struct FlowStatement {
   // Actual continuation/repetition identities from the language adapter.
   // Missing evidence stays conservative; source layout is never a substitute.
   std::optional<FlowPoint> normal_exit,repeat_point;
+  // Mandatory entry evaluation runs once at this statement, before its owned
+  // control region. Its original scope/handler and expression identity remain.
+  std::optional<ExprId> entry_value;
 };
 struct FlowEvent {
   FlowEventKind kind = FlowEventKind::kControl;
@@ -155,6 +158,7 @@ struct FlowEvent {
   // reads and successful writes remain observations even when this is inert.
   ExpressionEvaluation effect = ExpressionEvaluation::kInert;
   std::optional<StmtId> owner;
+  bool entry_evaluation=false;
 };
 struct FlowEdge {
   FlowPoint from, to;
@@ -193,6 +197,7 @@ struct LegacyFlowProjection {
   // binding at commit, not an earlier snapshot. Empty for unproved trials.
   std::span<const std::optional<SymbolId>> normal_bindings;
   std::span<const std::optional<SymbolId>> read_sources;
+  std::span<const std::optional<ExprId>> statement_values;
   [[nodiscard]] std::optional<PrimitiveId> ReadLiteral(ExprId expression,SymbolId binding) const {
     if(!read_literals.empty()&&read_literals[expression.value])return read_literals[expression.value];
     return literals[binding.value];

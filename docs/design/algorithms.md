@@ -3672,3 +3672,24 @@ heads以normal-exit FlowPoint索引，jump query以owner索引。单次DFS给每
 missing metadata和conservative cleanup保持保守；source另外覆盖nested finite
 exits、empty infinite、continue周期、effects和finally。VM timeout只是有界行为
 证据，不能作为一般终止证明。数值有界循环与outer SCC内精确子区域仍未解决。
+
+
+### Statement entry residual observations (rules251)
+
+This extends the existing ownership-forest may-observation fold, without a new
+external dependency or graph algorithm. The language adapter publishes mandatory
+entry evaluation provenance once. Full facts retain every observation; residual
+facts exclude only the queried statement's own carried evaluation, then union all
+full descendant facts. Throw/resume exclusion applies to retained expression
+completion only; return, local-jump differences, conservative cleanup and cycle
+obligations remain. No branch-layout or event adjacency establishes provenance.
+
+For S statements, N events, E completion edges and J owned jump queries, the existing
+indexed completion fold stays O(S+N+E+J) work/storage. Residuals add O(S) storage and
+one accounted O(S) seed copy; event/edge unions and both forest folds take constant
+work per visited item. An O(S) owned proposal array precedes commit; no per-statement
+reachability search or descendant set copying occurs. Existing cycle facts remain
+lazy. The slow independent 3-node ancestor reference covers 16384 entry forests;
+actual source tests cover equivalent layouts, 200/201 and geometric growth, retained
+entry effects/receiver/exception/suspension and adverse semantic transformations.
+These bounded work counters are not resumed process RSS or benchmark evidence.

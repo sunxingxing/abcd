@@ -2476,3 +2476,38 @@ observations, not themselves termination proofs. See status.md for exact evidenc
 Original IR/SSA, source activation roots, full finally, numerical loop termination,
 trial precision and shared global convergence remain open; overall milestone is
 not complete. Lexical visibility alone cannot ground a fresh local activation.
+
+
+### Entry evaluation and residual control (2026-10-09, rules251)
+
+The language adapter publishes the mandatory entry expression of a statement and
+marks the events belonging to that evaluation. It runs once per statement execution
+at the original occurrence, before the owned control region. Operand/replacement
+contexts inherit this provenance, including normal definitions, getters, conversion,
+call receiver, throw and suspension; statement descendants start their own ownership.
+This is source-language semantics, not empty-branch or opcode-layout recognition.
+
+FlowStatements keeps its complete observations unchanged and independently folds
+residual observations. Only the queried statement's own entry evaluation is excluded:
+a child's full observations still belong to its parent. Lexical completion, definitions
+outside that evaluation, return/jump, conservative cleanup and cyclic progress retain
+their obligations. Entry throw/resume remains in the original retained expression;
+ordinary return and unknown cleanup cannot be discharged as expression evaluation.
+
+StatementValues is a separate late pass. It consumes exact current kStatements and
+its declared dependency closure after BindingValues and independent demand cleanup.
+It owns every statement/value proposal before the first commit invalidates facts.
+The projected expression stays in its original scope/handler/iteration and becomes
+discarded; independent demand, operand and inert-statement cleanup follows, then
+grammar. No storage/alias/motion stage is reopened. Initialization evidence transport
+retains only unchanged remaining read occurrences, never other cached facts.
+
+The committed statement_values recipe is consumed by both RecoveryFlow and ordinary/
+loop-header printing. Removed child origins become boundaries; the entry expression
+keeps its retained range. Printing introduces no semantic analysis. This currently
+represents one adapter-owned mandatory entry evaluation, not synthesis of branch
+conditional effects or hoisting from multiple descendants. Full finally, original
+IR/SSA correspondence, activation identity and global convergence remain gaps.
+Independent entry-forest references, statement/expression arena reversal, actual
+source execution and adverse receiver/suspension transforms verify this substep;
+see status.md for authoritative final selected evidence. Overall milestone is open.

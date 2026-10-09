@@ -7,7 +7,7 @@
 namespace abcd::source {
 enum class RecoveryPass {
   kDeclarations,kConstants,kBindingValues,kAliases,kStoredResults,kDeadDefinitions,kInitialValues,
-  kBindings,kSnapshots,kStorage,kInertStatements,kInertOperands,kLoopDeclarations,kDeclarationKinds
+  kBindings,kSnapshots,kStorage,kStatementValues,kInertStatements,kInertOperands,kLoopDeclarations,kDeclarationKinds
 };
 enum class RecoveryFact : std::uint8_t {kExpressions,kFlow,kLiveness,kDemand,kInitializations,kConstants,kCopies,kStatements,kCycles};
 class RecoveryFactSet {
@@ -51,6 +51,9 @@ struct RecoveryPassContract {
     case RecoveryPass::kSnapshots:return {{Fact::kLiveness},Scope::kStorage,false,true};
     // Coalescing proves the new slot initialized before every remapped read.
     case RecoveryPass::kStorage:return {{Fact::kLiveness,Fact::kInitializations},Scope::kStorage,true};
+    // Preserve mandatory evaluation at its exact occurrence; only the common
+    // inert residual disappears. Final read destinations and cleanup precede it.
+    case RecoveryPass::kStatementValues:return {{Fact::kStatements},Scope::kReadValues,true};
     // Only proven inert occurrences disappear; no retained initialization moves.
     case RecoveryPass::kInertStatements:return {{Fact::kStatements},Scope::kNormalization,true};
     case RecoveryPass::kInertOperands:
@@ -106,6 +109,7 @@ class RecoverySchedule {
     // value/initialization/binding cleanup owners at the current projection.
     if((pass==RecoveryPass::kDeclarations||pass==RecoveryPass::kAliases)&&stage_==Stage::kValues)
       RequireTree(!DemandCleanupNeeded(),TreeStructureError::kOwnership);
+    if(pass==RecoveryPass::kStatementValues)RequireTree(binding_values_complete_&&!DemandCleanupNeeded(),TreeStructureError::kOwnership);
     active_=pass;before_=revision_;phase_=Phase::kAnalysis;
   }
   // First commit invalidates all versioned facts before any plan write. Further

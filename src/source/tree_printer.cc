@@ -1539,6 +1539,11 @@ class TreePrinter {
     if (at.retained == at.id) { Append("true"); return; }
     Result().statements[at.id.value].begin = written_; Push(EndStatement{at.id});
     const auto& node = Tree().statements[at.id.value].statement;
+    if(const auto value=Initializers().statement_values[at.id.value]) {
+      StatementChildren(Tree(),at.id,[&](StmtId child){Push(ElideStatement{child});});
+      ProjectDeclarationOrigins(at.id,value);Append("(");Push(std::string_view(at.discarded?")":", true)"));
+      Push(ExpressionOperand{*value,{}, {},ExpressionObservation::kDiscarded});return;
+    }
     if(const auto& completion=Initializers().declaration_completions[at.id.value]) {
       PrintCompletion(*completion,at.id,false,true);return;
     }
@@ -1713,7 +1718,11 @@ class TreePrinter {
     depth_ = at.depth;
     Result().statements[at.id.value].begin = written_;
     Push(EndStatement{at.id});
-    if(const auto& completion=Initializers().declaration_completions[at.id.value])PrintCompletion(*completion,at.id);
+    if(const auto value=Initializers().statement_values[at.id.value]) {
+      StatementChildren(Tree(),at.id,[&](StmtId child){Push(ElideStatement{child});});
+      ProjectDeclarationOrigins(at.id,value);Push(std::string_view(";"));
+      Push(ExpressionOperand{*value,{}, {},ExpressionObservation::kDiscarded});
+    }else if(const auto& completion=Initializers().declaration_completions[at.id.value])PrintCompletion(*completion,at.id);
     else if(const auto& value=Initializers().declaration_values[at.id.value])PrintDeclarationValue(*value,at.id);
     else std::visit([&](const auto& node) { StatementNode(node, at); }, Tree().statements[at.id.value].statement);
   }

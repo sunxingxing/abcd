@@ -29,6 +29,9 @@ struct DeclarationCompletion {
 struct BindingInitializers {
   std::vector<std::optional<BindingInitializer>> statements;
   std::vector<std::uint8_t> omitted;
+  // Statement indexed: common residual completion proof retains only its
+  // mandatory entry evaluation, at the same scope/handler/occurrence.
+  std::vector<std::optional<ExprId>> statement_values;
   // Statement indexed: the RHS moved to a real read. Its origin span belongs
   // to that destination; other omitted subtree origins stay at the boundary.
   std::vector<std::optional<ExprId>> forwarded_values;

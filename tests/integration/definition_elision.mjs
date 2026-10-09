@@ -24,32 +24,72 @@ for(const row of rows) {
   parseJavaScript(row.source);
   if(row.inert_control) {
     const conditions=['flag','produce(1)','+flag','state'];
-    const condition=conditions[row.form]??'flag';
+    const condition=conditions[row.form]??({16:'flag&&produce(1)',17:'flag?produce(1):produce(2)',18:'(produce(1),+flag)',19:'flag=produce(1)',20:'flag.state',21:'flag.state()',22:'produce(1)',23:'produce(1)',24:'(yield produce(1))',25:'(await produce(1))'}[row.form]??'flag');
     const consequents=['flag;','flag;','flag;','flag;','let state=flag;',
       'return 1;','while(true){break;}','try{}finally{produce(2);}',
       'debugger;','throw flag;','state=flag;','while(true){}',
       'while(true){if(flag)continue;else break;}',
       'while(true){while(true){if(flag)break;else break;}break;}',
-      'while(true){produce(2);break;}','while(true){try{break;}finally{flag;}}'];
+      'while(true){produce(2);break;}','while(true){try{break;}finally{flag;}}',
+      'flag;','flag;','flag;','flag;','flag;','flag;','produce(2);','flag;','flag;','flag;'];
     const alternative=row.form===10?'state=flag;':'flag;';
-    const controls=('if('+condition+'){'+consequents[row.form]+'}else{'+alternative+'}').repeat(row.count+1);
+    const control='if('+condition+'){'+consequents[row.form]+'}else{'+alternative+'}';
+    const controls=(row.form===23?'try{'+control+'}catch(state){return flag;}':control).repeat(row.count+1);
     const body=(row.form===10?'let state=flag;':'')+controls+(row.form===3?'let state=flag;':'')+'return '+(row.form===10?'state':'flag')+';';
+    if(row.form===24||row.form===25) {
+      const actual=Function('return ('+row.source+');')();
+      const root=parseJavaScript(row.source);
+      const walk=node=>{if(!node||typeof node!=='object')return;assert.notEqual(node.type,'IfStatement');for(const value of Object.values(node))if(Array.isArray(value))value.forEach(walk);else walk(value);};walk(root);
+      if(row.form===24) {
+        const expected=Function('return function*(produce,flag){"use strict";'+body+'};')();
+        const run=(fn,flag,mode,fault)=>{
+          const trace=[],steps=[];let thrown;
+          const iterator=fn(i=>{trace.push(i);if(fault)throw failure;return values[i];},flag);
+          for(let i=0;i<row.count+3;++i) {
+            try {const result=i===1&&mode==='return'?iterator.return(values[3]):i===1&&mode==='throw'?iterator.throw(failure):iterator.next(i%2===0);steps.push(result);if(result.done)break;}
+            catch(error){thrown=error;break;}
+          }
+          return {trace,steps,thrown};
+        };
+        for(const flag of [false,true,values[0]])for(const mode of ['next','return','throw'])for(const fault of [false,true]){assert.deepEqual(run(actual,flag,mode,fault),run(expected,flag,mode,fault));++executions;}
+        if(!row.count){const bad=function*(produce,flag){produce(1);return flag;};assert.notDeepEqual(run(bad,true,'next',false),run(expected,true,'next',false));++mutations;}
+      }else {
+        const expected=Function('return async function(produce,flag){"use strict";'+body+'};')();
+        const run=async(fn,flag,fault)=>{
+          const trace=[];let value,thrown;
+          const produce=i=>{trace.push(i);return {then(resolve,reject){trace.push('then');queueMicrotask(()=>{trace.push('resume');fault?reject(failure):resolve(values[i]);});}};};
+          try{value=await fn(produce,flag);}catch(error){thrown=error;}
+          return {trace,value,thrown};
+        };
+        for(const flag of [false,true,values[0]])for(const fault of [false,true]){assert.deepEqual(await run(actual,flag,fault),await run(expected,flag,fault));++executions;}
+        if(!row.count){const bad=async(produce,flag)=>{produce(1);return flag;};assert.notDeepEqual(await run(bad,true,false),await run(expected,true,false));++mutations;}
+      }
+      continue;
+    }
     const expected=Function('produce','flag','"use strict";'+body);
     const actual=Function('return ('+row.source+');')();
+    if([1,2,3,16,17,18,19,20,21,23].includes(row.form)) {
+      const root=parseJavaScript(row.source);
+      const walk=node=>{if(!node||typeof node!=='object')return;assert.notEqual(node.type,'IfStatement');for(const value of Object.values(node))if(Array.isArray(value))value.forEach(walk);else walk(value);};walk(root);
+    }
     const run=(fn,input,fault)=>{
-      const trace=[];const flag=input==='object'?{valueOf(){trace.push('coerce');if(fault==='coerce')throw failure;return 7;}}:input;
+      const trace=[];const flag=input==='object'?{valueOf(){trace.push('coerce');if(fault==='coerce')throw failure;return 7;},get state(){trace.push('get');if(fault==='get')throw failure;return function(){trace.push(['receiver',this===flag]);if(fault==='method')throw failure;return 7;};}}:input;
       let value,thrown;
-      const produce=i=>{trace.push(i);if(fault==='call')throw failure;return values[i];};
+      const produce=i=>{trace.push(i);if(fault==='call'||fault==='second'&&i===2)throw failure;return values[i];};
       try{value=[11,12].includes(row.form)?vm.runInNewContext('('+fn.toString()+')(produce,flag)',{produce,flag},{timeout:10}):fn(produce,flag);if(value===flag&&input==='object')value='object';}
       catch(error){thrown=error.code==='ERR_SCRIPT_EXECUTION_TIMEOUT'?'nontermination':error===flag&&input==='object'?'object':error instanceof ReferenceError?'tdz':error instanceof TypeError?'type':error;}
       return {trace,value,thrown};
     };
-    for(const input of [undefined,null,false,true,0,-0,7n,Symbol.for('control'),'object'])for(const fault of ['none','call','coerce']) {
+    for(const input of [undefined,null,false,true,0,-0,7n,Symbol.for('control'),'object'])for(const fault of (row.form===20||row.form===21?['none','call','coerce','get','method']:row.form===22?['none','call','coerce','second']:['none','call','coerce'])) {
       assert.deepEqual(run(actual,input,fault),run(expected,input,fault));++executions;
     }
-    if(!row.count&&[1,2,3,5,7,9,11,12,14].includes(row.form)) {
+    if(!row.count&&[1,2,3,5,7,9,11,12,14,16,17,18,19,20,21,22,23].includes(row.form)) {
       const bad=Function('produce','flag','return flag;');
       assert.notDeepEqual(run(bad,'object','none'),run(expected,'object','none'));++mutations;
+    }
+    if(!row.count&&row.form===21) {
+      const wrongReceiver=Function("produce","flag","(0,flag.state)();return flag;");
+      assert.notDeepEqual(run(wrongReceiver,"object","none"),run(expected,"object","none"));++mutations;
     }
     continue;
   }

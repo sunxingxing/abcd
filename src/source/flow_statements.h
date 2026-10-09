@@ -11,6 +11,9 @@ struct StatementObservations {
 };
 struct FlowStatements {
   std::vector<StatementObservations> observations;
+  // Full descendant observations, excluding only this statement's adapter-owned
+  // entry evaluation. Child evaluations are never excluded from their parent.
+  std::vector<StatementObservations> residuals;
   std::size_t allocated_bytes=0;
   std::uint64_t work=0;
 };

@@ -18,14 +18,14 @@ inline void CheckProjectedRanges(const source::FunctionTree& tree,
   std::vector<Statement> statements{{tree.body,false}};
   while(!statements.empty()) {
     const auto at=statements.back();statements.pop_back();const bool erased=at.parent_omitted||plan.omitted[at.id.value];omitted[at.id.value]=erased;
-    source::StatementChildren(tree,at.id,[&](auto child){statements.push_back({child,erased});});
+    source::StatementChildren(tree,at.id,[&](auto child){statements.push_back({child,erased||plan.statement_values[at.id.value].has_value()});});
   }
   std::vector<source::ExprId> pending;
   for(std::size_t i=0;i<tree.statements.size();++i) {
     const auto& completion=plan.declaration_completions[i];
     const auto& value=plan.declaration_values[i];
-    if(!omitted[i]&&!completion&&!value)continue;
-    const auto retained=omitted[i]?plan.forwarded_values[i]:completion?completion->evaluation:
+    if(!omitted[i]&&!completion&&!value&&!plan.statement_values[i])continue;
+    const auto retained=omitted[i]?plan.forwarded_values[i]:plan.statement_values[i]?plan.statement_values[i]:completion?completion->evaluation:
         value?std::optional{value->value}:std::nullopt;
     source::VisitStatementExpressions(tree.statements[i].statement,[&](auto root){pending.push_back(root);});
     while(!pending.empty()) {

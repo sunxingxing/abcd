@@ -38,7 +38,8 @@ struct Fixture {
       else if constexpr(std::is_same_v<T,CallExpr>)node.callee=remap(node.callee);
       else if constexpr(std::is_same_v<T,ConditionalExpr>){node.condition=remap(node.condition);node.consequent=remap(node.consequent);node.alternate=remap(node.alternate);}
       else if constexpr(std::is_same_v<T,SequenceExpr>||std::is_same_v<T,LogicalExpr>){node.left=remap(node.left);node.right=remap(node.right);}
-      else if constexpr(std::is_same_v<T,UnaryExpr>)node.operand=remap(node.operand);
+      else if constexpr(std::is_same_v<T,UnaryExpr>||std::is_same_v<T,AwaitExpr>||std::is_same_v<T,YieldExpr>)node.operand=remap(node.operand);
+      else if constexpr(std::is_same_v<T,MemberExpr>){node.base=remap(node.base);if(auto* key=std::get_if<ComputedKey>(&node.key))key->expression=remap(key->expression);}
     },expression.expression);
     for(auto& statement:tree.statements)std::visit([&](auto& node){using T=std::decay_t<decltype(node)>;
       if constexpr(std::is_same_v<T,DeclarationStmt>){if(node.initializer)node.initializer=remap(*node.initializer);}
@@ -314,11 +315,22 @@ std::uint64_t InertStatements(unsigned form,unsigned count,bool reverse,bool wra
 // of operand arena order or the number of independent controls.
 std::uint64_t InertControls(unsigned form,unsigned count,bool reverse,bool emit) {
   Fixture f;auto& tree=f.tree;std::vector<StmtId> body,controls;
+  if(form==24||form==25)tree.callable=form==24?CallableKind::kGenerator:CallableKind::kAsyncFunction;
   if(form==3) {tree.symbols[2].kind=BindingKind::kLocal;tree.symbols[2].temporary.reset();}
   if(form!=3)body.push_back(f.Stmt(DeclarationStmt{{2},form==10?std::optional{f.Read(1)}:std::nullopt}));
   for(unsigned i=0;i<=count;++i) {
-    auto condition=form==1?f.Call(1):form==3?f.Read(2):f.Read(1);
-    if(form==2)condition=f.Expr(UnaryExpr{TreeUnary::kPlus,condition});
+    const auto condition=[&]() -> ExprId {
+      if(form==16)return f.Expr(LogicalExpr{TreeLogical::kAnd,f.Read(1),f.Call(1)});
+      if(form==17)return f.Expr(ConditionalExpr{f.Read(1),f.Call(1),f.Call(2)});
+      if(form==18)return f.Expr(SequenceExpr{f.Call(1),f.Expr(UnaryExpr{TreeUnary::kPlus,f.Read(1)})});
+      if(form==19)return f.Expr(AssignmentExpr{SymbolTarget{{1}},f.Call(1)});
+      if(form==20||form==21){const auto member=f.Expr(MemberExpr{f.Read(1),NameId{2}});return form==21?f.Expr(CallExpr{member,{},CallReference::kMember}):member;}
+      if(form==24)return f.Expr(YieldExpr{f.Call(1)});
+      if(form==25)return f.Expr(AwaitExpr{f.Call(1)});
+      if(form==22||form==23)return f.Call(1);
+      const auto value=form==1?f.Call(1):form==3?f.Read(2):f.Read(1);
+      return form==2?f.Expr(UnaryExpr{TreeUnary::kPlus,value}):value;
+    }();
     const auto yes_scope=f.Scope();
     const auto make_yes=[&]() -> StmtId {
     if(form==4) {
@@ -331,7 +343,7 @@ std::uint64_t InertControls(unsigned form,unsigned count,bool reverse,bool emit)
       const auto loop=f.Stmt(LoopStmt{{}});
       std::get<LoopStmt>(tree.statements[loop.value].statement).body=f.Block({f.Stmt(BreakStmt{loop,{}})},f.Scope(ScopeKind::kBlock,yes_scope));return loop;
     }
-    if(form>=11) {
+    if(form>=11&&form<=15) {
       const auto loop=f.Stmt(LoopStmt{{}});const auto scope=f.Scope(ScopeKind::kBlock,yes_scope);
       std::vector<StmtId> statements;
       if(form==12)statements.push_back(f.Stmt(IfStmt{f.Read(1),f.Block({f.Stmt(ContinueStmt{loop,{}})},f.Scope(ScopeKind::kBlock,scope)),f.Block({f.Stmt(BreakStmt{loop,{}})},f.Scope(ScopeKind::kBlock,scope))}));
@@ -344,6 +356,7 @@ std::uint64_t InertControls(unsigned form,unsigned count,bool reverse,bool emit)
       if(form==15)statements.push_back(f.Stmt(TryStmt{f.Block({f.Stmt(BreakStmt{loop,{}})},f.Scope(ScopeKind::kBlock,scope)),{},f.Block({f.Stmt(ExpressionStmt{f.Read(1)})},f.Scope(ScopeKind::kBlock,scope))}));
       std::get<LoopStmt>(tree.statements[loop.value].statement).body=f.Block(statements,scope);return loop;
     }
+    if(form==22)return f.Stmt(ExpressionStmt{f.Call(2)});
     if(form==7)return f.Stmt(TryStmt{f.Block({},f.Scope(ScopeKind::kBlock,yes_scope)),{},f.Block({f.Stmt(ExpressionStmt{f.Call(2)})},f.Scope(ScopeKind::kBlock,yes_scope))});
     if(form==8)return f.Stmt(DebuggerStmt{});
     if(form==9)return f.Stmt(ThrowStmt{f.Read(1)});
@@ -351,7 +364,14 @@ std::uint64_t InertControls(unsigned form,unsigned count,bool reverse,bool emit)
     return f.Stmt(ExpressionStmt{f.Read(1)});
     };const auto yes_value=make_yes();const auto yes=form==4?yes_value:f.Block({yes_value},yes_scope);
     const auto no=f.Stmt(ExpressionStmt{form==10?f.Expr(AssignmentExpr{SymbolTarget{{2}},f.Read(1)}):f.Read(1)});
-    const auto control=f.Stmt(IfStmt{condition,yes,f.Block({no},f.Scope())});controls.push_back(control);body.push_back(control);
+    const auto no_scope=f.Scope();
+    const auto control=f.Stmt(IfStmt{condition,yes,f.Block({no},no_scope)});controls.push_back(control);
+    if(form==23) {
+      const auto try_scope=f.Scope();tree.scopes[yes_scope.value].parent=try_scope;tree.scopes[no_scope.value].parent=try_scope;
+      const auto scope=f.Scope(ScopeKind::kCatch);const SymbolId error{static_cast<std::uint32_t>(tree.symbols.size())};
+      tree.symbols.push_back({scope,{2},BindingKind::kCatchParameter,DeclarationKind::kCatchParameter,NameEvidence::kMetadata,{}});
+      body.push_back(f.Stmt(TryStmt{f.Block({control},try_scope),CatchClause{error,f.Block({f.Stmt(ReturnStmt{f.Read(1)})},scope)},{}}));
+    }else body.push_back(control);
   }
   if(form==3)body.push_back(f.Stmt(DeclarationStmt{{2},f.Read(1)}));
   body.push_back(f.Stmt(ReturnStmt{f.Read(form==10?2:1)}));f.Finish(body,reverse);
@@ -385,6 +405,9 @@ std::uint64_t InertControls(unsigned form,unsigned count,bool reverse,bool emit)
   }
   std::ostringstream out;const auto printed=PrintFunctionTree(tree,out);test::Check(std::holds_alternative<PrintedFunction>(printed));
   test::CheckProjectedRanges(tree,plan,std::get<PrintedFunction>(printed),out.str().size());
+  // Required entry evaluations survive once, while their inert control region
+  // disappears. This style obligation complements independent execution below.
+  if(form==1||form==2||form==3||(form>=16&&form!=22))test::Check(out.str().find("if (")==std::string::npos);
   for(const auto control:controls)if(plan.omitted[control.value]) {
     const auto& printed_tree=std::get<PrintedFunction>(printed);
     test::Check(printed_tree.statement_extents[control.value]==GeneratedExtent::kBoundary);
@@ -555,7 +578,7 @@ void BindingDependencyOracle() {
 
 }
 int main(int argc,char**) {
-  for(unsigned form=0;form<16;++form)for(bool reverse:{false,true}) {
+  for(unsigned form=0;form<26;++form)for(bool reverse:{false,true}) {
     std::uint64_t previous=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U}) {
       const auto work=InertControls(form,count,reverse,argc>1);
