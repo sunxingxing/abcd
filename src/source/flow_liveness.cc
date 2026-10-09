@@ -14,7 +14,7 @@ std::variant<LivenessResult,TreeStructureError> Solve(
     TreeCheckBudget budget(allowance);RecoveryScratch memory(budget);LivenessResult result;
     budget.Array(result.liveness.live_definitions,flow.definitions.size());
     const auto less=[&](const LiveBinding& a,const LiveBinding& b){budget.Step();return a<b;};
-    std::pmr::set<LiveBinding,decltype(less)> facts(less,&memory);
+    std::pmr::set<LiveBinding,decltype(less)> facts(less,&memory),unavailable(less,&memory);
     std::pmr::vector<LiveBinding> pending(&memory);
     std::pmr::vector<std::optional<FlowPoint>> heads(&memory),next(&memory);
     if(roots==Roots::kObservable) {
@@ -72,20 +72,23 @@ std::variant<LivenessResult,TreeStructureError> Solve(
       for(auto edge=flow.events[fact.point.value].incoming;edge;edge=flow.edges[*edge].incoming) {
         budget.Step();const auto predecessor=flow.edges[*edge].from;
         const auto& event=flow.events[predecessor.value];const auto definition=event.definition;
+        const auto transfer=flow.TransferBinding(fact.binding,flow.edges[*edge]);
+        if(transfer!=FlowUnitTransfer::kPreserved&&roots==Roots::kAllReads)unavailable.insert(fact);
+        if(transfer==FlowUnitTransfer::kEnded) {
+          if(flow.ResetsBinding(fact.binding,predecessor))facts.insert({predecessor,fact.binding});
+          continue;
+        }
         if(definition&&flow.definitions[definition->value].binding==fact.binding) {
           if(!result.liveness.live_definitions[definition->value]) {
             result.liveness.live_definitions[definition->value]=1;
             if(roots==Roots::kObservable && event.discarded)retain(*event.discarded);
           }
-        } else if(flow.ResetsBinding(fact.binding,predecessor)) {
-          // Retain the boundary fact for unavailable-value/coverage queries,
-          // without demanding a definition from an earlier activation.
-          facts.insert({predecessor,fact.binding});
         } else add({predecessor,fact.binding});
       }
     }
     if(roots==Roots::kAllReads) {
       budget.Array(result.liveness.live_in,facts.size());std::copy(facts.begin(),facts.end(),result.liveness.live_in.begin());
+      budget.Array(result.liveness.unavailable,unavailable.size());std::copy(unavailable.begin(),unavailable.end(),result.liveness.unavailable.begin());
     }
     result.liveness.allocated_bytes=budget.Bytes();result.liveness.work=budget.Work();return result;
   } catch(Error error){return error;}catch(const std::bad_alloc&){return Error::kResourceLimit;}

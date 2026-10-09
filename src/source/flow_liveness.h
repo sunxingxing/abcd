@@ -12,6 +12,9 @@ struct FlowLiveness {
   // Both refer to state before a definition at the same point; a proof query
   // is not an observable read and never seeds FlowDemand.
   std::vector<LiveBinding> live_in;
+  // A demanded incoming state crosses a definite exit or unknown lifetime.
+  // Unknown transfer still retains definitions; absence never proves a value.
+  std::vector<LiveBinding> unavailable;
   std::vector<std::uint8_t> live_definitions;
   // Invocation reachability includes every completion edge. Liveness remains
   // conservative for retained syntax; contextual values consume this separately.

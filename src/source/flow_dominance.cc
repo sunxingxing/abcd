@@ -8,6 +8,7 @@ std::variant<FlowInitializations,TreeStructureError> AnalyzeFlowInitializations(
   try {
     TreeCheckBudget budget(allowance);FlowInitializations result;
     budget.Array(result.declarations,flow.bindings.size());
+    budget.Array(result.units,flow.bindings.size());result.scopes=flow.scopes;
     for(const auto& definition:flow.definitions) {
       budget.Step();bool selected=false;
       switch(definition.kind) {
@@ -30,6 +31,7 @@ std::variant<FlowInitializations,TreeStructureError> AnalyzeFlowInitializations(
     // Do not infer dynamic equality from these static identities.
     for(std::size_t i=0;i<flow.bindings.size();++i) {
       budget.Step();const auto* unit=std::get_if<ScopeBindingLifetime>(&flow.bindings[i].lifetime);
+      if(unit)result.units[i]=unit->scope;
       if(std::holds_alternative<UnmodeledBindingLifetime>(flow.bindings[i].lifetime)||
           (unit&&result.declarations[i]&&!result.order.Dominates(unit->enter,*result.declarations[i])))
         result.declarations[i].reset();

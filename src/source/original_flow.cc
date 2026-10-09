@@ -1,23 +1,11 @@
 #include "original_flow.h"
 #include "tree_flow.h"
+#include "recovery_scratch.h"
 #include <algorithm>
 #include <limits>
 #include <type_traits>
 namespace abcd::source {
 namespace {
-// allocate_shared rebinds this allocator to the actual control-block type,
-// charging its complete allocation rather than guessing shared_ptr overhead.
-// Admission is borrowed only during construction; deallocation MUST NOT read
-// the expired budget. The immutable control block never allocates again.
-template<class T> struct OriginalAllocator {
-  using value_type=T;
-  TreeCheckBudget* admission;
-  explicit OriginalAllocator(TreeCheckBudget& budget):admission(&budget){}
-  template<class U> OriginalAllocator(const OriginalAllocator<U>& other):admission(other.admission){}
-  T* allocate(std::size_t count) {admission->Admit(count,sizeof(T));return std::allocator<T>{}.allocate(count);}
-  void deallocate(T* memory,std::size_t count) noexcept {std::allocator<T>{}.deallocate(memory,count);}
-  template<class U> bool operator==(const OriginalAllocator<U>&)const noexcept{return true;}
-};
 analysis::ValueKinds Kinds(const OriginalFlow& original,const analysis::ValueOperand& operand) {
   return std::visit([&](const auto& value) {
     using T=std::decay_t<decltype(value)>;using K=analysis::ValueKinds;
@@ -43,7 +31,7 @@ void Join(OriginalFlow& original,ExprId expression,analysis::ValueKinds kinds) {
 }
 std::shared_ptr<OriginalFlow> RetainOriginalFlow(const analysis::ValueProgram& graph,
     const FunctionTree& tree,TreeFlow& flow,TreeCheckBudget& budget) {
-  auto result=std::allocate_shared<OriginalFlow>(OriginalAllocator<OriginalFlow>{budget});
+  auto result=std::allocate_shared<OriginalFlow>(RecoveryAllocator<OriginalFlow>{budget});
   result->identity=tree.identity;result->method=tree.method;
   result->value_revision=graph.revision;result->cfg_revision=graph.cfg_revision;
   result->statements=tree.statements.size();result->bindings=tree.symbols.size();

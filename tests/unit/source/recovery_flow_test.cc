@@ -2378,6 +2378,144 @@ void PassContracts() {
   Check(!unfinished.DemandCleanupNeeded());
   std::cout<<"pass ownership, dependency and cleanup counterexamples passed\n";
 }
+void ScopeIndexOracle() {
+  unsigned cases=0;
+  constexpr unsigned count=4,choices=count+1;
+  for(unsigned encoded=0;encoded<choices*choices*choices*choices;++encoded) {
+    FunctionTree tree{};tree.scopes.resize(count);std::array<std::optional<unsigned>,count> parents{};
+    auto code=encoded;
+    for(unsigned i=0;i<count;++i){const auto parent=code%choices;code/=choices;if(parent<count){parents[i]=parent;tree.scopes[i].parent=ScopeId{parent};}}
+    bool cycle=false;
+    for(unsigned i=0;i<count;++i) {
+      std::array<bool,count> seen{};std::optional<unsigned> node=i;
+      while(node){if(seen[*node]){cycle=true;break;}seen[*node]=true;node=parents[*node];}
+    }
+    TreeCheckBudget budget({});
+    if(cycle) {
+      bool rejected=false;try{(void)MakeFlowScopes(tree,budget);}catch(TreeStructureError error){rejected=error==TreeStructureError::kScope;}
+      Check(rejected);continue;
+    }
+    const auto index=MakeFlowScopes(tree,budget);index->events.resize(1);
+    for(unsigned unit=0;unit<count;++unit)for(unsigned active=0;active<count;++active) {
+      bool contains=false;std::optional<unsigned> node=active;
+      while(node){contains|=*node==unit;node=parents[*node];}
+      index->events[0]={ScopeId{active},ScopeId{active}};
+      Check(index->Presence({unit},{0},FlowScopePhase::kBefore)==(contains?FlowUnitPresence::kActive:FlowUnitPresence::kInactive));
+      Check(index->Transfer({unit},{0},{0})==(contains?FlowUnitTransfer::kPreserved:FlowUnitTransfer::kEnded));
+    }
+    ++cases;
+  }
+  Check(cases==125);std::cout<<"independent scope forests "<<cases<<'\n';
+  std::uint64_t previous=0;
+  for(unsigned size:{200U,201U,400U,800U})for(bool reverse:{false,true}) {
+    FunctionTree tree{};tree.scopes.resize(size);const auto id=[&](unsigned i){return reverse?size-1-i:i;};
+    for(unsigned i=1;i<size;++i)tree.scopes[id(i)].parent=ScopeId{id(i-1)};
+    TreeCheckBudget budget({});const auto index=MakeFlowScopes(tree,budget);index->events={{{ScopeId{id(size-1)}},{ScopeId{id(size-1)}}}};
+    for(unsigned i=0;i<size;++i)Check(index->Presence({id(i)},{0},FlowScopePhase::kBefore)==FlowUnitPresence::kActive);
+    const analysis::SemanticBudget exact{budget.Bytes(),budget.Work()};
+    TreeCheckBudget repeated(exact);Check(MakeFlowScopes(tree,repeated)->regions.size()==size);
+    bool short_bytes=false,short_work=false;
+    try{TreeCheckBudget short_budget({exact.bytes-1,exact.work});(void)MakeFlowScopes(tree,short_budget);}catch(TreeStructureError error){short_bytes=error==TreeStructureError::kResourceLimit;}
+    try{TreeCheckBudget short_budget({exact.bytes,exact.work-1});(void)MakeFlowScopes(tree,short_budget);}catch(TreeStructureError error){short_work=error==TreeStructureError::kWorkLimit;}
+    Check(short_bytes&&short_work);
+    if(!reverse){if(size>=400)Check(budget.Work()<previous*3);previous=budget.Work();std::cout<<"scope index size "<<size<<" work "<<budget.Work()<<" bytes "<<budget.Bytes()<<'\n';}
+  }
+}
+void UnknownScopeTransfer() {
+  for(bool unknown:{false,true}) {
+    FunctionTree tree{};tree.scopes={{ScopeKind::kBlock,{}}};TreeCheckBudget budget({});
+    auto scopes=MakeFlowScopes(tree,budget);scopes->events.resize(3);
+    scopes->events[0]={ScopeId{0},ScopeId{0}};scopes->events[2]={ScopeId{0},ScopeId{0}};
+    scopes->events[1]=unknown?FlowScopeEvent{UnmodeledScope{},UnmodeledScope{}}:FlowScopeEvent{IncomingScope{},IncomingScope{}};
+    RecoveryFlow flow{};flow.scopes=scopes;flow.events.resize(3);
+    flow.bindings={{BindingKind::kCompilerTemporary,FlowBindingExposure::kPrivate},{BindingKind::kParameter}};
+    flow.bindings[0].lifetime=ScopeBindingLifetime{{0},{0},{2}};flow.bindings[1].stable_entry=true;
+    flow.events[0].definition=FlowDefinitionId{0};flow.definitions={{{0},{0},FlowDefinitionKind::kAssignment,SymbolId{1}}};
+    flow.events[2].read=SymbolId{0};flow.references={{{2},{0},FlowReferenceKind::kRead,ExprId{0}}};Link(flow,0,1);Link(flow,1,2);
+    const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));
+    Check(bool(live.live_definitions[0])==unknown);Check(!live.unavailable.empty());
+    Check(bool(std::get<FlowDemand>(AnalyzeFlowDemand(flow)).definitions[0])==unknown);
+    const auto definitions=std::get<FlowDefinitions>(AnalyzeFlowDefinitions(flow,live));
+    Check(!definitions.reads.empty()==unknown);
+    Check(!std::get<FlowReadCoverage>(AnalyzeFlowReadCoverage(flow,live)).definitions[0]);
+    const std::array<FlowValueEquation,1> equations{FlowBindingValue{{0}}};const std::array<std::uint8_t,1> completed{1};
+    const FlowValueEquations values{equations,{},{},completed};
+    Check(std::get<FlowCopies>(AnalyzeFlowCopies(flow,live,values)).reads.empty());
+    const std::array<TreeLiteral,1> primitives{BooleanLiteral{true}};
+    const std::array<FlowDefinitionValue,1> written{FlowPrimitiveValue{BooleanLiteral{true},PrimitiveId{0}}};
+    const auto constants=std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,written,values,primitives,{}));
+    Check(!constants.values[0]&&constants.reads.empty());
+  }
+  FlowInitializations retained;
+  {
+    FunctionTree tree{};tree.scopes={{ScopeKind::kBlock,{}}};TreeCheckBudget budget({});
+    auto scopes=MakeFlowScopes(tree,budget);scopes->events={{IncomingScope{},ScopeId{0}},{ScopeId{0},ScopeId{0}},{ScopeId{0},ScopeId{0}}};
+    RecoveryFlow flow{};flow.scopes=std::move(scopes);flow.events.resize(3);flow.bindings={{BindingKind::kLocal}};
+    flow.bindings[0].lifetime=ScopeBindingLifetime{{0},{0},{2}};flow.bindings[0].declaration=StmtId{0};
+    flow.events[0].kind=FlowEventKind::kEnterScope;flow.events[0].scope=ScopeId{0};flow.events[1].definition=FlowDefinitionId{0};
+    flow.definitions={{{1},{0},FlowDefinitionKind::kUndefined,{},{},StmtId{0}}};Link(flow,0,1);Link(flow,1,2);
+    retained=std::get<FlowInitializations>(AnalyzeFlowInitializations(flow));
+  }
+  // Immutable scope facts outlive both the builder admission and the source
+  // graph. Completion queries must not retain dangling graph/budget pointers.
+  Check(retained.Completed({0},{2}));
+}
+void DemandWithoutUnits() {
+  RecoveryFlow flow{};flow.events.resize(2);
+  flow.events[0].definition=FlowDefinitionId{0};flow.events[1].read=SymbolId{0};
+  flow.definitions={{{0},{0},FlowDefinitionKind::kAssignment}};Link(flow,0,1);
+  // A completion/value-only input supports demand without a lexical unit
+  // certificate. Missing optional lifetime metadata must not crash the query.
+  const auto demand=std::get<FlowDemand>(AnalyzeFlowDemand(flow));Check(demand.definitions[0]);
+}
+void ScopeExitTrial(bool exceptional,bool reverse=false) {
+  FunctionTree tree{};tree.callable=CallableKind::kFunction;tree.strictness=Strictness::kStrict;
+  tree.parameter_scope={0};tree.body_scope={1};tree.body={0};tree.origins={OriginalSite{{0},{0}}};
+  tree.scopes={{ScopeKind::kParameters,{}},{ScopeKind::kFunctionBody,ScopeId{0}},
+      {ScopeKind::kBlock,ScopeId{1}},{ScopeKind::kCatch,ScopeId{1}}};
+  tree.names={u"local",u"saved",u"error"};
+  tree.symbols={{{2},{0},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}},
+      {{1},{1},BindingKind::kCompilerTemporary,DeclarationKind::kLet,NameEvidence::kSynthesized,TemporaryReason::kMultipleUses},
+      {{3},{2},BindingKind::kCatchParameter,DeclarationKind::kCatchParameter,NameEvidence::kMetadata,{}}};
+  tree.expressions={{TreeLiteral{IntegerLiteral{7}},{0}},{SymbolExpr{{0}},{0}},
+      {AssignmentExpr{SymbolTarget{{1}},{1}},{0}},{SymbolExpr{{1}},{0}},
+      {TreeLiteral{NullLiteral{}},{0}}};
+  tree.statements={{BlockStmt{{1},0,3},{0}},{DeclarationStmt{{1},{}},{0}},
+      {LoopStmt{{3},{}},{0}},{BlockStmt{{2},3,3},{0}},
+      {DeclarationStmt{{0},ExprId{0}},{0}},{ExpressionStmt{{2}},{0}},
+      {ReturnStmt{ExprId{3}},{0}},{BreakStmt{{2},{}},{0}}};
+  tree.children={{1},{2},{6},{4},{5},{7}};
+  if(exceptional) {
+    tree.statements[2].statement=TryStmt{{3},CatchClause{{2},{8}},{}};
+    tree.statements[7].statement=ThrowStmt{{4}};tree.statements.push_back({BlockStmt{{3},6,0},{0}});
+  } else {
+    // No unused catch declaration in the ordinary loop fixture.
+    tree.symbols.pop_back();tree.names.pop_back();tree.scopes.pop_back();tree.expressions.pop_back();
+  }
+  if(reverse) {
+    const auto id=[&](ScopeId scope){return ScopeId{static_cast<unsigned>(tree.scopes.size()-1-scope.value)};};
+    tree.parameter_scope=id(tree.parameter_scope);tree.body_scope=id(tree.body_scope);
+    for(auto& scope:tree.scopes)if(scope.parent)scope.parent=id(*scope.parent);
+    std::reverse(tree.scopes.begin(),tree.scopes.end());for(auto& symbol:tree.symbols)symbol.scope=id(symbol.scope);
+    for(auto& statement:tree.statements)if(auto* block=std::get_if<BlockStmt>(&statement.statement))block->scope=id(block->scope);
+  }
+  Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  std::vector<std::optional<SymbolId>> aliases(tree.symbols.size()),storage(tree.symbols.size());
+  std::vector<std::optional<PrimitiveId>> literals(tree.symbols.size());
+  std::vector<std::optional<ExprId>> replacements(tree.expressions.size());
+  std::vector<std::uint8_t> omitted(tree.statements.size()),stores(tree.expressions.size(),1);
+  std::vector<ExpressionEvaluation> evaluations(tree.expressions.size(),ExpressionEvaluation::kRequired);
+  // An adverse storage candidate, not a valid published lexical/cell plan.
+  // Original syntax is legal; the shared trial must not borrow a departed unit.
+  storage[1]=SymbolId{0};LegacyFlowProjection projection{aliases,literals,replacements,omitted,evaluations,stores};projection.storage=storage;
+  const auto flow=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,projection));
+  const auto point=flow.expressions[3];
+  const auto initialized=std::get<FlowInitializations>(AnalyzeFlowInitializations(flow));
+  Check(!initialized.Completed({0},point));
+  const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));
+  const auto definitions=std::get<FlowDefinitions>(AnalyzeFlowDefinitions(flow,live));
+  Check(std::none_of(definitions.reads.begin(),definitions.reads.end(),[&](const auto& read){return read.point==point;}));
+}
 void BindingActivationOracle() {
   std::uint64_t cases=0;
   for(unsigned extra=0;extra<512;++extra)for(bool reverse:{false,true})for(unsigned incoming:{0U,1U})
@@ -2533,6 +2671,12 @@ void CatchActivationOrder() {
     Check(initialized.Completed(reference.binding,reference.point));
 }
 int main(int argc,char** argv){
+  if(argc==2&&std::string_view(argv[1])=="--scope-exits") {
+    DemandWithoutUnits();ScopeIndexOracle();UnknownScopeTransfer();
+    for(bool reverse:{false,true}){ScopeExitTrial(false,reverse);ScopeExitTrial(true,reverse);}return 0;
+  }
+  DemandWithoutUnits();ScopeIndexOracle();UnknownScopeTransfer();
+  for(bool reverse:{false,true}){ScopeExitTrial(false,reverse);ScopeExitTrial(true,reverse);}
   if(argc==2&&std::string_view(argv[1])=="--activation") {
     BindingActivationScaling();BindingActivationOracle();CatchActivationOrder();return 0;
   }

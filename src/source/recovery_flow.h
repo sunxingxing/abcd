@@ -5,6 +5,7 @@
 #include "expression_observation.h"
 #include "primitive_value.h"
 #include "original_flow.h"
+#include "flow_scopes.h"
 #include <type_traits>
 namespace abcd::source {
 struct FlowPoint { std::uint32_t value = 0; auto operator<=>(const FlowPoint&) const = default; };
@@ -240,10 +241,19 @@ struct LegacyFlowProjection {
   }
 };
 struct RecoveryFlow {
-  // Value facts cannot cross allocation or normal departure of their unit.
-  // Abrupt unwind and projected per-iteration environments need additional
-  // lifetime precision; this query never proves capture identity or movement.
+  // Shared unit transfer owns both scope events and abrupt edge exits.
+  // Unmodeled transfer preserves possible demand but invalidates known values.
+  [[nodiscard]] FlowUnitTransfer TransferBinding(SymbolId binding,const FlowEdge& edge) const {
+    // Value/completion-only inputs carry no lexical unit certificate. Demand
+    // remains valid; missing source lifetime facts cannot establish equality.
+    if(binding.value>=bindings.size())return scopes?FlowUnitTransfer::kUnmodeled:FlowUnitTransfer::kPreserved;
+    if(std::holds_alternative<UnmodeledBindingLifetime>(bindings[binding.value].lifetime))return FlowUnitTransfer::kUnmodeled;
+    if(ResetsBinding(binding,edge.from))return FlowUnitTransfer::kEnded;
+    const auto* unit=std::get_if<ScopeBindingLifetime>(&bindings[binding.value].lifetime);
+    return unit&&scopes?scopes->Transfer(unit->scope,edge.from,edge.to):FlowUnitTransfer::kPreserved;
+  }
   [[nodiscard]] bool ResetsBinding(SymbolId binding,FlowPoint point) const {
+    if(binding.value>=bindings.size())return false;
     const auto* unit=std::get_if<ScopeBindingLifetime>(&bindings[binding.value].lifetime);
     if(!unit)return false;
     const auto& event=events[point.value];
@@ -253,6 +263,7 @@ struct RecoveryFlow {
   // Borrowed from the prepared owner, which outlives all revision-owned facts.
   // The original graph is immutable; source projections never rewrite it.
   const OriginalFlow* original=nullptr;
+  std::shared_ptr<const FlowScopes> scopes;
   std::vector<analysis::ValueKinds> normal_kinds;
   std::vector<std::optional<FlowPoint>> normal_exits;
   RouteInputIdentity identity;

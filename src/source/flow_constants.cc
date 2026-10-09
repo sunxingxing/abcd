@@ -183,7 +183,7 @@ std::variant<FlowConstants,TreeStructureError> SolveConstants(
       if(fact.point==flow.entry||!event.incoming)node(std::optional<ValueId>{});
       for(auto edge=event.incoming;edge;edge=flow.edges[*edge].incoming) {
         budget.Step();const auto predecessor=flow.edges[*edge].from;if(!reachable(predecessor))continue;const auto defined=flow.events[predecessor.value].definition;
-        if(flow.ResetsBinding(fact.binding,predecessor))node(std::optional<ValueId>{});
+        if(flow.TransferBinding(fact.binding,flow.edges[*edge])!=FlowUnitTransfer::kPreserved)node(std::optional<ValueId>{});
         else if(defined&&flow.definitions[defined->value].binding==fact.binding)definition(values[defined->value]);
         else node(fact_node({predecessor,fact.binding}));
       }
@@ -265,6 +265,7 @@ std::variant<FlowConstants,TreeStructureError> SolveConstants(
     }
     for(std::size_t i=0;i<bindings;++i){budget.Step();if(flow.bindings[i].exposure!=FlowBindingExposure::kPrivate&&!stable[i])update(binding({static_cast<std::uint32_t>(i)}),unknown);}
     for(const auto& fact:live.live_in){budget.Step();if((fact.point==flow.entry||flow.ResetsBinding(fact.binding,fact.point))&&!stable[fact.binding.value])update(binding(fact.binding),unknown);}
+    for(const auto& fact:live.unavailable){budget.Step();if(!stable[fact.binding.value])update(binding(fact.binding),unknown);}
     const auto truth=[&](const TreeLiteral& value){if(const auto* text=std::get_if<TextId>(&value))RequireTree(text->value<texts.size(),TreeStructureError::kOwnership);return PrimitiveTruth(value,texts);};
     const auto evaluate=[&](ValueId id) {
       return std::visit([&](const auto& value)->Value {

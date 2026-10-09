@@ -103,7 +103,7 @@ std::variant<FlowCopies,TreeStructureError> AnalyzeFlowCopies(
       if(fact.point==flow.entry||!event.incoming)constant(unknown);
       for(auto edge=event.incoming;edge;edge=flow.edges[*edge].incoming) {
         budget.Step();const auto predecessor=flow.edges[*edge].from;if(!reachable(predecessor))continue;
-        if(flow.ResetsBinding(fact.binding,predecessor)){constant(unknown);continue;}
+        if(flow.TransferBinding(fact.binding,flow.edges[*edge])!=FlowUnitTransfer::kPreserved){constant(unknown);continue;}
         const auto defined=flow.events[predecessor.value].definition;
         if(defined){
           RequireTree(defined->value<flow.definitions.size(),TreeStructureError::kOwnership);

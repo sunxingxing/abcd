@@ -18,6 +18,8 @@ struct FlowDominance {
     const RecoveryFlow&,analysis::SemanticBudget = {});
 struct FlowInitializations {
   FlowDominance order;
+  std::shared_ptr<const FlowScopes> scopes;
+  std::vector<std::optional<ScopeId>> units;
   std::vector<std::optional<FlowPoint>> declarations;
   std::size_t allocated_bytes=0;
   std::uint64_t work=0;
@@ -27,8 +29,12 @@ struct FlowInitializations {
   // Unreachable retained syntax has no execution-order demand; lexical name
   // resolution is still checked independently for that occurrence.
   [[nodiscard]] bool Completed(SymbolId binding,FlowPoint occurrence) const {
-    return !order.tree.nodes[occurrence.value].begin ||
-        (declarations[binding.value] && order.Dominates(*declarations[binding.value],occurrence));
+    if(!order.tree.nodes[occurrence.value].begin)return true;
+    if(scopes&&units[binding.value]) {
+      const auto presence=scopes->Presence(*units[binding.value],occurrence,FlowScopePhase::kBefore);
+      if(presence!=FlowUnitPresence::kActive&&presence!=FlowUnitPresence::kCompletionOnly)return false;
+    }
+    return declarations[binding.value] && order.Dominates(*declarations[binding.value],occurrence);
   }
 };
 [[nodiscard]] std::variant<FlowInitializations,TreeStructureError> AnalyzeFlowInitializations(

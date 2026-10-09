@@ -36,6 +36,41 @@
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
 
+### 2026-10-09：规则258，共同异常/跳转作用域转移
+
+- 主干第2/3项继续实施：当前与trial共同adapter为每个完成事件发布typed
+  before/after词法上下文；移动表达式使用当前投影owner。单份不可变
+  FlowScopes索引在完成边上区分preserved、ended和unmodeled，不复制
+  每个跳转的LeaveScope，也不以静态ScopeId证明动态cell相等。
+- 修正实际RED：break/throw后把外部保存值试算合并到已离开的局部单元，
+  原初始化支配检查仍允许外部读取。现在共同初始化事实同时要求单元存在；
+  liveness/demand、reaching definitions、coverage、constants、copies和
+  normal domains共享TransferBinding。点式normal-leave传播和离开后
+  仅凭初始化支配的旧判断退出这些路径，不新增局部准入或pass轮次。
+- 确定离开切断旧单元值；未知cleanup保留may-demand/definitions，禁止
+  值替换。未知不能当成离开而删活跃写入。初始化product共享拥有索引，
+  原graph释放后仍安全；旧value/completion-only输入继续提供需求/顺序，
+  不取得单元身份证明。实际兼容性崩溃已由LLDB定位并有独立反例覆盖。
+- 最终31目标构建91.7936s，fresh pasteboard record3.2971s，精确63/63
+  CTests580.5861s通过，名单一致/无重复；构建无warning/error。
+  固定输入19records/10complete/0partial/9no-module，10源码语法检查
+  通过；源码内容与规则257相同，SHA-256前后相同，profile/budgets保持。
+  证据build/stage-one/scope-exit-verification，fresh输出
+  build/stage-one/scope-exit-final-rule258。
+- 新增32份优化后跳转/异常/返回源码，覆盖copies0/1/200/201和嵌套block：
+  2480独立执行对照、40行为mutants通过。原original-flow目标合计
+  6560对照/98行为mutants；此统计不包含其他source目标。独立125个
+  合法scope森林/反序编号、unknown-demand、adverse-storage-trial及共享
+  ownership反例通过。Q200/201/400/800索引work1199/1205/2399/4799、
+  allocated bytes12812/12845/25556/51044，exact/one-short admission通过；
+  仅索引成本，不是完整graph/RSS/全局收敛结论。两个生产突变各build0/
+  test-6，恢复后再运行上述完整选定验证。
+- **五项主干均未关闭**。下一步明确为候选声明/narrowing和native-for
+  per-iteration环境的完整生命期投影；精确finally/closure transport仍
+  unmodeled。全原始IR/protocol对应、依赖驱动pass收敛、旧判断完整退出
+  与统一变量终验继续开放。其他表现优化、fullsuite/corpus/RSS/benchmark/
+  DFX/agents保持暂停，阶段一Goal active。
+
 ### 2026-10-09：规则257，共同普通绑定激活事实
 
 - 主干第2项继续实施：RecoveryFlow区分canonical作用域分配点、enclosing

@@ -3012,3 +3012,30 @@ component: complete current projected activation/capture equivalence is still an
 open migration obligation. Abrupt unwind and native for per-iteration environments
 also remain explicit model gaps. Do not use this canonical allocation index as a
 second same-scope admission rule or expand older local checks around new examples.
+
+
+## Rules258: canonical abrupt departure and unknown transfer
+
+Obligation: a binding value read still belongs to an active canonical allocation,
+and a value does not cross a definite departure/reallocation. Shared typed event
+contexts and one lexical forest index prove this on every completion edge. Current
+projected owners supply expression contexts; omitted blocks allocate no environment.
+No sample, opcode sequence, same-block, adjacency, selection count, physical scope
+numbering or jump-layout admission is introduced.
+
+Retired decisions: point-only reset propagation in liveness/demand and reaching
+definitions, and initialization dominance certifying reads after canonical departure.
+Coverage/constants/copies/normal domains consume the same edge-transfer facts rather
+than adding optimizer-specific scope predicates. Unknown cleanup preserves may-demand
+and definitions while withholding substitution proofs; it is not silently classified
+as ended. Completion/value-only inputs without unit metadata remain valid for their
+old demand/order contracts and receive no cell identity certificate.
+
+Independent ancestry forests, adverse storage proposals across break/throw, retained
+facts after graph destruction, unknown-transfer counterexamples, copy/block/source
+execution and production mutants exercise these obligations. Existing capture/name
+safeguards stay in force. Historical same-ScopeId capture assumptions have not been
+replaced; static containment is no proof of captured-cell identity across visits.
+Declaration narrowing/native-for lifetime deltas and precise finally/closure contexts
+remain explicit gaps. All five backbone delivery loops remain open; no new pass round
+or paused verification expansion occurs.

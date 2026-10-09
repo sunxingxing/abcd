@@ -2672,3 +2672,39 @@ metadata alone cannot authorize these transformations. Available-copy local root
 remain unproved; existing lexical/name/capture safeguards are preserved. Complex
 finally and suspension precision remain gaps. All five backbone delivery loops and
 the unified-variable milestone remain open; status.md owns measured evidence.
+
+
+### Shared abrupt activation transfers (rules258)
+
+The current source adapter publishes typed before/after lexical contexts for every
+completion event, using the projected statement owner for relocated expressions.
+Canonical block allocation/departure has explicit contexts; omitted blocks do not
+enter their former environment. A single immutable FlowScopes forest index answers
+unit presence and edge transfers. Crossing a known inactive context ends the unit,
+including break, continue, return and throw paths that bypass normal LeaveScope.
+Static lexical containment is not dynamic cell equality across repeated visits.
+
+TransferBinding is the common gen/kill entry consumed by liveness/demand, reaching
+definitions, coverage, constants, copies and normal domains. Definite departure
+stops earlier-unit values. Unmodeled cleanup instead keeps may-demand and reaching
+definitions, while marking all-read coverage unavailable and substitutable domains
+unknown. Treating unknown as definite departure would unsoundly delete a live write;
+the independent counterexample and production mutation exercise that distinction.
+The old point-only transfer paths are retired in these clients. Explicit allocation
+resets remain part of the same semantic transfer, not optimizer admission rules.
+
+Initialization completion now also requires the canonical unit to be active at the
+read. Allocation/initialization dominance alone cannot certify a departed unit.
+The initialization product retains shared immutable scope facts rather than borrowing
+a destroyed graph or copying its index. Legacy completion/value-only inputs retain
+their order/demand contract without acquiring a binding-unit identity certificate.
+Current and candidate graphs use the same adapter and revision invalidation; pass
+order, rounds and budgets are unchanged.
+
+This closes the canonical abrupt-departure substep, not backbone deliveries2/3.
+Projected declaration narrowing, native-for fresh environments, closure transport
+and precise finally completion contexts still need complete lifetime deltas. Global
+cleanup dispatch is explicitly unmodeled, preserving demand but limiting substitution
+precision. Original IR/protocol correspondence, dependency-driven pass convergence
+and unified-variable final acceptance remain open. No appearance optimization or
+paused corpus/resource/agent work resumes. Measured evidence belongs to status.md.

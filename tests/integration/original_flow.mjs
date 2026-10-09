@@ -186,3 +186,46 @@ for(const row of activations) {
 }
 assert.equal(activations.length,8);
 console.log(`${activations.length} repeated catch/local activation sources / ${activationComparisons} independent comparisons / ${activationMutants} adverse mutants`);
+
+const exits=execFileSync(process.argv[3],['--scope-exits'],{encoding:'utf8',maxBuffer:16_000_000}).trim().split('\n').map(JSON.parse);
+function exitOutcome(fn,form,factory,rounds) {
+  const trace=[],objects=[];let calls=0;
+  const normalize=value=>objects.includes(value)?['input object',objects.indexOf(value)]:value;
+  const input=function(...args) {
+    if(args.length){trace.push(['catch',this===undefined,...args.map(normalize)]);return;}
+    trace.push(['call',++calls,this===undefined]);
+    if(form<=1&&calls%2===1)return (calls+1)/2<=rounds;
+    if(form===2&&calls===2)return failure;
+    const value=factory(trace);if(value!==null&&(typeof value==='object'||typeof value==='function'))objects.push(value);
+    return value;
+  };
+  try{return {trace,kind:'return',value:normalize(fn(input))};}
+  catch(error){return {trace,kind:'throw',value:error===failure?'failure':normalize(error)};}
+}
+const exitReferences=[
+  function(input){let saved;while(input()){{let local=input();saved=local;break;}}return saved;},
+  function(input){let saved;while(input()){{let local=input();saved=local;continue;}}return saved;},
+  function(input){let saved;try{let local=input();saved=local;throw input();}catch(error){input(error,saved);}return saved;},
+  function(input){{let local=input();return local;}},
+];
+let exitComparisons=0,exitMutants=0;
+function checkExit(source,form) {
+  const generated=Function('return ('+source+')')();
+  for(const factory of [...factories,()=>{throw failure;}])for(const rounds of (form<=1?[0,1,2,3]:[1]))
+    assert.deepEqual(exitOutcome(generated,form,factory,rounds),exitOutcome(exitReferences[form],form,factory,rounds));
+}
+for(const row of exits) {
+  checkExit(row.source,row.form);exitComparisons+=(factories.length+1)*(row.form<=1?4:1);
+  const wrapped='('+row.source+')',all=nodes(parseJavaScript(wrapped));
+  const returned=all.find(node=>node.type==='ReturnStatement'&&node.argument);
+  assert.ok(returned);
+  const lostValue=wrapped.slice(0,returned.argument.start)+'undefined'+wrapped.slice(returned.argument.end);
+  assert.throws(()=>checkExit(lostValue,row.form));++exitMutants;
+  if(row.form===2) {
+    const thrown=all.find(node=>node.type==='ThrowStatement');assert.ok(thrown);
+    const lostThrow=wrapped.slice(0,thrown.start)+';'+wrapped.slice(thrown.end);
+    assert.throws(()=>checkExit(lostThrow,row.form));++exitMutants;
+  }
+}
+assert.equal(exits.length,32);
+console.log(`${exits.length} scoped jump/throw/return sources / ${exitComparisons} independent comparisons / ${exitMutants} adverse mutants`);

@@ -3829,3 +3829,30 @@ global pass convergence evidence. No production size cutoff or budget increase.
 Projected per-iteration units, abrupt unwind and closure transport are explicit
 precision gaps; this algorithm does not substitute static ScopeId equality for
 runtime unit equality.
+
+
+## Indexed lexical presence and abrupt edge transfer (rules258)
+
+One iterative forest traversal builds Euler containment intervals for Q lexical
+scopes, with O(Q) admitted work/storage, arbitrary parent numbering and no recursion.
+The source adapter publishes O(N) typed before/after event contexts, using O(S)
+statement-owner scratch. Immutable retained scope storage is O(Q+N); initialization
+owns one shared reference plus O(B) unit IDs, not another scope/event table. The
+shared allocator charges the actual rebound control block and never accesses the
+construction budget during later deallocation.
+
+Presence and unit transfer cost O(1) per existing sparse edge-fact traversal, without
+per-binding scope walks, synthetic leave events per jump or a dense unit/event
+product. All-read liveness retains sorted unavailable facts, O(L) output plus the
+existing ordered-fact insertion cost. Known departure kills old reaching values;
+unmodeled transfer preserves may facts but invalidates substitution proofs. The
+independent initialization/dominance analysis consumes the same active-unit fact.
+These additions retain existing resource admission and finite solver bounds; they
+do not prove whole-pass convergence or full-process RSS.
+
+An independent slow ancestry oracle checks all125 valid four-scope forests, including
+reversed IDs. Scope-index-only Q200/201/400/800 runs record work1199/1205/2399/4799
+and allocated bytes12812/12845/25556/51044, with exact/one-short admission. These
+figures exclude test-appended events and are not full graph costs. Existing graph
+and emitted-source boundary/geometric gates remain independent. Current projected
+lifetime deltas and precise finally/closure unit transport remain capability gaps.

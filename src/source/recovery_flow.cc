@@ -30,7 +30,7 @@ class FlowBuilder {
  public:
   FlowBuilder(const FunctionTree& tree,LegacyFlowProjection projection,analysis::SemanticBudget budget,RecoveryFlow storage)
       : tree_(tree), projection_(projection), budget_(budget), memory_(budget_),
-        statements_(&memory_), expressions_(&memory_), exits_(&memory_), tasks_(&memory_), seen_(&memory_), reads_(&memory_), read_states_(&memory_), initializers_(&memory_), catch_parameters_(&memory_), scope_lifetimes_(&memory_), result_(std::move(storage)) {
+        statements_(&memory_), expressions_(&memory_), exits_(&memory_), tasks_(&memory_), seen_(&memory_), reads_(&memory_), read_states_(&memory_), initializers_(&memory_), catch_parameters_(&memory_), scope_lifetimes_(&memory_), statement_scopes_(&memory_), result_(std::move(storage)) {
     events_=std::move(result_.events);events_.clear();edges_=std::move(result_.edges);edges_.clear();
     definitions_=std::move(result_.definitions);definitions_.clear();references_=std::move(result_.references);references_.clear();
     names_=std::move(result_.names);names_.clear();
@@ -38,6 +38,7 @@ class FlowBuilder {
     result_.properties.clear();
   }
   RecoveryFlow Run() {
+    result_.scopes.reset();
     result_.original=projection_.original;
     if(result_.original)CheckOriginalFlow(tree_,*result_.original);
     RequireTree(projection_.normal_kinds.empty()||projection_.normal_kinds.size()==tree_.expressions.size(),Error::kOwnership);
@@ -56,6 +57,7 @@ class FlowBuilder {
     initializers_.resize(tree_.expressions.size());
     catch_parameters_.resize(tree_.statements.size());
     scope_lifetimes_.resize(tree_.scopes.size());
+    statement_scopes_.resize(tree_.statements.size(),UnmodeledScope{});
     for (std::size_t i=0;i<projection_.initializers.size();++i) {
       budget_.Step();
       if (const auto& initializer=projection_.initializers[i])
@@ -65,6 +67,7 @@ class FlowBuilder {
     for(auto& statement:result_.statement_semantics){budget_.Step();statement.reset();}
     result_.statement_order.clear();
     terminal_=New(); dispatch_=New();
+    scope_events_[dispatch_.value]={UnmodeledScope{},UnmodeledScope{}};
     statements_.resize(tree_.statements.size()); exits_.resize(tree_.statements.size());
     expressions_.resize(tree_.expressions.size()); seen_.resize(tree_.expressions.size());
     Resize(result_.value_uses,tree_.expressions.size());
@@ -92,6 +95,7 @@ class FlowBuilder {
     auto& result=result_;
     result.identity=tree_.identity;result.value_revision=tree_.value_revision;result.cfg_revision=tree_.cfg_revision;
     result.entry=entry_;result.terminal=terminal_;
+    auto flow_scopes=MakeFlowScopes(tree_,budget_);flow_scopes->events=std::move(scope_events_);result.scopes=std::move(flow_scopes);
     const auto copy=[&](auto& destination,const auto& source){Resize(destination,source.size());std::copy(source.begin(),source.end(),destination.begin());};
     result.events=std::move(events_);result.edges=std::move(edges_);
     result.definitions=std::move(definitions_);result.references=std::move(references_);result.names=std::move(names_);
@@ -192,7 +196,7 @@ class FlowBuilder {
   }
   Point New(FlowEvent event={}) {
     RequireTree(events_.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
-    budget_.Step();event.owner=current_owner_;event.entry_evaluation=current_entry_evaluation_;Point result{static_cast<std::uint32_t>(events_.size())};Append(events_,event);return result;
+    budget_.Step();event.owner=current_owner_;event.entry_evaluation=current_entry_evaluation_;Point result{static_cast<std::uint32_t>(events_.size())};Append(events_,event);Append(scope_events_,{current_scope_,current_scope_});return result;
   }
   Point Define(SymbolId binding,FlowDefinitionKind kind,std::optional<SymbolId> copy={},
       std::optional<ExprId> value={},std::optional<StmtId> declaration={},
@@ -294,6 +298,8 @@ class FlowBuilder {
     RequireTree(!seen_[at.id.value],Error::kOwnership);seen_[at.id.value]=1;
     const auto start=expressions_[at.id.value];const auto& context=at.context;
     current_owner_=context.owner;current_entry_evaluation_=context.entry_evaluation;
+    current_scope_=context.owner?statement_scopes_[context.owner->value]:FlowScopeContext{UnmodeledScope{}};
+    scope_events_[start.value]={current_scope_,current_scope_};
     events_[start.value].owner=context.owner;events_[start.value].entry_evaluation=context.entry_evaluation;
     if(!result_.normal_exits.empty())result_.normal_exits[at.id.value]=context.next;
     result_.value_uses[at.id.value]=context.value_use;
@@ -403,6 +409,11 @@ class FlowBuilder {
   }
   void Build(Statement at) {
     const auto start=statements_[at.id.value];auto context=at.context;context.owner=at.id;
+    const FlowScopeContext enclosing=at.context.owner?statement_scopes_[at.context.owner->value]:FlowScopeContext{IncomingScope{}};
+    current_scope_=enclosing;
+    if(!projection_.omitted[at.id.value])if(const auto* block=std::get_if<BlockStmt>(&tree_.statements[at.id.value].statement))current_scope_=block->scope;
+    statement_scopes_[at.id.value]=current_scope_;
+    scope_events_[start.value]={enclosing,enclosing};
     current_owner_=at.id;current_entry_evaluation_=false;events_[start.value].owner=at.id;
     exits_[at.id.value]=context.next;
     if(projection_.omitted[at.id.value]){events_[start.value].owner.reset();Link(start,context.next);return;}
@@ -456,6 +467,7 @@ class FlowBuilder {
         const auto entered=New({FlowEventKind::kEnterScope,{},{},{},node.scope});
         auto next=New({FlowEventKind::kLeaveScope,{},{},{},node.scope});Link(next,context.next);
         scope_lifetimes_[node.scope.value]=ScopeBindingLifetime{node.scope,entered,next};
+        scope_events_[entered.value]={enclosing,node.scope};scope_events_[next.value]={node.scope,enclosing};
         for(std::size_t i=node.child_count;i;--i)next=Stmt(tree_.children[node.first_child+i-1],{next,context.thrown,context.finalizer,{},FlowValueUse::kObserved,at.id});
         if(const auto parameter=catch_parameters_[at.id.value]) {
           const auto initialized=Define(*parameter,FlowDefinitionKind::kCatch);
@@ -531,6 +543,8 @@ class FlowBuilder {
       else {static_assert(std::is_same_v<T,UnrecoveredStmt>);throw Error::kUnsupportedSyntax;}
     },tree_.statements[at.id.value].statement);
   }
+  FlowScopeContext current_scope_=IncomingScope{};
+  std::vector<FlowScopeEvent> scope_events_;
   std::optional<StmtId> current_owner_;
   bool current_entry_evaluation_=false;
   const FunctionTree& tree_;LegacyFlowProjection projection_;TreeCheckBudget budget_;RecoveryScratch memory_;
@@ -541,6 +555,7 @@ class FlowBuilder {
   std::pmr::vector<std::optional<StmtId>> initializers_;
   std::pmr::vector<std::optional<SymbolId>> catch_parameters_;
   std::pmr::vector<std::optional<ScopeBindingLifetime>> scope_lifetimes_;
+  std::pmr::vector<FlowScopeContext> statement_scopes_;
   std::vector<DiscardedEvaluation> discarded_;
   std::vector<FlowReference> references_;
   std::vector<FlowNameReference> names_;

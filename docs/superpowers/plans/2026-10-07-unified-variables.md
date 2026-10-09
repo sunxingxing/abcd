@@ -684,3 +684,19 @@ New independent graph/state, reversed event, exact/short budget, 200/201/geometr
 and repeated catch/local emitted-source cases remain bounded by existing selected
 targets. Final evidence belongs to status.md. All five backbone deliveries remain
 open, with no appearance optimization or paused-scope resumption.
+
+
+Rules258 Task2/3 backbone substep: the shared current/trial adapter publishes typed
+before/after canonical lexical contexts, indexed once in immutable FlowScopes.
+Every value client uses TransferBinding on completion edges; definite abrupt
+break/continue/return/throw departure ends the unit, while unknown cleanup keeps
+may-demand/reaching definitions and invalidates substitution. Initializations also
+checks active-unit presence and owns a shared index. Point-only transfer and departed
+unit dominance paths retire without local shape admission or pass rounds/order/
+budget changes. Legacy value/completion-only inputs retain demand/order, never cell
+identity. Independent ancestry/oracle, reversed scope IDs, lifetime ownership,
+unknown-demand and adverse trial tests plus emitted-source copy/block variants and
+production mutants verify the component within existing selected gates. Status.md
+owns final evidence. Complete projected/native-for/capture/finally lifetime deltas,
+full original correspondence, dependency convergence and final acceptance remain
+open; all five backbone delivery loops are OPEN and other optimizations stay paused.
