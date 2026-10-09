@@ -2821,3 +2821,51 @@ closure cells, normal/continue copies before increment, body scope relocation an
 precise finally/capture transport still require actual common completion programs.
 No operation/layout/sample admission or pass round/order/budget change is added.
 All five backbone deliveries remain OPEN; status.md owns bounded final evidence.
+
+
+### Rules262: common source loop completion phases
+
+Current and trial BuildProjectedFlow now pass the same immutable LoopSyntax
+program used by printing to FlowBuilder. The constructor consumes it synchronously;
+RecoveryFlow owns indexed condition/body/increment/exit points and never retains
+the borrowed syntax pointer. PrepareRecoveryProjection's bootstrap/refinement
+rebuilds preserve this input. Raw legacy synthetic graphs explicitly lack source
+phase capability; their behavior does not certify native iteration units.
+
+The program's condition and increment operands execute in the actual enclosing
+scope, outside the body activation. Expression-program blocks allocate no source
+block unit. The original continuing arm is excluded from the condition program
+and scheduled exactly once inside the actual body. A body normal completion or
+owned continue reaches the increment boundary; an increment-program continue
+completes that clause and reaches the next condition. Owned break reaches exit;
+return/throw retain the shared conservative cleanup model. Body activation and
+leaving, actual statement ownership, effect/exception paths and lexical gen/kill
+therefore agree with the represented source execution positions. Header transfers
+retain a typed control obligation in FlowStatement: the graph's kJump route
+represents predicate/clause completion, not a printed break/continue statement.
+
+Required grammar positions are independent of computation effects. The shared
+FlowStatementRetention marks callable/loop bodies, ordinary conditional arms and
+try/catch/finally positions, including the retained continuing arm. Common inert
+elision consumes that role; its old tree.body exception leaves the decision path.
+Required empty syntax does not invent observable effects or force retention of
+an otherwise inert ancestor. Clause expression-program positions stay optional.
+The initial phase-only implementation omitted an empty native body while printing
+still required its container; the existing projected-origin check rejected that
+plan. The correction preserves the original range and behavior assertions.
+
+This retires the raw-body-around-all-phases graph path for modeled source loops.
+No consumer infers movement from an opcode sequence, adjacency, graph shape or
+sample. No new syntax admission or optimization round/order is added. Existing
+LoopSyntax's bound/labeled-block and expressibility coverage gaps remain explicit;
+this change neither expands those local paths nor treats them as language laws.
+
+These phase points are prerequisites for copied iteration environments, not
+substitutes for them. ECMA-262 2025 14.7.4.3/.4 creates a copied environment before
+the first condition and after normal/continue completion before increment:
+https://tc39.es/ecma262/2025/multipage/ecmascript-language-statements-and-declarations.html#sec-forbodyevaluation
+The explicit old-value read, copied-value definition and newly allocated cell
+identity have not been implemented here. Initial/captured cells, precise finally
+transport, complete original IR correspondence, trial lifetime deltas, dependency
+convergence and final acceptance still need the common model. All five backbone
+deliveries remain OPEN; status.md records bounded verification.

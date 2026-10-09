@@ -3123,3 +3123,31 @@ entry now resets incoming values in all shared clients; the original outer
 allocation cannot certify a newly declared header binding. Legacy loop scalar
 capability still provides no copied-unit/captured-cell certificate. Complete
 iteration/capture/finally ownership remains a documented implementation gap.
+
+
+### Rules262 source loop completion graph
+
+Obligation: source condition/increment are outside body activation; the continuing
+arm executes once inside it; normal/continue reaches increment and break/return/
+throw leaves through the proper completion route. FlowBuilder consumes the same
+immutable completion program as printing. Current/trial/bootstrap/refinement use
+that input, and common scopes/dominance/definitions/effects consume actual phases.
+The raw body-scope graph no longer decides phase placement on modeled loops.
+
+Range bounds and owned transfer-target checks validate the existing typed program,
+not an additional recovery admission. No operation whitelist, same-block,
+adjacency, selection count, register/PC or sample condition is added. The old
+grammar expressibility/bound/labeled-block gaps remain unchanged and documented
+as producer capability gaps. Phase events alone grant no copied-cell identity.
+Captures, precise finally and iteration copy transport remain mainline work; all
+five backbone loops stay open. Model mutations reject scope misplacement, skipped
+increment, duplicated continuing arms and update execution in both phases.
+
+The final representation also publishes typed required grammar positions, separate
+from effects. Inert elision consumes the shared role for all mandatory statement
+slots; its old callable-root exception is removed. This does not impose a new
+block-layout admission: the actual source grammar requires the position even
+when no computation remains. Required slots carry no fabricated effect that
+would retain their ancestors. The initial phase-only graph omitted the empty
+body yet printing emitted its moved predicate; existing source range checks
+rejected the conflict. No range/reference assertions were weakened.

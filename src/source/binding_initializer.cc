@@ -914,6 +914,7 @@ class Initializers {
         omitted,{},{},plan_.statements,private_bindings,
         plan_.storage,plan_.undefined_stores,plan_.declaration_values,plan_.declaration_completions,
         {source_regions_,source_occurrences_,source_bindings,source_shadows_,unique_spellings_,spellings_,name_spellings_,source_allocations_},plan_.read_literals,transports,transported_reads,plan_.read_bindings,stable_entries_,{},plan_.read_sources,plan_.statement_values,{},original_};
+    projection.loops=&loops_;
     std::optional<LoopDeclarations> loop_declarations;
     std::optional<LoopEntryProjection> loop_entries;
     std::size_t loop_bytes=0;
@@ -1393,9 +1394,9 @@ class Initializers {
     const auto& flow=*CurrentFacts().flow;
     for(const auto id:flow.statement_order) {
       budget_.Step();
-      // The body is the callable's mandatory grammar container. Every other
-      // retained statement consumes the same completion/effect obligations.
-      if(id!=tree_.body&&facts.observations[id.value].Inert())omitted[count++]=id;
+      // Grammar retention is distinct from observable computation. All source
+      // positions consume the shared role; no AST/root-name exception here.
+      if(flow.statement_semantics[id.value]->retention==FlowStatementRetention::kOptional&&facts.observations[id.value].Inert())omitted[count++]=id;
     }
     omitted.resize(count);return omitted;
   }

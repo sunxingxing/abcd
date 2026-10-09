@@ -752,3 +752,24 @@ No extra round/stage/order/budget or paused scope resumes. Copied iteration
 values/cells, actual header/body phase relocation, captures/finally, full original
 correspondence, dependency convergence and milestone end-to-end closure remain.
 All five human backbone deliveries stay OPEN; status.md records final bounded gates.
+
+
+Rules262 Task2/3 phase-program substep: production current/trial preparation now
+consumes the same immutable LoopSyntax used by printing. The common flow separates
+condition/body/increment/exit, places expression-clause operands outside the body
+activation, executes retained continuing arms once inside it, and routes ordinary
+continue/normal completion through increment. Scope/effect/exception and ownership
+facts share these positions; the modeled path no longer wraps all phases in the
+raw body scope. Legacy synthetic flow explicitly lacks source phase capability.
+No syntax admission, round/order/budget change or paused scope resumes. Copied
+old-value reads/new definitions/new units and capture/finally transport are still
+required. Complete original correspondence, trial lifetime deltas, dependency
+convergence and final acceptance remain open; all five delivery loops stay OPEN.
+
+Rules262 final gate exposed required grammar retention, not a sample admission:
+the empty native body became inert/omitted while its moved predicate retained
+source ranges. Existing declaration-value range/source tests rejected the initial
+plan. FlowStatementRetention now represents mandatory grammar slots separately
+from effects; inert elision consumes it and removes its old tree.body exception.
+Original range assertions remain unchanged. The first final runner was stopped
+on this real regression; final evidence must come from the corrected frozen build.

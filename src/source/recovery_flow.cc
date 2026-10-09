@@ -3,6 +3,7 @@
 #include "binding_initializer.h"
 #include "recovery_scratch.h"
 #include "expression_children.h"
+#include "loop_syntax.h"
 #include <algorithm>
 #include <limits>
 #include <stdexcept>
@@ -10,6 +11,14 @@ namespace abcd::source {
 namespace {
 using Error=TreeStructureError;
 using Point=FlowPoint;
+struct HeaderProgram {
+  StmtId loop;
+  LoopCompletionTransfer transfer;
+  std::optional<StmtId> retained;
+  Point exit;
+  FlowScopeContext scope;
+};
+struct LoopBodyProgram {std::uint32_t first;std::optional<StmtId> retained;};
 struct Context {
   Point next,thrown;
   std::optional<Point> finalizer;
@@ -18,8 +27,13 @@ struct Context {
   std::optional<StmtId> owner;
   std::optional<SymbolId> transport;
   bool entry_evaluation=false;
+  std::optional<HeaderProgram> header;
+  FlowStatementRetention retention=FlowStatementRetention::kOptional;
   Context Operand(Point continuation,FlowValueUse use=FlowValueUse::kObserved) const {
     auto result=*this;result.next=continuation;result.value_use=use;return result;
+  }
+  Context Child(Point continuation,StmtId parent,FlowStatementRetention retained=FlowStatementRetention::kOptional) const {
+    auto result=Operand(continuation);result.owner=parent;result.discarded.reset();result.entry_evaluation=false;result.retention=retained;return result;
   }
 };
 struct Statement {StmtId id;Context context;};
@@ -30,7 +44,7 @@ class FlowBuilder {
  public:
   FlowBuilder(const FunctionTree& tree,LegacyFlowProjection projection,analysis::SemanticBudget budget,RecoveryFlow storage)
       : tree_(tree), projection_(projection), budget_(budget), memory_(budget_),
-        statements_(&memory_), expressions_(&memory_), exits_(&memory_), tasks_(&memory_), seen_(&memory_), reads_(&memory_), read_states_(&memory_), initializers_(&memory_), catch_parameters_(&memory_), scope_lifetimes_(&memory_), statement_scopes_(&memory_), loop_entries_(&memory_), native_bindings_(&memory_), result_(std::move(storage)) {
+        statements_(&memory_), expressions_(&memory_), exits_(&memory_), tasks_(&memory_), seen_(&memory_), reads_(&memory_), read_states_(&memory_), initializers_(&memory_), catch_parameters_(&memory_), scope_lifetimes_(&memory_), statement_scopes_(&memory_), loop_entries_(&memory_), native_bindings_(&memory_), loop_bodies_(&memory_), repeats_(&memory_), result_(std::move(storage)) {
     events_=std::move(result_.events);events_.clear();edges_=std::move(result_.edges);edges_.clear();
     definitions_=std::move(result_.definitions);definitions_.clear();references_=std::move(result_.references);references_.clear();
     names_=std::move(result_.names);names_.clear();
@@ -66,6 +80,15 @@ class FlowBuilder {
     Resize(result_.statement_semantics,tree_.statements.size());
     for(auto& statement:result_.statement_semantics){budget_.Step();statement.reset();}
     result_.statement_order.clear();
+    Resize(result_.loops,projection_.loops?tree_.statements.size():0);
+    for(auto& loop:result_.loops){budget_.Step();loop.reset();}
+    if(projection_.loops) {
+      RequireTree(projection_.loops->conditions.size()==tree_.statements.size() &&
+          projection_.loops->transitions.size()==tree_.statements.size() &&
+          projection_.loops->tail_starts.size()==tree_.statements.size(),Error::kOwnership);
+    }
+    budget_.Step(tree_.statements.size());loop_bodies_.resize(tree_.statements.size());
+    budget_.Step(tree_.statements.size());repeats_.resize(tree_.statements.size());
     // Grammar owns the retained entry of each native environment. Index once;
     // no optimizer infers first allocation from AST/CFG adjacency or ScopeId.
     loop_entries_.resize(tree_.statements.size());
@@ -92,7 +115,7 @@ class FlowBuilder {
     Resize(result_.expression_transports,projection_.transported_reads.empty()?0:tree_.expressions.size());
     for(auto& root:result_.expression_transports){budget_.Step();root.reset();}
     for(auto& use:result_.value_uses){budget_.Step();use=FlowValueUse::kUnmodeled;}
-    for(auto& point:statements_){budget_.Step();point=New();}
+    for(std::size_t i=0;i<statements_.size();++i){budget_.Step();statements_[i]=New();repeats_[i]=statements_[i];}
     for(auto& point:expressions_){budget_.Step();point=New();}
     Link(dispatch_,terminal_,FlowCompletion::kConservativeCleanup);
     entry_=New();auto previous=entry_;
@@ -106,7 +129,8 @@ class FlowBuilder {
       Link(previous,initialized);previous=initialized;
     }
     Link(previous,statements_[tree_.body.value]);
-    tasks_.push_back(Statement{tree_.body,{terminal_,terminal_,{}}});
+    Context body{terminal_,terminal_,{}};body.retention=FlowStatementRetention::kRequired;
+    tasks_.push_back(Statement{tree_.body,body});
     while(!tasks_.empty()) {budget_.Step();const auto task=tasks_.back();tasks_.pop_back();std::visit([&](auto at){Build(at);},task);}
     auto& result=result_;
     result.identity=tree_.identity;result.value_revision=tree_.value_revision;result.cfg_revision=tree_.cfg_revision;
@@ -336,6 +360,13 @@ class FlowBuilder {
     Append(result_.properties,std::move(reference));return acquisition;
   }
   Point Stmt(StmtId id,Context context){tasks_.push_back(Statement{id,context});return statements_[id.value];}
+  Point Sequence(StmtId block_id,std::uint32_t first,std::uint32_t end,const Context& context,StmtId parent) {
+    const auto& block=std::get<BlockStmt>(tree_.statements[block_id.value].statement);
+    RequireTree(first<=end && end<=block.child_count,Error::kOwnership);
+    auto next=context.next;
+    for(auto i=end;i>first;--i){budget_.Step();next=Stmt(tree_.children[block.first_child+i-1],context.Child(next,parent));}
+    return next;
+  }
   void Abrupt(Point point,Point target,const Context& context,FlowCompletion completion) {
     Link(point,target,completion); // Bypass is a may-path, never evidence that cleanup is absent.
     if(context.finalizer){Link(point,*context.finalizer,FlowCompletion::kConservativeCleanup);Link(dispatch_,target,FlowCompletion::kConservativeCleanup);}
@@ -455,9 +486,9 @@ class FlowBuilder {
   }
   void Build(Statement at) {
     const auto start=statements_[at.id.value];auto context=at.context;context.owner=at.id;
-    const FlowScopeContext enclosing=at.context.owner?statement_scopes_[at.context.owner->value]:FlowScopeContext{IncomingScope{}};
+    const FlowScopeContext enclosing=context.header?context.header->scope:at.context.owner?statement_scopes_[at.context.owner->value]:FlowScopeContext{IncomingScope{}};
     current_scope_=enclosing;
-    if(!projection_.omitted[at.id.value])if(const auto* block=std::get_if<BlockStmt>(&tree_.statements[at.id.value].statement))current_scope_=block->scope;
+    if(!context.header && !projection_.omitted[at.id.value])if(const auto* block=std::get_if<BlockStmt>(&tree_.statements[at.id.value].statement))current_scope_=block->scope;
     statement_scopes_[at.id.value]=current_scope_;
     scope_events_[start.value]={enclosing,enclosing};
     current_owner_=at.id;current_entry_evaluation_=false;events_[start.value].owner=at.id;
@@ -471,6 +502,7 @@ class FlowBuilder {
     result_.statement_semantics[at.id.value]=FlowStatement{at.context.owner};
     Append(result_.statement_order,at.id);
     auto& semantics=*result_.statement_semantics[at.id.value];
+    semantics.retention=context.retention;
     semantics.normal_exit=context.next;
     if(!projection_.statement_values.empty())if(const auto value=projection_.statement_values[at.id.value]) {
       semantics.entry_value=*value;auto evaluation=context;
@@ -514,11 +546,16 @@ class FlowBuilder {
     std::visit([&](const auto& node){
       using T=std::decay_t<decltype(node)>;
       if constexpr(std::is_same_v<T,BlockStmt>) {
+        if(context.header) {Link(start,Sequence(at.id,0,node.child_count,context,at.id));return;}
         const auto entered=New({FlowEventKind::kEnterScope,{},{},{},node.scope});
         auto next=New({FlowEventKind::kLeaveScope,{},{},{},node.scope});Link(next,context.next);
         scope_lifetimes_[node.scope.value]=ScopeBindingLifetime{node.scope,entered,next};
         scope_events_[entered.value]={enclosing,node.scope};scope_events_[next.value]={node.scope,enclosing};
-        for(std::size_t i=node.child_count;i;--i)next=Stmt(tree_.children[node.first_child+i-1],{next,context.thrown,context.finalizer,{},FlowValueUse::kObserved,at.id});
+        const auto body=loop_bodies_[at.id.value];
+        const auto first=body?body->first:0;
+        const auto tail=projection_.loops?projection_.loops->tail_starts[at.id.value]:std::nullopt;
+        next=Sequence(at.id,first,tail.value_or(node.child_count),context.Operand(next),at.id);
+        if(body&&body->retained)next=Stmt(*body->retained,context.Child(next,at.id,FlowStatementRetention::kRequired));
         if(const auto parameter=catch_parameters_[at.id.value]) {
           const auto initialized=Define(*parameter,FlowDefinitionKind::kCatch);
           Link(initialized,next);next=initialized;
@@ -553,13 +590,47 @@ class FlowBuilder {
       } else if constexpr(std::is_same_v<T,IfStmt>) {
         semantics.entry_value=node.condition;auto evaluation=context.Operand(New({FlowEventKind::kTruthBranch,{},{},node.condition}));
         evaluation.entry_evaluation=true;const auto branch=evaluation.next;Link(start,Expr(node.condition,evaluation));
-        Link(branch,Stmt(node.consequent,context),FlowCompletion::kTaken);Link(branch,node.alternate?Stmt(*node.alternate,context):context.next,FlowCompletion::kNotTaken);
+        const auto arm=[&](StmtId child) {
+          if(context.header&&context.header->retained==child)return context.next;
+          return Stmt(child,context.Child(context.next,at.id,context.header?FlowStatementRetention::kOptional:FlowStatementRetention::kRequired));
+        };
+        Link(branch,arm(node.consequent),FlowCompletion::kTaken);Link(branch,node.alternate?arm(*node.alternate):context.next,FlowCompletion::kNotTaken);
       } else if constexpr(std::is_same_v<T,LoopStmt>) {
         semantics.progress=FlowStatementProgress::kMayRepeat;semantics.repeat_point=start;
-        Link(start,Stmt(node.body,{start,context.thrown,context.finalizer,{},FlowValueUse::kObserved,at.id}));
+        if(projection_.loops)if(const auto& program=projection_.loops->conditions[at.id.value]) {
+          // Consume the printer's immutable completion program. Condition and
+          // increment execute outside the body activation; the retained arm
+          // executes once inside it. Never rediscover an opcode/tree pattern.
+          const auto condition=New(),increment=New();
+          repeats_[at.id.value]=increment;semantics.repeat_point=condition;
+          loop_bodies_[node.body.value]=LoopBodyProgram{program->header_count,program->body};
+          auto update=context.Child(condition,at.id);
+          update.header=HeaderProgram{at.id,LoopCompletionTransfer::kContinue,{},condition,enclosing};
+          if(const auto& transition=projection_.loops->transitions[at.id.value])
+            Link(increment,Sequence(transition->block,transition->first,transition->end,update,at.id));
+          else Link(increment,condition);
+          const auto body=Stmt(node.body,context.Child(increment,at.id,FlowStatementRetention::kRequired));
+          auto predicate=context.Child(body,at.id);
+          predicate.header=HeaderProgram{at.id,LoopCompletionTransfer::kBreak,program->body,context.next,enclosing};
+          Link(condition,Sequence(node.body,0,program->header_count,predicate,at.id));Link(start,condition);
+          result_.loops[at.id.value]=FlowLoop{condition,body,increment,context.next};return;
+        }
+        Link(start,Stmt(node.body,context.Child(start,at.id,FlowStatementRetention::kRequired)));
       }
-      else if constexpr(std::is_same_v<T,BreakStmt>) {semantics.completion=FlowStatementCompletion::kJump;Abrupt(start,exits_[node.target.value],context,FlowCompletion::kJump);}
-      else if constexpr(std::is_same_v<T,ContinueStmt>) {semantics.completion=FlowStatementCompletion::kJump;Abrupt(start,statements_[node.target.value],context,FlowCompletion::kJump);}
+      else if constexpr(std::is_same_v<T,BreakStmt>) {
+        semantics.completion=FlowStatementCompletion::kJump;
+        if(context.header) {
+          RequireTree(context.header->loop==node.target && context.header->transfer==LoopCompletionTransfer::kBreak,Error::kOwnership);
+          Abrupt(start,context.header->exit,context,FlowCompletion::kJump);
+        } else Abrupt(start,exits_[node.target.value],context,FlowCompletion::kJump);
+      }
+      else if constexpr(std::is_same_v<T,ContinueStmt>) {
+        semantics.completion=FlowStatementCompletion::kJump;
+        if(context.header) {
+          RequireTree(context.header->loop==node.target && context.header->transfer==LoopCompletionTransfer::kContinue,Error::kOwnership);
+          Abrupt(start,context.header->exit,context,FlowCompletion::kJump);
+        } else Abrupt(start,repeats_[node.target.value],context,FlowCompletion::kJump);
+      }
       else if constexpr(std::is_same_v<T,ReturnStmt>) {
         semantics.completion=FlowStatementCompletion::kAbrupt;
         auto returned=New();Abrupt(returned,terminal_,context,FlowCompletion::kReturn);
@@ -576,17 +647,19 @@ class FlowBuilder {
           // substitution. Publish that capability gap, never guess a shape.
           semantics.completion=FlowStatementCompletion::kCleanup;
           const auto resume=New();Link(resume,context.next);Link(resume,dispatch_,FlowCompletion::kConservativeCleanup);
-          cleanup=Stmt(*node.finalizer,{resume,context.thrown,context.finalizer,{},FlowValueUse::kObserved,at.id});normal=*cleanup;thrown=*cleanup;
+          cleanup=Stmt(*node.finalizer,context.Child(resume,at.id,FlowStatementRetention::kRequired));normal=*cleanup;thrown=*cleanup;
           Link(dispatch_,*cleanup,FlowCompletion::kConservativeCleanup);Link(dispatch_,context.thrown,FlowCompletion::kConservativeCleanup);
         }
         if(node.handler) {
-          const auto handler=Stmt(node.handler->body,{normal,thrown,cleanup,{},FlowValueUse::kObserved,at.id});
+          auto caught=context.Child(normal,at.id,FlowStatementRetention::kRequired);caught.thrown=thrown;caught.finalizer=cleanup;
+          const auto handler=Stmt(node.handler->body,caught);
           // CatchClause creates its environment before InitializeBinding.
           // Publish the initialization inside the handler's activation, so all
           // consumers share the same ordering on every exceptional entry.
           catch_parameters_[node.handler->body.value]=node.handler->parameter;thrown=handler;
         }
-        Link(start,Stmt(node.body,{normal,thrown,cleanup,{},FlowValueUse::kObserved,at.id}));
+        auto protected_body=context.Child(normal,at.id,FlowStatementRetention::kRequired);protected_body.thrown=thrown;protected_body.finalizer=cleanup;
+        Link(start,Stmt(node.body,protected_body));
       } else if constexpr(std::is_same_v<T,DebuggerStmt>) {
         events_[start.value].effect=ExpressionEvaluation::kRequired;Link(start,context.next);
       }
@@ -608,6 +681,8 @@ class FlowBuilder {
   std::pmr::vector<FlowScopeContext> statement_scopes_;
   std::pmr::vector<std::optional<StmtId>> loop_entries_;
   std::pmr::vector<std::optional<NativeLoopAllocation>> native_bindings_;
+  std::pmr::vector<std::optional<LoopBodyProgram>> loop_bodies_;
+  std::pmr::vector<Point> repeats_;
   std::vector<DiscardedEvaluation> discarded_;
   std::vector<FlowReference> references_;
   std::vector<FlowNameReference> names_;

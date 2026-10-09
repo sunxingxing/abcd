@@ -36,6 +36,46 @@
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
 
+### 2026-10-09：规则262，实际循环阶段与共同语法保留事实
+
+- 主干第2/3项：当前/trial及其bootstrap/refinement都消费打印器已有的
+  同一不可变LoopSyntax。共同flow分别拥有condition/body/increment/exit
+  边界；条件与更新表达式在循环体激活之外，保留的继续分支体在体内
+  执行一次。normal/continue经更新边界，break/return/throw保留共同
+  完成与保守cleanup路径。原“原始循环体作用域覆盖所有阶段”的建图
+  路径在已建模source loop上退出。返回图不持有临时syntax指针。
+- 首次最终验证发现真实范围回归：空native body被效果消除标成omitted，
+  打印仍要求其容器、移动后的条件仍有源码范围。原declaration-value
+  model/source的projected_ranges.h47检出；该次runner已停止，first日志
+  和输出保留，未称作63项通过，也未削弱既有范围/行为参照。
+- FlowStatementRetention现在独立发布函数/循环体、普通条件arm、
+  try/catch/finally及保留体的必需语法位置。inert删除消费共同角色，旧
+  id!=tree.body单独判断退出。必需容器不伪造效果，不强制保留无效祖先；
+  表达式程序里的块仍为optional。该事实描述实际源码语法，不是新增
+  样本、序列、同块、邻接、数量或固定图形状准入。pass顺序/轮次/预算
+  保持，旧grammar表达能力缺口未扩展。
+- 新增120组阶段模型：12种语义组合、正反statement编号、
+  1/200/201/400/800尺寸；检查实际scope presence、allocation dominance、
+  保留体归属/单次执行、normal/continue目的地、必需语法角色、exact及
+  one-short bytes/work、几何工作量。六项最终生产突变build0/model-6，
+  恢复build/model0；覆盖阶段作用域、跳过increment、重复体/更新及
+  删除必需body。原失败声明model通过，两个独立source回归通过。
+- 最终31目标构建48.8890s、fresh固定record2.9677s、精确63/63项
+  定向CTest588.7978s全部通过，名单一致且无重复。固定19records/
+  10complete/0partial/9no-module，10语法检查通过，源码与规则261
+  字节相同；输入SHA256前后相同，profile/预算保持。最终构建无
+  warning/error。证据build/stage-one/loop-phase-verification，fresh输出
+  build/stage-one/loop-phase-final-rule262-stable；first证据单独保留。
+- 最终原选定source目标实际输出：loop276份/13976独立行为对照/
+  68mutants；initializer2004份/482752/370；declaration-value2568份/
+  513600/100；definition-elision1181份/194324/152；original-flow合计
+  10280/158。未将这些Node对照称作新增平台执行或全语料验收。
+- **五项主干仍全部开放**。本轮接通实际source完成阶段，未实现逐轮
+  旧值读取、新定义及新单元；也未授予captured cell相等证明。原始IR/SSA
+  完整对应、普通绑定及循环单元、完整trial生命期delta、依赖驱动收敛和
+  里程碑终验继续作为主干，其他表现优化保持暂停。作者inline复核，
+  agents/fullsuite/expanded corpus/RSS/benchmark/DFX均未恢复。
+
 ### 2026-10-09：规则261，原生循环入口分配与实际声明成员
 
 - 主干第2/3项：完整LoopDeclarations现在发布实际保留的声明组入口及

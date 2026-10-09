@@ -3935,3 +3935,23 @@ nonmember peers. Complete/no-op and omitted native groups are tested in
 1/200/201/400/800 independent batches. Exact/one-short budgets and work growth
 checks are component tests, not resumed RSS/benchmarks or full convergence proof.
 The copied iteration environment algorithm remains an explicit mainline gap.
+
+
+### Rules262 source loop phase graph costs
+
+With S source statements and L represented loops, the already computed immutable
+LoopSyntax's disjoint condition/update ranges and retained-arm ownership are
+consumed once. FlowBuilder adds O(S) indexed phase/body/repeat metadata and at
+most two boundary events per represented loop; source operands are neither
+duplicated nor traversed once per binding. Existing events/edges V/E and shared
+solver facts retain their costs. Construction costs O(S+V+E), with actual tasks,
+array allocations and work charged by the existing byte/work admission; returned
+phase metadata owns its storage. No extra optimizer analysis/retry loop is added.
+
+Model tests cover 12 semantic compositions with forward/reversed statement arenas
+and 1/200/201/400/800 body sizes (120 configurations). They check actual phase
+scope presence, allocation dominance, retained-arm single ownership, continue and
+normal completion destinations, exact and one-short budgets, and geometric work
+growth. Six final production mutants deliberately corrupt phase scopes, continue
+routing, retained-body, update ownership and required body grammar retention. These are bounded component cost
+checks; paused process RSS/benchmarks/global convergence runs remain paused.

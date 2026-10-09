@@ -157,6 +157,7 @@ struct FlowNameReference {
   ExprId site;
   std::optional<StmtId> owner;
 };
+struct LoopSyntax;
 struct BindingInitializer;
 struct DeclarationValue;
 struct DeclarationCompletion;
@@ -186,6 +187,9 @@ struct FlowDefinition {
 // expression effects; an empty loop still may not terminate.
 enum class FlowStatementCompletion : std::uint8_t {kNormal,kAbrupt,kCleanup,kJump};
 enum class FlowStatementProgress : std::uint8_t {kFinite,kMayRepeat};
+// Required grammar positions may have no observable computation. Keep the
+// container itself without manufacturing effects that retain its ancestors.
+enum class FlowStatementRetention : std::uint8_t {kOptional,kRequired};
 struct FlowStatement {
   std::optional<StmtId> parent;
   FlowStatementCompletion completion=FlowStatementCompletion::kNormal;
@@ -196,6 +200,7 @@ struct FlowStatement {
   // Mandatory entry evaluation runs once at this statement, before its owned
   // control region. Its original scope/handler and expression identity remain.
   std::optional<ExprId> entry_value;
+  FlowStatementRetention retention=FlowStatementRetention::kOptional;
 };
 struct FlowEvent {
   FlowEventKind kind = FlowEventKind::kControl;
@@ -253,11 +258,17 @@ struct LegacyFlowProjection {
   std::span<const std::optional<ExprId>> statement_values;
   std::span<const analysis::ValueKinds> normal_kinds;
   const OriginalFlow* original=nullptr;
+  // Borrowed only during construction. Current/trial share the grammar
+  // provider; returned flow owns phase points, never this syntax pointer.
+  const LoopSyntax* loops=nullptr;
   [[nodiscard]] std::optional<PrimitiveId> ReadLiteral(ExprId expression,SymbolId binding) const {
     if(!read_literals.empty()&&read_literals[expression.value])return read_literals[expression.value];
     return literals[binding.value];
   }
 };
+// Actual source loop completion phases. Entry/repetition are distinct even
+// when they carry the same scalar values; iteration cell transport is separate.
+struct FlowLoop {FlowPoint condition,body,increment,exit;};
 struct RecoveryFlow {
   // Shared unit transfer owns both scope events and abrupt edge exits.
   // Unmodeled transfer preserves possible demand but invalidates known values.
@@ -296,6 +307,7 @@ struct RecoveryFlow {
   std::vector<FlowNameReference> names;
   std::vector<DiscardedEvaluation> discarded;
   std::vector<FlowPoint> statements, expressions;
+  std::vector<std::optional<FlowLoop>> loops;
   // Retained ownership forest, in parent-before-child order. Omitted syntax
   // has no record. Consumers fold once, never walk a graph per statement.
   std::vector<std::optional<FlowStatement>> statement_semantics;
