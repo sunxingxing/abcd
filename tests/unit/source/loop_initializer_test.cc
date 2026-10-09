@@ -471,7 +471,8 @@ void DeclarationBatches() {
     // proposed initializers together, before any individual declaration edit
     // enters commit, without reading partially applied plan state.
     auto undecided=input;for(auto& initializer:undecided.statements)initializer.reset();
-    const auto proposal=std::get<LoopDeclarations>(PlanLoopDeclarations(loops,undecided,declarations,{}, {},input.statements));
+    auto candidate=BindingPlanView{undecided};candidate.statements=input.statements;
+    const auto proposal=std::get<LoopDeclarations>(PlanLoopDeclarations(loops,candidate,declarations));
     test::Check(proposal.entries.size()==result.entries.size());
     for(unsigned i=0;i<result.entries.size();++i)
       test::Check(proposal.entries[i].statement==result.entries[i].statement && proposal.entries[i].loop==result.entries[i].loop);
@@ -519,7 +520,8 @@ void DeclarationBatches() {
     // inferred from another revision's declaration metadata.
     auto trial_omitted=input.omitted;
     for(unsigned i=0;i<count;++i)trial_omitted[i*6+3]=1;
-    const auto trial=std::get<LoopDeclarations>(PlanLoopDeclarations(loops,input,declarations,{},trial_omitted));
+    auto candidate_trial=BindingPlanView{input};candidate_trial.omitted=trial_omitted;
+    const auto trial=std::get<LoopDeclarations>(PlanLoopDeclarations(loops,candidate_trial,declarations));
     for(const auto& entry:trial.entries)test::Check(!entry.loop);
     test::Check(trial.environments.empty() && trial.bindings.empty());
     const auto trial_projection=std::get<LoopEntryProjection>(ProjectLoopEntryFlow(trial,input.statements,completions,original,scopes,entries));

@@ -1,6 +1,6 @@
 #ifndef ABCD_SOURCE_RECOVERY_PROJECTION_H_
 #define ABCD_SOURCE_RECOVERY_PROJECTION_H_
-#include "binding_initializer.h"
+#include "binding_plan_view.h"
 #include "flow_constants.h"
 #include "flow_dominance.h"
 namespace abcd::source {
@@ -14,15 +14,13 @@ struct RecoveryExpressions {
   std::vector<analysis::ValueKinds> kinds;
 };
 // Borrow one complete, unchanged proposal during synchronous analysis. The
-// committed binding/value plan is read-only; replacements/transports may be
-// trial overlays. Canonical equations and postorder belong to preparation.
+// binding/declaration/value plan is read-only; owned candidate overlays replace
+// its spans before any query. Canonical equations belong to preparation.
 // No trial accepts another projection's occurrence-initialization proofs.
 struct RecoveryExpressionInput {
-  const BindingInitializers& bindings;
+  BindingPlanView bindings;
   std::span<const FlowValueEquation> equations;
   std::span<const ExprId> postorder;
-  std::span<const std::optional<ExprId>> replacements;
-  std::span<const std::optional<ExpressionTransport>> transports;
   const OriginalFlow* original=nullptr;
   // Exact-projection normal domains from the shared success-definition solver.
   // Internal expression-analysis input only. PrepareRecoveryProjection rejects

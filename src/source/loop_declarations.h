@@ -1,6 +1,6 @@
 #ifndef ABCD_SOURCE_LOOP_DECLARATIONS_H_
 #define ABCD_SOURCE_LOOP_DECLARATIONS_H_
-#include "binding_initializer.h"
+#include "binding_plan_view.h"
 #include "loop_syntax.h"
 namespace abcd::source {
 struct LoopDeclarationStart { StmtId loop; std::optional<std::uint32_t> first; };
@@ -29,9 +29,8 @@ struct LoopDeclarations {
 // grammar pass neither infers lifetimes nor deletes evaluations. The caller
 // invalidates analyses once, then applies the complete delta without queries.
 [[nodiscard]] std::variant<LoopDeclarations,TreeStructureError> PlanLoopDeclarations(
-    const LoopSyntax&,const BindingInitializers&,
+    const LoopSyntax&,BindingPlanView,
     std::span<const std::optional<StmtId>> declarations,
-    analysis::SemanticBudget budget={},std::span<const std::uint8_t> omitted={},
-    std::span<const std::optional<BindingInitializer>> initializers={});
+    analysis::SemanticBudget budget={});
 }
 #endif

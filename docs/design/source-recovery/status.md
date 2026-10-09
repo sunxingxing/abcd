@@ -36,6 +36,50 @@
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
 
+### 2026-10-10：规则265，统一候选视图、完整声明试算与 pass 事实生命周期
+
+- 主干第3项的实际迁移：BindingPlanView 为一个同步不可变候选提供全部
+  binding/declaration/value spans。表达式输入退出第二份 replacement/transport
+  权威；grammar 退出可选 initializer/omission fallback。共同 bootstrap 的
+  Apply 从同一视图取得遗漏、声明、完成点、值与残留效果，源码放置 sites
+  显式传入。native 入口适配覆盖候选后再分析，避免借用当前计划的字段。
+- Declarations 暂存完整批次：新声明位置/初始化、旧声明退役、保留的 RHS
+  效果和完成点。trial/commit 共享 RetireDeclaration；native 旧声明在该
+  事务内退役。共同 must-initialize 验证实际候选的普通移动读取，名字分析
+  验证单元对应的绑定与已有可解析引用/自由名字。所有证明结束后才原子
+  提交；没有逐变量整图重建、同块/邻接/样本/操作序列准入或额外 pass 轮次。
+  不能证明时保留整个批次，暂不根据一个完整候选的证明发布未重新验证的
+  子集。captured cell 继续保留注明的旧同 activation 义务，没有宣称重构完成。
+- 反例先 RED：候选删除声明仍借用当前初始化，模型134；统一视图 GREEN。
+  声明值/完成点/新初始化/残留效果、arena 反向、200/201/400/800 和精确/
+  差一预算覆盖。新增长用例最初错误复用别的语句拥有的调用，共同 ownership
+  检出；测试改成声明拥有独立必需调用，没有放宽生产校验。五个 Apply
+  权威生产突变全部 build0/model-6，恢复 build0/model0。
+- 首次冻结终验构建31目标、fresh固定导出通过，63项实际62通过/1失败，
+  803.14s，名单完整且无重复。失败为 --scale 的800组变量真实触发64MiB
+  resource limit。trace 显示当时当前分析缓存总准入34,608,942字节，包含
+  不再被消费的派生产品；完整试算 flow 后没有足够空间运行 must 分析。
+  失败日志/JUnit/导出保存在 candidate-plan-verification/first；临时 trace
+  已完整撤回，没有扩大预算或将 resource failure 改成语义拒绝。
+- 主干第4项的成本迁移：每个 RunPass 边界使用 RequiredFacts 闭包保留共同
+  flow/expression，销毁不再需要的派生产品后释放其准入，后续按相同修订
+  懒重算。不是计划修改、手工证明刷新、资源阈值准入或新优化轮次。800组
+  现报告61,536,904字节；200/201/400/800 work为9459371/9510402/
+  19736968/41194586，几何增长<3。缓存保留禁用突变 build0/model-6；恢复
+  build0/scale0/projection0，差一预算检查仍保持。
+- 修复后最终31目标构建28.0160s、fresh固定导出3.1304s、
+  精确63/63 CTest 919.2095s全部通过，名单一致/无重复；构建无
+  warning/error。19records/10complete/0partial/9no-module，10语法检查通过，
+  与规则264源码字节相同，输入SHA前后相同，profile与预算保持。证据
+  build/stage-one/candidate-plan-verification；最终fresh输出
+  build/stage-one/candidate-plan-final-rule265-stable。作者 inline 复核，未恢复
+  agent review、全套测试、扩展语料或RSS。首次失败与六项突变证据保留。
+- **五项主干全部开放**。本次退出的是混合当前/候选字段权威、声明试算
+  使用旧位置以及无消费的派生缓存长期占用。下一步完成 snapshot 的最终
+  声明退役、完成点和实际保留候选子集试算，再继续普通 local/catch/reentry
+  身份与原始 IR/SSA 完整对应、依赖重跑/收敛和统一变量终验。其他表现层
+  优化及 agents/fullsuite/扩展语料/RSS/benchmark/DFX 保持暂停，Goal active。
+
 ### 2026-10-10：规则264，逐轮单元重置与共同 must-initialize 分析
 
 - 主干第2/3项：实际 native BoundNames 的首轮及逐轮复制增加共同单元

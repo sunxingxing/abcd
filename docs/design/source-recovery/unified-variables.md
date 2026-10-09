@@ -2977,3 +2977,52 @@ certify legacy syntax discovery. Complete original IR correspondence, precise
 ordinary/catch/reentry identity, full trial lifetime deltas, dependency convergence
 and final milestone acceptance remain OPEN. All five backbone deliveries remain
 OPEN; agents/fullsuite/expanded corpus/RSS/benchmarks/DFX remain paused.
+
+### Rules265: one complete synchronous declaration candidate
+
+BindingPlanView borrows read-only spans from one unchanged plan. Owned overlays
+replace spans before analysis; expression input has no second replacements or
+transports authority. Grammar, normal-domain dependencies and conservative /
+initialized / refined flow consume the same view. The legacy flow adapter's
+omissions, initializer annotations, residual values, undefined stores, declaration
+values and completions are overwritten from that view as well as value facets.
+Source placement sites are explicit inputs to the common flow producer, including
+trial sites. Native entry adaptation overlays this candidate before bootstrap,
+not an implicit current plan. No borrowed span escapes synchronous construction.
+
+Declarations stages a complete batch: proposed placement, initialization, old
+declaration retirement and effect-preserving completion removal. Trial and commit
+share RetireDeclaration; even native old declarations retire in that transaction
+rather than relying on a later grammar pass to change semantics. The exact trial
+flow's shared reset-aware initialization facts must complete ordinary moved reads;
+common name resolution proves their binding identity and preserves every formerly
+resolved retained binding/free-name occurrence. Existing first-completion and
+confinement obligations remain independent prerequisites, not a replacement for
+trial analysis. Escaping cells retain the documented legacy same-activation proof;
+this component does not certify closure-unit reconstruction.
+
+One batch is analyzed before any plan write. If its common obligations cannot be
+proved, the whole batch retains the original representation: dropping members
+from a verified namespace would require revalidating that actual subset. No new
+local opcode/layout/adjacency/selection-count admission is added. Grammar prefix
+restrictions are existing representation gaps, unchanged here. Trial scratch is
+released only after every owner is destroyed; peak admission and cumulative work
+survive. It does not enter the current revision cache or change pass order.
+
+Remaining Task3 gaps include snapshot retirement/subset trials and other candidate
+ownership/lifetime deltas; ordinary/catch/reentry cell precision, raw IR/SSA
+correspondence, dependency-driven convergence and milestone acceptance remain
+OPEN. This removes mixed current/candidate facet authority for the migrated
+producer and completes declaration trial wiring, not the five backbone deliveries.
+
+Rules265 verification exposed a genuine cost boundary: the 800-pair storage
+source case retained 34,608,942 bytes of current analysis cache, including unused derived products while the full trial
+needed another flow and exact initialization proof. It exhausted the unchanged
+64MiB admission. RetainFacts now runs at every pass boundary from that pass's
+closed RequiredFacts contract, retaining the coupled flow/expression bootstrap
+and destroying unneeded derived products before releasing their admission.
+It changes neither projection revision nor proofs, introduces no local
+resource/shape fallback or rerun, and lazily rebuilds evicted facts at the same
+revision if later needed. This shared cache ownership policy replaces retaining
+unconsumed analyses accidentally until the next commit. Convergence, selective
+mutation invalidation and minimal rerun closure are still not certified.

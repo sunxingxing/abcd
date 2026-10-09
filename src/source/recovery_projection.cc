@@ -12,8 +12,8 @@ const TreeLiteral& Literal(const RecoveryExpressionInput& input,PrimitiveId id) 
   return input.bindings.primitives[id.value];
 }
 FlowValueEquation Equation(const RecoveryExpressionInput& input,ExprId id) {
-  if(const auto transport=input.transports[id.value])return FlowPrimitiveReference{transport->replacement};
-  if(const auto replacement=input.replacements[id.value])return FlowExpressionValue{*replacement};
+  if(const auto transport=input.bindings.transports[id.value])return FlowPrimitiveReference{transport->replacement};
+  if(const auto replacement=input.bindings.replacements[id.value])return FlowExpressionValue{*replacement};
   if(const auto primitive=input.bindings.read_literals[id.value])return FlowPrimitiveReference{*primitive};
   if(input.bindings.read_sources[id.value])return FlowBindingValue{*input.bindings.read_sources[id.value]};
   auto equation=input.equations[id.value];
@@ -25,10 +25,14 @@ FlowValueEquation Equation(const RecoveryExpressionInput& input,ExprId id) {
 }
 void Apply(LegacyFlowProjection& projection,const RecoveryExpressionInput& input,const RecoveryExpressions& expressions) {
   const auto& plan=input.bindings;
+  projection.initializers=plan.statements;projection.omitted=plan.omitted;
+  projection.statement_values=plan.statement_values;
+  projection.undefined_stores=plan.undefined_stores;projection.declaration_values=plan.declaration_values;
+  projection.declaration_completions=plan.declaration_completions;
   projection.aliases=plan.aliases;projection.literals=plan.literals;
   projection.storage=plan.storage;projection.read_literals=plan.read_literals;
   projection.read_bindings=plan.read_bindings;projection.read_sources=plan.read_sources;
-  projection.replacements=input.replacements;projection.transports=input.transports;
+  projection.replacements=input.bindings.replacements;projection.transports=input.bindings.transports;
   projection.evaluations=expressions.evaluations;projection.normal_stores=expressions.normal_stores;
   projection.normal_bindings=expressions.bindings;projection.normal_kinds=expressions.kinds;
   projection.original=input.original;
@@ -69,8 +73,8 @@ std::vector<ExprId> DependencyOrder(const FunctionTree& tree,const RecoveryExpre
       RequireTree(state!=State::kPending,TreeStructureError::kOwnership);state=State::kPending;
       const auto push=[&](Visit next){RequireTree(pending<stack.size(),TreeStructureError::kResourceLimit);stack[pending++]=next;};
       push({visit.expression,true});
-      if(input.transports[visit.expression.value])continue;
-      if(const auto replacement=input.replacements[visit.expression.value]) {
+      if(input.bindings.transports[visit.expression.value])continue;
+      if(const auto replacement=input.bindings.replacements[visit.expression.value]) {
         RequireTree(replacement->value<states.size(),TreeStructureError::kOwnership);push({*replacement});
       } else VisitExpressionChildren(tree,tree.expressions[visit.expression.value].expression,[&](ExprId child){budget.Step();push({child});});
     }
@@ -94,7 +98,7 @@ bool WritableRecoveryBinding(const FunctionTree& tree,SymbolId symbol) {
 RecoveryExpressions AnalyzeRecoveryExpressions(const FunctionTree& tree,
     const RecoveryExpressionInput& input,std::span<const std::uint8_t> initialized,TreeCheckBudget& budget) {
   const auto size=tree.expressions.size();
-  RequireTree(input.equations.size()==size&&input.replacements.size()==size&&input.transports.size()==size&&
+  RequireTree(input.equations.size()==size&&input.bindings.replacements.size()==size&&input.bindings.transports.size()==size&&
       (initialized.empty()||initialized.size()==size),TreeStructureError::kOwnership);
   RequireTree(input.normal_kinds.empty()||input.normal_kinds.size()==size,TreeStructureError::kOwnership);
   if(input.original)CheckOriginalFlow(tree,*input.original);
@@ -130,13 +134,13 @@ RecoveryExpressions AnalyzeRecoveryExpressions(const FunctionTree& tree,
     const auto join = [&](ExprId left, ExprId right) -> std::optional<SymbolId> {
       return stored[left.value] == stored[right.value] ? stored[left.value] : std::nullopt;
     };
-    if(const auto transport=input.transports[id.value]) {
+    if(const auto transport=input.bindings.transports[id.value]) {
       literal=transport->replacement;kinds=PrimitiveKinds(Literal(input,*literal));
       facts.evaluations[id.value]=ExpressionEvaluation::kInert;
       facts.lexical[id.value]=LexicalDependency::kReferences;
       continue;
     }
-    if (const auto replacement = input.replacements[id.value]) {
+    if (const auto replacement = input.bindings.replacements[id.value]) {
       facts.roots[id.value]=facts.roots[replacement->value];
       result = stored[replacement->value];
       literal=facts.literals[replacement->value];

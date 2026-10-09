@@ -77,13 +77,107 @@ struct Fixture {
       std::reverse(original.normal_kinds.begin(),original.normal_kinds.end());
     }
   }
-  RecoveryExpressionInput Input() const {return {plan,equations,order,plan.replacements,plan.transports,&original};}
+  RecoveryExpressionInput Input() const {return {plan,equations,order,&original};}
   LegacyFlowProjection Projection() const {
     LegacyFlowProjection result{plan.aliases,plan.literals,plan.replacements,plan.omitted,{},{},plan.statements,private_bindings};
     result.storage=plan.storage;result.read_literals=plan.read_literals;result.transports=plan.transports;
     result.read_bindings=plan.read_bindings;result.read_sources=plan.read_sources;result.original=&original;return result;
   }
 };
+// A candidate's omitted declaration must not inherit initialization from the
+// committed plan supplied to the old flow adapter. Effects must see the same
+// candidate completion state. Expected TDZ is derived from no lexical gen.
+void CandidatePlan(bool reverse) {
+  Fixture f(1,reverse);
+  auto stale=f.Projection();const auto omissions=f.plan.omitted;stale.omitted=omissions;
+  f.plan.omitted[f.declarations[0].value]=1;
+  const auto trial=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,stale,f.Input()));
+  Check(!trial.initialized_reads[f.reads[0].value]);
+  Check(trial.expressions.evaluations[f.reads[0].value]==ExpressionEvaluation::kRequired);
+}
+// Each candidate facet replaces a different semantic action. The old adapter
+// deliberately retains the committed arrays; expectations come from lexical
+// InitializeBinding versus ordinary PutValue and from actual retained calls.
+std::pair<std::uint64_t,std::size_t> CandidateDeclarations(bool reverse,unsigned count=1) {
+  Fixture f(count,reverse);
+  const auto statement_count=f.tree.statements.size();
+  f.plan.declaration_values.resize(statement_count);f.plan.declaration_completions.resize(statement_count);
+  f.plan.statement_values.resize(statement_count);f.plan.undefined_stores.resize(statement_count);
+  const auto declaration=f.declarations[0];
+  const auto evaluation=*std::get<DeclarationStmt>(f.tree.statements[declaration.value].statement).initializer;
+  // Give the declaration its OWN required call; a candidate must retain it
+  // without replaying another statement's owned expression occurrence.
+  const ExprId callee{static_cast<unsigned>(f.tree.expressions.size())};
+  f.tree.expressions.push_back({SymbolExpr{{0}},{0}});f.equations.push_back(FlowBindingValue{{0}});f.order.push_back(callee);
+  f.tree.expressions[evaluation.value].expression=CallExpr{callee,{0,0},CallReference::kValue};
+  f.equations[evaluation.value]=UnknownFlowValue{};
+  const auto expression_count=f.tree.expressions.size();
+  f.plan.read_sources.resize(expression_count);f.plan.read_literals.resize(expression_count);
+  f.plan.replacements.resize(expression_count);f.plan.transports.resize(expression_count);
+  f.original.normal_kinds.resize(expression_count);f.original.input_ranges.resize(expression_count);
+  const auto old=f.Projection();
+  const auto binding=std::get<DeclarationStmt>(f.tree.statements[declaration.value].statement).symbol;
+  StmtId store{};
+  for(unsigned i=0;i<statement_count;++i)if(const auto* expression=std::get_if<ExpressionStmt>(&f.tree.statements[i].statement);
+      expression&&expression->expression==f.stores[0])store={i};
+  const auto call=std::get<UnaryExpr>(f.tree.expressions[f.values[0].value].expression).operand;
+  const auto projected=[&](const RecoveryExpressionInput& input,std::string_view phase) {
+    auto result=PrepareRecoveryProjection(f.tree,old,input);
+    if(const auto* error=std::get_if<TreeStructureError>(&result)) {
+      std::cerr<<"candidate count="<<count<<" phase="<<phase<<" error="<<static_cast<unsigned>(*error)<<'\n';
+      Check(false);
+    }
+    return std::get<RecoveryProjection>(std::move(result));
+  };
+  auto input=f.Input();
+  auto values=f.plan.declaration_values;
+  values[declaration.value]=DeclarationValue{evaluation,{}};
+  input.bindings.declaration_values=values;
+  const auto discarded=projected(input,"discarded");
+  Check(!discarded.initialized_reads[f.reads[0].value]);
+  Check(discarded.flow.normal_exits[evaluation.value].has_value());
+  Check(std::none_of(discarded.flow.definitions.begin(),discarded.flow.definitions.end(),[&](const auto& definition){
+    return definition.binding==binding&&definition.declaration==declaration;
+  }));
+  input=f.Input();auto completions=f.plan.declaration_completions;
+  completions[declaration.value]=DeclarationCompletion{binding,evaluation,DeclarationKind::kLet};
+  input.bindings.declaration_completions=completions;
+  const auto completed=projected(input,"completed");
+  Check(completed.initialized_reads[f.reads[0].value]);
+  Check(completed.flow.normal_exits[evaluation.value].has_value());
+  Check(std::any_of(completed.flow.definitions.begin(),completed.flow.definitions.end(),[&](const auto& definition){
+    return definition.binding==binding&&definition.declaration==declaration&&definition.kind==FlowDefinitionKind::kUndefined;
+  }));
+  input=f.Input();auto initializers=f.plan.statements;auto omitted=f.plan.omitted;
+  initializers[store.value]=BindingInitializer{binding,f.stores[0],DeclarationKind::kLet};omitted[declaration.value]=1;
+  input.bindings.statements=initializers;input.bindings.omitted=omitted;
+  const auto moved=projected(input,"moved");
+  Check(moved.initialized_reads[f.reads[0].value]);
+  Check(!moved.flow.normal_exits[evaluation.value]);
+  Check(std::any_of(moved.flow.definitions.begin(),moved.flow.definitions.end(),[&](const auto& definition){
+    return definition.binding==binding&&definition.declaration==store&&definition.kind==FlowDefinitionKind::kInitializer;
+  }));
+  input=f.Input();auto residuals=f.plan.statement_values;
+  residuals[store.value]=std::get<CallExpr>(f.tree.expressions[call.value].expression).callee;
+  input.bindings.statement_values=residuals;
+  const auto residual=projected(input,"residual");
+  Check(!residual.flow.normal_exits[call.value]);
+  Check(std::none_of(residual.flow.definitions.begin(),residual.flow.definitions.end(),[&](const auto& definition){
+    return definition.binding==binding&&definition.write==f.stores[0];
+  }));
+  // Views borrow only synchronous owners; neither trial alters the committed
+  // plan nor shares its initialized result with a subsequent candidate.
+  const auto current=projected(f.Input(),"current");
+  Check(current.initialized_reads[f.reads[0].value]);
+  Check(!f.plan.omitted[declaration.value]&&!f.plan.statements[store.value]);
+  const analysis::SemanticBudget exact{moved.allocated_bytes,moved.work};
+  auto moved_input=f.Input();moved_input.bindings.statements=initializers;moved_input.bindings.omitted=omitted;
+  Check(std::holds_alternative<RecoveryProjection>(PrepareRecoveryProjection(f.tree,old,moved_input,exact)));
+  Check(std::get<TreeStructureError>(PrepareRecoveryProjection(f.tree,old,moved_input,{exact.bytes-1,exact.work}))==TreeStructureError::kResourceLimit);
+  Check(std::get<TreeStructureError>(PrepareRecoveryProjection(f.tree,old,moved_input,{exact.bytes,exact.work-1}))==TreeStructureError::kWorkLimit);
+  return {discarded.work+completed.work+moved.work+residual.work+current.work,
+      std::max({discarded.allocated_bytes,completed.allocated_bytes,moved.allocated_bytes,residual.allocated_bytes,current.allocated_bytes})};
+}
 void Case(bool reverse) {
   Fixture f(1,reverse);
   const auto current=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,f.Projection(),f.Input()));
@@ -457,6 +551,8 @@ void ActivationSource(unsigned copies,bool split,bool emit) {
 
 }
 int main(int argc,char** argv) {
+  for(bool reverse:{false,true}){CandidatePlan(reverse);CandidateDeclarations(reverse);}
+  if(argc==2&&std::string_view(argv[1])=="--candidate-plan")return 0;
   if(argc==2&&std::string_view(argv[1])=="--captured-kinds"){CapturedKinds(false);CapturedKinds(true);return 0;}
   if(argc==2&&std::string_view(argv[1])=="--projected-lifetime") {
     for(unsigned form=0;form<4;++form)for(unsigned copies:{0U,1U,200U,201U,400U,800U})for(bool split:{false,true})ScopeExitSource(form,copies,split,true,true);
@@ -492,9 +588,12 @@ int main(int argc,char** argv) {
   for(unsigned seed=0;seed<512;++seed)for(bool reverse:{false,true})KindOracle(seed,reverse);
   for(unsigned form=0;form<4;++form)for(bool reverse:{false,true})CompletionTypes(form,reverse,false);
   std::uint64_t work=0;std::size_t bytes=0;
+  std::pair<std::uint64_t,std::size_t> previous;
   for(auto count:{200u,201u,400u,800u}) {
+    const auto candidate=CandidateDeclarations(true,count);
+    if(previous.first){Check(candidate.first<previous.first*3);Check(candidate.second<previous.second*3);}previous=candidate;
     Fixture f(count,true);const auto result=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,f.Projection(),f.Input()));
     if(work){Check(result.work<work*3);Check(result.allocated_bytes<bytes*3);}work=result.work;bytes=result.allocated_bytes;
-    std::cout<<count<<" expressions="<<f.tree.expressions.size()<<" events="<<result.flow.events.size()<<" work="<<work<<" bytes="<<bytes<<'\n';
+    std::cout<<count<<" expressions="<<f.tree.expressions.size()<<" events="<<result.flow.events.size()<<" work="<<work<<" bytes="<<bytes<<" candidate_work="<<candidate.first<<" candidate_bytes="<<candidate.second<<'\n';
   }
 }

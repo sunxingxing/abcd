@@ -4047,3 +4047,44 @@ scope nesting. Initial instruction-level sparse expansion exceeded 64MiB in
 existing long-source cases; block/action indexes and batched certificates restored
 those gates without increasing budgets. These are component costs and correctness
 checks, not full-process RSS, resumed benchmarks or global pass convergence proof.
+
+### Rules265 synchronous candidate views and declaration trial cost
+
+For S statements, B bindings, G flow events, E completion edges and Q retained
+lookup occurrences, the view itself borrows O(1) spans. Declaration overlays own
+O(S+B) annotations, completions, residuals, omissions and placement sites; they
+do not clone text/primitive pools, the whole plan or the function per binding.
+A complete batch invokes one shared grammar/flow/bootstrap and one exact refined
+initialization analysis; it adds two batched source-name resolutions, costing
+O((B+Q) log(B+Q+1)) with indexed intervals. Flow/initialization/type cost remains
+that of their existing actual sparse facts/edges, not assumed linear for dense
+inputs. No B separate whole-graph walks or 200 cutoff is introduced.
+
+Classic propose/validate/commit ownership, project-owned C++20 spans, no new
+external algorithm implementation, dependency or license. Immutable view owners
+must live through synchronous analysis; produced facts own all published state.
+A trial releases its temporary admission after owners die, retaining work and
+peak; prewarmed current facts are outside that release window. The preliminary
+grammar overlay releases scratch while retaining the owned prefix mask. These
+are admission/cost facts, not a resumed process-RSS measurement or pass-convergence
+certificate. Existing local/capture/loop 200/201/geometric and exact/short cases
+exercise the integrated path; candidate facet witnesses exercise the same growth
+sizes through the shared producer.
+
+Full trial initially exceeded 64MiB in the frozen 800-pair case while old derived
+analysis cache still occupied 34,608,942 bytes, including unused derived products. Typed RequiredFacts closure now
+governs cache retention at every pass boundary. The bootstrap pair stays owned;
+unneeded derived products are destroyed before releasing their accounted bytes.
+The policy adds O(number of analysis kinds) boundary work, independent of graph
+size. Evicted facts are recomputed lazily if a later consumer requires them;
+that work is charged and geometric/exact/one-short cases verify the resulting
+cost. This is no per-size admission or automatic optimization retry, and does
+not certify minimal rebuilds or global convergence.
+
+Final candidate facet growth (five semantic proposals through the common
+producer), N=200/201/400/800: cumulative work
+3313363/3330310/6818318/14073373; maximum per-proposal admission
+3158483/3162313/6316547/12632675 bytes. Existing whole storage-scale pipeline at
+the same sizes reports 15392632/15419998/30774056/61536904 bytes and
+9459371/9510402/19736968/41194586 work. These admission/cumulative-work measures
+are not process RSS or a benchmark; no resumed RSS/benchmark was used.

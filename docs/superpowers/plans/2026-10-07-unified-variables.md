@@ -810,3 +810,26 @@ ordinary/source-created entry and movement unit facts, then complete raw IR/SSA
 correspondence and trial lifetime deltas, dependency reruns/convergence and the
 milestone end-to-end acceptance. Other appearance optimizations, agents,
 fullsuite/expanded corpus/RSS/benchmark/DFX remain paused.
+
+Rules265 Task3 backbone substep: BindingPlanView supplies all candidate semantic
+facets to expression/type/grammar/flow bootstrap. Declaration sites are explicit;
+Declarations stages initialization, lifetime placement and old-declaration
+retirement together, validates shared current-unit completion and names, then
+commits atomically. Native old declarations retire in the same transaction.
+RetireDeclaration is shared by trial/commit; required outlined evaluation remains
+at its original occurrence. No extra pass round/order or layout admission.
+
+Mixed old/candidate facet authority exits the migrated producer; snapshot final
+retirement/subset trials, remaining movement/lifetime inputs, ordinary/catch/
+reentry cell precision, raw IR/SSA correspondence, dependency-driven reruns and
+final milestone acceptance remain required. All five backbone deliveries OPEN.
+Other optimizations and agents/fullsuite/expanded corpus/RSS/benchmark/DFX paused.
+Final frozen verification and actual evidence are recorded in status.md.
+
+Rules265 Task4 cost substep: frozen 800-pair source admission revealed unconsumed
+derived cache ownership during full trials. RetainFacts at pass boundaries uses
+closed RequiredFacts, keeps flow/expression, destroys unused derived products
+before credit, and permits lazy same-revision recomputation. No projection edit,
+shape threshold, extra round or budget increase. Cache ownership cost is covered
+by the existing scaling source gate; dependency rerun/minimal rebuild/convergence
+proof remains OPEN. First failed gate and repair evidence remain in status.md.

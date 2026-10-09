@@ -320,7 +320,7 @@ void OriginalSuccessfulDomains(unsigned copies=0,bool reverse=false,bool split=f
   std::vector<std::uint8_t> private_bindings(b),stable(b);
   for(unsigned i=0;i<b;++i){private_bindings[i]=tree.symbols[i].kind==BindingKind::kCompilerTemporary;stable[i]=tree.symbols[i].kind==BindingKind::kParameter;}
   const auto* original=built.flow->original.get();
-  RecoveryExpressionInput input{plan,equations,order,plan.replacements,plan.transports,original};
+  RecoveryExpressionInput input{plan,equations,order,original};
   LegacyFlowProjection projection{plan.aliases,plan.literals,plan.replacements,plan.omitted,{},{},plan.statements,private_bindings};
   projection.stable_entries=stable;
   const auto model_result=PrepareRecoveryProjection(tree,projection,input);
@@ -354,7 +354,8 @@ void OriginalSuccessfulDomains(unsigned copies=0,bool reverse=false,bool split=f
   // domain, even though the write, consumer and original hint remain present.
   auto changed_value=plan.transports;
   changed_value[producer.value]=ExpressionTransport{producer,PrimitiveId{0}};
-  RecoveryExpressionInput candidate{plan,equations,order,plan.replacements,changed_value,original};
+  auto changed_plan=BindingPlanView{plan};changed_plan.transports=changed_value;
+  RecoveryExpressionInput candidate{changed_plan,equations,order,original};
   const auto changed_result=PrepareRecoveryProjection(tree,projection,candidate);
   Check(std::holds_alternative<RecoveryProjection>(changed_result));
   const auto changed=std::get<RecoveryProjection>(changed_result);
@@ -363,7 +364,8 @@ void OriginalSuccessfulDomains(unsigned copies=0,bool reverse=false,bool split=f
     auto transports=plan.transports;
     const auto condition=*original->operations[branch->value].expression;
     transports[condition.value]=ExpressionTransport{condition,PrimitiveId{0}};
-    RecoveryExpressionInput changed_path{plan,equations,order,plan.replacements,transports,original};
+    auto path_plan=BindingPlanView{plan};path_plan.transports=transports;
+    RecoveryExpressionInput changed_path{path_plan,equations,order,original};
     const auto widened_result=PrepareRecoveryProjection(tree,projection,changed_path);
     Check(std::holds_alternative<RecoveryProjection>(widened_result));
     const auto widened=std::get<RecoveryProjection>(widened_result);
@@ -378,7 +380,7 @@ void OriginalSuccessfulDomains(unsigned copies=0,bool reverse=false,bool split=f
     std::cout<<nlohmann::json{{"source",output.str()},{"conditional",conditional},{"copies",copies},{"reverse",reverse},{"split",split}}<<'\n';
   }
   auto without_definitions=*original;without_definitions.definitions.clear();
-  RecoveryExpressionInput missing{plan,equations,order,plan.replacements,plan.transports,&without_definitions};
+  RecoveryExpressionInput missing{plan,equations,order,&without_definitions};
   const auto conservative_result=PrepareRecoveryProjection(tree,projection,missing);
   Check(std::holds_alternative<RecoveryProjection>(conservative_result));
   const auto conservative=std::get<RecoveryProjection>(conservative_result);

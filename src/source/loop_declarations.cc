@@ -3,15 +3,13 @@
 #include <stdexcept>
 namespace abcd::source {
 std::variant<LoopDeclarations,TreeStructureError> PlanLoopDeclarations(
-    const LoopSyntax& loops,const BindingInitializers& projection,
-    std::span<const std::optional<StmtId>> declarations,analysis::SemanticBudget allowance,
-    std::span<const std::uint8_t> omissions,
-    std::span<const std::optional<BindingInitializer>> proposed) {
+    const LoopSyntax& loops,BindingPlanView projection,
+    std::span<const std::optional<StmtId>> declarations,analysis::SemanticBudget allowance) {
   try {
     TreeCheckBudget budget(allowance);LoopDeclarations result;
-    const auto omitted=omissions.empty()?std::span<const std::uint8_t>{projection.omitted}:omissions;
-    const auto initializers=proposed.empty()?std::span<const std::optional<BindingInitializer>>{projection.statements}:proposed;
-    RequireTree(omitted.size()==initializers.size() && initializers.size()==projection.statements.size(),TreeStructureError::kOwnership);
+    const auto omitted=projection.omitted;
+    const auto initializers=projection.statements;
+    RequireTree(omitted.size()==initializers.size(),TreeStructureError::kOwnership);
     std::size_t loop_count=0;
     for(const auto& entry:loops.initializers){budget.Step();loop_count+=entry.has_value();}
     budget.Array(result.starts,loop_count);

@@ -707,13 +707,22 @@ std::uint64_t Many(unsigned count,bool emit){
   declarations.insert(declarations.end(),body.begin(),body.end());declarations.push_back(f.Stmt(ReturnStmt{}));f.Finish(declarations,false);
   Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
-  const auto bindings=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
+  const auto planned=PlanBindingInitializers(tree,loops,nullish);
+  if(const auto* error=std::get_if<TreeStructureError>(&planned))std::cerr<<"scale count="<<count<<" error="<<static_cast<unsigned>(*error)<<'\n';
+  Check(std::holds_alternative<BindingInitializers>(planned));
+  const auto& bindings=std::get<BindingInitializers>(planned);
   unsigned aliases=0;for(const auto alias:bindings.storage)aliases+=alias.has_value();Check(aliases==count);
-  Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes-1,bindings.work}))==TreeStructureError::kResourceLimit);
-  Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work-1}))==TreeStructureError::kWorkLimit);
+  const auto bytes_short=PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes-1,bindings.work});
+  if(std::holds_alternative<BindingInitializers>(bytes_short))std::cerr<<"scale count="<<count<<" bytes-short accepted reported="<<bindings.allocated_bytes<<'\n';
+  Check(std::holds_alternative<TreeStructureError>(bytes_short));
+  Check(std::get<TreeStructureError>(bytes_short)==TreeStructureError::kResourceLimit);
+  const auto work_short=PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work-1});
+  if(std::holds_alternative<BindingInitializers>(work_short))std::cerr<<"scale count="<<count<<" work-short accepted reported="<<bindings.work<<'\n';
+  Check(std::holds_alternative<TreeStructureError>(work_short));
+  Check(std::get<TreeStructureError>(work_short)==TreeStructureError::kWorkLimit);
   std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
   Check(output.str().find("scratch")==std::string::npos);
-  if(emit)std::cout<<nlohmann::json{{"count",count},{"work",bindings.work},{"source",output.str()}}<<'\n';
+  if(emit)std::cout<<nlohmann::json{{"count",count},{"work",bindings.work},{"bytes",bindings.allocated_bytes},{"source",output.str()}}<<'\n';
   return bindings.work;
 }
 

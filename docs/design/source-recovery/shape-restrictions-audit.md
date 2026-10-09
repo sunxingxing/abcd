@@ -3209,3 +3209,34 @@ mutants distinguish missing replacement/init, old dominance, ignored unit cuts,
 unknown transport, cleanup descendants, lost native parent and false native exit.
 Independent oracle and bounded source/record evidence are recorded in status.md.
 All five mainline deliverables remain OPEN; other optimizations remain paused.
+
+### Rules265 declaration trial authority
+
+Retired: independently supplied replacement/transport arrays in expression input;
+optional initializer/omission fallbacks in grammar; BuildProjectedFlow borrowing
+current initializer annotations or declaration sites implicitly; native old
+declaration retirement deferred to final grammar. Apply now takes all semantic
+plan facets from the one candidate. No mixed bootstrap/current initialization
+proof survives the declaration trial.
+
+Obligations: first successful assignment must dominate retained references and
+remain in a valid lexical extent; the actual proposed graph must initialize each
+ordinary moved read in its current unit; source lookup must resolve moved bindings
+and preserve existing resolved references/free names. The common flow, gen/kill
+and source-name analyses own these obligations. Initial placement anchors,
+captured-cell legacy admission and grammar suffix representation limitations
+remain explicitly transitional, not newly expanded shape patterns. Unknown
+ordinary-unit initialization retains the entire original batch. Validating a
+subset requires its own common trial, not a selection-count or block-layout rule.
+
+Snapshot commit retirement and component retention still need complete candidate
+representation; this component does not certify every motion proposal or all
+ordinary/catch/reentry units. All five backbone deliveries remain OPEN.
+
+The 800-pair frozen source failure was typed resource exhaustion, not a new
+semantic rejection. A pass-boundary RetainFacts policy consumes RequiredFacts
+dependency closure and destroys unconsumed derived owners before admission
+release. No size threshold, sample dispatch, budget increase or weakened proof
+was introduced. The common bootstrap pair remains available; an evicted derived
+fact can be recomputed at the same revision. Dependency-driven fixed-point
+convergence remains a separate OPEN delivery.

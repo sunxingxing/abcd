@@ -171,9 +171,9 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
     // graph; predicates order completion but never contribute their value type.
     for(std::size_t i=0;i<expressions;++i) {
       budget.Step();const auto& node=tree.expressions[i].expression;
-      if(input.replacements[i]||input.transports[i]||input.bindings.read_sources[i]||input.bindings.read_literals[i]||
+      if(input.bindings.replacements[i]||input.bindings.transports[i]||input.bindings.read_sources[i]||input.bindings.read_literals[i]||
           IntrinsicLexicalDependency(node)!=LexicalDependency::kReferences)changed[i]=1;
-      if(input.replacements[i])changed[input.replacements[i]->value]=1;
+      if(input.bindings.replacements[i])changed[input.bindings.replacements[i]->value]=1;
       if(const auto* read=std::get_if<SymbolExpr>(&node)) {
         const auto id=read->symbol.value;
         if(input.bindings.aliases[id]||input.bindings.storage[id]||input.bindings.read_bindings[id]||input.bindings.literals[id])changed[i]=1;
