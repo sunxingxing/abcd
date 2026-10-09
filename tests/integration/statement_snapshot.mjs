@@ -39,6 +39,7 @@ function reference({form,count}) {
   else if(form===49||form===50)body='let saved;('+ (form===49?'report(flag),':'input.effect(),').repeat(count+1)+'saved=input.read());{return saved;let '+(form===49?'flag':'input')+'=false;}';
   else if(form===51)body='let saved,second;second=input.read();while(true){saved=-second;break;let input=false;}return saved;';
   else if(form===52)body='let saved,second;second=(saved=input.read(),+saved);report(second);return second;';
+  else if(form===54)body='let saved;saved=!input;{let input;input=!report;{return saved===input;let report=false;}}';
   else if(form===53)body='let saved,second;saved=input.read();{return saved===(second=report(),second);let input=false;}';
   else if(form===35)body='saved=input.read();return saved;let saved;';
   else body+='return saved;';
@@ -102,6 +103,10 @@ for(const row of rows) {
   if(row.form===8)scenarios.push({thenable:true},{thenable:true,reject:true},{thenable:true,failAt:3});
   if(row.form===9)scenarios.push({request:'throw'},{request:'return'});
   for(const scenario of scenarios){assert.deepStrictEqual(await observe(actual,row,scenario),await observe(expected,row,scenario),`form=${row.form} count=${row.count}`);++cases;}
+  if(!row.count&&row.form===54) {
+    const wrong=Function('input','report','flag','"use strict";{let input;input=!report;{return !input===input;let report=false;}}');
+    assert.notDeepStrictEqual(await observe(wrong,row),await observe(expected,row));++mutations;
+  }
   if(!row.count&&row.form===53) {
     const wrong=Function('input','report','flag','"use strict";{return input.read()===report();let input=false;}');
     assert.notDeepStrictEqual(await observe(wrong,row),await observe(expected,row));++mutations;

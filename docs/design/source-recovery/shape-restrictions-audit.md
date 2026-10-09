@@ -3240,3 +3240,22 @@ release. No size threshold, sample dispatch, budget increase or weakened proof
 was introduced. The common bootstrap pair remains available; an evicted derived
 fact can be recomputed at the same revision. Dependency-driven fixed-point
 convergence remains a separate OPEN delivery.
+
+
+### Rules266: full snapshot transaction and common restoration closure
+
+ForwardSnapshots no longer checks names against a partial replacement/transport/
+omission trial then separately retires declarations during commit. Complete owned
+candidate facets now feed the same producer and Publish transfers those exact
+facets. The old invalid/blocked selector loop is replaced by PlanSnapshotRetention
+and indexed SourceNameRetirement, including restored shadows and nested transport
+component dependencies. Actual selected names are verified on the final full
+transaction; a failed invariant is typed, never a second shape-based admission.
+
+Read coverage, discarded result, bidirectional observation count, successful
+private PutValue and exceptional route identity retain their documented semantic
+obligations. Existing captured-environment/resource census remains transitional
+and is not expanded. New namespace-graph tests separate restoration from motion
+eligibility; source tests cover combined behavior. No sample/layout, opcode list,
+same-block, adjacency, or fixed selection-count branch was introduced. Raw IR,
+ordinary units, other candidate consumers and convergence remain mainline work.

@@ -36,6 +36,43 @@
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
 
+### 2026-10-10：规则266，完整快照事务与候选恢复依赖
+
+- 主干第3项的快照路径已迁移：PlanSnapshotProjection 暂存声明/初始化、
+  完成点、遗漏、残留 RHS、替换/运输及来源字段；trial 与 Publish 使用
+  同一份完整 delta，声明放置和快照共享 RetireDeclaration。原来的部分
+  trial、invalid/blocked 选择器及提交时再推断退役的循环已退出决策路径。
+- PlanSnapshotRetention 统一收集实际移动引用/自由名字及嵌套组件依赖，
+  使用 indexed SourceNameRetirement。恢复一个声明会传播到受其遮蔽影响
+  的候选；恢复运输产生的存储读取也建立明确的保留依赖。最终选中事务
+  再经共同 producer 检查实际名字，然后发布原数组；没有逐变量整图重试、
+  同块/邻接/样本/操作序列或固定候选数量准入。已有效果、次数、异常和
+  暂时保留的捕获环境义务仍各自负责，不由选择器重新从语法推断。
+- 保留原声明反例先 build0/model134；完整 delta、native 初始化、outlined
+  必需 RHS、实际 Publish、反向 IDs 通过。手工期望的小图覆盖恢复遮蔽、
+  独立/嵌套组件、符号/自由名字、未恢复存储读取和预算边界。端到端组合
+  用例提前被 motion 挡住，因此没有把它算作恢复闭包证明；独立小图负责
+  此项证明。五个生产突变分别缺失声明退役/RHS/恢复结果/嵌套边/存储边，
+  均 build0/model-6，恢复通过。最后一项在作者复核中发现，另经新增反例
+  RED→GREEN；仅停止了尚在构建的第一次自有终验进程，未启动其测试/导出。
+- 200/201/400/800 恢复选择 work=15681/15758/31483/63485，
+  bytes=85430/85849/169230/336830；完整 delta+trial work=
+  407016/409167/827352/1681096，bytes=2380198/2383187/4759758/
+  9518878。增长和精确/差一预算验证通过，64MiB 与既定 work 上限未提高；
+  两阶段临时图及被替换旧数组都先销毁后归还准入，累计 work/peak 保留。
+- 稳定终验：31目标构建0，45.91s；固定 pasteboard fresh 导出0，3.15s，
+  19 record=10 complete/0 partial/9 no-module，10个源码语法检查0；源码与
+  规则265逐字节相同。原 SHA/profile/预算不变。冻结63项测试全部通过，924.06s，终态0、
+  exact names63/63、无重复，构建没有 warning/error。statement-snapshot
+  独立执行覆盖660个引擎生成函数、25320个行为场景并检出78个执行突变。
+  证据保存在 build/stage-one/snapshot-plan-verification（最终日志/JUnit/
+  detail/coverage、增长、五个生产突变及提前终止的构建）；最终源码位于
+  snapshot-plan-final-rule266-stable。
+- 五个主干交付仍未关闭。此项覆盖已知快照部分 trial/未验证子集缺口；
+  其他候选消费者、raw IR 效果阶段完整对应、ordinary/catch/reentry 单元、
+  依赖收敛与里程碑终验继续按主干推进。其他优化、agent/fullsuite/扩展语料/
+  RSS/benchmarks/DFX 保持暂停。作者 inline 复核，不宣称独立复核或全项目验收。
+
 ### 2026-10-10：规则265，统一候选视图、完整声明试算与 pass 事实生命周期
 
 - 主干第3项的实际迁移：BindingPlanView 为一个同步不可变候选提供全部

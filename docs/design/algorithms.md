@@ -4088,3 +4088,18 @@ producer), N=200/201/400/800: cumulative work
 the same sizes reports 15392632/15419998/30774056/61536904 bytes and
 9459371/9510402/19736968/41194586 work. These admission/cumulative-work measures
 are not process RSS or a benchmark; no resumed RSS/benchmark was used.
+
+
+### Snapshot candidate transactions (rules266)
+
+Private snapshot transaction construction copies only changed statement and
+expression facets in O(S+E+C) time/space. It shares unchanged binding/primitive
+inputs through immutable spans. Selection delegates source-name restoration to
+indexed SourceNameRetirement; moved queries and nested component edges are linear
+in observed references and moves, with the existing sorted sparse closure cost.
+Full draft and final selected graphs are distinct proof phases, independent of
+candidate count. No C separate full-graph trials or fixed retry admission exists.
+Temporary graphs die before admission credit; old plan arrays die before replacement
+credit. The shared 64MiB allowance and cumulative work remain unchanged. Semantic
+cost tests include 200/201/400/800, independently permuted IDs, exact and one-short
+allowances. Full-process RSS/performance and expanded corpora stay paused.

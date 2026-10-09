@@ -833,3 +833,20 @@ before credit, and permits lazy same-revision recomputation. No projection edit,
 shape threshold, extra round or budget increase. Cache ownership cost is covered
 by the existing scaling source gate; dependency rerun/minimal rebuild/convergence
 proof remains OPEN. First failed gate and repair evidence remain in status.md.
+
+
+2026-10-10 rules266 Task3 mainline continuation: full snapshot projection owns
+all changed declaration/completion/value facets; shared RetireDeclaration and
+Publish remove the old trial/commit semantic split. Common PlanSnapshotRetention
+owns actual moved reference/name queries and nested components, delegating shadow
+restoration to indexed closure. The exact accepted transaction is analyzed again
+before publishing the same arrays. Scratch ownership is destroyed before budget
+credit, without raising budgets or introducing per-binding graph retries.
+
+The end-to-end restored-shadow combination alone does not exercise closure:
+observation pairing already prevents its adverse move. Independent small common
+namespace graphs therefore assert hand-derived restoration, unaffected and nested
+selection outcomes; production mutants must demonstrate detection. Follow the
+frozen31/63/fixedABC gate and original paused scope. All five backbone deliveries
+remain OPEN; continue complete raw IR/value/effect correspondence, ordinary units,
+remaining trial consumers, dependency convergence and final milestone acceptance.

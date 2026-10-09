@@ -3026,3 +3026,52 @@ resource/shape fallback or rerun, and lazily rebuilds evicted facts at the same
 revision if later needed. This shared cache ownership policy replaces retaining
 unconsumed analyses accidentally until the next commit. Convergence, selective
 mutation invalidation and minimal rerun closure are still not certified.
+
+
+## Snapshot candidate transaction and restoration closure (rules266)
+
+Task3 now sends the complete snapshot transaction through the shared producer.
+`PlanSnapshotProjection` owns statement initializers, declaration values and
+completions, omissions, replacement/transport and forwarded-origin facets.
+Declaration retirement uses the same `RetireDeclaration` as declaration placement;
+required outlined RHS evaluation remains at its original occurrence and handlers.
+`Publish` moves those exact validated arrays into the committed plan. The old
+ForwardSnapshots mutation loop and its partial three-facet trial are removed.
+Unchanged aliases/storage/literals/read identities are borrowed from one immutable
+parent view; no trial consults a different plan for a changed facet.
+
+`PlanSnapshotRetention` owns moved-read/name queries and nested transport group
+edges. Current source regions describe the bindings that can be restored; draft
+owners describe actual moved occurrences. It delegates restoration to the existing
+indexed name-retirement closure: rejected moves can restore shadows and retain
+other affected moves; unrelated components remain eligible. Remaining references
+to proposed storage impose explicit conditional def-use edges, so restoring the
+transport also restores the storage its surviving read requires. This analysis does not select value
+availability, effects, execution count, exceptions or captured cell identity.
+Those prerequisites remain separate inputs from the existing common flow/motion
+and the documented transitional environment census. No block/adjacency, sample,
+opcode sequence, arena ordering or fixed selector count is an admission condition.
+
+The proof phases are full proposal, indexed closure and actual selected transaction.
+The final transaction is rebuilt by the same producer and its actual moved names
+are checked before publication. Failure of the closure's exact-name invariant is a
+typed model error, never permission to commit an optimistic subset. There is no
+per-variable full-graph retry, no round cap and no syntactic repair. Scratch graphs,
+views and analyses are destroyed before their admission is credited; replacing
+plan arrays credits their old storage only after destruction. Work and peak
+admission survive release. No semantic/resource budget is increased.
+
+Delta construction is O(S+E+C), with statement/expression arenas and candidate
+moves as dimensions. Name selection inherits the indexed solver's sorting and
+sparse restoration work; group edges are O(C). Two distinct trial phases do not
+introduce a binding-count graph multiplier. Tests exercise retained outlined RHS,
+original/native declarations, actual publication, reversed IDs, symbol/free-name
+restoration, independent versus nested components, and typed exact/one-short
+budgets. Small namespace graphs have hand-derived expected selections. The new
+end-to-end shadow combination also remains protected by motion prerequisites;
+it is not the sole evidence for restoration closure.
+
+This closes the known partial snapshot delta and unchecked subset path. Other
+candidate consumers, complete raw IR correspondence, ordinary/catch/reentry unit
+identity, dependency convergence and milestone acceptance still require delivery.
+All five backbone deliveries remain OPEN; final bounded evidence is in status.md.

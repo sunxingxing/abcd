@@ -276,8 +276,53 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
   if(second_rhs)test::Check(positions.expression_extents[second_rhs->value]==GeneratedExtent::kSpan);
   if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"form",form},{"count",count},{"folded",folded},{"aliased",aliased}}<<'\n';return plan.work;
 }
+// Restoring one rejected move reactivates its shadow for another independent
+// move. A proof for the all-elided draft cannot certify that final subset.
+std::uint64_t RestoredShadow(unsigned count,bool reverse,bool emit) {
+  Fixture f(Form::kReturn);auto& tree=f.tree;
+  const auto outer=f.Block({}),inner=f.Block({});
+  const auto outer_scope=std::get<BlockStmt>(tree.statements[outer.value].statement).scope;
+  const auto inner_scope=std::get<BlockStmt>(tree.statements[inner.value].statement).scope;
+  tree.scopes[inner_scope.value].parent=outer_scope;
+  const SymbolId shadow{4},barrier{5};
+  tree.symbols.push_back({outer_scope,{0},BindingKind::kCompilerTemporary,DeclarationKind::kLet,NameEvidence::kSynthesized,TemporaryReason::kMultipleUses});
+  tree.symbols.push_back({inner_scope,{1},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
+  const auto saved=f.Stmt(DeclarationStmt{{3},{}}),decl=f.Stmt(DeclarationStmt{shadow,{}});
+  const auto store=f.Stmt(ExpressionStmt{f.Expr(AssignmentExpr{SymbolTarget{{3}},f.Expr(UnaryExpr{TreeUnary::kNot,f.Read(0)})})});
+  const auto write=f.Stmt(ExpressionStmt{f.Expr(AssignmentExpr{SymbolTarget{shadow},f.Expr(UnaryExpr{TreeUnary::kNot,f.Read(1)})})});
+  const auto saved_read=f.Read(3),shadow_read=f.Read(4);
+  const auto result=f.Stmt(ReturnStmt{f.Expr(BinaryExpr{analysis::BinaryOperator::kStrictEqual,saved_read,shadow_read})});
+  const auto retained=f.Stmt(DeclarationStmt{barrier,f.Literal(false)});
+  std::get<BlockStmt>(tree.statements[inner.value].statement)={inner_scope,static_cast<unsigned>(tree.children.size()),2};
+  tree.children.insert(tree.children.end(),{result,retained});
+  std::get<BlockStmt>(tree.statements[outer.value].statement)={outer_scope,static_cast<unsigned>(tree.children.size()),3};
+  tree.children.insert(tree.children.end(),{decl,write,inner});
+  f.Finish({saved,store,f.Wrap(outer,count)},reverse);
+  test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));
+  const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
+  const auto analyzed=PlanBindingInitializers(tree,loops,nullish);
+  if(const auto* error=std::get_if<TreeStructureError>(&analyzed))std::cerr<<"restored shadow error="<<static_cast<unsigned>(*error)<<'\n';
+  test::Check(std::holds_alternative<BindingInitializers>(analyzed));
+  const auto& plan=std::get<BindingInitializers>(analyzed);
+  test::Check(!plan.replacements[saved_read.value]&&!plan.replacements[shadow_read.value]);
+  std::ostringstream output;test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
+  if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"form",54},{"count",count},{"folded",false},{"aliased",false}}<<'\n';
+  return plan.work;
 }
-int main(int argc,char**) {
+
+}
+int main(int argc,char** argv) {
+  if(argc==2&&std::string_view(argv[1])=="--retired-shadow") {
+    for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true})RestoredShadow(count,reverse,true);
+    return 0;
+  }
+  std::uint64_t small=0,large=0;
+  for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}) {
+    const auto work=RestoredShadow(count,reverse,argc>1);
+    if(count==400&&!reverse)small=work;if(count==800&&!reverse)large=work;
+  }
+  test::Check(large<small*3);
   for(unsigned form=0;form<=static_cast<unsigned>(Form::kIndependentDestination);++form){std::uint64_t small=0,large=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}){const auto work=Check(static_cast<Form>(form),count,reverse,argc>1);if(count==400&&!reverse)small=work;if(count==800&&!reverse)large=work;}
     test::Check(large<small*3);

@@ -1,9 +1,11 @@
 #include "../../../src/source/recovery_projection.h"
+#include "../../../src/source/snapshot_projection.h"
 #include "../../../src/source/flow_kinds.h"
 #include "abcd/source/tree_printer.h"
 #include <nlohmann/json.hpp>
 #include <sstream>
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <iostream>
 #include <source_location>
@@ -177,6 +179,141 @@ std::pair<std::uint64_t,std::size_t> CandidateDeclarations(bool reverse,unsigned
   Check(std::get<TreeStructureError>(PrepareRecoveryProjection(f.tree,old,moved_input,{exact.bytes,exact.work-1}))==TreeStructureError::kWorkLimit);
   return {discarded.work+completed.work+moved.work+residual.work+current.work,
       std::max({discarded.allocated_bytes,completed.allocated_bytes,moved.allocated_bytes,residual.allocated_bytes,current.allocated_bytes})};
+}
+// A snapshot trial is the final source transaction, including disappearance
+// of lexical completion. Its old initializer must not regenerate the removed
+// cell or replay the moved call. Retaining a selected component is a no-op.
+void SnapshotPlan(bool reverse,bool native,bool outlined=false) {
+  Fixture f(1,reverse);
+  const auto statements=f.tree.statements.size();
+  f.plan.forwarded_values.resize(statements);f.plan.declaration_values.resize(statements);
+  f.plan.declaration_completions.resize(statements);
+  const auto declaration=f.declarations[0];const SymbolId binding{1};StmtId store{};
+  for(unsigned i=0;i<statements;++i)if(const auto* expression=std::get_if<ExpressionStmt>(&f.tree.statements[i].statement);
+      expression&&expression->expression==f.stores[0])store={i};
+  if(native) {
+    f.plan.omitted[declaration.value]=1;
+    f.plan.statements[store.value]=BindingInitializer{binding,f.stores[0],DeclarationKind::kLet};
+  }
+  std::optional<ExprId> residual;
+  if(outlined) {
+    const auto callee=ExprId{static_cast<unsigned>(f.tree.expressions.size())};
+    residual=ExprId{callee.value+1};
+    f.tree.expressions.push_back({SymbolExpr{{0}},{0}});
+    f.tree.expressions.push_back({CallExpr{callee,{0,0},CallReference::kValue},{0}});
+    std::get<DeclarationStmt>(f.tree.statements[declaration.value].statement).initializer=residual;
+    f.equations.push_back(FlowBindingValue{{0}});f.equations.push_back(UnknownFlowValue{});
+    f.order.insert(f.order.end(),{callee,*residual});
+    const auto expressions=f.tree.expressions.size();
+    f.plan.read_sources.resize(expressions);f.plan.read_literals.resize(expressions);
+    f.plan.replacements.resize(expressions);f.plan.transports.resize(expressions);
+    f.original.normal_kinds.resize(expressions);f.original.input_ranges.resize(expressions);
+    f.plan.declaration_completions[declaration.value]=DeclarationCompletion{binding,residual,DeclarationKind::kLet};
+  }
+  const SnapshotMove move{binding,declaration,f.reads[0],f.values[0],f.stores[0],store,store};
+  const std::array moves{move};const std::array forward{SnapshotSelection::kForward};
+  const auto planned=PlanSnapshotProjection(f.plan,moves,forward,PrimitiveId{0});
+  Check(std::holds_alternative<SnapshotProjection>(planned));const auto& delta=std::get<SnapshotProjection>(planned);
+  auto input=f.Input();input.bindings=delta.View(f.plan);
+  const auto trial=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,f.Projection(),input));
+  Check(std::none_of(trial.flow.definitions.begin(),trial.flow.definitions.end(),[&](const auto& definition){return definition.binding==binding;}));
+  Check(trial.flow.binding_presence[binding.value]==SourceBindingPresence::kElided);
+  const auto call=std::get<UnaryExpr>(f.tree.expressions[f.values[0].value].expression).operand;
+  Check(std::count_if(trial.flow.events.begin(),trial.flow.events.end(),[&](const auto& event){return event.expression==call&&event.kind==FlowEventKind::kEvaluation;})==1);
+  Check(!delta.statements[store.value]&&!delta.completions[store.value]);
+  if(residual) {
+    Check(!delta.completions[declaration.value]&&delta.values[declaration.value]->value==*residual);
+    Check(trial.flow.normal_exits[residual->value].has_value());
+    Check(std::count_if(trial.flow.events.begin(),trial.flow.events.end(),[&](const auto& event){return event.expression==*residual&&event.kind==FlowEventKind::kEvaluation;})==1);
+    Check(f.plan.declaration_completions[declaration.value].has_value());
+  }
+  Check(f.plan.statements[store.value].has_value()==native&&!f.plan.replacements[f.reads[0].value]);
+  const std::array retained{SnapshotSelection::kRetain};
+  const auto kept=std::get<SnapshotProjection>(PlanSnapshotProjection(f.plan,moves,retained,PrimitiveId{0}));
+  Check(kept.statements[store.value].has_value()==native&&!kept.replacements[f.reads[0].value]);
+  const analysis::SemanticBudget exact{delta.allocated_bytes,delta.work};
+  Check(std::holds_alternative<SnapshotProjection>(PlanSnapshotProjection(f.plan,moves,forward,PrimitiveId{0},exact)));
+  Check(std::get<TreeStructureError>(PlanSnapshotProjection(f.plan,moves,forward,PrimitiveId{0},{exact.bytes-1,exact.work}))==TreeStructureError::kResourceLimit);
+  Check(std::get<TreeStructureError>(PlanSnapshotProjection(f.plan,moves,forward,PrimitiveId{0},{exact.bytes,exact.work-1}))==TreeStructureError::kWorkLimit);
+  Check(std::get<TreeStructureError>(PlanSnapshotProjection(f.plan,moves,{},PrimitiveId{0}))==TreeStructureError::kOwnership);
+  auto published=std::get<SnapshotProjection>(PlanSnapshotProjection(f.plan,moves,forward,PrimitiveId{0}));
+  std::move(published).Publish(f.plan);
+  const auto committed=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,f.Projection(),f.Input()));
+  Check(std::none_of(committed.flow.definitions.begin(),committed.flow.definitions.end(),[&](const auto& definition){return definition.binding==binding;}));
+  Check(std::count_if(committed.flow.events.begin(),committed.flow.events.end(),[&](const auto& event){return event.expression==call&&event.kind==FlowEventKind::kEvaluation;})==1);
+  if(residual)Check(committed.flow.normal_exits[residual->value].has_value());
+
+}
+std::pair<std::uint64_t,std::size_t> SnapshotBatch(unsigned count,bool reverse) {
+  Fixture f(count,reverse);const auto statements=f.tree.statements.size();
+  f.plan.forwarded_values.resize(statements);f.plan.declaration_values.resize(statements);f.plan.declaration_completions.resize(statements);
+  std::vector<std::optional<StmtId>> owners(f.tree.expressions.size());
+  for(unsigned i=0;i<statements;++i)if(const auto* expression=std::get_if<ExpressionStmt>(&f.tree.statements[i].statement))owners[expression->expression.value]=StmtId{i};
+  std::vector<SnapshotMove> moves;std::vector<SnapshotSelection> selections(count,SnapshotSelection::kForward);
+  for(unsigned i=0;i<count;++i)moves.push_back({{i+1},f.declarations[i],f.reads[i],f.values[i],f.stores[i],*owners[f.stores[i].value],{}});
+  const auto delta=std::get<SnapshotProjection>(PlanSnapshotProjection(f.plan,moves,selections,PrimitiveId{0}));
+  auto input=f.Input();input.bindings=delta.View(f.plan);
+  const auto trial=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,f.Projection(),input));
+  Check(std::none_of(trial.flow.definitions.begin(),trial.flow.definitions.end(),[](const auto& definition){return definition.binding!=SymbolId{0};}));
+  std::vector<unsigned> evaluations(f.tree.expressions.size());
+  for(const auto& event:trial.flow.events)if(event.expression&&event.kind==FlowEventKind::kEvaluation)++evaluations[event.expression->value];
+  for(unsigned i=0;i<count;++i) {
+    Check(trial.flow.binding_presence[i+1]==SourceBindingPresence::kElided);
+    const auto call=std::get<UnaryExpr>(f.tree.expressions[f.values[i].value].expression).operand;
+    Check(evaluations[call.value]==1);
+  }
+  const analysis::SemanticBudget exact{delta.allocated_bytes,delta.work};
+  Check(std::holds_alternative<SnapshotProjection>(PlanSnapshotProjection(f.plan,moves,selections,PrimitiveId{0},exact)));
+  Check(std::get<TreeStructureError>(PlanSnapshotProjection(f.plan,moves,selections,PrimitiveId{0},{exact.bytes-1,exact.work}))==TreeStructureError::kResourceLimit);
+  Check(std::get<TreeStructureError>(PlanSnapshotProjection(f.plan,moves,selections,PrimitiveId{0},{exact.bytes,exact.work-1}))==TreeStructureError::kWorkLimit);
+  return {delta.work+trial.work,delta.allocated_bytes+trial.allocated_bytes};
+}
+// Hand-checked namespace graph: report's fixed inner shadow rejects move 3;
+// restoring move 3's input shadow then rejects every saved move. An independent
+// report lookup outside that shadow remains movable. No solver builds expected
+// selections. Binding/expression IDs are permuted independently of regions.
+std::pair<std::uint64_t,std::size_t> SnapshotRestoration(unsigned count,bool reverse,bool nested,bool free,bool storage=false) {
+  RecoveryFlow current{},draft{};const unsigned bindings=count+5,expressions=count+2;
+  const auto id=[&](unsigned i){return SymbolId{reverse?bindings-1-i:i};};
+  const auto expr=[&](unsigned i){return ExprId{reverse?expressions-1-i:i};};
+  current.bindings.resize(bindings);current.binding_presence.assign(bindings,SourceBindingPresence::kRetained);
+  current.source_spellings.resize(bindings);current.source_name_spellings={SourceSpellingId{0},SourceSpellingId{1}};
+  current.source_regions={{{0},{10}},{{2},{8}},{{3},{7}}};
+  current.source_occurrences={SourcePosition{5},SourcePosition{1}};
+  for(unsigned i=0;i<bindings;++i) {
+    current.bindings[id(i).value].scope=OriginalBindingScope{SourceRegionId{i==2?2U:i==3?1U:0U}};
+    current.source_spellings[id(i).value]={i==3?0U:i==2?1U:i<2?i:i-2};
+  }
+  current.source_shadows={{id(0),SourceRegionId{1},id(3)},{id(1),SourceRegionId{2},id(2)}};
+  if(free) {
+    current.source_spellings[id(0).value]={count+3};current.source_spellings[id(1).value]={count+4};
+    current.source_shadows.clear();
+  }
+  if(storage)current.binding_presence[id(2).value]=SourceBindingPresence::kElided;
+  auto names=std::get<SourceNameFacts>(AnalyzeSourceNames(current,current.binding_presence,current.source_shadows));
+  current.source_names=std::move(names.index);
+  draft.expression_transports.resize(expressions);std::vector<SnapshotMove> moves;
+  for(unsigned i=0;i<expressions;++i) {
+    const auto binding=id(i==0?3U:i<count+1?i+3:count+4);
+    const auto root=nested&&i==expressions-1?id(3):binding;
+    draft.expression_transports[expr(i).value]=root;
+    const auto source=storage&&i==expressions-1?id(3):i==0||i==expressions-1?id(1):id(0);
+    const auto owner=StmtId{i==expressions-1&&!storage?1U:0U};
+    if(free)draft.names.push_back({{0},NameId{source==id(0)?0U:1U},expr(i),owner});
+    else draft.references.push_back({{0},source,FlowReferenceKind::kRead,expr(i),{},owner,{}});
+    moves.push_back({binding,{0},expr(i),expr(i),{},{0},{}});
+  }
+  const auto analyzed=PlanSnapshotRetention(current,draft,moves,{});
+  Check(std::holds_alternative<SnapshotRetention>(analyzed));const auto& result=std::get<SnapshotRetention>(analyzed);
+  for(unsigned i=0;i<expressions-1;++i)Check(result.selections[i]==SnapshotSelection::kRetain);
+  Check(result.selections.back()==(nested||storage?SnapshotSelection::kRetain:SnapshotSelection::kForward));
+  const analysis::SemanticBudget exact{result.allocated_bytes,result.work};
+  Check(std::holds_alternative<SnapshotRetention>(PlanSnapshotRetention(current,draft,moves,{},exact)));
+  Check(std::get<TreeStructureError>(PlanSnapshotRetention(current,draft,moves,{},{exact.bytes-1,exact.work}))==TreeStructureError::kResourceLimit);
+  Check(std::get<TreeStructureError>(PlanSnapshotRetention(current,draft,moves,{},{exact.bytes,exact.work-1}))==TreeStructureError::kWorkLimit);
+  current.source_names.reset();const auto unknown=std::get<SnapshotRetention>(PlanSnapshotRetention(current,draft,moves,{}));
+  for(const auto selection:unknown.selections)Check(selection==SnapshotSelection::kRetain);
+  return {result.work,result.allocated_bytes};
 }
 void Case(bool reverse) {
   Fixture f(1,reverse);
@@ -551,7 +688,21 @@ void ActivationSource(unsigned copies,bool split,bool emit) {
 
 }
 int main(int argc,char** argv) {
-  for(bool reverse:{false,true}){CandidatePlan(reverse);CandidateDeclarations(reverse);}
+  for(bool reverse:{false,true}){CandidatePlan(reverse);CandidateDeclarations(reverse);SnapshotPlan(reverse,false);SnapshotPlan(reverse,true);SnapshotPlan(reverse,false,true);}
+  for(bool reverse:{false,true})for(bool nested:{false,true})for(bool free:{false,true})SnapshotRestoration(1,reverse,nested,free);
+  for(bool reverse:{false,true})SnapshotRestoration(1,reverse,false,false,true);
+  if(argc==2&&std::string_view(argv[1])=="--snapshot-plan") {
+    std::uint64_t previous=0,previous_projection=0;
+    for(unsigned count:{200U,201U,400U,800U}) {
+      const auto [work,bytes]=SnapshotRestoration(count,false,false,false);
+      Check(!previous||work<previous*3);previous=work;
+      SnapshotRestoration(count,true,false,true);
+      const auto [projection_work,projection_bytes]=SnapshotBatch(count,false);SnapshotBatch(count,true);
+      Check(!previous_projection||projection_work<previous_projection*3);previous_projection=projection_work;
+      std::cout<<"snapshot retirement count="<<count<<" work="<<work<<" bytes="<<bytes<<" projection_work="<<projection_work<<" projection_bytes="<<projection_bytes<<'\n';
+    }
+    return 0;
+  }
   if(argc==2&&std::string_view(argv[1])=="--candidate-plan")return 0;
   if(argc==2&&std::string_view(argv[1])=="--captured-kinds"){CapturedKinds(false);CapturedKinds(true);return 0;}
   if(argc==2&&std::string_view(argv[1])=="--projected-lifetime") {
