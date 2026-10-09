@@ -2882,3 +2882,16 @@ and geometric protocol counterexamples complement actual generated-source tests.
   intermediate cell, tests use the original program for that counterexample and
   actual output for wrong entry replacement/read deletion. Production need not
   retain an unused declaration to make a mutant differ.
+
+
+### 规则249：控制结构清理消费共同语句观测
+
+旧PlanInertStatements仅重判ExpressionStmt/declaration_values，已退出决策。
+新的kStatements基于同一当前flow的效果、成功定义、暂停和builder-owned
+完成/progress/ownership汇总。每个非body语句使用同一Inert义务；body仅为
+必需语法容器。不存在empty-if、同块、邻接、分支数或producer形状准入。
+retained定义保护初始化/绑定生命期；不得由private write effect绕过独立
+需求删除。loop可能不终止、finally保守完成为显式分析精度缺口。
+独立oracle反向布局和源码反例验证，打印器只消费计划/保留来源边界。
+两项历史快照形状断言随合法纯读取消失而更新；保留独立错误TDZ移动及
+实际输出更新/返回删除反例，禁止在生产为维持旧断言保留无用控制。

@@ -149,17 +149,18 @@ std::uint64_t Run(Form form,unsigned count,bool reverse,bool emit){
   auto planned=PlanBindingInitializers(tree,loops,nullish);
   if(auto* error=std::get_if<TreeStructureError>(&planned))std::cerr<<"form "<<unsigned(form)<<" error "<<unsigned(*error)<<'\n';
   Check(std::holds_alternative<BindingInitializers>(planned));const auto& bindings=std::get<BindingInitializers>(planned);
-  const bool merged=native||form==Form::kStraight||form==Form::kUpdateThrows||form==Form::kLoop||form==Form::kSharedWrite||form==Form::kInitialUndefined||form==Form::kElidedReference||form==Form::kRetainedReference||form==Form::kRoundTrip||form==Form::kUndefinedBeforeRoot||live_undefined||(forwarded&&form!=Form::kForwardedShadow);
+  const bool merged=native||form==Form::kStraight||form==Form::kUpdateThrows||form==Form::kLoop||form==Form::kSharedWrite||form==Form::kInitialUndefined||form==Form::kElidedReference||form==Form::kRetainedReference||form==Form::kRoundTrip||form==Form::kUndefinedBeforeRoot||live_undefined||forwarded;
   if(bool(bindings.storage[4])!=merged)std::cerr<<"form "<<unsigned(form)<<" count "<<count<<" reverse "<<reverse<<" merged "<<bool(bindings.storage[4])<<'\n';
   Check(bool(bindings.storage[4])==merged);
-  // Coalescing creates an immutable copy. Its late propagation must compose
-  // through the retained slot, but use the forwarded read's current TDZ scope.
+  // Inert conditional reads are gone before motion/storage. Their obsolete
+  // destinations cannot constrain retained updates or final entry reads.
   if(form==Form::kRoundTrip){Check(bindings.aliases[3]==SymbolId{0});Check(bindings.Storage({4})==SymbolId{0});}
-  if(form==Form::kForwardedAliasShadow){Check(!bindings.aliases[3]);Check(bindings.Storage({4})==SymbolId{3});}
+  if(form==Form::kForwardedAliasShadow){Check(bindings.aliases[3]==SymbolId{0});Check(bindings.Storage({4})==SymbolId{0});}
   if(forwarded) {
     const auto at=reverse?tree.statements.size()-1-update.value:update.value;
     const auto occurrence=std::get<ExpressionStmt>(tree.statements[at].statement).expression;
-    Check(bindings.transports[occurrence.value]&&bindings.transports[occurrence.value]->value==value);
+    if(form==Form::kForwardedShadow||form==Form::kForwardedAliasShadow)Check(!bindings.transports[occurrence.value]);
+    else Check(bindings.transports[occurrence.value]&&bindings.transports[occurrence.value]->value==value);
   }
   const auto empty_index=reverse?tree.statements.size()-1-empty.value:empty.value;
   // Completed private reads now consume the initial undefined primitive.
@@ -186,7 +187,7 @@ std::uint64_t Run(Form form,unsigned count,bool reverse,bool emit){
   Check((output.str().find("scratch")==std::string::npos)==merged);
   if(forwarded)Check(output.str().find("snapshot")==std::string::npos);
   if(form==Form::kRoundTrip)Check(output.str().find("current")==std::string::npos);
-  if(form==Form::kForwardedAliasShadow)Check(output.str().find("current")!=std::string::npos);
+  if(form==Form::kForwardedAliasShadow)Check(output.str().find("current")==std::string::npos);
   if(emit)std::cout<<nlohmann::json{{"form",unsigned(form)},{"count",count},{"reverse",reverse},{"merged",merged},{"source",output.str()}}<<'\n';
   return bindings.work;
 }

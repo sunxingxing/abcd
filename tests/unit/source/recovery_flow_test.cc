@@ -4,6 +4,7 @@
 #include "../../../src/source/flow_definitions.h"
 #include "../../../src/source/flow_constants.h"
 #include "../../../src/source/flow_copies.h"
+#include "../../../src/source/flow_statements.h"
 #include "../../../src/source/recovery_schedule.h"
 #include "../../../src/source/source_names.h"
 #include "../../../src/source/source_name_retirement.h"
@@ -2013,6 +2014,76 @@ void TransitiveCopyOracle() {
   }
   std::cout<<"independent transitive-copy path states "<<cases<<'\n';
 }
+void StatementObservationOracle() {
+  // Slow independent reference: inspect each descendant separately. Production
+  // must aggregate once, including unreachable retained syntax and private defs.
+  std::uint64_t cases=0;
+  for(unsigned p2=0;p2<2;++p2)for(unsigned p3=0;p3<3;++p3)
+    for(unsigned encoded=0;encoded<2401;++encoded)for(bool reverse:{false,true}) {
+      RecoveryFlow flow{};flow.statements.resize(4);flow.statement_semantics.resize(4);
+      std::array<unsigned,4> direct{},parents{0,0,p2,p3};unsigned values=encoded;
+      const auto id=[&](unsigned i){return StmtId{reverse?3-i:i};};
+      for(unsigned i=0;i<4;++i) {
+        const auto feature=values%7;values/=7;direct[i]=feature?1U<<(feature-1):0;
+        const auto at=id(i);flow.statement_order.push_back(at);
+        flow.statement_semantics[at.value]=FlowStatement{i?std::optional{id(parents[i])}:std::nullopt};
+        auto& statement=*flow.statement_semantics[at.value];
+        if(direct[i]&4)statement.completion=FlowStatementCompletion::kAbrupt;
+        if(direct[i]&8)statement.completion=FlowStatementCompletion::kCleanup;
+        if(direct[i]&16)statement.progress=FlowStatementProgress::kMayRepeat;
+        FlowEvent event;event.owner=at;
+        if(direct[i]&1)event.effect=ExpressionEvaluation::kRequired;
+        if(direct[i]&2) {
+          event.definition=FlowDefinitionId{static_cast<unsigned>(flow.definitions.size())};
+          flow.definitions.push_back({FlowPoint{static_cast<unsigned>(flow.events.size())},{0},FlowDefinitionKind::kUndefined});
+        }
+        if(direct[i]&32)event.kind=FlowEventKind::kSuspend;
+        flow.events.push_back(event);
+      }
+      if(reverse)std::reverse(flow.events.begin(),flow.events.end());
+      const auto result=std::get<FlowStatements>(AnalyzeFlowStatements(flow));
+      for(unsigned i=0;i<4;++i) {
+        unsigned expected=direct[i];
+        for(unsigned j=i+1;j<4;++j) {
+          auto parent=parents[j];while(parent>i)parent=parents[parent];
+          if(parent==i)expected|=direct[j];
+        }
+        const auto& actual=result.observations[id(i).value];
+        const unsigned mask=(actual.evaluation==ExpressionEvaluation::kRequired?1U:0U)|
+            (actual.definitions?2U:0U)|(actual.abrupt?4U:0U)|(actual.cleanup?8U:0U)|
+            (actual.repetition?16U:0U)|(actual.suspension?32U:0U);
+        Check(mask==expected);Check(actual.Inert()==!expected);
+      }
+      ++cases;
+    }
+  for(bool chain:{false,true}) {
+    std::uint64_t previous=0;
+    for(unsigned count:{200U,201U,400U,800U}) {
+      RecoveryFlow flow{};flow.statements.resize(count);flow.statement_semantics.resize(count);
+      for(unsigned i=0;i<count;++i) {
+        flow.statement_semantics[i]=FlowStatement{i?std::optional{StmtId{chain?i-1:0}}:std::nullopt};flow.statement_order.push_back({i});
+        FlowEvent event;event.owner=StmtId{i};if(i==count-1)event.effect=ExpressionEvaluation::kRequired;flow.events.push_back(event);
+      }
+      const auto result=std::get<FlowStatements>(AnalyzeFlowStatements(flow));
+      for(unsigned i=0;i<count;++i)Check(result.observations[i].Inert()==!(chain||i==0||i==count-1));
+      if(count>=400)Check(result.work<previous*3);previous=result.work;
+      Check(std::holds_alternative<FlowStatements>(AnalyzeFlowStatements(flow,{result.allocated_bytes,result.work})));
+      Check(std::get<TreeStructureError>(AnalyzeFlowStatements(flow,{result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
+      Check(std::get<TreeStructureError>(AnalyzeFlowStatements(flow,{result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);
+      auto invalid=flow;invalid.statement_order.push_back({0});Check(std::get<TreeStructureError>(AnalyzeFlowStatements(invalid))==TreeStructureError::kOwnership);
+      invalid=flow;invalid.statement_semantics[0]->parent=StmtId{count-1};Check(std::get<TreeStructureError>(AnalyzeFlowStatements(invalid))==TreeStructureError::kOwnership);
+      invalid=flow;invalid.events[0].owner=StmtId{count};Check(std::get<TreeStructureError>(AnalyzeFlowStatements(invalid))==TreeStructureError::kOwnership);
+    }
+  }
+  RecoverySchedule schedule;schedule.Start(RecoveryPass::kInertStatements);
+  schedule.RequireFact(RecoveryFact::kStatements);schedule.RequireFact(RecoveryFact::kExpressions);schedule.RequireFact(RecoveryFact::kFlow);
+  const auto revision=schedule.Revision();Check(schedule.Commit());
+  const auto rejects=[](const auto& action){try{action();return false;}catch(TreeStructureError error){return error==TreeStructureError::kOwnership;}};
+  Check(rejects([&]{schedule.RequireFact(RecoveryFact::kStatements);}));Check(schedule.Finish());
+  Check(rejects([&]{schedule.RequireCurrent(revision);}));
+  schedule.Start(RecoveryPass::kInertOperands);Check(rejects([&]{schedule.RequireFact(RecoveryFact::kStatements);}));Check(!schedule.Finish());
+  std::cout<<"independent statement observation forests "<<cases<<'\n';
+}
 void InitializationTransfers() {
   const auto rejects=[](const auto& action) {
     try {action();return false;}catch(TreeStructureError error){return error==TreeStructureError::kOwnership;}
@@ -2181,4 +2252,4 @@ void PassContracts() {
   Check(!unfinished.DemandCleanupNeeded());
   std::cout<<"pass ownership, dependency and cleanup counterexamples passed\n";
 }
-int main(){InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();AvailableCopyOracle();TransitiveCopyOracle();InitializationTransfers();PassContracts();SnapshotCheckpoints();StableValues();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+int main(){InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();AvailableCopyOracle();TransitiveCopyOracle();StatementObservationOracle();InitializationTransfers();PassContracts();SnapshotCheckpoints();StableValues();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

@@ -27,7 +27,7 @@ struct Fixture {
   ExprId Call(unsigned value) {const auto arg=Expr(TreeLiteral{IntegerLiteral{static_cast<std::int32_t>(value)}});const auto first=static_cast<std::uint32_t>(tree.arguments.size());tree.arguments.push_back(arg);return Expr(CallExpr{Read(0),{first,1},CallReference::kValue});}
   ExprId Store(unsigned value) {return Expr(AssignmentExpr{SymbolTarget{{2}},Call(value)});}
   StmtId Block(std::vector<StmtId> body,ScopeId scope) {const auto first=static_cast<std::uint32_t>(tree.children.size());tree.children.insert(tree.children.end(),body.begin(),body.end());return Stmt(BlockStmt{scope,first,static_cast<std::uint32_t>(body.size())});}
-  ScopeId Scope(ScopeKind kind=ScopeKind::kBlock) {const ScopeId id{static_cast<std::uint32_t>(tree.scopes.size())};tree.scopes.push_back({kind,ScopeId{1}});return id;}
+  ScopeId Scope(ScopeKind kind=ScopeKind::kBlock,ScopeId parent={1}) {const ScopeId id{static_cast<std::uint32_t>(tree.scopes.size())};tree.scopes.push_back({kind,parent});return id;}
   void Finish(std::vector<StmtId> body,bool reverse) {
     auto& root=std::get<BlockStmt>(tree.statements[0].statement);root.first_child=tree.children.size();root.child_count=body.size();tree.children.insert(tree.children.end(),body.begin(),body.end());
     for(unsigned i=0;i<tree.statements.size();++i)if(const auto* block=std::get_if<BlockStmt>(&tree.statements[i].statement))for(unsigned j=0;j<=block->child_count;++j){const auto anchor=static_cast<std::uint32_t>(tree.anchors.size());tree.anchors.push_back({BlockBoundary{{i},j},{0}});tree.operations.push_back({{anchor},AnchorId{anchor}});}
@@ -45,6 +45,7 @@ struct Fixture {
       else if constexpr(std::is_same_v<T,ExpressionStmt>)node.expression=remap(node.expression);
       else if constexpr(std::is_same_v<T,ReturnStmt>){if(node.value)node.value=remap(*node.value);}
       else if constexpr(std::is_same_v<T,IfStmt>)node.condition=remap(node.condition);
+      else if constexpr(std::is_same_v<T,ThrowStmt>)node.value=remap(node.value);
     },statement.statement);
     for(auto& arg:tree.arguments)arg=remap(arg);std::reverse(tree.expressions.begin(),tree.expressions.end());
   }
@@ -215,7 +216,9 @@ std::uint64_t InitializationReads(unsigned form,unsigned count,bool reverse,bool
   body.push_back(f.Stmt(DeclarationStmt{{2},f.Call(1)}));
   const auto late=f.Stmt(ExpressionStmt{f.Read(2)});body.push_back(late);
   body.push_back(f.Stmt(ReturnStmt{f.Read(2)}));f.Finish(body,reverse);
-  test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  const auto verified=VerifyTreeStructure(tree);
+  if(const auto* error=std::get_if<TreeStructureError>(&verified))std::cerr<<"control structure form="<<form<<" error="<<static_cast<unsigned>(*error)<<'\n';
+  test::Check(std::holds_alternative<TreeStructure>(verified));
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
   const auto result=PlanBindingInitializers(tree,loops,nullish);test::Check(std::holds_alternative<BindingInitializers>(result));
   const auto& plan=std::get<BindingInitializers>(result);
@@ -303,6 +306,80 @@ std::uint64_t InertStatements(unsigned form,unsigned count,bool reverse,bool wra
   test::Check(!plan.omitted[declaration.value]);
   std::ostringstream out;test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,out)));
   if(emit)std::cout<<nlohmann::json{{"source",out.str()},{"inert_statement",true},{"form",form},{"count",count}}<<'\n';
+  return plan.work;
+}
+
+// Removing a condition with coercion/TDZ, a retained binding, an abrupt
+// completion or a loop must fail; pure composition must disappear regardless
+// of operand arena order or the number of independent controls.
+std::uint64_t InertControls(unsigned form,unsigned count,bool reverse,bool emit) {
+  Fixture f;auto& tree=f.tree;std::vector<StmtId> body,controls;
+  if(form==3) {tree.symbols[2].kind=BindingKind::kLocal;tree.symbols[2].temporary.reset();}
+  if(form!=3)body.push_back(f.Stmt(DeclarationStmt{{2},form==10?std::optional{f.Read(1)}:std::nullopt}));
+  for(unsigned i=0;i<=count;++i) {
+    auto condition=form==1?f.Call(1):form==3?f.Read(2):f.Read(1);
+    if(form==2)condition=f.Expr(UnaryExpr{TreeUnary::kPlus,condition});
+    const auto yes_scope=f.Scope();
+    const auto make_yes=[&]() -> StmtId {
+    if(form==4) {
+      const auto scope=yes_scope;const SymbolId local{static_cast<std::uint32_t>(tree.symbols.size())};
+      tree.symbols.push_back({scope,{2},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
+      return f.Block({f.Stmt(DeclarationStmt{local,f.Read(1)})},scope);
+    }
+    if(form==5)return f.Stmt(ReturnStmt{f.Expr(TreeLiteral{IntegerLiteral{1}})});
+    if(form==6) {
+      const auto loop=f.Stmt(LoopStmt{{}});
+      std::get<LoopStmt>(tree.statements[loop.value].statement).body=f.Block({f.Stmt(BreakStmt{loop,{}})},f.Scope(ScopeKind::kBlock,yes_scope));return loop;
+    }
+    if(form==7)return f.Stmt(TryStmt{f.Block({},f.Scope(ScopeKind::kBlock,yes_scope)),{},f.Block({f.Stmt(ExpressionStmt{f.Call(2)})},f.Scope(ScopeKind::kBlock,yes_scope))});
+    if(form==8)return f.Stmt(DebuggerStmt{});
+    if(form==9)return f.Stmt(ThrowStmt{f.Read(1)});
+    if(form==10)return f.Stmt(ExpressionStmt{f.Expr(AssignmentExpr{SymbolTarget{{2}},f.Read(1)})});
+    return f.Stmt(ExpressionStmt{f.Read(1)});
+    };const auto yes_value=make_yes();const auto yes=form==4?yes_value:f.Block({yes_value},yes_scope);
+    const auto no=f.Stmt(ExpressionStmt{form==10?f.Expr(AssignmentExpr{SymbolTarget{{2}},f.Read(1)}):f.Read(1)});
+    const auto control=f.Stmt(IfStmt{condition,yes,f.Block({no},f.Scope())});controls.push_back(control);body.push_back(control);
+  }
+  if(form==3)body.push_back(f.Stmt(DeclarationStmt{{2},f.Read(1)}));
+  body.push_back(f.Stmt(ReturnStmt{f.Read(form==10?2:1)}));f.Finish(body,reverse);
+  if(reverse) {
+    const auto remap=[&](StmtId id){return StmtId{static_cast<std::uint32_t>(tree.statements.size()-1-id.value)};};
+    for(auto& statement:tree.statements)std::visit([&](auto& node){using T=std::decay_t<decltype(node)>;
+      if constexpr(std::is_same_v<T,IfStmt>){node.consequent=remap(node.consequent);if(node.alternate)node.alternate=remap(*node.alternate);}
+      else if constexpr(std::is_same_v<T,LoopStmt>)node.body=remap(node.body);
+      else if constexpr(std::is_same_v<T,BreakStmt>||std::is_same_v<T,ContinueStmt>)node.target=remap(node.target);
+      else if constexpr(std::is_same_v<T,TryStmt>){node.body=remap(node.body);if(node.handler)node.handler->body=remap(node.handler->body);if(node.finalizer)node.finalizer=remap(*node.finalizer);}
+    },statement.statement);
+    for(auto& child:tree.children)child=remap(child);
+    for(auto& anchor:tree.anchors)if(auto* boundary=std::get_if<BlockBoundary>(&anchor.position))boundary->block=remap(boundary->block);
+    for(auto& label:tree.labels)label=remap(label);for(auto& control:controls)control=remap(control);tree.body=remap(tree.body);
+    std::reverse(tree.statements.begin(),tree.statements.end());
+  }
+  const auto verified=VerifyTreeStructure(tree);
+  if(const auto* error=std::get_if<TreeStructureError>(&verified))std::cerr<<"control structure form="<<form<<" error="<<static_cast<unsigned>(*error)<<'\n';
+  test::Check(std::holds_alternative<TreeStructure>(verified));
+  const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
+  const auto result=PlanBindingInitializers(tree,loops,nullish);test::Check(std::holds_alternative<BindingInitializers>(result));
+  const auto& plan=std::get<BindingInitializers>(result);
+  for(const auto control:controls) {
+    if(bool(plan.omitted[control.value])!=(form==0||form==10))std::cerr<<"control form="<<form<<" count="<<count<<" reverse="<<reverse<<'\n';
+    test::Check(bool(plan.omitted[control.value])==(form==0||form==10));
+  }
+  if(!count) {
+    test::Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes,plan.work})));
+    test::Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes-1,plan.work}))==TreeStructureError::kResourceLimit);
+    test::Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes,plan.work-1}))==TreeStructureError::kWorkLimit);
+  }
+  std::ostringstream out;const auto printed=PrintFunctionTree(tree,out);test::Check(std::holds_alternative<PrintedFunction>(printed));
+  test::CheckProjectedRanges(tree,plan,std::get<PrintedFunction>(printed),out.str().size());
+  for(const auto control:controls)if(plan.omitted[control.value]) {
+    const auto& printed_tree=std::get<PrintedFunction>(printed);
+    test::Check(printed_tree.statement_extents[control.value]==GeneratedExtent::kBoundary);
+    test::Check(printed_tree.statements[control.value].begin==printed_tree.statements[control.value].end);
+    for(std::size_t i=0;i<tree.anchors.size();++i)if(const auto* boundary=std::get_if<BlockBoundary>(&tree.anchors[i].position))
+      if(plan.omitted[boundary->block.value])test::Check(printed_tree.anchors[i]==printed_tree.statements[boundary->block.value].end);
+  }
+  if(emit)std::cout<<nlohmann::json{{"source",out.str()},{"inert_control",true},{"form",form},{"count",count}}<<'\n';
   return plan.work;
 }
 
@@ -465,6 +542,13 @@ void BindingDependencyOracle() {
 
 }
 int main(int argc,char**) {
+  for(unsigned form=0;form<11;++form)for(bool reverse:{false,true}) {
+    std::uint64_t previous=0;
+    for(unsigned count:{0U,1U,200U,201U,400U,800U}) {
+      const auto work=InertControls(form,count,reverse,argc>1);
+      if(count>=400)test::Check(work<previous*3);previous=work;
+    }
+  }
   BindingObligations();
   BindingDependencyOracle();
   for(unsigned form=0;form<8;++form)for(bool reverse:{false,true})for(bool wrapped:{false,true}) {

@@ -9,7 +9,7 @@ enum class RecoveryPass {
   kDeclarations,kConstants,kBindingValues,kAliases,kStoredResults,kDeadDefinitions,kInitialValues,
   kBindings,kSnapshots,kStorage,kInertStatements,kInertOperands,kLoopDeclarations,kDeclarationKinds
 };
-enum class RecoveryFact : std::uint8_t {kExpressions,kFlow,kLiveness,kDemand,kInitializations,kConstants,kCopies};
+enum class RecoveryFact : std::uint8_t {kExpressions,kFlow,kLiveness,kDemand,kInitializations,kConstants,kCopies,kStatements};
 class RecoveryFactSet {
  public:
   constexpr RecoveryFactSet(std::initializer_list<RecoveryFact> facts) {
@@ -52,7 +52,8 @@ struct RecoveryPassContract {
     // Coalescing proves the new slot initialized before every remapped read.
     case RecoveryPass::kStorage:return {{Fact::kLiveness,Fact::kInitializations},Scope::kStorage,true};
     // Only proven inert occurrences disappear; no retained initialization moves.
-    case RecoveryPass::kInertStatements:case RecoveryPass::kInertOperands:
+    case RecoveryPass::kInertStatements:return {{Fact::kStatements},Scope::kNormalization,true};
+    case RecoveryPass::kInertOperands:
       return {{Fact::kExpressions},Scope::kNormalization,true};
     case RecoveryPass::kLoopDeclarations:return {{},Scope::kGrammar,false};
     // Grammar-only const spelling changes neither values nor completion.
@@ -63,7 +64,7 @@ struct RecoveryPassContract {
 [[nodiscard]] inline RecoveryFactSet RequiredFacts(RecoveryPass pass) {
   auto result=PassContract(pass).inputs;
   if(result.Contains(RecoveryFact::kConstants)||result.Contains(RecoveryFact::kCopies))result.Add(RecoveryFact::kLiveness);
-  if(result.Contains(RecoveryFact::kLiveness)||result.Contains(RecoveryFact::kDemand)||
+  if(result.Contains(RecoveryFact::kStatements)||result.Contains(RecoveryFact::kLiveness)||result.Contains(RecoveryFact::kDemand)||
       result.Contains(RecoveryFact::kInitializations))result.Add(RecoveryFact::kFlow);
   // Flow and expressions are bootstrapped together: conservative effects ->
   // initialization proof -> refined effects. They are one provider boundary,

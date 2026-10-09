@@ -580,3 +580,13 @@ two-cell graphs, split/reversed/geometric chains and actual source/mutants verif
 composition. Actual selected evidence is recorded in status.md. Local/catch/capture
 activation, original correspondence, trial precision/fullfinally/global convergence
 and overall milestone remain open.
+
+
+rules249 implemented substep: builder-owned typed statement completion/progress and
+current event ownership feed one shared observation fold. InertStatements consumes
+kStatements at exact revision; old expression/declaration syntax decisions retire.
+Final read cleanup exposes ordinary pure controls before grammar without another
+round. Retained definitions, abrupt completion, suspension, possible repetition and
+conservative cleanup remain independent obligations. Printer only marks all omitted
+origins. Independent forest reference/source/layout/budget evidence is in status.md;
+full termination/finally/activation/originalIR/global convergence remain open.

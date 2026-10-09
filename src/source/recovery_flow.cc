@@ -48,6 +48,9 @@ class FlowBuilder {
       if (const auto& initializer=projection_.initializers[i])
         initializers_[initializer->assignment.value]=StmtId{static_cast<std::uint32_t>(i)};
     }
+    Resize(result_.statement_semantics,tree_.statements.size());
+    for(auto& statement:result_.statement_semantics){budget_.Step();statement.reset();}
+    result_.statement_order.clear();
     terminal_=New(); dispatch_=New();
     statements_.resize(tree_.statements.size()); exits_.resize(tree_.statements.size());
     expressions_.resize(tree_.expressions.size()); seen_.resize(tree_.expressions.size());
@@ -160,7 +163,7 @@ class FlowBuilder {
   }
   Point New(FlowEvent event={}) {
     RequireTree(events_.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
-    budget_.Step();Point result{static_cast<std::uint32_t>(events_.size())};Append(events_,event);return result;
+    budget_.Step();event.owner=current_owner_;Point result{static_cast<std::uint32_t>(events_.size())};Append(events_,event);return result;
   }
   Point Define(SymbolId binding,FlowDefinitionKind kind,std::optional<SymbolId> copy={},
       std::optional<ExprId> value={},std::optional<StmtId> declaration={},
@@ -227,6 +230,7 @@ class FlowBuilder {
   void Build(Expression at) {
     RequireTree(!seen_[at.id.value],Error::kOwnership);seen_[at.id.value]=1;
     const auto start=expressions_[at.id.value];const auto& context=at.context;
+    current_owner_=context.owner;events_[start.value].owner=context.owner;
     result_.value_uses[at.id.value]=context.value_use;
     result_.expression_owners[at.id.value]=context.owner;
     if(!result_.expression_transports.empty())result_.expression_transports[at.id.value]=context.transport;
@@ -320,8 +324,13 @@ class FlowBuilder {
   }
   void Build(Statement at) {
     const auto start=statements_[at.id.value];auto context=at.context;context.owner=at.id;
+    current_owner_=at.id;events_[start.value].owner=at.id;
     exits_[at.id.value]=context.next;
-    if(projection_.omitted[at.id.value]){Link(start,context.next);return;}
+    if(projection_.omitted[at.id.value]){events_[start.value].owner.reset();Link(start,context.next);return;}
+    RequireTree(!result_.statement_semantics[at.id.value],Error::kOwnership);
+    result_.statement_semantics[at.id.value]=FlowStatement{at.context.owner};
+    Append(result_.statement_order,at.id);
+    auto& semantics=*result_.statement_semantics[at.id.value];
     if(!projection_.declaration_completions.empty())if(const auto& completion=projection_.declaration_completions[at.id.value]) {
       const bool initialize=completion->kind==DeclarationCompletionKind::kInitialize;
       std::optional<DiscardedId> id;
@@ -359,7 +368,7 @@ class FlowBuilder {
       if constexpr(std::is_same_v<T,BlockStmt>) {
         const auto entered=New({FlowEventKind::kEnterScope,{},{},{},node.scope});
         auto next=New({FlowEventKind::kLeaveScope,{},{},{},node.scope});Link(next,context.next);
-        for(std::size_t i=node.child_count;i;--i)next=Stmt(tree_.children[node.first_child+i-1],{next,context.thrown,context.finalizer});
+        for(std::size_t i=node.child_count;i;--i)next=Stmt(tree_.children[node.first_child+i-1],{next,context.thrown,context.finalizer,{},FlowValueUse::kObserved,at.id});
         Link(entered,next);Link(start,entered);
       } else if constexpr(std::is_same_v<T,ExpressionStmt>) {
         RequireTree(discarded_.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
@@ -390,34 +399,43 @@ class FlowBuilder {
       } else if constexpr(std::is_same_v<T,IfStmt>) {
         auto branch=New({FlowEventKind::kTruthBranch,{},{},node.condition});Link(start,Expr(node.condition,context.Operand(branch)));
         Link(branch,Stmt(node.consequent,context),FlowCompletion::kTaken);Link(branch,node.alternate?Stmt(*node.alternate,context):context.next,FlowCompletion::kNotTaken);
-      } else if constexpr(std::is_same_v<T,LoopStmt>)Link(start,Stmt(node.body,{start,context.thrown,context.finalizer}));
-      else if constexpr(std::is_same_v<T,BreakStmt>)Abrupt(start,exits_[node.target.value],context,FlowCompletion::kJump);
-      else if constexpr(std::is_same_v<T,ContinueStmt>)Abrupt(start,statements_[node.target.value],context,FlowCompletion::kJump);
+      } else if constexpr(std::is_same_v<T,LoopStmt>) {
+        semantics.progress=FlowStatementProgress::kMayRepeat;
+        Link(start,Stmt(node.body,{start,context.thrown,context.finalizer,{},FlowValueUse::kObserved,at.id}));
+      }
+      else if constexpr(std::is_same_v<T,BreakStmt>) {semantics.completion=FlowStatementCompletion::kAbrupt;Abrupt(start,exits_[node.target.value],context,FlowCompletion::kJump);}
+      else if constexpr(std::is_same_v<T,ContinueStmt>) {semantics.completion=FlowStatementCompletion::kAbrupt;Abrupt(start,statements_[node.target.value],context,FlowCompletion::kJump);}
       else if constexpr(std::is_same_v<T,ReturnStmt>) {
+        semantics.completion=FlowStatementCompletion::kAbrupt;
         auto returned=New();Abrupt(returned,terminal_,context,FlowCompletion::kReturn);
         Link(start,node.value?Expr(*node.value,context.Operand(returned)):returned);
       } else if constexpr(std::is_same_v<T,ThrowStmt>) {
+        semantics.completion=FlowStatementCompletion::kAbrupt;
         const auto thrown=New();Link(thrown,context.thrown,FlowCompletion::kThrow);
         Link(start,Expr(node.value,context.Operand(thrown)));
       }
       else if constexpr(std::is_same_v<T,TryStmt>) {
         auto normal=context.next,thrown=context.thrown;auto cleanup=context.finalizer;
         if(node.finalizer) {
+          // Conservative cleanup routes do not yet prove exact completion
+          // substitution. Publish that capability gap, never guess a shape.
+          semantics.completion=FlowStatementCompletion::kCleanup;
           const auto resume=New();Link(resume,context.next);Link(resume,dispatch_,FlowCompletion::kConservativeCleanup);
-          cleanup=Stmt(*node.finalizer,{resume,context.thrown,context.finalizer});normal=*cleanup;thrown=*cleanup;
+          cleanup=Stmt(*node.finalizer,{resume,context.thrown,context.finalizer,{},FlowValueUse::kObserved,at.id});normal=*cleanup;thrown=*cleanup;
           Link(dispatch_,*cleanup,FlowCompletion::kConservativeCleanup);Link(dispatch_,context.thrown,FlowCompletion::kConservativeCleanup);
         }
         if(node.handler) {
-          const auto handler=Stmt(node.handler->body,{normal,thrown,cleanup});
+          const auto handler=Stmt(node.handler->body,{normal,thrown,cleanup,{},FlowValueUse::kObserved,at.id});
           const auto binding=Define(node.handler->parameter,FlowDefinitionKind::kCatch);Link(binding,handler);thrown=binding;
         }
-        Link(start,Stmt(node.body,{normal,thrown,cleanup}));
+        Link(start,Stmt(node.body,{normal,thrown,cleanup,{},FlowValueUse::kObserved,at.id}));
       } else if constexpr(std::is_same_v<T,DebuggerStmt>) {
         events_[start.value].effect=ExpressionEvaluation::kRequired;Link(start,context.next);
       }
       else {static_assert(std::is_same_v<T,UnrecoveredStmt>);throw Error::kUnsupportedSyntax;}
     },tree_.statements[at.id.value].statement);
   }
+  std::optional<StmtId> current_owner_;
   const FunctionTree& tree_;LegacyFlowProjection projection_;TreeCheckBudget budget_;RecoveryScratch memory_;
   std::vector<FlowEvent> events_;std::vector<FlowEdge> edges_;
   std::pmr::vector<Point> statements_,expressions_,exits_;std::pmr::vector<Task> tasks_;

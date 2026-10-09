@@ -70,7 +70,7 @@ struct LoopTransitionEnd { StmtId block; std::uint32_t first; };
 struct LoopInitializerCursor { std::uint32_t index; std::uint32_t end; bool emitted = false; };
 struct LoopDeclarationCursor { std::uint32_t index; std::uint32_t end; bool emitted = false; };
 struct LoopKeyword { std::optional<LabelId> label; };
-struct ElideLoopHeader { StmtId id; };
+struct ElideStatement { StmtId id; };
 struct LoopBody { StmtId block; LoopConditionSyntax syntax; std::size_t depth; };
 struct BlockCursor { StmtId id; std::uint32_t index; std::size_t depth; };
 struct Indent { std::size_t depth; };
@@ -92,7 +92,7 @@ struct ParameterCursor { std::uint32_t index; };
 struct EndParameter { std::uint32_t index; };
 using PrintAction = std::variant<std::string_view, ExprId, EndExpression, ProjectedExpression, ProjectSequenceOperand, ExpressionOperand, BooleanOperand, PostfixSpine,
     Statement, EndStatement, BlockCursor, Indent, PropertyKey, SymbolName, ArgumentCursor,
-    ObjectCursor, EndProperty, BeginFunction, EndFunction, ParameterCursor, EndParameter, SnapshotCursor, DerivedClassBody, ArrayArgumentCursor, LoopHeader, LoopHeaderCursor, ElideLoopHeader, LoopBody, LoopTransitionEnd, LoopInitializerCursor, LoopDeclarationCursor, LoopKeyword, BlockBoundary>;
+    ObjectCursor, EndProperty, BeginFunction, EndFunction, ParameterCursor, EndParameter, SnapshotCursor, DerivedClassBody, ArrayArgumentCursor, LoopHeader, LoopHeaderCursor, ElideStatement, LoopBody, LoopTransitionEnd, LoopInitializerCursor, LoopDeclarationCursor, LoopKeyword, BlockBoundary>;
 struct OwnedAction { std::size_t owner; std::size_t depth; PrintAction action; };
 struct LocatedAnchor { BlockBoundary boundary; AnchorId id; };
 struct OwnerTree { FunctionOwnerId owner; std::size_t member; };
@@ -1526,14 +1526,14 @@ class TreePrinter {
     }
   }
   const LoopSyntax& Loops() const { return Variables().loops; }
-  void Run(ElideLoopHeader at) {
-    // Only effect-free constant completions are elided. Preserve their original
-    // statement/anchor identities at the end of the actual predicate occurrence.
+  void Run(ElideStatement at) {
+    // The prepared plan owns omission. Traverse all owned source origins once
+    // at the current boundary; emission performs no new semantic decisions.
     OmitBindingStatement(at.id);
     const auto& node = Tree().statements[at.id.value].statement;
     if (const auto* block = std::get_if<BlockStmt>(&node))
       for (std::uint32_t i = 0; i <= block->child_count; ++i) { Step(); Boundary({at.id, i}); }
-    StatementChildren(Tree(), at.id, [&](StmtId child) { Step(); Push(ElideLoopHeader{child}); });
+    StatementChildren(Tree(), at.id, [&](StmtId child) { Step(); Push(ElideStatement{child}); });
   }
   void Run(LoopHeader at) {
     if (at.retained == at.id) { Append("true"); return; }
@@ -1567,8 +1567,8 @@ class TreePrinter {
       };
       const auto yes = literal(branch.consequent), no = literal(branch.alternate);
       if (yes && no) {
-        if (branch.consequent != at.retained) Push(ElideLoopHeader{branch.consequent});
-        if (branch.alternate && branch.alternate != at.retained) Push(ElideLoopHeader{*branch.alternate});
+        if (branch.consequent != at.retained) Push(ElideStatement{branch.consequent});
+        if (branch.alternate && branch.alternate != at.retained) Push(ElideStatement{*branch.alternate});
         if (*yes != *no) {
           Append("("); Push(std::string_view(")"));
           Push(BooleanOperand{{branch.condition, {}, {}, ExpressionObservation::kTruthiness}, !*yes});
@@ -1597,8 +1597,8 @@ class TreePrinter {
     }
     const auto child = Tree().children[block.first_child + at.index];
     if (Initializers().omitted[child.value]) {
-      OmitBindingStatement(child);
-      Push(LoopHeaderCursor{at.block, at.index + 1, at.count, at.retained, at.discarded}); return;
+      Push(LoopHeaderCursor{at.block, at.index + 1, at.count, at.retained, at.discarded});
+      Push(ElideStatement{child});return;
     }
     const auto& meaning = Loops().meanings[child.value];
     const bool follows = counts[block.first_child + at.index + 1] != counts[block.first_child + at.count];
@@ -1620,7 +1620,7 @@ class TreePrinter {
     const auto& block = std::get<BlockStmt>(Tree().statements[at.block.value].statement);
     for (auto i = at.first; i <= block.child_count; ++i) {
       Step(); Boundary({at.block, i});
-      if (i < block.child_count) Push(ElideLoopHeader{Tree().children[block.first_child + i]});
+      if (i < block.child_count) Push(ElideStatement{Tree().children[block.first_child + i]});
     }
   }
   void Run(BlockBoundary at) { Boundary(at); }
@@ -1645,7 +1645,7 @@ class TreePrinter {
     const BlockBoundary after{root.boundary.block, root.boundary.index + 1};
     const bool omitted = Initializers().omitted[root.statement.value];
     Push(LoopInitializerCursor{at.index + 1,at.end,at.emitted || !omitted});Push(after);
-    if (omitted) { OmitBindingStatement(root.statement);return; }
+    if (omitted) { Push(ElideStatement{root.statement});return; }
     if (at.emitted) Append(", ");
     Push(LoopHeader{root.statement, {}, true});
   }
@@ -1659,7 +1659,7 @@ class TreePrinter {
     const BlockBoundary after{root.boundary.block, root.boundary.index + 1};
     const bool omitted = Initializers().omitted[root.statement.value];
     Push(LoopDeclarationCursor{at.index + 1,at.end,at.emitted || !omitted});Push(after);
-    if (omitted) { OmitBindingStatement(root.statement);return; }
+    if (omitted) { Push(ElideStatement{root.statement});return; }
     if (at.emitted) Append(", ");
     Result().statements[root.statement.value].begin = written_;
     const auto& binding = *Initializers().statements[root.statement.value];
@@ -1754,7 +1754,7 @@ class TreePrinter {
       return;
     }
     if (Initializers().omitted[child.value]) {
-      OmitBindingStatement(child); return;
+      Push(ElideStatement{child}); return;
     }
     Push(std::string_view("\n"));
     const auto depth = root ? at.depth : at.depth + 1;

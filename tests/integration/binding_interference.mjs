@@ -176,13 +176,13 @@ for(const record of records){
     assert.deepEqual(slots,[record.slot]);
   }else assert.equal(hasScratch,!record.merged);
   if(record.form===21)assert.equal(hasCurrent,false);
-  if(record.form===22)assert.equal(hasCurrent,true);
+  if(record.form===22)assert.equal(hasCurrent,false);
   const inputs=record.form===7?[2,3,4,6,7,8,12,13]:Array.from({length:primitives.length+2},(_,i)=>i);
   for(const index of inputs)for(const mode of ['normal','coercion-throw','report-throw','reject',...(record.partial||record.available||record.transitive?['report-second-throw','report-third-throw']:[])])for(const flag of [false,true])for(const request of record.form===5?['next','throw','return']:['next']){
     if(record.form===7&&primitives[index]===Infinity)continue;
     assert.deepEqual(await observe(recovered,record.form,index,mode,flag,request),await observe(references[record.form],record.form,index,mode,flag,request),JSON.stringify({form:record.form,index,mode,flag,request}));++cases;
   }
-  if(record.count===0&&!record.reverse&&[1,3,4,5,6,9,10,20,32,33,35,36,37,39,40,42,43].includes(record.form)){
+  if(record.count===0&&!record.reverse&&[1,3,4,5,6,9,10,32,33,35,36,37,39,40,42,43].includes(record.form)){
     // Recovery may preserve snapshots as immutable parameters, while motion
     // can expose a shadow at a new occurrence. Exercise both semantic programs;
     // require a real behavioral counterexample, not a particular syntax layout.
@@ -335,16 +335,24 @@ for(const record of records){
     assert.notDeepEqual(await observe(wrong,25,6,'normal',true,'next'),
         await observe(references[25],25,6,'normal',true,'next'));++mutations;
   }
-  if(record.count===0&&!record.reverse&&record.form===22) {
-    // Wrong late aliasing crosses the shadowing declaration's TDZ. Rename only
-    // reads, preserving declarations so the mutant remains syntactically valid.
-    const edits=[],work=[inspect];
-    while(work.length){const node=work.pop();if(node.type==='Identifier'&&node.name==='current')edits.push(node);
-      for(const [key,value]of Object.entries(node)){if(node.type==='VariableDeclarator'&&key==='id')continue;
-        if(Array.isArray(value)){for(const child of value)if(child?.type)work.push(child);}else if(value?.type)work.push(value);}}
-    let mutant=record.source;for(const edit of edits.sort((a,b)=>b.start-a.start))mutant=mutant.slice(0,edit.start)+'input'+mutant.slice(edit.end);
-    parseJavaScript(mutant);const wrong=vm.runInNewContext(mutant);
-    assert.notDeepEqual(await observe(wrong,22,6,'normal',true,'next'),await observe(references[22],22,6,'normal',true,'next'));++mutations;
+  if(record.count===0&&!record.reverse&&[20,22].includes(record.form)) {
+    // After inert control removal there is no moved read left in this scope.
+    // The old motion/alias negative still belongs to the independent original
+    // program; do not require recovery to retain an unobserved snapshot.
+    const wrong=record.form===20?
+      function(input,report,flag){let current=input;{if(++current){}let current=100;}return current;}:
+      function(input,report,flag){let current=input;{if(input){}let input=100;}return current;};
+    assert.notDeepEqual(await observe(wrong,record.form,6,'normal',true,'next'),
+      await observe(references[record.form],record.form,6,'normal',true,'next'));++mutations;
+    // Mutate an observable operation in actual output as well.
+    const work=[inspect];let site;
+    while(work.length){const node=work.pop();if(node.type===(record.form===20?'UpdateExpression':'ReturnStatement'))site=node;
+      for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)work.push(child);}else if(value?.type)work.push(value);}}
+    assert.ok(site);
+    const mutant=record.source.slice(0,site.start)+(record.form===20?'input':'return undefined;')+record.source.slice(site.end);
+    const bad=vm.runInNewContext(mutant);
+    assert.notDeepEqual(await observe(bad,record.form,6,'normal',true,'next'),
+      await observe(references[record.form],record.form,6,'normal',true,'next'));++mutations;
   }
   if(record.count===0&&!record.reverse&&record.form===21) {
     const wrong=function(input,report){report(input);return undefined;};

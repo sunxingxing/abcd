@@ -9,6 +9,7 @@
 #include "flow_definitions.h"
 #include "flow_constants.h"
 #include "flow_copies.h"
+#include "flow_statements.h"
 #include "primitive_value.h"
 #include "flow_motion.h"
 #include "class_tree.h"
@@ -289,6 +290,9 @@ class Initializers {
     RunPass(Pass::kBindingValues);
     EnsureDemandCleanup();
     RunPass(Pass::kInertOperands);
+    // Read substitution exposes inert controls only after private writes and
+    // binding lifetimes have been discharged by their independent owners.
+    RunPass(Pass::kInertStatements);
     EnsureDemandCleanup();
     // Final source grammar consumes the final bindings/evaluations. It can
     // retain outlined prefix effects without reviving removed declarations.
@@ -331,6 +335,7 @@ class Initializers {
     std::optional<FlowDemand> demand;
     std::optional<FlowConstants> constants;
     std::optional<FlowCopies> copies;
+    std::optional<FlowStatements> statements;
   };
   // This read-occurrence proof is the only analysis transported across a
   // projection commit. Its semantic contract and version are both required;
@@ -346,7 +351,7 @@ class Initializers {
   }
   ProjectionFacts& CurrentFacts() const {
     RequireAnalysis();
-    if(!facts_)facts_.emplace(ProjectionFacts{schedule_.Revision(),{},{},{},{},{},{},{}});
+    if(!facts_)facts_.emplace(ProjectionFacts{schedule_.Revision(),{},{},{},{},{},{},{},{}});
     schedule_.RequireCurrent(facts_->revision);
     return *facts_;
   }
@@ -581,8 +586,7 @@ class Initializers {
     }
   }
   void OmitInertStatements() {
-    const auto& facts = AnalyzeExpressions();
-    const auto omitted = PlanInertStatements(facts);
+    const auto omitted = PlanInertStatements(CurrentStatements());
     // The pass publishes a complete proposal before changing the projection.
     // No subsequent statement observes a partly applied omission batch.
     for (const auto statement : omitted) {
@@ -903,6 +907,16 @@ class Initializers {
     const auto& refinement=std::get<FlowRefinement>(refined);
     budget_.Admit(refinement.allocated_bytes,1);budget_.Step(refinement.work);
     facts.flow=std::move(provisional);return *facts.flow;
+  }
+  const FlowStatements& CurrentStatements() const {
+    schedule_.RequireFact(RecoveryFact::kStatements);auto& facts=CurrentFacts();
+    if(!facts.statements) {
+      auto analyzed=AnalyzeFlowStatements(CurrentFlow(),budget_.Remaining());
+      if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
+      facts.statements=std::get<FlowStatements>(std::move(analyzed));
+      budget_.Admit(facts.statements->allocated_bytes,1);budget_.Step(facts.statements->work);
+    }
+    return *facts.statements;
   }
   const FlowLiveness& CurrentLiveness() const {
     schedule_.RequireFact(RecoveryFact::kLiveness);
@@ -1437,22 +1451,16 @@ class Initializers {
       }
     }
   }
-  std::vector<StmtId> PlanInertStatements(const ExpressionFacts& facts) const {
-    std::vector<StmtId> omitted;
-    budget_.Array(omitted, tree_.statements.size()); std::size_t count = 0;
-    // Expression statements discard their value. Shared initialization and
-    // effect facts prove omission, independently of whether an earlier pass
-    // replaced their root. Keep declarations and all required evaluations;
-    // TDZ, coercion, calls and suspension are not inert merely because unused.
-    for (std::size_t i = 0; i < tree_.statements.size(); ++i) {
-      budget_.Step(); const auto* effect = std::get_if<ExpressionStmt>(&tree_.statements[i].statement);
-      const auto& value=plan_.declaration_values[i];
-      if (!plan_.omitted[i] && !plan_.declaration_completions[i] && !plan_.statements[i] &&
-          (value ? !value->target && facts.evaluations[value->value.value]==ExpressionEvaluation::kInert :
-              effect && facts.evaluations[effect->expression.value] == ExpressionEvaluation::kInert))
-        omitted[count++] = StmtId{static_cast<std::uint32_t>(i)};
+  std::vector<StmtId> PlanInertStatements(const FlowStatements& facts) const {
+    std::vector<StmtId> omitted;budget_.Array(omitted,tree_.statements.size());std::size_t count=0;
+    const auto& flow=*CurrentFacts().flow;
+    for(const auto id:flow.statement_order) {
+      budget_.Step();
+      // The body is the callable's mandatory grammar container. Every other
+      // retained statement consumes the same completion/effect obligations.
+      if(id!=tree_.body&&facts.observations[id.value].Inert())omitted[count++]=id;
     }
-    omitted.resize(count); return omitted;
+    omitted.resize(count);return omitted;
   }
   bool LegacyConfined(const BindingUses& use, std::optional<StmtId> owner) const {
     if (use.outside_body || !owner || !use.first_container) return false;

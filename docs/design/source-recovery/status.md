@@ -24,6 +24,39 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-09：规则249，共同语句效果与完成观测
+
+- RecoveryFlow适配器一次发布retained语句ownership forest、完成/progress
+  义务和每个事件当前owner。AnalyzeFlowStatements汇总效果、保留定义、
+  abrupt、cleanup、repetition、suspension；所有保留语法含不可达声明参与。
+  private inert write不能替代独立需求删除，空循环不能忽略不终止。
+- InertStatements消费exact ProjectionFacts中的kStatements，退出原
+  ExpressionStmt/declaration_values局部重判；契约声明依赖闭包，自有
+  omission提案完成后才首次提交/失效。最终BindingValues与独立需求
+  清理后，既定normalization阶段清理纯控制，再进入grammar。无新整轮
+  pass、回退storage/alias/motion或空if/同块/邻接/producer准入条件。
+  打印器只消费省略计划，把整棵被省略子树/anchors映射到来源边界。
+- 有效旧实现RED353 exit134，结构验证先通过。首轮返回反例发现漏记
+  abrupt完成，补入共同adapter；两项历史快照形状断言随合法纯控制
+  消除更新，保留独立错误TDZ移动和实际输出更新/返回删除反例。
+  最终聚焦5/5在64.55秒通过；28812独立4点森林、反向ID/事件、
+  200/201/400/800 chain/star、exact/short预算和非法ownership通过。
+  11种真实控制源码组合、反向语句/表达式arena、来源/anchor边界通过。
+- 最终原29目标构建177.30秒，exact原59/59项CTest463.38秒通过，
+  combined-coverage.json核对选定名称集合一致。语句清理720份源码/
+  18360行为比较/77变异反例；存储1181/194324/152，声明2568/513600/
+  100、初始化2004/482752/368、循环276/13976/68和既有真实record
+  回归通过；旧值/复制/名字/版本/需求/初始化checkpoint反例保持。
+  fresh固定pasteboard导出3.10秒：19records，10complete/0partial/
+  9no-module，10语法检查通过，源码字节与规则248一致，输入SHA前后
+  不变；原预算与language_numeric_constructors_v1契约保持。
+  最终构建仅既有literal_plan.cc kNoop switch warning，无error。
+  证据build/stage-one/statement-semantics-verification。
+- 有限正常完成汇总是保守分析；循环终止、handled abrupt与精确finally
+  仍有精度缺口。原IR/SSA对应、activation单元身份、试算精度、共同
+  全局收敛与统一变量/结构gate/阶段一Goal继续开放。完整套件、扩展
+  corpus、RSS/benchmarks、DFX与agents继续暂停。
+
 ### 2026-10-09：规则248，共同完成值查询贯通私有复制链
 
 - 共同all-read FlowLiveness在正常复制定义成功提交前查询源当前值，

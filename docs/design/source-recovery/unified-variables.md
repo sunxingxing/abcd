@@ -2405,7 +2405,37 @@ making any definition observable. Actual output execution/read deletion/incorrec
 entry substitution complement wrong sharing in the independent original program:
 when current read substitution legitimately retires an intermediate binding,
 renaming an output slot to that absent name is not a valid coalescing counterexample.
-See status.md for actual final selected evidence. Read substitution can expose
-pure empty controls after independent binding cleanup; general statement completion/
-effect normalization remains a source-style gap. It must be owned by common semantic
+See status.md for actual final selected evidence. At the rules248 boundary, read
+substitution exposed pure empty controls after independent binding cleanup. This
+source-style gap is addressed by the shared rules249 statement observations below.
+Statement completion/effect normalization must be owned by common semantic
 facts rather than a new empty-branch shape rule.
+
+### Shared statement observations (2026-10-09, rules249)
+
+RecoveryFlow's language adapter publishes the retained statement ownership forest
+and conservative completion/progress obligations once. Every actual event carries
+its current statement owner, including transported expressions and catch definitions.
+AnalyzeFlowStatements consumes current effects, successful definitions, suspension,
+abrupt completion, conservative cleanup and possible repetition; a reverse ownership
+fold aggregates all descendants. It does not match empty-if/block/opcode producers.
+All retained syntax participates, even unreachable declarations: private inert write
+effects do not authorize deleting a live definition, initialization or binding lifetime.
+Those obligations stay with independent demand/initial-value/binding cleanup.
+
+The InertStatements pass now consumes this common kStatements fact rather than
+locally guessing expression/declaration-value syntax. ProjectionFacts owns it at the
+exact projection revision, the contract closes flow/expression prerequisites, and an
+owned omission proposal precedes first commit/invalidation. After final BindingValues
+and demand cleanup, inert operands/statements normalize before grammar; no repeated
+whole-function round or backward storage/alias/motion schedule is introduced. Source
+emission consumes omissions and maps the entire removed subtree/anchors to a boundary;
+it performs no new semantic optimization.
+
+This is a conservative may-observation analysis: possible loop repetition remains
+observable even with an empty body; return/jump/throw, retained definitions and suspend
+must stay. Finally carries an explicit conservative cleanup obligation. Exact loop
+termination, handled abrupt completion and full finally replacement are capability
+precision gaps, not compiler-layout prerequisites. Source-side adapter and original
+IR/SSA correspondence, activation identity and overall unified-variable milestone
+remain incomplete. See status.md for current verification evidence.

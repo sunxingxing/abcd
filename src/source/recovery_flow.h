@@ -130,6 +130,16 @@ struct FlowDefinition {
     return std::nullopt;
   }
 };
+// Language statement ownership is adapted once by the flow builder. These
+// conservative completion/progress obligations are independent of layout and
+// expression effects; an empty loop still may not terminate.
+enum class FlowStatementCompletion : std::uint8_t {kNormal,kAbrupt,kCleanup};
+enum class FlowStatementProgress : std::uint8_t {kFinite,kMayRepeat};
+struct FlowStatement {
+  std::optional<StmtId> parent;
+  FlowStatementCompletion completion=FlowStatementCompletion::kNormal;
+  FlowStatementProgress progress=FlowStatementProgress::kFinite;
+};
 struct FlowEvent {
   FlowEventKind kind = FlowEventKind::kControl;
   std::optional<SymbolId> read;
@@ -141,6 +151,7 @@ struct FlowEvent {
   // Intrinsic effect at this event, refined with binding completion. State
   // reads and successful writes remain observations even when this is inert.
   ExpressionEvaluation effect = ExpressionEvaluation::kInert;
+  std::optional<StmtId> owner;
 };
 struct FlowEdge {
   FlowPoint from, to;
@@ -195,6 +206,10 @@ struct RecoveryFlow {
   std::vector<FlowNameReference> names;
   std::vector<DiscardedEvaluation> discarded;
   std::vector<FlowPoint> statements, expressions;
+  // Retained ownership forest, in parent-before-child order. Omitted syntax
+  // has no record. Consumers fold once, never walk a graph per statement.
+  std::vector<std::optional<FlowStatement>> statement_semantics;
+  std::vector<StmtId> statement_order;
   // Actual owners after all expression projections, including transported
   // RHSs. Unmodeled occurrences remain absent; old AST owners are not proof.
   std::vector<std::optional<StmtId>> expression_owners;

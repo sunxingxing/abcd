@@ -3626,3 +3626,25 @@ exercise costs and layout independence. Query-only demand and exposed-source
 counterexamples verify that proof facts do not authorize observable work or external
 cell assumptions. Actual source execution remains independent of engine inputs.
 No new peak RSS or benchmark claim is made; those measurements remain paused.
+
+
+### 共同语句观测汇总（2026-10-09，规则249）
+
+复用RecoveryFlow的source语义适配器，发布retained父先子后ownership forest，
+不是按StmtId排序。现有图事件新增当前语句owner；新的语句记录只表达正常/
+abrupt/保守cleanup及有限/可能重复执行，不匹配empty-if/块布局。表达式效果、
+成功定义、暂停取自共同事件。有限may-observation格逐项union，逆ownership序
+bottom-up fold一次；这是标准语法所有权树属性汇总，不引入外部依赖或许可。
+未新增另一套AST表达式/初始化推断。所有保留语法，包括不可达声明，均参与。
+
+设S为语句槽数、R<=S为retained语句、N为当前flow事件。适配记录O(S+R)
+存储/工作，owner增加O(N)存储。分析O(S+R+N)工作、O(S)观测与seen存储；
+proposal O(S)容量、O(R)工作。打印省略子树来源遍历计入已有输出预算，不按
+每个父节点重新递归分析。定义是否dead仍由独立需求分析决定，private inert
+write不等于可删除。整体恢复其他分析仍按各自L/P/A等维度，不宣称整体线性。
+
+独立小森林参考按每个节点重走祖先/后代（只用于固定4点oracle）核对全部
+may-observation分量；生产只fold一次。反向StmtId/event布局、200/201/400/800
+chain/star、exact/short字节与work预算验证成本。真实源码另验证调用、coercion、
+TDZ、保留声明、return/throw、break、finally、私有复制清理与来源边界。
+loop终止和精确handled/finally完成仍保守，不能据body为空删除无限循环。

@@ -22,6 +22,33 @@ function observe(fn,flag,fail) {
 let executions=0,mutations=3;
 for(const row of rows) {
   parseJavaScript(row.source);
+  if(row.inert_control) {
+    const conditions=['flag','produce(1)','+flag','state'];
+    const condition=conditions[row.form]??'flag';
+    const consequents=['flag;','flag;','flag;','flag;','let state=flag;',
+      'return 1;','while(true){break;}','try{}finally{produce(2);}',
+      'debugger;','throw flag;','state=flag;'];
+    const alternative=row.form===10?'state=flag;':'flag;';
+    const controls=('if('+condition+'){'+consequents[row.form]+'}else{'+alternative+'}').repeat(row.count+1);
+    const body=(row.form===10?'let state=flag;':'')+controls+(row.form===3?'let state=flag;':'')+'return '+(row.form===10?'state':'flag')+';';
+    const expected=Function('produce','flag','"use strict";'+body);
+    const actual=Function('return ('+row.source+');')();
+    const run=(fn,input,fault)=>{
+      const trace=[];const flag=input==='object'?{valueOf(){trace.push('coerce');if(fault==='coerce')throw failure;return 7;}}:input;
+      let value,thrown;
+      try{value=fn(i=>{trace.push(i);if(fault==='call')throw failure;return values[i];},flag);if(value===flag&&input==='object')value='object';}
+      catch(error){thrown=error===flag&&input==='object'?'object':error instanceof ReferenceError?'tdz':error instanceof TypeError?'type':error;}
+      return {trace,value,thrown};
+    };
+    for(const input of [undefined,null,false,true,0,-0,7n,Symbol.for('control'),'object'])for(const fault of ['none','call','coerce']) {
+      assert.deepEqual(run(actual,input,fault),run(expected,input,fault));++executions;
+    }
+    if(!row.count&&[1,2,3,5,7,9].includes(row.form)) {
+      const bad=Function('produce','flag','return flag;');
+      assert.notDeepEqual(run(bad,'object','none'),run(expected,'object','none'));++mutations;
+    }
+    continue;
+  }
   if(row.inert_statement) {
     const expressions=['flag','state','state','+flag','produce(1)','0','flag?produce:flag','state'];
     const declaration=row.form===7?'let state;':'let state=flag;';
