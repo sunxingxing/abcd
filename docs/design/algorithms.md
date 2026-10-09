@@ -3648,3 +3648,27 @@ may-observation分量；生产只fold一次。反向StmtId/event布局、200/201
 chain/star、exact/short字节与work预算验证成本。真实源码另验证调用、coercion、
 TDZ、保留声明、return/throw、break、finally、私有复制清理与来源边界。
 loop终止和精确handled/finally完成仍保守，不能据body为空删除无限循环。
+
+
+### 完成图循环性与区域跳转汇总（2026-10-09，规则250）
+
+标准迭代Kosaraju两次遍历当前RecoveryFlow完成图，forward/reverse CSR按实际
+edge向量构造，point SCC size>1或self-edge表示可能重复。所有边种类都计入，
+不按normal路径过滤。既有phi/copy Tarjan适配专用方程，本轮没有复用其语义或
+新增外部依赖/许可；原语实现本地维护、以独立稠密传递闭包核对。无递归栈或
+每区域图走查。设N为事件、E为所有完成边，O(N+E)工作/存储，队列/帧界限N。
+CSR fill借offset当cursor，right shift恢复边界，不依赖原linked edge顺序。
+
+语句S、retained R、owned jump J<=E。forest邻接按typed parent构造，activation
+heads以normal-exit FlowPoint索引，jump query以owner索引。单次DFS给每jump
+找到最近语义出口consumer；owner delta+1、consumer delta-1，bottom-up
+累计后只标记尚未消费的区域。O(S+N+E+J)工作与O(S+N+J)额外存储，所有临时
+数组与owned proposal计入预算；不复制每个区域的target集合、不对每jump走祖先。
+全恢复的liveness/definitions成本仍按其L/P/A等维度，不声称整体线性。
+
+2,048独立三点图覆盖512有向图、反向point和拆边，慢传递闭包核对cyclic；
+78,732独立四点ownership/出口/目标/反向ID用慢祖先链核对abrupt。200/201/
+400/800 chain/cycle与local/external jump链核对几何成本/exact/short预算。
+missing metadata和conservative cleanup保持保守；source另外覆盖nested finite
+exits、empty infinite、continue周期、effects和finally。VM timeout只是有界行为
+证据，不能作为一般终止证明。数值有界循环与outer SCC内精确子区域仍未解决。

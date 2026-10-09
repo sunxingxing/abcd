@@ -3,6 +3,7 @@
 #include "../../../src/source/binding_initializer.h"
 #include "../../../src/source/expression_children.h"
 #include "../../../src/source/statement_expressions.h"
+#include "../../../src/source/statement_children.h"
 #include "abcd/source/tree_printer.h"
 #include "../../support/analysis/ssa_fixture.h"
 namespace abcd::test {
@@ -12,13 +13,19 @@ namespace abcd::test {
 inline void CheckProjectedRanges(const source::FunctionTree& tree,
     const source::BindingInitializers& plan,const source::PrintedFunction& printed,
     std::size_t output_size) {
-  std::vector<std::uint8_t> removed(tree.expressions.size());
+  std::vector<std::uint8_t> removed(tree.expressions.size()),omitted(tree.statements.size());
+  struct Statement {source::StmtId id;bool parent_omitted;};
+  std::vector<Statement> statements{{tree.body,false}};
+  while(!statements.empty()) {
+    const auto at=statements.back();statements.pop_back();const bool erased=at.parent_omitted||plan.omitted[at.id.value];omitted[at.id.value]=erased;
+    source::StatementChildren(tree,at.id,[&](auto child){statements.push_back({child,erased});});
+  }
   std::vector<source::ExprId> pending;
   for(std::size_t i=0;i<tree.statements.size();++i) {
     const auto& completion=plan.declaration_completions[i];
     const auto& value=plan.declaration_values[i];
-    if(!plan.omitted[i]&&!completion&&!value)continue;
-    const auto retained=plan.omitted[i]?plan.forwarded_values[i]:completion?completion->evaluation:
+    if(!omitted[i]&&!completion&&!value)continue;
+    const auto retained=omitted[i]?plan.forwarded_values[i]:completion?completion->evaluation:
         value?std::optional{value->value}:std::nullopt;
     source::VisitStatementExpressions(tree.statements[i].statement,[&](auto root){pending.push_back(root);});
     while(!pending.empty()) {

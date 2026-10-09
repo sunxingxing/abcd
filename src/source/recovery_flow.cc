@@ -331,6 +331,7 @@ class FlowBuilder {
     result_.statement_semantics[at.id.value]=FlowStatement{at.context.owner};
     Append(result_.statement_order,at.id);
     auto& semantics=*result_.statement_semantics[at.id.value];
+    semantics.normal_exit=context.next;
     if(!projection_.declaration_completions.empty())if(const auto& completion=projection_.declaration_completions[at.id.value]) {
       const bool initialize=completion->kind==DeclarationCompletionKind::kInitialize;
       std::optional<DiscardedId> id;
@@ -400,11 +401,11 @@ class FlowBuilder {
         auto branch=New({FlowEventKind::kTruthBranch,{},{},node.condition});Link(start,Expr(node.condition,context.Operand(branch)));
         Link(branch,Stmt(node.consequent,context),FlowCompletion::kTaken);Link(branch,node.alternate?Stmt(*node.alternate,context):context.next,FlowCompletion::kNotTaken);
       } else if constexpr(std::is_same_v<T,LoopStmt>) {
-        semantics.progress=FlowStatementProgress::kMayRepeat;
+        semantics.progress=FlowStatementProgress::kMayRepeat;semantics.repeat_point=start;
         Link(start,Stmt(node.body,{start,context.thrown,context.finalizer,{},FlowValueUse::kObserved,at.id}));
       }
-      else if constexpr(std::is_same_v<T,BreakStmt>) {semantics.completion=FlowStatementCompletion::kAbrupt;Abrupt(start,exits_[node.target.value],context,FlowCompletion::kJump);}
-      else if constexpr(std::is_same_v<T,ContinueStmt>) {semantics.completion=FlowStatementCompletion::kAbrupt;Abrupt(start,statements_[node.target.value],context,FlowCompletion::kJump);}
+      else if constexpr(std::is_same_v<T,BreakStmt>) {semantics.completion=FlowStatementCompletion::kJump;Abrupt(start,exits_[node.target.value],context,FlowCompletion::kJump);}
+      else if constexpr(std::is_same_v<T,ContinueStmt>) {semantics.completion=FlowStatementCompletion::kJump;Abrupt(start,statements_[node.target.value],context,FlowCompletion::kJump);}
       else if constexpr(std::is_same_v<T,ReturnStmt>) {
         semantics.completion=FlowStatementCompletion::kAbrupt;
         auto returned=New();Abrupt(returned,terminal_,context,FlowCompletion::kReturn);

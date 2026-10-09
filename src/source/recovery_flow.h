@@ -133,12 +133,15 @@ struct FlowDefinition {
 // Language statement ownership is adapted once by the flow builder. These
 // conservative completion/progress obligations are independent of layout and
 // expression effects; an empty loop still may not terminate.
-enum class FlowStatementCompletion : std::uint8_t {kNormal,kAbrupt,kCleanup};
+enum class FlowStatementCompletion : std::uint8_t {kNormal,kAbrupt,kCleanup,kJump};
 enum class FlowStatementProgress : std::uint8_t {kFinite,kMayRepeat};
 struct FlowStatement {
   std::optional<StmtId> parent;
   FlowStatementCompletion completion=FlowStatementCompletion::kNormal;
   FlowStatementProgress progress=FlowStatementProgress::kFinite;
+  // Actual continuation/repetition identities from the language adapter.
+  // Missing evidence stays conservative; source layout is never a substitute.
+  std::optional<FlowPoint> normal_exit,repeat_point;
 };
 struct FlowEvent {
   FlowEventKind kind = FlowEventKind::kControl;

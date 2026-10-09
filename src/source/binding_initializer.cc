@@ -336,6 +336,7 @@ class Initializers {
     std::optional<FlowConstants> constants;
     std::optional<FlowCopies> copies;
     std::optional<FlowStatements> statements;
+    std::optional<FlowCycles> cycles;
   };
   // This read-occurrence proof is the only analysis transported across a
   // projection commit. Its semantic contract and version are both required;
@@ -351,7 +352,7 @@ class Initializers {
   }
   ProjectionFacts& CurrentFacts() const {
     RequireAnalysis();
-    if(!facts_)facts_.emplace(ProjectionFacts{schedule_.Revision(),{},{},{},{},{},{},{},{}});
+    if(!facts_)facts_.emplace(ProjectionFacts{schedule_.Revision(),{},{},{},{},{},{},{},{},{}});
     schedule_.RequireCurrent(facts_->revision);
     return *facts_;
   }
@@ -908,10 +909,23 @@ class Initializers {
     budget_.Admit(refinement.allocated_bytes,1);budget_.Step(refinement.work);
     facts.flow=std::move(provisional);return *facts.flow;
   }
+  const FlowCycles& CurrentCycles() const {
+    schedule_.RequireFact(RecoveryFact::kCycles);auto& facts=CurrentFacts();
+    if(!facts.cycles) {
+      auto analyzed=AnalyzeFlowCycles(CurrentFlow(),budget_.Remaining());
+      if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
+      facts.cycles=std::get<FlowCycles>(std::move(analyzed));
+      budget_.Admit(facts.cycles->allocated_bytes,1);budget_.Step(facts.cycles->work);
+    }
+    return *facts.cycles;
+  }
   const FlowStatements& CurrentStatements() const {
     schedule_.RequireFact(RecoveryFact::kStatements);auto& facts=CurrentFacts();
     if(!facts.statements) {
-      auto analyzed=AnalyzeFlowStatements(CurrentFlow(),budget_.Remaining());
+      const auto& flow=CurrentFlow();bool needed=false;
+      for(const auto& statement:flow.statement_semantics){budget_.Step();needed|=statement&&statement->repeat_point.has_value();}
+      const FlowCycles absent;const auto& cycles=needed?CurrentCycles():absent;
+      auto analyzed=AnalyzeFlowStatements(flow,cycles,budget_.Remaining());
       if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
       facts.statements=std::get<FlowStatements>(std::move(analyzed));
       budget_.Admit(facts.statements->allocated_bytes,1);budget_.Step(facts.statements->work);

@@ -9,7 +9,7 @@ enum class RecoveryPass {
   kDeclarations,kConstants,kBindingValues,kAliases,kStoredResults,kDeadDefinitions,kInitialValues,
   kBindings,kSnapshots,kStorage,kInertStatements,kInertOperands,kLoopDeclarations,kDeclarationKinds
 };
-enum class RecoveryFact : std::uint8_t {kExpressions,kFlow,kLiveness,kDemand,kInitializations,kConstants,kCopies,kStatements};
+enum class RecoveryFact : std::uint8_t {kExpressions,kFlow,kLiveness,kDemand,kInitializations,kConstants,kCopies,kStatements,kCycles};
 class RecoveryFactSet {
  public:
   constexpr RecoveryFactSet(std::initializer_list<RecoveryFact> facts) {
@@ -63,8 +63,9 @@ struct RecoveryPassContract {
 }
 [[nodiscard]] inline RecoveryFactSet RequiredFacts(RecoveryPass pass) {
   auto result=PassContract(pass).inputs;
+  if(result.Contains(RecoveryFact::kStatements))result.Add(RecoveryFact::kCycles);
   if(result.Contains(RecoveryFact::kConstants)||result.Contains(RecoveryFact::kCopies))result.Add(RecoveryFact::kLiveness);
-  if(result.Contains(RecoveryFact::kStatements)||result.Contains(RecoveryFact::kLiveness)||result.Contains(RecoveryFact::kDemand)||
+  if(result.Contains(RecoveryFact::kCycles)||result.Contains(RecoveryFact::kLiveness)||result.Contains(RecoveryFact::kDemand)||
       result.Contains(RecoveryFact::kInitializations))result.Add(RecoveryFact::kFlow);
   // Flow and expressions are bootstrapped together: conservative effects ->
   // initialization proof -> refined effects. They are one provider boundary,

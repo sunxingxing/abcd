@@ -2439,3 +2439,40 @@ termination, handled abrupt completion and full finally replacement are capabili
 precision gaps, not compiler-layout prerequisites. Source-side adapter and original
 IR/SSA correspondence, activation identity and overall unified-variable milestone
 remain incomplete. See status.md for current verification evidence.
+
+
+### Graph-proved normal completion (2026-10-09, rules250)
+
+The source adapter publishes each retained statement's actual normal continuation
+and optional repetition point, and distinguishes jump from return/throw/cleanup.
+FlowCycles computes all cyclic points once with iterative Kosaraju on the current
+completion graph. Every edge participates, including exceptional/resume/conservative
+routes. A modeled repetition point outside all SCC cycles discharges that possible
+repetition obligation; missing evidence remains conservative. This proves graph
+traversal only: calls/coercions/definitions/suspend and unmodeled cleanup still remain.
+Nested cycles are propagated through the shared statement observation fold.
+
+Local jumps use their actual target point. An indexed activation traversal of the
+statement ownership forest finds the nearest ancestor normal continuation matching
+that target. Difference accumulation marks the intervening regions abrupt, but
+leaves the consuming region/ancestors normally completed. There is no break/continue
+producer or empty-loop pattern, repeated ancestor walk, target-set union or graph
+walk per source region. Return/throw and all resume/cleanup completion edges retain
+their independent obligations, even without a redundant AST marker. This is
+conservative about handled throws/fullfinally and nested regions in outer SCCs.
+
+Cycles and statement observations share exact ProjectionFacts ownership; kStatements
+closes kCycles/flow/expression prerequisites. CurrentCycles is lazy when a repetition
+point exists. Complete owned omission proposals precede first invalidation. Existing
+pass stage/order and independent definition/initial-value/binding deletion remain;
+no new pass round or backward storage/alias/motion is introduced. The printer's
+prepared subtree omission is reused. The test range oracle now includes ancestor
+omissions rather than requiring every removed child to have its own plan edit.
+
+Independent dense reachability and ancestor-chain references, reversed/split graphs,
+source compositions and actual output execution/negative transformations verify
+this substep. VM deadlines on deliberate infinite programs are bounded execution
+observations, not themselves termination proofs. See status.md for exact evidence.
+Original IR/SSA, source activation roots, full finally, numerical loop termination,
+trial precision and shared global convergence remain open; overall milestone is
+not complete. Lexical visibility alone cannot ground a fresh local activation.

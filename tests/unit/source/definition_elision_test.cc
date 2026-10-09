@@ -331,6 +331,19 @@ std::uint64_t InertControls(unsigned form,unsigned count,bool reverse,bool emit)
       const auto loop=f.Stmt(LoopStmt{{}});
       std::get<LoopStmt>(tree.statements[loop.value].statement).body=f.Block({f.Stmt(BreakStmt{loop,{}})},f.Scope(ScopeKind::kBlock,yes_scope));return loop;
     }
+    if(form>=11) {
+      const auto loop=f.Stmt(LoopStmt{{}});const auto scope=f.Scope(ScopeKind::kBlock,yes_scope);
+      std::vector<StmtId> statements;
+      if(form==12)statements.push_back(f.Stmt(IfStmt{f.Read(1),f.Block({f.Stmt(ContinueStmt{loop,{}})},f.Scope(ScopeKind::kBlock,scope)),f.Block({f.Stmt(BreakStmt{loop,{}})},f.Scope(ScopeKind::kBlock,scope))}));
+      if(form==13) {
+        const auto inner=f.Stmt(LoopStmt{{}});const auto inner_scope=f.Scope(ScopeKind::kBlock,scope);
+        const auto branches=f.Stmt(IfStmt{f.Read(1),f.Block({f.Stmt(BreakStmt{inner,{}})},f.Scope(ScopeKind::kBlock,inner_scope)),f.Block({f.Stmt(BreakStmt{inner,{}})},f.Scope(ScopeKind::kBlock,inner_scope))});
+        std::get<LoopStmt>(tree.statements[inner.value].statement).body=f.Block({branches},inner_scope);statements.push_back(inner);statements.push_back(f.Stmt(BreakStmt{loop,{}}));
+      }
+      if(form==14){statements.push_back(f.Stmt(ExpressionStmt{f.Call(2)}));statements.push_back(f.Stmt(BreakStmt{loop,{}}));}
+      if(form==15)statements.push_back(f.Stmt(TryStmt{f.Block({f.Stmt(BreakStmt{loop,{}})},f.Scope(ScopeKind::kBlock,scope)),{},f.Block({f.Stmt(ExpressionStmt{f.Read(1)})},f.Scope(ScopeKind::kBlock,scope))}));
+      std::get<LoopStmt>(tree.statements[loop.value].statement).body=f.Block(statements,scope);return loop;
+    }
     if(form==7)return f.Stmt(TryStmt{f.Block({},f.Scope(ScopeKind::kBlock,yes_scope)),{},f.Block({f.Stmt(ExpressionStmt{f.Call(2)})},f.Scope(ScopeKind::kBlock,yes_scope))});
     if(form==8)return f.Stmt(DebuggerStmt{});
     if(form==9)return f.Stmt(ThrowStmt{f.Read(1)});
@@ -362,8 +375,8 @@ std::uint64_t InertControls(unsigned form,unsigned count,bool reverse,bool emit)
   const auto result=PlanBindingInitializers(tree,loops,nullish);test::Check(std::holds_alternative<BindingInitializers>(result));
   const auto& plan=std::get<BindingInitializers>(result);
   for(const auto control:controls) {
-    if(bool(plan.omitted[control.value])!=(form==0||form==10))std::cerr<<"control form="<<form<<" count="<<count<<" reverse="<<reverse<<'\n';
-    test::Check(bool(plan.omitted[control.value])==(form==0||form==10));
+    if(bool(plan.omitted[control.value])!=(form==0||form==6||form==10||form==13))std::cerr<<"control form="<<form<<" count="<<count<<" reverse="<<reverse<<'\n';
+    test::Check(bool(plan.omitted[control.value])==(form==0||form==6||form==10||form==13));
   }
   if(!count) {
     test::Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes,plan.work})));
@@ -542,7 +555,7 @@ void BindingDependencyOracle() {
 
 }
 int main(int argc,char**) {
-  for(unsigned form=0;form<11;++form)for(bool reverse:{false,true}) {
+  for(unsigned form=0;form<16;++form)for(bool reverse:{false,true}) {
     std::uint64_t previous=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U}) {
       const auto work=InertControls(form,count,reverse,argc>1);

@@ -2895,3 +2895,15 @@ retained定义保护初始化/绑定生命期；不得由private write effect绕
 独立oracle反向布局和源码反例验证，打印器只消费计划/保留来源边界。
 两项历史快照形状断言随合法纯读取消失而更新；保留独立错误TDZ移动及
 实际输出更新/返回删除反例，禁止在生产为维持旧断言保留无用控制。
+
+
+### 规则250：有限正常区域复用共同完成图证据
+
+旧无条件repetition/abrupt-jump保守标记在有共同SCC/normal-exit证据时退出。
+normal continuation和repeat point由source语言adapter发布，所有完成边参与
+SCC，local jump按目标点与ownership出口匹配；不是break布局、循环body为空、
+同块/邻接/PC/producer名单准入。nearest exit索引与差分累计一次完成，不新增
+pass整轮/回退阶段或每区域图扫描。return/throw/resume/cleanup由边穷尽汇总，
+缺元数据和复杂finally仍保守。普通有限循环与反向/拆边/组合反例共同验证；
+保留defs/init/lifetime和effects归属独立。Scope可见性不足以证明local activation
+root，本轮未以它扩展复制根准入；该能力缺口继续保留。

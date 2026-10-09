@@ -27,7 +27,10 @@ for(const row of rows) {
     const condition=conditions[row.form]??'flag';
     const consequents=['flag;','flag;','flag;','flag;','let state=flag;',
       'return 1;','while(true){break;}','try{}finally{produce(2);}',
-      'debugger;','throw flag;','state=flag;'];
+      'debugger;','throw flag;','state=flag;','while(true){}',
+      'while(true){if(flag)continue;else break;}',
+      'while(true){while(true){if(flag)break;else break;}break;}',
+      'while(true){produce(2);break;}','while(true){try{break;}finally{flag;}}'];
     const alternative=row.form===10?'state=flag;':'flag;';
     const controls=('if('+condition+'){'+consequents[row.form]+'}else{'+alternative+'}').repeat(row.count+1);
     const body=(row.form===10?'let state=flag;':'')+controls+(row.form===3?'let state=flag;':'')+'return '+(row.form===10?'state':'flag')+';';
@@ -36,14 +39,15 @@ for(const row of rows) {
     const run=(fn,input,fault)=>{
       const trace=[];const flag=input==='object'?{valueOf(){trace.push('coerce');if(fault==='coerce')throw failure;return 7;}}:input;
       let value,thrown;
-      try{value=fn(i=>{trace.push(i);if(fault==='call')throw failure;return values[i];},flag);if(value===flag&&input==='object')value='object';}
-      catch(error){thrown=error===flag&&input==='object'?'object':error instanceof ReferenceError?'tdz':error instanceof TypeError?'type':error;}
+      const produce=i=>{trace.push(i);if(fault==='call')throw failure;return values[i];};
+      try{value=[11,12].includes(row.form)?vm.runInNewContext('('+fn.toString()+')(produce,flag)',{produce,flag},{timeout:10}):fn(produce,flag);if(value===flag&&input==='object')value='object';}
+      catch(error){thrown=error.code==='ERR_SCRIPT_EXECUTION_TIMEOUT'?'nontermination':error===flag&&input==='object'?'object':error instanceof ReferenceError?'tdz':error instanceof TypeError?'type':error;}
       return {trace,value,thrown};
     };
     for(const input of [undefined,null,false,true,0,-0,7n,Symbol.for('control'),'object'])for(const fault of ['none','call','coerce']) {
       assert.deepEqual(run(actual,input,fault),run(expected,input,fault));++executions;
     }
-    if(!row.count&&[1,2,3,5,7,9].includes(row.form)) {
+    if(!row.count&&[1,2,3,5,7,9,11,12,14].includes(row.form)) {
       const bad=Function('produce','flag','return flag;');
       assert.notDeepEqual(run(bad,'object','none'),run(expected,'object','none'));++mutations;
     }

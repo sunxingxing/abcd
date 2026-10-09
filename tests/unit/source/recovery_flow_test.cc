@@ -5,6 +5,7 @@
 #include "../../../src/source/flow_constants.h"
 #include "../../../src/source/flow_copies.h"
 #include "../../../src/source/flow_statements.h"
+#include "../../../src/source/flow_cycles.h"
 #include "../../../src/source/recovery_schedule.h"
 #include "../../../src/source/source_names.h"
 #include "../../../src/source/source_name_retirement.h"
@@ -2014,6 +2015,86 @@ void TransitiveCopyOracle() {
   }
   std::cout<<"independent transitive-copy path states "<<cases<<'\n';
 }
+void CompletionCycles() {
+  std::uint64_t cases=0;
+  for(unsigned mask=0;mask<512;++mask)for(bool reverse:{false,true})for(bool split:{false,true}) {
+    RecoveryFlow flow{};flow.events.resize(3);bool reach[3][3]{};
+    for(unsigned edge=0;edge<9;++edge)if(mask&(1U<<edge)) {
+      reach[edge/3][edge%3]=true;
+      if(split){const auto middle=static_cast<unsigned>(flow.events.size());flow.events.emplace_back();Link(flow,edge/3,middle);Link(flow,middle,edge%3);}
+      else Link(flow,edge/3,edge%3);
+      flow.edges.back().completion=edge%2?FlowCompletion::kResumeThrow:FlowCompletion::kConservativeCleanup;
+    }
+    if(reverse) {
+      const auto remap=[&](FlowPoint point){return FlowPoint{static_cast<unsigned>(flow.events.size()-1-point.value)};};
+      for(auto& edge:flow.edges){edge.from=remap(edge.from);edge.to=remap(edge.to);}std::reverse(flow.events.begin(),flow.events.end());
+    }
+    for(unsigned k=0;k<3;++k)for(unsigned i=0;i<3;++i)for(unsigned j=0;j<3;++j)reach[i][j]|=reach[i][k]&&reach[k][j];
+    const auto result=std::get<FlowCycles>(AnalyzeFlowCycles(flow));
+    for(unsigned i=0;i<3;++i)Check(bool(result.cyclic[reverse?flow.events.size()-1-i:i])==reach[i][i]);++cases;
+  }
+  for(bool cycle:{false,true}) {
+    std::uint64_t previous=0;
+    for(unsigned count:{200U,201U,400U,800U}) {
+      RecoveryFlow flow{};flow.events.resize(count);
+      for(unsigned i=1;i<count;++i)Link(flow,i-1,i);if(cycle)Link(flow,count-1,0);
+      const auto result=std::get<FlowCycles>(AnalyzeFlowCycles(flow));for(const auto point:result.cyclic)Check(bool(point)==cycle);
+      if(count>=400)Check(result.work<previous*3);previous=result.work;
+      Check(std::holds_alternative<FlowCycles>(AnalyzeFlowCycles(flow,{result.allocated_bytes,result.work})));
+      Check(std::get<TreeStructureError>(AnalyzeFlowCycles(flow,{result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
+      Check(std::get<TreeStructureError>(AnalyzeFlowCycles(flow,{result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);
+      flow.edges[0].to=FlowPoint{count};Check(std::get<TreeStructureError>(AnalyzeFlowCycles(flow))==TreeStructureError::kTarget);
+    }
+  }
+  std::cout<<"independent completion cycle graphs "<<cases<<'\n';
+}
+void LocalCompletionOracle() {
+  // A dense reference walks each jump's actual ancestor chain. Production
+  // indexes active normal exits and accumulates differences once instead.
+  std::uint64_t cases=0;
+  for(unsigned p2=0;p2<2;++p2)for(unsigned p3=0;p3<3;++p3)
+    for(unsigned encoded=0;encoded<81;++encoded)for(unsigned targets=0;targets<81;++targets)for(bool reverse:{false,true}) {
+      RecoveryFlow flow{};flow.events.resize(7);flow.statements.resize(4);flow.statement_semantics.resize(4);
+      std::array<unsigned,4> parent{0,0,p2,p3},exits{};std::array<bool,4> expected{};unsigned boundaries=encoded,destinations=targets;
+      const auto id=[&](unsigned i){return StmtId{reverse?3-i:i};};
+      for(unsigned i=0;i<4;++i) {
+        const auto at=id(i);exits[i]=4+boundaries%3;boundaries/=3;flow.statement_order.push_back(at);
+        flow.statement_semantics[at.value]=FlowStatement{i?std::optional{id(parent[i])}:std::nullopt,FlowStatementCompletion::kJump,FlowStatementProgress::kFinite,FlowPoint{exits[i]}};
+        flow.events[i].owner=at;const auto target=4+destinations%3;destinations/=3;
+        Link(flow,i,target);flow.edges.back().completion=FlowCompletion::kJump;
+        auto current=i;
+        while(exits[current]!=target) {expected[current]=true;if(!current)break;current=parent[current];}
+      }
+      const auto result=std::get<FlowStatements>(AnalyzeFlowStatements(flow));
+      for(unsigned i=0;i<4;++i)Check(result.observations[id(i).value].abrupt==expected[i]);++cases;
+    }
+  for(bool consumed:{false,true}) {
+    std::uint64_t previous=0;
+    for(unsigned count:{200U,201U,400U,800U}) {
+      RecoveryFlow flow{};flow.events.resize(count+2);flow.statements.resize(count);flow.statement_semantics.resize(count);
+      for(unsigned i=0;i<count;++i) {
+        flow.statement_order.push_back({i});flow.statement_semantics[i]=FlowStatement{i?std::optional{StmtId{i-1}}:std::nullopt,FlowStatementCompletion::kJump,FlowStatementProgress::kFinite,FlowPoint{count}};
+        flow.events[i].owner=StmtId{i};Link(flow,i,consumed?count:count+1);flow.edges.back().completion=FlowCompletion::kJump;
+      }
+      const auto result=std::get<FlowStatements>(AnalyzeFlowStatements(flow));for(const auto& observation:result.observations)Check(observation.Inert()==consumed);
+      if(count>=400)Check(result.work<previous*3);previous=result.work;
+      Check(std::holds_alternative<FlowStatements>(AnalyzeFlowStatements(flow,{result.allocated_bytes,result.work})));
+      Check(std::get<TreeStructureError>(AnalyzeFlowStatements(flow,{result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
+      Check(std::get<TreeStructureError>(AnalyzeFlowStatements(flow,{result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);
+      flow.edges[0].completion=FlowCompletion::kConservativeCleanup;
+      Check(std::get<FlowStatements>(AnalyzeFlowStatements(flow)).observations[0].cleanup);
+    }
+  }
+  for(const auto completion:{FlowCompletion::kThrow,FlowCompletion::kReturn,FlowCompletion::kResumeThrow,FlowCompletion::kResumeReturn,FlowCompletion::kResumeNext}) {
+    RecoveryFlow flow{};flow.events.resize(2);flow.events[0].owner=StmtId{0};flow.statements.resize(1);
+    flow.statement_order={{0}};flow.statement_semantics={FlowStatement{{},FlowStatementCompletion::kNormal,FlowStatementProgress::kFinite,FlowPoint{1}}};
+    Link(flow,0,1);flow.edges.back().completion=completion;
+    const auto result=std::get<FlowStatements>(AnalyzeFlowStatements(flow));
+    Check(result.observations[0].abrupt==(completion!=FlowCompletion::kResumeNext));
+    Check(result.observations[0].suspension==(completion==FlowCompletion::kResumeNext||completion==FlowCompletion::kResumeThrow||completion==FlowCompletion::kResumeReturn));
+  }
+  std::cout<<"independent local completion forests "<<cases<<'\n';
+}
 void StatementObservationOracle() {
   // Slow independent reference: inspect each descendant separately. Production
   // must aggregate once, including unreachable retained syntax and private defs.
@@ -2076,10 +2157,10 @@ void StatementObservationOracle() {
     }
   }
   RecoverySchedule schedule;schedule.Start(RecoveryPass::kInertStatements);
-  schedule.RequireFact(RecoveryFact::kStatements);schedule.RequireFact(RecoveryFact::kExpressions);schedule.RequireFact(RecoveryFact::kFlow);
+  schedule.RequireFact(RecoveryFact::kStatements);schedule.RequireFact(RecoveryFact::kCycles);schedule.RequireFact(RecoveryFact::kExpressions);schedule.RequireFact(RecoveryFact::kFlow);
   const auto revision=schedule.Revision();Check(schedule.Commit());
   const auto rejects=[](const auto& action){try{action();return false;}catch(TreeStructureError error){return error==TreeStructureError::kOwnership;}};
-  Check(rejects([&]{schedule.RequireFact(RecoveryFact::kStatements);}));Check(schedule.Finish());
+  Check(rejects([&]{schedule.RequireFact(RecoveryFact::kStatements);}));Check(rejects([&]{schedule.RequireFact(RecoveryFact::kCycles);}));Check(schedule.Finish());
   Check(rejects([&]{schedule.RequireCurrent(revision);}));
   schedule.Start(RecoveryPass::kInertOperands);Check(rejects([&]{schedule.RequireFact(RecoveryFact::kStatements);}));Check(!schedule.Finish());
   std::cout<<"independent statement observation forests "<<cases<<'\n';
@@ -2252,4 +2333,4 @@ void PassContracts() {
   Check(!unfinished.DemandCleanupNeeded());
   std::cout<<"pass ownership, dependency and cleanup counterexamples passed\n";
 }
-int main(){InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();AvailableCopyOracle();TransitiveCopyOracle();StatementObservationOracle();InitializationTransfers();PassContracts();SnapshotCheckpoints();StableValues();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+int main(){InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();AvailableCopyOracle();TransitiveCopyOracle();CompletionCycles();LocalCompletionOracle();StatementObservationOracle();InitializationTransfers();PassContracts();SnapshotCheckpoints();StableValues();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

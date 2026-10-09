@@ -24,6 +24,35 @@
 复杂 finally、闭包环境重构与更精细暂停恢复保留原表示、报告能力缺口。
 既定五输入、结构gate及暂停事项保持，原阶段一 Goal active。
 
+### 2026-10-09：规则250，共同图证明有限正常完成
+
+- Source adapter发布normal-exit/repeat-point，并区分jump与return/throw。
+  FlowCycles在当前完成图上一次迭代Kosaraju，所有异常/resume/cleanup边
+  计入；无SCC周期的重复点可证明有限遍历。缺失证据、effects、定义、
+  暂停和保守cleanup仍保持。不是一般数值循环终止证明。
+- 共同statement分析按实际目标点索引nearest owning normal exit，差分
+  累计仅将尚未消费的jump标记abrupt；所有return/throw/resume/cleanup边
+  另行穷尽汇总。旧无条件repeat/abrupt jump在共同义务证明后退出，不
+  匹配break/body布局。kCycles与kStatements共享exact revision、自有
+  proposal/首次提交失效和既定pass顺序，无新增整轮或回退storage。
+- 有效旧实现RED366 exit134，结构先通过；graph-only abrupt/resume
+  反例再现旧遗漏RED2092 exit134，修复共同边观测。独立2,048循环图、
+  78,732完成森林与200/201/400/800、reverse/split、预算反例已通过。
+- 最终原29目标构建179.70秒，exact原59/59项CTest475.69秒通过；
+  combined-coverage.json核对选定名称集合一致。语句清理780份源码/
+  19980执行比较/83变异反例；既有值、复制、需求、初始化、名字、存储、
+  声明、循环和真实record回归保持通过。以上独立图对照均在最终运行中
+  再次通过；来源/anchor、版本/依赖/首次提交失效及预算反例通过。
+  fresh固定pasteboard导出2.81秒：19records，10complete/0partial/
+  9no-module，10语法检查通过，源码字节与规则249一致，输入SHA前后
+  不变；原预算与language_numeric_constructors_v1契约保持。
+  最终构建仅既有literal_plan.cc kNoop switch warning，无error。
+  证据build/stage-one/finite-completion-verification；非终止测试的VM
+  deadline只构成有界执行证据，不声称一般终止证明或平台执行验收。
+- 数值终止、outer SCC内更精确子区域、handled throw/完整finally、
+  activation身份、原IR/SSA与全局收敛仍开放，统一变量/结构gate/
+  阶段一Goal未完成。完整套件/扩展corpus/RSS/benchmarks/DFX/agents暂停。
+
 ### 2026-10-09：规则249，共同语句效果与完成观测
 
 - RecoveryFlow适配器一次发布retained语句ownership forest、完成/progress

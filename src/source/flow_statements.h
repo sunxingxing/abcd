@@ -1,6 +1,6 @@
 #ifndef ABCD_SOURCE_FLOW_STATEMENTS_H_
 #define ABCD_SOURCE_FLOW_STATEMENTS_H_
-#include "recovery_flow.h"
+#include "flow_cycles.h"
 namespace abcd::source {
 struct StatementObservations {
   ExpressionEvaluation evaluation=ExpressionEvaluation::kInert;
@@ -18,8 +18,11 @@ struct FlowStatements {
 // syntax, including unreachable declarations, retains its binding obligation.
 // This analysis proves finite normal effect-free completion only; independent
 // demand analysis owns deleting writes/initializations. Cleanup/repetition
-// precision is deliberately conservative, not a control-shape admission rule.
+// precision without cycle/boundary evidence is conservative. Local jump targets
+// discharge only their owning normal-completion region, independently of shape.
 [[nodiscard]] std::variant<FlowStatements,TreeStructureError> AnalyzeFlowStatements(
     const RecoveryFlow&,analysis::SemanticBudget = {});
+[[nodiscard]] std::variant<FlowStatements,TreeStructureError> AnalyzeFlowStatements(
+    const RecoveryFlow&,const FlowCycles&,analysis::SemanticBudget = {});
 }
 #endif

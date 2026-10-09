@@ -590,3 +590,13 @@ round. Retained definitions, abrupt completion, suspension, possible repetition 
 conservative cleanup remain independent obligations. Printer only marks all omitted
 origins. Independent forest reference/source/layout/budget evidence is in status.md;
 full termination/finally/activation/originalIR/global convergence remain open.
+
+
+rules250 implemented substep: graph SCC facts discharge modeled noncyclic repetition;
+indexed actual normal-exit matching and difference propagation discharge local jumps.
+All return/throw/resume/cleanup edges are independent obligations, including graph-only
+markers. kCycles shares exact revision and lazy ownership with kStatements, no pass
+round or backward stage. Old always-repeat/always-abrupt jump behavior retires where
+common proof exists; legacy missing facts/fullfinally remain conservative. Dense graph
+and ancestor-chain references/source variants are recorded in status.md. Initialization,
+activation, original correspondence and whole milestone remain open.
