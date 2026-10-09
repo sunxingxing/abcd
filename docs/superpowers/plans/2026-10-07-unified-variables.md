@@ -646,3 +646,13 @@ deferred keys, documented against primary specification and independent Node
 execution; the initial2024 assumption was withdrawn. Complete original
 operation/region/protocol phase projection remains OPEN, as do the other four
 backbone delivery loops. No appearance optimization or paused work resumed.
+
+
+Rules255 backbone substep: normal domains now consume the exact common source
+success definitions and sparse all-read liveness, with original SSA parameter-entry
+facts connected through the checked mapping. Direct old raw occurrence-domain
+consumption leaves recovery decisions. Current/trial bootstrap owns its own type
+product and rejects external cached spans; no new pass round/order is introduced.
+Independent state-oracle, success/throw/loop source execution and stale-domain/
+early-write/dead-init mutants verify the component. Tasks1/2/4/5 and all five human
+backbone loops remain open; see status.md for final bounded verification evidence.

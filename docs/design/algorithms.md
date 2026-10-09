@@ -3735,3 +3735,31 @@ and liveness costs remain dimension-based and may depend on live facts.
 Tests cover200/201/400/800 reference forests, exact/one-short budgets and reverse
 source arenas. This is not a claim about total recovery convergence or peak RSS.
 Provenance and version prerequisites: docs/reference/source-property-references.md.
+
+
+## Shared projected normal-value domains (rules255)
+
+Provenance: existing verified SSA parameter correspondence, existing ValueKinds
+finite join lattice and ECMA-262 source normal-completion semantics. Local C++20
+implementation with no new external dependency/license. It does not reinterpret
+raw ISA operations or equate static definitions across dynamic activations.
+
+Let X be source expressions, C expression dependencies, N source events, L sparse
+incoming liveness facts, A predecessor edges examined for those facts, D generated
+dependency edges, and V retained original values. After shared liveness, indexing
+and equation construction cost O(V+X+C+N+L+A log L); a binary search resolves each
+sparse fact, not a per-binding graph traversal. D is O(C+L+A+references), and the
+normal-domain solve costs O(H(X+L+D)), where H is the finite ValueKinds lattice
+height. Storage is O(X+N+L+D+bindings). Dense liveness still has real cost and is
+admitted explicitly; no 200-item algorithm switch, dropped facts or read×definition
+relation is used. Worklist membership bounds pending nodes by X+L.
+
+Unresolved equations are seeded unknown after closure and solved again, preserving
+monotone conservative results. Original operand-domain hints are not transported
+through changed source writes. Parameter type proofs and actual source success
+points provide facts; effects, initialization, binding identity and write deletion
+remain separate. Bootstrap phase budgets include every simultaneously live output
+and scratch allocation. Boundary200/201 and geometric400/800 tests, exact/short
+budgets and an independent small-graph dense state oracle measure these dimensions.
+This does not establish process RSS or full-pass convergence; those scopes remain
+paused/open respectively.

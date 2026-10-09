@@ -36,6 +36,38 @@
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
 
+### 2026-10-09：规则255，共同成功定义与投射数值域
+
+- 主干第1/3项继续实施：原SSA参数入口域按已校验参数对应接入共同
+  source成功定义；正常写入、分支合流、循环携带值和异常路由驱动
+  `FlowNormalKinds`。静态定义编号不证明跨执行的值相等或cell身份。
+- 消费旧original.normal_kinds[read]的源码域决策退出；共同入口先以
+  source语义保守建图，再用同一图的all-read liveness与稀疏正常值
+  方程求解，最后独立精化effects。试算修改写入值后，下游读不能
+  继续沿用旧Number提示。source-only无原始输入的模式仍保守。
+- 有限ValueKinds格单调求解，不构造read×definition关系、不按绑定
+  遍历全图；无来源循环变成未知。预算计入所有存活输出和阶段scratch，
+  分析完成后释放scratch。当前计划和试算共用入口，拒绝外部提供的
+  normal_kinds证明；每次commit仍整体销毁缓存。
+- 新反例在旧实现上失败；恢复旧raw域消费的fresh错误修改SIGABRT。
+  独立小图参考算法1,024例，正反arena、事件重排、分支/循环/异常边，
+  exact/one-short和200/201/400/800几何增长已通过聚焦验证。
+- 源码adapter的8个生成源码变体覆盖普通/循环/失败写入和catch读，
+  620次独立执行与20个初始值删除、提前写回、转换/效果删除反例通过；明确
+  不冒充原始ABC证书。实际原SSA96源码/2880执行对照仍由既有测试验证。
+- 最终限定31目标构建185.4039秒通过；补充原SSA入口域/exposure/未知
+  域/非法参数对应的单元反例后，在该项CTest执行前单独重建目标通过。
+  本次精确63/63 CTests547.8327秒通过，名称集合完全匹配、无重复。
+  fresh固定pasteboard导出3.3846秒通过，19records/10complete/0partial/
+  9no-module、10语法检查，changed_sources=[]（对规则254）；原SHA-256
+  前后854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e
+  相同。证据在build/stage-one/normal-domain-verification。
+- 构建保留已知literal_plan.cc kNoop switch警告；无新warning/error，
+  本轮未扩展其他优化。以上是限定验证，未冒充全语料/RSS/完整里程碑。
+- 全部五项主干仍开放：完整原始operation/
+  protocol/effects对应、local/catch activation、完整候选life delta、
+  依赖收敛和里程碑终验尚未完成。其他优化与既定扩大验证仍暂停。
+
 ### 2026-10-09：规则254，当前计划与试算共享投射事实入口
 
 - `RecoveryProjection` 持有同一候选的 expression facts、共同流图和

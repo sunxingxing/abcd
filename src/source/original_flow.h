@@ -44,8 +44,9 @@ struct OriginalFlow {
   std::vector<analysis::ValueOrigin> origins;
   std::vector<OriginalInput> inputs;
   std::vector<OriginalInputRange> input_ranges;
-  // Normal-result domains, joined if normalization maps multiple values to an
-  // occurrence. No normal fact is available on the operation's throwing exit.
+  // Raw normal-result provenance, joined when normalization maps values to an
+  // occurrence. This is NOT a type proof for a later recovery projection;
+  // successful source definitions and current operands own projected domains.
   std::vector<std::optional<analysis::ValueKinds>> normal_kinds;
 };
 [[nodiscard]] std::shared_ptr<OriginalFlow> RetainOriginalFlow(

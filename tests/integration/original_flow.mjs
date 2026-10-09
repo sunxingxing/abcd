@@ -71,3 +71,65 @@ for(const numeric of [false,true])for(const reverse of [false,true])for(const sp
   }
 }
 console.log(`${rows.length} original-SSA sources / ${comparisons} independent execution comparisons / ${mutants} adverse mutants`);
+
+const projected=execFileSync(process.argv[3],['--source'],{encoding:'utf8'}).trim().split('\n').map(JSON.parse);
+function projectedOutcome(fn,factory,loop,rounds) {
+  const trace=[],objects=[];let calls=0;
+  const input=()=>{
+    trace.push(['call',++calls]);
+    if(loop&&calls%2===1)return (calls+1)/2<=rounds;
+    const value=factory(trace);if(value!==null&&(typeof value==='object'||typeof value==='function'))objects.push(value);
+    return value;
+  };
+  try {
+    const value=fn(input),index=objects.indexOf(value);
+    return {trace,kind:'return',value:index>=0?['input object',index]:value};
+  }catch(error){return {trace,kind:'throw',value:error===failure?'failure':error.name};}
+}
+const projectedFactories=[...factories,()=>{throw failure;}];
+function projectedEquivalent(source,form) {
+  const generated=Function('return ('+source+')')(),loop=form>=2,numeric=form%2===0;
+  // Independent language program, with success-only assignment and catch
+  // reads. No domain/effect/def-use facts from the engine enter this oracle.
+  const reference=function(input) {
+    let saved=7;
+    try {
+      if(loop)while(input()){saved=numeric?+input():input();-saved;}
+      else saved=numeric?+input():input();
+    }catch(error){-saved;}
+    -saved;return saved;
+  };
+  for(const factory of projectedFactories)for(const rounds of (loop?[0,1,2,3]:[1]))
+    assert.deepEqual(projectedOutcome(generated,factory,loop,rounds),projectedOutcome(reference,factory,loop,rounds));
+}
+let projectedComparisons=0,projectedMutants=0;
+for(const row of projected) {
+  const source='('+row.source+')',all=nodes(parseJavaScript(source));
+  const negative=all.filter(node=>node.type==='UnaryExpression'&&node.operator==='-');
+  assert.equal(negative.length,row.form%2===0?0:row.form>=2?3:1,
+    'success-definition domains must reach actual emitted source');
+  projectedEquivalent(row.source,row.form);
+  projectedComparisons+=projectedFactories.length*(row.form>=2?4:1);
+  const declaration=all.find(node=>node.type==='VariableDeclarator'&&node.init?.type==='Literal'&&node.init.value===7);
+  assert.ok(declaration,'live initial value remains across failed writes');
+  const deadInit=source.slice(0,declaration.init.start)+'undefined'+source.slice(declaration.init.end);
+  assert.throws(()=>projectedEquivalent(deadInit,row.form));++projectedMutants;
+  if(row.form%2===0) {
+    const conversion=all.find(node=>node.type==='UnaryExpression'&&node.operator==='+');
+    const assignment=all.find(node=>node.type==='AssignmentExpression'&&node.right===conversion);
+    assert.ok(conversion&&assignment);
+    const argument=source.slice(conversion.argument.start,conversion.argument.end);
+    const target=source.slice(assignment.left.start,assignment.left.end);
+    for(const replacement of [argument,`(${target}=${argument},+${target})`]) {
+      const mutant=source.slice(0,conversion.start)+replacement+source.slice(conversion.end);
+      assert.throws(()=>projectedEquivalent(mutant,row.form));++projectedMutants;
+    }
+  }else {
+    let mutant=source;
+    for(const node of negative.sort((a,b)=>b.start-a.start))
+      mutant=mutant.slice(0,node.start)+source.slice(node.argument.start,node.argument.end)+mutant.slice(node.end);
+    assert.throws(()=>projectedEquivalent(mutant,row.form));++projectedMutants;
+  }
+}
+assert.equal(projected.length,8);
+console.log(`${projected.length} projected success/exception/loop sources / ${projectedComparisons} independent comparisons / ${projectedMutants} adverse mutants`);

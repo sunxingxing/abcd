@@ -24,7 +24,12 @@ struct RecoveryExpressionInput {
   std::span<const std::optional<ExprId>> replacements;
   std::span<const std::optional<ExpressionTransport>> transports;
   const OriginalFlow* original=nullptr;
+  // Exact-projection normal domains from the shared success-definition solver.
+  // Internal expression-analysis input only. PrepareRecoveryProjection rejects
+  // a supplied span, computes its own facts, and never borrows a prior plan.
+  std::span<const analysis::ValueKinds> normal_kinds;
 };
+[[nodiscard]] FlowValueEquation ProjectedRecoveryEquation(const RecoveryExpressionInput&,ExprId);
 [[nodiscard]] bool WritableRecoveryBinding(const FunctionTree&,SymbolId);
 // Pure facts, not a plan updater. Original normal-result facts are replaced by
 // the actual proposal producer; effects and initialization remain independent.

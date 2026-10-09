@@ -2952,3 +2952,14 @@ exits member/target handling. ECMA-2622024 early-key assumption was found invali
 for current source by independent execution and corrected to2025; its initial
 RED result is not valid evidence. Full original profile/normalized phase mapping
 remains open. See source-property-references.md for prerequisites and tests.
+
+
+规则255主干迁移：原始operand域按原ExprId索引并不证明当前源码slot的
+读取域。该独立旧消费退出决策路径，正常值域由共同成功定义、all-read
+活跃事实、分支/循环/异常边及源码正常结果方程产生。原始参数域在已校验
+参数对应上进入入口定义；不是新的生产者白名单、同块或初始化邻接条件。
+成功写入与抛异常路径分离；无法确定的值及外部cell保持未知，域证明不授权
+删除生命期/初始化/效果。当前与试算同入口，外部旧域span被拒绝。独立
+小图、布局变换、实际源码执行及错误写回/删初始值/删转换反例见status。
+完整原始effect/protocol与local/catch activation仍为实现缺口，未新增局部
+模式弥补，也未把这些缺口说成语言不变量。五项主干尚未关闭。

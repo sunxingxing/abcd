@@ -2596,3 +2596,40 @@ IR/SSA correspondence, activation identity and global convergence remain gaps.
 Independent entry-forest references, statement/expression arena reversal, actual
 source execution and adverse receiver/suspension transforms verify this substep;
 see status.md for authoritative final selected evidence. Overall milestone is open.
+
+
+### Projected normal domains through successful definitions (rules255)
+
+The previous direct raw ExprId domain lookup is retired from recovery decisions.
+A raw SSA operand fact describes that original operand, not any future value read
+from its source slot after a trial changes a producer. OriginalFlow retains it as
+provenance; it is not a reusable projected-domain certificate. Verified original
+parameter-entry domains enter the shared source parameter definitions through the
+checked parameter mapping, with exposure/stable-entry obligations unchanged.
+
+PrepareRecoveryProjection conservatively constructs source effects and completion
+edges, computes occurrence initialization independently, then computes all-read
+liveness and FlowNormalKinds over that same graph. Sparse incoming binding facts
+join predecessor state or a successful definition's current RHS domain. A throwing
+RHS does not traverse that definition. Assignment and sequence forward values;
+conditional/logical equations join normal alternatives; source operators use one
+exhaustive normal-result table. This does not duplicate raw opcode semantics.
+Number/BigInt uncertainty, observable cells, unknown sources and ungrounded cycles
+stay conservative. Static definition identity is never dynamic value equality.
+
+The finite ValueKinds lattice only widens. Expression/fact dependency lists and a
+bounded worklist close the equations; there is no dense read-definition product or
+walk per binding. Refinement consumes the resulting domains and the independently
+completed initialization proof, preserving graph/event identities. Current and trial
+plans call the same provider. External normal-kind spans are rejected at bootstrap,
+so another plan's facts cannot be smuggled into a trial. Sequential liveness/domain
+scratch is destroyed before later phases, with simultaneous live storage and total
+work admitted against the unchanged budget. No pass order or new global round is
+introduced; all commit invalidation remains as in rules254.
+
+Independent small-graph state rescans, reverse arenas/events, 200/201/geometric
+forests and emitted success/exception/loop programs verify this path. Source-adapter
+fixtures explicitly do not claim original ABC certificates; decoded original
+fixtures remain independent end-to-end evidence. Full original operation/protocol
+correspondence, ordinary cell activation, complete lifetime deltas and dependency
+convergence remain open, as do all five backbone delivery loops.

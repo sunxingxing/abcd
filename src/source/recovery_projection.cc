@@ -1,5 +1,6 @@
 #include "recovery_projection.h"
 #include "expression_children.h"
+#include "flow_kinds.h"
 #include <algorithm>
 #include <new>
 #include <limits>
@@ -77,6 +78,9 @@ std::vector<ExprId> DependencyOrder(const FunctionTree& tree,const RecoveryExpre
   order.resize(count);return order;
 }
 }
+FlowValueEquation ProjectedRecoveryEquation(const RecoveryExpressionInput& input,ExprId id) {
+  return Equation(input,id);
+}
 bool WritableRecoveryBinding(const FunctionTree& tree,SymbolId symbol) {
   const auto& binding=tree.symbols[symbol.value];
   if(binding.declaration==DeclarationKind::kConst)return false;
@@ -92,6 +96,7 @@ RecoveryExpressions AnalyzeRecoveryExpressions(const FunctionTree& tree,
   const auto size=tree.expressions.size();
   RequireTree(input.equations.size()==size&&input.replacements.size()==size&&input.transports.size()==size&&
       (initialized.empty()||initialized.size()==size),TreeStructureError::kOwnership);
+  RequireTree(input.normal_kinds.empty()||input.normal_kinds.size()==size,TreeStructureError::kOwnership);
   if(input.original)CheckOriginalFlow(tree,*input.original);
   const auto order=DependencyOrder(tree,input,budget);
   RecoveryExpressions facts;
@@ -120,7 +125,8 @@ RecoveryExpressions AnalyzeRecoveryExpressions(const FunctionTree& tree,
     auto& literal=facts.literals[id.value];
     analysis::ValueKinds unmodeled;
     auto& kinds=input.original?facts.kinds[id.value]:unmodeled;
-    kinds=input.original&&input.original->normal_kinds[id.value]?*input.original->normal_kinds[id.value]:analysis::ValueKinds::Language();
+    kinds=!input.normal_kinds.empty()?input.normal_kinds[id.value]:
+        input.original?NormalValueKinds(node,facts.kinds):analysis::ValueKinds::Language();
     const auto join = [&](ExprId left, ExprId right) -> std::optional<SymbolId> {
       return stored[left.value] == stored[right.value] ? stored[left.value] : std::nullopt;
     };
@@ -139,7 +145,7 @@ RecoveryExpressions AnalyzeRecoveryExpressions(const FunctionTree& tree,
       facts.lexical[id.value]=facts.lexical[replacement->value];
       continue;
     }
-    const auto equation=Equation(input,id);
+    const auto equation=ProjectedRecoveryEquation(input,id);
     auto evaluation = NormalValueEvaluation(node,facts.kinds,ResourceFailures(tree.identity.contract));
     auto lexical=IntrinsicLexicalDependency(node);
     if (const auto* read = std::get_if<SymbolExpr>(&node)) {
@@ -198,9 +204,9 @@ RecoveryExpressions AnalyzeRecoveryExpressions(const FunctionTree& tree,
     else if(input.original) {
       if(const auto* value=std::get_if<FlowExpressionValue>(&equation))kinds=facts.kinds[value->expression.value];
     }
-    // Original domains remain normal-result proofs. Source replacements use
-    // their actual producer's domain; no type fact bypasses child GetValue,
-    // initialization or effect completion.
+    // Normal domains belong to this projection's success definitions. Raw
+    // operand domains cannot survive a changed producer merely because the
+    // read occurrence is unchanged. GetValue/effect completion stay separate.
     VisitExpressionChildren(tree, node, [&](ExprId child) {
       budget.Step(); if (facts.evaluations[child.value] == ExpressionEvaluation::kRequired)
         evaluation = ExpressionEvaluation::kRequired;
@@ -220,6 +226,9 @@ std::variant<RecoveryProjection,TreeStructureError> PrepareRecoveryProjection(
     const FunctionTree& tree,LegacyFlowProjection projection,const RecoveryExpressionInput& input,
     analysis::SemanticBudget allowance) {
   try {
+    // Only this bootstrap may attach a completed domain product. Accepting an
+    // external span here would let a trial borrow another plan's type proof.
+    RequireTree(input.normal_kinds.empty(),TreeStructureError::kOwnership);
     TreeCheckBudget budget(allowance);RecoveryProjection result;
     std::size_t peak=0;
     const auto remaining=[&](std::size_t live) {
@@ -262,10 +271,24 @@ std::variant<RecoveryProjection,TreeStructureError> PrepareRecoveryProjection(
       charge(flow_bytes+initialization.allocated_bytes,reads_budget.Bytes(),reads_budget.Work());
     }
     const auto retained=flow_bytes+result.initialized_reads.capacity()*sizeof(std::uint8_t);
-    TreeCheckBudget expression_budget(remaining(retained));
-    result.expressions=AnalyzeRecoveryExpressions(tree,input,result.initialized_reads,expression_budget);
-    charge(retained,expression_budget.Bytes(),expression_budget.Work());
-    const auto live=retained+ExpressionBytes(result.expressions);
+    FlowNormalKinds domains;
+    if(input.original) {
+      auto analyzed=AnalyzeFlowLiveness(result.flow,remaining(retained));
+      if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
+      const auto liveness=std::get<FlowLiveness>(std::move(analyzed));
+      charge(retained,liveness.allocated_bytes,liveness.work);
+      auto typed=AnalyzeFlowNormalKinds(tree,result.flow,liveness,input,remaining(retained+liveness.allocated_bytes));
+      if(const auto* error=std::get_if<TreeStructureError>(&typed))throw *error;
+      domains=std::get<FlowNormalKinds>(std::move(typed));
+      charge(retained+liveness.allocated_bytes,domains.allocated_bytes,domains.work);
+    }
+    const auto domains_bytes=domains.expressions.capacity()*sizeof(analysis::ValueKinds);
+    auto refined_input=input;refined_input.normal_kinds=domains.expressions;
+    TreeCheckBudget expression_budget(remaining(retained+domains_bytes));
+    result.expressions=AnalyzeRecoveryExpressions(tree,refined_input,result.initialized_reads,expression_budget);
+    charge(retained+domains_bytes,expression_budget.Bytes(),expression_budget.Work());
+    std::copy(result.expressions.kinds.begin(),result.expressions.kinds.end(),result.flow.normal_kinds.begin());
+    const auto live=retained+domains_bytes+ExpressionBytes(result.expressions);
     auto refined=RefineRecoveryFlowEffects(result.flow,tree,result.expressions.evaluations,
         result.expressions.normal_stores,remaining(live));
     if(const auto* error=std::get_if<TreeStructureError>(&refined))throw *error;
