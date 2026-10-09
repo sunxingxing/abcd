@@ -656,3 +656,17 @@ product and rejects external cached spans; no new pass round/order is introduced
 Independent state-oracle, success/throw/loop source execution and stale-domain/
 early-write/dead-init mutants verify the component. Tasks1/2/4/5 and all five human
 backbone loops remain open; see status.md for final bounded verification evidence.
+
+
+Rules256 Task1/3 backbone substep: actual successful source assignments retain
+original result/phi/saved/catch correspondence from the existing proof owners.
+Current and trial normal analysis consumes its stricter domains only after shared
+operand/completion change propagation. Original ExprId hints stay provenance;
+changed producer/path/statement deltas cannot reuse the old proof. The common
+completion context is sparse and built once, with finite-lattice closure and
+accounted memory/work. No independent optimizer inference, new admission pattern,
+pass round, budget increase or paused scope resumes. Existing old-value numeric
+update lowering remains unmapped rather than confusing its result with the stored
+increment. Final bounded evidence belongs to status.md. Complete raw protocols/
+effects, ordinary activation, lifetime trial deltas, dependency convergence and
+unified-variable final acceptance still require their delivery loops to close.

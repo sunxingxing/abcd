@@ -3,9 +3,9 @@
 
 #include "control_plan.h"
 #include "evaluation_plan.h"
+#include "original_flow.h"
 
 namespace abcd::source {
-struct OriginalFlow;
 struct ExceptionTreeInput;
 // Reuse is confined to one synchronous construction: the builder has checked
 // this exact control input and has not modified it. Independent callers must
@@ -58,6 +58,9 @@ struct TreeFlow {
   std::vector<std::uint32_t> buffered_properties;
   std::vector<std::uint8_t> defined_properties; // PropertyId indexed, unique own write.
   std::vector<std::optional<SymbolId>> snapshots;
+  // Written by the proof owning the actual snapshot/edge/catch assignment.
+  // Recovery must not reconstruct raw definition identity from AST shape.
+  std::vector<std::optional<OriginalSourceDefinition>> definitions;
   // OpId indexed, reconstructed from actual native roots. These values reuse
   // immutable invocation storage, not a source symbol or a derived VM entry.
   std::vector<ReceiverValue> receivers;

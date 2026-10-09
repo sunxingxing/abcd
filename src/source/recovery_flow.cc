@@ -191,6 +191,11 @@ class FlowBuilder {
     const auto point=New({FlowEventKind::kDefinition,{},FlowDefinitionId{static_cast<std::uint32_t>(definitions_.size())}});
     events_[point.value].discarded=discarded;
     Append(definitions_,{point,Resolve(binding),kind,copy,value,declaration,write,effect});
+    if(result_.original&&write&&!result_.original->definitions.empty()) {
+      const auto& original=result_.original->definitions[write->value];
+      if(original&&original->binding==binding&&value==original->input)
+        definitions_.back().original=&*original;
+    }
     if(write || kind==FlowDefinitionKind::kUndefinedStore ||
         kind==FlowDefinitionKind::kInitializer || kind==FlowDefinitionKind::kAssignment)
       if(const auto site=definitions_.back().WriteSite())

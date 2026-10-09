@@ -36,6 +36,46 @@
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
 
+### 2026-10-09：规则256，原始成功写入对应与共同证明失效
+
+- 主干第1/3项继续实施：既有TreeFlow快照、phi拷贝、并行拷贝环暂存、异常
+  stage和catch提交的证明路径发布typed原始结果/贡献与实际源码成功
+  写入对应；表只分配一次，移交immutable OriginalFlow。共同源码定义
+  借用条件provenance，优化器不从AST或操作序列重新推断对应。
+- 共同normal分析区分值依赖和完成依赖。原始更精细域只有在当前RHS、
+  写入和前置执行路径的证明仍成立时消费；改写分支、值或声明边界会
+  传播失效。条件Boolean不会混入存储类型，宽泛原始phi域也不会
+  丢弃源码已证明的精度。旧raw ExprId域提示仍仅是provenance。
+- 原SSA编号不是动态值/cell身份；数值更新的旧结果与成功新写入分开，
+  postfix ToNumeric内部scratch尚未映射，不把旧结果域冒充新存储域。
+  不新增样本、同块、邻接、生产者白名单、固定布局或pass轮次条件。
+- 首次限定验证62/63，独立小图值流因没有声明边界索引被错误拒绝。
+  移除这条额外准入：缺少对应只使原始路径证明未知，当前值流仍求解；
+  已提供但越界的point仍是真实ownership错误。新增实际原始对应的
+  missing-boundary反例先RED后GREEN，原独立oracle保持不变。
+- 当前/试算复用同一稀疏值与完成图；变化闭包单调传播一次，域按有限
+  lattice求解，不按定义遍历全图、不构造read×definition关系。200/201/
+  400/800 work=546917/549389/1118887/2297280，bytes=2812123/
+  2815741/5624683/11249803；exact/one-short及1,024独立小图通过。
+- 新18个checked原始SSA图源码用例覆盖复制、编号重排、拆块和前置
+  分支限定域；540次独立执行及18个行为反例通过。既有96原始SSA
+  图源码/2880比较/4反例、8共同源码adapter成功/异常/循环源码/
+  620比较/20反例仍通过。它们不冒充完整ABC语料的端到端验收。
+- 最终代码两次fresh生产错误修改均构建成功，移除原始严格域消费在
+  check332 SIGABRT -6，移除执行上下文依赖在check344 SIGABRT -6；
+  恢复后再完成最终限定验证。声明边界缺失RED在check340 -6。
+- 最终31目标构建28.1674秒，精确63/63 CTests550.8872秒，名称集合
+  完全相同、无重复；fresh固定pasteboard导出2.8423秒，19records/
+  10complete/0partial/9no-module、10语法检查，源码相对规则255无变化，
+  profile=language_numeric_constructors_v1，预算未增。输入SHA前后仍
+  854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e。
+  证据在build/stage-one/original-definition-verification，首次失败保留在
+  attempt-one；最终构建无warning/error。
+- 完整原始effect/protocol与未映射normal根、local/catch动态激活、
+  候选声明/lifetime delta、依赖收敛及终验仍开放，五项交付均未关闭。
+  不继续表现层优化；full suite/扩展语料/RSS/benchmark/DFX/agents
+  仍暂停。阶段一Goal active，未修改输入或memory，未push或新建worktree。
+
 ### 2026-10-09：规则255，共同成功定义与投射数值域
 
 - 主干第1/3项继续实施：原SSA参数入口域按已校验参数对应接入共同

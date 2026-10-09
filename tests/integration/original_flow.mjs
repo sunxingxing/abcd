@@ -133,3 +133,23 @@ for(const row of projected) {
 }
 assert.equal(projected.length,8);
 console.log(`${projected.length} projected success/exception/loop sources / ${projectedComparisons} independent comparisons / ${projectedMutants} adverse mutants`);
+
+const definitions=execFileSync(process.argv[2],['--definitions'],{encoding:'utf8',maxBuffer:16_000_000}).trim().split('\n').map(JSON.parse);
+let definitionComparisons=0,definitionMutants=0;
+function definitionEquivalent(source,conditional) {
+  const generated=Function('return ('+source+')')();
+  const reference=conditional?function(params){if(params===0){const saved=+params;saved+1;return saved;}return params;}:
+    function(params){const saved=+(params===0);saved+1;return saved;};
+  for(const factory of factories)assert.deepEqual(outcome(generated,factory),outcome(reference,factory));
+}
+for(const row of definitions) {
+  definitionEquivalent(row.source,row.conditional);definitionComparisons+=factories.length;
+  const source='('+row.source+')';
+  const comparison=nodes(parseJavaScript(source)).find(node=>node.type==='BinaryExpression'&&['===','!=='].includes(node.operator));
+  assert.ok(comparison,'strict comparison remains observable');
+  const replacement=row.conditional?(comparison.operator==='==='?'true':'false'):source.slice(comparison.left.start,comparison.left.end);
+  const mutant=source.slice(0,comparison.start)+replacement+source.slice(comparison.end);
+  assert.throws(()=>definitionEquivalent(mutant,row.conditional));++definitionMutants;
+}
+assert.equal(definitions.length,18);
+console.log(`${definitions.length} checked successful-definition sources / ${definitionComparisons} independent comparisons / ${definitionMutants} adverse mutants`);

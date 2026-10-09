@@ -42,7 +42,7 @@ void Join(OriginalFlow& original,ExprId expression,analysis::ValueKinds kinds) {
 }
 }
 std::shared_ptr<OriginalFlow> RetainOriginalFlow(const analysis::ValueProgram& graph,
-    const FunctionTree& tree,const TreeFlow& flow,TreeCheckBudget& budget) {
+    const FunctionTree& tree,TreeFlow& flow,TreeCheckBudget& budget) {
   auto result=std::allocate_shared<OriginalFlow>(OriginalAllocator<OriginalFlow>{budget});
   result->identity=tree.identity;result->method=tree.method;
   result->value_revision=graph.revision;result->cfg_revision=graph.cfg_revision;
@@ -53,6 +53,8 @@ std::shared_ptr<OriginalFlow> RetainOriginalFlow(const analysis::ValueProgram& g
   copy(result->values,graph.values);copy(result->uses,graph.uses);
   copy(result->blocks,graph.blocks);copy(result->edges,graph.edges);
   copy(result->exceptional_exits,graph.exceptional_exits);copy(result->phases,graph.phases);copy(result->origins,graph.origins);
+  // Transfer the verified table; its allocation was already admitted with TreeFlow.
+  result->definitions=std::move(flow.definitions);
   budget.Array(result->operations,graph.ops.size());
   budget.Array(result->normal_kinds,tree.expressions.size());
   budget.Array(result->input_ranges,tree.expressions.size());
@@ -96,6 +98,17 @@ void CheckOriginalFlow(const FunctionTree& tree,const OriginalFlow& original) {
       original.value_revision==tree.value_revision&&original.cfg_revision==tree.cfg_revision&&
       original.normal_kinds.size()==tree.expressions.size()&&
       original.input_ranges.size()==tree.expressions.size()&&
+      (original.definitions.empty()||original.definitions.size()==tree.expressions.size())&&
       original.statements==tree.statements.size()&&original.bindings==tree.symbols.size(),TreeStructureError::kOwnership);
+}
+analysis::ValueKinds OriginalDefinitionKinds(const OriginalFlow& original,const OriginalSourceDefinition& definition) {
+  return std::visit([&](const auto& origin) {
+    using T=std::decay_t<decltype(origin)>;
+    if constexpr(std::is_same_v<T,OriginalSavedDefinition>)return Kinds(original,origin.operand);
+    else {
+      static_assert(std::is_same_v<T,OriginalResultDefinition>||std::is_same_v<T,OriginalPhiDefinition>||std::is_same_v<T,OriginalCatchDefinition>);
+      return Kinds(original,analysis::ValueOperand{origin.value});
+    }
+  },definition.origin);
 }
 }  // namespace abcd::source

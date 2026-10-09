@@ -141,6 +141,9 @@ struct FlowDefinition {
   std::optional<StmtId> declaration;
   std::optional<ExprId> write;
   FlowWriteEffect effect = FlowWriteEffect::kObservable;
+  // Conditional provenance from the checked original write. The common value
+  // dependency analysis decides whether its domain survived this projection.
+  const OriginalSourceDefinition* original=nullptr;
   // The semantic adapter owns both expression and statement write positions.
   // Kind still distinguishes lexical completion from assignment/slot writes;
   // a site alone never authorizes deleting initialization or binding lifetime.

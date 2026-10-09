@@ -2963,3 +2963,27 @@ remains open. See source-property-references.md for prerequisites and tests.
 小图、布局变换、实际源码执行及错误写回/删初始值/删转换反例见status。
 完整原始effect/protocol与local/catch activation仍为实现缺口，未新增局部
 模式弥补，也未把这些缺口说成语言不变量。五项主干尚未关闭。
+
+
+## Rules256: checked source commits and conditional original domains
+
+Obligation: the current successful source write still denotes the original checked
+result/contribution, and its operand and execution dependencies retain that proof.
+TreeFlow snapshot/edge/stage/catch owners publish correspondence once. Shared
+normal analysis invalidates it through current values and all completion edges;
+source-plan statement deltas include omitted linked boundaries. Missing boundary
+correspondence disables raw path precision and preserves source-value solving;
+it is not a graph-size admission condition. Actual SSA IDs
+remain static provenance, never dynamic value equality or binding-cell identity.
+
+No sample/producer whitelist, same-block, adjacency, copy count or fixed graph
+admission is added. Missing correspondence/environment/activation precision uses
+current conservative source semantics. Raw occurrence hints remain provenance;
+the old direct hint consumer remains outside decisions. The stricter checked
+success domain is a precision source, not authority to remove initialization,
+effects or binding lifetime. No new pass order/round or manual cache preservation.
+Finite-domain fixtures permute raw IDs, add copies and split blocks; producer and
+path edits must invalidate the domain. Existing arena/normal/exception/loop and
+independent source execution tests remain in the bounded scope. Full original
+protocol/effect mapping, local/catch activation, complete trial deltas and global
+convergence are still open; the five backbone deliveries are not closed here.

@@ -5,6 +5,22 @@
 #include <memory>
 namespace abcd::source {
 struct TreeFlow;
+struct OriginalResultDefinition {analysis::OpId operation;analysis::ValueId value;};
+struct OriginalPhiDefinition {analysis::ValueId value;analysis::IncomingKey incoming;};
+struct OriginalSavedDefinition {
+  analysis::ValueOperand operand;
+  std::variant<analysis::OpId,analysis::IncomingKey> placement;
+};
+struct OriginalCatchDefinition {analysis::ValueId value;analysis::WorkBlockId handler;};
+// These are checked source commits of raw results/contributions, not dynamic
+// SSA value equality. Stage/cycle saves preserve an operand; phi copies supply
+// an incoming contribution; a catch commit publishes the staged contribution.
+struct OriginalSourceDefinition {
+  std::variant<OriginalResultDefinition,OriginalPhiDefinition,
+      OriginalSavedDefinition,OriginalCatchDefinition> origin;
+  SymbolId binding;
+  ExprId input;
+};
 // Original operations retain phase effects and success-only results, without
 // copying opcode variants or interpreting them a second time in recovery.
 struct OriginalOperation {
@@ -44,16 +60,18 @@ struct OriginalFlow {
   std::vector<analysis::ValueOrigin> origins;
   std::vector<OriginalInput> inputs;
   std::vector<OriginalInputRange> input_ranges;
+  std::vector<std::optional<OriginalSourceDefinition>> definitions; // ExprId indexed.
   // Raw normal-result provenance, joined when normalization maps values to an
   // occurrence. This is NOT a type proof for a later recovery projection;
   // successful source definitions and current operands own projected domains.
   std::vector<std::optional<analysis::ValueKinds>> normal_kinds;
 };
 [[nodiscard]] std::shared_ptr<OriginalFlow> RetainOriginalFlow(
-    const analysis::ValueProgram&,const FunctionTree&,const TreeFlow&,TreeCheckBudget&);
+    const analysis::ValueProgram&,const FunctionTree&,TreeFlow&,TreeCheckBudget&);
 void RecordOriginalInput(OriginalFlow&,const analysis::ValueOperand&,
     const analysis::ValueOperand&,ExprId,std::optional<analysis::UseId>,TreeCheckBudget&);
 void IndexOriginalInputs(OriginalFlow&,TreeCheckBudget&);
 void CheckOriginalFlow(const FunctionTree&,const OriginalFlow&);
+[[nodiscard]] analysis::ValueKinds OriginalDefinitionKinds(const OriginalFlow&,const OriginalSourceDefinition&);
 }  // namespace abcd::source
 #endif

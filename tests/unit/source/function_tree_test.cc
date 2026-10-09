@@ -16,6 +16,8 @@
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include "../../../src/source/recovery_flow.h"
+#include "../../../src/source/recovery_projection.h"
+#include "../../../src/source/flow_kinds.h"
 
 namespace {
 using namespace abcd;
@@ -205,6 +207,13 @@ void OriginalNumericSnapshots(bool emit=false,unsigned copies=0,bool reverse=fal
   Check(built.flow->original != nullptr);
   const auto& original=*built.flow->original;
   Check(original.values.size()==fixture.graph.values.size());Check(original.uses.size()==fixture.graph.uses.size());
+  Check(original.definitions.size()==built.tree.expressions.size());
+  bool successful=false;
+  for(const auto& definition:original.definitions)if(definition) {
+    Check(definition->input.value<built.tree.expressions.size());
+    successful=true;
+  }
+  if(numeric)Check(successful);
   Check(original.operations[number.value].normal==(numeric?LanguageEffect::kUserCode:LanguageEffect::kNone));
   Check(original.operations[number.value].exceptional==(numeric?ExceptionalCompletion::kMayThrow:ExceptionalCompletion::kImpossible));
   Check(original.values[fixture.graph.ops[number.value].result->value].domain.IsNumber()==numeric);
@@ -259,6 +268,126 @@ void OriginalNumericSnapshots(bool emit=false,unsigned copies=0,bool reverse=fal
   Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(built.tree,output,{}, {},nullptr,&original)));
   if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"numeric",numeric},{"copies",copies},{"reverse",reverse},{"split",split},{"arena",arena},{"work",built.work},{"bytes",built.allocated_bytes},{"operations",fixture.graph.ops.size()},{"values",fixture.graph.values.size()},{"uses",fixture.graph.uses.size()},{"edges",fixture.graph.edges.size()}}<<'\n';
 }
+void OriginalSuccessfulDomains(unsigned copies=0,bool reverse=false,bool split=false,bool conditional=false,bool emit=false) {
+  using namespace analysis;
+  Fixture f;f.callable=CallableKind::kFunction;
+  const auto comparison=f.Add(0,0,0,ValueBinary{BinaryOperator::kStrictEqual},true,
+      {{OperandRole::kLeft,ValueId{0}},{OperandRole::kRight,analysis::IntegerLiteral{0}}});
+  auto boolean=*f.graph.ops[comparison.value].result;
+  f.graph.values[boolean.value].domain=ValueKinds::Boolean();
+  for(unsigned i=0;i<copies;++i) {
+    const auto copy=f.Add(0,i+1,i+1,ValueCopy{},true,{{OperandRole::kInput,boolean}});
+    boolean=*f.graph.ops[copy.value].result;f.graph.values[boolean.value].domain=ValueKinds::Boolean();
+  }
+  std::optional<OpId> branch;
+  if(conditional)branch=f.Add(0,copies+1,copies+1,ValueBranch{UnaryOperator::kTrueOrNonzeroNumber},false,{{OperandRole::kCondition,boolean}});
+  else if(split)f.Add(0,copies+1,copies+1,ValueJump{},false,{});
+  const auto conversion=f.Add(split||conditional?1:0,split||conditional?0:copies+1,copies+2,ValueUnary{UnaryOperator::kToNumber},true,
+      {{OperandRole::kInput,conditional?ValueId{0}:boolean}},LanguageEffect::kUserCode);
+  const auto number=*f.graph.ops[conversion.value].result;
+  f.graph.values[number.value].domain=ValueKinds::FiniteNumber();
+  f.Add(split||conditional?1:0,split||conditional?1:copies+2,copies+3,ValueBinary{BinaryOperator::kAdd},true,
+      {{OperandRole::kLeft,number},{OperandRole::kRight,analysis::IntegerLiteral{1}}});
+  f.Add(split||conditional?1:0,split||conditional?2:copies+3,copies+4,ValueReturn{},false,{{OperandRole::kReturnValue,number}});
+  if(conditional) {
+    const auto alternate=f.Add(2,0,copies+5,ValueReturn{},false,{{OperandRole::kReturnValue,ValueId{0}}});
+    f.graph.blocks={{{0},copies+2,{0},2},{{copies+2},3,{2},0},{{alternate.value},1,{2},0}};
+    f.graph.edges={{{0},{1},FlowEdgeKind::kTaken,0},{{0},{2},FlowEdgeKind::kFallthrough,1}};
+  } else if(split) {
+    f.graph.blocks={{{0},copies+2,{0},1},{{copies+2},3,{1},0}};
+    f.graph.edges={{{0},{1},FlowEdgeKind::kTaken,0}};
+  } else f.graph.blocks={{{0},copies+4,{0},0}};
+  if(reverse) {
+    const auto map=[&](ValueId id){return ValueId{static_cast<unsigned>(f.graph.values.size()-1-id.value)};};
+    for(auto& op:f.graph.ops)if(op.result)op.result=map(*op.result);
+    for(auto& use:f.graph.uses) {
+      if(auto* id=std::get_if<ValueId>(&use.operand))*id=map(*id);
+      if(auto* id=std::get_if<ValueId>(&use.owner))*id=map(*id);
+    }
+    std::reverse(f.graph.values.begin(),f.graph.values.end());
+  }
+  const auto construction=f.Build();Check(std::holds_alternative<ConstructedFunction>(construction));
+  const auto built=std::get<ConstructedFunction>(construction);const auto& tree=built.tree;
+  const auto x=tree.expressions.size(),s=tree.statements.size(),b=tree.symbols.size();
+  BindingInitializers plan;
+  plan.aliases.resize(b);plan.storage.resize(b);plan.read_bindings.resize(b);plan.literals.resize(b);
+  plan.read_sources.resize(x);plan.read_literals.resize(x);plan.replacements.resize(x);plan.transports.resize(x);
+  plan.omitted.resize(s);plan.statements.resize(s);plan.primitives.push_back(TreeLiteral{BooleanLiteral{true}});
+  std::vector<FlowValueEquation> equations(x);std::vector<ExprId> order;
+  for(unsigned i=0;i<x;++i) {
+    order.push_back({i});if(const auto* read=std::get_if<SymbolExpr>(&tree.expressions[i].expression))equations[i]=FlowBindingValue{read->symbol};
+  }
+  std::vector<std::uint8_t> private_bindings(b),stable(b);
+  for(unsigned i=0;i<b;++i){private_bindings[i]=tree.symbols[i].kind==BindingKind::kCompilerTemporary;stable[i]=tree.symbols[i].kind==BindingKind::kParameter;}
+  const auto* original=built.flow->original.get();
+  RecoveryExpressionInput input{plan,equations,order,plan.replacements,plan.transports,original};
+  LegacyFlowProjection projection{plan.aliases,plan.literals,plan.replacements,plan.omitted,{},{},plan.statements,private_bindings};
+  projection.stable_entries=stable;
+  const auto model_result=PrepareRecoveryProjection(tree,projection,input);
+  Check(std::holds_alternative<RecoveryProjection>(model_result));
+  const auto model=std::get<RecoveryProjection>(model_result);
+  std::vector<ExprId> observed;
+  for(const auto& reference:model.flow.references)if(reference.kind==FlowReferenceKind::kRead)
+    if(const auto* site=std::get_if<ExprId>(&reference.site);site&&original->normal_kinds[site->value]&&original->normal_kinds[site->value]->IsFiniteNumber()) {
+      observed.push_back(*site);Check(model.expressions.kinds[site->value].IsFiniteNumber());
+    }
+  Check(!observed.empty());
+  // Value-only flow clients can lack source boundary correspondence. Keep
+  // solving their current values; only the conditional raw range proof is lost.
+  auto value_only=model.flow;value_only.statements.clear();
+  const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(value_only));
+  const auto value_only_result=AnalyzeFlowNormalKinds(tree,value_only,live,input);
+  Check(std::holds_alternative<FlowNormalKinds>(value_only_result));
+  const auto& unknown_path=std::get<FlowNormalKinds>(value_only_result);
+  for(const auto site:observed) {
+    Check(unknown_path.expressions[site.value].IsNumber());
+    Check(!unknown_path.expressions[site.value].IsFiniteNumber());
+  }
+  ExprId producer{};bool mapped=false;
+  for(const auto& definition:original->definitions)if(definition)
+    if(const auto* result=std::get_if<OriginalResultDefinition>(&definition->origin);result&&result->operation==conversion) {
+      producer=definition->input;mapped=true;
+      Check(OriginalDefinitionKinds(*original,*definition).IsFiniteNumber());
+    }
+  Check(mapped);
+  // An actual producer edit invalidates the checked successful-definition
+  // domain, even though the write, consumer and original hint remain present.
+  auto changed_value=plan.transports;
+  changed_value[producer.value]=ExpressionTransport{producer,PrimitiveId{0}};
+  RecoveryExpressionInput candidate{plan,equations,order,plan.replacements,changed_value,original};
+  const auto changed_result=PrepareRecoveryProjection(tree,projection,candidate);
+  Check(std::holds_alternative<RecoveryProjection>(changed_result));
+  const auto changed=std::get<RecoveryProjection>(changed_result);
+  for(const auto site:observed)Check(changed.expressions.kinds[site.value]==ValueKinds::Boolean());
+  if(branch) {
+    auto transports=plan.transports;
+    const auto condition=*original->operations[branch->value].expression;
+    transports[condition.value]=ExpressionTransport{condition,PrimitiveId{0}};
+    RecoveryExpressionInput changed_path{plan,equations,order,plan.replacements,transports,original};
+    const auto widened_result=PrepareRecoveryProjection(tree,projection,changed_path);
+    Check(std::holds_alternative<RecoveryProjection>(widened_result));
+    const auto widened=std::get<RecoveryProjection>(widened_result);
+    for(const auto site:observed) {
+      Check(widened.expressions.kinds[site.value].IsNumber());
+      Check(!widened.expressions.kinds[site.value].IsFiniteNumber());
+    }
+  }
+  if(emit) {
+    std::ostringstream output;
+    Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output,{}, {},nullptr,original)));
+    std::cout<<nlohmann::json{{"source",output.str()},{"conditional",conditional},{"copies",copies},{"reverse",reverse},{"split",split}}<<'\n';
+  }
+  auto without_definitions=*original;without_definitions.definitions.clear();
+  RecoveryExpressionInput missing{plan,equations,order,plan.replacements,plan.transports,&without_definitions};
+  const auto conservative_result=PrepareRecoveryProjection(tree,projection,missing);
+  Check(std::holds_alternative<RecoveryProjection>(conservative_result));
+  const auto conservative=std::get<RecoveryProjection>(conservative_result);
+  for(const auto site:observed) {
+    Check(conservative.expressions.kinds[site.value].IsNumber());
+    Check(!conservative.expressions.kinds[site.value].IsFiniteNumber());
+  }
+}
+
 void UnprovedTryRefusal() {
   Fixture fixture;
   fixture.Add(0, 0, 0, analysis::ValueReturn{}, false,
@@ -1284,6 +1413,12 @@ void RetainedReceiverTrees() {
 }
 }  // namespace
 int main(int argc,char** argv) {
+  if(argc==2&&std::string_view(argv[1])=="--definitions") {
+    for(const unsigned copies:{0U,1U,200U,201U})
+      for(const bool reverse:{false,true})for(const bool split:{false,true})OriginalSuccessfulDomains(copies,reverse,split,false,true);
+    for(const bool reverse:{false,true})OriginalSuccessfulDomains(1,reverse,false,true,true);
+    return 0;
+  }
   if(argc==2&&std::string_view(argv[1])=="--original") {
     for(const unsigned copies:{0U,1U,200U,201U,400U,800U})
       for(const bool reverse:{false,true})for(const bool split:{false,true})for(const bool numeric:{false,true})for(const bool arena:{false,true})
@@ -1319,6 +1454,9 @@ int main(int argc,char** argv) {
     Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(tree)));
   }
   OriginalNumericSnapshots();
+  for(const unsigned copies:{0U,1U,200U,201U})
+    for(const bool reverse:{false,true})for(const bool split:{false,true})OriginalSuccessfulDomains(copies,reverse,split);
+  for(const bool reverse:{false,true})OriginalSuccessfulDomains(1,reverse,false,true);
   CreationSelfTree();
   FrameFunctionTree();
   InvocationBindingTrees();

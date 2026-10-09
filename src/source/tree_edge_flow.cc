@@ -102,10 +102,15 @@ void TreeEdgeFlow::Consume(analysis::IncomingKey incoming, const BlockStmt& bloc
     if (const auto* value = std::get_if<analysis::ValueId>(&destination)) {
       Require(value->value < flow_.phis.size(), TreeFlowError::kSnapshot);
       Bind(flow_.phis[value->value], target.symbol, TemporaryReason::kPhiJoin);
+      flow_.definitions[expression.value]=OriginalSourceDefinition{
+          OriginalPhiDefinition{*value,incoming},target.symbol,assignment.value};
     } else {
       const auto temporary = std::get<CopyTempId>(destination);
       Require(temporary.value < copies.temporaries.size(), TreeFlowError::kSnapshot);
       Bind(copies.temporaries[temporary.value], target.symbol, TemporaryReason::kParallelCopyCycle);
+      if(const auto* operand=std::get_if<analysis::ValueOperand>(&schedule.steps[i].source))
+        flow_.definitions[expression.value]=OriginalSourceDefinition{
+            OriginalSavedDefinition{*operand,incoming},target.symbol,assignment.value};
     }
     if (tree_.expressions[assignment.value.value].origin != tree_.expressions[expression.value].origin) {
       const auto* operand = std::get_if<analysis::ValueOperand>(&schedule.steps[i].source);
@@ -183,6 +188,9 @@ void TreeEdgeFlow::Stage(analysis::OpId operation, const BlockStmt& block,
     Bind(flow_.catch_slots[slot->value], std::get<SymbolTarget>(assignment.target).symbol,
         TemporaryReason::kExceptionSnapshot);
     flow_.copies[index].expressions[i] = expression;
+    flow_.definitions[expression.value]=OriginalSourceDefinition{
+        OriginalSavedDefinition{evaluation_.phis->copies[bundle.first+i].source,operation},
+        std::get<SymbolTarget>(assignment.target).symbol,assignment.value};
   }
 }
 
@@ -208,6 +216,8 @@ void TreeEdgeFlow::Catch(analysis::WorkBlockId handler, const BlockStmt& block,
     Require(saved != nullptr, TreeFlowError::kSnapshot);
     Bind(flow_.catch_slots[slot], saved->symbol, TemporaryReason::kExceptionSnapshot);
     flow_.catch_commits[index][i] = expression;
+    flow_.definitions[expression.value]=OriginalSourceDefinition{
+        OriginalCatchDefinition{destination,handler},std::get<SymbolTarget>(assignment.target).symbol,assignment.value};
   }
 }
 

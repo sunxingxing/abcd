@@ -36,6 +36,7 @@ class FlowCheck {
     budget.Array(flow_.buffered_properties, graph.ops.size());
     budget.Array(flow_.defined_properties, tree.properties.size());
     budget.Array(flow_.snapshots, graph.ops.size());
+    budget.Array(flow_.definitions, tree.expressions.size());
     budget.Array(flow_.receivers, graph.ops.size());
     if (evaluation.cells) budget.Array(flow_.cells, evaluation.cells->cells.cells.size());
     budget.Array(assigned_, tree.symbols.size());
@@ -1463,6 +1464,9 @@ class FlowCheck {
             declared_[target->symbol.value] && !assigned_[target->symbol.value], Error::kSnapshot);
     assigned_[target->symbol.value] = 1;
     flow_.snapshots[id.value] = target->symbol;
+    if(graph_.ops[id.value].result)
+      flow_.definitions[expression.value]=OriginalSourceDefinition{
+          OriginalResultDefinition{id,*graph_.ops[id.value].result},target->symbol,value};
   }
   void Arm(std::optional<ControlId> first, StmtId block, TreeOriginId origin,
       analysis::EdgeId edge, std::size_t& pending) {

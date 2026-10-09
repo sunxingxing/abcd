@@ -3763,3 +3763,40 @@ and scratch allocation. Boundary200/201 and geometric400/800 tests, exact/short
 budgets and an independent small-graph dense state oracle measure these dimensions.
 This does not establish process RSS or full-pass convergence; those scopes remain
 paused/open respectively.
+
+
+## Checked successful-definition precision (rules256)
+
+The existing TreeFlow proof owners publish typed original-result, incoming-phi,
+parallel-cycle save, exception-stage save and catch-commit correspondence at the
+actual successful source write. The ExprId-indexed table is moved into immutable
+OriginalFlow; there is one allocation/owner, admitted by the original proof budget.
+Recovery never infers this correspondence again from syntax or opcode sequences.
+
+The normal-domain solver uses the same sparse graph for value dependencies and
+completion dependencies. Completion nodes represent every current source event;
+all completion edges propagate projection changes, including loops and exceptional
+paths. They do not join a predicate's Boolean domain into a stored value. Changed
+expressions, unknown/exposed cells, unsupported environments and explicit statement
+projection deltas invalidate dependent raw range proofs. Omitted statements still
+have linked boundary points, which carry their deltas without a current owner.
+Value-only inputs without a statement-boundary index keep their source equations,
+with original path contexts conservatively unproved; absence is not rejection.
+A stricter original domain is consumed only at an unchanged checked success;
+broad raw facts never discard precision already established by source semantics.
+No raw occurrence hint is restored as a projected type certificate.
+
+The previous dimensions V/X/C/N/L/A/D gain E completion edges and S statement
+boundaries. Building/invalidating the additional context graph is O(N+E+S+D);
+normal type propagation remains bounded by finite lattice height H. Memory is
+O(X+N+L+D+bindings), plus O(X) retained correspondence. There is no definition x
+read relation, per-definition predecessor walk, pairwise size cutoff or global
+pass round. All allocations and traversals are admitted/accounted. This is a
+local projection solver bound, not a proof of full-pass convergence or process RSS.
+
+Raw numeric-update result and stored-cell value are different (notably postfix
+ToNumeric lowering); no original old-result domain is assigned to the incremented
+scratch store. Unmapped/native protocol roots, full original effect composition,
+ordinary binding activation and declaration/lifetime candidate deltas remain
+explicit precision gaps. Unknown precision falls back to current source equations,
+without withdrawing otherwise valid partial source.
