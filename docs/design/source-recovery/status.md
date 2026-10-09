@@ -36,6 +36,41 @@
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
 
+### 2026-10-09：规则257，共同普通绑定激活事实
+
+- 主干第2项继续实施：RecoveryFlow区分canonical作用域分配点、enclosing
+  单元、unmodeled局部生命期和仅有完成顺序的synthetic输入。ScopeId标识
+  静态分配点；每次进入产生新动态单元，不授予跨迭代值/capture身份相等。
+  canonical名字包含、稳定入口及捕获/暴露义务仍独立。
+- 修正实际RED：catch初始化原先位于handler EnterScope之前；现在所有
+  CatchClause都在作用域进入后、body语句前初始化参数。初始化共同入口
+  先证明分配支配初始化，再发布完成顺序；原错误catch顺序退出决策路径。
+- allocation/normal departure的共同gen/kill由liveness/demand、reaching
+  definitions、coverage、constants、copies和normal domains共享消费。
+  unavailable边界事实保留，不能因旧定义被切断而虚构all-read证明；不
+  顺带删除可观察undefined初始化、效果或环境，不新增优化器局部形状规则。
+- 当前/trial仍使用共同adapter和修订失效机制；pass顺序、轮次、预算未改。
+  **第2项未关闭**：abrupt unwind、投影/narrowing后的声明与native for
+  per-iteration环境尚未完整接入。canonical站点不是动态cell等价证明。
+  local copy roots仍未获证明；复杂finally/闭包/暂停精度保持明确缺口。
+- 最终31目标构建96.0989s，fresh pasteboard record2.9132s，精确63/63
+  CTests552.2499s通过，名单一致/无重复；构建无warning/error。
+  原19records/10complete/0partial/9no-module、10语法检查、源码内容与
+  规则256相同；原SHA-256前后相同、profile/budgets保持。证据位于
+  build/stage-one/binding-activation-verification，fresh输出为
+  build/stage-one/binding-activation-final-rule257。
+- 新独立4096状态执行对照、两项reset反例、初始化提前到分配之前的反例、
+  正反event arena和exact/short预算通过。B=200/201/400/800森林分别有
+  4B节点、4B-1边、B活跃事实；work39643/39859/83951/177347，累计
+  allocated bytes111576/112093/223168/446352。不是进程RSS或全局收敛证明。
+- 新8份实际源码覆盖catch重复进入、live undefined初始化、copies0/1/
+  200/201及嵌套块：40独立执行比较、16语义变异反例通过。与现有
+  96/2880/4、8/620/20、18/540/18证据共4080比较/58反例；另两项
+  生产变异（删除激活kill/分配前提）build0/test-6，恢复后通过。
+- 所有五个主干交付、统一变量里程碑和阶段一Goal保持开放；下一步接入
+  异常/跳转离开及完整current/trial生命期变化，随后依赖收敛与终验。
+  fullsuite/扩展corpus/RSS/benchmark/DFX/agents仍暂停，无表现层优化。
+
 ### 2026-10-09：规则256，原始成功写入对应与共同证明失效
 
 - 主干第1/3项继续实施：既有TreeFlow快照、phi拷贝、并行拷贝环暂存、异常

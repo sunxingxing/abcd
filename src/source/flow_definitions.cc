@@ -19,7 +19,7 @@ std::variant<FlowReadCoverage,TreeStructureError> AnalyzeFlowReadCoverage(
       else observed[binding.value]=FlowDefinitionId{static_cast<std::uint32_t>(i)};
     }
     for(const auto& fact:live.live_in) {
-      budget.Step();if(fact.point==flow.entry)conflicting[fact.binding.value]=1;
+      budget.Step();if(fact.point==flow.entry||flow.ResetsBinding(fact.binding,fact.point))conflicting[fact.binding.value]=1;
     }
     for(std::size_t i=0;i<flow.definitions.size();++i) {
       budget.Step();const auto binding=flow.definitions[i].binding;
@@ -57,6 +57,7 @@ std::variant<FlowDefinitions,TreeStructureError> AnalyzeFlowDefinitions(
       const auto binding=flow.definitions[fact.definition.value].binding;
       const auto& event=flow.events[fact.point.value];
       if(event.read==binding)reads.insert(fact);
+      if(flow.ResetsBinding(binding,fact.point))continue;
       if(event.definition&&flow.definitions[event.definition->value].binding==binding)continue;
       for(auto edge=event.outgoing;edge;edge=flow.edges[*edge].outgoing) {
         budget.Step();add({flow.edges[*edge].to,fact.definition});

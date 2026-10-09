@@ -2987,3 +2987,28 @@ path edits must invalidate the domain. Existing arena/normal/exception/loop and
 independent source execution tests remain in the bounded scope. Full original
 protocol/effect mapping, local/catch activation, complete trial deltas and global
 convergence are still open; the five backbone deliveries are not closed here.
+
+
+## Rules257 canonical binding activation boundary
+
+CatchClause now emits InitializeBinding after its handler EnterScope; the former
+pre-activation definition order is removed for every handler. Scope lifetimes come
+from verified syntax ownership and language allocation/departure events, never
+sample names, opcode sequences, adjacency, producer lists or block equality.
+ScopeId identifies an allocation site whose visits create fresh units; it does not
+prove captured-cell or value equality across visits.
+
+Shared gen/kill replaces crossing canonical enter/normal-leave boundaries in
+liveness/demand, reaching definitions, coverage, constants, copies and normal
+values. Coverage retains the unavailable boundary source instead of inventing an
+all-read proof. The common initialization provider checks allocation-before-init;
+its completion result cannot independently authorize a lifetime move. Reversed
+physical event order, independent execution-state counterexamples and copy/block
+source variants exercise the obligations. No optimizer-local sequence condition
+or new global pass round is introduced.
+
+Historical rules164 same-ScopeId capture assumptions are not superseded by this
+component: complete current projected activation/capture equivalence is still an
+open migration obligation. Abrupt unwind and native for per-iteration environments
+also remain explicit model gaps. Do not use this canonical allocation index as a
+second same-scope admission rule or expand older local checks around new examples.

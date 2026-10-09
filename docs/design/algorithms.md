@@ -3800,3 +3800,32 @@ scratch store. Unmapped/native protocol roots, full original effect composition,
 ordinary binding activation and declaration/lifetime candidate deltas remain
 explicit precision gaps. Unknown precision falls back to current source equations,
 without withdrawing otherwise valid partial source.
+
+
+## Canonical activation gen/kill (rules257)
+
+The verified syntax owns each lexical scope once statically; repeated execution
+visits that allocation site with a fresh unit. The semantic adapter indexes catch
+initialization by handler statement and allocation/departure by ScopeId, with O(S+Q)
+accounted PMR scratch (S statements, Q scopes), O(B) retained binding lifetime records.
+It emits catch initialization inside the handler activation, without predecessor
+search, opcode layout matching or a graph walk per binding.
+
+Common gen/kill tests scope event identity in O(1) per existing sparse transfer.
+Liveness retains an unavailable boundary fact and stops propagation there; forward
+reaching definitions stop at the same boundary. Constants/copies/normal domains
+join unknown at it. All-read coverage and global invariants consume the boundary
+rather than interpreting the absent old definition as permission to substitute.
+Additional work is O(B+L+edge-fact traversals) within the existing sparse solver
+bounds; retained output density is still admitted honestly. The shared all-completion
+LT dominance result checks allocation-before-initialization in O(B) queries, without
+recomputing dominance or traversing the CFG separately for each binding.
+
+Independent finite execution states exercise enter/leave, reentry, reversed event
+storage, and adverse values supplied before a fresh allocation. A separate forest
+uses B scopes, 4B events, 4B-1 edges and B live facts at 200/201/400/800, recording
+work/allocated bytes. These are local algorithm costs, not full process RSS or
+global pass convergence evidence. No production size cutoff or budget increase.
+Projected per-iteration units, abrupt unwind and closure transport are explicit
+precision gaps; this algorithm does not substitute static ScopeId equality for
+runtime unit equality.

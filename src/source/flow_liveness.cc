@@ -77,6 +77,10 @@ std::variant<LivenessResult,TreeStructureError> Solve(
             result.liveness.live_definitions[definition->value]=1;
             if(roots==Roots::kObservable && event.discarded)retain(*event.discarded);
           }
+        } else if(flow.ResetsBinding(fact.binding,predecessor)) {
+          // Retain the boundary fact for unavailable-value/coverage queries,
+          // without demanding a definition from an earlier activation.
+          facts.insert({predecessor,fact.binding});
         } else add({predecessor,fact.binding});
       }
     }

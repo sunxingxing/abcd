@@ -670,3 +670,17 @@ update lowering remains unmapped rather than confusing its result with the store
 increment. Final bounded evidence belongs to status.md. Complete raw protocols/
 effects, ordinary activation, lifetime trial deltas, dependency convergence and
 unified-variable final acceptance still require their delivery loops to close.
+
+
+Rules257 Task2 backbone substep: publish canonical ordinary local/catch allocation
+sites once, initialize catch after scope creation, and share activation gen/kill
+across demand, liveness, reaching definitions, coverage, constants, copies and normal
+domains. Common completion analysis requires allocation before initialization;
+completion-only synthetic facts never gain cell identity. Old catch ordering and
+cross-activation value propagation leave their decision paths. No pass round/order
+or independent local admission expansion. Current/trial flow uses the same adapter,
+but complete projected declaration/lifetime deltas and abrupt unwind remain open.
+New independent graph/state, reversed event, exact/short budget, 200/201/geometric
+and repeated catch/local emitted-source cases remain bounded by existing selected
+targets. Final evidence belongs to status.md. All five backbone deliveries remain
+open, with no appearance optimization or paused-scope resumption.

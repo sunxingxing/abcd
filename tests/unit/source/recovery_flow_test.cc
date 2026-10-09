@@ -2378,4 +2378,162 @@ void PassContracts() {
   Check(!unfinished.DemandCleanupNeeded());
   std::cout<<"pass ownership, dependency and cleanup counterexamples passed\n";
 }
-int main(){InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();AvailableCopyOracle();TransitiveCopyOracle();CompletionCycles();LocalCompletionOracle();StatementObservationOracle();StatementEntryOracle();InitializationInvalidation();PassContracts();SnapshotCheckpoints();StableValues();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+void BindingActivationOracle() {
+  std::uint64_t cases=0;
+  for(unsigned extra=0;extra<512;++extra)for(bool reverse:{false,true})for(unsigned incoming:{0U,1U})
+    for(auto boundary:{FlowEventKind::kEnterScope,FlowEventKind::kLeaveScope}) {
+      const auto mask=extra|(1U<<1)|(1U<<3)|(1U<<5);
+      const auto at=[&](unsigned i){return reverse?2-i:i;};
+      RecoveryFlow flow{};flow.events.resize(3);flow.entry={at(incoming)};
+      flow.bindings={{BindingKind::kCompilerTemporary,FlowBindingExposure::kPrivate},
+          {BindingKind::kParameter}};
+      flow.bindings[0].lifetime=ScopeBindingLifetime{{0},{at(0)},{at(0)}};
+      flow.bindings[1].stable_entry=true;
+      flow.events[at(0)].kind=boundary;flow.events[at(0)].scope=ScopeId{0};
+      flow.events[at(1)].definition=FlowDefinitionId{0};
+      flow.definitions={{{at(1)},{0},FlowDefinitionKind::kAssignment,SymbolId{1}}};
+      flow.events[at(2)].read=SymbolId{0};
+      flow.references={{{at(2)},{0},FlowReferenceKind::kRead,ExprId{0}}};
+      for(unsigned i=0;i<9;++i)if(mask&(1U<<i))Link(flow,at(i/3),at(i%3));
+      // Independent finite execution states: an allocation/departure discards
+      // the previous unit; a successful write supplies the current value.
+      // No production liveness, reset query or lattice in this oracle.
+      std::array<std::array<bool,2>,3> seen{};seen[incoming][0]=true;
+      std::vector<std::pair<unsigned,unsigned>> pending{{incoming,0}};
+      while(!pending.empty()) {
+        const auto [point,input]=pending.back();pending.pop_back();
+        const auto output=point==0?0U:point==1?1U:input;
+        for(unsigned target=0;target<3;++target)
+          if((mask&(1U<<(point*3+target)))&&!seen[target][output]) {
+            seen[target][output]=true;pending.push_back({target,output});
+          }
+      }
+      const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));
+      const auto definitions=std::get<FlowDefinitions>(AnalyzeFlowDefinitions(flow,live));
+      Check(bool(live.live_definitions[0])==seen[2][1]);
+      const std::vector<ReachingDefinition> expected=seen[2][1]
+          ?std::vector<ReachingDefinition>{{{at(2)},{0}}}:std::vector<ReachingDefinition>{};
+      Check(definitions.reads==expected);
+      const auto coverage=std::get<FlowReadCoverage>(AnalyzeFlowReadCoverage(flow,live));
+      Check(bool(coverage.definitions[0])==!seen[2][0]);
+      const std::array<FlowValueEquation,1> equations{FlowBindingValue{{0}}};
+      const std::array<std::uint8_t,1> completed{1};
+      const FlowValueEquations values{equations,{},{},completed};
+      const auto copies=std::get<FlowCopies>(AnalyzeFlowCopies(flow,live,values));
+      const bool known=seen[2][1]&&!seen[2][0];
+      Check(!copies.reads.empty()==known);
+      if(known)Check(copies.reads[0].source==SymbolId{1});
+      const std::array<TreeLiteral,1> primitives{BooleanLiteral{true}};
+      const std::array<FlowDefinitionValue,1> written{FlowPrimitiveValue{BooleanLiteral{true},PrimitiveId{0}}};
+      const auto constants=std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,written,values,primitives,{}));
+      Check((constants.values[0].has_value()||!constants.reads.empty())==known);
+      if(!constants.reads.empty())Check(constants.reads[0].primitive==PrimitiveId{0});
+      if(constants.values[0])Check(constants.values[0]->literal==PrimitiveId{0});
+      if(extra==1&&!reverse&&boundary==FlowEventKind::kEnterScope) {
+        Check(std::holds_alternative<FlowLiveness>(AnalyzeFlowLiveness(flow,{live.allocated_bytes,live.work})));
+        Check(std::get<TreeStructureError>(AnalyzeFlowLiveness(flow,{live.allocated_bytes-1,live.work}))==TreeStructureError::kResourceLimit);
+        Check(std::get<TreeStructureError>(AnalyzeFlowLiveness(flow,{live.allocated_bytes,live.work-1}))==TreeStructureError::kWorkLimit);
+      }
+      ++cases;
+    }
+  // Adverse proposal: a previously supplied value is followed by a fresh
+  // activation/departure and a read with no successful new definition.
+  for(auto boundary:{FlowEventKind::kEnterScope,FlowEventKind::kLeaveScope}) {
+    RecoveryFlow flow{};flow.events.resize(3);flow.bindings={{BindingKind::kCompilerTemporary,FlowBindingExposure::kPrivate}};
+    flow.bindings[0].lifetime=ScopeBindingLifetime{{0},{1},{1}};
+    flow.events[0].definition=FlowDefinitionId{0};flow.definitions={{{0},{0},FlowDefinitionKind::kAssignment}};
+    flow.events[1].kind=boundary;flow.events[1].scope=ScopeId{0};flow.events[2].read=SymbolId{0};
+    flow.references={{{2},{0},FlowReferenceKind::kRead,ExprId{0}}};Link(flow,0,1);Link(flow,1,2);
+    const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));
+    Check(!live.live_definitions[0]);
+    Check(std::get<FlowDemand>(AnalyzeFlowDemand(flow)).definitions[0]==0);
+    Check(std::get<FlowDefinitions>(AnalyzeFlowDefinitions(flow,live)).reads.empty());
+    Check(!std::get<FlowReadCoverage>(AnalyzeFlowReadCoverage(flow,live)).definitions[0]);
+    const std::array<FlowValueEquation,1> equations{FlowBindingValue{{0}}};
+    const std::array<std::uint8_t,1> completed{1};const FlowValueEquations values{equations,{},{},completed};
+    const std::array<TreeLiteral,1> primitives{BooleanLiteral{true}};
+    const std::array<FlowDefinitionValue,1> written{FlowPrimitiveValue{BooleanLiteral{true},PrimitiveId{0}}};
+    const auto constants=std::get<FlowConstants>(AnalyzeFlowConstants(flow,live,written,values,primitives,{}));
+    Check(!constants.values[0]&&constants.reads.empty());
+  }
+  for(bool before:{false,true}) {
+    RecoveryFlow flow{};flow.events.resize(4);flow.bindings={{BindingKind::kLocal}};
+    flow.bindings[0].declaration=StmtId{0};
+    flow.bindings[0].lifetime=ScopeBindingLifetime{{0},{before?2U:1U},{3}};
+    flow.events[before?2:1].kind=FlowEventKind::kEnterScope;flow.events[before?2:1].scope=ScopeId{0};
+    flow.events[before?1:2].definition=FlowDefinitionId{0};
+    flow.definitions={{{before?1U:2U},{0},FlowDefinitionKind::kUndefined,{},{},StmtId{0}}};
+    Link(flow,0,1);Link(flow,1,2);Link(flow,2,3);
+    const auto initialized=std::get<FlowInitializations>(AnalyzeFlowInitializations(flow));
+    Check(initialized.Completed({0},{3})==!before);
+  }
+  std::cout<<"binding activation independent executions "<<cases<<'\n';
+}
+void BindingActivationScaling() {
+  std::uint64_t previous=0;
+  for(unsigned count:{200U,201U,400U,800U})for(bool reverse:{false,true}) {
+    RecoveryFlow flow{};flow.events.resize(count*4);flow.bindings.resize(count);
+    const auto point=[&](unsigned i){return reverse?count*4-1-i:i;};
+    flow.entry={point(0)};std::vector<ReachingDefinition> expected;
+    for(unsigned i=0;i<count;++i) {
+      const ScopeId scope{i};const FlowPoint enter{point(i*4)},leave{point(i*4+3)};
+      flow.bindings[i].kind=BindingKind::kLocal;flow.bindings[i].declaration=StmtId{i};
+      flow.bindings[i].lifetime=ScopeBindingLifetime{scope,enter,leave};
+      flow.events[enter.value].kind=FlowEventKind::kEnterScope;flow.events[enter.value].scope=scope;
+      flow.events[leave.value].kind=FlowEventKind::kLeaveScope;flow.events[leave.value].scope=scope;
+      flow.events[point(i*4+1)].definition=FlowDefinitionId{i};
+      flow.definitions.push_back({{point(i*4+1)},{i},FlowDefinitionKind::kUndefined,{},{},StmtId{i}});
+      flow.events[point(i*4+2)].read=SymbolId{i};expected.push_back({{point(i*4+2)},{i}});
+    }
+    for(unsigned i=1;i<count*4;++i)Link(flow,point(i-1),point(i));
+    std::sort(expected.begin(),expected.end());
+    const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));
+    const auto definitions=std::get<FlowDefinitions>(AnalyzeFlowDefinitions(flow,live));
+    const auto initializations=std::get<FlowInitializations>(AnalyzeFlowInitializations(flow));
+    Check(definitions.reads==expected);
+    for(unsigned i=0;i<count;++i)Check(initializations.Completed({i},{point(i*4+2)}));
+    if(!reverse) {
+      const auto work=live.work+definitions.work+initializations.work;
+      if(count>=400)Check(work<previous*3);previous=work;
+      std::cout<<"binding activation size "<<count<<" events "<<flow.events.size()<<" edges "<<flow.edges.size()
+          <<" facts "<<live.live_in.size()<<" work "<<work<<" bytes "
+          <<live.allocated_bytes+definitions.allocated_bytes+initializations.allocated_bytes<<'\n';
+    }
+  }
+}
+void CatchActivationOrder() {
+  FunctionTree tree{};tree.callable=CallableKind::kFunction;tree.parameter_scope={0};tree.body_scope={1};tree.body={0};
+  tree.scopes={{ScopeKind::kParameters,{}},{ScopeKind::kFunctionBody,ScopeId{0}},
+      {ScopeKind::kBlock,ScopeId{1}},{ScopeKind::kCatch,ScopeId{1}}};
+  tree.origins={OriginalSite{{0},{0}}};tree.names={u"input",u"error",u"local"};
+  tree.symbols={{{0},{0},BindingKind::kParameter,DeclarationKind::kParameter,NameEvidence::kMetadata,{}},
+      {{3},{1},BindingKind::kCatchParameter,DeclarationKind::kCatchParameter,NameEvidence::kMetadata,{}},
+      {{3},{2},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}}};
+  tree.parameters={{{0},{},false}};
+  tree.expressions={{SymbolExpr{{0}},{0}},{CallExpr{{0},{0,0},CallReference::kValue},{0}},
+      {SymbolExpr{{1}},{0}},{SymbolExpr{{2}},{0}}};
+  tree.statements={{BlockStmt{{1},0,1},{0}},
+      {TryStmt{{2},CatchClause{{1},{3}},{}},{0}},
+      {BlockStmt{{2},1,1},{0}},{BlockStmt{{3},2,3},{0}},
+      {ExpressionStmt{{1}},{0}},{DeclarationStmt{{2},{}},{0}},
+      {ExpressionStmt{{2}},{0}},{ReturnStmt{ExprId{3}},{0}}};
+  tree.children={{1},{4},{5},{6},{7}};
+  std::vector<std::optional<SymbolId>> aliases(3);std::vector<std::optional<PrimitiveId>> literals(3);
+  std::vector<std::optional<ExprId>> replacements(4);std::vector<std::uint8_t> omitted(8),stores(4);
+  std::vector<ExpressionEvaluation> evaluations(4,ExpressionEvaluation::kRequired);
+  const auto flow=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,{aliases,literals,replacements,omitted,evaluations,stores}));
+  std::optional<FlowPoint> entry,catch_definition;
+  for(unsigned i=0;i<flow.events.size();++i)if(flow.events[i].kind==FlowEventKind::kEnterScope&&flow.events[i].scope==ScopeId{3})entry=FlowPoint{i};
+  for(const auto& definition:flow.definitions)if(definition.kind==FlowDefinitionKind::kCatch)catch_definition=definition.point;
+  Check(entry&&catch_definition);
+  const auto order=std::get<FlowDominance>(AnalyzeFlowDominance(flow));
+  Check(order.Dominates(*entry,*catch_definition));
+  const auto initialized=std::get<FlowInitializations>(AnalyzeFlowInitializations(flow));
+  for(const auto& reference:flow.references)if(reference.kind==FlowReferenceKind::kRead&&reference.binding!=SymbolId{0})
+    Check(initialized.Completed(reference.binding,reference.point));
+}
+int main(int argc,char** argv){
+  if(argc==2&&std::string_view(argv[1])=="--activation") {
+    BindingActivationScaling();BindingActivationOracle();CatchActivationOrder();return 0;
+  }
+  BindingActivationScaling();BindingActivationOracle();CatchActivationOrder();InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();AvailableCopyOracle();TransitiveCopyOracle();CompletionCycles();LocalCompletionOracle();StatementObservationOracle();StatementEntryOracle();InitializationInvalidation();PassContracts();SnapshotCheckpoints();StableValues();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

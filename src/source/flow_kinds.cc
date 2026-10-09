@@ -116,6 +116,7 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
         for(auto edge=event.incoming;edge;edge=flow.edges[*edge].incoming) {
           budget.Step();const auto predecessor=flow.edges[*edge].from;
           if(!live.reachable[predecessor.value])continue;
+          if(flow.ResetsBinding(fact.binding,predecessor)){constant(target,K::Language());invalidate(target);continue;}
           const auto& prior=flow.events[predecessor.value];
           const auto definition=prior.definition;
           if(definition) {

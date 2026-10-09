@@ -2633,3 +2633,42 @@ fixtures explicitly do not claim original ABC certificates; decoded original
 fixtures remain independent end-to-end evidence. Full original operation/protocol
 correspondence, ordinary cell activation, complete lifetime deltas and dependency
 convergence remain open, as do all five backbone delivery loops.
+
+
+### Canonical ordinary binding activations (rules257)
+
+RecoveryFlow now distinguishes completion-only synthetic inputs, enclosing units,
+canonical scope allocation sites and unmodeled local lifetime. The adapter publishes
+ScopeBindingLifetime from the actual Block EnterScope/LeaveScope events. A ScopeId
+identifies a static allocation site; every visit creates a fresh dynamic unit. It
+never proves equal captured cells or equal values on different visits. Local/catch
+bindings without an owned activation remain unmodeled rather than being classified
+as external incoming units. SourceBindingScope continues to describe lexical name
+containment independently of this canonical unit lifetime.
+
+CatchClause initializes its parameter after entering its handler environment and
+before executing its statements (ECMA-262 2025, CatchClause Evaluation). The previous
+catch definition preceding EnterScope is retired; every handler follows the same
+adapter rule. Parameters/self retain their independent invocation-entry evidence.
+The initialization provider checks canonical allocation-before-initialization before
+publishing completion dominance. Synthetic completion-only inputs retain the older
+order-only contract; they do not acquire an activation or cell-identity certificate.
+
+A common constant-time ResetsBinding query supplies the gen/kill boundary for all-read
+liveness, observable demand, reaching definitions, all-read coverage, constants,
+available copies and normal domains. Allocation and normal departure stop value
+facts from the previous unit. Liveness retains an unavailable-value boundary fact
+without walking across it; coverage and all-definition invariants include this
+unknown source, preventing a vacuous all-read proof. This is value demand, not
+permission to remove observable undefined initialization, effects or environments.
+Current/trial builders publish the same canonical facts and existing revision-owned
+cache invalidation remains in force. No pass rounds/order or new local optimizer
+admission conditions are introduced.
+
+This substep does not complete ordinary lifetime recovery. Abrupt scope unwinding,
+source-projected/narrowed declarations, native for per-iteration environments and
+captured cell transport need explicit current lifetime deltas. Canonical allocation
+metadata alone cannot authorize these transformations. Available-copy local roots
+remain unproved; existing lexical/name/capture safeguards are preserved. Complex
+finally and suspension precision remain gaps. All five backbone delivery loops and
+the unified-variable milestone remain open; status.md owns measured evidence.

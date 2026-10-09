@@ -68,6 +68,15 @@ struct SourceScopeProjection {
   std::span<const SourceSpellingId> spellings;
   std::span<const std::optional<SourceSpellingId>> names;
 };
+// A lexical scope activation allocates a new unit on every visit. ScopeId
+// names the allocation site, never the dynamic cell. Completion-only inputs
+// keep synthetic graph contracts; enclosing units have independent stability
+// and exposure proofs. Projected lexical scopes remain a separate obligation.
+struct CompletionOnlyLifetime {};
+struct EnclosingBindingLifetime {};
+struct UnmodeledBindingLifetime {};
+struct ScopeBindingLifetime { ScopeId scope; FlowPoint enter,leave; };
+using FlowBindingLifetime=std::variant<CompletionOnlyLifetime,EnclosingBindingLifetime,ScopeBindingLifetime,UnmodeledBindingLifetime>;
 struct FlowBinding {
   BindingKind kind;
   FlowBindingExposure exposure = FlowBindingExposure::kObservable;
@@ -80,6 +89,7 @@ struct FlowBinding {
   // values separately reject body writes; current-copy equality kills at each
   // successful write. Neither analysis grounds local activation identities.
   bool stable_entry=false;
+  FlowBindingLifetime lifetime=CompletionOnlyLifetime{};
 };
 enum class FlowReferenceKind : std::uint8_t { kRead, kWrite };
 using FlowReferenceSite=std::variant<ExprId,StmtId>;
@@ -230,6 +240,16 @@ struct LegacyFlowProjection {
   }
 };
 struct RecoveryFlow {
+  // Value facts cannot cross allocation or normal departure of their unit.
+  // Abrupt unwind and projected per-iteration environments need additional
+  // lifetime precision; this query never proves capture identity or movement.
+  [[nodiscard]] bool ResetsBinding(SymbolId binding,FlowPoint point) const {
+    const auto* unit=std::get_if<ScopeBindingLifetime>(&bindings[binding.value].lifetime);
+    if(!unit)return false;
+    const auto& event=events[point.value];
+    return event.scope==unit->scope &&
+        (event.kind==FlowEventKind::kEnterScope||event.kind==FlowEventKind::kLeaveScope);
+  }
   // Borrowed from the prepared owner, which outlives all revision-owned facts.
   // The original graph is immutable; source projections never rewrite it.
   const OriginalFlow* original=nullptr;

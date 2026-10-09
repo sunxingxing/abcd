@@ -153,3 +153,36 @@ for(const row of definitions) {
 }
 assert.equal(definitions.length,18);
 console.log(`${definitions.length} checked successful-definition sources / ${definitionComparisons} independent comparisons / ${definitionMutants} adverse mutants`);
+
+// Independently execute current catch identities and undefined declaration
+// completion over repeated entries. These are source-adapter fixtures, not
+// decoded original-SSA certificates; production never receives this program.
+const activations=execFileSync(process.argv[3],['--activation'],{encoding:'utf8',maxBuffer:16_000_000}).trim().split('\n').map(JSON.parse);
+function activationOutcome(fn,rounds) {
+  let calls=0;const errors=[],trace=[];
+  const input=function(...args) {
+    if(args.length){trace.push(['catch',errors.indexOf(args[0]),args[1]]);return;}
+    ++calls;
+    if(calls%2===1)return (calls+1)/2<=rounds;
+    const error={iteration:calls/2};errors.push(error);throw error;
+  };
+  try{return {trace,result:fn(input)};}catch(error){return {trace,error:errors.indexOf(error),name:error.name};}
+}
+let activationComparisons=0,activationMutants=0;
+const activationReference=function(input){while(input()){try{input();}catch(error){let local;input(error,local);}}};
+for(const row of activations) {
+  const generated=Function('return ('+row.source+')')();
+  for(const rounds of [0,1,2,3,8]) {
+    assert.deepEqual(activationOutcome(generated,rounds),activationOutcome(activationReference,rounds));++activationComparisons;
+  }
+  const wrapped='('+row.source+')',ast=nodes(parseJavaScript(wrapped));
+  const observed=ast.find(node=>node.type==='CallExpression'&&node.arguments.length===2);
+  assert.ok(observed);
+  for(const [argument,replacement] of [[observed.arguments[0],'undefined'],[observed.arguments[1],'1']]) {
+    const mutant=wrapped.slice(0,argument.start)+replacement+wrapped.slice(argument.end);
+    const fn=Function('return '+mutant)();
+    assert.notDeepEqual(activationOutcome(fn,3),activationOutcome(activationReference,3));++activationMutants;
+  }
+}
+assert.equal(activations.length,8);
+console.log(`${activations.length} repeated catch/local activation sources / ${activationComparisons} independent comparisons / ${activationMutants} adverse mutants`);

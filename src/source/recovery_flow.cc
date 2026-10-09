@@ -30,7 +30,7 @@ class FlowBuilder {
  public:
   FlowBuilder(const FunctionTree& tree,LegacyFlowProjection projection,analysis::SemanticBudget budget,RecoveryFlow storage)
       : tree_(tree), projection_(projection), budget_(budget), memory_(budget_),
-        statements_(&memory_), expressions_(&memory_), exits_(&memory_), tasks_(&memory_), seen_(&memory_), reads_(&memory_), read_states_(&memory_), initializers_(&memory_), result_(std::move(storage)) {
+        statements_(&memory_), expressions_(&memory_), exits_(&memory_), tasks_(&memory_), seen_(&memory_), reads_(&memory_), read_states_(&memory_), initializers_(&memory_), catch_parameters_(&memory_), scope_lifetimes_(&memory_), result_(std::move(storage)) {
     events_=std::move(result_.events);events_.clear();edges_=std::move(result_.edges);edges_.clear();
     definitions_=std::move(result_.definitions);definitions_.clear();references_=std::move(result_.references);references_.clear();
     names_=std::move(result_.names);names_.clear();
@@ -54,6 +54,8 @@ class FlowBuilder {
     // trial/legacy projections retain only the direct-read fallback.
     if(projection_.normal_bindings.empty())ProjectedReads();
     initializers_.resize(tree_.expressions.size());
+    catch_parameters_.resize(tree_.statements.size());
+    scope_lifetimes_.resize(tree_.scopes.size());
     for (std::size_t i=0;i<projection_.initializers.size();++i) {
       budget_.Step();
       if (const auto& initializer=projection_.initializers[i])
@@ -115,6 +117,16 @@ class FlowBuilder {
       budget_.Step();result.bindings[i]={tree_.symbols[i].kind,
           !projection_.private_bindings.empty() && projection_.private_bindings[i]
               ? FlowBindingExposure::kPrivate : FlowBindingExposure::kObservable};
+      const auto scope=tree_.symbols[i].scope;
+      if(scope_lifetimes_[scope.value])result.bindings[i].lifetime=*scope_lifetimes_[scope.value];
+      else switch(tree_.symbols[i].kind) {
+        case BindingKind::kParameter:case BindingKind::kFunctionSelf:
+        case BindingKind::kCapture:case BindingKind::kModule:
+          result.bindings[i].lifetime=EnclosingBindingLifetime{};break;
+        case BindingKind::kLocal:case BindingKind::kCompilerTemporary:
+        case BindingKind::kCatchParameter:
+          result.bindings[i].lifetime=UnmodeledBindingLifetime{};break;
+      }
       if(!projection_.stable_entries.empty())result.bindings[i].stable_entry=projection_.stable_entries[i]!=0;
       if(!scopes.unique_spellings.empty())result.bindings[i].unique_spelling=scopes.unique_spellings[i]!=0;
       if(!scopes.bindings.empty()) {
@@ -443,7 +455,12 @@ class FlowBuilder {
       if constexpr(std::is_same_v<T,BlockStmt>) {
         const auto entered=New({FlowEventKind::kEnterScope,{},{},{},node.scope});
         auto next=New({FlowEventKind::kLeaveScope,{},{},{},node.scope});Link(next,context.next);
+        scope_lifetimes_[node.scope.value]=ScopeBindingLifetime{node.scope,entered,next};
         for(std::size_t i=node.child_count;i;--i)next=Stmt(tree_.children[node.first_child+i-1],{next,context.thrown,context.finalizer,{},FlowValueUse::kObserved,at.id});
+        if(const auto parameter=catch_parameters_[at.id.value]) {
+          const auto initialized=Define(*parameter,FlowDefinitionKind::kCatch);
+          Link(initialized,next);next=initialized;
+        }
         Link(entered,next);Link(start,entered);
       } else if constexpr(std::is_same_v<T,ExpressionStmt>) {
         RequireTree(discarded_.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
@@ -502,7 +519,10 @@ class FlowBuilder {
         }
         if(node.handler) {
           const auto handler=Stmt(node.handler->body,{normal,thrown,cleanup,{},FlowValueUse::kObserved,at.id});
-          const auto binding=Define(node.handler->parameter,FlowDefinitionKind::kCatch);Link(binding,handler);thrown=binding;
+          // CatchClause creates its environment before InitializeBinding.
+          // Publish the initialization inside the handler's activation, so all
+          // consumers share the same ordering on every exceptional entry.
+          catch_parameters_[node.handler->body.value]=node.handler->parameter;thrown=handler;
         }
         Link(start,Stmt(node.body,{normal,thrown,cleanup,{},FlowValueUse::kObserved,at.id}));
       } else if constexpr(std::is_same_v<T,DebuggerStmt>) {
@@ -519,6 +539,8 @@ class FlowBuilder {
   std::pmr::vector<std::uint8_t> seen_;std::vector<FlowDefinition> definitions_;
   std::pmr::vector<std::optional<SymbolId>> reads_;std::pmr::vector<ReadState> read_states_;
   std::pmr::vector<std::optional<StmtId>> initializers_;
+  std::pmr::vector<std::optional<SymbolId>> catch_parameters_;
+  std::pmr::vector<std::optional<ScopeBindingLifetime>> scope_lifetimes_;
   std::vector<DiscardedEvaluation> discarded_;
   std::vector<FlowReference> references_;
   std::vector<FlowNameReference> names_;

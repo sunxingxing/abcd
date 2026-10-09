@@ -24,6 +24,16 @@ std::variant<FlowInitializations,TreeStructureError> AnalyzeFlowInitializations(
     if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
     result.order=std::get<FlowDominance>(std::move(analyzed));
     budget.Admit(result.order.allocated_bytes,1);budget.Step(result.order.work);
+    // Canonical scope ownership has one static allocation site, visited anew
+    // on each entry. Allocation dominating initialization, and initialization
+    // dominating a read, proves completion since that allocation even on loops.
+    // Do not infer dynamic equality from these static identities.
+    for(std::size_t i=0;i<flow.bindings.size();++i) {
+      budget.Step();const auto* unit=std::get_if<ScopeBindingLifetime>(&flow.bindings[i].lifetime);
+      if(std::holds_alternative<UnmodeledBindingLifetime>(flow.bindings[i].lifetime)||
+          (unit&&result.declarations[i]&&!result.order.Dominates(unit->enter,*result.declarations[i])))
+        result.declarations[i].reset();
+    }
     result.allocated_bytes=budget.Bytes();result.work=budget.Work();return result;
   } catch(TreeStructureError error){return error;}
   catch(const std::bad_alloc&){return TreeStructureError::kResourceLimit;}

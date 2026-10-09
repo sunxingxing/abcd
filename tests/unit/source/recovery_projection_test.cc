@@ -321,8 +321,70 @@ void CompletionTypes(unsigned form,bool reverse,bool emit) {
   if(emit)std::cout<<nlohmann::json{{"form",form},{"reverse",reverse},{"source",output.str()}}<<'\n';
 }
 
+void ActivationKinds(bool reverse) {
+  Fixture fixture(1,reverse);
+  auto projection=std::get<RecoveryProjection>(PrepareRecoveryProjection(fixture.tree,fixture.Projection(),fixture.Input()));
+  const auto boundary=projection.flow.statements[fixture.tree.children[2].value];
+  const ScopeId scope{2};projection.flow.bindings[1].lifetime=ScopeBindingLifetime{scope,boundary,boundary};
+  auto& event=projection.flow.events[boundary.value];event.kind=FlowEventKind::kEnterScope;event.scope=scope;
+  const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(projection.flow));
+  const auto actual=std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(fixture.tree,projection.flow,live,fixture.Input()));
+  Check(actual.expressions[fixture.reads[0].value]==analysis::ValueKinds::Language());
+}
+void ActivationSource(unsigned copies,bool split,bool emit) {
+  FunctionTree tree{};tree.callable=CallableKind::kFunction;tree.strictness=Strictness::kStrict;
+  tree.parameter_scope={0};tree.body_scope={1};tree.body={0};tree.origins={OriginalSite{{0},{0}}};
+  tree.scopes={{ScopeKind::kParameters,{}},{ScopeKind::kFunctionBody,ScopeId{0}},
+      {ScopeKind::kBlock,ScopeId{1}},{ScopeKind::kBlock,ScopeId{2}},
+      {ScopeKind::kBlock,ScopeId{3}},{ScopeKind::kCatch,ScopeId{3}},
+      {ScopeKind::kBlock,ScopeId{2}}};
+  tree.names={u"input",u"error",u"local"};
+  tree.symbols={{{0},{0},BindingKind::kParameter,DeclarationKind::kParameter,NameEvidence::kMetadata,{}},
+      {{5},{1},BindingKind::kCatchParameter,DeclarationKind::kCatchParameter,NameEvidence::kMetadata,{}},
+      {{5},{2},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}}};
+  tree.parameters={{{0},{},false}};
+  const auto expr=[&](TreeExpression node){ExprId id{static_cast<unsigned>(tree.expressions.size())};tree.expressions.push_back({std::move(node),{0}});return id;};
+  const auto stmt=[&](TreeStatement node){StmtId id{static_cast<unsigned>(tree.statements.size())};tree.statements.push_back({std::move(node),{0}});return id;};
+  const auto block=[&](ScopeId scope,const std::vector<StmtId>& children) {
+    const auto first=tree.children.size();tree.children.insert(tree.children.end(),children.begin(),children.end());
+    return stmt(BlockStmt{scope,static_cast<unsigned>(first),static_cast<unsigned>(children.size())});
+  };
+  const auto root=stmt(BlockStmt{}),loop=stmt(LoopStmt{});
+  const auto call=[&](SymbolId callee){return expr(CallExpr{expr(SymbolExpr{callee}),{0,0},CallReference::kValue});};
+  const auto condition=call({0});const auto attempt=block({4},{stmt(ExpressionStmt{call({0})})});
+  std::vector<StmtId> handler{stmt(DeclarationStmt{{2},{}})};SymbolId callee{0};
+  for(unsigned i=0;i<copies;++i) {
+    const SymbolId copied{static_cast<unsigned>(tree.symbols.size())};
+    const NameId name{static_cast<unsigned>(tree.names.size())};tree.names.push_back(u"copy"+std::u16string(i+1,u'x'));
+    tree.symbols.push_back({{5},name,BindingKind::kCompilerTemporary,DeclarationKind::kLet,NameEvidence::kSynthesized,TemporaryReason::kMultipleUses});
+    handler.push_back(stmt(DeclarationStmt{copied,expr(SymbolExpr{callee})}));callee=copied;
+  }
+  const auto error=expr(SymbolExpr{{1}}),local=expr(SymbolExpr{{2}});
+  tree.arguments={error,local};
+  handler.push_back(stmt(ExpressionStmt{expr(CallExpr{expr(SymbolExpr{callee}),{0,2},CallReference::kValue})}));
+  const auto caught=block({5},handler);
+  auto iteration=block({3},{stmt(TryStmt{attempt,CatchClause{{1},caught},{}})});
+  if(split) {
+    const ScopeId enclosing{static_cast<unsigned>(tree.scopes.size())};
+    tree.scopes.push_back({ScopeKind::kBlock,ScopeId{2}});tree.scopes[3].parent=enclosing;
+    iteration=block(enclosing,{iteration});
+  }
+  const auto stopped=block({6},{stmt(BreakStmt{loop,{}})});
+  const auto choose=stmt(IfStmt{condition,iteration,stopped});
+  std::get<LoopStmt>(tree.statements[loop.value].statement).body=block({2},{choose});
+  const auto first=tree.children.size();tree.children.push_back(loop);
+  std::get<BlockStmt>(tree.statements[root.value].statement)={{1},static_cast<unsigned>(first),1};
+  Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
+  if(emit)std::cout<<nlohmann::json{{"copies",copies},{"split",split},{"source",output.str()}}<<'\n';
+}
+
 }
 int main(int argc,char** argv) {
+  if(argc==2&&std::string_view(argv[1])=="--activation") {
+    for(unsigned copies:{0U,1U,200U,201U})for(bool split:{false,true})ActivationSource(copies,split,true);
+    return 0;
+  }
   if(argc==2&&std::string_view(argv[1])=="--source") {
     for(unsigned form=0;form<4;++form)for(bool reverse:{false,true})CompletionTypes(form,reverse,true);
     return 0;
@@ -337,6 +399,8 @@ int main(int argc,char** argv) {
     try{budget.Admit(17,1);}catch(TreeStructureError error){rejected=error==TreeStructureError::kResourceLimit;}Check(rejected);
     rejected=false;try{budget.Step(94);}catch(TreeStructureError error){rejected=error==TreeStructureError::kWorkLimit;}Check(rejected);
   }
+  ActivationKinds(false);ActivationKinds(true);
+  ActivationSource(0,false,false);ActivationSource(1,true,false);
   Case(false);Case(true);ChangedDefinition(false);ChangedDefinition(true);
   OriginalEntries(false);OriginalEntries(true);
   for(unsigned seed=0;seed<512;++seed)for(bool reverse:{false,true})KindOracle(seed,reverse);

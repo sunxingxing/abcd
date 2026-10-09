@@ -21,8 +21,9 @@ struct FlowInitializations {
   std::vector<std::optional<FlowPoint>> declarations;
   std::size_t allocated_bytes=0;
   std::uint64_t work=0;
-  // Completion order only. Source binding identity and activation scope remain
-  // separate obligations; this query cannot authorize lifetime movement alone.
+  // Completion order includes canonical allocation-before-initialization.
+  // Projected scope and cell equality remain independent; this query cannot
+  // authorize lifetime movement alone.
   // Unreachable retained syntax has no execution-order demand; lexical name
   // resolution is still checked independently for that occurrence.
   [[nodiscard]] bool Completed(SymbolId binding,FlowPoint occurrence) const {
