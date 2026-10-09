@@ -3,46 +3,6 @@
 #include <limits>
 #include <stdexcept>
 namespace abcd::source {
-std::variant<FlowInitializations,TreeStructureError> AnalyzeFlowInitializations(
-    const RecoveryFlow& flow,analysis::SemanticBudget allowance) {
-  try {
-    TreeCheckBudget budget(allowance);FlowInitializations result;
-    budget.Array(result.declarations,flow.bindings.size());
-    budget.Array(result.units,flow.bindings.size());result.scopes=flow.scopes;
-    for(const auto& definition:flow.definitions) {
-      budget.Step();bool selected=false;
-      switch(definition.kind) {
-        case FlowDefinitionKind::kParameter: case FlowDefinitionKind::kCatch:
-        case FlowDefinitionKind::kFunctionSelf:selected=true;break;
-        case FlowDefinitionKind::kUndefined: case FlowDefinitionKind::kInitializer:
-          selected=definition.declaration && definition.declaration==flow.bindings[definition.binding.value].declaration;break;
-        case FlowDefinitionKind::kAssignment: case FlowDefinitionKind::kUpdate:
-        case FlowDefinitionKind::kUndefinedStore:case FlowDefinitionKind::kIterationCopy:break;
-      }
-      if(selected)result.declarations[definition.binding.value]=definition.point;
-    }
-    auto analyzed=AnalyzeFlowDominance(flow,budget.Remaining());
-    if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
-    result.order=std::get<FlowDominance>(std::move(analyzed));
-    budget.Admit(result.order.allocated_bytes,1);budget.Step(result.order.work);
-    // Canonical scopes and native entry groups own static allocation sites, visited anew
-    // on each entry. Allocation dominating initialization, and initialization
-    // dominating a read, proves completion since that allocation even on loops.
-    // Do not infer dynamic equality from these static identities.
-    for(std::size_t i=0;i<flow.bindings.size();++i) {
-      budget.Step();const auto* unit=std::get_if<ScopeBindingLifetime>(&flow.bindings[i].lifetime);
-      if(unit)result.units[i]=unit->scope;
-      const auto allocation=flow.bindings[i].allocation?flow.bindings[i].allocation:
-          unit?std::optional{unit->enter}:std::nullopt;
-      if(std::holds_alternative<UnmodeledBindingLifetime>(flow.bindings[i].lifetime)||
-          (allocation&&result.declarations[i]&&!result.order.Dominates(*allocation,*result.declarations[i])))
-        result.declarations[i].reset();
-    }
-    result.allocated_bytes=budget.Bytes();result.work=budget.Work();return result;
-  } catch(TreeStructureError error){return error;}
-  catch(const std::bad_alloc&){return TreeStructureError::kResourceLimit;}
-  catch(const std::length_error&){return TreeStructureError::kResourceLimit;}
-}
 std::variant<FlowDominance,TreeStructureError> AnalyzeFlowDominance(
     const RecoveryFlow& flow,analysis::SemanticBudget allowance) {
   try {

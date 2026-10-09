@@ -18,6 +18,7 @@ std::variant<LoopEntryProjection,TreeStructureError> ProjectLoopEntryFlow(
     copy(result.initializers,initializers);copy(result.completions,completions);
     copy(result.bindings,scopes.bindings);copy(result.occurrences,scopes.occurrences);
     budget.Array(result.allocations,original_bindings.size());
+    budget.Array(result.owners,initializers.size());
     std::vector<std::optional<StmtId>> starts;budget.Array(starts,initializers.size());
     for(const auto& environment:declarations.environments) {
       budget.Step();RequireTree(environment.loop.value<starts.size() && environment.entry.value<starts.size(),TreeStructureError::kOwnership);
@@ -27,7 +28,7 @@ std::variant<LoopEntryProjection,TreeStructureError> ProjectLoopEntryFlow(
     std::vector<std::uint8_t> prefix;budget.Array(prefix,initializers.size());
     for(const auto& entry:declarations.entries) {
       budget.Step();RequireTree(entry.statement.value<prefix.size(),TreeStructureError::kOwnership);
-      if(entry.loop)continue;
+      if(entry.loop){result.owners[entry.statement.value]=entry.loop;continue;}
       prefix[entry.statement.value]=1;
       if(const auto initializer=result.initializers[entry.statement.value]) {
         RequireTree(initializer->symbol.value<result.bindings.size(),TreeStructureError::kOwnership);
@@ -47,6 +48,7 @@ std::variant<LoopEntryProjection,TreeStructureError> ProjectLoopEntryFlow(
     for(std::size_t i=0;i<entries.size();++i) {
       budget.Step();if(const auto root=entries[i].root) {
         RequireTree(root->value<prefix.size(),TreeStructureError::kOwnership);
+        result.owners[i]=result.owners[root->value];
         if(prefix[root->value])result.occurrences[i]=entries[i].enclosing;
       }
     }

@@ -3991,3 +3991,59 @@ mutants check input demand, dead input roots, captured-value equations, first an
 continue routes, unsafe mutable-root substitution, and captured type input position. Invocation dominance must
 reject a disconnected first-copy program even when conservative structural
 liveness still sees its retained nodes. Paused RSS/global benchmarks remain paused.
+
+
+### Rules264 reset-aware must initialization and batched unit certificates
+
+Dimensions: G events/E edges, D definitions, B bindings, S canonical scope sites, L actual modeled
+native loops, N native BoundNames, Q requested roots, F demanded block-entry facts,
+A fact dependencies and K heavy-path kill segments. Node/edge compression is a
+classical basic-block optimization of equations, never a source recovery rule.
+
+Relative to pre-rules263, first/repeat scalar transport and owned exit use 4N+5L
+additional events/internal-exit edges, 2N definitions and 2N captured references.
+The initial allocation reuses its original statement point. Actual member/header
+ownership is indexed once; there is no region-peer or per-variable syntax walk.
+Canonical/native forest indexing is iterative O(S+statement-arena) work/scratch;
+native paths contain L present units while native region lookup is statement-sized.
+Largest-subtree heavy children bound light hops logarithmically. Unit path
+changes cost O(log(S+L)) each; worst K=O((G+E) log(S+L)).
+
+Sufficient initialization certificates ask whether a unit has a kill strictly
+inside the dominating gen's subtree. An offline sweep sorts K kill intervals and
+at most 2B subtree thresholds, then uses Fenwick range-add/point-query. Cost is
+O(K log K + B log B + (K+B) log(S+L)) and O(K+B+S+L) storage, without traversing
+ancestry or the flow per binding. Ineligible/no-gen facts never gain certificates.
+Uncertified facts are solved by the full shared intersection must equations.
+
+Existing Lengauer-Tarjan dominance costs O((G+E) log G). Basic-block contraction
+is O(G+E); local gen/reset actions are sorted and queried with binary search.
+Sparse block-entry closure accounts for actual F/A, ordered-fact lookups and
+local action lookups; each false fact propagates once. Its cost includes
+O((Q+F+A) log(F+Q+1)) plus indexed local-action lookups. A one-time O(D+B)
+reachable-initialization index provides bottom facts without sparse expansion.
+Dense F/A remain dense semantic work: there is no linear-in-B claim, 200 cutoff
+or value-discard fallback. All scratch/owned products are charged to unchanged
+semantic budgets and return typed exhaustion. Another explicit query analysis
+for a storage proposal is recorded, not hidden as a free cache hit.
+
+Provenance: standard gen/kill intersection data flow, existing LT dominance,
+static heavy-path adaptation of the logarithmic-light-edge argument in
+[Sleator and Tarjan, 1983](https://www.cs.cmu.edu/~sleator/papers/dynamic-trees.pdf),
+and range-add adaptation of
+[Fenwick, 1994](https://onlinelibrary.wiley.com/doi/10.1002/spe.4380240306).
+Largest-subtree static heavy paths are used, not a full dynamic link-cut tree.
+Project-owned C++20, no copied implementation, new dependency or licensing change.
+Maintenance boundaries are shared forest contexts, unit gen/kill equations and
+owned query results; these are prerequisites, not alternate semantic profiles.
+
+Independent small-graph oracles cover 32768 initialization graphs and 27648
+scope-state/branch/reset combinations. Canonical activation cases at
+200/201/400/800 report work 73354/73770/158250/339806 and allocated bytes
+175200/175943/350424/700872. Native member cases at 2/200/201/400/800 report
+work 10454/397565/401978/836639/1767516 (including initialization). Exact and
+one-short construction/analysis admission is checked, with reversed arenas and
+scope nesting. Initial instruction-level sparse expansion exceeded 64MiB in
+existing long-source cases; block/action indexes and batched certificates restored
+those gates without increasing budgets. These are component costs and correctness
+checks, not full-process RSS, resumed benchmarks or global pass convergence proof.

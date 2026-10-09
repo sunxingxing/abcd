@@ -786,3 +786,27 @@ No pass round/order or hand-maintained analysis refresh is introduced. Per-itera
 allocation, reset-aware initialization, cell/capture identity, original IR/SSA,
 full trial lifetime deltas, convergence and milestone final acceptance remain
 required; all five backbone delivery loops OPEN and other optimizations paused.
+
+
+Rules264 Task2/3 backbone substep: native first/repeat scalar programs now own
+CURRENT-unit replacement and normal/owned-break exit events, using a shared
+native forest. Missing native context is unknown, preserving old-value may demand;
+conservative cleanup guarantees body ancestry only. This does not certify physical
+heap allocation order, captured cells or every source-entry corridor.
+
+Shared reset-aware must-initialize replaces Completed's old declaration-dominance
+and private scope decision. Declarator anchors remain placement metadata. Storage
+proposals request representative states explicitly from the same immutable flow;
+analysis queries do not update plans. Basic-block local actions, reachable-gen
+bottom indexing and batched heavy-path/Fenwick kill certificates avoid per-binding
+whole-flow walks under unchanged budgets. No new pass/round/order or local shape
+admission is added. Independent graph/scope oracles and eight production mutants
+plus the original frozen 31-target/63-test/fixed-record gate verify this component;
+status.md carries final actual evidence. Nested native model input supplies its
+outer phase program explicitly, not new syntax discovery.
+
+All five backbone delivery loops remain OPEN. Next mainline precision must handle
+ordinary/source-created entry and movement unit facts, then complete raw IR/SSA
+correspondence and trial lifetime deltas, dependency reruns/convergence and the
+milestone end-to-end acceptance. Other appearance optimizations, agents,
+fullsuite/expanded corpus/RSS/benchmark/DFX remain paused.

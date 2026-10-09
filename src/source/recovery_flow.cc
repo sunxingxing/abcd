@@ -29,6 +29,7 @@ struct Context {
   bool entry_evaluation=false;
   std::optional<HeaderProgram> header;
   FlowStatementRetention retention=FlowStatementRetention::kOptional;
+  FlowLoopContext loop_scope=UnmodeledScope{};
   Context Operand(Point continuation,FlowValueUse use=FlowValueUse::kObserved) const {
     auto result=*this;result.next=continuation;result.value_use=use;return result;
   }
@@ -65,6 +66,7 @@ class FlowBuilder {
     RequireTree(projection_.read_bindings.empty()||projection_.read_bindings.size()==tree_.symbols.size(),Error::kOwnership);
     RequireTree(projection_.read_sources.empty()||projection_.read_sources.size()==tree_.expressions.size(),Error::kOwnership);
     RequireTree(projection_.normal_bindings.empty()||projection_.normal_bindings.size()==tree_.expressions.size(),Error::kOwnership);
+    RequireTree(projection_.source_scopes.loop_owners.empty()||projection_.source_scopes.loop_owners.size()==tree_.statements.size(),Error::kOwnership);
     // Current production flow consumes shared normal-result facts. Unproved
     // trial/legacy projections retain only the direct-read fallback.
     if(projection_.normal_bindings.empty())ProjectedReads();
@@ -109,8 +111,15 @@ class FlowBuilder {
         member=*native;
       }
     }
+    native_scopes_=projection_.loops&&std::any_of(native_bindings_.begin(),native_bindings_.end(),[](const auto& member){return member.has_value();});
+    if(native_scopes_){budget_.Step(tree_.statements.size());Resize(loop_scopes_,tree_.statements.size());}
     terminal_=New(); dispatch_=New();
-    scope_events_[dispatch_.value]={UnmodeledScope{},UnmodeledScope{}};
+    if(native_scopes_)loop_scope_events_[terminal_.value]={IncomingScope{},IncomingScope{}};
+    current_loop_=IncomingScope{};
+    // Conservative cleanup can lose nested-unit facts, never the invocation's
+    // body activation. Completion uncertainty does not allocate a new body cell.
+    scope_events_[dispatch_.value]={EnclosingScope{tree_.body_scope},EnclosingScope{tree_.body_scope}};
+    if(native_scopes_)loop_scope_events_[dispatch_.value]={UnmodeledScope{},UnmodeledScope{}};
     statements_.resize(tree_.statements.size()); exits_.resize(tree_.statements.size());
     expressions_.resize(tree_.expressions.size()); seen_.resize(tree_.expressions.size());
     Resize(result_.value_uses,tree_.expressions.size());
@@ -139,7 +148,9 @@ class FlowBuilder {
     auto& result=result_;
     result.identity=tree_.identity;result.value_revision=tree_.value_revision;result.cfg_revision=tree_.cfg_revision;
     result.entry=entry_;result.terminal=terminal_;
-    auto flow_scopes=MakeFlowScopes(tree_,budget_);flow_scopes->events=std::move(scope_events_);result.scopes=std::move(flow_scopes);
+    auto flow_scopes=MakeFlowScopes(tree_,budget_);flow_scopes->events=std::move(scope_events_);
+    if(native_scopes_){IndexFlowLoopScopes(*flow_scopes,loop_scopes_,budget_);flow_scopes->loop_events=std::move(loop_scope_events_);}
+    result.scopes=std::move(flow_scopes);
     const auto copy=[&](auto& destination,const auto& source){Resize(destination,source.size());std::copy(source.begin(),source.end(),destination.begin());};
     result.events=std::move(events_);result.edges=std::move(edges_);
     result.definitions=std::move(definitions_);result.references=std::move(references_);result.names=std::move(names_);
@@ -210,10 +221,9 @@ class FlowBuilder {
         const auto point=statements_[native->entry.value];
         RequireTree(result.events[point.value].kind==FlowEventKind::kEnterLoopEnvironment && result.events[point.value].loop_environment==native->loop,Error::kOwnership);
         result.bindings[i].allocation=point;
-        // Initial allocation has an actual order event; the shared completion
-        // analysis checks every declaration against it. Iteration cloning is
-        // still value-only: this never certifies equality of captured cells.
-        result.bindings[i].lifetime=CompletionOnlyLifetime{};
+        if(native_scopes_&&result.loops[native->loop.value]&&result.loops[native->loop.value]->entry_allocation)
+          result.bindings[i].lifetime=LoopBindingLifetime{native->loop};
+        else result.bindings[i].lifetime=CompletionOnlyLifetime{};
       }
     }
     for(const auto& definition:result.definitions) {
@@ -270,7 +280,8 @@ class FlowBuilder {
   }
   Point New(FlowEvent event={}) {
     RequireTree(events_.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
-    budget_.Step();event.owner=current_owner_;event.entry_evaluation=current_entry_evaluation_;Point result{static_cast<std::uint32_t>(events_.size())};Append(events_,event);Append(scope_events_,{current_scope_,current_scope_});return result;
+    budget_.Step();event.owner=current_owner_;event.entry_evaluation=current_entry_evaluation_;Point result{static_cast<std::uint32_t>(events_.size())};Append(events_,event);Append(scope_events_,{current_scope_,current_scope_});
+    if(native_scopes_)Append(loop_scope_events_,{current_loop_,current_loop_});return result;
   }
   Point Define(SymbolId binding,FlowDefinitionKind kind,std::optional<SymbolId> copy={},
       std::optional<ExprId> value={},std::optional<StmtId> declaration={},
@@ -292,12 +303,14 @@ class FlowBuilder {
         Reference(point,Resolve(binding),FlowReferenceKind::kWrite,*site,exceptions,owner);
     return point;
   }
-  std::optional<Point> IterationCopies(StmtId loop,Point next) {
+  struct IterationProgram {Point start,allocation;};
+  std::optional<IterationProgram> IterationCopies(StmtId loop,Point next) {
     if(!loop_members_[loop.value])return {};
-    // ECMA-262 2025 14.7.4.3/.4: copy before the first test and before
-    // increment on normal/continue completion. Read all old scalar values
-    // before initializing new values. Cell allocation/capture identity is a
-    // separate capability; these events never certify a dynamic unit.
+    // ECMA-262 2025 14.7.4.3/.4: first and normal/continue unit replacement.
+    // Capture old scalar values before changing CURRENT units. The spec builds
+    // an unexposed environment earlier; these plain lexical reads/initializes
+    // run no user code before publication. This models scalar epochs, not heap
+    // allocation order or captured-cell equality. Never read from the new unit.
     std::pmr::vector<FlowCapturedValue> inputs(&memory_);
     const auto start=New();auto previous=start;
     for(auto binding=loop_members_[loop.value];binding;binding=member_next_[binding->value]) {
@@ -305,11 +318,13 @@ class FlowBuilder {
       Reference(read,*binding,FlowReferenceKind::kRead,loop,{},loop);
       Link(previous,read);previous=read;inputs.push_back({read,*binding});
     }
+    FlowEvent event{FlowEventKind::kEnterIterationEnvironment};event.loop_environment=loop;
+    const auto allocation=New(event);Link(previous,allocation);previous=allocation;
     for(const auto input:inputs) {
       budget_.Step();const auto commit=Define(input.binding,FlowDefinitionKind::kIterationCopy,{},{},{},{},FlowWriteEffect::kInert);
       definitions_.back().input=input;Link(previous,commit);previous=commit;
     }
-    Link(previous,next);return start;
+    Link(previous,next);return IterationProgram{start,allocation};
   }
   void Reference(FlowPoint point,SymbolId binding,FlowReferenceKind kind,FlowReferenceSite site,std::optional<FlowExceptionContext> exceptions={},std::optional<StmtId> owner={}) {
     budget_.Step();Append(references_,{point,binding,kind,site,exceptions,owner});
@@ -399,7 +414,9 @@ class FlowBuilder {
     const auto start=expressions_[at.id.value];const auto& context=at.context;
     current_owner_=context.owner;current_entry_evaluation_=context.entry_evaluation;
     current_scope_=context.owner?statement_scopes_[context.owner->value]:FlowScopeContext{UnmodeledScope{}};
+    current_loop_=context.loop_scope;
     scope_events_[start.value]={current_scope_,current_scope_};
+    if(native_scopes_)loop_scope_events_[start.value]={current_loop_,current_loop_};
     events_[start.value].owner=context.owner;events_[start.value].entry_evaluation=context.entry_evaluation;
     if(!result_.normal_exits.empty())result_.normal_exits[at.id.value]=context.next;
     result_.value_uses[at.id.value]=context.value_use;
@@ -509,17 +526,24 @@ class FlowBuilder {
   }
   void Build(Statement at) {
     const auto start=statements_[at.id.value];auto context=at.context;context.owner=at.id;
+    current_loop_=context.loop_scope;
+    if(native_scopes_&&!projection_.source_scopes.loop_owners.empty())
+      if(const auto loop=projection_.source_scopes.loop_owners[at.id.value])current_loop_=*loop;
+    if(native_scopes_)if(const auto loop=loop_entries_[at.id.value])current_loop_=*loop;
+    context.loop_scope=current_loop_;
     const FlowScopeContext enclosing=context.header?context.header->scope:at.context.owner?statement_scopes_[at.context.owner->value]:FlowScopeContext{IncomingScope{}};
     current_scope_=enclosing;
     if(!context.header && !projection_.omitted[at.id.value])if(const auto* block=std::get_if<BlockStmt>(&tree_.statements[at.id.value].statement))current_scope_=block->scope;
     statement_scopes_[at.id.value]=current_scope_;
     scope_events_[start.value]={enclosing,enclosing};
+    if(native_scopes_)loop_scope_events_[start.value]={current_loop_,current_loop_};
     current_owner_=at.id;current_entry_evaluation_=false;events_[start.value].owner=at.id;
     exits_[at.id.value]=context.next;
     if(projection_.omitted[at.id.value]){events_[start.value].owner.reset();Link(start,context.next);return;}
     if(const auto loop=loop_entries_[at.id.value]) {
       events_[start.value].kind=FlowEventKind::kEnterLoopEnvironment;
       events_[start.value].loop_environment=*loop;
+      if(native_scopes_)loop_scope_events_[start.value]={at.context.loop_scope,*loop};
     }
     RequireTree(!result_.statement_semantics[at.id.value],Error::kOwnership);
     result_.statement_semantics[at.id.value]=FlowStatement{at.context.owner};
@@ -625,8 +649,20 @@ class FlowBuilder {
           // increment execute outside the body activation; the retained arm
           // executes once inside it. Never rediscover an opcode/tree pattern.
           const auto condition=New(),increment=New();
+          if(native_scopes_&&loop_members_[at.id.value]) {
+            const auto* parent=std::get_if<StmtId>(&context.loop_scope);
+            loop_scopes_[at.id.value]=FlowLoopScope{parent?std::optional{*parent}:std::nullopt};
+            context.loop_scope=at.id;current_loop_=at.id;
+            loop_scope_events_[start.value]={at.id,at.id};
+            loop_scope_events_[condition.value]={at.id,at.id};loop_scope_events_[increment.value]={at.id,at.id};
+          }
+          auto exit=context.next;
+          if(native_scopes_&&loop_members_[at.id.value]) {
+            FlowEvent leave{FlowEventKind::kLeaveLoopEnvironment};leave.loop_environment=at.id;exit=New(leave);
+            loop_scope_events_[exit.value]={at.id,ExitedLoopScope{at.id}};Link(exit,context.next);exits_[at.id.value]=exit;
+          }
           const auto entry_copy=IterationCopies(at.id,condition),repeat_copy=IterationCopies(at.id,increment);
-          const auto repeat=repeat_copy.value_or(increment);
+          const auto repeat=repeat_copy?repeat_copy->start:increment;
           repeats_[at.id.value]=repeat;semantics.repeat_point=condition;
           loop_bodies_[node.body.value]=LoopBodyProgram{program->header_count,program->body};
           auto update=context.Child(condition,at.id);
@@ -636,9 +672,11 @@ class FlowBuilder {
           else Link(increment,condition);
           const auto body=Stmt(node.body,context.Child(repeat,at.id,FlowStatementRetention::kRequired));
           auto predicate=context.Child(body,at.id);
-          predicate.header=HeaderProgram{at.id,LoopCompletionTransfer::kBreak,program->body,context.next,enclosing};
-          Link(condition,Sequence(node.body,0,program->header_count,predicate,at.id));Link(start,entry_copy.value_or(condition));
-          result_.loops[at.id.value]=FlowLoop{condition,body,increment,context.next,entry_copy,repeat_copy};return;
+          predicate.header=HeaderProgram{at.id,LoopCompletionTransfer::kBreak,program->body,exit,enclosing};
+          Link(condition,Sequence(node.body,0,program->header_count,predicate,at.id));Link(start,entry_copy?entry_copy->start:condition);
+          result_.loops[at.id.value]=FlowLoop{condition,body,increment,exit,
+              entry_copy?std::optional{entry_copy->start}:std::nullopt,repeat_copy?std::optional{repeat_copy->start}:std::nullopt,
+              entry_copy?std::optional{entry_copy->allocation}:std::nullopt,repeat_copy?std::optional{repeat_copy->allocation}:std::nullopt};return;
         }
         Link(start,Stmt(node.body,context.Child(start,at.id,FlowStatementRetention::kRequired)));
       }
@@ -692,7 +730,11 @@ class FlowBuilder {
     },tree_.statements[at.id.value].statement);
   }
   FlowScopeContext current_scope_=IncomingScope{};
+  FlowLoopContext current_loop_=UnmodeledScope{};
+  bool native_scopes_=false;
   std::vector<FlowScopeEvent> scope_events_;
+  std::vector<FlowLoopScopeEvent> loop_scope_events_;
+  std::vector<std::optional<FlowLoopScope>> loop_scopes_;
   std::optional<StmtId> current_owner_;
   bool current_entry_evaluation_=false;
   const FunctionTree& tree_;LegacyFlowProjection projection_;TreeCheckBudget budget_;RecoveryScratch memory_;

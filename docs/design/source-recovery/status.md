@@ -1,6 +1,6 @@
 # 项目进展与设计审查
 
-更新时间：2026-10-09。设计基线见 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md)。
+更新时间：2026-10-10。设计基线见 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md)。
 本页是当前状态入口；[progress.md](progress.md) 保留历史证据，不覆盖本页结论。
 
 ## 更新规则
@@ -35,6 +35,56 @@
 
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
+
+### 2026-10-10：规则264，逐轮单元重置与共同 must-initialize 分析
+
+- 主干第2/3项：实际 native BoundNames 的首轮及逐轮复制增加共同单元
+  重置点；所有旧值先被捕获，再切换当前标量单元并初始化新值。正常
+  循环退出有独立 leave 事件；嵌套循环森林保留父单元。这里表示标量
+  epoch，不声称 VM 堆分配顺序或 captured cell 相等。旧值输入没有
+  伪造 ExprId/原始 SSA 写入，当前/trial/bootstrap/refinement 共用 producer。
+- AnalyzeFlowInitializations 从 dominance 文件独立出来，以共同 gen/kill、
+  活跃单元及所有完成边计算 requested roots 的 must-initialize。声明
+  anchor 仅用于源码放置；旧 Completed 的“声明支配读取”及私有 scope
+  判断退出决策路径。存储候选明确请求代表变量在实际读取/定义位置的
+  状态，消费同一不可变图；没有查询更新计划、手工刷新或新增 pass 轮次。
+- 共同普通 scope/native loop 森林共享 heavy-path 索引。支配子树内无本
+  单元 kill 的充分证书批量求解，其他状态进入完整 must 方程。基本块
+  收缩只减少分析工作，不构成恢复准入。无可达初始化的 bottom fact
+  一次建立；保留原预算与 typed resource exhaustion，没有 200 截断。
+- 初步逐指令 sparse 展开在既有 800-copy/nested/finally/catch 及 late-TDZ
+  场景超出原 64MiB 预算，改为基本块、索引和批量证书。finally 仅保证
+  函数 body 祖先单元仍活跃，嵌套单元保持 unknown。inline 复核发现
+  native 缺失上下文被当作退出会丢失首轮旧值需求，改为 unknown；确定
+  退出只由共同显式事实产生。未通过预算增加或旧支配 fallback 绕过问题。
+- 独立小图对照：32768 组初始化、27648 组 canonical/native 活跃/未知/
+  退出组合；native 首轮原始值需求、逐轮初始化及父/子 reset 独立检查。
+  新增嵌套模型输入明确供应外层 condition program，不计作旧语法 planner
+  新增恢复能力。200/201/400/800、arena 反向、exact/one-short 预算均覆盖。
+  八项生产突变 build0/model-6；其中忽略 cuts 的最终突变保留候选资格，
+  仍由 scoped oracle 检出。恢复后 reset/native/projection 模型均退出0。
+- 首次冻结验证31目标构建及fresh固定导出通过，63项CTest实际执行62通过/
+  1失败：新增native工作量日志污染 --emit 的JSON stdout，旧loop源码对照
+  拒绝解析。统计只在显式 --phase-scopes 模型模式输出；原行为/范围参照
+  未削弱。first日志/JSON/JUnit/输出保留，未称作63通过。
+- 修复后原loop源码对照11.53s通过。最终31目标构建22.7693s、
+  fresh固定导出1.7411s、精确63/63项CTest731.1865s全部通过，
+  名单完全一致且无重复。19records/10complete/0partial/9no-module，10语法
+  检查通过，与规则263源码字节相同，输入SHA256前后相同。最终构建无
+  warning/error，profile/预算保持。证据 build/stage-one/iteration-unit-verification；
+  fresh输出 build/stage-one/iteration-unit-final-rule264-stable，首次失败证据保留。
+- 最终原选定source目标实际输出：initializer2004份/482752独立执行对照/
+  370mutants；declaration-value2568份/513600/100；loop-initializer276份/
+  13976/68；loop-transition108份/2418/14；original-flow合计10280/158。
+  这些Node执行对照不计作新平台/全语料执行，也不替代统一变量终验。
+- **五项主干全部开放**：native 入口/源码移动走廊仍有 unknown，普通
+  local/catch 与重复进入的完整身份、captured cells、原始IR/SSA完整对应、
+  完整trial生命期delta、依赖驱动收敛及统一变量终验尚未交付。本组件
+  通过不替代主干或阶段一验收。下一主干子步将候选声明位置及生命期
+  delta 纳入统一试算输入；当前入口仍有 plan_.statements 与 declaration_sites_
+  来自当前计划的精度缺口，不能以当前图的检查替代候选事实。随后继续
+  完整原始IR/SSA对应、依赖重跑/收敛和终验。作者inline复核；agents/
+  fullsuite/expanded corpus/RSS/benchmark/DFX 及其他表现优化保持暂停。
 
 ### 2026-10-09：规则263，实际循环复制值与共同读取依赖
 

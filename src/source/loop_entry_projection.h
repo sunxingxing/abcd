@@ -13,6 +13,7 @@ struct LoopEntryProjection {
   std::vector<SourceBindingScope> bindings;
   std::vector<std::optional<SourcePosition>> occurrences;
   std::vector<std::optional<NativeLoopAllocation>> allocations;
+  std::vector<std::optional<StmtId>> owners;
   std::size_t allocated_bytes=0;
   std::uint64_t work=0;
 };

@@ -23,7 +23,7 @@ struct DiscardedEvaluation {
 };
 enum class FlowCompletion : std::uint8_t { kNormal, kThrow, kReturn, kJump, kTaken, kNotTaken, kResumeNext, kResumeThrow, kResumeReturn, kConservativeCleanup };
 enum class FlowDefinitionKind : std::uint8_t { kParameter, kUndefined, kInitializer, kAssignment, kUpdate, kCatch, kUndefinedStore, kFunctionSelf, kIterationCopy };
-enum class FlowEventKind : std::uint8_t { kControl, kTruthBranch, kNullishBranch, kRead, kEvaluation, kEnterScope, kLeaveScope, kDefinition, kSuspend, kPropertyReference, kEnterLoopEnvironment, kCopyInput };
+enum class FlowEventKind : std::uint8_t { kControl, kTruthBranch, kNullishBranch, kRead, kEvaluation, kEnterScope, kLeaveScope, kDefinition, kSuspend, kPropertyReference, kEnterLoopEnvironment, kCopyInput, kEnterIterationEnvironment, kLeaveLoopEnvironment };
 enum class FlowValueUse : std::uint8_t { kUnmodeled, kDiscarded, kObserved };
 enum class FlowWriteEffect : std::uint8_t { kObservable, kInert };
 enum class FlowBindingExposure : std::uint8_t { kObservable, kPrivate };
@@ -82,6 +82,8 @@ struct SourceScopeProjection {
   std::span<const SourceAllocation> allocations;
   // Actual native BoundNames, indexed by binding, not lexical-region peers.
   std::span<const std::optional<NativeLoopAllocation>> loop_allocations;
+  // Actual native header occurrences, including descendants of declarators.
+  std::span<const std::optional<StmtId>> loop_owners;
 };
 // A lexical scope activation allocates a new unit on every visit. ScopeId
 // names the allocation site, never the dynamic cell. Completion-only inputs
@@ -91,7 +93,8 @@ struct CompletionOnlyLifetime {};
 struct EnclosingBindingLifetime {};
 struct UnmodeledBindingLifetime {};
 struct ScopeBindingLifetime { ScopeId scope; FlowPoint enter,leave; };
-using FlowBindingLifetime=std::variant<CompletionOnlyLifetime,EnclosingBindingLifetime,ScopeBindingLifetime,UnmodeledBindingLifetime>;
+struct LoopBindingLifetime {StmtId loop;};
+using FlowBindingLifetime=std::variant<CompletionOnlyLifetime,EnclosingBindingLifetime,ScopeBindingLifetime,UnmodeledBindingLifetime,LoopBindingLifetime>;
 struct FlowBinding {
   BindingKind kind;
   FlowBindingExposure exposure = FlowBindingExposure::kObservable;
@@ -277,6 +280,7 @@ struct FlowLoop {
   FlowPoint condition,body,increment,exit;
   // Completed scalar copying, not a certificate of captured-cell identity.
   std::optional<FlowPoint> entry_copy,repeat_copy;
+  std::optional<FlowPoint> entry_allocation,repeat_allocation;
 };
 struct RecoveryFlow {
   // Shared unit transfer owns both scope events and abrupt edge exits.
@@ -287,12 +291,18 @@ struct RecoveryFlow {
     if(binding.value>=bindings.size())return scopes?FlowUnitTransfer::kUnmodeled:FlowUnitTransfer::kPreserved;
     if(std::holds_alternative<UnmodeledBindingLifetime>(bindings[binding.value].lifetime))return FlowUnitTransfer::kUnmodeled;
     if(ResetsBinding(binding,edge.from))return FlowUnitTransfer::kEnded;
+    if(const auto* unit=std::get_if<LoopBindingLifetime>(&bindings[binding.value].lifetime))
+      return scopes?scopes->LoopTransfer(unit->loop,edge.from,edge.to):FlowUnitTransfer::kUnmodeled;
     const auto* unit=std::get_if<ScopeBindingLifetime>(&bindings[binding.value].lifetime);
     return unit&&scopes?scopes->Transfer(unit->scope,edge.from,edge.to):FlowUnitTransfer::kPreserved;
   }
   [[nodiscard]] bool ResetsBinding(SymbolId binding,FlowPoint point) const {
     if(binding.value>=bindings.size())return false;
     if(bindings[binding.value].allocation==point)return true;
+    if(const auto* unit=std::get_if<LoopBindingLifetime>(&bindings[binding.value].lifetime)) {
+      const auto& event=events[point.value];
+      return event.loop_environment==unit->loop && (event.kind==FlowEventKind::kEnterLoopEnvironment||event.kind==FlowEventKind::kEnterIterationEnvironment||event.kind==FlowEventKind::kLeaveLoopEnvironment);
+    }
     const auto* unit=std::get_if<ScopeBindingLifetime>(&bindings[binding.value].lifetime);
     if(!unit)return false;
     const auto& event=events[point.value];

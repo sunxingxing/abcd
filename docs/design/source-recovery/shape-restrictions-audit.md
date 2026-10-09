@@ -3174,3 +3174,38 @@ explicit completion-only iteration capability; actual fresh units, reset-aware
 initialization and captured-cell proofs must be delivered together next. All five
 backbone loops stay OPEN. Component counterexamples/mutants do not substitute for
 original IR correspondence, full lifetime trials, convergence or final acceptance.
+
+
+### 2026-10-10: rules264, unit resets and completion leave local dominance
+
+Obligation: a reachable read or proposed storage action needs successful
+initialization in its CURRENT unit, through every completion path. One static
+lexical declaration dominating a read does not prove this after reentry/reset.
+The old FlowInitializations::Completed dominance-plus-local-scope decision is
+removed. The common reset-aware must solver owns this fact; retained declaration
+anchors own source placement only. Storage candidates explicitly request common
+facts for their representatives instead of inferring completion independently.
+
+Actual native first/repeat programs consume BoundNames, captured old inputs and
+source phase ownership. Typed replacement/normal-exit events and the shared
+native forest define resets and ancestry. Unknown contexts retain may demand
+and definitions; they do not masquerade as unit exits. Conservative cleanup
+only guarantees the function-body ancestry, with nested units unknown. Implicit
+scalar epochs are not captured-cell equality or VM heap-allocation proofs.
+
+The dominating-gen/no-unit-kill certificate is a sufficient theorem for the SAME
+must equations. Uncertified states use their full solver. Heavy paths, offline
+Fenwick queries and straight basic-block contraction control analysis costs;
+none admits source based on adjacency, same-block placement, sample identity,
+operation lists, fixed selection counts or compiler graph shapes. No resource
+budget increase or per-binding whole-graph walk is introduced.
+
+Remaining gaps: source loop programs not represented by legacy LoopSyntax retain
+CompletionOnly precision. Native source entry/movement corridors are partially
+unknown; complex cleanup, captured units, complete trial deltas and IR/SSA
+correspondence are not closed. Nested native model tests supply an outer phase
+program explicitly, rather than claiming syntax-planner recovery. Eight production
+mutants distinguish missing replacement/init, old dominance, ignored unit cuts,
+unknown transport, cleanup descendants, lost native parent and false native exit.
+Independent oracle and bounded source/record evidence are recorded in status.md.
+All five mainline deliverables remain OPEN; other optimizations remain paused.

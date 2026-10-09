@@ -2913,3 +2913,67 @@ complete trial lifetime deltas, dependency-driven convergence and milestone fina
 acceptance remain OPEN. Next migration must add actual unit allocation and its
 initialization proof together; inserting a reset alone would discard the old
 input or wrongly certify a missing initialization.
+
+
+### Rules264: scalar unit epochs and shared must-initialize
+
+Actual native BoundNames with modeled source phase programs now have a typed
+LoopBindingLifetime. First and repeat transport capture every old scalar input,
+switch CURRENT units at kEnterIterationEnvironment, then initialize the new unit.
+An owned kLeaveLoopEnvironment ends a normal or owned-break exit. The initial
+header allocation is still a separate event before its declarator evaluations.
+Static loop/ScopeId sites identify allocation origins, not equal dynamic cells.
+The native forest preserves active parent units during nested-loop entry/reset.
+
+This is an abstraction of scalar epochs, not heap allocation ordering or closure
+cell reconstruction. ECMA-262 2025 14.7.4.4 allocates the unexposed environment
+before reading the previous values, initializes each binding and publishes the
+new LexicalEnvironment after completing those implicit operations. Plain lexical
+reads and initialization here execute no user code before publication:
+https://tc39.es/ecma262/2025/multipage/ecmascript-language-statements-and-declarations.html#sec-createperiterationenvironment
+No captured-cell equality or resource-failure capability follows from scalar
+transport. Legacy loops without an actual modeled source program retain their
+explicit CompletionOnlyLifetime precision gap.
+
+FlowScopes owns canonical and native forests and their contexts. EnclosingScope
+means its ancestors remain active while descendants are unknown, as needed by
+conservative cleanup; it does not make all nested units active. Native known
+ancestors likewise do not certify unrelated pending units ended. Missing source
+entry/movement contexts are UnmodeledScope. Only explicit Incoming/leave facts
+certify inactivity; unknown transport preserves may definitions/demand and
+invalidates replacements. The first old initializer's live demand is tested.
+
+AnalyzeFlowInitializations is a read-only shared analysis in flow_initializations.cc.
+Parameter/catch/self, actual declaration initialization and successful iteration
+copies generate initialized states. Scope/loop entry, replacement and leaving
+kill them; ordinary assignments/updates are not initialization. All normal,
+exception, resume and conservative-cleanup edges participate in intersection
+must equations. After-event roots include actual references/reads/definitions
+and captured inputs; additional candidate positions are explicit query inputs.
+Unreachable syntax is vacuously completed but still requires source name checks.
+A missing reachable query certificate remains conservative.
+
+FlowInitializations::Completed no longer tests declaration dominance or privately
+rechecks scope presence. Declarations remain placement anchors only. A common
+sufficient certificate checks that the dominating gen's subtree has no kill of
+THIS unit. Absence of that certificate enters the same full equations, never a
+second recovery admission. Basic-block contraction and indexed local actions
+avoid repeated instruction walks. Heavy-path context differences plus an offline
+Fenwick sweep batch all unit/gen certificates; a reachable-gen index handles
+bottom states without backward expansion. These are analysis algorithms, not
+same-block or shape requirements. Budget exhaustion remains typed.
+
+Storage sharing requests representative states at actual reference/definition
+points from the same immutable graph, then its initialization and retirement
+consumers use those results. This is query demand, not a plan revision, analysis
+query mutation or call-site invalidation workaround. Current/trial preparation
+uses the same forest/flow producer; pass ordering, rounds and budgets are unchanged.
+
+Independent dense initialization oracles, inactive/active/unknown scope oracles,
+200/201/geometric and exact/one-short cases, eight production mutants and the
+frozen source/record checks provide component evidence (see status.md). The nested
+native model deliberately supplies the outer condition program; it does not
+certify legacy syntax discovery. Complete original IR correspondence, precise
+ordinary/catch/reentry identity, full trial lifetime deltas, dependency convergence
+and final milestone acceptance remain OPEN. All five backbone deliveries remain
+OPEN; agents/fullsuite/expanded corpus/RSS/benchmarks/DFX remain paused.

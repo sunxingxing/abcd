@@ -932,6 +932,7 @@ class Initializers {
         projection.source_scopes.bindings=loop_entries->bindings;
         projection.source_scopes.occurrences=loop_entries->occurrences;
         projection.source_scopes.loop_allocations=loop_entries->allocations;
+        projection.source_scopes.loop_owners=loop_entries->owners;
       }
       loop_bytes=budget_.ActiveBytes()-before;
     }
@@ -1188,18 +1189,28 @@ class Initializers {
     auto proposed=std::move(delta.storage);
     bool sharing=false;for(const auto root:proposed){budget_.Step();sharing|=root.has_value();}
     if(!sharing)return;
+    // Candidate storage asks additional states of the SAME immutable flow.
+    // Query demand is distinct from a plan mutation or manual stale refresh.
+    std::vector<LiveBinding> initialization_queries;
+    RequireTree(flow.references.size()<=std::numeric_limits<std::size_t>::max()-flow.definitions.size(),TreeStructureError::kResourceLimit);
+    const auto occurrences=flow.references.size()+flow.definitions.size();
+    budget_.Array(initialization_queries,occurrences);std::size_t queried=0;
+    for(const auto& reference:flow.references){budget_.Step();if(const auto root=proposed[reference.binding.value])initialization_queries[queried++]={reference.point,*root};}
+    for(const auto& definition:flow.definitions){budget_.Step();if(const auto root=proposed[definition.binding.value])initialization_queries[queried++]={definition.point,*root};}
+    auto candidate_initialized=AnalyzeFlowInitializations(flow,std::span<const LiveBinding>{initialization_queries}.first(queried),budget_.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&candidate_initialized))throw *error;
+    const auto& candidate_initialization=std::get<FlowInitializations>(candidate_initialized);
+    budget_.Admit(candidate_initialization.allocated_bytes,1);budget_.Step(candidate_initialization.work);
     // Initialization preservation is member-local with fixed representatives.
     // Its owned actions remain valid if name/lifetime closure retains a subset;
     // there is no graph or plan mutation between these independent analyses.
-    auto initialized=PlanStorageInitializations(flow,liveness,initialization_order,proposed,budget_.Remaining());
+    auto initialized=PlanStorageInitializations(flow,liveness,candidate_initialization,proposed,budget_.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&initialized))throw *error;
     const auto& initialization=std::get<StorageInitializations>(initialized);
     budget_.Admit(initialization.allocated_bytes,1);budget_.Step(initialization.work);
     std::vector<SourceRetirement> candidates_mask;
     std::vector<SourceRetirementQuery> references;
     std::vector<SourceRetentionDemand> demands;
-    RequireTree(flow.references.size()<=std::numeric_limits<std::size_t>::max()-flow.definitions.size(),TreeStructureError::kResourceLimit);
-    const auto occurrences=flow.references.size()+flow.definitions.size();
     RequireTree(occurrences<=std::numeric_limits<std::size_t>::max()-proposed.size(),TreeStructureError::kResourceLimit);
     budget_.Array(candidates_mask,proposed.size());budget_.Array(references,occurrences);budget_.Array(demands,occurrences+proposed.size());
     std::size_t count=0,demand_count=0;
@@ -1216,8 +1227,8 @@ class Initializers {
       references[count++]={{*root,reference.owner},reference.binding,{}};
       // New initialized storage cannot mask an original pre-initialization
       // access. Completion and lexical lifetime stay independent of spelling.
-      if(!initialization_order.Completed(*root,reference.point)||
-          !initialization_order.Completed(reference.binding,reference.point)||
+      if(!candidate_initialization.Completed(*root,reference.point)||
+          !candidate_initialization.Completed(reference.binding,reference.point)||
           !flow.BindingInScope(*root,reference.owner))demands[demand_count++]={reference.binding,{}};
     }
     // A live undefined initialization becomes a write to the retained slot.

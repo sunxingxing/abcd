@@ -1,7 +1,9 @@
 #ifndef ABCD_SOURCE_FLOW_DOMINANCE_H_
 #define ABCD_SOURCE_FLOW_DOMINANCE_H_
 #include "recovery_flow.h"
+#include "flow_liveness.h"
 #include "abcd/analysis/dominators.h"
+#include <algorithm>
 namespace abcd::source {
 struct FlowDominance {
   analysis::DominatorTree tree;
@@ -18,26 +20,25 @@ struct FlowDominance {
     const RecoveryFlow&,analysis::SemanticBudget = {});
 struct FlowInitializations {
   FlowDominance order;
-  std::shared_ptr<const FlowScopes> scopes;
-  std::vector<std::optional<ScopeId>> units;
   std::vector<std::optional<FlowPoint>> declarations;
+  // Sparse demanded states, after successful events. Implicit reads precede
+  // allocation/initialization; ordinary read events do not change this state.
+  std::vector<LiveBinding> completed;
   std::size_t allocated_bytes=0;
   std::uint64_t work=0;
-  // Completion order includes canonical allocation-before-initialization.
-  // Projected scope and cell equality remain independent; this query cannot
-  // authorize lifetime movement alone.
+  // Source references/definitions/inputs are included automatically; callers
+  // request additional candidate states explicitly. Missing query precision is
+  // conservative, never a single old declaration's dominance certificate.
   // Unreachable retained syntax has no execution-order demand; lexical name
   // resolution is still checked independently for that occurrence.
   [[nodiscard]] bool Completed(SymbolId binding,FlowPoint occurrence) const {
     if(!order.tree.nodes[occurrence.value].begin)return true;
-    if(scopes&&units[binding.value]) {
-      const auto presence=scopes->Presence(*units[binding.value],occurrence,FlowScopePhase::kBefore);
-      if(presence!=FlowUnitPresence::kActive&&presence!=FlowUnitPresence::kCompletionOnly)return false;
-    }
-    return declarations[binding.value] && order.Dominates(*declarations[binding.value],occurrence);
+    return std::binary_search(completed.begin(),completed.end(),LiveBinding{occurrence,binding});
   }
 };
 [[nodiscard]] std::variant<FlowInitializations,TreeStructureError> AnalyzeFlowInitializations(
     const RecoveryFlow&,analysis::SemanticBudget = {});
+[[nodiscard]] std::variant<FlowInitializations,TreeStructureError> AnalyzeFlowInitializations(
+    const RecoveryFlow&,std::span<const LiveBinding> queries,analysis::SemanticBudget = {});
 }
 #endif
