@@ -1993,6 +1993,95 @@ void SnapshotCheckpoints() {
   Check(rejects([&]{(void)clean.SnapshotRefreshNeeded();}));clean.Start(RecoveryPass::kBindings);Check(!clean.Finish());Check(clean.SnapshotRefreshNeeded());
   std::cout<<"snapshot checkpoint revision/cleanup/stage counterexamples passed\n";
 }
+void ScopedCopyRoots() {
+  // Model counterexamples: saved storage can survive a source unit's exit or
+  // reallocation. The same static binding must never mean the same new cell.
+  // These explicit scope facts are not a certificate for a decoded source tree.
+  for(const auto kind:{BindingKind::kLocal,BindingKind::kCatchParameter})
+    for(unsigned form=0;form<10;++form)for(bool reverse:{false,true}) {
+      const auto point=[&](unsigned i){return FlowPoint{reverse?2-i:i};};
+      const auto symbol=[&](unsigned i){return SymbolId{reverse?1-i:i};};
+      FunctionTree tree{};tree.scopes={{ScopeKind::kBlock,{}}};TreeCheckBudget budget({});
+      auto scopes=MakeFlowScopes(tree,budget);scopes->events.resize(3);
+      for(auto& event:scopes->events)event={ScopeId{0},ScopeId{0}};
+      RecoveryFlow flow{};flow.scopes=scopes;flow.events.resize(3);flow.bindings.resize(2);flow.entry=point(0);
+      flow.bindings[symbol(0).value]={BindingKind::kCompilerTemporary,FlowBindingExposure::kPrivate};
+      auto& root=flow.bindings[symbol(1).value];root.kind=kind;
+      root.lifetime=ScopeBindingLifetime{{0},point(0),point(2)};
+      flow.definitions={{point(0),symbol(0),FlowDefinitionKind::kAssignment,symbol(1)}};
+      flow.events[point(0).value].definition=FlowDefinitionId{0};
+      auto& middle=flow.events[point(1).value];
+      if(form==1)flow.references.push_back({point(1),symbol(1),FlowReferenceKind::kWrite,StmtId{0}});
+      if(form==2){middle.kind=FlowEventKind::kEnterScope;middle.scope=ScopeId{0};}
+      if(form==3){middle.kind=FlowEventKind::kLeaveScope;middle.scope=ScopeId{0};}
+      if(form==4)scopes->events[point(1).value]={UnmodeledScope{},UnmodeledScope{}};
+      if(form==5||form==7)middle.effects=CallbackEffects();
+      if(form==6)middle.effects=SourceEffects{analysis::LanguageEffect::kGuard,analysis::LanguageEffect::kGuard,
+          analysis::ExceptionalCompletion::kMayThrow};
+      if(form==8)middle.effects=SourceEffects{analysis::LanguageEffect::kUserCode,analysis::LanguageEffect::kNone,
+          analysis::ExceptionalCompletion::kMayThrow};
+      if(form>=5)middle.effect=ExpressionEvaluation::kRequired;
+      if(form==9)root.lifetime=UnmodeledBindingLifetime{};
+      Link(flow,point(0).value,point(1).value);Link(flow,point(1).value,point(2).value);
+      if(form==7||form==8)flow.edges.back().completion=FlowCompletion::kThrow;
+      flow.events[point(2).value].read=symbol(0);
+      flow.references.push_back({point(2),symbol(0),FlowReferenceKind::kRead,ExprId{0}});
+      const std::array<FlowValueEquation,1> equations{FlowBindingValue{symbol(0)}};
+      const std::array<std::uint8_t,1> completed{1};
+      const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));
+      const auto result=std::get<FlowCopies>(AnalyzeFlowCopies(flow,live,{equations,{},{},completed}));
+      const bool preserved=form==0||form==6||form==8;
+      Check(!result.reads.empty()==preserved);
+      if(preserved)Check(result.reads.size()==1&&result.reads[0].source==symbol(1));
+      Check(std::holds_alternative<FlowCopies>(AnalyzeFlowCopies(flow,live,{equations,{},{},completed},{result.allocated_bytes,result.work})));
+      Check(std::get<TreeStructureError>(AnalyzeFlowCopies(flow,live,{equations,{},{},completed},{result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
+      Check(std::get<TreeStructureError>(AnalyzeFlowCopies(flow,live,{equations,{},{},completed},{result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);
+    }
+}
+void ScopedCopyOracle() {
+  // Independent finite concrete paths: copy makes a snapshot equal to the
+  // current value; a write, new unit or callback may replace that value. The
+  // reference solver uses neither production transfer nor its copy lattice.
+  std::uint64_t cases=0;
+  constexpr std::array<std::pair<unsigned,unsigned>,6> routes{{{0,1},{0,2},{1,1},{1,2},{2,0},{2,2}}};
+  for(unsigned mask=0;mask<64;++mask)for(unsigned encoded=0;encoded<125;++encoded)for(bool reverse:{false,true}){
+    const auto point=[&](unsigned i){return FlowPoint{reverse?2-i:i};};
+    const auto symbol=[&](unsigned i){return SymbolId{reverse?1-i:i};};
+    FunctionTree tree{};tree.scopes={{ScopeKind::kBlock,{}}};TreeCheckBudget budget({});
+    auto scopes=MakeFlowScopes(tree,budget);scopes->events.resize(3);
+    for(auto& event:scopes->events)event={ScopeId{0},ScopeId{0}};
+    RecoveryFlow flow{};flow.scopes=scopes;flow.events.resize(3);flow.bindings.resize(2);flow.entry=point(0);
+    flow.bindings[symbol(0).value]={BindingKind::kCompilerTemporary,FlowBindingExposure::kPrivate};
+    flow.bindings[symbol(1).value].kind=BindingKind::kLocal;
+    flow.bindings[symbol(1).value].lifetime=ScopeBindingLifetime{{0},point(0),point(2)};
+    std::array<unsigned,3> operations{};auto code=encoded;
+    std::array<FlowValueEquation,3> equations;const std::array<std::uint8_t,3> completed{1,1,1};
+    for(unsigned i=0;i<3;++i){
+      operations[i]=code%5;code/=5;auto& event=flow.events[point(i).value];event.read=symbol(0);
+      equations[i]=FlowBindingValue{symbol(0)};
+      flow.references.push_back({point(i),symbol(0),FlowReferenceKind::kRead,ExprId{i}});
+      if(operations[i]==1){const FlowDefinitionId id{static_cast<std::uint32_t>(flow.definitions.size())};
+        event.definition=id;flow.definitions.push_back({point(i),symbol(0),FlowDefinitionKind::kAssignment,symbol(1)});}
+      if(operations[i]==2)flow.references.push_back({point(i),symbol(1),FlowReferenceKind::kWrite,StmtId{i}});
+      if(operations[i]==3){event.kind=FlowEventKind::kEnterScope;event.scope=ScopeId{0};}
+      if(operations[i]==4){event.effects=CallbackEffects();event.effect=ExpressionEvaluation::kRequired;}
+    }
+    for(unsigned i=0;i<routes.size();++i)if(mask&(1U<<i))Link(flow,point(routes[i].first).value,point(routes[i].second).value);
+    std::array<std::array<bool,2>,3> seen{};std::vector<std::pair<unsigned,unsigned>> pending{{0,0}};seen[0][0]=true;
+    while(!pending.empty()){
+      const auto [at,input]=pending.back();pending.pop_back();
+      const auto output=operations[at]==1?1U:operations[at]>=2?0U:input;
+      for(unsigned i=0;i<routes.size();++i)if((mask&(1U<<i))&&routes[i].first==at){
+        const auto to=routes[i].second;if(!seen[to][output]){seen[to][output]=true;pending.push_back({to,output});}}
+    }
+    const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));
+    const auto actual=std::get<FlowCopies>(AnalyzeFlowCopies(flow,live,{equations,{},{},completed}));
+    for(unsigned i=0;i<3;++i){const auto found=std::find_if(actual.reads.begin(),actual.reads.end(),[&](const auto& read){return read.expression==ExprId{i};});
+      Check((found!=actual.reads.end())==(seen[i][1]&&!seen[i][0]));if(found!=actual.reads.end())Check(found->source==symbol(1));}
+    ++cases;
+  }
+  std::cout<<"independent current-unit copy graphs "<<cases<<'\n';
+}
 void AvailableCopyOracle() {
   std::uint64_t cases=0;
   // Independent finite concrete state exploration. Roots denote distinct
@@ -2947,7 +3036,8 @@ int main(int argc,char** argv){
   }
   DemandWithoutUnits();ScopeIndexOracle();UnknownScopeTransfer();
   for(bool reverse:{false,true}){ScopeExitTrial(false,reverse);ScopeExitTrial(true,reverse);}
+  if(argc==2&&std::string_view(argv[1])=="--scoped-copies"){ScopedCopyRoots();ScopedCopyOracle();return 0;}
   if(argc==2&&std::string_view(argv[1])=="--activation") {
     CapturedValues();BindingActivationScaling();BindingActivationOracle();CatchActivationOrder();return 0;
   }
-  InitializationOracle();ScopedInitializationOracle();EnclosingCleanup();CapturedValues();BindingActivationScaling();BindingActivationOracle();CatchActivationOrder();InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();AvailableCopyOracle();TransitiveCopyOracle();CompletionCycles();LocalCompletionOracle();StatementObservationOracle();StatementEntryOracle();InitializationInvalidation();PassContracts();SnapshotCheckpoints();StableValues();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+  ScopedCopyRoots();ScopedCopyOracle();InitializationOracle();ScopedInitializationOracle();EnclosingCleanup();CapturedValues();BindingActivationScaling();BindingActivationOracle();CatchActivationOrder();InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();AvailableCopyOracle();TransitiveCopyOracle();CompletionCycles();LocalCompletionOracle();StatementObservationOracle();StatementEntryOracle();InitializationInvalidation();PassContracts();SnapshotCheckpoints();StableValues();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

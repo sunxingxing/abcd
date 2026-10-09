@@ -36,6 +36,51 @@
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
 
+### 2026-10-10：规则270，普通 local/catch 当前单元复制接入共同分析
+
+- 主干第2项的实际读取恢复消费者现在支持 observable scoped root。
+  同一个稀疏 available-copy solver 消费源单元与载体各自的 transfer、
+  实际根写入，以及当前 completion 的 UserCode；generation 和每条
+  propagation 边同样适用。旧 entry-only root 与 symbol-only kill 决策
+  被替代。未新增名字、样本、操作序列、同块或邻接准入条件。
+- CurrentCopies 仍为纯、revision-owned 分析；BindingValues 在共同初始化/
+  名字证明后只提出读取替换。写入、存储、死定义及声明由独立 pass
+  处理，清理使用新鲜事实。private carrier 继承已证明 root，不将未知
+  private 值冒认为 immutable root；缺少 scoped context 保守。
+  common exposure 仍保守混合 observable write 与外部可修改性；未知
+  回调会保留普通闭合 local 的快照。后续必须由共同单元访问/捕获事实
+  拆分该精度缺口，不在 copy/type/trial 各自加回调例外。
+- 40个 local/catch 单元/效果/写入反例及16000个独立小图通过，包含
+  分支、环、重分配、回调、反向 point/symbol ID。96份实际 SourceAdapter
+  源码独立执行5184次，四个输出突变行为不同；安全复制输出 return
+  current/error，写入、catch退出和两类重复进入仍保留 scratch。
+  该 evidence 不冒充完整 raw/capture 证书。
+- 针对3项均通过，80.56s；综合源码消费者现有及新增1277份源码/
+  199508次比较/156个执行突变全部通过。新增独立小图随后单独通过。
+  四个生产突变（删除 scoped root/单元 transfer/根写入 kill、异常取
+  normal mask）均 build0/model-6，恢复后 build0/model0。
+- 200/201/400/800 普通重入 family work=256394/258005/486282/955320，
+  bytes=775938/777073/1527226/3029802；catch重入 work=
+  269889/270556/508185/995033，bytes=777951/779086/1529239/3031815。
+  反向 arena 和 exact/one-short byte/work 通过；这是组件 admission，
+  非进程RSS。所有既定额度及冻结31/63/fixedABC选择保持不变。
+- 最终31目标构建0（194.11s），固定 fresh ABC0（3.76s），冻结63项
+  全部通过（976.59s），终态0；JUnit exact names63/63、无重复。
+  6份冻结生产/测试代码哈希、测试清单及 ABC SHA 在导出前/后及
+  测试后均不变。19 records：10 complete、0 partial、9 no-module，
+  10模块语法全部通过。仅 ProgressBar.mjs 相对269变化：去掉临时
+  $value1 及 (($value1 = uiContext)?.getHostContext()) 的搬运，输出
+  uiContext?.getHostContext()；未修改可选链恢复规则。其 record 配对
+  执行88场景、570异常注入、114 import swaps、15突变及2等价变化
+  全部通过（platformExecution=false，不冒充设备平台执行）。
+  最终源码消费者1277/199508/156及16000小图均在冻结63项内通过。
+  构建保留既有 literal_plan.cc:59 kNoop switch warning 1条，无error；
+  未混入无关修复。证据根 build/stage-one/scoped-copy-verification，
+  fresh输出 build/stage-one/scoped-copy-final-rule270-verified。
+- 五项主干均未关闭：完整 raw phase/protocol/action 对应、普通及捕获
+  单元身份闭环、其他trial、依赖收敛和里程碑终验继续。其他优化及
+  agents/fullsuite/扩展语料/RSS/benchmarks/DFX 保持暂停，Goal active。
+
 ### 2026-10-10：规则269，完成路径效果与可观察写入分离
 
 - 主干第1项继续 source 侧效果对应：唯一穷尽语言表返回 typed normal/

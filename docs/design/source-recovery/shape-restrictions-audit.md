@@ -3302,3 +3302,35 @@ and declarative writes are not callback evidence. Their retention, completion,
 identity and scope obligations remain independent. Unknown/unmodeled paths stay
 conservative; no sample/name, same-block, adjacency, fixed graph or size admission
 was added. Raw phase/protocol correspondence remains an implementation gap.
+
+
+### Rules270: copy roots follow common unit transfer
+
+Obligation: a completed private read may use a lexical root only while its saved
+value equals that root's *current dynamic unit* and value on every reaching path.
+The root and carrier have independent lifetimes. Root writes and completion-
+specific external effects invalidate equality; unit departure/reallocation or
+unknown cleanup invalidates identity. These facts are consumed once per sparse
+dependency edge, including successful generation; names/initialization remain
+independent common proofs at the consumer.
+
+Retired: available-copy roots restricted to `stable_entry`, and dependency
+records containing only a killed SymbolId. The new record references the typed
+flow edge, preserving completion and shared lifetime facts. No local/catch opcode
+pattern, same-block, adjacency, fixed selection count or sample dispatch exists.
+Private carriers inherit roots; unknown private immutable roots and missing unit
+contexts are explicit analysis gaps. They are not patched with new source shapes.
+
+Evidence: 40 targeted adverse cases, 16,000 independent finite graphs, 96 emitted
+source functions/5,184 executions, four execution mutants and four production
+mutants, plus geometric block variants and exact/short budgets. Source references
+are outside engine input. Safe local/catch reads print direct identifiers; exited
+and repeatedly allocated units retain their earlier snapshots. Complete raw
+identity/captured-unit/trial/pass/acceptance closures are still open.
+
+Rules270 retained conservative obligation: a callback can invalidate a root only
+if it may access/mutate that cell. The current common exposure fact overapproximates
+ordinary locals because observable-write ownership and external cell access are
+not yet separate facts. Shared cell access/capture analysis must replace this
+proxy for value/copy/trial clients together. Do not expand callback exceptions in
+individual passes or mistake the proxy for a language rule.

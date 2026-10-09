@@ -3211,3 +3211,67 @@ before-throw and exception facts present. The default source printing case
 passes at its original 64MiB allowance. No semantic narrowing or budget increase
 was used. Frozen first-attempt failure/probe and repaired targeted checks are
 retained; current final verification is recorded in status.md.
+
+
+### Rules270: available copies of current ordinary scoped units
+
+The existing available-copy solver now names the current value of a modeled
+observable lexical unit, including local and catch activation, as well as the
+already supported closed entry roots. Every generated and propagated relation
+consumes `TransferBinding(root, edge)`, actual root writes, and
+`MayInvokeUserCode(edge.completion)`. The carrier's own transfer remains a
+separate obligation. Leaving/reallocating a root, or unknown cleanup, invalidates
+an older saved value even if its carrier remains live and its ScopeId is reused.
+Normal and exceptional masks come from the common source effects table.
+
+The current `FlowBindingExposure` fact also conservatively treats ordinary
+observable writes as potential external mutation. Thus even an actually closed
+ordinary local retains its snapshot across an unknown callback. This is a model
+precision gap, not a language invariant or a new call-shape admission rule.
+Shared cell access/capture facts must eventually distinguish external mutation
+from write observability; all value/copy/trial clients must consume that producer,
+not add local callback exceptions. Scope transfer remains a separate obligation.
+
+Private carriers inherit an available root through the shared source query at
+successful copy commit. They do not become arbitrary immutable value roots;
+that is a documented domain precision gap, not a language admission invariant.
+Missing scoped lifetime/context likewise supplies no unit identity certificate.
+No local/catch kind whitelist, name, sample, adjacency or block-shape admission
+was added. The old entry-only root decision and symbol-only dependency kill have
+been replaced by this edge transfer in the production `CurrentCopies` consumer.
+
+This analysis is pure and revision-owned. `BindingValues` consumes its read
+proposals after common initialization/name proofs; it changes neither writes nor
+storage nor declaration lifetime. Demand cleanup and dead definitions remain
+separate passes, with fresh common facts under the existing schedule. No printer
+analysis or combined copy/store/delete decision was introduced.
+
+Model evidence includes 40 local/catch phase/unit/write counterexamples and
+16,000 independent finite path graphs with forks, cycles, writes, reallocation,
+callbacks and reversed point/symbol IDs. The reference solver tracks concrete
+current/saved equality without the production transfer, copy lattice or sparse
+solver. Actual SourceAdapter output includes 96 functions over eight semantic
+families, reversed arenas and 0/1/200/201/400/800 inert block variants: 5,184
+independent executions, safe direct local/catch returns and preserved live
+write/exit/reentry snapshots. Four generated-source snapshot mutants differ in
+behavior. Exact and one-short lower-API budgets are checked without increases.
+Four production mutants (no scoped roots/unit transfer/write kill, and wrong
+normal mask on throw) build successfully and fail the model; restored model passes.
+
+This advances the ordinary unit consumer, not the complete ordinary-lifetime
+closure: captured cells, all raw phase/protocol correspondence, every trial
+client, dependency-driven pass convergence and full milestone acceptance remain
+OPEN. All five backbone deliveries stay OPEN; frozen 31/63/fixed-ABC verification
+and all previously paused scopes remain unchanged.
+
+Rules270 frozen final: build31 exit0 (194.11s), fixed fresh ABC exit0 (3.76s),
+exact63 tests exit0 (976.59s), exact names/no duplicates. All six frozen code/test
+hashes, input hash and selection remain unchanged. The 19 records still contain
+10 complete modules/0 partial/9 no-module; all ten parse. ProgressBar alone changes:
+its module-level uiContext copy and unused private declaration disappear through
+the common copy/demand consumers, with no optional-chain rule change. Its paired
+record gate passes88 cases/570 injected faults/114 import swaps/15 mutants/2
+equivalent transformations, with platform execution explicitly false. The final
+source consumer includes1277 outputs/199508 comparisons/156 mutants and the
+16000 new graph oracle cases. One existing literal_plan kNoop switch warning is
+retained in the final build evidence; no error. No backbone closure is claimed.

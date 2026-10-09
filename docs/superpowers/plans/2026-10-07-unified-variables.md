@@ -896,3 +896,25 @@ and second frozen31/63/fixedABC all pass; source/input/selection hashes unchange
 No backbone delivery is closed by this component; next implementation remains
 complete raw phase/action/exception correspondence, ordinary units, remaining
 trials, dependency convergence and final milestone acceptance.
+
+
+Rules270 substep returns to Task2's actual ordinary binding consumer. Available
+copies of observable local/catch units now use shared source/carrier transfer,
+root writes and actual-completion UserCode facts on generation and propagation.
+Read substitution, storage, observable writes, initialization and declarations
+remain separate. Safe copies reach direct printed local/catch returns; exit and
+reentry snapshots remain explicit. Independent current-unit finite graphs and
+emitted-source execution/mutants exercise common semantics and layout variation.
+The entry-only/symbol-only copy decisions have exited this production path.
+Unknown private immutable roots/captured cells remain precision gaps; do not add
+local patterns to expand them. Full raw correspondence, ordinary identity, all
+trials, dependency convergence and final milestone acceptance stay OPEN.
+Frozen31/63/fixedABC and all paused scopes are unchanged.
+
+Rules270 final acceptance: frozen31 build0/fixedABC0/exact63 tests0; source/input/
+selection hashes unchanged and JUnit63/no duplicates. Ten complete modules parse;
+ProgressBar's private uiContext snapshot disappears through common copy and
+independent demand cleanup, and its full paired record test passes. No optional
+rule changes or paused scope resumes. Shared external cell access versus ordinary
+write observability is a remaining common fact gap, not a callback exception to
+add in individual optimizers. All five backbone deliveries remain OPEN/Goal active.

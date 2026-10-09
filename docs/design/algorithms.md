@@ -4176,3 +4176,32 @@ and every effect fact while returning the event to 128 bytes. The same default
 resource allowance or semantic fact was removed; the first failure is retained
 in completion-effects-verification/final-attempt-1. This is an admission
 regression repair required by the semantic change, not a process RSS claim.
+
+
+### Current scoped-root copy transfer (rules270)
+
+Provenance remains classical monotone available-copy gen/kill (the existing
+rules265/266 solver). The lattice is unresolved, one current root, or unknown;
+each fact changes at most twice. Generation is only at successful common copy
+commit. Root/carrier unit transfer and completion-specific user effects are
+immutable common facts. The typed dependency edge replaces the old symbol-only
+kill record; there is no per-root graph walk or pairwise cell comparison.
+
+Let V/B/M be event/binding/equation sizes, H all borrowed incoming live facts,
+L selected facts, Q reference/definition queries, I incoming-edge incidences
+inspected for those selected facts, and D actual sparse dependencies (D <= I).
+Selection/indexing and construction cost O(V+B+M+H+(Q+I) log(L+1)); solving is
+O(L+D), read aggregation/output O(M+Q log(L+1)). Current scoped presence/transfer
+use constant-time indexed forest containment; reallocation is a typed event
+test. Owned memory is O(V+B+M+L+D), in addition to borrowed common graph/liveness/
+scope indexes. Dense I/D remain real input/output costs, admitted with existing
+byte/work budgets, never dropped semantics.
+
+SourceAdapter lexical reentry family, N=200/201/400/800 added inert blocks:
+work 256394/258005/486282/955320; admitted bytes
+775938/777073/1527226/3029802. Catch reentry:
+work 269889/270556/508185/995033; bytes
+777951/779086/1529239/3031815. Reversed IDs and all eight source families pass
+geometric checks and exact/one-short byte/work admission. These are component
+cost facts, not process RSS or a resumed benchmark. The 1G full-process contract
+is not newly verified. No allowance, quota or target selection was increased.

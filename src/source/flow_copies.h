@@ -14,9 +14,13 @@ struct FlowCopies {
 // Normal-completion copy metadata generates relations, inheriting proved entry
 // equality through private copies. Common liveness includes source-value queries
 // at copy commit; missing query facts remain unknown. Every entry-root definition
-// kills its relations. All completion edges participate. Entry-cell adapter evidence
-// excludes mapped/captured/signature mutation; local activation roots remain
-// unproved. Initialization, lexical names, effects and deletion are independent.
+// kills its relations. Observable scoped roots consume the common unit transfer
+// on every edge, including generation, so departure/reallocation/unknown cleanup
+// cannot identify an older saved value with a new cell. Completion-specific user
+// effects also kill exposed roots. Entry-cell evidence still excludes mapped/
+// captured/signature mutation. Private carriers inherit roots; this lattice does
+// not give an unknown carrier an immutable root. Initialization, lexical names,
+// effects and deletion are independent. No per-root graph walk is performed.
 [[nodiscard]] std::variant<FlowCopies,TreeStructureError> AnalyzeFlowCopies(
     const RecoveryFlow&,const FlowLiveness&,FlowValueEquations,
     analysis::SemanticBudget = {});

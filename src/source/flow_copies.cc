@@ -11,7 +11,8 @@ std::variant<FlowCopies,TreeStructureError> AnalyzeFlowCopies(
     TreeCheckBudget budget(allowance);FlowCopies result;
     const auto completed=expressions.completed_reads;
     RequireTree(expressions.size()<=std::numeric_limits<std::uint32_t>::max()&&
-        flow.definitions.size()<=std::numeric_limits<std::uint32_t>::max(),TreeStructureError::kResourceLimit);
+        flow.definitions.size()<=std::numeric_limits<std::uint32_t>::max()&&
+        flow.edges.size()<=std::numeric_limits<std::uint32_t>::max(),TreeStructureError::kResourceLimit);
     RequireTree(completed.size()==expressions.size(),TreeStructureError::kOwnership);
     RequireTree(expressions.replacements.empty()||expressions.replacements.size()==expressions.size(),TreeStructureError::kOwnership);
     RequireTree(expressions.bindings.empty()||expressions.bindings.size()==flow.bindings.size(),TreeStructureError::kOwnership);
@@ -26,6 +27,16 @@ std::variant<FlowCopies,TreeStructureError> AnalyzeFlowCopies(
     };
     for(const auto& binding:flow.bindings){budget.Step();if(binding.stable_entry)
       RequireTree(binding.kind==BindingKind::kParameter||binding.kind==BindingKind::kFunctionSelf,TreeStructureError::kBinding);}
+    const auto root_binding=[&](SymbolId id) {
+      const auto& binding=flow.bindings[id.value];
+      if(binding.stable_entry)return true;
+      // This lattice names current observable units; private carriers inherit
+      // an available root, rather than becoming immutable values. Scope sites
+      // alone cannot supply a unit: the current common transfer model must own it.
+      if(binding.exposure==FlowBindingExposure::kPrivate||!flow.scopes)return false;
+      return std::holds_alternative<ScopeBindingLifetime>(binding.lifetime)||
+          std::holds_alternative<LoopBindingLifetime>(binding.lifetime);
+    };
     std::vector<std::optional<SymbolId>> writes;budget.Array(writes,flow.events.size());
     bool seed=false;
     for(std::size_t i=0;i<flow.definitions.size();++i) {
@@ -35,7 +46,7 @@ std::variant<FlowCopies,TreeStructureError> AnalyzeFlowCopies(
       writes[definition.point.value]=definition.binding;
       if(definition.copy){
         RequireTree(definition.copy->value<flow.bindings.size(),TreeStructureError::kBinding);
-        seed|=flow.bindings[definition.copy->value].stable_entry;
+        seed|=root_binding(*definition.copy);
       }
     }
     // A typed write reference may accompany the normal definition. Never
@@ -79,14 +90,29 @@ std::variant<FlowCopies,TreeStructureError> AnalyzeFlowCopies(
     };
     enum class Kind : std::uint8_t {kUnresolved,kCopy,kUnknown};
     struct Value {Kind kind=Kind::kUnresolved;std::optional<SymbolId> source;};
+    struct EdgeIndex {std::uint32_t value;};
     const Value unknown{Kind::kUnknown,{}};
+    const auto transfer=[&](Value value,EdgeIndex index,SymbolId target) {
+      if(value.kind!=Kind::kCopy)return value;
+      const auto root=*value.source;const auto& edge=flow.edges[index.value];
+      if(flow.TransferBinding(root,edge)!=FlowUnitTransfer::kPreserved)return unknown;
+      const auto& event=flow.events[edge.from.value];
+      // A generated copy owns its successful new value; unrelated source
+      // writes kill an older relation even when the write itself later dies.
+      const bool generated=event.definition&&flow.definitions[event.definition->value].binding==target;
+      if(!generated&&writes[edge.from.value]==root)return unknown;
+      if(!flow.bindings[root.value].stable_entry&&
+          flow.bindings[root.value].exposure!=FlowBindingExposure::kPrivate&&
+          event.MayInvokeUserCode(edge.completion))return unknown;
+      return value;
+    };
     const auto generated=[&](const FlowDefinition& definition,const auto& constant,const auto& dependency) {
       switch(definition.kind) {
         case FlowDefinitionKind::kAssignment:case FlowDefinitionKind::kInitializer:
           if(definition.copy) {
-            if(flow.bindings[definition.copy->value].stable_entry){constant(Value{Kind::kCopy,definition.copy});return;}
+            if(root_binding(*definition.copy)){constant(Value{Kind::kCopy,definition.copy});return;}
             if(flow.bindings[definition.copy->value].exposure==FlowBindingExposure::kPrivate)
-              if(const auto source=find({definition.point,*definition.copy})){dependency(*source,std::nullopt);return;}
+              if(const auto source=find({definition.point,*definition.copy})){dependency(*source);return;}
           }
           break;
         case FlowDefinitionKind::kUndefined:case FlowDefinitionKind::kUndefinedStore:
@@ -108,22 +134,26 @@ std::variant<FlowCopies,TreeStructureError> AnalyzeFlowCopies(
         budget.Step();const auto predecessor=flow.edges[*edge].from;if(!reachable(predecessor))continue;
         if(flow.TransferBinding(fact.binding,flow.edges[*edge])!=FlowUnitTransfer::kPreserved){constant(unknown);continue;}
         const auto defined=flow.events[predecessor.value].definition;
+        const EdgeIndex index{static_cast<std::uint32_t>(*edge)};
         if(defined){
           RequireTree(defined->value<flow.definitions.size(),TreeStructureError::kOwnership);
           const auto& definition=flow.definitions[defined->value];
-          if(definition.binding==fact.binding){generated(definition,constant,dependency);continue;}
+          if(definition.binding==fact.binding){
+            generated(definition,[&](Value value){constant(transfer(value,index,fact.binding));},
+                [&](FactId source){dependency(source,index);});continue;
+          }
         }
         if(writes[predecessor.value]==fact.binding){constant(unknown);continue;}
-        if(const auto source=find({predecessor,fact.binding}))dependency(*source,writes[predecessor.value]);
+        if(const auto source=find({predecessor,fact.binding}))dependency(*source,index);
         else constant(unknown);
       }
     };
-    struct Dependency {FactId target;std::optional<SymbolId> kill;std::optional<std::uint32_t> next;};
+    struct Dependency {FactId target;EdgeIndex edge;std::optional<std::uint32_t> next;};
     std::vector<Value> values;std::vector<std::uint8_t> queued;
     std::vector<FactId> pending;std::vector<std::optional<std::uint32_t>> heads;
     budget.Array(values,count);budget.Array(queued,count);budget.Array(pending,count);budget.Array(heads,count);
     std::size_t edges=0;
-    for(std::size_t i=0;i<count;++i){budget.Step();inputs(i,[](Value){},[&](FactId,std::optional<SymbolId>){++edges;});}
+    for(std::size_t i=0;i<count;++i){budget.Step();inputs(i,[](Value){},[&](FactId,EdgeIndex){++edges;});}
     RequireTree(edges<=std::numeric_limits<std::uint32_t>::max(),TreeStructureError::kResourceLimit);
     std::vector<Dependency> dependencies;budget.Array(dependencies,edges);next=0;std::size_t ready=0;
     const auto join=[&](Value left,Value right) {
@@ -139,8 +169,8 @@ std::variant<FlowCopies,TreeStructureError> AnalyzeFlowCopies(
     };
     for(std::size_t i=0;i<count;++i) {
       budget.Step();const FactId target{static_cast<std::uint32_t>(i)};
-      inputs(i,[&](Value value){update(target,value);},[&](FactId source,std::optional<SymbolId> kill){
-        const auto id=static_cast<std::uint32_t>(next++);dependencies[id]={target,kill,heads[source.value]};heads[source.value]=id;
+      inputs(i,[&](Value value){update(target,value);},[&](FactId source,EdgeIndex edge){
+        const auto id=static_cast<std::uint32_t>(next++);dependencies[id]={target,edge,heads[source.value]};heads[source.value]=id;
       });
     }
     const auto solve=[&] {
@@ -148,7 +178,8 @@ std::variant<FlowCopies,TreeStructureError> AnalyzeFlowCopies(
         budget.Step();const auto source=pending[--ready];queued[source.value]=0;
         for(auto edge=heads[source.value];edge;edge=dependencies[*edge].next){
           budget.Step();const auto& dependency=dependencies[*edge];const auto value=values[source.value];
-          update(dependency.target,value.kind==Kind::kCopy&&value.source==dependency.kill?unknown:value);
+          const auto binding=live.live_in[facts[dependency.target.value]].binding;
+          update(dependency.target,transfer(value,dependency.edge,binding));
         }
       }
     };

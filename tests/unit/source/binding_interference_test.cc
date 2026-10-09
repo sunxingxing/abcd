@@ -767,7 +767,92 @@ std::uint64_t Chain(unsigned count,bool conflict,bool reverse,bool emit){
   return bindings.work;
 }
 }
+// Observable roots are current lexical units, never immutable snapshots of a
+// scope site. Exercise ordinary/catch allocation and repeated entry through the
+// same source adapter consumed by printing; references stay outside the engine.
+enum class ScopedForm {kLocal,kCallback,kWrite,kCatch,kCatchExit,kLocalReentry,kCatchReentry,kThrowingUpdate};
+std::uint64_t ScopedCopies(ScopedForm form,unsigned count,bool reverse,bool emit){
+  Fixture f(Form::kStraight);auto& tree=f.tree;
+  const bool caught=form==ScopedForm::kCatch||form==ScopedForm::kCatchExit||form==ScopedForm::kCatchReentry;
+  const bool repeated=form==ScopedForm::kLocalReentry||form==ScopedForm::kCatchReentry;
+  tree.symbols[3].kind=BindingKind::kLocal;tree.symbols[3].temporary.reset();
+  const auto update=[&](unsigned symbol){return f.Expr(UpdateExpr{{symbol},UpdateDirection::kIncrement,UpdateResult::kPrefix});};
+  const auto boolean=[&](bool value){return f.Expr(TreeLiteral{BooleanLiteral{value}});};
+  std::vector<StmtId> roots{f.Stmt(DeclarationStmt{{4},{}})},operations;
+  if(repeated)roots.push_back(f.Write(2,boolean(false)));
+  if(caught){
+    const auto handler=f.Block({});
+    const auto scope=std::get<BlockStmt>(tree.statements[handler.value].statement).scope;
+    tree.scopes[scope.value].kind=ScopeKind::kCatch;
+    const SymbolId parameter{3};
+    tree.symbols[3]={scope,{5},BindingKind::kCatchParameter,DeclarationKind::kCatchParameter,NameEvidence::kMetadata,{}};
+    if(repeated)operations.push_back(f.Stmt(IfStmt{f.Read(2),f.Block({f.Stmt(ReturnStmt{f.Read(4)})},scope),{}}));
+    operations.push_back(f.Write(4,f.Read(parameter.value)));
+    for(unsigned i=0;i<count;++i)operations.push_back(f.Block({},scope));
+    if(repeated)operations.push_back(f.Write(2,boolean(true)));
+    else if(form==ScopedForm::kCatch)operations.push_back(f.Stmt(ReturnStmt{f.Read(4)}));
+    auto& block=std::get<BlockStmt>(tree.statements[handler.value].statement);
+    block.first_child=tree.children.size();block.child_count=operations.size();
+    tree.children.insert(tree.children.end(),operations.begin(),operations.end());
+    const auto body=f.Block({f.Stmt(ThrowStmt{repeated?update(0):f.Read(0)})});
+    const auto statement=f.Stmt(TryStmt{body,CatchClause{parameter,handler},{}});
+    if(repeated){const auto loop_body=f.Block({statement});
+      const auto loop_scope=std::get<BlockStmt>(tree.statements[loop_body.value].statement).scope;
+      tree.scopes[scope.value].parent=loop_scope;
+      tree.scopes[std::get<BlockStmt>(tree.statements[body.value].statement).scope.value].parent=loop_scope;
+      LoopStmt loop{};loop.body=loop_body;roots.push_back(f.Stmt(loop));
+    }else {roots.push_back(statement);if(form==ScopedForm::kCatchExit)roots.push_back(f.Stmt(ReturnStmt{f.Read(4)}));}
+  }else if(repeated){
+    const auto body=f.Block({});const auto scope=std::get<BlockStmt>(tree.statements[body.value].statement).scope;
+    tree.symbols[3].scope=scope;
+    operations={f.Stmt(DeclarationStmt{{3},update(0)}),
+      f.Stmt(IfStmt{f.Read(2),f.Block({f.Stmt(ReturnStmt{f.Read(4)})},scope),{}}),f.Write(4,f.Read(3))};
+    for(unsigned i=0;i<count;++i)operations.push_back(f.Block({},scope));
+    operations.push_back(f.Write(2,boolean(true)));
+    auto& block=std::get<BlockStmt>(tree.statements[body.value].statement);
+    block.first_child=tree.children.size();block.child_count=operations.size();
+    tree.children.insert(tree.children.end(),operations.begin(),operations.end());
+    LoopStmt loop{};loop.body=body;roots.push_back(f.Stmt(loop));
+  }else{
+    roots.push_back(f.Stmt(DeclarationStmt{{3},f.Read(0)}));
+    if(form!=ScopedForm::kThrowingUpdate)roots.push_back(f.Stmt(ExpressionStmt{update(3)}));
+    roots.push_back(f.Write(4,f.Read(3)));
+    for(unsigned i=0;i<count;++i)roots.push_back(f.Block({}));
+    if(form==ScopedForm::kCallback)roots.push_back(f.Stmt(ExpressionStmt{f.Call({})}));
+    if(form==ScopedForm::kWrite)roots.push_back(f.Write(3,f.Expr(TreeLiteral{IntegerLiteral{0}})));
+    if(form==ScopedForm::kThrowingUpdate){
+      const auto body=f.Block({f.Stmt(ExpressionStmt{update(3)})});
+      const auto handler=f.Block({});const auto scope=std::get<BlockStmt>(tree.statements[handler.value].statement).scope;
+      tree.scopes[scope.value].kind=ScopeKind::kCatch;
+      const SymbolId parameter{static_cast<std::uint32_t>(tree.symbols.size())};
+      tree.symbols.push_back({scope,{5},BindingKind::kCatchParameter,DeclarationKind::kCatchParameter,NameEvidence::kMetadata,{}});
+      roots.push_back(f.Stmt(TryStmt{body,CatchClause{parameter,handler},{}}));
+    }
+    roots.push_back(f.Stmt(ReturnStmt{f.Read(4)}));
+  }
+  f.Finish(roots,reverse);const auto structure=VerifyTreeStructure(tree);
+  if(const auto* error=std::get_if<TreeStructureError>(&structure))std::cerr<<"scoped structure "<<unsigned(form)<<" count "<<count<<" error "<<unsigned(*error)<<'\n';
+  Check(std::holds_alternative<TreeStructure>(structure));
+  const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
+  const auto planned=PlanBindingInitializers(tree,loops,nullish);
+  if(const auto* error=std::get_if<TreeStructureError>(&planned))std::cerr<<"scoped form "<<unsigned(form)<<" count "<<count<<" error "<<unsigned(*error)<<'\n';
+  Check(std::holds_alternative<BindingInitializers>(planned));const auto& bindings=std::get<BindingInitializers>(planned);
+  if(count==0){
+    Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work})));
+    Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes-1,bindings.work}))==TreeStructureError::kResourceLimit);
+    Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work-1}))==TreeStructureError::kWorkLimit);
+  }
+  std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
+  if(emit)std::cout<<nlohmann::json{{"form",unsigned(form)},{"count",count},{"reverse",reverse},{"source",output.str()},{"work",bindings.work},{"bytes",bindings.allocated_bytes}}<<'\n';
+  return bindings.work;
+}
 int main(int argc,char** argv){
+  if(argc>1&&std::string_view(argv[1])=="--units"){
+    for(unsigned form=0;form<=unsigned(ScopedForm::kThrowingUpdate);++form)for(bool reverse:{false,true}){
+      std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){
+        const auto work=ScopedCopies(ScopedForm(form),count,reverse,true);if(count==800)Check(work<previous*3);previous=work;}}return 0;
+  }
+  for(unsigned form=0;form<=unsigned(ScopedForm::kThrowingUpdate);++form)for(bool reverse:{false,true})ScopedCopies(ScopedForm(form),0,reverse,false);
   if(argc>1&&std::string_view(argv[1])=="--chains"){
     for(bool conflict:{false,true})for(bool reverse:{false,true}){
       std::uint64_t previous=0;for(unsigned count:{1U,2U,200U,201U,400U,800U}){
