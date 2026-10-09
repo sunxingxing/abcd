@@ -36,6 +36,44 @@
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
 
+### 2026-10-09：规则259，当前声明分配对应
+
+- 主干第2/3项：共同词法遍历一次发布区域到当前分配的typed对应，当前/
+  trial均消费。ProjectedBindingScope使用当前块分配，原Symbol.scope
+  作为其单元的旧fallback退出；缺失对应或被省略的分配保持unmodeled。
+  lexical包含、初始化完成、值传播和捕获身份仍是独立义务。
+- 实际RED2550证明：原始外层local合法；候选把声明缩入内层后，即使
+  initializer支配外部读取，也不能使用原外层单元证明读取有效。新共同
+  模型允许内层合法读取、切断离开后的旧单元定义；区域/Scope编号重排
+  不改变结论。八种原始/投影、已知/未知、正反编号以及exact/one-short
+  bytes/work、非法边界映射规格已接入原目标。
+- 首轮选定验证61/63，pasteboard_storage_callback_source_test和
+  rich_text_record_source_test检出原生循环复用回退：误把已有完成/值
+  契约随未建模动态单元一起降为未知。已拆出显式LegacyLoopAllocation，
+  只保留原有placement/confinement/capture义务下的完成与值能力，不
+  恢复原Scope单元或授予动态cell身份证明。旧循环准入不扩展；完整
+  copied per-iteration环境必须继续替代该过渡契约。两项原测试未弱化。
+- 修复后四项定向验证4/4、17.93s通过；三个最终生产突变分别取消当前
+  单元对应、忽略当前对应、删除既有循环值能力，均build0并被反例检出；
+  代码全部恢复后重跑最终31目标/精确63名单/fresh固定record验证。
+- 最终31目标构建39.6555s、fresh固定record3.0140s、精确63/63
+  CTests580.5131s通过，名单一致/无重复。
+  固定19records/10complete/0partial/9no-module、10源码语法检查通过；
+  修复后源码与规则258完全相同，原机械临时变量回退已消失。证据
+  build/stage-one/projected-lifetime-verification，fresh输出
+  build/stage-one/projected-lifetime-final-rule259-preserved；first-*保留
+  首轮失败，首轮header重编译显示原literal_plan.cc的kNoop warning，
+  最终构建日志无warning/error；该旧warning未作为此主干变更修复。
+- 新增48份实际优化后的声明缩短源码，涵盖四种jump/throw/return、
+  copies0/1/200/201/400/800及嵌套block：新增3720独立行为对照、60
+  行为mutants通过；该目标包含原32场景后合计6200/100，original-flow
+  目标全部合计10280对照/158mutants（不含其他source目标）。边界/几何
+  成本增长验证通过，计入整个恢复/打印路径，不是RSS或全局收敛证明。
+- **五项主干均未关闭**；下一步沿原生for实际declarator/entry/更新
+  owner，把环境分配和逐轮值复制完整接入共同完成图，不追加自增形状
+  判断。原始IR/SSA完整对应、capture/finally、依赖重跑及终验仍开放。
+  其他表现优化与fullsuite/corpus/RSS/benchmark/DFX/agents保持暂停。
+
 ### 2026-10-09：规则258，共同异常/跳转作用域转移
 
 - 主干第2/3项继续实施：当前与trial共同adapter为每个完成事件发布typed

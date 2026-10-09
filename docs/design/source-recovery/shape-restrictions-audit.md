@@ -3039,3 +3039,26 @@ replaced; static containment is no proof of captured-cell identity across visits
 Declaration narrowing/native-for lifetime deltas and precise finally/closure contexts
 remain explicit gaps. All five backbone delivery loops remain open; no new pass round
 or paused verification expansion occurs.
+
+
+## Rules259: projected declaration allocation ownership
+
+Obligation: current source declaration allocation denotes its current lexical unit,
+rather than the original binding's wider scope. The shared lexical census publishes
+explicit region allocation provenance; current/trial flow consumes it once per
+binding. A ProjectedBindingScope no longer defaults to original Symbol.scope lifetime.
+Name containment, successful initialization, value transfer and capture exposure stay
+independent. Canonical original declarations retain their own proven allocations.
+
+Missing block allocation precision is unmodeled, preserving may-demand while
+withholding initialization/substitution proof. Native-loop regions retain their
+preexisting completion/value contract explicitly as LegacyLoopAllocation, without
+canonical/dynamic cell identity. Placement/confinement/capture guards are unchanged;
+this is retained legacy capability, not a new loop/update admission expansion. No position or region-ID cast supplies
+an allocation, and no same-block/adjacency/sample/opcode/selection rule is added.
+Independent legal-original/adverse-projection examples, positive current-block reads,
+outside reads, reverse region/scope numbering, exact/short admission and generated
+narrowed-source execution/scaling test the obligation. Original-unit-fallback and
+missing-correspondence production mutants fail. Complete native-for per-iteration
+copy/capture and finally lifetime deltas remain open; historical capture restrictions
+are not replaced. All five backbone deliveries remain open.

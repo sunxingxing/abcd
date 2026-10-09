@@ -3856,3 +3856,25 @@ and allocated bytes12812/12845/25556/51044, with exact/one-short admission. Thes
 figures exclude test-appended events and are not full graph costs. Existing graph
 and emitted-source boundary/geometric gates remain independent. Current projected
 lifetime deltas and precise finally/closure unit transport remain capability gaps.
+
+
+## Projected allocation correspondence (rules259)
+
+The existing lexical census now publishes one region-to-current-block allocation
+map alongside its containment index. O(S) admitted storage is owned by the planner,
+filled in the existing O(S) traversal and borrowed by each current/trial builder.
+The graph needs no second region map: O(1) per binding resolves its current unit and
+then uses the retained shared FlowScopes index. Additional adapter cost is O(B),
+with no per-variable scope/CFG walk or B-by-S join. Mapping dimensions and selected
+scope identities are validated at the internal boundary. Absence is unmodeled
+precision, not permission to use an unrelated original unit. Native-loop entries
+retain an explicit legacy completion/value contract, with no allocation-unit or
+captured-cell equality certificate; no old Symbol.scope fallback is restored.
+
+Actual optimized narrowed-source programs exercise200/201/400/800 copy dimensions,
+with short numeric fixture names so quadratic input-name length does not obscure
+algorithm growth. Reported printer work and admitted bytes include the whole recovery
+and printing path, not only this lookup. Exact/one-short flow budgets and independent
+reversed region/scope IDs cover correspondence ownership. No budget increase, graph
+cutoff, process-RSS or global-pass-convergence claim is made. Native-for copied units
+remain an explicitly incomplete model, not an ordinary block allocation theorem.

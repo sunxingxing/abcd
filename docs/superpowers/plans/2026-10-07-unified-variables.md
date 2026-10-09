@@ -700,3 +700,19 @@ production mutants verify the component within existing selected gates. Status.m
 owns final evidence. Complete projected/native-for/capture/finally lifetime deltas,
 full original correspondence, dependency convergence and final acceptance remain
 open; all five backbone delivery loops are OPEN and other optimizations stay paused.
+
+
+Rules259 Task2/3 current-lifetime substep: one-time lexical census publishes explicit
+current region allocation correspondence. Projected declarations use their current
+owned block unit, retiring original Symbol.scope fallback; missing/omitted block
+allocation correspondence is unmodeled. Native-loop regions explicitly retain
+preexisting completion/value capability with no unit/cell identity certificate;
+existing placement/confinement/capture prerequisites are not expanded. Shared
+current/trial consumers and revision invalidation remain unchanged, with no new pass
+round/order/budget. Independent positive/adverse projection, reversed scope/region,
+exact-short budgets and emitted narrowed-source200/201/400/800 variants plus production
+mutants verify the component in existing targets; status.md owns final evidence.
+Complete native-for allocated/copied per-iteration environments, capture/finally deltas,
+full original correspondence, dependency convergence and unified-variable final
+acceptance still require delivery closure. All five backbone loops remain OPEN;
+other appearance optimizations and paused scopes remain paused.

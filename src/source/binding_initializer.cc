@@ -89,6 +89,7 @@ class Initializers {
     budget.Array(statement_owners_,tree.statements.size());
     budget.Array(source_regions_,tree.statements.size());budget.Array(source_occurrences_,tree.statements.size());
     budget.Array(source_scope_regions_,tree.scopes.size());
+    budget.Array(source_allocations_,tree.statements.size());
     budget.Array(expression_owners_,tree.expressions.size());budget.Array(expression_projections_,tree.expressions.size());
   }
   BindingInitializers Run() {
@@ -171,8 +172,10 @@ class Initializers {
           visit.lexical = visit.statement;
           // Index canonical scope at the same lexical census boundary as projected
           // regions. Later passes consume this fact without rescanning syntax.
-          if(const auto* block=std::get_if<BlockStmt>(&node))
+          if(const auto* block=std::get_if<BlockStmt>(&node)) {
             source_scope_regions_[block->scope.value]=SourceRegionId{visit.statement.value};
+            source_allocations_[visit.statement.value]=block->scope;
+          } else source_allocations_[visit.statement.value]=LegacyLoopAllocation{};
         }
         lexical_[visit.statement.value] = visit.lexical;
         statement_owners_[visit.statement.value]=visit.projector?visit.projector:visit.lexical;
@@ -871,7 +874,7 @@ class Initializers {
     const LegacyFlowProjection projection{plan_.aliases,plan_.literals,replacements,
         omitted,{},{},plan_.statements,private_bindings,
         plan_.storage,plan_.undefined_stores,plan_.declaration_values,plan_.declaration_completions,
-        {source_regions_,source_occurrences_,source_bindings,source_shadows_,unique_spellings_,spellings_,name_spellings_},plan_.read_literals,transports,transported_reads,plan_.read_bindings,stable_entries_,{},plan_.read_sources,plan_.statement_values,{},original_};
+        {source_regions_,source_occurrences_,source_bindings,source_shadows_,unique_spellings_,spellings_,name_spellings_,source_allocations_},plan_.read_literals,transports,transported_reads,plan_.read_bindings,stable_entries_,{},plan_.read_sources,plan_.statement_values,{},original_};
     const RecoveryExpressionInput input{plan_,value_equations_,
         std::span<const ExprId>(completions_).first(completion_count_),replacements,transports,original_};
     auto prepared=PrepareRecoveryProjection(tree_,projection,input,budget_.Remaining());
@@ -1864,6 +1867,7 @@ class Initializers {
   std::vector<SourceBindingShadow> source_shadows_;
   std::vector<std::uint8_t> unique_spellings_;
   std::vector<std::optional<SourceRegionId>> source_scope_regions_;
+  std::vector<SourceAllocation> source_allocations_;
   std::vector<std::optional<SourcePosition>> source_occurrences_;
   std::vector<TextId> literal_texts_;
   std::vector<std::optional<PrimitiveId>> expression_primitives_;

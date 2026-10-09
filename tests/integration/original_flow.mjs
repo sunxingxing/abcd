@@ -188,6 +188,7 @@ assert.equal(activations.length,8);
 console.log(`${activations.length} repeated catch/local activation sources / ${activationComparisons} independent comparisons / ${activationMutants} adverse mutants`);
 
 const exits=execFileSync(process.argv[3],['--scope-exits'],{encoding:'utf8',maxBuffer:16_000_000}).trim().split('\n').map(JSON.parse);
+const narrowed=execFileSync(process.argv[3],['--projected-lifetime'],{encoding:'utf8',maxBuffer:16_000_000}).trim().split('\n').map(JSON.parse);
 function exitOutcome(fn,form,factory,rounds) {
   const trace=[],objects=[];let calls=0;
   const normalize=value=>objects.includes(value)?['input object',objects.indexOf(value)]:value;
@@ -214,7 +215,7 @@ function checkExit(source,form) {
   for(const factory of [...factories,()=>{throw failure;}])for(const rounds of (form<=1?[0,1,2,3]:[1]))
     assert.deepEqual(exitOutcome(generated,form,factory,rounds),exitOutcome(exitReferences[form],form,factory,rounds));
 }
-for(const row of exits) {
+for(const row of [...exits,...narrowed]) {
   checkExit(row.source,row.form);exitComparisons+=(factories.length+1)*(row.form<=1?4:1);
   const wrapped='('+row.source+')',all=nodes(parseJavaScript(wrapped));
   const returned=all.find(node=>node.type==='ReturnStatement'&&node.argument);
@@ -227,5 +228,15 @@ for(const row of exits) {
     assert.throws(()=>checkExit(lostThrow,row.form));++exitMutants;
   }
 }
-assert.equal(exits.length,32);
-console.log(`${exits.length} scoped jump/throw/return sources / ${exitComparisons} independent comparisons / ${exitMutants} adverse mutants`);
+assert.equal(exits.length,32);assert.equal(narrowed.length,48);
+console.log(`${exits.length+narrowed.length} scoped jump/throw/return and narrowed sources / ${exitComparisons} independent comparisons / ${exitMutants} adverse mutants`);
+
+for(let form=0;form<4;++form)for(const split of [false,true]) {
+  const rows=narrowed.filter(row=>row.form===form&&row.split===split&&row.copies>=200);
+  assert.deepEqual(rows.map(row=>row.copies),[200,201,400,800]);
+  for(let i=1;i<rows.length;++i) {
+    assert.ok(rows[i].work<rows[i-1].work*3);
+    assert.ok(rows[i].allocated_bytes<rows[i-1].allocated_bytes*3);
+  }
+}
+console.log('narrowed-source 200/201/400/800 admitted cost scaling passed');

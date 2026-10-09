@@ -110,6 +110,7 @@ class FlowBuilder {
     const auto& scopes=projection_.source_scopes;
     RequireTree(scopes.occurrences.empty() || scopes.occurrences.size()==tree_.statements.size(),Error::kOwnership);
     RequireTree(scopes.bindings.empty() || scopes.bindings.size()==tree_.symbols.size(),Error::kOwnership);
+    RequireTree(scopes.allocations.empty() || scopes.allocations.size()==scopes.regions.size(),Error::kOwnership);
     RequireTree(scopes.unique_spellings.empty() || scopes.unique_spellings.size()==tree_.symbols.size(),Error::kOwnership);
     RequireTree(scopes.spellings.empty()||scopes.spellings.size()==tree_.symbols.size(),Error::kOwnership);
     RequireTree(scopes.names.empty()||scopes.names.size()==tree_.names.size(),Error::kOwnership);
@@ -139,6 +140,20 @@ class FlowBuilder {
           RequireTree(region_id->value<result.source_regions.size(),Error::kOwnership);
           const auto& region=result.source_regions[region_id->value];
           RequireTree(!scopes.occurrences.empty()&&region.first<region.last,Error::kOwnership);
+          if(std::holds_alternative<ProjectedBindingScope>(result.bindings[i].scope)) {
+            // Current source ownership replaces the original allocation site.
+            // Lexical containment alone cannot certify a projected unit.
+            result.bindings[i].lifetime=UnmodeledBindingLifetime{};
+            if(!scopes.allocations.empty())std::visit([&](const auto& allocation) {
+              using T=std::decay_t<decltype(allocation)>;
+              if constexpr(std::is_same_v<T,ScopeId>) {
+                RequireTree(allocation.value<scope_lifetimes_.size(),Error::kOwnership);
+                if(scope_lifetimes_[allocation.value])result.bindings[i].lifetime=*scope_lifetimes_[allocation.value];
+              } else if constexpr(std::is_same_v<T,LegacyLoopAllocation>)
+                result.bindings[i].lifetime=CompletionOnlyLifetime{};
+              else {static_assert(std::is_same_v<T,UnmodeledSourceAllocation>);}
+            },scopes.allocations[region_id->value]);
+          }
         }
       }
     }

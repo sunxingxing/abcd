@@ -2516,6 +2516,71 @@ void ScopeExitTrial(bool exceptional,bool reverse=false) {
   const auto definitions=std::get<FlowDefinitions>(AnalyzeFlowDefinitions(flow,live));
   Check(std::none_of(definitions.reads.begin(),definitions.reads.end(),[&](const auto& read){return read.point==point;}));
 }
+void ProjectedLifetime(bool projected,bool known=false,bool reverse=false) {
+  FunctionTree tree{};tree.callable=CallableKind::kFunction;
+  tree.parameter_scope={0};tree.body_scope={1};tree.body={0};
+  tree.scopes={{ScopeKind::kParameters,{}},{ScopeKind::kFunctionBody,ScopeId{0}},
+      {ScopeKind::kBlock,ScopeId{1}}};tree.origins={OriginalSite{{0},{0}}};tree.names={u"value"};
+  tree.symbols={{{1},{0},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}}};
+  tree.expressions={{IntegerLiteral{7},{0}},
+      {AssignmentExpr{SymbolTarget{{0}},ExprId{0}},{0}},
+      {SymbolExpr{{0}},{0}},{SymbolExpr{{0}},{0}}};
+  tree.statements={{BlockStmt{{1},0,3},{0}},{DeclarationStmt{{0},{}},{0}},
+      {BlockStmt{{2},3,2},{0}},{ExpressionStmt{{1}},{0}},
+      {ExpressionStmt{{2}},{0}},{ReturnStmt{ExprId{3}},{0}}};
+  tree.children={{1},{2},{5},{3},{4}};
+  if(reverse) {
+    const auto id=[](ScopeId scope){return ScopeId{2-scope.value};};
+    tree.parameter_scope=id(tree.parameter_scope);tree.body_scope=id(tree.body_scope);
+    for(auto& scope:tree.scopes)if(scope.parent)scope.parent=id(*scope.parent);
+    std::reverse(tree.scopes.begin(),tree.scopes.end());for(auto& symbol:tree.symbols)symbol.scope=id(symbol.scope);
+    for(auto& statement:tree.statements)if(auto* block=std::get_if<BlockStmt>(&statement.statement))block->scope=id(block->scope);
+  }
+  Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  std::vector<std::optional<SymbolId>> aliases(1);std::vector<std::optional<PrimitiveId>> literals(1);
+  std::vector<std::optional<ExprId>> replacements(4);std::vector<std::uint8_t> omitted(6),stores(4,1);
+  std::vector<ExpressionEvaluation> evaluations(4,ExpressionEvaluation::kRequired);
+  std::vector<std::optional<BindingInitializer>> initializers(6);
+  std::vector<SourceRegion> regions(6);regions[0]={{0},{2}};regions[2]={{1},{2}};
+  std::vector<std::optional<SourcePosition>> occurrences(6);
+  occurrences[0]=SourcePosition{0};occurrences[1]=SourcePosition{0};occurrences[2]=SourcePosition{1};
+  occurrences[3]=SourcePosition{1};occurrences[4]=SourcePosition{1};occurrences[5]=SourcePosition{0};
+  std::vector<SourceBindingScope> bindings(1,OriginalBindingScope{SourceRegionId{0}});
+  if(projected){omitted[1]=1;initializers[3]=BindingInitializer{{0},{1},DeclarationKind::kLet};bindings[0]=ProjectedBindingScope{{2}};}
+  LegacyFlowProjection projection{aliases,literals,replacements,omitted,evaluations,stores};
+  std::vector<SourceAllocation> allocations(6);allocations[2]=reverse?ScopeId{0}:ScopeId{2};
+  if(reverse) {
+    std::reverse(regions.begin(),regions.end());std::reverse(allocations.begin(),allocations.end());
+    bindings[0]=projected?SourceBindingScope{ProjectedBindingScope{{3}}}:SourceBindingScope{OriginalBindingScope{SourceRegionId{5}}};
+  }
+  projection.initializers=initializers;projection.source_scopes={regions,occurrences,bindings};
+  if(known)projection.source_scopes.allocations=allocations;
+  const auto flow=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,projection));
+  const auto initialized=std::get<FlowInitializations>(AnalyzeFlowInitializations(flow));
+  // Missing current allocation correspondence is not the original outer unit.
+  // The original valid program permits the outside read; the narrowed candidate
+  // does not, even though its initializer dominates that read.
+  Check(initialized.Completed({0},flow.expressions[3])==!projected);
+  Check(initialized.Completed({0},flow.expressions[2])==(!projected||known));
+  const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));
+  const auto definitions=std::get<FlowDefinitions>(AnalyzeFlowDefinitions(flow,live));
+  const auto reaches=[&](ExprId expression) {
+    const auto found=std::find_if(flow.references.begin(),flow.references.end(),[&](const auto& reference){return reference.kind==FlowReferenceKind::kRead&&reference.site==FlowReferenceSite{expression};});
+    Check(found!=flow.references.end());
+    return std::any_of(definitions.reads.begin(),definitions.reads.end(),[&](const auto& read){return read.point==found->point;});
+  };
+  Check(reaches({2}));Check(reaches({3})==(!projected||!known));
+  if(projected&&known) {
+    const auto coverage=std::get<FlowReadCoverage>(AnalyzeFlowReadCoverage(flow,live));
+    Check(std::none_of(coverage.definitions.begin(),coverage.definitions.end(),[](auto covered){return covered!=0;}));
+    Check(std::holds_alternative<RecoveryFlow>(BuildRecoveryFlow(tree,projection,{flow.allocated_bytes,flow.work})));
+    Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,projection,{flow.allocated_bytes-1,flow.work}))==TreeStructureError::kResourceLimit);
+    Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,projection,{flow.allocated_bytes,flow.work-1}))==TreeStructureError::kWorkLimit);
+    // Explicit boundary maps are validated, never cast from region IDs.
+    allocations[reverse?3:2]=ScopeId{static_cast<unsigned>(tree.scopes.size())};
+    Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,projection))==TreeStructureError::kOwnership);
+  }
+}
 void BindingActivationOracle() {
   std::uint64_t cases=0;
   for(unsigned extra=0;extra<512;++extra)for(bool reverse:{false,true})for(unsigned incoming:{0U,1U})
@@ -2671,6 +2736,8 @@ void CatchActivationOrder() {
     Check(initialized.Completed(reference.binding,reference.point));
 }
 int main(int argc,char** argv){
+  for(bool reverse:{false,true})for(bool known:{false,true}){ProjectedLifetime(false,known,reverse);ProjectedLifetime(true,known,reverse);}
+  if(argc==2&&std::string_view(argv[1])=="--projected-lifetime")return 0;
   if(argc==2&&std::string_view(argv[1])=="--scope-exits") {
     DemandWithoutUnits();ScopeIndexOracle();UnknownScopeTransfer();
     for(bool reverse:{false,true}){ScopeExitTrial(false,reverse);ScopeExitTrial(true,reverse);}return 0;

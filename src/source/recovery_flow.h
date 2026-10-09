@@ -60,6 +60,12 @@ struct SourceNameIndex {
   std::vector<std::optional<SymbolId>> scope_peer;
 };
 struct SourceNameQuery {std::variant<SymbolId,NameId> name;std::optional<StmtId> owner;};
+struct UnmodeledSourceAllocation {};
+// Transitional native-loop contract: existing placement/confinement/capture
+// proofs preserve completed scalar values, but do not certify dynamic units.
+// Keep this contract explicit until copied iteration environments replace it.
+struct LegacyLoopAllocation {};
+using SourceAllocation=std::variant<UnmodeledSourceAllocation,ScopeId,LegacyLoopAllocation>;
 struct SourceScopeProjection {
   std::span<const SourceRegion> regions;
   std::span<const std::optional<SourcePosition>> occurrences;
@@ -68,6 +74,10 @@ struct SourceScopeProjection {
   std::span<const std::uint8_t> unique_spellings;
   std::span<const SourceSpellingId> spellings;
   std::span<const std::optional<SourceSpellingId>> names;
+  // Region-indexed current allocation provenance, published by the shared
+  // lexical census. Absence denotes an unmodeled projected environment;
+  // region positions and original SymbolId scopes cannot infer its unit.
+  std::span<const SourceAllocation> allocations;
 };
 // A lexical scope activation allocates a new unit on every visit. ScopeId
 // names the allocation site, never the dynamic cell. Completion-only inputs

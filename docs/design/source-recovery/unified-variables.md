@@ -2708,3 +2708,32 @@ cleanup dispatch is explicitly unmodeled, preserving demand but limiting substit
 precision. Original IR/protocol correspondence, dependency-driven pass convergence
 and unified-variable final acceptance remain open. No appearance optimization or
 paused corpus/resource/agent work resumes. Measured evidence belongs to status.md.
+
+
+### Current projected allocation correspondence (rules259)
+
+SourceScopeProjection now carries region-indexed current allocation provenance.
+The existing shared lexical census publishes canonical block allocation sites once;
+source position intervals continue to prove name containment independently. The
+flow adapter resolves a ProjectedBindingScope through this correspondence, replacing
+its original SymbolId scope unit. A narrowed declaration therefore lives in the
+current block, including repeated entry and abrupt departure handled by the common
+TransferBinding model. No region/statement ID cast, name, sequence or shape inference
+is used to recover the allocation.
+
+Missing correspondence and omitted allocation blocks remain UnmodeledBindingLifetime.
+Native-loop regions explicitly publish LegacyLoopAllocation: the preexisting placement,
+confinement and capture contract retains completion/value analysis, with no canonical
+unit or dynamic cell identity certificate. This preserves the existing fast path
+without enlarging it; copied iteration environments must replace this order-only
+contract. Neither alternative inherits an unrelated original outer unit. The shared
+initialization, may-demand/definition and substitution consumers retain their existing
+independent contracts. Canonical original bindings keep their original owned unit;
+current and trial plans use the same region map and revision invalidation.
+
+This retires original-unit fallback specifically for projected declarations.
+It does not finish all lifetime deltas: native-for allocation, per-iteration copied
+bindings and closure transport require explicit completion-aware unit events; precise
+finally contexts also remain open. Existing capture/name/confinement safeguards are
+not removed. All five backbone deliveries, pass convergence and milestone acceptance
+remain open, with no appearance optimization or paused work resumed.
