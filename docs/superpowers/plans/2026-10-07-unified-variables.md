@@ -739,3 +739,16 @@ stages its entire initializer proposal through the common grammar provider befor
 commit and leaves prefix candidates in their original binding. No later pass can
 resurrect their native annotation. This closes that concrete cross-pass ownership
 error; full allocated/copied environments and all five deliveries remain open.
+
+
+Rules261 Task2/3 actual native entry substep: complete grammar groups and actual
+retained BoundNames now publish binding-indexed initial allocation provenance.
+Current/trial FlowBuilder emits one initial environment event before every RHS,
+shares allocation gen/kill with value clients and allocation-before-completion
+with initialization. Lexical region membership alone never grants this proof;
+a new peer-binding RED rejected the preliminary region-wide implementation.
+The old absence of actual header allocation leaves the modeled member path.
+No extra round/stage/order/budget or paused scope resumes. Copied iteration
+values/cells, actual header/body phase relocation, captures/finally, full original
+correspondence, dependency convergence and milestone end-to-end closure remain.
+All five human backbone deliveries stay OPEN; status.md records final bounded gates.

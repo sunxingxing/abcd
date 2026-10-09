@@ -30,7 +30,7 @@ class FlowBuilder {
  public:
   FlowBuilder(const FunctionTree& tree,LegacyFlowProjection projection,analysis::SemanticBudget budget,RecoveryFlow storage)
       : tree_(tree), projection_(projection), budget_(budget), memory_(budget_),
-        statements_(&memory_), expressions_(&memory_), exits_(&memory_), tasks_(&memory_), seen_(&memory_), reads_(&memory_), read_states_(&memory_), initializers_(&memory_), catch_parameters_(&memory_), scope_lifetimes_(&memory_), statement_scopes_(&memory_), result_(std::move(storage)) {
+        statements_(&memory_), expressions_(&memory_), exits_(&memory_), tasks_(&memory_), seen_(&memory_), reads_(&memory_), read_states_(&memory_), initializers_(&memory_), catch_parameters_(&memory_), scope_lifetimes_(&memory_), statement_scopes_(&memory_), loop_entries_(&memory_), native_bindings_(&memory_), result_(std::move(storage)) {
     events_=std::move(result_.events);events_.clear();edges_=std::move(result_.edges);edges_.clear();
     definitions_=std::move(result_.definitions);definitions_.clear();references_=std::move(result_.references);references_.clear();
     names_=std::move(result_.names);names_.clear();
@@ -66,6 +66,22 @@ class FlowBuilder {
     Resize(result_.statement_semantics,tree_.statements.size());
     for(auto& statement:result_.statement_semantics){budget_.Step();statement.reset();}
     result_.statement_order.clear();
+    // Grammar owns the retained entry of each native environment. Index once;
+    // no optimizer infers first allocation from AST/CFG adjacency or ScopeId.
+    loop_entries_.resize(tree_.statements.size());
+    native_bindings_.resize(tree_.symbols.size());
+    RequireTree(projection_.source_scopes.loop_allocations.empty() || projection_.source_scopes.loop_allocations.size()==tree_.symbols.size(),Error::kOwnership);
+    for(std::size_t i=0;i<projection_.source_scopes.loop_allocations.size();++i) {
+      budget_.Step();if(const auto& native=projection_.source_scopes.loop_allocations[i]) {
+        RequireTree(native->entry.value<loop_entries_.size() && native->loop.value<loop_entries_.size(),Error::kOwnership);
+        RequireTree(!projection_.omitted[native->entry.value] && std::holds_alternative<LoopStmt>(tree_.statements[native->loop.value].statement),Error::kOwnership);
+        auto& owner=loop_entries_[native->entry.value];RequireTree(!owner||owner==native->loop,Error::kOwnership);owner=native->loop;
+        const auto binding=Resolve(SymbolId{static_cast<std::uint32_t>(i)});
+        RequireTree(binding.value<native_bindings_.size(),Error::kOwnership);
+        auto& member=native_bindings_[binding.value];
+        RequireTree(!member||(member->loop==native->loop&&member->entry==native->entry),Error::kOwnership);member=*native;
+      }
+    }
     terminal_=New(); dispatch_=New();
     scope_events_[dispatch_.value]={UnmodeledScope{},UnmodeledScope{}};
     statements_.resize(tree_.statements.size()); exits_.resize(tree_.statements.size());
@@ -123,7 +139,10 @@ class FlowBuilder {
           !projection_.private_bindings.empty() && projection_.private_bindings[i]
               ? FlowBindingExposure::kPrivate : FlowBindingExposure::kObservable};
       const auto scope=tree_.symbols[i].scope;
-      if(scope_lifetimes_[scope.value])result.bindings[i].lifetime=*scope_lifetimes_[scope.value];
+      if(scope_lifetimes_[scope.value]) {
+        result.bindings[i].lifetime=*scope_lifetimes_[scope.value];
+        result.bindings[i].allocation=scope_lifetimes_[scope.value]->enter;
+      }
       else switch(tree_.symbols[i].kind) {
         case BindingKind::kParameter:case BindingKind::kFunctionSelf:
         case BindingKind::kCapture:case BindingKind::kModule:
@@ -143,18 +162,30 @@ class FlowBuilder {
           if(std::holds_alternative<ProjectedBindingScope>(result.bindings[i].scope)) {
             // Current source ownership replaces the original allocation site.
             // Lexical containment alone cannot certify a projected unit.
-            result.bindings[i].lifetime=UnmodeledBindingLifetime{};
+            result.bindings[i].lifetime=UnmodeledBindingLifetime{};result.bindings[i].allocation.reset();
             if(!scopes.allocations.empty())std::visit([&](const auto& allocation) {
               using T=std::decay_t<decltype(allocation)>;
               if constexpr(std::is_same_v<T,ScopeId>) {
                 RequireTree(allocation.value<scope_lifetimes_.size(),Error::kOwnership);
-                if(scope_lifetimes_[allocation.value])result.bindings[i].lifetime=*scope_lifetimes_[allocation.value];
+                if(scope_lifetimes_[allocation.value]) {
+                  result.bindings[i].lifetime=*scope_lifetimes_[allocation.value];
+                  result.bindings[i].allocation=scope_lifetimes_[allocation.value]->enter;
+                }
               } else if constexpr(std::is_same_v<T,LegacyLoopAllocation>)
                 result.bindings[i].lifetime=CompletionOnlyLifetime{};
               else {static_assert(std::is_same_v<T,UnmodeledSourceAllocation>);}
             },scopes.allocations[region_id->value]);
           }
         }
+      }
+      if(const auto& native=native_bindings_[i]) {
+        const auto point=statements_[native->entry.value];
+        RequireTree(result.events[point.value].kind==FlowEventKind::kEnterLoopEnvironment && result.events[point.value].loop_environment==native->loop,Error::kOwnership);
+        result.bindings[i].allocation=point;
+        // Initial allocation has an actual order event; the shared completion
+        // analysis checks every declaration against it. Iteration cloning is
+        // still value-only: this never certifies equality of captured cells.
+        result.bindings[i].lifetime=CompletionOnlyLifetime{};
       }
     }
     for(const auto& definition:result.definitions) {
@@ -432,6 +463,10 @@ class FlowBuilder {
     current_owner_=at.id;current_entry_evaluation_=false;events_[start.value].owner=at.id;
     exits_[at.id.value]=context.next;
     if(projection_.omitted[at.id.value]){events_[start.value].owner.reset();Link(start,context.next);return;}
+    if(const auto loop=loop_entries_[at.id.value]) {
+      events_[start.value].kind=FlowEventKind::kEnterLoopEnvironment;
+      events_[start.value].loop_environment=*loop;
+    }
     RequireTree(!result_.statement_semantics[at.id.value],Error::kOwnership);
     result_.statement_semantics[at.id.value]=FlowStatement{at.context.owner};
     Append(result_.statement_order,at.id);
@@ -571,6 +606,8 @@ class FlowBuilder {
   std::pmr::vector<std::optional<SymbolId>> catch_parameters_;
   std::pmr::vector<std::optional<ScopeBindingLifetime>> scope_lifetimes_;
   std::pmr::vector<FlowScopeContext> statement_scopes_;
+  std::pmr::vector<std::optional<StmtId>> loop_entries_;
+  std::pmr::vector<std::optional<NativeLoopAllocation>> native_bindings_;
   std::vector<DiscardedEvaluation> discarded_;
   std::vector<FlowReference> references_;
   std::vector<FlowNameReference> names_;

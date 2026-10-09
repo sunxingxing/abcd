@@ -2786,3 +2786,38 @@ became a for-let declarator yet its post-loop read retained that name. Independe
 execution detected the ReferenceError. The corrected proposal keeps the factory
 value in the enclosing environment, allowing safe copy propagation without later
 lifetime expansion. Original factory/return/fault comparisons are unchanged.
+
+
+### Rules261: actual native header allocation and member ownership
+
+ECMA-262 2025 14.7.4.2 creates every lexical BoundName before evaluating
+the first RHS; 14.7.4.3/.4 separately creates copied iteration environments.
+Reference: https://tc39.es/ecma262/2025/multipage/ecmascript-language-statements-and-declarations.html#sec-runtime-semantics-forloopevaluation
+This change implements the first obligation in actual current/trial preparation.
+It does not implement copied iteration units or captured-cell equality.
+
+LoopDeclarations publishes complete environments and actual retained binding
+members, independent of its mutation delta. Omitted roots are not allocation
+entries or members; no-op grammar products retain both facts. ProjectLoopEntryFlow
+publishes owned binding-indexed NativeLoopAllocation records, separate from its
+lexical region map. A region peer is not a BoundName and cannot gain allocation
+by lexical containment. The preliminary region-wide publication was rejected by
+a new counterexample and removed before final validation.
+
+FlowBuilder applies shared BindingProjection once to actual members, indexes
+entry owners, and publishes kEnterLoopEnvironment before any native RHS. Every
+member records that common allocation point; unrelated bindings retain their own
+allocation capability. Native entry generation kills the previous incoming value
+through ResetsBinding/TransferBinding, consumed by demand, liveness, definitions,
+coverage, constants, copies and normal domains. AnalyzeFlowInitializations requires
+allocation to dominate its selected declaration completion; the same trial builder
+rejects a completion preceding a proposed allocation. No old certificate is borrowed.
+
+The old native initial-allocation absence is retired for modeled header members.
+LegacyLoopAllocation remains only an explicit scalar/completion capability for
+iteration phases/other unmodeled loop bindings. Neither static entry identity nor
+scalar preservation proves cell identity across clones. Initial initializer/test
+closure cells, normal/continue copies before increment, body scope relocation and
+precise finally/capture transport still require actual common completion programs.
+No operation/layout/sample admission or pass round/order/budget change is added.
+All five backbone deliveries remain OPEN; status.md owns bounded final evidence.

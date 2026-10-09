@@ -12,10 +12,18 @@ std::variant<LoopEntryProjection,TreeStructureError> ProjectLoopEntryFlow(
     TreeCheckBudget budget(allowance);LoopEntryProjection result;
     RequireTree(scopes.occurrences.size()==initializers.size() && entries.size()==initializers.size() &&
         (completions.empty()||completions.size()==initializers.size()) &&
-        original_bindings.size()==scopes.bindings.size(),TreeStructureError::kOwnership);
+        original_bindings.size()==scopes.bindings.size() &&
+        (scopes.allocations.empty()||scopes.allocations.size()==scopes.regions.size()),TreeStructureError::kOwnership);
     const auto copy=[&](auto& target,auto source){budget.Array(target,source.size());std::copy(source.begin(),source.end(),target.begin());};
     copy(result.initializers,initializers);copy(result.completions,completions);
     copy(result.bindings,scopes.bindings);copy(result.occurrences,scopes.occurrences);
+    budget.Array(result.allocations,original_bindings.size());
+    std::vector<std::optional<StmtId>> starts;budget.Array(starts,initializers.size());
+    for(const auto& environment:declarations.environments) {
+      budget.Step();RequireTree(environment.loop.value<starts.size() && environment.entry.value<starts.size(),TreeStructureError::kOwnership);
+      RequireTree(!starts[environment.loop.value],TreeStructureError::kOwnership);
+      starts[environment.loop.value]=environment.entry;
+    }
     std::vector<std::uint8_t> prefix;budget.Array(prefix,initializers.size());
     for(const auto& entry:declarations.entries) {
       budget.Step();RequireTree(entry.statement.value<prefix.size(),TreeStructureError::kOwnership);
@@ -28,6 +36,11 @@ std::variant<LoopEntryProjection,TreeStructureError> ProjectLoopEntryFlow(
         if(!result.completions.empty())if(auto& completion=result.completions[entry.statement.value])
           completion->kind=DeclarationCompletionKind::kAssignUndefined;
       }
+    }
+    for(const auto& member:declarations.bindings) {
+      budget.Step();RequireTree(member.binding.value<result.allocations.size() && member.loop.value<starts.size() && starts[member.loop.value].has_value(),TreeStructureError::kOwnership);
+      RequireTree(!result.allocations[member.binding.value],TreeStructureError::kOwnership);
+      result.allocations[member.binding.value]=NativeLoopAllocation{member.loop,*starts[member.loop.value]};
     }
     // One indexed ownership pass handles every descendant, including split
     // transparent blocks. Do not walk a subtree separately for each root.

@@ -23,7 +23,7 @@ struct DiscardedEvaluation {
 };
 enum class FlowCompletion : std::uint8_t { kNormal, kThrow, kReturn, kJump, kTaken, kNotTaken, kResumeNext, kResumeThrow, kResumeReturn, kConservativeCleanup };
 enum class FlowDefinitionKind : std::uint8_t { kParameter, kUndefined, kInitializer, kAssignment, kUpdate, kCatch, kUndefinedStore, kFunctionSelf };
-enum class FlowEventKind : std::uint8_t { kControl, kTruthBranch, kNullishBranch, kRead, kEvaluation, kEnterScope, kLeaveScope, kDefinition, kSuspend, kPropertyReference };
+enum class FlowEventKind : std::uint8_t { kControl, kTruthBranch, kNullishBranch, kRead, kEvaluation, kEnterScope, kLeaveScope, kDefinition, kSuspend, kPropertyReference, kEnterLoopEnvironment };
 enum class FlowValueUse : std::uint8_t { kUnmodeled, kDiscarded, kObserved };
 enum class FlowWriteEffect : std::uint8_t { kObservable, kInert };
 enum class FlowBindingExposure : std::uint8_t { kObservable, kPrivate };
@@ -65,6 +65,8 @@ struct UnmodeledSourceAllocation {};
 // proofs preserve completed scalar values, but do not certify dynamic units.
 // Keep this contract explicit until copied iteration environments replace it.
 struct LegacyLoopAllocation {};
+// Native header entry allocation, distinct from the copied iteration units.
+struct NativeLoopAllocation {StmtId loop,entry;};
 using SourceAllocation=std::variant<UnmodeledSourceAllocation,ScopeId,LegacyLoopAllocation>;
 struct SourceScopeProjection {
   std::span<const SourceRegion> regions;
@@ -78,6 +80,8 @@ struct SourceScopeProjection {
   // lexical census. Absence denotes an unmodeled projected environment;
   // region positions and original SymbolId scopes cannot infer its unit.
   std::span<const SourceAllocation> allocations;
+  // Actual native BoundNames, indexed by binding, not lexical-region peers.
+  std::span<const std::optional<NativeLoopAllocation>> loop_allocations;
 };
 // A lexical scope activation allocates a new unit on every visit. ScopeId
 // names the allocation site, never the dynamic cell. Completion-only inputs
@@ -101,6 +105,9 @@ struct FlowBinding {
   // successful write. Neither analysis grounds local activation identities.
   bool stable_entry=false;
   FlowBindingLifetime lifetime=CompletionOnlyLifetime{};
+  // First allocation must precede declaration completion. This is an order
+  // certificate, never equality of cells across copied loop environments.
+  std::optional<FlowPoint> allocation;
 };
 enum class FlowReferenceKind : std::uint8_t { kRead, kWrite };
 using FlowReferenceSite=std::variant<ExprId,StmtId>;
@@ -204,6 +211,7 @@ struct FlowEvent {
   std::optional<StmtId> owner;
   bool entry_evaluation=false;
   std::optional<FlowPropertySite> property;
+  std::optional<StmtId> loop_environment;
 };
 struct FlowEdge {
   FlowPoint from, to;
@@ -264,6 +272,7 @@ struct RecoveryFlow {
   }
   [[nodiscard]] bool ResetsBinding(SymbolId binding,FlowPoint point) const {
     if(binding.value>=bindings.size())return false;
+    if(bindings[binding.value].allocation==point)return true;
     const auto* unit=std::get_if<ScopeBindingLifetime>(&bindings[binding.value].lifetime);
     if(!unit)return false;
     const auto& event=events[point.value];

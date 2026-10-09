@@ -36,6 +36,45 @@
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
 
+### 2026-10-09：规则261，原生循环入口分配与实际声明成员
+
+- 主干第2/3项：完整LoopDeclarations现在发布实际保留的声明组入口及
+  BoundNames成员；no-op产品仍保留事实，被省略的入口/成员不分配环境。
+  同一provider接入当前/trial准备与最终语法，pass轮次/顺序/预算未改变。
+- ProjectLoopEntryFlow发布逐绑定的NativeLoopAllocation；FlowBuilder
+  通过共享BindingProjection对应当前存储，在首个RHS前发布一个实际
+  kEnterLoopEnvironment事件。所有实际成员共享首次分配点；分配gen/kill
+  接入ResetsBinding/TransferBinding，初始化分析检查分配先于完成。
+  普通canonical分配与native首次分配共享该完成顺序检查。原生声明
+  初次分配缺失的旧路径在已建模成员上退出，未授予逐轮cell身份证明。
+- 审查中新增同区域非成员反例：初步按区域发布会错误地给peer授予
+  native分配/reset；RED413已检出。最终使用实际声明成员名单，词法
+  区域包含不再决定分配身份。无样本、操作序列、邻接、同块或固定形状
+  准入；当前/试算的完成证明不借用旧投影。
+- 新增40组共同模型验证，覆盖先前完成的初始化读取、forward TDZ读取、
+  非成员peer、分配晚于完成的负向trial、正反statement编号、拆分块及
+  2/200/201/400/800成员。既有1/200/201/400/800批次扩展完整/no-op/
+  proposal/current/trial成员和入口事实；exact/one-short预算与增长检查
+  通过。五项最终生产突变build0/model-6，全部恢复后build/model为0。
+- 最终31目标构建97.5640s、fresh固定record
+  3.3859s、精确63/63 CTests586.2609s通过，
+  名单一致且无重复。固定19records/10complete/0partial/9no-module，
+  10语法检查通过，源码与规则260字节一致；输入SHA256前后相同，
+  profile及预算保持。最终构建无warning/error。证据
+  build/stage-one/native-entry-verification，fresh输出
+  build/stage-one/native-entry-final-rule261；初次RED、peer RED、前后
+  实现的突变证据保留，最终五项突变对应member实现。
+- 最终loop source目标276份/13976独立行为对照/68mutants；initializer
+  source目标2004份/482752/370；original-flow目标10280/158，均为
+  原选定目标本轮实际输出，未把组件模型通过称作新增平台执行验收。
+  作者完成inline复核，用户暂停agents，未执行独立agent审查。
+- **五项主干仍全部开放**。首次分配顺序已接入，逐轮值复制及新单元、
+  实际condition/body/increment阶段归属、capture/finally仍需共同
+  completion程序；LegacyLoopAllocation只保留尚未迁移的完成/值能力。
+  完整原始IR/SSA、完整trial生命期delta、依赖驱动收敛及终验未关闭。
+  下一步沿该主干继续，其他表现优化及fullsuite/corpus/RSS/benchmark/
+  DFX/agents保持暂停。
+
 ### 2026-10-09：规则260，循环入口归属与声明提交稳定性
 
 - 主干第2/3项：PlanLoopDeclarations分别发布完整当前入口归属和提交

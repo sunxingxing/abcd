@@ -3102,3 +3102,24 @@ source and independent ReferenceError/trace RED are preserved. Corrected source
 passes the original behavior reference and deliberate late-prefix-promotion fails.
 The old unit requirement to retain a copied slot is replaced by scope-correct
 source representation and independent execution, never by weakening the reference.
+
+
+### Rules261 native initial allocation
+
+Obligation: all actual native header BoundNames are allocated before any RHS,
+and declaration completion must follow allocation. The complete grammar provider
+owns retained group entries/member identities; the common current/trial adapter
+and flow initialization/gen-kill analyses consume them. No same-block, adjacency,
+opcode/update whitelist, count threshold or graph-shape admission is added.
+
+An allocation entry is the first retained declarator in the language declaration
+evaluation order, not a CFG/arena-neighbor match. Omitted roots cannot allocate;
+nonmember names in the same lexical region do not acquire its proof. The preliminary
+region-wide native allocation publication failed the peer-binding counterexample
+and was replaced by actual binding membership before final validation.
+
+Canonical and native allocations use the common completion-order check. Native
+entry now resets incoming values in all shared clients; the original outer
+allocation cannot certify a newly declared header binding. Legacy loop scalar
+capability still provides no copied-unit/captured-cell certificate. Complete
+iteration/capture/finally ownership remains a documented implementation gap.

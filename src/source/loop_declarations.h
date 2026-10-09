@@ -8,11 +8,18 @@ struct LoopDeclarator { StmtId initializer, declaration; };
 // The complete current entry projection, distinct from the commit delta.
 // An absent loop means an expression prefix in its enclosing environment.
 struct LoopEntryEnvironment { StmtId statement; std::optional<StmtId> loop; };
+// ECMA-262 2025 14.7.4.2: instantiate every bound name before any RHS.
+struct LoopEnvironmentEntry {StmtId loop,entry;};
+struct LoopEnvironmentBinding {StmtId loop;SymbolId binding;};
 struct LoopDeclarations {
   std::vector<LoopDeclarationStart> starts;
   std::vector<StmtId> demoted;
   std::vector<LoopDeclarator> declarators;
   std::vector<LoopEntryEnvironment> entries;
+  // Complete native groups, including no-op revisions: all bound cells are
+  // allocated before the first retained declarator, not before omitted roots.
+  std::vector<LoopEnvironmentEntry> environments;
+  std::vector<LoopEnvironmentBinding> bindings;
   std::size_t allocated_bytes=0;
   std::uint64_t work=0;
 };

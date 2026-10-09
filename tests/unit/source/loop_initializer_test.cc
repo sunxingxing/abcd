@@ -2,6 +2,8 @@
 #include "../../../src/source/loop_declarations.h"
 #include "../../../src/source/loop_entry_projection.h"
 #include "../../../src/source/source_names.h"
+#include "../../../src/source/flow_dominance.h"
+#include "../../../src/source/flow_liveness.h"
 #include "../../../src/source/binding_initializer.h"
 #include "../../../src/source/expression_children.h"
 #include "../../../src/source/nullish_syntax.h"
@@ -313,6 +315,7 @@ void EntryScopeReads(bool reverse) {
   LegacyFlowProjection projection{aliases,literals,replacements,plan.omitted,evaluations,stores};
   projection.initializers=adapted.initializers;projection.source_scopes=scopes;
   projection.source_scopes.bindings=adapted.bindings;projection.source_scopes.occurrences=adapted.occurrences;
+  projection.source_scopes.loop_allocations=adapted.allocations;
   const auto flow=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,projection));
   const std::array queries{SourceNameQuery{SymbolId{0},StmtId{7}},SourceNameQuery{SymbolId{1},StmtId{4}},SourceNameQuery{SymbolId{1},StmtId{9}}};
   const auto names=std::get<SourceNameResults>(ResolveSourceNames(flow,queries));
@@ -323,6 +326,125 @@ void EntryScopeReads(bool reverse) {
   test::Check(prefix!=flow.definitions.end() && prefix->kind==FlowDefinitionKind::kAssignment);
   const auto native=std::find_if(flow.definitions.begin(),flow.definitions.end(),[](const auto& definition){return definition.write==ExprId{4};});
   test::Check(native!=flow.definitions.end() && native->kind==FlowDefinitionKind::kInitializer);
+  // Allocation is a semantic event shared by every native declarator, before
+  // any initializer evaluation. The outlined prefix cannot acquire that unit.
+  test::Check(flow.bindings[1].allocation.has_value());
+  const auto allocated=*flow.bindings[1].allocation;
+  test::Check(flow.events[allocated.value].kind==FlowEventKind::kEnterLoopEnvironment);
+  test::Check(flow.events[allocated.value].loop_environment==StmtId{6});
+  const auto order=std::get<FlowDominance>(AnalyzeFlowDominance(flow));
+  test::Check(order.Dominates(flow.expressions[2],allocated));
+  test::Check(order.Dominates(allocated,flow.expressions[3]));
+  test::Check(order.Dominates(allocated,native->point));
+  test::Check(flow.bindings[0].allocation!=allocated);
+
+}
+std::uint64_t NativeEntryOrder(unsigned count,bool reverse,bool future,bool split) {
+  FunctionTree tree{};tree.callable=CallableKind::kFunction;tree.parameter_scope={0};tree.body_scope={1};tree.body={0};
+  tree.scopes={{ScopeKind::kParameters,{}},{ScopeKind::kFunctionBody,ScopeId{0}},
+      {ScopeKind::kBlock,ScopeId{1}},{ScopeKind::kBlock,ScopeId{1}}};tree.origins={OriginalSite{{0},{0}}};
+  const auto expr=[&](TreeExpression node){const ExprId id{static_cast<std::uint32_t>(tree.expressions.size())};tree.expressions.push_back({std::move(node),{0}});return id;};
+  const auto stmt=[&](TreeStatement node){const StmtId id{static_cast<std::uint32_t>(tree.statements.size())};tree.statements.push_back({std::move(node),{0}});return id;};
+  const auto block=[&](ScopeId scope,const std::vector<StmtId>& children){
+    const auto first=static_cast<std::uint32_t>(tree.children.size());tree.children.insert(tree.children.end(),children.begin(),children.end());
+    return stmt(BlockStmt{scope,first,static_cast<std::uint32_t>(children.size())});
+  };
+  stmt(BlockStmt{{1},0,0});const auto loop=stmt(LoopStmt{{0},{}});
+  std::vector<StmtId> original,roots;std::vector<ExprId> rhs,assignments;
+  for(unsigned i=0;i<count;++i) {
+    const auto digits=std::to_string(i);tree.names.push_back(u"value"+std::u16string(digits.begin(),digits.end()));
+    tree.symbols.push_back({{1},{i},BindingKind::kCompilerTemporary,DeclarationKind::kLet,NameEvidence::kSynthesized,TemporaryReason::kPhiJoin});
+    original.push_back(stmt(DeclarationStmt{{i},{}}));
+    rhs.push_back(i?expr(SymbolExpr{{i-1}}):future?expr(SymbolExpr{{count-1}}):expr(IntegerLiteral{1}));
+    assignments.push_back(expr(AssignmentExpr{SymbolTarget{{i}},rhs.back()}));roots.push_back(stmt(ExpressionStmt{assignments.back()}));
+  }
+  // A binding in the same lexical region is not necessarily a native header
+  // member. Its own declaration must not gain the header allocation proof.
+  tree.names.push_back(u"peer");tree.symbols.push_back({{2},{count},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kSynthesized,{}});
+  const auto peer=stmt(DeclarationStmt{{count},expr(IntegerLiteral{2})});
+  const auto read=expr(SymbolExpr{{count-1}});
+  const auto read_statement=stmt(ExpressionStmt{read});
+  const auto body=block({2},{peer,read_statement,stmt(BreakStmt{loop,{}})});
+  std::get<LoopStmt>(tree.statements[loop.value].statement).body=body;
+  const auto prefix=stmt(ExpressionStmt{expr(IntegerLiteral{0})});
+  auto children=original;children.push_back(prefix);
+  if(split)children.push_back(block({3},roots));else children.insert(children.end(),roots.begin(),roots.end());
+  children.push_back(loop);
+  const auto first=static_cast<std::uint32_t>(tree.children.size());tree.children.insert(tree.children.end(),children.begin(),children.end());
+  std::get<BlockStmt>(tree.statements[0].statement)={{1},first,static_cast<std::uint32_t>(children.size())};
+  const auto remap=[&](StmtId id){return reverse?StmtId{static_cast<std::uint32_t>(tree.statements.size()-1-id.value)}:id;};
+  if(reverse) {
+    for(auto& child:tree.children)child=remap(child);
+    for(auto& statement:tree.statements)std::visit([&](auto& node){using T=std::decay_t<decltype(node)>;
+      if constexpr(std::is_same_v<T,LoopStmt>)node.body=remap(node.body);
+      else if constexpr(std::is_same_v<T,BreakStmt>)node.target=remap(node.target);
+    },statement.statement);
+    tree.body=remap(tree.body);std::reverse(tree.statements.begin(),tree.statements.end());
+  }
+  if(!split)tree.scopes.pop_back();
+  test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  LoopSyntax syntax;syntax.initializers.resize(tree.statements.size());syntax.initializers[remap(loop).value]=LoopInitializerSyntax{0,count};
+  BindingInitializers plan;plan.statements.resize(tree.statements.size());plan.omitted.resize(tree.statements.size());plan.loop_declarations.resize(tree.statements.size());
+  std::vector<std::optional<StmtId>> declarations(count+1);
+  for(unsigned i=0;i<count;++i) {
+    syntax.initializer_roots.push_back({remap(roots[i]),{}});plan.statements[remap(roots[i]).value]=BindingInitializer{{i},assignments[i],DeclarationKind::kLet};
+    declarations[i]=remap(original[i]);plan.omitted[remap(original[i]).value]=1;
+  }
+  const auto grammar=std::get<LoopDeclarations>(PlanLoopDeclarations(syntax,plan,declarations));
+  test::Check(grammar.environments.size()==1 && grammar.environments[0].entry==remap(roots[0]));
+  std::vector<SourceRegion> regions{{{0},{4}},{{2},{3}},{{1},{4}}};
+  std::vector<SourceAllocation> allocations{ScopeId{1},ScopeId{2},LegacyLoopAllocation{}};
+  std::vector<SourceBindingScope> original_bindings(count+1,OriginalBindingScope{SourceRegionId{0}}),projected(count+1,ProjectedBindingScope{SourceRegionId{2}});
+  std::vector<std::optional<SourcePosition>> occurrences(tree.statements.size(),SourcePosition{1});
+  occurrences[remap(prefix).value]=SourcePosition{0};occurrences[remap(read_statement).value]=SourcePosition{2};
+  std::vector<SourceSpellingId> spellings;for(unsigned i=0;i<=count;++i)spellings.push_back({i});
+  std::vector<LoopEntryOccurrence> entry_occurrences(tree.statements.size());
+  const SourceScopeProjection scopes{regions,occurrences,projected,{},{},spellings,{},allocations};
+  const auto entry=std::get<LoopEntryProjection>(ProjectLoopEntryFlow(grammar,plan.statements,{},original_bindings,scopes,entry_occurrences));
+  std::vector<std::optional<SymbolId>> aliases(count+1);std::vector<std::optional<PrimitiveId>> literals(count+1);
+  std::vector<std::optional<ExprId>> replacements(tree.expressions.size());
+  std::vector<ExpressionEvaluation> evaluations(tree.expressions.size(),ExpressionEvaluation::kRequired);
+  std::vector<std::uint8_t> stores(tree.expressions.size(),1);
+  LegacyFlowProjection projection{aliases,literals,replacements,plan.omitted,evaluations,stores};
+  projection.initializers=entry.initializers;projection.source_scopes=scopes;projection.source_scopes.loop_allocations=entry.allocations;
+  const auto flow=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,projection));
+  const auto initialized=std::get<FlowInitializations>(AnalyzeFlowInitializations(flow));
+  const auto allocated=*flow.bindings[0].allocation;
+  test::Check(!flow.bindings[count].allocation && !flow.ResetsBinding({count},allocated));
+  unsigned environments=0;for(const auto& event:flow.events)environments+=event.kind==FlowEventKind::kEnterLoopEnvironment;
+  test::Check(environments==1 && flow.events[allocated.value].loop_environment==remap(loop));
+  test::Check(initialized.order.Dominates(flow.statements[remap(prefix).value],allocated));
+  for(unsigned i=0;i<count;++i) {
+    test::Check(flow.bindings[i].allocation==allocated && flow.ResetsBinding({i},allocated));
+    test::Check(initialized.order.Dominates(allocated,flow.expressions[rhs[i].value]));
+  }
+  for(const auto& reference:flow.references)if(reference.kind==FlowReferenceKind::kRead) {
+    const auto site=std::get<ExprId>(reference.site);
+    test::Check(initialized.Completed(reference.binding,reference.point)==(site!=rhs[0]));
+  }
+  const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));
+  if(future) {
+    const auto found=std::find_if(flow.references.begin(),flow.references.end(),[&](const auto& reference){return reference.site==FlowReferenceSite{rhs[0]};});
+    test::Check(found!=flow.references.end());
+    test::Check(std::any_of(live.unavailable.begin(),live.unavailable.end(),[&](const auto& fact){return fact.binding==SymbolId{count-1};}));
+  }
+  // A trial with declaration completion before its proposed allocation must
+  // recompute completion. It cannot reuse the original successful certificate.
+  if(count==2) {
+    auto trial_allocations=entry.allocations;for(auto& member:trial_allocations)if(member)member->entry=remap(roots[1]);
+    projection.source_scopes.loop_allocations=trial_allocations;
+    const auto trial=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,projection));
+    const auto checked=std::get<FlowInitializations>(AnalyzeFlowInitializations(trial));
+    test::Check(!checked.declarations[0]);
+    for(const auto& reference:trial.references)if(reference.site==FlowReferenceSite{rhs[1]})test::Check(!checked.Completed({0},reference.point));
+    test::Check(initialized.declarations[0].has_value());
+    projection.source_scopes.loop_allocations=entry.allocations;
+  }
+  test::Check(std::holds_alternative<RecoveryFlow>(BuildRecoveryFlow(tree,projection,{flow.allocated_bytes,flow.work})));
+  test::Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,projection,{flow.allocated_bytes-1,flow.work}))==TreeStructureError::kResourceLimit);
+  test::Check(std::holds_alternative<FlowInitializations>(AnalyzeFlowInitializations(flow,{initialized.allocated_bytes,initialized.work})));
+  test::Check(std::get<TreeStructureError>(AnalyzeFlowInitializations(flow,{initialized.allocated_bytes,initialized.work-1}))==TreeStructureError::kWorkLimit);
+  return grammar.work+entry.work+flow.work+initialized.work+live.work;
 }
 void DeclarationBatches() {
   // Independent loops must use the same input revision, regardless of arena
@@ -353,7 +475,8 @@ void DeclarationBatches() {
     test::Check(proposal.entries.size()==result.entries.size());
     for(unsigned i=0;i<result.entries.size();++i)
       test::Check(proposal.entries[i].statement==result.entries[i].statement && proposal.entries[i].loop==result.entries[i].loop);
-    test::Check(result.entries.size()==count*4);
+    test::Check(result.entries.size()==count*4 && result.environments.size()==count && result.bindings.size()==count);
+    for(const auto& environment:result.environments)test::Check(environment.entry.value%6==3);
     for(unsigned i=0;i<count;++i)for(unsigned j=0;j<4;++j) {
       const auto owner=reverse?count-1-i:i;
       const auto found=std::find_if(result.entries.begin(),result.entries.end(),[&](const auto& entry){return entry.statement==StmtId{i*6+j};});
@@ -376,6 +499,8 @@ void DeclarationBatches() {
     const SourceScopeProjection scopes{{},occurrences,projected};
     const auto adapted=std::get<LoopEntryProjection>(ProjectLoopEntryFlow(result,input.statements,completions,original,scopes,entries));
     for(unsigned i=0;i<count;++i) {
+      test::Check(!adapted.allocations[i*2]);
+      test::Check(adapted.allocations[i*2+1].has_value() && adapted.allocations[i*2+1]->entry==StmtId{i*6+3});
       test::Check(!adapted.initializers[i*6]);
       test::Check(adapted.initializers[i*6+3].has_value());
       test::Check(std::holds_alternative<OriginalBindingScope>(adapted.bindings[i*2]));
@@ -396,9 +521,10 @@ void DeclarationBatches() {
     for(unsigned i=0;i<count;++i)trial_omitted[i*6+3]=1;
     const auto trial=std::get<LoopDeclarations>(PlanLoopDeclarations(loops,input,declarations,{},trial_omitted));
     for(const auto& entry:trial.entries)test::Check(!entry.loop);
+    test::Check(trial.environments.empty() && trial.bindings.empty());
     const auto trial_projection=std::get<LoopEntryProjection>(ProjectLoopEntryFlow(trial,input.statements,completions,original,scopes,entries));
     for(unsigned i=0;i<count;++i) {
-      test::Check(!trial_projection.initializers[i*6+3]);
+      test::Check(!trial_projection.initializers[i*6+3] && !trial_projection.allocations[i*2+1]);
       test::Check(trial_projection.occurrences[i*6+5]==SourcePosition{0});
     }
     // Missing canonical occurrence precision stays missing. It cannot fall
@@ -428,7 +554,9 @@ void DeclarationBatches() {
     }
     const auto again=std::get<LoopDeclarations>(PlanLoopDeclarations(loops,applied,declarations));
     test::Check(again.starts.empty() && again.demoted.empty() && again.declarators.empty());
-    test::Check(again.entries.size()==result.entries.size());
+    test::Check(again.entries.size()==result.entries.size() && again.environments.size()==result.environments.size() && again.bindings.size()==result.bindings.size());
+    for(unsigned i=0;i<again.bindings.size();++i)test::Check(again.bindings[i].loop==result.bindings[i].loop && again.bindings[i].binding==result.bindings[i].binding);
+    for(unsigned i=0;i<again.environments.size();++i)test::Check(again.environments[i].loop==result.environments[i].loop && again.environments[i].entry==result.environments[i].entry);
     for(unsigned i=0;i<result.entries.size();++i)
       test::Check(again.entries[i].statement==result.entries[i].statement && again.entries[i].loop==result.entries[i].loop);
     // Removing the final binding invalidates an earlier grammar suffix. The
@@ -449,6 +577,13 @@ void DeclarationBatches() {
 int main(int argc, char** argv) {
   for(bool reverse:{false,true})EntryScopeReads(reverse);
   DeclarationBatches();
+  for(bool future:{false,true})for(bool split:{false,true}) {
+    std::uint64_t previous=0;
+    for(unsigned count:{2U,200U,201U,400U,800U})for(bool reverse:{false,true}) {
+      const auto work=NativeEntryOrder(count,reverse,future,split);
+      if(!reverse){if(count>=400)test::Check(work<previous*3);previous=work;}
+    }
+  }
   if(argc==2 && std::string_view(argv[1])=="--entry-projection")return 0;
   std::array<std::uint64_t, 3> small{}, large{};
   for (unsigned form = 0; form < 13; ++form) for (unsigned count : {0U, 1U, 200U, 201U, 400U, 800U}) for (bool reverse : {false, true}) {

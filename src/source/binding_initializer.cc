@@ -930,6 +930,7 @@ class Initializers {
         projection.declaration_completions=loop_entries->completions;
         projection.source_scopes.bindings=loop_entries->bindings;
         projection.source_scopes.occurrences=loop_entries->occurrences;
+        projection.source_scopes.loop_allocations=loop_entries->allocations;
       }
       loop_bytes=budget_.ActiveBytes()-before;
     }

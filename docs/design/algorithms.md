@@ -3912,3 +3912,26 @@ This adds one proposal analysis to the existing placement pass, no retry rounds.
 Boundary stability is an allocation-plan obligation; it is not a numerical/update
 heuristic or a performance cutoff. Independent execution of the deliberate
 prefix-promotion mutant detects the later out-of-scope read.
+
+
+### Rules261 native header allocation ownership
+
+The existing complete LoopDeclarations provider publishes one entry per retained
+native group and one member per actual retained declarator. With S statements, R
+entry roots, L loop groups, A source regions and B bindings, grammar costs O(S+R)
+work/O(L+R) output; the semantic entry adapter costs O(S+B+R) work and O(S+B)
+owned/scratch storage. It does not walk a graph per binding or per root.
+Binding-indexed native allocation maps avoid conflating lexical-region peers
+with actual BoundNames. FlowBuilder consumes the shared storage projection once
+per member, indexes entries in O(S+B) scratch, and uses one event for each group.
+No extra event/edge per member is needed. Allocation gen/kill shares the existing
+sparse analysis cost in V events, E edges and retained live facts F; dense F is
+not suppressed. The existing byte/work admission accounts for product arrays,
+control metadata, scratch overlap and shared flow.
+
+Native group model cases cover 2/200/201/400/800 members, reversed statement IDs,
+transparent block splitting, prior-initialization reads, forward TDZ reads and
+nonmember peers. Complete/no-op and omitted native groups are tested in
+1/200/201/400/800 independent batches. Exact/one-short budgets and work growth
+checks are component tests, not resumed RSS/benchmarks or full convergence proof.
+The copied iteration environment algorithm remains an explicit mainline gap.
