@@ -716,3 +716,26 @@ Complete native-for allocated/copied per-iteration environments, capture/finally
 full original correspondence, dependency convergence and unified-variable final
 acceptance still require delivery closure. All five backbone loops remain OPEN;
 other appearance optimizations and paused scopes remain paused.
+
+
+Rules260 Task2/3 entry ownership substep: current/trial preparation and the final
+grammar pass share one complete LoopDeclarations entry product. The source adapter
+restores outlined prefix assignment/completion and actual enclosing occurrence/
+binding ownership, while native declarators retain the explicit legacy value-only
+contract. The common flow/name/initialization clients consume that projection;
+prospective-loop ownership no longer decides prefix semantics there. kLoopEntries
+is a declared provider dependency, with no new pass round or stage. The existing
+lexical census supplies descendant/root identity once; trial omissions invalidate
+the suffix independently. Component negative/model/scaling/mutation tests remain
+in existing targets; status.md records actual final 31/63/fixed-record evidence.
+Actual loop allocation and copied iteration units, captured/finally phases, full
+original correspondence, dependency convergence and milestone acceptance remain
+required. All five backbone delivery loops stay OPEN, other optimizations paused.
+
+Rules260 continuation within the same substep: independent source inspection
+rejected adapter-only publication, because later alias cleanup expanded the native
+suffix around a formerly outlined binding used after the loop. Placement now
+stages its entire initializer proposal through the common grammar provider before
+commit and leaves prefix candidates in their original binding. No later pass can
+resurrect their native annotation. This closes that concrete cross-pass ownership
+error; full allocated/copied environments and all five deliveries remain open.

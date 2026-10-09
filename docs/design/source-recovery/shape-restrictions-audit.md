@@ -3062,3 +3062,43 @@ narrowed-source execution/scaling test the obligation. Original-unit-fallback an
 missing-correspondence production mutants fail. Complete native-for per-iteration
 copy/capture and finally lifetime deltas remain open; historical capture restrictions
 are not replaced. All five backbone deliveries remain open.
+
+
+## Rules260: actual loop entry declaration ownership
+
+Obligation: declaration/effect ownership in the shared model must describe the
+actual native for declaration suffix and its outlined expression prefix. A complete
+immutable grammar product, distinct from changed commit actions, supplies that
+ownership to current/trial preparation and the final grammar consumer. Retained
+declarations and current omission are source grammar facts, not opcode, operation
+whitelist, adjacency, same-block, fixed selection count or compiler-layout gates.
+
+Retired paths: treating every prospective initializer root as a loop declaration
+allocation; publishing InitializeBinding for a demoted prefix assignment; resolving
+prefix reads against the prospective loop source region. Actual enclosing positions
+are indexed in the shared lexical traversal and used by the common adapter, including
+descendants of transparent blocks. A missing position stays unmodeled. Native-loop
+value capability remains explicit and grants no dynamic cell identity. No original
+outer-unit fallback is restored for an actual projected declaration.
+
+Independent common-flow checks require the prefix binding to resolve after the loop,
+a future native loop binding to be unavailable in the outlined prefix, and prefix
+assignment/native initialization definition kinds to stay distinct. Reversed source
+region IDs, current/trial omission, no-op grammar products and exact/short scaling
+checks accompany actual emitted-source gates. Four production mutants exercise
+prospective prefix scope, initialization, binding identity and delta-only facts.
+Full environment allocation/copy phases and closure/finally precision remain open;
+old capture/confinement prerequisites are unchanged. All five backbone loops remain
+open and no paused suite/corpus/resource/agent scope resumes.
+
+Additional cross-pass obligation: deleting a copied slot must not silently relocate
+an earlier outlined binding into the final native declaration suffix. Placement
+uses the complete staged initializer proposal and the same grammar provider before
+any commit. Prefix candidates retain their original declaration/assignment; future
+omission cannot reintroduce their loop initializer annotation. The owned proposal
+mask is grammar output, not a same-block, operation-sequence or numeric admission.
+The initial adapter-only implementation violated this obligation; its generated
+source and independent ReferenceError/trace RED are preserved. Corrected source
+passes the original behavior reference and deliberate late-prefix-promotion fails.
+The old unit requirement to retain a copied slot is replaced by scope-correct
+source representation and independent execution, never by weakening the reference.

@@ -36,6 +36,48 @@
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
 
+### 2026-10-09：规则260，循环入口归属与声明提交稳定性
+
+- 主干第2/3项：PlanLoopDeclarations分别发布完整当前入口归属和提交
+  delta；无变化的语法计划仍有完整事实。声明整批候选、当前计划、trial
+  及最终语法pass使用同一provider，trial使用自己的omission。
+  kLoopEntries成为显式provider依赖，不增加pass轮次/阶段/预算。
+- ProjectLoopEntryFlow为实际表达式前缀恢复原绑定环境、赋值完成和
+  原始作用域中的读取位置，native declarators保留循环环境。一次词法
+  遍历索引root/descendants，单次线性适配；未知位置不继承预期循环
+  区域。已退出前缀的“整个入口流属于for声明环境/InitializeBinding”路径。
+- 首轮adapter-only实现暴露真实跨pass错误：复制被删除后，最终声明区
+  向前扩展，将saved放进for-let，循环后仍读取saved。首次63项验证
+  61/63，两项初始化测试失败；进一步独立执行检出ReferenceError及
+  报告trace丢失。没有把错误当作旧断言过时而放行；失败源码和日志保留。
+- 声明pass现在在commit前，使用同一完整grammar provider试算整批
+  initializer候选；表达式前缀候选保留原声明/赋值，不发布循环initializer
+  annotation。后续复制/效果删除不能重新扩大已选定绑定生命期。分析
+  与提交分离，commit内不查询事实；最终语法不擅自重新选择分配环境。
+- 正反布局的实际源码2份通过448次独立行为对照、2个错误值mutants；
+  修复后工厂值在外层、carried在for-let，多余transport可安全消除。原
+  参照保持，测试增加源码位置覆盖并替换了旧“复制必须保留”断言。
+  四项模型生产突变及一项撤销稳定声明的独立执行突变均检出，全部恢复；
+  后者source harness exit1，恢复build/source/model均0。
+- 1/200/201/400/800循环批次覆盖完整/no-op/proposal/current/trial产品、
+  未知位置、正反source region及exact/one-short bytes/work；common
+  flow直接验证外层前缀解析、禁止前缀提前访问native绑定、assignment与
+  initialization的区分。方法成本按S/B/R/L记录，未恢复RSS/benchmark。
+- 最终31目标构建32.9153s、fresh固定record2.8184s已通过；固定
+  19records/10complete/0partial/9no-module、10语法检查通过，输出源码
+  与规则259相同。最终精确63/63项定向测试584.8927s通过，名单一致且无重复。
+  证据build/stage-one/loop-entry-verification，输出
+  build/stage-one/loop-entry-final-rule260-stable；first-*及失败源码保留。
+  初始化source目标合计2004份源码/482752行为对照/370有效mutants；
+  original-flow目标合计10280对照/158mutants，含既有scoped/narrowed
+  80份/6200/100。最终构建无warning/error；首轮重编译显示既有
+  literal_plan.cc:59 kNoop warning，该历史代码未在本轮修改。
+- **五项主干仍全部开放**。原生for仍使用明确的LegacyLoopAllocation
+  完成/值能力；首次及逐轮环境分配、值复制与captured cell identity没有
+  完整接入，不能据此宣称普通绑定生命期闭环。下一步继续该共同模型
+  迁移；完整原始IR/SSA、finally/闭包、依赖收敛及里程碑终验仍待交付。
+  其他表现优化与fullsuite/corpus/RSS/benchmark/DFX/agents保持暂停。
+
 ### 2026-10-09：规则259，当前声明分配对应
 
 - 主干第2/3项：共同词法遍历一次发布区域到当前分配的typed对应，当前/

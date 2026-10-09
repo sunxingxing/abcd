@@ -5,10 +5,14 @@
 namespace abcd::source {
 struct LoopDeclarationStart { StmtId loop; std::optional<std::uint32_t> first; };
 struct LoopDeclarator { StmtId initializer, declaration; };
+// The complete current entry projection, distinct from the commit delta.
+// An absent loop means an expression prefix in its enclosing environment.
+struct LoopEntryEnvironment { StmtId statement; std::optional<StmtId> loop; };
 struct LoopDeclarations {
   std::vector<LoopDeclarationStart> starts;
   std::vector<StmtId> demoted;
   std::vector<LoopDeclarator> declarators;
+  std::vector<LoopEntryEnvironment> entries;
   std::size_t allocated_bytes=0;
   std::uint64_t work=0;
 };
@@ -20,6 +24,7 @@ struct LoopDeclarations {
 [[nodiscard]] std::variant<LoopDeclarations,TreeStructureError> PlanLoopDeclarations(
     const LoopSyntax&,const BindingInitializers&,
     std::span<const std::optional<StmtId>> declarations,
-    analysis::SemanticBudget budget={});
+    analysis::SemanticBudget budget={},std::span<const std::uint8_t> omitted={},
+    std::span<const std::optional<BindingInitializer>> initializers={});
 }
 #endif

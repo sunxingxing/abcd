@@ -318,6 +318,8 @@ for (const row of rows) {
   }
   if(row.expression!==undefined) {
     const generated=Function('"use strict";return '+row.source)(),reference=expressionReference(row);
+    if(row.expression===20)assert.ok(!declarations.some(node=>node.declarations.some(item=>item.id.name==='transport')),
+      'outlined prefix value remains available after the loop without a copied slot');
     if(row.expression===8&&row.count)assert.deepEqual(declarations.flatMap(node=>node.declarations.map(item=>item.id.name)).filter(name=>name.startsWith('copy')),[]);
     if(row.folded){assert.ok(!declarations.some(node=>node.declarations.some(item=>item.id.name.startsWith('copy'))));++folded;}
     if(row.folded) {

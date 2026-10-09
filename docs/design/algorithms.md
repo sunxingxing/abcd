@@ -3878,3 +3878,37 @@ and printing path, not only this lookup. Exact/one-short flow budgets and indepe
 reversed region/scope IDs cover correspondence ownership. No budget increase, graph
 cutoff, process-RSS or global-pass-convergence claim is made. Native-for copied units
 remain an explicitly incomplete model, not an ordinary block allocation theorem.
+
+
+## Loop entry projection ownership (rules260)
+
+Dimensions: S statements, B bindings, R disjoint initializer roots, L loops. The
+existing lexical traversal stores O(S) root/actual enclosing-scope correspondences
+without traversing a subtree per candidate; canonical declaration identities are
+indexed once in O(B). The complete grammar product plus its commit delta costs
+O(S+R+L) work/storage in the existing suffix scan, independently of statement IDs.
+Current/trial use their own omission span. Native declaration spelling and entry
+effects remain independent responsibilities.
+
+The semantic adapter copies the current initializer/completion/occurrence/binding
+views in O(S+B), marks prefix roots once, and restores descendant positions in
+one O(S) indexed pass. It performs no B-by-S or per-root graph walk. Its storage
+is temporary, charged while the shared preparation graph is live, then destroyed
+before budget credit; returned graphs own copied lifetime/name facts and retain
+no spans into this adapter. Peak admission and cumulative work are not released.
+This is one adapter per current/trial preparation, not one per optimizer query or
+bootstrap refinement. Existing budgets and solver bounds stay unchanged.
+
+Existing selected tests exercise 1/200/201/400/800 independent loops with reversed
+owner IDs, complete products after a no-op commit, trial omission, unknown enclosing
+positions, actual common-flow name/definition checks, and exact/one-short byte/work
+admission. These are component costs; full-process RSS and dependency-driven
+optimization convergence remain unproved and their paused runs are not resumed.
+
+Declaration placement stages O(S) initializer annotations for its whole proposal,
+computes the same O(S+R+L) grammar product, and indexes rejected prefix roots in
+O(S). Candidate publication is O(B), with no solve or syntax walk per variable.
+This adds one proposal analysis to the existing placement pass, no retry rounds.
+Boundary stability is an allocation-plan obligation; it is not a numerical/update
+heuristic or a performance cutoff. Independent execution of the deliberate
+prefix-promotion mutant detects the later out-of-scope read.

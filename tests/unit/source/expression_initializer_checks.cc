@@ -237,10 +237,18 @@ void LoopProjection(bool reverse,bool emit) {
   if(reverse)f.Reverse();test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
   const auto seed_id=reverse?tree.statements.size()-1-seed.value:seed.value;test::Check(loops.initializer_owners[seed_id].has_value());
-  const auto plan=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));std::ostringstream output;test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
-  test::Check(!plan.aliases[reverse?tree.symbols.size()-1-5:5]);
-  if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"expression",20},{"count",1},{"folded",false}}<<'\n';
+  const auto plan=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));std::ostringstream output;
+  const auto printed=PrintFunctionTree(tree,output);test::Check(std::holds_alternative<PrintedFunction>(printed));
+  // The seed remains in the outlined prefix's enclosing environment. Its
+  // stable value can serve the post-loop observations without a copied slot;
+  // independent execution still checks object identity, faults and call count.
+  test::Check(output.str().find("transport")==std::string::npos);
+  CheckExpressionRanges(tree,plan,std::get<PrintedFunction>(printed),output.str().size());
+  if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"expression",20},{"count",1},{"folded",true}}<<'\n';
 }
+}
+void CheckLoopEntryProjection(bool emit) {
+  for(bool reverse:{false,true})LoopProjection(reverse,emit);
 }
 void CheckExpressionInitializers(bool emit) {
   Sequence(19,0,false,false);

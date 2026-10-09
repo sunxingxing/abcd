@@ -2737,3 +2737,52 @@ bindings and closure transport require explicit completion-aware unit events; pr
 finally contexts also remain open. Existing capture/name/confinement safeguards are
 not removed. All five backbone deliveries, pass convergence and milestone acceptance
 remain open, with no appearance optimization or paused work resumed.
+
+
+### Current loop entry environment projection (rules260)
+
+PlanLoopDeclarations now publishes the complete current entry ownership product
+separately from its commit delta. Even an unchanged grammar plan has entry facts.
+Its suffix is selected from retained declarations and the actual projection's
+omission span; an omitted declarator alone creates no lexical declaration group.
+The final grammar pass and current/trial semantic preparation consume this same
+provider. kLoopEntries is an explicit flow/expression provider prerequisite; the
+grammar pass cannot request unrelated flow analysis during its commit. No new
+optimization round or scheduling stage is introduced.
+
+ProjectLoopEntryFlow adapts the grammar product without modifying the recovery
+plan. Outlined prefix assignments cease to be source declaration initializers,
+retain their original binding environment, and preserve any undefined assignment
+completion. Prefix reads and descendant occurrences use canonical enclosing
+positions from the existing lexical census. Missing positions remain unmodeled;
+prospective loop ownership is no fallback. Native declarators keep their current
+loop ownership. Replacements/motion use their actual statement owner in the shared
+flow, so initialization, name resolution and all downstream value clients consume
+the adapted projection rather than independently classifying initializer roots.
+
+This retires prospective-loop ownership and InitializeBinding for outlined entry
+prefixes in the shared semantic preparation path. It does not allocate an actual
+loop environment or clone per-iteration cells: native declarations still have the
+explicit LegacyLoopAllocation completion/value contract. Initializer/condition/body/
+update environment phases, captured-cell identities and precise finally contexts
+remain required model extensions. The old placement/confinement/capture safeguards
+remain unchanged. All five backbone deliveries and final milestone acceptance are
+open. Tests and measured verification belong to status.md.
+
+Declaration placement additionally plans the entire initializer proposal through
+this same provider before entering commit. A candidate confined to an outlined
+expression prefix is not published as a native loop declaration. Otherwise later
+copy/dead-effect removal could expand the grammar suffix and relocate that binding
+after an alias had already proved its old environment. Prefix assignments keep
+their original declaration; final grammar cannot promote a previously rejected
+prefix initializer into a new environment. This is the existing expression-versus-
+ForDeclaration grammar obligation applied atomically, not a new loop-shape gate.
+No additional placement pass or optimization round is used. The proposal's owned
+prefix mask is computed before commit; no analysis is queried during publication.
+
+The source-level counterexample exposed a real cross-pass error in the initial
+adapter-only implementation: after a copied slot disappeared, a factory value
+became a for-let declarator yet its post-loop read retained that name. Independent
+execution detected the ReferenceError. The corrected proposal keeps the factory
+value in the enclosing environment, allowing safe copy propagation without later
+lifetime expansion. Original factory/return/fault comparisons are unchanged.

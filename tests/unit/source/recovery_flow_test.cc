@@ -2303,11 +2303,13 @@ void PassContracts() {
   const auto original=schedule.Revision();
   schedule.RequireFact(RecoveryFact::kExpressions);
   schedule.RequireFact(RecoveryFact::kFlow); // Joint expression/flow bootstrap.
+  schedule.RequireFact(RecoveryFact::kLoopEntries);
   Check(rejects([&]{schedule.RequireFact(RecoveryFact::kConstants);}));
   Check(rejects([&]{schedule.RequireFact(RecoveryFact::kCopies);}));
   Check(rejects([&]{schedule.Start(RecoveryPass::kAliases);}));
   Check(schedule.Commit());Check(!schedule.Commit());
   Check(rejects([&]{schedule.RequireFact(RecoveryFact::kExpressions);}));
+  Check(rejects([&]{schedule.RequireFact(RecoveryFact::kLoopEntries);}));
   Check(rejects([&]{schedule.RequireCurrent(original);}));
   Check(schedule.Finish());
   Check(schedule.Revision().value==original.value+1);
@@ -2345,6 +2347,7 @@ void PassContracts() {
   Check(rejects([&]{schedule.Start(RecoveryPass::kAliases);}));
   Check(rejects([&]{schedule.EnterStorage();}));
   schedule.Start(RecoveryPass::kLoopDeclarations);
+  schedule.RequireFact(RecoveryFact::kLoopEntries);
   Check(rejects([&]{schedule.RequireFact(RecoveryFact::kFlow);}));
   Check(!schedule.Finish());
   schedule.Start(RecoveryPass::kDeclarationKinds);schedule.RequireFact(RecoveryFact::kFlow);

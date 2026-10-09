@@ -19,6 +19,7 @@
 #include "expression_children.h"
 #include "loop_syntax.h"
 #include "loop_declarations.h"
+#include "loop_entry_projection.h"
 #include "nullish_syntax.h"
 #include "statement_children.h"
 #include <algorithm>
@@ -50,6 +51,7 @@ struct StatementVisit {
   bool projected = false;
   bool entered = false;
   ScopeId scope;
+  std::optional<StmtId> entry;
 };
 class Initializers {
  public:
@@ -79,6 +81,7 @@ class Initializers {
     budget.Array(constant_heads_, tree.symbols.size());budget.Array(constant_next_, tree.symbols.size());
     budget.Array(constant_queue_, tree.symbols.size());
     budget.Array(uses_, tree.symbols.size()); budget.Array(projected_, tree.statements.size());
+    budget.Array(original_declarations_,tree.symbols.size());
     budget.Array(declaration_sites_,tree.symbols.size());
     budget.Array(declaration_containers_,tree.statements.size());
     budget.Array(containers_, tree.statements.size());
@@ -90,6 +93,8 @@ class Initializers {
     budget.Array(source_regions_,tree.statements.size());budget.Array(source_occurrences_,tree.statements.size());
     budget.Array(source_scope_regions_,tree.scopes.size());
     budget.Array(source_allocations_,tree.statements.size());
+    budget.Array(loop_entry_occurrences_,tree.statements.size());
+    budget.Array(canonical_scopes_,tree.statements.size());
     budget.Array(expression_owners_,tree.expressions.size());budget.Array(expression_projections_,tree.expressions.size());
   }
   BindingInitializers Run() {
@@ -154,6 +159,9 @@ class Initializers {
       const auto& node = tree_.statements[visit.statement.value].statement;
       if (!visit.entered) {
         if(const auto* block=std::get_if<BlockStmt>(&node))visit.scope=block->scope;
+        if(loops_.initializer_owners[visit.statement.value])visit.entry=visit.statement;
+        loop_entry_occurrences_[visit.statement.value].root=visit.entry;
+        canonical_scopes_[visit.statement.value]=visit.scope;
         // LoopBody prints this owned continuing occurrence as a native
         // statement, outside its condition expression. Restore that lifetime
         // before applying its own nested projections; no arm/layout matching.
@@ -194,6 +202,7 @@ class Initializers {
       const auto scope=visit.scope;
       statements_[pending++] = {*child, container, lexical, projector, 0, projected};
       statements_[pending-1].scope=scope;
+      statements_[pending-1].entry=visit.entry;
     }
     for(auto& owner:statement_owners_) {budget_.Step();if(owner)owner=lexical_[owner->value];}
     // Syntax recovery owns source region construction once. Publish current
@@ -202,7 +211,10 @@ class Initializers {
     for(std::size_t i=0;i<tree_.statements.size();++i) {
       budget_.Step();source_regions_[i]={{containers_[i].begin},{containers_[i].end}};
       if(statement_owners_[i])source_occurrences_[i]=SourcePosition{containers_[statement_owners_[i]->value].begin};
+      if(loop_entry_occurrences_[i].root)if(const auto region=source_scope_regions_[canonical_scopes_[i].value])
+        loop_entry_occurrences_[i].enclosing=SourcePosition{containers_[region->value].begin};
     }
+    for(std::size_t i=0;i<uses_.size();++i){budget_.Step();original_declarations_[i]=uses_[i].declaration;}
     for(std::size_t i=0;i<expression_owners_.size();++i) {
       budget_.Step();if(expression_projections_[i]&&expression_owners_[i])expression_owners_[i]=lexical_[expression_owners_[i]->value];
     }
@@ -487,10 +499,31 @@ class Initializers {
           {SymbolId{static_cast<std::uint32_t>(i)}, *assignment, DeclarationKind::kLet},
           loops_.initializer_owners[site->statement.value] ? std::nullopt : use.declaration};
     }
+    // Grammar and allocation are part of the immutable declaration proposal.
+    // A prefix cannot declare a loop cell. Decide this before publishing any
+    // placement: later copy/effect removal must not promote an earlier prefix
+    // into a different environment. The final grammar pass consumes the same
+    // provider; it does not acquire authority to relocate a committed binding.
+    std::vector<std::uint8_t> prefix;
+    if(count && !loops_.initializer_roots.empty()) {
+      schedule_.RequireFact(RecoveryFact::kLoopEntries);
+      std::vector<std::optional<BindingInitializer>> trial;
+      budget_.Array(trial,plan_.statements.size());
+      std::copy(plan_.statements.begin(),plan_.statements.end(),trial.begin());
+      for(std::size_t i=0;i<count;++i){budget_.Step();trial[proposed[i].site.statement.value]=proposed[i].initializer;}
+      auto grammar=PlanLoopDeclarations(loops_,plan_,original_declarations_,budget_.Remaining(),{},trial);
+      if(const auto* error=std::get_if<TreeStructureError>(&grammar))throw *error;
+      const auto& entries=std::get<LoopDeclarations>(grammar);
+      budget_.Admit(entries.allocated_bytes,1);budget_.Step(entries.work);
+      budget_.Array(prefix,plan_.statements.size());
+      for(const auto& entry:entries.entries){budget_.Step();if(!entry.loop)prefix[entry.statement.value]=1;}
+    }
     // Placement is projection state, separate from the immutable use census.
     // Publish it with the same revision/invalidation boundary as the plan.
     for(std::size_t i=0;i<count;++i) {
-      budget_.Step();const auto& edit=proposed[i];BeginCommit();
+      budget_.Step();const auto& edit=proposed[i];
+      if(!prefix.empty() && prefix[edit.site.statement.value])continue;
+      BeginCommit();
       declaration_sites_[edit.initializer.symbol.value]=edit.site;
       plan_.statements[edit.site.statement.value]=edit.initializer;
       if(edit.omitted)DiscardDeclaration(*edit.omitted);
@@ -532,16 +565,19 @@ class Initializers {
       budget_.Step();BeginCommit();plan_.statements[proposed[i].value]->declaration=DeclarationKind::kConst;
     }
   }
+  LoopDeclarations LoopDeclarationsFor(std::span<const std::uint8_t> omitted={}) const {
+    RequireAnalysis();
+    schedule_.RequireFact(RecoveryFact::kLoopEntries);
+    const auto planned=PlanLoopDeclarations(loops_,plan_,original_declarations_,budget_.Remaining(),omitted);
+    if(const auto* error=std::get_if<TreeStructureError>(&planned))throw *error;
+    auto delta=std::get<LoopDeclarations>(std::move(planned));
+    budget_.Admit(delta.allocated_bytes,1);budget_.Step(delta.work);
+    return delta;
+  }
   void ProjectLoopDeclarations() {
     RequireAnalysis();
     if(loops_.initializer_roots.empty())return;
-    std::vector<std::optional<StmtId>> declarations;
-    budget_.Array(declarations,uses_.size());
-    for(std::size_t i=0;i<uses_.size();++i){budget_.Step();declarations[i]=uses_[i].declaration;}
-    const auto planned=PlanLoopDeclarations(loops_,plan_,declarations,budget_.Remaining());
-    if(const auto* error=std::get_if<TreeStructureError>(&planned))throw *error;
-    const auto& delta=std::get<LoopDeclarations>(planned);
-    budget_.Admit(delta.allocated_bytes,1);budget_.Step(delta.work);
+    const auto delta=LoopDeclarationsFor();
     if(delta.starts.empty() && delta.demoted.empty() && delta.declarators.empty())return;
     BeginCommit();
     for(const auto& start:delta.starts){budget_.Step();plan_.loop_declarations[start.loop.value]=start.first;}
@@ -855,8 +891,10 @@ class Initializers {
     RequireAnalysis();
     std::vector<std::uint8_t> private_bindings;
     std::vector<SourceBindingScope> source_bindings;
+    std::vector<SourceBindingScope> original_bindings;
     budget_.Array(private_bindings,uses_.size());
     budget_.Array(source_bindings,uses_.size());
+    budget_.Array(original_bindings,uses_.size());
     for (std::size_t i=0;i<uses_.size();++i) {
       budget_.Step();private_bindings[i]=tree_.symbols[i].kind==BindingKind::kCompilerTemporary && !uses_[i].escaped;
       const auto scope=tree_.symbols[i].scope;const auto region=source_scope_regions_[scope.value];
@@ -868,19 +906,42 @@ class Initializers {
           source_bindings[i]=UnmodeledBindingScope{};break;
         default:throw TreeStructureError::kScope;
       }
+      original_bindings[i]=source_bindings[i];
       const auto& site=declaration_sites_[i];
       if(site&&plan_.statements[site->statement.value])source_bindings[i]=ProjectedBindingScope{SourceRegionId{site->container.value}};
     }
-    const LegacyFlowProjection projection{plan_.aliases,plan_.literals,replacements,
+    LegacyFlowProjection projection{plan_.aliases,plan_.literals,replacements,
         omitted,{},{},plan_.statements,private_bindings,
         plan_.storage,plan_.undefined_stores,plan_.declaration_values,plan_.declaration_completions,
         {source_regions_,source_occurrences_,source_bindings,source_shadows_,unique_spellings_,spellings_,name_spellings_,source_allocations_},plan_.read_literals,transports,transported_reads,plan_.read_bindings,stable_entries_,{},plan_.read_sources,plan_.statement_values,{},original_};
+    std::optional<LoopDeclarations> loop_declarations;
+    std::optional<LoopEntryProjection> loop_entries;
+    std::size_t loop_bytes=0;
+    if(!loops_.initializer_roots.empty()) {
+      const auto before=budget_.ActiveBytes();
+      loop_declarations=LoopDeclarationsFor(omitted);
+      if(!loop_declarations->entries.empty()) {
+        auto adapted=ProjectLoopEntryFlow(*loop_declarations,plan_.statements,plan_.declaration_completions,
+            original_bindings,projection.source_scopes,loop_entry_occurrences_,budget_.Remaining());
+        if(const auto* error=std::get_if<TreeStructureError>(&adapted))throw *error;
+        loop_entries=std::get<LoopEntryProjection>(std::move(adapted));
+        budget_.Admit(loop_entries->allocated_bytes,1);budget_.Step(loop_entries->work);
+        projection.initializers=loop_entries->initializers;
+        projection.declaration_completions=loop_entries->completions;
+        projection.source_scopes.bindings=loop_entries->bindings;
+        projection.source_scopes.occurrences=loop_entries->occurrences;
+      }
+      loop_bytes=budget_.ActiveBytes()-before;
+    }
     const RecoveryExpressionInput input{plan_,value_equations_,
         std::span<const ExprId>(completions_).first(completion_count_),replacements,transports,original_};
     auto prepared=PrepareRecoveryProjection(tree_,projection,input,budget_.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&prepared))throw *error;
     auto result=std::get<RecoveryProjection>(std::move(prepared));
-    budget_.Admit(result.allocated_bytes,1);budget_.Step(result.work);return result;
+    budget_.Admit(result.allocated_bytes,1);budget_.Step(result.work);
+    // The prepared graph owns all facts it publishes. No borrowed projection
+    // span survives; release temporary ownership only after construction.
+    loop_entries.reset();loop_declarations.reset();budget_.Release(loop_bytes);return result;
   }
   const RecoveryFlow& CurrentFlow() const {
     schedule_.RequireFact(RecoveryFact::kFlow);
@@ -1846,6 +1907,7 @@ class Initializers {
   const OriginalFlow* original_;
   BindingInitializers plan_;
   std::vector<BindingUses> uses_;
+  std::vector<std::optional<StmtId>> original_declarations_;
   std::vector<std::optional<DeclarationSite>> declaration_sites_;
   std::vector<std::optional<StmtId>> declaration_containers_;
   std::vector<std::uint8_t> projected_;
@@ -1868,6 +1930,8 @@ class Initializers {
   std::vector<std::uint8_t> unique_spellings_;
   std::vector<std::optional<SourceRegionId>> source_scope_regions_;
   std::vector<SourceAllocation> source_allocations_;
+  std::vector<LoopEntryOccurrence> loop_entry_occurrences_;
+  std::vector<ScopeId> canonical_scopes_;
   std::vector<std::optional<SourcePosition>> source_occurrences_;
   std::vector<TextId> literal_texts_;
   std::vector<std::optional<PrimitiveId>> expression_primitives_;

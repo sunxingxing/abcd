@@ -9,7 +9,7 @@ enum class RecoveryPass {
   kDeclarations,kConstants,kBindingValues,kAliases,kStoredResults,kDeadDefinitions,kInitialValues,
   kBindings,kSnapshots,kStorage,kStatementValues,kInertStatements,kInertOperands,kLoopDeclarations,kDeclarationKinds
 };
-enum class RecoveryFact : std::uint8_t {kExpressions,kFlow,kLiveness,kDemand,kInitializations,kConstants,kCopies,kStatements,kCycles};
+enum class RecoveryFact : std::uint8_t {kExpressions,kFlow,kLiveness,kDemand,kInitializations,kConstants,kCopies,kStatements,kCycles,kLoopEntries};
 class RecoveryFactSet {
  public:
   constexpr RecoveryFactSet(std::initializer_list<RecoveryFact> facts) {
@@ -58,7 +58,7 @@ struct RecoveryPassContract {
     case RecoveryPass::kInertStatements:return {{Fact::kStatements},Scope::kNormalization};
     case RecoveryPass::kInertOperands:
       return {{Fact::kExpressions},Scope::kNormalization};
-    case RecoveryPass::kLoopDeclarations:return {{},Scope::kGrammar};
+    case RecoveryPass::kLoopDeclarations:return {{Fact::kLoopEntries},Scope::kGrammar};
     // Grammar-only const spelling changes neither values nor completion.
     case RecoveryPass::kDeclarationKinds:return {{Fact::kFlow},Scope::kGrammar};
   }
@@ -74,7 +74,7 @@ struct RecoveryPassContract {
   // initialization proof -> refined effects. They are one provider boundary,
   // not mutually scheduled optimization passes.
   if(result.Contains(RecoveryFact::kFlow)||result.Contains(RecoveryFact::kExpressions)) {
-    result.Add(RecoveryFact::kFlow);result.Add(RecoveryFact::kExpressions);
+    result.Add(RecoveryFact::kFlow);result.Add(RecoveryFact::kExpressions);result.Add(RecoveryFact::kLoopEntries);
   }
   return result;
 }
@@ -89,7 +89,7 @@ class RecoverySchedule {
   void RequireFact(RecoveryFact fact) const {
     RequireAnalysis();
     if(active_)RequireTree(RequiredFacts(*active_).Contains(fact),TreeStructureError::kOwnership);
-    else RequireTree(stage_==Stage::kGrammar&&(fact==RecoveryFact::kExpressions||fact==RecoveryFact::kFlow),TreeStructureError::kOwnership);
+    else RequireTree(stage_==Stage::kGrammar&&(fact==RecoveryFact::kExpressions||fact==RecoveryFact::kFlow||fact==RecoveryFact::kLoopEntries),TreeStructureError::kOwnership);
   }
   void Start(RecoveryPass pass) {
     RequireIdle();const auto scope=PassContract(pass).scope;

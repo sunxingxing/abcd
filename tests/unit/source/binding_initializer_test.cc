@@ -653,7 +653,8 @@ std::uint64_t NativeDeep(unsigned form, unsigned depth, bool reverse, bool emit)
   return plan.work;
 }
 }
-int main(int argc, char**) {
+int main(int argc, char** argv) {
+  if(argc==2 && std::string_view(argv[1])=="--loop-entry") {CheckLoopEntryProjection(true);return 0;}
   CheckExpressionInitializers(argc>1);
   CheckEntryInitializers(argc>1);
   for(const auto profile:{abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301})

@@ -1,5 +1,7 @@
 #include "../../../src/source/loop_syntax.h"
 #include "../../../src/source/loop_declarations.h"
+#include "../../../src/source/loop_entry_projection.h"
+#include "../../../src/source/source_names.h"
 #include "../../../src/source/binding_initializer.h"
 #include "../../../src/source/expression_children.h"
 #include "../../../src/source/nullish_syntax.h"
@@ -270,6 +272,58 @@ std::uint64_t Native(unsigned form, unsigned count, bool reverse, bool emit) {
   if (emit) std::cout << nlohmann::json{{"source", source.str()}, {"lexical", lexical}, {"binding", form}, {"count", count}} << '\n';
   return bindings.work;
 }
+void EntryScopeReads(bool reverse) {
+  FunctionTree tree{};tree.callable=CallableKind::kFunction;tree.parameter_scope={0};tree.body_scope={1};tree.body={0};
+  tree.scopes={{ScopeKind::kParameters,{}},{ScopeKind::kFunctionBody,ScopeId{0}},{ScopeKind::kBlock,ScopeId{1}}};
+  tree.origins={OriginalSite{{0},{0}}};tree.names={u"prefix",u"index"};
+  for(unsigned i=0;i<2;++i)tree.symbols.push_back({{1},{i},BindingKind::kCompilerTemporary,DeclarationKind::kLet,NameEvidence::kSynthesized,TemporaryReason::kPhiJoin});
+  tree.expressions={{IntegerLiteral{1},{0}},{AssignmentExpr{SymbolTarget{{0}},ExprId{0}},{0}},
+      {SymbolExpr{{1}},{0}},{IntegerLiteral{2},{0}},{AssignmentExpr{SymbolTarget{{1}},ExprId{3}},{0}},
+      {SymbolExpr{{0}},{0}},{SymbolExpr{{1}},{0}}};
+  tree.statements={{BlockStmt{{1},0,7},{0}},{DeclarationStmt{{0},{}},{0}},{DeclarationStmt{{1},{}},{0}},
+      {ExpressionStmt{{1}},{0}},{ExpressionStmt{{2}},{0}},{ExpressionStmt{{4}},{0}},
+      {LoopStmt{{8},{}},{0}},{ReturnStmt{ExprId{5}},{0}},{BlockStmt{{2},7,2},{0}},
+      {ExpressionStmt{{6}},{0}},{BreakStmt{{6},{}},{0}}};
+  tree.children={{1},{2},{3},{4},{5},{6},{7},{9},{10}};
+  test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  LoopSyntax loops;loops.initializers.resize(tree.statements.size());loops.initializers[6]=LoopInitializerSyntax{0,3};
+  loops.initializer_roots={{{3},{}},{{4},{}},{{5},{}}};
+  BindingInitializers plan;plan.statements.resize(tree.statements.size());plan.omitted.resize(tree.statements.size());
+  plan.loop_declarations.resize(tree.statements.size());plan.statements[3]=BindingInitializer{{0},{1},DeclarationKind::kLet};
+  plan.statements[5]=BindingInitializer{{1},{4},DeclarationKind::kLet};
+  std::vector<std::optional<StmtId>> declarations{StmtId{1},StmtId{2}};
+  const auto grammar=std::get<LoopDeclarations>(PlanLoopDeclarations(loops,plan,declarations));
+  std::vector<SourceRegion> regions{{{0},{3}},{{1},{3}},{{2},{3}}};
+  const SourceRegionId enclosing{reverse?2U:0U},loop{1};
+  std::vector<SourceAllocation> allocations{ScopeId{1},LegacyLoopAllocation{},ScopeId{2}};
+  if(reverse){std::reverse(regions.begin(),regions.end());std::reverse(allocations.begin(),allocations.end());}
+  std::vector<SourceBindingScope> original(2,OriginalBindingScope{enclosing}),projected(2,ProjectedBindingScope{loop});
+  std::vector<std::optional<SourcePosition>> occurrences(tree.statements.size(),SourcePosition{0});
+  for(unsigned i:{3U,4U,5U,6U})occurrences[i]=SourcePosition{1};
+  for(unsigned i:{8U,9U,10U})occurrences[i]=SourcePosition{2};
+  std::vector<LoopEntryOccurrence> entries(tree.statements.size());
+  for(unsigned i:{3U,4U,5U})entries[i]={StmtId{i},SourcePosition{0}};
+  const std::array<SourceSpellingId,2> spellings{SourceSpellingId{0},SourceSpellingId{1}};
+  const SourceScopeProjection scopes{regions,occurrences,projected,{},{},spellings,{},allocations};
+  const auto adapted=std::get<LoopEntryProjection>(ProjectLoopEntryFlow(grammar,plan.statements,{},original,scopes,entries));
+  std::vector<std::optional<SymbolId>> aliases(2);std::vector<std::optional<PrimitiveId>> literals(2);
+  std::vector<std::optional<ExprId>> replacements(tree.expressions.size());
+  std::vector<ExpressionEvaluation> evaluations(tree.expressions.size(),ExpressionEvaluation::kRequired);
+  std::vector<std::uint8_t> stores(tree.expressions.size(),1);
+  LegacyFlowProjection projection{aliases,literals,replacements,plan.omitted,evaluations,stores};
+  projection.initializers=adapted.initializers;projection.source_scopes=scopes;
+  projection.source_scopes.bindings=adapted.bindings;projection.source_scopes.occurrences=adapted.occurrences;
+  const auto flow=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,projection));
+  const std::array queries{SourceNameQuery{SymbolId{0},StmtId{7}},SourceNameQuery{SymbolId{1},StmtId{4}},SourceNameQuery{SymbolId{1},StmtId{9}}};
+  const auto names=std::get<SourceNameResults>(ResolveSourceNames(flow,queries));
+  test::Check(names.resolutions[0]==SourceNameResolution::kResolved);
+  test::Check(names.resolutions[1]==SourceNameResolution::kUnavailable);
+  test::Check(names.resolutions[2]==SourceNameResolution::kResolved);
+  const auto prefix=std::find_if(flow.definitions.begin(),flow.definitions.end(),[](const auto& definition){return definition.write==ExprId{1};});
+  test::Check(prefix!=flow.definitions.end() && prefix->kind==FlowDefinitionKind::kAssignment);
+  const auto native=std::find_if(flow.definitions.begin(),flow.definitions.end(),[](const auto& definition){return definition.write==ExprId{4};});
+  test::Check(native!=flow.definitions.end() && native->kind==FlowDefinitionKind::kInitializer);
+}
 void DeclarationBatches() {
   // Independent loops must use the same input revision, regardless of arena
   // order or application order. Grammar forces every retained expression
@@ -291,6 +345,67 @@ void DeclarationBatches() {
     }
     const auto result=std::get<LoopDeclarations>(PlanLoopDeclarations(loops,input,declarations));
     test::Check(result.starts.size()==count && result.demoted.size()==count && result.declarators.size()==count);
+    // Placement owns a whole immutable proposal. Grammar must consume all
+    // proposed initializers together, before any individual declaration edit
+    // enters commit, without reading partially applied plan state.
+    auto undecided=input;for(auto& initializer:undecided.statements)initializer.reset();
+    const auto proposal=std::get<LoopDeclarations>(PlanLoopDeclarations(loops,undecided,declarations,{}, {},input.statements));
+    test::Check(proposal.entries.size()==result.entries.size());
+    for(unsigned i=0;i<result.entries.size();++i)
+      test::Check(proposal.entries[i].statement==result.entries[i].statement && proposal.entries[i].loop==result.entries[i].loop);
+    test::Check(result.entries.size()==count*4);
+    for(unsigned i=0;i<count;++i)for(unsigned j=0;j<4;++j) {
+      const auto owner=reverse?count-1-i:i;
+      const auto found=std::find_if(result.entries.begin(),result.entries.end(),[&](const auto& entry){return entry.statement==StmtId{i*6+j};});
+      test::Check(found!=result.entries.end());
+      test::Check(found->loop==(j>=2?std::optional{StmtId{owner}}:std::nullopt));
+    }
+    std::vector<SourceBindingScope> original(count*2,OriginalBindingScope{SourceRegionId{0}});
+    std::vector<SourceBindingScope> projected(count*2,ProjectedBindingScope{SourceRegionId{1}});
+    std::vector<std::optional<SourcePosition>> occurrences(count*6,SourcePosition{1});
+    std::vector<LoopEntryOccurrence> entries(count*6);
+    std::vector<std::optional<DeclarationCompletion>> completions(count*6);
+    for(unsigned i=0;i<count;++i) {
+      // A prefix root and its independently stored descendant keep the
+      // enclosing source region; the native suffix stays in its loop region.
+      for(unsigned j=0;j<4;++j)entries[i*6+j]={StmtId{i*6+j},SourcePosition{0}};
+      entries[i*6+4]={StmtId{i*6},SourcePosition{0}};
+      entries[i*6+5]={StmtId{i*6+3},SourcePosition{0}};
+      completions[i*6]=DeclarationCompletion{SymbolId{i*2},{},DeclarationKind::kLet};
+    }
+    const SourceScopeProjection scopes{{},occurrences,projected};
+    const auto adapted=std::get<LoopEntryProjection>(ProjectLoopEntryFlow(result,input.statements,completions,original,scopes,entries));
+    for(unsigned i=0;i<count;++i) {
+      test::Check(!adapted.initializers[i*6]);
+      test::Check(adapted.initializers[i*6+3].has_value());
+      test::Check(std::holds_alternative<OriginalBindingScope>(adapted.bindings[i*2]));
+      test::Check(std::holds_alternative<ProjectedBindingScope>(adapted.bindings[i*2+1]));
+      test::Check(adapted.completions[i*6]->kind==DeclarationCompletionKind::kAssignUndefined);
+      test::Check(adapted.occurrences[i*6]==SourcePosition{0});
+      test::Check(adapted.occurrences[i*6+4]==SourcePosition{0});
+      test::Check(adapted.occurrences[i*6+3]==SourcePosition{1});
+      test::Check(adapted.occurrences[i*6+5]==SourcePosition{1});
+    }
+    test::Check(std::holds_alternative<LoopEntryProjection>(ProjectLoopEntryFlow(result,input.statements,completions,original,scopes,entries,{adapted.allocated_bytes,adapted.work})));
+    test::Check(std::get<TreeStructureError>(ProjectLoopEntryFlow(result,input.statements,completions,original,scopes,entries,{adapted.allocated_bytes-1,adapted.work}))==TreeStructureError::kResourceLimit);
+    test::Check(std::get<TreeStructureError>(ProjectLoopEntryFlow(result,input.statements,completions,original,scopes,entries,{adapted.allocated_bytes,adapted.work-1}))==TreeStructureError::kWorkLimit);
+    // A trial must plan against its own omission delta. Removing its only
+    // retained declarator leaves an expression entry, never a lexical suffix
+    // inferred from another revision's declaration metadata.
+    auto trial_omitted=input.omitted;
+    for(unsigned i=0;i<count;++i)trial_omitted[i*6+3]=1;
+    const auto trial=std::get<LoopDeclarations>(PlanLoopDeclarations(loops,input,declarations,{},trial_omitted));
+    for(const auto& entry:trial.entries)test::Check(!entry.loop);
+    const auto trial_projection=std::get<LoopEntryProjection>(ProjectLoopEntryFlow(trial,input.statements,completions,original,scopes,entries));
+    for(unsigned i=0;i<count;++i) {
+      test::Check(!trial_projection.initializers[i*6+3]);
+      test::Check(trial_projection.occurrences[i*6+5]==SourcePosition{0});
+    }
+    // Missing canonical occurrence precision stays missing. It cannot fall
+    // back to the prospective loop region after a prefix was outlined.
+    auto unknown=entries;unknown[4].enclosing.reset();
+    const auto unknown_projection=std::get<LoopEntryProjection>(ProjectLoopEntryFlow(result,input.statements,completions,original,scopes,unknown));
+    test::Check(!unknown_projection.occurrences[4]);
     // Planning must not alter declarations or omission facts.
     for(unsigned i=0;i<count;++i) {
       test::Check(!input.loop_declarations[i]);test::Check(input.statements[i*6].has_value());
@@ -313,6 +428,9 @@ void DeclarationBatches() {
     }
     const auto again=std::get<LoopDeclarations>(PlanLoopDeclarations(loops,applied,declarations));
     test::Check(again.starts.empty() && again.demoted.empty() && again.declarators.empty());
+    test::Check(again.entries.size()==result.entries.size());
+    for(unsigned i=0;i<result.entries.size();++i)
+      test::Check(again.entries[i].statement==result.entries[i].statement && again.entries[i].loop==result.entries[i].loop);
     // Removing the final binding invalidates an earlier grammar suffix. The
     // planner explicitly clears it instead of retaining a stale declarator.
     auto without=applied;
@@ -323,13 +441,15 @@ void DeclarationBatches() {
     test::Check(std::holds_alternative<LoopDeclarations>(PlanLoopDeclarations(loops,input,declarations,{result.allocated_bytes,result.work})));
     test::Check(std::get<TreeStructureError>(PlanLoopDeclarations(loops,input,declarations,{result.allocated_bytes-1,result.work}))==TreeStructureError::kResourceLimit);
     test::Check(std::get<TreeStructureError>(PlanLoopDeclarations(loops,input,declarations,{result.allocated_bytes,result.work-1}))==TreeStructureError::kWorkLimit);
-    if(!reverse){if(count>=400)test::Check(result.work<previous*3);previous=result.work;}
+    if(!reverse){if(count>=400)test::Check(result.work+adapted.work<previous*3);previous=result.work+adapted.work;}
   }
 }
 
 }
-int main(int argc, char**) {
+int main(int argc, char** argv) {
+  for(bool reverse:{false,true})EntryScopeReads(reverse);
   DeclarationBatches();
+  if(argc==2 && std::string_view(argv[1])=="--entry-projection")return 0;
   std::array<std::uint64_t, 3> small{}, large{};
   for (unsigned form = 0; form < 13; ++form) for (unsigned count : {0U, 1U, 200U, 201U, 400U, 800U}) for (bool reverse : {false, true}) {
     Fixture fixture(form, count, reverse); const auto planned = PlanLoopSyntax(fixture.tree);
