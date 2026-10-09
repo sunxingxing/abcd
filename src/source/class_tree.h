@@ -15,6 +15,7 @@ struct ClassStaticFields {
   FunctionContext context;
   FunctionTree tree;
   abc::EntityOffset record;
+  TreeFlow flow;
 };
 // Original input failure at a real root or descendant creation occurrence.
 // The entire containing class member is omitted; a nested callback never gets

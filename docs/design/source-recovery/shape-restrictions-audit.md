@@ -2920,3 +2920,19 @@ definitions, abrupt/suspend/cycle and cleanup obligations stay independent. Requ
 entry evaluation is not deleted by whole-region inertness. Legacy unsupported branch
 program synthesis/fullfinally remains a capability gap, not a new admission pattern.
 See status.md and unified-variables.md for implementation and selected evidence.
+
+
+### 2026-10-09 rules252: original normal values and checked occurrences
+
+Normal-domain recovery consumes ValueKinds from the already checked SSA/result
+and operand correspondence. It never selects recovery from opcode names, source
+spelling, PC, block adjacency, snapshot producer kinds or selection counts. The
+exhaustive typed source operator table proves absence of primitive coercion hooks
+and language exceptions; initialization/GetValue, child effects, resource contract
+and binding identity remain separate. Original raw effects are not blindly treated
+as the normalized source event's effects. Original input absence is conservative,
+not a new strict publication wrapper. Canonical tree changes replace correspondence.
+Tests permute SSA IDs and expression/statement arenas, introduce copies and split
+blocks; unknown-value coercion and removed-conversion execution mutants reject
+false elimination. Full reference/phase projection and binding activations stay
+open; no new local admission or pass round is introduced.

@@ -1,4 +1,5 @@
 #include "tree_semantics.h"
+#include "original_flow.h"
 
 #include <new>
 #include <stdexcept>
@@ -29,8 +30,12 @@ std::variant<TreeSemantics, TreeSemanticError> VerifySemantics(
     TreeCheckBudget checked(budget);
     checked.Admit(flow->allocated_bytes, 1);
     checked.Step(flow->work);
-    CheckTreeOperands(graph, evaluation, tree, *flow, constants, checked);
+    auto original=RetainOriginalFlow(graph,tree,*flow,checked);
+    CheckTreeOperands(graph, evaluation, tree, *flow, constants, checked,*original);
     CheckTreeCorrespondenceOrigins(graph, evaluation, tree, *flow, checked);
+    IndexOriginalInputs(*original,checked);
+    flow->original=std::move(original);
+    flow->allocated_bytes=checked.Bytes();
     return TreeSemantics{graph.revision, graph.cfg_revision, checked.Bytes(), checked.Work(), std::move(*flow)};
   } catch (Error error) { return error;
   } catch (TreeStructureError error) {

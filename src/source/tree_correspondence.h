@@ -12,7 +12,7 @@ inline void RequireMeaning(bool condition, TreeSemanticError error) {
 // invocation. Never accept cached mutable TreeFlow as a public certificate.
 void CheckTreeOperands(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
-    const TreeFlow& flow, ExpressionConstants constants, TreeCheckBudget& budget);
+    const TreeFlow& flow, ExpressionConstants constants, TreeCheckBudget& budget, OriginalFlow& original);
 void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, const FunctionTree& tree, const TreeFlow& flow, TreeCheckBudget& budget);
 }  // namespace abcd::source

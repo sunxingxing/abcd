@@ -13,7 +13,7 @@ namespace abcd::source {
 namespace {
 using Error = TreeStructureError;
 enum class Ownership { kCanonical, kPrinted };
-struct TreeView { const FunctionTree* tree; std::size_t symbols = 0, expressions = 0; };
+struct TreeView { const FunctionTree* tree; const OriginalFlow* original=nullptr; std::size_t symbols = 0, expressions = 0; };
 struct Owner { FunctionOwnerId owner; std::size_t tree; };
 struct SymbolScope { std::optional<CapturedSymbol> capture; std::optional<std::size_t> depth; bool external = false; };
 struct Candidate {
@@ -65,9 +65,12 @@ class NamePlan {
         budget_.Step(); const auto& tree = *trees_[i].tree;
         const auto found=std::lower_bound(supplied.begin(),supplied.end(),&tree,
             [&](auto entry,auto key){return less(entry->tree,key);});
-        if(found!=supplied.end()&&(*found)->tree==&tree) projections_[i]=&(*found)->bindings;
+        if(found!=supplied.end()&&(*found)->tree==&tree) {
+          RequireTree(!trees_[i].original||(*found)->original==trees_[i].original,Error::kOwnership);
+          projections_[i]=&(*found)->bindings;
+        }
         else {
-          prepared_[i]=Consume(PrepareSourceVariables(tree,budget_.Remaining()));
+          prepared_[i]=Consume(PrepareSourceVariables(tree,budget_.Remaining(),trees_[i].original));
           projections_[i]=&prepared_[i].bindings;
         }
       }
@@ -175,7 +178,7 @@ class NamePlan {
   }
   void AddFamily(const ConstructedFamily& family) {
     RequireTree(family.root.value < family.members.size(), Error::kBinding);
-    for (const auto& member : family.members) { budget_.Step(); Grow(trees_, TreeView{&member.tree}); }
+    for (const auto& member : family.members) { budget_.Step(); Grow(trees_, TreeView{&member.tree,member.flow.original.get()}); }
   }
   void AddClass(const ClassTree& tree) {
     Grow(candidates_, Candidate{&tree});
@@ -183,7 +186,7 @@ class NamePlan {
     for (const auto& member : tree.members) { budget_.Step(); if (member) AddFamily(member->Family()); }
     for (const auto& definition : tree.definitions)
       for (const auto& member : definition.bodies) { budget_.Step(); if (member) AddFamily(member->Family()); }
-    if (tree.initializer) Grow(trees_, TreeView{&tree.initializer->tree});
+    if (tree.initializer) Grow(trees_, TreeView{&tree.initializer->tree,tree.initializer->flow.original.get()});
   }
   bool Less(std::u16string_view a, std::u16string_view b) {
     budget_.Step(std::min(a.size(), b.size()) + 1); return a < b;

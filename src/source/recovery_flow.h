@@ -4,6 +4,7 @@
 #include "tree_structure.h"
 #include "expression_observation.h"
 #include "primitive_value.h"
+#include "original_flow.h"
 #include <type_traits>
 namespace abcd::source {
 struct FlowPoint { std::uint32_t value = 0; auto operator<=>(const FlowPoint&) const = default; };
@@ -100,6 +101,8 @@ struct FlowReference {
   // Current occurrence owner, transported through replacement/forwarding.
   // The source expression identity alone cannot locate a moved evaluation.
   std::optional<StmtId> owner;
+  // Original operand occurrences, distinct from current projected binding.
+  std::optional<OriginalInputRange> original;
 };
 // Free lexical names are observations, not bindings with local definitions.
 // Their original expression and current owner are distinct after forwarding.
@@ -167,8 +170,8 @@ struct FlowEdge {
 };
 // Temporary migration adapter, explicitly not the canonical semantic input.
 // Effect summaries bootstrap conservatively and refine from shared flow
-// initialization facts. Original-IR correspondence remains a migration gap;
-// this view must not become a second source of truth for new optimizations.
+// initialization and original normal-value facts. The full operation/completion
+// projection is still a migration gap; this view must not duplicate ISA rules.
 struct LegacyFlowProjection {
   std::span<const std::optional<SymbolId>> aliases;
   std::span<const std::optional<PrimitiveId>> literals;
@@ -198,12 +201,19 @@ struct LegacyFlowProjection {
   std::span<const std::optional<SymbolId>> normal_bindings;
   std::span<const std::optional<SymbolId>> read_sources;
   std::span<const std::optional<ExprId>> statement_values;
+  std::span<const analysis::ValueKinds> normal_kinds;
+  const OriginalFlow* original=nullptr;
   [[nodiscard]] std::optional<PrimitiveId> ReadLiteral(ExprId expression,SymbolId binding) const {
     if(!read_literals.empty()&&read_literals[expression.value])return read_literals[expression.value];
     return literals[binding.value];
   }
 };
 struct RecoveryFlow {
+  // Borrowed from the prepared owner, which outlives all revision-owned facts.
+  // The original graph is immutable; source projections never rewrite it.
+  const OriginalFlow* original=nullptr;
+  std::vector<analysis::ValueKinds> normal_kinds;
+  std::vector<std::optional<FlowPoint>> normal_exits;
   RouteInputIdentity identity;
   analysis::IrRevision value_revision;
   analysis::CfgRevision cfg_revision;

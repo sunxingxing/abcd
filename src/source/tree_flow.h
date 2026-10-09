@@ -5,6 +5,7 @@
 #include "evaluation_plan.h"
 
 namespace abcd::source {
+struct OriginalFlow;
 struct ExceptionTreeInput;
 // Reuse is confined to one synchronous construction: the builder has checked
 // this exact control input and has not modified it. Independent callers must
@@ -81,6 +82,7 @@ struct TreeFlow {
   // Private boolean routing expressions checked by the completion projection.
   std::vector<ExprId> completion_expressions;
   std::optional<ExprId> hole_initializer;
+  std::shared_ptr<const OriginalFlow> original;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };

@@ -3693,3 +3693,31 @@ lazy. The slow independent 3-node ancestor reference covers 16384 entry forests;
 actual source tests cover equivalent layouts, 200/201 and geometric growth, retained
 entry effects/receiver/exception/suspension and adverse semantic transformations.
 These bounded work counters are not resumed process RSS or benchmark evidence.
+
+
+### Retained original SSA facts and source normal domains (rules252)
+
+Provenance: the existing verified ValueProgram/TreeFlow/operand correspondence,
+ValueKinds abstract domain and the existing ECMA-262 source semantics adapter;
+local C++20 implementation, no added external dependency or license. Original
+operation variants are not cloned or reinterpreted. Original immutable arrays are
+shared by their prepared owner; current recovery graphs borrow the input during
+analysis, retaining only current source domain/continuation/reference projections.
+
+Let O,V,U,B,E,P,A be original operation/value/use/block/edge/phase-or-exit/origin
+counts, X source expressions and I checked operand occurrences (normalization may
+expand an original use). Retention takes O(O+V+U+B+E+P+A+X) work/storage; collecting
+inputs takes amortized O(I), then one counting scatter O(X+I) with O(X+I) scratch.
+No per-read graph walk or sorted name/PC lookup. The shared_ptr control block is
+charged using allocate_shared's actual rebound allocation, not a guessed overhead;
+deallocation uses the standard allocator and cannot read the construction budget.
+Source normal-domain transport adds O(X) storage/work per requested exact projection,
+and original input ranges attach to R references in O(R). Source-only fallback has
+no normal-domain array; absent facts stay conservative. Other existing graph/fact
+costs remain, so this does not claim whole recovery is linear or convergence closed.
+
+Fixtures expose real O/V/U/E dimensions and construction work/bytes. Boundary
+200/201 and geometric200/400/800 copy chains exercise normal/unknown domains,
+SSA renumbering, block splits and arena reversal. Exact/one-short source preparation
+budgets reject insufficient work/storage. These counters are accounted complexity
+evidence, not process RSS or a resumed benchmark. Full-corpus/RSS remain paused.

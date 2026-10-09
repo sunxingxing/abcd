@@ -1,4 +1,5 @@
 #include "recovery_flow.h"
+#include "expression_observation.h"
 #include "binding_initializer.h"
 #include "recovery_scratch.h"
 #include "expression_children.h"
@@ -36,6 +37,13 @@ class FlowBuilder {
     discarded_=std::move(result_.discarded);discarded_.clear();
   }
   RecoveryFlow Run() {
+    result_.original=projection_.original;
+    if(result_.original)CheckOriginalFlow(tree_,*result_.original);
+    RequireTree(projection_.normal_kinds.empty()||projection_.normal_kinds.size()==tree_.expressions.size(),Error::kOwnership);
+    Resize(result_.normal_kinds,projection_.normal_kinds.size());
+    std::copy(projection_.normal_kinds.begin(),projection_.normal_kinds.end(),result_.normal_kinds.begin());
+    Resize(result_.normal_exits,projection_.original?tree_.expressions.size():0);
+    for(auto& exit:result_.normal_exits){budget_.Step();exit.reset();}
     RequireTree(projection_.statement_values.empty()||projection_.statement_values.size()==tree_.statements.size(),Error::kOwnership);
     RequireTree(projection_.stable_entries.empty()||projection_.stable_entries.size()==tree_.symbols.size(),Error::kOwnership);
     RequireTree(projection_.read_bindings.empty()||projection_.read_bindings.size()==tree_.symbols.size(),Error::kOwnership);
@@ -85,6 +93,12 @@ class FlowBuilder {
     result.events=std::move(events_);result.edges=std::move(edges_);
     result.definitions=std::move(definitions_);result.references=std::move(references_);result.names=std::move(names_);
     result.discarded=std::move(discarded_);
+    if(result.original)for(auto& reference:result.references) {
+      budget_.Step();if(const auto* expression=std::get_if<ExprId>(&reference.site)) {
+        const auto range=result.original->input_ranges[expression->value];
+        if(range.count)reference.original=range;
+      }
+    }
     copy(result.statements,statements_);copy(result.expressions,expressions_);
     const auto& scopes=projection_.source_scopes;
     RequireTree(scopes.occurrences.empty() || scopes.occurrences.size()==tree_.statements.size(),Error::kOwnership);
@@ -234,6 +248,7 @@ class FlowBuilder {
     const auto start=expressions_[at.id.value];const auto& context=at.context;
     current_owner_=context.owner;current_entry_evaluation_=context.entry_evaluation;
     events_[start.value].owner=context.owner;events_[start.value].entry_evaluation=context.entry_evaluation;
+    if(!result_.normal_exits.empty())result_.normal_exits[at.id.value]=context.next;
     result_.value_uses[at.id.value]=context.value_use;
     result_.expression_owners[at.id.value]=context.owner;
     if(!result_.expression_transports.empty())result_.expression_transports[at.id.value]=context.transport;
@@ -260,7 +275,7 @@ class FlowBuilder {
     }
     const auto effect=New({FlowEventKind::kEvaluation,{},{},at.id});auto normal=context.next;
     events_[effect.value].discarded=context.discarded;
-    bool required=IntrinsicEvaluation(node)==ExpressionEvaluation::kRequired &&
+    bool required=NormalValueEvaluation(node,result_.normal_kinds,ResourceFailures(tree_.identity.contract))==ExpressionEvaluation::kRequired &&
         projection_.evaluations[at.id.value]!=ExpressionEvaluation::kInert;
     if(const auto* read=std::get_if<SymbolExpr>(&node)) {
       if(!projection_.ReadLiteral(at.id,read->symbol)) {
@@ -299,7 +314,7 @@ class FlowBuilder {
     if(context.discarded && required)discarded_[context.discarded->value].effect=ExpressionEvaluation::kRequired;
     const bool suspension=std::holds_alternative<AwaitExpr>(node)||std::holds_alternative<YieldExpr>(node);
     Link(effect,normal,suspension?FlowCompletion::kResumeNext:FlowCompletion::kNormal);
-    if(IntrinsicEvaluation(node)==ExpressionEvaluation::kRequired &&
+    if(NormalValueEvaluation(node,result_.normal_kinds,ResourceFailures(tree_.identity.contract))==ExpressionEvaluation::kRequired &&
         projection_.evaluations[at.id.value]!=ExpressionEvaluation::kInert &&
         !projection_.normal_stores[at.id.value])Link(effect,context.thrown,suspension?FlowCompletion::kResumeThrow:FlowCompletion::kThrow);
     if(suspension)events_[effect.value].kind=FlowEventKind::kSuspend;
@@ -494,7 +509,7 @@ std::variant<FlowRefinement,TreeStructureError> RefineRecoveryFlowEffects(
         continue;
       }
       const auto id=*event.expression;const auto& node=tree.expressions[id.value].expression;
-      bool required=IntrinsicEvaluation(node)==ExpressionEvaluation::kRequired &&
+      bool required=NormalValueEvaluation(node,flow.normal_kinds,ResourceFailures(tree.identity.contract))==ExpressionEvaluation::kRequired &&
           evaluations[id.value]!=ExpressionEvaluation::kInert;
       if(std::holds_alternative<AssignmentExpr>(node))required=assignments[id.value]==ExpressionEvaluation::kRequired;
       event.effect=required?ExpressionEvaluation::kRequired:ExpressionEvaluation::kInert;

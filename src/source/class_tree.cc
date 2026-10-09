@@ -317,7 +317,8 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
           evaluation, std::move(syntax.syntax), constants, budget));
       admit(built.allocated_bytes, 1); step(built.work);
       if (aliases) step(Take<std::uint64_t>(VerifyModuleAliasTree(*aliases, evaluation, built.tree, budget)));
-      fields = ClassStaticFields{*initializer, std::move(body.context), std::move(built.tree), body.function.input.Record()};
+      if(!built.flow)throw ClassTreeFailure{Error::kCreation};
+      fields = ClassStaticFields{*initializer, std::move(body.context), std::move(built.tree), body.function.input.Record(),std::move(*built.flow)};
     }
     if (file.CheckUnchanged()) return ClassTreeFailure{abc::MetadataError::kFileChanged};
     tree.initializer = std::move(fields);

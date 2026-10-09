@@ -8,6 +8,7 @@
 #include "abcd/source/verified_function.h"
 
 namespace abcd::source {
+struct OriginalFlow;
 struct GeneratedRange {
   std::size_t begin = 0;
   std::size_t end = 0;
@@ -71,8 +72,11 @@ struct PrintedFunction {
 [[nodiscard]] std::variant<PrintedFunction, TreePrintError> PrintStaticFields(
     const FunctionTree& tree, std::ostream& output,
     EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {}, std::size_t indent = 0,
-    const GlobalScope* scope = nullptr, std::optional<abc::EntityOffset> record = {});
+    const GlobalScope* scope = nullptr, std::optional<abc::EntityOffset> record = {},
+    const OriginalFlow* original = nullptr);
 
+// Optional original facts must belong to this exact unchanged checked tree and
+// outlive printing. They refine analysis, never authorize publication.
 // Direct syntax output, including marked partial trees. No CFG/SSA or publication
 // owner is required. Structural safety is checked before writing; callers retain
 // ownership and must not mutate the tree during printing. Standalone function/
@@ -80,7 +84,7 @@ struct PrintedFunction {
 [[nodiscard]] std::variant<PrintedFunction, TreePrintError> PrintFunctionTree(
     const FunctionTree& tree, std::ostream& output,
     EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {},
-    const GlobalScope* scope = nullptr);
+    const GlobalScope* scope = nullptr,const OriginalFlow* original = nullptr);
 
 // Output context for an otherwise unchanged initializer AST. Only the record
 // adapter may select this after proving a sole anonymous default export. The
@@ -95,7 +99,7 @@ struct ModuleDefaultExport { StmtId declaration; ModuleSymbol binding; };
     const FunctionTree& tree, std::ostream& output,
     EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {},
     const GlobalScope* scope = nullptr,
-    std::optional<ModuleDefaultExport> default_export = {});
+    std::optional<ModuleDefaultExport> default_export = {},const OriginalFlow* original = nullptr);
 
 // Emits a member fragment for a CLASS body, not an object literal or ordinary
 // function. The containing class/record still needs its own creation proof.

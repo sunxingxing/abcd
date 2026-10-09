@@ -16,6 +16,31 @@ cells、copies、catch commits、原操作表达式和 origin 身份。源语法
 binding allocation/初始化/离开另建显式事件，不能冒充原 SSA operation。
 独立 FunctionTree 测试走同一源码事件适配器，但不得伪造原 IR 证明。
 
+规则252接入了这个入口的第一段实际消费：最终 TreeFlow 共享拥有
+OriginalFlow 的原始定义、使用链、CFG、exception exits/phases/origins 和
+normal/before_throw/exceptional operation 事实。OperandCheck 的同一次核对
+发布 raw/resolved operand、UseId（原展开不存在单一 use 时明确缺失）与
+ExprId 的关系；同一个表达式的多个 normal value 域保守 join，正常结果不
+冒充 throwing completion 的值。控制操作的 predicate/return operand 映射
+与 result 区分，缺失 operation-expression 不伪造一个源码节点。
+
+SourceVariables 及各实际生产准备入口传递同一原始输入，exact revision
+ExpressionFacts 基于它生成当前 normal domains；literal/replacement/transport
+消费实际 producer 的域。源码 flow 关联原始 input ranges 与当前 normal
+continuations，并消费这些共同 domains。只有一个穷尽语言 effects 表；
+缺域的 IntrinsicEvaluation 是该表的保守调用，不保留平行语义分支。
+正常域不能给声明初始化、值相等、binding/cell identity 或 motion permission
+提供替代证明；所有 child GetValue、normal write 与 throw/resume 义务独立。
+原始 VM flags 不是规范化源码事件的逐一 effects 证书，不能直接覆盖语言表。
+
+原始输入必须属于同一 unchanged checked tree；维度/identity/revision 检查
+不是重新验证可变 AST 的证书。规范 AST 变换必须重新验证并替换输入；
+源码计划的值保持投射则在 exact revision 下重新分析实际 producer。
+共享拥有原始输入，分析期借用，避免每次重建 source flow 复制原始 graph。
+直接/partial tree 的原始输入缺失保持显式，不能伪装成原始对应。
+原始 operation/reference/phase 的完整多对多投射仍开放；Task1 和整个
+五项交付主干均不能因这段值域/使用点贯通而关闭。
+
 核心类型为 FlowPoint、FlowDefinition、FlowReference、FlowCompletion、
 FlowBinding；均为强 ID/typed variant。定义记录参数/undefined初始化/
 表达式结果/赋值/phi 来源。引用区分绑定与属性，捕获保存单元身份而非值。

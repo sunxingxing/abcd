@@ -36,6 +36,46 @@
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
 
+### 2026-10-09：规则252，原始 SSA 值域与使用点接入共同恢复事实
+
+- 主干第1项的实施子闭环：在同一次 TreeSemantics 校验中保留 OriginalFlow，
+  含原定义/使用/CFG边/阶段/来源及操作 normal、before_throw、exceptional、
+  success-only result。操作不复制 opcode variant，不新增第二套 ISA 解码。
+  OperandCheck 将已经核对的 raw/resolved operand、真实 UseId 与 ExprId 一次
+  发布；结果域与多个对应值保守 join。不是按 PC、名字或布局寻找来源。
+- 最终 TreeFlow 共享拥有这些不可变事实。普通函数、family、record 根与
+  类静态初始化均传到 SourceVariables；默认签名/类正文的规范树变换替换
+  最终对应。record family 退出重复 VerifyTreeFlow 路径，直接移动最终校验
+  的 flow；class-name/打印准备按同一 tree 和 original 输入借用计划。
+  直接/partial FunctionTree 仍允许缺原始输入，保守输出，不制造证明。
+- exact projection 的共同 ExpressionFacts 消费正常值域；替换沿实际 producer
+  传播域，primitive 按实际值给域。唯一穷尽语言表同时服务效果分析、flow
+  构建与初始化后的 refinement；旧 IntrinsicEvaluation 仅为缺域调用入口。
+  域可排除已知 primitive 的转换 hook/语言异常，不能证明初始化、值相等、
+  可共享 cell 或删除子 GetValue/效果。原始 VM guard/protocol effects 不由
+  原始 flags 直接消除；String concat 继续尊重 resource contract。
+- RecoveryFlow 关联原始输入 ranges 和源码表达式 normal continuation，原始
+  OpResult 的 commit 与异常出口保持独立。事实保留/输入 scatter 线性、所有
+  容量与实际 shared control-block 分配计入预算；每 pass 不复制原始 graph。
+  原始 effects 已保留，但到共同效果/完成事件的完整映射尚未闭合，特别是
+  normalized multi-operation、绑定/属性 reference 与签名/协议投射。
+- 有效 consumer mutant：保留全部原始元数据、移除实际 SSA 域读取，fresh
+  function_tree_test SIGABRT check190。新的 independent source 对照覆盖未知
+  hook/throw/BigInt、正常 Number、复制、SSA 重编号、block split、反向源码
+  arenas、200/201/400/800、精确/短预算与维度成本；最终96源码、2880次
+  独立执行比较、4个语义反例通过。首轮新增metrics脚本早于配套binary导致
+  缺字段失败，该混合版本结果作废；随后冻结代码版本重跑完整有限集合。
+- 最终29目标构建86.39秒，exact选定60/60项CTest491.29秒通过；包含原59项
+  与新增original_flow_source_test，名称集合由combined-coverage.json核对。
+  fresh固定pasteboard导出2.86秒：19records、10complete/0partial/
+  9no-module，10源码语法检查通过，输出字节与规则251一致，输入SHA前后
+  不变；language_numeric_constructors_v1与原预算保持。最终目标构建
+  无warning/error。证据build/stage-one/original-flow-verification；本轮
+  独立执行对照使用生成的JS，未宣称平台解释器或全corpus验收。
+- 五项主干仍均未关闭；下一步继续原始 operation/reference/phase 到共同
+  模型的完整对应，再推进普通绑定生命期、试算模型与依赖收敛。暂停其他
+  表现优化；不恢复 full suite/corpus/RSS/DFX/benchmarks/agents。
+
 ### 2026-10-09：规则251，共同入口求值与剩余控制分离
 
 - 共同adapter一次发布mandatory entry-value及其事件来源；statement分析

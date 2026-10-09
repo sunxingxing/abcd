@@ -1,6 +1,8 @@
 #include "source_names.h"
 #include "source_name_retirement.h"
 #include "binding_initializer.h"
+#include "original_flow.h"
+#include "expression_observation.h"
 #include "recovery_schedule.h"
 #include "binding_interference.h"
 #include "storage_coalescing.h"
@@ -51,7 +53,8 @@ struct StatementVisit {
 class Initializers {
  public:
   Initializers(const FunctionTree& tree, const LoopSyntax& loops, const NullishSyntax& nullish,
-      TreeCheckBudget& budget) : tree_(tree), loops_(loops), nullish_(nullish), budget_(budget) {
+      TreeCheckBudget& budget,const OriginalFlow* original) : tree_(tree), loops_(loops), nullish_(nullish), budget_(budget), original_(original) {
+    if(original_)CheckOriginalFlow(tree_,*original_);
     budget.Array(plan_.statements, tree.statements.size()); budget.Array(plan_.omitted, tree.statements.size());
     budget.Array(plan_.statement_values,tree.statements.size());
     budget.Array(plan_.loop_declarations, tree.statements.size());
@@ -326,6 +329,7 @@ class Initializers {
     std::vector<std::uint8_t> normal_stores;
     std::vector<ExpressionEvaluation> evaluations;
     std::vector<LexicalDependency> lexical;
+    std::vector<analysis::ValueKinds> kinds;
   };
   // All event-indexed and expression facts belong to one immutable projection.
   // A commit destroys this aggregate, so adding an analysis cannot accidentally
@@ -882,7 +886,7 @@ class Initializers {
     const LegacyFlowProjection projection{plan_.aliases,plan_.literals,replacements,
         omitted,expressions.evaluations,expressions.normal_stores,plan_.statements,private_bindings,
         plan_.storage,plan_.undefined_stores,plan_.declaration_values,plan_.declaration_completions,
-        {source_regions_,source_occurrences_,source_bindings,source_shadows_,unique_spellings_,spellings_,name_spellings_},plan_.read_literals,transports,transported_reads,plan_.read_bindings,stable_entries_,normal_bindings,plan_.read_sources,plan_.statement_values};
+        {source_regions_,source_occurrences_,source_bindings,source_shadows_,unique_spellings_,spellings_,name_spellings_},plan_.read_literals,transports,transported_reads,plan_.read_bindings,stable_entries_,normal_bindings,plan_.read_sources,plan_.statement_values,expressions.kinds,original_};
     auto built=BuildRecoveryFlow(tree_,projection,budget_.Remaining(),std::move(storage));
     if(const auto* error=std::get_if<TreeStructureError>(&built))throw *error;
     auto flow=std::get<RecoveryFlow>(std::move(built));
@@ -1354,6 +1358,7 @@ class Initializers {
     budget_.Array(facts.normal_stores, tree_.expressions.size());
     budget_.Array(facts.evaluations, tree_.expressions.size());
     budget_.Array(facts.lexical,tree_.expressions.size());
+    budget_.Array(facts.kinds,original_?tree_.expressions.size():0);
     auto& stored = facts.bindings;
     // All facts describe one unchanged projection. The analysis is const and
     // publishes no plan state; proposal/commit consumers own all mutations.
@@ -1370,11 +1375,15 @@ class Initializers {
       // Use the existing finish order, not arena order or a local syntax match.
       auto& result = stored[id.value];facts.roots[id.value]=id;
       auto& literal=facts.literals[id.value];
+      analysis::ValueKinds unmodeled;
+      auto& kinds=original_?facts.kinds[id.value]:unmodeled;
+      kinds=original_&&original_->normal_kinds[id.value]?*original_->normal_kinds[id.value]:analysis::ValueKinds::Language();
       const auto join = [&](ExprId left, ExprId right) -> std::optional<SymbolId> {
         return stored[left.value] == stored[right.value] ? stored[left.value] : std::nullopt;
       };
       if(const auto transport=plan_.transports[id.value]) {
-        literal=transport->replacement;facts.evaluations[id.value]=ExpressionEvaluation::kInert;
+        literal=transport->replacement;kinds=PrimitiveKinds(LiteralValue(*literal));
+        facts.evaluations[id.value]=ExpressionEvaluation::kInert;
         facts.lexical[id.value]=LexicalDependency::kReferences;
         continue;
       }
@@ -1382,12 +1391,13 @@ class Initializers {
         facts.roots[id.value]=facts.roots[replacement->value];
         result = stored[replacement->value];
         literal=facts.literals[replacement->value];
+        if(original_)kinds=facts.kinds[replacement->value];
         facts.evaluations[id.value] = facts.evaluations[replacement->value];
         facts.lexical[id.value]=facts.lexical[replacement->value];
         continue;
       }
       const auto equation=ProjectedValueEquation(id);
-      auto evaluation = IntrinsicEvaluation(node);
+      auto evaluation = NormalValueEvaluation(node,facts.kinds,ResourceFailures(tree_.identity.contract));
       auto lexical=IntrinsicLexicalDependency(node);
       if (const auto* read = std::get_if<SymbolExpr>(&node)) {
         literal=plan_.ReadLiteral(id,read->symbol);
@@ -1441,6 +1451,13 @@ class Initializers {
           }
         } else static_assert(std::is_same_v<T,UnknownFlowValue>||std::is_same_v<T,FlowBindingValue>);
       },equation);
+      if(literal)kinds=PrimitiveKinds(LiteralValue(*literal));
+      else if(original_) {
+        if(const auto* value=std::get_if<FlowExpressionValue>(&equation))kinds=facts.kinds[value->expression.value];
+      }
+      // Original domains remain normal-result proofs. Source replacements use
+      // their actual producer's domain; no type fact bypasses child GetValue,
+      // initialization or effect completion.
       VisitExpressionChildren(tree_, node, [&](ExprId child) {
         budget_.Step(); if (facts.evaluations[child.value] == ExpressionEvaluation::kRequired)
           evaluation = ExpressionEvaluation::kRequired;
@@ -1997,6 +2014,7 @@ class Initializers {
   const LoopSyntax& loops_;
   const NullishSyntax& nullish_;
   TreeCheckBudget& budget_;
+  const OriginalFlow* original_;
   BindingInitializers plan_;
   std::vector<BindingUses> uses_;
   std::vector<std::optional<DeclarationSite>> declaration_sites_;
@@ -2039,9 +2057,9 @@ class Initializers {
 };
 }
 std::variant<BindingInitializers, TreeStructureError> PlanBindingInitializers(
-    const FunctionTree& tree, const LoopSyntax& loops, const NullishSyntax& nullish, analysis::SemanticBudget budget) {
+    const FunctionTree& tree, const LoopSyntax& loops, const NullishSyntax& nullish, analysis::SemanticBudget budget,const OriginalFlow* original) {
   try {
-    TreeCheckBudget checked(budget); return Initializers(tree, loops, nullish, checked).Run();
+    TreeCheckBudget checked(budget); return Initializers(tree, loops, nullish, checked,original).Run();
   } catch (TreeStructureError error) { return error;
   } catch (const std::bad_alloc&) { return TreeStructureError::kResourceLimit;
   } catch (const std::length_error&) { return TreeStructureError::kResourceLimit; }

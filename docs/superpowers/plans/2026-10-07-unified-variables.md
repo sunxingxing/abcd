@@ -622,3 +622,17 @@ dependency-driven bounded pass convergence, and complete unified-variable accept
 All five remain open. Start with original IR/SSA integration and carry the proven
 current source projection facts forward; do not replace these loops with local fixes.
 Existing paused verification/corpus/resource/agent scopes stay paused.
+
+
+2026-10-09 rules252 Task1 substep: final TreeSemantics retains compact original
+def/use/CFG/phase/effect/origin facts and actual operand/result correspondence.
+Ordinary/family/record/static-field production passes this same immutable input
+to source recovery; source normal domains now reach common effect analysis and
+real emitted-source elimination, while child GetValue/conversion remains. The
+original-domain consumer removal mutant fails; independent original-input source
+fixtures cover copy/register/block/arena changes and boundary/geometric/exact-short
+cost evidence. One language effects table serves all clients; no second ISA table,
+new layout admission, storage root shortcut or additional pass round. Full original
+operation/reference/phase mapping, ordinary binding activation, trial precision,
+full dependency convergence and milestone acceptance remain OPEN. Other appearance
+optimizations stay paused until these five delivery loops close.

@@ -4,6 +4,7 @@
 #include "function_object.h"
 #include "staged_literal_names.h"
 #include "tree_correspondence.h"
+#include "original_flow.h"
 #include "class_tree.h"
 #include "phase_evaluation.h"
 #include "logical_evaluation.h"
@@ -20,9 +21,9 @@ class OperandCheck {
  public:
   OperandCheck(const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
       const FunctionTree& tree, const TreeFlow& flow,
-      ExpressionConstants constants, TreeCheckBudget& budget)
+      ExpressionConstants constants, TreeCheckBudget& budget, OriginalFlow& original)
       : graph_(graph), evaluation_(evaluation), tree_(tree), flow_(flow),
-        constants_(constants), budget_(budget) {}
+        constants_(constants), budget_(budget), original_(original) {}
   void Run() {
     RequireMeaning(constants_.operations.size() == graph_.ops.size() &&
                    constants_.name_count <= tree_.names.size() &&
@@ -775,6 +776,7 @@ class OperandCheck {
   }
   void Input(const analysis::ValueOperand& operand, ExprId expression, std::optional<analysis::UseId> occurrence = {}) {
     budget_.Step();
+    const auto resolved=ResolveEvaluationOperand(evaluation_,operand);
     std::visit([&](const auto& value) {
       using T = std::decay_t<decltype(value)>;
       if constexpr (std::is_same_v<T, analysis::ValueId>) {
@@ -884,7 +886,8 @@ class OperandCheck {
                 std::bit_cast<std::uint64_t>(std::numeric_limits<double>::infinity()), Error::kOperand); break;
         }
       }
-    }, ResolveEvaluationOperand(evaluation_, operand));
+    }, resolved);
+    RecordOriginalInput(original_,operand,resolved,expression,occurrence,budget_);
   }
   void BufferedLiteral(const TreeLiteral& expected, ExprId expression) {
     LeafOrigin(expression);
@@ -926,6 +929,7 @@ class OperandCheck {
     if (!ErasableNaN(operand)) { Input(operand, expression, occurrence); return; }
     LeafOrigin(expression);
     RequireMeaning(Literal<NumberLiteral>(expression).bits == CanonicalNaNBits(), Error::kOperand);
+    RecordOriginalInput(original_,operand,ResolveEvaluationOperand(evaluation_,operand),expression,occurrence,budget_);
   }
   void Unary(analysis::UnaryOperator operation, const analysis::ValueOperand& operand, ExprId expression) {
     const auto occurrence = graph_.ops[current_.value].first_use;
@@ -999,6 +1003,7 @@ class OperandCheck {
   const TreeFlow& flow_;
   ExpressionConstants constants_;
   TreeCheckBudget& budget_;
+  OriginalFlow& original_;
   analysis::OpId current_;
   TreeOriginId origin_;
   bool edge_input_ = false;
@@ -1007,8 +1012,8 @@ class OperandCheck {
 
 void CheckTreeOperands(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
-    const TreeFlow& flow, ExpressionConstants constants, TreeCheckBudget& budget) {
+    const TreeFlow& flow, ExpressionConstants constants, TreeCheckBudget& budget, OriginalFlow& original) {
   budget.Admit(1, sizeof(OperandCheck));
-  OperandCheck(graph, evaluation, tree, flow, constants, budget).Run();
+  OperandCheck(graph, evaluation, tree, flow, constants, budget, original).Run();
 }
 }  // namespace abcd::source

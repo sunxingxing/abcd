@@ -531,6 +531,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
       auto checked = VerifyTreeSemantics(graph, *control, *evaluation, result->tree, view, {budget.bytes});
       if (!std::holds_alternative<TreeSemantics>(checked)) return fail(Error::kValue);
       retain(std::get<TreeSemantics>(checked).allocated_bytes);
+      result->flow=std::move(std::get<TreeSemantics>(checked).flow);
     }
     // The emitted ESM shares this complete import/local enclosure with its
     // classes and nested functions. Check free names against it as well;
@@ -539,11 +540,10 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     if (!std::holds_alternative<TreeGlobals>(globals)) return fail(Error::kValue);
     std::optional<ConstructedFamily> module_family;
     if (!children.empty()) {
-      auto checked_flow = VerifyTreeFlow(graph, *control, *evaluation, result->tree, {budget.bytes});
-      auto* flow = std::get_if<TreeFlow>(&checked_flow);
-      if (!flow) return RouteRefusal{FamilyRouteFailure(FamilyPrepareFailure{
-          FamilyTreeFailure{FileFamily::kRoot, std::get<TreeFlowError>(checked_flow)}})};
-      retain(flow->allocated_bytes);
+      // Final construction/default/class correspondence already owns the
+      // original facts. Do not replay verification or retain a second copy.
+      if(!result->flow)return fail(Error::kValue);
+      auto* flow=&*result->flow;
       FamilyMember entry_tree{std::move(result->tree), std::move(*flow), {}, {}, {}, record.offset};
       auto assembled = BuildRecordFamilyTrees(file, header, index, std::move(*family), std::move(entry_tree),
           {budget.bytes}, &context, owner, &lookup);
@@ -608,7 +608,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     auto printed = [&]() -> std::variant<std::size_t, TreePrintError> {
       if (!module_family) {
         auto emitted = PrintModuleTree(result->tree, output,
-            {budget.output.bytes - *prelude_bytes}, {budget.bytes}, &class_scope, default_export);
+            {budget.output.bytes - *prelude_bytes}, {budget.bytes}, &class_scope, default_export,result->flow?result->flow->original.get():nullptr);
         if (const auto* error = std::get_if<TreePrintError>(&emitted)) return *error;
         const auto& positions = std::get<PrintedFunction>(emitted);
         incomplete = positions.incomplete;

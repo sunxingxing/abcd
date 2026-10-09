@@ -6,6 +6,7 @@
 #include "expression_transport.h"
 #include "binding_projection.h"
 namespace abcd::source {
+struct OriginalFlow;
 struct LoopSyntax;
 struct NullishSyntax;
 struct BindingInitializer {
@@ -155,6 +156,6 @@ struct BindingInitializers {
 // No per-symbol CFG or per-read ancestor walk, recursive walk or SSA merge.
 [[nodiscard]] std::variant<BindingInitializers, TreeStructureError>
 PlanBindingInitializers(const FunctionTree&, const LoopSyntax&, const NullishSyntax&,
-    analysis::SemanticBudget budget = {});
+    analysis::SemanticBudget budget = {},const OriginalFlow* original = nullptr);
 }
 #endif
