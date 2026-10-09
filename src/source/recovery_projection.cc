@@ -275,6 +275,18 @@ std::variant<RecoveryProjection,TreeStructureError> PrepareRecoveryProjection(
       charge(flow_bytes+initialization.allocated_bytes,reads_budget.Bytes(),reads_budget.Work());
     }
     const auto retained=flow_bytes+result.initialized_reads.capacity()*sizeof(std::uint8_t);
+    // Initialization proves GetValue/PutValue completion before type solving.
+    // Otherwise impossible TDZ edges would widen every caught payload, and
+    // required binding reads would look like external mutation barriers.
+    {
+      TreeCheckBudget read_budget(remaining(retained));
+      const auto reads=AnalyzeRecoveryExpressions(tree,input,result.initialized_reads,read_budget);
+      charge(retained,read_budget.Bytes(),read_budget.Work());
+      const auto live=retained+ExpressionBytes(reads);
+      auto refined=RefineRecoveryFlowEffects(result.flow,tree,reads.evaluations,reads.normal_stores,remaining(live));
+      if(const auto* error=std::get_if<TreeStructureError>(&refined))throw *error;
+      const auto& completed=std::get<FlowRefinement>(refined);charge(live,completed.allocated_bytes,completed.work);
+    }
     FlowNormalKinds domains;
     if(input.original) {
       auto analyzed=AnalyzeFlowLiveness(result.flow,remaining(retained));

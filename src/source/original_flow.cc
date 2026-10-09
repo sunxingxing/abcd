@@ -43,6 +43,23 @@ std::shared_ptr<OriginalFlow> RetainOriginalFlow(const analysis::ValueProgram& g
   copy(result->exceptional_exits,graph.exceptional_exits);copy(result->phases,graph.phases);copy(result->origins,graph.origins);
   // Transfer the verified table; its allocation was already admitted with TreeFlow.
   result->definitions=std::move(flow.definitions);
+  if(!flow.catch_parameters.empty()) {
+    RequireTree(flow.catch_parameters.size()==graph.values.size(),TreeStructureError::kOwnership);
+    budget.Array(result->catches,tree.symbols.size());
+    std::vector<std::optional<StmtId>> bodies;budget.Array(bodies,tree.symbols.size());
+    for(const auto statement:flow.tries) {
+      budget.Step();RequireTree(statement.has_value(),TreeStructureError::kOwnership);
+      const auto& clause=std::get<TryStmt>(tree.statements[statement->value].statement).handler;
+      RequireTree(clause&&clause->parameter.value<bodies.size()&&!bodies[clause->parameter.value],TreeStructureError::kOwnership);
+      bodies[clause->parameter.value]=clause->body;
+    }
+    for(std::size_t i=0;i<flow.catch_parameters.size();++i) {
+      budget.Step();const auto binding=flow.catch_parameters[i];if(!binding)continue;
+      const auto* caught=std::get_if<analysis::CatchDefinition>(&graph.values[i].origin);
+      RequireTree(caught&&binding->value<bodies.size()&&bodies[binding->value]&&!result->catches[binding->value],TreeStructureError::kOwnership);
+      result->catches[binding->value]=OriginalCatchBinding{analysis::ValueId{static_cast<std::uint32_t>(i)},caught->block,*bodies[binding->value]};
+    }
+  }
   budget.Array(result->operations,graph.ops.size());
   budget.Array(result->normal_kinds,tree.expressions.size());
   budget.Array(result->input_ranges,tree.expressions.size());
@@ -87,6 +104,7 @@ void CheckOriginalFlow(const FunctionTree& tree,const OriginalFlow& original) {
       original.normal_kinds.size()==tree.expressions.size()&&
       original.input_ranges.size()==tree.expressions.size()&&
       (original.definitions.empty()||original.definitions.size()==tree.expressions.size())&&
+      (original.catches.empty()||original.catches.size()==tree.symbols.size())&&
       original.statements==tree.statements.size()&&original.bindings==tree.symbols.size(),TreeStructureError::kOwnership);
 }
 analysis::ValueKinds OriginalDefinitionKinds(const OriginalFlow& original,const OriginalSourceDefinition& definition) {

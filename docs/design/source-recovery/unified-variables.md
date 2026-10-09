@@ -3111,3 +3111,48 @@ value-only clients keep solving source values, conservatively lose raw path
 precision, and accept transported values. A third production mutant removes this
 fallback and must fail. Raw effect phase/exception action correspondence remains unfinished;
 all five backbone deliveries remain OPEN.
+
+
+### Rules268: pending exception values and scoped current definitions
+
+The verified TreeFlow catch table now transfers raw Catch ValueId/handler and
+source body ownership into immutable OriginalFlow. Current catch activation is
+a definition after scope allocation, separate from its staging writes. The
+original domain is only a subset refinement while the shared operand/completion
+cone remains unchanged; raw before_throw/normal effects still cannot override
+language effects. Resolve-to-self preserves original unit ownership, not a
+same-block or adjacency requirement.
+
+The current graph publishes explicit throw payloads after operand completion.
+A sparse join at each actual catch entry combines those values; implicit throws,
+resume failures and unmodeled cleanup paths contribute Language, never the normal
+result of the operation that failed. Catch activation and ordinary successful
+stores use the same value dependencies and transfer/lifetime facts. Shared entry
+indexes avoid scanning all throwing edges once per catch definition.
+
+Scoped exposed bindings can carry known current values while their writes remain
+observable. Required evaluations conservatively invalidate those values on normal
+and exceptional paths; the current coarse effect class can also include evaluations
+that do not mutate a captured unit. This is a precision gap pending common typed
+mutation effects, not a language invariant. A successful explicit store generates
+its own new value. Source allocation,
+exit and reentry transfers still delimit units. Tracking is not write elimination,
+copy identity, closure reconstruction or permission to move a computation.
+
+The common preparation order now proves initialization, refines impossible read/
+write TDZ completions, and only then constructs liveness and normal-value facts.
+That intermediate expression analysis is pure, private to this exact projection,
+and dies before downstream scratch admission. Final effect refinement remains
+separate. This is bounded producer ordering, not a claim that the global pass
+schedule reaches its full dependency-driven fixed point.
+
+Decoded exception fixtures cover literal/Boolean/unknown throws, implicit numeric
+conversion failures, success-only stores, copies, block splitting and register
+reallocation. A complete transported-value trial recomputes the pending Boolean
+instead of borrowing a raw numeric Catch range. Missing raw catch annotations
+still allow current source joins to prove numeric values. Exact/one-short budget
+checks and 200/201/400/800 growth stay at existing allowances. A scoped-state
+counterexample distinguishes initialized reads from external mutation barriers.
+All five backbone deliveries remain OPEN, including complete raw phase/action
+correspondence, ordinary unit identity, other trials, global convergence and final
+milestone acceptance. Other optimizations and paused verification remain paused.

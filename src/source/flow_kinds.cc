@@ -14,21 +14,40 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
     RequireTree(input.original&&flow.original==input.original&&live.reachable.size()==flow.events.size(),Error::kOwnership);
     CheckOriginalFlow(tree,*input.original);
     const auto expressions=tree.expressions.size(),facts=live.live_in.size(),events=flow.events.size();
+    std::size_t caught=0;
+    for(const auto& definition:flow.definitions){budget.Step();if(definition.kind==FlowDefinitionKind::kCatch)++caught;}
     RequireTree(expressions<=std::numeric_limits<std::uint32_t>::max()&&
         facts<=std::numeric_limits<std::uint32_t>::max()-expressions&&
-        events<=std::numeric_limits<std::uint32_t>::max()-expressions-facts,Error::kResourceLimit);
+        caught<=std::numeric_limits<std::uint32_t>::max()-expressions-facts&&
+        events<=std::numeric_limits<std::uint32_t>::max()-expressions-facts-caught,Error::kResourceLimit);
     struct NodeId {std::uint32_t value;};
     enum class DependencyKind { kValue, kCompletion };
     struct Dependency {
       NodeId target;std::optional<std::uint32_t> next;
       DependencyKind kind;const FlowDefinition* definition;
     };
-    const auto value_count=expressions+facts,count=value_count+events;
+    const auto value_count=expressions+facts+caught,count=value_count+events;
     const auto event_node=[&](FlowPoint point){return NodeId{static_cast<std::uint32_t>(value_count+point.value)};};
     std::vector<K> values,entries,original_results;
     std::vector<std::optional<std::uint32_t>> heads;
     std::vector<std::uint8_t> queued,modeled_reads,changed,original_entries;
     std::vector<NodeId> pending;
+    std::vector<std::optional<NodeId>> catch_values,catch_entries;
+    std::vector<FlowDefinitionId> catch_roots;
+    budget.Array(catch_values,caught?flow.definitions.size():0);budget.Array(catch_entries,caught?events:0);
+    budget.Array(catch_roots,caught);std::size_t root_count=0;
+    std::size_t next_catch=expressions+facts;
+    for(std::size_t i=0;i<flow.definitions.size();++i) {
+      budget.Step();if(flow.definitions[i].kind!=FlowDefinitionKind::kCatch)continue;
+      const auto entry=flow.definitions[i].catch_entry;
+      if(entry)RequireTree(entry->value<events,Error::kOwnership);
+      if(entry&&catch_entries[entry->value])catch_values[i]=catch_entries[entry->value];
+      else {
+        catch_values[i]=NodeId{static_cast<std::uint32_t>(next_catch++)};
+        if(entry)catch_entries[entry->value]=catch_values[i];
+        catch_roots[root_count++]={static_cast<std::uint32_t>(i)};
+      }
+    }
     budget.Array(values,value_count);budget.Array(heads,count);budget.Array(queued,value_count);budget.Array(pending,count);
     budget.Array(modeled_reads,expressions);budget.Array(entries,flow.bindings.size());
     budget.Array(changed,count);budget.Array(original_entries,flow.bindings.size());
@@ -61,10 +80,16 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
       if(found==live.live_in.end()||*found!=key)return {};
       return NodeId{static_cast<std::uint32_t>(expressions+(found-live.live_in.begin()))};
     };
-    const auto private_binding=[&](SymbolId binding) {
+    const auto closed_binding=[&](SymbolId binding) {
       RequireTree(binding.value<flow.bindings.size(),Error::kOwnership);
       const auto& source=flow.bindings[binding.value];
       return source.exposure==FlowBindingExposure::kPrivate||source.stable_entry;
+    };
+    const auto tracked_binding=[&](SymbolId binding) {
+      // Value tracking is not permission to erase observable writes. Exact
+      // source allocation/exit transfers identify a current scoped unit;
+      // exposed units additionally lose precision at required evaluations.
+      return closed_binding(binding)||std::holds_alternative<ScopeBindingLifetime>(flow.bindings[binding.value].lifetime);
     };
     std::vector<std::optional<SymbolId>> writes;budget.Array(writes,flow.events.size());
     for(const auto& reference:flow.references) {
@@ -85,6 +110,27 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
         for(auto edge=event.incoming;edge;edge=flow.edges[*edge].incoming) {
           budget.Step();dependency(event_node(flow.edges[*edge].from),target,DependencyKind::kCompletion,nullptr);
         }
+      }
+      // A pending exception is an explicit join, not the normal result of the
+      // throwing operation. One sparse node per catch shares value dependencies
+      // with ordinary definitions; implicit failures conservatively contribute
+      // Language. Cleanup precision gaps cannot invent a known payload.
+      for(std::size_t root=0;root<root_count;++root) {
+        budget.Step();const auto i=catch_roots[root].value;
+        const auto target=*catch_values[i];const auto& definition=flow.definitions[i];
+        if(!definition.catch_entry){constant(target,K::Language());invalidate(target);continue;}
+        RequireTree(definition.catch_entry->value<events,Error::kOwnership);
+        dependency(event_node(*definition.catch_entry),target,DependencyKind::kCompletion,nullptr);
+        bool input_seen=false;
+        for(auto edge=flow.events[definition.catch_entry->value].incoming;edge;edge=flow.edges[*edge].incoming) {
+          budget.Step();const auto& incoming=flow.edges[*edge];if(!live.reachable[incoming.from.value])continue;
+          input_seen=true;const auto& source=flow.events[incoming.from.value];
+          if(incoming.completion==FlowCompletion::kThrow&&source.thrown_value) {
+            RequireTree(source.thrown_value->value<expressions,Error::kOwnership);
+            dependency(NodeId{source.thrown_value->value},target,DependencyKind::kValue,nullptr);
+          } else {constant(target,K::Language());invalidate(target);}
+        }
+        if(!input_seen){constant(target,K::Language());invalidate(target);}
       }
       for(std::size_t i=0;i<expressions;++i) {
         budget.Step();const NodeId target{static_cast<std::uint32_t>(i)};
@@ -118,7 +164,7 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
         if(!read)continue;
         RequireTree(read->binding==reference.binding,Error::kOwnership);
         const NodeId target{expression->value};modeled_reads[expression->value]=1;
-        if(private_binding(reference.binding)) {
+        if(tracked_binding(reference.binding)) {
           if(const auto source=fact_node({reference.point,reference.binding})){dependency(*source,target,DependencyKind::kValue,nullptr);continue;}
         }
         constant(target,K::Language());invalidate(target);
@@ -128,7 +174,7 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
         RequireTree(fact.point.value<flow.events.size()&&fact.binding.value<flow.bindings.size()&&
             (i==0||live.live_in[i-1]<fact),Error::kOwnership);
         const NodeId target{static_cast<std::uint32_t>(expressions+i)};
-        if(!private_binding(fact.binding)||!live.reachable[fact.point.value]){constant(target,K::Language());invalidate(target);continue;}
+        if(!tracked_binding(fact.binding)||!live.reachable[fact.point.value]){constant(target,K::Language());invalidate(target);continue;}
         const auto& event=flow.events[fact.point.value];
         if(fact.point==flow.entry||!event.incoming){constant(target,K::Language());invalidate(target);}
         for(auto edge=event.incoming;edge;edge=flow.edges[*edge].incoming) {
@@ -158,11 +204,22 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
                   constant(target,entries[fact.binding.value].IsEmpty()?K::Language():entries[fact.binding.value]);
                   if(!original_entries[fact.binding.value])invalidate(target);
                   continue;
+                case FlowDefinitionKind::kCatch:
+                  dependency(event_node(generated.point),target,DependencyKind::kCompletion,nullptr);
+                  RequireTree(catch_values[definition->value].has_value(),Error::kOwnership);
+                  dependency(*catch_values[definition->value],target,DependencyKind::kValue,&generated);
+                  continue;
                 case FlowDefinitionKind::kUndefined:case FlowDefinitionKind::kUndefinedStore:
-                case FlowDefinitionKind::kFunctionSelf:case FlowDefinitionKind::kUpdate:case FlowDefinitionKind::kCatch:break;
+                case FlowDefinitionKind::kFunctionSelf:case FlowDefinitionKind::kUpdate:break;
               }
               constant(target,K::Language());invalidate(target);continue;
             }
+          }
+          // External/captured mutation can occur during a required evaluation
+          // on normal or exceptional completion. Successful explicit stores
+          // above generate their new value independently of this kill.
+          if(!closed_binding(fact.binding)&&prior.effect==ExpressionEvaluation::kRequired) {
+            constant(target,K::Language());invalidate(target);continue;
           }
           if(writes[predecessor.value]==fact.binding){constant(target,K::Language());invalidate(target);continue;}
           if(const auto source=fact_node({predecessor,fact.binding}))dependency(*source,target,DependencyKind::kValue,nullptr);
@@ -259,8 +316,13 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
           if(dependency.kind==DependencyKind::kCompletion)continue;
           const auto target=dependency.target;
           auto incoming=values[source.value];
-          if(dependency.definition&&dependency.definition->original&&!changed[source.value]&&!changed[target.value]) {
-            const auto original=OriginalDefinitionKinds(*input.original,*dependency.definition->original);
+          if(dependency.definition&&!changed[source.value]&&!changed[target.value]) {
+            K original;
+            if(dependency.definition->original)original=OriginalDefinitionKinds(*input.original,*dependency.definition->original);
+            if(const auto* caught=dependency.definition->original_catch) {
+              RequireTree(caught->value.value<input.original->values.size(),Error::kOwnership);
+              original=input.original->values[caught->value.value].domain;
+            }
             // Reuse only a stricter proof. A broad raw phi domain must not
             // discard precision already proved by current source semantics.
             if(!original.IsEmpty()&&original.Join(incoming)==incoming)incoming=original;

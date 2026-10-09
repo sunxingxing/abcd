@@ -638,6 +638,44 @@ void ActivationKinds(bool reverse) {
   const auto actual=std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(fixture.tree,projection.flow,live,fixture.Input()));
   Check(actual.expressions[fixture.reads[0].value]==analysis::ValueKinds::Language());
 }
+void ScopedExposedKinds(bool reverse) {
+  Fixture f(1,reverse);f.private_bindings[1]=0;
+  f.tree.symbols[1].kind=BindingKind::kLocal;f.tree.symbols[1].temporary.reset();
+  // A distinct initialized GetValue separates the store from the observed
+  // read. Its impossible TDZ completion must be refined before value solving.
+  const ExprId guard{static_cast<unsigned>(f.tree.expressions.size())};
+  f.tree.expressions.push_back({SymbolExpr{{1}},{0}});f.equations.push_back(FlowBindingValue{{1}});f.order.push_back(guard);
+  const StmtId guard_statement{static_cast<unsigned>(f.tree.statements.size())};
+  f.tree.statements.push_back({ExpressionStmt{guard},{0}});f.tree.children.insert(f.tree.children.begin()+2,guard_statement);
+  ++std::get<BlockStmt>(f.tree.statements[0].statement).child_count;
+  f.plan.read_sources.resize(f.tree.expressions.size());f.plan.read_literals.resize(f.tree.expressions.size());
+  f.plan.replacements.resize(f.tree.expressions.size());f.plan.transports.resize(f.tree.expressions.size());
+  f.plan.omitted.resize(f.tree.statements.size());f.plan.statements.resize(f.tree.statements.size());
+  f.original.statements=f.tree.statements.size();f.original.normal_kinds.resize(f.tree.expressions.size());f.original.input_ranges.resize(f.tree.expressions.size());
+  auto model=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,f.Projection(),f.Input()));
+  Check(std::holds_alternative<ScopeBindingLifetime>(model.flow.bindings[1].lifetime));
+  Check(model.expressions.kinds[f.reads[0].value].IsNumber());
+  bool observable=false;
+  for(const auto& definition:model.flow.definitions)if(definition.binding==SymbolId{1}) {
+    Check(definition.effect==FlowWriteEffect::kObservable);observable=true;
+  }
+  Check(observable);
+  const auto read=std::find_if(model.flow.references.begin(),model.flow.references.end(),[&](const auto& reference){
+    return reference.kind==FlowReferenceKind::kRead&&reference.site==FlowReferenceSite{f.reads[0]};
+  });
+  Check(read!=model.flow.references.end()&&model.flow.events[read->point.value].incoming);
+  const auto before=model.flow.edges[*model.flow.events[read->point.value].incoming].from;
+  auto& event=model.flow.events[before.value];Check(!event.definition&&event.effect==ExpressionEvaluation::kInert);
+  // Small reference state: a normal numeric store establishes Number; an
+  // unknown user evaluation may replace an exposed unit with any value.
+  // This is a model counterexample, not an original-SSA or closure certificate.
+  event.effect=ExpressionEvaluation::kRequired;
+  const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(model.flow));
+  const auto changed=std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(f.tree,model.flow,live,f.Input()));
+  Check(changed.expressions[f.reads[0].value]==analysis::ValueKinds::Language());
+  event.effect=ExpressionEvaluation::kInert;
+  Check(std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(f.tree,model.flow,live,f.Input())).expressions[f.reads[0].value].IsNumber());
+}
 void ActivationSource(unsigned copies,bool split,bool emit) {
   FunctionTree tree{};tree.callable=CallableKind::kFunction;tree.strictness=Strictness::kStrict;
   tree.parameter_scope={0};tree.body_scope={1};tree.body={0};tree.origins={OriginalSite{{0},{0}}};
@@ -733,6 +771,7 @@ int main(int argc,char** argv) {
   }
   for(unsigned form=0;form<4;++form){ScopeExitSource(form,0,false,false);ScopeExitSource(form,0,false,false,true);}
   CapturedKinds(false);CapturedKinds(true);ActivationKinds(false);ActivationKinds(true);
+  ScopedExposedKinds(false);ScopedExposedKinds(true);
   ActivationSource(0,false,false);ActivationSource(1,true,false);
   Case(false);Case(true);ChangedDefinition(false);ChangedDefinition(true);
   OriginalEntries(false);OriginalEntries(true);

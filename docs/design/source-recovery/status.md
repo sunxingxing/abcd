@@ -36,6 +36,46 @@
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
 
+### 2026-10-10：规则268，当前异常值合流与普通作用域值状态
+
+- 主干继续第1/2/3项：同一次 verified TreeFlow 转移 raw Catch 的值、
+  handler 和源码 body 所有权；当前 catch activation 在进入作用域后定义，
+  与后续 staging 写入分开。原始域只在共同依赖锥不变且更精确时参与，
+  未拿 raw before_throw/normal effects 覆盖语言表。
+- 显式 throw 在操作数正常完成后发布 payload；catch 入口共用稀疏值
+  合流节点。隐式抛异常、暂停失败和未精确建模 cleanup 均贡献 Language，
+  不借用失败操作的正常结果。普通成功存储与 catch activation 共享值
+  依赖、作用域 transfer 和完成事实，没有逐 catch 整图扫描。
+- 普通 scoped exposed 绑定可跟踪当前值，但写入仍 Observable。Required
+  求值在正常/异常路径撤销其值精度，成功显式写回另行生成新值。共同
+  Prepare 顺序为初始化证明→初始化已完成的读/写效果 refinement→
+  活跃性/正常域→最终效果；中间分析纯读计划，scratch 在阶段边界释放。
+- 初始异常值消费反例 build0/model134。56个实际解码异常函数包含 literal/
+  Boolean/未知值、隐式转换失败、成功写回、复制、拆块及寄存器重分配；
+  独立执行1736次、检出32个执行突变。完整运输试算重算 Boolean payload，
+  缺失 raw catch 表时当前 source join 仍可证明 Number；精确/差一预算通过。
+  独立小模型区分连续初始化读取与外部修改，不冒充 raw SSA/capture 证书。
+- 三项生产突变分别删除 pending payload、exposed invalidation 和初始化
+  refinement，最终均 build0/model-6。第三项最初逃过 catch 测试，补连续
+  GetValue 的作用域反例后检出；保留初次 model0 证据，未伪造检测结果。
+  N=200/201/400/800 普通复制布局 work=403582/405552/797585/1585588，
+  admitted bytes=805891/809711/1569891/3097891（draft+projection保守总量，
+  不是进程RSS）；拆块/重分配增长也通过，现有 byte/work 预算未放宽。
+- 最终31目标构建0，193.24s；冻结63项全部通过，950.40s，终态0，
+  JUnit exact names63/63、无重复。固定 fresh 导出0，3.86s：19 record=
+  10 complete/0 partial/9 no-module，10源码语法检查0，与规则267逐字节
+  一致。SHA在导出前后及测试结束均不变，profile、预算和冻结选择不变；
+  11个生产/测试输入哈希复核一致。重建暴露既有 literal_plan.cc:59 的
+  kNoop 未穷尽 switch 警告1条，无 error；不混入本轮修改，未宣称无警告。
+  新异常源码证据56/1736/32已纳入冻结 original_flow_source_test；现有
+  生命周期、循环、定义/存储、快照和真实 record 对照继续通过。
+- 完整日志/JUnit/detail/coverage、增长与三项生产突变位于
+  build/stage-one/catch-flow-verification；固定源码位于
+  catch-flow-final-rule268-stable。作者 inline 复核，未宣称独立复核。
+  五项主干均未关闭；当前粗粒度 Required 撤销是保守精度缺口，完整
+  raw phase/action/异常出口、普通单元身份、其他 trial、依赖收敛及终验
+  继续。其他优化、agents/fullsuite/扩展语料/RSS/benchmarks/DFX 保持暂停。
+
 ### 2026-10-10：规则267，内联 SSA 结果与当前完成图贯通
 
 - 主干第1项增加实际消费者：RecoveryFlow 建立 OpId 到当前源码表达式、

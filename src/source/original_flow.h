@@ -12,6 +12,9 @@ struct OriginalSavedDefinition {
   std::variant<analysis::OpId,analysis::IncomingKey> placement;
 };
 struct OriginalCatchDefinition {analysis::ValueId value;analysis::WorkBlockId handler;};
+// The verified catch clause owns this raw Catch definition. Its block names
+// the exception-phase entry; its source body allocates a unit on each visit.
+struct OriginalCatchBinding {analysis::ValueId value;analysis::WorkBlockId handler;StmtId body;};
 // These are checked source commits of raw results/contributions, not dynamic
 // SSA value equality. Stage/cycle saves preserve an operand; phi copies supply
 // an incoming contribution; a catch commit publishes the staged contribution.
@@ -61,6 +64,7 @@ struct OriginalFlow {
   std::vector<OriginalInput> inputs;
   std::vector<OriginalInputRange> input_ranges;
   std::vector<std::optional<OriginalSourceDefinition>> definitions; // ExprId indexed.
+  std::vector<std::optional<OriginalCatchBinding>> catches; // SymbolId indexed.
   // Raw normal-result provenance, joined when normalization maps values to an
   // occurrence. This is NOT a type proof for a later recovery projection;
   // successful source definitions, current evaluation intervals and operands

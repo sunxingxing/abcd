@@ -185,6 +185,10 @@ struct FlowDefinition {
   // dependency analysis decides whether its domain survived this projection.
   const OriginalSourceDefinition* original=nullptr;
   std::optional<FlowCapturedValue> input;
+  // Catch activation is a source definition, distinct from its later staging
+  // stores. Pending-value precision depends on current incoming completions.
+  const OriginalCatchBinding* original_catch=nullptr;
+  std::optional<FlowPoint> catch_entry;
   // The semantic adapter owns both expression and statement write positions.
   // Kind still distinguishes lexical completion from assignment/slot writes;
   // a site alone never authorizes deleting initialization or binding lifetime.
@@ -229,6 +233,9 @@ struct FlowEvent {
   bool entry_evaluation=false;
   std::optional<FlowPropertySite> property;
   std::optional<StmtId> loop_environment;
+  // Explicit throw evaluates this value before publishing the exception.
+  // Implicit exceptions/resume failures have no known language payload.
+  std::optional<ExprId> thrown_value;
 };
 struct FlowEdge {
   FlowPoint from, to;

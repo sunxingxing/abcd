@@ -42,8 +42,10 @@ struct RecoveryProjection {
   std::size_t allocated_bytes=0;
   std::uint64_t work=0;
 };
-// Common bootstrap: conservative proposal -> completed initialization on all
-// completions -> refined effects. The returned facts/flow describe ONLY this
+// Common bootstrap: conservative proposal -> initialization on all completions
+// -> initialized read/write effect refinement -> current liveness/normal values
+// -> final effects. No downstream analysis borrows edges from before refinement.
+// The returned facts/flow describe ONLY this
 // proposal. Scope/handler/provenance use the same adapter as committed passes;
 // preparation must not publish them as facts of another revision.
 [[nodiscard]] std::variant<RecoveryProjection,TreeStructureError> PrepareRecoveryProjection(

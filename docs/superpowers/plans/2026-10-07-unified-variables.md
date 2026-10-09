@@ -865,3 +865,15 @@ phase and exception exit-to-source action relationships still need integration.
 Ordinary local/catch/reentry identity, remaining trial clients, dependency-driven
 convergence and full milestone acceptance follow that work. All five OPEN.
 Frozen 31 targets/63 names/fixed ABC and all paused scopes remain unchanged.
+
+
+Rules268 substep: retained verified raw catch ownership is consumed by current
+activation definitions. Explicit pending payload joins, conservative implicit
+failure values, scoped exposed value tracking and success-only stores share the
+normal-value solver. Initialization/effect refinement now precedes liveness and
+domain consumption; it remains pure and exact-projection local. Decoded and
+source-adapter counterexamples exercise payload changes, copies/layout variation,
+external invalidation and failed stores. Complete raw phase/action correspondence,
+ordinary unit identity, all trial consumers, dependency convergence and milestone
+acceptance remain OPEN. Do not proceed to other optimizations before those five
+backbone deliveries close. Existing fixed verification/paused work scope remains.

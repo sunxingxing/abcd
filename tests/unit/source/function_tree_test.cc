@@ -18,6 +18,9 @@
 #include "../../../src/source/recovery_flow.h"
 #include "../../../src/source/recovery_projection.h"
 #include "../../../src/source/flow_kinds.h"
+#include "../../../src/source/exception_tree.h"
+#include "../../../src/analysis/phased_value_import.h"
+#include "../../support/analysis/ssa_fixture.h"
 
 namespace {
 using namespace abcd;
@@ -423,6 +426,126 @@ void OriginalSuccessfulDomains(unsigned copies=0,bool reverse=false,bool split=f
   for(const auto site:observed) {
     Check(conservative.expressions.kinds[site.value].IsNumber());
     Check(!conservative.expressions.kinds[site.value].IsFiniteNumber());
+  }
+}
+
+void OriginalCatchValues(bool emit=false,unsigned form=0,unsigned copies=0,bool split=false,bool reallocated=false) {
+  using namespace analysis;
+  const auto op=[](abc::Opcode value){return static_cast<std::uint8_t>(value);};
+  std::vector<std::uint8_t> bytes;
+  const auto saved=static_cast<std::uint8_t>(reallocated?2:0);
+  const auto scratch=static_cast<std::uint8_t>(saved+1);
+  const auto caught_slot=static_cast<std::uint8_t>(form==4?saved+2:saved);
+  const unsigned locals=caught_slot+2;
+  if(form==4)bytes={op(abc::Opcode::kLDAI_IMM32),7,0,0,0,op(abc::Opcode::kSTA_V8),saved};
+  const auto protected_start=static_cast<unsigned>(bytes.size());
+  if(form==0)bytes={op(abc::Opcode::kLDAI_IMM32),7,0,0,0};
+  else if(form==1)bytes={op(abc::Opcode::kLDTRUE)};
+  else if(form==2)bytes={op(abc::Opcode::kLDA_V8),static_cast<std::uint8_t>(locals)};
+  else {
+    bytes.insert(bytes.end(),{op(abc::Opcode::kLDA_V8),static_cast<std::uint8_t>(locals),op(abc::Opcode::kTONUMBER_IMM8),0});
+    if(form==4)bytes.insert(bytes.end(),{op(abc::Opcode::kSTA_V8),saved,op(abc::Opcode::kLDA_V8),saved});
+    else bytes.insert(bytes.end(),{op(abc::Opcode::kLDAI_IMM32),7,0,0,0});
+  }
+  for(unsigned i=0;i<copies;++i)
+    bytes.insert(bytes.end(),{op(abc::Opcode::kSTA_V8),scratch,op(abc::Opcode::kLDA_V8),scratch});
+  if(split) {
+    constexpr std::uint8_t kJumpWidth=2; // Pinned JMP_IMM8 opcode plus displacement.
+    bytes.insert(bytes.end(),{op(abc::Opcode::kJMP_IMM8),kJumpWidth});
+  }
+  constexpr unsigned kByteBits=8; // Pinned ISA prefix/subopcode byte encoding.
+  const auto throwing=static_cast<std::uint16_t>(abc::Opcode::kTHROW_PREF_NONE);
+  bytes.push_back(static_cast<std::uint8_t>(throwing));
+  bytes.push_back(static_cast<std::uint8_t>(throwing>>kByteBits));
+  const auto handler=static_cast<unsigned>(bytes.size());
+  bytes.insert(bytes.end(),{op(abc::Opcode::kSTA_V8),caught_slot,op(abc::Opcode::kNEG_IMM8),0,
+      op(abc::Opcode::kLDA_V8),saved,op(abc::Opcode::kRETURN)});
+  auto body=test::Body(bytes);
+  abc::TryRegion region;region.offset={protected_start};region.length=handler-protected_start;region.handler_count=1;body.tries.push_back(region);
+  abc::CatchHandler caught;caught.offset={handler};caught.length=bytes.size()-handler;body.handlers.push_back(caught);
+  const auto frame=std::get<abc::FrameLayout>(abc::BuildFrameLayout(locals,1,{}));
+  const auto flow=std::get<ExceptionFlow>(BuildExceptionFlow(body,abc::ProfileId::kDynamic1206,frame.registers));
+  IdfQuota ssa_work{kDefaultSemanticWork};
+  const auto ssa=std::get<ExceptionSsa>(ExceptionSsa::Build(flow,frame.registers,ssa_work));
+  const auto env=std::get<EnvironmentFlow>(AnalyzeExceptionEnvironments(flow));
+  std::vector<EntryValueFact> entries;
+  for(unsigned i=0;i<ssa.Values().size();++i)
+    if(std::holds_alternative<MethodEntry>(ssa.Values()[i].origin))entries.push_back({{i},ValueKinds::Language()});
+  IdfQuota value_work{kDefaultSemanticWork};
+  const auto values=std::get<ExceptionValueFlow>(ExceptionValueFlow::Build(flow,ssa,entries,value_work,{},
+      PendingExceptionValues::kLanguage,{},{},CallResultValues::kLanguage,FrameReceiver::kUnknown,
+      Arithmetic(SourceContract::kLanguageNumericV1)));
+  const auto proof=std::get<ExceptionInputProof>(VerifyExceptionInputs(flow,ssa,env,values));
+  const PhasedValueInput input{flow,ssa,env,values,proof,frame};
+  const auto graph=std::get<ValueProgram>(ImportPhasedValues(input));
+  const auto evaluation=std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(graph));
+  const auto regions=std::get<ExceptionPlan>(BuildExceptionPlan(body,graph,input));
+  const auto control=std::get<ExceptionControl>(BuildExceptionControl(body,graph,input,regions));
+  const ExceptionTreeInput context{body,input,regions,control};
+  FunctionSyntax syntax{};syntax.callable=CallableKind::kFunction;syntax.strictness=Strictness::kStrict;
+  syntax.identity.contract=SourceContract::kLanguageNumericV1;syntax.parameters.resize(1);
+  std::vector<ExpressionConstant> constants(graph.ops.size());
+  const auto draft=std::get<ExceptionFunctionDraft>(BuildExceptionFunctionDraft(graph,context,evaluation,syntax,{constants,0}));
+  const auto& tree=draft.tree;const auto& original=*draft.flow->original;
+  const auto recovered=std::get<SourceVariables>(PrepareSourceVariables(tree,{},&original));
+  const auto& p=recovered.bindings;
+  std::vector<FlowValueEquation> eq(tree.expressions.size());std::vector<ExprId> ids;
+  for(unsigned i=0;i<eq.size();++i) {ids.push_back({i});if(const auto* r=std::get_if<SymbolExpr>(&tree.expressions[i].expression))eq[i]=FlowBindingValue{r->symbol};}
+  std::vector<std::uint8_t> priv(tree.symbols.size());for(unsigned i=0;i<priv.size();++i)priv[i]=tree.symbols[i].kind==BindingKind::kCompilerTemporary;
+  LegacyFlowProjection lp{p.aliases,p.literals,p.replacements,p.omitted,{},{},p.statements,priv,p.storage,p.undefined_stores,p.declaration_values,p.declaration_completions};
+  RecoveryExpressionInput ri{p,eq,ids,&original};
+  const auto m=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,lp,ri));
+  const SemanticBudget exact{m.allocated_bytes,m.work};
+  Check(std::holds_alternative<RecoveryProjection>(PrepareRecoveryProjection(tree,lp,ri,exact)));
+  Check(std::get<TreeStructureError>(PrepareRecoveryProjection(tree,lp,ri,{exact.bytes-1,exact.work}))==TreeStructureError::kResourceLimit);
+  Check(std::get<TreeStructureError>(PrepareRecoveryProjection(tree,lp,ri,{exact.bytes,exact.work-1}))==TreeStructureError::kWorkLimit);
+  bool original_catch=false;
+  for(const auto& d:m.flow.definitions)if(d.kind==FlowDefinitionKind::kCatch) {
+    Check(d.original_catch&&d.catch_entry);original_catch=true;
+    Check(m.flow.bindings[d.binding.value].exposure==FlowBindingExposure::kObservable);
+  }
+  Check(original_catch);
+  if(form==0) {
+    // A full candidate changes the pending value. Reusing the raw numeric
+    // Catch/result domain would silently override this current Boolean input.
+    std::optional<ExprId> thrown;
+    for(const auto& event:m.flow.events)if(event.thrown_value)thrown=event.thrown_value;
+    Check(thrown.has_value());
+    auto primitives=p.primitives;const PrimitiveId boolean{static_cast<unsigned>(primitives.size())};
+    primitives.push_back(BooleanLiteral{true});
+    auto transports=p.transports;transports[thrown->value]=ExpressionTransport{*thrown,boolean};
+    auto candidate=BindingPlanView{p};candidate.primitives=primitives;candidate.transports=transports;
+    const RecoveryExpressionInput changed_input{candidate,eq,ids,&original};
+    const auto changed=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,lp,changed_input));
+    bool read_seen=false;
+    for(const auto& reference:changed.flow.references)if(reference.kind==FlowReferenceKind::kRead) {
+      const auto* expression=std::get_if<ExprId>(&reference.site);
+      if(expression&&tree.symbols[reference.binding.value].kind==BindingKind::kCatchParameter) {
+        Check(changed.expressions.kinds[expression->value]==ValueKinds::Boolean());read_seen=true;
+      }
+    }
+    Check(read_seen);
+    auto without_catch=original;without_catch.catches.clear();
+    const RecoveryExpressionInput source_input{p,eq,ids,&without_catch};
+    const auto source_only=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,lp,source_input));
+    for(const auto& reference:source_only.flow.references)if(reference.kind==FlowReferenceKind::kRead) {
+      const auto* expression=std::get_if<ExprId>(&reference.site);
+      if(expression&&tree.symbols[reference.binding.value].kind==BindingKind::kCatchParameter)
+        Check(source_only.expressions.kinds[expression->value].IsNumber());
+    }
+  }
+  bool observed=false;
+  for(unsigned i=0;i<tree.expressions.size();++i)if(const auto* unary=std::get_if<UnaryExpr>(&tree.expressions[i].expression);unary&&unary->operation==TreeUnary::kNegate) {
+    observed=true;
+    if(form>=2)Check(m.flow.expression_owners[i]&&m.expressions.evaluations[i]==ExpressionEvaluation::kRequired);
+    else Check(!m.flow.expression_owners[i]);
+  }
+  Check(observed);
+  if(emit) {
+    std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output,{}, {},nullptr,&original)));
+    std::cout<<nlohmann::json{{"source",output.str()},{"form",form},{"copies",copies},{"split",split},
+      {"reallocated",reallocated},{"operations",graph.ops.size()},{"values",graph.values.size()},
+      {"work",draft.work+m.work},{"bytes",draft.allocated_bytes+m.allocated_bytes}}<<'\n';
   }
 }
 
@@ -1451,6 +1574,13 @@ void RetainedReceiverTrees() {
 }
 }  // namespace
 int main(int argc,char** argv) {
+  if(argc==2&&std::string_view(argv[1])=="--catch") {
+    for(unsigned form=0;form<5;++form)for(bool split:{false,true})for(bool reallocated:{false,true})
+      for(unsigned copies:{0U,1U})OriginalCatchValues(true,form,copies,split,reallocated);
+    for(bool split:{false,true})for(bool reallocated:{false,true})
+      for(unsigned copies:{200U,201U,400U,800U})OriginalCatchValues(true,0,copies,split,reallocated);
+    return 0;
+  }
   if(argc==2&&std::string_view(argv[1])=="--definitions") {
     for(const unsigned copies:{0U,1U,200U,201U,400U,800U})
       for(const bool reverse:{false,true})for(const bool split:{false,true})for(const bool arena:{false,true})OriginalSuccessfulDomains(copies,reverse,split,false,true,arena);

@@ -615,6 +615,12 @@ class FlowBuilder {
         if(body&&body->retained)next=Stmt(*body->retained,context.Child(next,at.id,FlowStatementRetention::kRequired));
         if(const auto parameter=catch_parameters_[at.id.value]) {
           const auto initialized=Define(*parameter,FlowDefinitionKind::kCatch);
+          definitions_.back().catch_entry=start;
+          if(result_.original&&!result_.original->catches.empty()) {
+            const auto& caught=result_.original->catches[parameter->value];
+            if(caught&&caught->body==at.id&&Resolve(*parameter)==*parameter)
+              definitions_.back().original_catch=&*caught;
+          }
           Link(initialized,next);next=initialized;
         }
         Link(entered,next);Link(start,entered);
@@ -711,6 +717,7 @@ class FlowBuilder {
       } else if constexpr(std::is_same_v<T,ThrowStmt>) {
         semantics.completion=FlowStatementCompletion::kAbrupt;
         const auto thrown=New();Link(thrown,context.thrown,FlowCompletion::kThrow);
+        events_[thrown.value].thrown_value=node.value;
         Link(start,Expr(node.value,context.Operand(thrown)));
       }
       else if constexpr(std::is_same_v<T,TryStmt>) {

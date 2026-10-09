@@ -162,6 +162,45 @@ for(const reverse of [false,true])for(const split of [false,true])for(const aren
   }
 }
 console.log('inline-result 200/201/400/800 admitted cost scaling passed');
+const catches=execFileSync(process.argv[2],['--catch'],{encoding:'utf8',maxBuffer:16_000_000}).trim().split('\n').map(JSON.parse);
+const catchFactories=[...factories,trace=>({[Symbol.toPrimitive](hint){trace.push(['throw number',hint]);throw 2;}})];
+const catchReferences=[
+  function(){try{throw 7;}catch(error){-error;return error;}},
+  function(){try{throw true;}catch(error){-error;return error;}},
+  function(params){try{throw params;}catch(error){-error;return error;}},
+  function(params){try{+params;throw 7;}catch(error){-error;return error;}},
+  function(params){let saved=7;try{saved=+params;throw saved;}catch(error){-error;return saved;}},
+];
+function catchEquivalent(source,form) {
+  const generated=Function('return ('+source+')')();
+  for(const factory of catchFactories)assert.deepEqual(outcome(generated,factory),outcome(catchReferences[form],factory));
+}
+let catchMutants=0;
+for(const row of catches) {
+  catchEquivalent(row.source,row.form);
+  const wrapped='('+row.source+')',all=nodes(parseJavaScript(wrapped));
+  const negative=all.find(node=>node.type==='UnaryExpression'&&node.operator==='-');
+  assert.equal(Boolean(negative),row.form>=2,'implicit failures keep their own payload and conversion effects');
+  if(negative) {
+    const mutant=wrapped.slice(0,negative.start)+wrapped.slice(negative.argument.start,negative.argument.end)+wrapped.slice(negative.end);
+    assert.throws(()=>catchEquivalent(mutant,row.form));++catchMutants;
+  }
+  if(row.form===4) {
+    const assignment=all.find(node=>node.type==='AssignmentExpression'&&node.right.type==='UnaryExpression'&&node.right.operator==='+');
+    assert.ok(assignment);
+    const target=wrapped.slice(assignment.left.start,assignment.left.end),value=wrapped.slice(assignment.right.argument.start,assignment.right.argument.end);
+    const mutant=wrapped.slice(0,assignment.start)+`(${target}=${value},${target}=+${target})`+wrapped.slice(assignment.end);
+    assert.throws(()=>catchEquivalent(mutant,row.form));++catchMutants;
+  }
+}
+assert.equal(catches.length,56);
+for(const split of [false,true])for(const reallocated of [false,true]) {
+  const series=catches.filter(row=>row.form===0&&row.split===split&&row.reallocated===reallocated&&row.copies>=200);
+  assert.deepEqual(series.map(row=>row.copies),[200,201,400,800]);
+  for(let i=1;i<series.length;++i)for(const cost of ['work','bytes'])
+    assert.ok(series[i][cost]<series[i-1][cost]*(series[i].copies===201?1.1:3));
+}
+console.log(`${catches.length} original catch/implicit failure/commit sources / ${catches.length*catchFactories.length} independent comparisons / ${catchMutants} adverse mutants`);
 
 // Independently execute current catch identities and undefined declaration
 // completion over repeated entries. These are source-adapter fixtures, not

@@ -4123,3 +4123,27 @@ byte/work tests. Raw operation count grows with copies while source normalizatio
 can keep E constant; these are component admission/work facts, not latency or RSS.
 The existing byte/work allowances are unchanged and full-process benchmarks/RSS
 stay paused.
+
+
+### Pending exception value joins (rules268)
+
+Verified original catch correspondence costs O(B+T+V) indexing/copying, for B
+bindings, T retained try regions and V raw values. Current flow adds one payload
+reference per explicit throw and catch-entry correspondence per activation. The
+normal-value solver uses definition and entry indexes, at most C pending-value
+nodes for C catch definitions, and shared incoming dependencies at each actual
+entry. Added construction/invalidation work and storage are O(D+P+C+H), for D
+source definitions, P events and H incoming catch edges; existing sparse facts,
+lookup and finite-height value solving retain their prior costs. No per-catch
+full CFG scan, pairwise admission, opcode whitelist or graph-size threshold.
+
+Scoped exposed value facts reuse existing live facts and transfer equations.
+Required evaluations kill value precision independently of observable stores.
+One additional pure expression/refinement phase removes initialization-proven
+impossible completions before liveness/types. Its scratch dies at the producer
+boundary and admission charges all simultaneously retained storage. This bounded
+phase does not close global pass convergence or process RSS verification.
+Copied/split/reallocated decoded exception graphs test 200/201/400/800 and exact/
+one-short allowances; current byte/work limits remain unchanged. Measured costs
+and final bounded validation are recorded in status.md; full-process performance,
+RSS, expanded corpora and other paused checks remain paused.

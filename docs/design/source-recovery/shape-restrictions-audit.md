@@ -3277,3 +3277,16 @@ missing-expression-boundary fallback and fail
 the semantic checks. Independent source execution covers unchanged normal results
 and altered comparison behavior. The full phase/exception correspondence, ordinary
 units, remaining trials and global pass convergence remain OPEN mainline work.
+
+
+### Rules268: catch payloads and observable scoped state
+
+Catch correspondence comes from the verified TreeFlow, not a matched opcode
+sequence or handler layout. Entry/normal completion owns an explicit thrown value;
+implicit failure cannot borrow that operation's normal value. Shared joins,
+scoped unit transfers and required evaluation invalidation prove current domains.
+Original catch ownership and subset checks preserve validity; there is no extra
+same-block, adjacency, sample/name or fixed graph-size admission. Write
+observability stays independent. Initialization refinement precedes its liveness/
+domain consumers and cannot mutate the recovery plan. Full raw phase/action and
+closure/finally precision remain implementation gaps, not language restrictions.
