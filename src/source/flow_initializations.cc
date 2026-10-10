@@ -44,7 +44,7 @@ std::variant<FlowInitializations,TreeStructureError> AnalyzeFlowInitializations(
       budget.Step();const auto* unit=std::get_if<ScopeBindingLifetime>(&flow.bindings[i].lifetime);
       const auto allocation=flow.bindings[i].allocation?flow.bindings[i].allocation:
           unit?std::optional{unit->enter}:std::nullopt;
-      if(std::holds_alternative<UnmodeledBindingLifetime>(flow.bindings[i].lifetime)||
+      if(flow.BindingUnit(SymbolId{static_cast<std::uint32_t>(i)})==FlowUnitCapability::kUnmodeled||
           (allocation&&result.declarations[i]&&!result.order.Dominates(*allocation,*result.declarations[i])))
         result.declarations[i].reset();
     }
@@ -121,22 +121,17 @@ std::variant<FlowInitializations,TreeStructureError> AnalyzeFlowInitializations(
       if(!reached(fact.point)){constant(true);return;}
       if(!generated_reachable[fact.binding.value]){constant(false);return;}
       const auto& binding=flow.bindings[fact.binding.value];const auto at=locations[fact.point.value];
-      if(std::holds_alternative<UnmodeledBindingLifetime>(binding.lifetime)){constant(false);return;}
+      const auto presence=flow.BindingPresence(fact.binding,fact.point,FlowScopePhase::kAfter);
+      if(presence!=FlowUnitPresence::kActive&&presence!=FlowUnitPresence::kCompletionOnly){constant(false);return;}
       std::optional<std::uint32_t> reset;
       if(const auto allocation=binding.allocation;allocation&&reached(*allocation)) {
         const auto site=locations[allocation->value];if(site.block==at.block&&site.offset<=at.offset)reset=site.offset;
       }
       const auto update_reset=[&](std::optional<std::uint32_t> site){if(site&&(!reset||*reset<*site))reset=site;};
-      std::optional<FlowUnitPresence> presence;
-      if(const auto* unit=std::get_if<ScopeBindingLifetime>(&binding.lifetime)) {
+      if(const auto* unit=std::get_if<ScopeBindingLifetime>(&binding.lifetime))
         update_reset(last(scope_resets,unit->scope,at));
-        if(flow.scopes)presence=flow.scopes->Presence(unit->scope,fact.point,FlowScopePhase::kAfter);
-      }
-      if(const auto* unit=std::get_if<LoopBindingLifetime>(&binding.lifetime)) {
+      if(const auto* unit=std::get_if<LoopBindingLifetime>(&binding.lifetime))
         update_reset(last(loop_resets,unit->loop,at));
-        presence=flow.scopes?flow.scopes->LoopPresence(unit->loop,fact.point,FlowScopePhase::kAfter):FlowUnitPresence::kUnmodeled;
-      }
-      if(presence&&*presence!=FlowUnitPresence::kActive&&*presence!=FlowUnitPresence::kCompletionOnly){constant(false);return;}
       const auto initialized=last(initializations,fact.binding,at);
       if(initialized&&(!reset||*initialized>=*reset)){constant(true);return;}
       if(reset){constant(false);return;}

@@ -359,6 +359,20 @@ struct RecoveryFlow {
       }
     },bindings[binding.value].lifetime);
   }
+  // Initialization and transfer use the same unit facts. A successful store
+  // alone does not prove that a lexical unit exists at a later occurrence.
+  // Completion-only graphs retain their explicit non-lexical contract.
+  [[nodiscard]] FlowUnitPresence BindingPresence(SymbolId binding,FlowPoint point,FlowScopePhase phase) const {
+    switch(BindingUnit(binding)) {
+      case FlowUnitCapability::kUnmodeled:return FlowUnitPresence::kUnmodeled;
+      case FlowUnitCapability::kCompletionOnly:return FlowUnitPresence::kCompletionOnly;
+      case FlowUnitCapability::kCurrent:break;
+    }
+    const auto& lifetime=bindings[binding.value].lifetime;
+    if(const auto* unit=std::get_if<ScopeBindingLifetime>(&lifetime))return scopes->Presence(unit->scope,point,phase);
+    if(const auto* unit=std::get_if<LoopBindingLifetime>(&lifetime))return scopes->LoopPresence(unit->loop,point,phase);
+    return FlowUnitPresence::kActive;
+  }
   // Shared unit transfer owns both scope events and abrupt edge exits.
   // Unmodeled transfer preserves possible demand but invalidates known values.
   [[nodiscard]] FlowUnitTransfer TransferBinding(SymbolId binding,const FlowEdge& edge) const {
@@ -367,10 +381,12 @@ struct RecoveryFlow {
     if(binding.value>=bindings.size())return scopes?FlowUnitTransfer::kUnmodeled:FlowUnitTransfer::kPreserved;
     if(BindingUnit(binding)==FlowUnitCapability::kUnmodeled)return FlowUnitTransfer::kUnmodeled;
     if(ResetsBinding(binding,edge.from))return FlowUnitTransfer::kEnded;
-    if(const auto* unit=std::get_if<LoopBindingLifetime>(&bindings[binding.value].lifetime))
-      return scopes?scopes->LoopTransfer(unit->loop,edge.from,edge.to):FlowUnitTransfer::kUnmodeled;
-    const auto* unit=std::get_if<ScopeBindingLifetime>(&bindings[binding.value].lifetime);
-    return unit&&scopes?scopes->Transfer(unit->scope,edge.from,edge.to):FlowUnitTransfer::kPreserved;
+    const auto prior=BindingPresence(binding,edge.from,FlowScopePhase::kAfter);
+    const auto next=BindingPresence(binding,edge.to,FlowScopePhase::kBefore);
+    if(prior==FlowUnitPresence::kInactive||next==FlowUnitPresence::kInactive)return FlowUnitTransfer::kEnded;
+    if(prior==FlowUnitPresence::kActive&&next==FlowUnitPresence::kActive)return FlowUnitTransfer::kPreserved;
+    if(prior==FlowUnitPresence::kCompletionOnly&&next==FlowUnitPresence::kCompletionOnly)return FlowUnitTransfer::kPreserved;
+    return FlowUnitTransfer::kUnmodeled;
   }
   [[nodiscard]] bool ResetsBinding(SymbolId binding,FlowPoint point) const {
     if(binding.value>=bindings.size())return false;

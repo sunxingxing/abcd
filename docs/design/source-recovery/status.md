@@ -36,6 +36,29 @@
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
 
+### 2026-10-10：规则275，初始化与转移共享单元存在事实
+
+- RecoveryFlow::BindingPresence 统一静态能力与 occurrence 前后单元状态。
+  初始化局部求解、跨块转移及值/需求逐边转移消费同一事实；批量支配
+  证书改用 BindingUnit。退出初始化自己的 Scope/Loop presence 推断和
+  仅检查 Unmodeled 标签的准入，不增加布局、样本或指令序列条件。
+- 反例先RED：缺失普通scope事实时，直线gen/use被误判完成，而拆块
+  依赖转移不能证明。新160组合覆盖普通/catch定义、Scope/Loop、缺失
+  forest/context、反向point、拆块及异常绕过；exact/one-short通过。
+  既有32768重置图、27648作用域图与200/201/400/800成本检查通过。
+- 共同查询O(1)、无新增保留内存；原稀疏must、重路径/Fenwick批量证书
+  算法保持。CompletionOnly契约保留；未知单元保留可能需求，但不能
+  提供完成/替换证明。分配、成功初始化与异常完成仍是独立义务。
+- 冻结终验：31目标构建0（100.87s）、fresh fixed ABC0（3.88s）、
+  63/63测试0（1044.96s），JUnit名称完整无重复；5份代码/测试哈希、
+  清单与输入SHA保持。19 records仍10 complete/0 partial/9 no-module，
+  10份源码语法通过、逐字节等同规则274，同一语言contract。构建无
+  warning/error。既有重复catch/local与投影源码独立执行对照均通过；
+  ProgressBar配对88场景/570异常/114 swaps/15突变/2等价变化通过，
+  platformExecution=false。证据根build/stage-one/initialization-unit-verification，
+  final-result.json、final-junit.xml；fresh输出initialization-unit-final-rule275-verified。
+- 五项主干仍OPEN，Goal active；其他优化及既定暂停事项保持。
+
 ### 2026-10-10：规则274，捕获的数值输入贯通成功定义
 
 - 更新动作的转换前读取接入既有FlowCapturedValue；共同稀疏值图分别

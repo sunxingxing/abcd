@@ -3463,3 +3463,17 @@ same explicit language contract. New/current source evidence includes48 loop/
 capture programs6720 comparisons16 mutants and32 update/catch programs2176
 comparisons96 mutants. Two production mutants were caught and restored. All
 five backbone closures remain OPEN. Evidence:build/stage-one/captured-numeric-verification.
+
+## 规则275：初始化与逐边转移共享单元存在事实
+
+RecoveryFlow::BindingPresence 在同一当前/候选图上组合静态单元能力与
+occurrence 前后作用域事实。初始化的局部 gen/kill 和跨块 must 求解、
+逐边值/需求转移共同消费它；缺失普通 scope 索引不能因为 gen 与 use
+落在同一个分析块而被当作已初始化。批量支配证书也消费 BindingUnit，
+不再仅用 Unmodeled lifetime 标签判断能力。CompletionOnly 图保留其
+显式非词法契约，未知单元不等于确实离开；需求保守保留。
+
+分配、重复进入、成功定义和异常绕过仍由独立的事件/边表示。本次不
+改变稀疏块压缩、重路径和 Fenwick 批量证书算法；Scope/Loop 的 reset
+索引只是求解加速，不能成为恢复准入。当前/试算均走既有共同提供者。
+完整普通单元重构及五项主干交付仍未关闭。

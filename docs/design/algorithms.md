@@ -4295,3 +4295,13 @@ The source cost matrix includes both assignment and update loop-carried forms,
 closed and captured cells, reversed arenas and200/201/400/800 inert scopes.
 Exact/one-short budget tests cover current and candidate preparation. These are
 bounded model/source checks; RSS and whole-corpus benchmarks remain paused.
+
+### Shared initialization unit presence (rules275)
+
+BindingPresence is an O(1) composition of the existing capability and indexed
+occurrence contexts, with no allocation or retained table. Initialization and
+edge transfers share it. The sparse must equations, block contraction and
+heavy-path/Fenwick certificate sweep retain their existing complexity and
+resource bounds. No per-variable graph traversal is added. Tests vary missing
+unit facts, ordinary/catch initialization, exception bypass, point permutation
+and block splitting; existing 200/201/400/800 activation cases remain relevant.

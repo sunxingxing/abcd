@@ -13,6 +13,7 @@
 #include <limits>
 #include "../../../src/source/definition_elision.h"
 #include "../../../src/source/flow_dominance.h"
+#include "../../../src/source/flow_initialization_cuts.h"
 #include "../../../src/source/flow_motion.h"
 #include <functional>
 #include "../../../src/source/binding_initializer.h"
@@ -2752,6 +2753,54 @@ void UnknownScopeTransfer() {
   // graph. Completion queries must not retain dangling graph/budget pointers.
   Check(retained.Completed({0},{2}));
 }
+void InitializationUnitCapability() {
+  // Completion must not depend on whether the declaration and read happen
+  // to contract into one analysis block. Missing unit facts cannot be filled
+  // in from that layout; a known current unit still needs successful init.
+  unsigned cases=0;
+  for(bool loop:{false,true})for(bool caught:{false,true})
+  for(bool reverse:{false,true})for(bool split:{false,true})for(bool bypass:{false,true})for(unsigned form=0;form<5;++form) {
+    RecoveryFlow flow{};flow.events.resize(5);flow.bindings.resize(1);
+    const auto point=[&](unsigned i){return FlowPoint{reverse?4-i:i};};flow.entry=point(0);
+    FunctionTree tree{};tree.scopes={{ScopeKind::kBlock,{}}};TreeCheckBudget budget({});
+    auto scopes=MakeFlowScopes(tree,budget);
+    scopes->events.resize(5,{ScopeId{0},ScopeId{0}});
+    const std::array<std::optional<FlowLoopScope>,1> loops{FlowLoopScope{}};
+    IndexFlowLoopScopes(*scopes,loops,budget);
+    scopes->loop_events.resize(5,{StmtId{0},StmtId{0}});
+    flow.scopes=scopes;
+    auto& binding=flow.bindings[0];binding.kind=caught?BindingKind::kCatchParameter:BindingKind::kLocal;
+    binding.declaration=StmtId{0};
+    if(loop)binding.lifetime=LoopBindingLifetime{StmtId{0}};
+    else binding.lifetime=ScopeBindingLifetime{{0},point(0),point(4)};
+    flow.events[point(1).value].definition=FlowDefinitionId{0};
+    flow.definitions={{point(1),{0},caught?FlowDefinitionKind::kCatch:FlowDefinitionKind::kUndefined,{},{},StmtId{0}}};
+    flow.events[point(4).value].read=SymbolId{0};
+    Link(flow,point(0).value,point(1).value);Link(flow,point(1).value,point(2).value);
+    Link(flow,point(2).value,point(4).value);
+    if(split){Link(flow,point(1).value,point(3).value);Link(flow,point(3).value,point(4).value);}
+    if(bypass) {
+      Link(flow,point(0).value,point(4).value);
+      flow.edges.back().completion=FlowCompletion::kThrow;
+    }
+    if(form==1)flow.scopes.reset();
+    if(form==2){if(loop)scopes->loop_events.clear();else scopes->events.clear();}
+    if(form==3){if(loop)scopes->loop_regions.clear();else scopes->regions.clear();}
+    if(form==4){if(loop)scopes->loop_events[point(4).value]={UnmodeledScope{},UnmodeledScope{}};
+      else scopes->events[point(4).value]={UnmodeledScope{},UnmodeledScope{}};}
+    const std::array<LiveBinding,1> queries{{{point(4),{0}}}};
+    const auto initialized=std::get<FlowInitializations>(AnalyzeFlowInitializations(flow,queries));
+    Check(initialized.Completed({0},point(4))==(form==0&&!bypass));
+    const std::array<std::optional<FlowPoint>,1> anchor{point(1)};
+    const auto certificate=std::get<FlowInitializationCertificates>(FindFlowInitializationCertificates(flow,initialized.order,anchor));
+    if(form>=1&&form<=3)Check(!certificate.clear[0]);
+    Check(std::holds_alternative<FlowInitializations>(AnalyzeFlowInitializations(flow,queries,{initialized.allocated_bytes,initialized.work})));
+    Check(std::get<TreeStructureError>(AnalyzeFlowInitializations(flow,queries,{initialized.allocated_bytes-1,initialized.work}))==TreeStructureError::kResourceLimit);
+    Check(std::get<TreeStructureError>(AnalyzeFlowInitializations(flow,queries,{initialized.allocated_bytes,initialized.work-1}))==TreeStructureError::kWorkLimit);
+    ++cases;
+  }
+  std::cout<<"initialization unit capability cases "<<cases<<'\n';
+}
 void DemandWithoutUnits() {
   RecoveryFlow flow{};flow.events.resize(2);
   flow.events[0].definition=FlowDefinitionId{0};flow.events[1].read=SymbolId{0};
@@ -3041,6 +3090,7 @@ void CatchActivationOrder() {
     Check(initialized.Completed(reference.binding,reference.point));
 }
 int main(int argc,char** argv){
+  InitializationUnitCapability();
   if(argc==2&&std::string_view(argv[1])=="--initialization"){InitializationOracle();ScopedInitializationOracle();EnclosingCleanup();BindingActivationScaling();return 0;}
   if(argc==2&&std::string_view(argv[1])=="--captured-values"){CapturedValues();return 0;}
   for(bool reverse:{false,true})for(bool known:{false,true}){ProjectedLifetime(false,known,reverse);ProjectedLifetime(true,known,reverse);}

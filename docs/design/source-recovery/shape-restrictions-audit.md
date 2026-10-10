@@ -3418,3 +3418,14 @@ failure; successful update writes depend on the earlier captured input. Unknown
 input includes BigInt, and no finite/result range is transferred to the store.
 Effects remain conservative and independently owned. Full raw action/phase
 correspondence is still a separate implementation gap.
+
+### Rules275: initialization consumes common unit presence
+
+Retire initializer-local capability/presence inference and the certificate
+producer's Unmodeled-tag-only test. Both use RecoveryFlow's unit owner.
+Straight-line gen/kill compression previously admitted initialization with
+missing ordinary scope metadata while a split path used the conservative edge
+transfer. The common query makes the semantic obligation layout independent:
+a successful definition initializes its current unit, not an unproved later
+unit. Unknown presence withdraws completion precision; it is not a source
+rejection or evidence of a definite cell exit. No new layout admission is added.

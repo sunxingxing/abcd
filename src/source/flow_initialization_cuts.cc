@@ -87,7 +87,7 @@ std::variant<FlowInitializationCertificates,TreeStructureError> FindFlowInitiali
     }
     for(std::size_t i=0;i<flow.bindings.size();++i) {
       budget.Step();const auto gen=anchors[i];if(!gen||!order.tree.nodes[gen->value].begin)continue;
-      const auto& binding=flow.bindings[i];if(std::holds_alternative<UnmodeledBindingLifetime>(binding.lifetime))continue;
+      const auto& binding=flow.bindings[i];if(flow.BindingUnit(SymbolId{static_cast<std::uint32_t>(i)})==FlowUnitCapability::kUnmodeled)continue;
       if(binding.allocation&&binding.allocation!=gen&&order.Dominates(*gen,*binding.allocation))continue;
       std::optional<std::size_t> unit;
       if(const auto* lifetime=std::get_if<ScopeBindingLifetime>(&binding.lifetime)) {

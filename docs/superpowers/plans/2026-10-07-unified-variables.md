@@ -985,3 +985,15 @@ same explicit language contract. New/current source evidence includes48 loop/
 capture programs6720 comparisons16 mutants and32 update/catch programs2176
 comparisons96 mutants. Two production mutants were caught and restored. All
 five backbone closures remain OPEN. Evidence:build/stage-one/captured-numeric-verification.
+
+Rules275 backbone substep: initialization and edge transfer consume the same
+BindingPresence capability/context query. Batch dominance certificates consume
+BindingUnit rather than a separate lifetime-tag test. The straight-line versus
+split-flow missing-scope counterexample was RED first. New160 cases cover
+ordinary/catch definitions, physical/native units, partial facts, exception
+bypass and reversed numbering; existing32768 reset and27648 scoped oracles
+and200/201/400/800 bounded cost checks pass. Frozen31 build0 (100.87s),
+fixedABC0 (3.88s), exact63 tests0 (1044.96s), complete names/no duplicates.
+Five frozen hashes, input and selection stay unchanged; all ten sources parse
+and are byte-identical to274. Evidence:build/stage-one/initialization-unit-verification.
+All five delivery closures remain OPEN; continue the backbone before other optimization.
