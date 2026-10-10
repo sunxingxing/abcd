@@ -4475,3 +4475,12 @@ existing O(operations) index consumes it instead of inferring value identity fro
 source coverage. No graph walk, sort, new optimizer admission or second semantic
 interpreter is introduced. Control composition keeps its independent truth and
 coverage proofs without certifying source-result equality.
+
+
+FindOriginalResult performs constant-time indexed lookup with no allocation.
+Inline range indexing and stored-definition propagation share this identity
+query; their existing traversals account for it. Withdrawing raw result identity
+cannot be undone by the stored-result consumer. This adds no per-value graph
+walk or solver node, and preserves source-domain propagation when the cap is
+absent. Existing layout/copy/block variations and200/201/400/800 scaling remain
+the validation dimensions; no additional corpus or RSS claim is made.

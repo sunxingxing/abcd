@@ -78,6 +78,14 @@ void RecordOriginalInput(OriginalFlow&,const analysis::ValueOperand&,
     const analysis::ValueOperand&,ExprId,std::optional<analysis::UseId>,TreeCheckBudget&);
 void IndexOriginalInputs(OriginalFlow&,TreeCheckBudget&);
 void CheckOriginalFlow(const FunctionTree&,const OriginalFlow&);
+struct OriginalResult {
+  analysis::ValueId value;
+  ExprId expression;
+  analysis::ValueKinds kinds;
+};
+// One value-identity query for inline and stored consumers. Missing projection
+// means no raw certificate, not failure of the current language expression.
+[[nodiscard]] std::optional<OriginalResult> FindOriginalResult(const OriginalFlow&,analysis::OpId);
 [[nodiscard]] analysis::ValueKinds OriginalDefinitionKinds(const OriginalFlow&,const OriginalSourceDefinition&);
 }  // namespace abcd::source
 #endif

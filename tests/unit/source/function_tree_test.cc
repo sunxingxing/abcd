@@ -439,8 +439,37 @@ void OriginalSuccessfulDomains(unsigned copies=0,bool reverse=false,bool split=f
     if(const auto* result=std::get_if<OriginalResultDefinition>(&definition->origin);result&&result->operation==conversion) {
       producer=definition->input;mapped=true;
       Check(OriginalDefinitionKinds(*original,*definition).IsFiniteNumber());
+      const auto verified=FindOriginalResult(*original,conversion);
+      Check(verified&&verified->value==result->value&&verified->expression==producer&&verified->kinds.IsFiniteNumber());
+      // A different source input or raw result cannot borrow this certificate.
+      auto changed=*definition;
+      changed.input=ExprId{static_cast<std::uint32_t>(tree.expressions.size())};
+      Check(OriginalDefinitionKinds(*original,changed).IsEmpty());
+      changed=*definition;
+      std::get<OriginalResultDefinition>(changed.origin).value=ValueId{static_cast<std::uint32_t>(original->values.size())};
+      Check(OriginalDefinitionKinds(*original,changed).IsEmpty());
+      for(bool removed_value:{false,true}) {
+        auto retired=*original;
+        if(removed_value)retired.values[result->value.value].life=ValueLife::kRemoved;
+        else retired.operations[conversion.value].life=ValueLife::kRemoved;
+        Check(!FindOriginalResult(retired,conversion));
+        Check(OriginalDefinitionKinds(retired,*definition).IsEmpty());
+      }
     }
   Check(mapped);
+  // Both inline evaluation and a later source commit require the SAME checked
+  // result identity. Retaining a source assignment cannot revive a withdrawn
+  // result certificate; current language Number precision still survives.
+  auto missing_result=*original;
+  missing_result.operations[conversion.value].result_expression.reset();
+  for(const auto& definition:missing_result.definitions)if(definition)
+    if(const auto* result=std::get_if<OriginalResultDefinition>(&definition->origin);result&&result->operation==conversion)
+      Check(!OriginalDefinitionKinds(missing_result,*definition).IsFiniteNumber());
+  const auto missing_model=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,projection,{plan,equations,order,&missing_result}));
+  for(const auto site:observed) {
+    Check(missing_model.expressions.kinds[site.value].IsNumber());
+    Check(!missing_model.expressions.kinds[site.value].IsFiniteNumber());
+  }
   // The verified result belongs to the expression's normal completion, even
   // before a compiler temporary stores it. Recovery must consume this proof
   // for inline computations through the same current completion graph.

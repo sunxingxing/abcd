@@ -1107,3 +1107,15 @@ and reversed arenas. FixedABC0/3.09s,10 sources parse and match280,19records rem
 claim for281. Evidence:build/stage-one/original-result-verification.
 #1 stays OPEN: effect/action/exceptional-phase/region projection is not delivered
 by result identity. Continue the same mainline; Goal active and pauses unchanged.
+
+
+Rules282 continues #1: inline and stored original-result caps now share
+FindOriginalResult. Source commits cannot revive a withdrawn result_expression
+certificate by reading the old ValueId domain directly. RED134 in the checked
+SSA fixture is recorded; missing/different/retired result/input evidence loses
+only the raw cap and keeps source Number precision. Constant-time query, no new
+layout/opcode admission or per-value traversal. Final3-target build succeeds,
+3/3 tests pass11.07s, fixedABC0/3.23s, ten sources parse and match281, input and
+frozen files unchanged. Evidence:build/stage-one/stored-result-identity-verification.
+Full63 not rerun. #1 effect/action/exception/region correspondence remains OPEN;
+other delivery states and stage-one Goal remain unchanged. Continue the mainline.

@@ -102,12 +102,25 @@ void CheckOriginalFlow(const FunctionTree& tree,const OriginalFlow& original) {
       (original.catches.empty()||original.catches.size()==tree.symbols.size())&&
       original.statements==tree.statements.size()&&original.bindings==tree.symbols.size(),TreeStructureError::kOwnership);
 }
+std::optional<OriginalResult> FindOriginalResult(const OriginalFlow& original,analysis::OpId id) {
+  RequireTree(id.value<original.operations.size(),TreeStructureError::kOwnership);
+  const auto& operation=original.operations[id.value];
+  if(operation.life!=analysis::ValueLife::kLive||!operation.result||!operation.result_expression)return {};
+  RequireTree(operation.result->value<original.values.size(),TreeStructureError::kOwnership);
+  const auto& value=original.values[operation.result->value];
+  if(value.life!=analysis::ValueLife::kLive)return {};
+  return OriginalResult{*operation.result,*operation.result_expression,value.domain};
+}
 analysis::ValueKinds OriginalDefinitionKinds(const OriginalFlow& original,const OriginalSourceDefinition& definition) {
   return std::visit([&](const auto& origin) {
     using T=std::decay_t<decltype(origin)>;
     if constexpr(std::is_same_v<T,OriginalSavedDefinition>)return Kinds(original,origin.operand);
-    else {
-      static_assert(std::is_same_v<T,OriginalResultDefinition>||std::is_same_v<T,OriginalPhiDefinition>||std::is_same_v<T,OriginalCatchDefinition>);
+    else if constexpr(std::is_same_v<T,OriginalResultDefinition>) {
+      const auto result=FindOriginalResult(original,origin.operation);
+      if(!result||result->value!=origin.value||result->expression!=definition.input)return analysis::ValueKinds{};
+      return result->kinds;
+    } else {
+      static_assert(std::is_same_v<T,OriginalPhiDefinition>||std::is_same_v<T,OriginalCatchDefinition>);
       return Kinds(original,analysis::ValueOperand{origin.value});
     }
   },definition.origin);

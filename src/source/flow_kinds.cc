@@ -77,12 +77,11 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
     RequireTree(flow.original_results.empty()||(input.original&&flow.original_results.size()==input.original->operations.size()),Error::kOwnership);
     for(std::size_t i=0;i<flow.original_results.size();++i) {
       budget.Step();const auto& occurrence=flow.original_results[i];if(!occurrence)continue;
-      const auto& operation=input.original->operations[i];
-      RequireTree(operation.result&&operation.result_expression==occurrence->expression&&
-          occurrence->expression.value<expressions&&occurrence->entry.value<events&&occurrence->normal.value<events&&
-          operation.result->value<input.original->values.size(),Error::kOwnership);
+      const auto result=FindOriginalResult(*input.original,analysis::OpId{static_cast<std::uint32_t>(i)});
+      RequireTree(result&&result->expression==occurrence->expression&&
+          occurrence->expression.value<expressions&&occurrence->entry.value<events&&occurrence->normal.value<events,Error::kOwnership);
       auto& kinds=original_results[occurrence->expression.value];
-      kinds=kinds.Join(input.original->values[operation.result->value].domain);
+      kinds=kinds.Join(result->kinds);
       provenance_required|=!kinds.IsEmpty();
     }
     // Entry domain is a type proof from the verified original SSA, not an

@@ -3484,3 +3484,13 @@ logical-operator, opcode-list, same-block, adjacency or graph-shape admission.
 Decoded profile and reversed-arena tests cover the false certificate; independent
 source execution retains discarded coercion and its exceptions/callbacks. Full
 raw phase/action/effect correspondence is still an explicit mainline gap.
+
+
+Rules282 retires the stored-result shortcut around rules281's value identity.
+Inline results and source commits consume FindOriginalResult; live original
+operation/result and checked source input must describe the same value. Missing
+identity loses only the raw cap, preserving source Number proofs. These are
+value-provenance obligations owned by the original adapter, not block/sequence/
+name admissions. Missing, retired and different-value/input certificates are
+covered by general successful-result and candidate tests. Raw effects and full
+exception/region correspondence remain OPEN.

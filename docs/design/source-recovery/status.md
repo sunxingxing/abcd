@@ -38,6 +38,25 @@
 这五项是主干交付闭环，不以局部规则或单项测试代替；第3项的关闭依据见下，
 其余四项不随之关闭。下一主干是完整原始IR/SSA语义接入，既定暂停事项保持。
 
+### 2026-10-10：规则282，内联与存储共用原始结果身份
+
+- 原始结果身份撤回后，内联路径已放弃原始范围，存储路径却仍能借
+  OriginalResultDefinition恢复该范围。新增已验证原始SSA测试观察到RED134。
+  两条路径现共同消费FindOriginalResult；源提交必须携带同一原始值及
+  已验证输入。缺失证明只撤销原始cap，当前语言Number事实仍保留。
+- 已退出存储消费者绕过result_expression直接读ValueId.domain的路径；
+  不增加语法/opcode/布局准入。新增查询为常数时间、无分配，已有遍历计费。
+  测试覆盖撤回身份、不同原始值/源输入、移除操作/值，沿既有复制、拆块、
+  arena反转、候选失效和200/201/400/800组合运行。
+- 最终三个相关目标构建通过，3/3定向测试通过（11.07s）。固定ABC0
+  （3.23s），19 records仍10 complete/9 no-module；10份源码语法通过且
+  逐字节等同281。冻结文件及输入SHA未变。证据：
+  build/stage-one/stored-result-identity-verification；RED日志为
+  build/stage-one/stored-result-identity-red.log。构建只有既有
+  literal_plan.cc:59的kNoop警告。未重跑完整63项或暂停的全套/语料/RSS。
+- 第1项仍OPEN；本次统一结果身份消费契约，不等于原始操作效果、异常阶段
+  与区域全部贯通。下一步仍围绕原始语义主干，五项状态不变，Goal active。
+
 ### 2026-10-10：规则281，纠正原始结果与源码覆盖的身份混淆
 
 - 推进第1项时，真实解码的逻辑选择暴露错误对应：原始ToBoolean与branch

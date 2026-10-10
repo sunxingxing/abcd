@@ -3710,3 +3710,16 @@ coercion callbacks and failures even when the numeric result is unused. Existing
 successful-result range and trial invalidation tests keep direct result precision.
 This is a corrected consumed raw identity relation, not completion of raw action,
 effect, exceptional-phase and region correspondence. Mainline #1 remains OPEN.
+
+
+Inline and stored raw results now consume FindOriginalResult, one query over the
+verified live operation, result and result_expression. OriginalDefinitionKinds
+also requires that the source commit carries that exact raw value and checked
+source input. A missing identity returns no raw cap; it does not discard current
+language-domain facts or reject the source computation. Previously a retained
+OriginalResultDefinition could restore a finite range after result_expression
+had been withdrawn. The decoded successful-result fixtures reproduce that gap
+and require both paths to lose only raw finite precision while keeping Number.
+This replaces separate eligibility logic rather than adding a source-shape rule.
+Phi contributions, saved operands and catch definitions retain their distinct
+verified identities; this result query does not conflate them with operations.
