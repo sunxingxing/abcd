@@ -25,6 +25,11 @@ struct OriginalSourceDefinition {
   ExprId input;
 };
 enum class OriginalAbruptKind : std::uint8_t {kReturn,kThrow};
+enum class OriginalControlKind : std::uint8_t {kPredicate,kTruthSelection,kNullishSelection};
+// A checked control input occurrence, not the selected value or an executable
+// operation on the enclosing expression. Folded pure tests keep this semantic
+// relation without lending their Boolean domains to the selection's result.
+struct OriginalControlInput {ExprId expression;OriginalControlKind kind;};
 // Original operations retain phase effects and success-only results, without
 // copying opcode variants or interpreting them a second time in recovery.
 struct OriginalOperation {
@@ -49,6 +54,7 @@ struct OriginalOperation {
   // Flow verification owns the native statement; operand verification owns
   // its completion payload. This is not the returned/thrown value's action.
   std::optional<OriginalAbruptKind> abrupt;
+  std::optional<OriginalControlInput> control;
 };
 // Operand evidence stays occurrence-specific. Never join it with operation
 // result domains: predicates and completion operands can share source anchors.
@@ -72,6 +78,9 @@ struct OriginalFlow {
   std::vector<OriginalOperation> operations;
   std::vector<analysis::WorkBlock> blocks;
   std::vector<analysis::WorkEdge> edges;
+  // Produced by control verification at the actual decision boundary. Phased
+  // branch successors belong to Commit, not to the operation's Before block.
+  std::vector<std::optional<analysis::OpId>> edge_controls; // EdgeId indexed.
   std::vector<analysis::ValueExceptionalExit> exceptional_exits;
   std::vector<analysis::ValuePhaseSite> phases;
   std::vector<analysis::ValueOrigin> origins;
@@ -96,7 +105,7 @@ struct OriginalResult {
 // means no raw certificate, not failure of the current language expression.
 [[nodiscard]] std::optional<OriginalResult> FindOriginalResult(const OriginalFlow&,analysis::OpId);
 // Raw domain lookup only. Recovery decisions use the RecoveryFlow overload,
-// which also requires current success/catch phase correspondence and shares
+// which also requires current success/catch/control correspondence and shares
 // that obligation with inline consumers. This query cannot certify a trial.
 [[nodiscard]] analysis::ValueKinds OriginalDefinitionKinds(const OriginalFlow&,const OriginalSourceDefinition&);
 }  // namespace abcd::source

@@ -3950,3 +3950,49 @@ exact/one-short budgets and sparse/full reference comparisons. Initial fixture
 and span errors are retained as failures, not included in acceptance. Evidence:
 build/stage-one/original-routes-final, original-routes-focused and
 original-routes-mutants. No additional mainline is closed by this validation.
+
+### Rules288: checked control-input occurrences and incoming certificates
+
+Control verification owns each raw decision edge's operation identity, including
+the Commit boundary of phased decisions. Operand verification publishes typed
+predicate, truth-selection or nullish-selection inputs. The common current/trial
+adapter records each input's source entry and normal completion. Folded pure
+tests retain a control relation; their Boolean domain and physical action are
+not assigned to the enclosing logical expression. No optimizer reconstructs
+these facts from expression layout.
+
+Phi contributions and edge-placed saves consume the same control-occurrence
+query before using original domains. Missing/currently absent inputs withdraw
+the raw certificate while retaining current source facts. This retires their
+direct controlled-incoming domain bypass. Source-definition placement and the
+joint completion/provenance solver retain the path, execution-count and value
+identity obligations. Unconditional incoming edges acquire no additional shape
+condition. Ordinary result, initialization, effects, write retention and source
+declarations remain separate responsibilities.
+
+Index construction is bounded by control nodes, raw edges/operations and source
+expressions; queries are O(1), without per-binding raw graph walks. Original
+edge ownership transfers an already charged buffer. Current control indexes
+are demand-owned; source-only reuse destroys unused capacity. The existing
+64MiB source budget and byte/work/subprocess bounds remain unchanged.
+
+Decoded three-profile logical and nullish fixtures verify publication, including
+register/copy/block/arena variants. Current missing correspondence and candidate
+condition edits withdraw finite phi bounds; edge-saved operands share that rule.
+Small complete/sparse solvers agree. For 200/201/400/800 control inputs, work is
+1308387/1315312/2689161/5525601 and admitted memory is
+7243633/7257257/14486321/28971697 bytes, identical after arena reversal.
+Exact and one-short byte/work budgets pass. Incoming-cap, normal-point and
+entry-point production bypasses all build and fail; restoration builds.
+
+This is not full raw control-path correspondence. A shared normal successor
+cannot identify a distinct input's execution count; folded internal phases and
+protocol/suspension internals still require complete semantic correspondence.
+Mainline #1 remains OPEN, as do #2/#4/#5; #3 retains its existing common-model
+scope. The frozen build of 32 targets passes (93.39s); the fixed ABC exports
+(3.07s), with 10 complete/9 no-module records and 10 syntax-valid sources identical
+to rules287. All 65 frozen tests pass (1170.65s), with exact names/no duplicates.
+All 11 frozen code/test files, selection and input SHA remain unchanged. Initial
+fixture API/type, missing build inputs and budget error-type assertions are
+retained as failures and excluded from acceptance. Evidence is in
+build/stage-one/original-controls-final and original-controls-focused.

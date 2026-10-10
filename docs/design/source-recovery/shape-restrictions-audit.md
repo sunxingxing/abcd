@@ -3549,3 +3549,18 @@ mutation obligations; no ordinary-action cap is applied to them. Register/copy/
 block/arena variants, independent execution, source-only action endpoints and
 production bypass mutations exercise the new paths. Full raw control/protocol/
 exception-region correspondence remains OPEN, as do mainlines #2/#4/#5.
+
+规则288补充：原始决策边的控制操作身份由既有控制验证产生，输入发生
+关系由操作数验证产生；共同构图器发布当前入口/normal，不由优化器
+从同块、邻接、producer列表或固定操作序列重新推断。Phi贡献与按边
+保存的raw域共用此发生关系；缺失当前对应撤销raw证据，不删除源码
+定义、初始化或效果。无条件边仍由共同定义放置和完成/证明失效分析
+处理，不添加图形状准入。新索引为节点/边/操作/表达式上的有界扫描，
+不存在按绑定遍历原图或200阈值分支。
+
+该对应只证明当前输入发生关系存在；路径、发生次数和异常/效果顺序
+仍由各自共同分析证明。共享normal后继不代表独立的raw阶段，折叠
+内部测试仍无物理动作/Boolean结果身份；原始控制路径及protocol/
+suspension内部对应是明确缺口，不能据此关闭原始IR/SSA主干。
+布局变换、候选条件修改、缺失/过期对应、独立源码执行、小图对照、
+200/201/400/800与三个生产绕过变异的实际证据见status。

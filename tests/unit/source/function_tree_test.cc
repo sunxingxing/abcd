@@ -195,6 +195,18 @@ void OriginalSelectionResults(bool emit=false) {
     projection.stable_entries=stable;
     const auto model=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,projection,{plan,equations,order,&original}));
     bool selected=false;
+    bool controlled=false;
+    for(unsigned i=0;i<original.operations.size();++i)if(original.operations[i].control) {
+      const auto occurrence=FindFlowOriginalControl(model.flow,OpId{i});Check(occurrence.has_value());controlled=true;
+      Check(occurrence->expression==original.operations[i].control->expression);
+      Check(occurrence->entry==model.flow.expressions[occurrence->expression.value]);
+      Check(occurrence->normal==model.flow.normal_exits[occurrence->expression.value]);
+      auto missing=model.flow;missing.original_controls.clear();Check(!FindFlowOriginalControl(missing,OpId{i}));
+      missing=model.flow;missing.normal_exits[occurrence->expression.value].reset();Check(!FindFlowOriginalControl(missing,OpId{i}));
+      missing=model.flow;missing.original_controls[i]->entry=missing.terminal;Check(!FindFlowOriginalControl(missing,OpId{i}));
+    }
+    Check(controlled&&original.edge_controls.size()==original.edges.size());
+    for(const auto owner:original.edge_controls)if(owner)Check(original.operations[owner->value].control.has_value());
     for(unsigned i=0;i<built.flow->logical_operations.size();++i)if(built.flow->logical_operations[i]&&original.operations[i].result) {
       selected=true;
       Check(!model.flow.original_results[i]);
@@ -387,6 +399,11 @@ void OriginalSuccessfulDomains(unsigned copies=0,bool reverse=false,bool split=f
   const auto model_result=PrepareRecoveryProjection(tree,projection,input);
   Check(std::holds_alternative<RecoveryProjection>(model_result));
   const auto model=std::get<RecoveryProjection>(model_result);
+  if(branch) {
+    Check(original->operations[branch->value].control.has_value());
+    const auto occurrence=FindFlowOriginalControl(model.flow,*branch);Check(occurrence.has_value());
+    for(const auto owner:original->edge_controls)Check(owner==branch);
+  }
   std::vector<ExprId> observed;
   for(const auto& reference:model.flow.references)if(reference.kind==FlowReferenceKind::kRead)
     if(const auto* site=std::get_if<ExprId>(&reference.site);site&&reference.original) {

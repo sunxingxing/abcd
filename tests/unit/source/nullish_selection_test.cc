@@ -1,6 +1,7 @@
 #include "../../../src/source/function_tree.h"
 #include "../../../src/source/logical_regions.h"
 #include "../../../src/source/tree_semantics.h"
+#include "../../../src/source/recovery_projection.h"
 #include "../../../src/source/tree_checks.h"
 #include "../../../src/source/family_print.h"
 #include "../../../src/source/instruction_sources.h"
@@ -120,6 +121,27 @@ std::optional<std::string> Source(unsigned count, Form form, abc::ProfileId prof
   }
   Check(std::holds_alternative<TreeSemantics>(meaning));
   if (form == Form::kDirect && count == 1) {
+    const auto& original=*std::get<TreeSemantics>(meaning).flow.original;
+    BindingInitializers bindings;
+    const auto b=tree.symbols.size(),x=tree.expressions.size(),s=tree.statements.size();
+    bindings.aliases.resize(b);bindings.storage.resize(b);bindings.read_bindings.resize(b);bindings.literals.resize(b);
+    bindings.read_sources.resize(x);bindings.read_literals.resize(x);bindings.replacements.resize(x);bindings.transports.resize(x);
+    bindings.omitted.resize(s);bindings.statements.resize(s);
+    std::vector<FlowValueEquation> equations(x);std::vector<ExprId> order;std::vector<std::uint8_t> private_bindings(b);
+    for(unsigned i=0;i<x;++i) {
+      order.push_back({i});if(const auto* read=std::get_if<SymbolExpr>(&tree.expressions[i].expression))equations[i]=FlowBindingValue{read->symbol};
+    }
+    LegacyFlowProjection projection{bindings.aliases,bindings.literals,bindings.replacements,bindings.omitted,{},{},bindings.statements,private_bindings};
+    const auto model=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,projection,{bindings,equations,order,&original}));
+    bool nullish=false;
+    for(unsigned i=0;i<original.operations.size();++i)if(const auto& input=original.operations[i].control;input&&input->kind==OriginalControlKind::kNullishSelection) {
+      const auto current=FindFlowOriginalControl(model.flow,analysis::OpId{i});Check(current.has_value());
+      Check(current->kind==OriginalControlKind::kNullishSelection&&current->expression==input->expression);nullish=true;
+      // The folded tests control selection; their shared anchor is neither
+      // an independent physical action nor the logical expression's value.
+      Check(!original.operations[i].result_expression&&!original.operations[i].intrinsic_expression);
+    }
+    Check(nullish);
     bool checked = false;
     for (std::size_t i = 0; i < tree.expressions.size(); ++i) {
       const auto* logical = std::get_if<LogicalExpr>(&tree.expressions[i].expression);

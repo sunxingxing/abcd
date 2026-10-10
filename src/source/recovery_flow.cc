@@ -181,6 +181,21 @@ class FlowBuilder {
       }
     }
     copy(result.statements,statements_);copy(result.expressions,expressions_);
+    bool controls=false;
+    if(result.original)for(const auto& operation:result.original->operations) {
+      budget_.Step();if(operation.life==analysis::ValueLife::kLive&&operation.control){controls=true;break;}
+    }
+    if(!controls)decltype(result.original_controls){}.swap(result.original_controls);
+    Resize(result.original_controls,controls?result.original->operations.size():0);
+    for(std::size_t i=0;i<result.original_controls.size();++i) {
+      budget_.Step();auto& occurrence=result.original_controls[i];occurrence.reset();
+      const auto& operation=result.original->operations[i];
+      if(operation.life!=analysis::ValueLife::kLive||!operation.control)continue;
+      const auto& input=*operation.control;
+      RequireTree(input.expression.value<result.normal_exits.size(),Error::kOwnership);
+      if(const auto normal=result.normal_exits[input.expression.value])
+        occurrence=FlowOriginalControl{input.expression,expressions_[input.expression.value],*normal,input.kind};
+    }
     Resize(result.original_phases,result.original?result.original->phases.size():0);
     for(std::size_t i=0;i<result.original_phases.size();++i) {
       budget_.Step();auto& point=result.original_phases[i];point.reset();
@@ -953,10 +968,32 @@ std::optional<OriginalResult> FindFlowOriginalResult(const RecoveryFlow& flow,an
   return result;
 }
 namespace {
+bool OriginalIncomingAvailable(const RecoveryFlow& flow,const analysis::IncomingKey& incoming) {
+  // Consume the verified decision-owner correspondence. This withdraws an
+  // incoming certificate when its controlling input has no current occurrence;
+  // source definition placement and the joint completion/provenance solver
+  // still own path, execution-count and operand-identity obligations. An
+  // unconditional incoming edge is not a second control-shape admission rule.
+  const auto* edge=std::get_if<analysis::EdgeId>(&incoming);if(!edge)return true;
+  if(!flow.original||edge->value>=flow.original->edges.size()||
+      flow.original->edge_controls.size()!=flow.original->edges.size())return false;
+  const auto owner=flow.original->edge_controls[edge->value];
+  return !owner||FindFlowOriginalControl(flow,*owner).has_value();
+}
 bool OriginalHandlerAvailable(const RecoveryFlow& flow,analysis::WorkBlockId handler) {
   return FindOriginalPhase(flow,handler,analysis::ExceptionPhase::kCatch)&&handler.value<flow.original_handlers.size()&&
       flow.original_handlers[handler.value]==FlowOriginalRouteCoverage::kComplete;
 }
+}
+std::optional<FlowOriginalControl> FindFlowOriginalControl(const RecoveryFlow& flow,analysis::OpId id) {
+  if(!flow.original||id.value>=flow.original->operations.size()||id.value>=flow.original_controls.size())return {};
+  const auto& operation=flow.original->operations[id.value];const auto& occurrence=flow.original_controls[id.value];
+  if(operation.life!=analysis::ValueLife::kLive||!operation.control||!occurrence||
+      occurrence->expression!=operation.control->expression||occurrence->kind!=operation.control->kind||
+      occurrence->expression.value>=flow.expressions.size()||occurrence->expression.value>=flow.normal_exits.size()||
+      flow.normal_exits[occurrence->expression.value]!=occurrence->normal||
+      flow.expressions[occurrence->expression.value]!=occurrence->entry)return {};
+  return occurrence;
 }
 analysis::ValueKinds OriginalDefinitionKinds(const RecoveryFlow& flow,const OriginalSourceDefinition& definition) {
   if(!flow.original)return {};
@@ -966,6 +1003,11 @@ analysis::ValueKinds OriginalDefinitionKinds(const RecoveryFlow& flow,const Orig
   }
   if(const auto* caught=std::get_if<OriginalCatchDefinition>(&definition.origin))
     if(!OriginalHandlerAvailable(flow,caught->handler))return {};
+  if(const auto* phi=std::get_if<OriginalPhiDefinition>(&definition.origin))
+    if(!OriginalIncomingAvailable(flow,phi->incoming))return {};
+  if(const auto* saved=std::get_if<OriginalSavedDefinition>(&definition.origin))
+    if(const auto* incoming=std::get_if<analysis::IncomingKey>(&saved->placement))
+      if(!OriginalIncomingAvailable(flow,*incoming))return {};
   return OriginalDefinitionKinds(*flow.original,definition);
 }
 analysis::ValueKinds OriginalCatchKinds(const RecoveryFlow& flow,const OriginalCatchBinding& caught) {

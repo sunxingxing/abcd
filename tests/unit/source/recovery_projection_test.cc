@@ -116,6 +116,110 @@ struct Fixture {
     result.read_bindings=plan.read_bindings;result.read_sources=plan.read_sources;result.original=&original;return result;
   }
 };
+// Synthetic path-range certificates exercise the shared consumer. Decoded
+// FunctionTree tests separately prove publication of the control/edge owner.
+std::pair<std::uint64_t,std::size_t> OriginalControlKinds(bool reverse,unsigned count=1) {
+  using namespace analysis;
+  Fixture f(0,false);auto& tree=f.tree;
+  const auto expr=[&](TreeExpression value,FlowValueEquation equation=UnknownFlowValue{}) {
+    ExprId id{static_cast<unsigned>(tree.expressions.size())};tree.expressions.push_back({value,{0}});
+    f.equations.push_back(equation);f.order.push_back(id);return id;
+  };
+  const auto stmt=[&](TreeStatement value) {
+    StmtId id{static_cast<unsigned>(tree.statements.size())};tree.statements.push_back({value,{0}});return id;
+  };
+  const auto block=[&](ScopeId scope,StmtId child) {
+    const auto first=tree.children.size();tree.children.push_back(child);
+    return stmt(BlockStmt{scope,static_cast<unsigned>(first),1});
+  };
+  tree.names.push_back(u"saved");tree.symbols.push_back({{1},{1},BindingKind::kCompilerTemporary,DeclarationKind::kLet,NameEvidence::kSynthesized,TemporaryReason::kPhiJoin});
+  const auto declared=stmt(DeclarationStmt{{1},{}});
+  f.original.values.push_back({EntryDefinition{ParameterEntry{0}},ValueKinds::Language()});
+  std::vector<StmtId> body{declared};std::vector<ExprId> conditions,stores,reads;
+  for(unsigned i=0;i<count;++i) {
+    const ScopeId yes{static_cast<unsigned>(tree.scopes.size())},no{yes.value+1};
+    tree.scopes.push_back({ScopeKind::kBlock,ScopeId{1}});tree.scopes.push_back({ScopeKind::kBlock,ScopeId{1}});
+    const auto condition=expr(BinaryExpr{BinaryOperator::kStrictEqual,expr(SymbolExpr{{0}},FlowBindingValue{{0}}),expr(TreeLiteral{source::IntegerLiteral{0}})});
+    const auto number=expr(UnaryExpr{TreeUnary::kPlus,expr(SymbolExpr{{0}},FlowBindingValue{{0}})});
+    const auto first=expr(AssignmentExpr{SymbolTarget{{1}},number},FlowExpressionValue{number});
+    const auto seven=expr(TreeLiteral{source::IntegerLiteral{7}},FlowPrimitiveReference{{1}});
+    const auto second=expr(AssignmentExpr{SymbolTarget{{1}},seven},FlowExpressionValue{seven});
+    body.push_back(stmt(IfStmt{condition,block(yes,stmt(ExpressionStmt{first})),block(no,stmt(ExpressionStmt{second}))}));
+    const auto read=expr(SymbolExpr{{1}},FlowBindingValue{{1}});
+    body.push_back(stmt(ExpressionStmt{expr(UnaryExpr{TreeUnary::kNegate,read})}));
+    conditions.push_back(condition);stores.push_back(first);reads.push_back(read);
+    const EdgeId edge{static_cast<unsigned>(f.original.edges.size())};
+    f.original.edges.push_back({{i*3},{i*3+1},FlowEdgeKind::kTaken,0});
+    f.original.edges.push_back({{i*3},{i*3+2},FlowEdgeKind::kFallthrough,1});
+    f.original.edge_controls.insert(f.original.edge_controls.end(),{OpId{i},OpId{i}});
+    OriginalOperation branch{};branch.life=ValueLife::kLive;branch.control=OriginalControlInput{condition,OriginalControlKind::kPredicate};
+    f.original.operations.push_back(branch);
+    const ValueId value{static_cast<unsigned>(f.original.values.size())};
+    f.original.values.push_back({PhiDefinition{{i*3+3}},ValueKinds::FiniteNumber()});
+    f.original.definitions.resize(tree.expressions.size());
+    f.original.definitions[first.value]=OriginalSourceDefinition{OriginalPhiDefinition{value,edge},{1},number};
+    f.original.definitions[second.value]=OriginalSourceDefinition{OriginalPhiDefinition{value,EdgeId{edge.value+1}},{1},seven};
+  }
+  const auto root=tree.children.size();tree.children.insert(tree.children.end(),body.begin(),body.end());
+  std::get<BlockStmt>(tree.statements[0].statement)={{1},static_cast<unsigned>(root),static_cast<unsigned>(body.size())};
+  const auto x=tree.expressions.size(),s=tree.statements.size();
+  f.plan.aliases.resize(2);f.plan.storage.resize(2);f.plan.read_bindings.resize(2);f.plan.literals.resize(2);
+  f.plan.read_sources.resize(x);f.plan.read_literals.resize(x);f.plan.replacements.resize(x);f.plan.transports.resize(x);
+  f.plan.omitted.resize(s);f.plan.statements.resize(s);f.private_bindings={0,1};
+  f.original.statements=s;f.original.bindings=2;f.original.input_ranges.resize(x);f.original.definitions.resize(x);
+  if(reverse) {
+    const auto map=[&](ExprId id){return ExprId{static_cast<unsigned>(x-1-id.value)};};
+    for(auto& node:tree.expressions)std::visit([&](auto& value) {
+      using T=std::decay_t<decltype(value)>;
+      if constexpr(std::is_same_v<T,UnaryExpr>)value.operand=map(value.operand);
+      else if constexpr(std::is_same_v<T,BinaryExpr>){value.left=map(value.left);value.right=map(value.right);}
+      else if constexpr(std::is_same_v<T,AssignmentExpr>)value.value=map(value.value);
+      else Check(std::is_same_v<T,SymbolExpr>||std::is_same_v<T,TreeLiteral>);
+    },node.expression);
+    for(auto& node:tree.statements)std::visit([&](auto& value) {
+      using T=std::decay_t<decltype(value)>;
+      if constexpr(std::is_same_v<T,IfStmt>)value.condition=map(value.condition);
+      else if constexpr(std::is_same_v<T,ExpressionStmt>)value.expression=map(value.expression);
+    },node.statement);
+    for(auto& value:f.equations)if(auto* expression=std::get_if<FlowExpressionValue>(&value))expression->expression=map(expression->expression);
+    for(auto& value:f.order)value=map(value);
+    for(auto& definition:f.original.definitions)if(definition)definition->input=map(definition->input);
+    std::reverse(tree.expressions.begin(),tree.expressions.end());std::reverse(f.equations.begin(),f.equations.end());
+    std::reverse(f.original.definitions.begin(),f.original.definitions.end());
+    for(auto& id:conditions)id=map(id);for(auto& id:stores)id=map(id);for(auto& id:reads)id=map(id);
+    for(auto& operation:f.original.operations)operation.control->expression=map(operation.control->expression);
+  }
+  const auto condition=conditions.front(),first=stores.front(),read=reads.front();
+  Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  auto projection=f.Projection();const std::array<std::uint8_t,2> stable{1,0};projection.stable_entries=stable;
+  const auto model=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,projection,f.Input()));
+  Check(model.flow.original_controls.size()==count);
+  for(const auto at:reads)Check(model.expressions.kinds[at.value].IsFiniteNumber());
+  if(count==1) {
+    const SemanticBudget exact{model.allocated_bytes,model.work};
+    Check(std::holds_alternative<RecoveryProjection>(PrepareRecoveryProjection(tree,projection,f.Input(),exact)));
+    Check(std::get<TreeStructureError>(PrepareRecoveryProjection(tree,projection,f.Input(),{exact.bytes-1,exact.work}))==TreeStructureError::kResourceLimit);
+    Check(std::get<TreeStructureError>(PrepareRecoveryProjection(tree,projection,f.Input(),{exact.bytes,exact.work-1}))==TreeStructureError::kWorkLimit);
+  }
+  auto gap=model.flow;gap.original_controls.clear();
+  const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(gap));
+  const auto unknown=std::get<FlowNormalKinds>(CheckedFlowNormalKinds(tree,gap,live,f.Input()));
+  Check(unknown.expressions[read.value].IsNumber()&&!unknown.expressions[read.value].IsFiniteNumber());
+  Check(OriginalDefinitionKinds(gap,*f.original.definitions[first.value]).IsEmpty());
+  const OriginalSourceDefinition saved{OriginalSavedDefinition{ValueId{1},IncomingKey{EdgeId{0}}},{1},f.original.definitions[first.value]->input};
+  Check(OriginalDefinitionKinds(model.flow,saved).IsFiniteNumber());Check(OriginalDefinitionKinds(gap,saved).IsEmpty());
+  auto candidate=f.plan;candidate.primitives.push_back(BooleanLiteral{true});
+  candidate.transports[condition.value]=ExpressionTransport{condition,PrimitiveId{static_cast<unsigned>(candidate.primitives.size()-1)}};
+  const RecoveryExpressionInput changed{candidate,f.equations,f.order,&f.original};
+  const auto current=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,projection,changed));
+  Check(current.expressions.kinds[read.value].IsNumber()&&!current.expressions.kinds[read.value].IsFiniteNumber());
+  auto no_raw=projection;no_raw.original=nullptr;
+  no_raw.evaluations=model.expressions.evaluations;no_raw.normal_stores=model.expressions.normal_stores;
+  no_raw.normal_bindings=model.expressions.bindings;no_raw.normal_kinds=model.expressions.kinds;
+  const auto plain=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,no_raw,{},model.flow));
+  Check(plain.original_controls.empty()&&plain.original_controls.capacity()==0);
+  return {model.work,model.allocated_bytes};
+}
 // Conditional effect certificates are synthetic inputs to the solver here;
 // decoded FunctionTree tests independently verify their publication boundary.
 void OriginalIntrinsicEffects(bool reverse) {
@@ -1991,6 +2095,16 @@ int main(int argc,char** argv) {
     for(unsigned count:{200U,201U,400U,800U}) {
       const auto cost=RawProjectionClosure(true,RawClosureEdit::kNone,reverse,count);
       if(prior.first){Check(cost.first<prior.first*3);Check(cost.second<prior.second*3);}prior=cost;
+    }
+  }
+  OriginalControlKinds(false);OriginalControlKinds(true);
+  for(bool reverse:{false,true}) {
+    std::pair<std::uint64_t,std::size_t> previous{};
+    for(unsigned count:{200U,201U,400U,800U}) {
+      const auto measured=OriginalControlKinds(reverse,count);
+      Check(!previous.first||measured.first<previous.first*3);Check(!previous.second||measured.second<previous.second*3);
+      previous=measured;
+      std::cout<<"original controls count="<<count<<" reverse="<<reverse<<" work="<<measured.first<<" bytes="<<measured.second<<'\n';
     }
   }
   OriginalIntrinsicEffects(false);OriginalIntrinsicEffects(true);

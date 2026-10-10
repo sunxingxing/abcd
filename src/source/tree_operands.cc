@@ -201,12 +201,15 @@ class OperandCheck {
         // not an additional producer-kind list, authorize this projection.
         origin_ = {graph_.ops[truth.branch.value].origin.value};
         Input(truth.value, truth.input, truth.occurrence);
+        original_.operations[i].control=OriginalControlInput{truth.input,
+            logical.operation==TreeLogical::kNullish?OriginalControlKind::kNullishSelection:OriginalControlKind::kTruthSelection};
         continue;
       }
       if (!predicate && !flow_.conditional_operations.empty() && flow_.conditional_operations[i]) {
         const auto& conditional = Node<ConditionalExpr>(expression);
         RequireMeaning(std::holds_alternative<analysis::ValueBranch>(op.operation) && op.use_count == 1, Error::kOperand);
         Input(graph_.uses[op.first_use.value].operand, conditional.condition, op.first_use);
+        original_.operations[i].control=OriginalControlInput{conditional.condition,OriginalControlKind::kPredicate};
         continue;
       }
       if (!flow_.logical_operations.empty() && flow_.logical_operations[i]) {
@@ -215,6 +218,8 @@ class OperandCheck {
         if (std::holds_alternative<analysis::ValueUnary>(op.operation))
           Input(graph_.uses[op.first_use.value].operand, logical.left, op.first_use);
         else RequireMeaning(std::holds_alternative<analysis::ValueBranch>(op.operation), Error::kOperand);
+        original_.operations[i].control=OriginalControlInput{logical.left,
+            logical.operation==TreeLogical::kNullish?OriginalControlKind::kNullishSelection:OriginalControlKind::kTruthSelection};
         continue;
       }
       const auto input = [&](std::uint32_t ordinal) -> const analysis::ValueOperand& {
@@ -276,6 +281,7 @@ class OperandCheck {
               Unary(operation.predicate == U::kFalseOrZero ? U::kTrueOrNonzeroNumber : U::kFalseOrZero, input(0), expression);
             } else Unary(operation.predicate, input(0), UnaryInput(expression, TreeUnary::kNot));
           } else Unary(operation.predicate, input(0), expression);
+          original_.operations[i].control=OriginalControlInput{expression,OriginalControlKind::kPredicate};
         } else if constexpr (std::is_same_v<T, analysis::ValueBinary>) {
           original_.operations[i].intrinsic_expression=expression;
           const auto& binary = Node<BinaryExpr>(expression);

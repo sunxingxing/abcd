@@ -36,6 +36,7 @@ std::shared_ptr<OriginalFlow> RetainOriginalFlow(const analysis::ValueProgram& g
   };
   copy(result->values,graph.values);copy(result->uses,graph.uses);
   copy(result->blocks,graph.blocks);copy(result->edges,graph.edges);
+  result->edge_controls=std::move(flow.edge_controls);
   copy(result->exceptional_exits,graph.exceptional_exits);copy(result->phases,graph.phases);copy(result->origins,graph.origins);
   // Transfer the verified table; its allocation was already admitted with TreeFlow.
   result->definitions=std::move(flow.definitions);
@@ -104,6 +105,7 @@ void CheckOriginalFlow(const FunctionTree& tree,const OriginalFlow& original) {
       original.input_ranges.size()==tree.expressions.size()&&
       (original.definitions.empty()||original.definitions.size()==tree.expressions.size())&&
       (original.catches.empty()||original.catches.size()==tree.symbols.size())&&
+      (original.edge_controls.empty()||original.edge_controls.size()==original.edges.size())&&
       original.statements==tree.statements.size()&&original.bindings==tree.symbols.size(),TreeStructureError::kOwnership);
 }
 std::optional<OriginalResult> FindOriginalResult(const OriginalFlow& original,analysis::OpId id) {

@@ -60,6 +60,16 @@ class FlowCheck {
       budget.Array(flow_.tries, exceptions->regions.regions.size());
     }
     budget.Array(flow_.branch_polarity, graph.ops.size());
+    budget.Array(flow_.edge_controls,graph.edges.size());
+    for(const auto& node:control.nodes) {
+      budget.Step();if(!node.arms||!std::holds_alternative<std::monostate>(node.synthetic))continue;
+      const auto predicate=DecisionPredicate(node);const auto& block=DecisionBlock(node);
+      for(std::uint8_t i=0;i<block.edge_count;++i) {
+        budget.Step();const analysis::EdgeId edge{block.first_edge.value+i};
+        Require(edge.value<graph.edges.size()&&!flow_.edge_controls[edge.value],Error::kControl);
+        flow_.edge_controls[edge.value]=predicate;
+      }
+    }
     budget.Array(decision_branches_, graph.ops.size());
     for (const auto& node : control.nodes) {
       budget.Step(); if (!node.decision) continue;

@@ -14,6 +14,10 @@ struct FlowPoint { std::uint32_t value = 0; auto operator<=>(const FlowPoint&) c
 // continuation excludes the throwing route and never certifies a later store.
 // Missing entries are correspondence gaps, not permission to reuse raw effects.
 struct FlowOriginalResult { ExprId expression; FlowPoint entry,normal; };
+// The completed input may lead to a shared source decision point. Keep its
+// own entry/normal interval: the successor alone cannot establish this
+// occurrence's execution. This fact does not identify a selected value.
+struct FlowOriginalControl {ExprId expression;FlowPoint entry,normal;OriginalControlKind kind;};
 struct FlowDefinitionId { std::uint32_t value = 0; auto operator<=>(const FlowDefinitionId&) const = default; };
 struct FlowInputId { std::uint32_t value = 0; auto operator<=>(const FlowInputId&) const = default; };
 struct DiscardedId { std::uint32_t value = 0; auto operator<=>(const DiscardedId&) const = default; };
@@ -453,6 +457,7 @@ struct RecoveryFlow {
   std::vector<std::optional<FlowOriginalException>> original_exceptions; // Exceptional exit indexed.
   std::vector<FlowOriginalRouteCoverage> original_handlers; // WorkBlockId indexed.
   std::vector<std::optional<FlowOriginalResult>> original_results; // OpId indexed.
+  std::vector<std::optional<FlowOriginalControl>> original_controls; // OpId indexed.
   std::vector<std::optional<SourceEffects>> original_effects; // ExprId indexed, intrinsic only.
   RouteInputIdentity identity;
   analysis::IrRevision value_revision;
@@ -514,6 +519,7 @@ struct RecoveryFlow {
 [[nodiscard]] std::optional<FlowPoint> FindOriginalPhase(const RecoveryFlow&,
     analysis::WorkBlockId,analysis::ExceptionPhase,std::optional<analysis::OpId> = {});
 [[nodiscard]] std::optional<OriginalResult> FindFlowOriginalResult(const RecoveryFlow&,analysis::OpId);
+[[nodiscard]] std::optional<FlowOriginalControl> FindFlowOriginalControl(const RecoveryFlow&,analysis::OpId);
 [[nodiscard]] analysis::ValueKinds OriginalDefinitionKinds(const RecoveryFlow&,const OriginalSourceDefinition&);
 [[nodiscard]] analysis::ValueKinds OriginalCatchKinds(const RecoveryFlow&,const OriginalCatchBinding&);
 struct FlowBindingNames {

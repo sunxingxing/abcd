@@ -51,6 +51,7 @@ struct TreeFlow {
   // Derived from actual statement arms; expression verification checks the
   // corresponding original or complemented predicate without repeating reads.
   std::vector<BranchPolarity> branch_polarity;
+  std::vector<std::optional<analysis::OpId>> edge_controls;
   std::vector<std::optional<StmtId>> statements;
   std::vector<std::optional<PropertyId>> initializers;
   // Actual original buffer prefix length per allocation. Constants verify the
