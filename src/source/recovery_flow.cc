@@ -65,6 +65,16 @@ class FlowBuilder {
     std::copy(projection_.normal_kinds.begin(),projection_.normal_kinds.end(),result_.normal_kinds.begin());
     Resize(result_.normal_exits,projection_.original?tree_.expressions.size():0);
     for(auto& exit:result_.normal_exits){budget_.Step();exit.reset();}
+    // Native events/properties already own source-only completion semantics.
+    // Retain the extra action index only while bridging raw phase identities;
+    // an unconsumed copy across preparation revisions must not spend budget.
+    const bool phased=projection_.original&&!projection_.original->phases.empty();
+    if(!phased) {
+      decltype(result_.actions){}.swap(result_.actions);
+      decltype(result_.original_phases){}.swap(result_.original_phases);
+    }
+    Resize(result_.actions,phased?tree_.expressions.size():0);
+    for(auto& action:result_.actions){budget_.Step();action.reset();}
     RequireTree(projection_.statement_values.empty()||projection_.statement_values.size()==tree_.statements.size(),Error::kOwnership);
     RequireTree(projection_.forwarded_values.empty()||projection_.forwarded_values.size()==tree_.statements.size(),Error::kOwnership);
     RequireTree(projection_.loop_declarations.empty()||projection_.loop_declarations.size()==tree_.statements.size(),Error::kOwnership);
@@ -168,6 +178,39 @@ class FlowBuilder {
       }
     }
     copy(result.statements,statements_);copy(result.expressions,expressions_);
+    Resize(result.original_phases,result.original?result.original->phases.size():0);
+    for(std::size_t i=0;i<result.original_phases.size();++i) {
+      budget_.Step();auto& point=result.original_phases[i];point.reset();
+      const auto& phase=result.original->phases[i];
+      if(!phase.operation)continue;
+      RequireTree(phase.operation->value<result.original->operations.size(),Error::kOwnership);
+      const auto& operation=result.original->operations[phase.operation->value];
+      if(operation.life!=analysis::ValueLife::kLive)continue;
+      switch(phase.phase) {
+        case analysis::ExceptionPhase::kBefore:
+          if(operation.intrinsic_expression) {
+            RequireTree(operation.intrinsic_expression->value<result.actions.size(),Error::kOwnership);
+            if(const auto& action=result.actions[operation.intrinsic_expression->value])point=action->before;
+          }
+          break;
+        case analysis::ExceptionPhase::kCommit:
+          if(operation.result_expression) {
+            RequireTree(operation.result_expression->value<result.normal_exits.size(),Error::kOwnership);
+            point=result.normal_exits[operation.result_expression->value];
+          } else if(operation.intrinsic_expression) {
+            RequireTree(operation.intrinsic_expression->value<result.actions.size(),Error::kOwnership);
+            if(const auto& action=result.actions[operation.intrinsic_expression->value])point=action->normal;
+          }
+          break;
+        case analysis::ExceptionPhase::kCatch:break;
+      }
+    }
+    for(const auto& definition:result.definitions) {
+      budget_.Step();if(!definition.original_catch||!definition.catch_entry)continue;
+      const auto handler=definition.original_catch->handler;
+      if(handler.value<result.original_phases.size()&&result.original->phases[handler.value].phase==analysis::ExceptionPhase::kCatch)
+        result.original_phases[handler.value]=definition.catch_entry;
+    }
     Resize(result.original_results,result.original?result.original->operations.size():0);
     for(std::size_t i=0;i<result.original_results.size();++i) {
       budget_.Step();auto& occurrence=result.original_results[i];occurrence.reset();
@@ -175,13 +218,20 @@ class FlowBuilder {
       if(!original)continue;
       const auto expression=original->expression;
       RequireTree(expression.value<result.normal_exits.size(),Error::kOwnership);
-      if(const auto normal=result.normal_exits[expression.value])
-        occurrence=FlowOriginalResult{expression,expressions_[expression.value],*normal};
+      const auto normal=original->commit?FindOriginalPhase(result,*original->commit,analysis::ExceptionPhase::kCommit,
+          analysis::OpId{static_cast<std::uint32_t>(i)}):result.normal_exits[expression.value];
+      if(normal)occurrence=FlowOriginalResult{expression,expressions_[expression.value],*normal};
     }
     Resize(result.original_effects,result.original?tree_.expressions.size():0);
     for(auto& effects:result.original_effects){budget_.Step();effects.reset();}
-    if(result.original)for(const auto& operation:result.original->operations) {
+    if(result.original)for(std::size_t i=0;i<result.original->operations.size();++i) {
+      const auto& operation=result.original->operations[i];
       budget_.Step();if(operation.life!=analysis::ValueLife::kLive||!operation.intrinsic_expression)continue;
+      // An imported phased action must have its own Before correspondence.
+      // Ordinary SSA has no phase table. This obligation excludes borrowing
+      // a result/control anchor to suppress a native intrinsic's effects.
+      if(!result.original->phases.empty()&&!FindOriginalPhase(result,operation.block,analysis::ExceptionPhase::kBefore,
+          analysis::OpId{static_cast<std::uint32_t>(i)}))continue;
       RequireTree(operation.intrinsic_expression->value<result.original_effects.size(),Error::kOwnership);
       auto& effects=result.original_effects[operation.intrinsic_expression->value];
       const SourceEffects proof{operation.normal,operation.before_throw,operation.exceptional};
@@ -428,6 +478,7 @@ class FlowBuilder {
     const auto resources=ResourceFailures(tree_.identity.contract);
     const auto receiver=phase(FlowPropertyPhase::kReceiver,NormalPropertyReceiverEffects(base,result_.normal_kinds,resources));
     const auto conversion=phase(FlowPropertyPhase::kKey,NormalPropertyKeyEffects(key,result_.normal_kinds,resources));
+    if(!result_.actions.empty())result_.actions[site.value]->before=receiver;
     Link(receiver,conversion);Link(conversion,access);
     FlowPropertyReference reference{acquisition,receiver,conversion,access,context.next,kind,site,base,key,{context.thrown,context.finalizer},context.owner};
     if(result_.original) {
@@ -498,6 +549,7 @@ class FlowBuilder {
       Link(branch,Expr(logical->right,context),right);return;
     }
     const auto effect=New({FlowEventKind::kEvaluation,{},{},at.id});auto normal=context.next;
+    if(!result_.actions.empty())result_.actions[at.id.value]=FlowAction{effect,context.next,{context.thrown,context.finalizer}};
     events_[effect.value].discarded=context.discarded;
     bool required=NormalValueEvaluation(node,result_.normal_kinds,ResourceFailures(tree_.identity.contract))==ExpressionEvaluation::kRequired &&
         projection_.evaluations[at.id.value]!=ExpressionEvaluation::kInert;
@@ -840,6 +892,36 @@ class FlowBuilder {
   Point entry_{},terminal_{},dispatch_{};
   RecoveryFlow result_;
 };
+}
+std::optional<FlowPoint> FindOriginalPhase(const RecoveryFlow& flow,analysis::WorkBlockId block,
+    analysis::ExceptionPhase phase,std::optional<analysis::OpId> operation) {
+  if(!flow.original||block.value>=flow.original->phases.size()||block.value>=flow.original_phases.size())return {};
+  const auto& original=flow.original->phases[block.value];
+  if(original.phase!=phase||original.operation!=operation)return {};
+  return flow.original_phases[block.value];
+}
+std::optional<OriginalResult> FindFlowOriginalResult(const RecoveryFlow& flow,analysis::OpId operation) {
+  if(!flow.original||operation.value>=flow.original_results.size()||!flow.original_results[operation.value])return {};
+  const auto result=FindOriginalResult(*flow.original,operation);if(!result)return {};
+  const auto& occurrence=*flow.original_results[operation.value];
+  if(occurrence.expression!=result->expression||result->expression.value>=flow.expressions.size())return {};
+  if(result->commit&&FindOriginalPhase(flow,*result->commit,analysis::ExceptionPhase::kCommit,operation)!=occurrence.normal)return {};
+  return result;
+}
+analysis::ValueKinds OriginalDefinitionKinds(const RecoveryFlow& flow,const OriginalSourceDefinition& definition) {
+  if(!flow.original)return {};
+  if(const auto* result=std::get_if<OriginalResultDefinition>(&definition.origin)) {
+    const auto verified=FindFlowOriginalResult(flow,result->operation);
+    return verified&&verified->value==result->value&&verified->expression==definition.input?verified->kinds:analysis::ValueKinds{};
+  }
+  if(const auto* caught=std::get_if<OriginalCatchDefinition>(&definition.origin))
+    if(!FindOriginalPhase(flow,caught->handler,analysis::ExceptionPhase::kCatch))return {};
+  return OriginalDefinitionKinds(*flow.original,definition);
+}
+analysis::ValueKinds OriginalCatchKinds(const RecoveryFlow& flow,const OriginalCatchBinding& caught) {
+  if(!FindOriginalPhase(flow,caught.handler,analysis::ExceptionPhase::kCatch))return {};
+  RequireTree(caught.value.value<flow.original->values.size(),Error::kOwnership);
+  return flow.original->values[caught.value.value].domain;
 }
 std::variant<RecoveryFlow,TreeStructureError> BuildRecoveryFlow(
     const FunctionTree& tree,LegacyFlowProjection projection,analysis::SemanticBudget budget,RecoveryFlow storage) {

@@ -1119,3 +1119,21 @@ layout/opcode admission or per-value traversal. Final3-target build succeeds,
 frozen files unchanged. Evidence:build/stage-one/stored-result-identity-verification.
 Full63 not rerun. #1 effect/action/exception/region correspondence remains OPEN;
 other delivery states and stage-one Goal remain unchanged. Continue the mainline.
+
+Rules286 continues #1: the common source adapter publishes native action
+boundaries and projects verified raw Before/Commit/Catch identities. Successful
+raw results retain their Commit site; inline/stored caps share the current
+FindFlowOriginalResult query and pending-exception caps require the mapped Catch
+entry. Phased effects consume their own Before relation. Raw stored-result/catch domain
+bypasses leave recovery decisions. Source-only/candidate construction shares the
+adapter, while resumed external effects stay conservative. Queries are constant
+time with linear phase/action indexing; no source layout/sample admission or
+pass-local inference is added. Four bypass mutants fail and focused9/9 tests
+pass. The first65-test run exposed unused bridge retention at the existing64MiB
+budget; retaining the index only for raw phases (and freeing unused reused
+capacity) repairs it without semantic or budget changes. Final32-target build,
+65/65 tests and fixedABC verification pass, with all13 frozen files/selection/
+input hashes unchanged. Full evidence and the retained first failure are in
+status.md. Full control/protocol/suspension/exception-region correspondence stays
+OPEN, alongside #2/#4/#5. This phase index does not close the raw-integration
+delivery. Continue that mainline; no paused validation or appearance work resumes.

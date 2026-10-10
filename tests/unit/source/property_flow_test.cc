@@ -93,6 +93,29 @@ void PropertyState(bool emit,bool computed,bool read,bool reverse) {
   auto flow=std::get<RecoveryFlow>(BuildRecoveryFlow(f.tree,projection));
   Check(flow.properties.size()==1);
   const auto& property=flow.properties[0];Check(property.site==access&&property.base==base);
+  Check(flow.actions.empty()); // No unused raw-phase bridge on source-only input.
+  // A model adapter supplies phase identities explicitly. Receiver checking
+  // begins after operand/RHS evaluation; acquisition cannot stand in for it.
+  OriginalFlow raw{};raw.identity=f.tree.identity;raw.method=f.tree.method;
+  raw.value_revision=f.tree.value_revision;raw.cfg_revision=f.tree.cfg_revision;
+  raw.statements=f.tree.statements.size();raw.bindings=f.tree.symbols.size();
+  raw.input_ranges.resize(f.tree.expressions.size());
+  raw.phases={{{0},{0},analysis::ExceptionPhase::kBefore,analysis::OpId{0}},
+      {{1},{0},analysis::ExceptionPhase::kCommit,analysis::OpId{0}}};
+  OriginalOperation operation{};operation.life=analysis::ValueLife::kLive;
+  operation.normal=operation.before_throw=analysis::LanguageEffect::kUserCode|analysis::LanguageEffect::kHeapRead|analysis::LanguageEffect::kHeapWrite;
+  operation.exceptional=analysis::ExceptionalCompletion::kMayThrow;
+  operation.expression=operation.intrinsic_expression=access;raw.operations.push_back(operation);
+  auto phased_projection=projection;phased_projection.original=&raw;
+  const auto phased=std::get<RecoveryFlow>(BuildRecoveryFlow(f.tree,phased_projection));
+  const auto& native=*phased.actions[access.value];const auto& reference=phased.properties[0];
+  Check(native.before==reference.receiver&&native.before!=reference.acquisition);
+  Check(native.normal==reference.normal&&native.exceptions==reference.exceptions);
+  Check(FindOriginalPhase(phased,{0},analysis::ExceptionPhase::kBefore,analysis::OpId{0})==native.before);
+  Check(FindOriginalPhase(phased,{1},analysis::ExceptionPhase::kCommit,analysis::OpId{0})==native.normal);
+  const auto source_only=std::get<RecoveryFlow>(BuildRecoveryFlow(f.tree,projection,{},phased));
+  Check(source_only.actions.empty()&&source_only.actions.capacity()==0);
+  Check(source_only.original_phases.empty()&&source_only.original_phases.capacity()==0);
   Check(property.kind==(read?FlowReferenceKind::kRead:FlowReferenceKind::kWrite));
   Check(flow.events[property.acquisition.value].kind==FlowEventKind::kPropertyReference);
   Check(flow.events[property.access.value].property==FlowPropertySite{FlowPropertyId{0},FlowPropertyPhase::kAccess});

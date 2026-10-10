@@ -261,11 +261,13 @@ class OperandCheck {
           original_.operations[i].intrinsic_expression=Unary(operation.op, input(0), expression);
         } else if constexpr (std::is_same_v<T, analysis::ValueAwait>) {
           InputAt(0, Node<AwaitExpr>(expression).operand);
+          original_.operations[i].intrinsic_expression=expression;
         } else if constexpr (std::is_same_v<T, analysis::ValueYield>) {
           const auto& yielded = Node<YieldExpr>(expression);
           RequireMeaning((yielded.form == YieldForm::kDirect && operation.origin.form == analysis::YieldForm::kDirect) ||
               (yielded.form == YieldForm::kDelegate && operation.origin.form == analysis::YieldForm::kDelegate), Error::kOperator);
           InputAt(0, yielded.operand);
+          original_.operations[i].intrinsic_expression=expression;
         } else if constexpr (std::is_same_v<T, analysis::ValueBranch>) {
           if (flow_.branch_polarity[current_.value] == BranchPolarity::kFallthrough) {
             using U = analysis::UnaryOperator;

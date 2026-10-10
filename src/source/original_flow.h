@@ -86,10 +86,14 @@ struct OriginalResult {
   analysis::ValueId value;
   ExprId expression;
   analysis::ValueKinds kinds;
+  std::optional<analysis::WorkBlockId> commit;
 };
 // One value-identity query for inline and stored consumers. Missing projection
 // means no raw certificate, not failure of the current language expression.
 [[nodiscard]] std::optional<OriginalResult> FindOriginalResult(const OriginalFlow&,analysis::OpId);
+// Raw domain lookup only. Recovery decisions use the RecoveryFlow overload,
+// which also requires current success/catch phase correspondence and shares
+// that obligation with inline consumers. This query cannot certify a trial.
 [[nodiscard]] analysis::ValueKinds OriginalDefinitionKinds(const OriginalFlow&,const OriginalSourceDefinition&);
 }  // namespace abcd::source
 #endif

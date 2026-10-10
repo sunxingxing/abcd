@@ -109,7 +109,8 @@ std::optional<OriginalResult> FindOriginalResult(const OriginalFlow& original,an
   RequireTree(operation.result->value<original.values.size(),TreeStructureError::kOwnership);
   const auto& value=original.values[operation.result->value];
   if(value.life!=analysis::ValueLife::kLive)return {};
-  return OriginalResult{*operation.result,*operation.result_expression,value.domain};
+  const auto* result=std::get_if<analysis::OpResult>(&value.origin);
+  return OriginalResult{*operation.result,*operation.result_expression,value.domain,result?result->commit:std::nullopt};
 }
 analysis::ValueKinds OriginalDefinitionKinds(const OriginalFlow& original,const OriginalSourceDefinition& definition) {
   return std::visit([&](const auto& origin) {

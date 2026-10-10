@@ -1435,10 +1435,22 @@ void SourceEvents() {
     tree.callable=generator?CallableKind::kGenerator:CallableKind::kAsyncFunction;
     tree.expressions[5].expression=generator?TreeExpression{YieldExpr{ExprId{6}}}:TreeExpression{AwaitExpr{{6}}};
     const auto paused=rebuild();unsigned next=0,thrown=0,returned=0;
+    Check(paused.actions.empty());std::optional<FlowPoint> action;
     for(const auto& edge:paused.edges)if(paused.events[edge.from.value].kind==FlowEventKind::kSuspend){
+      action=edge.from;
       next+=edge.completion==FlowCompletion::kResumeNext;thrown+=edge.completion==FlowCompletion::kResumeThrow;
       returned+=edge.completion==FlowCompletion::kResumeReturn;}
     Check(next==1&&thrown==1&&returned==unsigned(generator));
+    // Correspondence locates suspension; it cannot erase external mutation
+    // during next/throw/return resumption by borrowing an ordinary action cap.
+    auto bounded=paused;bounded.original_effects.resize(tree.expressions.size());
+    bounded.original_effects[5]=SourceEffects{};
+    Check(action.has_value());auto event=paused.events[action->value];event.original_effect_valid=true;
+    const auto effects=EvaluateFlowEventEffects(bounded,tree,event,{evaluations,normal,evaluations,{}});
+    Check(effects.retention==ExpressionEvaluation::kRequired&&effects.intrinsic);
+    event.effect=effects.retention;event.effects=effects.intrinsic;
+    for(const auto completion:{FlowCompletion::kResumeNext,FlowCompletion::kResumeThrow,FlowCompletion::kResumeReturn})
+      Check(event.MayInvokeUserCode(completion));
   }
   tree.callable=CallableKind::kFunction;tree.expressions.resize(6);tree.expressions[5].expression=SymbolExpr{{2}};
   tree.statements[6].statement=ThrowStmt{{5}};const auto thrown=rebuild();unsigned explicit_throw=0;

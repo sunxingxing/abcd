@@ -4,6 +4,7 @@
 #include "../../../src/source/function_tree.h"
 #include "../../../src/source/tree_semantics.h"
 #include "../../../src/source/recovery_projection.h"
+#include "../../../src/source/flow_kinds.h"
 #include "abcd/source/tree_printer.h"
 #include "analysis/ssa_fixture.h"
 
@@ -125,7 +126,7 @@ struct Fixture {
         return std::holds_alternative<TreeSemantics>(VerifyExceptionTreeSemantics(
             graph, context, evaluation, candidate, {constants, 2}));
       };
-      test::Check(valid(tree)); Mutations(valid); ResultStorage(); OriginalActions(count == 1, !arbitrary);
+      test::Check(valid(tree)); Mutations(valid); ResultStorage(); OriginalActions(count == 1, !arbitrary, !arbitrary && seed < 3);
       return;
     }
     const auto input = std::get<FunctionInput>(FunctionInput::Build(identity, {200}, {100},
@@ -139,9 +140,9 @@ struct Fixture {
     work = std::get<ConstructedFunction>(built).work;
     original = std::get<ConstructedFunction>(built).flow->original;
     tree = std::get<ConstructedFunction>(std::move(built)).tree;
-    test::Check(Valid(tree)); Mutations([&](const FunctionTree& candidate) { return Valid(candidate); }); ResultStorage(); OriginalActions(count == 1, !arbitrary);
+    test::Check(Valid(tree)); Mutations([&](const FunctionTree& candidate) { return Valid(candidate); }); ResultStorage(); OriginalActions(count == 1, !arbitrary, !arbitrary && seed < 3);
   }
-  void OriginalActions(bool solve, bool numeric) const {
+  void OriginalActions(bool solve, bool numeric, bool finite_numeric) const {
     // The verified composite owns a saved operand and a native conversion
     // action. Source coverage/result identity cannot replace either relation.
     std::optional<ExprId> selected, saved;
@@ -182,6 +183,56 @@ struct Fixture {
       test::Check(false); return model.flow.events.front();
     };
     const auto current = prepare(*original, plan);
+    // Exercise imported exception-phase identities, including composite action
+    // anchors. No fixture PC, register or adjacent source node supplies a phase.
+    bool before_seen=false,commit_seen=false,withdrawal_seen=false;
+    for(unsigned i=0;i<original->phases.size();++i) {
+      const auto& phase=original->phases[i];if(!phase.operation)continue;
+      const auto& operation=original->operations[phase.operation->value];
+      const WorkBlockId block{i};
+      if(phase.phase==ExceptionPhase::kBefore&&operation.intrinsic_expression) {
+        const auto& native=current.flow.actions[operation.intrinsic_expression->value];
+        test::Check(native&&FindOriginalPhase(current.flow,block,phase.phase,phase.operation)==native->before);
+        test::Check(!FindOriginalPhase(current.flow,block,ExceptionPhase::kCommit,phase.operation));
+        if(operation.intrinsic_expression==selected) {
+          before_seen=true;
+          // Conversion starts after the separately captured lexical read.
+          const auto& event=current.flow.events[native->before.value];
+          test::Check(event.kind==FlowEventKind::kEvaluation&&event.input);
+          test::Check(current.flow.captured_inputs[event.input->value].value.point!=native->before);
+          auto lost_before=*original;lost_before.phases[block.value].operation.reset();
+          const auto source_action=prepare(lost_before,plan);
+          test::Check(!source_action.flow.original_effects[selected->value]);
+          test::Check(source_action.flow.actions[selected->value].has_value());
+        }
+      }
+      const auto result=FindFlowOriginalResult(current.flow,*phase.operation);
+      if(phase.phase!=ExceptionPhase::kCommit||!result||result->commit!=block)continue;
+      const bool first_commit=!commit_seen;commit_seen=true;
+      test::Check(FindOriginalPhase(current.flow,block,phase.phase,phase.operation)==current.flow.normal_exits[result->expression.value]);
+      if(!first_commit&&operation.intrinsic_expression!=selected)continue;
+      auto missing=current.flow;missing.original_phases[block.value].reset();
+      test::Check(!FindFlowOriginalResult(missing,*phase.operation));
+      auto foreign=*original;foreign.phases[block.value].operation.reset();
+      auto mismatched=current.flow;mismatched.original=&foreign;
+      test::Check(!FindFlowOriginalResult(mismatched,*phase.operation));
+      for(const auto& definition:original->definitions)if(definition)
+        if(const auto* stored=std::get_if<OriginalResultDefinition>(&definition->origin);stored&&stored->operation==phase.operation) {
+          test::Check(!OriginalDefinitionKinds(current.flow,*definition).IsEmpty());
+          test::Check(OriginalDefinitionKinds(missing,*definition).IsEmpty());
+          test::Check(OriginalDefinitionKinds(mismatched,*definition).IsEmpty());
+        }
+      if(operation.intrinsic_expression==selected&&result->kinds.IsFiniteNumber()) {
+        test::Check(current.expressions.kinds[result->expression.value].IsFiniteNumber());
+        const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(missing));
+        const auto withdrawn=std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(tree,missing,live,{plan,equations,order,original.get()}));
+        test::Check(withdrawn.expressions[result->expression.value].IsNumber());
+        test::Check(!withdrawn.expressions[result->expression.value].IsFiniteNumber());
+        withdrawal_seen=true;
+      }
+    }
+    if(!original->phases.empty())test::Check(before_seen&&commit_seen);
+    if(!original->phases.empty()&&finite_numeric)test::Check(withdrawal_seen);
     test::Check(action(current).original_effect_valid && action(current).effects);
     test::Check(HasLanguageEffect(action(current).effects->normal, LanguageEffect::kUserCode) == !numeric);
     test::Check((action(current).effects->exceptional == ExceptionalCompletion::kImpossible) == numeric);

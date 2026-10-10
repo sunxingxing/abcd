@@ -3533,3 +3533,19 @@ Reverse arenas, register/copy/block variations, loop widening with unchanged
 result kinds, source-only/candidate projections, independent generated execution
 and production mutations exercise these obligations. Full original phase and
 region correspondence remains an explicit implementation gap.
+
+Rules286 projects raw Before/Commit/Catch identities through the verified
+operation/result/catch relations. WorkBlockId names an imported semantic phase,
+never a source same-block requirement. Native action endpoints are supplied by
+the sole grammar/effect adapter after operand evaluation, with reference and
+successful write phases separate. Inline and stored result consumers share the
+same current correspondence query; a raw ValueId lookup cannot revive a missing
+Commit certificate. Pending-exception precision consumes the mapped Catch entry.
+Phased action effects need their own Before relation, independently of coverage
+and result identity. These obligations concern value/completion identity, not
+layout or a sample's instruction sequence. Missing relations preserve current
+source facts and conservative effects. Pause/resumption effects remain external
+mutation obligations; no ordinary-action cap is applied to them. Register/copy/
+block/arena variants, independent execution, source-only action endpoints and
+production bypass mutations exercise the new paths. Full raw control/protocol/
+exception-region correspondence remains OPEN, as do mainlines #2/#4/#5.

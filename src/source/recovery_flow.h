@@ -132,6 +132,10 @@ struct FlowExceptionContext {
   std::optional<FlowPoint> finalizer;
   auto operator<=>(const FlowExceptionContext&) const = default;
 };
+// Native action boundaries follow operand evaluation. Reference preparation
+// precedes access; an update's conversion follows its captured read. Normal
+// completion includes successful source writeback, never the throwing route.
+struct FlowAction {FlowPoint before,normal;FlowExceptionContext exceptions;};
 struct FlowReference {
   FlowPoint point;
   SymbolId binding;
@@ -431,6 +435,13 @@ struct RecoveryFlow {
   std::shared_ptr<const FlowScopes> scopes;
   std::vector<analysis::ValueKinds> normal_kinds;
   std::vector<std::optional<FlowPoint>> normal_exits;
+  // ExprId-indexed raw-phase bridge. Ordinary/source-only graphs consume their
+  // existing native events, properties and completion edges without this copy.
+  std::vector<std::optional<FlowAction>> actions;
+  // Verified raw phase identities projected once by the source adapter.
+  // Absent entries are representation gaps; neither PCs nor edge order infer
+  // an action, success-only result or pending-exception entry.
+  std::vector<std::optional<FlowPoint>> original_phases; // WorkBlockId indexed.
   std::vector<std::optional<FlowOriginalResult>> original_results; // OpId indexed.
   std::vector<std::optional<SourceEffects>> original_effects; // ExprId indexed, intrinsic only.
   RouteInputIdentity identity;
@@ -490,6 +501,11 @@ struct RecoveryFlow {
         std::holds_alternative<EnclosingBindingScope>(bindings[binding.value].scope);
   }
 };
+[[nodiscard]] std::optional<FlowPoint> FindOriginalPhase(const RecoveryFlow&,
+    analysis::WorkBlockId,analysis::ExceptionPhase,std::optional<analysis::OpId> = {});
+[[nodiscard]] std::optional<OriginalResult> FindFlowOriginalResult(const RecoveryFlow&,analysis::OpId);
+[[nodiscard]] analysis::ValueKinds OriginalDefinitionKinds(const RecoveryFlow&,const OriginalSourceDefinition&);
+[[nodiscard]] analysis::ValueKinds OriginalCatchKinds(const RecoveryFlow&,const OriginalCatchBinding&);
 struct FlowBindingNames {
   std::vector<SourceBindingPresence> presence;
   std::vector<SourceBindingShadow> shadows;

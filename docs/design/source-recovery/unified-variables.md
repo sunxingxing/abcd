@@ -3865,3 +3865,46 @@ The source interference test passes in82.77s without changing any60s subprocess
 limit. Only the existing literal_plan.cc kNoop warning is observed. Evidence:
 build/stage-one/captured-input-final and captured-input-mutants. This closes the
 input-effect migration slice, not mainline #1 or the unified-variable milestone.
+
+Rules286 connects the retained exception-phase identities to current source
+action boundaries. Current, candidate and source-only construction share native
+events, property phases and completion edges. Raw phased projections additionally
+own an ExprId-indexed bridge (before, normal, exception context); ordinary and
+source-only graphs retain no unconsumed duplicate. Reusing phased storage without
+raw phases destroys this bridge's capacity before new admission.
+Before follows explicit operands; property actions begin at receiver checking,
+after RHS evaluation for PutValue, and update conversion follows its captured
+read. Raw Before/Commit/Catch identities project through verified operation,
+result and catch-body relations, without searching PCs, adjacency or CFG layout.
+The original OpResult keeps its success-only Commit identity. Inline and stored
+result caps now share FindFlowOriginalResult; pending-exception caps also consume
+the mapped Catch entry. Missing/foreign/wrong-phase correspondence withdraws only
+raw precision. Phased intrinsic effects require their own Before relation;
+coverage or successful-result anchors cannot substitute for an action.
+
+The adapter builds the indexes in O(X+P+O+D) work, retaining O(X+P) additional
+facts, where X is expressions, P raw phase sites, O operations and D source
+definitions. Queries are constant time and the existing joint finite-lattice
+solve owns current provenance, initialization and edge activation. No optimizer
+adds its own syntax inference or analysis refresh. Raw domain-only queries remain
+adapter facts; direct stored-result/catch bypasses exit recovery decisions.
+
+Await/yield operand verification publishes native action identity, while resumed
+user-code effects remain conservative. A phase location does not prove a split
+of synchronous failure, suspension and externally injected next/throw/return;
+ordinary intrinsic bounds cannot suppress those effects. Folded controls and
+protocol/exception-region projection remain explicit correspondence gaps.
+Mainline #1 stays OPEN; #2/#4/#5 stay OPEN and #3 retains its rules280 scope.
+Full raw semantic integration, rather than this index alone, is the delivery.
+
+Rules286 frozen validation: final32-target build succeeds (37.35s), all65
+selected tests pass (1177.57s; exact names/no duplicates), and the fixed ABC
+exports (3.73s). All13 frozen code/test files, selection and input hashes remain
+unchanged. Ten sources parse and match rules285; records remain10 complete/
+9 no-module. Four production bypass mutants build and fail, restoration builds,
+and the source interference case passes in82.70s with unchanged60s subprocess
+limits. The first64/65 run is retained: an unconsumed ordinary/source-only action
+index exhausted the64MiB print recovery budget at800. Demand-owned retention and
+actual capacity release repair it; no budget or semantics are relaxed. Evidence:
+build/stage-one/original-phase-final-2 and original-phase-demand-mutants; the
+first failure remains in original-phase-final. No mainline delivery closes here.

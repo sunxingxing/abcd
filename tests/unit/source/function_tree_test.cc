@@ -492,6 +492,9 @@ void OriginalSuccessfulDomains(unsigned copies=0,bool reverse=false,bool split=f
   const auto gap_live=std::get<FlowLiveness>(AnalyzeFlowLiveness(gap));
   const auto gap_types=std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(tree,gap,gap_live,input));
   Check(gap_types.expressions[producer.value].IsNumber()&&!gap_types.expressions[producer.value].IsFiniteNumber());
+  // Stored and inline consumers lose the same certificate. A store cannot
+  // bypass the current correspondence table to revive an old raw domain.
+  for(const auto site:observed)Check(gap_types.expressions[site.value].IsNumber()&&!gap_types.expressions[site.value].IsFiniteNumber());
   auto no_expression_boundaries=model.flow;no_expression_boundaries.expressions.clear();
   const auto no_boundaries_result=AnalyzeFlowNormalKinds(tree,no_expression_boundaries,gap_live,input);
   Check(std::holds_alternative<FlowNormalKinds>(no_boundaries_result));
@@ -633,6 +636,11 @@ void OriginalCatchValues(bool emit=false,unsigned form=0,unsigned copies=0,bool 
   for(const auto& d:m.flow.definitions)if(d.kind==FlowDefinitionKind::kCatch) {
     Check(d.original_catch&&d.catch_entry);original_catch=true;
     Check(m.flow.bindings[d.binding.value].exposure==FlowBindingExposure::kObservable);
+    Check(FindOriginalPhase(m.flow,d.original_catch->handler,ExceptionPhase::kCatch)==d.catch_entry);
+    Check(!OriginalCatchKinds(m.flow,*d.original_catch).IsEmpty());
+    auto missing=m.flow;missing.original_phases.clear();
+    Check(OriginalCatchKinds(missing,*d.original_catch).IsEmpty());
+    Check(!FindOriginalPhase(m.flow,d.original_catch->handler,ExceptionPhase::kCommit));
   }
   Check(original_catch);
   if(form==0) {

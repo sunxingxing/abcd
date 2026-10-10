@@ -1328,10 +1328,15 @@ std::pair<std::uint64_t,std::size_t> RawProjectionClosure(bool changed,RawClosur
   if(edit==RawClosureEdit::kChangedThrowPath)f.plan.omitted[throw_marker.value]=1;
   f.original.statements=s;f.original.bindings=b;f.original.input_ranges.resize(e);
   f.original.values.push_back({analysis::EntryDefinition{analysis::ParameterEntry{0}},analysis::ValueKinds::Language()});
-  f.original.values.push_back({analysis::OpResult{{0},{}},analysis::ValueKinds::FiniteNumber()});
-  f.original.operations.push_back({{0},{0},0,analysis::ValueId{1},analysis::LanguageEffect::kNone,analysis::LanguageEffect::kNone,analysis::ExceptionalCompletion::kImpossible,analysis::ValueLife::kLive,{0},result,{},result});
-  f.original.values.push_back({analysis::CatchDefinition{{0}},analysis::ValueKinds::FiniteNumber()});
-  f.original.catches.resize(b);f.original.catches[2]=OriginalCatchBinding{{2},{0},handler};
+  // This model fixture supplies explicit phase correspondence. A raw Catch
+  // domain without its pending-exception entry cannot refine the source join.
+  f.original.phases={{{0},{0},analysis::ExceptionPhase::kBefore,analysis::OpId{0}},
+      {{1},{0},analysis::ExceptionPhase::kCommit,analysis::OpId{0}},
+      {{2},{1},analysis::ExceptionPhase::kCatch,{}}};
+  f.original.values.push_back({analysis::OpResult{{0},analysis::WorkBlockId{1}},analysis::ValueKinds::FiniteNumber()});
+  f.original.operations.push_back({{0},{0},0,analysis::ValueId{1},analysis::LanguageEffect::kNone,analysis::LanguageEffect::kNone,analysis::ExceptionalCompletion::kImpossible,analysis::ValueLife::kLive,{0},result,{},result,result});
+  f.original.values.push_back({analysis::CatchDefinition{{2}},analysis::ValueKinds::FiniteNumber()});
+  f.original.catches.resize(b);f.original.catches[2]=OriginalCatchBinding{{2},{2},handler};
   if(reverse) {
     const auto map=[&](ExprId id){return ExprId{static_cast<unsigned>(e-1-id.value)};};
     for(auto& item:t.expressions)if(auto* unary=std::get_if<UnaryExpr>(&item.expression))unary->operand=map(unary->operand);
@@ -1344,7 +1349,7 @@ std::pair<std::uint64_t,std::size_t> RawProjectionClosure(bool changed,RawClosur
     },item.statement);
     for(auto& id:f.order)id=map(id);
     std::reverse(t.expressions.begin(),t.expressions.end());std::reverse(f.equations.begin(),f.equations.end());
-    std::reverse(f.plan.read_sources.begin(),f.plan.read_sources.end());result=map(result);caught_read=map(caught_read);f.original.operations[0].expression=result;f.original.operations[0].result_expression=result;
+    std::reverse(f.plan.read_sources.begin(),f.plan.read_sources.end());result=map(result);caught_read=map(caught_read);f.original.operations[0].expression=result;f.original.operations[0].result_expression=result;f.original.operations[0].intrinsic_expression=result;
   }
   std::vector<std::uint8_t> stable{1,0,0};auto projection=f.Projection();projection.stable_entries=stable;
   Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(t)));

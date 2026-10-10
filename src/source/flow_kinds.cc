@@ -81,8 +81,9 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
     RequireTree(flow.original_results.empty()||(input.original&&flow.original_results.size()==input.original->operations.size()),Error::kOwnership);
     for(std::size_t i=0;i<flow.original_results.size();++i) {
       budget.Step();const auto& occurrence=flow.original_results[i];if(!occurrence)continue;
-      const auto result=FindOriginalResult(*input.original,analysis::OpId{static_cast<std::uint32_t>(i)});
-      RequireTree(result&&result->expression==occurrence->expression&&
+      const auto result=FindFlowOriginalResult(flow,analysis::OpId{static_cast<std::uint32_t>(i)});
+      if(!result)continue;
+      RequireTree(result->expression==occurrence->expression&&
           occurrence->expression.value<expressions&&occurrence->entry.value<events&&occurrence->normal.value<events,Error::kOwnership);
       auto& kinds=original_results[occurrence->expression.value];
       kinds=kinds.Join(result->kinds);
@@ -541,11 +542,10 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
       if(dependency.definition&&!changed[dependency.source.value]&&!changed[target.value]) {
         K original;
         if(dependency.definition->original) {
-          RequireTree(input.original!=nullptr,Error::kOwnership);original=OriginalDefinitionKinds(*input.original,*dependency.definition->original);
+          RequireTree(input.original!=nullptr,Error::kOwnership);original=OriginalDefinitionKinds(flow,*dependency.definition->original);
         }
         if(const auto* caught=dependency.definition->original_catch) {
-          RequireTree(input.original&&caught->value.value<input.original->values.size(),Error::kOwnership);
-          original=input.original->values[caught->value.value].domain;
+          original=OriginalCatchKinds(flow,*caught);
         }
         // Intersect independent proofs, preserving both source precision
         // and monotonicity while incoming contributions are still partial.
