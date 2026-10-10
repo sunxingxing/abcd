@@ -312,10 +312,14 @@ std::variant<RecoveryProjection,TreeStructureError> PrepareRecoveryProjection(
       budget.Step(result.flow.events.size()+result.initialized_reads.size());
       RequireTree(domains.initialized_reads.size()==result.initialized_reads.size()&&domains.read_completions.size()==result.flow.events.size(),TreeStructureError::kOwnership);
       std::copy(domains.initialized_reads.begin(),domains.initialized_reads.end(),result.initialized_reads.begin());
-      for(std::size_t i=0;i<result.flow.events.size();++i)result.flow.events[i].read_completion=domains.read_completions[i];
+      RequireTree(domains.original_effects.size()==result.flow.events.size(),TreeStructureError::kOwnership);
+      for(std::size_t i=0;i<result.flow.events.size();++i) {
+        result.flow.events[i].read_completion=domains.read_completions[i];
+        result.flow.events[i].original_effect_valid=domains.original_effects[i];
+      }
     }
     const auto domains_bytes=domains.expressions.capacity()*sizeof(analysis::ValueKinds)+domains.executable.capacity()*sizeof(std::uint8_t)+
-        domains.initialized_reads.capacity()*sizeof(std::uint8_t)+domains.read_completions.capacity()*sizeof(FlowReadCompletion);
+        domains.initialized_reads.capacity()*sizeof(std::uint8_t)+domains.read_completions.capacity()*sizeof(FlowReadCompletion)+domains.original_effects.capacity()*sizeof(std::uint8_t);
     auto refined_input=input;refined_input.normal_kinds=domains.expressions;
     TreeCheckBudget expression_budget(remaining(retained+domains_bytes));
     result.expressions=AnalyzeRecoveryExpressions(tree,refined_input,result.initialized_reads,expression_budget);

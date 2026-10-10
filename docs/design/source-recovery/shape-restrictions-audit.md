@@ -3494,3 +3494,14 @@ value-provenance obligations owned by the original adapter, not block/sequence/
 name admissions. Missing, retired and different-value/input certificates are
 covered by general successful-result and candidate tests. Raw effects and full
 exception/region correspondence remain OPEN.
+
+
+Rules283 adds an explicit intrinsic-action relation at existing verified operand
+sites. This is distinct from source coverage and result identity. Recovery
+consumes the typed bounds without dispatching on opcode, layout or producer
+count. The evaluation-phase restriction proves that raw effects cannot erase
+separately modeled lexical reads, reference preparation or successful commits;
+it is a semantic phase obligation, not a same-block admission. Common provenance
+withdraws the bound when candidate operands or execution context change.
+Combined/composite actions without a certificate retain source effects. Their
+full action/exception mapping remains an implementation gap in mainline #1.

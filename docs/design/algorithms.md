@@ -4484,3 +4484,15 @@ cannot be undone by the stored-result consumer. This adds no per-value graph
 walk or solver node, and preserves source-domain propagation when the cap is
 absent. Existing layout/copy/block variations and200/201/400/800 scaling remain
 the validation dimensions; no additional corpus or RSS claim is made.
+
+
+Original intrinsic bounds add one optional ExprId per raw operation, one optional
+SourceEffects per source expression and one validity byte per flow event in the
+joint product. The existing event also records published validity. All arrays
+and simultaneous retained capacities are admitted by the common budget. Index
+construction costs O(X + O), where X is expression count and O is retained raw
+operation count. The existing finite provenance dependencies carry invalidation;
+there is no per-operation graph walk or second completion solve. Bounds only
+withdraw, value domains only widen and completion edges only activate during
+joint solving. Final refinement uses the same pure effect adapter. Independent
+source semantics remain available when an intrinsic correspondence is absent.

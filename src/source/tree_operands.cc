@@ -258,7 +258,7 @@ class OperandCheck {
                       std::is_same_v<T, analysis::ValueReturn>) {
           InputAt(0, expression);
         } else if constexpr (std::is_same_v<T, analysis::ValueUnary>) {
-          Unary(operation.op, input(0), expression);
+          original_.operations[i].intrinsic_expression=Unary(operation.op, input(0), expression);
         } else if constexpr (std::is_same_v<T, analysis::ValueAwait>) {
           InputAt(0, Node<AwaitExpr>(expression).operand);
         } else if constexpr (std::is_same_v<T, analysis::ValueYield>) {
@@ -275,6 +275,7 @@ class OperandCheck {
             } else Unary(operation.predicate, input(0), UnaryInput(expression, TreeUnary::kNot));
           } else Unary(operation.predicate, input(0), expression);
         } else if constexpr (std::is_same_v<T, analysis::ValueBinary>) {
+          original_.operations[i].intrinsic_expression=expression;
           const auto& binary = Node<BinaryExpr>(expression);
           RequireMeaning(binary.operation == HoleSourceOperator(evaluation_.holes ? &*evaluation_.holes : nullptr,
               current_, operation.op), Error::kOperator);
@@ -328,21 +329,25 @@ class OperandCheck {
           RequireMeaning(target && target->symbol == CellSymbol(), Error::kOperand);
           InputAt(0, assignment.value);
         } else if constexpr (std::is_same_v<T, analysis::ValueNamedRead>) {
+          original_.operations[i].intrinsic_expression=expression;
           const auto& member = Node<MemberExpr>(expression);
           Named(member.key, constants_.operations[i]);
           InputAt(0, member.base);
         } else if constexpr (std::is_same_v<T, analysis::ValueNamedWrite>) {
+          original_.operations[i].intrinsic_expression=expression;
           const auto& assigned = Node<AssignmentExpr>(expression);
           const auto* member = std::get_if<MemberTarget>(&assigned.target);
           RequireMeaning(member != nullptr, Error::kOperator);
           Named(member->key, constants_.operations[i]);
           InputAt(0, member->base); InputAt(1, assigned.value);
         } else if constexpr (std::is_same_v<T, analysis::ValuePropertyRead>) {
+          original_.operations[i].intrinsic_expression=expression;
           const auto& member = Node<MemberExpr>(expression);
           const auto* key = std::get_if<ComputedKey>(&member.key);
           RequireMeaning(key != nullptr, Error::kOperator);
           InputAt(0, member.base); InputAt(1, key->expression);
         } else if constexpr (std::is_same_v<T, analysis::ValuePropertyWrite>) {
+          original_.operations[i].intrinsic_expression=expression;
           RequireMeaning(tree_.strictness == Strictness::kStrict, Error::kUnsupportedOperation);
           const auto& assignment = Node<AssignmentExpr>(expression);
           const auto* member = std::get_if<MemberTarget>(&assignment.target);
@@ -391,11 +396,13 @@ class OperandCheck {
           RequireMeaning(text && text->value < constants_.text_count, Error::kConstant);
           RequireMeaning(Literal<TextId>(expression) == *text, Error::kConstant);
         } else if constexpr (std::is_same_v<T, analysis::ValueGlobalRead>) {
+          original_.operations[i].intrinsic_expression=expression;
           RequireMeaning(operation.lookup == analysis::GlobalLookup::kName, Error::kUnsupportedOperation);
           const auto* name = std::get_if<NameId>(&constants_.operations[i]);
           RequireMeaning(name && name->value < constants_.name_count &&
               Node<GlobalNameExpr>(expression).name == *name, Error::kConstant);
         } else if constexpr (std::is_same_v<T, analysis::ValueInvoke>) {
+          original_.operations[i].intrinsic_expression=expression;
           const auto& call = Node<CallExpr>(expression);
           InputAt(0, call.callee);
           constexpr std::uint32_t kValuePrefix = 1;
@@ -434,6 +441,7 @@ class OperandCheck {
               derived_states->values[constructor->value] == DerivedValueState::kConstructor, Error::kOperand);
           InputAt(1, spread->iterable);
         } else if constexpr (std::is_same_v<T, analysis::ValueConstruct>) {
+          original_.operations[i].intrinsic_expression=expression;
           const auto& construct = Node<ConstructExpr>(expression);
           InputAt(0, construct.constructor);
           constexpr std::uint32_t kConstructorPrefix = 1;
@@ -932,30 +940,30 @@ class OperandCheck {
     RequireMeaning(Literal<NumberLiteral>(expression).bits == CanonicalNaNBits(), Error::kOperand);
     RecordOriginalInput(original_,operand,ResolveEvaluationOperand(evaluation_,operand),expression,occurrence,budget_);
   }
-  void Unary(analysis::UnaryOperator operation, const analysis::ValueOperand& operand, ExprId expression) {
+  std::optional<ExprId> Unary(analysis::UnaryOperator operation, const analysis::ValueOperand& operand, ExprId expression) {
     const auto occurrence = graph_.ops[current_.value].first_use;
     using U = analysis::UnaryOperator;
     switch (operation) {
       case U::kLegacyNegate:
         RequireMeaning(LegacyNegationEvaluation(graph_, operand, Arithmetic(tree_.identity.contract)), Error::kOperator);
-        Input(operand, UnaryInput(expression, TreeUnary::kNegate), occurrence); return;
-      case U::kNegate: Input(operand, UnaryInput(expression, TreeUnary::kNegate), occurrence); return;
-      case U::kBitNot: IntegerInput(operand, UnaryInput(expression, TreeUnary::kBitNot), occurrence); return;
-      case U::kLogicalNot: Input(operand, UnaryInput(expression, TreeUnary::kNot), occurrence); return;
-      case U::kTypeOf: Input(operand, UnaryInput(expression, TreeUnary::kTypeof), occurrence); return;
-      case U::kToNumber: Input(operand, UnaryInput(expression, TreeUnary::kPlus), occurrence); return;
+        Input(operand, UnaryInput(expression, TreeUnary::kNegate), occurrence); return expression;
+      case U::kNegate: Input(operand, UnaryInput(expression, TreeUnary::kNegate), occurrence); return expression;
+      case U::kBitNot: IntegerInput(operand, UnaryInput(expression, TreeUnary::kBitNot), occurrence); return expression;
+      case U::kLogicalNot: Input(operand, UnaryInput(expression, TreeUnary::kNot), occurrence); return expression;
+      case U::kTypeOf: Input(operand, UnaryInput(expression, TreeUnary::kTypeof), occurrence); return expression;
+      case U::kToNumber: Input(operand, UnaryInput(expression, TreeUnary::kPlus), occurrence); return expression;
       case U::kToBoolean:
-        if (BooleanEvaluation(graph_, operand)) { Input(operand, expression, occurrence); return; }
-        Input(operand, UnaryInput(UnaryInput(expression, TreeUnary::kNot), TreeUnary::kNot), occurrence); return;
+        if (BooleanEvaluation(graph_, operand)) { Input(operand, expression, occurrence); return {}; }
+        Input(operand, UnaryInput(UnaryInput(expression, TreeUnary::kNot), TreeUnary::kNot), occurrence); return expression;
       case U::kFalseOrZero:
       case U::kTrueOrNonzeroNumber:
         if (BooleanEvaluation(graph_, operand)) {
           Input(operand, operation == U::kFalseOrZero ? UnaryInput(expression, TreeUnary::kNot) : expression, occurrence);
-          return;
+          return {};
         }
-        Predicate(operation, operand, expression); return;
+        Predicate(operation, operand, expression); return {};
       case U::kToNumeric:
-        if (NumberEvaluation(graph_, operand)) { Input(operand, expression, occurrence); return; }
+        if (NumberEvaluation(graph_, operand)) { Input(operand, expression, occurrence); return {}; }
         RequireMeaning(ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded, Error::kOperator);
         [[fallthrough]];
       case U::kIncrement: case U::kDecrement: {
@@ -966,7 +974,7 @@ class OperandCheck {
         RequireMeaning(target && target->symbol == update.symbol &&
             update.result == (operation == U::kToNumeric ? UpdateResult::kPostfix : UpdateResult::kPrefix) &&
             update.direction == (operation == U::kDecrement ? UpdateDirection::kDecrement : UpdateDirection::kIncrement), Error::kOperator);
-        Input(operand, save.value, occurrence); return;
+        Input(operand, save.value, occurrence); return {};
       }
     }
     throw Error::kUnsupportedOperation;

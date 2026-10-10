@@ -257,6 +257,7 @@ struct FlowEvent {
   // reads and successful writes remain observations even when this is inert.
   ExpressionEvaluation effect = ExpressionEvaluation::kInert;
   bool entry_evaluation=false;
+  bool original_effect_valid=false;
   FlowProvenance provenance=FlowProvenance::kUnmodeled;
   // Current-projection must-initialization at this lexical GetValue only.
   // It says nothing about a subsequent conversion, call or successful store.
@@ -421,6 +422,7 @@ struct RecoveryFlow {
   std::vector<analysis::ValueKinds> normal_kinds;
   std::vector<std::optional<FlowPoint>> normal_exits;
   std::vector<std::optional<FlowOriginalResult>> original_results; // OpId indexed.
+  std::vector<std::optional<SourceEffects>> original_effects; // ExprId indexed, intrinsic only.
   RouteInputIdentity identity;
   analysis::IrRevision value_revision;
   analysis::CfgRevision cfg_revision;

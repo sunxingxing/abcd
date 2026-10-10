@@ -4,6 +4,20 @@
 规则172/f656e763是迁移基线。范围为普通函数临时变量与循环携带值，
 不推倒重写解码、IR、结构恢复或验证链，不扩大语料/恢复暂停事项。
 
+## 当前主干交付边界（2026-10-10）
+
+以下章节包含历史迁移证据；关闭状态以本节和 status.md 为准，不能累加
+局部规则数量推导完成。顺序仍为原始语义、普通绑定、全局收敛及终验，
+不穿插其他表示优化。
+
+| 交付 | 状态 | 关闭所需结果 |
+| --- | --- | --- |
+| 完整原始语义接入 | OPEN | 值身份、原始动作、效果/异常阶段和区域与源码行动的对应完整可消费；复合/协议操作缺口不能由 source anchor 猜测补齐。 |
+| 普通绑定身份贯通 | OPEN | local/catch 的进入、初始化、离开、重复进入使用共同单元身份；存储共享与值传播不更改生命期。 |
+| 试算精度闭环 | 规则280已关闭，限现有共同模型 | 当前和候选完整复用同一联合求解；以后扩充模型时二者同步消费。 |
+| 依赖驱动收敛 | OPEN | 全局 pass 根据变更影响重跑，具有终止依据和可解释成本；单次分析工作队列收敛不等于此交付。 |
+| 统一变量终验 | OPEN | 所有职责共享事实、被替代判断退出，规定布局/反例/执行/真实 record 验收完成。 |
+
 ## 规则254：当前计划与试算共享事实提供者
 
 `PrepareRecoveryProjection` 对传入的完整表达式投射执行共同闭环：
@@ -3668,8 +3682,8 @@ initialization analysis; these are distinct products, not overrides of trial
 read certificates. Full sharing across all recovery responsibilities remains a
 separate milestone obligation.
 
-Proof validity is a demanded analysis component. Only conditional result or
-successful-definition certificates consume it; an OriginalFlow container or
+Proof validity is a demanded analysis component. Conditional result,
+successful-definition and intrinsic-effect certificates consume it; an OriginalFlow container or
 operand metadata does not by itself demand invalidation propagation. The joint
 solver therefore omits this observer-free component when no certificates use
 it, without selecting a separate source-only solver. Capability is evaluated
@@ -3723,3 +3737,44 @@ and require both paths to lose only raw finite precision while keeping Number.
 This replaces separate eligibility logic rather than adding a source-shape rule.
 Phi contributions, saved operands and catch definitions retain their distinct
 verified identities; this result query does not conflate them with operations.
+
+
+### Original intrinsic effects join the common completion solve
+
+The operand verifier publishes intrinsic_expression independently of result
+identity and source coverage. It proves that the raw operation bounds the native
+source action after verified operand evaluation. Direct unary/binary, property,
+global read, call and construction adapters publish this correspondence; combined
+predicates, transparent conversions and composite lowerings do not lend a raw
+whole-operation proof to an arbitrary child. Missing correspondence retains the
+source semantics and is an explicit precision gap, not recovery rejection.
+
+RecoveryFlow indexes these normal/before-throw/exception bounds by expression.
+EvaluateFlowEventEffects intersects them with source effects only for evaluation
+events; operand evaluation, property receiver/key preparation, lexical GetValue
+and successful declarative commits keep their separate obligations. UserCode
+includes transitive effects and is not intersected as a disjoint bit. A raw
+no-throw bound may remove an exceptional edge; raw AlwaysThrow is not used to
+remove source normal completion without stronger phase correspondence.
+
+The same adapter consumes conditional bounds during the joint solve and final
+publication. Candidate operand or execution-context changes withdraw them via
+the existing provenance dependencies. No optimizer interprets raw opcodes, no
+second refinement loop runs after facts are published, and raw result identity
+alone cannot supply an effect certificate. Four production mutants exercise
+missing bounds, stale bounds, wrong-phase use and final-only use; each builds
+and is rejected by tests, then restored tests pass. Verified SSA fixtures
+exercise publication; decoded combined-control fixtures check non-publication.
+
+This advances mainline #1 without closing it. Composite/protocol action mapping
+and exceptional-region correspondence are still incomplete; ordinary binding
+identity and whole-pass convergence remain separate open deliveries.
+
+
+Rules283 frozen validation builds all 31 selected targets (198.16s), exports the
+fixed ABC (3.78s), and passes the exact 63 tests (1186.34s). Eleven frozen code/
+test files, input SHA and selection stay unchanged. Ten record sources parse
+and match rules282 byte for byte; the other nine records have no module source.
+The binding-interference source test passes in 82.34s with its existing per-child
+60s limits unchanged. Evidence: build/stage-one/original-intrinsic-verification.
+No additional mainline closure, expanded corpus, full-suite or RSS claim follows.

@@ -41,6 +41,10 @@ struct OriginalOperation {
   // result. A shared origin/control anchor is not a result identity: native
   // selections can cover a Boolean conversion while returning an object.
   std::optional<ExprId> result_expression;
+  // Raw operation effects bound this native intrinsic action. The source
+  // adapter applies the bound only to evaluation, never to separate operand,
+  // reference-preparation or declarative-writeback phases.
+  std::optional<ExprId> intrinsic_expression;
 };
 // Operand evidence stays occurrence-specific. Never join it with operation
 // result domains: predicates and completion operands can share source anchors.

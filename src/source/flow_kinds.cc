@@ -26,6 +26,8 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
     if(input.original)CheckOriginalFlow(tree,*input.original);
     const auto expressions=tree.expressions.size(),facts=live.live_in.size(),events=flow.events.size();
     std::size_t caught=0;bool provenance_required=false;
+    RequireTree(flow.original_effects.empty()||flow.original_effects.size()==expressions,Error::kOwnership);
+    for(const auto& effect:flow.original_effects){budget.Step();provenance_required|=effect.has_value();}
     for(const auto& definition:flow.definitions){
       budget.Step();if(definition.kind==FlowDefinitionKind::kCatch)++caught;
       provenance_required|=definition.original!=nullptr||definition.original_catch!=nullptr;
@@ -548,6 +550,7 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
           if(!reached[point]||missing[point])continue;
           auto facts=*completion;facts.normal_kinds={values.data(),expressions};
           auto event=flow.events[point];
+          event.original_effect_valid=event.expression&&!changed[source.value]&&!changed[event.expression->value];
           if(initialization){facts.normal_stores=normal_stores;facts.assignments=assignments;event.read_completion=read_completions[point];}
           effects[point]=EvaluateFlowEventEffects(flow,tree,event,facts);
           for(auto edge=flow.events[point].outgoing;edge;edge=flow.edges[*edge].outgoing) {
@@ -607,6 +610,13 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
     }
     FlowNormalKinds result;budget.Array(result.expressions,expressions);
     std::copy_n(values.begin(),expressions,result.expressions.begin());
+    if(completion) {
+      budget.Array(result.original_effects,events);
+      for(std::size_t i=0;i<events;++i) {
+        budget.Step();const auto expression=flow.events[i].expression;
+        result.original_effects[i]=expression&&!changed[event_node(FlowPoint{static_cast<std::uint32_t>(i)}).value]&&!changed[expression->value];
+      }
+    }
     result.executable=std::move(executable);
     result.initialized_reads=std::move(initialized_reads);result.read_completions=std::move(read_completions);
     result.allocated_bytes=budget.Bytes();result.work=budget.Work();return result;

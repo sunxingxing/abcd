@@ -11,6 +11,7 @@ struct FlowNormalKinds {
   std::vector<std::uint8_t> executable;
   std::vector<std::uint8_t> initialized_reads;
   std::vector<FlowReadCompletion> read_completions;
+  std::vector<std::uint8_t> original_effects;
   std::size_t allocated_bytes=0;
   std::uint64_t work=0;
 };

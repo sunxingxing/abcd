@@ -21,6 +21,20 @@ struct SourceEffects {
 inline bool HasLanguageEffect(analysis::LanguageEffect effects,analysis::LanguageEffect effect) {
   return (static_cast<std::uint16_t>(effects)&static_cast<std::uint16_t>(effect))!=0;
 }
+// Independent upper bounds for the SAME intrinsic action. UserCode includes
+// arbitrary transitive effects; it is not a single disjoint effect bit.
+inline SourceEffects IntersectSourceEffects(SourceEffects source,SourceEffects proof) {
+  const auto mask=[](analysis::LanguageEffect a,analysis::LanguageEffect b) {
+    if(HasLanguageEffect(a,analysis::LanguageEffect::kUserCode))return b;
+    if(HasLanguageEffect(b,analysis::LanguageEffect::kUserCode))return a;
+    return static_cast<analysis::LanguageEffect>(static_cast<std::uint16_t>(a)&static_cast<std::uint16_t>(b));
+  };
+  source.normal=mask(source.normal,proof.normal);
+  source.before_throw=mask(source.before_throw,proof.before_throw);
+  if(proof.exceptional==analysis::ExceptionalCompletion::kImpossible)
+    source.exceptional=analysis::ExceptionalCompletion::kImpossible;
+  return source;
+}
 inline SourceEffects CallbackEffects(analysis::LanguageEffect extra=analysis::LanguageEffect::kNone) {
   using L=analysis::LanguageEffect;
   const auto possible=L::kUserCode|L::kHeapRead|L::kHeapWrite|L::kAllocation|extra;

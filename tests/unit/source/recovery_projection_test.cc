@@ -33,6 +33,7 @@ std::variant<FlowNormalKinds,TreeStructureError> CheckedFlowNormalKinds(
     Check(std::holds_alternative<FlowNormalKinds>(sparse));const auto& actual=std::get<FlowNormalKinds>(sparse);
     Check(actual.expressions==expected->expressions);Check(actual.executable==expected->executable);
     Check(actual.initialized_reads==expected->initialized_reads);Check(actual.read_completions==expected->read_completions);
+    Check(actual.original_effects==expected->original_effects);
   }
   return dense;
 }
@@ -114,6 +115,78 @@ struct Fixture {
     result.read_bindings=plan.read_bindings;result.read_sources=plan.read_sources;result.original=&original;return result;
   }
 };
+// Conditional effect certificates are synthetic inputs to the solver here;
+// decoded FunctionTree tests independently verify their publication boundary.
+void OriginalIntrinsicEffects(bool reverse) {
+  using L=analysis::LanguageEffect;using X=analysis::ExceptionalCompletion;
+  Fixture f(1,reverse);
+  f.original.values.push_back({analysis::EntryDefinition{analysis::ParameterEntry{0}},analysis::ValueKinds::Language(),{}});
+  f.original.values.push_back({analysis::OpResult{{0}},analysis::ValueKinds::Number(),{}});
+  const auto expression=f.values[0];
+  const auto operand=std::get<UnaryExpr>(f.tree.expressions[expression.value].expression).operand;
+  const auto callee=std::get<CallExpr>(f.tree.expressions[operand.value].expression).callee;
+  f.original.operations.push_back({{0},{0},0,analysis::ValueId{1},L::kNone,L::kNone,X::kImpossible,
+      analysis::ValueLife::kLive,{0},expression,{},expression,expression});
+  auto projection=f.Projection();std::vector<std::uint8_t> stable(f.tree.symbols.size(),0);stable[0]=1;projection.stable_entries=stable;
+  const auto effects=[&](const RecoveryProjection& model,ExprId id) {
+    for(const auto& event:model.flow.events)if(event.kind==FlowEventKind::kEvaluation&&event.expression==id) {
+      Check(event.effects.has_value());return *event.effects;
+    }
+    Check(false);return SourceEffects{};
+  };
+  const auto current=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,projection,f.Input()));
+  Check(effects(current,expression).Evaluation()==ExpressionEvaluation::kInert);
+  Check(HasLanguageEffect(effects(current,operand).normal,L::kUserCode));
+  // The executable-completion solve itself consumes the proof, before final
+  // edge compaction. A final-only refinement would publish stale joint facts.
+  auto conservative=current.flow;
+  std::optional<FlowPoint> action;
+  for(unsigned i=0;i<conservative.events.size();++i) {
+    auto& event=conservative.events[i];event.original_effect_valid=false;
+    if(event.kind==FlowEventKind::kEvaluation&&event.expression==expression)action=FlowPoint{i};
+  }
+  Check(action.has_value());const auto edge=conservative.edges.size();
+  conservative.edges.push_back({*action,conservative.terminal,FlowCompletion::kThrow,
+      conservative.events[conservative.terminal.value].incoming,conservative.events[action->value].outgoing});
+  conservative.events[conservative.terminal.value].incoming=edge;conservative.events[action->value].outgoing=edge;
+  const auto states=std::get<FlowValueStates>(BuildFlowValueStates(conservative));
+  const FlowEffectInput completion{current.expressions.evaluations,current.expressions.normal_stores,current.expressions.evaluations,{}};
+  const auto solved=std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(f.tree,conservative,states,f.Input(),{},&completion));
+  Check(!solved.executable[edge]);
+
+  // Result-value identity alone does not establish an intrinsic-effect bound.
+  f.original.operations[0].intrinsic_expression.reset();
+  const auto value_only=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,projection,f.Input()));
+  Check(effects(value_only,expression).exceptional==X::kMayThrow);
+  Check(HasLanguageEffect(effects(value_only,expression).normal,L::kUserCode));
+  f.original.operations[0].intrinsic_expression=expression;
+  // Retaining the same source node/operation IDs cannot retain a certificate
+  // after a projected operand edit. Unknown entry identity also withdraws it.
+  f.plan.read_sources[callee.value]=SymbolId{0};
+  const auto changed=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,projection,f.Input()));
+  Check(effects(changed,expression).exceptional==X::kMayThrow);
+  Check(HasLanguageEffect(effects(changed,expression).normal,L::kUserCode));
+  f.plan.read_sources[callee.value].reset();stable[0]=0;
+  const auto unknown=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,projection,f.Input()));
+  Check(HasLanguageEffect(effects(unknown,expression).normal,L::kUserCode));
+  // Normal and exceptional callbacks are independent, and UserCode denotes
+  // transitive effects rather than an isolated bit eligible for intersection.
+  const SourceEffects callback=CallbackEffects();
+  const auto split=IntersectSourceEffects(callback,{L::kNone,L::kUserCode,X::kMayThrow});
+  Check(split.normal==L::kNone&&HasLanguageEffect(split.before_throw,L::kUserCode)&&split.exceptional==X::kMayThrow);
+  const auto guard=IntersectSourceEffects({L::kGuard,L::kGuard,X::kMayThrow},callback);
+  Check(guard.normal==L::kGuard&&guard.before_throw==L::kGuard&&guard.exceptional==X::kMayThrow);
+  // An update's extra lexical GetValue is not its conversion action. Even a
+  // valid intrinsic no-throw certificate cannot erase an unproved TDZ read.
+  auto update_tree=f.tree;
+  update_tree.expressions[expression.value].expression=UpdateExpr{SymbolId{1},UpdateDirection::kIncrement,UpdateResult::kPrefix};
+  FlowEvent read;read.kind=FlowEventKind::kRead;read.expression=expression;read.original_effect_valid=true;
+  const FlowEffectInput facts{current.expressions.evaluations,current.expressions.normal_stores,current.expressions.evaluations,current.expressions.kinds};
+  const auto read_effect=EvaluateFlowEventEffects(current.flow,update_tree,read,facts);
+  Check(read_effect.intrinsic&&read_effect.intrinsic->exceptional==X::kMayThrow);
+  Check(read_effect.retention==ExpressionEvaluation::kRequired);
+}
+
 // A candidate's omitted declaration must not inherit initialization from the
 // committed plan supplied to the old flow adapter. Effects must see the same
 // candidate completion state. Expected TDZ is derived from no lexical gen.
@@ -1776,6 +1849,7 @@ int main(int argc,char** argv) {
       if(prior.first){Check(cost.first<prior.first*3);Check(cost.second<prior.second*3);}prior=cost;
     }
   }
+  OriginalIntrinsicEffects(false);OriginalIntrinsicEffects(true);
   Case(false);Case(true);ChangedDefinition(false);ChangedDefinition(true);
   OriginalEntries(false);OriginalEntries(true);UnitCapabilityContract();
   for(unsigned form=0;form<10;++form)for(bool loop:{false,true})for(bool reverse:{false,true})CurrentUnitKinds(reverse,loop,form);

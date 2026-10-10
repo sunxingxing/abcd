@@ -199,6 +199,7 @@ void OriginalSelectionResults(bool emit=false) {
       selected=true;
       Check(!model.flow.original_results[i]);
       Check(!original.operations[i].result_expression);
+      Check(!original.operations[i].intrinsic_expression);
     }
     Check(selected);
     if(emit) {
@@ -457,6 +458,12 @@ void OriginalSuccessfulDomains(unsigned copies=0,bool reverse=false,bool split=f
       }
     }
   Check(mapped);
+  Check(original->operations[conversion.value].intrinsic_expression==producer);
+  // The native conversion action carries a proof independent of its result.
+  // Extra GetValue/commit phases must not inherit that action certificate.
+  Check(model.flow.original_effects[producer.value].has_value());
+  for(const auto& event:model.flow.events)if(event.expression==producer&&event.kind==FlowEventKind::kEvaluation)
+    Check(event.effects.has_value());
   // Both inline evaluation and a later source commit require the SAME checked
   // result identity. Retaining a source assignment cannot revive a withdrawn
   // result certificate; current language Number precision still survives.

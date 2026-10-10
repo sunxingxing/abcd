@@ -177,6 +177,15 @@ class FlowBuilder {
       if(const auto normal=result.normal_exits[expression.value])
         occurrence=FlowOriginalResult{expression,expressions_[expression.value],*normal};
     }
+    Resize(result.original_effects,result.original?tree_.expressions.size():0);
+    for(auto& effects:result.original_effects){budget_.Step();effects.reset();}
+    if(result.original)for(const auto& operation:result.original->operations) {
+      budget_.Step();if(operation.life!=analysis::ValueLife::kLive||!operation.intrinsic_expression)continue;
+      RequireTree(operation.intrinsic_expression->value<result.original_effects.size(),Error::kOwnership);
+      auto& effects=result.original_effects[operation.intrinsic_expression->value];
+      const SourceEffects proof{operation.normal,operation.before_throw,operation.exceptional};
+      effects=effects?IntersectSourceEffects(*effects,proof):proof;
+    }
     const auto& scopes=projection_.source_scopes;
     RequireTree(scopes.occurrences.empty() || scopes.occurrences.size()==tree_.statements.size(),Error::kOwnership);
     RequireTree(scopes.bindings.empty() || scopes.bindings.size()==tree_.symbols.size(),Error::kOwnership);
@@ -866,6 +875,12 @@ FlowEventEffects EvaluateFlowEventEffects(const RecoveryFlow& flow,const Functio
     effects=NormalValueEffects(SymbolExpr{std::get<UpdateExpr>(node).symbol},{},resources);
   if(event.kind==FlowEventKind::kRead&&event.read_completion==FlowReadCompletion::kInitialized) {
     required=false;effects=SourceEffects{};
+  }
+  if(event.original_effect_valid&&event.kind==FlowEventKind::kEvaluation&&!flow.original_effects.empty()) {
+    RequireTree(id.value<flow.original_effects.size(),Error::kOwnership);
+    if(const auto& proof=flow.original_effects[id.value]) {
+      effects=IntersectSourceEffects(effects,*proof);required=effects.Evaluation()==ExpressionEvaluation::kRequired;
+    }
   }
   return {required?ExpressionEvaluation::kRequired:ExpressionEvaluation::kInert,effects};
 }
