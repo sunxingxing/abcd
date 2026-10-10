@@ -4235,3 +4235,27 @@ not license write deletion, storage merging, raw signature types or cell identit
 Frozen final31 build0 (196.78s), fixedABC0 (5.37s), exact63 tests0 (971.04s),
 with unchanged12 code/test hashes, selection and input; ten module outputs parse
 and equal270. All allowances unchanged. No process-RSS or global cost closure.
+
+### Current binding-unit capability (rules272)
+
+An in-house typed query over the existing verified lifetime and allocation
+forests, maintained in RecoveryFlow and consumed by copy/normal-kind analysis.
+No dependency or licensing change. Immutable graph lifetime/forest metadata is
+required; capability never replaces per-edge identity, external accessibility,
+initialization or entry-domain proof. Missing scope/loop indexes are Unmodeled.
+
+Each query costs O(1) and adds no retained allocation. Existing sparse solver
+costs continue to count actual live and dependency facts; broader modeled cells
+can increase those facts without a pairwise cutoff or dropped semantics.
+Source-adapter N=200/201/400/800 inert scope variants: closed-loop work
+574435/577656/1036276/1984990, bytes1013759/1015515/1613347/3178227;
+captured-loop work339437/341838/627228/1217964,
+bytes830883/832440/1613323/3178203. Reverse arenas, geometric growth and
+exact/one-short admission pass. These are component costs, not resumed process
+RSS/full-corpus/benchmark evidence. Existing allowances stay unchanged.
+Frozen31 build0 (198.13s), fixed fresh ABC0 (3.77s); first full63 run62/63 (1018.77s),
+then the affected recovery_flow_test rebuilt and passed1/1 (22.58s) after supplying its
+known-scope fixture indexes. Production and the original8 frozen hashes stayed
+unchanged; the final9 hashes/input/selection are verified. Consolidated current
+names63/no duplicates/all pass; first failure records remain and no single full-run
+exit0 is claimed.; no global cost or backbone closure claim.

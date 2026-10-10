@@ -33,9 +33,8 @@ std::variant<FlowCopies,TreeStructureError> AnalyzeFlowCopies(
       // This lattice names current observable units; private carriers inherit
       // an available root, rather than becoming immutable values. Scope sites
       // alone cannot supply a unit: the current common transfer model must own it.
-      if(binding.exposure==FlowBindingExposure::kPrivate||!flow.scopes)return false;
-      return std::holds_alternative<ScopeBindingLifetime>(binding.lifetime)||
-          std::holds_alternative<LoopBindingLifetime>(binding.lifetime);
+      return binding.exposure!=FlowBindingExposure::kPrivate&&
+          flow.BindingUnit(id)==FlowUnitCapability::kCurrent;
     };
     std::vector<std::optional<SymbolId>> writes;budget.Array(writes,flow.events.size());
     bool seed=false;

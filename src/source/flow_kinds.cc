@@ -89,7 +89,7 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
       // Value tracking is not permission to erase observable writes. Exact
       // source allocation/exit transfers identify a current scoped unit;
       // externally mutable units lose precision at actual user-code completions.
-      return entry_domain(binding)||std::holds_alternative<ScopeBindingLifetime>(flow.bindings[binding.value].lifetime);
+      return entry_domain(binding)||flow.BindingUnit(binding)==FlowUnitCapability::kCurrent;
     };
     std::vector<std::optional<SymbolId>> writes;budget.Array(writes,flow.events.size());
     for(const auto& reference:flow.references) {
@@ -200,10 +200,15 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
                     if(!generated.original)invalidate(target);
                     continue;}
                   break;
-                case FlowDefinitionKind::kParameter:
-                  constant(target,entries[fact.binding.value].IsEmpty()?K::Language():entries[fact.binding.value]);
-                  if(!original_entries[fact.binding.value])invalidate(target);
+                case FlowDefinitionKind::kParameter: {
+                  // Current body-cell tracking cannot lend a signature proof.
+                  // Entry types and their raw dependency cone require the
+                  // separate adapter certificate, including mapped/defaults.
+                  const bool admitted=entry_domain(fact.binding)&&original_entries[fact.binding.value];
+                  constant(target,admitted&&!entries[fact.binding.value].IsEmpty()?entries[fact.binding.value]:K::Language());
+                  if(!admitted)invalidate(target);
                   continue;
+                }
                 case FlowDefinitionKind::kCatch:
                   dependency(event_node(generated.point),target,DependencyKind::kCompletion,nullptr);
                   RequireTree(catch_values[definition->value].has_value(),Error::kOwnership);

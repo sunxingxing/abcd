@@ -314,3 +314,56 @@ for(let form=0;form<4;++form)for(const split of [false,true]) {
   }
 }
 console.log('narrowed-source 200/201/400/800 admitted cost scaling passed');
+
+// This oracle starts from ordinary JS, independent of the source adapter and
+// its unit/type facts. It observes failed conversion, callback mutation and
+// successful loop writeback together, including harmless arena changes.
+const unitSources=execFileSync(process.argv[3],['--unit-source'],{encoding:'utf8',maxBuffer:16_000_000}).trim().split('\n').map(JSON.parse);
+const unitFactories=factories.filter((_,i)=>i>=primitive.length||!Object.is(primitive[i],Infinity)&&!Object.is(primitive[i],-Infinity));
+function unitOutcome(fn,factory,mode) {
+  const trace=[];let reports=0;
+  const input=()=>{trace.push('input');return factory(trace);};
+  const normalized=value=>value===failure?'failure':value instanceof Error?value.name:value;
+  const report=value=>{
+    if(value==='set') {
+      trace.push('set');return {[Symbol.toPrimitive](hint){
+        trace.push(['cell conversion',hint]);if(mode===2)throw failure;
+        return mode===3?Symbol('bad conversion'):0;
+      }};
+    }
+    trace.push(['report',typeof value==='function'?'closure':normalized(value)]);
+    if(typeof value==='function')value();
+    if(mode===1&&++reports===1)throw failure;
+  };
+  try{return {trace,kind:'return',value:fn(input,report)};}
+  catch(error){return {trace,kind:'throw',value:normalized(error)};}
+}
+const unitReferences=[
+  function(input,report){let current;try{current=+input();while(current>0){report(current);-current;report(-current);current=current-1;}}catch(error){report(error);}return 0;},
+  function(input,report){let current;try{current=+input();while(current>0){report(()=>{current=report('set');});-current;report(-current);current=current-1;}}catch(error){report(error);}return 0;},
+];
+let unitComparisons=0,unitMutants=0;
+for(const row of unitSources) {
+  const generated=Function('return ('+row.source+')')(),reference=unitReferences[+row.captured];
+  for(const factory of unitFactories)for(const mode of [0,1,2,3]) {
+    assert.deepEqual(unitOutcome(generated,factory,mode),unitOutcome(reference,factory,mode));++unitComparisons;
+  }
+  const wrapped='('+row.source+')',ast=nodes(parseJavaScript(wrapped));
+  assert.equal(ast.filter(node=>node.type==='ExpressionStatement'&&node.expression.type==='UnaryExpression'&&node.expression.operator==='-').length,row.captured?1:0);
+  if(row.count!==0)continue;
+  const initial=ast.find(node=>node.type==='UnaryExpression'&&node.operator==='+');assert.ok(initial);
+  const lostConversion=wrapped.slice(0,initial.start)+wrapped.slice(initial.argument.start,initial.argument.end)+wrapped.slice(initial.end);
+  assert.notDeepEqual(unitOutcome(Function('return '+lostConversion)(),()=>1n,0),unitOutcome(reference,()=>1n,0));++unitMutants;
+  const target=row.captured?ast.find(node=>node.type==='ExpressionStatement'&&node.expression.type==='UnaryExpression'&&node.expression.operator==='-'):
+      ast.find(node=>node.type==='BinaryExpression'&&node.operator==='-'&&node.right.type==='Literal'&&node.right.value===1);
+  assert.ok(target);
+  const mutant=wrapped.slice(0,target.start)+(row.captured?';':'current - 2')+wrapped.slice(target.end);
+  assert.notDeepEqual(unitOutcome(Function('return '+mutant)(),()=>3,0),unitOutcome(reference,()=>3,0));++unitMutants;
+}
+assert.equal(unitSources.length,24);
+for(const captured of [false,true])for(const reverse of [false,true]) {
+  const rows=unitSources.filter(row=>row.captured===captured&&row.reverse===reverse&&row.count>=200);
+  assert.deepEqual(rows.map(row=>row.count),[200,201,400,800]);
+  for(let i=1;i<rows.length;++i){assert.ok(rows[i].work<rows[i-1].work*3);assert.ok(rows[i].bytes<rows[i-1].bytes*3);}
+}
+console.log(`${unitSources.length} current-unit loop/capture sources / ${unitComparisons} independent comparisons / ${unitMutants} adverse mutants; 200/201/400/800 cost scaling passed`);

@@ -169,6 +169,10 @@ void InitializationOracle() {
   for(unsigned actions=0;actions<64;++actions)for(unsigned mask=0;mask<512;++mask) {
     RecoveryFlow flow{};flow.events.resize(3);flow.bindings={{BindingKind::kLocal,FlowBindingExposure::kPrivate,StmtId{0}}};
     flow.bindings[0].lifetime=ScopeBindingLifetime{{0},{0},{2}};
+    // This oracle assumes a known active unit; supply its actual common
+    // index. Missing forest metadata has no preservation certificate.
+    FunctionTree tree{};tree.scopes={{ScopeKind::kBlock,{}}};TreeCheckBudget budget({});
+    auto scopes=MakeFlowScopes(tree,budget);scopes->events.resize(3,{ScopeId{0},ScopeId{0}});flow.scopes=scopes;
     std::array<unsigned,3> action{};auto encoded=actions;
     for(unsigned i=0;i<3;++i) {
       action[i]=encoded%4;encoded/=4;
@@ -2879,6 +2883,8 @@ void BindingActivationOracle() {
       RecoveryFlow flow{};flow.events.resize(3);flow.entry={at(incoming)};
       flow.bindings={{BindingKind::kCompilerTemporary,FlowBindingExposure::kPrivate},
           {BindingKind::kParameter}};
+      FunctionTree tree{};tree.scopes={{ScopeKind::kBlock,{}}};TreeCheckBudget budget({});
+      auto scopes=MakeFlowScopes(tree,budget);scopes->events.resize(3,{ScopeId{0},ScopeId{0}});flow.scopes=scopes;
       flow.bindings[0].lifetime=ScopeBindingLifetime{{0},{at(0)},{at(0)}};
       flow.bindings[1].stable_entry=true;
       flow.events[at(0)].kind=boundary;flow.events[at(0)].scope=ScopeId{0};
@@ -2932,6 +2938,8 @@ void BindingActivationOracle() {
   // activation/departure and a read with no successful new definition.
   for(auto boundary:{FlowEventKind::kEnterScope,FlowEventKind::kLeaveScope}) {
     RecoveryFlow flow{};flow.events.resize(3);flow.bindings={{BindingKind::kCompilerTemporary,FlowBindingExposure::kPrivate}};
+    FunctionTree tree{};tree.scopes={{ScopeKind::kBlock,{}}};TreeCheckBudget budget({});
+    auto scopes=MakeFlowScopes(tree,budget);scopes->events.resize(3,{ScopeId{0},ScopeId{0}});flow.scopes=scopes;
     flow.bindings[0].lifetime=ScopeBindingLifetime{{0},{1},{1}};
     flow.events[0].definition=FlowDefinitionId{0};flow.definitions={{{0},{0},FlowDefinitionKind::kAssignment}};
     flow.events[1].kind=boundary;flow.events[1].scope=ScopeId{0};flow.events[2].read=SymbolId{0};
@@ -2951,6 +2959,8 @@ void BindingActivationOracle() {
   for(bool before:{false,true}) {
     RecoveryFlow flow{};flow.events.resize(4);flow.bindings={{BindingKind::kLocal}};
     flow.bindings[0].declaration=StmtId{0};
+    FunctionTree tree{};tree.scopes={{ScopeKind::kBlock,{}}};TreeCheckBudget budget({});
+    auto scopes=MakeFlowScopes(tree,budget);scopes->events.resize(4,{ScopeId{0},ScopeId{0}});flow.scopes=scopes;
     flow.bindings[0].lifetime=ScopeBindingLifetime{{0},{before?2U:1U},{3}};
     flow.events[before?2:1].kind=FlowEventKind::kEnterScope;flow.events[before?2:1].scope=ScopeId{0};
     flow.events[before?1:2].definition=FlowDefinitionId{0};
@@ -2968,10 +2978,15 @@ void BindingActivationScaling() {
     RecoveryFlow flow{};flow.events.resize(count*4);flow.bindings.resize(count);
     const auto point=[&](unsigned i){return reverse?count*4-1-i:i;};
     flow.entry={point(0)};std::vector<ReachingDefinition> expected;
+    FunctionTree tree{};tree.scopes.resize(count,{ScopeKind::kBlock,{}});TreeCheckBudget budget({});
+    auto scopes=MakeFlowScopes(tree,budget);scopes->events.resize(flow.events.size());flow.scopes=scopes;
     for(unsigned i=0;i<count;++i) {
       const ScopeId scope{i};const FlowPoint enter{point(i*4)},leave{point(i*4+3)};
       flow.bindings[i].kind=BindingKind::kLocal;flow.bindings[i].declaration=StmtId{i};
       flow.bindings[i].lifetime=ScopeBindingLifetime{scope,enter,leave};
+      scopes->events[enter.value]={IncomingScope{},scope};
+      scopes->events[point(i*4+1)]={scope,scope};scopes->events[point(i*4+2)]={scope,scope};
+      scopes->events[leave.value]={scope,IncomingScope{}};
       flow.events[enter.value].kind=FlowEventKind::kEnterScope;flow.events[enter.value].scope=scope;
       flow.events[leave.value].kind=FlowEventKind::kLeaveScope;flow.events[leave.value].scope=scope;
       flow.events[point(i*4+1)].definition=FlowDefinitionId{i};

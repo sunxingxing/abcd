@@ -32,6 +32,9 @@ struct FlowScopePath {std::optional<ScopePosition> parent;ScopePosition head;std
 enum class FlowScopePhase : std::uint8_t {kBefore,kAfter};
 enum class FlowUnitPresence : std::uint8_t {kActive,kInactive,kUnmodeled,kCompletionOnly};
 enum class FlowUnitTransfer : std::uint8_t {kPreserved,kEnded,kUnmodeled};
+// Static ability to track the current unit, independent of a scalar domain,
+// initialization and access. Current identity still uses per-edge transfer.
+enum class FlowUnitCapability : std::uint8_t {kCurrent,kCompletionOnly,kUnmodeled};
 // Immutable per-projection lexical activation contexts. Euler intervals index
 // containment, never runtime cell equality. Unknown cleanup must retain value
 // demand while invalidating substitutions, rather than pretend a definite exit.

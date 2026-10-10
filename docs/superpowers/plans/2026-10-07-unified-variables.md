@@ -930,3 +930,20 @@ fixedABC0/exact63 tests0 (196.78/5.37/971.04s);12 code/test hashes, selection
 and input unchanged, all ten modules parse and equal270. All five backbone
 closures remain OPEN. After this coherent pass
 work, continue the backbone, with no other optimization or paused scope resumed.
+
+Rules272 backbone substep: the common BindingUnit capability replaces copy/type
+lifetime admission lists; the common edge model retains actual identity transfers.
+Missing ordinary/loop allocation metadata stays Unmodeled. Current enclosing
+units never grant raw signature domains or all-definition invariants. Current and
+trial graphs reuse this pure query; independent entry certificates and completion
+access effects remain separate. Explicit graph/scalar cases, 24 emitted source
+programs/2688 comparisons/8 execution mutants, mapped occurrence/invariant
+separation and three production mutants pass. Frozen31 build0 (198.13s), fixed fresh
+ABC0 (3.77s); first full63 run62/63 (1018.77s), then the affected recovery_flow_test
+rebuilt and passed1/1 (22.58s) after supplying its known-scope fixture indexes.
+Production and the original8 frozen hashes stayed unchanged; the final9
+hashes/input/selection are verified. Consolidated current names63/no duplicates/all
+pass; first failure records remain and no single full-run exit0 is claimed.
+All five backbone deliverables remain OPEN/Goal active; other optimizations and
+paused verification scopes remain paused. Continue full raw/protocol/action and
+unit reconstruction, remaining trials, dependency convergence and final acceptance.

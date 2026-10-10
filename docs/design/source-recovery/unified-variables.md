@@ -3328,3 +3328,44 @@ roots can use modeled ordinary and loop units, while normal-kind tracked observa
 units still use ScopeBindingLifetime only. Access separation does not close this
 difference. Extend the shared unit transfer/capability model and migrate consumers
 together; do not add a native-for syntax exception or claim complete loop types.
+
+### Rules272: current-unit capability is not an entry-domain certificate
+
+RecoveryFlow owns the constant-time BindingUnit query for enclosing, ordinary
+scoped and native loop units. Copy/type consumers retire their separate lifetime
+variant admission lists. Point/edge transfer remains the sole dynamic identity
+owner; missing allocation forests are Unmodeled, never preserved scoped units.
+The pure query uses the immutable current/trial graph and adds no cached state.
+
+A current enclosing cell does not certify raw signature domains. Parameter
+normal-kind generation independently requires the entry-domain adapter proof and
+raw correspondence; otherwise it invalidates the raw dependency cone. Actual
+UserCode completions and canonical external access still invalidate current
+values. A saved scalar carried into a new unit retains its scalar domain, not
+identity of the previous cell. Declaration placement, storage, removal and grammar
+remain separate owners. Occurrence copy and independent carrier removal must not
+be mistaken for an all-definition binding invariant, including mapped parameters.
+
+Forty explicit graph/scalar cases, current-unit/missing metadata contracts, raw
+entry negatives, 24 source programs/2688 executions/8 adverse source mutants and
+three production mutants passed. Existing1289/200156/158 source evidence passed
+in the targeted checks. Source variants include closed numeric loops and callbacks
+mutating a captured binding, conversion failure, arena reversal and200/201/400/800
+inert-scope growth. Synthetic source-adapter envelopes are not raw IR certificates.
+Frozen31 build0 (198.13s), fixed fresh ABC0 (3.77s); first full63 run62/63 (1018.77s),
+then the affected recovery_flow_test rebuilt and passed1/1 (22.58s) after supplying its
+known-scope fixture indexes. Production and the original8 frozen hashes stayed
+unchanged; the final9 hashes/input/selection are verified. Consolidated current
+names63/no duplicates/all pass; first failure records remain and no single full-run
+exit0 is claimed. All five backbone closures remain OPEN; full raw phases,
+update-domain precision, captured-unit reconstruction, remaining trials, dependency
+convergence and milestone acceptance continue before other optimizations.
+
+The fixed manifest retains19 records/10 complete/0 partial/9 no-module and the
+language_numeric_constructors_v1 contract; all10 sources parse. Only ProgressBar
+changes: a private captured-unit snapshot is replaced by the available current
+read, with its old read completion preserved. Optional-chain rules are unchanged.
+The paired gate passes88 cases/570 faults/114 swaps/15 mutants/2 transformations,
+with platformExecution=false. One preexisting literal_plan kNoop warning remains.
+Evidence:build/stage-one/unit-capability-verification/consolidated-result.json;
+fresh output:build/stage-one/unit-capability-final-rule272-verified.

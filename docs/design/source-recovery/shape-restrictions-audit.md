@@ -3360,3 +3360,26 @@ milestone acceptance remain open. Frozen final31 build0/fixedABC0/exact63 tests0
 passed with12 code/test hashes, selection and input unchanged; ten complete
 module sources are byte-identical to270. This replaces the callback proxy in
 source decision paths; it does not retire independent write/entry/unit proofs.
+
+### Rules272: retire consumer lifetime lists without weakening identity
+
+Obligation: the common current graph must identify a modeled binding unit before
+copy/type clients track it. BindingUnit supplies this capability; TransferBinding
+owns allocation/reentry/exit identity and treats missing scope/loop indexes as
+Unmodeled. Copy/type Scope/Loop variant lists leave the actual decision path.
+No native-for, same-block, adjacency, name, sequence or sample admission is added.
+
+Current cell capability, raw parameter entry domains and all-definition invariants
+are separate proofs. Parameter generation checks its own certificate and removes
+uncertified raw dependencies. Mapped entry reads may be available before callbacks
+or after a final write; later externally mutable reads remain invalidated. Tests
+separate occurrence substitution, independent carrier deletion and invariant
+publication. Closed loops drop inert numeric operations; captured mutation retains
+conversion and exception effects. Graph/source variants, adversarial executions
+and three production regressions are caught. Frozen31 build0 (198.13s), fixed fresh ABC0
+(3.77s); first full63 run62/63 (1018.77s), then the affected recovery_flow_test rebuilt
+and passed1/1 (22.58s) after supplying its known-scope fixture indexes. Production and
+the original8 frozen hashes stayed unchanged; the final9 hashes/input/selection are
+verified. Consolidated current names63/no duplicates/all pass; first failure records
+remain and no single full-run exit0 is claimed.
+Full raw/unit/trial/convergence/acceptance closures are still open.

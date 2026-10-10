@@ -3,6 +3,9 @@
 #include "../../../src/source/flow_kinds.h"
 #include "../../../src/source/cell_access.h"
 #include "../../../src/source/class_tree.h"
+#include "../../../src/source/loop_syntax.h"
+#include "../../../src/source/nullish_syntax.h"
+#include "../../../src/source/family_print.h"
 #include "abcd/source/tree_printer.h"
 #include <nlohmann/json.hpp>
 #include <sstream>
@@ -608,6 +611,179 @@ void ScopeExitSource(unsigned form,unsigned copies,bool split,bool emit,bool nar
       {"bindings",tree.symbols.size()},{"statements",tree.statements.size()},{"expressions",tree.expressions.size()},
       {"work",facts.work},{"allocated_bytes",facts.allocated_bytes}}<<'\n';
 }
+// Unit sites are allocation/transfer facts, never numeric domains or a fixed
+// for-loop shape. Saved pre-reset values and current post-reset values differ.
+// This manually specified completion graph has an independent scalar oracle;
+// it is not a certificate for a decoded original loop/capture program.
+std::pair<std::uint64_t,std::size_t> CurrentUnitKinds(bool reverse,bool loop,unsigned form,unsigned count=1) {
+  Fixture f(count,reverse);RecoveryFlow flow{};flow.original=&f.original;
+  const auto size=count*5;flow.events.resize(size);flow.bindings.resize(count+1);
+  TreeCheckBudget scope_budget({});auto scopes=MakeFlowScopes(f.tree,scope_budget);
+  const std::array<std::optional<FlowLoopScope>,1> units{FlowLoopScope{}};
+  IndexFlowLoopScopes(*scopes,units,scope_budget);
+  scopes->events.resize(size,{ScopeId{1},ScopeId{1}});
+  scopes->loop_events.resize(size,{StmtId{0},StmtId{0}});flow.scopes=scopes;
+  const auto point=[&](unsigned i){return FlowPoint{reverse?size-1-i:i};};flow.entry=point(0);
+  for(unsigned n=0;n<count;++n) {
+    const SymbolId binding{n+1};auto& cell=flow.bindings[binding.value];cell.kind=BindingKind::kLocal;
+    cell.cell_access=(form==4||form==9)?CellVisibility::kExternal:CellVisibility::kClosed;
+    cell.lifetime=loop?FlowBindingLifetime{LoopBindingLifetime{{0}}}:FlowBindingLifetime{ScopeBindingLifetime{{1},point(0),point(size-1)}};
+    const auto first=point(n*5),input=point(n*5+1),boundary=point(n*5+2),commit=point(n*5+3),read=point(n*5+4);
+    flow.events[first.value].definition=FlowDefinitionId{static_cast<unsigned>(flow.definitions.size())};
+    flow.definitions.push_back({first,binding,FlowDefinitionKind::kInitializer,{},f.values[n]});
+    flow.events[input.value].kind=FlowEventKind::kCopyInput;flow.events[input.value].read=binding;
+    if(form<=2) {
+      flow.events[boundary.value].kind=loop?FlowEventKind::kEnterIterationEnvironment:FlowEventKind::kEnterScope;
+      if(loop)flow.events[boundary.value].loop_environment=StmtId{0};else flow.events[boundary.value].scope=ScopeId{1};
+    }
+    if(form==3||form==4||form==8||form==9)flow.events[boundary.value].effects=CallbackEffects();
+    if(form!=2&&form!=8&&form!=9) {
+      flow.events[commit.value].definition=FlowDefinitionId{static_cast<unsigned>(flow.definitions.size())};
+      FlowDefinition carried{commit,binding,FlowDefinitionKind::kIterationCopy};
+      carried.input=FlowCapturedValue{form==1?commit:input,binding};flow.definitions.push_back(carried);
+    }
+    if(form==5) {
+      scopes->events[boundary.value]={UnmodeledScope{},UnmodeledScope{}};
+      scopes->loop_events[boundary.value]={UnmodeledScope{},UnmodeledScope{}};
+    }
+    if(form==6) {
+      scopes->events[read.value]={IncomingScope{},IncomingScope{}};
+      scopes->loop_events[read.value]={ExitedLoopScope{{0}},ExitedLoopScope{{0}}};
+    }
+    flow.events[read.value].kind=FlowEventKind::kRead;flow.events[read.value].read=binding;
+    flow.references.push_back({read,binding,FlowReferenceKind::kRead,f.reads[n]});
+  }
+  for(unsigned i=0;i+1<size;++i) {
+    const auto from=point(i),to=point(i+1);
+    flow.edges.push_back({from,to,FlowCompletion::kNormal,flow.events[to.value].incoming,flow.events[from.value].outgoing});
+    flow.events[to.value].incoming=flow.events[from.value].outgoing=flow.edges.size()-1;
+  }
+  if(form==7)flow.scopes.reset();
+  const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));
+  const auto solve=[&](analysis::SemanticBudget allowance={}) {
+    return AnalyzeFlowNormalKinds(f.tree,flow,live,f.Input(),allowance);
+  };
+  const auto actual=std::get<FlowNormalKinds>(solve());
+  // An explicit pre-boundary saved scalar survives allocation and callbacks.
+  // A current-cell dependency sampled after allocation has no old definition.
+  const bool known=form==0||form==3||form==4||form==5||form==8;
+  for(auto id:f.reads)Check(actual.expressions[id.value]==(known?analysis::ValueKinds::Number():analysis::ValueKinds::Language()));
+  const analysis::SemanticBudget exact{actual.allocated_bytes,actual.work};
+  Check(std::holds_alternative<FlowNormalKinds>(solve(exact)));
+  Check(std::get<TreeStructureError>(solve({exact.bytes-1,exact.work}))==TreeStructureError::kResourceLimit);
+  Check(std::get<TreeStructureError>(solve({exact.bytes,exact.work-1}))==TreeStructureError::kWorkLimit);
+  return {actual.work,actual.allocated_bytes};
+}
+void UnitCapabilityContract() {
+  Fixture f(1,false);RecoveryFlow flow{};flow.events.resize(2);flow.bindings.resize(1);
+  TreeCheckBudget budget({});auto scopes=MakeFlowScopes(f.tree,budget);
+  scopes->events.resize(2,{ScopeId{1},ScopeId{1}});
+  const std::array<std::optional<FlowLoopScope>,1> loops{FlowLoopScope{}};
+  IndexFlowLoopScopes(*scopes,loops,budget);scopes->loop_events.resize(2,{StmtId{0},StmtId{0}});flow.scopes=scopes;
+  const FlowEdge edge{{0},{1},FlowCompletion::kNormal};
+  flow.bindings[0].lifetime=EnclosingBindingLifetime{};
+  Check(flow.BindingUnit({0})==FlowUnitCapability::kCurrent);
+  flow.bindings[0].lifetime=CompletionOnlyLifetime{};
+  Check(flow.BindingUnit({0})==FlowUnitCapability::kCompletionOnly);
+  flow.bindings[0].lifetime=UnmodeledBindingLifetime{};
+  Check(flow.BindingUnit({0})==FlowUnitCapability::kUnmodeled);
+  for(bool loop:{false,true}) {
+    flow.bindings[0].lifetime=loop?FlowBindingLifetime{LoopBindingLifetime{{0}}}:
+        FlowBindingLifetime{ScopeBindingLifetime{{1},{0},{1}}};
+    flow.scopes=scopes;Check(flow.BindingUnit({0})==FlowUnitCapability::kCurrent);
+    Check(flow.TransferBinding({0},edge)==FlowUnitTransfer::kPreserved);
+    flow.scopes.reset();Check(flow.BindingUnit({0})==FlowUnitCapability::kUnmodeled);
+    Check(flow.TransferBinding({0},edge)==FlowUnitTransfer::kUnmodeled);
+  }
+}
+// Actual source-adapter execution: a completed conversion initializes a
+// native loop unit; callback accessibility is shared with every current/trial
+// consumer. Independent JS below supplies the behavior, never engine inputs.
+void CurrentUnitSource(bool captured,unsigned count,bool reverse,bool emit) {
+  FunctionTree tree{};tree.callable=CallableKind::kFunction;tree.strictness=Strictness::kStrict;
+  tree.parameter_scope={0};tree.body_scope={1};tree.body={0};tree.origins={OriginalSite{{0},{0}}};
+  tree.scopes={{ScopeKind::kParameters,{}},{ScopeKind::kFunctionBody,ScopeId{0}},
+      {ScopeKind::kBlock,ScopeId{1}},{ScopeKind::kBlock,ScopeId{2}},
+      {ScopeKind::kBlock,ScopeId{3}},{ScopeKind::kCatch,ScopeId{1}}};
+  tree.names={u"input",u"report",u"current",u"error",u"callback"};
+  tree.symbols={{{0},{0},BindingKind::kParameter,DeclarationKind::kParameter,NameEvidence::kMetadata,{}},
+      {{0},{1},BindingKind::kParameter,DeclarationKind::kParameter,NameEvidence::kMetadata,{}},
+      {{1},{2},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}},
+      {{5},{3},BindingKind::kCatchParameter,DeclarationKind::kCatchParameter,NameEvidence::kMetadata,{}},
+      {{1},{4},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}}};
+  tree.parameters={{{0},{},false},{{1},{},false}};
+  const auto expr=[&](TreeExpression node){ExprId id{static_cast<unsigned>(tree.expressions.size())};tree.expressions.push_back({std::move(node),{0}});return id;};
+  const auto stmt=[&](TreeStatement node){StmtId id{static_cast<unsigned>(tree.statements.size())};tree.statements.push_back({std::move(node),{0}});return id;};
+  const auto block=[&](ScopeId scope,const std::vector<StmtId>& children) {
+    const auto first=tree.children.size();tree.children.insert(tree.children.end(),children.begin(),children.end());
+    return stmt(BlockStmt{scope,static_cast<unsigned>(first),static_cast<unsigned>(children.size())});
+  };
+  const auto read=[&](unsigned symbol){return expr(SymbolExpr{{symbol}});};
+  const auto integer=[&](std::int32_t value){return expr(TreeLiteral{IntegerLiteral{value}});};
+  const auto call=[&](unsigned callee,std::optional<ExprId> argument={}) {
+    const auto first=tree.arguments.size();if(argument)tree.arguments.push_back(*argument);
+    return expr(CallExpr{read(callee),{static_cast<unsigned>(first),argument?1U:0U},CallReference::kValue});
+  };
+  const auto root=stmt(BlockStmt{}),loop=stmt(LoopStmt{});
+  const auto declaration=stmt(DeclarationStmt{{2},{}});
+  const auto callback=stmt(DeclarationStmt{{4},read(1)});
+  const auto converted=expr(UnaryExpr{TreeUnary::kPlus,call(0)});
+  const auto entry=stmt(ExpressionStmt{expr(AssignmentExpr{SymbolTarget{{2}},converted})});
+  const auto condition=expr(BinaryExpr{analysis::BinaryOperator::kGreater,read(2),integer(0)});
+  std::vector<StmtId> body{stmt(IfStmt{expr(UnaryExpr{TreeUnary::kNot,condition}),block({4},{stmt(BreakStmt{loop,{}})}),{}})};
+  if(captured)tree.closure_captures={{2},{4}};
+  body.push_back(stmt(ExpressionStmt{call(1,captured?expr(FunctionExpr{{1},{0,2}}):read(2))}));
+  for(unsigned i=0;i<count;++i) {
+    const ScopeId scope{static_cast<unsigned>(tree.scopes.size())};
+    tree.scopes.push_back({ScopeKind::kBlock,ScopeId{3}});body.push_back(block(scope,{}));
+  }
+  body.push_back(stmt(ExpressionStmt{expr(UnaryExpr{TreeUnary::kNegate,read(2)})}));
+  body.push_back(stmt(ExpressionStmt{call(1,expr(UnaryExpr{TreeUnary::kNegate,read(2)}))}));
+  const auto next=expr(BinaryExpr{analysis::BinaryOperator::kSubtract,read(2),integer(1)});
+  body.push_back(stmt(ExpressionStmt{expr(AssignmentExpr{SymbolTarget{{2}},next})}));body.push_back(stmt(ContinueStmt{loop,{}}));
+  std::get<LoopStmt>(tree.statements[loop.value].statement).body=block({3},body);
+  const auto handler=block({5},{stmt(ExpressionStmt{call(1,read(3))})});
+  const auto attempt=block({2},{entry,loop});
+  const auto first=tree.children.size();tree.children.insert(tree.children.end(),{declaration,callback,stmt(TryStmt{attempt,CatchClause{SymbolId{3},handler},{}}),stmt(ReturnStmt{integer(0)})});
+  std::get<BlockStmt>(tree.statements[root.value].statement)={{1},static_cast<unsigned>(first),4};
+  if(reverse) {
+    const auto map=[&](StmtId id){return StmtId{static_cast<unsigned>(tree.statements.size()-1-id.value)};};
+    for(auto& child:tree.children)child=map(child);
+    for(auto& item:tree.statements)std::visit([&](auto& node){using T=std::decay_t<decltype(node)>;
+      if constexpr(std::is_same_v<T,LoopStmt>)node.body=map(node.body);
+      else if constexpr(std::is_same_v<T,IfStmt>){node.consequent=map(node.consequent);if(node.alternate)node.alternate=map(*node.alternate);}
+      else if constexpr(std::is_same_v<T,BreakStmt>||std::is_same_v<T,ContinueStmt>)node.target=map(node.target);
+      else if constexpr(std::is_same_v<T,TryStmt>){node.body=map(node.body);if(node.handler)node.handler->body=map(node.handler->body);}
+    },item.statement);
+    tree.body=map(tree.body);std::reverse(tree.statements.begin(),tree.statements.end());
+  }
+  Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  OriginalFlow original{};original.identity=tree.identity;original.method=tree.method;original.value_revision=tree.value_revision;original.cfg_revision=tree.cfg_revision;
+  original.statements=tree.statements.size();original.bindings=tree.symbols.size();original.normal_kinds.resize(tree.expressions.size());original.input_ranges.resize(tree.expressions.size());
+  const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
+  const auto plan=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{},&original));
+  if(count==0) {
+    Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes,plan.work},&original)));
+    Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes-1,plan.work},&original))==TreeStructureError::kResourceLimit);
+    Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes,plan.work-1},&original))==TreeStructureError::kWorkLimit);
+  }
+  std::ostringstream output;
+  if(captured) {
+    FunctionTree child{};child.owner={1};child.callable=CallableKind::kFunction;child.strictness=Strictness::kStrict;
+    child.names={u"current",u"report"};child.parameter_scope={0};child.body_scope={1};child.capture_scope=ScopeId{2};child.body={0};
+    child.scopes={{ScopeKind::kParameters,ScopeId{2}},{ScopeKind::kFunctionBody,ScopeId{0}},{ScopeKind::kCaptures,{}}};
+    child.symbols={{{2},{0},BindingKind::kCapture,DeclarationKind::kLet,NameEvidence::kMetadata,{}},{{2},{1},BindingKind::kCapture,DeclarationKind::kLet,NameEvidence::kMetadata,{}}};
+    child.captures={{{0},{tree.owner,{2}}},{{1},{tree.owner,{4}}}};child.origins={OriginalSite{{0},{0}}};
+    child.texts={u"set"};
+    child.expressions={{SymbolExpr{{1}},{0}},{TreeLiteral{TextId{0}},{0}},
+      {CallExpr{{0},{0,1},CallReference::kValue},{0}},{AssignmentExpr{SymbolTarget{{0}},ExprId{2}},{0}}};child.arguments={{1}};
+    child.statements={{BlockStmt{{1},0,1},{0}},{ExpressionStmt{{3}},{0}}};child.children={{1}};
+    ConstructedFamily family;family.root={1};family.members={{std::move(child),{},{}},{tree,{}, {}}};
+    Check(std::holds_alternative<PrintedFamilyDraft>(PrintFamilyDraft(family,output)));
+  } else Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output,{}, {},nullptr,&original)));
+  if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"captured",captured},{"count",count},{"reverse",reverse},
+      {"work",plan.work},{"bytes",plan.allocated_bytes}}<<'\n';
+}
 void CapturedKinds(bool reverse) {
   Fixture f(1,reverse);RecoveryFlow flow{};flow.original=&f.original;flow.events.resize(5);flow.bindings.resize(2);
   flow.bindings[0].kind=BindingKind::kParameter;
@@ -903,6 +1079,15 @@ void ActivationSource(unsigned copies,bool split,bool emit) {
 
 }
 int main(int argc,char** argv) {
+  if(argc==2&&std::string_view(argv[1])=="--unit-source") {
+    for(bool captured:{false,true})for(bool reverse:{false,true})for(unsigned count:{0U,1U,200U,201U,400U,800U})CurrentUnitSource(captured,count,reverse,true);
+    return 0;
+  }
+  if(argc==2&&std::string_view(argv[1])=="--unit-kinds") {
+    UnitCapabilityContract();
+    for(unsigned form=0;form<10;++form)for(bool loop:{false,true})for(bool reverse:{false,true})CurrentUnitKinds(reverse,loop,form);
+    return 0;
+  }
   if(argc==2&&std::string_view(argv[1])=="--effects") {
     for(bool reverse:{false,true})ScopedPureWriteKinds(reverse,true);
     return 0;
@@ -977,7 +1162,8 @@ int main(int argc,char** argv) {
   }
   ActivationSource(0,false,false);ActivationSource(1,true,false);
   Case(false);Case(true);ChangedDefinition(false);ChangedDefinition(true);
-  OriginalEntries(false);OriginalEntries(true);
+  OriginalEntries(false);OriginalEntries(true);UnitCapabilityContract();
+  for(unsigned form=0;form<10;++form)for(bool loop:{false,true})for(bool reverse:{false,true})CurrentUnitKinds(reverse,loop,form);
   for(unsigned seed=0;seed<512;++seed)for(bool reverse:{false,true})KindOracle(seed,reverse);
   for(unsigned form=0;form<4;++form)for(bool reverse:{false,true})CompletionTypes(form,reverse,false);
   std::uint64_t work=0;std::size_t bytes=0;

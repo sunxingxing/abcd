@@ -446,7 +446,8 @@ std::uint64_t StorageSnapshot(unsigned form,unsigned count,bool reverse,bool emi
   return bindings.work;
 }
 std::uint64_t JoinedCopies(unsigned form,unsigned count,bool reverse,bool emit){
-  Fixture f(Form::kStraight);auto& tree=f.tree;const bool known=form==44||form==46||form==48||form==49;
+  Fixture f(Form::kStraight);auto& tree=f.tree;const bool invariant=form==44||form==46||form==48||form==49;
+  const bool known=invariant||form==52;
   if(form==52)tree.strictness=Strictness::kSloppy;
   if(form==50){tree.symbols[4].kind=BindingKind::kLocal;tree.symbols[4].temporary.reset();}
   const auto declaration=f.Stmt(DeclarationStmt{{4},form==48?std::optional{f.Read(0)}:std::nullopt});
@@ -469,7 +470,10 @@ std::uint64_t JoinedCopies(unsigned form,unsigned count,bool reverse,bool emit){
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
   const auto bindings=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
   const auto at=reverse?tree.statements.size()-1-declaration.value:declaration.value;
-  Check(bool(bindings.omitted[at])==known);Check(bindings.read_bindings[4]==(known?std::optional{SymbolId{0}}:std::nullopt));
+  // Current-unit reads can retire a carrier without an all-definition
+  // invariant. Mapped entry cells must never borrow the latter certificate.
+  Check(bool(bindings.omitted[at])==known);
+  Check(bindings.read_bindings[4]==(invariant?std::optional{SymbolId{0}}:std::nullopt));
   if(!count){Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work})));
     Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes-1,bindings.work}))==TreeStructureError::kResourceLimit);
     Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work-1}))==TreeStructureError::kWorkLimit);}
@@ -572,8 +576,11 @@ std::uint64_t ReadCopies(unsigned form,unsigned count,bool reverse,bool emit){
   f.Finish(roots,reverse);Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
   const auto bindings=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
-  const bool known=form<=71||form==76;
-  Check(bindings.ReadBinding(read,SymbolId{3})==(known?SymbolId{0}:bindings.Storage(SymbolId{3})));
+  const bool known=form<=71||form==75||form==76;
+  const auto actual_read=bindings.ReadBinding(read,SymbolId{3});
+  if(actual_read!=(known?SymbolId{0}:bindings.Storage(SymbolId{3})))
+    std::cerr<<"read copy form="<<form<<" count="<<count<<" actual="<<actual_read.value<<" storage="<<bindings.Storage({3}).value<<'\n';
+  Check(actual_read==(known?SymbolId{0}:bindings.Storage(SymbolId{3})));
   std::ostringstream output;const auto printed=PrintFunctionTree(tree,output);
   Check(std::holds_alternative<PrintedFunction>(printed));
   Check((output.str().rfind("return input;")!=std::string::npos)==known);
@@ -626,7 +633,7 @@ std::uint64_t AvailableCopies(unsigned form,unsigned count,bool reverse,bool emi
   f.Finish(roots,reverse);Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
   const auto bindings=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
-  const bool first_known=form==77||form==78||form==81||form==82||form==84||form==85||form==86,last_known=form==78||form==82;
+  const bool first_known=form==77||form==78||form==81||form==82||form==83||form==84||form==85||form==86,last_known=form==78||form==82;
   Check(bindings.ReadBinding(first,{3})==(first_known?SymbolId{0}:bindings.Storage({3})));
   Check(bindings.ReadBinding(last,{3})==(last_known?SymbolId{0}:bindings.Storage({3})));
   std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
@@ -682,14 +689,18 @@ std::uint64_t TransitiveCopies(unsigned form,unsigned count,bool reverse,bool em
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
   const auto bindings=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
   const bool known=form==88||form==90||form==91||form==93;
-  Check(bindings.ReadBinding(first,{4})==(known?SymbolId{0}:bindings.Storage({4})));
+  // Mapped parameters are current units before a callback, even though
+  // the callback invalidates the later parameter read. Entry-domain proof
+  // remains independent of this occurrence copy.
+  const bool first_known=known||form==94;
+  Check(bindings.ReadBinding(first,{4})==(first_known?SymbolId{0}:bindings.Storage({4})));
   if(form!=93)Check(bindings.ReadBinding(second,{4})==(known?SymbolId{0}:bindings.Storage({4})));
   Check(bindings.ReadBinding(last,{4})==bindings.Storage({4}));
   std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
   if(!count){Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work})));
     Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes-1,bindings.work}))==TreeStructureError::kResourceLimit);
     Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work-1}))==TreeStructureError::kWorkLimit);}
-  if(emit)std::cout<<nlohmann::json{{"form",form},{"count",count},{"reverse",reverse},{"transitive",true},{"first",known},{"source",output.str()}}<<'\n';
+  if(emit)std::cout<<nlohmann::json{{"form",form},{"count",count},{"reverse",reverse},{"transitive",true},{"first",first_known},{"source",output.str()}}<<'\n';
   return bindings.work;
 }
 std::uint64_t Many(unsigned count,bool emit){

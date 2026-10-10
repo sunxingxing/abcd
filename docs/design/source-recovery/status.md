@@ -36,6 +36,44 @@
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
 
+### 2026-10-10：规则272，共同当前单元能力与独立入口域
+
+- RecoveryFlow::BindingUnit 统一发布 Enclosing/Scope/Loop 的当前单元能力，
+  CompletionOnly 与 Unmodeled 保持显式。Copy/type 消费同一查询，退出各自
+  Scope/Loop 生命周期准入列表；实际身份仍由逐边 transfer、分配、退出与
+  成功写入决定。缺失作用域/循环索引返回 Unmodeled，不能假定单元保持。
+- 当前单元可追踪不授予 raw 参数入口类型。参数生成独立检查 entry-domain
+  与原始入口对应；缺少证明时撤销 raw 依赖锥。外部可达单元在实际 UserCode
+  completion 失效，已保存标量的重建携带不冒充旧 cell identity。
+- mapped 参数的回调前读取、最后一次赋值后的读取可以使用当前值；回调后
+  快照必须保留。测试分别验证 occurrence copy、独立绑定删除和全定义
+  invariant；删除载体不生成入口/全定义证明。未加入样本、同块、邻接、
+  操作序列或固定循环形状条件；声明/存储/删除仍由独立 pass 负责。
+- 定向3/3通过（70.41s）：40个显式小图 scalar oracle、反向 arena、
+  作用域/循环 reset/carry/未知/退出、closed/external 回调及缺失索引契约；
+  新增24份循环/闭包源码、2688次独立比较与8个执行突变。既有存储消费者
+  1289份源码/200156次比较/158个执行突变通过。三个生产突变 build0/
+  test-6，分别退回 Scope-only、泄漏 raw 入口、缺失 scope 假定保持；已恢复。
+- 当前单元查询O(1)，无新增保留存储；source 200/201/400/800、反向
+  statement arena 与 exact/one-short byte/work 均通过，原额度保持。
+- 冻结31目标构建0（198.13s）、fresh fixed ABC0（3.77s）。完整63项
+  首轮62/63通过（1018.77s），唯一失败是旧手工图声明 Scope lifetime
+  却缺失 forest。补齐已假定的作用域事实，未改生产代码；该目标重建0，
+  定向1/1通过（22.58s）。保留首轮与修复记录，当前合并结果 exact names
+  63/63、无重复。首轮8份代码/测试哈希及修复后的9份哈希、清单、输入
+  SHA在完整测试与修复后保持；没有宣称同一次全63运行终态0。
+- 19 records仍10 complete/0 partial/9 no-module，10份语法全部通过，
+  contract仍language_numeric_constructors_v1。只有ProgressBar变化：当前
+  捕获单元读取替代私有快照，原读取完成保留；?.规则未改。paired gate
+  88场景/570异常/114 import swaps/15突变/2等价变化通过，
+  platformExecution=false。既有literal_plan kNoop warning一条，无error。
+  证据根build/stage-one/unit-capability-verification，汇总consolidated-result.json；
+  fresh输出build/stage-one/unit-capability-final-rule272-verified。
+- 五项主干仍未关闭。完整 raw phase/protocol/action 对应、普通/捕获单元
+  重构、其余 trial、依赖驱动收敛与里程碑终验继续；kUpdate 正常域仍较粗。
+  下一主干入口是当前 success-result 表尚未完整覆盖的效果/阶段/协议动作。
+  其他优化和 agents/fullsuite/扩展语料/RSS/benchmarks/DFX 暂停，Goal active。
+
 ### 2026-10-10：规则271，共同单元访问事实替代回调失效代理
 
 - 在未修改的源码 owner 上一次生成 SourceCells：Closed、External、

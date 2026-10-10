@@ -326,13 +326,35 @@ struct FlowLoop {
   std::optional<FlowPoint> entry_allocation,repeat_allocation;
 };
 struct RecoveryFlow {
+  // The common lifetime/activation owner decides current-unit capability.
+  // Consumers must not repeat a scope/loop shape test. Partial point contexts
+  // remain unknown at TransferBinding; a known site alone never equates cells.
+  [[nodiscard]] FlowUnitCapability BindingUnit(SymbolId binding) const {
+    if(binding.value>=bindings.size())return scopes?FlowUnitCapability::kUnmodeled:FlowUnitCapability::kCompletionOnly;
+    return std::visit([&](const auto& unit) {
+      using T=std::decay_t<decltype(unit)>;
+      if constexpr(std::is_same_v<T,EnclosingBindingLifetime>)return FlowUnitCapability::kCurrent;
+      else if constexpr(std::is_same_v<T,CompletionOnlyLifetime>)return FlowUnitCapability::kCompletionOnly;
+      else if constexpr(std::is_same_v<T,UnmodeledBindingLifetime>)return FlowUnitCapability::kUnmodeled;
+      else if constexpr(std::is_same_v<T,ScopeBindingLifetime>) {
+        return scopes&&scopes->events.size()==events.size()&&unit.scope.value<scopes->regions.size()&&
+            scopes->regions[unit.scope.value].first<scopes->regions[unit.scope.value].last?
+            FlowUnitCapability::kCurrent:FlowUnitCapability::kUnmodeled;
+      } else {
+        static_assert(std::is_same_v<T,LoopBindingLifetime>);
+        return scopes&&scopes->loop_events.size()==events.size()&&unit.loop.value<scopes->loop_regions.size()&&
+            scopes->loop_regions[unit.loop.value].first<scopes->loop_regions[unit.loop.value].last?
+            FlowUnitCapability::kCurrent:FlowUnitCapability::kUnmodeled;
+      }
+    },bindings[binding.value].lifetime);
+  }
   // Shared unit transfer owns both scope events and abrupt edge exits.
   // Unmodeled transfer preserves possible demand but invalidates known values.
   [[nodiscard]] FlowUnitTransfer TransferBinding(SymbolId binding,const FlowEdge& edge) const {
     // Value/completion-only inputs carry no lexical unit certificate. Demand
     // remains valid; missing source lifetime facts cannot establish equality.
     if(binding.value>=bindings.size())return scopes?FlowUnitTransfer::kUnmodeled:FlowUnitTransfer::kPreserved;
-    if(std::holds_alternative<UnmodeledBindingLifetime>(bindings[binding.value].lifetime))return FlowUnitTransfer::kUnmodeled;
+    if(BindingUnit(binding)==FlowUnitCapability::kUnmodeled)return FlowUnitTransfer::kUnmodeled;
     if(ResetsBinding(binding,edge.from))return FlowUnitTransfer::kEnded;
     if(const auto* unit=std::get_if<LoopBindingLifetime>(&bindings[binding.value].lifetime))
       return scopes?scopes->LoopTransfer(unit->loop,edge.from,edge.to):FlowUnitTransfer::kUnmodeled;
