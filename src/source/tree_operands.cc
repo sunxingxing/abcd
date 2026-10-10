@@ -974,7 +974,15 @@ class OperandCheck {
         RequireMeaning(target && target->symbol == update.symbol &&
             update.result == (operation == U::kToNumeric ? UpdateResult::kPostfix : UpdateResult::kPrefix) &&
             update.direction == (operation == U::kDecrement ? UpdateDirection::kDecrement : UpdateDirection::kIncrement), Error::kOperator);
-        Input(operand, save.value, occurrence); return {};
+        Input(operand, save.value, occurrence);
+        // The verified save carries the captured raw input. Conversion/update
+        // effects belong to the native action, not this save or its GetValue.
+        budget_.Step();
+        RequireMeaning(sequence.left.value < original_.definitions.size() &&
+            !original_.definitions[sequence.left.value], Error::kOperand);
+        original_.definitions[sequence.left.value] = OriginalSourceDefinition{
+            OriginalSavedDefinition{operand, current_}, target->symbol, save.value};
+        return sequence.right;
       }
     }
     throw Error::kUnsupportedOperation;

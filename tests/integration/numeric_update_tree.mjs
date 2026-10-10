@@ -4,9 +4,9 @@ import {parseJavaScript} from './class_reference.mjs';
 
 const source = execFileSync(process.argv[2], ['--emit'], {encoding: 'utf8'});
 const {cases, syntax, arbitrary} = await import(`data:text/javascript,${encodeURIComponent(source)}`);
-assert.equal(cases.length, 108);
+assert.equal(cases.length, 120);
 assert.equal(syntax.length, 4);
-assert.equal(arbitrary.length, 24);
+assert.equal(arbitrary.length, 48);
 function nodes(text) {
   const result = [], pending = [parseJavaScript(`(${text})`)];
   while (pending.length) {
@@ -70,10 +70,11 @@ for (const item of cases.filter(c => c.count === 1)) {
     'materialized update must use its own result storage');
 }
 
-// Actual decoded language-mode ToNumeric and INC/DEC retain arbitrary inputs.
+// Actual decoded language-mode ToNumeric and INC/DEC retain arbitrary inputs,
+// with independent local-register allocation and the same conversion semantics.
 // Conversion happens outside the protected update/callback; its exact number
 // hint, throwing identity, old value and callback receiver are observable.
-for (const item of arbitrary) {
+function verifyArbitrary(item, fn = item.fn) {
   const reference = (callback, input) => {
     let converted = input;
     const old = item.convert ? converted++ : input;
@@ -113,7 +114,7 @@ for (const item of arbitrary) {
         }
         return {value, error, failed, trace};
       };
-      const want = run(reference), actual = run(item.fn);
+      const want = run(reference), actual = run(fn);
       assert.equal(actual.failed, want.failed);
       assert.deepEqual(actual.trace, want.trace);
       if (actual.failed) {
@@ -125,6 +126,21 @@ for (const item of arbitrary) {
       } else assert.ok(Object.is(actual.value, want.value));
       ++scenarios;
     }
+}
+
+for (const item of arbitrary) verifyArbitrary(item);
+// A missing conversion and a wrong converted result must be distinguished
+// before entering the protected update, including callbacks and throw identity.
+const conversionCase = arbitrary.find(item => item.convert && item.caught && !item.decrement);
+const conversionText = conversionCase.fn.toString();
+const conversion = nodes(conversionText).find(node => node.type === 'UpdateExpression' && !node.prefix);
+assert.ok(conversion);
+const conversionArgument = conversionText.slice(conversion.argument.start - 1, conversion.argument.end - 1);
+const conversionMutations = [conversionArgument, `++${conversionArgument}`].map(replacement =>
+  conversionText.slice(0, conversion.start - 1) + replacement + conversionText.slice(conversion.end - 1));
+for (const changed of conversionMutations) {
+  const fn = Function(`return (${changed})`)();
+  assert.throws(() => verifyArbitrary(conversionCase, fn), assert.AssertionError);
 }
 
 // These four hand-built ASTs test native syntax, not arbitrary ABC-domain
@@ -185,4 +201,4 @@ for (const changed of mutations) {
   const fn = Function(`return (${changed})`)();
   assert.throws(() => verifyDecoded(item, fn), assert.AssertionError);
 }
-console.log(`numeric updates: ${scenarios} scenarios, ${mutations.length} valid-syntax mutations`);
+console.log(`numeric updates: ${scenarios} scenarios, ${mutations.length + conversionMutations.length} valid-syntax mutations`);

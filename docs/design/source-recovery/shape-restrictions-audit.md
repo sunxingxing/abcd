@@ -3505,3 +3505,14 @@ it is a semantic phase obligation, not a same-block admission. Common provenance
 withdraws the bound when candidate operands or execution context change.
 Combined/composite actions without a certificate retain source effects. Their
 full action/exception mapping remains an implementation gap in mainline #1.
+
+
+Rules284 publishes composite unary save/action identity in the existing semantic
+operand verifier. The source sequence checks already prove the native lowering;
+recovery does not repeat them. Save definitions have one owned expression slot,
+as already established by checked tree ownership. This is a representation
+ownership obligation, not a producer-count recovery admission. Candidate
+operand edits and missing captured-input identity withdraw the bound through
+common provenance. Read initialization and successful stores remain separate.
+Decoded register/copy/block variations test the relation, while stale-action
+and wrong-phase production mutants exercise the semantic obligations.

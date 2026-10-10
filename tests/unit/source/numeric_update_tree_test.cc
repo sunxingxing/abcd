@@ -3,6 +3,7 @@
 #include "../../../src/source/function_values.h"
 #include "../../../src/source/function_tree.h"
 #include "../../../src/source/tree_semantics.h"
+#include "../../../src/source/recovery_projection.h"
 #include "abcd/source/tree_printer.h"
 #include "analysis/ssa_fixture.h"
 
@@ -21,7 +22,7 @@ constexpr std::array<std::uint64_t, 5> kSeeds{
 struct Fixture {
   Fixture(bool decrement, std::uint32_t count, bool phased = false, std::size_t seed = 0,
           abc::ProfileId profile = abc::ProfileId::kDynamic1206,
-          unsigned copies = 0, bool split = false, bool arbitrary = false, bool convert = true) {
+          unsigned copies = 0, bool split = false, bool arbitrary = false, bool convert = true, bool reverse = false) {
     // Pinned dynamic ISA: keep the converted old value distinct from each
     // update result. Mutating the old SSA snapshot corrupts the returned pair.
     std::vector<std::uint8_t> bytes;
@@ -31,8 +32,10 @@ struct Fixture {
       if (static_cast<std::uint16_t>(op) > UINT8_MAX)
         bytes.push_back(static_cast<std::uint16_t>(op) >> kByteBits);
     };
-    const auto load = [&](std::uint8_t reg) { opcode(abc::Opcode::kLDA_V8); bytes.push_back(reg); };
-    const auto store = [&](std::uint8_t reg) { opcode(abc::Opcode::kSTA_V8); bytes.push_back(reg); };
+    constexpr std::uint8_t kLocalRegisters = 3; // This generated function's frame layout.
+    const auto reg = [&](std::uint8_t id) { return static_cast<std::uint8_t>(reverse && id < kLocalRegisters ? kLocalRegisters - 1 - id : id); };
+    const auto load = [&](std::uint8_t id) { opcode(abc::Opcode::kLDA_V8); bytes.push_back(reg(id)); };
+    const auto store = [&](std::uint8_t id) { opcode(abc::Opcode::kSTA_V8); bytes.push_back(reg(id)); };
     if (arbitrary) load(4);
     else {
       opcode(abc::Opcode::kFLDAI_IMM64);
@@ -42,8 +45,8 @@ struct Fixture {
     if (convert) { opcode(abc::Opcode::kTONUMERIC_IMM8); bytes.push_back(0); }
     store(1);
     for (unsigned i = 0; i < copies; ++i) {
-      opcode(abc::Opcode::kMOV_V8_V8); bytes.insert(bytes.end(), {0, 1});
-      opcode(abc::Opcode::kMOV_V8_V8); bytes.insert(bytes.end(), {1, 0});
+      opcode(abc::Opcode::kMOV_V8_V8); bytes.insert(bytes.end(), {reg(0), reg(1)});
+      opcode(abc::Opcode::kMOV_V8_V8); bytes.insert(bytes.end(), {reg(1), reg(0)});
     }
     if (split) { opcode(abc::Opcode::kJMP_IMM8); bytes.push_back(2); }
     const auto protected_pc = static_cast<std::uint32_t>(bytes.size());
@@ -51,10 +54,10 @@ struct Fixture {
       opcode(decrement ? abc::Opcode::kDEC_IMM8 : abc::Opcode::kINC_IMM8); bytes.push_back(0);
     }
     store(2);
-    load(3); opcode(abc::Opcode::kCALLARGS2_IMM8_V8_V8); bytes.insert(bytes.end(), {0, 1, 2});
+    load(3); opcode(abc::Opcode::kCALLARGS2_IMM8_V8_V8); bytes.insert(bytes.end(), {0, reg(1), reg(2)});
     opcode(abc::Opcode::kCREATEEMPTYOBJECT); store(0);
-    load(1); opcode(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8); bytes.insert(bytes.end(), {0, 0, 0, 0});
-    load(2); opcode(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8); bytes.insert(bytes.end(), {0, 1, 0, 0});
+    load(1); opcode(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8); bytes.insert(bytes.end(), {0, 0, 0, reg(0)});
+    load(2); opcode(abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8); bytes.insert(bytes.end(), {0, 1, 0, reg(0)});
     load(0); opcode(abc::Opcode::kRETURN);
     const auto handler_pc = static_cast<std::uint32_t>(bytes.size());
     if (phased) { load(1); opcode(abc::Opcode::kRETURN); }
@@ -116,12 +119,13 @@ struct Fixture {
       const auto built = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, {constants, 2});
       test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
       tree = std::get<ExceptionFunctionDraft>(built).tree;
+      original = std::get<ExceptionFunctionDraft>(built).flow->original;
       work = std::get<ExceptionFunctionDraft>(built).work;
       const auto valid = [&](const FunctionTree& candidate) {
         return std::holds_alternative<TreeSemantics>(VerifyExceptionTreeSemantics(
             graph, context, evaluation, candidate, {constants, 2}));
       };
-      test::Check(valid(tree)); Mutations(valid); ResultStorage();
+      test::Check(valid(tree)); Mutations(valid); ResultStorage(); OriginalActions(count == 1);
       return;
     }
     const auto input = std::get<FunctionInput>(FunctionInput::Build(identity, {200}, {100},
@@ -133,8 +137,105 @@ struct Fixture {
     auto built = BuildFunctionTree(graph, control, evaluation, std::move(syntax), {constants, 2});
     test::Check(std::holds_alternative<ConstructedFunction>(built));
     work = std::get<ConstructedFunction>(built).work;
+    original = std::get<ConstructedFunction>(built).flow->original;
     tree = std::get<ConstructedFunction>(std::move(built)).tree;
-    test::Check(Valid(tree)); Mutations([&](const FunctionTree& candidate) { return Valid(candidate); }); ResultStorage();
+    test::Check(Valid(tree)); Mutations([&](const FunctionTree& candidate) { return Valid(candidate); }); ResultStorage(); OriginalActions(count == 1);
+  }
+  void OriginalActions(bool solve) const {
+    // The verified composite owns a saved operand and a native conversion
+    // action. Source coverage/result identity cannot replace either relation.
+    std::optional<ExprId> selected, saved;
+    for (const auto& operation : original->operations) {
+      if (!operation.expression) continue;
+      const auto* sequence = std::get_if<SequenceExpr>(&tree.expressions[operation.expression->value].expression);
+      if (!sequence || !std::holds_alternative<UpdateExpr>(tree.expressions[sequence->right.value].expression)) continue;
+      test::Check(operation.intrinsic_expression == sequence->right);
+      const auto& definition = original->definitions[sequence->left.value];
+      test::Check(definition && std::holds_alternative<OriginalSavedDefinition>(definition->origin));
+      const auto& assignment = std::get<AssignmentExpr>(tree.expressions[sequence->left.value].expression);
+      test::Check(definition->binding == std::get<SymbolTarget>(assignment.target).symbol && definition->input == assignment.value);
+      if (!selected) { selected = sequence->right; saved = sequence->left; }
+    }
+    if (!solve) return;
+    test::Check(selected.has_value());
+    BindingInitializers plan;
+    const auto b = tree.symbols.size(), x = tree.expressions.size(), s = tree.statements.size();
+    plan.aliases.resize(b); plan.literals.resize(b); plan.storage.resize(b); plan.read_bindings.resize(b);
+    plan.read_sources.resize(x); plan.read_literals.resize(x); plan.replacements.resize(x); plan.transports.resize(x);
+    plan.omitted.resize(s); plan.statements.resize(s);
+    std::vector<FlowValueEquation> equations(x); std::vector<ExprId> order;
+    std::vector<std::uint8_t> private_bindings(b), stable(b);
+    for (unsigned i = 0; i < b; ++i) private_bindings[i] = tree.symbols[i].kind == BindingKind::kCompilerTemporary;
+    for (const auto& parameter : tree.parameters) stable[parameter.symbol.value] = 1;
+    for (unsigned i = 0; i < x; ++i) {
+      order.push_back({i});
+      if (const auto* read = std::get_if<SymbolExpr>(&tree.expressions[i].expression)) equations[i] = FlowBindingValue{read->symbol};
+    }
+    LegacyFlowProjection projection{plan.aliases, plan.literals, plan.replacements, plan.omitted, {}, {}, plan.statements, private_bindings};
+    projection.stable_entries = stable;
+    const auto prepare = [&](const OriginalFlow& raw, BindingPlanView candidate) {
+      return std::get<RecoveryProjection>(PrepareRecoveryProjection(tree, projection, {candidate, equations, order, &raw}));
+    };
+    const auto action = [&](const RecoveryProjection& model) -> const FlowEvent& {
+      for (const auto& event : model.flow.events)
+        if (event.kind == FlowEventKind::kEvaluation && event.expression == selected) return event;
+      test::Check(false); return model.flow.events.front();
+    };
+    const auto current = prepare(*original, plan);
+    test::Check(action(current).original_effect_valid && action(current).effects);
+    test::Check(HasLanguageEffect(action(current).effects->normal, LanguageEffect::kUserCode));
+    bool read = false, commit = false;
+    for (const auto& event : current.flow.events) if (event.expression == selected) {
+      if (event.kind == FlowEventKind::kRead) {
+        read = true; test::Check(event.read_completion == FlowReadCompletion::kInitialized);
+      }
+    }
+    for (const auto& definition : current.flow.definitions)
+      if (definition.kind == FlowDefinitionKind::kUpdate && definition.write == selected) commit = true;
+    test::Check(read && commit);
+    for (auto event : current.flow.events) if (event.kind == FlowEventKind::kRead && event.expression == selected) {
+      // The verified native action can be inert while this independent read
+      // lacks initialization proof. Never lend a conversion bound to GetValue.
+      event.read_completion = FlowReadCompletion::kUnproved; event.original_effect_valid = true;
+      const FlowEffectInput facts{current.expressions.evaluations, current.expressions.normal_stores,
+          current.expressions.evaluations, current.expressions.kinds};
+      // This no-throw bound is a synthetic adapter input, not a claim that
+      // the decoded ISA's conservative effect table supplied this precision.
+      auto bounded = current.flow; bounded.original_effects[selected->value] = SourceEffects{};
+      const auto effects = EvaluateFlowEventEffects(bounded, tree, event, facts);
+      test::Check(effects.intrinsic && effects.intrinsic->exceptional == ExceptionalCompletion::kMayThrow);
+    }
+    auto missing = *original; missing.definitions[saved->value].reset();
+    const auto withdrawn = prepare(missing, plan);
+    test::Check(!action(withdrawn).original_effect_valid);
+    test::Check(HasLanguageEffect(action(withdrawn).effects->normal, LanguageEffect::kUserCode));
+    // Editing the captured operand keeps IDs intact but withdraws the old
+    // action proof. The candidate must solve initialization/effects anew.
+    const auto input = std::get<AssignmentExpr>(tree.expressions[saved->value].expression).value;
+    plan.primitives.push_back(BooleanLiteral{true});
+    auto transports = plan.transports; transports[input.value] = ExpressionTransport{input, PrimitiveId{0}};
+    auto candidate = BindingPlanView{plan}; candidate.transports = transports;
+    const auto changed = prepare(*original, candidate);
+    test::Check(!action(changed).original_effect_valid);
+    test::Check(HasLanguageEffect(action(changed).effects->normal, LanguageEffect::kUserCode));
+    // With declaration initialization withdrawn, the extra lexical GetValue
+    // can fail. The raw conversion bound must not suppress that earlier phase.
+    const auto binding = std::get<UpdateExpr>(tree.expressions[selected->value].expression).symbol;
+    auto omitted = plan.omitted; bool declaration = false;
+    for (unsigned i = 0; i < tree.statements.size(); ++i)
+      if (const auto* node = std::get_if<DeclarationStmt>(&tree.statements[i].statement); node && node->symbol == binding) {
+        omitted[i] = 1; declaration = true;
+      }
+    test::Check(declaration); candidate = BindingPlanView{plan}; candidate.omitted = omitted;
+    const auto uninitialized = prepare(*original, candidate);
+    bool throwing_read = false;
+    for (const auto& event : uninitialized.flow.events)
+      if (event.kind == FlowEventKind::kRead && event.expression == selected) {
+        test::Check(event.effects && event.effects->exceptional == ExceptionalCompletion::kMayThrow);
+        for (auto edge = event.outgoing; edge; edge = uninitialized.flow.edges[*edge].outgoing)
+          throwing_read |= uninitialized.flow.edges[*edge].completion == FlowCompletion::kThrow;
+      }
+    test::Check(throwing_read);
   }
   void ResultStorage() const {
     // A materialized numeric result owns its update's private storage. Test
@@ -193,7 +294,7 @@ struct Fixture {
   }
   std::string Print() const {
     std::ostringstream output;
-    test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, output)));
+    test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, output, {}, {}, nullptr, original.get())));
     return output.str();
   }
   ValueProgram graph;
@@ -201,6 +302,7 @@ struct Fixture {
   EvaluationPlan evaluation;
   std::vector<ExpressionConstant> constants;
   FunctionTree tree;
+  std::shared_ptr<const OriginalFlow> original;
   std::uint64_t work = 0;
 };
 std::string PrintUpdateSyntax(bool decrement, UpdateResult result) {
@@ -246,6 +348,11 @@ int main(int argc, char** argv) {
           if (emit) std::cout << "{count:1,decrement:" << decrement << ",caught:" << phased
               << ",seed:7,fn:" << fixture.Print() << "},\n";
         }
+        {
+          const Fixture fixture(decrement, 1, phased, 0, profile, 201, true, false, true, true);
+          if (emit) std::cout << "{count:1,decrement:" << decrement << ",caught:" << phased
+              << ",seed:7,fn:" << fixture.Print() << "},\n";
+        }
         for (std::size_t seed = 1; seed < kSeeds.size(); ++seed) {
           const Fixture fixture(decrement, 1, phased, seed, profile);
           if (emit) {
@@ -259,8 +366,8 @@ int main(int argc, char** argv) {
   if (emit) std::cout << "export const arbitrary = [\n";
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
     for (const bool phased : {false, true})
-      for (const bool decrement : {false, true}) for (const bool convert : {false, true}) {
-        const Fixture fixture(decrement, 1, phased, 0, profile, 201, true, true, convert);
+      for (const bool decrement : {false, true}) for (const bool convert : {false, true}) for (const bool reverse : {false, true}) {
+        const Fixture fixture(decrement, 1, phased, 0, profile, 201, true, true, convert, reverse);
         if (emit) std::cout << "{decrement:" << decrement << ",caught:" << phased << ",convert:" << convert
             << ",fn:" << fixture.Print() << "},\n";
       }

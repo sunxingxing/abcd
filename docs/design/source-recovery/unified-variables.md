@@ -3744,9 +3744,10 @@ verified identities; this result query does not conflate them with operations.
 The operand verifier publishes intrinsic_expression independently of result
 identity and source coverage. It proves that the raw operation bounds the native
 source action after verified operand evaluation. Direct unary/binary, property,
-global read, call and construction adapters publish this correspondence; combined
-predicates, transparent conversions and composite lowerings do not lend a raw
-whole-operation proof to an arbitrary child. Missing correspondence retains the
+global read, call and construction adapters publish this correspondence. Verified
+composite unary adapters separately identify their saved input and native action.
+Combined predicates and transparent conversions do not lend a raw whole-operation
+proof to an arbitrary child. Missing correspondence retains the
 source semantics and is an explicit precision gap, not recovery rejection.
 
 RecoveryFlow indexes these normal/before-throw/exception bounds by expression.
@@ -3778,3 +3779,48 @@ and match rules282 byte for byte; the other nine records have no module source.
 The binding-interference source test passes in 82.34s with its existing per-child
 60s limits unchanged. Evidence: build/stage-one/original-intrinsic-verification.
 No additional mainline closure, expanded corpus, full-suite or RSS claim follows.
+
+
+### Composite unary input and action correspondence
+
+The existing operand verifier now publishes OriginalSavedDefinition for the
+checked input assignment in ToNumeric/INC/DEC lowerings. The definition carries
+the verified raw operand, placement, source binding and actual RHS. Separately,
+intrinsic_expression identifies the native UpdateExpr action; result_expression
+continues to identify the complete source result. A postfix ToNumeric result is
+not the incremented temporary's value or finite range. No optimizer matches the
+sequence or infers these relations from origin/coverage alone.
+
+The shared definition/value/provenance solver consumes the saved identity. Losing
+that definition or changing a candidate operand withdraws the action certificate.
+GetValue initialization and successful writeback keep their own source events;
+an action bound cannot erase an earlier TDZ failure. Publication uses existing
+expression-indexed storage, adds constant work per verified composite, and does
+not introduce another analysis, graph walk or pass-specific eligibility rule.
+
+Real decoded tests cover three profiles, normal/exceptional functions, copies,
+block splitting, register reallocation and 200/201/400 updates. Printing consumes
+the retained original model. The decoded effect table remains conservatively
+MayThrow/UserCode: model tests must still execute and verify certificate validity,
+not silently select only Impossible effects. An independent synthetic no-throw
+bound tests the read/action phase boundary, without claiming new ISA precision.
+Earlier skipped-model tests and surviving mutants are retained as failed coverage
+experiments; only the mandatory model checks and final caught mutants count.
+
+Mainline #1 remains OPEN. Implicit captured operands still need to supply precise
+current input kinds to the common intrinsic effect adapter; UpdateExpr's source
+callback classification remains conservative. Full protocol/suspension actions
+and exceptional-region correspondence are also unfinished. These are model
+capabilities, not reasons to add source-layout conditions.
+
+
+Rules284 frozen validation builds four targets (108.02s), passes all 11 selected
+tests (45.53s) with exact names/no duplicates, and exports the fixed ABC (5.63s).
+Four frozen code/test hashes, selection and input SHA stay unchanged. Ten sources
+parse and match rules283. The source oracle reports 5893 scenarios and five
+behavior mutations over 168 decoded sources plus four syntax-only sources.
+Corrected stale-action and wrong-phase production mutants build and fail tests;
+restored tests pass. Earlier surviving mutants and the enum-spelling build
+failure remain recorded and are not counted as caught faults. Evidence:
+build/stage-one/composite-action-final and composite-action-mutants/attempt-4.
+This is focused verification; the complete63 selection was not rerun for284.

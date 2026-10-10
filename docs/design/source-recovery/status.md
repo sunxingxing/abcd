@@ -38,6 +38,33 @@
 这五项是主干交付闭环，不以局部规则或单项测试代替；第3项的关闭依据见下，
 其余四项不随之关闭。下一主干是完整原始IR/SSA语义接入，既定暂停事项保持。
 
+### 2026-10-10：规则284，复合一元操作的捕获输入与动作身份贯通
+
+- 已有OperandCheck同时发布ToNumeric/INC/DEC保存赋值的
+  OriginalSavedDefinition及实际UpdateExpr动作身份；完整结果身份仍指向
+  源码结果。后缀ToNumeric的旧数值不借给成功写回的新值或有限范围。
+  共同定义/值/证明失效方程实际消费保存身份，缺失身份或候选输入编辑会
+  撤销动作证明。GetValue初始化和成功提交仍独立，不新增恢复匹配器。
+- 已验证保存/动作使用既有ExprId数组，无新增分配或逐值图遍历；每复合
+  操作新增常数工作。真实解码覆盖三profile、正常/异常、复制/拆块、局部
+  寄存器重分配及200/201/400增长。打印实际传入保留的OriginalFlow。
+- 测试开发发现原无异常筛选跳过了共同模型断言；已移除该前提，要求每个
+  单次更新解码用例执行有效性检查。ISA仍保守MayThrow/UserCode；独立
+  无异常phase反例明确是synthetic输入，不冒充解码精度。失效传播变异及
+  初版stale-action变异曾存活，另一次测试枚举拼写导致构建失败，记录保留。
+  修正后stale-action/wrong-phase均构建0、测试-6，恢复构建/测试0。
+- 最终冻结4目标构建0（108.02s）、11/11相关测试0（45.53s），名称精确吻合，
+  无重复；168真实解码源码+4语法源码记录5893场景、5行为反例。
+  固定ABC0（5.63s），19 records仍10 complete/9 no-module，十份源码语法
+  通过、逐字节等同283；4份冻结代码/测试、清单及输入SHA未变。
+  证据：build/stage-one/composite-action-final；最终生产变异：
+  build/stage-one/composite-action-mutants/attempt-4。只见既有kNoop警告。
+  本轮未重跑完整63项，不能沿用283完整结果作284验收。
+- 第1项仍OPEN：隐式捕获读取的当前输入值域尚未进入共同动作效果适配器，
+  已知数值UpdateExpr仍保守callback；协议/暂停动作及异常区域完整对应
+  也未完成。下一步继续共同语义输入接入；其余主干状态不变，Goal active。
+  全套/扩展语料/RSS/benchmark/DFX/agents暂停保持。
+
 ### 2026-10-10：规则283，原始动作效果接入共同完成边求解
 
 - OperandCheck在已有操作数验证处发布独立intrinsic_expression，与源码覆盖

@@ -4496,3 +4496,12 @@ there is no per-operation graph walk or second completion solve. Bounds only
 withdraw, value domains only widen and completion edges only activate during
 joint solving. Final refinement uses the same pure effect adapter. Independent
 source semantics remain available when an intrinsic correspondence is absent.
+
+
+Composite unary correspondence uses the already admitted expression-indexed
+OriginalSourceDefinition array. Operand verification adds one constant-time
+publication per saved input and returns the checked native action ID. Existing
+sparse captured-value and provenance equations consume these relations. There
+is no added graph traversal, per-variable scan or allocation. Decoded tests
+retain the 200/201/400 update and copy/block growth dimensions and add local
+register reallocation; process RSS and the full suite remain unmeasured here.
