@@ -460,3 +460,30 @@ for(const before of [false,true])for(const reverse of [false,true]) {
   for(let i=1;i<growth.length;++i){assert.ok(growth[i].work<growth[i-1].work*3);assert.ok(growth[i].bytes<growth[i-1].bytes*3);}
 }
 console.log(`${publication.length} joint-projection sources / ${publicationComparisons} comparisons / ${publicationMutants} adverse mutants`);
+
+
+// A lexical GetValue has its own initialization proof. Source execution must
+// preserve early TDZ and all later input/coercion effects independently.
+const readPhases=execFileSync(process.argv[3],['--read-phases'],{encoding:'utf8',maxBuffer:16_000_000}).trim().split('\n').map(JSON.parse);
+function readPhaseOutcome(fn,factory) {
+  const trace=[];
+  try {return {trace,value:fn(()=>{trace.push('input');return factory(trace);})};}
+  catch(error){return {trace,error:error===failure?error:error.name};}
+}
+let readPhaseComparisons=0,readPhaseMutants=0;
+for(const row of readPhases) {
+  const reference=Function('input',(row.early?'saved++;':'')+'let saved=7;saved=+input();-saved;'+(row.early?'':'saved++;'));
+  const source='('+row.source+')',actual=Function('return '+source)();
+  for(const factory of factories){assert.deepEqual(readPhaseOutcome(actual,factory),readPhaseOutcome(reference,factory));++readPhaseComparisons;}
+  const ast=nodes(parseJavaScript(source)),update=ast.find(n=>n.type==='UpdateExpression');assert.ok(update);
+  let mutant=source.slice(0,update.start)+'0'+source.slice(update.end);
+  if(!row.early) {
+    const body=ast.find(n=>n.type==='FunctionExpression').body;
+    const directives=body.body.filter(n=>n.type==='ExpressionStatement'&&n.directive);
+    const entry=directives.length?directives.at(-1).end:body.start+1;
+    mutant=mutant.slice(0,entry)+source.slice(update.start,update.end)+';'+mutant.slice(entry);
+  }
+  assert.notDeepEqual(readPhaseOutcome(Function('return '+mutant)(),()=>4),readPhaseOutcome(reference,()=>4));++readPhaseMutants;
+}
+assert.equal(readPhases.length,4);
+console.log(`${readPhases.length} lexical read-phase sources / ${readPhaseComparisons} comparisons / ${readPhaseMutants} TDZ mutants`);

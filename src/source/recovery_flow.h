@@ -232,6 +232,7 @@ struct FlowStatement {
 // This is adapter provenance, not a claim that projected code is inequivalent
 // or that raw effects equal source effects. Legacy graph clients lack it.
 enum class FlowProvenance : std::uint8_t {kUnmodeled,kPreserved,kChanged};
+enum class FlowReadCompletion : std::uint8_t {kUnproved,kInitialized};
 struct FlowEvent {
   // Group narrow fields before the size_t links; retain all phase facts without
   // increasing padding in every admitted event. Construction uses the typed
@@ -257,6 +258,9 @@ struct FlowEvent {
   ExpressionEvaluation effect = ExpressionEvaluation::kInert;
   bool entry_evaluation=false;
   FlowProvenance provenance=FlowProvenance::kUnmodeled;
+  // Current-projection must-initialization at this lexical GetValue only.
+  // It says nothing about a subsequent conversion, call or successful store.
+  FlowReadCompletion read_completion=FlowReadCompletion::kUnproved;
   [[nodiscard]] bool MayInvokeUserCode(FlowCompletion completion) const {
     if(completion==FlowCompletion::kConservativeCleanup)return true;
     if(!effects)return effect==ExpressionEvaluation::kRequired;

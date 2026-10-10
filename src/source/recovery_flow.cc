@@ -878,21 +878,27 @@ std::variant<FlowRefinement,TreeStructureError> RefineRecoveryFlowEffects(
       if(std::holds_alternative<AssignmentExpr>(node))required=assignments[id.value]==ExpressionEvaluation::kRequired;
       event.effect=required?ExpressionEvaluation::kRequired:ExpressionEvaluation::kInert;
       event.effects=required?NormalValueEffects(node,flow.normal_kinds,ResourceFailures(tree.identity.contract)):SourceEffects{};
+      if(std::holds_alternative<AssignmentExpr>(node)&&normal_stores[id.value]) {
+        // Successful lexical PutValue is independent of observable write
+        // retention and of the RHS's separately evaluated throwing phases.
+        event.effects->before_throw=analysis::LanguageEffect::kNone;
+        event.effects->exceptional=analysis::ExceptionalCompletion::kImpossible;
+      }
       if(event.kind==FlowEventKind::kRead&&std::holds_alternative<UpdateExpr>(node))
         event.effects=NormalValueEffects(SymbolExpr{std::get<UpdateExpr>(node).symbol},{},ResourceFailures(tree.identity.contract));
+      if(event.kind==FlowEventKind::kRead&&event.read_completion==FlowReadCompletion::kInitialized) {
+        required=false;event.effect=ExpressionEvaluation::kInert;event.effects=SourceEffects{};
+      }
       if(event.discarded && required)flow.discarded[event.discarded->value].effect=ExpressionEvaluation::kRequired;
     }
     std::size_t retained=0;
     for(std::size_t i=0;i<flow.edges.size();++i) {
       budget.Step();auto edge=flow.edges[i];const auto& event=flow.events[edge.from.value];
       if(edge.completion==FlowCompletion::kThrow && event.expression) {
-        if(event.kind==FlowEventKind::kPropertyReference&&event.effect==ExpressionEvaluation::kInert)continue;
-        const auto id=*event.expression;const auto& node=tree.expressions[id.value].expression;
-        // Update's binding read and coercion are separate events. A normal
-        // write summary never licenses deleting a coercion's throwing path.
-        const bool independent=event.kind==FlowEventKind::kPropertyReference ||
-            (event.kind==FlowEventKind::kRead && std::holds_alternative<UpdateExpr>(node));
-        if(!independent && (evaluations[id.value]==ExpressionEvaluation::kInert || normal_stores[id.value]))continue;
+        // Intrinsic completion belongs to this phase, not its enclosing
+        // expression's aggregate effects. Child/coercion failures keep their
+        // own edges; an initialized lexical read cannot throw a TDZ error.
+        if(event.effects&&event.effects->exceptional==analysis::ExceptionalCompletion::kImpossible)continue;
       }
       edge.incoming=flow.events[edge.to.value].incoming;edge.outgoing=flow.events[edge.from.value].outgoing;
       flow.edges[retained]=edge;flow.events[edge.to.value].incoming=retained;

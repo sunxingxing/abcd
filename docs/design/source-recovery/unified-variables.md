@@ -3549,3 +3549,34 @@ revision compute once. A modifying attempt never skips the next request. The
 existing work budget still charges every request. This eliminates duplicate
 unchanged attempts but does not yet discover or schedule all newly enabled
 opportunities; fine-grained change dependencies/global convergence remain OPEN.
+
+
+### Rules279: initialization proof belongs to the lexical read phase
+
+The joint provider publishes the common must-initialization result on each actual
+lexical read event as FlowReadCompletion. The expression-level summary continues
+to serve expression/PutValue facts, but cannot stand in for the GetValue inside
+an update: capture, coercion and successful write are separate events.
+
+RefineRecoveryFlowEffects consumes the phase proof and publishes inert lexical
+GetValue effects only when its current unit is initialized. It separately refines
+proven lexical PutValue completion while retaining observable write effects.
+Throw-edge retention now consumes the event's own SourceEffects.exceptional; the
+old AST-dependent independent-read/property gate and enclosing evaluation/store
+summary test no longer decide edge deletion. Child/coercion failures retain
+their own edges, even if the read itself cannot throw. Explicit throw/resume and
+conservative cleanup paths retain their independent completion contracts.
+
+This remains one current/trial provider and one effects adapter. Proofs are
+produced once on the candidate graph; subsequent edge removal preserves positive
+must-initialization proofs. A new projection rebuilds the graph and proofs.
+No name, opcode sequence, same-block or adjacency condition was introduced.
+The existing reference/event/edge traversals own the work; one typed event field
+is included in existing vector accounting. No new per-binding traversal.
+
+A previously failing initialized-update read test now checks inert read/no TDZ
+edge independently of retained coercion failures. Before-declaration updates
+retain TDZ in forward/reversed arenas, and independently executed generated
+source covers input/coercion traces and declaration-order mutations. This closes
+a missing consumer of common initialization facts, not the whole bootstrap
+precision/fixed-point or the five backbone deliveries.

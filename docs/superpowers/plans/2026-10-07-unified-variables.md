@@ -1043,3 +1043,27 @@ protocol. Mutations invalidate no-ops; modifying passes cannot certify themselve
 Fixed-size per-pass state and constant request cost are exercised at 200/201/400/800.
 Four header mutations exercise missing stability, stale revision, self-certification
 and stale stage. Full opportunity scheduling/global convergence remain OPEN.
+
+
+Rules279: shared initialization now publishes actual lexical-read phase proof,
+including update GetValue. The effects adapter consumes it and normal PutValue
+proof, and edge refinement consumes intrinsic exceptional completion. Retired
+its expression-shape independent gate. RED initialized-read check was observed;
+positive/TDZ/conversion model checks and generated-source comparison added.
+Frozen31 build0 (97.31s), fixedABC0 (3.77s), exact63 tests0 (1044.71s).
+Six frozen source hashes, input and selection unchanged; ten sources parse and
+match rules278. Three production mutants fail after successful builds; restored
+baseline passes. Four read-phase sources/120 independent comparisons/4 TDZ
+mutants pass. Evidence: build/stage-one/read-phase-verification.
+Five backbone closures remain OPEN.
+
+Next delivery is the whole trial precision closure, not a further isolated rule.
+An independent probe confirms published domains can predate final edge pruning:
+number established by unary plus; try converts that number then writes saved;
+empty catch; saved is Number on the final graph but not in the published product.
+Current and trial both use BuildProjectedFlow -> PrepareRecoveryProjection, so
+repair the provider's initialization/domain/effect/completion feedback together.
+Acceptance requires dependency-driven invalidation, finite termination, accounted
+cost, no fixed-round/global-rescan shortcut, stable publication, retired manual
+recomputation decisions, independent graph/source/adverse/layout and fixed-record
+validation. Keep the other four deliveries explicit; this does not close them.

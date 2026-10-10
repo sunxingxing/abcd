@@ -912,7 +912,12 @@ void UpdateSource(bool reverse,bool numeric,bool increment,bool prefix,bool emit
   bool captured=false;
   for(const auto& definition:model.flow.definitions)if(definition.kind==FlowDefinitionKind::kUpdate) {
     Check(definition.input&&definition.input->binding==SymbolId{1});
-    Check(model.flow.events[definition.input->point.value].kind==FlowEventKind::kRead);captured=true;
+    const auto& read=model.flow.events[definition.input->point.value];
+    Check(read.kind==FlowEventKind::kRead);captured=true;
+    // Initialization discharges this GetValue, not the later ToNumeric.
+    Check(read.effect==ExpressionEvaluation::kInert);
+    for(auto edge=read.outgoing;edge;edge=model.flow.edges[*edge].outgoing)
+      Check(model.flow.edges[*edge].completion!=FlowCompletion::kThrow);
   }
   Check(captured);
   const analysis::SemanticBudget exact{model.allocated_bytes,model.work};
@@ -930,6 +935,34 @@ void UpdateSource(bool reverse,bool numeric,bool increment,bool prefix,bool emit
   }
   std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output,{}, {},nullptr,&f.original)));
   if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"numeric",numeric},{"increment",increment},{"prefix",prefix},{"reverse",reverse},{"caught",caught}}<<'\n';
+}
+void ReadPhaseInitialization(bool reverse,bool early,bool emit=false) {
+  Fixture f(1,reverse);auto& tree=f.tree;
+  const ExprId update{static_cast<unsigned>(tree.expressions.size())};
+  tree.expressions.push_back({UpdateExpr{{1},UpdateDirection::kIncrement,UpdateResult::kPostfix},{0}});
+  f.equations.push_back(UnknownFlowValue{});f.order.push_back(update);
+  const StmtId statement{static_cast<unsigned>(tree.statements.size())};
+  tree.statements.push_back({ExpressionStmt{update},{0}});
+  tree.children.insert(early?tree.children.begin():tree.children.end(),statement);
+  std::get<BlockStmt>(tree.statements[0].statement).child_count=tree.children.size();
+  const auto size=tree.expressions.size();
+  f.plan.replacements.resize(size);f.plan.transports.resize(size);f.plan.read_sources.resize(size);f.plan.read_literals.resize(size);
+  f.plan.omitted.resize(tree.statements.size());f.plan.statements.resize(tree.statements.size());
+  f.original.statements=tree.statements.size();f.original.input_ranges.resize(size);
+  const auto model=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,f.Projection(),f.Input()));
+  bool seen=false,conversion=false;
+  for(const auto& event:model.flow.events)if(event.expression==update) {
+    bool throws=false;
+    for(auto edge=event.outgoing;edge;edge=model.flow.edges[*edge].outgoing)
+      throws|=model.flow.edges[*edge].completion==FlowCompletion::kThrow;
+    if(event.kind==FlowEventKind::kRead){seen=true;Check(throws==early);}
+    if(event.kind==FlowEventKind::kEvaluation){conversion=true;Check(throws);}
+  }
+  Check(seen&&conversion);
+  if(emit) {
+    std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output,{}, {},nullptr,&f.original)));
+    std::cout<<nlohmann::json{{"source",output.str()},{"reverse",reverse},{"early",early}}<<'\n';
+  }
 }
 void CapturedNumericKinds(bool reverse,unsigned form) {
   Fixture f(1,reverse);auto& tree=f.tree;
@@ -1259,10 +1292,16 @@ int main(int argc,char** argv) {
     for(bool before:{false,true})for(bool reverse:{false,true})for(unsigned count:{0U,1U,200U,201U,400U,800U})JointProjectionSource(reverse,count,before,true);
     return 0;
   }
+  if(argc==2&&std::string_view(argv[1])=="--read-phases") {
+    for(bool reverse:{false,true})for(bool early:{false,true})ReadPhaseInitialization(reverse,early,true);
+    return 0;
+  }
   if(argc==2&&std::string_view(argv[1])=="--updates") {
+    for(bool reverse:{false,true})for(bool early:{false,true})ReadPhaseInitialization(reverse,early);
     for(bool caught:{false,true})for(bool reverse:{false,true})for(bool numeric:{false,true})for(bool increment:{false,true})for(bool prefix:{false,true})UpdateSource(reverse,numeric,increment,prefix,true,caught);
     return 0;
   }
+  for(bool reverse:{false,true})for(bool early:{false,true})ReadPhaseInitialization(reverse,early);
   for(bool reverse:{false,true})for(unsigned form=0;form<4;++form)CapturedNumericKinds(reverse,form);
   if(argc==2&&std::string_view(argv[1])=="--unit-source") {
     for(bool update:{false,true})for(bool captured:{false,true})for(bool reverse:{false,true})for(unsigned count:{0U,1U,200U,201U,400U,800U})CurrentUnitSource(captured,count,reverse,true,update);

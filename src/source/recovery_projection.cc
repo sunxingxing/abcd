@@ -270,8 +270,12 @@ std::variant<RecoveryProjection,TreeStructureError> PrepareRecoveryProjection(
       TreeCheckBudget reads_budget(remaining(flow_bytes+initialization.allocated_bytes));
       reads_budget.Array(result.initialized_reads,tree.expressions.size());
       for(const auto& reference:result.flow.references) {
-        reads_budget.Step();if(const auto* expression=std::get_if<ExprId>(&reference.site))
-          result.initialized_reads[expression->value]=initialization.Completed(reference.binding,reference.point);
+        reads_budget.Step();
+        const bool initialized=initialization.Completed(reference.binding,reference.point);
+        if(reference.kind==FlowReferenceKind::kRead&&initialized)
+          result.flow.events[reference.point.value].read_completion=FlowReadCompletion::kInitialized;
+        if(const auto* expression=std::get_if<ExprId>(&reference.site))
+          result.initialized_reads[expression->value]=initialized;
       }
       charge(flow_bytes+initialization.allocated_bytes,reads_budget.Bytes(),reads_budget.Work());
     }

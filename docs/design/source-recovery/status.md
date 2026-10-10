@@ -36,6 +36,30 @@
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
 
+### 2026-10-10：规则279验证完成；试算精度闭环仍未关闭
+
+- 共同初始化分析向实际 lexical GetValue 事件发布证明，包括自增的独立读取
+  阶段。效果细化消费该证明及 PutValue 完成证明；异常边由各阶段自身的
+  SourceEffects 决定。已删除旧 expression-shape independent gate，转换
+  异常及成功后写回仍由各自阶段承担，没有新增样本或布局准入。
+- 已观察初始化读取的 RED；三个生产突变（漏读证明、未证明读取获准、
+  删除转换异常）均构建成功且被测试拒绝，恢复后通过。生成源码新增
+  4组/120次独立行为比较/4个TDZ反例；既有32组更新运算/2176次比较/
+  96个反例同时通过。
+- 冻结终验：31目标构建0（97.31s）、fixed ABC0（3.77s）、63/63测试0
+  （1044.71s），名称完整无重复。六份源码/测试哈希、输入SHA及清单
+  不变。本次构建日志无warning/error。19 records仍10 complete/0 partial/
+  9 no-module；10份源码语法通过且逐字节等同规则278。
+  证据：build/stage-one/read-phase-verification。
+- 独立诊断已证实提供者内部精度缺口：`let number=+input(); let saved;`
+  后在try中执行`+number; saved=7`、空catch、最后读取saved，最终图已
+  删除plus异常边，但发布域仍非Number；在同一最终图上独立重算可得Number。
+  证据：build/stage-one/projection-closure-probe.log。该诊断未更改冻结源码。
+- 下一交付按“试算精度闭环”验收：当前与候选共同提供者内求解初始化、
+  值域、效果与异常边的反馈依赖，证明终止与成本，发布一致事实，删除
+  被替代的手工阶段重算路径，并完成性质、反例、独立执行及既定record验证。
+  不以追加一次重算或固定轮数替代依赖求解。五项主干仍全部开放。
+
 ### 2026-10-10：规则278，同一投射上的无修改 Pass 稳定点
 
 - RecoverySchedule 仅在未发生 Commit 的 Finish 记录该 Pass 的稳定 revision。
