@@ -1013,3 +1013,18 @@ checks. First targeted failure was an overbroad test assertion counting required
 call GetValue wrappers; test-only correction and final63 pass are retained.
 Evidence:build/stage-one/joint-publication-verification. Five closures OPEN,
 Goal active; continue the mainline before other optimizations.
+
+Rules277 backbone substep: RecoverySchedule resolves typed consumer/barrier
+prerequisites; the executor runs each independent owner before starting the
+consumer. Retire EnsureDemandCleanup and its manually sequenced cleanup body.
+The finite prerequisite traversal resumes unfinished cleanup, runs missing
+snapshot/read-value ownership, and publishes cleanup checkpoints at the latest
+revision. It is not a whole-pipeline fixed-point loop.32 commit/no-op combinations,
+illegal stages, pending groups and linear request scaling pass; both missing
+dependency and stale checkpoint mutants are caught and restored. Targeted3/3
+pass (22.92s). Frozen31 build0 (96.74s)/fixedABC0 (3.85s)/exact63 tests0
+(1057.22s), names complete/no duplicates. Four frozen hashes, input and selection
+unchanged; all ten sources parse and are byte-identical to276. Build has no
+warning/error. Evidence:build/stage-one/pass-prerequisites-verification.
+Five closures OPEN; this completes migration of existing prerequisite ownership,
+not full opportunity convergence. Continue the backbone, not unrelated optimization.

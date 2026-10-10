@@ -23,21 +23,24 @@ class RecoveryFactSet {
   std::uint32_t bits_=0;
 };
 enum class RecoveryPassScope {kValues,kValueOrStorage,kStorage,kReadValues,kNormalization,kGrammar};
+enum class RecoveryPrerequisite {kNone,kValueCleanup,kReadValueCleanup};
+enum class RecoveryBarrier {kDemand,kStorage,kSnapshotRefresh,kReadValues,kGrammar};
 struct RecoveryPassContract {
   RecoveryFactSet inputs;
   RecoveryPassScope scope;
   bool preserves_demand_checkpoint=false;
+  RecoveryPrerequisite prerequisite=RecoveryPrerequisite::kNone;
 };
 // These contracts describe semantic dependencies, never bytecode/source
 // admission. Providers close dependencies lazily; no eager graph rebuild is
 // introduced. Occurrence initialization is rebuilt on every projection.
 [[nodiscard]] inline RecoveryPassContract PassContract(RecoveryPass pass) {
-  using Fact=RecoveryFact;using Scope=RecoveryPassScope;
+  using Fact=RecoveryFact;using Scope=RecoveryPassScope;using Prerequisite=RecoveryPrerequisite;
   switch(pass) {
-    case RecoveryPass::kDeclarations:return {{Fact::kFlow},Scope::kValues};
+    case RecoveryPass::kDeclarations:return {{Fact::kFlow},Scope::kValues,false,Prerequisite::kValueCleanup};
     case RecoveryPass::kConstants:return {{Fact::kConstants},Scope::kValues};
     case RecoveryPass::kBindingValues:return {{Fact::kConstants,Fact::kCopies},Scope::kReadValues};
-    case RecoveryPass::kAliases:return {{Fact::kLiveness},Scope::kValueOrStorage};
+    case RecoveryPass::kAliases:return {{Fact::kLiveness},Scope::kValueOrStorage,false,Prerequisite::kValueCleanup};
     // Store identity elision retains RHS completion at its occurrence.
     case RecoveryPass::kStoredResults:return {{Fact::kExpressions},Scope::kNormalization};
     // Removed definitions/initial values/bindings leave no retained reference
@@ -53,7 +56,7 @@ struct RecoveryPassContract {
     case RecoveryPass::kStorage:return {{Fact::kLiveness,Fact::kInitializations},Scope::kStorage};
     // Preserve mandatory evaluation at its exact occurrence; only the common
     // inert residual disappears. Final read destinations and cleanup precede it.
-    case RecoveryPass::kStatementValues:return {{Fact::kStatements},Scope::kReadValues};
+    case RecoveryPass::kStatementValues:return {{Fact::kStatements},Scope::kReadValues,false,Prerequisite::kReadValueCleanup};
     // Only proven inert occurrences disappear; no retained initialization moves.
     case RecoveryPass::kInertStatements:return {{Fact::kStatements},Scope::kNormalization};
     case RecoveryPass::kInertOperands:
@@ -91,25 +94,50 @@ class RecoverySchedule {
     if(active_)RequireTree(RequiredFacts(*active_).Contains(fact),TreeStructureError::kOwnership);
     else RequireTree(stage_==Stage::kGrammar&&(fact==RecoveryFact::kExpressions||fact==RecoveryFact::kFlow||fact==RecoveryFact::kLoopEntries),TreeStructureError::kOwnership);
   }
+  // Return one dependency owner, never execute or mutate a plan here. The
+  // runner completes it against current facts before asking again. Cleanup
+  // advances through its three independent owners; read values precede cleanup.
+  // This finite prerequisite graph is not a whole-function fixed-point loop.
+  [[nodiscard]] std::optional<RecoveryPass> Prerequisite(RecoveryPass pass) const {
+    RequireIdle();RequireScope(pass);
+    if(const auto pending=PendingCleanup();pending&&*pending!=pass)return pending;
+    const auto requirement=PassContract(pass).prerequisite;
+    if(requirement==RecoveryPrerequisite::kReadValueCleanup&&!binding_values_complete_)return RecoveryPass::kBindingValues;
+    if((requirement==RecoveryPrerequisite::kReadValueCleanup||
+        (requirement==RecoveryPrerequisite::kValueCleanup&&stage_==Stage::kValues))&&DemandCleanupNeeded())
+      return RecoveryPass::kDeadDefinitions;
+    return {};
+  }
+  [[nodiscard]] std::optional<RecoveryPass> Prerequisite(RecoveryBarrier barrier) const {
+    RequireIdle();RequireBarrier(barrier);
+    if(const auto pending=PendingCleanup())return pending;
+    if(barrier==RecoveryBarrier::kReadValues&&!snapshot_checkpoint_)return RecoveryPass::kSnapshots;
+    if(barrier==RecoveryBarrier::kGrammar&&!binding_values_complete_)return RecoveryPass::kBindingValues;
+    if(DemandCleanupNeeded())return RecoveryPass::kDeadDefinitions;
+    return {};
+  }
+  void Arrive(RecoveryBarrier barrier) {
+    RequireTree(!Prerequisite(barrier),TreeStructureError::kOwnership);
+    switch(barrier) {
+      case RecoveryBarrier::kDemand:break;
+      case RecoveryBarrier::kStorage:EnterStorage();break;
+      case RecoveryBarrier::kSnapshotRefresh:(void)SnapshotRefreshNeeded();break;
+      case RecoveryBarrier::kReadValues:EnterReadValues();break;
+      case RecoveryBarrier::kGrammar:EnterGrammar();break;
+    }
+  }
   void Start(RecoveryPass pass) {
-    RequireIdle();const auto scope=PassContract(pass).scope;
+    RequireIdle();RequireScope(pass);
     RequireTree(cleanup_==Cleanup::kIdle||
         (cleanup_==Cleanup::kInitialValues&&pass==RecoveryPass::kInitialValues)||
         (cleanup_==Cleanup::kBindings&&pass==RecoveryPass::kBindings),TreeStructureError::kOwnership);
     if(pass==RecoveryPass::kInitialValues)RequireTree(cleanup_==Cleanup::kInitialValues,TreeStructureError::kOwnership);
     if(pass==RecoveryPass::kBindings)RequireTree(cleanup_==Cleanup::kBindings,TreeStructureError::kOwnership);
-    const bool allowed=scope==RecoveryPassScope::kValues?stage_==Stage::kValues:
-        scope==RecoveryPassScope::kStorage?stage_==Stage::kStorage:
-        scope==RecoveryPassScope::kReadValues?stage_==Stage::kReadValues:
-        scope==RecoveryPassScope::kGrammar?stage_==Stage::kGrammar:
-        scope==RecoveryPassScope::kNormalization?stage_!=Stage::kGrammar:
-        stage_==Stage::kValues||stage_==Stage::kStorage;
-    RequireTree(allowed,TreeStructureError::kOwnership);
-    // Binding placement and producer coverage both require all independent
-    // value/initialization/binding cleanup owners at the current projection.
-    if((pass==RecoveryPass::kDeclarations||pass==RecoveryPass::kAliases)&&stage_==Stage::kValues)
+    const auto requirement=PassContract(pass).prerequisite;
+    if(requirement==RecoveryPrerequisite::kValueCleanup&&stage_==Stage::kValues)
       RequireTree(!DemandCleanupNeeded(),TreeStructureError::kOwnership);
-    if(pass==RecoveryPass::kStatementValues)RequireTree(binding_values_complete_&&!DemandCleanupNeeded(),TreeStructureError::kOwnership);
+    if(requirement==RecoveryPrerequisite::kReadValueCleanup)
+      RequireTree(binding_values_complete_&&!DemandCleanupNeeded(),TreeStructureError::kOwnership);
     active_=pass;before_=revision_;phase_=Phase::kAnalysis;
   }
   // First commit invalidates all versioned facts before any plan write. Further
@@ -164,6 +192,33 @@ class RecoverySchedule {
   enum class Phase {kIdle,kAnalysis,kCommit};
   enum class Stage {kValues,kStorage,kReadValues,kGrammar};
   enum class Cleanup {kIdle,kInitialValues,kBindings};
+  [[nodiscard]] std::optional<RecoveryPass> PendingCleanup() const {
+    switch(cleanup_) {
+      case Cleanup::kIdle:return {};
+      case Cleanup::kInitialValues:return RecoveryPass::kInitialValues;
+      case Cleanup::kBindings:return RecoveryPass::kBindings;
+    }
+    throw TreeStructureError::kOwnership;
+  }
+  void RequireScope(RecoveryPass pass) const {
+    const auto scope=PassContract(pass).scope;
+    const bool allowed=scope==RecoveryPassScope::kValues?stage_==Stage::kValues:
+        scope==RecoveryPassScope::kStorage?stage_==Stage::kStorage:
+        scope==RecoveryPassScope::kReadValues?stage_==Stage::kReadValues:
+        scope==RecoveryPassScope::kGrammar?stage_==Stage::kGrammar:
+        scope==RecoveryPassScope::kNormalization?stage_!=Stage::kGrammar:
+        stage_==Stage::kValues||stage_==Stage::kStorage;
+    RequireTree(allowed,TreeStructureError::kOwnership);
+  }
+  void RequireBarrier(RecoveryBarrier barrier) const {
+    switch(barrier) {
+      case RecoveryBarrier::kDemand:RequireTree(stage_!=Stage::kGrammar,TreeStructureError::kOwnership);break;
+      case RecoveryBarrier::kStorage:RequireTree(stage_==Stage::kValues,TreeStructureError::kOwnership);break;
+      case RecoveryBarrier::kSnapshotRefresh:case RecoveryBarrier::kReadValues:
+        RequireTree(stage_==Stage::kStorage,TreeStructureError::kOwnership);break;
+      case RecoveryBarrier::kGrammar:RequireTree(stage_==Stage::kReadValues,TreeStructureError::kOwnership);break;
+    }
+  }
   void RequireIdle() const {RequireTree(phase_==Phase::kIdle,TreeStructureError::kOwnership);}
   Phase phase_=Phase::kIdle;
   Stage stage_=Stage::kValues;

@@ -3492,3 +3492,22 @@ CurrentProjection 一次拥有表达式、flow、初始化读取事实，所有 
 
 这是依赖调度的前置契约：revision 内分析精度固定，后续才能可靠定义
 pass 已完成与需要重跑的条件。全局依赖驱动收敛和五项主干交付仍开放。
+
+## 规则277：调度器拥有消费者与阶段的前置依赖
+
+PassContract 显式声明 ValueCleanup、ReadValueCleanup 前置职责；
+RecoveryBarrier 表示需求清理、存储、快照刷新、读取值和语法边界。
+Prerequisite 只读取当前阶段/检查点，返回下一位职责 owner，不执行
+分析或写计划。执行器先完成该 pass 的独立分析与提交，再重新查询
+前置依赖，最后开始消费者。直接跳过依赖的 Start/Arrive 仍拒绝。
+
+退出 Initializers 中 EnsureDemandCleanup 和手写三步清理实现；
+声明/别名/语句值消费者的依赖由契约触发，阶段切换也由同一解析入口
+完成。有意安排的清理阶段使用显式 barrier；这与某次读取能否替换、
+初始化能否删除等语义义务不同，不能用调度完成状态替代分析证明。
+
+依赖遍历只推进固定的职责图：尚未结束的清理依次完成 initial values、
+bindings；缺失的 snapshot/binding-values 尝试执行一次，随后完成其
+触发的清理。完成清理组才在最新revision发布检查点，自己的提交不会
+形成反复入队。未知/错误阶段在执行依赖前拒绝。全局pass机会的收敛、
+更细失效范围及其成本仍未完成；本次不把检查点当作全局不动点。

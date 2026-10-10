@@ -36,6 +36,29 @@
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
 
+### 2026-10-10：规则277，前置依赖由调度器驱动
+
+- PassContract 声明消费者前置职责，RecoveryBarrier 声明阶段边界。
+  Prerequisite 只返回下一位owner；执行器完成其独立分析/提交后再次
+  查询，随后才启动消费者。Start/Arrive 仍核对依赖和阶段，错误阶段
+  在任何依赖执行前拒绝。旧EnsureDemandCleanup及手写三步清理退出。
+- 依赖图按职责完成推进，没有整函数重试或固定轮数。已有清理可中途
+  继续；snapshot/binding-values缺失时先执行对应owner，再完成必要
+  清理。清理组在最新revision发布检查点，自身提交不导致反复入队。
+- 定向3/3通过（22.92s）。32种提交/no-op组合覆盖消费者、边界、
+  未完成清理、值阶段、非法阶段/提交期间查询；200/201/400/800次
+  请求产生600/603/1200/2400次依赖执行。两个生产突变（遗漏依赖、
+  旧检查点）均build0/test-6，恢复后build/test0。调度步骤计入原额度。
+- 冻结终验：31目标构建0（96.74s）、fresh fixed ABC0（3.85s）、
+  63/63测试0（1057.22s），JUnit名称完整无重复。4份代码/测试哈希、
+  输入SHA及清单保持；构建无warning/error。19 records仍10 complete/
+  0 partial/9 no-module，10份源码语法通过、逐字节等同规则276，同一
+  语言contract。证据根build/stage-one/pass-prerequisites-verification
+  （final-result.json、final-junit.xml）；fresh输出pass-prerequisites-final-rule277-verified。
+- 本次关闭调用位置手工保证既有前置依赖的路径；没有宣称全局机会
+  收敛或五项主干完成。细粒度失效/重跑、终止与整体成本继续，Goal
+  active；其他优化和既定暂停事项保持。
+
 ### 2026-10-10：规则276，pass 分析一次发布完整共同产品
 
 - CurrentProjection 一次发布 RecoveryProjection（expressions、flow、

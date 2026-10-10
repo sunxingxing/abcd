@@ -3439,3 +3439,13 @@ now takes both const views before traversal; node order cannot determine when
 its input facts are refined. This is an analysis ownership contract, not an
 expression-shape admission. Shared bootstrap, semantic eligibility and candidate
 proofs are unchanged; no new pass retry or fixed round count is introduced.
+
+### Rules277: dependency ownership replaces call-site cleanup
+
+Retire EnsureDemandCleanup and the executor's hand-written three-pass cleanup
+sequence. Pass/barrier prerequisites are now resolved by RecoverySchedule from
+its phase and revision-owned checkpoints. Stage checks constrain engine state,
+not bytecode/source layouts. No sample, operation sequence, same-block or arena
+condition is added. No pass consumes a partly committed proposal; each prerequisite
+finishes before the consumer begins. The existing transformation phases remain,
+and full opportunity convergence is still a separate open delivery.

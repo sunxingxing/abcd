@@ -4318,3 +4318,21 @@ Construction remains the shared bootstrap's existing bounded cost; queries
 after publication are O(1), and the change adds no graph, rounds or per-variable
 walk. Mixed value-used/discarded operands, reversed arenas and200/201/400/800
 source dimensions exercise the publication boundary and existing quotas.
+
+### Pass prerequisite traversal (rules277)
+
+The scheduler resolves typed pass/barrier prerequisites without constructing a
+per-function task graph. Each query is O(1) and retains no queue or graph. The
+existing cleanup state moves through distinct definition, initial-value and
+binding owners. A pending cleanup can finish before one missing snapshot or
+read-value owner; that owner's commit can require one cleanup group. Once the
+group finishes its checkpoint is the latest revision. This finite dependency
+traversal terminates by owner completion, not by a retry count or input cutoff.
+
+For B explicit pipeline requests and D dependency executions, scheduling costs
+O(B+D), plus each invoked analysis/pass's existing cost; execution and boundary
+steps are charged to the existing budget. B currently comes from the phase
+pipeline, not the number of source bindings. This does not establish a cost
+bound for future whole-pipeline fixed-point reruns. Tests exhaust commit/no-op
+combinations, interrupted prerequisite groups and illegal phase requests, and
+200/201/400/800 consumer requests produce600/603/1200/2400 dependency attempts.

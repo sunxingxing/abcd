@@ -260,7 +260,7 @@ class Initializers {
     // Remove dead value definitions before propagating their retained values.
     // Declaration placement waits for the normalized read/producer projection;
     // an early grammar decision would retain observations later made literal.
-    DemandCleanup();
+    Reach(RecoveryBarrier::kDemand);
     // Literal stability also depends on retained writes. Clear identity stores
     // before coverage, then clear new identities exposed by literal projection.
     RunPass(Pass::kStoredResults);
@@ -274,17 +274,14 @@ class Initializers {
     // discharge independent definition/initialization/binding obligations
     // before aliases consume retained producer coverage. The checkpoint is
     // revision-owned; no producer-specific change booleans control consumers.
-    EnsureDemandCleanup();
     // Place initialization after value normalization, before producer coverage.
     // Existing dominance/extent proofs consume the current retained projection.
     RunPass(Pass::kDeclarations);
-    EnsureDemandCleanup();
     RunPass(Pass::kAliases);
     RunPass(Pass::kStoredResults);
     RunPass(Pass::kInertOperands);
     RunPass(Pass::kInertStatements);
-    EnsureDemandCleanup();
-    schedule_.EnterStorage();
+    Reach(RecoveryBarrier::kStorage);
     RunPass(Pass::kSnapshots);
     RunPass(Pass::kStorage);
     RunPass(Pass::kStoredResults);
@@ -296,7 +293,7 @@ class Initializers {
     RunPass(Pass::kStoredResults);
     RunPass(Pass::kInertOperands);
     RunPass(Pass::kInertStatements);
-    EnsureDemandCleanup();
+    Reach(RecoveryBarrier::kSnapshotRefresh);
     // Storage/alias cleanup can remove names or observations that blocked the
     // earlier snapshot attempt. Reconsider once at this stable stage boundary,
     // with fresh versioned facts. No whole-function retry loop or round cap.
@@ -305,25 +302,22 @@ class Initializers {
       RunPass(Pass::kStoredResults);
       RunPass(Pass::kInertOperands);
       RunPass(Pass::kInertStatements);
-      EnsureDemandCleanup();
     }
     // Stable binding values consume final storage/snapshot read destinations.
     // Doing this before motion can choose a name unavailable at that destination.
-    schedule_.EnterReadValues();
+    Reach(RecoveryBarrier::kReadValues);
     RunPass(Pass::kBindingValues);
-    EnsureDemandCleanup();
     // Preserve entry effects after final read destinations are fixed; residual
     // control normalization cannot reopen storage, alias or snapshot choices.
     RunPass(Pass::kStatementValues);
-    EnsureDemandCleanup();
+    Reach(RecoveryBarrier::kDemand);
     RunPass(Pass::kInertOperands);
     // Read substitution exposes inert controls only after private writes and
     // binding lifetimes have been discharged by their independent owners.
     RunPass(Pass::kInertStatements);
-    EnsureDemandCleanup();
     // Final source grammar consumes the final bindings/evaluations. It can
     // retain outlined prefix effects without reviving removed declarations.
-    schedule_.EnterGrammar();
+    Reach(RecoveryBarrier::kGrammar);
     RunPass(Pass::kLoopDeclarations);
     RunPass(Pass::kDeclarationKinds);
     for (std::size_t i = 0; i < loops_.initializer_roots.size(); ++i) {
@@ -389,7 +383,16 @@ class Initializers {
     retain(RecoveryFact::kCycles,facts_->cycles);
   }
   bool RunPass(Pass pass) {
-    schedule_.Start(pass);
+    while(const auto prerequisite=schedule_.Prerequisite(pass))RunPassOnce(*prerequisite);
+    return RunPassOnce(pass);
+  }
+  void Reach(RecoveryBarrier barrier) {
+    budget_.Step();
+    while(const auto prerequisite=schedule_.Prerequisite(barrier))RunPassOnce(*prerequisite);
+    schedule_.Arrive(barrier);
+  }
+  bool RunPassOnce(Pass pass) {
+    budget_.Step();schedule_.Start(pass);
     RetainFacts(RequiredFacts(pass));
     switch(pass) {
       case Pass::kDeclarations:Declarations();break;
@@ -409,14 +412,6 @@ class Initializers {
       case Pass::kStorage:Coalesce();break;
     }
     return schedule_.Finish();
-  }
-  void DemandCleanup() {
-    RunPass(Pass::kDeadDefinitions);
-    RunPass(Pass::kInitialValues);
-    RunPass(Pass::kBindings);
-  }
-  void EnsureDemandCleanup() {
-    if(schedule_.DemandCleanupNeeded())DemandCleanup();
   }
   void BeginCommit() {
     if(!schedule_.Commit())return;

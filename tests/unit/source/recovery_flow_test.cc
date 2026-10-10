@@ -2556,6 +2556,85 @@ void InitializationInvalidation() {
   }
   std::cout<<"initialization evidence phase/revision/invalidation counterexamples passed\n";
 }
+void PassPrerequisites() {
+  using Pass=RecoveryPass;using Barrier=RecoveryBarrier;
+  const std::vector<Pass> cleanup{Pass::kDeadDefinitions,Pass::kInitialValues,Pass::kBindings};
+  const auto rejects=[](const auto& action){try{action();return false;}catch(TreeStructureError error){return error==TreeStructureError::kOwnership;}};
+  const auto commit=[](Pass pass,unsigned changes) {
+    switch(pass) {
+      case Pass::kDeadDefinitions:return bool(changes&1U);
+      case Pass::kInitialValues:return bool(changes&2U);
+      case Pass::kBindings:return bool(changes&4U);
+      case Pass::kBindingValues:return bool(changes&8U);
+      case Pass::kSnapshots:return bool(changes&16U);
+      default:Check(false);return false;
+    }
+  };
+  const auto prepare=[&](RecoverySchedule& schedule,auto request,unsigned changes) {
+    std::vector<Pass> trace;
+    while(const auto dependency=schedule.Prerequisite(request)) {
+      trace.push_back(*dependency);
+      // An unfinished cleanup can precede read values and their cleanup.
+      // This independent protocol bound catches cycles in the scheduler.
+      Check(trace.size()<=2*cleanup.size()+1);
+      const auto before=schedule.Revision();schedule.Start(*dependency);
+      if(commit(*dependency,changes))Check(schedule.Commit());
+      Check(schedule.Finish()==commit(*dependency,changes));
+      Check(schedule.Revision().value==before.value+unsigned(commit(*dependency,changes)));
+    }
+    return trace;
+  };
+  for(unsigned changes=0;changes<32;++changes) {
+    for(const auto consumer:{Pass::kDeclarations,Pass::kAliases}) {
+      RecoverySchedule schedule;
+      Check(rejects([&]{schedule.Start(consumer);}));
+      Check(prepare(schedule,consumer,changes)==cleanup);
+      Check(!schedule.DemandCleanupNeeded());
+      schedule.Start(consumer);Check(!schedule.Finish());
+      Check(prepare(schedule,consumer,changes).empty());
+      schedule.Start(consumer);Check(schedule.Commit());Check(schedule.Finish());
+      Check(prepare(schedule,consumer,changes)==cleanup);
+    }
+    for(bool dirty:{false,true})for(bool resumed:{false,true}) {
+      RecoverySchedule schedule;const auto original=schedule.Revision();
+      Check(!schedule.Prerequisite(Pass::kConstants));
+      Check(!schedule.Prerequisite(Pass::kStoredResults));
+      Check(rejects([&]{(void)schedule.Prerequisite(Barrier::kGrammar);}));
+      Check(rejects([&]{schedule.Arrive(Barrier::kStorage);}));
+      Check(schedule.Revision().value==original.value);
+      Check(prepare(schedule,Barrier::kStorage,changes)==cleanup);schedule.Arrive(Barrier::kStorage);
+      if(dirty){schedule.Start(Pass::kStorage);Check(schedule.Commit());
+        Check(rejects([&]{(void)schedule.Prerequisite(Barrier::kReadValues);}));Check(schedule.Finish());}
+      Check(!schedule.Prerequisite(Pass::kAliases)); // Values-only cleanup prerequisite.
+      auto expected=std::vector<Pass>{Pass::kSnapshots};if(dirty)expected.insert(expected.end(),cleanup.begin(),cleanup.end());
+      Check(prepare(schedule,Barrier::kReadValues,changes)==expected);schedule.Arrive(Barrier::kReadValues);
+      if(resumed){schedule.Start(Pass::kDeadDefinitions);Check(!schedule.Finish());}
+      Check(rejects([&]{schedule.Start(Pass::kStatementValues);}));
+      expected=resumed?std::vector<Pass>{Pass::kInitialValues,Pass::kBindings}:std::vector<Pass>{};
+      expected.push_back(Pass::kBindingValues);if(changes&8U)expected.insert(expected.end(),cleanup.begin(),cleanup.end());
+      Check(prepare(schedule,Pass::kStatementValues,changes)==expected);
+      schedule.Start(Pass::kStatementValues);Check(schedule.Commit());Check(schedule.Finish());
+      Check(prepare(schedule,Barrier::kGrammar,changes)==cleanup);schedule.Arrive(Barrier::kGrammar);
+      Check(rejects([&]{(void)schedule.Prerequisite(Pass::kConstants);}));
+      Check(rejects([&]{(void)schedule.Prerequisite(Barrier::kDemand);}));
+    }
+    RecoverySchedule pending;
+    pending.Start(Pass::kDeadDefinitions);Check(!pending.Finish());
+    Check(!pending.Prerequisite(Pass::kInitialValues));
+    pending.Start(Pass::kInitialValues);Check(!pending.Finish());
+    Check(prepare(pending,Pass::kDeclarations,changes)==std::vector<Pass>{Pass::kBindings});
+    Check(!pending.Prerequisite(Pass::kDeclarations));
+  }
+  for(unsigned count:{200U,201U,400U,800U}) {
+    RecoverySchedule schedule;std::size_t attempts=0;
+    for(unsigned i=0;i<count;++i) {
+      attempts+=prepare(schedule,Pass::kDeclarations,0).size();
+      schedule.Start(Pass::kDeclarations);Check(schedule.Commit());Check(schedule.Finish());
+    }
+    Check(attempts==count*cleanup.size());Check(schedule.Revision().value==count);
+    std::cout<<"prerequisite requests "<<count<<" dependency attempts "<<attempts<<'\n';
+  }
+}
 void PassContracts() {
   const auto rejects=[](const auto& action) {
     try {action();return false;}catch(TreeStructureError error){return error==TreeStructureError::kOwnership;}
@@ -3090,6 +3169,7 @@ void CatchActivationOrder() {
     Check(initialized.Completed(reference.binding,reference.point));
 }
 int main(int argc,char** argv){
+  if(argc==2&&std::string_view(argv[1])=="--prerequisites"){PassPrerequisites();return 0;}
   InitializationUnitCapability();
   if(argc==2&&std::string_view(argv[1])=="--initialization"){InitializationOracle();ScopedInitializationOracle();EnclosingCleanup();BindingActivationScaling();return 0;}
   if(argc==2&&std::string_view(argv[1])=="--captured-values"){CapturedValues();return 0;}
@@ -3105,4 +3185,4 @@ int main(int argc,char** argv){
   if(argc==2&&std::string_view(argv[1])=="--activation") {
     CapturedValues();BindingActivationScaling();BindingActivationOracle();CatchActivationOrder();return 0;
   }
-  ScopedCopyRoots();ScopedCopyOracle();InitializationOracle();ScopedInitializationOracle();EnclosingCleanup();CapturedValues();BindingActivationScaling();BindingActivationOracle();CatchActivationOrder();InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();AvailableCopyOracle();TransitiveCopyOracle();CompletionCycles();LocalCompletionOracle();StatementObservationOracle();StatementEntryOracle();InitializationInvalidation();PassContracts();SnapshotCheckpoints();StableValues();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+  ScopedCopyRoots();ScopedCopyOracle();InitializationOracle();ScopedInitializationOracle();EnclosingCleanup();CapturedValues();BindingActivationScaling();BindingActivationOracle();CatchActivationOrder();InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();AvailableCopyOracle();TransitiveCopyOracle();CompletionCycles();LocalCompletionOracle();StatementObservationOracle();StatementEntryOracle();InitializationInvalidation();PassContracts();PassPrerequisites();SnapshotCheckpoints();StableValues();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
