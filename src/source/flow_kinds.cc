@@ -1,6 +1,7 @@
 #include "flow_kinds.h"
 #include "recovery_projection.h"
 #include "expression_children.h"
+#include "truth_domains.h"
 #include <algorithm>
 #include <limits>
 #include <stdexcept>
@@ -54,6 +55,7 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
     const auto event_offset=value_count+initialization_count,count=event_offset+events;
     const auto event_node=[&](FlowPoint point){return NodeId{static_cast<std::uint32_t>(event_offset+point.value)};};
     std::vector<K> values,entries,original_results;
+    std::vector<TruthDomains> truths;
     std::vector<std::optional<std::uint32_t>> heads;
     std::vector<std::uint8_t> queued,changed,original_entries;
     std::vector<ValueOccurrence> occurrences;
@@ -75,6 +77,7 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
       }
     }
     budget.Array(values,value_count);budget.Array(heads,count);budget.Array(queued,count);budget.Array(pending,count);
+    budget.Array(truths,value_count);
     budget.Array(occurrences,expressions);budget.Array(entries,flow.bindings.size());
     budget.Array(changed,count);budget.Array(original_entries,flow.bindings.size());
     budget.Array(original_results,expressions);
@@ -138,7 +141,7 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
     }
     // Each input is an expression edge or a sparse incoming liveness fact.
     // No read x definition relation, per-binding graph walk or layout test.
-    struct Constant {NodeId target;K value;Guard guard;std::optional<std::uint32_t> next;};
+    struct Constant {NodeId target;NormalValueDomain value;Guard guard;std::optional<std::uint32_t> next;};
     const auto inputs=[&](const auto& constant,const auto& value_dependency,const auto& proof_invalidation) {
       // Validity is demanded by conditional proof consumers, not by the
       // presence of an OriginalFlow container. With no result/definition caps,
@@ -205,7 +208,7 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
           using T=std::decay_t<decltype(value)>;
           const auto expression=[&](ExprId id){RequireTree(id.value<expressions,Error::kOwnership);dependency(NodeId{id.value},target,DependencyKind::kValue,nullptr);};
           if constexpr(std::is_same_v<T,FlowExpressionValue>)expression(value.expression);
-          else if constexpr(std::is_same_v<T,FlowChoiceValue>){expression(value.consequent);expression(value.alternate);
+          else if constexpr(std::is_same_v<T,FlowChoiceValue>){expression(value.condition);expression(value.consequent);expression(value.alternate);
             dependency(NodeId{value.condition.value},target,DependencyKind::kProvenance,nullptr);}
           else if constexpr(std::is_same_v<T,FlowLogicalValue>){expression(value.left);expression(value.right);}
           else if constexpr(std::is_same_v<T,UnknownFlowValue>)
@@ -319,7 +322,9 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
                   dependency(*catch_values[definition->value],target,DependencyKind::kValue,&generated);
                   continue;
                 case FlowDefinitionKind::kUndefined:case FlowDefinitionKind::kUndefinedStore:
-                case FlowDefinitionKind::kFunctionSelf:break;
+                  constant(target,NormalValueDomain{K::Language(),TruthDomains::One(TruthDomain::kUndefined)});invalidate(target);continue;
+                case FlowDefinitionKind::kFunctionSelf:
+                  constant(target,NormalValueDomain{K::Defined(),TruthDomains::Truthy()});continue;
               }
               constant(target,K::Language());invalidate(target);continue;
             }
@@ -342,7 +347,7 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
       }
     };
     std::size_t edges=0,constant_count=0,invalidation_count=0;
-    inputs([&](NodeId,K){++constant_count;},[&](NodeId,NodeId,DependencyKind,const FlowDefinition*){++edges;},[&](NodeId){++invalidation_count;});
+    inputs([&](NodeId,NormalValueDomain){++constant_count;},[&](NodeId,NodeId,DependencyKind,const FlowDefinition*){++edges;},[&](NodeId){++invalidation_count;});
     RequireTree(edges<=std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
     std::vector<Dependency> dependencies;budget.Array(dependencies,edges);
     std::vector<Constant> constants;budget.Array(constants,constant_count);
@@ -360,12 +365,13 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
     std::size_t next=0,constant_next=0,invalidation_next=0,ready=0;
     const auto enqueue=[&](NodeId id){if(!queued[id.value]){queued[id.value]=1;pending[ready++]=id;}};
     const auto invalidate=[&](NodeId id){budget.Step();if(!changed[id.value]){changed[id.value]=1;enqueue(id);}};
-    const auto update=[&](NodeId id,K incoming) {
-      budget.Step();auto& value=values[id.value];const auto joined=value.Join(incoming);
-      if(joined==value)return;
-      value=joined;enqueue(id);
+    const auto update=[&](NodeId id,NormalValueDomain incoming) {
+      budget.Step();auto& value=values[id.value];auto& truth=truths[id.value];
+      const auto joined=value.Join(incoming.kinds);const auto joined_truth=truth|incoming.truth;
+      if(joined==value&&joined_truth==truth)return;
+      value=joined;truth=joined_truth;enqueue(id);
     };
-    inputs([&](NodeId target,K value) {
+    inputs([&](NodeId target,NormalValueDomain value) {
       RequireTree(constant_next<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
       const auto id=static_cast<std::uint32_t>(constant_next++);constants[id]={target,value,guard,{}};
       if(guard.edge){constants[id].next=constant_heads[*guard.edge];constant_heads[*guard.edge]=id;}
@@ -495,19 +501,47 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
       }
     }
     for(const auto& constant:constants){budget.Step();if(!constant.guard.edge)update(constant.target,constant.value);}
+    const auto domain=[&](std::size_t id){return NormalValueDomain{values[id],truths[id]};};
     const auto expression=[&](NodeId target) {
       const auto equation=ProjectedRecoveryEquation(input,ExprId{target.value});
-      auto incoming=std::visit([&](const auto& value)->K {
+      auto incoming=std::visit([&](const auto& value)->NormalValueDomain {
         using T=std::decay_t<decltype(value)>;
-        if constexpr(std::is_same_v<T,FlowExpressionValue>)return values[value.expression.value];
-        else if constexpr(std::is_same_v<T,FlowChoiceValue>)return values[value.consequent.value].Join(values[value.alternate.value]);
-        else if constexpr(std::is_same_v<T,FlowLogicalValue>)return values[value.left.value].Join(values[value.right.value]);
+        if constexpr(std::is_same_v<T,FlowExpressionValue>)return domain(value.expression.value);
+        else if constexpr(std::is_same_v<T,FlowChoiceValue>) {
+          NormalValueDomain result;const auto control=truths[value.condition.value];
+          if(!(control&TruthDomains::Truthy()).Empty())result=result.Join(domain(value.consequent.value));
+          if(!(control&TruthDomains::Truthy().Complement()).Empty())result=result.Join(domain(value.alternate.value));
+          return result;
+        } else if constexpr(std::is_same_v<T,FlowLogicalValue>) {
+          const auto left=domain(value.left.value);
+          const auto right=LogicalRightDomains(value.operation);
+          const auto kept=left.truth&right.Complement();NormalValueDomain result;
+          if(!kept.Empty())result={left.kinds,kept};
+          if(!(left.truth&right).Empty())result=result.Join(domain(value.right.value));
+          return result;
+        }
         else if constexpr(std::is_same_v<T,FlowPrimitiveReference>) {
-          RequireTree(value.primitive.value<input.bindings.primitives.size(),Error::kOwnership);return PrimitiveKinds(input.bindings.primitives[value.primitive.value]);
+          RequireTree(value.primitive.value<input.bindings.primitives.size(),Error::kOwnership);
+          const auto& literal=input.bindings.primitives[value.primitive.value];
+          if(const auto* text=std::get_if<TextId>(&literal))RequireTree(text->value<tree.texts.size(),Error::kOwnership);
+          return {PrimitiveKinds(literal),PrimitiveTruthDomains(literal,tree.texts)};
         } else if constexpr(std::is_same_v<T,FlowBindingValue>)return occurrences[target.value]==ValueOccurrence::kRead?K{}:K::Language();
         else {static_assert(std::is_same_v<T,UnknownFlowValue>);
-          if(occurrences[target.value]==ValueOccurrence::kNumeric)return values[target.value];
-          return NormalValueKinds(tree.expressions[target.value].expression,{values.data(),expressions});}
+          if(occurrences[target.value]==ValueOccurrence::kNumeric)return domain(target.value);
+          const auto& node=tree.expressions[target.value].expression;
+          const auto kinds=NormalValueKinds(node,{values.data(),expressions});
+          if(const auto* literal=std::get_if<TreeLiteral>(&node)) {
+            if(const auto* text=std::get_if<TextId>(literal))RequireTree(text->value<tree.texts.size(),Error::kOwnership);
+            return {kinds,PrimitiveTruthDomains(*literal,tree.texts)};
+          }
+          if(const auto* unary=std::get_if<UnaryExpr>(&node);unary&&unary->operation==TreeUnary::kNot) {
+            const auto operand=truths[unary->operand.value];TruthDomains result;
+            if(!(operand&TruthDomains::Truthy()).Empty())result|=TruthDomains::One(TruthDomain::kFalsy);
+            if(!(operand&TruthDomains::Truthy().Complement()).Empty())result|=TruthDomains::Truthy();
+            return {kinds,result};
+          }
+          return kinds;
+        }
       },equation);
       const auto original=original_results[target.value];
       // Inline results and stored results use the same operand/completion
@@ -538,7 +572,7 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
       if(changed[dependency.source.value])invalidate(dependency.target);
       if(dependency.kind==DependencyKind::kProvenance||dependency.kind==DependencyKind::kEffects)return;
       const auto target=dependency.target;
-      auto incoming=dependency.kind==DependencyKind::kNumeric?NumericValueKinds(values[dependency.source.value]):values[dependency.source.value];
+      auto incoming=dependency.kind==DependencyKind::kNumeric?NormalValueDomain{NumericValueKinds(values[dependency.source.value])}:domain(dependency.source.value);
       if(dependency.definition&&!changed[dependency.source.value]&&!changed[target.value]) {
         K original;
         if(dependency.definition->original) {
@@ -582,6 +616,16 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
           effects[point]=EvaluateFlowEventEffects(flow,tree,event,facts);
           for(auto edge=flow.events[point].outgoing;edge;edge=flow.edges[*edge].outgoing) {
             budget.Step();const auto& route=flow.edges[*edge];
+            // The same monotone solve owns predicate values and executable
+            // completions. A later widened/cap-withdrawn input wakes this
+            // event and can activate its other arm; no pass guesses layout.
+            if((event.kind==FlowEventKind::kTruthBranch||event.kind==FlowEventKind::kNullishBranch)&&
+                (route.completion==FlowCompletion::kTaken||route.completion==FlowCompletion::kNotTaken)) {
+              RequireTree(event.expression.has_value(),Error::kOwnership);
+              const auto taken=event.kind==FlowEventKind::kTruthBranch?TruthDomains::Truthy():TruthDomains::Nullish();
+              const auto admitted=route.completion==FlowCompletion::kTaken?taken:taken.Complement();
+              if((truths[event.expression->value]&admitted).Empty())continue;
+            }
             if(route.completion==FlowCompletion::kThrow&&flow.events[point].expression&&effects[point].intrinsic&&
                 effects[point].intrinsic->exceptional==analysis::ExceptionalCompletion::kImpossible)continue;
             if(!executable[*edge]) {
@@ -630,13 +674,15 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
     solve();
     // Ungrounded cycles must not invent a numeric value. The lattice only
     // widens; work is bounded by dependency edges times finite domain height.
-    for(std::size_t i=0;i<value_count;++i){budget.Step();if(values[i].IsEmpty())update(NodeId{static_cast<std::uint32_t>(i)},K::Language());}
+    for(std::size_t i=0;i<value_count;++i){budget.Step();if(values[i].IsEmpty()||truths[i].Empty())
+      update(NodeId{static_cast<std::uint32_t>(i)},values[i].IsEmpty()?K::Language():values[i]);}
     solve();
     if(initialization)for(std::size_t i=0;i<flow.references.size();++i) {
       budget.Step();if(!reached[flow.references[i].point.value])publish_initialization(i,InitializationState::kInitialized);
     }
     FlowNormalKinds result;budget.Array(result.expressions,expressions);
     std::copy_n(values.begin(),expressions,result.expressions.begin());
+    budget.Array(result.truths,expressions);std::copy_n(truths.begin(),expressions,result.truths.begin());
     for(std::size_t i=0;i<captured_nodes.size();++i) {
       budget.Step();captured_values[i]=captured_nodes[i]?values[captured_nodes[i]->value]:K::Language();
     }

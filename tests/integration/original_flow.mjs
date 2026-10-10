@@ -88,6 +88,44 @@ function projectedOutcome(fn,factory,loop,rounds) {
   }catch(error){return {trace,kind:'throw',value:error===failure?'failure':error.name};}
 }
 const projectedFactories=[...factories,()=>{throw failure;}];
+const controls=execFileSync(process.argv[3],['--control-paths'],{encoding:'utf8',maxBuffer:16_000_000}).trim().split('\n').map(JSON.parse);
+const controlReferences=[
+  function(input){let saved;if(false)saved=input();else saved=7;return saved;},
+  function(input){let saved;if(false)saved=input();return saved;},
+  function(input){let saved;if(true)saved=input();else saved=7;return saved;},
+  function(input){let saved=true;for(;;){if(!saved)break;saved=false;input();}return saved;},
+  function(input){return true?7:input();},
+  function(input){return false?7:input();},
+  function(input){return false&&input();},
+  function(input){return true||input();},
+  function(input){return null??input();},
+  function(input){return false??input();},
+];
+function controlEquivalent(source,form) {
+  const generated=Function('return ('+source+')')();
+  for(const factory of projectedFactories)
+    assert.deepEqual(projectedOutcome(generated,factory,false,1),projectedOutcome(controlReferences[form],factory,false,1));
+}
+for(const row of controls) {
+  const all=nodes(parseJavaScript('('+row.source+')'));controlEquivalent(row.source,row.form);
+  if([6,7,9].includes(row.form))assert.equal(all.filter(node=>node.type==='LogicalExpression').length,0,'proved inactive operand must leave the recovery plan');
+}
+assert.equal(controls.length,92);
+const controlMutants=[
+  [0,function(input){let saved;if(true)saved=input();else saved=7;return saved;}],
+  [1,function(input){let saved=7;if(false)saved=input();return saved;}],
+  [3,function(input){let saved=false;for(;;){if(!saved)break;saved=false;input();}return saved;}],
+  [6,function(input){return input();}],
+  [8,function(input){return null;}],
+];
+for(const [form,mutant] of controlMutants)assert.throws(()=>controlEquivalent(mutant.toString(),form));
+for(const reverse of [false,true]) {
+  const group=controls.filter(row=>row.form===0&&row.reverse===reverse&&row.copies>0).sort((a,b)=>a.copies-b.copies);
+  assert.equal(group.length,4);
+  for(let i=1;i<group.length;++i)for(const cost of ['work','bytes'])
+    assert.ok(group[i][cost]<group[i-1][cost]*(group[i].copies===201?1.1:2.5));
+}
+console.log(`${controls.length} control-completion sources / ${controls.length*projectedFactories.length} independent execution comparisons / ${controlMutants.length} adverse mutants`);
 function projectedEquivalent(source,form) {
   const generated=Function('return ('+source+')')(),loop=form>=2,numeric=form%2===0;
   // Independent language program, with success-only assignment and catch

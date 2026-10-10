@@ -194,12 +194,17 @@ for(const row of rows) {
       assert.notDeepEqual(observed('(function(input,seed){return seed();})',row,token,0,false,false),observe(expected,row,token,0,false,false));++mutations;
     }
     if(row.form>=29&&row.form<68&&row.form!==41&&row.form!==59) {
-      // Removing the original initializer also removes its condition/calls/
-      // parameter write or TDZ read. Independent execution rejects that edit.
+      // Find a retained initializer/evaluation whose deletion the independent
+      // oracle rejects. Dead-definition removal may leave an empty lexical
+      // declaration first; deleting that alone is not a semantic counterexample.
       const ast=parseJavaScript(row.source),body=ast.body[0].expression.body.body;
       if(body.length>1) {
-        const wrong=row.source.slice(0,body[0].start)+row.source.slice(body[0].end);
-        const differs=[false,true].some(coercion=>!isDeepStrictEqual(observed(wrong,row,token,0,false,coercion),observe(expected,row,token,0,false,coercion)));
+        const candidates=body.filter(node=>node.type==='ExpressionStatement'||
+          node.type==='VariableDeclaration'&&node.declarations.some(declaration=>declaration.init));
+        const differs=candidates.some(node=> {
+          const wrong=row.source.slice(0,node.start)+row.source.slice(node.end);
+          return [false,true].some(coercion=>!isDeepStrictEqual(observed(wrong,row,token,0,false,coercion),observe(expected,row,token,0,false,coercion)));
+        });
         assert.ok(differs,JSON.stringify(row));++mutations;
       }
     }

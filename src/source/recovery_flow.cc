@@ -56,6 +56,9 @@ class FlowBuilder {
   RecoveryFlow Run() {
     result_.scopes.reset();
     result_.original=projection_.original;
+    // Final truth facts belong to the old proposal. Only the common joint
+    // solve may populate them; capacity reuse is not fact reuse.
+    decltype(result_.normal_truths){}.swap(result_.normal_truths);
     std::optional<SourceCells> owned_cells;
     if(!projection_.cells){owned_cells=AnalyzeSourceCells(tree_,budget_);projection_.cells=&*owned_cells;}
     RequireTree(projection_.cells->owner==&tree_&&projection_.cells->access.size()==tree_.symbols.size(),Error::kOwnership);
@@ -1080,9 +1083,11 @@ FlowEventEffects EvaluateFlowEventEffects(const RecoveryFlow& flow,const Functio
 }
 std::variant<FlowRefinement,TreeStructureError> RefineRecoveryFlowEffects(
     RecoveryFlow& flow,const FunctionTree& tree,std::span<const ExpressionEvaluation> evaluations,
-    std::span<const std::uint8_t> normal_stores,analysis::SemanticBudget allowance) {
+    std::span<const std::uint8_t> normal_stores,analysis::SemanticBudget allowance,
+    std::span<const std::uint8_t> executable) {
   try {
     TreeCheckBudget budget(allowance);
+    RequireTree(executable.empty()||executable.size()==flow.edges.size(),TreeStructureError::kOwnership);
     std::vector<ExpressionEvaluation> assignments;
     budget.Array(assignments,tree.expressions.size());
     for(auto& effect:assignments){budget.Step();effect=ExpressionEvaluation::kRequired;}
@@ -1107,6 +1112,7 @@ std::variant<FlowRefinement,TreeStructureError> RefineRecoveryFlowEffects(
     std::size_t retained=0;
     for(std::size_t i=0;i<flow.edges.size();++i) {
       budget.Step();auto edge=flow.edges[i];const auto& event=flow.events[edge.from.value];
+      if(!executable.empty()&&!executable[i])continue;
       if(edge.completion==FlowCompletion::kThrow && event.expression) {
         // Intrinsic completion belongs to this phase, not its enclosing
         // expression's aggregate effects. Child/coercion failures keep their

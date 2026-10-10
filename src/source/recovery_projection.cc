@@ -321,6 +321,7 @@ std::variant<RecoveryProjection,TreeStructureError> PrepareRecoveryProjection(
       for(std::size_t i=0;i<domains.captured_inputs.size();++i)result.flow.captured_inputs[i].kinds=domains.captured_inputs[i];
     }
     const auto domains_bytes=domains.expressions.capacity()*sizeof(analysis::ValueKinds)+domains.executable.capacity()*sizeof(std::uint8_t)+
+        domains.truths.capacity()*sizeof(TruthDomains)+
         domains.initialized_reads.capacity()*sizeof(std::uint8_t)+domains.read_completions.capacity()*sizeof(FlowReadCompletion)+domains.original_effects.capacity()*sizeof(std::uint8_t)+
         domains.captured_inputs.capacity()*sizeof(analysis::ValueKinds);
     auto refined_input=input;refined_input.normal_kinds=domains.expressions;
@@ -330,9 +331,11 @@ std::variant<RecoveryProjection,TreeStructureError> PrepareRecoveryProjection(
     std::copy(result.expressions.kinds.begin(),result.expressions.kinds.end(),result.flow.normal_kinds.begin());
     const auto live=retained+domains_bytes+ExpressionBytes(result.expressions);
     auto refined=RefineRecoveryFlowEffects(result.flow,tree,result.expressions.evaluations,
-        result.expressions.normal_stores,remaining(live));
+        result.expressions.normal_stores,remaining(live),domains.executable);
     if(const auto* error=std::get_if<TreeStructureError>(&refined))throw *error;
     const auto& refinement=std::get<FlowRefinement>(refined);charge(live,refinement.allocated_bytes,refinement.work);
+    result.flow.normal_truths=std::move(domains.truths);
+    result.flow.allocated_bytes+=result.flow.normal_truths.capacity()*sizeof(TruthDomains);
     result.allocated_bytes=peak;result.work=budget.Work();return result;
   } catch(TreeStructureError error){return error;}
   catch(const std::bad_alloc&){return TreeStructureError::kResourceLimit;}

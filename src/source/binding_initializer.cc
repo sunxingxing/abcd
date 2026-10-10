@@ -666,23 +666,35 @@ class Initializers {
   void ElideInertOperands() {
     // Comma discards its left value. Shared completion/effect facts, including
     // TDZ, coercion and suspension, decide elision before downstream liveness.
+    // A logical operand is discarded only when the joint control domain proves
+    // it cannot execute. Consume canonical equations and shared domains; never
+    // guess from a literal/sequence shape. Keep all left evaluation and value.
     // Replacement preserves GetValue and suppresses NamedEvaluation. Printer
     // consumes this decision and only projects the removed origin ranges.
     std::size_t capacity=0;
     for(std::size_t i=0;i<tree_.expressions.size();++i) {
       budget_.Step();if(!plan_.replacements[i] &&
-          std::holds_alternative<SequenceExpr>(tree_.expressions[i].expression))++capacity;
+          (std::holds_alternative<SequenceExpr>(tree_.expressions[i].expression)||
+           std::holds_alternative<FlowLogicalValue>(value_equations_[i])))++capacity;
     }
     if(!capacity)return;
     const auto& facts=AnalyzeExpressions();
     const auto& flow=CurrentFlow();
     struct OperandElision { ExprId expression,value; };
     std::vector<OperandElision> proposed;budget_.Array(proposed,capacity);std::size_t count=0;
+    const RecoveryExpressionInput input{plan_,value_equations_,{}};
     for(std::size_t i=0;i<tree_.expressions.size();++i) {
       budget_.Step();if(plan_.replacements[i])continue;
+      const ExprId id{static_cast<std::uint32_t>(i)};
+      const auto equation=ProjectedRecoveryEquation(input,id);
+      if(const auto* logical=std::get_if<FlowLogicalValue>(&equation)) {
+        RequireTree(logical->left.value<flow.normal_truths.size(),TreeStructureError::kOwnership);
+        const auto left=flow.normal_truths[logical->left.value];
+        if(!left.Empty()&&(left&LogicalRightDomains(logical->operation)).Empty())proposed[count++]={id,logical->left};
+        continue;
+      }
       const auto* sequence=std::get_if<SequenceExpr>(&tree_.expressions[i].expression);
       if(!sequence)continue;
-      const ExprId id{static_cast<std::uint32_t>(i)};
       if(facts.evaluations[sequence->left.value]==ExpressionEvaluation::kInert)
         proposed[count++]={id,sequence->right};
       else if(facts.evaluations[sequence->right.value]==ExpressionEvaluation::kInert) {

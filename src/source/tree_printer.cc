@@ -46,7 +46,7 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
 struct DerivedClassBody { std::shared_ptr<const ClassTree> definition; ExprId expression; ClassPrintForm form; };
 struct EndExpression { ExprId id; };
 struct ProjectedExpression { ExprId id; std::uint64_t begin, end; GeneratedExtent extent = GeneratedExtent::kSpan; std::optional<ExprId> retained; };
-struct ProjectSequenceOperand { ExprId sequence, omitted; };
+struct ProjectElidedOperands { ExprId expression, retained; };
 struct NoInferredName {};
 struct DefaultInferredName {};
 using NameContext = std::variant<NoInferredName, NameId, DefaultInferredName>;
@@ -90,7 +90,7 @@ struct BeginFunction {};
 struct EndFunction {};
 struct ParameterCursor { std::uint32_t index; };
 struct EndParameter { std::uint32_t index; };
-using PrintAction = std::variant<std::string_view, ExprId, EndExpression, ProjectedExpression, ProjectSequenceOperand, ExpressionOperand, BooleanOperand, PostfixSpine,
+using PrintAction = std::variant<std::string_view, ExprId, EndExpression, ProjectedExpression, ProjectElidedOperands, ExpressionOperand, BooleanOperand, PostfixSpine,
     Statement, EndStatement, BlockCursor, Indent, PropertyKey, SymbolName, ArgumentCursor,
     ObjectCursor, EndProperty, BeginFunction, EndFunction, ParameterCursor, EndParameter, SnapshotCursor, DerivedClassBody, ArrayArgumentCursor, LoopHeader, LoopHeaderCursor, ElideStatement, LoopBody, LoopTransitionEnd, LoopInitializerCursor, LoopDeclarationCursor, LoopKeyword, BlockBoundary>;
 struct OwnedAction { std::size_t owner; std::size_t depth; PrintAction action; };
@@ -1253,10 +1253,7 @@ class TreePrinter {
     if(const auto replacement=Initializers().replacements[id.value]) {
       // The planner owns elision. Transport the omitted operand's origin to
       // the projected span, regardless of side; no effect/value-use decision.
-      if(const auto* sequence=std::get_if<SequenceExpr>(&expression)) {
-        if(*replacement==sequence->right)Push(ProjectSequenceOperand{id,sequence->left});
-        else if(*replacement==sequence->left)Push(ProjectSequenceOperand{id,sequence->right});
-      }
+      Push(ProjectElidedOperands{id,*replacement});
       operand.id=*replacement;operand.value_result=true;Push(operand);return;
     }
     if (const auto* read = std::get_if<SymbolExpr>(&expression)) if (const auto value = Initializers().ReadLiteral(operand.id,read->symbol)) {
@@ -1304,8 +1301,13 @@ class TreePrinter {
     }, Tree().expressions[id.value].expression);
   }
   void Run(EndExpression end) { Result().expressions[end.id.value].end = written_; }
-  void Run(ProjectSequenceOperand projection) {
-    Push(ProjectedExpression{projection.omitted, Result().expressions[projection.sequence.value].begin, written_});
+  void Run(ProjectElidedOperands projection) {
+    // Normalize origins of every omitted owned operand, independent of the
+    // expression's grammar. Retained descendants keep their actual spans.
+    // The committed replacement alone selects execution; printing adds none.
+    VisitExpressionChildren(Tree(),Tree().expressions[projection.expression.value].expression,[&](ExprId child) {
+      Push(ProjectedExpression{child,Result().expressions[projection.expression.value].begin,written_,GeneratedExtent::kSpan,projection.retained});
+    });
   }
   void Run(ProjectedExpression projection) {
     Step();if(projection.retained==projection.id)return;
@@ -1445,10 +1447,7 @@ class TreePrinter {
       Step(); BeginExpression(original);
       const auto replacement = Initializers().replacements[original.value];
       if (!replacement) throw Error::kUnsupportedContext;
-      if (const auto* sequence = std::get_if<SequenceExpr>(&Tree().expressions[original.value].expression)) {
-        if (*replacement == sequence->right) Push(ProjectSequenceOperand{original, sequence->left});
-        else if (*replacement == sequence->left) Push(ProjectSequenceOperand{original, sequence->right});
-      }
+      Push(ProjectElidedOperands{original,*replacement});
       original = *replacement;
     }
     BeginExpression(retained);

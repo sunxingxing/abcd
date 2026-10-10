@@ -3996,3 +3996,81 @@ All 11 frozen code/test files, selection and input SHA remain unchanged. Initial
 fixture API/type, missing build inputs and budget error-type assertions are
 retained as failures and excluded from acceptance. Evidence is in
 build/stage-one/original-controls-final and original-controls-focused.
+
+
+### Rules289: one control-completion solve and recovery consumption
+
+Normal-value kinds and truth/nullish domains now form one monotone product.
+The shared four-domain partition distinguishes null, undefined, other falsy and
+truthy language values, with exact literal domains and conservative unknown
+values. The raw selection adapter consumes the same typed partition; its old
+private bit-domain definition is removed. These domains do not identify a
+physical raw Boolean action, prove a numeric range, or invoke conversion hooks.
+
+The existing sparse value/initialization/provenance/effect worklist owns control
+edge activation. Choice equations depend on their condition value; logical
+results join only the alternatives allowed by their input domain. Undefined
+initialization contributes an explicit definition. Numeric update input and
+successful write remain separate; numeric conversion does not preserve the
+input truth domain. Domain widening schedules dependents even when normal kinds
+are unchanged, and raw-proof withdrawal may activate additional completions.
+Unresolved cycles widen conservatively; no layout or sample condition is added.
+
+PrepareRecoveryProjection now projects the executable edge set into its final
+flow after the joint solve. Previously that set was computed and discarded:
+final refinement only removed impossible exception edges. Liveness, def-use,
+interference, initialization and trial decisions now consume the same completed
+flow. Events, definitions and reference identities are retained. Candidates
+rebuild the graph and solve their own domains; storage reuse clears old truth
+facts. There is no printer-side control analysis or mixed plan updater.
+
+The truth product adds O(X+F) bytes, X expression nodes and F sparse value facts,
+and constant lattice height to existing dependency-edge work; final edge
+compaction remains linear. Dense liveness/interference output and scope-transfer
+cost retain their existing accounting and limits. The source budget remains
+64MiB. This closes the discarded-control-facts path, not full original IR/SSA
+correspondence: folded raw stages, all raw control paths and protocol/suspension
+internals still lack complete semantic correspondence. Mainline #1 stays OPEN;
+#2/#4/#5 stay OPEN and #3 retains its existing common-model scope.
+
+
+The first frozen combined run exposed a real consumer gap: declaration_value
+form64 kept a mechanical binding in an inactive logical RHS after the completed
+flow no longer supplied its copy facts. Both declaration tests failed their
+existing source-quality assertion; the combined run was interrupted and is not
+acceptance. Operand elision now consumes the canonical logical value equation
+and the joint input domain, using the shared logical-right domain contract.
+It removes only an operand proved not to execute, preserving the complete left
+value/evaluation, GetValue and suppressed NamedEvaluation. No literal, comma,
+producer or sample shape admits this transformation. The printer consumes the
+committed replacement; tests and independent references retain their assertions.
+
+
+Origin projection now covers all omitted owned operands of a committed
+replacement, retiring the Sequence-only printer range path. Retained descendants
+keep their actual ranges; this is origin transport and never semantic recovery.
+The range/quality unit passes. The declaration execution test's old mutation
+assumed the first emitted statement was observable; after dead-definition
+removal it may be an empty lexical declaration. Mutation construction now seeks
+a retained initializer/evaluation deletion rejected by the independent oracle,
+without changing references or quality checks; execution rerun passes. Four
+joint-model production bypasses are caught again. A fifth operand-consumer
+bypass fails the source structural assertion; its initial Node module-loading
+failure is excluded and the corrected invocation retained separately.
+
+
+Final acceptance freezes 20 code/test files and the existing 32-target/65-test
+selection. Build passes (52.07s); the fixed ABC exports (3.01s), with 10 complete /
+9 no-module records and 10 syntax-valid sources byte-identical to rules288.
+All 65 tests pass in 1222.67s, with exact names and no duplicates. Frozen source,
+selection and ABC hashes remain unchanged through build/export/tests. The new
+92 control sources pass 2852 independent comparisons and 5 adverse mutants;
+the original 96 SSA sources retain 2880 comparisons and 4 mutants. Existing
+200/201/400/800 costs, exact/one-short budgets, 64MiB source limits and subprocess
+bounds stay intact. Evidence: build/stage-one/control-completions-final-v2,
+control-paths-focused/mutants-v2 (first four) and mutants-operand. Initial
+interrupted/failed runs and the module-loading error are excluded. No full
+suite, expanded corpus, RSS, benchmark or DFX work is resumed. No new mainline
+is closed: original correspondence (#1), ordinary binding identity (#2), whole
+pass convergence (#4) and the unified milestone (#5) remain OPEN; #3 retains its
+existing common-model scope.

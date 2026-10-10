@@ -7,6 +7,7 @@
 #include "original_flow.h"
 #include "flow_scopes.h"
 #include "cell_access.h"
+#include "truth_domains.h"
 #include <type_traits>
 namespace abcd::source {
 struct FlowPoint { std::uint32_t value = 0; auto operator<=>(const FlowPoint&) const = default; };
@@ -443,6 +444,9 @@ struct RecoveryFlow {
   const OriginalFlow* original=nullptr;
   std::shared_ptr<const FlowScopes> scopes;
   std::vector<analysis::ValueKinds> normal_kinds;
+  // Exact-proposal control domains from the joint solve, never borrowed from
+  // a committed/candidate predecessor. Graph construction clears old facts.
+  std::vector<TruthDomains> normal_truths;
   std::vector<std::optional<FlowPoint>> normal_exits;
   // ExprId-indexed raw-phase bridge. Ordinary/source-only graphs consume their
   // existing native events, properties and completion edges without this copy.
@@ -565,12 +569,14 @@ struct FlowEventEffects {
     const FunctionTree&,const FlowEvent&,FlowEffectInput);
 struct FlowRefinement { std::size_t allocated_bytes=0; std::uint64_t work=0; };
 // Refine a conservative graph's binding effects after initialization proof.
-// Event/definition/reference identities are preserved; only exception edges
-// may disappear. Positive completion-dominance facts therefore remain sound.
+// Event/definition/reference identities are preserved. An exact-projection
+// executable mask may additionally remove proved inactive completions. Never
+// compact edges before the joint initialization/value/provenance solve ends.
 // The supplied summaries must describe this unchanged projection, not a plan
 // mutation. Demand/liveness must be computed after this refinement.
 [[nodiscard]] std::variant<FlowRefinement,TreeStructureError> RefineRecoveryFlowEffects(
     RecoveryFlow&,const FunctionTree&,std::span<const ExpressionEvaluation>,
-    std::span<const std::uint8_t> normal_stores,analysis::SemanticBudget = {});
+    std::span<const std::uint8_t> normal_stores,analysis::SemanticBudget = {},
+    std::span<const std::uint8_t> executable = {});
 }
 #endif

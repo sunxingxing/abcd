@@ -1,6 +1,7 @@
 #include "logical_regions.h"
 #include "evaluation_plan.h"
 #include "tree_checks.h"
+#include "truth_domains.h"
 #include <algorithm>
 
 namespace abcd::source {
@@ -9,10 +10,9 @@ using namespace analysis;
 // ECMA-262 ToBoolean and ?? need these four disjoint language domains. The
 // other domains include all Number/BigInt/string/object/Symbol values; no
 // numeric safety fact or user conversion is inferred from this partition.
-enum class TruthDomain : std::uint8_t { kNull, kUndefined, kFalsy, kTruthy, kCount };
-using TruthMask = std::uint8_t;
-constexpr TruthMask Bit(TruthDomain domain) { return TruthMask{1} << static_cast<unsigned>(domain); }
-constexpr TruthMask kAll = (TruthMask{1} << static_cast<unsigned>(TruthDomain::kCount)) - 1;
+using TruthMask = TruthDomains;
+constexpr TruthMask Bit(TruthDomain domain) { return TruthMask::One(domain); }
+constexpr TruthMask kAll = TruthMask::All();
 constexpr TruthMask kTruthy = Bit(TruthDomain::kTruthy);
 constexpr TruthMask kOther = Bit(TruthDomain::kFalsy) | kTruthy;
 enum class Predicate : std::uint8_t { kCopy, kBoolean, kNot, kNull, kUndefined };
@@ -35,9 +35,9 @@ Truth Apply(const Equation& equation, Truth input) {
     case Predicate::kBoolean: input.boolean_result = true; break;
     case Predicate::kNot: input.mask ^= kAll; input.boolean_result = true; break;
     case Predicate::kNull:
-      input.mask = input.boolean_result ? 0 : Bit(TruthDomain::kNull); input.boolean_result = true; break;
+      input.mask = input.boolean_result ? TruthMask{} : Bit(TruthDomain::kNull); input.boolean_result = true; break;
     case Predicate::kUndefined:
-      input.mask = input.boolean_result ? 0 : Bit(TruthDomain::kUndefined); input.boolean_result = true; break;
+      input.mask = input.boolean_result ? TruthMask{} : Bit(TruthDomain::kUndefined); input.boolean_result = true; break;
   }
   if (equation.inverted) input.mask ^= kAll;
   return input;

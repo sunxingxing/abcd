@@ -2,11 +2,13 @@
 #define ABCD_SOURCE_FLOW_KINDS_H_
 #include "flow_liveness.h"
 #include "flow_value_states.h"
+#include "truth_domains.h"
 namespace abcd::source {
 struct RecoveryExpressionInput;
 struct FlowInitializationProgram;
 struct FlowNormalKinds {
   std::vector<analysis::ValueKinds> expressions;
+  std::vector<TruthDomains> truths;
   std::vector<analysis::ValueKinds> captured_inputs;
   // Present only for the coupled completion solve; indexed by input edges.
   std::vector<std::uint8_t> executable;
@@ -23,7 +25,8 @@ struct FlowNormalKinds {
 // Optional effect facts enable joint executable-completion/value propagation.
 // They belong to this exact graph; the solver owns its changing domain span.
 // Without them this remains the independent fixed-graph domain analysis.
-// Initialization clauses and raw-proof invalidation share edge activation.
+// Initialization clauses, truth/nullish predicates and raw-proof invalidation
+// share edge activation. Truth widening wakes dependents even if kinds do not.
 // Valid raw proofs intersect current domains; withdrawing them replays indexed
 // inputs. Values widen, initialization joins, and executable edges only activate.
 [[nodiscard]] std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
