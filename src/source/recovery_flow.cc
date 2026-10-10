@@ -55,6 +55,9 @@ class FlowBuilder {
   RecoveryFlow Run() {
     result_.scopes.reset();
     result_.original=projection_.original;
+    std::optional<SourceCells> owned_cells;
+    if(!projection_.cells){owned_cells=AnalyzeSourceCells(tree_,budget_);projection_.cells=&*owned_cells;}
+    RequireTree(projection_.cells->owner==&tree_&&projection_.cells->access.size()==tree_.symbols.size(),Error::kOwnership);
     if(result_.original)CheckOriginalFlow(tree_,*result_.original);
     RequireTree(projection_.normal_kinds.empty()||projection_.normal_kinds.size()==tree_.expressions.size(),Error::kOwnership);
     Resize(result_.normal_kinds,projection_.normal_kinds.size());
@@ -236,6 +239,17 @@ class FlowBuilder {
         else result.bindings[i].lifetime=CompletionOnlyLifetime{};
       }
     }
+    // Storage composes identities; immutable read aliases do not manufacture
+    // closed-cell proofs. Any externally reachable canonical member taints its
+    // resolved slot. The canonical producer is shared by current/trial owners.
+    for(std::size_t i=0;i<result.bindings.size();++i){budget_.Step();result.bindings[i].cell_access=projection_.cells->access[i];}
+    for(std::size_t i=0;i<result.bindings.size();++i){
+      budget_.Step();const auto root=Resolve(SymbolId{static_cast<std::uint32_t>(i)});
+      RequireTree(root.value<result.bindings.size(),Error::kBinding);
+      auto& access=result.bindings[root.value].cell_access;
+      access=JoinCellVisibility(*access,projection_.cells->access[i]);
+    }
+    for(auto& binding:result.bindings){budget_.Step();if(binding.MayBeChangedByUserCode())binding.stable_entry=false;}
     for(const auto& definition:result.definitions) {
       budget_.Step();auto& binding=result.bindings[definition.binding.value];
       if(definition.kind==FlowDefinitionKind::kInitializer ||

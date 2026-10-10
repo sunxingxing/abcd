@@ -770,7 +770,7 @@ std::uint64_t Chain(unsigned count,bool conflict,bool reverse,bool emit){
 // Observable roots are current lexical units, never immutable snapshots of a
 // scope site. Exercise ordinary/catch allocation and repeated entry through the
 // same source adapter consumed by printing; references stay outside the engine.
-enum class ScopedForm {kLocal,kCallback,kWrite,kCatch,kCatchExit,kLocalReentry,kCatchReentry,kThrowingUpdate};
+enum class ScopedForm {kLocal,kCallback,kWrite,kCatch,kCatchExit,kLocalReentry,kCatchReentry,kThrowingUpdate,kCapturedCallback};
 std::uint64_t ScopedCopies(ScopedForm form,unsigned count,bool reverse,bool emit){
   Fixture f(Form::kStraight);auto& tree=f.tree;
   const bool caught=form==ScopedForm::kCatch||form==ScopedForm::kCatchExit||form==ScopedForm::kCatchReentry;
@@ -819,6 +819,8 @@ std::uint64_t ScopedCopies(ScopedForm form,unsigned count,bool reverse,bool emit
     roots.push_back(f.Write(4,f.Read(3)));
     for(unsigned i=0;i<count;++i)roots.push_back(f.Block({}));
     if(form==ScopedForm::kCallback)roots.push_back(f.Stmt(ExpressionStmt{f.Call({})}));
+    if(form==ScopedForm::kCapturedCallback){tree.closure_captures={{3}};
+      roots.push_back(f.Stmt(ExpressionStmt{f.Call({f.Expr(FunctionExpr{{1},{0,1}})})}));}
     if(form==ScopedForm::kWrite)roots.push_back(f.Write(3,f.Expr(TreeLiteral{IntegerLiteral{0}})));
     if(form==ScopedForm::kThrowingUpdate){
       const auto body=f.Block({f.Stmt(ExpressionStmt{update(3)})});
@@ -842,17 +844,30 @@ std::uint64_t ScopedCopies(ScopedForm form,unsigned count,bool reverse,bool emit
     Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes-1,bindings.work}))==TreeStructureError::kResourceLimit);
     Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work-1}))==TreeStructureError::kWorkLimit);
   }
-  std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
+  std::ostringstream output;
+  if(form==ScopedForm::kCapturedCallback){
+    FunctionTree child{};child.owner={1};child.callable=CallableKind::kFunction;child.strictness=Strictness::kStrict;
+    child.names={u"current"};child.parameter_scope={0};child.body_scope={1};child.capture_scope=ScopeId{2};child.body={0};
+    child.scopes={{ScopeKind::kParameters,ScopeId{2}},{ScopeKind::kFunctionBody,ScopeId{0}},{ScopeKind::kCaptures,{}}};
+    child.symbols={{{2},{0},BindingKind::kCapture,DeclarationKind::kLet,NameEvidence::kSynthesized,{}}};
+    child.captures={{{0},{tree.owner,{3}}}};child.origins={OriginalSite{{0},{0}}};
+    child.expressions={{AssignmentExpr{SymbolTarget{{0}},ExprId{1}},{0}},{TreeLiteral{IntegerLiteral{0}},{0}}};
+    child.statements={{BlockStmt{{1},0,1},{0}},{ExpressionStmt{ExprId{0}},{0}}};child.children={{1}};
+    ConstructedFamily family;family.root={1};family.members={{std::move(child),{},{}},{tree,{},{}}};
+    Check(std::holds_alternative<PrintedFamilyDraft>(PrintFamilyDraft(family,output)));
+  }else Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
+  if(form==ScopedForm::kCallback)Check(output.str().find("scratch")==std::string::npos);
+  if(form==ScopedForm::kCapturedCallback)Check(output.str().find("scratch")!=std::string::npos);
   if(emit)std::cout<<nlohmann::json{{"form",unsigned(form)},{"count",count},{"reverse",reverse},{"source",output.str()},{"work",bindings.work},{"bytes",bindings.allocated_bytes}}<<'\n';
   return bindings.work;
 }
 int main(int argc,char** argv){
   if(argc>1&&std::string_view(argv[1])=="--units"){
-    for(unsigned form=0;form<=unsigned(ScopedForm::kThrowingUpdate);++form)for(bool reverse:{false,true}){
+    for(unsigned form=0;form<=unsigned(ScopedForm::kCapturedCallback);++form)for(bool reverse:{false,true}){
       std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){
         const auto work=ScopedCopies(ScopedForm(form),count,reverse,true);if(count==800)Check(work<previous*3);previous=work;}}return 0;
   }
-  for(unsigned form=0;form<=unsigned(ScopedForm::kThrowingUpdate);++form)for(bool reverse:{false,true})ScopedCopies(ScopedForm(form),0,reverse,false);
+  for(unsigned form=0;form<=unsigned(ScopedForm::kCapturedCallback);++form)for(bool reverse:{false,true})ScopedCopies(ScopedForm(form),0,reverse,false);
   if(argc>1&&std::string_view(argv[1])=="--chains"){
     for(bool conflict:{false,true})for(bool reverse:{false,true}){
       std::uint64_t previous=0;for(unsigned count:{1U,2U,200U,201U,400U,800U}){

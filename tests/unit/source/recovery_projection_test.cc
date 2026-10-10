@@ -1,6 +1,8 @@
 #include "../../../src/source/recovery_projection.h"
 #include "../../../src/source/snapshot_projection.h"
 #include "../../../src/source/flow_kinds.h"
+#include "../../../src/source/cell_access.h"
+#include "../../../src/source/class_tree.h"
 #include "abcd/source/tree_printer.h"
 #include <nlohmann/json.hpp>
 #include <sstream>
@@ -638,7 +640,7 @@ void ActivationKinds(bool reverse) {
   const auto actual=std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(fixture.tree,projection.flow,live,fixture.Input()));
   Check(actual.expressions[fixture.reads[0].value]==analysis::ValueKinds::Language());
 }
-void ScopedExposedKinds(bool reverse) {
+void ScopedExposedKinds(bool reverse,CellVisibility visibility) {
   Fixture f(1,reverse);f.private_bindings[1]=0;
   f.tree.symbols[1].kind=BindingKind::kLocal;f.tree.symbols[1].temporary.reset();
   // A distinct initialized GetValue separates the store from the observed
@@ -653,6 +655,9 @@ void ScopedExposedKinds(bool reverse) {
   f.plan.omitted.resize(f.tree.statements.size());f.plan.statements.resize(f.tree.statements.size());
   f.original.statements=f.tree.statements.size();f.original.normal_kinds.resize(f.tree.expressions.size());f.original.input_ranges.resize(f.tree.expressions.size());
   auto model=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,f.Projection(),f.Input()));
+  Check(model.flow.bindings[1].cell_access==CellVisibility::kClosed);
+  model.flow.bindings[1].cell_access=visibility;
+  const auto after_callback=visibility==CellVisibility::kClosed?analysis::ValueKinds::Number():analysis::ValueKinds::Language();
   Check(std::holds_alternative<ScopeBindingLifetime>(model.flow.bindings[1].lifetime));
   Check(model.expressions.kinds[f.reads[0].value].IsNumber());
   bool observable=false;
@@ -672,7 +677,7 @@ void ScopedExposedKinds(bool reverse) {
   event.effect=ExpressionEvaluation::kRequired;
   const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(model.flow));
   const auto changed=std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(f.tree,model.flow,live,f.Input()));
-  Check(changed.expressions[f.reads[0].value]==analysis::ValueKinds::Language());
+  Check(changed.expressions[f.reads[0].value]==after_callback);
   event.effect=ExpressionEvaluation::kInert;
   Check(std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(f.tree,model.flow,live,f.Input())).expressions[f.reads[0].value].IsNumber());
   // Independent two-completion counterexample: the same retained operation
@@ -684,12 +689,12 @@ void ScopedExposedKinds(bool reverse) {
   Check(std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(f.tree,model.flow,live,f.Input())).expressions[f.reads[0].value].IsNumber());
   auto& completion=model.flow.edges[*model.flow.events[read->point.value].incoming].completion;
   completion=FlowCompletion::kThrow;
-  Check(std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(f.tree,model.flow,live,f.Input())).expressions[f.reads[0].value]==analysis::ValueKinds::Language());
+  Check(std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(f.tree,model.flow,live,f.Input())).expressions[f.reads[0].value]==after_callback);
   event.effects=SourceEffects{analysis::LanguageEffect::kUserCode,analysis::LanguageEffect::kNone,
       analysis::ExceptionalCompletion::kMayThrow};
   Check(std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(f.tree,model.flow,live,f.Input())).expressions[f.reads[0].value].IsNumber());
   completion=FlowCompletion::kNormal;
-  Check(std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(f.tree,model.flow,live,f.Input())).expressions[f.reads[0].value]==analysis::ValueKinds::Language());
+  Check(std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(f.tree,model.flow,live,f.Input())).expressions[f.reads[0].value]==after_callback);
 }
 std::pair<std::uint64_t,std::size_t> ScopedPureWriteKinds(bool reverse,bool emit=false,unsigned count=1) {
   Fixture f(count,reverse);
@@ -753,6 +758,75 @@ std::pair<std::uint64_t,std::size_t> ScopedPureWriteKinds(bool reverse,bool emit
       {"events",model.flow.events.size()},{"edges",model.flow.edges.size()},{"work",model.work},{"bytes",model.allocated_bytes}}<<'\n';
   }
   return {model.work,model.allocated_bytes};
+}
+// Cell reachability is canonical and independent of write observability,
+// entry-domain certificates and source layout. Current and candidate projections
+// borrow the same unchanged owner; a different owner cannot reuse this proof.
+std::pair<std::uint64_t,std::size_t> CanonicalCells(unsigned count,bool reverse) {
+  Fixture f(count,reverse);
+  for(unsigned i=1;i<f.tree.symbols.size();++i) {
+    f.tree.symbols[i].kind=i%2?BindingKind::kLocal:BindingKind::kCatchParameter;
+    f.tree.symbols[i].temporary.reset();
+    if(i%3==0)f.tree.closure_captures.push_back({i});
+  }
+  const ExprId creation{static_cast<unsigned>(f.tree.expressions.size())};
+  f.tree.expressions.push_back({FunctionExpr{{1},{0,static_cast<unsigned>(f.tree.closure_captures.size())}},{0}});
+  TreeCheckBudget budget({});const auto cells=AnalyzeSourceCells(f.tree,budget);
+  Check(cells.owner==&f.tree&&!cells.mapped_arguments);
+  Check(cells.access[0]==CellVisibility::kClosed);
+  for(unsigned i=1;i<f.tree.symbols.size();++i)
+    Check(cells.access[i]==(i%3==0?CellVisibility::kExternal:CellVisibility::kClosed));
+  Check(cells.Captured(creation,budget).size()==f.tree.closure_captures.size());
+  Check(cells.Captured({0},budget).empty());
+  const auto run=[&](analysis::SemanticBudget allowance) {
+    try {TreeCheckBudget limited(allowance);const auto facts=AnalyzeSourceCells(f.tree,limited);
+      Check(facts.Captured(creation,limited).size()==f.tree.closure_captures.size());
+      Check(facts.Captured({0},limited).empty());return std::optional<TreeStructureError>{};
+    } catch(TreeStructureError error){return std::optional{error};}
+  };
+  const analysis::SemanticBudget exact{budget.Bytes(),budget.Work()};
+  Check(!run(exact));Check(run({exact.bytes-1,exact.work})==TreeStructureError::kResourceLimit);
+  Check(run({exact.bytes,exact.work-1})==TreeStructureError::kWorkLimit);
+  return {budget.Work(),budget.Bytes()};
+}
+void CellAccessContracts(bool reverse) {
+  Fixture f(1,reverse);f.private_bindings[1]=0;
+  auto projection=f.Projection();TreeCheckBudget budget({});
+  const auto closed=AnalyzeSourceCells(f.tree,budget);projection.cells=&closed;
+  auto current=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,projection,f.Input()));
+  Check(current.flow.bindings[1].cell_access==CellVisibility::kClosed);
+  Check(current.flow.bindings[1].exposure==FlowBindingExposure::kObservable);
+  Check(!current.flow.bindings[0].stable_entry); // closure proof cannot grant entry types
+  f.plan.omitted[f.declarations[0].value]=1;
+  const auto trial=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,projection,f.Input()));
+  Check(trial.flow.bindings[1].cell_access==current.flow.bindings[1].cell_access);
+  Check(!trial.initialized_reads[f.reads[0].value]);
+  f.plan.omitted[f.declarations[0].value]=0;
+  Fixture other(1,reverse);auto wrong=other.Projection();wrong.cells=&closed;
+  Check(std::get<TreeStructureError>(PrepareRecoveryProjection(other.tree,wrong,other.Input()))==TreeStructureError::kOwnership);
+  f.tree.closure_captures={{1}};const auto captured=AnalyzeSourceCells(f.tree,budget);
+  projection.cells=&captured;
+  f.plan.storage[1]=SymbolId{0};
+  const auto shared=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,projection,f.Input()));
+  Check(shared.flow.bindings[0].cell_access==CellVisibility::kExternal);
+  Check(shared.flow.bindings[1].cell_access==CellVisibility::kExternal);
+  f.tree.strictness=Strictness::kSloppy;
+  Check(AnalyzeSourceCells(f.tree,budget).access[0]==CellVisibility::kExternal);
+  f.tree.callable=CallableKind::kArrow;
+  Check(AnalyzeSourceCells(f.tree,budget).access[0]==CellVisibility::kClosed);
+  f.tree.callable=CallableKind::kFunction;f.tree.parameters[0].rest=true;
+  Check(AnalyzeSourceCells(f.tree,budget).access[0]==CellVisibility::kClosed);
+  f.tree.expressions.push_back({ClassExpr{std::make_shared<ClassTree>(),{}},{0}});
+  const auto incomplete=AnalyzeSourceCells(f.tree,budget);
+  Check(incomplete.access[0]==CellVisibility::kUnmodeled&&incomplete.access[1]==CellVisibility::kExternal);
+  f.tree.expressions.pop_back();
+  f.tree.recovery_issues.push_back({RecoveryReason::kUnsupportedControl,abc::CodeOffset{1},abc::CodeOffset{2}});
+  Check(AnalyzeSourceCells(f.tree,budget).access[0]==CellVisibility::kUnmodeled);
+  f.tree.symbols[0].kind=BindingKind::kModule;
+  Check(AnalyzeSourceCells(f.tree,budget).access[0]==CellVisibility::kExternal);
+  f.tree.recovery_issues.clear();f.tree.symbols[0].kind=BindingKind::kParameter;
+  f.tree.modules.push_back({{0},{{},{0}},ModuleAccess::kReadOnly});
+  Check(AnalyzeSourceCells(f.tree,budget).access[0]==CellVisibility::kExternal);
 }
 void SourceEffectPhases() {
   using L=analysis::LanguageEffect;
@@ -878,9 +952,22 @@ int main(int argc,char** argv) {
   }
   for(unsigned form=0;form<4;++form){ScopeExitSource(form,0,false,false);ScopeExitSource(form,0,false,false,true);}
   CapturedKinds(false);CapturedKinds(true);ActivationKinds(false);ActivationKinds(true);
-  ScopedExposedKinds(false);ScopedExposedKinds(true);
+  for(const auto visibility:{CellVisibility::kClosed,CellVisibility::kExternal,CellVisibility::kUnmodeled})
+    for(bool reverse:{false,true})ScopedExposedKinds(reverse,visibility);
   ScopedPureWriteKinds(false);ScopedPureWriteKinds(true);
   SourceEffectPhases();
+  CellAccessContracts(false);CellAccessContracts(true);
+  std::pair<std::uint64_t,std::size_t> cells_previous;
+  CanonicalCells(1,false);CanonicalCells(1,true);
+  for(unsigned count:{200U,201U,400U,800U})for(bool reverse:{false,true}) {
+    const auto measured=CanonicalCells(count,reverse);
+    if(!reverse) {
+      Check(!cells_previous.first||measured.first<cells_previous.first*3);
+      Check(!cells_previous.second||measured.second<cells_previous.second*3);
+      cells_previous=measured;
+      std::cout<<"canonical cells count="<<count<<" work="<<measured.first<<" bytes="<<measured.second<<'\n';
+    }
+  }
   std::uint64_t effects_work=0;std::size_t effects_bytes=0;
   for(unsigned count:{200U,201U,400U,800U}) {
     const auto [work,bytes]=ScopedPureWriteKinds(false,false,count);ScopedPureWriteKinds(true,false,count);

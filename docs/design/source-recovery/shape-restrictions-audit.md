@@ -3334,3 +3334,29 @@ ordinary locals because observable-write ownership and external cell access are
 not yet separate facts. Shared cell access/capture analysis must replace this
 proxy for value/copy/trial clients together. Do not expand callback exceptions in
 individual passes or mistake the proxy for a language rule.
+
+### Rules271: retire write-exposure callback proxy through common access
+
+Obligation: actual user code can invalidate a current value/copy only if it can
+reach and change the binding. Observable source writes do not prove that access.
+SourceCells now owns the typed access and creation-capture census, shared by
+current/trial flows. Missing class/control knowledge is an explicit capability
+gap; it does not become a shape admission or closed-cell assertion. Storage roots
+join canonical member reachability, without granting immutable scalar identity.
+
+Copy/type consumers no longer independently use private/observable exposure or
+stable-entry eligibility as external mutation proof. The latter remains a separate
+raw-entry domain certificate. Source recovery removes duplicated class/function
+capture scans and consumes the common index. The old proxy exists only for legacy
+manual graph clients with no explicit access fact; all source adapters publish one.
+No callback opcode sequence, same-block/adjacency/count/name/sample rule is added.
+
+Evidence: closed-local callback now prints a direct return; mutating closure,
+failed write, exited catch and repeated ordinary/catch units retain snapshots.
+Independent executions and production proxy/capture/owner mutants detect errors.
+Tree/prepared bodies remain immutable; plan changes do not mutate canonical facts.
+Captured-unit reconstruction, full original correspondence/trials/convergence and
+milestone acceptance remain open. Frozen final31 build0/fixedABC0/exact63 tests0
+passed with12 code/test hashes, selection and input unchanged; ten complete
+module sources are byte-identical to270. This replaces the callback proxy in
+source decision paths; it does not retire independent write/entry/unit proofs.

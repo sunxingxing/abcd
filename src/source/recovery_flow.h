@@ -6,6 +6,7 @@
 #include "primitive_value.h"
 #include "original_flow.h"
 #include "flow_scopes.h"
+#include "cell_access.h"
 #include <type_traits>
 namespace abcd::source {
 struct FlowPoint { std::uint32_t value = 0; auto operator<=>(const FlowPoint&) const = default; };
@@ -111,6 +112,13 @@ struct FlowBinding {
   // values separately reject body writes; current-copy equality kills at each
   // successful write. Neither analysis grounds local activation identities.
   bool stable_entry=false;
+  // Absence belongs to legacy graph clients. Current/trial source adapters
+  // always publish this fact; it neither permits writes nor grants invariance.
+  std::optional<CellVisibility> cell_access;
+  [[nodiscard]] bool MayBeChangedByUserCode() const {
+    if(cell_access)return *cell_access!=CellVisibility::kClosed;
+    return exposure!=FlowBindingExposure::kPrivate&&!stable_entry;
+  }
   FlowBindingLifetime lifetime=CompletionOnlyLifetime{};
   // First allocation must precede declaration completion. This is an order
   // certificate, never equality of cells across copied loop environments.
@@ -301,6 +309,9 @@ struct LegacyFlowProjection {
   // Borrowed only during construction. Current/trial share the grammar
   // provider; returned flow owns phase points, never this syntax pointer.
   const LoopSyntax* loops=nullptr;
+  // Borrow immutable canonical access/capture facts, not another proposal's
+  // scalar, liveness or initialization product. Returned flow copies access.
+  const SourceCells* cells=nullptr;
   [[nodiscard]] std::optional<PrimitiveId> ReadLiteral(ExprId expression,SymbolId binding) const {
     if(!read_literals.empty()&&read_literals[expression.value])return read_literals[expression.value];
     return literals[binding.value];

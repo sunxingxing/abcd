@@ -3275,3 +3275,56 @@ equivalent transformations, with platform execution explicitly false. The final
 source consumer includes1277 outputs/199508 comparisons/156 mutants and the
 16000 new graph oracle cases. One existing literal_plan kNoop switch warning is
 retained in the final build evidence; no error. No backbone closure is claimed.
+
+### Rules271: canonical external cell access, independent of write ownership
+
+SourceCells is produced once for the unchanged Initializers owner; current and
+trial adapters borrow it and publish only copied scalar access facts. Standalone
+source projections use the same producer, never optimizer-specific syntax rules.
+Closed/External/Unmodeled describe whether outside user code can change a binding.
+Canonical function/class capture edges, live module aliases and sloppy simple
+non-arrow mapped parameters determine access. Incomplete class/control capability
+conservatively widens otherwise closed facts; known external facts remain external.
+Value calls print as indirect calls, so they cannot acquire direct eval; SourceTree
+has no direct-eval/with syntax. Adding such syntax would require updating this
+producer, not creating exceptions in copy/type consumers.
+
+Observable writes, private storage, successful definition domains, raw entry-domain
+certificates and lexical allocation identity remain separate contracts. A closed
+source parameter cannot acquire an entry-domain certificate from access alone.
+Storage projections aggregate canonical member access; read-value aliases cannot
+make a cell closed. CurrentCopies and normal-kind completion transfers consume
+MayBeChangedByUserCode together with the actual completion's UserCode effect.
+Root/carrier lifetime transfer, real writes, initialization, name resolution and
+all independent removal/storage/declaration passes are unchanged.
+
+Retired from the actual source path: observable/private exposure as callback
+mutation proxy, and repeated class/function capture inference in Initializers.
+The absent-access fallback is confined to legacy hand-authored graph contracts;
+source adapters always publish an explicit fact. Captures remain conservative:
+reachability is not read-only proof or full captured-unit reconstruction. Other
+raw IR/trial/lifetime/pass convergence gaps and all five backbone closures remain
+OPEN. SourceCells requires the tree and prepared class bodies to stay immutable
+for its lifetime; recovery-plan mutations only project those canonical facts.
+The existing tree verifier constrains member calls to MemberExpr, while value
+calls retain the printer's indirect-call envelope; names never select this fact.
+
+Evidence before the frozen final:108 emitted scoped sources/5832 executions,
+1289 aggregate outputs/200156 comparisons/157 execution mutants; four production
+mutants build and fail. Owner mismatch, mapped/simple/arrow boundaries, missing
+class/control, live module aliases, storage reachability union, distinct declaration
+initialization, normal/throw phase masks and exact/short budgets are tested.
+200/201/400/800 census work3628/3650/7240/14442 and bytes729/738/1465/2929.
+Frozen31 build0 (196.78s), fixed fresh ABC0 (5.37s), exact63/63 tests0 (971.04s).
+JUnit names exact/no duplicates; all12 frozen code/test hashes, input and selection
+unchanged.19 records still10 complete/0 partial/9 no-module; all10 parse and are
+byte-identical to270. Final1289/200156/157 execution evidence and census/owner/
+budget/phase model checks pass. Existing literal_plan kNoop warning retained; no
+error. Evidence:build/stage-one/cell-access-verification; output:cell-access-final-
+rule271-verified. No closure, device execution or whole-corpus claim.
+
+Rules271 remaining unit-domain gap confirmed in current consumers: available-copy
+roots can use modeled ordinary and loop units, while normal-kind tracked observable
+units still use ScopeBindingLifetime only. Access separation does not close this
+difference. Extend the shared unit transfer/capability model and migrate consumers
+together; do not add a native-for syntax exception or claim complete loop types.

@@ -422,9 +422,10 @@ const unitReferences=[
   function(input,report,flag){let scratch;flag=false;while(true){let current=++input;if(flag)return scratch;scratch=current;flag=true;}},
   function(input,report,flag){let scratch;flag=false;while(true){try{throw ++input;}catch(error){if(flag)return scratch;scratch=error;flag=true;}}},
   function(input,report,flag){let current=input,scratch=current;try{++current;}catch(error){}return scratch;},
+  function(input,report,flag){let current=input;++current;let scratch=current;report(()=>{current=0;});return scratch;},
 ];
 const units=execFileSync(process.argv[2],['--units'],{encoding:'utf8',timeout:60_000,maxBuffer:16*1024*1024}).trim().split('\n').map(JSON.parse);
-assert.equal(units.length,96);
+assert.equal(units.length,108);
 const unitObserve=async(fn,index,mode)=>{
   const outcome=await observe(fn,-1,index,mode,false,'next');
   // A VM-owned TypeError caught as a value has a distinct realm identity. The
@@ -439,15 +440,15 @@ for(const record of units){
     if(node.type==='VariableDeclarator'&&node.id.name==='scratch')scratch=true;
     if(node.type==='ReturnStatement')returns.push(node.argument);
     for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)pending.push(child);}else if(value?.type)pending.push(value);}}
-  if([0,3].includes(record.form)){
+  if([0,1,3].includes(record.form)){
     assert.equal(scratch,false,'safe current-unit copy must reach printing');
-    assert.ok(returns.some(node=>node?.type==='Identifier'&&node.name===(record.form===0?'current':'error')));
+    assert.ok(returns.some(node=>node?.type==='Identifier'&&node.name===(record.form===3?'error':'current')));
   }
-  if([1,2,4,5,6].includes(record.form))assert.equal(scratch,true,'observable snapshot must survive');
+  if([2,4,5,6,8].includes(record.form))assert.equal(scratch,true,'observable snapshot must survive');
   for(let index=0;index<primitives.length+2;++index)for(const mode of ['normal','coercion-throw','report-throw']){
     assert.deepEqual(await unitObserve(fn,index,mode),await unitObserve(unitReferences[record.form],index,mode),JSON.stringify({unit:record.form,count:record.count,reverse:record.reverse,index,mode}));++cases;
   }
-  if(record.count===0&&!record.reverse&&[2,5,6,7].includes(record.form)){
+  if(record.count===0&&!record.reverse&&[2,5,6,7,8].includes(record.form)){
     const site=returns.find(node=>node?.type==='Identifier'&&node.name==='scratch')??returns[0];assert.ok(site);
     const mutant=record.source.slice(0,site.start)+(record.form===6?'error':'current')+record.source.slice(site.end);
     parseJavaScript(mutant);const wrong=vm.runInNewContext(mutant);

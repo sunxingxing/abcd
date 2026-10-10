@@ -61,6 +61,7 @@ class Initializers {
   Initializers(const FunctionTree& tree, const LoopSyntax& loops, const NullishSyntax& nullish,
       TreeCheckBudget& budget,const OriginalFlow* original) : tree_(tree), loops_(loops), nullish_(nullish), budget_(budget), original_(original) {
     if(original_)CheckOriginalFlow(tree_,*original_);
+    cells_=AnalyzeSourceCells(tree_,budget_);
     budget.Array(plan_.statements, tree.statements.size()); budget.Array(plan_.omitted, tree.statements.size());
     budget.Array(plan_.statement_values,tree.statements.size());
     budget.Array(plan_.loop_declarations, tree.statements.size());
@@ -112,9 +113,9 @@ class Initializers {
     IndexLiteralTexts();
     IndexPrimitiveValues();
     IndexValueEquations();
-    for (auto symbol : tree_.closure_captures) { budget_.Step(); uses_[symbol.value].escaped = true; }
+    for(std::size_t i=0;i<uses_.size();++i){budget_.Step();uses_[i].escaped=cells_.access[i]!=CellVisibility::kClosed;}
     for (const auto& alias : tree_.modules) {
-      budget_.Step(); uses_[alias.symbol.value].escaped = true; uses_[alias.symbol.value].module_alias = true;
+      budget_.Step(); uses_[alias.symbol.value].module_alias = true;
     }
     for (const auto& parameter : tree_.parameters) {
       budget_.Step(); if (parameter.initializer) Scan(*parameter.initializer, {}, {});
@@ -244,8 +245,7 @@ class Initializers {
     // Source entry identity is adapted once after capture/signature census.
     // Mapped arguments and unmodeled signature observations cannot ground a
     // stable value. Retained body writes are checked by the common value solver.
-    bool simple=true;for(const auto& parameter:tree_.parameters){budget_.Step();simple&=!parameter.initializer&&!parameter.rest;}
-    mapped_arguments_=tree_.strictness==Strictness::kSloppy&&!IsArrowCallable(tree_.callable)&&simple;
+    mapped_arguments_=cells_.mapped_arguments;
     budget_.Array(stable_entries_,uses_.size());
     for(std::size_t i=0;i<uses_.size();++i){budget_.Step();const auto kind=tree_.symbols[i].kind;
       stable_entries_[i]=!uses_[i].escaped&&!uses_[i].outside_body&&
@@ -729,29 +729,8 @@ class Initializers {
     }
   }
   std::size_t ProjectionCapacity() {
-    // Each expression has at most one direct binding observation. Capture
-    // edges are separate owned inputs: one creation can expose many cells.
-    // Count those edges once; do not cap them by expression count or rescan
-    // captures for each binding. The same bound covers class member families.
-    auto count = tree_.expressions.size();
-    const auto add = [&](std::size_t edges) {
-      RequireTree(edges <= std::numeric_limits<std::size_t>::max() - count, TreeStructureError::kResourceLimit);
-      count += edges;
-    };
-    const auto family = [&](const std::optional<PreparedFamily>& prepared) {
-      if (prepared) {
-        const auto& members = prepared->Family(); add(members.members[members.root.value].tree.captures.size());
-      }
-    };
-    add(tree_.closure_captures.size());
-    for (const auto& expression : tree_.expressions) {
-      budget_.Step(); const auto* created = std::get_if<ClassExpr>(&expression.expression); if (!created) continue;
-      const auto& definition = *created->definition; family(definition.constructor);
-      for (const auto& member : definition.members) { budget_.Step(); family(member); }
-      for (const auto& site : definition.definitions) for (const auto& body : site.bodies) { budget_.Step(); family(body); }
-      if (definition.initializer) add(definition.initializer->tree.captures.size());
-    }
-    return count;
+    RequireTree(cells_.captures.size()<=std::numeric_limits<std::size_t>::max()-tree_.expressions.size(),TreeStructureError::kResourceLimit);
+    return tree_.expressions.size()+cells_.captures.size();
   }
   void ForwardSnapshots() {
     const auto eligible=[&](std::size_t i) {
@@ -983,7 +962,7 @@ class Initializers {
         candidate.omitted,{},{},candidate.statements,private_bindings,
         candidate.storage,candidate.undefined_stores,candidate.declaration_values,candidate.declaration_completions,
         {source_regions_,source_occurrences_,source_bindings,source_shadows_,unique_spellings_,spellings_,name_spellings_,source_allocations_},candidate.read_literals,candidate.transports,transported_reads,candidate.read_bindings,stable_entries_,{},candidate.read_sources,candidate.statement_values,{},original_};
-    projection.loops=&loops_;
+    projection.loops=&loops_;projection.cells=&cells_;
     std::optional<LoopDeclarations> loop_declarations;
     std::optional<LoopEntryProjection> loop_entries;
     std::size_t loop_bytes=0;
@@ -1876,18 +1855,10 @@ class Initializers {
   }
   void Capture(SymbolId symbol, ExprId occurrence, std::optional<StmtId> container,
       std::optional<StmtId> projector) {
-    uses_[symbol.value].escaped = true;
     // Creation is the earliest possible observation through this live cell.
     // Never infer read-only from the parent's lack of writes; child calls may
     // mutate it. Counting creation before RHS completion protects TDZ/throws.
     Observe(symbol, occurrence, container, projector);
-  }
-  void Captures(const PreparedFamily& prepared, ExprId occurrence,
-      std::optional<StmtId> container, std::optional<StmtId> projector) {
-    const auto& family = prepared.Family(); const auto& root = family.members[family.root.value].tree;
-    for (const auto& alias : root.captures) {
-      budget_.Step(); if (alias.target.owner == tree_.owner) Capture(alias.target.symbol, occurrence, container, projector);
-    }
   }
   void Scan(ExprId root, std::optional<StmtId> container, std::optional<StmtId> projector) {
     std::size_t pending = 1; expressions_[0] = {root};
@@ -1909,24 +1880,10 @@ class Initializers {
         // RHS completion still precedes the original identifier PutValue.
         std::reverse(expressions_.begin()+first_child,expressions_.begin()+pending);
         if (const auto* read = std::get_if<SymbolExpr>(&node)) Observe(read->symbol, visit.expression, container, projector);
-        if (const auto* created = std::get_if<FunctionExpr>(&node)) {
-          for (auto symbol : std::span<const SymbolId>(tree_.closure_captures).subspan(created->captures.first, created->captures.count)) {
-            budget_.Step(); Capture(symbol, visit.expression, container, projector);
-          }
-        }
+        for(const auto& capture:cells_.Captured(visit.expression,budget_))
+          Capture(capture.binding,visit.expression,container,projector);
         if (const auto* update = std::get_if<UpdateExpr>(&node)) {
           Observe(update->symbol, visit.expression, container, projector);
-        }
-        if (const auto* created = std::get_if<ClassExpr>(&node)) {
-          const auto& definition = *created->definition;
-          if (definition.constructor) Captures(*definition.constructor, visit.expression, container, projector);
-          for (const auto& member : definition.members) { budget_.Step(); if (member) Captures(*member, visit.expression, container, projector); }
-          for (const auto& site : definition.definitions) for (const auto& body : site.bodies) {
-            budget_.Step(); if (body) Captures(*body, visit.expression, container, projector);
-          }
-          if (definition.initializer) for (const auto& alias : definition.initializer->tree.captures) {
-            budget_.Step(); if (alias.target.owner == tree_.owner) Capture(alias.target.symbol, visit.expression, container, projector);
-          }
         }
       } else {
         RequireTree(completion_count_ < completions_.size(), TreeStructureError::kOwnership);
@@ -2014,6 +1971,7 @@ class Initializers {
   std::vector<std::optional<PrimitiveId>> expression_primitives_;
   PrimitiveId undefined_value_;
   std::vector<FlowValueEquation> value_equations_;
+  SourceCells cells_;
   std::vector<std::uint8_t> stable_entries_;
   bool mapped_arguments_=false;
   std::vector<std::optional<StmtId>> expression_owners_;

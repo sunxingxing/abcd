@@ -4205,3 +4205,33 @@ work 269889/270556/508185/995033; bytes
 geometric checks and exact/one-short byte/work admission. These are component
 cost facts, not process RSS or a resumed benchmark. The 1G full-process contract
 is not newly verified. No allowance, quota or target selection was increased.
+
+### Canonical cell access and capture census (rules271)
+
+The source adapter owns external-access facts independently of write observability,
+normal scalar values, initialization and cell allocation. This is an in-house typed
+lexical/module/capture census over the existing verified source representation;
+no external implementation/dependency or license change. Source tree and prepared
+class bodies must remain immutable while borrowed facts are live. Maintained in
+cell_access and consumed by recovery_flow, copy/kind analysis and Initializers.
+Direct-eval/with syntax is outside this representation; new syntax must extend the
+common producer before supplying a closed access fact.
+
+Let B be bindings, E expressions, P parameters/module aliases, H inspected child
+capture records and C actual owner capture edges. Two checked count/fill visits
+cost O(B+E+P+H); sorting the creation index costs O(C log(C+1)); retained storage
+O(B+C). Each source creation query costs O(log(C+1)+matches), with charged
+comparisons. Storage access aggregation visits B members through the already
+flattened constant-depth projection. It neither performs per-variable CFG walks
+nor constructs all binding pairs. These bounds cover the new producer only;
+whole-flow sparse facts and pass costs retain their separately documented bounds.
+All arrays, capacity, sorting/query comparisons and scans charge existing byte/work
+allowances. Missing knowledge widens to Unmodeled, never silently drops semantics.
+
+Canonical200/201/400/800 work3628/3650/7240/14442, bytes729/738/1465/2929;
+reverse arenas and exact/one-short budgets pass. These are component admission
+measurements, not paused RSS/benchmark/full-corpus verification. Closedness does
+not license write deletion, storage merging, raw signature types or cell identity.
+Frozen final31 build0 (196.78s), fixedABC0 (5.37s), exact63 tests0 (971.04s),
+with unchanged12 code/test hashes, selection and input; ten module outputs parse
+and equal270. All allowances unchanged. No process-RSS or global cost closure.

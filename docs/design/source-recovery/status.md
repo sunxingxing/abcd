@@ -36,6 +36,50 @@
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
 
+### 2026-10-10：规则271，共同单元访问事实替代回调失效代理
+
+- 在未修改的源码 owner 上一次生成 SourceCells：Closed、External、
+  Unmodeled 三态访问事实和按 creation 索引的捕获边。函数/类捕获、
+  module live alias 与 mapped arguments 在同一生产者中适配；类 body
+  或控制能力缺失保守发布 Unmodeled。当前和 trial 投影借用同一 owner，
+  返回图只保存标量事实；外部 owner 的证明拒绝复用。
+- Copy 与 normal-kind 的实际 UserCode completion 失效消费同一事实，
+  不再以 observable write/private storage 代替外部改写能力。初始化
+  恢复中重复的函数/类捕获扫描退出，改读共同 capture index。
+  storage 投影聚合成员外部可达性，read-value alias 不制造 Closed 证明。
+  旧代理仅留在无 source adapter 的 legacy 手工图缺省契约中。
+- Closed 不授予 raw 参数入口域、immutable value、删除写入、共享存储或
+  cell identity 许可。原初始化、成功写入、生命期、名字和独立 DCE/存储/
+  声明 pass 继续负责各自义务。源码树及 prepared class body 在共同事实
+  存活期间不变；plan revision 仅投影，不能写回分析。
+- 先前 RED 确认回调后的安全 local copy 未恢复；模型/源码定向3项已
+  通过（59.88s）。108份 local/catch 输出在独立参考下执行5832次，
+  包括能改写局部值的闭包、两类重复进入、catch退出和失败 update；
+  新增闭包快照执行突变与其他反例均检测到差异。现有综合消费者为
+  1289份源码/200156次比较/157个执行突变。四个生产突变均 build0/
+  test-6，分别退回 copy/type 旧代理、遗漏捕获和接受 foreign owner；
+  原文件全部恢复。定向证据不冒充后续冻结验收。
+- canonical census/capture 查询的200/201/400/800 work为3628/3650/
+  7240/14442，bytes为729/738/1465/2929；反向 arena、exact/one-short
+  byte/work 和候选改变初始化而复用访问事实均通过。所有额度保持。
+- 最终冻结31目标构建0（196.78s），fresh fixed ABC0
+  （5.37s），63/63项全部通过（971.04s），终态0；JUnit
+  exact names63/63，无重复。12份冻结代码/测试哈希、清单及ABC SHA
+  导出前/后/测试后不变。19 records仍为10 complete/0 partial/9 no-module，
+  10份语法全部通过，源码逐字节等同270。最终共同模型/反例/执行证据
+  与定向结果一致，综合1289/200156/157在冻结验收内通过。
+  ProgressBar record88场景/570异常/114 import swaps/15突变/2等价变化
+  通过；platformExecution=false，未冒充设备执行或完整阶段一验收。
+  既有 literal_plan.cc:59 kNoop switch warning一条保留，无error。
+  证据根 build/stage-one/cell-access-verification，fresh输出
+  build/stage-one/cell-access-final-rule271-verified。
+- 五项主干仍未关闭。下一工作继续完整 raw phase/protocol/action 对应、
+  普通/捕获单元身份、其余 trial 和依赖收敛，最后做里程碑终验；其他
+  优化和既定暂停范围保持，Goal active。
+  已确认具体缺口：copy已消费 ordinary/loop 单元，normal-kind 的
+  observable 跟踪仍仅 ScopeBindingLifetime；需要共同单元能力迁移，
+  不能以本轮访问事实宣布完整循环类型或单元闭环。
+
 ### 2026-10-10：规则270，普通 local/catch 当前单元复制接入共同分析
 
 - 主干第2项的实际读取恢复消费者现在支持 observable scoped root。

@@ -80,7 +80,7 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
       if(found==live.live_in.end()||*found!=key)return {};
       return NodeId{static_cast<std::uint32_t>(expressions+(found-live.live_in.begin()))};
     };
-    const auto closed_binding=[&](SymbolId binding) {
+    const auto entry_domain=[&](SymbolId binding) {
       RequireTree(binding.value<flow.bindings.size(),Error::kOwnership);
       const auto& source=flow.bindings[binding.value];
       return source.exposure==FlowBindingExposure::kPrivate||source.stable_entry;
@@ -88,8 +88,8 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
     const auto tracked_binding=[&](SymbolId binding) {
       // Value tracking is not permission to erase observable writes. Exact
       // source allocation/exit transfers identify a current scoped unit;
-      // exposed units additionally lose precision at required evaluations.
-      return closed_binding(binding)||std::holds_alternative<ScopeBindingLifetime>(flow.bindings[binding.value].lifetime);
+      // externally mutable units lose precision at actual user-code completions.
+      return entry_domain(binding)||std::holds_alternative<ScopeBindingLifetime>(flow.bindings[binding.value].lifetime);
     };
     std::vector<std::optional<SymbolId>> writes;budget.Array(writes,flow.events.size());
     for(const auto& reference:flow.references) {
@@ -218,7 +218,7 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
           // The actual completion's user effects can replace exposed units.
           // Retained guards, allocation and other declarative writes cannot.
           // Successful stores above independently generate their new value.
-          if(!closed_binding(fact.binding)&&prior.MayInvokeUserCode(flow.edges[*edge].completion)) {
+          if(flow.bindings[fact.binding.value].MayBeChangedByUserCode()&&prior.MayInvokeUserCode(flow.edges[*edge].completion)) {
             constant(target,K::Language());invalidate(target);continue;
           }
           if(writes[predecessor.value]==fact.binding){constant(target,K::Language());invalidate(target);continue;}

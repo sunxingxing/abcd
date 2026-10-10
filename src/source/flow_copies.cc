@@ -101,8 +101,7 @@ std::variant<FlowCopies,TreeStructureError> AnalyzeFlowCopies(
       // writes kill an older relation even when the write itself later dies.
       const bool generated=event.definition&&flow.definitions[event.definition->value].binding==target;
       if(!generated&&writes[edge.from.value]==root)return unknown;
-      if(!flow.bindings[root.value].stable_entry&&
-          flow.bindings[root.value].exposure!=FlowBindingExposure::kPrivate&&
+      if(flow.bindings[root.value].MayBeChangedByUserCode()&&
           event.MayInvokeUserCode(edge.completion))return unknown;
       return value;
     };

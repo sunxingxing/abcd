@@ -918,3 +918,15 @@ independent demand cleanup, and its full paired record test passes. No optional
 rule changes or paused scope resumes. Shared external cell access versus ordinary
 write observability is a remaining common fact gap, not a callback exception to
 add in individual optimizers. All five backbone deliveries remain OPEN/Goal active.
+
+Rules271 backbone substep: SourceCells supplies canonical external access and
+creation-capture facts to current/trial source projections. Copy/kind callback
+transfers consume these independently of observable writes/private storage and
+raw entry-domain certificates. Initializers retires duplicate capture inference;
+storage joins reachability, not scalar identity. Missing class/control remains
+Unmodeled. Scoped closed callback, mutating closure and owner/budget/phase/module/
+mapped-arguments tests and four production mutants pass. Frozen31 build0/
+fixedABC0/exact63 tests0 (196.78/5.37/971.04s);12 code/test hashes, selection
+and input unchanged, all ten modules parse and equal270. All five backbone
+closures remain OPEN. After this coherent pass
+work, continue the backbone, with no other optimization or paused scope resumed.
