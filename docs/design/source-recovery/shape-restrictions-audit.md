@@ -3473,3 +3473,14 @@ query retains its executable completion guard. Binding writes, allocation and
 exposure come from the common flow/CellAccess adapter. No self-copy, sample,
 source-only, same-block or fixed-count admission was added. Full per-event value
 equations remain the independent oracle, including arbitrary graph layouts.
+
+
+Rules281 original-result correspondence: retire RecoveryFlow's assumption that
+an operation's source expression anchor denotes its result. The operand verifier
+now publishes a separate result_expression at the value-equivalence proof site.
+Combined truth/control sites retain coverage without lending their Boolean domain
+to a selected object/value. Recovery consumes this typed identity and adds no
+logical-operator, opcode-list, same-block, adjacency or graph-shape admission.
+Decoded profile and reversed-arena tests cover the false certificate; independent
+source execution retains discarded coercion and its exceptions/callbacks. Full
+raw phase/action/effect correspondence is still an explicit mainline gap.

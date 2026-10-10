@@ -4466,3 +4466,12 @@ passes in 83.73 seconds. Fixed ABC output and all 28 frozen file hashes remain
 unchanged during acceptance. Evidence: joint-projection-verification/final-attempt-5.
 This closes trial-provider precision within the common model, not global pass
 scheduling, complete original correspondence or process-RSS acceptance.
+
+
+Original result correspondence adds one optional ExprId per retained operation,
+charged by the existing OriginalOperation array admission. Operand verification
+publishes it during its existing O(operations + operands) traversal. Recovery's
+existing O(operations) index consumes it instead of inferring value identity from
+source coverage. No graph walk, sort, new optimizer admission or second semantic
+interpreter is introduced. Control composition keeps its independent truth and
+coverage proofs without certifying source-result equality.

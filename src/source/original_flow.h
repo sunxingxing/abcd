@@ -37,6 +37,10 @@ struct OriginalOperation {
   analysis::OriginId origin;
   std::optional<ExprId> expression;
   std::optional<StmtId> statement;
+  // Published by operand verification only when the source value equals this
+  // result. A shared origin/control anchor is not a result identity: native
+  // selections can cover a Boolean conversion while returning an object.
+  std::optional<ExprId> result_expression;
 };
 // Operand evidence stays occurrence-specific. Never join it with operation
 // result domains: predicates and completion operands can share source anchors.

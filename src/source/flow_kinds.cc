@@ -78,7 +78,7 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
     for(std::size_t i=0;i<flow.original_results.size();++i) {
       budget.Step();const auto& occurrence=flow.original_results[i];if(!occurrence)continue;
       const auto& operation=input.original->operations[i];
-      RequireTree(operation.result&&operation.expression==occurrence->expression&&
+      RequireTree(operation.result&&operation.result_expression==occurrence->expression&&
           occurrence->expression.value<expressions&&occurrence->entry.value<events&&occurrence->normal.value<events&&
           operation.result->value<input.original->values.size(),Error::kOwnership);
       auto& kinds=original_results[occurrence->expression.value];

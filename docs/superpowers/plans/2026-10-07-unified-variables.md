@@ -1093,3 +1093,17 @@ Delivery status: #3 CLOSED within the common model; #1 original semantics,
 #5 milestone acceptance OPEN. Goal active; next work is #1's complete raw semantic
 correspondence, retaining complex-finally/closure capability gaps under their
 owning models. No full suite/corpus/RSS work or unrelated optimization resumed.
+
+
+Rules281 continues #1 and fixes a demonstrated false raw result correspondence:
+ToBoolean's source coverage can be the whole native logical selection, whose
+result is not Boolean. Operand verification now publishes result_expression at
+the checked value-equivalence site; RecoveryFlow/joint domains consume it and
+retire inference from the coverage anchor. Decoded AND/OR cases were RED134.
+Final three relevant targets build;3/3 selected tests pass11.22s, including12
+new sources/360 independent comparisons/6 adverse mutants, three dynamic profiles
+and reversed arenas. FixedABC0/3.09s,10 sources parse and match280,19records remain
+10complete/9no-module. Input/frozen hashes unchanged. No whole63 or broader suite
+claim for281. Evidence:build/stage-one/original-result-verification.
+#1 stays OPEN: effect/action/exceptional-phase/region projection is not delivered
+by result identity. Continue the same mainline; Goal active and pauses unchanged.

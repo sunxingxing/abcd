@@ -171,8 +171,8 @@ class FlowBuilder {
     for(std::size_t i=0;i<result.original_results.size();++i) {
       budget_.Step();auto& occurrence=result.original_results[i];occurrence.reset();
       const auto& operation=result.original->operations[i];
-      if(operation.life!=analysis::ValueLife::kLive||!operation.result||!operation.expression)continue;
-      const auto expression=*operation.expression;
+      if(operation.life!=analysis::ValueLife::kLive||!operation.result||!operation.result_expression)continue;
+      const auto expression=*operation.result_expression;
       RequireTree(expression.value<result.normal_exits.size(),Error::kOwnership);
       if(const auto normal=result.normal_exits[expression.value])
         occurrence=FlowOriginalResult{expression,expressions_[expression.value],*normal};

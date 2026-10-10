@@ -508,3 +508,24 @@ for(const row of closureSources) {
 }
 assert.equal(closureSources.length,16);
 console.log(`${closureSources.length} completion-closure sources / ${closureComparisons} comparisons / ${closureMutants} adverse mutants`);
+
+
+const selectionSources=execFileSync(process.argv[2],['--original-selection'],{encoding:'utf8'}).trim().split('\n').map(JSON.parse);
+let selectionComparisons=0,selectionMutants=0;
+for(const row of selectionSources) {
+  const reference=row.conjunction?function(input){+(input&&[]);return 7;}:
+    function(input){+(input||[]);return 7;};
+  const source='('+row.source+')',actual=Function('return '+source)();
+  for(const factory of factories){assert.deepEqual(outcome(actual,factory),outcome(reference,factory));++selectionComparisons;}
+  const conversion=nodes(parseJavaScript(source)).find(node=>node.type==='UnaryExpression'&&node.operator==='+');
+  assert.ok(conversion,'selection is not the Boolean value of its covered truth conversion');
+  const mutant=Function('return '+source.slice(0,conversion.start)+'0'+source.slice(conversion.end))();
+  // Object coercion is observable on the retained OR arm; both orientations
+  // retain BigInt/Symbol failures when their selected input reaches ToNumber.
+  if(!row.conjunction) {
+    assert.ok(factories.some(factory=>!isDeepStrictEqual(outcome(mutant,factory),outcome(reference,factory))));
+    ++selectionMutants;
+  }
+}
+assert.equal(selectionSources.length,12);
+console.log(`${selectionSources.length} original selection-result sources / ${selectionComparisons} comparisons / ${selectionMutants} adverse mutants`);

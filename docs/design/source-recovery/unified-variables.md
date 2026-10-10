@@ -3691,3 +3691,22 @@ Original semantic correspondence, ordinary binding identity, whole-pass converge
 and the unified-variable milestone remain separate OPEN deliveries. Next work
 returns to complete raw IR/SSA correspondence; no presentation optimization is
 unblocked by this acceptance.
+
+
+### Original result identity is distinct from source coverage
+
+OriginalOperation now retains result_expression separately from expression, its
+source coverage/control anchor. CheckTreeOperands publishes result identity only
+at its checked value-equivalence boundary. Its existing combined-control proofs
+verify truth/selection ownership without certifying that the native selection
+returns the Boolean produced by the covered ToBoolean operation. RecoveryFlow
+and the joint value solver consume result_expression; neither inspects logical
+syntax or adds a producer/shape whitelist to repair the distinction.
+
+The decoded `arg || []` and `arg && []` regression exposed the old false result
+certificate. It covers three pinned dynamic profiles and reversed expression
+arenas. Independent execution adds a discarded numeric conversion, preserving
+coercion callbacks and failures even when the numeric result is unused. Existing
+successful-result range and trial invalidation tests keep direct result precision.
+This is a corrected consumed raw identity relation, not completion of raw action,
+effect, exceptional-phase and region correspondence. Mainline #1 remains OPEN.

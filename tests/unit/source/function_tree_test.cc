@@ -20,6 +20,8 @@
 #include "../../../src/source/flow_kinds.h"
 #include "../../../src/source/exception_tree.h"
 #include "../../../src/analysis/phased_value_import.h"
+#include "abcd/analysis/value_import.h"
+#include "abcd/analysis/value_simplify.h"
 #include "../../support/analysis/ssa_fixture.h"
 
 namespace {
@@ -131,7 +133,7 @@ class Fixture {
       } else if constexpr(std::is_same_v<T,AssignmentExpr>)value.value=expression(value.value);
       else if constexpr(std::is_same_v<T,ConditionalExpr>) {
         value.condition=expression(value.condition);value.consequent=expression(value.consequent);value.alternate=expression(value.alternate);
-      } else Check((std::is_same_v<T,TreeLiteral>||std::is_same_v<T,SymbolExpr>));
+      } else Check((std::is_same_v<T,TreeLiteral>||std::is_same_v<T,SymbolExpr>||std::is_same_v<T,EmptyArrayExpr>));
     },node.expression);
     for(auto& node:tree.statements)std::visit([&](auto& value) {
       using T=std::decay_t<decltype(value)>;
@@ -162,6 +164,51 @@ class Fixture {
   analysis::ValueProgram graph;
   std::vector<ExpressionConstant> constants;
 };
+// A shared source anchor is not the value of every operation it covers.
+// ToBoolean controls selection; its Boolean result is not the selected object.
+void OriginalSelectionResults(bool emit=false) {
+  using namespace analysis;
+  for(const auto profile:{abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301})
+  for(bool conjunction:{false,true})for(bool reverse:{false,true}) {
+    const auto body=test::Body({0x60,2,0x61,1,0xfb,0x13,0,
+        static_cast<std::uint8_t>(conjunction?0x4f:0x51),6,
+        0x05,0,0x4d,4,0x60,1,0x61,2,0x60,2,
+        static_cast<std::uint8_t>(abc::Opcode::kTONUMBER_IMM8),0,0x62,7,0,0,0,0x64});
+    const auto semantic=std::get<SemanticMethod>(BuildSemanticMethod(body,profile,3));
+    const auto proof=std::get<SemanticProof>(VerifySemanticSource(body,semantic,2,1));
+    const auto frame=std::get<abc::FrameLayout>(abc::BuildFrameLayout(2,1,{false,false,false,false}));
+    Fixture fixture;fixture.callable=CallableKind::kFunction;
+    fixture.graph=std::get<ValueProgram>(ImportNormalValues(body,semantic,proof,frame));
+    Check(!std::holds_alternative<ValueSimplifyError>(SimplifyValues(fixture.graph,fixture.graph.revision)));
+    fixture.constants.resize(fixture.graph.ops.size());
+    auto built=std::get<ConstructedFunction>(fixture.Build());
+    if(reverse)fixture.ReverseArenas(built);
+    const auto& tree=built.tree;const auto& original=*built.flow->original;
+    BindingInitializers plan;const auto b=tree.symbols.size(),x=tree.expressions.size(),st=tree.statements.size();
+    plan.aliases.resize(b);plan.literals.resize(b);plan.storage.resize(b);plan.read_bindings.resize(b);
+    plan.read_sources.resize(x);plan.read_literals.resize(x);plan.replacements.resize(x);plan.transports.resize(x);
+    plan.omitted.resize(st);plan.statements.resize(st);
+    std::vector<FlowValueEquation> equations(x);std::vector<ExprId> order;
+    for(unsigned i=0;i<x;++i){order.push_back({i});if(const auto* read=std::get_if<SymbolExpr>(&tree.expressions[i].expression))equations[i]=FlowBindingValue{read->symbol};}
+    std::vector<std::uint8_t> private_bindings(b),stable(b,1);
+    LegacyFlowProjection projection{plan.aliases,plan.literals,plan.replacements,plan.omitted,{},{},plan.statements,private_bindings};
+    projection.stable_entries=stable;
+    const auto model=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,projection,{plan,equations,order,&original}));
+    bool selected=false;
+    for(unsigned i=0;i<built.flow->logical_operations.size();++i)if(built.flow->logical_operations[i]&&original.operations[i].result) {
+      selected=true;
+      Check(!model.flow.original_results[i]);
+      Check(!original.operations[i].result_expression);
+    }
+    Check(selected);
+    if(emit) {
+      std::ostringstream output;
+      Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output,{}, {},nullptr,&original)));
+      std::cout<<nlohmann::json{{"conjunction",conjunction},{"reverse",reverse},{"source",output.str()}}<<'\n';
+    }
+  }
+}
+
 // Both checked SSA and source ToNumber establish Number through the common
 // provider. A plain copy establishes neither; layout cannot choose the result.
 void OriginalNumericSnapshots(bool emit=false,unsigned copies=0,bool reverse=false,bool split=false,bool numeric=true,bool arena=false) {
@@ -1621,6 +1668,7 @@ void RetainedReceiverTrees() {
 }
 }  // namespace
 int main(int argc,char** argv) {
+  if(argc==2&&std::string_view(argv[1])=="--original-selection"){OriginalSelectionResults(true);return 0;}
   if(argc==2&&std::string_view(argv[1])=="--catch") {
     for(unsigned form=0;form<5;++form)for(bool split:{false,true})for(bool reallocated:{false,true})
       for(unsigned copies:{0U,1U})OriginalCatchValues(true,form,copies,split,reallocated);
@@ -1671,6 +1719,7 @@ int main(int argc,char** argv) {
     Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(tree)));
   }
   for(bool reverse:{false,true})for(bool split:{false,true})OriginalSuccessfulDomains(1,reverse,split,false,false,false,true);
+  OriginalSelectionResults();
   OriginalNumericSnapshots();
   for(const unsigned copies:{0U,1U,200U,201U})
     for(const bool reverse:{false,true})for(const bool split:{false,true})OriginalSuccessfulDomains(copies,reverse,split);

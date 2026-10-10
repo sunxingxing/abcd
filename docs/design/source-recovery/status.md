@@ -38,6 +38,30 @@
 这五项是主干交付闭环，不以局部规则或单项测试代替；第3项的关闭依据见下，
 其余四项不随之关闭。下一主干是完整原始IR/SSA语义接入，既定暂停事项保持。
 
+### 2026-10-10：规则281，纠正原始结果与源码覆盖的身份混淆
+
+- 推进第1项时，真实解码的逻辑选择暴露错误对应：原始ToBoolean与branch
+  共用逻辑表达式源码位置，旧恢复层却把Boolean结果当成整个选择的结果。
+  已观察函数树断言RED（退出134）。这不是要求同块或某种指令序列的理由。
+- CheckTreeOperands在既有值等价验证处发布独立result_expression；覆盖位置
+  expression继续承担来源/控制对应。RecoveryFlow及共同值域求解只消费
+  显式结果对应，不再从覆盖位置推断结果身份。控制组合保留原验证义务，
+  不新增恢复端语法/opcode名单或局部布局准入。额外空间每操作一个optional
+  ExprId，由已有数组预算计入，遍历维持既有复杂度。
+- 最终abc_structure/function_tree_test/recovery_projection_test构建通过。
+  相关3/3 CTests通过（11.22s），新增12源码/360独立行为比较/6反例，
+  覆盖三个动态profile、AND/OR、源码arena反转；既有成功结果/试算失效及
+  200/201/400/800检查同次通过。扩展测试开发中曾遗漏生成器命令入口及
+  函数fixture的callable设置，均已修正；不把那些失败记录计为通过。
+- 冻结固定ABC退出0（3.09s），19 records仍10 complete/9 no-module，
+  十份源码语法通过且逐字节等同280。输入SHA及冻结文件未变。
+  证据：build/stage-one/original-result-verification；RED日志为
+  build/stage-one/original-result-red.log。最终构建仅见既有literal_plan.cc:59
+  的kNoop switch警告。本轮没有重跑完整63选集，不能沿用280的结果作281证明。
+- **第1项仍未关闭**：此处退出了一条错误身份推断；原始操作效果、异常阶段、
+  区域与源码行动的完整对应尚未实现。五项状态仍为第3项关闭、其余开放，
+  Goal active。继续这项主干，不转回表现层优化或扩大暂停的验证范围。
+
 ### 2026-10-10：规则280终验通过，关闭试算精度交付
 
 - 第五次冻结验收：31目标构建0（44.38s），固定ABC0（3.15s），

@@ -598,6 +598,7 @@ class OperandCheck {
           throw Error::kUnsupportedOperation;
         }
       }, op.operation);
+      if(op.result)original_.operations[i].result_expression=expression;
     }
     RequireMeaning(next_function == evaluation_.functions.size(), Error::kOperand);
     RequireMeaning(next_module == evaluation_.modules.size(), Error::kOperand);

@@ -1161,7 +1161,7 @@ std::pair<std::uint64_t,std::size_t> RawProjectionClosure(bool changed,RawClosur
   f.original.statements=s;f.original.bindings=b;f.original.input_ranges.resize(e);
   f.original.values.push_back({analysis::EntryDefinition{analysis::ParameterEntry{0}},analysis::ValueKinds::Language()});
   f.original.values.push_back({analysis::OpResult{{0},{}},analysis::ValueKinds::FiniteNumber()});
-  f.original.operations.push_back({{0},{0},0,analysis::ValueId{1},analysis::LanguageEffect::kNone,analysis::LanguageEffect::kNone,analysis::ExceptionalCompletion::kImpossible,analysis::ValueLife::kLive,{0},result,{}});
+  f.original.operations.push_back({{0},{0},0,analysis::ValueId{1},analysis::LanguageEffect::kNone,analysis::LanguageEffect::kNone,analysis::ExceptionalCompletion::kImpossible,analysis::ValueLife::kLive,{0},result,{},result});
   f.original.values.push_back({analysis::CatchDefinition{{0}},analysis::ValueKinds::FiniteNumber()});
   f.original.catches.resize(b);f.original.catches[2]=OriginalCatchBinding{{2},{0},handler};
   if(reverse) {
@@ -1176,7 +1176,7 @@ std::pair<std::uint64_t,std::size_t> RawProjectionClosure(bool changed,RawClosur
     },item.statement);
     for(auto& id:f.order)id=map(id);
     std::reverse(t.expressions.begin(),t.expressions.end());std::reverse(f.equations.begin(),f.equations.end());
-    std::reverse(f.plan.read_sources.begin(),f.plan.read_sources.end());result=map(result);caught_read=map(caught_read);f.original.operations[0].expression=result;
+    std::reverse(f.plan.read_sources.begin(),f.plan.read_sources.end());result=map(result);caught_read=map(caught_read);f.original.operations[0].expression=result;f.original.operations[0].result_expression=result;
   }
   std::vector<std::uint8_t> stable{1,0,0};auto projection=f.Projection();projection.stable_entries=stable;
   Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(t)));
@@ -1250,7 +1250,7 @@ void RawConditionalClosure(bool reverse) {
     for(auto& id:f.order)id.value=3-id.value;
     result={0};std::get<ReturnStmt>(t.statements[1].statement).value=result;
   }
-  f.original.operations.push_back({{0},{0},0,analysis::ValueId{1},analysis::LanguageEffect::kNone,analysis::LanguageEffect::kNone,analysis::ExceptionalCompletion::kImpossible,analysis::ValueLife::kLive,{0},result,{}});
+  f.original.operations.push_back({{0},{0},0,analysis::ValueId{1},analysis::LanguageEffect::kNone,analysis::LanguageEffect::kNone,analysis::ExceptionalCompletion::kImpossible,analysis::ValueLife::kLive,{0},result,{},result});
   std::vector<std::uint8_t> stable{1};auto projection=f.Projection();projection.stable_entries=stable;
   Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(t)));
   const auto model=std::get<RecoveryProjection>(PrepareRecoveryProjection(t,projection,f.Input()));
