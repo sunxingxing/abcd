@@ -1028,3 +1028,10 @@ unchanged; all ten sources parse and are byte-identical to276. Build has no
 warning/error. Evidence:build/stage-one/pass-prerequisites-verification.
 Five closures OPEN; this completes migration of existing prerequisite ownership,
 not full opportunity convergence. Continue the backbone, not unrelated optimization.
+
+
+Raw correspondence cleanup: remove OriginalFlow::normal_kinds and its result/input
+join, which has no production consumer after shared projected domains. Preserve
+input identity checks and migrate tests to occurrence-specific raw evidence.
+Current-projection domains and successful-definition proofs remain authoritative.
+Five backbone closures remain OPEN; full raw phase/action projection follows.

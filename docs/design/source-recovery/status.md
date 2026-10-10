@@ -36,6 +36,25 @@
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
 
+### 2026-10-10：原始操作数/结果混合域退出准备路径
+
+- 删除 OriginalFlow::normal_kinds、Join 及其结果/输入写入点。该表已无
+  生产消费者，仍独立保留结果域与操作数域的混合提示。原始结果继续
+  从成功定义/完成区间获得条件证明；OriginalInput 保留原始值、解析值
+  和 use 身份。表达式/ValueId 边界检查保留，未增加恢复准入条件。
+- 测试改为直接通过输入 occurrence range/ValueId 核对原始有限域；
+  试算反例保留数值输入对应，仍要求当前到达值独立决定结果域。
+  删除一个按表达式分配的冗余向量；没有声称整进程 RSS 改善。
+- 冻结验证：31目标构建0（88.10s，无warning/error）；相关3/3测试
+  通过（11.42s）：function_tree、recovery_projection、original_flow_source。
+  fresh fixed ABC0（3.92s），19 records仍10 complete/0 partial/9 no-module；
+  10份源码语法通过、逐字节等同上一规则277输出，同一语言contract。
+  5份源码/测试哈希、输入SHA、选择清单保持。证据根：
+  build/stage-one/raw-input-retirement-verification。此次未重跑无关63项全选。
+- 此项没有改变恢复语义，保留规则277。完整原始动作/阶段/异常对应、
+  普通绑定单元、完整trial、依赖收敛、终验五项仍OPEN；其他优化与
+  既定暂停事项保持，Goal active。
+
 ### 2026-10-10：规则277，前置依赖由调度器驱动
 
 - PassContract 声明消费者前置职责，RecoveryBarrier 声明阶段边界。

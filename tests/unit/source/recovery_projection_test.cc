@@ -63,10 +63,10 @@ struct Fixture {
     plan.read_sources.resize(expressions);plan.read_literals.resize(expressions);plan.replacements.resize(expressions);plan.transports.resize(expressions);
     plan.omitted.resize(statements);plan.statements.resize(statements);private_bindings.resize(bindings,1);private_bindings[0]=0;
     original.identity=tree.identity;original.method=tree.method;original.value_revision=tree.value_revision;original.cfg_revision=tree.cfg_revision;
-    original.statements=statements;original.bindings=bindings;original.normal_kinds.resize(expressions);original.input_ranges.resize(expressions);
+    original.statements=statements;original.bindings=bindings;original.input_ranges.resize(expressions);
     // Synthetic analysis input: a trial is allowed to ask about an unproved
-    // replacement. Its old occurrence's type is not proof for the new value.
-    for(auto read:reads)original.normal_kinds[read.value]=analysis::ValueKinds::Number();
+    // replacement. Its old operand correspondence is not proof for the new value.
+    for(auto read:reads)InputEvidence(read);
     if(reverse) {
       const auto map=[&](ExprId id){return ExprId{static_cast<unsigned>(expressions-1-id.value)};};
       for(auto& item:tree.expressions)std::visit([&](auto& node){using T=std::decay_t<decltype(node)>;
@@ -81,8 +81,15 @@ struct Fixture {
       for(auto& equation:equations)if(auto* value=std::get_if<FlowExpressionValue>(&equation))value->expression=map(value->expression);
       for(auto* ids:{&reads,&values,&stores,&results,&order})for(auto& id:*ids)id=map(id);
       std::reverse(tree.expressions.begin(),tree.expressions.end());std::reverse(equations.begin(),equations.end());
-      std::reverse(original.normal_kinds.begin(),original.normal_kinds.end());
+      for(auto& input:original.inputs)input.expression=map(input.expression);
+      std::reverse(original.input_ranges.begin(),original.input_ranges.end());
     }
+  }
+  // Raw input correspondence carries no result or projected-value proof.
+  // These synthetic finite inputs must not type the current source occurrence.
+  void InputEvidence(ExprId expression) {
+    original.input_ranges[expression.value]={original.inputs.size(),1};
+    original.inputs.push_back({expression,analysis::IntegerLiteral{7},analysis::IntegerLiteral{7},{}});
   }
   RecoveryExpressionInput Input() const {return {plan,equations,order,&original};}
   LegacyFlowProjection Projection() const {
@@ -121,7 +128,7 @@ std::pair<std::uint64_t,std::size_t> CandidateDeclarations(bool reverse,unsigned
   const auto expression_count=f.tree.expressions.size();
   f.plan.read_sources.resize(expression_count);f.plan.read_literals.resize(expression_count);
   f.plan.replacements.resize(expression_count);f.plan.transports.resize(expression_count);
-  f.original.normal_kinds.resize(expression_count);f.original.input_ranges.resize(expression_count);
+  f.original.input_ranges.resize(expression_count);
   const auto old=f.Projection();
   const auto binding=std::get<DeclarationStmt>(f.tree.statements[declaration.value].statement).symbol;
   StmtId store{};
@@ -212,7 +219,7 @@ void SnapshotPlan(bool reverse,bool native,bool outlined=false) {
     const auto expressions=f.tree.expressions.size();
     f.plan.read_sources.resize(expressions);f.plan.read_literals.resize(expressions);
     f.plan.replacements.resize(expressions);f.plan.transports.resize(expressions);
-    f.original.normal_kinds.resize(expressions);f.original.input_ranges.resize(expressions);
+    f.original.input_ranges.resize(expressions);
     f.plan.declaration_completions[declaration.value]=DeclarationCompletion{binding,residual,DeclarationKind::kLet};
   }
   const SnapshotMove move{binding,declaration,f.reads[0],f.values[0],f.stores[0],store,store};
@@ -440,10 +447,10 @@ void Case(bool reverse) {
 void ChangedDefinition(bool reverse) {
   Fixture f(1,reverse);
   // The original successful operation produces Number; replacing the written
-  // value with a parameter must invalidate downstream raw operand domains.
+  // value with a parameter must recompute downstream domains despite retained raw input evidence.
   const auto call=std::get<UnaryExpr>(f.tree.expressions[f.values[0].value].expression).operand;
   const auto unknown=std::get<CallExpr>(f.tree.expressions[call.value].expression).callee;
-  f.original.normal_kinds[f.values[0].value]=analysis::ValueKinds::Number();
+  f.InputEvidence(f.values[0]);
   f.plan.replacements[f.values[0].value]=unknown;
   const auto trial=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,f.Projection(),f.Input()));
   Check(trial.expressions.kinds[f.reads[0].value]==analysis::ValueKinds::Language());
@@ -538,10 +545,10 @@ void KindOracle(unsigned seed,bool reverse) {
   }
   const auto size=f.tree.expressions.size();
   f.plan.replacements.resize(size);f.plan.transports.resize(size);f.plan.read_sources.resize(size);f.plan.read_literals.resize(size);
-  f.original.normal_kinds.resize(size);f.original.input_ranges.resize(size);
-  // Poison canonical read hints deliberately; the projected reaching values
-  // must determine the answer even when every old occurrence said Number.
-  for(const auto read:reads)if(read)f.original.normal_kinds[read->value]=analysis::ValueKinds::Number();
+  f.original.input_ranges.resize(size);
+  // Retain finite raw inputs deliberately; projected reaching values must
+  // determine the answer, independently of operand-only correspondence.
+  for(const auto read:reads)if(read)f.InputEvidence(*read);
   const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));
   const auto actual=std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(f.tree,flow,live,f.Input()));
   for(unsigned i=0;i<points;++i)if(reads[i])Check(actual.expressions[reads[i]->value]==kinds(incoming[i]));
@@ -605,8 +612,8 @@ void CompletionTypes(unsigned form,bool reverse,bool emit) {
   f.plan.aliases.resize(bindings);f.plan.storage.resize(bindings);f.plan.read_bindings.resize(bindings);f.plan.literals.resize(bindings);f.private_bindings.resize(bindings,1);
   f.plan.replacements.resize(expressions);f.plan.transports.resize(expressions);f.plan.read_sources.resize(expressions);f.plan.read_literals.resize(expressions);
   f.plan.omitted.resize(statements);f.plan.statements.resize(statements);
-  f.original.bindings=bindings;f.original.statements=statements;f.original.normal_kinds.resize(expressions);f.original.input_ranges.resize(expressions);
-  f.original.normal_kinds[after_read.value]=analysis::ValueKinds::Number();
+  f.original.bindings=bindings;f.original.statements=statements;f.original.input_ranges.resize(expressions);
+  f.InputEvidence(after_read);
   Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
   const auto actual=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,f.Projection(),f.Input()));
   Check(actual.expressions.kinds[after_read.value].IsNumber()==numeric);
@@ -827,7 +834,7 @@ void CurrentUnitSource(bool captured,unsigned count,bool reverse,bool emit,bool 
   }
   Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
   OriginalFlow original{};original.identity=tree.identity;original.method=tree.method;original.value_revision=tree.value_revision;original.cfg_revision=tree.cfg_revision;
-  original.statements=tree.statements.size();original.bindings=tree.symbols.size();original.normal_kinds.resize(tree.expressions.size());original.input_ranges.resize(tree.expressions.size());
+  original.statements=tree.statements.size();original.bindings=tree.symbols.size();original.input_ranges.resize(tree.expressions.size());
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
   const auto plan=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{},&original));
   if(count==0) {
@@ -897,7 +904,7 @@ void UpdateSource(bool reverse,bool numeric,bool increment,bool prefix,bool emit
   f.plan.aliases.resize(b);f.plan.storage.resize(b);f.plan.read_bindings.resize(b);f.plan.literals.resize(b);f.private_bindings.resize(b,0);
   f.plan.read_sources.resize(x);f.plan.read_literals.resize(x);f.plan.replacements.resize(x);f.plan.transports.resize(x);
   f.plan.omitted.resize(s);f.plan.statements.resize(s);f.original.statements=s;f.original.bindings=b;
-  f.original.normal_kinds.resize(x);f.original.input_ranges.resize(x);
+  f.original.input_ranges.resize(x);
   Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
   const auto model=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,f.Projection(),f.Input()));
   for(const auto expression:{update,after,f.reads[0]})
@@ -931,7 +938,7 @@ void CapturedNumericKinds(bool reverse,unsigned form) {
   f.equations.push_back(UnknownFlowValue{});f.order.push_back(update);
   f.plan.replacements.resize(tree.expressions.size());f.plan.transports.resize(tree.expressions.size());
   f.plan.read_sources.resize(tree.expressions.size());f.plan.read_literals.resize(tree.expressions.size());
-  f.original.normal_kinds.resize(tree.expressions.size());f.original.input_ranges.resize(tree.expressions.size());
+  f.original.input_ranges.resize(tree.expressions.size());
   RecoveryFlow flow{};flow.original=&f.original;flow.events.resize(5);flow.bindings.resize(2);
   flow.bindings[1].exposure=FlowBindingExposure::kPrivate;
   const auto point=[&](unsigned i){return FlowPoint{reverse?4-i:i};};flow.entry=point(0);
@@ -998,7 +1005,7 @@ void ScopedExposedKinds(bool reverse,CellVisibility visibility) {
   f.plan.read_sources.resize(f.tree.expressions.size());f.plan.read_literals.resize(f.tree.expressions.size());
   f.plan.replacements.resize(f.tree.expressions.size());f.plan.transports.resize(f.tree.expressions.size());
   f.plan.omitted.resize(f.tree.statements.size());f.plan.statements.resize(f.tree.statements.size());
-  f.original.statements=f.tree.statements.size();f.original.normal_kinds.resize(f.tree.expressions.size());f.original.input_ranges.resize(f.tree.expressions.size());
+  f.original.statements=f.tree.statements.size();f.original.input_ranges.resize(f.tree.expressions.size());
   auto model=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,f.Projection(),f.Input()));
   Check(model.flow.bindings[1].cell_access==CellVisibility::kClosed);
   model.flow.bindings[1].cell_access=visibility;
@@ -1072,7 +1079,7 @@ std::pair<std::uint64_t,std::size_t> ScopedPureWriteKinds(bool reverse,bool emit
   f.plan.aliases.resize(b);f.plan.storage.resize(b);f.plan.read_bindings.resize(b);f.plan.literals.resize(b);f.private_bindings.resize(b,0);
   f.plan.read_sources.resize(e);f.plan.read_literals.resize(e);f.plan.replacements.resize(e);f.plan.transports.resize(e);
   f.plan.omitted.resize(s);f.plan.statements.resize(s);
-  f.original.statements=s;f.original.bindings=b;f.original.normal_kinds.resize(e);f.original.input_ranges.resize(e);
+  f.original.statements=s;f.original.bindings=b;f.original.input_ranges.resize(e);
   Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(f.tree)));
   const auto model=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,f.Projection(),f.Input()));
   const analysis::SemanticBudget exact{model.allocated_bytes,model.work};

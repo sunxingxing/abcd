@@ -24,10 +24,6 @@ analysis::ValueKinds Kinds(const OriginalFlow& original,const analysis::ValueOpe
     }
   },operand);
 }
-void Join(OriginalFlow& original,ExprId expression,analysis::ValueKinds kinds) {
-  RequireTree(expression.value<original.normal_kinds.size(),TreeStructureError::kOwnership);
-  auto& current=original.normal_kinds[expression.value];current=current?current->Join(kinds):kinds;
-}
 }
 std::shared_ptr<OriginalFlow> RetainOriginalFlow(const analysis::ValueProgram& graph,
     const FunctionTree& tree,TreeFlow& flow,TreeCheckBudget& budget) {
@@ -61,22 +57,22 @@ std::shared_ptr<OriginalFlow> RetainOriginalFlow(const analysis::ValueProgram& g
     }
   }
   budget.Array(result->operations,graph.ops.size());
-  budget.Array(result->normal_kinds,tree.expressions.size());
   budget.Array(result->input_ranges,tree.expressions.size());
   RequireTree(flow.expressions.size()==graph.ops.size()&&flow.statements.size()==graph.ops.size(),TreeStructureError::kOwnership);
   for(std::size_t i=0;i<graph.ops.size();++i) {
     budget.Step();const auto& op=graph.ops[i];
     result->operations[i]={op.block,op.first_use,op.use_count,op.result,op.normal,
         op.before_throw,op.exceptional,op.life,op.origin,flow.expressions[i],flow.statements[i]};
-    if(op.life==analysis::ValueLife::kLive&&op.result&&flow.expressions[i])
-      Join(*result,*flow.expressions[i],graph.values[op.result->value].domain);
   }
   return result;
 }
 void RecordOriginalInput(OriginalFlow& original,const analysis::ValueOperand& operand,
     const analysis::ValueOperand& resolved,ExprId expression,
     std::optional<analysis::UseId> occurrence,TreeCheckBudget& budget) {
-  budget.Step();Join(original,expression,Kinds(original,resolved));
+  budget.Step();
+  RequireTree(expression.value<original.input_ranges.size(),TreeStructureError::kOwnership);
+  if(const auto* value=std::get_if<analysis::ValueId>(&resolved))
+    RequireTree(value->value<original.values.size(),TreeStructureError::kOwnership);
   if(original.inputs.size()==original.inputs.capacity()) {
     const auto capacity=original.inputs.capacity();
     RequireTree(capacity<=std::numeric_limits<std::size_t>::max()/2,TreeStructureError::kResourceLimit);
@@ -101,7 +97,6 @@ void IndexOriginalInputs(OriginalFlow& original,TreeCheckBudget& budget) {
 void CheckOriginalFlow(const FunctionTree& tree,const OriginalFlow& original) {
   RequireTree(original.identity==tree.identity&&original.method==tree.method&&
       original.value_revision==tree.value_revision&&original.cfg_revision==tree.cfg_revision&&
-      original.normal_kinds.size()==tree.expressions.size()&&
       original.input_ranges.size()==tree.expressions.size()&&
       (original.definitions.empty()||original.definitions.size()==tree.expressions.size())&&
       (original.catches.empty()||original.catches.size()==tree.symbols.size())&&

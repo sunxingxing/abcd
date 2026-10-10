@@ -38,6 +38,8 @@ struct OriginalOperation {
   std::optional<ExprId> expression;
   std::optional<StmtId> statement;
 };
+// Operand evidence stays occurrence-specific. Never join it with operation
+// result domains: predicates and completion operands can share source anchors.
 struct OriginalInput {
   ExprId expression;
   analysis::ValueOperand operand, resolved;
@@ -65,11 +67,6 @@ struct OriginalFlow {
   std::vector<OriginalInputRange> input_ranges;
   std::vector<std::optional<OriginalSourceDefinition>> definitions; // ExprId indexed.
   std::vector<std::optional<OriginalCatchBinding>> catches; // SymbolId indexed.
-  // Raw normal-result provenance, joined when normalization maps values to an
-  // occurrence. This is NOT a type proof for a later recovery projection;
-  // successful source definitions, current evaluation intervals and operands
-  // own projected domains. Inline certificates read raw results, not this join.
-  std::vector<std::optional<analysis::ValueKinds>> normal_kinds;
 };
 [[nodiscard]] std::shared_ptr<OriginalFlow> RetainOriginalFlow(
     const analysis::ValueProgram&,const FunctionTree&,TreeFlow&,TreeCheckBudget&);

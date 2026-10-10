@@ -3511,3 +3511,19 @@ bindings；缺失的 snapshot/binding-values 尝试执行一次，随后完成�
 触发的清理。完成清理组才在最新revision发布检查点，自己的提交不会
 形成反复入队。未知/错误阶段在执行依赖前拒绝。全局pass机会的收敛、
 更细失效范围及其成本仍未完成；本次不把检查点当作全局不动点。
+
+
+### Retired mixed raw domains (2026-10-10)
+
+OriginalFlow no longer computes or stores an ExprId-indexed join of raw operation
+results and operand domains. Production already obtains conditional result proofs
+from original definitions and current completion intervals; the old table was an
+unused alternative semantic channel. OriginalInput retains operand/resolved/use
+identity, and source projections continue to compute their own normal domains.
+Operand identity and bounds checks remain at the preparation boundary.
+
+Tests now select raw finite inputs through occurrence ranges and ValueId domains,
+not the retired join. Synthetic trial tests retain numeric input correspondence
+while requiring projected reaching values to determine the answer. This removes
+one obsolete fact producer; it does not deliver full operation/phase/exception
+correspondence. No recovery rule or language contract changes in this cleanup.

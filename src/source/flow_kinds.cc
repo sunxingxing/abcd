@@ -321,7 +321,7 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
       },equation);
       const auto original=original_results[target.value];
       // Inline results and stored results use the same operand/completion
-      // validity. Do not use normal_kinds: it also contains operand hints.
+      // validity. Operand correspondence is not a result-domain certificate.
       if(!changed[target.value]&&!original.IsEmpty()&&original.Join(incoming)==incoming)incoming=original;
       return incoming;
     };

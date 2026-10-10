@@ -250,7 +250,7 @@ void OriginalNumericSnapshots(bool emit=false,unsigned copies=0,bool reverse=fal
     if(dimension==0)++wrong.value_revision.value;
     if(dimension==1)++wrong.cfg_revision.value;
     if(dimension==2)++wrong.method.value;
-    if(dimension==3)wrong.normal_kinds.pop_back();
+    if(dimension==3)wrong.input_ranges.pop_back();
     Check(std::get<TreeStructureError>(PrepareSourceVariables(built.tree,{},&wrong))==TreeStructureError::kOwnership);
   }
   // Check a fresh shared model, not printer-only annotations. Read ranges keep
@@ -340,8 +340,15 @@ void OriginalSuccessfulDomains(unsigned copies=0,bool reverse=false,bool split=f
   const auto model=std::get<RecoveryProjection>(model_result);
   std::vector<ExprId> observed;
   for(const auto& reference:model.flow.references)if(reference.kind==FlowReferenceKind::kRead)
-    if(const auto* site=std::get_if<ExprId>(&reference.site);site&&original->normal_kinds[site->value]&&original->normal_kinds[site->value]->IsFiniteNumber()) {
-      observed.push_back(*site);Check(model.expressions.kinds[site->value].IsFiniteNumber());
+    if(const auto* site=std::get_if<ExprId>(&reference.site);site&&reference.original) {
+      const auto range=*reference.original;
+      bool finite=false;
+      for(std::size_t i=range.first;i<range.first+range.count;++i) {
+        const auto& operand=original->inputs[i];Check(operand.expression==*site);
+        if(const auto* value=std::get_if<ValueId>(&operand.resolved))
+          finite|=original->values[value->value].domain.IsFiniteNumber();
+      }
+      if(finite){observed.push_back(*site);Check(model.expressions.kinds[site->value].IsFiniteNumber());}
     }
   Check(!observed.empty());
   // Value-only flow clients can lack source boundary correspondence. Keep
@@ -406,7 +413,7 @@ void OriginalSuccessfulDomains(unsigned copies=0,bool reverse=false,bool split=f
   Check(std::holds_alternative<FlowNormalKinds>(no_boundaries_result));
   Check(!std::get<FlowNormalKinds>(no_boundaries_result).expressions[producer.value].IsFiniteNumber());
   // An actual producer edit invalidates the checked successful-definition
-  // domain, even though the write, consumer and original hint remain present.
+  // domain, even though the write, consumer and original correspondence remain present.
   auto changed_value=plan.transports;
   changed_value[producer.value]=ExpressionTransport{producer,PrimitiveId{0}};
   auto changed_plan=BindingPlanView{plan};changed_plan.transports=changed_value;
