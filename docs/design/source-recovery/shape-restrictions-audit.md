@@ -3383,3 +3383,22 @@ the original8 frozen hashes stayed unchanged; the final9 hashes/input/selection 
 verified. Consolidated current names63/no duplicates/all pass; first failure records
 remain and no single full-run exit0 is claimed.
 Full raw/unit/trial/convergence/acceptance closures are still open.
+
+### Rules273: execution edits are adapter facts
+
+Retired the normal-kind solver's independent replacement/transport/binding and
+statement-plan field masks. The source adapter now publishes typed completion
+provenance at the actual source execution boundary; the existing dependency graph
+propagates loss of raw certificates. A removed non-result operation keeps a linked
+changed boundary. Replacement destinations, source-only declarations and native
+loop phases use the same provenance channel. No operation names, sample names,
+same-block, adjacency or graph-shape admission were introduced.
+
+Preserved is conditional provenance, not authorization to remove effects or merge
+cells. Changed and Unmodeled withdraw raw range precision but still solve source
+language domains. Explicit legacy forwarding/declaration facets remain an adapter
+migration gap. Raw operation anchors can denote operands, so source effects must
+continue to come from the language model until full phase correspondence is proved.
+Regression: with canonical value equations and a candidate's changed execution
+graph, old consumer-side masks could resurrect a deleted non-result action's raw
+path certificate. Both current and trial now consume the graph's provenance.

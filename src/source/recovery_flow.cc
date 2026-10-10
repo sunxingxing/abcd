@@ -65,6 +65,8 @@ class FlowBuilder {
     Resize(result_.normal_exits,projection_.original?tree_.expressions.size():0);
     for(auto& exit:result_.normal_exits){budget_.Step();exit.reset();}
     RequireTree(projection_.statement_values.empty()||projection_.statement_values.size()==tree_.statements.size(),Error::kOwnership);
+    RequireTree(projection_.forwarded_values.empty()||projection_.forwarded_values.size()==tree_.statements.size(),Error::kOwnership);
+    RequireTree(projection_.loop_declarations.empty()||projection_.loop_declarations.size()==tree_.statements.size(),Error::kOwnership);
     RequireTree(projection_.stable_entries.empty()||projection_.stable_entries.size()==tree_.symbols.size(),Error::kOwnership);
     RequireTree(projection_.read_bindings.empty()||projection_.read_bindings.size()==tree_.symbols.size(),Error::kOwnership);
     RequireTree(projection_.read_sources.empty()||projection_.read_sources.size()==tree_.expressions.size(),Error::kOwnership);
@@ -304,6 +306,7 @@ class FlowBuilder {
   }
   Point New(FlowEvent event={}) {
     RequireTree(events_.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
+    event.provenance=FlowProvenance::kPreserved;
     budget_.Step();event.owner=current_owner_;event.entry_evaluation=current_entry_evaluation_;Point result{static_cast<std::uint32_t>(events_.size())};Append(events_,event);Append(scope_events_,{current_scope_,current_scope_});
     if(native_scopes_)Append(loop_scope_events_,{current_loop_,current_loop_});return result;
   }
@@ -446,6 +449,18 @@ class FlowBuilder {
     scope_events_[start.value]={current_scope_,current_scope_};
     if(native_scopes_)loop_scope_events_[start.value]={current_loop_,current_loop_};
     events_[start.value].owner=context.owner;events_[start.value].entry_evaluation=context.entry_evaluation;
+    // Publish edits where their current execution boundary is built. Value
+    // solvers must not rediscover projection facets from a mutable plan.
+    const auto& source=tree_.expressions[at.id.value].expression;
+    const auto present=[&](const auto& values){return !values.empty()&&bool(values[at.id.value]);};
+    if(present(projection_.replacements)||present(projection_.transports)||present(projection_.read_sources)||
+        present(projection_.read_literals)||IntrinsicLexicalDependency(source)!=LexicalDependency::kReferences||
+        std::holds_alternative<GlobalNameExpr>(source))events_[start.value].provenance=FlowProvenance::kChanged;
+    if(const auto* read=std::get_if<SymbolExpr>(&source)) {
+      const auto edited=[&](const auto& values){return !values.empty()&&bool(values[read->symbol.value]);};
+      if(edited(projection_.aliases)||edited(projection_.storage)||edited(projection_.read_bindings)||edited(projection_.literals))
+        events_[start.value].provenance=FlowProvenance::kChanged;
+    }
     if(!result_.normal_exits.empty())result_.normal_exits[at.id.value]=context.next;
     result_.value_uses[at.id.value]=context.value_use;
     result_.expression_owners[at.id.value]=context.owner;
@@ -454,6 +469,7 @@ class FlowBuilder {
       Link(start,context.next);return;
     }
     if(auto replacement=projection_.replacements[at.id.value]) {
+      events_[expressions_[replacement->value].value].provenance=FlowProvenance::kChanged;
       auto destination=context;
       if(!destination.transport&&!projection_.transported_reads.empty())
         destination.transport=projection_.transported_reads[at.id.value];
@@ -569,8 +585,12 @@ class FlowBuilder {
     if(native_scopes_)loop_scope_events_[start.value]={current_loop_,current_loop_};
     current_owner_=at.id;current_entry_evaluation_=false;events_[start.value].owner=at.id;
     exits_[at.id.value]=context.next;
-    if(projection_.omitted[at.id.value]){events_[start.value].owner.reset();Link(start,context.next);return;}
+    const auto projected=[&](const auto& values){return !values.empty()&&bool(values[at.id.value]);};
+    if(projected(projection_.initializers)||projected(projection_.forwarded_values)||projected(projection_.loop_declarations))
+      events_[start.value].provenance=FlowProvenance::kChanged;
+    if(projection_.omitted[at.id.value]){events_[start.value].provenance=FlowProvenance::kChanged;events_[start.value].owner.reset();Link(start,context.next);return;}
     if(const auto loop=loop_entries_[at.id.value]) {
+      events_[start.value].provenance=FlowProvenance::kChanged;
       events_[start.value].kind=FlowEventKind::kEnterLoopEnvironment;
       events_[start.value].loop_environment=*loop;
       if(native_scopes_)loop_scope_events_[start.value]={at.context.loop_scope,*loop};
@@ -582,6 +602,7 @@ class FlowBuilder {
     semantics.retention=context.retention;
     semantics.normal_exit=context.next;
     if(!projection_.statement_values.empty())if(const auto value=projection_.statement_values[at.id.value]) {
+      events_[start.value].provenance=FlowProvenance::kChanged;
       semantics.entry_value=*value;auto evaluation=context;
       RequireTree(discarded_.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
       evaluation.discarded=DiscardedId{static_cast<std::uint32_t>(discarded_.size())};Append(discarded_,{at.id});
@@ -589,6 +610,7 @@ class FlowBuilder {
       Link(start,Expr(*value,evaluation));return;
     }
     if(!projection_.declaration_completions.empty())if(const auto& completion=projection_.declaration_completions[at.id.value]) {
+      events_[start.value].provenance=FlowProvenance::kChanged;
       const bool initialize=completion->kind==DeclarationCompletionKind::kInitialize;
       std::optional<DiscardedId> id;
       auto evaluation=context;evaluation.value_use=FlowValueUse::kDiscarded;
@@ -605,6 +627,7 @@ class FlowBuilder {
       Link(start,completion->evaluation?Expr(*completion->evaluation,evaluation):commit);return;
     }
     if(!projection_.declaration_values.empty())if(const auto& value=projection_.declaration_values[at.id.value]) {
+          events_[start.value].provenance=FlowProvenance::kChanged;
           RequireTree(discarded_.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
           const DiscardedId id{static_cast<std::uint32_t>(discarded_.size())};Append(discarded_,{at.id});
           auto evaluation=context;evaluation.discarded=id;evaluation.value_use=FlowValueUse::kDiscarded;
@@ -631,6 +654,7 @@ class FlowBuilder {
         const auto body=loop_bodies_[at.id.value];
         const auto first=body?body->first:0;
         const auto tail=projection_.loops?projection_.loops->tail_starts[at.id.value]:std::nullopt;
+        if(body||tail)events_[start.value].provenance=FlowProvenance::kChanged;
         next=Sequence(at.id,first,tail.value_or(node.child_count),context.Operand(next),at.id);
         if(body&&body->retained)next=Stmt(*body->retained,context.Child(next,at.id,FlowStatementRetention::kRequired));
         if(const auto parameter=catch_parameters_[at.id.value]) {
@@ -652,6 +676,7 @@ class FlowBuilder {
       }
       else if constexpr(std::is_same_v<T,DeclarationStmt>) {
         if(!projection_.undefined_stores.empty())if(const auto target=projection_.undefined_stores[at.id.value]) {
+          events_[start.value].provenance=FlowProvenance::kChanged;
           const auto commit=Define(*target,FlowDefinitionKind::kUndefinedStore,{},{},at.id,{},FlowWriteEffect::kInert,{},FlowExceptionContext{context.thrown,context.finalizer},context.owner);
           Link(start,commit);Link(commit,context.next);return;
         }
@@ -681,6 +706,7 @@ class FlowBuilder {
       } else if constexpr(std::is_same_v<T,LoopStmt>) {
         semantics.progress=FlowStatementProgress::kMayRepeat;semantics.repeat_point=start;
         if(projection_.loops)if(const auto& program=projection_.loops->conditions[at.id.value]) {
+          events_[start.value].provenance=FlowProvenance::kChanged;
           // Consume the printer's immutable completion program. Condition and
           // increment execute outside the body activation; the retained arm
           // executes once inside it. Never rediscover an opcode/tree pattern.

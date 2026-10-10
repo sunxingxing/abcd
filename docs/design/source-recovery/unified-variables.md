@@ -3369,3 +3369,51 @@ The paired gate passes88 cases/570 faults/114 swaps/15 mutants/2 transformations
 with platformExecution=false. One preexisting literal_plan kNoop warning remains.
 Evidence:build/stage-one/unit-capability-verification/consolidated-result.json;
 fresh output:build/stage-one/unit-capability-final-rule272-verified.
+
+### Rules273: completion provenance belongs to the adapted graph
+
+The current/trial flow adapter publishes Preserved, Changed or Unmodeled
+provenance at execution boundaries. These states describe whether conditional raw
+operand/path certificates remain available; Changed is not a semantic rejection
+of the proposed source. Source effects, successful writes and binding units retain
+their independent meaning. In particular, a raw operation may map only to an
+operand expression, so its raw effect flags must not overwrite source effects.
+
+Expression edits invalidate their actual boundary and replacement destination.
+Statement deletion retains a linked, changed boundary even for a non-result
+operation. Declaration projections and native loop phase/environment adaptation
+publish the same fact. Forwarded-value and loop-declaration syntax facets still
+travel through the transitional adapter explicitly; they cannot silently inherit
+an old raw completion certificate. Current and trial preparation use one adapter.
+
+AnalyzeFlowNormalKinds no longer reads projection facets to rediscover execution
+edits. Its existing sparse dependency graph consumes event provenance and current
+expression boundaries, including Unmodeled inputs. Canonical value equations cannot
+revive a raw path proof after a non-value action was removed. This is protection
+of conditional raw certificates, not permission to mix arbitrary stale value
+analyses with a newer plan. Revision-owned pass products remain mandatory. The new fact is owned by
+RecoveryFlow inside ProjectionFacts: BeginCommit destroys the aggregate before
+plan writes, and CurrentFlow rebuilds through the same current/trial provider.
+It introduces no separate cache or caller-managed invalidation order.
+
+The direct regression removes a verified non-result action, then supplies the
+current flow with canonical value equations: old code incorrectly restored the
+raw finite range. The current graph withdraws that range while preserving the
+source Number domain. Tests distinguish unchanged/current/unknown provenance,
+statement and predicate edits, block splits, SSA and source-arena permutations,
+200/201/400/800 copies, and exact/one-short budgets. Independent execution uses
+engine output; debugger observations are retained in emitted canonical source.
+
+Full raw phase/protocol/action correspondence is still incomplete. This change
+retires one duplicated completion-validity decision, not the original-results
+mapping or the transitional projection adapter. All five backbone closures remain
+OPEN; other optimizations remain paused.
+
+Rules273 frozen verification:31 targets build0 (102.04s), fixed fresh ABC0 (3.98s),
+exact63 tests0 (1007.73s), complete names/no duplicates. Seven frozen code/test
+hashes, selection and input SHA stayed unchanged. Ten sources parse and are byte
+identical to272;19 records remain10 complete/0 partial/9 no-module with the same
+language contract. The paired ProgressBar gate passes88/570/114/15/2 and reports
+platformExecution=false. Two production mutants fail as intended and were
+restored. Evidence:build/stage-one/flow-provenance-verification/final-result.json.
+All five backbone closures remain OPEN; this is a verified migration substep.

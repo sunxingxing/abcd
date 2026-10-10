@@ -141,7 +141,7 @@ class Fixture {
       else if constexpr(std::is_same_v<T,IfStmt>) {
         value.condition=expression(value.condition);value.consequent=statement(value.consequent);
         if(value.alternate)value.alternate=statement(*value.alternate);
-      } else Check((std::is_same_v<T,BlockStmt>));
+      } else Check((std::is_same_v<T,BlockStmt>||std::is_same_v<T,DebuggerStmt>));
     },node.statement);
     for(auto& op:tree.operations)std::visit([&](auto& id) {
       using T=std::decay_t<decltype(id)>;
@@ -272,35 +272,41 @@ void OriginalNumericSnapshots(bool emit=false,unsigned copies=0,bool reverse=fal
   Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(built.tree,output,{}, {},nullptr,&original)));
   if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"numeric",numeric},{"copies",copies},{"reverse",reverse},{"split",split},{"arena",arena},{"work",built.work},{"bytes",built.allocated_bytes},{"operations",fixture.graph.ops.size()},{"values",fixture.graph.values.size()},{"uses",fixture.graph.uses.size()},{"edges",fixture.graph.edges.size()}}<<'\n';
 }
-void OriginalSuccessfulDomains(unsigned copies=0,bool reverse=false,bool split=false,bool conditional=false,bool emit=false,bool arena=false) {
+void OriginalSuccessfulDomains(unsigned copies=0,bool reverse=false,bool split=false,bool conditional=false,bool emit=false,bool arena=false,bool action=false) {
   using namespace analysis;
   Fixture f;f.callable=CallableKind::kFunction;
-  const auto comparison=f.Add(0,0,0,ValueBinary{BinaryOperator::kStrictEqual},true,
+  const unsigned prefix=action?1:0;
+  if(action)f.Add(0,0,0,ValueDebugger{},false,{});
+  const auto add=[&](unsigned block,unsigned order,unsigned pc,ValueOperation operation,bool result,
+      std::initializer_list<std::pair<OperandRole,ValueOperand>> operands,LanguageEffect effects=LanguageEffect::kNone) {
+    return f.Add(block,order+(block?0:prefix),pc+prefix,operation,result,operands,effects);
+  };
+  const auto comparison=add(0,0,0,ValueBinary{BinaryOperator::kStrictEqual},true,
       {{OperandRole::kLeft,ValueId{0}},{OperandRole::kRight,analysis::IntegerLiteral{0}}});
   auto boolean=*f.graph.ops[comparison.value].result;
   f.graph.values[boolean.value].domain=ValueKinds::Boolean();
   for(unsigned i=0;i<copies;++i) {
-    const auto copy=f.Add(0,i+1,i+1,ValueCopy{},true,{{OperandRole::kInput,boolean}});
+    const auto copy=add(0,i+1,i+1,ValueCopy{},true,{{OperandRole::kInput,boolean}});
     boolean=*f.graph.ops[copy.value].result;f.graph.values[boolean.value].domain=ValueKinds::Boolean();
   }
   std::optional<OpId> branch;
-  if(conditional)branch=f.Add(0,copies+1,copies+1,ValueBranch{UnaryOperator::kTrueOrNonzeroNumber},false,{{OperandRole::kCondition,boolean}});
-  else if(split)f.Add(0,copies+1,copies+1,ValueJump{},false,{});
-  const auto conversion=f.Add(split||conditional?1:0,split||conditional?0:copies+1,copies+2,ValueUnary{UnaryOperator::kToNumber},true,
+  if(conditional)branch=add(0,copies+1,copies+1,ValueBranch{UnaryOperator::kTrueOrNonzeroNumber},false,{{OperandRole::kCondition,boolean}});
+  else if(split)add(0,copies+1,copies+1,ValueJump{},false,{});
+  const auto conversion=add(split||conditional?1:0,split||conditional?0:copies+1,copies+2,ValueUnary{UnaryOperator::kToNumber},true,
       {{OperandRole::kInput,conditional?ValueId{0}:boolean}},LanguageEffect::kUserCode);
   const auto number=*f.graph.ops[conversion.value].result;
   f.graph.values[number.value].domain=ValueKinds::FiniteNumber();
-  f.Add(split||conditional?1:0,split||conditional?1:copies+2,copies+3,ValueBinary{BinaryOperator::kAdd},true,
+  add(split||conditional?1:0,split||conditional?1:copies+2,copies+3,ValueBinary{BinaryOperator::kAdd},true,
       {{OperandRole::kLeft,number},{OperandRole::kRight,analysis::IntegerLiteral{1}}});
-  f.Add(split||conditional?1:0,split||conditional?2:copies+3,copies+4,ValueReturn{},false,{{OperandRole::kReturnValue,number}});
+  add(split||conditional?1:0,split||conditional?2:copies+3,copies+4,ValueReturn{},false,{{OperandRole::kReturnValue,number}});
   if(conditional) {
-    const auto alternate=f.Add(2,0,copies+5,ValueReturn{},false,{{OperandRole::kReturnValue,ValueId{0}}});
-    f.graph.blocks={{{0},copies+2,{0},2},{{copies+2},3,{2},0},{{alternate.value},1,{2},0}};
+    const auto alternate=add(2,0,copies+5,ValueReturn{},false,{{OperandRole::kReturnValue,ValueId{0}}});
+    f.graph.blocks={{{0},copies+2+prefix,{0},2},{{copies+2+prefix},3,{2},0},{{alternate.value},1,{2},0}};
     f.graph.edges={{{0},{1},FlowEdgeKind::kTaken,0},{{0},{2},FlowEdgeKind::kFallthrough,1}};
   } else if(split) {
-    f.graph.blocks={{{0},copies+2,{0},1},{{copies+2},3,{1},0}};
+    f.graph.blocks={{{0},copies+2+prefix,{0},1},{{copies+2+prefix},3,{1},0}};
     f.graph.edges={{{0},{1},FlowEdgeKind::kTaken,0}};
-  } else f.graph.blocks={{{0},copies+4,{0},0}};
+  } else f.graph.blocks={{{0},copies+4+prefix,{0},0}};
   if(reverse) {
     const auto map=[&](ValueId id){return ValueId{static_cast<unsigned>(f.graph.values.size()-1-id.value)};};
     for(auto& op:f.graph.ops)if(op.result)op.result=map(*op.result);
@@ -348,6 +354,30 @@ void OriginalSuccessfulDomains(unsigned copies=0,bool reverse=false,bool split=f
   for(const auto site:observed) {
     Check(unknown_path.expressions[site.value].IsNumber());
     Check(!unknown_path.expressions[site.value].IsFiniteNumber());
+  }
+  if(action) {
+    const auto statement=*original->operations[0].statement;
+    Check(!original->operations[0].result&&!original->operations[0].expression);
+    auto omitted=plan.omitted;omitted[statement.value]=1;
+    auto candidate_plan=BindingPlanView{plan};candidate_plan.omitted=omitted;
+    const auto candidate_model=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,projection,{candidate_plan,equations,order,original}));
+    const auto boundary=candidate_model.flow.statements[statement.value];
+    Check(candidate_model.flow.events[boundary.value].provenance==FlowProvenance::kChanged);
+    Check(model.flow.events[model.flow.statements[statement.value].value].provenance==FlowProvenance::kPreserved);
+    const SemanticBudget candidate_exact{candidate_model.allocated_bytes,candidate_model.work};
+    const RecoveryExpressionInput candidate_input{candidate_plan,equations,order,original};
+    Check(std::holds_alternative<RecoveryProjection>(PrepareRecoveryProjection(tree,projection,candidate_input,candidate_exact)));
+    Check(std::get<TreeStructureError>(PrepareRecoveryProjection(tree,projection,candidate_input,{candidate_exact.bytes-1,candidate_exact.work}))==TreeStructureError::kResourceLimit);
+    Check(std::get<TreeStructureError>(PrepareRecoveryProjection(tree,projection,candidate_input,{candidate_exact.bytes,candidate_exact.work-1}))==TreeStructureError::kWorkLimit);
+    const auto candidate_live=std::get<FlowLiveness>(AnalyzeFlowLiveness(candidate_model.flow));
+    const auto types=std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(tree,candidate_model.flow,candidate_live,input));
+    for(const auto site:observed) {
+      Check(types.expressions[site.value].IsNumber());
+      Check(!types.expressions[site.value].IsFiniteNumber());
+    }
+    auto unmodeled=candidate_model.flow;unmodeled.events[boundary.value].provenance=FlowProvenance::kUnmodeled;
+    const auto missing_provenance=std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(tree,unmodeled,candidate_live,input));
+    for(const auto site:observed)Check(!missing_provenance.expressions[site.value].IsFiniteNumber());
   }
   ExprId producer{};bool mapped=false;
   for(const auto& definition:original->definitions)if(definition)
@@ -403,12 +433,21 @@ void OriginalSuccessfulDomains(unsigned copies=0,bool reverse=false,bool split=f
       Check(widened.expressions.kinds[site.value].IsNumber());
       Check(!widened.expressions.kinds[site.value].IsFiniteNumber());
     }
+    // Completion provenance belongs to the adapted graph. A consumer that
+    // retains canonical value equations must not revive a path certificate
+    // by failing to repeat the candidate's predicate-edit classification.
+    const auto current_live=std::get<FlowLiveness>(AnalyzeFlowLiveness(widened.flow));
+    const auto current_path=std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(tree,widened.flow,current_live,input));
+    for(const auto site:observed) {
+      Check(current_path.expressions[site.value].IsNumber());
+      Check(!current_path.expressions[site.value].IsFiniteNumber());
+    }
   }
   if(emit) {
     std::ostringstream output;
     Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output,{}, {},nullptr,original)));
     std::cout<<nlohmann::json{{"source",output.str()},{"conditional",conditional},{"copies",copies},{"reverse",reverse},{"split",split},
-      {"work",model.work},{"allocated_bytes",model.allocated_bytes},{"arena",arena}}<<'\n';
+      {"work",model.work},{"allocated_bytes",model.allocated_bytes},{"arena",arena},{"action",action}}<<'\n';
   }
   auto without_definitions=*original;
   for(auto& definition:without_definitions.definitions)if(definition)
@@ -1582,9 +1621,11 @@ int main(int argc,char** argv) {
     return 0;
   }
   if(argc==2&&std::string_view(argv[1])=="--definitions") {
-    for(const unsigned copies:{0U,1U,200U,201U,400U,800U})
-      for(const bool reverse:{false,true})for(const bool split:{false,true})for(const bool arena:{false,true})OriginalSuccessfulDomains(copies,reverse,split,false,true,arena);
-    for(const bool reverse:{false,true})for(const bool arena:{false,true})OriginalSuccessfulDomains(1,reverse,false,true,true,arena);
+    for(bool action:{false,true}) {
+      for(const unsigned copies:{0U,1U,200U,201U,400U,800U})
+        for(const bool reverse:{false,true})for(const bool split:{false,true})for(const bool arena:{false,true})OriginalSuccessfulDomains(copies,reverse,split,false,true,arena,action);
+      for(const bool reverse:{false,true})for(const bool arena:{false,true})OriginalSuccessfulDomains(1,reverse,false,true,true,arena,action);
+    }
     return 0;
   }
   if(argc==2&&std::string_view(argv[1])=="--original") {
@@ -1621,6 +1662,7 @@ int main(int argc,char** argv) {
     tree.expressions[expression.value].expression = ThisExpr{tree.owner};
     Check(std::holds_alternative<TreeSemanticError>(fixture.Verify(tree)));
   }
+  for(bool reverse:{false,true})for(bool split:{false,true})OriginalSuccessfulDomains(1,reverse,split,false,false,false,true);
   OriginalNumericSnapshots();
   for(const unsigned copies:{0U,1U,200U,201U})
     for(const bool reverse:{false,true})for(const bool split:{false,true})OriginalSuccessfulDomains(copies,reverse,split);

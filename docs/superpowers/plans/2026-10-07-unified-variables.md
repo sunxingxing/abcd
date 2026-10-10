@@ -947,3 +947,23 @@ pass; first failure records remain and no single full-run exit0 is claimed.
 All five backbone deliverables remain OPEN/Goal active; other optimizations and
 paused verification scopes remain paused. Continue full raw/protocol/action and
 unit reconstruction, remaining trials, dependency convergence and final acceptance.
+
+Rules273 backbone substep: completion-certificate validity moves from the
+normal-kind consumer's plan-field scan to typed provenance emitted by the shared
+current/trial flow adapter. Non-result deletion and replacement/declaration/native
+loop adaptations publish actual boundary changes. Missing provenance is explicit;
+canonical value equations cannot restore a withdrawn raw path proof. The sparse
+solver remains the sole propagation owner. This retires duplicated validity
+inference, but does not close full raw phase/protocol/action correspondence or any
+of the five backbone deliveries. Revision-owned products and separate effect,
+write, lifetime and declaration obligations remain. Other optimizations and all
+previously paused scopes remain paused.
+
+Rules273 frozen verification:31 targets build0 (102.04s), fixed fresh ABC0 (3.98s),
+exact63 tests0 (1007.73s), complete names/no duplicates. Seven frozen code/test
+hashes, selection and input SHA stayed unchanged. Ten sources parse and are byte
+identical to272;19 records remain10 complete/0 partial/9 no-module with the same
+language contract. The paired ProgressBar gate passes88/570/114/15/2 and reports
+platformExecution=false. Two production mutants fail as intended and were
+restored. Evidence:build/stage-one/flow-provenance-verification/final-result.json.
+All five backbone closures remain OPEN; this is a verified migration substep.

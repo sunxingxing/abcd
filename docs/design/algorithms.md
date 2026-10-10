@@ -4259,3 +4259,21 @@ known-scope fixture indexes. Production and the original8 frozen hashes stayed
 unchanged; the final9 hashes/input/selection are verified. Consolidated current
 names63/no duplicates/all pass; first failure records remain and no single full-run
 exit0 is claimed.; no global cost or backbone closure claim.
+
+### Source completion provenance (rules273)
+
+The existing source-flow construction emits a three-state provenance fact per
+execution event; expression and statement edits are recorded while adapting their
+semantics. Normal-kind invalidation consumes these facts in one event/boundary
+scan, then uses the existing sparse value/completion dependency graph. It no longer
+scans plan facets independently. With X expressions, S statements, E events and D
+dependency edges, the extra work is O(X + S + E) construction/seed work; propagation
+remains O(D + X + E) for Boolean invalidation and finite lattice height times
+value edges for domains. No per-variable walk, pairwise threshold or new graph is
+introduced. The event field occupies existing padding on the current build;
+ordinary admitted byte/work accounting still covers actual sizeof/capacities.
+
+The fixed source tests compare copy growth at200/201/400/800 for with/without
+non-result actions, split blocks, reversed SSA IDs and reversed source arenas.
+Current and candidate projections exercise exact and one-short byte/work budgets.
+These are bounded cost checks, not resumed whole-corpus RSS or benchmarks.

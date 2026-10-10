@@ -29,6 +29,7 @@ void Apply(LegacyFlowProjection& projection,const RecoveryExpressionInput& input
   projection.statement_values=plan.statement_values;
   projection.undefined_stores=plan.undefined_stores;projection.declaration_values=plan.declaration_values;
   projection.declaration_completions=plan.declaration_completions;
+  projection.forwarded_values=plan.forwarded_values;projection.loop_declarations=plan.loop_declarations;
   projection.aliases=plan.aliases;projection.literals=plan.literals;
   projection.storage=plan.storage;projection.read_literals=plan.read_literals;
   projection.read_bindings=plan.read_bindings;projection.read_sources=plan.read_sources;

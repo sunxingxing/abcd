@@ -226,6 +226,10 @@ struct FlowStatement {
   std::optional<ExprId> entry_value;
   FlowStatementRetention retention=FlowStatementRetention::kOptional;
 };
+// Conditional raw proofs are valid only for an unchanged execution cone.
+// This is adapter provenance, not a claim that projected code is inequivalent
+// or that raw effects equal source effects. Legacy graph clients lack it.
+enum class FlowProvenance : std::uint8_t {kUnmodeled,kPreserved,kChanged};
 struct FlowEvent {
   // Group narrow fields before the size_t links; retain all phase facts without
   // increasing padding in every admitted event. Construction uses the typed
@@ -250,6 +254,7 @@ struct FlowEvent {
   // reads and successful writes remain observations even when this is inert.
   ExpressionEvaluation effect = ExpressionEvaluation::kInert;
   bool entry_evaluation=false;
+  FlowProvenance provenance=FlowProvenance::kUnmodeled;
   [[nodiscard]] bool MayInvokeUserCode(FlowCompletion completion) const {
     if(completion==FlowCompletion::kConservativeCleanup)return true;
     if(!effects)return effect==ExpressionEvaluation::kRequired;
@@ -312,6 +317,10 @@ struct LegacyFlowProjection {
   // Borrow immutable canonical access/capture facts, not another proposal's
   // scalar, liveness or initialization product. Returned flow copies access.
   const SourceCells* cells=nullptr;
+  // Syntax facets whose execution is carried by other projected occurrences.
+  // Their old statement boundary must still revoke its raw completion proof.
+  std::span<const std::optional<ExprId>> forwarded_values;
+  std::span<const std::optional<std::uint32_t>> loop_declarations;
   [[nodiscard]] std::optional<PrimitiveId> ReadLiteral(ExprId expression,SymbolId binding) const {
     if(!read_literals.empty()&&read_literals[expression.value])return read_literals[expression.value];
     return literals[binding.value];

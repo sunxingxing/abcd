@@ -36,6 +36,34 @@
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
 
+### 2026-10-10：规则273，执行图拥有原始证明的失效事实
+
+- 当前/候选 flow 构建器在实际执行边界发布 Preserved/Changed/Unmodeled；
+  替换、删除、声明投影及 native loop 阶段使用同一事实通道。被删除的
+  无结果动作保留已连接的失效边界，替换目标保留其移动来源。
+- normal-kind 消费者不再逐项检查恢复计划以猜测执行变化；共同稀疏依赖图
+  传播来源事实。旧值方程不能复活当前图已经撤销的 raw 路径范围证明。
+  失效只撤销 raw 精度，不禁止求解源码域，不授予删除效果/写入或合并单元。
+  图与值方程的任意混用仍不被授权，pass revision 契约保持独立。
+- 新无结果动作反例先 RED：旧实现会恢复有限数范围。当前定向3/3通过
+  （10.91s）；104份生成源码/3120独立比较/104个语义突变，SSA编号、
+  block split、source arena重排、200/201/400/800及exact/one-short额度
+  均通过。矩阵首轮暴露测试反向arena工具不支持DebuggerStmt，补齐测试
+  适配后通过，保留失败记录。两个生产突变build0/test-6，均已恢复。
+- FlowEvent仍128字节，无新增图/缓存/每变量遍历；原资源额度不变。
+  完整raw phase/protocol/action映射仍未完成；本次退出的是重复的
+  completion-validity判断，不把原指令效果直接套到其操作数源码节点。
+- 冻结终验：31目标构建0（102.04s）、fresh fixed ABC0（3.98s）、
+  63/63测试0（1007.73s）；JUnit名称完整无重复。7份代码/测试哈希、
+  清单及输入SHA在导出前后/测试后不变。19 records仍10 complete/
+  0 partial/9 no-module，10份源码语法全部通过，逐字节等同规则272，
+  contract仍language_numeric_constructors_v1。ProgressBar配对88场景/
+  570异常/114 swaps/15突变/2等价变化通过，platformExecution=false。
+  最终构建无warning/error；证据根build/stage-one/flow-provenance-verification，
+  final-result.json与final-junit.xml；fresh输出flow-provenance-final-rule273-verified。
+- 五项主干仍OPEN、Goal active；完整原始对应、普通/捕获单元重构、其余
+  trial、依赖收敛与里程碑终验继续。其他优化及既定暂停事项保持。
+
 ### 2026-10-10：规则272，共同当前单元能力与独立入口域
 
 - RecoveryFlow::BindingUnit 统一发布 Enclosing/Scope/Loop 的当前单元能力，

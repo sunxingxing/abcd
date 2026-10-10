@@ -143,6 +143,7 @@ function definitionEquivalent(source,conditional) {
   for(const factory of factories)assert.deepEqual(outcome(generated,factory),outcome(reference,factory));
 }
 for(const row of definitions) {
+  assert.equal(nodes(parseJavaScript('('+row.source+')')).filter(node=>node.type==='DebuggerStatement').length,row.action?1:0);
   definitionEquivalent(row.source,row.conditional);definitionComparisons+=factories.length;
   const source='('+row.source+')';
   const comparison=nodes(parseJavaScript(source)).find(node=>node.type==='BinaryExpression'&&['===','!=='].includes(node.operator));
@@ -151,10 +152,10 @@ for(const row of definitions) {
   const mutant=source.slice(0,comparison.start)+replacement+source.slice(comparison.end);
   assert.throws(()=>definitionEquivalent(mutant,row.conditional));++definitionMutants;
 }
-assert.equal(definitions.length,52);
+assert.equal(definitions.length,104);
 console.log(`${definitions.length} checked successful-definition sources / ${definitionComparisons} independent comparisons / ${definitionMutants} adverse mutants`);
-for(const reverse of [false,true])for(const split of [false,true])for(const arena of [false,true]) {
-  const series=definitions.filter(row=>!row.conditional&&row.reverse===reverse&&row.split===split&&row.arena===arena&&row.copies>=200);
+for(const action of [false,true])for(const reverse of [false,true])for(const split of [false,true])for(const arena of [false,true]) {
+  const series=definitions.filter(row=>!row.conditional&&row.action===action&&row.reverse===reverse&&row.split===split&&row.arena===arena&&row.copies>=200);
   assert.deepEqual(series.map(row=>row.copies),[200,201,400,800]);
   for(let i=1;i<series.length;++i) {
     assert.ok(series[i].work<series[i-1].work*3);

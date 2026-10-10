@@ -249,42 +249,27 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
     // current operand/completion cone. Source edits, unknown cells and
     // unmodeled environments invalidate once and propagate on the SAME sparse
     // graph; predicates order completion but never contribute their value type.
+    // Completion edits are produced by the current/trial adapter, including
+    // omitted non-value actions. Reading a plan here duplicated adaptation and
+    // could revive raw proofs when a caller retained canonical value equations.
+    for(std::size_t i=0;i<events;++i) {
+      budget.Step();if(flow.events[i].provenance!=FlowProvenance::kPreserved)
+        changed[event_node(FlowPoint{static_cast<std::uint32_t>(i)}).value]=1;
+    }
+    const bool boundaries=flow.statements.size()==tree.statements.size()&&flow.expressions.size()==expressions;
     for(std::size_t i=0;i<expressions;++i) {
-      budget.Step();const auto& node=tree.expressions[i].expression;
-      if(input.bindings.replacements[i]||input.bindings.transports[i]||input.bindings.read_sources[i]||input.bindings.read_literals[i]||
-          IntrinsicLexicalDependency(node)!=LexicalDependency::kReferences)changed[i]=1;
-      // Replaced/transported evaluations may have no intrinsic event left.
-      // Seed their actual boundary so later path-dependent proofs see the edit.
-      if(flow.expressions.size()==expressions&&(input.bindings.replacements[i]||input.bindings.transports[i])) {
+      budget.Step();
+      if(boundaries) {
         RequireTree(flow.expressions[i].value<events,Error::kOwnership);
-        changed[event_node(flow.expressions[i]).value]=1;
-      }
-      if(input.bindings.replacements[i])changed[input.bindings.replacements[i]->value]=1;
-      if(const auto* read=std::get_if<SymbolExpr>(&node)) {
-        const auto id=read->symbol.value;
-        if(input.bindings.aliases[id]||input.bindings.storage[id]||input.bindings.read_bindings[id]||input.bindings.literals[id])changed[i]=1;
+        if(flow.events[flow.expressions[i].value].provenance!=FlowProvenance::kPreserved)changed[i]=1;
       }
       if(std::holds_alternative<FlowBindingValue>(ProjectedRecoveryEquation(input,ExprId{static_cast<std::uint32_t>(i)}))&&!modeled_reads[i])changed[i]=1;
     }
-    // Even an omitted statement retains a linked boundary point, while its
-    // current owner is absent. Seed the explicit projection delta there, so
-    // removal of an earlier computation cannot silently retain a path proof.
-    if(flow.statements.size()!=tree.statements.size()||flow.expressions.size()!=expressions) {
-      // A value-only graph can still solve source domains. Missing boundary
-      // correspondence makes original path precision unavailable, not invalid
-      // source semantics or a reason to reject the entire projection.
-      for(std::size_t i=0;i<events;++i){budget.Step();changed[event_node(FlowPoint{static_cast<std::uint32_t>(i)}).value]=1;}
-    } else for(std::size_t i=0;i<flow.statements.size();++i) {
-      budget.Step();RequireTree(flow.statements[i].value<events,Error::kOwnership);const auto& plan=input.bindings;
-      if(plan.omitted[i]||plan.statements[i]||
-          (!plan.statement_values.empty()&&plan.statement_values[i])||
-          (!plan.forwarded_values.empty()&&plan.forwarded_values[i])||
-          (!plan.loop_declarations.empty()&&plan.loop_declarations[i])||
-          (!plan.undefined_stores.empty()&&plan.undefined_stores[i])||
-          (!plan.declaration_values.empty()&&plan.declaration_values[i])||
-          (!plan.declaration_completions.empty()&&plan.declaration_completions[i]))changed[event_node(flow.statements[i]).value]=1;
+    // Value-only graph clients can still solve current source domains. Missing
+    // boundary provenance withdraws raw path precision without rejecting them.
+    if(!boundaries)for(std::size_t i=0;i<events;++i) {
+      budget.Step();changed[event_node(FlowPoint{static_cast<std::uint32_t>(i)}).value]=1;
     }
-    for(const auto& name:flow.names){budget.Step();changed[name.site.value]=1;}
     for(std::size_t i=0;i<count;++i){budget.Step();if(changed[i])pending[ready++]={static_cast<std::uint32_t>(i)};}
     while(ready) {
       budget.Step();const auto source=pending[--ready];
