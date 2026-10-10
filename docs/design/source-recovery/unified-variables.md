@@ -3824,3 +3824,44 @@ restored tests pass. Earlier surviving mutants and the enum-spelling build
 failure remain recorded and are not counted as caught faults. Evidence:
 build/stage-one/composite-action-final and composite-action-mutants/attempt-4.
 This is focused verification; the complete63 selection was not rerun for284.
+
+
+### Rules285: implicit operand domains in the joint model
+
+A native update consumes the value captured at its lexical read. RecoveryFlow
+owns that input relation independently of ExprId result kinds. The common sparse
+value index supplies the domain; a direct input-to-effect edge wakes the same
+value/initialization/provenance/executable-completion solve. This dependency is
+required even when a conservative result stays Language through loop widening.
+The final adapter uses the joint product, not an additional source-shape analysis.
+Current/trial construction clears input facts and rejects foreign completed
+input spans. Source-only projections use the same solver.
+
+NormalValueEffects consumes the explicit captured domain for ToNumeric/update
+computation. Number, String and the current Boolean/null primitive domain need
+no user conversion callback; unproved mixtures, BigInt/object and VM-private
+values retain conservative effects. Missing categories are lattice precision
+gaps, not permission to delete effects. The source aggregate still retains the
+whole update. GetValue initialization, conversion, and success-only write
+retention remain independent. The effect adapter now consumes FlowWriteEffect
+for definition events: dropping a conversion's callback cannot drop a retained
+write from a discarded statement. Dead-definition removal remains its own pass.
+
+One implicit binding operand per native update is its language semantics. The
+current action-input representation does not claim full protocol/multi-operand
+phase correspondence. Mainline #1 remains OPEN until protocol, suspension and
+exception-region correspondence close; ordinary binding identities, global
+dependency-driven pass scheduling and milestone end-to-end acceptance remain
+OPEN as recorded in status.md.
+
+
+Rules285 frozen validation builds all32 selected targets (199.53s), passes all65
+selected tests (1176.24s) with exact names/no duplicates, and exports the fixed
+ABC (4.12s). All11 frozen code/test files, selection and input SHA remain
+unchanged. Ten generated sources parse and match rules284 byte-for-byte; the
+record count stays10 complete/9 no-module. The original four production mutants
+all build and fail their input/phase tests; restoration and decoded tests pass.
+The source interference test passes in82.77s without changing any60s subprocess
+limit. Only the existing literal_plan.cc kNoop warning is observed. Evidence:
+build/stage-one/captured-input-final and captured-input-mutants. This closes the
+input-effect migration slice, not mainline #1 or the unified-variable milestone.

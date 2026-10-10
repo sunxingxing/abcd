@@ -21,10 +21,12 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
         initialization->events==flow.events.size()&&initialization->completions==flow.edges.size()),Error::kOwnership);
     if(completion)RequireTree(completion->evaluations.size()==tree.expressions.size()&&
         completion->normal_stores.size()==tree.expressions.size()&&
-        completion->assignments.size()==tree.expressions.size()&&completion->normal_kinds.empty(),Error::kOwnership);
+        completion->assignments.size()==tree.expressions.size()&&completion->normal_kinds.empty()&&
+        completion->input_kinds.empty(),Error::kOwnership);
     RequireTree(flow.original==input.original&&live.reachable.size()==flow.events.size(),Error::kOwnership);
     if(input.original)CheckOriginalFlow(tree,*input.original);
     const auto expressions=tree.expressions.size(),facts=live.live_in.size(),events=flow.events.size();
+    RequireTree(flow.captured_inputs.size()<=std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
     std::size_t caught=0;bool provenance_required=false;
     RequireTree(flow.original_effects.empty()||flow.original_effects.size()==expressions,Error::kOwnership);
     for(const auto& effect:flow.original_effects){budget.Step();provenance_required|=effect.has_value();}
@@ -104,6 +106,17 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
       if(found==live.live_in.end()||*found!=key)return {};
       return NodeId{static_cast<std::uint32_t>(expressions+(found-live.live_in.begin()))};
     };
+    std::vector<std::optional<NodeId>> captured_nodes;
+    std::vector<K> captured_values;
+    budget.Array(captured_nodes,flow.captured_inputs.size());budget.Array(captured_values,flow.captured_inputs.size());
+    for(std::size_t i=0;i<flow.captured_inputs.size();++i) {
+      budget.Step();const auto& input=flow.captured_inputs[i];
+      RequireTree(input.action.value<events&&input.value.point.value<events&&input.value.binding.value<flow.bindings.size(),Error::kOwnership);
+      const auto& action=flow.events[input.action.value];
+      RequireTree(action.kind==FlowEventKind::kEvaluation&&action.input==FlowInputId{static_cast<std::uint32_t>(i)},Error::kOwnership);
+      captured_nodes[i]=fact_node({input.value.point,input.value.binding});
+      if(!captured_nodes[i])captured_values[i]=K::Language();
+    }
     const auto entry_domain=[&](SymbolId binding) {
       RequireTree(binding.value<flow.bindings.size(),Error::kOwnership);
       const auto& source=flow.bindings[binding.value];
@@ -138,6 +151,8 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
       // for each definition. Range proofs may depend on prior path predicates.
       for(std::size_t i=0;i<events;++i) {
         budget.Step();const auto& event=flow.events[i];
+        if(event.input)RequireTree(event.input->value<flow.captured_inputs.size()&&
+            flow.captured_inputs[event.input->value].action==FlowPoint{static_cast<std::uint32_t>(i)},Error::kOwnership);
         const auto target=event_node(FlowPoint{static_cast<std::uint32_t>(i)});
         if(provenance_required&&event.expression)dependency(NodeId{event.expression->value},target,DependencyKind::kProvenance,nullptr);
         if(completion&&event.expression) {
@@ -151,6 +166,13 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
           dependency(event_node(flow.edges[*edge].from),target,DependencyKind::kProvenance,nullptr);
           guard={};
         }
+      }
+      // Captured operands can widen without changing a numeric result kind.
+      // Wake the SAME effect equation directly; result dependencies alone
+      // would keep a stale no-callback/no-throw conclusion. One sparse edge
+      // per implicit input, no event-sized shadow environment or graph walk.
+      if(completion)for(std::size_t i=0;i<captured_nodes.size();++i) {
+        budget.Step();if(captured_nodes[i])dependency(*captured_nodes[i],event_node(flow.captured_inputs[i].action),DependencyKind::kEffects,nullptr);
       }
       // A pending exception is an explicit join, not the normal result of the
       // throwing operation. One sparse node per catch shares value dependencies
@@ -550,6 +572,11 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
           if(!reached[point]||missing[point])continue;
           auto facts=*completion;facts.normal_kinds={values.data(),expressions};
           auto event=flow.events[point];
+          if(event.input) {
+            const auto id=event.input->value;
+            captured_values[id]=captured_nodes[id]?values[captured_nodes[id]->value]:K::Language();
+          }
+          facts.input_kinds=captured_values;
           event.original_effect_valid=event.expression&&!changed[source.value]&&!changed[event.expression->value];
           if(initialization){facts.normal_stores=normal_stores;facts.assignments=assignments;event.read_completion=read_completions[point];}
           effects[point]=EvaluateFlowEventEffects(flow,tree,event,facts);
@@ -610,6 +637,10 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
     }
     FlowNormalKinds result;budget.Array(result.expressions,expressions);
     std::copy_n(values.begin(),expressions,result.expressions.begin());
+    for(std::size_t i=0;i<captured_nodes.size();++i) {
+      budget.Step();captured_values[i]=captured_nodes[i]?values[captured_nodes[i]->value]:K::Language();
+    }
+    result.captured_inputs=std::move(captured_values);
     if(completion) {
       budget.Array(result.original_effects,events);
       for(std::size_t i=0;i<events;++i) {

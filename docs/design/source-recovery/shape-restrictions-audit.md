@@ -3516,3 +3516,20 @@ operand edits and missing captured-input identity withdraw the bound through
 common provenance. Read initialization and successful stores remain separate.
 Decoded register/copy/block variations test the relation, while stale-action
 and wrong-phase production mutants exercise the semantic obligations.
+
+
+Rules285 adds explicit captured action inputs to the common flow/value model.
+The read point and binding are semantic operands published once by the source
+adapter; no pass looks for an opcode sequence, producer list, same block,
+adjacency or a sample name. Ownership/range validation checks that an input ID
+belongs to this graph/action, never that the graph has a compiler layout.
+Captured inputs wake their effect equations directly and use the shared sparse
+query index. Read initialization and successful-definition retention have
+separate facts; a no-callback/no-throw computation does not discharge either.
+The existing fallback path that returned an inert definition event without
+consuming its FlowWriteEffect exits the retention decision path. Missing input
+precision retains conservative effects; it does not select a new pattern.
+Reverse arenas, register/copy/block variations, loop widening with unchanged
+result kinds, source-only/candidate projections, independent generated execution
+and production mutations exercise these obligations. Full original phase and
+region correspondence remains an explicit implementation gap.

@@ -7,6 +7,7 @@ struct RecoveryExpressionInput;
 struct FlowInitializationProgram;
 struct FlowNormalKinds {
   std::vector<analysis::ValueKinds> expressions;
+  std::vector<analysis::ValueKinds> captured_inputs;
   // Present only for the coupled completion solve; indexed by input edges.
   std::vector<std::uint8_t> executable;
   std::vector<std::uint8_t> initialized_reads;

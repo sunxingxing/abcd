@@ -125,7 +125,7 @@ struct Fixture {
         return std::holds_alternative<TreeSemantics>(VerifyExceptionTreeSemantics(
             graph, context, evaluation, candidate, {constants, 2}));
       };
-      test::Check(valid(tree)); Mutations(valid); ResultStorage(); OriginalActions(count == 1);
+      test::Check(valid(tree)); Mutations(valid); ResultStorage(); OriginalActions(count == 1, !arbitrary);
       return;
     }
     const auto input = std::get<FunctionInput>(FunctionInput::Build(identity, {200}, {100},
@@ -139,9 +139,9 @@ struct Fixture {
     work = std::get<ConstructedFunction>(built).work;
     original = std::get<ConstructedFunction>(built).flow->original;
     tree = std::get<ConstructedFunction>(std::move(built)).tree;
-    test::Check(Valid(tree)); Mutations([&](const FunctionTree& candidate) { return Valid(candidate); }); ResultStorage(); OriginalActions(count == 1);
+    test::Check(Valid(tree)); Mutations([&](const FunctionTree& candidate) { return Valid(candidate); }); ResultStorage(); OriginalActions(count == 1, !arbitrary);
   }
-  void OriginalActions(bool solve) const {
+  void OriginalActions(bool solve, bool numeric) const {
     // The verified composite owns a saved operand and a native conversion
     // action. Source coverage/result identity cannot replace either relation.
     std::optional<ExprId> selected, saved;
@@ -183,7 +183,12 @@ struct Fixture {
     };
     const auto current = prepare(*original, plan);
     test::Check(action(current).original_effect_valid && action(current).effects);
-    test::Check(HasLanguageEffect(action(current).effects->normal, LanguageEffect::kUserCode));
+    test::Check(HasLanguageEffect(action(current).effects->normal, LanguageEffect::kUserCode) == !numeric);
+    test::Check((action(current).effects->exceptional == ExceptionalCompletion::kImpossible) == numeric);
+    test::Check(action(current).input.has_value());
+    const auto& captured = current.flow.captured_inputs[action(current).input->value];
+    test::Check(captured.kinds.IsNumber() == numeric);
+    test::Check(current.expressions.evaluations[selected->value] == ExpressionEvaluation::kRequired);
     bool read = false, commit = false;
     for (const auto& event : current.flow.events) if (event.expression == selected) {
       if (event.kind == FlowEventKind::kRead) {
@@ -191,7 +196,9 @@ struct Fixture {
       }
     }
     for (const auto& definition : current.flow.definitions)
-      if (definition.kind == FlowDefinitionKind::kUpdate && definition.write == selected) commit = true;
+      if (definition.kind == FlowDefinitionKind::kUpdate && definition.write == selected) {
+        test::Check(definition.input == captured.value); commit = true;
+      }
     test::Check(read && commit);
     for (auto event : current.flow.events) if (event.kind == FlowEventKind::kRead && event.expression == selected) {
       // The verified native action can be inert while this independent read
@@ -208,7 +215,7 @@ struct Fixture {
     auto missing = *original; missing.definitions[saved->value].reset();
     const auto withdrawn = prepare(missing, plan);
     test::Check(!action(withdrawn).original_effect_valid);
-    test::Check(HasLanguageEffect(action(withdrawn).effects->normal, LanguageEffect::kUserCode));
+    test::Check(HasLanguageEffect(action(withdrawn).effects->normal, LanguageEffect::kUserCode) == !numeric);
     // Editing the captured operand keeps IDs intact but withdraws the old
     // action proof. The candidate must solve initialization/effects anew.
     const auto input = std::get<AssignmentExpr>(tree.expressions[saved->value].expression).value;
@@ -217,7 +224,9 @@ struct Fixture {
     auto candidate = BindingPlanView{plan}; candidate.transports = transports;
     const auto changed = prepare(*original, candidate);
     test::Check(!action(changed).original_effect_valid);
-    test::Check(HasLanguageEffect(action(changed).effects->normal, LanguageEffect::kUserCode));
+    // The new Boolean is independently primitive even after the raw identity
+    // proof is withdrawn. Source kinds still discharge conversion effects.
+    test::Check(!HasLanguageEffect(action(changed).effects->normal, LanguageEffect::kUserCode));
     // With declaration initialization withdrawn, the extra lexical GetValue
     // can fail. The raw conversion bound must not suppress that earlier phase.
     const auto binding = std::get<UpdateExpr>(tree.expressions[selected->value].expression).symbol;

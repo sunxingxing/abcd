@@ -117,6 +117,10 @@ std::variant<FlowValueStates,TreeStructureError> BuildFlowValueStates(
     for(const auto& reference:flow.references){budget.Step();if(reference.kind==FlowReferenceKind::kRead)add({reference.point,reference.binding});}
     for(std::size_t i=0;i<count;++i){budget.Step();if(flow.events[i].read)add({FlowPoint{static_cast<std::uint32_t>(i)},*flow.events[i].read});}
     for(const auto& definition:flow.definitions){budget.Step();if(definition.input)add({definition.input->point,definition.input->binding});}
+    for(const auto& input:flow.captured_inputs) {
+      budget.Step();RequireTree(input.value.point.value<count&&input.value.binding.value<flow.bindings.size(),Error::kOwnership);
+      add({input.value.point,input.value.binding});
+    }
     while(!queries.empty()) {
       budget.Step();const auto fact=queries.back();queries.pop_back();
       if(!result.reachable[fact.point.value])continue;

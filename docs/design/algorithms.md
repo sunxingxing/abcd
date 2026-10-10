@@ -4505,3 +4505,26 @@ sparse captured-value and provenance equations consume these relations. There
 is no added graph traversal, per-variable scan or allocation. Decoded tests
 retain the 200/201/400 update and copy/block growth dimensions and add local
 register reallocation; process RSS and the full suite remain unmeasured here.
+
+
+Captured action inputs (rules285) reuse FlowCapturedValue and the sparse value
+query index. The builder publishes a typed input ID at the native action and
+uses the same read/binding pair for its success-only definition. The joint solve
+caches each input's value node once, adds a direct effect dependency, and changes
+only that input slot when its action is awakened. A result category can stay
+unchanged while its input widens; a result-only dependency is insufficient.
+Current and candidate projections start with unknown input kinds and solve them
+anew. The final effect adapter consumes the published product of that same solve.
+It never rereads a cell at conversion/commit or borrows an old input-domain span.
+
+For M captured inputs and F demanded value facts, the additional node lookups
+cost O(M log(2+F)); query insertion retains its existing ordered-fact costs.
+There is one additional dependency per input, O(H M) propagation at finite
+lattice height H, O(M) owned records/node/domain buffers, and a typed optional
+input ID in each flow event. Empty input sets allocate no input arrays. Existing
+value/init/provenance/completion and live-fact costs remain dimension-dependent.
+All capacities, temporary overlap and traversal work consume the same budget.
+Successful-definition retention reads the existing FlowWriteEffect in constant
+time; it adds no array or independent inference. The 200/201/400/800 tests
+report events, edges, work and admitted bytes, and compare sparse/full products.
+These are local accounting checks, not process RSS or a resumed benchmark.

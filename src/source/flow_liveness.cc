@@ -39,6 +39,10 @@ std::variant<LivenessResult,TreeStructureError> Solve(
       }
     }
     const auto add=[&](LiveBinding fact){if(facts.insert(fact).second)pending.push_back(fact);};
+    if(roots==Roots::kAllReads)for(const auto& input:flow.captured_inputs) {
+      budget.Step();RequireTree(input.value.point.value<flow.events.size()&&input.value.binding.value<flow.bindings.size(),Error::kOwnership);
+      add({input.value.point,input.value.binding});
+    }
     if(roots==Roots::kAllReads)for(const auto& definition:flow.definitions) {
       budget.Step();if(!definition.copy)continue;
       RequireTree(definition.point.value<flow.events.size()&&definition.copy->value<flow.bindings.size(),Error::kOwnership);

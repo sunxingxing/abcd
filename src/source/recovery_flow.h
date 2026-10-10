@@ -15,6 +15,7 @@ struct FlowPoint { std::uint32_t value = 0; auto operator<=>(const FlowPoint&) c
 // Missing entries are correspondence gaps, not permission to reuse raw effects.
 struct FlowOriginalResult { ExprId expression; FlowPoint entry,normal; };
 struct FlowDefinitionId { std::uint32_t value = 0; auto operator<=>(const FlowDefinitionId&) const = default; };
+struct FlowInputId { std::uint32_t value = 0; auto operator<=>(const FlowInputId&) const = default; };
 struct DiscardedId { std::uint32_t value = 0; auto operator<=>(const DiscardedId&) const = default; };
 // An ignored expression result, with effects composed by the semantic adapter.
 // Membership does not authorize changing control or binding lifetime.
@@ -182,6 +183,14 @@ struct DeclarationCompletion;
 // and intervening conversions. Definition kind owns any numeric transformation;
 // merely having a captured input is not a copy/equality certificate.
 struct FlowCapturedValue {FlowPoint point;SymbolId binding;auto operator<=>(const FlowCapturedValue&)const=default;};
+// Implicit action operands use the value at their read, never the binding at
+// conversion or commit. Current/trial builders publish the same dependency;
+// the joint solve owns its kinds, independently of the action's result kinds.
+struct FlowCapturedInput {
+  FlowPoint action;
+  FlowCapturedValue value;
+  analysis::ValueKinds kinds=analysis::ValueKinds::Language();
+};
 struct FlowDefinition {
   FlowPoint point;
   SymbolId binding;
@@ -245,6 +254,7 @@ struct FlowEvent {
   std::optional<DiscardedId> discarded;
   std::optional<StmtId> owner;
   std::optional<FlowPropertySite> property;
+  std::optional<FlowInputId> input;
   std::optional<std::size_t> incoming, outgoing;
   std::optional<StmtId> loop_environment;
   // Explicit throw evaluates this value before publishing the exception.
@@ -429,6 +439,7 @@ struct RecoveryFlow {
   std::vector<FlowEvent> events;
   std::vector<FlowEdge> edges;
   std::vector<FlowDefinition> definitions;
+  std::vector<FlowCapturedInput> captured_inputs;
   std::vector<FlowReference> references;
   std::vector<FlowPropertyReference> properties;
   std::vector<FlowNameReference> names;
@@ -510,6 +521,9 @@ struct FlowEffectInput {
   std::span<const std::uint8_t> normal_stores;
   std::span<const ExpressionEvaluation> assignments;
   std::span<const analysis::ValueKinds> normal_kinds;
+  // Solver-owned changing input domains. Empty consumes the published facts
+  // of this graph; it must never borrow a previous projection's input product.
+  std::span<const analysis::ValueKinds> input_kinds;
 };
 struct FlowEventEffects {
   ExpressionEvaluation retention=ExpressionEvaluation::kInert;

@@ -187,7 +187,8 @@ inline ExpressionEvaluation NormalPropertyReceiverEvaluation(ExprId base,
 // GetValue, lexical initialization and child completion are separate facts.
 // Undefined/Symbol/BigInt lack precise ValueKinds categories and remain unknown.
 inline SourceEffects NormalValueEffects(const TreeExpression& expression,
-    std::span<const analysis::ValueKinds> kinds,ResourceFailureScope resources) {
+    std::span<const analysis::ValueKinds> kinds,ResourceFailureScope resources,
+    analysis::ValueKinds captured=analysis::ValueKinds::Language()) {
   using L=analysis::LanguageEffect;using X=analysis::ExceptionalCompletion;
   const SourceEffects guard{L::kGuard,L::kGuard,X::kMayThrow};
   const SourceEffects allocation{L::kAllocation,L::kAllocation,X::kMayThrow};
@@ -223,6 +224,10 @@ inline SourceEffects NormalValueEffects(const TreeExpression& expression,
         case analysis::BinaryOperator::kBitXor:return primitive?SourceEffects{}:CallbackEffects();
         case analysis::BinaryOperator::kIn:case analysis::BinaryOperator::kInstanceOf:return CallbackEffects();
       }
+    } else if constexpr(std::is_same_v<T,UpdateExpr>) {
+      // ECMA-262 13.4: GetValue and success-only PutValue belong to separate
+      // flow phases. Only this captured operand proves conversion inert.
+      return CoercionPrimitive(captured)?SourceEffects{}:CallbackEffects();
     } else if constexpr(std::is_same_v<T,SymbolExpr>||std::is_same_v<T,ThisExpr>)return guard;
     else if constexpr(std::is_same_v<T,AssignmentExpr>) {
       // Declarative PutValue has no callback; its success-only write belongs
@@ -232,7 +237,7 @@ inline SourceEffects NormalValueEffects(const TreeExpression& expression,
     else if constexpr(std::is_same_v<T,AwaitExpr>||std::is_same_v<T,YieldExpr>)return CallbackEffects(L::kSuspension);
     else if constexpr(std::is_same_v<T,GlobalNameExpr>||std::is_same_v<T,RealmObjectExpr>||std::is_same_v<T,SymbolConstructorExpr>)return CallbackEffects(L::kGlobalAccess);
     else {
-      static_assert(std::is_same_v<T,MemberExpr>||std::is_same_v<T,UpdateExpr>||
+      static_assert(std::is_same_v<T,MemberExpr>||
           std::is_same_v<T,CallExpr>||std::is_same_v<T,ConstructExpr>||
           std::is_same_v<T,ObjectExpr>||
           std::is_same_v<T,ArgumentSnapshotExpr>||std::is_same_v<T,ClassExpr>||

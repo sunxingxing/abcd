@@ -34,6 +34,7 @@ std::variant<FlowNormalKinds,TreeStructureError> CheckedFlowNormalKinds(
     Check(actual.expressions==expected->expressions);Check(actual.executable==expected->executable);
     Check(actual.initialized_reads==expected->initialized_reads);Check(actual.read_completions==expected->read_completions);
     Check(actual.original_effects==expected->original_effects);
+    Check(actual.captured_inputs==expected->captured_inputs);
   }
   return dense;
 }
@@ -1013,6 +1014,28 @@ void UpdateSource(bool reverse,bool numeric,bool increment,bool prefix,bool emit
       Check(model.flow.edges[*edge].completion!=FlowCompletion::kThrow);
   }
   Check(captured);
+  for(const auto& event:model.flow.events)if(event.kind==FlowEventKind::kEvaluation&&event.expression==update) {
+    Check(event.input&&event.input->value<model.flow.captured_inputs.size());
+    const auto& input=model.flow.captured_inputs[event.input->value];
+    Check(input.kinds==(numeric?analysis::ValueKinds::Number():analysis::ValueKinds::Language()));
+    for(const auto& definition:model.flow.definitions)if(definition.kind==FlowDefinitionKind::kUpdate)Check(definition.input==input.value);
+    Check(event.effects.has_value());
+    Check(HasLanguageEffect(event.effects->normal,analysis::LanguageEffect::kUserCode)==!numeric);
+    Check((event.effects->exceptional==analysis::ExceptionalCompletion::kImpossible)==numeric);
+    if(numeric)for(auto edge=event.outgoing;edge;edge=model.flow.edges[*edge].outgoing)
+      Check(model.flow.edges[*edge].completion!=FlowCompletion::kThrow);
+  }
+  // Whole update retention includes the success-only write independently of
+  // whether converting the captured input can invoke callbacks or throw.
+  Check(model.expressions.evaluations[update.value]==ExpressionEvaluation::kRequired);
+  auto source_input=f.Input();source_input.original=nullptr;
+  auto source_prepared=PrepareRecoveryProjection(tree,f.Projection(),source_input);
+  Check(std::holds_alternative<RecoveryProjection>(source_prepared));
+  const auto source_only=std::get<RecoveryProjection>(std::move(source_prepared));
+  Check(source_only.expressions.kinds==model.expressions.kinds);
+  Check(source_only.flow.captured_inputs.size()==model.flow.captured_inputs.size());
+  for(std::size_t i=0;i<model.flow.captured_inputs.size();++i)
+    Check(source_only.flow.captured_inputs[i].kinds==model.flow.captured_inputs[i].kinds);
   const analysis::SemanticBudget exact{model.allocated_bytes,model.work};
   Check(std::holds_alternative<RecoveryProjection>(PrepareRecoveryProjection(tree,f.Projection(),f.Input(),exact)));
   Check(std::get<TreeStructureError>(PrepareRecoveryProjection(tree,f.Projection(),f.Input(),{exact.bytes-1,exact.work}))==TreeStructureError::kResourceLimit);
@@ -1025,6 +1048,8 @@ void UpdateSource(bool reverse,bool numeric,bool increment,bool prefix,bool emit
     for(const auto expression:{update,after,f.reads[0]})Check(trial.expressions.kinds[expression.value]==analysis::ValueKinds::Language());
     Check(trial.expressions.evaluations[f.results[0].value]==ExpressionEvaluation::kRequired);
     Check(model.expressions.evaluations[f.results[0].value]==ExpressionEvaluation::kInert);
+    for(const auto& event:trial.flow.events)if(event.kind==FlowEventKind::kEvaluation&&event.expression==update)
+      Check(event.effects&&HasLanguageEffect(event.effects->normal,analysis::LanguageEffect::kUserCode));
   }
   std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output,{}, {},nullptr,&f.original)));
   if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"numeric",numeric},{"increment",increment},{"prefix",prefix},{"reverse",reverse},{"caught",caught}}<<'\n';
@@ -1081,6 +1106,76 @@ void SparseStateBudgets() {
   const auto source=std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(fixture.tree,source_flow,source_states,source_input));
   Check(metadata.expressions==source.expressions);
   Check(metadata.work==source.work&&metadata.allocated_bytes==source.allocated_bytes);
+}
+// A deliberately conservative result equation remains Language while a loop
+// widens the captured input. Effects must wake from the input itself, even for
+// a partial graph client that has not published numeric result correspondence.
+void CapturedEffectClosure(bool reverse,bool unknown) {
+  Fixture f(1,false);auto& tree=f.tree;
+  const ExprId update{static_cast<unsigned>(tree.expressions.size())};
+  tree.expressions.push_back({UpdateExpr{{1},UpdateDirection::kIncrement,UpdateResult::kPostfix},{0}});
+  f.equations.push_back(UnknownFlowValue{});f.order.push_back(update);
+  const auto count=tree.expressions.size();
+  f.plan.read_sources.resize(count);f.plan.read_literals.resize(count);f.plan.replacements.resize(count);f.plan.transports.resize(count);
+  f.original.input_ranges.resize(count);
+  RecoveryFlow flow{};flow.original=&f.original;flow.bindings.resize(2);
+  flow.bindings[0]={BindingKind::kParameter};flow.bindings[1]={BindingKind::kCompilerTemporary,FlowBindingExposure::kPrivate};
+  constexpr unsigned points=6;
+  const auto point=[&](unsigned id){return FlowPoint{reverse?points-1-id:id};};
+  flow.events.resize(points);flow.entry=point(0);flow.terminal=point(5);
+  const auto number=*std::get<DeclarationStmt>(tree.statements[f.declarations[0].value].statement).initializer;
+  const auto replacement=unknown?std::get<UnaryExpr>(tree.expressions[f.values[0].value].expression).operand:number;
+  flow.definitions={{point(0),{1},FlowDefinitionKind::kInitializer,{},number},
+      {point(3),{1},FlowDefinitionKind::kAssignment,{},replacement}};
+  for(unsigned i:{0U,3U}) {
+    flow.events[point(i).value].kind=FlowEventKind::kDefinition;
+    flow.events[point(i).value].definition=FlowDefinitionId{i==0?0U:1U};
+  }
+  flow.events[point(1).value].kind=FlowEventKind::kRead;flow.events[point(1).value].read=SymbolId{1};
+  flow.events[point(2).value].kind=FlowEventKind::kEvaluation;flow.events[point(2).value].expression=update;
+  flow.events[point(2).value].input=FlowInputId{0};
+  flow.captured_inputs.push_back({point(2),{point(1),{1}}});
+  const auto edge=[&](unsigned from,unsigned to,FlowCompletion completion=FlowCompletion::kNormal) {
+    const auto source=point(from),target=point(to);const auto id=flow.edges.size();
+    flow.edges.push_back({source,target,completion,flow.events[target.value].incoming,flow.events[source.value].outgoing});
+    flow.events[target.value].incoming=id;flow.events[source.value].outgoing=id;return id;
+  };
+  edge(0,1);edge(1,2);edge(2,3);edge(3,4);edge(4,1);const auto thrown=edge(2,5,FlowCompletion::kThrow);
+  std::vector<ExpressionEvaluation> evaluations(count,ExpressionEvaluation::kRequired);
+  std::vector<std::uint8_t> stores(count);const FlowEffectInput completion{evaluations,stores,evaluations,{}};
+  const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));
+  const auto solved=std::get<FlowNormalKinds>(CheckedFlowNormalKinds(tree,flow,live,f.Input(),{},&completion));
+  Check(solved.expressions[update.value]==analysis::ValueKinds::Language());
+  Check(solved.captured_inputs[0]==(unknown?analysis::ValueKinds::Language():analysis::ValueKinds::Number()));
+  Check(static_cast<bool>(solved.executable[thrown])==unknown);
+  auto stale=completion;stale.input_kinds=solved.captured_inputs;
+  Check(std::get<TreeStructureError>(CheckedFlowNormalKinds(tree,flow,live,f.Input(),{},&stale))==TreeStructureError::kOwnership);
+}
+std::uint64_t CapturedInputCosts(unsigned count,bool reverse) {
+  Fixture f(count,reverse);
+  for(unsigned i=0;i<count;++i) {
+    f.tree.expressions[f.results[i].value].expression=UpdateExpr{{i+1},UpdateDirection::kIncrement,UpdateResult::kPostfix};
+    f.equations[f.results[i].value]=UnknownFlowValue{};
+  }
+  auto prepared=PrepareRecoveryProjection(f.tree,f.Projection(),f.Input());
+  if(const auto* error=std::get_if<TreeStructureError>(&prepared))std::cerr<<"captured cost error="<<static_cast<unsigned>(*error)<<" count="<<count<<'\n';
+  Check(std::holds_alternative<RecoveryProjection>(prepared));
+  const auto model=std::get<RecoveryProjection>(std::move(prepared));
+  Check(model.flow.captured_inputs.size()==count);
+  for(const auto& input:model.flow.captured_inputs)Check(input.kinds==analysis::ValueKinds::Number());
+  if(count<=201) {
+    const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(model.flow));
+    const auto oracle=std::get<FlowNormalKinds>(CheckedFlowNormalKinds(f.tree,model.flow,live,f.Input()));
+    Check(oracle.expressions==model.expressions.kinds);
+    for(const auto& input:oracle.captured_inputs)Check(input==analysis::ValueKinds::Number());
+    const analysis::SemanticBudget exact{model.allocated_bytes,model.work};
+    Check(std::holds_alternative<RecoveryProjection>(PrepareRecoveryProjection(f.tree,f.Projection(),f.Input(),exact)));
+    Check(std::get<TreeStructureError>(PrepareRecoveryProjection(f.tree,f.Projection(),f.Input(),{exact.bytes-1,exact.work}))==TreeStructureError::kResourceLimit);
+    Check(std::get<TreeStructureError>(PrepareRecoveryProjection(f.tree,f.Projection(),f.Input(),{exact.bytes,exact.work-1}))==TreeStructureError::kWorkLimit);
+  }
+  std::cerr<<"captured inputs count="<<count<<" reverse="<<reverse<<" events="<<model.flow.events.size()<<" edges="<<model.flow.edges.size()
+      <<" work="<<model.work<<" bytes="<<model.allocated_bytes<<'\n';
+  return model.work;
 }
 // Chained ordinary try/assignment fragments expose stale domains after final
 // effect pruning; a fixed extra number of whole-graph rounds cannot satisfy it.
@@ -1352,7 +1447,12 @@ void ReadPhaseInitialization(bool reverse,bool early,bool emit=false) {
     for(auto edge=event.outgoing;edge;edge=model.flow.edges[*edge].outgoing)
       throws|=model.flow.edges[*edge].completion==FlowCompletion::kThrow;
     if(event.kind==FlowEventKind::kRead){seen=true;Check(throws==early);}
-    if(event.kind==FlowEventKind::kEvaluation){conversion=true;Check(throws);}
+    if(event.kind==FlowEventKind::kEvaluation){conversion=true;Check(throws==early);}
+  }
+  for(const auto& definition:model.flow.definitions)if(definition.kind==FlowDefinitionKind::kUpdate) {
+    const auto& commit=model.flow.events[definition.point.value];
+    Check(commit.effect==ExpressionEvaluation::kRequired);
+    Check(commit.discarded&&model.flow.discarded[commit.discarded->value].effect==ExpressionEvaluation::kRequired);
   }
   Check(seen&&conversion);
   if(emit) {
@@ -1731,6 +1831,7 @@ int main(int argc,char** argv) {
   }
   if(argc==2&&std::string_view(argv[1])=="--updates") {
     for(bool reverse:{false,true})for(bool early:{false,true})ReadPhaseInitialization(reverse,early);
+    for(bool reverse:{false,true})for(bool unknown:{false,true})CapturedEffectClosure(reverse,unknown);
     for(bool caught:{false,true})for(bool reverse:{false,true})for(bool numeric:{false,true})for(bool increment:{false,true})for(bool prefix:{false,true})UpdateSource(reverse,numeric,increment,prefix,true,caught);
     return 0;
   }
@@ -1850,6 +1951,15 @@ int main(int argc,char** argv) {
     }
   }
   OriginalIntrinsicEffects(false);OriginalIntrinsicEffects(true);
+  for(bool reverse:{false,true})for(bool unknown:{false,true})CapturedEffectClosure(reverse,unknown);
+  for(bool reverse:{false,true}) {
+    std::uint64_t previous=0;
+    for(unsigned count:{200U,201U,400U,800U}) {
+      const auto work=CapturedInputCosts(count,reverse);
+      if(previous)Check(work<previous*3);previous=work;
+    }
+  }
+  for(bool caught:{false,true})for(bool reverse:{false,true})for(bool numeric:{false,true})for(bool increment:{false,true})for(bool prefix:{false,true})UpdateSource(reverse,numeric,increment,prefix,false,caught);
   Case(false);Case(true);ChangedDefinition(false);ChangedDefinition(true);
   OriginalEntries(false);OriginalEntries(true);UnitCapabilityContract();
   for(unsigned form=0;form<10;++form)for(bool loop:{false,true})for(bool reverse:{false,true})CurrentUnitKinds(reverse,loop,form);

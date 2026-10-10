@@ -51,6 +51,7 @@ class FlowBuilder {
     names_=std::move(result_.names);names_.clear();
     discarded_=std::move(result_.discarded);discarded_.clear();
     result_.properties.clear();
+    result_.captured_inputs.clear();
   }
   RecoveryFlow Run() {
     result_.scopes.reset();
@@ -569,7 +570,11 @@ class FlowBuilder {
       // the commit would model another operation. Demand and kinds share this
       // input just as they do for copied iteration environments.
       RequireTree(events_[normal.value].definition.has_value(),Error::kOwnership);
-      definitions_[events_[normal.value].definition->value].input=FlowCapturedValue{read,Resolve(update->symbol)};
+      const FlowCapturedValue captured{read,Resolve(update->symbol)};
+      definitions_[events_[normal.value].definition->value].input=captured;
+      RequireTree(result_.captured_inputs.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
+      events_[effect.value].input=FlowInputId{static_cast<std::uint32_t>(result_.captured_inputs.size())};
+      Append(result_.captured_inputs,FlowCapturedInput{effect,captured});
       events_[read.value].effect=ExpressionEvaluation::kRequired;
       events_[read.value].effects=NormalValueEffects(SymbolExpr{update->symbol},{},ResourceFailures(tree_.identity.contract));
       Reference(read,Resolve(update->symbol),FlowReferenceKind::kRead,at.id,FlowExceptionContext{context.thrown,context.finalizer},context.owner);
@@ -844,6 +849,14 @@ std::variant<RecoveryFlow,TreeStructureError> BuildRecoveryFlow(
 }
 FlowEventEffects EvaluateFlowEventEffects(const RecoveryFlow& flow,const FunctionTree& tree,
     const FlowEvent& event,FlowEffectInput input) {
+  if(event.definition) {
+    RequireTree(event.definition->value<flow.definitions.size(),Error::kOwnership);
+    // Successful writes own retention separately from computing their value.
+    // Refining conversion/callback effects cannot erase an observable commit;
+    // private-write deletion remains the demand/dead-definition analysis's job.
+    return {flow.definitions[event.definition->value].effect==FlowWriteEffect::kObservable?
+        ExpressionEvaluation::kRequired:ExpressionEvaluation::kInert,event.effects};
+  }
   if(!event.expression||event.kind==FlowEventKind::kTruthBranch||event.kind==FlowEventKind::kNullishBranch)
     return {event.effect,event.effects};
   const auto kinds=input.normal_kinds.empty()?std::span<const analysis::ValueKinds>(flow.normal_kinds):input.normal_kinds;
@@ -861,10 +874,17 @@ FlowEventEffects EvaluateFlowEventEffects(const RecoveryFlow& flow,const Functio
     return {effects.Evaluation(),effects};
   }
   const auto id=*event.expression;const auto& node=tree.expressions[id.value].expression;
-  bool required=NormalValueEvaluation(node,kinds,resources)==ExpressionEvaluation::kRequired&&
+  auto captured=analysis::ValueKinds::Language();
+  if(event.kind==FlowEventKind::kEvaluation&&event.input) {
+    RequireTree(event.input->value<flow.captured_inputs.size()&&
+        (input.input_kinds.empty()||input.input_kinds.size()==flow.captured_inputs.size()),Error::kOwnership);
+    captured=input.input_kinds.empty()?flow.captured_inputs[event.input->value].kinds:input.input_kinds[event.input->value];
+  }
+  const auto intrinsic=NormalValueEffects(node,kinds,resources,captured);
+  bool required=intrinsic.Evaluation()==ExpressionEvaluation::kRequired&&
       input.evaluations[id.value]!=ExpressionEvaluation::kInert;
   if(std::holds_alternative<AssignmentExpr>(node))required=input.assignments[id.value]==ExpressionEvaluation::kRequired;
-  auto effects=required?NormalValueEffects(node,kinds,resources):SourceEffects{};
+  auto effects=required?intrinsic:SourceEffects{};
   if(std::holds_alternative<AssignmentExpr>(node)&&input.normal_stores[id.value]) {
     // Successful lexical PutValue is independent of observable write
     // retention and of the RHS's separately evaluated throwing phases.
