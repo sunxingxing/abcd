@@ -65,6 +65,7 @@ struct TreeFlow {
   // Written by the proof owning the actual snapshot/edge/catch assignment.
   // Recovery must not reconstruct raw definition identity from AST shape.
   std::vector<std::optional<OriginalSourceDefinition>> definitions;
+  std::vector<std::optional<OriginalSourceDefinition>> declarations; // StmtId indexed.
   // OpId indexed, reconstructed from actual native roots. These values reuse
   // immutable invocation storage, not a source symbol or a derived VM entry.
   std::vector<ReceiverValue> receivers;

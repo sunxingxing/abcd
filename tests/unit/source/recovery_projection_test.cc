@@ -267,7 +267,7 @@ std::pair<std::uint64_t,std::size_t> ControlCompletions(unsigned form,bool rever
 }
 // Synthetic path-range certificates exercise the shared consumer. Decoded
 // FunctionTree tests separately prove publication of the control/edge owner.
-std::pair<std::uint64_t,std::size_t> OriginalControlKinds(bool reverse,unsigned count=1) {
+std::pair<std::uint64_t,std::size_t> OriginalControlKinds(bool reverse,unsigned count=1,unsigned copies=0) {
   using namespace analysis;
   Fixture f(0,false);auto& tree=f.tree;
   const auto expr=[&](TreeExpression value,FlowValueEquation equation=UnknownFlowValue{}) {
@@ -288,7 +288,22 @@ std::pair<std::uint64_t,std::size_t> OriginalControlKinds(bool reverse,unsigned 
   for(unsigned i=0;i<count;++i) {
     const ScopeId yes{static_cast<unsigned>(tree.scopes.size())},no{yes.value+1};
     tree.scopes.push_back({ScopeKind::kBlock,ScopeId{1}});tree.scopes.push_back({ScopeKind::kBlock,ScopeId{1}});
-    const auto condition=expr(BinaryExpr{BinaryOperator::kStrictEqual,expr(SymbolExpr{{0}},FlowBindingValue{{0}}),expr(TreeLiteral{source::IntegerLiteral{0}})});
+    auto condition=expr(BinaryExpr{BinaryOperator::kStrictEqual,expr(SymbolExpr{{0}},FlowBindingValue{{0}}),expr(TreeLiteral{source::IntegerLiteral{0}})});
+    for(unsigned copy=0;copy<copies;++copy) {
+      const SymbolId binding{static_cast<unsigned>(tree.symbols.size())};const NameId name{static_cast<unsigned>(tree.names.size())};
+      const auto suffix=std::to_string(binding.value);tree.names.push_back(u"condition"+std::u16string(suffix.begin(),suffix.end()));
+      tree.symbols.push_back({{1},name,BindingKind::kCompilerTemporary,DeclarationKind::kLet,NameEvidence::kSynthesized,TemporaryReason::kMultipleUses});
+      const auto declaration=stmt(DeclarationStmt{binding,condition});body.push_back(declaration);
+      // A layout variation retains its SSA copy correspondence. Omitting it
+      // is a different, explicitly unproved input rather than queue-order evidence.
+      const OpId operation{static_cast<unsigned>(f.original.operations.size())};
+      const ValueId value{static_cast<unsigned>(f.original.values.size())};
+      f.original.values.push_back({OpResult{operation},ValueKinds::Boolean()});
+      OriginalOperation save{};save.life=ValueLife::kLive;save.result=value;save.expression=save.result_expression=condition;
+      f.original.operations.push_back(save);f.original.declarations.resize(tree.statements.size());
+      f.original.declarations[declaration.value]=OriginalSourceDefinition{OriginalResultDefinition{operation,value},binding,condition};
+      condition=expr(SymbolExpr{binding},FlowBindingValue{binding});
+    }
     const auto number=expr(UnaryExpr{TreeUnary::kPlus,expr(SymbolExpr{{0}},FlowBindingValue{{0}})});
     const auto first=expr(AssignmentExpr{SymbolTarget{{1}},number},FlowExpressionValue{number});
     const auto seven=expr(TreeLiteral{source::IntegerLiteral{7}},FlowPrimitiveReference{{1}});
@@ -300,7 +315,8 @@ std::pair<std::uint64_t,std::size_t> OriginalControlKinds(bool reverse,unsigned 
     const EdgeId edge{static_cast<unsigned>(f.original.edges.size())};
     f.original.edges.push_back({{i*3},{i*3+1},FlowEdgeKind::kTaken,0});
     f.original.edges.push_back({{i*3},{i*3+2},FlowEdgeKind::kFallthrough,1});
-    f.original.edge_controls.insert(f.original.edge_controls.end(),{OpId{i},OpId{i}});
+    const OpId branch_id{static_cast<unsigned>(f.original.operations.size())};
+    f.original.edge_controls.insert(f.original.edge_controls.end(),{branch_id,branch_id});
     OriginalOperation branch{};branch.life=ValueLife::kLive;
     branch.control=OriginalControlInput{condition,OriginalControlKind::kPredicate,
         PureTruthTest{TruthDomains::All(),TruthDomains::Truthy(),PureTruthOutcome::kDecision}};
@@ -313,11 +329,12 @@ std::pair<std::uint64_t,std::size_t> OriginalControlKinds(bool reverse,unsigned 
   }
   const auto root=tree.children.size();tree.children.insert(tree.children.end(),body.begin(),body.end());
   std::get<BlockStmt>(tree.statements[0].statement)={{1},static_cast<unsigned>(root),static_cast<unsigned>(body.size())};
-  const auto x=tree.expressions.size(),s=tree.statements.size();
-  f.plan.aliases.resize(2);f.plan.storage.resize(2);f.plan.read_bindings.resize(2);f.plan.literals.resize(2);
+  const auto x=tree.expressions.size(),s=tree.statements.size(),b=tree.symbols.size();
+  f.plan.aliases.resize(b);f.plan.storage.resize(b);f.plan.read_bindings.resize(b);f.plan.literals.resize(b);
   f.plan.read_sources.resize(x);f.plan.read_literals.resize(x);f.plan.replacements.resize(x);f.plan.transports.resize(x);
-  f.plan.omitted.resize(s);f.plan.statements.resize(s);f.private_bindings={0,1};
-  f.original.statements=s;f.original.bindings=2;f.original.input_ranges.resize(x);f.original.definitions.resize(x);
+  f.plan.omitted.resize(s);f.plan.statements.resize(s);f.private_bindings.assign(b,1);f.private_bindings[0]=0;
+  f.original.statements=s;f.original.bindings=b;f.original.input_ranges.resize(x);f.original.definitions.resize(x);
+  if(copies)f.original.declarations.resize(s);
   if(reverse) {
     const auto map=[&](ExprId id){return ExprId{static_cast<unsigned>(x-1-id.value)};};
     for(auto& node:tree.expressions)std::visit([&](auto& value) {
@@ -331,21 +348,33 @@ std::pair<std::uint64_t,std::size_t> OriginalControlKinds(bool reverse,unsigned 
       using T=std::decay_t<decltype(value)>;
       if constexpr(std::is_same_v<T,IfStmt>)value.condition=map(value.condition);
       else if constexpr(std::is_same_v<T,ExpressionStmt>)value.expression=map(value.expression);
+      else if constexpr(std::is_same_v<T,DeclarationStmt>){if(value.initializer)value.initializer=map(*value.initializer);}
     },node.statement);
     for(auto& value:f.equations)if(auto* expression=std::get_if<FlowExpressionValue>(&value))expression->expression=map(expression->expression);
     for(auto& value:f.order)value=map(value);
     for(auto& definition:f.original.definitions)if(definition)definition->input=map(definition->input);
+    for(auto& definition:f.original.declarations)if(definition)definition->input=map(definition->input);
     std::reverse(tree.expressions.begin(),tree.expressions.end());std::reverse(f.equations.begin(),f.equations.end());
     std::reverse(f.original.definitions.begin(),f.original.definitions.end());
     for(auto& id:conditions)id=map(id);for(auto& id:stores)id=map(id);for(auto& id:reads)id=map(id);
-    for(auto& operation:f.original.operations)operation.control->expression=map(operation.control->expression);
+    for(auto& operation:f.original.operations) {
+      if(operation.control)operation.control->expression=map(operation.control->expression);
+      if(operation.expression)operation.expression=map(*operation.expression);
+      if(operation.result_expression)operation.result_expression=map(*operation.result_expression);
+    }
   }
   const auto condition=conditions.front(),first=stores.front(),read=reads.front();
   Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
-  auto projection=f.Projection();const std::array<std::uint8_t,2> stable{1,0};projection.stable_entries=stable;
+  auto projection=f.Projection();std::vector<std::uint8_t> stable(b);stable[0]=1;projection.stable_entries=stable;
   const auto model=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,projection,f.Input()));
-  Check(model.flow.original_controls.size()==count);
+  Check(model.flow.original_controls.size()==count*(1+copies));
   for(const auto at:reads)Check(model.expressions.kinds[at.value].IsFiniteNumber());
+  unsigned native_initializers=0;
+  for(const auto& definition:model.flow.definitions)
+    if(definition.kind==FlowDefinitionKind::kInitializer&&definition.declaration) {
+      Check(definition.original==&*f.original.declarations[definition.declaration->value]);++native_initializers;
+    }
+  Check(native_initializers==count*copies);
   if(count==1) {
     const SemanticBudget exact{model.allocated_bytes,model.work};
     Check(std::holds_alternative<RecoveryProjection>(PrepareRecoveryProjection(tree,projection,f.Input(),exact)));
@@ -357,33 +386,45 @@ std::pair<std::uint64_t,std::size_t> OriginalControlKinds(bool reverse,unsigned 
   const auto unknown=std::get<FlowNormalKinds>(CheckedFlowNormalKinds(tree,gap,live,f.Input()));
   Check(unknown.expressions[read.value].IsNumber()&&!unknown.expressions[read.value].IsFiniteNumber());
   Check(OriginalDefinitionKinds(gap,*f.original.definitions[first.value]).IsEmpty());
-  const OriginalSourceDefinition saved{OriginalSavedDefinition{ValueId{1},IncomingKey{EdgeId{0}}},{1},f.original.definitions[first.value]->input};
+  const auto phi=std::get<OriginalPhiDefinition>(f.original.definitions[first.value]->origin).value;
+  const OriginalSourceDefinition saved{OriginalSavedDefinition{phi,IncomingKey{EdgeId{0}}},{1},f.original.definitions[first.value]->input};
   Check(OriginalDefinitionKinds(model.flow,saved).IsFiniteNumber());Check(OriginalDefinitionKinds(gap,saved).IsEmpty());
   if(count==1) {
     auto truths=model.flow.normal_truths;truths[condition.value]=TruthDomains::One(TruthDomain::kFalsy);
-    Check(OriginalDefinitionControl(model.flow,saved)==analysis::OpId{0});
+    Check(OriginalDefinitionControl(model.flow,saved)==analysis::OpId{copies});
     Check(OriginalDefinitionKinds(model.flow,saved,truths).IsEmpty());
     Check(OriginalDefinitionKinds(model.flow,*f.original.definitions[first.value],truths).IsEmpty());
+    Check(OriginalDefinitionProof(model.flow,saved,truths).state==FlowOriginalProofState::kUnreachable);
+    Check(OriginalDefinitionProof(gap,saved,truths).state==FlowOriginalProofState::kUnavailable);
+    truths[condition.value]={};
+    Check(OriginalDefinitionProof(model.flow,saved,truths).state==FlowOriginalProofState::kPending);
+    Check(OriginalDefinitionProof(model.flow,*f.original.definitions[first.value],truths).state==FlowOriginalProofState::kPending);
     truths[condition.value]=TruthDomains::Truthy();
     Check(OriginalDefinitionKinds(model.flow,saved,truths).IsFiniteNumber());
-    const auto* branch=std::get_if<IfStmt>(&tree.statements[body[1].value].statement);Check(branch&&branch->alternate);
+    Check(OriginalDefinitionProof(model.flow,saved,truths).state==FlowOriginalProofState::kAvailable);
+    const auto* branch=std::get_if<IfStmt>(&tree.statements[body[1+copies].value].statement);Check(branch&&branch->alternate);
     const auto& block=std::get<BlockStmt>(tree.statements[branch->alternate->value].statement);
     const auto second=std::get<ExpressionStmt>(tree.statements[tree.children[block.first_child].value].statement).expression;
     Check(OriginalDefinitionKinds(model.flow,*f.original.definitions[second.value],truths).IsEmpty());
     const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(model.flow));
-    Check(std::holds_alternative<FlowNormalKinds>(CheckedFlowNormalKinds(tree,model.flow,live,f.Input())));
+    const auto cold=std::get<FlowNormalKinds>(CheckedFlowNormalKinds(tree,model.flow,live,f.Input()));
+    Check(cold.expressions[read.value].IsFiniteNumber());
   }
-  auto candidate=f.plan;candidate.primitives.push_back(BooleanLiteral{true});
-  candidate.transports[condition.value]=ExpressionTransport{condition,PrimitiveId{static_cast<unsigned>(candidate.primitives.size()-1)}};
-  const RecoveryExpressionInput changed{candidate,f.equations,f.order,&f.original};
-  const auto current=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,projection,changed));
-  Check(current.expressions.kinds[read.value].IsNumber()&&!current.expressions.kinds[read.value].IsFiniteNumber());
+  const auto input=copies?*std::get<DeclarationStmt>(tree.statements[body[1].value].statement).initializer:condition;
+  for(const auto substituted:{condition,input}) {
+    auto candidate=f.plan;candidate.primitives.push_back(BooleanLiteral{true});
+    candidate.transports[substituted.value]=ExpressionTransport{substituted,PrimitiveId{static_cast<unsigned>(candidate.primitives.size()-1)}};
+    const RecoveryExpressionInput changed{candidate,f.equations,f.order,&f.original};
+    const auto current=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,projection,changed));
+    Check(current.expressions.kinds[read.value].IsNumber()&&!current.expressions.kinds[read.value].IsFiniteNumber());
+  }
   auto no_raw=projection;no_raw.original=nullptr;
   no_raw.evaluations=model.expressions.evaluations;no_raw.normal_stores=model.expressions.normal_stores;
   no_raw.normal_bindings=model.expressions.bindings;no_raw.normal_kinds=model.expressions.kinds;
   const auto plain=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,no_raw,{},model.flow));
   Check(plain.original_controls.empty()&&plain.original_controls.capacity()==0);
   Check(plain.normal_truths.empty()&&plain.normal_truths.capacity()==0);
+  for(const auto& definition:plain.definitions)Check(definition.original==nullptr);
   return {model.work,model.allocated_bytes};
 }
 // Conditional effect certificates are synthetic inputs to the solver here;
@@ -2281,6 +2322,10 @@ int main(int argc,char** argv) {
     }
   }
   OriginalControlKinds(false);OriginalControlKinds(true);
+  for(bool reverse:{false,true})for(unsigned copies:{1U,4U,200U,201U}) {
+    const auto measured=OriginalControlKinds(reverse,1,copies);
+    std::cout<<"control ready copies="<<copies<<" reverse="<<reverse<<" work="<<measured.first<<" bytes="<<measured.second<<'\n';
+  }
   for(bool reverse:{false,true}) {
     std::pair<std::uint64_t,std::size_t> previous{};
     for(unsigned count:{200U,201U,400U,800U}) {

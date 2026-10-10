@@ -582,7 +582,13 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
       if(dependency.definition&&!changed[dependency.source.value]&&!changed[target.value]) {
         K original;
         if(dependency.definition->original) {
-          RequireTree(input.original!=nullptr,Error::kOwnership);original=OriginalDefinitionKinds(flow,*dependency.definition->original,{truths.data(),expressions});
+          RequireTree(input.original!=nullptr,Error::kOwnership);
+          const auto proof=OriginalDefinitionProof(flow,*dependency.definition->original,{truths.data(),expressions});
+          switch(proof.state) {
+            case FlowOriginalProofState::kPending:case FlowOriginalProofState::kUnreachable:return;
+            case FlowOriginalProofState::kAvailable:original=proof.kinds;break;
+            case FlowOriginalProofState::kUnavailable:break;
+          }
         }
         if(const auto* caught=dependency.definition->original_catch) {
           original=OriginalCatchKinds(flow,*caught);

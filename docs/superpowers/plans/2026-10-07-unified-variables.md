@@ -1137,3 +1137,24 @@ input hashes unchanged. Full evidence and the retained first failure are in
 status.md. Full control/protocol/suspension/exception-region correspondence stays
 OPEN, alongside #2/#4/#5. This phase index does not close the raw-integration
 delivery. Continue that mainline; no paused validation or appearance work resumes.
+
+
+Rules291 continuation of Task1: native declaration commits now retain checked
+StmtId definition identity separately from their input expression. Module/local
+writes and numeric stage saves publish through one operand-verification adapter.
+The common original-definition query distinguishes pending control equations from
+absent correspondence and infeasible paths; existing control dependencies replay
+only affected value contributions. The cold copied-control counterexample now
+catches removal of that dependency, closing its known rules290 coverage gap.
+Decoded store publication, current/candidate invalidation, arena/copy changes,
+small independent solvers and fixed acceptance evidence are recorded in status.md.
+No additional mainline is marked closed; Task1 still includes remaining ordinary
+control, all original phase/internal-action and protocol/suspension correspondence.
+Task2 ordinary local/catch identity and whole-pass convergence stay separate open
+requirements. Optional syntax refinements and paused validation remain paused.
+
+Next concrete Task1 obligation: native module/local write Before/Commit attachment
+must consume actual common definition/reference events. Saved operand/placement
+correspondence is not proof of a physical write phase. Keep this together with
+ordinary control and remaining protocol/suspension actions in the original
+semantic-delivery acceptance; do not close Task1 using value-kind tests alone.

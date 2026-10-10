@@ -4109,3 +4109,63 @@ Small-graph oracle and exact/one-short budget checks pass. Existing 64MiB/source
 budgets, deadlines and pauses remain; this does not claim full-corpus/RSS evidence.
 No mainline closes here; original full correspondence, ordinary binding identity,
 whole-pass convergence and final acceptance remain open. Existing pauses hold.
+
+
+### Rules291: source definition sites and control-proof readiness
+
+Native declarations retain a StmtId-indexed checked definition correspondence;
+assignment-backed declaration projections retain their ExprId write occurrence.
+The initializer is the captured value, not the commit identity. TreeFlow admits
+both tables, OriginalFlow owns their immutable storage, and FlowBuilder attaches
+the actual binding/input at its successful native definition. Missing raw
+correspondence remains unavailable; source-only undefined initialization and
+binding activation are still explicit native definitions rather than fabricated
+raw results. The new table is revision/dimension checked and never rebuilt by
+an optimization pass from syntax or names.
+
+OperandCheck publishes module declaration, module assignment, lexical assignment
+and numeric staging saves through one typed store adapter. Each records the
+verified input operand and original placement; the common graph owns successful
+writeback, effects, exception paths and binding lifetime independently. Result,
+phi, staged-input and catch identities stay distinct. This closes the native
+write value-correspondence gap in those existing adapters, not every original
+operation/action or binding-identity obligation.
+
+The previous ValueKinds-only incoming query conflated absent correspondence,
+pending control equations and currently infeasible paths. The common query now
+returns unavailable/pending/unreachable/available. An unchanged contribution
+waits while its control equation is bottom, contributes nothing on a currently
+infeasible path, meets an available bound, and uses its native value when the
+correspondence is unavailable. Control domain/provenance changes replay that
+contribution via its existing dependency. The fixed-height lattice only widens;
+existing ungrounded-cycle fallback and resource accounting remain. No iteration
+count, graph size, same-block, adjacency or opcode-pattern admission is added.
+
+A copied Boolean condition followed by a raw-bounded phi now survives current
+joint preparation and a cold independent kind solve in either expression arena
+order. The test first exposed an actual missing declaration correspondence;
+a fabricated RHS-as-write annotation was excluded, not accepted as a valid
+counterexample. After the declaration-site bridge, cold propagation exposed the
+real readiness defect. The test covers 1/4/200/201 copies, missing correspondence,
+all four proof states, changed control and initializer inputs, exact/one-short
+budgets, sparse/dense small-graph agreement and reuse with no original input.
+Decoded module/local stores cover three profiles, register copies, both expression
+and statement arena orders, and 200/201/400/800 growth. Independent source execution
+remains in the fixed existing acceptance scope; no new corpus or RSS run is implied.
+
+Removing the control replay dependency previously survived rules290 tests. The
+cold copy counterexample now rejects that mutation after a successful build;
+conflating pending with unavailable, losing the native declaration commit, and
+omitting decoded module publication are also rejected. Detailed frozen acceptance
+is recorded in status.md. Whole original correspondence, ordinary binding identity,
+whole-pass scheduling/convergence and the final milestone remain open. Candidate
+precision remains closed only within the established shared-model capability.
+
+The next Task1 boundary includes native store Before/Commit correspondence:
+publishing a saved input/placement is not a physical write-phase certificate.
+Original phase attachment currently consumes explicit abrupt/intrinsic/result
+occurrences; the newly published ordinary store definitions alone do not close
+that path. It must bind actual reference preparation, successful write and
+throwing state through common native events, together with remaining ordinary
+control and internal protocol/suspension actions. Do not treat value-kind
+coverage as completion of this delivery or add a local store-layout admission.

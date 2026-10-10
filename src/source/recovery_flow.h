@@ -534,6 +534,15 @@ struct RecoveryFlow {
     const RecoveryFlow&,analysis::OpId,std::span<const TruthDomains> = {});
 [[nodiscard]] std::optional<analysis::OpId> OriginalDefinitionControl(
     const RecoveryFlow&,const OriginalSourceDefinition&);
+enum class FlowOriginalProofState : std::uint8_t {kUnavailable,kPending,kUnreachable,kAvailable};
+struct FlowOriginalDefinitionProof {
+  FlowOriginalProofState state=FlowOriginalProofState::kUnavailable;
+  analysis::ValueKinds kinds;
+};
+// Bottom in an existing control input is a pending equation, not absent
+// correspondence. Consumers must wait/replay instead of widening too early.
+[[nodiscard]] FlowOriginalDefinitionProof OriginalDefinitionProof(const RecoveryFlow&,
+    const OriginalSourceDefinition&,std::span<const TruthDomains> = {});
 [[nodiscard]] analysis::ValueKinds OriginalDefinitionKinds(const RecoveryFlow&,const OriginalSourceDefinition&,
     std::span<const TruthDomains> = {});
 [[nodiscard]] analysis::ValueKinds OriginalCatchKinds(const RecoveryFlow&,const OriginalCatchBinding&);

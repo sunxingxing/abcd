@@ -439,10 +439,20 @@ class FlowBuilder {
     events_[point.value].effects=SourceEffects{analysis::LanguageEffect::kLexicalWrite};
     events_[point.value].discarded=discarded;
     Append(definitions_,{point,Resolve(binding),kind,copy,value,declaration,write,effect});
-    if(result_.original&&write&&!result_.original->definitions.empty()) {
-      const auto& original=result_.original->definitions[write->value];
+    if(result_.original) {
+      const OriginalSourceDefinition* original=nullptr;
+      // Assignment-backed declaration projections retain their original
+      // write occurrence. Native declarations use their own checked commit,
+      // never the initializer's expression identity as a surrogate write.
+      if(write&&!result_.original->definitions.empty()) {
+        const auto& fact=result_.original->definitions[write->value];
+        if(fact)original=&*fact;
+      } else if(declaration&&!result_.original->declarations.empty()) {
+        const auto& fact=result_.original->declarations[declaration->value];
+        if(fact)original=&*fact;
+      }
       if(original&&original->binding==binding&&value==original->input)
-        definitions_.back().original=&*original;
+        definitions_.back().original=original;
     }
     if(write || kind==FlowDefinitionKind::kUndefinedStore ||
         kind==FlowDefinitionKind::kInitializer || kind==FlowDefinitionKind::kAssignment)
@@ -971,27 +981,31 @@ std::optional<OriginalResult> FindFlowOriginalResult(const RecoveryFlow& flow,an
   return result;
 }
 namespace {
-bool OriginalIncomingAvailable(const RecoveryFlow& flow,const analysis::IncomingKey& incoming,std::span<const TruthDomains> truths) {
+FlowOriginalProofState OriginalIncomingState(const RecoveryFlow& flow,const analysis::IncomingKey& incoming,std::span<const TruthDomains> truths) {
+  using State=FlowOriginalProofState;
   // Consume the verified decision-owner correspondence. This withdraws an
   // incoming certificate when its controlling input has no current occurrence;
   // source definition placement and the joint completion/provenance solver
   // still own path, execution-count and operand-identity obligations. An
   // unconditional incoming edge is not a second control-shape admission rule.
-  const auto* edge=std::get_if<analysis::EdgeId>(&incoming);if(!edge)return true;
+  const auto* edge=std::get_if<analysis::EdgeId>(&incoming);if(!edge)return State::kAvailable;
   if(!flow.original||edge->value>=flow.original->edges.size()||
-      flow.original->edge_controls.size()!=flow.original->edges.size())return false;
+      flow.original->edge_controls.size()!=flow.original->edges.size())return State::kUnavailable;
   const auto owner=flow.original->edge_controls[edge->value];
-  if(!owner)return true;
-  const auto control=FindFlowOriginalControl(flow,*owner);if(!control)return false;
+  if(!owner)return State::kAvailable;
+  const auto control=FindFlowOriginalControl(flow,*owner);if(!control)return State::kUnavailable;
   // Unmodeled tests retain the coarse input-identity contract. A proved pure
   // component instead consumes its qualified input/path domain. Source guard,
   // occurrence count, completion and provenance remain joint-solver duties.
-  if(!control->test)return true;
-  const auto domains=OriginalControlDomains(flow,*owner,truths);if(!domains)return false;
+  if(!control->test)return State::kAvailable;
+  if(truths.empty())truths=flow.normal_truths;
+  if(control->expression.value>=truths.size())return State::kUnavailable;
+  if(truths[control->expression.value].Empty())return State::kPending;
+  const auto domains=OriginalControlDomains(flow,*owner,truths);if(!domains)return State::kUnavailable;
   switch(flow.original->edges[edge->value].kind) {
-    case analysis::FlowEdgeKind::kTaken:return !domains->true_values.Empty();
-    case analysis::FlowEdgeKind::kFallthrough:return !domains->false_values.Empty();
-    default:return true;
+    case analysis::FlowEdgeKind::kTaken:return domains->true_values.Empty()?State::kUnreachable:State::kAvailable;
+    case analysis::FlowEdgeKind::kFallthrough:return domains->false_values.Empty()?State::kUnreachable:State::kAvailable;
+    default:return State::kAvailable;
   }
 }
 bool OriginalHandlerAvailable(const RecoveryFlow& flow,analysis::WorkBlockId handler) {
@@ -1042,20 +1056,25 @@ std::optional<analysis::OpId> OriginalDefinitionControl(const RecoveryFlow& flow
   if(!edge||!flow.original||edge->value>=flow.original->edge_controls.size())return {};
   return flow.original->edge_controls[edge->value];
 }
-analysis::ValueKinds OriginalDefinitionKinds(const RecoveryFlow& flow,const OriginalSourceDefinition& definition,std::span<const TruthDomains> truths) {
+FlowOriginalDefinitionProof OriginalDefinitionProof(const RecoveryFlow& flow,const OriginalSourceDefinition& definition,std::span<const TruthDomains> truths) {
+  using State=FlowOriginalProofState;
   if(!flow.original)return {};
   if(const auto* result=std::get_if<OriginalResultDefinition>(&definition.origin)) {
     const auto verified=FindFlowOriginalResult(flow,result->operation);
-    return verified&&verified->value==result->value&&verified->expression==definition.input?verified->kinds:analysis::ValueKinds{};
+    return verified&&verified->value==result->value&&verified->expression==definition.input?
+        FlowOriginalDefinitionProof{State::kAvailable,verified->kinds}:FlowOriginalDefinitionProof{};
   }
   if(const auto* caught=std::get_if<OriginalCatchDefinition>(&definition.origin))
     if(!OriginalHandlerAvailable(flow,caught->handler))return {};
   if(const auto* phi=std::get_if<OriginalPhiDefinition>(&definition.origin))
-    if(!OriginalIncomingAvailable(flow,phi->incoming,truths))return {};
+    if(const auto state=OriginalIncomingState(flow,phi->incoming,truths);state!=State::kAvailable)return {state,{}};
   if(const auto* saved=std::get_if<OriginalSavedDefinition>(&definition.origin))
     if(const auto* incoming=std::get_if<analysis::IncomingKey>(&saved->placement))
-      if(!OriginalIncomingAvailable(flow,*incoming,truths))return {};
-  return OriginalDefinitionKinds(*flow.original,definition);
+      if(const auto state=OriginalIncomingState(flow,*incoming,truths);state!=State::kAvailable)return {state,{}};
+  return {State::kAvailable,OriginalDefinitionKinds(*flow.original,definition)};
+}
+analysis::ValueKinds OriginalDefinitionKinds(const RecoveryFlow& flow,const OriginalSourceDefinition& definition,std::span<const TruthDomains> truths) {
+  return OriginalDefinitionProof(flow,definition,truths).kinds;
 }
 analysis::ValueKinds OriginalCatchKinds(const RecoveryFlow& flow,const OriginalCatchBinding& caught) {
   if(!OriginalHandlerAvailable(flow,caught.handler))return {};

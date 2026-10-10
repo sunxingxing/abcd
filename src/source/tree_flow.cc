@@ -37,6 +37,7 @@ class FlowCheck {
     budget.Array(flow_.defined_properties, tree.properties.size());
     budget.Array(flow_.snapshots, graph.ops.size());
     budget.Array(flow_.definitions, tree.expressions.size());
+    budget.Array(flow_.declarations, tree.statements.size());
     budget.Array(flow_.receivers, graph.ops.size());
     if (evaluation.cells) budget.Array(flow_.cells, evaluation.cells->cells.cells.size());
     budget.Array(assigned_, tree.symbols.size());

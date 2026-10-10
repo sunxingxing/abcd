@@ -1,4 +1,5 @@
 #include "../../../src/source/function_tree.h"
+#include "../../../src/source/function_values.h"
 #include "../../support/analysis/pure_control_oracle.h"
 #include "../../../src/source/tree_structure.h"
 #include "../../../src/source/tree_semantics.h"
@@ -82,10 +83,12 @@ class Fixture {
   FunctionSyntax Syntax() const {
     FunctionSyntax syntax{};
     syntax.owner = {3};
+    syntax.identity = identity;
     syntax.callable = callable;
     syntax.strictness = Strictness::kStrict;
     syntax.names = {u"params", u"pathStack"};
     syntax.parameters.push_back({NameId{0}, NameEvidence::kDebugRange});
+    syntax.modules = modules;
     return syntax;
   }
   std::variant<ConstructedFunction, FunctionTreeError> Build(
@@ -162,9 +165,74 @@ class Fixture {
     built.flow=std::move(semantics.flow);built.work+=semantics.work;built.allocated_bytes+=semantics.allocated_bytes;
   }
   CallableKind callable=CallableKind::kMethod;
+  RouteInputIdentity identity;
+  std::vector<ModuleSyntax> modules;
   analysis::ValueProgram graph;
   std::vector<ExpressionConstant> constants;
 };
+// Decoded stores verify the declaration/assignment publication boundary. Their
+// source commit identity must survive register copies and independent arenas.
+void OriginalBindingStores(abc::ProfileId profile,unsigned count,unsigned copies,bool reverse,bool lexical) {
+  using namespace analysis;
+  const auto opcode=[](abc::Opcode op){return static_cast<std::uint8_t>(op);};
+  std::vector<std::uint8_t> bytes;
+  for(unsigned i=0;i<count;++i) {
+    if(lexical)bytes.insert(bytes.end(),{opcode(abc::Opcode::kNEWLEXENV_IMM8),1});
+    bytes.push_back(opcode(i%2?abc::Opcode::kLDFALSE:abc::Opcode::kLDTRUE));
+    for(unsigned copy=0;copy<copies;++copy)
+      bytes.insert(bytes.end(),{opcode(abc::Opcode::kSTA_V8),0,opcode(abc::Opcode::kLDA_V8),0});
+    bytes.insert(bytes.end(),{opcode(lexical?abc::Opcode::kSTLEXVAR_IMM4_IMM4:abc::Opcode::kSTMODULEVAR_IMM8),0});
+    if(lexical)bytes.insert(bytes.end(),{opcode(abc::Opcode::kLDLEXVAR_IMM4_IMM4),0,opcode(abc::Opcode::kPOPLEXENV)});
+  }
+  bytes.push_back(opcode(abc::Opcode::kRETURNUNDEFINED));
+  const auto body=test::Body(bytes);
+  const auto frame=std::get<abc::FrameLayout>(abc::BuildFrameLayout(1,1,{false,false,false,false}));
+  Fixture f;f.callable=CallableKind::kFunction;f.identity.profile=profile;
+  const auto input=std::get<FunctionInput>(FunctionInput::Build(f.identity,{300},{100},body,frame,InputCaptureMode::kClosed));
+  f.graph=std::get<FunctionValues>(BuildFunctionValues(input,body,frame)).graph;
+  if(!lexical)f.modules={ModuleSyntax{{{7},{0}},{1},ModuleAccess::kMutable,NameEvidence::kMetadata,true}};
+  f.constants.resize(f.graph.ops.size());std::vector<OpId> stores;
+  for(unsigned i=0;i<f.graph.ops.size();++i)
+    if(const auto* store=std::get_if<ValueModuleWrite>(&f.graph.ops[i].operation)) {
+      f.constants[i]=ModuleStoreConstant{store->slot,{{7},{0}},stores.empty()};stores.push_back({i});
+    } else if(std::holds_alternative<ValueLexicalStore>(f.graph.ops[i].operation))stores.push_back({i});
+  auto built=std::get<ConstructedFunction>(f.Build());if(reverse)f.ReverseArenas(built);
+  const auto& tree=built.tree;const auto& original=*built.flow->original;
+  Check(stores.size()==count&&original.declarations.size()==tree.statements.size());
+  unsigned ordinal=0;
+  for(const auto store:stores) {
+    const OriginalSourceDefinition* definition=nullptr;
+    if(ordinal++==0&&!lexical) {
+      const auto site=*built.flow->statements[store.value];
+      Check(original.declarations[site.value].has_value());definition=&*original.declarations[site.value];
+      const auto& declaration=std::get<DeclarationStmt>(tree.statements[site.value].statement);
+      Check(definition->binding==declaration.symbol&&definition->input==declaration.initializer);
+    } else {
+      const auto site=*built.flow->expressions[store.value];
+      Check(original.definitions[site.value].has_value());definition=&*original.definitions[site.value];
+      const auto& assignment=std::get<AssignmentExpr>(tree.expressions[site.value].expression);
+      Check(definition->binding==std::get<SymbolTarget>(assignment.target).symbol&&definition->input==assignment.value);
+    }
+    const auto& saved=std::get<OriginalSavedDefinition>(definition->origin);
+    Check(std::get<OpId>(saved.placement)==store);
+    const auto& expected=f.graph.uses[f.graph.ops[store.value].first_use.value].operand;
+    std::visit([&](const auto& value) {
+      using T=std::decay_t<decltype(value)>;
+      const auto* actual=std::get_if<T>(&expected);Check(actual!=nullptr);
+      if constexpr(std::is_same_v<T,SpecialValue>)Check(value==*actual);
+      else Check(value.value==actual->value);
+    },saved.operand);
+    Check(OriginalDefinitionKinds(original,*definition).IsBoolean());
+  }
+  auto wrong=original;wrong.declarations.pop_back();
+  Check(std::get<TreeStructureError>(PrepareSourceVariables(tree,{},&wrong))==TreeStructureError::kOwnership);
+  const auto recovered=PrepareSourceVariables(tree,{},&original);
+  Check(std::holds_alternative<SourceVariables>(recovered));
+  if(count>=200)std::cout<<"raw stores lexical="<<lexical<<" count="<<count<<" reverse="<<reverse
+      <<" operations="<<f.graph.ops.size()<<" values="<<f.graph.values.size()<<" definitions="<<stores.size()
+      <<" build_work="<<built.work<<" build_bytes="<<built.allocated_bytes
+      <<" recovery_work="<<std::get<SourceVariables>(recovered).work<<" recovery_bytes="<<std::get<SourceVariables>(recovered).allocated_bytes<<'\n';
+}
 // A shared source anchor is not the value of every operation it covers.
 // ToBoolean controls selection; its Boolean result is not the selected object.
 void OriginalSelectionResults(bool emit=false) {
@@ -1769,6 +1837,12 @@ void RetainedReceiverTrees() {
 }
 }  // namespace
 int main(int argc,char** argv) {
+  if(argc==1) {
+    for(const auto profile:{abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301})
+      for(bool reverse:{false,true})for(bool lexical:{false,true})for(unsigned copies:{0U,4U})OriginalBindingStores(profile,3,copies,reverse,lexical);
+    for(bool reverse:{false,true})for(bool lexical:{false,true})for(unsigned count:{200U,201U,400U,800U})
+      OriginalBindingStores(abc::ProfileId::kDynamic1206,count,1,reverse,lexical);
+  }
   if(argc==2&&std::string_view(argv[1])=="--original-selection"){OriginalSelectionResults(true);return 0;}
   if(argc==2&&std::string_view(argv[1])=="--catch") {
     for(unsigned form=0;form<5;++form)for(bool split:{false,true})for(bool reallocated:{false,true})

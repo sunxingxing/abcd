@@ -88,6 +88,9 @@ struct OriginalFlow {
   std::vector<OriginalInput> inputs;
   std::vector<OriginalInputRange> input_ranges;
   std::vector<std::optional<OriginalSourceDefinition>> definitions; // ExprId indexed.
+  // Declaration commits have their own identity. The initializer denotes a
+  // captured input, not the declarative write or its binding activation.
+  std::vector<std::optional<OriginalSourceDefinition>> declarations; // StmtId indexed.
   std::vector<std::optional<OriginalCatchBinding>> catches; // SymbolId indexed.
 };
 [[nodiscard]] std::shared_ptr<OriginalFlow> RetainOriginalFlow(
