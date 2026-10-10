@@ -4074,3 +4074,38 @@ suite, expanded corpus, RSS, benchmark or DFX work is resumed. No new mainline
 is closed: original correspondence (#1), ordinary binding identity (#2), whole
 pass convergence (#4) and the unified milestone (#5) remain OPEN; #3 retains its
 existing common-model scope.
+
+
+### Rules290: pure original components share captured-input/path facts
+
+Verified SSA selection adapters now retain a typed pure function and its arrival
+partition per component. Existing truth selections and general retained-value
+selections publish the same facts. Boolean, input-copy and raw-decision roles
+stay distinct from native result/action correspondence. Input origin ownership
+is explicit; a later branch origin cannot replace the saving occurrence's origin.
+TreeOperands' second LogicalExpr/Unary/Branch adapter is removed; TreeFlow
+consumes component facts rather than separately marking truth and branch lists.
+
+Current RecoveryFlow queries intersect the captured input's current truth domain
+with each component's proved arrival and true domains. Phi/edge-save proofs
+consume these queries. Domain/provenance changes wake the corresponding value
+contribution only, avoiding repeated scans of an entire join. Source occurrence
+count, completion, effects and proof identity remain separate shared obligations.
+A nonempty domain never proves every occurrence or a physical internal action.
+
+A concrete, test-only SSA/CFG interpreter verifies 27 decoded variants across
+three profiles and every four-domain subset; 60 proposal replacements check fresh
+facts. Hypothetical captured values prove pure test functions/paths, not producer
+behavior. Four production bypasses are caught after successful builds. Removing
+the control dependency survives the existing suite: independent replay-counter-
+example coverage remains open and is explicitly excluded from rejection evidence.
+Frozen acceptance in pure-controls-final passes: 23 code/test files unchanged,
+32 targets built (204.72s), fixed ABC exported (3.03s), 65/65 tests (1190.25s),
+exact names/no duplicates and unchanged selection/input hashes. The 10 complete
+sources remain syntax-valid and byte-identical to rules289; 9 records remain
+no-module. Control work at 200/201/400/800 is 1317382/1324352/2707156/5561596;
+charged bytes are 7280636/7294445/14560324/29119700, unchanged by arena reversal.
+Small-graph oracle and exact/one-short budget checks pass. Existing 64MiB/source
+budgets, deadlines and pauses remain; this does not claim full-corpus/RSS evidence.
+No mainline closes here; original full correspondence, ordinary binding identity,
+whole-pass convergence and final acceptance remain open. Existing pauses hold.

@@ -18,7 +18,8 @@ struct FlowOriginalResult { ExprId expression; FlowPoint entry,normal; };
 // The completed input may lead to a shared source decision point. Keep its
 // own entry/normal interval: the successor alone cannot establish this
 // occurrence's execution. This fact does not identify a selected value.
-struct FlowOriginalControl {ExprId expression;FlowPoint entry,normal;OriginalControlKind kind;};
+struct FlowOriginalControl {ExprId expression;FlowPoint entry,normal;OriginalControlKind kind;std::optional<PureTruthTest> test;};
+struct FlowControlDomains {TruthDomains evaluated,true_values,false_values;};
 struct FlowDefinitionId { std::uint32_t value = 0; auto operator<=>(const FlowDefinitionId&) const = default; };
 struct FlowInputId { std::uint32_t value = 0; auto operator<=>(const FlowInputId&) const = default; };
 struct DiscardedId { std::uint32_t value = 0; auto operator<=>(const DiscardedId&) const = default; };
@@ -524,7 +525,17 @@ struct RecoveryFlow {
     analysis::WorkBlockId,analysis::ExceptionPhase,std::optional<analysis::OpId> = {});
 [[nodiscard]] std::optional<OriginalResult> FindFlowOriginalResult(const RecoveryFlow&,analysis::OpId);
 [[nodiscard]] std::optional<FlowOriginalControl> FindFlowOriginalControl(const RecoveryFlow&,analysis::OpId);
-[[nodiscard]] analysis::ValueKinds OriginalDefinitionKinds(const RecoveryFlow&,const OriginalSourceDefinition&);
+// Qualified virtual facts for pure raw components. Input completion belongs
+// to the captured source occurrence; domains carry each component's path.
+// Boolean results remain distinct from the native selection result/action.
+[[nodiscard]] std::optional<FlowControlDomains> OriginalControlDomains(
+    const RecoveryFlow&,analysis::OpId,std::span<const TruthDomains> = {});
+[[nodiscard]] NormalValueDomain OriginalControlResultDomains(
+    const RecoveryFlow&,analysis::OpId,std::span<const TruthDomains> = {});
+[[nodiscard]] std::optional<analysis::OpId> OriginalDefinitionControl(
+    const RecoveryFlow&,const OriginalSourceDefinition&);
+[[nodiscard]] analysis::ValueKinds OriginalDefinitionKinds(const RecoveryFlow&,const OriginalSourceDefinition&,
+    std::span<const TruthDomains> = {});
 [[nodiscard]] analysis::ValueKinds OriginalCatchKinds(const RecoveryFlow&,const OriginalCatchBinding&);
 struct FlowBindingNames {
   std::vector<SourceBindingPresence> presence;

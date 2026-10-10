@@ -102,10 +102,12 @@ void ProjectSelectionLogicals(const ValueProgram& graph, const ControlPlan& cont
   std::vector<std::optional<ValueId>> dependents, next;
   std::vector<ValueId> queue;
   std::vector<OpId> path;
+  std::vector<SelectionPureTest> tests;
   std::vector<std::optional<bool>> pure_blocks;
   budget.Array(equations, graph.values.size()); budget.Array(truths, graph.values.size());
   budget.Array(dependents, graph.values.size()); budget.Array(next, graph.values.size());
   budget.Array(queue, graph.values.size()); budget.Array(path, graph.ops.size());
+  budget.Array(tests,graph.ops.size());
   budget.Array(pure_blocks, graph.blocks.size());
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     budget.Step(); const auto& op = graph.ops[i];
@@ -182,7 +184,7 @@ void ProjectSelectionLogicals(const ValueProgram& graph, const ControlPlan& cont
     }
     if (!closed) continue;
     std::optional<Truth> condition;
-    std::size_t count = 0;
+    std::size_t count = 0,test_count=0;auto arrival=kAll;
     const auto scalar = [&](OpId branch, bool on_taken) {
       budget.Step(); const auto& op = graph.ops[branch.value];
       if (op.use_count != 1) return false;
@@ -192,7 +194,11 @@ void ProjectSelectionLogicals(const ValueProgram& graph, const ControlPlan& cont
           equations[value->value]->owner != branch || !truths[value->value]) return false;
       const auto polarity = TruthPolarity(graph, std::get<ValueBranch>(op.operation).predicate, operand);
       if (!polarity) return false;
-      auto truth = *truths[value->value]; if (*polarity != on_taken) truth.mask ^= kAll;
+      auto truth = *truths[value->value];
+      const auto taken=*polarity?truth.mask:truth.mask.Complement();
+      RequireTree(test_count<tests.size(),TreeStructureError::kOwnership);
+      tests[test_count++]={branch,{arrival,arrival&taken,PureTruthOutcome::kDecision}};
+      if (*polarity != on_taken) truth.mask ^= kAll;
       if (condition && condition->value != truth.value) return false;
       if (!condition) condition = truth;
       else condition->mask |= truth.mask;
@@ -200,8 +206,14 @@ void ProjectSelectionLogicals(const ValueProgram& graph, const ControlPlan& cont
       while (equations[cursor.value] && equations[cursor.value]->owner == branch) {
         budget.Step(); const auto* result = std::get_if<OpResult>(&graph.values[cursor.value].origin);
         RequireTree(result && count < path.size(), TreeStructureError::kOwnership);
-        path[count++] = result->op; cursor = equations[cursor.value]->input;
+        path[count++] = result->op;
+        RequireTree(truths[cursor.value].has_value()&&test_count<tests.size(),TreeStructureError::kOwnership);
+        const auto& value_truth=*truths[cursor.value];
+        tests[test_count++]={result->op,{arrival,arrival&value_truth.mask,
+            value_truth.boolean_result?PureTruthOutcome::kBoolean:PureTruthOutcome::kInput}};
+        cursor = equations[cursor.value]->input;
       }
+      arrival=arrival&truth.mask.Complement();
       return true;
     };
     if (region.conditions.empty()) closed = scalar(region.branch, true);
@@ -225,6 +237,7 @@ void ProjectSelectionLogicals(const ValueProgram& graph, const ControlPlan& cont
     SelectionLogical logical{*operation,
         condition->value, condition->occurrence, keep_yes, {}};
     budget.Array(logical.truths, count); std::copy_n(path.begin(), count, logical.truths.begin());
+    budget.Array(region.tests,test_count);std::copy_n(tests.begin(),test_count,region.tests.begin());
     region.logical = std::move(logical);
   }
 }

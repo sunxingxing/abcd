@@ -195,6 +195,13 @@ std::vector<SelectionRegion> FindLogicalRegions(const ValueProgram& graph, const
           boolean_id, branch_id, *merged.phi, *left, SelectionLeaf(evaluate_use->operand),
           node.block, retained.block, *evaluated.block, join, retained.incoming, evaluated.incoming});
       result.back().evaluate_path = evaluated.prefix;
+      // The existing verified ToBoolean/decision contract supplies meaning,
+      // not an additional recovery admission or a native result alias.
+      const std::initializer_list<SelectionPureTest> tests{
+          {boolean_id,{TruthDomains::All(),TruthDomains::Truthy(),PureTruthOutcome::kBoolean}},
+          {branch_id,{TruthDomains::All(),taken_truthy?TruthDomains::Truthy():TruthDomains::Truthy().Complement(),PureTruthOutcome::kDecision}}};
+      if(budget)budget->Array(result.back().tests,tests.size());else result.back().tests.resize(tests.size());
+      std::copy(tests.begin(),tests.end(),result.back().tests.begin());
       break;
     }
   }

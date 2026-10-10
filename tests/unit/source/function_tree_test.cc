@@ -1,4 +1,5 @@
 #include "../../../src/source/function_tree.h"
+#include "../../support/analysis/pure_control_oracle.h"
 #include "../../../src/source/tree_structure.h"
 #include "../../../src/source/tree_semantics.h"
 #include "../../../src/source/source_variables.h"
@@ -194,6 +195,7 @@ void OriginalSelectionResults(bool emit=false) {
     LegacyFlowProjection projection{plan.aliases,plan.literals,plan.replacements,plan.omitted,{},{},plan.statements,private_bindings};
     projection.stable_entries=stable;
     const auto model=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,projection,{plan,equations,order,&original}));
+    test::CheckPureControls(fixture.graph,model.flow);
     bool selected=false;
     bool controlled=false;
     for(unsigned i=0;i<original.operations.size();++i)if(original.operations[i].control) {
@@ -204,6 +206,10 @@ void OriginalSelectionResults(bool emit=false) {
       auto missing=model.flow;missing.original_controls.clear();Check(!FindFlowOriginalControl(missing,OpId{i}));
       missing=model.flow;missing.normal_exits[occurrence->expression.value].reset();Check(!FindFlowOriginalControl(missing,OpId{i}));
       missing=model.flow;missing.original_controls[i]->entry=missing.terminal;Check(!FindFlowOriginalControl(missing,OpId{i}));
+      if(occurrence->test) {
+        missing=model.flow;missing.original_controls[i]->test->true_values^=TruthDomains::All();
+        Check(!FindFlowOriginalControl(missing,OpId{i}));Check(!OriginalControlDomains(missing,OpId{i}));
+      }
     }
     Check(controlled&&original.edge_controls.size()==original.edges.size());
     for(const auto owner:original.edge_controls)if(owner)Check(original.operations[owner->value].control.has_value());

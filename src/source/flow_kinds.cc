@@ -40,7 +40,7 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
         caught<=std::numeric_limits<std::uint32_t>::max()-expressions-facts&&
         events<=std::numeric_limits<std::uint32_t>::max()-expressions-facts-caught,Error::kResourceLimit);
     struct NodeId {std::uint32_t value;};
-    enum class DependencyKind { kValue, kNumeric, kProvenance, kEffects };
+    enum class DependencyKind { kValue, kNumeric, kProvenance, kEffects, kControl };
     struct Guard {std::optional<std::size_t> edge;bool user_code=false;};
     Guard guard;
     enum class ValueOccurrence : std::uint8_t {kUnmodeled,kRead,kNumeric};
@@ -304,6 +304,12 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
                   if(generated.value){RequireTree(generated.value->value<expressions,Error::kOwnership);dependency(NodeId{generated.value->value},target,DependencyKind::kValue,&generated);
                     dependency(event_node(generated.point),target,DependencyKind::kProvenance,nullptr);
                     if(generated.write)dependency(NodeId{generated.write->value},target,DependencyKind::kProvenance,nullptr);
+                    if(generated.original)if(const auto owner=OriginalDefinitionControl(flow,*generated.original))
+                      if(const auto control=FindFlowOriginalControl(flow,*owner);control&&control->test) {
+                        // Domain/certificate changes replay existing value
+                        // contributions; a predicate is never the stored value.
+                        dependency(NodeId{control->expression.value},target,DependencyKind::kControl,&generated);
+                      }
                     if(!generated.original)invalidate(target);
                     continue;}
                   break;
@@ -570,13 +576,13 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
     const auto propagate=[&](const Dependency& dependency) {
       if(!admitted(dependency.guard))return;
       if(changed[dependency.source.value])invalidate(dependency.target);
-      if(dependency.kind==DependencyKind::kProvenance||dependency.kind==DependencyKind::kEffects)return;
+      if(dependency.kind==DependencyKind::kProvenance||dependency.kind==DependencyKind::kEffects||dependency.kind==DependencyKind::kControl)return;
       const auto target=dependency.target;
       auto incoming=dependency.kind==DependencyKind::kNumeric?NormalValueDomain{NumericValueKinds(values[dependency.source.value])}:domain(dependency.source.value);
       if(dependency.definition&&!changed[dependency.source.value]&&!changed[target.value]) {
         K original;
         if(dependency.definition->original) {
-          RequireTree(input.original!=nullptr,Error::kOwnership);original=OriginalDefinitionKinds(flow,*dependency.definition->original);
+          RequireTree(input.original!=nullptr,Error::kOwnership);original=OriginalDefinitionKinds(flow,*dependency.definition->original,{truths.data(),expressions});
         }
         if(const auto* caught=dependency.definition->original_catch) {
           original=OriginalCatchKinds(flow,*caught);
@@ -667,6 +673,14 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
           if(dependency.kind==DependencyKind::kEffects) {
             if(first){auto& count=missing[dependency.target.value-event_offset];RequireTree(count>0,Error::kOwnership);--count;}
             enqueue(dependency.target);
+          } else if(dependency.kind==DependencyKind::kControl) {
+            propagate(dependency);
+            RequireTree(dependency.definition&&dependency.definition->value,Error::kOwnership);
+            auto contribution=dependency;contribution.kind=DependencyKind::kValue;
+            contribution.source=NodeId{dependency.definition->value->value};
+            // Replay this edge's value contribution, never every input of a
+            // shared join. Bounded lattice changes keep work O(dependencies).
+            budget.Step();propagate(contribution);
           } else propagate(dependency);
         }
       }

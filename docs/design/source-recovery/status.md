@@ -38,6 +38,50 @@
 这五项是主干交付闭环，不以局部规则或单项测试代替；第3项的关闭依据见下，
 其余四项不随之关闭。下一主干是完整原始IR/SSA语义接入，既定暂停事项保持。
 
+### 2026-10-11：规则290，折叠纯条件的原始语义贯通
+
+- 原始选择分析保留每个纯组件的输入发生、可达输入域、true域和结果角色
+  （原输入、Boolean或原始决策）。这些事实在已验证SSA/TreeFlow边界产生，
+  由OriginalFlow及当前RecoveryFlow运输；共同查询不再解释opcode或源码形状。
+  多个测试共享输入时，后续测试只在前序未选中共享臂的值域执行。
+  Boolean结果独立于整个逻辑表达式的值，也不伪装成物理源码动作。
+- 既有逻辑恢复和通用条件合流恢复发布同一种组件事实；TreeOperands中
+  再按LogicalExpr区分Unary/Branch的重复适配路径删除。TreeFlow标注改为
+  消费组件列表，退出旧truth列表/标量分支列表的重复语义标注。
+  捕获输入的source origin明确归属于输入发生，不借用后续分支origin。
+- 原始phi/edge-save值域证明消费共同输入/路径域；控制变化直接重排其
+  对应值贡献，不扫描共享合流的全部输入。定义、native完成、次数及原始
+  证明失效仍由共同模型各自负责，路径非空不代替这些义务。
+  附加事实按原始操作/纯组件/存储贡献线性计费，域高度固定；
+  额外依赖每次只重排一个贡献。
+- 独立小解释器读取decoded SSA操作数和CFG，枚举null/undefined/falsy/truthy
+  的具体代表，对每个测试穷举16个输入域。捕获输入的假设代表用于检查
+  纯测试函数/路径，不充当producer或整个函数的行为证明。覆盖三profile、
+  nullish的5类布局和truth的4类逻辑/arena组合，共27个decoded变体；
+  另有60次当前/候选替换，检查事实不泄漏及Boolean不借给native结果。
+  phi与edge-save可达/不可达、缺失或变动事实、小图稀疏对照及原预算断言保留。
+- 四个生产变异（丢弃可达域、混入native值、绕过原始边、反转极性）
+  均构建0/测试-6，恢复构建0。另一个“删除控制依赖”变异测试0，
+  **未被现有用例识别**；这是独立依赖重排反例的覆盖缺口，不计作拒绝证据，
+  不据此关闭多轮Pass收敛。证据独存pure-controls-focused/mutants。
+  首轮oracle未实现producer/continuation边界，以及扩展fixture中旧赋值形状
+  断言与source origin归属的问题，其失败和修复日志保留；旧二进制的运行
+  不计作最终验证。nullish修复后unit0（78.00s）；12个truth变体独立对照0。
+- 最终冻结23份代码/测试、原32目标/65项名单。构建0（204.72s），固定
+  ABC0（3.03s）；仍19 records、10 complete/9 no-module，10份源码syntax0，
+  与规则289逐字节相同。65/65通过（1190.25s），名单精确相同、无重复；
+  冻结文件、selection及ABC SHA在终验前后相同。原始控制200/201/400/800
+  work为1317382/1324352/2707156/5561596，预算bytes为
+  7280636/7294445/14560324/29119700；arena反排相同，小图独立对照及
+  精确/少一byte/work断言通过。既有64MiB源码预算和限时保持；未恢复
+  全套/扩展语料/RSS/benchmark/DFX。证据为pure-controls-final的
+  final-result、combined-coverage、final-junit、final-record-result及
+  final-detail，产物pure-controls-rule290-verified。
+- **不关闭新的主干**：纯组件函数/路径已有共同表示；普通条件的其余
+  对应、全部原始阶段/内部动作及protocol/suspension对应仍需贯通。
+  原始IR/SSA（1）、普通绑定身份（2）、整体多轮Pass（4）及终验（5）开放；
+  第3项维持既有共同模型能力范围。主干完成前，其他表现层优化保持暂停。
+
 ### 2026-10-11：规则289，共同控制完成求解及恢复消费闭环
 
 - 共同四域分区表示null、undefined、其他falsy和truthy；原始选择分析与

@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_ORIGINAL_FLOW_H_
 #include "tree_checks.h"
 #include "abcd/analysis/value_ir.h"
+#include "truth_domains.h"
 #include <memory>
 namespace abcd::source {
 struct TreeFlow;
@@ -29,7 +30,7 @@ enum class OriginalControlKind : std::uint8_t {kPredicate,kTruthSelection,kNulli
 // A checked control input occurrence, not the selected value or an executable
 // operation on the enclosing expression. Folded pure tests keep this semantic
 // relation without lending their Boolean domains to the selection's result.
-struct OriginalControlInput {ExprId expression;OriginalControlKind kind;};
+struct OriginalControlInput {ExprId expression;OriginalControlKind kind;std::optional<PureTruthTest> test;};
 // Original operations retain phase effects and success-only results, without
 // copying opcode variants or interpreting them a second time in recovery.
 struct OriginalOperation {

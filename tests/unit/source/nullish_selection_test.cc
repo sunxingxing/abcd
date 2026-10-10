@@ -6,6 +6,7 @@
 #include "../../../src/source/family_print.h"
 #include "../../../src/source/instruction_sources.h"
 #include "../../support/analysis/ssa_fixture.h"
+#include "../../support/analysis/pure_control_oracle.h"
 #include "../../support/instruction_positions.h"
 #include "abcd/analysis/value_import.h"
 #include "abcd/analysis/value_simplify.h"
@@ -120,7 +121,7 @@ std::optional<std::string> Source(unsigned count, Form form, abc::ProfileId prof
     (void)PrintFamilyDraft(family, std::cerr);
   }
   Check(std::holds_alternative<TreeSemantics>(meaning));
-  if (form == Form::kDirect && count == 1) {
+  if (count == 1 && (form <= Form::kNegated || form == Form::kCopiedSplit || form == Form::kCallProducer)) {
     const auto& original=*std::get<TreeSemantics>(meaning).flow.original;
     BindingInitializers bindings;
     const auto b=tree.symbols.size(),x=tree.expressions.size(),s=tree.statements.size();
@@ -133,6 +134,7 @@ std::optional<std::string> Source(unsigned count, Form form, abc::ProfileId prof
     }
     LegacyFlowProjection projection{bindings.aliases,bindings.literals,bindings.replacements,bindings.omitted,{},{},bindings.statements,private_bindings};
     const auto model=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,projection,{bindings,equations,order,&original}));
+    test::CheckPureControls(graph,model.flow);
     bool nullish=false;
     for(unsigned i=0;i<original.operations.size();++i)if(const auto& input=original.operations[i].control;input&&input->kind==OriginalControlKind::kNullishSelection) {
       const auto current=FindFlowOriginalControl(model.flow,analysis::OpId{i});Check(current.has_value());
@@ -142,6 +144,25 @@ std::optional<std::string> Source(unsigned count, Form form, abc::ProfileId prof
       Check(!original.operations[i].result_expression&&!original.operations[i].intrinsic_expression);
     }
     Check(nullish);
+    for(const auto literal:{TreeLiteral{NullLiteral{}},TreeLiteral{UndefinedLiteral{}},
+                           TreeLiteral{BooleanLiteral{false}},TreeLiteral{BooleanLiteral{true}}}) {
+      auto candidate=bindings;const auto id=PrimitiveId{static_cast<unsigned>(candidate.primitives.size())};
+      candidate.primitives.push_back(literal);
+      std::optional<ExprId> captured;
+      for(const auto& operation:original.operations)if(operation.control&&operation.control->test){captured=operation.control->expression;break;}
+      Check(captured.has_value());candidate.transports[captured->value]=ExpressionTransport{*captured,id};
+      const auto trial=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,projection,{candidate,equations,order,&original}));
+      const auto expected=PrimitiveTruthDomains(literal,tree.texts);
+      for(unsigned i=0;i<original.operations.size();++i)if(original.operations[i].control&&original.operations[i].control->test) {
+        const auto actual=OriginalControlDomains(trial.flow,analysis::OpId{i});Check(actual.has_value());
+        const auto& test=*original.operations[i].control->test;
+        Check(actual->evaluated==(expected&test.evaluated));Check(actual->true_values==(expected&test.true_values));
+        Check(!FindFlowOriginalResult(trial.flow,analysis::OpId{i}));
+      }
+      // Trial facts must not replace the immutable current proposal's facts.
+      test::CheckPureControls(graph,model.flow);
+    }
+    if(form==Form::kDirect) {
     bool checked = false;
     for (std::size_t i = 0; i < tree.expressions.size(); ++i) {
       const auto* logical = std::get_if<LogicalExpr>(&tree.expressions[i].expression);
@@ -161,6 +182,7 @@ std::optional<std::string> Source(unsigned count, Form form, abc::ProfileId prof
       checked = true;
     }
     Check(checked);
+    }
   }
   work = std::get<ConstructedFunction>(built).work + std::get<TreeSemantics>(meaning).work;
   if (form == Form::kBarrier && count == 1) {

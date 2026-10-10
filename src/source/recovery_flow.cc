@@ -197,7 +197,7 @@ class FlowBuilder {
       const auto& input=*operation.control;
       RequireTree(input.expression.value<result.normal_exits.size(),Error::kOwnership);
       if(const auto normal=result.normal_exits[input.expression.value])
-        occurrence=FlowOriginalControl{input.expression,expressions_[input.expression.value],*normal,input.kind};
+        occurrence=FlowOriginalControl{input.expression,expressions_[input.expression.value],*normal,input.kind,input.test};
     }
     Resize(result.original_phases,result.original?result.original->phases.size():0);
     for(std::size_t i=0;i<result.original_phases.size();++i) {
@@ -971,7 +971,7 @@ std::optional<OriginalResult> FindFlowOriginalResult(const RecoveryFlow& flow,an
   return result;
 }
 namespace {
-bool OriginalIncomingAvailable(const RecoveryFlow& flow,const analysis::IncomingKey& incoming) {
+bool OriginalIncomingAvailable(const RecoveryFlow& flow,const analysis::IncomingKey& incoming,std::span<const TruthDomains> truths) {
   // Consume the verified decision-owner correspondence. This withdraws an
   // incoming certificate when its controlling input has no current occurrence;
   // source definition placement and the joint completion/provenance solver
@@ -981,7 +981,18 @@ bool OriginalIncomingAvailable(const RecoveryFlow& flow,const analysis::Incoming
   if(!flow.original||edge->value>=flow.original->edges.size()||
       flow.original->edge_controls.size()!=flow.original->edges.size())return false;
   const auto owner=flow.original->edge_controls[edge->value];
-  return !owner||FindFlowOriginalControl(flow,*owner).has_value();
+  if(!owner)return true;
+  const auto control=FindFlowOriginalControl(flow,*owner);if(!control)return false;
+  // Unmodeled tests retain the coarse input-identity contract. A proved pure
+  // component instead consumes its qualified input/path domain. Source guard,
+  // occurrence count, completion and provenance remain joint-solver duties.
+  if(!control->test)return true;
+  const auto domains=OriginalControlDomains(flow,*owner,truths);if(!domains)return false;
+  switch(flow.original->edges[edge->value].kind) {
+    case analysis::FlowEdgeKind::kTaken:return !domains->true_values.Empty();
+    case analysis::FlowEdgeKind::kFallthrough:return !domains->false_values.Empty();
+    default:return true;
+  }
 }
 bool OriginalHandlerAvailable(const RecoveryFlow& flow,analysis::WorkBlockId handler) {
   return FindOriginalPhase(flow,handler,analysis::ExceptionPhase::kCatch)&&handler.value<flow.original_handlers.size()&&
@@ -992,13 +1003,46 @@ std::optional<FlowOriginalControl> FindFlowOriginalControl(const RecoveryFlow& f
   if(!flow.original||id.value>=flow.original->operations.size()||id.value>=flow.original_controls.size())return {};
   const auto& operation=flow.original->operations[id.value];const auto& occurrence=flow.original_controls[id.value];
   if(operation.life!=analysis::ValueLife::kLive||!operation.control||!occurrence||
-      occurrence->expression!=operation.control->expression||occurrence->kind!=operation.control->kind||
+      occurrence->expression!=operation.control->expression||occurrence->kind!=operation.control->kind||occurrence->test!=operation.control->test||
       occurrence->expression.value>=flow.expressions.size()||occurrence->expression.value>=flow.normal_exits.size()||
       flow.normal_exits[occurrence->expression.value]!=occurrence->normal||
       flow.expressions[occurrence->expression.value]!=occurrence->entry)return {};
   return occurrence;
 }
-analysis::ValueKinds OriginalDefinitionKinds(const RecoveryFlow& flow,const OriginalSourceDefinition& definition) {
+std::optional<FlowControlDomains> OriginalControlDomains(const RecoveryFlow& flow,analysis::OpId id,std::span<const TruthDomains> truths) {
+  const auto control=FindFlowOriginalControl(flow,id);if(!control||!control->test)return {};
+  if(truths.empty())truths=flow.normal_truths;
+  if(control->expression.value>=truths.size())return {};
+  const auto& test=*control->test;const auto evaluated=truths[control->expression.value]&test.evaluated;
+  return FlowControlDomains{evaluated,evaluated&test.true_values,evaluated&test.true_values.Complement()};
+}
+NormalValueDomain OriginalControlResultDomains(const RecoveryFlow& flow,analysis::OpId id,std::span<const TruthDomains> truths) {
+  const auto control=FindFlowOriginalControl(flow,id);
+  if(!control||!control->test)return {};
+  const auto domains=OriginalControlDomains(flow,id,truths);if(!domains||domains->evaluated.Empty())return {};
+  switch(control->test->outcome) {
+    case PureTruthOutcome::kDecision:return {};
+    case PureTruthOutcome::kInput:
+      if(control->expression.value>=flow.normal_kinds.size())return {};
+      return {flow.normal_kinds[control->expression.value],domains->evaluated};
+    case PureTruthOutcome::kBoolean: {
+      TruthDomains result;
+      if(!domains->true_values.Empty())result|=TruthDomains::Truthy();
+      if(!domains->false_values.Empty())result|=TruthDomains::One(TruthDomain::kFalsy);
+      return {analysis::ValueKinds::Boolean(),result};
+    }
+  }
+  throw TreeStructureError::kUnsupportedSyntax;
+}
+std::optional<analysis::OpId> OriginalDefinitionControl(const RecoveryFlow& flow,const OriginalSourceDefinition& definition) {
+  const analysis::IncomingKey* incoming=nullptr;
+  if(const auto* phi=std::get_if<OriginalPhiDefinition>(&definition.origin))incoming=&phi->incoming;
+  if(const auto* saved=std::get_if<OriginalSavedDefinition>(&definition.origin))incoming=std::get_if<analysis::IncomingKey>(&saved->placement);
+  const auto* edge=incoming?std::get_if<analysis::EdgeId>(incoming):nullptr;
+  if(!edge||!flow.original||edge->value>=flow.original->edge_controls.size())return {};
+  return flow.original->edge_controls[edge->value];
+}
+analysis::ValueKinds OriginalDefinitionKinds(const RecoveryFlow& flow,const OriginalSourceDefinition& definition,std::span<const TruthDomains> truths) {
   if(!flow.original)return {};
   if(const auto* result=std::get_if<OriginalResultDefinition>(&definition.origin)) {
     const auto verified=FindFlowOriginalResult(flow,result->operation);
@@ -1007,10 +1051,10 @@ analysis::ValueKinds OriginalDefinitionKinds(const RecoveryFlow& flow,const Orig
   if(const auto* caught=std::get_if<OriginalCatchDefinition>(&definition.origin))
     if(!OriginalHandlerAvailable(flow,caught->handler))return {};
   if(const auto* phi=std::get_if<OriginalPhiDefinition>(&definition.origin))
-    if(!OriginalIncomingAvailable(flow,phi->incoming))return {};
+    if(!OriginalIncomingAvailable(flow,phi->incoming,truths))return {};
   if(const auto* saved=std::get_if<OriginalSavedDefinition>(&definition.origin))
     if(const auto* incoming=std::get_if<analysis::IncomingKey>(&saved->placement))
-      if(!OriginalIncomingAvailable(flow,*incoming))return {};
+      if(!OriginalIncomingAvailable(flow,*incoming,truths))return {};
   return OriginalDefinitionKinds(*flow.original,definition);
 }
 analysis::ValueKinds OriginalCatchKinds(const RecoveryFlow& flow,const OriginalCatchBinding& caught) {

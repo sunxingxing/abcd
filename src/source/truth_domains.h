@@ -26,6 +26,16 @@ class TruthDomains {
   explicit constexpr TruthDomains(std::uint8_t bits):bits_(bits) {}
   std::uint8_t bits_=0;
 };
+enum class PureTruthOutcome : std::uint8_t {kInput,kBoolean,kDecision};
+// A proved pure function/path over one captured language input. Evaluated
+// domains distinguish later short-circuit tests from their shared input
+// occurrence; true_values describe Boolean true or the raw taken decision.
+// This is not a physical source action or the enclosing selection's value.
+struct PureTruthTest {
+  TruthDomains evaluated,true_values;
+  PureTruthOutcome outcome;
+  bool operator==(const PureTruthTest&) const = default;
+};
 // The grammar adapter and every consumer share short-circuit meaning. This
 // returns the left-value domains in which the right operand is evaluated.
 constexpr TruthDomains LogicalRightDomains(TreeLogical operation) {

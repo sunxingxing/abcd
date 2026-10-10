@@ -25,10 +25,13 @@ struct TreeEdgeCopies {
   std::optional<ExprId> selected;
 };
 struct TreeSelectionTruth {
-  analysis::OpId branch;
+  // Owns the retained input's source origin, independently of the raw test
+  // that consumes it. A folded decision cannot borrow a later branch origin.
+  analysis::OpId input_owner;
   analysis::ValueId value;
   ExprId input;
   analysis::UseId occurrence;
+  std::optional<PureTruthTest> test;
 };
 struct TreeFlow {
   analysis::IrRevision value_revision;

@@ -301,7 +301,9 @@ std::pair<std::uint64_t,std::size_t> OriginalControlKinds(bool reverse,unsigned 
     f.original.edges.push_back({{i*3},{i*3+1},FlowEdgeKind::kTaken,0});
     f.original.edges.push_back({{i*3},{i*3+2},FlowEdgeKind::kFallthrough,1});
     f.original.edge_controls.insert(f.original.edge_controls.end(),{OpId{i},OpId{i}});
-    OriginalOperation branch{};branch.life=ValueLife::kLive;branch.control=OriginalControlInput{condition,OriginalControlKind::kPredicate};
+    OriginalOperation branch{};branch.life=ValueLife::kLive;
+    branch.control=OriginalControlInput{condition,OriginalControlKind::kPredicate,
+        PureTruthTest{TruthDomains::All(),TruthDomains::Truthy(),PureTruthOutcome::kDecision}};
     f.original.operations.push_back(branch);
     const ValueId value{static_cast<unsigned>(f.original.values.size())};
     f.original.values.push_back({PhiDefinition{{i*3+3}},ValueKinds::FiniteNumber()});
@@ -357,6 +359,20 @@ std::pair<std::uint64_t,std::size_t> OriginalControlKinds(bool reverse,unsigned 
   Check(OriginalDefinitionKinds(gap,*f.original.definitions[first.value]).IsEmpty());
   const OriginalSourceDefinition saved{OriginalSavedDefinition{ValueId{1},IncomingKey{EdgeId{0}}},{1},f.original.definitions[first.value]->input};
   Check(OriginalDefinitionKinds(model.flow,saved).IsFiniteNumber());Check(OriginalDefinitionKinds(gap,saved).IsEmpty());
+  if(count==1) {
+    auto truths=model.flow.normal_truths;truths[condition.value]=TruthDomains::One(TruthDomain::kFalsy);
+    Check(OriginalDefinitionControl(model.flow,saved)==analysis::OpId{0});
+    Check(OriginalDefinitionKinds(model.flow,saved,truths).IsEmpty());
+    Check(OriginalDefinitionKinds(model.flow,*f.original.definitions[first.value],truths).IsEmpty());
+    truths[condition.value]=TruthDomains::Truthy();
+    Check(OriginalDefinitionKinds(model.flow,saved,truths).IsFiniteNumber());
+    const auto* branch=std::get_if<IfStmt>(&tree.statements[body[1].value].statement);Check(branch&&branch->alternate);
+    const auto& block=std::get<BlockStmt>(tree.statements[branch->alternate->value].statement);
+    const auto second=std::get<ExpressionStmt>(tree.statements[tree.children[block.first_child].value].statement).expression;
+    Check(OriginalDefinitionKinds(model.flow,*f.original.definitions[second.value],truths).IsEmpty());
+    const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(model.flow));
+    Check(std::holds_alternative<FlowNormalKinds>(CheckedFlowNormalKinds(tree,model.flow,live,f.Input())));
+  }
   auto candidate=f.plan;candidate.primitives.push_back(BooleanLiteral{true});
   candidate.transports[condition.value]=ExpressionTransport{condition,PrimitiveId{static_cast<unsigned>(candidate.primitives.size()-1)}};
   const RecoveryExpressionInput changed{candidate,f.equations,f.order,&f.original};

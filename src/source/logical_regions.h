@@ -3,6 +3,7 @@
 
 #include "control_plan.h"
 #include "abcd/source/source_tree.h"
+#include "truth_domains.h"
 
 namespace abcd::source {
 class TreeCheckBudget;
@@ -17,6 +18,7 @@ struct SelectionCondition {
   analysis::OpId branch;
   bool shared_on_taken;
 };
+struct SelectionPureTest {analysis::OpId operation;PureTruthTest meaning;};
 // Representation of a proved retained-value truth selection. The original
 // arms/edges remain authoritative; this is not another control recognizer.
 struct SelectionLogical {
@@ -79,7 +81,9 @@ struct SelectionRegion {
   // Present only after the complete original-site binding family is bound to
   // source control. Empty on the root; child prefixes stay in selected arms.
   std::optional<std::vector<analysis::OpId>> original_prefix;
-
+  // Semantic components survive either existing selection representation.
+  // Source verification publishes them once; recovery never re-reads opcodes.
+  std::vector<SelectionPureTest> tests;
 };
 inline bool IsSelectionConstant(const analysis::ValueProgram& graph, analysis::OpId id) {
   if (id.value >= graph.ops.size()) return false;

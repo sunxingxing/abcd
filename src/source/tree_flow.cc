@@ -643,6 +643,7 @@ class FlowCheck {
     Require(flow_.expressions[producer.value] == logical->right, Error::kPlacement);
     flow_.expressions[region.branch.value] = assignment->value;
     flow_.logical_operations[region.boolean.value] = flow_.logical_operations[region.branch.value] = region.operation;
+    LogicalTruths(region,logical->left);
     LogicalEdges(region, target->symbol, logical->left, logical->right, parent, child);
     LogicalPrefixes(region, parent, child);
   }
@@ -693,9 +694,10 @@ class FlowCheck {
           flow_.selection_truths[id.value] = truth;
           flow_.logical_operations[id.value] = current.logical->operation;
         };
-        for (const auto id : current.logical->truths) { budget_.Step(); mark(id); }
-        if (current.conditions.empty()) mark(current.branch);
-        else for (const auto& scalar : current.conditions) { budget_.Step(); mark(scalar.branch); }
+        for(const auto& test:current.tests) {
+          budget_.Step();mark(test.operation);
+          flow_.selection_truths[test.operation.value]->test=test.meaning;
+        }
       } else {
         consequent = conditional->consequent; alternate = conditional->alternate;
       }
@@ -805,8 +807,16 @@ class FlowCheck {
     const auto producer = std::get<analysis::OpResult>(graph_.values[rhs.value].origin).op;
     Require(logical && logical->operation == region.operation && flow_.expressions[producer.value] == logical->right, Error::kPlacement);
     flow_.logical_operations[region.boolean.value] = flow_.logical_operations[region.branch.value] = region.operation;
+    LogicalTruths(region,logical->left);
     LogicalEdges(region, {}, logical->left, logical->right, parent, child);
     LogicalPrefixes(region, parent, child);
+  }
+  void LogicalTruths(const SelectionRegion& region,ExprId input) {
+    for(const auto& test:region.tests) {
+      budget_.Step();Require(!flow_.selection_truths[test.operation.value],Error::kPlacement);
+      flow_.selection_truths[test.operation.value]=TreeSelectionTruth{
+          region.boolean,region.left,input,graph_.ops[region.boolean.value].first_use,test.meaning};
+    }
   }
   void LogicalPrefixes(const SelectionRegion& region, StmtId parent, std::uint32_t child) {
     for (const auto branch : region.arm_prefixes) {
