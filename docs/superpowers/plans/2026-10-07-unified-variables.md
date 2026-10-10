@@ -997,3 +997,19 @@ fixedABC0 (3.88s), exact63 tests0 (1044.96s), complete names/no duplicates.
 Five frozen hashes, input and selection stay unchanged; all ten sources parse
 and are byte-identical to274. Evidence:build/stage-one/initialization-unit-verification.
 All five delivery closures remain OPEN; continue the backbone before other optimization.
+
+Rules276 backbone substep: current passes publish one completed RecoveryProjection
+per revision. Expression/flow/initialization views are immutable throughout a
+pass; the old provisional-expression cache and same-revision precision replacement
+are retired, as is separate initialized-occurrence ownership. This is required
+before a pass-completion checkpoint can mean a stable analysis attempt.
+No fixed-point loop or full convergence claim is added. Global dependency reruns,
+termination and cost still require delivery; all five closures remain OPEN.
+Frozen31 build0 (94.75s), fixedABC0 (4.11s), exact63 tests0 (1048.53s), names
+complete/no duplicates. Four frozen hashes, input and selection unchanged; ten
+sources parse and remain byte-identical to275. New24 programs960 independent
+comparisons/4 adverse mutants pass, along with arena and200/201/400/800 cost
+checks. First targeted failure was an overbroad test assertion counting required
+call GetValue wrappers; test-only correction and final63 pass are retained.
+Evidence:build/stage-one/joint-publication-verification. Five closures OPEN,
+Goal active; continue the mainline before other optimizations.

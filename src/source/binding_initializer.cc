@@ -332,8 +332,8 @@ class Initializers {
     }
     CurrentFlow();
     AnalyzeExpressions();
-    plan_.normal_stores = std::move(CurrentFacts().expressions->normal_stores);
-    plan_.evaluations = std::move(CurrentFacts().expressions->evaluations);
+    plan_.normal_stores = std::move(CurrentFacts().projection->expressions.normal_stores);
+    plan_.evaluations = std::move(CurrentFacts().projection->expressions.evaluations);
     return Finish();
   }
  private:
@@ -346,8 +346,7 @@ class Initializers {
   struct ProjectionFacts {
     ProjectionRevision revision;
     std::optional<FlowInitializations> initializations;
-    std::optional<ExpressionFacts> expressions;
-    std::optional<RecoveryFlow> flow;
+    std::optional<RecoveryProjection> projection;
     std::optional<FlowLiveness> liveness;
     std::optional<FlowDemand> demand;
     std::optional<FlowConstants> constants;
@@ -356,20 +355,12 @@ class Initializers {
     std::optional<FlowCycles> cycles;
     std::size_t admitted_bytes=0;
   };
-  // Occurrence proofs belong to the same exact projection as the shared flow.
-  // Every commit discards them; raw CFG/SSA revisions cannot justify reuse.
-  struct InitializedOccurrences {
-    ProjectionRevision revision;
-    std::vector<std::uint8_t> reads;
-  };
   std::span<const std::uint8_t> InitializedReads() const {
-    RequireTree(initialized_.has_value(),TreeStructureError::kOwnership);
-    schedule_.RequireCurrent(initialized_->revision);
-    return initialized_->reads;
+    return CurrentProjection().initialized_reads;
   }
   ProjectionFacts& CurrentFacts() const {
     RequireAnalysis();
-    if(!facts_)facts_.emplace(ProjectionFacts{schedule_.Revision(),{},{},{},{},{},{},{},{},{}});
+    if(!facts_)facts_.emplace(ProjectionFacts{schedule_.Revision(),{},{},{},{},{},{},{},{}});
     schedule_.RequireCurrent(facts_->revision);
     return *facts_;
   }
@@ -430,7 +421,7 @@ class Initializers {
   void BeginCommit() {
     if(!schedule_.Commit())return;
     const auto bytes=facts_?facts_->admitted_bytes:0;
-    facts_.reset();initialized_.reset();
+    facts_.reset();
     budget_.Release(bytes);
   }
   void RequireAnalysis() const {schedule_.RequireAnalysis();}
@@ -689,7 +680,7 @@ class Initializers {
     }
     if(!capacity)return;
     const auto& facts=AnalyzeExpressions();
-    const RecoveryFlow* flow=nullptr;
+    const auto& flow=CurrentFlow();
     struct OperandElision { ExprId expression,value; };
     std::vector<OperandElision> proposed;budget_.Array(proposed,capacity);std::size_t count=0;
     for(std::size_t i=0;i<tree_.expressions.size();++i) {
@@ -700,8 +691,7 @@ class Initializers {
       if(facts.evaluations[sequence->left.value]==ExpressionEvaluation::kInert)
         proposed[count++]={id,sequence->right};
       else if(facts.evaluations[sequence->right.value]==ExpressionEvaluation::kInert) {
-        if(!flow)flow=&CurrentFlow();
-        if(flow->value_uses[i]==FlowValueUse::kDiscarded)proposed[count++]={id,sequence->left};
+        if(flow.value_uses[i]==FlowValueUse::kDiscarded)proposed[count++]={id,sequence->left};
       }
     }
     for(std::size_t i=0;i<count;++i) {
@@ -994,19 +984,21 @@ class Initializers {
     // span survives; release temporary ownership only after construction.
     loop_entries.reset();loop_declarations.reset();budget_.Release(loop_bytes);return result;
   }
-  const RecoveryFlow& CurrentFlow() const {
+  const RecoveryProjection& CurrentProjection() const {
     schedule_.RequireFact(RecoveryFact::kFlow);
     auto& facts=CurrentFacts();
-    if(facts.flow)return *facts.flow;
-    // Current and trial use the same bootstrap, normal domains and exception
-    // refinement. No earlier projection's initialization proof is transported.
-    const auto before=budget_.ActiveBytes();
-    auto prepared=BuildProjectedFlow(plan_,declaration_sites_);
-    facts.admitted_bytes+=budget_.ActiveBytes()-before;
-    initialized_.emplace(InitializedOccurrences{schedule_.Revision(),std::move(prepared.initialized_reads)});
-    facts.expressions=std::move(prepared.expressions);facts.flow=std::move(prepared.flow);
-    return *facts.flow;
+    if(!facts.projection) {
+      // Publish only the completed joint product. Publishing conservative
+      // expressions first would let a later flow query change the precision
+      // seen by an in-progress pass without advancing its revision.
+      const auto before=budget_.ActiveBytes();
+      auto prepared=BuildProjectedFlow(plan_,declaration_sites_);
+      facts.admitted_bytes+=budget_.ActiveBytes()-before;
+      facts.projection.emplace(std::move(prepared));
+    }
+    return *facts.projection;
   }
+  const RecoveryFlow& CurrentFlow() const {return CurrentProjection().flow;}
   const FlowCycles& CurrentCycles() const {
     schedule_.RequireFact(RecoveryFact::kCycles);auto& facts=CurrentFacts();
     if(!facts.cycles) {
@@ -1342,20 +1334,7 @@ class Initializers {
   }
   const ExpressionFacts& AnalyzeExpressions() const {
     schedule_.RequireFact(RecoveryFact::kExpressions);
-    auto& facts=CurrentFacts();
-    if(!facts.expressions) {
-      // Value equations can be consumed without an initialization assumption.
-      // These conservative effects cannot authorize removing a required read.
-      // A flow consumer replaces this product with the common completed
-      // bootstrap before publishing graph-dependent facts. Never force full
-      // dominance/flow merely to inspect a normal-result identity.
-      const RecoveryExpressionInput input{plan_,value_equations_,
-          std::span<const ExprId>(completions_).first(completion_count_),original_};
-      const auto before=budget_.ActiveBytes();
-      facts.expressions=AnalyzeRecoveryExpressions(tree_,input,{},budget_);
-      facts.admitted_bytes+=budget_.ActiveBytes()-before;
-    }
-    return *facts.expressions;
+    return CurrentProjection().expressions;
   }
   void IndexLiteralTexts() {
     // Intern equal UTF-16 values once, independent of projection revisions.
@@ -1442,7 +1421,7 @@ class Initializers {
   }
   std::vector<StmtId> PlanInertStatements(const FlowStatements& facts) const {
     std::vector<StmtId> omitted;budget_.Array(omitted,tree_.statements.size());std::size_t count=0;
-    const auto& flow=*CurrentFacts().flow;
+    const auto& flow=CurrentFlow();
     for(const auto id:flow.statement_order) {
       budget_.Step();
       // Grammar retention is distinct from observable computation. All source
@@ -1980,7 +1959,6 @@ class Initializers {
   std::vector<SymbolId> constant_queue_;
   std::vector<StatementVisit> statements_;
   RecoverySchedule schedule_;
-  mutable std::optional<InitializedOccurrences> initialized_;
   mutable std::optional<ProjectionFacts> facts_;
 };
 }

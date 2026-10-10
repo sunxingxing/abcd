@@ -415,3 +415,48 @@ for(const row of updates) {
 }
 assert.equal(updates.length,32);
 console.log(`${updates.length} captured-update sources / ${updateComparisons} independent comparisons / ${updateMutants} adverse mutants`);
+
+// Publication-order regression: value-used and discarded comma operands share
+// one completed projection. Compare execution separately from arena numbering.
+const publication=execFileSync(process.argv[3],['--publication'],{encoding:'utf8',maxBuffer:16_000_000}).trim().split('\n').map(JSON.parse);
+const publicationFailure=Symbol('publication failure');
+const publicationValues=[undefined,null,0,-0,NaN,7n,Symbol('value'),{}];
+function publicationOutcome(fn,value,failAt) {
+  const trace=[];let calls=0;
+  const event=(...args)=>{trace.push(args);if(++calls===failAt)throw publicationFailure;};
+  try {return {trace,value:fn(()=>{event('input');return value;},x=>event('report',x))};}
+  catch(error){return {trace,error:error===publicationFailure?error:error.name};}
+}
+function publicationReference(row) {
+  return Function('input','report',
+    (row.before?'':'let saved=input();')+
+    'for(let i=0;i<'+row.count+';++i)report((saved,input()));(report(saved),7);'+
+    (row.before?'let saved=input();':'')+'return saved;');
+}
+let publicationComparisons=0,publicationMutants=0;
+for(const row of publication) {
+  const wrapped='('+row.source+')',all=nodes(parseJavaScript(wrapped));
+  const discardedRead=n=>n.type==='SequenceExpression'&&n.expressions[0].type==='Identifier'&&n.expressions[0].name==='saved';
+  if(!row.before)assert.equal(all.filter(discardedRead).length,0);
+  const actual=Function('return '+row.source)(),expected=publicationReference(row);
+  for(const value of publicationValues)for(const failAt of [0,1,2,row.count+1,2*row.count+2]) {
+    assert.deepEqual(publicationOutcome(actual,value,failAt),publicationOutcome(expected,value,failAt));++publicationComparisons;
+  }
+  if(row.count===1) {
+    const target=row.before?all.find(discardedRead):all.find(n=>{
+      if(n.type!=='CallExpression')return false;
+      const callee=n.callee.type==='SequenceExpression'?n.callee.expressions.at(-1):n.callee;
+      return callee.type==='Identifier'&&callee.name==='input';
+    });
+    assert.ok(target);
+    const replacement=row.before?wrapped.slice(target.expressions[1].start,target.expressions[1].end):'undefined';
+    const mutant=Function('return '+wrapped.slice(0,target.start)+replacement+wrapped.slice(target.end))();
+    assert.notDeepEqual(publicationOutcome(mutant,42,0),publicationOutcome(expected,42,0));++publicationMutants;
+  }
+}
+assert.equal(publication.length,24);
+for(const before of [false,true])for(const reverse of [false,true]) {
+  const growth=publication.filter(row=>row.before===before&&row.reverse===reverse&&row.count>=200);
+  for(let i=1;i<growth.length;++i){assert.ok(growth[i].work<growth[i-1].work*3);assert.ok(growth[i].bytes<growth[i-1].bytes*3);}
+}
+console.log(`${publication.length} joint-projection sources / ${publicationComparisons} comparisons / ${publicationMutants} adverse mutants`);

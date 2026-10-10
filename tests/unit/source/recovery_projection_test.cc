@@ -320,9 +320,73 @@ std::pair<std::uint64_t,std::size_t> SnapshotRestoration(unsigned count,bool rev
   for(const auto selection:unknown.selections)Check(selection==SnapshotSelection::kRetain);
   return {result.work,result.allocated_bytes};
 }
+std::pair<std::uint64_t,std::size_t> JointProjectionSource(bool reverse,unsigned count,bool before,bool emit) {
+  FunctionTree tree{};tree.callable=CallableKind::kFunction;tree.strictness=Strictness::kStrict;
+  tree.parameter_scope={0};tree.body_scope={1};tree.body={0};tree.origins={OriginalSite{{0},{0}}};
+  tree.scopes={{ScopeKind::kParameters,{}},{ScopeKind::kFunctionBody,ScopeId{0}}};
+  tree.names={u"input",u"report",u"saved"};
+  for(unsigned i=0;i<2;++i){tree.symbols.push_back({{0},{i},BindingKind::kParameter,DeclarationKind::kParameter,NameEvidence::kMetadata,{}});tree.parameters.push_back({{i},{},false});}
+  tree.symbols.push_back({{1},{2},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
+  tree.statements.push_back({BlockStmt{{1},0,0},{0}});
+  const auto expr=[&](TreeExpression node){ExprId id{static_cast<unsigned>(tree.expressions.size())};tree.expressions.push_back({std::move(node),{0}});return id;};
+  const auto read=[&](unsigned symbol){return expr(SymbolExpr{{symbol}});};
+  const auto call=[&](unsigned symbol,std::vector<ExprId> arguments){const auto first=tree.arguments.size();tree.arguments.insert(tree.arguments.end(),arguments.begin(),arguments.end());return expr(CallExpr{read(symbol),{static_cast<unsigned>(first),static_cast<unsigned>(arguments.size())},CallReference::kValue});};
+  const auto stmt=[&](TreeStatement node){StmtId id{static_cast<unsigned>(tree.statements.size())};tree.statements.push_back({std::move(node),{0}});return id;};
+  const auto declaration=stmt(DeclarationStmt{{2},call(0,{})});
+  std::vector<StmtId> body;
+  if(!before)body.push_back(declaration);
+  std::vector<ExprId> sequences;
+  for(unsigned i=0;i<count;++i) {
+    const auto sequence=expr(SequenceExpr{read(2),call(0,{})});sequences.push_back(sequence);
+    body.push_back(stmt(ExpressionStmt{call(1,{sequence})}));
+  }
+  // The discarded-right case used to request flow after borrowing provisional
+  // expression facts. Mix it with value-used sequences in arbitrary arena order.
+  const auto tail=expr(SequenceExpr{call(1,{read(2)}),expr(TreeLiteral{IntegerLiteral{7}})});
+  sequences.push_back(tail);body.push_back(stmt(ExpressionStmt{tail}));
+  if(before)body.push_back(declaration);
+  body.push_back(stmt(ReturnStmt{read(2)}));tree.children=body;
+  std::get<BlockStmt>(tree.statements[0].statement).child_count=body.size();
+  if(reverse) {
+    const auto map=[&](ExprId id){return ExprId{static_cast<unsigned>(tree.expressions.size()-1-id.value)};};
+    for(auto& item:tree.expressions)std::visit([&](auto& node){using T=std::decay_t<decltype(node)>;
+      if constexpr(std::is_same_v<T,CallExpr>)node.callee=map(node.callee);
+      else if constexpr(std::is_same_v<T,SequenceExpr>){node.left=map(node.left);node.right=map(node.right);}
+    },item.expression);
+    for(auto& item:tree.statements)std::visit([&](auto& node){using T=std::decay_t<decltype(node)>;
+      if constexpr(std::is_same_v<T,DeclarationStmt>){if(node.initializer)node.initializer=map(*node.initializer);}
+      else if constexpr(std::is_same_v<T,ExpressionStmt>)node.expression=map(node.expression);
+      else if constexpr(std::is_same_v<T,ReturnStmt>){if(node.value)node.value=map(*node.value);}
+    },item.statement);
+    for(auto& argument:tree.arguments)argument=map(argument);
+    for(auto& sequence:sequences)sequence=map(sequence);
+    std::reverse(tree.expressions.begin(),tree.expressions.end());
+  }
+  Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
+  const auto plan=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
+  if(!before)for(const auto sequence:sequences)Check(plan.replacements[sequence.value].has_value());
+  else if(count)Check(!plan.replacements[sequences[0].value]);
+  if(count==1) {
+    Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes,plan.work})));
+    Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes-1,plan.work}))==TreeStructureError::kResourceLimit);
+    Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes,plan.work-1}))==TreeStructureError::kWorkLimit);
+  }
+  if(emit) {
+    std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
+    std::cout<<nlohmann::json{{"source",output.str()},{"count",count},{"reverse",reverse},{"before",before},{"work",plan.work},{"bytes",plan.allocated_bytes}}<<'\n';
+  }
+  return {plan.work,plan.allocated_bytes};
+}
 void Case(bool reverse) {
   Fixture f(1,reverse);
+  TreeCheckBudget provisional_budget({});
+  const auto provisional=AnalyzeRecoveryExpressions(f.tree,f.Input(),{},provisional_budget);
+  Check(provisional.evaluations[f.reads[0].value]==ExpressionEvaluation::kRequired);
   const auto current=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,f.Projection(),f.Input()));
+  // The same proposal has distinct intermediate/final precision. Only the
+  // completed owner is suitable for publication to an in-progress pass.
+  Check(current.expressions.evaluations[f.reads[0].value]==ExpressionEvaluation::kInert);
   Check(current.initialized_reads[f.reads[0].value]);
   Check(current.expressions.evaluations[f.results[0].value]==ExpressionEvaluation::kInert);
   auto stale=f.Input();stale.normal_kinds=current.expressions.kinds;
@@ -1184,6 +1248,10 @@ void ActivationSource(unsigned copies,bool split,bool emit) {
 
 }
 int main(int argc,char** argv) {
+  if(argc==2&&std::string_view(argv[1])=="--publication") {
+    for(bool before:{false,true})for(bool reverse:{false,true})for(unsigned count:{0U,1U,200U,201U,400U,800U})JointProjectionSource(reverse,count,before,true);
+    return 0;
+  }
   if(argc==2&&std::string_view(argv[1])=="--updates") {
     for(bool caught:{false,true})for(bool reverse:{false,true})for(bool numeric:{false,true})for(bool increment:{false,true})for(bool prefix:{false,true})UpdateSource(reverse,numeric,increment,prefix,true,caught);
     return 0;
@@ -1271,6 +1339,14 @@ int main(int argc,char** argv) {
     std::cout<<"completion effects count="<<count<<" work="<<work<<" bytes="<<bytes<<'\n';
   }
   ActivationSource(0,false,false);ActivationSource(1,true,false);
+  for(bool before:{false,true})for(bool reverse:{false,true}) {
+    std::pair<std::uint64_t,std::size_t> previous;
+    for(unsigned count:{0U,1U,200U,201U,400U,800U}) {
+      const auto current=JointProjectionSource(reverse,count,before,false);
+      if(previous.first&&count>=201){Check(current.first<previous.first*3);Check(current.second<previous.second*3);}
+      previous=current;
+    }
+  }
   Case(false);Case(true);ChangedDefinition(false);ChangedDefinition(true);
   OriginalEntries(false);OriginalEntries(true);UnitCapabilityContract();
   for(unsigned form=0;form<10;++form)for(bool loop:{false,true})for(bool reverse:{false,true})CurrentUnitKinds(reverse,loop,form);

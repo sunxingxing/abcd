@@ -36,6 +36,30 @@
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
 
+### 2026-10-10：规则276，pass 分析一次发布完整共同产品
+
+- CurrentProjection 一次发布 RecoveryProjection（expressions、flow、
+  initialized_reads）。所有 pass 只读取 const 子视图；BeginCommit 在
+  计划写入前销毁整个 owner，最终输出才移交打印向量。退出分立缓存与
+  InitializedOccurrences，避免在同一revision内由flow查询覆盖表达式精度。
+- 实际旧路径中，ElideInertOperands 可在候选遍历中触发这种覆盖；现在
+  遍历前取得同一完整产品，保守中间分析仅留在共同提供者内部。没有
+  新增条件匹配、恢复pass、整函数重试循环或固定轮数。
+- 新24份混合逗号/TDZ源码覆盖反向arena、200/201/400/800，检查调用
+  次数、顺序、抛出、返回与保留的未初始化读取；exact/one-short通过。
+  首轮定向4/5通过，失败为新测试把GetValue调用包装计入待删除逗号；
+  修正测试后源码对照1/1通过（8.62s）、投影1/1通过（6.34s）。保留
+  首轮失败记录。生产代码未为该断言添加形状条件。
+- 冻结终验：31目标构建0（94.75s）、fresh fixed ABC0（4.11s）、
+  63/63测试0（1048.53s），JUnit名称完整无重复。4份代码/测试哈希、
+  输入SHA及测试清单保持；构建无warning/error。24份新源码960次
+  独立比较/4个语义突变通过。19 records仍10 complete/0 partial/
+  9 no-module；10份源码语法通过，逐字节等同规则275，同一语言contract。
+  证据根build/stage-one/joint-publication-verification（final-result.json、
+  final-junit.xml）；fresh输出joint-publication-final-rule276-verified。
+- 五项主干仍OPEN；本次固定revision内分析输入，是依赖驱动重跑/收敛
+  的前置契约，不代表全局调度完成。其他优化和既定暂停事项保持，Goal active。
+
 ### 2026-10-10：规则275，初始化与转移共享单元存在事实
 
 - RecoveryFlow::BindingPresence 统一静态能力与 occurrence 前后单元状态。

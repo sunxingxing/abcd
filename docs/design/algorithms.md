@@ -4305,3 +4305,16 @@ heavy-path/Fenwick certificate sweep retain their existing complexity and
 resource bounds. No per-variable graph traversal is added. Tests vary missing
 unit facts, ordinary/catch initialization, exception bypass, point permutation
 and block splitting; existing 200/201/400/800 activation cases remain relevant.
+
+### Complete projection publication (rules276)
+
+One lazy current-projection construction publishes expressions, flow and
+initialization reads together. All queries in a revision share the product;
+there is no later conservative-to-refined replacement. This removes a separate
+expression analysis and overlapping retained expression vectors, but may build
+the full graph earlier when a normal-result pass commits before other queries.
+Measure the existing workload rather than assuming a runtime improvement.
+Construction remains the shared bootstrap's existing bounded cost; queries
+after publication are O(1), and the change adds no graph, rounds or per-variable
+walk. Mixed value-used/discarded operands, reversed arenas and200/201/400/800
+source dimensions exercise the publication boundary and existing quotas.

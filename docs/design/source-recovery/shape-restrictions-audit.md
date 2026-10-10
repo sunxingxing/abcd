@@ -3429,3 +3429,13 @@ transfer. The common query makes the semantic obligation layout independent:
 a successful definition initializes its current unit, not an unproved later
 unit. Unknown presence withdraws completion precision; it is not a source
 rejection or evidence of a definite cell exit. No new layout admission is added.
+
+### Rules276: stable analysis publication within a pass
+
+Expression, flow and initialization reads are published only as one completed
+RecoveryProjection. Retire the provisional-expression cache and its replacement
+by a later flow query at the same revision. Inert-operand candidate enumeration
+now takes both const views before traversal; node order cannot determine when
+its input facts are refined. This is an analysis ownership contract, not an
+expression-shape admission. Shared bootstrap, semantic eligibility and candidate
+proofs are unchanged; no new pass retry or fixed round count is introduced.

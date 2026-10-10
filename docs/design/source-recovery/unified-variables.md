@@ -27,9 +27,9 @@ expression facts 和 initialization/dominance scratch 在各阶段边界释放�
 work 仍累计全部阶段。ProjectionFacts 记录自己产生的缓存 admission；
 commit 销毁缓存及 occurrence proof 后释放其占用，peak 和 work 不回退。
 旧 flow buffer 复用暂退，避免把继续持有的容量当作已释放；未来若复用
-必须明确接入独立容量所有权。纯 normal-result 查询仍可惰性消费同一
-表达式提供者的保守结果；流消费者与最终输出强制共同 completed
-bootstrap，不以 conservative negatives 冒充完整初始化分析。
+必须明确接入独立容量所有权。规则276起，pass 的 normal-result 查询
+也只消费共同 completed bootstrap；保守中间表达式只存在于提供者内部，
+不在同一个 revision 下先发布再替换。整个共同产品仍按需建立一次。
 固定 record 和800组变量暴露该成本回归并验证修复，预算未
 放宽。该局部资源证明不能代替整个进程 RSS 或全 pass 成本验收。
 
@@ -3477,3 +3477,18 @@ occurrence 前后作用域事实。初始化的局部 gen/kill 和跨块 must �
 改变稀疏块压缩、重路径和 Fenwick 批量证书算法；Scope/Loop 的 reset
 索引只是求解加速，不能成为恢复准入。当前/试算均走既有共同提供者。
 完整普通单元重构及五项主干交付仍未关闭。
+
+## 规则276：同一 revision 只发布一个完整共同产品
+
+CurrentProjection 一次拥有表达式、flow、初始化读取事实，所有 pass
+查询返回这个完整 RecoveryProjection 的 const 子视图。共同 bootstrap
+结束以前不发布产品；BeginCommit 在修改计划前销毁整个 owner。最终
+输出阶段才能移交打印所需的向量，分析阶段不能更新已发布表达式事实。
+
+退出 AnalyzeExpressions 单独生成保守结果、随后 CurrentFlow 覆盖其
+精度的路径；也退出分立 InitializedOccurrences 的重复 revision/所有权。
+这解决同一 pass 遍历候选期间因调用 flow 查询而改变事实的问题。保守
+表达式分析仍是共同提供者内部的纯步骤，不是另一种可缓存的 pass 结果。
+
+这是依赖调度的前置契约：revision 内分析精度固定，后续才能可靠定义
+pass 已完成与需要重跑的条件。全局依赖驱动收敛和五项主干交付仍开放。
