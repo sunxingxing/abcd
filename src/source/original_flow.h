@@ -24,6 +24,7 @@ struct OriginalSourceDefinition {
   SymbolId binding;
   ExprId input;
 };
+enum class OriginalAbruptKind : std::uint8_t {kReturn,kThrow};
 // Original operations retain phase effects and success-only results, without
 // copying opcode variants or interpreting them a second time in recovery.
 struct OriginalOperation {
@@ -45,6 +46,9 @@ struct OriginalOperation {
   // adapter applies the bound only to evaluation, never to separate operand,
   // reference-preparation or declarative-writeback phases.
   std::optional<ExprId> intrinsic_expression;
+  // Flow verification owns the native statement; operand verification owns
+  // its completion payload. This is not the returned/thrown value's action.
+  std::optional<OriginalAbruptKind> abrupt;
 };
 // Operand evidence stays occurrence-specific. Never join it with operation
 // result domains: predicates and completion operands can share source anchors.

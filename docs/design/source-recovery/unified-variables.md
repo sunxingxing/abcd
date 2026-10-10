@@ -3908,3 +3908,45 @@ index exhausted the64MiB print recovery budget at800. Demand-owned retention and
 actual capacity release repair it; no budget or semantics are relaxed. Evidence:
 build/stage-one/original-phase-final-2 and original-phase-demand-mutants; the
 first failure remains in original-phase-final. No mainline delivery closes here.
+
+
+Rules287 consumes the retained raw exceptional exits in the shared source adapter.
+Flow verification supplies a throw/return statement identity, and operand
+verification proves its payload. The adapter publishes the post-payload abrupt
+endpoint independently from value evaluation. A throwing completion has no
+normal Commit; a return Commit maps to its completed destination only while
+cleanup substitution is represented precisely.
+
+For each live phased exit, the adapter relates its own Before identity and native
+exception context to the selected raw Catch identity or function escape. A
+handler-indexed closure records whether all of its original exits have this
+correspondence. Both pending-exception and staged Catch-definition caps consume
+the same closure in constant time. A mapped Catch entry alone no longer supplies
+a pending-value certificate. Joint provenance and executable source-edge solving
+still own current payload changes, additional source failures and cap withdrawal;
+the closure does not replace them or constrain context-independent action effects.
+Unknown action correspondence, changed selected handler and conservative cleanup
+retain source facts while withdrawing raw pending-exception precision.
+
+The new indexing adds O(S+P+E) work/storage for statements, raw phases and exits;
+S storage is construction scratch, P/E are revision-owned correspondence facts.
+No per-binding original-graph walk is added. Source-only/ordinary graphs have no
+Catch correspondence to borrow and retain their existing native completion
+semantics; reuse without raw phases destroys the extra indexes' capacity before
+admission. Existing byte/work bounds and subprocess deadlines remain unchanged.
+This is an exception correspondence migration, not complete original IR/SSA
+integration. Folded controls/raw control edges, elided-action correspondence and
+protocol/suspension internals remain mainline #1 gaps. Mainline status is reported
+in status.md; no additional mainline is closed by this change.
+
+Rules287 frozen validation builds all32 selected targets (95.69s), passes all65
+selected tests (1171.69s) with exact names/no duplicates, and exports the fixed
+ABC (3.77s). All8 frozen code/test files, selection and input SHA remain unchanged.
+Ten generated sources parse and match rules286 byte-for-byte; record counts stay
+10 complete/9 no-module. The three production mutants (Catch-cap bypass, cleanup
+bypass, selected-handler bypass) all build and fail; restoration builds. Related
+7/7 tests pass (17.50s), including decoded layout variants, source execution,
+exact/one-short budgets and sparse/full reference comparisons. Initial fixture
+and span errors are retained as failures, not included in acceptance. Evidence:
+build/stage-one/original-routes-final, original-routes-focused and
+original-routes-mutants. No additional mainline is closed by this validation.

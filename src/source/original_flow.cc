@@ -63,6 +63,10 @@ std::shared_ptr<OriginalFlow> RetainOriginalFlow(const analysis::ValueProgram& g
     budget.Step();const auto& op=graph.ops[i];
     result->operations[i]={op.block,op.first_use,op.use_count,op.result,op.normal,
         op.before_throw,op.exceptional,op.life,op.origin,flow.expressions[i],flow.statements[i]};
+    if(op.life==analysis::ValueLife::kLive&&flow.statements[i]) {
+      if(std::holds_alternative<analysis::ValueThrow>(op.operation))result->operations[i].abrupt=OriginalAbruptKind::kThrow;
+      else if(std::holds_alternative<analysis::ValueReturn>(op.operation))result->operations[i].abrupt=OriginalAbruptKind::kReturn;
+    }
   }
   return result;
 }

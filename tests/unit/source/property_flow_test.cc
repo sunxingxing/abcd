@@ -101,7 +101,12 @@ void PropertyState(bool emit,bool computed,bool read,bool reverse) {
   raw.statements=f.tree.statements.size();raw.bindings=f.tree.symbols.size();
   raw.input_ranges.resize(f.tree.expressions.size());
   raw.phases={{{0},{0},analysis::ExceptionPhase::kBefore,analysis::OpId{0}},
-      {{1},{0},analysis::ExceptionPhase::kCommit,analysis::OpId{0}}};
+      {{1},{0},analysis::ExceptionPhase::kCommit,analysis::OpId{0}},
+      {{2},{1},analysis::ExceptionPhase::kCatch,{}}};
+  raw.values.push_back({analysis::CatchDefinition{{2}},analysis::ValueKinds::Language()});
+  raw.catches.resize(f.tree.symbols.size());raw.catches[4]=OriginalCatchBinding{{0},{2},handler};
+  raw.exceptional_exits.push_back({analysis::OpId{0},{0},analysis::LanguageEffect::kUserCode,
+      analysis::ValueHandler{{{0},{0},{0}},{2}}});
   OriginalOperation operation{};operation.life=analysis::ValueLife::kLive;
   operation.normal=operation.before_throw=analysis::LanguageEffect::kUserCode|analysis::LanguageEffect::kHeapRead|analysis::LanguageEffect::kHeapWrite;
   operation.exceptional=analysis::ExceptionalCompletion::kMayThrow;
@@ -113,9 +118,17 @@ void PropertyState(bool emit,bool computed,bool read,bool reverse) {
   Check(native.normal==reference.normal&&native.exceptions==reference.exceptions);
   Check(FindOriginalPhase(phased,{0},analysis::ExceptionPhase::kBefore,analysis::OpId{0})==native.before);
   Check(FindOriginalPhase(phased,{1},analysis::ExceptionPhase::kCommit,analysis::OpId{0})==native.normal);
+  Check(phased.original_exceptions.size()==1&&phased.original_exceptions[0]);
+  Check(phased.original_exceptions[0]->before==reference.receiver&&phased.original_exceptions[0]->thrown==reference.exceptions.thrown);
+  auto escaping=raw;escaping.exceptional_exits[0].handler.reset();
+  auto escaping_projection=projection;escaping_projection.original=&escaping;
+  const auto mismatch=std::get<RecoveryFlow>(BuildRecoveryFlow(f.tree,escaping_projection));
+  Check(!mismatch.original_exceptions[0]); // Raw escape cannot certify a native catch route.
   const auto source_only=std::get<RecoveryFlow>(BuildRecoveryFlow(f.tree,projection,{},phased));
   Check(source_only.actions.empty()&&source_only.actions.capacity()==0);
   Check(source_only.original_phases.empty()&&source_only.original_phases.capacity()==0);
+  Check(source_only.original_exceptions.empty()&&source_only.original_exceptions.capacity()==0);
+  Check(source_only.original_handlers.empty()&&source_only.original_handlers.capacity()==0);
   Check(property.kind==(read?FlowReferenceKind::kRead:FlowReferenceKind::kWrite));
   Check(flow.events[property.acquisition.value].kind==FlowEventKind::kPropertyReference);
   Check(flow.events[property.access.value].property==FlowPropertySite{FlowPropertyId{0},FlowPropertyPhase::kAccess});

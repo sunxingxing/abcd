@@ -136,6 +136,11 @@ struct FlowExceptionContext {
 // precedes access; an update's conversion follows its captured read. Normal
 // completion includes successful source writeback, never the throwing route.
 struct FlowAction {FlowPoint before,normal;FlowExceptionContext exceptions;};
+// Payload evaluation precedes this endpoint. Abrupt completion is not a
+// normal value result; its destination retains the current cleanup route.
+struct FlowAbruptAction {FlowPoint point,destination;FlowCompletion completion;FlowExceptionContext exceptions;};
+struct FlowOriginalException {FlowPoint before,thrown;};
+enum class FlowOriginalRouteCoverage : std::uint8_t {kUnmodeled,kComplete};
 struct FlowReference {
   FlowPoint point;
   SymbolId binding;
@@ -442,6 +447,11 @@ struct RecoveryFlow {
   // Absent entries are representation gaps; neither PCs nor edge order infer
   // an action, success-only result or pending-exception entry.
   std::vector<std::optional<FlowPoint>> original_phases; // WorkBlockId indexed.
+  // Exit and handler facts are produced once from checked raw identities and
+  // native completion contexts. Catch caps consume this closure in O(1), not
+  // a per-definition walk through the original graph or a layout predicate.
+  std::vector<std::optional<FlowOriginalException>> original_exceptions; // Exceptional exit indexed.
+  std::vector<FlowOriginalRouteCoverage> original_handlers; // WorkBlockId indexed.
   std::vector<std::optional<FlowOriginalResult>> original_results; // OpId indexed.
   std::vector<std::optional<SourceEffects>> original_effects; // ExprId indexed, intrinsic only.
   RouteInputIdentity identity;

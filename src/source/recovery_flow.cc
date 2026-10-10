@@ -72,9 +72,12 @@ class FlowBuilder {
     if(!phased) {
       decltype(result_.actions){}.swap(result_.actions);
       decltype(result_.original_phases){}.swap(result_.original_phases);
+      decltype(result_.original_exceptions){}.swap(result_.original_exceptions);
+      decltype(result_.original_handlers){}.swap(result_.original_handlers);
     }
     Resize(result_.actions,phased?tree_.expressions.size():0);
     for(auto& action:result_.actions){budget_.Step();action.reset();}
+    if(phased)budget_.Array(abrupt_actions_,tree_.statements.size());
     RequireTree(projection_.statement_values.empty()||projection_.statement_values.size()==tree_.statements.size(),Error::kOwnership);
     RequireTree(projection_.forwarded_values.empty()||projection_.forwarded_values.size()==tree_.statements.size(),Error::kOwnership);
     RequireTree(projection_.loop_declarations.empty()||projection_.loop_declarations.size()==tree_.statements.size(),Error::kOwnership);
@@ -188,13 +191,20 @@ class FlowBuilder {
       if(operation.life!=analysis::ValueLife::kLive)continue;
       switch(phase.phase) {
         case analysis::ExceptionPhase::kBefore:
-          if(operation.intrinsic_expression) {
+          if(operation.abrupt&&operation.statement) {
+            RequireTree(operation.statement->value<abrupt_actions_.size(),Error::kOwnership);
+            if(const auto& action=abrupt_actions_[operation.statement->value];action&&
+                action->completion==(*operation.abrupt==OriginalAbruptKind::kThrow?FlowCompletion::kThrow:FlowCompletion::kReturn))point=action->point;
+          } else if(operation.intrinsic_expression) {
             RequireTree(operation.intrinsic_expression->value<result.actions.size(),Error::kOwnership);
             if(const auto& action=result.actions[operation.intrinsic_expression->value])point=action->before;
           }
           break;
         case analysis::ExceptionPhase::kCommit:
-          if(operation.result_expression) {
+          if(operation.abrupt==OriginalAbruptKind::kReturn&&operation.statement) {
+            if(const auto& action=abrupt_actions_[operation.statement->value];action&&
+                action->completion==FlowCompletion::kReturn&&!action->exceptions.finalizer)point=action->destination;
+          } else if(operation.result_expression) {
             RequireTree(operation.result_expression->value<result.normal_exits.size(),Error::kOwnership);
             point=result.normal_exits[operation.result_expression->value];
           } else if(operation.intrinsic_expression) {
@@ -210,6 +220,37 @@ class FlowBuilder {
       const auto handler=definition.original_catch->handler;
       if(handler.value<result.original_phases.size()&&result.original->phases[handler.value].phase==analysis::ExceptionPhase::kCatch)
         result.original_phases[handler.value]=definition.catch_entry;
+    }
+    Resize(result.original_handlers,result.original_phases.size());
+    for(std::size_t i=0;i<result.original_handlers.size();++i) {
+      budget_.Step();result.original_handlers[i]=
+          FindOriginalPhase(result,analysis::WorkBlockId{static_cast<std::uint32_t>(i)},analysis::ExceptionPhase::kCatch)?
+          FlowOriginalRouteCoverage::kComplete:FlowOriginalRouteCoverage::kUnmodeled;
+    }
+    Resize(result.original_exceptions,result.original_phases.empty()?0:result.original->exceptional_exits.size());
+    for(std::size_t i=0;i<result.original_exceptions.size();++i) {
+      budget_.Step();auto& route=result.original_exceptions[i];route.reset();
+      const auto& exit=result.original->exceptional_exits[i];
+      RequireTree(exit.op.value<result.original->operations.size(),Error::kOwnership);
+      const auto& operation=result.original->operations[exit.op.value];
+      if(operation.life!=analysis::ValueLife::kLive)continue;
+      std::optional<FlowExceptionContext> context;
+      if(operation.abrupt==OriginalAbruptKind::kThrow&&operation.statement) {
+        if(const auto& action=abrupt_actions_[operation.statement->value];action&&action->completion==FlowCompletion::kThrow)context=action->exceptions;
+      } else if(operation.intrinsic_expression) {
+        if(const auto& action=result.actions[operation.intrinsic_expression->value])context=action->exceptions;
+      }
+      const auto before=FindOriginalPhase(result,operation.block,analysis::ExceptionPhase::kBefore,exit.op);
+      const auto target=exit.handler?FindOriginalPhase(result,exit.handler->entry,analysis::ExceptionPhase::kCatch):std::optional{result.terminal};
+      // Same selected handler and completion context are semantic obligations.
+      // An imported region has no finally: a newly projected cleanup cannot
+      // borrow its pending-exception proof. Missing correspondence is a gap.
+      if(before&&target&&context&&context->thrown==*target&&!context->finalizer)
+        route=FlowOriginalException{*before,*target};
+      if(exit.handler&&!route) {
+        RequireTree(exit.handler->entry.value<result.original_handlers.size(),Error::kOwnership);
+        result.original_handlers[exit.handler->entry.value]=FlowOriginalRouteCoverage::kUnmodeled;
+      }
     }
     Resize(result.original_results,result.original?result.original->operations.size():0);
     for(std::size_t i=0;i<result.original_results.size();++i) {
@@ -831,11 +872,13 @@ class FlowBuilder {
       else if constexpr(std::is_same_v<T,ReturnStmt>) {
         semantics.completion=FlowStatementCompletion::kAbrupt;
         auto returned=New();Abrupt(returned,terminal_,context,FlowCompletion::kReturn);
+        if(!abrupt_actions_.empty())abrupt_actions_[at.id.value]=FlowAbruptAction{returned,terminal_,FlowCompletion::kReturn,{context.thrown,context.finalizer}};
         Link(start,node.value?Expr(*node.value,context.Operand(returned)):returned);
       } else if constexpr(std::is_same_v<T,ThrowStmt>) {
         semantics.completion=FlowStatementCompletion::kAbrupt;
         const auto thrown=New();Link(thrown,context.thrown,FlowCompletion::kThrow);
         events_[thrown.value].thrown_value=node.value;
+        if(!abrupt_actions_.empty())abrupt_actions_[at.id.value]=FlowAbruptAction{thrown,context.thrown,FlowCompletion::kThrow,{context.thrown,context.finalizer}};
         Link(start,Expr(node.value,context.Operand(thrown)));
       }
       else if constexpr(std::is_same_v<T,TryStmt>) {
@@ -874,6 +917,7 @@ class FlowBuilder {
   bool current_entry_evaluation_=false;
   const FunctionTree& tree_;LegacyFlowProjection projection_;TreeCheckBudget budget_;RecoveryScratch memory_;
   std::vector<FlowEvent> events_;std::vector<FlowEdge> edges_;
+  std::vector<std::optional<FlowAbruptAction>> abrupt_actions_;
   std::pmr::vector<Point> statements_,expressions_,exits_;std::pmr::vector<Task> tasks_;
   std::pmr::vector<std::uint8_t> seen_;std::vector<FlowDefinition> definitions_;
   std::pmr::vector<std::optional<SymbolId>> reads_;std::pmr::vector<ReadState> read_states_;
@@ -908,6 +952,12 @@ std::optional<OriginalResult> FindFlowOriginalResult(const RecoveryFlow& flow,an
   if(result->commit&&FindOriginalPhase(flow,*result->commit,analysis::ExceptionPhase::kCommit,operation)!=occurrence.normal)return {};
   return result;
 }
+namespace {
+bool OriginalHandlerAvailable(const RecoveryFlow& flow,analysis::WorkBlockId handler) {
+  return FindOriginalPhase(flow,handler,analysis::ExceptionPhase::kCatch)&&handler.value<flow.original_handlers.size()&&
+      flow.original_handlers[handler.value]==FlowOriginalRouteCoverage::kComplete;
+}
+}
 analysis::ValueKinds OriginalDefinitionKinds(const RecoveryFlow& flow,const OriginalSourceDefinition& definition) {
   if(!flow.original)return {};
   if(const auto* result=std::get_if<OriginalResultDefinition>(&definition.origin)) {
@@ -915,11 +965,11 @@ analysis::ValueKinds OriginalDefinitionKinds(const RecoveryFlow& flow,const Orig
     return verified&&verified->value==result->value&&verified->expression==definition.input?verified->kinds:analysis::ValueKinds{};
   }
   if(const auto* caught=std::get_if<OriginalCatchDefinition>(&definition.origin))
-    if(!FindOriginalPhase(flow,caught->handler,analysis::ExceptionPhase::kCatch))return {};
+    if(!OriginalHandlerAvailable(flow,caught->handler))return {};
   return OriginalDefinitionKinds(*flow.original,definition);
 }
 analysis::ValueKinds OriginalCatchKinds(const RecoveryFlow& flow,const OriginalCatchBinding& caught) {
-  if(!FindOriginalPhase(flow,caught.handler,analysis::ExceptionPhase::kCatch))return {};
+  if(!OriginalHandlerAvailable(flow,caught.handler))return {};
   RequireTree(caught.value.value<flow.original->values.size(),Error::kOwnership);
   return flow.original->values[caught.value.value].domain;
 }

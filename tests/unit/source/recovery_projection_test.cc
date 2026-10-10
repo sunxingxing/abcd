@@ -1332,11 +1332,19 @@ std::pair<std::uint64_t,std::size_t> RawProjectionClosure(bool changed,RawClosur
   // domain without its pending-exception entry cannot refine the source join.
   f.original.phases={{{0},{0},analysis::ExceptionPhase::kBefore,analysis::OpId{0}},
       {{1},{0},analysis::ExceptionPhase::kCommit,analysis::OpId{0}},
-      {{2},{1},analysis::ExceptionPhase::kCatch,{}}};
+      {{2},{1},analysis::ExceptionPhase::kCatch,{}},
+      {{3},{1},analysis::ExceptionPhase::kBefore,analysis::OpId{1}},
+      {{4},{1},analysis::ExceptionPhase::kCommit,analysis::OpId{1}}};
   f.original.values.push_back({analysis::OpResult{{0},analysis::WorkBlockId{1}},analysis::ValueKinds::FiniteNumber()});
   f.original.operations.push_back({{0},{0},0,analysis::ValueId{1},analysis::LanguageEffect::kNone,analysis::LanguageEffect::kNone,analysis::ExceptionalCompletion::kImpossible,analysis::ValueLife::kLive,{0},result,{},result,result});
   f.original.values.push_back({analysis::CatchDefinition{{2}},analysis::ValueKinds::FiniteNumber()});
   f.original.catches.resize(b);f.original.catches[2]=OriginalCatchBinding{{2},{2},handler};
+  OriginalOperation raised{};raised.block={3};raised.life=analysis::ValueLife::kLive;
+  raised.exceptional=analysis::ExceptionalCompletion::kMayThrow;raised.statement=thrown;
+  raised.expression=std::get<ThrowStmt>(t.statements[thrown.value].statement).value;
+  raised.abrupt=OriginalAbruptKind::kThrow;f.original.operations.push_back(raised);
+  f.original.exceptional_exits.push_back({analysis::OpId{1},{0},analysis::LanguageEffect::kNone,
+      analysis::ValueHandler{{{0},{0},{0}},{2}}});
   if(reverse) {
     const auto map=[&](ExprId id){return ExprId{static_cast<unsigned>(e-1-id.value)};};
     for(auto& item:t.expressions)if(auto* unary=std::get_if<UnaryExpr>(&item.expression))unary->operand=map(unary->operand);
@@ -1350,6 +1358,7 @@ std::pair<std::uint64_t,std::size_t> RawProjectionClosure(bool changed,RawClosur
     for(auto& id:f.order)id=map(id);
     std::reverse(t.expressions.begin(),t.expressions.end());std::reverse(f.equations.begin(),f.equations.end());
     std::reverse(f.plan.read_sources.begin(),f.plan.read_sources.end());result=map(result);caught_read=map(caught_read);f.original.operations[0].expression=result;f.original.operations[0].result_expression=result;f.original.operations[0].intrinsic_expression=result;
+    f.original.operations[1].expression=map(*f.original.operations[1].expression);
   }
   std::vector<std::uint8_t> stable{1,0,0};auto projection=f.Projection();projection.stable_entries=stable;
   Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(t)));
@@ -1360,6 +1369,35 @@ std::pair<std::uint64_t,std::size_t> RawProjectionClosure(bool changed,RawClosur
   Check(final.expressions[caught_read.value].IsFiniteNumber()==(edit==RawClosureEdit::kNone));
   Check(model.expressions.kinds==final.expressions);
   if(edit==RawClosureEdit::kNone&&copies==1) {
+    Check(model.flow.original_exceptions.size()==1&&model.flow.original_exceptions[0]);
+    auto gap=f.original;gap.operations[1].abrupt.reset();
+    const RecoveryExpressionInput incomplete{f.plan,f.equations,f.order,&gap};
+    const auto unknown=std::get<RecoveryProjection>(PrepareRecoveryProjection(t,projection,incomplete));
+    Check(FindOriginalPhase(unknown.flow,{2},analysis::ExceptionPhase::kCatch).has_value());
+    Check(OriginalCatchKinds(unknown.flow,*gap.catches[2]).IsEmpty());
+    Check(unknown.expressions.kinds[caught_read.value].IsNumber()&&!unknown.expressions.kinds[caught_read.value].IsFiniteNumber());
+    const auto unknown_live=std::get<FlowLiveness>(AnalyzeFlowLiveness(unknown.flow));
+    const auto independently=std::get<FlowNormalKinds>(CheckedFlowNormalKinds(t,unknown.flow,unknown_live,incomplete));
+    Check(independently.expressions==unknown.expressions.kinds);
+    // A source-only cleanup is an explicit precision gap even when the
+    // selected catch stays the same. The conservative completion graph has
+    // additional routes; it cannot borrow the raw region's pending-value cap.
+    auto cleanup=t;auto cleanup_plan=f.plan;auto cleanup_original=f.original;
+    const ScopeId cleanup_scope{static_cast<unsigned>(cleanup.scopes.size())};
+    const StmtId finalizer{static_cast<unsigned>(cleanup.statements.size())};
+    cleanup.scopes.push_back({ScopeKind::kBlock,ScopeId{1}});
+    cleanup.statements.push_back({BlockStmt{cleanup_scope,0,0},{0}});
+    std::get<TryStmt>(cleanup.statements[attempt.value].statement).finalizer=finalizer;
+    cleanup_plan.omitted.resize(cleanup.statements.size());cleanup_plan.statements.resize(cleanup.statements.size());
+    cleanup_original.statements=cleanup.statements.size();
+    auto cleanup_projection=projection;cleanup_projection.omitted=cleanup_plan.omitted;
+    cleanup_projection.initializers=cleanup_plan.statements;
+    const RecoveryExpressionInput cleanup_input{cleanup_plan,f.equations,f.order,&cleanup_original};
+    Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(cleanup)));
+    const auto conservative=std::get<RecoveryProjection>(PrepareRecoveryProjection(cleanup,cleanup_projection,cleanup_input));
+    Check(FindOriginalPhase(conservative.flow,{2},analysis::ExceptionPhase::kCatch).has_value());
+    Check(!conservative.flow.original_exceptions[0]);
+    Check(OriginalCatchKinds(conservative.flow,*cleanup_original.catches[2]).IsEmpty());
     // Change only the successful binding commit's provenance: its incoming
     // pending value is unchanged. Withdrawal must replay that contribution,
     // even when no value-domain change can wake the incoming edge again.

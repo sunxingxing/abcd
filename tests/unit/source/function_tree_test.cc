@@ -632,6 +632,30 @@ void OriginalCatchValues(bool emit=false,unsigned form=0,unsigned copies=0,bool 
   Check(std::holds_alternative<RecoveryProjection>(PrepareRecoveryProjection(tree,lp,ri,exact)));
   Check(std::get<TreeStructureError>(PrepareRecoveryProjection(tree,lp,ri,{exact.bytes-1,exact.work}))==TreeStructureError::kResourceLimit);
   Check(std::get<TreeStructureError>(PrepareRecoveryProjection(tree,lp,ri,{exact.bytes,exact.work-1}))==TreeStructureError::kWorkLimit);
+  Check(m.flow.original_exceptions.size()==original.exceptional_exits.size());
+  bool explicit_throw=false,explicit_return=false;
+  for(unsigned i=0;i<original.operations.size();++i) {
+    const auto& operation=original.operations[i];
+    if(!operation.abrupt)continue;
+    const auto endpoint=FindOriginalPhase(m.flow,operation.block,ExceptionPhase::kBefore,OpId{i});
+    Check(endpoint.has_value());
+    if(operation.abrupt==OriginalAbruptKind::kThrow) {
+      explicit_throw=true;Check(m.flow.events[endpoint->value].thrown_value==operation.expression);
+      Check(endpoint!=m.flow.expressions[operation.expression->value]);
+    } else explicit_return=true;
+  }
+  Check(explicit_throw&&explicit_return);
+  for(unsigned i=0;i<original.exceptional_exits.size();++i) {
+    const auto& exit=original.exceptional_exits[i];const auto& operation=original.operations[exit.op.value];
+    if(operation.life!=ValueLife::kLive||(!operation.intrinsic_expression&&!operation.abrupt))continue;
+    const auto before=FindOriginalPhase(m.flow,operation.block,ExceptionPhase::kBefore,exit.op);
+    // A proved-inert source action can already be absent from this plan;
+    // coverage of its raw expression does not manufacture a current action.
+    if(!before) {Check(!m.flow.original_exceptions[i]);continue;}
+    const auto& route=m.flow.original_exceptions[i];Check(route.has_value());
+    Check(route->before==before);
+    Check(route->thrown==(exit.handler?FindOriginalPhase(m.flow,exit.handler->entry,ExceptionPhase::kCatch):std::optional{m.flow.terminal}));
+  }
   bool original_catch=false;
   for(const auto& d:m.flow.definitions)if(d.kind==FlowDefinitionKind::kCatch) {
     Check(d.original_catch&&d.catch_entry);original_catch=true;
@@ -641,6 +665,16 @@ void OriginalCatchValues(bool emit=false,unsigned form=0,unsigned copies=0,bool 
     auto missing=m.flow;missing.original_phases.clear();
     Check(OriginalCatchKinds(missing,*d.original_catch).IsEmpty());
     Check(!FindOriginalPhase(m.flow,d.original_catch->handler,ExceptionPhase::kCommit));
+    missing=m.flow;missing.original_handlers.clear();
+    Check(OriginalCatchKinds(missing,*d.original_catch).IsEmpty());
+    // Preserve the Catch phase, but remove the throwing action's independent
+    // correspondence. Pending-value caps must consume exit closure as well.
+    auto gap=original;
+    for(auto& operation:gap.operations)if(operation.abrupt==OriginalAbruptKind::kThrow)operation.abrupt.reset();
+    const RecoveryExpressionInput gap_input{p,eq,ids,&gap};
+    const auto uncovered=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,lp,gap_input));
+    Check(FindOriginalPhase(uncovered.flow,d.original_catch->handler,ExceptionPhase::kCatch).has_value());
+    Check(OriginalCatchKinds(uncovered.flow,*d.original_catch).IsEmpty());
   }
   Check(original_catch);
   if(form==0) {
