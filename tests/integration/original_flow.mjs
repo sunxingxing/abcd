@@ -322,18 +322,19 @@ console.log('narrowed-source 200/201/400/800 admitted cost scaling passed');
 const unitSources=execFileSync(process.argv[3],['--unit-source'],{encoding:'utf8',maxBuffer:16_000_000}).trim().split('\n').map(JSON.parse);
 const unitFactories=factories.filter((_,i)=>i>=primitive.length||!Object.is(primitive[i],Infinity)&&!Object.is(primitive[i],-Infinity));
 function unitOutcome(fn,factory,mode) {
-  const trace=[];let reports=0;
+  const trace=[];let reports=0,callback;
   const input=()=>{trace.push('input');return factory(trace);};
   const normalized=value=>value===failure?'failure':value instanceof Error?value.name:value;
   const report=value=>{
     if(value==='set') {
       trace.push('set');return {[Symbol.toPrimitive](hint){
         trace.push(['cell conversion',hint]);if(mode===2)throw failure;
+        if(mode===4){callback();return 1n;}
         return mode===3?Symbol('bad conversion'):0;
       }};
     }
     trace.push(['report',typeof value==='function'?'closure':normalized(value)]);
-    if(typeof value==='function')value();
+    if(typeof value==='function'){callback=value;value();}
     if(mode===1&&++reports===1)throw failure;
   };
   try{return {trace,kind:'return',value:fn(input,report)};}
@@ -342,11 +343,13 @@ function unitOutcome(fn,factory,mode) {
 const unitReferences=[
   function(input,report){let current;try{current=+input();while(current>0){report(current);-current;report(-current);current=current-1;}}catch(error){report(error);}return 0;},
   function(input,report){let current;try{current=+input();while(current>0){report(()=>{current=report('set');});-current;report(-current);current=current-1;}}catch(error){report(error);}return 0;},
+  function(input,report){let current;try{current=+input();while(current>0){report(current);-current;report(-current);current--;}}catch(error){report(error);}return 0;},
+  function(input,report){let current;try{current=+input();while(current>0){report(()=>{current=report('set');});-current;report(-current);current--;}}catch(error){report(error);}return 0;},
 ];
 let unitComparisons=0,unitMutants=0;
 for(const row of unitSources) {
-  const generated=Function('return ('+row.source+')')(),reference=unitReferences[+row.captured];
-  for(const factory of unitFactories)for(const mode of [0,1,2,3]) {
+  const generated=Function('return ('+row.source+')')(),reference=unitReferences[+row.captured+2*Number(row.update)];
+  for(const factory of unitFactories)for(const mode of [0,1,2,3,4]) {
     assert.deepEqual(unitOutcome(generated,factory,mode),unitOutcome(reference,factory,mode));++unitComparisons;
   }
   const wrapped='('+row.source+')',ast=nodes(parseJavaScript(wrapped));
@@ -356,15 +359,59 @@ for(const row of unitSources) {
   const lostConversion=wrapped.slice(0,initial.start)+wrapped.slice(initial.argument.start,initial.argument.end)+wrapped.slice(initial.end);
   assert.notDeepEqual(unitOutcome(Function('return '+lostConversion)(),()=>1n,0),unitOutcome(reference,()=>1n,0));++unitMutants;
   const target=row.captured?ast.find(node=>node.type==='ExpressionStatement'&&node.expression.type==='UnaryExpression'&&node.expression.operator==='-'):
+      row.update?ast.find(node=>node.type==='UpdateExpression'):
       ast.find(node=>node.type==='BinaryExpression'&&node.operator==='-'&&node.right.type==='Literal'&&node.right.value===1);
   assert.ok(target);
-  const mutant=wrapped.slice(0,target.start)+(row.captured?';':'current - 2')+wrapped.slice(target.end);
+  const mutant=wrapped.slice(0,target.start)+(row.captured?';':row.update?'(current -= 2)':'current - 2')+wrapped.slice(target.end);
   assert.notDeepEqual(unitOutcome(Function('return '+mutant)(),()=>3,0),unitOutcome(reference,()=>3,0));++unitMutants;
 }
-assert.equal(unitSources.length,24);
-for(const captured of [false,true])for(const reverse of [false,true]) {
-  const rows=unitSources.filter(row=>row.captured===captured&&row.reverse===reverse&&row.count>=200);
+assert.equal(unitSources.length,48);
+for(const update of [false,true])for(const captured of [false,true])for(const reverse of [false,true]) {
+  const rows=unitSources.filter(row=>row.update===update&&row.captured===captured&&row.reverse===reverse&&row.count>=200);
   assert.deepEqual(rows.map(row=>row.count),[200,201,400,800]);
   for(let i=1;i<rows.length;++i){assert.ok(rows[i].work<rows[i-1].work*3);assert.ok(rows[i].bytes<rows[i-1].bytes*3);}
 }
 console.log(`${unitSources.length} current-unit loop/capture sources / ${unitComparisons} independent comparisons / ${unitMutants} adverse mutants; 200/201/400/800 cost scaling passed`);
+
+const updates=execFileSync(process.argv[3],['--updates'],{encoding:'utf8',maxBuffer:16_000_000}).trim().split('\n').map(JSON.parse);
+const updateFactories=[...factories,()=>Number.MAX_VALUE,()=>-Number.MAX_VALUE,()=>Number.MAX_SAFE_INTEGER,()=>2n];
+function updateOutcome(fn,factory,throws) {
+  const trace=[];let inputValue;
+  const input=()=>{trace.push('input');return inputValue=factory(trace);};
+  const normalize=value=>value===failure?'failure':value instanceof Error?value.name:
+    value===inputValue&&value!==null&&typeof value==='object'?'input':value;
+  const report=(...values)=>{trace.push(['report',...values.map(normalize)]);if(throws)throw failure;};
+  try{return {trace,kind:'return',value:normalize(fn(input,report))};}
+  catch(error){return {trace,kind:'throw',value:normalize(error)};}
+}
+let updateComparisons=0,updateMutants=0;
+for(const row of updates) {
+  const reference=function(input,report) {
+    let saved=7;saved=row.numeric?+input():input();
+    const body=()=>{
+      let result;
+      if(row.increment)result=row.prefix?++saved:saved++;
+      else result=row.prefix?--saved:saved--;
+      report(result,saved);-saved;
+    };
+    if(row.caught){try{body();}catch(error){report(saved,error);}}else body();
+    return saved;
+  };
+  const generated=Function('return ('+row.source+')')();
+  for(const factory of updateFactories)for(const throws of [false,true]) {
+    assert.deepEqual(updateOutcome(generated,factory,throws),updateOutcome(reference,factory,throws));++updateComparisons;
+  }
+  const source='('+row.source+')',ast=nodes(parseJavaScript(source));
+  assert.equal(ast.filter(node=>node.type==='ExpressionStatement'&&node.expression.type==='UnaryExpression'&&node.expression.operator==='-').length,row.numeric?0:1);
+  const update=ast.find(node=>node.type==='UpdateExpression');assert.ok(update);
+  const argument=source.slice(update.argument.start,update.argument.end);
+  const operator=row.increment?'++':'--',opposite=row.increment?'--':'++';
+  const changes=[row.prefix?`(${argument}${operator})`:`(${operator}${argument})`,
+    row.prefix?`(${opposite}${argument})`:`(${argument}${opposite})`,argument];
+  for(const replacement of changes) {
+    const mutant=source.slice(0,update.start)+replacement+source.slice(update.end);
+    assert.notDeepEqual(updateOutcome(Function('return '+mutant)(),()=>2,false),updateOutcome(reference,()=>2,false));++updateMutants;
+  }
+}
+assert.equal(updates.length,32);
+console.log(`${updates.length} captured-update sources / ${updateComparisons} independent comparisons / ${updateMutants} adverse mutants`);

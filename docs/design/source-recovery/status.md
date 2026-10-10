@@ -36,6 +36,34 @@
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
 
+### 2026-10-10：规则274，捕获的数值输入贯通成功定义
+
+- 更新动作的转换前读取接入既有FlowCapturedValue；共同稀疏值图分别
+  求解正常表达式结果和成功写回。转换期间当前绑定被改写，不能替换旧
+  输入；失败边绕过写回，保留失败前实际状态。需求/初始化共享该输入。
+- 退出kUpdate无条件未知域分支。Number/String/Boolean/null输入的
+  正常数值结果为Number，未知输入可能为BigInt，仍保持Language。
+  前缀/后缀、增量/减量共享类别转移，不借用旧值身份或有限范围。
+  一般一元数值方程复用此转移；效果和可观察写入保留独立义务。
+- 新循环用例先RED：旧模型在更新后丢失数值类型并留下多余计算。
+  定向扩展2/2通过（11.65s）；48份循环/捕获源码6720次独立比较、
+  16突变，32份前缀/后缀/catch源码2176次比较、96突变。包含转换钩子
+  重入闭包改写绑定后返回BigInt；8个小图区分旧输入/后续写入/失败/
+  缺失输入及反向point编号。候选移除数值转换后必须撤销旧Number，
+  恢复Required效果；exact/one-short和200/201/400/800均通过。
+- 两个生产突变（写回点重读、未知输入当Number）build0/test-6，均已
+  恢复。复用现有输入字段、事件和稀疏事实，无新增图或按变量遍历，
+  原资源额度不变；不新增恢复pass或样本/操作序列/同块等准入条件。
+- 冻结终验：31目标构建0（100.05s）、fresh fixed ABC0（3.77s）、
+  63/63测试0（999.32s），JUnit名称完整无重复。7份代码/测试哈希、
+  清单及输入SHA在导出前后/测试后不变。19 records仍10 complete/
+  0 partial/9 no-module，10份源码语法全部通过，逐字节等同规则273，
+  contract仍language_numeric_constructors_v1。最终构建无warning/error。
+  证据根build/stage-one/captured-numeric-verification（final-result.json、
+  final-junit.xml）；fresh输出captured-numeric-final-rule274-verified。
+- 五项主干仍OPEN、Goal active。完整raw phase/protocol对应、普通单元
+  重构、其余trial、依赖收敛和统一终验继续；其余优化与暂停事项保持。
+
 ### 2026-10-10：规则273，执行图拥有原始证明的失效事实
 
 - 当前/候选 flow 构建器在实际执行边界发布 Preserved/Changed/Unmodeled；

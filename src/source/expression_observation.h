@@ -70,6 +70,13 @@ inline analysis::ValueKinds PrimitiveKinds(const TreeLiteral& literal) {
 inline bool CoercionPrimitive(analysis::ValueKinds kinds) {
   return kinds.IsNumber()||kinds.IsString()||kinds.IsZeroOrOnePrimitive();
 }
+// ToNumeric followed by a numeric operation preserves the numeric category,
+// not a finite/range proof. Unknown input may produce BigInt or invoke hooks;
+// successful value domains do not authorize erasing those effects.
+inline analysis::ValueKinds NumericValueKinds(analysis::ValueKinds input) {
+  using K=analysis::ValueKinds;
+  return input.IsEmpty()?K{}:CoercionPrimitive(input)?K::Number():K::Language();
+}
 // ECMA-262 normal results only. Bottom is an unresolved equation, never a
 // language value. Unknown Number/BigInt and observable cells stay Language;
 // initialization, effects and exceptional completion have independent owners.
@@ -86,7 +93,7 @@ inline analysis::ValueKinds NormalValueKinds(const TreeExpression& expression,
         case TreeUnary::kPlus:return K::Number();
         case TreeUnary::kNegate:case TreeUnary::kBitNot: {
           const auto input=kinds[node.operand.value];
-          return input.IsEmpty()?K{}:CoercionPrimitive(input)?K::Number():K::Language();
+          return NumericValueKinds(input);
         }
       }
     } else if constexpr(std::is_same_v<T,BinaryExpr>) {

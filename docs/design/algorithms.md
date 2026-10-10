@@ -4277,3 +4277,21 @@ The fixed source tests compare copy growth at200/201/400/800 for with/without
 non-result actions, split blocks, reversed SSA IDs and reversed source arenas.
 Current and candidate projections exercise exact and one-short byte/work budgets.
 These are bounded cost checks, not resumed whole-corpus RSS or benchmarks.
+
+### Captured numeric value categories (rules274)
+
+Reuse the existing captured-input field, liveness facts and sparse normal-kind
+dependency graph. One definition scan connects modeled numeric action results;
+existing live-fact generation connects successful stores to their captured inputs.
+Each lookup uses the existing sorted live-fact index, O(log F), with F live facts.
+For U modeled updates and D existing dependencies, added construction is
+O(U log F) plus the existing per-fact lookup cost; at most one numeric edge per
+update result or update-generated live fact. Propagation remains bounded by the
+finite domain height times dependency edges. No new per-expression graph, event
+or retained value table is introduced: the one-byte occurrence classification
+replaces the prior read bit, and FlowDefinition reuses its existing input field.
+
+The source cost matrix includes both assignment and update loop-carried forms,
+closed and captured cells, reversed arenas and200/201/400/800 inert scopes.
+Exact/one-short budget tests cover current and candidate preparation. These are
+bounded model/source checks; RSS and whole-corpus benchmarks remain paused.

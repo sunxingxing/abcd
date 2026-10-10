@@ -3402,3 +3402,19 @@ continue to come from the language model until full phase correspondence is prov
 Regression: with canonical value equations and a candidate's changed execution
 graph, old consumer-side masks could resurrect a deleted non-result action's raw
 path certificate. Both current and trial now consume the graph's provenance.
+
+### Rules274: numeric actions consume captured values
+
+Retired the normal-kind kUpdate fallback for actions with a modeled captured
+input. The existing pre-conversion read now feeds both the normal result and
+success-only definition through a typed numeric dependency. This is an abstract
+semantic transfer, not recognition of a loop/update instruction sequence. No
+recovery pass adds a new conditional admission path.
+
+Captured input is distinct from current-cell value and from value equality.
+Copy/constants consumers keep their separate identity obligations; merely adding
+an input cannot make an update a copy. A before-throw callback's writes survive
+failure; successful update writes depend on the earlier captured input. Unknown
+input includes BigInt, and no finite/result range is transferred to the store.
+Effects remain conservative and independently owned. Full raw action/phase
+correspondence is still a separate implementation gap.

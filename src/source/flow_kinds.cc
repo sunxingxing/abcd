@@ -21,7 +21,8 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
         caught<=std::numeric_limits<std::uint32_t>::max()-expressions-facts&&
         events<=std::numeric_limits<std::uint32_t>::max()-expressions-facts-caught,Error::kResourceLimit);
     struct NodeId {std::uint32_t value;};
-    enum class DependencyKind { kValue, kCompletion };
+    enum class DependencyKind { kValue, kNumeric, kCompletion };
+    enum class ValueOccurrence : std::uint8_t {kUnmodeled,kRead,kNumeric};
     struct Dependency {
       NodeId target;std::optional<std::uint32_t> next;
       DependencyKind kind;const FlowDefinition* definition;
@@ -30,7 +31,8 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
     const auto event_node=[&](FlowPoint point){return NodeId{static_cast<std::uint32_t>(value_count+point.value)};};
     std::vector<K> values,entries,original_results;
     std::vector<std::optional<std::uint32_t>> heads;
-    std::vector<std::uint8_t> queued,modeled_reads,changed,original_entries;
+    std::vector<std::uint8_t> queued,changed,original_entries;
+    std::vector<ValueOccurrence> occurrences;
     std::vector<NodeId> pending;
     std::vector<std::optional<NodeId>> catch_values,catch_entries;
     std::vector<FlowDefinitionId> catch_roots;
@@ -49,7 +51,7 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
       }
     }
     budget.Array(values,value_count);budget.Array(heads,count);budget.Array(queued,value_count);budget.Array(pending,count);
-    budget.Array(modeled_reads,expressions);budget.Array(entries,flow.bindings.size());
+    budget.Array(occurrences,expressions);budget.Array(entries,flow.bindings.size());
     budget.Array(changed,count);budget.Array(original_entries,flow.bindings.size());
     budget.Array(original_results,expressions);
     RequireTree(flow.original_results.empty()||flow.original_results.size()==input.original->operations.size(),Error::kOwnership);
@@ -154,6 +156,21 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
         budget.Step();if(!occurrence)continue;
         dependency(event_node(occurrence->entry),NodeId{occurrence->expression.value},DependencyKind::kCompletion,nullptr);
       }
+      // Numeric updates have one captured input, a throwing conversion and a
+      // success-only store. Prefix/postfix differ in value, but both normal
+      // results have this numeric category. Never lend their old finite range
+      // to the incremented/decremented value or query the cell after coercion.
+      for(const auto& definition:flow.definitions) {
+        budget.Step();if(definition.kind!=FlowDefinitionKind::kUpdate||!definition.write||!definition.input)continue;
+        RequireTree(definition.write->value<expressions&&definition.input->point.value<events&&
+            definition.input->binding.value<flow.bindings.size(),Error::kOwnership);
+        const NodeId target{definition.write->value};
+        occurrences[target.value]=ValueOccurrence::kNumeric;
+        dependency(event_node(definition.point),target,DependencyKind::kCompletion,nullptr);
+        if(const auto source=fact_node({definition.input->point,definition.input->binding}))
+          dependency(*source,target,DependencyKind::kNumeric,nullptr);
+        else {constant(target,K::Language());invalidate(target);}
+      }
       for(const auto& reference:flow.references) {
         budget.Step();const auto* expression=std::get_if<ExprId>(&reference.site);
         if(reference.kind!=FlowReferenceKind::kRead||!expression)continue;
@@ -163,7 +180,7 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
         const auto* read=std::get_if<FlowBindingValue>(&equation);
         if(!read)continue;
         RequireTree(read->binding==reference.binding,Error::kOwnership);
-        const NodeId target{expression->value};modeled_reads[expression->value]=1;
+        const NodeId target{expression->value};occurrences[expression->value]=ValueOccurrence::kRead;
         if(tracked_binding(reference.binding)) {
           if(const auto source=fact_node({reference.point,reference.binding})){dependency(*source,target,DependencyKind::kValue,nullptr);continue;}
         }
@@ -193,6 +210,15 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
                     dependency(*source,target,DependencyKind::kValue,nullptr);continue;
                   }
                   break;
+                case FlowDefinitionKind::kUpdate:
+                  if(generated.input)if(const auto source=fact_node({generated.input->point,generated.input->binding})) {
+                    dependency(*source,target,DependencyKind::kNumeric,nullptr);
+                    dependency(event_node(generated.point),target,DependencyKind::kCompletion,nullptr);
+                    // The source action supplies a category, not the raw
+                    // result's identity/range (especially for postfix).
+                    invalidate(target);continue;
+                  }
+                  break;
                 case FlowDefinitionKind::kAssignment:case FlowDefinitionKind::kInitializer:
                   if(generated.value){RequireTree(generated.value->value<expressions,Error::kOwnership);dependency(NodeId{generated.value->value},target,DependencyKind::kValue,&generated);
                     dependency(event_node(generated.point),target,DependencyKind::kCompletion,nullptr);
@@ -215,7 +241,7 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
                   dependency(*catch_values[definition->value],target,DependencyKind::kValue,&generated);
                   continue;
                 case FlowDefinitionKind::kUndefined:case FlowDefinitionKind::kUndefinedStore:
-                case FlowDefinitionKind::kFunctionSelf:case FlowDefinitionKind::kUpdate:break;
+                case FlowDefinitionKind::kFunctionSelf:break;
               }
               constant(target,K::Language());invalidate(target);continue;
             }
@@ -263,7 +289,7 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
         RequireTree(flow.expressions[i].value<events,Error::kOwnership);
         if(flow.events[flow.expressions[i].value].provenance!=FlowProvenance::kPreserved)changed[i]=1;
       }
-      if(std::holds_alternative<FlowBindingValue>(ProjectedRecoveryEquation(input,ExprId{static_cast<std::uint32_t>(i)}))&&!modeled_reads[i])changed[i]=1;
+      if(std::holds_alternative<FlowBindingValue>(ProjectedRecoveryEquation(input,ExprId{static_cast<std::uint32_t>(i)}))&&occurrences[i]==ValueOccurrence::kUnmodeled)changed[i]=1;
     }
     // Value-only graph clients can still solve current source domains. Missing
     // boundary provenance withdraws raw path precision without rejecting them.
@@ -288,8 +314,10 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
         else if constexpr(std::is_same_v<T,FlowLogicalValue>)return values[value.left.value].Join(values[value.right.value]);
         else if constexpr(std::is_same_v<T,FlowPrimitiveReference>) {
           RequireTree(value.primitive.value<input.bindings.primitives.size(),Error::kOwnership);return PrimitiveKinds(input.bindings.primitives[value.primitive.value]);
-        } else if constexpr(std::is_same_v<T,FlowBindingValue>)return modeled_reads[target.value]?K{}:K::Language();
-        else {static_assert(std::is_same_v<T,UnknownFlowValue>);return NormalValueKinds(tree.expressions[target.value].expression,{values.data(),expressions});}
+        } else if constexpr(std::is_same_v<T,FlowBindingValue>)return occurrences[target.value]==ValueOccurrence::kRead?K{}:K::Language();
+        else {static_assert(std::is_same_v<T,UnknownFlowValue>);
+          if(occurrences[target.value]==ValueOccurrence::kNumeric)return values[target.value];
+          return NormalValueKinds(tree.expressions[target.value].expression,{values.data(),expressions});}
       },equation);
       const auto original=original_results[target.value];
       // Inline results and stored results use the same operand/completion
@@ -305,7 +333,7 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
           budget.Step();const auto& dependency=dependencies[*edge];
           if(dependency.kind==DependencyKind::kCompletion)continue;
           const auto target=dependency.target;
-          auto incoming=values[source.value];
+          auto incoming=dependency.kind==DependencyKind::kNumeric?NumericValueKinds(values[source.value]):values[source.value];
           if(dependency.definition&&!changed[source.value]&&!changed[target.value]) {
             K original;
             if(dependency.definition->original)original=OriginalDefinitionKinds(*input.original,*dependency.definition->original);
@@ -318,7 +346,7 @@ std::variant<FlowNormalKinds,TreeStructureError> AnalyzeFlowNormalKinds(
             if(!original.IsEmpty()&&original.Join(incoming)==incoming)incoming=original;
           }
           const bool read=target.value<expressions&&std::holds_alternative<FlowBindingValue>(ProjectedRecoveryEquation(input,ExprId{target.value}));
-          update(target,target.value>=expressions||read?incoming:expression(target));
+          update(target,target.value>=expressions||read||dependency.kind==DependencyKind::kNumeric?incoming:expression(target));
         }
       }
     };

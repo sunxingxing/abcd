@@ -555,6 +555,12 @@ class FlowBuilder {
     auto next=effect;
     if(const auto* update=std::get_if<UpdateExpr>(&node)) {
       const auto read=New({FlowEventKind::kRead,Resolve(update->symbol),{},at.id});events_[read.value].discarded=context.discarded;Link(read,effect);
+      // The update consumes the value captured before conversion. A callback
+      // may change the current cell before successful writeback; rereading at
+      // the commit would model another operation. Demand and kinds share this
+      // input just as they do for copied iteration environments.
+      RequireTree(events_[normal.value].definition.has_value(),Error::kOwnership);
+      definitions_[events_[normal.value].definition->value].input=FlowCapturedValue{read,Resolve(update->symbol)};
       events_[read.value].effect=ExpressionEvaluation::kRequired;
       events_[read.value].effects=NormalValueEffects(SymbolExpr{update->symbol},{},ResourceFailures(tree_.identity.contract));
       Reference(read,Resolve(update->symbol),FlowReferenceKind::kRead,at.id,FlowExceptionContext{context.thrown,context.finalizer},context.owner);

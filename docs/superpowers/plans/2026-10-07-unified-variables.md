@@ -967,3 +967,21 @@ language contract. The paired ProgressBar gate passes88/570/114/15/2 and reports
 platformExecution=false. Two production mutants fail as intended and were
 restored. Evidence:build/stage-one/flow-provenance-verification/final-result.json.
 All five backbone closures remain OPEN; this is a verified migration substep.
+
+Rules274 backbone substep: numeric update phases retain their pre-conversion
+input through the shared captured-value contract. Normal result and success-only
+store use the same category transfer; later cell writes cannot replace that
+input, and exceptional paths bypass the store. Retire the unconditional unknown
+update-definition domain while keeping unknown inputs, BigInt, effect and write
+obligations separate. Current/trial reuse the same sparse model; no update pass
+or layout admission rule is introduced. Full raw correspondence and the five
+backbone delivery closures remain OPEN; other optimizations remain paused.
+
+Rules274 frozen verification:31 targets build0 (100.05s), fixed fresh ABC0 (3.77s),
+exact63 tests0 (999.32s), complete names/no duplicates. Seven frozen code/test
+hashes, selection and input SHA stayed unchanged. Ten sources parse and remain
+byte identical to273;19 records retain10 complete/0 partial/9 no-module with the
+same explicit language contract. New/current source evidence includes48 loop/
+capture programs6720 comparisons16 mutants and32 update/catch programs2176
+comparisons96 mutants. Two production mutants were caught and restored. All
+five backbone closures remain OPEN. Evidence:build/stage-one/captured-numeric-verification.

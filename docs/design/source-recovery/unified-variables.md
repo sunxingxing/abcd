@@ -3417,3 +3417,49 @@ language contract. The paired ProgressBar gate passes88/570/114/15/2 and reports
 platformExecution=false. Two production mutants fail as intended and were
 restored. Evidence:build/stage-one/flow-provenance-verification/final-result.json.
 All five backbone closures remain OPEN; this is a verified migration substep.
+
+### Rules274: captured numeric inputs and success-only definitions
+
+Update actions now publish their pre-conversion read through the existing
+FlowCapturedValue input. The common sparse normal-kind graph applies a numeric
+category transfer separately to the expression result and the successful store.
+It never samples the current binding at commit: a conversion hook may have changed
+that cell. Throwing edges bypass the store and retain the state actually reached
+before failure. The same captured-input contract already serves iteration copies;
+demand and initialization consume the input without interpreting an AST pattern.
+
+The transformation is not a copy proof. Number, String and Boolean/null inputs
+produce Number on normal numeric completion; unknown inputs may produce BigInt
+and remain Language in the current lattice. Finite/range refinements are widened,
+so postfix result precision cannot be lent to the written value. Prefix/postfix
+and increment/decrement share this category property while keeping their existing
+native operation/value semantics. The ordinary unary numeric equation uses the
+same category transfer. An unresolved captured-input cycle remains unknown.
+
+The normal-kind consumer's unconditional kUpdate-to-Language branch is retired
+when the shared input is present. Missing input still has explicit conservative
+behavior. No transformation pass, admission predicate, fixed layout or opcode
+sequence was added. Conversion effects, observable write retention and successful
+binding initialization remain independent; precise update effect refinement is
+not inferred from the result domain. All products remain revision-owned and use
+the common current/trial provider.
+
+Tests exercise captured value versus later cell writes, failed conversion and
+missing input, reversed point IDs, prefix/postfix, both directions, catch reads,
+Number/BigInt/NaN/Symbol and user coercion hooks. Engine-produced source tests also
+combine updates with loop units and mutating closures, reverse source arenas and
+200/201/400/800 scope growth. A trial removing the numeric producer must withdraw Number and restore Required
+coercion without borrowing the committed projection. Reentrant coercion can
+invoke a captured setter and then return BigInt; independent execution checks
+the resulting value and effect order. Source-adapter tests with an OriginalFlow
+envelope are not raw-IR correspondence certificates. Full raw phase/protocol mapping and
+the other backbone closures remain OPEN.
+
+Rules274 frozen verification:31 targets build0 (100.05s), fixed fresh ABC0 (3.77s),
+exact63 tests0 (999.32s), complete names/no duplicates. Seven frozen code/test
+hashes, selection and input SHA stayed unchanged. Ten sources parse and remain
+byte identical to273;19 records retain10 complete/0 partial/9 no-module with the
+same explicit language contract. New/current source evidence includes48 loop/
+capture programs6720 comparisons16 mutants and32 update/catch programs2176
+comparisons96 mutants. Two production mutants were caught and restored. All
+five backbone closures remain OPEN. Evidence:build/stage-one/captured-numeric-verification.

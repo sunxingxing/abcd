@@ -178,7 +178,9 @@ struct DeclarationValue;
 struct DeclarationCompletion;
 // A captured value belongs to this read occurrence, not the current binding
 // at its eventual commit. Native environment copies produce this input once;
-// demand/value consumers must preserve the old-value dependency across resets.
+// demand/value consumers must preserve the old-value dependency across resets
+// and intervening conversions. Definition kind owns any numeric transformation;
+// merely having a captured input is not a copy/equality certificate.
 struct FlowCapturedValue {FlowPoint point;SymbolId binding;auto operator<=>(const FlowCapturedValue&)const=default;};
 struct FlowDefinition {
   FlowPoint point;

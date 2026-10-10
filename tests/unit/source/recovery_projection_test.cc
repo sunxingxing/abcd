@@ -699,7 +699,7 @@ void UnitCapabilityContract() {
 // Actual source-adapter execution: a completed conversion initializes a
 // native loop unit; callback accessibility is shared with every current/trial
 // consumer. Independent JS below supplies the behavior, never engine inputs.
-void CurrentUnitSource(bool captured,unsigned count,bool reverse,bool emit) {
+void CurrentUnitSource(bool captured,unsigned count,bool reverse,bool emit,bool update=false) {
   FunctionTree tree{};tree.callable=CallableKind::kFunction;tree.strictness=Strictness::kStrict;
   tree.parameter_scope={0};tree.body_scope={1};tree.body={0};tree.origins={OriginalSite{{0},{0}}};
   tree.scopes={{ScopeKind::kParameters,{}},{ScopeKind::kFunctionBody,ScopeId{0}},
@@ -739,8 +739,12 @@ void CurrentUnitSource(bool captured,unsigned count,bool reverse,bool emit) {
   }
   body.push_back(stmt(ExpressionStmt{expr(UnaryExpr{TreeUnary::kNegate,read(2)})}));
   body.push_back(stmt(ExpressionStmt{call(1,expr(UnaryExpr{TreeUnary::kNegate,read(2)}))}));
-  const auto next=expr(BinaryExpr{analysis::BinaryOperator::kSubtract,read(2),integer(1)});
-  body.push_back(stmt(ExpressionStmt{expr(AssignmentExpr{SymbolTarget{{2}},next})}));body.push_back(stmt(ContinueStmt{loop,{}}));
+  if(update)body.push_back(stmt(ExpressionStmt{expr(UpdateExpr{{2},UpdateDirection::kDecrement,UpdateResult::kPostfix})}));
+  else {
+    const auto next=expr(BinaryExpr{analysis::BinaryOperator::kSubtract,read(2),integer(1)});
+    body.push_back(stmt(ExpressionStmt{expr(AssignmentExpr{SymbolTarget{{2}},next})}));
+  }
+  body.push_back(stmt(ContinueStmt{loop,{}}));
   std::get<LoopStmt>(tree.statements[loop.value].statement).body=block({3},body);
   const auto handler=block({5},{stmt(ExpressionStmt{call(1,read(3))})});
   const auto attempt=block({2},{entry,loop});
@@ -782,7 +786,108 @@ void CurrentUnitSource(bool captured,unsigned count,bool reverse,bool emit) {
     Check(std::holds_alternative<PrintedFamilyDraft>(PrintFamilyDraft(family,output)));
   } else Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output,{}, {},nullptr,&original)));
   if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"captured",captured},{"count",count},{"reverse",reverse},
-      {"work",plan.work},{"bytes",plan.allocated_bytes}}<<'\n';
+      {"work",plan.work},{"bytes",plan.allocated_bytes},{"update",update}}<<'\n';
+}
+void UpdateSource(bool reverse,bool numeric,bool increment,bool prefix,bool emit,bool caught=false) {
+  Fixture f(1,reverse);auto& tree=f.tree;
+  const auto expr=[&](TreeExpression node,FlowValueEquation equation=UnknownFlowValue{}) {
+    const ExprId id{static_cast<unsigned>(tree.expressions.size())};
+    tree.expressions.push_back({std::move(node),{0}});f.equations.push_back(equation);f.order.push_back(id);return id;
+  };
+  const auto stmt=[&](TreeStatement node) {
+    const StmtId id{static_cast<unsigned>(tree.statements.size())};tree.statements.push_back({std::move(node),{0}});return id;
+  };
+  if(!numeric) {
+    const auto call=std::get<UnaryExpr>(tree.expressions[f.values[0].value].expression).operand;
+    const auto ignored=expr(TreeLiteral{UndefinedLiteral{}},FlowPrimitiveReference{{0}});
+    tree.expressions[f.values[0].value].expression=SequenceExpr{ignored,call};f.equations[f.values[0].value]=FlowExpressionValue{call};
+  }
+  const SymbolId report{2};const NameId name{static_cast<unsigned>(tree.names.size())};tree.names.push_back(u"report");
+  tree.symbols.push_back({{0},name,BindingKind::kParameter,DeclarationKind::kParameter,NameEvidence::kMetadata,{}});
+  tree.parameters.push_back({report,{},false});
+  const auto update=expr(UpdateExpr{{1},increment?UpdateDirection::kIncrement:UpdateDirection::kDecrement,
+      prefix?UpdateResult::kPrefix:UpdateResult::kPostfix});
+  const auto after=expr(SymbolExpr{{1}},FlowBindingValue{{1}});tree.arguments={update,after};
+  const auto call=expr(CallExpr{expr(SymbolExpr{report},FlowBindingValue{report}),{0,2},CallReference::kValue});
+  tree.children.insert(tree.children.begin()+2,stmt(ExpressionStmt{call}));
+  tree.children.push_back(stmt(ReturnStmt{expr(SymbolExpr{{1}},FlowBindingValue{{1}})}));
+  std::get<BlockStmt>(tree.statements[0].statement).child_count=tree.children.size();
+  if(caught) {
+    const auto roots=tree.children;tree.children.clear();
+    tree.scopes.push_back({ScopeKind::kBlock,ScopeId{1}});tree.scopes.push_back({ScopeKind::kCatch,ScopeId{1}});
+    const NameId error_name{static_cast<unsigned>(tree.names.size())};tree.names.push_back(u"error");
+    tree.symbols.push_back({{3},error_name,BindingKind::kCatchParameter,DeclarationKind::kCatchParameter,NameEvidence::kMetadata,{}});
+    const auto block=[&](ScopeId scope,std::vector<StmtId> children) {
+      const auto first=tree.children.size();tree.children.insert(tree.children.end(),children.begin(),children.end());
+      return stmt(BlockStmt{scope,static_cast<unsigned>(first),static_cast<unsigned>(children.size())});
+    };
+    const auto body=block({2},{roots[2],roots[3]});
+    tree.arguments.push_back(expr(SymbolExpr{{1}},FlowBindingValue{{1}}));
+    tree.arguments.push_back(expr(SymbolExpr{{3}},FlowBindingValue{{3}}));
+    const auto handler=block({3},{stmt(ExpressionStmt{expr(CallExpr{expr(SymbolExpr{report},FlowBindingValue{report}),{2,2},CallReference::kValue})})});
+    const auto attempt=stmt(TryStmt{body,CatchClause{SymbolId{3},handler},{}});
+    const auto first=tree.children.size();tree.children.insert(tree.children.end(),{roots[0],roots[1],attempt,roots[4]});
+    std::get<BlockStmt>(tree.statements[0].statement)={{1},static_cast<unsigned>(first),4};
+  }
+  const auto x=tree.expressions.size(),s=tree.statements.size(),b=tree.symbols.size();
+  f.plan.aliases.resize(b);f.plan.storage.resize(b);f.plan.read_bindings.resize(b);f.plan.literals.resize(b);f.private_bindings.resize(b,0);
+  f.plan.read_sources.resize(x);f.plan.read_literals.resize(x);f.plan.replacements.resize(x);f.plan.transports.resize(x);
+  f.plan.omitted.resize(s);f.plan.statements.resize(s);f.original.statements=s;f.original.bindings=b;
+  f.original.normal_kinds.resize(x);f.original.input_ranges.resize(x);
+  Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  const auto model=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,f.Projection(),f.Input()));
+  for(const auto expression:{update,after,f.reads[0]})
+    Check(model.expressions.kinds[expression.value]==(numeric?analysis::ValueKinds::Number():analysis::ValueKinds::Language()));
+  bool captured=false;
+  for(const auto& definition:model.flow.definitions)if(definition.kind==FlowDefinitionKind::kUpdate) {
+    Check(definition.input&&definition.input->binding==SymbolId{1});
+    Check(model.flow.events[definition.input->point.value].kind==FlowEventKind::kRead);captured=true;
+  }
+  Check(captured);
+  const analysis::SemanticBudget exact{model.allocated_bytes,model.work};
+  Check(std::holds_alternative<RecoveryProjection>(PrepareRecoveryProjection(tree,f.Projection(),f.Input(),exact)));
+  Check(std::get<TreeStructureError>(PrepareRecoveryProjection(tree,f.Projection(),f.Input(),{exact.bytes-1,exact.work}))==TreeStructureError::kResourceLimit);
+  Check(std::get<TreeStructureError>(PrepareRecoveryProjection(tree,f.Projection(),f.Input(),{exact.bytes,exact.work-1}))==TreeStructureError::kWorkLimit);
+  if(numeric) {
+    auto replacements=f.plan.replacements;
+    replacements[f.values[0].value]=std::get<UnaryExpr>(tree.expressions[f.values[0].value].expression).operand;
+    auto candidate=BindingPlanView{f.plan};candidate.replacements=replacements;
+    const auto trial=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,f.Projection(),{candidate,f.equations,f.order,&f.original}));
+    for(const auto expression:{update,after,f.reads[0]})Check(trial.expressions.kinds[expression.value]==analysis::ValueKinds::Language());
+    Check(trial.expressions.evaluations[f.results[0].value]==ExpressionEvaluation::kRequired);
+    Check(model.expressions.evaluations[f.results[0].value]==ExpressionEvaluation::kInert);
+  }
+  std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output,{}, {},nullptr,&f.original)));
+  if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"numeric",numeric},{"increment",increment},{"prefix",prefix},{"reverse",reverse},{"caught",caught}}<<'\n';
+}
+void CapturedNumericKinds(bool reverse,unsigned form) {
+  Fixture f(1,reverse);auto& tree=f.tree;
+  const auto unknown=std::get<UnaryExpr>(tree.expressions[f.values[0].value].expression).operand;
+  const ExprId update{static_cast<unsigned>(tree.expressions.size())};tree.expressions.push_back({UpdateExpr{{1},UpdateDirection::kIncrement,UpdateResult::kPostfix},{0}});
+  f.equations.push_back(UnknownFlowValue{});f.order.push_back(update);
+  f.plan.replacements.resize(tree.expressions.size());f.plan.transports.resize(tree.expressions.size());
+  f.plan.read_sources.resize(tree.expressions.size());f.plan.read_literals.resize(tree.expressions.size());
+  f.original.normal_kinds.resize(tree.expressions.size());f.original.input_ranges.resize(tree.expressions.size());
+  RecoveryFlow flow{};flow.original=&f.original;flow.events.resize(5);flow.bindings.resize(2);
+  flow.bindings[1].exposure=FlowBindingExposure::kPrivate;
+  const auto point=[&](unsigned i){return FlowPoint{reverse?4-i:i};};flow.entry=point(0);
+  flow.definitions={{point(0),{1},FlowDefinitionKind::kInitializer,{},form==0?f.values[0]:unknown},
+      {point(2),{1},FlowDefinitionKind::kAssignment,{},form==0?unknown:f.values[0]},
+      {point(3),{1},FlowDefinitionKind::kUpdate,{},update,{},update}};
+  if(form!=3)flow.definitions[2].input=FlowCapturedValue{point(1),{1}};
+  for(unsigned i=0;i<3;++i)flow.events[flow.definitions[i].point.value].definition=FlowDefinitionId{i};
+  flow.events[point(1).value].read=SymbolId{1};flow.events[point(4).value].read=SymbolId{1};
+  flow.references={{point(1),{1},FlowReferenceKind::kRead,update},{point(4),{1},FlowReferenceKind::kRead,f.reads[0]}};
+  const auto edge=[&](unsigned a,unsigned b,FlowCompletion completion=FlowCompletion::kNormal) {
+    const auto from=point(a),to=point(b);flow.edges.push_back({from,to,completion,flow.events[to.value].incoming,flow.events[from.value].outgoing});
+    flow.events[to.value].incoming=flow.events[from.value].outgoing=flow.edges.size()-1;
+  };
+  edge(0,1);edge(1,2);if(form==2)edge(2,4,FlowCompletion::kThrow);else {edge(2,3);edge(3,4);}
+  const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(flow));
+  const auto actual=std::get<FlowNormalKinds>(AnalyzeFlowNormalKinds(tree,flow,live,f.Input()));
+  // Capture Number then overwrite with unknown, or the converse. A failed
+  // conversion exposes the intervening write; success uses the old capture.
+  Check(actual.expressions[f.reads[0].value]==((form==0||form==2)?analysis::ValueKinds::Number():analysis::ValueKinds::Language()));
 }
 void CapturedKinds(bool reverse) {
   Fixture f(1,reverse);RecoveryFlow flow{};flow.original=&f.original;flow.events.resize(5);flow.bindings.resize(2);
@@ -1079,8 +1184,13 @@ void ActivationSource(unsigned copies,bool split,bool emit) {
 
 }
 int main(int argc,char** argv) {
+  if(argc==2&&std::string_view(argv[1])=="--updates") {
+    for(bool caught:{false,true})for(bool reverse:{false,true})for(bool numeric:{false,true})for(bool increment:{false,true})for(bool prefix:{false,true})UpdateSource(reverse,numeric,increment,prefix,true,caught);
+    return 0;
+  }
+  for(bool reverse:{false,true})for(unsigned form=0;form<4;++form)CapturedNumericKinds(reverse,form);
   if(argc==2&&std::string_view(argv[1])=="--unit-source") {
-    for(bool captured:{false,true})for(bool reverse:{false,true})for(unsigned count:{0U,1U,200U,201U,400U,800U})CurrentUnitSource(captured,count,reverse,true);
+    for(bool update:{false,true})for(bool captured:{false,true})for(bool reverse:{false,true})for(unsigned count:{0U,1U,200U,201U,400U,800U})CurrentUnitSource(captured,count,reverse,true,update);
     return 0;
   }
   if(argc==2&&std::string_view(argv[1])=="--unit-kinds") {
