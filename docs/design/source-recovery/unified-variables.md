@@ -3580,3 +3580,114 @@ retain TDZ in forward/reversed arenas, and independently executed generated
 source covers input/coercion traces and declaration-order mutations. This closes
 a missing consumer of common initialization facts, not the whole bootstrap
 precision/fixed-point or the five backbone deliveries.
+
+
+### Joint projection precision: initialization, values, completion and provenance
+
+PrepareRecoveryProjection is the sole provider for current plans and complete
+candidate views. The provider builds one conservative flow, obtains reset-aware
+initialization equations from BuildFlowInitializationProgram, and solves those
+with normal values, event effects, executable completions and raw-proof validity.
+The expression/flow/read products are published together after the solve. This
+changes internal analysis precision, not the mutation/commit contract of passes.
+
+FlowInitializationProgram retains typed state inputs, edge-guarded clauses and
+reference queries. Its owner and edge/event counts bind it to the unchanged
+input graph; even a same-sized graph cannot borrow it. The independent
+must-initialization analysis consumes the same equations with all input edges
+admitted. Source allocation, successful initialization and unit reset continue
+to come from the existing common binding adapter, including catch/reentry facts.
+No consumer reconstructs initialization from a local syntax pattern.
+
+EvaluateFlowEventEffects is a pure query shared by the solver and final flow
+refinement. Read initialization, conversion, successful store and property
+reference phases retain their separate completion meanings. MayInvokeUserCode
+owns external-unit invalidation for normal, exceptional and resume completions.
+Refinement alone compacts edges after the solve, preserving clause/guard identity
+throughout analysis. The no-original-IR path uses the same provider and queue;
+source Number evidence cannot borrow absent original finite/range evidence.
+
+The sparse queue has four interacting facts: value domains widen, initialization
+states join reachable uninitialized/initialized alternatives, completion edges
+activate, and conditional original proofs become invalid. Indexed dependencies
+wake consumers; missing-operand counts ground event evaluation. Inactive edges
+contribute neither catch values nor external mutation nor provenance loss.
+Withdrawing a proof replays incoming contributions as well as outgoing users:
+the incoming value may be unchanged while its former raw cap is no longer valid.
+
+Raw proofs intersect source domains using ValueKinds::Meet. The former test
+"use raw only if it is narrower than the current input" was nonmonotone on
+partially solved joins: an incompatible early branch could leak a category that
+later iterations could not retract. Intersection preserves both independent
+proofs and is monotone while the certificate is valid; invalidation only widens.
+A constant-true conditional with a differently typed unused arm checks this
+without requiring a production branch-shape admission or literal special case.
+
+Retired decision paths: the provider's preliminary must-initialization solve,
+early edge refinement, the separate source-only solver path, upfront propagation
+of raw invalidation on all conservative edges, and conditional raw narrowing.
+Independent final-graph analysis remains a test oracle and supported analysis
+API; it is not a hidden second provider or a production retry loop.
+
+Acceptance checks cover current/candidate views, source-only/original domains,
+complete read-occurrence initialization agreement, final-graph domain agreement,
+reversed expression arenas, reachable/unreachable catch contributions, unchanged
+inputs after changed commit provenance, and independent generated-source traces.
+Production mutations remove guards, invalidation propagation, input replay or
+monotone intersection; each must fail before the restored implementation passes.
+Complex finally, unknown binding units and incomplete raw correspondence retain
+the common model's explicit conservative capabilities. This work cannot certify
+those separate mainline deliveries or the pass scheduler's global convergence.
+
+
+Preparation storage has the same ownership boundary as semantic publication.
+SourceVariables keeps peak admission distinct from returned storage. Binding
+planner scratch dies before publication; class-name and printing consumers
+admit its peak then retain only the returned storage charge. Printing preserves
+its own high-water mark. This addresses the fixed-record failure caused by
+accumulating dead analysis scratch across functions, without changing quotas,
+recovery admission or source semantics. Exact/short budgets remain enforced.
+
+
+Value preparation now has a distinct FlowValueStates product. It does not borrow
+or masquerade as complete FlowLiveness: storage interference still owns full
+liveness. The current/candidate provider consumes sparse evaluation states,
+while the normal-domain solver shares semantic equations with the independent
+per-event oracle. Persistent binding-action indexes skip unchanged transport;
+joins, unit transfers, success-only definitions and completion guards remain.
+The product belongs to one unchanged graph; preparation peak and retained arrays
+are charged separately. This removes the production prerequisite to expand every
+live binding at every intermediate event. It does not replace downstream storage
+liveness, certify complete raw correspondence or close global pass convergence.
+
+Declaration-movement trials now consume each projected read event's published
+read_completion directly. Their second AnalyzeFlowInitializations invocation
+has been removed. Storage-placement consumers still request declaration anchors,
+final-graph dominance and additional placement queries through the common
+initialization analysis; these are distinct products, not overrides of trial
+read certificates. Full sharing across all recovery responsibilities remains a
+separate milestone obligation.
+
+Proof validity is a demanded analysis component. Only conditional result or
+successful-definition certificates consume it; an OriginalFlow container or
+operand metadata does not by itself demand invalidation propagation. The joint
+solver therefore omits this observer-free component when no certificates use
+it, without selecting a separate source-only solver. Capability is evaluated
+once per common unit-transfer query and existing scope/loop transfers own the
+endpoint relation; unknown-before-reset ordering is unchanged.
+
+
+Rules280 delivery acceptance: the joint trial-precision closure is complete within
+the existing common semantic model. Frozen 31-target build succeeds (44.38s),
+fixed ABC succeeds (3.15s), and the exact 63-test selection passes (1197.60s).
+All 28 frozen files, selection and input hashes remain unchanged. Ten complete
+record sources parse and match rules279; nine records have no module source.
+The new closure cases contribute 16 sources, 480 independent execution comparisons
+and 16 adverse mutants. All seven production mutants are caught after successful
+builds, and restored tests pass; sparse/full graph and 200/201/400/800 layout checks
+also pass. Evidence: build/stage-one/joint-projection-verification/final-attempt-5.
+The earlier budget failures and 62/63 timeout run are retained in status.md.
+Original semantic correspondence, ordinary binding identity, whole-pass convergence
+and the unified-variable milestone remain separate OPEN deliveries. Next work
+returns to complete raw IR/SSA correspondence; no presentation optimization is
+unblocked by this acceptance.

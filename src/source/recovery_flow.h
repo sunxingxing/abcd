@@ -261,6 +261,13 @@ struct FlowEvent {
   // Current-projection must-initialization at this lexical GetValue only.
   // It says nothing about a subsequent conversion, call or successful store.
   FlowReadCompletion read_completion=FlowReadCompletion::kUnproved;
+  [[nodiscard]] bool ResetsScopeUnit() const {
+    return kind==FlowEventKind::kEnterScope||kind==FlowEventKind::kLeaveScope;
+  }
+  [[nodiscard]] bool ResetsLoopUnit() const {
+    return kind==FlowEventKind::kEnterLoopEnvironment||kind==FlowEventKind::kEnterIterationEnvironment||
+        kind==FlowEventKind::kLeaveLoopEnvironment;
+  }
   [[nodiscard]] bool MayInvokeUserCode(FlowCompletion completion) const {
     if(completion==FlowCompletion::kConservativeCleanup)return true;
     if(!effects)return effect==ExpressionEvaluation::kRequired;
@@ -383,27 +390,29 @@ struct RecoveryFlow {
     // Value/completion-only inputs carry no lexical unit certificate. Demand
     // remains valid; missing source lifetime facts cannot establish equality.
     if(binding.value>=bindings.size())return scopes?FlowUnitTransfer::kUnmodeled:FlowUnitTransfer::kPreserved;
-    if(BindingUnit(binding)==FlowUnitCapability::kUnmodeled)return FlowUnitTransfer::kUnmodeled;
+    const auto capability=BindingUnit(binding);
+    if(capability==FlowUnitCapability::kUnmodeled)return FlowUnitTransfer::kUnmodeled;
     if(ResetsBinding(binding,edge.from))return FlowUnitTransfer::kEnded;
-    const auto prior=BindingPresence(binding,edge.from,FlowScopePhase::kAfter);
-    const auto next=BindingPresence(binding,edge.to,FlowScopePhase::kBefore);
-    if(prior==FlowUnitPresence::kInactive||next==FlowUnitPresence::kInactive)return FlowUnitTransfer::kEnded;
-    if(prior==FlowUnitPresence::kActive&&next==FlowUnitPresence::kActive)return FlowUnitTransfer::kPreserved;
-    if(prior==FlowUnitPresence::kCompletionOnly&&next==FlowUnitPresence::kCompletionOnly)return FlowUnitTransfer::kPreserved;
-    return FlowUnitTransfer::kUnmodeled;
+    if(capability==FlowUnitCapability::kCompletionOnly)return FlowUnitTransfer::kPreserved;
+    // Capability belongs to the unchanged graph, not either edge endpoint.
+    // Check it once, then use the common scope transfer instead of rebuilding
+    // the same presence/capability decisions for both endpoints.
+    const auto& lifetime=bindings[binding.value].lifetime;
+    if(const auto* unit=std::get_if<ScopeBindingLifetime>(&lifetime))return scopes->Transfer(unit->scope,edge.from,edge.to);
+    if(const auto* unit=std::get_if<LoopBindingLifetime>(&lifetime))return scopes->LoopTransfer(unit->loop,edge.from,edge.to);
+    return FlowUnitTransfer::kPreserved; // Current enclosing invocation unit.
   }
   [[nodiscard]] bool ResetsBinding(SymbolId binding,FlowPoint point) const {
     if(binding.value>=bindings.size())return false;
     if(bindings[binding.value].allocation==point)return true;
     if(const auto* unit=std::get_if<LoopBindingLifetime>(&bindings[binding.value].lifetime)) {
       const auto& event=events[point.value];
-      return event.loop_environment==unit->loop && (event.kind==FlowEventKind::kEnterLoopEnvironment||event.kind==FlowEventKind::kEnterIterationEnvironment||event.kind==FlowEventKind::kLeaveLoopEnvironment);
+      return event.loop_environment==unit->loop&&event.ResetsLoopUnit();
     }
     const auto* unit=std::get_if<ScopeBindingLifetime>(&bindings[binding.value].lifetime);
     if(!unit)return false;
     const auto& event=events[point.value];
-    return event.scope==unit->scope &&
-        (event.kind==FlowEventKind::kEnterScope||event.kind==FlowEventKind::kLeaveScope);
+    return event.scope==unit->scope&&event.ResetsScopeUnit();
   }
   // Borrowed from the prepared owner, which outlives all revision-owned facts.
   // The original graph is immutable; source projections never rewrite it.
@@ -492,6 +501,20 @@ struct FlowBindingNames {
 // owned by the same preparation budget. No facts survive; only capacity does.
 [[nodiscard]] std::variant<RecoveryFlow, TreeStructureError> BuildRecoveryFlow(
     const FunctionTree&, LegacyFlowProjection, analysis::SemanticBudget = {},RecoveryFlow storage = {});
+// Read-only facts for one projection. A worklist may query one changed event
+// without mutating graph links, discarded groups, or another analysis product.
+struct FlowEffectInput {
+  std::span<const ExpressionEvaluation> evaluations;
+  std::span<const std::uint8_t> normal_stores;
+  std::span<const ExpressionEvaluation> assignments;
+  std::span<const analysis::ValueKinds> normal_kinds;
+};
+struct FlowEventEffects {
+  ExpressionEvaluation retention=ExpressionEvaluation::kInert;
+  std::optional<SourceEffects> intrinsic;
+};
+[[nodiscard]] FlowEventEffects EvaluateFlowEventEffects(const RecoveryFlow&,
+    const FunctionTree&,const FlowEvent&,FlowEffectInput);
 struct FlowRefinement { std::size_t allocated_bytes=0; std::uint64_t work=0; };
 // Refine a conservative graph's binding effects after initialization proof.
 // Event/definition/reference identities are preserved; only exception edges

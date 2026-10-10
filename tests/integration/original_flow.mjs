@@ -1,3 +1,4 @@
+import {isDeepStrictEqual} from 'node:util';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {parseJavaScript} from './class_reference.mjs';
@@ -487,3 +488,23 @@ for(const row of readPhases) {
 }
 assert.equal(readPhases.length,4);
 console.log(`${readPhases.length} lexical read-phase sources / ${readPhaseComparisons} comparisons / ${readPhaseMutants} TDZ mutants`);
+
+
+// Compound completion feedback must preserve observable coercion and catches.
+// The source under test is produced by the common printer/recovery pipeline.
+const closureSources=execFileSync(process.argv[3],['--closure-source'],{encoding:'utf8',maxBuffer:16_000_000}).trim().split('\n').map(JSON.parse);
+let closureComparisons=0,closureMutants=0;
+for(const row of closureSources) {
+  let referenceBody=`let value0=${row.known?'+':''}input();`;
+  for(let i=1;i<=row.depth;++i)referenceBody+=`let value${i};try{+value${i-1};value${i}=7;}catch(error){}`;
+  referenceBody+=`return -value${row.depth};`;
+  const reference=Function('input',referenceBody),source='('+row.source+')',actual=Function('return '+source)();
+  for(const factory of factories){assert.deepEqual(readPhaseOutcome(actual,factory),readPhaseOutcome(reference,factory));++closureComparisons;}
+  const coercion=nodes(parseJavaScript(source)).filter(node=>node.type==='UnaryExpression'&&node.operator==='+').sort((a,b)=>a.start-b.start)[0];
+  assert.ok(coercion);
+  const mutant=Function('return '+source.slice(0,coercion.start)+'0'+source.slice(coercion.end))();
+  assert.ok(factories.some(factory=>!isDeepStrictEqual(readPhaseOutcome(mutant,factory),readPhaseOutcome(reference,factory))));
+  ++closureMutants;
+}
+assert.equal(closureSources.length,16);
+console.log(`${closureSources.length} completion-closure sources / ${closureComparisons} comparisons / ${closureMutants} adverse mutants`);

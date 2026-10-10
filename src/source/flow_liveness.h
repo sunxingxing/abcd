@@ -6,6 +6,12 @@ struct LiveBinding {
   FlowPoint point;
   SymbolId binding;
   auto operator<=>(const LiveBinding&) const = default;
+  // The same lexicographic order without nested comparison-category objects
+  // in the shared sparse indexes; never use subtraction on strong-ID values.
+  [[nodiscard]] bool operator<(const LiveBinding& other) const {
+    return point.value<other.point.value||
+        (point.value==other.point.value&&binding.value<other.binding.value);
+  }
 };
 struct FlowLiveness {
   // Sorted incoming facts for retained reads and normal-copy value queries.

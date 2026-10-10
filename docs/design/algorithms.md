@@ -4351,3 +4351,118 @@ attempts cannot publish stability. Tests exercise 200/201/400/800 repeated
 requests plus cross-owner changes and stage transitions. This reduces duplicate
 work within the existing schedule; it is not a global convergence proof or
 fine-grained invalidation across different revisions.
+
+
+### Joint executable-completion projection solve
+
+Provenance: extends the sparse worklist/conditional-propagation ideas cited in
+rules229 above; this is project-owned code, with no new third-party dependency,
+license or pinned artifact. It applies the existing source semantic equations,
+not a second opcode interpreter. Unlike rules229, completion activation now
+participates in the solve; it does not evaluate predicates to prune branch arms.
+
+Let X be value/effect nodes, C completion edges, L sparse value states, I demanded
+initialization states, D all indexed dependency/clause/observer incidences and
+H the finite abstract-value lattice height. Construction retains the existing
+dominance, sorting and reset-aware initialization costs; value-state construction
+is described below. After those
+indices exist, the solve costs O(H(X+C+L+I+D)) work and O(X+C+L+I+D) storage.
+Each value widens at most H times, initialization joins at most two reachable
+alternatives, each edge activates once and each raw proof invalidates once.
+Invalidation replays reverse adjacency once, so unchanged incoming values cannot
+leave old caps behind. Queue membership bounds pending storage by node count;
+readiness counters avoid rescanning a variadic operand list on every wake-up.
+The conservative fallback for ungrounded value cycles runs once, then the same
+queue drains; there is no fixed round count or repeated whole-graph reconstruction.
+
+ValueKinds::Meet intersects VM category bits, the language refinement tree and
+independent numeric facts in constant space/time. Bottom remains bottom. Typed
+raw validity is a monotone invalid bit; while valid, Meet is monotone in the
+source input, and removing the constraint can only widen. Algebra tests check
+bounds, commutativity, associativity, absorption and monotonicity, in addition
+to the failing conditional-layout recovery case. A conditional narrower-than
+check is not interchangeable with this lattice operation.
+
+All simultaneously retained graph, initialization program, expression facts,
+value-state products and solver arrays are admitted under the unchanged caller allowance.
+Freed phase scratch is excluded from later live charges; work is cumulative.
+Dense dependencies are charged as D, not claimed linear in source variables.
+200/201/400/800 cases measure input dimensions, work and admitted bytes; these
+are cost/accounting tests, not process-RSS evidence or broader corpus benchmarks.
+
+
+The first fixed-record run exposed a caller lifetime accounting error: each
+returned SourceVariables charged the binding planner's dead peak scratch as
+permanently retained storage. A complete projection increases that peak and
+made later family enclosure fail under the unchanged source allowance.
+SourceVariables now reports both preparation peak and conservative retained
+bytes. Flat binding-plan vector capacities supply its owned storage; existing
+syntax products keep their conservative charges. Class-name preparation and
+printing first admit the full peak, then release only destroyed scratch.
+TreePrinter retains a separate high-water mark so this release cannot erase
+peak reporting. Exact/one-byte-short preparation tests and refusal with only
+retained-storage capacity exercise the boundary. No budget was increased.
+
+
+Earlier failed acceptance: the provider obtained L by expanding all
+per-event live binding states before the value solve. The existing 800-binding
+self-read/copy composition reaches1,210,170 facts and exhausts its remaining
+48,557,104-byte admission in AnalyzeFlowLiveness. The O(H(...+L+D)) queue bound
+is not a closure of this construction cost. Value def-use preparation must move
+to sparse SSA/joins independently of full storage liveness; neither larger
+quotas nor a self-copy/layout-specific bypass meets the delivery contract.
+
+
+Sparse value-state preparation now replaces that full-liveness dependency.
+The implementation uses a sparse evaluation graph and a path-copying binary
+array, both project-owned classical techniques; no external code/dependency or
+license change. The input is the same verified source completion graph. A
+single-predecessor forest indexes transparent transport; forks are allowed,
+and every join or unit-context boundary remains explicit. This compression
+never admits/rejects recovery. Successful binding actions update O(log B)
+persistent array nodes. Callback locations are indexed once per completion;
+exposed bindings consult that index using the existing CellAccess contract.
+Missing or changed unit contexts remain subject to TransferBinding.
+
+Queries retain their last completion guard. Forwarding to an earlier definition
+cannot make an unreachable read contribute a value. A shared demand queue adds
+only queried states and required join inputs, not all intervening live events.
+Let N/E be events/edges, A binding-action edge incidences, B bindings, Q materialized
+query/join states, and J their incoming incidences. Forest construction costs
+O(N+E); action indexing costs O(A log(2+A)); persistent updates/lookups cost
+O((A+Q) log(2+B)); demand/set work costs O((Q+J) log(2+Q)). Storage is
+O(N+E+A log(2+B)+Q+J), including the persistent index. Dense joins can still
+produce dense Q/J and remain explicitly budgeted. No per-binding graph walk,
+B-element environment copying, shape-specific path or increased allowance.
+The independent per-event solver remains a test oracle, not a second production
+provider. Existing arbitrary-graph, scope, callback, loop and raw-domain tests
+now compare both representations. The formerly failing Alias27/28 growth cases
+pass 200/201/400/800 in both layouts; final fixed acceptance passes below.
+
+
+The full selected source oracle exposed a separate construction-cost regression:
+the unchanged binding-interference generator exceeded its 60-second subprocess
+limit (62/63 tests passed). Running the same generator for diagnosis completed
+in 68.93 seconds, not a semantic failure; an isolated selected retry also timed
+out. This evidence is retained rather than increasing the test limit. The
+validity-only dependency component is now demanded by actual conditional result
+or definition proof consumers. Operand metadata/OriginalFlow presence alone is
+not a consumer. With no such caps, the same solver omits the unobserved proof
+component while retaining all value, initialization, effect and execution work.
+The independent fixed-graph and joint tests compare both raw/source-only inputs;
+raw proof mutations continue to verify that real consumers retain invalidation.
+
+TransferBinding now computes graph capability once per query and delegates to
+the existing scope/loop transfer operation, preserving unknown-before-reset and
+success/exception phase order. Sparse fact ordering uses the same lexicographic
+strong-ID order without nested comparison-category temporaries. Neither change
+adds a semantic condition, cache lifetime, dependency or quota. After these
+repairs the selected source oracle passes unchanged: 1289 sources, 200156
+behavior comparisons, 158 mutants, 84.00 seconds across its subprocess phases.
+Parallel model/source confirmation passes 2/2 in 84.49 seconds (58.66/84.48
+seconds respectively). Final frozen acceptance passes all 63 selected tests in
+1197.60 seconds after building all 31 targets; the formerly failing source oracle
+passes in 83.73 seconds. Fixed ABC output and all 28 frozen file hashes remain
+unchanged during acceptance. Evidence: joint-projection-verification/final-attempt-5.
+This closes trial-provider precision within the common model, not global pass
+scheduling, complete original correspondence or process-RSS acceptance.

@@ -575,14 +575,13 @@ class Initializers {
       auto view=BindingPlanView{plan_};view.statements=statements;view.omitted=omitted;
       view.declaration_values=values;view.declaration_completions=completions;
       const auto trial=BuildProjectedFlow(view,sites);
-      auto analyzed=AnalyzeFlowInitializations(trial.flow,budget_.Remaining());
-      if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
-      const auto& initialized=std::get<FlowInitializations>(analyzed);
-      budget_.Admit(initialized.allocated_bytes,1);budget_.Step(initialized.work);
+      // Trial publication already solved lexical reads together with value,
+      // effect and completion dependencies. Never reconstruct a second proof
+      // here; statement and expression reads share the event certificate.
       for(const auto& reference:trial.flow.references) {
         budget_.Step();
         if(moved[reference.binding.value] && reference.kind==FlowReferenceKind::kRead &&
-            !initialized.Completed(reference.binding,reference.point))return false;
+            trial.flow.events[reference.point.value].read_completion!=FlowReadCompletion::kInitialized)return false;
       }
       std::vector<SourceNameQuery> queries;
       RequireTree(trial.flow.references.size()<=std::numeric_limits<std::size_t>::max()-trial.flow.names.size(),TreeStructureError::kResourceLimit);
@@ -1047,8 +1046,9 @@ class Initializers {
     schedule_.RequireFact(RecoveryFact::kInitializations);
     auto& facts=CurrentFacts();
     const auto& flow=CurrentFlow();
-    // Consumers need reset-aware completion of the exact current graph.
-    // Bootstrap negatives can become stale after exception refinement.
+    // Storage placement needs declaration anchors, final-graph dominance and
+    // additional point queries. This common analysis does not replace the
+    // read certificates already published by CurrentProjection.
     if(!facts.initializations) {
       auto analyzed=AnalyzeFlowInitializations(flow,budget_.Remaining());
       if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;

@@ -73,6 +73,23 @@ class ValueKinds {
                       excludes_min_int32_ && other.excludes_min_int32_,
                       integral_number_ && other.integral_number_};
   }
+  // Intersect two independent proofs. Refinements form a tree within the
+  // Language category; representation/integrality are independent facts.
+  // Unlike a conditional narrowing after Join, this is monotone even when
+  // one operand is a partially solved domain. Bottom remains bottom.
+  [[nodiscard]] constexpr ValueKinds Meet(ValueKinds other) const {
+    auto bits = static_cast<std::uint8_t>(bits_ & other.bits_);
+    if (!(bits & kLanguage)) return ValueKinds{bits};
+    const ValueKinds left{kLanguage, refinement_}, right{kLanguage, other.refinement_};
+    Refinement refinement;
+    if (left.Join(right) == right) refinement = refinement_;
+    else if (left.Join(right) == left) refinement = other.refinement_;
+    else return ValueKinds{static_cast<std::uint8_t>(bits & ~kLanguage)};
+    auto result = ValueKinds{bits, refinement};
+    if (result.IsNonNaNNumber()) result.excludes_min_int32_ = excludes_min_int32_ || other.excludes_min_int32_;
+    if (result.IsFiniteNumber()) result.integral_number_ = integral_number_ || other.integral_number_;
+    return result;
+  }
   [[nodiscard]] constexpr bool IsEmpty() const { return bits_ == 0; }
   [[nodiscard]] constexpr bool IsLanguage() const { return bits_ == kLanguage; }
   // An initialized super guard excludes undefined as well as Hole. This is

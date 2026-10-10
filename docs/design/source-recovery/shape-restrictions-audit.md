@@ -3449,3 +3449,27 @@ not bytecode/source layouts. No sample, operation sequence, same-block or arena
 condition is added. No pass consumes a partly committed proposal; each prerequisite
 finishes before the consumer begins. The existing transformation phases remain,
 and full opportunity convergence is still a separate open delivery.
+
+
+### Joint projection precision obligations
+
+Completion guards express whether a value, initialization or invalidation can
+actually contribute; they do not require producers to share a block or an arena
+layout. Original-proof intersection is a lattice operation, not a type whitelist
+or opcode sequence match. Owner/count checks prevent cross-projection borrowing
+of edge-indexed equations. They are representation ownership checks, not source
+recovery admission. Unknown unit/raw/cleanup capability stays conservative.
+The preliminary initialization solve, early edge pruning and conservative-graph
+raw invalidation decision paths are replaced by shared indexed dependencies.
+Reversed arenas, original/source-only inputs, changed/unchanged catch paths,
+changed commit provenance with unchanged values, and geometric size cases test
+those obligations; production mutations exercise failure to enforce them.
+
+
+Sparse value-state migration: the single-predecessor/context checks only choose
+an analysis representation. Noncompressible edges keep the same general transfer
+equations; they are never grounds to refuse decompilation or propagation. Every
+query retains its executable completion guard. Binding writes, allocation and
+exposure come from the common flow/CellAccess adapter. No self-copy, sample,
+source-only, same-block or fixed-count admission was added. Full per-event value
+equations remain the independent oracle, including arbitrary graph layouts.

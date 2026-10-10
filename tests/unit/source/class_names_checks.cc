@@ -132,6 +132,7 @@ void CheckClassNames(const std::function<std::shared_ptr<abcd::source::ClassTree
       projected.body = remap(projected.body); std::reverse(projected.statements.begin(), projected.statements.end());
     }
     const auto prepared = std::get<SourceVariables>(PrepareSourceVariables(projected));
+    Check(prepared.retained_bytes<prepared.allocated_bytes);
     const auto& bindings = prepared.bindings;
     Check(parameter ? bindings.aliases[saved.value] == SymbolId{1} : bindings.replacements[read.value] == source);
     Check(Names(projected).Lookup(*definition).named);
@@ -163,6 +164,12 @@ void CheckClassNames(const std::function<std::shared_ptr<abcd::source::ClassTree
           {prepared.allocated_bytes,prepared.work-1}))==TreeStructureError::kWorkLimit);
       const auto exact=PrepareSourceVariables(projected,{prepared.allocated_bytes,prepared.work});
       Check(std::holds_alternative<SourceVariables>(exact));
+      // Releasing dead preparation scratch must not erase peak admission:
+      // a caller offering only returned-storage capacity still gets refusal.
+      Check(std::get<TreeStructureError>(PrepareSourceVariables(projected,
+          {prepared.retained_bytes,prepared.work}))==TreeStructureError::kResourceLimit);
+      Check(std::holds_alternative<ClassNames>(PlanPrintedClassNames(projected,nullptr,
+          {names.allocated_bytes,names.work})));
     }
     Check(std::get<TreeStructureError>(PlanPrintedClassNames(projected, nullptr, {names.allocated_bytes - 1, names.work})) == TreeStructureError::kResourceLimit);
     Check(std::get<TreeStructureError>(PlanPrintedClassNames(projected, nullptr, {names.allocated_bytes, names.work - 1})) == TreeStructureError::kWorkLimit);

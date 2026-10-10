@@ -162,8 +162,8 @@ class Fixture {
   analysis::ValueProgram graph;
   std::vector<ExpressionConstant> constants;
 };
-// The checked Number result is an SSA fact, not a source spelling/layout rule.
-// Removing the retained-domain consumer must leave the ignored coercing add.
+// Both checked SSA and source ToNumber establish Number through the common
+// provider. A plain copy establishes neither; layout cannot choose the result.
 void OriginalNumericSnapshots(bool emit=false,unsigned copies=0,bool reverse=false,bool split=false,bool numeric=true,bool arena=false) {
   using namespace analysis;
   Fixture fixture;fixture.callable=CallableKind::kFunction;
@@ -243,7 +243,8 @@ void OriginalNumericSnapshots(bool emit=false,unsigned copies=0,bool reverse=fal
   Check(std::get<TreeStructureError>(PrepareSourceVariables(built.tree,{exact.bytes-1,exact.work},&original))==TreeStructureError::kResourceLimit);
   Check(std::get<TreeStructureError>(PrepareSourceVariables(built.tree,{exact.bytes,exact.work-1},&original))==TreeStructureError::kWorkLimit);
   const auto statement=*built.flow->statements[unused.value];
-  Check(!raw.bindings.omitted[statement.value]);Check(bool(recovered.bindings.omitted[statement.value])==numeric);
+  Check(bool(raw.bindings.omitted[statement.value])==numeric);
+  Check(bool(recovered.bindings.omitted[statement.value])==numeric);
   if(numeric)Check(recovered.bindings.evaluations[built.flow->expressions[number.value]->value]==ExpressionEvaluation::kRequired);
   for(unsigned dimension=0;dimension<4;++dimension) {
     auto wrong=original;

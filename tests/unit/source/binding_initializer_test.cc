@@ -441,7 +441,11 @@ std::uint64_t Alias(unsigned form,unsigned count,bool reverse,bool emit) {
   }
   test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
-  const auto plan=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
+  const auto planned=PlanBindingInitializers(tree,loops,nullish);
+  if(const auto* error=std::get_if<TreeStructureError>(&planned))
+    std::cerr<<"alias form="<<form<<" count="<<count<<" reverse="<<reverse<<" error="<<static_cast<unsigned>(*error)<<'\n';
+  test::Check(std::holds_alternative<BindingInitializers>(planned));
+  const auto& plan=std::get<BindingInitializers>(planned);
   if((form==24&&count)||form==25) {
     test::Check(plan.statements[fixture.store.value].has_value());
     test::Check(plan.statements[fixture.store.value]->declaration==DeclarationKind::kConst);
@@ -654,6 +658,11 @@ std::uint64_t NativeDeep(unsigned form, unsigned depth, bool reverse, bool emit)
 }
 }
 int main(int argc, char** argv) {
+  if(argc==2 && std::string_view(argv[1])=="--value-state") {
+    for(unsigned form:{27U,28U})for(unsigned count:{200U,201U,400U,800U})for(bool reverse:{false,true})
+      Alias(form,count,reverse,false);
+    return 0;
+  }
   if(argc==2 && std::string_view(argv[1])=="--loop-entry") {CheckLoopEntryProjection(true);return 0;}
   CheckExpressionInitializers(argc>1);
   CheckEntryInitializers(argc>1);

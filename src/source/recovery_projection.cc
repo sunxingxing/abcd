@@ -111,7 +111,7 @@ RecoveryExpressions AnalyzeRecoveryExpressions(const FunctionTree& tree,
   budget.Array(facts.normal_stores, tree.expressions.size());
   budget.Array(facts.evaluations, tree.expressions.size());
   budget.Array(facts.lexical,tree.expressions.size());
-  budget.Array(facts.kinds,input.original?tree.expressions.size():0);
+  budget.Array(facts.kinds,tree.expressions.size());
   auto& stored = facts.bindings;
   // All facts describe one unchanged projection. The analysis is const and
   // publishes no plan state; proposal/commit consumers own all mutations.
@@ -128,10 +128,9 @@ RecoveryExpressions AnalyzeRecoveryExpressions(const FunctionTree& tree,
     // Consume projected dependency order, never arena order or a local syntax match.
     auto& result = stored[id.value];facts.roots[id.value]=id;
     auto& literal=facts.literals[id.value];
-    analysis::ValueKinds unmodeled;
-    auto& kinds=input.original?facts.kinds[id.value]:unmodeled;
+    auto& kinds=facts.kinds[id.value];
     kinds=!input.normal_kinds.empty()?input.normal_kinds[id.value]:
-        input.original?NormalValueKinds(node,facts.kinds):analysis::ValueKinds::Language();
+        NormalValueKinds(node,facts.kinds);
     const auto join = [&](ExprId left, ExprId right) -> std::optional<SymbolId> {
       return stored[left.value] == stored[right.value] ? stored[left.value] : std::nullopt;
     };
@@ -145,7 +144,7 @@ RecoveryExpressions AnalyzeRecoveryExpressions(const FunctionTree& tree,
       facts.roots[id.value]=facts.roots[replacement->value];
       result = stored[replacement->value];
       literal=facts.literals[replacement->value];
-      if(input.original)kinds=facts.kinds[replacement->value];
+      kinds=facts.kinds[replacement->value];
       facts.evaluations[id.value] = facts.evaluations[replacement->value];
       facts.lexical[id.value]=facts.lexical[replacement->value];
       continue;
@@ -206,7 +205,7 @@ RecoveryExpressions AnalyzeRecoveryExpressions(const FunctionTree& tree,
       } else static_assert(std::is_same_v<T,UnknownFlowValue>||std::is_same_v<T,FlowBindingValue>);
     },equation);
     if(literal)kinds=PrimitiveKinds(Literal(input,*literal));
-    else if(input.original) {
+    else {
       if(const auto* value=std::get_if<FlowExpressionValue>(&equation))kinds=facts.kinds[value->expression.value];
     }
     // Normal domains belong to this projection's success definitions. Raw
@@ -262,48 +261,61 @@ std::variant<RecoveryProjection,TreeStructureError> PrepareRecoveryProjection(
     // Provider accounting is a conservative bound on its retained flow; using
     // it as the live charge includes all owned vectors and control metadata.
     const auto flow_bytes=result.flow.allocated_bytes;
+    FlowInitializationProgram initialization_program;
     {
-      auto analyzed=AnalyzeFlowInitializations(result.flow,remaining(flow_bytes));
-      if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
-      const auto initialization=std::get<FlowInitializations>(std::move(analyzed));
-      charge(flow_bytes,initialization.allocated_bytes,initialization.work);
-      TreeCheckBudget reads_budget(remaining(flow_bytes+initialization.allocated_bytes));
+      auto prepared=BuildFlowInitializationProgram(result.flow,remaining(flow_bytes));
+      if(const auto* error=std::get_if<TreeStructureError>(&prepared))throw *error;
+      initialization_program=std::get<FlowInitializationProgram>(std::move(prepared));
+      charge(flow_bytes,initialization_program.allocated_bytes,initialization_program.work);
+      TreeCheckBudget reads_budget(remaining(flow_bytes+initialization_program.retained_bytes));
       reads_budget.Array(result.initialized_reads,tree.expressions.size());
-      for(const auto& reference:result.flow.references) {
-        reads_budget.Step();
-        const bool initialized=initialization.Completed(reference.binding,reference.point);
-        if(reference.kind==FlowReferenceKind::kRead&&initialized)
-          result.flow.events[reference.point.value].read_completion=FlowReadCompletion::kInitialized;
-        if(const auto* expression=std::get_if<ExprId>(&reference.site))
-          result.initialized_reads[expression->value]=initialized;
-      }
-      charge(flow_bytes+initialization.allocated_bytes,reads_budget.Bytes(),reads_budget.Work());
+      charge(flow_bytes+initialization_program.retained_bytes,reads_budget.Bytes(),reads_budget.Work());
     }
-    const auto retained=flow_bytes+result.initialized_reads.capacity()*sizeof(std::uint8_t);
-    // Initialization proves GetValue/PutValue completion before type solving.
-    // Otherwise impossible TDZ edges would widen every caught payload, and
-    // required binding reads would look like external mutation barriers.
+    const auto retained=flow_bytes+result.initialized_reads.capacity()*sizeof(std::uint8_t)+initialization_program.retained_bytes;
+    FlowNormalKinds domains;
+    // Every projection solves initialization and source values against the
+    // same executable completions. Original evidence refines proven raw
+    // identities when present; its absence does not select another solver.
     {
       TreeCheckBudget read_budget(remaining(retained));
       const auto reads=AnalyzeRecoveryExpressions(tree,input,result.initialized_reads,read_budget);
       charge(retained,read_budget.Bytes(),read_budget.Work());
       const auto live=retained+ExpressionBytes(reads);
-      auto refined=RefineRecoveryFlowEffects(result.flow,tree,reads.evaluations,reads.normal_stores,remaining(live));
-      if(const auto* error=std::get_if<TreeStructureError>(&refined))throw *error;
-      const auto& completed=std::get<FlowRefinement>(refined);charge(live,completed.allocated_bytes,completed.work);
+      // Joint clauses keep the conservative graph's edge identity until the
+      // solve finishes. Early compaction would invalidate their guards.
+      {
+        auto analyzed=BuildFlowValueStates(result.flow,remaining(live));
+        if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
+        const auto value_states=std::get<FlowValueStates>(std::move(analyzed));
+        charge(live,value_states.allocated_bytes,value_states.work);
+        const auto analysis_live=live+value_states.retained_bytes;
+        TreeCheckBudget assignment_budget(remaining(analysis_live));
+        std::vector<ExpressionEvaluation> assignments;
+        assignment_budget.Array(assignments,tree.expressions.size());
+        for(auto& effect:assignments){assignment_budget.Step();effect=ExpressionEvaluation::kRequired;}
+        for(const auto& definition:result.flow.definitions) {
+          assignment_budget.Step();if(definition.write&&(definition.kind==FlowDefinitionKind::kAssignment||
+              definition.kind==FlowDefinitionKind::kInitializer))
+            assignments[definition.write->value]=definition.effect==FlowWriteEffect::kInert?
+                ExpressionEvaluation::kInert:ExpressionEvaluation::kRequired;
+        }
+        charge(analysis_live,assignment_budget.Bytes(),assignment_budget.Work());
+        const auto typed_live=analysis_live+assignment_budget.Bytes();
+        const FlowEffectInput completion{reads.evaluations,reads.normal_stores,assignments,{}};
+        auto typed=AnalyzeFlowNormalKinds(tree,result.flow,value_states,input,remaining(typed_live),&completion,&initialization_program);
+        if(const auto* error=std::get_if<TreeStructureError>(&typed))throw *error;
+        domains=std::get<FlowNormalKinds>(std::move(typed));
+        charge(typed_live,domains.allocated_bytes,domains.work);
+      }
     }
-    FlowNormalKinds domains;
-    if(input.original) {
-      auto analyzed=AnalyzeFlowLiveness(result.flow,remaining(retained));
-      if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
-      const auto liveness=std::get<FlowLiveness>(std::move(analyzed));
-      charge(retained,liveness.allocated_bytes,liveness.work);
-      auto typed=AnalyzeFlowNormalKinds(tree,result.flow,liveness,input,remaining(retained+liveness.allocated_bytes));
-      if(const auto* error=std::get_if<TreeStructureError>(&typed))throw *error;
-      domains=std::get<FlowNormalKinds>(std::move(typed));
-      charge(retained+liveness.allocated_bytes,domains.allocated_bytes,domains.work);
+    {
+      budget.Step(result.flow.events.size()+result.initialized_reads.size());
+      RequireTree(domains.initialized_reads.size()==result.initialized_reads.size()&&domains.read_completions.size()==result.flow.events.size(),TreeStructureError::kOwnership);
+      std::copy(domains.initialized_reads.begin(),domains.initialized_reads.end(),result.initialized_reads.begin());
+      for(std::size_t i=0;i<result.flow.events.size();++i)result.flow.events[i].read_completion=domains.read_completions[i];
     }
-    const auto domains_bytes=domains.expressions.capacity()*sizeof(analysis::ValueKinds);
+    const auto domains_bytes=domains.expressions.capacity()*sizeof(analysis::ValueKinds)+domains.executable.capacity()*sizeof(std::uint8_t)+
+        domains.initialized_reads.capacity()*sizeof(std::uint8_t)+domains.read_completions.capacity()*sizeof(FlowReadCompletion);
     auto refined_input=input;refined_input.normal_kinds=domains.expressions;
     TreeCheckBudget expression_budget(remaining(retained+domains_bytes));
     result.expressions=AnalyzeRecoveryExpressions(tree,refined_input,result.initialized_reads,expression_budget);

@@ -833,6 +833,42 @@ std::variant<RecoveryFlow,TreeStructureError> BuildRecoveryFlow(
   catch(Error error){return error;}catch(const std::bad_alloc&){return Error::kResourceLimit;}
   catch(const std::length_error&){return Error::kResourceLimit;}
 }
+FlowEventEffects EvaluateFlowEventEffects(const RecoveryFlow& flow,const FunctionTree& tree,
+    const FlowEvent& event,FlowEffectInput input) {
+  if(!event.expression||event.kind==FlowEventKind::kTruthBranch||event.kind==FlowEventKind::kNullishBranch)
+    return {event.effect,event.effects};
+  const auto kinds=input.normal_kinds.empty()?std::span<const analysis::ValueKinds>(flow.normal_kinds):input.normal_kinds;
+  const auto resources=ResourceFailures(tree.identity.contract);
+  if(event.kind==FlowEventKind::kPropertyReference) {
+    RequireTree(event.property&&event.property->reference.value<flow.properties.size(),Error::kOwnership);
+    const auto& reference=flow.properties[event.property->reference.value];
+    SourceEffects effects;
+    switch(event.property->phase) {
+      case FlowPropertyPhase::kAcquisition:break;
+      case FlowPropertyPhase::kReceiver:effects=NormalPropertyReceiverEffects(reference.base,kinds,resources);break;
+      case FlowPropertyPhase::kKey:effects=NormalPropertyKeyEffects(reference.key,kinds,resources);break;
+      case FlowPropertyPhase::kAccess:throw Error::kOwnership;
+    }
+    return {effects.Evaluation(),effects};
+  }
+  const auto id=*event.expression;const auto& node=tree.expressions[id.value].expression;
+  bool required=NormalValueEvaluation(node,kinds,resources)==ExpressionEvaluation::kRequired&&
+      input.evaluations[id.value]!=ExpressionEvaluation::kInert;
+  if(std::holds_alternative<AssignmentExpr>(node))required=input.assignments[id.value]==ExpressionEvaluation::kRequired;
+  auto effects=required?NormalValueEffects(node,kinds,resources):SourceEffects{};
+  if(std::holds_alternative<AssignmentExpr>(node)&&input.normal_stores[id.value]) {
+    // Successful lexical PutValue is independent of observable write
+    // retention and of the RHS's separately evaluated throwing phases.
+    effects.before_throw=analysis::LanguageEffect::kNone;
+    effects.exceptional=analysis::ExceptionalCompletion::kImpossible;
+  }
+  if(event.kind==FlowEventKind::kRead&&std::holds_alternative<UpdateExpr>(node))
+    effects=NormalValueEffects(SymbolExpr{std::get<UpdateExpr>(node).symbol},{},resources);
+  if(event.kind==FlowEventKind::kRead&&event.read_completion==FlowReadCompletion::kInitialized) {
+    required=false;effects=SourceEffects{};
+  }
+  return {required?ExpressionEvaluation::kRequired:ExpressionEvaluation::kInert,effects};
+}
 std::variant<FlowRefinement,TreeStructureError> RefineRecoveryFlowEffects(
     RecoveryFlow& flow,const FunctionTree& tree,std::span<const ExpressionEvaluation> evaluations,
     std::span<const std::uint8_t> normal_stores,analysis::SemanticBudget allowance) {
@@ -851,45 +887,13 @@ std::variant<FlowRefinement,TreeStructureError> RefineRecoveryFlowEffects(
           ExpressionEvaluation::kInert:ExpressionEvaluation::kRequired;
     }
     for(auto& discarded:flow.discarded){budget.Step();discarded.effect=ExpressionEvaluation::kInert;}
+    const FlowEffectInput input{evaluations,normal_stores,assignments};
     for(auto& event:flow.events) {
-      budget.Step();event.incoming.reset();event.outgoing.reset();
-      if(!event.expression || event.kind==FlowEventKind::kTruthBranch || event.kind==FlowEventKind::kNullishBranch) {
-        if(event.discarded&&event.effect==ExpressionEvaluation::kRequired)
-          flow.discarded[event.discarded->value].effect=ExpressionEvaluation::kRequired;
-        continue;
-      }
-      if(event.kind==FlowEventKind::kPropertyReference) {
-        RequireTree(event.property&&event.property->reference.value<flow.properties.size(),Error::kOwnership);
-        const auto& reference=flow.properties[event.property->reference.value];
-        const auto resources=ResourceFailures(tree.identity.contract);
-        switch(event.property->phase) {
-          case FlowPropertyPhase::kAcquisition:event.effects=SourceEffects{};break;
-          case FlowPropertyPhase::kReceiver:event.effects=NormalPropertyReceiverEffects(reference.base,flow.normal_kinds,resources);break;
-          case FlowPropertyPhase::kKey:event.effects=NormalPropertyKeyEffects(reference.key,flow.normal_kinds,resources);break;
-          case FlowPropertyPhase::kAccess:throw Error::kOwnership;
-        }
-        event.effect=event.effects->Evaluation();
-        if(event.discarded&&event.effect==ExpressionEvaluation::kRequired)flow.discarded[event.discarded->value].effect=event.effect;
-        continue;
-      }
-      const auto id=*event.expression;const auto& node=tree.expressions[id.value].expression;
-      bool required=NormalValueEvaluation(node,flow.normal_kinds,ResourceFailures(tree.identity.contract))==ExpressionEvaluation::kRequired &&
-          evaluations[id.value]!=ExpressionEvaluation::kInert;
-      if(std::holds_alternative<AssignmentExpr>(node))required=assignments[id.value]==ExpressionEvaluation::kRequired;
-      event.effect=required?ExpressionEvaluation::kRequired:ExpressionEvaluation::kInert;
-      event.effects=required?NormalValueEffects(node,flow.normal_kinds,ResourceFailures(tree.identity.contract)):SourceEffects{};
-      if(std::holds_alternative<AssignmentExpr>(node)&&normal_stores[id.value]) {
-        // Successful lexical PutValue is independent of observable write
-        // retention and of the RHS's separately evaluated throwing phases.
-        event.effects->before_throw=analysis::LanguageEffect::kNone;
-        event.effects->exceptional=analysis::ExceptionalCompletion::kImpossible;
-      }
-      if(event.kind==FlowEventKind::kRead&&std::holds_alternative<UpdateExpr>(node))
-        event.effects=NormalValueEffects(SymbolExpr{std::get<UpdateExpr>(node).symbol},{},ResourceFailures(tree.identity.contract));
-      if(event.kind==FlowEventKind::kRead&&event.read_completion==FlowReadCompletion::kInitialized) {
-        required=false;event.effect=ExpressionEvaluation::kInert;event.effects=SourceEffects{};
-      }
-      if(event.discarded && required)flow.discarded[event.discarded->value].effect=ExpressionEvaluation::kRequired;
+      budget.Step();const auto effects=EvaluateFlowEventEffects(flow,tree,event,input);
+      event.effect=effects.retention;event.effects=effects.intrinsic;
+      event.incoming.reset();event.outgoing.reset();
+      if(event.discarded&&event.effect==ExpressionEvaluation::kRequired)
+        flow.discarded[event.discarded->value].effect=ExpressionEvaluation::kRequired;
     }
     std::size_t retained=0;
     for(std::size_t i=0;i<flow.edges.size();++i) {

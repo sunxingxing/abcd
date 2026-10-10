@@ -18,6 +18,26 @@ struct FlowDominance {
 // fanout needs no synthetic events and never becomes a recovery admission.
 [[nodiscard]] std::variant<FlowDominance,TreeStructureError> AnalyzeFlowDominance(
     const RecoveryFlow&,analysis::SemanticBudget = {});
+struct FlowInitializationId {std::uint32_t value;auto operator<=>(const FlowInitializationId&)const=default;};
+enum class FlowInitializationValue : std::uint8_t {kUninitialized,kInitialized};
+using FlowInitializationInput=std::variant<FlowInitializationValue,FlowInitializationId>;
+struct FlowInitializationClause {
+  FlowInitializationId target;
+  FlowInitializationInput input;
+  std::optional<std::size_t> completion;
+};
+struct FlowInitializationQuery {LiveBinding fact;FlowInitializationInput input;};
+// Shared reset-aware equations. Completion indices refer to this unchanged
+// conservative graph; consumers may activate them, never infer lexical facts
+// again from statement shapes. Queries are sorted by LiveBinding.
+struct FlowInitializationProgram {
+  const RecoveryFlow* owner=nullptr;
+  std::size_t events=0,completions=0,states=0;
+  std::vector<FlowInitializationClause> clauses;
+  std::vector<FlowInitializationQuery> queries;
+  std::size_t retained_bytes=0,allocated_bytes=0;
+  std::uint64_t work=0;
+};
 struct FlowInitializations {
   FlowDominance order;
   std::vector<std::optional<FlowPoint>> declarations;
@@ -40,5 +60,7 @@ struct FlowInitializations {
     const RecoveryFlow&,analysis::SemanticBudget = {});
 [[nodiscard]] std::variant<FlowInitializations,TreeStructureError> AnalyzeFlowInitializations(
     const RecoveryFlow&,std::span<const LiveBinding> queries,analysis::SemanticBudget = {});
+[[nodiscard]] std::variant<FlowInitializationProgram,TreeStructureError> BuildFlowInitializationProgram(
+    const RecoveryFlow&,analysis::SemanticBudget = {});
 }
 #endif

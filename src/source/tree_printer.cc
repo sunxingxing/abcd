@@ -176,7 +176,7 @@ class TreePrinter {
     }
     Append("\n");
     result_.bytes = written_;
-    Result().allocated_bytes = initial_.bytes - remaining_.bytes;
+    Result().allocated_bytes = peak_bytes_;
     Result().work = initial_.work - remaining_.work;
     return std::move(result_);
   }
@@ -247,7 +247,7 @@ class TreePrinter {
     if (module || fields) Push(Statement{Tree().body, indent}); else Push(BeginFunction{});
     Drain(); FinalizeNullishRanges(); Append("\n");
     Result().bytes = written_;
-    Result().allocated_bytes = initial_.bytes - remaining_.bytes;
+    Result().allocated_bytes = peak_bytes_;
     Result().work = initial_.work - remaining_.work;
     return std::move(result_);
   }
@@ -340,7 +340,7 @@ class TreePrinter {
     for (std::size_t i = 0; i < family_->members.size(); ++i) { current_ = i; FinalizeNullishRanges(); }
     Append("\n");
     for (const auto emitted : printed_) { Step(); if (!emitted) throw Error::kUnsupportedContext; }
-    draft_.bytes = written_; draft_.allocated_bytes = initial_.bytes - remaining_.bytes;
+    draft_.bytes = written_; draft_.allocated_bytes = peak_bytes_;
     draft_.work = initial_.work - remaining_.work;
     return std::move(draft_);
   }
@@ -578,6 +578,7 @@ class TreePrinter {
   void Admit(std::size_t count, std::size_t width) {
     if (count > remaining_.bytes / width) throw Error::kResourceLimit;
     remaining_.bytes -= count * width;
+    peak_bytes_ = std::max(peak_bytes_, initial_.bytes - remaining_.bytes);
   }
   template <class T> void Array(std::vector<T>& values, std::size_t count) {
     Admit(count, sizeof(T)); Step(count);
@@ -1794,6 +1795,8 @@ class TreePrinter {
       auto& variables = family_ ? family_variables_[current_] : variables_;
       variables = std::get<SourceVariables>(std::move(planned));
       Admit(variables.allocated_bytes, 1); Step(variables.work);
+      if(variables.retained_bytes>variables.allocated_bytes)throw Error::kUnsupportedContext;
+      remaining_.bytes+=variables.allocated_bytes-variables.retained_bytes;
     }
     Array(Located(), Tree().anchors.size());
     std::size_t count = 0;
@@ -1862,6 +1865,7 @@ class TreePrinter {
   std::size_t limit_;
   analysis::SemanticBudget initial_;
   analysis::SemanticBudget remaining_;
+  std::size_t peak_bytes_ = 0;
   const GlobalScope* scope_;
   bool has_external_binding_ = false;
   PrintedFunction result_;

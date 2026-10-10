@@ -14,7 +14,9 @@ struct SourceVariables {
   NullishSyntax nullish;
   LoopSyntax loops;
   BindingInitializers bindings;
-  std::size_t allocated_bytes = 0;
+  // Peak preparation admission and conservative returned storage are distinct.
+  // Callers admit the peak before releasing destroyed preparation scratch.
+  std::size_t allocated_bytes = 0, retained_bytes = 0;
   std::uint64_t work = 0;
 };
 // Dependency order: syntax projections precede binding recovery; class-self

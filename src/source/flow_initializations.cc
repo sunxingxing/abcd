@@ -8,12 +8,11 @@
 #include <limits>
 #include <stdexcept>
 namespace abcd::source {
-std::variant<FlowInitializations,TreeStructureError> AnalyzeFlowInitializations(
-    const RecoveryFlow& flow,analysis::SemanticBudget allowance) {
-  return AnalyzeFlowInitializations(flow,std::span<const LiveBinding>{},allowance);
-}
-std::variant<FlowInitializations,TreeStructureError> AnalyzeFlowInitializations(
-    const RecoveryFlow& flow,std::span<const LiveBinding> queries,analysis::SemanticBudget allowance) {
+namespace {
+enum class InitializationOutput {kProofs,kEquations};
+std::variant<FlowInitializations,TreeStructureError> PrepareInitializations(
+    const RecoveryFlow& flow,std::span<const LiveBinding> queries,analysis::SemanticBudget allowance,
+    InitializationOutput output,FlowInitializationProgram* equations) {
   try {
     TreeCheckBudget budget(allowance);RecoveryScratch memory(budget);FlowInitializations result;
     const auto less=[&](const LiveBinding& a,const LiveBinding& b){budget.Step();return a<b;};
@@ -106,8 +105,8 @@ std::variant<FlowInitializations,TreeStructureError> AnalyzeFlowInitializations(
     for(std::size_t i=0;i<size;++i) {
       budget.Step();const FlowPoint point{static_cast<std::uint32_t>(i)};if(!reached(point))continue;
       const auto at=locations[i];RequireTree(at.block.has_value(),TreeStructureError::kOwnership);const auto& event=flow.events[i];
-      if(event.scope&&(event.kind==FlowEventKind::kEnterScope||event.kind==FlowEventKind::kLeaveScope))scope_resets.emplace_back(*event.scope,*at.block,at.offset);
-      if(event.loop_environment&&(event.kind==FlowEventKind::kEnterLoopEnvironment||event.kind==FlowEventKind::kEnterIterationEnvironment||event.kind==FlowEventKind::kLeaveLoopEnvironment))loop_resets.emplace_back(*event.loop_environment,*at.block,at.offset);
+      if(event.scope&&event.ResetsScopeUnit())scope_resets.emplace_back(*event.scope,*at.block,at.offset);
+      if(event.loop_environment&&event.ResetsLoopUnit())loop_resets.emplace_back(*event.loop_environment,*at.block,at.offset);
     }
     const auto sorted=[&](auto& actions){std::sort(actions.begin(),actions.end(),[&](const auto& a,const auto& b){budget.Step();return a<b;});};
     sorted(initializations);sorted(scope_resets);sorted(loop_resets);
@@ -150,15 +149,17 @@ std::variant<FlowInitializations,TreeStructureError> AnalyzeFlowInitializations(
     // Block-entry states form an intersection lattice. Starting at true,
     // entry/reset/unknown transfer counterexamples propagate once. A reachable
     // ungrounded cycle always has such an incoming source; gen cuts are explicit.
+    std::optional<std::size_t> input_edge;
     const auto inputs=[&](LiveBinding fact,const auto& constant,const auto& dependency) {
+      input_edge.reset();
       if(fact.point==flow.entry){constant(false);return;}
       bool predecessor=false;
       for(auto edge=flow.events[fact.point.value].incoming;edge;edge=flow.edges[*edge].incoming) {
-        budget.Step();const auto& incoming=flow.edges[*edge];if(!reached(incoming.from))continue;predecessor=true;
+        budget.Step();const auto& incoming=flow.edges[*edge];if(!reached(incoming.from))continue;predecessor=true;input_edge=*edge;
         if(flow.TransferBinding(fact.binding,incoming)!=FlowUnitTransfer::kPreserved)constant(false);
         else local({incoming.from,fact.binding},constant,dependency);
       }
-      if(!predecessor)constant(false);
+      input_edge.reset();if(!predecessor)constant(false);
     };
     while(!pending.empty()){budget.Step();const auto fact=pending.back();pending.pop_back();inputs(fact,[](bool){},add);}
     std::pmr::vector<LiveBinding> states(&memory);budget.Step(facts.size());states.assign(facts.begin(),facts.end());
@@ -168,6 +169,29 @@ std::variant<FlowInitializations,TreeStructureError> AnalyzeFlowInitializations(
       RequireTree(position!=states.end()&&*position==fact,TreeStructureError::kOwnership);
       return static_cast<std::uint32_t>(position-states.begin());
     };
+    FlowInitializationProgram program;program.owner=&flow;program.events=flow.events.size();
+    program.completions=flow.edges.size();program.states=states.size();
+    std::size_t clauses=0;
+    for(const auto state:states){budget.Step();inputs(state,[&](bool){++clauses;},[&](LiveBinding){++clauses;});}
+    budget.Array(program.clauses,clauses);std::size_t next=0;
+    const auto literal=[](bool initialized){return initialized?FlowInitializationValue::kInitialized:FlowInitializationValue::kUninitialized;};
+    for(std::size_t i=0;i<states.size();++i) {
+      budget.Step();const FlowInitializationId target{static_cast<std::uint32_t>(i)};
+      inputs(states[i],[&](bool value){program.clauses[next++]={target,literal(value),input_edge};},
+          [&](LiveBinding source){program.clauses[next++]={target,FlowInitializationId{find(source)},input_edge};});
+    }
+    budget.Array(program.queries,roots.size());next=0;
+    for(const auto fact:roots) {
+      budget.Step();FlowInitializationInput input;
+      local(fact,[&](bool value){input=literal(value);},[&](LiveBinding source){input=FlowInitializationId{find(source)};});
+      program.queries[next++]={fact,input};
+    }
+    program.retained_bytes=program.clauses.capacity()*sizeof(FlowInitializationClause)+program.queries.capacity()*sizeof(FlowInitializationQuery);
+    if(output==InitializationOutput::kEquations) {
+      RequireTree(equations!=nullptr,TreeStructureError::kOwnership);
+      program.allocated_bytes=budget.Bytes();program.work=budget.Work();*equations=std::move(program);
+      return result;
+    }
     struct Dependency {std::uint32_t target;std::optional<std::uint32_t> next;};
     std::pmr::vector<Dependency> dependencies(&memory);
     std::pmr::vector<std::optional<std::uint32_t>> heads(&memory);
@@ -175,22 +199,26 @@ std::variant<FlowInitializations,TreeStructureError> AnalyzeFlowInitializations(
     std::pmr::vector<std::uint32_t> rejected(&memory);
     budget.Step(states.size());heads.resize(states.size());failed.resize(states.size());
     const auto reject=[&](std::uint32_t id){if(!failed[id]){failed[id]=1;rejected.push_back(id);}};
-    for(std::size_t i=0;i<states.size();++i) {
-      budget.Step();const auto target=static_cast<std::uint32_t>(i);
-      inputs(states[i],[&](bool value){if(!value)reject(target);},[&](LiveBinding source) {
+    for(const auto& clause:program.clauses) {
+      budget.Step();const auto target=clause.target.value;
+      if(const auto* value=std::get_if<FlowInitializationValue>(&clause.input)) {
+        if(*value==FlowInitializationValue::kUninitialized)reject(target);
+      } else {
         RequireTree(dependencies.size()<std::numeric_limits<std::uint32_t>::max(),TreeStructureError::kResourceLimit);
-        const auto id=find(source);const auto edge=static_cast<std::uint32_t>(dependencies.size());dependencies.push_back({target,heads[id]});heads[id]=edge;
-      });
+        const auto id=std::get<FlowInitializationId>(clause.input).value;
+        const auto edge=static_cast<std::uint32_t>(dependencies.size());dependencies.push_back({target,heads[id]});heads[id]=edge;
+      }
     }
     while(!rejected.empty()) {
       budget.Step();const auto source=rejected.back();rejected.pop_back();
       for(auto edge=heads[source];edge;edge=dependencies[*edge].next){budget.Step();reject(dependencies[*edge].target);}
     }
     budget.Array(result.completed,roots.size());std::size_t completed=0;
-    for(const auto fact:roots) {
-      budget.Step();bool initialized=true;
-      local(fact,[&](bool value){initialized&=value;},[&](LiveBinding source){initialized&=!failed[find(source)];});
-      if(initialized)result.completed[completed++]=fact;
+    for(const auto& query:program.queries) {
+      budget.Step();const bool initialized=std::holds_alternative<FlowInitializationValue>(query.input)?
+          std::get<FlowInitializationValue>(query.input)==FlowInitializationValue::kInitialized:
+          !failed[std::get<FlowInitializationId>(query.input).value];
+      if(initialized)result.completed[completed++]=query.fact;
     }
     result.completed.resize(completed);
     result.allocated_bytes=budget.Bytes();result.work=budget.Work();return result;
@@ -198,4 +226,20 @@ std::variant<FlowInitializations,TreeStructureError> AnalyzeFlowInitializations(
   catch(const std::bad_alloc&){return TreeStructureError::kResourceLimit;}
   catch(const std::length_error&){return TreeStructureError::kResourceLimit;}
 }
+}  // namespace
+std::variant<FlowInitializations,TreeStructureError> AnalyzeFlowInitializations(
+    const RecoveryFlow& flow,analysis::SemanticBudget allowance) {
+  return PrepareInitializations(flow,{},allowance,InitializationOutput::kProofs,nullptr);
 }
+std::variant<FlowInitializations,TreeStructureError> AnalyzeFlowInitializations(
+    const RecoveryFlow& flow,std::span<const LiveBinding> queries,analysis::SemanticBudget allowance) {
+  return PrepareInitializations(flow,queries,allowance,InitializationOutput::kProofs,nullptr);
+}
+std::variant<FlowInitializationProgram,TreeStructureError> BuildFlowInitializationProgram(
+    const RecoveryFlow& flow,analysis::SemanticBudget allowance) {
+  FlowInitializationProgram result;
+  auto prepared=PrepareInitializations(flow,{},allowance,InitializationOutput::kEquations,&result);
+  if(const auto* error=std::get_if<TreeStructureError>(&prepared))return *error;
+  return result;
+}
+}  // namespace abcd::source

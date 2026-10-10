@@ -1067,3 +1067,29 @@ Acceptance requires dependency-driven invalidation, finite termination, accounte
 cost, no fixed-round/global-rescan shortcut, stable publication, retired manual
 recomputation decisions, independent graph/source/adverse/layout and fixed-record
 validation. Keep the other four deliveries explicit; this does not close them.
+
+
+Rules280 completes the trial precision delivery specified above within the common
+model's existing capabilities. Current and trial use one joint initialization,
+value, effect, completion and provenance solve; sparse value states avoid requiring
+full per-event liveness. Conditional raw caps use lattice intersection and indexed
+invalidation/replay. Finite monotone transitions, one unresolved-cycle fallback,
+explicit dependency/storage costs and stable publication replace manual feedback.
+Retired preliminary initialization/early pruning/source-only solving and declaration
+trial's second initialization analysis. Storage placement's additional queries
+remain explicitly separate; complete sharing is still a milestone obligation.
+
+Acceptance: frozen31 build0 (44.38s), fixedABC0 (3.15s), exact63/63 tests0
+(1197.60s), complete names/no duplicates. All28 frozen files, input and selection
+unchanged; ten sources parse and match279,19 records remain10 complete/9 no-module.
+New16 closure programs/480 independent comparisons/16 adverse mutants, seven
+production mutations, sparse/full graph oracles and200/201/400/800 layouts pass.
+The final source oracle passes83.73s with its original60s per-process timeout.
+Earlier budget failures and62/63 timeout run remain documented, not counted as
+acceptance. Evidence:build/stage-one/joint-projection-verification/final-attempt-5.
+
+Delivery status: #3 CLOSED within the common model; #1 original semantics,
+#2 ordinary binding identity, #4 dependency-driven whole-pass convergence and
+#5 milestone acceptance OPEN. Goal active; next work is #1's complete raw semantic
+correspondence, retaining complex-finally/closure capability gaps under their
+owning models. No full suite/corpus/RSS work or unrelated optimization resumed.

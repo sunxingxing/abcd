@@ -161,6 +161,10 @@ class NamePlan {
     if (const auto* error = std::get_if<Error>(&planned)) throw *error;
     auto result = std::get<T>(std::move(planned));
     budget_.Admit(result.allocated_bytes, 1); budget_.Step(result.work);
+    if constexpr(std::is_same_v<T,SourceVariables>) {
+      RequireTree(result.retained_bytes<=result.allocated_bytes,Error::kOwnership);
+      budget_.Release(result.allocated_bytes-result.retained_bytes);
+    }
     return result;
   }
   static void Add(std::size_t& count, std::size_t more) {

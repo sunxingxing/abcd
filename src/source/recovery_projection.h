@@ -42,9 +42,10 @@ struct RecoveryProjection {
   std::size_t allocated_bytes=0;
   std::uint64_t work=0;
 };
-// Common bootstrap: conservative proposal -> initialization on all completions
-// -> initialized read/write effect refinement -> current liveness/normal values
-// -> final effects. No downstream analysis borrows edges from before refinement.
+// Common provider: conservative proposal -> shared initialization equations
+// and sparse value facts -> joint executable-completion solve -> final effects.
+// Both current and candidate plans use it, with or without original IR.
+// Raw-proof invalidation participates in the same completion dependencies.
 // The returned facts/flow describe ONLY this
 // proposal. Scope/handler/provenance use the same adapter as committed passes;
 // preparation must not publish them as facts of another revision.
