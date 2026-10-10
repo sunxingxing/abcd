@@ -3527,3 +3527,25 @@ not the retired join. Synthetic trial tests retain numeric input correspondence
 while requiring projected reaching values to determine the answer. This removes
 one obsolete fact producer; it does not deliver full operation/phase/exception
 correspondence. No recovery rule or language contract changes in this cleanup.
+
+
+### Rules278: revision-specific stable pass attempts
+
+RecoverySchedule records a stable revision only when a pass finishes without
+Commit. A modifying pass has not proved a fixed point of its new output; its next
+request still executes. Any later projection revision invalidates all recorded
+no-ops by comparison, and stage transitions clear them because prerequisites and
+legal responsibilities change. This is conservative dependency invalidation.
+
+RunPassOnce always performs Start, cache retention/release and Finish. Only the
+analysis/transform body is skipped for an already stable attempt. In particular,
+cleanup owners still advance the ordered group and publish its demand checkpoint;
+a cached no-op must not leave the prerequisite driver stuck. No semantic fact is
+borrowed from an old projection, and no plan write occurs during skipped work.
+
+Storage is one optional revision per typed pass, independent of input size. A
+request costs constant scheduling work; repeated requests on one unchanged
+revision compute once. A modifying attempt never skips the next request. The
+existing work budget still charges every request. This eliminates duplicate
+unchanged attempts but does not yet discover or schedule all newly enabled
+opportunities; fine-grained change dependencies/global convergence remain OPEN.

@@ -394,6 +394,7 @@ class Initializers {
   bool RunPassOnce(Pass pass) {
     budget_.Step();schedule_.Start(pass);
     RetainFacts(RequiredFacts(pass));
+    if(schedule_.AlreadyStable())return schedule_.Finish();
     switch(pass) {
       case Pass::kDeclarations:Declarations();break;
       case Pass::kDeclarationKinds:DeclarationKinds();break;

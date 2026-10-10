@@ -2556,6 +2556,39 @@ void InitializationInvalidation() {
   }
   std::cout<<"initialization evidence phase/revision/invalidation counterexamples passed\n";
 }
+void StablePassAttempts() {
+  using Pass=RecoveryPass;
+  const auto rejects=[](const auto& action){try{action();return false;}catch(TreeStructureError error){return error==TreeStructureError::kOwnership;}};
+  for(const unsigned count:{1U,200U,201U,400U,800U}) {
+    RecoverySchedule schedule;unsigned runs=0;
+    Check(rejects([&]{(void)schedule.AlreadyStable();}));
+    const auto attempt=[&](Pass pass,bool change) {
+      schedule.Start(pass);
+      const bool stable=schedule.AlreadyStable();
+      if(!stable){++runs;if(change){Check(schedule.Commit());Check(rejects([&]{(void)schedule.AlreadyStable();}));}}
+      Check(schedule.Finish()==(!stable&&change));
+      return stable;
+    };
+    Check(!attempt(Pass::kInertOperands,false));
+    for(unsigned i=0;i<count;++i)Check(attempt(Pass::kInertOperands,false));
+    Check(runs==1);
+    // A different owner changes the projection. The previous no-op is stale.
+    Check(!attempt(Pass::kStoredResults,true));
+    Check(!attempt(Pass::kInertOperands,false));Check(runs==3);
+    // A modifying attempt never certifies its own new projection as stable.
+    Check(!attempt(Pass::kStoredResults,false));
+    Check(attempt(Pass::kStoredResults,false));Check(runs==4);
+    for(const auto pass:{Pass::kDeadDefinitions,Pass::kInitialValues,Pass::kBindings})Check(!attempt(pass,false));
+    Check(!schedule.DemandCleanupNeeded());
+    // Scope transitions can alter pass prerequisites even without plan edits.
+    schedule.EnterStorage();Check(!attempt(Pass::kInertOperands,false));
+    Check(attempt(Pass::kInertOperands,false));
+    Check(!attempt(Pass::kSnapshots,false));schedule.EnterReadValues();
+    Check(!attempt(Pass::kInertOperands,false));
+    Check(!attempt(Pass::kBindingValues,false));schedule.EnterGrammar();
+    Check(rejects([&]{schedule.Start(Pass::kInertOperands);}));
+  }
+}
 void PassPrerequisites() {
   using Pass=RecoveryPass;using Barrier=RecoveryBarrier;
   const std::vector<Pass> cleanup{Pass::kDeadDefinitions,Pass::kInitialValues,Pass::kBindings};
@@ -3169,7 +3202,7 @@ void CatchActivationOrder() {
     Check(initialized.Completed(reference.binding,reference.point));
 }
 int main(int argc,char** argv){
-  if(argc==2&&std::string_view(argv[1])=="--prerequisites"){PassPrerequisites();return 0;}
+  if(argc==2&&std::string_view(argv[1])=="--prerequisites"){PassPrerequisites();StablePassAttempts();return 0;}
   InitializationUnitCapability();
   if(argc==2&&std::string_view(argv[1])=="--initialization"){InitializationOracle();ScopedInitializationOracle();EnclosingCleanup();BindingActivationScaling();return 0;}
   if(argc==2&&std::string_view(argv[1])=="--captured-values"){CapturedValues();return 0;}
@@ -3185,4 +3218,4 @@ int main(int argc,char** argv){
   if(argc==2&&std::string_view(argv[1])=="--activation") {
     CapturedValues();BindingActivationScaling();BindingActivationOracle();CatchActivationOrder();return 0;
   }
-  ScopedCopyRoots();ScopedCopyOracle();InitializationOracle();ScopedInitializationOracle();EnclosingCleanup();CapturedValues();BindingActivationScaling();BindingActivationOracle();CatchActivationOrder();InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();AvailableCopyOracle();TransitiveCopyOracle();CompletionCycles();LocalCompletionOracle();StatementObservationOracle();StatementEntryOracle();InitializationInvalidation();PassContracts();PassPrerequisites();SnapshotCheckpoints();StableValues();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+  ScopedCopyRoots();ScopedCopyOracle();InitializationOracle();ScopedInitializationOracle();EnclosingCleanup();CapturedValues();BindingActivationScaling();BindingActivationOracle();CatchActivationOrder();InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();AvailableCopyOracle();TransitiveCopyOracle();CompletionCycles();LocalCompletionOracle();StatementObservationOracle();StatementEntryOracle();InitializationInvalidation();PassContracts();PassPrerequisites();StablePassAttempts();SnapshotCheckpoints();StableValues();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

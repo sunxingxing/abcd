@@ -1035,3 +1035,11 @@ join, which has no production consumer after shared projected domains. Preserve
 input identity checks and migrate tests to occurrence-specific raw evidence.
 Current-projection domains and successful-definition proofs remain authoritative.
 Five backbone closures remain OPEN; full raw phase/action projection follows.
+
+
+Rules278 scheduling substep: no-op pass attempts are revision/stage-specific.
+RunPassOnce skips only calculation, retaining Start/Finish and cache-release
+protocol. Mutations invalidate no-ops; modifying passes cannot certify themselves.
+Fixed-size per-pass state and constant request cost are exercised at 200/201/400/800.
+Four header mutations exercise missing stability, stale revision, self-certification
+and stale stage. Full opportunity scheduling/global convergence remain OPEN.

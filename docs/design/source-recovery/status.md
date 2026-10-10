@@ -36,6 +36,29 @@
 这五项是主干交付闭环，不以继续增加局部优化替代；不因本轮pass验证通过
 宣布任何一项关闭。既定暂停事项仍保持。
 
+### 2026-10-10：规则278，同一投射上的无修改 Pass 稳定点
+
+- RecoverySchedule 仅在未发生 Commit 的 Finish 记录该 Pass 的稳定 revision。
+  其他 owner 的提交使旧记录失效；修改过计划的 Pass 不会自行证明新状态
+  已稳定，后续请求仍执行。阶段切换清空记录，不能跨职责阶段复用。
+- RunPassOnce 保留 Start、前置依赖、缓存释放及 Finish 协议，只跳过已经
+  稳定的计算主体。清理组依然推进到最新 demand checkpoint，不会因
+  跳过 owner 而悬挂。声明位置/循环声明更新均先 BeginCommit，已核对。
+- 独立计数测试覆盖200/201/400/800重复请求（同revision只计算一次）、
+  跨owner修改、自修改、非法阶段与提交期间查询。四份生产header副本
+  突变（缺稳定点、旧revision、自认证、旧stage）均build0/test-6；原版
+  build0/test0。没有修改正在验证的生产源码。证据stable-pass-mutants。
+- 冻结终验：31目标构建0（203.42s）、fresh fixed ABC0（3.50s）、
+  63/63测试0（1039.08s），JUnit名称完整无重复。4份源码/测试哈希、
+  输入SHA及清单保持。构建暴露未改动literal_plan.cc:59既有kNoop
+  switch警告，本次未顺带修改。19 records仍10 complete/0 partial/
+  9 no-module；10份源码语法通过，逐字节等同上一规则277输出，同一
+  语言contract。证据根build/stage-one/stable-pass-verification。
+- 状态按固定Pass种类保存，空间O(P)，单请求比较O(1)，每个调度请求
+  仍计入预算。本次消除相同状态的重复计算；仍是保守全revision失效，
+  不宣称细粒度机会重跑或全局收敛已完成。五项主干均OPEN、Goal active。
+  后续核查共同投射内部精度与收敛，其他优化/既定暂停事项保持。
+
 ### 2026-10-10：原始操作数/结果混合域退出准备路径
 
 - 删除 OriginalFlow::normal_kinds、Join 及其结果/输入写入点。该表已无

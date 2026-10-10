@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_RECOVERY_SCHEDULE_H_
 #include "tree_checks.h"
 #include <initializer_list>
+#include <array>
 #include <limits>
 
 namespace abcd::source {
@@ -140,6 +141,13 @@ class RecoverySchedule {
       RequireTree(binding_values_complete_&&!DemandCleanupNeeded(),TreeStructureError::kOwnership);
     active_=pass;before_=revision_;phase_=Phase::kAnalysis;
   }
+  // A stable attempt is specific to this unchanged projection and phase.
+  // The runner still executes Start/Finish so dependency checkpoints advance.
+  [[nodiscard]] bool AlreadyStable() const {
+    RequireTree(phase_==Phase::kAnalysis&&active_,TreeStructureError::kOwnership);
+    const auto& stable=stable_[static_cast<std::size_t>(*active_)];
+    return stable&&stable->value==revision_.value;
+  }
   // First commit invalidates all versioned facts before any plan write. Further
   // writes belong to the same atomic batch; reading facts is forbidden until
   // Finish. The caller owns proposal IDs, never borrowed analysis references.
@@ -165,21 +173,23 @@ class RecoverySchedule {
     // later projection commits make the downstream boundary reconsider it.
     if(*active_==RecoveryPass::kSnapshots)snapshot_checkpoint_=revision_;
     if(*active_==RecoveryPass::kBindingValues)binding_values_complete_=true;
-    const bool changed=revision_.value!=before_.value;active_.reset();phase_=Phase::kIdle;return changed;
+    const bool changed=revision_.value!=before_.value;
+    if(!changed)stable_[static_cast<std::size_t>(*active_)]=revision_;
+    active_.reset();phase_=Phase::kIdle;return changed;
   }
   void EnterStorage() {
     RequireIdle();RequireTree(cleanup_==Cleanup::kIdle&&stage_==Stage::kValues&&!DemandCleanupNeeded(),TreeStructureError::kOwnership);
-    stage_=Stage::kStorage;
+    stable_={};stage_=Stage::kStorage;
   }
   // Read-only value substitution waits for storage/snapshot destinations.
   // Once entered, aliases, storage and motion cannot rewrite those choices.
   void EnterReadValues() {
     RequireIdle();RequireTree(cleanup_==Cleanup::kIdle&&stage_==Stage::kStorage&&snapshot_checkpoint_&&!DemandCleanupNeeded(),TreeStructureError::kOwnership);
-    stage_=Stage::kReadValues;
+    stable_={};stage_=Stage::kReadValues;
   }
   void EnterGrammar() {
     RequireIdle();RequireTree(cleanup_==Cleanup::kIdle&&stage_==Stage::kReadValues&&binding_values_complete_&&!DemandCleanupNeeded(),TreeStructureError::kOwnership);
-    stage_=Stage::kGrammar;
+    stable_={};stage_=Stage::kGrammar;
   }
   [[nodiscard]] bool DemandCleanupNeeded() const {
     RequireIdle();return !demand_checkpoint_||demand_checkpoint_->value!=revision_.value;
@@ -220,6 +230,9 @@ class RecoverySchedule {
     }
   }
   void RequireIdle() const {RequireTree(phase_==Phase::kIdle,TreeStructureError::kOwnership);}
+  // One optional revision per typed pass, independent of function size.
+  std::array<std::optional<ProjectionRevision>,
+      static_cast<std::size_t>(RecoveryPass::kDeclarationKinds)+1> stable_{};
   Phase phase_=Phase::kIdle;
   Stage stage_=Stage::kValues;
   Cleanup cleanup_=Cleanup::kIdle;

@@ -4336,3 +4336,18 @@ pipeline, not the number of source bindings. This does not establish a cost
 bound for future whole-pipeline fixed-point reruns. Tests exhaust commit/no-op
 combinations, interrupted prerequisite groups and illegal phase requests, and
 200/201/400/800 consumer requests produce600/603/1200/2400 dependency attempts.
+
+
+### Stable pass requests (rules278)
+
+One optional revision per typed pass records completed no-op attempts, O(P)
+inline storage for the fixed pass taxonomy, with no dynamic allocation or
+per-input-node cache. Comparing a request with its stable revision is O(1);
+phase transitions clear O(P) entries. Every request still charges a scheduling
+step and executes dependency/ownership/cache-release completion protocol.
+At a fixed revision/stage a no-op transformation computes once for any number
+of requests; all commits invalidate by revision mismatch. Self-modifying
+attempts cannot publish stability. Tests exercise 200/201/400/800 repeated
+requests plus cross-owner changes and stage transitions. This reduces duplicate
+work within the existing schedule; it is not a global convergence proof or
+fine-grained invalidation across different revisions.
