@@ -29,13 +29,13 @@
 | R1 | 参数、receiver、函数自身、入口定义；SSA use/result；phi/catch/saved contribution；`ValueCopy` | 贯通 | 已保留 values/uses/definitions/输入来源；逐类验证当前/候选成功点、合流边身份及缺失证书失效；建立覆盖账本，不能只凭结构存在判通过 |
 | R2 | `ValueUnary`、`ValueBinary`、`ValueString`、`ValueNop` | 贯通 | 已有值域/效果/原始结果对应；确认隐式转换失败、更新读取—转换—成功写回、removed/pure-elided 的边界由共同事实处理 |
 | R3 | `ValueNamedRead`、`ValueNamedWrite`、`ValueOwnWrite`、`ValueIndexedWrite`、`ValueDefineAccessor`、`ValuePropertyRead`、`ValuePropertyWrite` | 贯通 | named/computed reference分阶段已有共同事实；300将own/indexed字面量写入接到PropertyId对应的成功定义，候选删除aggregate时撤回。receiver字段和staged写入接自身动作。307将准备完成后重新验证的class/accessor原始事实贯通到实际源码输出，现有描述符/字段/捕获/async独立执行通过；属性与类整体的消费者证据随B账本汇总，不能把enclosing expression当物理动作 |
-| R4 | `ValueGlobalRead`、`ValueModuleRead`、`ValueModuleWrite`、`ValueFrameThis`、`ValueFrameFunction`、`ValueGlobalObject`、`ValueSymbolConstructor`、`ValueRestArguments`、`ValueArgumentSnapshot` | 贯通 | 299补齐module读取+guard/已初始化读取的组合入口、成功结果及异常路线；302补齐参数快照槽的arity条件执行，当前/候选共享边界，阻止把必执行快照移进零实参时不执行的槽。303已清除module写的物理单元身份及正常/异常动作对应缺口：初始化/赋值、错误重定向撤证、恢复候选及实际original源码独立执行通过，读写共享SourceCells模块单元事实。304将FrameThis/FrameFunction、GlobalObject/SymbolConstructor、ArgumentSnapshot接入已有原生动作；连同GlobalRead完成普通/异常当前—候选撤证—恢复—源码执行的边界验证。ABI/宿主身份前提与共同provenance仍独立生效，动作对应不宣称入口值恒定。305完成rest调用入口创建—成功初始化—后续读取的共同表示，normal/phased原始分配使用typed入口值对应；Before/Commit不再借用读取时刻。共同值域不会把首个实参槽的Number证据套给rest数组，候选删除读取仍保留入口创建，缺失/错误完成证据撤回。已有反向CFG/效果/SSA所有权证明取消normal-only限制，30份原先拒绝的catch方法完整输出并独立执行960次；循环重复分配反例继续拒绝不合法的native-rest合并。R4表列各类的当前/候选边界证据已齐，完整消费者及保留合同仍随B整包终验，未关闭主干1 |
+| R4 | `ValueGlobalRead`、`ValueModuleRead`、`ValueModuleWrite`、`ValueFrameThis`、`ValueFrameFunction`、`ValueGlobalObject`、`ValueSymbolConstructor`、`ValueRestArguments`、`ValueArgumentSnapshot` | 贯通 | 299补齐module读取+guard/已初始化读取的组合入口、成功结果及异常路线；302补齐参数快照槽的arity条件执行，当前/候选共享边界，阻止把必执行快照移进零实参时不执行的槽。303已清除module写的物理单元身份及正常/异常动作对应缺口：初始化/赋值、错误重定向撤证、恢复候选及实际original源码独立执行通过，读写共享SourceCells模块单元事实。304将FrameThis/FrameFunction、GlobalObject/SymbolConstructor、ArgumentSnapshot接入已有原生动作；连同GlobalRead完成普通/异常当前—候选撤证—恢复—源码执行的边界验证。ABI/宿主身份前提与共同provenance仍独立生效，动作对应不宣称入口值恒定。305完成rest调用入口创建—成功初始化—后续读取的共同表示，normal/phased原始分配使用typed入口值对应；Before/Commit不再借用读取时刻。共同值域不会把首个实参槽的Number证据套给rest数组，候选删除读取仍保留入口创建，缺失/错误完成证据撤回。已有反向CFG/效果/SSA所有权证明取消normal-only限制，30份原先拒绝的catch方法完整输出并独立执行960次；循环重复分配反例继续拒绝不合法的native-rest合并。R4表列各类的当前/候选边界及完整消费者已随B整包终验通过 |
 | R5 | `ValueArrayAllocation`、`ValueObjectAllocation`、`ValueInvoke`、`ValueConstruct`、`ValueConstructApply` | 贯通 | 300/301区分分配成功与完整值投射，非空/缓冲分配在当前资源失败排除合同下对应fresh identity；缓冲中间heap image没有被虚构成源码事实。ArrayArguments按已验证私有参数载体消去分配/属性写，保留实参效果，ConstructApply接原生构造动作。302以checked AST为独立清单核对普通invoke/construct的当前动作和候选撤证，独立执行消费实际original；随B整包核对完整消费者。旧资源失败可观察合同的缓冲完成点保留typed缺证，不借用当前合同 |
 | R6 | `ValueLexicalLoad`、`ValueLexicalStore`、`ValueEnvironmentPush`、`ValueEnvironmentPop`、`ValueCurrentEnvironment` | 贯通 | 295/296失败原因及成功环境状态、297动态环境到源码activation及投射身份已通过A验收；多slot共享成功marker，EnvironmentId/ScopeId不替代动态单元 |
 | R7 | `ValueBranch`、`ValueJump`、`ValueReturn`、`ValueThrow`、`ValueGuard`、`ValueDebugger`；正常/异常控制边 | 贯通 | return/throw和有pure test的控制相位已接入；298补齐原生conditional极性和debugger正常动作；299补齐module guard组合；306将已初始化词法guard的已捕获输入接入共同模型：copy/phi身份索引与源码alias共享，移除直接load来源限制；虚拟guard相位不借用物理完成点；同单元当前对应及输入/完成provenance共同约束异常排除，替换或缺证撤回。普通与phased的复制、分块、寄存器搬迁和独立源码执行通过。本轮补齐无值跳转消费者：已验证TreeFlow的控制/合流路径承担执行义务，jump不伪造物理动作；条件替换撤回phi/saved值域，缺边归属撤证。receiver guard锚点不提供动作或结果，普通super的源码效果和删除/移动边界通过共同模型检查；**构造协议的完整源码保留验收仍随R10**。同一表达式锚点不等于同一完成边 |
 | R8 | 源码 `let x;`/初始化/赋值、catch参数、作用域进入/离开/重复进入、for每轮绑定 | 贯通 | 已通过A验收：local/catch动态单元、TDZ与初始化分离、候选对应；原生for使用显式每轮分配/复制模型。复杂闭包重构保持原表示 |
-| R9 | `ValueFunctionCreation`、`ValueClassCreation`与已有incoming capture | 保留；创建动作仍属本轮贯通 | 302将经独立TreeFlow核对的函数/类创建接到原生动作；候选省略创建时撤回阶段、效果、结果和捕获观察。class的parent.prototype用户代码效果保留，捕获身份沿用A共同模型；deferred capture/loop closure独立执行作为组合证据。完整保留合同仍随B终验，重新布局逃逸环境属于后续精度 |
-| R10 | `ValueHole`、`ValueIterResult`、`ValueAwait`、`ValueYield`、`ValueSuperCall`、`ValueSuperSpread`、`ValueSuperCheck`；复杂finally完成路由 | 保留 | 由现有协议验证和typed completion保持原表示。本轮18份真实解码的async/direct-yield+finally闭包完成共同当前/候选、缺原始证书/source-only、错误普通动作cap检查；共同效果、移动与死定义消费者保留暂停和清理边，源码独立比较540次。普通super及receiver guard的消费者安全检查覆盖0/1/200/201/402实参。**307完成上述有限保留余项**：12个yield*、24个async-generator家族共同消费者及独立执行；Hole/IterResult实际original打印和2312+3179个行为场景；72个构造器经真实class publication输出并比较46080次。原有大async-generator基线资源失败已按实际所有权修复，原预算下全部有效与拒绝用例通过。R10无需新增内部精度前置，整包冻结证据仍待B终验。展开内部协议、重构finally仍属后续精度，不能成为普通变量关闭前的无限前置任务 |
+| R9 | `ValueFunctionCreation`、`ValueClassCreation`与已有incoming capture | 保留；创建动作仍属本轮贯通 | 302将经独立TreeFlow核对的函数/类创建接到原生动作；候选省略创建时撤回阶段、效果、结果和捕获观察。class的parent.prototype用户代码效果保留，捕获身份沿用A共同模型；deferred capture/loop closure独立执行作为组合证据。完整保留合同已随B终验通过，重新布局逃逸环境属于后续精度 |
+| R10 | `ValueHole`、`ValueIterResult`、`ValueAwait`、`ValueYield`、`ValueSuperCall`、`ValueSuperSpread`、`ValueSuperCheck`；复杂finally完成路由 | 保留 | 由现有协议验证和typed completion保持原表示。本轮18份真实解码的async/direct-yield+finally闭包完成共同当前/候选、缺原始证书/source-only、错误普通动作cap检查；共同效果、移动与死定义消费者保留暂停和清理边，源码独立比较540次。普通super及receiver guard的消费者安全检查覆盖0/1/200/201/402实参。**307完成上述有限保留余项**：12个yield*、24个async-generator家族共同消费者及独立执行；Hole/IterResult实际original打印和2312+3179个行为场景；72个构造器经真实class publication输出并比较46080次。原有大async-generator基线资源失败已按实际所有权修复，原预算下全部有效与拒绝用例通过。R10无需新增内部精度前置，整包冻结证据已随B终验通过。展开内部协议、重构finally仍属后续精度，不能成为普通变量关闭前的无限前置任务 |
 
 `R9/R10` 的“保留”是处置边界。R10表列保留合同已通过定向验收；
 R9及其它类别的消费者证据仍须随B整包汇总与冻结验证。
@@ -94,7 +94,7 @@ capture观察+初始化+extent共同分析；不阻止本轮闭合临时变量/�
 规则307后，将已完成的适配和定向证据合并到以下消费路径；不再以“其余消费者”
 作为无边界余项。当前46个ValueOperation alternative已与R1–R10逐项核对：无遗漏、
 无重复归属。新增variant仍须重新核对。本表不新增恢复准入，也不要求保留协议内部
-具备普通表达式精度。**B在下面的原固定名单/record冻结验收通过前仍未关闭。**
+具备普通表达式精度。**B已在fd86a761的原固定名单/record冻结验收后关闭；范围不扩大到保留协议的内部精度。**
 
 | 范围 | 单一事实生产与消费 | 已有可核对证据、缺证/错误变换反例 |
 |---|---|---|
@@ -123,6 +123,16 @@ LegacyConfined/捕获extent义务见A账本，未被本轮有限身份分析冒�
 测试失败后未执行冻结摘要终检，不能宣称该次已通过。修复后须重新冻结、重跑原名单。
 此前定向证据继续保留其实际层级，不伪称全部已在新冻结上重跑。C收敛和D终验
 不随B的冻结准备关闭。失败时只修对应已列明义务，再重新冻结受影响实现。
+
+### B关闭记录（2026-10-11，rules308）
+
+最终证据目录：build/stage-one/raw-correspondence-package-b-final。
+fd86a761冻结1661文件（此前1659文件加两份cmake依赖定义），原32目标构建通过；
+原65测试逐项一致、全部通过655.55s。固定record保持原输入、合同和预算：
+10完整/9无模块、10语法检查，源码内容无变化。最终二进制的9项协议/构造/迭代结果/
+控制组合另行通过56.26s；之后源码摘要再次一致。package-acceptance.json是证据入口。
+前次失败保留作历史，未拿分批成功拼成冻结通过。B关闭主干第1项的有限合同，
+A和试算保持原范围关闭；C的P1–P6和D终验均未关闭。不据关闭项数估算完成百分比。
 
 ## 三、验收成本与工作组织
 

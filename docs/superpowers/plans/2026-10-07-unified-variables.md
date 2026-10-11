@@ -1401,3 +1401,19 @@ pass, including the original60s binding producer (57.47s) and independent JS;
 this narrow timing margin is not whole-process cost acceptance. An intermediate
 producer rejected a concurrently relinked executable; it is invalid evidence.
 Re-freeze all implementation and run the original package gate before closing B.
+
+### Package B accepted on frozen rules308
+
+B is closed within the previously declared R1-R10 ordinary-variable and
+preservation scope. Commit fd86a761 passed the original32-target/65-test gate
+(655.55s), the unchanged fixed record contract/budget/output, and nine final
+protocol/constructor/iteration/control tests (56.26s). All1661 frozen source
+checksums remain unchanged. Evidence: raw-correspondence-package-b-final/
+package-acceptance.json. The earlier failed gate remains a failed gate.
+
+This closes mainline item1 only in its declared finite scope; items2/3 retain
+their accepted bounds. Items4/5 remain open. Next is the whole C P1-P6 delivery,
+then D; no additional fine-grained B rule is the next endpoint. C must handle
+direct representative-map normalization, actual mutation domains, finite
+progress for each edit class, and aggregate cost. No progress percentage is
+inferred from the three scoped closures. The phase-one Goal remains active.

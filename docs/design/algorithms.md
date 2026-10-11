@@ -4778,3 +4778,21 @@ the failure. With the ownership correction the unchanged default test completes
 all 120 valid families and its 39 refusal checks at the original budget. This
 removes one observed P5 cost blocker; it does not establish whole-pass complexity
 or convergence.
+
+### Allocation retention versus observation order (rules308)
+
+SourceEffects separates Evaluation (retaining fresh identity) from Ordering
+(external observations). For verified ordinary object/array/function allocation,
+the explicit resource-excluded contract removes allocation failure only; it
+never removes identity retention. Resource-observable contracts retain the
+throwing edge. User code, reads/writes, suspension and opaque effects remain
+ordering observations. FlowMotion consumes this common distinction without
+names, adjacency or producer-shape admission. The existing linear motion solve
+adds constant work per event. Recovery-flow negative combinations and the
+original native-name source/strict-contract tests exercise both obligations.
+
+A current stable-pass certificate returns before cache eviction: no analysis
+or allocation runs in that path. The next actual consumer retains its existing
+version and live-memory contract. This removes unnecessary recomputation,
+without claiming dependency-driven pass convergence. Frozen32/65 and final
+preservation evidence is in raw-correspondence-package-b-final.
