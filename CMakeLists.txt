@@ -1490,6 +1490,17 @@ if(BUILD_TESTING)
     # through --expose-internals; the adapter asserts this pinned test identity.
     add_test(NAME class_reference_adapter_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/class_reference_test.mjs)
+    add_test(NAME signature_shapes_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/signature_shapes_test.mjs)
+    if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc" AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc" AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc" AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/modules.abc" AND
+       EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/widgets.abc")
+      add_test(NAME paired_signatures_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/paired_signatures.mjs $<TARGET_FILE:abc_structure>
+        ${ABCD_PAIRED_CORPUS_ROOT})
+    endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc" AND
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/hot/src/main/ets/view/HotTitleView.ts")
       add_test(NAME ui_conditional_literals_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules

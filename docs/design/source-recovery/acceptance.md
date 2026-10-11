@@ -1,5 +1,15 @@
 # 验收、证据与实施交接
 
+2026-10-11：五个固定ABC的类及模块函数签名表示单独验收通过。新鲜ABC-only
+显式数值/构造导出与配对TS分离，106份源码中的101类构造器、754个方法及10个
+模块函数逐项比较默认表达式/rest/async/generator/访问器/static/导出；140处默认
+参数、20处rest，46个无模块record另计。此前classLayouts忽略constructor且只
+比较参数节点种类，本次使用独立signature_shapes，未改变生产恢复规则。
+149个真实签名变异及7个经执行确认行为不同的合成变异检出；最终5/5定向通过。
+此范围不含嵌套回调、正文行为、类型元数据或整record风格，不能代替结构gate。
+签名oracle与运行用例分别注册为signature_shapes_test、paired_signatures_source_test；
+原固定65名单不变，具体证据及边界见status.md最新小节。
+
 2026-10-07规则173：按用户统一变量架构任务开始迁移，干涉消费者已退出
 AST解释，改用独立RecoveryFlow；175616小图独立oracle和28项定向通过。
 实际十份pasteboard正文与规则172不变。LegacyFlowProjection、旧初始化/

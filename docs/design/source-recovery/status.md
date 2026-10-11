@@ -12,6 +12,27 @@
 
 ## 当前阶段
 
+### 2026-10-11：五输入类及模块函数签名的独立表示验收
+
+- 原classLayouts跳过构造器，方法参数只比较节点种类，无法发现默认值内容错误。
+  新增独立signature_shapes和paired_signatures验收；生产恢复代码不变。不是用旧导出
+  或source_complete替代对照：先完成五次ABC-only新导出，再读取独立配对TS。
+- 原五输入身份与corpus index一致，106份完整源码全部对照通过：101类（含构造器）、
+  754个非构造方法、10个模块函数、140处默认参数、20处rest。46个无模块record
+  单独核对typed序列化状态，不计作源码验收。显式language_numeric_constructors_v1保持。
+- 参数按绑定位置归一，保留默认表达式、rest、async/generator、访问器/static及导出
+  身份；允许默认构造器显式展开、函数声明/赋值、参数改名及undefined/void 0等价。
+  参数/模块遮蔽的undefined和自由名字不得混同。嵌套默认绑定及解构未在此固定清单
+  出现，oracle明确拒绝，不能把无法分析的输入算通过。
+- 149个真实签名的有效JS变异全部检出；7个合成错误签名另经独立执行确认行为不同。
+  最初观察器将数组undefined与null序列化混同，已修正并重新通过。构建通过；最终
+  5/5定向通过1.66s，含reference adapter和既有两项构造行为。原固定65项未改名单，
+  本轮未重跑全套或RSS。证据build/stage-one/paired-signatures/final-ctest.log及
+  build/regression/paired-signatures-junit.xml。
+- **关闭此固定范围的签名表示缺口**，不关闭整个结构gate。函数体、嵌套回调签名/
+  闭包行为、全局/实例字段及全部record表示仍需各自证据；类型元数据不由JS签名
+  推断。阶段一Goal保持active，下一步回到这些实际配对输出的剩余义务。
+
 
 ### 2026-10-11：固定回归三分钟目标完成
 
