@@ -41,6 +41,30 @@
 关闭，第1/4/5项仍未关闭，不据项数推算工作量百分比。下一完整交付包是B：
 R1–R5/R7原始对应账本清零及R9/R10保留合同；之后C收敛与D终验。既定暂停事项保持。
 
+### 2026-10-11：交付包B继续——aggregate执行与自身属性定义（规则300）
+
+- R3/R5共同模型现在区分新对象/数组分配、按序求值和各属性成功定义。原ObjectExpr
+  在所有子项之后一并视为callback的路径退出；子项自己的用户调用、抛出和写入仍由
+  各自事件拥有。静态键的fresh own data definition不调用继承setter或值转换。
+- ValueOwnWrite/IndexedWrite经已验证PropertyId映射到对应定义动作；receiver字段和
+  staged写入使用自身动作；空分配接自身分配。候选去掉aggregate时重新构图，撤回
+  被删除属性的原始动作/阶段。没有借整个字面量或RHS的完成点充当属性写入。
+- 28份模型生成源码、900个独立执行场景和52个不等价回调/快照变异验证顺序、失败
+  时的状态、own descriptor、__proto__和继承setter；表达式arena反排、1/200/201/
+  400/800增长及准确/差一预算通过。生产变异重新赋予aggregate用户代码效果时
+  在共同效果断言失败（exit -6），随后恢复，证据aggregate-flow-mutation。
+- 解码输入中的对象/数组、条件合流、computed调用组合现在将实际TreeFlow.original
+  传入打印链路，并验证属性阶段及候选撤证。原始/候选共用构图，不新增模式匹配。
+- 最终五目标构建成功；12/12相关检查通过（16.20s），见build/stage-one/
+  aggregate-flow-final-build.log和aggregate-flow-final.xml。首轮新测试错误读取
+  source-only模型不分配的normal_exits，已改为共同property完成点检查；失败日志保留。
+  200/201/400/800的work为34147/34316/67947/135547，owned bytes为
+  1862347/1862609/3723131/7444699；这是局部共同模型成本，不是全过程Pass或RSS。
+- **未关闭新的主干项或包B。** 非空/缓冲raw分配的完整阶段对应、R3其余accessor
+  组合及账本其它义务仍开放；R9/R10仍需保留合同终验，之后为C与D。没有新增
+  阻塞类别，也没有把既定贯通义务降为后续精度。本次不重跑固定65/record，未声称
+  真实record覆盖增加，全量/RSS/DFX/agents暂停保持。
+
 ### 2026-10-11：交付包B继续——模块GetValue的组合对应（规则299）
 
 - R4/R7的module read+guard现在以OriginalActionRegion贯通：复用已验证的

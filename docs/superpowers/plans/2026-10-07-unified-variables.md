@@ -1259,3 +1259,13 @@ printer output cover TDZ, live bindings, getter failures and catch snapshots;
 small mutations, region order, budget and geometric checks are recorded in status.
 No new mainline or package is closed; B's remaining inventory, C implementation
 and D acceptance stay open. A subproof does not trigger the fixed65/record gate.
+
+Rules300 advances R3/R5 within the SAME package B. The shared graph now models
+aggregate allocation before ordered values and individual successful own data
+definitions; the old aggregate-wide callback approximation exits. Raw own/indexed
+writes use checked property occurrences, and candidate replacement withdraws
+their action/phase evidence. Empty allocation uses its native action. Source
+execution, layout, budget, scale and production-effect mutation evidence is in
+status.md. Nonempty/buffered raw allocation composition and the other finite B
+obligations remain open. No new mainline closure, fixed65/record rerun or wider
+validation is claimed; continue B, then implement the separate C contract and D.

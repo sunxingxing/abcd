@@ -384,6 +384,7 @@ class OperandCheck {
         } else if constexpr (std::is_same_v<T, analysis::ValueIndexedWrite>) {
           RequireMeaning(flow_.initializers[i].has_value(), Error::kOperand);
           const auto& property = tree_.properties[flow_.initializers[i]->value];
+          original_.operations[i].intrinsic_property=flow_.initializers[i];
           const auto expected = std::to_string(operation.index);
           RequireMeaning(property.key.value < tree_.names.size() &&
               tree_.names[property.key.value] == std::u16string(expected.begin(), expected.end()), Error::kConstant);
@@ -393,6 +394,7 @@ class OperandCheck {
           if (IsStagedLiteral(evaluation_.literals ? &*evaluation_.literals : nullptr, current_) &&
               evaluation_.operations[i].kind != EvaluationKind::kInitializer) {
             const auto& assignment = Node<AssignmentExpr>(expression);
+            original_.operations[i].intrinsic_expression=expression;
             const auto* member = std::get_if<MemberTarget>(&assignment.target);
             RequireMeaning(member != nullptr, Error::kOperand);
             Named(member->key, constants_.operations[i]);
@@ -401,6 +403,7 @@ class OperandCheck {
           }
           if (IsReceiverField(graph_, op)) {
             const auto& field = Node<FieldDefinitionExpr>(expression);
+            original_.operations[i].intrinsic_expression=expression;
             const auto* name = std::get_if<NameId>(&constants_.operations[i]);
             RequireMeaning(name && field.name == *name, Error::kConstant);
             InputAt(0, field.receiver); InputAt(1, field.value);
@@ -408,6 +411,7 @@ class OperandCheck {
           }
           RequireMeaning(flow_.initializers[i].has_value(), Error::kOperand);
           const auto& property = tree_.properties[flow_.initializers[i]->value];
+          original_.operations[i].intrinsic_property=flow_.initializers[i];
           const auto* name = std::get_if<NameId>(&constants_.operations[i]);
           RequireMeaning(name && name->value < constants_.name_count && property.key == *name, Error::kConstant);
           // LiteralPlan proved the receiver's allocation; only its stored value
@@ -583,6 +587,7 @@ class OperandCheck {
           RequireMeaning(aggregate ? aggregate->kind == kind :
               (array ? std::holds_alternative<EmptyArrayExpr>(tree_.expressions[expression.value].expression) :
                        std::holds_alternative<EmptyObjectExpr>(tree_.expressions[expression.value].expression)), Error::kOperator);
+          if(!aggregate)original_.operations[i].intrinsic_expression=expression;
         } else if constexpr (std::is_same_v<T, analysis::ValueFunctionCreation>) {
           RequireMeaning(next_function < evaluation_.functions.size(), Error::kOperand);
           const auto& function = evaluation_.functions[next_function++];

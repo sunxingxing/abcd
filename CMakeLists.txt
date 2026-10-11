@@ -722,6 +722,9 @@ if(BUILD_TESTING)
   add_test(NAME control_view_test COMMAND control_view_test)
   target_link_libraries(function_tree_test PRIVATE abcd_source abcd_json)
   add_test(NAME function_tree_test COMMAND function_tree_test)
+  add_executable(aggregate_flow_test tests/unit/source/aggregate_flow_test.cc)
+  target_link_libraries(aggregate_flow_test PRIVATE abcd_source abcd_json)
+  add_source_fixture(aggregate_flow_test 16000000 120000 --emit)
   add_executable(property_flow_test tests/unit/source/property_flow_test.cc)
   target_link_libraries(property_flow_test PRIVATE abcd_source abcd_json)
   add_test(NAME property_flow_test COMMAND property_flow_test)
@@ -911,6 +914,9 @@ if(BUILD_TESTING)
     add_test(NAME original_completion_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/original_completion.mjs $<TARGET_FILE:original_completion_test>)
     require_source_fixture(original_completion_source_test original_completion_test)
+    add_test(NAME aggregate_flow_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/aggregate_flow.mjs $<TARGET_FILE:aggregate_flow_test>)
+    require_source_fixture(aggregate_flow_source_test aggregate_flow_test)
     add_test(NAME property_flow_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/property_flow.mjs $<TARGET_FILE:property_flow_test>)
     add_test(NAME family_array_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

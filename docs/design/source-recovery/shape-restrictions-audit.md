@@ -3710,3 +3710,10 @@ raw load Commit。当前原生绑定引用由共同事件重建，缺证书即�
 raw member无抛出效果不作为整个源码GetValue的上界，TDZ仍由共同初始化证明。
 原有ModuleGuards适配器的布局覆盖边界不在此扩大，也不宣称其它property/lexical
 组合已接完。语义端点身份核对是证书完整性，不是源代码图形状准入。
+
+规则300：共同模型按原生aggregate的分配、逐值求值、成功own定义产生事实；
+PropertyId来自独立TreeFlow检查过的定义所有权，不能从opcode邻接或RHS锚点猜测。
+候选移除aggregate时撤回属性相位；没有增加同块、操作序列或固定形状条件。
+ObjectExpr无用户callback的事实只适用于该typed AST已限定的fresh静态数据属性；
+子表达式效果仍独立，不能外推至任意成员写入、computed key或proxy。非空/缓冲
+原始分配尚未接完，保持R5开放，不能用当前源码动作表宣称完整原始对应。

@@ -44,7 +44,7 @@ struct DiscardedEvaluation {
 };
 enum class FlowCompletion : std::uint8_t { kNormal, kThrow, kReturn, kJump, kTaken, kNotTaken, kResumeNext, kResumeThrow, kResumeReturn, kConservativeCleanup };
 enum class FlowDefinitionKind : std::uint8_t { kParameter, kUndefined, kInitializer, kAssignment, kUpdate, kCatch, kUndefinedStore, kFunctionSelf, kIterationCopy };
-enum class FlowEventKind : std::uint8_t { kControl, kTruthBranch, kNullishBranch, kRead, kEvaluation, kEnterScope, kLeaveScope, kDefinition, kSuspend, kPropertyReference, kEnterLoopEnvironment, kCopyInput, kEnterIterationEnvironment, kLeaveLoopEnvironment };
+enum class FlowEventKind : std::uint8_t { kControl, kTruthBranch, kNullishBranch, kRead, kEvaluation, kAggregateDefinition, kEnterScope, kLeaveScope, kDefinition, kSuspend, kPropertyReference, kEnterLoopEnvironment, kCopyInput, kEnterIterationEnvironment, kLeaveLoopEnvironment };
 enum class FlowValueUse : std::uint8_t { kUnmodeled, kDiscarded, kObserved };
 enum class FlowWriteEffect : std::uint8_t { kObservable, kInert };
 enum class FlowBindingExposure : std::uint8_t { kObservable, kPrivate };
@@ -157,6 +157,15 @@ struct FlowExceptionContext {
 // precedes access; an update's conversion follows its captured read. Normal
 // completion includes successful source writeback, never the throwing route.
 struct FlowAction {FlowPoint before,normal;FlowExceptionContext exceptions;};
+// Static data literals allocate before their ordered value evaluations. Each
+// own definition follows its value's normal completion; no inherited setter,
+// proxy trap or key conversion belongs to these fresh ordinary aggregates.
+struct FlowAggregate {
+  ExprId expression;
+  FlowPoint allocation,allocated,normal;
+  PropertyRange properties;
+  FlowExceptionContext exceptions;
+};
 // One current correspondence for phases and exception routes. Before/context
 // come from the action; normal denotes raw Commit, following the separately
 // checked result projection when present or the physical write otherwise.
@@ -480,6 +489,8 @@ struct RecoveryFlow {
   // ExprId-indexed raw-phase bridge. Ordinary/source-only graphs consume their
   // existing native events, properties and completion edges without this copy.
   std::vector<std::optional<FlowAction>> actions;
+  std::vector<FlowAggregate> aggregates;
+  std::vector<std::optional<FlowAction>> property_initializers; // PropertyId indexed.
   std::vector<std::optional<FlowOriginalAction>> original_actions; // OpId indexed.
   std::vector<std::optional<FlowAction>> original_regions; // OriginalActionRegionId indexed.
   // Verified raw phase identities projected once by the source adapter.

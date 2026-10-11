@@ -8,6 +8,7 @@
 #include "../../../src/source/tree_semantics.h"
 #include "../../../src/source/logical_regions.h"
 #include "../../../src/source/tree_checks.h"
+#include "../../../src/source/recovery_flow.h"
 #include "analysis/ssa_fixture.h"
 #include "abcd/source/tree_printer.h"
 #include "abcd/analysis/exception_locals.h"
@@ -669,7 +670,45 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
     if (print) {
       const GlobalScope globals{};
       std::ostringstream output;
-      test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, output, {}, {}, &globals)));
+      const auto& checked=std::get<ExceptionFunctionDraft>(built);
+      test::Check(checked.flow&&checked.flow->original);
+      const auto& original=*checked.flow->original;
+      std::vector<std::optional<SymbolId>> aliases(tree.symbols.size());
+      std::vector<std::optional<PrimitiveId>> literals(tree.symbols.size());
+      std::vector<std::optional<ExprId>> replacements(tree.expressions.size());
+      std::vector<std::uint8_t> omitted(tree.statements.size()),normal(tree.expressions.size());
+      std::vector<ExpressionEvaluation> effects(tree.expressions.size(),ExpressionEvaluation::kRequired);
+      LegacyFlowProjection projection{aliases,literals,replacements,omitted,effects,normal};projection.original=&original;
+      const auto model=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,projection));
+      for(unsigned i=0;i<original.operations.size();++i) {
+        const auto& operation=original.operations[i];
+        if(!operation.intrinsic_property)continue;
+        const auto& action=model.property_initializers[operation.intrinsic_property->value];
+        test::Check(action&&model.original_actions[i]);
+        test::Check(model.events[action->before.value].kind==FlowEventKind::kAggregateDefinition);
+        test::Check(FindOriginalPhase(model,operation.block,ExceptionPhase::kBefore,OpId{i})==action->before);
+        test::Check(model.original_actions[i]->normal==action->normal);
+      }
+      // A trial replacing an aggregate by one of its values executes no own
+      // definitions. Rebuild through the same entry and withdraw their raw
+      // phases rather than inheriting the current plan's property actions.
+      for(unsigned e=0;e<tree.expressions.size();++e) {
+        const auto* aggregate=std::get_if<ObjectExpr>(&tree.expressions[e].expression);
+        if(!aggregate||!aggregate->properties.count)continue;
+        replacements[e]=tree.properties[aggregate->properties.first].value;
+        const auto candidate=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,projection));
+        for(unsigned i=0;i<original.operations.size();++i) {
+          const auto& operation=original.operations[i];
+          if(!operation.intrinsic_property)continue;
+          const auto p=operation.intrinsic_property->value;
+          if(p<aggregate->properties.first||p-aggregate->properties.first>=aggregate->properties.count)continue;
+          test::Check(!candidate.property_initializers[p]&&!candidate.original_actions[i]);
+          test::Check(!FindOriginalPhase(candidate,operation.block,ExceptionPhase::kBefore,OpId{i}));
+          if(operation.result) test::Check(!FindFlowOriginalResult(candidate,OpId{i}));
+        }
+        replacements[e].reset();break;
+      }
+      test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, output, {}, {}, &globals,&original)));
       std::cout << output.str();
     }
   }

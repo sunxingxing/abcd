@@ -28,9 +28,9 @@
 |---|---|---|---|
 | R1 | 参数、receiver、函数自身、入口定义；SSA use/result；phi/catch/saved contribution；`ValueCopy` | 贯通 | 已保留 values/uses/definitions/输入来源；逐类验证当前/候选成功点、合流边身份及缺失证书失效；建立覆盖账本，不能只凭结构存在判通过 |
 | R2 | `ValueUnary`、`ValueBinary`、`ValueString`、`ValueNop` | 贯通 | 已有值域/效果/原始结果对应；确认隐式转换失败、更新读取—转换—成功写回、removed/pure-elided 的边界由共同事实处理 |
-| R3 | `ValueNamedRead`、`ValueNamedWrite`、`ValueOwnWrite`、`ValueIndexedWrite`、`ValueDefineAccessor`、`ValuePropertyRead`、`ValuePropertyWrite` | 贯通 | 原始效果与原生动作已接入；验收 reference/receiver/属性键准备与实际动作分离、异常前后写入，不能把 enclosing expression 当物理动作 |
+| R3 | `ValueNamedRead`、`ValueNamedWrite`、`ValueOwnWrite`、`ValueIndexedWrite`、`ValueDefineAccessor`、`ValuePropertyRead`、`ValuePropertyWrite` | 贯通 | named/computed reference分阶段已有共同事实；300将own/indexed字面量写入接到PropertyId对应的成功定义，候选删除aggregate时撤回。receiver字段和staged写入接自身动作。accessor、其余组合与完整消费者验收仍开放，不能把enclosing expression当物理动作 |
 | R4 | `ValueGlobalRead`、`ValueModuleRead`、`ValueModuleWrite`、`ValueFrameThis`、`ValueFrameFunction`、`ValueGlobalObject`、`ValueSymbolConstructor`、`ValueRestArguments`、`ValueArgumentSnapshot` | 贯通 | 299补齐module读取+guard/已初始化读取的组合入口、成功结果及异常路线；其余外部/入口读取、mapped arguments、module写与ordinary binding身份仍须核对；不能将缺失的入口稳定性当作常量 |
-| R5 | `ValueArrayAllocation`、`ValueObjectAllocation`、`ValueInvoke`、`ValueConstruct`、`ValueConstructApply` | 贯通 | 保留分配、调用、构造的原生动作与效果；验收实参/receiver顺序、成功结果与抛出路线，资源失败只按显式合同排除 |
+| R5 | `ValueArrayAllocation`、`ValueObjectAllocation`、`ValueInvoke`、`ValueConstruct`、`ValueConstructApply` | 贯通 | 300的共同aggregate模型按分配→逐值求值→成功own定义执行，空raw分配接自身动作；**非空/缓冲raw分配到这些阶段的完整对应仍开放**。调用、构造的实参/receiver顺序、成功结果与抛出路线仍须逐类验收；资源失败只按显式合同排除 |
 | R6 | `ValueLexicalLoad`、`ValueLexicalStore`、`ValueEnvironmentPush`、`ValueEnvironmentPop`、`ValueCurrentEnvironment` | 贯通 | 295/296失败原因及成功环境状态、297动态环境到源码activation及投射身份已通过A验收；多slot共享成功marker，EnvironmentId/ScopeId不替代动态单元 |
 | R7 | `ValueBranch`、`ValueJump`、`ValueReturn`、`ValueThrow`、`ValueGuard`、`ValueDebugger`；正常/异常控制边 | 贯通 | return/throw和有pure test的控制相位已接入；298补齐原生conditional极性和debugger正常动作；299补齐module guard组合；**无值跳转及其余guard消解的对应义务仍须逐类清零**；同一表达式锚点不等于同一完成边 |
 | R8 | 源码 `let x;`/初始化/赋值、catch参数、作用域进入/离开/重复进入、for每轮绑定 | 贯通 | 已通过A验收：local/catch动态单元、TDZ与初始化分离、候选对应；原生for使用显式每轮分配/复制模型。复杂闭包重构保持原表示 |

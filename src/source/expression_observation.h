@@ -233,13 +233,18 @@ inline SourceEffects NormalValueEffects(const TreeExpression& expression,
       // Declarative PutValue has no callback; its success-only write belongs
       // to a FlowDefinition. Member PutValue may invoke a setter/proxy trap.
       return std::holds_alternative<SymbolTarget>(node.target)?guard:CallbackEffects();
-    } else if constexpr(std::is_same_v<T,EmptyArrayExpr>||std::is_same_v<T,EmptyObjectExpr>||std::is_same_v<T,FunctionExpr>)return allocation;
+    } else if constexpr(std::is_same_v<T,EmptyArrayExpr>||std::is_same_v<T,EmptyObjectExpr>||
+        std::is_same_v<T,ObjectExpr>||std::is_same_v<T,FunctionExpr>) {
+      // ObjectExpr contains static own data definitions on a fresh ordinary
+      // aggregate. Children own callback effects; neither inherited setters
+      // nor ToPropertyKey run for these already verified static keys.
+      return allocation;
+    }
     else if constexpr(std::is_same_v<T,AwaitExpr>||std::is_same_v<T,YieldExpr>)return CallbackEffects(L::kSuspension);
     else if constexpr(std::is_same_v<T,GlobalNameExpr>||std::is_same_v<T,RealmObjectExpr>||std::is_same_v<T,SymbolConstructorExpr>)return CallbackEffects(L::kGlobalAccess);
     else {
       static_assert(std::is_same_v<T,MemberExpr>||
           std::is_same_v<T,CallExpr>||std::is_same_v<T,ConstructExpr>||
-          std::is_same_v<T,ObjectExpr>||
           std::is_same_v<T,ArgumentSnapshotExpr>||std::is_same_v<T,ClassExpr>||
           std::is_same_v<T,FieldDefinitionExpr>||std::is_same_v<T,SuperCallExpr>);
     }

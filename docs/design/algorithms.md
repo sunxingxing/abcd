@@ -4584,3 +4584,15 @@ normal projection work is122540/123190/250806/514104 without a call barrier and
 353199/355050/721074/1473957 with it (local/external equal). Owned bytes are
 784444/785794/1566444/3130444 and1996754/2000607/3987962/7970378 respectively.
 These include the common projection and are not a whole-pass or RSS bound.
+
+Aggregate execution (rules300) follows the ECMA-262 Object/Array Initializer
+allocation and ordered CreateDataProperty semantics, using the existing typed
+static-property AST and checked TreeFlow property ownership. No external code or
+dependency is imported. One property-action index costs O(P), aggregate records
+O(A), and each property contributes one normal/exception event plus its already
+modeled value subgraph. Raw property projection remains within the existing
+O(operations + phases) traversal; no per-property graph search is added. Current
+and trial projections rebuild the same facts. The 200/201/400/800 checks account
+for the complete test graph's work and owned bytes, not total Pass or process RSS.
+Raw nonempty/buffered allocation composition remains an explicit R5 obligation;
+the source-level allocation record must not be mistaken for that missing proof.

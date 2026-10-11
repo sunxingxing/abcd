@@ -91,6 +91,9 @@ struct OriginalOperation {
   // adapter applies the bound only to evaluation, never to separate operand,
   // reference-preparation or declarative-writeback phases.
   std::optional<ExprId> intrinsic_expression;
+  // A literal's checked own definition belongs to its property occurrence,
+  // not the enclosing allocation or the expression producing the stored value.
+  std::optional<PropertyId> intrinsic_property;
   // Flow verification owns the native statement; operand verification owns
   // its completion payload. This is not the returned/thrown value's action.
   std::optional<OriginalStatementKind> statement_kind;

@@ -52,6 +52,7 @@ class FlowBuilder {
     names_=std::move(result_.names);names_.clear();
     discarded_=std::move(result_.discarded);discarded_.clear();
     result_.properties.clear();
+    result_.aggregates.clear();
     result_.captured_inputs.clear();
     result_.unit_captures.clear();
   }
@@ -88,6 +89,8 @@ class FlowBuilder {
     for(auto& action:result_.original_actions){budget_.Step();action.reset();}
     for(auto& action:result_.actions){budget_.Step();action.reset();}
     if(phased)budget_.Array(statement_actions_,tree_.statements.size());
+    Resize(result_.property_initializers,tree_.properties.size());
+    for(auto& property:result_.property_initializers){budget_.Step();property.reset();}
     RequireTree(projection_.statement_values.empty()||projection_.statement_values.size()==tree_.statements.size(),Error::kOwnership);
     RequireTree(projection_.forwarded_values.empty()||projection_.forwarded_values.size()==tree_.statements.size(),Error::kOwnership);
     RequireTree(projection_.loop_declarations.empty()||projection_.loop_declarations.size()==tree_.statements.size(),Error::kOwnership);
@@ -441,6 +444,12 @@ class FlowBuilder {
         RequireTree(operation.statement->value<statement_actions_.size(),Error::kOwnership);
         if(const auto& action=statement_actions_[operation.statement->value];action&&action->kind==*operation.statement_kind)
           {RequireTree(!current,Error::kOwnership);current=action->action;}
+      } else if(operation.intrinsic_property) {
+        RequireTree(operation.intrinsic_property->value<result.property_initializers.size(),Error::kOwnership);
+        if(const auto& action=result.property_initializers[operation.intrinsic_property->value]) {
+          RequireTree(!current,Error::kOwnership);
+          current=FlowOriginalAction{action->before,action->normal,action->exceptions};
+        }
       } else if(operation.intrinsic_expression) {
         RequireTree(operation.intrinsic_expression->value<result.actions.size(),Error::kOwnership);
         if(const auto& action=result.actions[operation.intrinsic_expression->value]) {
@@ -809,6 +818,37 @@ class FlowBuilder {
       const auto right=logical->operation==TreeLogical::kOr?FlowCompletion::kNotTaken:FlowCompletion::kTaken;
       Link(branch,context.next,right==FlowCompletion::kTaken?FlowCompletion::kNotTaken:FlowCompletion::kTaken);
       Link(branch,Expr(logical->right,context),right);return;
+    }
+    if(const auto* aggregate=std::get_if<ObjectExpr>(&node)) {
+      const auto effects=NormalValueEffects(node,result_.normal_kinds,ResourceFailures(tree_.identity.contract));
+      const bool required=projection_.evaluations[at.id.value]!=ExpressionEvaluation::kInert;
+      const auto action=[&](FlowEventKind kind,Point next) {
+        const auto point=New({kind,{},{},at.id});
+        events_[point.value].effects=required?effects:SourceEffects{};
+        events_[point.value].effect=events_[point.value].effects->Evaluation();
+        events_[point.value].discarded=context.discarded;
+        Link(point,next);
+        if(required) {
+          Link(point,context.thrown,FlowCompletion::kThrow);
+          if(context.discarded)discarded_[context.discarded->value].effect=ExpressionEvaluation::kRequired;
+        }
+        return point;
+      };
+      auto next=context.next;
+      // ECMA-262 Object/Array Initializer evaluation: allocate, then evaluate
+      // each value and CreateDataProperty on normal completion. Children own
+      // their callbacks; the aggregate has only allocation/resource effects.
+      for(std::uint32_t i=aggregate->properties.count;i>0;--i) {
+        budget_.Step();const auto property=aggregate->properties.first+i-1;
+        RequireTree(property<tree_.properties.size()&&!result_.property_initializers[property],Error::kOwnership);
+        const auto define=action(FlowEventKind::kAggregateDefinition,next);
+        result_.property_initializers[property]=FlowAction{define,next,{context.thrown,context.finalizer}};
+        next=Expr(tree_.properties[property].value,context.Operand(define));
+      }
+      const auto allocation=action(FlowEventKind::kEvaluation,next);
+      Append(result_.aggregates,FlowAggregate{at.id,allocation,next,context.next,aggregate->properties,{context.thrown,context.finalizer}});
+      if(!result_.actions.empty())result_.actions[at.id.value]=FlowAction{allocation,next,{context.thrown,context.finalizer}};
+      Link(start,allocation);return;
     }
     const auto effect=New({FlowEventKind::kEvaluation,{},{},at.id});auto normal=context.next;
     if(!projection_.cells->captures.empty())for(const auto capture:projection_.cells->Captured(at.id,budget_)) {
