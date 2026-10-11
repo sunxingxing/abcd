@@ -1,6 +1,7 @@
 #ifndef ABCD_SOURCE_RECOVERY_SCHEDULE_H_
 #define ABCD_SOURCE_RECOVERY_SCHEDULE_H_
 #include "tree_checks.h"
+#include "recovery_changes.h"
 #include <initializer_list>
 #include <array>
 #include <limits>
@@ -82,6 +83,45 @@ struct RecoveryPassContract {
   }
   return result;
 }
+[[nodiscard]] inline RecoveryDomains ReadDomains(RecoveryPass pass) {
+  using D=RecoveryDomain;
+  // All semantic facts currently use the joint provider. Partial graph
+  // invalidation is not claimed: a change to any of these domains can affect
+  // its executable edges, initialization, names and value/effect proofs.
+  RecoveryDomains result{D::kValues,D::kExecution,D::kDefinitions,D::kStorage,D::kNames};
+  switch(pass) {
+    case RecoveryPass::kDeclarations:case RecoveryPass::kInitialValues:
+    case RecoveryPass::kStorage:case RecoveryPass::kLoopDeclarations:
+    case RecoveryPass::kDeclarationKinds:result.Add({D::kGrammar});break;
+    case RecoveryPass::kConstants:case RecoveryPass::kBindingValues:
+    case RecoveryPass::kAliases:case RecoveryPass::kStoredResults:
+    case RecoveryPass::kDeadDefinitions:case RecoveryPass::kBindings:
+    case RecoveryPass::kSnapshots:case RecoveryPass::kStatementValues:
+    case RecoveryPass::kInertStatements:case RecoveryPass::kInertOperands:break;
+  }
+  return result;
+}
+// These are the pass's permitted outputs, checked against the journal of
+// actual field edits. Inputs and invalidation are separate contracts.
+[[nodiscard]] inline RecoveryDomains WritableDomains(RecoveryPass pass) {
+  using D=RecoveryDomain;
+  switch(pass) {
+    case RecoveryPass::kConstants:return {D::kValues};
+    case RecoveryPass::kBindingValues:return {D::kValues,D::kNames};
+    case RecoveryPass::kInitialValues:return {D::kDefinitions,D::kNames};
+    case RecoveryPass::kDeclarationKinds:return {D::kGrammar};
+    case RecoveryPass::kStorage:case RecoveryPass::kAliases:
+      return {D::kValues,D::kExecution,D::kDefinitions,D::kStorage,D::kNames,D::kGrammar};
+    case RecoveryPass::kLoopDeclarations:
+      return {D::kValues,D::kExecution,D::kDefinitions,D::kNames,D::kGrammar};
+    case RecoveryPass::kDeclarations:case RecoveryPass::kStoredResults:
+    case RecoveryPass::kDeadDefinitions:case RecoveryPass::kBindings:
+    case RecoveryPass::kSnapshots:case RecoveryPass::kStatementValues:
+    case RecoveryPass::kInertStatements:case RecoveryPass::kInertOperands:
+      return {D::kValues,D::kExecution,D::kDefinitions,D::kNames};
+  }
+  throw TreeStructureError::kOwnership;
+}
 struct ProjectionRevision {std::uint64_t value=0;};
 class RecoverySchedule {
  public:
@@ -139,21 +179,23 @@ class RecoverySchedule {
       RequireTree(!DemandCleanupNeeded(),TreeStructureError::kOwnership);
     if(requirement==RecoveryPrerequisite::kReadValueCleanup)
       RequireTree(binding_values_complete_&&!DemandCleanupNeeded(),TreeStructureError::kOwnership);
-    active_=pass;before_=revision_;phase_=Phase::kAnalysis;
+    active_=pass;before_=revision_;changes_={};phase_=Phase::kAnalysis;
   }
-  // A stable attempt is specific to this unchanged projection and phase.
+  // A stable attempt is specific to its input domains and current phase.
   // The runner still executes Start/Finish so dependency checkpoints advance.
   [[nodiscard]] bool AlreadyStable() const {
     RequireTree(phase_==Phase::kAnalysis&&active_,TreeStructureError::kOwnership);
     const auto& stable=stable_[static_cast<std::size_t>(*active_)];
-    return stable&&stable->value==revision_.value;
+    return stable&&epochs_.Same(*stable,ReadDomains(*active_));
   }
   // First commit invalidates all versioned facts before any plan write. Further
   // writes belong to the same atomic batch; reading facts is forbidden until
   // Finish. The caller owns proposal IDs, never borrowed analysis references.
-  [[nodiscard]] bool Commit() {
+  [[nodiscard]] bool Commit(RecoveryDomains changes) {
+    RequireTree(active_&&(phase_==Phase::kAnalysis||phase_==Phase::kCommit)&&!changes.Empty(),TreeStructureError::kOwnership);
+    RequireTree(WritableDomains(*active_).Contains(changes),TreeStructureError::kOwnership);
+    epochs_.Advance(changes,changes_);changes_.Add(changes);
     if(phase_==Phase::kCommit)return false;
-    RequireTree(phase_==Phase::kAnalysis&&active_,TreeStructureError::kOwnership);
     RequireTree(revision_.value<std::numeric_limits<std::uint64_t>::max(),TreeStructureError::kResourceLimit);
     const bool transport=PassContract(*active_).preserves_demand_checkpoint&&
         demand_checkpoint_&&demand_checkpoint_->value==revision_.value;
@@ -174,7 +216,7 @@ class RecoverySchedule {
     if(*active_==RecoveryPass::kSnapshots)snapshot_checkpoint_=revision_;
     if(*active_==RecoveryPass::kBindingValues)binding_values_complete_=true;
     const bool changed=revision_.value!=before_.value;
-    if(!changed)stable_[static_cast<std::size_t>(*active_)]=revision_;
+    if(!changed)stable_[static_cast<std::size_t>(*active_)]=epochs_;
     active_.reset();phase_=Phase::kIdle;return changed;
   }
   void EnterStorage() {
@@ -230,8 +272,8 @@ class RecoverySchedule {
     }
   }
   void RequireIdle() const {RequireTree(phase_==Phase::kIdle,TreeStructureError::kOwnership);}
-  // One optional revision per typed pass, independent of function size.
-  std::array<std::optional<ProjectionRevision>,
+  // One bounded input-domain stamp per typed pass, independent of function size.
+  std::array<std::optional<RecoveryEpochs>,
       static_cast<std::size_t>(RecoveryPass::kDeclarationKinds)+1> stable_{};
   Phase phase_=Phase::kIdle;
   Stage stage_=Stage::kValues;
@@ -239,6 +281,8 @@ class RecoverySchedule {
   bool binding_values_complete_=false;
   std::optional<RecoveryPass> active_;
   ProjectionRevision revision_,before_;
+  RecoveryEpochs epochs_;
+  RecoveryDomains changes_;
   std::optional<ProjectionRevision> demand_checkpoint_,snapshot_checkpoint_;
 };
 }

@@ -1417,3 +1417,18 @@ then D; no additional fine-grained B rule is the next endpoint. C must handle
 direct representative-map normalization, actual mutation domains, finite
 progress for each edit class, and aggregate cost. No progress percentage is
 inferred from the three scoped closures. The phase-one Goal remains active.
+
+### C production change publication and input epochs (rules309)
+
+Every existing optimization write now journals typed fields, sites and old/new
+values, including declaration-site state and snapshot publication. Identical
+writes do not invalidate. The schedule consumes actual domains; stable attempts
+use input-domain epochs while analysis borrows retain global revision checks.
+Output domains are checked, and allocation precedes publication. The primitive
+pool and final derived outputs remain separate phases. No full plan snapshots
+were added. Targeted production/source/protocol checks pass eight plus one
+after fixing a test adapter's rejected-Start state; evidence is
+pass-changes-result.json. C is still open: the handwritten Run sequence remains.
+Next implement normalization of representative maps, progress witnesses and
+phase/back-edge semantics together with the dependency queue, then P5/P6.
+No fixed65/record or paused-scope validation was repeated for this component.

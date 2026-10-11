@@ -4796,3 +4796,22 @@ or allocation runs in that path. The next actual consumer retains its existing
 version and live-memory contract. This removes unnecessary recomputation,
 without claiming dependency-driven pass convergence. Frozen32/65 and final
 preservation evidence is in raw-correspondence-package-b-final.
+
+### Actual recovery edits and domain epochs (rules309)
+
+RecoveryChanges records successful typed plan edits, not pass-name guesses.
+Its geometric journal owns old/new scalar records and admits old+new capacity
+during growth; capacity is reused across passes. Identical writes allocate
+nothing and do not advance the projection. Space is O(K), K the largest actual
+edit batch; total work includes every attempted field write. Existing snapshot
+trials are compared without another before-plan clone. Only completed private
+preparation is published externally.
+
+Each of six semantic domain epochs advances once per batch that changes it.
+Stable attempts compare declared input epochs; global revisions still reject
+stale analysis and commits still discard coupled facts. A later new domain in
+the same batch cannot be lost. Domain/field checks do not prove optimization
+termination: representative normalization, actual progress witnesses and total
+queue/rebuild costs remain C P3-P6 obligations. 200/201/geometric edit order,
+no-op, stale-borrow, wrong timing and budget-before-write checks accompany the
+existing common-model and independent execution tests; no full RSS claim.

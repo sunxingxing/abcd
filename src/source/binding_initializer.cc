@@ -1,3 +1,4 @@
+#include "recovery_changes.h"
 #include "source_names.h"
 #include "source_name_retirement.h"
 #include "binding_initializer.h"
@@ -37,7 +38,7 @@ struct BindingUses {
   bool escaped = false, outside_body = false;
   bool private_storage = false, module_alias = false, named_creation = false;
 };
-struct DeclarationSite { StmtId statement, container; };
+using DeclarationSite=RecoveryDeclarationSite;
 struct DeclarationEdit { DeclarationSite site; BindingInitializer initializer; };
 struct ContainerRange { std::size_t begin = 0, end = 0; };
 struct ProjectionObservation { SymbolId symbol; StmtId owner; };
@@ -392,7 +393,7 @@ class Initializers {
     schedule_.Arrive(barrier);
   }
   bool RunPassOnce(Pass pass) {
-    budget_.Step();schedule_.Start(pass);
+    budget_.Step();changes_.Clear();schedule_.Start(pass);const auto before=schedule_.Revision();
     if(schedule_.AlreadyStable())return schedule_.Finish();
     // A current no-op certificate consumes no analysis and allocates nothing.
     // Do not evict valid facts for a pass which will not run: the next actual
@@ -415,10 +416,25 @@ class Initializers {
       case Pass::kInertOperands:ElideInertOperands();break;
       case Pass::kStorage:Coalesce();break;
     }
+    RequireTree(WritableDomains(pass).Contains(changes_.Domains()),TreeStructureError::kOwnership);
+    RequireTree((schedule_.Revision().value!=before.value)==!changes_.Empty(),TreeStructureError::kOwnership);
     return schedule_.Finish();
   }
+  template<RecoveryField field,class Value>
+  void Edit(typename RecoveryFieldTraits<field>::Site site,Value value) {
+    changes_.Write<field>(plan_,site,std::move(value),budget_,[&]{BeginCommit();});
+  }
+  template<RecoveryField field,class Values>
+  void EditTable(const Values& values) {
+    for(std::size_t i=0;i<values.size();++i)
+      Edit<field>(typename RecoveryFieldTraits<field>::Site{static_cast<std::uint32_t>(i)},values[i]);
+  }
+  void SetDeclarationKind(StmtId statement,abcd::source::DeclarationKind kind) {
+    auto declaration=*plan_.statements[statement.value];declaration.declaration=kind;
+    Edit<RecoveryField::kDeclarationKinds>(statement,declaration);
+  }
   void BeginCommit() {
-    if(!schedule_.Commit())return;
+    if(!schedule_.Commit(changes_.Domains()))return;
     const auto bytes=facts_?facts_->admitted_bytes:0;
     facts_.reset();
     budget_.Release(bytes);
@@ -551,9 +567,10 @@ class Initializers {
     const auto edits=std::span<const DeclarationEdit>{proposed}.first(accepted);
     if(!CheckDeclarationProposal(edits))return;
     for(const auto& edit:edits) {
-      budget_.Step();BeginCommit();
-      declaration_sites_[edit.initializer.symbol.value]=edit.site;
-      plan_.statements[edit.site.statement.value]=edit.initializer;
+      budget_.Step();
+      changes_.WriteIndexed<RecoveryField::kDeclarationSites>(declaration_sites_,edit.initializer.symbol,
+          edit.site,budget_,[&]{BeginCommit();});
+      Edit<RecoveryField::kDeclarations>(edit.site.statement,edit.initializer);
       DiscardDeclaration(*uses_[edit.initializer.symbol.value].declaration);
     }
   }
@@ -645,7 +662,7 @@ class Initializers {
     // This changes only declaration spelling after the storage/lifetime plan
     // is final. No initializer, write, scope or evaluation is removed here.
     for(std::size_t i=0;i<count;++i) {
-      budget_.Step();BeginCommit();plan_.statements[proposed[i].value]->declaration=DeclarationKind::kConst;
+      budget_.Step();SetDeclarationKind(proposed[i],abcd::source::DeclarationKind::kConst);
     }
   }
   LoopDeclarations LoopDeclarationsFor(BindingPlanView candidate) const {
@@ -662,14 +679,17 @@ class Initializers {
     if(loops_.initializer_roots.empty())return;
     const auto delta=LoopDeclarationsFor(plan_);
     if(delta.starts.empty() && delta.demoted.empty() && delta.declarators.empty())return;
-    BeginCommit();
-    for(const auto& start:delta.starts){budget_.Step();plan_.loop_declarations[start.loop.value]=start.first;}
+
+    for(const auto& start:delta.starts){budget_.Step();Edit<RecoveryField::kLoopDeclarations>(start.loop,start.first);}
     for(const auto root:delta.demoted) {
-      budget_.Step();plan_.statements[root.value].reset();
-      if(auto& completion=plan_.declaration_completions[root.value])completion->kind=DeclarationCompletionKind::kAssignUndefined;
+      budget_.Step();Edit<RecoveryField::kDeclarations>(root,std::nullopt);
+      if(auto completion=plan_.declaration_completions[root.value]) {
+        completion->kind=DeclarationCompletionKind::kAssignUndefined;
+        Edit<RecoveryField::kDeclarationCompletions>(root,completion);
+      }
     }
     for(const auto& declarator:delta.declarators) {
-      budget_.Step();plan_.statements[declarator.initializer.value]->declaration=DeclarationKind::kLet;
+      budget_.Step();SetDeclarationKind(declarator.initializer,abcd::source::DeclarationKind::kLet);
       DiscardDeclaration(declarator.declaration);
     }
   }
@@ -712,8 +732,8 @@ class Initializers {
       }
     }
     for(std::size_t i=0;i<count;++i) {
-      budget_.Step();const auto& edit=proposed[i];BeginCommit();
-      plan_.replacements[edit.expression.value]=edit.value;
+      budget_.Step();const auto& edit=proposed[i];
+      Edit<RecoveryField::kReplacements>(edit.expression,edit.value);
     }
   }
   void ProjectStatementValues() {
@@ -725,14 +745,14 @@ class Initializers {
       if(statement.entry_value&&!plan_.statement_values[id.value]&&facts.residuals[id.value].Inert())
         proposed[count++]={id,*statement.entry_value};
     }
-    for(std::size_t i=0;i<count;++i){budget_.Step();const auto& edit=proposed[i];BeginCommit();plan_.statement_values[edit.statement.value]=edit.value;}
+    for(std::size_t i=0;i<count;++i){budget_.Step();const auto& edit=proposed[i];Edit<RecoveryField::kStatementValues>(edit.statement,edit.value);}
   }
   void OmitInertStatements() {
     const auto omitted = PlanInertStatements(CurrentStatements());
     // The pass publishes a complete proposal before changing the projection.
     // No subsequent statement observes a partly applied omission batch.
     for (const auto statement : omitted) {
-      budget_.Step(); BeginCommit();plan_.omitted[statement.value] = 1;
+      budget_.Step(); Edit<RecoveryField::kOmissions>(statement,1);
     }
   }
   std::size_t ProjectionCapacity() {
@@ -929,7 +949,14 @@ class Initializers {
     const auto old_bytes=bytes(plan_.statements)+bytes(plan_.omitted)+bytes(plan_.declaration_values)+
         bytes(plan_.declaration_completions)+bytes(plan_.replacements)+bytes(plan_.forwarded_values)+bytes(plan_.transports);
     const auto read_bytes=bytes(final_delta.transported_reads);
-    BeginCommit();std::move(final_delta).Publish(plan_);
+    EditTable<RecoveryField::kDeclarations>(final_delta.statements);
+    EditTable<RecoveryField::kOmissions>(final_delta.omitted);
+    EditTable<RecoveryField::kDeclarationValues>(final_delta.values);
+    EditTable<RecoveryField::kDeclarationCompletions>(final_delta.completions);
+    EditTable<RecoveryField::kReplacements>(final_delta.replacements);
+    EditTable<RecoveryField::kForwardedValues>(final_delta.forwarded_values);
+    EditTable<RecoveryField::kTransports>(final_delta.transports);
+    std::move(final_delta).Publish(plan_);
     budget_.Release(old_bytes);
     std::vector<std::optional<SymbolId>>{}.swap(final_delta.transported_reads);budget_.Release(read_bytes);
   }
@@ -1113,25 +1140,30 @@ class Initializers {
     // Removing a dead value store retains its RHS and lexical completion.
     // Binding removal runs separately on a fresh projection after this commit.
     if(delta.statements.empty() && delta.writes.empty())return;
-    BeginCommit();
-    for (const auto statement:delta.statements) {budget_.Step();plan_.omitted[statement.value]=1;}
+
+    for (const auto statement:delta.statements) {budget_.Step();Edit<RecoveryField::kOmissions>(statement,1);}
     for(const auto& write:delta.writes) {
       budget_.Step();std::visit([&](auto site) {
         using T=decltype(site);
         if constexpr(std::is_same_v<T,ExprId>) {
           RequireTree(write.value.has_value(),TreeStructureError::kOwnership);
-          plan_.replacements[site.value]=*write.value;
+          Edit<RecoveryField::kReplacements>(site,*write.value);
         } else {
-          if(write.value)plan_.declaration_values[site.value]=DeclarationValue{*write.value,{}};
-          else plan_.omitted[site.value]=1;
-          plan_.undefined_stores[site.value].reset();plan_.statements[site.value].reset();
-          plan_.declaration_completions[site.value].reset();
+          if(write.value)Edit<RecoveryField::kDeclarationValues>(site,DeclarationValue{*write.value,{}});
+          else Edit<RecoveryField::kOmissions>(site,1);
+          Edit<RecoveryField::kUndefinedStores>(site,std::nullopt);Edit<RecoveryField::kDeclarations>(site,std::nullopt);
+          Edit<RecoveryField::kDeclarationCompletions>(site,std::nullopt);
         }
       },write.site);
     }
   }
   void DiscardDeclaration(StmtId statement) {
-    RetireDeclaration(statement,plan_.omitted,plan_.declaration_values,plan_.declaration_completions);
+    auto omitted=plan_.omitted[statement.value];auto value=plan_.declaration_values[statement.value];
+    auto completion=plan_.declaration_completions[statement.value];
+    RetireDeclaration(StmtId{0},std::span(&omitted,1),std::span(&value,1),std::span(&completion,1));
+    Edit<RecoveryField::kOmissions>(statement,omitted);
+    Edit<RecoveryField::kDeclarationValues>(statement,value);
+    Edit<RecoveryField::kDeclarationCompletions>(statement,completion);
   }
   void ElideInitialValues() {
     if(ResourceFailures(tree_.identity.contract)!=ResourceFailureScope::kExcluded || !HasPrivateBindings())return;
@@ -1140,11 +1172,11 @@ class Initializers {
     const auto& delta=std::get<InitialValueElisions>(proposed);
     budget_.Admit(delta.allocated_bytes,1);budget_.Step(delta.work);
     if(delta.values.empty())return;
-    BeginCommit();
+
     for(const auto& value:delta.values) {
       budget_.Step();const auto& native=plan_.statements[value.statement.value];
       const auto declaration=native?native->declaration:tree_.symbols[value.binding.value].declaration;
-      plan_.declaration_completions[value.statement.value]=DeclarationCompletion{value.binding,value.evaluation,declaration};
+      Edit<RecoveryField::kDeclarationCompletions>(value.statement,DeclarationCompletion{value.binding,value.evaluation,declaration});
     }
   }
   void ElideUnusedBindings() {
@@ -1159,14 +1191,14 @@ class Initializers {
     // The proposal owns its IDs. No facts are consulted after BeginCommit.
     // Required RHS GetValue stays at the original occurrence and handler;
     // no remaining syntax refers to a removed binding, including TDZ reads.
-    BeginCommit();
+
     for(const auto& action:delta.declarations) {
       budget_.Step();
-      if(!action.value)plan_.omitted[action.statement.value]=1;
-      else if(action.write)plan_.replacements[action.write->value]=*action.value;
-      else plan_.declaration_values[action.statement.value]=DeclarationValue{*action.value,{}};
-      plan_.statements[action.statement.value].reset();
-      plan_.declaration_completions[action.statement.value].reset();
+      if(!action.value)Edit<RecoveryField::kOmissions>(action.statement,1);
+      else if(action.write)Edit<RecoveryField::kReplacements>(*action.write,*action.value);
+      else Edit<RecoveryField::kDeclarationValues>(action.statement,DeclarationValue{*action.value,{}});
+      Edit<RecoveryField::kDeclarations>(action.statement,std::nullopt);
+      Edit<RecoveryField::kDeclarationCompletions>(action.statement,std::nullopt);
     }
   }
   void Coalesce() {
@@ -1322,23 +1354,24 @@ class Initializers {
     for (std::size_t i = 0; i < proposed.size(); ++i) {
       budget_.Step(); if (!proposed[i] || retirement.presence[i]==SourceBindingPresence::kRetained) continue;
       const auto root = *proposed[i]; const auto& use = uses_[i];
-      BeginCommit();plan_.storage[i] = root;
+      Edit<RecoveryField::kStorage>(SymbolId{static_cast<std::uint32_t>(i)},root);
       // Lifetime removal and value preservation are separate plan actions.
       if(!plan_.declaration_completions[use.declaration->value]) {
-        if(initialization.stores[use.declaration->value])plan_.undefined_stores[use.declaration->value]=root;
+        if(initialization.stores[use.declaration->value])Edit<RecoveryField::kUndefinedStores>(*use.declaration,root);
         else if(const auto value=std::get<DeclarationStmt>(tree_.statements[use.declaration->value].statement).initializer)
-          plan_.declaration_values[use.declaration->value]=DeclarationValue{*value,root};
-        else plan_.omitted[use.declaration->value]=1;
+          Edit<RecoveryField::kDeclarationValues>(*use.declaration,DeclarationValue{*value,root});
+        else Edit<RecoveryField::kOmissions>(*use.declaration,1);
       }
-      if(const auto& site=declaration_sites_[i])plan_.statements[site->statement.value].reset();
+      if(const auto& site=declaration_sites_[i])Edit<RecoveryField::kDeclarations>(site->statement,std::nullopt);
       if(const auto& site=declaration_sites_[root.value];site && plan_.statements[site->statement.value])
-        plan_.statements[site->statement.value]->declaration=DeclarationKind::kLet;
+        SetDeclarationKind(site->statement,abcd::source::DeclarationKind::kLet);
     }
     for(const auto& completion:completions) {
-      budget_.Step();BeginCommit();
+      budget_.Step();
       if(completion.write) {
-        auto& retained=*plan_.declaration_completions[completion.statement.value];
+        auto retained=*plan_.declaration_completions[completion.statement.value];
         retained.binding=*completion.write;retained.kind=DeclarationCompletionKind::kAssignUndefined;
+        Edit<RecoveryField::kDeclarationCompletions>(completion.statement,retained);
       }else DiscardDeclaration(completion.statement);
     }
   }
@@ -1357,7 +1390,8 @@ class Initializers {
     }
     ApplyStoredResultElisions(replacements);
     for(std::size_t i=0;i<count;++i) {
-      budget_.Step();BeginCommit();plan_.declaration_values[declaration_values[i].value]->target.reset();
+      budget_.Step();auto value=*plan_.declaration_values[declaration_values[i].value];value.target.reset();
+      Edit<RecoveryField::kDeclarationValues>(declaration_values[i],value);
     }
   }
   const ExpressionFacts& AnalyzeExpressions() const {
@@ -1443,7 +1477,7 @@ class Initializers {
     for (std::size_t i = 0; i < replacements.size(); ++i) {
       budget_.Step();
       if (replacements[i]) {
-        BeginCommit();plan_.replacements[i] = replacements[i];
+        Edit<RecoveryField::kReplacements>(ExprId{static_cast<std::uint32_t>(i)},replacements[i]);
       }
     }
   }
@@ -1507,13 +1541,13 @@ class Initializers {
     std::optional<StmtId> initialization;
   };
   void RemoveCoveredWrite(const CoveredWrite& selected,StmtId placeholder) {
-    BeginCommit();
+
     if(selected.expression) {
-      plan_.replacements[selected.expression->value]=selected.value;
+      Edit<RecoveryField::kReplacements>(*selected.expression,selected.value);
       DiscardDeclaration(placeholder);
     } else {
       RequireTree(selected.declaration.has_value(),TreeStructureError::kOwnership);
-      plan_.declaration_values[selected.declaration->value]=DeclarationValue{selected.value,{}};
+      Edit<RecoveryField::kDeclarationValues>(*selected.declaration,DeclarationValue{selected.value,{}});
       if(placeholder!=*selected.declaration)DiscardDeclaration(placeholder);
     }
     // Value propagation retires the current binding completion independently
@@ -1644,9 +1678,9 @@ class Initializers {
     // writes, required evaluations and lexical completion on fresh facts.
     for(std::size_t i=0;i<proposed.size();++i) {
       budget_.Step();if(!proposed[i]||(plan_.literals[i]&&SameLiteral(*plan_.literals[i],*proposed[i])))continue;
-      BeginCommit();plan_.literals[i]=proposed[i];
+      Edit<RecoveryField::kLiterals>(SymbolId{static_cast<std::uint32_t>(i)},proposed[i]);
     }
-    for(std::size_t i=0;i<read_count;++i){budget_.Step();const auto& edit=read_proposals[i];BeginCommit();plan_.read_literals[edit.expression.value]=edit.primitive;}
+    for(std::size_t i=0;i<read_count;++i){budget_.Step();const auto& edit=read_proposals[i];Edit<RecoveryField::kReadLiterals>(edit.expression,edit.primitive);}
   }
   void BindingValues() {
     bool candidate=false;
@@ -1711,8 +1745,8 @@ class Initializers {
     // Both proposals belong to the same immutable projection. Occurrence
     // substitution never turns its fact into an all-definition invariant.
     // Keep every write/RHS/completion until independent demand cleanup.
-    for(std::size_t i=0;i<bindings.size();++i){budget_.Step();if(bindings[i]&&!blocked[i]){BeginCommit();plan_.read_bindings[i]=bindings[i];}}
-    for(std::size_t i=0;i<reads.size();++i){budget_.Step();if(!read_blocked[i]){BeginCommit();plan_.read_sources[reads[i].expression.value]=reads[i].binding;}}
+    for(std::size_t i=0;i<bindings.size();++i){budget_.Step();if(bindings[i]&&!blocked[i]){Edit<RecoveryField::kReadBindings>(SymbolId{static_cast<std::uint32_t>(i)},bindings[i]);}}
+    for(std::size_t i=0;i<reads.size();++i){budget_.Step();if(!read_blocked[i]){Edit<RecoveryField::kReadSources>(reads[i].expression,reads[i].binding);}}
   }
   void Aliases() {
     // A single retained definition must cover all source reads, including each
@@ -1830,11 +1864,11 @@ class Initializers {
     for(std::size_t i=0;i<roots.size();++i) {
       budget_.Step();if(!roots[i]||roots[i]->value==i||retirement.presence[i]==SourceBindingPresence::kRetained)continue;
       const auto& selected=*coverage.covered_writes[i];const auto& use=uses_[i];
-      BeginCommit();plan_.aliases[i]=roots[i];
+      Edit<RecoveryField::kAliases>(SymbolId{static_cast<std::uint32_t>(i)},roots[i]);
       RemoveCoveredWrite(selected,*use.declaration);
-      if(const auto& site=declaration_sites_[i])plan_.statements[site->statement.value].reset();
+      if(const auto& site=declaration_sites_[i])Edit<RecoveryField::kDeclarations>(site->statement,std::nullopt);
       if(selected.statement && discard_rhs[i]) {
-        plan_.omitted[selected.statement->value]=1;plan_.statements[selected.statement->value].reset();
+        Edit<RecoveryField::kOmissions>(*selected.statement,1);Edit<RecoveryField::kDeclarations>(*selected.statement,std::nullopt);
       }
     }
   }
@@ -1987,6 +2021,7 @@ class Initializers {
   std::vector<SymbolId> constant_queue_;
   std::vector<StatementVisit> statements_;
   RecoverySchedule schedule_;
+  RecoveryChanges changes_;
   mutable std::optional<ProjectionFacts> facts_;
 };
 }

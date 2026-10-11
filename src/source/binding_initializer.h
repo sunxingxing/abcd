@@ -13,11 +13,12 @@ struct BindingInitializer {
   SymbolId symbol;
   ExprId assignment;
   DeclarationKind declaration;
+  bool operator==(const BindingInitializer&) const = default;
 };
 // An existing lexical initializer whose binding is removed or shares a slot.
 // Its value still executes at the original statement, after all RHS effects;
 // an absent target means GetValue only. This is a committed source projection.
-struct DeclarationValue { ExprId value; std::optional<SymbolId> target; };
+struct DeclarationValue { ExprId value; std::optional<SymbolId> target; bool operator==(const DeclarationValue&) const = default; };
 enum class DeclarationCompletionKind { kInitialize, kAssignUndefined };
 // Evaluate an optional discarded RHS, then complete only on its normal path.
 // Initialization and a write to an already initialized slot remain distinct.
@@ -26,6 +27,7 @@ struct DeclarationCompletion {
   std::optional<ExprId> evaluation;
   DeclarationKind declaration;
   DeclarationCompletionKind kind=DeclarationCompletionKind::kInitialize;
+  bool operator==(const DeclarationCompletion&) const = default;
 };
 struct BindingInitializers {
   std::vector<std::optional<BindingInitializer>> statements;
