@@ -1496,6 +1496,10 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/callable_signatures_test.mjs)
     add_test(NAME graph_trace_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/graph_trace_test.mjs)
+    add_test(NAME record_inventory_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_inventory_test.mjs)
+    add_test(NAME module_surface_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/module_surface_test.mjs)
     add_test(NAME record_style_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_style_test.mjs)
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc" AND

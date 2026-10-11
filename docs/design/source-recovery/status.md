@@ -12,6 +12,42 @@
 
 ## 当前阶段
 
+### 2026-10-11：固定五输入的记录穷尽与模块接口验收闭环
+
+- 原paired_signatures仅凭NoModule状态跳过46项。新增独立record_inventory，按锁定
+  runtime_core的动态Header/ClassDataAccessor布局直接读取ABC的class index和每个
+  本地record的field/method计数，与输出逐项核对；不消费配对源码，不按record名字分类。
+  五输入152个本地record、2111个方法、626个record元数据字段均对应；626不是源码字段数。
+  46项无源码record的原始method数全部为0，且module为空，未遗漏可执行方法。
+- 每份源码另核对编译方法数与输出结构：106模块入口+101构造器+754类方法+1141其他
+  函数+9静态初始化单元=2111，各record分别成立。原始字节计数、模块接口、全部
+  class/module/nested/field签名及原生方法表示检查现在同走五输入入口；计数不冒充行为等价。
+- module_surface对照请求首次出现顺序、具名/default/namespace导入、重导出、star
+  export、公开绑定来源与同单元别名。接受局部改名、拆分import、转发重导出和初始化
+  副本；区分default表达式快照与live export、同值但不同的公开单元。初始化效果和后续
+  写入仍由连接执行承担，不能把surface相等当装饰器或类正文等价。
+- 183个真实输出的有效JS模块变异全部检出；11个原始清单反例、11个模块接口反例
+  通过，live/snapshot及复制单元两个反例另独立执行。原149+751签名变异保持。
+  helper首轮空实现不能拒绝变异，保留red日志；初版接口oracle不支持装饰器后的绑定
+  写入及内联class/类初始化副本，修正共同绑定来源表示后全部真实输出通过，未放松生产准入。
+- 构建通过，最终6/6定向通过4.23s；证据build/stage-one/record-inventory/
+  {build-final.log,final-tests.log,final-lasttest.log}和build/regression/record-inventory-final.xml。
+  无生产修改，规则311和固定65名单保持，不因测试注册变化重跑未改动长矩阵。
+- **记录穷尽和模块接口这两项结构义务已关闭。** 全阶段Goal仍active；终验收束到下表
+  的固定106记录与既有行为/表示证据对应，不再开放式增加未来能力前置。下一步核定
+  每组完整record执行覆盖及共享初始化/身份边界，只有具体缺口才新增实现。
+
+| 固定输入 | 完整源码数 | 最终行为/表示证据对应范围 |
+|---|---:|---|
+| Immersive/modules.abc | 35 | 33模块Window/navigation + EntryAbility完整生命周期 + Backup |
+| MultiCommunityApplication/modules.abc | 45 | 45模块Community ability图，另有EntryAbility/Backup和静态记录专项 |
+| pasteboard/modules.abc | 10 | 富文本5与ProgressBar2共享CommonConstants；加Home、Logger、EntryAbility、Backup，共10 |
+| push-kit-sample-code-clientdemo-arkts/modules.abc | 15 | 15模块Push图，另有Widget完整record/构造专项 |
+| push-kit-sample-code-clientdemo-arkts/widgets.abc | 1 | 独立src_widget参考的Widget完整record/构造专项 |
+
+该表固定剩余核定范围，不单凭图内record数认定全部函数执行或语义等价；旧的
+unified-variable-deliveries有限主干关闭结论保留，未把复杂finally/暂停精度重新打开。
+
 ### 2026-10-11：实例与导出共享身份图贯通四组行为对照
 
 - Community、Push、富文本和ProgressBar在原事件/逐值对照之外，复用静态初始化的
