@@ -6,6 +6,7 @@ import {stripTypeScriptTypes} from 'node:module';
 import vm from 'node:vm';
 import {createHash} from 'node:crypto';
 import {verifyVoipMainSchedules} from './voip_main_schedule.mjs';
+import {editExpression, callsMember} from './expression_edits.mjs';
 
 // Independent paired-source tests only. Production receives the ABC alone.
 // Host stubs exercise ordering/identity, not a HarmonyOS telephony service.
@@ -27,7 +28,9 @@ assert.match(recovered.source, /static callId;/);
 // A whole native object owns the optional getter and conditional enum read.
 // Keep the positive predicate and field declaration order; staged assignments
 // or a detached phi do not meet this representation assertion.
-assert.match(recovered.source, /\(\{callId: [^,]+, voipCallType: \(\([^;]*\?\.scene\) === "video" \? voipCall\.VoipCallType\.VOIP_CALL_VIDEO : voipCall\.VoipCallType\.VOIP_CALL_VOICE\)/);
+// A declaration initializer needs no parenthesis around its object literal.
+// Keep the native property/conditional requirement independent of that spelling.
+assert.match(recovered.source, /\{callId: [^,]+, voipCallType: \(\([^;]*\?\.scene\) === "video" \? voipCall\.VoipCallType\.VOIP_CALL_VIDEO : voipCall\.VoipCallType\.VOIP_CALL_VOICE\)/);
 assert.match(recovered.source, /userName: "push", userProfile: [^,]+, abilityName: "VoIPUIAbility", voipCallState: voipCall\.VoipCallState\.VOIP_CALL_STATE_RINGING/);
 assert.doesNotMatch(recovered.source, /\.voipCallType =|\.voipCallState =/);
 const paired = stripTypeScriptTypes(readFileSync(join(root,
@@ -287,7 +290,10 @@ assert.notDeepEqual(await observeScheduled(stale, scenario), expected);
 const receiver = mutate(text => text.replaceAll('voipCall.reportCallStateChange(', '(0, voipCall.reportCallStateChange)('));
 assert.notEqual(receiver, recovered.source);
 await assert.rejects(() => observeScheduled(receiver, scenario), assert.AssertionError);
-const eager = mutate(text => text.replace('(await $value3);', '(void $value3);'));
+const eager = editExpression(recovered.source,
+  (node, dependsOn) => node.type === 'AwaitExpression' &&
+    dependsOn(node.argument, expression => callsMember(expression, 'reportCallStateChange')),
+  (node, text) => text(node.argument), {first: true});
 assert.notEqual(eager, recovered.source);
 await assert.rejects(() => observeScheduled(eager, scenario), assert.AssertionError);
 console.log(`${cases} paired VoipCallService scenarios and ${scheduledCases} controlled schedules passed; ` +

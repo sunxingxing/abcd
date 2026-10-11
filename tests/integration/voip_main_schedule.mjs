@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import {editExpression} from './expression_edits.mjs';
 
 // Drive promises returned by real methods and retained callbacks. Host controls
 // releases; it never supplies a replacement body or infers completion by time.
@@ -194,10 +195,14 @@ export async function verifyVoipMainSchedules(source,reference) {
     }
   const baseline = {scene:{scene:'video'},input:1,concurrent:true,reverse:true,replaceLogger:true,reject:'none',errorGetter:'none'};
   const expected = await observe(reference,baseline);
-  for (const [from,to] of [['userProfile: $value13','userProfile: null'],
+  for (const [from,to] of [[source => editExpression(source,
+      node => node.type === 'Property' && !node.computed && node.key.name === 'userProfile',
+      (node, text) => text(node.key) + ': null'), null],
     ['$local1.processVoipCallEvent(event.voipCallUiEvent)','$local1.processVoipCallEvent(3)'],
     ['imageInfo.size.height','imageInfo.size.width'],['voipCall.off("voipCallUiEvent")','voipCall.off("wrong-event")']]) {
-    assert.ok(source.includes(from)); const altered = source.replace(from,to); new vm.SourceTextModule(altered);
+    if (typeof from !== 'function') assert.ok(source.includes(from));
+    const altered = typeof from === 'function' ? from(source) : source.replace(from,to);
+    assert.notEqual(altered, source); new vm.SourceTextModule(altered);
     let detected = false;
     try {assert.deepEqual(await observe(altered,baseline),expected);}
     catch (error) {if (!(error instanceof assert.AssertionError)) throw error; detected = true;}

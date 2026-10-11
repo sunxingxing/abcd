@@ -2092,7 +2092,7 @@ if(BUILD_TESTING)
     endif()
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/modules.abc" AND
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/src/entry/src/main/ets/service/VoipCallService.ts")
-      add_test(NAME voip_service_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+      add_test(NAME voip_service_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/voip_service.mjs $<TARGET_FILE:abc_semantic>
         ${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts)
     endif()

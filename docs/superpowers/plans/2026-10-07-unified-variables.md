@@ -19,6 +19,19 @@
 - Existing byte/work budget covers retained graph, sparse facts and temporary growth.
 - Every verified coherent commit refreshes status.md; whole milestone is not complete until old decisions exit.
 
+2026-10-11 package D accepted on production rules311/d1ee1ea9: all five
+ordinary-variable deliverables are closed within their stated A/B/trial/C/D
+scope. The consumer and retired-decision ledger is
+[unified-variable-acceptance](../../design/source-recovery/unified-variable-acceptance.md).
+D reuses the unchanged production C gate, refreshes the existing five ABCs in
+two contracts, checks all 212 source parses and native method layouts, and adds
+seven passing paired/unit tests plus the corrected VoIP test's separate pass.
+Only test spelling/mutation selection and its parser flag changed. No engine
+rebuild or redundant 65-test rerun was needed for that correction. Existing
+negative behavior requirements are retained; failed runs remain recorded.
+Phase-one behavior/style and the structural gate stay open; no percentage or
+whole-platform acceptance is inferred from 106 complete record flags.
+
 2026-10-11 packages B/C accepted (rules308/311): the finite R1–R10
 raw/source correspondence and preservation ledger is closed; whole-pass P1–P6
 now uses actual change domains, epoch-stable attempts, fair deduplicated queues,
