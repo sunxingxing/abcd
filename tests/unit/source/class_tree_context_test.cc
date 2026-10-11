@@ -1,3 +1,4 @@
+#include "../../support/source/invocation_values.h"
 #include "../../../src/source/class_tree_context.h"
 #include "../../../src/source/prepared_family.h"
 #include "../../../src/source/family_emission.h"
@@ -46,7 +47,7 @@ static_assert(std::is_same_v<decltype(std::declval<VerifiedFunction&>().Tree()),
 void Check(bool condition, std::source_location at = std::source_location::current()) {
   if (!condition) { std::cerr << "class tree context check " << at.line() << '\n'; std::abort(); }
 }
-enum class RestEncoding { kNone, kNarrow, kWide, kLeading, kUnused, kReassigned, kPhysicalRead, kRepeated, kSnapshot, kWrongIndex, kReordered, kGap, kRelocated };
+enum class RestEncoding { kNone, kNarrow, kWide, kLeading, kUnused, kReassigned, kPhysicalRead, kRepeated, kSnapshot, kWrongIndex, kReordered, kGap, kRelocated, kLoop, kCaught, kCaughtReordered, kCaughtGap, kCaughtRelocated, kCaughtSplit, kCaughtLoop };
 enum class DefaultEncoding { kNone, kInteger, kNegation };
 enum class GeneratorEncoding { kTagged, kExplicitTagged, kExplicitOrdinary };
 enum class ExceptionShape {
@@ -62,6 +63,9 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
          abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool static_member = false,
          GeneratorEncoding generator_encoding = GeneratorEncoding::kTagged,
          RestEncoding rest = RestEncoding::kNone) {
+  const bool rest_caught=rest==RestEncoding::kCaught||rest==RestEncoding::kCaughtReordered||
+      rest==RestEncoding::kCaughtGap||rest==RestEncoding::kCaughtRelocated||rest==RestEncoding::kCaughtSplit||rest==RestEncoding::kCaughtLoop;
+  const bool rest_loop=rest==RestEncoding::kLoop||rest==RestEncoding::kCaughtLoop;
   const bool array_buffer = exception == ExceptionShape::kBufferedArrayLexical;
   const bool buffered = exception == ExceptionShape::kBufferedLexical || array_buffer;
   const bool defaults = encoding != DefaultEncoding::kNone;
@@ -87,7 +91,7 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   word(kLiteral + 10, kMember);
   bytes[kLiteral + 14] = static_cast<std::uint8_t>(abc::LiteralTag::kMethodAffiliate);
   const bool has_rest = rest != RestEncoding::kNone;
-  const std::uint8_t encoded_length = has_rest ? (rest == RestEncoding::kLeading ? 1 : 0) : (defaults ? 0 : 1);
+  const std::uint8_t encoded_length = has_rest ? ((rest == RestEncoding::kLeading || rest_loop || rest_caught) ? 1 : 0) : (defaults ? 0 : 1);
   bytes[kLiteral + 15] = encoded_length;
   bytes[kLiteral + 17] = static_cast<std::uint8_t>(abc::LiteralTag::kInteger);
   word(kLiteral + 18, static_member ? 0 : 1);
@@ -499,16 +503,28 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     // allocation and its store. A physical argument is never the rest array.
     const std::uint8_t slots = encoded_length + 4;
     std::vector<std::uint8_t> code;
-    const std::uint8_t rest_local = rest == RestEncoding::kRelocated ? 0 : slots - 1;
+    const std::uint8_t rest_local = (rest == RestEncoding::kRelocated || rest == RestEncoding::kCaughtRelocated) ? 0 : slots - 1;
     for (std::uint8_t at = 0; at < slots; ++at) {
-      const auto i = static_cast<std::uint8_t>(rest == RestEncoding::kReordered ? slots - 1 - at : at);
+      const auto i = static_cast<std::uint8_t>((rest == RestEncoding::kReordered || rest == RestEncoding::kCaughtReordered) ? slots - 1 - at : at);
       code.insert(code.end(), {static_cast<std::uint8_t>(abc::Opcode::kMOV_V8_V8), i,
           static_cast<std::uint8_t>(slots + i)});
-      if (rest == RestEncoding::kGap) code.push_back(static_cast<std::uint8_t>(abc::Opcode::kNOP));
+      if (rest == RestEncoding::kGap || rest == RestEncoding::kCaughtGap) code.push_back(static_cast<std::uint8_t>(abc::Opcode::kNOP));
     }
+    if(rest==RestEncoding::kCaughtSplit)code.insert(code.end(),{kLoad,3,
+        static_cast<std::uint8_t>(abc::Opcode::kJEQZ_IMM8),4,
+        static_cast<std::uint8_t>(abc::Opcode::kNOP),static_cast<std::uint8_t>(abc::Opcode::kNOP)});
+    const auto rest_entry = code.size();
     if (rest == RestEncoding::kWide) code.insert(code.end(), {0xfd, 0x0b, encoded_length, 0});
     else code.insert(code.end(), {0xcf, static_cast<std::uint8_t>(rest == RestEncoding::kWrongIndex ? 1 : encoded_length)});
     code.insert(code.end(), {kStore, rest_local});
+    if (rest_loop || rest_caught) {
+      code.insert(code.end(), {kLoad, 3, static_cast<std::uint8_t>(abc::Opcode::kCALLARG1_IMM8_V8), 0, rest_local});
+      if (rest_loop) {
+        const auto branch = code.size();
+        code.insert(code.end(), {static_cast<std::uint8_t>(abc::Opcode::kJNEZ_IMM8),
+            static_cast<std::uint8_t>(static_cast<int>(rest_entry) - static_cast<int>(branch))});
+      }
+    }
     if (rest == RestEncoding::kRepeated) code.insert(code.end(), {0xcf, encoded_length});
     if (rest == RestEncoding::kReassigned)
       code.insert(code.end(), {kInteger, 7, 0, 0, 0, kStore, static_cast<std::uint8_t>(slots - 1)});
@@ -517,8 +533,11 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     else code.insert(code.end(), {kLoad, static_cast<std::uint8_t>(
         rest == RestEncoding::kPhysicalRead ? 2 * slots - 1 : rest_local)});
     code.push_back(kReturn);
-    member = {slots, slots, static_cast<std::uint8_t>(code.size()), 0};
+    const auto handler=static_cast<std::uint8_t>(code.size());
+    if(rest_caught)code.insert(code.end(),{kUndefined,kReturn});
+    member = {slots, slots, static_cast<std::uint8_t>(code.size()), static_cast<std::uint8_t>(rest_caught)};
     member.insert(member.end(), code.begin(), code.end());
+    if(rest_caught)member.insert(member.end(),{0,handler,1,0,handler,2});
   }
   std::copy(caller.begin(), caller.end(), bytes.begin() + kCallerCode);
   std::copy(member.begin(), member.end(), bytes.begin() + member_code);
@@ -580,7 +599,7 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     auto prepared = PreparedFamily::PrepareClass(file, header, index, lookup, roles,
         functions, sites, range.first, identity, {Strictness::kStrict, nullptr, FunctionFragment::kClassMember});
     const bool rejected = rest == RestEncoding::kPhysicalRead || rest == RestEncoding::kRepeated ||
-        rest == RestEncoding::kSnapshot || rest == RestEncoding::kWrongIndex;
+        rest == RestEncoding::kSnapshot || rest == RestEncoding::kWrongIndex || rest_loop;
     if (rejected) {
       Check(std::holds_alternative<FamilyPrepareFailure>(prepared));
     } else {
@@ -592,6 +611,7 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
       Check(root.tree.parameters.size() == encoded_length + 1U && root.tree.parameters.back().rest);
       Check(root.tree.recovery_issues.empty() && root.abi && root.abi->length == encoded_length);
       Check(root.abi->parameters.back().reads.operands == 0);
+      Check(root.flow.original!=nullptr);test::CheckInvocationValues(root.tree,*root.flow.original);
       std::ostringstream output;
       Check(std::holds_alternative<PrintedFamilyDraft>(ready.PrintDraft(
           {Strictness::kStrict, nullptr, FunctionFragment::kClassMember}, output)));
@@ -1161,6 +1181,22 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--rest-caught-json") {
+    for(const auto profile:{abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301})
+      for(const bool placement:{false,true})
+        for(const auto rest:{RestEncoding::kCaught,RestEncoding::kCaughtReordered,RestEncoding::kCaughtGap,
+            RestEncoding::kCaughtRelocated,RestEncoding::kCaughtSplit})
+          Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kNone,
+              profile, placement, GeneratorEncoding::kTagged, rest);
+    return 0;
+  }
+  if (argc == 2 && std::string_view(argv[1]) == "--rest-loop-json") {
+    for(const auto profile:{abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301})
+      for(const auto rest:{RestEncoding::kLoop,RestEncoding::kCaughtLoop})
+        Run(DefaultEncoding::kNone, false, false, false, &std::cout, ExceptionShape::kNone,
+            profile, false, GeneratorEncoding::kTagged, rest);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--rest-json") {
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
       for (const bool placement : {false, true})

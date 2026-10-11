@@ -28,7 +28,10 @@ struct FlowControlPhase {analysis::OpId operation;};
 // physical point. Keeping them typed prevents pre-guard values or effects from
 // borrowing the native action's successful completion.
 struct FlowRegionPhase {OriginalActionRegionId region;};
-using FlowOriginalPhase=std::variant<FlowPoint,FlowControlPhase,FlowRegionPhase>;
+// Hoisted invocation creation has a value relationship, not a physical raw
+// control point. Its source initialization remains outside body handlers.
+struct FlowInvocationPhase {ParameterId parameter;};
+using FlowOriginalPhase=std::variant<FlowPoint,FlowControlPhase,FlowRegionPhase,FlowInvocationPhase>;
 struct FlowDefinitionId { std::uint32_t value = 0; auto operator<=>(const FlowDefinitionId&) const = default; };
 struct FlowInputId { std::uint32_t value = 0; auto operator<=>(const FlowInputId&) const = default; };
 struct DiscardedId { std::uint32_t value = 0; auto operator<=>(const DiscardedId&) const = default; };
@@ -43,7 +46,7 @@ struct DiscardedEvaluation {
   std::optional<ExprId> evaluation;
 };
 enum class FlowCompletion : std::uint8_t { kNormal, kThrow, kReturn, kJump, kTaken, kNotTaken, kResumeNext, kResumeThrow, kResumeReturn, kConservativeCleanup };
-enum class FlowDefinitionKind : std::uint8_t { kParameter, kUndefined, kInitializer, kAssignment, kUpdate, kCatch, kUndefinedStore, kFunctionSelf, kIterationCopy };
+enum class FlowDefinitionKind : std::uint8_t { kParameter, kRestParameter, kUndefined, kInitializer, kAssignment, kUpdate, kCatch, kUndefinedStore, kFunctionSelf, kIterationCopy };
 enum class FlowEventKind : std::uint8_t { kControl, kTruthBranch, kNullishBranch, kRead, kEvaluation, kAggregateDefinition, kEnterScope, kLeaveScope, kDefinition, kSuspend, kPropertyReference, kEnterLoopEnvironment, kCopyInput, kEnterIterationEnvironment, kLeaveLoopEnvironment };
 enum class FlowValueUse : std::uint8_t { kUnmodeled, kDiscarded, kObserved };
 enum class FlowWriteEffect : std::uint8_t { kObservable, kInert };
@@ -157,6 +160,10 @@ struct FlowExceptionContext {
 // precedes access; an update's conversion follows its captured read. Normal
 // completion includes successful source writeback, never the throwing route.
 struct FlowAction {FlowPoint before,normal;FlowExceptionContext exceptions;};
+// Native signature evaluation belongs to the invocation, outside body handlers.
+// Parameter ordinal identifies the source value; storage and later reads are
+// separate. Creation succeeds before the initialization definition commits.
+struct FlowInvocationValue {ParameterId parameter;FlowPoint creation;FlowDefinitionId definition;};
 // Static data literals allocate before their ordered value evaluations. Each
 // own definition follows its value's normal completion; no inherited setter,
 // proxy trap or key conversion belongs to these fresh ordinary aggregates.
@@ -500,6 +507,8 @@ struct RecoveryFlow {
   std::vector<FlowSnapshotSlot> snapshot_slots;
   std::vector<std::optional<FlowAction>> property_initializers; // PropertyId indexed.
   std::vector<std::optional<FlowOriginalAction>> original_actions; // OpId indexed.
+  std::vector<FlowInvocationValue> invocation_values;
+  std::vector<std::optional<ParameterId>> original_invocations; // OpId indexed.
   std::vector<std::optional<FlowAction>> original_regions; // OriginalActionRegionId indexed.
   // Verified raw phase identities projected once by the source adapter.
   // Absent entries are representation gaps; neither PCs nor edge order infer

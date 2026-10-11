@@ -13,7 +13,7 @@ std::variant<RestOwnership, RestOwnershipError> ProveRestOwnership(const analysi
     const auto admit = [&](std::size_t count, std::size_t width) {if (count > budget.bytes / width) throw Error::kResourceLimit; budget.bytes -= count * width;};
     const auto window_result = ArgumentWindow::Build(frame);
     const auto* window = std::get_if<ArgumentWindow>(&window_result);
-    if (!window || window->Count() != std::uint32_t{first} + 1 || !graph.phases.empty()) return Error::kFrame;
+    if (!window || window->Count() != std::uint32_t{first} + 1) return Error::kFrame;
     std::optional<OpId> allocation;
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       step(); const auto& op = graph.ops[i]; if (op.life != ValueLife::kLive) continue;
@@ -26,6 +26,8 @@ std::variant<RestOwnership, RestOwnershipError> ProveRestOwnership(const analysi
     if (!allocation) return Error::kAllocation;
     const auto& rest = graph.ops[allocation->value];
     // Reverse reachability indexes all possible work before the allocation.
+    // Phased IR uses the same graph, with the allocation in its Before block.
+    // Commit/handler edges therefore participate without flattening completion.
     // The same traversal exposes a cycle through its block; native rest cannot
     // replace distinct arrays allocated on repeated loop iterations.
     admit(graph.blocks.size(), sizeof(std::vector<WorkBlockId>));

@@ -1575,7 +1575,7 @@ class Initializers {
           // Update computes a new numeric value; its stored-result identity
           // is not a transparent self-copy equation. Entry/external values
           // remain unknown until their independent semantics are modeled.
-          case FlowDefinitionKind::kUpdate:case FlowDefinitionKind::kParameter:
+          case FlowDefinitionKind::kUpdate:case FlowDefinitionKind::kRestParameter:case FlowDefinitionKind::kParameter:
           case FlowDefinitionKind::kCatch:case FlowDefinitionKind::kFunctionSelf:break;
         }
       }

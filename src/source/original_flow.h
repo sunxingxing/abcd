@@ -70,7 +70,7 @@ struct OriginalActionRegion {
   std::optional<analysis::WorkBlockId> commit;
 };
 using OriginalWriteSite=std::variant<ExprId,StmtId>;
-enum class OriginalCompletionBoundary : std::uint8_t { kProjectedResult, kIntrinsicAction, kUnmodeled };
+enum class OriginalCompletionBoundary : std::uint8_t { kProjectedResult, kIntrinsicAction, kInvocationBinding, kUnmodeled };
 // Original operations retain phase effects and success-only results, without
 // copying opcode variants or interpreting them a second time in recovery.
 struct OriginalOperation {
@@ -99,6 +99,10 @@ struct OriginalOperation {
   // A literal's checked own definition belongs to its property occurrence,
   // not the enclosing allocation or the expression producing the stored value.
   std::optional<PropertyId> intrinsic_property;
+  // Native invocation binding creates this value, before body evaluation.
+  // Its later read is a value correspondence, never the allocation's physical
+  // Before/Commit. The callable owner has verified hoisting/frame ownership.
+  std::optional<ParameterId> invocation_parameter;
   // Flow verification owns the native statement; operand verification owns
   // its completion payload. This is not the returned/thrown value's action.
   std::optional<OriginalStatementKind> statement_kind;

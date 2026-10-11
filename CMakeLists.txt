@@ -1376,6 +1376,10 @@ if(BUILD_TESTING)
   target_include_directories(phased_input_actions_test PRIVATE tests/support)
   target_link_libraries(phased_input_actions_test PRIVATE abcd_source abcd_json)
   add_test(NAME phased_input_actions_test COMMAND phased_input_actions_test)
+  add_executable(invocation_flow_test tests/unit/source/invocation_flow_test.cc)
+  target_include_directories(invocation_flow_test PRIVATE tests/support)
+  target_link_libraries(invocation_flow_test PRIVATE abcd_source)
+  add_test(NAME invocation_flow_test COMMAND invocation_flow_test)
   if(ABCD_NODE_EXECUTABLE)
     add_test(NAME selection_module_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/selection_module.mjs $<TARGET_FILE:selection_module_test>)
@@ -2006,6 +2010,9 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_await_finally.mjs $<TARGET_FILE:loop_closure_file_test> --reuse --arrow)
     add_test(NAME file_async_frame_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_async_frame.mjs $<TARGET_FILE:loop_closure_file_test>)
+    add_test(NAME rest_invocation_loop_test COMMAND class_tree_context_test --rest-loop-json)
+    add_test(NAME rest_invocation_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/rest_invocation.mjs $<TARGET_FILE:class_tree_context_test>)
     add_test(NAME file_rest_method_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_rest_method.mjs $<TARGET_FILE:class_tree_context_test>)
     add_test(NAME file_async_method_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

@@ -1319,3 +1319,18 @@ creates its array before a later source read, which cannot impersonate the raw
 allocation boundary. This is R4's existing entry obligation, not a new delivery
 or permission to defer it. B/C/D stay open; fixed65 and record are not repeated
 for this constituent verification. No recovery pass or publication gate changed.
+
+Rules305 supplies the remaining R4 rest-entry boundary, including actual recovery
+of phased catch methods. Signature creation, successful parameter initialization,
+and body reads are separate common-flow facts. Rest entry values are Defined and
+Truthy by source semantics; the raw first-rest-argument slot cannot lend Number
+precision. Copies/liveness/initialization/dead definitions share the typed entry
+kind. Raw allocation uses an invocation relationship with virtual phases, never
+the later SymbolExpr's physical completion. Missing correspondence or a forged
+Before-as-Commit withdraws result evidence. The existing reverse-CFG/effects/SSA
+ownership proof now handles normal and phased CFG, replacing its normal-only
+admission restriction; duplicate dynamic allocations remain a rejected native
+signature transformation. Thirty complete caught-method sources execute under
+five layout variants/three profiles/two class placements. R4's listed boundaries
+now have evidence; package B's remaining consumers/control/preservation ledger
+and C/D remain open. No fixed65/record or paused validation scope resumed.

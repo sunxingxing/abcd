@@ -114,7 +114,7 @@ std::variant<FlowCopies,TreeStructureError> AnalyzeFlowCopies(
           }
           break;
         case FlowDefinitionKind::kUndefined:case FlowDefinitionKind::kUndefinedStore:
-        case FlowDefinitionKind::kParameter:case FlowDefinitionKind::kFunctionSelf:
+        case FlowDefinitionKind::kRestParameter:case FlowDefinitionKind::kParameter:case FlowDefinitionKind::kFunctionSelf:
         case FlowDefinitionKind::kUpdate:case FlowDefinitionKind::kCatch:
         // Current-binding equality cannot certify a captured earlier value:
         // its root might have changed between the capture and commit.

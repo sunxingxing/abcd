@@ -1073,6 +1073,24 @@ void OriginalEntries(bool reverse) {
   std::get<analysis::ParameterEntry>(std::get<analysis::EntryDefinition>(f.original.values[0].origin)).index=1;
   Check(std::get<TreeStructureError>(PrepareRecoveryProjection(f.tree,projection,f.Input()))==TreeStructureError::kOwnership);
 }
+void RestEntryKinds(bool reverse) {
+  Fixture f(1,reverse);
+  const auto call=std::get<UnaryExpr>(f.tree.expressions[f.values[0].value].expression).operand;
+  const auto entry=std::get<CallExpr>(f.tree.expressions[call.value].expression).callee;
+  f.tree.parameters[0].rest=true;
+  // This raw slot is the first actual rest argument. Even an exact Number
+  // proof for it must never refine the invocation-created array to Number.
+  f.original.values.push_back({analysis::EntryDefinition{analysis::ParameterEntry{0}},analysis::ValueKinds::Number()});
+  std::vector<std::uint8_t> stable{1,0};auto projection=f.Projection();projection.stable_entries=stable;
+  const auto model=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,projection,f.Input()));
+  Check(model.expressions.kinds[entry.value]==analysis::ValueKinds::Defined());
+  Check(model.flow.normal_truths[entry.value]==TruthDomains::Truthy());
+  Check(model.flow.invocation_values.size()==1);
+  auto candidate=f.plan;candidate.read_literals[entry.value]=PrimitiveId{0};
+  const auto changed=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,projection,{candidate,f.equations,f.order,&f.original}));
+  Check(changed.flow.normal_truths[entry.value]==TruthDomains::One(TruthDomain::kUndefined));
+  Check(changed.flow.invocation_values.size()==1); // Signature creation still executes.
+}
 // Deliberately slow small-graph oracle: whole-state rescans and a separately
 // written five-element lattice. It does not reuse production liveness, sparse
 // dependencies or source type transfer to compute the expected read domains.
@@ -2577,7 +2595,7 @@ int main(int argc,char** argv) {
   }
   for(bool caught:{false,true})for(bool reverse:{false,true})for(bool numeric:{false,true})for(bool increment:{false,true})for(bool prefix:{false,true})UpdateSource(reverse,numeric,increment,prefix,false,caught);
   Case(false);Case(true);ChangedDefinition(false);ChangedDefinition(true);
-  OriginalEntries(false);OriginalEntries(true);UnitCapabilityContract();
+  OriginalEntries(false);OriginalEntries(true);RestEntryKinds(false);RestEntryKinds(true);UnitCapabilityContract();
   for(unsigned form=0;form<10;++form)for(bool loop:{false,true})for(bool reverse:{false,true})CurrentUnitKinds(reverse,loop,form);
   for(unsigned seed=0;seed<512;++seed)for(bool reverse:{false,true})KindOracle(seed,reverse);
   for(unsigned form=0;form<4;++form)for(bool reverse:{false,true})CompletionTypes(form,reverse,false);

@@ -112,7 +112,7 @@ std::variant<FlowConstants,TreeStructureError> SolveConstants(
     // is its entry initialization. A body write, even dead or unreachable, may
     // change a binding-valued result and defeats this all-definition invariant.
     for(const auto& definition:flow.definitions){budget.Step();RequireTree(definition.binding.value<bindings,TreeStructureError::kBinding);
-      if(definition.kind!=FlowDefinitionKind::kParameter&&definition.kind!=FlowDefinitionKind::kFunctionSelf)stable[definition.binding.value]=0;}
+      if(definition.kind!=FlowDefinitionKind::kParameter&&definition.kind!=FlowDefinitionKind::kRestParameter&&definition.kind!=FlowDefinitionKind::kFunctionSelf)stable[definition.binding.value]=0;}
     for(const auto& reference:flow.references){budget.Step();RequireTree(reference.binding.value<bindings,TreeStructureError::kBinding);
       if(reference.kind==FlowReferenceKind::kWrite)stable[reference.binding.value]=0;}
 

@@ -313,6 +313,10 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
                     if(!generated.original)invalidate(target);
                     continue;}
                   break;
+                case FlowDefinitionKind::kRestParameter:
+                  // The source signature creates an array. The raw physical
+                  // slot contains the first rest argument, a different value.
+                  constant(target,NormalValueDomain{K::Defined(),TruthDomains::Truthy()});continue;
                 case FlowDefinitionKind::kParameter: {
                   // Current body-cell tracking cannot lend a signature proof.
                   // Entry types and their raw dependency cone require the

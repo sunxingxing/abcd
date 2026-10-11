@@ -4669,3 +4669,28 @@ optimization or RSS. Independent source execution covers 36 outputs/798 checks;
 removing the production correspondences fails an inventory based on checked
 result expressions rather than the raw marker list. Existing pinned ABI and
 repository implementation remain the provenance; no external dependency added.
+
+Invocation values (rules305) separate native rest-array creation from parameter
+initialization and subsequent reads. The entry allocation uses the existing
+source allocation effect table; any conservative exceptional edge leaves the
+invocation instead of entering a body handler. A typed rest parameter definition
+is shared by initialization, liveness, copies, constants and dead-definition
+analysis. Its source domain is Defined/Truthy, independently of the raw physical
+argument slot. Value correspondence with raw allocation uses ParameterId and
+FlowInvocationPhase; consumers requesting a physical raw phase receive no point.
+Read removal keeps signature creation; missing entry/Commit correspondence
+withdraws raw result precision. All body trials use the same adapter.
+
+The existing ProveRestOwnership reverse CFG traversal works on Before/Commit
+blocks as well as normal blocks: no cycle through allocation, no observable prior
+effect, no physical-input overwrite, and no scalar argument escape through SSA.
+Its normal-only admission test is removed. Source syntax still owns the existing
+resource-failure exclusion contract. This does not invent an actual raw execution
+point for a hoisted source value or equate two dynamically allocated arrays.
+No new dependency/license; provenance is existing pinned rest ABI plus language
+rest-parameter initialization. Extra construction is O(parameters + raw operations)
+work/storage; the raw relation table exists only for owners with invocation values.
+No per-parameter graph traversal. At 200/201/400/800 parameters, measured common
+flow work is 4715/4738/9315/18515 and owned bytes 164477/164559/328333/656045,
+unchanged after reversing SymbolIds. Exact/one-short budgets and graph reuse are
+checked. These are local construction figures, not whole-pass or process costs.

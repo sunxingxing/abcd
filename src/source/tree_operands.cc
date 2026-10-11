@@ -247,6 +247,8 @@ class OperandCheck {
               graph_.values[op.result->value].domain.IsLanguage(), Error::kOperand);
           (void)Node<SymbolConstructorExpr>(expression);
         } else if constexpr (std::is_same_v<T, analysis::ValueRestArguments>) {
+          original_.operations[i].invocation_parameter=ParameterId{operation.first_argument};
+          original_.operations[i].completion=OriginalCompletionBoundary::kInvocationBinding;
           RequireMeaning(op.use_count == 0 && op.result && op.result->value < graph_.values.size() &&
               graph_.values[op.result->value].domain.IsLanguage() &&
               operation.first_argument < tree_.parameters.size() &&

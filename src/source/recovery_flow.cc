@@ -57,6 +57,7 @@ class FlowBuilder {
     result_.aggregates.clear();
     result_.argument_carriers.clear();
     result_.snapshot_slots.clear();
+    result_.invocation_values.clear();
     result_.captured_inputs.clear();
     result_.unit_captures.clear();
   }
@@ -174,9 +175,19 @@ class FlowBuilder {
       const auto initialized=Define(SymbolId{static_cast<std::uint32_t>(i)},FlowDefinitionKind::kFunctionSelf);
       Link(previous,initialized);previous=initialized;
     }
-    for(const auto& parameter:tree_.parameters) {
-      budget_.Step();const auto initialized=Define(parameter.symbol,FlowDefinitionKind::kParameter);
-      Link(previous,initialized);previous=initialized;
+    for(std::size_t i=0;i<tree_.parameters.size();++i) {
+      budget_.Step();const auto& parameter=tree_.parameters[i];
+      const auto initialized=Define(parameter.symbol,parameter.rest?FlowDefinitionKind::kRestParameter:FlowDefinitionKind::kParameter);
+      if(parameter.rest) {
+        const auto creation=New({FlowEventKind::kEvaluation});
+        const auto effects=NormalValueEffects(EmptyArrayExpr{},{},ResourceFailures(tree_.identity.contract));
+        events_[creation.value].effects=effects;events_[creation.value].effect=effects.Evaluation();
+        events_[creation.value].entry_evaluation=true;
+        Link(previous,creation);Link(creation,initialized);
+        if(effects.exceptional==analysis::ExceptionalCompletion::kMayThrow)Link(creation,terminal_,FlowCompletion::kThrow);
+        Append(result_.invocation_values,{ParameterId{static_cast<unsigned>(i)},creation,*events_[initialized.value].definition});
+      } else Link(previous,initialized);
+      previous=initialized;
     }
     Link(previous,statements_[tree_.body.value]);
     Context body{terminal_,terminal_,{}};body.retention=FlowStatementRetention::kRequired;
@@ -474,11 +485,27 @@ class FlowBuilder {
               }
               break;
             case OriginalCompletionBoundary::kIntrinsicAction:break;
-            case OriginalCompletionBoundary::kUnmodeled:throw Error::kOwnership;
+            case OriginalCompletionBoundary::kInvocationBinding:case OriginalCompletionBoundary::kUnmodeled:throw Error::kOwnership;
           }
           current=FlowOriginalAction{action->before,normal,action->exceptions};
         }
       }
+    }
+    if(result.invocation_values.empty())decltype(result.original_invocations){}.swap(result.original_invocations);
+    Resize(result.original_invocations,result.original&&!result.invocation_values.empty()?result.original->operations.size():0);
+    // Signature creation survives a removed body read. Record its relationship
+    // independently; never lend the read's physical completion to allocation.
+    std::vector<std::optional<FlowDefinitionId>> invocation_definitions;
+    if(result.original&&!result.invocation_values.empty()) {
+      budget_.Array(invocation_definitions,tree_.parameters.size());
+      for(const auto& value:result.invocation_values){budget_.Step();invocation_definitions[value.parameter.value]=value.definition;}
+    }
+    for(std::size_t i=0;i<result.original_invocations.size();++i) {
+      budget_.Step();auto& relation=result.original_invocations[i];relation.reset();
+      const auto& operation=result.original->operations[i];
+      if(operation.life!=analysis::ValueLife::kLive||operation.completion!=OriginalCompletionBoundary::kInvocationBinding)continue;
+      const auto parameter=operation.invocation_parameter;
+      if(parameter&&parameter->value<invocation_definitions.size()&&invocation_definitions[parameter->value])relation=parameter;
     }
     Resize(result.original_phases,result.original?result.original->phases.size():0);
     for(std::size_t i=0;i<result.original_phases.size();++i) {
@@ -489,6 +516,11 @@ class FlowBuilder {
       const auto& operation=result.original->operations[phase.operation->value];
       if(operation.life!=analysis::ValueLife::kLive)continue;
       const auto& action=result.original_actions[phase.operation->value];
+      if(operation.completion==OriginalCompletionBoundary::kInvocationBinding) {
+        if(phase.phase!=analysis::ExceptionPhase::kCatch&&!result.original_invocations.empty())
+          if(const auto parameter=result.original_invocations[phase.operation->value])point=FlowInvocationPhase{*parameter};
+        continue;
+      }
       if(const auto* region=FindOriginalActionRegion(*result.original,*phase.operation)) {
         const auto id=*result.original->action_region_members[phase.operation->value];
         if(const auto& native=result.original_regions[id.value]) {
@@ -515,7 +547,7 @@ class FlowBuilder {
           break;
         case analysis::ExceptionPhase::kCommit:
           if(action) {if(action->normal)point=*action->normal;}
-          else if(operation.result_expression&&!operation.intrinsic_expression&&!operation.intrinsic_property) {
+          else if(operation.result_expression&&!operation.intrinsic_expression&&!operation.intrinsic_property&&operation.completion!=OriginalCompletionBoundary::kInvocationBinding) {
             RequireTree(operation.result_expression->value<result.normal_exits.size(),Error::kOwnership);
             if(const auto normal=result.normal_exits[operation.result_expression->value])point=*normal;
           }
@@ -578,13 +610,14 @@ class FlowBuilder {
       if(!original)continue;
       const auto& operation=result.original->operations[i];
       if((operation.intrinsic_expression||operation.intrinsic_property)&&!result.original_actions[i])continue;
+      if(operation.completion==OriginalCompletionBoundary::kInvocationBinding&&(result.original_invocations.empty()||!result.original_invocations[i]))continue;
       const auto expression=original->expression;
       if(FindOriginalActionRegion(*result.original,analysis::OpId{static_cast<std::uint32_t>(i)})) {
         const auto id=*result.original->action_region_members[i];
         if(!result.original_regions[id.value])continue;
       }
       RequireTree(expression.value<result.normal_exits.size(),Error::kOwnership);
-      const auto normal=original->commit?FindOriginalPhase(result,*original->commit,analysis::ExceptionPhase::kCommit,
+      const auto normal=original->commit&&operation.completion!=OriginalCompletionBoundary::kInvocationBinding?FindOriginalPhase(result,*original->commit,analysis::ExceptionPhase::kCommit,
           original->commit_owner):result.normal_exits[expression.value];
       if(normal)occurrence=FlowOriginalResult{expression,expressions_[expression.value],*normal};
     }
@@ -1313,7 +1346,18 @@ std::optional<OriginalResult> FindFlowOriginalResult(const RecoveryFlow& flow,an
   const auto result=FindOriginalResult(*flow.original,operation);if(!result)return {};
   const auto& occurrence=*flow.original_results[operation.value];
   if(occurrence.expression!=result->expression||result->expression.value>=flow.expressions.size())return {};
-  if(result->commit&&FindOriginalPhase(flow,*result->commit,analysis::ExceptionPhase::kCommit,result->commit_owner)!=occurrence.normal)return {};
+  const auto& raw=flow.original->operations[operation.value];
+  if(raw.completion==OriginalCompletionBoundary::kInvocationBinding) {
+    if(operation.value>=flow.original_invocations.size()||!raw.invocation_parameter||flow.original_invocations[operation.value]!=raw.invocation_parameter)return {};
+    if(result->commit) {
+      if(result->commit->value>=flow.original_phases.size()||result->commit->value>=flow.original->phases.size())return {};
+      const auto& raw_phase=flow.original->phases[result->commit->value];
+      if(raw_phase.phase!=analysis::ExceptionPhase::kCommit||raw_phase.operation!=result->commit_owner)return {};
+      const auto& phase=flow.original_phases[result->commit->value];
+      const auto* entry=phase?std::get_if<FlowInvocationPhase>(&*phase):nullptr;
+      if(!entry||entry->parameter!=*raw.invocation_parameter)return {};
+    }
+  } else if(result->commit&&FindOriginalPhase(flow,*result->commit,analysis::ExceptionPhase::kCommit,result->commit_owner)!=occurrence.normal)return {};
   return result;
 }
 namespace {
