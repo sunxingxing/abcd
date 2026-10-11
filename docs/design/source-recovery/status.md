@@ -12,6 +12,29 @@
 
 ## 当前阶段
 
+### 2026-10-11：Push整图恢复验收并共用高层表示检查
+
+- 当前ABC-only输出的15个Push模块重新连接：实际页面、Ability、VoIP Service、
+  storage/form/image与七个view正文保留，paired TS在导出结束后读取。原测试在
+  `overlayIcon: $value8`定位失败（7.18s），当前正确输出已使用`$value6`；失败日志
+  保留，不将失败运行描述为完整通过。
+- token按钮、共享end状态、form subscriberId、通知overlayIcon负例及两项
+  captured-this等价检查改用既有AST选择器；区分页面与SDK的同名getToken调用。
+  变异先生成并检查有效JS，再执行原完整矩阵。没有删除错误图片身份等原负例。
+- 与45模块community共用classMethodProfiles和完整签名检查。VoIP原switch被
+  恢复为if/else是允许的高层分支差异；原profile将switch与循环混计，故新共享
+  消费者单独核对循环。独立执行验证分支替代，反例仍拒绝状态机循环、丢失循环
+  和错误callee；库存相同依然不代替执行顺序/身份语义。
+- Push完整矩阵：87场景、430原异常、86换绑、9个有效JS变异及2等价闭包表示；
+  同步/延迟各43个既定边界，七view实际render。首次修复另通过7.31s；最终共享
+  代码下4/4通过198.04s，其中community190.24s、Push7.74s，构建通过。日志
+  build/stage-one/body-integration/final-tests.log与build/regression/body-integration-final.xml，
+  完整计数另存body-integration/final-lasttest.log。中间测试适配失败未计成功。
+- 本次只改测试与文档，规则311/生产源码和固定65名单不变。两套专项图共60模块的
+  当前受控回归已经通过；不是所有函数/任意平台/整阶段验收。下一步剩余图为33模块
+  导航/Window、pasteboard及独立widgets输入，再核对未执行正文与表示缺口。
+  阶段一Goal active，原暂停范围不变。
+
 ### 2026-10-11：当前变量恢复后的45模块整图验收
 
 - 回到阶段一函数体/初始化/字段/闭包整合，使用当前ABC-only引擎重新生成

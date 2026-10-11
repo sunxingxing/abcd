@@ -46,6 +46,21 @@ export function profile(root,imports) {
     dispatchers:all.filter(node=>['SwitchStatement','WhileStatement','DoWhileStatement','ForStatement','ForInStatement','ForOfStatement'].includes(node.type)).length,
   };
 }
+export function classMethodProfiles(source) {
+  const shape = moduleShape(source);
+  return nodes(shape.ast).filter(node => ['ClassDeclaration', 'ClassExpression'].includes(node.type))
+    .sort((a, b) => a.start - b.start).map(definition => definition.body.body
+      .filter(method => method.type === 'MethodDefinition' && method.kind !== 'constructor')
+      .map(method => {
+        const {dispatchers, ...operations} = profile(method.value.body, shape.imports);
+        // A native switch and if/else are alternative branch representations.
+        // Count iteration separately: introducing a dispatch loop is not an
+        // equivalent high-level spelling. Behavior remains independently tested.
+        const loops = nodes(method.value.body).filter(node =>
+          ['WhileStatement', 'DoWhileStatement', 'ForStatement', 'ForInStatement', 'ForOfStatement'].includes(node.type)).length;
+        return {...operations, loops};
+      }));
+}
 // Equivalence fixture for these paired constructors. The complete behavior
 // matrix is rerun after renaming; this is not a general-purpose JS refactoring.
 export function renameConstructorParameters(source,definition) {

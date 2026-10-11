@@ -8,7 +8,7 @@ import {classReference, parseJavaScript, classLayouts} from './class_reference.m
 import {communityCases, communityAbilityCases} from './community_graph_state.mjs';
 import {fileURLToPath} from 'node:url';
 import {editExpression, memberName, callsMember} from './expression_edits.mjs';
-import {moduleShape, nodes, profile} from './record_style.mjs';
+import {classMethodProfiles} from './record_style.mjs';
 import {verifySignatures} from './signature_shapes.mjs';
 
 const [tool, root, option] = process.argv.slice(2);
@@ -48,19 +48,9 @@ for (const name of Object.keys(sources)) {
 for (const name of Object.keys(sources)) {
   assert.deepEqual(classLayouts(sources[name]), classLayouts(reference[name]), 'native class representation ' + name);
   verifySignatures(sources[name], reference[name], 'native signatures ' + name);
-  const actual = moduleShape(sources[name]), expected = moduleShape(reference[name]);
-  const classes = ast => nodes(ast).filter(node => ['ClassDeclaration', 'ClassExpression'].includes(node.type))
-    .sort((a, b) => a.start - b.start);
-  const actualClasses = classes(actual.ast), expectedClasses = classes(expected.ast);
   // Native operation inventories supplement the full runtime trace below;
   // they are not a proof of operation order or arbitrary equivalence.
-  for (const [index, definition] of actualClasses.entries()) {
-    const methods = value => value.body.body.filter(node => node.type === 'MethodDefinition' && node.kind !== 'constructor');
-    const counterparts = methods(expectedClasses[index]);
-    for (const [methodIndex, method] of methods(definition).entries())
-      assert.deepEqual(profile(method.value.body, actual.imports), profile(counterparts[methodIndex].value.body, expected.imports),
-        `native method body ${name}:${method.key.name ?? method.key.value}`);
-  }
+  assert.deepEqual(classMethodProfiles(sources[name]), classMethodProfiles(reference[name]), 'native method bodies ' + name);
   assert.doesNotMatch(sources[name], /\b(?:goto|switchPc|UNRECOVERED|INCOMPLETE)\b/);
 }
 

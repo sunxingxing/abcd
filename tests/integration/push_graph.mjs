@@ -6,6 +6,9 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {classReference, classLayouts} from './class_reference.mjs';
+import {classMethodProfiles, moduleShape} from './record_style.mjs';
+import {verifySignatures} from './signature_shapes.mjs';
+import {editExpression, memberName, callsMember} from './expression_edits.mjs';
 
 const [tool, root, option] = process.argv.slice(2);
 const abc = join(root, 'modules.abc'), sources = {}, reference = {};
@@ -32,6 +35,8 @@ assert.equal(Object.keys(sources).length, 15);
 for (const name of Object.keys(sources)) {
   reference[name] = classReference(readFileSync(join(root, 'src', name + '.ts'), 'utf8')).source;
   assert.deepEqual(classLayouts(sources[name]), classLayouts(reference[name]), 'native class representation ' + name);
+  verifySignatures(sources[name], reference[name], 'native signatures ' + name);
+  assert.deepEqual(classMethodProfiles(sources[name]), classMethodProfiles(reference[name]), 'native method bodies ' + name);
 }
 const worker = fileURLToPath(new URL('./push_graph_worker.mjs', import.meta.url));
 const run = (cases, extra = {}, changed = sources) => {
@@ -45,6 +50,38 @@ const run = (cases, extra = {}, changed = sources) => {
 const baseline = {};
 console.log(JSON.stringify({baseline: run([baseline], {inventory: true})}));
 if (option === '--baseline') process.exit(0);
+const tokenCall = replacement => source => {
+  const imports = moduleShape(source).imports;
+  // The button calls the view's method; the same record also calls the SDK's
+  // imported getToken. Distinguish public module ownership, not private names.
+  return editExpression(source, node => callsMember(node, 'getToken') &&
+    !imports.has(node.callee.object.name), () => replacement);
+};
+const endWrite = replacement => source => editExpression(source,
+  node => node.type === 'AssignmentExpression' && memberName(node.left) === 'end' && node.right.value === true,
+  (node, text) => replacement(node, text));
+const propertyValue = (name, replacement) => source => editExpression(source,
+  node => node.type === 'Property' && !node.computed && (node.key.name ?? node.key.value) === name,
+  (node, text) => `${text(node.key)}: ${replacement}`, {first: true});
+const changes = [
+  ['entry/src/main/ets/pages/GetTokenPage', 'token call', tokenCall('void 0'), 'token button body removed'],
+  ['entry/src/main/ets/component/CallComponent', 'end write', endWrite((node, text) => `${text(node.left)} = false`), 'shared close state lost'],
+  ['entry/src/main/ets/service/VoipCallService', 'VOIP_CALL_STATE_ACTIVE', 'VOIP_CALL_STATE_DISCONNECTED', 'wrong connected call state'],
+  ['entry/src/main/ets/pages/Index', '"pushToken"', '"wrong-page"', 'navigation destination changed'],
+  ['entry/src/main/ets/entryformability/EntryFormAbility', 'subscriberId property', propertyValue('subscriberId', '"wrong-form"'), 'form proxy identity changed'],
+  ['entry/src/main/ets/pages/ExamplePage', '"111***222"', '"wrong-profile"', 'wrong profile passed to actual API'],
+  ['entry/src/main/ets/pages/GetTokenPage', 'Successfully got push token, please save it.', 'wrong token state', 'token state callback changed'],
+  ['entry/src/main/ets/entryability/RemoteNotificationExtAbility', 'overlayIcon property', propertyValue('overlayIcon', 'null'), 'remote notification pixel identity lost'],
+  ['entry/src/main/ets/entryformability/EntryFormAbility', '@ohos:app.form.FormExtensionAbility',
+    '@ohos:application.BackupExtensionAbility', 'wrong provider superclass identity'],
+];
+// Preflight every original negative before running the complete graph matrix.
+const preparedChanges = changes.map(([name, from, to, label]) => {
+  if (typeof to === 'string') assert.ok(sources[name].includes(from), label);
+  const text = typeof to === 'function' ? to(sources[name]) : sources[name].replace(from, to);
+  assert.notEqual(text, sources[name]); classLayouts(text);
+  return {name, text, label};
+});
 const cases = [];
 for (const immediate of [false, true]) for (const reverse of [false, true])
   for (const reject of ['none', 'token', 'enabled', 'enable', 'badge', 'aaid', 'delete', 'bind', 'unbind', 'media', 'raw', 'pixel', 'incoming', 'change'])
@@ -73,31 +110,16 @@ if (option !== '--mutations') {
       swaps += run(report.anchors.slice(first, first + 16).map(swapAt => ({immediate, swapAt}))).length;
   }
 }
-const changes = [
-  ['entry/src/main/ets/pages/GetTokenPage', '$local0.getToken()', 'void 0', 'token button body removed'],
-  ['entry/src/main/ets/component/CallComponent', '$local0.end = true', '$local0.end = false', 'shared close state lost'],
-  ['entry/src/main/ets/service/VoipCallService', 'VOIP_CALL_STATE_ACTIVE', 'VOIP_CALL_STATE_DISCONNECTED', 'wrong connected call state'],
-  ['entry/src/main/ets/pages/Index', '"pushToken"', '"wrong-page"', 'navigation destination changed'],
-  ['entry/src/main/ets/entryformability/EntryFormAbility', 'subscriberId: $value1', 'subscriberId: "wrong-form"', 'form proxy identity changed'],
-  ['entry/src/main/ets/pages/ExamplePage', '"111***222"', '"wrong-profile"', 'wrong profile passed to actual API'],
-  ['entry/src/main/ets/pages/GetTokenPage', 'Successfully got push token, please save it.', 'wrong token state', 'token state callback changed'],
-  ['entry/src/main/ets/entryability/RemoteNotificationExtAbility', 'overlayIcon: $value8', 'overlayIcon: null', 'remote notification pixel identity lost'],
-  ['entry/src/main/ets/entryformability/EntryFormAbility', '@ohos:app.form.FormExtensionAbility',
-    '@ohos:application.BackupExtensionAbility', 'wrong provider superclass identity'],
-];
 let mutations = 0;
-for (const [name, from, to, label] of changes) {
-  assert.ok(sources[name].includes(from), label);
-  const changed = {...sources, [name]: sources[name].replace(from, to)};
-  classLayouts(changed[name]); run([baseline], {mutation: label}, changed); ++mutations;
+for (const {name, text, label} of preparedChanges) {
+  run([baseline], {mutation: label}, {...sources, [name]: text}); ++mutations;
 }
 let equivalents = 0;
-for (const [name, from, to] of [
-  ['entry/src/main/ets/pages/GetTokenPage', '$local0.getToken()', 'this.getToken()'],
-  ['entry/src/main/ets/component/CallComponent', '$local0.end = true', 'this.end = true'],
+for (const [name, edit] of [
+  ['entry/src/main/ets/pages/GetTokenPage', tokenCall('this.getToken()')],
+  ['entry/src/main/ets/component/CallComponent', endWrite(() => 'this.end = true')],
 ]) {
-  assert.ok(sources[name].includes(from));
-  const changed = {...sources, [name]: sources[name].replace(from, to)};
+  const changed = {...sources, [name]: edit(sources[name])};
   classLayouts(changed[name]); run([baseline], {}, changed); ++equivalents;
 }
 console.log(JSON.stringify({modules: 15, views: 7, cases: count, faults, swaps, boundaries, mutations, equivalents, platformExecution: false}));
