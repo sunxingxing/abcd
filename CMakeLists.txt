@@ -1492,6 +1492,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/class_reference_test.mjs)
     add_test(NAME signature_shapes_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/signature_shapes_test.mjs)
+    add_test(NAME callable_signatures_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/callable_signatures_test.mjs)
     add_test(NAME record_style_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_style_test.mjs)
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc" AND

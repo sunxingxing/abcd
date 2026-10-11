@@ -12,6 +12,32 @@
 
 ## 当前阶段
 
+### 2026-10-11：嵌套回调与字段函数的共同签名验收
+
+- 原signature_shapes只覆盖class/module callable；新增独立callable_signatures并接入
+  原五输入paired_signatures。全部ABC-only新导出结束后才读配对TS，106源码中1141个
+  非MethodDefinition callable逐项进入对照，包含既有10个模块函数；不把数量相同
+  当作签名成功。46个NoModule仍分开记录，不计源码验收。
+- 比较arrow/ordinary、async/generator、位置参数、默认值、rest及嵌套所有权；按
+  所属class/method、字段和成员调用参数位置归属。允许字段arrow进入constructor、
+  分支重排及局部改名。默认值先解析词法作用域，参数默认环境与body声明隔离；
+  稳定参数的不可写捕获副本可追溯，插入无关复制不改变结果。
+- 751个实际输出参数变异均为有效JS且全部检出；原149个class/module变异保留。
+  五个合成错误签名另经独立执行确认行为不同；九项作用域/字段/调用归属反例、
+  alpha改名、复制和字段lowering等价用例通过。首轮独立执行用例的string长度恰好
+  与rest数组长度相同，未能区分错误；调整观察输入后重验，未把首次失败算成功。
+- 当前固定输入全部位于oracle能力范围内。可变捕获、effectful/global快照、eval、
+  嵌套默认函数作用域等额外情形明确拒绝为oracle缺口，不能静默通过；这些是测试
+  对照器边界，不是新增生产准入。相同owner/调用位置下比较签名集合，不证明同签名
+  回调的执行顺序、绑定初始化时刻或函数体等价，原独立执行矩阵继续承担这些义务。
+- 构建通过；共同代码最终3/3通过3.79s，追加两项字段/调用归属反例后fixture单项
+  复验通过。原类/模块签名101类、754方法、10模块函数检查保持。证据
+  build/stage-one/nested-signatures/{tests-2.log,lasttest-2.log,fixture-final.log}及
+  build/regression/nested-signatures.xml。固定65名单和生产规则311不变。
+- **关闭固定五输入的嵌套/字段函数签名表示缺口**；阶段一Goal仍active。下一步按
+  原结构gate核对全局/实例字段初始化与源码表示的实际覆盖，形成能逐项关闭的剩余
+  义务；不因106complete、1141签名或图内record数直接宣布整个反编译阶段完成。
+
 ### 2026-10-11：Immersive EntryAbility完整生命周期及实际Window依赖连接
 
 - 关闭上一节明确的单方法验收缺口：先由ABC-only引擎新导出，再独立读取配对TS，

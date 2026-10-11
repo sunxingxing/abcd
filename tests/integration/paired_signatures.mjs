@@ -7,6 +7,7 @@ import {join} from 'node:path';
 import {classReference, parseJavaScript} from './class_reference.mjs';
 import {nodes} from './record_style.mjs';
 import {signatureShapes, verifySignatures} from './signature_shapes.mjs';
+import {verifyCallableSignatures} from './callable_signatures.mjs';
 
 const [tool, root] = process.argv.slice(2);
 const index = JSON.parse(readFileSync(new URL('../corpus/abc-index.json', import.meta.url)));
@@ -55,12 +56,13 @@ try {
 } finally {rmSync(directory, {recursive: true, force: true});}
 assert.equal(records.length, 106, 'fixed five-input source inventory');
 assert.equal(noModule, 46, 'external/metadata records stay separate from source acceptance');
-let classes = 0, methods = 0, functions = 0, defaults = 0, rest = 0, mutations = 0;
+let classes = 0, methods = 0, functions = 0, defaults = 0, rest = 0, mutations = 0, callables = 0, callableMutations = 0;
 for (const row of records) {
   // @Observed is the existing controlled decorator boundary. This checks
   // signatures only, not decorator invocation or arbitrary platform behavior.
   const reference = classReference(readFileSync(row.paired, 'utf8').replace(/^@Observed$/gm, '')).source;
   verifySignatures(row.source, reference, row.label);
+  verifyCallableSignatures(row.source, reference, row.label);
   const shape = signatureShapes(row.source);
   classes += shape.classes.length; functions += shape.functions.length;
   methods += shape.classes.reduce((total, value) => total + value.methods.length, 0);
@@ -85,7 +87,23 @@ for (const row of records) {
       ++mutations;
     }
   }
+  const all = nodes(parseJavaScript(row.source));
+  const methodValues = new Set(all.filter(node => node.type === 'MethodDefinition').map(node => node.value));
+  for (const fn of all.filter(node => ['FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression'].includes(node.type) && !methodValues.has(node))) {
+    ++callables;
+    // Change an existing parameter without changing the body. Every counted
+    // mutant must parse; zero-parameter/rest-only callables remain inventoried.
+    if (fn.params.length === 0) continue;
+    const param = fn.params[0];
+    const replacement = param.type === 'AssignmentPattern' ? row.source.slice(param.left.start, param.left.end) + ' = false'
+      : param.type === 'Identifier' ? row.source.slice(param.start, param.end) + ' = false' : undefined;
+    if (!replacement) continue;
+    const mutant = row.source.slice(0, param.start) + replacement + row.source.slice(param.end);
+    parseJavaScript(mutant);
+    assert.throws(() => verifyCallableSignatures(mutant, reference, row.label), {name: 'AssertionError'});
+    ++callableMutations;
+  }
 }
 assert.ok(mutations > 0);
-console.log(JSON.stringify({inputs: inputs.length, records: records.length, noModule, classes, methods, functions, defaults, rest, mutations,
-  scope: 'native class and module function signatures; bodies, callbacks and platform behavior checked separately'}));
+console.log(JSON.stringify({inputs: inputs.length, records: records.length, noModule, classes, methods, functions, defaults, rest, mutations, callables, callableMutations,
+  scope: 'class/module/nested/field callable signatures; body order, capture initialization timing and platform behavior checked separately'}));
