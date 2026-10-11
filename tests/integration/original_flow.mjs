@@ -88,6 +88,41 @@ function projectedOutcome(fn,factory,loop,rounds) {
   }catch(error){return {trace,kind:'throw',value:error===failure?'failure':error.name};}
 }
 const projectedFactories=[...factories,()=>{throw failure;}];
+const stored=execFileSync(process.argv[2],['--store-calls'],{encoding:'utf8',maxBuffer:16_000_000}).trim().split('\n').map(JSON.parse);
+const storeFactories=[...projectedFactories,()=>Promise.resolve(7),()=>function(){},()=>{throw undefined;},()=>{throw null;}];
+function storeOutcome(fn,factory) {
+  const trace=[],objects=[];
+  function invoke() {
+    trace.push(['call',this===undefined]);
+    const value=factory(trace);if(value!==null&&(typeof value==='object'||typeof value==='function'))objects.push(value);
+    return value;
+  }
+  try {
+    const value=fn(invoke),index=objects.indexOf(value);
+    return {trace,kind:'return',value:index>=0?['returned object',index]:value};
+  }catch(error){return {trace,kind:'throw',value:error};}
+}
+function storeEquivalent(source) {
+  const generated=Function('return ('+source+')')();
+  const reference=function(invoke){let saved=true;try{saved=invoke();}catch(error){return saved;}return saved;};
+  for(const factory of storeFactories)assert.deepEqual(storeOutcome(generated,factory),storeOutcome(reference,factory));
+}
+let storeMutants=0;
+for(const row of stored) {
+  storeEquivalent(row.source);
+  if(!row.reverse&&!row.split&&!row.reallocated) {
+    const wrapped='('+row.source+')',all=nodes(parseJavaScript(wrapped));
+    const write=all.find(node=>node.type==='AssignmentExpression'&&node.right.type==='CallExpression');
+    const initial=all.find(node=>node.type==='VariableDeclarator'&&node.init?.value===true);
+    assert.ok(write&&initial);
+    const name=wrapped.slice(write.left.start,write.left.end),rhs=wrapped.slice(write.right.start,write.right.end);
+    const early=wrapped.slice(0,write.right.start)+`(${name}=false,${rhs})`+wrapped.slice(write.right.end);
+    const lost=wrapped.slice(0,initial.init.start)+'undefined'+wrapped.slice(initial.init.end);
+    assert.throws(()=>storeEquivalent(early));assert.throws(()=>storeEquivalent(lost));storeMutants+=2;
+  }
+}
+assert.equal(stored.length,24);
+console.log(`${stored.length} decoded store sources / ${stored.length*storeFactories.length} independent execution comparisons / ${storeMutants} adverse mutants`);
 const controls=execFileSync(process.argv[3],['--control-paths'],{encoding:'utf8',maxBuffer:16_000_000}).trim().split('\n').map(JSON.parse);
 const controlReferences=[
   function(input){let saved;if(false)saved=input();else saved=7;return saved;},

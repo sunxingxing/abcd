@@ -142,6 +142,11 @@ struct FlowExceptionContext {
 // precedes access; an update's conversion follows its captured read. Normal
 // completion includes successful source writeback, never the throwing route.
 struct FlowAction {FlowPoint before,normal;FlowExceptionContext exceptions;};
+// One current correspondence for phases and exception routes. Before/context
+// come from the action; normal denotes raw Commit, following the separately
+// checked result projection when present or the physical write otherwise.
+// A throwing endpoint has no normal completion; this is not a result domain.
+struct FlowOriginalAction {FlowPoint before;std::optional<FlowPoint> normal;FlowExceptionContext exceptions;};
 // Payload evaluation precedes this endpoint. Abrupt completion is not a
 // normal value result; its destination retains the current cleanup route.
 struct FlowAbruptAction {FlowPoint point,destination;FlowCompletion completion;FlowExceptionContext exceptions;};
@@ -452,6 +457,7 @@ struct RecoveryFlow {
   // ExprId-indexed raw-phase bridge. Ordinary/source-only graphs consume their
   // existing native events, properties and completion edges without this copy.
   std::vector<std::optional<FlowAction>> actions;
+  std::vector<std::optional<FlowOriginalAction>> original_actions; // OpId indexed.
   // Verified raw phase identities projected once by the source adapter.
   // Absent entries are representation gaps; neither PCs nor edge order infer
   // an action, success-only result or pending-exception entry.

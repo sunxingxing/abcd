@@ -4,7 +4,7 @@
 规则172/f656e763是迁移基线。范围为普通函数临时变量与循环携带值，
 不推倒重写解码、IR、结构恢复或验证链，不扩大语料/恢复暂停事项。
 
-## 当前主干交付边界（2026-10-10）
+## 当前主干交付边界（2026-10-11）
 
 以下章节包含历史迁移证据；关闭状态以本节和 status.md 为准，不能累加
 局部规则数量推导完成。顺序仍为原始语义、普通绑定、全局收敛及终验，
@@ -17,6 +17,53 @@
 | 试算精度闭环 | 规则280已关闭，限现有共同模型 | 当前和候选完整复用同一联合求解；以后扩充模型时二者同步消费。 |
 | 依赖驱动收敛 | OPEN | 全局 pass 根据变更影响重跑，具有终止依据和可解释成本；单次分析工作队列收敛不等于此交付。 |
 | 统一变量终验 | OPEN | 所有职责共享事实、被替代判断退出，规定布局/反例/执行/真实 record 验收完成。 |
+
+### Rules292: physical write phases share the current action index
+
+The verified operand adapter publishes `OriginalOperation.write` only for a
+physical module/local store. `OriginalSourceDefinition` remains a separate
+value provenance fact: a saved numeric input does not become the conversion's
+write. Declarations use their actual StmtId; assignment-backed declarations
+retain the original write ExprId. Neither uses the initializer as the commit.
+
+Native definition construction publishes the write action whose Before follows
+RHS evaluation, its success-only normal destination and its exception context.
+The common FlowBuilder joins that action to the checked write identity once, alongside
+existing intrinsic and abrupt actions. Both raw phase projection and exceptional
+route closure then consume the OpId-indexed `original_actions`. Their duplicated
+abrupt/intrinsic dispatch has been removed. These are current projection facts:
+the same builder runs for committed and trial plans, clears them on reconstruction
+and releases their capacity when the raw phased input is absent.
+
+Before and exception context come from the native action. Commit follows the
+separately checked original result's current normal exit when a result exists;
+physical stores instead use their successful write destination. A composite
+expression can place result projection completion after the intrinsic action.
+These two obligations must not be conflated. Existing numeric-update phase and
+result-availability assertions own this distinction; no opcode/shape exception
+is added for numeric operations.
+
+The bridge does not replace native initialization effects, delete a definition,
+or prove a binding allocation unit. Raw write flags are not an effect certificate
+for declarative initialization/TDZ. Missing write identity leaves an explicit
+phase gap while the native definition/effect remains. Ordinary control actions,
+lexical environment allocation actions and internal protocol/suspension actions
+still need full correspondence; the
+complete original-semantics delivery stays OPEN. This contribution covers a
+specific missing physical action category and does not close the other mainline
+deliveries.
+
+Construction uses one operation scan, constant work at each checked native write
+and existing phase/exit scans: O(O+D+P+X) work and O(O) additional retained optional
+actions. Native definitions retain their prior size; the action is published
+directly to the phased index, without a second retained native copy. Unphased
+graphs allocate no action index. The existing byte/work budget charges the index.
+Decoded module/local fixtures vary copies, block splitting and arena order,
+include exact/one-short resource limits and 200/201/400/800 dimensions. Decoded
+call/store/catch output is executed against an independent language program;
+failed RHS must retain the old value and successful RHS must retain result
+identity. The original publication premises and independent execution evidence
+remain separate.
 
 ## 规则254：当前计划与试算共享事实提供者
 

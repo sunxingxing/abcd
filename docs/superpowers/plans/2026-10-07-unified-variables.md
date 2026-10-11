@@ -19,6 +19,13 @@
 - Existing byte/work budget covers retained graph, sparse facts and temporary growth.
 - Every verified coherent commit refreshes status.md; whole milestone is not complete until old decisions exit.
 
+2026-10-11 continuation, rules292: complete physical module/local write phase
+correspondence through the common current-action index; retire independent raw
+phase/exception dispatch. This advances Task 1 but does not close it. The next
+Task 1 obligations remain ordinary control actions, lexical allocation actions
+and internal protocol/suspension correspondence. Do not start representation optimizations or declare the other
+mainline deliveries complete from this write-category contribution.
+
 ## Review Focus
 
 - Live initial undefined across repeated scope activation must survive storage sharing (tasks 1–3).

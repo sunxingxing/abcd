@@ -306,14 +306,14 @@ class OperandCheck {
             RequireMeaning(declaration && declaration->initializer == expression, Error::kOperand);
             symbol = declaration->symbol;
             InputAt(0, expression);
-            Save(*flow_.statements[i],symbol,expression,input(0));
+            Store(*flow_.statements[i],symbol,expression,input(0));
           } else {
             const auto& assignment = Node<AssignmentExpr>(expression);
             const auto* target = std::get_if<SymbolTarget>(&assignment.target);
             RequireMeaning(target != nullptr, Error::kOperand);
             symbol = target->symbol;
             InputAt(0, assignment.value);
-            Save(expression,symbol,assignment.value,input(0));
+            Store(expression,symbol,assignment.value,input(0));
           }
           RequireMeaning(symbol.value < module_aliases.size() && module_aliases[symbol.value], Error::kOperand);
           const auto& alias = tree_.modules[*module_aliases[symbol.value]];
@@ -330,7 +330,7 @@ class OperandCheck {
           const auto* target = std::get_if<SymbolTarget>(&assignment.target);
           RequireMeaning(target && target->symbol == CellSymbol(), Error::kOperand);
           InputAt(0, assignment.value);
-          Save(expression,target->symbol,assignment.value,input(0));
+          Store(expression,target->symbol,assignment.value,input(0));
         } else if constexpr (std::is_same_v<T, analysis::ValueNamedRead>) {
           original_.operations[i].intrinsic_expression=expression;
           const auto& member = Node<MemberExpr>(expression);
@@ -985,6 +985,12 @@ class OperandCheck {
       }
     }
     throw Error::kUnsupportedOperation;
+  }
+  template<class Site>
+  void Store(Site site,SymbolId binding,ExprId input,const analysis::ValueOperand& operand) {
+    Save(site,binding,input,operand);
+    auto& operation=original_.operations[current_.value];
+    RequireMeaning(!operation.write,Error::kOperand);operation.write=OriginalWriteSite{site};
   }
   template<class Site>
   void Save(Site site,SymbolId binding,ExprId input,const analysis::ValueOperand& operand) {

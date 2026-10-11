@@ -24,6 +24,7 @@
 #include "../../../src/analysis/phased_value_import.h"
 #include "abcd/analysis/value_import.h"
 #include "abcd/analysis/value_simplify.h"
+#include "abcd/analysis/exception_locals.h"
 #include "../../support/analysis/ssa_fixture.h"
 
 namespace {
@@ -125,8 +126,7 @@ class Fixture {
     return VerifyTreeSemantics(graph, std::get<ControlPlan>(control),
         std::get<EvaluationPlan>(evaluation), tree, {constants, 2, 0, {}}, budget);
   }
-  void ReverseArenas(ConstructedFunction& built) const {
-    auto& tree=built.tree;
+  static void ReverseSyntax(FunctionTree& tree) {
     const auto expression=[&](ExprId id){return ExprId{static_cast<unsigned>(tree.expressions.size()-1-id.value)};};
     const auto statement=[&](StmtId id){return StmtId{static_cast<unsigned>(tree.statements.size()-1-id.value)};};
     for(auto& node:tree.expressions)std::visit([&](auto& value) {
@@ -135,9 +135,10 @@ class Fixture {
       else if constexpr(std::is_same_v<T,BinaryExpr>||std::is_same_v<T,SequenceExpr>||std::is_same_v<T,LogicalExpr>) {
         value.left=expression(value.left);value.right=expression(value.right);
       } else if constexpr(std::is_same_v<T,AssignmentExpr>)value.value=expression(value.value);
+      else if constexpr(std::is_same_v<T,CallExpr>)value.callee=expression(value.callee);
       else if constexpr(std::is_same_v<T,ConditionalExpr>) {
         value.condition=expression(value.condition);value.consequent=expression(value.consequent);value.alternate=expression(value.alternate);
-      } else Check((std::is_same_v<T,TreeLiteral>||std::is_same_v<T,SymbolExpr>||std::is_same_v<T,EmptyArrayExpr>));
+      } else Check((std::is_same_v<T,TreeLiteral>||std::is_same_v<T,SymbolExpr>||std::is_same_v<T,EmptyArrayExpr>||std::is_same_v<T,UpdateExpr>));
     },node.expression);
     for(auto& node:tree.statements)std::visit([&](auto& value) {
       using T=std::decay_t<decltype(value)>;
@@ -147,6 +148,10 @@ class Fixture {
       else if constexpr(std::is_same_v<T,IfStmt>) {
         value.condition=expression(value.condition);value.consequent=statement(value.consequent);
         if(value.alternate)value.alternate=statement(*value.alternate);
+      } else if constexpr(std::is_same_v<T,TryStmt>) {
+        value.body=statement(value.body);
+        if(value.handler)value.handler->body=statement(value.handler->body);
+        if(value.finalizer)value.finalizer=statement(*value.finalizer);
       } else Check((std::is_same_v<T,BlockStmt>||std::is_same_v<T,DebuggerStmt>));
     },node.statement);
     for(auto& op:tree.operations)std::visit([&](auto& id) {
@@ -155,9 +160,13 @@ class Fixture {
       else if constexpr(std::is_same_v<T,StmtId>)id=statement(id);
     },op.node);
     for(auto& child:tree.children)child=statement(child);
+    for(auto& argument:tree.arguments)argument=expression(argument);
     for(auto& anchor:tree.anchors)if(auto* boundary=std::get_if<BlockBoundary>(&anchor.position))boundary->block=statement(boundary->block);
     tree.body=statement(tree.body);
     std::reverse(tree.expressions.begin(),tree.expressions.end());std::reverse(tree.statements.begin(),tree.statements.end());
+  }
+  void ReverseArenas(ConstructedFunction& built) const {
+    auto& tree=built.tree;ReverseSyntax(tree);
     // Any canonical AST mutation replaces correspondence at the real boundary;
     // the old annotation is never reused by a layout-variation fixture.
     auto checked=Verify(tree);Check(std::holds_alternative<TreeSemantics>(checked));
@@ -232,6 +241,179 @@ void OriginalBindingStores(abc::ProfileId profile,unsigned count,unsigned copies
       <<" operations="<<f.graph.ops.size()<<" values="<<f.graph.values.size()<<" definitions="<<stores.size()
       <<" build_work="<<built.work<<" build_bytes="<<built.allocated_bytes
       <<" recovery_work="<<std::get<SourceVariables>(recovered).work<<" recovery_bytes="<<std::get<SourceVariables>(recovered).allocated_bytes<<'\n';
+}
+struct FlowConstructionCost {std::uint64_t work,bytes;auto operator<=>(const FlowConstructionCost&) const = default;};
+FlowConstructionCost OriginalStorePhases(abc::ProfileId profile,bool lexical,unsigned copies,unsigned count=3,bool reverse=false,bool split=false) {
+  using namespace analysis;
+  const auto op=[](abc::Opcode code){return static_cast<std::uint8_t>(code);};
+  std::vector<std::uint8_t> bytes;
+  if(lexical)bytes.insert(bytes.end(),{op(abc::Opcode::kNEWLEXENV_IMM8),1});
+  for(unsigned i=0;i<count;++i) {
+    bytes.push_back(op(i%2?abc::Opcode::kLDFALSE:abc::Opcode::kLDTRUE));
+    for(unsigned n=0;n<copies;++n)bytes.insert(bytes.end(),{op(abc::Opcode::kSTA_V8),0,op(abc::Opcode::kLDA_V8),0});
+    if(split) {
+      constexpr std::uint8_t kJumpWidth=2; // Pinned JMP_IMM8 opcode and displacement.
+      bytes.insert(bytes.end(),{op(abc::Opcode::kJMP_IMM8),kJumpWidth});
+    }
+    bytes.insert(bytes.end(),{op(lexical?abc::Opcode::kSTLEXVAR_IMM4_IMM4:abc::Opcode::kSTMODULEVAR_IMM8),0});
+  }
+  if(lexical)bytes.push_back(op(abc::Opcode::kPOPLEXENV));
+  bytes.push_back(op(abc::Opcode::kRETURNUNDEFINED));
+  const auto body=test::Body(bytes);
+  const auto frame=std::get<abc::FrameLayout>(abc::BuildFrameLayout(1,1,{}));
+  const auto raw=std::get<ExceptionFlow>(BuildExceptionFlow(body,profile,frame.registers));
+  IdfQuota ssa_work{kDefaultSemanticWork};const auto ssa=std::get<ExceptionSsa>(ExceptionSsa::Build(raw,frame.registers,ssa_work));
+  const auto env=std::get<EnvironmentFlow>(AnalyzeExceptionEnvironments(raw));
+  std::vector<EntryValueFact> entries;
+  for(unsigned i=0;i<ssa.Values().size();++i)if(std::holds_alternative<MethodEntry>(ssa.Values()[i].origin))entries.push_back({{i},ValueKinds::Language()});
+  IdfQuota value_work{kDefaultSemanticWork};
+  const auto values=std::get<ExceptionValueFlow>(ExceptionValueFlow::Build(raw,ssa,entries,value_work,{},PendingExceptionValues::kLanguage));
+  const auto proof=std::get<ExceptionInputProof>(VerifyExceptionInputs(raw,ssa,env,values));
+  const PhasedValueInput input{raw,ssa,env,values,proof,frame};
+  const auto graph=std::get<ValueProgram>(ImportPhasedValues(input));
+  const auto evaluation=std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(graph));
+  const auto regions=std::get<ExceptionPlan>(BuildExceptionPlan(body,graph,input));
+  const auto control=std::get<ExceptionControl>(BuildExceptionControl(body,graph,input,regions));
+  const ExceptionTreeInput context{body,input,regions,control};
+  FunctionSyntax syntax{};syntax.identity.profile=profile;syntax.owner={3};syntax.callable=CallableKind::kFunction;
+  syntax.strictness=Strictness::kStrict;syntax.parameters.resize(1);syntax.names={u"stored"};
+  if(!lexical)syntax.modules={ModuleSyntax{{{7},{0}},{0},ModuleAccess::kMutable,NameEvidence::kMetadata,true}};
+  std::vector<ExpressionConstant> constants(graph.ops.size());std::vector<OpId> stores;
+  for(unsigned i=0;i<graph.ops.size();++i)
+    if(const auto* store=std::get_if<ValueModuleWrite>(&graph.ops[i].operation)) {
+      constants[i]=ModuleStoreConstant{store->slot,{{7},{0}},stores.empty()};stores.push_back({i});
+    } else if(std::holds_alternative<ValueLexicalStore>(graph.ops[i].operation))stores.push_back({i});
+  auto draft=std::get<ExceptionFunctionDraft>(BuildExceptionFunctionDraft(graph,context,evaluation,syntax,{constants,1}));
+  if(reverse) {
+    Fixture::ReverseSyntax(draft.tree);
+    auto checked=VerifyExceptionTreeSemantics(graph,context,evaluation,draft.tree,{constants,1});
+    Check(std::holds_alternative<TreeSemantics>(checked));draft.flow=std::get<TreeSemantics>(std::move(checked)).flow;
+  }
+  const auto& tree=draft.tree;const auto& original=*draft.flow->original;
+  const auto recovered=std::get<SourceVariables>(PrepareSourceVariables(tree,{},&original));const auto& p=recovered.bindings;
+  LegacyFlowProjection projection{p.aliases,p.literals,p.replacements,p.omitted,p.evaluations,p.normal_stores,p.statements,{},p.storage,p.undefined_stores,p.declaration_values,p.declaration_completions};
+  projection.original=&original;
+  const auto flow=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,projection));
+  Check(stores.size()==count&&flow.original_actions.size()==original.operations.size());
+  const auto normal=[&](FlowPoint from,FlowPoint to) {
+    for(auto edge=flow.events[from.value].outgoing;edge;edge=flow.edges[*edge].outgoing)
+      if(flow.edges[*edge].completion==FlowCompletion::kNormal&&flow.edges[*edge].to==to)return true;
+    return false;
+  };
+  for(const auto store:stores) {
+    Check(original.operations[store.value].write.has_value());
+    const auto& action=flow.original_actions[store.value];Check(action.has_value());
+    const auto before=FindOriginalPhase(flow,graph.ops[store.value].block,ExceptionPhase::kBefore,store);Check(before.has_value());
+    Check(before==action->before);
+    bool native=false;
+    for(const auto& definition:flow.definitions)if(definition.original&&definition.WriteSite()==original.operations[store.value].write) {
+      native=true;Check(action->normal&&normal(definition.point,*action->normal));
+      Check(action->before!=flow.expressions[definition.value->value]);
+      if(!lexical&&definition.kind==FlowDefinitionKind::kInitializer)Check(action->before==definition.point);
+      else Check(action->before!=definition.point&&normal(action->before,definition.point));
+    }
+    Check(native);
+    bool committed=false;
+    for(unsigned i=0;i<original.phases.size();++i)if(original.phases[i].operation==store&&original.phases[i].phase==ExceptionPhase::kCommit) {
+      Check(FindOriginalPhase(flow,WorkBlockId{i},ExceptionPhase::kCommit,store)==action->normal);committed=true;
+    }
+    Check(committed);
+  }
+  if(count==3) {
+    auto missing=original;missing.operations[stores.front().value].write.reset();
+    auto incomplete=projection;incomplete.original=&missing;
+    const auto gap=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,incomplete));
+    Check(!gap.original_actions[stores.front().value]);
+    Check(!FindOriginalPhase(gap,graph.ops[stores.front().value].block,ExceptionPhase::kBefore,stores.front()));
+    const auto exact=SemanticBudget{flow.allocated_bytes,flow.work};
+    Check(std::holds_alternative<RecoveryFlow>(BuildRecoveryFlow(tree,projection,exact)));
+    Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,projection,{exact.bytes-1,exact.work}))==TreeStructureError::kResourceLimit);
+    Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,projection,{exact.bytes,exact.work-1}))==TreeStructureError::kWorkLimit);
+    auto plain=projection;plain.original=nullptr;
+    const auto reused=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,plain,{},flow));
+    Check(reused.original_actions.empty()&&reused.original_actions.capacity()==0);
+  }
+  if(count>=200)std::cout<<"store phases count="<<count<<" lexical="<<lexical<<" reverse="<<reverse
+      <<" operations="<<graph.ops.size()<<" phases="<<original.phases.size()<<" events="<<flow.events.size()
+      <<" definitions="<<flow.definitions.size()<<" work="<<flow.work<<" bytes="<<flow.allocated_bytes<<'\n';
+  return {flow.work,flow.allocated_bytes};
+}
+// Trusted value-IR fixtures exercise staging publication, not decoded VM
+// arithmetic equivalence. A staging save cannot publish the conversion write.
+void OriginalNumericStages() {
+  using namespace analysis;
+  for(auto operation:{UnaryOperator::kToNumeric,UnaryOperator::kIncrement,UnaryOperator::kDecrement})for(bool reverse:{false,true}) {
+    Fixture fixture;fixture.callable=CallableKind::kFunction;fixture.identity.contract=SourceContract::kLanguageNumericV1;
+    const auto number=fixture.Add(0,0,0,ValueUnary{operation},true,{{OperandRole::kInput,ValueId{0}}},LanguageEffect::kUserCode);
+    fixture.Add(0,1,1,ValueReturn{},false,{{OperandRole::kReturnValue,*fixture.graph.ops[number.value].result}});
+    fixture.graph.blocks={{{0},2,{0},0}};
+    auto constructed=fixture.Build();Check(std::holds_alternative<ConstructedFunction>(constructed));
+    auto built=std::get<ConstructedFunction>(std::move(constructed));if(reverse)fixture.ReverseArenas(built);
+    const auto& original=*built.flow->original;Check(!original.operations[number.value].write);
+    bool staged=false;
+    for(const auto& definition:original.definitions)if(definition)
+      if(const auto* saved=std::get_if<OriginalSavedDefinition>(&definition->origin);saved)
+        if(const auto* placement=std::get_if<OpId>(&saved->placement);placement&&*placement==number)staged=true;
+    Check(staged);
+  }
+}
+void OriginalStoreCalls(abc::ProfileId profile,bool reverse,bool split,bool reallocated,bool emit) {
+  using namespace analysis;
+  const auto op=[](abc::Opcode code){return static_cast<std::uint8_t>(code);};
+  const std::uint8_t locals=reallocated?2:1;
+  std::vector<std::uint8_t> bytes{op(abc::Opcode::kNEWLEXENV_IMM8),1,op(abc::Opcode::kLDTRUE),op(abc::Opcode::kSTLEXVAR_IMM4_IMM4),0};
+  const auto start=static_cast<unsigned>(bytes.size());
+  bytes.insert(bytes.end(),{op(abc::Opcode::kLDA_V8),locals,op(abc::Opcode::kCALLARG0_IMM8),0});
+  if(split) {
+    constexpr std::uint8_t kJumpWidth=2;
+    bytes.insert(bytes.end(),{op(abc::Opcode::kJMP_IMM8),kJumpWidth});
+  }
+  bytes.insert(bytes.end(),{op(abc::Opcode::kSTLEXVAR_IMM4_IMM4),0});
+  const auto end=static_cast<unsigned>(bytes.size());
+  const std::initializer_list<std::uint8_t> returned{op(abc::Opcode::kLDLEXVAR_IMM4_IMM4),0,op(abc::Opcode::kPOPLEXENV),op(abc::Opcode::kRETURN)};
+  bytes.insert(bytes.end(),returned);const auto handler=static_cast<unsigned>(bytes.size());bytes.insert(bytes.end(),returned);
+  auto body=test::Body(bytes);abc::TryRegion region;region.offset={start};region.length=end-start;region.handler_count=1;
+  body.tries.push_back(region);abc::CatchHandler caught;caught.offset={handler};caught.length=bytes.size()-handler;body.handlers.push_back(caught);
+  const auto frame=std::get<abc::FrameLayout>(abc::BuildFrameLayout(locals,1,{}));
+  const auto raw=std::get<ExceptionFlow>(BuildExceptionFlow(body,profile,frame.registers));
+  IdfQuota ssa_work{kDefaultSemanticWork};const auto ssa=std::get<ExceptionSsa>(ExceptionSsa::Build(raw,frame.registers,ssa_work));
+  const auto env=std::get<EnvironmentFlow>(AnalyzeExceptionEnvironments(raw));
+  const auto lexical=std::get<ExceptionLocals>(ProveExceptionLocals(raw,env));
+  std::vector<EntryValueFact> entries;
+  for(unsigned i=0;i<ssa.Values().size();++i)if(std::holds_alternative<MethodEntry>(ssa.Values()[i].origin))entries.push_back({{i},ValueKinds::Language()});
+  IdfQuota value_work{kDefaultSemanticWork};
+  const auto values=std::get<ExceptionValueFlow>(ExceptionValueFlow::Build(raw,ssa,entries,value_work,{},
+      PendingExceptionValues::kLanguage,lexical.loads,{},CallResultValues::kLanguage));
+  const auto proof=std::get<ExceptionInputProof>(VerifyExceptionInputs(raw,ssa,env,values));
+  const PhasedValueInput input{raw,ssa,env,values,proof,frame};const auto graph=std::get<ValueProgram>(ImportPhasedValues(input));
+  const auto evaluation=std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(graph));
+  const auto regions=std::get<ExceptionPlan>(BuildExceptionPlan(body,graph,input));
+  const auto control=std::get<ExceptionControl>(BuildExceptionControl(body,graph,input,regions));const ExceptionTreeInput context{body,input,regions,control};
+  FunctionSyntax syntax{};syntax.identity.profile=profile;syntax.owner={3};syntax.callable=CallableKind::kFunction;
+  syntax.strictness=Strictness::kStrict;syntax.parameters.resize(1);std::vector<ExpressionConstant> constants(graph.ops.size());
+  auto draft=std::get<ExceptionFunctionDraft>(BuildExceptionFunctionDraft(graph,context,evaluation,syntax,{constants,0}));
+  if(reverse) {
+    Fixture::ReverseSyntax(draft.tree);auto checked=VerifyExceptionTreeSemantics(graph,context,evaluation,draft.tree,{constants,0});
+    Check(std::holds_alternative<TreeSemantics>(checked));draft.flow=std::get<TreeSemantics>(std::move(checked)).flow;
+  }
+  const auto& tree=draft.tree;const auto& original=*draft.flow->original;
+  const auto recovered=std::get<SourceVariables>(PrepareSourceVariables(tree,{},&original));const auto& p=recovered.bindings;
+  LegacyFlowProjection projection{p.aliases,p.literals,p.replacements,p.omitted,p.evaluations,p.normal_stores,p.statements,{},p.storage,p.undefined_stores,p.declaration_values,p.declaration_completions};
+  projection.original=&original;const auto flow=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,projection));
+  unsigned calls=0;
+  for(unsigned i=0;i<original.exceptional_exits.size();++i) {
+    const auto& exit=original.exceptional_exits[i];const auto& action=flow.original_actions[exit.op.value];
+    // Scope allocation is still an explicit raw-action gap. This independent
+    // call/store test certifies the call route, not allocation correspondence.
+    if(!std::holds_alternative<ValueInvoke>(graph.ops[exit.op.value].operation))continue;
+    ++calls;
+    Check(action&&flow.original_exceptions[i]);
+    Check(flow.original_exceptions[i]->before==action->before);
+    Check(flow.original_exceptions[i]->thrown==action->exceptions.thrown);
+  }
+  Check(calls==1);
+  std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output,{}, {},nullptr,&original)));
+  if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"profile",static_cast<unsigned>(profile)},{"reverse",reverse},{"split",split},{"reallocated",reallocated}}<<'\n';
 }
 // A shared source anchor is not the value of every operation it covers.
 // ToBoolean controls selection; its Boolean result is not the selected object.
@@ -355,6 +537,7 @@ void OriginalNumericSnapshots(bool emit=false,unsigned copies=0,bool reverse=fal
   Check(original.operations[number.value].normal==(numeric?LanguageEffect::kUserCode:LanguageEffect::kNone));
   Check(original.operations[number.value].exceptional==(numeric?ExceptionalCompletion::kMayThrow:ExceptionalCompletion::kImpossible));
   Check(original.values[fixture.graph.ops[number.value].result->value].domain.IsNumber()==numeric);
+  Check(!original.operations[number.value].write);
   std::size_t occurrences=0;
   for(std::size_t i=0;i<original.input_ranges.size();++i) {
     const auto range=original.input_ranges[i];Check(range.first==occurrences);occurrences+=range.count;
@@ -1837,7 +2020,33 @@ void RetainedReceiverTrees() {
 }
 }  // namespace
 int main(int argc,char** argv) {
+  if(argc==2&&std::string_view(argv[1])=="--store-calls") {
+    for(const auto profile:{abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301})
+      for(bool reverse:{false,true})for(bool split:{false,true})for(bool reallocated:{false,true})OriginalStoreCalls(profile,reverse,split,reallocated,true);
+    return 0;
+  }
   if(argc==1) {
+    OriginalNumericStages();
+    for(auto profile:{abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301})
+      for(bool reverse:{false,true})for(bool split:{false,true})for(bool reallocated:{false,true})OriginalStoreCalls(profile,reverse,split,reallocated,false);
+    for(const auto profile:{abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301})
+      for(bool lexical:{false,true})for(unsigned copies:{0U,4U})for(bool reverse:{false,true})for(bool split:{false,true})
+        OriginalStorePhases(profile,lexical,copies,3,reverse,split);
+    for(bool lexical:{false,true}) {
+      std::vector<FlowConstructionCost> forward;
+      for(bool reverse:{false,true}) {
+        std::optional<FlowConstructionCost> previous;unsigned index=0;
+        for(unsigned count:{200U,201U,400U,800U}) {
+          const auto cost=OriginalStorePhases(abc::ProfileId::kDynamic1206,lexical,1,count,reverse);
+          if(previous) {
+            const double ratio=count==201?1.1:2.5;
+            Check(cost.work<=ratio*previous->work&&cost.bytes<=ratio*previous->bytes);
+          }
+          if(reverse)Check(cost==forward[index]);else forward.push_back(cost);
+          previous=cost;++index;
+        }
+      }
+    }
     for(const auto profile:{abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301})
       for(bool reverse:{false,true})for(bool lexical:{false,true})for(unsigned copies:{0U,4U})OriginalBindingStores(profile,3,copies,reverse,lexical);
     for(bool reverse:{false,true})for(bool lexical:{false,true})for(unsigned count:{200U,201U,400U,800U})

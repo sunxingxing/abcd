@@ -31,6 +31,7 @@ enum class OriginalControlKind : std::uint8_t {kPredicate,kTruthSelection,kNulli
 // operation on the enclosing expression. Folded pure tests keep this semantic
 // relation without lending their Boolean domains to the selection's result.
 struct OriginalControlInput {ExprId expression;OriginalControlKind kind;std::optional<PureTruthTest> test;};
+using OriginalWriteSite=std::variant<ExprId,StmtId>;
 // Original operations retain phase effects and success-only results, without
 // copying opcode variants or interpreting them a second time in recovery.
 struct OriginalOperation {
@@ -56,6 +57,9 @@ struct OriginalOperation {
   // its completion payload. This is not the returned/thrown value's action.
   std::optional<OriginalAbruptKind> abrupt;
   std::optional<OriginalControlInput> control;
+  // Physical binding write verified at this source commit. A numeric staging
+  // save has a definition correspondence but is not the conversion's write.
+  std::optional<OriginalWriteSite> write;
 };
 // Operand evidence stays occurrence-specific. Never join it with operation
 // result domains: predicates and completion operands can share source anchors.

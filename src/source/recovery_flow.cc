@@ -74,11 +74,14 @@ class FlowBuilder {
     const bool phased=projection_.original&&!projection_.original->phases.empty();
     if(!phased) {
       decltype(result_.actions){}.swap(result_.actions);
+      decltype(result_.original_actions){}.swap(result_.original_actions);
       decltype(result_.original_phases){}.swap(result_.original_phases);
       decltype(result_.original_exceptions){}.swap(result_.original_exceptions);
       decltype(result_.original_handlers){}.swap(result_.original_handlers);
     }
     Resize(result_.actions,phased?tree_.expressions.size():0);
+    Resize(result_.original_actions,phased?projection_.original->operations.size():0);
+    for(auto& action:result_.original_actions){budget_.Step();action.reset();}
     for(auto& action:result_.actions){budget_.Step();action.reset();}
     if(phased)budget_.Array(abrupt_actions_,tree_.statements.size());
     RequireTree(projection_.statement_values.empty()||projection_.statement_values.size()==tree_.statements.size(),Error::kOwnership);
@@ -199,6 +202,35 @@ class FlowBuilder {
       if(const auto normal=result.normal_exits[input.expression.value])
         occurrence=FlowOriginalControl{input.expression,expressions_[input.expression.value],*normal,input.kind,input.test};
     }
+    // Publish each native action once. Phase and exception consumers use this
+    // same index; they must not independently guess an action from an anchor.
+    for(std::size_t i=0;i<result.original_actions.size();++i) {
+      budget_.Step();const auto& operation=result.original->operations[i];
+      if(operation.life!=analysis::ValueLife::kLive)continue;
+      auto& current=result.original_actions[i];
+      if(operation.abrupt&&operation.statement) {
+        RequireTree(operation.statement->value<abrupt_actions_.size(),Error::kOwnership);
+        if(const auto& action=abrupt_actions_[operation.statement->value];action&&
+            action->completion==(*operation.abrupt==OriginalAbruptKind::kThrow?FlowCompletion::kThrow:FlowCompletion::kReturn))
+          {RequireTree(!current,Error::kOwnership);current=FlowOriginalAction{action->point,
+              action->completion==FlowCompletion::kReturn&&!action->exceptions.finalizer?
+                  std::optional{action->destination}:std::nullopt,action->exceptions};}
+      } else if(operation.intrinsic_expression) {
+        RequireTree(operation.intrinsic_expression->value<result.actions.size(),Error::kOwnership);
+        if(const auto& action=result.actions[operation.intrinsic_expression->value]) {
+          RequireTree(!current,Error::kOwnership);
+          auto normal=std::optional{action->normal};
+          // The action consumes operands; a separately verified result may
+          // complete its owning projection elsewhere in a composite expression.
+          // Raw Commit follows that result, never an enclosing coverage anchor.
+          if(const auto value=FindOriginalResult(*result.original,analysis::OpId{static_cast<unsigned>(i)})) {
+            RequireTree(value->expression.value<result.normal_exits.size(),Error::kOwnership);
+            normal=result.normal_exits[value->expression.value];
+          }
+          current=FlowOriginalAction{action->before,normal,action->exceptions};
+        }
+      }
+    }
     Resize(result.original_phases,result.original?result.original->phases.size():0);
     for(std::size_t i=0;i<result.original_phases.size();++i) {
       budget_.Step();auto& point=result.original_phases[i];point.reset();
@@ -207,27 +239,16 @@ class FlowBuilder {
       RequireTree(phase.operation->value<result.original->operations.size(),Error::kOwnership);
       const auto& operation=result.original->operations[phase.operation->value];
       if(operation.life!=analysis::ValueLife::kLive)continue;
+      const auto& action=result.original_actions[phase.operation->value];
       switch(phase.phase) {
         case analysis::ExceptionPhase::kBefore:
-          if(operation.abrupt&&operation.statement) {
-            RequireTree(operation.statement->value<abrupt_actions_.size(),Error::kOwnership);
-            if(const auto& action=abrupt_actions_[operation.statement->value];action&&
-                action->completion==(*operation.abrupt==OriginalAbruptKind::kThrow?FlowCompletion::kThrow:FlowCompletion::kReturn))point=action->point;
-          } else if(operation.intrinsic_expression) {
-            RequireTree(operation.intrinsic_expression->value<result.actions.size(),Error::kOwnership);
-            if(const auto& action=result.actions[operation.intrinsic_expression->value])point=action->before;
-          }
+          if(action)point=action->before;
           break;
         case analysis::ExceptionPhase::kCommit:
-          if(operation.abrupt==OriginalAbruptKind::kReturn&&operation.statement) {
-            if(const auto& action=abrupt_actions_[operation.statement->value];action&&
-                action->completion==FlowCompletion::kReturn&&!action->exceptions.finalizer)point=action->destination;
-          } else if(operation.result_expression) {
+          if(action)point=action->normal;
+          else if(operation.result_expression) {
             RequireTree(operation.result_expression->value<result.normal_exits.size(),Error::kOwnership);
             point=result.normal_exits[operation.result_expression->value];
-          } else if(operation.intrinsic_expression) {
-            RequireTree(operation.intrinsic_expression->value<result.actions.size(),Error::kOwnership);
-            if(const auto& action=result.actions[operation.intrinsic_expression->value])point=action->normal;
           }
           break;
         case analysis::ExceptionPhase::kCatch:break;
@@ -252,18 +273,13 @@ class FlowBuilder {
       RequireTree(exit.op.value<result.original->operations.size(),Error::kOwnership);
       const auto& operation=result.original->operations[exit.op.value];
       if(operation.life!=analysis::ValueLife::kLive)continue;
-      std::optional<FlowExceptionContext> context;
-      if(operation.abrupt==OriginalAbruptKind::kThrow&&operation.statement) {
-        if(const auto& action=abrupt_actions_[operation.statement->value];action&&action->completion==FlowCompletion::kThrow)context=action->exceptions;
-      } else if(operation.intrinsic_expression) {
-        if(const auto& action=result.actions[operation.intrinsic_expression->value])context=action->exceptions;
-      }
+      const auto& action=result.original_actions[exit.op.value];
       const auto before=FindOriginalPhase(result,operation.block,analysis::ExceptionPhase::kBefore,exit.op);
       const auto target=exit.handler?FindOriginalPhase(result,exit.handler->entry,analysis::ExceptionPhase::kCatch):std::optional{result.terminal};
       // Same selected handler and completion context are semantic obligations.
       // An imported region has no finally: a newly projected cleanup cannot
       // borrow its pending-exception proof. Missing correspondence is a gap.
-      if(before&&target&&context&&context->thrown==*target&&!context->finalizer)
+      if(before&&target&&action&&action->exceptions.thrown==*target&&!action->exceptions.finalizer)
         route=FlowOriginalException{*before,*target};
       if(exit.handler&&!route) {
         RequireTree(exit.handler->entry.value<result.original_handlers.size(),Error::kOwnership);
@@ -408,6 +424,20 @@ class FlowBuilder {
       budget_.Admit(values.capacity()-count,sizeof(T));
     }
     budget_.Step(count);values.resize(count);
+  }
+  void WriteAction(const FlowDefinition& definition,FlowAction native) {
+    // Action correspondence belongs only to checked phased writes. Do not
+    // enlarge every scalar definition or retain an unconsumed native copy.
+    if(result_.original_actions.empty()||!definition.original)return;
+    budget_.Step();const auto* saved=std::get_if<OriginalSavedDefinition>(&definition.original->origin);
+    const auto* operation=saved?std::get_if<analysis::OpId>(&saved->placement):nullptr;
+    if(!operation||operation->value>=result_.original_actions.size())return;
+    const auto& original=result_.original->operations[operation->value];
+    // A staged value does not own a physical write. Match the independently
+    // checked commit identity, preserving assignment-backed declarations.
+    if(original.life!=analysis::ValueLife::kLive||!original.write||definition.WriteSite()!=original.write)return;
+    auto& action=result_.original_actions[operation->value];RequireTree(!action,Error::kOwnership);
+    action=FlowOriginalAction{native.before,native.normal,native.exceptions};
   }
   template<class T> void Append(std::vector<T>& values,T value) {
     // The published graph owns these buffers directly. Charge geometric growth
@@ -646,6 +676,7 @@ class FlowBuilder {
           discarded_[context.discarded->value].evaluation=assignment->value;
         normal=Define(target->symbol,kind,copied,assignment->value,declaration,at.id,
             inert?FlowWriteEffect::kInert:FlowWriteEffect::kObservable,context.discarded,FlowExceptionContext{context.thrown,context.finalizer},context.owner);Link(normal,context.next);
+        WriteAction(definitions_.back(),FlowAction{effect,context.next,{context.thrown,context.finalizer}});
         required=!inert;
       }
     }
@@ -833,6 +864,7 @@ class FlowBuilder {
         auto commit=Define(node.symbol,node.initializer?FlowDefinitionKind::kInitializer:FlowDefinitionKind::kUndefined,
             node.initializer?CopyValue(*node.initializer):std::nullopt,node.initializer,at.id,{},
             private_binding?FlowWriteEffect::kInert:FlowWriteEffect::kObservable,id,FlowExceptionContext{context.thrown,context.finalizer},context.owner);
+        WriteAction(definitions_.back(),FlowAction{commit,context.next,{context.thrown,context.finalizer}});
         if(node.initializer&&!private_binding)events_[commit.value].effect=ExpressionEvaluation::kRequired;
         Link(commit,context.next);
         Link(start,node.initializer?Expr(*node.initializer,evaluation.Operand(commit)):commit);
