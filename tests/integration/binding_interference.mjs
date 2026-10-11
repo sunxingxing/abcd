@@ -3,8 +3,12 @@ import {generatedSource as execFileSync} from '../support/source/generated_fixtu
 import vm from 'node:vm';
 import {isDeepStrictEqual} from 'node:util';
 import {parseJavaScript} from './class_reference.mjs';
-const records=execFileSync(process.argv[2],['--emit'],{encoding:'utf8',timeout:60_000,maxBuffer:16*1024*1024}).trim().split('\n').map(JSON.parse);
-assert.equal(records.length,1152);
+const selectedChains=process.argv[3]==='chains';
+const selectedForm=process.argv.length>3&&!selectedChains?Number(process.argv[3]):undefined;
+if(selectedForm!==undefined)assert.ok(Number.isInteger(selectedForm)&&((selectedForm>=0&&selectedForm<=25)||(selectedForm>=38&&selectedForm<=43)||(selectedForm>=57&&selectedForm<=68)||selectedForm===96));
+const records=selectedChains?[]:execFileSync(process.argv[2],selectedForm===undefined?['--emit']:['--form',String(selectedForm)],{encoding:'utf8',timeout:60_000,maxBuffer:16*1024*1024}).trim().split('\n').map(JSON.parse);
+assert.equal(records.length,selectedChains?0:selectedForm===undefined?1164:12);
+if(selectedForm!==undefined)assert.ok(records.every(record=>record.form===selectedForm));
 const calledIdentifier=node=>node.callee.type==='SequenceExpression'?node.callee.expressions.at(-1):node.callee;
 // Oracles describe the original storage semantics, never enter the engine.
 const references=[
@@ -105,6 +109,7 @@ references.push(function(input,report,flag){let current,scratch;if(flag)current=
 references.push(function(input,report,flag){let current,scratch;if(flag)current=input;else current=input;while(flag){if(flag)current=input;else current=input;if(flag)scratch=current;else scratch=current;report(scratch);current=flag;report(current);flag=false;}report(scratch);input=flag;report(scratch);return scratch;});
 references.push(function(input,report,flag){let current,scratch;if(flag)current=input;else current=input;if(flag)scratch=current;else scratch=current;report(scratch);current=flag;report(current);report(scratch);input=flag;report(scratch);return scratch;});
 references.push(function(input,report,flag){let current,scratch;if(flag)current=input;else current=input;if(flag)scratch=current++;else scratch=current++;report(scratch);current=flag;report(current);report(scratch);input=flag;report(scratch);return scratch;});
+references.push(function(input,report,flag){let current=input;report(current);current=report(flag);return current;});
 const primitives=[undefined,null,false,true,0,-0,1,-2,0n,2n,NaN,Infinity,'','7','bad',Symbol('input')];
 let cases=0,mutations=0;
 async function observe(fn,form,index,mode,flag,request){
@@ -136,7 +141,8 @@ for(const record of records){
       for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)pending.push(child);}else if(value?.type)pending.push(value);}}
     assert.ok(native,'native loop declaration');
   }
-  if(record.transitive){
+  if(record.renewal){assert.ok(currentDeclarations<=1,'one lexical declaration per recovered unit');}
+  else if(record.transitive){
     const work=[inspect];let direct=false;
     while(work.length){const node=work.pop();
       if(node.type==='CallExpression'&&calledIdentifier(node).name==='report'&&node.arguments[0]?.name==='input')direct=true;
@@ -166,7 +172,9 @@ for(const record of records){
     assert.equal(returned.argument.name,record.merged?'input':record.form>=53?(record.slot===3?'current':'scratch'):'scratch');
   }else if(record.form>=38){
     const slots=inspect.body[0].expression.body.body.filter(node=>node.type==='VariableDeclaration').flatMap(node=>node.declarations.map(item=>item.id.name));
-    assert.deepEqual(slots,record.merged?['current','bridge']:record.form>=41?['current','bridge','scratch']:['current','scratch','bridge']);
+    // The later declaration pass now sees the dead outer bridge write and
+    // can place its surviving declaration in the inner lexical scope.
+    assert.deepEqual(slots,record.merged?['current','bridge']:['current','scratch']);
     assert.equal(currentDeclarations,record.merged?1:2);
   }else if(record.form===28||record.form===29||record.form>=30){
     const slots=inspect.body[0].expression.body.body.filter(node=>node.type==='VariableDeclaration').flatMap(node=>node.declarations.map(item=>item.id.name));
@@ -278,12 +286,16 @@ for(const record of records){
     while(work.length){const node=work.pop();
       if(node.type==='CallExpression'&&calledIdentifier(node).name==='report')calls.push(node);
       if(node.type==='ReturnStatement')returned.push(node);
-      if(node.type==='Identifier'&&node.name==='scratch')edits.push(node);
+      if(node.type==='Identifier')edits.push(node);
       for(const [key,value]of Object.entries(node)){if(node.type==='VariableDeclarator'&&key==='id')continue;
         if(Array.isArray(value)){for(const child of value)if(child?.type)work.push(child);}else if(value?.type)work.push(value);}}
     returned.sort((a,b)=>a.start-b.start);
     const last=returned.at(-1).argument,mutants=[record.source.slice(0,last.start)+'void 0'+record.source.slice(last.end)];
-    let alias=record.source;for(const edit of edits.sort((a,b)=>b.start-a.start))alias=alias.slice(0,edit.start)+'input'+alias.slice(edit.end);mutants.push(alias);
+    assert.equal(last.type,'Identifier');
+    // Follow the surviving snapshot's binding, even after storage coalescing
+    // retires its old scratch spelling. This must remain a real wrong edit.
+    let alias=record.source;for(const edit of edits.filter(node=>node.name===last.name).sort((a,b)=>b.start-a.start))alias=alias.slice(0,edit.start)+'input'+alias.slice(edit.end);
+    assert.notEqual(alias,record.source);mutants.push(alias);
     // The actual plan may legally retire the intermediate cell after reads are
     // substituted. Exercise wrong sharing in the independent original program;
     // do not force an unused intermediate declaration back into engine output.
@@ -371,9 +383,14 @@ for(const record of records){
         await observe(references[record.form],record.form,6,'normal',false,'next'));++mutations;
   }
 }
-const scaled=execFileSync(process.argv[2],['--scale'],{encoding:'utf8',timeout:60_000,maxBuffer:16*1024*1024}).trim().split('\n').map(JSON.parse);
+if(selectedForm!==undefined){
+  console.log(JSON.stringify({form:selectedForm,sources:records.length,cases,mutations}));
+  process.exit(0);
+}
+const scaled=selectedChains?[]:execFileSync(process.argv[2],['--scale'],{encoding:'utf8',timeout:60_000,maxBuffer:16*1024*1024}).trim().split('\n').map(JSON.parse);
 // A stale pre-storage graph would drop this successful write but keep its RHS
 // call. The retained-name read must observe the callback result, not old storage.
+if(!selectedChains){
 const stale=function(input,report){let current=input;++current;report(current);return current;};
 assert.notDeepEqual(await observe(stale,12,6,'normal',true,'next'),
     await observe(references[12],12,6,'normal',true,'next'));++mutations;
@@ -382,13 +399,16 @@ assert(scaled.at(-1).work<3*scaled.at(-2).work);
 for(const test of scaled){parseJavaScript(test.source);const fn=vm.runInNewContext(test.source);
   for(const value of [0,2n,-0,'7']){const seen=[];fn(value,x=>seen.push(x));let expected=value;++expected;
     assert.equal(seen.length,test.count);for(const actual of seen)assert.equal(actual,expected);++cases;}}
+}
 const chains=execFileSync(process.argv[2],['--chains'],{encoding:'utf8',timeout:120_000,maxBuffer:16*1024*1024}).trim().split('\n').map(JSON.parse);
 assert.equal(chains.length,24);
 for(const test of chains){
   const ast=parseJavaScript(test.source),pending=[ast];let declarations=0;
   while(pending.length){const node=pending.pop();if(node.type==='VariableDeclarator')++declarations;
     for(const value of Object.values(node)){if(Array.isArray(value)){for(const child of value)if(child?.type)pending.push(child);}else if(value?.type)pending.push(value);}}
-  assert.equal(declarations,test.conflict?2:1);
+  assert.equal(declarations,1);
+  // The reference still needs its old value after increment. The recovered
+  // source retains it as input; the blind-coalescing mutant below must fail.
   const names=Array.from({length:test.count},(_,i)=>'slot'+i);
   let body='let current=input;'+names.map(name=>'let '+name+';').join('');
   for(let i=0;i<names.length;++i)body+=names[i]+'='+(i?names[i-1]:'current')+';report('+names[i]+');';
@@ -413,6 +433,10 @@ for(const test of chains){
 // Local/catch copies are tested as source, separately from the flow oracle.
 // Scope reentry must retain the first saved value even though the new binding
 // has the same static name and ScopeId. These references never enter the engine.
+if(selectedChains){
+  console.log(JSON.stringify({sources:chains.length,cases,mutations}));
+  process.exit(0);
+}
 const unitReferences=[
   function(input,report,flag){let current=input;++current;let scratch=current;return scratch;},
   function(input,report,flag){let current=input;++current;let scratch=current;report();return scratch;},

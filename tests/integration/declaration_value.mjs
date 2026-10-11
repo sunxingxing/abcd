@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {generatedSource as execFileSync} from '../support/source/generated_fixture.mjs';
 import {isDeepStrictEqual} from 'node:util';
 import {parseJavaScript} from './class_reference.mjs';
-const rows=execFileSync(process.argv[2],['--emit'],{encoding:'utf8',maxBuffer:32_000_000}).trim().split('\n').map(JSON.parse);
+const rows=execFileSync(process.argv[2],process.argv[3]?['--form',process.argv[3]]:['--emit'],{encoding:'utf8',maxBuffer:32_000_000}).trim().split('\n').map(JSON.parse);
 const failure=Symbol('throw'),token={},second={};
 const tokenIdentity=Symbol('token'),secondIdentity=Symbol('second');
 const identity=value=>value===token?tokenIdentity:value===second?secondIdentity:value;

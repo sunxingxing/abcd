@@ -19,6 +19,21 @@
 - Existing byte/work budget covers retained graph, sparse facts and temporary growth.
 - Every verified coherent commit refreshes status.md; whole milestone is not complete until old decisions exit.
 
+2026-10-11 packages B/C accepted (rules308/311): the finite R1–R10
+raw/source correspondence and preservation ledger is closed; whole-pass P1–P6
+now uses actual change domains, epoch-stable attempts, fair deduplicated queues,
+explicit stage backedges and finite original-obligation/storage-class progress.
+Current/trial semantics remain one provider. The former manual repeated pass
+sequence and special snapshot refresh path are retired. Current retained stores,
+current declaration completion and retained name roots replace original-layout
+reconstruction; historical copy preferences are candidates, never proofs.
+Final C freezes 1667 files: exact 32 targets/65 tests passed in 655.79s; ten
+preservation tests passed in 56.54s, then final scaling and exact/one-short
+budgets passed. The fixed record's ten sources are unchanged. Evidence:
+build/stage-one/pass-convergence-package-c-acceptance/package-acceptance.json.
+D consumer/old-decision/real-input acceptance remains open; phase one remains
+active. These closures carry their stated finite scope, not a work percentage.
+
 2026-10-11 package A implementation (rules297): FlowUnits compares dynamic
 unit partitions at reads, definitions and captures. Raw cells consume verified
 allocation membership/success and declaration occurrence; catches consume their

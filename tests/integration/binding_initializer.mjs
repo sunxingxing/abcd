@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {generatedSource as execFileSync} from '../support/source/generated_fixture.mjs';
 import {parseJavaScript} from './class_reference.mjs';
 import {editExpression} from './expression_edits.mjs';
-const rows = execFileSync(process.argv[2], ['--emit'], {encoding:'utf8', maxBuffer:32_000_000}).trim().split('\n').map(JSON.parse);
+const rows = execFileSync(process.argv[2], process.argv[3]?['--alias',process.argv[3]]:['--emit'], {encoding:'utf8', maxBuffer:32_000_000}).trim().split('\n').map(JSON.parse);
 const token = {}, second = {}, failure = Symbol('original throw'), tdzFailure=Symbol('TDZ');
 function original(row) {
   if(row.decoded_cell&&row.field)return function(seed,report,flag,target,key){const saved=seed();target[key]=saved;if(!row.branch||flag!==false&&flag!==0)report(saved);report(saved);return saved;};

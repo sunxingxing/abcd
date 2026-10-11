@@ -469,16 +469,17 @@ void ScopedCopies(bool reverse,bool emit,bool agreeing) {
   // Name retirement follows retained occurrences, not the original choice.
   // Agreeing values share storage; independent cleanup retires the inert
   // condition, so its upstream parameter can now lose the private copy.
+  // Occurrence substitution may retire it without installing a slot alias.
   // Mixed values retain that condition and BOTH TDZ-shadowed upstream copies.
   test::Check(!plan.aliases[3]&&!plan.aliases[4]);
   if(agreeing) {
     test::Check(plan.Storage(SymbolId{4})==SymbolId{3});
-    test::Check(plan.aliases[2]==SymbolId{0});
   } else {
     test::Check(!plan.aliases[2]);
     test::Check(plan.Storage(SymbolId{4})==SymbolId{4});
   }
   std::ostringstream out;test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,out)));
+  if(agreeing)test::Check(out.str().find("state")==std::string::npos);
   if(emit)std::cout<<nlohmann::json{{"source",out.str()},{"scoped_copy",true},{"agreeing",agreeing}}<<'\n';
 }
 

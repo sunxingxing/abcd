@@ -9,6 +9,8 @@
 #include <limits>
 #include <iostream>
 #include <sstream>
+#include <charconv>
+#include <string_view>
 #include <nlohmann/json.hpp>
 using namespace abcd;
 using namespace abcd::source;
@@ -361,8 +363,17 @@ struct Fixture {
   }
 };
 }
-int main(int argc,char**) {
-  for(unsigned form=0;form<107;++form)for(bool native:{false,true}) {
+int main(int argc,char** argv) {
+  constexpr unsigned forms=107;
+  unsigned first=0,last=forms;
+  if(argc==3) {
+    test::Check(std::string_view(argv[1])=="--form");
+    const std::string_view argument=argv[2];
+    const auto parsed=std::from_chars(argument.data(),argument.data()+argument.size(),first);
+    test::Check(parsed.ec==std::errc{}&&parsed.ptr==argument.data()+argument.size()&&first<forms);
+    last=first+1;
+  }else test::Check(argc==1||(argc==2&&std::string_view(argv[1])=="--emit"));
+  for(unsigned form=first;form<last;++form)for(bool native:{false,true}) {
     std::uint64_t small=0,large=0;
     for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}) {
       Fixture fixture(form,count,native,reverse);std::ostringstream output;

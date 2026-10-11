@@ -13,6 +13,7 @@
 #include <bit>
 #include <limits>
 #include <sstream>
+#include <charconv>
 #include <nlohmann/json.hpp>
 using namespace abcd;
 using namespace abcd::source;
@@ -658,6 +659,16 @@ std::uint64_t NativeDeep(unsigned form, unsigned depth, bool reverse, bool emit)
 }
 }
 int main(int argc, char** argv) {
+  if(argc==3&&std::string_view(argv[1])=="--alias") {
+    const std::string_view argument=argv[2];unsigned form=0;
+    const auto parsed=std::from_chars(argument.data(),argument.data()+argument.size(),form);
+    test::Check(parsed.ec==std::errc{}&&parsed.ptr==argument.data()+argument.size()&&form<30);
+    for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}) {
+      if(!count&&(form==3||form==5||form==14||form==16||form==23))continue;
+      Alias(form,count,reverse,true);
+    }
+    return 0;
+  }
   if(argc==2 && std::string_view(argv[1])=="--value-state") {
     for(unsigned form:{27U,28U})for(unsigned count:{200U,201U,400U,800U})for(bool reverse:{false,true})
       Alias(form,count,reverse,false);

@@ -641,6 +641,8 @@ if(BUILD_TESTING)
   add_executable(binding_interference_test tests/unit/source/binding_interference_test.cc)
   target_link_libraries(binding_interference_test PRIVATE abcd_source abcd_json)
   add_source_fixture(binding_interference_test 16777216 60000 --emit)
+  # The producer owns two fixed workers; account for both in CTest's -j budget.
+  set_tests_properties(binding_interference_test PROPERTIES PROCESSORS 2)
   add_executable(flow_units_test tests/unit/source/flow_units_test.cc)
   target_link_libraries(flow_units_test PRIVATE abcd_source)
   add_test(NAME flow_units_test COMMAND flow_units_test)

@@ -5,17 +5,26 @@
 namespace abcd::source {
 namespace {
 using Error=TreeStructureError;
+template<class Accept> void CopyPreferences(const RecoveryFlow& flow,TreeCheckBudget& budget,Accept accept) {
+  for(const auto& definition:flow.definitions) {
+    budget.Step();const auto copied=definition.copy;
+    if(copied&&*copied!=definition.binding&&
+        flow.bindings[copied->value].kind==BindingKind::kCompilerTemporary&&
+        flow.bindings[definition.binding.value].kind==BindingKind::kCompilerTemporary)
+      accept(BindingPreference{*copied,definition.binding});
+  }
+}
 class Interference {
  public:
-  Interference(const RecoveryFlow& flow,const FlowLiveness& liveness,analysis::SemanticBudget budget)
-      :flow_(flow),liveness_(liveness),budget_(budget),memory_(budget_),proposals_(&memory_),conflicts_(&memory_) {}
+  Interference(const RecoveryFlow& flow,const FlowLiveness& liveness,analysis::SemanticBudget budget,std::span<const BindingPreference> preferences)
+      :flow_(flow),liveness_(liveness),preferences_(preferences),budget_(budget),memory_(budget_),proposals_(&memory_),conflicts_(&memory_) {}
   BindingInterference Run() {
-    for(const auto& definition:flow_.definitions) {
-      budget_.Step();const auto copied=definition.copy;
-      if(copied&&*copied!=definition.binding&&
-          flow_.bindings[copied->value].kind==BindingKind::kCompilerTemporary&&
-          flow_.bindings[definition.binding.value].kind==BindingKind::kCompilerTemporary)
-        proposals_.push_back(Pair(*copied,definition.binding));
+    CopyPreferences(flow_,budget_,[&](BindingPreference pair){proposals_.push_back(Pair(pair.first,pair.second));});
+    for(const auto pair:preferences_) {
+      budget_.Step();RequireTree(pair.first.value<flow_.bindings.size()&&pair.second.value<flow_.bindings.size(),Error::kBinding);
+      if(pair.first!=pair.second&&flow_.bindings[pair.first.value].kind==BindingKind::kCompilerTemporary&&
+          flow_.bindings[pair.second.value].kind==BindingKind::kCompilerTemporary)
+        proposals_.push_back(Pair(pair.first,pair.second));
     }
     const auto less=[&](const BindingAffinity& a,const BindingAffinity& b){budget_.Step();return Key(a)<Key(b);};
     std::sort(proposals_.begin(),proposals_.end(),less);
@@ -53,14 +62,24 @@ class Interference {
       }
     }
   }
-  const RecoveryFlow& flow_;const FlowLiveness& liveness_;TreeCheckBudget budget_;RecoveryScratch memory_;
+  const RecoveryFlow& flow_;const FlowLiveness& liveness_;std::span<const BindingPreference> preferences_;TreeCheckBudget budget_;RecoveryScratch memory_;
   std::pmr::vector<BindingAffinity> proposals_;
   std::pmr::vector<BindingConflict> conflicts_;
 };
 }
+std::variant<BindingPreferences,TreeStructureError> FindBindingPreferences(const RecoveryFlow& flow,analysis::SemanticBudget allowance) {
+  try {
+    TreeCheckBudget budget(allowance);BindingPreferences result;
+    std::size_t count=0;CopyPreferences(flow,budget,[&](BindingPreference){++count;});
+    budget.Array(result.pairs,count);count=0;
+    CopyPreferences(flow,budget,[&](BindingPreference pair){result.pairs[count++]=pair;});
+    result.allocated_bytes=budget.Bytes();result.work=budget.Work();return result;
+  }catch(Error error){return error;}catch(const std::bad_alloc&){return Error::kResourceLimit;}
+  catch(const std::length_error&){return Error::kResourceLimit;}
+}
 std::variant<BindingInterference,TreeStructureError> FindBindingInterference(
-    const RecoveryFlow& flow,const FlowLiveness& liveness,analysis::SemanticBudget budget) {
-  try{return Interference(flow,liveness,budget).Run();}
+    const RecoveryFlow& flow,const FlowLiveness& liveness,analysis::SemanticBudget budget,std::span<const BindingPreference> preferences) {
+  try{return Interference(flow,liveness,budget,preferences).Run();}
   catch(Error error){return error;}catch(const std::bad_alloc&){return Error::kResourceLimit;}
   catch(const std::length_error&){return Error::kResourceLimit;}
 }

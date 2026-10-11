@@ -349,7 +349,10 @@ inline constexpr unsigned kRouteReceiptSchema = 3;
 // execution regions preserve conditional availability and expression results.
 // Rules 163 summarize expression completion and project inert comma operands;
 // value categories, binding initialization and creation names remain faithful.
-inline constexpr std::uint32_t kRouteEvidenceRules = 310;
+// Rules 311 drive recovery passes by semantic-domain invalidation, publish
+// occurrence-owned read substitutions, and reopen stale stages with finite
+// occurrence/class progress. Exact declaration trials transfer on full commit.
+inline constexpr std::uint32_t kRouteEvidenceRules = 311;
 enum class RouteReceiptError : std::uint8_t {
   kSyntax = 0,
   kSchema = 1,

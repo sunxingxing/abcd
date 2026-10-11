@@ -8,11 +8,37 @@
 #include <iostream>
 #include <sstream>
 #include <source_location>
+#include <atomic>
+#include <functional>
+#include <thread>
 using namespace abcd;
 using namespace abcd::source;
 namespace {
 void Check(bool ok,std::source_location at=std::source_location::current()){
   if(!ok){std::cerr<<"binding interference check "<<at.line()<<'\n';std::abort();}}
+// Fixture cases own disjoint trees and plans. Two fixed workers bound live
+// preparation; serial mode remains available for deterministic comparison.
+// Each job keeps its complete geometric sequence and all exact-budget checks.
+thread_local std::ostream* fixture_output=&std::cout;
+class FixtureBatch {
+ public:
+  void Add(std::function<void()> job){jobs_.push_back(std::move(job));}
+  void Run(bool parallel) {
+    if(!parallel){for(const auto& job:jobs_)job();return;}
+    std::vector<std::string> results(jobs_.size());std::atomic<std::size_t> next{0};
+    const auto run=[&] {
+      for(;;) {
+        const auto i=next.fetch_add(1,std::memory_order_relaxed);if(i>=jobs_.size())break;
+        std::ostringstream output;fixture_output=&output;jobs_[i]();
+        results[i]=std::move(output).str();fixture_output=&std::cout;
+      }
+    };
+    std::thread worker(run);run();worker.join();
+    for(const auto& output:results)std::cout<<output;
+  }
+ private:
+  std::vector<std::function<void()>> jobs_;
+};
 enum class Form { kStraight,kObserved,kUpdateThrows,kAfterThrows,kAwait,kYield,kBranch,kLoop,kLocal,kCapture,kShadow,kInitialUndefined,kSharedWrite,kLiveUndefined,kRepeatedUndefined,kUndefinedBeforeRoot,kElidedReference,kRetainedReference,kForwardedUpdate,kForwardedUpdateThrows,kForwardedShadow,kRoundTrip,kForwardedAliasShadow,kNativeInitializer,kNativeProducer };
 struct Fixture {
   FunctionTree tree{};
@@ -149,7 +175,10 @@ std::uint64_t Run(Form form,unsigned count,bool reverse,bool emit){
   auto planned=PlanBindingInitializers(tree,loops,nullish);
   if(auto* error=std::get_if<TreeStructureError>(&planned))std::cerr<<"form "<<unsigned(form)<<" error "<<unsigned(*error)<<'\n';
   Check(std::holds_alternative<BindingInitializers>(planned));const auto& bindings=std::get<BindingInitializers>(planned);
-  const bool merged=native||form==Form::kStraight||form==Form::kUpdateThrows||form==Form::kLoop||form==Form::kSharedWrite||form==Form::kInitialUndefined||form==Form::kElidedReference||form==Form::kRetainedReference||form==Form::kRoundTrip||form==Form::kUndefinedBeforeRoot||live_undefined||forwarded;
+  // Catch reads retain the input snapshot at their actual occurrences. Once
+  // those facts are published, the semantic back-edge can merge the remaining
+  // update storage. The independent executor checks throw/reject and identity.
+  const bool merged=native||form==Form::kStraight||form==Form::kAfterThrows||form==Form::kAwait||form==Form::kUpdateThrows||form==Form::kLoop||form==Form::kSharedWrite||form==Form::kInitialUndefined||form==Form::kElidedReference||form==Form::kRetainedReference||form==Form::kRoundTrip||form==Form::kUndefinedBeforeRoot||live_undefined||forwarded;
   if(bool(bindings.storage[4])!=merged)std::cerr<<"form "<<unsigned(form)<<" count "<<count<<" reverse "<<reverse<<" merged "<<bool(bindings.storage[4])<<'\n';
   Check(bool(bindings.storage[4])==merged);
   // Inert conditional reads are gone before motion/storage. Their obsolete
@@ -188,7 +217,7 @@ std::uint64_t Run(Form form,unsigned count,bool reverse,bool emit){
   if(forwarded)Check(output.str().find("snapshot")==std::string::npos);
   if(form==Form::kRoundTrip)Check(output.str().find("current")==std::string::npos);
   if(form==Form::kForwardedAliasShadow)Check(output.str().find("current")==std::string::npos);
-  if(emit)std::cout<<nlohmann::json{{"form",unsigned(form)},{"count",count},{"reverse",reverse},{"merged",merged},{"source",output.str()}}<<'\n';
+  if(emit)*fixture_output<<nlohmann::json{{"form",unsigned(form)},{"count",count},{"reverse",reverse},{"merged",merged},{"source",output.str()}}<<'\n';
   return bindings.work;
 }
 // Canonical lexical scope must participate in representative selection, even
@@ -230,7 +259,7 @@ std::uint64_t CanonicalScope(unsigned count,bool reverse,bool emit){
   }
   std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
   Check(output.str().find("scratch")==std::string::npos);
-  if(emit)std::cout<<nlohmann::json{{"form",25},{"count",count},{"reverse",reverse},{"merged",true},{"source",output.str()}}<<'\n';
+  if(emit)*fixture_output<<nlohmann::json{{"form",25},{"count",count},{"reverse",reverse},{"merged",true},{"source",output.str()}}<<'\n';
   return bindings.work;
 }
 // Both spellings have shadows, but only one shadow contains group references.
@@ -272,7 +301,7 @@ std::uint64_t NameScope(bool observed,unsigned count,bool reverse,bool emit){
     Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work-1}))==TreeStructureError::kWorkLimit);
   }
   std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
-  if(emit)std::cout<<nlohmann::json{{"form",observed?26:27},{"count",count},{"reverse",reverse},{"merged",true},{"slot",observed?"scratch":"current"},{"source",output.str()}}<<'\n';
+  if(emit)*fixture_output<<nlohmann::json{{"form",observed?26:27},{"count",count},{"reverse",reverse},{"merged",true},{"slot",observed?"scratch":"current"},{"source",output.str()}}<<'\n';
   return bindings.work;
 }
 // The current private shadow has been elided before storage selection. Its
@@ -314,7 +343,7 @@ std::uint64_t RetiredShadow(bool retired,unsigned count,bool reverse,bool emit){
     Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work-1}))==TreeStructureError::kWorkLimit);
   }
   std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
-  if(emit)std::cout<<nlohmann::json{{"form",retired?28:29},{"count",count},{"reverse",reverse},{"merged",retired},{"source",output.str()}}<<'\n';
+  if(emit)*fixture_output<<nlohmann::json{{"form",retired?28:29},{"count",count},{"reverse",reverse},{"merged",retired},{"source",output.str()}}<<'\n';
   return bindings.work;
 }
 std::uint64_t NarrowedShadow(bool loop,bool inside,unsigned count,bool reverse,bool emit){
@@ -361,7 +390,7 @@ std::uint64_t NarrowedShadow(bool loop,bool inside,unsigned count,bool reverse,b
     Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work-1}))==TreeStructureError::kWorkLimit);
   }
   std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
-  if(emit)std::cout<<nlohmann::json{{"form",30+(loop?1:0)+(inside?2:0)},{"count",count},{"reverse",reverse},{"merged",!inside},{"source",output.str()}}<<'\n';
+  if(emit)*fixture_output<<nlohmann::json{{"form",30+(loop?1:0)+(inside?2:0)},{"count",count},{"reverse",reverse},{"merged",!inside},{"source",output.str()}}<<'\n';
   return bindings.work;
 }
 std::uint64_t RetiringCopies(unsigned form,unsigned count,bool reverse,bool emit){
@@ -395,7 +424,7 @@ std::uint64_t RetiringCopies(unsigned form,unsigned count,bool reverse,bool emit
   // Its spelling remains visible even when the outer current is shadowed.
   if(conditional)Check(bindings.Storage({6})==SymbolId{4});
   std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
-  if(emit)std::cout<<nlohmann::json{{"form",form},{"count",count},{"reverse",reverse},{"merged",form==34},{"source",output.str()}}<<'\n';
+  if(emit)*fixture_output<<nlohmann::json{{"form",form},{"count",count},{"reverse",reverse},{"merged",form==34},{"source",output.str()}}<<'\n';
   return bindings.work;
 }
 std::uint64_t StorageProposal(unsigned form,unsigned count,bool reverse,bool emit){
@@ -420,7 +449,7 @@ std::uint64_t StorageProposal(unsigned form,unsigned count,bool reverse,bool emi
   Check(bindings.Storage({3})==SymbolId{3});Check(bindings.Storage({4})==SymbolId{form==38?3U:4U});
   Check(bindings.Storage({5})==SymbolId{form==38?6U:5U});Check(bindings.Storage({6})==SymbolId{6});
   std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
-  if(emit)std::cout<<nlohmann::json{{"form",form},{"count",count},{"reverse",reverse},{"merged",form==38},{"source",output.str()}}<<'\n';
+  if(emit)*fixture_output<<nlohmann::json{{"form",form},{"count",count},{"reverse",reverse},{"merged",form==38},{"source",output.str()}}<<'\n';
   return bindings.work;
 }
 std::uint64_t StorageSnapshot(unsigned form,unsigned count,bool reverse,bool emit){
@@ -440,9 +469,13 @@ std::uint64_t StorageSnapshot(unsigned form,unsigned count,bool reverse,bool emi
   auto& block=std::get<BlockStmt>(tree.statements[inner.value].statement);block.first_child=tree.children.size();block.child_count=children.size();tree.children.insert(tree.children.end(),children.begin(),children.end());roots.push_back(inner);
   roots.push_back(f.Stmt(ReturnStmt{f.Read(3)}));f.Finish(roots,reverse);Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));const auto bindings=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
+  if(bindings.Storage({5})!=SymbolId{form==41?6U:5U}||bindings.replacements[read.value].has_value()!=(form==41)) {
+    std::cerr<<"snapshot form "<<form<<" root "<<bindings.Storage({5}).value<<" replacement "<<bindings.replacements[read.value].has_value()<<'\n';
+    std::ostringstream probe;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,probe)));std::cerr<<probe.str();
+  }
   Check(bindings.Storage({5})==SymbolId{form==41?6U:5U});Check(bindings.replacements[read.value].has_value()==(form==41));
   std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
-  if(emit)std::cout<<nlohmann::json{{"form",form},{"count",count},{"reverse",reverse},{"merged",form==41},{"source",output.str()}}<<'\n';
+  if(emit)*fixture_output<<nlohmann::json{{"form",form},{"count",count},{"reverse",reverse},{"merged",form==41},{"source",output.str()}}<<'\n';
   return bindings.work;
 }
 std::uint64_t JoinedCopies(unsigned form,unsigned count,bool reverse,bool emit){
@@ -461,11 +494,12 @@ std::uint64_t JoinedCopies(unsigned form,unsigned count,bool reverse,bool emit){
     roots.push_back(loop);}
   else{const auto first=f.Block({f.Write(4,value(0))});const auto other=f.Block({f.Write(4,value(form==45?2:0))});roots.push_back(f.Stmt(IfStmt{f.Read(2),first,other}));}
   if(form==47)roots.push_back(f.Write(0,f.Read(2)));
+  const auto final_read=f.Read(4);
   if(form==51){const auto inner=f.Block({});const auto scope=std::get<BlockStmt>(tree.statements[inner.value].statement).scope;
     tree.symbols.push_back({scope,{0},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
-    const auto init=f.Stmt(DeclarationStmt{{5},f.Read(2)}),report=f.Stmt(ExpressionStmt{f.Call({f.Read(5)})}),result=f.Stmt(ReturnStmt{f.Read(4)});
+    const auto init=f.Stmt(DeclarationStmt{{5},f.Read(2)}),report=f.Stmt(ExpressionStmt{f.Call({f.Read(5)})}),result=f.Stmt(ReturnStmt{final_read});
     auto& block=std::get<BlockStmt>(tree.statements[inner.value].statement);block.first_child=tree.children.size();block.child_count=3;tree.children.insert(tree.children.end(),{init,report,result});roots.push_back(inner);}
-  else roots.push_back(f.Stmt(ReturnStmt{f.Read(4)}));
+  else roots.push_back(f.Stmt(ReturnStmt{final_read}));
   f.Finish(roots,reverse);Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
   const auto bindings=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
@@ -473,12 +507,12 @@ std::uint64_t JoinedCopies(unsigned form,unsigned count,bool reverse,bool emit){
   // Current-unit reads can retire a carrier without an all-definition
   // invariant. Mapped entry cells must never borrow the latter certificate.
   Check(bool(bindings.omitted[at])==known);
-  Check(bindings.read_bindings[4]==(invariant?std::optional{SymbolId{0}}:std::nullopt));
+  Check(bindings.ReadBinding(final_read,{4})==(known?SymbolId{0}:bindings.Storage({4})));
   if(!count){Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work})));
     Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes-1,bindings.work}))==TreeStructureError::kResourceLimit);
     Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work-1}))==TreeStructureError::kWorkLimit);}
   std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
-  if(emit)std::cout<<nlohmann::json{{"form",form},{"count",count},{"reverse",reverse},{"merged",known},{"source",output.str()}}<<'\n';
+  if(emit)*fixture_output<<nlohmann::json{{"form",form},{"count",count},{"reverse",reverse},{"merged",known},{"source",output.str()}}<<'\n';
   return bindings.work;
 }
 std::uint64_t SharedCopies(unsigned form,unsigned count,bool reverse,bool emit){
@@ -489,25 +523,25 @@ std::uint64_t SharedCopies(unsigned form,unsigned count,bool reverse,bool emit){
     roots.push_back(f.Stmt(IfStmt{f.Read(2),f.Block({f.Write(target,value(source))}),f.Block({f.Write(target,value(other))})}));};
   branch(3,0,0);roots.push_back(f.Stmt(ExpressionStmt{f.Call({f.Read(3)})}));branch(4,3,3);
   if(form==54)roots.push_back(f.Write(0,f.Read(2)));
+  const auto final_read=f.Read(4);
   if(form==55){const auto inner=f.Block({});const auto scope=std::get<BlockStmt>(tree.statements[inner.value].statement).scope;
     tree.symbols.push_back({scope,{0},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kMetadata,{}});
-    const auto init=f.Stmt(DeclarationStmt{{5},f.Read(2)}),report=f.Stmt(ExpressionStmt{f.Call({f.Read(5)})}),result=f.Stmt(ReturnStmt{f.Read(4)});
+    const auto init=f.Stmt(DeclarationStmt{{5},f.Read(2)}),report=f.Stmt(ExpressionStmt{f.Call({f.Read(5)})}),result=f.Stmt(ReturnStmt{final_read});
     auto& block=std::get<BlockStmt>(tree.statements[inner.value].statement);block.first_child=tree.children.size();block.child_count=3;tree.children.insert(tree.children.end(),{init,report,result});roots.push_back(inner);}
-  else roots.push_back(f.Stmt(ReturnStmt{f.Read(4)}));
+  else roots.push_back(f.Stmt(ReturnStmt{final_read}));
   f.Finish(roots,reverse);Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
   const auto bindings=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
   const bool known=form==53||form==56;
   const auto at=[&](StmtId id){return reverse?tree.statements.size()-1-id.value:id.value;};
-  Check(bindings.Storage({3})==bindings.Storage({4}));
+  if(!known)Check(bindings.Storage({3})==bindings.Storage({4}));
   Check(unsigned(bool(bindings.omitted[at(first)]))+unsigned(bool(bindings.omitted[at(second)]))==(known?2U:1U));
-  Check(bindings.ReadBinding({3})==(known?SymbolId{0}:bindings.Storage({3})));
-  Check(bindings.ReadBinding({4})==bindings.ReadBinding({3}));
+  Check(bindings.ReadBinding(final_read,{4})==(known?SymbolId{0}:bindings.Storage({4})));
   if(!count){Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work})));
     Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes-1,bindings.work}))==TreeStructureError::kResourceLimit);
     Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work-1}))==TreeStructureError::kWorkLimit);}
   std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
-  if(emit)std::cout<<nlohmann::json{{"form",form},{"count",count},{"reverse",reverse},{"merged",known},{"slot",bindings.Storage({3}).value},{"source",output.str()}}<<'\n';
+  if(emit)*fixture_output<<nlohmann::json{{"form",form},{"count",count},{"reverse",reverse},{"merged",known},{"slot",bindings.Storage({3}).value},{"source",output.str()}}<<'\n';
   return bindings.work;
 }
 std::uint64_t ComposedCopies(unsigned form,unsigned count,bool reverse,bool emit){
@@ -537,12 +571,16 @@ std::uint64_t ComposedCopies(unsigned form,unsigned count,bool reverse,bool emit
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
   const auto bindings=std::get<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish));
   const bool shared=form<=63||form==68;
+  if((bindings.Storage({3})==bindings.Storage({4}))!=shared) {
+    std::cerr<<"composed form "<<form<<" count "<<count<<" reverse "<<reverse<<" roots "<<bindings.Storage({3}).value<<' '<<bindings.Storage({4}).value<<'\n';
+    std::ostringstream probe;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,probe)));std::cerr<<probe.str();
+  }
   Check((bindings.Storage({3})==bindings.Storage({4}))==shared);
   if(!count){Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work})));
     Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes-1,bindings.work}))==TreeStructureError::kResourceLimit);
     Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work-1}))==TreeStructureError::kWorkLimit);}
   std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
-  if(emit)std::cout<<nlohmann::json{{"form",form},{"count",count},{"reverse",reverse},{"merged",shared},{"source",output.str()}}<<'\n';
+  if(emit)*fixture_output<<nlohmann::json{{"form",form},{"count",count},{"reverse",reverse},{"merged",shared},{"source",output.str()}}<<'\n';
   return bindings.work;
 }
 std::uint64_t ReadCopies(unsigned form,unsigned count,bool reverse,bool emit){
@@ -587,7 +625,7 @@ std::uint64_t ReadCopies(unsigned form,unsigned count,bool reverse,bool emit){
   if(!count){Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work})));
     Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes-1,bindings.work}))==TreeStructureError::kResourceLimit);
     Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work-1}))==TreeStructureError::kWorkLimit);}
-  if(emit)std::cout<<nlohmann::json{{"form",form},{"count",count},{"reverse",reverse},{"partial",true},{"merged",known},{"source",output.str()}}<<'\n';
+  if(emit)*fixture_output<<nlohmann::json{{"form",form},{"count",count},{"reverse",reverse},{"partial",true},{"merged",known},{"source",output.str()}}<<'\n';
   return bindings.work;
 }
 std::uint64_t AvailableCopies(unsigned form,unsigned count,bool reverse,bool emit){
@@ -640,7 +678,7 @@ std::uint64_t AvailableCopies(unsigned form,unsigned count,bool reverse,bool emi
   if(!count){Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work})));
     Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes-1,bindings.work}))==TreeStructureError::kResourceLimit);
     Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work-1}))==TreeStructureError::kWorkLimit);}
-  if(emit)std::cout<<nlohmann::json{{"form",form},{"count",count},{"reverse",reverse},{"available",true},{"first",first_known},{"last",last_known},{"source",output.str()}}<<'\n';
+  if(emit)*fixture_output<<nlohmann::json{{"form",form},{"count",count},{"reverse",reverse},{"available",true},{"first",first_known},{"last",last_known},{"source",output.str()}}<<'\n';
   return bindings.work;
 }
 std::uint64_t TransitiveCopies(unsigned form,unsigned count,bool reverse,bool emit){
@@ -700,7 +738,7 @@ std::uint64_t TransitiveCopies(unsigned form,unsigned count,bool reverse,bool em
   if(!count){Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work})));
     Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes-1,bindings.work}))==TreeStructureError::kResourceLimit);
     Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{bindings.allocated_bytes,bindings.work-1}))==TreeStructureError::kWorkLimit);}
-  if(emit)std::cout<<nlohmann::json{{"form",form},{"count",count},{"reverse",reverse},{"transitive",true},{"first",first_known},{"source",output.str()}}<<'\n';
+  if(emit)*fixture_output<<nlohmann::json{{"form",form},{"count",count},{"reverse",reverse},{"transitive",true},{"first",first_known},{"source",output.str()}}<<'\n';
   return bindings.work;
 }
 std::uint64_t Many(unsigned count,bool emit){
@@ -736,7 +774,8 @@ std::uint64_t Many(unsigned count,bool emit){
     std::cerr<<"scale count="<<count<<" print error="<<static_cast<unsigned>(*error)<<'\n';
   Check(std::holds_alternative<PrintedFunction>(printed));
   Check(output.str().find("scratch")==std::string::npos);
-  if(emit)std::cout<<nlohmann::json{{"count",count},{"work",bindings.work},{"bytes",bindings.allocated_bytes},{"source",output.str()}}<<'\n';
+  if(emit)*fixture_output<<nlohmann::json{{"count",count},{"work",bindings.work},{"bytes",bindings.allocated_bytes},{"attempts",bindings.cost.attempts},{"commits",bindings.cost.commits},{"projections",bindings.cost.projections},{"nodes",bindings.cost.nodes},{"edges",bindings.cost.edges},{"live_facts",bindings.cost.live_facts},{"witnesses",bindings.cost.witnesses},{"source",output.str()}}<<'\n';
+  Check(bindings.cost.commits<=bindings.cost.witnesses+2);
   return bindings.work;
 }
 
@@ -753,7 +792,8 @@ std::uint64_t Chain(unsigned count,bool conflict,bool reverse,bool emit){
   body.push_back(f.Write(3,f.Read(0)));unsigned previous=3;
   for(auto slot:slots){body.push_back(f.Write(slot,f.Read(previous)));body.push_back(f.Stmt(ExpressionStmt{f.Call({f.Read(slot)})}));previous=slot;}
   body.push_back(f.Stmt(ExpressionStmt{f.Expr(UpdateExpr{{previous},UpdateDirection::kIncrement,UpdateResult::kPrefix})}));
-  if(conflict)body.push_back(f.Stmt(ExpressionStmt{f.Call({f.Read(3)})}));
+  std::optional<ExprId> snapshot;
+  if(conflict){snapshot=f.Read(3);body.push_back(f.Stmt(ExpressionStmt{f.Call({*snapshot})}));}
   body.push_back(f.Write(3,f.Read(previous)));body.push_back(f.Stmt(ReturnStmt{f.Read(3)}));
   if(reverse){
     const auto map=[&](SymbolId id){return SymbolId{static_cast<std::uint32_t>(tree.symbols.size()-1-id.value)};};
@@ -770,11 +810,17 @@ std::uint64_t Chain(unsigned count,bool conflict,bool reverse,bool emit){
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
   const auto planned=PlanBindingInitializers(tree,loops,nullish);Check(std::holds_alternative<BindingInitializers>(planned));
   const auto& bindings=std::get<BindingInitializers>(planned);
-  unsigned merged=0;for(const auto slot:bindings.storage)merged+=slot.has_value();
-  if(merged!=count-unsigned(conflict))std::cerr<<"chain "<<count<<" conflict "<<conflict<<" reverse "<<reverse<<" merged "<<merged<<'\n';
-  Check(merged==count-unsigned(conflict));
+  // Storage sharing and dead-binding deletion are separate responsibilities:
+  // retired carriers need no storage map. The independent JS check requires
+  // exactly one final declarator for every layout/size, and detects wrong
+  // old-value reuse after increment. Keep its occurrence identity here too.
+  if(snapshot) {
+    const auto mapped=[&](unsigned id){return SymbolId{static_cast<std::uint32_t>(reverse?tree.symbols.size()-1-id:id)};};
+    Check(bindings.ReadBinding(*snapshot,mapped(3))==mapped(0));
+  }
   std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
-  if(emit)std::cout<<nlohmann::json{{"count",count},{"conflict",conflict},{"reverse",reverse},{"source",output.str()}}<<'\n';
+  if(emit)*fixture_output<<nlohmann::json{{"count",count},{"conflict",conflict},{"reverse",reverse},{"work",bindings.work},{"bytes",bindings.allocated_bytes},{"attempts",bindings.cost.attempts},{"commits",bindings.cost.commits},{"projections",bindings.cost.projections},{"nodes",bindings.cost.nodes},{"edges",bindings.cost.edges},{"live_facts",bindings.cost.live_facts},{"witnesses",bindings.cost.witnesses},{"source",output.str()}}<<'\n';
+  Check(bindings.cost.commits<=bindings.cost.witnesses+2);
   return bindings.work;
 }
 }
@@ -869,10 +915,38 @@ std::uint64_t ScopedCopies(ScopedForm form,unsigned count,bool reverse,bool emit
   }else Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output)));
   if(form==ScopedForm::kCallback)Check(output.str().find("scratch")==std::string::npos);
   if(form==ScopedForm::kCapturedCallback)Check(output.str().find("scratch")!=std::string::npos);
-  if(emit)std::cout<<nlohmann::json{{"form",unsigned(form)},{"count",count},{"reverse",reverse},{"source",output.str()},{"work",bindings.work},{"bytes",bindings.allocated_bytes}}<<'\n';
+  if(emit)*fixture_output<<nlohmann::json{{"form",unsigned(form)},{"count",count},{"reverse",reverse},{"source",output.str()},{"work",bindings.work},{"bytes",bindings.allocated_bytes}}<<'\n';
   return bindings.work;
 }
+std::uint64_t DeclarationRenewal(unsigned count,bool reverse,bool emit) {
+  Fixture f(Form::kStraight);auto& tree=f.tree;
+  std::vector<StmtId> roots{f.Stmt(DeclarationStmt{{3},{}}),f.Stmt(DeclarationStmt{{4},{}}),
+      f.Write(3,f.Read(0)),f.Stmt(ExpressionStmt{f.Call({f.Read(3)})})};
+  for(unsigned i=0;i<count;++i)roots.push_back(f.Block({}));
+  roots.push_back(f.Write(3,f.Call({f.Read(2)})));roots.push_back(f.Stmt(ReturnStmt{f.Read(3)}));
+  f.Finish(roots,reverse);Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
+  const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
+  const auto planned=PlanBindingInitializers(tree,loops,nullish);
+  if(const auto* error=std::get_if<TreeStructureError>(&planned))std::cerr<<"declaration renewal "<<unsigned(*error)<<'\n';
+  Check(std::holds_alternative<BindingInitializers>(planned));
+  std::ostringstream output;const auto printed=PrintFunctionTree(tree,output);
+  Check(std::holds_alternative<PrintedFunction>(printed));
+  if(emit)*fixture_output<<nlohmann::json{{"form",96},{"renewal",true},{"count",count},{"reverse",reverse},{"source",output.str()}}<<'\n';
+  return std::get<BindingInitializers>(planned).work;
+}
 int main(int argc,char** argv){
+  if(argc==3&&std::string_view(argv[1])=="--form") {
+    const auto form=std::stoul(argv[2]);Check(form<=25||(form>=38&&form<=43)||(form>=57&&form<=68)||form==96);
+    for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}) {
+      if(form<=unsigned(Form::kNativeProducer))Run(Form(form),count,reverse,true);
+      else if(form==25)CanonicalScope(count,reverse,true);
+      else if(form<=40)StorageProposal(form,count,reverse,true);
+      else if(form<=43)StorageSnapshot(form,count,reverse,true);
+      else if(form==96)DeclarationRenewal(count,reverse,true);
+      else ComposedCopies(form,count,reverse,true);
+    }
+    return 0;
+  }
   if(argc>1&&std::string_view(argv[1])=="--units"){
     for(unsigned form=0;form<=unsigned(ScopedForm::kCapturedCallback);++form)for(bool reverse:{false,true}){
       std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){
@@ -888,23 +962,56 @@ int main(int argc,char** argv){
     std::uint64_t previous=0;for(unsigned count:{1U,200U,201U,400U,800U}){
       const auto work=Many(count,true);if(count==800)Check(work<previous*3);previous=work;}return 0;
   }
-for(unsigned form:{88U,89U,90U,91U,92U,93U,94U,95U})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){const auto work=TransitiveCopies(form,count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}
-for(unsigned form:{77U,78U,79U,80U,81U,82U,83U,84U,85U,86U,87U})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){const auto work=AvailableCopies(form,count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}
-for(unsigned form:{69U,70U,71U,72U,73U,74U,75U,76U})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){const auto work=ReadCopies(form,count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}
-for(unsigned form:{57U,58U,59U,60U,61U,62U,63U,64U,65U,66U,67U,68U})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){const auto work=ComposedCopies(form,count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}
-for(unsigned form:{53U,54U,55U,56U})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){const auto work=SharedCopies(form,count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}
-for(unsigned form:{44U,45U,46U,47U,48U,49U,50U,51U,52U})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){const auto work=JoinedCopies(form,count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}
-for(unsigned form:{41U,42U,43U})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){const auto work=StorageSnapshot(form,count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}
-for(unsigned form:{38U,39U,40U})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){const auto work=StorageProposal(form,count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}
-for(unsigned form:{34U,35U,36U,37U})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){const auto work=RetiringCopies(form,count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}
-for(bool loop:{false,true})for(bool inside:{false,true})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){const auto work=NarrowedShadow(loop,inside,count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}
-for(bool retired:{true,false})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){
-  const auto work=RetiredShadow(retired,count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}
-for(bool observed:{true,false})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){
-  const auto work=NameScope(observed,count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}
-for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U}){
-  const auto work=CanonicalScope(count,reverse,argc>1);if(count==800)Check(work<previous*3);previous=work;}}
-for(bool conflict:{false,true})for(bool reverse:{false,true}){std::uint64_t previous=0;for(unsigned count:{1U,2U,200U,201U,400U,800U}){
-  const auto work=Chain(count,conflict,reverse,false);if(count==800)Check(work<previous*3);previous=work;}}
-for(unsigned form=0;form<=unsigned(Form::kNativeProducer);++form){std::uint64_t previous=0;for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}){
-  const auto work=Run(Form(form),count,reverse,argc>1);if(!reverse){if(count==800)Check(work<previous*3);previous=work;}}}}
+  const bool emit=argc>1;
+  FixtureBatch batch;
+  const auto geometric=[&](auto operation) {
+    batch.Add([=] {
+      std::uint64_t previous=0;
+      for(unsigned count:{0U,1U,200U,201U,400U,800U}) {
+        const auto work=operation(count);if(count==800)Check(work<previous*3);previous=work;
+      }
+    });
+  };
+  for(unsigned form:{88U,89U,90U,91U,92U,93U,94U,95U})for(bool reverse:{false,true})
+    geometric([=](unsigned count){return TransitiveCopies(form,count,reverse,emit);});
+  for(unsigned form:{77U,78U,79U,80U,81U,82U,83U,84U,85U,86U,87U})for(bool reverse:{false,true})
+    geometric([=](unsigned count){return AvailableCopies(form,count,reverse,emit);});
+  for(unsigned form:{69U,70U,71U,72U,73U,74U,75U,76U})for(bool reverse:{false,true})
+    geometric([=](unsigned count){return ReadCopies(form,count,reverse,emit);});
+  for(unsigned form:{57U,58U,59U,60U,61U,62U,63U,64U,65U,66U,67U,68U})for(bool reverse:{false,true})
+    geometric([=](unsigned count){return ComposedCopies(form,count,reverse,emit);});
+  for(unsigned form:{53U,54U,55U,56U})for(bool reverse:{false,true})
+    geometric([=](unsigned count){return SharedCopies(form,count,reverse,emit);});
+  for(unsigned form:{44U,45U,46U,47U,48U,49U,50U,51U,52U})for(bool reverse:{false,true})
+    geometric([=](unsigned count){return JoinedCopies(form,count,reverse,emit);});
+  for(unsigned form:{41U,42U,43U})for(bool reverse:{false,true})
+    geometric([=](unsigned count){return StorageSnapshot(form,count,reverse,emit);});
+  for(unsigned form:{38U,39U,40U})for(bool reverse:{false,true})
+    geometric([=](unsigned count){return StorageProposal(form,count,reverse,emit);});
+  for(unsigned form:{34U,35U,36U,37U})for(bool reverse:{false,true})
+    geometric([=](unsigned count){return RetiringCopies(form,count,reverse,emit);});
+  for(bool loop:{false,true})for(bool inside:{false,true})for(bool reverse:{false,true})
+    geometric([=](unsigned count){return NarrowedShadow(loop,inside,count,reverse,emit);});
+  for(bool retired:{true,false})for(bool reverse:{false,true})
+    geometric([=](unsigned count){return RetiredShadow(retired,count,reverse,emit);});
+  for(bool observed:{true,false})for(bool reverse:{false,true})
+    geometric([=](unsigned count){return NameScope(observed,count,reverse,emit);});
+  for(bool reverse:{false,true})geometric([=](unsigned count){return CanonicalScope(count,reverse,emit);});
+  for(bool conflict:{false,true})for(bool reverse:{false,true})batch.Add([=] {
+    std::uint64_t previous=0;
+    for(unsigned count:{1U,2U,200U,201U,400U,800U}) {
+      const auto work=Chain(count,conflict,reverse,false);if(count==800)Check(work<previous*3);previous=work;
+    }
+  });
+  for(unsigned form=0;form<=unsigned(Form::kNativeProducer);++form)batch.Add([=] {
+    std::uint64_t previous=0;
+    for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true}) {
+      const auto work=::Run(Form(form),count,reverse,emit);
+      if(!reverse){if(count==800)Check(work<previous*3);previous=work;}
+    }
+  });
+  batch.Add([=] {
+    for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool reverse:{false,true})DeclarationRenewal(count,reverse,emit);
+  });
+  batch.Run(argc>1&&std::string_view(argv[1])=="--emit");
+}

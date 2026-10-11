@@ -24,9 +24,10 @@ class RecoveryFactSet {
  private:
   std::uint32_t bits_=0;
 };
+enum class RecoveryStage {kValues,kStorage,kReadValues,kGrammar};
 enum class RecoveryPassScope {kValues,kValueOrStorage,kStorage,kReadValues,kNormalization,kGrammar};
 enum class RecoveryPrerequisite {kNone,kValueCleanup,kReadValueCleanup};
-enum class RecoveryBarrier {kDemand,kStorage,kSnapshotRefresh,kReadValues,kGrammar};
+enum class RecoveryBarrier {kDemand,kStorage,kReadValues,kGrammar};
 struct RecoveryPassContract {
   RecoveryFactSet inputs;
   RecoveryPassScope scope;
@@ -101,6 +102,27 @@ struct RecoveryPassContract {
   }
   return result;
 }
+[[nodiscard]] inline RecoveryFactSet RetainedFacts(RecoveryPass pass) {
+  // Only proposal/trial owners require space in addition to current analysis.
+  // Pure consumers can share cached products across a no-op without evicting
+  // each other's inputs. Retention grants no permission to query another fact:
+  // RequireFact still checks RequiredFacts, and every commit invalidates all.
+  switch(pass) {
+    case RecoveryPass::kDeclarations:case RecoveryPass::kAliases:
+    case RecoveryPass::kSnapshots:case RecoveryPass::kStorage:
+    case RecoveryPass::kLoopDeclarations:case RecoveryPass::kDeclarationKinds:
+      return RequiredFacts(pass);
+    case RecoveryPass::kConstants:case RecoveryPass::kBindingValues:
+    case RecoveryPass::kStoredResults:case RecoveryPass::kDeadDefinitions:
+    case RecoveryPass::kInitialValues:case RecoveryPass::kBindings:
+    case RecoveryPass::kStatementValues:case RecoveryPass::kInertStatements:
+    case RecoveryPass::kInertOperands:
+      using Fact=RecoveryFact;
+      return {Fact::kExpressions,Fact::kFlow,Fact::kLiveness,Fact::kDemand,
+          Fact::kInitializations,Fact::kConstants,Fact::kCopies,Fact::kStatements,Fact::kCycles,Fact::kLoopEntries};
+  }
+  throw TreeStructureError::kOwnership;
+}
 // These are the pass's permitted outputs, checked against the journal of
 // actual field edits. Inputs and invalidation are separate contracts.
 [[nodiscard]] inline RecoveryDomains WritableDomains(RecoveryPass pass) {
@@ -122,10 +144,23 @@ struct RecoveryPassContract {
   }
   throw TreeStructureError::kOwnership;
 }
+[[nodiscard]] inline bool RecoveryPassAllowed(RecoveryPass pass,RecoveryStage stage) {
+  using Stage=RecoveryStage;
+  switch(PassContract(pass).scope) {
+    case RecoveryPassScope::kValues:return stage==Stage::kValues;
+    case RecoveryPassScope::kValueOrStorage:return stage==Stage::kValues||stage==Stage::kStorage;
+    case RecoveryPassScope::kStorage:return stage==Stage::kStorage;
+    case RecoveryPassScope::kReadValues:return stage==Stage::kReadValues;
+    case RecoveryPassScope::kNormalization:return stage!=Stage::kGrammar;
+    case RecoveryPassScope::kGrammar:return stage==Stage::kGrammar;
+  }
+  throw TreeStructureError::kOwnership;
+}
 struct ProjectionRevision {std::uint64_t value=0;};
 class RecoverySchedule {
  public:
   [[nodiscard]] ProjectionRevision Revision() const {return revision_;}
+  [[nodiscard]] RecoveryStage CurrentStage() const {RequireIdle();return stage_;}
   void RequireAnalysis() const {RequireTree(phase_!=Phase::kCommit,TreeStructureError::kOwnership);}
   void RequireCurrent(ProjectionRevision revision) const {
     RequireAnalysis();RequireTree(revision.value==revision_.value,TreeStructureError::kOwnership);
@@ -152,7 +187,7 @@ class RecoverySchedule {
   [[nodiscard]] std::optional<RecoveryPass> Prerequisite(RecoveryBarrier barrier) const {
     RequireIdle();RequireBarrier(barrier);
     if(const auto pending=PendingCleanup())return pending;
-    if(barrier==RecoveryBarrier::kReadValues&&!snapshot_checkpoint_)return RecoveryPass::kSnapshots;
+    if(barrier==RecoveryBarrier::kReadValues&&!snapshot_complete_)return RecoveryPass::kSnapshots;
     if(barrier==RecoveryBarrier::kGrammar&&!binding_values_complete_)return RecoveryPass::kBindingValues;
     if(DemandCleanupNeeded())return RecoveryPass::kDeadDefinitions;
     return {};
@@ -162,7 +197,6 @@ class RecoverySchedule {
     switch(barrier) {
       case RecoveryBarrier::kDemand:break;
       case RecoveryBarrier::kStorage:EnterStorage();break;
-      case RecoveryBarrier::kSnapshotRefresh:(void)SnapshotRefreshNeeded();break;
       case RecoveryBarrier::kReadValues:EnterReadValues();break;
       case RecoveryBarrier::kGrammar:EnterGrammar();break;
     }
@@ -181,7 +215,9 @@ class RecoverySchedule {
       RequireTree(binding_values_complete_&&!DemandCleanupNeeded(),TreeStructureError::kOwnership);
     active_=pass;before_=revision_;changes_={};phase_=Phase::kAnalysis;
   }
-  // A stable attempt is specific to its input domains and current phase.
+  // A stable attempt is specific to its semantic input domains. Stage changes
+  // restrict legal passes, but do not change a pass's equations or invalidate
+  // unchanged inputs. Preserve their certificates across those barriers.
   // The runner still executes Start/Finish so dependency checkpoints advance.
   [[nodiscard]] bool AlreadyStable() const {
     RequireTree(phase_==Phase::kAnalysis&&active_,TreeStructureError::kOwnership);
@@ -213,7 +249,7 @@ class RecoverySchedule {
     // A consumer checkpoint records its completed attempt, never a reusable
     // analysis result. Its own edits do not create a scheduling self-loop;
     // later projection commits make the downstream boundary reconsider it.
-    if(*active_==RecoveryPass::kSnapshots)snapshot_checkpoint_=revision_;
+    if(*active_==RecoveryPass::kSnapshots)snapshot_complete_=true;
     if(*active_==RecoveryPass::kBindingValues)binding_values_complete_=true;
     const bool changed=revision_.value!=before_.value;
     if(!changed)stable_[static_cast<std::size_t>(*active_)]=epochs_;
@@ -221,28 +257,40 @@ class RecoverySchedule {
   }
   void EnterStorage() {
     RequireIdle();RequireTree(cleanup_==Cleanup::kIdle&&stage_==Stage::kValues&&!DemandCleanupNeeded(),TreeStructureError::kOwnership);
-    stable_={};stage_=Stage::kStorage;
+    stage_=Stage::kStorage;
   }
   // Read-only value substitution waits for storage/snapshot destinations.
-  // Once entered, aliases, storage and motion cannot rewrite those choices.
+  // Cross-stage semantic changes reopen earlier consumers explicitly; their
+  // proofs see occurrence-owned substitutions in the rebuilt common model.
   void EnterReadValues() {
-    RequireIdle();RequireTree(cleanup_==Cleanup::kIdle&&stage_==Stage::kStorage&&snapshot_checkpoint_&&!DemandCleanupNeeded(),TreeStructureError::kOwnership);
-    stable_={};stage_=Stage::kReadValues;
+    RequireIdle();RequireTree(cleanup_==Cleanup::kIdle&&stage_==Stage::kStorage&&snapshot_complete_&&!DemandCleanupNeeded(),TreeStructureError::kOwnership);
+    stage_=Stage::kReadValues;
+  }
+  // Later occurrence/control edits may expose an earlier candidate. Reopen
+  // only on a stale semantic input certificate. Existing no-op epochs survive
+  // the back-edge; scope/cleanup checks still run before every consumer.
+  [[nodiscard]] bool ReopenSemanticInputs() {
+    RequireIdle();RequireTree(stage_==Stage::kReadValues&&cleanup_==Cleanup::kIdle&&!DemandCleanupNeeded(),TreeStructureError::kOwnership);
+    for(std::size_t i=0;i<stable_.size();++i) {
+      const auto pass=static_cast<RecoveryPass>(i);
+      if(PassContract(pass).scope==RecoveryPassScope::kGrammar)continue;
+      if(!stable_[i]||!epochs_.Same(*stable_[i],ReadDomains(pass))) {
+        stage_=Stage::kValues;return true;
+      }
+    }
+    return false;
   }
   void EnterGrammar() {
     RequireIdle();RequireTree(cleanup_==Cleanup::kIdle&&stage_==Stage::kReadValues&&binding_values_complete_&&!DemandCleanupNeeded(),TreeStructureError::kOwnership);
-    stable_={};stage_=Stage::kGrammar;
+    stage_=Stage::kGrammar;
   }
   [[nodiscard]] bool DemandCleanupNeeded() const {
     RequireIdle();return !demand_checkpoint_||demand_checkpoint_->value!=revision_.value;
   }
-  [[nodiscard]] bool SnapshotRefreshNeeded() const {
-    RequireIdle();RequireTree(stage_==Stage::kStorage&&cleanup_==Cleanup::kIdle&&!DemandCleanupNeeded(),TreeStructureError::kOwnership);
-    return !snapshot_checkpoint_||snapshot_checkpoint_->value!=revision_.value;
-  }
+
  private:
   enum class Phase {kIdle,kAnalysis,kCommit};
-  enum class Stage {kValues,kStorage,kReadValues,kGrammar};
+  using Stage=RecoveryStage;
   enum class Cleanup {kIdle,kInitialValues,kBindings};
   [[nodiscard]] std::optional<RecoveryPass> PendingCleanup() const {
     switch(cleanup_) {
@@ -253,20 +301,13 @@ class RecoverySchedule {
     throw TreeStructureError::kOwnership;
   }
   void RequireScope(RecoveryPass pass) const {
-    const auto scope=PassContract(pass).scope;
-    const bool allowed=scope==RecoveryPassScope::kValues?stage_==Stage::kValues:
-        scope==RecoveryPassScope::kStorage?stage_==Stage::kStorage:
-        scope==RecoveryPassScope::kReadValues?stage_==Stage::kReadValues:
-        scope==RecoveryPassScope::kGrammar?stage_==Stage::kGrammar:
-        scope==RecoveryPassScope::kNormalization?stage_!=Stage::kGrammar:
-        stage_==Stage::kValues||stage_==Stage::kStorage;
-    RequireTree(allowed,TreeStructureError::kOwnership);
+    RequireTree(RecoveryPassAllowed(pass,stage_),TreeStructureError::kOwnership);
   }
   void RequireBarrier(RecoveryBarrier barrier) const {
     switch(barrier) {
       case RecoveryBarrier::kDemand:RequireTree(stage_!=Stage::kGrammar,TreeStructureError::kOwnership);break;
       case RecoveryBarrier::kStorage:RequireTree(stage_==Stage::kValues,TreeStructureError::kOwnership);break;
-      case RecoveryBarrier::kSnapshotRefresh:case RecoveryBarrier::kReadValues:
+      case RecoveryBarrier::kReadValues:
         RequireTree(stage_==Stage::kStorage,TreeStructureError::kOwnership);break;
       case RecoveryBarrier::kGrammar:RequireTree(stage_==Stage::kReadValues,TreeStructureError::kOwnership);break;
     }
@@ -283,7 +324,8 @@ class RecoverySchedule {
   ProjectionRevision revision_,before_;
   RecoveryEpochs epochs_;
   RecoveryDomains changes_;
-  std::optional<ProjectionRevision> demand_checkpoint_,snapshot_checkpoint_;
+  std::optional<ProjectionRevision> demand_checkpoint_;
+  bool snapshot_complete_=false;
 };
 }
 #endif

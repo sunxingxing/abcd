@@ -81,6 +81,7 @@ struct RecoveryChange {RecoveryField field;RecoverySite site;RecoveryValue befor
 class RecoveryChanges {
  public:
   void Clear(){changes_.clear();domains_={};}
+  [[nodiscard]] std::size_t AllocatedBytes() const {return changes_.capacity()*sizeof(RecoveryChange);}
   [[nodiscard]] bool Empty() const {return changes_.empty();}
   [[nodiscard]] RecoveryDomains Domains() const {return domains_;}
   [[nodiscard]] std::span<const RecoveryChange> Entries() const {return changes_;}

@@ -1,4 +1,5 @@
 #include "binding_normalization.h"
+#include "binding_storage.h"
 #include "recovery_changes.h"
 #include "source_names.h"
 #include "source_name_retirement.h"
@@ -8,6 +9,8 @@
 #include "original_flow.h"
 #include "expression_observation.h"
 #include "recovery_schedule.h"
+#include "recovery_worklist.h"
+#include "recovery_progress.h"
 #include "recovery_projection.h"
 #include "binding_interference.h"
 #include "storage_coalescing.h"
@@ -40,7 +43,7 @@ struct BindingUses {
   bool private_storage = false, module_alias = false, named_creation = false;
 };
 using DeclarationSite=RecoveryDeclarationSite;
-struct DeclarationEdit { DeclarationSite site; BindingInitializer initializer; };
+struct DeclarationEdit { DeclarationSite site; BindingInitializer initializer; StmtId previous; };
 struct ContainerRange { std::size_t begin = 0, end = 0; };
 struct ProjectionObservation { SymbolId symbol; StmtId owner; };
 struct ExpressionVisit {
@@ -252,73 +255,14 @@ class Initializers {
     for(std::size_t i=0;i<uses_.size();++i){budget_.Step();const auto kind=tree_.symbols[i].kind;
       stable_entries_[i]=!uses_[i].escaped&&!uses_[i].outside_body&&
           ((kind==BindingKind::kParameter&&!mapped_arguments_)||kind==BindingKind::kFunctionSelf);}
-    // Normalize redundant writes before dead-definition analysis chooses the
-    // retained producer; both passes preserve the original RHS evaluation.
-    RunPass(Pass::kStoredResults);
-    // Remove discarded inert observations before declaration availability is
-    // proved on retained references. Observable reads and RHS effects remain.
-    RunPass(Pass::kInertOperands);
-    RunPass(Pass::kInertStatements);
-    // Remove dead value definitions before propagating their retained values.
-    // Declaration placement waits for the normalized read/producer projection;
-    // an early grammar decision would retain observations later made literal.
-    Reach(RecoveryBarrier::kDemand);
-    // Literal stability also depends on retained writes. Clear identity stores
-    // before coverage, then clear new identities exposed by literal projection.
-    RunPass(Pass::kStoredResults);
-    RunPass(Pass::kInertOperands);
-    RunPass(Pass::kInertStatements);
-    RunPass(Pass::kConstants);
-    RunPass(Pass::kStoredResults);
-    RunPass(Pass::kInertOperands);
-    RunPass(Pass::kInertStatements);
-    // Value substitution may retire reads. Normalize stores/effects, then
-    // discharge independent definition/initialization/binding obligations
-    // before aliases consume retained producer coverage. The checkpoint is
-    // revision-owned; no producer-specific change booleans control consumers.
-    // Place initialization after value normalization, before producer coverage.
-    // Existing dominance/extent proofs consume the current retained projection.
-    RunPass(Pass::kDeclarations);
-    RunPass(Pass::kAliases);
-    RunPass(Pass::kStoredResults);
-    RunPass(Pass::kInertOperands);
-    RunPass(Pass::kInertStatements);
-    Reach(RecoveryBarrier::kStorage);
-    RunPass(Pass::kSnapshots);
-    RunPass(Pass::kStorage);
-    RunPass(Pass::kStoredResults);
-    RunPass(Pass::kInertOperands);
-    RunPass(Pass::kInertStatements);
-    // Final aliases consume the coalesced slots. No storage pass is legal
-    // after entering grammar, where loop/declaration spelling consumes them.
-    RunPass(Pass::kAliases);
-    RunPass(Pass::kStoredResults);
-    RunPass(Pass::kInertOperands);
-    RunPass(Pass::kInertStatements);
-    Reach(RecoveryBarrier::kSnapshotRefresh);
-    // Storage/alias cleanup can remove names or observations that blocked the
-    // earlier snapshot attempt. Reconsider once at this stable stage boundary,
-    // with fresh versioned facts. No whole-function retry loop or round cap.
-    if(schedule_.SnapshotRefreshNeeded()) {
-      RunPass(Pass::kSnapshots);
-      RunPass(Pass::kStoredResults);
-      RunPass(Pass::kInertOperands);
-      RunPass(Pass::kInertStatements);
-    }
-    // Stable binding values consume final storage/snapshot read destinations.
-    // Doing this before motion can choose a name unavailable at that destination.
-    Reach(RecoveryBarrier::kReadValues);
-    RunPass(Pass::kBindingValues);
-    // Preserve entry effects after final read destinations are fixed; residual
-    // control normalization cannot reopen storage, alias or snapshot choices.
-    RunPass(Pass::kStatementValues);
-    Reach(RecoveryBarrier::kDemand);
-    RunPass(Pass::kInertOperands);
-    // Read substitution exposes inert controls only after private writes and
-    // binding lifetimes have been discharged by their independent owners.
-    RunPass(Pass::kInertStatements);
-    // Final source grammar consumes the final bindings/evaluations. It can
-    // retain outlined prefix effects without reviving removed declarations.
+    progress_.emplace(tree_.expressions.size(),tree_.statements.size(),tree_.symbols.size(),budget_);
+    do {
+      RunStage();
+      Reach(RecoveryBarrier::kStorage);
+      RunStage();
+      Reach(RecoveryBarrier::kReadValues);
+      RunStage();
+    } while(schedule_.ReopenSemanticInputs());
     Reach(RecoveryBarrier::kGrammar);
     RunPass(Pass::kLoopDeclarations);
     RunPass(Pass::kDeclarationKinds);
@@ -336,8 +280,10 @@ class Initializers {
   using Pass=RecoveryPass;
   using ExpressionFacts=RecoveryExpressions;
   // All event-indexed and expression facts belong to one immutable projection.
-  // A commit destroys this aggregate, so adding an analysis cannot accidentally
-  // omit its invalidation. Occurrence initialization is discarded too;
+  // A semantic commit destroys this aggregate, so adding an analysis cannot
+  // accidentally omit its invalidation. Proved spelling-only edits may transfer
+  // the owner's revision; an exact accepted trial may become the new owner.
+  // Occurrence initialization follows the same owner;
   // destroyed cache admission is released, while the peak/work stay counted.
   struct ProjectionFacts {
     ProjectionRevision revision;
@@ -372,10 +318,10 @@ class Initializers {
       RequireTree(bytes<=facts_->admitted_bytes,TreeStructureError::kOwnership);
       product.reset();facts_->admitted_bytes-=bytes;budget_.Release(bytes);
     };
-    // A pass boundary has no outstanding consumer borrows. Keep the coupled
-    // flow/expression bootstrap for reuse, but release derived products outside
-    // the next pass's closed dependency contract. This is cache ownership, not
-    // a projection change, proof refresh, resource-based admission or new round.
+    // A pass boundary has no outstanding consumer borrows. Before a trial or
+    // large proposal, release products outside its dependency closure. Other
+    // consumers share same-revision caches across no-ops. This retention policy
+    // changes ownership only; allowed queries still follow RequiredFacts.
     retain(RecoveryFact::kInitializations,facts_->initializations);
     retain(RecoveryFact::kLiveness,facts_->liveness);
     retain(RecoveryFact::kDemand,facts_->demand);
@@ -383,6 +329,16 @@ class Initializers {
     retain(RecoveryFact::kCopies,facts_->copies);
     retain(RecoveryFact::kStatements,facts_->statements);
     retain(RecoveryFact::kCycles,facts_->cycles);
+  }
+  void RunStage() {
+    worklist_.emplace(schedule_.CurrentStage());
+    for(;;) {
+      budget_.Step();
+      if(const auto pass=worklist_->Next())RunPass(*pass);
+      else if(const auto prerequisite=schedule_.Prerequisite(RecoveryBarrier::kDemand))RunPassOnce(*prerequisite);
+      else break;
+    }
+    worklist_.reset();
   }
   bool RunPass(Pass pass) {
     while(const auto prerequisite=schedule_.Prerequisite(pass))RunPassOnce(*prerequisite);
@@ -393,13 +349,28 @@ class Initializers {
     while(const auto prerequisite=schedule_.Prerequisite(barrier))RunPassOnce(*prerequisite);
     schedule_.Arrive(barrier);
   }
+  std::size_t PassStorage() const {
+    return BindingStorage(plan_)+changes_.AllocatedBytes()+
+        (facts_?facts_->admitted_bytes:0)+
+        (original_preferences_?original_preferences_->allocated_bytes:0)+
+        (committed_projection_?committed_projection_->retained_bytes:0);
+  }
   bool RunPassOnce(Pass pass) {
+    ++cost_.attempts;
+    const bool grammar=schedule_.CurrentStage()==RecoveryStage::kGrammar;
     budget_.Step();changes_.Clear();schedule_.Start(pass);const auto before=schedule_.Revision();
     if(schedule_.AlreadyStable())return schedule_.Finish();
     // A current no-op certificate consumes no analysis and allocates nothing.
     // Do not evict valid facts for a pass which will not run: the next actual
     // consumer still enforces its live-storage contract at this boundary.
-    RetainFacts(RequiredFacts(pass));
+    RetainFacts(RetainedFacts(pass));
+    // Only these owners can change capacity during a pass. Census vectors are
+    // fixed before scheduling. Charge temporary proposals at peak while live,
+    // then release them after the pass returns; revision caches and journal
+    // capacity survive. Cumulative work never receives credit on destruction.
+    const auto owned_before=PassStorage();
+    RequireTree(owned_before<=budget_.ActiveBytes(),TreeStructureError::kOwnership);
+    const auto fixed_bytes=budget_.ActiveBytes()-owned_before;
     switch(pass) {
       case Pass::kDeclarations:Declarations();break;
       case Pass::kDeclarationKinds:DeclarationKinds();break;
@@ -433,7 +404,20 @@ class Initializers {
     }
     RequireTree(WritableDomains(pass).Contains(changes_.Domains()),TreeStructureError::kOwnership);
     RequireTree((schedule_.Revision().value!=before.value)==!changes_.Empty(),TreeStructureError::kOwnership);
-    return schedule_.Finish();
+    progress_->Accept(changes_.Entries(),grammar,budget_);
+    const auto owned_after=PassStorage();
+    RequireTree(fixed_bytes<=budget_.ActiveBytes()&&owned_after<=budget_.ActiveBytes()-fixed_bytes,TreeStructureError::kOwnership);
+    budget_.Release(budget_.ActiveBytes()-fixed_bytes-owned_after);
+    const bool changed=schedule_.Finish();
+    cost_.commits+=changed;
+    if(committed_projection_) {
+      RequireTree(changed&&!facts_,TreeStructureError::kOwnership);
+      facts_.emplace(ProjectionFacts{schedule_.Revision(),{},{},{},{},{},{},{},{}});
+      facts_->admitted_bytes=committed_projection_->retained_bytes;
+      facts_->projection=std::move(committed_projection_);committed_projection_.reset();
+    }
+    if(worklist_)worklist_->Changed(changes_.Domains());
+    return changed;
   }
   template<RecoveryField field,class Value>
   void Edit(typename RecoveryFieldTraits<field>::Site site,Value value) {
@@ -449,7 +433,15 @@ class Initializers {
     Edit<RecoveryField::kDeclarationKinds>(statement,declaration);
   }
   void BeginCommit() {
-    if(!schedule_.Commit(changes_.Domains()))return;
+    (void)schedule_.Commit(changes_.Domains());
+    // Declaration kind is a proved spelling-only edit: identity, completed
+    // initialization and retained writes are unchanged. Transport that owner's
+    // revision, while commit-phase reads remain forbidden. A later semantic
+    // field in the same batch must still invalidate it (not just the first edit).
+    if(RecoveryDomains{RecoveryDomain::kGrammar}.Contains(changes_.Domains())) {
+      if(facts_)facts_->revision=schedule_.Revision();
+      return;
+    }
     const auto bytes=facts_?facts_->admitted_bytes:0;
     facts_.reset();
     budget_.Release(bytes);
@@ -523,7 +515,8 @@ class Initializers {
       std::optional<DeclarationSite> site;std::optional<ExprId> assignment;
       // This grammar action replaces a later assignment with initialization;
       // an existing lexical initializer already owns that binding completion.
-      if(CurrentFlow().bindings[i].initialization==FlowDefinitionKind::kInitializer)continue;
+      const auto& binding=CurrentFlow().bindings[i];
+      if(!binding.declaration || binding.initialization==FlowDefinitionKind::kInitializer)continue;
       if(use.escaped) {
         // Transitional capture proof: child-cell observations are not fully
         // represented in shared flow. Preserve the original admission and
@@ -544,7 +537,7 @@ class Initializers {
       // Completion and lexical extent are independent obligations. Retain a
       // mutable binding here; final declaration spelling consumes later writes.
       proposed[count++] = {*site,
-          {SymbolId{static_cast<std::uint32_t>(i)}, *assignment, DeclarationKind::kLet}};
+          {SymbolId{static_cast<std::uint32_t>(i)}, *assignment, DeclarationKind::kLet},*binding.declaration};
     }
     // Grammar and allocation are part of the immutable declaration proposal.
     // A prefix cannot declare a loop cell. Decide this before publishing any
@@ -559,7 +552,7 @@ class Initializers {
         std::vector<std::optional<BindingInitializer>> trial;
         budget_.Array(trial,plan_.statements.size());
         std::copy(plan_.statements.begin(),plan_.statements.end(),trial.begin());
-        for(std::size_t i=0;i<count;++i){budget_.Step();trial[proposed[i].site.statement.value]=proposed[i].initializer;}
+        for(std::size_t i=0;i<count;++i){budget_.Step();trial[proposed[i].previous.value].reset();trial[proposed[i].site.statement.value]=proposed[i].initializer;}
         auto candidate=BindingPlanView{plan_};candidate.statements=trial;
         auto grammar=PlanLoopDeclarations(loops_,candidate,original_declarations_,budget_.Remaining());
         if(const auto* error=std::get_if<TreeStructureError>(&grammar))throw *error;
@@ -580,19 +573,29 @@ class Initializers {
     // A rejected whole batch retains the original representation; dropping
     // members of a validated namespace would require another full proof.
     const auto edits=std::span<const DeclarationEdit>{proposed}.first(accepted);
-    if(!CheckDeclarationProposal(edits))return;
+    auto projection=CheckDeclarationProposal(edits);
+    if(!projection)return;
     for(const auto& edit:edits) {
       budget_.Step();
       changes_.WriteIndexed<RecoveryField::kDeclarationSites>(declaration_sites_,edit.initializer.symbol,
           edit.site,budget_,[&]{BeginCommit();});
+      // Retire the current lexical completion, which may itself have moved in
+      // an earlier round. The original placeholder no longer owns this unit.
+      Edit<RecoveryField::kDeclarations>(edit.previous,std::nullopt);
       Edit<RecoveryField::kDeclarations>(edit.site.statement,edit.initializer);
-      DiscardDeclaration(*uses_[edit.initializer.symbol.value].declaration);
+      DiscardDeclaration(edit.previous);
     }
+    // The trial above describes this complete transaction, including identical
+    // retirement and loop-entry adaptation. Transfer its immutable owner only
+    // after every edit; the runner stamps it with the committed revision.
+    // No transported-read trial annotations or partial selection are reused.
+    committed_projection_=std::move(projection);
   }
-  bool CheckDeclarationProposal(std::span<const DeclarationEdit> edits) const {
+  std::optional<RecoveryProjection> CheckDeclarationProposal(std::span<const DeclarationEdit> edits) const {
     const auto& current=CurrentFlow();
     const auto before=budget_.ActiveBytes();
-    const bool accepted=[&] {
+    std::optional<RecoveryProjection> accepted;
+    [&] {
       std::vector<std::optional<BindingInitializer>> statements;
       std::vector<std::optional<DeclarationSite>> sites;
       std::vector<std::uint8_t> omitted,moved;
@@ -608,22 +611,23 @@ class Initializers {
       std::copy(plan_.declaration_completions.begin(),plan_.declaration_completions.end(),completions.begin());
       for(const auto& edit:edits) {
         budget_.Step();const auto binding=edit.initializer.symbol;
+        statements[edit.previous.value].reset();
         statements[edit.site.statement.value]=edit.initializer;sites[binding.value]=edit.site;
-        RetireDeclaration(*uses_[binding.value].declaration,omitted,values,completions);
+        RetireDeclaration(edit.previous,omitted,values,completions);
         // The existing captured-cell prerequisite remains transitional: this
         // ordinary-unit proof does not certify closure cell reconstruction.
         if(!uses_[binding.value].escaped)moved[plan_.Storage(binding).value]=1;
       }
       auto view=BindingPlanView{plan_};view.statements=statements;view.omitted=omitted;
       view.declaration_values=values;view.declaration_completions=completions;
-      const auto trial=BuildProjectedFlow(view,sites);
+      auto trial=BuildProjectedFlow(view,sites);
       // Trial publication already solved lexical reads together with value,
       // effect and completion dependencies. Never reconstruct a second proof
       // here; statement and expression reads share the event certificate.
       for(const auto& reference:trial.flow.references) {
         budget_.Step();
         if(moved[reference.binding.value] && reference.kind==FlowReferenceKind::kRead &&
-            trial.flow.events[reference.point.value].read_completion!=FlowReadCompletion::kInitialized)return false;
+            trial.flow.events[reference.point.value].read_completion!=FlowReadCompletion::kInitialized)return;
       }
       std::vector<SourceNameQuery> queries;
       RequireTree(trial.flow.references.size()<=std::numeric_limits<std::size_t>::max()-trial.flow.names.size(),TreeStructureError::kResourceLimit);
@@ -636,13 +640,13 @@ class Initializers {
         budget_.Step();
         const auto* binding=std::get_if<SymbolId>(&queries[i].name);
         if((binding&&moved[binding->value]) || original_names[i]==SourceNameResolution::kResolved)
-          if(trial_names[i]!=SourceNameResolution::kResolved)return false;
+          if(trial_names[i]!=SourceNameResolution::kResolved)return;
       }
-      return true;
+      accepted=std::move(trial);
     }();
-    // The synchronous trial and every borrowed view have been destroyed.
-    // Release scratch admission, retaining cumulative work and peak bytes.
-    budget_.Release(budget_.ActiveBytes()-before);return accepted;
+    // All borrowed views and trial scratch are destroyed. An accepted joint
+    // product remains owned until exact commit; a rejected one retains nothing.
+    budget_.Release(budget_.ActiveBytes()-before-(accepted?accepted->retained_bytes:0));return accepted;
   }
   void DeclarationKinds() {
     const auto eligible=[&](std::size_t statement) {
@@ -1038,6 +1042,7 @@ class Initializers {
     auto prepared=PrepareRecoveryProjection(tree_,projection,input,budget_.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&prepared))throw *error;
     auto result=std::get<RecoveryProjection>(std::move(prepared));
+    ++cost_.projections;cost_.nodes+=result.flow.events.size();cost_.edges+=result.flow.edges.size();
     budget_.Admit(result.allocated_bytes,1);budget_.Step(result.work);
     RequireTree(result.retained_bytes<=result.allocated_bytes,TreeStructureError::kOwnership);
     budget_.Release(result.allocated_bytes-result.retained_bytes);
@@ -1063,6 +1068,16 @@ class Initializers {
       const auto before=budget_.ActiveBytes();
       auto prepared=BuildProjectedFlow(plan_,declaration_sites_);
       facts.admitted_bytes+=budget_.ActiveBytes()-before;
+      if(!original_preferences_) {
+        RequireTree(schedule_.Revision().value==0,TreeStructureError::kOwnership);
+        // Immutable baseline analysis, not a plan edit or a reusable proof of
+        // current equality/interference. Keep its ownership outside revision
+        // caches: deleting a copy must not delete its storage preference.
+        auto preferences=FindBindingPreferences(prepared.flow,budget_.Remaining());
+        if(const auto* error=std::get_if<TreeStructureError>(&preferences))throw *error;
+        original_preferences_=std::get<BindingPreferences>(std::move(preferences));
+        budget_.Admit(original_preferences_->allocated_bytes,1);budget_.Step(original_preferences_->work);
+      }
       facts.projection.emplace(std::move(prepared));
     }
     return *facts.projection;
@@ -1101,6 +1116,7 @@ class Initializers {
     auto analyzed=AnalyzeFlowLiveness(flow,budget_.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
     facts.liveness=std::get<FlowLiveness>(std::move(analyzed));
+    cost_.live_facts+=facts.liveness->live_in.size();
     budget_.Admit(facts.liveness->allocated_bytes,1);budget_.Step(facts.liveness->work);
     facts.admitted_bytes+=facts.liveness->allocated_bytes;return *facts.liveness;
   }
@@ -1239,7 +1255,13 @@ class Initializers {
     if (!candidate) return;
     const auto& flow=CurrentFlow();
     const auto& liveness=CurrentLiveness();
-    auto analyzed = FindBindingInterference(flow,liveness,budget_.Remaining());
+    std::vector<BindingPreference> preferences;
+    budget_.Array(preferences,original_preferences_->pairs.size());
+    for(std::size_t i=0;i<preferences.size();++i) {
+      budget_.Step();const auto pair=original_preferences_->pairs[i];
+      preferences[i]={plan_.Storage(pair.first),plan_.Storage(pair.second)};
+    }
+    auto analyzed = FindBindingInterference(flow,liveness,budget_.Remaining(),preferences);
     if (const auto* error = std::get_if<TreeStructureError>(&analyzed)) throw *error;
     auto facts = std::get<BindingInterference>(std::move(analyzed));
     budget_.Admit(facts.allocated_bytes, 1); budget_.Step(facts.work);
@@ -1248,7 +1270,10 @@ class Initializers {
     for(std::size_t i=0;i<bindings.size();++i) {
       budget_.Step();const SymbolId symbol{static_cast<std::uint32_t>(i)};
       const auto& site=declaration_sites_[i];
-      bindings[i].eligible=eligible(symbol);
+      // Historical copy preferences cannot recreate retired source storage.
+      // Every selected representative must still own a retained binding in
+      // this projection, independently of the original declaration census.
+      bindings[i].eligible=eligible(symbol)&&flow.binding_presence[i]==SourceBindingPresence::kRetained;
       bindings[i].unique_spelling=flow.bindings[i].unique_spelling;
       bindings[i].native_declaration=site&&plan_.statements[site->statement.value].has_value();
       if(const auto region=flow.BindingRegion(symbol))
@@ -1358,6 +1383,16 @@ class Initializers {
     // decides whether its undefined value needs a successful slot write.
     struct StorageCompletion {StmtId statement;std::optional<SymbolId> write;};
     std::vector<StorageCompletion> completions;
+    std::vector<std::optional<ExprId>> retained_values;
+    budget_.Array(retained_values,tree_.statements.size());
+    // Storage renames definitions which still exist in the current model.
+    // A retired initializer may retain only its RHS evaluation; consulting
+    // the original declaration here would recreate its already-deleted store.
+    for(const auto& definition:flow.definitions) {
+      budget_.Step();
+      if(definition.declaration&&definition.value)
+        retained_values[definition.declaration->value]=definition.value;
+    }
     budget_.Array(completions,plan_.declaration_completions.size());std::size_t completion_count=0;
     for(std::size_t i=0;i<plan_.declaration_completions.size();++i) {
       budget_.Step();const auto& completion=plan_.declaration_completions[i];
@@ -1373,9 +1408,9 @@ class Initializers {
       // Lifetime removal and value preservation are separate plan actions.
       if(!plan_.declaration_completions[use.declaration->value]) {
         if(initialization.stores[use.declaration->value])Edit<RecoveryField::kUndefinedStores>(*use.declaration,root);
-        else if(const auto value=std::get<DeclarationStmt>(tree_.statements[use.declaration->value].statement).initializer)
+        else if(const auto value=retained_values[use.declaration->value])
           Edit<RecoveryField::kDeclarationValues>(*use.declaration,DeclarationValue{*value,root});
-        else Edit<RecoveryField::kOmissions>(*use.declaration,1);
+        else DiscardDeclaration(*use.declaration);
       }
       if(const auto& site=declaration_sites_[i])Edit<RecoveryField::kDeclarations>(site->statement,std::nullopt);
       if(const auto& site=declaration_sites_[root.value];site && plan_.statements[site->statement.value])
@@ -1392,6 +1427,17 @@ class Initializers {
   }
   bool MutableBinding(SymbolId symbol) const {return WritableRecoveryBinding(tree_,symbol);}
   void ElideStoredResults() {
+    // This pass can only retire an extant assignment result or a retained
+    // declaration-value target. An empty producer set needs no joint solve;
+    // this is the same candidate census used below, not another proof gate.
+    bool candidate=false;
+    for(std::size_t at=0;at<completion_count_;++at) {
+      budget_.Step();const auto id=completions_[at];
+      if(!plan_.replacements[id.value]&&!plan_.transports[id.value]&&
+          std::holds_alternative<AssignmentExpr>(tree_.expressions[id.value].expression))candidate=true;
+    }
+    for(const auto& value:plan_.declaration_values){budget_.Step();candidate|=value&&value->target.has_value();}
+    if(!candidate)return;
     // Analysis and proposals observe one immutable projection. Only this
     // commit changes replacements; consumers derive their own current facts.
     const auto& facts = AnalyzeExpressions();
@@ -1671,10 +1717,18 @@ class Initializers {
     }
     return *facts.copies;
   }
+  bool HasPrivateReads() const {
+    const auto& flow=CurrentFlow();
+    for(const auto& reference:flow.references) {
+      budget_.Step();if(reference.kind==FlowReferenceKind::kRead&&
+          flow.bindings[reference.binding.value].exposure==FlowBindingExposure::kPrivate)return true;
+    }
+    return false;
+  }
   void Constants() {
     bool candidate=false;
     for(const auto& use:uses_){budget_.Step();candidate|=use.private_storage&&use.declaration&&!use.escaped;}
-    if(!candidate)return;
+    if(!candidate||!HasPrivateReads())return;
     const auto& values=CurrentConstants();
     std::vector<std::optional<PrimitiveId>> proposed;budget_.Array(proposed,uses_.size());
     for(std::size_t i=0;i<uses_.size();++i) {
@@ -1700,13 +1754,8 @@ class Initializers {
   void BindingValues() {
     bool candidate=false;
     for(const auto& use:uses_){budget_.Step();candidate|=use.private_storage&&use.declaration&&!use.escaped&&!use.outside_body;}
-    if(!candidate)return;
+    if(!candidate||!HasPrivateReads())return;
     const auto& values=CurrentConstants();
-    std::vector<std::optional<SymbolId>> bindings;budget_.Array(bindings,uses_.size());
-    bool invariant=false;
-    for(std::size_t i=0;i<uses_.size();++i){budget_.Step();const auto& use=uses_[i];
-      if(use.private_storage&&use.declaration&&!use.escaped&&!use.outside_body&&values.bindings[i]&&
-          values.bindings[i]->value!=i&&plan_.read_bindings[i]!=values.bindings[i]) {bindings[i]=values.bindings[i];invariant=true;}}
     const auto& copies=CurrentCopies();
     RequireTree(copies.reads.size()<=std::numeric_limits<std::size_t>::max()-values.binding_reads.size(),TreeStructureError::kResourceLimit);
     std::vector<FlowReadBinding> reads;budget_.Array(reads,values.binding_reads.size()+copies.reads.size());
@@ -1727,40 +1776,31 @@ class Initializers {
           plan_.ReadBinding(read.expression,source->binding)!=read.binding)reads[read_count++]=read;
     }
     reads.resize(read_count);
-    if(!invariant&&reads.empty())return;
+    if(reads.empty())return;
     const auto& flow=CurrentFlow();
     std::vector<std::optional<std::size_t>> occurrence;budget_.Array(occurrence,reads.empty()?0:tree_.expressions.size());
     for(std::size_t i=0;i<reads.size();++i){budget_.Step();occurrence[reads[i].expression.value]=i;}
-    std::vector<SourceNameQuery> queries;std::vector<SymbolId> owners;std::vector<std::optional<std::size_t>> read_owners;
-    std::vector<std::uint8_t> blocked,read_blocked;
-    constexpr std::size_t kQueriesPerRead=2; // independent invariant and occurrence proposals
-    RequireTree(flow.references.size()<=std::numeric_limits<std::size_t>::max()/kQueriesPerRead,TreeStructureError::kResourceLimit);
-    const auto capacity=flow.references.size()*kQueriesPerRead;
-    budget_.Array(queries,capacity);budget_.Array(owners,capacity);budget_.Array(read_owners,capacity);
-    budget_.Array(blocked,uses_.size());budget_.Array(read_blocked,reads.size());
+    std::vector<SourceNameQuery> queries;std::vector<std::size_t> read_owners;
+    std::vector<std::uint8_t> read_blocked;
+    budget_.Array(queries,flow.references.size());budget_.Array(read_owners,flow.references.size());
+    budget_.Array(read_blocked,reads.size());
     std::size_t query_count=0;
     for(const auto& reference:flow.references){
       budget_.Step();if(reference.kind!=FlowReferenceKind::kRead)continue;
       const auto* expression=std::get_if<ExprId>(&reference.site);
       const auto at=expression&&!occurrence.empty()?occurrence[expression->value]:std::nullopt;
-      const auto append=[&](SymbolId target,std::optional<std::size_t> read){
-        if(!reference.owner||!flow.BindingInScope(target,reference.owner)){
-          if(read)read_blocked[*read]=1;else blocked[reference.binding.value]=1;return;
-        }
-        queries[query_count]={target,reference.owner};owners[query_count]=reference.binding;read_owners[query_count++]=read;
-      };
-      if(at)append(reads[*at].binding,at);
-      if(const auto target=bindings[reference.binding.value])append(*target,{});
+      if(!at)continue;
+      const auto target=reads[*at].binding;
+      if(!reference.owner||!flow.BindingInScope(target,reference.owner)){read_blocked[*at]=1;continue;}
+      queries[query_count]={target,reference.owner};read_owners[query_count++]=*at;
     }
-    queries.resize(query_count);owners.resize(query_count);read_owners.resize(query_count);
+    queries.resize(query_count);read_owners.resize(query_count);
     const auto resolved=ResolveNames(flow,queries);
-    for(std::size_t i=0;i<query_count;++i){budget_.Step();if(resolved[i]!=SourceNameResolution::kResolved){
-      if(read_owners[i])read_blocked[*read_owners[i]]=1;else blocked[owners[i].value]=1;
-    }}
-    // Both proposals belong to the same immutable projection. Occurrence
-    // substitution never turns its fact into an all-definition invariant.
-    // Keep every write/RHS/completion until independent demand cleanup.
-    for(std::size_t i=0;i<bindings.size();++i){budget_.Step();if(bindings[i]&&!blocked[i]){Edit<RecoveryField::kReadBindings>(SymbolId{static_cast<std::uint32_t>(i)},bindings[i]);}}
+    for(std::size_t i=0;i<query_count;++i){budget_.Step();if(resolved[i]!=SourceNameResolution::kResolved)read_blocked[read_owners[i]]=1;}
+    // Commit equality at its actual occurrence. A future storage merge may
+    // rename a carrier, but cannot silently retarget these proved reads. The
+    // shared current/trial model sees their actual names, units and effects.
+    // All-write invariants remain analysis facts, not slot-indexed plan edits.
     for(std::size_t i=0;i<reads.size();++i){budget_.Step();if(!read_blocked[i]){Edit<RecoveryField::kReadSources>(reads[i].expression,reads[i].binding);}}
   }
   void Aliases() {
@@ -1891,6 +1931,7 @@ class Initializers {
     for (std::size_t i = 0; i < tree_.children.size(); ++i) {
       budget_.Step(); plan_.child_counts[i + 1] = plan_.child_counts[i] + !plan_.omitted[tree_.children[i].value];
     }
+    cost_.witnesses=progress_?progress_->Witnesses():0;plan_.cost=cost_;
     plan_.allocated_bytes = budget_.Bytes(); plan_.work = budget_.Work(); return std::move(plan_);
   }
   void ObserveContainer(BindingUses& use, std::optional<StmtId> container) {
@@ -2035,6 +2076,11 @@ class Initializers {
   std::vector<std::optional<SymbolId>> constant_heads_, constant_next_;
   std::vector<SymbolId> constant_queue_;
   std::vector<StatementVisit> statements_;
+  mutable std::optional<BindingPreferences> original_preferences_;
+  std::optional<RecoveryWorklist> worklist_;
+  std::optional<RecoveryProgress> progress_;
+  mutable RecoveryCost cost_;
+  std::optional<RecoveryProjection> committed_projection_;
   RecoverySchedule schedule_;
   RecoveryChanges changes_;
   mutable std::optional<ProjectionFacts> facts_;

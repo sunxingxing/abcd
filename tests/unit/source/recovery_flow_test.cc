@@ -9,6 +9,8 @@
 #include "../../../src/source/flow_statements.h"
 #include "../../../src/source/flow_cycles.h"
 #include "../../../src/source/recovery_schedule.h"
+#include "../../../src/source/recovery_worklist.h"
+#include "../../../src/source/recovery_progress.h"
 #include "../../../src/source/source_names.h"
 #include "../../../src/source/source_name_retirement.h"
 #include <bit>
@@ -148,6 +150,162 @@ void ActualRecoveryChanges() {
     Check(false);
   }catch(TreeStructureError error){Check(error==TreeStructureError::kResourceLimit);}
   Check(!invalidated&&!plan.read_literals[0]&&changes.Empty());
+}
+void ProgressWitnesses() {
+  using Field=RecoveryField;
+  const auto rejects=[](auto action) {
+    try{action();Check(false);}catch(TreeStructureError error){Check(error==TreeStructureError::kOwnership);}
+  };
+  for(unsigned count:{1U,200U,201U,400U,800U})for(bool reverse:{false,true}) {
+    TreeCheckBudget budget({});RecoveryProgress progress(count,count,count+1,budget);
+    const auto expression=[&](unsigned i){return ExprId{reverse?count-1-i:i};};
+    const auto statement=[&](unsigned i){return StmtId{reverse?count-1-i:i};};
+    for(unsigned i=0;i<count;++i) {
+      const std::array edits{
+          RecoveryChange{Field::kReplacements,expression(i),std::monostate{},ExprId{0}},
+          RecoveryChange{Field::kOmissions,statement(i),std::uint8_t{0},std::uint8_t{1}},
+          RecoveryChange{Field::kStorage,SymbolId{i+1},std::monostate{},SymbolId{i}}};
+      progress.Accept(edits,false,budget);
+    }
+    // Representative rewriting within an existing class is not fresh progress.
+    const std::array canonical{RecoveryChange{Field::kStorage,SymbolId{count},SymbolId{count-1},SymbolId{0}}};
+    rejects([&]{progress.Accept(canonical,false,budget);});
+    const std::array reused{RecoveryChange{Field::kReplacements,expression(0),std::monostate{},ExprId{0}}};
+    rejects([&]{progress.Accept(reused,false,budget);});
+    const std::array resurrected{RecoveryChange{Field::kOmissions,statement(0),std::uint8_t{1},std::uint8_t{0}}};
+    rejects([&]{progress.Accept(resurrected,false,budget);});
+  }
+  TreeCheckBudget budget({});RecoveryProgress progress(2,2,2,budget);
+  const std::array value{RecoveryChange{Field::kReadSources,ExprId{0},std::monostate{},SymbolId{1}}};
+  progress.Accept(value,false,budget);
+  const std::array oscillation{RecoveryChange{Field::kReadSources,ExprId{0},SymbolId{1},SymbolId{0}}};
+  rejects([&]{progress.Accept(oscillation,false,budget);});
+  const std::array metadata{RecoveryChange{Field::kDeclarationSites,SymbolId{0},std::monostate{},RecoveryDeclarationSite{{0},{1}}}};
+  rejects([&]{progress.Accept(metadata,false,budget);});
+  progress.Accept({},false,budget);
+  const std::array grammar{RecoveryChange{Field::kLoopDeclarations,StmtId{0},std::monostate{},std::uint32_t{0}}};
+  rejects([&]{progress.Accept(grammar,false,budget);});
+  progress.Accept(grammar,true,budget);
+}
+void DependencyWorklist() {
+  using Pass=RecoveryPass;using D=RecoveryDomain;
+  for(const auto stage:{RecoveryStage::kValues,RecoveryStage::kStorage,RecoveryStage::kReadValues}) {
+    RecoveryWorklist queue(stage);std::vector<Pass> initial;
+    while(const auto next=queue.Next())initial.push_back(*next);
+    for(const auto pass:initial)Check(RecoveryPassAllowed(pass,stage));
+    Check(std::ranges::find(initial,Pass::kInitialValues)==initial.end());
+    Check(std::ranges::find(initial,Pass::kBindings)==initial.end());
+    queue.Changed({});Check(!queue.Next());
+    for(const auto domain:{D::kValues,D::kExecution,D::kDefinitions,D::kStorage,D::kNames,D::kGrammar}) {
+      for(unsigned repeat=0;repeat<201;++repeat)queue.Changed({domain});
+      std::vector<Pass> actual,expected;
+      while(const auto next=queue.Next())actual.push_back(*next);
+      for(const auto pass:initial)if(ReadDomains(pass).Intersects({domain}))expected.push_back(pass);
+      Check(actual==expected); // Exact domains, bounded deduplication, priority.
+    }
+  }
+  // A tiny independent chaotic scheduler reaches a finite fact closure in
+  // either scan order. The production queue must revisit A after B enables it;
+  // omitting change notification is an executable negative, not an assertion
+  // about the implementation's own pending bits.
+  const auto transfer=[](Pass pass,unsigned state) {
+    switch(pass) {
+      case Pass::kConstants:return state|1U;
+      case Pass::kAliases:return state|((state&1U)?2U:0U)|((state&4U)?8U:0U);
+      case Pass::kStoredResults:return state|((state&2U)?4U:0U);
+      default:return state;
+    }
+  };
+  for(unsigned seed=0;seed<16;++seed) {
+    unsigned oracle=seed;
+    for(bool reverse:{false,true}) {
+      unsigned state=seed;
+      std::array order{Pass::kStoredResults,Pass::kConstants,Pass::kAliases};
+      if(reverse)std::ranges::reverse(order);
+      for(;;) {const auto before=state;for(const auto pass:order)state=transfer(pass,state);if(state==before)break;}
+      if(!reverse)oracle=state;else Check(state==oracle);
+    }
+    for(bool notify:{false,true}) {
+      RecoveryWorklist queue(RecoveryStage::kValues);unsigned state=seed;
+      while(const auto pass=queue.Next()) {
+        const auto next=transfer(*pass,state);
+        if(next!=state&&notify)queue.Changed(*pass==Pass::kConstants?RecoveryDomains{D::kValues}:RecoveryDomains{D::kExecution});
+        state=next;
+      }
+      if(notify)Check(state==oracle);
+      else if(seed==0)Check(state!=oracle);
+    }
+  }
+  {
+    RecoveryWorklist queue(RecoveryStage::kValues);unsigned derived=0;
+    while(const auto pass=queue.Next())if(*pass==Pass::kConstants&&derived<201) {
+      ++derived;queue.Changed({D::kValues});
+    }
+    Check(derived==201); // A producer is also a consumer of its changed input.
+  }
+  {
+    RecoveryWorklist queue(RecoveryStage::kValues);std::vector<Pass> visited;
+    const std::array consumers{Pass::kDeadDefinitions,Pass::kInertOperands,Pass::kInertStatements,
+        Pass::kStoredResults,Pass::kConstants,Pass::kDeclarations,Pass::kAliases};
+    // All earlier consumers keep receiving new work. A circular queue must
+    // still reach every initially pending consumer once before repeating one.
+    for(unsigned i=0;i<consumers.size();++i) {
+      const auto pass=queue.Next();Check(pass.has_value());
+      Check(std::ranges::find(consumers,*pass)!=consumers.end());
+      Check(std::ranges::find(visited,*pass)==visited.end());visited.push_back(*pass);
+      queue.Changed({D::kValues});
+    }
+  }
+}
+void SemanticBackEdges() {
+  using Pass=RecoveryPass;using Barrier=RecoveryBarrier;using D=RecoveryDomain;
+  const auto transfer=[](Pass pass,unsigned state) {
+    switch(pass) {
+      case Pass::kStorage:return state|1U;
+      case Pass::kBindingValues:return state|((state&1U)?2U:0U);
+      case Pass::kStatementValues:return state|((state&2U)?16U:0U);
+      case Pass::kConstants:return state|((state&16U)?32U:0U);
+      case Pass::kAliases:return state|((state&32U)?64U:0U);
+      default:return state;
+    }
+  };
+  unsigned oracle=0;
+  for(;;){const auto before=oracle;for(const auto pass:{Pass::kAliases,Pass::kConstants,Pass::kStatementValues,Pass::kBindingValues,Pass::kStorage})oracle=transfer(pass,oracle);if(before==oracle)break;}
+  for(bool backedge:{false,true}) {
+    RecoverySchedule schedule;std::optional<RecoveryWorklist> queue;unsigned state=0,reopened=0;
+    const auto run=[&](Pass pass) {
+      schedule.Start(pass);
+      if(schedule.AlreadyStable()){Check(!schedule.Finish());return;}
+      const auto next=transfer(pass,state);const RecoveryDomains domains{D::kValues};
+      if(next!=state){Check(schedule.Commit(domains));state=next;}
+      const bool changed=schedule.Finish();if(changed&&queue)queue->Changed(domains);
+    };
+    const auto stage=[&] {
+      queue.emplace(schedule.CurrentStage());
+      for(;;) {
+        if(const auto pass=queue->Next()) {
+          while(const auto dependency=schedule.Prerequisite(*pass))run(*dependency);
+          run(*pass);
+        } else if(const auto dependency=schedule.Prerequisite(Barrier::kDemand))run(*dependency);
+        else break;
+      }
+      queue.reset();
+    };
+    const auto reach=[&](Barrier barrier){while(const auto dependency=schedule.Prerequisite(barrier))run(*dependency);schedule.Arrive(barrier);};
+    for(;;) {
+      stage();reach(Barrier::kStorage);stage();reach(Barrier::kReadValues);stage();
+      if(!backedge||!schedule.ReopenSemanticInputs())break;
+      ++reopened;
+    }
+    if(backedge){Check(state==oracle&&reopened==1);Check(!schedule.ReopenSemanticInputs());}
+    else Check(state!=oracle);
+    reach(Barrier::kGrammar);
+    Check(!RecoveryPassAllowed(Pass::kDeclarations,schedule.CurrentStage()));
+    schedule.Start(Pass::kDeclarationKinds);schedule.RequireFact(RecoveryFact::kFlow);Check(!schedule.Finish());
+  }
+  Check(RecoveryPassAllowed(Pass::kDeclarations,RecoveryStage::kValues));
+  for(const auto stage:{RecoveryStage::kStorage,RecoveryStage::kReadValues})
+    Check(!RecoveryPassAllowed(Pass::kDeclarations,stage));
 }
 void DomainStableAttempts() {
   TestRecoverySchedule schedule;
@@ -545,6 +703,24 @@ OracleFacts Oracle(const RecoveryFlow& graph) {
     if(binding!=definition.binding.value&&definition.copy!=SymbolId{binding}&&out[definition.point.value][binding])return {true,in};
   return {false,in};
 }
+void BindingPreferenceInputs() {
+  for(unsigned count:{1U,200U,201U,400U,800U})for(bool reverse:{false,true}) {
+    RecoveryFlow flow{};flow.bindings.assign(count+1,FlowBinding{BindingKind::kCompilerTemporary});
+    const auto binding=[&](unsigned id){return SymbolId{reverse?count-id:id};};
+    for(unsigned i=1;i<=count;++i)flow.definitions.push_back({{},binding(i),FlowDefinitionKind::kAssignment,binding(i-1)});
+    const auto preferences=std::get<BindingPreferences>(FindBindingPreferences(flow));
+    Check(preferences.pairs.size()==count);
+    for(unsigned i=0;i<count;++i)Check(preferences.pairs[i].first==binding(i)&&preferences.pairs[i].second==binding(i+1));
+    Check(preferences.work==3*count);Check(preferences.allocated_bytes==sizeof(BindingPreference)*preferences.pairs.capacity());
+    Check(std::holds_alternative<BindingPreferences>(FindBindingPreferences(flow,{preferences.allocated_bytes,preferences.work})));
+    Check(std::get<TreeStructureError>(FindBindingPreferences(flow,{preferences.allocated_bytes-1,preferences.work}))==TreeStructureError::kResourceLimit);
+    Check(std::get<TreeStructureError>(FindBindingPreferences(flow,{preferences.allocated_bytes,preferences.work-1}))==TreeStructureError::kWorkLimit);
+    // Removing an actual copy removes it from the current preference analysis;
+    // retaining its old pair does not preserve any claim about interference.
+    for(auto& definition:flow.definitions)definition.copy.reset();
+    Check(std::get<BindingPreferences>(FindBindingPreferences(flow)).pairs.empty());
+  }
+}
 void SmallGraphs() {
   constexpr unsigned actions=7,vertices=3,edge_bits=vertices*vertices;
   std::size_t cases=0;
@@ -565,6 +741,10 @@ void SmallGraphs() {
       const auto& facts=std::get<BindingInterference>(result);const auto& pairs=facts.affinities;
       Check(pairs.size()==std::size_t(affinity));const auto expected=Oracle(graph);if(affinity)Check(pairs[0].interference==expected.interference);
       Check(facts.conflicts.size()==std::size_t(expected.interference));
+      const std::array preference{BindingPreference{{0},{1}}};
+      const auto hinted=std::get<BindingInterference>(FindBindingInterference(graph,live,{},preference));
+      Check(hinted.affinities.size()==1&&hinted.affinities[0].interference==expected.interference);
+      Check(hinted.conflicts==facts.conflicts);
       for(unsigned point=0;point<vertices;++point)for(unsigned binding=0;binding<2;++binding)
         Check(std::binary_search(live.live_in.begin(),live.live_in.end(),LiveBinding{{point},{binding}})==expected.live[point][binding]);
       // Independent forward fixed point without production liveness pruning.
@@ -2135,31 +2315,37 @@ void SnapshotCheckpoints() {
   const auto rejects=[](const auto& action){try{action();return false;}catch(TreeStructureError error){return error==TreeStructureError::kOwnership;}};
   const auto cleanup=[](TestRecoverySchedule& schedule){for(const auto pass:{RecoveryPass::kDeadDefinitions,RecoveryPass::kInitialValues,RecoveryPass::kBindings}){schedule.Start(pass);Check(!schedule.Finish());}};
   for(unsigned count:{0U,1U,200U,201U,400U,800U})for(bool changes:{false,true}) {
-    TestRecoverySchedule schedule;Check(rejects([&]{(void)schedule.SnapshotRefreshNeeded();}));cleanup(schedule);schedule.EnterStorage();
-    Check(schedule.SnapshotRefreshNeeded());schedule.Start(RecoveryPass::kSnapshots);Check(!schedule.Finish());Check(!schedule.SnapshotRefreshNeeded());
+    TestRecoverySchedule schedule;Check(rejects([&]{schedule.Start(RecoveryPass::kSnapshots);}));
+    cleanup(schedule);schedule.EnterStorage();Check(rejects([&]{schedule.EnterReadValues();}));
+    schedule.Start(RecoveryPass::kSnapshots);Check(!schedule.AlreadyStable());Check(!schedule.Finish());
     for(unsigned i=0;i<count;++i) {
       schedule.Start(RecoveryPass::kStorage);if(changes)Check(schedule.Commit());Check(schedule.Finish()==changes);
-      if(changes)Check(rejects([&]{(void)schedule.SnapshotRefreshNeeded();}));cleanup(schedule);
-      Check(schedule.SnapshotRefreshNeeded()==changes);
-      schedule.Start(RecoveryPass::kAliases);Check(!schedule.Finish());Check(schedule.SnapshotRefreshNeeded()==changes);
-      if(schedule.SnapshotRefreshNeeded()) {
-        const auto previous=schedule.Revision();schedule.Start(RecoveryPass::kSnapshots);
-        Check(rejects([&]{(void)schedule.SnapshotRefreshNeeded();}));Check(schedule.Commit());Check(schedule.Finish());
-        Check(rejects([&]{schedule.RequireCurrent(previous);}));Check(!schedule.DemandCleanupNeeded());Check(!schedule.SnapshotRefreshNeeded());
-      }
+      cleanup(schedule);schedule.Start(RecoveryPass::kAliases);Check(!schedule.Finish());
+      const auto previous=schedule.Revision();schedule.Start(RecoveryPass::kSnapshots);
+      Check(schedule.AlreadyStable()==!changes);
+      if(changes)Check(schedule.Commit());Check(schedule.Finish()==changes);
+      if(changes)Check(rejects([&]{schedule.RequireCurrent(previous);}));
+      Check(!schedule.DemandCleanupNeeded());
     }
-    Check(schedule.Revision().value==(changes?count*2:0));schedule.EnterReadValues();schedule.Start(RecoveryPass::kBindingValues);Check(!schedule.Finish());schedule.EnterGrammar();Check(rejects([&]{(void)schedule.SnapshotRefreshNeeded();}));
+    Check(schedule.Revision().value==(changes?count*2:0));schedule.EnterReadValues();
+    Check(rejects([&]{schedule.Start(RecoveryPass::kSnapshots);}));
+    schedule.Start(RecoveryPass::kBindingValues);Check(!schedule.Finish());schedule.EnterGrammar();
   }
-  TestRecoverySchedule dirty;cleanup(dirty);dirty.EnterStorage();dirty.Start(RecoveryPass::kInertOperands);Check(dirty.Commit());Check(dirty.Finish());
-  Check(rejects([&]{(void)dirty.SnapshotRefreshNeeded();}));dirty.Start(RecoveryPass::kDeadDefinitions);Check(!dirty.Finish());
-  Check(rejects([&]{(void)dirty.SnapshotRefreshNeeded();}));dirty.Start(RecoveryPass::kInitialValues);Check(!dirty.Finish());
-  Check(rejects([&]{(void)dirty.SnapshotRefreshNeeded();}));dirty.Start(RecoveryPass::kBindings);Check(!dirty.Finish());Check(dirty.SnapshotRefreshNeeded());
-  // Even an unchanged projection must finish every ordered cleanup owner before
-  // querying a stable consumer boundary; an older clean checkpoint is not enough.
-  TestRecoverySchedule clean;cleanup(clean);clean.EnterStorage();clean.Start(RecoveryPass::kDeadDefinitions);Check(!clean.Finish());
-  Check(rejects([&]{(void)clean.SnapshotRefreshNeeded();}));clean.Start(RecoveryPass::kInitialValues);Check(!clean.Finish());
-  Check(rejects([&]{(void)clean.SnapshotRefreshNeeded();}));clean.Start(RecoveryPass::kBindings);Check(!clean.Finish());Check(clean.SnapshotRefreshNeeded());
-  std::cout<<"snapshot checkpoint revision/cleanup/stage counterexamples passed\n";
+  TestRecoverySchedule dirty;cleanup(dirty);dirty.EnterStorage();
+  dirty.Start(RecoveryPass::kInertOperands);Check(dirty.Commit());Check(dirty.Finish());
+  dirty.Start(RecoveryPass::kSnapshots);Check(dirty.Commit());Check(dirty.Finish());
+  Check(dirty.DemandCleanupNeeded()); // Motion cannot invent a clean checkpoint.
+  cleanup(dirty);dirty.Start(RecoveryPass::kSnapshots);Check(dirty.Commit());Check(dirty.Finish());
+  Check(!dirty.DemandCleanupNeeded()); // It may transport an existing checkpoint.
+  // Even a no-op cleanup must finish its ordered owners before another pass.
+  TestRecoverySchedule clean;cleanup(clean);clean.EnterStorage();
+  clean.Start(RecoveryPass::kDeadDefinitions);Check(!clean.Finish());
+  Check(rejects([&]{clean.Start(RecoveryPass::kSnapshots);}));
+  clean.Start(RecoveryPass::kInitialValues);Check(!clean.Finish());
+  Check(rejects([&]{clean.Start(RecoveryPass::kSnapshots);}));
+  clean.Start(RecoveryPass::kBindings);Check(!clean.Finish());
+  clean.Start(RecoveryPass::kSnapshots);Check(!clean.Finish());
+  std::cout<<"snapshot shared epoch/cleanup/stage counterexamples passed\n";
 }
 void ScopedCopyRoots() {
   // Model counterexamples: saved storage can survive a source unit's exit or
@@ -2743,11 +2929,12 @@ void StablePassAttempts() {
     Check(attempt(Pass::kStoredResults,false));Check(runs==4);
     for(const auto pass:{Pass::kDeadDefinitions,Pass::kInitialValues,Pass::kBindings})Check(!attempt(pass,false));
     Check(!schedule.DemandCleanupNeeded());
-    // Scope transitions can alter pass prerequisites even without plan edits.
-    schedule.EnterStorage();Check(!attempt(Pass::kInertOperands,false));
+    // Stage legality and prerequisite checks remain mandatory, but unchanged
+    // semantic inputs retain their no-op certificate across the barrier.
+    schedule.EnterStorage();Check(attempt(Pass::kInertOperands,false));
     Check(attempt(Pass::kInertOperands,false));
     Check(!attempt(Pass::kSnapshots,false));schedule.EnterReadValues();
-    Check(!attempt(Pass::kInertOperands,false));
+    Check(attempt(Pass::kInertOperands,false));
     Check(!attempt(Pass::kBindingValues,false));schedule.EnterGrammar();
     Check(rejects([&]{schedule.Start(Pass::kInertOperands);}));
   }
@@ -2818,14 +3005,14 @@ void PassPrerequisites() {
     pending.Start(Pass::kDeadDefinitions);Check(!pending.Finish());
     Check(!pending.Prerequisite(Pass::kInitialValues));
     pending.Start(Pass::kInitialValues);Check(!pending.Finish());
-    Check(prepare(pending,Pass::kDeclarations,changes)==std::vector<Pass>{Pass::kBindings});
-    Check(!pending.Prerequisite(Pass::kDeclarations));
+    Check(prepare(pending,Pass::kAliases,changes)==std::vector<Pass>{Pass::kBindings});
+    Check(!pending.Prerequisite(Pass::kAliases));
   }
   for(unsigned count:{200U,201U,400U,800U}) {
     TestRecoverySchedule schedule;std::size_t attempts=0;
     for(unsigned i=0;i<count;++i) {
-      attempts+=prepare(schedule,Pass::kDeclarations,0).size();
-      schedule.Start(Pass::kDeclarations);Check(schedule.Commit());Check(schedule.Finish());
+      attempts+=prepare(schedule,Pass::kAliases,0).size();
+      schedule.Start(Pass::kAliases);Check(schedule.Commit());Check(schedule.Finish());
     }
     Check(attempts==count*cleanup.size());Check(schedule.Revision().value==count);
     std::cout<<"prerequisite requests "<<count<<" dependency attempts "<<attempts<<'\n';
@@ -2907,7 +3094,7 @@ void PassContracts() {
     Check(repeated.Revision().value==count);
   }
   TestRecoverySchedule unfinished;
-  Check(rejects([&]{unfinished.Start(RecoveryPass::kDeclarations);}));
+  Check(rejects([&]{unfinished.Start(RecoveryPass::kAliases);}));
   Check(rejects([&]{unfinished.Start(RecoveryPass::kInitialValues);}));
   Check(rejects([&]{unfinished.Start(RecoveryPass::kBindings);}));
   unfinished.Start(RecoveryPass::kDeadDefinitions);Check(!unfinished.Finish());
@@ -2917,11 +3104,11 @@ void PassContracts() {
   unfinished.Start(RecoveryPass::kInitialValues);Check(!unfinished.Finish());
   unfinished.Start(RecoveryPass::kBindings);Check(!unfinished.Finish());
   Check(!unfinished.DemandCleanupNeeded());
-  unfinished.Start(RecoveryPass::kDeclarations);unfinished.RequireFact(RecoveryFact::kFlow);
+  unfinished.Start(RecoveryPass::kAliases);unfinished.RequireFact(RecoveryFact::kFlow);
   Check(unfinished.Commit());Check(unfinished.Finish());Check(unfinished.DemandCleanupNeeded());
   Check(rejects([&]{unfinished.Start(RecoveryPass::kAliases);}));
   Check(rejects([&]{unfinished.EnterStorage();}));cleanup(unfinished);
-  unfinished.Start(RecoveryPass::kDeclarations);Check(!unfinished.Finish());
+  unfinished.Start(RecoveryPass::kAliases);Check(!unfinished.Finish());
   Check(!unfinished.DemandCleanupNeeded());
   std::cout<<"pass ownership, dependency and cleanup counterexamples passed\n";
 }
@@ -3381,4 +3568,4 @@ int main(int argc,char** argv){
   if(argc==2&&std::string_view(argv[1])=="--activation") {
     CapturedValues();BindingActivationScaling();BindingActivationOracle();CatchActivationOrder();return 0;
   }
-  ScopedCopyRoots();ScopedCopyOracle();InitializationOracle();ScopedInitializationOracle();EnclosingCleanup();CapturedValues();BindingActivationScaling();BindingActivationOracle();CatchActivationOrder();InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();AvailableCopyOracle();TransitiveCopyOracle();CompletionCycles();LocalCompletionOracle();StatementObservationOracle();StatementEntryOracle();InitializationInvalidation();PassContracts();PassPrerequisites();StablePassAttempts();SnapshotCheckpoints();StableValues();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();ActualRecoveryChanges();DomainStableAttempts();BindingMapNormalization();AllocationOrdering();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+  ScopedCopyRoots();ScopedCopyOracle();InitializationOracle();ScopedInitializationOracle();EnclosingCleanup();CapturedValues();BindingActivationScaling();BindingActivationOracle();CatchActivationOrder();InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();AvailableCopyOracle();TransitiveCopyOracle();CompletionCycles();LocalCompletionOracle();StatementObservationOracle();StatementEntryOracle();InitializationInvalidation();PassContracts();PassPrerequisites();StablePassAttempts();SnapshotCheckpoints();StableValues();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();ActualRecoveryChanges();DomainStableAttempts();ProgressWitnesses();DependencyWorklist();SemanticBackEdges();BindingMapNormalization();AllocationOrdering();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();BindingPreferenceInputs();SmallGraphs();DemandGraphs();Scaling();}

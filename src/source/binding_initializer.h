@@ -29,7 +29,14 @@ struct DeclarationCompletion {
   DeclarationCompletionKind kind=DeclarationCompletionKind::kInitialize;
   bool operator==(const DeclarationCompletion&) const = default;
 };
+// Whole-preparation dimensions, including candidate graphs and repeated
+// analyses. These counters describe performed work, never optimization limits.
+// allocated_bytes/work below remain the authoritative admission accounting.
+struct RecoveryCost {
+  std::uint64_t attempts=0,commits=0,projections=0,nodes=0,edges=0,live_facts=0,witnesses=0;
+};
 struct BindingInitializers {
+  RecoveryCost cost;
   std::vector<std::optional<BindingInitializer>> statements;
   std::vector<std::uint8_t> omitted;
   // Statement indexed: common residual completion proof retains only its
