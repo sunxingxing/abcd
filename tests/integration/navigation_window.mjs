@@ -129,5 +129,5 @@ export function navigationWindow({config, event, surface, tag, token, call, norm
   const swap = imports => {
     for (const [name, module] of imports) module.setExport('default', load(name, 1));
   };
-  return {initialize, update, finish, snapshot, load, swap};
+  return {initialize, update, finish, snapshot, load, swap, mainWindows: main};
 }

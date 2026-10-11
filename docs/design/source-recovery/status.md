@@ -12,6 +12,35 @@
 
 ## 当前阶段
 
+### 2026-10-11：Immersive EntryAbility完整生命周期及实际Window依赖连接
+
+- 关闭上一节明确的单方法验收缺口：先由ABC-only引擎新导出，再独立读取配对TS，
+  将EntryAbility、commons barrel、WindowUtil/WindowInfo、Breakpoint、CommonConstants
+  五份实际模块连接执行。保留真实constructor、六个生命周期方法、字段及所有回调；
+  既有navigationWindow仅增加主窗口对象的只读使用入口，不替换恢复方法。
+- 两个Ability各重复创建两次窗口，覆盖同步/延迟、正序/逆序和销毁后两次重放。
+  原回调必须访问当前Ability字段；实际WindowUtil初始化、注册的size/avoid/title
+  callback和状态也比较。构造另覆盖父类返回替代对象、alternate new.target、继承
+  windowUtil setter成功/任意五种原异常；null/undefined在原catch读取code时继续
+  抛TypeError，不能把这些情况错误计为成功加载。
+- 138场景、850原异常、170 live-import换绑、10有效JS错误变异、2等价括号表示通过。
+  同步/延迟基线各100/70个不同可观察边界；不是对重复事件或任意平台行为穷举。
+  错误变异涵盖丢失super参数、receiver、字段写入、生命周期调用、UI初始化、错误
+  页面、nullish值和用DefineProperty绕过setter。保留旧780场景专项。
+- Window callback名字依照既有window_record合同分别验证：固定ABC属性赋值的空名
+  与原生TS字段推断名；以明确身份标签比较连接行为，不把两种字段lowering当相同。
+  独立签名、class布局与方法高层操作清单也通过；不将清单一致当成运行语义证明。
+- 构建通过；最终3/3定向回归5.90s，新图5.19s。原Window完整record另通过7442场景、
+  56赋值、5变异；共享平台接口下33模块导航同步/延迟基线均通过。调试中的输出目录、
+  implicit constructor负例定位和oracle问题保留失败日志，不计成功。
+  证据build/stage-one/immersive-ability/{final-tests.log,final-lasttest.log,
+  navigation-baselines.json}及build/regression/immersive-ability-final.xml。
+- 本次测试/文档交付，无生产规则或新增complete数量变化；规则311和固定65名单保持。
+  该EntryAbility的受控完整记录连接缺口关闭，阶段一Goal仍active。已核对
+  signature_shapes仅比较class/module callable：嵌套callback和字段函数的完整签名
+  尚无覆盖106源码的共同对照，下一步补齐这项明确的源签名义务；初始化/字段与整体
+  表示门槛仍以各自实际证据核对，不能由图内record数量代替。
+
 ### 2026-10-11：整图之外的既有记录验收与明确剩余缺口
 
 - 当前输出的Home、Logger、pasteboard/community EntryAbility和三个Backup记录

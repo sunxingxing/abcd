@@ -1,5 +1,14 @@
 # 验收、证据与实施交接
 
+2026-10-11：Immersive EntryAbility单方法证据缺口已由实际五模块连接补齐。新导出后
+独立配对参考，constructor/六生命周期/重复窗口创建/销毁后回调重放均运行真实正文，
+WindowUtil与WindowInfo也是真实输出。138场景、850原异常、170换绑、10错误变异、
+2等价表示通过；继承setter和alternate new.target另有组合场景。两个基线按不同
+可观察边界注入故障，不宣称全事件/平台穷举；固定赋值与TS字段arrow命名分别断言。
+最终新图及旧Window/retained-call共3/3通过5.90s，共享适配器的33模块导航两基线
+亦通过。无生产规则修改；源签名剩余明确义务为嵌套callback/字段函数的共同对照，
+不能以class/module签名或已连接record数宣布阶段一完成。详细证据见status.md。
+
 2026-10-11：Home、Logger、pasteboard/community两个EntryAbility及三个Backup当前
 既有完整记录测试通过。Immersive retained-call专项旧括号正则失败已保留日志，改用
 AST检查后原780场景及新增错误`||`反例通过；它仍只证明窗口创建方法和callback。

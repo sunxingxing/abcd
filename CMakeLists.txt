@@ -1824,6 +1824,10 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/retained_call_nullish.mjs $<TARGET_FILE:abc_semantic>
         "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"
         "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/default/src/main/ets/entryability/EntryAbility.ts")
+      add_test(NAME immersive_ability_graph_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/immersive_ability.mjs $<TARGET_FILE:abc_structure>
+        "${ABCD_PAIRED_CORPUS_ROOT}/Immersive")
+      set_tests_properties(immersive_ability_graph_source_test PROPERTIES RUN_SERIAL TRUE)
     endif()
     add_test(NAME phased_cells_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_cells.mjs $<TARGET_FILE:class_tree_context_test>)
