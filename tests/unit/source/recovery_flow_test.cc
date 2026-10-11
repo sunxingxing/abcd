@@ -93,6 +93,27 @@ void CapturedValues() {
   const auto copies=std::get<FlowCopies>(AnalyzeFlowCopies(flow,live,FlowValueEquations{equations,{},{},completed,{}}));
   Check(copies.reads.size()==1&&copies.reads[0].expression==ExprId{1}&&copies.reads[0].source==SymbolId{0});
 }
+void AllocationOrdering() {
+  using L=analysis::LanguageEffect;using X=analysis::ExceptionalCompletion;
+  for(auto extra:{L::kNone,L::kHeapRead,L::kHeapWrite,L::kLexicalWrite,L::kUserCode})
+    for(bool throws:{false,true})for(bool read:{false,true})for(bool definition:{false,true}) {
+      RecoveryFlow flow{};flow.events.resize(4);flow.entry={0};flow.terminal={3};
+      flow.events[0].read=SymbolId{0};flow.events[2].read=SymbolId{0};
+      auto& event=flow.events[1];event.kind=FlowEventKind::kEvaluation;
+      event.effects=SourceEffects{L::kAllocation|extra,L::kNone,throws?X::kMayThrow:X::kImpossible};
+      event.effect=event.effects->Evaluation();
+      if(read)event.read=SymbolId{0};
+      if(definition)event.definition=FlowDefinitionId{0};
+      for(unsigned i=0;i<3;++i)Link(flow,i,i+1);
+      const auto ordered=extra!=L::kNone||throws||read||definition;
+      const auto motion=std::get<FlowMotion>(AnalyzeFlowMotion(flow));
+      Check(event.effect==ExpressionEvaluation::kRequired); // Identity is retained.
+      Check(motion.next[0]==FlowPoint{ordered?1U:2U});
+      Check(motion.previous[2]==FlowPoint{ordered?1U:0U});
+      event.effects.reset(); // Missing intrinsic proof cannot erase an opaque event.
+      Check(std::get<FlowMotion>(AnalyzeFlowMotion(flow)).next[0]==FlowPoint{1});
+    }
+}
 void UniversalObservations() {
   for(unsigned edges=0;edges<512;++edges)for(unsigned observed=0;observed<8;++observed) {
     RecoveryFlow flow{};flow.events.resize(3);
@@ -3230,4 +3251,4 @@ int main(int argc,char** argv){
   if(argc==2&&std::string_view(argv[1])=="--activation") {
     CapturedValues();BindingActivationScaling();BindingActivationOracle();CatchActivationOrder();return 0;
   }
-  ScopedCopyRoots();ScopedCopyOracle();InitializationOracle();ScopedInitializationOracle();EnclosingCleanup();CapturedValues();BindingActivationScaling();BindingActivationOracle();CatchActivationOrder();InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();AvailableCopyOracle();TransitiveCopyOracle();CompletionCycles();LocalCompletionOracle();StatementObservationOracle();StatementEntryOracle();InitializationInvalidation();PassContracts();PassPrerequisites();StablePassAttempts();SnapshotCheckpoints();StableValues();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+  ScopedCopyRoots();ScopedCopyOracle();InitializationOracle();ScopedInitializationOracle();EnclosingCleanup();CapturedValues();BindingActivationScaling();BindingActivationOracle();CatchActivationOrder();InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();AvailableCopyOracle();TransitiveCopyOracle();CompletionCycles();LocalCompletionOracle();StatementObservationOracle();StatementEntryOracle();InitializationInvalidation();PassContracts();PassPrerequisites();StablePassAttempts();SnapshotCheckpoints();StableValues();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();AllocationOrdering();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}

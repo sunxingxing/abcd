@@ -17,6 +17,19 @@ struct SourceEffects {
     return normal==analysis::LanguageEffect::kNone&&before_throw==analysis::LanguageEffect::kNone&&
         exceptional==analysis::ExceptionalCompletion::kImpossible?ExpressionEvaluation::kInert:ExpressionEvaluation::kRequired;
   }
+  // Retaining fresh identity and ordering external observations are different
+  // obligations. Allocation alone cannot expose its identity before its value
+  // escapes; reads/definitions remain separate dependency observations. A
+  // possible allocation failure still fixes order through exceptional effects.
+  [[nodiscard]] ExpressionEvaluation Ordering() const {
+    const auto observable=[](analysis::LanguageEffect effects) {
+      return (static_cast<std::uint16_t>(effects)&
+          ~static_cast<std::uint16_t>(analysis::LanguageEffect::kAllocation))!=0;
+    };
+    return !observable(normal)&&!observable(before_throw)&&
+        exceptional==analysis::ExceptionalCompletion::kImpossible?
+        ExpressionEvaluation::kInert:ExpressionEvaluation::kRequired;
+  }
 };
 inline bool HasLanguageEffect(analysis::LanguageEffect effects,analysis::LanguageEffect effect) {
   return (static_cast<std::uint16_t>(effects)&static_cast<std::uint16_t>(effect))!=0;
@@ -191,7 +204,11 @@ inline SourceEffects NormalValueEffects(const TreeExpression& expression,
     analysis::ValueKinds captured=analysis::ValueKinds::Language()) {
   using L=analysis::LanguageEffect;using X=analysis::ExceptionalCompletion;
   const SourceEffects guard{L::kGuard,L::kGuard,X::kMayThrow};
-  const SourceEffects allocation{L::kAllocation,L::kAllocation,X::kMayThrow};
+  // Fresh allocation retains identity under every contract. Its resource
+  // failure is an ordering observation only when the contract includes it.
+  const SourceEffects allocation{L::kAllocation,
+      resources==ResourceFailureScope::kObservable?L::kAllocation:L::kNone,
+      resources==ResourceFailureScope::kObservable?X::kMayThrow:X::kImpossible};
   return std::visit([&](const auto& node)->SourceEffects {
     using T=std::decay_t<decltype(node)>;
     if constexpr(std::is_same_v<T,TreeLiteral>||std::is_same_v<T,SequenceExpr>||

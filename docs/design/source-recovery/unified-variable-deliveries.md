@@ -89,6 +89,41 @@ capture观察+初始化+extent共同分析；不阻止本轮闭合临时变量/�
 47520次比较及72个不等价变异通过。候选把catch重复进入错误映射到一个外层单元、
 或丢失allocation时，相位和值域证据均撤回；不是仅测试一个独立分析器。
 
+### B的共同消费者账本与冻结验收入口
+
+规则307后，将已完成的适配和定向证据合并到以下消费路径；不再以“其余消费者”
+作为无边界余项。当前46个ValueOperation alternative已与R1–R10逐项核对：无遗漏、
+无重复归属。新增variant仍须重新核对。本表不新增恢复准入，也不要求保留协议内部
+具备普通表达式精度。**B在下面的原固定名单/record冻结验收通过前仍未关闭。**
+
+| 范围 | 单一事实生产与消费 | 已有可核对证据、缺证/错误变换反例 |
+|---|---|---|
+| R1 入口/SSA/合流/复制 | VerifyTreeSemantics/TreeFlow→RetainOriginalFlow的values/uses/definitions/inputs/edge_controls→PrepareRecoveryProjection→联合kinds/provenance→copies/constants/live；声明试算不借旧图 | recovery_projection_test的OriginalEntries、ChangedDefinition、OriginalControlKinds、RawProjectionClosure、OriginalCellReferences；original_flow_source及normal/phased original_completion独立执行。copy/phi值身份用同一索引；改上游定义/控制、撤原始incoming证书会撤回范围。参数域不替代入口身份，catch成功值不替代失败路线 |
+| R2 运算/常量/无动作 | 原始intrinsic/result与源码子值分开；联合效果解→成功写入/活跃/死定义/移动 | OriginalIntrinsicEffects、ReadPhaseInitialization、numeric_update_tree及已接受的unary/binary源码执行；转换抛异常保留旧绑定，GetValue/转换/commit不混用。String/Nop及纯消去沿经过验证的origin/operand处置，无独立可观察写入或虚构成功阶段；source-only仍由类型化表达式效果承担义务 |
+| R3 引用/属性/成员安装 | 源码参考的receiver/key/access/normal与PropertyId初始化；经验证的类安装由ClassProjection保留在类表示内→共同完成/效果/名字/移动 | property_flow的异常路由错配/source-only/布局反例及源码执行，allocation_actions的当前/缺证/候选撤回，phased_literal与own/indexed写入组合；class_accessor_tree在完成类准备后重验原始事实并实际打印，字段/捕获/描述符/async独立执行。类成员anchor不冒充独立PropertyId物理动作 |
+| R4 外部/ABI/模块入口 | SourceCells模块单元、OriginalActionRegion、invocation values；读取位置与调用入口分配分开→共享当前/候选求解 | action_regions/module_units/input_actions/invocation_values；module_store_phases、phased_input_actions、creation_tree_context、class_tree_context的原始输入和源码执行。错误module单元、快照arity条件、rest读取冒充分配、丢失完成证据均不能沿用cap |
+| R5 分配/调用/构造 | allocation≠allocated≠aggregate normal；已验证私有参数载体消去；原生call/construct动作→kinds/effects/liveness/demand/motion | allocation_actions/native_actions；object_buffer、phased_literal、apply_construct及aggregate_flow独立执行。删除源原语撤动作/效果/结果/phase；参数carrier不产生虚假源码分配。旧资源失败可观察合同缺证仍为明确边界，不能借当前资源排除合同 |
+| R6/R8 单元及源码新增语义 | A的B1–B5完整账本→当前/候选同一初始化、动态单元、名字事实 | A已冻结验收；scope重入、catch、活跃undefined、名字shadow、循环复制与不等价候选独立对照。声明恢复、存储合并和删除写入保持独立职责 |
+| R7 控制/异常 | 真实动作、虚拟guard/control相位、无值路径分别表示；联合可执行边和输入provenance→所有消费者 | original_completion、initialized_guards和RawConditionalClosure；无值jump不需要物理动作，改条件撤phi/saved cap；初始化guard的copy/phi身份/错误单元/失败证书反例。return/throw/debugger与异常边均不借邻接或同块规则 |
+| R9 创建/捕获保留 | 原生创建动作与SourceCells捕获观察→共享单位/效果/移动；环境重构不在本轮 | native_actions删除创建撤捕获观察；creation/class上下文、A动态身份及preserved_completion家族；class父原型用户代码效果仍必需。保持现有闭包布局，不据相等标量推断逃逸单元等价 |
+| R10 协议/完成保留 | 已验证协议、typed completion→共同suspend/super/cleanup事件；不消费不存在的普通intrinsic证书 | preserved_completions的当前/候选/缺证/source-only/错误普通cap；delegate、async-generator、Hole/IterResult、构造器实际源码独立执行；规则307原预算大规模回归。展开内部协议与复杂finally精度是后续能力，不再成为B前置 |
+
+所有这些事实进入同一个PrepareRecoveryProjection；没有为各pass另加一次opcode或
+形状识别。值传播消费copies/constants，存储消费live/interference/init/name，死定义
+消费demand/effects，声明/快照候选完整重算共同模型，打印只消费SourceVariables。
+对应旧判断的退出包括CompletedStore无消费者、动态单元的same-ScopeId准入已移除、
+已初始化guard的直接load来源限制已移除、rest的normal-only限制已移除。暂留的
+LegacyConfined/捕获extent义务见A账本，未被本轮有限身份分析冒领为已证明。
+
+冻结验收输入为build/stage-one/raw-correspondence-package-b：原32目标、原65项
+名单逐项相同；1659份代码/测试/CMake文件冻结；固定pasteboard保持原合同与预算。
+该次冻结验收未通过：构建95.26s，固定record3.63s（10完整/9无模块、10份语法检查，
+源码无变化）；65项662.99s中62通过、2失败、1因fixture依赖未运行。失败为
+变量干涉生成触及原60s截止、对象属性中的函数快照未消除。失败证据原样保留；
+测试失败后未执行冻结摘要终检，不能宣称该次已通过。修复后须重新冻结、重跑原名单。
+此前定向证据继续保留其实际层级，不伪称全部已在新冻结上重跑。C收敛和D终验
+不随B的冻结准备关闭。失败时只修对应已列明义务，再重新冻结受影响实现。
+
 ## 三、验收成本与工作组织
 
 - 定向开发：验证本交付包新增语义、负例和相关输出；失败后修根因。

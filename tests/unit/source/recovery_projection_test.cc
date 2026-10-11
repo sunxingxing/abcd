@@ -2362,6 +2362,8 @@ void SourceEffectPhases() {
     Check(HasLanguageEffect(key.normal,L::kUserCode)&&HasLanguageEffect(key.before_throw,L::kUserCode));
     const auto allocation=NormalValueEffects(EmptyObjectExpr{},unknown,resources);
     Check(allocation.Evaluation()==ExpressionEvaluation::kRequired&&!HasLanguageEffect(allocation.normal,L::kUserCode));
+    Check((allocation.Ordering()==ExpressionEvaluation::kRequired)==(resources==ResourceFailureScope::kObservable));
+    Check((allocation.exceptional==analysis::ExceptionalCompletion::kMayThrow)==(resources==ResourceFailureScope::kObservable));
     const auto negate=NormalValueEffects(UnaryExpr{TreeUnary::kNegate,{0}},primitive,resources);
     Check(negate.Evaluation()==ExpressionEvaluation::kInert);
     const auto hooks=NormalValueEffects(UnaryExpr{TreeUnary::kNegate,{0}},unknown,resources);

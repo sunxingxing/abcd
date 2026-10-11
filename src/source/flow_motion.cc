@@ -45,7 +45,11 @@ std::variant<FlowMotion,TreeStructureError> SolveMotion(
         for(auto edge=head(i,true);edge;edge=next(*edge,true)){budget.Step();if(admitted(target(*edge,true)))++remaining[i];}
         // Backward invocation history stops at entry. Unreachable structural
         // exits must not create fictitious earlier activations of a real read.
-        anchors[i]=event.read || event.definition || event.effect==ExpressionEvaluation::kRequired ||
+        // Retention does not imply an externally observable ordering effect.
+        // Consume the common intrinsic facts; keep read/write identities and
+        // opaque completion events as independent observations.
+        const auto ordered=event.effects?event.effects->Ordering():event.effect;
+        anchors[i]=event.read || event.definition || ordered==ExpressionEvaluation::kRequired ||
             !remaining[i] || (!forward && i==flow.entry.value);
         if(anchors[i]){first[i]=FlowPoint{static_cast<std::uint32_t>(i)};ready[i]=1;queue[count++]=*first[i];}
       }

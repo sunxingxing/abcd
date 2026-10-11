@@ -1387,3 +1387,17 @@ class paths pass four plus the repaired async-oracle test. This clears a concret
 P5 input, not whole-pass convergence. B still needs the consolidated R1–R5/R7
 consumer ledger and frozen package gate. No new mainline item is closed here;
 fixed65/record and paused scopes were not rerun for this step.
+
+### B frozen gate repair: rules308, package still open
+
+The first frozen32/65 gate failed (62 passed, two failed, one fixture dependent
+not run). Record output was unchanged. Preserve this failure; never combine
+its successful subset with later targeted tests and call that a frozen pass.
+Allocation retention and external ordering now have separate common effects.
+Resource-excluded contracts retain fresh identity without fictitious allocation
+throws; observable-resource contracts still constrain motion. A current no-op
+pass no longer evicts valid facts before returning. Five final targeted tests
+pass, including the original60s binding producer (57.47s) and independent JS;
+this narrow timing margin is not whole-process cost acceptance. An intermediate
+producer rejected a concurrently relinked executable; it is invalid evidence.
+Re-freeze all implementation and run the original package gate before closing B.

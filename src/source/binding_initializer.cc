@@ -393,8 +393,11 @@ class Initializers {
   }
   bool RunPassOnce(Pass pass) {
     budget_.Step();schedule_.Start(pass);
-    RetainFacts(RequiredFacts(pass));
     if(schedule_.AlreadyStable())return schedule_.Finish();
+    // A current no-op certificate consumes no analysis and allocates nothing.
+    // Do not evict valid facts for a pass which will not run: the next actual
+    // consumer still enforces its live-storage contract at this boundary.
+    RetainFacts(RequiredFacts(pass));
     switch(pass) {
       case Pass::kDeclarations:Declarations();break;
       case Pass::kDeclarationKinds:DeclarationKinds();break;
