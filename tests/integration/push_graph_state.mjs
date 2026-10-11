@@ -209,6 +209,37 @@ export async function exercisePush(sources, config = {}) {
   }
   activeOwner = undefined;
   await platform.finish(); platform.replay(); await platform.finish();
+  // Public view APIs are observable even when the sample's render tree does
+  // not call them. Keep this scenario separate from the existing boundary
+  // fault matrix, preserving its exact event ordinals and previous evidence.
+  const publicCalls = {getters: 0, setters: 0, entryNames: 0, builders: 0, callbacks: 0};
+  if (config.publicApi) {
+    for (const owner of [...views]) {
+      const Type = owner.constructor;
+      for (const key of Reflect.ownKeys(Type.prototype)) {
+        const descriptor = Object.getOwnPropertyDescriptor(Type.prototype, key);
+        if (!descriptor.get) continue;
+        const original = call('public.get.' + String(key), descriptor.get, owner); ++publicCalls.getters;
+        if (descriptor.set) {
+          call('public.set.' + String(key), descriptor.set, owner, [config.publicValue]); ++publicCalls.setters;
+          call('public.readback.' + String(key), descriptor.get, owner);
+          call('public.restore.' + String(key), descriptor.set, owner, [original]);
+        }
+      }
+      if (Object.hasOwn(Type, 'getEntryName')) {
+        call('public.entryName', Type.getEntryName, Type); ++publicCalls.entryNames;
+      }
+      if (Object.hasOwn(Type.prototype, 'CustomButton')) {
+        activeOwner = owner;
+        const callback = trace.tag(function(...args) {
+          ++publicCalls.callbacks; trace.event('public.button.callback', this, ...args); return token;
+        }, 'public.button.callback');
+        call('public.CustomButton', owner.CustomButton, owner, [config.publicValue, callback]);
+        ++publicCalls.builders; drain(); activeOwner = undefined;
+      }
+    }
+    await platform.finish();
+  }
   const originalCallbacks = [...callbacks];
   for (const entry of config.reverse ? originalCallbacks.reverse() : originalCallbacks)
     call('button.callback', entry.callback, {foreign: true}, []);
@@ -242,6 +273,7 @@ export async function exercisePush(sources, config = {}) {
       trace.normalize(entry.map ? entry.map.get(entry.key) : entry.value), entry.deleted, entry.purged]),
     stores: stores.map(({values}) => [...values].map(([key, value]) => [key, trace.normalize(value)])),
     storage: [...storage], forms: formBindings.map(fields), platform: platform.snapshot(), callId: service.callId,
+    ...(config.publicApi ? {publicCalls} : {}),
     identities: snapshotValues({views, abilities: platformTypes, forms: formBindings,
       cells: cells.map(entry => [entry.owner, entry.alias, entry.map ? entry.map.get(entry.key) : entry.value]),
       stores: stores.map(({values}) => [...values]), storage: [...storage],

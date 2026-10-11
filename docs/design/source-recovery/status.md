@@ -1,6 +1,6 @@
 # 项目进展与设计审查
 
-更新时间：2026-10-11。设计基线见 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md)。
+更新时间：2026-10-12。设计基线见 [实施计划](../../superpowers/plans/2026-09-25-unified-source-recovery.md)。
 本页是当前状态入口；[progress.md](progress.md) 保留历史证据，不覆盖本页结论。
 
 ## 更新规则
@@ -11,6 +11,25 @@
 - 不按文件数、提交数或接口数量宣布完成；必须以原计划的端到端验收为准。
 
 ## 当前阶段
+
+### 2026-10-12：Push公开API进入实际执行验收
+
+- 函数执行核对发现，原Push普通场景未调用Index.CustomButton，部分公开accessor与
+  getEntryName也未执行。将CustomButton宽度改为错误字符串仍通过原整图基线；此
+  有效JS反例原样保留于build/stage-one/body-audit/push-api-red.log，不能以15模块
+  均求值或7个view均render替代这些函数正文的验收。
+- 新增独立publicApi场景，实际调用已有view的getter/setter并读回、恢复原值；调用
+  static getEntryName和CustomButton，执行其真实注册callback。覆盖六种原始值、
+  同步/延迟和正逆回放共24场景，断言各类API实际进入且没有意外异常。复用原trace、
+  身份图、状态和实际模块，未替换恢复正文、引入生产样本条件或改变旧故障事件序号。
+- 新增五个有效JS反例：builder宽度、callback丢失、entry名称、getter及setter值
+  错误。AST按公开方法所有权/kind定位，无私有变量拼写依赖。最终Push完整矩阵通过
+  111场景、430原异常、86换绑、14变异、2等价表示，耗时8.37s；原87场景与9变异保留。
+  证据body-audit/{push-api-tests.log,push-api-lasttest.log}及
+  build/regression/push-public-api.xml。无生产或构建变更，规则311与固定65保持。
+- 该公开API缺口关闭；全阶段仍active。Community临时单进程覆盖探针触及512MB堆
+  上限，已退出，不能作为通过证据；继续按原正式测试的进程隔离核对实际正文缺口，
+  不提高上限或把未执行的内部无引用函数强行暴露为产品API。
 
 ### 2026-10-11：固定五输入的记录穷尽与模块接口验收闭环
 

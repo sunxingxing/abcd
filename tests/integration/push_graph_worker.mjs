@@ -24,6 +24,11 @@ for (const config of input.cases) {
     assert.ok(actual.modules.every(([, status]) => status === 'evaluated'));
     const required = ['WidgetCard', 'Index', 'CalleePage', 'CallComponent', 'TestAbilityPage', 'GetTokenPage', 'ExamplePage'];
     if (!config.windowCode) for (const name of required) assert.ok(actual.rendered.includes(name), 'unrendered real view ' + name);
+    if (config.publicApi) {
+      assert.equal(actual.diagnostics, 0, 'public API calls must finish without unexpected errors');
+      for (const key of ['getters', 'setters', 'entryNames', 'builders', 'callbacks'])
+        assert.ok(actual.publicCalls[key] > 0, 'unexecuted public API ' + key);
+    }
   }
   const anchors = new Map();
   for (const [ordinal, name, key] of actual.sites)

@@ -1,5 +1,11 @@
 # 验收、证据与实施交接
 
+2026-10-12：Push新增公开API的独立实际调用，补齐原整图未执行CustomButton及部分
+accessor/getEntryName的证据缺口。错误CustomButton宽度能逃过旧基线，新增场景已
+检出；另覆盖callback、entry名称、getter/setter错误。111场景/430故障/86换绑/
+14变异/2等价表示完整通过8.37s，原矩阵保持。详见status与body-audit本地证据。
+阶段一仍active；不能以record已加载或view已render推出所有公开函数都已执行。
+
 2026-10-11：固定五输入的记录穷尽及模块接口义务关闭。独立读取原始ABC头/class
 index/record字段与方法计数后，152本地record、2111方法、626元数据字段均与输出
 对应；46个NoModule的原始方法数确为0。106份源码逐record方法数量与模块入口、

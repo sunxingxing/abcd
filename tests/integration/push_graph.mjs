@@ -5,8 +5,8 @@ import {readFileSync, mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {classReference, classLayouts} from './class_reference.mjs';
-import {classMethodProfiles, moduleShape} from './record_style.mjs';
+import {classReference, classLayouts, parseJavaScript} from './class_reference.mjs';
+import {classMethodProfiles, moduleShape, nodes} from './record_style.mjs';
 import {verifySignatures} from './signature_shapes.mjs';
 import {editExpression, memberName, callsMember} from './expression_edits.mjs';
 
@@ -82,6 +82,28 @@ const preparedChanges = changes.map(([name, from, to, label]) => {
   assert.notEqual(text, sources[name]); classLayouts(text);
   return {name, text, label};
 });
+// Select public API ownership in the AST, never private temporary spelling.
+const publicMutation = (source, methodName, kind, select, replacement) => {
+  const methods = nodes(parseJavaScript(source)).filter(node => node.type === 'MethodDefinition' && node.key.name === methodName && node.kind === kind);
+  assert.equal(methods.length, 1);
+  const targets = select ? nodes(methods[0].value.body).filter(select) : [methods[0].value.body];
+  assert.equal(targets.length, 1);
+  const target = targets[0];
+  const text = typeof replacement === 'function' ? replacement(target, node => source.slice(node.start, node.end)) : replacement;
+  return source.slice(0, target.start) + text + source.slice(target.end);
+};
+const indexPage = 'entry/src/main/ets/pages/Index';
+const publicChanges = [
+  [indexPage, 'CustomButton', 'method', node => callsMember(node, 'width'), 'Button.width("wrong-width")', 'public builder width'],
+  [indexPage, 'CustomButton', 'method', node => callsMember(node, 'onClick'), 'Button.onClick(() => {})', 'public builder callback'],
+  [indexPage, 'getEntryName', 'method', null, '{ return "wrong-entry"; }', 'public entry name'],
+  ['entry/src/main/ets/component/CallComponent', 'end', 'get', null, '{ return false; }', 'public getter'],
+  ['entry/src/main/ets/component/CallComponent', 'end', 'set', node => callsMember(node, 'set'),
+    (node, text) => `${text(node.callee)}("wrong-value")`, 'public setter'],
+].map(([name, method, kind, select, replacement, label]) => {
+  const text = publicMutation(sources[name], method, kind, select, replacement);
+  classLayouts(text); return {name, text, label};
+});
 const cases = [];
 for (const immediate of [false, true]) for (const reverse of [false, true])
   for (const reject of ['none', 'token', 'enabled', 'enable', 'badge', 'aaid', 'delete', 'bind', 'unbind', 'media', 'raw', 'pixel', 'incoming', 'change'])
@@ -94,6 +116,10 @@ for (const value of [null, false, 0, '', 17]) cases.push({value});
 for (const input of [1, 2, 3, 4, 5]) cases.push({input, noPixel: true, noInfo: true});
 cases.push({baseObject: true}, {finalize: 'missing'}, {language: 'en-US', image: ''});
 cases.push({instances: 2, reverse: true}, {instances: 2, immediate: true});
+const publicCases = [];
+for (const immediate of [false, true]) for (const reverse of [false, true])
+  for (const publicValue of [null, false, 0, '', 17, 'public label']) publicCases.push({publicApi: true, publicValue, immediate, reverse});
+cases.push(...publicCases);
 let count = 0;
 let faults = 0, swaps = 0;
 const boundaries = [];
@@ -114,6 +140,9 @@ let mutations = 0;
 for (const {name, text, label} of preparedChanges) {
   run([baseline], {mutation: label}, {...sources, [name]: text}); ++mutations;
 }
+for (const {name, text, label} of publicChanges) {
+  run([{publicApi: true, publicValue: 'public label'}], {mutation: label}, {...sources, [name]: text}); ++mutations;
+}
 let equivalents = 0;
 for (const [name, edit] of [
   ['entry/src/main/ets/pages/GetTokenPage', tokenCall('this.getToken()')],
@@ -122,4 +151,4 @@ for (const [name, edit] of [
   const changed = {...sources, [name]: edit(sources[name])};
   classLayouts(changed[name]); run([baseline], {}, changed); ++equivalents;
 }
-console.log(JSON.stringify({modules: 15, views: 7, cases: count, faults, swaps, boundaries, mutations, equivalents, platformExecution: false}));
+console.log(JSON.stringify({modules: 15, views: 7, cases: count, publicApiCases: publicCases.length, faults, swaps, boundaries, mutations, equivalents, platformExecution: false}));
