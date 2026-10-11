@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(abcd LANGUAGES CXX)
+option(ABCD_SOURCE_REGRESSION "Build the fixed source regression with optimization and assertions" OFF)
+include(cmake/RegressionBuild.cmake)
 include(cmake/IsaDependency.cmake)
 
 add_library(abcd_abc
@@ -2775,3 +2777,5 @@ if(BUILD_TESTING)
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/exceptions_cli.cmake)
   endif()
 endif()
+
+include(tests/support/source/regression.cmake)

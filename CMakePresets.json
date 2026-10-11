@@ -1,0 +1,31 @@
+{
+  "version": 2,
+  "cmakeMinimumRequired": {"major": 3, "minor": 20, "patch": 0},
+  "configurePresets": [
+    {
+      "name": "source-regression",
+      "displayName": "Source regression: optimized Debug with assertions",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/regression",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+        "BUILD_TESTING": true,
+        "ABCD_BUILD_TOOLS": true,
+        "ABCD_SOURCE_REGRESSION": true
+      }
+    }
+  ],
+  "buildPresets": [
+    {"name": "source-regression", "configurePreset": "source-regression", "targets": ["source_regression"], "jobs": 2}
+  ],
+  "testPresets": [
+    {
+      "name": "source-regression",
+      "configurePreset": "source-regression",
+      "filter": {"include": {"label": "^source-regression$"}},
+      "execution": {"jobs": 2, "noTestsAction": "error"},
+      "output": {"outputOnFailure": true}
+    }
+  ]
+}

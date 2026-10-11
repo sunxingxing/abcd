@@ -39,6 +39,29 @@ cmake --build build/release -j 4
 ctest --test-dir build/release --output-on-failure
 ```
 
+### 固定源码回归
+
+普通源码开发使用独立的 `source-regression` preset：Debug 调试信息、`-O2` 优化和
+开启的断言，保留原固定 65 项的所有生成、独立执行、变异和预算检查；不是全项目测试。
+首次配置需要与原构建相同的 pinned ISA/JSON、Ruby、Node 和 paired corpus 路径：
+
+```sh
+cmake --preset source-regression \
+  -DABCD_ISA_ROOT=/path/to/runtime_core/isa \
+  -DABCD_JSON_ROOT=/path/to/json \
+  -DRuby_EXECUTABLE=/path/to/ruby-3.2.3 \
+  -DABCD_NODE_EXECUTABLE=/path/to/node \
+  -DABCD_PAIRED_CORPUS_ROOT=/path/to/samples/abc_with_code
+cmake --build --preset source-regression
+ctest --preset source-regression
+```
+
+配置存放在 `build/regression`，不会改动已有普通 Debug 构建。后续使用后两条命令；
+编译时间与回归执行时间分别记录。原名单见 [source-regression.json](tests/source-regression.json)，
+缺少注册测试会在配置时失败，不能静默缩小名单。两个固定工作槽及原 fixture 截止/预算
+保持；每轮重新生成源码，不以旧生成缓存替代执行。当前支持 Clang/GCC 配置；本次实测
+平台及结果见 [状态入口](docs/design/source-recovery/status.md)。这不自动恢复暂停的全套或RSS验证。
+
 ## 分类清单
 
 ```sh

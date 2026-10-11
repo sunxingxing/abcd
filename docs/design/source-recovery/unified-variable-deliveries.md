@@ -171,6 +171,10 @@ legacy writer。全阶段一行为/表示质量与平台验收仍分开，不由
 - 本轮实测：原65项、Debug、`-j2`，1190.97s→678.53s；十组源码执行
   summary不变，固定record10份源码逐字节一致。证据在
   `build/stage-one/shared-fixtures-final/latency-comparison.json`；无新增语义覆盖。
+- 后续三分钟目标已通过独立优化Debug preset完成：原65项97.30s、增量构建加回归
+  100.40s；首次冷构建285.82s另计。断言、名单、预算和两个工作槽保持，十组输出
+  8796行摘要相同。该收益来自-O2编译配置，不混作上述共享生成或生产算法收益；
+  普通Debug原655.79s证据仍保留。详见2026-10-11-source-regression验证记录。
 - 验收优化只报告固定名单墙钟时间。不得把共享fixture的收益计作生产引擎加速，
   也不得将单位测试work/bytes称作整个进程RSS。全量、扩展语料、RSS/DFX/agents仍暂停。
 - 真实record长期输出不变时明确报告“防回归证据，未新增恢复能力”，不累计成进度。
