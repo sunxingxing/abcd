@@ -63,3 +63,13 @@ preset仅运行固定名单，不恢复暂停的全套、扩展语料、RSS/benc
 configuration-checks.json、selection-checks.json、debug-sample.txt、cold-build.log、
 warm-build.log。采样探针的12.37s包含采样影响，不被用作独立无扰动加速比。
 三分钟目标以完整65项97.30s为据；阶段一Goal仍active，后续回到独立行为/表示及结构gate。
+
+## 加强实例身份检查后的当前复验
+
+同日，富文本和ProgressBar加入最终联合对象身份图，ProgressBar另增两个有效JS
+原型/可扩展性反例后，重新运行上述固定preset：**65/65通过，86.53s**。
+JUnit测试名称与manifest逐项相同，failure/disabled/skipped均为0；两个工作槽保持。
+这是当前一次完整回归的实测值，低于180s；与此前97.30s的差异不作为额外算法加速声明。
+证据build/stage-one/instance-identities/{fixed65.log,fixed65-lasttest.log}及
+build/regression/regression-current.xml。另行执行的六项图专项组合231.41s范围不同，
+不计入或代替固定65项三分钟验收。

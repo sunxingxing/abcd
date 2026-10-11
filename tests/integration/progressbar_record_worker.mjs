@@ -7,7 +7,15 @@ const input = JSON.parse(readFileSync(0, 'utf8')), reports = [];
 for (const config of input.cases) {
   const expected = await exerciseProgressbar(input.reference, config);
   const actual = await exerciseProgressbar(input.sources, config);
-  if (input.mutation) assert.equal(isDeepStrictEqual(actual, expected), false, input.mutation);
+  if (input.mutation) {
+    if (input.identityOnly) {
+      const {identities: actualGraph, ...oldActual} = actual;
+      const {identities: expectedGraph, ...oldExpected} = expected;
+      assert.deepEqual(oldActual, oldExpected, 'original trace/value checks miss this mutation');
+      assert.notDeepEqual(actualGraph, expectedGraph, 'new graph must expose the identity difference');
+    }
+    assert.equal(isDeepStrictEqual(actual, expected), false, input.mutation);
+  }
   else if (!isDeepStrictEqual(actual, expected)) {
     const key = Object.keys(expected).find(key => !isDeepStrictEqual(expected[key], actual[key]));
     throw new Error('progressbar difference ' + key + ' ' + JSON.stringify(config) + '\n' +

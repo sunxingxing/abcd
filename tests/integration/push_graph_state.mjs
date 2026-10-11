@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {types} from 'node:util';
-import {GraphTrace} from './graph_trace.mjs';
+import {GraphTrace, realmIntrinsics, snapshotValues} from './graph_trace.mjs';
 import {pushGraphPlatform} from './push_graph_platform.mjs';
 
 const prefix = 'entry/src/main/ets/';
@@ -145,6 +145,7 @@ export async function exercisePush(sources, config = {}) {
     }}); sandbox[name] = trace.tag(object, name);
   }
   context = vm.createContext(sandbox); platform = pushGraphPlatform(trace, config, token);
+  const intrinsics = realmIntrinsics(context);
   // Observe each exact native reaction result, including a throwing .catch on
   // a real service promise discarded by its caller. Keep native receiver,
   // arguments and returned Promise; never substitute an application body.
@@ -240,5 +241,9 @@ export async function exercisePush(sources, config = {}) {
     cells: cells.map(entry => [trace.normalize(entry.owner), entry.alias,
       trace.normalize(entry.map ? entry.map.get(entry.key) : entry.value), entry.deleted, entry.purged]),
     stores: stores.map(({values}) => [...values].map(([key, value]) => [key, trace.normalize(value)])),
-    storage: [...storage], forms: formBindings.map(fields), platform: platform.snapshot(), callId: service.callId};
+    storage: [...storage], forms: formBindings.map(fields), platform: platform.snapshot(), callId: service.callId,
+    identities: snapshotValues({views, abilities: platformTypes, forms: formBindings,
+      cells: cells.map(entry => [entry.owner, entry.alias, entry.map ? entry.map.get(entry.key) : entry.value]),
+      stores: stores.map(({values}) => [...values]), storage: [...storage],
+      exports: [...modules].filter(([, module]) => module.status === 'evaluated').map(([name, module]) => [name, module.namespace])}, intrinsics)};
 }

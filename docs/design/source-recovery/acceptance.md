@@ -1,5 +1,13 @@
 # 验收、证据与实施交接
 
+2026-10-11：四组实例执行对照接入独立的联合身份图，保留实例/绑定/存储/export之间
+的别名、prototype、descriptor和extensibility，原行为trace保持。Community、Push、
+富文本、ProgressBar及共享静态/图fixture共6/6通过231.41s；这是额外专项组合，
+不与固定65项的三分钟目标混同。ProgressBar两个新反例证实旧逐值检查会漏检而
+新图能够拒绝，原15个反例保留。详见status.md及instance-identities本地证据。
+增强后的完整固定65项另行复验通过86.53s，名单一致且无跳过，仍低于三分钟。
+阶段一Goal仍active，下一步核对固定输入剩余义务，不以测试数量代替整体验收。
+
 2026-10-11：九份静态初始化记录加入GraphTrace完整身份/prototype/extensibility对照，
 与实际import依赖一起保留别名边，重复evaluate不重建对象。六个真实有效JS反例
 证实旧逐字段比较会漏掉共享空数组/null原型/不可扩展性，新比较全部检出；另十项

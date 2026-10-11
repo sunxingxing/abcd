@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {isDeepStrictEqual, inspect} from 'node:util';
-import {GraphTrace} from './graph_trace.mjs';
+import {GraphTrace, realmIntrinsics, snapshotValues} from './graph_trace.mjs';
 import {communityPlatform} from './community_platform.mjs';
 
 const rootName = 'phone/src/main/ets/pages/MainPage';
@@ -253,6 +253,7 @@ export async function exerciseCommunity(sources, config = {}) {
     const module = new vm.SyntheticModule(['default'], function() {this.setExport('default', value);}, {context});
     imports.set(name, module); return module;
   };
+  const intrinsics = realmIntrinsics(context);
   const root = modules.get(rootName); await root.link(link);
   for (const module of modules.values()) if (module.status === 'unlinked') await module.link(link);
   let error;
@@ -349,6 +350,8 @@ export async function exerciseCommunity(sources, config = {}) {
     cells: cells.map(entry => [trace.tags.get(entry.owner), entry.key, trace.normalize(entry.value), entry.purged, entry.deleted]),
     metadata: [...viewTypes].map(([key, Type]) => [key, Type.name, Type.length,
       Reflect.ownKeys(Type.prototype).map(name => [name, trace.normalize(Object.getOwnPropertyDescriptor(Type.prototype, name))])]),
+    identities: snapshotValues({owners, cells, storage: [...storage],
+      exports: [...modules].filter(([, module]) => module.status === 'evaluated').map(([name, module]) => [name, module.namespace])}, intrinsics),
   };
 }
 

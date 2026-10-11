@@ -1,6 +1,21 @@
 import assert from 'node:assert/strict';
 import {AssertionError} from 'node:assert';
 import {types} from 'node:util';
+import vm from 'node:vm';
+
+// Capture before module evaluation; realm prototype identity must not be guessed
+// from constructor names, nor expanded into the entire ambient intrinsic graph.
+export function realmIntrinsics(context) {
+  const prototypes = vm.runInContext('[Object.prototype, Array.prototype, Function.prototype]', context);
+  return new Map([...prototypes.map((value, index) => [value, 'source:' + index]),
+    ...[Object.prototype, Array.prototype, Function.prototype].map((value, index) => [value, 'host:' + index])]);
+}
+
+export function snapshotValues(values, intrinsics) {
+  // Use a separate identity index so taking a final state snapshot cannot change
+  // the identity tags or observations of the existing behavioral trace.
+  return new GraphTrace().exports(new Map([['state', {status: 'evaluated', namespace: values}]]), intrinsics);
+}
 
 // Test-only observable host boundary. Identity tags never substitute a body;
 // complete traces and descriptor snapshots remain independent comparison data.

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { stripTypeScriptTypes } from 'node:module';
 import vm from 'node:vm';
-import {GraphTrace} from './graph_trace.mjs';
+import {GraphTrace, realmIntrinsics} from './graph_trace.mjs';
 import {parseJavaScript} from './class_reference.mjs';
 import {nodes} from './record_style.mjs';
 const [tool, root] = process.argv.slice(2);
@@ -25,9 +25,7 @@ async function load(source, dependency) {
   const context = vm.createContext({ WidthBreakpoint: Object.freeze({ WIDTH_SM: 'sm', WIDTH_MD: 'md', WIDTH_LG: 'lg' }) });
   // Capture realm identities before evaluation. No constructor-name heuristic:
   // a field instance must point at the exact imported class prototype.
-  const prototypes = vm.runInContext('[Object.prototype, Array.prototype, Function.prototype]', context);
-  const intrinsics = new Map([...prototypes.map((value, index) => [value, 'source:' + index]),
-    ...[Object.prototype, Array.prototype, Function.prototype].map((value, index) => [value, 'host:' + index])]);
+  const intrinsics = realmIntrinsics(context);
   const module = new vm.SourceTextModule(source, { context });
   const modules = new Map([['root', module]]);
   await module.link(specifier => {

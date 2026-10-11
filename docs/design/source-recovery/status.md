@@ -12,6 +12,26 @@
 
 ## 当前阶段
 
+### 2026-10-11：实例与导出共享身份图贯通四组行为对照
+
+- Community、Push、富文本和ProgressBar在原事件/逐值对照之外，复用静态初始化的
+  GraphTrace加入最终实例、绑定单元、存储值和实际module namespace的联合对象图。
+  同一图保留跨字段/实例/export别名、descriptor、prototype和extensibility；使用
+  独立身份索引，避免快照改变既有行为trace。realm intrinsic在模块求值前捕获。
+- ProgressBar增加两个有效JS反例：options改为null原型或不可扩展对象。两者原事件
+  和逐值状态仍相同，而新图明确不同；原15个反例保留，共17个。
+- 六项受影响完整测试通过231.41s：Community 203.10s、Push 8.14s、富文本12.41s、
+  ProgressBar 6.78s、静态批次0.95s、图fixture 0.03s。原故障/换绑/等价矩阵保持，
+  证据build/stage-one/instance-identities/{tests.log,lasttest.log}及
+  build/regression/instance-identities.xml。此专项组合不同于固定65项计时入口。
+- 增强检查后完整固定65项复验通过**86.53s**，名单逐项一致，无失败/禁用/跳过；
+  仍为两个工作槽。三分钟要求当前成立，证据同目录fixed65.log/fixed65-lasttest.log
+  和build/regression/regression-current.xml；冷构建耗时仍单独报告。
+- 本次只关闭上述四组受控执行的最终对象身份对照缺口；不宣称所有函数正文、原生
+  内部槽或任意平台执行已证明。无生产修改，规则311保持；阶段一Goal仍active。
+  下一步按固定五输入的有限清单核对剩余义务，特别是46个NoModule是否仅为元数据，
+  避免继续把新的测试数量当作主干交付。
+
 ### 2026-10-11：静态初始化对象图补齐跨字段身份与原型检查
 
 - 发现static_class_batch原逐字段递归只比较内容/descriptor：两个独立空数组被共享、

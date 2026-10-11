@@ -1,5 +1,5 @@
 import vm from 'node:vm';
-import {GraphTrace} from './graph_trace.mjs';
+import {GraphTrace, realmIntrinsics, snapshotValues} from './graph_trace.mjs';
 import {viewProtocol} from './view_protocol.mjs';
 import {richTextPlatform} from './rich_text_platform.mjs';
 
@@ -21,6 +21,7 @@ export async function exerciseRichText(sources, config = {}) {
   const platform = richTextPlatform(trace, config, token), protocol = viewProtocol(trace, config, platform, token, components);
   const {sandbox, ViewPU, owners, cells, observations, clicks, ready, children, builders, call, invoke, drain, render, fields} = protocol;
   context = vm.createContext(sandbox); platform.queue.observeReactions(vm.runInContext('Promise.prototype', context));
+  const intrinsics = realmIntrinsics(context);
   for (const [name, source] of Object.entries(sources)) modules.set(name, new vm.SourceTextModule(source, {context, identifier: name}));
   const dependency = name => {
     if (name === '@bundle:com.example.pasteboard/entry/ets/common/CommonConstants') return modules.get(constants);
@@ -79,5 +80,7 @@ export async function exerciseRichText(sources, config = {}) {
     diagnostics: trace.errors.length, modules: [...modules].map(([name, module]) => [name, module.status]),
     owners: owners.map(owner => [owner.constructor.name, fields(owner)]), rendered: protocol.rendered.map(owner => owner.constructor.name),
     cells: cells.map(({owner, ...entry}) => [trace.normalize(owner), entry]), platform: platform.snapshot(),
-    clicks: clicks.map(({name, owner}) => [name, owner?.constructor.name]), builders: builders.map(({name}) => name)};
+    clicks: clicks.map(({name, owner}) => [name, owner?.constructor.name]), builders: builders.map(({name}) => name),
+    identities: snapshotValues({owners, cells,
+      exports: [...modules].filter(([, module]) => module.status === 'evaluated').map(([name, module]) => [name, module.namespace])}, intrinsics)};
 }

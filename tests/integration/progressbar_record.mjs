@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {classReference, classLayouts} from './class_reference.mjs';
-import {editExpression, editAwait, callsMember} from './expression_edits.mjs';
+import {editExpression, editAwait, callsMember, memberName} from './expression_edits.mjs';
 import {classMethodProfiles} from './record_style.mjs';
 import {verifySignatures} from './signature_shapes.mjs';
 
@@ -89,12 +89,17 @@ const mutations = [
   ['elmtId = (-1)', 'elmtId = 0', 'constructor default id changed', {construct: 'default', lambda: false}],
   ['paramsLambda = (void 0)', 'paramsLambda = (() => {})', 'default parameters callback fabricated', {construct: 'default', lambda: false}],
   ['super(parent, __localStorage, elmtId, extraInfo)', 'super(parent, elmtId, __localStorage, extraInfo)', 'super argument order changed'],
+  ...['setPrototypeOf', 'preventExtensions'].map(operation => [source => editExpression(source,
+    node => node.type === 'ObjectExpression' && node.properties.length === 1 &&
+      node.properties[0].key.name === 'controller' && memberName(node.properties[0].value) === 'controller',
+    (node, text) => `Object.${operation}(${text(node)}${operation === 'setPrototypeOf' ? ', null' : ''})`),
+  null, 'options ' + operation + ' changed', {}, true]),
 ];
 let changedCount = 0;
-for (const [from, to, label, config = {}] of mutations) {
+for (const [from, to, label, config = {}, identityOnly = false] of mutations) {
   if (typeof from !== 'function') assert.ok(sources[page].includes(from), label);
   const changed = {...sources, [page]: typeof from === 'function' ? from(sources[page]) : sources[page].replace(from, to)};
-  classLayouts(changed[page]); run([config], {mutation: label}, changed); ++changedCount;
+  classLayouts(changed[page]); run([config], {mutation: label, identityOnly}, changed); ++changedCount;
 }
 let equivalents = 0;
 for (const [from, to] of [['$local0.progressInfo = progress.progress', 'this.progressInfo = progress.progress'],
