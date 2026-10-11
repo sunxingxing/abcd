@@ -1,3 +1,4 @@
+#include "binding_normalization.h"
 #include "recovery_flow.h"
 #include "flow_units.h"
 #include "expression_observation.h"
@@ -62,6 +63,8 @@ class FlowBuilder {
     result_.unit_captures.clear();
   }
   RecoveryFlow Run() {
+    const auto normalized=NormalizeBindingProjection(tree_.symbols.size(),projection_.aliases,projection_.storage,budget_);
+    if(normalized){projection_.aliases=normalized->aliases;projection_.storage=normalized->storage;}
     result_.scopes.reset();
     result_.original=projection_.original;
     // Final truth facts belong to the old proposal. Only the common joint

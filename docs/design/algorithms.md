@@ -4815,3 +4815,25 @@ termination: representative normalization, actual progress witnesses and total
 queue/rebuild costs remain C P3-P6 obligations. 200/201/geometric edit order,
 no-op, stale-borrow, wrong timing and budget-before-write checks accompany the
 existing common-model and independent execution tests; no full RSS claim.
+
+### Canonical recovery binding maps (rules310)
+
+NormalizeBindingProjection uses standard iterative three-colour functional-graph
+traversal with path compression, implemented locally without a dependency or
+new licensing/maintenance obligation. Prerequisite: current typed alias/storage
+maps already describe proved merges; alias edges take precedence and self edges
+are identities. This algorithm chooses no new merge. It validates targets and
+rejects representative cycles, without restricting source control-flow cycles.
+Every present target is rewritten to its terminal root; absent entries and map
+provenance remain. BindingProjection queries then take constant time instead of
+assuming exactly three prior composition steps.
+
+For B bindings, validation/traversal/rewriting are O(B), with O(B) scratch/output;
+already terminal maps need no allocation. Publication journals normalization in
+the existing transaction. Shared projection holds normalized maps through the
+current/trial solve; flow construction validates the same contract. Scratch is
+released on destruction, and only owned result buffers count as retained memory.
+Tests compare 4096 small graphs with an independent slow oracle and reversed
+arenas. At B=200/201/400/800, forward work is3199/3215/6399/12799 and reverse work
+3398/3415/6798/13598. Exact and one-short budgets are exercised. These are local
+normalization bounds, not proof of whole-pass convergence or aggregate cost.

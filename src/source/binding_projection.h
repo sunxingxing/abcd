@@ -3,9 +3,9 @@
 #include "abcd/source/source_tree.h"
 #include <span>
 namespace abcd::source {
-// Published stages compose direct early aliases, storage slots and late aliases.
+// Normalized maps have terminal targets, independent of the number of passes.
+// Publication and the shared projection/flow boundaries own normalization.
 // ReadValues is indexed by that final slot and cannot alter write identity.
-// No storage/motion owner runs after ReadValues; no recursive lookup is needed.
 struct BindingProjection {
   std::span<const std::optional<SymbolId>> aliases;
   std::span<const std::optional<SymbolId>> storage;
@@ -14,9 +14,8 @@ struct BindingProjection {
   // Published identities are proved at this read; this does not remap any write.
   std::span<const std::optional<SymbolId>> read_sources;
   [[nodiscard]] SymbolId Storage(SymbolId symbol) const {
-    const auto root=aliases.empty()?symbol:aliases[symbol.value].value_or(symbol);
-    const auto slot=storage.empty()?root:storage[root.value].value_or(root);
-    return aliases.empty()?slot:aliases[slot.value].value_or(slot);
+    if(!aliases.empty())if(const auto root=aliases[symbol.value];root&&*root!=symbol)return *root;
+    return storage.empty()?symbol:storage[symbol.value].value_or(symbol);
   }
   [[nodiscard]] SymbolId Read(SymbolId symbol) const {
     const auto slot=Storage(symbol);

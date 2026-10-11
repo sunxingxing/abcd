@@ -1,3 +1,4 @@
+#include "binding_normalization.h"
 #include "recovery_changes.h"
 #include "source_names.h"
 #include "source_name_retirement.h"
@@ -415,6 +416,20 @@ class Initializers {
       case Pass::kInertStatements:OmitInertStatements();break;
       case Pass::kInertOperands:ElideInertOperands();break;
       case Pass::kStorage:Coalesce();break;
+    }
+    if(changes_.Domains().Intersects({RecoveryDomain::kStorage})) {
+      std::size_t bytes=0;
+      {
+        const auto normalized=NormalizeBindingProjection(tree_.symbols.size(),plan_.aliases,plan_.storage,budget_);
+        if(normalized) {
+          bytes=(normalized->aliases.capacity()+normalized->storage.capacity())*sizeof(std::optional<SymbolId>);
+          EditTable<RecoveryField::kAliases>(normalized->aliases);
+          EditTable<RecoveryField::kStorage>(normalized->storage);
+        }
+      }
+      // Journal capacity may grow while canonical targets are published.
+      // Only the normalization's owned arrays are temporary (released below).
+      budget_.Release(bytes);
     }
     RequireTree(WritableDomains(pass).Contains(changes_.Domains()),TreeStructureError::kOwnership);
     RequireTree((schedule_.Revision().value!=before.value)==!changes_.Empty(),TreeStructureError::kOwnership);

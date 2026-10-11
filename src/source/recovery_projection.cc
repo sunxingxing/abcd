@@ -1,3 +1,4 @@
+#include "binding_normalization.h"
 #include "recovery_projection.h"
 #include "expression_children.h"
 #include "flow_kinds.h"
@@ -227,21 +228,24 @@ RecoveryExpressions AnalyzeRecoveryExpressions(const FunctionTree& tree,
   return facts;
 }
 std::variant<RecoveryProjection,TreeStructureError> PrepareRecoveryProjection(
-    const FunctionTree& tree,LegacyFlowProjection projection,const RecoveryExpressionInput& input,
+    const FunctionTree& tree,LegacyFlowProjection projection,const RecoveryExpressionInput& supplied,
     analysis::SemanticBudget allowance) {
   try {
     // Only this bootstrap may attach a completed domain product. Accepting an
     // external span here would let a trial borrow another plan's type proof.
-    RequireTree(input.normal_kinds.empty(),TreeStructureError::kOwnership);
-    TreeCheckBudget budget(allowance);RecoveryProjection result;
-    std::size_t peak=0;
+    RequireTree(supplied.normal_kinds.empty(),TreeStructureError::kOwnership);
+    TreeCheckBudget budget(allowance);RecoveryProjection result;auto input=supplied;
+    const auto normalized=NormalizeBindingProjection(tree.symbols.size(),input.bindings.aliases,input.bindings.storage,budget);
+    if(normalized){input.bindings.aliases=normalized->aliases;input.bindings.storage=normalized->storage;}
+    const auto normalization_bytes=budget.ActiveBytes();
+    std::size_t peak=budget.Bytes();
     const auto remaining=[&](std::size_t live) {
-      RequireTree(live<=allowance.bytes,TreeStructureError::kResourceLimit);
-      return analysis::SemanticBudget{allowance.bytes-live,budget.Remaining().work};
+      RequireTree(normalization_bytes<=allowance.bytes&&live<=allowance.bytes-normalization_bytes,TreeStructureError::kResourceLimit);
+      return analysis::SemanticBudget{allowance.bytes-normalization_bytes-live,budget.Remaining().work};
     };
     const auto charge=[&](std::size_t live,std::size_t bytes,std::uint64_t work) {
       RequireTree(bytes<=remaining(live).bytes,TreeStructureError::kResourceLimit);
-      peak=std::max(peak,live+bytes);budget.Step(work);
+      peak=std::max(peak,normalization_bytes+live+bytes);budget.Step(work);
     };
     // Sequential scratch is released at these ownership boundaries. Every
     // phase is admitted against ALL simultaneously live output/scratch. Work

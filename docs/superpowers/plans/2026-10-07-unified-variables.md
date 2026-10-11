@@ -1432,3 +1432,15 @@ pass-changes-result.json. C is still open: the handwritten Run sequence remains.
 Next implement normalization of representative maps, progress witnesses and
 phase/back-edge semantics together with the dependency queue, then P5/P6.
 No fixed65/record or paused-scope validation was repeated for this component.
+
+### C canonical binding maps (rules310)
+
+Existing proven alias/storage targets are normalized at publication and shared
+current/trial projection boundaries. A linear iterative functional-graph walk
+replaces the fixed-depth A(S(A(binding))) reader; it never chooses a merge.
+Already terminal maps allocate nothing. Scratch ownership and current/trial
+peak accounting remain explicit. Nine targeted tests pass (82.88s), including
+4096 independent small maps, layout/scaling/budget negatives and actual source
+execution. Evidence: binding-normalization-result.json. C remains open: finite
+progress, phase/back-edge semantics, the dependency queue and aggregate cost
+still need implementation and package acceptance. No fixed65/record rerun.

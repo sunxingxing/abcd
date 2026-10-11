@@ -1,3 +1,4 @@
+#include "../../../src/source/binding_normalization.h"
 #include "../../../src/source/recovery_changes.h"
 #include "../../../src/source/recovery_flow.h"
 #include "../../../src/source/binding_interference.h"
@@ -170,6 +171,57 @@ void DomainStableAttempts() {
   bool empty=false;schedule.Start(RecoveryPass::kStorage);
   try{(void)schedule.Commit({});}catch(TreeStructureError){empty=true;}
   Check(empty&&!schedule.Finish());
+}
+void BindingMapNormalization() {
+  constexpr unsigned size=3,choices=size+1;
+  unsigned cases=1;for(unsigned i=0;i<size*2;++i)cases*=choices;
+  for(unsigned encoded=0;encoded<cases;++encoded) {
+    std::vector<std::optional<SymbolId>> aliases(size),storage(size);auto code=encoded;
+    for(auto* values:{&aliases,&storage})for(auto& value:*values) {
+      const auto option=code%choices;code/=choices;if(option)value=SymbolId{option-1};
+    }
+    std::array<SymbolId,size> expected{};bool valid=true;
+    // Small independent oracle walks each binding separately. Production
+    // must share traversal; this deliberately slow reference need not do so.
+    for(unsigned i=0;i<size;++i) {
+      SymbolId at{i};std::array<bool,size> seen{};
+      for(;;) {
+        if(seen[at.value]){valid=false;break;}seen[at.value]=true;
+        auto target=aliases[at.value];if(!target||*target==at)target=storage[at.value];
+        if(!target||*target==at){expected[i]=at;break;}at=*target;
+      }
+    }
+    TreeCheckBudget budget({});
+    try {
+      const auto normalized=NormalizeBindingProjection(size,aliases,storage,budget);Check(valid);
+      const auto& a=normalized?normalized->aliases:aliases;const auto& b=normalized?normalized->storage:storage;
+      const BindingProjection projected{a,b,{}};
+      for(unsigned i=0;i<size;++i)Check(projected.Storage({i})==expected[i]);
+      TreeCheckBudget repeat({});Check(!NormalizeBindingProjection(size,a,b,repeat));Check(repeat.Bytes()==0);
+    }catch(TreeStructureError error){Check(!valid&&error==TreeStructureError::kOwnership);}
+  }
+  for(unsigned count:{1U,200U,201U,400U,800U})for(bool reverse:{false,true}) {
+    std::vector<std::optional<SymbolId>> aliases(count),storage(count);
+    const auto id=[&](unsigned i){return SymbolId{reverse?count-i-1:i};};
+    for(unsigned i=0;i+1<count;++i)(i%2?aliases:storage)[id(i).value]=id(i+1);
+    TreeCheckBudget budget({});const auto normalized=NormalizeBindingProjection(count,aliases,storage,budget);
+    const BindingProjection projected{normalized?normalized->aliases:aliases,normalized?normalized->storage:storage,{}};
+    for(unsigned i=0;i<count;++i)Check(projected.Storage(id(i))==id(count-1));
+    constexpr unsigned kWorkPerBindingBound=20; // validation, shared DFS, rewrite
+    Check(budget.Work()<=kWorkPerBindingBound*count);
+    TreeCheckBudget exact({budget.Bytes(),budget.Work()});
+    (void)NormalizeBindingProjection(count,aliases,storage,exact);
+    if(budget.Bytes()) {
+      TreeCheckBudget short_bytes({budget.Bytes()-1,budget.Work()});bool rejected=false;
+      try{(void)NormalizeBindingProjection(count,aliases,storage,short_bytes);}catch(TreeStructureError error){rejected=error==TreeStructureError::kResourceLimit;}
+      Check(rejected);
+    }
+    TreeCheckBudget short_work({budget.Bytes(),budget.Work()-1});bool rejected=false;
+    try{(void)NormalizeBindingProjection(count,aliases,storage,short_work);}catch(TreeStructureError error){rejected=error==TreeStructureError::kWorkLimit;}
+    Check(rejected);
+    std::cout<<"binding representatives "<<count<<" reverse "<<reverse<<" work "<<budget.Work()<<'\n';
+  }
+  std::cout<<"independent binding map forests "<<cases<<'\n';
 }
 void AllocationOrdering() {
   using L=analysis::LanguageEffect;using X=analysis::ExceptionalCompletion;
@@ -3329,4 +3381,4 @@ int main(int argc,char** argv){
   if(argc==2&&std::string_view(argv[1])=="--activation") {
     CapturedValues();BindingActivationScaling();BindingActivationOracle();CatchActivationOrder();return 0;
   }
-  ScopedCopyRoots();ScopedCopyOracle();InitializationOracle();ScopedInitializationOracle();EnclosingCleanup();CapturedValues();BindingActivationScaling();BindingActivationOracle();CatchActivationOrder();InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();AvailableCopyOracle();TransitiveCopyOracle();CompletionCycles();LocalCompletionOracle();StatementObservationOracle();StatementEntryOracle();InitializationInvalidation();PassContracts();PassPrerequisites();StablePassAttempts();SnapshotCheckpoints();StableValues();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();ActualRecoveryChanges();DomainStableAttempts();AllocationOrdering();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
+  ScopedCopyRoots();ScopedCopyOracle();InitializationOracle();ScopedInitializationOracle();EnclosingCleanup();CapturedValues();BindingActivationScaling();BindingActivationOracle();CatchActivationOrder();InitializedRepresentatives();GroupRepresentatives();ReadConstants();StorageScopePreference();AvailableCopyOracle();TransitiveCopyOracle();CompletionCycles();LocalCompletionOracle();StatementObservationOracle();StatementEntryOracle();InitializationInvalidation();PassContracts();PassPrerequisites();StablePassAttempts();SnapshotCheckpoints();StableValues();ExpressionConstants();ConstantEquations();SourceScopeOracle();BindingNameOracle();SourceNameOracle();RetirementOracle();SpellingOracle();StorageNameOracle();StoragePrerequisitePreference();StorageInitializationSubsets();StorageNameHoles();InitialValueObligations();DefinitionSites();DeclarationValues();GroupOracle();RefinedInitializations();ActualRecoveryChanges();DomainStableAttempts();BindingMapNormalization();AllocationOrdering();UniversalObservations();CompletionDominance();PreservedInitializations();SourceEvents();SmallGraphs();DemandGraphs();Scaling();}
