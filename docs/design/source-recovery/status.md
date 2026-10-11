@@ -41,6 +41,36 @@
 关闭，第1/4/5项仍未关闭，不据项数推算工作量百分比。下一完整交付包是B：
 R1–R5/R7原始对应账本清零及R9/R10保留合同；之后C收敛与D终验。既定暂停事项保持。
 
+### 2026-10-11：交付包B继续——模块GetValue的组合对应（规则299）
+
+- R4/R7的module read+guard现在以OriginalActionRegion贯通：复用已验证的
+  ModuleGuards/TreeFlow成员、顺序、无旁路及异常合同，只有组入口和成功出口
+  映射物理源码点。guard之前的内部Hole阶段保留为FlowRegionPhase；不伪造独立
+  源码动作，也不把读取成功当作整个GetValue成功。已初始化的无guard读取使用同一模型。
+- 当前/候选从共同Flow的实际绑定读取事件重新建立组合对应。缺少成员/成功出口、
+  常量替换或不同引用不能借用旧结果和异常路线。inline/stored结果共用查询，成功
+  owner取完整组合的出口；原模块读取单独result_expression/Commit回退路径退出。
+- 模块读取的效果/TDZ仍由共同绑定与初始化语义拥有，**没有**把raw load的无抛出
+  上界与guard作交集来削掉源码异常。组合的异常出口消费整个原生动作的当前handler。
+  当前发布者是模块绑定组合；属性/词法组合仍须接入其各自共同引用身份，不能将
+  SymbolId比较当作未来任意对象属性或动态单元的证明。
+- normal/phased、三个profile、local/external、窄/宽编码、catch、getter及写入快照
+  已加入对应检查；组表反排、缺成员/成功点、候选常量替换与准确/差一预算有反例。
+  200/201/400/800整个共同投射work/owned bytes增长检查通过，不是整个Pass成本或RSS。
+- 源码测试改为携带实际TreeFlow.original到同一打印链路；15份输出使用真实lexical
+  TDZ、live binding、getter和catch快照独立执行，两个生成源码变异被检测到。C++完整
+  断言/生成与JS消费者共享当轮fixture。既有“catch phi必须Root”断言改为错误来源
+  身份反例：合法alias可以保留同一phi，不能替换成某个前驱的模块结果。
+- 首轮发现投射阶段访问已move的events_；修正为已发表result.events。测试辅助函数
+  对normal输入错误访问phased异常表也已修正。失败日志保留于action-regions-first/
+  second；不是忽略失败后声称通过。独立生产变异将内部phase伪装物理点，退出-6
+  被检测到（build/stage-one/action-regions-mutation），随后恢复生产文件。
+- 最终六目标构建成功，8/8定向验收通过（18.81s）；补充错误模块引用候选后相关
+  3/3复验通过（5.46s）。证据见build/stage-one/action-regions-restored-build.log、
+  action-regions-final.xml及action-regions-reference.xml。**B及原始IR/SSA主干仍未关闭**；余下R1–R5/R7对应和
+  R9/R10保留义务没有改归“后续”。C全过程收敛仍待生产实现，D仍待整体终验。
+  此提交不重跑固定65/record，不新增真实record覆盖声明；暂停范围保持。
+
 ### 2026-10-11：交付包B进行中——普通语句动作与条件极性
 
 - R7中debugger的正常动作，与return/throw共同使用FlowStatementAction：操作数

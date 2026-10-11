@@ -2,6 +2,7 @@
 #include "../../../src/analysis/phased_value_import.h"
 #include "abcd/analysis/exception_modules.h"
 #include "analysis/ssa_fixture.h"
+#include "source/action_regions.h"
 #include "../../../src/source/evaluation_plan.h"
 #include "../../../src/source/exception_tree.h"
 #include "../../../src/source/family_print.h"
@@ -127,8 +128,11 @@ void Run(std::uint32_t count, bool caught, bool wide, bool external, abc::Profil
     const auto draft = BuildExceptionFunctionDraft(graph, {body, input, regions, control},
         evaluation, syntax, {constants, 1});
     test::Check(std::holds_alternative<ExceptionFunctionDraft>(draft));
-    const auto& tree = std::get<ExceptionFunctionDraft>(draft).tree;
-    const auto family = std::get<ConstructedFamily>(BuildFunctionFamily({{tree, {}, {}}}, tree.owner));
+    const auto& completed=std::get<ExceptionFunctionDraft>(draft);
+    const auto& tree = completed.tree;
+    test::Check(completed.flow&&completed.flow->original);
+    test::CheckActionRegions(tree,*completed.flow->original);
+    const auto family = std::get<ConstructedFamily>(BuildFunctionFamily({{tree, *completed.flow, {}}}, tree.owner));
     std::ostringstream source;
     const auto printed = PrintFamilyDraft(family, source);
     test::Check(std::holds_alternative<PrintedFamilyDraft>(printed));
@@ -240,12 +244,13 @@ void Snapshots(abc::ProfileId profile, std::ostream* output) {
       graph, {}, IncomingCells::kReject, {}, bindings));
   test::Check(evaluation.exceptions && !evaluation.exceptions->slots.empty());
   const auto phi_read = graph.ops.size() - 2;
-  test::Check(evaluation.operations[phi_read].kind == EvaluationKind::kRoot);
   const auto phi = std::get<ValueId>(graph.uses[graph.ops[phi_read].first_use.value].operand);
   test::Check(std::holds_alternative<PhiDefinition>(graph.values[phi.value].origin));
   auto mutable_alias = evaluation;
   mutable_alias.operations[phi_read] = {EvaluationKind::kAlias};
-  mutable_alias.aliases[graph.ops[phi_read].result->value] = phi;
+  // Alias spelling is legal for a captured phi; replacing that identity by
+  // one predecessor's module value is not. Check the semantic counterexample.
+  mutable_alias.aliases[graph.ops[phi_read].result->value] = *graph.ops[guards.pairs.front().read.value].result;
   test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(graph, mutable_alias)) == EvaluationError::kOwnership);
   // A producer used by catch staging cannot be elided even if its normal
   // consumers disappear. Preserve the old value when the next module read throws.
@@ -279,7 +284,9 @@ void Snapshots(abc::ProfileId profile, std::ostream* output) {
   std::vector<ExpressionConstant> constants(graph.ops.size());
   const auto draft = std::get<ExceptionFunctionDraft>(BuildExceptionFunctionDraft(graph,
       {body, input, regions, control}, evaluation, syntax, {constants, syntax.names.size()}));
-  const auto family = std::get<ConstructedFamily>(BuildFunctionFamily({{draft.tree, {}, {}}}, draft.tree.owner));
+  test::Check(draft.flow&&draft.flow->original);
+  test::CheckActionRegions(draft.tree,*draft.flow->original);
+  const auto family = std::get<ConstructedFamily>(BuildFunctionFamily({{draft.tree, *draft.flow, {}}}, draft.tree.owner));
   std::ostringstream source;
   test::Check(std::holds_alternative<PrintedFamilyDraft>(PrintFamilyDraft(family, source)));
   test::Check(draft.tree.operations.size() == graph.ops.size());

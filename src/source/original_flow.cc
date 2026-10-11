@@ -122,6 +122,7 @@ void CheckOriginalFlow(const FunctionTree& tree,const OriginalFlow& original) {
   RequireTree(original.identity==tree.identity&&original.method==tree.method&&
       original.value_revision==tree.value_revision&&original.cfg_revision==tree.cfg_revision&&
       original.input_ranges.size()==tree.expressions.size()&&
+      (original.action_region_members.empty()||original.action_region_members.size()==original.operations.size())&&
       (original.definitions.empty()||original.definitions.size()==tree.expressions.size())&&
       (original.declarations.empty()||original.declarations.size()==tree.statements.size())&&
       (original.catches.empty()||original.catches.size()==tree.symbols.size())&&
@@ -134,15 +135,38 @@ void CheckOriginalFlow(const FunctionTree& tree,const OriginalFlow& original) {
       (original.edge_controls.empty()||original.edge_controls.size()==original.edges.size())&&
       original.statements==tree.statements.size()&&original.bindings==tree.symbols.size(),TreeStructureError::kOwnership);
 }
+const OriginalActionRegion* FindOriginalActionRegion(const OriginalFlow& original,analysis::OpId operation) {
+  if(operation.value>=original.action_region_members.size())return nullptr;
+  const auto id=original.action_region_members[operation.value];
+  if(!id||id->value>=original.action_regions.size())return nullptr;
+  const auto& region=original.action_regions[id->value];
+  for(const auto endpoint:{region.entry,region.exit,region.result})
+    if(endpoint.value>=original.action_region_members.size()||
+        original.action_region_members[endpoint.value]!=id||
+        original.operations[endpoint.value].life!=analysis::ValueLife::kLive)return nullptr;
+  if(!original.phases.empty()) {
+    if(!region.commit||region.commit->value>=original.phases.size())return nullptr;
+    const auto& completion=original.phases[region.commit->value];
+    if(completion.operation!=region.exit||completion.phase!=analysis::ExceptionPhase::kCommit)return nullptr;
+  }
+  return &region;
+}
 std::optional<OriginalResult> FindOriginalResult(const OriginalFlow& original,analysis::OpId id) {
   RequireTree(id.value<original.operations.size(),TreeStructureError::kOwnership);
   const auto& operation=original.operations[id.value];
-  if(operation.life!=analysis::ValueLife::kLive||!operation.result||!operation.result_expression)return {};
+  if(operation.life!=analysis::ValueLife::kLive||!operation.result)return {};
+  const auto* region=FindOriginalActionRegion(original,id);
+  const auto expression=region&&region->result==id?std::optional{region->expression}:operation.result_expression;
+  if(!expression)return {};
   RequireTree(operation.result->value<original.values.size(),TreeStructureError::kOwnership);
   const auto& value=original.values[operation.result->value];
   if(value.life!=analysis::ValueLife::kLive)return {};
   const auto* result=std::get_if<analysis::OpResult>(&value.origin);
-  return OriginalResult{*operation.result,*operation.result_expression,value.domain,result?result->commit:std::nullopt};
+  if(region&&!original.phases.empty()) {
+    if(!region->commit)return {};
+    return OriginalResult{*operation.result,*expression,value.domain,region->commit,region->exit};
+  }
+  return OriginalResult{*operation.result,*expression,value.domain,result?result->commit:std::nullopt,id};
 }
 analysis::ValueKinds OriginalDefinitionKinds(const OriginalFlow& original,const OriginalSourceDefinition& definition) {
   return std::visit([&](const auto& origin) {

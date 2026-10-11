@@ -4567,3 +4567,20 @@ reuses the existing typed predicate and constant-time BooleanEvaluation adapter.
 The decoded completion test measures 200/201/400/800 copies with geometric work/
 owned-byte checks and exact/one-short budgets. Source tests share fresh producer
 output. These are local analysis costs, not whole-pass or process RSS evidence.
+
+
+Verified native action regions (rules299) retain O(R) region records and an
+optional O(O) operation-membership index, allocated only for inputs with such
+compositions. An O(P) phase scatter records group success by typed owner, not
+block adjacency; current projection adds O(R) native-reference checks and reuses
+its O(P + O) phase/result/exception walks. Queries check a fixed number of semantic
+endpoints in O(1). Normal module inputs retain O(X) native actions as phased
+inputs already do; all arrays/capacities use the same budget, without per-region
+CFG traversal. Native binding initialization/effects still own GetValue; raw
+member effect bounds are not intersected into a composed read. The current
+adapter publishes module compositions; other reference kinds require their own
+shared identity proof before using this mechanism. At200/201/400/800 regions,
+normal projection work is122540/123190/250806/514104 without a call barrier and
+353199/355050/721074/1473957 with it (local/external equal). Owned bytes are
+784444/785794/1566444/3130444 and1996754/2000607/3987962/7970378 respectively.
+These include the common projection and are not a whole-pass or RSS bound.

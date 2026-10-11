@@ -4,6 +4,7 @@
 #include "../../../src/source/function_tree.h"
 #include "../../../src/source/tree_semantics.h"
 #include "analysis/ssa_fixture.h"
+#include "source/action_regions.h"
 
 #include <algorithm>
 
@@ -11,7 +12,7 @@ namespace {
 using namespace abcd;
 using namespace abcd::source;
 using namespace abcd::analysis;
-void Run(std::uint32_t count, bool external, bool barrier = true) {
+test::ActionRegionCost Run(std::uint32_t count, bool external, bool barrier = true) {
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(1, 1, {false, false, false, false}));
   RouteInputIdentity identity;
   identity.profile = abc::ProfileId::kDynamic1206;
@@ -70,7 +71,9 @@ void Run(std::uint32_t count, bool external, bool barrier = true) {
   std::vector<ExpressionConstant> operations(graph.ops.size());
   const ExpressionConstants constants{operations, syntax.names.size(), 0};
   const auto tree = std::get<ConstructedFunction>(BuildFunctionTree(graph, control, plan, syntax, constants, fixture_budget)).tree;
-  test::Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(graph, control, plan, tree, constants, fixture_budget)));
+  const auto semantics=VerifyTreeSemantics(graph, control, plan, tree, constants, fixture_budget);
+  test::Check(std::holds_alternative<TreeSemantics>(semantics));
+  const auto cost=count<=800?test::CheckActionRegions(tree,*std::get<TreeSemantics>(semantics).flow.original):test::ActionRegionCost{};
   const auto flow = std::get<TreeFlow>(VerifyTreeFlow(graph, control, plan, tree, fixture_budget));
   for (const auto& module : modules) {
     const auto read = module.pair.read.value, guard = module.pair.guard->value;
@@ -87,7 +90,7 @@ void Run(std::uint32_t count, bool external, bool barrier = true) {
   test::Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(graph, plan, budget)));
   --budget.work;
   test::Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, plan, budget)) == EvaluationError::kWorkLimit);
-  if (!count) return;
+  if (!count) return cost;
   const auto reject_tree = [&](const FunctionTree& candidate) {
     test::Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, plan, candidate, constants, fixture_budget)));
   };
@@ -125,9 +128,47 @@ void Run(std::uint32_t count, bool external, bool barrier = true) {
   // Extra/repeated entries do not silently change source binding ownership.
   modules.push_back(modules.front());
   test::Check(std::get<EvaluationError>(IndexModuleEvaluations(graph, modules, fixture_budget)) == EvaluationError::kOwnership);
+  return cost;
+}
+void Initialized() {
+  const auto wire=[](abc::Opcode value){return static_cast<std::uint8_t>(value);};
+  const auto body=test::Body({wire(abc::Opcode::kLDAI_IMM32),1,0,0,0,
+      wire(abc::Opcode::kSTMODULEVAR_IMM8),0,wire(abc::Opcode::kLDLOCALMODULEVAR_IMM8),0,wire(abc::Opcode::kRETURN)});
+  const auto frame=std::get<abc::FrameLayout>(abc::BuildFrameLayout(0,0,{}));
+  RouteInputIdentity identity;identity.profile=abc::ProfileId::kDynamic1206;
+  const auto input=std::get<FunctionInput>(FunctionInput::Build(identity,{300},{100},body,frame,InputCaptureMode::kClosed));
+  const auto values=std::get<FunctionValues>(BuildFunctionValues(input,body,frame));const auto& graph=values.graph;
+  test::Check(values.modules.pairs.size()==1&&!values.modules.pairs.front().guard);
+  const auto pair=values.modules.pairs.front();
+  std::vector<ModuleEvaluation> modules{{pair,std::get<ValueModuleRead>(graph.ops[pair.read.value].operation),{{7},{0}}}};
+  const auto evaluation=std::get<EvaluationPlan>(BuildEvaluationPlan(graph,{},IncomingCells::kReject,{},modules));
+  const auto control=std::get<ControlPlan>(BuildControlPlan(graph));
+  FunctionSyntax syntax{};syntax.identity=identity;syntax.method={300};syntax.owner={1};
+  syntax.callable=CallableKind::kFunction;syntax.strictness=Strictness::kStrict;syntax.names={u"initialized"};
+  syntax.modules={ModuleSyntax{{{7},{0}},{0},ModuleAccess::kMutable,NameEvidence::kMetadata,true}};
+  std::vector<ExpressionConstant> constants(graph.ops.size());
+  for(unsigned i=0;i<graph.ops.size();++i)if(const auto* store=std::get_if<ValueModuleWrite>(&graph.ops[i].operation))
+    constants[i]=ModuleStoreConstant{store->slot,{{7},{0}},true};
+  const auto constructed=std::get<ConstructedFunction>(BuildFunctionTree(graph,control,evaluation,syntax,{constants,1}));
+  const auto& original=*constructed.flow->original;
+  test::Check(original.action_regions.size()==1&&original.action_regions.front().entry==original.action_regions.front().exit);
+  test::CheckActionRegions(constructed.tree,original);
 }
 }  // namespace
 int main() {
-  for (auto count : {0U, 1U, 2U, 200U, 201U, 4096U})
+  Initialized();
+  for (auto count : {0U, 1U, 2U, 4096U})
     for (bool external : {false, true}) { Run(count, external); Run(count, external, false); }
+  for(bool external:{false,true})for(bool barrier:{false,true}) {
+    test::ActionRegionCost previous;
+    for(auto count:{200U,201U,400U,800U}) {
+      const auto cost=Run(count,external,barrier);
+      if(previous.work) {
+        const auto growth=count==201?1.1:3.0;
+        test::Check(cost.work<=growth*previous.work&&cost.bytes<=growth*previous.bytes);
+      }
+      std::cout<<"action-regions "<<external<<' '<<barrier<<' '<<count<<' '<<cost.work<<' '<<cost.bytes<<'\n';
+      previous=cost;
+    }
+  }
 }

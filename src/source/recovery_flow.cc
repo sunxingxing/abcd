@@ -75,14 +75,15 @@ class FlowBuilder {
     // Retain the extra action index only while bridging raw phase identities;
     // an unconsumed copy across preparation revisions must not spend budget.
     const bool phased=projection_.original&&!projection_.original->phases.empty();
+    const bool regions=projection_.original&&!projection_.original->action_regions.empty();
+    if(!phased&&!regions)decltype(result_.actions){}.swap(result_.actions);
     if(!phased) {
-      decltype(result_.actions){}.swap(result_.actions);
       decltype(result_.original_actions){}.swap(result_.original_actions);
       decltype(result_.original_phases){}.swap(result_.original_phases);
       decltype(result_.original_exceptions){}.swap(result_.original_exceptions);
       decltype(result_.original_handlers){}.swap(result_.original_handlers);
     }
-    Resize(result_.actions,phased?tree_.expressions.size():0);
+    Resize(result_.actions,(phased||regions)?tree_.expressions.size():0);
     Resize(result_.original_actions,phased?projection_.original->operations.size():0);
     for(auto& action:result_.original_actions){budget_.Step();action.reset();}
     for(auto& action:result_.actions){budget_.Step();action.reset();}
@@ -410,6 +411,19 @@ class FlowBuilder {
       if(const auto normal=result.normal_exits[input.expression.value])
         occurrence=FlowOriginalControl{input.expression,expressions_[input.expression.value],*normal,input.kind,input.test};
     }
+    Resize(result.original_regions,result.original?result.original->action_regions.size():0);
+    for(std::size_t i=0;i<result.original_regions.size();++i) {
+      budget_.Step();auto& current=result.original_regions[i];current.reset();
+      const auto& region=result.original->action_regions[i];
+      if(FindOriginalActionRegion(*result.original,region.entry)!=&region)continue;
+      RequireTree(region.expression.value<result.actions.size(),Error::kOwnership);
+      const auto& native=result.actions[region.expression.value];
+      // Use the common reference event, not a syntactic SymbolExpr or the old
+      // plan's binding. Literal/read/alias/transport candidates must reprove
+      // the same external unit before borrowing this composition's facts.
+      if(native&&result.events[native->before.value].kind==FlowEventKind::kRead&&
+          result.events[native->before.value].read==region.reference)current=native;
+    }
     // Publish each native action once. Phase and exception consumers use this
     // same index; they must not independently guess an action from an anchor.
     for(std::size_t i=0;i<result.original_actions.size();++i) {
@@ -452,6 +466,15 @@ class FlowBuilder {
       const auto& operation=result.original->operations[phase.operation->value];
       if(operation.life!=analysis::ValueLife::kLive)continue;
       const auto& action=result.original_actions[phase.operation->value];
+      if(const auto* region=FindOriginalActionRegion(*result.original,*phase.operation)) {
+        const auto id=*result.original->action_region_members[phase.operation->value];
+        if(const auto& native=result.original_regions[id.value]) {
+          if(phase.phase==analysis::ExceptionPhase::kBefore&&*phase.operation==region->entry)point=native->before;
+          else if(phase.phase==analysis::ExceptionPhase::kCommit&&*phase.operation==region->exit)point=native->normal;
+          else if(phase.phase!=analysis::ExceptionPhase::kCatch)point=FlowRegionPhase{id};
+        }
+        continue;
+      }
       // Pure equations preserve a captured input and a possibly partial path.
       // They cover no physical source action, store, exception or selected
       // result. The raw effect contract proves collapsing Before/Commit is
@@ -504,8 +527,16 @@ class FlowBuilder {
         // and all ordinary source failures still need their own correspondence.
         route=FlowExcludedResourceFailure{};continue;
       }
-      const auto& action=result.original_actions[exit.op.value];
-      const auto before=FindOriginalPhase(result,operation.block,analysis::ExceptionPhase::kBefore,exit.op);
+      auto action=result.original_actions[exit.op.value];
+      auto before=FindOriginalPhase(result,operation.block,analysis::ExceptionPhase::kBefore,exit.op);
+      if(FindOriginalActionRegion(*result.original,exit.op)) {
+        const auto id=*result.original->action_region_members[exit.op.value];
+        if(const auto& native=result.original_regions[id.value]) {
+          // The adapter proved that the native action implements every member
+          // completion. This maps its exception route, not an interior VM state.
+          action=FlowOriginalAction{native->before,native->normal,native->exceptions};before=native->before;
+        }
+      }
       const auto target=exit.handler?FindOriginalPhase(result,exit.handler->entry,analysis::ExceptionPhase::kCatch):std::optional{result.terminal};
       // Same selected handler and completion context are semantic obligations.
       // An imported region has no finally: a newly projected cleanup cannot
@@ -523,9 +554,13 @@ class FlowBuilder {
       const auto original=FindOriginalResult(*result.original,analysis::OpId{static_cast<std::uint32_t>(i)});
       if(!original)continue;
       const auto expression=original->expression;
+      if(FindOriginalActionRegion(*result.original,analysis::OpId{static_cast<std::uint32_t>(i)})) {
+        const auto id=*result.original->action_region_members[i];
+        if(!result.original_regions[id.value])continue;
+      }
       RequireTree(expression.value<result.normal_exits.size(),Error::kOwnership);
       const auto normal=original->commit?FindOriginalPhase(result,*original->commit,analysis::ExceptionPhase::kCommit,
-          analysis::OpId{static_cast<std::uint32_t>(i)}):result.normal_exits[expression.value];
+          original->commit_owner):result.normal_exits[expression.value];
       if(normal)occurrence=FlowOriginalResult{expression,expressions_[expression.value],*normal};
     }
     Resize(result.original_effects,result.original?tree_.expressions.size():0);
@@ -1175,7 +1210,7 @@ std::optional<OriginalResult> FindFlowOriginalResult(const RecoveryFlow& flow,an
   const auto result=FindOriginalResult(*flow.original,operation);if(!result)return {};
   const auto& occurrence=*flow.original_results[operation.value];
   if(occurrence.expression!=result->expression||result->expression.value>=flow.expressions.size())return {};
-  if(result->commit&&FindOriginalPhase(flow,*result->commit,analysis::ExceptionPhase::kCommit,operation)!=occurrence.normal)return {};
+  if(result->commit&&FindOriginalPhase(flow,*result->commit,analysis::ExceptionPhase::kCommit,result->commit_owner)!=occurrence.normal)return {};
   return result;
 }
 namespace {

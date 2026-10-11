@@ -55,6 +55,20 @@ enum class OriginalControlKind : std::uint8_t {kPredicate,kTruthSelection,kNulli
 // operation on the enclosing expression. Folded pure tests keep this semantic
 // relation without lending their Boolean domains to the selection's result.
 struct OriginalControlInput {ExprId expression;OriginalControlKind kind;std::optional<PureTruthTest> test;};
+struct OriginalActionRegionId {
+  std::uint32_t value;
+  auto operator<=>(const OriginalActionRegionId&)const=default;
+};
+// A verified composition implements ONE native action. Only its entry and
+// successful exit have physical source boundaries; internal VM states (such
+// as a pre-guard Hole) must never masquerade as completed language values.
+// The adapter proves membership/order and the native binding reference once.
+struct OriginalActionRegion {
+  ExprId expression;
+  analysis::OpId entry, exit, result;
+  SymbolId reference;
+  std::optional<analysis::WorkBlockId> commit;
+};
 using OriginalWriteSite=std::variant<ExprId,StmtId>;
 // Original operations retain phase effects and success-only results, without
 // copying opcode variants or interpreting them a second time in recovery.
@@ -105,6 +119,10 @@ struct OriginalFlow {
   std::vector<analysis::ValueDefinition> values;
   std::vector<analysis::OperandUse> uses;
   std::vector<OriginalOperation> operations;
+  std::vector<OriginalActionRegion> action_regions;
+  // Allocated only when compositions exist. Missing membership withdraws the
+  // certificate; it cannot fall back to an individual member's effect bound.
+  std::vector<std::optional<OriginalActionRegionId>> action_region_members;
   std::vector<analysis::WorkBlock> blocks;
   std::vector<analysis::WorkEdge> edges;
   // Produced by control verification at the actual decision boundary. Phased
@@ -141,7 +159,11 @@ struct OriginalResult {
   ExprId expression;
   analysis::ValueKinds kinds;
   std::optional<analysis::WorkBlockId> commit;
+  // The success boundary of a composed native action may belong to its final
+  // guard, rather than to the raw producer of the guarded language value.
+  std::optional<analysis::OpId> commit_owner;
 };
+[[nodiscard]] const OriginalActionRegion* FindOriginalActionRegion(const OriginalFlow&,analysis::OpId);
 // One value-identity query for inline and stored consumers. Missing projection
 // means no raw certificate, not failure of the current language expression.
 [[nodiscard]] std::optional<OriginalResult> FindOriginalResult(const OriginalFlow&,analysis::OpId);

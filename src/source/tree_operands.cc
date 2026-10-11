@@ -117,6 +117,10 @@ class OperandCheck {
     }
     std::size_t next_function = 0;
     std::size_t next_module = 0;
+    if(!evaluation_.modules.empty()) {
+      budget_.Array(original_.action_regions,evaluation_.modules.size());
+      budget_.Array(original_.action_region_members,graph_.ops.size());
+    }
     std::vector<std::optional<std::size_t>> module_aliases;
     if (!tree_.modules.empty()) {
       budget_.Array(module_aliases, tree_.symbols.size());
@@ -297,11 +301,22 @@ class OperandCheck {
               Error::kOperand);
         } else if constexpr (std::is_same_v<T, analysis::ValueModuleRead>) {
           RequireMeaning(next_module < evaluation_.modules.size(), Error::kOperand);
+          const OriginalActionRegionId region{static_cast<std::uint32_t>(next_module)};
           const auto& module = evaluation_.modules[next_module++];
           const auto symbol = Node<SymbolExpr>(expression).symbol;
           RequireMeaning(module.pair.read == current_ && module.read == operation &&
               symbol.value < module_aliases.size() && module_aliases[symbol.value] &&
               tree_.modules[*module_aliases[symbol.value]].target == module.target, Error::kOperand);
+          // ModuleGuards and TreeFlow already proved this composition, including
+          // order, no bypass and exception ownership. Export the whole native
+          // GetValue, never a no-throw cap for its raw pre-guard load.
+          const auto exit=module.pair.guard.value_or(current_);
+          RequireMeaning(exit.value<graph_.ops.size()&&flow_.expressions[exit.value]==expression,Error::kOperand);
+          original_.action_regions[region.value]={expression,current_,exit,current_,symbol,{}};
+          for(const auto member:{current_,exit}) {
+            auto& owner=original_.action_region_members[member.value];
+            RequireMeaning(!owner||owner==region,Error::kOperand);owner=region;
+          }
         } else if constexpr (std::is_same_v<T, analysis::ValueModuleWrite>) {
           const auto* binding = std::get_if<ModuleStoreConstant>(&constants_.operations[i]);
           RequireMeaning(binding && binding->slot == operation.slot, Error::kConstant);
@@ -616,10 +631,20 @@ class OperandCheck {
           throw Error::kUnsupportedOperation;
         }
       }, op.operation);
-      if(op.result)original_.operations[i].result_expression=expression;
+      if(op.result&&(original_.action_region_members.empty()||!original_.action_region_members[i]))
+        original_.operations[i].result_expression=expression;
     }
     RequireMeaning(next_function == evaluation_.functions.size(), Error::kOperand);
     RequireMeaning(next_module == evaluation_.modules.size(), Error::kOperand);
+    // One indexed scatter retains successful region exits independently of
+    // block numbering, storage order, or individual raw result Commit sites.
+    if(!original_.action_regions.empty())for(std::size_t i=0;i<graph_.phases.size();++i) {
+      budget_.Step();const auto& phase=graph_.phases[i];
+      if(!phase.operation||phase.phase!=analysis::ExceptionPhase::kCommit)continue;
+      const auto owner=original_.action_region_members[phase.operation->value];
+      if(owner&&original_.action_regions[owner->value].exit==*phase.operation)
+        original_.action_regions[owner->value].commit=analysis::WorkBlockId{static_cast<std::uint32_t>(i)};
+    }
     CopyInputs();
   }
 

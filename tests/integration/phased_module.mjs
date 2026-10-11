@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import {generatedSource} from '../support/source/generated_fixture.mjs';
 
 // Evaluation-only module obligations use real lexical TDZs, not helpers that
 // synthesize errors or replace live bindings with captured values.
-const source = execFileSync(process.argv[2], ['--emit'], { encoding: 'utf8' });
+const source = generatedSource(process.argv[2], ['--emit'], {encoding: 'utf8', maxBuffer: 16000000, timeout: 120000});
 const probe = `
 export const tdz = methods.map(fn => {
   try { return { returned: fn() }; } catch (thrown) { return { thrown }; }
@@ -54,3 +54,12 @@ for (const value of [undefined, null, false, -0, NaN, 2n, Symbol('value'), {}, n
     assert.equal(reads, 2);
   }
 }
+
+// These mutations operate only on generated test output. Real lexical TDZ and
+// catch snapshots must detect dropping GetValue or using the wrong live unit.
+const load = async text => import(`data:text/javascript;base64,${Buffer.from(text + probe).toString('base64')}`);
+const noRead = await load(source.replaceAll('moduleValue', 'undefined'));
+assert(noRead.tdz.some((item, index) => !(item[index % 2 ? 'returned' : 'thrown'] instanceof ReferenceError)));
+const wrongSnapshot = await load(source.replaceAll('firstModule', 'secondModule'));
+assert(wrongSnapshot.secondFailure.some(value => value !== wrongSnapshot.first));
+console.log('15 module sources: TDZ, live bindings, property effects and catch snapshots; 2 adverse mutants detected');

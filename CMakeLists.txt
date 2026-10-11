@@ -991,7 +991,7 @@ if(BUILD_TESTING)
   add_executable(phased_module_guards_test tests/unit/source/phased_module_guards_test.cc)
   target_include_directories(phased_module_guards_test PRIVATE tests/support)
   target_link_libraries(phased_module_guards_test PRIVATE abcd_source)
-  add_test(NAME phased_module_guards_test COMMAND phased_module_guards_test)
+  add_source_fixture(phased_module_guards_test 16000000 120000 --emit)
   add_executable(phased_module_literal_test tests/unit/source/phased_module_literal_test.cc)
   target_include_directories(phased_module_literal_test PRIVATE tests/support)
   target_link_libraries(phased_module_literal_test PRIVATE abcd_source)
@@ -1880,6 +1880,7 @@ if(BUILD_TESTING)
       $<TARGET_FILE:class_tree_context_test>)
     add_test(NAME phased_module_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_module.mjs $<TARGET_FILE:phased_module_guards_test>)
+    require_source_fixture(phased_module_source_test phased_module_guards_test)
     add_test(NAME phased_module_literal_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_module_literal.mjs $<TARGET_FILE:phased_module_literal_test>)
     add_test(NAME numeric_update_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

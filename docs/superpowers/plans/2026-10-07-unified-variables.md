@@ -1247,3 +1247,15 @@ The targeted nine-test evidence is recorded in status.md; no per-subproof fixed
 Next shared-action issue is module read+guard: bound the composed GetValue, never
 intersect a no-throw raw load into a source TDZ check. C's separate convergence
 contract remains the required next package; no whole-pass completion claim.
+
+
+Rules299 continues the SAME package B: verified native action regions retain
+module GetValue's entry, group success, reference and exception correspondence.
+Interior VM phases are typed relations, not physical source points. The common
+result query now uses the group exit; member no-throw effects never cap the
+whole source read. Missing membership/completion and candidate read replacement
+withdraw that evidence. Normal/phased decoded fixtures and actual original-aware
+printer output cover TDZ, live bindings, getter failures and catch snapshots;
+small mutations, region order, budget and geometric checks are recorded in status.
+No new mainline or package is closed; B's remaining inventory, C implementation
+and D acceptance stay open. A subproof does not trigger the fixed65/record gate.

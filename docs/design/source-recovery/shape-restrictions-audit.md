@@ -3701,3 +3701,12 @@ typed predicate/Boolean事实保留极性。物理动作、控制关系和值结
 候选省略语句时原始Before/Commit撤回；未知数值输入不能借Boolean专用truth证明。
 未增加样本、同块、邻接或固定图形准入。decision_prefix的测试拼写要求?:退出，
 合法??由同一独立行为对照验收；没有放宽生产语义条件。R7其余组合动作仍开放。
+
+
+规则299：module读取+guard复用已验证组合合同，未新增指令序列、同块或邻接条件。
+源GetValue入口、整组成功、内部VM阶段分别表达；原始结果的有效性不能借内部
+raw load Commit。当前原生绑定引用由共同事件重建，缺证书即撤回对应；没有把
+结果、效果、控制混为一种origin锚点。原模块单独result_expression回退退出。
+raw member无抛出效果不作为整个源码GetValue的上界，TDZ仍由共同初始化证明。
+原有ModuleGuards适配器的布局覆盖边界不在此扩大，也不宣称其它property/lexical
+组合已接完。语义端点身份核对是证书完整性，不是源代码图形状准入。

@@ -24,7 +24,11 @@ struct FlowControlDomains {TruthDomains evaluated,true_values,false_values;};
 // unconditional physical point. Resolve the operation through the current
 // control occurrence; never discard its path by using input.normal alone.
 struct FlowControlPhase {analysis::OpId operation;};
-using FlowOriginalPhase=std::variant<FlowPoint,FlowControlPhase>;
+// Interior states of a verified native action composition have no individual
+// physical point. Keeping them typed prevents pre-guard values or effects from
+// borrowing the native action's successful completion.
+struct FlowRegionPhase {OriginalActionRegionId region;};
+using FlowOriginalPhase=std::variant<FlowPoint,FlowControlPhase,FlowRegionPhase>;
 struct FlowDefinitionId { std::uint32_t value = 0; auto operator<=>(const FlowDefinitionId&) const = default; };
 struct FlowInputId { std::uint32_t value = 0; auto operator<=>(const FlowInputId&) const = default; };
 struct DiscardedId { std::uint32_t value = 0; auto operator<=>(const DiscardedId&) const = default; };
@@ -477,6 +481,7 @@ struct RecoveryFlow {
   // existing native events, properties and completion edges without this copy.
   std::vector<std::optional<FlowAction>> actions;
   std::vector<std::optional<FlowOriginalAction>> original_actions; // OpId indexed.
+  std::vector<std::optional<FlowAction>> original_regions; // OriginalActionRegionId indexed.
   // Verified raw phase identities projected once by the source adapter.
   // Absent entries are representation gaps; neither PCs nor edge order infer
   // an action, success-only result or pending-exception entry.
