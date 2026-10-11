@@ -32,10 +32,11 @@ export class GraphTrace {
     seen.delete(value);
     return result;
   }
-  exports(modules) {
+  exports(modules, intrinsics = null) {
     const ids = new Map(), work = [], roots = [], nodes = [];
     const reference = value => {
       if (value === null || typeof value !== 'object' && typeof value !== 'function') return ['value', value];
+      if (intrinsics?.has(value)) return ['intrinsic', intrinsics.get(value)];
       if (!ids.has(value)) {ids.set(value, ids.size); work.push(value);}
       return ['reference', ids.get(value)];
     };
@@ -43,11 +44,13 @@ export class GraphTrace {
       for (const [key, value] of Object.entries(module.namespace)) roots.push([name, key, reference(value)]);
     for (let i = 0; i < work.length; ++i) {
       const value = work[i];
-      nodes.push([typeof value, Array.isArray(value), Reflect.ownKeys(value).map(key => {
+      const properties = Reflect.ownKeys(value).map(key => {
         const d = Object.getOwnPropertyDescriptor(value, key);
         return 'value' in d ? [key, reference(d.value), d.writable, d.enumerable, d.configurable]
           : [key, reference(d.get), reference(d.set), d.enumerable, d.configurable];
-      })]);
+      });
+      nodes.push([typeof value, Array.isArray(value), properties,
+        ...(intrinsics ? [reference(Object.getPrototypeOf(value)), Object.isExtensible(value)] : [])]);
     }
     // Snapshot content and alias edges before assigning tags. A bad literal or
     // accidentally merged node must fail the snapshot, not hide behind a label.

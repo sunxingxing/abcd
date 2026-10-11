@@ -1494,6 +1494,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/signature_shapes_test.mjs)
     add_test(NAME callable_signatures_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/callable_signatures_test.mjs)
+    add_test(NAME graph_trace_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/graph_trace_test.mjs)
     add_test(NAME record_style_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_style_test.mjs)
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc" AND
@@ -1616,7 +1618,7 @@ if(BUILD_TESTING)
         add_test(NAME viewmodel_batch_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
           ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/viewmodel_batch.mjs $<TARGET_FILE:abc_structure>
           ${ABCD_PAIRED_CORPUS_ROOT})
-        add_test(NAME static_class_batch_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        add_test(NAME static_class_batch_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals --experimental-vm-modules
           ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/static_class_batch.mjs $<TARGET_FILE:abc_structure>
           ${ABCD_PAIRED_CORPUS_ROOT})
       endif()

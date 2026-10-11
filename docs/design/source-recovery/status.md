@@ -12,6 +12,25 @@
 
 ## 当前阶段
 
+### 2026-10-11：静态初始化对象图补齐跨字段身份与原型检查
+
+- 发现static_class_batch原逐字段递归只比较内容/descriptor：两个独立空数组被共享、
+  数组换成null原型、对象变为不可扩展，均可能逃过旧比较。复用GraphTrace.exports
+  的全图身份索引，新增显式realm intrinsic边界下的prototype及extensibility快照；
+  已有调用方式保持，静态批次启用加强模式，无生产修改。
+- 九份静态记录及其实际依赖现比较完整export图，包括跨字段/跨export别名、准确
+  导入类prototype、descriptor、对象/数组内容和重复module.evaluate后的身份。
+  继续验证新module的独立分配、构造器异常和循环导入TDZ，未删旧字段比较。
+- 两份含独立空数组的真实记录产生六个有效JS反例：共享数组、null prototype、
+  preventExtensions。实测旧字段比较仍通过，而新图比较全部拒绝，证明补齐了盲点。
+  独立图fixture另检出十种alias/prototype/descriptor/hole/-0变异，支持cycle且不执行getter。
+- 构建通过，3/3定向通过0.99s；已有CommonConstants完整oracle同时通过20构造、
+  20异常及8变异。证据build/stage-one/static-initialization/{tests.log,lasttest.log}，
+  build/regression/static-initialization-final.xml。固定65和生产规则311保持。
+- 本次关闭九份静态初始化记录的上述身份/原型对照缺口；不是全部实例字段/全局
+  初始化已验收。整图最后的实例字段状态仍主要逐值normalize，下一步复用同一图
+  分析覆盖这些实例间及字段间的身份关系，阶段一Goal保持active。
+
 ### 2026-10-11：嵌套回调与字段函数的共同签名验收
 
 - 原signature_shapes只覆盖class/module callable；新增独立callable_signatures并接入

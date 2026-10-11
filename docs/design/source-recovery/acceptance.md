@@ -1,5 +1,12 @@
 # 验收、证据与实施交接
 
+2026-10-11：九份静态初始化记录加入GraphTrace完整身份/prototype/extensibility对照，
+与实际import依赖一起保留别名边，重复evaluate不重建对象。六个真实有效JS反例
+证实旧逐字段比较会漏掉共享空数组/null原型/不可扩展性，新比较全部检出；另十项
+合成反例验证cycle、descriptor、hole、-0及准确类prototype。构建与3/3定向通过0.99s，
+原CommonConstants构造/异常/变异测试保留。此静态范围关闭，整图实例字段之间的
+身份关系仍需接入共同图对照；生产规则311和阶段一Goal active保持。
+
 2026-10-11：五输入106源码的嵌套/字段函数签名表示缺口关闭。原paired_signatures
 增加独立词法作用域与callable归属对照，1141个非MethodDefinition函数节点（含10个
 模块函数）、751个真实有效JS参数变异全部核对，原149个class/module变异保持。

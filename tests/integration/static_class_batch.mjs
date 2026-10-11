@@ -5,6 +5,9 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { stripTypeScriptTypes } from 'node:module';
 import vm from 'node:vm';
+import {GraphTrace} from './graph_trace.mjs';
+import {parseJavaScript} from './class_reference.mjs';
+import {nodes} from './record_style.mjs';
 const [tool, root] = process.argv.slice(2);
 // Evaluation fixtures only. Production receives the ABC path, never these sources.
 const cases = [
@@ -20,16 +23,28 @@ const cases = [
 ];
 async function load(source, dependency) {
   const context = vm.createContext({ WidthBreakpoint: Object.freeze({ WIDTH_SM: 'sm', WIDTH_MD: 'md', WIDTH_LG: 'lg' }) });
+  // Capture realm identities before evaluation. No constructor-name heuristic:
+  // a field instance must point at the exact imported class prototype.
+  const prototypes = vm.runInContext('[Object.prototype, Array.prototype, Function.prototype]', context);
+  const intrinsics = new Map([...prototypes.map((value, index) => [value, 'source:' + index]),
+    ...[Object.prototype, Array.prototype, Function.prototype].map((value, index) => [value, 'host:' + index])]);
   const module = new vm.SourceTextModule(source, { context });
+  const modules = new Map([['root', module]]);
   await module.link(specifier => {
     assert.equal(specifier, '@normalized:N&&&commons/Index&1.0.0');
     assert.ok(dependency, 'missing independent dependency fixture');
-    return new vm.SourceTextModule(dependency, { context });
+    if (!modules.has(specifier)) modules.set(specifier, new vm.SourceTextModule(dependency, { context }));
+    return modules.get(specifier);
   });
   const names = Reflect.ownKeys(module.namespace).filter(key => typeof key === 'string');
   for (const name of names) assert.throws(() => module.namespace[name], { name: 'ReferenceError' });
   await module.evaluate();
-  return module.namespace;
+  const graph = new GraphTrace().exports(modules, intrinsics);
+  const before = Object.values(module.namespace);
+  await module.evaluate();
+  assert.deepEqual(new GraphTrace().exports(modules, intrinsics), graph, 'module re-evaluation preserves its object graph');
+  for (const [index, value] of Object.values(module.namespace).entries()) assert.equal(value, before[index]);
+  return {namespace: module.namespace, graph};
 }
 function same(a, b) {
   if (b === null || typeof b !== 'object') { assert.ok(Object.is(a, b)); return; }
@@ -47,6 +62,7 @@ function separate(a, b) {
   for (const key of Object.keys(a)) separate(a[key], b[key]);
 }
 const temporary = mkdtempSync(join(tmpdir(), 'abcd-static-class-batch-'));
+let graphMutations = 0;
 try {
   const manifests = new Map();
   for (const app of new Set(cases.map(item => item[0]))) {
@@ -66,9 +82,31 @@ try {
       'Immersive_src/commons/src/main/ets/utils/Breakpoint.ts'), 'utf8')) : undefined;
     const dependencyRecord = entity === 16247 ? manifests.get(app).records.find(row => row.entity === 7395) : null;
     const actualDependency = dependencyRecord ? readFileSync(join(temporary, app, dependencyRecord.source), 'utf8') : dependency;
-    const actual = await load(source, actualDependency), other = await load(source, actualDependency);
+    const actualRecord = await load(source, actualDependency), otherRecord = await load(source, actualDependency);
+    const actual = actualRecord.namespace, other = otherRecord.namespace;
     const pairedSource = stripTypeScriptTypes(readFileSync(join(root, app, paired), 'utf8'));
-    const expected = await load(pairedSource, dependency);
+    const expectedRecord = await load(pairedSource, dependency), expected = expectedRecord.namespace;
+    assert.deepEqual(actualRecord.graph, expectedRecord.graph, app + ':' + entity + ' complete static graph');
+    assert.deepEqual(otherRecord.graph, expectedRecord.graph, app + ':' + entity + ' fresh static graph');
+    const arrays = nodes(parseJavaScript(source)).filter(node => node.type === 'ArrayExpression' && node.elements.length === 0)
+      .sort((a, b) => a.start - b.start);
+    if (arrays.length >= 2) {
+      const [first, second] = arrays;
+      assert.ok(!source.includes('__sharedArray'));
+      const shared = 'const __sharedArray = [];\n' + source.slice(0, first.start) + '__sharedArray' +
+        source.slice(first.end, second.start) + '__sharedArray' + source.slice(second.end);
+      const replace = expression => source.slice(0, first.start) + expression + source.slice(first.end);
+      for (const changed of [shared, replace('Object.setPrototypeOf([], null)'), replace('Object.preventExtensions([])')]) {
+        parseJavaScript(changed);
+        const mutant = await load(changed, actualDependency);
+        // Reproduce the old blind spot: leaf values/descriptors still match.
+        // Only the shared graph exposes alias, prototype or extensibility loss.
+        for (const name of Object.keys(expected)) for (const key of Reflect.ownKeys(expected[name]))
+          if (key !== 'prototype') same(mutant.namespace[name][key], expected[name][key]);
+        assert.notDeepEqual(mutant.graph, expectedRecord.graph, 'undetected static graph mutation');
+        ++graphMutations;
+      }
+    }
     if (entity === 16247) {
       assert.doesNotMatch(source, /\$value|\.call\(/);
       assert.match(source, /static PAGE_COL_PADDING = .*new .*BreakpointType/);
@@ -115,4 +153,6 @@ try {
     }
     console.log(`${app} record=${entity} paired class exports passed`);
   }
+  assert.ok(graphMutations > 0);
+  console.log(JSON.stringify({records: cases.length, graphMutations, prototypeAndAliasGraphs: true}));
 } finally { rmSync(temporary, { recursive: true, force: true }); }
