@@ -17,6 +17,7 @@
 #include "../../support/instruction_positions.h"
 #include "../../support/phased_file_checks.h"
 #include "../../support/phased_family_emission.h"
+#include "../../support/source/allocation_actions.h"
 #include "../../../tools/tree_position_json.h"
 #include <nlohmann/json.hpp>
 
@@ -664,6 +665,8 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
       auto family = std::get<PreparedFamily>(std::move(prepared));
       const auto& built = family.Family();
       Check(built.members.size() == 1 && built.members[0].tree.recovery_issues.empty());
+      Check(built.members[0].flow.original!=nullptr);
+      test::CheckAllocationActions(built.members[0].tree,*built.members[0].flow.original);
       Check(built.members[0].abi && built.members[0].sources && built.writes && built.writes->primitive_objects == (array_buffer ? 0U : 1U) &&
           built.writes->primitive_arrays == (array_buffer ? 1U : 0U));
       auto inputs = std::get<FileFamily>(ReadFunctionFamily(file, header, index, lookup, roles,

@@ -70,6 +70,7 @@ struct OriginalActionRegion {
   std::optional<analysis::WorkBlockId> commit;
 };
 using OriginalWriteSite=std::variant<ExprId,StmtId>;
+enum class OriginalCompletionBoundary : std::uint8_t { kProjectedResult, kIntrinsicAction, kUnmodeled };
 // Original operations retain phase effects and success-only results, without
 // copying opcode variants or interpreting them a second time in recovery.
 struct OriginalOperation {
@@ -91,6 +92,10 @@ struct OriginalOperation {
   // adapter applies the bound only to evaluation, never to separate operand,
   // reference-preparation or declarative-writeback phases.
   std::optional<ExprId> intrinsic_expression;
+  // Creation success precedes evaluating an aggregate's property values.
+  // Result identity is retained separately; it cannot move the raw Commit to
+  // the end of an enclosing source projection.
+  OriginalCompletionBoundary completion = OriginalCompletionBoundary::kProjectedResult;
   // A literal's checked own definition belongs to its property occurrence,
   // not the enclosing allocation or the expression producing the stored value.
   std::optional<PropertyId> intrinsic_property;

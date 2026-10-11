@@ -209,7 +209,10 @@ struct Fixture {
       const auto result=FindFlowOriginalResult(current.flow,*phase.operation);
       if(phase.phase!=ExceptionPhase::kCommit||!result||result->commit!=block)continue;
       const bool first_commit=!commit_seen;commit_seen=true;
-      test::Check(FindOriginalPhase(current.flow,block,phase.phase,phase.operation)==current.flow.normal_exits[result->expression.value]);
+      const auto completed=operation.completion==OriginalCompletionBoundary::kIntrinsicAction?
+          current.flow.actions[operation.intrinsic_expression->value]->normal:
+          current.flow.normal_exits[result->expression.value];
+      test::Check(FindOriginalPhase(current.flow,block,phase.phase,phase.operation)==completed);
       if(!first_commit&&operation.intrinsic_expression!=selected)continue;
       auto missing=current.flow;missing.original_phases[block.value].reset();
       test::Check(!FindFlowOriginalResult(missing,*phase.operation));

@@ -673,7 +673,7 @@ void OriginalCellReferences(bool reverse) {
   Check(!literal.flow.original_actions[0]&&!literal.flow.original_effects[read.value]);
   const auto phases=f.original.phases;f.original.phases.clear();
   const auto normal_literal=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,projection,f.Input()));
-  Check(normal_literal.flow.original_actions.empty());
+  Check(!normal_literal.flow.original_actions[0]);
   Check(!FindFlowOriginalCellReference(normal_literal.flow,operation)&&!normal_literal.flow.original_effects[read.value]);
   f.original.phases=phases;
   f.plan.read_literals[read.value].reset();

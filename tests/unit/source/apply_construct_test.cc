@@ -9,6 +9,8 @@
 #include "abcd/source/tree_printer.h"
 #include "abcd/analysis/value_import.h"
 #include "analysis/ssa_fixture.h"
+#include "source/allocation_actions.h"
+#include "../../../src/source/source_variables.h"
 
 #include <algorithm>
 #include <bit>
@@ -20,6 +22,10 @@ using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
 enum class Form { kEmpty, kBuffered, kComputed, kShared, kParameter, kObject, kLateConstructor, kLateBuffered, kUnknownConstructor };
+// Original-aware recovery of the 402-construction phased fixture admits
+// 68,569,914 bytes, exceeding the public 64 MiB default. Keep that production
+// default; this bounded validation budget covers the existing scale fixture.
+constexpr SemanticBudget kPrintBudget{128U*1024U*1024U};
 std::uint8_t Op(abc::Opcode code) { return static_cast<std::uint8_t>(code); }
 abc::MethodBody Body(bool wide, std::uint32_t count, std::uint32_t arguments,
                      Form form, bool caught, bool member, std::vector<std::uint8_t>* encoded = nullptr) {
@@ -226,6 +232,10 @@ void Run(abc::ProfileId profile, bool wide, bool phased, std::uint32_t count,
     test::Check(std::get<CallPlanError>(missing_constructor) == CallPlanError::kConstructorIdentity);
   }
   FunctionSyntax syntax{}; syntax.identity = identity; syntax.method = {256};
+  // This synthetic caller encloses an independently prepared constructor.
+  // Its function identity must not collide with that family's owner namespace.
+  for(const auto& child:definition->constructor->Family().members)
+    syntax.owner.value=std::max(syntax.owner.value,child.tree.owner.value+1);
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   syntax.names = {u"Ctor", u"input", u"ctor", u"value"};
   syntax.parameters = {{NameId{0}, NameEvidence::kDebugRange}, {NameId{1}, NameEvidence::kDebugRange}};
@@ -264,7 +274,10 @@ void Run(abc::ProfileId profile, bool wide, bool phased, std::uint32_t count,
     return phased ? VerifyExceptionTreeSemantics(graph, *context, evaluation, candidate, resolved, {})
         : VerifyTreeSemantics(graph, *control, evaluation, candidate, resolved);
   };
-  test::Check(std::holds_alternative<TreeSemantics>(verify(tree)) && tree.recovery_issues.empty());
+  const auto verified=verify(tree);
+  test::Check(std::holds_alternative<TreeSemantics>(verified) && tree.recovery_issues.empty());
+  const auto& original=*std::get<TreeSemantics>(verified).flow.original;
+  if(print)test::CheckAllocationActions(tree,original);
   test::Check(std::count_if(tree.expressions.begin(), tree.expressions.end(), [](const auto& node) {
     const auto* construct = std::get_if<ConstructExpr>(&node.expression);
     return construct != nullptr;
@@ -293,7 +306,16 @@ void Run(abc::ProfileId profile, bool wide, bool phased, std::uint32_t count,
     }
   }
   std::ostringstream output;
-  const auto printed = PrintFunctionTree(tree, output);
+  const auto printed = PrintFunctionTree(tree, output,{}, kPrintBudget,nullptr,&original);
+  if(const auto* error=std::get_if<TreePrintError>(&printed)) {
+    std::cerr<<"apply print error "<<static_cast<unsigned>(*error)<<" count="<<count<<" arguments="<<arguments
+        <<" phased="<<phased<<" form="<<static_cast<unsigned>(form)<<'\n';
+    const auto variables=PrepareSourceVariables(tree,kPrintBudget,&original);
+    if(const auto* invalid=std::get_if<TreeStructureError>(&variables))
+      std::cerr<<"apply variables error "<<static_cast<unsigned>(*invalid)<<'\n';
+    else {const auto& measured=std::get<SourceVariables>(variables);
+      std::cerr<<"apply variables bytes="<<measured.allocated_bytes<<" work="<<measured.work<<'\n';}
+  }
   test::Check(std::holds_alternative<PrintedFunction>(printed));
   test::Check(output.str().find("...") == std::string::npos && output.str().find("Reflect.") == std::string::npos);
   const auto& positions = std::get<PrintedFunction>(printed);

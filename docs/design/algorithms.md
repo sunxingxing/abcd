@@ -4596,3 +4596,17 @@ and trial projections rebuild the same facts. The 200/201/400/800 checks account
 for the complete test graph's work and owned bytes, not total Pass or process RSS.
 Raw nonempty/buffered allocation composition remains an explicit R5 obligation;
 the source-level allocation record must not be mistaken for that missing proof.
+
+Creation correspondence (rules301) now uses a typed intrinsic-success versus
+projected-result boundary. Native action arrays are retained for normal as well
+as phased original SSA, O(expressions + operations); each projection reuses their
+capacity, while source-only reuse releases them. Existing phase/result/effect
+loops consume the same action validity. There is no new per-operation CFG walk.
+ArrayArguments produces O(carriers) records and one edge through each ordered
+argument value; no allocation/property events are generated for the syntax-only
+carrier. This matches the existing positional-argument emitter and verified
+private-array/resource contract. Exact and one-short budgets exercise these
+whole common-flow projections. The 402-construction phased source preparation
+admits68,569,914 bytes/work97,823,532; its test uses128 MiB scratch rather than the
+public64 MiB default. Whole optimization cost is still package C's open obligation;
+this counter is neither process RSS nor proof of whole-pass asymptotic behavior.

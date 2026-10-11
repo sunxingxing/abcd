@@ -166,6 +166,9 @@ struct FlowAggregate {
   PropertyRange properties;
   FlowExceptionContext exceptions;
 };
+// A verified private array printed as positional arguments has no source
+// allocation/result or property writes. Its ordered value evaluations remain.
+struct FlowArgumentCarrier {ExprId expression;FlowPoint entry,normal;PropertyRange properties;};
 // One current correspondence for phases and exception routes. Before/context
 // come from the action; normal denotes raw Commit, following the separately
 // checked result projection when present or the physical write otherwise.
@@ -490,6 +493,7 @@ struct RecoveryFlow {
   // existing native events, properties and completion edges without this copy.
   std::vector<std::optional<FlowAction>> actions;
   std::vector<FlowAggregate> aggregates;
+  std::vector<FlowArgumentCarrier> argument_carriers;
   std::vector<std::optional<FlowAction>> property_initializers; // PropertyId indexed.
   std::vector<std::optional<FlowOriginalAction>> original_actions; // OpId indexed.
   std::vector<std::optional<FlowAction>> original_regions; // OriginalActionRegionId indexed.

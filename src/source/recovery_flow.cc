@@ -20,6 +20,7 @@ struct HeaderProgram {
   FlowScopeContext scope;
 };
 struct LoopBodyProgram {std::uint32_t first;std::optional<StmtId> retained;};
+enum class ExpressionRole {kValue,kArgumentCarrier};
 struct Context {
   Point next,thrown;
   std::optional<Point> finalizer;
@@ -31,8 +32,9 @@ struct Context {
   std::optional<HeaderProgram> header;
   FlowStatementRetention retention=FlowStatementRetention::kOptional;
   FlowLoopContext loop_scope=UnmodeledScope{};
+  ExpressionRole expression_role=ExpressionRole::kValue;
   Context Operand(Point continuation,FlowValueUse use=FlowValueUse::kObserved) const {
-    auto result=*this;result.next=continuation;result.value_use=use;return result;
+    auto result=*this;result.next=continuation;result.value_use=use;result.expression_role=ExpressionRole::kValue;return result;
   }
   Context Child(Point continuation,StmtId parent,FlowStatementRetention retained=FlowStatementRetention::kOptional) const {
     auto result=Operand(continuation);result.owner=parent;result.discarded.reset();result.entry_evaluation=false;result.retention=retained;return result;
@@ -53,6 +55,7 @@ class FlowBuilder {
     discarded_=std::move(result_.discarded);discarded_.clear();
     result_.properties.clear();
     result_.aggregates.clear();
+    result_.argument_carriers.clear();
     result_.captured_inputs.clear();
     result_.unit_captures.clear();
   }
@@ -73,22 +76,23 @@ class FlowBuilder {
     Resize(result_.normal_exits,projection_.original?tree_.expressions.size():0);
     for(auto& exit:result_.normal_exits){budget_.Step();exit.reset();}
     // Native events/properties already own source-only completion semantics.
-    // Retain the extra action index only while bridging raw phase identities;
-    // an unconsumed copy across preparation revisions must not spend budget.
+    // Normal SSA and phased SSA share action/result withdrawal. Source-only
+    // trees need no extra raw correspondence index.
     const bool phased=projection_.original&&!projection_.original->phases.empty();
-    const bool regions=projection_.original&&!projection_.original->action_regions.empty();
-    if(!phased&&!regions)decltype(result_.actions){}.swap(result_.actions);
-    if(!phased) {
+    if(!projection_.original) {
+      decltype(result_.actions){}.swap(result_.actions);
       decltype(result_.original_actions){}.swap(result_.original_actions);
+    }
+    if(!phased) {
       decltype(result_.original_phases){}.swap(result_.original_phases);
       decltype(result_.original_exceptions){}.swap(result_.original_exceptions);
       decltype(result_.original_handlers){}.swap(result_.original_handlers);
     }
-    Resize(result_.actions,(phased||regions)?tree_.expressions.size():0);
-    Resize(result_.original_actions,phased?projection_.original->operations.size():0);
+    Resize(result_.actions,projection_.original?tree_.expressions.size():0);
+    Resize(result_.original_actions,projection_.original?projection_.original->operations.size():0);
     for(auto& action:result_.original_actions){budget_.Step();action.reset();}
     for(auto& action:result_.actions){budget_.Step();action.reset();}
-    if(phased)budget_.Array(statement_actions_,tree_.statements.size());
+    if(projection_.original)budget_.Array(statement_actions_,tree_.statements.size());
     Resize(result_.property_initializers,tree_.properties.size());
     for(auto& property:result_.property_initializers){budget_.Step();property.reset();}
     RequireTree(projection_.statement_values.empty()||projection_.statement_values.size()==tree_.statements.size(),Error::kOwnership);
@@ -451,16 +455,23 @@ class FlowBuilder {
           current=FlowOriginalAction{action->before,action->normal,action->exceptions};
         }
       } else if(operation.intrinsic_expression) {
+        if(operation.completion==OriginalCompletionBoundary::kUnmodeled)continue;
         RequireTree(operation.intrinsic_expression->value<result.actions.size(),Error::kOwnership);
         if(const auto& action=result.actions[operation.intrinsic_expression->value]) {
           RequireTree(!current,Error::kOwnership);
           auto normal=std::optional{action->normal};
-          // The action consumes operands; a separately verified result may
-          // complete its owning projection elsewhere in a composite expression.
-          // Raw Commit follows that result, never an enclosing coverage anchor.
-          if(const auto value=FindOriginalResult(*result.original,analysis::OpId{static_cast<unsigned>(i)})) {
-            RequireTree(value->expression.value<result.normal_exits.size(),Error::kOwnership);
-            normal=result.normal_exits[value->expression.value];
+          // A separately verified value projection may complete later than
+          // its intrinsic. Allocation owns identity at its own success, while
+          // conversion staging owns its separately verified projected result.
+          switch(operation.completion) {
+            case OriginalCompletionBoundary::kProjectedResult:
+              if(const auto value=FindOriginalResult(*result.original,analysis::OpId{static_cast<unsigned>(i)})) {
+                RequireTree(value->expression.value<result.normal_exits.size(),Error::kOwnership);
+                normal=result.normal_exits[value->expression.value];
+              }
+              break;
+            case OriginalCompletionBoundary::kIntrinsicAction:break;
+            case OriginalCompletionBoundary::kUnmodeled:throw Error::kOwnership;
           }
           current=FlowOriginalAction{action->before,normal,action->exceptions};
         }
@@ -501,7 +512,7 @@ class FlowBuilder {
           break;
         case analysis::ExceptionPhase::kCommit:
           if(action) {if(action->normal)point=*action->normal;}
-          else if(operation.result_expression) {
+          else if(operation.result_expression&&!operation.intrinsic_expression&&!operation.intrinsic_property) {
             RequireTree(operation.result_expression->value<result.normal_exits.size(),Error::kOwnership);
             if(const auto normal=result.normal_exits[operation.result_expression->value])point=*normal;
           }
@@ -562,6 +573,8 @@ class FlowBuilder {
       budget_.Step();auto& occurrence=result.original_results[i];occurrence.reset();
       const auto original=FindOriginalResult(*result.original,analysis::OpId{static_cast<std::uint32_t>(i)});
       if(!original)continue;
+      const auto& operation=result.original->operations[i];
+      if((operation.intrinsic_expression||operation.intrinsic_property)&&!result.original_actions[i])continue;
       const auto expression=original->expression;
       if(FindOriginalActionRegion(*result.original,analysis::OpId{static_cast<std::uint32_t>(i)})) {
         const auto id=*result.original->action_region_members[i];
@@ -577,6 +590,7 @@ class FlowBuilder {
     if(result.original)for(std::size_t i=0;i<result.original->operations.size();++i) {
       const auto& operation=result.original->operations[i];
       budget_.Step();if(operation.life!=analysis::ValueLife::kLive||!operation.intrinsic_expression)continue;
+      if(!result.original_actions[i])continue;
       if(result.original->cells&&result.original->cells->references[i]&&
           !FindFlowOriginalCellReference(result,analysis::OpId{static_cast<std::uint32_t>(i)}))continue;
       // An imported phased action must have its own Before correspondence.
@@ -796,6 +810,23 @@ class FlowBuilder {
     if(!result_.normal_exits.empty())result_.normal_exits[at.id.value]=context.next;
     result_.value_uses[at.id.value]=context.value_use;
     result_.expression_owners[at.id.value]=context.owner;
+    if(context.expression_role==ExpressionRole::kArgumentCarrier) {
+      // ArrayArguments already owns the private-array/no-iteration proof.
+      // Match the printer's positional-argument semantics; no expression-level
+      // replacement can turn this syntax-only carrier into an evaluated value.
+      PropertyRange properties{};
+      if(const auto* array=std::get_if<ObjectExpr>(&source)) {
+        RequireTree(array->kind==AggregateKind::kArray,Error::kOwnership);properties=array->properties;
+      } else RequireTree(std::holds_alternative<EmptyArrayExpr>(source),Error::kOwnership);
+      result_.value_uses[at.id.value]=FlowValueUse::kUnmodeled;
+      if(!result_.normal_exits.empty())result_.normal_exits[at.id.value].reset();
+      auto next=context.next;
+      for(std::uint32_t i=properties.count;i>0;--i) {
+        budget_.Step();next=Expr(tree_.properties[properties.first+i-1].value,context.Operand(next));
+      }
+      Append(result_.argument_carriers,FlowArgumentCarrier{at.id,start,context.next,properties});
+      Link(start,next);return;
+    }
     if(!result_.expression_transports.empty())result_.expression_transports[at.id.value]=context.transport;
     if(!projection_.transports.empty()&&projection_.transports[at.id.value]) {
       Link(start,context.next);return;
@@ -918,6 +949,12 @@ class FlowBuilder {
     }
     // Children keep language evaluation order, including callee, receiver and
     // assignment RHS. Their commits are distinct from throwing evaluation.
+    if(const auto* construct=std::get_if<ConstructExpr>(&node))
+      if(const auto* arguments=std::get_if<ArrayArguments>(&construct->arguments)) {
+        auto carrier=context.Operand(effect,FlowValueUse::kUnmodeled);carrier.expression_role=ExpressionRole::kArgumentCarrier;
+        const auto next=Expr(arguments->array,carrier);
+        Link(start,Expr(construct->constructor,context.Operand(next)));return;
+      }
     std::pmr::vector<ExprId> children(&memory_);
     VisitExpressionChildren(tree_,node,[&](ExprId child){budget_.Step();children.push_back(child);});
     auto next=effect;

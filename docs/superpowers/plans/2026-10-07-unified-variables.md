@@ -1269,3 +1269,15 @@ execution, layout, budget, scale and production-effect mutation evidence is in
 status.md. Nonempty/buffered raw allocation composition and the other finite B
 obligations remain open. No new mainline closure, fixed65/record rerun or wider
 validation is claimed; continue B, then implement the separate C contract and D.
+
+Rules301 continues B's R5 creation obligation through ordinary/phased raw SSA,
+current/trial withdrawal and emitted source. Intrinsic allocation success differs
+from a composite value's completion. A checked private ArrayArguments carrier
+retains positional evaluations but no source array allocation or definitions;
+ConstructApply owns the actual new action. Buffered allocation correspondence
+is scoped to the existing explicit resource-failure contract, not an intermediate
+heap-image claim. Legacy observable-buffer failure timing remains typed unknown.
+The 402-construction raw-aware fixture exceeds the public64 MiB scratch default;
+its128 MiB validation allowance and measured cost are explicit in status.md.
+This is not evidence closing package C. No mainline/whole-B closure is claimed;
+continue the remaining ordinary call/control and preservation inventory.

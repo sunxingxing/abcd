@@ -478,6 +478,7 @@ class OperandCheck {
           RequireMeaning(arguments, Error::kOperand);
           Arguments(op, *arguments, kConstructorPrefix, operation.arguments);
         } else if constexpr (std::is_same_v<T, analysis::ValueConstructApply>) {
+          original_.operations[i].intrinsic_expression=expression;
           const auto& construct = Node<ConstructExpr>(expression);
           RequireMeaning(op.use_count == 2 &&
               ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded, Error::kOperand);
@@ -540,6 +541,15 @@ class OperandCheck {
                              std::is_same_v<T, analysis::ValueObjectAllocation>) {
           constexpr bool array = std::is_same_v<T, analysis::ValueArrayAllocation>;
           constexpr auto kind = array ? AggregateKind::kArray : AggregateKind::kObject;
+          // Literal/TreeFlow verification already proved no observation until
+          // initialization completes. Buffered materialization has no user
+          // callbacks; folded overwrites keep their own property actions. This
+          // correspondence owns fresh identity, not an intermediate heap image.
+          // Observable resource failures still need a buffer-materialization
+          // boundary; absence withdraws proof without rejecting source recovery.
+          original_.operations[i].intrinsic_expression=expression;
+          original_.operations[i].completion=operation.literal&&ResourceFailures(tree_.identity.contract)==ResourceFailureScope::kObservable?
+              OriginalCompletionBoundary::kUnmodeled:OriginalCompletionBoundary::kIntrinsicAction;
           if (operation.literal) {
             const auto& object = Node<ObjectExpr>(expression);
             RequireMeaning(object.kind == kind, Error::kOperator);
@@ -587,7 +597,6 @@ class OperandCheck {
           RequireMeaning(aggregate ? aggregate->kind == kind :
               (array ? std::holds_alternative<EmptyArrayExpr>(tree_.expressions[expression.value].expression) :
                        std::holds_alternative<EmptyObjectExpr>(tree_.expressions[expression.value].expression)), Error::kOperator);
-          if(!aggregate)original_.operations[i].intrinsic_expression=expression;
         } else if constexpr (std::is_same_v<T, analysis::ValueFunctionCreation>) {
           RequireMeaning(next_function < evaluation_.functions.size(), Error::kOperand);
           const auto& function = evaluation_.functions[next_function++];

@@ -10,6 +10,7 @@
 #include "abcd/source/linear_body.h"
 #include "abcd/source/local_lexical_body.h"
 #include "analysis/ssa_fixture.h"
+#include "source/allocation_actions.h"
 #include "fresh_object_fields.h"
 #include "../../../src/source/tree_constants.h"
 #include "../../../src/source/function_tree.h"
@@ -173,8 +174,22 @@ int main(int argc, char** argv) {
     syntax.method = {kMethod}; syntax.callable = source::CallableKind::kFunction;
     syntax.strictness = source::Strictness::kStrict;
     syntax.names = resolved_tree.names; syntax.texts = resolved_tree.texts;
-    const auto tree = std::get<source::ConstructedFunction>(source::BuildFunctionTree(graph,
-        control, evaluation, syntax, resolved_tree.View())).tree;
+    const auto built = std::get<source::ConstructedFunction>(source::BuildFunctionTree(graph,
+        control, evaluation, syntax, resolved_tree.View()));
+    const auto& tree=built.tree;
+    test::Check(built.flow&&built.flow->original);
+    test::CheckAllocationActions(tree,*built.flow->original);
+    if(slot==0) {
+      syntax.identity.contract=source::SourceContract::kLanguageAndHostV1;
+      const auto observable=std::get<source::ConstructedFunction>(source::BuildFunctionTree(graph,
+          control,evaluation,syntax,resolved_tree.View()));
+      test::Check(observable.flow&&observable.flow->original);
+      bool unmodeled=false;
+      for(const auto& operation:observable.flow->original->operations)
+        unmodeled|=operation.completion==source::OriginalCompletionBoundary::kUnmodeled;
+      test::Check(unmodeled);
+      test::CheckAllocationActions(observable.tree,*observable.flow->original);
+    }
     test::Check(tree.properties.size() == first.count);
     test::Check(std::holds_alternative<source::TreeSemantics>(source::VerifyTreeSemantics(
         graph, control, evaluation, tree, resolved_tree.View())));
