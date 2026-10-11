@@ -260,7 +260,7 @@ std::variant<RecoveryProjection,TreeStructureError> PrepareRecoveryProjection(
     }
     // Provider accounting is a conservative bound on its retained flow; using
     // it as the live charge includes all owned vectors and control metadata.
-    const auto flow_bytes=result.flow.allocated_bytes;
+    const auto flow_bytes=result.flow.retained_bytes;
     FlowInitializationProgram initialization_program;
     {
       auto prepared=BuildFlowInitializationProgram(result.flow,remaining(flow_bytes));
@@ -336,6 +336,10 @@ std::variant<RecoveryProjection,TreeStructureError> PrepareRecoveryProjection(
     const auto& refinement=std::get<FlowRefinement>(refined);charge(live,refinement.allocated_bytes,refinement.work);
     result.flow.normal_truths=std::move(domains.truths);
     result.flow.allocated_bytes+=result.flow.normal_truths.capacity()*sizeof(TruthDomains);
+    result.flow.retained_bytes+=result.flow.normal_truths.capacity()*sizeof(TruthDomains);
+    result.retained_bytes=result.flow.retained_bytes+ExpressionBytes(result.expressions)+
+        result.initialized_reads.capacity()*sizeof(std::uint8_t);
+    RequireTree(result.retained_bytes<=peak,TreeStructureError::kOwnership);
     result.allocated_bytes=peak;result.work=budget.Work();return result;
   } catch(TreeStructureError error){return error;}
   catch(const std::bad_alloc&){return TreeStructureError::kResourceLimit;}

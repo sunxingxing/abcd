@@ -810,6 +810,9 @@ if(BUILD_TESTING)
   target_include_directories(language_constructors_test PRIVATE tests/support)
   target_link_libraries(language_constructors_test PRIVATE abcd_source)
   add_test(NAME language_constructors_test COMMAND language_constructors_test)
+  add_executable(preserved_constructor_test tests/unit/source/preserved_constructor_test.cc)
+  target_include_directories(preserved_constructor_test PRIVATE tests/support)
+  target_link_libraries(preserved_constructor_test PRIVATE abcd_source abcd_json)
   add_executable(language_numeric_test tests/integration/language_numeric.cc)
   target_include_directories(language_numeric_test PRIVATE tests/support)
   target_link_libraries(language_numeric_test PRIVATE abcd_source)
@@ -1999,6 +2002,12 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_generator_finally.mjs $<TARGET_FILE:loop_closure_file_test>)
     add_test(NAME preserved_completion_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/preserved_completions.mjs $<TARGET_FILE:loop_closure_file_test>)
+    add_test(NAME preserved_delegate_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_generator_delegate.mjs $<TARGET_FILE:loop_closure_file_test> --preserved)
+    add_test(NAME preserved_constructor_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/preserved_constructors.mjs $<TARGET_FILE:preserved_constructor_test>)
+    add_test(NAME preserved_async_generator_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_async_generator_yield.mjs $<TARGET_FILE:loop_closure_file_test> --preserved)
     add_test(NAME file_generator_branches_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_generator_branches.mjs $<TARGET_FILE:loop_closure_file_test>)
     add_test(NAME file_generator_return_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

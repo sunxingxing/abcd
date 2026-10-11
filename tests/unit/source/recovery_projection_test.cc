@@ -1637,6 +1637,12 @@ void SparseCompletionGuard(bool reverse,unsigned hops) {
 void SparseStateBudgets() {
   Fixture fixture(4,true);
   const auto projection=std::get<RecoveryProjection>(PrepareRecoveryProjection(fixture.tree,fixture.Projection(),fixture.Input()));
+  Check(projection.retained_bytes>=projection.flow.retained_bytes&&projection.retained_bytes<projection.allocated_bytes);
+  Check(projection.flow.retained_bytes<projection.flow.allocated_bytes);
+  // A cache may release destroyed solver scratch only after admitting the
+  // construction peak. Treating its retained payload as that peak must fail.
+  Check(std::get<TreeStructureError>(PrepareRecoveryProjection(fixture.tree,fixture.Projection(),fixture.Input(),
+      {projection.retained_bytes,projection.work}))==TreeStructureError::kResourceLimit);
   const auto& flow=projection.flow;
   const auto state=std::get<FlowValueStates>(BuildFlowValueStates(flow));
   Check(state.retained_bytes<state.allocated_bytes);
@@ -2646,7 +2652,8 @@ int main(int argc,char** argv) {
     const auto candidate=CandidateDeclarations(true,count);
     if(previous.first){Check(candidate.first<previous.first*3);Check(candidate.second<previous.second*3);}previous=candidate;
     Fixture f(count,true);const auto result=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,f.Projection(),f.Input()));
+    Check(result.retained_bytes<result.allocated_bytes);
     if(work){Check(result.work<work*3);Check(result.allocated_bytes<bytes*3);}work=result.work;bytes=result.allocated_bytes;
-    std::cout<<count<<" expressions="<<f.tree.expressions.size()<<" events="<<result.flow.events.size()<<" work="<<work<<" bytes="<<bytes<<" candidate_work="<<candidate.first<<" candidate_bytes="<<candidate.second<<'\n';
+    std::cout<<count<<" expressions="<<f.tree.expressions.size()<<" events="<<result.flow.events.size()<<" work="<<work<<" bytes="<<bytes<<" retained_bytes="<<result.retained_bytes<<" candidate_work="<<candidate.first<<" candidate_bytes="<<candidate.second<<'\n';
   }
 }

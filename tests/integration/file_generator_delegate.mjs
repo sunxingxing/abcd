@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-const fixtures = execFileSync(process.argv[2], ['--yield-delegate-json'],
+const preservation=process.argv[3]==='--preserved';
+const fixtures = execFileSync(process.argv[2], [preservation?'--preserved-delegate-json':'--yield-delegate-json'],
   {encoding: 'utf8', timeout: 60_000, maxBuffer: 16_000_000}).trim().split('\n').map(JSON.parse);
-assert.equal(fixtures.length, 70);
-assert.equal(fixtures.filter(fixture => fixture.rejected).length, 26);
+assert.equal(fixtures.length, preservation?12:70);
+assert.equal(fixtures.filter(fixture => fixture.rejected).length, preservation?0:26);
+if(!preservation) {
 const truthFixtures = execFileSync(process.argv[2], ['--yield-delegate-truth-json'],
   {encoding: 'utf8', timeout: 60_000, maxBuffer: 16_000_000}).trim().split('\n').map(JSON.parse);
 assert.equal(truthFixtures.length, 126);
 assert.equal(truthFixtures.filter(fixture => fixture.rejected).length, 6);
 fixtures.push(...truthFixtures);
+}
 for (const fixture of fixtures.filter(fixture => !fixture.rejected)) {
   assert.ok(!fixture.source.includes('INCOMPLETE'));
   assert.ok(fixture.source.includes('yield*'));
@@ -200,3 +203,5 @@ for (const fixture of fixtures.filter(fixture => !fixture.rejected)) {
     assert.equal(effects, 0);
   }
 }
+
+if(preservation)console.log(JSON.stringify({preservedDelegateFamilies:fixtures.length}));

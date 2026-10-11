@@ -5,6 +5,11 @@ const sharedSource = execFileSync(process.argv[2], ['--compiler-finally'], {enco
 assert.ok(!sharedSource.includes('INCOMPLETE'));
 const {functions: sharedFinalizers} = await import(`data:text/javascript;base64,${Buffer.from(sharedSource).toString('base64')}`);
 assert.equal(sharedFinalizers.length, 3);
+const expandedSource = execFileSync(process.argv[2], ['--compiler-finally-expanded'], {encoding: 'utf8', timeout: 60_000});
+assert.doesNotMatch(expandedSource, /INCOMPLETE|UNRECOVERED/);
+const {functions: expandedFinalizers} = await import(`data:text/javascript;base64,${Buffer.from(expandedSource).toString('base64')}`);
+assert.equal(expandedFinalizers.length, 3);
+sharedFinalizers.push(...expandedFinalizers);
 const depthSource = execFileSync(process.argv[2], ['--compiler-finally-depth-source'], {encoding: 'utf8', timeout: 60_000});
 assert.ok(!depthSource.includes('INCOMPLETE'));
 const {functions: depthFinalizers} = await import(`data:text/javascript;base64,${Buffer.from(depthSource).toString('base64')}`);

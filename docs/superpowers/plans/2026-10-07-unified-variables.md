@@ -1368,3 +1368,22 @@ cleanup override. Receiver-guard/super tree consumers join the same test contrac
 constructor standalone publication is deliberately not forged to obtain a test
 fragment. R10 still lists delegated/async-generator, Hole/IterResult and complete
 constructor-source preservation evidence; this supplement closes no mainline item.
+
+
+Rules307 completes the finite R10 preservation remainder: delegated yield,
+async-generator requests/await, Hole/IterResult language values and own properties,
+and complete constructors emitted through the actual class publication route.
+The file-backed tests consume actual original facts, shared current/trial analysis
+and independent execution. Class/accessor tests likewise reverify prepared bodies
+and carry the final original facts into source output; an old receiver mutant was
+updated to mutate the receiver rather than assume a temporary assignment.
+
+An unchanged large async-generator test exposed a HEAD 7554bf95 resource failure.
+The current/trial path retained charges for destroyed graph/solver scratch and
+old vector capacities. Peak admission remains intact; owned retained storage and
+declaration-dominance lifetime are now accounted independently. The original
+budget passes all 120 valid families and 39 refusals. Eighteen related tests pass;
+class paths pass four plus the repaired async-oracle test. This clears a concrete
+P5 input, not whole-pass convergence. B still needs the consolidated R1–R5/R7
+consumer ledger and frozen package gate. No new mainline item is closed here;
+fixed65/record and paused scopes were not rerun for this step.

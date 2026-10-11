@@ -40,6 +40,10 @@ struct RecoveryProjection {
   // Conservative maximum of admitted simultaneous storage across bootstrap
   // phases. Work includes all phases; freed scratch is not retained storage.
   std::size_t allocated_bytes=0;
+  // Conservative owned storage after solver/order/initialization scratch has
+  // been destroyed. Cache clients first admit the peak above, then retain
+  // only this charge; current and candidate projections have the same owner.
+  std::size_t retained_bytes=0;
   std::uint64_t work=0;
 };
 // Common provider: conservative proposal -> shared initialization equations

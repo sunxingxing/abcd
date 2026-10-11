@@ -4742,3 +4742,39 @@ missing original actions and source-only models for async/direct-yield/finally
 families with sibling captures. Receiver guards similarly have no standalone
 source action; mandatory super effects remain on the native call. No production
 algorithm, dependency, representation threshold or complexity changed here.
+
+
+### Projection ownership after construction (rules307)
+
+RecoveryFlow now reports construction admission and retained owned capacities
+separately. Construction still charges geometric old/new buffer overlap, scoped
+PMR traversal/index scratch, subordinate analyses and the shared scope control
+block. The published graph's ownership census counts every returned vector, the
+source-name index and a conservative scope-construction charge; borrowed original
+evidence is charged by its existing owner. Capacity reuse retains its documented
+caller charge: construction admission measures new allocations, retained bytes
+include the transferred buffers. The joint provider currently starts with fresh
+flow storage. No new allocation library, dependency or asymptotic algorithm.
+
+PrepareRecoveryProjection first checks each full construction peak against all
+live owners, then uses retained graph bytes for later solver phases. Its result
+also separates peak from retained graph/expression/read facts. Initializers admits
+that peak before releasing destroyed solver scratch and adapter arrays; revision
+cache invalidation releases exactly the admitted retained product. Declaration
+candidate detection releases its destroyed dominance product before trial solving.
+No phase, value, effect, identity, name or termination proof changes.
+
+The ownership census is O(number of owned buffer fields), independent of graph
+size; no per-node or per-binding scan is added. Maintaining it is an explicit
+obligation when adding owned buffers. Scope scratch and other analysis products
+may still be conservatively charged; this is not allocator instrumentation or
+process RSS. A retained-only construction allowance must still fail, and existing
+exact/short budgets and 200/201/geometric cases remain required.
+
+The existing file async-generator request test exposed a baseline failure in a
+402-yield body (8044 raw operations, 4825 expressions): current plus declaration
+trial was charged freed construction storage as resident. HEAD 7554bf95 reproduces
+the failure. With the ownership correction the unchanged default test completes
+all 120 valid families and its 39 refusal checks at the original budget. This
+removes one observed P5 cost blocker; it does not establish whole-pass complexity
+or convergence.

@@ -196,8 +196,10 @@ class FlowBuilder {
     auto& result=result_;
     result.identity=tree_.identity;result.value_revision=tree_.value_revision;result.cfg_revision=tree_.cfg_revision;
     result.entry=entry_;result.terminal=terminal_;
+    const auto before_scopes=budget_.ActiveBytes();
     auto flow_scopes=MakeFlowScopes(tree_,budget_);flow_scopes->events=std::move(scope_events_);
     if(native_scopes_){IndexFlowLoopScopes(*flow_scopes,loop_scopes_,budget_);flow_scopes->loop_events=std::move(loop_scope_events_);}
+    const auto scope_bytes=budget_.ActiveBytes()-before_scopes;
     result.scopes=std::move(flow_scopes);
     const auto copy=[&](auto& destination,const auto& source){Resize(destination,source.size());std::copy(source.begin(),source.end(),destination.begin());};
     result.events=std::move(events_);result.edges=std::move(edges_);
@@ -314,9 +316,43 @@ class FlowBuilder {
     result.source_shadows=std::move(names.shadows);result.binding_presence=std::move(names.presence);
     result.source_names=std::move(names.index);
     ProjectOriginal();
-    result.allocated_bytes=budget_.Bytes();result.work=budget_.Work();return std::move(result);
+    result.allocated_bytes=budget_.Bytes();
+    // Published buffers own their actual capacities. Construction admission
+    // includes old/new growth overlap, PMR traversal scratch and subordinate
+    // analysis products; these do not survive the builder. Scope construction
+    // retains its conservative charge, including the shared control block.
+    result.retained_bytes=RetainedBytes(result,scope_bytes);
+    result.work=budget_.Work();return std::move(result);
   }
  private:
+  static std::size_t RetainedBytes(const RecoveryFlow& flow,std::size_t scope_bytes) {
+    std::size_t bytes=scope_bytes;
+    const auto add=[&]<class T>(const std::vector<T>& values) {
+      RequireTree(values.capacity()<=(std::numeric_limits<std::size_t>::max()-bytes)/sizeof(T),Error::kResourceLimit);
+      bytes+=values.capacity()*sizeof(T);
+    };
+    // Ownership census, not semantic dispatch. Add any new owned flow buffer
+    // here; original evidence is borrowed and scopes are charged separately.
+    add(flow.normal_kinds);add(flow.normal_truths);add(flow.normal_exits);
+    add(flow.actions);add(flow.aggregates);add(flow.argument_carriers);
+    add(flow.snapshot_slots);add(flow.property_initializers);add(flow.original_actions);
+    add(flow.invocation_values);add(flow.original_invocations);add(flow.original_regions);
+    add(flow.original_phases);add(flow.original_exceptions);add(flow.original_handlers);
+    add(flow.original_results);add(flow.original_controls);add(flow.original_cell_references);
+    add(flow.original_cell_units);add(flow.original_effects);add(flow.events);
+    add(flow.edges);add(flow.definitions);add(flow.captured_inputs);
+    add(flow.references);add(flow.unit_captures);add(flow.properties);
+    add(flow.names);add(flow.discarded);add(flow.statements);
+    add(flow.expressions);add(flow.loops);add(flow.statement_semantics);
+    add(flow.statement_order);add(flow.expression_owners);add(flow.expression_transports);
+    add(flow.value_uses);add(flow.bindings);add(flow.source_regions);
+    add(flow.source_shadows);add(flow.binding_presence);add(flow.source_spellings);
+    add(flow.source_name_spellings);add(flow.source_occurrences);
+    if(flow.scopes){add(flow.scopes->events);add(flow.scopes->loop_events);}
+    if(flow.source_names){add(flow.source_names->ranges);add(flow.source_names->precision);
+      add(flow.source_names->enclosing);add(flow.source_names->scope_peer);}
+    return bytes;
+  }
   void ProjectOriginalCells() {
     auto& result=result_;
     if(!result.original||!result.original->cells) {

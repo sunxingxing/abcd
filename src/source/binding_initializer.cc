@@ -435,39 +435,46 @@ class Initializers {
     }
     if(!candidate)return candidates;
     const auto& flow=CurrentFlow();const auto& expressions=AnalyzeExpressions();
-    auto analyzed=AnalyzeFlowDominance(flow,budget_.Remaining());
-    if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
-    const auto& order=std::get<FlowDominance>(analyzed);
-    budget_.Admit(order.allocated_bytes,1);budget_.Step(order.work);
-    for(const auto& definition:flow.definitions) {
-      budget_.Step();const auto& use=uses_[definition.binding.value];
-      if(!use.declaration || use.escaped || !definition.write ||
-          flow.bindings[definition.binding.value].initialization==FlowDefinitionKind::kInitializer ||
-          !expressions.normal_stores[definition.write->value])continue;
-      // Declaration spelling needs an owned whole-statement assignment (or a
-      // supported native for declarator), not a write nested in another use.
-      // This is the printer's declaration extent, not a CFG layout premise.
-      const auto discarded=flow.events[definition.point.value].discarded;
-      if(!discarded)continue;
-      const auto statement=flow.discarded[discarded->value].statement;
-      const auto owner=declaration_containers_[statement.value];
-      const auto* effect=std::get_if<ExpressionStmt>(&tree_.statements[statement.value].statement);
-      if(!owner || !effect || expressions.roots[effect->expression.value]!=*definition.write)continue;
-      auto& selected=candidates[definition.binding.value];
-      const auto position=order.tree.nodes[definition.point.value].begin;
-      const auto previous=selected?order.tree.nodes[selected->completion.value].begin:0;
-      // An ancestor precedes its descendants in dominator preorder. A valid
-      // initializer must dominate every write, including other candidates;
-      // therefore only the earliest candidate can satisfy all references.
-      // Prefer reachable candidates; unreachable syntax has no order demand.
-      if(!selected || (position && (!previous || position<previous)))
-        selected=DeclarationCandidate{{statement,*owner},*definition.write,definition.point};
+    std::size_t order_bytes=0;
+    {
+      auto analyzed=AnalyzeFlowDominance(flow,budget_.Remaining());
+      if(const auto* error=std::get_if<TreeStructureError>(&analyzed))throw *error;
+      const auto& order=std::get<FlowDominance>(analyzed);
+      budget_.Admit(order.allocated_bytes,1);budget_.Step(order.work);
+      order_bytes=order.allocated_bytes;
+      for(const auto& definition:flow.definitions) {
+        budget_.Step();const auto& use=uses_[definition.binding.value];
+        if(!use.declaration || use.escaped || !definition.write ||
+            flow.bindings[definition.binding.value].initialization==FlowDefinitionKind::kInitializer ||
+            !expressions.normal_stores[definition.write->value])continue;
+        // Declaration spelling needs an owned whole-statement assignment (or a
+        // supported native for declarator), not a write nested in another use.
+        // This is the printer's declaration extent, not a CFG layout premise.
+        const auto discarded=flow.events[definition.point.value].discarded;
+        if(!discarded)continue;
+        const auto statement=flow.discarded[discarded->value].statement;
+        const auto owner=declaration_containers_[statement.value];
+        const auto* effect=std::get_if<ExpressionStmt>(&tree_.statements[statement.value].statement);
+        if(!owner || !effect || expressions.roots[effect->expression.value]!=*definition.write)continue;
+        auto& selected=candidates[definition.binding.value];
+        const auto position=order.tree.nodes[definition.point.value].begin;
+        const auto previous=selected?order.tree.nodes[selected->completion.value].begin:0;
+        // An ancestor precedes its descendants in dominator preorder. A valid
+        // initializer must dominate every write, including other candidates;
+        // therefore only the earliest candidate can satisfy all references.
+        // Prefer reachable candidates; unreachable syntax has no order demand.
+        if(!selected || (position && (!previous || position<previous)))
+          selected=DeclarationCandidate{{statement,*owner},*definition.write,definition.point};
+      }
+      for(const auto& reference:flow.references) {
+        budget_.Step();auto& selected=candidates[reference.binding.value];
+        if(selected && order.tree.nodes[reference.point.value].begin &&
+            !order.Dominates(selected->completion,reference.point))selected.reset();
+      }
     }
-    for(const auto& reference:flow.references) {
-      budget_.Step();auto& selected=candidates[reference.binding.value];
-      if(selected && order.tree.nodes[reference.point.value].begin &&
-          !order.Dominates(selected->completion,reference.point))selected.reset();
-    }
+    // Candidates retain only stable occurrence IDs. Dominance and its scratch
+    // are destroyed before the independent proposal solve; neither is a cache.
+    budget_.Release(order_bytes);
     return candidates;
   }
   void Declarations() {
@@ -987,9 +994,19 @@ class Initializers {
     if(const auto* error=std::get_if<TreeStructureError>(&prepared))throw *error;
     auto result=std::get<RecoveryProjection>(std::move(prepared));
     budget_.Admit(result.allocated_bytes,1);budget_.Step(result.work);
+    RequireTree(result.retained_bytes<=result.allocated_bytes,TreeStructureError::kOwnership);
+    budget_.Release(result.allocated_bytes-result.retained_bytes);
     // The prepared graph owns all facts it publishes. No borrowed projection
-    // span survives; release temporary ownership only after construction.
-    loop_entries.reset();loop_declarations.reset();budget_.Release(loop_bytes);return result;
+    // span survives; release temporary ownership only after destruction. The
+    // cache's charge must not include the joint solver's former peak or these
+    // adapter arrays. The peak check above still includes every live owner.
+    loop_entries.reset();loop_declarations.reset();budget_.Release(loop_bytes);
+    const auto release=[&]<class T>(std::vector<T>& values) {
+      const auto bytes=values.capacity()*sizeof(T);
+      std::vector<T>{}.swap(values);budget_.Release(bytes);
+    };
+    release(private_bindings);release(source_bindings);release(original_bindings);
+    return result;
   }
   const RecoveryProjection& CurrentProjection() const {
     schedule_.RequireFact(RecoveryFact::kFlow);

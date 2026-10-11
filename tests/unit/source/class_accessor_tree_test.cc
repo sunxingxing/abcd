@@ -4,6 +4,7 @@
 #include "../../../src/source/family_print.h"
 #include "../../../src/source/family_cells.h"
 #include "../../../src/source/tree_structure.h"
+#include "../../../src/source/tree_semantics.h"
 #include "../../../src/source/class_self_order.h"
 #include "abcd/source/global_reference.h"
 #include "abcd/analysis/coroutine.h"
@@ -391,16 +392,20 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
     }
     Check(std::holds_alternative<ClassTree>(prepared)); *layout = std::get<ClassTree>(std::move(prepared));
     Check(layout->BodiesPrepared());
-    Check(std::holds_alternative<TreeFlow>(VerifyTreeFlow(graph, control, evaluation, source.tree)));
+    // The class layout gained prepared bodies after initial construction.
+    // Reverify that final representation, then print with its actual raw facts.
+    const auto final_semantics = std::get<TreeSemantics>(VerifyTreeSemantics(
+        graph, control, evaluation, source.tree, constants.View()));
+    Check(final_semantics.flow.original != nullptr);
     std::ostringstream output;
-    const auto printed = PrintFunctionTree(source.tree, output, {}, {}, &globals);
+    const auto printed = PrintFunctionTree(source.tree, output, {}, {}, &globals, final_semantics.flow.original.get());
     if (const auto* text = std::get_if<PrintedFunction>(&printed); text && text->incomplete)
       std::cerr << output.str() << '\n';
     if (const auto* error = std::get_if<TreePrintError>(&printed))
       std::cerr << "field print error " << static_cast<unsigned>(*error) << " after " << output.str() << '\n';
     Check(std::holds_alternative<PrintedFunction>(printed) && !std::get<PrintedFunction>(printed).incomplete);
     if (self_initializer) {
-      const auto flow = std::get<TreeFlow>(VerifyTreeFlow(graph, control, evaluation, source.tree));
+      const auto& flow = final_semantics.flow;
       Check(self_family->members.size() == 1);
       ConstructedFamily probe{{{source.tree, flow, {}, {}, {}, abc::EntityOffset{kOwner}}}, {0}, {std::nullopt}};
       Check(std::holds_alternative<FamilyWrites>(VerifyFamilyWrites(index, *self_family, probe)));
@@ -425,7 +430,7 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
       const auto& family = std::get<ConstructedFamily>(composed);
       Check(family.writes && family.writes->stores == 1);
       output.str({}); output.clear();
-      const auto emitted = PrintFunctionTree(family.members[0].tree, output, {}, {}, &globals);
+      const auto emitted = PrintFunctionTree(family.members[0].tree, output, {}, {}, &globals, family.members[0].flow.original.get());
       Check(std::holds_alternative<PrintedFunction>(emitted) && !std::get<PrintedFunction>(emitted).incomplete);
     }
     Check(unlink(path) == 0); return output.str();
@@ -691,7 +696,16 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
       auto bad_destination = destination; bad_destination.enclosure = &stale;
       Check(std::holds_alternative<FamilyPrepareFailure>(constructor.CheckDestination(bad_destination)));
       std::ostringstream output;
-      Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(source_parent->tree, output, {}, {}, &globals)));
+      auto constants = std::get<TreeConstants>(ResolveTreeConstants(file, header, index, creator.input.Method(), graph));
+      constants.operations[class_operation.value] = source_layout;
+      const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
+      const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph, {}, IncomingCells::kReject,
+          {}, {}, {}, {}, analysis::ClosureWrites::kLanguage, definitions));
+      const auto final_semantics = std::get<TreeSemantics>(VerifyTreeSemantics(
+          graph, control, evaluation, source_parent->tree, constants.View()));
+      Check(final_semantics.flow.original != nullptr);
+      Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(source_parent->tree, output, {}, {}, &globals,
+          final_semantics.flow.original.get())));
       captured_source = output.str();
     }
     Check(unlink(path) == 0); return captured_source;
@@ -830,8 +844,12 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   auto missing = std::move(definition->definitions.back()); definition->definitions.pop_back();
   Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(graph, control, evaluation, syntax, constants.View())));
   definition->definitions.push_back(std::move(missing));
+  const auto final_semantics = std::get<TreeSemantics>(VerifyTreeSemantics(
+      graph, control, evaluation, std::get<ConstructedFunction>(tree).tree, constants.View()));
+  Check(final_semantics.flow.original != nullptr);
   std::ostringstream output;
-  auto printed = PrintFunctionTree(std::get<ConstructedFunction>(tree).tree, output, {}, {}, &globals);
+  auto printed = PrintFunctionTree(std::get<ConstructedFunction>(tree).tree, output, {}, {}, &globals,
+      final_semantics.flow.original.get());
   Check(std::holds_alternative<PrintedFunction>(printed));
   Check(std::get<PrintedFunction>(printed).class_members.size() == (input_gap ? 3 : 5));
   Check(std::get<PrintedFunction>(printed).incomplete == input_gap);
@@ -840,7 +858,7 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
         {}, nullptr, nullptr, {}, FamilyClassMode::kRetainRoot));
   };
   const auto& root_tree = std::get<ConstructedFunction>(tree).tree;
-  const auto flow = std::get<TreeFlow>(VerifyTreeFlow(graph, control, evaluation, root_tree));
+  const auto& flow = final_semantics.flow;
   auto incomplete = read_family(); incomplete.members[0].classes.pop_back();
   const auto denied_family = BuildRecordFamilyTrees(file, header, index, std::move(incomplete),
       {root_tree, flow, {}, {}, {}, abc::EntityOffset{kOwner}});

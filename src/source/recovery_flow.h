@@ -571,6 +571,9 @@ struct RecoveryFlow {
   std::vector<std::optional<SourcePosition>> source_occurrences;
   FlowPoint entry, terminal;
   std::size_t allocated_bytes = 0;
+  // Conservative owned storage after the builder is destroyed, including
+  // transferred capacity. allocated_bytes measures new construction admission.
+  std::size_t retained_bytes = 0;
   std::uint64_t work = 0;
   // The syntax adapter publishes original and projected lexical regions once.
   // Absence on an original binding preserves the legacy identity contract;

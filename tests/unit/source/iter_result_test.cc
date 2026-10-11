@@ -7,6 +7,7 @@
 #include "../../../src/analysis/value_edits.h"
 #include "abcd/source/tree_printer.h"
 #include "analysis/ssa_fixture.h"
+#include "source/protocol_values.h"
 #include "abcd/analysis/value_import.h"
 
 #include <unistd.h>
@@ -182,7 +183,11 @@ void Run(abc::ProfileId profile, bool phased, std::uint32_t count, bool computed
     return phased ? VerifyExceptionTreeSemantics(graph, *context, evaluation, candidate, resolved, {})
         : VerifyTreeSemantics(graph, *control, evaluation, candidate, resolved);
   };
-  test::Check(std::holds_alternative<TreeSemantics>(verify(tree)));
+  const auto semantics = verify(tree);
+  test::Check(std::holds_alternative<TreeSemantics>(semantics));
+  const auto& original = std::get<TreeSemantics>(semantics).flow.original;
+  test::Check(original != nullptr);
+  if (count <= 2) test::CheckProtocolValues(tree, *original, creations);
   test::Check(tree.properties.size() == count * (composition == Composition::kEmptyObject || composition == Composition::kBufferedObject ? 3 : 2) && tree.recovery_issues.empty());
   if (count <= 2) {
     auto wrong = tree; std::swap(wrong.properties[0], wrong.properties[1]);
@@ -211,7 +216,7 @@ void Run(abc::ProfileId profile, bool phased, std::uint32_t count, bool computed
     }
   }
   std::ostringstream output;
-  test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, output)));
+  test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, output, {}, {}, nullptr, original.get())));
   if (boolean) test::Check(output.str().find("=== true") == std::string::npos);
   if (print) std::cout << output.str();
 }

@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 
-const fixtures = execFileSync(process.argv[2], ['--async-generator-yield-json'],
+const preservation=process.argv[3]==='--preserved';
+const fixtures = execFileSync(process.argv[2], [preservation?'--preserved-async-yield-json':'--async-generator-yield-json'],
   {encoding: 'utf8', timeout: 60_000, maxBuffer: 16_000_000}).trim().split('\n').map(JSON.parse);
-assert.equal(fixtures.length, 159);
-assert.equal(fixtures.filter(f => f.rejected).length, 39);
+assert.equal(fixtures.length, preservation?24:159);
+assert.equal(fixtures.filter(f => f.rejected).length, preservation?0:39);
 const deferred = () => {
   let resolve, reject;
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
@@ -134,3 +135,5 @@ for (const fixture of fixtures.filter(f => !f.rejected)) {
   assert.equal(lazyCalls, 0);
   await rejectAs(get(() => { ++lazyCalls; }).throw(thrown), thrown); assert.equal(lazyCalls, 0);
 }
+
+if(preservation)console.log(JSON.stringify({preservedAsyncGeneratorFamilies:fixtures.length}));

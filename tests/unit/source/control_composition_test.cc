@@ -6,6 +6,7 @@
 #include "../../../src/source/tree_flow.h"
 #include "../../../src/source/tree_semantics.h"
 #include "../../../src/source/tree_structure.h"
+#include "source/protocol_values.h"
 #include "analysis/ssa_fixture.h"
 #include "analysis/shared_exit_fixture.h"
 #include "abcd/analysis/exception_locals.h"
@@ -428,9 +429,16 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
   }
   test::Check(tree.recovery_issues.empty());
   test::Check(std::holds_alternative<TreeFlow>(VerifyExceptionTreeFlow(graph, context, evaluation, tree)));
-  test::Check(std::holds_alternative<TreeSemantics>(VerifyExceptionTreeSemantics(
-      graph, context, evaluation, tree, resolved)));
-  const auto family = Take<ConstructedFamily>(BuildFunctionFamily({{tree, {}, {}}}, tree.owner));
+  auto semantics = Take<TreeSemantics>(VerifyExceptionTreeSemantics(
+      graph, context, evaluation, tree, resolved));
+  if (stage == CompositionStage::kHoleSource) {
+    std::vector<OpId> holes;
+    for (unsigned i=0;i<graph.ops.size();++i)
+      if (std::holds_alternative<ValueHole>(graph.ops[i].operation)) holes.push_back({i});
+    test::Check(!holes.empty() && semantics.flow.original);
+    test::CheckProtocolValues(tree, *semantics.flow.original, holes);
+  }
+  const auto family = Take<ConstructedFamily>(BuildFunctionFamily({{tree, std::move(semantics.flow), {}}}, tree.owner));
   std::ostringstream source;
   test::Check(std::holds_alternative<PrintedFamilyDraft>(PrintFamilyDraft(family, source)));
   if (output) *output << source.str() << ",\n";

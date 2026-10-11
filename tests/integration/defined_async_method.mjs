@@ -98,7 +98,9 @@ for (const {source, static: isStatic} of fixtures) {
   await assert.rejects(async () => assert.deepEqual(
     await exercise(missingAwait, isStatic, null, 'resolve'),
     await exercise(oracle(isStatic), isStatic, null, 'resolve')));
-  const wrongReceiver = source.replace(/(\(\$value\d+ = )this(\);)/g, '$1null$2');
+  // This fixture has no textual `this` literal. Mutate the receiver itself,
+  // whether recovery retains a snapshot assignment or returns it directly.
+  const wrongReceiver = source.replace(/\bthis\b/g, 'null');
   assert.notEqual(wrongReceiver, source);
   assert.doesNotThrow(() => new vm.Script(`'use strict'; ${wrongReceiver}`));
   await assert.rejects(() => exercise(wrongReceiver, isStatic, {}, 'primitive'));

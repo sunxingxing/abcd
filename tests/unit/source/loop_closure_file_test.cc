@@ -1353,6 +1353,23 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if(argc==2&&(std::string_view(argv[1])=="--preserved-delegate-json"||std::string_view(argv[1])=="--preserved-async-yield-json")) {
+    const bool delegate=std::string_view(argv[1])=="--preserved-delegate-json";
+    for(const auto profile:{abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301})
+      for(const auto parent:{ParentShape::kNormal,ParentShape::kCatch})for(bool caught:{false,true})
+        for(unsigned form=0;form<(delegate?1U:2U);++form) {
+          const bool awaited=form!=0;
+          const auto child=delegate?(caught?ChildShape::kYieldDelegateCatch:ChildShape::kYieldDelegate):
+            awaited?(caught?ChildShape::kAsyncGeneratorYieldAwaitCatch:ChildShape::kAsyncGeneratorYieldAwait):
+            caught?ChildShape::kAsyncGeneratorYieldCatch:ChildShape::kAsyncGeneratorYield;
+          std::cout<<nlohmann::json{{"caught",caught},{"awaited",awaited},{"catch_parent",parent==ParentShape::kCatch},
+            {"count",delegate?1:2},{"source",Emit(profile,parent,child,MissingCell::kNone,false,delegate?1:2,
+              CopyEncoding::kV8,1,YieldFinalizer::kPreserve,{},1,YieldOverride::kNone,CleanupControl::kSequence,
+              test::DelegateTruth::kNative,true)}}<<'\n';
+        }
+    return 0;
+  }
+
   if(argc==2&&std::string_view(argv[1])=="--preserved-completions-json") {
     for(const auto profile:{abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301})
       for(const auto parent:{ParentShape::kNormal,ParentShape::kCatch})
