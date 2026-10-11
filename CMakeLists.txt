@@ -1569,7 +1569,7 @@ if(BUILD_TESTING)
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/modules.abc" AND
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/widgets.abc" AND
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/src/entry/src/main/ets/widget/pages/WidgetCard.ts")
-      add_test(NAME widget_global_literal_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+      add_test(NAME widget_global_literal_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/widget_global_literal.mjs $<TARGET_FILE:abc_structure>
         ${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts)
     endif()

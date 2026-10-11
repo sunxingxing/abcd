@@ -7,6 +7,8 @@ import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {classReference, classLayouts, parseJavaScript} from './class_reference.mjs';
 import {editExpression, editAwait, callsMember, memberName} from './expression_edits.mjs';
+import {classMethodProfiles} from './record_style.mjs';
+import {verifySignatures} from './signature_shapes.mjs';
 
 const [tool, root, option] = process.argv.slice(2), sources = {}, reference = {};
 const identity = JSON.parse(readFileSync(new URL('../corpus/abc-index.json', import.meta.url))).entries
@@ -34,6 +36,8 @@ try {
 for (const name of Object.keys(sources)) {
   reference[name] = classReference(readFileSync(join(root, 'pasteboard_src/src/main/ets', name.slice('entry/src/main/ets/'.length) + '.ts'), 'utf8')).source;
   assert.deepEqual(classLayouts(sources[name]), classLayouts(reference[name]), 'native class representation ' + name);
+  verifySignatures(sources[name], reference[name], 'native signatures ' + name);
+  assert.deepEqual(classMethodProfiles(sources[name]), classMethodProfiles(reference[name]), 'native method bodies ' + name);
 }
 // Each recovered async operand may consume its pre-suspension effect subtree.
 // Check syntax independently of runtime outcomes; no temporary spelling or

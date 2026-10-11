@@ -12,6 +12,27 @@
 
 ## 当前阶段
 
+### 2026-10-11：Window、富文本、ProgressBar及两份Widget当前输出验收
+
+- 复用既有class/module签名与方法表示检查，接入33模块Window导航、5记录富文本、
+  2记录ProgressBar及两份WidgetCard。先完成ABC-only导出，再读取对应配对源码；
+  独立widgets.abc现在明确读取src_widget中的源码，不借用modules.abc的参考路径。
+- Window完整矩阵通过223.05s：90场景、1400原异常、280换绑、16错误变异及2等价
+  表示；33实际模块、22view全部构造/render。富文本通过11.31s：70场景、1030异常、
+  206换绑、18变异及2等价；ProgressBar通过6.21s：88场景、570异常、114换绑、
+  15变异及2等价。保留原正文、故障边界和表示检查，没有减少用例来缩短耗时。
+- Widget首轮失败是旧反例固定匹配`($local0 = this);`；当前输出采用声明初始化。
+  改用既有AST选择器定位保存的receiver，错误替换globalThis仍须经运行比较检出。
+  单独复验通过9.98s；两输入各3196场景、2050原异常、410换绑、36字段赋值场景、
+  12错误变异；另864构造对照、60异常、6构造变异及176全局回调场景全部保留。
+- 构建通过。首轮3/4通过、Widget修复后单项通过，未将首轮记成4/4。证据在
+  build/stage-one/window-final/{build.log,tests.log,initial-lasttest.log,widget-final.log,
+  widget-lasttest.log}及build/regression对应JUnit。生产规则311、固定65名单不变；
+  本次只修改测试与文档，固定回归约97秒与上述专项耗时分别报告。
+- 此次关闭这些既有受控矩阵的当前输出/表示复验缺口，不能代替平台实机或任意正文
+  语义证明。下一步核对整图之外的Ability、Home、Logger及未执行函数义务，阶段一
+  Goal保持active，既定暂停范围不变。
+
 ### 2026-10-11：Push整图恢复验收并共用高层表示检查
 
 - 当前ABC-only输出的15个Push模块重新连接：实际页面、Ability、VoIP Service、

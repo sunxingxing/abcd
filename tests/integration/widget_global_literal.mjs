@@ -8,6 +8,8 @@ import vm from 'node:vm';
 import {verifyWidgetConstructors} from './widget_constructor_state.mjs';
 import {verifyWidgetRecord} from './widget_record_state.mjs';
 import {createHash} from 'node:crypto';
+import {classMethodProfiles} from './record_style.mjs';
+import {verifySignatures} from './signature_shapes.mjs';
 
 // Paired oracle is test-only. Run registered callbacks in a controlled host;
 // Actual constructor state is checked separately; platform lifecycle is bounded.
@@ -108,8 +110,11 @@ try {
     sources.push({file, generated});
   }
   // Finish every ABC-only export before opening the independent source oracle.
-  const paired = stripTypeScriptTypes(readFileSync(join(root, 'src/entry/src/main/ets/widget/pages/WidgetCard.ts'), 'utf8'));
   for (const {file, generated} of sources) {
+    const paired = stripTypeScriptTypes(readFileSync(join(root, file === 'widgets.abc' ? 'src_widget' : 'src',
+      'entry/src/main/ets/widget/pages/WidgetCard.ts'), 'utf8'));
+    verifySignatures(generated, paired, file + ' native signatures');
+    assert.deepEqual(classMethodProfiles(generated), classMethodProfiles(paired), file + ' native method bodies');
     const checked = await verifyWidgetConstructors(generated, paired);
     constructors += checked.pairedCases; throws += checked.throwCases; mutations += checked.mutations;
     console.log(JSON.stringify({file, ...(await verifyWidgetRecord(generated, paired))}));

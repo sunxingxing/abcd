@@ -12,6 +12,8 @@ const [tool, root, mode, shardIndex, shardCount] = process.argv.slice(2);
 assert.ok(mode === undefined || ['--minigame', '--all-views', '--window'].includes(mode));
 const realWindow = mode === '--window';
 const referenceCompiler = realWindow ? await import('./class_reference.mjs') : undefined;
+const representation = realWindow ? await import('./record_style.mjs') : undefined;
+const signatures = realWindow ? await import('./signature_shapes.mjs') : undefined;
 const connected = mode === '--minigame' || mode === '--all-views' || realWindow;
 const allViews = mode === '--all-views' || realWindow;
 const shard = {index: Number(shardIndex ?? 0), count: Number(shardCount ?? 1)};
@@ -79,6 +81,11 @@ for (const [, name] of records) {
   reference[name] = realWindow ? referenceCompiler.classReference(text).source : stripTypeScriptTypes(text, {mode: 'transform'});
   if (realWindow) assert.deepEqual(referenceCompiler.classLayouts(sources[name]), referenceCompiler.classLayouts(reference[name]),
     'native class representation ' + name);
+  if (realWindow) {
+    signatures.verifySignatures(sources[name], reference[name], 'native signatures ' + name);
+    assert.deepEqual(representation.classMethodProfiles(sources[name]), representation.classMethodProfiles(reference[name]),
+      'native method bodies ' + name);
+  }
 }
 if (connected) {
   assert.match(sources['minigame/Index'], /export \{ Content as Content \} from/);

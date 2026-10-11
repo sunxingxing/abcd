@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
+import {editExpression} from './expression_edits.mjs';
 
 // Execute the entire module and its real class. Only platform services are
 // controlled here; constructors/methods/accessors/callbacks are never replaced.
@@ -311,7 +312,6 @@ export async function verifyWidgetRecordBatch(source, reference, request) {
     ['this.updateDirtyElements();', 'return this.updateDirtyElements();'],
     ['StopGetAccessRecording();', 'StartGetAccessRecordingFor(17);'],
     ['abilityName: "EntryAbility"', 'abilityName: "WrongAbility"'],
-    ['($local0 = this);', '($local0 = globalThis);'],
     ['elmtId = (-1)', 'elmtId = 0'],
     ['paramsLambda = (void 0)', 'paramsLambda = (() => ({}))'],
     ['super(parent, __localStorage, elmtId, extraInfo)', 'super(parent, __localStorage, elmtId, params)'],
@@ -321,6 +321,19 @@ export async function verifyWidgetRecordBatch(source, reference, request) {
     new vm.SourceTextModule(changed);
     await assert.rejects(async () => assert.deepEqual(await exercise(changed, {finalize: 'own', image: 'payload'}), baseline),
       error => error instanceof assert.AssertionError, from); ++mutations;
+  }
+  if (selected('mutations')) {
+    // The first saved receiver must retain its identity whether represented by
+    // a declaration or an assignment. Private register names are not the oracle.
+    const changed = editExpression(source, node =>
+      node.type === 'VariableDeclarator' && node.init?.type === 'ThisExpression' ||
+      node.type === 'AssignmentExpression' && node.operator === '=' && node.right.type === 'ThisExpression',
+    (node, text) => node.type === 'VariableDeclarator' ? `${text(node.id)} = globalThis` :
+      `${text(node.left)} = globalThis`, {first: true});
+    new vm.SourceTextModule(changed);
+    await assert.rejects(async () => assert.deepEqual(await exercise(changed, {finalize: 'own', image: 'payload'}), baseline),
+      error => error instanceof assert.AssertionError, 'saved receiver identity');
+    ++mutations;
   }
   if (selected('mutations')) {
     const field = '(this.__formId = this.createLocalStorageProp("formId", "", "formId"));';
@@ -340,7 +353,7 @@ export async function verifyWidgetRecord(source, reference) {
   // change is involved. This batch width is a test resource choice, not proof
   // that the production decompiler's process RSS meets its separate limit.
   const worker = fileURLToPath(new URL('./widget_record_worker.mjs', import.meta.url));
-  const run = request => JSON.parse(execFileSync(process.execPath, ['--experimental-vm-modules', worker], {
+  const run = request => JSON.parse(execFileSync(process.execPath, ['--expose-internals', '--experimental-vm-modules', worker], {
     input: JSON.stringify({source, reference, ...request}), encoding: 'utf8', timeout: 60_000,
     stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 1024 * 1024,
   }));
