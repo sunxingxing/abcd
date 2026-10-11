@@ -20,6 +20,11 @@ struct FlowOriginalResult { ExprId expression; FlowPoint entry,normal; };
 // occurrence's execution. This fact does not identify a selected value.
 struct FlowOriginalControl {ExprId expression;FlowPoint entry,normal;OriginalControlKind kind;std::optional<PureTruthTest> test;};
 struct FlowControlDomains {TruthDomains evaluated,true_values,false_values;};
+// A folded pure test has Before/Commit on its qualified input domain, not an
+// unconditional physical point. Resolve the operation through the current
+// control occurrence; never discard its path by using input.normal alone.
+struct FlowControlPhase {analysis::OpId operation;};
+using FlowOriginalPhase=std::variant<FlowPoint,FlowControlPhase>;
 struct FlowDefinitionId { std::uint32_t value = 0; auto operator<=>(const FlowDefinitionId&) const = default; };
 struct FlowInputId { std::uint32_t value = 0; auto operator<=>(const FlowInputId&) const = default; };
 struct DiscardedId { std::uint32_t value = 0; auto operator<=>(const DiscardedId&) const = default; };
@@ -461,7 +466,7 @@ struct RecoveryFlow {
   // Verified raw phase identities projected once by the source adapter.
   // Absent entries are representation gaps; neither PCs nor edge order infer
   // an action, success-only result or pending-exception entry.
-  std::vector<std::optional<FlowPoint>> original_phases; // WorkBlockId indexed.
+  std::vector<std::optional<FlowOriginalPhase>> original_phases; // WorkBlockId indexed.
   // Exit and handler facts are produced once from checked raw identities and
   // native completion contexts. Catch caps consume this closure in O(1), not
   // a per-definition walk through the original graph or a layout predicate.
@@ -529,6 +534,8 @@ struct RecoveryFlow {
 };
 [[nodiscard]] std::optional<FlowPoint> FindOriginalPhase(const RecoveryFlow&,
     analysis::WorkBlockId,analysis::ExceptionPhase,std::optional<analysis::OpId> = {});
+[[nodiscard]] std::optional<FlowOriginalControl> FindOriginalControlPhase(const RecoveryFlow&,
+    analysis::WorkBlockId,analysis::ExceptionPhase,analysis::OpId);
 [[nodiscard]] std::optional<OriginalResult> FindFlowOriginalResult(const RecoveryFlow&,analysis::OpId);
 [[nodiscard]] std::optional<FlowOriginalControl> FindFlowOriginalControl(const RecoveryFlow&,analysis::OpId);
 // Qualified virtual facts for pure raw components. Input completion belongs

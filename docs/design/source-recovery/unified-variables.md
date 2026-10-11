@@ -18,6 +18,34 @@
 | 依赖驱动收敛 | OPEN | 全局 pass 根据变更影响重跑，具有终止依据和可解释成本；单次分析工作队列收敛不等于此交付。 |
 | 统一变量终验 | OPEN | 所有职责共享事实、被替代判断退出，规定布局/反例/执行/真实 record 验收完成。 |
 
+### Rules293: qualified pure control phases
+
+`FlowOriginalPhase` distinguishes physical native points from pure control
+phases. A control phase refers to the verified raw operation and resolves its
+current input interval and `PureTruthTest`, including the evaluated domain.
+Before and Commit can coincide as a pure equation only with an inert,
+nonthrowing raw effect contract. Neither becomes an unconditional point at
+the shared input continuation. Inputs keep their own effects and completion;
+the equation grants no store, exception or selected-result identity.
+
+Phased incoming contributions with a pure test now require the current Commit
+correspondence. Their old input-occurrence-only decision path is retired.
+Controls without such equations retain the documented coarse input contract;
+this remains a migration gap, not another syntax admission rule. Physical
+actions and catches keep the existing point API and cannot consume a control
+phase accidentally. Current and trial proposals use the same provider, clear
+old phase entries, and resolve domains from their own joint solve.
+
+Construction and lookup remain O(phases + operations) and O(1), respectively.
+The phase variant is charged by the existing budget; no native graph walk,
+per-variable retained table or duplicated control-domain cache is added.
+Decoded phased source tests cover ordinary controls. Separate conditional
+adapter tests cover partial pure tests and reordered arenas, using the
+independently checked normal-selection equations as their premise. These
+layers do not certify decoded phased folding or close Task 1. Lexical
+allocation, remaining control equations and protocol/suspension correspondence
+remain open before the binding-identity and whole-pass convergence deliveries.
+
 ### Rules292: physical write phases share the current action index
 
 The verified operand adapter publishes `OriginalOperation.write` only for a

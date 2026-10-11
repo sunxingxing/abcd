@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import vm from 'node:vm';
-const reports = execFileSync(process.argv[2], [], {encoding: 'utf8', maxBuffer: 16 * 1024 * 1024})
+const phasedOnly = process.argv[3] === '--phased';
+const reports = execFileSync(process.argv[2], phasedOnly ? ['--phased'] : [], {encoding: 'utf8', maxBuffer: 16 * 1024 * 1024})
   .trim().split('\n').map(line => JSON.parse(line));
-assert.equal(reports.length, 144);
+assert.equal(reports.length, phasedOnly ? 24 : 168);
+assert.equal(reports.filter(r => r.phased).length, 24);
 const opaque = {[Symbol.toPrimitive]() { assert.fail('coerced nullish input'); }};
 const callable = function() { assert.fail('called nullish input'); };
 const values = [undefined, null, false, true, 0, -0, NaN, '', 'text', 0n, 1n, Symbol('input'), opaque, callable];
@@ -23,7 +25,7 @@ function observe(fn, payload, fallback, mutate, failAt, invoked) {
 }
 let scenarios = 0;
 for (const report of reports) {
-  assert.equal(report.source.includes('??'), report.form <= 2 || report.form === 6 || report.form === 8);
+  if (!report.phased) assert.equal(report.source.includes('??'), report.form <= 2 || report.form === 6 || report.form === 8);
   const generated = vm.runInNewContext(report.source);
   const oracle = value => {
     const kept = report.form === 8 ? value.probe() : value.probe;
@@ -50,11 +52,18 @@ for (const report of reports) {
       ++scenarios;
     }
 }
-for (const profile of new Set(reports.map(report => report.profile))) for (let form = 0; form < 12; ++form) {
+if (!phasedOnly) for (const profile of new Set(reports.map(report => report.profile))) for (let form = 0; form < 12; ++form) {
   const smaller = reports.find(r => r.profile === profile && r.form === form && r.count === 201);
   assert.ok(smaller);
   const larger = reports.find(r => r.profile === profile && r.form === form && r.count === 402);
   assert.ok(larger.work / smaller.work < 2.1);
 }
-assert.equal(scenarios, 225792);
-console.log(JSON.stringify({generatedFixtures: 144, statementPrefixGaps: 0, scenarios}));
+for (const profile of new Set(reports.map(report => report.profile))) {
+  const growth = [200, 201, 402].map(count => reports.find(r => r.phased && r.profile === profile && r.count === count));
+  assert.ok(growth.every(Boolean));
+  assert.ok(growth[1].work / growth[0].work < 1.02);
+  assert.ok(growth[2].work / growth[1].work < 2.1);
+  assert.ok(growth[2].bytes / growth[1].bytes < 2.1);
+}
+assert.equal(scenarios, phasedOnly ? 37632 : 263424);
+console.log(JSON.stringify({generatedFixtures: reports.length, phasedFixtures: 24, statementPrefixGaps: 0, scenarios}));

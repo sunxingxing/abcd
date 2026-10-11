@@ -19,6 +19,12 @@
 - Existing byte/work budget covers retained graph, sparse facts and temporary growth.
 - Every verified coherent commit refreshes status.md; whole milestone is not complete until old decisions exit.
 
+2026-10-11 continuation, rules293: represent qualified pure control phases in
+the shared phase table and require their current Commit at phased incoming
+contributions. Physical writes and pure tests retain distinct obligations.
+Controls without pure equations, lexical allocation and protocol/suspension
+remain Task 1 gaps. This does not close any still-open mainline delivery.
+
 2026-10-11 continuation, rules292: complete physical module/local write phase
 correspondence through the common current-action index; retire independent raw
 phase/exception dispatch. This advances Task 1 but does not close it. The next

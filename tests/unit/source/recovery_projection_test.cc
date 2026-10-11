@@ -267,6 +267,81 @@ std::pair<std::uint64_t,std::size_t> ControlCompletions(unsigned form,bool rever
 }
 // Synthetic path-range certificates exercise the shared consumer. Decoded
 // FunctionTree tests separately prove publication of the control/edge owner.
+std::pair<std::uint64_t,std::size_t> PureControlPhases(bool reverse) {
+  using namespace analysis;
+  // Conditional adapter fixture, not a decoded phased-selection certificate.
+  // Decoded normal selections independently check the equations; decoded
+  // phased functions separately check physical branch and source behavior.
+  Fixture f(0,false);auto& tree=f.tree;
+  ExprId input{0},fallback{1},selection{2};
+  tree.expressions={{{SymbolExpr{{0}}},{0}},{{TreeLiteral{source::IntegerLiteral{7}}},{0}},
+      {{LogicalExpr{TreeLogical::kNullish,input,fallback}},{0}}};
+  f.equations={FlowBindingValue{{0}},FlowPrimitiveReference{{1}},UnknownFlowValue{}};
+  f.order={input,fallback,selection};
+  if(reverse) {
+    input={2};fallback={1};selection={0};
+    std::reverse(tree.expressions.begin(),tree.expressions.end());std::reverse(f.equations.begin(),f.equations.end());
+    std::get<LogicalExpr>(tree.expressions[selection.value].expression)={TreeLogical::kNullish,input,fallback};
+    f.order={input,fallback,selection};
+  }
+  tree.statements.push_back({ReturnStmt{selection},{0}});tree.children={StmtId{1}};
+  std::get<BlockStmt>(tree.statements[0].statement).child_count=1;
+  f.plan.read_sources.resize(3);f.plan.read_literals.resize(3);f.plan.replacements.resize(3);f.plan.transports.resize(3);
+  f.plan.omitted.resize(2);f.plan.statements.resize(2);
+  f.original.input_ranges.resize(3);f.original.statements=2;
+  const auto null=TruthDomains::One(TruthDomain::kNull),undefined=TruthDomains::One(TruthDomain::kUndefined);
+  for(unsigned i=0;i<2;++i) {
+    OriginalOperation operation{};operation.life=ValueLife::kLive;operation.block={i*2};
+    operation.control=OriginalControlInput{input,OriginalControlKind::kNullishSelection,
+        PureTruthTest{i?null.Complement():TruthDomains::All(),i?undefined:null,PureTruthOutcome::kDecision}};
+    f.original.operations.push_back(operation);
+    f.original.phases.push_back({{i*2},{i},ExceptionPhase::kBefore,OpId{i}});
+    f.original.phases.push_back({{i*2+1},{i},ExceptionPhase::kCommit,OpId{i}});
+  }
+  const auto projection=f.Projection();
+  const auto model=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,projection,f.Input()));
+  for(unsigned mask=0;mask<16;++mask) {
+    TruthDomains selected;for(unsigned value=0;value<4;++value)if(mask&(1U<<value))selected|=TruthDomains::One(static_cast<TruthDomain>(value));
+    auto truths=model.flow.normal_truths;truths[input.value]=selected;
+    for(unsigned i=0;i<2;++i) {
+      TruthDomains visited,taken;
+      // Independent finite interpreter: the undefined test runs only after
+      // the null test failed. In particular null never reaches the second.
+      for(unsigned value=0;value<4;++value)if(mask&(1U<<value)) {
+        const auto domain=static_cast<TruthDomain>(value);if(i&&domain==TruthDomain::kNull)continue;
+        visited|=TruthDomains::One(domain);
+        if(domain==(i?TruthDomain::kUndefined:TruthDomain::kNull))taken|=TruthDomains::One(domain);
+      }
+      for(const auto phase:{ExceptionPhase::kBefore,ExceptionPhase::kCommit}) {
+        const WorkBlockId block{i*2+(phase==ExceptionPhase::kCommit)};
+        const auto current=FindOriginalControlPhase(model.flow,block,phase,OpId{i});Check(current.has_value());
+        Check(!FindOriginalPhase(model.flow,block,phase,OpId{i}));
+        const auto actual=OriginalControlDomains(model.flow,OpId{i},truths);Check(actual.has_value());
+        Check(actual->evaluated==visited&&actual->true_values==taken&&actual->false_values==(visited&taken.Complement()));
+      }
+    }
+  }
+  for(const auto literal:{TreeLiteral{NullLiteral{}},TreeLiteral{UndefinedLiteral{}},TreeLiteral{BooleanLiteral{false}},TreeLiteral{BooleanLiteral{true}}}) {
+    auto candidate=f.plan;const PrimitiveId value{static_cast<unsigned>(candidate.primitives.size())};candidate.primitives.push_back(literal);
+    candidate.transports[input.value]=ExpressionTransport{input,value};
+    const auto trial=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,projection,{candidate,f.equations,f.order,&f.original}));
+    const auto domains=OriginalControlDomains(trial.flow,OpId{1});Check(domains.has_value());
+    Check(domains->evaluated==(PrimitiveTruthDomains(literal,tree.texts)&null.Complement()));
+    Check(FindOriginalControlPhase(trial.flow,{3},ExceptionPhase::kCommit,OpId{1}).has_value());
+  }
+  auto native=projection;native.original=&f.original;
+  std::vector<ExpressionEvaluation> evaluations(tree.expressions.size(),ExpressionEvaluation::kRequired);
+  std::vector<std::uint8_t> stores(tree.expressions.size());
+  native.evaluations=evaluations;native.normal_stores=stores;
+  const auto raw=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,native));
+  const SemanticBudget exact{raw.allocated_bytes,raw.work};
+  Check(std::holds_alternative<RecoveryFlow>(BuildRecoveryFlow(tree,native,exact)));
+  Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,native,{exact.bytes-1,exact.work}))==TreeStructureError::kResourceLimit);
+  Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,native,{exact.bytes,exact.work-1}))==TreeStructureError::kWorkLimit);
+  native.original=nullptr;const auto cleared=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,native,{},raw));
+  Check(cleared.original_phases.empty()&&cleared.original_phases.capacity()==0);
+  return {raw.work,raw.allocated_bytes};
+}
 std::pair<std::uint64_t,std::size_t> OriginalControlKinds(bool reverse,unsigned count=1,unsigned copies=0) {
   using namespace analysis;
   Fixture f(0,false);auto& tree=f.tree;
@@ -2138,6 +2213,9 @@ void ActivationSource(unsigned copies,bool split,bool emit) {
 
 }
 int main(int argc,char** argv) {
+  if(argc==2&&std::string_view(argv[1])=="--control-phases") {
+    Check(PureControlPhases(false)==PureControlPhases(true));return 0;
+  }
   if(argc==2&&std::string_view(argv[1])=="--control-paths") {
     for(unsigned form=0;form<10;++form)for(bool original:{false,true})for(bool reverse:{false,true})for(bool split:{false,true})
       ControlCompletions(form,reverse,split,0,original,true);
@@ -2321,6 +2399,7 @@ int main(int argc,char** argv) {
       if(prior.first){Check(cost.first<prior.first*3);Check(cost.second<prior.second*3);}prior=cost;
     }
   }
+  Check(PureControlPhases(false)==PureControlPhases(true));
   OriginalControlKinds(false);OriginalControlKinds(true);
   for(bool reverse:{false,true})for(unsigned copies:{1U,4U,200U,201U}) {
     const auto measured=OriginalControlKinds(reverse,1,copies);

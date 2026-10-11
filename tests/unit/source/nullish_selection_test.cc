@@ -5,6 +5,9 @@
 #include "../../../src/source/tree_checks.h"
 #include "../../../src/source/family_print.h"
 #include "../../../src/source/instruction_sources.h"
+#include "../../../src/source/exception_tree.h"
+#include "../../../src/analysis/phased_value_import.h"
+#include "abcd/source/tree_printer.h"
 #include "../../support/analysis/ssa_fixture.h"
 #include "../../support/analysis/pure_control_oracle.h"
 #include "../../support/instruction_positions.h"
@@ -238,8 +241,126 @@ std::optional<std::string> Source(unsigned count, Form form, abc::ProfileId prof
   Check((source.str().find("??") != std::string::npos) == expected);
   return source.str();
 }
+std::string PhasedControlSource(unsigned count,Form form,abc::ProfileId profile,std::uint64_t& work,std::size_t& bytes) {
+  using namespace analysis;
+  const auto body=Body(count,form,profile);
+  const auto frame=std::get<abc::FrameLayout>(abc::BuildFrameLayout(2,1,{}));
+  const auto raw=std::get<ExceptionFlow>(BuildExceptionFlow(body,profile,frame.registers));
+  IdfQuota ssa_work{kDefaultSemanticWork};const auto ssa=std::get<ExceptionSsa>(ExceptionSsa::Build(raw,frame.registers,ssa_work));
+  const auto env=std::get<EnvironmentFlow>(AnalyzeExceptionEnvironments(raw));
+  std::vector<EntryValueFact> entries;
+  for(unsigned i=0;i<ssa.Values().size();++i)if(std::holds_alternative<MethodEntry>(ssa.Values()[i].origin))entries.push_back({{i},ValueKinds::Language()});
+  IdfQuota value_work{kDefaultSemanticWork};
+  const auto values=std::get<ExceptionValueFlow>(ExceptionValueFlow::Build(raw,ssa,entries,value_work,{},
+      PendingExceptionValues::kLanguage,{}, {},CallResultValues::kLanguage));
+  const auto proof=std::get<ExceptionInputProof>(VerifyExceptionInputs(raw,ssa,env,values));
+  const PhasedValueInput input{raw,ssa,env,values,proof,frame};const auto graph=std::get<ValueProgram>(ImportPhasedValues(input));
+  const auto evaluation=std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(graph));
+  const auto regions=std::get<ExceptionPlan>(BuildExceptionPlan(body,graph,input));
+  const auto control=std::get<ExceptionControl>(BuildExceptionControl(body,graph,input,regions));
+  const ExceptionTreeInput context{body,input,regions,control};
+  FunctionSyntax syntax{};syntax.identity.profile=profile;syntax.owner={3};syntax.callable=CallableKind::kFunction;
+  syntax.strictness=Strictness::kStrict;syntax.names={u"value",u"probe",u"fallback",u"other"};
+  syntax.parameters.push_back({NameId{0},NameEvidence::kDebugRange});
+  std::vector<ExpressionConstant> constants(graph.ops.size());
+  for(unsigned i=0;i<graph.ops.size();++i)
+    if(const auto* read=std::get_if<ValueNamedRead>(&graph.ops[i].operation))constants[i]=NameId{read->name.value+1};
+  const auto draft=std::get<ExceptionFunctionDraft>(BuildExceptionFunctionDraft(graph,context,evaluation,syntax,{constants,4}));
+  const auto& tree=draft.tree;const auto& original=*draft.flow->original;
+  BindingInitializers bindings;const auto b=tree.symbols.size(),x=tree.expressions.size(),s=tree.statements.size();
+  bindings.aliases.resize(b);bindings.storage.resize(b);bindings.read_bindings.resize(b);bindings.literals.resize(b);
+  bindings.read_sources.resize(x);bindings.read_literals.resize(x);bindings.replacements.resize(x);bindings.transports.resize(x);
+  bindings.omitted.resize(s);bindings.statements.resize(s);
+  std::vector<FlowValueEquation> equations(x);std::vector<ExprId> order;std::vector<std::uint8_t> private_bindings(b);
+  for(unsigned i=0;i<x;++i) {
+    order.push_back({i});if(const auto* read=std::get_if<SymbolExpr>(&tree.expressions[i].expression))equations[i]=FlowBindingValue{read->symbol};
+  }
+  LegacyFlowProjection projection{bindings.aliases,bindings.literals,bindings.replacements,bindings.omitted,{},{},bindings.statements,private_bindings};
+  const auto model=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,projection,{bindings,equations,order,&original}));
+  unsigned covered=0,partial=0;
+  for(unsigned i=0;i<original.phases.size();++i) {
+    const auto& phase=original.phases[i];if(!phase.operation)continue;
+    const auto& operation=original.operations[phase.operation->value];if(!operation.control||!operation.control->test)continue;
+    const auto current=FindOriginalControlPhase(model.flow,{i},phase.phase,*phase.operation);
+    Check(current&&current->test==operation.control->test);++covered;
+    partial+=current->test->evaluated!=TruthDomains::All();
+    Check(!FindOriginalPhase(model.flow,{i},phase.phase,*phase.operation));
+    Check(!model.flow.original_actions[phase.operation->value]);
+    if(count==1) {
+      auto missing=model.flow;missing.original_phases[i].reset();
+      Check(!FindOriginalControlPhase(missing,{i},phase.phase,*phase.operation));
+      missing=model.flow;missing.original_phases[i]=current->normal;
+      Check(!FindOriginalControlPhase(missing,{i},phase.phase,*phase.operation));
+      missing=model.flow;missing.normal_exits[current->expression.value].reset();
+      Check(!FindOriginalControlPhase(missing,{i},phase.phase,*phase.operation));
+      Check(!FindOriginalControlPhase(model.flow,{i},ExceptionPhase::kCatch,*phase.operation));
+    }
+  }
+  if(!covered)std::cerr<<"phased controls profile="<<unsigned(profile)<<" count="<<count<<" form="<<unsigned(form)
+      <<" covered="<<covered<<" partial="<<partial<<'\n';
+  Check(covered>0);
+  if(count==1) {
+    // Probe the raw incoming-certificate API independently of whether the
+    // printer needs a scalar phi store for this native selection. A missing
+    // Commit must withdraw the contribution, even with a retained input.
+    for(unsigned i=0;i<original.edges.size();++i)if(const auto owner=original.edge_controls[i]) {
+      const auto block=original.edges[i].source;
+      const auto current=FindOriginalControlPhase(model.flow,block,ExceptionPhase::kCommit,*owner);if(!current)continue;
+      auto truths=model.flow.normal_truths;truths[current->expression.value]=TruthDomains::All();
+      const OriginalSourceDefinition contribution{OriginalSavedDefinition{SpecialValue::kTrue,IncomingKey{EdgeId{i}}},
+          tree.parameters.front().symbol,current->expression};
+      Check(OriginalDefinitionProof(model.flow,contribution,truths).state==FlowOriginalProofState::kAvailable);
+      auto missing=model.flow;missing.original_phases[block.value].reset();
+      Check(OriginalDefinitionProof(missing,contribution,truths).state==FlowOriginalProofState::kUnavailable);
+    }
+    for(const auto literal:{TreeLiteral{NullLiteral{}},TreeLiteral{UndefinedLiteral{}},
+                           TreeLiteral{BooleanLiteral{false}},TreeLiteral{BooleanLiteral{true}}}) {
+      auto candidate=bindings;candidate.primitives.push_back(literal);
+      for(const auto& operation:original.operations)if(operation.control&&operation.control->test) {
+        const auto captured=operation.control->expression;
+        candidate.transports[captured.value]=ExpressionTransport{captured,PrimitiveId{0}};
+      }
+      const auto trial=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,projection,{candidate,equations,order,&original}));
+      const auto expected=PrimitiveTruthDomains(literal,tree.texts);
+      for(unsigned i=0;i<original.phases.size();++i) {
+        const auto& phase=original.phases[i];if(!phase.operation)continue;
+        const auto& operation=original.operations[phase.operation->value];if(!operation.control||!operation.control->test)continue;
+        const auto current=FindOriginalControlPhase(trial.flow,{i},phase.phase,*phase.operation);Check(current.has_value());
+        const auto domains=OriginalControlDomains(trial.flow,*phase.operation);Check(domains.has_value());
+        Check(domains->evaluated==(expected&current->test->evaluated));
+        Check(domains->true_values==(expected&current->test->true_values));
+      }
+    }
+    if(form==Form::kDirect) {
+      // Withdraw one premise at a time. These negative proof inputs are not
+      // new decoded programs; they ensure raw effects cannot become inert by
+      // virtue of sharing a pure selection's source anchor.
+      for(unsigned premise=0;premise<4;++premise) {
+        auto missing=original;std::optional<OpId> changed;
+        for(unsigned i=0;i<missing.operations.size();++i)if(missing.operations[i].control&&missing.operations[i].control->test) {
+          auto& operation=missing.operations[i];changed=OpId{i};
+          switch(premise) {
+            case 0:operation.control->test.reset();break;
+            case 1:operation.normal=LanguageEffect::kUserCode;break;
+            case 2:operation.before_throw=LanguageEffect::kHeapWrite;break;
+            case 3:operation.exceptional=ExceptionalCompletion::kMayThrow;break;
+          }
+          break;
+        }
+        Check(changed.has_value());
+        const auto withdrawn=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,projection,{bindings,equations,order,&missing}));
+        Check(!FindOriginalControlPhase(withdrawn.flow,missing.operations[changed->value].block,ExceptionPhase::kBefore,*changed));
+      }
+    }
+  }
+  work=model.flow.work;bytes=model.flow.allocated_bytes;
+  std::ostringstream source;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,source,{}, {},nullptr,&original)));
+  return source.str();
 }
-int main() {
+}
+int main(int argc,char** argv) {
+  const bool phased_only=argc==2&&std::string_view(argv[1])=="--phased";
+  if(!phased_only)
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
     for (const auto count : {1u, 200u, 201u, 402u}) for (unsigned form = 0; form <= unsigned(Form::kReversedStatements); ++form) {
       std::uint64_t work = 0;
@@ -247,4 +368,12 @@ int main() {
       std::cout << nlohmann::json{{"profile", unsigned(profile)}, {"count", count}, {"form", form},
           {"work", work}, {"source", source ? nlohmann::json(*source) : nlohmann::json(nullptr)}} << '\n';
     }
+  for(const auto profile:{abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301})
+    for(const auto count:{1u,200u,201u,402u})
+      for(const auto form:{Form::kDirect,Form::kReversedOperands,Form::kNegated,Form::kCopiedSplit,Form::kCallProducer}) {
+        if(count!=1&&form!=Form::kDirect)continue;
+        std::uint64_t work=0;std::size_t bytes=0;const auto source=PhasedControlSource(count,form,profile,work,bytes);
+        std::cout<<nlohmann::json{{"phased",true},{"profile",unsigned(profile)},{"count",count},{"form",unsigned(form)},
+            {"work",work},{"bytes",bytes},{"source",source}}<<'\n';
+      }
 }

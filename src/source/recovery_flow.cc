@@ -240,15 +240,26 @@ class FlowBuilder {
       const auto& operation=result.original->operations[phase.operation->value];
       if(operation.life!=analysis::ValueLife::kLive)continue;
       const auto& action=result.original_actions[phase.operation->value];
+      // Pure equations preserve a captured input and a possibly partial path.
+      // They cover no physical source action, store, exception or selected
+      // result. The raw effect contract proves collapsing Before/Commit is
+      // inert; the current occurrence and test retain execution conditions.
+      if(phase.phase!=analysis::ExceptionPhase::kCatch&&operation.control&&operation.control->test&&
+          operation.normal==analysis::LanguageEffect::kNone&&operation.before_throw==analysis::LanguageEffect::kNone&&
+          operation.exceptional==analysis::ExceptionalCompletion::kImpossible&&
+          FindFlowOriginalControl(result,*phase.operation)) {
+        RequireTree(!action,Error::kOwnership);
+        point=FlowControlPhase{*phase.operation};continue;
+      }
       switch(phase.phase) {
         case analysis::ExceptionPhase::kBefore:
           if(action)point=action->before;
           break;
         case analysis::ExceptionPhase::kCommit:
-          if(action)point=action->normal;
+          if(action) {if(action->normal)point=*action->normal;}
           else if(operation.result_expression) {
             RequireTree(operation.result_expression->value<result.normal_exits.size(),Error::kOwnership);
-            point=result.normal_exits[operation.result_expression->value];
+            if(const auto normal=result.normal_exits[operation.result_expression->value])point=*normal;
           }
           break;
         case analysis::ExceptionPhase::kCatch:break;
@@ -1002,7 +1013,20 @@ std::optional<FlowPoint> FindOriginalPhase(const RecoveryFlow& flow,analysis::Wo
   if(!flow.original||block.value>=flow.original->phases.size()||block.value>=flow.original_phases.size())return {};
   const auto& original=flow.original->phases[block.value];
   if(original.phase!=phase||original.operation!=operation)return {};
-  return flow.original_phases[block.value];
+  const auto& current=flow.original_phases[block.value];
+  if(current)if(const auto* point=std::get_if<FlowPoint>(&*current))return *point;
+  return {};
+}
+std::optional<FlowOriginalControl> FindOriginalControlPhase(const RecoveryFlow& flow,analysis::WorkBlockId block,
+    analysis::ExceptionPhase phase,analysis::OpId operation) {
+  if(!flow.original||block.value>=flow.original->phases.size()||block.value>=flow.original_phases.size())return {};
+  const auto& original=flow.original->phases[block.value];const auto& current=flow.original_phases[block.value];
+  if(original.phase!=phase||original.operation!=operation||!current)return {};
+  const auto* control=std::get_if<FlowControlPhase>(&*current);
+  if(!control||control->operation!=operation)return {};
+  const auto occurrence=FindFlowOriginalControl(flow,operation);
+  if(!occurrence||!occurrence->test)return {};
+  return occurrence;
 }
 std::optional<OriginalResult> FindFlowOriginalResult(const RecoveryFlow& flow,analysis::OpId operation) {
   if(!flow.original||operation.value>=flow.original_results.size()||!flow.original_results[operation.value])return {};
@@ -1025,7 +1049,10 @@ FlowOriginalProofState OriginalIncomingState(const RecoveryFlow& flow,const anal
       flow.original->edge_controls.size()!=flow.original->edges.size())return State::kUnavailable;
   const auto owner=flow.original->edge_controls[edge->value];
   if(!owner)return State::kAvailable;
-  const auto control=FindFlowOriginalControl(flow,*owner);if(!control)return State::kUnavailable;
+  auto control=FindFlowOriginalControl(flow,*owner);
+  if(control&&control->test&&!flow.original->phases.empty())
+    control=FindOriginalControlPhase(flow,flow.original->edges[edge->value].source,analysis::ExceptionPhase::kCommit,*owner);
+  if(!control)return State::kUnavailable;
   // Unmodeled tests retain the coarse input-identity contract. A proved pure
   // component instead consumes its qualified input/path domain. Source guard,
   // occurrence count, completion and provenance remain joint-solver duties.
