@@ -1040,6 +1040,10 @@ if(BUILD_TESTING)
   target_include_directories(module_store_tree_test PRIVATE tests/support)
   target_link_libraries(module_store_tree_test PRIVATE abcd_source)
   add_test(NAME module_store_tree_test COMMAND module_store_tree_test)
+  add_executable(module_store_phases_test tests/unit/source/module_store_phases_test.cc)
+  target_include_directories(module_store_phases_test PRIVATE tests/support)
+  target_link_libraries(module_store_phases_test PRIVATE abcd_source)
+  add_test(NAME module_store_phases_test COMMAND module_store_phases_test)
   add_executable(module_evaluation_test tests/unit/source/module_evaluation_test.cc)
   target_include_directories(module_evaluation_test PRIVATE tests/support)
   target_link_libraries(module_evaluation_test PRIVATE abcd_source)
@@ -1699,6 +1703,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/module_writer.mjs $<TARGET_FILE:record_import_tree_test>)
     add_test(NAME module_store_tree_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/module_store_tree.mjs $<TARGET_FILE:module_store_tree_test>)
+    add_test(NAME module_store_phases_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/module_store_phases.mjs $<TARGET_FILE:module_store_phases_test>)
     add_test(NAME derived_cells_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/derived_cells.mjs $<TARGET_FILE:derived_cells_test>)
     add_test(NAME literal_closure_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

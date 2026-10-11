@@ -3,6 +3,7 @@
 #include "../../../src/source/tree_semantics.h"
 #include "abcd/source/tree_printer.h"
 #include "analysis/ssa_fixture.h"
+#include "source/module_units.h"
 
 #include <sstream>
 
@@ -30,8 +31,9 @@ void Run(std::uint32_t count, abc::ProfileId profile, bool print) {
   FunctionSyntax syntax{};
   syntax.identity = identity; syntax.method = {300}; syntax.owner = {1};
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
-  syntax.names = {u"exported"};
+  syntax.names = {u"exported",u"other"};
   syntax.modules.push_back({{{7}, {0}}, {0}, ModuleAccess::kMutable, NameEvidence::kMetadata, true});
+  syntax.modules.push_back({{{7}, {1}}, {1}, ModuleAccess::kMutable, NameEvidence::kMetadata, false});
   std::vector<ExpressionConstant> operations(graph.ops.size());
   std::vector<OpId> stores;
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
@@ -48,8 +50,10 @@ void Run(std::uint32_t count, abc::ProfileId profile, bool print) {
   const auto& tree = std::get<ConstructedFunction>(built).tree;
   const auto verified = VerifyTreeSemantics(graph, control, evaluation, tree, constants);
   test::Check(std::holds_alternative<TreeSemantics>(verified));
+  const auto& original=*std::get<TreeSemantics>(verified).flow.original;
+  test::CheckModuleWrites(tree,original,stores,tree.modules[0].symbol,tree.modules[1].symbol);
   std::ostringstream output;
-  const auto printed = PrintModuleTree(tree, output);
+  const auto printed = PrintModuleTree(tree, output, {}, {}, nullptr, {}, &original);
   test::Check(std::holds_alternative<PrintedFunction>(printed));
   test::Check(output.str().find("let exported = 0;") != std::string::npos);
   test::Check(output.str().find("return") == std::string::npos);

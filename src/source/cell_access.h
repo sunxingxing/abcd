@@ -17,9 +17,14 @@ struct SourceCells {
   const FunctionTree* owner=nullptr;
   std::vector<CellVisibility> access;
   std::vector<CellCapture> captures; // ordered by creation, not arena execution
+  // Verified aliases name the same enclosing unit by module owner and symbol,
+  // independently of their local spelling, value or projected storage.
+  std::vector<std::optional<ModuleSymbol>> module_units; // SymbolId indexed when present.
   bool mapped_arguments=false;
   bool captures_complete=false;
   [[nodiscard]] std::span<const CellCapture> Captured(ExprId,TreeCheckBudget&) const;
+  [[nodiscard]] std::optional<ModuleSymbol> ModuleUnit(SymbolId) const;
+  [[nodiscard]] bool SameModuleUnit(SymbolId,SymbolId) const;
 };
 [[nodiscard]] SourceCells AnalyzeSourceCells(const FunctionTree&,TreeCheckBudget&);
 [[nodiscard]] CellVisibility JoinCellVisibility(CellVisibility,CellVisibility);

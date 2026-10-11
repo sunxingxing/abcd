@@ -4633,3 +4633,21 @@ These are graph construction costs only. The 51-source snapshot execution gate
 now takes about86 seconds versus25 seconds for the failing graph that omitted
 conditional execution. Whole optimization/trial rebuild cost remains P5's
 explicit obligation, not proved linear by these local figures.
+
+Module unit identity (rules303) joins the canonical SourceCells census. Each
+verified TreeModuleAlias contributes its typed ModuleSymbol (owner, symbol) to an
+optional binding-indexed table: O(bindings + aliases) time/space, no dependency.
+Owners without modules allocate no table. Current/trial graphs borrow the same
+immutable census; projected read/write bindings query it in O(1). Module GetValue
+regions no longer infer external identity from local SymbolId equality. Physical
+writes check the same unit before publishing their action. A stored value's
+correspondence remains a separate fact; loss of write identity withdraws physical
+phases/exception routes, not the independently justified RHS value. Resource
+failures explicitly excluded by the source contract remain exclusion facts, not
+physical action correspondences. Existing lifecycle and permission contracts are
+unchanged; this unit query does not grant write permission or admit a candidate.
+Decoded normal/exceptional stores cover 3 profiles and 200/201/400/800 scale,
+wrong-unit redirection, restore into reused graph storage and exact/one-short
+budgets. Their independent ESM execution covers initial export TDZ, successive
+stores, callback failure, identity and reentry. Counters describe one common graph,
+not whole-pass convergence cost or process RSS.

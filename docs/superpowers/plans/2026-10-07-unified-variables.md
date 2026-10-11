@@ -1295,3 +1295,14 @@ No per-snapshot pass condition was introduced. Graph construction scales linearl
 in slots; the full preparation/execution gate's increased time remains recorded
 under C/P5, not concealed by local graph counters. B/C/D remain open; no fixed65,
 record, expanded corpus, full suite, RSS, DFX or agent work is claimed this step.
+
+Rules303 removes R4's known module-write physical identity gap. A decoded
+counterexample redirected a write to another external unit while retaining the
+old source occurrence/RHS; the previous graph incorrectly retained its native
+action. The canonical SourceCells module-unit census now serves both GetValue
+regions and writes. Missing identity withdraws physical actions/phases/routes;
+value correspondence and resource-exclusion facts remain independent. Normal
+module initialization and phased callbacks/throws/reentry are exercised through
+actual-original printing and independent ESM execution. The remaining R4 entry
+and argument boundaries stay explicitly listed; B/C/D are still open. No fixed65,
+record or paused validation scope is restarted for this constituent obligation.

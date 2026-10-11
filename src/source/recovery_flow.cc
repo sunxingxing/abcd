@@ -429,8 +429,10 @@ class FlowBuilder {
       // Use the common reference event, not a syntactic SymbolExpr or the old
       // plan's binding. Literal/read/alias/transport candidates must reprove
       // the same external unit before borrowing this composition's facts.
-      if(native&&result.events[native->before.value].kind==FlowEventKind::kRead&&
-          result.events[native->before.value].read==region.reference)current=native;
+      if(native&&result.events[native->before.value].kind==FlowEventKind::kRead) {
+        const auto binding=result.events[native->before.value].read;
+        if(binding&&projection_.cells->SameModuleUnit(region.reference,*binding))current=native;
+      }
     }
     // Publish each native action once. Phase and exception consumers use this
     // same index; they must not independently guess an action from an anchor.
@@ -613,7 +615,7 @@ class FlowBuilder {
     budget_.Step(count);values.resize(count);
   }
   void WriteAction(const FlowDefinition& definition,FlowAction native) {
-    // Action correspondence belongs only to checked phased writes. Do not
+    // Action correspondence belongs only to checked physical writes. Do not
     // enlarge every scalar definition or retain an unconsumed native copy.
     if(result_.original_actions.empty()||!definition.original)return;
     budget_.Step();const auto* saved=std::get_if<OriginalSavedDefinition>(&definition.original->origin);
@@ -623,6 +625,12 @@ class FlowBuilder {
     // A staged value does not own a physical write. Match the independently
     // checked commit identity, preserving assignment-backed declarations.
     if(original.life!=analysis::ValueLife::kLive||!original.write||definition.WriteSite()!=original.write)return;
+    // A source occurrence/value does not prove the external unit being written.
+    // Read and write actions consume the same canonical alias identity census;
+    // lexical activation identity is checked separately by ProjectOriginalCells.
+    const auto binding=definition.original->binding;
+    if(projection_.cells->ModuleUnit(binding)&&
+        !projection_.cells->SameModuleUnit(binding,definition.binding))return;
     auto& action=result_.original_actions[operation->value];RequireTree(!action,Error::kOwnership);
     action=FlowOriginalAction{native.before,native.normal,native.exceptions};
   }

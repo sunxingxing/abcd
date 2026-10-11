@@ -2,6 +2,15 @@
 #include "class_tree.h"
 #include <limits>
 namespace abcd::source {
+std::optional<ModuleSymbol> SourceCells::ModuleUnit(SymbolId binding) const {
+  if(module_units.empty())return {};
+  RequireTree(binding.value<module_units.size(),TreeStructureError::kBinding);
+  return module_units[binding.value];
+}
+bool SourceCells::SameModuleUnit(SymbolId original,SymbolId current) const {
+  const auto unit=ModuleUnit(original);
+  return unit&&unit==ModuleUnit(current);
+}
 CellVisibility JoinCellVisibility(CellVisibility a,CellVisibility b) {
   switch(a) {
     case CellVisibility::kExternal:return CellVisibility::kExternal;
@@ -43,7 +52,12 @@ SourceCells AnalyzeSourceCells(const FunctionTree& tree,TreeCheckBudget& budget)
     result.access[symbol.value]=CellVisibility::kExternal;
   };
   for(const auto symbol:tree.closure_captures){budget.Step();exposed(symbol);}
-  for(const auto& alias:tree.modules){budget.Step();exposed(alias.symbol);}
+  if(!tree.modules.empty())budget.Array(result.module_units,tree.symbols.size());
+  for(const auto& alias:tree.modules){
+    budget.Step();exposed(alias.symbol);
+    auto& unit=result.module_units[alias.symbol.value];
+    RequireTree(!unit||*unit==alias.target,TreeStructureError::kBinding);unit=alias.target;
+  }
   // Count/fill the same typed edges. Missing class bodies/control supply an
   // explicit capability gap; do not infer closure access from names or layout.
   const auto visit=[&](const auto& capture){
