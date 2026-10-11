@@ -7,6 +7,9 @@ import {join} from 'node:path';
 import {classReference, parseJavaScript, classLayouts} from './class_reference.mjs';
 import {communityCases, communityAbilityCases} from './community_graph_state.mjs';
 import {fileURLToPath} from 'node:url';
+import {editExpression, memberName, callsMember} from './expression_edits.mjs';
+import {moduleShape, nodes, profile} from './record_style.mjs';
+import {verifySignatures} from './signature_shapes.mjs';
 
 const [tool, root, option] = process.argv.slice(2);
 assert.ok(option === undefined || option === '--ability');
@@ -44,6 +47,20 @@ for (const name of Object.keys(sources)) {
 // graph snapshots independently compare descriptors, aliases and signatures.
 for (const name of Object.keys(sources)) {
   assert.deepEqual(classLayouts(sources[name]), classLayouts(reference[name]), 'native class representation ' + name);
+  verifySignatures(sources[name], reference[name], 'native signatures ' + name);
+  const actual = moduleShape(sources[name]), expected = moduleShape(reference[name]);
+  const classes = ast => nodes(ast).filter(node => ['ClassDeclaration', 'ClassExpression'].includes(node.type))
+    .sort((a, b) => a.start - b.start);
+  const actualClasses = classes(actual.ast), expectedClasses = classes(expected.ast);
+  // Native operation inventories supplement the full runtime trace below;
+  // they are not a proof of operation order or arbitrary equivalence.
+  for (const [index, definition] of actualClasses.entries()) {
+    const methods = value => value.body.body.filter(node => node.type === 'MethodDefinition' && node.kind !== 'constructor');
+    const counterparts = methods(expectedClasses[index]);
+    for (const [methodIndex, method] of methods(definition).entries())
+      assert.deepEqual(profile(method.value.body, actual.imports), profile(counterparts[methodIndex].value.body, expected.imports),
+        `native method body ${name}:${method.key.name ?? method.key.value}`);
+  }
   assert.doesNotMatch(sources[name], /\b(?:goto|switchPc|UNRECOVERED|INCOMPLETE)\b/);
 }
 
@@ -59,6 +76,63 @@ const run = request => {
       ' failed: ' + (error.stderr ?? error.message));
   }
 };
+// Select mutations by the expression's public operation. Private bindings and
+// snapshots may be renamed, merged or eliminated by the common variable passes.
+const fieldWrite = (field, right, replacement) => source => editExpression(source,
+  node => node.type === 'AssignmentExpression' && node.operator === '=' && memberName(node.left) === field && right(node.right),
+  (node, text) => `${text(node.left)} = ${replacement(node.right, text)}`);
+const breakpointCall = (node, dependsOn) => callsMember(node, 'updateBreakpoint') &&
+  node.arguments.some(argument => dependsOn(argument, value => callsMember(value, 'getWindowProperties')));
+const breakpointReceiver = receiver => source => editExpression(source, breakpointCall,
+  (node, text) => `${receiver}.updateBreakpoint(${node.arguments.map(text).join(', ')})`);
+const mutants = [
+  ['base/src/main/ets/constants/BreakpointType', 'return this.md;', 'return this.sm;', {breakpoint: 'md', width: 700}],
+  ['detail/src/main/ets/viewmodel/CardViewModel', 'wrong card name', fieldWrite('name',
+    node => memberName(node) === 'name', (node, text) => `${text(node.object)}.icon`)],
+  ['detail/src/main/ets/viewmodel/CardViewModel', 'index % PICTURE_ARRAY_LIST.length', 'index + PICTURE_ARRAY_LIST.length'],
+  ['base/src/main/ets/viewmodel/CommentViewModel', 'this.favorCount = item.favorCount', 'this.favorCount = 0'],
+  ['detail/src/main/ets/view/CommentInputView', 'this.__content.set(newValue)', 'this.__content.set("")'],
+  ['hot/src/main/ets/view/HotTitleView', 'wrong found selection', fieldWrite('isFoundSelected',
+    node => node.type === 'Literal' && node.value === false, () => 'true')],
+  ['phone/src/main/ets/pages/MainPage', 'name: "mainPage"', 'name: "unknown"'],
+  ['phone/src/main/ets/pages/MainPage', 'super(parent, __localStorage, elmtId, extraInfo)', 'super(__localStorage, parent, elmtId, extraInfo)', {constructOnly: true, argumentCount: 6}],
+  ['phone/src/main/ets/view/TabContentView', 'this.__currentIndex.set(newValue)', 'this.__currentIndex.set(0)'],
+  ['picture/src/main/ets/view/PictureDetail', 'wrong next card index', source => editExpression(source,
+    node => node.type === 'BinaryExpression' && node.operator === '+' && memberName(node.left) === 'selectCardIndex',
+    (node, text) => `${text(node.left)} - ${text(node.right)}`)],
+  ['detail/src/main/ets/view/CommentInputView', 'focusControl.requestFocus(TEXTAREA_KEY)', 'focusControl.requestFocus(BUTTON_KEY)'],
+  ['hot/Index', 'HotPointPage as HotPointPage', 'HotPointPage as WrongPage'],
+];
+if (ability) mutants.push(
+  ['phone/src/main/ets/entryability/EntryAbility', 'windowWidth / display.getDefaultDisplaySync().densityPixels',
+    'windowWidth * display.getDefaultDisplaySync().densityPixels', {width: 700, density: 2}],
+  ['phone/src/main/ets/entryability/EntryAbility', 'wrong breakpoint boundary', source => editExpression(source,
+    node => node.type === 'BinaryExpression' && node.operator === '<' && node.right.type === 'MemberExpression' &&
+      memberName(node.right.object) === 'BREAKPOINT_RANGES' && node.right.property.value === 1,
+    (node, text) => `${text(node.left)} <= ${text(node.right)}`), {width: 600}],
+  ['phone/src/main/ets/entryability/EntryAbility', 'wrong breakpoint receiver', breakpointReceiver('data')],
+  ['phone/src/main/ets/entryability/EntryAbility', 'windowSize.width', '840', {resizeWidths: [599]}],
+  ['phone/src/main/ets/entryability/EntryAbility', 'wrong stored breakpoint', source => editExpression(source,
+    node => callsMember(node, 'setOrCreate') && node.arguments[0]?.value === 'currentBreakpoint',
+    (node, text) => `${text(node.callee)}(${text(node.arguments[0])}, "lg")`)],
+  ['phone/src/main/ets/entryability/EntryAbility', 'data.setWindowLayoutFullScreen(true)',
+    'data.setWindowLayoutFullScreen(false)'],
+  ['phone/src/main/ets/entryability/EntryAbility', 'JSON.stringify(data)', 'JSON.stringify(err)'],
+  ['phone/src/main/ets/entryability/EntryAbility', 'windowStage.loadContent("pages/MainPage",',
+    'return windowStage.loadContent("pages/MainPage",'],
+  ['base/src/main/ets/utils/Logger', 'this.domain = 65280', 'this.domain = 0'],
+  ['base/src/main/ets/utils/Logger', 'hilog.debug(this.domain, this.prefix, this.format, args)',
+    'hilog.debug(this.domain, this.prefix, this.format, ...args)'],
+);
+// Prepare and parse every mutant before the expensive independent graph runs.
+// A stale selector is a test failure, never a silently skipped negative case.
+const preparedMutants = mutants.map(([name, label, edit, extra]) => {
+  if (typeof edit === 'string') assert.ok(sources[name].includes(label), 'absent mutation anchor ' + name + ':' + label);
+  const changed = typeof edit === 'function' ? edit(sources[name]) : sources[name].replace(label, edit);
+  assert.notEqual(changed, sources[name]); parseJavaScript(changed);
+  return {name, label, changed, extra};
+});
+
 // One graph pair per bounded worker: even two large md/fold scenarios exceeded
 // 512 MiB in a worker; a single long-lived run exhausted the default V8 heap.
 // Retain the full trace comparison and release each independent VM afterwards.
@@ -94,54 +168,16 @@ for (const immediate of [false, true]) {
   }
 }
 
-const mutants = [
-  ['base/src/main/ets/constants/BreakpointType', 'return this.md;', 'return this.sm;', {breakpoint: 'md', width: 700}],
-  ['detail/src/main/ets/viewmodel/CardViewModel', '$local2.name = card.name', '$local2.name = card.icon'],
-  ['detail/src/main/ets/viewmodel/CardViewModel', 'index % PICTURE_ARRAY_LIST.length', 'index + PICTURE_ARRAY_LIST.length'],
-  ['base/src/main/ets/viewmodel/CommentViewModel', 'this.favorCount = item.favorCount', 'this.favorCount = 0'],
-  ['detail/src/main/ets/view/CommentInputView', 'this.__content.set(newValue)', 'this.__content.set("")'],
-  ['hot/src/main/ets/view/HotTitleView', '$local0.isFoundSelected = false', '$local0.isFoundSelected = true'],
-  ['phone/src/main/ets/pages/MainPage', 'name: "mainPage"', 'name: "unknown"'],
-  ['phone/src/main/ets/pages/MainPage', 'super(parent, __localStorage, elmtId, extraInfo)', 'super(__localStorage, parent, elmtId, extraInfo)', {constructOnly: true, argumentCount: 6}],
-  ['phone/src/main/ets/view/TabContentView', 'this.__currentIndex.set(newValue)', 'this.__currentIndex.set(0)'],
-  ['picture/src/main/ets/view/PictureDetail', '$local0.selectCardIndex + 1', '$local0.selectCardIndex - 1'],
-  ['detail/src/main/ets/view/CommentInputView', 'focusControl.requestFocus(TEXTAREA_KEY)', 'focusControl.requestFocus(BUTTON_KEY)'],
-  ['hot/Index', 'HotPointPage as HotPointPage', 'HotPointPage as WrongPage'],
-];
-if (ability) mutants.push(
-  ['phone/src/main/ets/entryability/EntryAbility', 'windowWidth / display.getDefaultDisplaySync().densityPixels',
-    'windowWidth * display.getDefaultDisplaySync().densityPixels', {width: 700, density: 2}],
-  ['phone/src/main/ets/entryability/EntryAbility', '$value2 < BreakpointConstants.BREAKPOINT_RANGES[1]',
-    '$value2 <= BreakpointConstants.BREAKPOINT_RANGES[1]', {width: 600}],
-  ['phone/src/main/ets/entryability/EntryAbility', '$local1.updateBreakpoint(data.getWindowProperties().windowRect.width)',
-    'data.updateBreakpoint(data.getWindowProperties().windowRect.width)'],
-  ['phone/src/main/ets/entryability/EntryAbility', 'windowSize.width', '840', {resizeWidths: [599]}],
-  ['phone/src/main/ets/entryability/EntryAbility', '"currentBreakpoint", $value5', '"currentBreakpoint", "lg"'],
-  ['phone/src/main/ets/entryability/EntryAbility', 'data.setWindowLayoutFullScreen(true)',
-    'data.setWindowLayoutFullScreen(false)'],
-  ['phone/src/main/ets/entryability/EntryAbility', 'JSON.stringify(data)', 'JSON.stringify(err)'],
-  ['phone/src/main/ets/entryability/EntryAbility', 'windowStage.loadContent("pages/MainPage",',
-    'return windowStage.loadContent("pages/MainPage",'],
-  ['base/src/main/ets/utils/Logger', 'this.domain = 65280', 'this.domain = 0'],
-  ['base/src/main/ets/utils/Logger', 'hilog.debug(this.domain, this.prefix, this.format, args)',
-    'hilog.debug(this.domain, this.prefix, this.format, ...args)'],
-);
 let mutations = 0;
-for (const [name, before, after, extra] of mutants) {
-  assert.ok(sources[name].includes(before), 'absent mutation anchor ' + name + ':' + before);
-  const changed = sources[name].replace(before, after);
-  assert.notEqual(changed, sources[name]); parseJavaScript(changed);
-  const result = run({sources: {...sources, [name]: changed}, mutation: name + ':' + before,
+for (const {name, label, changed, extra} of preparedMutants) {
+  const result = run({sources: {...sources, [name]: changed}, mutation: name + ':' + label,
     cases: [{breakpoint: 'sm', ...(ability ? {ability: true, width: 599, density: 1, resizeWidths: []} : {}), storage: {isShowInput: true, isFoldHorizontal: true}, ...extra}]});
   assert.equal(result.mutations, 1); mutations += result.mutations;
 }
 let equivalents = 0;
 if (ability) {
   const name = 'phone/src/main/ets/entryability/EntryAbility';
-  const before = '$local1.updateBreakpoint(data.getWindowProperties().windowRect.width)';
-  const after = 'this.updateBreakpoint(data.getWindowProperties().windowRect.width)';
-  assert.ok(sources[name].includes(before));
-  const changed = sources[name].replace(before, after); parseJavaScript(changed);
+  const changed = breakpointReceiver('this')(sources[name]); parseJavaScript(changed);
   for (const immediate of [false, true]) {
     assert.equal(run({sources: {...sources, [name]: changed}, cases: [{ability: true, immediate,
       concurrent: true, width: 599, density: 1, resizeWidths: [840],

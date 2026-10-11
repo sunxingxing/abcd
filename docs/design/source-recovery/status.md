@@ -12,6 +12,31 @@
 
 ## 当前阶段
 
+### 2026-10-11：当前变量恢复后的45模块整图验收
+
+- 回到阶段一函数体/初始化/字段/闭包整合，使用当前ABC-only引擎重新生成
+  MultiCommunityApplication全部45源码模块，随后才读取配对TS。实际Ability、
+  Logger、Breakpoint、model/viewmodel和20个view连接执行，平台仍是受控协议。
+- 修复旧整图负例依赖私有临时名的问题：原`"currentBreakpoint", $value5`
+  在当前源码中已变为`$phi1`。变异改用既有AST/表达式依赖选择器定位字段写入、
+  下标增量、边界比较、存储参数和callee receiver；不修改生产规则，不漏掉原负例。
+  全部变异生成/语法检查前置，避免运行完完整图后才发现测试定位过时。
+- 增加所有类/模块函数签名对照，以及306个非构造方法的native调用、构造、成员
+  写入、await/async/arrow与循环结构清单对照。清单仅为表示证据，执行顺序与
+  身份仍由独立运行比较，不能把计数一致当成任意语义或整record风格证明。
+- 原完整ability整图矩阵通过：104场景、330原异常、66换绑、22有效JS错误变异、
+  2个captured-this/lexical-this等价表示；同步/延迟各33个既定语义边界。
+  每个正常场景164325–302533个宿主事件，20个实际view均构造并render；不是
+  每个事件都注入故障。此前独立两基线也分别对照264797/164411事件。
+- `community_ability_graph_source_test`完整通过189.38s，证据
+  build/stage-one/body-integration/community-ability.log与
+  build/regression/community-body-junit.xml。这是固定65名单之外的专项矩阵，
+  不能拿此前97.30s描述它。本次仅测试/文档修改，无生产重建需求、无新恢复覆盖；
+  固定65名单、规则311、原截止/worker内存限制及暂停范围保持。
+- **当前45模块受控整图回归闭合，阶段一仍active**。后续同样核对实际33模块
+  导航/Window、Push组合及pasteboard整图的当前执行和表示证据，再核对未被这些
+  场景执行的函数义务；不把view实例覆盖或source_complete推算成整体完成比例。
+
 ### 2026-10-11：五输入类及模块函数签名的独立表示验收
 
 - 原classLayouts跳过构造器，方法参数只比较节点种类，无法发现默认值内容错误。
