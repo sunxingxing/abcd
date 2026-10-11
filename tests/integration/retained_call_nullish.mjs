@@ -3,6 +3,8 @@ import {execFileSync} from 'node:child_process';
 import {readFileSync} from 'node:fs';
 import {stripTypeScriptTypes} from 'node:module';
 import vm from 'node:vm';
+import {moduleShape, nodes} from './record_style.mjs';
+import {editExpression, callsMember} from './expression_edits.mjs';
 
 const [tool, abc, paired] = process.argv.slice(2);
 const report = JSON.parse(execFileSync(tool, [abc, '9057', '--record-source', '--value-source'],
@@ -10,7 +12,15 @@ const report = JSON.parse(execFileSync(tool, [abc, '9057', '--record-source', '-
 assert.equal(report.record, 8917);
 assert.equal(report.source_complete, true);
 assert.equal(report.legacy_writer_used, false);
-assert.match(report.source, /JSON\.stringify\(err\)\)\s*\?\?\s*""/);
+// Redundant parentheses are printer choices; require the native
+// nullish operation and its operands rather than one obsolete printed spelling.
+const nullish = node => node.type === 'LogicalExpression' && node.operator === '??';
+const expressions = nodes(moduleShape(report.source).ast).filter(nullish);
+assert.equal(expressions.length, 1);
+assert.ok(callsMember(expressions[0].left, 'stringify'));
+assert.equal(expressions[0].left.callee.object.name, 'JSON');
+assert.equal(expressions[0].right.type, 'Literal');
+assert.equal(expressions[0].right.value, '');
 const reference = stripTypeScriptTypes(readFileSync(paired, 'utf8'));
 const values = [undefined, null, false, 0, -0, NaN, '', 'text', 0n, 1n, Symbol('value'), {}, []];
 
@@ -89,4 +99,8 @@ for (const value of values) for (const code of [0, 1]) for (const mutate of [fal
     ++scenarios;
   }
 assert.equal(scenarios, 780);
-console.log(JSON.stringify({pairedCompleteMethodScenarios: scenarios}));
+const changed = editExpression(report.source, nullish,
+  (node, text) => `${text(node.left)} || ${text(node.right)}`);
+await assert.rejects(async () => assert.deepEqual(await observe(changed, false, 1, 0, false),
+  await observe(reference, false, 1, 0, false)), error => error instanceof assert.AssertionError);
+console.log(JSON.stringify({pairedCompleteMethodScenarios: scenarios, mutations: 1}));

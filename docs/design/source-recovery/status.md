@@ -12,6 +12,25 @@
 
 ## 当前阶段
 
+### 2026-10-11：整图之外的既有记录验收与明确剩余缺口
+
+- 当前输出的Home、Logger、pasteboard/community EntryAbility和三个Backup记录
+  既有完整测试通过：Home1086配对场景/2等价表示/362风格中立场景，Logger848
+  状态场景及原构造/赋值/初始化检查，两EntryAbility2710场景/16赋值/13变异，
+  三Backup1224构造/4068方法场景/11变异。受控平台边界及原负例保持。
+- Immersive保留callee专项首次因旧正则要求`JSON.stringify(err))`而失败；当前
+  已直接输出`JSON.stringify(err) ?? ""`。测试改查AST nullish及原操作数，增加
+  `??`错误替换`||`的执行反例；原780场景完整保留，单项复验通过。未修改生产恢复。
+- **明确尚未关闭的正文义务**：Immersive当前35源码记录中，33模块导航图与Backup
+  已有整记录受控证据；EntryAbility现有专项只执行onWindowStageCreate及其callback，
+  使用Object.create跳过构造并以受控WindowUtil代替实际依赖。不能将它列为完整
+  生命周期/真实WindowUtil连接已验收。下一交付应补齐此记录的构造、所有生命周期、
+  失败后状态和回调重放，并连接已有实际Window图；不新增生产样本条件。
+- 构建通过；首轮5项中4通过，nullish修正后单项通过。证据
+  build/stage-one/window-final/remaining-records.log、remaining-lasttest.log、
+  retained-final.log及retained-lasttest.log。固定65回归约97秒、生产规则311保持，
+  阶段一Goal仍active。此清单不将所有图内函数路径或平台行为推定为已验证。
+
 ### 2026-10-11：Window、富文本、ProgressBar及两份Widget当前输出验收
 
 - 复用既有class/module签名与方法表示检查，接入33模块Window导航、5记录富文本、

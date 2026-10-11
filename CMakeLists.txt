@@ -1820,7 +1820,7 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/nullish_selection.mjs $<TARGET_FILE:nullish_selection_test>)
     if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc" AND
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/default/src/main/ets/entryability/EntryAbility.ts")
-      add_test(NAME retained_call_nullish_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+      add_test(NAME retained_call_nullish_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals --experimental-vm-modules
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/retained_call_nullish.mjs $<TARGET_FILE:abc_semantic>
         "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc"
         "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/default/src/main/ets/entryability/EntryAbility.ts")

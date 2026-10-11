@@ -1,5 +1,11 @@
 # 验收、证据与实施交接
 
+2026-10-11：Home、Logger、pasteboard/community两个EntryAbility及三个Backup当前
+既有完整记录测试通过。Immersive retained-call专项旧括号正则失败已保留日志，改用
+AST检查后原780场景及新增错误`||`反例通过；它仍只证明窗口创建方法和callback。
+Immersive35源码记录中的EntryAbility完整构造/生命周期及实际WindowUtil连接仍未
+关闭，下一步明确补齐此义务，不用33模块导航成功或complete标志替代。
+
 2026-10-11：当前33模块Window导航、5记录富文本、2记录ProgressBar矩阵分别通过
 223.05s/11.31s/6.21s，统一增加完整签名和高层方法清单对照；清单不代替独立执行。
 两份WidgetCard分别读取modules/src与widgets/src_widget配对源码。Widget旧私有名
