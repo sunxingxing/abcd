@@ -126,5 +126,10 @@ void ProjectSelectionLogicals(const analysis::ValueProgram& graph, const Control
 // producer stays in its header, across no observable event/environment change.
 [[nodiscard]] std::vector<std::optional<analysis::UseId>> FindLogicalLeftInputs(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation, TreeCheckBudget& budget);
+// Pinned predicate meaning over the verified input category. A numeric VM
+// predicate may use JS truth domains only when its input proof permits it.
+// Reused for native conditional correspondence; this proves no movement.
+[[nodiscard]] std::optional<PureTruthTest> PureBranchTruth(
+    const analysis::ValueProgram&,analysis::OpId);
 }  // namespace abcd::source
 #endif

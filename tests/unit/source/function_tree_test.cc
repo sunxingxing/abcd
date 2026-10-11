@@ -1210,10 +1210,10 @@ void OriginalCatchValues(bool emit=false,unsigned form=0,unsigned copies=0,bool 
   bool explicit_throw=false,explicit_return=false;
   for(unsigned i=0;i<original.operations.size();++i) {
     const auto& operation=original.operations[i];
-    if(!operation.abrupt)continue;
+    if(!operation.statement_kind)continue;
     const auto endpoint=FindOriginalPhase(m.flow,operation.block,ExceptionPhase::kBefore,OpId{i});
     Check(endpoint.has_value());
-    if(operation.abrupt==OriginalAbruptKind::kThrow) {
+    if(operation.statement_kind==OriginalStatementKind::kThrow) {
       explicit_throw=true;Check(m.flow.events[endpoint->value].thrown_value==operation.expression);
       Check(endpoint!=m.flow.expressions[operation.expression->value]);
     } else explicit_return=true;
@@ -1221,7 +1221,7 @@ void OriginalCatchValues(bool emit=false,unsigned form=0,unsigned copies=0,bool 
   Check(explicit_throw&&explicit_return);
   for(unsigned i=0;i<original.exceptional_exits.size();++i) {
     const auto& exit=original.exceptional_exits[i];const auto& operation=original.operations[exit.op.value];
-    if(operation.life!=ValueLife::kLive||(!operation.intrinsic_expression&&!operation.abrupt))continue;
+    if(operation.life!=ValueLife::kLive||(!operation.intrinsic_expression&&!operation.statement_kind))continue;
     const auto before=FindOriginalPhase(m.flow,operation.block,ExceptionPhase::kBefore,exit.op);
     // A proved-inert source action can already be absent from this plan;
     // coverage of its raw expression does not manufacture a current action.
@@ -1245,7 +1245,7 @@ void OriginalCatchValues(bool emit=false,unsigned form=0,unsigned copies=0,bool 
     // Preserve the Catch phase, but remove the throwing action's independent
     // correspondence. Pending-value caps must consume exit closure as well.
     auto gap=original;
-    for(auto& operation:gap.operations)if(operation.abrupt==OriginalAbruptKind::kThrow)operation.abrupt.reset();
+    for(auto& operation:gap.operations)if(operation.statement_kind==OriginalStatementKind::kThrow)operation.statement_kind.reset();
     const RecoveryExpressionInput gap_input{p,eq,ids,&gap};
     const auto uncovered=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,lp,gap_input));
     Check(FindOriginalPhase(uncovered.flow,d.original_catch->handler,ExceptionPhase::kCatch).has_value());

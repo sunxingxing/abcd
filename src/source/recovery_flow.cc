@@ -86,7 +86,7 @@ class FlowBuilder {
     Resize(result_.original_actions,phased?projection_.original->operations.size():0);
     for(auto& action:result_.original_actions){budget_.Step();action.reset();}
     for(auto& action:result_.actions){budget_.Step();action.reset();}
-    if(phased)budget_.Array(abrupt_actions_,tree_.statements.size());
+    if(phased)budget_.Array(statement_actions_,tree_.statements.size());
     RequireTree(projection_.statement_values.empty()||projection_.statement_values.size()==tree_.statements.size(),Error::kOwnership);
     RequireTree(projection_.forwarded_values.empty()||projection_.forwarded_values.size()==tree_.statements.size(),Error::kOwnership);
     RequireTree(projection_.loop_declarations.empty()||projection_.loop_declarations.size()==tree_.statements.size(),Error::kOwnership);
@@ -423,13 +423,10 @@ class FlowBuilder {
         // exception route to a different unit, literal or omitted write.
         current.reset();continue;
       }
-      if(operation.abrupt&&operation.statement) {
-        RequireTree(operation.statement->value<abrupt_actions_.size(),Error::kOwnership);
-        if(const auto& action=abrupt_actions_[operation.statement->value];action&&
-            action->completion==(*operation.abrupt==OriginalAbruptKind::kThrow?FlowCompletion::kThrow:FlowCompletion::kReturn))
-          {RequireTree(!current,Error::kOwnership);current=FlowOriginalAction{action->point,
-              action->completion==FlowCompletion::kReturn&&!action->exceptions.finalizer?
-                  std::optional{action->destination}:std::nullopt,action->exceptions};}
+      if(operation.statement_kind&&operation.statement) {
+        RequireTree(operation.statement->value<statement_actions_.size(),Error::kOwnership);
+        if(const auto& action=statement_actions_[operation.statement->value];action&&action->kind==*operation.statement_kind)
+          {RequireTree(!current,Error::kOwnership);current=action->action;}
       } else if(operation.intrinsic_expression) {
         RequireTree(operation.intrinsic_expression->value<result.actions.size(),Error::kOwnership);
         if(const auto& action=result.actions[operation.intrinsic_expression->value]) {
@@ -1066,13 +1063,13 @@ class FlowBuilder {
       else if constexpr(std::is_same_v<T,ReturnStmt>) {
         semantics.completion=FlowStatementCompletion::kAbrupt;
         auto returned=New();Abrupt(returned,terminal_,context,FlowCompletion::kReturn);
-        if(!abrupt_actions_.empty())abrupt_actions_[at.id.value]=FlowAbruptAction{returned,terminal_,FlowCompletion::kReturn,{context.thrown,context.finalizer}};
+        if(!statement_actions_.empty())statement_actions_[at.id.value]=FlowStatementAction{OriginalStatementKind::kReturn,{returned,context.finalizer?std::nullopt:std::optional{terminal_},{context.thrown,context.finalizer}}};
         Link(start,node.value?Expr(*node.value,context.Operand(returned)):returned);
       } else if constexpr(std::is_same_v<T,ThrowStmt>) {
         semantics.completion=FlowStatementCompletion::kAbrupt;
         const auto thrown=New();Link(thrown,context.thrown,FlowCompletion::kThrow);
         events_[thrown.value].thrown_value=node.value;
-        if(!abrupt_actions_.empty())abrupt_actions_[at.id.value]=FlowAbruptAction{thrown,context.thrown,FlowCompletion::kThrow,{context.thrown,context.finalizer}};
+        if(!statement_actions_.empty())statement_actions_[at.id.value]=FlowStatementAction{OriginalStatementKind::kThrow,{thrown,{}, {context.thrown,context.finalizer}}};
         Link(start,Expr(node.value,context.Operand(thrown)));
       }
       else if constexpr(std::is_same_v<T,TryStmt>) {
@@ -1097,6 +1094,8 @@ class FlowBuilder {
         Link(start,Stmt(node.body,protected_body));
       } else if constexpr(std::is_same_v<T,DebuggerStmt>) {
         events_[start.value].effect=ExpressionEvaluation::kRequired;Link(start,context.next);
+        if(!statement_actions_.empty())statement_actions_[at.id.value]=FlowStatementAction{
+            OriginalStatementKind::kNormal,{start,context.next,{context.thrown,context.finalizer}}};
       }
       else {static_assert(std::is_same_v<T,UnrecoveredStmt>);throw Error::kUnsupportedSyntax;}
     },tree_.statements[at.id.value].statement);
@@ -1111,7 +1110,7 @@ class FlowBuilder {
   bool current_entry_evaluation_=false;
   const FunctionTree& tree_;LegacyFlowProjection projection_;TreeCheckBudget budget_;RecoveryScratch memory_;
   std::vector<FlowEvent> events_;std::vector<FlowEdge> edges_;
-  std::vector<std::optional<FlowAbruptAction>> abrupt_actions_;
+  std::vector<std::optional<FlowStatementAction>> statement_actions_;
   std::pmr::vector<Point> statements_,expressions_,exits_;std::pmr::vector<Task> tasks_;
   std::pmr::vector<std::uint8_t> seen_;std::vector<FlowDefinition> definitions_;
   std::pmr::vector<std::optional<SymbolId>> reads_;std::pmr::vector<ReadState> read_states_;

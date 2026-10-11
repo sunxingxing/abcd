@@ -1848,7 +1848,7 @@ std::pair<std::uint64_t,std::size_t> RawProjectionClosure(bool changed,RawClosur
   OriginalOperation raised{};raised.block={3};raised.life=analysis::ValueLife::kLive;
   raised.exceptional=analysis::ExceptionalCompletion::kMayThrow;raised.statement=thrown;
   raised.expression=std::get<ThrowStmt>(t.statements[thrown.value].statement).value;
-  raised.abrupt=OriginalAbruptKind::kThrow;f.original.operations.push_back(raised);
+  raised.statement_kind=OriginalStatementKind::kThrow;f.original.operations.push_back(raised);
   f.original.exceptional_exits.push_back({analysis::OpId{1},{0},analysis::LanguageEffect::kNone,
       analysis::ValueHandler{{{0},{0},{0}},{2}}});
   if(reverse) {
@@ -1903,7 +1903,7 @@ std::pair<std::uint64_t,std::size_t> RawProjectionClosure(bool changed,RawClosur
   }
   if(edit==RawClosureEdit::kNone&&copies==1) {
     Check(model.flow.original_exceptions.size()==(resource?2:1)&&model.flow.original_exceptions[0]);
-    auto gap=f.original;gap.operations[1].abrupt.reset();
+    auto gap=f.original;gap.operations[1].statement_kind.reset();
     const RecoveryExpressionInput incomplete{f.plan,f.equations,f.order,&gap};
     const auto unknown=std::get<RecoveryProjection>(PrepareRecoveryProjection(t,projection,incomplete));
     Check(FindOriginalPhase(unknown.flow,{2},analysis::ExceptionPhase::kCatch).has_value());

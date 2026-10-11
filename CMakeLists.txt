@@ -696,6 +696,9 @@ if(BUILD_TESTING)
   add_executable(family_route_failure_test tests/unit/source/family_route_failure_test.cc)
   target_link_libraries(family_route_failure_test PRIVATE abcd_source)
   add_test(NAME family_route_failure_test COMMAND family_route_failure_test)
+  add_executable(original_completion_test tests/unit/source/original_completion_test.cc)
+  target_link_libraries(original_completion_test PRIVATE abcd_source abcd_json)
+  add_source_fixture(original_completion_test 16000000 120000 --source)
   add_executable(function_tree_test tests/unit/source/function_tree_test.cc)
   add_executable(partial_tree_test tests/unit/source/partial_tree_test.cc)
   target_link_libraries(partial_tree_test PRIVATE abcd_source)
@@ -905,6 +908,9 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/original_flow.mjs $<TARGET_FILE:function_tree_test> $<TARGET_FILE:recovery_projection_test>)
     add_test(NAME flow_units_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/flow_units.mjs $<TARGET_FILE:function_tree_test>)
+    add_test(NAME original_completion_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/original_completion.mjs $<TARGET_FILE:original_completion_test>)
+    require_source_fixture(original_completion_source_test original_completion_test)
     add_test(NAME property_flow_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/property_flow.mjs $<TARGET_FILE:property_flow_test>)
     add_test(NAME family_array_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

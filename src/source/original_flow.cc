@@ -83,8 +83,9 @@ std::shared_ptr<OriginalFlow> RetainOriginalFlow(const analysis::ValueProgram& g
     result->operations[i]={op.block,op.first_use,op.use_count,op.result,op.normal,
         op.before_throw,op.exceptional,op.life,op.origin,flow.expressions[i],flow.statements[i]};
     if(op.life==analysis::ValueLife::kLive&&flow.statements[i]) {
-      if(std::holds_alternative<analysis::ValueThrow>(op.operation))result->operations[i].abrupt=OriginalAbruptKind::kThrow;
-      else if(std::holds_alternative<analysis::ValueReturn>(op.operation))result->operations[i].abrupt=OriginalAbruptKind::kReturn;
+      if(std::holds_alternative<analysis::ValueThrow>(op.operation))result->operations[i].statement_kind=OriginalStatementKind::kThrow;
+      else if(std::holds_alternative<analysis::ValueReturn>(op.operation))result->operations[i].statement_kind=OriginalStatementKind::kReturn;
+      else if(std::holds_alternative<analysis::ValueDebugger>(op.operation))result->operations[i].statement_kind=OriginalStatementKind::kNormal;
     }
   }
   return result;

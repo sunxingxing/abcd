@@ -41,6 +41,26 @@
 关闭，第1/4/5项仍未关闭，不据项数推算工作量百分比。下一完整交付包是B：
 R1–R5/R7原始对应账本清零及R9/R10保留合同；之后C收敛与D终验。既定暂停事项保持。
 
+### 2026-10-11：交付包B进行中——普通语句动作与条件极性
+
+- R7中debugger的正常动作，与return/throw共同使用FlowStatementAction：操作数
+  求值、语句动作、正常/异常完成各自保持边界。候选省略语句时不再发表原始相位。
+- 原生conditional的输入对应补齐共享PureBranchTruth证书；直接消费已有typed
+  predicate与Boolean事实，不新增opcode序列或同块准入。条件相位仍是控制关系，
+  不伪装成物理动作，也不把Boolean值域借给选择结果。
+- 208份decoded源码覆盖3个profile、normal/phased、正反分支、寄存器重分配、
+  arena反排、分块、复制及200/201/400/800；独立Node执行比较返回/异常、对象身份、
+  debugger真实暂停与callback顺序，含删除debugger/条件计算的不等价变异。
+- 定向构建成功；原始完成、投射、function tree、逻辑/条件前缀等九项定向验收
+  证据位于build/stage-one/original-completions-final.xml。新增C++/JS对使用本轮
+  fixture共享生成，不增加重复生成成本。首次扩展检查发现decision_prefix源码测试
+  强制包含?:，而合法恢复为??；改为完整源码和独立执行验收，语义场景未减少。
+- **未关闭新的主干或交付包B。** R7的jump、guard组合与其它R项仍按有限清单推进。
+  模块read+guard对应必须保留整个GetValue的TDZ异常，不能以单个raw read的无抛出
+  上界消掉它；这是R4/R7既有组合动作义务，不扩大本轮边界。
+- 本子步骤未重跑固定65/record；完整B具备关闭条件后一次整包验收。全量/扩展语料、
+  RSS/DFX/agents保持暂停。阶段一Goal active，后续仍为B→C→D。
+
 ### 2026-10-11：交付包A已验收——原始环境与普通绑定身份（规则297）
 
 - [有限交付账本](unified-variable-deliveries.md)的B1–B5已贯通：共享原始环境成功/

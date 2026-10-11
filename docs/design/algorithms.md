@@ -4558,3 +4558,12 @@ Successful-definition retention reads the existing FlowWriteEffect in constant
 time; it adds no array or independent inference. The 200/201/400/800 tests
 report events, edges, work and admitted bytes, and compare sparse/full products.
 These are local accounting checks, not process RSS or a resumed benchmark.
+
+
+Normal and abrupt source statements (rules298) share one optional action record
+per statement only when raw phases exist. Existing O(operations + statements +
+phases) projection loops publish it; no additional graph walk. PureBranchTruth
+reuses the existing typed predicate and constant-time BooleanEvaluation adapter.
+The decoded completion test measures 200/201/400/800 copies with geometric work/
+owned-byte checks and exact/one-short budgets. Source tests share fresh producer
+output. These are local analysis costs, not whole-pass or process RSS evidence.

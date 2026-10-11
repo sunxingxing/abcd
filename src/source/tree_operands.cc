@@ -8,6 +8,7 @@
 #include "class_tree.h"
 #include "phase_evaluation.h"
 #include "logical_evaluation.h"
+#include "logical_regions.h"
 
 #include <bit>
 #include <algorithm>
@@ -209,7 +210,12 @@ class OperandCheck {
         const auto& conditional = Node<ConditionalExpr>(expression);
         RequireMeaning(std::holds_alternative<analysis::ValueBranch>(op.operation) && op.use_count == 1, Error::kOperand);
         Input(graph_.uses[op.first_use.value].operand, conditional.condition, op.first_use);
-        original_.operations[i].control=OriginalControlInput{conditional.condition,OriginalControlKind::kPredicate};
+        // The verified conditional uses this exact Boolean input. Retain the
+        // pinned predicate polarity through the common truth adapter; an input
+        // occurrence alone cannot certify its raw taken/fallthrough phases.
+        const auto truth=PureBranchTruth(graph_,current_);
+        RequireMeaning(truth.has_value(),Error::kOperator);
+        original_.operations[i].control=OriginalControlInput{conditional.condition,OriginalControlKind::kPredicate,truth};
         continue;
       }
       const auto input = [&](std::uint32_t ordinal) -> const analysis::ValueOperand& {

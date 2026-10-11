@@ -49,7 +49,7 @@ struct OriginalSourceDefinition {
   SymbolId binding;
   ExprId input;
 };
-enum class OriginalAbruptKind : std::uint8_t {kReturn,kThrow};
+enum class OriginalStatementKind : std::uint8_t {kNormal,kReturn,kThrow};
 enum class OriginalControlKind : std::uint8_t {kPredicate,kTruthSelection,kNullishSelection};
 // A checked control input occurrence, not the selected value or an executable
 // operation on the enclosing expression. Folded pure tests keep this semantic
@@ -79,7 +79,7 @@ struct OriginalOperation {
   std::optional<ExprId> intrinsic_expression;
   // Flow verification owns the native statement; operand verification owns
   // its completion payload. This is not the returned/thrown value's action.
-  std::optional<OriginalAbruptKind> abrupt;
+  std::optional<OriginalStatementKind> statement_kind;
   std::optional<OriginalControlInput> control;
   // Physical binding write verified at this source commit. A numeric staging
   // save has a definition correspondence but is not the conversion's write.

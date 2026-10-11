@@ -93,6 +93,17 @@ std::vector<OpId> EvaluationRoots(const ValueProgram& graph,
 }
 }  // namespace
 
+std::optional<PureTruthTest> PureBranchTruth(const analysis::ValueProgram& graph,analysis::OpId id) {
+  RequireTree(id.value<graph.ops.size(),TreeStructureError::kOwnership);
+  const auto& operation=graph.ops[id.value];
+  const auto* branch=std::get_if<analysis::ValueBranch>(&operation.operation);
+  if(!branch||operation.life!=analysis::ValueLife::kLive||operation.use_count!=1)return {};
+  RequireTree(operation.first_use.value<graph.uses.size(),TreeStructureError::kOwnership);
+  const auto polarity=TruthPolarity(graph,branch->predicate,graph.uses[operation.first_use.value].operand);
+  if(!polarity)return {};
+  return PureTruthTest{TruthDomains::All(),*polarity?TruthDomains::Truthy():TruthDomains::Truthy().Complement(),PureTruthOutcome::kDecision};
+}
+
 void ProjectSelectionLogicals(const ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, std::span<SelectionRegion> regions, TreeCheckBudget& budget) {
   if (regions.empty()) return;

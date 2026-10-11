@@ -1236,3 +1236,14 @@ must consume actual common definition/reference events. Saved operand/placement
 correspondence is not proof of a physical write phase. Keep this together with
 ordinary control and remaining protocol/suspension actions in the original
 semantic-delivery acceptance; do not close Task1 using value-kind tests alone.
+
+
+Rules298 continues package B, not another mainline endpoint: normal statement
+(debugger) actions share the return/throw completion adapter; native conditional
+inputs retain the common predicate truth certificate. Current/candidate phase
+withdrawal, decoded layout variations and independent source behavior are checked.
+The targeted nine-test evidence is recorded in status.md; no per-subproof fixed
+65/record rerun. B remains open for the finite R1–R5/R7 and R9/R10 obligations.
+Next shared-action issue is module read+guard: bound the composed GetValue, never
+intersect a no-throw raw load into a source TDZ check. C's separate convergence
+contract remains the required next package; no whole-pass completion claim.

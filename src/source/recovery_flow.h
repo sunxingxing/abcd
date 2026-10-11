@@ -158,9 +158,10 @@ struct FlowAction {FlowPoint before,normal;FlowExceptionContext exceptions;};
 // checked result projection when present or the physical write otherwise.
 // A throwing endpoint has no normal completion; this is not a result domain.
 struct FlowOriginalAction {FlowPoint before;std::optional<FlowPoint> normal;FlowExceptionContext exceptions;};
-// Payload evaluation precedes this endpoint. Abrupt completion is not a
-// normal value result; its destination retains the current cleanup route.
-struct FlowAbruptAction {FlowPoint point,destination;FlowCompletion completion;FlowExceptionContext exceptions;};
+// Statement actions share the same Before/Commit/exception contract as
+// expression actions. Payload evaluation precedes return/throw endpoints;
+// a normal statement's next point is its own successful completion.
+struct FlowStatementAction {OriginalStatementKind kind;FlowOriginalAction action;};
 struct FlowOriginalException {FlowPoint before,thrown;};
 // A contract-excluded failure has no physical source throw point. Keeping it
 // distinct from both a mapped route and missing evidence prevents borrowing

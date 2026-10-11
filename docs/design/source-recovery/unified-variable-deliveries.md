@@ -32,7 +32,7 @@
 | R4 | `ValueGlobalRead`、`ValueModuleRead`、`ValueModuleWrite`、`ValueFrameThis`、`ValueFrameFunction`、`ValueGlobalObject`、`ValueSymbolConstructor`、`ValueRestArguments`、`ValueArgumentSnapshot` | 贯通 | 核对外部/入口读取、mapped arguments、module 写与 ordinary binding 的不同身份；不能将缺失的入口稳定性当作常量 |
 | R5 | `ValueArrayAllocation`、`ValueObjectAllocation`、`ValueInvoke`、`ValueConstruct`、`ValueConstructApply` | 贯通 | 保留分配、调用、构造的原生动作与效果；验收实参/receiver顺序、成功结果与抛出路线，资源失败只按显式合同排除 |
 | R6 | `ValueLexicalLoad`、`ValueLexicalStore`、`ValueEnvironmentPush`、`ValueEnvironmentPop`、`ValueCurrentEnvironment` | 贯通 | 295/296失败原因及成功环境状态、297动态环境到源码activation及投射身份已通过A验收；多slot共享成功marker，EnvironmentId/ScopeId不替代动态单元 |
-| R7 | `ValueBranch`、`ValueJump`、`ValueReturn`、`ValueThrow`、`ValueGuard`、`ValueDebugger`；正常/异常控制边 | 贯通 | return/throw和有pure test的控制相位已接入；**无pure equation控制、无值跳转、guard/debugger的动作/边对应仍须逐类清零**；同一表达式锚点不等于同一完成边 |
+| R7 | `ValueBranch`、`ValueJump`、`ValueReturn`、`ValueThrow`、`ValueGuard`、`ValueDebugger`；正常/异常控制边 | 贯通 | return/throw和有pure test的控制相位已接入；298补齐原生conditional极性和debugger正常动作；**无值跳转、guard组合的动作/边对应仍须逐类清零**；同一表达式锚点不等于同一完成边 |
 | R8 | 源码 `let x;`/初始化/赋值、catch参数、作用域进入/离开/重复进入、for每轮绑定 | 贯通 | 已通过A验收：local/catch动态单元、TDZ与初始化分离、候选对应；原生for使用显式每轮分配/复制模型。复杂闭包重构保持原表示 |
 | R9 | `ValueFunctionCreation`、`ValueClassCreation`与已有incoming capture | 保留；创建动作仍属本轮贯通 | 已有创建/捕获可见性与incoming身份；验收普通变量变换不改变闭包观察到的单元或创建次数；重新布局逃逸环境属于后续精度 |
 | R10 | `ValueHole`、`ValueIterResult`、`ValueAwait`、`ValueYield`、`ValueSuperCall`、`ValueSuperSpread`、`ValueSuperCheck`；复杂finally完成路由 | 保留 | 由现有协议验证和typed completion保持原表示；**须用组合反例验证缺失原始相位时共同分析撤回跨界变换依据**。展开内部暂停/恢复或协议、重构finally属于后续精度，不能成为普通变量关闭前的无限前置任务 |

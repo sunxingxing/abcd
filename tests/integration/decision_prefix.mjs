@@ -59,8 +59,11 @@ function run(fn, wrapped, probe, flag, left, test, options) {
 let scenarios = 0;
 for (const [option, wrapped, reference] of cases) {
 const source = execFileSync(process.argv[2], [option], {encoding: 'utf8'});
-assert.ok(source.includes(' ? ') && !source.includes('INCOMPLETE'));
+// A retained nullish selection may recover as ?? instead of a conditional.
+// The independent executions below prove the decision and evaluation order.
+assert.ok(!source.includes('INCOMPLETE'));
 const generated = runInNewContext(source);
+assert.equal(typeof generated, 'function');
 for (const probe of probes) for (const flag of [false, true]) for (const [left, test] of pairs)
   for (const options of [{}, {replace: true}, {change: true}, ...Array.from({length: 12}, (_, i) => ({failAt: i + 1}))]) {
     assert.deepEqual(run(generated, wrapped, probe, flag, left, test, options), run(reference, wrapped, probe, flag, left, test, options));
