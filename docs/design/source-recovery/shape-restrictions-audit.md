@@ -3761,3 +3761,17 @@ FlowGuardPhase为虚拟相位，不能将原始Before/Commit借给load或后续�
 局部pass、same-block、邻接或复制次数准入。复制+拆块+寄存器变换的phased输入实际
 恢复源码并执行；缺证、错值、错单元、删除读取以及离开throw路径的输入变化均验证
 撤证。无值跳转和receiver/protocol保留边界仍属B，未把子证明当成主干交付关闭。
+
+
+交付包B消费者补证（生产仍为规则306）：ValueJump没有原生动作和结果，不应为了填满
+phase表增加跳转匹配器。TreeFlow已验证的结构化路径、OriginalPhi/OriginalSaved的
+incoming身份与联合provenance证明共同承担义务。新增反例分别验证：无控制owner的
+跳转仍保留有效合流值域；替换上游条件后撤回该值域；缺少边归属表不借用原始证明。
+normal/phased真实解码的复制、拆块、arena重排源码验证jump未被映射到物理动作。
+将“没有控制owner”强行改成拒绝的生产变异被新测试发现。
+
+async/direct-yield/finally闭包的真实构造树还验证缺动作证书、source-only及输入候选
+共享同一效果、移动和死定义消费者，普通动作效果上界不能压掉暂停/恢复的外部观察。
+receiver guard保持无独立原生动作，super本身的源码效果仍必需；既有协议所有权不由
+共同模型擅自推导。构造源码整体验收、yield*和async-generator等仍在R10明确余项。
+这些是现有共同算法的消费者验收，未新增生产准入条件或额外优化pass。

@@ -4722,3 +4722,23 @@ Decoded guard counts 200/201/400/800 produce common graph nodes
 1783739/1983867/3552699/7090619. Allocation capacities step at 201; work and graph
 size do not. Exact and one-short budgets pass. These are local graph construction
 measurements, not whole optimizer costs or process RSS; C/P5 remains open.
+
+
+### Control transport and retained protocol consumers (rules306 acceptance)
+
+A value-less raw jump has no expression action/result. The checked TreeFlow
+control adaptation and source completion graph carry its paths; phi/saved
+contributions retain incoming identity. An unconditional edge has no decision
+owner of its own. Joint provenance still tracks the upstream predicate, so
+changing that predicate withdraws original range caps. Requiring an additional
+physical jump point would add an unjustified layout restriction. New consumer
+counterexamples cover this distinction and missing edge-correspondence evidence.
+
+Retained suspension is a required source event with separate resume-next,
+resume-throw and resume-return paths. Ordinary intrinsic caps cannot refine that
+external observation boundary. Motion and dead-definition consumers operate on
+those same events. The new file-backed preservation test checks current/trial,
+missing original actions and source-only models for async/direct-yield/finally
+families with sibling captures. Receiver guards similarly have no standalone
+source action; mandatory super effects remain on the native call. No production
+algorithm, dependency, representation threshold or complexity changed here.

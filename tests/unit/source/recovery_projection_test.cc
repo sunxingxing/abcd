@@ -466,6 +466,31 @@ std::pair<std::uint64_t,std::size_t> OriginalControlKinds(bool reverse,unsigned 
   const OriginalSourceDefinition saved{OriginalSavedDefinition{phi,IncomingKey{EdgeId{0}}},{1},f.original.definitions[first.value]->input};
   Check(OriginalDefinitionKinds(model.flow,saved).IsFiniteNumber());Check(OriginalDefinitionKinds(gap,saved).IsEmpty());
   if(count==1) {
+    // The same source assignments may implement copies on unconditional arm
+    // exits, after the raw decision. Those edges have no decision of their own
+    // and no physical source action. Shared completion provenance still owns
+    // the upstream predicate; do not demand a second jump phase certificate.
+    auto forwarded=f.original;
+    forwarded.edges[0]={{1},{3},FlowEdgeKind::kTaken,0};
+    forwarded.edges[1]={{2},{3},FlowEdgeKind::kTaken,0};
+    for(auto& owner:forwarded.edge_controls)owner.reset();
+    const RecoveryExpressionInput forwarded_input{f.plan,f.equations,f.order,&forwarded};
+    const auto forwarded_model=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,projection,forwarded_input));
+    auto no_decision=forwarded_model.flow;no_decision.original_controls.clear();
+    const auto forwarded_live=std::get<FlowLiveness>(AnalyzeFlowLiveness(no_decision));
+    const auto preserved=std::get<FlowNormalKinds>(CheckedFlowNormalKinds(tree,no_decision,forwarded_live,forwarded_input));
+    Check(preserved.expressions[read.value].IsFiniteNumber());
+    Check(OriginalDefinitionProof(no_decision,saved).state==FlowOriginalProofState::kAvailable);
+    auto candidate=f.plan;candidate.primitives.push_back(BooleanLiteral{true});
+    candidate.transports[condition.value]=ExpressionTransport{condition,PrimitiveId{static_cast<unsigned>(candidate.primitives.size()-1)}};
+    const RecoveryExpressionInput changed{candidate,f.equations,f.order,&forwarded};
+    const auto trial=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,projection,changed));
+    Check(trial.expressions.kinds[read.value].IsNumber()&&!trial.expressions.kinds[read.value].IsFiniteNumber());
+    forwarded.edge_controls.clear();
+    const auto missing=std::get<RecoveryProjection>(PrepareRecoveryProjection(tree,projection,forwarded_input));
+    Check(missing.expressions.kinds[read.value].IsNumber()&&!missing.expressions.kinds[read.value].IsFiniteNumber());
+  }
+  if(count==1) {
     auto truths=model.flow.normal_truths;truths[condition.value]=TruthDomains::One(TruthDomain::kFalsy);
     Check(OriginalDefinitionControl(model.flow,saved)==analysis::OpId{copies});
     Check(OriginalDefinitionKinds(model.flow,saved,truths).IsEmpty());

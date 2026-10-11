@@ -16,6 +16,7 @@
 #include "../../../src/source/tree_structure.h"
 #include "analysis/ssa_fixture.h"
 #include "analysis/generator_delegate_fixture.h"
+#include "source/preserved_completions.h"
 
 namespace {
 using namespace abcd;
@@ -117,7 +118,7 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
                  YieldFinalizer yield_finalizer = YieldFinalizer::kPreserve, ResumeEncoding resume_encoding = {},
                  std::uint32_t return_cleanup_count = 1, YieldOverride yield_override = YieldOverride::kNone,
                  CleanupControl cleanup_control = CleanupControl::kSequence,
-                 test::DelegateTruth delegate_truth = test::DelegateTruth::kNative) {
+                 test::DelegateTruth delegate_truth = test::DelegateTruth::kNative, bool verify_preservation = false) {
   const bool exception_child = child_shape != ChildShape::kPlain && child_shape != ChildShape::kForwardedNormal;
   const bool forwarded_writer = child_shape == ChildShape::kForwardedWriter || child_shape == ChildShape::kForwardedThrowWriter;
   const bool forwarding = child_shape == ChildShape::kForwarded || child_shape == ChildShape::kForwardedNormal ||
@@ -1219,7 +1220,7 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
       std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
   const auto identity = source::MakeRouteInputIdentity(
       std::get<corpus::FileFingerprint>(file.Fingerprint()), header);
-  if (child_shape == ChildShape::kAwaitArguments) {
+  if (child_shape == ChildShape::kAwaitArguments || verify_preservation) {
     using namespace source;
     auto roles = std::get<analysis::MethodRoleIndex>(analysis::MethodRoleIndex::Build(file, header, index, lookup));
     auto sites = std::get<analysis::FunctionCreationSites>(analysis::FunctionCreationSites::Build(file, header, index, lookup));
@@ -1236,6 +1237,14 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
     test::Check(family.root == FileFamily::kRoot);
     for (std::size_t i = 0; i < family.members.size(); ++i)
       test::Check(family.members[i].tree.owner.value == 37 + i);
+    if(verify_preservation) {
+      std::size_t checked=0;
+      for(const auto& member:family.members) {
+        test::Check(member.flow.original!=nullptr);
+        checked+=test::CheckPreservedCompletions(member.tree,*member.flow.original);
+      }
+      test::Check(checked>0);
+    } else {
     test::Check(family.members[1].tree.callable == CallableKind::kAsyncArrow &&
         family.members[1].tree.invocation == InvocationForm::kArrowMethod);
     auto forged = family.members[1].tree;
@@ -1246,6 +1255,7 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
     test::Check(std::holds_alternative<TreeStructureError>(VerifyTreeStructure(forged)));
     std::ostringstream unbound;
     test::Check(std::holds_alternative<TreePrintError>(PrintFamilyDraft(family, unbound)));
+    }
     const HostArgumentSnapshotBinding factory{u"snapshotArguments", ArgumentSnapshotAbi::kV7CurrentSlots};
     GlobalScope globals{}; globals.argument_snapshot_binding = &factory;
     std::ostringstream output;
@@ -1343,6 +1353,16 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if(argc==2&&std::string_view(argv[1])=="--preserved-completions-json") {
+    for(const auto profile:{abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301})
+      for(const auto parent:{ParentShape::kNormal,ParentShape::kCatch})
+        for(const auto child:{ChildShape::kAwaitCapture,ChildShape::kAwaitFinallyReuse,ChildShape::kYieldFinallyReturn})
+          std::cout<<nlohmann::json{{"kind",child==ChildShape::kAwaitCapture?0:child==ChildShape::kAwaitFinallyReuse?1:2},
+            {"caught",parent==ParentShape::kCatch},{"source",Emit(profile,parent,child,MissingCell::kNone,false,1,
+            CopyEncoding::kV8,1,YieldFinalizer::kPreserve,{},1,YieldOverride::kNone,CleanupControl::kSequence,
+            test::DelegateTruth::kNative,true)}}<<'\n';
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--async-generator-yield-json") {
     for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
       for (const auto shape : {ParentShape::kIteration, ParentShape::kCatch, ParentShape::kNormal})

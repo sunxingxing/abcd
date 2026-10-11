@@ -1349,3 +1349,22 @@ phased recovery and source execution, plus same-input/certificate mutations.
 R7 still owns value-less control and receiver/protocol preservation boundaries;
 R1-R3/R5 and R9/R10 consumer/preservation acceptance remain in package B. No new
 mainline delivery is closed, no fixed65/record rerun or paused scope resumed.
+
+
+Package B consumer acceptance supplement (production remains rules306): value-less
+jump phases have no native action. Existing verified TreeFlow paths, phi/saved
+contributions and joint provenance suffice; the new forward-edge counterexample
+rejects both an extra physical-jump admission and stale caps after predicate edits.
+Actual normal/phased decoded sources exercise copies, split blocks and reordered
+arenas. No production metadata or second jump check was added.
+
+A shared preservation test now runs against file-backed constructed async/generator
+families, not hand-written replacement output. Eighteen families combine ordinary
+or catch-created captures, await, direct yield and finally. Current/candidate,
+missing certificates, source-only and invalid ordinary-action caps consume the
+same projection, effects, motion and dead-definition analyses. Independent source
+execution checks sibling writes, multiple activations, pending completion and
+cleanup override. Receiver-guard/super tree consumers join the same test contract;
+constructor standalone publication is deliberately not forged to obtain a test
+fragment. R10 still lists delegated/async-generator, Hole/IterResult and complete
+constructor-source preservation evidence; this supplement closes no mainline item.

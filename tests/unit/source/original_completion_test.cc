@@ -73,6 +73,15 @@ Cost CheckSource(const Case& c,const ValueProgram& graph,const FunctionTree& tre
   unsigned decisions=0,statements=0;
   for(unsigned i=0;i<graph.ops.size();++i) {
     const auto& operation=graph.ops[i];
+    if(std::holds_alternative<ValueJump>(operation.operation)) {
+      // TreeFlow verified the structured transfer. A value-less jump has no
+      // native evaluation/result; shared source completion paths carry its
+      // contribution. Logical-arm anchors must not become unconditional points.
+      Check(!operation.result&&!original.operations[i].result_expression);
+      Check(!model.flow.original_actions[i]&&!FindFlowOriginalResult(model.flow,{i}));
+      for(unsigned phase=0;phase<original.phases.size();++phase)
+        if(original.phases[phase].operation==OpId{i})Check(!model.flow.original_phases[phase]);
+    }
     if(std::holds_alternative<ValueBranch>(operation.operation)) {
       ++decisions;const auto& control=original.operations[i].control;Check(control&&control->test);
       const auto proof=PureBranchTruth(graph,{i});Check(proof.has_value());

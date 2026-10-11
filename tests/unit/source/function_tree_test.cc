@@ -27,6 +27,7 @@
 #include "abcd/analysis/value_simplify.h"
 #include "abcd/analysis/exception_locals.h"
 #include "../../support/analysis/ssa_fixture.h"
+#include "../../support/source/preserved_completions.h"
 
 namespace {
 using namespace abcd;
@@ -1674,6 +1675,7 @@ void ConstructorGuardAnchors() {
   Check(std::holds_alternative<ConstructedFunction>(built));
   const auto& tree = std::get<ConstructedFunction>(built).tree;
   Check(tree.receiver_guards.size() == guards.size());
+  Check(test::CheckPreservedCompletions(tree,*std::get<ConstructedFunction>(built).flow->original)==1);
   Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(fixture.graph, control, evaluation, tree, constants)));
   for (const auto& expression : tree.expressions) Check(!std::holds_alternative<ThisExpr>(expression.expression));
   constants.receiver_guards = {};
@@ -1726,6 +1728,8 @@ void SuperTree() {
     auto tree = std::get<ConstructedFunction>(built).tree;
     Check(std::holds_alternative<TreeSemantics>(fixture.Verify(tree)));
     Check(tree.arguments.size() == count);
+    const auto& original=*std::get<ConstructedFunction>(built).flow->original;
+    Check(test::CheckPreservedCompletions(tree,original)==1);
     if (count > 1) {
       std::swap(tree.arguments.front(), tree.arguments.back());
       Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(tree)));
