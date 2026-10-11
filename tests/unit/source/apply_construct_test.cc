@@ -10,6 +10,7 @@
 #include "abcd/analysis/value_import.h"
 #include "analysis/ssa_fixture.h"
 #include "source/allocation_actions.h"
+#include "source/native_actions.h"
 #include "../../../src/source/source_variables.h"
 
 #include <algorithm>
@@ -277,7 +278,7 @@ void Run(abc::ProfileId profile, bool wide, bool phased, std::uint32_t count,
   const auto verified=verify(tree);
   test::Check(std::holds_alternative<TreeSemantics>(verified) && tree.recovery_issues.empty());
   const auto& original=*std::get<TreeSemantics>(verified).flow.original;
-  if(print)test::CheckAllocationActions(tree,original);
+  if(print){test::CheckAllocationActions(tree,original);test::CheckNativeActions(tree,original);}
   test::Check(std::count_if(tree.expressions.begin(), tree.expressions.end(), [](const auto& node) {
     const auto* construct = std::get_if<ConstructExpr>(&node.expression);
     return construct != nullptr;

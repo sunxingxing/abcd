@@ -56,6 +56,7 @@ class FlowBuilder {
     result_.properties.clear();
     result_.aggregates.clear();
     result_.argument_carriers.clear();
+    result_.snapshot_slots.clear();
     result_.captured_inputs.clear();
     result_.unit_captures.clear();
   }
@@ -955,6 +956,23 @@ class FlowBuilder {
         const auto next=Expr(arguments->array,carrier);
         Link(start,Expr(construct->constructor,context.Operand(next)));return;
       }
+    if(const auto* snapshot=std::get_if<ArgumentSnapshotExpr>(&node)) {
+      // The snapshot ABI supplies a slot only when arguments.length exceeds
+      // its ordinal (TreePrinter::SnapshotCursor). Its value is conditionally
+      // evaluated, including any candidate substituted for the original read.
+      // The common graph must expose the bypass to motion/demand/trial analysis;
+      // no value-domain proof currently refines the invocation's argument count.
+      auto next=effect;
+      for(std::uint32_t i=snapshot->slots.count;i>0;--i) {
+        budget_.Step();const auto branch=New({FlowEventKind::kControl});
+        const auto value=tree_.arguments[snapshot->slots.first+i-1];
+        const auto read=Expr(value,context.Operand(next));
+        Link(branch,read,FlowCompletion::kTaken);Link(branch,next,FlowCompletion::kNotTaken);
+        Append(result_.snapshot_slots,FlowSnapshotSlot{at.id,i-1,branch,read,next});
+        next=branch;
+      }
+      Link(start,next);return;
+    }
     std::pmr::vector<ExprId> children(&memory_);
     VisitExpressionChildren(tree_,node,[&](ExprId child){budget_.Step();children.push_back(child);});
     auto next=effect;

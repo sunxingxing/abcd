@@ -6,6 +6,7 @@
 #include "../../src/analysis/value_flow.h"
 #include "abcd/source/tree_printer.h"
 #include "analysis/ssa_fixture.h"
+#include "source/native_actions.h"
 
 #include <iostream>
 #include <sstream>
@@ -130,13 +131,16 @@ void Run(std::uint32_t count, bool print, bool aggregates = false) {
   const auto& tree = std::get<ConstructedFunction>(built).tree;
   test::Check(tree.recovery_issues.empty());
   const auto flow = std::get<TreeFlow>(VerifyTreeFlow(graph, control, evaluation, tree));
+  const auto& verified = std::get<ConstructedFunction>(built).flow;
+  test::Check(verified && verified->original);
+  if (print) test::CheckNativeActions(tree, *verified->original);
   test::Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(graph, control, evaluation, tree, resolved)));
   for (const auto constructor : constructors) test::Check(flow.expressions[constructor.value].has_value());
   auto forged = evaluation;
   forged.literals->nested[constructors.front().value].reset();
   test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
   std::ostringstream output;
-  test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, output)));
+  test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, output, {}, {}, nullptr, verified->original.get())));
   if (print) std::cout << output.str();
 }
 }  // namespace

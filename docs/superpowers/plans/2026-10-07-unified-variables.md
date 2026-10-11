@@ -1281,3 +1281,17 @@ The 402-construction raw-aware fixture exceeds the public64 MiB scratch default;
 its128 MiB validation allowance and measured cost are explicit in status.md.
 This is not evidence closing package C. No mainline/whole-B closure is claimed;
 continue the remaining ordinary call/control and preservation inventory.
+
+Rules302 continues package B's existing R4/R5/R9 obligations. Native function and
+class creation join the same physical action correspondence as calls/new; raw
+caps are withdrawn with deleted creation, while captured-unit identity remains
+owned by SourceCells/FlowUnits. Actual-original call/new source tests now inspect
+current and candidate facts, not just successful source-only printing.
+The argument snapshot execution gate exposed an omitted source-lowering boundary:
+slot reads occur only when invocation arity exceeds the ordinal. Moving an earlier
+snapshot into such a read lost one execution for zero arguments. The common flow
+now represents the branch, and the existing motion proof preserves execution.
+No per-snapshot pass condition was introduced. Graph construction scales linearly
+in slots; the full preparation/execution gate's increased time remains recorded
+under C/P5, not concealed by local graph counters. B/C/D remain open; no fixed65,
+record, expanded corpus, full suite, RSS, DFX or agent work is claimed this step.

@@ -14,6 +14,7 @@
 #include "abcd/source/tree_printer.h"
 #include "abcd/source/class_method.h"
 #include "analysis/ssa_fixture.h"
+#include "source/native_actions.h"
 #include "../../../tools/tree_position_json.h"
 #include <nlohmann/json.hpp>
 
@@ -569,6 +570,10 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
       const auto tree_family = BuildFileFamilyTrees(file, header, index, std::move(root_family), context);
       test::Check(std::holds_alternative<ConstructedFamily>(tree_family));
       const auto& built = std::get<ConstructedFamily>(tree_family);
+      for(const auto& member:built.members) {
+        test::Check(member.flow.original!=nullptr);
+        test::CheckNativeActions(member.tree,*member.flow.original);
+      }
       for (const auto& member : built.members)
         test::Check(member.abi && member.sources && member.abi->parameters.size() == member.tree.parameters.size());
       const auto& root_sources = *built.members[0].sources;

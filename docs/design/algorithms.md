@@ -4610,3 +4610,26 @@ whole common-flow projections. The 402-construction phased source preparation
 admits68,569,914 bytes/work97,823,532; its test uses128 MiB scratch rather than the
 public64 MiB default. Whole optimization cost is still package C's open obligation;
 this counter is neither process RSS nor proof of whole-pass asymptotic behavior.
+
+Native function/class creation correspondence (rules302) reuses the existing
+OpId-to-expression/action indexes, O(operations) time and no new per-operation
+walk. SourceCells/FlowUnits remain the sole capture-identity producers. A removed
+creation has no native action and cannot lend raw effects/results/phases to its
+replacement; class creation retains possible parent.prototype user callbacks.
+The test inventory starts from checked FunctionExpr/ClassExpr/CallExpr/ConstructExpr,
+so an omitted raw category cannot make a certificate-only counter pass vacuously.
+
+ArgumentSnapshotExpr lowering conditionally evaluates slot i only when invocation
+arity exceeds i (the existing V7CurrentSlots ABI and SnapshotCursor emission).
+RecoveryFlow now publishes that condition and bypass, including in trial graphs;
+motion and demand consume ordinary control edges rather than a snapshot-specific
+admission test. Unknown arity retains both edges. S slots add S branch records,
+S control nodes and two outgoing edges each, O(S) construction work/space. On
+recycled storage the records are cleared along with other proposal facts. The
+independent concrete-arity read-prefix oracle, reverse arena, omission/restoration,
+and exact/one-short budgets cover 1/2/4/200/201/400/800. Measured work for the last
+four sizes is 11904/11963/23704/47304; owned bytes 676949/677066/1353661/2707085.
+These are graph construction costs only. The 51-source snapshot execution gate
+now takes about86 seconds versus25 seconds for the failing graph that omitted
+conditional execution. Whole optimization/trial rebuild cost remains P5's
+explicit obligation, not proved linear by these local figures.

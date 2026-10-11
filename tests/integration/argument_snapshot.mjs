@@ -109,7 +109,8 @@ for (const item of cases) {
     const values = Array.from({length: count}, (_, i) => i === 0 ? undefined : {ordinal: i});
     const before = factoryCalls;
     const result = apply(fn, {unrelated: true}, values);
-    assert.equal(factoryCalls - before, item.loop_snapshots ? 3 : item.nested_snapshot ? 2 : 1);
+    assert.equal(factoryCalls - before, item.loop_snapshots ? 3 : item.nested_snapshot ? 2 : 1,
+      `snapshot execution count, inputs=${count}, source=${item.source}`);
     const second = apply(fn, null, values);
     const expected = values.slice();
     if (count && item.self_parameter) expected[0] = fn;

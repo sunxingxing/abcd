@@ -598,6 +598,7 @@ class OperandCheck {
               (array ? std::holds_alternative<EmptyArrayExpr>(tree_.expressions[expression.value].expression) :
                        std::holds_alternative<EmptyObjectExpr>(tree_.expressions[expression.value].expression)), Error::kOperator);
         } else if constexpr (std::is_same_v<T, analysis::ValueFunctionCreation>) {
+          original_.operations[i].intrinsic_expression=expression;
           RequireMeaning(next_function < evaluation_.functions.size(), Error::kOperand);
           const auto& function = evaluation_.functions[next_function++];
           const auto& created = Node<FunctionExpr>(expression);
@@ -609,6 +610,7 @@ class OperandCheck {
                 tree_.closure_captures[created.captures.first + c] == *flow_.cells[cell.value], Error::kOperand);
           }
         } else if constexpr (std::is_same_v<T, analysis::ValueClassCreation>) {
+          original_.operations[i].intrinsic_expression=expression;
           const auto& created = Node<ClassExpr>(expression);
           const auto* bound = std::get_if<std::shared_ptr<const ClassTree>>(&constants_.operations[i]);
           RequireMeaning(bound && *bound && created.definition == *bound, Error::kConstant);

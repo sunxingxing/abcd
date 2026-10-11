@@ -169,6 +169,9 @@ struct FlowAggregate {
 // A verified private array printed as positional arguments has no source
 // allocation/result or property writes. Its ordered value evaluations remain.
 struct FlowArgumentCarrier {ExprId expression;FlowPoint entry,normal;PropertyRange properties;};
+// Native argument-snapshot lowering guards each slot by invocation arity.
+// Both edges remain possible until the common model knows that arity.
+struct FlowSnapshotSlot {ExprId snapshot;std::uint32_t ordinal;FlowPoint branch,value,normal;};
 // One current correspondence for phases and exception routes. Before/context
 // come from the action; normal denotes raw Commit, following the separately
 // checked result projection when present or the physical write otherwise.
@@ -494,6 +497,7 @@ struct RecoveryFlow {
   std::vector<std::optional<FlowAction>> actions;
   std::vector<FlowAggregate> aggregates;
   std::vector<FlowArgumentCarrier> argument_carriers;
+  std::vector<FlowSnapshotSlot> snapshot_slots;
   std::vector<std::optional<FlowAction>> property_initializers; // PropertyId indexed.
   std::vector<std::optional<FlowOriginalAction>> original_actions; // OpId indexed.
   std::vector<std::optional<FlowAction>> original_regions; // OriginalActionRegionId indexed.

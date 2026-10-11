@@ -11,6 +11,7 @@
 #include "../../../src/source/recovery_flow.h"
 #include "analysis/ssa_fixture.h"
 #include "source/allocation_actions.h"
+#include "source/native_actions.h"
 #include "abcd/source/tree_printer.h"
 #include "abcd/analysis/exception_locals.h"
 
@@ -675,6 +676,7 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
       test::Check(checked.flow&&checked.flow->original);
       const auto& original=*checked.flow->original;
       test::CheckAllocationActions(tree,original);
+      test::CheckNativeActions(tree,original);
       std::vector<std::optional<SymbolId>> aliases(tree.symbols.size());
       std::vector<std::optional<PrimitiveId>> literals(tree.symbols.size());
       std::vector<std::optional<ExprId>> replacements(tree.expressions.size());
