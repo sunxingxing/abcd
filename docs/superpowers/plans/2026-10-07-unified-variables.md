@@ -19,6 +19,22 @@
 - Existing byte/work budget covers retained graph, sparse facts and temporary growth.
 - Every verified coherent commit refreshes status.md; whole milestone is not complete until old decisions exit.
 
+2026-10-11 package A implementation (rules297): FlowUnits compares dynamic
+unit partitions at reads, definitions and captures. Raw cells consume verified
+allocation membership/success and declaration occurrence; catches consume their
+handler-entry occurrence. The old exact-ScopeId reference decision is retired.
+An independent forward oracle exposed and fixed the entry-backedge stop bug;
+permutation/scaling and negative certificates are checked. The consumer ledger
+now records initialization, liveness, interference, names, declaration/snapshot
+trial and native loop allocation ownership. Decoded repeated-entry sources and
+catch candidate withdrawal have independent execution/adverse-case evidence.
+The complete A package passed its single frozen fixed gate: 32 targets built,
+exact original 65 tests passed in 674.44s, and two new unit/source tests passed
+in 2.82s. All 1585 code/test hashes, the test list and ABC hash stayed unchanged;
+10 record sources stayed byte-identical. Package A / ordinary binding identity
+is closed within this milestone scope. B raw/control preservation, C whole-pass
+convergence and D final acceptance remain open. No full fixed gate per subproof.
+
 2026-10-11 delivery correction: the authoritative finite obligation inventory is
 [unified-variable-deliveries](../../design/source-recovery/unified-variable-deliveries.md).
 It classifies all 46 current ValueOperation alternatives plus entry/merge/source
@@ -30,7 +46,8 @@ C (whole-pass convergence), D (milestone acceptance). Historical rule entries
 below are evidence, not independent work endpoints or a completion percentage.
 The separate [pass convergence contract](../../design/source-recovery/unified-variable-pass-convergence.md)
 specifies change sets, invalidation, queues, order, termination witnesses and
-whole-process cost/acceptance. It remains unimplemented; no new mainline closes.
+whole-process cost/acceptance. That convergence implementation remains open;
+A's ordinary-binding closure does not close it.
 Run targeted gates while developing one package, then the frozen fixed gate once
 when that package is ready. CTest fixture sharing removes repeated generation
 without dropping C++ assertions, JS execution, scaling cases or negative tests.

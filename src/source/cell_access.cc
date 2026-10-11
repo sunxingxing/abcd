@@ -85,6 +85,7 @@ SourceCells AnalyzeSourceCells(const FunctionTree& tree,TreeCheckBudget& budget)
   std::sort(result.captures.begin(),result.captures.end(),
       [&](const auto& a,const auto& b){budget.Step();return a.creation<b.creation;});
   if(!complete)for(auto& access:result.access){budget.Step();if(access==CellVisibility::kClosed)access=CellVisibility::kUnmodeled;}
+  result.captures_complete=complete;
   return result;
 }
 }  // namespace abcd::source

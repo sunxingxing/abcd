@@ -953,12 +953,14 @@ class FlowCheck {
           const auto* local = std::get_if<AllocatedCell>(&item.storage);
           return local && local->allocation < site;
         });
+    std::optional<StmtId> activation;
     for (; cell != cells.end(); ++cell) {
       budget_.Step();
       const auto* local = std::get_if<AllocatedCell>(&cell->storage);
       if (!local || local->allocation != allocation) break;
       Require(child < block.child_count, Error::kSequence);
       const auto site=sequences_.Child(block.first_child + child++);
+      if(!activation)activation=site;
       const auto& statement = tree_.statements[site.value];
       const auto* declaration = std::get_if<DeclarationStmt>(&statement.statement);
       Require(declaration && !declaration->initializer &&
@@ -972,7 +974,7 @@ class FlowCheck {
       auto& actual = flow_.cells[static_cast<std::size_t>(cell - cells.begin())];
       Require(!actual, Error::kPlacement);
       actual = symbol;
-      flow_.cell_bindings[static_cast<std::size_t>(cell-cells.begin())]={CellStorageIdentity(cell->storage),symbol,binding.scope,site};
+      flow_.cell_bindings[static_cast<std::size_t>(cell-cells.begin())]={CellStorageIdentity(cell->storage),symbol,binding.scope,site,OriginalCellActivation{allocation,*activation}};
     }
   }
   void ExpressionScopes() {

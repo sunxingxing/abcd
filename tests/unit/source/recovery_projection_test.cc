@@ -1,3 +1,4 @@
+#include "../../../src/source/flow_units.h"
 #include "../../../src/source/recovery_projection.h"
 #include "../../../src/source/snapshot_projection.h"
 #include "../../../src/source/flow_kinds.h"
@@ -600,11 +601,70 @@ void OriginalCellReferences(bool reverse) {
   f.original.cells.emplace();
   f.original.cells->bindings.push_back({{analysis::EnvironmentId{0},{0}},SymbolId{1},ScopeId{1},f.declarations[0]});
   f.original.cells->references.push_back(OriginalCellReference{{0},CellAccessKind::kLoad,read});
+  // Synthetic checked allocation input, separate from the lexical read.
+  const analysis::OpId allocation{1};
+  OriginalOperation allocated{};allocated.life=analysis::ValueLife::kLive;
+  allocated.normal=analysis::LanguageEffect::kAllocation;allocated.exceptional=analysis::ExceptionalCompletion::kImpossible;
+  f.original.operations.push_back(allocated);
+  f.original.cells->references.resize(2);f.original.cells->bindings[0].activation=OriginalCellActivation{allocation,f.declarations[0]};
+  const std::array definitions{analysis::EnvironmentDefinition{analysis::CapturedDepth{0},analysis::PushEnvironment{1}}};
+  auto index=std::get<analysis::EnvironmentIndex>(analysis::EnvironmentIndex::Build(definitions));
+  auto environments=std::make_shared<analysis::ValueEnvironments>(analysis::ValueEnvironments{
+      f.tree.value_revision,f.tree.cfg_revision,analysis::EnvironmentFlow{std::move(index)}});
+  environments->revision=f.tree.value_revision;environments->cfg_revision=f.tree.cfg_revision;
+  environments->flow.before.resize(2);environments->normal_after.resize(2);
+  environments->flow.allocations.push_back({allocation.value,analysis::EnvironmentId{0}});
+  environments->normal_after[allocation.value]=analysis::EnvironmentId{0};
+  f.original.environments=environments;
   const auto projection=f.Projection();
   const auto current=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,projection,f.Input()));
   const auto* reference=FindFlowOriginalCellReference(current.flow,operation);Check(reference);
   Check(current.flow.original_actions[0]&&current.flow.original_actions[0]->before==reference->point);
   Check(current.initialized_reads[read.value]);
+  // Move only the source declaration into a nested lexical scope. The raw
+  // allocation marker remains before it. Both units have the same partition
+  // at retained accesses, so unequal ScopeIds must not reject the trial.
+  auto narrowed=f;auto& nested=narrowed.tree;
+  const ScopeId inner{static_cast<unsigned>(nested.scopes.size())};
+  nested.scopes.push_back({ScopeKind::kBlock,ScopeId{1}});
+  const StmtId block{static_cast<unsigned>(nested.statements.size())};
+  const auto old_children=nested.children;
+  Check(old_children.size()==3);
+  nested.children={old_children[0],block,old_children[1],old_children[2]};
+  std::get<BlockStmt>(nested.statements[0].statement).child_count=2;
+  nested.statements.push_back({BlockStmt{inner,2,2},{0}});
+  narrowed.plan.omitted.resize(nested.statements.size());narrowed.plan.statements.resize(nested.statements.size());
+  narrowed.original.statements=nested.statements.size();
+  narrowed.plan.omitted[narrowed.declarations[0].value]=1;
+  narrowed.plan.statements[old_children[1].value]=BindingInitializer{{1},narrowed.stores[0],DeclarationKind::kLet};
+  auto projected=narrowed.Projection();
+  const std::array regions{SourceRegion{{2},{4}}};
+  std::vector<std::optional<SourcePosition>> positions(nested.statements.size());
+  for(unsigned i=0;i<positions.size();++i)positions[i]=SourcePosition{i};
+  const std::array<SourceBindingScope,2> scopes{EnclosingBindingScope{},ProjectedBindingScope{{0}}};
+  const std::array<SourceAllocation,1> allocations{inner};
+  projected.source_scopes.regions=regions;projected.source_scopes.occurrences=positions;
+  projected.source_scopes.bindings=scopes;projected.source_scopes.allocations=allocations;
+  const auto moved=std::get<RecoveryProjection>(PrepareRecoveryProjection(nested,projected,narrowed.Input()));
+  Check(std::get<ScopeBindingLifetime>(moved.flow.bindings[1].lifetime).scope==inner);
+  Check(FindFlowOriginalCellReference(moved.flow,operation));
+  Check(moved.initialized_reads[read.value]);
+  // Re-entering only the candidate scope changes the observed cell partition.
+  // Recompute against the changed graph; an old certificate is not its proof.
+  auto repeated=moved.flow;const auto lifetime=std::get<ScopeBindingLifetime>(repeated.bindings[1].lifetime);
+  repeated.edges.push_back({lifetime.leave,lifetime.enter,FlowCompletion::kJump,
+      repeated.events[lifetime.enter.value].incoming,repeated.events[lifetime.leave.value].outgoing});
+  repeated.events[lifetime.leave.value].outgoing=repeated.events[lifetime.enter.value].incoming=repeated.edges.size()-1;
+  const std::array unit_query{FlowUnitQuery{{1},{1},repeated.statements[narrowed.declarations[0].value]}};
+  Check(std::get<FlowUnitRelations>(AnalyzeFlowUnits(repeated,unit_query)).queries[0]==FlowUnitRelation::kDifferent);
+  f.original.cells->bindings[0].activation.reset();
+  auto incomplete=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,projection,f.Input()));
+  Check(!FindFlowOriginalCellReference(incomplete.flow,operation));
+  f.original.cells->bindings[0].activation=OriginalCellActivation{allocation,f.declarations[0]};
+  environments->normal_after[allocation.value].reset();
+  incomplete=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,projection,f.Input()));
+  Check(!FindFlowOriginalCellReference(incomplete.flow,operation));
+  environments->normal_after[allocation.value]=analysis::EnvironmentId{0};
   // A literal is a value, not an access to the original unit. A candidate
   // must withdraw the physical proof and effect cap.
   f.plan.read_literals[read.value]=PrimitiveId{1};
@@ -2169,7 +2229,7 @@ std::pair<std::uint64_t,std::size_t> CanonicalCells(unsigned count,bool reverse)
   const ExprId creation{static_cast<unsigned>(f.tree.expressions.size())};
   f.tree.expressions.push_back({FunctionExpr{{1},{0,static_cast<unsigned>(f.tree.closure_captures.size())}},{0}});
   TreeCheckBudget budget({});const auto cells=AnalyzeSourceCells(f.tree,budget);
-  Check(cells.owner==&f.tree&&!cells.mapped_arguments);
+  Check(cells.owner==&f.tree&&!cells.mapped_arguments&&cells.captures_complete);
   Check(cells.access[0]==CellVisibility::kClosed);
   for(unsigned i=1;i<f.tree.symbols.size();++i)
     Check(cells.access[i]==(i%3==0?CellVisibility::kExternal:CellVisibility::kClosed));

@@ -153,7 +153,9 @@ class Fixture {
         value.body=statement(value.body);
         if(value.handler)value.handler->body=statement(value.handler->body);
         if(value.finalizer)value.finalizer=statement(*value.finalizer);
-      } else Check((std::is_same_v<T,BlockStmt>||std::is_same_v<T,DebuggerStmt>));
+      } else if constexpr(std::is_same_v<T,LoopStmt>)value.body=statement(value.body);
+      else if constexpr(std::is_same_v<T,BreakStmt>||std::is_same_v<T,ContinueStmt>)value.target=statement(value.target);
+      else Check((std::is_same_v<T,BlockStmt>||std::is_same_v<T,DebuggerStmt>));
     },node.statement);
     for(auto& op:tree.operations)std::visit([&](auto& id) {
       using T=std::decay_t<decltype(id)>;
@@ -300,11 +302,11 @@ void OriginalBindingStores(abc::ProfileId profile,unsigned count,unsigned copies
       <<" recovery_work="<<std::get<SourceVariables>(recovered).work<<" recovery_bytes="<<std::get<SourceVariables>(recovered).allocated_bytes<<'\n';
 }
 struct FlowConstructionCost {std::uint64_t work,bytes;auto operator<=>(const FlowConstructionCost&) const = default;};
-FlowConstructionCost OriginalStorePhases(abc::ProfileId profile,bool lexical,unsigned copies,unsigned count=3,bool reverse=false,bool split=false) {
+FlowConstructionCost OriginalStorePhases(abc::ProfileId profile,bool lexical,unsigned copies,unsigned count=3,bool reverse=false,bool split=false,unsigned slots=1) {
   using namespace analysis;
   const auto op=[](abc::Opcode code){return static_cast<std::uint8_t>(code);};
   std::vector<std::uint8_t> bytes;
-  if(lexical)bytes.insert(bytes.end(),{op(abc::Opcode::kNEWLEXENV_IMM8),1});
+  if(lexical)bytes.insert(bytes.end(),{op(abc::Opcode::kNEWLEXENV_IMM8),static_cast<std::uint8_t>(slots)});
   for(unsigned i=0;i<count;++i) {
     bytes.push_back(op(i%2?abc::Opcode::kLDFALSE:abc::Opcode::kLDTRUE));
     for(unsigned n=0;n<copies;++n)bytes.insert(bytes.end(),{op(abc::Opcode::kSTA_V8),0,op(abc::Opcode::kLDA_V8),0});
@@ -312,7 +314,9 @@ FlowConstructionCost OriginalStorePhases(abc::ProfileId profile,bool lexical,uns
       constexpr std::uint8_t kJumpWidth=2; // Pinned JMP_IMM8 opcode and displacement.
       bytes.insert(bytes.end(),{op(abc::Opcode::kJMP_IMM8),kJumpWidth});
     }
-    bytes.insert(bytes.end(),{op(lexical?abc::Opcode::kSTLEXVAR_IMM4_IMM4:abc::Opcode::kSTMODULEVAR_IMM8),0});
+    // IMM4 pair stores level in the low nibble and slot in the high nibble.
+    bytes.insert(bytes.end(),{op(lexical?abc::Opcode::kSTLEXVAR_IMM4_IMM4:abc::Opcode::kSTMODULEVAR_IMM8),
+        static_cast<std::uint8_t>(lexical?(i%slots)<<4:0)});
   }
   if(lexical)bytes.push_back(op(abc::Opcode::kPOPLEXENV));
   bytes.push_back(op(abc::Opcode::kRETURNUNDEFINED));
@@ -352,6 +356,16 @@ FlowConstructionCost OriginalStorePhases(abc::ProfileId profile,bool lexical,uns
   projection.original=&original;
   const auto flow=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,projection));
   Check(stores.size()==count&&flow.original_actions.size()==original.operations.size());
+  if(lexical) {
+    Check(original.cells&&original.cells->bindings.size()==slots);
+    const auto activation=original.cells->bindings.front().activation;Check(activation.has_value());
+    std::vector<StmtId> declarations;
+    for(const auto& cell:original.cells->bindings) {
+      Check(cell.activation==activation&&cell.declaration.has_value());
+      Check(std::find(declarations.begin(),declarations.end(),*cell.declaration)==declarations.end());
+      declarations.push_back(*cell.declaration);
+    }
+  }
   const auto normal=[&](FlowPoint from,FlowPoint to) {
     for(auto edge=flow.events[from.value].outgoing;edge;edge=flow.edges[*edge].outgoing)
       if(flow.edges[*edge].completion==FlowCompletion::kNormal&&flow.edges[*edge].to==to)return true;
@@ -507,6 +521,104 @@ void OriginalStoreCalls(abc::ProfileId profile,bool reverse,bool split,bool real
   Check(loads==2&&physical_loads>0);
   std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output,{}, {},nullptr,&original)));
   if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"profile",static_cast<unsigned>(profile)},{"reverse",reverse},{"split",split},{"reallocated",reallocated}}<<'\n';
+}
+// Decoded loop and repeated handler entry exercise successful environment
+// activation independently of source scope and catch initialization.
+void OriginalUnitLoops(abc::ProfileId profile,bool reverse,bool split,bool reallocated,bool emit) {
+  using namespace analysis;
+  const auto op=[](abc::Opcode code){return static_cast<std::uint8_t>(code);};
+  const std::uint8_t locals=reallocated?4:2,error=reallocated?2:0,scratch=error+1;
+  const std::uint8_t next=locals,input=locals+1,report=locals+2;
+  std::vector<std::uint8_t> bytes;
+  const auto jump=[&](abc::Opcode code) {const auto at=bytes.size();bytes.insert(bytes.end(),{op(code),0});return at;};
+  const auto patch=[&](std::size_t from,std::size_t to) {
+    const auto displacement=static_cast<std::ptrdiff_t>(to)-static_cast<std::ptrdiff_t>(from);
+    Check(displacement>=std::numeric_limits<std::int8_t>::min()&&displacement<=std::numeric_limits<std::int8_t>::max());
+    bytes[from+1]=static_cast<std::uint8_t>(displacement);
+  };
+  const auto gap=[&] {if(split){const auto at=jump(abc::Opcode::kJMP_IMM8);patch(at,bytes.size());}};
+  bytes.insert(bytes.end(),{op(abc::Opcode::kLDA_V8),next,op(abc::Opcode::kCALLARG0_IMM8),0});
+  const auto exit=jump(abc::Opcode::kJEQZ_IMM8);
+  bytes.insert(bytes.end(),{op(abc::Opcode::kNEWLEXENV_IMM8),1,op(abc::Opcode::kLDTRUE),op(abc::Opcode::kSTLEXVAR_IMM4_IMM4),0});
+  gap();const auto start=bytes.size();
+  bytes.insert(bytes.end(),{op(abc::Opcode::kLDA_V8),input,op(abc::Opcode::kCALLARG0_IMM8),0});gap();
+  bytes.insert(bytes.end(),{op(abc::Opcode::kSTLEXVAR_IMM4_IMM4),0});
+  const auto end=bytes.size(),skip=jump(abc::Opcode::kJMP_IMM8),handler=bytes.size();
+  bytes.insert(bytes.end(),{op(abc::Opcode::kSTA_V8),error,op(abc::Opcode::kLDA_V8),report,
+      op(abc::Opcode::kCALLARG1_IMM8_V8),0,error});gap();
+  const auto handler_end=bytes.size();patch(skip,handler_end);
+  bytes.insert(bytes.end(),{op(abc::Opcode::kLDLEXVAR_IMM4_IMM4),0,op(abc::Opcode::kSTA_V8),scratch,
+      op(abc::Opcode::kLDA_V8),report,op(abc::Opcode::kCALLARG1_IMM8_V8),0,scratch,op(abc::Opcode::kPOPLEXENV)});
+  const auto again=jump(abc::Opcode::kJMP_IMM8);patch(again,0);patch(exit,bytes.size());
+  bytes.push_back(op(abc::Opcode::kRETURNUNDEFINED));
+  auto body=test::Body(bytes);abc::TryRegion region;region.offset={static_cast<std::uint32_t>(start)};
+  region.length=end-start;region.handler_count=1;body.tries.push_back(region);
+  abc::CatchHandler caught;caught.offset={static_cast<std::uint32_t>(handler)};caught.length=handler_end-handler;body.handlers.push_back(caught);
+  const auto frame=std::get<abc::FrameLayout>(abc::BuildFrameLayout(locals,3,{}));
+  const auto raw=std::get<ExceptionFlow>(BuildExceptionFlow(body,profile,frame.registers));
+  IdfQuota ssa_work{kDefaultSemanticWork};const auto ssa=std::get<ExceptionSsa>(ExceptionSsa::Build(raw,frame.registers,ssa_work));
+  const auto env=std::get<EnvironmentFlow>(AnalyzeExceptionEnvironments(raw));
+  const auto lexical=std::get<ExceptionLocals>(ProveExceptionLocals(raw,env));
+  std::vector<EntryValueFact> entries;
+  for(unsigned i=0;i<ssa.Values().size();++i)if(std::holds_alternative<MethodEntry>(ssa.Values()[i].origin))entries.push_back({{i},ValueKinds::Language()});
+  IdfQuota value_work{kDefaultSemanticWork};
+  const auto values=std::get<ExceptionValueFlow>(ExceptionValueFlow::Build(raw,ssa,entries,value_work,{},
+      PendingExceptionValues::kLanguage,lexical.loads,{},CallResultValues::kLanguage));
+  const auto proof=std::get<ExceptionInputProof>(VerifyExceptionInputs(raw,ssa,env,values));
+  const PhasedValueInput input_graph{raw,ssa,env,values,proof,frame};const auto graph=std::get<ValueProgram>(ImportPhasedValues(input_graph));
+  const auto evaluation=std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(graph));
+  const auto regions=std::get<ExceptionPlan>(BuildExceptionPlan(body,graph,input_graph));
+  const auto control=std::get<ExceptionControl>(BuildExceptionControl(body,graph,input_graph,regions));
+  const ExceptionTreeInput context{body,input_graph,regions,control};
+  FunctionSyntax syntax{};syntax.identity.profile=profile;syntax.owner={3};syntax.callable=CallableKind::kFunction;
+  syntax.strictness=Strictness::kStrict;syntax.parameters.resize(3);std::vector<ExpressionConstant> constants(graph.ops.size());
+  auto draft=std::get<ExceptionFunctionDraft>(BuildExceptionFunctionDraft(graph,context,evaluation,syntax,{constants,0}));
+  if(reverse) {
+    Fixture::ReverseSyntax(draft.tree);auto checked=VerifyExceptionTreeSemantics(graph,context,evaluation,draft.tree,{constants,0});
+    Check(std::holds_alternative<TreeSemantics>(checked));draft.flow=std::get<TreeSemantics>(std::move(checked)).flow;
+  }
+  const auto& tree=draft.tree;const auto& original=*draft.flow->original;
+  const auto recovered=std::get<SourceVariables>(PrepareSourceVariables(tree,{},&original));const auto& p=recovered.bindings;
+  LegacyFlowProjection projection{p.aliases,p.literals,p.replacements,p.omitted,p.evaluations,p.normal_stores,p.statements,{},
+      p.storage,p.undefined_stores,p.declaration_values,p.declaration_completions};
+  projection.original=&original;const auto flow=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,projection));
+  unsigned cells=0,handlers=0;
+  for(unsigned i=0;i<original.cells->references.size();++i)if(original.cells->references[i]) {
+    Check(FindFlowOriginalCellReference(flow,OpId{i}));++cells;
+  }
+  for(const auto& definition:flow.definitions)if(definition.kind==FlowDefinitionKind::kCatch) {
+    Check(definition.original_catch&&definition.catch_entry);++handlers;
+  }
+  Check(cells==3&&handlers==1);
+  // Candidate scope publication must recompute catch-unit correspondence.
+  // Keeping each handler entry succeeds; sharing one function unit across
+  // repeated handlers withdraws every original catch-domain/phase certificate.
+  const auto caught_definition=std::find_if(flow.definitions.begin(),flow.definitions.end(),
+      [](const auto& definition){return definition.kind==FlowDefinitionKind::kCatch;});
+  const auto& original_catch=*caught_definition->original_catch;
+  const auto caught_scope=tree.symbols[caught_definition->binding.value].scope;
+  const auto body_scope=std::get<BlockStmt>(tree.statements[tree.body.value].statement).scope;
+  const std::array<SourceRegion,1> regions_candidate{{{{0},{1}}}};
+  std::vector<std::optional<SourcePosition>> occurrences(tree.statements.size(),SourcePosition{0});
+  std::vector<SourceBindingScope> bindings(tree.symbols.size(),OriginalBindingScope{});
+  bindings[caught_definition->binding.value]=ProjectedBindingScope{{0}};
+  for(const auto allocation:std::array<SourceAllocation,3>{caught_scope,body_scope,UnmodeledSourceAllocation{}}) {
+    const std::array<SourceAllocation,1> allocations{allocation};auto candidate=projection;
+    candidate.source_scopes={regions_candidate,occurrences,bindings,{},{},{},{},allocations};
+    const auto trial=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,candidate));
+    const auto* projected_scope=std::get_if<ScopeId>(&allocation);
+    const bool same=projected_scope&&*projected_scope==caught_scope;
+    bool caught_seen=false;
+    for(const auto& definition:trial.definitions)if(definition.kind==FlowDefinitionKind::kCatch) {
+      caught_seen=true;Check((definition.original_catch!=nullptr)==same);
+    }
+    Check(caught_seen);
+    Check(FindOriginalPhase(trial,original_catch.handler,ExceptionPhase::kCatch).has_value()==same);
+    if(!same)Check(OriginalCatchKinds(trial,original_catch).IsEmpty());
+  }
+  std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output,{}, {},nullptr,&original)));
+  if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"profile",static_cast<unsigned>(profile)},
+      {"reverse",reverse},{"split",split},{"reallocated",reallocated}}<<'\n';
 }
 // The raw allocation can fail only outside the excluded-resource contract.
 // Its source scope/initialization is not asserted to be the VM allocation site.
@@ -2215,6 +2327,12 @@ int main(int argc,char** argv) {
     for(const auto allocation:{std::initializer_list<std::uint8_t>{0x09,1},
         {0xfd,2,1,0},{0xb6,1,0,0},{0xfd,3,1,0,0,0}})
       for(bool unreachable:{false,true})ResourceCauseImports(profile,unreachable,allocation);
+  if(argc==1||(argc==2&&std::string_view(argv[1])=="--unit-loops")) {
+    for(const auto profile:{abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301})
+      for(bool reverse:{false,true})for(bool split:{false,true})for(bool reallocated:{false,true})
+        OriginalUnitLoops(profile,reverse,split,reallocated,argc==2);
+    if(argc==2)return 0;
+  }
   if(argc==2&&std::string_view(argv[1])=="--environment-failures") {
     for(const auto profile:{abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301})
       for(bool reverse:{false,true})for(bool split:{false,true})for(bool reallocated:{false,true})OriginalEnvironmentFailures(profile,reverse,split,reallocated,true);
@@ -2233,7 +2351,8 @@ int main(int argc,char** argv) {
       for(bool reverse:{false,true})for(bool split:{false,true})for(bool reallocated:{false,true})OriginalStoreCalls(profile,reverse,split,reallocated,false);
     for(const auto profile:{abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301})
       for(bool lexical:{false,true})for(unsigned copies:{0U,4U})for(bool reverse:{false,true})for(bool split:{false,true})
-        OriginalStorePhases(profile,lexical,copies,3,reverse,split);
+        for(unsigned slots:lexical?std::initializer_list<unsigned>{1U,2U}:std::initializer_list<unsigned>{1U})
+          OriginalStorePhases(profile,lexical,copies,3,reverse,split,slots);
     for(bool lexical:{false,true}) {
       std::vector<FlowConstructionCost> forward;
       for(bool reverse:{false,true}) {

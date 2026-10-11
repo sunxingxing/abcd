@@ -10,6 +10,11 @@ struct TreeFlow;
 // Allocation sites identify dynamic cell families, not one scalar value or
 // one invocation's unit. The verified declaration and source scope are kept
 // separate: scope entry allocates a source unit, declaration initializes it.
+struct OriginalCellActivation {
+  analysis::OpId operation;
+  StmtId marker; // One success marker shared by every cell of this allocation.
+  auto operator<=>(const OriginalCellActivation&)const=default;
+};
 struct OriginalCellBinding {
   // Resolved in environments, after the allocation's successful transition.
   // Consumers no longer reconstruct an EnvironmentId from an allocation OpId.
@@ -17,6 +22,8 @@ struct OriginalCellBinding {
   SymbolId binding;
   ScopeId scope;
   std::optional<StmtId> declaration;
+  // Independently verified success occurrence, separate from EnvironmentId.
+  std::optional<OriginalCellActivation> activation;
 };
 struct OriginalCellReference {CellId cell;CellAccessKind kind;ExprId expression;};
 struct OriginalCells {

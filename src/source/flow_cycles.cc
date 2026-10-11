@@ -11,7 +11,7 @@ std::variant<FlowCycles,TreeStructureError> AnalyzeFlowCycles(
     RequireTree(size<std::numeric_limits<std::uint32_t>::max()&&flow.edges.size()<std::numeric_limits<std::uint32_t>::max(),TreeStructureError::kResourceLimit);
     std::vector<std::uint32_t> outgoing,incoming;std::vector<FlowPoint> next,previous,finished,component;
     std::vector<std::uint8_t> seen;
-    budget.Array(result.cyclic,size);budget.Array(seen,size);
+    budget.Array(result.cyclic,size);budget.Array(result.components,size);budget.Array(seen,size);
     budget.Array(outgoing,size+1);budget.Array(incoming,size+1);
     budget.Array(next,flow.edges.size());budget.Array(previous,flow.edges.size());
     budget.Array(finished,size);budget.Array(component,size);
@@ -38,6 +38,7 @@ std::variant<FlowCycles,TreeStructureError> AnalyzeFlowCycles(
       }
     }
     std::fill(seen.begin(),seen.end(),0);budget.Step(size);
+    std::uint32_t order=0;
     while(count) {
       budget.Step();const auto root=finished[--count];if(seen[root.value])continue;
       std::size_t head=0,members=1;component[0]=root;seen[root.value]=1;
@@ -50,7 +51,8 @@ std::variant<FlowCycles,TreeStructureError> AnalyzeFlowCycles(
       }
       bool cyclic=members>1;
       if(!cyclic)for(auto at=outgoing[root.value];at<outgoing[root.value+1];++at){budget.Step();cyclic|=next[at]==root;}
-      for(std::size_t i=0;i<members;++i){budget.Step();result.cyclic[component[i].value]=cyclic;}
+      for(std::size_t i=0;i<members;++i){budget.Step();result.cyclic[component[i].value]=cyclic;result.components[component[i].value]={order};}
+      ++order;
     }
     result.allocated_bytes=budget.Bytes();result.work=budget.Work();return result;
   }catch(TreeStructureError error){return error;

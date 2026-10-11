@@ -2,8 +2,11 @@
 #define ABCD_SOURCE_FLOW_CYCLES_H_
 #include "recovery_flow.h"
 namespace abcd::source {
+struct FlowComponentId {std::uint32_t value;auto operator<=>(const FlowComponentId&)const=default;};
 struct FlowCycles {
   std::vector<std::uint8_t> cyclic;
+  // Condensation topological order: every cross-component edge goes forward.
+  std::vector<FlowComponentId> components;
   std::size_t allocated_bytes=0;
   std::uint64_t work=0;
 };

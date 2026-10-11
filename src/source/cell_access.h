@@ -18,6 +18,7 @@ struct SourceCells {
   std::vector<CellVisibility> access;
   std::vector<CellCapture> captures; // ordered by creation, not arena execution
   bool mapped_arguments=false;
+  bool captures_complete=false;
   [[nodiscard]] std::span<const CellCapture> Captured(ExprId,TreeCheckBudget&) const;
 };
 [[nodiscard]] SourceCells AnalyzeSourceCells(const FunctionTree&,TreeCheckBudget&);

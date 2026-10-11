@@ -1,4 +1,5 @@
 #include "recovery_flow.h"
+#include "flow_units.h"
 #include "expression_observation.h"
 #include "binding_initializer.h"
 #include "recovery_scratch.h"
@@ -52,6 +53,7 @@ class FlowBuilder {
     discarded_=std::move(result_.discarded);discarded_.clear();
     result_.properties.clear();
     result_.captured_inputs.clear();
+    result_.unit_captures.clear();
   }
   RecoveryFlow Run() {
     result_.scopes.reset();
@@ -62,6 +64,7 @@ class FlowBuilder {
     std::optional<SourceCells> owned_cells;
     if(!projection_.cells){owned_cells=AnalyzeSourceCells(tree_,budget_);projection_.cells=&*owned_cells;}
     RequireTree(projection_.cells->owner==&tree_&&projection_.cells->access.size()==tree_.symbols.size(),Error::kOwnership);
+    result_.unit_captures_complete=projection_.cells->captures_complete;
     if(result_.original)CheckOriginalFlow(tree_,*result_.original);
     RequireTree(projection_.normal_kinds.empty()||projection_.normal_kinds.size()==tree_.expressions.size(),Error::kOwnership);
     Resize(result_.normal_kinds,projection_.normal_kinds.size());
@@ -297,9 +300,47 @@ class FlowBuilder {
   void ProjectOriginalCells() {
     auto& result=result_;
     if(!result.original||!result.original->cells) {
-      decltype(result.original_cell_references){}.swap(result.original_cell_references);return;
+      decltype(result.original_cell_references){}.swap(result.original_cell_references);
+      decltype(result.original_cell_units){}.swap(result.original_cell_units);return;
     }
     const auto& cells=*result.original->cells;
+    Resize(result.original_cell_units,cells.bindings.size());
+    // Verified allocation membership and successful state are separate from
+    // the source marker. CellDeclarations established that marker while
+    // matching the original control program, before any recovery projection.
+    std::pmr::vector<std::optional<analysis::EnvironmentId>> allocations(&memory_);
+    if(result.original->environments) {
+      budget_.Step(result.original->operations.size());allocations.resize(result.original->operations.size());
+      for(const auto& item:result.original->environments->flow.allocations) {
+        budget_.Step();RequireTree(item.instruction<allocations.size(),Error::kOwnership);
+        allocations[item.instruction]=item.environment;
+      }
+    }
+    std::pmr::vector<FlowUnitQuery> queries(&memory_);
+    std::pmr::vector<std::size_t> selected(&memory_);
+    for(std::size_t i=0;i<cells.bindings.size();++i) {
+      budget_.Step();result.original_cell_units[i].reset();const auto& cell=cells.bindings[i];
+      RequireTree(cell.binding.value<result.bindings.size(),Error::kOwnership);
+      const auto& binding=result.bindings[cell.binding.value];
+      if(std::holds_alternative<analysis::EnvironmentId>(cell.storage.environment)) {
+        if(!cell.activation||!cell.declaration||cell.activation->operation.value>=allocations.size()||
+            cell.activation->marker.value>=result.statements.size())continue;
+        const auto& states=*result.original->environments;
+        if(allocations[cell.activation->operation.value]!=std::get<analysis::EnvironmentId>(cell.storage.environment)||
+            states.normal_after[cell.activation->operation.value]!=std::optional{cell.storage.environment})continue;
+        queries.push_back({cell.scope,cell.binding,result.statements[cell.activation->marker.value]});selected.push_back(i);
+      } else if(std::holds_alternative<EnclosingBindingLifetime>(binding.lifetime))
+        result.original_cell_units[i]=FlowOriginalUnit{{},binding.lifetime,binding.allocation};
+    }
+    auto checked=AnalyzeFlowUnits(result,queries,budget_.Remaining());
+    if(const auto* error=std::get_if<Error>(&checked))throw *error;
+    const auto& relations=std::get<FlowUnitRelations>(checked);
+    budget_.Admit(relations.allocated_bytes,1);budget_.Step(relations.work);
+    for(std::size_t i=0;i<queries.size();++i) {
+      budget_.Step();if(relations.queries[i]!=FlowUnitRelation::kEquivalent)continue;
+      const auto& binding=result.bindings[queries[i].current.value];
+      result.original_cell_units[selected[i]]=FlowOriginalUnit{queries[i].original,binding.lifetime,binding.allocation,cells.bindings[selected[i]].activation};
+    }
     Resize(result.original_cell_references,cells.references.size());
     for(auto& reference:result.original_cell_references){budget_.Step();reference.reset();}
     struct ReferenceSlot {std::optional<SymbolId> binding;std::optional<FlowReferenceId> current;};
@@ -327,9 +368,33 @@ class FlowBuilder {
       if(!FindFlowOriginalCellReference(result,analysis::OpId{static_cast<std::uint32_t>(i)}))current.reset();
     }
   }
+  void ProjectOriginalCatchUnits() {
+    auto& result=result_;
+    if(!result.original||result.original->catches.empty())return;
+    std::pmr::vector<FlowUnitQuery> queries(&memory_);
+    std::pmr::vector<std::size_t> definitions(&memory_);
+    for(std::size_t i=0;i<result.definitions.size();++i) {
+      budget_.Step();auto& definition=result.definitions[i];
+      if(!definition.original_catch)continue;
+      const auto& caught=*definition.original_catch;
+      RequireTree(caught.body.value<tree_.statements.size()&&definition.catch_entry.has_value(),Error::kOwnership);
+      const auto* body=std::get_if<BlockStmt>(&tree_.statements[caught.body.value].statement);
+      RequireTree(body!=nullptr,Error::kOwnership);
+      queries.push_back({body->scope,definition.binding,definition.catch_entry});definitions.push_back(i);
+    }
+    auto analyzed=AnalyzeFlowUnits(result,queries,budget_.Remaining());
+    if(const auto* error=std::get_if<Error>(&analyzed))throw *error;
+    const auto& relations=std::get<FlowUnitRelations>(analyzed);
+    budget_.Admit(relations.allocated_bytes,1);budget_.Step(relations.work);
+    for(std::size_t i=0;i<queries.size();++i) {
+      budget_.Step();if(relations.queries[i]!=FlowUnitRelation::kEquivalent)
+        result.definitions[definitions[i]].original_catch=nullptr;
+    }
+  }
   void ProjectOriginal() {
     auto& result=result_;
     ProjectOriginalCells();
+    ProjectOriginalCatchUnits();
     bool controls=false;
     if(result.original)for(const auto& operation:result.original->operations) {
       budget_.Step();if(operation.life==analysis::ValueLife::kLive&&operation.control){controls=true;break;}
@@ -714,6 +779,9 @@ class FlowBuilder {
       Link(branch,Expr(logical->right,context),right);return;
     }
     const auto effect=New({FlowEventKind::kEvaluation,{},{},at.id});auto normal=context.next;
+    if(!projection_.cells->captures.empty())for(const auto capture:projection_.cells->Captured(at.id,budget_)) {
+      budget_.Step();Append(result_.unit_captures,FlowUnitCapture{effect,Resolve(capture.binding)});
+    }
     if(!result_.actions.empty())result_.actions[at.id.value]=FlowAction{effect,context.next,{context.thrown,context.finalizer}};
     events_[effect.value].discarded=context.discarded;
     bool required=NormalValueEvaluation(node,result_.normal_kinds,ResourceFailures(tree_.identity.contract))==ExpressionEvaluation::kRequired &&
@@ -1075,11 +1143,12 @@ const FlowReference* FindFlowOriginalCellReference(const RecoveryFlow& flow,anal
   // Identity is separate from initialized value and external visibility. A
   // projected unit needs its own correspondence; a value alias cannot borrow
   // the original cell's read/write effects or exception location.
-  const auto& lifetime=flow.bindings[cell.binding.value].lifetime;
-  if(std::holds_alternative<analysis::EnvironmentId>(cell.storage.environment)) {
-    const auto* scope=std::get_if<ScopeBindingLifetime>(&lifetime);
-    if(!scope||scope->scope!=cell.scope)return nullptr;
-  } else if(!std::holds_alternative<EnclosingBindingLifetime>(lifetime))return nullptr;
+  const auto& binding=flow.bindings[cell.binding.value];
+  if(original.cell.value>=flow.original_cell_units.size()||!flow.original_cell_units[original.cell.value])return nullptr;
+  const auto& unit=*flow.original_cell_units[original.cell.value];
+  const auto origin=std::holds_alternative<analysis::EnvironmentId>(cell.storage.environment)?std::optional{cell.scope}:std::nullopt;
+  if(unit.original!=origin||unit.current!=binding.lifetime||unit.allocation!=binding.allocation||
+      unit.original_activation!=cell.activation)return nullptr;
   return flow.BindingPresence(cell.binding,reference.point,FlowScopePhase::kBefore)==FlowUnitPresence::kActive?&reference:nullptr;
 }
 std::optional<FlowPoint> FindOriginalPhase(const RecoveryFlow& flow,analysis::WorkBlockId block,

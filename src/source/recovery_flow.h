@@ -106,12 +106,18 @@ struct SourceScopeProjection {
 // names the allocation site, never the dynamic cell. Completion-only inputs
 // keep synthetic graph contracts; enclosing units have independent stability
 // and exposure proofs. Projected lexical scopes remain a separate obligation.
-struct CompletionOnlyLifetime {};
-struct EnclosingBindingLifetime {};
-struct UnmodeledBindingLifetime {};
-struct ScopeBindingLifetime { ScopeId scope; FlowPoint enter,leave; };
-struct LoopBindingLifetime {StmtId loop;};
+struct CompletionOnlyLifetime {auto operator<=>(const CompletionOnlyLifetime&)const=default;};
+struct EnclosingBindingLifetime {auto operator<=>(const EnclosingBindingLifetime&)const=default;};
+struct UnmodeledBindingLifetime {auto operator<=>(const UnmodeledBindingLifetime&)const=default;};
+struct ScopeBindingLifetime { ScopeId scope; FlowPoint enter,leave; auto operator<=>(const ScopeBindingLifetime&)const=default;};
+struct LoopBindingLifetime {StmtId loop;auto operator<=>(const LoopBindingLifetime&)const=default;};
 using FlowBindingLifetime=std::variant<CompletionOnlyLifetime,EnclosingBindingLifetime,ScopeBindingLifetime,UnmodeledBindingLifetime,LoopBindingLifetime>;
+struct FlowOriginalUnit {
+  std::optional<ScopeId> original; // Absence is the unchanged enclosing unit.
+  FlowBindingLifetime current;
+  std::optional<FlowPoint> allocation;
+  std::optional<OriginalCellActivation> original_activation;
+};
 struct FlowBinding {
   BindingKind kind;
   FlowBindingExposure exposure = FlowBindingExposure::kObservable;
@@ -178,6 +184,7 @@ struct FlowReference {
   // Original operand occurrences, distinct from current projected binding.
   std::optional<OriginalInputRange> original;
 };
+struct FlowUnitCapture {FlowPoint point;SymbolId binding;};
 struct FlowReferenceId {std::uint32_t value;};
 struct FlowPropertyId {std::uint32_t value=0;auto operator<=>(const FlowPropertyId&)const=default;};
 enum class FlowPropertyPhase : std::uint8_t {kAcquisition,kReceiver,kKey,kAccess};
@@ -483,6 +490,7 @@ struct RecoveryFlow {
   // Current physical references to verified cells, allocated only for owners
   // with raw cell correspondence. Value aliases do not grant unit identity.
   std::vector<std::optional<FlowReferenceId>> original_cell_references; // OpId indexed.
+  std::vector<std::optional<FlowOriginalUnit>> original_cell_units; // CellId indexed.
   std::vector<std::optional<SourceEffects>> original_effects; // ExprId indexed, intrinsic only.
   RouteInputIdentity identity;
   analysis::IrRevision value_revision;
@@ -492,6 +500,8 @@ struct RecoveryFlow {
   std::vector<FlowDefinition> definitions;
   std::vector<FlowCapturedInput> captured_inputs;
   std::vector<FlowReference> references;
+  std::vector<FlowUnitCapture> unit_captures;
+  bool unit_captures_complete=false;
   std::vector<FlowPropertyReference> properties;
   std::vector<FlowNameReference> names;
   std::vector<DiscardedEvaluation> discarded;
